@@ -1,5 +1,9 @@
 /**
  * Prompt builder for agent and chat modes.
+ *
+ * 支持场景插件系统：从当前活跃的 ScenarioPlugin 获取身份、安全规则、
+ * 代码规范和工作流指南，而非硬编码在 promptTemplates.ts 中。
+ * 向后兼容：如果没有活跃场景，回退到 promptTemplates 中的常量。
  */
 
 import { WorkMode } from '@/renderer/modes/types'
@@ -21,6 +25,7 @@ import {
   getPromptTemplateById,
   getDefaultPromptTemplate,
 } from './promptTemplates'
+import { scenarioRegistry } from '@shared/config/scenarios'
 import { api } from '@/renderer/services/electronAPI'
 import { logger } from '@utils/Logger'
 
@@ -77,16 +82,41 @@ export interface PromptContext {
   planPhase?: 'planning' | 'executing'
 }
 
+function getActiveScenarioIdentity() {
+  const scenario = scenarioRegistry.getActive()
+  if (scenario) {
+    return {
+      systemPrompt: scenario.identity.systemPrompt,
+      securityRules: scenario.identity.securityRules,
+      conventions: scenario.identity.conventions,
+      workflow: scenario.identity.workflow,
+      outputFormat: scenario.identity.outputFormat || OUTPUT_FORMAT,
+      toolGuidelines: scenario.identity.toolGuidelines || TOOL_GUIDELINES,
+    }
+  }
+  return {
+    systemPrompt: APP_IDENTITY,
+    securityRules: SECURITY_RULES,
+    conventions: CODE_CONVENTIONS,
+    workflow: WORKFLOW_GUIDELINES,
+    outputFormat: OUTPUT_FORMAT,
+    toolGuidelines: TOOL_GUIDELINES,
+  }
+}
+
 function buildTools(mode: WorkMode, templateId?: string, planPhase?: 'planning' | 'executing'): string {
   const excludeCategories: ToolCategory[] = []
-  const allowedTools = getToolsForContext({ mode, templateId, planPhase })
+  const activeScenario = scenarioRegistry.getActive()
+  const scenarioToolPacks = activeScenario?.capabilities?.toolPacks
+  const allowedTools = getToolsForContext({ mode, templateId, planPhase, scenarioToolPacks })
   const baseTools = generateToolsPromptDescriptionFiltered(excludeCategories, allowedTools)
+  const { toolGuidelines } = getActiveScenarioIdentity()
 
   return `## Available Tools
 
 ${baseTools}
 
-${TOOL_GUIDELINES}`
+${toolGuidelines}`
 }
 
 function buildEnvironment(ctx: PromptContext): string {
@@ -136,15 +166,16 @@ function buildSkillsSections(autoSkills: SkillItem[], mentionedSkills: SkillItem
 }
 
 export function buildSystemPrompt(ctx: PromptContext): string {
+  const identity = getActiveScenarioIdentity()
   const sections: (string | null)[] = [
     ctx.personality,
-    APP_IDENTITY,
+    identity.systemPrompt,
     PROFESSIONAL_OBJECTIVITY,
-    SECURITY_RULES,
+    identity.securityRules,
     buildTools(ctx.mode, ctx.templateId, ctx.planPhase),
-    CODE_CONVENTIONS,
-    WORKFLOW_GUIDELINES,
-    OUTPUT_FORMAT,
+    identity.conventions,
+    identity.workflow,
+    identity.outputFormat,
     buildEnvironment(ctx),
     buildProjectSummary(ctx.projectSummary || null),
     buildProjectRules(ctx.projectRules),
@@ -157,13 +188,14 @@ export function buildSystemPrompt(ctx: PromptContext): string {
 }
 
 export function buildChatPrompt(ctx: PromptContext): string {
+  const identity = getActiveScenarioIdentity()
   const sections: (string | null)[] = [
     ctx.personality,
-    APP_IDENTITY,
+    identity.systemPrompt,
     PROFESSIONAL_OBJECTIVITY,
-    SECURITY_RULES,
-    CODE_CONVENTIONS,
-    OUTPUT_FORMAT,
+    identity.securityRules,
+    identity.conventions,
+    identity.outputFormat,
     buildEnvironment(ctx),
     buildProjectSummary(ctx.projectSummary || null),
     buildProjectRules(ctx.projectRules),

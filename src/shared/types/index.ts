@@ -15,6 +15,9 @@ export * from './preview'
 // Result 类型
 export * from './result'
 
+// Scenario 场景插件类型
+export * from './scenario'
+
 // ==========================================
 // 基础类型
 // ==========================================

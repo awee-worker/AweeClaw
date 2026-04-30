@@ -141,6 +141,7 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [], [], SettingsSl
         language: state.language,
         autoApprove: state.autoApprove,
         promptTemplateId: state.promptTemplateId,
+        activeScenarioId: state.activeScenarioId,
         providerConfigs: state.providerConfigs,
         agentConfig: state.agentConfig,
         editorConfig: state.editorConfig,

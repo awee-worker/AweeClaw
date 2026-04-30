@@ -273,6 +273,7 @@ class SettingsService {
       language: ((saved.language as string) || defaults.language) as 'en' | 'zh',
       autoApprove: { ...defaults.autoApprove, ...(saved.autoApprove as object || {}) },
       promptTemplateId: (saved.promptTemplateId as string) || defaults.promptTemplateId,
+      activeScenarioId: (saved.activeScenarioId as string) || defaults.activeScenarioId,
       providerConfigs: providerConfigs as Record<string, ProviderModelConfig>,
       agentConfig: { ...defaults.agentConfig, ...(saved.agentConfig as object || {}) },
       editorConfig: saved.editorConfig

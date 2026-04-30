@@ -1,0 +1,519 @@
+/**
+ * 编辑器主组件
+ */
+import { useRef, useCallback, useEffect, useState, lazy, Suspense } from 'react'
+import MonacoEditor, { OnMount, BeforeMount, loader } from '@monaco-editor/react'
+import type { editor } from 'monaco-editor'
+import { Eye, Edit, Columns } from 'lucide-react'
+import { useStore } from '@store'
+import { useShallow } from 'zustand/react/shallow'
+import { t } from '@renderer/i18n'
+import { useAgentChangeState } from '@hooks/useAgent'
+import { useLspIntegration, useFileSave, useLintCheck } from '@renderer/hooks'
+import { toast } from '../common/ToastProvider'
+import { getFileName, normalizePath } from '@shared/utils/pathUtils'
+import { api } from '@renderer/services/electronAPI'
+import { didChangeDocument } from '@services/lspService'
+import { getFileInfo } from '@services/largeFileService'
+import { getMonacoEditorOptions } from '@renderer/config/monacoConfig'
+import { getEditorConfig } from '@renderer/settings'
+import { keybindingService } from '@services/keybindingService'
+import { monaco } from '@renderer/monacoWorker'
+import { initMonacoTypeService } from '@services/monacoTypeService'
+import { streamingEditService } from '@renderer/agent/services/streamingEditService'
+import { composerService } from '@renderer/agent/services/composerService'
+import type { StreamingEditState } from '@renderer/agent/types'
+import type { ThemeName } from '@store/slices/themeSlice'
+import { useEditorBreakpoints } from '@hooks/useEditorBreakpoints'
+import { consumePendingNavigation } from '@services/editorNavigation'
+
+// 子组件
+import { EditorTabs } from './EditorTabs'
+import { EditorBreadcrumbs } from './EditorBreadcrumbs'
+import { DiffPreview } from './DiffPreview'
+import DiffViewer from './DiffViewer'
+import InlineEdit from './InlineEdit'
+import EditorContextMenu from './EditorContextMenu'
+import { TabContextMenu } from './TabContextMenu'
+import { EditorWelcome } from './EditorWelcome'
+import { SafeDiffEditor } from './SafeDiffEditor'
+import { getFileType, MarkdownPreview, ImagePreview, HtmlPreview, UnsupportedFile } from './FilePreview'
+import { CodeSkeleton } from '../ui/Loading'
+import { TaskBoard } from '../plan/TaskBoard'
+const BrowserPreviewTab = lazy(() => import('./BrowserPreviewTab'))
+
+function isPlanJsonFile(filePath: string): boolean {
+  const normalizedPath = normalizePath(filePath)
+  return normalizedPath.includes('/.aweeclaw/plan/') && normalizedPath.endsWith('.json')
+}
+
+function getPlanIdFromPlanFilePath(filePath: string): string {
+  return getFileName(filePath).replace(/\.json$/i, '')
+}
+
+// Hooks
+import { useEditorActions, useAICompletion, useEditorEvents, useComposerInlineDiff } from './hooks'
+import { getLanguage } from './utils/languageMap'
+import { defineMonacoTheme } from './utils/monacoTheme'
+import { isPreviewDocumentPath } from '@shared/types/preview'
+
+loader.config({ monaco })
+
+export default function Editor() {
+  const activeFilePath = useStore((state) => state.activeFilePath)
+  const activeFile = useStore(useShallow(state => state.openFiles.find(f => f.path === state.activeFilePath)))
+  const openFileCount = useStore((state) => state.openFiles.length)
+
+  // 状态
+  const [streamingEdit, setStreamingEdit] = useState<StreamingEditState | null>(null)
+  const [showDiffPreview, setShowDiffPreview] = useState(false)
+  const [inlineEditState, setInlineEditState] = useState<{
+    show: boolean; position: { x: number; y: number }; selectedCode: string; lineRange: [number, number]
+  } | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+  const [tabContextMenu, setTabContextMenu] = useState<{ x: number; y: number; filePath: string } | null>(null)
+  const [markdownMode, setMarkdownMode] = useState<'edit' | 'preview' | 'split'>('edit')
+  const [htmlMode, setHtmlMode] = useState<'edit' | 'preview' | 'split'>('edit')
+
+  const isContextMenuFileDirty = useStore(state => tabContextMenu ? state.openFiles.find(f => f.path === tabContextMenu.filePath)?.isDirty : false)
+  const setActiveFile = useStore((state) => state.setActiveFile)
+  const updateFileContent = useStore((state) => state.updateFileContent)
+  const updateFileDirtyState = useStore((state) => state.updateFileDirtyState)
+  const markFileSaved = useStore((state) => state.markFileSaved)
+  const language = useStore((state) => state.language)
+  const closeFile = useStore((state) => state.closeFile)
+
+  const { pendingChanges, acceptChange, undoChange } = useAgentChangeState()
+
+  const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
+  const monacoRef = useRef<typeof import('monaco-editor') | typeof import('monaco-editor/esm/vs/editor/editor.api') | null>(null)
+  const cursorDebounceRef = useRef<NodeJS.Timeout | null>(null)
+  const isRestoringScrollRef = useRef(false)
+  const setFileScrollPosition = useStore((state) => state.setFileScrollPosition)
+
+  // Hooks
+  const { registerProviders, setupDiagnostics, setupLinkNavigation, notifyFileOpened } = useLspIntegration()
+  const { saveFile, closeFileWithConfirm, closeOtherFiles, closeAllFiles, closeFilesToRight, triggerAutoSave } = useFileSave()
+  const { isLinting, runLintCheck, clearLintErrors, errorCount, warningCount } = useLintCheck()
+  const { setupCursorTracking } = useEditorEvents(editorRef)
+
+  const isPreviewDocument = Boolean(activeFile && (activeFile.kind === 'preview' || isPreviewDocumentPath(activeFile.path)))
+
+  useComposerInlineDiff(isPreviewDocument ? null : activeFilePath, editorRef.current, monacoRef.current)
+
+  const { registerActions } = useEditorActions(setInlineEditState)
+  const { registerProvider: registerAIProvider } = useAICompletion(isPreviewDocument ? null : activeFilePath)
+
+  const activeLanguage = activeFile && !isPreviewDocument ? getLanguage(activeFile.path) : 'plaintext'
+  const activeFileType = activeFile && !isPreviewDocument ? getFileType(activeFile.path) : 'text'
+  const activeFileInfo = (activeFile && activeFile.content != null) ? getFileInfo(activeFile.path, activeFile.content) : null
+  const currentTheme = useStore((state) => state.currentTheme) as ThemeName
+
+  // 断点管理
+  useEditorBreakpoints(editorRef.current, isPreviewDocument ? null : activeFilePath)
+
+  // 主题变化
+  useEffect(() => {
+    if (monacoRef.current && currentTheme) {
+      defineMonacoTheme(monacoRef.current, currentTheme)
+      monacoRef.current.editor.setTheme('aweeclaw-dynamic')
+    }
+  }, [currentTheme])
+
+  // 文件切换时清除 lint 错误并通知 LSP
+  // 同时检查是否有跨文件 Go-to-Definition 待处理的跳转定位
+  useEffect(() => {
+    clearLintErrors()
+    if (activeFile && activeFile.content != null && !isPreviewDocument) {
+      notifyFileOpened(activeFile.path, activeFile.content)
+      // 检查是否有跨文件跳转定义的待定位请求
+      const nav = consumePendingNavigation(activeFile.path)
+      if (nav && editorRef.current) {
+        setTimeout(() => {
+          editorRef.current?.setPosition({ lineNumber: nav.line, column: nav.col })
+          editorRef.current?.revealPositionInCenter({ lineNumber: nav.line, column: nav.col })
+          editorRef.current?.focus()
+        }, 80)
+      }
+    }
+  }, [activeFilePath, activeFile, clearLintErrors, notifyFileOpened, isPreviewDocument])
+
+  // 清理不再打开的文件的 Monaco Models，防止内存泄漏
+  useEffect(() => {
+    if (!monacoRef.current) return
+    const monacoInstance = monacoRef.current
+    const models = monacoInstance.editor.getModels()
+
+    const validUris = new Set(
+      useStore.getState().openFiles.map(f => {
+        if (f.path.startsWith('diff://') || f.kind === 'preview') return ''
+        return monacoInstance.Uri.file(f.path).toString()
+      })
+    )
+
+    models.forEach(model => {
+      const uri = model.uri.toString()
+      if (uri.startsWith('inmemory://') || uri.startsWith('internal://')) return
+
+      if (!validUris.has(uri)) {
+        model.dispose()
+      }
+    })
+  }, [openFileCount])
+
+  // 流式编辑监听
+  useEffect(() => {
+    if (!activeFilePath || isPreviewDocument) return
+
+    const activeEdit = streamingEditService.getActiveEditForFile(activeFilePath)
+    if (activeEdit) {
+      setStreamingEdit(activeEdit.state)
+      setShowDiffPreview(true)
+
+      const unsubscribe = streamingEditService.subscribe(activeEdit.editId, (state) => {
+        setStreamingEdit(state)
+        if (state.isComplete) {
+          setTimeout(() => setShowDiffPreview(false), 500)
+        }
+      })
+      return unsubscribe
+    } else {
+      setStreamingEdit(null)
+      setShowDiffPreview(false)
+    }
+  }, [activeFilePath, isPreviewDocument])
+
+
+  const handleBeforeMount: BeforeMount = (monacoInstance) => {
+    const { currentTheme } = useStore.getState() as { currentTheme: ThemeName }
+    defineMonacoTheme(monacoInstance, currentTheme)
+    initMonacoTypeService(monacoInstance)
+  }
+
+  const handleEditorMount: OnMount = (editor, monacoInstance) => {
+    editorRef.current = editor
+    monacoRef.current = monacoInstance
+    const disposables: { dispose: () => void }[] = []
+    const currentFilePath = activeFilePath
+
+    setupCursorTracking(editor, cursorDebounceRef)
+    registerProviders(monacoInstance)
+    const unsubscribeDiagnostics = setupDiagnostics(monacoInstance)
+    setupLinkNavigation(editor)
+    registerActions(editor, monacoInstance)
+    registerAIProvider(monacoInstance)
+
+    monacoInstance.editor.setTheme('aweeclaw-dynamic')
+
+    // 恢复文件视图状态
+    if (currentFilePath) {
+      const { openFiles } = useStore.getState()
+      const file = openFiles.find(f => f.path === currentFilePath)
+      if (file?.scrollPosition && typeof editor.restoreViewState === 'function') {
+        try {
+          editor.restoreViewState(file.scrollPosition as any)
+        } catch (e) {
+          // ignore restore errors
+        }
+      }
+    }
+
+    // 监听滚动变化并保存视图状态
+    const scrollDisposable = editor.onDidScrollChange(() => {
+      if (currentFilePath && typeof editor.saveViewState === 'function') {
+        const state = editor.saveViewState()
+        setFileScrollPosition(currentFilePath, state as any)
+      }
+    })
+    disposables.push(scrollDisposable)
+
+    // 监听内容变化，基于版本号更新 dirty 状态
+    const model = editor.getModel()
+    if (model && currentFilePath) {
+      // 初始化时记录版本号
+      const { openFiles } = useStore.getState()
+      const file = openFiles.find(f => f.path === currentFilePath)
+      if (file && !file.savedVersionId) {
+        // 首次打开，记录初始版本号
+        const { markFileSaved } = useStore.getState()
+        markFileSaved(currentFilePath, model.getAlternativeVersionId())
+      }
+
+      const contentDisposable = editor.onDidChangeModelContent(() => {
+        const currentVersionId = model.getAlternativeVersionId()
+        const editorContent = editor.getValue()
+        const { openFiles: currentFiles } = useStore.getState()
+        const currentFile = currentFiles.find(f => f.path === currentFilePath)
+
+        if (currentFile && editorContent === currentFile.content) {
+          markFileSaved(currentFilePath, currentVersionId)
+        } else {
+          updateFileDirtyState(currentFilePath, currentVersionId)
+        }
+      })
+      disposables.push(contentDisposable)
+    }
+
+    const contextMenuDisposable = editor.onContextMenu((e) => {
+      e.event.preventDefault()
+      e.event.stopPropagation()
+      if (e.target.position) {
+        editor.setPosition(e.target.position)
+      }
+      setContextMenu({ x: e.event.posx, y: e.event.posy })
+    })
+    disposables.push(contextMenuDisposable)
+
+    editor.onDidDispose(() => {
+      unsubscribeDiagnostics()
+      disposables.forEach(d => d.dispose())
+      disposables.length = 0
+    })
+  }
+
+  const handleSave = useCallback(async () => {
+    if (activeFile && editorRef.current) {
+      const config = getEditorConfig()
+      if (config.formatOnSave) {
+        const formatAction = editorRef.current.getAction('editor.action.formatDocument')
+        if (formatAction) await formatAction.run()
+      }
+      const content = editorRef.current.getValue()
+      const success = await api.file.write(activeFile.path, content)
+      if (success) {
+        if (config.formatOnSave && content !== activeFile.content) {
+          updateFileContent(activeFile.path, content)
+        }
+        // 保存时记录当前版本号
+        const model = editorRef.current.getModel()
+        const versionId = model?.getAlternativeVersionId()
+        markFileSaved(activeFile.path, versionId)
+        toast.success(language === 'zh' ? '文件已保存' : 'File Saved', getFileName(activeFile.path))
+      } else {
+        toast.error(language === 'zh' ? '保存失败' : 'Save Failed', language === 'zh' ? '无法写入文件' : 'Could not write to file')
+      }
+    }
+  }, [activeFile, markFileSaved, language, updateFileContent])
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (keybindingService.matches(e.nativeEvent, 'editor.save')) {
+      e.preventDefault()
+      handleSave()
+    }
+  }, [handleSave])
+
+  const handleRunLint = useCallback(() => {
+    if (activeFilePath && !isPreviewDocument) {
+      runLintCheck(activeFilePath, editorRef.current, monacoRef.current)
+    }
+  }, [activeFilePath, runLintCheck, isPreviewDocument])
+
+  if (openFileCount === 0) {
+    return <EditorWelcome />
+  }
+
+  return (
+    <div className="h-full flex flex-col bg-background/50 relative overflow-hidden" onKeyDown={handleKeyDown}>
+      <EditorTabs
+        activeFilePath={activeFilePath}
+        onSelectFile={setActiveFile}
+        onCloseFile={closeFileWithConfirm}
+        onContextMenu={(e, path) => setTabContextMenu({ x: e.clientX, y: e.clientY, filePath: path })}
+        lintErrorCount={errorCount}
+        lintWarningCount={warningCount}
+        isLinting={isLinting}
+        onRunLint={handleRunLint}
+        activeFileKind={activeFile?.kind}
+      />
+
+      {activeFile && !isPreviewDocument && (
+        <EditorBreadcrumbs
+          filePath={activeFile.path}
+          largeFileInfo={activeFileInfo}
+          language={language}
+        />
+      )}
+
+      {/* 流式编辑预览 */}
+      {showDiffPreview && streamingEdit && activeFile && (
+        <div className="border-b border-border-subtle h-1/2">
+          <DiffViewer
+            originalContent={streamingEdit.originalContent}
+            modifiedContent={streamingEdit.currentContent}
+            filePath={streamingEdit.filePath}
+            isStreaming={!streamingEdit.isComplete}
+            onAccept={() => {
+              updateFileContent(activeFile.path, streamingEdit.currentContent)
+              composerService.acceptChange(activeFile.path)
+              setShowDiffPreview(false)
+            }}
+            onReject={() => {
+              composerService.rejectChange(activeFile.path)
+              setShowDiffPreview(false)
+            }}
+            onClose={() => setShowDiffPreview(false)}
+          />
+        </div>
+      )}
+
+      {/* 内联编辑器 - 极简悬浮胶囊 */}
+      {inlineEditState?.show && activeFile && (
+        <InlineEdit
+          position={inlineEditState.position}
+          selectedCode={inlineEditState.selectedCode}
+          filePath={activeFile.path}
+          lineRange={inlineEditState.lineRange}
+          onClose={() => setInlineEditState(null)}
+        />
+      )}
+
+      {/* 编辑器主体 */}
+      <div className="flex-1 relative min-h-0 overflow-hidden flex flex-col">
+        {activeFile?.path.startsWith('diff://') || activeFile?.path.startsWith('git-diff://') ? (
+          <DiffPreview
+            diff={{
+              original: activeFile.originalContent || '',
+              modified: activeFile.content || '',
+              filePath: activeFile.path.replace(/^(git-)?diff:\/\//, '')
+            }}
+            isPending={activeFile.path.startsWith('diff://') && pendingChanges.some(c => c.filePath === activeFile.path.replace(/^(git-)?diff:\/\//, ''))}
+            readOnly={activeFile.path.startsWith('git-diff://')}
+            language={language}
+            onClose={() => closeFile(activeFile.path)}
+            onChange={(newContent) => {
+              if (activeFile.path.startsWith('git-diff://')) return;
+              updateFileContent(activeFile.path, newContent)
+            }}
+            onAccept={async () => {
+              if (activeFile.path.startsWith('git-diff://')) return;
+              const realPath = activeFile.path.replace(/^(git-)?diff:\/\//, '')
+              acceptChange(realPath)
+              await composerService.acceptChange(realPath)
+              updateFileContent(realPath, activeFile.content)
+              closeFile(activeFile.path)
+            }}
+            onReject={async () => {
+              if (activeFile.path.startsWith('git-diff://')) return;
+              const realPath = activeFile.path.replace(/^(git-)?diff:\/\//, '')
+              await undoChange(realPath)
+              await composerService.rejectChange(realPath)
+              closeFile(activeFile.path)
+            }}
+          />
+        ) : isPreviewDocument && activeFile ? (
+          <Suspense fallback={<CodeSkeleton lines={8} />}>
+            <BrowserPreviewTab file={activeFile} />
+          </Suspense>
+        ) : activeFile && (
+          <>
+            {/* Markdown 工具栏 */}
+            {activeFileType === 'markdown' && (
+              <div className="absolute top-0 right-0 z-10 flex items-center gap-1 px-2 py-1 bg-surface/80 backdrop-blur-sm rounded-bl-lg border-l border-b border-border">
+                <button onClick={() => setMarkdownMode('edit')} className={`p-1.5 rounded-md text-xs transition-colors ${markdownMode === 'edit' ? 'bg-accent/20 text-accent' : 'text-text-muted hover:text-text-primary hover:bg-white/10'}`} title={t('editor.editMode', language)}>
+                  <Edit className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={() => setMarkdownMode('split')} className={`p-1.5 rounded-md text-xs transition-colors ${markdownMode === 'split' ? 'bg-accent/20 text-accent' : 'text-text-muted hover:text-text-primary hover:bg-white/10'}`} title={t('editor.splitMode', language)}>
+                  <Columns className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={() => setMarkdownMode('preview')} className={`p-1.5 rounded-md text-xs transition-colors ${markdownMode === 'preview' ? 'bg-accent/20 text-accent' : 'text-text-muted hover:text-text-primary hover:bg-white/10'}`} title={t('editor.previewMode', language)}>
+                  <Eye className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            {activeFileType === 'image' ? (
+              <ImagePreview path={activeFile.path} />
+            ) : activeFileType === 'binary' ? (
+              <UnsupportedFile path={activeFile.path} fileType="binary" />
+            ) : isPlanJsonFile(activeFile.path) ? (
+              <TaskBoard planId={getPlanIdFromPlanFilePath(activeFile.path)} />
+            ) : activeFileType === 'markdown' && markdownMode === 'preview' ? (
+              <MarkdownPreview content={activeFile.content} fontSize={getEditorConfig().fontSize} />
+            ) : activeFileType === 'markdown' && markdownMode === 'split' ? (
+              <div className="flex h-full">
+                <div className="flex-1 border-r border-border">
+                  <MonacoEditor
+                    height="100%"
+                    key={activeFile.path}
+                    path={monaco.Uri.file(activeFile.path).toString()}
+                    language={activeLanguage}
+                    value={activeFile.content}
+                    theme="aweeclaw-dynamic"
+                    beforeMount={handleBeforeMount}
+                    onMount={handleEditorMount}
+                    onChange={(value) => {
+                      if (value !== undefined) {
+                        updateFileContent(activeFile.path, value)
+                        didChangeDocument(activeFile.path, value)
+                      }
+                    }}
+                    loading={<CodeSkeleton lines={12} />}
+                    options={{ fontSize: getEditorConfig().fontSize, fontFamily: getEditorConfig().fontFamily, minimap: { enabled: false }, scrollBeyondLastLine: false, padding: { top: 16 }, contextmenu: false }}
+                  />
+                </div>
+                <div className="flex-1 relative overflow-hidden">
+                  <MarkdownPreview content={activeFile.content} fontSize={getEditorConfig().fontSize} />
+                </div>
+              </div>
+            ) : activeFile.originalContent !== undefined ? (
+              <SafeDiffEditor
+                language={activeLanguage}
+                original={activeFile.originalContent}
+                modified={activeFile.content}
+                onMount={(editor, monacoInstance) => {
+                  const modifiedEditor = editor.getModifiedEditor()
+                  editorRef.current = modifiedEditor
+                  monacoRef.current = monacoInstance
+                  modifiedEditor.onDidChangeModelContent(() => {
+                    updateFileContent(activeFile.path, modifiedEditor.getValue())
+                  })
+                }}
+                options={{ fontSize: getEditorConfig().fontSize, fontFamily: getEditorConfig().fontFamily, fontLigatures: true, renderSideBySide: true, readOnly: false, minimap: { enabled: false }, scrollBeyondLastLine: false }}
+              />
+            ) : (
+              <MonacoEditor
+                height="100%"
+                key={activeFile.path}
+                path={monaco.Uri.file(activeFile.path).toString()}
+                language={activeLanguage}
+                value={activeFile.content}
+                theme="aweeclaw-dynamic"
+                beforeMount={handleBeforeMount}
+                onMount={handleEditorMount}
+                onChange={(value) => {
+                  if (value !== undefined) {
+                    updateFileContent(activeFile.path, value)
+                    didChangeDocument(activeFile.path, value)
+                    triggerAutoSave(activeFile.path)
+                  }
+                }}
+                loading={<CodeSkeleton lines={12} />}
+                options={getMonacoEditorOptions(activeFileInfo)}
+              />
+            )}
+          </>
+        )}
+
+        {contextMenu && editorRef.current && (
+          <EditorContextMenu x={contextMenu.x} y={contextMenu.y} editor={editorRef.current} onClose={() => setContextMenu(null)} />
+        )}
+      </div>
+
+      {tabContextMenu && (
+        <TabContextMenu
+          x={tabContextMenu.x}
+          y={tabContextMenu.y}
+          filePath={tabContextMenu.filePath}
+          onClose={() => setTabContextMenu(null)}
+          onCloseFile={closeFileWithConfirm}
+          onCloseOthers={closeOtherFiles}
+          onCloseAll={closeAllFiles}
+          onCloseToRight={closeFilesToRight}
+          onSave={saveFile}
+          isDirty={isContextMenuFileDirty || false}
+          language={language}
+        />
+      )}
+    </div>
+  )
+}

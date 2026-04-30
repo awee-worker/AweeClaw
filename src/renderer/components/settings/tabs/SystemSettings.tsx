@@ -68,6 +68,7 @@ export function SystemSettings({ language, enableFileLogging, setEnableFileLoggi
             language: getStore().language,
             autoApprove: getStore().autoApprove,
             promptTemplateId: getStore().promptTemplateId,
+            activeScenarioId: getStore().activeScenarioId,
             providerConfigs: getStore().providerConfigs,
             agentConfig: getStore().agentConfig,
             editorConfig: getStore().editorConfig,

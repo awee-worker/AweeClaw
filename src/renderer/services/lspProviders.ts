@@ -528,25 +528,34 @@ export function registerLspProviders(monaco: typeof Monaco) {
 
       if (!result || result.length === 0) return []
 
-      const convertSymbol = (symbol: any): Monaco.languages.DocumentSymbol => ({
-        name: symbol.name,
-        detail: symbol.detail || '',
-        kind: symbolKindMap[symbol.kind] ?? 0,
-        range: {
-          startLineNumber: symbol.range.start.line + 1,
-          startColumn: symbol.range.start.character + 1,
-          endLineNumber: symbol.range.end.line + 1,
-          endColumn: symbol.range.end.character + 1,
-        },
-        selectionRange: {
-          startLineNumber: symbol.selectionRange.start.line + 1,
-          startColumn: symbol.selectionRange.start.character + 1,
-          endLineNumber: symbol.selectionRange.end.line + 1,
-          endColumn: symbol.selectionRange.end.character + 1,
-        },
-        tags: [],
-        children: symbol.children?.map(convertSymbol) || [],
-      })
+      const convertSymbol = (symbol: any): Monaco.languages.DocumentSymbol => {
+        const range = symbol.range || {}
+        const start = range.start || { line: 0, character: 0 }
+        const end = range.end || { line: 0, character: 0 }
+        const selRange = symbol.selectionRange || range
+        const selStart = selRange.start || { line: 0, character: 0 }
+        const selEnd = selRange.end || { line: 0, character: 0 }
+
+        return {
+          name: symbol.name || '',
+          detail: symbol.detail || '',
+          kind: symbolKindMap[symbol.kind] ?? 0,
+          range: {
+            startLineNumber: start.line + 1,
+            startColumn: start.character + 1,
+            endLineNumber: end.line + 1,
+            endColumn: end.character + 1,
+          },
+          selectionRange: {
+            startLineNumber: selStart.line + 1,
+            startColumn: selStart.character + 1,
+            endLineNumber: selEnd.line + 1,
+            endColumn: selEnd.character + 1,
+          },
+          tags: [],
+          children: symbol.children?.map(convertSymbol) || [],
+        }
+      }
 
       return result.map(convertSymbol)
     },

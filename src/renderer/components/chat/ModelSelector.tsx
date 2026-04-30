@@ -189,12 +189,12 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
   if (!currentProviderGroup || !currentModel) return null
 
   return (
-    <div ref={containerRef} className={`${alignLeft ? '' : 'relative'} flex items-center gap-2 flex-1 min-w-0 ${className}`}>
+    <div ref={containerRef} className={`${alignLeft ? '' : 'relative'} flex items-center ${className}`}>
       <button
         onClick={() => setIsOpen((prev) => !prev)}
         className={`
-          flex items-center gap-2 px-3 py-1.5 rounded-full text-[11px] font-medium border border-transparent
-          transition-all duration-200 w-full min-w-0
+          inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium border border-transparent
+          transition-all duration-200
           ${isOpen
             ? 'bg-surface-active text-text-primary shadow-[0_0_0_2px_rgba(var(--accent)/0.15)]'
             : 'bg-white/[0.03] text-text-secondary hover:text-text-primary hover:bg-white/[0.08]'
@@ -202,14 +202,14 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
         `}
         >
         <span className="text-[10px] grayscale opacity-80 flex-shrink-0">{getIcon(currentProviderGroup.providerId)}</span>
-        <span className="truncate flex-1 min-w-0" title={`${currentProviderGroup.providerName}/${currentModel.name}`}>
+        <span className="truncate max-w-[200px]" title={`${currentProviderGroup.providerName}/${currentModel.name}`}>
           {currentProviderGroup.providerName}/{currentModel.name.split('/').pop()}
         </span>
         <ChevronDown className={`w-3 h-3 text-text-muted transition-transform flex-shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
       {isOpen && (
-        <div className="absolute bottom-full left-0 mb-2 w-[calc(100%-30px)] max-h-[360px] flex flex-col bg-surface border border-border rounded-xl shadow-2xl z-50 animate-scale-in overflow-hidden">
+        <div className="absolute bottom-full left-0 mb-2 max-w-[400px] w-[calc(100%-30px)] max-h-[360px] flex flex-col bg-surface border border-border rounded-xl shadow-2xl z-50 animate-scale-in overflow-hidden">
           {/* 搜索框 */}
           <div className="p-2 border-b border-border/50 sticky top-0 bg-surface/95 backdrop-blur-sm z-10 rounded-t-xl shrink-0">
             <div className="relative">

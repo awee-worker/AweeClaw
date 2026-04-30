@@ -97,6 +97,7 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
         webSearchConfig: defaultWebSearchConfig,
         mcpConfig: defaultMcpConfig,
         promptTemplateId: 'default',
+        activeScenarioId: 'code-editor',
         enableFileLogging: false,
       })
 
