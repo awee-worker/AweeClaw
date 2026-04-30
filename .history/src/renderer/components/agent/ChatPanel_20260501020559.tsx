@@ -443,6 +443,9 @@ export default function ChatPanel() {
     e.stopPropagation()
     setIsDragging(false)
 
+    // 图片扩展名
+    const imageExtensions = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'svg']
+
     // 辅助函数：将文件路径转换为附件并添加
     const addImageFromPath = async (path: string) => {
       try {

@@ -117,10 +117,10 @@ const ChatInput = memo(function ChatInput({
   const hasTerminalRef = useMemo(() => /@terminal\b/i.test(input), [input])
   const hasWebRef = useMemo(() => /@web\b/i.test(input), [input])
 
-  const addAttachment = useCallback(async (file: File) => {
+  // 添加图片
+  const addImage = useCallback(async (file: File) => {
     const id = crypto.randomUUID()
-    const isImage = file.type.startsWith('image/')
-    const previewUrl = isImage ? URL.createObjectURL(file) : undefined
+    const previewUrl = URL.createObjectURL(file)
 
     const reader = new FileReader()
     reader.onload = () => {
@@ -130,14 +130,15 @@ const ChatInput = memo(function ChatInput({
     }
     reader.readAsDataURL(file)
 
-    setImages((prev) => [...prev, { id, file, previewUrl, isImage }])
+    setImages((prev) => [...prev, { id, file, previewUrl }])
   }, [setImages])
 
-  const removeAttachment = useCallback(
+  // 移除图片
+  const removeImage = useCallback(
     (id: string) => {
       setImages((prev) => {
         const target = prev.find((img) => img.id === id)
-        if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl)
+        if (target) URL.revokeObjectURL(target.previewUrl)
         return prev.filter((img) => img.id !== id)
       })
     },
@@ -159,27 +160,18 @@ const ChatInput = memo(function ChatInput({
           }
         `}
       >
-        {/* Attachment Previews */}
+        {/* Image Previews */}
         {images.length > 0 && (
-          <div className="flex gap-2 px-4 pt-4 overflow-x-auto custom-scrollbar">
-            {images.map((att) => (
+          <div className="flex gap-3 px-4 pt-4 overflow-x-auto custom-scrollbar">
+            {images.map((img) => (
               <div
-                key={att.id}
-                className="relative group/att flex-shrink-0 rounded-xl overflow-hidden border border-border shadow-sm"
+                key={img.id}
+                className="relative group/img flex-shrink-0 w-16 h-16 rounded-xl overflow-hidden border border-border shadow-sm"
               >
-                {att.isImage && att.previewUrl ? (
-                  <div className="w-16 h-16">
-                    <img src={att.previewUrl} alt="preview" className="w-full h-full object-cover" />
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 px-3 py-2 bg-surface/50 min-w-[120px] max-w-[180px]">
-                    {getFileIcon(att.file.name, att.file.type)}
-                    <span className="text-[11px] text-text-secondary truncate max-w-[100px]">{att.file.name}</span>
-                  </div>
-                )}
+                <img src={img.previewUrl} alt="preview" className="w-full h-full object-cover" />
                 <button
-                  onClick={() => removeAttachment(att.id)}
-                  className="absolute top-1 right-1 p-1 bg-black/60 backdrop-blur rounded-full text-white hover:bg-red-500 transition-all opacity-0 group-hover/att:opacity-100 scale-90 hover:scale-100"
+                  onClick={() => removeImage(img.id)}
+                  className="absolute top-1 right-1 p-1 bg-black/60 backdrop-blur rounded-full text-white hover:bg-red-500 transition-all opacity-0 group-hover/img:opacity-100 scale-90 hover:scale-100"
                 >
                   <X className="w-3 h-3" />
                 </button>
@@ -304,10 +296,11 @@ const ChatInput = memo(function ChatInput({
                 type="file"
                 ref={fileInputRef}
                 className="hidden"
+                accept="image/*"
                 multiple
                 onChange={(e) => {
                   if (e.target.files) {
-                    Array.from(e.target.files).forEach(addAttachment)
+                    Array.from(e.target.files).forEach(addImage)
                   }
                   e.target.value = ''
                 }}
@@ -316,10 +309,10 @@ const ChatInput = memo(function ChatInput({
                 variant="ghost"
                 size="icon"
                 onClick={() => fileInputRef.current?.click()}
-                title={language === 'zh' ? '上传附件' : 'Upload attachment'}
+                title={t('uploadImage', language)}
                 className="rounded-xl w-8 h-8 hover:bg-surface-active text-text-muted hover:text-text-primary transition-all active:scale-95"
               >
-                <Paperclip className="w-4 h-4 opacity-70 group-hover:opacity-100" />
+                <ImageIcon className="w-4 h-4 opacity-70 group-hover:opacity-100" />
               </Button>
 
               <button
@@ -351,18 +344,6 @@ const ChatInput = memo(function ChatInput({
 })
 
 export default ChatInput
-
-function getFileIcon(fileName: string, mimeType: string) {
-    const ext = fileName.split('.').pop()?.toLowerCase() || ''
-    if (mimeType.startsWith('image/')) return <FileText className="w-4 h-4 text-green-400 flex-shrink-0" />
-    const codeExts = ['js', 'ts', 'tsx', 'jsx', 'py', 'rs', 'go', 'java', 'c', 'cpp', 'h', 'rb', 'php', 'swift', 'kt', 'vue', 'svelte']
-    if (codeExts.includes(ext)) return <FileCode className="w-4 h-4 text-blue-400 flex-shrink-0" />
-    const dataExts = ['csv', 'xlsx', 'xls', 'tsv', 'json', 'xml']
-    if (dataExts.includes(ext)) return <FileSpreadsheet className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-    const archiveExts = ['zip', 'tar', 'gz', 'rar', '7z', 'bz2']
-    if (archiveExts.includes(ext)) return <Archive className="w-4 h-4 text-amber-400 flex-shrink-0" />
-    return <File className="w-4 h-4 text-text-muted flex-shrink-0" />
-}
 
 // 辅助组件：上下文 Chip
 function ContextChip({ icon: Icon, label, color }: { icon: any, label: string, color: string }) {

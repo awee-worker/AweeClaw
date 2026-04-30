@@ -1106,29 +1106,6 @@ const ChatMessage = React.memo(({
                     </div>
                   )}
 
-                  {/* File Attachments */}
-                  {files.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mb-2 justify-end">
-                      {files.map((file, i) => {
-                        const ext = file.name.split('.').pop()?.toLowerCase() || ''
-                        return (
-                          <div
-                            key={`file-${file.name}-${i}`}
-                            className="flex items-center gap-2 px-3 py-2 rounded-lg border border-text-inverted/10 bg-surface/30 max-w-[220px]"
-                          >
-                            <div className="w-8 h-8 rounded-md bg-accent/10 flex items-center justify-center flex-shrink-0">
-                              <span className="text-[10px] font-bold text-accent uppercase">{ext || '?'}</span>
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="text-xs text-text-primary truncate">{file.name}</p>
-                              <p className="text-[10px] text-text-muted">{file.media_type}</p>
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-
                   <Modal isOpen={!!previewImage} onClose={() => setPreviewImage(null)} size="full" noPadding showCloseButton={false}>
                     <div
                       className="w-full h-full flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 cursor-zoom-out"

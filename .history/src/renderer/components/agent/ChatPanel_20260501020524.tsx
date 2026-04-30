@@ -443,7 +443,32 @@ export default function ChatPanel() {
     e.stopPropagation()
     setIsDragging(false)
 
-    // 辅助函数：将文件路径转换为附件并添加
+    // 图片扩展名
+    const imageExtensions = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'svg']
+
+    // 辅助函数：检测路径是否是文件夹
+    const checkIsDirectory = async (path: string): Promise<boolean> => {
+      try {
+        // 先尝试读取文件，如果成功则是文件
+        const content = await api.file.read(path)
+        if (content !== null) {
+          return false // 是文件
+        }
+        // 读取失败，尝试读取目录
+        const result = await api.file.readDir(path)
+        return Array.isArray(result) && result.length >= 0
+      } catch {
+        return false
+      }
+    }
+
+    // 辅助函数：检测是否是图片文件
+    const isImageFile = (path: string): boolean => {
+      const ext = path.split('.').pop()?.toLowerCase() || ''
+      return imageExtensions.includes(ext)
+    }
+
+    // 辅助函数：将文件路径转换为图片并添加
     const addImageFromPath = async (path: string) => {
       try {
         const base64 = await api.file.readBinary(path)

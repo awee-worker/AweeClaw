@@ -161,7 +161,7 @@ export default function ChatPanel() {
   // 组件卸载时释放所有未发送图片的 ObjectURL
   useEffect(() => {
     return () => {
-      imagesRef.current.forEach(img => { if (img.previewUrl) URL.revokeObjectURL(img.previewUrl) })
+      imagesRef.current.forEach(img => URL.revokeObjectURL(img.previewUrl))
     }
   }, [])
 
@@ -396,8 +396,7 @@ export default function ChatPanel() {
   // 图片处理
   const addImage = useCallback(async (file: File) => {
     const id = crypto.randomUUID()
-    const isImage = file.type.startsWith('image/')
-    const previewUrl = isImage ? URL.createObjectURL(file) : undefined
+    const previewUrl = URL.createObjectURL(file)
 
     const reader = new FileReader()
     reader.onload = () => {
@@ -407,7 +406,7 @@ export default function ChatPanel() {
     }
     reader.readAsDataURL(file)
 
-    setImages(prev => [...prev, { id, file, previewUrl, isImage }])
+    setImages(prev => [...prev, { id, file, previewUrl }])
   }, [])
 
   // 粘贴处理
@@ -443,13 +442,38 @@ export default function ChatPanel() {
     e.stopPropagation()
     setIsDragging(false)
 
-    // 辅助函数：将文件路径转换为附件并添加
+    // 图片扩展名
+    const imageExtensions = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'svg']
+
+    // 辅助函数：检测路径是否是文件夹
+    const checkIsDirectory = async (path: string): Promise<boolean> => {
+      try {
+        // 先尝试读取文件，如果成功则是文件
+        const content = await api.file.read(path)
+        if (content !== null) {
+          return false // 是文件
+        }
+        // 读取失败，尝试读取目录
+        const result = await api.file.readDir(path)
+        return Array.isArray(result) && result.length >= 0
+      } catch {
+        return false
+      }
+    }
+
+    // 辅助函数：检测是否是图片文件
+    const isImageFile = (path: string): boolean => {
+      const ext = path.split('.').pop()?.toLowerCase() || ''
+      return imageExtensions.includes(ext)
+    }
+
+    // 辅助函数：将文件路径转换为图片并添加
     const addImageFromPath = async (path: string) => {
       try {
         const base64 = await api.file.readBinary(path)
         if (base64) {
           const ext = path.split('.').pop()?.toLowerCase() || 'png'
-          const imageMimeTypes: Record<string, string> = {
+          const mimeTypes: Record<string, string> = {
             png: 'image/png',
             jpg: 'image/jpeg',
             jpeg: 'image/jpeg',
@@ -459,17 +483,16 @@ export default function ChatPanel() {
             bmp: 'image/bmp',
             ico: 'image/x-icon',
           }
-          const isImage = ext in imageMimeTypes
-          const mimeType = imageMimeTypes[ext] || 'application/octet-stream'
+          const mimeType = mimeTypes[ext] || 'image/png'
           const dataUrl = `data:${mimeType};base64,${base64}`
-          const fileName = path.split(/[/\\]/).pop() || 'file'
+          const fileName = path.split(/[/\\]/).pop() || 'image'
           const id = crypto.randomUUID()
+          // 直接添加到 images 状态
           setImages(prev => [...prev, {
             id,
             file: new File([], fileName, { type: mimeType }),
-            previewUrl: isImage ? dataUrl : undefined,
-            base64,
-            isImage,
+            previewUrl: dataUrl,
+            base64
           }])
           return true
         }
@@ -483,22 +506,34 @@ export default function ChatPanel() {
     const files = Array.from(e.dataTransfer.files)
 
     if (files.length > 0) {
+      // 有原生文件对象（外部文件拖入）
       const imageFiles = files.filter(f => f.type.startsWith('image/'))
-      const otherFiles = files.filter(f => !f.type.startsWith('image/'))
-
       if (imageFiles.length > 0) {
         imageFiles.forEach(addImage)
+        return
       }
-      if (otherFiles.length > 0) {
-        otherFiles.forEach(addImage)
-      }
-      if (imageFiles.length > 0 || otherFiles.length > 0) return
 
       for (const file of files) {
         const filePath = (file as any).path
         if (filePath) {
-          await addImageFromPath(filePath)
-          continue
+          // 检查是否是图片文件
+          if (isImageFile(filePath)) {
+            await addImageFromPath(filePath)
+            continue
+          }
+
+          const exists = contextItems.some((s: ContextItem) =>
+            (s.type === 'File' && (s as FileContext).uri === filePath) ||
+            (s.type === 'Folder' && (s as any).uri === filePath)
+          )
+          if (!exists) {
+            const isDir = await checkIsDirectory(filePath)
+            if (isDir) {
+              addContextItem({ type: 'Folder', uri: filePath })
+            } else {
+              addContextItem({ type: 'File', uri: filePath })
+            }
+          }
         }
       }
       return
@@ -534,9 +569,26 @@ export default function ChatPanel() {
     }
 
     if (filePath) {
-      await addImageFromPath(filePath)
+      // 检查是否是图片文件
+      if (isImageFile(filePath)) {
+        await addImageFromPath(filePath)
+        return
+      }
+
+      const exists = contextItems.some((s: ContextItem) =>
+        (s.type === 'File' && (s as FileContext).uri === filePath) ||
+        (s.type === 'Folder' && (s as any).uri === filePath)
+      )
+      if (!exists) {
+        const isDir = await checkIsDirectory(filePath)
+        if (isDir) {
+          addContextItem({ type: 'Folder', uri: filePath })
+        } else {
+          addContextItem({ type: 'File', uri: filePath })
+        }
+      }
     }
-  }, [addImage, addContextItem, setImages])
+  }, [addImage, contextItems, addContextItem, setImages])
 
   // 输入变化处理
   const handleInputChange = useCallback(async (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -671,7 +723,7 @@ export default function ChatPanel() {
     // Handoff 现在由 StatusBar 自动处理，不再阻止发送
     // 如果正在过渡中，等待完成后会自动继续
 
-    let userMessage: string | Array<{ type: 'text'; text: string } | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } } | { type: 'file'; name: string; media_type: string; data: string }> = input.trim()
+    let userMessage: string | Array<{ type: 'text'; text: string } | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }> = input.trim()
 
     if (images.length > 0) {
       const readyImages = images.filter(img => img.base64)
@@ -679,24 +731,14 @@ export default function ChatPanel() {
 
       userMessage = [
         { type: 'text' as const, text: input.trim() },
-        ...readyImages.map(img => {
-          if (img.isImage) {
-            return {
-              type: 'image' as const,
-              source: {
-                type: 'base64' as const,
-                media_type: img.file.type,
-                data: img.base64!,
-              },
-            }
-          }
-          return {
-            type: 'file' as const,
-            name: img.file.name,
-            media_type: img.file.type || 'application/octet-stream',
+        ...readyImages.map(img => ({
+          type: 'image' as const,
+          source: {
+            type: 'base64' as const,
+            media_type: img.file.type,
             data: img.base64!,
-          }
-        }),
+          },
+        })),
       ]
     }
 
@@ -716,7 +758,7 @@ export default function ChatPanel() {
     }
 
     setInput('')
-    setImages((prev) => { prev.forEach((img) => { if (img.previewUrl) URL.revokeObjectURL(img.previewUrl) }); return [] })
+    setImages((prev) => { prev.forEach((img) => URL.revokeObjectURL(img.previewUrl)); return [] })
     // 发送消息后主动滚到底部，确保用户消息和即将出现的 AI 回复可见
     // 不依赖 followOutput 的时序，因为发送瞬间 isStreaming 还是 false
     scrollToBottom('smooth')
@@ -850,7 +892,8 @@ export default function ChatPanel() {
 
       // 恢复图片到输入框
       if (result.images && result.images.length > 0) {
-        const restoredImages: PendingAttachment[] = result.images.map(img => {
+        const restoredImages: PendingImage[] = result.images.map(img => {
+          // 从 base64 创建 Blob 和预览 URL
           const byteCharacters = atob(img.base64)
           const byteNumbers = new Array(byteCharacters.length)
           for (let i = 0; i < byteCharacters.length; i++) {
@@ -858,16 +901,14 @@ export default function ChatPanel() {
           }
           const byteArray = new Uint8Array(byteNumbers)
           const blob = new Blob([byteArray], { type: img.mimeType })
-          const isImage = img.mimeType.startsWith('image/')
-          const file = new File([blob], `restored-${img.id}.${img.mimeType.split('/')[1] || 'bin'}`, { type: img.mimeType })
-          const previewUrl = isImage ? URL.createObjectURL(blob) : undefined
+          const file = new File([blob], `restored-${img.id}.${img.mimeType.split('/')[1] || 'png'}`, { type: img.mimeType })
+          const previewUrl = URL.createObjectURL(blob)
 
           return {
             id: img.id,
             file,
             previewUrl,
             base64: img.base64,
-            isImage,
           }
         })
         setImages(restoredImages)
@@ -1156,7 +1197,7 @@ export default function ChatPanel() {
                 </div>
                 <div className="text-center">
                   <p className="text-lg font-medium text-text-primary mb-1">{language === 'zh' ? '释放以添加文件' : 'Drop files to add context'}</p>
-                  <p className="text-sm text-text-muted">{language === 'zh' ? '支持代码和附件' : 'Supports code and attachments'}</p>
+                  <p className="text-sm text-text-muted">{language === 'zh' ? '支持代码和图片' : 'Supports code and images'}</p>
                 </div>
               </motion.div>
             </motion.div>

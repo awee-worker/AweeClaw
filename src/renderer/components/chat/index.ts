@@ -3,4 +3,4 @@
  */
 export { default as ChatHeader } from './ChatHeader'
 export { default as ChatContextStats } from './ChatContextStats'
-export { default as ChatInput, type PendingImage } from './ChatInput'
+export { default as ChatInput, type PendingAttachment } from './ChatInput'

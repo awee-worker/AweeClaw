@@ -443,7 +443,32 @@ export default function ChatPanel() {
     e.stopPropagation()
     setIsDragging(false)
 
-    // 辅助函数：将文件路径转换为附件并添加
+    // 图片扩展名
+    const imageExtensions = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'svg']
+
+    // 辅助函数：检测路径是否是文件夹
+    const checkIsDirectory = async (path: string): Promise<boolean> => {
+      try {
+        // 先尝试读取文件，如果成功则是文件
+        const content = await api.file.read(path)
+        if (content !== null) {
+          return false // 是文件
+        }
+        // 读取失败，尝试读取目录
+        const result = await api.file.readDir(path)
+        return Array.isArray(result) && result.length >= 0
+      } catch {
+        return false
+      }
+    }
+
+    // 辅助函数：检测是否是图片文件
+    const isImageFile = (path: string): boolean => {
+      const ext = path.split('.').pop()?.toLowerCase() || ''
+      return imageExtensions.includes(ext)
+    }
+
+    // 辅助函数：将文件路径转换为图片并添加
     const addImageFromPath = async (path: string) => {
       try {
         const base64 = await api.file.readBinary(path)
@@ -497,8 +522,24 @@ export default function ChatPanel() {
       for (const file of files) {
         const filePath = (file as any).path
         if (filePath) {
-          await addImageFromPath(filePath)
-          continue
+          // 检查是否是图片文件
+          if (isImageFile(filePath)) {
+            await addImageFromPath(filePath)
+            continue
+          }
+
+          const exists = contextItems.some((s: ContextItem) =>
+            (s.type === 'File' && (s as FileContext).uri === filePath) ||
+            (s.type === 'Folder' && (s as any).uri === filePath)
+          )
+          if (!exists) {
+            const isDir = await checkIsDirectory(filePath)
+            if (isDir) {
+              addContextItem({ type: 'Folder', uri: filePath })
+            } else {
+              addContextItem({ type: 'File', uri: filePath })
+            }
+          }
         }
       }
       return
@@ -534,9 +575,26 @@ export default function ChatPanel() {
     }
 
     if (filePath) {
-      await addImageFromPath(filePath)
+      // 检查是否是图片文件
+      if (isImageFile(filePath)) {
+        await addImageFromPath(filePath)
+        return
+      }
+
+      const exists = contextItems.some((s: ContextItem) =>
+        (s.type === 'File' && (s as FileContext).uri === filePath) ||
+        (s.type === 'Folder' && (s as any).uri === filePath)
+      )
+      if (!exists) {
+        const isDir = await checkIsDirectory(filePath)
+        if (isDir) {
+          addContextItem({ type: 'Folder', uri: filePath })
+        } else {
+          addContextItem({ type: 'File', uri: filePath })
+        }
+      }
     }
-  }, [addImage, addContextItem, setImages])
+  }, [addImage, contextItems, addContextItem, setImages])
 
   // 输入变化处理
   const handleInputChange = useCallback(async (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -671,7 +729,7 @@ export default function ChatPanel() {
     // Handoff 现在由 StatusBar 自动处理，不再阻止发送
     // 如果正在过渡中，等待完成后会自动继续
 
-    let userMessage: string | Array<{ type: 'text'; text: string } | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } } | { type: 'file'; name: string; media_type: string; data: string }> = input.trim()
+    let userMessage: string | Array<{ type: 'text'; text: string } | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }> = input.trim()
 
     if (images.length > 0) {
       const readyImages = images.filter(img => img.base64)
@@ -679,24 +737,14 @@ export default function ChatPanel() {
 
       userMessage = [
         { type: 'text' as const, text: input.trim() },
-        ...readyImages.map(img => {
-          if (img.isImage) {
-            return {
-              type: 'image' as const,
-              source: {
-                type: 'base64' as const,
-                media_type: img.file.type,
-                data: img.base64!,
-              },
-            }
-          }
-          return {
-            type: 'file' as const,
-            name: img.file.name,
-            media_type: img.file.type || 'application/octet-stream',
+        ...readyImages.map(img => ({
+          type: 'image' as const,
+          source: {
+            type: 'base64' as const,
+            media_type: img.file.type,
             data: img.base64!,
-          }
-        }),
+          },
+        })),
       ]
     }
 
@@ -1156,7 +1204,7 @@ export default function ChatPanel() {
                 </div>
                 <div className="text-center">
                   <p className="text-lg font-medium text-text-primary mb-1">{language === 'zh' ? '释放以添加文件' : 'Drop files to add context'}</p>
-                  <p className="text-sm text-text-muted">{language === 'zh' ? '支持代码和附件' : 'Supports code and attachments'}</p>
+                  <p className="text-sm text-text-muted">{language === 'zh' ? '支持代码和图片' : 'Supports code and images'}</p>
                 </div>
               </motion.div>
             </motion.div>

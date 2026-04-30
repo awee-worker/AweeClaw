@@ -245,10 +245,5 @@ export function getMessageText(content: MessageContent): string {
 
 export function getMessageImages(content: MessageContent): ImageContent[] {
   if (typeof content === 'string') return []
-  return (content as Array<TextContent | ImageContent | FileContent>).filter((c): c is ImageContent => c.type === 'image')
-}
-
-export function getMessageFiles(content: MessageContent): FileContent[] {
-  if (typeof content === 'string') return []
-  return (content as Array<TextContent | ImageContent | FileContent>).filter((c): c is FileContent => c.type === 'file')
+  return (content as Array<TextContent | ImageContent>).filter((c): c is ImageContent => c.type === 'image')
 }

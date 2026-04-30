@@ -352,18 +352,6 @@ const ChatInput = memo(function ChatInput({
 
 export default ChatInput
 
-function getFileIcon(fileName: string, mimeType: string) {
-    const ext = fileName.split('.').pop()?.toLowerCase() || ''
-    if (mimeType.startsWith('image/')) return <FileText className="w-4 h-4 text-green-400 flex-shrink-0" />
-    const codeExts = ['js', 'ts', 'tsx', 'jsx', 'py', 'rs', 'go', 'java', 'c', 'cpp', 'h', 'rb', 'php', 'swift', 'kt', 'vue', 'svelte']
-    if (codeExts.includes(ext)) return <FileCode className="w-4 h-4 text-blue-400 flex-shrink-0" />
-    const dataExts = ['csv', 'xlsx', 'xls', 'tsv', 'json', 'xml']
-    if (dataExts.includes(ext)) return <FileSpreadsheet className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-    const archiveExts = ['zip', 'tar', 'gz', 'rar', '7z', 'bz2']
-    if (archiveExts.includes(ext)) return <Archive className="w-4 h-4 text-amber-400 flex-shrink-0" />
-    return <File className="w-4 h-4 text-text-muted flex-shrink-0" />
-}
-
 // 辅助组件：上下文 Chip
 function ContextChip({ icon: Icon, label, color }: { icon: any, label: string, color: string }) {
   const colorMap: Record<string, string> = {

@@ -21,7 +21,14 @@ export interface ImageContent {
     }
 }
 
-export type MessageContentPart = TextContent | ImageContent
+export interface FileContent {
+    type: 'file'
+    name: string
+    media_type: string
+    data: string
+}
+
+export type MessageContentPart = TextContent | ImageContent | FileContent
 export type MessageContent = string | MessageContentPart[]
 
 // ============================================
