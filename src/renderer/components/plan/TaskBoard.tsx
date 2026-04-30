@@ -1,0 +1,543 @@
+/**
+ * TaskBoard - 任务规划看板
+ * 显示需求文档和任务列表，支持模型/角色选择
+ */
+
+import { memo, useState, useMemo, useCallback, useEffect } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import {
+    Play,
+    Pause,
+    Square,
+    CheckCircle2,
+    Circle,
+    AlertCircle,
+    Clock,
+    ChevronDown,
+    ChevronRight,
+    FileText,
+    ListTodo,
+    Settings2,
+    Sparkles,
+} from 'lucide-react'
+import { Button, Select } from '@/renderer/components/ui'
+import { MarkdownPreview } from '@/renderer/components/editor/FilePreview'
+import { useAgentStore } from '@/renderer/agent/store/AgentStore'
+import { useStore } from '@/renderer/store'
+import { toast } from '@/renderer/components/common/ToastProvider'
+import { api } from '@/renderer/services/electronAPI'
+import { BUILTIN_PROVIDERS } from '@/shared/config/providers'
+import {
+    getPromptTemplateSummary,
+} from '@/renderer/agent/prompts/promptTemplates'
+import type { PlanTask, ExecutionMode } from '@/renderer/agent/store/slices/planSlice'
+
+interface TaskBoardProps {
+    planId: string
+}
+
+function getLocalizedText(language: string, zh: string, en: string): string {
+    return language === 'zh' ? zh : en
+}
+
+// ============================================
+// 子组件
+// ============================================
+
+/** 任务状态图标 */
+const TaskStatusIcon = memo(function TaskStatusIcon({ status }: { status: PlanTask['status'] }) {
+    switch (status) {
+        case 'completed':
+            return <CheckCircle2 className="w-4 h-4 text-green-500" />
+        case 'running':
+            return <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}>
+                <Sparkles className="w-4 h-4 text-blue-500" />
+            </motion.div>
+        case 'failed':
+            return <AlertCircle className="w-4 h-4 text-red-500" />
+        case 'skipped':
+            return <Circle className="w-4 h-4 text-muted-foreground" />
+        default:
+            return <Clock className="w-4 h-4 text-muted-foreground" />
+    }
+})
+
+/** 模型选择器 */
+const ModelSelector = memo(function ModelSelector({
+    provider,
+    model,
+    onChange,
+    disabled,
+}: {
+    provider: string
+    model: string
+    onChange: (provider: string, model: string) => void
+    disabled?: boolean
+}) {
+    // 从 store 获取用户配置的厂商
+    const providerConfigs = useStore((s) => s.providerConfigs)
+
+    // 合并内置厂商和用户配置的厂商
+    const allProviders = useMemo(() => {
+        const result: { id: string; displayName: string; models: string[] }[] = []
+
+        // 添加内置厂商
+        for (const [id, config] of Object.entries(BUILTIN_PROVIDERS)) {
+            const userConfig = providerConfigs[id]
+            const models = [...config.models, ...(userConfig?.customModels || [])]
+            result.push({ id, displayName: config.displayName, models })
+        }
+
+        // 添加自定义厂商
+        for (const [id, config] of Object.entries(providerConfigs)) {
+            if (id.startsWith('custom-')) {
+                result.push({
+                    id,
+                    displayName: config.displayName || id,
+                    models: config.customModels || [],
+                })
+            }
+        }
+
+        return result
+    }, [providerConfigs])
+
+
+
+    // 转换厂商列表为 Select 选项
+    const providerOptions = useMemo(() => {
+        return allProviders.map(p => ({
+            value: p.id,
+            label: p.displayName
+        }))
+    }, [allProviders])
+
+    // 获取当前厂商的模型列表（去重）并转换为 Select 选项
+    const modelOptions = useMemo(() => {
+        const providerConfig = allProviders.find(p => p.id === provider)
+        const models = providerConfig?.models || []
+        // 使用 Set 去重
+        const uniqueModels = Array.from(new Set(models))
+
+        return uniqueModels.map(m => ({
+            value: m,
+            label: m
+        }))
+    }, [allProviders, provider])
+
+    return (
+        <div className="flex gap-2 items-center">
+            <div className="w-32">
+                <Select
+                    options={providerOptions}
+                    value={provider}
+                    onChange={(val) => {
+                        const newProviderConfig = allProviders.find(p => p.id === val)
+                        const defaultModel = newProviderConfig?.models[0] || ''
+                        onChange(val, defaultModel)
+                    }}
+                    disabled={disabled}
+                    className="text-xs"
+                />
+            </div>
+            <div className="w-48">
+                <Select
+                    options={modelOptions}
+                    value={model}
+                    onChange={(val) => onChange(provider, val)}
+                    disabled={disabled}
+                    className="text-xs"
+                />
+            </div>
+        </div>
+    )
+})
+
+/** 角色选择器 */
+const RoleSelector = memo(function RoleSelector({
+    role,
+    onChange,
+    disabled,
+}: {
+    role: string
+    onChange: (role: string) => void
+    disabled?: boolean
+}) {
+    const templates = useMemo(() => getPromptTemplateSummary(), [])
+    const options = useMemo(() => {
+        return templates.map(t => ({
+            value: t.id,
+            label: t.nameZh || t.name
+        }))
+    }, [templates])
+
+    return (
+        <div className="flex gap-2 items-center">
+            <div className="w-48">
+                <Select
+                    options={options}
+                    value={role}
+                    onChange={onChange}
+                    disabled={disabled}
+                    className="text-xs"
+                />
+            </div>
+        </div>
+    )
+})
+
+/** 单个任务卡片 */
+const TaskCard = memo(function TaskCard({
+    task,
+    planId,
+    isExecuting,
+}: {
+    task: PlanTask
+    planId: string
+    isExecuting: boolean
+}) {
+    const [expanded, setExpanded] = useState(false)
+    const updateTask = useAgentStore((s) => s.updateTask)
+
+    const handleModelChange = useCallback(
+        (provider: string, model: string) => {
+            updateTask(planId, task.id, { provider, model })
+        },
+        [planId, task.id, updateTask]
+    )
+
+    const isActive = task.status === 'running'
+
+    return (
+        <motion.div
+            layout
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={`
+        relative rounded-lg border transition-all duration-200 overflow-hidden
+        ${isActive
+                    ? 'border-blue-500/50 bg-blue-500/5 shadow-lg shadow-blue-500/10'
+                    : 'border-border bg-surface/50 hover:bg-surface/80'}
+      `}
+        >
+            {/* 进度条 */}
+            {isActive && (
+                <motion.div
+                    className="absolute top-0 left-0 h-0.5 bg-gradient-to-r from-blue-500 to-purple-500 rounded-t-lg"
+                    initial={{ width: '0%' }}
+                    animate={{ width: '100%' }}
+                    transition={{ duration: 30, ease: 'linear' }}
+                />
+            )}
+
+            {/* 头部 */}
+            <div
+                className="flex items-center gap-3 p-3 cursor-pointer"
+                onClick={() => setExpanded((e) => !e)}
+            >
+                <TaskStatusIcon status={task.status} />
+                <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm text-text-primary truncate">{task.title}</div>
+                    <div className="text-xs text-muted-foreground truncate">{task.description}</div>
+                </div>
+                <motion.div animate={{ rotate: expanded ? 90 : 0 }}>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                </motion.div>
+            </div>
+
+            {/* 展开详情 */}
+            <AnimatePresence>
+                {expanded && (
+                    <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden"
+                    >
+                        <div className="px-3 pb-3 pt-0 border-t border-border/50">
+                            <div className="flex items-center gap-2 mt-2">
+                                <Settings2 className="w-3 h-3 text-muted-foreground" />
+                                <span className="text-xs text-muted-foreground">模型配置</span>
+                            </div>
+                            <div className="mt-2">
+                                <ModelSelector
+                                    provider={task.provider}
+                                    model={task.model}
+                                    onChange={handleModelChange}
+                                    disabled={isExecuting}
+                                />
+                            </div>
+
+                            <div className="flex items-center gap-2 mt-3">
+                                <Sparkles className="w-3 h-3 text-muted-foreground" />
+                                <span className="text-xs text-muted-foreground">角色配置</span>
+                            </div>
+                            <div className="mt-2">
+                                <RoleSelector
+                                    role={task.role}
+                                    onChange={(newRole) => updateTask(planId, task.id, { role: newRole })}
+                                    disabled={isExecuting}
+                                />
+                            </div>
+
+                            {task.output && (
+                                <div className="mt-3 p-2 rounded bg-background/50 border border-border/50">
+                                    <div className="text-xs text-muted-foreground mb-1">输出</div>
+                                    <div className="text-xs text-text-primary whitespace-pre-wrap max-h-32 overflow-auto">
+                                        {task.output}
+                                    </div>
+                                </div>
+                            )}
+
+                            {task.error && (
+                                <div className="mt-3 p-2 rounded bg-red-500/10 border border-red-500/30">
+                                    <div className="text-xs text-red-500">{task.error}</div>
+                                </div>
+                            )}
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </motion.div>
+    )
+})
+
+/** 执行模式切换 */
+const ExecutionModeToggle = memo(function ExecutionModeToggle({
+    mode,
+    onChange,
+    disabled,
+}: {
+    mode: ExecutionMode
+    onChange: (mode: ExecutionMode) => void
+    disabled?: boolean
+}) {
+    const optionClass = (value: ExecutionMode) => [
+        'h-8 px-3 text-xs font-medium rounded-md transition-all border',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
+        disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer',
+        mode === value
+            ? 'bg-accent text-accent-foreground border-accent shadow-sm shadow-accent/20'
+            : 'bg-transparent text-text-secondary border-transparent hover:bg-surface-hover hover:text-text-primary',
+    ].join(' ')
+
+    return (
+        <div
+            className="flex items-center gap-1 p-1 rounded-lg bg-surface/50 border border-border"
+            title="顺序执行一次运行一个任务；并行执行会同时运行互不依赖且资源不冲突的任务。"
+        >
+            <button
+                type="button"
+                className={optionClass('sequential')}
+                onClick={() => onChange('sequential')}
+                disabled={disabled}
+                aria-pressed={mode === 'sequential'}
+                title="顺序执行：一次只运行一个任务，最稳妥。"
+            >
+                顺序执行
+            </button>
+            <button
+                type="button"
+                className={optionClass('parallel')}
+                onClick={() => onChange('parallel')}
+                disabled={disabled}
+                aria-pressed={mode === 'parallel'}
+                title="并行执行：同时运行可并发的任务，依赖未满足或文件冲突的任务仍会等待。"
+            >
+                并行执行
+            </button>
+        </div>
+    )
+})
+
+// ============================================
+// 主组件
+// ============================================
+
+export const TaskBoard = memo(function TaskBoard({ planId }: TaskBoardProps) {
+    const [showRequirements, setShowRequirements] = useState(true)
+    const [requirementsContent, setRequirementsContent] = useState<string>('')
+    const plan = useAgentStore((s) => s.plans.find((p) => p.id === planId))
+    const updatePlan = useAgentStore((s) => s.updatePlan)
+    const workspacePath = useStore((s) => s.workspacePath)
+    const language = useStore((s) => s.language)
+    const isExecuting = plan?.status === 'executing' || plan?.status === 'pausing' || plan?.status === 'stopping'
+    const isPaused = plan?.status === 'paused'
+
+    // 加载需求文档内容
+    useEffect(() => {
+        if (!plan?.requirementsDoc || !workspacePath) return
+        const loadRequirements = async () => {
+            try {
+                const mdPath = `${workspacePath}/.aweeclaw/plan/${plan.requirementsDoc}`
+                const content = await api.file.read(mdPath)
+                if (content) {
+                    setRequirementsContent(content)
+                }
+            } catch (err) {
+                console.error('Failed to load requirements doc:', err)
+            }
+        }
+        loadRequirements()
+    }, [plan?.requirementsDoc, workspacePath])
+
+    // 统计
+    const stats = useMemo(() => {
+        if (!plan) return { total: 0, completed: 0, failed: 0 }
+        return {
+            total: plan.tasks.length,
+            completed: plan.tasks.filter((t) => t.status === 'completed').length,
+            failed: plan.tasks.filter((t) => t.status === 'failed').length,
+        }
+    }, [plan])
+
+    const handleExecutionModeChange = useCallback(
+        (mode: ExecutionMode) => {
+            if (plan) {
+                updatePlan(plan.id, { executionMode: mode })
+            }
+        },
+        [plan, updatePlan]
+    )
+
+    const handleStart = useCallback(async () => {
+        if (plan) {
+            // 使用 planExecutor 启动执行
+            const { startPlanExecution } = await import('@/renderer/agent/plan/planExecutor')
+            const result = await startPlanExecution(plan.id)
+            if (!result.success) {
+                toast.error(
+                    getLocalizedText(language, '启动执行失败', 'Failed to start execution'),
+                    result.message
+                )
+            }
+        }
+    }, [language, plan])
+
+    const handleStop = useCallback(async () => {
+        // 使用 planExecutor 停止执行
+        const { stopPlanExecution } = await import('@/renderer/agent/plan/planExecutor')
+        stopPlanExecution(planId)
+    }, [planId])
+
+    const handlePause = useCallback(async () => {
+        const { pausePlanExecution } = await import('@/renderer/agent/plan/planExecutor')
+        pausePlanExecution(planId)
+    }, [planId])
+
+    const handleResume = useCallback(async () => {
+        const { resumePlanExecution } = await import('@/renderer/agent/plan/planExecutor')
+        await resumePlanExecution(planId)
+    }, [planId])
+
+    if (!plan) {
+        return (
+            <div className="flex items-center justify-center h-full text-muted-foreground">
+                规划不存在
+            </div>
+        )
+    }
+
+    return (
+        <div className="h-full flex flex-col bg-background">
+            {/* 头部 */}
+            <div className="flex-shrink-0 p-4 border-b border-border bg-surface/30 backdrop-blur-sm">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h1 className="text-lg font-semibold text-text-primary">{plan.name}</h1>
+                        <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
+                            <span>{stats.total} 个任务</span>
+                            <span className="text-green-500">{stats.completed} 完成</span>
+                            {stats.failed > 0 && <span className="text-red-500">{stats.failed} 失败</span>}
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <ExecutionModeToggle
+                            mode={plan.executionMode}
+                            onChange={handleExecutionModeChange}
+                            disabled={isExecuting}
+                        />
+                        {isExecuting ? (
+                            <>
+                                <Button variant="secondary" size="sm" onClick={handlePause} disabled={plan.status === 'pausing' || plan.status === 'stopping'}>
+                                    <Pause className="w-4 h-4 mr-1" />
+                                    暂停
+                                </Button>
+                                <Button variant="danger" size="sm" onClick={handleStop} disabled={plan.status === 'stopping'}>
+                                    <Square className="w-4 h-4 mr-1" />
+                                    停止
+                                </Button>
+                            </>
+                        ) : isPaused ? (
+                            <>
+                                <Button variant="primary" size="sm" onClick={handleResume}>
+                                    <Play className="w-4 h-4 mr-1" />
+                                    继续
+                                </Button>
+                                <Button variant="danger" size="sm" onClick={handleStop}>
+                                    <Square className="w-4 h-4 mr-1" />
+                                    停止
+                                </Button>
+                            </>
+                        ) : (
+                            <Button variant="primary" size="sm" onClick={handleStart}>
+                                <Play className="w-4 h-4 mr-1" />
+                                开始执行
+                            </Button>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            {/* 内容区 */}
+            <div className="flex-1 flex overflow-hidden">
+                {/* 需求文档 */}
+                <div className={`${showRequirements ? 'w-1/2' : 'w-0'} flex flex-col transition-all duration-300 overflow-hidden border-r border-border bg-background`}>
+                    <div className="flex-shrink-0 flex items-center gap-2 p-3 border-b border-border bg-surface/30">
+                        <FileText className="w-4 h-4 text-muted-foreground" />
+                        <span className="text-sm font-medium text-text-primary">需求文档</span>
+                    </div>
+                    <div className="flex-1 relative">
+                        {requirementsContent ? (
+                            <MarkdownPreview content={requirementsContent} fontSize={13} />
+                        ) : (
+                            <div className="flex items-center justify-center h-full text-muted-foreground italic">
+                                加载中...
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* 折叠按钮 */}
+                <button
+                    className="flex-shrink-0 w-6 flex items-center justify-center border-r border-border hover:bg-surface/50 transition-colors"
+                    onClick={() => setShowRequirements((s) => !s)}
+                >
+                    <motion.div animate={{ rotate: showRequirements ? 0 : 180 }}>
+                        <ChevronDown className="w-4 h-4 text-muted-foreground rotate-90" />
+                    </motion.div>
+                </button>
+
+                {/* 任务列表 */}
+                <div className="flex-1 overflow-auto p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                        <ListTodo className="w-4 h-4 text-muted-foreground" />
+                        <span className="text-sm font-medium text-text-primary">任务列表</span>
+                    </div>
+                    <div className="space-y-2">
+                        {plan.tasks.map((task) => (
+                            <TaskCard
+                                key={task.id}
+                                task={task}
+                                planId={plan.id}
+                                isExecuting={isExecuting}
+                            />
+                        ))}
+                    </div>
+                </div>
+            </div>
+        </div>
+    )
+})
+
+export default TaskBoard

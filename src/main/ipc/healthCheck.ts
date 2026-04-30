@@ -1,0 +1,366 @@
+/**
+ * Health Check IPC Handlers
+ * 在主进程中执行网络请求以避免 CORS 问题
+ */
+
+import { ipcMain } from 'electron'
+import { logger } from '@shared/utils/Logger'
+import { toAppError } from '@shared/utils/errorHandler'
+import { BUILTIN_PROVIDERS, isBuiltinProvider } from '@shared/config/providers'
+import { createModel, resolveHeaderPlaceholders } from '../services/llm/modelFactory'
+import { generateText } from 'ai'
+
+export interface HealthCheckResult {
+  provider: string
+  status: 'healthy' | 'unhealthy' | 'unknown'
+  latency?: number
+  error?: string
+  checkedAt: Date
+}
+
+export interface ModelTestResult {
+  success: boolean
+  content?: string
+  latency?: number
+  error?: string
+}
+
+function normalizeResponsesBaseUrl(baseUrl?: string): string | undefined {
+  if (!baseUrl) return undefined
+  const trimmed = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl
+  return /\/v\d+(?:beta)?$/i.test(trimmed) ? trimmed : `${trimmed}/v1`
+}
+
+function extractResponsesOutputText(payload: unknown): string {
+  if (!payload || typeof payload !== 'object') return ''
+
+  const maybePayload = payload as {
+    output_text?: unknown
+    output?: Array<{
+      type?: string
+      content?: Array<{
+        type?: string
+        text?: string
+      }>
+    }>
+  }
+
+  if (typeof maybePayload.output_text === 'string' && maybePayload.output_text.trim()) {
+    return maybePayload.output_text.trim()
+  }
+
+  const parts: string[] = []
+  for (const item of maybePayload.output || []) {
+    if (item?.type !== 'message' || !Array.isArray(item.content)) continue
+    for (const content of item.content) {
+      if (content?.type === 'output_text' && typeof content.text === 'string' && content.text.trim()) {
+        parts.push(content.text.trim())
+      }
+    }
+  }
+
+  return parts.join('\n').trim()
+}
+
+async function testOpenAIResponsesModel(config: any): Promise<string> {
+  const builtinProvider = isBuiltinProvider(config.provider)
+    ? BUILTIN_PROVIDERS[config.provider]
+    : undefined
+  const baseUrl = normalizeResponsesBaseUrl(config.baseUrl || builtinProvider?.baseUrl)
+  if (!baseUrl) {
+    throw new Error('OpenAI Responses provider requires baseUrl')
+  }
+
+  const timeoutMs = typeof config.timeout === 'number' && config.timeout > 0
+    ? config.timeout
+    : 30000
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(resolveHeaderPlaceholders(config.headers, config.apiKey) || {}),
+  }
+
+  const hasAuthorizationHeader = Object.keys(headers).some(key => key.toLowerCase() === 'authorization')
+  if (!hasAuthorizationHeader) {
+    headers['Authorization'] = `Bearer ${config.apiKey || ''}`
+  }
+
+  try {
+    const response = await fetch(`${baseUrl}/responses`, {
+      method: 'POST',
+      headers,
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: config.model,
+        input: 'hi,Please tell me directly what model you are?',
+        max_output_tokens: 10,
+        text: {
+          format: { type: 'text' },
+        },
+      }),
+    })
+
+    const responseText = await response.text()
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${responseText}`)
+    }
+
+    let payload: unknown
+    try {
+      payload = JSON.parse(responseText)
+    } catch {
+      throw new Error(`Invalid JSON response: ${responseText}`)
+    }
+
+    const outputText = extractResponsesOutputText(payload)
+    if (!outputText) {
+      throw new Error('Model returned no text output')
+    }
+
+    return outputText
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
+/**
+ * 注册健康检查 IPC handlers
+ */
+export function registerHealthCheckHandlers() {
+  ipcMain.handle('healthCheck:check', async (_, provider: string, apiKey: string, baseUrl?: string, timeout = 10000, protocol?: string) => {
+    const startTime = Date.now()
+
+    const defaultUrls: Record<string, string> = {
+      openai: 'https://api.openai.com/v1',
+      anthropic: 'https://api.anthropic.com',
+      gemini: 'https://generativelanguage.googleapis.com',
+      deepseek: 'https://api.deepseek.com/v1',
+      groq: 'https://api.groq.com/openai/v1',
+      mistral: 'https://api.mistral.ai/v1',
+      ollama: 'http://localhost:11434/v1',
+      nvidia: 'https://integrate.api.nvidia.com/v1',
+    }
+
+    const url = (baseUrl || defaultUrls[provider] || defaultUrls.openai).replace(/\/$/, '')
+    const activeProtocol = protocol || (provider === 'gemini' ? 'google' : provider === 'anthropic' ? 'anthropic' : 'openai')
+
+    try {
+      logger.ipc.info(`[HealthCheck] Checking ${provider} at ${url} (protocol: ${activeProtocol})`)
+
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), timeout)
+
+      let fetchUrl: string
+      let headers: Record<string, string> = { 'Content-Type': 'application/json' }
+
+      if (activeProtocol === 'google') {
+        // Google Gemini: GET /v1beta/models?key=
+        // 智能处理：如果 URL 已包含 /v1 或 /v1beta，直接追加 /models
+        if (url.includes('/v1beta') || url.includes('/v1')) {
+          fetchUrl = `${url}/models`
+        } else {
+          fetchUrl = `${url}/v1beta/models`
+        }
+        if (apiKey) fetchUrl += `?key=${apiKey}`
+      } else if (activeProtocol === 'anthropic') {
+        // Anthropic: GET /v1/models
+        // 智能处理：如果 URL 已包含 /v1，直接追加 /models
+        if (url.includes('/v1')) {
+          fetchUrl = `${url}/models`
+        } else {
+          fetchUrl = `${url}/v1/models`
+        }
+        headers['x-api-key'] = apiKey
+        headers['anthropic-version'] = '2023-06-01'
+      } else {
+        // OpenAI / OpenAI-Responses / 其他兼容协议: GET /models
+        // 智能处理：如果 URL 已包含 /v1 或 /v4 等版本号，直接追加 /models
+        if (/\/v\d+/.test(url)) {
+          fetchUrl = `${url}/models`
+        } else {
+          fetchUrl = `${url}/v1/models`
+        }
+        headers['Authorization'] = `Bearer ${apiKey}`
+      }
+
+      const response = await fetch(fetchUrl, {
+        method: 'GET',
+        headers,
+        signal: controller.signal,
+      })
+
+      clearTimeout(timeoutId)
+      const latency = Date.now() - startTime
+
+      if (response.ok) {
+        logger.ipc.info(`[HealthCheck] ${provider} is healthy (${latency}ms)`)
+        return { provider, status: 'healthy', latency, checkedAt: new Date() } as HealthCheckResult
+      } else {
+        logger.ipc.warn(`[HealthCheck] ${provider} returned HTTP ${response.status}`)
+        return { provider, status: 'unhealthy', latency, error: `HTTP ${response.status}`, checkedAt: new Date() } as HealthCheckResult
+      }
+    } catch (err) {
+      const error = toAppError(err)
+      logger.ipc.error(`[HealthCheck] ${provider} check failed:`, error.message)
+      return { provider, status: 'unhealthy', error: error.message || 'Connection failed', checkedAt: new Date() } as HealthCheckResult
+    }
+  })
+
+  ipcMain.handle('healthCheck:testModel', async (_, config: any) => {
+    const startTime = Date.now()
+    try {
+      if (!config || !config.provider || !config.model) {
+        throw new Error('Invalid model configuration: missing provider or model')
+      }
+
+      logger.ipc.info(`[ModelTest] Testing model ${config.model} for provider ${config.provider}`)
+      logger.ipc.info(`[ModelTest] Config:`, {
+        provider: config.provider,
+        model: config.model,
+        baseUrl: config.baseUrl,
+        protocol: config.protocol,
+        hasApiKey: !!config.apiKey
+      })
+
+      let text: string
+      if (config.protocol === 'openai-responses') {
+        text = await testOpenAIResponsesModel(config)
+      } else {
+        const model = createModel(config)
+        const result = await generateText({
+          model,
+          messages: [{ role: 'user', content: 'hi,Please tell me directly what model you are?' }],
+          maxOutputTokens: 10,
+        })
+        text = result.text
+      }
+
+      const latency = Date.now() - startTime
+      logger.ipc.info(`[ModelTest] Success: ${text.slice(0, 20)}... (${latency}ms)`)
+
+      return {
+        success: true,
+        content: text,
+        latency,
+      }
+    } catch (err) {
+      const error = toAppError(err)
+      const latency = Date.now() - startTime
+      logger.ipc.error(`[ModelTest] Failed:`, error)
+      logger.ipc.error(`[ModelTest] Error details:`, {
+        message: error.message,
+        stack: error.stack,
+        cause: (err as any)?.cause,
+        response: (err as any)?.response,
+        data: (err as any)?.data
+      })
+      return {
+        success: false,
+        error: error.message || 'Model test failed',
+        latency,
+      }
+    }
+  })
+
+  ipcMain.handle('healthCheck:fetchModels', async (_, provider: string, apiKey: string, baseUrl?: string, protocol?: string) => {
+    try {
+      logger.ipc.info(`[HealthCheck] Fetching models for ${provider} (protocol: ${protocol})`)
+
+      const defaultUrls: Record<string, string> = {
+        openai: 'https://api.openai.com/v1',
+        anthropic: 'https://api.anthropic.com',
+        gemini: 'https://generativelanguage.googleapis.com',
+        deepseek: 'https://api.deepseek.com/v1',
+        groq: 'https://api.groq.com/openai/v1',
+        ollama: 'http://localhost:11434/v1',
+      }
+
+      let url = baseUrl || defaultUrls[provider] || defaultUrls.openai
+      // 移除末尾斜杠
+      url = url.endsWith('/') ? url.slice(0, -1) : url
+
+      let fetchUrl = ''
+      let headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      }
+
+      // 根据协议或提供商确定请求方式
+      const activeProtocol = protocol || (provider === 'gemini' ? 'google' : provider === 'anthropic' ? 'anthropic' : 'openai')
+
+      if (activeProtocol === 'google' || provider === 'gemini') {
+        // Google Gemini API
+        // 智能处理：如果 URL 已包含 /v1 或 /v1beta，直接追加 /models
+        if (url.includes('/v1beta') || url.includes('/v1')) {
+          fetchUrl = `${url}/models`
+        } else {
+          fetchUrl = `${url}/v1beta/models`
+        }
+        if (apiKey) {
+          fetchUrl += `?key=${apiKey}`
+        }
+      } else if (activeProtocol === 'anthropic') {
+        // Anthropic
+        // 智能处理：如果 URL 已包含 /v1，直接追加 /models
+        if (url.includes('/v1')) {
+          fetchUrl = `${url}/models`
+        } else {
+          fetchUrl = `${url}/v1/models`
+        }
+        headers['x-api-key'] = apiKey
+        headers['anthropic-version'] = '2023-06-01'
+      } else {
+        // OpenAI / OpenAI-Responses / 其他兼容协议
+        // 智能处理：如果 URL 已包含 /v1 或 /v4 等版本号，直接追加 /models
+        if (/\/v\d+/.test(url)) {
+          fetchUrl = `${url}/models`
+        } else {
+          fetchUrl = `${url}/v1/models`
+        }
+        headers['Authorization'] = `Bearer ${apiKey}`
+      }
+
+      logger.ipc.info(`[HealthCheck] Requesting models from: ${fetchUrl}`)
+
+      const response = await fetch(fetchUrl, {
+        method: 'GET',
+        headers,
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${await response.text()}`)
+      }
+
+      const data = await response.json() as unknown
+      let models: string[] = []
+
+      if (activeProtocol === 'google' || provider === 'gemini') {
+        if (data && typeof data === 'object' && 'models' in data && Array.isArray(data.models)) {
+          models = data.models.map((m: any) => m.name.replace('models/', ''))
+        }
+      } else {
+        // OpenAI 格式
+        if (data && typeof data === 'object' && 'data' in data && Array.isArray(data.data)) {
+          models = data.data.map((m: any) => m.id)
+        } else if (Array.isArray(data)) {
+          // 某些非标准接口直接返回数组
+          models = data.map((m: any) => typeof m === 'string' ? m : (m.id || m.name))
+        }
+      }
+
+      // 过滤掉不合法的空值并排序
+      models = models.filter(Boolean).sort()
+
+      logger.ipc.info(`[HealthCheck] Successfully fetched ${models.length} models`)
+      return { success: true, models }
+
+    } catch (err) {
+      const error = toAppError(err)
+      logger.ipc.error(`[HealthCheck] Fetch models failed:`, error.message)
+      return { success: false, error: error.message }
+    }
+  })
+
+  logger.ipc.info('[HealthCheck] Health check handlers registered')
+}

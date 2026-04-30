@@ -1,0 +1,258 @@
+/**
+ * LLM 服务类型定义
+ */
+
+import type { LanguageModelUsage, ProviderMetadata } from 'ai'
+import { mapAISDKError, ErrorCode } from '@shared/utils/errorHandler'
+import type { LLMStreamSource } from '@shared/types/llm'
+
+// ============================================
+// 基础类型
+// ============================================
+
+export interface TokenUsage {
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  cachedInputTokens?: number
+  cacheWriteTokens?: number
+  reasoningTokens?: number
+}
+
+export interface ResponseMetadata {
+  id: string
+  modelId: string
+  timestamp: Date
+  finishReason?: string
+}
+
+export type StreamSource = LLMStreamSource
+
+export interface LLMResponse<T> {
+  data: T
+  usage?: TokenUsage
+  metadata?: ResponseMetadata
+}
+
+// ============================================
+// 错误类型
+// ============================================
+
+/**
+ * LLM 错误类
+ */
+export class LLMError extends Error {
+  constructor(
+    message: string,
+    public readonly code: ErrorCode,
+    public readonly retryable: boolean = false,
+    public readonly status?: number,
+    public readonly cause?: Error
+  ) {
+    super(message)
+    this.name = 'LLMError'
+    Error.captureStackTrace?.(this, LLMError)
+  }
+
+  /**
+   * 从 AI SDK 错误创建 LLMError
+   * 默认使用原报错，如果是特定应用级报错由前端组装
+   */
+  static fromAISDKError(error: Error, status?: number): LLMError {
+    const mapped = mapAISDKError(error)
+    return new LLMError(mapped.originalMessage, mapped.code, mapped.retryable, status, error)
+  }
+
+  /**
+   * 从任意错误创建 LLMError
+   */
+  static fromError(error: unknown): LLMError {
+    if (error instanceof LLMError) {
+      return error
+    }
+
+    if (error instanceof Error) {
+      return LLMError.fromAISDKError(error)
+    }
+
+    if (typeof error === 'string') {
+      return new LLMError(error, ErrorCode.UNKNOWN, false)
+    }
+
+    return new LLMError('Unknown error', ErrorCode.UNKNOWN, false)
+  }
+
+  toJSON() {
+    return {
+      name: this.name,
+      message: this.message,
+      code: this.code,
+      retryable: this.retryable,
+      status: this.status,
+    }
+  }
+}
+
+// ============================================
+// 流式事件类型
+// ============================================
+
+export type StreamEvent =
+  | { type: 'text'; content: string }
+  | { type: 'reasoning'; content: string }
+  | { type: 'tool-call-start'; id: string; name: string }
+  | { type: 'tool-call-delta'; id: string; name?: string; argumentsDelta: string }
+  | { type: 'tool-call-delta-end'; id: string }
+  | { type: 'tool-call-available'; id: string; name: string; arguments: Record<string, unknown> }
+  | { type: 'source'; source: StreamSource }
+  | { type: 'error'; error: LLMError }
+  | { type: 'done'; usage?: TokenUsage; metadata?: ResponseMetadata; reasoning?: string }
+
+// ============================================
+// 结构化输出类型
+// ============================================
+
+export interface CodeIssue {
+  severity: 'error' | 'warning' | 'info' | 'hint'
+  message: string
+  line: number
+  column: number
+  endLine?: number
+  endColumn?: number
+  code?: string
+  source?: string
+}
+
+export interface CodeSuggestion {
+  title: string
+  description: string
+  priority: 'high' | 'medium' | 'low'
+  changes?: Array<{
+    line: number
+    oldText: string
+    newText: string
+  }>
+}
+
+export interface CodeAnalysis {
+  issues: CodeIssue[]
+  suggestions: CodeSuggestion[]
+  summary: string
+}
+
+export interface RefactoringChange {
+  type: 'replace' | 'insert' | 'delete'
+  startLine: number
+  startColumn: number
+  endLine: number
+  endColumn: number
+  newText?: string
+}
+
+export interface Refactoring {
+  refactorings: Array<{
+    title: string
+    description: string
+    confidence: 'high' | 'medium' | 'low'
+    changes: RefactoringChange[]
+    explanation: string
+  }>
+}
+
+export interface CodeFix {
+  fixes: Array<{
+    diagnosticIndex: number
+    title: string
+    description: string
+    changes: Array<{
+      startLine: number
+      startColumn: number
+      endLine: number
+      endColumn: number
+      newText: string
+    }>
+    confidence: 'high' | 'medium' | 'low'
+  }>
+}
+
+export interface TestCase {
+  testCases: Array<{
+    name: string
+    description: string
+    code: string
+    type: 'unit' | 'integration' | 'edge-case'
+  }>
+  setup?: string
+  teardown?: string
+}
+
+// ============================================
+// 工具函数
+// ============================================
+
+export function convertUsage(
+  usage: LanguageModelUsage,
+  providerMetadata?: ProviderMetadata,
+  extra?: Partial<Pick<TokenUsage, 'cacheWriteTokens'>>
+): TokenUsage {
+  const usageAny = usage as any
+  const rawUsage = usageAny.raw as Record<string, unknown> | undefined
+  const metadata = providerMetadata as Record<string, unknown> | undefined
+  const anthropicMetadata = getNestedValue(metadata, ['anthropic']) as Record<string, unknown> | undefined
+  const anthropicUsage = anthropicMetadata?.usage as Record<string, unknown> | undefined
+  const googleUsageMetadata = getNestedValue(metadata, ['google', 'usageMetadata'])
+  const openaiMetadata = getNestedValue(metadata, ['openai']) as Record<string, unknown> | undefined
+  const cachedInputTokens = readNumber(
+    usageAny.inputTokenDetails?.cacheReadTokens,
+    usageAny.inputTokens?.cacheRead,
+    usageAny.cachedInputTokens,
+    rawUsage?.cache_read_input_tokens,
+    anthropicUsage?.cache_read_input_tokens,
+    getNestedValue(rawUsage, ['prompt_tokens_details', 'cached_tokens']),
+    getNestedValue(rawUsage, ['input_tokens_details', 'cached_tokens']),
+    getNestedValue(googleUsageMetadata, ['cachedContentTokenCount']),
+    rawUsage?.cachedContentTokenCount,
+    openaiMetadata?.cachedPromptTokens,
+  ) ?? 0
+  const cacheWriteTokens = (
+    readNumber(
+      usageAny.inputTokenDetails?.cacheWriteTokens,
+      usageAny.inputTokens?.cacheWrite,
+      rawUsage?.cache_creation_input_tokens,
+      anthropicUsage?.cache_creation_input_tokens,
+      anthropicMetadata?.cacheCreationInputTokens,
+    ) ?? 0
+  ) + (extra?.cacheWriteTokens ?? 0)
+
+  return {
+    inputTokens: usage.inputTokens || 0,
+    outputTokens: usage.outputTokens || 0,
+    totalTokens: usage.totalTokens || ((usage.inputTokens || 0) + (usage.outputTokens || 0)),
+    cachedInputTokens,
+    cacheWriteTokens,
+    reasoningTokens: usageAny.outputTokenDetails?.reasoningTokens ?? usageAny.reasoningTokens,
+  }
+}
+
+function readNumber(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value
+    }
+  }
+
+  return undefined
+}
+
+function getNestedValue(source: unknown, path: string[]): unknown {
+  let current = source
+
+  for (const key of path) {
+    if (!current || typeof current !== 'object' || !(key in (current as Record<string, unknown>))) {
+      return undefined
+    }
+    current = (current as Record<string, unknown>)[key]
+  }
+
+  return current
+}

@@ -1,0 +1,499 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Nerd Font for file icons */
+@font-face {
+  font-family: 'Symbols Nerd Font';
+  src: url('./fonts/SymbolsNerdFont-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Symbols Nerd Font Mono';
+  src: url('./fonts/SymbolsNerdFontMono-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* File icon class */
+.nf-icon {
+  font-family: 'Symbols Nerd Font', 'Symbols Nerd Font Mono', monospace;
+  font-style: normal;
+  font-weight: normal;
+  line-height: 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+:root {
+  color-scheme: dark;
+
+  /* --- AweeClaw Dark Theme (Default) --- */
+
+  /* Level 1: Main Background */
+  --background: 10 10 12;
+  /* Soft Deep Dark */
+
+  /* Level 2: Sidebar / Panels / Terminal */
+  --background-secondary: 18 18 21;
+  --background-tertiary: 24 24 27;
+
+  /* Level 3: Surfaces (Inputs, Dropdowns) */
+  --surface: 18 18 21;
+  --surface-hover: 24 24 27;
+  --surface-active: 39 39 42;
+  --surface-muted: 63 63 70;
+
+  /* Borders */
+  --border: 39 39 42;
+  --border-subtle: 24 24 27;
+  --border-active: 82 82 91;
+
+  /* Text */
+  --text-primary: 240 240 242;
+  --text-secondary: 161 161 170;
+  --text-muted: 113 113 122;
+  --text-inverted: 0 0 0;
+
+  /* Accent (Violet 600) */
+  --accent: 124 58 237;
+  --accent-hover: 109 40 217;
+  --accent-active: 91 33 182;
+  --accent-foreground: 255 255 255;
+  --accent-subtle: 139 92 246;
+
+  /* Status */
+  --status-success: 34 197 94;
+  --status-warning: 234 179 8;
+  --status-error: 239 68 68;
+  --status-info: 59 130 246;
+
+  /* Radius */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-full: 9999px;
+}
+
+/* --- Global Custom Premium Cursors --- */
+:root {
+  /* Dark Mode (Default) Cursors: White body, Black outline */
+  --cursor-default: url('data:image/svg+xml;utf8,<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><path d="M10 6L22 17L16.2 17.6L19 23.5L16.5 24.5L13.8 18.6L9.5 22.5V6Z" fill="%23ffffff" stroke="%23000000" stroke-width="1" stroke-linejoin="round"/></svg>') 10 6, default;
+  --cursor-pointer: url('data:image/svg+xml;utf8,<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><polygon points="2 2 9 22 13 13 22 9 2 2" fill="%23ffffff" stroke="%23111827" stroke-width="1.5" stroke-linejoin="round"/><line x1="2" y1="2" x2="13" y2="13" stroke="%23111827" stroke-width="1.5" stroke-linecap="round"/></svg>') 2 2, pointer;
+  --cursor-text: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><path d="M12 4h8v2h-3v20h3v2h-8v-2h3V6h-3V4z" fill="%23ffffff" stroke="%23000000" stroke-width="0.5"/></svg>') 16 16, text;
+  --cursor-ew-resize: url('data:image/svg+xml;utf8,<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><path d="M8 12L4 16L8 20V17H24V20L28 16L24 12V15H8V12Z" fill="%23ffffff" stroke="%23000000" stroke-width="1" stroke-linejoin="round"/></svg>') 16 16, ew-resize;
+  --cursor-ns-resize: url('data:image/svg+xml;utf8,<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><path d="M12 8L16 4L20 8H17V24H20L16 28L12 24H15V8H12Z" fill="%23ffffff" stroke="%23000000" stroke-width="1" stroke-linejoin="round"/></svg>') 16 16, ns-resize;
+}
+
+[data-theme='light'] {
+  color-scheme: light;
+  /* Light Mode Cursors: Sleek Zinc-900 body, crisp 1px white outline for a premium minimalistic look */
+  --cursor-default: url('data:image/svg+xml;utf8,<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><path d="M10 6L22 17L16.2 17.6L19 23.5L16.5 24.5L13.8 18.6L9.5 22.5V6Z" fill="%2318181b" stroke="%23ffffff" stroke-width="1" stroke-linejoin="round"/></svg>') 10 6, default;
+  --cursor-pointer: url('data:image/svg+xml;utf8,<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><polygon points="2 2 9 22 13 13 22 9 2 2" fill="%2318181b" stroke="%23ffffff" stroke-width="1.5" stroke-linejoin="round"/><line x1="2" y1="2" x2="13" y2="13" stroke="%23ffffff" stroke-width="1.5" stroke-linecap="round"/></svg>') 2 2, pointer;
+  --cursor-text: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><path d="M12 4h8v2h-3v20h3v2h-8v-2h3V6h-3V4z" fill="%2318181b" stroke="none"/></svg>') 16 16, text;
+  --cursor-ew-resize: url('data:image/svg+xml;utf8,<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><path d="M8 12L4 16L8 20V17H24V20L28 16L24 12V15H8V12Z" fill="%2318181b" stroke="%23ffffff" stroke-width="1" stroke-linejoin="round"/></svg>') 16 16, ew-resize;
+  --cursor-ns-resize: url('data:image/svg+xml;utf8,<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><path d="M12 8L16 4L20 8H17V24H20L16 28L12 24H15V8H12Z" fill="%2318181b" stroke="%23ffffff" stroke-width="1" stroke-linejoin="round"/></svg>') 16 16, ns-resize;
+}
+
+body {
+  @apply bg-background text-text-primary antialiased font-sans overflow-hidden;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  background-image:
+    radial-gradient(circle at 50% 0%, rgb(var(--accent) / 0.05) 0%, transparent 50%);
+  cursor: var(--cursor-default);
+}
+
+/* Apply Custom Cursors Globally & Intercept Tailwind Utilities */
+a,
+button,
+[role="button"],
+label,
+select,
+summary,
+.cursor-pointer {
+  cursor: var(--cursor-pointer) !important;
+}
+
+input,
+textarea,
+[contenteditable],
+.cursor-text,
+.monaco-editor .view-lines,
+.monaco-editor .margin,
+.ProseMirror {
+  cursor: var(--cursor-text) !important;
+  caret-color: rgb(var(--accent));
+}
+
+.cursor-ew-resize,
+.cursor-col-resize {
+  cursor: var(--cursor-ew-resize) !important;
+}
+
+.cursor-ns-resize,
+.cursor-row-resize {
+  cursor: var(--cursor-ns-resize) !important;
+}
+
+::selection {
+  background-color: rgb(var(--accent) / 0.2);
+  color: inherit;
+}
+
+#root {
+  height: 100vh;
+  width: 100vw;
+  display: flex;
+  flex-direction: column;
+}
+
+/* --- Premium Scrollbars (MacOS Style) --- */
+::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+  background-color: transparent;
+}
+
+::-webkit-scrollbar-track {
+  background-color: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgba(150, 150, 150, 0);
+  border: 4px solid transparent;
+  background-clip: padding-box;
+  border-radius: 9999px;
+  min-height: 40px;
+  transition: background-color 0.3s ease;
+}
+
+/* Show thumb gently on hover of any scrollable container */
+*:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(150, 150, 150, 0.25);
+}
+
+/* Darker thumb when directly hovering the scrollbar itself */
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(150, 150, 150, 0.45);
+  border-width: 3px;
+}
+
+/* Even darker when actively dragging */
+::-webkit-scrollbar-thumb:active {
+  background-color: rgba(150, 150, 150, 0.6);
+  border-width: 3px;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Hide scrollbar utility */
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* --- Utilities --- */
+.drag-region {
+  -webkit-app-region: drag;
+}
+
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+.monaco-editor {
+  font-family: 'JetBrains Mono', 'JetBrainsMono', 'Fira Code', 'FiraCode-Retina', 'Consolas', 'Monaco', 'Hannotate SC', monospace, -apple-system !important;
+}
+
+.monaco-editor .aweeclaw-definition-link {
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Keep Monaco find widget controls above hover overlays without changing its layout. */
+.monaco-editor .find-widget {
+  z-index: 2600 !important;
+  isolation: isolate;
+}
+
+.monaco-editor .find-widget > .find-part,
+.monaco-editor .find-widget > .replace-part,
+.monaco-editor .find-widget > .button,
+.monaco-editor .find-widget .button.toggle,
+.monaco-editor .find-widget .find-actions,
+.monaco-editor .find-widget .replace-actions {
+  position: relative;
+  z-index: 2601;
+}
+
+.monaco-editor .find-widget .monaco-action-bar {
+  position: relative;
+  z-index: 2602;
+}
+
+.monaco-editor .find-widget .monaco-sash {
+  z-index: 2599;
+}
+
+
+/* Animations */
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 8s linear infinite;
+  background-size: 200% 100%;
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-scale-in {
+  animation: scale-in 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out forwards;
+}
+
+/* Text Shimmer/Sweep Effect for running tool cards */
+@keyframes text-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.text-shimmer {
+  background: linear-gradient(90deg,
+      rgb(var(--text-muted)) 0%,
+      rgb(var(--text-muted)) 30%,
+      rgb(var(--accent)) 45%,
+      rgb(var(--text-primary)) 50%,
+      rgb(var(--accent)) 55%,
+      rgb(var(--text-muted)) 70%,
+      rgb(var(--text-muted)) 100%);
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: text-shimmer 1.5s ease-in-out infinite;
+}
+
+.tool-text-shimmer {
+  background: linear-gradient(90deg,
+      rgb(var(--text-muted)) 0%,
+      rgb(var(--text-secondary)) 38%,
+      rgb(var(--accent) / 0.85) 48%,
+      rgb(var(--text-primary)) 52%,
+      rgb(var(--text-secondary)) 62%,
+      rgb(var(--text-muted)) 100%);
+  background-size: 280% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: text-shimmer 3.2s ease-in-out infinite;
+}
+
+.tool-card-sweep {
+  animation: shimmer 14s linear infinite;
+  background-size: 240% 100%;
+  opacity: 0.55;
+}
+
+/* Button Sweep Effect */
+@keyframes btn-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(200%);
+  }
+}
+
+.btn-sweep {
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-sweep::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transform: translateX(-100%) skewX(-15deg);
+  pointer-events: none;
+}
+
+.btn-sweep:hover::after {
+  animation: btn-sweep 1.2s ease-in-out infinite;
+}
+
+/* Scroll shadow for thinking block */
+.scroll-shadow-container {
+  position: relative;
+}
+
+.scroll-shadow-container::before,
+.scroll-shadow-container::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 24px;
+  pointer-events: none;
+  z-index: 10;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.scroll-shadow-container::before {
+  top: 0;
+  background: linear-gradient(to bottom, rgb(var(--background)) 0%, transparent 100%);
+}
+
+.scroll-shadow-container::after {
+  bottom: 0;
+  background: linear-gradient(to top, rgb(var(--background)) 0%, transparent 100%);
+}
+
+.scroll-shadow-container.shadow-top::before {
+  opacity: 1;
+}
+
+.scroll-shadow-container.shadow-bottom::after {
+  opacity: 1;
+}
+
+/* Ink Blur Fade-In Animation - Smooth Character Fade */
+@keyframes ink-fade-in {
+  0% {
+    opacity: 0;
+    filter: blur(4px);
+  }
+  100% {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+/* Apply ink effect to streaming content */
+.streaming-ink-effect {
+  text-shadow: 0 0 1px rgba(var(--text-primary) / 0.1);
+}
+
+.inline-stream-char {
+  display: inline;
+  animation: ink-fade-in 0.5s cubic-bezier(0.1, 0.9, 0.2, 1) forwards;
+  will-change: opacity, filter;
+}
+
+/* Reveal in Explorer - File highlight flash */
+@keyframes reveal-highlight {
+  0% {
+    background-color: rgb(var(--accent) / 0.3);
+    box-shadow: 0 0 8px rgb(var(--accent) / 0.4);
+  }
+
+  50% {
+    background-color: rgb(var(--accent) / 0.15);
+    box-shadow: 0 0 4px rgb(var(--accent) / 0.2);
+  }
+
+  100% {
+    background-color: transparent;
+    box-shadow: none;
+  }
+}
+
+.animate-reveal-highlight {
+  animation: reveal-highlight 2s ease-out forwards;
+}
+
+/* --- Streaming block-reveal animation --- */
+@keyframes block-reveal {
+  0% { opacity: 0; filter: blur(4px); transform: translateY(2px); }
+  100% { opacity: 1; filter: blur(0); transform: translateY(0); }
+}
+.animate-block-reveal {
+  animation: block-reveal 0.28s ease-out both;
+  will-change: opacity, filter, transform;
+}
+
+/* --- Inline Diff Styles (Composer) --- */
+.inline-diff-add-line {
+  background-color: rgba(34, 197, 94, 0.15) !important;
+}
+
+.inline-diff-add-margin {
+  background-color: rgba(34, 197, 94, 0.15) !important;
+  border-left: 3px solid rgb(34, 197, 94) !important;
+}
+
+.inline-diff-remove-zone {
+  position: relative;
+  z-index: 10;
+  border-top: 1px dashed rgba(239, 68, 68, 0.3);
+  border-bottom: 1px dashed rgba(239, 68, 68, 0.3);
+  background-color: rgba(239, 68, 68, 0.05);
+}
+
+/* KaTeX */
+.katex {
+  font-size: 1.05em;
+}
+
+.katex-display {
+  margin: 1rem 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.25rem 0;
+}
+
+.katex-display > .katex {
+  white-space: nowrap;
+}
