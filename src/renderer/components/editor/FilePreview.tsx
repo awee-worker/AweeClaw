@@ -434,20 +434,39 @@ export function MarkdownToolbar({ mode, onModeChange }: MarkdownToolbarProps) {
 
 interface HtmlPreviewProps {
     content: string
+    filePath?: string
 }
 
-export function HtmlPreview({ content }: HtmlPreviewProps) {
+function injectBaseTag(html: string, dirPath: string): string {
+    const baseHref = `local-preview://${dirPath}/`
+    const baseTag = `<base href="${baseHref}">`
+    if (html.match(/<head[^>]*>/i)) {
+        return html.replace(/<head[^>]*>/i, `$&${baseTag}`)
+    }
+    if (html.match(/<html[^>]*>/i)) {
+        return html.replace(/<html[^>]*>/i, `$&<head>${baseTag}</head>`)
+    }
+    return `${baseTag}${html}`
+}
+
+export function HtmlPreview({ content, filePath }: HtmlPreviewProps) {
     const language = useStore(s => s.language)
     const iframeRef = useRef<HTMLIFrameElement>(null)
+
+    const processedContent = useMemo(() => {
+        if (!filePath) return content
+        const dirPath = filePath.replace(/\\/g, '/').replace(/\/[^/]*$/, '')
+        return injectBaseTag(content, dirPath)
+    }, [content, filePath])
 
     useEffect(() => {
         if (!iframeRef.current) return
         const doc = iframeRef.current.contentDocument
         if (!doc) return
         doc.open()
-        doc.write(content)
+        doc.write(processedContent)
         doc.close()
-    }, [content])
+    }, [processedContent])
 
     return (
         <div className="h-full flex flex-col bg-white">

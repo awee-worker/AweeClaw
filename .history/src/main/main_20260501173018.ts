@@ -354,14 +354,14 @@ function createWindow(isEmpty = false, deferLoad = false): BrowserWindow {
           ...details.responseHeaders,
           'Content-Security-Policy': [
             "default-src 'self'",
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval' local-preview:",  // Monaco 编辑器需要
-            "style-src 'self' 'unsafe-inline' local-preview:",
-            "img-src 'self' data: https: blob: local-preview:",  // blob: 支持粘贴图片
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval'",  // Monaco 编辑器需要
+            "style-src 'self' 'unsafe-inline'",
+            "img-src 'self' data: https: blob:",  // blob: 支持粘贴图片
             "connect-src 'self' https:",  // 允许所有 HTTPS 连接，支持自定义 baseURL
             "frame-src 'self' https: http://127.0.0.1:* http://localhost:*",
             "child-src 'self' https: http://127.0.0.1:* http://localhost:*",
-            "font-src 'self' data: local-preview:",
-            "media-src 'self' local-preview:",
+            "font-src 'self' data:",
+            "media-src 'self'",
           ].join('; ')
         }
       })
@@ -712,38 +712,7 @@ process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
 // 应用生命周期
 // ==========================================
 
-protocol.registerSchemesAsPrivileged([
-  {
-    scheme: 'local-preview',
-    privileges: {
-      bypassCSP: true,
-      allowServiceWorkers: false,
-      supportFetchAPI: true,
-      stream: true,
-      standard: false,
-      secure: true,
-      corsEnabled: false,
-    },
-  },
-])
-
 app.whenReady().then(async () => {
-  protocol.handle('local-preview', (request) => {
-    const url = new URL(request.url)
-    let filePath = decodeURIComponent(url.pathname)
-    if (process.platform === 'win32' && filePath.startsWith('/')) {
-      filePath = filePath.slice(1)
-    }
-    if (!filePath) {
-      return new Response('Bad Request', { status: 400 })
-    }
-    const normalized = path.resolve(filePath)
-    const sensitive = ['/etc', '/proc', '/sys', '/dev', 'C:\\Windows\\System32']
-    if (sensitive.some(s => normalized.startsWith(s))) {
-      return new Response('Forbidden', { status: 403 })
-    }
-    return net.fetch(`file://${normalized}`)
-  })
   // 1. 初始化 Store（必须在模块加载前完成）
   await initStores()
 

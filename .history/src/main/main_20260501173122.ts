@@ -737,12 +737,7 @@ app.whenReady().then(async () => {
     if (!filePath) {
       return new Response('Bad Request', { status: 400 })
     }
-    const normalized = path.resolve(filePath)
-    const sensitive = ['/etc', '/proc', '/sys', '/dev', 'C:\\Windows\\System32']
-    if (sensitive.some(s => normalized.startsWith(s))) {
-      return new Response('Forbidden', { status: 403 })
-    }
-    return net.fetch(`file://${normalized}`)
+    return net.fetch(`file://${filePath}`)
   })
   // 1. 初始化 Store（必须在模块加载前完成）
   await initStores()
