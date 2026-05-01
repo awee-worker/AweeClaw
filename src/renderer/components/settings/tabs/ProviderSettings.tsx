@@ -443,7 +443,7 @@ const FetchModelsButton = memo(function FetchModelsButton({
           autoFocus
         />
         <div className="flex items-center justify-between px-1">
-          <span className="text-[9px] font-bold text-text-muted uppercase tracking-wider">
+          <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">
             {searchQuery
               ? (language === 'zh' ? `匹配 ${filteredModels.length}/${fetchedModels.length}` : `${filteredModels.length}/${fetchedModels.length} matched`)
               : (language === 'zh' ? `共 ${fetchedModels.length} 个模型` : `${fetchedModels.length} models`)
@@ -455,7 +455,7 @@ const FetchModelsButton = memo(function FetchModelsButton({
                 const toAdd = filteredModels.filter(m => !existingModels.includes(m))
                 if (toAdd.length > 0) onModelsFetched(toAdd)
               }}
-              className="text-[9px] text-accent hover:text-accent-hover px-1.5 py-0.5 rounded hover:bg-accent/10 transition-colors"
+              className="text-[10px] text-accent hover:text-accent-hover px-1.5 py-0.5 rounded hover:bg-accent/10 transition-colors"
             >
               {language === 'zh' ? '全选' : 'All'}
             </button>
@@ -464,7 +464,7 @@ const FetchModelsButton = memo(function FetchModelsButton({
                 const toRemove = filteredModels.filter(m => existingModels.includes(m))
                 if (toRemove.length > 0) onBatchRemoved?.(toRemove)
               }}
-              className="text-[9px] text-red-400 hover:text-red-300 px-1.5 py-0.5 rounded hover:bg-red-400/10 transition-colors"
+              className="text-[10px] text-red-400 hover:text-red-300 px-1.5 py-0.5 rounded hover:bg-red-400/10 transition-colors"
             >
               {language === 'zh' ? '全取消' : 'None'}
             </button>
@@ -484,7 +484,7 @@ const FetchModelsButton = memo(function FetchModelsButton({
                   onModelsFetched([model])
                 }
               }}
-              className={`w-full text-left px-3 py-1.5 text-[11px] rounded-lg transition-all flex items-center justify-between group mb-0.5 ${isAdded
+              className={`w-full text-left px-3 py-1.5 text-[12px] rounded-lg transition-all flex items-center justify-between group mb-0.5 ${isAdded
                 ? 'text-accent bg-accent/5 hover:bg-accent/10'
                 : 'text-text-secondary hover:text-accent hover:bg-accent/5 active:scale-[0.98]'
                 }`}
@@ -508,7 +508,7 @@ const FetchModelsButton = memo(function FetchModelsButton({
             }
             setShowList(false)
           }}
-          className="flex-1 py-1.5 text-[10px] font-bold text-text-muted hover:text-red-400 hover:bg-red-400/5 rounded-lg transition-colors uppercase flex items-center justify-center gap-1.5 border border-transparent hover:border-red-400/20"
+          className="flex-1 py-1.5 text-[11px] font-bold text-text-muted hover:text-red-400 hover:bg-red-400/5 rounded-lg transition-colors uppercase flex items-center justify-center gap-1.5 border border-transparent hover:border-red-400/20"
         >
           <Trash className="w-3 h-3" />
           {language === 'zh' ? '全部清空' : 'Clear All'}
@@ -521,7 +521,7 @@ const FetchModelsButton = memo(function FetchModelsButton({
             }
             setShowList(false)
           }}
-          className="flex-1 py-1.5 text-[10px] font-bold bg-accent text-white hover:bg-accent-hover rounded-lg transition-colors uppercase flex items-center justify-center gap-1.5 shadow-lg shadow-accent/20"
+          className="flex-1 py-1.5 text-[11px] font-bold bg-accent text-white hover:bg-accent-hover rounded-lg transition-colors uppercase flex items-center justify-center gap-1.5 shadow-lg shadow-accent/20"
         >
           <Check className="w-3 h-3" />
           {language === 'zh' ? '全部添加' : 'Add All'}
@@ -543,7 +543,7 @@ const FetchModelsButton = memo(function FetchModelsButton({
         title={language === 'zh' ? '从 API 获取模型列表' : 'Fetch models from API'}
       >
         <RefreshCw className={`w-3 h-3 ${fetching ? 'animate-spin' : ''}`} />
-        <span className="text-[10px] font-semibold">{language === 'zh' ? '获取模型' : 'Fetch Models'}</span>
+        <span className="text-[11px] font-semibold">{language === 'zh' ? '获取模型' : 'Fetch Models'}</span>
       </Button>
 
       {dropdownMenu}
@@ -1128,7 +1128,7 @@ export function ProviderSettings({
               {language === 'zh' ? '选择提供商' : 'Select Provider'}
             </h4>
           </div>
-          <p className="text-[11px] text-text-muted">
+          <p className="text-[12px] text-text-muted">
             {language === 'zh' ? '选择您要使用的模型服务提供商' : 'Select the model service provider you want to use'}
           </p>
         </div>
@@ -1176,7 +1176,7 @@ export function ProviderSettings({
                         if (e.key === 'Escape') { e.preventDefault(); cancelEditingCustomProvider() }
                       }}
                       autoFocus
-                      className="w-full flex-1 bg-transparent text-sm font-semibold text-center outline-none px-2 text-text-primary placeholder:text-text-muted/50"
+                      className="w-full flex-1 bg-transparent text-sm font-semibold text-center outline-none px-2 text-text-primary placeholder:text-text-muted/85"
                       placeholder="Provider Name"
                     />
                     <div className="absolute bottom-1 right-1 flex items-center gap-0.5 bg-background/80 backdrop-blur-md rounded border border-border/50 p-0.5 shadow-sm">
@@ -1358,7 +1358,7 @@ export function ProviderSettings({
                   <h5 className="text-sm font-semibold text-text-primary">
                     {language === 'zh' ? '生成参数' : 'Generation Parameters'}
                   </h5>
-                  <p className="text-[10px] text-text-muted mt-0.5">
+                  <p className="text-[11px] text-text-muted mt-0.5">
                     {language === 'zh' ? '调整温度、Top P、最大 Token 等高级配置' : 'Adjust temperature, top P, max tokens, and other advanced settings'}
                   </p>
                 </div>
@@ -1426,7 +1426,7 @@ export function ProviderSettings({
                       })}
                       className="w-full h-1.5 bg-surface-active rounded-full appearance-none cursor-pointer accent-accent hover:accent-accent-hover"
                     />
-                    <div className="flex justify-between text-[10px] text-text-muted px-1">
+                    <div className="flex justify-between text-[11px] text-text-muted px-1">
                       <span>{language === 'zh' ? '精确' : 'Precise'}</span>
                       <span>{language === 'zh' ? '创意' : 'Creative'}</span>
                     </div>
@@ -1437,7 +1437,7 @@ export function ProviderSettings({
                     <div className="flex items-center justify-between">
                       <div className="space-y-0.5">
                         <label className="text-xs text-text-secondary">Top P</label>
-                        <p className="text-[10px] text-text-muted">
+                        <p className="text-[11px] text-text-muted">
                           {language === 'zh'
                             ? '核采样：仅考虑累积概率达到 P 的 Token 集合'
                             : 'Nucleus sampling: considers tokens with top_p probability mass'}
@@ -1466,7 +1466,7 @@ export function ProviderSettings({
                     <div className="flex items-center justify-between">
                       <div className="space-y-0.5">
                         <label className="text-xs text-text-secondary">Top K</label>
-                        <p className="text-[10px] text-text-muted">
+                        <p className="text-[11px] text-text-muted">
                           {language === 'zh'
                             ? '仅从概率最高的 K 个 Token 中采样'
                             : 'Limits selection to the top K tokens'}
@@ -1496,7 +1496,7 @@ export function ProviderSettings({
                         <label className="text-xs font-medium text-text-secondary">
                           {language === 'zh' ? '深度思考模式' : 'Extended Thinking'}
                         </label>
-                        <p className="text-[10px] text-text-muted">
+                        <p className="text-[11px] text-text-muted">
                           {language === 'zh'
                             ? '启用后，模型会进行更深入的推理（如 Claude thinking, OpenAI o1/o3）'
                             : 'Enable deeper reasoning (e.g., Claude thinking, OpenAI o1/o3)'}
@@ -1518,7 +1518,7 @@ export function ProviderSettings({
                             <label className="text-xs text-text-secondary">
                               {language === 'zh' ? '推理深度' : 'Reasoning Effort'}
                             </label>
-                            <p className="text-[10px] text-text-muted">
+                            <p className="text-[11px] text-text-muted">
                               {reasoningEffortDescription}
                             </p>
                           </div>
@@ -1536,7 +1536,7 @@ export function ProviderSettings({
                               <label className="text-xs text-text-secondary">
                                 {language === 'zh' ? '思考 Token 预算' : 'Thinking Budget'}
                               </label>
-                              <p className="text-[10px] text-text-muted">
+                              <p className="text-[11px] text-text-muted">
                                 {language === 'zh'
                                   ? 'Anthropic / Gemini 2.5 使用此参数控制思考 token 上限'
                                   : 'Max thinking tokens for Anthropic / Gemini 2.5'}
@@ -1558,7 +1558,7 @@ export function ProviderSettings({
                             })}
                             className="w-full h-1.5 bg-surface-active rounded-full appearance-none cursor-pointer accent-accent hover:accent-accent-hover"
                           />
-                          <div className="flex justify-between text-[10px] text-text-muted px-1">
+                          <div className="flex justify-between text-[11px] text-text-muted px-1">
                             <span>1K</span>
                             <span>100K</span>
                           </div>
@@ -1575,12 +1575,12 @@ export function ProviderSettings({
                       <label className="text-xs font-medium text-text-secondary">
                         {language === 'zh' ? '请求行为' : 'Request Behavior'}
                       </label>
-                      <p className="sr-only text-[10px] text-text-muted">
+                      <p className="sr-only text-[11px] text-text-muted">
                         {language === 'zh'
                           ? '控制重试、工具调用策略和并行工具执行方式'
                           : 'Controls retries, tool policy, and parallel tool execution'}
                       </p>
-                      <p className="text-[10px] text-text-muted">
+                      <p className="text-[11px] text-text-muted">
                         {language === 'zh'
                           ? '控制重试、工具调用策略和并行工具执行方式'
                           : 'Controls retries, tool policy, and parallel tool execution'}
@@ -1638,12 +1638,12 @@ export function ProviderSettings({
                         <label className="text-xs text-text-secondary">
                           {language === 'zh' ? '并行工具调用' : 'Parallel Tool Calls'}
                         </label>
-                        <p className="sr-only text-[10px] text-text-muted">
+                        <p className="sr-only text-[11px] text-text-muted">
                           {language === 'zh'
                             ? '允许模型在一次回复中同时规划多个工具调用'
                             : 'Allows the model to plan multiple tool calls in one response'}
                         </p>
-                        <p className="text-[10px] text-text-muted">
+                        <p className="text-[11px] text-text-muted">
                           {language === 'zh'
                             ? '允许模型在一次回复中同时规划多个工具调用'
                             : 'Allows the model to plan multiple tool calls in one response'}
@@ -1665,7 +1665,7 @@ export function ProviderSettings({
                     <div className="flex items-center justify-between">
                       <div className="space-y-0.5">
                         <label className="text-xs text-text-secondary">Frequency Penalty</label>
-                        <p className="text-[10px] text-text-muted">
+                        <p className="text-[11px] text-text-muted">
                           {language === 'zh'
                             ? '根据 Token 出现频率降低其重复概率'
                             : 'Penalizes tokens based on their frequency in the text'}
@@ -1694,7 +1694,7 @@ export function ProviderSettings({
                     <div className="flex items-center justify-between">
                       <div className="space-y-0.5">
                         <label className="text-xs text-text-secondary">Presence Penalty</label>
-                        <p className="text-[10px] text-text-muted">
+                        <p className="text-[11px] text-text-muted">
                           {language === 'zh'
                             ? '根据 Token 是否出现过降低其重复概率'
                             : 'Penalizes tokens based on their presence in the text'}
@@ -1723,7 +1723,7 @@ export function ProviderSettings({
                     <div className="flex items-center justify-between">
                       <div className="space-y-0.5">
                         <label className="text-xs text-text-secondary">Seed</label>
-                        <p className="text-[10px] text-text-muted">
+                        <p className="text-[11px] text-text-muted">
                           {language === 'zh'
                             ? '固定随机种子以获得可重现的结果'
                             : 'Fixed seed for reproducible outputs'}
@@ -1750,13 +1750,13 @@ export function ProviderSettings({
                     <div className="flex items-center justify-between">
                       <div className="space-y-0.5">
                         <label className="text-xs text-text-secondary">Stop Sequences</label>
-                        <p className="text-[10px] text-text-muted">
+                        <p className="text-[11px] text-text-muted">
                           {language === 'zh'
                             ? '遇到这些字符时停止生成'
                             : 'Stop generation when these sequences are encountered'}
                         </p>
                       </div>
-                      <span className="text-[10px] text-text-muted bg-background/50 px-1.5 py-0.5 rounded">
+                      <span className="text-[11px] text-text-muted bg-background/50 px-1.5 py-0.5 rounded">
                         Comma separated
                       </span>
                     </div>
@@ -1780,13 +1780,13 @@ export function ProviderSettings({
                     <div className="flex items-center justify-between">
                       <div className="space-y-0.5">
                         <label className="text-xs text-text-secondary">Logit Bias (JSON)</label>
-                        <p className="text-[10px] text-text-muted">
+                        <p className="text-[11px] text-text-muted">
                           {language === 'zh'
                             ? '调整特定 Token 出现的概率 (-100 到 100)'
                             : 'Modify likelihood of specific tokens (-100 to 100)'}
                         </p>
                       </div>
-                      <span className="text-[10px] text-text-muted bg-background/50 px-1.5 py-0.5 rounded">
+                      <span className="text-[11px] text-text-muted bg-background/50 px-1.5 py-0.5 rounded">
                         Token ID: Bias
                       </span>
                     </div>
@@ -1819,7 +1819,7 @@ export function ProviderSettings({
                         <label className="text-xs text-text-secondary">
                           {language === 'zh' ? '自定义请求头' : 'Custom Headers'}
                         </label>
-                        <p className="text-[10px] text-text-muted">
+                        <p className="text-[11px] text-text-muted">
                           {language === 'zh'
                             ? '添加额外的 HTTP 请求头（如组织 ID、项目 ID 等）'
                             : 'Add extra HTTP headers (e.g., organization ID, project ID, etc.)'}
@@ -1842,7 +1842,7 @@ export function ProviderSettings({
 
                       return defaultKeys.length > 0 && (
                         <div className="space-y-2">
-                          <div className="text-[10px] font-medium text-text-muted uppercase tracking-wider">
+                          <div className="text-[11px] font-medium text-text-muted uppercase tracking-wider">
                             {language === 'zh' ? '默认请求头（可修改）' : 'Default Headers (Editable)'}
                           </div>
                           {defaultKeys.map((key) => {
@@ -1869,7 +1869,7 @@ export function ProviderSettings({
                                     }}
                                     className="flex-1 bg-background/50 border-border text-xs font-mono h-8"
                                   />
-                                  <span className="text-[10px] text-accent bg-accent/10 px-2 py-0.5 rounded-full border border-accent/20 flex-shrink-0 ml-2">
+                                  <span className="text-[11px] text-accent bg-accent/10 px-2 py-0.5 rounded-full border border-accent/20 flex-shrink-0 ml-2">
                                     {language === 'zh' ? '默认' : 'Default'}
                                   </span>
                                 </div>
@@ -1886,7 +1886,7 @@ export function ProviderSettings({
                                   placeholder={defaultValue}
                                   className="bg-background/50 border-border text-xs font-mono h-8"
                                 />
-                                <p className="text-[10px] text-text-muted">
+                                <p className="text-[11px] text-text-muted">
                                   {language === 'zh'
                                     ? '使用 {{apiKey}} 作为 API Key 的占位符'
                                     : 'Use {{apiKey}} as placeholder for API Key'}
@@ -1902,7 +1902,7 @@ export function ProviderSettings({
                     {customHeaders.length > 0 && (
                       <div className="space-y-2">
                         {Object.keys(defaultHeaders).length > 0 && (
-                          <div className="text-[10px] font-medium text-text-muted uppercase tracking-wider">
+                          <div className="text-[11px] font-medium text-text-muted uppercase tracking-wider">
                             {language === 'zh' ? '额外请求头' : 'Additional Headers'}
                           </div>
                         )}
@@ -1967,7 +1967,7 @@ export function ProviderSettings({
                     )}
 
                     {customHeaders.length === 0 && Object.keys(defaultHeaders).length === 0 && (
-                      <div className="text-[10px] text-text-muted bg-background/50 px-3 py-2 rounded-lg border border-border text-center">
+                      <div className="text-[11px] text-text-muted bg-background/50 px-3 py-2 rounded-lg border border-border text-center">
                         {language === 'zh'
                           ? '点击"添加"按钮添加自定义请求头'
                           : 'Click "Add" to add custom headers'}
@@ -1993,12 +1993,12 @@ export function ProviderSettings({
                   <h5 className="text-sm font-semibold text-text-primary">
                     {language === 'zh' ? '认证 & 网络配置' : 'Authentication & Network'}
                   </h5>
-                  <p className="text-[10px] text-text-muted mt-0.5">
+                  <p className="text-[11px] text-text-muted mt-0.5">
                     {language === 'zh' ? '配置 API 访问密钥和服务器连接参数' : 'Configure API keys and server connection parameters'}
                   </p>
                   {false && currentOpenAICompatibilityProfile && (
                     <div className="space-y-1.5 pt-1">
-                      <label className="text-[11px] font-bold text-text-secondary uppercase tracking-wider px-0.5">
+                      <label className="text-[12px] font-bold text-text-secondary uppercase tracking-wider px-0.5">
                         {language === 'zh' ? 'OpenAI 能力档位' : 'OpenAI Capability'}
                       </label>
                       <Select
@@ -2010,7 +2010,7 @@ export function ProviderSettings({
                         options={openAICompatibilityProfileOptions}
                         className="w-56 bg-background/40 border-border/60 h-9 text-xs"
                       />
-                      <p className="text-[10px] text-text-muted leading-relaxed">
+                      <p className="text-[11px] text-text-muted leading-relaxed">
                         {openAICompatibilityProfileDescription}
                       </p>
                     </div>
@@ -2028,7 +2028,7 @@ export function ProviderSettings({
             <div className="grid grid-cols-1 md:grid-cols-12 gap-5 mb-6">
               {/* API Key */}
               <div className="md:col-span-5 space-y-2">
-                <label className="text-[11px] font-bold text-text-secondary uppercase tracking-wider px-0.5">
+                <label className="text-[12px] font-bold text-text-secondary uppercase tracking-wider px-0.5">
                   API Key
                 </label>
                 <Input
@@ -2047,7 +2047,7 @@ export function ProviderSettings({
 
               {/* API 端点 */}
               <div className="md:col-span-5 space-y-2">
-                <label className="text-[11px] font-bold text-text-secondary uppercase tracking-wider px-0.5">
+                <label className="text-[12px] font-bold text-text-secondary uppercase tracking-wider px-0.5">
                   {language === 'zh' ? 'API 端点' : 'API Endpoint'}
                 </label>
                 <Input
@@ -2060,7 +2060,7 @@ export function ProviderSettings({
 
               {/* 超时时间 */}
               <div className="md:col-span-2 space-y-2">
-                <label className="text-[11px] font-bold text-text-secondary uppercase tracking-wider px-0.5">
+                <label className="text-[12px] font-bold text-text-secondary uppercase tracking-wider px-0.5">
                   {language === 'zh' ? '超时 (秒)' : 'Timeout (s)'}
                 </label>
                 <Input
@@ -2079,7 +2079,7 @@ export function ProviderSettings({
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                   <div className="space-y-2">
-                    <label className="text-[11px] font-bold text-text-secondary uppercase tracking-wider px-0.5">
+                    <label className="text-[12px] font-bold text-text-secondary uppercase tracking-wider px-0.5">
                       {language === 'zh' ? 'API 协议' : 'API Protocol'}
                     </label>
                     <Select
@@ -2099,13 +2099,13 @@ export function ProviderSettings({
                       options={PROTOCOL_OPTIONS}
                       className="w-full max-w-[320px] bg-background/40 border-border/60 h-9 text-xs"
                     />
-                    <p className="text-[10px] text-text-muted leading-relaxed max-w-md">
+                    <p className="text-[11px] text-text-muted leading-relaxed max-w-md">
                       {language === 'zh' ? '对于兼容模型，通常建议使用 OpenAI Compatible' : 'For compatible models, OpenAI Compatible is generally recommended'}
                     </p>
                   </div>
                   {isCustomSelected && isOpenAIStyleProtocol(currentProtocol) && currentOpenAICompatibilityProfile && (
                     <div className="space-y-2 md:pt-0">
-                      <label className="text-[11px] font-bold text-text-secondary uppercase tracking-wider px-0.5">
+                      <label className="text-[12px] font-bold text-text-secondary uppercase tracking-wider px-0.5">
                         {language === 'zh' ? 'OpenAI 能力档位' : 'OpenAI Capability'}
                       </label>
                       <Select
@@ -2117,7 +2117,7 @@ export function ProviderSettings({
                         options={openAICompatibilityProfileOptions}
                         className="w-full max-w-[320px] bg-background/40 border-border/60 h-9 text-xs"
                       />
-                      <p className="text-[10px] text-text-muted leading-relaxed max-w-md">
+                      <p className="text-[11px] text-text-muted leading-relaxed max-w-md">
                         {openAICompatibilityProfileDescription}
                       </p>
                     </div>

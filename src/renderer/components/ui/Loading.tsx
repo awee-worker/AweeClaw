@@ -250,7 +250,7 @@ interface InlineLoadingProps {
 export const InlineLoading = memo(({ text, size = 'sm' }: InlineLoadingProps) => (
   <div className="flex items-center gap-2 text-text-muted">
     <Spinner size={size} />
-    {text && <span className={size === 'xs' ? 'text-[10px]' : 'text-xs'}>{text}</span>}
+    {text && <span className={size === 'xs' ? 'text-[11px]' : 'text-xs'}>{text}</span>}
   </div>
 ))
 InlineLoading.displayName = 'InlineLoading'

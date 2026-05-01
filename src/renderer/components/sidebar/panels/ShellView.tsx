@@ -192,7 +192,7 @@ export function ShellView() {
       <section key={key}>
         <button
           onClick={() => toggleSection(key)}
-          className="w-full px-2 pb-2 text-[11px] uppercase tracking-wide text-text-muted flex items-center justify-between gap-2"
+          className="w-full px-2 pb-2 text-[12px] uppercase tracking-wide text-text-muted flex items-center justify-between gap-2"
         >
           <span>{title}</span>
           {isCollapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
@@ -233,7 +233,7 @@ export function ShellView() {
 
       <div className="flex-1 overflow-y-auto p-3 space-y-4">
         <section>
-          <div className="flex items-center gap-2 px-2 pb-2 text-[11px] uppercase tracking-wide text-text-muted">
+          <div className="flex items-center gap-2 px-2 pb-2 text-[12px] uppercase tracking-wide text-text-muted">
             <TerminalSquare className="w-3.5 h-3.5" />
             {language === 'zh' ? '可用 Shell' : 'Available Shells'}
           </div>
@@ -308,7 +308,7 @@ export function ShellView() {
         ))}
 
         <section>
-          <div className="px-2 pb-2 text-[11px] uppercase tracking-wide text-text-muted">{language === 'zh' ? '快速新增' : 'Quick Add'}</div>
+          <div className="px-2 pb-2 text-[12px] uppercase tracking-wide text-text-muted">{language === 'zh' ? '快速新增' : 'Quick Add'}</div>
           <div className="grid grid-cols-2 gap-2">
             <Button variant="ghost" className="justify-start" onClick={() => openManagerCreate('preset')}>
               <Star className="w-4 h-4 mr-2" />Preset

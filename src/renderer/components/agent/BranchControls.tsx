@@ -44,7 +44,7 @@ export function BranchSelector({
       <GitBranch className={`w-3.5 h-3.5 ${isOnBranch ? 'text-accent' : 'text-text-muted group-hover:text-text-primary'}`} />
       <span className="truncate max-w-[120px] font-medium">{displayText}</span>
       {hasBranches && !isOnBranch && (
-        <span className="ml-0.5 px-1.5 py-0.5 rounded-full bg-surface text-[9px] font-bold border border-border/50">
+        <span className="ml-0.5 px-1.5 py-0.5 rounded-full bg-surface text-[10px] font-bold border border-border/50">
           {branches.length}
         </span>
       )}

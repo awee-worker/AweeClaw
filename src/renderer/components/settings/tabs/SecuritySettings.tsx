@@ -83,7 +83,7 @@ export function SecuritySettings({ language, securitySettings, setSecuritySettin
             </div>
 
             <section className="space-y-5 p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border shadow-sm">
-                <h4 className="text-[11px] font-bold text-text-muted uppercase tracking-widest opacity-60 ml-1">
+                <h4 className="text-[12px] font-bold text-text-muted uppercase tracking-widest opacity-60 ml-1">
                     {language === 'zh' ? '安全选项' : 'Security Options'}
                 </h4>
                 <div className="space-y-4">
@@ -95,7 +95,7 @@ export function SecuritySettings({ language, securitySettings, setSecuritySettin
 
             <section className="space-y-4 p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border shadow-sm">
                 <div className="flex items-center justify-between">
-                    <h4 className="text-[11px] font-bold text-text-muted uppercase tracking-widest opacity-60">
+                    <h4 className="text-[12px] font-bold text-text-muted uppercase tracking-widest opacity-60">
                         {language === 'zh' ? 'Shell 命令白名单' : 'Shell Command Whitelist'}
                     </h4>
                     <button
@@ -140,7 +140,7 @@ export function SecuritySettings({ language, securitySettings, setSecuritySettin
             </section>
 
             <section className="space-y-4 p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border shadow-sm">
-                <h4 className="text-[11px] font-bold text-text-muted uppercase tracking-widest opacity-60">
+                <h4 className="text-[12px] font-bold text-text-muted uppercase tracking-widest opacity-60">
                     {language === 'zh' ? 'Git 子命令白名单' : 'Git Subcommand Whitelist'}
                 </h4>
                 <p className="text-xs text-text-secondary">

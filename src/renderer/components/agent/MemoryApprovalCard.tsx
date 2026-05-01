@@ -64,7 +64,7 @@ export const MemoryApprovalCard: React.FC<MemoryApprovalCardProps> = ({
                             </motion.span>
                         )}
                     </h4>
-                    <p className="text-[10px] text-text-muted font-medium opacity-70">
+                    <p className="text-[11px] text-text-muted font-medium opacity-70">
                         {isSuccess ? 'This fact is now part of project knowledge' : 'AI found an important project fact to remember'}
                     </p>
                 </div>
@@ -91,13 +91,13 @@ export const MemoryApprovalCard: React.FC<MemoryApprovalCardProps> = ({
                             <div className="flex justify-end gap-2">
                                 <button
                                     onClick={handleCancel}
-                                    className="px-3 py-1.5 text-[11px] font-medium text-text-muted hover:text-text-primary hover:bg-white/5 rounded-lg transition-colors"
+                                    className="px-3 py-1.5 text-[12px] font-medium text-text-muted hover:text-text-primary hover:bg-white/5 rounded-lg transition-colors"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     onClick={handleSave}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold bg-accent text-white rounded-lg shadow-lg shadow-accent/20 hover:bg-accent-hover transition-all"
+                                    className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-bold bg-accent text-white rounded-lg shadow-lg shadow-accent/20 hover:bg-accent-hover transition-all"
                                 >
                                     <Check className="w-3 h-3" />
                                     Confirm Change
@@ -121,7 +121,7 @@ export const MemoryApprovalCard: React.FC<MemoryApprovalCardProps> = ({
                                 {isAwaitingApproval && (
                                     <button
                                         onClick={() => setIsEditing(true)}
-                                        className="mt-2 flex items-center gap-1.5 text-[10px] text-accent/60 hover:text-accent font-bold opacity-0 group-hover/text:opacity-100 transition-all transform translate-y-1 group-hover/text:translate-y-0"
+                                        className="mt-2 flex items-center gap-1.5 text-[11px] text-accent/60 hover:text-accent font-bold opacity-0 group-hover/text:opacity-100 transition-all transform translate-y-1 group-hover/text:translate-y-0"
                                     >
                                         <Edit2 className="w-2.5 h-2.5" />
                                         Refine Proposal

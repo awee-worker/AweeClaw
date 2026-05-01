@@ -66,10 +66,10 @@ export const CompressionDigestCard = memo(({ part, variant = 'card' }: Compressi
           className="group flex w-full items-center gap-3 text-left text-text-muted transition-colors hover:text-text-secondary"
         >
           <div className="h-px flex-1 bg-border/50 transition-colors group-hover:bg-border" />
-          <div className="flex min-w-0 items-center gap-2 rounded-full border border-border/50 bg-surface/35 px-3 py-1.5 text-[11px] shadow-sm backdrop-blur-sm">
+          <div className="flex min-w-0 items-center gap-2 rounded-full border border-border/50 bg-surface/35 px-3 py-1.5 text-[12px] shadow-sm backdrop-blur-sm">
             <div className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
             <span className="truncate font-medium text-text-secondary">{title}</span>
-            <span className="shrink-0 text-text-muted/70">· {detailLabel}</span>
+            <span className="shrink-0 text-text-muted/85">· {detailLabel}</span>
             <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${expanded ? '' : '-rotate-90'}`} />
           </div>
           <div className="h-px flex-1 bg-border/50 transition-colors group-hover:bg-border" />
@@ -84,20 +84,20 @@ export const CompressionDigestCard = memo(({ part, variant = 'card' }: Compressi
               transition={{ duration: 0.18 }}
               className="overflow-hidden"
             >
-              <div className="mx-8 mt-3 space-y-2 rounded-xl border border-border/40 bg-surface/25 px-3 py-3 text-[11px] text-text-secondary">
+              <div className="mx-8 mt-3 space-y-2 rounded-xl border border-border/40 bg-surface/25 px-3 py-3 text-[12px] text-text-secondary">
                 <div>
-                  <div className="mb-1 text-[10px] uppercase tracking-wide text-text-muted/70">{copy.objective}</div>
+                  <div className="mb-1 text-[11px] uppercase tracking-wide text-text-muted/85">{copy.objective}</div>
                   <div className="leading-relaxed">{part.summary.objective || copy.noObjective}</div>
                 </div>
 
                 {part.lastUserRequest && (
                   <div>
-                    <div className="mb-1 text-[10px] uppercase tracking-wide text-text-muted/70">{copy.lastRequest}</div>
+                    <div className="mb-1 text-[11px] uppercase tracking-wide text-text-muted/85">{copy.lastRequest}</div>
                     <div className="leading-relaxed">{part.lastUserRequest}</div>
                   </div>
                 )}
 
-                <div className="flex flex-wrap gap-2 text-[10px] text-text-muted/80">
+                <div className="flex flex-wrap gap-2 text-[11px] text-text-muted/90">
                   <span className="rounded-full bg-text-primary/[0.04] px-2 py-0.5">{copy.completedStat}</span>
                   <span className="rounded-full bg-text-primary/[0.04] px-2 py-0.5">{copy.pendingStat}</span>
                   <span className="rounded-full bg-text-primary/[0.04] px-2 py-0.5">{copy.taskStat}</span>
@@ -119,15 +119,15 @@ export const CompressionDigestCard = memo(({ part, variant = 'card' }: Compressi
         <div className="min-w-0 flex-1">
           <div className="mb-1.5 flex items-center gap-2">
             <div className={`h-2 w-2 rounded-full ${tone.dot}`} />
-            <span className="text-[11px] font-semibold tracking-wide text-text-primary">{copy.title}</span>
-            <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${tone.badge}`}>
+            <span className="text-[12px] font-semibold tracking-wide text-text-primary">{copy.title}</span>
+            <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[11px] font-medium ${tone.badge}`}>
               L{part.level}
             </span>
           </div>
 
-          <div className="text-[11px] leading-relaxed text-text-muted">{note}</div>
+          <div className="text-[12px] leading-relaxed text-text-muted">{note}</div>
 
-          <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-text-muted/80">
+          <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-text-muted/90">
             <span className="inline-flex items-center gap-1 rounded-full bg-text-primary/[0.04] px-2 py-0.5">
               <Sparkles className="h-3 w-3 text-accent/80" />
               {copy.completedStat}
@@ -158,18 +158,18 @@ export const CompressionDigestCard = memo(({ part, variant = 'card' }: Compressi
             <div className="space-y-3 px-4 pb-4">
               {part.lastUserRequest && (
                 <div className="rounded-xl border border-border/40 bg-background/15 px-3 py-2.5">
-                  <div className="mb-1 flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-text-muted/70">
+                  <div className="mb-1 flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-text-muted/85">
                     <MessageSquareQuote className="h-3 w-3" />
                     {copy.lastRequest}
                   </div>
-                  <div className="text-[11px] leading-relaxed text-text-secondary">
+                  <div className="text-[12px] leading-relaxed text-text-secondary">
                     {part.lastUserRequest}
                   </div>
                 </div>
               )}
 
               <div className="rounded-xl border border-border/40 bg-background/25 px-3 py-2.5">
-                <div className="mb-1 flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-text-muted/70">
+                <div className="mb-1 flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-text-muted/85">
                   <Layers3 className="h-3 w-3" />
                   {copy.objective}
                 </div>
@@ -180,10 +180,10 @@ export const CompressionDigestCard = memo(({ part, variant = 'card' }: Compressi
 
               {visiblePending.length > 0 && (
                 <div className="rounded-xl border border-border/40 bg-background/20 px-3 py-2.5">
-                  <div className="mb-2 text-[10px] uppercase tracking-wide text-text-muted/70">{copy.pending}</div>
+                  <div className="mb-2 text-[11px] uppercase tracking-wide text-text-muted/85">{copy.pending}</div>
                   <div className="space-y-1.5">
                     {visiblePending.map((step, index) => (
-                      <div key={`${part.id}-pending-${index}`} className="text-[11px] leading-relaxed text-text-secondary">
+                      <div key={`${part.id}-pending-${index}`} className="text-[12px] leading-relaxed text-text-secondary">
                         {index + 1}. {step}
                       </div>
                     ))}
@@ -193,10 +193,10 @@ export const CompressionDigestCard = memo(({ part, variant = 'card' }: Compressi
 
               {visibleTodos.length > 0 && (
                 <div className="rounded-xl border border-border/40 bg-background/20 px-3 py-2.5">
-                  <div className="mb-2 text-[10px] uppercase tracking-wide text-text-muted/70">{copy.tasks}</div>
+                  <div className="mb-2 text-[11px] uppercase tracking-wide text-text-muted/85">{copy.tasks}</div>
                   <div className="space-y-1.5">
                     {visibleTodos.map((todo, index) => (
-                      <div key={`${part.id}-todo-${index}`} className="flex items-start gap-2 text-[11px] leading-relaxed text-text-secondary">
+                      <div key={`${part.id}-todo-${index}`} className="flex items-start gap-2 text-[12px] leading-relaxed text-text-secondary">
                         <span className={`mt-[4px] h-1.5 w-1.5 rounded-full ${todo.status === 'in_progress' ? 'bg-accent animate-pulse' : 'bg-text-muted/40'}`} />
                         <span>{todo.status === 'in_progress' ? todo.activeForm : todo.content}</span>
                       </div>

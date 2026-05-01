@@ -12,6 +12,8 @@ import {
   SidebarOpen, PanelLeft, PanelRight, Maximize2, Minimize2, Expand,
   Workflow, GitMerge, GitPullRequest, Bug, TestTube, Beaker, Rocket,
   Package, Box, Container, Database as DatabaseIcon, HardDrive, Server as ServerIcon,
+  StickyNote, Briefcase, Calculator, FlaskConical, GraduationCap,
+  Lightbulb, Palette, Scale, ShieldCheck, Stethoscope,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -29,6 +31,8 @@ export const LUCIDE_ICON_MAP: Record<string, LucideIcon> = {
   SidebarOpen, PanelLeft, PanelRight, Maximize2, Minimize2, Expand,
   Workflow, GitMerge, GitPullRequest, Bug, TestTube, Beaker, Rocket,
   Package, Box, Container, DatabaseIcon, HardDrive, ServerIcon,
+  StickyNote, Briefcase, Calculator, FlaskConical, GraduationCap,
+  Lightbulb, Palette, Scale, ShieldCheck, Stethoscope,
 }
 
 export function getLucideIcon(name: string): LucideIcon {

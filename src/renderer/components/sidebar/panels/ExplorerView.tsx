@@ -353,7 +353,7 @@ export function ExplorerView() {
   return (
     <div className="h-full flex flex-col bg-transparent">
       <div className="h-11 min-w-0 px-4 flex items-center justify-between gap-2 group border-b border-border/50 bg-transparent sticky top-0 z-10">
-        <span className="min-w-0 flex-shrink-0 whitespace-nowrap text-[10px] font-black text-text-primary/40 uppercase tracking-[0.2em] font-sans">
+        <span className="min-w-0 flex-shrink-0 whitespace-nowrap text-[11px] font-black text-text-primary/60 uppercase tracking-[0.2em] font-sans">
           {t('explorer', language)}
         </span>
         <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all duration-300 flex-shrink-0">
@@ -381,7 +381,7 @@ export function ExplorerView() {
             <button
               onClick={handlePasteToWorkspaceRoot}
               disabled={!clipboardItem}
-              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/5 text-text-muted hover:text-text-primary disabled:text-text-muted/35 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-all active:scale-90 disabled:active:scale-100"
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/5 text-text-muted hover:text-text-primary disabled:text-text-muted/75 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-all active:scale-90 disabled:active:scale-100"
             >
               <Clipboard className="w-3.5 h-3.5" />
             </button>
@@ -430,7 +430,7 @@ export function ExplorerView() {
             <GitBranch className="w-3.5 h-3.5 text-accent opacity-80" />
             <span className="font-medium">{gitStatus.branch}</span>
             {(gitStatus.ahead > 0 || gitStatus.behind > 0) && (
-              <span className="flex items-center gap-1 text-[10px] font-bold text-accent bg-accent/10 px-2 py-0.5 rounded-full border border-accent/20">
+              <span className="flex items-center gap-1 text-[11px] font-bold text-accent bg-accent/10 px-2 py-0.5 rounded-full border border-accent/20">
                 {gitStatus.ahead > 0 && `↑${gitStatus.ahead}`}
                 {gitStatus.behind > 0 && `↓${gitStatus.behind}`}
               </span>

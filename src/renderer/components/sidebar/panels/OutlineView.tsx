@@ -120,7 +120,7 @@ export function OutlineView() {
           )}
           {getSymbolIcon(symbol.kind)}
           <span className="text-xs text-text-secondary group-hover:text-text-primary truncate flex-1 transition-colors">{symbol.name}</span>
-          <span className="text-[10px] text-text-muted opacity-0 group-hover:opacity-100 tabular-nums font-mono">
+          <span className="text-[11px] text-text-muted opacity-0 group-hover:opacity-100 tabular-nums font-mono">
             {symbol.range?.start?.line !== undefined ? symbol.range.start.line + 1 : ''}
           </span>
         </div>
@@ -135,7 +135,7 @@ export function OutlineView() {
   return (
     <div className="flex flex-col h-full bg-transparent">
       <div className="h-10 px-3 flex items-center justify-between border-b border-border bg-background-secondary/95 backdrop-blur-md sticky top-0 z-10">
-        <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider opacity-80">
+        <span className="text-[12px] font-bold text-text-muted uppercase tracking-wider opacity-80">
           {language === 'zh' ? '大纲' : 'Outline'}
         </span>
         {isLoading && <Loader2 className="w-3.5 h-3.5 text-accent animate-spin" />}
@@ -148,7 +148,7 @@ export function OutlineView() {
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder={language === 'zh' ? '过滤符号...' : 'Filter symbols...'}
-          className="w-full bg-surface border border-border-subtle rounded-lg px-2.5 py-1.5 text-xs text-text-primary focus:border-accent/50 focus:ring-1 focus:ring-accent/20 focus:outline-none transition-all placeholder:text-text-muted/50"
+          className="w-full bg-surface border border-border-subtle rounded-lg px-2.5 py-1.5 text-xs text-text-primary focus:border-accent/50 focus:ring-1 focus:ring-accent/20 focus:outline-none transition-all placeholder:text-text-muted/85"
         />
       </div>
 

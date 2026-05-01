@@ -34,7 +34,7 @@ export default function NotificationCenterContent({ language = 'zh' }: Notificat
       <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 shrink-0">
         <div className="flex items-center gap-2">
           <Bell className="w-3.5 h-3.5 text-text-muted" />
-          <span className="text-[11px] font-bold tracking-wider uppercase text-text-muted">
+          <span className="text-[12px] font-bold tracking-wider uppercase text-text-muted">
             {t('消息记录', 'Notifications')}
           </span>
         </div>
@@ -53,7 +53,7 @@ export default function NotificationCenterContent({ language = 'zh' }: Notificat
         {toasts.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-text-muted gap-3 opacity-60">
             <CheckCheck className="w-8 h-8 opacity-40" />
-            <span className="text-[11px] font-medium tracking-wide">{t('暂无消息', 'No records')}</span>
+            <span className="text-[12px] font-medium tracking-wide">{t('暂无消息', 'No records')}</span>
           </div>
         ) : (
           <div className="space-y-1.5">
@@ -66,10 +66,10 @@ export default function NotificationCenterContent({ language = 'zh' }: Notificat
                 <div className="flex-1 min-w-0 flex flex-col pr-8">
                   {toast.title && (
                     <div className="mb-1 flex items-center gap-2">
-                      <div className="text-[11px] font-semibold text-text-primary">
+                      <div className="text-[12px] font-semibold text-text-primary">
                         {toast.title}
                       </div>
-                      <span className="rounded-full border border-white/8 bg-white/[0.04] px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-text-muted">
+                      <span className="rounded-full border border-white/8 bg-white/[0.04] px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-text-muted">
                         {toast.variant}
                       </span>
                     </div>
@@ -81,14 +81,14 @@ export default function NotificationCenterContent({ language = 'zh' }: Notificat
 
                 {/* 时间与操作按钮 */}
                 <div className="absolute right-3.5 top-3 flex items-center">
-                  <span className="text-[9px] text-text-muted/40 font-mono tracking-wide group-hover:opacity-0 transition-opacity">
+                  <span className="text-[10px] text-text-muted/85 font-mono tracking-wide group-hover:opacity-0 transition-opacity">
                     {formatTime(toast.timestamp || Date.now())}
                   </span>
                 </div>
 
                 <button 
                   onClick={() => removeToast(toast.id)}
-                  className="absolute right-2 top-1.5 p-1.5 rounded-md text-text-muted/50 hover:text-red-400 hover:bg-red-400/10 transition-all opacity-0 group-hover:opacity-100"
+                  className="absolute right-2 top-1.5 p-1.5 rounded-md text-text-muted/85 hover:text-red-400 hover:bg-red-400/10 transition-all opacity-0 group-hover:opacity-100"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>

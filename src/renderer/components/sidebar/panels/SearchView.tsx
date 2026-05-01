@@ -310,7 +310,7 @@ export function SearchView() {
   return (
     <div className="flex flex-col h-full bg-transparent text-sm">
       <div className="h-10 px-3 flex items-center border-b border-border sticky top-0 z-10 bg-transparent">
-        <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider opacity-80">
+        <span className="text-[12px] font-bold text-text-muted uppercase tracking-wider opacity-80">
           {t('search', language)}
         </span>
       </div>
@@ -335,27 +335,27 @@ export function SearchView() {
               title={t('matchCase', language)}
               className={`p-0.5 rounded transition-colors ${isCaseSensitive ? 'bg-accent/20 text-accent' : 'text-text-muted hover:bg-surface-active'}`}
             >
-              <span className="text-[10px] font-bold px-1">Aa</span>
+              <span className="text-[11px] font-bold px-1">Aa</span>
             </button>
             <button
               onClick={() => setIsWholeWord(!isWholeWord)}
               title={t('matchWholeWord', language)}
               className={`p-0.5 rounded transition-colors ${isWholeWord ? 'bg-accent/20 text-accent' : 'text-text-muted hover:bg-surface-active'}`}
             >
-              <span className="text-[10px] font-bold px-0.5 border border-current rounded-[2px]">ab</span>
+              <span className="text-[11px] font-bold px-0.5 border border-current rounded-[2px]">ab</span>
             </button>
             <button
               onClick={() => setIsRegex(!isRegex)}
               title={t('useRegex', language)}
               className={`p-0.5 rounded transition-colors ${isRegex ? 'bg-accent/20 text-accent' : 'text-text-muted hover:bg-surface-active'}`}
             >
-              <span className="text-[10px] font-bold px-1">.*</span>
+              <span className="text-[11px] font-bold px-1">.*</span>
             </button>
           </div>
 
           {showHistory && searchHistory.length > 0 && (
             <div className="absolute top-full left-0 right-0 mt-1 bg-surface border border-border-subtle rounded-md shadow-lg z-20 max-h-48 overflow-y-auto animate-slide-in">
-              <div className="px-2 py-1 text-[10px] text-text-muted font-semibold border-b border-border-subtle bg-surface/50 backdrop-blur-sm">
+              <div className="px-2 py-1 text-[11px] text-text-muted font-semibold border-b border-border-subtle bg-surface/50 backdrop-blur-sm">
                 {t('recentSearches', language) || 'Recent Searches'}
               </div>
               {searchHistory.map((item) => (
@@ -378,7 +378,7 @@ export function SearchView() {
         <div className="flex items-center justify-between">
           <button
             onClick={() => setShowReplace(!showReplace)}
-            className={`flex items-center gap-1.5 px-2 py-1 rounded transition-colors text-[11px] font-medium ${showReplace ? 'text-text-primary bg-surface-active' : 'text-text-muted hover:text-text-primary hover:bg-surface-hover'}`}
+            className={`flex items-center gap-1.5 px-2 py-1 rounded transition-colors text-[12px] font-medium ${showReplace ? 'text-text-primary bg-surface-active' : 'text-text-muted hover:text-text-primary hover:bg-surface-hover'}`}
           >
             <ChevronRight className={`w-3 h-3 transition-transform ${showReplace ? 'rotate-90' : ''}`} />
             {t('replace', language)}
@@ -398,7 +398,7 @@ export function SearchView() {
                 title={language === 'zh' ? '仅在选中区域替换' : 'Replace in selection only'}
                 className={`p-1 rounded transition-colors ${replaceInSelection ? 'bg-accent/20 text-accent' : 'text-text-muted hover:bg-surface-active hover:text-text-primary'}`}
               >
-                <span className="text-[10px] font-bold px-1 border border-current rounded-[2px]">Sel</span>
+                <span className="text-[11px] font-bold px-1 border border-current rounded-[2px]">Sel</span>
               </button>
             )}
             <button
@@ -464,7 +464,7 @@ export function SearchView() {
 
         {!isSearching && searchResults.length > 0 && (
           <div className="flex flex-col">
-            <div className="px-3 py-1.5 text-[10px] text-text-muted font-semibold bg-background-secondary border-b border-border-subtle sticky top-0 z-10">
+            <div className="px-3 py-1.5 text-[11px] text-text-muted font-semibold bg-background-secondary border-b border-border-subtle sticky top-0 z-10">
               {t('searchResultsCount', language, {
                 results: String(searchResults.length),
                 files: String(Object.keys(resultsByFile).length),
@@ -472,7 +472,7 @@ export function SearchView() {
             </div>
 
             {visibleCount < searchResults.length && (
-              <div className="px-3 py-1 text-[10px] text-accent cursor-pointer hover:underline text-center"
+              <div className="px-3 py-1 text-[11px] text-accent cursor-pointer hover:underline text-center"
                 onClick={() => setVisibleCount(prev => Math.min(prev + 500, searchResults.length))}>
                 {language === 'zh'
                   ? `显示了 ${visibleCount} / ${searchResults.length} 条，点击或滚动加载更多`
@@ -531,7 +531,7 @@ export function SearchView() {
                     >
                       <Crosshair className="w-3 h-3" />
                     </button>
-                    <span className="text-[10px] text-text-muted bg-surface-active px-1.5 rounded-full">
+                    <span className="text-[11px] text-text-muted bg-surface-active px-1.5 rounded-full">
                       {results.length}
                     </span>
                   </div>
@@ -542,7 +542,7 @@ export function SearchView() {
                         <div
                           key={`${res.path}:${res.line}`}
                           onClick={() => handleResultClick(res)}
-                          className="relative pl-3 pr-2 py-1.5 mx-2 rounded-md cursor-pointer hover:bg-surface-hover hover:text-text-primary group flex gap-2 text-[11px] font-mono text-text-muted transition-colors border border-transparent hover:border-border-subtle"
+                          className="relative pl-3 pr-2 py-1.5 mx-2 rounded-md cursor-pointer hover:bg-surface-hover hover:text-text-primary group flex gap-2 text-[12px] font-mono text-text-muted transition-colors border border-transparent hover:border-border-subtle"
                         >
                           {/* Hover Indicator */}
                           <div className="absolute left-0 top-1.5 bottom-1.5 w-[2px] bg-accent rounded-r-full opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -565,7 +565,7 @@ export function SearchView() {
               <Search className="w-6 h-6 text-text-muted" />
             </div>
             <p className="text-xs font-medium text-text-secondary">{t('noResults', language)}</p>
-            <p className="text-[10px] text-text-muted mt-1">{t('tryDifferentKeyword', language) || 'Try a different keyword or regex'}</p>
+            <p className="text-[11px] text-text-muted mt-1">{t('tryDifferentKeyword', language) || 'Try a different keyword or regex'}</p>
           </div>
         )}
 

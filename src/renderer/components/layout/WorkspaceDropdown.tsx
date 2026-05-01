@@ -107,7 +107,7 @@ export default function WorkspaceDropdown() {
                 </div>
 
                 <ChevronDown
-                    className={`w-3.5 h-3.5 text-text-muted/50 transition-transform duration-300 ml-1 ${isOpen ? 'rotate-180 text-accent' : 'group-hover:text-text-primary'}`}
+                    className={`w-3.5 h-3.5 text-text-muted/85 transition-transform duration-300 ml-1 ${isOpen ? 'rotate-180 text-accent' : 'group-hover:text-text-primary'}`}
                 />
             </button>
 
@@ -160,7 +160,7 @@ export default function WorkspaceDropdown() {
                                 <div className="h-px bg-border my-1.5 mx-2" />
                                 <div className="px-3 py-1.5 flex items-center gap-2">
                                     <History className="w-3 h-3 text-accent" />
-                                    <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Recent</span>
+                                    <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Recent</span>
                                 </div>
                                 <div className="space-y-0.5 max-h-[200px] overflow-y-auto custom-scrollbar">
                                     {recentWorkspaces
@@ -176,7 +176,7 @@ export default function WorkspaceDropdown() {
                                                 <div className="absolute inset-0 bg-accent/5 opacity-0 group-hover:opacity-100 transition-opacity" />
                                                 <Folder className="w-4 h-4 text-text-muted group-hover:text-accent transition-colors" />
                                                 <span className="truncate relative z-10">{recent.name}</span>
-                                                <span className="ml-auto text-[10px] text-text-muted/40 group-hover:text-text-muted truncate max-w-[80px]">
+                                                <span className="ml-auto text-[11px] text-text-muted/85 group-hover:text-text-muted truncate max-w-[80px]">
                                                     {getBasename(getDirname(recent.path))}
                                                 </span>
                                             </button>
@@ -201,7 +201,7 @@ function MenuItem({ icon: Icon, label, description, onClick }: { icon: any, labe
             <Icon className="w-4 h-4 text-text-muted group-hover:text-accent transition-colors relative z-10" />
             <div className="flex flex-col relative z-10">
                 <span className="font-medium">{label}</span>
-                {description && <span className="text-[10px] text-text-muted/60">{description}</span>}
+                {description && <span className="text-[11px] text-text-muted/90">{description}</span>}
             </div>
         </button>
     )

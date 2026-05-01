@@ -73,7 +73,7 @@ export function ScenarioSelector() {
       {isOpen && (
         <div className="absolute top-full left-0 mt-1 w-64 bg-background-secondary/95 backdrop-blur-xl border border-border/40 rounded-xl shadow-2xl z-50 overflow-hidden">
           <div className="p-1.5">
-            <div className="px-2.5 py-1.5 text-[10px] font-medium text-text-muted uppercase tracking-wider">
+            <div className="px-2.5 py-1.5 text-[11px] font-medium text-text-muted uppercase tracking-wider">
               {language === 'zh' ? '选择场景' : 'Scenario'}
             </div>
             {scenarios.map(scenario => {
@@ -98,7 +98,7 @@ export function ScenarioSelector() {
                     <div className="text-xs font-medium truncate">
                       {language === 'zh' ? scenario.nameZh : scenario.name}
                     </div>
-                    <div className="text-[10px] text-text-muted truncate">
+                    <div className="text-[11px] text-text-muted truncate">
                       {language === 'zh' ? scenario.descriptionZh : scenario.description}
                     </div>
                   </div>

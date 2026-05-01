@@ -296,7 +296,7 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
             animate={{ opacity: 1 }}
             transition={{ delay: 0.5 }}
             onClick={handleComplete}
-            className="absolute -bottom-14 left-1/2 -translate-x-1/2 text-sm text-text-muted/60 hover:text-text-muted transition-colors flex items-center gap-1.5 py-2 px-4 rounded-full hover:bg-white/5"
+            className="absolute -bottom-14 left-1/2 -translate-x-1/2 text-sm text-text-muted/90 hover:text-text-muted transition-colors flex items-center gap-1.5 py-2 px-4 rounded-full hover:bg-white/5"
           >
             <span>{isZh ? '跳过引导' : 'Skip setup'}</span>
             <ChevronRight className="w-3 h-3" />
@@ -338,7 +338,7 @@ function WelcomeStep({ isZh }: { isZh: boolean }) {
         <p className="text-text-muted max-w-lg mx-auto leading-relaxed text-lg mb-2">
           {isZh ? 'AI 驱动的下一代智能代码编辑器' : 'Next-gen AI-powered intelligent code editor'}
         </p>
-        <p className="text-text-muted/50 max-w-sm mx-auto text-sm">
+        <p className="text-text-muted/85 max-w-sm mx-auto text-sm">
           {isZh
             ? '让我们快速完成几个基础设置，即可开始编程。'
             : 'Let\'s quickly set up the basics and start coding.'}
@@ -514,7 +514,7 @@ function ThemeStep({
             <div className="flex items-center justify-between">
               <div>
                 <div className="font-bold text-sm text-text-primary">{theme.name}</div>
-                <div className="text-[10px] text-text-muted capitalize opacity-70">{theme.type}</div>
+                <div className="text-[11px] text-text-muted capitalize opacity-70">{theme.type}</div>
               </div>
             </div>
             {selectedTheme === theme.id && (
@@ -618,7 +618,7 @@ function ProviderStep({
         <div className="space-y-3">
           <label className="text-xs font-bold text-text-muted uppercase tracking-wider ml-1 flex items-center justify-between">
             <span>API Key</span>
-            <span className="text-[10px] font-normal normal-case opacity-50 bg-white/5 px-2 py-0.5 rounded-full">
+            <span className="text-[11px] font-normal normal-case opacity-50 bg-white/5 px-2 py-0.5 rounded-full">
               {isZh ? '可稍后配置' : 'Optional for now'}
             </span>
           </label>
@@ -798,7 +798,7 @@ function CompleteStep({ isZh }: { isZh: boolean }) {
           <span className="text-text-muted">{isZh ? '稍后在设置中探索' : 'Explore in Settings later'}</span>
           <div className="flex items-center gap-1">
             <kbd className="px-2 py-1 bg-black/20 rounded-md border border-border font-mono text-text-muted">Ctrl</kbd>
-            <span className="text-text-muted/50">+</span>
+            <span className="text-text-muted/85">+</span>
             <kbd className="px-2 py-1 bg-black/20 rounded-md border border-border font-mono text-text-muted">,</kbd>
           </div>
         </div>

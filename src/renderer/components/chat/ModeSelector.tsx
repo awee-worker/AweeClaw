@@ -75,7 +75,7 @@ export default function ModeSelector({ mode, onModeChange, className = '' }: Mod
       <button
         onClick={() => setIsOpen(!isOpen)}
         className={`
-          flex items-center gap-2 px-3 py-1.5 rounded-full text-[11px] font-semibold border border-transparent
+          flex items-center gap-2 px-3 py-1.5 rounded-full text-[12px] font-semibold border border-transparent
           transition-all duration-200
           ${isOpen
             ? 'bg-surface-active text-text-primary shadow-[0_0_0_2px_rgba(var(--accent)/0.15)]'
@@ -115,7 +115,7 @@ export default function ModeSelector({ mode, onModeChange, className = '' }: Mod
                   <div className={`text-xs font-medium ${isSelected ? 'text-accent' : 'text-text-primary'}`}>
                     {m.labelKey}
                   </div>
-                  <div className="text-[10px] text-text-muted truncate opacity-80">
+                  <div className="text-[11px] text-text-muted truncate opacity-80">
                     {language === 'zh' ? m.descZh : m.descEn}
                   </div>
                 </div>

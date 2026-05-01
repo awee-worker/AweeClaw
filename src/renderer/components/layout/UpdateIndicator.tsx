@@ -111,7 +111,7 @@ export default function UpdateIndicator() {
             className="absolute right-0 top-full mt-3 w-[320px] rounded-3xl bg-surface/80 backdrop-blur-3xl border border-border/50 shadow-[0_20px_50px_rgba(0,0,0,0.3)] overflow-hidden origin-top-right"
           >
             <div className="flex items-center justify-between px-6 py-4 bg-white/5">
-              <span className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em]">{t.title}</span>
+              <span className="text-[11px] font-black text-text-muted uppercase tracking-[0.2em]">{t.title}</span>
               <button
                 onClick={() => setShowPopover(false)}
                 className="p-1.5 rounded-full hover:bg-white/10 text-text-muted transition-colors"
@@ -165,7 +165,7 @@ export default function UpdateIndicator() {
                             : t.notAvailable}
                 </h4>
 
-                <div className="mt-2 flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/5 text-[11px] font-medium">
+                <div className="mt-2 flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/5 text-[12px] font-medium">
                   {status?.version && hasUpdate ? (
                     <>
                       <span className="text-text-muted opacity-60">v{currentVersion}</span>
@@ -190,7 +190,7 @@ export default function UpdateIndicator() {
                       transition={{ ease: 'circOut' }}
                     />
                   </div>
-                  <div className="flex justify-between text-[9px] font-bold text-text-muted uppercase tracking-widest opacity-60">
+                  <div className="flex justify-between text-[10px] font-bold text-text-muted uppercase tracking-widest opacity-60">
                     <span>{t.downloading}</span>
                     <span className="text-accent">{status.progress.toFixed(0)}%</span>
                   </div>
@@ -198,7 +198,7 @@ export default function UpdateIndicator() {
               )}
 
               {hasUpdate && status?.requiresManualDownload && (
-                <div className="mb-6 px-4 py-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-200/80 leading-relaxed text-center">
+                <div className="mb-6 px-4 py-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-[12px] text-amber-200/80 leading-relaxed text-center">
                   {t.manualHint}
                 </div>
               )}

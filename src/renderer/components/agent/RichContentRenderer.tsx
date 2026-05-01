@@ -69,7 +69,7 @@ const RichContentItem = memo(function RichContentItem({
 
 // =================== 内部工具：通用容器 ===================
 const ContentCard = ({ title, icon: Icon, actions, children, noPadding = false }: { title: string, icon: any, actions?: React.ReactNode, children: React.ReactNode, noPadding?: boolean }) => (
-  <div className="mt-2 text-[11px]">
+  <div className="mt-2 text-[12px]">
     <div className="flex items-center justify-between gap-1.5 text-text-muted mb-1 group/title">
       <div className="flex items-center gap-1.5">
         <Icon className="w-3 h-3" />
@@ -186,7 +186,7 @@ function CodeContent({ item, maxHeight }: { item: ToolRichContent; maxHeight: st
         </button>
       }
     >
-      <pre className={`overflow-auto ${maxHeight} text-[11px] font-mono text-text-secondary custom-scrollbar`}>
+      <pre className={`overflow-auto ${maxHeight} text-[12px] font-mono text-text-secondary custom-scrollbar`}>
         <code>{item.text}</code>
       </pre>
     </ContentCard>
@@ -223,7 +223,7 @@ function TableContent({ item, maxHeight }: { item: ToolRichContent; maxHeight: s
 function FileContent({ item }: { item: ToolRichContent }) {
   const fileName = item.title || (item.uri ? getFileName(item.uri) : 'File')
   return (
-    <div className="flex items-center gap-1.5 text-[11px] group mt-1">
+    <div className="flex items-center gap-1.5 text-[12px] group mt-1">
       <FileText className="w-3 h-3 text-text-muted" />
       <span className="font-medium text-text-primary transition-colors cursor-pointer hover:underline" title={item.uri}>{fileName}</span>
       <ExternalLink className="w-3 h-3 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:text-accent" />
@@ -233,7 +233,7 @@ function FileContent({ item }: { item: ToolRichContent }) {
 
 function LinkContent({ item }: { item: ToolRichContent }) {
   return (
-    <a href={item.url} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-[11px] group mt-1">
+    <a href={item.url} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-[12px] group mt-1">
       <LinkIcon className="w-3 h-3 text-text-muted" />
       <span className="font-medium text-text-primary hover:text-accent truncate transition-colors cursor-pointer hover:underline">{item.title || item.url}</span>
       <ExternalLink className="w-3 h-3 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -245,7 +245,7 @@ function LinkContent({ item }: { item: ToolRichContent }) {
 function JsonContent({ item, maxHeight }: { item: ToolRichContent; maxHeight: string }) {
   return (
     <ContentCard title="JSON Data" icon={Code} noPadding>
-      <div className={`font-mono text-[11px] ${maxHeight} overflow-auto custom-scrollbar`}>
+      <div className={`font-mono text-[12px] ${maxHeight} overflow-auto custom-scrollbar`}>
         <JsonHighlight data={item.text} maxHeight="none" />
       </div>
     </ContentCard>

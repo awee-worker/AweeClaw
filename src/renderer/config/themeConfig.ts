@@ -12,6 +12,7 @@ export interface ThemeColors {
   background: string
   backgroundSecondary: string
   backgroundTertiary: string
+  chatBg: string
 
   // 表面色
   surface: string
@@ -71,6 +72,7 @@ export const builtinThemes: Theme[] = [
       background: '18 18 21',         // #121215
       backgroundSecondary: '25 25 29', // #19191D (侧边栏/面板)
       backgroundTertiary: '32 32 37',  // #202025 (输入框/卡片背景)
+      chatBg: '25 25 29',
 
       // 表面：提升层次感
       surface: '25 25 29',
@@ -79,9 +81,9 @@ export const builtinThemes: Theme[] = [
       surfaceMuted: '63 63 70',
 
       // 文字：非纯白，更柔和
-      textPrimary: '242 242 247',     // 接近纯白但不刺眼
-      textSecondary: '161 161 180',   // 带冷紫调的灰色
-      textMuted: '100 100 115',
+      textPrimary: '242 242 247',
+      textSecondary: '175 175 192',
+      textMuted: '130 130 148',
       textInverted: '18 18 21',
 
       // 边框：极其细腻的微弱分割
@@ -112,15 +114,16 @@ export const builtinThemes: Theme[] = [
       background: '22 27 34',         // 主背景：深沉的蓝灰
       backgroundSecondary: '28 33 42', // 侧边栏：稍亮
       backgroundTertiary: '37 43 54',  // 输入框：明显区分
+      chatBg: '28 33 42',
 
       surface: '28 33 42',
       surfaceHover: '45 51 65',
       surfaceActive: '55 61 75',
       surfaceMuted: '70 78 94',
 
-      textPrimary: '220 225 235',     // 柔和白，不刺眼
-      textSecondary: '140 150 170',   // 清晰的灰蓝
-      textMuted: '90 100 120',
+      textPrimary: '220 225 235',
+      textSecondary: '155 165 185',
+      textMuted: '110 120 140',
       textInverted: '22 27 34',
 
       border: '45 51 65',             // 融合度高的边框
@@ -150,15 +153,16 @@ export const builtinThemes: Theme[] = [
       background: '3 3 5',            // 几乎纯黑
       backgroundSecondary: '10 10 15', // 极深蓝黑
       backgroundTertiary: '20 20 30',
+      chatBg: '10 10 15',
 
       surface: '10 10 15',
       surfaceHover: '30 30 45',
       surfaceActive: '50 50 70',
       surfaceMuted: '80 80 100',
 
-      textPrimary: '255 255 255',     // 纯白高亮
-      textSecondary: '160 160 180',   // 冷灰
-      textMuted: '100 100 120',
+      textPrimary: '255 255 255',
+      textSecondary: '175 175 195',
+      textMuted: '120 120 140',
       textInverted: '0 0 0',
 
       border: '40 40 60',
@@ -188,6 +192,7 @@ export const builtinThemes: Theme[] = [
       background: '255 255 255',      // 纯白背景
       backgroundSecondary: '248 249 250', // 极淡的灰 (侧边栏)
       backgroundTertiary: '241 243 245',  // 输入框背景
+      chatBg: '253 251 248',              // #fdfbf8 暖白
 
       surface: '255 255 255',
       surfaceHover: '241 243 245',    // Hover 显现
@@ -195,9 +200,9 @@ export const builtinThemes: Theme[] = [
       surfaceMuted: '222 226 230',
 
       // 文字：高对比度，拒绝模糊
-      textPrimary: '33 37 41',        // 近似纯黑的深灰，锐利清晰
-      textSecondary: '73 80 87',      // 中灰，辅助信息
-      textMuted: '134 142 150',       // 浅灰，仅用于不重要信息
+      textPrimary: '33 37 41',
+      textSecondary: '85 92 100',
+      textMuted: '115 122 130',
       textInverted: '255 255 255',
 
       border: '222 226 230',          // 清晰的分割线
@@ -361,6 +366,7 @@ class ThemeManager {
     root.style.setProperty('--background', colors.background)
     root.style.setProperty('--background-secondary', colors.backgroundSecondary)
     root.style.setProperty('--background-tertiary', colors.backgroundTertiary)
+    root.style.setProperty('--chat-bg', colors.chatBg)
 
     root.style.setProperty('--surface', colors.surface)
     root.style.setProperty('--surface-hover', colors.surfaceHover)

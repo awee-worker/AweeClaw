@@ -581,7 +581,7 @@ export const zh = {
   'cmd.workbench.action.quickOpen': '转到文件',
   'cmd.workbench.action.openSettings': '打开设置',
   'cmd.workbench.action.showShortcuts': '键盘快捷键',
-  'cmd.workbench.action.toggleComposer': '切换 Composer',
+  'cmd.workbench.action.toggleComposer': '切换工作流',
   'cmd.workbench.action.toggleDevTools': '切换开发者工具',
   'cmd.workbench.action.closePanel': '关闭面板',
   'cmd.explorer.revealActiveFile': '在资源管理器中显示',

@@ -146,7 +146,7 @@ const FileMatchItem = memo(function FileMatchItem({
           <HighlightedText text={fileName} matches={fileNameMatches} />
         </div>
         {dirPath && (
-          <div className="text-[10px] text-text-muted truncate opacity-60 leading-none">
+          <div className="text-[11px] text-text-muted truncate opacity-60 leading-none">
             {dirPath}
           </div>
         )}
@@ -154,7 +154,7 @@ const FileMatchItem = memo(function FileMatchItem({
 
       {/* Right Action Hint */}
       {isSelected && (
-        <div className="flex-shrink-0 text-[10px] font-mono text-text-muted bg-surface px-1.5 py-0.5 rounded border border-border opacity-0 group-hover:opacity-100 transition-opacity animate-fade-in">
+        <div className="flex-shrink-0 text-[11px] font-mono text-text-muted bg-surface px-1.5 py-0.5 rounded border border-border opacity-0 group-hover:opacity-100 transition-opacity animate-fade-in">
           ⏎ Open
         </div>
       )}
@@ -318,7 +318,7 @@ export default function QuickOpen({ onClose }: QuickOpenProps) {
             onChange={e => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={t('searchFilesPlaceholder', language)}
-            className="flex-1 bg-transparent text-xl font-medium text-text-primary placeholder:text-text-muted/40 focus:outline-none"
+            className="flex-1 bg-transparent text-xl font-medium text-text-primary placeholder:text-text-muted/85 focus:outline-none"
             spellCheck={false}
           />
           {query && (
@@ -361,7 +361,7 @@ export default function QuickOpen({ onClose }: QuickOpenProps) {
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-2.5 bg-surface/30 border-t border-border/40 text-[10px] font-medium text-text-muted/60 flex justify-between items-center shrink-0 backdrop-blur-md">
+        <div className="px-5 py-2.5 bg-surface/30 border-t border-border/40 text-[11px] font-medium text-text-muted/90 flex justify-between items-center shrink-0 backdrop-blur-md">
           <span className="font-mono tracking-tight">{matches.length} matches</span>
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-1.5">

@@ -224,7 +224,7 @@ export function DataSourceView() {
                             <button
                                 key={t}
                                 onClick={() => setShowAddForm(t)}
-                                className={`flex-1 text-[10px] py-1 rounded transition-colors ${showAddForm === t ? 'bg-accent/20 text-accent' : 'text-text-muted hover:text-text-primary hover:bg-surface-hover'}`}
+                                className={`flex-1 text-[11px] py-1 rounded transition-colors ${showAddForm === t ? 'bg-accent/20 text-accent' : 'text-text-muted hover:text-text-primary hover:bg-surface-hover'}`}
                             >
                                 {t === 'database' ? (language === 'zh' ? '数据库' : 'Database') : t === 'file' ? (language === 'zh' ? '文件' : 'File') : 'API'}
                             </button>
@@ -236,7 +236,7 @@ export function DataSourceView() {
                         value={addForm.name}
                         onChange={e => setAddForm(f => ({ ...f, name: e.target.value }))}
                         placeholder={language === 'zh' ? '名称' : 'Name'}
-                        className="w-full h-7 px-2 text-xs bg-background border border-border/50 rounded focus:outline-none focus:border-accent/50 text-text-primary placeholder:text-text-muted/50"
+                        className="w-full h-7 px-2 text-xs bg-background border border-border/50 rounded focus:outline-none focus:border-accent/50 text-text-primary placeholder:text-text-muted/85"
                     />
 
                     {showAddForm === 'database' && (
@@ -256,14 +256,14 @@ export function DataSourceView() {
                                             value={addForm.host}
                                             onChange={e => setAddForm(f => ({ ...f, host: e.target.value }))}
                                             placeholder="Host"
-                                            className="flex-1 h-7 px-2 text-xs bg-background border border-border/50 rounded focus:outline-none focus:border-accent/50 text-text-primary placeholder:text-text-muted/50"
+                                            className="flex-1 h-7 px-2 text-xs bg-background border border-border/50 rounded focus:outline-none focus:border-accent/50 text-text-primary placeholder:text-text-muted/85"
                                         />
                                         <input
                                             type="text"
                                             value={addForm.port}
                                             onChange={e => setAddForm(f => ({ ...f, port: e.target.value }))}
                                             placeholder="Port"
-                                            className="w-16 h-7 px-2 text-xs bg-background border border-border/50 rounded focus:outline-none focus:border-accent/50 text-text-primary placeholder:text-text-muted/50"
+                                            className="w-16 h-7 px-2 text-xs bg-background border border-border/50 rounded focus:outline-none focus:border-accent/50 text-text-primary placeholder:text-text-muted/85"
                                         />
                                     </div>
                                     <input
@@ -271,7 +271,7 @@ export function DataSourceView() {
                                         value={addForm.database}
                                         onChange={e => setAddForm(f => ({ ...f, database: e.target.value }))}
                                         placeholder={language === 'zh' ? '数据库名' : 'Database'}
-                                        className="w-full h-7 px-2 text-xs bg-background border border-border/50 rounded focus:outline-none focus:border-accent/50 text-text-primary placeholder:text-text-muted/50"
+                                        className="w-full h-7 px-2 text-xs bg-background border border-border/50 rounded focus:outline-none focus:border-accent/50 text-text-primary placeholder:text-text-muted/85"
                                     />
                                 </>
                             )}
@@ -284,7 +284,7 @@ export function DataSourceView() {
                             value={addForm.url}
                             onChange={e => setAddForm(f => ({ ...f, url: e.target.value }))}
                             placeholder="https://api.example.com/data"
-                            className="w-full h-7 px-2 text-xs bg-background border border-border/50 rounded focus:outline-none focus:border-accent/50 text-text-primary placeholder:text-text-muted/50"
+                            className="w-full h-7 px-2 text-xs bg-background border border-border/50 rounded focus:outline-none focus:border-accent/50 text-text-primary placeholder:text-text-muted/85"
                         />
                     )}
 

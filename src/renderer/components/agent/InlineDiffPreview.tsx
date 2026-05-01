@@ -270,14 +270,14 @@ const DiffLineItem = React.memo(({ line, language, style }: { line: DiffLine, la
         ? 'text-green-500 dark:text-green-400'
         : line.type === 'remove'
             ? 'text-red-500 dark:text-red-400'
-            : 'text-text-muted/30'
+            : 'text-text-muted/75'
 
     const symbol = line.type === 'add' ? '+' : line.type === 'remove' ? '-' : ' '
     const lineNum = line.type === 'remove' ? line.oldLineNumber : line.newLineNumber
 
     return (
         <div className={`flex ${bgClass} hover:brightness-95 dark:hover:brightness-110 transition-all`}>
-            <span className="w-5 shrink-0 text-right pr-1 text-text-muted/40 select-none text-[10px] mt-[1px]">
+            <span className="w-5 shrink-0 text-right pr-1 text-text-muted/85 select-none text-[11px] mt-[1px]">
                 {lineNum || ''}
             </span>
 
@@ -303,7 +303,7 @@ const DiffLineItem = React.memo(({ line, language, style }: { line: DiffLine, la
                             whiteSpace: 'pre',
                             overflow: 'visible',
                         }}
-                        className="!m-0 !p-0 !text-[11px] !font-mono leading-relaxed"
+                        className="!m-0 !p-0 !text-[12px] !font-mono leading-relaxed"
                         wrapLines={false}
                         PreTag="span"
                         CodeTag="span"
@@ -411,16 +411,16 @@ export default function InlineDiffPreview({
 
     if (!diffLines || displayLines.length === 0) {
         return (
-            <div className="text-[10px] text-text-muted italic px-2 py-1">
+            <div className="text-[11px] text-text-muted italic px-2 py-1">
                 {isStreaming ? 'Waiting for content...' : 'No changes'}
             </div>
         )
     }
 
     return (
-        <div className="font-mono text-[11px] leading-relaxed">
+        <div className="font-mono text-[12px] leading-relaxed">
             {isStreaming && (
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-accent/10 border-b border-accent/20 text-accent text-[10px]">
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-accent/10 border-b border-accent/20 text-accent text-[11px]">
                     <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
                     <span>Streaming changes...</span>
                 </div>
@@ -429,7 +429,7 @@ export default function InlineDiffPreview({
             {displayLines.map((line, idx) => {
                 if ('count' in line && line.type === 'ellipsis') {
                     return (
-                        <div key={`ellipsis-${idx}`} className="text-text-muted/40 text-center py-1 text-[10px] bg-surface-active/30">
+                        <div key={`ellipsis-${idx}`} className="text-text-muted/85 text-center py-1 text-[11px] bg-surface-active/30">
                             ... {line.count} {isStreaming ? 'more' : 'unchanged'} lines ...
                         </div>
                     )

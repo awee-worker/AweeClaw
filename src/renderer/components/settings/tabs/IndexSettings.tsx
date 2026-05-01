@@ -311,7 +311,7 @@ export function IndexSettings({ language }: IndexSettingsProps) {
                             onChange={(e) => setEmbeddingConfig(prev => ({ ...prev, model: e.target.value }))}
                             placeholder="e.g. Xenova/multilingual-e5-small"
                           />
-                          <p className="text-[10px] text-text-muted mt-1">
+                          <p className="text-[11px] text-text-muted mt-1">
                             {language === 'zh' ? '输入 HuggingFace 上的模型标识符' : 'Enter model identifier from HuggingFace'}
                           </p>
                         </div>

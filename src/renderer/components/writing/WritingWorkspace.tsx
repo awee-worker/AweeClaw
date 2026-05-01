@@ -83,7 +83,7 @@ export default function WritingWorkspace() {
                                 <action.icon className="w-5 h-5 text-accent" />
                             </div>
                             <span className="text-sm font-medium text-text-primary">{action.label}</span>
-                            <span className="text-[10px] text-text-muted text-center">{action.desc}</span>
+                            <span className="text-[11px] text-text-muted text-center">{action.desc}</span>
                         </button>
                     ))}
                 </div>

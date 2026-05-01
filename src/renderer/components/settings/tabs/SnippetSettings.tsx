@@ -286,7 +286,7 @@ export function SnippetSettings({ language }: SnippetSettingsProps) {
           <div>
             <label className="block text-xs text-text-muted mb-1.5">
               {language === 'zh' ? '代码模板 *' : 'Code Template *'}
-              <span className="ml-2 text-text-muted/60">
+              <span className="ml-2 text-text-muted/90">
                 {language === 'zh' ? '支持 $1, ${1:placeholder} 占位符' : 'Supports $1, ${1:placeholder} placeholders'}
               </span>
             </label>
@@ -351,7 +351,7 @@ export function SnippetSettings({ language }: SnippetSettingsProps) {
                 <div className="flex items-center justify-between px-4 py-3 border-b border-border/30 bg-surface/30">
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="text-sm font-bold text-text-primary truncate">{snippet.name}</span>
-                    <code className="px-1.5 py-0.5 text-[10px] bg-accent/10 text-accent rounded font-mono border border-accent/10">
+                    <code className="px-1.5 py-0.5 text-[11px] bg-accent/10 text-accent rounded font-mono border border-accent/10">
                       {snippet.prefix}
                     </code>
                   </div>
@@ -376,7 +376,7 @@ export function SnippetSettings({ language }: SnippetSettingsProps) {
                     toggleExpand(snippet.id)
                   }}
                 >
-                  <pre className={`p-4 text-[11px] font-mono text-text-secondary leading-relaxed opacity-80 group-hover:opacity-100 transition-all ${
+                  <pre className={`p-4 text-[12px] font-mono text-text-secondary leading-relaxed opacity-80 group-hover:opacity-100 transition-all ${
                     expandedIds.has(snippet.id) ? 'max-h-none' : 'max-h-[120px]'
                   }`}>
                     {expandedIds.has(snippet.id) ? snippet.body : snippet.body.split('\n').slice(0, 8).join('\n')}
@@ -384,7 +384,7 @@ export function SnippetSettings({ language }: SnippetSettingsProps) {
                   {/* Fade out bottom or expand indicator */}
                   {!expandedIds.has(snippet.id) && snippet.body.split('\n').length > 8 && (
                     <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-surface/30 to-transparent flex items-end justify-center pb-2">
-                      <span className="text-[10px] text-text-muted/60 font-medium">Click to expand...</span>
+                      <span className="text-[11px] text-text-muted/90 font-medium">Click to expand...</span>
                     </div>
                   )}
                 </div>
@@ -392,16 +392,16 @@ export function SnippetSettings({ language }: SnippetSettingsProps) {
                 {/* Footer Tags */}
                 <div className="px-4 py-2 bg-surface/20 border-t border-border/30 flex gap-1.5 overflow-hidden">
                   {snippet.languages.length === 0 ? (
-                    <span className="text-[10px] text-text-muted/60 font-medium">All Languages</span>
+                    <span className="text-[11px] text-text-muted/90 font-medium">All Languages</span>
                   ) : (
                     snippet.languages.slice(0, 3).map(lang => (
-                      <span key={lang} className="px-1.5 py-0.5 text-[9px] bg-white/5 text-text-muted rounded border border-white/5">
+                      <span key={lang} className="px-1.5 py-0.5 text-[10px] bg-white/5 text-text-muted rounded border border-white/5">
                         {lang}
                       </span>
                     ))
                   )}
                   {snippet.languages.length > 3 && (
-                    <span className="text-[9px] text-text-muted/60 self-center">+{snippet.languages.length - 3}</span>
+                    <span className="text-[10px] text-text-muted/90 self-center">+{snippet.languages.length - 3}</span>
                   )}
                 </div>
               </div>

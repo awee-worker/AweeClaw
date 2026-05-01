@@ -70,7 +70,7 @@ export default memo(function BottomBarPopover({
             >
                 {icon}
                 {badge !== undefined && (
-                    <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] flex items-center justify-center px-0.5 text-[9px] font-medium bg-accent text-white rounded-full">
+                    <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] flex items-center justify-center px-0.5 text-[10px] font-medium bg-accent text-white rounded-full">
                         {badge}
                     </span>
                 )}
@@ -86,7 +86,7 @@ export default memo(function BottomBarPopover({
                     {/* 面板头部 */}
                     {title && (
                         <div className="flex items-center justify-between px-4 py-3 border-b border-border/50 bg-white/[0.02] z-10 shrink-0">
-                            <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider">{title}</span>
+                            <span className="text-[12px] font-bold text-text-muted uppercase tracking-wider">{title}</span>
                             <button
                                 onClick={handleClose}
                                 className="p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-white/10 transition-colors"

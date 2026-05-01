@@ -193,7 +193,7 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
       <button
         onClick={() => setIsOpen((prev) => !prev)}
         className={`
-          inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium border border-transparent
+          inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-medium border border-transparent
           transition-all duration-200
           ${isOpen
             ? 'bg-surface-active text-text-primary shadow-[0_0_0_2px_rgba(var(--accent)/0.15)]'
@@ -201,7 +201,7 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
           }
         `}
         >
-        <span className="text-[10px] grayscale opacity-80 flex-shrink-0">{getIcon(currentProviderGroup.providerId)}</span>
+        <span className="text-[11px] grayscale opacity-80 flex-shrink-0">{getIcon(currentProviderGroup.providerId)}</span>
         <span className="truncate max-w-[200px]" title={`${currentProviderGroup.providerName}/${currentModel.name}`}>
           {currentProviderGroup.providerName}/{currentModel.name.split('/').pop()}
         </span>
@@ -220,7 +220,7 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
                 placeholder="搜索模型或供应商..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="w-full bg-background border border-border rounded-lg pl-8 pr-3 py-1.5 text-xs text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-accent/40 focus:ring-1 focus:ring-accent/20 transition-all custom-scrollbar"
+                className="w-full bg-background border border-border rounded-lg pl-8 pr-3 py-1.5 text-xs text-text-primary placeholder:text-text-muted/85 focus:outline-none focus:border-accent/40 focus:ring-1 focus:ring-accent/20 transition-all custom-scrollbar"
               />
             </div>
           </div>
@@ -254,7 +254,7 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
                 <div className="py-6 text-center text-xs text-text-muted">无相关模型</div>
               ) : (
                 <>
-                  <div className="px-2 py-1.5 text-[10px] font-bold text-text-muted/80 uppercase tracking-wider flex items-center gap-1.5 sticky top-0 bg-surface z-10 border-b border-border/30">
+                  <div className="px-2 py-1.5 text-[11px] font-bold text-text-muted/90 uppercase tracking-wider flex items-center gap-1.5 sticky top-0 bg-surface z-10 border-b border-border/30">
                     <span className="grayscale">{getIcon(visibleProviderGroup.providerId)}</span>
                     {visibleProviderGroup.providerName}
                   </div>
@@ -278,7 +278,7 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
                           <span className="flex items-center gap-2 min-w-0">
                             <span className="truncate" title={model.name}>{model.name}</span>
                             {model.isCustom && (
-                              <span className="flex-shrink-0 px-1.5 py-0.5 text-[9px] bg-purple-500/10 text-purple-500 rounded border border-purple-500/20">
+                              <span className="flex-shrink-0 px-1.5 py-0.5 text-[10px] bg-purple-500/10 text-purple-500 rounded border border-purple-500/20">
                                 Custom
                               </span>
                             )}

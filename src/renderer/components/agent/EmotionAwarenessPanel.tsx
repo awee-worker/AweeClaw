@@ -106,7 +106,7 @@ export const EmotionAwarenessPanel: React.FC = () => {
                     {t('emotion.welcome.subtitle', language)}
                   </p>
                   <div className="pt-1">
-                    <p className="text-[10px] text-text-muted mb-2">
+                    <p className="text-[11px] text-text-muted mb-2">
                       {t('emotion.welcome.ctaHint', language)}
                     </p>
                     <button
@@ -135,7 +135,7 @@ export const EmotionAwarenessPanel: React.FC = () => {
                 {t('emotion.trend', language)}
               </h3>
               <div className="h-20 rounded-lg border border-border bg-surface/20 flex items-center justify-center">
-                <p className="text-[10px] text-text-muted">
+                <p className="text-[11px] text-text-muted">
                   {t('emotion.welcome.trendPlaceholder', language)}
                 </p>
               </div>
@@ -191,7 +191,7 @@ export const EmotionAwarenessPanel: React.FC = () => {
                     key={level}
                     onClick={() => setSensitivity(level)}
                     className={cn(
-                      "px-2 py-0.5 rounded text-[10px] transition-colors",
+                      "px-2 py-0.5 rounded text-[11px] transition-colors",
                       settings.sensitivity === level
                         ? 'bg-accent/15 text-accent'
                         : 'text-text-muted hover:bg-white/5'
@@ -296,7 +296,7 @@ export const EmotionAwarenessPanel: React.FC = () => {
                           key={level}
                           onClick={() => setSensitivity(level)}
                           className={cn(
-                            "px-2 py-0.5 rounded text-[10px] transition-colors",
+                            "px-2 py-0.5 rounded text-[11px] transition-colors",
                             settings.sensitivity === level
                               ? 'bg-accent/15 text-accent'
                               : 'text-text-muted hover:bg-white/5'
@@ -337,7 +337,7 @@ const StatCard: React.FC<{
   <div className="p-3 bg-surface/50 rounded-lg border border-white/5">
     <div className="flex items-center gap-1.5 mb-1.5" style={{ color }}>
       {icon}
-      <span className="text-[10px] font-medium text-text-muted">{label}</span>
+      <span className="text-[11px] font-medium text-text-muted">{label}</span>
     </div>
     <p className="text-lg font-semibold text-text-primary leading-none">{value}</p>
   </div>
@@ -362,7 +362,7 @@ const SettingToggle: React.FC<{
     </div>
     <div className="flex-1 text-left">
       <p className="text-xs text-text-primary">{label}</p>
-      <p className="text-[10px] text-text-muted">{description}</p>
+      <p className="text-[11px] text-text-muted">{description}</p>
     </div>
     <div className={cn(
       "w-8 h-4 rounded-full transition-colors relative",
@@ -474,7 +474,7 @@ const EmotionTimeline: React.FC<{ history: EmotionHistory[]; inflectionPoints: I
                 title={inflections.map(renderInflectionTooltip).join('\n')}
               />
               <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover/marker:block z-20 pointer-events-none">
-                <div className="bg-background-secondary border border-white/10 rounded px-2 py-1.5 text-[9px] text-text-secondary shadow-lg max-w-[180px]">
+                <div className="bg-background-secondary border border-white/10 rounded px-2 py-1.5 text-[10px] text-text-secondary shadow-lg max-w-[180px]">
                   {inflections.map((ip, j) => (
                     <div key={j}>{renderInflectionTooltip(ip)}</div>
                   ))}
@@ -504,7 +504,7 @@ const EmotionTimeline: React.FC<{ history: EmotionHistory[]; inflectionPoints: I
             >
               {/* Tooltip */}
               <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block z-10">
-                <div className="bg-background-secondary border border-white/10 rounded px-2 py-1 text-[9px] text-text-secondary whitespace-nowrap shadow-lg">
+                <div className="bg-background-secondary border border-white/10 rounded px-2 py-1 text-[10px] text-text-secondary whitespace-nowrap shadow-lg">
                   {new Date(window.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   {window.count > 0 && (
                     <span className="ml-1" style={{ color }}>
@@ -519,7 +519,7 @@ const EmotionTimeline: React.FC<{ history: EmotionHistory[]; inflectionPoints: I
       </div>
 
       {/* 时间标签 */}
-      <div className="flex justify-between text-[9px] text-text-muted px-0.5">
+      <div className="flex justify-between text-[10px] text-text-muted px-0.5">
         <span>{t('emotion.timeAgo12h', language)}</span>
         <span>{t('emotion.timeAgo6h', language)}</span>
         <span>{t('emotion.timeNow', language)}</span>
@@ -530,7 +530,7 @@ const EmotionTimeline: React.FC<{ history: EmotionHistory[]; inflectionPoints: I
         {(['focused', 'flow', 'frustrated', 'tired', 'stressed'] as EmotionState[]).map(state => (
           <div key={state} className="flex items-center gap-1">
             <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: EMOTION_COLORS[state] }} />
-            <span className="text-[9px] text-text-muted">
+            <span className="text-[10px] text-text-muted">
               {state === 'focused' ? t('emotion.state.focused', language) :
                state === 'flow' ? t('emotion.state.flow', language) :
                state === 'frustrated' ? t('emotion.state.frustrated', language) :

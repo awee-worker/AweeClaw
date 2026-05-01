@@ -54,7 +54,7 @@ export const LazyImage: React.FC<LazyImageProps> = ({
             {/* 骨架屏占位 */}
             {!isLoaded && (
                 <div className={`absolute inset-0 flex items-center justify-center bg-surface-muted animate-pulse ${placeholderClassName}`}>
-                    <ImageIcon className="w-6 h-6 text-text-muted/30" />
+                    <ImageIcon className="w-6 h-6 text-text-muted/75" />
                 </div>
             )}
 

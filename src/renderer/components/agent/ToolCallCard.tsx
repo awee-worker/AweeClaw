@@ -314,7 +314,7 @@ export function ExpandablePreviewContainer({
                     onClick={(e) => { e.stopPropagation(); setExpanded(true); }}
                     className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-surface/80 via-surface/40 to-transparent flex items-end justify-center pb-2 cursor-pointer transition-all opacity-90 hover:opacity-100"
                 >
-                    <div className="flex items-center gap-1 font-medium pb-0.5 pointer-events-none bg-surface-elevated text-text-muted hover:text-accent px-3 py-1 rounded-full shadow-sm border border-border/40 text-[10px] transition-colors">
+                    <div className="flex items-center gap-1 font-medium pb-0.5 pointer-events-none bg-surface-elevated text-text-muted hover:text-accent px-3 py-1 rounded-full shadow-sm border border-border/40 text-[11px] transition-colors">
                         <ChevronDown className="w-3 h-3" />
                         {t('toolExpand', language as any, { height: heightValue })}
                     </div>
@@ -325,7 +325,7 @@ export function ExpandablePreviewContainer({
                     onClick={(e) => { e.stopPropagation(); setExpanded(false); }}
                     className="w-full text-center py-2 mt-1 cursor-pointer flex items-center justify-center"
                 >
-                    <div className="flex items-center gap-1 font-medium pointer-events-none bg-surface-elevated text-text-muted hover:text-accent px-4 py-1 rounded-full shadow-sm border border-border/40 text-[10px] transition-colors">
+                    <div className="flex items-center gap-1 font-medium pointer-events-none bg-surface-elevated text-text-muted hover:text-accent px-4 py-1 rounded-full shadow-sm border border-border/40 text-[11px] transition-colors">
                         <ChevronDown className="w-3 h-3 rotate-180 pointer-events-none" />
                         {t('toolCollapse', language as any)}
                     </div>
@@ -359,7 +359,7 @@ function ToolPreview({
     const stringResult = typeof toolCall.result === 'string' ? toolCall.result : ''
     const pendingPreview = (label = 'Waiting for output...') => (
         <ExpandablePreviewContainer language={language}>
-            <div className="p-2 text-[11px] text-text-muted italic">
+            <div className="p-2 text-[12px] text-text-muted italic">
                 {label}
             </div>
             <PendingPreviewSkeleton />
@@ -374,7 +374,7 @@ function ToolPreview({
         const wasDirectExecution = !!meta?.executionMode && meta.executionMode !== 'terminal'
 
         return (
-            <div className="font-mono text-[11px] space-y-1">
+            <div className="font-mono text-[12px] space-y-1">
                 <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5 text-text-muted min-w-0">
                         <span className="text-accent/60 select-none flex-shrink-0">$</span>
@@ -401,12 +401,12 @@ function ToolPreview({
                             terminalManager.setActiveTerminal(terminalId)
                             window.setTimeout(() => terminalManager.setActiveTerminal(terminalId), 0)
                         }}
-                        className={`flex items-center gap-1 flex-shrink-0 ml-2 text-[10px] px-1.5 py-0.5 rounded transition-colors ${
+                        className={`flex items-center gap-1 flex-shrink-0 ml-2 text-[11px] px-1.5 py-0.5 rounded transition-colors ${
                             isRunning
                                 ? 'text-accent bg-accent/10'
                                 : hasLiveTerminal
                                     ? 'text-text-muted hover:text-text-primary hover:bg-surface-hover'
-                                    : 'text-text-muted/60 bg-surface-elevated/60 cursor-not-allowed'
+                                    : 'text-text-muted/90 bg-surface-elevated/60 cursor-not-allowed'
                         }`}
                         title={t('tool.viewInTerminal', language as any)}
                     >
@@ -422,7 +422,7 @@ function ToolPreview({
                 </div>
                 {stringResult ? (
                     <ExpandablePreviewContainer language={language}>
-                        <div className="text-text-muted/80 whitespace-pre-wrap break-all p-2 font-mono text-[11px]">
+                        <div className="text-text-muted/90 whitespace-pre-wrap break-all p-2 font-mono text-[12px]">
                             {stringResult.slice(0, 5000)}
                             {stringResult.length > 5000 && <span className="opacity-50 inline-block ml-1">... (truncated)</span>}
                         </div>
@@ -440,12 +440,12 @@ function ToolPreview({
         const badgeClass = args.is_ctrl ? 'bg-orange-500/10 text-orange-400' : 'bg-surface-elevated text-text-secondary'
 
         return (
-            <div className="font-mono text-[11px] space-y-1">
+            <div className="font-mono text-[12px] space-y-1">
                 <div className="flex items-center gap-2">
                     <Terminal className="w-3.5 h-3.5 text-text-muted" />
                     <span className="text-text-muted">Sent input:</span>
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${badgeClass}`}>{display}</span>
-                    <span className="text-text-muted/50 text-[10px] ml-1">to {asString(args.terminal_id)}</span>
+                    <span className={`px-1.5 py-0.5 rounded text-[11px] font-medium ${badgeClass}`}>{display}</span>
+                    <span className="text-text-muted/85 text-[11px] ml-1">to {asString(args.terminal_id)}</span>
                 </div>
             </div>
         )
@@ -453,11 +453,11 @@ function ToolPreview({
 
     if (effectiveName === 'stop_terminal') {
         return (
-            <div className="font-mono text-[11px] space-y-1 text-red-400">
+            <div className="font-mono text-[12px] space-y-1 text-red-400">
                 <div className="flex items-center gap-2">
                     <Terminal className="w-3.5 h-3.5 opacity-80" />
                     <span className="font-medium">Force terminated process</span>
-                    <span className="opacity-50 text-[10px]">{asString(args.terminal_id)}</span>
+                    <span className="opacity-50 text-[11px]">{asString(args.terminal_id)}</span>
                 </div>
             </div>
         )
@@ -465,15 +465,15 @@ function ToolPreview({
 
     if (effectiveName === 'read_terminal_output') {
         return (
-            <div className="font-mono text-[11px] space-y-1">
+            <div className="font-mono text-[12px] space-y-1">
                 <div className="flex items-center gap-2 text-text-muted">
                     <Terminal className="w-3.5 h-3.5 text-accent/70" />
                     <span>Read terminal logs</span>
-                    <span className="opacity-50 text-[10px]">{asString(args.terminal_id)}</span>
+                    <span className="opacity-50 text-[11px]">{asString(args.terminal_id)}</span>
                 </div>
                 {stringResult.length > 0 ? (
                     <ExpandablePreviewContainer language={language}>
-                        <div className="text-text-muted/80 whitespace-pre-wrap break-all p-2 bg-surface/50">
+                        <div className="text-text-muted/90 whitespace-pre-wrap break-all p-2 bg-surface/50">
                             {stringResult}
                         </div>
                     </ExpandablePreviewContainer>
@@ -489,7 +489,7 @@ function ToolPreview({
         const searchType = effectiveName === 'codebase_search' ? 'Semantic' : effectiveName === 'web_search' ? 'Web' : effectiveName === 'uiux_search' ? 'UI/UX' : 'Files'
 
         return (
-            <div className="space-y-1 text-[11px]">
+            <div className="space-y-1 text-[12px]">
                 <div className="flex items-center gap-1.5 text-text-muted">
                     <Search className="w-3 h-3" />
                     <span>{searchType}:</span>
@@ -512,7 +512,7 @@ function ToolPreview({
         const displayName = paths.length > 1 ? getPathSummary(paths) : getPathDisplayName(path) || '.'
 
         return (
-            <div className="space-y-1 text-[11px]">
+            <div className="space-y-1 text-[12px]">
                 <div className="flex items-center gap-1.5 text-text-muted">
                     <FileCode className="w-3 h-3" />
                     <span className="text-text-primary font-medium" title={path || undefined}>{displayName}</span>
@@ -544,7 +544,7 @@ function ToolPreview({
         if (newContent || isStreaming) {
             return (
                 <div className="space-y-1">
-                    <div className="flex items-center flex-wrap gap-2 text-[11px] text-text-muted">
+                    <div className="flex items-center flex-wrap gap-2 text-[12px] text-text-muted">
                         <FileCode className="w-3 h-3 flex-shrink-0" />
                         {filePath ? (
                             <span className="font-medium text-text-primary transition-colors break-all" title={filePath}>
@@ -564,7 +564,7 @@ function ToolPreview({
                         {isTruncated && !isStreaming && <span className="text-amber-500">(truncated)</span>}
                     </div>
                     {isLargeWrite && !isStreaming ? (
-                        <div className="ml-1 rounded-md border border-amber-500/20 bg-amber-500/5 px-2 py-2 text-[11px] text-text-muted">
+                        <div className="ml-1 rounded-md border border-amber-500/20 bg-amber-500/5 px-2 py-2 text-[12px] text-text-muted">
                             Large file preview deferred. Open the file to inspect the full content safely.
                         </div>
                     ) : (
@@ -580,7 +580,7 @@ function ToolPreview({
                     )}
                     {stringResult && !isStreaming && (
                         <ExpandablePreviewContainer language={language} maxHeight="max-h-[100px]">
-                            <div className="p-2 text-[11px] text-text-muted">
+                            <div className="p-2 text-[12px] text-text-muted">
                                 {stringResult.slice(0, 1000)}
                             </div>
                         </ExpandablePreviewContainer>
@@ -599,7 +599,7 @@ function ToolPreview({
 
         return (
             <div className="space-y-1">
-                <div className="flex items-center gap-1.5 text-[11px]">
+                <div className="flex items-center gap-1.5 text-[12px]">
                     <FileCode className={`w-3 h-3 ${isDelete ? 'text-status-error' : 'text-status-success'}`} />
                     <span className={`font-medium ${isDelete ? 'text-status-error' : 'text-status-success'}`}>
                         {isDelete ? 'Delete' : 'Create'} {isFolder ? 'folder' : 'file'}:
@@ -608,7 +608,7 @@ function ToolPreview({
                 </div>
                 {stringResult && (
                     <ExpandablePreviewContainer language={language} maxHeight="max-h-[100px]">
-                        <div className="p-2 text-[11px] text-text-muted">
+                        <div className="p-2 text-[12px] text-text-muted">
                             <TextWithFileLinks text={stringResult.slice(0, 1000)} />
                         </div>
                     </ExpandablePreviewContainer>
@@ -630,7 +630,7 @@ function ToolPreview({
 
         return (
             <div className="space-y-1 mt-1">
-                <div className="flex items-center gap-1.5 text-[11px] text-text-muted">
+                <div className="flex items-center gap-1.5 text-[12px] text-text-muted">
                     <FileCode className="w-3 h-3" />
                     <span className="font-medium text-text-primary transition-colors hover:underline cursor-pointer" title={paths.join('\n') || undefined}>
                         <TextWithFileLinks text={displayName} />
@@ -642,7 +642,7 @@ function ToolPreview({
                             style={syntaxStyle}
                             language={filePath ? guessLanguage(filePath) : 'typescript'}
                             PreTag="div"
-                            className="!bg-transparent !p-2 !m-0 !text-[11px] leading-relaxed font-mono"
+                            className="!bg-transparent !p-2 !m-0 !text-[12px] leading-relaxed font-mono"
                             customStyle={{ background: 'transparent', margin: 0, padding: 0, border: 'none', boxShadow: 'none', fontFamily: 'inherit' }}
                             wrapLines
                             wrapLongLines
@@ -670,7 +670,7 @@ function ToolPreview({
 
         return (
             <div className="space-y-1">
-                <div className="flex items-center gap-1.5 text-[11px] text-text-muted">
+                <div className="flex items-center gap-1.5 text-[12px] text-text-muted">
                     <Search className="w-3 h-3" />
                     <a href={url} target="_blank" rel="noreferrer" className="text-text-primary font-medium hover:underline truncate hover:text-accent transition-colors">
                         {hostname}
@@ -678,7 +678,7 @@ function ToolPreview({
                 </div>
                 {stringResult ? (
                     <ExpandablePreviewContainer language={language}>
-                        <div className="p-2 text-[11px] text-text-secondary whitespace-pre-wrap break-all">
+                        <div className="p-2 text-[12px] text-text-secondary whitespace-pre-wrap break-all">
                             {stringResult.slice(0, 5000)}
                             {stringResult.length > 5000 && <span className="opacity-50 mt-1 block">... (truncated)</span>}
                         </div>
@@ -696,12 +696,12 @@ function ToolPreview({
 
         return (
             <div className="space-y-1">
-                <div className="flex items-center gap-1.5 text-[11px] text-text-muted">
+                <div className="flex items-center gap-1.5 text-[12px] text-text-muted">
                     <FileCode className="w-3 h-3" />
                     <span className="font-medium text-text-primary transition-colors hover:underline cursor-pointer" title={path || undefined}>
                         <TextWithFileLinks text={getFileName(path) || '<unknown path>'} />
                     </span>
-                    {line && <span className="text-text-muted/60">:{line}</span>}
+                    {line && <span className="text-text-muted/90">:{line}</span>}
                 </div>
                 {toolCall.result ? (
                     <ExpandablePreviewContainer language={language}>
@@ -718,7 +718,7 @@ function ToolPreview({
     const filteredArgs = Object.fromEntries(Object.entries(args).filter(([key]) => !key.startsWith('_')))
 
     return (
-        <div className="space-y-1 mt-1 text-[11px]">
+        <div className="space-y-1 mt-1 text-[12px]">
             {hasArgs && (
                 <>
                     <div className="flex items-center gap-1.5 text-text-muted">
@@ -823,7 +823,7 @@ const ToolCallCard = memo(function ToolCallCard({
                             <AlertTriangle className="w-3 h-3" />
                             Error
                         </div>
-                        <p className="text-[11px] text-red-300 font-mono break-all">{toolCall.error}</p>
+                        <p className="text-[12px] text-red-300 font-mono break-all">{toolCall.error}</p>
                     </div>
                 )}
             </div>
@@ -839,7 +839,7 @@ const ToolCallCard = memo(function ToolCallCard({
             )}
 
             <div className="flex min-h-[32px] items-center gap-2 py-1.5 cursor-pointer select-none" onClick={handleToggleExpanded}>
-                <motion.div animate={{ rotate: isExpanded ? 90 : 0 }} transition={{ duration: 0.15 }} className="shrink-0 text-text-muted/40 hover:text-text-muted">
+                <motion.div animate={{ rotate: isExpanded ? 90 : 0 }} transition={{ duration: 0.15 }} className="shrink-0 text-text-muted/85 hover:text-text-muted">
                     <ChevronDown className="w-3.5 h-3.5 -rotate-90" />
                 </motion.div>
 

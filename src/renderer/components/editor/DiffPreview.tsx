@@ -108,7 +108,7 @@ export const DiffPreview = memo(function DiffPreview({
               {t('reviewChanges', language)}
             </span>
             {isPending && (
-              <span className="px-1.5 py-0.5 text-[10px] font-medium bg-amber-500/10 text-amber-500 border border-amber-500/20 rounded">
+              <span className="px-1.5 py-0.5 text-[11px] font-medium bg-amber-500/10 text-amber-500 border border-amber-500/20 rounded">
                 {t('pending', language)}
               </span>
             )}

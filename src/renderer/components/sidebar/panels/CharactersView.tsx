@@ -113,7 +113,7 @@ export function CharactersView() {
             <div className="flex-1 overflow-y-auto">
                 {characters.length === 0 ? (
                     <div className="flex flex-col items-center justify-center gap-3 px-4 py-8">
-                        <Users className="w-10 h-10 text-text-muted/30" />
+                        <Users className="w-10 h-10 text-text-muted/75" />
                         <p className="text-xs text-text-muted text-center">
                             {language === 'zh' ? '暂无角色，点击 + 创建' : 'No characters yet. Click + to create one.'}
                         </p>
@@ -131,7 +131,7 @@ export function CharactersView() {
                             )}
                             <User className="w-3.5 h-3.5 text-accent/70 flex-shrink-0" />
                             <span className="text-sm text-text-primary flex-1 truncate">{char.name}</span>
-                            <span className={`text-[10px] ${roleColor(char.role)}`}>{roleLabel(char.role)}</span>
+                            <span className={`text-[11px] ${roleColor(char.role)}`}>{roleLabel(char.role)}</span>
                         </button>
 
                         {expandedId === char.id && (
@@ -142,7 +142,7 @@ export function CharactersView() {
                                 {char.traits && (
                                     <div className="flex flex-wrap gap-1">
                                         {char.traits.split(',').map((trait, i) => (
-                                            <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-accent/10 text-accent/80">
+                                            <span key={i} className="text-[11px] px-1.5 py-0.5 rounded bg-accent/10 text-accent/80">
                                                 {trait.trim()}
                                             </span>
                                         ))}
@@ -189,7 +189,7 @@ export function CharactersView() {
                         value={addForm.name}
                         onChange={e => setAddForm(f => ({ ...f, name: e.target.value }))}
                         placeholder={language === 'zh' ? '角色名称' : 'Character name'}
-                        className="w-full h-7 px-2 text-xs bg-background border border-border/50 rounded focus:outline-none focus:border-accent/50 text-text-primary placeholder:text-text-muted/50"
+                        className="w-full h-7 px-2 text-xs bg-background border border-border/50 rounded focus:outline-none focus:border-accent/50 text-text-primary placeholder:text-text-muted/85"
                     />
 
                     <div className="flex gap-1">
@@ -197,7 +197,7 @@ export function CharactersView() {
                             <button
                                 key={r.value}
                                 onClick={() => setAddForm(f => ({ ...f, role: r.value }))}
-                                className={`flex-1 text-[10px] py-1 rounded transition-colors ${addForm.role === r.value ? 'bg-accent/20 text-accent' : 'text-text-muted hover:text-text-primary hover:bg-surface-hover'}`}
+                                className={`flex-1 text-[11px] py-1 rounded transition-colors ${addForm.role === r.value ? 'bg-accent/20 text-accent' : 'text-text-muted hover:text-text-primary hover:bg-surface-hover'}`}
                             >
                                 {language === 'zh' ? r.labelZh : r.label}
                             </button>
@@ -209,7 +209,7 @@ export function CharactersView() {
                         onChange={e => setAddForm(f => ({ ...f, description: e.target.value }))}
                         placeholder={language === 'zh' ? '角色描述' : 'Description'}
                         rows={2}
-                        className="w-full px-2 py-1.5 text-xs bg-background border border-border/50 rounded focus:outline-none focus:border-accent/50 text-text-primary placeholder:text-text-muted/50 resize-none"
+                        className="w-full px-2 py-1.5 text-xs bg-background border border-border/50 rounded focus:outline-none focus:border-accent/50 text-text-primary placeholder:text-text-muted/85 resize-none"
                     />
 
                     <input
@@ -217,7 +217,7 @@ export function CharactersView() {
                         value={addForm.traits}
                         onChange={e => setAddForm(f => ({ ...f, traits: e.target.value }))}
                         placeholder={language === 'zh' ? '特征（逗号分隔）' : 'Traits (comma separated)'}
-                        className="w-full h-7 px-2 text-xs bg-background border border-border/50 rounded focus:outline-none focus:border-accent/50 text-text-primary placeholder:text-text-muted/50"
+                        className="w-full h-7 px-2 text-xs bg-background border border-border/50 rounded focus:outline-none focus:border-accent/50 text-text-primary placeholder:text-text-muted/85"
                     />
 
                     <Button

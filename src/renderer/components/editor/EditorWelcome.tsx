@@ -42,7 +42,7 @@ export function EditorWelcome() {
               {item.keys && (
                 <span className="flex items-center gap-1">
                   {item.keys.map((key) => (
-                    <kbd key={key} className="rounded border border-border bg-surface/60 px-1.5 py-0.5 font-mono text-[10px] text-text-muted">
+                    <kbd key={key} className="rounded border border-border bg-surface/60 px-1.5 py-0.5 font-mono text-[11px] text-text-muted">
                       {key}
                     </kbd>
                   ))}

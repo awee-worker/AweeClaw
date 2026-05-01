@@ -17,7 +17,7 @@ function ChatContextStats({ stats, language, compact = false }: ChatContextStats
 
   if (compact) {
     return (
-      <div className="flex items-center gap-3 text-[10px] text-text-muted select-none">
+      <div className="flex items-center gap-3 text-[11px] text-text-muted select-none">
         {/* 上下文使用量 */}
         <div
           className="flex items-center gap-1.5"
@@ -61,7 +61,7 @@ function ChatContextStats({ stats, language, compact = false }: ChatContextStats
   }
 
   return (
-    <div className="px-4 py-1.5 border-b border-border bg-transparent flex items-center gap-4 text-[10px] text-text-muted animate-fade-in select-none">
+    <div className="px-4 py-1.5 border-b border-border bg-transparent flex items-center gap-4 text-[11px] text-text-muted animate-fade-in select-none">
       {/* 上下文使用量 */}
       <div
         className="flex items-center gap-1.5"

@@ -64,7 +64,7 @@ const FileStatusBadge = memo(function FileStatusBadge({ status }: { status: stri
         untracked: { color: 'text-green-400', label: 'U' },
     }
     const c = config[status] || { color: 'text-text-muted', label: '?' }
-    return <span className={`text-[10px] font-mono ${c.color} w-4 text-center flex-shrink-0`}>{c.label}</span>
+    return <span className={`text-[11px] font-mono ${c.color} w-4 text-center flex-shrink-0`}>{c.label}</span>
 })
 
 // 文件项组件
@@ -98,7 +98,7 @@ const FileItem = memo(function FileItem({
             <FileStatusBadge status={status} />
             <div className="flex-1 min-w-0 ml-2">
                 <span className="text-xs text-text-primary truncate block">{fileName}</span>
-                {dirPath && <span className="text-[10px] text-text-muted truncate block opacity-60">{dirPath}</span>}
+                {dirPath && <span className="text-[11px] text-text-muted truncate block opacity-60">{dirPath}</span>}
             </div>
             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                 {staged ? (
@@ -173,12 +173,12 @@ const BranchItem = memo(function BranchItem({
             {(branch.ahead && branch.ahead > 0) || (branch.behind && branch.behind > 0) ? (
                 <div className="flex items-center gap-1 mr-2">
                     {branch.ahead && branch.ahead > 0 ? (
-                        <span className="text-[10px] text-green-400 flex items-center">
+                        <span className="text-[11px] text-green-400 flex items-center">
                             <ArrowUp className="w-2.5 h-2.5" />{branch.ahead}
                         </span>
                     ) : null}
                     {branch.behind && branch.behind > 0 ? (
-                        <span className="text-[10px] text-orange-400 flex items-center">
+                        <span className="text-[11px] text-orange-400 flex items-center">
                             <ArrowDown className="w-2.5 h-2.5" />{branch.behind}
                         </span>
                     ) : null}
@@ -256,9 +256,9 @@ const CommitItem = memo(function CommitItem({
                 <div className="flex-1 min-w-0">
                     <div className="text-xs text-text-primary truncate font-medium">{commit.message}</div>
                     <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-[10px] text-accent font-mono">{commit.shortHash}</span>
-                        <span className="text-[10px] text-text-muted">{commit.author}</span>
-                        <span className="text-[10px] text-text-muted opacity-60">{timeAgo}</span>
+                        <span className="text-[11px] text-accent font-mono">{commit.shortHash}</span>
+                        <span className="text-[11px] text-text-muted">{commit.author}</span>
+                        <span className="text-[11px] text-text-muted opacity-60">{timeAgo}</span>
                     </div>
                 </div>
                 <div className="relative" ref={menuRef}>
@@ -327,8 +327,8 @@ const StashItem = memo(function StashItem({
                 <div className="flex-1 min-w-0">
                     <div className="text-xs text-text-primary truncate">{stash.message || 'WIP'}</div>
                     <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-[10px] text-accent font-mono">stash@{`{${stash.index}}`}</span>
-                        <span className="text-[10px] text-text-muted">on {stash.branch}</span>
+                        <span className="text-[11px] text-accent font-mono">stash@{`{${stash.index}}`}</span>
+                        <span className="text-[11px] text-text-muted">on {stash.branch}</span>
                     </div>
                 </div>
                 <div className="relative" ref={menuRef}>
@@ -1413,15 +1413,15 @@ Commit message:`
                         <div className="flex items-center gap-2 overflow-hidden w-full pr-1">
                             <span className="text-sm font-semibold text-text-primary flex-shrink min-w-[40px] truncate max-w-[180px]">{repo.name}</span>
                             {!repo.isWorkspaceRoot && (
-                                <span className="truncate text-[10px] text-text-muted flex-shrink hidden sm:inline-block min-w-[20px]">{repo.relativePath}</span>
+                                <span className="truncate text-[11px] text-text-muted flex-shrink hidden sm:inline-block min-w-[20px]">{repo.relativePath}</span>
                             )}
                             {repoStatus?.branch && (
-                                <span className="text-[10px] font-mono text-accent flex-shrink px-1.5 py-0.5 bg-accent/10 rounded-md min-w-[30px] truncate border border-accent/20">{repoStatus.branch}</span>
+                                <span className="text-[11px] font-mono text-accent flex-shrink px-1.5 py-0.5 bg-accent/10 rounded-md min-w-[30px] truncate border border-accent/20">{repoStatus.branch}</span>
                             )}
                         </div>
                     </button>
                     {repoStats.total > 0 && (
-                        <span className="rounded-full bg-surface-active px-1.5 py-0.5 text-[10px] text-text-secondary">
+                        <span className="rounded-full bg-surface-active px-1.5 py-0.5 text-[11px] text-text-secondary">
                             {repoStats.total}
                         </span>
                     )}
@@ -1449,7 +1449,7 @@ Commit message:`
                                     value={commitValue}
                                     onChange={(e) => updateRepoCommitMessage(repo.root, e.target.value)}
                                     placeholder={tt('git.commitMessage')}
-                                    className="w-full bg-transparent border-none p-2.5 text-xs text-text-primary outline-none resize-none min-h-[56px] placeholder:text-text-muted/50"
+                                    className="w-full bg-transparent border-none p-2.5 text-xs text-text-primary outline-none resize-none min-h-[56px] placeholder:text-text-muted/85"
                                 />
                                 <div className="flex items-center justify-between px-2 pb-2">
                                     <button
@@ -1467,7 +1467,7 @@ Commit message:`
                                     <button
                                         onClick={() => handleCommit(repo.root)}
                                         disabled={isRepoCommitting || repoStats.staged === 0}
-                                        className="h-6 px-3 bg-accent text-white text-[10px] font-medium rounded-md hover:bg-accent/90 transition-colors disabled:opacity-50 disabled:bg-surface-hover disabled:text-text-muted flex items-center shadow-sm disabled:shadow-none"
+                                        className="h-6 px-3 bg-accent text-white text-[11px] font-medium rounded-md hover:bg-accent/90 transition-colors disabled:opacity-50 disabled:bg-surface-hover disabled:text-text-muted flex items-center shadow-sm disabled:shadow-none"
                                     >
                                         {isRepoCommitting ? (
                                             <Loader2 className="w-3 h-3 animate-spin mr-1.5" />
@@ -1482,7 +1482,7 @@ Commit message:`
 
                         {repoStatus?.hasConflicts && repoStatus.conflictFiles.length > 0 && (
                             <div className="border-b border-border-subtle">
-                                <div className="px-3 py-1.5 text-[10px] text-orange-400 font-semibold bg-orange-500/10 flex items-center gap-2">
+                                <div className="px-3 py-1.5 text-[11px] text-orange-400 font-semibold bg-orange-500/10 flex items-center gap-2">
                                     <AlertTriangle className="w-3 h-3" />
                                     {tt('git.conflicts')} ({repoStatus.conflictFiles.length})
                                 </div>
@@ -1503,12 +1503,12 @@ Commit message:`
                         {repoStats.staged > 0 && (
                             <div>
                                 <div
-                                    className="px-3 py-1.5 text-[10px] text-text-muted font-semibold bg-surface-active/30 border-y border-border-subtle flex items-center gap-2 cursor-pointer hover:bg-surface-hover"
+                                    className="px-3 py-1.5 text-[11px] text-text-muted font-semibold bg-surface-active/30 border-y border-border-subtle flex items-center gap-2 cursor-pointer hover:bg-surface-hover"
                                     onClick={() => toggleRepoSection(repo.root, 'staged')}
                                 >
                                     {expanded.staged ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
                                     <span className="flex-1">{tt('git.stagedChanges')}</span>
-                                    <span className="bg-green-500/20 text-green-400 px-1.5 rounded-full text-[10px]">{repoStats.staged}</span>
+                                    <span className="bg-green-500/20 text-green-400 px-1.5 rounded-full text-[11px]">{repoStats.staged}</span>
                                     <button
                                         onClick={(e) => { e.stopPropagation(); void handleUnstageAll(repo.root) }}
                                         className="p-0.5 hover:bg-surface-active rounded"
@@ -1533,12 +1533,12 @@ Commit message:`
                         {(repoStats.unstaged > 0 || repoStats.untracked > 0) && (
                             <div>
                                 <div
-                                    className="px-3 py-1.5 text-[10px] text-text-muted font-semibold bg-surface-active/30 border-y border-border-subtle flex items-center gap-2 cursor-pointer hover:bg-surface-hover"
+                                    className="px-3 py-1.5 text-[11px] text-text-muted font-semibold bg-surface-active/30 border-y border-border-subtle flex items-center gap-2 cursor-pointer hover:bg-surface-hover"
                                     onClick={() => toggleRepoSection(repo.root, 'changes')}
                                 >
                                     {expanded.changes ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
                                     <span className="flex-1">{tt('git.unstaged')}</span>
-                                    <span className="bg-yellow-500/20 text-yellow-400 px-1.5 rounded-full text-[10px]">{repoStats.unstaged + repoStats.untracked}</span>
+                                    <span className="bg-yellow-500/20 text-yellow-400 px-1.5 rounded-full text-[11px]">{repoStats.unstaged + repoStats.untracked}</span>
                                     <button
                                         onClick={(e) => { e.stopPropagation(); void handleStageAll(repo.root) }}
                                         className="p-0.5 hover:bg-surface-active rounded"
@@ -1615,7 +1615,7 @@ Commit message:`
                 </div>
                 <p className="mb-1 text-sm font-medium text-text-secondary">{tt('git.noRepo')}</p>
                 <p className="mb-3 max-w-[260px] text-xs leading-5 text-text-muted">{tt('git.noRepoDesc')}</p>
-                <div className="mb-4 max-w-full rounded-md border border-border-subtle bg-surface/50 px-2.5 py-1.5 text-[10px] text-text-muted">
+                <div className="mb-4 max-w-full rounded-md border border-border-subtle bg-surface/50 px-2.5 py-1.5 text-[11px] text-text-muted">
                     <span className="mr-1 text-text-secondary">{tt('git.currentFolder')}</span>
                     <span className="break-all font-mono">{workspacePath}</span>
                 </div>
@@ -1659,7 +1659,7 @@ Commit message:`
                         </Button>
                     </div>
                 </div>
-                {error && <p className="mt-3 max-w-[260px] break-words text-[10px] leading-4 text-status-error">{error}</p>}
+                {error && <p className="mt-3 max-w-[260px] break-words text-[11px] leading-4 text-status-error">{error}</p>}
             </div>
         )
     }
@@ -1757,12 +1757,12 @@ Commit message:`
                                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
                                     <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-orange-500"></span>
                                 </span>
-                                <span className="text-[10px] font-medium text-text-primary">
+                                <span className="text-[11px] font-medium text-text-primary">
                                     {t('git.operationInProgress', language, { operation: operationState })}
                                 </span>
                             </div>
                             {status?.branch && (
-                                <span className="text-[9px] text-text-muted font-mono px-1 py-0.5 rounded bg-surface">
+                                <span className="text-[10px] text-text-muted font-mono px-1 py-0.5 rounded bg-surface">
                                     {status.branch}
                                 </span>
                             )}
@@ -1770,21 +1770,21 @@ Commit message:`
                         <div className="px-1.5 pb-1.5 flex items-center gap-1">
                             <button
                                 onClick={handleContinueOperation}
-                                className="flex-1 px-1.5 py-1 text-[9px] font-medium rounded text-text-secondary hover:text-orange-400 hover:bg-orange-500/10 transition-colors flex items-center justify-center gap-1"
+                                className="flex-1 px-1.5 py-1 text-[10px] font-medium rounded text-text-secondary hover:text-orange-400 hover:bg-orange-500/10 transition-colors flex items-center justify-center gap-1"
                             >
                                 <Play className="w-2.5 h-2.5" /> {tt('git.continue')}
                             </button>
                             {operationState === 'rebase' && (
                                 <button
                                     onClick={handleSkipOperation}
-                                    className="flex-1 px-1.5 py-1 text-[9px] font-medium rounded text-text-secondary hover:text-text-primary hover:bg-surface transition-colors flex items-center justify-center gap-1"
+                                    className="flex-1 px-1.5 py-1 text-[10px] font-medium rounded text-text-secondary hover:text-text-primary hover:bg-surface transition-colors flex items-center justify-center gap-1"
                                 >
                                     <SkipForward className="w-2.5 h-2.5" /> {tt('git.skip')}
                                 </button>
                             )}
                             <button
                                 onClick={handleAbortOperation}
-                                className="flex-1 px-1.5 py-1 text-[9px] font-medium rounded text-text-secondary hover:text-red-400 hover:bg-red-500/10 transition-colors flex items-center justify-center gap-1"
+                                className="flex-1 px-1.5 py-1 text-[10px] font-medium rounded text-text-secondary hover:text-red-400 hover:bg-red-500/10 transition-colors flex items-center justify-center gap-1"
                             >
                                 <X className="w-2.5 h-2.5" /> {tt('git.abort')}
                             </button>
@@ -1798,7 +1798,7 @@ Commit message:`
                         <button
                             key={tab}
                             onClick={() => setActiveTab(tab)}
-                            className={`text-[11px] font-medium pb-2 border-b-2 transition-colors flex-shrink-0 whitespace-nowrap tracking-wide ${activeTab === tab
+                            className={`text-[12px] font-medium pb-2 border-b-2 transition-colors flex-shrink-0 whitespace-nowrap tracking-wide ${activeTab === tab
                                 ? 'border-accent text-accent'
                                 : 'border-transparent text-text-muted hover:text-text-primary hover:border-border-subtle'
                                 }`}
@@ -1836,12 +1836,12 @@ Commit message:`
                             {(status.ahead > 0 || status.behind > 0) && (
                                 <div className="flex items-center gap-1 ml-auto">
                                     {status.ahead > 0 && (
-                                        <span className="text-[10px] text-green-400 flex items-center">
+                                        <span className="text-[11px] text-green-400 flex items-center">
                                             <ArrowUp className="w-2.5 h-2.5" />{status.ahead}
                                         </span>
                                     )}
                                     {status.behind > 0 && (
-                                        <span className="text-[10px] text-orange-400 flex items-center">
+                                        <span className="text-[11px] text-orange-400 flex items-center">
                                             <ArrowDown className="w-2.5 h-2.5" />{status.behind}
                                         </span>
                                     )}
@@ -1856,7 +1856,7 @@ Commit message:`
                                     value={commitMessage}
                                     onChange={(e) => setCommitMessage(e.target.value)}
                                     placeholder={tt('git.commitMessage')}
-                                    className="w-full bg-transparent border-none p-2.5 text-xs text-text-primary outline-none resize-none min-h-[56px] placeholder:text-text-muted/50"
+                                    className="w-full bg-transparent border-none p-2.5 text-xs text-text-primary outline-none resize-none min-h-[56px] placeholder:text-text-muted/85"
                                     onKeyDown={(e) => {
                                         if (keybindingService.matches(e, 'git.commit')) handleCommit()
                                     }}
@@ -1890,7 +1890,7 @@ Commit message:`
                                             void handleCommit()
                                         }}
                                         disabled={isCommitting || stats.staged === 0}
-                                        className="h-6 px-3 bg-accent text-white text-[10px] font-medium rounded-md hover:bg-accent/90 transition-colors disabled:opacity-50 disabled:bg-surface-hover disabled:text-text-muted flex items-center shadow-sm disabled:shadow-none"
+                                        className="h-6 px-3 bg-accent text-white text-[11px] font-medium rounded-md hover:bg-accent/90 transition-colors disabled:opacity-50 disabled:bg-surface-hover disabled:text-text-muted flex items-center shadow-sm disabled:shadow-none"
                                     >
                                         {isCommitting ? (
                                             <Loader2 className="w-3 h-3 animate-spin mr-1.5" />
@@ -1925,7 +1925,7 @@ Commit message:`
                         {/* Conflict Files */}
                         {status.hasConflicts && status.conflictFiles.length > 0 && (
                             <div className="border-b border-border-subtle">
-                                <div className="px-3 py-1.5 text-[10px] text-orange-400 font-semibold bg-orange-500/10 flex items-center gap-2">
+                                <div className="px-3 py-1.5 text-[11px] text-orange-400 font-semibold bg-orange-500/10 flex items-center gap-2">
                                     <AlertTriangle className="w-3 h-3" />
                                     {tt('git.conflicts')} ({status.conflictFiles.length})
                                 </div>
@@ -1947,12 +1947,12 @@ Commit message:`
                         {stats.staged > 0 && (
                             <div>
                                 <div
-                                    className="px-3 py-1.5 text-[10px] text-text-muted font-semibold bg-surface-active/30 border-y border-border-subtle flex items-center gap-2 cursor-pointer hover:bg-surface-hover"
+                                    className="px-3 py-1.5 text-[11px] text-text-muted font-semibold bg-surface-active/30 border-y border-border-subtle flex items-center gap-2 cursor-pointer hover:bg-surface-hover"
                                     onClick={() => toggleSection('staged')}
                                 >
                                     {expandedSections.staged ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
                                     <span className="flex-1">{tt('git.stagedChanges')}</span>
-                                    <span className="bg-green-500/20 text-green-400 px-1.5 rounded-full text-[10px]">{stats.staged}</span>
+                                    <span className="bg-green-500/20 text-green-400 px-1.5 rounded-full text-[11px]">{stats.staged}</span>
                                     <button
                                         onClick={(e) => { e.stopPropagation(); handleUnstageAll() }}
                                         className="p-0.5 hover:bg-surface-active rounded"
@@ -1978,12 +1978,12 @@ Commit message:`
                         {(stats.unstaged > 0 || stats.untracked > 0) && (
                             <div>
                                 <div
-                                    className="px-3 py-1.5 text-[10px] text-text-muted font-semibold bg-surface-active/30 border-y border-border-subtle flex items-center gap-2 cursor-pointer hover:bg-surface-hover"
+                                    className="px-3 py-1.5 text-[11px] text-text-muted font-semibold bg-surface-active/30 border-y border-border-subtle flex items-center gap-2 cursor-pointer hover:bg-surface-hover"
                                     onClick={() => toggleSection('changes')}
                                 >
                                     {expandedSections.changes ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
                                     <span className="flex-1">{tt('git.unstaged')}</span>
-                                    <span className="bg-yellow-500/20 text-yellow-400 px-1.5 rounded-full text-[10px]">{stats.unstaged + stats.untracked}</span>
+                                    <span className="bg-yellow-500/20 text-yellow-400 px-1.5 rounded-full text-[11px]">{stats.unstaged + stats.untracked}</span>
                                     <button
                                         onClick={(e) => { e.stopPropagation(); handleStageAll() }}
                                         className="p-0.5 hover:bg-surface-active rounded"
@@ -2067,12 +2067,12 @@ Commit message:`
                         {/* Local Branches */}
                         <div>
                             <div
-                                className="px-3 py-1.5 text-[10px] text-text-muted font-semibold bg-surface-active/30 border-b border-border-subtle flex items-center gap-2 cursor-pointer hover:bg-surface-hover"
+                                className="px-3 py-1.5 text-[11px] text-text-muted font-semibold bg-surface-active/30 border-b border-border-subtle flex items-center gap-2 cursor-pointer hover:bg-surface-hover"
                                 onClick={() => toggleSection('localBranches')}
                             >
                                 {expandedSections.localBranches ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
                                 <span className="flex-1">{tt('git.local')}</span>
-                                <span className="text-[10px] text-text-muted">{localBranches.length}</span>
+                                <span className="text-[11px] text-text-muted">{localBranches.length}</span>
                             </div>
                             {expandedSections.localBranches && localBranches.map(branch => (
                                 <BranchItem
@@ -2090,12 +2090,12 @@ Commit message:`
                         {remoteBranches.length > 0 && (
                             <div>
                                 <div
-                                    className="px-3 py-1.5 text-[10px] text-text-muted font-semibold bg-surface-active/30 border-y border-border-subtle flex items-center gap-2 cursor-pointer hover:bg-surface-hover"
+                                    className="px-3 py-1.5 text-[11px] text-text-muted font-semibold bg-surface-active/30 border-y border-border-subtle flex items-center gap-2 cursor-pointer hover:bg-surface-hover"
                                     onClick={() => toggleSection('remoteBranches')}
                                 >
                                     {expandedSections.remoteBranches ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
                                     <span className="flex-1">{tt('git.remote')}</span>
-                                    <span className="text-[10px] text-text-muted">{remoteBranches.length}</span>
+                                    <span className="text-[11px] text-text-muted">{remoteBranches.length}</span>
                                 </div>
                                 {expandedSections.remoteBranches && remoteBranches.map(branch => (
                                     <BranchItem

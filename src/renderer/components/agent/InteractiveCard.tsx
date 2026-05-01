@@ -143,7 +143,7 @@ export function InteractiveCard({ content, onSelect, disabled }: InteractiveCard
                 <motion.div
                     animate={{ rotate: isExpanded ? 90 : 0 }}
                     transition={{ duration: 0.15 }}
-                    className="shrink-0 text-text-muted/40 hover:text-text-muted"
+                    className="shrink-0 text-text-muted/85 hover:text-text-muted"
                 >
                     <ChevronDown className="w-3.5 h-3.5 -rotate-90" />
                 </motion.div>
@@ -168,7 +168,7 @@ export function InteractiveCard({ content, onSelect, disabled }: InteractiveCard
                         {content.question}
                     </span>
                     {!isExpanded && submitted && (
-                        <span className="text-[11px] text-text-muted/40 truncate">
+                        <span className="text-[12px] text-text-muted/85 truncate">
                             — {selectedLabels}
                         </span>
                     )}
@@ -227,7 +227,7 @@ export function InteractiveCard({ content, onSelect, disabled }: InteractiveCard
                                                     {option.label}
                                                 </span>
                                                 {option.description && (
-                                                    <span className="text-[10px] text-text-muted block truncate mt-0.5">
+                                                    <span className="text-[11px] text-text-muted block truncate mt-0.5">
                                                         {option.description}
                                                     </span>
                                                 )}
@@ -260,14 +260,14 @@ export function InteractiveCard({ content, onSelect, disabled }: InteractiveCard
                                                 }}
                                                 placeholder={language === 'zh' ? '请输入自定义内容...' : 'Type your custom response...'}
                                                 rows={2}
-                                                className="w-full px-3 py-2 pr-10 text-[12px] text-text-primary bg-surface/60 border border-border/50 rounded-lg resize-none focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 placeholder:text-text-muted/40 transition-all custom-scrollbar"
+                                                className="w-full px-3 py-2 pr-10 text-[12px] text-text-primary bg-surface/60 border border-border/50 rounded-lg resize-none focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 placeholder:text-text-muted/85 transition-all custom-scrollbar"
                                             />
                                             <button
                                                 onClick={handleCustomSubmit}
                                                 disabled={!customText.trim()}
                                                 className={`absolute right-2 bottom-2 p-1 rounded-md transition-all ${customText.trim()
                                                     ? 'text-accent hover:bg-accent/10 active:scale-90'
-                                                    : 'text-text-muted/30 cursor-not-allowed'
+                                                    : 'text-text-muted/75 cursor-not-allowed'
                                                     }`}
                                                 title={language === 'zh' ? '发送' : 'Send'}
                                             >
@@ -285,7 +285,7 @@ export function InteractiveCard({ content, onSelect, disabled }: InteractiveCard
                                         onClick={handleSubmit}
                                         disabled={selected.size === 0}
                                         className={`
-                                            flex items-center gap-1.5 px-3 py-1 text-[11px] font-medium rounded-md transition-all
+                                            flex items-center gap-1.5 px-3 py-1 text-[12px] font-medium rounded-md transition-all
                                             ${selected.size > 0
                                                 ? 'bg-accent text-white hover:bg-accent-hover active:scale-95'
                                                 : 'bg-surface/50 text-text-muted cursor-not-allowed'
@@ -305,7 +305,7 @@ export function InteractiveCard({ content, onSelect, disabled }: InteractiveCard
                                         onClick={handleSubmit}
                                         disabled={selected.size === 0}
                                         className={`
-                                            flex items-center gap-1.5 px-3 py-1 text-[11px] font-medium rounded-md transition-all
+                                            flex items-center gap-1.5 px-3 py-1 text-[12px] font-medium rounded-md transition-all
                                             ${selected.size > 0
                                                 ? 'bg-accent text-white hover:bg-accent-hover active:scale-95'
                                                 : 'bg-surface/50 text-text-muted cursor-not-allowed'

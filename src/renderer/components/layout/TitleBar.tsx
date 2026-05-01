@@ -34,7 +34,7 @@ export default function TitleBar() {
           </div>
           <span
             className="
-      text-[11px] font-black text-text-primary tracking-[0.2em] font-sans leading-tight
+      text-[12px] font-black text-text-primary tracking-[0.2em] font-sans leading-tight
       opacity-60 group-hover:opacity-100
       overflow-hidden whitespace-nowrap
       max-w-0 group-hover:max-w-[100px]
@@ -67,7 +67,7 @@ export default function TitleBar() {
             {language === 'zh' ? '搜索文件,命令...' : 'Search files, commands...'}
           </span>
           <div className="flex items-center gap-1 ml-auto shrink-0 opacity-40 group-hover:opacity-100 transition-opacity">
-            <kbd className="hidden sm:inline-flex items-center justify-center min-w-[20px] h-5 bg-text-inverted/[0.1] border border-text-primary/5 rounded px-1.5 text-[10px] text-text-muted font-mono font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+            <kbd className="hidden sm:inline-flex items-center justify-center min-w-[20px] h-5 bg-text-inverted/[0.1] border border-text-primary/5 rounded px-1.5 text-[11px] text-text-muted font-mono font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
               {isMac ? '⌘' : 'Ctrl'} P
             </kbd>
           </div>

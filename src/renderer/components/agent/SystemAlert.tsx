@@ -80,19 +80,19 @@ export const SystemAlert: React.FC<SystemAlertProps> = ({
 
         <div className={`flex-1 min-w-0 ${compact ? 'space-y-0.5' : 'space-y-1'}`}>
           {title && (
-            <div className={`${compact ? 'text-[11px]' : 'text-[12px]'} font-medium px-0.5 ${config.titleColor} tracking-tight`}>
+            <div className={`${compact ? 'text-[12px]' : 'text-[12px]'} font-medium px-0.5 ${config.titleColor} tracking-tight`}>
               {title}
             </div>
           )}
 
-          <div className={`${compact ? 'text-[10.5px]' : 'text-[11px]'} px-0.5 break-words ${title ? 'text-text-secondary' : config.titleColor} leading-relaxed`}>
+          <div className={`${compact ? 'text-[10.5px]' : 'text-[12px]'} px-0.5 break-words ${title ? 'text-text-secondary' : config.titleColor} leading-relaxed`}>
             {message}
           </div>
 
           {suggestion && (
             <div className={`flex items-start gap-1.5 ${compact ? 'mt-1 pt-1' : 'mt-2 pt-1.5'} border-t border-border/30`}>
               <Lightbulb className={`${compact ? 'w-2.5 h-2.5 mt-[1px]' : 'w-3 h-3 mt-[1.5px]'} text-accent/70 shrink-0`} />
-              <span className={`${compact ? 'text-[10px]' : 'text-[11px]'} text-text-muted break-words leading-relaxed`}>
+              <span className={`${compact ? 'text-[11px]' : 'text-[12px]'} text-text-muted break-words leading-relaxed`}>
                 {suggestion}
               </span>
             </div>

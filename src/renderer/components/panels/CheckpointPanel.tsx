@@ -60,11 +60,11 @@ const CheckpointItem = memo(function CheckpointItem({
               <span className={`text-xs font-medium truncate ${isCurrent ? 'text-accent' : 'text-text-primary'}`}>
                 {checkpoint.description}
               </span>
-              <span className="text-[10px] text-text-muted font-mono opacity-80">
+              <span className="text-[11px] text-text-muted font-mono opacity-80">
                 {formatTime(checkpoint.timestamp)}
               </span>
             </div>
-            <div className="flex items-center gap-2 text-[10px] text-text-secondary">
+            <div className="flex items-center gap-2 text-[11px] text-text-secondary">
               <span className="flex items-center gap-1">
                 <FileText className="w-3 h-3 opacity-70" />
                 {t('checkpoint.filesCount', language, { count: fileCount })}
@@ -101,7 +101,7 @@ const CheckpointItem = memo(function CheckpointItem({
             <div className="h-px bg-border-subtle/50 mb-2" />
             <div className="space-y-1 pl-1">
               {Object.keys(checkpoint.fileSnapshots).map((path) => (
-                <div key={path} className="flex items-center gap-2 text-[10px] text-text-secondary">
+                <div key={path} className="flex items-center gap-2 text-[11px] text-text-secondary">
                   <FileText className="w-3 h-3 opacity-50" />
                   <span className="truncate hover:text-text-primary transition-colors">{getFileName(path)}</span>
                 </div>
@@ -177,7 +177,7 @@ export default function CheckpointPanel({ onClose }: CheckpointPanelProps) {
           <History className="w-6 h-6 text-text-muted" />
         </div>
         <p className="text-xs font-medium text-text-secondary">{t('checkpoint.noCheckpoints', language)}</p>
-        <p className="text-[10px] text-text-muted mt-1 max-w-[200px]">
+        <p className="text-[11px] text-text-muted mt-1 max-w-[200px]">
           {t('checkpoint.noCheckpointsDesc', language)}
         </p>
       </div>
@@ -192,10 +192,10 @@ export default function CheckpointPanel({ onClose }: CheckpointPanelProps) {
       {/* Header */}
       <div className="h-10 px-3 flex items-center justify-between border-b border-border bg-background-secondary/95 backdrop-blur-md sticky top-0 z-10">
         <div className="flex items-center gap-2">
-          <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider opacity-80">
+          <span className="text-[12px] font-bold text-text-muted uppercase tracking-wider opacity-80">
             {t('checkpoint.title', language)}
           </span>
-          <span className="px-1.5 py-0.5 rounded-full bg-surface-active text-[10px] font-mono text-text-muted">
+          <span className="px-1.5 py-0.5 rounded-full bg-surface-active text-[11px] font-mono text-text-muted">
             {messageCheckpoints.length}
           </span>
         </div>

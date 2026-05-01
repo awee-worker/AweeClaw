@@ -67,7 +67,7 @@ export default function ContextPanel({
                 className="flex items-center justify-between px-4 py-2 cursor-pointer hover:bg-surface/20 transition-colors group"
                 onClick={() => setIsExpanded(!isExpanded)}
             >
-                <div className="flex items-center gap-2.5 text-[11px] text-text-muted">
+                <div className="flex items-center gap-2.5 text-[12px] text-text-muted">
                     <div className="flex items-center gap-1.5">
                         {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
                         <span className="font-semibold uppercase tracking-wider">Context</span>
@@ -87,7 +87,7 @@ export default function ContextPanel({
                 {contextItems.length > 0 && (
                     <button
                         onClick={(e) => { e.stopPropagation(); onClear() }}
-                        className="text-[10px] font-medium text-text-muted hover:text-red-400 transition-colors uppercase tracking-tight"
+                        className="text-[11px] font-medium text-text-muted hover:text-red-400 transition-colors uppercase tracking-tight"
                     >
                         Clear all
                     </button>
@@ -102,7 +102,7 @@ export default function ContextPanel({
                         {activeFilePath && !isCurrentFileAdded && (
                             <button
                                 onClick={onAddCurrentFile}
-                                className="flex items-center gap-2 px-3 py-1.5 bg-accent/10 hover:bg-accent/20 rounded-lg border border-accent/20 text-[11px] text-accent transition-all group shadow-sm shadow-accent/5"
+                                className="flex items-center gap-2 px-3 py-1.5 bg-accent/10 hover:bg-accent/20 rounded-lg border border-accent/20 text-[12px] text-accent transition-all group shadow-sm shadow-accent/5"
                                 title="Add active file to context"
                             >
                                 <Plus className="w-3.5 h-3.5" />
@@ -116,7 +116,7 @@ export default function ContextPanel({
                             return (
                                 <div
                                     key={`${item.type}-${index}`}
-                                    className="flex items-center gap-2 px-3 py-1.5 bg-surface/40 rounded-lg border border-border-subtle text-[11px] group hover:border-border hover:bg-surface/60 transition-all shadow-sm"
+                                    className="flex items-center gap-2 px-3 py-1.5 bg-surface/40 rounded-lg border border-border-subtle text-[12px] group hover:border-border hover:bg-surface/60 transition-all shadow-sm"
                                 >
                                     <div className="opacity-80 group-hover:opacity-100 transition-opacity">
                                         {icon}

@@ -110,7 +110,7 @@ export const Select = memo(function Select({
                         {selectedOption ? selectedOption.label : placeholder}
                     </span>
                 </div>
-                <ChevronDown className={`w-4 h-4 text-text-muted/70 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
+                <ChevronDown className={`w-4 h-4 text-text-muted/85 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
             </button>
 
             {createPortal(dropdown, document.body)}

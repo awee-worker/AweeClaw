@@ -232,7 +232,7 @@ export function SystemSettings({ language, enableFileLogging, setEnableFileLoggi
             <section>
                 <div className="flex items-center gap-2 mb-5 ml-1">
                     <HardDrive className="w-4 h-4 text-accent" />
-                    <h4 className="text-[11px] font-bold text-text-muted uppercase tracking-[0.2em]">
+                    <h4 className="text-[12px] font-bold text-text-muted uppercase tracking-[0.2em]">
                         {language === 'zh' ? '存储与缓存' : 'Storage & Cache'}
                     </h4>
                 </div>
@@ -272,7 +272,7 @@ export function SystemSettings({ language, enableFileLogging, setEnableFileLoggi
                             </div>
                         </div>
 
-                        <div className="flex items-center gap-2 text-[10px] font-medium text-yellow-500 bg-yellow-500/10 px-3 py-2 rounded-lg border border-yellow-500/20">
+                        <div className="flex items-center gap-2 text-[11px] font-medium text-yellow-500 bg-yellow-500/10 px-3 py-2 rounded-lg border border-yellow-500/20">
                             <AlertTriangle className="w-3.5 h-3.5" />
                             {language === 'zh' ? '更改路径后需要手动重启应用以应用所有变更' : 'Restart application manually after changing path to apply all changes'}
                         </div>
@@ -304,7 +304,7 @@ export function SystemSettings({ language, enableFileLogging, setEnableFileLoggi
             <section>
                 <div className="flex items-center gap-2 mb-5 ml-1">
                     <FileText className="w-4 h-4 text-accent" />
-                    <h4 className="text-[11px] font-bold text-text-muted uppercase tracking-[0.2em]">
+                    <h4 className="text-[12px] font-bold text-text-muted uppercase tracking-[0.2em]">
                         {language === 'zh' ? '日志管理' : 'Log Management'}
                     </h4>
                 </div>
@@ -366,7 +366,7 @@ export function SystemSettings({ language, enableFileLogging, setEnableFileLoggi
                                     </Button>
                                 </div>
 
-                                <div className="flex items-start gap-2 text-[10px] font-medium text-blue-500 bg-blue-500/10 px-3 py-2 rounded-lg border border-blue-500/20">
+                                <div className="flex items-start gap-2 text-[11px] font-medium text-blue-500 bg-blue-500/10 px-3 py-2 rounded-lg border border-blue-500/20">
                                     <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
                                     <div>
                                         {language === 'zh'
@@ -378,7 +378,7 @@ export function SystemSettings({ language, enableFileLogging, setEnableFileLoggi
                         )}
 
                         {!enableFileLogging && (
-                            <div className="flex items-start gap-2 text-[10px] font-medium text-text-muted bg-white/5 px-3 py-2 rounded-lg border border-border">
+                            <div className="flex items-start gap-2 text-[11px] font-medium text-text-muted bg-white/5 px-3 py-2 rounded-lg border border-border">
                                 <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
                                 <div>
                                     {language === 'zh'
@@ -395,7 +395,7 @@ export function SystemSettings({ language, enableFileLogging, setEnableFileLoggi
             <section>
                 <div className="flex items-center gap-2 mb-5 ml-1">
                     <Download className="w-4 h-4 text-accent" />
-                    <h4 className="text-[11px] font-bold text-text-muted uppercase tracking-[0.2em]">
+                    <h4 className="text-[12px] font-bold text-text-muted uppercase tracking-[0.2em]">
                         {language === 'zh' ? '配置备份' : 'Settings Backup'}
                     </h4>
                 </div>
@@ -427,7 +427,7 @@ export function SystemSettings({ language, enableFileLogging, setEnableFileLoggi
                         </div>
 
                         {includeApiKeys && (
-                            <div className="flex items-center gap-2 text-[10px] font-medium text-yellow-500 bg-yellow-500/10 px-3 py-2 rounded-lg border border-yellow-500/20">
+                            <div className="flex items-center gap-2 text-[11px] font-medium text-yellow-500 bg-yellow-500/10 px-3 py-2 rounded-lg border border-yellow-500/20">
                                 <AlertTriangle className="w-3.5 h-3.5" />
                                 {language === 'zh' ? '导出文件将包含敏感的 API 密钥，请妥善保管' : 'Exported file will contain sensitive API keys, keep it safe'}
                             </div>

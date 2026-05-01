@@ -63,7 +63,7 @@ export default function MentionPopup({
                 <div className="flex-1 min-w-0">
                     <div className="text-sm truncate">{item.label}</div>
                     {item.description && (
-                        <div className="text-[10px] text-text-muted truncate">{item.description}</div>
+                        <div className="text-[11px] text-text-muted truncate">{item.description}</div>
                     )}
                 </div>
                 {candidate.type === 'codebase' && <Sparkles className="w-3 h-3 text-purple-400" />}

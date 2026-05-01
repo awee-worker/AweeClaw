@@ -44,7 +44,7 @@ export const MemoryApprovalInline: React.FC<MemoryApprovalInlineProps> = ({
                 <motion.div
                     animate={{ rotate: isExpanded ? 90 : 0 }}
                     transition={{ duration: 0.15 }}
-                    className="shrink-0 text-text-muted/40 hover:text-text-muted"
+                    className="shrink-0 text-text-muted/85 hover:text-text-muted"
                 >
                     <ChevronDown className="w-3.5 h-3.5 -rotate-90" />
                 </motion.div>
@@ -72,7 +72,7 @@ export const MemoryApprovalInline: React.FC<MemoryApprovalInlineProps> = ({
                         {statusText}
                     </span>
                     {!isExpanded && (
-                        <span className="text-[11px] text-text-muted/40 truncate">
+                        <span className="text-[12px] text-text-muted/85 truncate">
                             — {content.slice(0, 50)}{content.length > 50 ? '...' : ''}
                         </span>
                     )}
@@ -95,7 +95,7 @@ export const MemoryApprovalInline: React.FC<MemoryApprovalInlineProps> = ({
 
                             {/* Content */}
                             <div className="relative z-10 mt-1">
-                                <div className="text-[11px] text-text-secondary/80 leading-relaxed font-sans whitespace-pre-wrap border-l-2 border-border/30 pl-2 ml-1">
+                                <div className="text-[12px] text-text-secondary leading-relaxed font-sans whitespace-pre-wrap border-l-2 border-border/30 pl-2 ml-1">
                                     {content}
                                 </div>
                             </div>

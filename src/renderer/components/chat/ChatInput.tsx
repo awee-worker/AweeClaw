@@ -174,7 +174,7 @@ const ChatInput = memo(function ChatInput({
                 ) : (
                   <div className="flex items-center gap-2 px-3 py-2 bg-surface/50 min-w-[120px] max-w-[180px]">
                     {getFileIcon(att.file.name, att.file.type)}
-                    <span className="text-[11px] text-text-secondary truncate max-w-[100px]">{att.file.name}</span>
+                    <span className="text-[12px] text-text-secondary truncate max-w-[100px]">{att.file.name}</span>
                   </div>
                 )}
                 <button
@@ -202,7 +202,7 @@ const ChatInput = memo(function ChatInput({
                     onAddFile(activeFilePath)
                     // 这里如果能自动清除输入框里的失焦状态体验会更好，暂通过 state 刷新实现
                   }}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-accent/5 text-accent text-[11px] font-medium rounded-lg border border-accent/10 select-none hover:bg-accent/10 transition-colors"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-accent/5 text-accent text-[12px] font-medium rounded-lg border border-accent/10 select-none hover:bg-accent/10 transition-colors"
                 >
                   <Plus className="w-3 h-3" strokeWidth={3} />
                   <span>{getFileName(activeFilePath)}</span>
@@ -250,7 +250,7 @@ const ChatInput = memo(function ChatInput({
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.8, filter: 'blur(4px)' }}
                     transition={{ duration: 0.15 }}
-                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 ${style.bg} ${style.text} text-[11px] font-medium rounded-lg border ${style.border} select-none group/chip transition-all hover:border-opacity-100 hover:shadow-sm`}
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 ${style.bg} ${style.text} text-[12px] font-medium rounded-lg border ${style.border} select-none group/chip transition-all hover:border-opacity-100 hover:shadow-sm`}
                   >
                     <style.Icon className="w-3 h-3 opacity-70" />
                     <span className="max-w-[120px] truncate">{label}</span>
@@ -332,7 +332,7 @@ const ChatInput = memo(function ChatInput({
                     ? 'bg-surface/50 text-text-primary border border-text-primary/10 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20'
                     : isSendable
                       ? 'bg-accent text-white shadow-md shadow-accent/20 hover:shadow-accent/40 hover:-translate-y-0.5 active:translate-y-0 border border-transparent'
-                      : 'bg-text-primary/5 text-text-muted/30 cursor-not-allowed border border-transparent'
+                      : 'bg-text-primary/5 text-text-muted/75 cursor-not-allowed border border-transparent'
                   }
                   `}
               >
@@ -375,7 +375,7 @@ function ContextChip({ icon: Icon, label, color }: { icon: any, label: string, c
   }
 
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 ${colorMap[color]} text-[11px] font-medium rounded-lg border animate-fade-in select-none`}>
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 ${colorMap[color]} text-[12px] font-medium rounded-lg border animate-fade-in select-none`}>
       <Icon className="w-3 h-3" />
       {label}
     </span>

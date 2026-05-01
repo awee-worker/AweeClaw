@@ -160,7 +160,7 @@ function FileChangeCard({
                 <ExpandablePreviewContainer language={language}>
                     <div className="relative min-h-[60px] p-2">
                         {isLargeWrite && !isStreaming && !isRunning ? (
-                            <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-[11px] text-text-secondary">
+                            <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-[12px] text-text-secondary">
                                 <div className="font-medium text-amber-400">
                                     Large file preview is deferred to keep the UI responsive.
                                 </div>
@@ -175,7 +175,7 @@ function FileChangeCard({
                                             e.stopPropagation()
                                             void openFullFile()
                                         }}
-                                        className="rounded-md border border-border bg-surface-hover px-2.5 py-1.5 text-[11px] font-medium text-text-primary transition-colors hover:border-accent hover:text-accent"
+                                        className="rounded-md border border-border bg-surface-hover px-2.5 py-1.5 text-[12px] font-medium text-text-primary transition-colors hover:border-accent hover:text-accent"
                                     >
                                         Open full file
                                     </button>
@@ -215,7 +215,7 @@ function FileChangeCard({
                 <motion.div
                     animate={{ rotate: isExpanded ? 90 : 0 }}
                     transition={{ duration: 0.15 }}
-                    className="shrink-0 text-text-muted/40 hover:text-text-muted transition-colors"
+                    className="shrink-0 text-text-muted/85 hover:text-text-muted transition-colors"
                 >
                     <ChevronDown className="w-3.5 h-3.5 -rotate-90" />
                 </motion.div>
@@ -283,15 +283,15 @@ function FileChangeCard({
                                 </span>
                             </div>
                         ) : (isStreaming || isRunning) ? (
-                            <span className="font-medium text-[11px] italic tool-text-shimmer">editing...</span>
+                            <span className="font-medium text-[12px] italic tool-text-shimmer">editing...</span>
                         ) : (
-                            <span className="font-medium text-[11px] text-text-primary opacity-50">&lt;empty path&gt;</span>
+                            <span className="font-medium text-[12px] text-text-primary opacity-50">&lt;empty path&gt;</span>
                         )}
                     </div>
 
                     <div className="flex items-center gap-2">
                         {(isSuccess || newContent) && (
-                            <span className="text-[10px] font-mono opacity-60 flex items-center gap-1.5 px-1.5 py-0.5 bg-text-primary/[0.05] rounded border border-border">
+                            <span className="text-[11px] font-mono opacity-60 flex items-center gap-1.5 px-1.5 py-0.5 bg-text-primary/[0.05] rounded border border-border">
                                 {diffStats.added > 0 && (
                                     <span className="text-green-400">+{diffStats.added}</span>
                                 )}
@@ -345,7 +345,7 @@ function FileChangeCard({
             {toolCall.error && isExpanded && (
                 <div className="px-3 pb-3 pl-9">
                     <div className="px-3 py-2 bg-red-500/10 border border-red-500/20 rounded-md">
-                        <p className="text-[11px] text-red-300 font-mono break-all">{toolCall.error}</p>
+                        <p className="text-[12px] text-red-300 font-mono break-all">{toolCall.error}</p>
                     </div>
                 </div>
             )}

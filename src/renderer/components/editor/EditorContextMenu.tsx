@@ -405,7 +405,7 @@ export default function EditorContextMenu({ x, y, editor, onClose }: EditorConte
           <button
             className={`w-full px-3 py-1.5 text-left text-sm flex items-center justify-between gap-4 transition-colors ${
               item.disabled 
-                ? 'text-text-muted/50 cursor-not-allowed' 
+                ? 'text-text-muted/85 cursor-not-allowed' 
                 : 'text-text-primary hover:bg-surface-hover'
             }`}
             onClick={item.disabled ? undefined : item.action}

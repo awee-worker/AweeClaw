@@ -107,7 +107,7 @@ export function InputPopup<T extends InputPopupItem>({
                 <div className="flex-1 min-w-0">
                     <div className="text-sm truncate">{item.label}</div>
                     {item.description && (
-                        <div className="text-[10px] text-text-muted truncate">{item.description}</div>
+                        <div className="text-[11px] text-text-muted truncate">{item.description}</div>
                     )}
                 </div>
             </div>
@@ -150,7 +150,7 @@ export function InputPopup<T extends InputPopupItem>({
                 )}
             </div>
 
-            <div className="px-3 py-1.5 border-t border-border-subtle bg-surface-hover text-[10px] text-text-muted flex items-center justify-between">
+            <div className="px-3 py-1.5 border-t border-border-subtle bg-surface-hover text-[11px] text-text-muted flex items-center justify-between">
                 <span>↑↓ {t('navigate', language)}</span>
                 <span>↵ {t('selectItem', language)}</span>
                 <span>Esc {t('closeMenu', language)}</span>

@@ -435,10 +435,10 @@ export default function McpAddServerModal({
             <div className="flex items-center gap-2">
               <h4 className="font-bold text-text-primary group-hover:text-accent transition-colors">{preset.name}</h4>
               {preset.official && (
-                <span className="px-1.5 py-0.5 text-[10px] font-bold bg-accent/20 text-accent rounded border border-accent/20 uppercase tracking-tight">Official</span>
+                <span className="px-1.5 py-0.5 text-[11px] font-bold bg-accent/20 text-accent rounded border border-accent/20 uppercase tracking-tight">Official</span>
               )}
               {isAdded && (
-                <span className="px-1.5 py-0.5 text-[10px] font-bold bg-green-500/20 text-green-400 rounded flex items-center gap-1">
+                <span className="px-1.5 py-0.5 text-[11px] font-bold bg-green-500/20 text-green-400 rounded flex items-center gap-1">
                   <Check className="w-3 h-3" />{language === 'zh' ? '已添加' : 'Added'}
                 </span>
               )}
@@ -449,12 +449,12 @@ export default function McpAddServerModal({
             {preset.tags && (
               <div className="flex flex-wrap gap-1.5 mt-3">
                 {preset.tags.slice(0, 3).map(tag => (
-                  <span key={tag} className="px-2 py-0.5 text-[10px] bg-white/5 text-text-secondary rounded-md border border-white/5">{tag}</span>
+                  <span key={tag} className="px-2 py-0.5 text-[11px] bg-white/5 text-text-secondary rounded-md border border-white/5">{tag}</span>
                 ))}
               </div>
             )}
           </div>
-          {!isAdded && <ChevronRight className="w-4 h-4 text-text-muted/50 group-hover:text-accent transition-colors" />}
+          {!isAdded && <ChevronRight className="w-4 h-4 text-text-muted/85 group-hover:text-accent transition-colors" />}
         </div>
       </div>
     )
@@ -554,7 +554,7 @@ export default function McpAddServerModal({
               {categories.map(cat => (
                 <button
                   key={cat.id}
-                  className={`px-4 py-1.5 text-[11px] font-bold rounded-xl transition-all duration-300 border uppercase tracking-tight ${selectedCategory === cat.id
+                  className={`px-4 py-1.5 text-[12px] font-bold rounded-xl transition-all duration-300 border uppercase tracking-tight ${selectedCategory === cat.id
                     ? 'bg-accent text-white border-accent scale-105'
                     : 'bg-surface/20 text-text-secondary border-transparent hover:border-border hover:bg-surface/40'
                     }`}
@@ -613,7 +613,7 @@ export default function McpAddServerModal({
                         <p className="text-xs text-text-muted mt-0.5 line-clamp-1">{server.description}</p>
                       </div>
                     </div>
-                    <ChevronRight className="w-4 h-4 text-text-muted/50 group-hover:text-accent transition-colors" />
+                    <ChevronRight className="w-4 h-4 text-text-muted/85 group-hover:text-accent transition-colors" />
                   </div>
                 </div>
               ))}
@@ -630,7 +630,7 @@ export default function McpAddServerModal({
                 <div className="flex items-center gap-2">
                   <h3 className="font-semibold text-text-primary">{selectedPreset.name}</h3>
                   {selectedPreset.official && (
-                    <span className="px-1.5 py-0.5 text-[10px] bg-accent/20 text-accent rounded">Official</span>
+                    <span className="px-1.5 py-0.5 text-[11px] bg-accent/20 text-accent rounded">Official</span>
                   )}
                 </div>
                 <p className="text-sm text-text-muted mt-1">
@@ -845,13 +845,13 @@ export default function McpAddServerModal({
         <div className="pt-4 border-t border-border space-y-3">
           {!isBrowsing && (
             <div className="flex items-center gap-3">
-              <span className="text-[11px] text-text-muted">{language === 'zh' ? '保存到：' : 'Save to:'}</span>
+              <span className="text-[12px] text-text-muted">{language === 'zh' ? '保存到：' : 'Save to:'}</span>
               <div className="flex items-center rounded-md border border-border overflow-hidden">
                 {([['user', language === 'zh' ? '全局配置' : 'Global'], ['workspace', language === 'zh' ? '项目配置' : 'Project']] as ['user' | 'workspace', string][]).map(([val, label]) => (
                   <button
                     key={val}
                     onClick={() => setSaveLevel(val)}
-                    className={`text-[11px] px-3 py-1 transition-colors ${
+                    className={`text-[12px] px-3 py-1 transition-colors ${
                       saveLevel === val
                         ? 'bg-accent/20 text-accent font-medium'
                         : 'bg-black/20 text-text-muted hover:bg-black/30 hover:text-text-secondary'

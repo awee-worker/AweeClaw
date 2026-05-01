@@ -112,13 +112,13 @@ export default function ConversationSidebar({ isOpen, onClose, initialTab = 'his
 
             <div className="px-5 py-2">
               <div className="relative group">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted/70 group-focus-within:text-accent transition-colors" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted/85 group-focus-within:text-accent transition-colors" />
                 <input
                   type="text"
                   placeholder={language === 'zh' ? '搜索...' : 'Search...'}
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
-                  className="w-full h-9 pl-9 pr-8 text-xs bg-surface/30 border border-border/30 rounded-lg focus:outline-none focus:border-accent/30 focus:bg-surface/50 transition-all placeholder:text-text-muted/40"
+                  className="w-full h-9 pl-9 pr-8 text-xs bg-surface/30 border border-border/30 rounded-lg focus:outline-none focus:border-accent/30 focus:bg-surface/50 transition-all placeholder:text-text-muted/85"
                 />
                 {searchQuery && (
                   <button
@@ -289,11 +289,11 @@ function ThreadItem({ thread, isActive, isEditing, editName, language, onSelect,
           </div>
         )}
         <div className="flex items-center gap-3 mt-1.5">
-          <span className="text-[10px] text-text-muted/70 flex items-center gap-1">
+          <span className="text-[11px] text-text-muted/85 flex items-center gap-1">
             <Clock className="w-3 h-3" />
             {timeStr}
           </span>
-          <span className="text-[10px] text-text-muted/50">
+          <span className="text-[11px] text-text-muted/85">
             {(thread.messageCount ?? thread.messages.length)} msgs
           </span>
         </div>
@@ -318,7 +318,7 @@ function ThreadItem({ thread, isActive, isEditing, editName, language, onSelect,
                 e.stopPropagation()
                 onDelete()
               }}
-              className="p-1.5 rounded-lg text-text-muted/60 hover:bg-red-500/10 hover:text-red-500 transition-colors"
+              className="p-1.5 rounded-lg text-text-muted/90 hover:bg-red-500/10 hover:text-red-500 transition-colors"
             >
               <Trash2 className="w-3.5 h-3.5" />
             </button>
@@ -387,7 +387,7 @@ function BranchList({ searchQuery, onClose, language }: { searchQuery: string, o
               </span>
               {!isOnBranch && <Check className="w-3.5 h-3.5 text-accent" />}
             </div>
-            <p className="text-[11px] text-text-muted/80 mt-0.5 truncate">
+            <p className="text-[12px] text-text-muted/90 mt-0.5 truncate">
               {language === 'zh' ? '原始对话流' : 'Original conversation flow'}
             </p>
           </div>
@@ -396,7 +396,7 @@ function BranchList({ searchQuery, onClose, language }: { searchQuery: string, o
 
       <div className="space-y-2">
         {filteredBranches.length > 0 && (
-          <p className="text-[10px] font-bold text-text-muted uppercase tracking-wider px-2 opacity-70 flex items-center gap-2">
+          <p className="text-[11px] font-bold text-text-muted uppercase tracking-wider px-2 opacity-70 flex items-center gap-2">
             <GitBranch className="w-3 h-3" />
             {language === 'zh' ? '分支列表' : 'Your Branches'} ({filteredBranches.length})
           </p>
@@ -454,7 +454,7 @@ function BranchList({ searchQuery, onClose, language }: { searchQuery: string, o
                           <Check className="w-3.5 h-3.5 text-accent shrink-0" />
                         )}
                       </div>
-                      <div className="flex items-center gap-2 mt-1 text-[10px] text-text-muted/70">
+                      <div className="flex items-center gap-2 mt-1 text-[11px] text-text-muted/85">
                         <span className="flex items-center gap-1">
                           <Clock className="w-3 h-3" />
                           {getRelativeTime(branch.createdAt, language)}

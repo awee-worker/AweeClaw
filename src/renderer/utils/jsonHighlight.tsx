@@ -231,7 +231,7 @@ export function JsonHighlight({
         <pre className={`text-xs font-mono overflow-auto ${maxHeight} ${className}`}>
             <code>{highlightJson(processedData.content, {}, handleFileClick)}</code>
             {processedData.truncated && (
-                <span className="text-text-muted/50 italic block mt-2">
+                <span className="text-text-muted/85 italic block mt-2">
                     ... ({(processedData.originalLength / 1000).toFixed(1)}KB truncated)
                 </span>
             )}

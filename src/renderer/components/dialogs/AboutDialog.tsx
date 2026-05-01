@@ -74,7 +74,7 @@ export default function AboutDialog({ onClose }: AboutDialogProps) {
                             <Logo className="w-full text-accent drop-shadow-lg" />
                         </div>
                         {/* Version Badge */}
-                        <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-surface border border-border shadow-md text-[10px] font-mono font-bold text-text-secondary whitespace-nowrap z-20">
+                        <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-surface border border-border shadow-md text-[11px] font-mono font-bold text-text-secondary whitespace-nowrap z-20">
                             v{version}
                         </div>
                     </motion.div>
@@ -115,7 +115,7 @@ export default function AboutDialog({ onClose }: AboutDialogProps) {
                         transition={{ delay: 0.4, duration: 0.5 }}
                         className="mt-8 flex flex-col items-center gap-3"
                     >
-                        <h3 className="text-[10px] font-bold text-text-muted uppercase tracking-wider opacity-60">
+                        <h3 className="text-[11px] font-bold text-text-muted uppercase tracking-wider opacity-60">
                             {language === 'zh' ? '贡献者' : 'Contributors'}
                         </h3>
                         <div className="flex items-center -space-x-2 hover:space-x-1 transition-all duration-300">
@@ -152,7 +152,7 @@ export default function AboutDialog({ onClose }: AboutDialogProps) {
                             />
                             <div className="text-left">
                                 <p className="text-sm font-bold text-text-primary group-hover:text-accent transition-colors">awee</p>
-                                <p className="text-[10px] text-text-muted font-medium">Creator & Maintainer</p>
+                                <p className="text-[11px] text-text-muted font-medium">Creator & Maintainer</p>
                             </div>
                         </div>
 
@@ -165,7 +165,7 @@ export default function AboutDialog({ onClose }: AboutDialogProps) {
 
                     {/* Copyright */}
                     <div className="mt-8 text-center">
-                        <p className="text-[10px] text-text-muted/50 font-medium tracking-wide">
+                        <p className="text-[11px] text-text-muted/85 font-medium tracking-wide">
                             Copyright © 2025-present awee. All rights reserved.
                         </p>
                     </div>
@@ -177,7 +177,7 @@ export default function AboutDialog({ onClose }: AboutDialogProps) {
 
 function FeaturePill({ icon: Icon, label }: { icon: any; label: string }) {
     return (
-        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface/50 border border-border/50 text-[10px] font-bold text-text-secondary">
+        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface/50 border border-border/50 text-[11px] font-bold text-text-secondary">
             <Icon className="w-3 h-3 text-accent" />
             {label}
         </div>

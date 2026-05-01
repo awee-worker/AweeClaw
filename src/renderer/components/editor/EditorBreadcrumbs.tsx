@@ -24,7 +24,7 @@ export const EditorBreadcrumbs = memo(function EditorBreadcrumbs({
   const breadcrumbs = getBreadcrumbs(filePath)
 
   return (
-    <div className="h-6 flex items-center px-3 bg-background/50 border-b border-border/20 text-[11px] text-text-muted select-none">
+    <div className="h-6 flex items-center px-3 bg-background/50 border-b border-border/20 text-[12px] text-text-muted select-none">
       {breadcrumbs.map((part, index, arr) => (
         <div key={`${part}-${index}`} className="flex items-center flex-shrink-0">
           {index > 0 && <ChevronRight className="w-3 h-3 opacity-25 mx-0.5" />}

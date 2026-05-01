@@ -110,11 +110,11 @@ export function AgentSettings({
                                     <span className="text-xs font-medium text-text-primary">
                                         {templates.find(t => t.id === promptTemplateId)?.name}
                                     </span>
-                                    <span className="text-[10px] text-text-muted px-1.5 py-0.5 bg-background/50 focus:border-accent/50 focus:ring-1 focus:ring-accent/50 transition-all rounded-lg rounded border border-border">
+                                    <span className="text-[11px] text-text-muted px-1.5 py-0.5 bg-background/50 focus:border-accent/50 focus:ring-1 focus:ring-accent/50 transition-all rounded-lg rounded border border-border">
                                         P{templates.find(t => t.id === promptTemplateId)?.priority}
                                     </span>
                                     {templates.find(t => t.id === promptTemplateId)?.tags?.map(tag => (
-                                        <span key={tag} className="text-[10px] text-accent px-1.5 py-0.5 bg-accent/10 rounded">
+                                        <span key={tag} className="text-[11px] text-accent px-1.5 py-0.5 bg-accent/10 rounded">
                                             {tag}
                                         </span>
                                     ))}
@@ -371,7 +371,7 @@ export function AgentSettings({
 
                                     <div className="grid grid-cols-3 gap-4">
                                         <div className="space-y-1.5">
-                                            <label className="text-[10px] font-medium text-text-muted px-0.5">{t('保留最近轮次', 'Keep Recent Turns')}</label>
+                                            <label className="text-[11px] font-medium text-text-muted px-0.5">{t('保留最近轮次', 'Keep Recent Turns')}</label>
                                             <Input
                                                 type="number"
                                                 value={agentConfig.keepRecentTurns ?? 5}
@@ -382,7 +382,7 @@ export function AgentSettings({
                                             />
                                         </div>
                                         <div className="space-y-1.5">
-                                            <label className="text-[10px] font-medium text-text-muted px-0.5">{t('深度压缩轮次', 'Deep Compression')}</label>
+                                            <label className="text-[11px] font-medium text-text-muted px-0.5">{t('深度压缩轮次', 'Deep Compression')}</label>
                                             <Input
                                                 type="number"
                                                 value={agentConfig.deepCompressionTurns ?? 2}
@@ -393,7 +393,7 @@ export function AgentSettings({
                                             />
                                         </div>
                                         <div className="space-y-1.5">
-                                            <label className="text-[10px] font-medium text-text-muted px-0.5">{t('重要旧轮次', 'Important Old')}</label>
+                                            <label className="text-[11px] font-medium text-text-muted px-0.5">{t('重要旧轮次', 'Important Old')}</label>
                                             <Input
                                                 type="number"
                                                 value={agentConfig.maxImportantOldTurns ?? 3}
@@ -411,19 +411,19 @@ export function AgentSettings({
                                                 label={t('启用 LLM 摘要', 'Enable LLM Summary')}
                                                 checked={agentConfig.enableLLMSummary ?? true}
                                                 onChange={(e) => setAgentConfig({ ...agentConfig, enableLLMSummary: e.target.checked })}
-                                                className="text-[11px]"
+                                                className="text-[12px]"
                                             />
                                             <Switch
                                                 label={t('自动会话交接', 'Auto Handoff')}
                                                 checked={agentConfig.autoHandoff ?? true}
                                                 onChange={(e) => setAgentConfig({ ...agentConfig, autoHandoff: e.target.checked })}
-                                                className="text-[11px]"
+                                                className="text-[12px]"
                                             />
                                             <Switch
                                                 label={t('智能上下文 (隐式检索)', 'Auto-Context (RAG)')}
                                                 checked={agentConfig.enableAutoContext ?? true}
                                                 onChange={(e) => setAgentConfig({ ...agentConfig, enableAutoContext: e.target.checked })}
-                                                className="text-[11px]"
+                                                className="text-[12px]"
                                             />
                                         </div>
                                     </div>
@@ -436,12 +436,12 @@ export function AgentSettings({
                                             <div className="w-1.5 h-1.5 rounded-full bg-accent" />
                                             <label className="text-xs font-bold text-text-primary uppercase tracking-wider">{t('循环检测', 'Loop Detection')}</label>
                                         </div>
-                                        <span className="text-[9px] text-text-muted bg-surface/50 px-2 py-0.5 rounded-full border border-border/30">{t('仅警告，不中断', 'Warning only')}</span>
+                                        <span className="text-[10px] text-text-muted bg-surface/50 px-2 py-0.5 rounded-full border border-border/30">{t('仅警告，不中断', 'Warning only')}</span>
                                     </div>
 
                                     <div className="grid grid-cols-3 gap-4">
                                         <div className="space-y-1.5">
-                                            <label className="text-[10px] font-medium text-text-muted px-0.5">{t('历史记录', 'History')}</label>
+                                            <label className="text-[11px] font-medium text-text-muted px-0.5">{t('历史记录', 'History')}</label>
                                             <Input
                                                 type="number"
                                                 value={agentConfig.loopDetection?.maxHistory ?? 50}
@@ -458,7 +458,7 @@ export function AgentSettings({
                                             />
                                         </div>
                                         <div className="space-y-1.5">
-                                            <label className="text-[10px] font-medium text-text-muted px-0.5">{t('重复阈值', 'Exact Repeats')}</label>
+                                            <label className="text-[11px] font-medium text-text-muted px-0.5">{t('重复阈值', 'Exact Repeats')}</label>
                                             <Input
                                                 type="number"
                                                 value={agentConfig.loopDetection?.maxExactRepeats ?? 5}
@@ -475,7 +475,7 @@ export function AgentSettings({
                                             />
                                         </div>
                                         <div className="space-y-1.5">
-                                            <label className="text-[10px] font-medium text-text-muted px-0.5">{t('编辑阈值', 'File Edits')}</label>
+                                            <label className="text-[11px] font-medium text-text-muted px-0.5">{t('编辑阈值', 'File Edits')}</label>
                                             <Input
                                                 type="number"
                                                 value={agentConfig.loopDetection?.maxSameTargetRepeats ?? 8}
@@ -503,7 +503,7 @@ export function AgentSettings({
                                         </div>
                                         <button
                                             onClick={resetIgnoredDirs}
-                                            className="text-[10px] font-bold text-accent hover:text-accent-hover transition-colors flex items-center gap-1 bg-accent/5 px-2 py-0.5 rounded border border-accent/20"
+                                            className="text-[11px] font-bold text-accent hover:text-accent-hover transition-colors flex items-center gap-1 bg-accent/5 px-2 py-0.5 rounded border border-accent/20"
                                         >
                                             <RefreshCw className="w-2.5 h-2.5" />
                                             {t('重置', 'Reset')}

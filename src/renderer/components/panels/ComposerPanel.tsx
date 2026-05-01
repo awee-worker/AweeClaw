@@ -288,7 +288,7 @@ export default function ComposerPanel({ onClose, initialChanges }: ComposerPanel
             <div>
               <h2 className="text-xl font-black text-text-primary tracking-tight flex items-center gap-2">
                 {t('composer', language)}
-                <span className="px-2 py-0.5 rounded-full bg-accent/10 text-[10px] text-accent font-bold uppercase tracking-widest border border-accent/20">
+                <span className="px-2 py-0.5 rounded-full bg-accent/10 text-[11px] text-accent font-bold uppercase tracking-widest border border-accent/20">
                   BETA
                 </span>
               </h2>
@@ -315,14 +315,14 @@ export default function ComposerPanel({ onClose, initialChanges }: ComposerPanel
               {/* File Selection Area */}
               <div className="px-8 py-6 space-y-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-[10px] font-black text-text-primary uppercase tracking-[0.2em] opacity-40 flex items-center gap-2">
+                  <h3 className="text-[11px] font-black text-text-primary uppercase tracking-[0.2em] opacity-40 flex items-center gap-2">
                     <FolderOpen className="w-3 h-3" />
                     {t('filesToEdit', language)}
                   </h3>
                   <div className="relative">
                     <button
                       onClick={() => setShowFileSelector(!showFileSelector)}
-                      className="flex items-center gap-2 px-3 py-1.5 text-[10px] font-bold bg-accent/10 text-accent border border-accent/20 rounded-xl hover:bg-accent/20 transition-all duration-300 uppercase tracking-tighter"
+                      className="flex items-center gap-2 px-3 py-1.5 text-[11px] font-bold bg-accent/10 text-accent border border-accent/20 rounded-xl hover:bg-accent/20 transition-all duration-300 uppercase tracking-tighter"
                     >
                       <Plus className="w-3 h-3" />
                       {t('addFile', language)}
@@ -342,7 +342,7 @@ export default function ComposerPanel({ onClose, initialChanges }: ComposerPanel
                               <FileText className="w-4 h-4 text-text-muted group-hover:text-accent transition-colors" />
                               <div className="flex flex-col min-w-0">
                                 <span className="text-xs font-bold text-text-primary truncate">{getFileName(file.path)}</span>
-                                <span className="text-[9px] text-text-muted truncate opacity-50">{file.path}</span>
+                                <span className="text-[10px] text-text-muted truncate opacity-50">{file.path}</span>
                               </div>
                             </button>
                           ))}
@@ -365,7 +365,7 @@ export default function ComposerPanel({ onClose, initialChanges }: ComposerPanel
                   {selectedFiles.map(path => (
                     <div
                       key={path}
-                      className="flex items-center gap-2 px-3 py-1.5 bg-surface/20 text-text-primary text-[11px] font-bold rounded-xl border border-border-subtle hover:border-accent/30 hover:bg-accent/5 transition-all duration-300 group"
+                      className="flex items-center gap-2 px-3 py-1.5 bg-surface/20 text-text-primary text-[12px] font-bold rounded-xl border border-border-subtle hover:border-accent/30 hover:bg-accent/5 transition-all duration-300 group"
                     >
                       <FileText className="w-3.5 h-3.5 text-text-muted group-hover:text-accent transition-colors" />
                       <span className="truncate max-w-[180px]">{getFileName(path)}</span>
@@ -378,7 +378,7 @@ export default function ComposerPanel({ onClose, initialChanges }: ComposerPanel
                     </div>
                   ))}
                   {selectedFiles.length === 0 && (
-                    <div className="flex items-center gap-2 text-[11px] text-text-muted italic opacity-50 px-2">
+                    <div className="flex items-center gap-2 text-[12px] text-text-muted italic opacity-50 px-2">
                       <AlertCircle className="w-3.5 h-3.5" />
                       {t('noFilesSelected', language)}
                     </div>
@@ -410,12 +410,12 @@ export default function ComposerPanel({ onClose, initialChanges }: ComposerPanel
                     <div className="flex items-center gap-4">
                       <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface/20 border border-border-subtle">
                         <div className={`w-1.5 h-1.5 rounded-full ${selectedFiles.length > 0 ? 'bg-accent animate-pulse' : 'bg-text-muted opacity-30'}`} />
-                        <span className="text-[10px] font-black text-text-muted uppercase tracking-widest">
+                        <span className="text-[11px] font-black text-text-muted uppercase tracking-widest">
                           {t('filesSelected', language, { count: String(selectedFiles.length) })}
                         </span>
                       </div>
                       {instruction.length > 0 && (
-                        <span className="text-[10px] font-bold text-text-muted opacity-40 uppercase tracking-tighter">
+                        <span className="text-[11px] font-bold text-text-muted opacity-40 uppercase tracking-tighter">
                           {instruction.length} chars
                         </span>
                       )}
@@ -458,13 +458,13 @@ export default function ComposerPanel({ onClose, initialChanges }: ComposerPanel
                 {/* Changes Header */}
                 <div className="px-8 py-6 border-b border-border-subtle flex items-center justify-between bg-surface/10">
                   <div className="flex items-center gap-4">
-                    <h3 className="text-[10px] font-black text-text-primary uppercase tracking-[0.2em] opacity-40 flex items-center gap-2">
+                    <h3 className="text-[11px] font-black text-text-primary uppercase tracking-[0.2em] opacity-40 flex items-center gap-2">
                       <CheckCheck className="w-3 h-3" />
                       {language === 'zh' ? '变更预览' : 'Changes Preview'}
                     </h3>
                     <div className="flex items-center gap-3 px-3 py-1 rounded-full bg-surface/20 border border-border-subtle">
-                      <span className="text-[10px] font-bold text-green-400">+{composerState.currentSession?.totalLinesAdded || 0}</span>
-                      <span className="text-[10px] font-bold text-red-400">-{composerState.currentSession?.totalLinesRemoved || 0}</span>
+                      <span className="text-[11px] font-bold text-green-400">+{composerState.currentSession?.totalLinesAdded || 0}</span>
+                      <span className="text-[11px] font-bold text-red-400">-{composerState.currentSession?.totalLinesRemoved || 0}</span>
                     </div>
                   </div>
 
@@ -472,7 +472,7 @@ export default function ComposerPanel({ onClose, initialChanges }: ComposerPanel
                     <button
                       onClick={fileEdits.length > 0 ? () => setFileEdits([]) : handleRejectAllComposer}
                       disabled={summary.pending === 0 && fileEdits.length === 0}
-                      className="flex items-center gap-2 px-4 py-2 bg-surface/20 border border-border-subtle text-text-muted text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 disabled:opacity-30 transition-all duration-300"
+                      className="flex items-center gap-2 px-4 py-2 bg-surface/20 border border-border-subtle text-text-muted text-[11px] font-black uppercase tracking-widest rounded-xl hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 disabled:opacity-30 transition-all duration-300"
                     >
                       <XCircle className="w-3.5 h-3.5" />
                       {language === 'zh' ? '全部拒绝' : 'Reject All'}
@@ -480,7 +480,7 @@ export default function ComposerPanel({ onClose, initialChanges }: ComposerPanel
                     <button
                       onClick={fileEdits.length > 0 ? applyAllEdits : handleAcceptAllComposer}
                       disabled={summary.pending === 0 && fileEdits.length === 0}
-                      className="flex items-center gap-2 px-4 py-2 bg-green-600 text-accent-foreground text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-green-500 shadow-lg shadow-green-900/20 disabled:opacity-30 transition-all duration-300"
+                      className="flex items-center gap-2 px-4 py-2 bg-green-600 text-accent-foreground text-[11px] font-black uppercase tracking-widest rounded-xl hover:bg-green-500 shadow-lg shadow-green-900/20 disabled:opacity-30 transition-all duration-300"
                     >
                       <CheckCheck className="w-3.5 h-3.5" />
                       {language === 'zh' ? '全部接受' : 'Accept All'}
@@ -503,7 +503,7 @@ export default function ComposerPanel({ onClose, initialChanges }: ComposerPanel
                           </div>
                           <div className="flex flex-col">
                             <span className="text-xs font-bold text-text-primary">{getFileName(edit.path)}</span>
-                            <span className="text-[9px] text-text-muted opacity-40 truncate max-w-[200px]">{edit.path}</span>
+                            <span className="text-[10px] text-text-muted opacity-40 truncate max-w-[200px]">{edit.path}</span>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -523,7 +523,7 @@ export default function ComposerPanel({ onClose, initialChanges }: ComposerPanel
                               </button>
                             </>
                           ) : (
-                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest ${edit.status === 'applied' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest ${edit.status === 'applied' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
                               }`}>
                               {edit.status}
                             </span>
@@ -554,8 +554,8 @@ export default function ComposerPanel({ onClose, initialChanges }: ComposerPanel
                       >
                         {expandedDirs.has(dir) ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
                         <FolderOpen className="w-3.5 h-3.5 text-yellow-500/70" />
-                        <span className="text-[10px] font-black uppercase tracking-widest">{dir || 'root'}</span>
-                        <span className="text-[9px] font-bold text-text-muted">({changes.length})</span>
+                        <span className="text-[11px] font-black uppercase tracking-widest">{dir || 'root'}</span>
+                        <span className="text-[10px] font-bold text-text-muted">({changes.length})</span>
                       </div>
 
                       {expandedDirs.has(dir) && changes.map(change => (
@@ -571,13 +571,13 @@ export default function ComposerPanel({ onClose, initialChanges }: ComposerPanel
                               <div className="flex flex-col">
                                 <span className="text-xs font-bold text-text-primary">{getFileName(change.filePath)}</span>
                                 <div className="flex items-center gap-2">
-                                  <span className={`text-[9px] font-black uppercase tracking-tighter ${change.changeType === 'create' ? 'text-green-400' :
+                                  <span className={`text-[10px] font-black uppercase tracking-tighter ${change.changeType === 'create' ? 'text-green-400' :
                                     change.changeType === 'delete' ? 'text-red-400' : 'text-blue-400'
                                     }`}>
                                     {change.changeType}
                                   </span>
                                   {change.status !== 'pending' && (
-                                    <span className={`text-[9px] font-black uppercase tracking-tighter ${change.status === 'accepted' ? 'text-green-400' : 'text-red-400'
+                                    <span className={`text-[10px] font-black uppercase tracking-tighter ${change.status === 'accepted' ? 'text-green-400' : 'text-red-400'
                                       }`}>
                                       • {change.status}
                                     </span>
@@ -619,7 +619,7 @@ export default function ComposerPanel({ onClose, initialChanges }: ComposerPanel
                                   <div>
                                     <button
                                       onClick={() => void openComposerFile(change.filePath)}
-                                      className="px-3 py-1.5 rounded-lg border border-border-subtle bg-surface/20 text-[10px] font-black uppercase tracking-widest text-text-primary hover:border-accent/40 hover:text-accent transition-all duration-300"
+                                      className="px-3 py-1.5 rounded-lg border border-border-subtle bg-surface/20 text-[11px] font-black uppercase tracking-widest text-text-primary hover:border-accent/40 hover:text-accent transition-all duration-300"
                                     >
                                       {language === 'zh' ? '打开文件' : 'Open File'}
                                     </button>

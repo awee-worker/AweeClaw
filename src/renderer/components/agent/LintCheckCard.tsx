@@ -55,7 +55,7 @@ export const LintCheckCard = memo(({ part }: LintCheckCardProps) => {
                     </div>
 
                     {/* Title */}
-                    <span className="text-[11px] font-medium text-text-secondary flex-1">
+                    <span className="text-[12px] font-medium text-text-secondary flex-1">
                         {isChecking ? (
                             'Checking for lint errors...'
                         ) : hasFailed ? (
@@ -94,7 +94,7 @@ export const LintCheckCard = memo(({ part }: LintCheckCardProps) => {
                                         {/* File name */}
                                         <button
                                             onClick={() => handleFileClick(file.filePath)}
-                                            className="text-[10px] font-medium text-accent hover:underline cursor-pointer"
+                                            className="text-[11px] font-medium text-accent hover:underline cursor-pointer"
                                         >
                                             {getFileName(file.filePath)}
                                         </button>
@@ -105,13 +105,13 @@ export const LintCheckCard = memo(({ part }: LintCheckCardProps) => {
                                                 onClick={() => handleFileClick(file.filePath, err.line)}
                                                 className="w-full flex items-start gap-1.5 pl-2 text-left hover:bg-surface-hover/50 rounded py-0.5 transition-colors"
                                             >
-                                                <span className={`text-[10px] flex-shrink-0 mt-px ${
+                                                <span className={`text-[11px] flex-shrink-0 mt-px ${
                                                     err.severity === 'error' ? 'text-red-400' : 'text-yellow-400'
                                                 }`}>
                                                     {err.severity === 'error' ? '●' : '▲'}
                                                 </span>
-                                                <span className="text-[10px] text-text-muted leading-relaxed">
-                                                    <span className="text-text-secondary/60">L{err.line}</span>
+                                                <span className="text-[11px] text-text-muted leading-relaxed">
+                                                    <span className="text-text-secondary">L{err.line}</span>
                                                     {' '}{err.message}
                                                 </span>
                                             </button>

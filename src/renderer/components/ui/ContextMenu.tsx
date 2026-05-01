@@ -87,7 +87,7 @@ export const ContextMenu = memo(function ContextMenu({ x, y, items, onClose }: C
             className={`
               w-full px-2.5 py-1.5 flex items-center gap-2.5 text-left text-[13px] transition-all rounded-lg select-none group
               ${item.disabled
-                ? 'text-text-muted/40 cursor-not-allowed'
+                ? 'text-text-muted/85 cursor-not-allowed'
                 : item.danger
                   ? 'text-text-secondary hover:bg-red-500/10 hover:text-red-500'
                   : 'text-text-secondary hover:bg-accent/10 hover:text-text-primary'
@@ -97,7 +97,7 @@ export const ContextMenu = memo(function ContextMenu({ x, y, items, onClose }: C
             {Icon && <Icon className={`w-4 h-4 flex-shrink-0 transition-colors ${item.danger ? 'text-red-400/70 group-hover:text-red-500' : 'text-text-muted group-hover:text-text-primary'}`} />}
             <span className="flex-1 font-medium tracking-tight">{item.label}</span>
             {item.shortcut && (
-              <span className="text-[10px] text-text-muted/60 font-mono tracking-tighter">{item.shortcut}</span>
+              <span className="text-[11px] text-text-muted/90 font-mono tracking-tighter">{item.shortcut}</span>
             )}
           </button>
         )

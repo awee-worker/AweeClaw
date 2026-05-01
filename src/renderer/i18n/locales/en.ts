@@ -581,7 +581,7 @@ export const en = {
   'cmd.workbench.action.quickOpen': 'Go to File',
   'cmd.workbench.action.openSettings': 'Open Settings',
   'cmd.workbench.action.showShortcuts': 'Keyboard Shortcuts',
-  'cmd.workbench.action.toggleComposer': 'Toggle Composer',
+  'cmd.workbench.action.toggleComposer': 'Toggle Workflow',
   'cmd.workbench.action.toggleDevTools': 'Toggle Developer Tools',
   'cmd.workbench.action.closePanel': 'Close Panel',
   'cmd.explorer.revealActiveFile': 'Reveal Active File in Explorer',

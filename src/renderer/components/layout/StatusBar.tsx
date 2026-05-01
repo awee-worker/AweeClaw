@@ -172,7 +172,7 @@ export default function StatusBar() {
   }), [language])
 
   return (
-    <div className="h-8 bg-background-secondary/40 backdrop-blur-md flex items-center justify-between px-3 text-[10px] select-none text-text-muted z-50 font-medium border-t border-border/30 shadow-[0_-1px_15px_rgba(0,0,0,0.03)]">
+    <div className="h-8 bg-background-secondary/40 backdrop-blur-md flex items-center justify-between px-3 text-[11px] select-none text-text-muted z-50 font-medium border-t border-border/30 shadow-[0_-1px_15px_rgba(0,0,0,0.03)]">
       <div className="flex items-center gap-3">
         <EmotionStatusIndicator />
 
@@ -238,7 +238,7 @@ export default function StatusBar() {
 
       <div className="flex items-center gap-4 h-full">
         <div className="flex items-center gap-3 pr-1 h-full font-mono">
-          <div className="flex items-center gap-2 cursor-pointer hover:bg-white/5 hover:text-text-primary px-2 py-1 rounded-md transition-colors text-[9px] hidden md:flex">
+          <div className="flex items-center gap-2 cursor-pointer hover:bg-white/5 hover:text-text-primary px-2 py-1 rounded-md transition-colors text-[10px] hidden md:flex">
             <span>Ln {cursorPosition?.line || 1}, Col {cursorPosition?.column || 1}</span>
           </div>
           <LspStatusIndicator />
@@ -263,7 +263,7 @@ export default function StatusBar() {
                     >
                       <Loader2 className="w-3 h-3" />
                     </motion.div>
-                    <span className="text-[9px] font-medium">
+                    <span className="text-[10px] font-medium">
                       {contextIndicatorCopy.switching}
                     </span>
                   </motion.div>
@@ -282,7 +282,7 @@ export default function StatusBar() {
                     >
                       <Maximize2 className="w-3 h-3 text-accent" />
                     </motion.div>
-                    <span className="text-[9px] font-medium text-accent">
+                    <span className="text-[10px] font-medium text-accent">
                       {contextIndicatorCopy.compressing}
                     </span>
                   </motion.div>
@@ -297,7 +297,7 @@ export default function StatusBar() {
                     <div className="flex items-center justify-center w-4 h-4 drop-shadow-[0_0_6px_rgba(251,191,36,0.45)]">
                       <ScrollText className="w-3 h-3" />
                     </div>
-                    <span className="text-[9px] font-medium">
+                    <span className="text-[10px] font-medium">
                       {contextIndicatorCopy.handoffReady}
                     </span>
                   </motion.div>
@@ -312,7 +312,7 @@ export default function StatusBar() {
                     <div className="flex items-center justify-center w-4 h-4 drop-shadow-[0_0_6px_rgba(52,211,153,0.45)]">
                       <CheckCircle2 className="w-3 h-3" />
                     </div>
-                    <span className="text-[9px] font-medium">
+                    <span className="text-[10px] font-medium">
                       {contextIndicatorCopy.switched}
                     </span>
                   </motion.div>
@@ -327,7 +327,7 @@ export default function StatusBar() {
                       <div className="flex items-center justify-center transition-all duration-300 w-4 h-4">
                         <Maximize2 className={`w-3 h-3 transition-colors ${layerColorClass}`} />
                       </div>
-                      <span className="text-[9px] font-bold font-mono text-text-muted group-hover:text-text-primary transition-colors">
+                      <span className="text-[10px] font-bold font-mono text-text-muted group-hover:text-text-primary transition-colors">
                         {compressionStats ? `${(compressionStats.ratio * 100).toFixed(1)}%` : '0%'}
                       </span>
                     </div>

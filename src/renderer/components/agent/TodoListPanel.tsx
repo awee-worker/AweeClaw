@@ -22,7 +22,7 @@ const StatusIcon = memo(({ status }: { status: TodoItem['status'] }) => {
     case 'in_progress':
       return <div className="w-2 h-2 rounded-full bg-accent animate-pulse flex-shrink-0 mx-[3px]" />
     case 'pending':
-      return <Circle className="w-3.5 h-3.5 text-text-muted/40 flex-shrink-0" />
+      return <Circle className="w-3.5 h-3.5 text-text-muted/85 flex-shrink-0" />
   }
 })
 StatusIcon.displayName = 'StatusIcon'
@@ -38,8 +38,8 @@ const TodoRow = memo(({ todo }: { todo: TodoItem }) => {
       <div className="mt-0.5">
         <StatusIcon status={todo.status} />
       </div>
-      <span className={`text-[11px] leading-relaxed
-        ${isCompleted ? 'text-text-muted/60 line-through' : ''}
+      <span className={`text-[12px] leading-relaxed
+        ${isCompleted ? 'text-text-muted/90 line-through' : ''}
         ${isActive ? 'text-text-primary font-medium' : ''}
         ${todo.status === 'pending' ? 'text-text-muted' : ''}
       `}>
@@ -71,7 +71,7 @@ export const TodoListPanel = memo(({ todos, headerPrefix }: TodoListPanelProps) 
         >
           {headerPrefix}
           <ChevronDown className={`w-3.5 h-3.5 text-text-muted transition-transform ${isExpanded ? '' : '-rotate-90'}`} />
-          <span className="text-[11px] font-medium text-text-primary">
+          <span className="text-[12px] font-medium text-text-primary">
             {completed === total && total > 0 ? (
               <span className="text-green-400">All tasks completed</span>
             ) : (

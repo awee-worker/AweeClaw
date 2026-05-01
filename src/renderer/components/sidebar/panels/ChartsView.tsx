@@ -128,7 +128,7 @@ export function ChartsView() {
             <div className="flex-1 overflow-y-auto">
                 {charts.length === 0 ? (
                     <div className="flex-1 flex flex-col items-center justify-center gap-3 px-4 py-8">
-                        <BarChart3 className="w-10 h-10 text-text-muted/30" />
+                        <BarChart3 className="w-10 h-10 text-text-muted/75" />
                         <p className="text-xs text-text-muted text-center">
                             {language === 'zh' ? '暂无图表，点击 + 创建' : 'No charts yet. Click + to create one.'}
                         </p>
@@ -145,7 +145,7 @@ export function ChartsView() {
                                 <Icon className="w-4 h-4 text-accent/70 flex-shrink-0" />
                                 <div className="flex-1 min-w-0">
                                     <div className="text-sm text-text-primary truncate">{chart.name}</div>
-                                    <div className="text-[10px] text-text-muted flex items-center gap-2">
+                                    <div className="text-[11px] text-text-muted flex items-center gap-2">
                                         <span>{typeLabel(chart.type)}</span>
                                         {chart.source && (
                                             <>
@@ -170,8 +170,8 @@ export function ChartsView() {
                                         onClick={() => handleChartClick(chart)}
                                     >
                                         <Icon className="w-6 h-6 text-accent/60" />
-                                        <span className="text-[11px] text-text-primary truncate w-full text-center">{chart.name}</span>
-                                        <span className="text-[9px] text-text-muted">{typeLabel(chart.type)}</span>
+                                        <span className="text-[12px] text-text-primary truncate w-full text-center">{chart.name}</span>
+                                        <span className="text-[10px] text-text-muted">{typeLabel(chart.type)}</span>
                                     </button>
                                 )
                             })}
@@ -196,7 +196,7 @@ export function ChartsView() {
                         value={newChart.name}
                         onChange={e => setNewChart(f => ({ ...f, name: e.target.value }))}
                         placeholder={language === 'zh' ? '图表名称' : 'Chart name'}
-                        className="w-full h-7 px-2 text-xs bg-background border border-border/50 rounded focus:outline-none focus:border-accent/50 text-text-primary placeholder:text-text-muted/50"
+                        className="w-full h-7 px-2 text-xs bg-background border border-border/50 rounded focus:outline-none focus:border-accent/50 text-text-primary placeholder:text-text-muted/85"
                     />
 
                     <div className="flex gap-1">
@@ -209,7 +209,7 @@ export function ChartsView() {
                                     className={`flex-1 flex flex-col items-center gap-0.5 py-1.5 rounded transition-colors ${newChart.type === ct.value ? 'bg-accent/20 text-accent' : 'text-text-muted hover:text-text-primary hover:bg-surface-hover'}`}
                                 >
                                     <Icon className="w-3.5 h-3.5" />
-                                    <span className="text-[9px]">{language === 'zh' ? ct.labelZh : ct.label}</span>
+                                    <span className="text-[10px]">{language === 'zh' ? ct.labelZh : ct.label}</span>
                                 </button>
                             )
                         })}

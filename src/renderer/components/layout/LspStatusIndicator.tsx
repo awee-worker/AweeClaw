@@ -145,10 +145,10 @@ export default function LspStatusIndicator() {
   if (!isSupported || !currentServerType) {
     return (
       <div className="flex items-center gap-1.5 px-2 py-1 h-6 rounded-md transition-colors cursor-default hidden sm:flex opacity-60">
-        <div className="flex items-center justify-center w-4 h-4 text-text-muted font-mono text-[10px] font-bold">
+        <div className="flex items-center justify-center w-4 h-4 text-text-muted font-mono text-[11px] font-bold">
           {'{}'}
         </div>
-        <span className="text-[10px] uppercase font-medium tracking-widest text-text-muted transition-colors">
+        <span className="text-[11px] uppercase font-medium tracking-widest text-text-muted transition-colors">
           {displayName}
         </span>
       </div>
@@ -160,7 +160,7 @@ export default function LspStatusIndicator() {
       icon={
         <div className="flex items-center gap-1.5 px-2 py-1 h-6 rounded-md hover:bg-white/5 transition-colors cursor-pointer group hidden sm:flex">
           <div className="relative flex items-center justify-center w-4 h-4 transition-colors">
-            <span className="text-text-muted group-hover:text-text-primary font-mono text-[10px] font-bold transition-colors">
+            <span className="text-text-muted group-hover:text-text-primary font-mono text-[11px] font-bold transition-colors">
               {'{}'}
             </span>
             {isInstalled ? (
@@ -169,7 +169,7 @@ export default function LspStatusIndicator() {
               <span className="absolute -top-[1px] -right-[2px] w-1.5 h-1.5 bg-amber-400 rounded-full shadow-[0_0_8px_rgba(251,191,36,0.6)]" />
             )}
           </div>
-          <span className="text-[10px] uppercase font-medium tracking-widest text-text-muted group-hover:text-text-primary transition-colors">
+          <span className="text-[11px] uppercase font-medium tracking-widest text-text-muted group-hover:text-text-primary transition-colors">
             {displayName}
           </span>
         </div>

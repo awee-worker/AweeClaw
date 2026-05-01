@@ -460,7 +460,7 @@ const TerminalPanel = memo(function TerminalPanel() {
                                     {Object.keys(scripts).length > 0 ? Object.entries(scripts).map(([name, cmd]) => (
                                         <button key={name} onClick={() => runScript(name)} className="text-left px-3 py-2 text-xs text-text-primary hover:bg-surface-hover flex flex-col gap-0.5 border-b border-border/50 last:border-0 w-full transition-colors">
                                             <span className="font-medium text-accent">{name}</span>
-                                            <span className="text-[10px] text-text-muted truncate max-w-[200px] opacity-70 font-mono">{cmd}</span>
+                                            <span className="text-[11px] text-text-muted truncate max-w-[200px] opacity-70 font-mono">{cmd}</span>
                                         </button>
                                     )) : <div className="px-3 py-2 text-xs text-text-muted italic">No scripts found</div>}
                                 </div>
@@ -524,7 +524,7 @@ const TerminalPanel = memo(function TerminalPanel() {
                             }}
                         >
                             <span>{t('newTerminal', language)}</span>
-                            <span className="text-[10px] text-text-muted">{formatShortcut('Ctrl+Shift+`')}</span>
+                            <span className="text-[11px] text-text-muted">{formatShortcut('Ctrl+Shift+`')}</span>
                         </button>
                         <button
                             className="flex items-center justify-between w-full px-3 py-1.5 hover:bg-surface-hover"
@@ -535,7 +535,7 @@ const TerminalPanel = memo(function TerminalPanel() {
                             }}
                         >
                             <span>{t('splitTerminal', language)}</span>
-                            <span className="text-[10px] text-text-muted">{formatShortcut('Ctrl+Shift+5')}</span>
+                            <span className="text-[11px] text-text-muted">{formatShortcut('Ctrl+Shift+5')}</span>
                         </button>
 
                         <div className="my-1 h-px bg-border/60" />
@@ -556,7 +556,7 @@ const TerminalPanel = memo(function TerminalPanel() {
                             }}
                         >
                             <span>{t('ctxCopy', language)}</span>
-                            <span className="text-[10px] text-text-muted">{formatShortcut('Ctrl+Shift+C')}</span>
+                            <span className="text-[11px] text-text-muted">{formatShortcut('Ctrl+Shift+C')}</span>
                         </button>
                         <button
                             className="flex items-center justify-between w-full px-3 py-1.5 hover:bg-surface-hover"
@@ -573,7 +573,7 @@ const TerminalPanel = memo(function TerminalPanel() {
                             }}
                         >
                             <span>{t('ctxPaste', language)}</span>
-                            <span className="text-[10px] text-text-muted">{formatShortcut('Ctrl+Shift+V')}</span>
+                            <span className="text-[11px] text-text-muted">{formatShortcut('Ctrl+Shift+V')}</span>
                         </button>
                         <button
                             className="flex items-center justify-between w-full px-3 py-1.5 hover:bg-surface-hover"

@@ -118,7 +118,7 @@ const CodeBlock = React.memo(({ language, children, fontSize }: { language: stri
   return (
     <div className="relative group/code my-4 rounded-xl overflow-hidden border border-border bg-background-tertiary shadow-sm">
       <div className="flex items-center justify-between px-4 py-2 bg-surface/50 border-b border-border/50">
-        <span className="text-[10px] text-text-muted font-bold font-mono uppercase tracking-widest opacity-70">
+        <span className="text-[11px] text-text-muted font-bold font-mono uppercase tracking-widest opacity-70">
           {language || 'text'}
         </span>
         <Tooltip content="Copy Code">
@@ -280,7 +280,7 @@ const MessageMetaGroup = React.memo(({ autoSkills, manualSkills, searchContent, 
         onClick={() => setIsExpanded(!isExpanded)}
         className="flex w-full items-center gap-2 py-1.5 cursor-pointer select-none group rounded-md hover:bg-text-primary/[0.03] transition-colors"
       >
-        <motion.div animate={{ rotate: isExpanded ? 0 : -90 }} transition={{ duration: 0.15 }} className="shrink-0 text-text-muted/40 group-hover:text-text-muted transition-colors">
+        <motion.div animate={{ rotate: isExpanded ? 0 : -90 }} transition={{ duration: 0.15 }} className="shrink-0 text-text-muted/85 group-hover:text-text-muted transition-colors">
           <ChevronDown className="w-3.5 h-3.5" />
         </motion.div>
 
@@ -290,7 +290,7 @@ const MessageMetaGroup = React.memo(({ autoSkills, manualSkills, searchContent, 
               <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
             </div>
           ) : (
-            <Wrench className="w-3 h-3 text-text-muted/50" />
+            <Wrench className="w-3 h-3 text-text-muted/85" />
           )}
         </div>
 
@@ -300,7 +300,7 @@ const MessageMetaGroup = React.memo(({ autoSkills, manualSkills, searchContent, 
 
         {/* 折叠时显示 skill 名称列表 */}
         {!isExpanded && skillNames && (
-          <span className="text-[11px] text-text-muted/40 truncate ml-0.5">
+          <span className="text-[12px] text-text-muted/85 truncate ml-0.5">
             — {skillNames}
           </span>
         )}
@@ -319,14 +319,14 @@ const MessageMetaGroup = React.memo(({ autoSkills, manualSkills, searchContent, 
             <div className="pb-1.5 pl-[38px] pr-3 space-y-0.5">
               {/* Skill Referenced */}
               {hasSkills && (
-                <div className="flex items-center gap-1.5 text-[11px]">
-                  <span className="text-text-muted/35 shrink-0">Skill Referenced</span>
+                <div className="flex items-center gap-1.5 text-[12px]">
+                  <span className="text-text-muted/75 shrink-0">Skill Referenced</span>
                   {allSkills.map((item: any, i: number) => (
                     <React.Fragment key={item.skillId || i}>
-                      {i > 0 && <span className="text-text-muted/20">,</span>}
+                      {i > 0 && <span className="text-text-muted/85">,</span>}
                       <button
                         onClick={(e) => handleOpenSkill(e, item.skillId)}
-                        className="font-mono text-text-muted/55 hover:text-accent transition-colors focus:outline-none"
+                        className="font-mono text-text-muted/75 hover:text-accent transition-colors focus:outline-none"
                       >
                         {item.skillId}
                       </button>
@@ -337,16 +337,16 @@ const MessageMetaGroup = React.memo(({ autoSkills, manualSkills, searchContent, 
 
               {/* File Referenced */}
               {hasSearch && (
-                <div className="text-[11px]">
+                <div className="text-[12px]">
                   {searchContent ? (
                     <div className="flex items-start gap-1.5">
-                      <span className="text-text-muted/35 shrink-0">File Referenced</span>
-                      <div className="text-text-muted/40 leading-relaxed max-h-32 overflow-auto custom-scrollbar whitespace-pre-wrap">
+                      <span className="text-text-muted/75 shrink-0">File Referenced</span>
+                      <div className="text-text-muted/85 leading-relaxed max-h-32 overflow-auto custom-scrollbar whitespace-pre-wrap">
                         {searchContent}
                       </div>
                     </div>
                   ) : (
-                    <span className="text-text-muted/25 italic">Searching files...</span>
+                    <span className="text-text-muted/65 italic">Searching files...</span>
                   )}
                 </div>
               )}
@@ -409,7 +409,7 @@ const ThinkingBlock = React.memo(({ content, startTime, isStreaming, fontSize }:
     <div className="my-3 group/think overflow-hidden">
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="flex w-full items-center gap-2 py-1.5 text-text-muted/50 hover:text-text-muted rounded-md hover:bg-text-primary/[0.03] transition-colors select-none"
+        className="flex w-full items-center gap-2 py-1.5 text-text-muted/85 hover:text-text-muted rounded-md hover:bg-text-primary/[0.03] transition-colors select-none"
       >
         <div className={`transition-transform duration-200 ${isExpanded ? 'rotate-0' : '-rotate-90'}`}>
           <ChevronDown className="w-3.5 h-3.5" />
@@ -428,12 +428,12 @@ const ThinkingBlock = React.memo(({ content, startTime, isStreaming, fontSize }:
             {content ? (
               <div
                 style={{ fontSize: `${fontSize - 1}px` }}
-                className={`text-text-muted/70 leading-relaxed whitespace-pre-wrap font-sans ${isStreaming ? 'animate-block-reveal' : ''}`}
+                className={`text-text-muted/85 leading-relaxed whitespace-pre-wrap font-sans ${isStreaming ? 'animate-block-reveal' : ''}`}
               >
                 {isStreaming ? renderStreamingTailText(fluidContent, 'think-tail') : fluidContent}
               </div>
             ) : (
-              <div className="flex items-center gap-2 text-text-muted/50 italic text-xs py-1">
+              <div className="flex items-center gap-2 text-text-muted/85 italic text-xs py-1">
                 <span className="text-shimmer">Analyzing...</span>
               </div>
             )}
@@ -612,7 +612,7 @@ const SourcesBlock = React.memo(({ sources }: { sources: LLMStreamSource[] }) =>
 
   return (
     <div className="my-3 rounded-xl border border-border/60 bg-surface/30 px-3 py-2.5">
-      <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+      <div className="mb-2 flex items-center gap-2 text-[12px] font-semibold uppercase tracking-wider text-text-muted">
         <Link2 className="h-3.5 w-3.5" />
         Sources
       </div>
@@ -642,7 +642,7 @@ const SourcesBlock = React.memo(({ sources }: { sources: LLMStreamSource[] }) =>
                 <div className="text-sm font-medium text-text-primary">{label}</div>
               )}
               {meta && (
-                <div className="mt-0.5 break-all text-[11px] text-text-muted">
+                <div className="mt-0.5 break-all text-[12px] text-text-muted">
                   {meta}
                 </div>
               )}
@@ -984,7 +984,7 @@ const ChatMessage = React.memo(({
           <div className="w-full flex flex-col items-end gap-1.5">
             {/* Header Row */}
             <div className="flex items-center gap-2.5 px-1 select-none">
-              <span className="text-[11px] font-bold text-text-muted/60 uppercase tracking-tight">You</span>
+              <span className="text-[12px] font-bold text-text-muted/90 uppercase tracking-tight">You</span>
               <div className="w-7 h-7 rounded-full bg-surface/60 border border-text-primary/10 flex items-center justify-center text-text-muted shadow-sm flex-shrink-0">
                 <User className="w-3.5 h-3.5" />
               </div>
@@ -1008,14 +1008,14 @@ const ChatMessage = React.memo(({
                           setIsEditing(false)
                         }
                       }}
-                      className="w-full bg-transparent border-none outline-none px-4 py-3 text-text-primary resize-none focus:ring-0 focus:outline-none transition-all custom-scrollbar font-mono text-sm leading-relaxed placeholder:text-text-muted/30"
+                      className="w-full bg-transparent border-none outline-none px-4 py-3 text-text-primary resize-none focus:ring-0 focus:outline-none transition-all custom-scrollbar font-mono text-sm leading-relaxed placeholder:text-text-muted/75"
                       rows={Math.max(2, Math.min(15, editContent.split('\n').length))}
                       autoFocus
                       style={{ fontSize: `${fontSize}px` }}
                       placeholder="Type your message..."
                     />
                     <div className="flex items-center justify-between px-2 py-1.5 bg-black/5 border-t border-black/5">
-                      <span className="text-[10px] text-text-muted/50 ml-2 font-medium">
+                      <span className="text-[11px] text-text-muted/85 ml-2 font-medium">
                         Esc to cancel • Enter to save
                       </span>
                       <div className="flex gap-1">
@@ -1075,7 +1075,7 @@ const ChatMessage = React.memo(({
                         const IconComponent = style.Icon
 
                         return (
-                          <span key={i} className={`inline-flex items-center gap-1 px-1.5 py-0.5 ${style.bg} ${style.text} text-[10px] font-medium rounded-md border ${style.border} select-none opacity-80 hover:opacity-100 transition-opacity`}>
+                          <span key={i} className={`inline-flex items-center gap-1 px-1.5 py-0.5 ${style.bg} ${style.text} text-[11px] font-medium rounded-md border ${style.border} select-none opacity-80 hover:opacity-100 transition-opacity`}>
                             <IconComponent className="w-3 h-3 opacity-70" />
                             <span className="max-w-[150px] truncate">{label}</span>
                           </span>
@@ -1117,11 +1117,11 @@ const ChatMessage = React.memo(({
                             className="flex items-center gap-2 px-3 py-2 rounded-lg border border-text-inverted/10 bg-surface/30 max-w-[220px]"
                           >
                             <div className="w-8 h-8 rounded-md bg-accent/10 flex items-center justify-center flex-shrink-0">
-                              <span className="text-[10px] font-bold text-accent uppercase">{ext || '?'}</span>
+                              <span className="text-[11px] font-bold text-accent uppercase">{ext || '?'}</span>
                             </div>
                             <div className="min-w-0 flex-1">
                               <p className="text-xs text-text-primary truncate">{file.name}</p>
-                              <p className="text-[10px] text-text-muted">{file.media_type}</p>
+                              <p className="text-[11px] text-text-muted">{file.media_type}</p>
                             </div>
                           </div>
                         )
@@ -1203,7 +1203,7 @@ const ChatMessage = React.memo(({
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -6 }}
                           transition={{ duration: 0.25, ease: "easeOut" }}
-                          className="text-[10px] text-text-muted/80 font-medium whitespace-nowrap tracking-wide"
+                          className="text-[11px] text-text-muted/90 font-medium whitespace-nowrap tracking-wide"
                         >
                           {t(`agent.typing.${typingIndex}` as any, language)}
                         </motion.span>

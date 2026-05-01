@@ -76,9 +76,9 @@ export default function GlobalToastContainer() {
                   </div>
 
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5 pr-6 text-[10px] text-text-muted">
+                    <div className="flex items-center gap-1.5 pr-6 text-[11px] text-text-muted">
                       {activeCardToast.source && (
-                        <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-surface px-1.5 py-0.5 text-[9px] font-medium text-text-muted">
+                        <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-surface px-1.5 py-0.5 text-[10px] font-medium text-text-muted">
                           <Terminal className="h-2.5 w-2.5" />
                           {activeCardToast.source}
                         </span>
@@ -91,7 +91,7 @@ export default function GlobalToastContainer() {
                       </h3>
                     )}
                     {activeCardToast.message && (
-                      <p className="mt-1 text-[11px] leading-4.5 text-text-secondary">
+                      <p className="mt-1 text-[12px] leading-4.5 text-text-secondary">
                         {activeCardToast.message}
                       </p>
                     )}
@@ -106,7 +106,7 @@ export default function GlobalToastContainer() {
                         onClick={() => action.onClick?.()}
                         variant={action.style === 'primary' ? 'primary' : action.style === 'ghost' ? 'ghost' : 'secondary'}
                         size="sm"
-                        className="h-7 rounded-lg px-2.5 text-[11px]"
+                        className="h-7 rounded-lg px-2.5 text-[12px]"
                         rightIcon={action.style === 'primary' ? <ArrowUpRight className="h-3 w-3" /> : undefined}
                       >
                         {action.label}

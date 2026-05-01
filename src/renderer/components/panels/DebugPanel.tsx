@@ -515,16 +515,16 @@ export default function DebugPanel() {
                       className="flex items-center gap-2 py-2 px-3 hover:bg-surface-hover cursor-pointer transition-colors border-b border-border/50 bg-text-primary/[0.02]"
                     >
                       <ChevronRight className={`w-3.5 h-3.5 text-text-muted transition-transform duration-200 ${expandedScopes.has(scope.variablesReference) ? 'rotate-90' : ''}`} />
-                      <span className="font-bold text-[11px] text-text-secondary uppercase tracking-widest">{scope.name}</span>
+                      <span className="font-bold text-[12px] text-text-secondary uppercase tracking-widest">{scope.name}</span>
                     </div>
                     {expandedScopes.has(scope.variablesReference) && (
                       <div className="p-1.5 flex flex-col gap-0.5">
                         {(variables.get(scope.variablesReference) || []).map(v => (
                           <div key={v.name} className="flex items-center gap-2 py-1 px-2 hover:bg-surface-hover rounded-md group transition-colors font-mono">
-                            <span className="text-purple-400 font-bold text-[11px]">{v.name}</span>
-                            <span className="text-text-muted/40 text-[10px]">=</span>
-                            <span className="text-emerald-400 text-[11px] truncate flex-1 font-medium" title={v.value}>{v.value}</span>
-                            <span className="text-[9px] text-text-muted opacity-0 group-hover:opacity-40 uppercase tracking-tighter px-1.5 py-0.5 bg-surface-hover rounded border border-border-subtle">{v.type}</span>
+                            <span className="text-purple-400 font-bold text-[12px]">{v.name}</span>
+                            <span className="text-text-muted/85 text-[11px]">=</span>
+                            <span className="text-emerald-400 text-[12px] truncate flex-1 font-medium" title={v.value}>{v.value}</span>
+                            <span className="text-[10px] text-text-muted opacity-0 group-hover:opacity-40 uppercase tracking-tighter px-1.5 py-0.5 bg-surface-hover rounded border border-border-subtle">{v.type}</span>
                           </div>
                         ))}
                       </div>
@@ -562,7 +562,7 @@ export default function DebugPanel() {
                         <div className="absolute left-0 top-2 bottom-2 w-[3px] bg-accent rounded-r-full shadow-[0_0_8px_rgba(var(--accent),0.8)]" />
                       )}
                       <div className={`text-xs ${isActive ? 'font-bold text-accent' : 'font-medium'}`}>{frame.name}</div>
-                      <div className="text-[10px] text-text-muted opacity-60 mt-0.5 font-mono truncate">{fileName}:{frame.line}</div>
+                      <div className="text-[11px] text-text-muted opacity-60 mt-0.5 font-mono truncate">{fileName}:{frame.line}</div>
                     </div>
                   )
                 })
@@ -618,7 +618,7 @@ export default function DebugPanel() {
                           {tt('行', 'Line')} {bp.line}
                         </span>
                         {bp.condition && (
-                          <span className="text-yellow-400 text-[10px]">({bp.condition})</span>
+                          <span className="text-yellow-400 text-[11px]">({bp.condition})</span>
                         )}
                         <X
                           className="w-3 h-3 ml-auto text-text-muted hover:text-red-400 cursor-pointer opacity-0 group-hover:opacity-100"

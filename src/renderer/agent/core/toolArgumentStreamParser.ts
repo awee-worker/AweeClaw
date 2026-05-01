@@ -233,8 +233,44 @@ export function parseFinalJsonArgs(argsString: string): Record<string, unknown> 
     const parsed = JSON.parse(argsString)
     return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : null
   } catch {
+    const repaired = tryRepairTruncatedJson(argsString)
+    if (repaired) return repaired
     return null
   }
+}
+
+function tryRepairTruncatedJson(argsString: string): Record<string, unknown> | null {
+  let s = argsString.trim()
+  if (!s.startsWith('{')) return null
+
+  const result: Record<string, unknown> = {}
+
+  const stringFieldRegex = /"(\w+)":\s*"((?:[^"\\]|\\.)*)"/g
+  let match
+  while ((match = stringFieldRegex.exec(s)) !== null) {
+    try {
+      result[match[1]] = JSON.parse(`"${match[2]}"`)
+    } catch {
+      result[match[1]] = decodeJsonStringFragment(match[2])
+    }
+  }
+
+  const boolFieldRegex = /"(\w+)":\s*(true|false)/g
+  while ((match = boolFieldRegex.exec(s)) !== null) {
+    result[match[1]] = match[2] === 'true'
+  }
+
+  const numFieldRegex = /"(\w+)":\s*(-?\d+(?:\.\d+)?)/g
+  while ((match = numFieldRegex.exec(s)) !== null) {
+    result[match[1]] = parseFloat(match[2])
+  }
+
+  const nullFieldRegex = /"(\w+)":\s*null/g
+  while ((match = nullFieldRegex.exec(s)) !== null) {
+    result[match[1]] = null
+  }
+
+  return Object.keys(result).length > 0 ? result : null
 }
 
 export function parsePartialJsonArgs(argsString: string): Record<string, unknown> | null {

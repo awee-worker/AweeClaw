@@ -173,7 +173,7 @@ export const EmotionStatusIndicator: React.FC = () => {
               animate={{ width: 'auto', opacity: 1 }}
               exit={{ width: 0, opacity: 0 }}
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="overflow-hidden whitespace-nowrap pl-0.5 pr-1 text-[10px] font-medium relative z-10"
+              className="overflow-hidden whitespace-nowrap pl-0.5 pr-1 text-[11px] font-medium relative z-10"
               style={{ color: activeFeedback ? 'var(--text-primary)' : meta.color }}
             >
               {activeFeedback ? activeFeedback.shortMessage || activeFeedback.message : `${meta.emoji} ${label}`}
@@ -195,7 +195,7 @@ export const EmotionStatusIndicator: React.FC = () => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -5 }}
             transition={{ duration: 0.2 }}
-            className="text-[10px] text-text-secondary leading-relaxed truncate"
+            className="text-[11px] text-text-secondary leading-relaxed truncate"
           >
             {detailText}
           </motion.span>
@@ -233,7 +233,7 @@ export const EmotionStatusIndicator: React.FC = () => {
                 />
               </div>
 
-              <p className="text-[11px] text-text-primary leading-relaxed">
+              <p className="text-[12px] text-text-primary leading-relaxed">
                 {detailText || (emotion.suggestions?.[0] || '')}
               </p>
 
@@ -243,7 +243,7 @@ export const EmotionStatusIndicator: React.FC = () => {
                     <button
                       key={action.id}
                       onClick={() => handleAction(action.actionType)}
-                      className="flex items-center gap-1 px-2 py-1.5 rounded bg-white/5 hover:bg-white/10 text-[10px] text-text-secondary hover:text-text-primary transition-colors border border-white/5"
+                      className="flex items-center gap-1 px-2 py-1.5 rounded bg-white/5 hover:bg-white/10 text-[11px] text-text-secondary hover:text-text-primary transition-colors border border-white/5"
                     >
                       {action.emoji && <span>{action.emoji}</span>}
                       {action.label}
@@ -255,10 +255,10 @@ export const EmotionStatusIndicator: React.FC = () => {
               {activeFeedback?.showFeedback && (
                 <div className="flex items-center gap-2 mt-3">
                   {feedbackGiven ? (
-                    <span className="text-[9px] text-text-muted">{t('emotion.companion.feedbackThanks', language)}</span>
+                    <span className="text-[10px] text-text-muted">{t('emotion.companion.feedbackThanks', language)}</span>
                   ) : (
                     <>
-                      <span className="text-[9px] text-text-muted">{t('emotion.companion.feedbackQuestion', language)}</span>
+                      <span className="text-[10px] text-text-muted">{t('emotion.companion.feedbackQuestion', language)}</span>
                       <button onClick={() => handleFeedback(true)} className="p-1 rounded bg-white/5 hover:bg-green-500/10 text-text-muted hover:text-green-400 transition-colors">
                         <ThumbsUp className="w-2.5 h-2.5" />
                       </button>

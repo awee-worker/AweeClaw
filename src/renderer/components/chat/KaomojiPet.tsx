@@ -43,11 +43,11 @@ export function KaomojiPet({ language = 'en' }: { language?: string }) {
 
     return (
         <div
-            className="text-[11px] font-mono text-accent animate-pulse font-bold select-none tracking-widest opacity-80 hover:opacity-100 transition-opacity drop-shadow-sm cursor-help flex items-center gap-2"
+            className="text-[12px] font-mono text-accent animate-pulse font-bold select-none tracking-widest opacity-80 hover:opacity-100 transition-opacity drop-shadow-sm cursor-help flex items-center gap-2"
             title="Your dynamic pet!"
         >
             <span>{face}</span>
-            <span className="font-sans font-bold text-[10px] tracking-wide bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent animate-gradient drop-shadow-sm">{message}</span>
+            <span className="font-sans font-bold text-[11px] tracking-wide bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent animate-gradient drop-shadow-sm">{message}</span>
         </div>
     )
 }

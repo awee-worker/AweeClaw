@@ -97,7 +97,7 @@ export const EmotionEditorBar: React.FC = () => {
                       className="h-1 rounded-full transition-all"
                       style={{ width: `${intensity * 60}px`, backgroundColor: meta.color, opacity: 0.6 }}
                     />
-                    <span className="text-[9px] text-text-muted">{Math.round(intensity * 100)}%</span>
+                    <span className="text-[10px] text-text-muted">{Math.round(intensity * 100)}%</span>
                   </div>
                 </div>
               </div>
@@ -115,7 +115,7 @@ export const EmotionEditorBar: React.FC = () => {
                       key={action.id}
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
-                      className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-medium transition-colors border border-white/10 hover:border-white/20"
+                      className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-medium transition-colors border border-white/10 hover:border-white/20"
                       style={{ color: meta.color, backgroundColor: hovered ? `${meta.color}18` : `${meta.color}10` }}
                       onClick={() => handleAction(action.actionType)}
                     >

@@ -16,10 +16,12 @@ let initialized = false
 export function initializeScenarios(activeScenarioId?: string): void {
   if (initialized) return
 
+  scenarioRegistry.register(generalAssistantScenario)
   scenarioRegistry.register(codeEditorScenario)
   scenarioRegistry.register(dataAnalystScenario)
   scenarioRegistry.register(creativeWriterScenario)
-  scenarioRegistry.register(generalAssistantScenario)
+
+  scenarioRegistry.loadCustomScenarios()
 
   if (activeScenarioId) {
     scenarioRegistry.setActive(activeScenarioId)

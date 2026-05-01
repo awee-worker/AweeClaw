@@ -120,23 +120,23 @@ const PlanItem = memo(function PlanItem({
                             {plan.name}
                         </div>
                         <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-[10px] text-text-muted">
+                            <span className="text-[11px] text-text-muted">
                                 {getStatusText(plan.status, language)}
                             </span>
-                            <span className="text-[10px] text-text-muted/50">•</span>
-                            <span className="text-[10px] text-text-muted/50">
+                            <span className="text-[11px] text-text-muted/85">•</span>
+                            <span className="text-[11px] text-text-muted/85">
                                 {timeAgo}
                             </span>
                         </div>
                     </div>
                 </div>
-                <ChevronRight className="w-4 h-4 text-text-muted/30 group-hover:text-text-muted transition-colors shrink-0 mt-1" />
+                <ChevronRight className="w-4 h-4 text-text-muted/75 group-hover:text-text-muted transition-colors shrink-0 mt-1" />
             </div>
 
             {/* 进度条 */}
             {total > 0 && (
                 <div className="mt-2.5">
-                    <div className="flex items-center justify-between text-[10px] mb-1">
+                    <div className="flex items-center justify-between text-[11px] mb-1">
                         <span className="text-text-muted">
                             {completed}/{total} {language === 'zh' ? '任务' : 'tasks'}
                         </span>
@@ -211,7 +211,7 @@ export default memo(function PlanListContent({
                 <p className="text-sm font-medium">
                     {language === 'zh' ? '暂无计划' : 'No Plans Yet'}
                 </p>
-                <p className="text-xs text-text-muted/50 mt-1 text-center px-4">
+                <p className="text-xs text-text-muted/85 mt-1 text-center px-4">
                     {language === 'zh'
                         ? '使用 Plan 模式创建任务计划'
                         : 'Use Plan mode to create task plans'

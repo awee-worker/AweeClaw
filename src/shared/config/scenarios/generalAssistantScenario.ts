@@ -147,6 +147,7 @@ export const generalAssistantScenario: ScenarioPlugin = {
   author: 'awee',
   category: 'productivity',
   tags: ['general', 'assistant', 'q&a', 'research', 'planning'],
+  isDefault: true,
   requiresWorkspace: false,
 
   identity: GENERAL_ASSISTANT_IDENTITY,

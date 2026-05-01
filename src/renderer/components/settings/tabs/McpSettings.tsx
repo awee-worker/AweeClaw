@@ -253,7 +253,7 @@ export default function McpSettings({ language, mcpConfig, setMcpConfig }: McpSe
               <div className="flex items-center gap-2.5">
                 <h4 className="text-base font-bold text-text-primary tracking-tight">{server.config.name}</h4>
                 {server.config.source && (
-                  <span className={`px-1.5 py-0.5 text-[9px] font-bold rounded border uppercase tracking-tight ${
+                  <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded border uppercase tracking-tight ${
                     server.config.source === 'workspace'
                       ? 'bg-green-500/10 text-green-400 border-green-500/20'
                       : 'bg-purple-500/10 text-purple-400 border-purple-500/20'
@@ -262,7 +262,7 @@ export default function McpSettings({ language, mcpConfig, setMcpConfig }: McpSe
                   </span>
                 )}
                 {isRemote && (
-                  <span className="px-1.5 py-0.5 text-[9px] font-bold bg-blue-500/10 text-blue-400 rounded border border-blue-500/20 uppercase tracking-tight">
+                  <span className="px-1.5 py-0.5 text-[10px] font-bold bg-blue-500/10 text-blue-400 rounded border border-blue-500/20 uppercase tracking-tight">
                     Remote
                   </span>
                 )}
@@ -472,7 +472,7 @@ export default function McpSettings({ language, mcpConfig, setMcpConfig }: McpSe
 
             {/* Config Details */}
             <div className="space-y-2">
-              <h5 className="text-[11px] font-bold text-text-muted uppercase tracking-wider ml-1">
+              <h5 className="text-[12px] font-bold text-text-muted uppercase tracking-wider ml-1">
                 {language === 'zh' ? '配置详情' : 'Configuration'}
               </h5>
               <div className="text-xs text-text-secondary space-y-1.5 font-mono bg-black/20 p-4 rounded-xl border border-border shadow-inner">
@@ -507,9 +507,9 @@ export default function McpSettings({ language, mcpConfig, setMcpConfig }: McpSe
             {/* Tools */}
             {server.tools.length > 0 && (
               <div className="space-y-3">
-                <h5 className="text-[11px] font-bold text-text-muted uppercase tracking-wider flex items-center gap-2 ml-1">
+                <h5 className="text-[12px] font-bold text-text-muted uppercase tracking-wider flex items-center gap-2 ml-1">
                   <Wrench className="w-3.5 h-3.5" />
-                  {language === 'zh' ? '工具列表' : 'Tools'} <span className="bg-white/10 px-1.5 rounded-md text-[10px]">{server.tools.length}</span>
+                  {language === 'zh' ? '工具列表' : 'Tools'} <span className="bg-white/10 px-1.5 rounded-md text-[11px]">{server.tools.length}</span>
                 </h5>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {server.tools.map((tool) => (
@@ -520,7 +520,7 @@ export default function McpSettings({ language, mcpConfig, setMcpConfig }: McpSe
                     >
                       <div className="font-bold text-xs text-text-primary mb-1 group-hover:text-accent transition-colors">{tool.name}</div>
                       {tool.description && (
-                        <div className="text-[11px] text-text-muted line-clamp-2 leading-relaxed opacity-80">{tool.description}</div>
+                        <div className="text-[12px] text-text-muted line-clamp-2 leading-relaxed opacity-80">{tool.description}</div>
                       )}
                     </div>
                   ))}

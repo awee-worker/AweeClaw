@@ -59,7 +59,7 @@ export default function DataDashboard() {
                         >
                             <card.icon className={`w-5 h-5 ${card.color}`} />
                             <span className="text-lg font-semibold text-text-primary">{card.value}</span>
-                            <span className="text-[10px] text-text-muted">{card.label}</span>
+                            <span className="text-[11px] text-text-muted">{card.label}</span>
                         </div>
                     ))}
                 </div>
@@ -75,7 +75,7 @@ export default function DataDashboard() {
                                 <action.icon className="w-5 h-5 text-accent" />
                             </div>
                             <span className="text-sm font-medium text-text-primary">{action.label}</span>
-                            <span className="text-[10px] text-text-muted text-center">{action.desc}</span>
+                            <span className="text-[11px] text-text-muted text-center">{action.desc}</span>
                         </button>
                     ))}
                 </div>

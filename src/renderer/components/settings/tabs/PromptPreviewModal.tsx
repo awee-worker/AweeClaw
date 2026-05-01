@@ -130,7 +130,7 @@ export function PromptPreviewModal({ templateId, language, onClose }: PromptPrev
                             <span className="text-xs font-medium text-text-muted uppercase tracking-wider">Template:</span>
                             <span className="text-xs font-bold text-accent px-2 py-0.5 bg-accent/10 rounded">{template.name}</span>
                         </div>
-                        <div className="text-[10px] text-text-muted font-mono">
+                        <div className="text-[11px] text-text-muted font-mono">
                             {previewContent.length} chars | {previewContent.split(/\s+/).length} words
                         </div>
                     </div>

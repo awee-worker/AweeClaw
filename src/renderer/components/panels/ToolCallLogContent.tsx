@@ -83,7 +83,7 @@ export default function ToolCallLogContent({ language = 'zh' }: ToolCallLogConte
         <div className="flex bg-surface/50 rounded p-0.5">
           <button
             onClick={() => setViewMode('logs')}
-            className={`px-1.5 py-0.5 text-[10px] rounded transition-colors ${
+            className={`px-1.5 py-0.5 text-[11px] rounded transition-colors ${
               viewMode === 'logs' ? 'bg-accent/20 text-accent' : 'text-text-muted hover:text-text-primary'
             }`}
             title={t('日志', 'Logs')}
@@ -92,7 +92,7 @@ export default function ToolCallLogContent({ language = 'zh' }: ToolCallLogConte
           </button>
           <button
             onClick={() => setViewMode('stats')}
-            className={`px-1.5 py-0.5 text-[10px] rounded transition-colors ${
+            className={`px-1.5 py-0.5 text-[11px] rounded transition-colors ${
               viewMode === 'stats' ? 'bg-accent/20 text-accent' : 'text-text-muted hover:text-text-primary'
             }`}
             title={t('统计', 'Stats')}
@@ -105,7 +105,7 @@ export default function ToolCallLogContent({ language = 'zh' }: ToolCallLogConte
           <select
             value={filter}
             onChange={(e) => setFilter(e.target.value as 'all' | 'request' | 'response')}
-            className="px-1.5 py-0.5 text-[10px] bg-surface border border-border-subtle rounded text-text-secondary outline-none focus:border-accent/50"
+            className="px-1.5 py-0.5 text-[11px] bg-surface border border-border-subtle rounded text-text-secondary outline-none focus:border-accent/50"
           >
             <option value="all">{t('全部', 'All')}</option>
             <option value="request">{t('请求', 'Req')}</option>
@@ -116,11 +116,11 @@ export default function ToolCallLogContent({ language = 'zh' }: ToolCallLogConte
         <div className="flex-1" />
 
         <Button variant="ghost" size="sm" onClick={handleExport}
-          className="h-6 px-1.5 text-[10px] gap-1 text-text-muted hover:text-text-primary" title={t('导出', 'Export')}>
+          className="h-6 px-1.5 text-[11px] gap-1 text-text-muted hover:text-text-primary" title={t('导出', 'Export')}>
           <Download className="w-3 h-3" />
         </Button>
         <Button variant="ghost" size="sm" onClick={() => clearToolCallLogs(currentThreadId || undefined)}
-          className="h-6 px-1.5 text-[10px] gap-1 text-text-muted hover:text-red-400 hover:bg-red-500/10" title={t('清除', 'Clear')}>
+          className="h-6 px-1.5 text-[11px] gap-1 text-text-muted hover:text-red-400 hover:bg-red-500/10" title={t('清除', 'Clear')}>
           <Trash2 className="w-3 h-3" />
         </Button>
       </div>
@@ -161,12 +161,12 @@ function LogsView({ logs, expandedIds, toggleExpand, handleCopy, copiedId, langu
           <button onClick={() => toggleExpand(log.id)}
             className="w-full flex items-center gap-1.5 px-2 py-1.5 hover:bg-surface/50 text-left">
             {expandedIds.has(log.id) ? <ChevronDown className="w-3 h-3 text-text-muted" /> : <ChevronRight className="w-3 h-3 text-text-muted" />}
-            <span className={`px-1 py-0.5 text-[9px] rounded font-medium ${log.type === 'request' ? 'bg-blue-500/20 text-blue-400' : 'bg-green-500/20 text-green-400'}`}>
+            <span className={`px-1 py-0.5 text-[10px] rounded font-medium ${log.type === 'request' ? 'bg-blue-500/20 text-blue-400' : 'bg-green-500/20 text-green-400'}`}>
               {log.type === 'request' ? 'REQ' : 'RES'}
             </span>
-            <span className="text-[10px] font-medium text-text-primary truncate flex-1">{log.toolName}</span>
+            <span className="text-[11px] font-medium text-text-primary truncate flex-1">{log.toolName}</span>
             {log.success === false && <AlertTriangle className="w-3 h-3 text-red-400" />}
-            {log.duration && <span className="text-[9px] text-text-muted">{log.duration}ms</span>}
+            {log.duration && <span className="text-[10px] text-text-muted">{log.duration}ms</span>}
           </button>
 
           {expandedIds.has(log.id) && (
@@ -203,10 +203,10 @@ function StatsView({ stats, insights, language }: {
       {/* 性能洞察 */}
       {insights.length > 0 && (
         <div className="space-y-1">
-          <div className="text-[10px] font-medium text-text-muted uppercase tracking-wide">{t('性能洞察', 'Insights')}</div>
+          <div className="text-[11px] font-medium text-text-muted uppercase tracking-wide">{t('性能洞察', 'Insights')}</div>
           <div className="space-y-1">
             {insights.slice(0, 3).map((insight, i) => (
-              <div key={i} className={`flex items-center gap-2 px-2 py-1 rounded text-[10px] ${
+              <div key={i} className={`flex items-center gap-2 px-2 py-1 rounded text-[11px] ${
                 insight.severity === 'critical' ? 'bg-red-500/10 text-red-400' :
                 insight.severity === 'warning' ? 'bg-yellow-500/10 text-yellow-400' : 'bg-blue-500/10 text-blue-400'
               }`}>
@@ -214,7 +214,7 @@ function StatsView({ stats, insights, language }: {
                 {insight.type === 'high_failure' && <AlertTriangle className="w-3 h-3" />}
                 {insight.type === 'frequent_tool' && <Zap className="w-3 h-3" />}
                 <span className="font-medium">{insight.toolName}</span>
-                <span className="text-[9px] opacity-80">{language === 'zh' ? insight.messageZh : insight.message}</span>
+                <span className="text-[10px] opacity-80">{language === 'zh' ? insight.messageZh : insight.message}</span>
               </div>
             ))}
           </div>
@@ -223,9 +223,9 @@ function StatsView({ stats, insights, language }: {
 
       {/* 工具统计表 */}
       <div className="space-y-1">
-        <div className="text-[10px] font-medium text-text-muted uppercase tracking-wide">{t('工具统计', 'Tool Stats')}</div>
+        <div className="text-[11px] font-medium text-text-muted uppercase tracking-wide">{t('工具统计', 'Tool Stats')}</div>
         <div className="bg-surface/30 rounded border border-border-subtle overflow-hidden">
-          <table className="w-full text-[10px]">
+          <table className="w-full text-[11px]">
             <thead>
               <tr className="bg-surface/50 text-text-muted">
                 <th className="text-left px-2 py-1 font-medium">{t('工具', 'Tool')}</th>

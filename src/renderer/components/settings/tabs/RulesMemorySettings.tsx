@@ -129,7 +129,7 @@ export function RulesMemorySettings({ language }: RulesMemorySettingsProps) {
             </div>
             <div className="flex items-center gap-2">
               {rulesSource && (
-                <span className="text-[10px] text-text-muted px-2 py-0.5 bg-black/20 rounded">
+                <span className="text-[11px] text-text-muted px-2 py-0.5 bg-black/20 rounded">
                   {rulesSource}
                 </span>
               )}
@@ -197,7 +197,7 @@ export function RulesMemorySettings({ language }: RulesMemorySettingsProps) {
                 {t('项目记忆', 'Project Memory')}
               </h5>
             </div>
-            <span className="text-[10px] text-text-muted px-2 py-0.5 bg-black/20 rounded">
+            <span className="text-[11px] text-text-muted px-2 py-0.5 bg-black/20 rounded">
               {memories.filter(m => m.enabled).length}/{memories.length}
             </span>
           </div>
@@ -313,7 +313,7 @@ export function RulesMemorySettings({ language }: RulesMemorySettingsProps) {
           {/* Tips */}
           <div className="p-3 rounded-lg bg-accent/5 border border-accent/20 text-xs text-text-muted space-y-1">
             <p className="font-medium text-accent/80">{t('💡 使用提示', '💡 Tips')}</p>
-            <ul className="list-disc list-inside space-y-0.5 text-[11px]">
+            <ul className="list-disc list-inside space-y-0.5 text-[12px]">
               <li>{t('记忆会全量注入到 AI 上下文中', 'Memories are fully injected into AI context')}</li>
               <li>{t('建议保持简洁，避免过多记忆影响性能', 'Keep it concise to avoid performance impact')}</li>
               <li>{t('可以禁用暂时不需要的记忆', 'You can disable memories temporarily')}</li>
