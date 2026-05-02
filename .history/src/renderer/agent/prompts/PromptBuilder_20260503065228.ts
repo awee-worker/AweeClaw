@@ -120,23 +120,12 @@ ${toolGuidelines}`
 }
 
 function buildEnvironment(ctx: PromptContext): string {
-  const now = new Date(ctx.date)
-  const dateStr = now.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })
-  const timeStr = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-  const weekday = now.toLocaleDateString('zh-CN', { weekday: 'long' })
-  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
-
   return `## Environment
 - OS: ${ctx.os}
 - Workspace: ${ctx.workspacePath || 'No workspace open'}
 - Active File: ${ctx.activeFile || 'None'}
 - Open Files: ${ctx.openFiles.length > 0 ? ctx.openFiles.join(', ') : 'None'}
-- Current Date: ${dateStr} ${weekday}
-- Current Time: ${timeStr}
-- Timezone: ${tz}
-- ISO: ${ctx.date}
-
-IMPORTANT: The above date and time are the REAL current time from the user's system. Always use this as the current time reference. Do NOT rely on your training data's knowledge cutoff date for any time-sensitive information.`
+- Date: ${ctx.date}`
 }
 
 function buildProjectRules(rules: ProjectRules | null): string | null {

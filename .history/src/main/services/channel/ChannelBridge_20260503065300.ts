@@ -17,13 +17,13 @@ const CHANNEL_LABELS: Record<string, string> = {
   slack: 'Slack',
 }
 
-const STATUS_EMOJIS: Record<string, string> = {
-  received: 'EYES',
-  thinking: 'THINKING',
-  tool: 'FIRE',
-  done: 'THUMBSUP',
-  error: 'SCOWL',
-}
+const STATUS_EMOJIS = {
+  received: '👀',
+  thinking: '🤔',
+  tool: '🔥',
+  done: '👍',
+  error: '😱',
+} as const
 
 type ReactionStatus = keyof typeof STATUS_EMOJIS
 

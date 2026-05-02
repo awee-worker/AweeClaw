@@ -16,6 +16,14 @@ import type {
   ChannelStatus,
 } from '@shared/types/channel'
 
+const STATUS_EMOJIS = {
+  received: '👀',
+  thinking: '🤔',
+  tool: '🔥',
+  done: '👍',
+  error: '😱',
+} as const
+
 interface FeishuConnection {
   accountId: string
   channel: Lark.LarkChannel
@@ -355,11 +363,12 @@ export class FeishuChannelPlugin implements ChannelPlugin {
     this.eventCallbacks = []
   }
 
-  handleWebhookEvent(_accountId: string, _body: unknown): void {
+  handleWebhookEvent(accountId: string, body: unknown): void {
     if (this.destroyed) return
+    logger.channel.warn('[Feishu] Webhook mode not implemented with LarkChannel')
   }
 
-  verifyWebhookSignature(_encryptKey: string, _timestamp: string, _nonce: string, _body: string, _signature: string): boolean {
+  verifyWebhookSignature(encryptKey: string, timestamp: string, nonce: string, body: string, signature: string): boolean {
     return false
   }
 

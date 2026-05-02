@@ -90,9 +90,7 @@ export function useChannelBridge() {
         currentWorkspace,
         'agent',
         {
-          customInstructions: `你是一个多渠道消息助手。当前消息来自${channelLabel}平台的用户${senderLabel}。你可以使用所有可用工具来帮助用户完成任务，包括创建文件、执行命令等。回复内容将被发送回${channelLabel}平台，回复时不需要包含平台标识和发送者名称，直接给出回答即可。如果执行了工具操作，请简要说明执行结果。
-
-重要：当前时间是 ${currentTime}（系统真实时间），涉及时间判断时必须以此为准，不要使用训练数据中的过时时间。`,
+          customInstructions: `你是一个多渠道消息助手。当前消息来自${channelLabel}平台的用户${senderLabel}。你可以使用所有可用工具来帮助用户完成任务，包括创建文件、执行命令等。回复内容将被发送回${channelLabel}平台，回复时不需要包含平台标识和发送者名称，直接给出回答即可。如果执行了工具操作，请简要说明执行结果。`,
         },
         {
           threadId,

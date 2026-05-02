@@ -1,3 +1,4 @@
+import { ipcMain } from 'electron'
 import { safeIpcHandle } from './safeHandle'
 import { channelService } from '../services/channel'
 import { channelBridge } from '../services/channel/ChannelBridge'

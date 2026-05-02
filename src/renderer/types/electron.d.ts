@@ -675,7 +675,9 @@ export interface ElectronAPI {
   channelGetConfig: (channelId: string) => Promise<{ success: boolean; config?: any; error?: string }>
   channelGetAllConfigs: () => Promise<{ success: boolean; configs?: any[]; error?: string }>
   channelSetChannelEnabled: (channelId: string, enabled: boolean) => Promise<{ success: boolean; error?: string }>
-  channelSendReply: (conversationKey: string, text: string) => Promise<{ success: boolean; error?: string; messageId?: string }>
+  channelSendReply: (conversationKey: string, text: string, replyToId?: string) => Promise<{ success: boolean; error?: string; messageId?: string }>
+  channelUpdateReaction: (accountId: string, messageId: string, status: string) => Promise<{ success: boolean }>
+  channelStreamReply: (accountId: string, to: string, fullText: string, replyToId?: string) => Promise<{ success: boolean; error?: string; messageId?: string }>
   channelRendererReply: (messageId: string, replyText: string) => Promise<{ success: boolean }>
   onChannelMessage: (callback: (message: any) => void) => () => void
   onChannelInboundMessage: (callback: (message: any) => void) => () => void
