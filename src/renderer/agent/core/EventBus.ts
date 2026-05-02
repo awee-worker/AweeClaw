@@ -64,6 +64,9 @@ export type AgentEvent =
   | { type: 'task:complete'; taskId: string; output: string; duration: number; threadId?: string; assistantId?: string; requestId?: string }
   | { type: 'task:failed'; taskId: string; error: string; threadId?: string; assistantId?: string; requestId?: string }
 
+  // 任务列表事件
+  | { type: 'todos:all_completed'; total: number }
+
 export type EventType = AgentEvent['type']
 
 type EventHandler<T extends AgentEvent = AgentEvent> = (event: T) => void

@@ -319,13 +319,26 @@ Do not use for partial edits; write_file overwrites the whole file, so use edit_
     create_file_or_folder: {
         name: 'create_file_or_folder',
         displayName: 'Create',
-        description: 'Create file or folder. Path ending with / creates folder.',
+        description: 'Create a file or a folder. CRITICAL: Path ending with "/" creates a FOLDER (directory); path without "/" creates a FILE. When the user says "创建文件夹", "新建目录", "create folder/directory", you MUST end the path with "/". When the user says "创建文件", "新建文件", "create file", do NOT end the path with "/".',
         detailedDescription: `Create new files or directories.
-- Path ending with "/" creates folder
-- Can include initial content for files`,
+
+CRITICAL RULES for choosing between file and folder:
+- Path ending with "/" → creates a FOLDER (directory). Examples: "src/utils/", "website/", "public/assets/"
+- Path WITHOUT "/" → creates a FILE. Examples: "src/config.ts", "index.html", "README.md"
+
+When the user asks to:
+- "创建文件夹" / "新建文件夹" / "新建目录" / "create folder" / "create directory" → MUST use path ending with "/"
+- "创建文件" / "新建文件" / "create file" → MUST use path WITHOUT "/"
+
+Common mistakes to avoid:
+- Do NOT create a file when the user wants a folder (e.g., creating "website" instead of "website/")
+- Do NOT create a folder when the user wants a file (e.g., creating "config.ts/" instead of "config.ts")
+- If you need to create a folder AND files inside it, create the folder FIRST (with "/"), then create files inside it`,
         examples: [
-            'create_file_or_folder path="src/utils/"',
-            'create_file_or_folder path="src/config.ts" content="export default {}"',
+            'create_file_or_folder path="src/utils/"  ← Creates a FOLDER named "utils"',
+            'create_file_or_folder path="src/config.ts" content="export default {}"  ← Creates a FILE named "config.ts"',
+            'create_file_or_folder path="website/"  ← Creates a FOLDER named "website"',
+            'create_file_or_folder path="website/index.html" content="..."  ← Creates a FILE inside the "website" folder',
         ],
         category: 'write',
         approvalType: 'none',
@@ -338,8 +351,8 @@ Do not use for partial edits; write_file overwrites the whole file, so use edit_
         requiresWorkspace: true,
         enabled: true,
         parameters: {
-            path: { type: 'string', description: 'Path relative to workspace root (end with / for folder, e.g., "src/utils/" or "src/config.ts")', required: true },
-            content: { type: 'string', description: 'Initial content for files' },
+            path: { type: 'string', description: 'Path relative to workspace root. MUST end with "/" to create a FOLDER (e.g., "src/utils/", "website/"). Without "/" creates a FILE (e.g., "src/config.ts", "index.html").', required: true },
+            content: { type: 'string', description: 'Initial content for files (only used when creating files, ignored for folders)' },
         },
     },
 

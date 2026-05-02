@@ -12,7 +12,6 @@ const DEFAULT_ITEMS: SidebarItemDescriptor[] = [
   { id: 'explorer', icon: 'Files', label: 'Explorer', labelZh: '资源管理器', component: 'ExplorerView', position: 0 },
   { id: 'search', icon: 'Search', label: 'Search', labelZh: '搜索', component: 'SearchView', position: 1 },
   { id: 'git', icon: 'GitBranch', label: 'Git', labelZh: 'Git', component: 'GitView', position: 2 },
-  { id: 'emotion', icon: 'Brain', label: 'Mood', labelZh: '情绪感知', component: 'EmotionView', position: 3 },
   { id: 'problems', icon: 'AlertCircle', label: 'Problems', labelZh: '问题', component: 'ProblemsView', position: 4 },
   { id: 'outline', icon: 'ListTree', label: 'Outline', labelZh: '大纲', component: 'OutlineView', position: 5 },
   { id: 'history', icon: 'History', label: 'History', labelZh: '历史', component: 'HistoryView', position: 6 },

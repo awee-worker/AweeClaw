@@ -1,0 +1,463 @@
+/**
+ * 聊天输入组件
+ * 极致打磨：悬浮光晕、灵动按钮、精致上下文药丸
+ */
+import { memo, useRef, useCallback, useMemo, useState, useLayoutEffect } from 'react'
+import {
+  FileText,
+  X,
+  Code,
+  GitBranch,
+  Terminal,
+  Database,
+  ArrowUp,
+  Plus,
+  Folder,
+  Globe,
+  Wrench,
+  Paperclip,
+  File,
+  FileSpreadsheet,
+  FileCode,
+  Archive,
+  Sparkles,
+  Loader2
+} from 'lucide-react'
+import { useStore } from '@store'
+import { useShallow } from 'zustand/react/shallow'
+import { getFileName } from '@shared/utils/pathUtils'
+import { WorkMode } from '@/renderer/modes/types'
+import { motion, AnimatePresence } from 'framer-motion'
+import { t } from '@renderer/i18n'
+import { Button } from '../ui'
+import ModelSelector from './ModelSelector'
+import ModeSelector from './ModeSelector'
+
+import { ContextItem, FileContext } from '@/renderer/agent/types'
+import { api } from '@/renderer/services/electronAPI'
+
+export interface PendingAttachment {
+  id: string
+  file: File
+  previewUrl?: string
+  base64?: string
+  isImage: boolean
+}
+
+interface ChatInputProps {
+  input: string
+  setInput: (value: string) => void
+  images: PendingAttachment[]
+  setImages: React.Dispatch<React.SetStateAction<PendingAttachment[]>>
+  isStreaming: boolean
+  hasApiKey: boolean
+  hasPendingToolCall: boolean
+  chatMode: WorkMode
+  setChatMode: (mode: WorkMode) => void
+  onSubmit: () => void
+  onAbort: () => void
+  onInputChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void
+  onKeyDown: (e: React.KeyboardEvent) => void
+  onPaste: (e: React.ClipboardEvent) => void
+  textareaRef: React.RefObject<HTMLTextAreaElement>
+  inputContainerRef: React.RefObject<HTMLDivElement>
+  contextItems: ContextItem[]
+  onRemoveContextItem: (item: ContextItem) => void
+  activeFilePath?: string | null
+  onAddFile?: (filePath: string) => void
+}
+
+const ChatInput = memo(function ChatInput({
+  input,
+  setInput,
+  images,
+  setImages,
+  isStreaming,
+  hasApiKey,
+  hasPendingToolCall,
+  chatMode,
+  setChatMode,
+  onSubmit,
+  onAbort,
+  onInputChange,
+  onKeyDown,
+  onPaste,
+  textareaRef,
+  inputContainerRef,
+  contextItems,
+  onRemoveContextItem,
+  activeFilePath,
+  onAddFile,
+}: ChatInputProps) {
+  const { language, editorConfig } = useStore(useShallow(s => ({ language: s.language, editorConfig: s.editorConfig })))
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [isFocused, setIsFocused] = useState(false)
+  const [isOptimizing, setIsOptimizing] = useState(false)
+
+  // Auto-resize
+  useLayoutEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`
+    }
+  }, [input, textareaRef])
+
+  // 文件引用检测
+  const fileRefs = useMemo(() => {
+    const refs: string[] = []
+    const regex = /@(?:file:)?([^\s@]+\.[a-zA-Z0-9]+)/g
+    let match
+    while ((match = regex.exec(input)) !== null) {
+      if (match[1] !== 'codebase') {
+        refs.push(match[1])
+      }
+    }
+    return refs
+  }, [input])
+
+  // 特殊上下文引用检测
+  const hasCodebaseRef = useMemo(() => /@codebase\b/i.test(input), [input])
+  const hasSymbolsRef = useMemo(() => /@symbols\b/i.test(input), [input])
+  const hasGitRef = useMemo(() => /@git\b/i.test(input), [input])
+  const hasTerminalRef = useMemo(() => /@terminal\b/i.test(input), [input])
+  const hasWebRef = useMemo(() => /@web\b/i.test(input), [input])
+
+  const addAttachment = useCallback(async (file: File) => {
+    const id = crypto.randomUUID()
+    const isImage = file.type.startsWith('image/')
+    const previewUrl = isImage ? URL.createObjectURL(file) : undefined
+
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result as string
+      const base64 = result.split(',')[1]
+      setImages((prev) => prev.map((img) => (img.id === id ? { ...img, base64 } : img)))
+    }
+    reader.readAsDataURL(file)
+
+    setImages((prev) => [...prev, { id, file, previewUrl, isImage }])
+  }, [setImages])
+
+  const removeAttachment = useCallback(
+    (id: string) => {
+      setImages((prev) => {
+        const target = prev.find((img) => img.id === id)
+        if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl)
+        return prev.filter((img) => img.id !== id)
+      })
+    },
+    [setImages]
+  )
+
+  const isSendable = input.trim().length > 0 || images.length > 0
+
+  const handleOptimize = useCallback(async () => {
+    if (!input.trim() || isOptimizing || isStreaming) return
+
+    const config = useStore.getState().llmConfig
+    if (!config?.apiKey) return
+
+    setIsOptimizing(true)
+    const requestId = crypto.randomUUID()
+    let result = ''
+    let resolved = false
+    const unsubs: (() => void)[] = []
+
+    const cleanup = () => {
+      if (!resolved) {
+        resolved = true
+        unsubs.forEach(u => u())
+      }
+    }
+
+    unsubs.push(
+      api.llm.onStream(requestId, (chunk: { type: string; content?: string }) => {
+        if (chunk.type === 'text' && chunk.content) {
+          result += chunk.content
+        }
+      })
+    )
+
+    unsubs.push(
+      api.llm.onDone(requestId, () => {
+        cleanup()
+        const optimized = result.trim()
+        if (optimized) {
+          setInput(optimized)
+          setTimeout(() => {
+            if (textareaRef.current) {
+              textareaRef.current.style.height = 'auto'
+              textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`
+            }
+          }, 0)
+        }
+        setIsOptimizing(false)
+      })
+    )
+
+    unsubs.push(
+      api.llm.onError(requestId, () => {
+        cleanup()
+        setIsOptimizing(false)
+      })
+    )
+
+    setTimeout(() => {
+      if (!resolved) {
+        cleanup()
+        setIsOptimizing(false)
+      }
+    }, 30000)
+
+    try {
+      const systemPrompt = language === 'zh'
+        ? '你是一个输入优化助手。优化用户的输入，使其更清晰、更具体、更有条理，便于AI理解和执行。直接输出优化后的内容，不要添加任何解释或前缀。保持用户的原始意图，不要改变核心意思。如果用户输入的是中文，优化后也用中文；如果是英文，优化后也用英文。'
+        : 'You are an input optimization assistant. Optimize the user\'s input to be clearer, more specific, and better structured for AI understanding and execution. Output only the optimized content without any explanation or prefix. Preserve the user\'s original intent without changing the core meaning. If the user writes in Chinese, respond in Chinese; if in English, respond in English.'
+
+      await api.llm.send({
+        config,
+        messages: [{ role: 'user', content: input.trim() }],
+        systemPrompt,
+        requestId,
+      })
+    } catch {
+      cleanup()
+      setIsOptimizing(false)
+    }
+  }, [input, isOptimizing, isStreaming, language, setInput, textareaRef])
+
+  return (
+    <div ref={inputContainerRef} className="z-20">
+      <div
+        className={`
+            relative group flex flex-col rounded-xl transition-all duration-500 ease-out border backdrop-blur-md
+            ${isStreaming
+            ? 'bg-surface/30 border-accent/20 shadow-[0_4px_24px_-12px_rgba(var(--accent)/0.15)]'
+            : isFocused
+              ? 'bg-background/80 border-accent/30 shadow-[0_8px_32px_-16px_rgba(var(--accent)/0.2)] ring-1 ring-accent/10 translate-y-[-1px]'
+              : 'bg-surface/60 border-border/50 hover:border-text-primary/10 shadow-[0_4px_16px_-8px_rgba(0,0,0,0.1)]'
+          }
+        `}
+      >
+        {/* Attachment Previews */}
+        {images.length > 0 && (
+          <div className="flex gap-2 px-4 pt-4 overflow-x-auto custom-scrollbar">
+            {images.map((att) => (
+              <div
+                key={att.id}
+                className="relative group/att flex-shrink-0 rounded-xl overflow-hidden border border-border shadow-sm"
+              >
+                {att.isImage && att.previewUrl ? (
+                  <div className="w-16 h-16">
+                    <img src={att.previewUrl} alt="preview" className="w-full h-full object-cover" />
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-surface/50 min-w-[120px] max-w-[180px]">
+                    {getFileIcon(att.file.name, att.file.type)}
+                    <span className="text-[12px] text-text-secondary truncate max-w-[100px]">{att.file.name}</span>
+                  </div>
+                )}
+                <button
+                  onClick={() => removeAttachment(att.id)}
+                  className="absolute top-1 right-1 p-1 bg-black/60 backdrop-blur rounded-full text-white hover:bg-red-500 transition-all opacity-0 group-hover/att:opacity-100 scale-90 hover:scale-100"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Context Display Area (Top) */}
+        {(contextItems.length > 0 || hasCodebaseRef || hasSymbolsRef || hasGitRef || hasTerminalRef || hasWebRef || fileRefs.length > 0 || (activeFilePath && onAddFile && !contextItems.some(i => i.type === 'File' && (i as FileContext).uri === activeFilePath))) && (
+          <div className="flex flex-wrap items-center gap-1.5 px-4 pt-3 pb-1 border-b border-border/10">
+            <AnimatePresence>
+              {/* Active File Suggestion */}
+              {activeFilePath && onAddFile && !contextItems.some(i => i.type === 'File' && (i as FileContext).uri === activeFilePath) && (
+                <motion.button
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  onClick={() => {
+                    onAddFile(activeFilePath)
+                    // 这里如果能自动清除输入框里的失焦状态体验会更好，暂通过 state 刷新实现
+                  }}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-accent/5 text-accent text-[12px] font-medium rounded-lg border border-accent/10 select-none hover:bg-accent/10 transition-colors"
+                >
+                  <Plus className="w-3 h-3" strokeWidth={3} />
+                  <span>{getFileName(activeFilePath)}</span>
+                </motion.button>
+              )}
+
+              {/* Context Items */}
+              {contextItems.filter(item => ['File', 'Folder', 'CodeSelection', 'Skill'].includes(item.type)).map((item, i) => {
+                const getContextStyle = (type: string) => {
+                  switch (type) {
+                    case 'File': return { bg: 'bg-text-primary/[0.04]', text: 'text-text-secondary', border: 'border-transparent', Icon: FileText }
+                    case 'CodeSelection': return { bg: 'bg-purple-500/10', text: 'text-purple-400', border: 'border-transparent', Icon: Code }
+                    case 'Folder': return { bg: 'bg-yellow-500/10', text: 'text-yellow-400', border: 'border-transparent', Icon: Folder }
+                    case 'Skill': return { bg: 'bg-blue-500/10', text: 'text-blue-400', border: 'border-blue-500/20', Icon: Wrench }
+                    default: return { bg: 'bg-text-primary/[0.04]', text: 'text-text-muted', border: 'border-transparent', Icon: FileText }
+                  }
+                }
+
+                const style = getContextStyle(item.type)
+                const label = (() => {
+                  switch (item.type) {
+                    case 'File':
+                    case 'Folder': {
+                      const uri = (item as import('@/renderer/agent/types').FileContext).uri || ''
+                      return getFileName(uri) || uri
+                    }
+                    case 'CodeSelection': {
+                      const codeItem = item as import('@/renderer/agent/types').CodeSelectionContext
+                      const uri = codeItem.uri || ''
+                      const range = codeItem.range as [number, number] | undefined
+                      const name = getFileName(uri) || uri
+                      return range ? `${name}:${range[0]}-${range[1]}` : name
+                    }
+                    case 'Skill': {
+                      return `@${(item as import('@/renderer/agent/types').SkillContext).skillId || 'skill'}`
+                    }
+                    default: return 'Context'
+                  }
+                })()
+
+                return (
+                  <motion.span
+                    key={`${item.type}-${'uri' in item ? (item as { uri: string }).uri : i}`}
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.8, filter: 'blur(4px)' }}
+                    transition={{ duration: 0.15 }}
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 ${style.bg} ${style.text} text-[12px] font-medium rounded-lg border ${style.border} select-none group/chip transition-all hover:border-opacity-100 hover:shadow-sm`}
+                  >
+                    <style.Icon className="w-3 h-3 opacity-70" />
+                    <span className="max-w-[120px] truncate">{label}</span>
+                    <button
+                      onClick={() => onRemoveContextItem(item)}
+                      className="ml-0.5 p-0.5 rounded-full hover:bg-black/20 text-current hover:text-red-400 opacity-60 group-hover/chip:opacity-100 transition-all"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </motion.span>
+                )
+              })}
+            </AnimatePresence>
+
+            {/* Other Reference Chips */}
+            {hasCodebaseRef && <ContextChip icon={Database} label="@codebase" color="green" />}
+            {hasSymbolsRef && <ContextChip icon={Code} label="@symbols" color="pink" />}
+            {hasGitRef && <ContextChip icon={GitBranch} label="@git" color="orange" />}
+            {hasTerminalRef && <ContextChip icon={Terminal} label="@terminal" color="cyan" />}
+            {hasWebRef && <ContextChip icon={Globe} label="@web" color="blue" />}
+          </div>
+        )}
+
+        {/* Input Area */}
+        <div className="flex flex-col px-4 pb-3 pt-2">
+          <textarea
+            ref={textareaRef}
+            value={input}
+            onChange={onInputChange}
+            onKeyDown={onKeyDown}
+            onPaste={onPaste}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            placeholder={hasApiKey ? t('pasteImagesHint', language) : t('configureApiKey', language)}
+            disabled={!hasApiKey}
+            className="w-full bg-transparent border-none p-0 py-2.5
+                       text-[15px] text-text-primary placeholder-text-muted/40 resize-none
+                       focus:ring-0 focus:outline-none leading-relaxed custom-scrollbar max-h-[50vh] caret-accent font-medium tracking-wide"
+            rows={1}
+            style={{ minHeight: '48px', fontSize: `${Math.max(14, editorConfig.chatFontSize ?? editorConfig.fontSize)}px` }}
+          />
+
+          {/* Bottom Actions */}
+          <div className="relative flex items-center justify-between pt-1 gap-2">
+            <div className="flex items-center gap-2 opacity-80 hover:opacity-100 transition-opacity">
+              <ModeSelector mode={chatMode} onModeChange={setChatMode} />
+              <ModelSelector alignLeft />
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <input
+                type="file"
+                ref={fileInputRef}
+                className="hidden"
+                multiple
+                onChange={(e) => {
+                  if (e.target.files) {
+                    Array.from(e.target.files).forEach(addAttachment)
+                  }
+                  e.target.value = ''
+                }}
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => fileInputRef.current?.click()}
+                title={language === 'zh' ? '上传附件' : 'Upload attachment'}
+                className="rounded-xl w-8 h-8 hover:bg-surface-active text-text-muted hover:text-text-primary transition-all active:scale-95"
+              >
+                <Paperclip className="w-4 h-4 opacity-70 group-hover:opacity-100" />
+              </Button>
+
+              <button
+                onClick={isStreaming ? onAbort : onSubmit}
+                disabled={
+                  !hasApiKey || ((!input.trim() && images.length === 0) && !isStreaming) || hasPendingToolCall
+                }
+                className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300
+                  ${isStreaming
+                    ? 'bg-surface/50 text-text-primary border border-text-primary/10 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20'
+                    : isSendable
+                      ? 'bg-accent text-white shadow-md shadow-accent/20 hover:shadow-accent/40 hover:-translate-y-0.5 active:translate-y-0 border border-transparent'
+                      : 'bg-text-primary/5 text-text-muted/75 cursor-not-allowed border border-transparent'
+                  }
+                  `}
+              >
+                {isStreaming ? (
+                  <div className="w-2.5 h-2.5 bg-current rounded-[1px] animate-pulse" />
+                ) : (
+                  <ArrowUp className="w-5 h-5 stroke-[3]" />
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+})
+
+export default ChatInput
+
+function getFileIcon(fileName: string, mimeType: string) {
+    const ext = fileName.split('.').pop()?.toLowerCase() || ''
+    if (mimeType.startsWith('image/')) return <FileText className="w-4 h-4 text-green-400 flex-shrink-0" />
+    const codeExts = ['js', 'ts', 'tsx', 'jsx', 'py', 'rs', 'go', 'java', 'c', 'cpp', 'h', 'rb', 'php', 'swift', 'kt', 'vue', 'svelte']
+    if (codeExts.includes(ext)) return <FileCode className="w-4 h-4 text-blue-400 flex-shrink-0" />
+    const dataExts = ['csv', 'xlsx', 'xls', 'tsv', 'json', 'xml']
+    if (dataExts.includes(ext)) return <FileSpreadsheet className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+    const archiveExts = ['zip', 'tar', 'gz', 'rar', '7z', 'bz2']
+    if (archiveExts.includes(ext)) return <Archive className="w-4 h-4 text-amber-400 flex-shrink-0" />
+    return <File className="w-4 h-4 text-text-muted flex-shrink-0" />
+}
+
+// 辅助组件：上下文 Chip
+function ContextChip({ icon: Icon, label, color }: { icon: any, label: string, color: string }) {
+  const colorMap: Record<string, string> = {
+    green: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20',
+    pink: 'text-pink-400 bg-pink-400/10 border-pink-400/20',
+    orange: 'text-orange-400 bg-orange-400/10 border-orange-400/20',
+    cyan: 'text-cyan-400 bg-cyan-400/10 border-cyan-400/20',
+    blue: 'text-blue-400 bg-blue-400/10 border-blue-400/20',
+  }
+
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 ${colorMap[color]} text-[12px] font-medium rounded-lg border animate-fade-in select-none`}>
+      <Icon className="w-3 h-3" />
+      {label}
+    </span>
+  )
+}

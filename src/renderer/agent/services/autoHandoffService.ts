@@ -8,9 +8,9 @@ import { useAgentStore, type HandoffSessionResult } from '../store/AgentStore'
 let completedAutoHandoffKey: string | null = null
 
 function buildAutoResumeMessage(result: HandoffSessionResult, language: 'zh' | 'en'): string {
-  const pendingSteps = result.pendingSteps.slice(0, 8)
-  const todos = result.todos.slice(0, 8)
-  const fileChanges = result.fileChanges.slice(-8)
+  const pendingSteps = (result.pendingSteps || []).slice(0, 8)
+  const todos = (result.todos || []).slice(0, 8)
+  const fileChanges = (result.fileChanges || []).slice(-8)
 
   if (language === 'zh') {
     const sections = [

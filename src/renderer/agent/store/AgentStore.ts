@@ -158,6 +158,7 @@ export interface ThreadBoundStore {
             message: string
             suggestion?: string
             compact?: boolean
+            action?: { label: string; actionType: 'continue' | 'retry' | 'dismiss' }
         }
     ) => void
 
@@ -364,10 +365,10 @@ export const useAgentStore = create<AgentStore>()(
                     return {
                         threadId: newThreadId,
                         objective: handoff.summary.objective,
-                        pendingSteps: handoff.summary.pendingSteps,
+                        pendingSteps: handoff.summary.pendingSteps || [],
                         todos: handoff.summary.todos || [],
                         lastUserRequest: handoff.lastUserRequest,
-                        fileChanges: handoff.summary.fileChanges,
+                        fileChanges: handoff.summary.fileChanges || [],
                     }
                 },
                 // 代码审查方法

@@ -41,7 +41,7 @@ export interface OpenFile {
   /** 文件是否已被外部删除 */
   isDeleted?: boolean
   /** 远程文件绑定信息（SFTP 编辑） */
-  remote?: { server: { host: string; port?: number; username: string; password?: string; privateKeyPath?: string; remotePath?: string }; remotePath: string }
+  remote?: { server: { host: string; port?: number; username?: string; password?: string; privateKeyPath?: string; remotePath?: string }; remotePath: string }
   /** 最后访问时间（LRU 淘汰用） */
   lastAccessed?: number
   /** Preview 文档元数据 */

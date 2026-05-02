@@ -242,11 +242,12 @@ interface MessageMetaGroupProps {
 
 const MessageMetaGroup = React.memo(({ autoSkills, manualSkills, searchContent, isSearchStreaming }: MessageMetaGroupProps) => {
   // Hooks 必须在所有条件返回之前调用（React 规则）
-  const { openFile, setActiveFile, workspacePath, expandAgentBlocksByDefault } = useStore(useShallow(s => ({
+  const { openFile, setActiveFile, workspacePath, expandAgentBlocksByDefault, language } = useStore(useShallow(s => ({
     openFile: s.openFile,
     setActiveFile: s.setActiveFile,
     workspacePath: s.workspacePath,
     expandAgentBlocksByDefault: s.agentConfig.expandAgentBlocksByDefault ?? false,
+    language: s.language,
   })))
   const [isExpanded, setIsExpanded] = useState(expandAgentBlocksByDefault)
 
@@ -295,7 +296,7 @@ const MessageMetaGroup = React.memo(({ autoSkills, manualSkills, searchContent, 
         </div>
 
         <span className={`text-[12px] ${isStreaming ? 'text-text-primary' : 'text-text-secondary group-hover:text-text-primary transition-colors'}`}>
-          Context
+          {language === 'zh' ? '上下文' : 'Context'}
         </span>
 
         {/* 折叠时显示 skill 名称列表 */}
@@ -320,7 +321,7 @@ const MessageMetaGroup = React.memo(({ autoSkills, manualSkills, searchContent, 
               {/* Skill Referenced */}
               {hasSkills && (
                 <div className="flex items-center gap-1.5 text-[12px]">
-                  <span className="text-text-muted/75 shrink-0">Skill Referenced</span>
+                  <span className="text-text-muted/75 shrink-0">{language === 'zh' ? '引用技能' : 'Skill Referenced'}</span>
                   {allSkills.map((item: any, i: number) => (
                     <React.Fragment key={item.skillId || i}>
                       {i > 0 && <span className="text-text-muted/85">,</span>}
@@ -340,13 +341,13 @@ const MessageMetaGroup = React.memo(({ autoSkills, manualSkills, searchContent, 
                 <div className="text-[12px]">
                   {searchContent ? (
                     <div className="flex items-start gap-1.5">
-                      <span className="text-text-muted/75 shrink-0">File Referenced</span>
+                      <span className="text-text-muted/75 shrink-0">{language === 'zh' ? '引用文件' : 'File Referenced'}</span>
                       <div className="text-text-muted/85 leading-relaxed max-h-32 overflow-auto custom-scrollbar whitespace-pre-wrap">
                         {searchContent}
                       </div>
                     </div>
                   ) : (
-                    <span className="text-text-muted/65 italic">Searching files...</span>
+                    <span className="text-text-muted/65 italic">{language === 'zh' ? '正在搜索文件...' : 'Searching files...'}</span>
                   )}
                 </div>
               )}
@@ -361,6 +362,7 @@ MessageMetaGroup.displayName = 'MessageMetaGroup'
 
 const ThinkingBlock = React.memo(({ content, startTime, isStreaming, fontSize }: ThinkingBlockProps) => {
   const expandAgentBlocksByDefault = useStore(s => s.agentConfig.expandAgentBlocksByDefault ?? false)
+  const language = useStore(s => s.language)
   const [isExpanded, setIsExpanded] = useState(expandAgentBlocksByDefault)
   const [elapsed, setElapsed] = useState<number>(0)
   const lastElapsed = React.useRef<number>(0)
@@ -402,8 +404,8 @@ const ThinkingBlock = React.memo(({ content, startTime, isStreaming, fontSize }:
   }, [fluidContent, isStreaming, isExpanded])
 
   const durationText = !isStreaming
-    ? (lastElapsed.current > 0 ? `Thought for ${lastElapsed.current}s` : 'Thought')
-    : `Thinking for ${elapsed}s...`
+    ? (lastElapsed.current > 0 ? t('thought.for', language, { sec: lastElapsed.current }) : t('thought.done', language))
+    : t('thinking.for', language, { sec: elapsed })
 
   return (
     <div className="my-3 group/think overflow-hidden">
@@ -448,6 +450,7 @@ ThinkingBlock.displayName = 'ThinkingBlock'
 // Markdown 渲染组件
 const MarkdownContent = React.memo(({ content: rawContent, fontSize, isStreaming }: { content: string; fontSize: number; isStreaming?: boolean }) => {
   const content = typeof rawContent === 'string' ? rawContent : String(rawContent ?? '')
+  const language = useStore(s => s.language)
 
   // 所有 useMemo 必须在前面
   const cleanedContent = React.useMemo(() => {
@@ -457,7 +460,7 @@ const MarkdownContent = React.memo(({ content: rawContent, fontSize, isStreaming
   // 检测系统警告
   const systemAlert = React.useMemo(() => {
     if (!isStreaming) {
-      return parseSystemAlert(cleanedContent)
+      return parseSystemAlert(cleanedContent, language)
     }
     return null
   }, [cleanedContent, isStreaming])
@@ -707,6 +710,14 @@ const RenderPart = React.memo(({
         message={part.message}
         suggestion={part.suggestion}
         compact={part.compact}
+        action={part.action}
+        onAction={(action) => {
+          if (action.actionType === 'continue') {
+            window.dispatchEvent(new CustomEvent('chat-send-message', {
+              detail: { content: '继续执行未完成的任务', messageId }
+            }))
+          }
+        }}
       />
     )
   }
@@ -749,6 +760,19 @@ const RenderPart = React.memo(({
 })
 
 RenderPart.displayName = 'RenderPart'
+
+const ThinkingIndicator = React.memo(() => {
+  return (
+    <div className="flex items-center gap-2 py-2 px-1">
+      <div className="flex items-center gap-1">
+        <span className="w-1.5 h-1.5 rounded-full bg-accent/60 animate-bounce" style={{ animationDelay: '0ms', animationDuration: '0.8s' }} />
+        <span className="w-1.5 h-1.5 rounded-full bg-accent/60 animate-bounce" style={{ animationDelay: '150ms', animationDuration: '0.8s' }} />
+        <span className="w-1.5 h-1.5 rounded-full bg-accent/60 animate-bounce" style={{ animationDelay: '300ms', animationDuration: '0.8s' }} />
+      </div>
+    </div>
+  )
+})
+ThinkingIndicator.displayName = 'ThinkingIndicator'
 
 // 助手消息内容组件 - 将分组逻辑提取出来并 memoize
 const AssistantMessageContent = React.memo(({
@@ -912,7 +936,6 @@ const ChatMessage = React.memo(({
     cancel: language === 'zh' ? '取消' : 'Cancel',
   }
 
-  const [typingIndex, setTypingIndex] = useState(0)
   const { isStreaming, previewMap, liveParts, liveInteractive } = useAgentStore(useShallow(state => {
     if (!isAssistantMessage(message)) {
       return {
@@ -947,15 +970,6 @@ const ChatMessage = React.memo(({
   const assistantParts = isAssistantMessage(message) ? (liveParts ?? message.parts) : undefined
   const assistantInteractive = isAssistantMessage(message) ? (liveInteractive ?? message.interactive) : undefined
 
-  useEffect(() => {
-    if (isStreaming) {
-      const interval = setInterval(() => {
-        setTypingIndex(prev => (prev + 1) % 8)
-      }, 5000)
-      return () => clearInterval(interval)
-    }
-  }, [isStreaming])
-
   const previewToolCalls = React.useMemo(() => {
     if (!isAssistantMessage(message)) return []
 
@@ -984,6 +998,26 @@ const ChatMessage = React.memo(({
           <div className="w-full flex flex-col items-end gap-1.5">
             {/* Header Row */}
             <div className="flex items-center gap-2.5 px-1 select-none">
+              {(() => {
+                const channelMatch = textContent.match(/^\[(飞书|微信|WhatsApp|Telegram|钉钉|Slack)\]/)
+                if (channelMatch) {
+                  const channelName = channelMatch[1]
+                  const channelColors: Record<string, string> = {
+                    '飞书': 'bg-blue-500/15 text-blue-400 border-blue-500/25',
+                    '微信': 'bg-green-500/15 text-green-400 border-green-500/25',
+                    'WhatsApp': 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25',
+                    'Telegram': 'bg-sky-500/15 text-sky-400 border-sky-500/25',
+                    '钉钉': 'bg-indigo-500/15 text-indigo-400 border-indigo-500/25',
+                    'Slack': 'bg-purple-500/15 text-purple-400 border-purple-500/25',
+                  }
+                  return (
+                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md border ${channelColors[channelName] || 'bg-text-primary/10 text-text-muted border-border/50'}`}>
+                      {channelName}
+                    </span>
+                  )
+                }
+                return null
+              })()}
               <span className="text-[12px] font-bold text-text-muted/90 uppercase tracking-tight">You</span>
               <div className="w-7 h-7 rounded-full bg-surface/60 border border-text-primary/10 flex items-center justify-center text-text-muted shadow-sm flex-shrink-0">
                 <User className="w-3.5 h-3.5" />
@@ -1182,50 +1216,35 @@ const ChatMessage = React.memo(({
         {!isUser && (
           <div className="w-full min-w-0 flex flex-col gap-2">
             <div className="flex items-center gap-3 px-1">
-              <div className="w-9 h-9 rounded-xl overflow-hidden border border-border shadow-[0_4px_12px_-2px_rgba(0,0,0,0.1)] bg-surface/50 backdrop-blur-md relative flex-shrink-0">
-                <div className="absolute inset-0 bg-accent/5 pointer-events-none" />
-                <img src={publicAsset('brand/ip/ai-avatar.gif')} alt="AI" className="w-full h-full object-cover" />
+              <div className="relative flex-shrink-0">
+                <div className="w-9 h-9 rounded-xl overflow-hidden border border-border shadow-[0_4px_12px_-2px_rgba(0,0,0,0.1)] bg-surface/50 backdrop-blur-md">
+                  <div className="absolute inset-0 bg-accent/5 pointer-events-none" />
+                  <img src={publicAsset('brand/ip/ai-avatar.gif')} alt="AI" className="w-full h-full object-cover" />
+                </div>
+                {isStreaming && (
+                  <span className="absolute -bottom-0.5 -right-0.5 flex h-[10px] w-[10px] items-center justify-center">
+                    <span className="animate-ping absolute inline-flex h-[10px] w-[10px] rounded-full bg-accent/40 opacity-75" style={{ animationDuration: '2s' }} />
+                    <span className="relative inline-flex rounded-full h-[6px] w-[6px] bg-accent shadow-[0_0_6px_rgba(var(--accent-rgb),0.6)]" />
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-2 select-none overflow-hidden pr-2">
                 <span className="text-[13px] font-bold tracking-tight text-text-primary">AweeClaw</span>
-
-                {isStreaming && (
-                  <div className="flex items-center gap-1.5 ml-1 px-2 py-0.5 rounded-full bg-surface-hover/50 border border-transparent self-center mt-[1px]">
-                    <div className="relative flex h-[5px] w-[5px] items-center justify-center shrink-0">
-                      <span className="animate-ping absolute inline-flex h-[8px] w-[8px] rounded-full bg-accent/40 opacity-75" style={{ animationDuration: '2s' }} />
-                      <span className="relative inline-flex rounded-full h-[5px] w-[5px] bg-accent" />
-                    </div>
-                    <div className="relative flex items-center overflow-hidden h-[16px]">
-                      <AnimatePresence mode="wait">
-                        <motion.span
-                          key={typingIndex}
-                          initial={{ opacity: 0, y: 6 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -6 }}
-                          transition={{ duration: 0.25, ease: "easeOut" }}
-                          className="text-[11px] text-text-muted/90 font-medium whitespace-nowrap tracking-wide"
-                        >
-                          {t(`agent.typing.${typingIndex}` as any, language)}
-                        </motion.span>
-                      </AnimatePresence>
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
 
             <div className="w-full text-[15px] leading-relaxed text-text-primary/90 pl-1">
-              {/* System Context Widget at the top of the content */}
-              {isAssistantMessage(message) && (message.contextItems?.some((item: any) => item.type === 'Skill') || assistantParts?.some(isSearchPart)) && (
+              {/* System Context Widget at the top of the content — hidden per user preference */}
+              {/* {isAssistantMessage(message) && (message.contextItems?.some((item: any) => item.type === 'Skill') || assistantParts?.some(isSearchPart)) && (
                 <MessageMetaGroup
                   autoSkills={message.contextItems?.filter((item: any) => item.type === 'Skill' && item.auto)}
                   manualSkills={message.contextItems?.filter((item: any) => item.type === 'Skill' && !item.auto)}
                   searchContent={assistantParts?.find(isSearchPart)?.content || undefined}
                   isSearchStreaming={(assistantParts?.find(isSearchPart) as any)?.isStreaming}
                 />
-              )}
+              )} */}
               <div className="prose-custom w-full max-w-none">
-                {assistantParts && (
+                {assistantParts && assistantParts.length > 0 && (
                   <AssistantMessageContent
                     parts={assistantParts}
                     pendingToolId={pendingToolId}
@@ -1236,6 +1255,9 @@ const ChatMessage = React.memo(({
                     isStreaming={message.isStreaming}
                     messageId={message.id}
                   />
+                )}
+                {isStreaming && (!assistantParts || assistantParts.length === 0) && previewToolCalls.length === 0 && (
+                  <ThinkingIndicator />
                 )}
                 {previewToolCalls.length > 0 && (
                   <ToolCallGroup

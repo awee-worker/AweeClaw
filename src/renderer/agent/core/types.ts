@@ -51,12 +51,13 @@ export interface LoopCheckResult {
   suggestion?: string
   warning?: string
   details?: {
-    category: 'exact_repeat' | 'same_tool_warning' | 'content_cycle' | 'pattern_loop'
+    category: 'exact_repeat' | 'same_tool_warning' | 'same_target_warning' | 'content_cycle' | 'pattern_loop' | 'semantic_loop'
     toolName?: string
     count?: number
     threshold?: number
     target?: string | null
     pattern?: string
+    severity?: 'low' | 'medium' | 'high'
   }
 }
 

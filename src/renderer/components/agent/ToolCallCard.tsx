@@ -27,31 +27,31 @@ interface ToolCallCardProps {
 
 type ToolArgs = Record<string, unknown>
 
-const TOOL_LABELS: Record<string, string> = {
-    read_file: 'Read File',
-    read_multiple_files: 'Read Files',
-    list_directory: 'List Directory',
-    search_files: 'Search Files',
-    codebase_search: 'Semantic Search',
-    edit_file: 'Edit File',
-    write_file: 'Write File',
-    create_file: 'Create File',
-    create_file_or_folder: 'Create',
-    delete_file_or_folder: 'Delete',
-    run_command: 'Run Command',
-    get_lint_errors: 'Lint Errors',
-    find_references: 'Find References',
-    go_to_definition: 'Go to Definition',
-    get_hover_info: 'Hover Info',
-    get_document_symbols: 'Document Symbols',
-    web_search: 'Web Search',
-    read_url: 'Read URL',
-    ask_user: 'Ask User',
-    remember: 'Remember Fact',
-    uiux_search: 'UI/UX Search',
-    uiux_recommend: 'UI/UX Recommend',
-    apply_skill: 'Apply Skill',
-    todo_write: 'Task List',
+const TOOL_LABEL_KEYS: Record<string, string> = {
+    read_file: 'tool.label.read_file',
+    read_multiple_files: 'tool.label.read_multiple_files',
+    list_directory: 'tool.label.list_directory',
+    search_files: 'tool.label.search_files',
+    codebase_search: 'tool.label.codebase_search',
+    edit_file: 'tool.label.edit_file',
+    write_file: 'tool.label.write_file',
+    create_file: 'tool.label.create_file',
+    create_file_or_folder: 'tool.label.create_file_or_folder',
+    delete_file_or_folder: 'tool.label.delete_file_or_folder',
+    run_command: 'tool.label.run_command',
+    get_lint_errors: 'tool.label.get_lint_errors',
+    find_references: 'tool.label.find_references',
+    go_to_definition: 'tool.label.go_to_definition',
+    get_hover_info: 'tool.label.get_hover_info',
+    get_document_symbols: 'tool.label.get_document_symbols',
+    web_search: 'tool.label.web_search',
+    read_url: 'tool.label.read_url',
+    ask_user: 'tool.label.ask_user',
+    remember: 'tool.label.remember',
+    uiux_search: 'tool.label.uiux_search',
+    uiux_recommend: 'tool.label.uiux_recommend',
+    apply_skill: 'tool.label.apply_skill',
+    todo_write: 'tool.label.todo_write',
 }
 
 const guessLanguage = (filename: string) => {
@@ -112,7 +112,7 @@ const getPathSummary = (paths: string[], maxItems = 3): string => {
     return `${paths.length} files (${preview}${paths.length > maxItems ? ', ...' : ''})`
 }
 
-function getStatusText(name: string, args: ToolArgs, status: ToolCall['status'], isStreaming: boolean): string {
+function getStatusText(name: string, args: ToolArgs, status: ToolCall['status'], isStreaming: boolean, language: string): string {
     const isRunning = status === 'running' || status === 'pending' || isStreaming
     const isSuccess = status === 'success'
     const isError = status === 'error'
@@ -122,69 +122,69 @@ function getStatusText(name: string, args: ToolArgs, status: ToolCall['status'],
 
     if (name === 'run_command') {
         const cmd = asString(args.command)
-        if (!cmd) return isRunning ? 'Preparing cmd...' : ''
-        if (isRunning) return `Executing ${cmd}`
-        if (isSuccess) return `Executed ${cmd}`
-        if (isError) return `Command failed: ${cmd}`
+        if (!cmd) return isRunning ? t('tool.status.preparingCmd', language as any) : ''
+        if (isRunning) return t('tool.status.executing', language as any, { cmd })
+        if (isSuccess) return t('tool.status.executed', language as any, { cmd })
+        if (isError) return t('tool.status.cmdFailed', language as any, { cmd })
         return cmd
     }
 
     if (name === 'read_multiple_files') {
         if (paths.length > 0) {
-            if (isRunning) return `Reading ${pathSummary}...`
-            if (isSuccess) return `Read ${pathSummary}`
-            if (isError) return 'Failed to read files'
-            return `Reading ${pathSummary}`
+            if (isRunning) return t('tool.status.reading', language as any, { target: pathSummary })
+            if (isSuccess) return t('tool.status.read', language as any, { target: pathSummary })
+            if (isError) return t('tool.status.readFailed', language as any, { target: '' })
+            return t('tool.status.reading', language as any, { target: pathSummary })
         }
-        return 'Reading files'
+        return t('tool.status.readingFiles', language as any)
     }
 
     if (['read_file', 'list_directory'].includes(name)) {
         if (paths.length > 1) {
-            if (isRunning) return `Reading ${pathSummary}...`
-            if (isSuccess) return `Read ${pathSummary}`
-            if (isError) return 'Failed to read files'
-            return `Reading ${pathSummary}`
+            if (isRunning) return t('tool.status.reading', language as any, { target: pathSummary })
+            if (isSuccess) return t('tool.status.read', language as any, { target: pathSummary })
+            if (isError) return t('tool.status.readFailed', language as any, { target: '' })
+            return t('tool.status.reading', language as any, { target: pathSummary })
         }
-        if (!path) return isRunning ? 'Reading...' : ''
-        if (isRunning) return `Reading ${path}...`
-        if (isSuccess) return `Read ${path}`
-        if (isError) return `Failed to read ${path}`
-        return `Reading ${path}`
+        if (!path) return isRunning ? t('tool.status.readingEllipsis', language as any) : ''
+        if (isRunning) return t('tool.status.reading', language as any, { target: path })
+        if (isSuccess) return t('tool.status.read', language as any, { target: path })
+        if (isError) return t('tool.status.readFailed', language as any, { target: path })
+        return t('tool.status.reading', language as any, { target: path })
     }
 
     if (['write_file', 'create_file', 'create_file_or_folder'].includes(name)) {
-        if (!path) return isRunning ? 'Creating...' : ''
-        if (isRunning) return `Creating ${path}...`
-        if (isSuccess) return `Created ${path}`
-        if (isError) return `Failed to create ${path}`
-        return `Creating ${path}`
+        if (!path) return isRunning ? t('tool.status.creatingEllipsis', language as any) : ''
+        if (isRunning) return t('tool.status.creating', language as any, { target: path })
+        if (isSuccess) return t('tool.status.created', language as any, { target: path })
+        if (isError) return t('tool.status.createFailed', language as any, { target: path })
+        return t('tool.status.creating', language as any, { target: path })
     }
 
     if (name === 'edit_file') {
-        if (!path) return isRunning ? 'Editing...' : ''
-        if (isRunning) return `Editing ${path}...`
-        if (isSuccess) return `Updated ${path}`
-        if (isError) return `Failed to edit ${path}`
-        return `Editing ${path}`
+        if (!path) return isRunning ? t('tool.status.editingEllipsis', language as any) : ''
+        if (isRunning) return t('tool.status.editing', language as any, { target: path })
+        if (isSuccess) return t('tool.status.updated', language as any, { target: path })
+        if (isError) return t('tool.status.editFailed', language as any, { target: path })
+        return t('tool.status.editing', language as any, { target: path })
     }
 
     if (name === 'delete_file_or_folder') {
-        if (!path) return isRunning ? 'Deleting...' : ''
-        if (isRunning) return `Deleting ${path}...`
-        if (isSuccess) return `Deleted ${path}`
-        if (isError) return `Failed to delete ${path}`
-        return `Deleting ${path}`
+        if (!path) return isRunning ? t('tool.status.deletingEllipsis', language as any) : ''
+        if (isRunning) return t('tool.status.deleting', language as any, { target: path })
+        if (isSuccess) return t('tool.status.deleted', language as any, { target: path })
+        if (isError) return t('tool.status.deleteFailed', language as any, { target: path })
+        return t('tool.status.deleting', language as any, { target: path })
     }
 
     if (['search_files', 'codebase_search', 'web_search', 'uiux_search'].includes(name)) {
         const query = asString(args.pattern) || asString(args.query)
         const value = query ? `"${query}"` : ''
-        if (!value) return isRunning ? 'Searching...' : ''
-        if (isRunning) return `Searching ${value}...`
-        if (isSuccess) return `Searched ${value}`
-        if (isError) return 'Search failed'
-        return `Searching ${value}`
+        if (!value) return isRunning ? t('tool.status.searchingEllipsis', language as any) : ''
+        if (isRunning) return t('tool.status.searching', language as any, { query: value })
+        if (isSuccess) return t('tool.status.searched', language as any, { query: value })
+        if (isError) return t('tool.status.searchFailed', language as any)
+        return t('tool.status.searching', language as any, { query: value })
     }
 
     if (name === 'read_url') {
@@ -197,38 +197,38 @@ function getStatusText(name: string, args: ToolArgs, status: ToolCall['status'],
                 hostname = url
             }
         }
-        if (!hostname) return isRunning ? 'Reading URL...' : ''
-        if (isRunning) return `Reading ${hostname}...`
-        if (isSuccess) return `Read ${hostname}`
-        if (isError) return `Failed to read ${hostname}`
-        return `Reading ${hostname}`
+        if (!hostname) return isRunning ? t('tool.status.readingUrlEllipsis', language as any) : ''
+        if (isRunning) return t('tool.status.readingUrl', language as any, { host: hostname })
+        if (isSuccess) return t('tool.status.readUrl', language as any, { host: hostname })
+        if (isError) return t('tool.status.readUrlFailed', language as any, { host: hostname })
+        return t('tool.status.readingUrl', language as any, { host: hostname })
     }
 
     if (['get_lint_errors', 'find_references', 'go_to_definition', 'get_hover_info', 'get_document_symbols'].includes(name)) {
-        if (!path) return isRunning ? 'Analyzing...' : ''
-        if (isRunning) return `Analyzing ${path}...`
-        if (isSuccess) return `Analyzed ${path}`
-        if (isError) return 'Analysis failed'
-        return `Analyzing ${path}`
+        if (!path) return isRunning ? t('tool.status.analyzingEllipsis', language as any) : ''
+        if (isRunning) return t('tool.status.analyzing', language as any, { target: path })
+        if (isSuccess) return t('tool.status.analyzed', language as any, { target: path })
+        if (isError) return t('tool.status.analysisFailed', language as any)
+        return t('tool.status.analyzing', language as any, { target: path })
     }
 
     if (name === 'apply_skill') {
         const skillName = asString(args.skill_name)
-        if (!skillName) return isRunning ? 'Loading skill...' : ''
-        if (isRunning) return `Applying ${skillName}...`
-        if (isSuccess) return `Applied ${skillName}`
-        if (isError) return `Failed to apply ${skillName}`
-        return `Applying ${skillName}`
+        if (!skillName) return isRunning ? t('tool.status.applyingEllipsis', language as any) : ''
+        if (isRunning) return t('tool.status.applying', language as any, { name: skillName })
+        if (isSuccess) return t('tool.status.applied', language as any, { name: skillName })
+        if (isError) return t('tool.status.applyFailed', language as any, { name: skillName })
+        return t('tool.status.applying', language as any, { name: skillName })
     }
 
     if (name === 'todo_write') {
-        if (isRunning) return 'Updating tasks...'
-        if (isSuccess) return 'Tasks updated'
-        if (isError) return 'Failed to update tasks'
-        return 'Updating tasks'
+        if (isRunning) return t('tool.status.updatingTasks', language as any)
+        if (isSuccess) return t('tool.status.tasksUpdated', language as any)
+        if (isError) return t('tool.status.tasksUpdateFailed', language as any)
+        return t('tool.status.updatingTasks', language as any)
     }
 
-    return isRunning ? 'Processing...' : ''
+    return isRunning ? t('tool.status.processing', language as any) : ''
 }
 
 const getHeightPx = (heightClass: string): number => {
@@ -357,10 +357,10 @@ function ToolPreview({
     setTerminalVisible: (visible: boolean) => void
 }) {
     const stringResult = typeof toolCall.result === 'string' ? toolCall.result : ''
-    const pendingPreview = (label = 'Waiting for output...') => (
+    const pendingPreview = (label?: string) => (
         <ExpandablePreviewContainer language={language}>
             <div className="p-2 text-[12px] text-text-muted italic">
-                {label}
+                {label || t('tool.status.waitingOutput', language as any)}
             </div>
             <PendingPreviewSkeleton />
         </ExpandablePreviewContainer>
@@ -394,7 +394,7 @@ function ToolPreview({
 
                             const { terminalManager } = await import('@/renderer/services/TerminalManager')
                             if (!terminalManager.hasTerminal(terminalId)) {
-                                toast.info('Terminal has been closed')
+                                toast.info(t('tool.terminalClosed', language as any))
                                 return
                             }
                             setTerminalVisible(true)
@@ -424,11 +424,11 @@ function ToolPreview({
                     <ExpandablePreviewContainer language={language}>
                         <div className="text-text-muted/90 whitespace-pre-wrap break-all p-2 font-mono text-[12px]">
                             {stringResult.slice(0, 5000)}
-                            {stringResult.length > 5000 && <span className="opacity-50 inline-block ml-1">... (truncated)</span>}
+                            {stringResult.length > 5000 && <span className="opacity-50 inline-block ml-1">{t('tool.truncated', language as any)}</span>}
                         </div>
                     </ExpandablePreviewContainer>
                 ) : (isRunning || isStreaming) && (
-                    pendingPreview('Waiting for terminal output...')
+                    pendingPreview(t('tool.status.waitingTerminalOutput', language as any))
                 )}
             </div>
         )
@@ -443,9 +443,9 @@ function ToolPreview({
             <div className="font-mono text-[12px] space-y-1">
                 <div className="flex items-center gap-2">
                     <Terminal className="w-3.5 h-3.5 text-text-muted" />
-                    <span className="text-text-muted">Sent input:</span>
+                    <span className="text-text-muted">{t('tool.sentInput', language as any)}</span>
                     <span className={`px-1.5 py-0.5 rounded text-[11px] font-medium ${badgeClass}`}>{display}</span>
-                    <span className="text-text-muted/85 text-[11px] ml-1">to {asString(args.terminal_id)}</span>
+                    <span className="text-text-muted/85 text-[11px] ml-1">{t('tool.to', language as any)} {asString(args.terminal_id)}</span>
                 </div>
             </div>
         )
@@ -456,7 +456,7 @@ function ToolPreview({
             <div className="font-mono text-[12px] space-y-1 text-red-400">
                 <div className="flex items-center gap-2">
                     <Terminal className="w-3.5 h-3.5 opacity-80" />
-                    <span className="font-medium">Force terminated process</span>
+                    <span className="font-medium">{t('tool.forceTerminated', language as any)}</span>
                     <span className="opacity-50 text-[11px]">{asString(args.terminal_id)}</span>
                 </div>
             </div>
@@ -468,7 +468,7 @@ function ToolPreview({
             <div className="font-mono text-[12px] space-y-1">
                 <div className="flex items-center gap-2 text-text-muted">
                     <Terminal className="w-3.5 h-3.5 text-accent/70" />
-                    <span>Read terminal logs</span>
+                    <span>{t('tool.readTerminalLogs', language as any)}</span>
                     <span className="opacity-50 text-[11px]">{asString(args.terminal_id)}</span>
                 </div>
                 {stringResult.length > 0 ? (
@@ -478,7 +478,7 @@ function ToolPreview({
                         </div>
                     </ExpandablePreviewContainer>
                 ) : (isRunning || isStreaming) && (
-                    pendingPreview('Waiting for terminal output...')
+                    pendingPreview(t('tool.status.waitingTerminalOutput', language as any))
                 )}
             </div>
         )
@@ -486,7 +486,8 @@ function ToolPreview({
 
     if (['search_files', 'codebase_search', 'web_search', 'uiux_search'].includes(effectiveName)) {
         const query = asString(args.pattern) || asString(args.query)
-        const searchType = effectiveName === 'codebase_search' ? 'Semantic' : effectiveName === 'web_search' ? 'Web' : effectiveName === 'uiux_search' ? 'UI/UX' : 'Files'
+        const searchTypeKey = effectiveName === 'codebase_search' ? 'tool.searchType.semantic' : effectiveName === 'web_search' ? 'tool.searchType.web' : effectiveName === 'uiux_search' ? 'tool.searchType.uiux' : 'tool.searchType.files'
+        const searchType = t(searchTypeKey as any, language as any)
 
         return (
             <div className="space-y-1 text-[12px]">
@@ -521,7 +522,7 @@ function ToolPreview({
                     <ExpandablePreviewContainer language={language}>
                         <div className="p-2 font-mono text-text-secondary whitespace-pre">
                             {stringResult.slice(0, 5000)}
-                            {stringResult.length > 5000 && <span className="opacity-50 mt-1 block">... (truncated)</span>}
+                            {stringResult.length > 5000 && <span className="opacity-50 mt-1 block">{t('tool.truncated', language as any)}</span>}
                         </div>
                     </ExpandablePreviewContainer>
                 ) : (isRunning || isStreaming) && (
@@ -561,7 +562,7 @@ function ToolPreview({
                                 Writing...
                             </span>
                         )}
-                        {isTruncated && !isStreaming && <span className="text-amber-500">(truncated)</span>}
+                        {isTruncated && !isStreaming && <span className="text-amber-500">({t('tool.truncated', language as any).replace('... ', '')})</span>}
                     </div>
                     {isLargeWrite && !isStreaming ? (
                         <div className="ml-1 rounded-md border border-amber-500/20 bg-amber-500/5 px-2 py-2 text-[12px] text-text-muted">
@@ -627,6 +628,7 @@ function ToolPreview({
         const displayName = paths.length > 1 ? getPathSummary(paths) : (filePath ? getPathDisplayName(filePath) : '<no path>')
         const theme = themeManager.getThemeById(currentTheme)
         const syntaxStyle = theme?.type === 'light' ? vs : vscDarkPlus
+        const safeResult = stringResult || ''
 
         return (
             <div className="space-y-1 mt-1">
@@ -636,7 +638,7 @@ function ToolPreview({
                         <TextWithFileLinks text={displayName} />
                     </span>
                 </div>
-                {stringResult ? (
+                {safeResult ? (
                     <ExpandablePreviewContainer language={language}>
                         <SyntaxHighlighter
                             style={syntaxStyle}
@@ -647,7 +649,7 @@ function ToolPreview({
                             wrapLines
                             wrapLongLines
                         >
-                            {stringResult.slice(0, 5000)}
+                            {safeResult.slice(0, 5000)}
                         </SyntaxHighlighter>
                     </ExpandablePreviewContainer>
                 ) : (isRunning || isStreaming) && (
@@ -680,7 +682,7 @@ function ToolPreview({
                     <ExpandablePreviewContainer language={language}>
                         <div className="p-2 text-[12px] text-text-secondary whitespace-pre-wrap break-all">
                             {stringResult.slice(0, 5000)}
-                            {stringResult.length > 5000 && <span className="opacity-50 mt-1 block">... (truncated)</span>}
+                            {stringResult.length > 5000 && <span className="opacity-50 mt-1 block">{t('tool.truncated', language as any)}</span>}
                         </div>
                     </ExpandablePreviewContainer>
                 ) : (isRunning || isStreaming) && (
@@ -708,7 +710,7 @@ function ToolPreview({
                         <JsonHighlight data={toolCall.result} className="p-2 bg-transparent m-0" maxHeight="max-h-full" maxLength={3000} />
                     </ExpandablePreviewContainer>
                 ) : (isRunning || isStreaming) && (
-                    pendingPreview('Analyzing...')
+                    pendingPreview(t('tool.status.analyzingEllipsis', language as any))
                 )}
             </div>
         )
@@ -723,7 +725,7 @@ function ToolPreview({
                 <>
                     <div className="flex items-center gap-1.5 text-text-muted">
                         <FileCode className="w-3 h-3" />
-                        <span>Arguments:</span>
+                        <span>{t('tool.arguments', language as any)}</span>
                     </div>
                     <ExpandablePreviewContainer language={language} maxHeight="max-h-[150px]">
                         <JsonHighlight data={filteredArgs} className="p-2 bg-transparent m-0" maxHeight="max-h-full" maxLength={1500} />
@@ -742,7 +744,7 @@ function ToolPreview({
                     <div className="flex items-center justify-between gap-1.5 text-text-muted mt-2 group/title">
                         <div className="flex items-center gap-1.5">
                             <Terminal className="w-3 h-3" />
-                            <span>Result:</span>
+                            <span>{t('tool.result', language as any)}</span>
                         </div>
                         <button
                             onClick={event => {
@@ -750,7 +752,7 @@ function ToolPreview({
                                 onCopyResult()
                             }}
                             className="opacity-0 group-hover/title:opacity-100 transition-opacity p-0.5 hover:bg-surface-elevated rounded text-text-muted hover:text-text-primary"
-                            title="Copy Result"
+                            title={t('tool.copyResult', language as any)}
                         >
                             <Copy className="w-3 h-3" />
                         </button>
@@ -786,8 +788,8 @@ const ToolCallCard = memo(function ToolCallCard({
     })
 
     const statusText = useMemo(
-        () => getStatusText(effectiveName, args, toolCall.status, isStreaming),
-        [effectiveName, args, toolCall.status, isStreaming]
+        () => getStatusText(effectiveName, args, toolCall.status, isStreaming, language),
+        [effectiveName, args, toolCall.status, isStreaming, language]
     )
 
     const cardStyle = useMemo(() => {
@@ -821,7 +823,7 @@ const ToolCallCard = memo(function ToolCallCard({
                     <div className="px-3 py-2 bg-red-500/10 rounded-md">
                         <div className="flex items-center gap-2 text-red-400 text-xs font-medium mb-1">
                             <AlertTriangle className="w-3 h-3" />
-                            Error
+                            {t('tool.error', language as any)}
                         </div>
                         <p className="text-[12px] text-red-300 font-mono break-all">{toolCall.error}</p>
                     </div>
@@ -869,7 +871,7 @@ const ToolCallCard = memo(function ToolCallCard({
                     <span className={`text-[12px] truncate ${isStreaming || isRunning ? 'text-text-primary tool-text-shimmer' : 'text-text-secondary group-hover:text-text-primary transition-colors'}`}>
                         {statusText || (
                             <span className="opacity-50 inline-flex items-center gap-1.5">
-                                <span>{TOOL_LABELS[effectiveName] || effectiveName}</span>
+                                <span>{TOOL_LABEL_KEYS[effectiveName] ? t(TOOL_LABEL_KEYS[effectiveName] as any, language as any) : effectiveName}</span>
                             </span>
                         )}
                     </span>

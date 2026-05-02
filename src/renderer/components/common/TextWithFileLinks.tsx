@@ -44,11 +44,10 @@ export function TextWithFileLinks({ text, className = '' }: TextWithFileLinksPro
 
         return parts.map((part, i) => {
             if (part && regex.test(part)) {
-                // To avoid false positives on very short matched extensions
                 if (part.length > 2) {
                     return (
                         <span
-                            key={`part-${i}-${part.slice(0, 20)}`}
+                            key={`part-${i}-${(part || '').slice(0, 20)}`}
                             className="cursor-pointer hover:underline hover:text-accent transition-colors break-all"
                             onClick={(e) => handleFileClick(e, part)}
                             title="Click to open file"
@@ -58,7 +57,7 @@ export function TextWithFileLinks({ text, className = '' }: TextWithFileLinksPro
                     )
                 }
             }
-            return <span key={`part-${i}-${part?.slice(0, 20)}`} className="break-all">{part}</span>
+            return <span key={`part-${i}-${(part || '').slice(0, 20)}`} className="break-all">{part}</span>
         })
     }, [text, handleFileClick])
 

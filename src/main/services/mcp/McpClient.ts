@@ -558,4 +558,45 @@ export class McpClient extends EventEmitter {
       }),
     ]).finally(() => clearTimeout(timer!))
   }
+
+  async forceCleanupAndSetError(errorMessage: string): Promise<void> {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
+    }
+    this.reconnectAttempts = 0
+
+    if (this.state.transport) {
+      if (this.state.transport instanceof StdioClientTransport) {
+        try {
+          // @ts-ignore
+          const subProcess = this.state.transport._process
+          if (subProcess && subProcess.pid) {
+            logger.mcp?.info(`[MCP:${this.id}] Force killing process tree for PID ${subProcess.pid}`)
+            if (process.platform === 'win32') {
+              cp.execSync(`taskkill /F /T /PID ${subProcess.pid}`, { stdio: 'ignore' })
+            } else {
+              subProcess.kill('SIGKILL')
+            }
+          }
+        } catch (err) {
+          logger.mcp?.warn(`[MCP:${this.id}] Force kill error:`, err)
+        }
+      }
+      try {
+        await this.state.transport.close()
+      } catch { /* ignore */ }
+      this.state.transport = null
+    }
+
+    if (this.state.client) {
+      await this.state.client.close().catch(() => { })
+      this.state.client = null
+    }
+
+    this.state.tools = []
+    this.state.resources = []
+    this.state.prompts = []
+    this.updateStatus('error', errorMessage)
+  }
 }

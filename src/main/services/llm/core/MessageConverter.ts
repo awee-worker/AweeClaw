@@ -96,10 +96,38 @@ export class MessageConverter {
             ...(result.mediaType && { mediaType: result.mediaType }),
           })
         }
+      } else if (item.type === 'file' && 'data' in item) {
+        const fileItem = item as { type: 'file'; name: string; media_type: string; data: string }
+        const textContent = this.convertFileContent(fileItem)
+        if (textContent) {
+          parts.push({ type: 'text', text: textContent })
+        }
       }
     }
 
     return parts
+  }
+
+  private TEXT_MIME_TYPES = new Set([
+    'text/plain', 'text/csv', 'text/html', 'text/xml', 'text/markdown',
+    'application/json', 'application/xml', 'application/javascript',
+    'application/x-yaml', 'text/yaml',
+  ])
+
+  private convertFileContent(file: { name: string; media_type: string; data: string }): string | null {
+    try {
+      if (this.TEXT_MIME_TYPES.has(file.media_type) || file.media_type.startsWith('text/')) {
+        const decoded = Buffer.from(file.data, 'base64').toString('utf-8')
+        const truncated = decoded.length > 50000
+          ? decoded.slice(0, 50000) + '\n...(file truncated)'
+          : decoded
+        return `[User uploaded file: ${file.name}]\n\`\`\`\n${truncated}\n\`\`\``
+      }
+
+      return `[User uploaded file: ${file.name} (${file.media_type}). The file has been saved to the workspace uploads directory. Check the user message for the exact file path.]`
+    } catch {
+      return `[User uploaded file: ${file.name} (${file.media_type})]`
+    }
   }
 
   /**
@@ -148,9 +176,10 @@ export class MessageConverter {
     }
 
     const content = typeof msg.content === 'string' ? msg.content : ''
-    if (!content.trim()) return null
 
-    const result: AssistantModelMessage = { role: 'assistant', content }
+    if (!content.trim() && !msg.reasoning_content) return null
+
+    const result: AssistantModelMessage = { role: 'assistant', content: content || ' ' }
     if (msg.reasoning_content) {
       result.providerOptions = {
         openaiCompatible: { reasoning_content: msg.reasoning_content },
@@ -167,19 +196,25 @@ export class MessageConverter {
       { type: 'text'; text: string } | { type: 'tool-call'; toolCallId: string; toolName: string; input: unknown }
     > = []
 
-    // 添加文本内容
     if (msg.content && typeof msg.content === 'string' && msg.content.trim()) {
       content.push({ type: 'text', text: msg.content })
+    } else if (msg.reasoning_content) {
+      content.push({ type: 'text', text: ' ' })
     }
 
-    // 添加工具调用
     if (msg.tool_calls) {
       for (const toolCall of msg.tool_calls) {
+        let parsedInput: unknown
+        try {
+          parsedInput = JSON.parse(toolCall.function.arguments)
+        } catch {
+          parsedInput = {}
+        }
         content.push({
           type: 'tool-call',
           toolCallId: this.sanitizeToolCallId(toolCall.id),
           toolName: toolCall.function.name,
-          input: JSON.parse(toolCall.function.arguments),
+          input: parsedInput,
         })
       }
     }

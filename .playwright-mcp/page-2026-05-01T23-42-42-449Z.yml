@@ -1,0 +1,7 @@
+- generic [ref=e5]:
+  - generic [ref=e6]:
+    - img [ref=e7]
+    - generic [ref=e8]: 验证一下，购物无忧
+    - generic [ref=e9]: 请点击下方按钮登录，查看更多精彩内容
+    - generic [ref=e10] [cursor=pointer]: 前往登录
+  - generic [ref=e12] [cursor=pointer]: 遇到问题点我反馈

@@ -29,7 +29,11 @@ const EXTERNAL_DEPS = [
   'apache-arrow',
   '@xenova/transformers',
   'onnxruntime-node',
-  'onnxruntime-web'
+  'onnxruntime-web',
+  '@larksuiteoapi/node-sdk',
+  'ws',
+  'bufferutil',
+  'utf-8-validate',
 ]
 
 // 路径别名配置

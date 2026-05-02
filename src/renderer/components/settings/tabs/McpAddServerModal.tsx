@@ -847,7 +847,7 @@ export default function McpAddServerModal({
             <div className="flex items-center gap-3">
               <span className="text-[12px] text-text-muted">{language === 'zh' ? '保存到：' : 'Save to:'}</span>
               <div className="flex items-center rounded-md border border-border overflow-hidden">
-                {([['user', language === 'zh' ? '全局配置' : 'Global'], ['workspace', language === 'zh' ? '项目配置' : 'Project']] as ['user' | 'workspace', string][]).map(([val, label]) => (
+                {([['user', language === 'zh' ? '全局配置' : 'Global'], ['workspace', language === 'zh' ? '工作区配置' : 'Workspace']] as ['user' | 'workspace', string][]).map(([val, label]) => (
                   <button
                     key={val}
                     onClick={() => setSaveLevel(val)}

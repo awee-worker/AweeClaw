@@ -117,6 +117,17 @@ const searchResultCache = new CacheService<unknown[]>('ContextSearchCache', {
 // 内置 ContextProvider 实现
 // ============================================
 
+const BINARY_EXTENSIONS = new Set([
+  'xlsx', 'xls', 'xlsm', 'xlsb',
+  'docx', 'doc', 'pptx', 'ppt',
+  'pdf', 'odt', 'ods', 'odp',
+  'zip', 'tar', 'gz', 'rar', '7z', 'bz2',
+  'exe', 'dll', 'so', 'dylib',
+  'png', 'jpg', 'jpeg', 'gif', 'bmp', 'ico', 'webp', 'svg',
+  'mp3', 'mp4', 'wav', 'avi', 'mov', 'mkv',
+  'db', 'sqlite', 'sqlite3',
+])
+
 const FileProvider: ContextProvider = {
   type: 'File',
   label: 'File',
@@ -125,6 +136,12 @@ const FileProvider: ContextProvider = {
   async process(item, _ctx) {
     const filePath = (item as { uri: string }).uri
     try {
+      const ext = filePath.split('.').pop()?.toLowerCase() || ''
+
+      if (BINARY_EXTENSIONS.has(ext)) {
+        return `\n### File: ${filePath}\n[Binary file: ${ext.toUpperCase()} format. This file has been uploaded by the user and saved to this path.]\n`
+      }
+
       const content = await fileContentCache.getOrSet(
         filePath,
         async () => {

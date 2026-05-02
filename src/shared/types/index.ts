@@ -9,6 +9,9 @@ export * from './llm'
 // MCP 相关类型
 export * from './mcp'
 
+// Channel 多渠道类型
+export * from './channel'
+
 // Preview 相关类型
 export * from './preview'
 

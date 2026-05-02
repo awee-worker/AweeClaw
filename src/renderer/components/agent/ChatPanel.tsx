@@ -9,8 +9,6 @@ import {
   Trash2,
   Upload,
   ChevronDown,
-  FolderOpen,
-  ListTodo,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useStore, useModeStore } from '@/renderer/store'
@@ -19,6 +17,7 @@ import { useAgentActions, useAgentCommands, useAgentViewState } from '@/renderer
 import { useChatScrollController } from '@/renderer/hooks'
 import { useAgentStore } from '@/renderer/agent/store/AgentStore'
 import { selectTodos } from '@/renderer/agent/store/AgentStore'
+import { EventBus } from '@/renderer/agent/core/EventBus'
 import { t } from '@/renderer/i18n'
 import { toFullPath, getFileName } from '@shared/utils/pathUtils'
 import {
@@ -130,6 +129,7 @@ export default function ChatPanel() {
     contextItems,
     currentThreadId,
     messageListVersion,
+    streamState,
   } = useAgentViewState()
   const { sendMessage, abort, approveCurrentTool, rejectCurrentTool } = useAgentCommands()
   const {
@@ -261,17 +261,7 @@ export default function ChatPanel() {
 
   // Task List 状态
   const todos = useAgentStore(selectTodos)
-  const [bottomTab, setBottomTab] = useState<'files' | 'tasks'>('files')
   const [showReviewPanel, setShowReviewPanel] = useState(false)
-
-  // 当 todos 首次出现时自动切换到 tasks tab
-  const prevTodosLenRef = useRef(0)
-  useEffect(() => {
-    if (todos.length > 0 && prevTodosLenRef.current === 0) {
-      setBottomTab('tasks')
-    }
-    prevTodosLenRef.current = todos.length
-  }, [todos.length])
 
   // 监听选项卡片选择事件
   useEffect(() => {
@@ -378,6 +368,51 @@ export default function ChatPanel() {
       setInputPrompt('')
     }
   }, [inputPrompt, setInputPrompt])
+
+  useEffect(() => {
+    const unsub = EventBus.on('loop:end', (event) => {
+      if (event.reason === 'error') {
+        try {
+          const ctx = new AudioContext()
+          const now = ctx.currentTime
+          const osc = ctx.createOscillator()
+          const gainNode = ctx.createGain()
+          osc.type = 'square'
+          osc.frequency.setValueAtTime(330, now)
+          osc.frequency.setValueAtTime(262, now + 0.15)
+          gainNode.gain.setValueAtTime(0.12, now)
+          gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.35)
+          osc.connect(gainNode)
+          gainNode.connect(ctx.destination)
+          osc.start(now)
+          osc.stop(now + 0.35)
+          setTimeout(() => ctx.close(), 1000)
+        } catch {}
+      }
+    })
+    return unsub
+  }, [])
+
+  useEffect(() => {
+    if (isAwaitingApproval) {
+      try {
+        const ctx = new AudioContext()
+        const now = ctx.currentTime
+        const osc = ctx.createOscillator()
+        const gainNode = ctx.createGain()
+        osc.type = 'sine'
+        osc.frequency.setValueAtTime(880, now)
+        osc.frequency.setValueAtTime(660, now + 0.12)
+        gainNode.gain.setValueAtTime(0.15, now)
+        gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.3)
+        osc.connect(gainNode)
+        gainNode.connect(ctx.destination)
+        osc.start(now)
+        osc.stop(now + 0.3)
+        setTimeout(() => ctx.close(), 1000)
+      } catch {}
+    }
+  }, [isAwaitingApproval])
 
 
   // 处理显示 diff
@@ -679,26 +714,63 @@ export default function ChatPanel() {
       const readyImages = images.filter(img => img.base64)
       if (readyImages.length !== images.length) return
 
-      userMessage = [
-        { type: 'text' as const, text: input.trim() },
-        ...readyImages.map(img => {
-          if (img.isImage) {
-            return {
-              type: 'image' as const,
-              source: {
-                type: 'base64' as const,
-                media_type: img.file.type,
-                data: img.base64!,
-              },
+      const imageParts = readyImages.filter(img => img.isImage)
+      const fileParts = readyImages.filter(img => !img.isImage)
+      const savedFilePaths: { name: string; path: string; type: string }[] = []
+
+      // 非图片文件保存到工作空间临时目录，并添加为 FileContext
+      if (fileParts.length > 0) {
+        if (!workspacePath) {
+          logger.agent.warn('[ChatPanel] Cannot save uploaded file: workspacePath is empty')
+        } else {
+          const uploadDir = `${workspacePath}/.aweeclaw/uploads`
+          try {
+            const dirCreated = await api.file.ensureDir(uploadDir)
+            if (!dirCreated) {
+              logger.agent.error('[ChatPanel] Failed to create upload directory:', uploadDir)
             }
+            for (const fileImg of fileParts) {
+              const timestamp = Date.now()
+              const safeName = fileImg.file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+              const filePath = `${uploadDir}/${timestamp}_${safeName}`
+              const saved = await api.file.writeBinary(filePath, fileImg.base64!)
+              if (saved) {
+                addContextItem({ type: 'File', uri: filePath })
+                savedFilePaths.push({ name: fileImg.file.name, path: filePath, type: fileImg.file.type })
+              } else {
+                logger.agent.error('[ChatPanel] Failed to save uploaded file:', filePath)
+              }
+            }
+          } catch (err) {
+            logger.agent.error('[ChatPanel] Failed to save uploaded file:', err)
           }
-          return {
-            type: 'file' as const,
-            name: img.file.name,
-            media_type: img.file.type || 'application/octet-stream',
+        }
+      }
+
+      const fileDescriptions = savedFilePaths.length > 0
+        ? savedFilePaths.map(f => {
+            return `[Uploaded file: ${f.name} | Path: ${f.path} | Type: ${f.type}]`
+          }).join('\n')
+        : ''
+
+      const userText = input.trim() + (fileDescriptions ? `\n\n${fileDescriptions}` : '')
+
+      userMessage = [
+        { type: 'text' as const, text: userText },
+        ...imageParts.map(img => ({
+          type: 'image' as const,
+          source: {
+            type: 'base64' as const,
+            media_type: img.file.type,
             data: img.base64!,
-          }
-        }),
+          },
+        })),
+        ...fileParts.map(img => ({
+          type: 'file' as const,
+          name: img.file.name,
+          media_type: img.file.type || 'application/octet-stream',
+          data: img.base64!,
+        })),
       ]
     }
 
@@ -723,7 +795,7 @@ export default function ChatPanel() {
     // 不依赖 followOutput 的时序，因为发送瞬间 isStreaming 还是 false
     scrollToBottom('smooth')
     await sendMessage(userMessage)
-  }, [input, images, isStreaming, sendMessage, activeFilePath, selectedCode, workspacePath, setChatMode, scrollToBottom])
+  }, [input, images, isStreaming, sendMessage, activeFilePath, selectedCode, workspacePath, setChatMode, scrollToBottom, addContextItem])
 
   // 编辑消息
   const handleEditMessage = useCallback(async (messageId: string, content: string) => {
@@ -1253,46 +1325,24 @@ export default function ChatPanel() {
           {/* Bottom Input Area - Unified Tray */}
           <div className={`shrink-0 z-20 flex flex-col pt-2 ${isChatPrimary ? 'max-w-[800px] mx-auto w-full' : ''}`}>
             <div className="mx-4 mb-4 flex flex-col">
-              {/* Status Bar + Task List */}
+              {/* Status Bar + Task List + File Changes */}
               {(() => {
-                const hasChanges = pendingChanges.length > 0 || isStreaming || isAwaitingApproval
+                const hasFileChanges = pendingChanges.length > 0
                 const hasTodos = todos.length > 0
-                const showBoth = hasChanges && hasTodos
-                const activeView = showBoth ? bottomTab : (hasChanges ? 'files' : 'tasks')
+                const isActive = isStreaming || isAwaitingApproval
+                const showAny = hasFileChanges || hasTodos || isActive
 
-                // 内联切换图标（仅两者都有时渲染）
-                const switcherIcons = showBoth ? (
-                  <div className="flex items-center gap-0.5 mr-1" onClick={e => e.stopPropagation()}>
-                    <button
-                      onClick={() => setBottomTab('files')}
-                      className={`p-1 rounded transition-colors ${activeView === 'files'
-                        ? 'text-text-primary bg-surface-hover'
-                        : 'text-text-muted/75 hover:text-text-muted/90'}`}
-                      title="Files"
-                    >
-                      <FolderOpen className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => setBottomTab('tasks')}
-                      className={`p-1 rounded transition-colors ${activeView === 'tasks'
-                        ? 'text-text-primary bg-surface-hover'
-                        : 'text-text-muted/75 hover:text-text-muted/90'}`}
-                      title="Tasks"
-                    >
-                      <ListTodo className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ) : undefined
-
-                return (hasChanges || hasTodos) ? (
-                  <div className="mb-3">
-                    {activeView === 'files' && hasChanges && (
+                return showAny ? (
+                  <div className="mb-3 space-y-2">
+                    {isActive && (
                       <AgentStatusBar
                         pendingChanges={pendingChanges}
                         isStreaming={isStreaming}
                         isAwaitingApproval={isAwaitingApproval}
+                        streamDetail={streamState.streamDetail}
+                        currentToolName={streamState.currentToolCall?.name}
+                        currentTaskLabel={todos.find(t => t.status === 'in_progress')?.activeForm}
                         onStop={abort}
-                        headerPrefix={switcherIcons}
                         onReviewFile={handleReviewFile}
                         onAcceptFile={handleAcceptFile}
                         onRejectFile={handleRejectFile}
@@ -1304,8 +1354,23 @@ export default function ChatPanel() {
                       />
                     )}
 
-                    {activeView === 'tasks' && hasTodos && (
-                      <TodoListPanel todos={todos} headerPrefix={switcherIcons} />
+                    {!isActive && hasFileChanges && (
+                      <AgentStatusBar
+                        pendingChanges={pendingChanges}
+                        isStreaming={false}
+                        isAwaitingApproval={false}
+                        onStop={abort}
+                        onReviewFile={handleReviewFile}
+                        onAcceptFile={handleAcceptFile}
+                        onRejectFile={handleRejectFile}
+                        onUndoAll={handleUndoAll}
+                        onKeepAll={handleKeepAll}
+                        onViewAllChanges={handleViewAllChanges}
+                      />
+                    )}
+
+                    {hasTodos && (
+                      <TodoListPanel todos={todos} isStreaming={isStreaming} />
                     )}
                   </div>
                 ) : null

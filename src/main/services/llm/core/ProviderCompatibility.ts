@@ -52,9 +52,15 @@ function supportsFullOpenAIProfile(config: LLMConfig): boolean {
 
 export function resolveThinkingCompatibility(
   config: LLMConfig,
-  _messages: LLMMessage[] = [],
+  messages: LLMMessage[] = [],
 ): ThinkingCompatibilityDecision {
-  return { enabled: Boolean(config.enableThinking) }
+  if (config.enableThinking) {
+    return { enabled: true }
+  }
+  const hasReasoningContent = messages.some(
+    m => m.role === 'assistant' && typeof m.reasoning_content === 'string' && m.reasoning_content.length > 0,
+  )
+  return { enabled: hasReasoningContent }
 }
 
 export function buildOpenAIStyleProviderOptions(

@@ -270,6 +270,55 @@ export function registerSecureFileHandlers(
     }
   })
 
+  // 写入二进制文件（base64 编码），用于保存用户上传的附件
+  ipcMain.handle('file:writeBinary', async (event, filePath: string, base64Data: string) => {
+    if (!filePath || typeof filePath !== 'string') return false
+    if (!base64Data || typeof base64Data !== 'string') return false
+
+    const workspace = getWorkspaceSessionFn(event)
+
+    if (workspace && !securityManager.validateWorkspacePath(filePath, workspace.roots)) {
+      logger.security.warn('[File] writeBinary rejected - path outside workspace:', filePath, 'roots:', workspace.roots)
+      securityManager.logOperation(OperationType.FILE_WRITE, filePath, false, {
+        reason: '安全底线：超出工作区边界',
+      })
+      return false
+    }
+
+    if (securityManager.isSensitivePath(filePath)) {
+      securityManager.logOperation(OperationType.FILE_WRITE, filePath, false, {
+        reason: '安全底线：敏感路径',
+      })
+      return false
+    }
+
+    const forbiddenPatterns = [/\.exe$/i, /\.dll$/i, /\.sys$/i]
+    for (const pattern of forbiddenPatterns) {
+      if (pattern.test(filePath)) {
+        securityManager.logOperation(OperationType.FILE_WRITE, filePath, false, {
+          reason: '安全底线：禁止类型',
+        })
+        return false
+      }
+    }
+
+    try {
+      const dir = path.dirname(filePath)
+      await fsPromises.mkdir(dir, { recursive: true })
+      const buffer = Buffer.from(base64Data, 'base64')
+      await fsPromises.writeFile(filePath, buffer)
+      securityManager.logOperation(OperationType.FILE_WRITE, filePath, true, {
+        size: buffer.length,
+        binary: true,
+        bypass: true,
+      })
+      return true
+    } catch (err) {
+      logger.security.error('[File] write binary failed:', filePath, toAppError(err).message)
+      return false
+    }
+  })
+
   // 确保目录存在
   ipcMain.handle('file:ensureDir', async (event, dirPath: string) => {
     if (!dirPath) return false

@@ -111,15 +111,20 @@ export class ErrorBoundary extends Component<Props, State> {
               </button>
             </div>
 
-            {/* 详细错误信息（开发模式） */}
-            {this.props.showDetails && error && (
-              <details className="mt-6 w-full text-left">
+            {error && (
+              <details className="mt-6 w-full text-left" open>
                 <summary className="cursor-pointer text-sm text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]">
-                  {t('errorBoundary.showDetails', language)}
+                  Error Details
                 </summary>
                 <div className="mt-2 p-4 bg-[var(--bg-secondary)] rounded-lg overflow-auto max-h-[200px]">
                   <pre className="text-xs text-red-400 whitespace-pre-wrap">
                     {error.message}
+                    {error.stack && (
+                      <>
+                        {'\n\nStack:'}
+                        {error.stack}
+                      </>
+                    )}
                     {errorInfo?.componentStack && (
                       <>
                         {'\n\nComponent Stack:'}

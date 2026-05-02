@@ -52,7 +52,7 @@ export function renderToolCallCard(
     return (
       <MemoryApprovalInline
         key={tc.id}
-        content={tc.arguments.content as string}
+        content={typeof tc.arguments.content === 'string' ? tc.arguments.content : ''}
         isAwaitingApproval={isPending}
         isSuccess={tc.status === 'success'}
         messageId={opts.messageId || ''}

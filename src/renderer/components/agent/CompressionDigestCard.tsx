@@ -2,6 +2,7 @@ import { memo, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Archive, ChevronDown, Layers3, ListTodo, MessageSquareQuote, Sparkles } from 'lucide-react'
 import { useStore } from '@store'
+import { t } from '@renderer/i18n'
 import type { ContextSnapshotPart } from '@/renderer/agent/types'
 
 interface CompressionDigestCardProps {
@@ -18,24 +19,24 @@ const levelTone: Record<number, { badge: string; dot: string; glow: string }> = 
 }
 
 function getCopy(language: string, part: ContextSnapshotPart, activeTaskCount: number) {
-  const isZh = language === 'zh'
+  const lang = language as any
   const isHandoff = part.snapshotKind === 'handoff'
 
   return {
     title: isHandoff
-      ? (isZh ? '上下文续接快照' : 'Context Handoff Snapshot')
-      : (isZh ? '上下文压缩快照' : 'Context Compression Snapshot'),
+      ? t('snapshot.handoffTitle', lang)
+      : t('snapshot.compressionTitle', lang),
     subtitle: isHandoff
-      ? (isZh ? '新线程将从这份续接包恢复目标、步骤和任务列表。' : 'A new thread should resume from this packet.')
-      : (isZh ? '较早历史已折叠为结构化上下文，但关键任务状态仍被保留。' : 'Older history was folded into this structured state.'),
-    objective: isZh ? '当前目标' : 'Objective',
-    lastRequest: isZh ? '最近用户请求' : 'Last Request',
-    pending: isZh ? '待续步骤' : 'Pending Steps',
-    tasks: isZh ? '任务列表' : 'Task List',
-    noObjective: isZh ? '未记录目标' : 'No objective recorded',
-    completedStat: isZh ? `${part.summary.completedSteps.length} 已完成` : `${part.summary.completedSteps.length} completed`,
-    pendingStat: isZh ? `${part.summary.pendingSteps.length} 待续` : `${part.summary.pendingSteps.length} pending`,
-    taskStat: isZh ? `${activeTaskCount} 个活跃任务` : `${activeTaskCount} active tasks`,
+      ? t('snapshot.handoffSubtitle', lang)
+      : t('snapshot.compressionSubtitle', lang),
+    objective: t('snapshot.objective', lang),
+    lastRequest: t('snapshot.lastRequest', lang),
+    pending: t('snapshot.pendingSteps', lang),
+    tasks: t('snapshot.taskList', lang),
+    noObjective: t('snapshot.noObjective', lang),
+    completedStat: t('snapshot.completedStat', lang, { count: part.summary.completedSteps.length }),
+    pendingStat: t('snapshot.pendingStat', lang, { count: part.summary.pendingSteps.length }),
+    taskStat: t('snapshot.taskStat', lang, { count: activeTaskCount }),
   }
 }
 
@@ -48,16 +49,15 @@ export const CompressionDigestCard = memo(({ part, variant = 'card' }: Compressi
   const tone = levelTone[part.level] || levelTone[3]
   const copy = getCopy(language, part, activeTodos.length)
 
-  const visiblePending = useMemo(() => part.summary.pendingSteps.slice(0, 5), [part.summary.pendingSteps])
+  const visiblePending = useMemo(() => (part.summary.pendingSteps || []).slice(0, 5), [part.summary.pendingSteps])
   const visibleTodos = useMemo(() => activeTodos.slice(0, 5), [activeTodos])
   const note = part.note || copy.subtitle
 
   if (variant === 'timeline') {
-    const isZh = language === 'zh'
-    const title = isZh ? '上下文已压缩，已切换到新会话继续' : 'Context compressed and continued in a new thread'
+    const title = t('snapshot.compressedTitle', language as any)
     const detailLabel = expanded
-      ? (isZh ? '收起详情' : 'Hide details')
-      : (isZh ? '查看快照详情' : 'View snapshot details')
+      ? t('snapshot.hideDetails', language as any)
+      : t('snapshot.viewDetails', language as any)
 
     return (
       <div className="my-4 w-full">
