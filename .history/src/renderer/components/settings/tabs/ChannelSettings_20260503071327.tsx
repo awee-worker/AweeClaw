@@ -373,15 +373,6 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                           </span>
                           {renderStatusBadge(status)}
                           <div className="flex items-center gap-1">
-                            {status?.connected ? (
-                              <Button variant="ghost" size="sm" onClick={() => handleDisconnect(channel.id, account.id)} disabled={isLoading}>
-                                {isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <PowerOff className="w-3 h-3" />}
-                              </Button>
-                            ) : (
-                              <Button variant="ghost" size="sm" onClick={() => handleConnect(channel.id, account.id)} disabled={isLoading}>
-                                {isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Power className="w-3 h-3" />}
-                              </Button>
-                            )}
                             <Button variant="ghost" size="sm" onClick={() => {
                               if (isEditing) {
                                 setEditingAccountId(null)
@@ -393,6 +384,15 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                             }}>
                               {isEditing ? <X className="w-3 h-3" /> : <Pencil className="w-3 h-3" />}
                             </Button>
+                            {status?.connected ? (
+                              <Button variant="ghost" size="sm" onClick={() => handleDisconnect(channel.id, account.id)} disabled={isLoading}>
+                                {isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <PowerOff className="w-3 h-3" />}
+                              </Button>
+                            ) : (
+                              <Button variant="ghost" size="sm" onClick={() => handleConnect(channel.id, account.id)} disabled={isLoading}>
+                                {isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Power className="w-3 h-3" />}
+                              </Button>
+                            )}
                             <Button variant="ghost" size="sm" onClick={() => handleRemoveAccount(channel.id, account.id)}>
                               <Trash2 className="w-3 h-3 text-red-400" />
                             </Button>

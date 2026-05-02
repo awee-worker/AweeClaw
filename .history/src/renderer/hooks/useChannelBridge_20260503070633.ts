@@ -5,8 +5,8 @@ import { useAgentStore } from '@renderer/agent/store/AgentStore'
 import { useStore } from '@store'
 import { getAgentConfig } from '@renderer/agent/utils/AgentConfig'
 import { logger } from '@renderer/utils/Logger'
-import { getBuiltinProvider } from '@shared/config/providers'
-import type { ChannelConfig } from '@shared/types/channel'
+import { BUILTIN_PROVIDERS, getBuiltinProvider } from '@shared/config/providers'
+import type { ChannelConfig, ChannelAccountConfig } from '@shared/types/channel'
 
 interface InboundChannelMessage {
   id: string
@@ -53,20 +53,13 @@ export function useChannelBridge() {
       const account = channelConfig?.accounts.find(a => a.id === accountId)
       if (account?.llmConfig?.useGlobal === false && account.llmConfig.provider && account.llmConfig.model) {
         const globalConfig = llmConfigRef.current
-        const providerId = account.llmConfig.provider
-        const builtin = getBuiltinProvider(providerId)
-        const providerConfig = useStore.getState().providerConfigs[providerId]
-        const resolvedApiKey = (providerConfig?.apiKey
-          || (builtin?.auth?.type === 'none' ? '' : null))
-          ?? (globalConfig.provider === providerId ? globalConfig.apiKey : '')
+        const builtin = getBuiltinProvider(account.llmConfig.provider)
         return {
           ...globalConfig,
-          provider: providerId,
+          provider: account.llmConfig.provider,
           model: account.llmConfig.model,
-          apiKey: resolvedApiKey,
-          baseUrl: providerConfig?.baseUrl || builtin?.baseUrl || globalConfig.baseUrl,
-          protocol: builtin?.protocol || providerConfig?.protocol || globalConfig.protocol,
-          headers: providerConfig?.headers || globalConfig.headers,
+          baseUrl: builtin?.baseUrl || globalConfig.baseUrl,
+          protocol: builtin?.protocol || globalConfig.protocol,
         }
       }
     } catch {}
@@ -119,7 +112,7 @@ export function useChannelBridge() {
       const result = await Agent.send(
         userMessage,
         {
-          ...effectiveLLMConfig,
+          ...currentLLMConfig,
           contextLimit: agentConfig.maxContextTokens,
         },
         currentWorkspace,

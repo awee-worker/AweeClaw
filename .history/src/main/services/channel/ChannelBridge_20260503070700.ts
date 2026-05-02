@@ -5,7 +5,7 @@ import { SyncService } from '../llm/services/SyncService'
 import { resolveRuntimeLLMConfig } from '@shared/config/llmConfigResolver'
 import { getBuiltinProvider } from '@shared/config/providers'
 import { feishuChannelPlugin } from './adapters/FeishuChannelPlugin'
-import type { InboundMessage, OutboundMessage, OutboundResult } from '@shared/types/channel'
+import type { InboundMessage, OutboundMessage, OutboundResult, ChannelAccountConfig } from '@shared/types/channel'
 import type { LLMConfig, LLMMessage } from '@shared/types'
 import type Store from 'electron-store'
 
@@ -19,9 +19,9 @@ const CHANNEL_LABELS: Record<string, string> = {
 }
 
 const STATUS_EMOJIS: Record<string, string> = {
-  received: 'OnIt',
+  received: 'EYES',
   thinking: 'THINKING',
-  tool: 'Fire',
+  tool: 'FIRE',
   done: 'THUMBSUP',
   error: 'SCOWL',
 }
@@ -68,21 +68,13 @@ class ChannelBridge {
       const channelConfig = configs.find(c => c.id === channelId)
       const account = channelConfig?.accounts.find(a => a.id === accountId)
       if (account?.llmConfig?.useGlobal === false && account.llmConfig.provider && account.llmConfig.model) {
-        const providerId = account.llmConfig.provider
-        const builtin = getBuiltinProvider(providerId)
-        let providerConfig: any = null
-        if (this.configStore) {
-          const appSettings = this.configStore.get('app-settings') as any
-          providerConfig = appSettings?.providerConfigs?.[providerId]
-        }
+        const builtin = getBuiltinProvider(account.llmConfig.provider)
         return {
           ...globalConfig,
-          provider: providerId,
+          provider: account.llmConfig.provider,
           model: account.llmConfig.model,
-          apiKey: providerConfig?.apiKey || (globalConfig.provider === providerId ? globalConfig.apiKey : ''),
-          baseUrl: providerConfig?.baseUrl || builtin?.baseUrl || globalConfig.baseUrl,
-          protocol: builtin?.protocol || providerConfig?.protocol || globalConfig.protocol,
-          headers: providerConfig?.headers || globalConfig.headers,
+          baseUrl: builtin?.baseUrl || globalConfig.baseUrl,
+          protocol: builtin?.protocol || globalConfig.protocol,
         }
       }
     } catch {}
@@ -127,7 +119,7 @@ class ChannelBridge {
   }
 
   private async fallbackToMainProcess(message: InboundMessage, conversationKey: string): Promise<void> {
-    const llmConfig = this.resolveAccountLLMConfig(message.channelId, message.accountId)
+    const llmConfig = this.getLLMConfig()
     if (!llmConfig) {
       logger.channel.warn('[ChannelBridge] No LLM config, cannot process message')
       return

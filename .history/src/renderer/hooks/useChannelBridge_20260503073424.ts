@@ -56,8 +56,8 @@ export function useChannelBridge() {
         const providerId = account.llmConfig.provider
         const builtin = getBuiltinProvider(providerId)
         const providerConfig = useStore.getState().providerConfigs[providerId]
-        const resolvedApiKey = (providerConfig?.apiKey
-          || (builtin?.auth?.type === 'none' ? '' : null))
+        const resolvedApiKey = providerConfig?.apiKey
+          || (builtin?.auth?.type === 'none' ? '' : null)
           ?? (globalConfig.provider === providerId ? globalConfig.apiKey : '')
         return {
           ...globalConfig,

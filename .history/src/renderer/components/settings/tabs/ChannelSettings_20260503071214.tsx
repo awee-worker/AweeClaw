@@ -352,7 +352,6 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                     const status = getAccountStatus(channel.id, account.id)
                     const isAccountExpanded = expandedAccount === account.id
                     const isLoading = actionLoading === `${channel.id}:${account.id}`
-                    const isEditing = editingAccountId === `${channel.id}:${account.id}`
 
                     return (
                       <div key={account.id} className="rounded-lg border border-border/30 bg-surface/30">
@@ -366,11 +365,6 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                           <div className="flex-1 min-w-0">
                             <div className="text-sm text-text-primary truncate">{account.name || account.id}</div>
                           </div>
-                          <span className="text-xs text-text-muted">
-                            {account.llmConfig?.useGlobal === false
-                              ? `${account.llmConfig.provider}/${account.llmConfig.model}`
-                              : `${llmConfig.provider}/${llmConfig.model}`}
-                          </span>
                           {renderStatusBadge(status)}
                           <div className="flex items-center gap-1">
                             {status?.connected ? (
@@ -382,17 +376,6 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                                 {isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Power className="w-3 h-3" />}
                               </Button>
                             )}
-                            <Button variant="ghost" size="sm" onClick={() => {
-                              if (isEditing) {
-                                setEditingAccountId(null)
-                                setEditForm({})
-                              } else {
-                                startEditAccount(channel.id, account)
-                              }
-                              setExpandedAccount(isAccountExpanded ? null : account.id)
-                            }}>
-                              {isEditing ? <X className="w-3 h-3" /> : <Pencil className="w-3 h-3" />}
-                            </Button>
                             <Button variant="ghost" size="sm" onClick={() => handleRemoveAccount(channel.id, account.id)}>
                               <Trash2 className="w-3 h-3 text-red-400" />
                             </Button>
@@ -401,201 +384,50 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
 
                         {isAccountExpanded && (
                           <div className="border-t border-border/20 px-3 py-2 space-y-2">
-                            {isEditing ? (
-                              <>
-                                <div>
-                                  <label className="text-xs text-text-muted">
-                                    {language === 'zh' ? '账户名称' : 'Account Name'}
-                                  </label>
+                            {schema.map(s => (
+                              <div key={s.key} className="space-y-1">
+                                <label className="text-xs text-text-muted">
+                                  {language === 'zh' ? s.labelZh : s.label}
+                                  {s.required && <span className="text-red-400 ml-1">*</span>}
+                                </label>
+                                <div className="relative">
                                   <Input
-                                    value={editForm.name || ''}
-                                    onChange={e => setEditForm(prev => ({ ...prev, name: e.target.value }))}
-                                    className="text-xs"
+                                    type={s.secret && !showSecrets[`${account.id}:${s.key}`] ? 'password' : 'text'}
+                                    value={account.credentials[s.key] || ''}
+                                    readOnly
+                                    className="text-xs pr-8"
+                                    placeholder={s.placeholder}
                                   />
-                                </div>
-                                {schema.map(s => (
-                                  <div key={s.key} className="space-y-1">
-                                    <label className="text-xs text-text-muted">
-                                      {language === 'zh' ? s.labelZh : s.label}
-                                    </label>
-                                    <div className="relative">
-                                      <Input
-                                        type={s.secret && !showSecrets[`edit:${s.key}`] ? 'password' : 'text'}
-                                        value={editForm.credentials?.[s.key] ?? account.credentials[s.key] ?? ''}
-                                        onChange={e => setEditForm(prev => ({
-                                          ...prev,
-                                          credentials: { ...prev.credentials, [s.key]: e.target.value },
-                                        }))}
-                                        placeholder={s.placeholder}
-                                        className="text-xs pr-8"
-                                      />
-                                      {s.secret && (
-                                        <button
-                                          className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary"
-                                          onClick={() => setShowSecrets(prev => ({ ...prev, [`edit:${s.key}`]: !prev[`edit:${s.key}`] }))}
-                                        >
-                                          {showSecrets[`edit:${s.key}`] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                                        </button>
-                                      )}
-                                    </div>
-                                  </div>
-                                ))}
-
-                                <div className="border-t border-border/30 pt-2 mt-2">
-                                  <div className="flex items-center gap-2 mb-2">
-                                    <Settings2 className="w-3.5 h-3.5 text-text-muted" />
-                                    <label className="text-xs font-medium text-text-muted">
-                                      {language === 'zh' ? '模型配置' : 'Model Configuration'}
-                                    </label>
-                                  </div>
-                                  <div className="flex items-center gap-2 mb-2">
+                                  {s.secret && (
                                     <button
-                                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${
-                                        (editForm.llmConfig?.useGlobal !== false)
-                                          ? 'bg-accent/10 text-accent border border-accent/30'
-                                          : 'text-text-muted hover:text-text-primary border border-border/30'
-                                      }`}
-                                      onClick={() => setEditForm(prev => ({
-                                        ...prev,
-                                        llmConfig: { ...prev.llmConfig, useGlobal: true },
-                                      }))}
+                                      className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary"
+                                      onClick={() => setShowSecrets(prev => ({ ...prev, [`${account.id}:${s.key}`]: !prev[`${account.id}:${s.key}`] }))}
                                     >
-                                      <Globe className="w-3 h-3" />
-                                      {language === 'zh' ? '使用全局配置' : 'Use Global'}
+                                      {showSecrets[`${account.id}:${s.key}`] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
                                     </button>
-                                    <button
-                                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${
-                                        (editForm.llmConfig?.useGlobal === false)
-                                          ? 'bg-accent/10 text-accent border border-accent/30'
-                                          : 'text-text-muted hover:text-text-primary border border-border/30'
-                                      }`}
-                                      onClick={() => setEditForm(prev => ({
-                                        ...prev,
-                                        llmConfig: {
-                                          useGlobal: false,
-                                          provider: prev.llmConfig?.provider || llmConfig.provider,
-                                          model: prev.llmConfig?.model || llmConfig.model,
-                                        },
-                                      }))}
-                                    >
-                                      <Settings2 className="w-3 h-3" />
-                                      {language === 'zh' ? '自定义' : 'Custom'}
-                                    </button>
-                                  </div>
-                                  {editForm.llmConfig?.useGlobal === false && (
-                                    <div className="space-y-2 pl-1">
-                                      <div>
-                                        <label className="text-xs text-text-muted">
-                                          {language === 'zh' ? '供应商' : 'Provider'}
-                                        </label>
-                                        <select
-                                          value={editForm.llmConfig?.provider || ''}
-                                          onChange={e => {
-                                            const providerId = e.target.value
-                                            const provider = availableProviders.find(p => p.id === providerId)
-                                            const defaultModel = provider?.models[0] || ''
-                                            setEditForm(prev => ({
-                                              ...prev,
-                                              llmConfig: { useGlobal: false, provider: providerId, model: defaultModel },
-                                            }))
-                                          }}
-                                          className="w-full mt-1 px-2 py-1.5 rounded-md border border-border/50 bg-surface text-xs text-text-primary focus:outline-none focus:border-accent/40"
-                                        >
-                                          <option value="">{language === 'zh' ? '选择供应商' : 'Select provider'}</option>
-                                          {availableProviders.map(p => (
-                                            <option key={p.id} value={p.id}>{p.name}</option>
-                                          ))}
-                                        </select>
-                                      </div>
-                                      {editForm.llmConfig?.provider && (
-                                        <div>
-                                          <label className="text-xs text-text-muted">
-                                            {language === 'zh' ? '模型' : 'Model'}
-                                          </label>
-                                          <select
-                                            value={editForm.llmConfig?.model || ''}
-                                            onChange={e => setEditForm(prev => ({
-                                              ...prev,
-                                              llmConfig: { useGlobal: false, provider: prev.llmConfig?.provider, model: e.target.value },
-                                            }))}
-                                            className="w-full mt-1 px-2 py-1.5 rounded-md border border-border/50 bg-surface text-xs text-text-primary focus:outline-none focus:border-accent/40"
-                                          >
-                                            <option value="">{language === 'zh' ? '选择模型' : 'Select model'}</option>
-                                            {availableProviders.find(p => p.id === editForm.llmConfig?.provider)?.models.map(m => (
-                                              <option key={m} value={m}>{m}</option>
-                                            ))}
-                                          </select>
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-                                  {(editForm.llmConfig?.useGlobal !== false) && (
-                                    <p className="text-xs text-text-muted">
-                                      {language === 'zh'
-                                        ? `将使用全局配置: ${llmConfig.provider}/${llmConfig.model}`
-                                        : `Will use global config: ${llmConfig.provider}/${llmConfig.model}`}
-                                    </p>
                                   )}
                                 </div>
-
-                                <div className="flex items-center gap-2 pt-2 border-t border-border/20">
-                                  <div className="flex-1" />
-                                  <Button variant="ghost" size="sm" onClick={() => { setEditingAccountId(null); setEditForm({}) }}>
-                                    {language === 'zh' ? '取消' : 'Cancel'}
-                                  </Button>
-                                  <Button variant="primary" size="sm" onClick={() => handleSaveAccount(channel.id)}>
-                                    <Check className="w-3 h-3 mr-1" />
-                                    {language === 'zh' ? '保存' : 'Save'}
-                                  </Button>
-                                </div>
-                              </>
-                            ) : (
-                              <>
-                                {schema.map(s => (
-                                  <div key={s.key} className="space-y-1">
-                                    <label className="text-xs text-text-muted">
-                                      {language === 'zh' ? s.labelZh : s.label}
-                                    </label>
-                                    <div className="relative">
-                                      <Input
-                                        type={s.secret && !showSecrets[`${account.id}:${s.key}`] ? 'password' : 'text'}
-                                        value={account.credentials[s.key] || ''}
-                                        readOnly
-                                        className="text-xs pr-8"
-                                        placeholder={s.placeholder}
-                                      />
-                                      {s.secret && (
-                                        <button
-                                          className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary"
-                                          onClick={() => setShowSecrets(prev => ({ ...prev, [`${account.id}:${s.key}`]: !prev[`${account.id}:${s.key}`] }))}
-                                        >
-                                          {showSecrets[`${account.id}:${s.key}`] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                                        </button>
-                                      )}
-                                    </div>
-                                  </div>
-                                ))}
-                                <div className="border-t border-border/20 pt-2 mt-1">
-                                  <div className="flex items-center gap-1.5 mb-1">
-                                    <Settings2 className="w-3 h-3 text-text-muted" />
-                                    <span className="text-xs text-text-muted">
-                                      {language === 'zh' ? '模型' : 'Model'}
-                                    </span>
-                                  </div>
-                                  {account.llmConfig?.useGlobal === false ? (
-                                    <span className="text-xs text-text-primary">
-                                      {account.llmConfig.provider}/{account.llmConfig.model}
-                                    </span>
-                                  ) : (
-                                    <span className="text-xs text-text-muted">
-                                      {language === 'zh'
-                                        ? `全局: ${llmConfig.provider}/${llmConfig.model}`
-                                        : `Global: ${llmConfig.provider}/${llmConfig.model}`}
-                                    </span>
-                                  )}
-                                </div>
-                              </>
-                            )}
+                              </div>
+                            ))}
+                            <div className="border-t border-border/20 pt-2 mt-1">
+                              <div className="flex items-center gap-1.5 mb-1">
+                                <Settings2 className="w-3 h-3 text-text-muted" />
+                                <span className="text-xs text-text-muted">
+                                  {language === 'zh' ? '模型' : 'Model'}
+                                </span>
+                              </div>
+                              {account.llmConfig?.useGlobal === false ? (
+                                <span className="text-xs text-text-primary">
+                                  {account.llmConfig.provider}/{account.llmConfig.model}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-text-muted">
+                                  {language === 'zh'
+                                    ? `全局: ${llmConfig.provider}/${llmConfig.model}`
+                                    : `Global: ${llmConfig.provider}/${llmConfig.model}`}
+                                </span>
+                              )}
+                            </div>
                             {status?.lastError && (
                               <div className="text-xs text-red-400 bg-red-500/10 rounded px-2 py-1">
                                 {status.lastError}
