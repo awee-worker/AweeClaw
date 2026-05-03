@@ -1,8 +1,8 @@
 /**
  * Rules & Memory 设置组件
  * 
- * 行为规则：.aweeclaw/rules.md - 静态规则文件
- * 上下文记忆：.aweeclaw/memory.json - 动态记忆列表
+ * 工作规则：.aweeclaw/rules.md - 静态规则文件
+ * 工作记忆：.aweeclaw/memory.json - 动态记忆列表
  */
 
 import { useState, useEffect, useCallback } from 'react'
@@ -124,7 +124,7 @@ export function RulesMemorySettings({ language }: RulesMemorySettingsProps) {
             <div className="flex items-center gap-2">
               <FileText className="w-4 h-4 text-accent" />
               <h5 className="text-sm font-medium text-text-primary">
-                {t('行为规则', 'Behavior Rules')}
+                {t('工作规则', 'Workspace Rules')}
               </h5>
             </div>
             <div className="flex items-center gap-2">
@@ -163,7 +163,7 @@ export function RulesMemorySettings({ language }: RulesMemorySettingsProps) {
                   setRulesModified(true)
                 }}
                 className="w-full h-64 p-3 bg-black/20 rounded-lg border border-border focus:border-accent/50 focus:ring-1 focus:ring-accent/20 outline-none transition-all resize-none text-xs font-mono custom-scrollbar text-text-primary placeholder-text-muted/50"
-                placeholder={t('# 行为规则\n\n在此编写 AI 行为规则...', '# Behavior Rules\n\nWrite AI behavior rules here...')}
+                placeholder={t('# 工作规则\n\n在此编写 AI 行为规则...', '# Workspace Rules\n\nWrite AI behavior rules here...')}
               />
 
               <div className="flex items-center justify-between">
@@ -194,7 +194,7 @@ export function RulesMemorySettings({ language }: RulesMemorySettingsProps) {
             <div className="flex items-center gap-2">
               <Brain className="w-4 h-4 text-accent" />
               <h5 className="text-sm font-medium text-text-primary">
-                {t('上下文记忆', 'Context Memory')}
+                {t('工作记忆', 'Workspace Memory')}
               </h5>
             </div>
             <span className="text-[11px] text-text-muted px-2 py-0.5 bg-black/20 rounded">

@@ -194,7 +194,7 @@ export function RulesMemorySettings({ language }: RulesMemorySettingsProps) {
             <div className="flex items-center gap-2">
               <Brain className="w-4 h-4 text-accent" />
               <h5 className="text-sm font-medium text-text-primary">
-                {t('上下文记忆', 'Context Memory')}
+                {t('工作记忆', 'Workspace Memory')}
               </h5>
             </div>
             <span className="text-[11px] text-text-muted px-2 py-0.5 bg-black/20 rounded">

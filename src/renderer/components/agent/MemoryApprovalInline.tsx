@@ -29,7 +29,7 @@ export const MemoryApprovalInline: React.FC<MemoryApprovalInlineProps> = ({
     }, [isSuccess])
 
     const statusText = isSuccess
-        ? (language === 'zh' ? '已存入项目记忆' : 'Project Memory Stored')
+        ? (language === 'zh' ? '已存入上下文记忆' : 'Context Memory Stored')
         : (language === 'zh' ? '记忆提议' : 'Memory Proposal')
 
     const isRunning = !isSuccess && !isAwaitingApproval
