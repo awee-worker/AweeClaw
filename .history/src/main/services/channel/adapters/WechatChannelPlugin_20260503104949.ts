@@ -280,7 +280,7 @@ export class WechatChannelPlugin implements ChannelPlugin {
     return decrypted.substring(20, 20 + contentLen)
   }
 
-  async handleWebhookEvent(accountId: string, body: unknown, query: Record<string, string>): Promise<InboundMessage | null> {
+  handleWebhookEvent(accountId: string, body: unknown, query: Record<string, string>): InboundMessage | null {
     if (this.destroyed) return null
     try {
       const account = this.accounts.get(accountId)
@@ -295,12 +295,6 @@ export class WechatChannelPlugin implements ChannelPlugin {
         query.nonce || ''
       )
       if (!xmlData) return null
-
-      const fromUser = this.extractXmlValue((xmlData as any).xml || '', 'FromUserName') || ''
-      if (fromUser && !this.userNameCache.has(fromUser)) {
-        await this.resolveSenderName(accountId, fromUser)
-      }
-
       const message = this.normalizeInboundMessage(accountId, xmlData)
       if (message) {
         for (const cb of this.messageCallbacks) cb(message)
@@ -398,25 +392,6 @@ export class WechatChannelPlugin implements ChannelPlugin {
     const regex = new RegExp(`<${tag}><!\[CDATA\[(.*?)\]\]></${tag}>|<${tag}>(.*?)</${tag}>`)
     const match = xml.match(regex)
     return match ? (match[1] || match[2]) : null
-  }
-
-  async resolveSenderName(accountId: string, userId: string): Promise<string | null> {
-    const cached = this.userNameCache.get(userId)
-    if (cached) return cached
-    const account = this.accounts.get(accountId)
-    if (!account) return null
-    try {
-      const token = await this.getAccessToken(account.credentials.corpId, account.credentials.secret)
-      const response = await fetch(`${WECOM_API_BASE}/user/get?access_token=${token}&userid=${userId}`)
-      const result = await response.json() as { name?: string; errcode?: number }
-      if (result.name) {
-        this.userNameCache.set(userId, result.name)
-        return result.name
-      }
-    } catch (err) {
-      logger.channel.warn(`[WeCom] resolveSenderName failed for ${userId}: ${err instanceof Error ? err.message : String(err)}`)
-    }
-    return null
   }
 
   private emitStatusChange(accountId: string): void {

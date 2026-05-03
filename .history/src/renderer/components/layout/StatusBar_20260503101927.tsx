@@ -17,11 +17,13 @@ import {
   ListTodo,
   Bell,
   Volume2,
+  Send,
+  Sparkles,
 } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import type { IndexStatus } from '@shared/types'
-import type { ImProcessingPhase } from '@shared/types/channel'
+import type { ImProcessingStatus, ImProcessingPhase } from '@shared/types/channel'
 import { useImProcessingStatus } from '@renderer/hooks/useImProcessingStatus'
 import { indexWorkerService, type IndexProgress } from '@services/indexWorkerService'
 import BottomBarPopover from '../ui/BottomBarPopover'

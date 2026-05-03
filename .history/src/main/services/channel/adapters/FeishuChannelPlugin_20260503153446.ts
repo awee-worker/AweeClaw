@@ -414,9 +414,7 @@ export class FeishuChannelPlugin implements ChannelPlugin {
         this.userNameCache.set(openId, name)
         return name
       }
-    } catch (err) {
-      logger.channel.warn(`[Feishu] resolveSenderName failed for ${openId}: ${err instanceof Error ? err.message : String(err)}`)
-    }
+    } catch {}
     return null
   }
 

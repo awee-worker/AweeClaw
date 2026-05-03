@@ -683,6 +683,7 @@ export interface ElectronAPI {
   onChannelMessage: (callback: (message: any) => void) => () => void
   onChannelInboundMessage: (callback: (message: any) => void) => () => void
   onChannelStatusChange: (callback: (snapshot: any) => void) => () => void
+  onChannelImProcessingStatus: (callback: (status: any) => void) => () => void
 
   // Command
   onExecuteCommand: (callback: (commandId: string) => void) => () => void

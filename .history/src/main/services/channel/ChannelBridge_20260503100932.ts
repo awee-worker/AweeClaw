@@ -5,7 +5,6 @@ import { SyncService } from '../llm/services/SyncService'
 import { resolveRuntimeLLMConfig } from '@shared/config/llmConfigResolver'
 import { getBuiltinProvider } from '@shared/config/providers'
 import { feishuChannelPlugin } from './adapters/FeishuChannelPlugin'
-import { wechatChannelPlugin } from './adapters/WechatChannelPlugin'
 import type { InboundMessage, OutboundMessage, OutboundResult, ImProcessingStatus } from '@shared/types/channel'
 import type { LLMConfig, LLMMessage } from '@shared/types'
 import type Store from 'electron-store'
@@ -114,22 +113,7 @@ class ChannelBridge {
     })
 
     const channelLabel = CHANNEL_LABELS[message.channelId] || message.channelId
-    let senderLabel = message.fromName || message.from
-
-    if (!message.fromName && message.from) {
-      try {
-        let resolvedName: string | null = null
-        if (message.channelId === 'feishu') {
-          resolvedName = await feishuChannelPlugin.resolveSenderName(message.accountId, message.from)
-        } else if (message.channelId === 'wechat') {
-          resolvedName = await wechatChannelPlugin.resolveSenderName(message.accountId, message.from)
-        }
-        if (resolvedName) {
-          senderLabel = resolvedName
-          message.fromName = resolvedName
-        }
-      } catch {}
-    }
+    const senderLabel = message.fromName || message.from
 
     this.sendImStatus({
       messageId: message.id,
@@ -182,36 +166,15 @@ class ChannelBridge {
     const llmConfig = this.resolveAccountLLMConfig(message.channelId, message.accountId)
     if (!llmConfig) {
       logger.channel.warn('[ChannelBridge] No LLM config, cannot process message')
-      const channelLabel = CHANNEL_LABELS[message.channelId] || message.channelId
-      const senderLabel = message.fromName || message.from
-      this.sendImStatus({
-        messageId: message.id,
-        channelId: message.channelId,
-        accountId: message.accountId,
-        channelLabel,
-        senderName: senderLabel,
-        phase: 'error',
-        timestamp: Date.now(),
-      })
       return
     }
-
-    const channelLabel = CHANNEL_LABELS[message.channelId] || message.channelId
-    const senderLabel = message.fromName || message.from
-
-    this.sendImStatus({
-      messageId: message.id,
-      channelId: message.channelId,
-      accountId: message.accountId,
-      channelLabel,
-      senderName: senderLabel,
-      phase: 'thinking',
-      timestamp: Date.now(),
-    })
 
     if (message.channelId === 'feishu') {
       await this.updateReaction(message.accountId, message.id, 'thinking')
     }
+
+    const channelLabel = CHANNEL_LABELS[message.channelId] || message.channelId
+    const senderLabel = message.fromName || message.from
     const now = new Date()
     const currentDate = now.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })
     const currentTime = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -230,60 +193,21 @@ class ChannelBridge {
     ]
 
     try {
-      this.sendImStatus({
-        messageId: message.id,
-        channelId: message.channelId,
-        accountId: message.accountId,
-        channelLabel,
-        senderName: senderLabel,
-        phase: 'replying',
-        timestamp: Date.now(),
-      })
-
       const result = await this.syncService.generate({ config: llmConfig, messages, systemPrompt })
       const replyText = result.data?.trim()
       if (!replyText) {
         logger.channel.warn('[ChannelBridge] LLM returned empty response')
-        this.sendImStatus({
-          messageId: message.id,
-          channelId: message.channelId,
-          accountId: message.accountId,
-          channelLabel,
-          senderName: senderLabel,
-          phase: 'done',
-          timestamp: Date.now(),
-        })
         return
       }
 
       const sendResult = await this.sendReply(conversationKey, replyText, message.id)
-      if (sendResult.success) {
-        if (message.channelId === 'feishu') {
-          await this.updateReaction(message.accountId, message.id, 'done')
-        }
-        this.sendImStatus({
-          messageId: message.id,
-          channelId: message.channelId,
-          accountId: message.accountId,
-          channelLabel,
-          senderName: senderLabel,
-          phase: 'done',
-          timestamp: Date.now(),
-        })
+      if (sendResult.success && message.channelId === 'feishu') {
+        await this.updateReaction(message.accountId, message.id, 'done')
       }
     } catch (err) {
       if (message.channelId === 'feishu') {
         await this.updateReaction(message.accountId, message.id, 'error')
       }
-      this.sendImStatus({
-        messageId: message.id,
-        channelId: message.channelId,
-        accountId: message.accountId,
-        channelLabel,
-        senderName: senderLabel,
-        phase: 'error',
-        timestamp: Date.now(),
-      })
       logger.channel.error(`[ChannelBridge] Fallback LLM error: ${err instanceof Error ? err.message : String(err)}`)
     }
   }

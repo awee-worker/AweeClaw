@@ -17,11 +17,13 @@ import {
   ListTodo,
   Bell,
   Volume2,
+  Send,
+  Sparkles,
 } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import type { IndexStatus } from '@shared/types'
-import type { ImProcessingPhase } from '@shared/types/channel'
+import type { ImProcessingStatus, ImProcessingPhase } from '@shared/types/channel'
 import { useImProcessingStatus } from '@renderer/hooks/useImProcessingStatus'
 import { indexWorkerService, type IndexProgress } from '@services/indexWorkerService'
 import BottomBarPopover from '../ui/BottomBarPopover'
@@ -184,66 +186,9 @@ export default function StatusBar() {
     switched: language === 'zh' ? '已切换' : 'Switched',
   }), [language])
 
-  const imStatuses = useImProcessingStatus()
-
-  const imStatusLabel = useMemo(() => {
-    if (imStatuses.length === 0) return null
-    const status = imStatuses[imStatuses.length - 1]
-    const phaseLabels: Record<ImProcessingPhase, string> = {
-      received: language === 'zh' ? '已收到消息' : 'Message received',
-      thinking: language === 'zh' ? '正在思考' : 'Thinking',
-      replying: language === 'zh' ? '正在回复' : 'Replying',
-      done: language === 'zh' ? '回复完成' : 'Reply sent',
-      error: language === 'zh' ? '处理出错' : 'Error',
-    }
-    const countLabel = imStatuses.length > 1
-      ? (language === 'zh' ? ` (${imStatuses.length}条)` : ` (${imStatuses.length})`)
-      : ''
-    return {
-      text: `${status.channelLabel} · ${status.senderName} - ${phaseLabels[status.phase]}${countLabel}`,
-      phase: status.phase,
-    }
-  }, [imStatuses, language])
-
   return (
     <div className="h-8 bg-background-secondary/40 backdrop-blur-md flex items-center justify-between px-3 text-[11px] select-none text-text-muted z-50 font-medium border-t border-border/30 shadow-[0_-1px_15px_rgba(0,0,0,0.03)]">
       <div className="flex items-center gap-3">
-        {imStatusLabel && (
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={imStatusLabel.phase}
-              initial={{ opacity: 0, x: -8 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -8 }}
-              transition={{ duration: 0.2 }}
-              className="flex items-center gap-1.5 px-2 py-0.5 rounded-md hover:bg-white/5 cursor-default"
-            >
-              {imStatusLabel.phase === 'thinking' || imStatusLabel.phase === 'replying' ? (
-                <div className="flex items-center justify-center w-4 h-4 drop-shadow-[0_0_6px_rgba(var(--accent-rgb),0.5)]">
-                  <Loader2 className="w-3 h-3 animate-spin text-accent" />
-                </div>
-              ) : imStatusLabel.phase === 'received' ? (
-                <div className="flex items-center justify-center w-4 h-4 drop-shadow-[0_0_6px_rgba(96,165,250,0.5)]">
-                  <MessageSquare className="w-3 h-3 text-blue-400" />
-                </div>
-              ) : imStatusLabel.phase === 'error' ? (
-                <div className="flex items-center justify-center w-4 h-4 drop-shadow-[0_0_6px_rgba(248,113,113,0.4)]">
-                  <AlertCircle className="w-3 h-3 text-red-400" />
-                </div>
-              ) : null}
-              <span className={`font-medium ${
-                imStatusLabel.phase === 'thinking' || imStatusLabel.phase === 'replying'
-                  ? 'text-accent'
-                  : imStatusLabel.phase === 'error'
-                    ? 'text-red-400'
-                    : 'text-text-muted'
-              }`}>
-                {imStatusLabel.text}
-              </span>
-            </motion.div>
-          </AnimatePresence>
-        )}
-
         {isGitRepo && gitStatus && (
           <button className="flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-white/5 text-text-muted hover:text-text-primary transition-colors group">
             <div className="flex items-center justify-center w-4 h-4 transition-colors">

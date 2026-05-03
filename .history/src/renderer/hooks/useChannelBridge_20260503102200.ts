@@ -190,14 +190,11 @@ export function useChannelBridge() {
       if (message.channelId === 'feishu') {
         await api.channel.updateReaction(message.accountId, message.id, 'done')
       }
-
-      updateImStatus('done')
     } catch (err) {
       logger.channel.error(`[ChannelBridge] Error: ${err instanceof Error ? err.message : String(err)}`)
       if (message.channelId === 'feishu') {
         await api.channel.updateReaction(message.accountId, message.id, 'error')
       }
-      updateImStatus('error')
     } finally {
       processingMessages.current.delete(message.id)
     }

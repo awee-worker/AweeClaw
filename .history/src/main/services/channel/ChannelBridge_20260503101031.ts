@@ -5,7 +5,6 @@ import { SyncService } from '../llm/services/SyncService'
 import { resolveRuntimeLLMConfig } from '@shared/config/llmConfigResolver'
 import { getBuiltinProvider } from '@shared/config/providers'
 import { feishuChannelPlugin } from './adapters/FeishuChannelPlugin'
-import { wechatChannelPlugin } from './adapters/WechatChannelPlugin'
 import type { InboundMessage, OutboundMessage, OutboundResult, ImProcessingStatus } from '@shared/types/channel'
 import type { LLMConfig, LLMMessage } from '@shared/types'
 import type Store from 'electron-store'
@@ -114,22 +113,7 @@ class ChannelBridge {
     })
 
     const channelLabel = CHANNEL_LABELS[message.channelId] || message.channelId
-    let senderLabel = message.fromName || message.from
-
-    if (!message.fromName && message.from) {
-      try {
-        let resolvedName: string | null = null
-        if (message.channelId === 'feishu') {
-          resolvedName = await feishuChannelPlugin.resolveSenderName(message.accountId, message.from)
-        } else if (message.channelId === 'wechat') {
-          resolvedName = await wechatChannelPlugin.resolveSenderName(message.accountId, message.from)
-        }
-        if (resolvedName) {
-          senderLabel = resolvedName
-          message.fromName = resolvedName
-        }
-      } catch {}
-    }
+    const senderLabel = message.fromName || message.from
 
     this.sendImStatus({
       messageId: message.id,

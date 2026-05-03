@@ -172,7 +172,7 @@ export class FeishuChannelPlugin implements ChannelPlugin {
         message: async (msg: Lark.NormalizedMessage) => {
           try {
             if (!msg.senderName && msg.senderId) {
-              await self.resolveSenderName(accountId, msg.senderId)
+              await self.resolveAndCacheUserName(accountId, msg.senderId)
             }
             const inbound = self.normalizeMessage(accountId, msg)
             if (inbound) {
@@ -399,11 +399,10 @@ export class FeishuChannelPlugin implements ChannelPlugin {
     }
   }
 
-  async resolveSenderName(accountId: string, openId: string): Promise<string | null> {
-    const cached = this.userNameCache.get(openId)
-    if (cached) return cached
+  private async resolveAndCacheUserName(accountId: string, openId: string): Promise<void> {
+    if (this.userNameCache.has(openId)) return
     const conn = this.connections.get(accountId)
-    if (!conn?.client) return null
+    if (!conn?.client) return
     try {
       const resp = await conn.client.contact.v3.user.get({
         path: { user_id: openId },
@@ -412,12 +411,8 @@ export class FeishuChannelPlugin implements ChannelPlugin {
       const name = (resp as any)?.data?.user?.name
       if (name) {
         this.userNameCache.set(openId, name)
-        return name
       }
-    } catch (err) {
-      logger.channel.warn(`[Feishu] resolveSenderName failed for ${openId}: ${err instanceof Error ? err.message : String(err)}`)
-    }
-    return null
+    } catch {}
   }
 
   private emitStatusChange(accountId: string): void {

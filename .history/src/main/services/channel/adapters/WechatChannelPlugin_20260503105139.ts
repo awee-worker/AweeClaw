@@ -298,7 +298,7 @@ export class WechatChannelPlugin implements ChannelPlugin {
 
       const fromUser = this.extractXmlValue((xmlData as any).xml || '', 'FromUserName') || ''
       if (fromUser && !this.userNameCache.has(fromUser)) {
-        await this.resolveSenderName(accountId, fromUser)
+        await this.resolveAndCacheUserName(accountId, fromUser)
       }
 
       const message = this.normalizeInboundMessage(accountId, xmlData)
@@ -400,23 +400,18 @@ export class WechatChannelPlugin implements ChannelPlugin {
     return match ? (match[1] || match[2]) : null
   }
 
-  async resolveSenderName(accountId: string, userId: string): Promise<string | null> {
-    const cached = this.userNameCache.get(userId)
-    if (cached) return cached
+  private async resolveAndCacheUserName(accountId: string, userId: string): Promise<void> {
+    if (this.userNameCache.has(userId)) return
     const account = this.accounts.get(accountId)
-    if (!account) return null
+    if (!account) return
     try {
       const token = await this.getAccessToken(account.credentials.corpId, account.credentials.secret)
       const response = await fetch(`${WECOM_API_BASE}/user/get?access_token=${token}&userid=${userId}`)
       const result = await response.json() as { name?: string; errcode?: number }
       if (result.name) {
         this.userNameCache.set(userId, result.name)
-        return result.name
       }
-    } catch (err) {
-      logger.channel.warn(`[WeCom] resolveSenderName failed for ${userId}: ${err instanceof Error ? err.message : String(err)}`)
-    }
-    return null
+    } catch {}
   }
 
   private emitStatusChange(accountId: string): void {

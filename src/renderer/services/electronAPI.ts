@@ -371,6 +371,7 @@ function createGroupedAPI() {
       onMessage: (callback: (message: any) => void) => raw.onChannelMessage(callback),
       onInboundMessage: (callback: (message: any) => void) => raw.onChannelInboundMessage(callback),
       onStatusChange: (callback: (snapshot: any) => void) => raw.onChannelStatusChange(callback),
+      onImProcessingStatus: (callback: (status: any) => void) => raw.onChannelImProcessingStatus(callback),
     },
 
     // 命令执行

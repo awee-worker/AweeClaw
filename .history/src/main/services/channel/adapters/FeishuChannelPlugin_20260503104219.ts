@@ -19,7 +19,6 @@ import type {
 interface FeishuConnection {
   accountId: string
   channel: Lark.LarkChannel
-  client: Lark.Client
   status: ChannelStatus
   lastConnectedAt: number | null
   lastError: string | null
@@ -141,7 +140,6 @@ export class FeishuChannelPlugin implements ChannelPlugin {
 
     try {
       const requireMention = account.groupPolicy !== 'open'
-      const client = new Lark.Client({ appId, appSecret })
 
       const channel = Lark.createLarkChannel({
         appId,
@@ -171,9 +169,6 @@ export class FeishuChannelPlugin implements ChannelPlugin {
       channel.on({
         message: async (msg: Lark.NormalizedMessage) => {
           try {
-            if (!msg.senderName && msg.senderId) {
-              await self.resolveSenderName(accountId, msg.senderId)
-            }
             const inbound = self.normalizeMessage(accountId, msg)
             if (inbound) {
               for (const cb of self.messageCallbacks) cb(inbound)
@@ -216,7 +211,6 @@ export class FeishuChannelPlugin implements ChannelPlugin {
       this.connections.set(account.id, {
         accountId,
         channel,
-        client,
         status: 'connected',
         lastConnectedAt: Date.now(),
         lastError: null,
@@ -229,7 +223,6 @@ export class FeishuChannelPlugin implements ChannelPlugin {
       this.connections.set(account.id, {
         accountId: account.id,
         channel: null as any,
-        client: null as any,
         status: 'error',
         lastConnectedAt: null,
         lastError: errorMsg,
@@ -375,7 +368,6 @@ export class FeishuChannelPlugin implements ChannelPlugin {
     if (!msg.messageId || !msg.senderId) return null
 
     const chatType: ChatType = msg.chatType === 'group' ? 'group' : 'direct'
-    const senderName = msg.senderName || this.userNameCache.get(msg.senderId)
 
     return {
       id: msg.messageId,
@@ -383,7 +375,7 @@ export class FeishuChannelPlugin implements ChannelPlugin {
       accountId,
       chatType,
       from: msg.senderId,
-      fromName: senderName,
+      fromName: msg.senderName,
       to: msg.chatId,
       text: msg.content || '',
       media: msg.resources?.length > 0
@@ -397,27 +389,6 @@ export class FeishuChannelPlugin implements ChannelPlugin {
       timestamp: msg.createTime || Date.now(),
       raw: msg.raw,
     }
-  }
-
-  async resolveSenderName(accountId: string, openId: string): Promise<string | null> {
-    const cached = this.userNameCache.get(openId)
-    if (cached) return cached
-    const conn = this.connections.get(accountId)
-    if (!conn?.client) return null
-    try {
-      const resp = await conn.client.contact.v3.user.get({
-        path: { user_id: openId },
-        params: { user_id_type: 'open_id' },
-      })
-      const name = (resp as any)?.data?.user?.name
-      if (name) {
-        this.userNameCache.set(openId, name)
-        return name
-      }
-    } catch (err) {
-      logger.channel.warn(`[Feishu] resolveSenderName failed for ${openId}: ${err instanceof Error ? err.message : String(err)}`)
-    }
-    return null
   }
 
   private emitStatusChange(accountId: string): void {

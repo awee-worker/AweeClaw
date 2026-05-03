@@ -413,9 +413,7 @@ export class WechatChannelPlugin implements ChannelPlugin {
         this.userNameCache.set(userId, result.name)
         return result.name
       }
-    } catch (err) {
-      logger.channel.warn(`[WeCom] resolveSenderName failed for ${userId}: ${err instanceof Error ? err.message : String(err)}`)
-    }
+    } catch {}
     return null
   }
 
