@@ -204,17 +204,6 @@ export default memo(function PlanListContent({
     }
 
     const handleDeletePlan = useCallback(async (plan: TaskPlan) => {
-        const confirmed = await globalConfirm({
-            title: language === 'zh' ? '删除计划' : 'Delete Plan',
-            message: language === 'zh'
-                ? `确定要删除计划「${plan.name}」吗？此操作不可撤销。`
-                : `Are you sure you want to delete plan "${plan.name}"? This action cannot be undone.`,
-            confirmText: language === 'zh' ? '删除' : 'Delete',
-            cancelText: language === 'zh' ? '取消' : 'Cancel',
-            variant: 'danger',
-        })
-        if (!confirmed) return
-
         deletePlan(plan.id)
         if (workspacePath) {
             try {
@@ -223,7 +212,7 @@ export default memo(function PlanListContent({
                 await api.file.delete(planPath)
             } catch {}
         }
-    }, [deletePlan, workspacePath, language])
+    }, [deletePlan, workspacePath])
 
     if (plans.length === 0) {
         return (

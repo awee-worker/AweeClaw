@@ -652,7 +652,7 @@ export const en = {
   'welcome.subtitle': 'Open a project and start your AI-powered workspace.',
   'welcome.recent': 'Recent',
   'editorWelcome.eyebrow': 'Workbench',
-  'editorWelcome.title': 'Choose a path and keep going.',
+  'editorWelcome.title': 'Choose a path and keep building.',
   'editorWelcome.subtitle': 'Search files, run commands, or tune the workspace from one calm starting point.',
   'editorWelcome.searchTitle': 'Search files',
   'editorWelcome.searchSubtitle': 'Find and open files in this workspace',

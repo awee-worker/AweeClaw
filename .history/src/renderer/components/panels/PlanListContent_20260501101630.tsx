@@ -1,7 +1,11 @@
-import { memo, useMemo, useState, useCallback } from 'react'
+/**
+ * 计划列表弹框内容
+ * 显示当前工作区的所有计划，点击打开对应的 TaskBoard
+ */
+
+import { memo, useMemo } from 'react'
 import { useAgentStore } from '@renderer/agent/store/AgentStore'
 import { useStore } from '@store'
-import { globalConfirm } from '@renderer/components/common/ConfirmDialog'
 import {
     PlayCircle,
     CheckCircle2,
@@ -10,17 +14,17 @@ import {
     XCircle,
     ChevronRight,
     FileText,
-    Trash2,
 } from 'lucide-react'
 import type { TaskPlan, PlanStatus } from '@renderer/agent/plan/types'
 
 interface PlanListContentProps {
     language?: 'en' | 'zh'
-    onPlanSelect?: () => void
+    onPlanSelect?: () => void  // 选择后关闭弹框
 }
 
-const DELETABLE_STATUSES: PlanStatus[] = ['stopped', 'completed', 'failed']
-
+/**
+ * 获取状态图标
+ */
 function StatusIcon({ status }: { status: PlanStatus }) {
     switch (status) {
         case 'executing':
@@ -40,6 +44,9 @@ function StatusIcon({ status }: { status: PlanStatus }) {
     }
 }
 
+/**
+ * 获取状态文本
+ */
 function getStatusText(status: PlanStatus, language: 'en' | 'zh'): string {
     const texts: Partial<Record<PlanStatus, { en: string; zh: string }>> = {
         draft: { en: 'Draft', zh: '草稿' },
@@ -55,29 +62,33 @@ function getStatusText(status: PlanStatus, language: 'en' | 'zh'): string {
     return texts[status]?.[language] || status
 }
 
+/**
+ * 计算任务进度
+ */
 function getTaskProgress(plan: TaskPlan): { completed: number; total: number } {
     const total = plan.tasks.length
     const completed = plan.tasks.filter(t => t.status === 'completed').length
     return { completed, total }
 }
 
+/**
+ * 单个计划项
+ */
 const PlanItem = memo(function PlanItem({
     plan,
     isActive,
     language,
-    onClick,
-    onDelete,
+    onClick
 }: {
     plan: TaskPlan
     isActive: boolean
     language: 'en' | 'zh'
     onClick: () => void
-    onDelete?: () => void
 }) {
     const { completed, total } = getTaskProgress(plan)
     const progressPercent = total > 0 ? (completed / total) * 100 : 0
-    const isDeletable = DELETABLE_STATUSES.includes(plan.status)
 
+    // 格式化时间
     const timeAgo = useMemo(() => {
         const diff = Date.now() - plan.updatedAt
         const minutes = Math.floor(diff / 1000 / 60)
@@ -90,16 +101,11 @@ const PlanItem = memo(function PlanItem({
         return language === 'zh' ? '刚刚' : 'Just now'
     }, [plan.updatedAt, language])
 
-    const handleDelete = useCallback((e: React.MouseEvent) => {
-        e.stopPropagation()
-        onDelete?.()
-    }, [onDelete])
-
     return (
-        <div
+        <button
             onClick={onClick}
             className={`
-                w-full p-3 text-left rounded-xl transition-all group cursor-pointer
+                w-full p-3 text-left rounded-xl transition-all group
                 ${isActive
                     ? 'bg-accent/10 border border-accent/30'
                     : 'hover:bg-white/5 border border-transparent hover:border-white/10'
@@ -124,20 +130,10 @@ const PlanItem = memo(function PlanItem({
                         </div>
                     </div>
                 </div>
-                <div className="flex items-center gap-1 shrink-0 mt-1">
-                    {isDeletable && (
-                        <button
-                            onClick={handleDelete}
-                            className="opacity-0 group-hover:opacity-100 p-1 rounded-md hover:bg-red-500/15 text-text-muted hover:text-red-400 transition-all"
-                            title={language === 'zh' ? '删除计划' : 'Delete plan'}
-                        >
-                            <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                    )}
-                    <ChevronRight className="w-4 h-4 text-text-muted/75 group-hover:text-text-muted transition-colors" />
-                </div>
+                <ChevronRight className="w-4 h-4 text-text-muted/75 group-hover:text-text-muted transition-colors shrink-0 mt-1" />
             </div>
 
+            {/* 进度条 */}
             {total > 0 && (
                 <div className="mt-2.5">
                     <div className="flex items-center justify-between text-[11px] mb-1">
@@ -159,7 +155,7 @@ const PlanItem = memo(function PlanItem({
                     </div>
                 </div>
             )}
-        </div>
+        </button>
     )
 })
 
@@ -170,10 +166,10 @@ export default memo(function PlanListContent({
     const plans = useAgentStore(state => state.plans)
     const activePlanId = useAgentStore(state => state.activePlanId)
     const setActivePlan = useAgentStore(state => state.setActivePlan)
-    const deletePlan = useAgentStore(state => state.deletePlan)
     const openFile = useStore(state => state.openFile)
     const workspacePath = useStore(state => state.workspacePath)
 
+    // 按状态和时间排序：执行中 > 暂停 > 草稿/就绪 > 完成/失败
     const sortedPlans = useMemo(() => {
         const priorityMap: Partial<Record<PlanStatus, number>> = {
             executing: 0,
@@ -195,35 +191,18 @@ export default memo(function PlanListContent({
     }, [plans])
 
     const handlePlanClick = (plan: TaskPlan) => {
+        // 设置为活跃计划
         setActivePlan(plan.id)
+
+        // 打开计划的 JSON 文件（触发 TaskBoard 渲染）
         if (workspacePath) {
             const jsonPath = `${workspacePath}/.aweeclaw/plan/${plan.id}.json`
             openFile(jsonPath, JSON.stringify(plan, null, 2))
         }
+
+        // 关闭弹框
         onPlanSelect?.()
     }
-
-    const handleDeletePlan = useCallback(async (plan: TaskPlan) => {
-        const confirmed = await globalConfirm({
-            title: language === 'zh' ? '删除计划' : 'Delete Plan',
-            message: language === 'zh'
-                ? `确定要删除计划「${plan.name}」吗？此操作不可撤销。`
-                : `Are you sure you want to delete plan "${plan.name}"? This action cannot be undone.`,
-            confirmText: language === 'zh' ? '删除' : 'Delete',
-            cancelText: language === 'zh' ? '取消' : 'Cancel',
-            variant: 'danger',
-        })
-        if (!confirmed) return
-
-        deletePlan(plan.id)
-        if (workspacePath) {
-            try {
-                const planPath = `${workspacePath}/.aweeclaw/plan/${plan.id}.json`
-                const { api } = await import('@/renderer/services/electronAPI')
-                await api.file.delete(planPath)
-            } catch {}
-        }
-    }, [deletePlan, workspacePath, language])
 
     if (plans.length === 0) {
         return (
@@ -251,7 +230,6 @@ export default memo(function PlanListContent({
                     isActive={plan.id === activePlanId}
                     language={language}
                     onClick={() => handlePlanClick(plan)}
-                    onDelete={() => handleDeletePlan(plan)}
                 />
             ))}
         </div>

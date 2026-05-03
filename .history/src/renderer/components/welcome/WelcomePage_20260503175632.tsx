@@ -163,7 +163,6 @@ function WelcomeStyles({ rootClass }: { rootClass: string }) {
       .${rootClass} .aweeclaw-welcome-hero {
         text-align: center;
         padding-bottom: 48px;
-        padding-top: 20vh;
       }
 
       .${rootClass} .aweeclaw-welcome-title {

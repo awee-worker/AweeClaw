@@ -6,7 +6,7 @@
  * - 启用 TypeScript 增量编译以提升构建速度
  */
 
-import { app, BrowserWindow, Menu, shell, ipcMain, protocol, net, screen } from 'electron'
+import { app, BrowserWindow, Menu, shell, ipcMain, protocol, net } from 'electron'
 // 补充 Language 类型（与渲染端对齐）
 export type Language = 'zh' | 'en'
 import { randomUUID } from 'crypto'
@@ -322,34 +322,18 @@ function createWindow(isEmpty = false, deferLoad = false): BrowserWindow {
   }
   const iconPath = getIconPath()
 
-  const primaryDisplay = screen.getPrimaryDisplay()
-  const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize
-
-  let winWidth: number, winHeight: number, winMinWidth: number, winMinHeight: number
-  if (isEmpty) {
-    winWidth = Math.round(screenWidth * 0.8)
-    winHeight = Math.round(screenHeight * 0.8)
-    winMinWidth = WINDOW_CONFIG.EMPTY_MIN_WIDTH
-    winMinHeight = WINDOW_CONFIG.EMPTY_MIN_HEIGHT
-  } else {
-    winWidth = screenWidth
-    winHeight = screenHeight
-    winMinWidth = WINDOW_CONFIG.MIN_WIDTH
-    winMinHeight = WINDOW_CONFIG.MIN_HEIGHT
-  }
-
+  // 初始使用正常窗口尺寸，引导页作为遮罩层显示
   const win = new BrowserWindow({
-    width: winWidth,
-    height: winHeight,
-    minWidth: winMinWidth,
-    minHeight: winMinHeight,
+    width: isEmpty ? WINDOW_CONFIG.EMPTY_WIDTH : WINDOW_CONFIG.WIDTH,
+    height: isEmpty ? WINDOW_CONFIG.EMPTY_HEIGHT : WINDOW_CONFIG.HEIGHT,
+    minWidth: isEmpty ? WINDOW_CONFIG.EMPTY_MIN_WIDTH : WINDOW_CONFIG.MIN_WIDTH,
+    minHeight: isEmpty ? WINDOW_CONFIG.EMPTY_MIN_HEIGHT : WINDOW_CONFIG.MIN_HEIGHT,
     frame: false,
     titleBarStyle: 'hiddenInset',
     icon: iconPath,
     trafficLightPosition: { x: 15, y: 14 },
     backgroundColor: getThemeBackgroundColor(),
-    show: false,
-    center: true,
+    show: false, // 先隐藏，等 DOM 渲染完成后再显示
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.js'),
       contextIsolation: true,
