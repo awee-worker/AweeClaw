@@ -32,6 +32,11 @@ export interface LLMResponse<T> {
   data: T
   usage?: TokenUsage
   metadata?: ResponseMetadata
+  toolCalls?: Array<{
+    toolCallId: string
+    toolName: string
+    args: Record<string, unknown>
+  }>
 }
 
 // ============================================

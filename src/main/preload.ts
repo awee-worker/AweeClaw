@@ -816,6 +816,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   channelSetChannelEnabled: (channelId: string, enabled: boolean) => ipcRenderer.invoke('channel:setChannelEnabled', channelId, enabled),
   channelGetWebhookInfo: () => ipcRenderer.invoke('channel:getWebhookInfo'),
   channelSendReply: (conversationKey: string, text: string, replyToId?: string) => ipcRenderer.invoke('channel:sendReply', conversationKey, text, replyToId),
+  channelSendFile: (conversationKey: string, filePath: string, fileName?: string, mediaType?: 'file' | 'image' | 'audio' | 'video', replyToId?: string) => ipcRenderer.invoke('channel:sendFile', conversationKey, filePath, fileName, mediaType, replyToId),
   channelUpdateReaction: (accountId: string, messageId: string, status: string) => ipcRenderer.invoke('channel:updateReaction', accountId, messageId, status),
   channelStreamReply: (accountId: string, to: string, fullText: string, replyToId?: string) => ipcRenderer.invoke('channel:streamReply', accountId, to, fullText, replyToId),
   channelRendererReply: (messageId: string, replyText: string) => ipcRenderer.invoke('channel:rendererReply', messageId, replyText),

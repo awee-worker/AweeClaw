@@ -79,7 +79,7 @@ export class SyncService {
         toolCalls: result.toolCalls?.map(tc => ({
           toolCallId: tc.toolCallId,
           toolName: tc.toolName,
-          args: (tc as any).input || (tc as any).args || {},
+          args: tc.args as Record<string, unknown>,
         })),
       }
     } catch (error) {

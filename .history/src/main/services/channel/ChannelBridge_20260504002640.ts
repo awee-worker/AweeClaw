@@ -7,7 +7,7 @@ import { getBuiltinProvider } from '@shared/config/providers'
 import { feishuChannelPlugin } from './adapters/FeishuChannelPlugin'
 import { wechatChannelPlugin } from './adapters/WechatChannelPlugin'
 import type { InboundMessage, OutboundMessage, OutboundMedia, OutboundResult, ImProcessingStatus } from '@shared/types/channel'
-import type { LLMConfig, LLMMessage, ToolDefinition } from '@shared/types'
+import type { LLMConfig, LLMMessage } from '@shared/types'
 import type Store from 'electron-store'
 
 const CHANNEL_LABELS: Record<string, string> = {
@@ -218,26 +218,12 @@ class ChannelBridge {
     const weekday = now.toLocaleDateString('zh-CN', { weekday: 'long' })
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
 
-    const systemPrompt = `你是一个多渠道消息助手。当前消息来自${channelLabel}平台的用户${senderLabel}。你可以使用 send_file_to_channel 工具向用户发送文件。回复内容将被发送回${channelLabel}平台，回复时不需要包含平台标识和发送者名称，直接给出回答即可。如果执行了工具操作，请简要说明执行结果。
+    const systemPrompt = `你是一个多渠道消息助手。当前消息来自${channelLabel}平台的用户${senderLabel}。请直接回复用户的问题，回复内容将被发送回${channelLabel}平台。回复时不需要包含平台标识和发送者名称，直接给出回答即可。
 
 当前时间信息（这是用户系统的真实时间，请以此为准，不要使用你的训练数据中的时间）：
 - 日期: ${currentDate} ${weekday}
 - 时间: ${currentTime}
 - 时区: ${tz}`
-
-    const sendFileTool: ToolDefinition = {
-      name: 'send_file_to_channel',
-      description: 'Send a file to the current conversation on the messaging channel. Use this when the user asks you to send a file, document, or image.',
-      parameters: {
-        type: 'object',
-        properties: {
-          file_path: { type: 'string', description: 'Absolute path to the local file to send' },
-          file_name: { type: 'string', description: 'Display name for the file' },
-          media_type: { type: 'string', description: 'Type of media: file, image, audio, or video', enum: ['file', 'image', 'audio', 'video'] },
-        },
-        required: ['file_path'],
-      },
-    }
 
     const messages: LLMMessage[] = [
       { role: 'user', content: message.text },
@@ -254,60 +240,10 @@ class ChannelBridge {
         timestamp: Date.now(),
       })
 
-      const MAX_TOOL_ROUNDS = 5
-      let lastReplyText = ''
-
-      for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-        const result = await this.syncService.generate({
-          config: llmConfig,
-          messages,
-          systemPrompt,
-          tools: [sendFileTool],
-        })
-
-        const toolCalls = result.toolCalls
-
-        if (!toolCalls || toolCalls.length === 0) {
-          lastReplyText = result.data?.trim() || ''
-          break
-        }
-
-        const assistantMsg: LLMMessage = {
-          role: 'assistant',
-          content: result.data || null,
-          tool_calls: toolCalls.map(tc => ({
-            id: tc.toolCallId,
-            type: 'function' as const,
-            function: { name: tc.toolName, arguments: JSON.stringify(tc.args) },
-          })),
-        }
-        messages.push(assistantMsg)
-
-        for (const tc of toolCalls) {
-          if (tc.toolName === 'send_file_to_channel') {
-            const filePath = tc.args.file_path as string
-            const fileName = (tc.args.file_name as string) || undefined
-            const mediaType = (tc.args.media_type as 'file' | 'image' | 'audio' | 'video') || 'file'
-            const toolResult = await this.sendFile(conversationKey, filePath, fileName, mediaType, message.id)
-            messages.push({
-              role: 'tool',
-              content: toolResult.success ? `File sent successfully: ${filePath}` : `Failed to send file: ${toolResult.error}`,
-              tool_call_id: tc.toolCallId,
-              name: tc.toolName,
-            })
-          } else {
-            messages.push({
-              role: 'tool',
-              content: `Unknown tool: ${tc.toolName}`,
-              tool_call_id: tc.toolCallId,
-              name: tc.toolName,
-            })
-          }
-        }
-      }
-
-      if (!lastReplyText) {
-        logger.channel.warn('[ChannelBridge] LLM returned empty response after tool calls')
+      const result = await this.syncService.generate({ config: llmConfig, messages, systemPrompt })
+      const replyText = result.data?.trim()
+      if (!replyText) {
+        logger.channel.warn('[ChannelBridge] LLM returned empty response')
         this.sendImStatus({
           messageId: message.id,
           channelId: message.channelId,
@@ -320,7 +256,7 @@ class ChannelBridge {
         return
       }
 
-      const sendResult = await this.sendReply(conversationKey, lastReplyText, message.id)
+      const sendResult = await this.sendReply(conversationKey, replyText, message.id)
       if (sendResult.success) {
         if (message.channelId === 'feishu') {
           await this.updateReaction(message.accountId, message.id, 'done')

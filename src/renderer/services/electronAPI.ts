@@ -367,6 +367,7 @@ function createGroupedAPI() {
       setChannelEnabled: (channelId: string, enabled: boolean) => raw.channelSetChannelEnabled(channelId, enabled),
       getWebhookInfo: () => raw.channelGetWebhookInfo(),
       sendReply: (conversationKey: string, text: string, replyToId?: string) => raw.channelSendReply(conversationKey, text, replyToId),
+      sendFile: (conversationKey: string, filePath: string, fileName?: string, mediaType?: 'file' | 'image' | 'audio' | 'video', replyToId?: string) => raw.channelSendFile(conversationKey, filePath, fileName, mediaType, replyToId),
       updateReaction: (accountId: string, messageId: string, status: string) => raw.channelUpdateReaction(accountId, messageId, status),
       streamReply: (accountId: string, to: string, fullText: string, replyToId?: string) => raw.channelStreamReply(accountId, to, fullText, replyToId),
       rendererReply: (messageId: string, replyText: string) => raw.channelRendererReply(messageId, replyText),

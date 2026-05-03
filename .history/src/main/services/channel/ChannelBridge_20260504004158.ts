@@ -1,4 +1,6 @@
 import { BrowserWindow } from 'electron'
+import * as fs from 'fs'
+import * as path from 'path'
 import { logger } from '@shared/utils/Logger'
 import { channelService } from './ChannelService'
 import { SyncService } from '../llm/services/SyncService'
@@ -265,7 +267,7 @@ class ChannelBridge {
           tools: [sendFileTool],
         })
 
-        const toolCalls = result.toolCalls
+        const toolCalls = (result as any).toolCalls as Array<{ toolCallId: string; toolName: string; args: Record<string, unknown> }> | undefined
 
         if (!toolCalls || toolCalls.length === 0) {
           lastReplyText = result.data?.trim() || ''

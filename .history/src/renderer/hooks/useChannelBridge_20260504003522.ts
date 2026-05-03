@@ -7,7 +7,6 @@ import { getAgentConfig } from '@renderer/agent/utils/AgentConfig'
 import { logger } from '@renderer/utils/Logger'
 import { getBuiltinProvider } from '@shared/config/providers'
 import { channelConversationService } from '@renderer/agent/services/channelConversationService'
-import { approvalService } from '@renderer/agent/core/tools'
 import type { ChannelConfig, ImProcessingStatus } from '@shared/types/channel'
 import { activeStatuses, emitChange } from './useImProcessingStatus'
 
@@ -142,74 +141,59 @@ export function useChannelBridge() {
 
       updateImStatus('replying')
 
-      const autoApproveInterval = setInterval(() => {
-        const thread = useAgentStore.getState().threads[threadId!]
-        if (thread?.streamState?.phase === 'tool_pending') {
-          const requestId = thread.streamState.requestId || thread.executionMeta?.requestId
-          if (requestId) {
-            approvalService.approve(requestId)
-          }
-        }
-      }, 500)
-
-      try {
-        const result = await Agent.send(
-          userMessage,
-          {
-            ...effectiveLLMConfig,
-            contextLimit: agentConfig.maxContextTokens,
-          },
-          currentWorkspace,
-          'agent',
-          {
-            customInstructions: `你是一个多渠道消息助手。当前消息来自${channelLabel}平台的用户${senderLabel}。你可以使用所有可用工具来帮助用户完成任务，包括创建文件、执行命令等。回复内容将被发送回${channelLabel}平台，回复时不需要包含平台标识和发送者名称，直接给出回答即可。如果执行了工具操作，请简要说明执行结果。
+      const result = await Agent.send(
+        userMessage,
+        {
+          ...effectiveLLMConfig,
+          contextLimit: agentConfig.maxContextTokens,
+        },
+        currentWorkspace,
+        'agent',
+        {
+          customInstructions: `你是一个多渠道消息助手。当前消息来自${channelLabel}平台的用户${senderLabel}。你可以使用所有可用工具来帮助用户完成任务，包括创建文件、执行命令等。回复内容将被发送回${channelLabel}平台，回复时不需要包含平台标识和发送者名称，直接给出回答即可。如果执行了工具操作，请简要说明执行结果。
 
 重要：当前时间是 ${currentTime}（系统真实时间），涉及时间判断时必须以此为准，不要使用训练数据中的过时时间。`,
-          },
-          {
-            threadId,
-          }
-        )
-
-        if (result.threadId) {
-          channelThreads.current.set(message.conversationKey, result.threadId)
-          channelConversationService.register(result.threadId, message.conversationKey)
+        },
+        {
+          threadId,
         }
+      )
 
-        const thread = useAgentStore.getState().threads[result.threadId]
-        if (thread) {
-          const assistantMessages = thread.messages.filter(m => m.role === 'assistant')
-          const lastAssistant = assistantMessages[assistantMessages.length - 1]
-          if (lastAssistant && typeof lastAssistant.content === 'string') {
-            const replyText = lastAssistant.content.trim()
+      if (result.threadId) {
+        channelThreads.current.set(message.conversationKey, result.threadId)
+      }
 
-            if (replyText) {
-              if (message.channelId === 'feishu') {
-                try {
-                  await api.channel.streamReply(
-                    message.accountId,
-                    message.chatType === 'group' ? message.to : message.from,
-                    replyText,
-                    message.id
-                  )
-                } catch {
-                  await api.channel.sendReply(message.conversationKey, replyText, message.id)
-                }
-              } else {
+      const thread = useAgentStore.getState().threads[result.threadId]
+      if (thread) {
+        const assistantMessages = thread.messages.filter(m => m.role === 'assistant')
+        const lastAssistant = assistantMessages[assistantMessages.length - 1]
+        if (lastAssistant && typeof lastAssistant.content === 'string') {
+          const replyText = lastAssistant.content.trim()
+
+          if (replyText) {
+            if (message.channelId === 'feishu') {
+              try {
+                await api.channel.streamReply(
+                  message.accountId,
+                  message.chatType === 'group' ? message.to : message.from,
+                  replyText,
+                  message.id
+                )
+              } catch {
                 await api.channel.sendReply(message.conversationKey, replyText, message.id)
               }
+            } else {
+              await api.channel.sendReply(message.conversationKey, replyText, message.id)
             }
           }
         }
-
-        if (message.channelId === 'feishu') {
-          await api.channel.updateReaction(message.accountId, message.id, 'done')
-        }
-
-        updateImStatus('done')
-      } finally {
-        clearInterval(autoApproveInterval)
       }
+
+      if (message.channelId === 'feishu') {
+        await api.channel.updateReaction(message.accountId, message.id, 'done')
+      }
+
+      updateImStatus('done')
     } catch (err) {
       logger.channel.error(`[ChannelBridge] Error: ${err instanceof Error ? err.message : String(err)}`)
       if (message.channelId === 'feishu') {

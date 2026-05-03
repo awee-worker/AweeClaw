@@ -2139,6 +2139,37 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
               (inProgress ? `. Currently: ${inProgress.activeForm}` : '')
         return { success: true, result: summary }
     },
+
+    async send_file_to_channel(args, ctx) {
+        const filePath = args.file_path as string
+        if (!filePath) {
+            return { success: false, result: '', error: 'file_path is required' }
+        }
+
+        const threadId = ctx.threadId
+        if (!threadId) {
+            return { success: false, result: '', error: 'No active thread context for channel file sending' }
+        }
+
+        const { channelConversationService } = await import('../services/channelConversationService')
+        const conversationKey = channelConversationService.getConversationKey(threadId)
+        if (!conversationKey) {
+            return { success: false, result: '', error: 'No active channel conversation for this thread' }
+        }
+
+        const fileName = (args.file_name as string) || undefined
+        const mediaType = (args.media_type as 'file' | 'image' | 'audio' | 'video') || 'file'
+
+        try {
+            const result = await api.channel.sendFile(conversationKey, filePath, fileName, mediaType)
+            if (result.success) {
+                return { success: true, result: `File sent successfully: ${filePath}` }
+            }
+            return { success: false, result: '', error: result.error || 'Failed to send file' }
+        } catch (err) {
+            return { success: false, result: '', error: `Failed to send file: ${toAppError(err).message}` }
+        }
+    },
 }
 
 
