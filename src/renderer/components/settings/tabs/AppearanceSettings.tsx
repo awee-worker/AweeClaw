@@ -48,7 +48,7 @@ export function AppearanceSettings({ settings, setSettings, language }: EditorSe
                                     <div className="w-8 h-8 rounded-full shadow-md ring-2 ring-white/10" style={{ backgroundColor: `rgb(${themeVars.accent})` }} title="Accent" />
                                 </div>
                                 <span className={`text-sm font-semibold capitalize block truncate transition-colors ${currentTheme === themeId ? 'text-text-primary' : 'text-text-secondary group-hover:text-text-primary'}`}>
-                                    {themeId.replace(/-/g, ' ')}
+                                    {theme.name || themeId.replace(/-/g, ' ')}
                                 </span>
                                 {currentTheme === themeId && (
                                     <div className="absolute top-3 right-3 bg-accent rounded-full p-0.5 shadow-lg shadow-accent/20">

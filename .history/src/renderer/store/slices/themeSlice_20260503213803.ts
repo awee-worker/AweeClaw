@@ -2,7 +2,7 @@ import { StateCreator } from 'zustand'
 import { builtinThemes } from '@/renderer/config/themeConfig'
 
 /** 内置主题 ID 联合类型 */
-export type BuiltinThemeName = 'aweeclaw-light' | 'aweeclaw-dark' | 'midnight' | 'dawn' | 'cyberpunk' | 'lobster'
+export type BuiltinThemeName = 'aweeclaw-dark' | 'midnight' | 'dawn' | 'cyberpunk' | 'lobster'
 
 /** 主题名称，支持内置和自定义主题 */
 export type ThemeName = string
@@ -18,7 +18,7 @@ export const createThemeSlice: StateCreator<ThemeSlice, [], [], ThemeSlice> = (s
     // 允许内置主题或已保存的自定义主题 ID
     const initialTheme = savedTheme && (validIds.includes(savedTheme) || savedTheme.startsWith('custom-'))
         ? savedTheme
-        : 'aweeclaw-light'
+        : 'aweeclaw-dark'
 
     return {
         currentTheme: initialTheme,

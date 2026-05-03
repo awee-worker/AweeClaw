@@ -18,7 +18,7 @@ export const createThemeSlice: StateCreator<ThemeSlice, [], [], ThemeSlice> = (s
     // 允许内置主题或已保存的自定义主题 ID
     const initialTheme = savedTheme && (validIds.includes(savedTheme) || savedTheme.startsWith('custom-'))
         ? savedTheme
-        : 'aweeclaw-light'
+        : 'aweeclaw-dark'
 
     return {
         currentTheme: initialTheme,

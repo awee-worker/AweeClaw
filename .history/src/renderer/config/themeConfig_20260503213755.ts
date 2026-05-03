@@ -63,82 +63,8 @@ function hexToRgb(hex: string): string {
 // 内置主题 (使用 RGB 格式)
 export const builtinThemes: Theme[] = [
   {
-    id: 'aweeclaw-light',
-    name: 'AweeClaw Light',
-    type: 'light',
-    monacoTheme: 'vs',
-    colors: {
-      background: '255 252 249',         // #fffcf9 暖白
-      backgroundSecondary: '250 245 240', // #faf5f0 淡暖灰
-      backgroundTertiary: '243 236 229',  // #f3ece5 暖灰
-      chatBg: '253 249 245',              // #fdf9f5 暖白
-
-      surface: '255 252 249',
-      surfaceHover: '243 236 229',
-      surfaceActive: '235 226 218',
-      surfaceMuted: '222 212 202',
-
-      textPrimary: '45 30 25',
-      textSecondary: '95 75 65',
-      textMuted: '140 120 108',
-      textInverted: '255 252 249',
-
-      border: '225 215 205',
-      borderSubtle: '240 233 225',
-      borderActive: '190 165 150',
-
-      accent: '210 60 42',           // 小龙虾红
-      accentHover: '190 48 35',      // 深龙虾红
-      accentActive: '165 38 28',     // 更深红
-      accentForeground: '255 255 255',
-      accentSubtle: '230 100 80',    // 亮珊瑚
-
-      statusSuccess: '22 140 70',
-      statusWarning: '195 120 15',
-      statusError: '195 45 35',
-      statusInfo: '40 100 180',
-    },
-  },
-  {
-    id: 'aweeClaw-dark',
+    id: 'aweeclaw-dark',
     name: 'AweeClaw Dark',
-    type: 'dark',
-    monacoTheme: 'vs-dark',
-    colors: {
-      background: '20 14 12',         // #140e0c 极深暖棕黑
-      backgroundSecondary: '28 20 18', // #1c1412 深棕
-      backgroundTertiary: '38 28 24',  // #261c18 暖棕
-      chatBg: '28 20 18',
-
-      surface: '28 20 18',
-      surfaceHover: '45 32 28',
-      surfaceActive: '58 42 36',
-      surfaceMuted: '78 58 50',
-
-      textPrimary: '245 235 228',
-      textSecondary: '195 175 165',
-      textMuted: '145 125 115',
-      textInverted: '20 14 12',
-
-      border: '50 36 30',
-      borderSubtle: '35 26 22',
-      borderActive: '120 70 55',
-
-      accent: '220 70 50',           // 小龙虾红
-      accentHover: '200 55 40',      // 深龙虾红
-      accentActive: '175 42 32',     // 更深红
-      accentForeground: '255 255 255',
-      accentSubtle: '240 110 85',    // 亮珊瑚
-
-      statusSuccess: '72 187 120',
-      statusWarning: '237 160 50',
-      statusError: '230 80 65',
-      statusInfo: '90 155 210',
-    },
-  },
-  {
-    id: 'noble',
-    name: 'Noble',
     type: 'dark',
     monacoTheme: 'vs-dark',
     colors: {
@@ -294,6 +220,43 @@ export const builtinThemes: Theme[] = [
       statusWarning: '217 119 6',     // Amber 600
       statusError: '220 38 38',       // Red 600
       statusInfo: '37 99 235',        // Blue 600
+    },
+  },
+  {
+    id: 'lobster',
+    name: 'Lobster',
+    type: 'dark',
+    monacoTheme: 'vs-dark',
+    colors: {
+      background: '20 14 12',         // #140e0c 极深暖棕黑
+      backgroundSecondary: '28 20 18', // #1c1412 深棕
+      backgroundTertiary: '38 28 24',  // #261c18 暖棕
+      chatBg: '28 20 18',
+
+      surface: '28 20 18',
+      surfaceHover: '45 32 28',
+      surfaceActive: '58 42 36',
+      surfaceMuted: '78 58 50',
+
+      textPrimary: '245 235 228',
+      textSecondary: '195 175 165',
+      textMuted: '145 125 115',
+      textInverted: '20 14 12',
+
+      border: '50 36 30',
+      borderSubtle: '35 26 22',
+      borderActive: '120 70 55',
+
+      accent: '220 70 50',           // 小龙虾红
+      accentHover: '200 55 40',      // 深龙虾红
+      accentActive: '175 42 32',     // 更深红
+      accentForeground: '255 255 255',
+      accentSubtle: '240 110 85',    // 亮珊瑚
+
+      statusSuccess: '72 187 120',
+      statusWarning: '237 160 50',
+      statusError: '230 80 65',
+      statusInfo: '90 155 210',
     },
   },
 ]

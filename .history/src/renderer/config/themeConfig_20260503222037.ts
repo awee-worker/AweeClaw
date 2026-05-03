@@ -100,7 +100,7 @@ export const builtinThemes: Theme[] = [
     },
   },
   {
-    id: 'aweeClaw-dark',
+    id: 'lobster',
     name: 'AweeClaw Dark',
     type: 'dark',
     monacoTheme: 'vs-dark',
@@ -137,7 +137,7 @@ export const builtinThemes: Theme[] = [
     },
   },
   {
-    id: 'noble',
+    id: 'aweeclaw-dark',
     name: 'Noble',
     type: 'dark',
     monacoTheme: 'vs-dark',

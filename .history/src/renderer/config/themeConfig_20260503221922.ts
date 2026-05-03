@@ -100,44 +100,7 @@ export const builtinThemes: Theme[] = [
     },
   },
   {
-    id: 'aweeClaw-dark',
-    name: 'AweeClaw Dark',
-    type: 'dark',
-    monacoTheme: 'vs-dark',
-    colors: {
-      background: '20 14 12',         // #140e0c 极深暖棕黑
-      backgroundSecondary: '28 20 18', // #1c1412 深棕
-      backgroundTertiary: '38 28 24',  // #261c18 暖棕
-      chatBg: '28 20 18',
-
-      surface: '28 20 18',
-      surfaceHover: '45 32 28',
-      surfaceActive: '58 42 36',
-      surfaceMuted: '78 58 50',
-
-      textPrimary: '245 235 228',
-      textSecondary: '195 175 165',
-      textMuted: '145 125 115',
-      textInverted: '20 14 12',
-
-      border: '50 36 30',
-      borderSubtle: '35 26 22',
-      borderActive: '120 70 55',
-
-      accent: '220 70 50',           // 小龙虾红
-      accentHover: '200 55 40',      // 深龙虾红
-      accentActive: '175 42 32',     // 更深红
-      accentForeground: '255 255 255',
-      accentSubtle: '240 110 85',    // 亮珊瑚
-
-      statusSuccess: '72 187 120',
-      statusWarning: '237 160 50',
-      statusError: '230 80 65',
-      statusInfo: '90 155 210',
-    },
-  },
-  {
-    id: 'noble',
+    id: 'aweeclaw-dark',
     name: 'Noble',
     type: 'dark',
     monacoTheme: 'vs-dark',
@@ -294,6 +257,43 @@ export const builtinThemes: Theme[] = [
       statusWarning: '217 119 6',     // Amber 600
       statusError: '220 38 38',       // Red 600
       statusInfo: '37 99 235',        // Blue 600
+    },
+  },
+  {
+    id: 'lobster',
+    name: 'AweeClaw Dark',
+    type: 'dark',
+    monacoTheme: 'vs-dark',
+    colors: {
+      background: '20 14 12',         // #140e0c 极深暖棕黑
+      backgroundSecondary: '28 20 18', // #1c1412 深棕
+      backgroundTertiary: '38 28 24',  // #261c18 暖棕
+      chatBg: '28 20 18',
+
+      surface: '28 20 18',
+      surfaceHover: '45 32 28',
+      surfaceActive: '58 42 36',
+      surfaceMuted: '78 58 50',
+
+      textPrimary: '245 235 228',
+      textSecondary: '195 175 165',
+      textMuted: '145 125 115',
+      textInverted: '20 14 12',
+
+      border: '50 36 30',
+      borderSubtle: '35 26 22',
+      borderActive: '120 70 55',
+
+      accent: '220 70 50',           // 小龙虾红
+      accentHover: '200 55 40',      // 深龙虾红
+      accentActive: '175 42 32',     // 更深红
+      accentForeground: '255 255 255',
+      accentSubtle: '240 110 85',    // 亮珊瑚
+
+      statusSuccess: '72 187 120',
+      statusWarning: '237 160 50',
+      statusError: '230 80 65',
+      statusInfo: '90 155 210',
     },
   },
 ]
