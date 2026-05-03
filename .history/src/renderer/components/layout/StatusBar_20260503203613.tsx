@@ -266,42 +266,6 @@ export default function StatusBar() {
             )}
           </button>
         )}
-
-        {imStatusLabel && (
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={imStatusLabel.phase}
-              initial={{ opacity: 0, x: -8 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -8 }}
-              transition={{ duration: 0.2 }}
-              className="flex items-center gap-1.5 px-2 py-0.5 rounded-md hover:bg-white/5 cursor-default"
-            >
-              {imStatusLabel.phase === 'thinking' || imStatusLabel.phase === 'replying' ? (
-                <div className="flex items-center justify-center w-4 h-4 drop-shadow-[0_0_6px_rgba(var(--accent-rgb),0.5)]">
-                  <Loader2 className="w-3 h-3 animate-spin text-accent" />
-                </div>
-              ) : imStatusLabel.phase === 'received' ? (
-                <div className="flex items-center justify-center w-4 h-4 drop-shadow-[0_0_6px_rgba(96,165,250,0.5)]">
-                  <MessageSquare className="w-3 h-3 text-blue-400" />
-                </div>
-              ) : imStatusLabel.phase === 'error' ? (
-                <div className="flex items-center justify-center w-4 h-4 drop-shadow-[0_0_6px_rgba(248,113,113,0.4)]">
-                  <AlertCircle className="w-3 h-3 text-red-400" />
-                </div>
-              ) : null}
-              <span className={`font-medium ${
-                imStatusLabel.phase === 'thinking' || imStatusLabel.phase === 'replying'
-                  ? 'text-accent'
-                  : imStatusLabel.phase === 'error'
-                    ? 'text-red-400'
-                    : 'text-text-muted'
-              }`}>
-                {imStatusLabel.text}
-              </span>
-            </motion.div>
-          </AnimatePresence>
-        )}
       </div>
 
       <div className="flex-1" />
