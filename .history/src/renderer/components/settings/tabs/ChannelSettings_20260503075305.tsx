@@ -43,50 +43,6 @@ interface ChannelSettingsProps {
   language: 'en' | 'zh'
 }
 
-function WebhookUrlDisplay({ channelId, language }: { channelId: ChannelId; language: 'en' | 'zh' }) {
-  const api = getAPI()
-  const [webhookInfo, setWebhookInfo] = useState<{ running: boolean; port: number; url: string } | null>(null)
-
-  useEffect(() => {
-    api.channel.getWebhookInfo().then(res => {
-      if (res?.success) setWebhookInfo({ running: res.running, port: res.port, url: res.url })
-    }).catch(() => {})
-  }, [])
-
-  const path = channelId === 'wechat' ? '/webhook/wechat' : '/webhook/whatsapp'
-  const fullUrl = webhookInfo ? `${webhookInfo.url}${path}` : ''
-
-  return (
-    <div className="rounded-lg border border-border/30 bg-surface/30 px-3 py-2 space-y-1">
-      <div className="text-xs font-medium text-text-muted">
-        {language === 'zh' ? 'Webhook 回调地址' : 'Webhook Callback URL'}
-      </div>
-      <div className="flex items-center gap-2">
-        <code className="flex-1 text-xs bg-surface-active/30 px-2 py-1 rounded text-text-primary break-all">
-          {fullUrl || (language === 'zh' ? '未启动' : 'Not running')}
-        </code>
-        {fullUrl && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              navigator.clipboard.writeText(fullUrl)
-              toast.success(language === 'zh' ? '已复制' : 'Copied')
-            }}
-          >
-            <CheckCircle className="w-3 h-3" />
-          </Button>
-        )}
-      </div>
-      <div className="text-xs text-text-muted">
-        {language === 'zh'
-          ? '将此地址填入平台回调URL配置（需公网可访问，可使用 ngrok 等内网穿透工具）'
-          : 'Use this URL as the callback URL in the platform config (requires public access, use ngrok etc.)'}
-      </div>
-    </div>
-  )
-}
-
 export function ChannelSettings({ language }: ChannelSettingsProps) {
   const api = getAPI()
   const { llmConfig, providerConfigs } = useStore(useShallow(s => ({ llmConfig: s.llmConfig, providerConfigs: s.providerConfigs })))

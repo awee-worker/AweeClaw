@@ -116,4 +116,9 @@ export function registerChannelHandlers(getMainWindow?: () => BrowserWindow | nu
     channelService.setChannelEnabled(channelId as any, enabled)
     return { success: true }
   })
+
+  safeIpcHandle('channel:getWebhookInfo', async () => {
+    const info = channelService.getWebhookInfo()
+    return { success: true, ...info }
+  })
 }

@@ -46,7 +46,6 @@ class ChannelService {
   async shutdown(): Promise<void> {
     if (!this.initialized) return
     logger.channel.info('Shutting down channel service...')
-    await webhookServer.stop()
     await channelRegistry.stopAll()
     channelErrorHandler.destroy()
     this.initialized = false
@@ -55,14 +54,6 @@ class ChannelService {
 
   getRegisteredChannels(): Array<{ id: ChannelId; meta: ChannelPlugin['meta'] }> {
     return channelRegistry.getAllPlugins().map(p => ({ id: p.id, meta: p.meta }))
-  }
-
-  getWebhookInfo(): { running: boolean; port: number; url: string } {
-    return {
-      running: webhookServer.isRunning(),
-      port: webhookServer.getPort(),
-      url: webhookServer.getWebhookUrl(),
-    }
   }
 
   getChannelSecretSchema(channelId: ChannelId) {
@@ -89,13 +80,6 @@ class ChannelService {
     channelConfigStore.set(config)
     if (account.enabled) {
       await channelRegistry.connectAccount(channelId, account)
-    }
-    if ((channelId === 'wechat' || channelId === 'whatsapp') && !webhookServer.isRunning()) {
-      try {
-        await webhookServer.start()
-      } catch (err) {
-        logger.channel.error(`[ChannelService] Webhook server failed to start: ${err}`)
-      }
     }
     logger.channel.info(`Added account ${account.id} to channel ${channelId}`)
   }

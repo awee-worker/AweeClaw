@@ -112,6 +112,7 @@ export class WechatChannelPlugin implements ChannelPlugin {
   private eventCallbacks: ((event: ChannelEvent) => void)[] = []
   private destroyed = false
   private accounts = new Map<string, ChannelAccountConfig>()
+  private corpIdIndex = new Map<string, ChannelAccountConfig>()
 
   async validateCredentials(credentials: Record<string, string>): Promise<{ valid: boolean; error?: string }> {
     const { corpId, secret } = credentials
@@ -136,6 +137,9 @@ export class WechatChannelPlugin implements ChannelPlugin {
     try {
       await this.getAccessToken(corpId, secret)
       this.accounts.set(account.id, account)
+      if (corpId) {
+        this.corpIdIndex.set(corpId, account)
+      }
       this.connections.set(account.id, {
         accountId: account.id,
         status: 'connected',
@@ -158,6 +162,10 @@ export class WechatChannelPlugin implements ChannelPlugin {
   }
 
   async disconnect(accountId: string): Promise<void> {
+    const account = this.accounts.get(accountId)
+    if (account?.credentials.corpId) {
+      this.corpIdIndex.delete(account.credentials.corpId)
+    }
     this.connections.delete(accountId)
     this.tokenCaches.delete(accountId)
     this.accounts.delete(accountId)
@@ -232,9 +240,43 @@ export class WechatChannelPlugin implements ChannelPlugin {
     this.connections.clear()
     this.tokenCaches.clear()
     this.accounts.clear()
+    this.corpIdIndex.clear()
     this.messageCallbacks = []
     this.statusCallbacks = []
     this.eventCallbacks = []
+  }
+
+  findAccountBySignature(
+    accounts: ChannelAccountConfig[],
+    timestamp: string,
+    nonce: string,
+    encryptedMsg: string,
+    signature: string
+  ): ChannelAccountConfig | null {
+    for (const account of accounts) {
+      const token = account.credentials.token
+      if (!token) continue
+      if (this.verifyCallbackSignature(token, timestamp, nonce, encryptedMsg, signature)) {
+        return account
+      }
+    }
+    return null
+  }
+
+  decryptEchostr(encodingAesKey: string, echostr: string): string {
+    const aesKey = Buffer.from(encodingAesKey + '=', 'base64')
+    const iv = aesKey.subarray(0, 16)
+    const decipher = crypto.createDecipheriv('aes-256-cbc', aesKey, iv)
+    decipher.setAutoPadding(false)
+    let decrypted = decipher.update(echostr, 'base64', 'utf8')
+    decrypted += decipher.final('utf8')
+    const pad = decrypted.charCodeAt(decrypted.length - 1)
+    decrypted = decrypted.substring(0, decrypted.length - pad)
+    const contentLen = decrypted.charCodeAt(16) << 24
+      | decrypted.charCodeAt(17) << 16
+      | decrypted.charCodeAt(18) << 8
+      | decrypted.charCodeAt(19)
+    return decrypted.substring(20, 20 + contentLen)
   }
 
   handleWebhookEvent(accountId: string, body: unknown, query: Record<string, string>): InboundMessage | null {

@@ -57,14 +57,6 @@ class ChannelService {
     return channelRegistry.getAllPlugins().map(p => ({ id: p.id, meta: p.meta }))
   }
 
-  getWebhookInfo(): { running: boolean; port: number; url: string } {
-    return {
-      running: webhookServer.isRunning(),
-      port: webhookServer.getPort(),
-      url: webhookServer.getWebhookUrl(),
-    }
-  }
-
   getChannelSecretSchema(channelId: ChannelId) {
     const plugin = channelRegistry.getPlugin(channelId)
     return plugin?.secretSchema || []
@@ -89,13 +81,6 @@ class ChannelService {
     channelConfigStore.set(config)
     if (account.enabled) {
       await channelRegistry.connectAccount(channelId, account)
-    }
-    if ((channelId === 'wechat' || channelId === 'whatsapp') && !webhookServer.isRunning()) {
-      try {
-        await webhookServer.start()
-      } catch (err) {
-        logger.channel.error(`[ChannelService] Webhook server failed to start: ${err}`)
-      }
     }
     logger.channel.info(`Added account ${account.id} to channel ${channelId}`)
   }
