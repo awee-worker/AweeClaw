@@ -201,7 +201,6 @@ export interface ElectronAPI {
   readFile: (path: string) => Promise<string | null>
   readBinaryFile: (path: string) => Promise<string | null>
   extractDocText: (path: string) => Promise<string | null>
-  extractPptText: (path: string) => Promise<string | null>
   writeFile: (path: string, content: string) => Promise<boolean>
   writeBinaryFile: (path: string, base64Data: string) => Promise<boolean>
   ensureDir: (path: string) => Promise<boolean>
@@ -513,7 +512,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   readFile: (path: string) => ipcRenderer.invoke('file:read', path),
   readBinaryFile: (path: string) => ipcRenderer.invoke('file:readBinary', path),
   extractDocText: (path: string) => ipcRenderer.invoke('file:extractDocText', path),
-  extractPptText: (path: string) => ipcRenderer.invoke('file:extractPptText', path),
   writeFile: (path: string, content: string) => ipcRenderer.invoke('file:write', path, content),
   writeBinaryFile: (path: string, base64Data: string) => ipcRenderer.invoke('file:writeBinary', path, base64Data),
   ensureDir: (path: string) => ipcRenderer.invoke('file:ensureDir', path),

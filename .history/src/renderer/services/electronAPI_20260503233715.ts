@@ -55,7 +55,6 @@ function createGroupedAPI() {
       read: (path: string) => raw.readFile(path),
       readBinary: (path: string) => raw.readBinaryFile(path),
       extractDocText: (path: string) => raw.extractDocText(path),
-      extractPptText: (path: string) => raw.extractPptText(path),
       write: (path: string, content: string) => raw.writeFile(path, content),
       writeBinary: (path: string, base64Data: string) => raw.writeBinaryFile(path, base64Data),
       save: (content: string, path?: string) => raw.saveFile(content, path),

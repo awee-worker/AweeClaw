@@ -24,12 +24,10 @@ const HTML_EXTENSIONS = ['html', 'htm']
 const PDF_EXTENSIONS = ['pdf']
 const DOCX_EXTENSIONS = ['docx']
 const DOC_EXTENSIONS = ['doc']
-const PPTX_EXTENSIONS = ['pptx']
-const PPT_EXTENSIONS = ['ppt']
 const XLSX_EXTENSIONS = ['xlsx', 'xls']
-const BINARY_EXTENSIONS = ['exe', 'dll', 'so', 'dylib', 'bin', 'zip', 'tar', 'gz', 'rar', '7z', 'mp3', 'mp4', 'avi', 'mov', 'wav', 'flac', 'psd', 'ai', 'sketch']
+const BINARY_EXTENSIONS = ['exe', 'dll', 'so', 'dylib', 'bin', 'zip', 'tar', 'gz', 'rar', '7z', 'ppt', 'pptx', 'mp3', 'mp4', 'avi', 'mov', 'wav', 'flac', 'psd', 'ai', 'sketch']
 
-export type FileType = 'text' | 'markdown' | 'image' | 'html' | 'pdf' | 'docx' | 'doc' | 'pptx' | 'ppt' | 'xlsx' | 'binary' | 'unknown'
+export type FileType = 'text' | 'markdown' | 'image' | 'html' | 'pdf' | 'docx' | 'doc' | 'xlsx' | 'binary' | 'unknown'
 
 export function getFileType(path: string): FileType {
     const ext = path.split('.').pop()?.toLowerCase() || ''
@@ -40,8 +38,6 @@ export function getFileType(path: string): FileType {
     if (PDF_EXTENSIONS.includes(ext)) return 'pdf'
     if (DOCX_EXTENSIONS.includes(ext)) return 'docx'
     if (DOC_EXTENSIONS.includes(ext)) return 'doc'
-    if (PPTX_EXTENSIONS.includes(ext)) return 'pptx'
-    if (PPT_EXTENSIONS.includes(ext)) return 'ppt'
     if (XLSX_EXTENSIONS.includes(ext)) return 'xlsx'
     if (BINARY_EXTENSIONS.includes(ext)) return 'binary'
 
@@ -50,7 +46,7 @@ export function getFileType(path: string): FileType {
 
 export function isPreviewableFile(path: string): boolean {
     const type = getFileType(path)
-    return type === 'markdown' || type === 'image' || type === 'pdf' || type === 'docx' || type === 'doc' || type === 'pptx' || type === 'ppt' || type === 'xlsx'
+    return type === 'markdown' || type === 'image' || type === 'pdf' || type === 'docx' || type === 'doc' || type === 'xlsx'
 }
 
 export function isBinaryFile(path: string): boolean {

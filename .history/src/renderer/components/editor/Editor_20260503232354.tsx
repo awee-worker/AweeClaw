@@ -38,7 +38,7 @@ import { TabContextMenu } from './TabContextMenu'
 import { EditorWelcome } from './EditorWelcome'
 import { SafeDiffEditor } from './SafeDiffEditor'
 import { getFileType, MarkdownPreview, ImagePreview, HtmlPreview, UnsupportedFile } from './FilePreview'
-import { PdfPreview, DocxPreview, DocPreview, PptxPreview, PptPreview, XlsxPreview } from './DocumentPreview'
+import { PdfPreview, DocxPreview, DocPreview, XlsxPreview } from './DocumentPreview'
 import { CodeSkeleton } from '../ui/Loading'
 import { TaskBoard } from '../plan/TaskBoard'
 import WritingWorkspace from '../writing/WritingWorkspace'
@@ -449,10 +449,6 @@ export default function Editor() {
               <DocxPreview path={activeFile.path} />
             ) : activeFileType === 'doc' ? (
               <DocPreview path={activeFile.path} />
-            ) : activeFileType === 'pptx' ? (
-              <PptxPreview path={activeFile.path} />
-            ) : activeFileType === 'ppt' ? (
-              <PptPreview path={activeFile.path} />
             ) : activeFileType === 'xlsx' ? (
               <XlsxPreview path={activeFile.path} />
             ) : activeFileType === 'binary' ? (

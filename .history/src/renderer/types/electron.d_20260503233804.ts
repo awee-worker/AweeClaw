@@ -347,7 +347,6 @@ export interface ElectronAPI {
   readFile: (path: string) => Promise<string | null>
   readBinaryFile: (path: string) => Promise<string | null>
   extractDocText: (path: string) => Promise<string | null>
-  extractPptText: (path: string) => Promise<string | null>
   writeFile: (path: string, content: string) => Promise<boolean>
   writeBinaryFile: (path: string, base64Data: string) => Promise<boolean>
   ensureDir: (path: string) => Promise<boolean>
