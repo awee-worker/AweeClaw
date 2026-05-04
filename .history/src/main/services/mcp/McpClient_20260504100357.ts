@@ -126,13 +126,8 @@ export class McpClient extends EventEmitter {
 
   /** 连接本地服务器 */
   private async connectLocal(config: McpLocalServerConfig): Promise<void> {
-    let command = config.command
-    if (command === 'uvx') {
-      const uvPath = pythonManager.getUvPath()
-      if (uvPath) command = uvPath
-    }
     const transport = new StdioClientTransport({
-      command,
+      command: config.command,
       args: config.args || [],
       env: { ...process.env, ...config.env } as Record<string, string>,
       cwd: config.cwd,

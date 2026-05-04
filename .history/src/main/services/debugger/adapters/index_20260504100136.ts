@@ -69,9 +69,10 @@ export const builtinAdapters: DebugAdapterInfo[] = [
     label: 'Python',
     languages: ['python'],
     async getDescriptor(_config: DebugConfig): Promise<DebugAdapterDescriptor> {
+      // debugpy 可以通过 pip 安装: pip install debugpy
       return {
         type: 'executable',
-        command: pythonManager.getPythonPath() || 'python',
+        command: 'python',
         args: ['-m', 'debugpy.adapter'],
       }
     },

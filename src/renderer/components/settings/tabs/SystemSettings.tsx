@@ -5,7 +5,7 @@
 import { api } from '@/renderer/services/electronAPI'
 import { logger } from '@utils/Logger'
 import { useState, useEffect, useRef } from 'react'
-import { HardDrive, AlertTriangle, Download, Upload, FileText, ExternalLink } from 'lucide-react'
+import { HardDrive, AlertTriangle, Download, Upload, FileText, ExternalLink, Terminal } from 'lucide-react'
 import { toast } from '@components/common/ToastProvider'
 import { globalConfirm } from '@components/common/ConfirmDialog'
 import { Button, Switch } from '@components/ui'
@@ -29,6 +29,162 @@ function DataPathDisplay() {
         api.settings.getConfigPath?.().then(setPath)
     }, [])
     return <span>{path || '...'}</span>
+}
+
+function PythonEnvSection({ language }: { language: Language }) {
+    const [pythonStatus, setPythonStatus] = useState<{
+        ready: boolean
+        pythonPath: string | null
+        uvPath: string | null
+        source: 'system' | 'managed' | 'none'
+        version: string | null
+        venvDir: string | null
+        installedPackages: string[]
+        error?: string
+    } | null>(null)
+    const [isReinstalling, setIsReinstalling] = useState(false)
+
+    useEffect(() => {
+        api.python.getStatus().then(setPythonStatus).catch(() => {})
+    }, [])
+
+    const handleReinstall = async () => {
+        setIsReinstalling(true)
+        try {
+            const status = await api.python.reinstall()
+            setPythonStatus(status)
+            if (status.ready) {
+                toast.success(language === 'zh' ? 'Python 环境已重新安装' : 'Python environment reinstalled')
+            } else {
+                toast.error(language === 'zh' ? 'Python 环境安装失败' : 'Python environment installation failed')
+            }
+        } catch (err) {
+            toast.error(language === 'zh' ? '重新安装失败' : 'Reinstall failed')
+        } finally {
+            setIsReinstalling(false)
+        }
+    }
+
+    const handleSetCustomPath = async () => {
+        const result = await api.file.selectFolder()
+        if (result) {
+            const pythonBin = result.endsWith('python3') || result.endsWith('python') || result.endsWith('python.exe')
+                ? result
+                : `${result}/bin/python3`
+            const res = await api.python.setCustomPath(pythonBin)
+            if (res.success) {
+                const status = await api.python.getStatus()
+                setPythonStatus(status)
+                toast.success(language === 'zh' ? 'Python 路径已更新' : 'Python path updated')
+            }
+        }
+    }
+
+    return (
+        <section>
+            <div className="flex items-center gap-2 mb-5 ml-1">
+                <Terminal className="w-4 h-4 text-accent" />
+                <h4 className="text-[12px] font-bold text-text-muted uppercase tracking-[0.2em]">
+                    {language === 'zh' ? 'Python 环境' : 'Python Environment'}
+                </h4>
+            </div>
+            <div className="space-y-4">
+                <div className="p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border space-y-4 shadow-sm">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <div className="text-sm font-bold text-text-primary">
+                                {language === 'zh' ? 'Python 运行时' : 'Python Runtime'}
+                            </div>
+                            <div className="text-xs text-text-muted mt-1 opacity-70">
+                                {language === 'zh'
+                                    ? 'AI Agent 脚本执行、Python LSP、调试器等功能依赖 Python 环境'
+                                    : 'AI Agent script execution, Python LSP, debugger, etc. depend on Python'}
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className={`w-2 h-2 rounded-full ${pythonStatus?.ready ? 'bg-green-500' : 'bg-red-500'}`} />
+                            <span className="text-xs font-medium text-text-secondary">
+                                {pythonStatus?.ready
+                                    ? (language === 'zh' ? '已就绪' : 'Ready')
+                                    : (language === 'zh' ? '未就绪' : 'Not Ready')}
+                            </span>
+                        </div>
+                    </div>
+
+                    {pythonStatus && (
+                        <div className="space-y-2 p-4 bg-background/50 rounded-xl border border-border shadow-inner">
+                            {pythonStatus.version && (
+                                <div className="flex items-center gap-2 text-xs">
+                                    <span className="text-text-muted w-20">Python:</span>
+                                    <span className="text-text-secondary font-mono">{pythonStatus.version}</span>
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-text-muted border border-border">
+                                        {pythonStatus.source === 'system' ? (language === 'zh' ? '系统' : 'System') : 'uv'}
+                                    </span>
+                                </div>
+                            )}
+                            {pythonStatus.pythonPath && (
+                                <div className="flex items-center gap-2 text-xs">
+                                    <span className="text-text-muted w-20">{language === 'zh' ? '路径:' : 'Path:'}</span>
+                                    <span className="text-text-secondary font-mono break-all">{pythonStatus.pythonPath}</span>
+                                </div>
+                            )}
+                            {pythonStatus.uvPath && (
+                                <div className="flex items-center gap-2 text-xs">
+                                    <span className="text-text-muted w-20">uv:</span>
+                                    <span className="text-text-secondary font-mono break-all">{pythonStatus.uvPath}</span>
+                                </div>
+                            )}
+                            {pythonStatus.installedPackages.length > 0 && (
+                                <div className="flex items-center gap-2 text-xs">
+                                    <span className="text-text-muted w-20">{language === 'zh' ? '已安装包:' : 'Packages:'}</span>
+                                    <span className="text-text-secondary font-mono">{pythonStatus.installedPackages.join(', ')}</span>
+                                </div>
+                            )}
+                            {pythonStatus.error && (
+                                <div className="flex items-start gap-2 text-xs text-red-400 mt-2">
+                                    <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                                    <span>{pythonStatus.error}</span>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {!pythonStatus?.ready && (
+                        <div className="flex items-start gap-2 text-[11px] font-medium text-yellow-500 bg-yellow-500/10 px-3 py-2 rounded-lg border border-yellow-500/20">
+                            <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                            <div>
+                                {language === 'zh'
+                                    ? 'Python 环境不可用。AI Agent 执行 Python 脚本、Python 调试和 Lint 功能将无法使用。点击"重新安装"自动配置 Python 环境。'
+                                    : 'Python is not available. AI Agent Python scripts, debugging, and lint features will be unavailable. Click "Reinstall" to auto-configure Python.'}
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="flex gap-3">
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={handleReinstall}
+                            disabled={isReinstalling}
+                            className="rounded-xl px-4"
+                        >
+                            {isReinstalling
+                                ? (language === 'zh' ? '安装中...' : 'Installing...')
+                                : (language === 'zh' ? '重新安装' : 'Reinstall')}
+                        </Button>
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={handleSetCustomPath}
+                            className="rounded-xl px-4"
+                        >
+                            {language === 'zh' ? '指定 Python 路径' : 'Set Python Path'}
+                        </Button>
+                    </div>
+                </div>
+            </div>
+        </section>
+    )
 }
 
 export function SystemSettings({ language, enableFileLogging, setEnableFileLogging }: SystemSettingsProps) {
@@ -299,6 +455,9 @@ export function SystemSettings({ language, enableFileLogging, setEnableFileLoggi
                     </div>
                 </div>
             </section>
+
+            {/* Python 环境 */}
+            <PythonEnvSection language={language} />
 
             {/* 日志管理 */}
             <section>

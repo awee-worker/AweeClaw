@@ -21,6 +21,40 @@ type ElectronAPIWithRemoteShell = ElectronAPI & {
   remoteShellTestConnection: (server: RemoteShellServer) => Promise<{ success: boolean; error?: string }>
   remoteShellUpload: (server: RemoteShellServer, remoteDirectory: string) => Promise<RemoteShellUploadResult>
   remoteShellDownload: (server: RemoteShellServer, remotePath: string) => Promise<RemoteShellDownloadResult>
+  pythonGetStatus: () => Promise<{
+    ready: boolean
+    pythonPath: string | null
+    uvPath: string | null
+    source: 'system' | 'managed' | 'none'
+    version: string | null
+    venvDir: string | null
+    installedPackages: string[]
+    error?: string
+  }>
+  pythonGetPath: () => Promise<string | null>
+  pythonGetUvPath: () => Promise<string | null>
+  pythonEnsureReady: () => Promise<{
+    ready: boolean
+    pythonPath: string | null
+    uvPath: string | null
+    source: 'system' | 'managed' | 'none'
+    version: string | null
+    venvDir: string | null
+    installedPackages: string[]
+    error?: string
+  }>
+  pythonReinstall: () => Promise<{
+    ready: boolean
+    pythonPath: string | null
+    uvPath: string | null
+    source: 'system' | 'managed' | 'none'
+    version: string | null
+    venvDir: string | null
+    installedPackages: string[]
+    error?: string
+  }>
+  pythonInstallPkg: (pkg: string) => Promise<{ success: boolean; error?: string }>
+  pythonSetCustomPath: (customPath: string | null) => Promise<{ success: boolean; error?: string }>
 }
 
 // 创建分组 API 适配器
@@ -379,6 +413,17 @@ function createGroupedAPI() {
 
     // 命令执行
     onExecuteCommand: (callback: Parameters<typeof raw.onExecuteCommand>[0]) => raw.onExecuteCommand(callback),
+
+    // Python 环境
+    python: {
+      getStatus: () => raw.pythonGetStatus(),
+      getPath: () => raw.pythonGetPath(),
+      getUvPath: () => raw.pythonGetUvPath(),
+      ensureReady: () => raw.pythonEnsureReady(),
+      reinstall: () => raw.pythonReinstall(),
+      installPkg: (pkg: string) => raw.pythonInstallPkg(pkg),
+      setCustomPath: (customPath: string | null) => raw.pythonSetCustomPath(customPath),
+    },
   }
 }
 

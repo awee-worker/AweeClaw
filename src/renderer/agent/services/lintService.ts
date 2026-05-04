@@ -89,6 +89,17 @@ async function resolveLintCommand(filePath: string, language: string): Promise<R
 		if (localEslint) return localEslint
 	}
 
+	if (language === 'python') {
+		const managedPython = await api.python.getPath()
+		const pythonCmd = managedPython || 'python'
+		const fallback = LINT_COMMANDS[language]
+		return {
+			command: pythonCmd,
+			args: [...fallback.getCommand().args, filePath],
+			cwd: workspaceRoot || undefined,
+		}
+	}
+
 	const lintConfig = LINT_COMMANDS[language]
 	if (!lintConfig) return null
 

@@ -479,8 +479,14 @@ async function runInlineScriptViaTempFile(
             }
         }
 
+        let executable = parsed.executable
+        if (parsed.runtime === 'python') {
+            const managedPath = await api.python.getPath()
+            if (managedPath) executable = managedPath
+        }
+
         const execResult = await api.shell.executeSecure({
-            command: parsed.executable,
+            command: executable,
             args: parsed.args.map(arg => arg === '__TEMP_FILE__' ? tempFile : arg),
             cwd: ctx.workspacePath || undefined,
             timeout,

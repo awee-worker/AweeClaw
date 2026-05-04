@@ -708,7 +708,7 @@ class LspManager {
         // Python (Pyright)
         if (section === 'python' || section.startsWith('python.')) {
           return {
-            pythonPath: pythonManager.getPythonPath() || (process.platform === 'win32' ? 'python' : 'python3'),
+            pythonPath: process.platform === 'win32' ? 'python' : 'python3',
             analysis: {
               typeCheckingMode: 'basic',
               diagnosticMode: 'openFilesOnly',
@@ -902,7 +902,7 @@ class LspManager {
     // 为 Pyright 添加 Python 解释器配置
     const initializationOptions = serverName === 'python' ? {
       python: {
-        pythonPath: pythonManager.getPythonPath() || (process.platform === 'win32' ? 'python' : 'python3'),
+        pythonPath: process.platform === 'win32' ? 'python' : 'python3',
       },
     } : undefined
 
@@ -921,7 +921,7 @@ class LspManager {
       this.sendNotification(key, 'workspace/didChangeConfiguration', {
         settings: {
           python: {
-            pythonPath: pythonManager.getPythonPath() || (process.platform === 'win32' ? 'python' : 'python3'),
+            pythonPath: process.platform === 'win32' ? 'python' : 'python3',
             analysis: {
               typeCheckingMode: 'basic',
               diagnosticMode: 'openFilesOnly',

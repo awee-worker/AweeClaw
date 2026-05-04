@@ -470,6 +470,42 @@ export interface ElectronAPI {
   onChannelStatusChange: (callback: (snapshot: any) => void) => () => void
   onChannelImProcessingStatus: (callback: (status: any) => void) => () => void
 
+  // Python 环境
+  pythonGetStatus: () => Promise<{
+    ready: boolean
+    pythonPath: string | null
+    uvPath: string | null
+    source: 'system' | 'managed' | 'none'
+    version: string | null
+    venvDir: string | null
+    installedPackages: string[]
+    error?: string
+  }>
+  pythonGetPath: () => Promise<string | null>
+  pythonGetUvPath: () => Promise<string | null>
+  pythonEnsureReady: () => Promise<{
+    ready: boolean
+    pythonPath: string | null
+    uvPath: string | null
+    source: 'system' | 'managed' | 'none'
+    version: string | null
+    venvDir: string | null
+    installedPackages: string[]
+    error?: string
+  }>
+  pythonReinstall: () => Promise<{
+    ready: boolean
+    pythonPath: string | null
+    uvPath: string | null
+    source: 'system' | 'managed' | 'none'
+    version: string | null
+    venvDir: string | null
+    installedPackages: string[]
+    error?: string
+  }>
+  pythonInstallPkg: (pkg: string) => Promise<{ success: boolean; error?: string }>
+  pythonSetCustomPath: (customPath: string | null) => Promise<{ success: boolean; error?: string }>
+
   // Command Execution
   onExecuteCommand: (callback: (commandId: string) => void) => () => void
 }
@@ -840,6 +876,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('channel:imProcessingStatus', handler)
     return () => ipcRenderer.removeListener('channel:imProcessingStatus', handler)
   },
+
+  // Python 环境
+  pythonGetStatus: () => ipcRenderer.invoke('python:getStatus'),
+  pythonGetPath: () => ipcRenderer.invoke('python:getPath'),
+  pythonGetUvPath: () => ipcRenderer.invoke('python:getUvPath'),
+  pythonEnsureReady: () => ipcRenderer.invoke('python:ensureReady'),
+  pythonReinstall: () => ipcRenderer.invoke('python:reinstall'),
+  pythonInstallPkg: (pkg: string) => ipcRenderer.invoke('python:installPkg', pkg),
+  pythonSetCustomPath: (customPath: string | null) => ipcRenderer.invoke('python:setCustomPath', customPath),
 
   // Command Execution
   onExecuteCommand: (callback: (commandId: string) => void) => {

@@ -620,6 +620,22 @@ async function initializeModules(firstWin: BrowserWindow) {
     logger.system.warn('[Main] Channel service auto-init skipped:', err instanceof Error ? err.message : String(err))
   }
 
+  // 异步初始化 Python 环境（不阻塞启动）
+  try {
+    const { pythonManager } = await import('./services/python')
+    pythonManager.ensureReady().then((status) => {
+      if (status.ready) {
+        logger.system.info('[Main] Python environment ready:', { pythonPath: status.pythonPath, source: status.source, version: status.version })
+      } else {
+        logger.system.warn('[Main] Python environment not available:', status.error)
+      }
+    }).catch((err) => {
+      logger.system.warn('[Main] Python environment setup failed:', err)
+    })
+  } catch (err) {
+    logger.system.warn('[Main] Python manager import skipped:', err instanceof Error ? err.message : String(err))
+  }
+
   // 全局：当前应用语言
   let currentAppLanguage: Language = 'zh'
 

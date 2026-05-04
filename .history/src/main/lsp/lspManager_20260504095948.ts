@@ -708,7 +708,7 @@ class LspManager {
         // Python (Pyright)
         if (section === 'python' || section.startsWith('python.')) {
           return {
-            pythonPath: pythonManager.getPythonPath() || (process.platform === 'win32' ? 'python' : 'python3'),
+            pythonPath: process.platform === 'win32' ? 'python' : 'python3',
             analysis: {
               typeCheckingMode: 'basic',
               diagnosticMode: 'openFilesOnly',
@@ -921,7 +921,7 @@ class LspManager {
       this.sendNotification(key, 'workspace/didChangeConfiguration', {
         settings: {
           python: {
-            pythonPath: pythonManager.getPythonPath() || (process.platform === 'win32' ? 'python' : 'python3'),
+            pythonPath: process.platform === 'win32' ? 'python' : 'python3',
             analysis: {
               typeCheckingMode: 'basic',
               diagnosticMode: 'openFilesOnly',
