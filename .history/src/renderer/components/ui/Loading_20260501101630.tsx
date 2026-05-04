@@ -111,7 +111,7 @@ EditorSkeleton.displayName = 'EditorSkeleton'
 // ============ 聊天面板骨架屏 ============
 
 export const ChatMessagesSkeleton = memo(() => (
-  <div className="h-full w-full p-4 space-y-6 overflow-hidden bg-background-chat">
+  <div className="h-full w-full p-4 space-y-6 overflow-hidden bg-background-secondary">
     {/* AI 消息 */}
     <div className="flex gap-3 animate-pulse">
       <div className="w-7 h-7 bg-surface-active/50 rounded-full flex-shrink-0" />
@@ -148,7 +148,7 @@ export const ChatMessagesSkeleton = memo(() => (
 ChatMessagesSkeleton.displayName = 'ChatMessagesSkeleton'
 
 export const ChatSkeleton = memo(() => (
-  <div className="h-full flex flex-col bg-background-chat">
+  <div className="h-full flex flex-col bg-background">
     {/* Header */}
     <div className="h-10 border-b border-border flex items-center justify-between px-4">
       <div className="h-4 w-12 bg-surface-active/50 rounded animate-pulse" />

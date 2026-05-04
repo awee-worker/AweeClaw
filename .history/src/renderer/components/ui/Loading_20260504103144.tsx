@@ -148,7 +148,7 @@ export const ChatMessagesSkeleton = memo(() => (
 ChatMessagesSkeleton.displayName = 'ChatMessagesSkeleton'
 
 export const ChatSkeleton = memo(() => (
-  <div className="h-full flex flex-col bg-background-chat">
+  <div className="h-full flex flex-col bg-background">
     {/* Header */}
     <div className="h-10 border-b border-border flex items-center justify-between px-4">
       <div className="h-4 w-12 bg-surface-active/50 rounded animate-pulse" />

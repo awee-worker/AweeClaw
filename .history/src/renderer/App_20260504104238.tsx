@@ -167,7 +167,7 @@ function AppContent() {
                         <div
                           ref={chatRef}
                           style={{ width: chatWidth, minWidth: chatWidth }}
-                          className="flex-shrink-0 relative min-w-[580px] border-l border-border/30 bg-background-chat"
+                          className="flex-shrink-0 relative min-w-[580px] border-l border-border/30"
                         >
                           <ErrorBoundary>
                             <Suspense fallback={<ChatSkeleton />}>
@@ -182,7 +182,7 @@ function AppContent() {
                       </>
                     ) : (
                       <div className="flex-1 min-w-0 overflow-hidden flex justify-center">
-                        <div className="w-full max-w-[860px] h-full bg-background-chat">
+                        <div className="w-full max-w-[860px] h-full">
                           <ErrorBoundary>
                             <Suspense fallback={<ChatSkeleton />}>
                               <ChatPanel />

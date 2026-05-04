@@ -1269,7 +1269,7 @@ export default function ChatPanel() {
                   initial={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.15 }}
-                  className="absolute inset-0 z-30 bg-background-secondary pointer-events-auto"
+                  className="absolute inset-0 z-30 bg-background-chat pointer-events-auto"
                 >
                   <ChatMessagesSkeleton />
                 </motion.div>

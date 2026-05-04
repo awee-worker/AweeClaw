@@ -182,7 +182,7 @@ function AppContent() {
                       </>
                     ) : (
                       <div className="flex-1 min-w-0 overflow-hidden flex justify-center">
-                        <div className="w-full max-w-[860px] h-full bg-background-chat">
+                        <div className="w-full max-w-[860px] h-full">
                           <ErrorBoundary>
                             <Suspense fallback={<ChatSkeleton />}>
                               <ChatPanel />

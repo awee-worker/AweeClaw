@@ -3,7 +3,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { AlertCircle, ArrowUpCircle, CheckCircle, CloudSync, Download, ExternalLink, Loader2, RefreshCw, X } from 'lucide-react'
+import { AlertCircle, ArrowUpCircle, CheckCircle, Download, ExternalLink, Loader2, RefreshCw, Sparkles, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { updaterService, type UpdateStatus } from '@services/updaterService'
 import { useStore } from '@store'
@@ -95,7 +95,7 @@ export default function UpdateIndicator() {
         ) : isError ? (
           <AlertCircle className="w-4 h-4" />
         ) : (
-          <CloudSync className="w-4 h-4 opacity-70 group-hover:opacity-100" />
+          <Download className="w-4 h-4 opacity-70 group-hover:opacity-100" />
         )}
 
         {hasUpdate && <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-accent rounded-full border-2 border-background animate-pulse" />}
