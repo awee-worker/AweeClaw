@@ -1027,23 +1027,13 @@ export function registerSecureTerminalHandlers(
           logger.security.error(`[Terminal] PTY spawn failed: ${errorMsg}`, err)
 
           if (errorMsg.includes('Napi::Error') || errorMsg.includes('native') || errorMsg.includes('module') || errorMsg.includes('libc++abi')) {
-            logger.security.warn('[Terminal] Falling back to pipe backend due to PTY error')
-            const child = spawn(shellPath, ['-il'], {
-              cwd: targetCwd,
-              env: {
-                ...process.env,
-                TERM: 'xterm-256color',
-                COLORTERM: 'truecolor',
-              },
-              stdio: 'pipe',
-              detached: process.platform !== 'win32',
-              windowsHide: true,
-            }) as ChildProcessWithoutNullStreams
-
-            terminalProcess = new PipeShellSession(child)
-          } else {
-            return { success: false, error: `Failed to spawn terminal: ${errorMsg}` }
+            return {
+              success: false,
+              error: 'node-pty native module error. The module may need to be rebuilt for this Electron version. Please run: npm run rebuild'
+            }
           }
+
+          return { success: false, error: `Failed to spawn terminal: ${errorMsg}` }
         }
       }
 
