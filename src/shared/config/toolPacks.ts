@@ -95,6 +95,7 @@ const DATA_TOOL_PACK: ToolPack = {
     'csv_analyze',
     'chart_generate',
     'statistical_test',
+    'rest_api',
   ],
   dependencies: ['code'],
 }

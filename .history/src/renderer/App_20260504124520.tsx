@@ -38,7 +38,6 @@ const AboutDialog = lazy(() => import('./components/dialogs/AboutDialog'))
 const WelcomePage = lazy(() => import('./components/welcome/WelcomePage'))
 
 initializeScenarios()
-registerBuiltinScenarios()
 
 function ToastInitializer() {
   const toastContext = useToast()
@@ -82,17 +81,6 @@ function AppContent() {
   useEffect(() => {
     window.__ADNIFY_STORE__ = { getState: () => useStore.getState() }
   }, [])
-
-  useEffect(() => {
-    if (!activeScenarioId) return
-    const previousId = scenarioLoader.getAllPlugins().find(p => scenarioLoader.isActive(p.id))?.id
-    if (previousId && previousId !== activeScenarioId) {
-      scenarioLoader.deactivate(previousId)
-    }
-    if (scenarioLoader.has(activeScenarioId) && !scenarioLoader.isActive(activeScenarioId)) {
-      scenarioLoader.activate(activeScenarioId, workspace?.roots?.[0] || null)
-    }
-  }, [activeScenarioId, workspace])
 
   const hasWorkspace = useMemo(() => Boolean(workspace && workspace.roots.length > 0), [workspace])
   const isShellStudioActive = activeSidePanel === 'shell'

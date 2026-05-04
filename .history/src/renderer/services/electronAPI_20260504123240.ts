@@ -55,46 +55,6 @@ type ElectronAPIWithRemoteShell = ElectronAPI & {
   }>
   pythonInstallPkg: (pkg: string) => Promise<{ success: boolean; error?: string }>
   pythonSetCustomPath: (customPath: string | null) => Promise<{ success: boolean; error?: string }>
-
-  dataExecuteQuery: (params: { query: string; connectionId: string; limit: number }) => Promise<{
-    success: boolean
-    columns?: string[]
-    rows?: Record<string, unknown>[]
-    rowCount?: number
-    error?: string
-    executionTime?: number
-  }>
-  dataTransform: (params: { operation: string; source: string; config: Record<string, unknown>; output?: string }) => Promise<{
-    success: boolean
-    rowCount?: number
-    data?: unknown
-    error?: string
-  }>
-  dataAnalyzeCsv: (params: { path: string; analysisType: string; sampleSize: number }) => Promise<{
-    success: boolean
-    data?: Record<string, unknown>
-    error?: string
-  }>
-  dataGenerateChart: (params: { chartType: string; data: Record<string, unknown>; title?: string; xLabel?: string; yLabel?: string; format?: string }) => Promise<{
-    success: boolean
-    html?: string
-    path?: string
-    error?: string
-  }>
-  dataStatisticalTest: (params: { testType: string; data: Record<string, unknown>; alpha: number; hypothesis?: string }) => Promise<{
-    success: boolean
-    result?: { statistic: number; pValue: number; significant: boolean; conclusion: string }
-    error?: string
-  }>
-  dataRestApiCall: (params: { url: string; method: string; headers: Record<string, string>; body?: string; authType: string; authToken?: string; authHeaderName?: string }) => Promise<{
-    success: boolean
-    status?: number
-    data?: unknown
-    error?: string
-  }>
-  dataConnectDatabase: (config: { id: string; driver: string; host?: string; port?: number; database?: string; username?: string; password?: string; filePath?: string }) => Promise<{ success: boolean; error?: string }>
-  dataDisconnectDatabase: (connectionId: string) => Promise<{ success: boolean }>
-  dataGetConnections: () => Promise<Array<{ id: string; driver: string; host?: string; port?: number; database?: string; filePath?: string }>>
 }
 
 // 创建分组 API 适配器

@@ -84,7 +84,6 @@ class ToolRegistry {
    * 注意：执行器存储在 globalExecutors 中，支持热重载
    */
   registerAll(executors: Record<string, ToolExecutor>): void {
-    // 更新全局执行器映射（热重载时会更新引用）
     globalExecutors = executors
     
     for (const [name, executor] of Object.entries(executors)) {
@@ -92,6 +91,30 @@ class ToolRegistry {
     }
     this.initialized = true
     logger.agent.info(`[ToolRegistry] Registered ${this.tools.size} tools`)
+  }
+
+  registerScenarioTool(name: string, definition: ToolDefinition, executor: ToolExecutor, options?: { override?: boolean }): boolean {
+    if (this.tools.has(name) && !options?.override) return false
+
+    const schema = z.object({}).passthrough()
+
+    this.tools.set(name, {
+      name,
+      definition,
+      schema,
+      getExecutor: () => executor,
+      category: 'interaction' as ToolCategory,
+      approvalType: 'none',
+      parallel: false,
+      enabled: true,
+    })
+
+    logger.agent.info(`[ToolRegistry] Registered scenario tool: ${name}`)
+    return true
+  }
+
+  unregisterScenarioTool(name: string): boolean {
+    return this.tools.delete(name)
   }
 
   isInitialized(): boolean {

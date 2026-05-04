@@ -21,6 +21,9 @@ export * from './result'
 // Scenario 场景插件类型
 export * from './scenario'
 
+// Scenario Architecture 场景架构类型
+export * from './scenario-arch'
+
 // ==========================================
 // 基础类型
 // ==========================================
