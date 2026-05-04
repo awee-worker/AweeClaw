@@ -33,6 +33,7 @@ const isCustomOption = (option: { id: string; label: string }) => {
 }
 
 export function InteractiveCard({ content, onSelect, disabled }: InteractiveCardProps) {
+    const expandAgentBlocksByDefault = useStore(s => s.agentConfig.expandAgentBlocksByDefault ?? false)
     const [selected, setSelected] = useState<Set<string>>(
         new Set(content.selectedIds || [])
     )

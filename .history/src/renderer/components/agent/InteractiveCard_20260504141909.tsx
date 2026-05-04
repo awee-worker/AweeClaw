@@ -33,6 +33,7 @@ const isCustomOption = (option: { id: string; label: string }) => {
 }
 
 export function InteractiveCard({ content, onSelect, disabled }: InteractiveCardProps) {
+    const expandAgentBlocksByDefault = useStore(s => s.agentConfig.expandAgentBlocksByDefault ?? false)
     const [selected, setSelected] = useState<Set<string>>(
         new Set(content.selectedIds || [])
     )
@@ -48,15 +49,11 @@ export function InteractiveCard({ content, onSelect, disabled }: InteractiveCard
         if (content.selectedIds?.length) {
             setSelected(new Set(content.selectedIds))
             setSubmitted(true)
-            setIsExpanded(false)
+            if (disabled) {
+                setIsExpanded(false)
+            }
         }
-    }, [content.selectedIds])
-
-    useEffect(() => {
-        if (disabled && submitted) {
-            setIsExpanded(false)
-        }
-    }, [disabled, submitted])
+    }, [content.selectedIds, disabled])
 
     // 聚焦输入框
     useEffect(() => {

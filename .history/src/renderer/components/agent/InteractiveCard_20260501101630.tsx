@@ -33,12 +33,12 @@ const isCustomOption = (option: { id: string; label: string }) => {
 }
 
 export function InteractiveCard({ content, onSelect, disabled }: InteractiveCardProps) {
+    const expandAgentBlocksByDefault = useStore(s => s.agentConfig.expandAgentBlocksByDefault ?? false)
     const [selected, setSelected] = useState<Set<string>>(
         new Set(content.selectedIds || [])
     )
-    const hasExistingSelection = !!content.selectedIds?.length
-    const [isExpanded, setIsExpanded] = useState(hasExistingSelection ? false : true)
-    const [submitted, setSubmitted] = useState(hasExistingSelection)
+    const [isExpanded, setIsExpanded] = useState(expandAgentBlocksByDefault)
+    const [submitted, setSubmitted] = useState(!!content.selectedIds?.length)
     const [customText, setCustomText] = useState('')
     const [showCustomInput, setShowCustomInput] = useState(false)
     const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -48,15 +48,11 @@ export function InteractiveCard({ content, onSelect, disabled }: InteractiveCard
         if (content.selectedIds?.length) {
             setSelected(new Set(content.selectedIds))
             setSubmitted(true)
-            setIsExpanded(false)
+            if (disabled) {
+                setIsExpanded(false)
+            }
         }
-    }, [content.selectedIds])
-
-    useEffect(() => {
-        if (disabled && submitted) {
-            setIsExpanded(false)
-        }
-    }, [disabled, submitted])
+    }, [content.selectedIds, disabled])
 
     // 聚焦输入框
     useEffect(() => {
