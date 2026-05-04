@@ -258,6 +258,8 @@ export const codeEditorScenario: ScenarioPlugin = {
   category: 'development',
   tags: ['code', 'editor', 'development', 'ide'],
   isDefault: true,
+  isBuiltin: true,
+  source: 'builtin',
   requiresWorkspace: true,
 
   identity: CODE_EDITOR_IDENTITY,

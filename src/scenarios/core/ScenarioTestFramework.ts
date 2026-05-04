@@ -442,6 +442,8 @@ class ScenarioTestFrameworkClass {
         reportCheck: () => {},
         reportError: () => {},
       }),
+      executeSql: async () => ({ success: true, rowsAffected: 0 }),
+      getDatabasePath: async () => `/mock/scenario-data/${scenarioId}/${scenarioId}.db`,
     }
   }
 }

@@ -85,7 +85,7 @@ export const SECURITY_DEFAULTS = {
     'node', 'npx', 'deno',
     'eslint', 'tsc',
     'git',
-    'python', 'python3', 'pip', 'pip3',
+    'python', 'python3', 'pip', 'pip3', 'uv',
     'java', 'javac', 'mvn', 'gradle',
     'go', 'rust', 'cargo',
     'make', 'gcc', 'clang', 'cmake',

@@ -68,5 +68,34 @@ export function registerPythonHandlers(): void {
     }
   })
 
+  ipcMain.handle('python:executeScript', async (_, params: {
+    scriptPath: string
+    args?: string[]
+    cwd?: string
+    timeout?: number
+  }) => {
+    try {
+      return await pythonManager.executeScript(params)
+    } catch (err) {
+      logger.system.error('[Python IPC] executeScript failed:', err)
+      return { success: false, stdout: '', stderr: '', exitCode: null, error: toAppError(err).message }
+    }
+  })
+
+  ipcMain.handle('python:executeInlineScript', async (_, params: {
+    script: string
+    dependencies?: string[]
+    args?: string[]
+    cwd?: string
+    timeout?: number
+  }) => {
+    try {
+      return await pythonManager.executeInlineScript(params)
+    } catch (err) {
+      logger.system.error('[Python IPC] executeInlineScript failed:', err)
+      return { success: false, stdout: '', stderr: '', exitCode: null, error: toAppError(err).message }
+    }
+  })
+
   logger.system.info('[Python IPC] Handlers registered')
 }
