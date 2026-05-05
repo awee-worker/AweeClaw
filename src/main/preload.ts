@@ -1031,4 +1031,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('app:error', handler)
     return () => ipcRenderer.removeListener('app:error', handler)
   },
+
+  // Audit API
+  auditAppend: (entries: any) => ipcRenderer.invoke('audit:append', entries),
+  auditQuery: (filter?: any) => ipcRenderer.invoke('audit:query', filter),
+  auditFlush: () => ipcRenderer.invoke('audit:flush'),
 })

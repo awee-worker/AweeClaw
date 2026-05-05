@@ -1,6 +1,6 @@
 import type { Middleware, MiddlewareContext } from '../Middleware'
 
-interface AuditEntry {
+export interface AuditEntry {
   pipelineId: string
   action: string
   resource: string
@@ -11,6 +11,48 @@ interface AuditEntry {
 
 const auditLog: AuditEntry[] = []
 const MAX_AUDIT_ENTRIES = 1000
+
+const PERSIST_BATCH_SIZE = 20
+let persistBuffer: AuditEntry[] = []
+let persistTimer: ReturnType<typeof setInterval> | null = null
+
+function getAuditAPI(): { append: (entries: AuditEntry | AuditEntry[]) => Promise<void> } | null {
+  try {
+    const win = window as unknown as Record<string, unknown>
+    const eapi = win.electronAPI as Record<string, unknown> | undefined
+    if (eapi && typeof eapi.auditAppend === 'function') {
+      return {
+        append: async (entries) => {
+          await (eapi.auditAppend as Function)(entries)
+        },
+      }
+    }
+  } catch {
+    // not in electron context
+  }
+  return null
+}
+
+function schedulePersist(): void {
+  if (persistTimer) return
+  persistTimer = setInterval(() => {
+    flushPersistBuffer()
+  }, 3000)
+}
+
+async function flushPersistBuffer(): Promise<void> {
+  if (persistBuffer.length === 0) return
+
+  const toSend = persistBuffer.splice(0)
+  const api = getAuditAPI()
+  if (api) {
+    try {
+      await api.append(toSend)
+    } catch {
+      persistBuffer.unshift(...toSend)
+    }
+  }
+}
 
 export class AuditMiddleware<TInput, TOutput> implements Middleware<TInput, TOutput> {
   readonly id = 'audit'
@@ -65,6 +107,13 @@ function addAuditEntry(entry: AuditEntry): void {
   auditLog.push(entry)
   if (auditLog.length > MAX_AUDIT_ENTRIES) {
     auditLog.splice(0, auditLog.length - MAX_AUDIT_ENTRIES)
+  }
+
+  persistBuffer.push(entry)
+  if (persistBuffer.length >= PERSIST_BATCH_SIZE) {
+    flushPersistBuffer()
+  } else {
+    schedulePersist()
   }
 }
 

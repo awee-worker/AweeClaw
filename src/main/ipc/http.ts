@@ -34,7 +34,7 @@ async function fetchWithJinaReader(url: string, timeout = 60000): Promise<ReadUr
             method: 'GET',
             headers: {
                 'Accept': 'text/plain',
-                'User-Agent': 'AweeClaw/1.0 (AI Code Editor)',
+                'User-Agent': 'AweeClaw/1.0 (AI Agent Platform)',
             },
             timeout,
         }

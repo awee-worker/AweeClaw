@@ -301,13 +301,10 @@ export interface ToolCall {
     status: ToolStatus
     result?: string
     error?: string
-    /** Structured rich results such as images, code, tables, or files. */
     richContent?: ToolRichContent[]
-    /**
-     * Legacy compatibility field.
-     * Live streaming previews should read from thread-level `ToolStreamingPreview` state instead.
-     */
     streamingState?: ToolStreamingPreview
+    startTime?: number
+    endTime?: number
 }
 
 export interface ToolExecutionResult {

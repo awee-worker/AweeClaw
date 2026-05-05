@@ -228,6 +228,7 @@ export async function buildAgentSystemPrompt(
     promptTemplateId?: string
     planPhase?: 'planning' | 'executing'
     mentionedSkills?: string[]
+    userMessage?: string
   }
 ): Promise<{ prompt: string; activeSkills: { name: string; description: string }[] }> {
   const {
@@ -237,6 +238,7 @@ export async function buildAgentSystemPrompt(
     promptTemplateId,
     planPhase,
     mentionedSkills,
+    userMessage,
   } = options || {}
 
   let template = promptTemplateId
@@ -264,10 +266,26 @@ export async function buildAgentSystemPrompt(
       )
     : []
 
+  const keywordMatchedSkills = userMessage
+    ? skillService.matchSkillsByKeywords(allSkills, userMessage)
+    : []
+
+  const fullInjectionSkills: typeof allSkills = []
+  const fullInjectionNames = new Set<string>()
+
+  for (const skill of [...mentionedManualSkills, ...keywordMatchedSkills]) {
+    if (!fullInjectionNames.has(skill.name)) {
+      fullInjectionNames.add(skill.name)
+      fullInjectionSkills.push(skill)
+    }
+  }
+
+  const indexOnlySkills = autoSkills.filter(s => !fullInjectionNames.has(s.name))
+
   const activeSkillNames = new Set<string>()
   const activeSkillsList: typeof allSkills = []
 
-  for (const skill of [...autoSkills, ...mentionedManualSkills]) {
+  for (const skill of [...autoSkills, ...fullInjectionSkills]) {
     if (!activeSkillNames.has(skill.name)) {
       activeSkillNames.add(skill.name)
       activeSkillsList.push(skill)
@@ -284,8 +302,8 @@ export async function buildAgentSystemPrompt(
     personality: template.personality,
     projectRules,
     memories,
-    autoSkills,
-    mentionedSkills: mentionedManualSkills,
+    autoSkills: indexOnlySkills,
+    mentionedSkills: fullInjectionSkills,
     customInstructions: customInstructions || null,
     templateId: template.id,
     projectSummary,

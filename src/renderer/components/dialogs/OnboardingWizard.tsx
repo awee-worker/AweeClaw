@@ -336,7 +336,7 @@ function WelcomeStep({ isZh }: { isZh: boolean }) {
           {isZh ? '欢迎使用 AweeClaw' : 'Welcome to AweeClaw'}
         </h1>
         <p className="text-text-muted max-w-lg mx-auto leading-relaxed text-lg mb-2">
-          {isZh ? 'AI 驱动的下一代智能代码编辑器' : 'Next-gen AI-powered intelligent code editor'}
+          {isZh ? 'AI 驱动的下一代智能体平台' : 'Next-gen AI-powered intelligent agent platform'}
         </p>
         <p className="text-text-muted/85 max-w-sm mx-auto text-sm">
           {isZh
