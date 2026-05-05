@@ -76,8 +76,6 @@ export interface PromptContext {
   personality: string
   projectRules: ProjectRules | null
   memories: MemoryItem[]
-  knowledgeEntries: KnowledgeEntry[]
-  userQuery?: string
   autoSkills: SkillItem[]
   mentionedSkills: SkillItem[]
   customInstructions: string | null
@@ -149,56 +147,13 @@ function buildProjectRules(rules: ProjectRules | null): string | null {
 ${rules.content}`
 }
 
-function buildKnowledge(entries: KnowledgeEntry[], query?: string): string | null {
-  const enabled = entries.filter(e => e.enabled)
+function buildMemory(memories: MemoryItem[]): string | null {
+  const enabled = memories.filter(memory => memory.enabled)
   if (enabled.length === 0) return null
 
-  const manualEntries = enabled.filter(e => e.layer === 'manual')
-  const otherEntries = enabled.filter(e => e.layer !== 'manual')
-
-  const lines: string[] = []
-  let estimatedTokens = 0
-  const maxTokens = 2000
-
-  for (const entry of manualEntries) {
-    const tag = entry.tags.length > 0 ? ` [${entry.tags.join(',')}]` : ''
-    const line = `- [${entry.category}]${tag} ${entry.content}`
-    const lineTokens = Math.ceil(line.length / 4)
-    if (estimatedTokens + lineTokens > maxTokens) break
-    lines.push(line)
-    estimatedTokens += lineTokens
-  }
-
-  if (query && otherEntries.length > 0) {
-    const q = query.toLowerCase()
-    const relevant = otherEntries
-      .map(entry => {
-        let score = 0
-        if (entry.title.toLowerCase().includes(q)) score += 3
-        if (entry.content.toLowerCase().includes(q)) score += 2
-        for (const tag of entry.tags) {
-          if (tag.toLowerCase().includes(q)) score += 1
-        }
-        if (entry.category === 'error-solution') score += 1
-        if (entry.starred) score += 1
-        return { entry, score }
-      })
-      .filter(r => r.score > 0)
-      .sort((a, b) => b.score - a.score)
-
-    for (const { entry } of relevant) {
-      const tag = entry.tags.length > 0 ? ` [${entry.tags.join(',')}]` : ''
-      const line = `- [${entry.category}]${tag} ${entry.content}`
-      const lineTokens = Math.ceil(line.length / 4)
-      if (estimatedTokens + lineTokens > maxTokens) break
-      lines.push(line)
-      estimatedTokens += lineTokens
-    }
-  }
-
-  if (lines.length === 0) return null
-  return `## Knowledge Base
-${lines.join('\n')}`
+  const lines = enabled.map(memory => `- ${memory.content}`).join('\n')
+  return `## Project Memory
+${lines}`
 }
 
 function buildCustomInstructions(instructions: string | null): string | null {
@@ -237,7 +192,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     buildEnvironment(ctx),
     buildProjectSummary(ctx.projectSummary || null),
     buildProjectRules(ctx.projectRules),
-    buildKnowledge(ctx.knowledgeEntries, ctx.userQuery),
+    buildMemory(ctx.memories),
     ...buildSkillsSections(ctx.autoSkills, ctx.mentionedSkills),
     buildCustomInstructions(ctx.customInstructions),
   ]
@@ -257,7 +212,7 @@ export function buildChatPrompt(ctx: PromptContext): string {
     buildEnvironment(ctx),
     buildProjectSummary(ctx.projectSummary || null),
     buildProjectRules(ctx.projectRules),
-    buildKnowledge(ctx.knowledgeEntries, ctx.userQuery),
+    buildMemory(ctx.memories),
     ...buildSkillsSections(ctx.autoSkills, ctx.mentionedSkills),
     buildCustomInstructions(ctx.customInstructions),
   ]
@@ -297,10 +252,9 @@ export async function buildAgentSystemPrompt(
     template = getDefaultPromptTemplate()
   }
 
-  const [projectRules, memories, knowledgeEntries, allSkills, projectSummary] = await Promise.all([
+  const [projectRules, memories, allSkills, projectSummary] = await Promise.all([
     rulesService.getRules(),
     memoryService.getMemories(),
-    knowledgeService.getEnabledEntries(),
     skillService.getSkills(),
     workspacePath ? loadProjectSummary(workspacePath) : Promise.resolve(null),
   ])
@@ -350,8 +304,6 @@ export async function buildAgentSystemPrompt(
     personality: template.personality,
     projectRules,
     memories,
-    knowledgeEntries,
-    userQuery: userMessage,
     autoSkills: indexOnlySkills,
     mentionedSkills: fullInjectionSkills,
     customInstructions: customInstructions || null,

@@ -124,7 +124,8 @@ const LOW_VOLTAGE_UI: ScenarioUI = {
     { id: 'districts', icon: 'MapPin', label: 'Districts', labelZh: '台区管理', component: 'LvDistrictsView', position: 1 },
     { id: 'treatment', icon: 'Wrench', label: 'Treatment', labelZh: '治理记录', component: 'LvTreatmentView', position: 2 },
     { id: 'monitor', icon: 'Activity', label: 'Monitor', labelZh: '电压监测', component: 'LvMonitorView', position: 3 },
-    { id: 'history', icon: 'History', label: 'History', labelZh: '历史', component: 'HistoryView', position: 4 },
+    { id: 'knowledge', icon: 'BookOpen', label: 'Knowledge', labelZh: '知识库', component: 'KnowledgeView', position: 4 },
+    { id: 'history', icon: 'History', label: 'History', labelZh: '历史', component: 'HistoryView', position: 5 },
   ],
   statusBarItems: [
     { id: 'db-status', component: 'DbStatusIndicator', position: 'left', order: 0 },

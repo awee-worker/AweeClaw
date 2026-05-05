@@ -145,7 +145,8 @@ const CREATIVE_WRITER_UI: ScenarioUI = {
     { id: 'outline', icon: 'ListTree', label: 'Outline', labelZh: '大纲', component: 'OutlineView', position: 1 },
     { id: 'characters', icon: 'Users', label: 'Characters', labelZh: '角色', component: 'CharacterView', position: 2 },
     { id: 'research', icon: 'Search', label: 'Research', labelZh: '研究', component: 'ResearchView', position: 3 },
-    { id: 'history', icon: 'History', label: 'Versions', labelZh: '版本', component: 'VersionHistoryView', position: 4 },
+    { id: 'knowledge', icon: 'BookOpen', label: 'Knowledge', labelZh: '知识库', component: 'KnowledgeView', position: 4 },
+    { id: 'history', icon: 'History', label: 'Versions', labelZh: '版本', component: 'VersionHistoryView', position: 5 },
   ],
   statusBarItems: [
     { id: 'word-count', component: 'WordCountIndicator', position: 'left', order: 0 },

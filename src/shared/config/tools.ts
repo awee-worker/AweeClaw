@@ -939,6 +939,35 @@ Don't wait for the user to ask — if you learn something that would save time i
         },
     },
 
+    knowledge_search: {
+        name: 'knowledge_search',
+        displayName: 'Knowledge Search',
+        description: 'Search the project knowledge base for relevant information. The knowledge base contains user-added facts, preferences, architectural decisions, error solutions, and other project-specific knowledge.',
+        detailedDescription: `Search the project knowledge base for context-relevant information.
+
+Use knowledge_search when you need:
+- Project-specific conventions or decisions
+- Known error solutions that might apply
+- User preferences and coding style
+- Architecture patterns used in the project
+- API documentation or reference material stored in the knowledge base
+
+This searches across all knowledge layers (manual, conversation-extracted).`,
+        examples: [
+            'knowledge_search query="authentication approach"',
+            'knowledge_search query="error handling pattern" category="error-solution"',
+        ],
+        category: 'interaction',
+        approvalType: 'none',
+        parallel: true,
+        requiresWorkspace: true,
+        enabled: true,
+        parameters: {
+            query: { type: 'string', description: 'Search query to find relevant knowledge entries', required: true },
+            category: { type: 'string', description: 'Filter by category: concept, decision, preference, faq, reference, glossary, best-practice, error-solution, api, pattern', required: false },
+        },
+    },
+
     // ===== Skill 工具 =====
     apply_skill: {
         name: 'apply_skill',

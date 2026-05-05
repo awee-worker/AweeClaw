@@ -382,7 +382,7 @@ export default function ChatPanel() {
       if (event.reason === 'complete' || event.reason === 'tool_requested_stop' || event.reason === 'waiting_for_user') {
         const convMessages = filteredMessages
           .filter(m => m.role === 'user' || m.role === 'assistant')
-          .map(m => ({ role: m.role, content: getMessageText(m.content) }))
+          .map(m => ({ role: m.role, content: getMessageText(m) }))
         knowledgeExtractor.extractFromMessages(convMessages).catch(() => {})
       }
     })

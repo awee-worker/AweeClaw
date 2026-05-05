@@ -52,6 +52,7 @@ const TOOL_LABEL_KEYS: Record<string, string> = {
     read_url: 'tool.label.read_url',
     ask_user: 'tool.label.ask_user',
     remember: 'tool.label.remember',
+    knowledge_search: 'tool.label.knowledge_search',
     uiux_search: 'tool.label.uiux_search',
     uiux_recommend: 'tool.label.uiux_recommend',
     apply_skill: 'tool.label.apply_skill',

@@ -1,8 +1,8 @@
 /**
- * 通用助手场景插件
+ * 通用助手场景配置
  *
- * 适用于日常问答、知识查询、任务规划等通用场景。
- * 不需要工作区，是最灵活的默认场景。
+ * 从 src/shared/config/scenarios/generalAssistantScenario.ts 迁移，
+ * 并扩展通用助手场景的完整定义。
  */
 
 import type {
@@ -11,7 +11,7 @@ import type {
   ScenarioCapabilities,
   ScenarioUI,
   ScenarioDataSources,
-} from '../../types/scenario'
+} from '@shared/types/scenario'
 
 const GENERAL_ASSISTANT_IDENTITY: ScenarioIdentity = {
   systemPrompt: `You are an AI assistant integrated into **AweeClaw**, currently in **General Assistant** scenario, created by **awee** (微信: awee_worker, Email: awee.worker@qq.com).
@@ -143,7 +143,8 @@ const GENERAL_ASSISTANT_UI: ScenarioUI = {
   ],
   sidebarItems: [
     { id: 'explorer', icon: 'Files', label: 'Explorer', labelZh: '资源管理器', component: 'ExplorerView', position: 0 },
-    { id: 'history', icon: 'History', label: 'History', labelZh: '历史', component: 'HistoryView', position: 1 },
+    { id: 'knowledge', icon: 'BookOpen', label: 'Knowledge', labelZh: '知识库', component: 'KnowledgeView', position: 1 },
+    { id: 'history', icon: 'History', label: 'History', labelZh: '历史', component: 'HistoryView', position: 2 },
   ],
   statusBarItems: [],
   welcomeComponent: 'GeneralWelcomePage',
@@ -174,6 +175,8 @@ export const generalAssistantScenario: ScenarioPlugin = {
   category: 'productivity',
   tags: ['general', 'assistant', 'q&a', 'research', 'planning'],
   isDefault: true,
+  isBuiltin: true,
+  source: 'builtin',
   requiresWorkspace: false,
 
   identity: GENERAL_ASSISTANT_IDENTITY,

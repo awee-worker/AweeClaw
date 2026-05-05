@@ -2132,7 +2132,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
 
         try {
             const category = args.category as KnowledgeCategory | undefined
-            const results = await knowledgeService.semanticSearch({
+            const results = await knowledgeService.search({
                 query,
                 category,
                 limit: 10,

@@ -149,6 +149,15 @@ function buildProjectRules(rules: ProjectRules | null): string | null {
 ${rules.content}`
 }
 
+function buildMemory(memories: MemoryItem[]): string | null {
+  const enabled = memories.filter(memory => memory.enabled)
+  if (enabled.length === 0) return null
+
+  const lines = enabled.map(memory => `- ${memory.content}`).join('\n')
+  return `## Project Memory
+${lines}`
+}
+
 function buildKnowledge(entries: KnowledgeEntry[], query?: string): string | null {
   const enabled = entries.filter(e => e.enabled)
   if (enabled.length === 0) return null
@@ -297,10 +306,9 @@ export async function buildAgentSystemPrompt(
     template = getDefaultPromptTemplate()
   }
 
-  const [projectRules, memories, knowledgeEntries, allSkills, projectSummary] = await Promise.all([
+  const [projectRules, memories, allSkills, projectSummary] = await Promise.all([
     rulesService.getRules(),
     memoryService.getMemories(),
-    knowledgeService.getEnabledEntries(),
     skillService.getSkills(),
     workspacePath ? loadProjectSummary(workspacePath) : Promise.resolve(null),
   ])
@@ -350,8 +358,6 @@ export async function buildAgentSystemPrompt(
     personality: template.personality,
     projectRules,
     memories,
-    knowledgeEntries,
-    userQuery: userMessage,
     autoSkills: indexOnlySkills,
     mentionedSkills: fullInjectionSkills,
     customInstructions: customInstructions || null,
