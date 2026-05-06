@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState, useEffect, useMemo, useCallback } from 'react'
-import { Cpu, Settings2, Code, Keyboard, Database, Shield, Monitor, Globe, Plug, Braces, Brain, FileCode, FileText, Zap, Check, X, Palette, Radio } from 'lucide-react'
+import { Cpu, Settings2, Code, Keyboard, Database, Shield, Monitor, Globe, Plug, Braces, Brain, FileCode, Zap, Check, X, Palette, Radio } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { PROVIDERS } from '@/shared/config/providers'
@@ -25,6 +25,9 @@ const SnippetSettings = lazy(() =>
 )
 const AgentSettings = lazy(() =>
     import('./tabs/AgentSettings').then(module => ({ default: module.AgentSettings })),
+)
+const RulesMemorySettings = lazy(() =>
+    import('./tabs/RulesMemorySettings').then(module => ({ default: module.RulesMemorySettings })),
 )
 const RulesSettings = lazy(() =>
     import('./tabs/RulesSettings').then(module => ({ default: module.RulesSettings })),
@@ -462,9 +465,7 @@ export default function SettingsModal() {
                     />
                 )
             case 'rules':
-                return <RulesSettings language={language} />
-            case 'memory':
-                return <MemorySettings language={language} />
+                return <RulesMemorySettings language={language} />
             case 'skills':
                 return <SkillSettings language={language} />
             case 'mcp':

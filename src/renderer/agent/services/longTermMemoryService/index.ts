@@ -78,7 +78,7 @@ class LongTermMemoryService {
 
   async updateEntry(
     id: string,
-    updates: Partial<Pick<MemoryEntry, 'content' | 'tags' | 'enabled' | 'confidence'>>
+    updates: Partial<Pick<MemoryEntry, 'content' | 'tags' | 'enabled' | 'confidence' | 'status'>>
   ): Promise<boolean> {
     const store = await this.loadStore()
     const entry = this.findById(store, id)
@@ -88,7 +88,22 @@ class LongTermMemoryService {
     if (updates.tags !== undefined) entry.tags = updates.tags
     if (updates.enabled !== undefined) entry.enabled = updates.enabled
     if (updates.confidence !== undefined) entry.confidence = Math.min(1, Math.max(0, updates.confidence))
-    entry.updatedAt = Date.now()
+
+    if (updates.status !== undefined && updates.status !== entry.status) {
+      const oldList = this.getList(store, entry.status)
+      const idx = oldList.findIndex(e => e.id === id)
+      if (idx !== -1) {
+        oldList.splice(idx, 1)
+        entry.status = updates.status
+        entry.updatedAt = Date.now()
+        const newList = this.getList(store, updates.status)
+        newList.push(entry)
+        await this.saveStore(store)
+        return true
+      }
+    } else {
+      entry.updatedAt = Date.now()
+    }
 
     await this.saveStore(store)
     return true

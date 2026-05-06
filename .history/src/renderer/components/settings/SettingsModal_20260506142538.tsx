@@ -26,6 +26,9 @@ const SnippetSettings = lazy(() =>
 const AgentSettings = lazy(() =>
     import('./tabs/AgentSettings').then(module => ({ default: module.AgentSettings })),
 )
+const RulesMemorySettings = lazy(() =>
+    import('./tabs/RulesMemorySettings').then(module => ({ default: module.RulesMemorySettings })),
+)
 const RulesSettings = lazy(() =>
     import('./tabs/RulesSettings').then(module => ({ default: module.RulesSettings })),
 )
@@ -462,9 +465,7 @@ export default function SettingsModal() {
                     />
                 )
             case 'rules':
-                return <RulesSettings language={language} />
-            case 'memory':
-                return <MemorySettings language={language} />
+                return <RulesMemorySettings language={language} />
             case 'skills':
                 return <SkillSettings language={language} />
             case 'mcp':
