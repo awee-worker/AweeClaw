@@ -349,12 +349,6 @@ export interface ElectronAPI {
   // File
   openFile: () => Promise<{ path: string; content: string } | null>
   openKnowledgeFiles: () => Promise<string[] | null>
-  readKnowledgeFile: (filePath: string) => Promise<string | null>
-  extractKnowledgeDocxText: (filePath: string) => Promise<string | null>
-  extractKnowledgeDocText: (filePath: string) => Promise<string | null>
-  extractKnowledgeXlsxText: (filePath: string) => Promise<string | null>
-  extractKnowledgePptText: (filePath: string) => Promise<string | null>
-  extractKnowledgePdfText: (filePath: string) => Promise<string | null>
   openFolder: () => Promise<string | null>
   selectFolder: () => Promise<string | null>
   openWorkspace: () => Promise<WorkspaceConfig | null>

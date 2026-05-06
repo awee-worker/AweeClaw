@@ -656,6 +656,70 @@ ${lines.join('\n')}
     ].includes(cat)
   }
 
+  private chunkContent(content: string, maxChunkSize: number = 3000): string[] {
+    const trimmed = content.trim()
+    if (trimmed.length <= maxChunkSize) return [trimmed]
+
+    const chunks: string[] = []
+    const headingSplits = trimmed.split(/^(?=#{1,4}\s)/m)
+
+    if (headingSplits.length > 1) {
+      let currentChunk = ''
+      for (const section of headingSplits) {
+        if (!section.trim()) continue
+        if (currentChunk.length + section.length <= maxChunkSize) {
+          currentChunk += section
+        } else {
+          if (currentChunk.trim().length >= 100) chunks.push(currentChunk.trim())
+          if (section.length <= maxChunkSize) {
+            currentChunk = section
+          } else {
+            const subChunks = this.chunkByParagraph(section, maxChunkSize)
+            chunks.push(...subChunks.filter(c => c.trim().length >= 100))
+            currentChunk = ''
+          }
+        }
+      }
+      if (currentChunk.trim().length >= 100) chunks.push(currentChunk.trim())
+    } else {
+      return this.chunkByParagraph(trimmed, maxChunkSize)
+    }
+
+    return chunks.length > 0 ? chunks : [trimmed.slice(0, maxChunkSize)]
+  }
+
+  private chunkByParagraph(content: string, maxChunkSize: number): string[] {
+    const paragraphs = content.split(/\n{2,}/).filter(p => p.trim().length >= 50)
+    const chunks: string[] = []
+    let currentChunk = ''
+
+    for (const para of paragraphs) {
+      if (currentChunk.length + para.length + 2 <= maxChunkSize) {
+        currentChunk += (currentChunk ? '\n\n' : '') + para
+      } else {
+        if (currentChunk.trim().length >= 100) chunks.push(currentChunk.trim())
+        if (para.length <= maxChunkSize) {
+          currentChunk = para
+        } else {
+          const sentences = para.match(/[^.!?。！？\n]+[.!?。！？\n]?/g) || [para]
+          let sentenceChunk = ''
+          for (const sentence of sentences) {
+            if (sentenceChunk.length + sentence.length <= maxChunkSize) {
+              sentenceChunk += sentence
+            } else {
+              if (sentenceChunk.trim().length >= 100) chunks.push(sentenceChunk.trim())
+              sentenceChunk = sentence
+            }
+          }
+          currentChunk = sentenceChunk
+        }
+      }
+    }
+    if (currentChunk.trim().length >= 100) chunks.push(currentChunk.trim())
+
+    return chunks.length > 0 ? chunks : [content.slice(0, maxChunkSize)]
+  }
+
   private autoTitle(content: string): string {
     const trimmed = content.trim()
     const firstLine = trimmed.split('\n')[0]
@@ -737,6 +801,149 @@ ${lines.join('\n')}
       entries.push({ title: fileName, content, category: 'document' })
     }
     return entries
+  }
+
+  private parseMarkdownContent(content: string): { title: string; content: string; category: KnowledgeCategory }[] {
+    const entries: { title: string; content: string; category: KnowledgeCategory }[] = []
+    const sections = content.split(/^(?=#{1,3}\s)/m).filter(Boolean)
+
+    if (sections.length <= 1) {
+      const trimmed = content.trim()
+      if (trimmed.length < 100) return []
+      const chunks = this.chunkContent(trimmed)
+      for (const chunk of chunks) {
+        entries.push({ title: this.autoTitle(chunk), content: chunk, category: 'document' })
+      }
+      return entries
+    }
+
+    const headingStack: string[] = []
+    const rawSections: { title: string; content: string; context: string }[] = []
+
+    for (const section of sections) {
+      const lines = section.trim().split('\n')
+      const firstLine = lines[0]
+      const headingMatch = firstLine.match(/^(#{1,3})\s+(.+)/)
+      let title = ''
+      let body = ''
+
+      if (headingMatch) {
+        const level = headingMatch[1].length
+        title = headingMatch[2].trim()
+        body = lines.slice(1).join('\n').trim()
+
+        headingStack.length = Math.min(level - 1, headingStack.length)
+        headingStack[level - 1] = title
+        headingStack.length = level
+      } else {
+        body = section.trim()
+      }
+
+      if (!body || body.length < 50) continue
+
+      const context = headingStack.filter(Boolean).join(' > ')
+      rawSections.push({ title: title || this.autoTitle(body), content: body, context })
+    }
+
+    let merged: { title: string; content: string } | null = null
+    for (const sec of rawSections) {
+      const fullTitle = sec.context ? `${sec.context}` : sec.title
+      const fullContent = sec.content
+
+      if (fullContent.length < 200 && merged) {
+        merged.content += '\n\n' + fullContent
+        if (merged.content.length > 6000) {
+          entries.push({ title: merged.title, content: merged.content, category: 'document' })
+          merged = null
+        }
+      } else {
+        if (merged) {
+          entries.push({ title: merged.title, content: merged.content, category: 'document' })
+        }
+        if (fullContent.length > 6000) {
+          const chunks = this.chunkContent(fullContent)
+          for (const chunk of chunks) {
+            entries.push({ title: `${fullTitle} (${chunk.slice(0, 30).replace(/\n/g, ' ')}...)`, content: chunk, category: 'document' })
+          }
+          merged = null
+        } else {
+          merged = { title: fullTitle, content: fullContent }
+        }
+      }
+    }
+    if (merged) {
+      entries.push({ title: merged.title, content: merged.content, category: 'document' })
+    }
+
+    return entries.length > 0 ? entries : [{ title: this.autoTitle(content), content: content.trim(), category: 'document' }]
+  }
+
+  private parseTextContent(content: string, fileName: string): { title: string; content: string; category: KnowledgeCategory }[] {
+    const entries: { title: string; content: string; category: KnowledgeCategory }[] = []
+
+    if (fileName.endsWith('.csv')) {
+      const lines = content.split('\n').filter(l => l.trim())
+      if (lines.length > 1) {
+        const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''))
+        for (let i = 1; i < lines.length; i++) {
+          const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''))
+          const rowContent = headers.map((h, idx) => `${h}: ${values[idx] || ''}`).join('\n')
+          entries.push({
+            title: `${fileName} - Row ${i}`,
+            content: rowContent,
+            category: 'reference',
+          })
+        }
+      }
+      return entries.length > 0 ? entries : [{ title: fileName, content, category: 'document' }]
+    }
+
+    const trimmed = content.trim()
+    if (trimmed.length < 100) return []
+
+    const hasHeadings = /^(#{1,4}\s|第[一二三四五六七八九十\d]+[章节篇部]|[一二三四五六七八九十\d]+[、.])\s*\S/m.test(trimmed)
+    if (hasHeadings) {
+      return this.parseMarkdownContent(trimmed)
+    }
+
+    const paragraphs = trimmed.split(/\n{2,}/).filter(p => p.trim().length >= 30)
+    if (paragraphs.length <= 2) {
+      const chunks = this.chunkContent(trimmed)
+      for (const chunk of chunks) {
+        entries.push({ title: `${fileName} - ${this.autoTitle(chunk)}`, content: chunk, category: 'document' })
+      }
+      return entries
+    }
+
+    let currentGroup = ''
+    let groupStartIdx = 0
+
+    for (let i = 0; i < paragraphs.length; i++) {
+      const para = paragraphs[i]
+
+      if (currentGroup.length + para.length + 2 <= 3000) {
+        currentGroup += (currentGroup ? '\n\n' : '') + para
+      } else {
+        if (currentGroup.trim().length >= 100) {
+          entries.push({
+            title: `${fileName} (${groupStartIdx + 1}-${i})`,
+            content: currentGroup.trim(),
+            category: 'document',
+          })
+        }
+        currentGroup = para
+        groupStartIdx = i
+      }
+    }
+    if (currentGroup.trim().length >= 100) {
+      entries.push({
+        title: `${fileName} (${groupStartIdx + 1}-${paragraphs.length})`,
+        content: currentGroup.trim(),
+        category: 'document',
+      })
+    }
+
+    return entries.length > 0 ? entries : [{ title: fileName, content: trimmed, category: 'document' }]
   }
 
   private parseStructuredContent(content: string, fileName: string): { title: string; content: string; category: KnowledgeCategory }[] {

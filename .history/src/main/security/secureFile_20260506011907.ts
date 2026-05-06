@@ -96,14 +96,13 @@ export function registerSecureFileHandlers(
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: ['openFile', 'multiSelections'],
       filters: [
-        { name: 'Documents', extensions: ['md', 'txt', 'json', 'csv', 'pdf', 'docx', 'doc', 'xlsx', 'xls', 'ppt', 'pptx', 'db', 'sqlite', 'sqlite3'] },
+        { name: 'Documents', extensions: ['md', 'txt', 'json', 'csv', 'pdf', 'docx', 'doc', 'xlsx', 'xls', 'ppt', 'pptx'] },
         { name: 'Markdown', extensions: ['md', 'markdown'] },
         { name: 'PDF', extensions: ['pdf'] },
         { name: 'Word', extensions: ['docx', 'doc'] },
         { name: 'Excel', extensions: ['xlsx', 'xls', 'csv'] },
         { name: 'PowerPoint', extensions: ['ppt', 'pptx'] },
         { name: 'Text', extensions: ['txt', 'json'] },
-        { name: 'Database', extensions: ['db', 'sqlite', 'sqlite3'] },
         { name: 'All Files', extensions: ['*'] },
       ],
     })
@@ -113,132 +112,6 @@ export function registerSecureFileHandlers(
       return safePaths
     }
     return null
-  })
-
-  ipcMain.handle('file:readKnowledgeFile', async (_event, filePath: string) => {
-    if (!filePath) return null
-    if (securityManager.isSensitivePath(filePath)) {
-      securityManager.logOperation(OperationType.FILE_READ, filePath, false, {
-        reason: '安全底线：敏感路径',
-      })
-      return null
-    }
-
-    try {
-      const stats = await fsPromises.stat(filePath)
-      const content =
-        stats.size > 5 * 1024 * 1024
-          ? await readLargeFile(filePath, 0, 10000)
-          : await readFileWithEncoding(filePath)
-
-      securityManager.logOperation(OperationType.FILE_READ, filePath, true, {
-        knowledgeImport: true,
-      })
-      return content
-    } catch (err) {
-      logger.security.error('[File] knowledge read failed:', filePath, toAppError(err).message)
-      return null
-    }
-  })
-
-  ipcMain.handle('file:extractKnowledgeDocxText', async (_event, filePath: string) => {
-    if (!filePath) return null
-    if (securityManager.isSensitivePath(filePath)) {
-      securityManager.logOperation(OperationType.FILE_READ, filePath, false, { reason: '安全底线：敏感路径' })
-      return null
-    }
-
-    try {
-      const mammoth = await import('mammoth')
-      const result = await mammoth.extractRawText({ path: filePath })
-      securityManager.logOperation(OperationType.FILE_READ, filePath, true, { knowledgeImport: true })
-      return result.value
-    } catch (err) {
-      logger.security.error('[File] knowledge extract docx failed:', filePath, toAppError(err).message)
-      return null
-    }
-  })
-
-  ipcMain.handle('file:extractKnowledgeDocText', async (_event, filePath: string) => {
-    if (!filePath) return null
-    if (securityManager.isSensitivePath(filePath)) {
-      securityManager.logOperation(OperationType.FILE_READ, filePath, false, { reason: '安全底线：敏感路径' })
-      return null
-    }
-
-    try {
-      const WordExtractor = (await import('word-extractor')).default
-      const extractor = new WordExtractor()
-      const extracted = await extractor.extract(filePath)
-      const text = extracted.getBody()
-      securityManager.logOperation(OperationType.FILE_READ, filePath, true, { knowledgeImport: true })
-      return text
-    } catch (err) {
-      logger.security.error('[File] knowledge extract doc failed:', filePath, toAppError(err).message)
-      return null
-    }
-  })
-
-  ipcMain.handle('file:extractKnowledgeXlsxText', async (_event, filePath: string) => {
-    if (!filePath) return null
-    if (securityManager.isSensitivePath(filePath)) {
-      securityManager.logOperation(OperationType.FILE_READ, filePath, false, { reason: '安全底线：敏感路径' })
-      return null
-    }
-
-    try {
-      const XLSX = await import('xlsx')
-      const workbook = XLSX.readFile(filePath)
-      const lines: string[] = []
-      for (const sheetName of workbook.SheetNames) {
-        const sheet = workbook.Sheets[sheetName]
-        const csv = XLSX.utils.sheet_to_csv(sheet)
-        lines.push(`## Sheet: ${sheetName}\n${csv}`)
-      }
-      securityManager.logOperation(OperationType.FILE_READ, filePath, true, { knowledgeImport: true })
-      return lines.join('\n\n')
-    } catch (err) {
-      logger.security.error('[File] knowledge extract xlsx failed:', filePath, toAppError(err).message)
-      return null
-    }
-  })
-
-  ipcMain.handle('file:extractKnowledgePptText', async (_event, filePath: string) => {
-    if (!filePath) return null
-    if (securityManager.isSensitivePath(filePath)) {
-      securityManager.logOperation(OperationType.FILE_READ, filePath, false, { reason: '安全底线：敏感路径' })
-      return null
-    }
-
-    try {
-      const officeParser = (await import('officeparser')).default
-      const text = await officeParser.parseOffice(filePath)
-      const result = typeof text === 'string' ? text : (text as any)?.toText?.() || String(text)
-      securityManager.logOperation(OperationType.FILE_READ, filePath, true, { knowledgeImport: true })
-      return result
-    } catch (err) {
-      logger.security.error('[File] knowledge extract ppt failed:', filePath, toAppError(err).message)
-      return null
-    }
-  })
-
-  ipcMain.handle('file:extractKnowledgePdfText', async (_event, filePath: string) => {
-    if (!filePath) return null
-    if (securityManager.isSensitivePath(filePath)) {
-      securityManager.logOperation(OperationType.FILE_READ, filePath, false, { reason: '安全底线：敏感路径' })
-      return null
-    }
-
-    try {
-      const pdfParse = await import('pdf-parse')
-      const dataBuffer = await import('fs').then(fs => fs.promises.readFile(filePath))
-      const data = await (pdfParse as any).default(dataBuffer)
-      securityManager.logOperation(OperationType.FILE_READ, filePath, true, { knowledgeImport: true })
-      return data.text
-    } catch (err) {
-      logger.security.error('[File] knowledge extract pdf failed:', filePath, toAppError(err).message)
-      return null
-    }
   })
 
   ipcMain.handle('file:readDir', async (_, dirPath: string) => {
@@ -528,9 +401,9 @@ export function registerSecureFileHandlers(
     }
 
     try {
-      const pdfParse = await import('pdf-parse')
+      const pdfParse = (await import('pdf-parse')).default
       const dataBuffer = await import('fs').then(fs => fs.promises.readFile(filePath))
-      const data = await (pdfParse as any).default(dataBuffer)
+      const data = await pdfParse(dataBuffer)
       securityManager.logOperation(OperationType.FILE_READ, filePath, true, {
         pdfTextExtraction: true,
       })

@@ -152,17 +152,18 @@ function buildProjectRules(rules: ProjectRules | null): string | null {
 ${rules.content}`
 }
 
-function buildKnowledge(entries: KnowledgeEntry[]): string | null {
+function buildKnowledge(entries: KnowledgeEntry[], query?: string): string | null {
   const enabled = entries.filter(e => e.enabled)
   if (enabled.length === 0) return null
+
+  const manualEntries = enabled.filter(e => e.layer === 'manual')
+  const otherEntries = enabled.filter(e => e.layer !== 'manual')
 
   const lines: string[] = []
   let estimatedTokens = 0
   const maxTokens = 2000
 
-  const starredFirst = [...enabled.filter(e => e.starred), ...enabled.filter(e => !e.starred)]
-
-  for (const entry of starredFirst) {
+  for (const entry of manualEntries) {
     const tag = entry.tags.length > 0 ? ` [${entry.tags.join(',')}]` : ''
     const line = `- [${entry.category}]${tag} ${entry.content}`
     const lineTokens = Math.ceil(line.length / 4)
@@ -171,31 +172,35 @@ function buildKnowledge(entries: KnowledgeEntry[]): string | null {
     estimatedTokens += lineTokens
   }
 
-  if (lines.length === 0) return null
-  return `## Knowledge Base
-${lines.join('\n')}`
-}
+  if (query && otherEntries.length > 0) {
+    const q = query.toLowerCase()
+    const relevant = otherEntries
+      .map(entry => {
+        let score = 0
+        if (entry.title.toLowerCase().includes(q)) score += 3
+        if (entry.content.toLowerCase().includes(q)) score += 2
+        for (const tag of entry.tags) {
+          if (tag.toLowerCase().includes(q)) score += 1
+        }
+        if (entry.category === 'error-solution') score += 1
+        if (entry.starred) score += 1
+        return { entry, score }
+      })
+      .filter(r => r.score > 0)
+      .sort((a, b) => b.score - a.score)
 
-function buildLongTermMemory(entries: MemoryEntry[], tokenBudget: number = 1000): string | null {
-  const enabled = entries.filter(e => e.enabled && e.content.trim())
-  if (enabled.length === 0) return null
-
-  const longTermFirst = [...enabled.filter(e => e.status === 'long_term'), ...enabled.filter(e => e.status === 'short_term')]
-  const lines: string[] = []
-  let estimatedTokens = 0
-
-  for (const entry of longTermFirst) {
-    const line = `- ${entry.content}`
-    const lineTokens = Math.ceil(line.length / 4)
-    if (estimatedTokens + lineTokens > tokenBudget) break
-    lines.push(line)
-    estimatedTokens += lineTokens
+    for (const { entry } of relevant) {
+      const tag = entry.tags.length > 0 ? ` [${entry.tags.join(',')}]` : ''
+      const line = `- [${entry.category}]${tag} ${entry.content}`
+      const lineTokens = Math.ceil(line.length / 4)
+      if (estimatedTokens + lineTokens > maxTokens) break
+      lines.push(line)
+      estimatedTokens += lineTokens
+    }
   }
 
   if (lines.length === 0) return null
-  return `## Long-term Memory
-Important facts and preferences remembered from past conversations:
-
+  return `## Knowledge Base
 ${lines.join('\n')}`
 }
 
@@ -235,8 +240,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     buildEnvironment(ctx),
     buildProjectSummary(ctx.projectSummary || null),
     buildProjectRules(ctx.projectRules),
-    buildLongTermMemory(ctx.longTermMemories),
-    buildKnowledge(ctx.knowledgeEntries),
+    buildKnowledge(ctx.knowledgeEntries, ctx.userQuery),
     ...buildSkillsSections(ctx.autoSkills, ctx.mentionedSkills),
     buildCustomInstructions(ctx.customInstructions),
   ]
@@ -256,8 +260,7 @@ export function buildChatPrompt(ctx: PromptContext): string {
     buildEnvironment(ctx),
     buildProjectSummary(ctx.projectSummary || null),
     buildProjectRules(ctx.projectRules),
-    buildLongTermMemory(ctx.longTermMemories),
-    buildKnowledge(ctx.knowledgeEntries),
+    buildKnowledge(ctx.knowledgeEntries, ctx.userQuery),
     ...buildSkillsSections(ctx.autoSkills, ctx.mentionedSkills),
     buildCustomInstructions(ctx.customInstructions),
   ]
@@ -297,11 +300,10 @@ export async function buildAgentSystemPrompt(
     template = getDefaultPromptTemplate()
   }
 
-  const [projectRules, memories, knowledgeEntries, longTermMemories, allSkills, projectSummary] = await Promise.all([
+  const [projectRules, memories, knowledgeEntries, allSkills, projectSummary] = await Promise.all([
     rulesService.getRules(),
     memoryService.getMemories(),
     knowledgeService.getEnabledEntries(),
-    longTermMemoryService.getEnabledEntries(),
     skillService.getSkills(),
     workspacePath ? loadProjectSummary(workspacePath) : Promise.resolve(null),
   ])
@@ -352,7 +354,6 @@ export async function buildAgentSystemPrompt(
     projectRules,
     memories,
     knowledgeEntries,
-    longTermMemories,
     userQuery: userMessage,
     autoSkills: indexOnlySkills,
     mentionedSkills: fullInjectionSkills,

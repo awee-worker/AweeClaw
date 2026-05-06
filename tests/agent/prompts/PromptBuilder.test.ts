@@ -13,6 +13,8 @@ describe('PromptBuilder', () => {
       personality: 'You are a helpful coding assistant.',
       projectRules: null,
       memories: [],
+      knowledgeEntries: [],
+      longTermMemories: [],
       autoSkills: [],
       mentionedSkills: [],
       customInstructions: null,

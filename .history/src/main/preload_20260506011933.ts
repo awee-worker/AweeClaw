@@ -175,12 +175,6 @@ export interface ElectronAPI {
   // File operations
   openFile: () => Promise<{ path: string; content: string } | null>
   openKnowledgeFiles: () => Promise<string[] | null>
-  readKnowledgeFile: (filePath: string) => Promise<string | null>
-  extractKnowledgeDocxText: (filePath: string) => Promise<string | null>
-  extractKnowledgeDocText: (filePath: string) => Promise<string | null>
-  extractKnowledgeXlsxText: (filePath: string) => Promise<string | null>
-  extractKnowledgePptText: (filePath: string) => Promise<string | null>
-  extractKnowledgePdfText: (filePath: string) => Promise<string | null>
   openFolder: () => Promise<string | null>
   selectFolder: () => Promise<string | null>
   openWorkspace: () => Promise<{
@@ -597,13 +591,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setTheme: (theme: 'light' | 'dark' | 'system', bgColor?: string) => ipcRenderer.invoke('window:setTheme', theme, bgColor),
   setLanguage: (lang: Language) => ipcRenderer.send('i18n:changed', lang),
   openFile: () => ipcRenderer.invoke('file:open'),
-  openKnowledgeFiles: () => ipcRenderer.invoke('file:openKnowledgeFiles'),
-  readKnowledgeFile: (filePath: string) => ipcRenderer.invoke('file:readKnowledgeFile', filePath),
-  extractKnowledgeDocxText: (filePath: string) => ipcRenderer.invoke('file:extractKnowledgeDocxText', filePath),
-  extractKnowledgeDocText: (filePath: string) => ipcRenderer.invoke('file:extractKnowledgeDocText', filePath),
-  extractKnowledgeXlsxText: (filePath: string) => ipcRenderer.invoke('file:extractKnowledgeXlsxText', filePath),
-  extractKnowledgePptText: (filePath: string) => ipcRenderer.invoke('file:extractKnowledgePptText', filePath),
-  extractKnowledgePdfText: (filePath: string) => ipcRenderer.invoke('file:extractKnowledgePdfText', filePath),
   openFolder: () => ipcRenderer.invoke('file:openFolder'),
   selectFolder: () => ipcRenderer.invoke('dialog:selectFolder'),
   openWorkspace: () => ipcRenderer.invoke('workspace:open'),

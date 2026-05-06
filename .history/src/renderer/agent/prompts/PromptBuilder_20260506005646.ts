@@ -152,7 +152,7 @@ function buildProjectRules(rules: ProjectRules | null): string | null {
 ${rules.content}`
 }
 
-function buildKnowledge(entries: KnowledgeEntry[]): string | null {
+function buildKnowledge(entries: KnowledgeEntry[], query?: string): string | null {
   const enabled = entries.filter(e => e.enabled)
   if (enabled.length === 0) return null
 
@@ -235,8 +235,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     buildEnvironment(ctx),
     buildProjectSummary(ctx.projectSummary || null),
     buildProjectRules(ctx.projectRules),
-    buildLongTermMemory(ctx.longTermMemories),
-    buildKnowledge(ctx.knowledgeEntries),
+    buildKnowledge(ctx.knowledgeEntries, ctx.userQuery),
     ...buildSkillsSections(ctx.autoSkills, ctx.mentionedSkills),
     buildCustomInstructions(ctx.customInstructions),
   ]
@@ -256,8 +255,7 @@ export function buildChatPrompt(ctx: PromptContext): string {
     buildEnvironment(ctx),
     buildProjectSummary(ctx.projectSummary || null),
     buildProjectRules(ctx.projectRules),
-    buildLongTermMemory(ctx.longTermMemories),
-    buildKnowledge(ctx.knowledgeEntries),
+    buildKnowledge(ctx.knowledgeEntries, ctx.userQuery),
     ...buildSkillsSections(ctx.autoSkills, ctx.mentionedSkills),
     buildCustomInstructions(ctx.customInstructions),
   ]
@@ -297,11 +295,10 @@ export async function buildAgentSystemPrompt(
     template = getDefaultPromptTemplate()
   }
 
-  const [projectRules, memories, knowledgeEntries, longTermMemories, allSkills, projectSummary] = await Promise.all([
+  const [projectRules, memories, knowledgeEntries, allSkills, projectSummary] = await Promise.all([
     rulesService.getRules(),
     memoryService.getMemories(),
     knowledgeService.getEnabledEntries(),
-    longTermMemoryService.getEnabledEntries(),
     skillService.getSkills(),
     workspacePath ? loadProjectSummary(workspacePath) : Promise.resolve(null),
   ])
@@ -352,7 +349,6 @@ export async function buildAgentSystemPrompt(
     projectRules,
     memories,
     knowledgeEntries,
-    longTermMemories,
     userQuery: userMessage,
     autoSkills: indexOnlySkills,
     mentionedSkills: fullInjectionSkills,

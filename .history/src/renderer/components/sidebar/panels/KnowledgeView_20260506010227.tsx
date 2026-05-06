@@ -3,7 +3,6 @@ import {
   Plus, Trash2, Search, BookOpen, Star, Copy, Check,
   Edit2, X, ToggleLeft, ToggleRight, Tag,
   FileUp, Link, Loader2, Database, Globe, User, FileText,
-  FileSpreadsheet, FileType, File,
 } from 'lucide-react'
 import { useStore } from '@store'
 import { knowledgeService } from '@/renderer/agent/services/knowledgeService'
@@ -145,22 +144,12 @@ export function KnowledgeView() {
   )
 
   const handleFileImport = useCallback(async () => {
-    const paths = await api.file.openKnowledgeFiles()
-    if (!paths || paths.length === 0) return
+    const result = await api.file.open()
+    if (!result) return
 
     setImporting(true)
     try {
-      let totalImported = 0
-      let totalSkipped = 0
-      for (const filePath of paths) {
-        try {
-          const result = await knowledgeService.importFromFile(filePath)
-          totalImported += result.imported
-          totalSkipped += result.skipped
-        } catch {
-          totalSkipped++
-        }
-      }
+      await knowledgeService.importFromFile(result.path)
       loadEntries()
     } catch {
     }
@@ -199,7 +188,7 @@ export function KnowledgeView() {
             onClick={handleFileImport}
             disabled={importing}
             className="p-1 text-text-muted hover:text-accent transition-colors disabled:opacity-40"
-            title={t('导入文件 (PDF/Word/Excel/PPT/Markdown)', 'Import Files (PDF/Word/Excel/PPT/Markdown)')}
+            title={t('导入文件', 'Import File')}
           >
             <FileUp className="w-4 h-4" />
           </button>
@@ -371,6 +360,7 @@ export function KnowledgeView() {
           </div>
         ) : (
           filteredEntries.map(entry => {
+            const catConfig = KNOWLEDGE_CATEGORIES.find(c => c.id === entry.category)
             const srcConfig = SOURCE_CONFIG[entry.source]
             const SrcIcon = srcConfig?.icon || BookOpen
             return (

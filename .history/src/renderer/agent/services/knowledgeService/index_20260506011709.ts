@@ -2,8 +2,6 @@ import { api } from '@/renderer/services/electronAPI'
 import { logger } from '@utils/Logger'
 import { useStore } from '@store'
 import { joinPath } from '@shared/utils/pathUtils'
-import { vectorIndex } from './vectorIndex'
-import { intelligentExtractor } from './intelligentExtractor'
 import {
   type KnowledgeEntry,
   type KnowledgeEntryInput,
@@ -163,45 +161,49 @@ class KnowledgeService {
     const keywordResults = await this.search(params)
 
     try {
+      const { workspacePath } = useStore.getState()
+      if (!workspacePath) return keywordResults
+
+      const config = await this.getEmbeddingConfig()
+      if (!config) return keywordResults
+
       const enabled = await this.getEnabledEntries()
       if (enabled.length === 0) return keywordResults
 
-      await vectorIndex.indexEntries(enabled)
+      const candidates = enabled.map(e => e.content.slice(0, 200))
+      const similar = await api.llm.findSimilar({
+        query: params.query,
+        candidates,
+        config,
+        topK: params.limit ?? 10,
+      })
 
-      const candidateIds = enabled.map(e => e.id)
-      const vectorResults = await vectorIndex.search(params.query, candidateIds, params.limit ?? 10)
+      if (!similar || similar.length === 0) return keywordResults
 
-      if (vectorResults.length === 0) return keywordResults
-
-      const entryMap = new Map(enabled.map(e => [e.id, e]))
-      const semanticResults: KnowledgeSearchResult[] = vectorResults
-        .map(v => {
-          const entry = entryMap.get(v.id)
+      const semanticResults: KnowledgeSearchResult[] = similar
+        .map(s => {
+          const entry = enabled[s.index]
           if (!entry) return null
-          return { entry, score: v.score * 10 }
+          return { entry, score: s.similarity * 10 }
         })
         .filter((r): r is KnowledgeSearchResult => r !== null)
 
       const merged = new Map<string, KnowledgeSearchResult>()
       for (const r of keywordResults) {
-        merged.set(r.entry.id, { ...r, score: r.score * 0.4 })
+        merged.set(r.entry.id, r)
       }
       for (const r of semanticResults) {
         const existing = merged.get(r.entry.id)
         if (existing) {
-          existing.score = existing.score + r.score * 0.6
+          existing.score = existing.score * 0.4 + r.score * 0.6
         } else {
-          merged.set(r.entry.id, { ...r, score: r.score * 0.6 })
+          merged.set(r.entry.id, r)
         }
       }
 
-      const results = [...merged.values()]
+      return [...merged.values()]
         .sort((a, b) => b.score - a.score)
         .slice(0, params.limit ?? 20)
-
-      vectorIndex.persist().catch(() => {})
-
-      return results
     } catch (err) {
       logger.agent.warn('[KnowledgeService] Semantic search failed, falling back to keyword:', err)
       return keywordResults
@@ -215,31 +217,31 @@ class KnowledgeService {
     let rawContent: string | null = null
 
     if (ext === 'docx') {
-      rawContent = await api.file.extractKnowledgeDocxText(filePath)
+      rawContent = await api.file.extractDocxText(filePath)
     } else if (ext === 'doc') {
-      rawContent = await api.file.extractKnowledgeDocText(filePath)
+      rawContent = await api.file.extractDocText(filePath)
     } else if (ext === 'ppt' || ext === 'pptx') {
-      rawContent = await api.file.extractKnowledgePptText(filePath)
+      rawContent = await api.file.extractPptText(filePath)
     } else if (ext === 'xlsx' || ext === 'xls') {
-      rawContent = await api.file.extractKnowledgeXlsxText(filePath)
+      rawContent = await api.file.extractXlsxText(filePath)
     } else if (ext === 'pdf') {
-      rawContent = await api.file.extractKnowledgePdfText(filePath)
-    } else if (ext === 'db' || ext === 'sqlite' || ext === 'sqlite3') {
-      return this.importFromSqliteFile(filePath)
+      rawContent = await api.file.extractPdfText(filePath)
     } else {
-      rawContent = await api.file.readKnowledgeFile(filePath)
+      rawContent = await api.file.read(filePath)
     }
 
     if (!rawContent) throw new Error('File not found or empty')
 
-    let entries: { title: string; content: string; category: KnowledgeCategory; confidence?: number }[] = []
+    let entries: { title: string; content: string; category: KnowledgeCategory }[] = []
 
     if (ext === 'json') {
       entries = this.parseJsonContent(rawContent, fileName)
+    } else if (ext === 'md' || ext === 'markdown') {
+      entries = this.parseMarkdownContent(rawContent)
     } else if (ext === 'xlsx' || ext === 'xls' || ext === 'csv') {
       entries = this.parseStructuredContent(rawContent, fileName)
     } else {
-      entries = intelligentExtractor.extract(rawContent, fileName)
+      entries = this.parseTextContent(rawContent, fileName)
     }
 
     let imported = 0
@@ -254,7 +256,7 @@ class KnowledgeService {
           tags: this.extractTags(item.content),
           source: 'file',
           sourceDetail: fileName,
-          confidence: item.confidence ?? 0.9,
+          confidence: 0.9,
         })
         imported++
       } catch {
@@ -268,22 +270,30 @@ class KnowledgeService {
 
   async importFromUrl(url: string): Promise<{ imported: number; skipped: number }> {
     try {
-      const result = await api.http.readUrl(url)
+      const response = await fetch(url)
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
 
-      if (!result.success) {
-        throw new Error(result.error || `Failed to fetch URL`)
+      const contentType = response.headers.get('content-type') || ''
+      const text = await response.text()
+
+      let rawContent: string
+
+      if (contentType.includes('text/html')) {
+        rawContent = this.htmlToMarkdown(text)
+      } else if (contentType.includes('application/json')) {
+        rawContent = text
+      } else {
+        rawContent = text
       }
 
-      const rawContent = result.content || ''
-      const title = result.title || url
+      let entries: { title: string; content: string; category: KnowledgeCategory }[] = []
 
-      let entries: { title: string; content: string; category: KnowledgeCategory; confidence?: number }[] = []
-
-      const contentType = result.contentType || ''
       if (contentType.includes('application/json')) {
-        entries = this.parseJsonContent(rawContent, title)
+        entries = this.parseJsonContent(rawContent, url)
+      } else if (contentType.includes('text/html')) {
+        entries = this.parseMarkdownContent(rawContent)
       } else {
-        entries = intelligentExtractor.extract(rawContent, title)
+        entries = this.parseTextContent(rawContent, url)
       }
 
       let imported = 0
@@ -311,129 +321,6 @@ class KnowledgeService {
     } catch (err) {
       logger.agent.warn('[KnowledgeService] URL import failed:', err)
       throw new Error(`Failed to import from URL: ${(err as Error).message}`)
-    }
-  }
-
-  async importFromDatabase(
-    connectionId: string,
-    query: string,
-    options?: { tableName?: string }
-  ): Promise<{ imported: number; skipped: number }> {
-    try {
-      const result = await api.data.executeQuery({
-        query,
-        connectionId,
-        limit: 500,
-      })
-
-      if (!result.success || !result.rows || result.rows.length === 0) {
-        throw new Error(result.error || 'Query returned no results')
-      }
-
-      const tableName = options?.tableName || 'data'
-      const columns = result.columns || (result.rows.length > 0 ? Object.keys(result.rows[0]) : [])
-
-      let imported = 0
-      let skipped = 0
-
-      const chunkSize = 50
-      for (let i = 0; i < result.rows.length; i += chunkSize) {
-        const chunk = result.rows.slice(i, i + chunkSize)
-        const rowTexts = chunk.map(row => {
-          return columns.map(col => `${col}: ${row[col] ?? ''}`).join('\n')
-        })
-        const chunkContent = rowTexts.join('\n\n---\n\n')
-        const startRow = i + 1
-        const endRow = Math.min(i + chunkSize, result.rows.length)
-
-        try {
-          await this.addEntry({
-            title: `${tableName} (Rows ${startRow}-${endRow})`,
-            content: chunkContent,
-            category: 'reference',
-            tags: [tableName, 'database'],
-            source: 'database',
-            sourceDetail: `${connectionId}:${query.slice(0, 50)}`,
-            confidence: 0.8,
-          })
-          imported++
-        } catch {
-          skipped++
-        }
-      }
-
-      logger.agent.info(`[KnowledgeService] Imported ${imported} entries from database, skipped ${skipped}`)
-      return { imported, skipped }
-    } catch (err) {
-      logger.agent.warn('[KnowledgeService] Database import failed:', err)
-      throw new Error(`Failed to import from database: ${(err as Error).message}`)
-    }
-  }
-
-  async importFromSqliteFile(
-    filePath: string,
-    query?: string
-  ): Promise<{ imported: number; skipped: number }> {
-    const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'database'
-
-    try {
-      const { workspacePath } = useStore.getState()
-      if (!workspacePath) throw new Error('No workspace open')
-
-      const connectionId = `kb-import-${Date.now()}`
-      const connectResult = await api.data.connectDatabase({
-        id: connectionId,
-        driver: 'sqlite',
-        filePath,
-      })
-
-      if (!connectResult.success) {
-        throw new Error(connectResult.error || 'Failed to connect to SQLite database')
-      }
-
-      const sql = query || 'SELECT * FROM sqlite_master WHERE type=\'table\''
-      const tableResult = await api.data.executeQuery({
-        query: sql,
-        connectionId,
-        limit: 500,
-      })
-
-      if (!tableResult.success) {
-        throw new Error(tableResult.error || 'Failed to query database')
-      }
-
-      let totalImported = 0
-      let totalSkipped = 0
-
-      if (!query) {
-        const tableNames = (tableResult.rows || [])
-          .filter((r: any) => r.type === 'table' && r.name && !r.name.startsWith('sqlite_'))
-          .map((r: any) => r.name as string)
-
-        for (const tableName of tableNames) {
-          try {
-            const result = await this.importFromDatabase(connectionId, `SELECT * FROM "${tableName}"`, { tableName })
-            totalImported += result.imported
-            totalSkipped += result.skipped
-          } catch {
-            totalSkipped++
-          }
-        }
-      } else {
-        const result = await this.importFromDatabase(connectionId, query, { tableName: fileName })
-        totalImported = result.imported
-        totalSkipped = result.skipped
-      }
-
-      try {
-        await api.data.disconnectDatabase(connectionId)
-      } catch {
-      }
-
-      return { imported: totalImported, skipped: totalSkipped }
-    } catch (err) {
-      logger.agent.warn('[KnowledgeService] SQLite import failed:', err)
-      throw new Error(`Failed to import from SQLite: ${(err as Error).message}`)
     }
   }
 
@@ -739,6 +626,59 @@ ${lines.join('\n')}
     return entries
   }
 
+  private parseMarkdownContent(content: string): { title: string; content: string; category: KnowledgeCategory }[] {
+    const entries: { title: string; content: string; category: KnowledgeCategory }[] = []
+    const sections = content.split(/^(?=#{1,3}\s)/m).filter(Boolean)
+
+    if (sections.length <= 1) {
+      entries.push({ title: this.autoTitle(content), content: content.trim(), category: 'document' })
+      return entries
+    }
+
+    for (const section of sections) {
+      const lines = section.trim().split('\n')
+      const title = lines[0].replace(/^#{1,3}\s+/, '').trim()
+      const body = lines.slice(1).join('\n').trim()
+      if (body) {
+        entries.push({ title: title || this.autoTitle(body), content: body, category: 'document' })
+      }
+    }
+
+    return entries.length > 0 ? entries : [{ title: this.autoTitle(content), content: content.trim(), category: 'document' }]
+  }
+
+  private parseTextContent(content: string, fileName: string): { title: string; content: string; category: KnowledgeCategory }[] {
+    const entries: { title: string; content: string; category: KnowledgeCategory }[] = []
+
+    if (fileName.endsWith('.csv')) {
+      const lines = content.split('\n').filter(l => l.trim())
+      if (lines.length > 1) {
+        const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''))
+        for (let i = 1; i < lines.length; i++) {
+          const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''))
+          const rowContent = headers.map((h, idx) => `${h}: ${values[idx] || ''}`).join('\n')
+          entries.push({
+            title: `${fileName} - Row ${i}`,
+            content: rowContent,
+            category: 'reference',
+          })
+        }
+      }
+      return entries.length > 0 ? entries : [{ title: fileName, content, category: 'document' }]
+    }
+
+    const paragraphs = content.split(/\n{2,}/).filter(p => p.trim())
+    if (paragraphs.length <= 1) {
+      entries.push({ title: this.autoTitle(content), content: content.trim(), category: 'document' })
+    } else {
+      for (const para of paragraphs) {
+        entries.push({ title: this.autoTitle(para), content: para.trim(), category: 'document' })
+      }
+    }
+
+    return entries
+  }
+
   private parseStructuredContent(content: string, fileName: string): { title: string; content: string; category: KnowledgeCategory }[] {
     const entries: { title: string; content: string; category: KnowledgeCategory }[] = []
     const sheetSections = content.split(/(?=^## Sheet: )/m).filter(Boolean)
@@ -803,9 +743,9 @@ ${lines.join('\n')}
     text = text.replace(/<blockquote[^>]*>([\s\S]*?)<\/blockquote>/gi, '> $1\n')
     text = text.replace(/<table[^>]*>([\s\S]*?)<\/table>/gi, (_, tableContent) => {
       const rows = tableContent.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || []
-      return rows.map((row: string) => {
+      return rows.map(row => {
         const cells = row.match(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/gi) || []
-        return '| ' + cells.map((c: string) => c.replace(/<\/?t[hd][^>]*>/gi, '').trim()).join(' | ') + ' |'
+        return '| ' + cells.map(c => c.replace(/<\/?t[hd][^>]*>/gi, '').trim()).join(' | ') + ' |'
       }).join('\n') + '\n'
     })
     text = text.replace(/<[^>]+>/g, '')

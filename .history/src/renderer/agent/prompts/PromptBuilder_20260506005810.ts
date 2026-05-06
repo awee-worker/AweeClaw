@@ -152,7 +152,7 @@ function buildProjectRules(rules: ProjectRules | null): string | null {
 ${rules.content}`
 }
 
-function buildKnowledge(entries: KnowledgeEntry[]): string | null {
+function buildKnowledge(entries: KnowledgeEntry[], query?: string): string | null {
   const enabled = entries.filter(e => e.enabled)
   if (enabled.length === 0) return null
 
@@ -236,7 +236,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     buildProjectSummary(ctx.projectSummary || null),
     buildProjectRules(ctx.projectRules),
     buildLongTermMemory(ctx.longTermMemories),
-    buildKnowledge(ctx.knowledgeEntries),
+    buildKnowledge(ctx.knowledgeEntries, ctx.userQuery),
     ...buildSkillsSections(ctx.autoSkills, ctx.mentionedSkills),
     buildCustomInstructions(ctx.customInstructions),
   ]
@@ -257,7 +257,7 @@ export function buildChatPrompt(ctx: PromptContext): string {
     buildProjectSummary(ctx.projectSummary || null),
     buildProjectRules(ctx.projectRules),
     buildLongTermMemory(ctx.longTermMemories),
-    buildKnowledge(ctx.knowledgeEntries),
+    buildKnowledge(ctx.knowledgeEntries, ctx.userQuery),
     ...buildSkillsSections(ctx.autoSkills, ctx.mentionedSkills),
     buildCustomInstructions(ctx.customInstructions),
   ]

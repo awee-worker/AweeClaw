@@ -21,7 +21,7 @@ import { fileCacheService } from '../services/fileCacheService'
 import { lintService } from '../services/lintService'
 import { memoryService } from '../services/memoryService'
 import { knowledgeService } from '../services/knowledgeService'
-import type { KnowledgeCategory, KnowledgeEntry } from '../services/knowledgeService/types'
+import type { KnowledgeCategory } from '../services/knowledgeService/types'
 import { useStore } from '@/renderer/store'
 import { composerService } from '../services/composerService'
 import { agentStorePlanBridge, agentStoreTodoBridge } from '../store/agentStoreBridge'
@@ -2132,58 +2132,6 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
 
         try {
             const category = args.category as KnowledgeCategory | undefined
-            const deepSearch = args.deep_search as boolean | undefined
-
-            if (deepSearch) {
-                const queries = [
-                    query,
-                    ...query.split(/\s+/).filter(w => w.length > 3).slice(0, 3).map(w => w),
-                ]
-                if (query.includes(' of ') || query.includes(' 的 ')) {
-                    const parts = query.split(/\s+(?:of|的)\s+/)
-                    queries.push(...parts.filter(p => p.length > 2))
-                }
-
-                const allResults = new Map<string, { entry: KnowledgeEntry; score: number }>()
-                for (const q of queries) {
-                    const results = await knowledgeService.semanticSearch({
-                        query: q,
-                        category,
-                        limit: 15,
-                    })
-                    for (const r of results) {
-                        const existing = allResults.get(r.entry.id)
-                        if (existing) {
-                            existing.score = Math.max(existing.score, r.score)
-                        } else {
-                            allResults.set(r.entry.id, { entry: r.entry, score: r.score })
-                        }
-                    }
-                }
-
-                const results = [...allResults.values()]
-                    .sort((a, b) => b.score - a.score)
-                    .slice(0, 20)
-
-                if (results.length === 0) {
-                    return {
-                        success: true,
-                        result: 'No relevant knowledge entries found (deep search).',
-                    }
-                }
-
-                const lines = results.map(r => {
-                    const entry = r.entry
-                    const tags = entry.tags.length > 0 ? ` [${entry.tags.join(', ')}]` : ''
-                    return `- [${entry.category}]${tags} ${entry.content} (score: ${r.score.toFixed(1)}, source: ${entry.source})`
-                })
-
-                return {
-                    success: true,
-                    result: `Deep search found ${results.length} relevant knowledge entries:\n${lines.join('\n')}`,
-                }
-            }
-
             const results = await knowledgeService.semanticSearch({
                 query,
                 category,

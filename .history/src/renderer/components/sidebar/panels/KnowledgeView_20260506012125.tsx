@@ -199,7 +199,7 @@ export function KnowledgeView() {
             onClick={handleFileImport}
             disabled={importing}
             className="p-1 text-text-muted hover:text-accent transition-colors disabled:opacity-40"
-            title={t('导入文件 (PDF/Word/Excel/PPT/Markdown)', 'Import Files (PDF/Word/Excel/PPT/Markdown)')}
+            title={t('导入文件', 'Import File')}
           >
             <FileUp className="w-4 h-4" />
           </button>

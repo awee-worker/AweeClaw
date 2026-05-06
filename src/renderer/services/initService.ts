@@ -151,6 +151,15 @@ function scheduleBackgroundInit(): void {
       logger.system.warn('[Init] Worker service init failed:', e)
     }
   })
+
+  scheduleIdleTask(() => {
+    try {
+      const { dreamingScheduler } = require('@renderer/agent/services/longTermMemoryService/dreamingScheduler')
+      dreamingScheduler.start()
+    } catch (e) {
+      logger.system.warn('[Init] Dreaming scheduler init failed:', e)
+    }
+  })
 }
 
 export async function initializeApp(

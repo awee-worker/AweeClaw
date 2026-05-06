@@ -1,5 +1,5 @@
-import { longTermMemoryService } from './longTermMemoryService'
-import type { MemoryEntry } from './longTermMemoryService/types'
+import { knowledgeService } from './knowledgeService'
+import type { KnowledgeEntry } from './knowledgeService/types'
 
 export interface MemoryItem {
   id: string
@@ -8,7 +8,7 @@ export interface MemoryItem {
   enabled: boolean
 }
 
-function entryToMemoryItem(entry: MemoryEntry): MemoryItem {
+function entryToMemoryItem(entry: KnowledgeEntry): MemoryItem {
   return {
     id: entry.id,
     content: entry.content,
@@ -24,37 +24,37 @@ class MemoryService {
     if (this.migrated) return
     this.migrated = true
     try {
-      await longTermMemoryService.migrateFromKnowledgeConversation()
+      await knowledgeService.migrateFromMemoryService()
     } catch {
+      // migration failure is non-fatal
     }
   }
 
   async getMemories(): Promise<MemoryItem[]> {
     await this.ensureMigrated()
-    const entries = await longTermMemoryService.getEnabledEntries()
-    return entries.filter(e => e.status === 'short_term' || e.status === 'long_term').map(entryToMemoryItem)
+    const entries = await knowledgeService.getEnabledEntries()
+    return entries.filter(e => e.layer === 'manual').map(entryToMemoryItem)
   }
 
   async getAllMemories(): Promise<MemoryItem[]> {
     await this.ensureMigrated()
-    const entries = await longTermMemoryService.getEntries()
-    return entries.filter(e => e.status !== 'forgotten').map(entryToMemoryItem)
+    const entries = await knowledgeService.getEntries('manual')
+    return entries.map(entryToMemoryItem)
   }
 
   async addMemory(content: string): Promise<MemoryItem> {
     await this.ensureMigrated()
-    const entry = await longTermMemoryService.addEntry({
+    const entry = await knowledgeService.addEntry({
       content,
+      layer: 'manual',
       source: 'user',
-      status: 'long_term',
-      confidence: 1.0,
     })
     return entryToMemoryItem(entry)
   }
 
   async updateMemory(id: string, updates: Partial<Pick<MemoryItem, 'content' | 'enabled'>>): Promise<boolean> {
     await this.ensureMigrated()
-    return longTermMemoryService.updateEntry(id, {
+    return knowledgeService.updateEntry(id, {
       content: updates.content,
       enabled: updates.enabled,
     })
@@ -62,7 +62,7 @@ class MemoryService {
 
   async deleteMemory(id: string): Promise<boolean> {
     await this.ensureMigrated()
-    return longTermMemoryService.deleteEntry(id)
+    return knowledgeService.deleteEntry(id)
   }
 
   buildMemoryPrompt(memories: MemoryItem[]): string {
@@ -79,16 +79,14 @@ ${lines}
   }
 
   async clearAll(): Promise<void> {
-    const entries = await longTermMemoryService.getEntries()
+    const entries = await knowledgeService.getEntries('manual')
     for (const entry of entries) {
-      if (entry.status !== 'forgotten') {
-        await longTermMemoryService.deleteEntry(entry.id)
-      }
+      await knowledgeService.deleteEntry(entry.id)
     }
   }
 
   clearCache(): void {
-    longTermMemoryService.clearCache()
+    knowledgeService.clearCache()
   }
 }
 

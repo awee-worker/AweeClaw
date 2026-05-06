@@ -163,12 +163,6 @@ function createGroupedAPI() {
     file: {
       open: () => raw.openFile(),
       openKnowledgeFiles: () => raw.openKnowledgeFiles(),
-      readKnowledgeFile: (path: string) => raw.readKnowledgeFile(path),
-      extractKnowledgeDocxText: (path: string) => raw.extractKnowledgeDocxText(path),
-      extractKnowledgeDocText: (path: string) => raw.extractKnowledgeDocText(path),
-      extractKnowledgeXlsxText: (path: string) => raw.extractKnowledgeXlsxText(path),
-      extractKnowledgePptText: (path: string) => raw.extractKnowledgePptText(path),
-      extractKnowledgePdfText: (path: string) => raw.extractKnowledgePdfText(path),
       openFolder: () => raw.openFolder(),
       selectFolder: () => raw.selectFolder(),
       readDir: (path: string) => raw.readDir(path),

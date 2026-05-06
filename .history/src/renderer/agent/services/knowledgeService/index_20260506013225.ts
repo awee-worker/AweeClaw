@@ -3,7 +3,6 @@ import { logger } from '@utils/Logger'
 import { useStore } from '@store'
 import { joinPath } from '@shared/utils/pathUtils'
 import { vectorIndex } from './vectorIndex'
-import { intelligentExtractor } from './intelligentExtractor'
 import {
   type KnowledgeEntry,
   type KnowledgeEntryInput,
@@ -215,31 +214,33 @@ class KnowledgeService {
     let rawContent: string | null = null
 
     if (ext === 'docx') {
-      rawContent = await api.file.extractKnowledgeDocxText(filePath)
+      rawContent = await api.file.extractDocxText(filePath)
     } else if (ext === 'doc') {
-      rawContent = await api.file.extractKnowledgeDocText(filePath)
+      rawContent = await api.file.extractDocText(filePath)
     } else if (ext === 'ppt' || ext === 'pptx') {
-      rawContent = await api.file.extractKnowledgePptText(filePath)
+      rawContent = await api.file.extractPptText(filePath)
     } else if (ext === 'xlsx' || ext === 'xls') {
-      rawContent = await api.file.extractKnowledgeXlsxText(filePath)
+      rawContent = await api.file.extractXlsxText(filePath)
     } else if (ext === 'pdf') {
-      rawContent = await api.file.extractKnowledgePdfText(filePath)
+      rawContent = await api.file.extractPdfText(filePath)
     } else if (ext === 'db' || ext === 'sqlite' || ext === 'sqlite3') {
       return this.importFromSqliteFile(filePath)
     } else {
-      rawContent = await api.file.readKnowledgeFile(filePath)
+      rawContent = await api.file.read(filePath)
     }
 
     if (!rawContent) throw new Error('File not found or empty')
 
-    let entries: { title: string; content: string; category: KnowledgeCategory; confidence?: number }[] = []
+    let entries: { title: string; content: string; category: KnowledgeCategory }[] = []
 
     if (ext === 'json') {
       entries = this.parseJsonContent(rawContent, fileName)
+    } else if (ext === 'md' || ext === 'markdown') {
+      entries = this.parseMarkdownContent(rawContent)
     } else if (ext === 'xlsx' || ext === 'xls' || ext === 'csv') {
       entries = this.parseStructuredContent(rawContent, fileName)
     } else {
-      entries = intelligentExtractor.extract(rawContent, fileName)
+      entries = this.parseTextContent(rawContent, fileName)
     }
 
     let imported = 0
@@ -254,7 +255,7 @@ class KnowledgeService {
           tags: this.extractTags(item.content),
           source: 'file',
           sourceDetail: fileName,
-          confidence: item.confidence ?? 0.9,
+          confidence: 0.9,
         })
         imported++
       } catch {
@@ -268,22 +269,30 @@ class KnowledgeService {
 
   async importFromUrl(url: string): Promise<{ imported: number; skipped: number }> {
     try {
-      const result = await api.http.readUrl(url)
+      const response = await fetch(url)
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
 
-      if (!result.success) {
-        throw new Error(result.error || `Failed to fetch URL`)
+      const contentType = response.headers.get('content-type') || ''
+      const text = await response.text()
+
+      let rawContent: string
+
+      if (contentType.includes('text/html')) {
+        rawContent = this.htmlToMarkdown(text)
+      } else if (contentType.includes('application/json')) {
+        rawContent = text
+      } else {
+        rawContent = text
       }
 
-      const rawContent = result.content || ''
-      const title = result.title || url
+      let entries: { title: string; content: string; category: KnowledgeCategory }[] = []
 
-      let entries: { title: string; content: string; category: KnowledgeCategory; confidence?: number }[] = []
-
-      const contentType = result.contentType || ''
       if (contentType.includes('application/json')) {
-        entries = this.parseJsonContent(rawContent, title)
+        entries = this.parseJsonContent(rawContent, url)
+      } else if (contentType.includes('text/html')) {
+        entries = this.parseMarkdownContent(rawContent)
       } else {
-        entries = intelligentExtractor.extract(rawContent, title)
+        entries = this.parseTextContent(rawContent, url)
       }
 
       let imported = 0
@@ -656,6 +665,70 @@ ${lines.join('\n')}
     ].includes(cat)
   }
 
+  private chunkContent(content: string, maxChunkSize: number = 1500): string[] {
+    const trimmed = content.trim()
+    if (trimmed.length <= maxChunkSize) return [trimmed]
+
+    const chunks: string[] = []
+    const headingSplits = trimmed.split(/^(?=#{1,4}\s)/m)
+
+    if (headingSplits.length > 1) {
+      let currentChunk = ''
+      for (const section of headingSplits) {
+        if (!section.trim()) continue
+        if (currentChunk.length + section.length <= maxChunkSize) {
+          currentChunk += section
+        } else {
+          if (currentChunk) chunks.push(currentChunk.trim())
+          if (section.length <= maxChunkSize) {
+            currentChunk = section
+          } else {
+            const subChunks = this.chunkByParagraph(section, maxChunkSize)
+            chunks.push(...subChunks.slice(0, -1))
+            currentChunk = subChunks[subChunks.length - 1] || ''
+          }
+        }
+      }
+      if (currentChunk.trim()) chunks.push(currentChunk.trim())
+    } else {
+      return this.chunkByParagraph(trimmed, maxChunkSize)
+    }
+
+    return chunks.length > 0 ? chunks : [trimmed.slice(0, maxChunkSize)]
+  }
+
+  private chunkByParagraph(content: string, maxChunkSize: number): string[] {
+    const paragraphs = content.split(/\n{2,}/)
+    const chunks: string[] = []
+    let currentChunk = ''
+
+    for (const para of paragraphs) {
+      if (currentChunk.length + para.length + 2 <= maxChunkSize) {
+        currentChunk += (currentChunk ? '\n\n' : '') + para
+      } else {
+        if (currentChunk) chunks.push(currentChunk.trim())
+        if (para.length <= maxChunkSize) {
+          currentChunk = para
+        } else {
+          const sentences = para.match(/[^.!?。！？\n]+[.!?。！？\n]?/g) || [para]
+          let sentenceChunk = ''
+          for (const sentence of sentences) {
+            if (sentenceChunk.length + sentence.length <= maxChunkSize) {
+              sentenceChunk += sentence
+            } else {
+              if (sentenceChunk) chunks.push(sentenceChunk.trim())
+              sentenceChunk = sentence
+            }
+          }
+          currentChunk = sentenceChunk
+        }
+      }
+    }
+    if (currentChunk.trim()) chunks.push(currentChunk.trim())
+
+    return chunks.length > 0 ? chunks : [content.slice(0, maxChunkSize)]
+  }
+
   private autoTitle(content: string): string {
     const trimmed = content.trim()
     const firstLine = trimmed.split('\n')[0]
@@ -736,6 +809,69 @@ ${lines.join('\n')}
     } catch {
       entries.push({ title: fileName, content, category: 'document' })
     }
+    return entries
+  }
+
+  private parseMarkdownContent(content: string): { title: string; content: string; category: KnowledgeCategory }[] {
+    const entries: { title: string; content: string; category: KnowledgeCategory }[] = []
+    const sections = content.split(/^(?=#{1,3}\s)/m).filter(Boolean)
+
+    if (sections.length <= 1) {
+      entries.push({ title: this.autoTitle(content), content: content.trim(), category: 'document' })
+      return entries
+    }
+
+    for (const section of sections) {
+      const lines = section.trim().split('\n')
+      const title = lines[0].replace(/^#{1,3}\s+/, '').trim()
+      const body = lines.slice(1).join('\n').trim()
+      if (body) {
+        entries.push({ title: title || this.autoTitle(body), content: body, category: 'document' })
+      }
+    }
+
+    return entries.length > 0 ? entries : [{ title: this.autoTitle(content), content: content.trim(), category: 'document' }]
+  }
+
+  private parseTextContent(content: string, fileName: string): { title: string; content: string; category: KnowledgeCategory }[] {
+    const entries: { title: string; content: string; category: KnowledgeCategory }[] = []
+
+    if (fileName.endsWith('.csv')) {
+      const lines = content.split('\n').filter(l => l.trim())
+      if (lines.length > 1) {
+        const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''))
+        for (let i = 1; i < lines.length; i++) {
+          const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''))
+          const rowContent = headers.map((h, idx) => `${h}: ${values[idx] || ''}`).join('\n')
+          entries.push({
+            title: `${fileName} - Row ${i}`,
+            content: rowContent,
+            category: 'reference',
+          })
+        }
+      }
+      return entries.length > 0 ? entries : [{ title: fileName, content, category: 'document' }]
+    }
+
+    const paragraphs = content.split(/\n{2,}/).filter(p => p.trim())
+    if (paragraphs.length <= 1) {
+      const chunks = this.chunkContent(content)
+      for (const chunk of chunks) {
+        entries.push({ title: this.autoTitle(chunk), content: chunk, category: 'document' })
+      }
+    } else {
+      for (const para of paragraphs) {
+        if (para.length > 2000) {
+          const chunks = this.chunkContent(para)
+          for (const chunk of chunks) {
+            entries.push({ title: this.autoTitle(chunk), content: chunk, category: 'document' })
+          }
+        } else {
+          entries.push({ title: this.autoTitle(para), content: para.trim(), category: 'document' })
+        }
+      }
+    }
+
     return entries
   }
 

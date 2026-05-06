@@ -1232,7 +1232,7 @@ export default function ChatPanel() {
         <div className="flex-1 min-h-0 relative z-0 flex flex-col pt-12">
           {/* API Key Warning */}
           {!hasApiKey && (
-            <div className={`m-4 p-4 border border-warning/20 bg-warning/5 rounded-xl flex gap-3 backdrop-blur-sm relative z-10 ${isChatPrimary ? 'max-w-[800px] mx-auto' : ''}`}>
+            <div className={`m-4 p-4 border border-warning/20 bg-warning/5 rounded-xl flex gap-3 backdrop-blur-sm relative z-10 ${isChatPrimary ? 'max-w-[840px] mx-auto' : ''}`}>
               <AlertTriangle className="w-5 h-5 text-warning flex-shrink-0" />
               <div>
                 <span className="font-medium text-sm text-warning block mb-1">{t('setupRequired', language)}</span>
