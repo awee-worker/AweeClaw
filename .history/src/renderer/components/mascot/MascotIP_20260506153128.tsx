@@ -16,7 +16,11 @@ export function MascotIP() {
   return (
     <button
       onClick={handleToggle}
-      className="w-8 h-8 rounded-lg flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-text-primary/[0.05] transition-colors"
+      className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
+        chatVisible
+          ? 'text-accent bg-accent/10 hover:bg-accent/20'
+          : 'text-text-muted hover:text-text-primary hover:bg-text-primary/[0.05]'
+      }`}
       title={language === 'zh' ? (chatVisible ? '隐藏 AI 助手' : '显示 AI 助手') : (chatVisible ? 'Hide AI Assistant' : 'Show AI Assistant')}
     >
       {chatVisible ? (

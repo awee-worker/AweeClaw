@@ -1,20 +1,29 @@
 import { api } from '@/renderer/services/electronAPI'
-import { Minus, Square, X, Search, HelpCircle } from 'lucide-react'
+import { Minus, Square, X, Search, HelpCircle, PanelLeftOpen, PanelLeftClose, PanelRightOpen, PanelRightClose } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import WorkspaceDropdown from './WorkspaceDropdown'
 import UpdateIndicator from './UpdateIndicator'
-import { MascotIP } from '../mascot/MascotIP'
 import { ScenarioSelector } from '../scenario/ScenarioSelector'
 
-// 检测是否为 Mac 平台
 const isMac = typeof navigator !== 'undefined' && (
   navigator.platform.toUpperCase().indexOf('MAC') >= 0 ||
   ((navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform?.toUpperCase().indexOf('MAC') ?? -1) >= 0
 )
 
 export default function TitleBar() {
-  const { setShowQuickOpen, setShowAbout, language } = useStore(useShallow(s => ({ setShowQuickOpen: s.setShowQuickOpen, setShowAbout: s.setShowAbout, language: s.language })))
+  const { setShowQuickOpen, setShowAbout, language, activeSidePanel, chatVisible, toggleSidebar, toggleChat } = useStore(useShallow(s => ({
+    setShowQuickOpen: s.setShowQuickOpen,
+    setShowAbout: s.setShowAbout,
+    language: s.language,
+    activeSidePanel: s.activeSidePanel,
+    chatVisible: s.chatVisible,
+    toggleSidebar: s.toggleSidebar,
+    toggleChat: s.toggleChat,
+  })))
+
+  const sidebarVisible = activeSidePanel !== null
+
   return (
     <div className="h-12 flex items-center justify-between px-0 drag-region select-none bg-background/40 backdrop-blur-md z-50 border-b border-border/30 shadow-[0_1px_15px_rgba(0,0,0,0.03)]">
 
@@ -34,7 +43,7 @@ export default function TitleBar() {
         </div>
       </div>
 
-      {/* Center - Command Palette (Mac style center, Windows fluid) */}
+      {/* Center - Command Palette */}
       <div className="flex-1 flex justify-center min-w-0 px-4">
         <div
           onClick={() => setShowQuickOpen(true)}
@@ -52,13 +61,13 @@ export default function TitleBar() {
         </div>
       </div>
 
-      {/* Right - Window Controls & Actions */}
+      {/* Right - Panel Toggles & Window Controls */}
       <div className="flex items-center justify-end h-full pr-2 gap-1">
         <div className="no-drag flex items-center gap-1 h-full mr-2">
           {/* Update Indicator */}
           <UpdateIndicator />
 
-          {/* About Button (Hidden on Mac if needed, or kept for consistency) */}
+          {/* About Button */}
           <button
             onClick={() => setShowAbout(true)}
             className="w-8 h-8 rounded-lg flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-text-primary/[0.05] transition-all"
@@ -69,8 +78,22 @@ export default function TitleBar() {
 
           <div className="w-[1px] h-4 bg-border/50 mx-1"></div>
 
-          {/* Mascot IP */}
-          <MascotIP />
+          {/* Sidebar Toggle */}
+          <button
+            onClick={toggleSidebar}
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-text-primary/[0.05] transition-colors"
+            title={language === 'zh' ? (sidebarVisible ? '隐藏侧边栏' : '显示侧边栏') : (sidebarVisible ? 'Hide Sidebar' : 'Show Sidebar')}
+          >
+            {sidebarVisible ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
+          </button>
+
+          <button
+            onClick={toggleChat}
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-text-primary/[0.05] transition-colors"
+            title={language === 'zh' ? (chatVisible ? '隐藏 AI 助手' : '显示 AI 助手') : (chatVisible ? 'Hide AI Assistant' : 'Show AI Assistant')}
+          >
+            {chatVisible ? <PanelRightClose className="w-4 h-4" /> : <PanelRightOpen className="w-4 h-4" />}
+          </button>
         </div>
 
         {/* Windows Controls */}

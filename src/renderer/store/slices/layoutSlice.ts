@@ -1,7 +1,3 @@
-/**
- * 布局相关状态切片
- * 管理面板尺寸、可见性等布局状态
- */
 import { StateCreator } from 'zustand'
 import { LAYOUT } from '@shared/constants'
 
@@ -9,6 +5,7 @@ export type SidePanel = 'explorer' | 'search' | 'git' | 'problems' | 'outline' |
 
 export interface LayoutSlice {
   activeSidePanel: SidePanel
+  lastActiveSidePanel: Exclude<SidePanel, null>
   terminalVisible: boolean
   debugVisible: boolean
   chatVisible: boolean
@@ -25,10 +22,13 @@ export interface LayoutSlice {
   setTerminalLayout: (layout: 'tabs' | 'split') => void
   toggleTerminal: () => void
   toggleDebug: () => void
+  toggleSidebar: () => void
+  toggleChat: () => void
 }
 
 export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> = (set) => ({
   activeSidePanel: 'explorer',
+  lastActiveSidePanel: 'explorer',
   terminalVisible: false,
   debugVisible: false,
   chatVisible: true,
@@ -36,7 +36,10 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
   chatWidth: 600,
   terminalLayout: 'tabs',
 
-  setActiveSidePanel: (panel) => set({ activeSidePanel: panel }),
+  setActiveSidePanel: (panel) => set((state) => ({
+    activeSidePanel: panel,
+    ...(panel ? { lastActiveSidePanel: panel } : {}),
+  })),
   setTerminalVisible: (visible) => set({ terminalVisible: visible }),
   setDebugVisible: (visible) => set({ debugVisible: visible }),
   setChatVisible: (visible) => set({ chatVisible: visible }),
@@ -45,4 +48,8 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
   setTerminalLayout: (layout) => set({ terminalLayout: layout }),
   toggleTerminal: () => set((state) => ({ terminalVisible: !state.terminalVisible })),
   toggleDebug: () => set((state) => ({ debugVisible: !state.debugVisible })),
+  toggleSidebar: () => set((state) => ({
+    activeSidePanel: state.activeSidePanel ? null : state.lastActiveSidePanel,
+  })),
+  toggleChat: () => set((state) => ({ chatVisible: !state.chatVisible })),
 })
