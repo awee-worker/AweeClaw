@@ -462,90 +462,6 @@ const ThinkingBlock = React.memo(({ content, startTime, isStreaming, fontSize }:
 })
 ThinkingBlock.displayName = 'ThinkingBlock'
 
-const URL_PATTERN = /(?<!\()(https?:\/\/[^\s<>\[\]"'`\u3000-\u303F\uFF00-\uFFEF]*[^\s<>\[\]"'`\u3000-\u303F\uFF00-\uFFEF.,;:!?)}\]])/g
-
-function preprocessUrls(text: string): string {
-  const codeBlockRanges: [number, number][] = []
-  const codeBlockRegex = /```[\s\S]*?```/g
-  let match: RegExpExecArray | null
-  while ((match = codeBlockRegex.exec(text)) !== null) {
-    codeBlockRanges.push([match.index, match.index + match[0].length])
-  }
-  const inlineCodeRegex = /`[^`]+`/g
-  while ((match = inlineCodeRegex.exec(text)) !== null) {
-    codeBlockRanges.push([match.index, match.index + match[0].length])
-  }
-  const mdLinkRegex = /\[([^\]]*)\]\(([^)]+)\)/g
-  while ((match = mdLinkRegex.exec(text)) !== null) {
-    codeBlockRanges.push([match.index, match.index + match[0].length])
-  }
-
-  const isInCodeBlock = (idx: number) => codeBlockRanges.some(([s, e]) => idx >= s && idx < e)
-
-  URL_PATTERN.lastIndex = 0
-  const results: string[] = []
-  let lastIndex = 0
-
-  while ((match = URL_PATTERN.exec(text)) !== null) {
-    const url = match[0]
-    const matchStart = match.index
-    const matchEnd = matchStart + url.length
-
-    if (isInCodeBlock(matchStart)) {
-      continue
-    }
-
-    if (matchStart > 0 && text[matchStart - 1] === '(') {
-      continue
-    }
-
-    results.push(text.slice(lastIndex, matchStart))
-    results.push(`[${url}](${url})`)
-    lastIndex = matchEnd
-  }
-
-  if (lastIndex < text.length) {
-    results.push(text.slice(lastIndex))
-  }
-
-  return results.length > 0 ? results.join('') : text
-}
-
-function convertLineBreaks(text: string): string {
-  const lines = text.split('\n')
-  const result: string[] = []
-  let inCodeBlock = false
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-
-    if (line.startsWith('```')) {
-      inCodeBlock = !inCodeBlock
-      result.push(line)
-      continue
-    }
-
-    if (inCodeBlock) {
-      result.push(line)
-      continue
-    }
-
-    if (line.trim() === '') {
-      result.push(line)
-      continue
-    }
-
-    if (/^[\s]*[-*+]\s/.test(line) || /^[\s]*\d+\.\s/.test(line) || /^#{1,6}\s/.test(line) || /^>\s/.test(line) || /^---/.test(line) || /^\|/.test(line)) {
-      result.push(line)
-      continue
-    }
-
-    result.push(line + '  ')
-  }
-
-  return result.join('\n')
-}
-
 // Markdown 渲染组件
 const MarkdownContent = React.memo(({ content: rawContent, fontSize, isStreaming, preserveLineBreaks }: { content: string; fontSize: number; isStreaming?: boolean; preserveLineBreaks?: boolean }) => {
   const content = typeof rawContent === 'string' ? rawContent : String(rawContent ?? '')
@@ -1390,7 +1306,7 @@ const ChatMessage = React.memo(({
                   </Modal>
 
                   <div className="text-[14px] leading-relaxed">
-                    <MarkdownContent content={textContent} fontSize={fontSize} preserveLineBreaks />
+                    <MarkdownContent content={textContent} fontSize={fontSize} />
                   </div>
                 </div>
               )}

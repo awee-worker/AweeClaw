@@ -73,6 +73,9 @@ export class McpClient extends EventEmitter {
   get id(): string {
     return this.state.config.id
   }
+  get config(): McpServerConfig {
+    return this.state.config
+  }
   get status(): McpServerStatus {
     return this.state.status
   }

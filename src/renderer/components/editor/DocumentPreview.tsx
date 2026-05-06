@@ -492,6 +492,233 @@ interface PptxPreviewProps {
   path: string
 }
 
+interface CsvPreviewProps {
+  path: string
+  content: string
+}
+
+function parseCsvLine(line: string, delimiter: string): string[] {
+  const cells: string[] = []
+  let current = ''
+  let inQuotes = false
+
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]
+    if (inQuotes) {
+      if (ch === '"') {
+        if (i + 1 < line.length && line[i + 1] === '"') {
+          current += '"'
+          i++
+        } else {
+          inQuotes = false
+        }
+      } else {
+        current += ch
+      }
+    } else {
+      if (ch === '"') {
+        inQuotes = true
+      } else if (ch === delimiter) {
+        cells.push(current)
+        current = ''
+      } else {
+        current += ch
+      }
+    }
+  }
+  cells.push(current)
+  return cells
+}
+
+function parseCsvContent(content: string, delimiter: string): string[][] {
+  const lines = content.split(/\r?\n/)
+  const rows: string[][] = []
+
+  for (const line of lines) {
+    if (line.trim() === '' && rows.length > 0) continue
+    rows.push(parseCsvLine(line, delimiter))
+  }
+
+  return rows
+}
+
+function detectDelimiter(content: string): string {
+  const firstLines = content.split(/\r?\n/).slice(0, 5).join('\n')
+  const tabCount = (firstLines.match(/\t/g) || []).length
+  const commaCount = (firstLines.match(/,/g) || []).length
+  const semicolonCount = (firstLines.match(/;/g) || []).length
+
+  if (tabCount > commaCount && tabCount > semicolonCount) return '\t'
+  if (semicolonCount > commaCount) return ';'
+  return ','
+}
+
+export function CsvPreview({ path, content }: CsvPreviewProps) {
+  const language = useStore(s => s.language)
+  const [viewMode, setViewMode] = useState<'table' | 'text'>('table')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [hasHeader, setHasHeader] = useState(true)
+
+  const ext = path.split('.').pop()?.toLowerCase() || 'csv'
+  const delimiter = ext === 'tsv' ? '\t' : detectDelimiter(content)
+
+  const { headers, rows, filteredRows } = useMemo(() => {
+    const allRows = parseCsvContent(content, delimiter)
+    if (allRows.length === 0) return { headers: [], rows: [], filteredRows: [] }
+
+    let hdrs: string[] = []
+    let dataRows: string[][] = []
+
+    if (hasHeader && allRows.length > 1) {
+      hdrs = allRows[0]
+      dataRows = allRows.slice(1)
+    } else {
+      const maxCols = Math.max(...allRows.map(r => r.length), 0)
+      hdrs = Array.from({ length: maxCols }, (_, i) => String.fromCharCode(65 + (i % 26)) + (i >= 26 ? Math.floor(i / 26) : ''))
+      dataRows = allRows
+    }
+
+    const maxCols = Math.max(...allRows.map(r => r.length), hdrs.length, 0)
+    while (hdrs.length < maxCols) {
+      hdrs.push(String.fromCharCode(65 + (hdrs.length % 26)) + (hdrs.length >= 26 ? Math.floor(hdrs.length / 26) : ''))
+    }
+
+    const filtered = searchQuery.trim()
+      ? dataRows.filter(row => row.some(cell => cell.toLowerCase().includes(searchQuery.toLowerCase())))
+      : dataRows
+
+    return { headers: hdrs, rows: dataRows, filteredRows: filtered }
+  }, [content, delimiter, hasHeader, searchQuery])
+
+  const maxCols = Math.max(headers.length, ...filteredRows.map(r => r.length), 0)
+  const totalRows = rows.length
+  const totalCols = maxCols
+
+  if (viewMode === 'text') {
+    return (
+      <div className="h-full flex flex-col bg-background">
+        <div className="flex-shrink-0 flex items-center gap-2 px-3 py-2 border-b border-border bg-surface/50">
+          <FileSpreadsheet className="w-4 h-4 text-accent mr-1 flex-shrink-0" />
+          <span className="text-xs text-text-muted">
+            {ext.toUpperCase()} · {totalRows} × {totalCols}
+          </span>
+          <div className="flex-1" />
+          <button
+            onClick={() => setViewMode('table')}
+            className="px-2.5 py-1 rounded-md text-xs font-medium bg-accent/20 text-accent hover:bg-accent/30 transition-colors"
+          >
+            {language === 'zh' ? '表格视图' : 'Table View'}
+          </button>
+        </div>
+        <div className="flex-1 overflow-auto p-4">
+          <pre className="text-sm text-text-secondary font-mono whitespace-pre">{content}</pre>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="h-full flex flex-col bg-background">
+      <div className="flex-shrink-0 flex items-center gap-2 px-3 py-2 border-b border-border bg-surface/50">
+        <FileSpreadsheet className="w-4 h-4 text-accent mr-1 flex-shrink-0" />
+        <span className="text-xs text-text-muted">
+          {ext.toUpperCase()} · {totalRows} × {totalCols}
+        </span>
+        <div className="h-4 w-px bg-border mx-1" />
+        <button
+          onClick={() => setHasHeader(!hasHeader)}
+          className={`px-2 py-0.5 rounded text-xs transition-colors ${hasHeader ? 'bg-accent/20 text-accent' : 'text-text-muted hover:text-text-primary'}`}
+        >
+          {language === 'zh' ? '首行为表头' : 'Header Row'}
+        </button>
+        <div className="flex-1" />
+        <div className="relative">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={language === 'zh' ? '搜索...' : 'Search...'}
+            className="w-40 h-6 px-2 pr-6 text-xs rounded-md bg-surface/80 border border-border/50 text-text-primary placeholder:text-text-muted/60 focus:outline-none focus:border-accent/50"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary text-xs"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+        <button
+          onClick={() => setViewMode('text')}
+          className="px-2.5 py-1 rounded-md text-xs font-medium text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
+        >
+          {language === 'zh' ? '文本视图' : 'Text View'}
+        </button>
+      </div>
+      <div className="flex-1 overflow-auto">
+        {filteredRows.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="border-collapse min-w-full text-sm">
+              <thead className="sticky top-0 z-10">
+                <tr>
+                  <th className="border border-border/50 px-2 py-1.5 text-text-muted text-xs text-center w-12 bg-surface/80 font-normal select-none">#</th>
+                  {headers.map((header, colIdx) => (
+                    <th
+                      key={colIdx}
+                      className="border border-border/50 px-3 py-1.5 text-left font-semibold text-text-primary bg-surface/80 whitespace-nowrap"
+                    >
+                      {header}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredRows.map((row, rowIdx) => (
+                  <tr key={rowIdx} className="hover:bg-surface-hover/50 transition-colors">
+                    <td className="border border-border/50 px-2 py-1 text-text-muted text-xs text-center bg-surface/20 select-none">
+                      {rowIdx + 1}
+                    </td>
+                    {Array.from({ length: maxCols }).map((_, colIdx) => {
+                      const cell = row[colIdx]
+                      const cellStr = cell !== undefined && cell !== '' ? String(cell) : ''
+                      const isMatch = searchQuery.trim() && cellStr.toLowerCase().includes(searchQuery.toLowerCase())
+                      return (
+                        <td
+                          key={colIdx}
+                          className={`border border-border/50 px-3 py-1.5 max-w-[300px] truncate text-text-secondary ${isMatch ? 'bg-accent/10' : ''}`}
+                          title={cellStr || undefined}
+                        >
+                          {cellStr}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center h-full text-text-muted text-sm">
+            {searchQuery
+              ? (language === 'zh' ? '未找到匹配结果' : 'No matching results')
+              : (language === 'zh' ? '空文件' : 'Empty file')
+            }
+          </div>
+        )}
+      </div>
+      {searchQuery && (
+        <div className="flex-shrink-0 px-3 py-1.5 border-t border-border bg-surface/30 text-xs text-text-muted">
+          {language === 'zh'
+            ? `找到 ${filteredRows.length} / ${totalRows} 行`
+            : `${filteredRows.length} / ${totalRows} rows`
+          }
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function PptxPreview({ path }: PptxPreviewProps) {
   const language = useStore(s => s.language)
   const [slides, setSlides] = useState<SlideData[]>([])

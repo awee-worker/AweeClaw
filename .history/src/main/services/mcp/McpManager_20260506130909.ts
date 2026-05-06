@@ -488,7 +488,7 @@ export class McpManager extends EventEmitter {
 
   private reconnectDynamicArgServers(): void {
     for (const [id, client] of this.clients) {
-      const config = client.config
+      const config = client.getConfig()
       if (!isLocalConfig(config)) continue
 
       const argsStr = (config.args || []).join(' ')

@@ -48,17 +48,10 @@ export class McpManager extends EventEmitter {
 
   /** 初始化 MCP 管理器 */
   async initialize(workspaceRoots: string[] = []): Promise<void> {
-    const rootsChanged = JSON.stringify(this.workspaceRoots) !== JSON.stringify(workspaceRoots)
-    this.workspaceRoots = workspaceRoots
-
     if (this.initialized) {
       this.configLoader.setWorkspaceRoots(workspaceRoots)
       this.notifyStateChange()
-
-      if (rootsChanged) {
-        this.reconnectDynamicArgServers()
-      }
-
+      // 重新初始化时也尝试自动连接
       this.autoConnectServers()
       return
     }
@@ -69,6 +62,7 @@ export class McpManager extends EventEmitter {
     this.initialized = true
     logger.mcp?.info('[McpManager] Initialized')
 
+    // 异步后台自动连接所有未禁用的服务器
     this.autoConnectServers()
   }
 
@@ -169,9 +163,7 @@ export class McpManager extends EventEmitter {
       }
     }
 
-    const processedConfig = this.injectDynamicArgs(config)
-
-    const client = new McpClient(processedConfig)
+    const client = new McpClient(config)
 
     // 监听事件
     client.on('statusChanged', ({ status, error, authUrl }) => {
@@ -484,49 +476,6 @@ export class McpManager extends EventEmitter {
     this.reloadConfig().catch((err) => {
       logger.mcp?.error('[McpManager] Failed to reload config:', err)
     })
-  }
-
-  private reconnectDynamicArgServers(): void {
-    for (const [id, client] of this.clients) {
-      const config = client.config
-      if (!isLocalConfig(config)) continue
-
-      const argsStr = (config.args || []).join(' ')
-      const isPlaywrightMcp = argsStr.includes('@playwright/mcp') || argsStr.includes('playwright-mcp')
-      if (!isPlaywrightMcp) continue
-
-      logger.mcp?.info(`[McpManager] Reconnecting Playwright MCP (${id}) due to workspace change`)
-      this.reconnectServer(id).catch((err) => {
-        logger.mcp?.warn(`[McpManager] Failed to reconnect ${id}:`, err)
-      })
-    }
-  }
-
-  private injectDynamicArgs(config: McpServerConfig): McpServerConfig {
-    if (!isLocalConfig(config)) return config
-
-    const args = [...(config.args || [])]
-    const argsStr = args.join(' ')
-    const isPlaywrightMcp = argsStr.includes('@playwright/mcp') || argsStr.includes('playwright-mcp')
-
-    if (isPlaywrightMcp) {
-      const workspaceDir = this.workspaceRoots.length > 0 ? this.workspaceRoots[0] : ''
-      if (workspaceDir) {
-        if (!argsStr.includes('--output-dir')) {
-          const insertIdx = args.findIndex(a => a.startsWith('@playwright/mcp') || a.includes('playwright-mcp'))
-          if (insertIdx !== -1) {
-            args.splice(insertIdx + 1, 0, '--output-dir', workspaceDir)
-          } else {
-            args.push('--output-dir', workspaceDir)
-          }
-        }
-        const result: McpLocalServerConfig = { ...config, args, cwd: workspaceDir }
-        logger.mcp?.info(`[McpManager] Injected --output-dir=${workspaceDir} and cwd=${workspaceDir} for Playwright MCP`)
-        return result
-      }
-    }
-
-    return { ...config, args }
   }
 
   private async notifyStateChange(): Promise<void> {

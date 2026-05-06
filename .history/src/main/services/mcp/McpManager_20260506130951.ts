@@ -488,12 +488,7 @@ export class McpManager extends EventEmitter {
 
   private reconnectDynamicArgServers(): void {
     for (const [id, client] of this.clients) {
-      const config = client.config
-      if (!isLocalConfig(config)) continue
-
-      const argsStr = (config.args || []).join(' ')
-      const isPlaywrightMcp = argsStr.includes('@playwright/mcp') || argsStr.includes('playwright-mcp')
-      if (!isPlaywrightMcp) continue
+      if (id !== 'playwright') continue
 
       logger.mcp?.info(`[McpManager] Reconnecting Playwright MCP (${id}) due to workspace change`)
       this.reconnectServer(id).catch((err) => {

@@ -1,0 +1,13 @@
+- generic [ref=e3]:
+  - link [ref=e5] [cursor=pointer]:
+    - /url: "###"
+  - generic [ref=e7]:
+    - generic [ref=e9] [cursor=pointer]: 账户密码登录
+    - generic [ref=e10]:
+      - generic [ref=e13]:
+        - textbox "请输入账号" [ref=e14]
+        - generic [ref=e16]: 
+      - generic [ref=e19]:
+        - textbox "请输入密码" [ref=e20]
+        - generic [ref=e22]: 
+      - button "登录" [ref=e23] [cursor=pointer]

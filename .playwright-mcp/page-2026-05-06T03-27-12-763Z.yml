@@ -1,0 +1,149 @@
+- generic [ref=e1]:
+  - generic [ref=e26]:
+    - generic [ref=e27]:
+      - menubar [ref=e31]:
+        - link " 首页" [ref=e32] [cursor=pointer]:
+          - /url: /dashboard
+          - menuitem " 首页" [ref=e33]:
+            - generic [ref=e34]: 
+            - generic [ref=e35]: 首页
+        - menuitem " 系统管理" [ref=e36]:
+          - generic [ref=e37] [cursor=pointer]:
+            - generic [ref=e38]: 
+            - generic [ref=e39]: 系统管理
+            - text: 
+          - text:                               
+        - menuitem " 项目管理" [ref=e40]:
+          - generic [ref=e41] [cursor=pointer]:
+            - generic [ref=e42]: 
+            - generic [ref=e43]: 项目管理
+            - text: 
+        - menuitem " 文档管理" [ref=e44]:
+          - generic [ref=e45] [cursor=pointer]:
+            - generic [ref=e46]: 
+            - generic [ref=e47]: 文档管理
+            - text: 
+          - text: 
+        - menuitem " 平台管理" [ref=e48]:
+          - generic [ref=e49] [cursor=pointer]:
+            - generic [ref=e50]: 
+            - generic [ref=e51]: 平台管理
+            - text: 
+          - text:                           
+      - generic [ref=e53] [cursor=pointer]:
+        - img [ref=e55]
+        - generic [ref=e56]: admin
+        - generic [ref=e57]: 管理员
+    - generic [ref=e58]:
+      - generic [ref=e60]:
+        - img [ref=e62]
+        - generic [ref=e63]:
+          - generic [ref=e65] [cursor=pointer]: 
+          - generic [ref=e66]:
+            - generic [ref=e67] [cursor=pointer]: 
+            - textbox "搜索：导航菜单" [ref=e68] [cursor=pointer]
+          - generic [ref=e73] [cursor=pointer]: 
+          - generic [ref=e74] [cursor=pointer]:
+            - button "重庆德普电气 " [ref=e75]:
+              - img [ref=e77]
+              - text: 重庆德普电气
+              - generic [ref=e78]: 
+            - text:  
+          - generic [ref=e80] [cursor=pointer]: 
+          - text:  
+          - generic:  
+          - generic: 
+      - generic [ref=e81]:
+        - text: Copyright @ 2024 德普电气
+        - generic [ref=e310]:
+          - generic [ref=e311]:
+            - generic:
+              - textbox "输入关键字搜索" [ref=e316]: 桂花井-拆分台区
+              - generic [ref=e319]:
+                - button " 查询" [active] [ref=e320] [cursor=pointer]:
+                  - generic [ref=e321]: 
+                  - text: 查询
+                - button " 刷新" [ref=e322] [cursor=pointer]:
+                  - generic [ref=e323]: 
+                  - text: 刷新
+              - generic [ref=e324]:
+                - button " 批量删除" [ref=e325] [cursor=pointer]:
+                  - generic [ref=e326]: 
+                  - text: 批量删除
+                - button " 新增项目" [ref=e327] [cursor=pointer]:
+                  - generic [ref=e328]: 
+                  - text: 新增项目
+          - generic [ref=e329]:
+            - generic [ref=e331]:
+              - table [ref=e333]:
+                - rowgroup [ref=e349]:
+                  - row "创建时间 创建人 所属公司 所属供电所 台区名称 台区编号 变压器容量(kVA) 分接开关档位 达标电压值(V) 用户数量 数据匹配时限" [ref=e350]:
+                    - columnheader [ref=e351]:
+                      - generic [ref=e354] [cursor=pointer]:
+                        - checkbox [disabled]
+                    - columnheader "创建时间" [ref=e356]:
+                      - generic [ref=e357]: 创建时间
+                    - columnheader "创建人" [ref=e358]:
+                      - generic [ref=e359]: 创建人
+                    - columnheader "所属公司" [ref=e360]:
+                      - generic [ref=e361]: 所属公司
+                    - columnheader "所属供电所" [ref=e362]:
+                      - generic [ref=e363]: 所属供电所
+                    - columnheader "台区名称" [ref=e364]:
+                      - generic [ref=e365]: 台区名称
+                    - columnheader "台区编号" [ref=e366]:
+                      - generic [ref=e367]: 台区编号
+                    - columnheader "变压器容量(kVA)" [ref=e368]:
+                      - generic [ref=e369]: 变压器容量(kVA)
+                    - columnheader "分接开关档位" [ref=e370]:
+                      - generic [ref=e371]: 分接开关档位
+                    - columnheader "达标电压值(V)" [ref=e372]:
+                      - generic [ref=e373]: 达标电压值(V)
+                    - columnheader "用户数量" [ref=e374]:
+                      - generic [ref=e375]: 用户数量
+                    - columnheader "数据匹配时限" [ref=e376]:
+                      - generic [ref=e377]: 数据匹配时限
+                    - columnheader [ref=e378]
+              - generic [ref=e380]:
+                - table:
+                  - rowgroup
+                - generic [ref=e1402]:
+                  - img [ref=e1404]
+                  - paragraph [ref=e1421]: 暂无数据
+              - generic [ref=e964]:
+                - table [ref=e966]:
+                  - rowgroup [ref=e981]:
+                    - row "操作" [ref=e982]:
+                      - columnheader [ref=e983]
+                      - columnheader [ref=e984]
+                      - columnheader [ref=e985]
+                      - columnheader [ref=e986]
+                      - columnheader [ref=e987]
+                      - columnheader [ref=e988]
+                      - columnheader [ref=e989]
+                      - columnheader [ref=e990]
+                      - columnheader [ref=e991]
+                      - columnheader [ref=e992]
+                      - columnheader [ref=e993]
+                      - columnheader [ref=e994]
+                      - columnheader "操作" [ref=e995]:
+                        - generic [ref=e996]: 操作
+                - generic [ref=e997]:
+                  - table:
+                    - rowgroup
+            - generic [ref=e1376]:
+              - generic [ref=e1377]: 共 0 条
+              - generic [ref=e1380]:
+                - textbox "请选择" [ref=e1381] [cursor=pointer]: 20条/页
+                - generic [ref=e1383] [cursor=pointer]: 
+              - button "" [disabled] [ref=e1384]:
+                - generic [ref=e1385]: 
+              - list [ref=e1386]:
+                - listitem [ref=e1387]: "1"
+              - button "" [disabled] [ref=e1393]:
+                - generic [ref=e1394]: 
+              - generic [ref=e1395]:
+                - text: 前往
+                - spinbutton [ref=e1397]: "1"
+                - text: 页
+  - text:        

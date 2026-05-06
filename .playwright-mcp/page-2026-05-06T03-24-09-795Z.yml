@@ -1,0 +1,1037 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e26]:
+    - generic [ref=e27]:
+      - menubar [ref=e31]:
+        - link " 首页" [ref=e32] [cursor=pointer]:
+          - /url: /dashboard
+          - menuitem " 首页" [ref=e33]:
+            - generic [ref=e34]: 
+            - generic [ref=e35]: 首页
+        - menuitem " 系统管理" [ref=e36]:
+          - generic [ref=e37] [cursor=pointer]:
+            - generic [ref=e38]: 
+            - generic [ref=e39]: 系统管理
+            - text: 
+          - text:                               
+        - menuitem " 项目管理" [ref=e40]:
+          - generic [ref=e41] [cursor=pointer]:
+            - generic [ref=e42]: 
+            - generic [ref=e43]: 项目管理
+            - text: 
+        - menuitem " 文档管理" [ref=e44]:
+          - generic [ref=e45] [cursor=pointer]:
+            - generic [ref=e46]: 
+            - generic [ref=e47]: 文档管理
+            - text: 
+          - text: 
+        - menuitem " 平台管理" [ref=e48]:
+          - generic [ref=e49] [cursor=pointer]:
+            - generic [ref=e50]: 
+            - generic [ref=e51]: 平台管理
+            - text: 
+          - text:                           
+      - generic [ref=e53] [cursor=pointer]:
+        - img [ref=e55]
+        - generic [ref=e56]: admin
+        - generic [ref=e57]: 管理员
+    - generic [ref=e58]:
+      - generic [ref=e60]:
+        - img [ref=e62]
+        - generic [ref=e63]:
+          - generic [ref=e65] [cursor=pointer]: 
+          - generic [ref=e66]:
+            - generic [ref=e67] [cursor=pointer]: 
+            - textbox "搜索：导航菜单" [ref=e68] [cursor=pointer]
+          - generic [ref=e73] [cursor=pointer]: 
+          - generic [ref=e74] [cursor=pointer]:
+            - button "重庆德普电气 " [ref=e75]:
+              - img [ref=e77]
+              - text: 重庆德普电气
+              - generic [ref=e78]: 
+            - text:  
+          - generic [ref=e80] [cursor=pointer]: 
+          - text:  
+          - generic:  
+          - generic: 
+      - generic [ref=e81]:
+        - text: Copyright @ 2024 德普电气
+        - generic [ref=e310]:
+          - generic [ref=e311]:
+            - generic:
+              - textbox "输入关键字搜索" [ref=e316]
+              - generic [ref=e319]:
+                - button " 查询" [ref=e320] [cursor=pointer]:
+                  - generic [ref=e321]: 
+                  - text: 查询
+                - button " 刷新" [ref=e322] [cursor=pointer]:
+                  - generic [ref=e323]: 
+                  - text: 刷新
+              - generic [ref=e324]:
+                - button " 批量删除" [ref=e325] [cursor=pointer]:
+                  - generic [ref=e326]: 
+                  - text: 批量删除
+                - button " 新增项目" [ref=e327] [cursor=pointer]:
+                  - generic [ref=e328]: 
+                  - text: 新增项目
+          - generic [ref=e329]:
+            - generic [ref=e331]:
+              - table [ref=e333]:
+                - rowgroup [ref=e349]:
+                  - row "创建时间 创建人 所属公司 所属供电所 台区名称 台区编号 变压器容量(kVA) 分接开关档位 达标电压值(V) 用户数量 数据匹配时限" [ref=e350]:
+                    - columnheader [ref=e351]:
+                      - generic [ref=e354] [cursor=pointer]:
+                        - checkbox
+                    - columnheader "创建时间" [ref=e356]:
+                      - generic [ref=e357]: 创建时间
+                    - columnheader "创建人" [ref=e358]:
+                      - generic [ref=e359]: 创建人
+                    - columnheader "所属公司" [ref=e360]:
+                      - generic [ref=e361]: 所属公司
+                    - columnheader "所属供电所" [ref=e362]:
+                      - generic [ref=e363]: 所属供电所
+                    - columnheader "台区名称" [ref=e364]:
+                      - generic [ref=e365]: 台区名称
+                    - columnheader "台区编号" [ref=e366]:
+                      - generic [ref=e367]: 台区编号
+                    - columnheader "变压器容量(kVA)" [ref=e368]:
+                      - generic [ref=e369]: 变压器容量(kVA)
+                    - columnheader "分接开关档位" [ref=e370]:
+                      - generic [ref=e371]: 分接开关档位
+                    - columnheader "达标电压值(V)" [ref=e372]:
+                      - generic [ref=e373]: 达标电压值(V)
+                    - columnheader "用户数量" [ref=e374]:
+                      - generic [ref=e375]: 用户数量
+                    - columnheader "数据匹配时限" [ref=e376]:
+                      - generic [ref=e377]: 数据匹配时限
+                    - columnheader [ref=e378]
+                    - columnheader [ref=e379]
+              - table [ref=e381]:
+                - rowgroup [ref=e396]:
+                  - row "2024-08-02 15:23:33 544458685410186373 国网重庆市电力公司 拔山供电所 黎明村2号 3310207412 100 198.00 86 不限" [ref=e397]:
+                    - cell [ref=e398]:
+                      - generic [ref=e401] [cursor=pointer]:
+                        - checkbox
+                    - cell "2024-08-02 15:23:33" [ref=e403]:
+                      - generic [ref=e404]: 2024-08-02 15:23:33
+                    - cell "544458685410186373" [ref=e405]:
+                      - generic [ref=e406]: "544458685410186373"
+                    - cell "国网重庆市电力公司" [ref=e407]:
+                      - generic [ref=e408]: 国网重庆市电力公司
+                    - cell "拔山供电所" [ref=e409]:
+                      - generic [ref=e410]: 拔山供电所
+                    - cell "黎明村2号" [ref=e411]:
+                      - generic [ref=e412]: 黎明村2号
+                    - cell "3310207412" [ref=e413]:
+                      - generic [ref=e414]: "3310207412"
+                    - cell "100" [ref=e415]:
+                      - generic [ref=e416]: "100"
+                    - cell [ref=e417]
+                    - cell "198.00" [ref=e418]:
+                      - generic [ref=e419]: "198.00"
+                    - cell "86" [ref=e420]:
+                      - generic [ref=e421]: "86"
+                    - cell "不限" [ref=e422]:
+                      - generic [ref=e423]: 不限
+                    - cell [ref=e424]
+                  - row "2024-01-02 11:58:24 499555001606088773 国网酉阳公司 城区供电所 焦家二台区-备用 4210276097 100 198.00 6 不限" [ref=e425]:
+                    - cell [ref=e426]:
+                      - generic [ref=e429] [cursor=pointer]:
+                        - checkbox
+                    - cell "2024-01-02 11:58:24" [ref=e431]:
+                      - generic [ref=e432]: 2024-01-02 11:58:24
+                    - cell "499555001606088773" [ref=e433]:
+                      - generic [ref=e434]: "499555001606088773"
+                    - cell "国网酉阳公司" [ref=e435]:
+                      - generic [ref=e436]: 国网酉阳公司
+                    - cell "城区供电所" [ref=e437]:
+                      - generic [ref=e438]: 城区供电所
+                    - cell "焦家二台区-备用" [ref=e439]:
+                      - generic [ref=e440]: 焦家二台区-备用
+                    - cell "4210276097" [ref=e441]:
+                      - generic [ref=e442]: "4210276097"
+                    - cell "100" [ref=e443]:
+                      - generic [ref=e444]: "100"
+                    - cell [ref=e445]
+                    - cell "198.00" [ref=e446]:
+                      - generic [ref=e447]: "198.00"
+                    - cell "6" [ref=e448]:
+                      - generic [ref=e449]: "6"
+                    - cell "不限" [ref=e450]:
+                      - generic [ref=e451]: 不限
+                    - cell [ref=e452]
+                  - row "2025-07-28 11:04:25 499555001606088773 国网酉阳公司 城区供电所 焦家二台区 4210276097 100 198.00 24 不限" [ref=e453]:
+                    - cell [ref=e454]:
+                      - generic [ref=e457] [cursor=pointer]:
+                        - checkbox
+                    - cell "2025-07-28 11:04:25" [ref=e459]:
+                      - generic [ref=e460]: 2025-07-28 11:04:25
+                    - cell "499555001606088773" [ref=e461]:
+                      - generic [ref=e462]: "499555001606088773"
+                    - cell "国网酉阳公司" [ref=e463]:
+                      - generic [ref=e464]: 国网酉阳公司
+                    - cell "城区供电所" [ref=e465]:
+                      - generic [ref=e466]: 城区供电所
+                    - cell "焦家二台区" [ref=e467]:
+                      - generic [ref=e468]: 焦家二台区
+                    - cell "4210276097" [ref=e469]:
+                      - generic [ref=e470]: "4210276097"
+                    - cell "100" [ref=e471]:
+                      - generic [ref=e472]: "100"
+                    - cell [ref=e473]
+                    - cell "198.00" [ref=e474]:
+                      - generic [ref=e475]: "198.00"
+                    - cell "24" [ref=e476]:
+                      - generic [ref=e477]: "24"
+                    - cell "不限" [ref=e478]:
+                      - generic [ref=e479]: 不限
+                    - cell [ref=e480]
+                  - row "2025-10-14 10:43:53 501742776933679237 国网酉阳公司 城区供电所 焦家二台区-拆分 4210276097 100 198.00 47 不限" [ref=e481]:
+                    - cell [ref=e482]:
+                      - generic [ref=e485] [cursor=pointer]:
+                        - checkbox
+                    - cell "2025-10-14 10:43:53" [ref=e487]:
+                      - generic [ref=e488]: 2025-10-14 10:43:53
+                    - cell "501742776933679237" [ref=e489]:
+                      - generic [ref=e490]: "501742776933679237"
+                    - cell "国网酉阳公司" [ref=e491]:
+                      - generic [ref=e492]: 国网酉阳公司
+                    - cell "城区供电所" [ref=e493]:
+                      - generic [ref=e494]: 城区供电所
+                    - cell "焦家二台区-拆分" [ref=e495]:
+                      - generic [ref=e496]: 焦家二台区-拆分
+                    - cell "4210276097" [ref=e497]:
+                      - generic [ref=e498]: "4210276097"
+                    - cell "100" [ref=e499]:
+                      - generic [ref=e500]: "100"
+                    - cell [ref=e501]
+                    - cell "198.00" [ref=e502]:
+                      - generic [ref=e503]: "198.00"
+                    - cell "47" [ref=e504]:
+                      - generic [ref=e505]: "47"
+                    - cell "不限" [ref=e506]:
+                      - generic [ref=e507]: 不限
+                    - cell [ref=e508]
+                  - row "2026-01-16 11:44:34 管理员/admin 国网酉阳公司 城区供电所 焦家二台区-拆分 4210276097 100 198.00 24 不限" [ref=e509]:
+                    - cell [ref=e510]:
+                      - generic [ref=e513] [cursor=pointer]:
+                        - checkbox
+                    - cell "2026-01-16 11:44:34" [ref=e515]:
+                      - generic [ref=e516]: 2026-01-16 11:44:34
+                    - cell "管理员/admin" [ref=e517]:
+                      - generic [ref=e518]: 管理员/admin
+                    - cell "国网酉阳公司" [ref=e519]:
+                      - generic [ref=e520]: 国网酉阳公司
+                    - cell "城区供电所" [ref=e521]:
+                      - generic [ref=e522]: 城区供电所
+                    - cell "焦家二台区-拆分" [ref=e523]:
+                      - generic [ref=e524]: 焦家二台区-拆分
+                    - cell "4210276097" [ref=e525]:
+                      - generic [ref=e526]: "4210276097"
+                    - cell "100" [ref=e527]:
+                      - generic [ref=e528]: "100"
+                    - cell [ref=e529]
+                    - cell "198.00" [ref=e530]:
+                      - generic [ref=e531]: "198.00"
+                    - cell "24" [ref=e532]:
+                      - generic [ref=e533]: "24"
+                    - cell "不限" [ref=e534]:
+                      - generic [ref=e535]: 不限
+                    - cell [ref=e536]
+                  - row "2024-08-13 13:47:08 544458685410186373 国网重庆市电力公司 双柳供电营业所 桂花井 0410133720 100 3档 209 121 不限" [ref=e537]:
+                    - cell [ref=e538]:
+                      - generic [ref=e541] [cursor=pointer]:
+                        - checkbox
+                    - cell "2024-08-13 13:47:08" [ref=e543]:
+                      - generic [ref=e544]: 2024-08-13 13:47:08
+                    - cell "544458685410186373" [ref=e545]:
+                      - generic [ref=e546]: "544458685410186373"
+                    - cell "国网重庆市电力公司" [ref=e547]:
+                      - generic [ref=e548]: 国网重庆市电力公司
+                    - cell "双柳供电营业所" [ref=e549]:
+                      - generic [ref=e550]: 双柳供电营业所
+                    - cell "桂花井" [ref=e551]:
+                      - generic [ref=e552]: 桂花井
+                    - cell "0410133720" [ref=e553]:
+                      - generic [ref=e554]: "0410133720"
+                    - cell "100" [ref=e555]:
+                      - generic [ref=e556]: "100"
+                    - cell "3档" [ref=e557]:
+                      - generic [ref=e558]: 3档
+                    - cell "209" [ref=e559]:
+                      - generic [ref=e560]: "209"
+                    - cell "121" [ref=e561]:
+                      - generic [ref=e562]: "121"
+                    - cell "不限" [ref=e563]:
+                      - generic [ref=e564]: 不限
+                    - cell [ref=e565]
+                  - row "2026-01-07 11:38:42 501742776933679237 国网重庆市电力公司 双柳供电营业所 桂花井-拆分 0410133720 100 3档 209 121 不限" [ref=e566]:
+                    - cell [ref=e567]:
+                      - generic [ref=e570] [cursor=pointer]:
+                        - checkbox
+                    - cell "2026-01-07 11:38:42" [ref=e572]:
+                      - generic [ref=e573]: 2026-01-07 11:38:42
+                    - cell "501742776933679237" [ref=e574]:
+                      - generic [ref=e575]: "501742776933679237"
+                    - cell "国网重庆市电力公司" [ref=e576]:
+                      - generic [ref=e577]: 国网重庆市电力公司
+                    - cell "双柳供电营业所" [ref=e578]:
+                      - generic [ref=e579]: 双柳供电营业所
+                    - cell "桂花井-拆分" [ref=e580]:
+                      - generic [ref=e581]: 桂花井-拆分
+                    - cell "0410133720" [ref=e582]:
+                      - generic [ref=e583]: "0410133720"
+                    - cell "100" [ref=e584]:
+                      - generic [ref=e585]: "100"
+                    - cell "3档" [ref=e586]:
+                      - generic [ref=e587]: 3档
+                    - cell "209" [ref=e588]:
+                      - generic [ref=e589]: "209"
+                    - cell "121" [ref=e590]:
+                      - generic [ref=e591]: "121"
+                    - cell "不限" [ref=e592]:
+                      - generic [ref=e593]: 不限
+                    - cell [ref=e594]
+                  - row "2024-11-18 13:36:33 628161792845023301 国网重庆市电力公司丰都供电分公司 社坛供电所 元坡台区柱上变 3010204713 30 3档 198.00 39 不限" [ref=e595]:
+                    - cell [ref=e596]:
+                      - generic [ref=e599] [cursor=pointer]:
+                        - checkbox
+                    - cell "2024-11-18 13:36:33" [ref=e601]:
+                      - generic [ref=e602]: 2024-11-18 13:36:33
+                    - cell "628161792845023301" [ref=e603]:
+                      - generic [ref=e604]: "628161792845023301"
+                    - cell "国网重庆市电力公司丰都供电分公司" [ref=e605]:
+                      - generic [ref=e606]: 国网重庆市电力公司丰都供电分公司
+                    - cell "社坛供电所" [ref=e607]:
+                      - generic [ref=e608]: 社坛供电所
+                    - cell "元坡台区柱上变" [ref=e609]:
+                      - generic [ref=e610]: 元坡台区柱上变
+                    - cell "3010204713" [ref=e611]:
+                      - generic [ref=e612]: "3010204713"
+                    - cell "30" [ref=e613]:
+                      - generic [ref=e614]: "30"
+                    - cell "3档" [ref=e615]:
+                      - generic [ref=e616]: 3档
+                    - cell "198.00" [ref=e617]:
+                      - generic [ref=e618]: "198.00"
+                    - cell "39" [ref=e619]:
+                      - generic [ref=e620]: "39"
+                    - cell "不限" [ref=e621]:
+                      - generic [ref=e622]: 不限
+                    - cell [ref=e623]
+                  - row "2024-11-18 21:07:23 628161792845023301 国网重庆市电力公司丰都供电分公司 社坛供电所 龙河台区柱上变 3010275171 50 3档 198.00 43 不限" [ref=e624]:
+                    - cell [ref=e625]:
+                      - generic [ref=e628] [cursor=pointer]:
+                        - checkbox
+                    - cell "2024-11-18 21:07:23" [ref=e630]:
+                      - generic [ref=e631]: 2024-11-18 21:07:23
+                    - cell "628161792845023301" [ref=e632]:
+                      - generic [ref=e633]: "628161792845023301"
+                    - cell "国网重庆市电力公司丰都供电分公司" [ref=e634]:
+                      - generic [ref=e635]: 国网重庆市电力公司丰都供电分公司
+                    - cell "社坛供电所" [ref=e636]:
+                      - generic [ref=e637]: 社坛供电所
+                    - cell "龙河台区柱上变" [ref=e638]:
+                      - generic [ref=e639]: 龙河台区柱上变
+                    - cell "3010275171" [ref=e640]:
+                      - generic [ref=e641]: "3010275171"
+                    - cell "50" [ref=e642]:
+                      - generic [ref=e643]: "50"
+                    - cell "3档" [ref=e644]:
+                      - generic [ref=e645]: 3档
+                    - cell "198.00" [ref=e646]:
+                      - generic [ref=e647]: "198.00"
+                    - cell "43" [ref=e648]:
+                      - generic [ref=e649]: "43"
+                    - cell "不限" [ref=e650]:
+                      - generic [ref=e651]: 不限
+                    - cell [ref=e652]
+                  - row "2024-12-10 11:42:33 501742776933679237 国网重庆市电力公司丰都供电分公司 高镇供电所 下河冲公变 3010461321 200 3档 198.00 72 不限" [ref=e653]:
+                    - cell [ref=e654]:
+                      - generic [ref=e657] [cursor=pointer]:
+                        - checkbox
+                    - cell "2024-12-10 11:42:33" [ref=e659]:
+                      - generic [ref=e660]: 2024-12-10 11:42:33
+                    - cell "501742776933679237" [ref=e661]:
+                      - generic [ref=e662]: "501742776933679237"
+                    - cell "国网重庆市电力公司丰都供电分公司" [ref=e663]:
+                      - generic [ref=e664]: 国网重庆市电力公司丰都供电分公司
+                    - cell "高镇供电所" [ref=e665]:
+                      - generic [ref=e666]: 高镇供电所
+                    - cell "下河冲公变" [ref=e667]:
+                      - generic [ref=e668]: 下河冲公变
+                    - cell "3010461321" [ref=e669]:
+                      - generic [ref=e670]: "3010461321"
+                    - cell "200" [ref=e671]:
+                      - generic [ref=e672]: "200"
+                    - cell "3档" [ref=e673]:
+                      - generic [ref=e674]: 3档
+                    - cell "198.00" [ref=e675]:
+                      - generic [ref=e676]: "198.00"
+                    - cell "72" [ref=e677]:
+                      - generic [ref=e678]: "72"
+                    - cell "不限" [ref=e679]:
+                      - generic [ref=e680]: 不限
+                    - cell [ref=e681]
+                  - row "2024-12-10 20:22:29 544458685410186373 国网重庆市电力公司丰都供电分公司 高镇供电营业所 建国8村公变 3010216926 80 198.00 155 不限" [ref=e682]:
+                    - cell [ref=e683]:
+                      - generic [ref=e686] [cursor=pointer]:
+                        - checkbox
+                    - cell "2024-12-10 20:22:29" [ref=e688]:
+                      - generic [ref=e689]: 2024-12-10 20:22:29
+                    - cell "544458685410186373" [ref=e690]:
+                      - generic [ref=e691]: "544458685410186373"
+                    - cell "国网重庆市电力公司丰都供电分公司" [ref=e692]:
+                      - generic [ref=e693]: 国网重庆市电力公司丰都供电分公司
+                    - cell "高镇供电营业所" [ref=e694]:
+                      - generic [ref=e695]: 高镇供电营业所
+                    - cell "建国8村公变" [ref=e696]:
+                      - generic [ref=e697]: 建国8村公变
+                    - cell "3010216926" [ref=e698]:
+                      - generic [ref=e699]: "3010216926"
+                    - cell "80" [ref=e700]:
+                      - generic [ref=e701]: "80"
+                    - cell [ref=e702]
+                    - cell "198.00" [ref=e703]:
+                      - generic [ref=e704]: "198.00"
+                    - cell "155" [ref=e705]:
+                      - generic [ref=e706]: "155"
+                    - cell "不限" [ref=e707]:
+                      - generic [ref=e708]: 不限
+                    - cell [ref=e709]
+                  - row "2024-12-13 09:26:10 544458685410186373 国网重庆市电力公司江津供电分公司 笋溪供电营业所 油草湾台区柱上变 4410424689 100 53 不限" [ref=e710]:
+                    - cell [ref=e711]:
+                      - generic [ref=e714] [cursor=pointer]:
+                        - checkbox
+                    - cell "2024-12-13 09:26:10" [ref=e716]:
+                      - generic [ref=e717]: 2024-12-13 09:26:10
+                    - cell "544458685410186373" [ref=e718]:
+                      - generic [ref=e719]: "544458685410186373"
+                    - cell "国网重庆市电力公司江津供电分公司" [ref=e720]:
+                      - generic [ref=e721]: 国网重庆市电力公司江津供电分公司
+                    - cell "笋溪供电营业所" [ref=e722]:
+                      - generic [ref=e723]: 笋溪供电营业所
+                    - cell "油草湾台区柱上变" [ref=e724]:
+                      - generic [ref=e725]: 油草湾台区柱上变
+                    - cell "4410424689" [ref=e726]:
+                      - generic [ref=e727]: "4410424689"
+                    - cell "100" [ref=e728]:
+                      - generic [ref=e729]: "100"
+                    - cell [ref=e730]
+                    - cell [ref=e731]
+                    - cell "53" [ref=e732]:
+                      - generic [ref=e733]: "53"
+                    - cell "不限" [ref=e734]:
+                      - generic [ref=e735]: 不限
+                    - cell [ref=e736]
+                  - row "2024-12-13 14:13:22 637190022017060037 国网重庆市电力公司江津供电分公司 贾嗣供电所 七一桐子堡柱上公变 20M01000036318707 100 3档 198.00 73 不限" [ref=e737]:
+                    - cell [ref=e738]:
+                      - generic [ref=e741] [cursor=pointer]:
+                        - checkbox
+                    - cell "2024-12-13 14:13:22" [ref=e743]:
+                      - generic [ref=e744]: 2024-12-13 14:13:22
+                    - cell "637190022017060037" [ref=e745]:
+                      - generic [ref=e746]: "637190022017060037"
+                    - cell "国网重庆市电力公司江津供电分公司" [ref=e747]:
+                      - generic [ref=e748]: 国网重庆市电力公司江津供电分公司
+                    - cell "贾嗣供电所" [ref=e749]:
+                      - generic [ref=e750]: 贾嗣供电所
+                    - cell "七一桐子堡柱上公变" [ref=e751]:
+                      - generic [ref=e752]: 七一桐子堡柱上公变
+                    - cell "20M01000036318707" [ref=e753]:
+                      - generic [ref=e754]: 20M01000036318707
+                    - cell "100" [ref=e755]:
+                      - generic [ref=e756]: "100"
+                    - cell "3档" [ref=e757]:
+                      - generic [ref=e758]: 3档
+                    - cell "198.00" [ref=e759]:
+                      - generic [ref=e760]: "198.00"
+                    - cell "73" [ref=e761]:
+                      - generic [ref=e762]: "73"
+                    - cell "不限" [ref=e763]:
+                      - generic [ref=e764]: 不限
+                    - cell [ref=e765]
+                  - row "2026-01-07 12:39:26 501742776933679237 国网重庆市电力公司江津供电分公司 贾嗣供电所 七一桐子堡柱上公变-拆分 20M01000036318707 100 3档 198.00 73 不限" [ref=e766]:
+                    - cell [ref=e767]:
+                      - generic [ref=e770] [cursor=pointer]:
+                        - checkbox
+                    - cell "2026-01-07 12:39:26" [ref=e772]:
+                      - generic [ref=e773]: 2026-01-07 12:39:26
+                    - cell "501742776933679237" [ref=e774]:
+                      - generic [ref=e775]: "501742776933679237"
+                    - cell "国网重庆市电力公司江津供电分公司" [ref=e776]:
+                      - generic [ref=e777]: 国网重庆市电力公司江津供电分公司
+                    - cell "贾嗣供电所" [ref=e778]:
+                      - generic [ref=e779]: 贾嗣供电所
+                    - cell "七一桐子堡柱上公变-拆分" [ref=e780]:
+                      - generic [ref=e781]: 七一桐子堡柱上公变-拆分
+                    - cell "20M01000036318707" [ref=e782]:
+                      - generic [ref=e783]: 20M01000036318707
+                    - cell "100" [ref=e784]:
+                      - generic [ref=e785]: "100"
+                    - cell "3档" [ref=e786]:
+                      - generic [ref=e787]: 3档
+                    - cell "198.00" [ref=e788]:
+                      - generic [ref=e789]: "198.00"
+                    - cell "73" [ref=e790]:
+                      - generic [ref=e791]: "73"
+                    - cell "不限" [ref=e792]:
+                      - generic [ref=e793]: 不限
+                    - cell [ref=e794]
+                  - row "2026-01-08 17:26:20 501742776933679237 国网重庆市电力公司江津供电分公司 贾嗣供电所 七一桐子堡柱上公变-拆分 20M01000036318707 100 3档 198.00 73 不限" [ref=e795]:
+                    - cell [ref=e796]:
+                      - generic [ref=e799] [cursor=pointer]:
+                        - checkbox
+                    - cell "2026-01-08 17:26:20" [ref=e801]:
+                      - generic [ref=e802]: 2026-01-08 17:26:20
+                    - cell "501742776933679237" [ref=e803]:
+                      - generic [ref=e804]: "501742776933679237"
+                    - cell "国网重庆市电力公司江津供电分公司" [ref=e805]:
+                      - generic [ref=e806]: 国网重庆市电力公司江津供电分公司
+                    - cell "贾嗣供电所" [ref=e807]:
+                      - generic [ref=e808]: 贾嗣供电所
+                    - cell "七一桐子堡柱上公变-拆分" [ref=e809]:
+                      - generic [ref=e810]: 七一桐子堡柱上公变-拆分
+                    - cell "20M01000036318707" [ref=e811]:
+                      - generic [ref=e812]: 20M01000036318707
+                    - cell "100" [ref=e813]:
+                      - generic [ref=e814]: "100"
+                    - cell "3档" [ref=e815]:
+                      - generic [ref=e816]: 3档
+                    - cell "198.00" [ref=e817]:
+                      - generic [ref=e818]: "198.00"
+                    - cell "73" [ref=e819]:
+                      - generic [ref=e820]: "73"
+                    - cell "不限" [ref=e821]:
+                      - generic [ref=e822]: 不限
+                    - cell [ref=e823]
+                  - row "2024-12-15 17:18:49 501742776933679237 国网重庆市电力公司江津供电分公司 油溪营业所 大坡水上口低压台区 20M01000036303080 100 198.00 77 不限" [ref=e824]:
+                    - cell [ref=e825]:
+                      - generic [ref=e828] [cursor=pointer]:
+                        - checkbox
+                    - cell "2024-12-15 17:18:49" [ref=e830]:
+                      - generic [ref=e831]: 2024-12-15 17:18:49
+                    - cell "501742776933679237" [ref=e832]:
+                      - generic [ref=e833]: "501742776933679237"
+                    - cell "国网重庆市电力公司江津供电分公司" [ref=e834]:
+                      - generic [ref=e835]: 国网重庆市电力公司江津供电分公司
+                    - cell "油溪营业所" [ref=e836]:
+                      - generic [ref=e837]: 油溪营业所
+                    - cell "大坡水上口低压台区" [ref=e838]:
+                      - generic [ref=e839]: 大坡水上口低压台区
+                    - cell "20M01000036303080" [ref=e840]:
+                      - generic [ref=e841]: 20M01000036303080
+                    - cell "100" [ref=e842]:
+                      - generic [ref=e843]: "100"
+                    - cell [ref=e844]
+                    - cell "198.00" [ref=e845]:
+                      - generic [ref=e846]: "198.00"
+                    - cell "77" [ref=e847]:
+                      - generic [ref=e848]: "77"
+                    - cell "不限" [ref=e849]:
+                      - generic [ref=e850]: 不限
+                    - cell [ref=e851]
+                  - row "2024-12-15 22:33:22 544458685410186373 国网重庆市电力公司江津供电分公司 油溪营业所 邢家柏树林低压台区 20M01000036291465 200 198.00 84 不限" [ref=e852]:
+                    - cell [ref=e853]:
+                      - generic [ref=e856] [cursor=pointer]:
+                        - checkbox
+                    - cell "2024-12-15 22:33:22" [ref=e858]:
+                      - generic [ref=e859]: 2024-12-15 22:33:22
+                    - cell "544458685410186373" [ref=e860]:
+                      - generic [ref=e861]: "544458685410186373"
+                    - cell "国网重庆市电力公司江津供电分公司" [ref=e862]:
+                      - generic [ref=e863]: 国网重庆市电力公司江津供电分公司
+                    - cell "油溪营业所" [ref=e864]:
+                      - generic [ref=e865]: 油溪营业所
+                    - cell "邢家柏树林低压台区" [ref=e866]:
+                      - generic [ref=e867]: 邢家柏树林低压台区
+                    - cell "20M01000036291465" [ref=e868]:
+                      - generic [ref=e869]: 20M01000036291465
+                    - cell "200" [ref=e870]:
+                      - generic [ref=e871]: "200"
+                    - cell [ref=e872]
+                    - cell "198.00" [ref=e873]:
+                      - generic [ref=e874]: "198.00"
+                    - cell "84" [ref=e875]:
+                      - generic [ref=e876]: "84"
+                    - cell "不限" [ref=e877]:
+                      - generic [ref=e878]: 不限
+                    - cell [ref=e879]
+                  - row "2025-04-28 10:25:25 599169332722799749 国网重庆市电力公司万州供电分公司 福禄供电营业所 龙坪村2柱上变 20M01000036310031 50 3档 198.00 34 6个月之内" [ref=e880]:
+                    - cell [ref=e881]:
+                      - generic [ref=e884] [cursor=pointer]:
+                        - checkbox
+                    - cell "2025-04-28 10:25:25" [ref=e886]:
+                      - generic [ref=e887]: 2025-04-28 10:25:25
+                    - cell "599169332722799749" [ref=e888]:
+                      - generic [ref=e889]: "599169332722799749"
+                    - cell "国网重庆市电力公司万州供电分公司" [ref=e890]:
+                      - generic [ref=e891]: 国网重庆市电力公司万州供电分公司
+                    - cell "福禄供电营业所" [ref=e892]:
+                      - generic [ref=e893]: 福禄供电营业所
+                    - cell "龙坪村2柱上变" [ref=e894]:
+                      - generic [ref=e895]: 龙坪村2柱上变
+                    - cell "20M01000036310031" [ref=e896]:
+                      - generic [ref=e897]: 20M01000036310031
+                    - cell "50" [ref=e898]:
+                      - generic [ref=e899]: "50"
+                    - cell "3档" [ref=e900]:
+                      - generic [ref=e901]: 3档
+                    - cell "198.00" [ref=e902]:
+                      - generic [ref=e903]: "198.00"
+                    - cell "34" [ref=e904]:
+                      - generic [ref=e905]: "34"
+                    - cell "6个月之内" [ref=e906]:
+                      - generic [ref=e907]: 6个月之内
+                    - cell [ref=e908]
+                  - row "2025-04-28 10:28:38 599169332722799749 国网重庆市电力公司万州供电分公司 福禄供电营业所 龙坪村3柱上变 20M01000036310036 80 3档 198.00 30 8个月之内" [ref=e909]:
+                    - cell [ref=e910]:
+                      - generic [ref=e913] [cursor=pointer]:
+                        - checkbox
+                    - cell "2025-04-28 10:28:38" [ref=e915]:
+                      - generic [ref=e916]: 2025-04-28 10:28:38
+                    - cell "599169332722799749" [ref=e917]:
+                      - generic [ref=e918]: "599169332722799749"
+                    - cell "国网重庆市电力公司万州供电分公司" [ref=e919]:
+                      - generic [ref=e920]: 国网重庆市电力公司万州供电分公司
+                    - cell "福禄供电营业所" [ref=e921]:
+                      - generic [ref=e922]: 福禄供电营业所
+                    - cell "龙坪村3柱上变" [ref=e923]:
+                      - generic [ref=e924]: 龙坪村3柱上变
+                    - cell "20M01000036310036" [ref=e925]:
+                      - generic [ref=e926]: 20M01000036310036
+                    - cell "80" [ref=e927]:
+                      - generic [ref=e928]: "80"
+                    - cell "3档" [ref=e929]:
+                      - generic [ref=e930]: 3档
+                    - cell "198.00" [ref=e931]:
+                      - generic [ref=e932]: "198.00"
+                    - cell "30" [ref=e933]:
+                      - generic [ref=e934]: "30"
+                    - cell "8个月之内" [ref=e935]:
+                      - generic [ref=e936]: 8个月之内
+                    - cell [ref=e937]
+                  - row "2023-11-30 15:41:07 499555001606088773 国网合川供电公司 城区供电所 洋河台区 100 136 不限" [ref=e938]:
+                    - cell [ref=e939]:
+                      - generic [ref=e942] [cursor=pointer]:
+                        - checkbox
+                    - cell "2023-11-30 15:41:07" [ref=e944]:
+                      - generic [ref=e945]: 2023-11-30 15:41:07
+                    - cell "499555001606088773" [ref=e946]:
+                      - generic [ref=e947]: "499555001606088773"
+                    - cell "国网合川供电公司" [ref=e948]:
+                      - generic [ref=e949]: 国网合川供电公司
+                    - cell "城区供电所" [ref=e950]:
+                      - generic [ref=e951]: 城区供电所
+                    - cell "洋河台区" [ref=e952]:
+                      - generic [ref=e953]: 洋河台区
+                    - cell [ref=e954]
+                    - cell "100" [ref=e955]:
+                      - generic [ref=e956]: "100"
+                    - cell [ref=e957]
+                    - cell [ref=e958]
+                    - cell "136" [ref=e959]:
+                      - generic [ref=e960]: "136"
+                    - cell "不限" [ref=e961]:
+                      - generic [ref=e962]: 不限
+                    - cell [ref=e963]
+              - generic [ref=e964]:
+                - table [ref=e966]:
+                  - rowgroup [ref=e981]:
+                    - row "操作" [ref=e982]:
+                      - columnheader [ref=e983]
+                      - columnheader [ref=e984]
+                      - columnheader [ref=e985]
+                      - columnheader [ref=e986]
+                      - columnheader [ref=e987]
+                      - columnheader [ref=e988]
+                      - columnheader [ref=e989]
+                      - columnheader [ref=e990]
+                      - columnheader [ref=e991]
+                      - columnheader [ref=e992]
+                      - columnheader [ref=e993]
+                      - columnheader [ref=e994]
+                      - columnheader "操作" [ref=e995]:
+                        - generic [ref=e996]: 操作
+                - table [ref=e998]:
+                  - rowgroup [ref=e1013]:
+                    - row "编辑 删除 数字化" [ref=e1014]:
+                      - cell [ref=e1015]
+                      - cell [ref=e1016]
+                      - cell [ref=e1017]
+                      - cell [ref=e1018]
+                      - cell [ref=e1019]
+                      - cell [ref=e1020]
+                      - cell [ref=e1021]
+                      - cell [ref=e1022]
+                      - cell [ref=e1023]
+                      - cell [ref=e1024]
+                      - cell [ref=e1025]
+                      - cell [ref=e1026]
+                      - cell "编辑 删除 数字化" [ref=e1027]:
+                        - generic [ref=e1028]:
+                          - button "编辑" [ref=e1029] [cursor=pointer]
+                          - button "删除" [ref=e1030] [cursor=pointer]
+                          - button "数字化" [ref=e1031] [cursor=pointer]
+                    - row "编辑 删除 数字化" [ref=e1032]:
+                      - cell [ref=e1033]
+                      - cell [ref=e1034]
+                      - cell [ref=e1035]
+                      - cell [ref=e1036]
+                      - cell [ref=e1037]
+                      - cell [ref=e1038]
+                      - cell [ref=e1039]
+                      - cell [ref=e1040]
+                      - cell [ref=e1041]
+                      - cell [ref=e1042]
+                      - cell [ref=e1043]
+                      - cell [ref=e1044]
+                      - cell "编辑 删除 数字化" [ref=e1045]:
+                        - generic [ref=e1046]:
+                          - button "编辑" [ref=e1047] [cursor=pointer]
+                          - button "删除" [ref=e1048] [cursor=pointer]
+                          - button "数字化" [ref=e1049] [cursor=pointer]
+                    - row "编辑 删除 数字化" [ref=e1050]:
+                      - cell [ref=e1051]
+                      - cell [ref=e1052]
+                      - cell [ref=e1053]
+                      - cell [ref=e1054]
+                      - cell [ref=e1055]
+                      - cell [ref=e1056]
+                      - cell [ref=e1057]
+                      - cell [ref=e1058]
+                      - cell [ref=e1059]
+                      - cell [ref=e1060]
+                      - cell [ref=e1061]
+                      - cell [ref=e1062]
+                      - cell "编辑 删除 数字化" [ref=e1063]:
+                        - generic [ref=e1064]:
+                          - button "编辑" [ref=e1065] [cursor=pointer]
+                          - button "删除" [ref=e1066] [cursor=pointer]
+                          - button "数字化" [ref=e1067] [cursor=pointer]
+                    - row "编辑 删除 数字化" [ref=e1068]:
+                      - cell [ref=e1069]
+                      - cell [ref=e1070]
+                      - cell [ref=e1071]
+                      - cell [ref=e1072]
+                      - cell [ref=e1073]
+                      - cell [ref=e1074]
+                      - cell [ref=e1075]
+                      - cell [ref=e1076]
+                      - cell [ref=e1077]
+                      - cell [ref=e1078]
+                      - cell [ref=e1079]
+                      - cell [ref=e1080]
+                      - cell "编辑 删除 数字化" [ref=e1081]:
+                        - generic [ref=e1082]:
+                          - button "编辑" [ref=e1083] [cursor=pointer]
+                          - button "删除" [ref=e1084] [cursor=pointer]
+                          - button "数字化" [ref=e1085] [cursor=pointer]
+                    - row "编辑 删除 数字化" [ref=e1086]:
+                      - cell [ref=e1087]
+                      - cell [ref=e1088]
+                      - cell [ref=e1089]
+                      - cell [ref=e1090]
+                      - cell [ref=e1091]
+                      - cell [ref=e1092]
+                      - cell [ref=e1093]
+                      - cell [ref=e1094]
+                      - cell [ref=e1095]
+                      - cell [ref=e1096]
+                      - cell [ref=e1097]
+                      - cell [ref=e1098]
+                      - cell "编辑 删除 数字化" [ref=e1099]:
+                        - generic [ref=e1100]:
+                          - button "编辑" [ref=e1101] [cursor=pointer]
+                          - button "删除" [ref=e1102] [cursor=pointer]
+                          - button "数字化" [ref=e1103] [cursor=pointer]
+                    - row "编辑 删除 数字化" [ref=e1104]:
+                      - cell [ref=e1105]
+                      - cell [ref=e1106]
+                      - cell [ref=e1107]
+                      - cell [ref=e1108]
+                      - cell [ref=e1109]
+                      - cell [ref=e1110]
+                      - cell [ref=e1111]
+                      - cell [ref=e1112]
+                      - cell [ref=e1113]
+                      - cell [ref=e1114]
+                      - cell [ref=e1115]
+                      - cell [ref=e1116]
+                      - cell "编辑 删除 数字化" [ref=e1117]:
+                        - generic [ref=e1118]:
+                          - button "编辑" [ref=e1119] [cursor=pointer]
+                          - button "删除" [ref=e1120] [cursor=pointer]
+                          - button "数字化" [ref=e1121] [cursor=pointer]
+                    - row "编辑 删除 数字化" [ref=e1122]:
+                      - cell [ref=e1123]
+                      - cell [ref=e1124]
+                      - cell [ref=e1125]
+                      - cell [ref=e1126]
+                      - cell [ref=e1127]
+                      - cell [ref=e1128]
+                      - cell [ref=e1129]
+                      - cell [ref=e1130]
+                      - cell [ref=e1131]
+                      - cell [ref=e1132]
+                      - cell [ref=e1133]
+                      - cell [ref=e1134]
+                      - cell "编辑 删除 数字化" [ref=e1135]:
+                        - generic [ref=e1136]:
+                          - button "编辑" [ref=e1137] [cursor=pointer]
+                          - button "删除" [ref=e1138] [cursor=pointer]
+                          - button "数字化" [ref=e1139] [cursor=pointer]
+                    - row "编辑 删除 数字化" [ref=e1140]:
+                      - cell [ref=e1141]
+                      - cell [ref=e1142]
+                      - cell [ref=e1143]
+                      - cell [ref=e1144]
+                      - cell [ref=e1145]
+                      - cell [ref=e1146]
+                      - cell [ref=e1147]
+                      - cell [ref=e1148]
+                      - cell [ref=e1149]
+                      - cell [ref=e1150]
+                      - cell [ref=e1151]
+                      - cell [ref=e1152]
+                      - cell "编辑 删除 数字化" [ref=e1153]:
+                        - generic [ref=e1154]:
+                          - button "编辑" [ref=e1155] [cursor=pointer]
+                          - button "删除" [ref=e1156] [cursor=pointer]
+                          - button "数字化" [ref=e1157] [cursor=pointer]
+                    - row "编辑 删除 数字化" [ref=e1158]:
+                      - cell [ref=e1159]
+                      - cell [ref=e1160]
+                      - cell [ref=e1161]
+                      - cell [ref=e1162]
+                      - cell [ref=e1163]
+                      - cell [ref=e1164]
+                      - cell [ref=e1165]
+                      - cell [ref=e1166]
+                      - cell [ref=e1167]
+                      - cell [ref=e1168]
+                      - cell [ref=e1169]
+                      - cell [ref=e1170]
+                      - cell "编辑 删除 数字化" [ref=e1171]:
+                        - generic [ref=e1172]:
+                          - button "编辑" [ref=e1173] [cursor=pointer]
+                          - button "删除" [ref=e1174] [cursor=pointer]
+                          - button "数字化" [ref=e1175] [cursor=pointer]
+                    - row "编辑 删除 数字化" [ref=e1176]:
+                      - cell [ref=e1177]
+                      - cell [ref=e1178]
+                      - cell [ref=e1179]
+                      - cell [ref=e1180]
+                      - cell [ref=e1181]
+                      - cell [ref=e1182]
+                      - cell [ref=e1183]
+                      - cell [ref=e1184]
+                      - cell [ref=e1185]
+                      - cell [ref=e1186]
+                      - cell [ref=e1187]
+                      - cell [ref=e1188]
+                      - cell "编辑 删除 数字化" [ref=e1189]:
+                        - generic [ref=e1190]:
+                          - button "编辑" [ref=e1191] [cursor=pointer]
+                          - button "删除" [ref=e1192] [cursor=pointer]
+                          - button "数字化" [ref=e1193] [cursor=pointer]
+                    - row "编辑 删除 数字化" [ref=e1194]:
+                      - cell [ref=e1195]
+                      - cell [ref=e1196]
+                      - cell [ref=e1197]
+                      - cell [ref=e1198]
+                      - cell [ref=e1199]
+                      - cell [ref=e1200]
+                      - cell [ref=e1201]
+                      - cell [ref=e1202]
+                      - cell [ref=e1203]
+                      - cell [ref=e1204]
+                      - cell [ref=e1205]
+                      - cell [ref=e1206]
+                      - cell "编辑 删除 数字化" [ref=e1207]:
+                        - generic [ref=e1208]:
+                          - button "编辑" [ref=e1209] [cursor=pointer]
+                          - button "删除" [ref=e1210] [cursor=pointer]
+                          - button "数字化" [ref=e1211] [cursor=pointer]
+                    - row "编辑 删除 数字化" [ref=e1212]:
+                      - cell [ref=e1213]
+                      - cell [ref=e1214]
+                      - cell [ref=e1215]
+                      - cell [ref=e1216]
+                      - cell [ref=e1217]
+                      - cell [ref=e1218]
+                      - cell [ref=e1219]
+                      - cell [ref=e1220]
+                      - cell [ref=e1221]
+                      - cell [ref=e1222]
+                      - cell [ref=e1223]
+                      - cell [ref=e1224]
+                      - cell "编辑 删除 数字化" [ref=e1225]:
+                        - generic [ref=e1226]:
+                          - button "编辑" [ref=e1227] [cursor=pointer]
+                          - button "删除" [ref=e1228] [cursor=pointer]
+                          - button "数字化" [ref=e1229] [cursor=pointer]
+                    - row "编辑 删除 数字化" [ref=e1230]:
+                      - cell [ref=e1231]
+                      - cell [ref=e1232]
+                      - cell [ref=e1233]
+                      - cell [ref=e1234]
+                      - cell [ref=e1235]
+                      - cell [ref=e1236]
+                      - cell [ref=e1237]
+                      - cell [ref=e1238]
+                      - cell [ref=e1239]
+                      - cell [ref=e1240]
+                      - cell [ref=e1241]
+                      - cell [ref=e1242]
+                      - cell "编辑 删除 数字化" [ref=e1243]:
+                        - generic [ref=e1244]:
+                          - button "编辑" [ref=e1245] [cursor=pointer]
+                          - button "删除" [ref=e1246] [cursor=pointer]
+                          - button "数字化" [ref=e1247] [cursor=pointer]
+                    - row "编辑 删除 数字化" [ref=e1248]:
+                      - cell [ref=e1249]
+                      - cell [ref=e1250]
+                      - cell [ref=e1251]
+                      - cell [ref=e1252]
+                      - cell [ref=e1253]
+                      - cell [ref=e1254]
+                      - cell [ref=e1255]
+                      - cell [ref=e1256]
+                      - cell [ref=e1257]
+                      - cell [ref=e1258]
+                      - cell [ref=e1259]
+                      - cell [ref=e1260]
+                      - cell "编辑 删除 数字化" [ref=e1261]:
+                        - generic [ref=e1262]:
+                          - button "编辑" [ref=e1263] [cursor=pointer]
+                          - button "删除" [ref=e1264] [cursor=pointer]
+                          - button "数字化" [ref=e1265] [cursor=pointer]
+                    - row "编辑 删除 数字化" [ref=e1266]:
+                      - cell [ref=e1267]
+                      - cell [ref=e1268]
+                      - cell [ref=e1269]
+                      - cell [ref=e1270]
+                      - cell [ref=e1271]
+                      - cell [ref=e1272]
+                      - cell [ref=e1273]
+                      - cell [ref=e1274]
+                      - cell [ref=e1275]
+                      - cell [ref=e1276]
+                      - cell [ref=e1277]
+                      - cell [ref=e1278]
+                      - cell "编辑 删除 数字化" [ref=e1279]:
+                        - generic [ref=e1280]:
+                          - button "编辑" [ref=e1281] [cursor=pointer]
+                          - button "删除" [ref=e1282] [cursor=pointer]
+                          - button "数字化" [ref=e1283] [cursor=pointer]
+                    - row "编辑 删除 数字化" [ref=e1284]:
+                      - cell [ref=e1285]
+                      - cell [ref=e1286]
+                      - cell [ref=e1287]
+                      - cell [ref=e1288]
+                      - cell [ref=e1289]
+                      - cell [ref=e1290]
+                      - cell [ref=e1291]
+                      - cell [ref=e1292]
+                      - cell [ref=e1293]
+                      - cell [ref=e1294]
+                      - cell [ref=e1295]
+                      - cell [ref=e1296]
+                      - cell "编辑 删除 数字化" [ref=e1297]:
+                        - generic [ref=e1298]:
+                          - button "编辑" [ref=e1299] [cursor=pointer]
+                          - button "删除" [ref=e1300] [cursor=pointer]
+                          - button "数字化" [ref=e1301] [cursor=pointer]
+                    - row "编辑 删除 数字化" [ref=e1302]:
+                      - cell [ref=e1303]
+                      - cell [ref=e1304]
+                      - cell [ref=e1305]
+                      - cell [ref=e1306]
+                      - cell [ref=e1307]
+                      - cell [ref=e1308]
+                      - cell [ref=e1309]
+                      - cell [ref=e1310]
+                      - cell [ref=e1311]
+                      - cell [ref=e1312]
+                      - cell [ref=e1313]
+                      - cell [ref=e1314]
+                      - cell "编辑 删除 数字化" [ref=e1315]:
+                        - generic [ref=e1316]:
+                          - button "编辑" [ref=e1317] [cursor=pointer]
+                          - button "删除" [ref=e1318] [cursor=pointer]
+                          - button "数字化" [ref=e1319] [cursor=pointer]
+                    - row "编辑 删除 数字化" [ref=e1320]:
+                      - cell [ref=e1321]
+                      - cell [ref=e1322]
+                      - cell [ref=e1323]
+                      - cell [ref=e1324]
+                      - cell [ref=e1325]
+                      - cell [ref=e1326]
+                      - cell [ref=e1327]
+                      - cell [ref=e1328]
+                      - cell [ref=e1329]
+                      - cell [ref=e1330]
+                      - cell [ref=e1331]
+                      - cell [ref=e1332]
+                      - cell "编辑 删除 数字化" [ref=e1333]:
+                        - generic [ref=e1334]:
+                          - button "编辑" [ref=e1335] [cursor=pointer]
+                          - button "删除" [ref=e1336] [cursor=pointer]
+                          - button "数字化" [ref=e1337] [cursor=pointer]
+                    - row "编辑 删除 数字化" [ref=e1338]:
+                      - cell [ref=e1339]
+                      - cell [ref=e1340]
+                      - cell [ref=e1341]
+                      - cell [ref=e1342]
+                      - cell [ref=e1343]
+                      - cell [ref=e1344]
+                      - cell [ref=e1345]
+                      - cell [ref=e1346]
+                      - cell [ref=e1347]
+                      - cell [ref=e1348]
+                      - cell [ref=e1349]
+                      - cell [ref=e1350]
+                      - cell "编辑 删除 数字化" [ref=e1351]:
+                        - generic [ref=e1352]:
+                          - button "编辑" [ref=e1353] [cursor=pointer]
+                          - button "删除" [ref=e1354] [cursor=pointer]
+                          - button "数字化" [ref=e1355] [cursor=pointer]
+                    - row "编辑 删除 数字化" [ref=e1356]:
+                      - cell [ref=e1357]
+                      - cell [ref=e1358]
+                      - cell [ref=e1359]
+                      - cell [ref=e1360]
+                      - cell [ref=e1361]
+                      - cell [ref=e1362]
+                      - cell [ref=e1363]
+                      - cell [ref=e1364]
+                      - cell [ref=e1365]
+                      - cell [ref=e1366]
+                      - cell [ref=e1367]
+                      - cell [ref=e1368]
+                      - cell "编辑 删除 数字化" [ref=e1369]:
+                        - generic [ref=e1370]:
+                          - button "编辑" [ref=e1371] [cursor=pointer]
+                          - button "删除" [ref=e1372] [cursor=pointer]
+                          - button "数字化" [ref=e1373] [cursor=pointer]
+            - generic [ref=e1376]:
+              - generic [ref=e1377]: 共 114 条
+              - generic [ref=e1380]:
+                - textbox "请选择" [ref=e1381] [cursor=pointer]: 20条/页
+                - generic [ref=e1383] [cursor=pointer]: 
+              - button "" [disabled] [ref=e1384]:
+                - generic [ref=e1385]: 
+              - list [ref=e1386]:
+                - listitem [ref=e1387]: "1"
+                - listitem [ref=e1388] [cursor=pointer]: "2"
+                - listitem [ref=e1389] [cursor=pointer]: "3"
+                - listitem [ref=e1390] [cursor=pointer]: "4"
+                - listitem [ref=e1391] [cursor=pointer]: "5"
+                - listitem [ref=e1392] [cursor=pointer]: "6"
+              - button "" [ref=e1393] [cursor=pointer]:
+                - generic [ref=e1394]: 
+              - generic [ref=e1395]:
+                - text: 前往
+                - spinbutton [ref=e1397]: "1"
+                - text: 页
+  - text:        

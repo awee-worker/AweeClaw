@@ -1390,7 +1390,7 @@ const ChatMessage = React.memo(({
                   </Modal>
 
                   <div className="text-[14px] leading-relaxed">
-                    <MarkdownContent content={textContent} fontSize={fontSize} preserveLineBreaks />
+                    <MarkdownContent content={textContent} fontSize={fontSize} />
                   </div>
                 </div>
               )}
