@@ -73,6 +73,7 @@
     "pdfjs-dist": "^4.4.168",
     "picomatch": "^4.0.3",
     "png2icons": "^2.0.1",
+    "quickjs-emscripten": "^0.32.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^9.0.1",

@@ -268,3 +268,5 @@ export const codeEditorScenario: ScenarioPlugin = {
   ui: CODE_EDITOR_UI,
   dataSources: CODE_EDITOR_DATA_SOURCES,
 }
+
+export default codeEditorScenario

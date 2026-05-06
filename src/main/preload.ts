@@ -986,6 +986,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   scenarioInstallFromLocal: (sourceDir: string) => ipcRenderer.invoke('scenario:installFromLocal', sourceDir),
   scenarioGetInstalledScenarioDirs: () => ipcRenderer.invoke('scenario:getInstalledScenarioDirs'),
   scenarioDeleteScenarioDir: (scenarioId: string) => ipcRenderer.invoke('scenario:deleteScenarioDir', scenarioId),
+  scenarioDeleteBuiltinSourceDir: (scenarioId: string) => ipcRenderer.invoke('scenario:deleteBuiltinSourceDir', scenarioId),
+  scenarioLoadScenarioFiles: (scenarioId: string) => ipcRenderer.invoke('scenario:loadScenarioFiles', scenarioId),
+
+  // Scenario Marketplace
+  scenarioMarketplaceSearch: (query: string, page?: number, pageSize?: number) => ipcRenderer.invoke('scenario:marketplaceSearch', query, page, pageSize),
+  scenarioMarketplaceFeatured: () => ipcRenderer.invoke('scenario:marketplaceFeatured'),
+  scenarioMarketplaceDetails: (scenarioId: string) => ipcRenderer.invoke('scenario:marketplaceDetails', scenarioId),
+  scenarioMarketplaceCategories: () => ipcRenderer.invoke('scenario:marketplaceCategories'),
+  scenarioMarketplaceDownload: (scenarioId: string) => ipcRenderer.invoke('scenario:marketplaceDownload', scenarioId),
 
   // Command Execution
   onExecuteCommand: (callback: (commandId: string) => void) => {

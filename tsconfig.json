@@ -8,6 +8,7 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "allowSyntheticDefaultImports": true,
+    "types": ["node", "vite/client"],
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],

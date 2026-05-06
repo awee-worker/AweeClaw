@@ -179,3 +179,5 @@ export const creativeWriterScenario: ScenarioPlugin = {
   ui: CREATIVE_WRITER_UI,
   dataSources: CREATIVE_WRITER_DATA_SOURCES,
 }
+
+export default creativeWriterScenario

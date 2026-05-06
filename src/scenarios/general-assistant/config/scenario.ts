@@ -184,3 +184,5 @@ export const generalAssistantScenario: ScenarioPlugin = {
   ui: GENERAL_ASSISTANT_UI,
   dataSources: GENERAL_ASSISTANT_DATA_SOURCES,
 }
+
+export default generalAssistantScenario

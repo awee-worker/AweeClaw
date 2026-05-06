@@ -4,6 +4,8 @@
  * 每个场景独立目录，包含配置、组件、工具、服务。
  * 场景加载器负责动态注册和激活。
  *
+ * 动态发现场景模块，新增场景只需在 src/scenarios/ 下创建目录，无需修改此文件。
+ *
  * 架构层次：
  * - core/              核心模块（加载器、数据总线、版本管理、监控、测试、数据库管理）
  * - general-assistant/  通用助手场景
@@ -50,24 +52,28 @@ export type {
   ScenarioModuleContext as LegacyScenarioModuleContext,
 } from './types'
 
-// 场景模块导出
-export { default as generalAssistantModule } from './general-assistant'
-export { default as codeEditorModule } from './code-editor'
-export { default as dataAnalystModule } from './data-analyst'
-export { default as creativeWriterModule } from './creative-writer'
-export { default as lowVoltageModule } from './low-voltage'
-
 import { scenarioLoader } from './core'
-import generalAssistantModule from './general-assistant'
-import codeEditorModule from './code-editor'
-import dataAnalystModule from './data-analyst'
-import creativeWriterModule from './creative-writer'
-import lowVoltageModule from './low-voltage'
+import { scenarioRegistry } from '@shared/config/scenarios'
+import type { ScenarioModule } from '@shared/types/scenario-arch'
+
+type ScenarioModuleEntry = { default: ScenarioModule }
+
+const scenarioModuleEntries = import.meta.glob(
+  '/src/scenarios/*/index.ts',
+  { eager: true }
+) as Record<string, ScenarioModuleEntry>
 
 export function registerBuiltinScenarios(): void {
-  scenarioLoader.register(generalAssistantModule)
-  scenarioLoader.register(codeEditorModule)
-  scenarioLoader.register(dataAnalystModule)
-  scenarioLoader.register(creativeWriterModule)
-  scenarioLoader.register(lowVoltageModule)
+  for (const path in scenarioModuleEntries) {
+    if (path.includes('/core/') || path.includes('/_template/')) continue
+
+    const mod = scenarioModuleEntries[path]
+    const scenarioModule = mod?.default
+    if (scenarioModule && scenarioModule.id) {
+      const manifest = scenarioModule.getManifest()
+      if (!scenarioRegistry.isUninstalledBuiltin(manifest.id)) {
+        scenarioLoader.register(scenarioModule)
+      }
+    }
+  }
 }

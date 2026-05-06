@@ -208,3 +208,5 @@ export const dataAnalystScenario: ScenarioPlugin = {
   ui: DATA_ANALYST_UI,
   dataSources: DATA_ANALYST_DATA_SOURCES,
 }
+
+export default dataAnalystScenario
