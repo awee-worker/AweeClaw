@@ -183,6 +183,7 @@ function buildLongTermMemory(entries: MemoryEntry[], tokenBudget: number = 1000)
   const longTermFirst = [...enabled.filter(e => e.status === 'long_term'), ...enabled.filter(e => e.status === 'short_term')]
   const lines: string[] = []
   let estimatedTokens = 0
+  const recalledIds: string[] = []
 
   for (const entry of longTermFirst) {
     const line = `- ${entry.content}`
@@ -190,6 +191,11 @@ function buildLongTermMemory(entries: MemoryEntry[], tokenBudget: number = 1000)
     if (estimatedTokens + lineTokens > tokenBudget) break
     lines.push(line)
     estimatedTokens += lineTokens
+    recalledIds.push(entry.id)
+  }
+
+  if (recalledIds.length > 0) {
+    longTermMemoryService.recordBulkRecall(recalledIds).catch(() => {})
   }
 
   if (lines.length === 0) return null

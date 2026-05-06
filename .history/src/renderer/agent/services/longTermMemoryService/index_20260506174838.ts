@@ -247,12 +247,7 @@ class LongTermMemoryService {
         entry.confidence * 0.3 +
         recencyFactor * 0.2
 
-      const isUserStated = entry.tags.includes('user-stated') || entry.source === 'user'
-      const promoteThreshold = isUserStated ? 0.4 : 0.6
-      const recallThreshold = isUserStated ? 1 : 2
-      const uniqueQueryThreshold = isUserStated ? 0 : 1
-
-      if (score >= promoteThreshold && entry.recallCount >= recallThreshold && entry.uniqueQueryCount >= uniqueQueryThreshold) {
+      if (score >= 0.8 && entry.recallCount >= 3 && entry.uniqueQueryCount >= 2) {
         const idx = store.shortTerm.findIndex(e => e.id === entry.id)
         if (idx !== -1) {
           store.shortTerm.splice(idx, 1)
@@ -262,7 +257,7 @@ class LongTermMemoryService {
           store.longTerm.unshift(entry)
           promoted++
         }
-      } else if (ageDays > 60 && entry.recallCount === 0 && entry.confidence < 0.6) {
+      } else if (ageDays > 30 && entry.recallCount < 2) {
         const idx = store.shortTerm.findIndex(e => e.id === entry.id)
         if (idx !== -1) {
           store.shortTerm.splice(idx, 1)

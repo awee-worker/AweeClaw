@@ -262,7 +262,7 @@ class LongTermMemoryService {
           store.longTerm.unshift(entry)
           promoted++
         }
-      } else if (ageDays > 60 && entry.recallCount === 0 && entry.confidence < 0.6) {
+      } else if (ageDays > 30 && entry.recallCount < 2) {
         const idx = store.shortTerm.findIndex(e => e.id === entry.id)
         if (idx !== -1) {
           store.shortTerm.splice(idx, 1)
