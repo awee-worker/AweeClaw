@@ -106,7 +106,7 @@ const DEFAULT_PROJECT_SETTINGS: ProjectSettingsData = {
   },
   agent: {
     autoApproveReadOnly: true,
-    maxToolCallsPerTurn: 25,
+    maxToolCallsPerTurn: 50,
   },
 }
 
