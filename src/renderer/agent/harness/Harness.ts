@@ -152,7 +152,13 @@ export class AgentHarness {
     this.initialized = false
   }
 
+  private initializationWarned = false
+
   get isInitialized(): boolean {
+    if (!this.initialized && !this.initializationWarned) {
+      this.initializationWarned = true
+      logger.agent.warn('[AgentHarness] Harness accessed before initialization. Middleware (retry, rate-limit, circuit-breaker, audit) will be skipped. Call agentHarness.initialize() during app startup.')
+    }
     return this.initialized
   }
 }

@@ -1,9 +1,8 @@
 import { logger } from '@utils/Logger'
-import { LongTermMemory, longTermMemory } from './LongTermMemory'
-import { ProjectKnowledgeGraph, projectKnowledgeGraph } from './ProjectKnowledgeGraph'
-import { metacognitiveService } from '../services/longTermMemoryService/metacognitiveService'
 import { longTermMemoryService } from '../services/longTermMemoryService'
 import type { MemoryRetrievalContext, TaskType } from '../services/longTermMemoryService/types'
+import { ProjectKnowledgeGraph, projectKnowledgeGraph } from './ProjectKnowledgeGraph'
+import { metacognitiveService } from '../services/longTermMemoryService/metacognitiveService'
 
 export interface AdaptivePromptContext {
   query: string
@@ -23,7 +22,7 @@ export interface AdaptivePromptResult {
 interface PromptStrategy {
   id: string
   condition: (ctx: AdaptivePromptContext) => boolean
-  generate: (ctx: AdaptivePromptContext) => string
+  generate: (ctx: AdaptivePromptContext) => Promise<string>
   estimatedTokens: number
   priority: number
 }
@@ -31,12 +30,10 @@ interface PromptStrategy {
 export class AdaptivePromptEngine {
   private strategies: PromptStrategy[] = []
   private maxContextTokens: number
-  private memory: LongTermMemory
   private graph: ProjectKnowledgeGraph
 
-  constructor(maxContextTokens: number = 3000, memory?: LongTermMemory, graph?: ProjectKnowledgeGraph) {
+  constructor(maxContextTokens: number = 3000, graph?: ProjectKnowledgeGraph) {
     this.maxContextTokens = maxContextTokens
-    this.memory = memory ?? longTermMemory
     this.graph = graph ?? projectKnowledgeGraph
     this.registerDefaultStrategies()
   }
@@ -53,7 +50,7 @@ export class AdaptivePromptEngine {
       if (totalTokens + strategy.estimatedTokens > this.maxContextTokens) continue
 
       try {
-        const section = strategy.generate(context)
+        const section = await strategy.generate(context)
         if (section) {
           contextSections.push(section)
           totalTokens += strategy.estimatedTokens
@@ -63,10 +60,13 @@ export class AdaptivePromptEngine {
       }
     }
 
-    const memoryPrompt = this.memory.buildContextPrompt(context.query, Math.min(800, this.maxContextTokens - totalTokens))
-    if (memoryPrompt) {
-      contextSections.push(memoryPrompt)
-      totalTokens += Math.ceil(memoryPrompt.length / 4)
+    try {
+      const memoryPrompt = await this.buildMemoryPrompt(context.query, Math.min(800, this.maxContextTokens - totalTokens))
+      if (memoryPrompt) {
+        contextSections.push(memoryPrompt)
+        totalTokens += Math.ceil(memoryPrompt.length / 4)
+      }
+    } catch {
     }
 
     try {
@@ -145,9 +145,35 @@ ${metaPrompt}
     this.strategies = this.strategies.filter(s => s.id !== id)
   }
 
-  private registerDefaultStrategies(): void {
-    const mem = this.memory
+  private async buildMemoryPrompt(query: string, maxTokens: number): Promise<string> {
+    const results = await longTermMemoryService.search({ query, limit: 20 })
+    if (results.length === 0) return ''
 
+    const lines: string[] = []
+    let estimatedTokens = 0
+
+    for (const result of results) {
+      const typeTag = result.entry.tags.find(t => t.startsWith('type:'))
+      const type = typeTag ? typeTag.slice(5) : 'memory'
+      const line = `[${type}] ${result.entry.content}`
+      const estimatedLineTokens = Math.ceil(line.length / 4)
+
+      if (estimatedTokens + estimatedLineTokens > maxTokens) break
+
+      lines.push(line)
+      estimatedTokens += estimatedLineTokens
+    }
+
+    if (lines.length === 0) return ''
+
+    return `<long_term_memory>
+Relevant context from previous interactions:
+
+${lines.join('\n')}
+</long_term_memory>`
+  }
+
+  private registerDefaultStrategies(): void {
     this.strategies = [
       {
         id: 'error_context',
@@ -159,8 +185,11 @@ ${metaPrompt}
           return lastMsg.role === 'assistant' &&
             (lastMsg.content.includes('Error') || lastMsg.content.includes('error') || lastMsg.content.includes('failed'))
         },
-        generate: () => {
-          const errorSolutions = mem.getByType('error_solution')
+        generate: async () => {
+          const entries = await longTermMemoryService.getEntries()
+          const errorSolutions = entries.filter(e =>
+            e.enabled && e.tags.includes('type:error_solution')
+          )
           if (errorSolutions.length === 0) return ''
           const recent = errorSolutions.slice(0, 3)
           return `<error_context>
@@ -173,12 +202,14 @@ ${recent.map(e => `- ${e.content}`).join('\n')}
         id: 'project_decisions',
         priority: 70,
         estimatedTokens: 400,
-        condition: () => {
-          const decisions = mem.getByType('decision')
-          return decisions.length > 0
+        condition: async () => {
+          const entries = await longTermMemoryService.getEntries()
+          return entries.some(e => e.enabled && e.tags.includes('type:decision'))
         },
-        generate: () => {
-          const decisions = mem.getByType('decision').slice(0, 5)
+        generate: async () => {
+          const entries = await longTermMemoryService.getEntries()
+          const decisions = entries.filter(e => e.enabled && e.tags.includes('type:decision')).slice(0, 5)
+          if (decisions.length === 0) return ''
           return `<project_decisions>
 Key architectural decisions:
 ${decisions.map(d => `- ${d.content}`).join('\n')}
@@ -189,12 +220,14 @@ ${decisions.map(d => `- ${d.content}`).join('\n')}
         id: 'user_preferences',
         priority: 80,
         estimatedTokens: 300,
-        condition: () => {
-          const prefs = mem.getByType('preference')
-          return prefs.length > 0
+        condition: async () => {
+          const entries = await longTermMemoryService.getEntries()
+          return entries.some(e => e.enabled && e.tags.includes('type:preference'))
         },
-        generate: () => {
-          const prefs = mem.getByType('preference').slice(0, 5)
+        generate: async () => {
+          const entries = await longTermMemoryService.getEntries()
+          const prefs = entries.filter(e => e.enabled && e.tags.includes('type:preference')).slice(0, 5)
+          if (prefs.length === 0) return ''
           return `<user_preferences>
 User coding preferences:
 ${prefs.map(p => `- ${p.content}`).join('\n')}
@@ -208,7 +241,7 @@ ${prefs.map(p => `- ${p.content}`).join('\n')}
         condition: (ctx) => {
           return !!ctx.workspaceStructure && ctx.workspaceStructure.length > 0
         },
-        generate: (ctx) => {
+        generate: async (ctx) => {
           if (!ctx.workspaceStructure) return ''
           const structure = ctx.workspaceStructure.slice(0, 30)
           return `<workspace_structure>

@@ -822,7 +822,7 @@ const ToolCallCard = memo(function ToolCallCard({
     )
 
     const cardStyle = useMemo(() => {
-        if (isAwaitingApproval) return 'border border-yellow-500/20 bg-yellow-500/5 rounded-lg shadow-sm shadow-yellow-500/5 overflow-hidden'
+        if (isAwaitingApproval) return 'border border-red-500/20 bg-red-500/5 rounded-lg shadow-sm shadow-red-500/5 overflow-hidden'
         if (isError) return 'bg-red-500/5 rounded-lg overflow-hidden'
         if (isStreaming || isRunning) return 'bg-accent/5 rounded-lg overflow-hidden'
         return 'hover:bg-text-primary/[0.02] transition-colors rounded-lg overflow-hidden'
@@ -888,8 +888,8 @@ const ToolCallCard = memo(function ToolCallCard({
                             <X className="w-2.5 h-2.5 text-red-500" />
                         </div>
                     ) : isRejected ? (
-                        <div className="w-3.5 h-3.5 rounded-full bg-yellow-500/10 flex items-center justify-center">
-                            <X className="w-2.5 h-2.5 text-yellow-500" />
+                        <div className="w-3.5 h-3.5 rounded-full bg-red-500/10 flex items-center justify-center">
+                            <X className="w-2.5 h-2.5 text-red-500" />
                         </div>
                     ) : (
                         <div className="w-3.5 h-3.5 rounded-full border border-text-muted/30" />
@@ -926,13 +926,18 @@ const ToolCallCard = memo(function ToolCallCard({
             )}
 
             {isAwaitingApproval && (
-                <div className="flex items-center justify-end gap-2 px-3 py-2 border-t border-yellow-500/10 bg-yellow-500/5">
-                    <button onClick={onReject} className="px-3 py-1.5 text-xs font-medium text-text-muted hover:text-red-400 hover:bg-red-500/10 rounded-md transition-all">
-                        {t('toolReject', language as any)}
-                    </button>
-                    <button onClick={onApprove} className="px-3 py-1.5 text-xs font-medium bg-accent text-white hover:bg-accent-hover rounded-md transition-all">
-                        {t('toolApprove', language as any)}
-                    </button>
+                <div className="flex items-center justify-between gap-2 px-3 py-2 border-t border-red-500/10 bg-red-500/5">
+                    <span className="text-xs text-red-400/70 truncate">
+                        {t('toolAwaitingApproval', language as any)}
+                    </span>
+                    <div className="flex items-center gap-2 shrink-0">
+                        <button onClick={onReject} className="px-3 py-1.5 text-xs font-medium text-text-muted hover:text-red-400 hover:bg-red-500/10 rounded-md transition-all">
+                            {t('toolReject', language as any)}
+                        </button>
+                        <button onClick={onApprove} className="px-3 py-1.5 text-xs font-medium bg-accent text-white hover:bg-accent-hover rounded-md transition-all">
+                            {t('toolApprove', language as any)}
+                        </button>
+                    </div>
                 </div>
             )}
         </div>

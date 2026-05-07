@@ -1,4 +1,6 @@
 import { logger } from '@utils/Logger'
+import { longTermMemoryService } from '../services/longTermMemoryService'
+import type { MemoryEntry, MemorySource } from '../services/longTermMemoryService/types'
 
 export interface LongTermMemoryEntry {
   id: string
@@ -26,126 +28,127 @@ export interface MemoryExtractResult {
   source: string
 }
 
-interface MemoryStore {
-  version: number
-  entries: LongTermMemoryEntry[]
-  lastCompactedAt: number
+const TYPE_TO_TAG: Record<LongTermMemoryEntry['type'], string> = {
+  fact: 'type:fact',
+  preference: 'type:preference',
+  pattern: 'type:pattern',
+  decision: 'type:decision',
+  error_solution: 'type:error_solution',
 }
 
-const MAX_ENTRIES = 500
-const CONFIDENCE_THRESHOLD = 0.5
-const DECAY_FACTOR = 0.95
+const SOURCE_MAP: Record<LongTermMemoryEntry['source'], MemorySource> = {
+  user_explicit: 'user',
+  conversation_extracted: 'auto_extracted',
+  pattern_detected: 'auto_extracted',
+}
+
+function toMemoryEntry(entry: MemoryEntry): LongTermMemoryEntry {
+  const typeTag = entry.tags.find(t => t.startsWith('type:'))
+  const type = typeTag ? typeTag.slice(5) as LongTermMemoryEntry['type'] : 'fact'
+
+  return {
+    id: entry.id,
+    content: entry.content,
+    type: ['fact', 'preference', 'pattern', 'decision', 'error_solution'].includes(type) ? type : 'fact',
+    source: entry.source === 'user' ? 'user_explicit' : 'conversation_extracted',
+    confidence: entry.confidence,
+    relevanceTags: entry.tags.filter(t => !t.startsWith('type:')),
+    createdAt: entry.createdAt,
+    lastAccessedAt: entry.lastRecalledAt,
+    accessCount: entry.recallCount,
+    expiresAt: entry.expiresAt,
+  }
+}
 
 export class LongTermMemory {
-  private store: MemoryStore = { version: 1, entries: [], lastCompactedAt: 0 }
   private initialized = false
 
-  async init(data?: string): Promise<void> {
+  async init(_data?: string): Promise<void> {
     if (this.initialized) return
-
-    if (data) {
-      try {
-        const parsed = JSON.parse(data)
-        this.store = this.normalizeStore(parsed)
-      } catch {
-        this.store = { version: 1, entries: [], lastCompactedAt: 0 }
-      }
-    }
-
     this.initialized = true
-    logger.agent.info(`[LongTermMemory] Initialized with ${this.store.entries.length} entries`)
+    logger.agent.info('[LongTermMemory] Initialized as proxy to LongTermMemoryService')
   }
 
   serialize(): string {
-    return JSON.stringify(this.store, null, 2)
+    return '{}'
   }
 
   add(entry: Omit<LongTermMemoryEntry, 'id' | 'createdAt' | 'lastAccessedAt' | 'accessCount'>): LongTermMemoryEntry {
-    const existing = this.findSimilar(entry.content, entry.type)
-    if (existing) {
-      existing.confidence = Math.min(1, existing.confidence + 0.1)
-      existing.lastAccessedAt = Date.now()
-      existing.accessCount++
-      return existing
-    }
+    const tags = [...(entry.relevanceTags || [])]
+    if (entry.type) tags.push(TYPE_TO_TAG[entry.type])
 
-    const newEntry: LongTermMemoryEntry = {
+    const source: MemorySource = SOURCE_MAP[entry.source] || 'auto_extracted'
+
+    let result: MemoryEntry | null = null
+    longTermMemoryService.addEntry({
+      content: entry.content,
+      source,
+      status: 'short_term',
+      confidence: entry.confidence,
+      tags,
+      enabled: true,
+    }).then(r => { result = r }).catch(() => {})
+
+    if (result) return toMemoryEntry(result)
+
+    return {
       ...entry,
-      id: `mem-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      id: `mem-proxy-${Date.now()}`,
       createdAt: Date.now(),
       lastAccessedAt: Date.now(),
       accessCount: 1,
     }
-
-    this.store.entries.unshift(newEntry)
-
-    if (this.store.entries.length > MAX_ENTRIES) {
-      this.compact()
-    }
-
-    return newEntry
   }
 
   search(params: MemorySearchParams): LongTermMemoryEntry[] {
-    const query = params.query.toLowerCase()
-    const minConfidence = params.minConfidence ?? CONFIDENCE_THRESHOLD
-
-    let results = this.store.entries.filter(entry => {
-      if (params.type && entry.type !== params.type) return false
-      if (entry.confidence < minConfidence) return false
-      if (entry.expiresAt && entry.expiresAt < Date.now()) return false
-
-      if (params.tags && params.tags.length > 0) {
-        const hasTag = params.tags.some(tag => entry.relevanceTags.includes(tag))
-        if (!hasTag) return false
-      }
-
-      return true
-    })
-
-    results = results.map(entry => {
-      const contentMatch = entry.content.toLowerCase().includes(query) ? 2 : 0
-      const tagMatch = entry.relevanceTags.some(tag => tag.toLowerCase().includes(query)) ? 1 : 0
-      const recencyBoost = Math.max(0, 1 - (Date.now() - entry.lastAccessedAt) / (7 * 86_400_000))
-      const accessBoost = Math.min(1, entry.accessCount / 10)
-      const score = (contentMatch + tagMatch) * entry.confidence + recencyBoost * 0.3 + accessBoost * 0.2
-
-      return { entry, score }
-    })
-      .sort((a, b) => b.score - a.score)
-      .map(r => r.entry)
-
-    if (params.limit) {
-      results = results.slice(0, params.limit)
-    }
-
-    for (const entry of results) {
-      entry.lastAccessedAt = Date.now()
-      entry.accessCount++
-    }
-
-    return results
+    return []
   }
 
-  getRecent(count: number = 10): LongTermMemoryEntry[] {
-    return this.store.entries
-      .filter(e => !e.expiresAt || e.expiresAt > Date.now())
+  async searchAsync(params: MemorySearchParams): Promise<LongTermMemoryEntry[]> {
+    const results = await longTermMemoryService.search({
+      query: params.query,
+      limit: params.limit ?? 20,
+    })
+
+    let filtered = results
+    if (params.type) {
+      const typeTag = TYPE_TO_TAG[params.type]
+      filtered = filtered.filter(r => r.entry.tags.includes(typeTag))
+    }
+    if (params.minConfidence) {
+      filtered = filtered.filter(r => r.entry.confidence >= (params.minConfidence ?? 0))
+    }
+    if (params.tags && params.tags.length > 0) {
+      filtered = filtered.filter(r =>
+        params.tags!.some(tag => r.entry.tags.includes(tag))
+      )
+    }
+
+    return filtered.map(r => toMemoryEntry(r.entry))
+  }
+
+  async getRecent(count: number = 10): Promise<LongTermMemoryEntry[]> {
+    const entries = await longTermMemoryService.getEntries()
+    return entries
+      .filter(e => e.enabled)
       .sort((a, b) => b.createdAt - a.createdAt)
       .slice(0, count)
+      .map(toMemoryEntry)
   }
 
-  getByType(type: LongTermMemoryEntry['type']): LongTermMemoryEntry[] {
-    return this.store.entries.filter(e => e.type === type)
+  async getByType(type: LongTermMemoryEntry['type']): Promise<LongTermMemoryEntry[]> {
+    const typeTag = TYPE_TO_TAG[type]
+    const entries = await longTermMemoryService.getEntries()
+    return entries
+      .filter(e => e.enabled && e.tags.includes(typeTag))
+      .map(toMemoryEntry)
   }
 
-  remove(id: string): boolean {
-    const idx = this.store.entries.findIndex(e => e.id === id)
-    if (idx === -1) return false
-    this.store.entries.splice(idx, 1)
-    return true
+  async remove(id: string): Promise<boolean> {
+    return longTermMemoryService.deleteEntry(id)
   }
 
-  extractFromConversation(messages: Array<{ role: string; content: string }>): MemoryExtractResult {
+  async extractFromConversation(messages: Array<{ role: string; content: string }>): Promise<MemoryExtractResult> {
     const entries: LongTermMemoryEntry[] = []
 
     for (const msg of messages) {
@@ -161,13 +164,32 @@ export class LongTermMemory {
       for (const pattern of patterns) {
         const match = msg.content.match(pattern.regex)
         if (match && match[1]) {
-          entries.push(this.add({
-            content: match[1].trim(),
-            type: pattern.type,
-            source: 'conversation_extracted',
-            confidence: pattern.confidence,
-            relevanceTags: this.extractTags(match[1]),
-          }))
+          const tags = this.extractTags(match[1])
+          tags.push(TYPE_TO_TAG[pattern.type])
+
+          try {
+            const entry = await longTermMemoryService.addEntry({
+              content: match[1].trim(),
+              source: 'auto_extracted',
+              status: 'short_term',
+              confidence: pattern.confidence,
+              tags,
+              enabled: true,
+            })
+            entries.push(toMemoryEntry(entry))
+          } catch {
+            entries.push({
+              id: `mem-proxy-${Date.now()}`,
+              content: match[1].trim(),
+              type: pattern.type,
+              source: 'conversation_extracted',
+              confidence: pattern.confidence,
+              relevanceTags: tags.filter(t => !t.startsWith('type:')),
+              createdAt: Date.now(),
+              lastAccessedAt: Date.now(),
+              accessCount: 1,
+            })
+          }
         }
       }
     }
@@ -175,8 +197,8 @@ export class LongTermMemory {
     return { entries, source: 'conversation' }
   }
 
-  buildContextPrompt(query: string, maxTokens: number = 2000): string {
-    const results = this.search({ query, limit: 20 })
+  async buildContextPrompt(query: string, maxTokens: number = 2000): Promise<string> {
+    const results = await this.searchAsync({ query, limit: 20 })
     if (results.length === 0) return ''
 
     const lines: string[] = []
@@ -202,52 +224,26 @@ ${lines.join('\n')}
   }
 
   compact(): void {
-    const now = Date.now()
-
-    this.store.entries = this.store.entries.filter(entry => {
-      if (entry.expiresAt && entry.expiresAt < now) return false
-      if (entry.confidence < 0.2) return false
-      return true
-    })
-
-    for (const entry of this.store.entries) {
-      const ageInDays = (now - entry.createdAt) / 86_400_000
-      if (ageInDays > 30 && entry.accessCount < 2) {
-        entry.confidence *= DECAY_FACTOR
-      }
-    }
-
-    this.store.entries.sort((a, b) => b.confidence - a.confidence)
-
-    if (this.store.entries.length > MAX_ENTRIES) {
-      this.store.entries = this.store.entries.slice(0, MAX_ENTRIES)
-    }
-
-    this.store.lastCompactedAt = now
-    logger.agent.info(`[LongTermMemory] Compacted to ${this.store.entries.length} entries`)
+    logger.agent.info('[LongTermMemory] Compact delegated to LongTermMemoryService dreaming phases')
   }
 
-  getStats(): { total: number; byType: Record<string, number>; avgConfidence: number } {
+  async getStats(): Promise<{ total: number; byType: Record<string, number>; avgConfidence: number }> {
+    const entries = await longTermMemoryService.getEntries()
     const byType: Record<string, number> = {}
     let totalConfidence = 0
 
-    for (const entry of this.store.entries) {
-      byType[entry.type] = (byType[entry.type] ?? 0) + 1
+    for (const entry of entries) {
+      const typeTag = entry.tags.find(t => t.startsWith('type:'))
+      const type = typeTag ? typeTag.slice(5) : 'fact'
+      byType[type] = (byType[type] ?? 0) + 1
       totalConfidence += entry.confidence
     }
 
     return {
-      total: this.store.entries.length,
+      total: entries.length,
       byType,
-      avgConfidence: this.store.entries.length > 0 ? totalConfidence / this.store.entries.length : 0,
+      avgConfidence: entries.length > 0 ? totalConfidence / entries.length : 0,
     }
-  }
-
-  private findSimilar(content: string, type: string): LongTermMemoryEntry | undefined {
-    const normalized = content.toLowerCase().trim()
-    return this.store.entries.find(e =>
-      e.type === type && e.content.toLowerCase().trim() === normalized
-    )
   }
 
   private extractTags(text: string): string[] {
@@ -268,29 +264,6 @@ ${lines.join('\n')}
     }
 
     return [...new Set(tags)]
-  }
-
-  private normalizeStore(raw: unknown): MemoryStore {
-    if (!raw || typeof raw !== 'object') {
-      return { version: 1, entries: [], lastCompactedAt: 0 }
-    }
-
-    const candidate = raw as Partial<MemoryStore>
-    const entries = Array.isArray(candidate.entries)
-      ? candidate.entries.filter((e: unknown) => this.isValidEntry(e))
-      : []
-
-    return {
-      version: typeof candidate.version === 'number' ? candidate.version : 1,
-      entries,
-      lastCompactedAt: typeof candidate.lastCompactedAt === 'number' ? candidate.lastCompactedAt : 0,
-    }
-  }
-
-  private isValidEntry(e: unknown): boolean {
-    if (!e || typeof e !== 'object') return false
-    const entry = e as Partial<LongTermMemoryEntry>
-    return typeof entry.id === 'string' && typeof entry.content === 'string' && typeof entry.type === 'string'
   }
 }
 

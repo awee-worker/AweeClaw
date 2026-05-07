@@ -11,6 +11,7 @@ import { getFileName, joinPath } from '@shared/utils/pathUtils'
 import { ExpandablePreviewContainer } from './ToolCallCard'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
+import { t } from '@renderer/i18n'
 import { api } from '@/renderer/services/electronAPI'
 import { toast } from '@components/common/ToastProvider'
 
@@ -146,7 +147,7 @@ function FileChangeCard({
         (!oldContent && !!newContent && !['edit_file', 'replace_file_content', 'write_file'].includes(toolCall.name))
     // Card style only; visual design remains unchanged.
     const cardStyle = useMemo(() => {
-        if (isAwaitingApproval) return 'border-l-2 border-yellow-500 bg-yellow-500/5'
+        if (isAwaitingApproval) return 'border-l-2 border-red-500 bg-red-500/5'
         if (isError) return 'bg-red-500/5'
         if (isStreaming || isRunning) return 'bg-accent/5'
         return 'hover:bg-text-primary/[0.02] transition-colors rounded-lg'
@@ -352,19 +353,24 @@ function FileChangeCard({
 
             {/* Approval Actions */}
             {isAwaitingApproval && (
-                <div className="flex items-center justify-end gap-2 px-3 py-2 border-t border-yellow-500/10 bg-yellow-500/5">
-                    <button
-                        onClick={onReject}
-                        className="px-3 py-1.5 text-xs font-medium text-text-muted hover:text-red-400 hover:bg-red-500/10 rounded-md transition-all active:scale-95"
-                    >
-                        Reject
-                    </button>
-                    <button
-                        onClick={onApprove}
-                        className="px-3 py-1.5 text-xs font-medium bg-accent text-white hover:bg-accent-hover rounded-md transition-all shadow-sm shadow-accent/20 active:scale-95 hover:shadow-accent/40"
-                    >
-                        Accept
-                    </button>
+                <div className="flex items-center justify-between gap-2 px-3 py-2 border-t border-red-500/10 bg-red-500/5">
+                    <span className="text-xs text-red-400/70 truncate">
+                        {t('toolAwaitingApproval', language as any)}
+                    </span>
+                    <div className="flex items-center gap-2 shrink-0">
+                        <button
+                            onClick={onReject}
+                            className="px-3 py-1.5 text-xs font-medium text-text-muted hover:text-red-400 hover:bg-red-500/10 rounded-md transition-all active:scale-95"
+                        >
+                            {t('toolReject', language as any)}
+                        </button>
+                        <button
+                            onClick={onApprove}
+                            className="px-3 py-1.5 text-xs font-medium bg-accent text-white hover:bg-accent-hover rounded-md transition-all shadow-sm shadow-accent/20 active:scale-95 hover:shadow-accent/40"
+                        >
+                            {t('toolApprove', language as any)}
+                        </button>
+                    </div>
                 </div>
             )}
         </div>

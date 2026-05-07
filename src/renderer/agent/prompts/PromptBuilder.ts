@@ -158,7 +158,7 @@ function buildKnowledge(entries: KnowledgeEntry[]): string | null {
 
   const lines: string[] = []
   let estimatedTokens = 0
-  const maxTokens = 2000
+  const maxTokens = 1500
 
   const starredFirst = [...enabled.filter(e => e.starred), ...enabled.filter(e => !e.starred)]
 
@@ -176,7 +176,7 @@ function buildKnowledge(entries: KnowledgeEntry[]): string | null {
 ${lines.join('\n')}`
 }
 
-function buildLongTermMemory(entries: MemoryEntry[], tokenBudget: number = 1000): string | null {
+function buildLongTermMemory(entries: MemoryEntry[], tokenBudget: number = 1500): string | null {
   const enabled = entries.filter(e => e.enabled && e.content.trim())
   if (enabled.length === 0) return null
 
@@ -199,7 +199,7 @@ function buildLongTermMemory(entries: MemoryEntry[], tokenBudget: number = 1000)
   }
 
   if (lines.length === 0) return null
-  return `## Long-term Memory
+  return `## Memory
 Important facts and preferences remembered from past conversations:
 
 ${lines.join('\n')}`

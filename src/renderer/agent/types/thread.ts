@@ -57,6 +57,7 @@ export interface StreamState {
   streamDetail?: StreamDetail
   waitPhase?: WaitPhase
   currentToolCall?: ToolCall
+  pendingApprovalToolCalls?: ToolCall[]
   error?: string
   statusText?: string
   requestId?: string

@@ -126,6 +126,7 @@ export default function ChatPanel() {
     isStreaming,
     isAwaitingApproval,
     pendingToolCall,
+    pendingApprovalToolCalls,
     pendingChanges,
     messageCheckpoints,
     contextItems,
@@ -133,7 +134,7 @@ export default function ChatPanel() {
     messageListVersion,
     streamState,
   } = useAgentViewState()
-  const { sendMessage, abort, approveCurrentTool, rejectCurrentTool } = useAgentCommands()
+  const { sendMessage, abort, approveCurrentTool, rejectCurrentTool, approveAllTools, rejectAllTools } = useAgentCommands()
   const {
     createThread,
     clearMessages,
@@ -150,10 +151,22 @@ export default function ChatPanel() {
   } = useAgentActions()
 
   const [inputState, setInputState] = useState('')
-  const input = inputState ?? ''
+  const input = inputState
   const setInput = useCallback((value: string | null | undefined) => {
     setInputState(value ?? '')
   }, [])
+  const inputPromptConsumedRef = useRef(false)
+
+  useEffect(() => {
+    if (inputPrompt && !inputPromptConsumedRef.current) {
+      setInputState(inputPrompt)
+      inputPromptConsumedRef.current = true
+      setInputPrompt('')
+    }
+    if (!inputPrompt) {
+      inputPromptConsumedRef.current = false
+    }
+  }, [inputPrompt, setInputPrompt])
   const [images, setImages] = useState<PendingAttachment[]>([])
   const imagesRef = useRef(images)
   imagesRef.current = images
@@ -362,14 +375,6 @@ export default function ChatPanel() {
       })
     })
   }, [timelineItems, virtuosoRef])
-
-  // 一次性同步 inputPrompt 到本地 input
-  useEffect(() => {
-    if (inputPrompt) {
-      setInput(inputPrompt)
-      setInputPrompt('')
-    }
-  }, [inputPrompt, setInputPrompt])
 
   useEffect(() => {
     const unsub = EventBus.on('loop:end', (event) => {
@@ -1300,6 +1305,7 @@ export default function ChatPanel() {
                         isAwaitingApproval={isAwaitingApproval}
                         streamDetail={streamState.streamDetail}
                         currentToolName={streamState.currentToolCall?.name}
+                        currentToolCall={streamState.currentToolCall}
                         currentTaskLabel={todos.find(t => t.status === 'in_progress')?.activeForm}
                         iterationIndex={streamState.iterationIndex}
                         onStop={abort}
@@ -1310,6 +1316,10 @@ export default function ChatPanel() {
                         onKeepAll={handleKeepAll}
                         onApproveTool={approveCurrentTool}
                         onRejectTool={rejectCurrentTool}
+                        onApproveAllTools={approveAllTools}
+                        onRejectAllTools={rejectAllTools}
+                        pendingApprovalCount={pendingApprovalToolCalls.length}
+                        pendingApprovalToolCalls={pendingApprovalToolCalls}
                         onViewAllChanges={handleViewAllChanges}
                       />
                     )}

@@ -32,11 +32,13 @@ import { resolveStreamingEditFilePath } from '../services/streamingEditPreview'
 
 class ApprovalServiceClass {
   private pendingResolves = new Map<string, (approved: boolean) => void>()
+  private queue: Array<{ id: string; resolve: (approved: boolean) => void }> = []
 
   async waitForApproval(requestId?: string): Promise<boolean> {
     const id = requestId || crypto.randomUUID()
     return new Promise((resolve) => {
       this.pendingResolves.set(id, resolve)
+      this.queue.push({ id, resolve })
     })
   }
 
@@ -44,13 +46,13 @@ class ApprovalServiceClass {
     if (requestId) {
       this.pendingResolves.get(requestId)?.(true)
       this.pendingResolves.delete(requestId)
+      this.queue = this.queue.filter(item => item.id !== requestId)
+    } else if (this.queue.length > 0) {
+      const first = this.queue.shift()!
+      this.pendingResolves.get(first.id)?.(true)
+      this.pendingResolves.delete(first.id)
     } else {
-      // 向后兼容：如果没有 requestId，批准最后一个
-      const lastKey = Array.from(this.pendingResolves.keys()).pop()
-      if (lastKey) {
-        this.pendingResolves.get(lastKey)?.(true)
-        this.pendingResolves.delete(lastKey)
-      }
+      logger.agent.warn('[ApprovalService] approve() called but no pending requests')
     }
   }
 
@@ -58,14 +60,48 @@ class ApprovalServiceClass {
     if (requestId) {
       this.pendingResolves.get(requestId)?.(false)
       this.pendingResolves.delete(requestId)
+      this.queue = this.queue.filter(item => item.id !== requestId)
+    } else if (this.queue.length > 0) {
+      const first = this.queue.shift()!
+      this.pendingResolves.get(first.id)?.(false)
+      this.pendingResolves.delete(first.id)
     } else {
-      // 向后兼容：如果没有 requestId，拒绝最后一个
-      const lastKey = Array.from(this.pendingResolves.keys()).pop()
-      if (lastKey) {
-        this.pendingResolves.get(lastKey)?.(false)
-        this.pendingResolves.delete(lastKey)
-      }
+      logger.agent.warn('[ApprovalService] reject() called but no pending requests')
     }
+  }
+
+  approveAll(): void {
+    for (const item of this.queue) {
+      this.pendingResolves.get(item.id)?.(true)
+      this.pendingResolves.delete(item.id)
+    }
+    this.queue = []
+  }
+
+  rejectAll(): void {
+    for (const item of this.queue) {
+      this.pendingResolves.get(item.id)?.(false)
+      this.pendingResolves.delete(item.id)
+    }
+    this.queue = []
+  }
+
+  async waitForBatchApproval(
+    toolCallIds: string[],
+    requestId?: string
+  ): Promise<Map<string, boolean>> {
+    const results = new Map<string, boolean>()
+    const promises = toolCallIds.map(tcId =>
+      this.waitForApproval(`${requestId}_${tcId}`).then(approved => {
+        results.set(tcId, approved)
+      })
+    )
+    await Promise.all(promises)
+    return results
+  }
+
+  get pendingCount(): number {
+    return this.queue.length
   }
 }
 
@@ -195,6 +231,30 @@ function needsApproval(toolName: string): boolean {
 
   // 默认需要审批
   return true
+}
+
+interface ApprovalGroup {
+  key: string
+  toolCalls: ToolCall[]
+}
+
+function groupApprovalTools(toolCalls: ToolCall[]): ApprovalGroup[] {
+  if (toolCalls.length <= 1) {
+    return [{ key: 'single', toolCalls }]
+  }
+
+  const groups = new Map<string, ToolCall[]>()
+
+  for (const tc of toolCalls) {
+    const approvalType = getToolApprovalType(tc.name)
+    const groupKey = `${approvalType}:${tc.name}`
+    if (!groups.has(groupKey)) {
+      groups.set(groupKey, [])
+    }
+    groups.get(groupKey)!.push(tc)
+  }
+
+  return Array.from(groups.entries()).map(([key, toolCalls]) => ({ key, toolCalls }))
 }
 
 /**
@@ -642,15 +702,20 @@ export async function executeTools(
     }
   }
 
-  // 2. 逐个处理需要审批的工具
-  for (const tc of approvalRequired) {
+  // 2. 分组批量处理需要审批的工具
+  //    将同类型的工具合并为一组，一次性提交审批
+  const approvalGroups = groupApprovalTools(approvalRequired)
+
+  for (const group of approvalGroups) {
     if (abortSignal?.aborted) break
 
-    // 检查依赖是否满足（依赖的工具必须已完成且未失败/未被拒绝）
-    const tcDeps = deps.get(tc.id) || new Set()
-    const depsOk = Array.from(tcDeps).every(dep => completed.has(dep) && !rejected.has(dep) && !failed.has(dep))
+    const groupToolCalls = group.toolCalls.filter(tc => {
+      const tcDeps = deps.get(tc.id) || new Set()
+      return Array.from(tcDeps).every(dep => completed.has(dep) && !rejected.has(dep) && !failed.has(dep))
+    })
 
-    if (!depsOk) {
+    const depFailedTools = group.toolCalls.filter(tc => !groupToolCalls.some(g => g.id === tc.id))
+    for (const tc of depFailedTools) {
       const skipped = buildDependencyErrorResult(tc, 'Skipped: dependency not met')
       if (context.currentAssistantId) {
         store.updateToolCall(context.currentAssistantId, tc.id, {
@@ -669,34 +734,42 @@ export async function executeTools(
         error: skipped.result.content,
         ...buildToolExecutionIdentity(tc, context),
       })
-      continue
     }
 
-    // 设置当前工具为待审批状态
+    if (groupToolCalls.length === 0) continue
+
+    for (const tc of groupToolCalls) {
+      if (context.currentAssistantId) {
+        store.updateToolCall(context.currentAssistantId, tc.id, { status: 'awaiting' })
+      }
+      emitToolEvent({
+        type: 'tool:pending',
+        id: tc.id,
+        name: tc.name,
+        args: tc.arguments,
+        ...buildToolExecutionIdentity(tc, context),
+      })
+    }
+
     store.setStreamState({
       phase: 'tool_pending',
       streamDetail: 'tool_awaiting',
-      currentToolCall: tc,
+      currentToolCall: groupToolCalls[0],
+      pendingApprovalToolCalls: groupToolCalls,
       statusText: undefined,
       requestId: context.requestId,
       assistantId: context.assistantId ?? context.currentAssistantId ?? undefined,
     })
-    if (context.currentAssistantId) {
-      store.updateToolCall(context.currentAssistantId, tc.id, { status: 'awaiting' })
-    }
-    emitToolEvent({
-      type: 'tool:pending',
-      id: tc.id,
-      name: tc.name,
-      args: tc.arguments,
-      ...buildToolExecutionIdentity(tc, context),
-    })
 
-    // 等待用户审批
-    const approved = await approvalService.waitForApproval(context.requestId)
+    const approvalResults = await approvalService.waitForBatchApproval(
+      groupToolCalls.map(tc => tc.id),
+      context.requestId
+    )
 
-    if (!approved || abortSignal?.aborted) {
-      // 用户拒绝了这个工具
+    const approvedTools = groupToolCalls.filter(tc => approvalResults.get(tc.id) !== false)
+    const rejectedTools = groupToolCalls.filter(tc => approvalResults.get(tc.id) === false)
+
+    for (const tc of rejectedTools) {
       userRejected = true
       rejected.add(tc.id)
       if (context.currentAssistantId) {
@@ -709,27 +782,30 @@ export async function executeTools(
       emitToolEvent({ type: 'tool:rejected', id: tc.id, ...buildToolExecutionIdentity(tc, context) })
       results.push({ toolCall: tc, result: { content: 'Rejected by user' } })
       pending.delete(tc.id)
-
-      // 继续处理下一个工具，而不是中断整个流程
-      continue
     }
 
-    // 用户批准，执行工具
-    store.setStreamState({
-      phase: 'tool_running',
-      streamDetail: 'tool_executing',
-      currentToolCall: tc,
-      statusText: undefined,
-      requestId: context.requestId,
-      assistantId: context.assistantId ?? context.currentAssistantId ?? undefined,
-    })
-    const result = await executeSingle(tc, context, store)
-    results.push(result)
-    pending.delete(tc.id)
-    if (result.result.content.startsWith('Error:')) {
-      failed.add(tc.id)
-    } else {
-      completed.add(tc.id)
+    if (approvedTools.length > 0) {
+      store.setStreamState({
+        phase: 'tool_running',
+        streamDetail: 'tool_executing',
+        currentToolCall: approvedTools[0],
+        pendingApprovalToolCalls: undefined,
+        statusText: undefined,
+        requestId: context.requestId,
+        assistantId: context.assistantId ?? context.currentAssistantId ?? undefined,
+      })
+
+      for (const tc of approvedTools) {
+        if (abortSignal?.aborted) break
+        const result = await executeSingle(tc, context, store)
+        results.push(result)
+        pending.delete(tc.id)
+        if (result.result.content.startsWith('Error:')) {
+          failed.add(tc.id)
+        } else {
+          completed.add(tc.id)
+        }
+      }
     }
   }
 

@@ -47,11 +47,30 @@ class StreamingEditService {
 	private pendingFilePathNotifications: Map<string, StreamingEditState | null> = new Map()
 	private pendingGlobalNotification = false
 	private notificationFrame: ScheduledFrame | null = null
+	private cleanupTimer: ReturnType<typeof setInterval> | null = null
+	private disposed = false
 
 	constructor() {
-		setInterval(() => {
+		this.cleanupTimer = setInterval(() => {
 			this.cleanup()
 		}, 30000)
+	}
+
+	dispose(): void {
+		if (this.disposed) return
+		this.disposed = true
+
+		if (this.cleanupTimer !== null) {
+			clearInterval(this.cleanupTimer)
+			this.cleanupTimer = null
+		}
+
+		if (this.notificationFrame) {
+			cancelScheduledFrame(this.notificationFrame)
+			this.notificationFrame = null
+		}
+
+		this.clearAll()
 	}
 
 	/**

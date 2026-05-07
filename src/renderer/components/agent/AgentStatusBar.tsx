@@ -28,6 +28,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { getFileName, getDirname } from '@shared/utils/pathUtils'
 import type { StreamDetail } from '@/renderer/agent/types/thread'
 import type { PendingChange } from '@/renderer/agent/types'
+import type { ToolCall } from '@/shared/types/llm'
 import { useStore } from '@store'
 import { t } from '@renderer/i18n'
 
@@ -65,6 +66,7 @@ interface AgentStatusBarProps {
   isAwaitingApproval: boolean
   streamDetail?: StreamDetail
   currentToolName?: string
+  currentToolCall?: ToolCall
   currentTaskLabel?: string
   iterationIndex?: number
   onStop?: () => void
@@ -75,6 +77,10 @@ interface AgentStatusBarProps {
   onKeepAll?: () => void
   onApproveTool?: () => void
   onRejectTool?: () => void
+  onApproveAllTools?: () => void
+  onRejectAllTools?: () => void
+  pendingApprovalCount?: number
+  pendingApprovalToolCalls?: ToolCall[]
   onViewAllChanges?: () => void
 }
 
@@ -84,6 +90,7 @@ function AgentStatusBar({
   isAwaitingApproval,
   streamDetail,
   currentToolName,
+  currentToolCall,
   currentTaskLabel,
   iterationIndex,
   onStop,
@@ -94,6 +101,10 @@ function AgentStatusBar({
   onKeepAll,
   onApproveTool,
   onRejectTool,
+  onApproveAllTools,
+  onRejectAllTools,
+  pendingApprovalCount,
+  pendingApprovalToolCalls,
   onViewAllChanges,
 }: AgentStatusBarProps) {
   const expandAgentBlocksByDefault = useStore(s => s.agentConfig.expandAgentBlocksByDefault ?? false)
@@ -133,6 +144,48 @@ function AgentStatusBar({
   const toolDisplayName = currentToolName
     ? (TOOL_LABEL_KEYS[currentToolName] ? t(TOOL_LABEL_KEYS[currentToolName] as any, language as any) : currentToolName)
     : null
+
+  const getToolDescription = useCallback((tc: ToolCall): string => {
+    const name = tc.name
+    const args = tc.arguments
+    const label = TOOL_LABEL_KEYS[name] ? t(TOOL_LABEL_KEYS[name] as any, language as any) : name
+
+    const filePath = (args.file_path || args.path || args.filePath) as string | undefined
+    const command = (args.command) as string | undefined
+    const query = (args.query || args.search_query || args.pattern) as string | undefined
+    const url = (args.url) as string | undefined
+
+    if (filePath) {
+      return `${label}: ${getFileName(filePath)}`
+    }
+    if (command) {
+      const display = command.length > 60 ? command.slice(0, 60) + '…' : command
+      return `${label}: ${display}`
+    }
+    if (url) {
+      const display = url.length > 60 ? url.slice(0, 60) + '…' : url
+      return `${label}: ${display}`
+    }
+    if (query) {
+      const display = query.length > 40 ? query.slice(0, 40) + '…' : query
+      return `${label}: "${display}"`
+    }
+    return label
+  }, [language])
+
+  const approvalDescription = useMemo(() => {
+    if (!isAwaitingApproval || !currentToolCall) return null
+    return getToolDescription(currentToolCall)
+  }, [isAwaitingApproval, currentToolCall, getToolDescription])
+
+  const approvalList = useMemo(() => {
+    if (!isAwaitingApproval || !pendingApprovalToolCalls || pendingApprovalToolCalls.length <= 1) return null
+    return pendingApprovalToolCalls.map(tc => ({
+      id: tc.id,
+      name: tc.name,
+      description: getToolDescription(tc),
+    }))
+  }, [isAwaitingApproval, pendingApprovalToolCalls, getToolDescription])
 
   const statusLabel = useMemo(() => {
     if (!isStreaming) return null
@@ -203,9 +256,12 @@ function AgentStatusBar({
                 </>
               ) : (
                 <>
-                  <div className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse flex-shrink-0" />
-                  <span className="text-[12px] font-medium text-amber-400/80 truncate">
-                    {t('statusBar.waitingApproval', language as any)}
+                  <div className="w-1.5 h-1.5 bg-red-400 rounded-full animate-pulse flex-shrink-0" />
+                  <span className="text-[12px] font-medium text-red-400/80 truncate">
+                    {pendingApprovalCount && pendingApprovalCount > 1
+                      ? t('statusBar.waitingApprovalBatch', language as any, { count: pendingApprovalCount })
+                      : (approvalDescription || t('statusBar.waitingApproval', language as any))
+                    }
                   </span>
                 </>
               )}
@@ -224,7 +280,15 @@ function AgentStatusBar({
 
               {!isStreaming && isAwaitingApproval && (onApproveTool || onRejectTool) && (
                 <div className="flex items-center gap-1">
-                  {onRejectTool && (
+                  {pendingApprovalCount && pendingApprovalCount > 1 && onRejectAllTools && (
+                    <button
+                      onClick={onRejectAllTools}
+                      className="px-2 py-1 text-[11px] font-medium text-text-muted/85 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-all"
+                    >
+                      {t('statusBar.rejectAllTools', language as any)}
+                    </button>
+                  )}
+                  {!(pendingApprovalCount && pendingApprovalCount > 1) && onRejectTool && (
                     <button
                       onClick={onRejectTool}
                       className="px-2 py-1 text-[11px] font-medium text-text-muted/85 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-all"
@@ -232,7 +296,15 @@ function AgentStatusBar({
                       {t('statusBar.cancel', language as any)}
                     </button>
                   )}
-                  {onApproveTool && (
+                  {pendingApprovalCount && pendingApprovalCount > 1 && onApproveAllTools && (
+                    <button
+                      onClick={onApproveAllTools}
+                      className="px-2.5 py-1 text-[11px] font-medium bg-accent text-white hover:bg-accent-hover rounded-md transition-all"
+                    >
+                      {t('statusBar.approveAllTools', language as any)}
+                    </button>
+                  )}
+                  {!(pendingApprovalCount && pendingApprovalCount > 1) && onApproveTool && (
                     <button
                       onClick={onApproveTool}
                       className="px-2.5 py-1 text-[11px] font-medium bg-accent text-white hover:bg-accent-hover rounded-md transition-all"
@@ -242,6 +314,19 @@ function AgentStatusBar({
                   )}
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {isAwaitingApproval && approvalList && approvalList.length > 0 && (
+          <div className="border-t border-red-500/10 bg-red-500/[0.02]">
+            <div className="px-4 py-1.5 space-y-0.5">
+              {approvalList.map((item, idx) => (
+                <div key={item.id} className="flex items-center gap-2 text-[11px]">
+                  <span className="text-text-muted/50 w-4 text-right shrink-0">{idx + 1}</span>
+                  <span className="text-text-secondary/80 truncate">{item.description}</span>
+                </div>
+              ))}
             </div>
           </div>
         )}

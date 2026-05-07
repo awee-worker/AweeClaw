@@ -145,11 +145,21 @@ export function useAgentCommands() {
     Agent.reject(pendingApprovalRequestId)
   }, [pendingApprovalRequestId])
 
+  const approveAllTools = useCallback(() => {
+    Agent.approveAll()
+  }, [])
+
+  const rejectAllTools = useCallback(() => {
+    Agent.rejectAll()
+  }, [])
+
   return {
     sendMessage,
     abort,
     approveCurrentTool,
     rejectCurrentTool,
+    approveAllTools,
+    rejectAllTools,
   }
 }
 
@@ -224,6 +234,14 @@ export function useAgentViewState() {
     return undefined
   }, [streamState])
 
+  const pendingApprovalToolCalls = useMemo((): ToolCall[] => {
+    if (streamState.phase === 'tool_pending' && streamState.pendingApprovalToolCalls) {
+      return streamState.pendingApprovalToolCalls
+    }
+
+    return []
+  }, [streamState])
+
   return {
     messages,
     messageListVersion,
@@ -232,6 +250,7 @@ export function useAgentViewState() {
     isStreaming,
     isAwaitingApproval,
     pendingToolCall,
+    pendingApprovalToolCalls,
     pendingChanges,
     messageCheckpoints,
     currentThreadId,

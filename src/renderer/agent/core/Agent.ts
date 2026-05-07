@@ -343,6 +343,38 @@ export class AgentClass {
     }
   }
 
+  approveAll(): void {
+    const state = useAgentStore.getState()
+    const currentThread = state.currentThreadId ? state.threads[state.currentThreadId] : undefined
+    const requestId = currentThread?.streamState?.requestId || currentThread?.executionMeta?.requestId
+    const pendingToolCalls = currentThread?.streamState?.pendingApprovalToolCalls
+
+    if (!requestId || !pendingToolCalls || pendingToolCalls.length === 0) {
+      approvalService.approveAll()
+      return
+    }
+
+    for (const tc of pendingToolCalls) {
+      approvalService.approve(`${requestId}_${tc.id}`)
+    }
+  }
+
+  rejectAll(): void {
+    const state = useAgentStore.getState()
+    const currentThread = state.currentThreadId ? state.threads[state.currentThreadId] : undefined
+    const requestId = currentThread?.streamState?.requestId || currentThread?.executionMeta?.requestId
+    const pendingToolCalls = currentThread?.streamState?.pendingApprovalToolCalls
+
+    if (!requestId || !pendingToolCalls || pendingToolCalls.length === 0) {
+      approvalService.rejectAll()
+      return
+    }
+
+    for (const tc of pendingToolCalls) {
+      approvalService.reject(`${requestId}_${tc.id}`)
+    }
+  }
+
   /**
    * 清除会话缓存
    * 

@@ -6,3 +6,6 @@ export type { KnowledgeEntity, KnowledgeRelation, EntityType, RelationType } fro
 
 export { AdaptivePromptEngine, adaptivePromptEngine } from './AdaptivePromptEngine'
 export type { AdaptivePromptContext, AdaptivePromptResult } from './AdaptivePromptEngine'
+
+export { memoryFusionEngine } from './MemoryFusionEngine'
+export type { MemoryLayer, UnifiedMemoryResult, UnifiedSearchParams, ForgettingCurveConfig } from './MemoryFusionEngine'
