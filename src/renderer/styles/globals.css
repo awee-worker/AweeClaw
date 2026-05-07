@@ -464,7 +464,6 @@ textarea,
 }
 .animate-block-reveal {
   animation: block-reveal 0.28s ease-out both;
-  will-change: opacity, filter, transform;
 }
 
 /* --- Context-aware Wait Indicator --- */

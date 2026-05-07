@@ -190,7 +190,7 @@ function AgentStatusBar({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 10 }}
     >
-      <div className="rounded-xl border border-border/50 bg-surface/40 backdrop-blur-md overflow-hidden shadow-[0_4px_16px_-8px_rgba(0,0,0,0.1)] transition-all">
+      <div className="rounded-xl border border-border/50 bg-surface overflow-hidden shadow-[0_4px_16px_-8px_rgba(0,0,0,0.1)] transition-all">
         {(isStreaming || isAwaitingApproval) && (
           <div className={`flex items-center justify-between px-4 py-2 ${hasChanges ? 'border-b border-border/50' : ''}`}>
             <div className="flex items-center gap-3 min-w-0 flex-1">

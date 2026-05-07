@@ -230,7 +230,7 @@ const ChatInput = memo(function ChatInput({
     <div ref={inputContainerRef} className="z-20">
       <div
         className={`
-            relative group flex flex-col rounded-xl transition-all duration-500 ease-out border backdrop-blur-md
+            relative group flex flex-col rounded-xl transition-all duration-500 ease-out border
             ${isStreaming
             ? 'bg-surface/30 border-accent/20 shadow-[0_4px_24px_-12px_rgba(var(--accent)/0.15)]'
             : isFocused

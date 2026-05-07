@@ -1,6 +1,5 @@
 import { terminalManager } from '@/renderer/services/TerminalManager'
 import { toast } from '@/renderer/components/common/ToastProvider'
-import { EventBus } from '../core/EventBus'
 
 class TerminalWatcher {
     private buffers: Map<string, string> = new Map()
@@ -73,23 +72,6 @@ class TerminalWatcher {
     }
 
     private triggerDiagnosticAlert() {
-        // 1. 触发 AI 情绪环境改变（如：变得警觉/关注，并推送消息）
-        setTimeout(() => {
-            EventBus.emit({
-                type: 'emotion:changed',
-                emotion: {
-                    state: 'frustrated',
-                    intensity: 0.8,
-                    confidence: 0.9,
-                    triggeredAt: Date.now(),
-                    duration: 0,
-                    factors: [{ type: 'error_rate', value: 1, weight: 1, description: '终端报错' }],
-                    suggestions: ['发现终端报错 💥，您可以点击终端栏右上角的 ✨ 按钮让我一键分析！']
-                }
-            })
-        }, 100)
-
-        // 2. 抛出 UI Toast 给用户提示
         toast.error('检测到终端命令执行出错', 5000)
     }
 }

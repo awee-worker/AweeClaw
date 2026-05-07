@@ -1,5 +1,6 @@
 import { lazy, Suspense, useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useStore } from './store'
+import { useShallow } from 'zustand/react/shallow'
 import { useWindowTitle, useAppInit, useGlobalShortcuts, useFileWatcher, useSidebarResize, useChatResize, useAppShutdownState, usePreviewDiscoveryToasts, useChannelBridge } from './hooks'
 import TitleBar from './components/layout/TitleBar'
 import ActivityBar from './components/layout/ActivityBar'
@@ -60,28 +61,40 @@ function ToastInitializer() {
 function AppContent() {
   useAppShutdownState()
 
-  const workspace = useStore((state) => state.workspace)
-  const showSettings = useStore((state) => state.showSettings)
-  const activeSidePanel = useStore((state) => state.activeSidePanel)
-  const showWorkflow = useStore((state) => state.showWorkflow)
-  const setShowWorkflow = useStore((state) => state.setShowWorkflow)
-  const sidebarWidth = useStore((state) => state.sidebarWidth)
-  const setSidebarWidth = useStore((state) => state.setSidebarWidth)
-  const chatWidth = useStore((state) => state.chatWidth)
-  const setChatWidth = useStore((state) => state.setChatWidth)
-  const showQuickOpen = useStore((state) => state.showQuickOpen)
-  const setShowQuickOpen = useStore((state) => state.setShowQuickOpen)
-  const showAbout = useStore((state) => state.showAbout)
-  const setShowAbout = useStore((state) => state.setShowAbout)
-  const showCommandPalette = useStore((state) => state.showCommandPalette)
-  const setShowCommandPalette = useStore((state) => state.setShowCommandPalette)
-  const terminalVisible = useStore((state) => state.terminalVisible)
-  const debugVisible = useStore((state) => state.debugVisible)
-  const chatVisible = useStore((state) => state.chatVisible)
-  const activeScenarioId = useStore((state) => state.activeScenarioId)
-  const openFiles = useStore((state) => state.openFiles)
-  const activeFilePath = useStore((state) => state.activeFilePath)
-  const language = useStore((state) => state.language)
+  const {
+    workspace, showSettings, activeSidePanel,
+    showWorkflow, setShowWorkflow,
+    sidebarWidth, setSidebarWidth,
+    chatWidth, setChatWidth,
+    showQuickOpen, setShowQuickOpen,
+    showAbout, setShowAbout,
+    showCommandPalette, setShowCommandPalette,
+    terminalVisible, debugVisible, chatVisible,
+    activeScenarioId, openFiles, activeFilePath, language,
+  } = useStore(useShallow((state) => ({
+    workspace: state.workspace,
+    showSettings: state.showSettings,
+    activeSidePanel: state.activeSidePanel,
+    showWorkflow: state.showWorkflow,
+    setShowWorkflow: state.setShowWorkflow,
+    sidebarWidth: state.sidebarWidth,
+    setSidebarWidth: state.setSidebarWidth,
+    chatWidth: state.chatWidth,
+    setChatWidth: state.setChatWidth,
+    showQuickOpen: state.showQuickOpen,
+    setShowQuickOpen: state.setShowQuickOpen,
+    showAbout: state.showAbout,
+    setShowAbout: state.setShowAbout,
+    showCommandPalette: state.showCommandPalette,
+    setShowCommandPalette: state.setShowCommandPalette,
+    terminalVisible: state.terminalVisible,
+    debugVisible: state.debugVisible,
+    chatVisible: state.chatVisible,
+    activeScenarioId: state.activeScenarioId,
+    openFiles: state.openFiles,
+    activeFilePath: state.activeFilePath,
+    language: state.language,
+  })))
 
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)

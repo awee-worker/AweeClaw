@@ -41,7 +41,7 @@ export const MemoryApprovalCard: React.FC<MemoryApprovalCardProps> = ({
     }
 
     return (
-        <div className="relative group/memory my-2 overflow-hidden rounded-2xl border border-accent/20 bg-background-tertiary/40 backdrop-blur-xl shadow-2xl">
+        <div className="relative group/memory my-2 overflow-hidden rounded-2xl border border-accent/20 bg-background-tertiary shadow-2xl">
             {/* 炫彩渐变背景装饰 */}
             <div className="absolute -top-10 -right-10 w-32 h-32 bg-accent/10 rounded-full blur-3xl group-hover/memory:bg-accent/20 transition-all duration-700" />
             <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl" />

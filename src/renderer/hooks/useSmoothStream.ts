@@ -1,10 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 
+const STREAM_INTERVAL_MS = 66
+const CATCH_UP_INTERVAL_MS = 50
+
 export function useSmoothStream(content: string, isStreaming: boolean, speedMultiplier = 1) {
   const [displayedContent, setDisplayedContent] = useState(() => isStreaming ? '' : content)
   const contentRef = useRef(content)
   const displayedLenRef = useRef(isStreaming ? 0 : content.length)
-  const catchUpRafRef = useRef<number | null>(null)
+  const catchUpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     contentRef.current = content
@@ -16,7 +19,7 @@ export function useSmoothStream(content: string, isStreaming: boolean, speedMult
     }
 
     if (!isStreaming) {
-      if (displayedLenRef.current < content.length && catchUpRafRef.current === null) {
+      if (displayedLenRef.current < content.length && catchUpTimerRef.current === null) {
         const factor = 0.25 * speedMultiplier
         const catchUp = () => {
           const target = contentRef.current.length
@@ -26,12 +29,12 @@ export function useSmoothStream(content: string, isStreaming: boolean, speedMult
             const step = gap <= 3 ? gap : Math.max(1, Math.ceil(gap * factor))
             displayedLenRef.current = Math.min(target, current + step)
             setDisplayedContent(contentRef.current.slice(0, displayedLenRef.current))
-            catchUpRafRef.current = requestAnimationFrame(catchUp)
+            catchUpTimerRef.current = setTimeout(catchUp, CATCH_UP_INTERVAL_MS)
           } else {
-            catchUpRafRef.current = null
+            catchUpTimerRef.current = null
           }
         }
-        catchUpRafRef.current = requestAnimationFrame(catchUp)
+        catchUpTimerRef.current = setTimeout(catchUp, CATCH_UP_INTERVAL_MS)
       } else if (displayedLenRef.current >= content.length) {
         setDisplayedContent(content)
         displayedLenRef.current = content.length
@@ -42,12 +45,12 @@ export function useSmoothStream(content: string, isStreaming: boolean, speedMult
   useEffect(() => {
     if (!isStreaming) return
 
-    if (catchUpRafRef.current !== null) {
-      cancelAnimationFrame(catchUpRafRef.current)
-      catchUpRafRef.current = null
+    if (catchUpTimerRef.current !== null) {
+      clearTimeout(catchUpTimerRef.current)
+      catchUpTimerRef.current = null
     }
 
-    let rafId: number
+    let timerId: ReturnType<typeof setTimeout>
     const factor = 0.15 * speedMultiplier
 
     const tick = () => {
@@ -62,16 +65,16 @@ export function useSmoothStream(content: string, isStreaming: boolean, speedMult
         setDisplayedContent(contentRef.current.slice(0, newLen))
       }
 
-      rafId = requestAnimationFrame(tick)
+      timerId = setTimeout(tick, STREAM_INTERVAL_MS)
     }
 
-    rafId = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(rafId)
+    timerId = setTimeout(tick, STREAM_INTERVAL_MS)
+    return () => clearTimeout(timerId)
   }, [isStreaming, speedMultiplier])
 
   useEffect(() => {
     return () => {
-      if (catchUpRafRef.current !== null) cancelAnimationFrame(catchUpRafRef.current)
+      if (catchUpTimerRef.current !== null) clearTimeout(catchUpTimerRef.current)
     }
   }, [])
 

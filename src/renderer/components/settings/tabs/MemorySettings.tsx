@@ -19,6 +19,8 @@ const SOURCE_LABELS: Record<MemorySource, { zh: string; en: string; color: strin
   dreaming_light: { zh: '轻梦', en: 'Light', color: 'bg-purple-500/20 text-purple-400' },
   dreaming_rem: { zh: '深梦', en: 'REM', color: 'bg-amber-500/20 text-amber-400' },
   dreaming_deep: { zh: '沉梦', en: 'Deep', color: 'bg-rose-500/20 text-rose-400' },
+  self_reflection: { zh: '自我反思', en: 'Reflection', color: 'bg-indigo-500/20 text-indigo-400' },
+  self_correction: { zh: '自我纠错', en: 'Correction', color: 'bg-orange-500/20 text-orange-400' },
 }
 
 const STATUS_LABELS: Record<MemoryStatus, { zh: string; en: string; color: string }> = {

@@ -475,7 +475,7 @@ export default function ShellStudio() {
     <div className="h-full min-h-0 bg-background">
       <style>{XTERM_STYLE}</style>
       <div className="h-full min-h-0 p-4 md:p-5">
-        <div className="h-full min-h-0 rounded-[28px] border border-border bg-background-secondary/70 backdrop-blur-xl overflow-hidden">
+        <div className="h-full min-h-0 rounded-[28px] border border-border bg-background-secondary overflow-hidden">
           <div className="flex h-16 items-center justify-between border-b border-border px-5">
             <div className="flex items-center gap-3 min-w-0">
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-accent/12 text-accent">

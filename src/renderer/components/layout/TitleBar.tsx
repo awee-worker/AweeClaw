@@ -25,7 +25,7 @@ export default function TitleBar() {
   const sidebarVisible = activeSidePanel !== null
 
   return (
-    <div className="h-12 flex items-center justify-between px-0 drag-region select-none bg-background/40 backdrop-blur-md z-50 border-b border-border/30 shadow-[0_1px_15px_rgba(0,0,0,0.03)]">
+    <div className="h-12 flex items-center justify-between px-0 drag-region select-none bg-background z-50 border-b border-border/30">
 
       {/* Left - Workspace & Scenario */}
       <div className={`

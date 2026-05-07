@@ -904,7 +904,7 @@ const StreamingPhaseIndicator = React.memo(({
       setRetryCountdown(remaining)
     }
     update()
-    const id = setInterval(update, 200)
+    const id = setInterval(update, 1000)
     return () => clearInterval(id)
   }, [retryDelay, retryAttempt])
 
@@ -1240,7 +1240,7 @@ const ChatMessage = React.memo(({
               {isEditing ? (
                 <div className="w-full relative group/edit">
                   <div className="absolute inset-0 -m-1 rounded-[20px] bg-accent/5 opacity-0 group-focus-within/edit:opacity-100 transition-opacity duration-300 pointer-events-none" />
-                  <div className="relative bg-surface/80 backdrop-blur-xl border border-accent/30 rounded-[18px] shadow-lg overflow-hidden animate-scale-in origin-right transition-all duration-200 group-focus-within/edit:border-accent group-focus-within/edit:ring-1 group-focus-within/edit:ring-accent/50">
+                  <div className="relative bg-surface border border-accent/30 rounded-[18px] shadow-lg overflow-hidden animate-scale-in origin-right transition-all duration-200 group-focus-within/edit:border-accent group-focus-within/edit:ring-1 group-focus-within/edit:ring-accent/50">
                     <textarea
                       value={editContent}
                       onChange={(e) => setEditContent(e.target.value)}
@@ -1283,7 +1283,7 @@ const ChatMessage = React.memo(({
                   </div>
                 </div>
               ) : (
-                <div className="relative bg-surface/60 backdrop-blur-sm text-text-primary/95 px-4 py-3 rounded-[20px] rounded-tr-[4px] shadow-sm w-fit max-w-full border border-border/50">
+                <div className="relative bg-surface text-text-primary/95 px-4 py-3 rounded-[20px] rounded-tr-[4px] shadow-sm w-fit max-w-full border border-border/50">
                   {/* Context Items */}
                   {message.contextItems && message.contextItems.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 mb-2 -mt-1 pt-1 justify-end">
@@ -1428,7 +1428,7 @@ const ChatMessage = React.memo(({
           <div className="w-full min-w-0 flex flex-col gap-2">
             <div className="flex items-center gap-3 px-1">
               <div className="relative flex-shrink-0">
-                <div className="w-9 h-9 rounded-xl overflow-hidden border border-border shadow-[0_4px_12px_-2px_rgba(0,0,0,0.1)] bg-surface/50 backdrop-blur-md">
+                <div className="w-9 h-9 rounded-xl overflow-hidden border border-border shadow-[0_4px_12px_-2px_rgba(0,0,0,0.1)] bg-surface">
                   <div className="absolute inset-0 bg-accent/5 pointer-events-none" />
                   <img src={publicAsset('brand/ip/ai-avatar.gif')} alt="AI" className="w-full h-full object-cover" />
                 </div>

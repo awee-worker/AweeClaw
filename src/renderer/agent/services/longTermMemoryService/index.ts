@@ -2,6 +2,7 @@ import { api } from '@/renderer/services/electronAPI'
 import { logger } from '@utils/Logger'
 import { useStore } from '@store'
 import { joinPath } from '@shared/utils/pathUtils'
+import { reflectiveDreamingService } from './reflectiveDreamingService'
 import {
   type MemoryEntry,
   type MemoryEntryInput,
@@ -10,6 +11,8 @@ import {
   type MemoryStore,
   type MemorySource,
   type MemoryStatus,
+  type MemoryRetrievalContext,
+  type TaskType,
 } from './types'
 
 const CURRENT_VERSION = 1
@@ -66,6 +69,27 @@ class LongTermMemoryService {
       createdAt: now,
       updatedAt: now,
       originalSessionId: input.originalSessionId,
+      correctionChain: input.correctionChain,
+      derivedFrom: input.derivedFrom,
+      verificationStatus: input.verificationStatus ?? 'unverified',
+    }
+
+    if (input.supersedeId) {
+      const superseded = this.findById(store, input.supersedeId)
+      if (superseded) {
+        superseded.correctionChain = {
+          supersededBy: entry.id,
+          supersededAt: now,
+          reason: input.supersedeReason ?? 'corrected',
+        }
+        superseded.verificationStatus = 'superseded'
+        superseded.enabled = false
+        superseded.updatedAt = now
+        entry.derivedFrom = [input.supersedeId]
+        entry.verificationStatus = 'verified'
+        entry.source = input.source ?? 'self_correction'
+        logger.agent.info(`[LongTermMemory] Superseded entry ${input.supersedeId} with ${entry.id}`)
+      }
     }
 
     list.unshift(entry)
@@ -78,7 +102,7 @@ class LongTermMemoryService {
 
   async updateEntry(
     id: string,
-    updates: Partial<Pick<MemoryEntry, 'content' | 'tags' | 'enabled' | 'confidence' | 'status'>>
+    updates: Partial<Pick<MemoryEntry, 'content' | 'tags' | 'enabled' | 'confidence' | 'status' | 'verificationStatus'>>
   ): Promise<boolean> {
     const store = await this.loadStore()
     const entry = this.findById(store, id)
@@ -88,6 +112,7 @@ class LongTermMemoryService {
     if (updates.tags !== undefined) entry.tags = updates.tags
     if (updates.enabled !== undefined) entry.enabled = updates.enabled
     if (updates.confidence !== undefined) entry.confidence = Math.min(1, Math.max(0, updates.confidence))
+    if (updates.verificationStatus !== undefined) entry.verificationStatus = updates.verificationStatus
 
     if (updates.status !== undefined && updates.status !== entry.status) {
       const oldList = this.getList(store, entry.status)
@@ -165,7 +190,7 @@ class LongTermMemoryService {
     const query = params.query.toLowerCase()
 
     const results: MemorySearchResult[] = entries
-      .filter(e => e.enabled)
+      .filter(e => e.enabled && e.verificationStatus !== 'superseded')
       .map(entry => {
         let score = 0
         const contentLower = entry.content.toLowerCase()
@@ -187,12 +212,68 @@ class LongTermMemoryService {
 
         if (entry.status === 'long_term') score += 3
 
+        if (entry.verificationStatus === 'verified') score += 1.5
+        if (entry.verificationStatus === 'contradicted') score -= 2
+        if (entry.source === 'self_correction') score += 0.5
+
         return { entry, score }
       })
       .filter(r => r.score > 0)
       .sort((a, b) => b.score - a.score)
 
     return params.limit ? results.slice(0, params.limit) : results
+  }
+
+  async contextAwareSearch(context: MemoryRetrievalContext, limit: number = 10): Promise<MemorySearchResult[]> {
+    const baseResults = await this.search({ query: context.query, limit: limit * 2 })
+
+    const enrichedResults = baseResults.map(result => {
+      let contextScore = result.score
+      const entry = result.entry
+
+      if (context.taskType) {
+        const taskTagMap: Record<TaskType, string[]> = {
+          coding: ['code', 'implementation', 'component', 'function'],
+          debugging: ['error', 'bug', 'fix', 'debug', 'error_solution'],
+          refactoring: ['refactor', 'improve', 'optimize', 'clean'],
+          architecture: ['architecture', 'design', 'pattern', 'structure'],
+          testing: ['test', 'spec', 'coverage', 'assertion'],
+          documentation: ['doc', 'readme', 'comment', 'documentation'],
+          general: [],
+        }
+        const taskTags = taskTagMap[context.taskType] ?? []
+        const tagMatch = entry.tags.some(t => taskTags.some(tt => t.toLowerCase().includes(tt)))
+        if (tagMatch) contextScore += 2
+      }
+
+      if (context.currentFile) {
+        const fileName = context.currentFile.split('/').pop()?.toLowerCase() ?? ''
+        const fileParts = fileName.replace(/\.[^.]+$/, '').split(/[-_.]/)
+        const contentLower = entry.content.toLowerCase()
+        const fileMatch = fileParts.some(part => part.length > 2 && contentLower.includes(part))
+        if (fileMatch) contextScore += 1.5
+      }
+
+      if (context.errorContext) {
+        const errorTags = ['error', 'fix', 'solution', 'debug', 'error_solution', 'correction']
+        const hasErrorTag = entry.tags.some(t => errorTags.some(et => t.toLowerCase().includes(et)))
+        if (hasErrorTag) contextScore += 3
+      }
+
+      if (context.recentTopics && context.recentTopics.length > 0) {
+        const topicMatch = context.recentTopics.some(topic =>
+          entry.content.toLowerCase().includes(topic.toLowerCase()) ||
+          entry.tags.some(t => t.toLowerCase().includes(topic.toLowerCase()))
+        )
+        if (topicMatch) contextScore += 1
+      }
+
+      return { entry, score: contextScore }
+    })
+
+    return enrichedResults
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
   }
 
   async promoteToLongTerm(id: string): Promise<boolean> {
@@ -229,6 +310,60 @@ class LongTermMemoryService {
       }
     }
     return false
+  }
+
+  async supersedeEntry(oldId: string, newContent: string, reason: string, options?: { source?: MemorySource; tags?: string[]; confidence?: number }): Promise<MemoryEntry | null> {
+    const store = await this.loadStore()
+    const oldEntry = this.findById(store, oldId)
+    if (!oldEntry) return null
+
+    const newEntry = await this.addEntry({
+      content: newContent,
+      source: options?.source ?? 'self_correction',
+      status: oldEntry.status === 'long_term' ? 'long_term' : 'short_term',
+      confidence: options?.confidence ?? Math.min(1, oldEntry.confidence + 0.1),
+      tags: options?.tags ?? oldEntry.tags,
+      supersedeId: oldId,
+      supersedeReason: reason,
+    })
+
+    return newEntry
+  }
+
+  async findContradictions(): Promise<Array<{ entryA: MemoryEntry; entryB: MemoryEntry; similarity: number }>> {
+    const entries = await this.getEntries()
+    const active = entries.filter(e => e.enabled && e.verificationStatus !== 'superseded')
+    const contradictions: Array<{ entryA: MemoryEntry; entryB: MemoryEntry; similarity: number }> = []
+
+    for (let i = 0; i < active.length; i++) {
+      for (let j = i + 1; j < active.length; j++) {
+        const a = active[i]
+        const b = active[j]
+        const tagOverlap = a.tags.filter(t => b.tags.includes(t)).length
+        if (tagOverlap < 1) continue
+
+        const similarity = this.computeSimilarity(a.content, b.content)
+        if (similarity > 0.4 && similarity < 0.8) {
+          contradictions.push({ entryA: a, entryB: b, similarity })
+        }
+      }
+    }
+
+    return contradictions.sort((a, b) => b.similarity - a.similarity).slice(0, 20)
+  }
+
+  async getCorrectionChain(id: string): Promise<MemoryEntry[]> {
+    const chain: MemoryEntry[] = []
+    let currentId: string | undefined = id
+
+    while (currentId) {
+      const entry = await this.getEntry(currentId)
+      if (!entry) break
+      chain.push(entry)
+      currentId = entry.correctionChain?.supersededBy
+    }
+
+    return chain
   }
 
   async runDeepPromotion(): Promise<{ promoted: number; forgotten: number }> {
@@ -339,16 +474,33 @@ class LongTermMemoryService {
     return { merged, pruned }
   }
 
-  async runRemDreaming(): Promise<{ consolidated: number }> {
+  async runRemDreaming(): Promise<{ consolidated: number; insights: number; contradictions: number }> {
     const store = await this.loadStore()
     const longTerm = store.longTerm
-    if (longTerm.length < 2) return { consolidated: 0 }
+    if (longTerm.length < 2) return { consolidated: 0, insights: 0, contradictions: 0 }
 
     const now = Date.now()
     let consolidated = 0
+    let insights = 0
+    let contradictions = 0
     const toRemove = new Set<string>()
 
-    const groups = this.findRelatedGroups(longTerm)
+    const activeEntries = longTerm.filter(e => e.enabled && e.verificationStatus !== 'superseded')
+    if (activeEntries.length >= 3) {
+      try {
+        const reflectionResult = await reflectiveDreamingService.reflect(activeEntries)
+        insights = reflectionResult.insights.length
+        contradictions = reflectionResult.contradictions.length
+        for (const id of reflectionResult.supersededIds) {
+          toRemove.add(id)
+        }
+        logger.agent.info(`[LongTermMemory] REM reflection: ${insights} insights, ${contradictions} contradictions`)
+      } catch (err) {
+        logger.agent.warn('[LongTermMemory] REM reflection failed:', err)
+      }
+    }
+
+    const groups = this.findRelatedGroups(longTerm.filter(e => !toRemove.has(e.id)))
     for (const group of groups) {
       if (group.length < 2) continue
 
@@ -376,6 +528,8 @@ class LongTermMemoryService {
         createdAt: Math.min(...group.map(e => e.createdAt)),
         updatedAt: now,
         promotedAt: now,
+        derivedFrom: group.map(e => e.id),
+        verificationStatus: 'unverified',
       }
 
       for (const entry of group) {
@@ -390,10 +544,10 @@ class LongTermMemoryService {
       store.longTerm = store.longTerm.filter(e => !toRemove.has(e.id))
       this.trimList(store.longTerm, MAX_LONG_TERM)
       await this.saveStore(store)
-      logger.agent.info(`[LongTermMemory] REM dreaming: ${consolidated} consolidated from ${toRemove.size} entries`)
+      logger.agent.info(`[LongTermMemory] REM dreaming: ${consolidated} consolidated, ${insights} insights, ${contradictions} contradictions from ${toRemove.size} entries`)
     }
 
-    return { consolidated }
+    return { consolidated, insights, contradictions }
   }
 
   async runDreamingPhase(phase: 'light' | 'rem' | 'deep'): Promise<Record<string, number>> {
@@ -406,7 +560,7 @@ class LongTermMemoryService {
       }
       case 'rem': {
         const result = await this.runRemDreaming()
-        return { consolidated: result.consolidated }
+        return { consolidated: result.consolidated, insights: result.insights, contradictions: result.contradictions }
       }
       case 'deep': {
         const result = await this.runDeepPromotion()
@@ -478,10 +632,17 @@ class LongTermMemoryService {
   }
 
   buildMemoryPrompt(entries: MemoryEntry[], tokenBudget: number = 1000): string {
-    const enabled = entries.filter(e => e.enabled && e.content.trim())
+    const enabled = entries.filter(e => e.enabled && e.content.trim() && e.verificationStatus !== 'superseded')
     if (enabled.length === 0) return ''
 
-    const longTermFirst = [...enabled.filter(e => e.status === 'long_term'), ...enabled.filter(e => e.status === 'short_term')]
+    const verifiedFirst = [
+      ...enabled.filter(e => e.verificationStatus === 'verified'),
+      ...enabled.filter(e => e.verificationStatus !== 'verified'),
+    ]
+    const longTermFirst = [
+      ...verifiedFirst.filter(e => e.status === 'long_term'),
+      ...verifiedFirst.filter(e => e.status === 'short_term'),
+    ]
     const lines: string[] = []
     let estimatedTokens = 0
 

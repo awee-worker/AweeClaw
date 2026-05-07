@@ -206,7 +206,7 @@ export default function StatusBar() {
   }, [imStatuses, language])
 
   return (
-    <div className="h-8 bg-background-secondary/40 backdrop-blur-md flex items-center justify-between px-3 text-[11px] select-none text-text-muted z-50 font-medium border-t border-border/30 shadow-[0_-1px_15px_rgba(0,0,0,0.03)]">
+    <div className="h-8 bg-background-secondary flex items-center justify-between px-3 text-[11px] select-none text-text-muted z-50 font-medium border-t border-border/30">
       <div className="flex items-center gap-3">
         {isGitRepo && gitStatus && (
           <button className="flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-white/5 text-text-muted hover:text-text-primary transition-colors group">

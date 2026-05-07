@@ -1002,7 +1002,7 @@ export default function ChatPanel() {
 
     return (
       <div className="px-4 pb-3 pt-2">
-        <div className="mx-auto max-w-3xl rounded-2xl border border-border/60 bg-background/70 px-4 py-3 shadow-sm backdrop-blur-sm">
+        <div className="mx-auto max-w-3xl rounded-2xl border border-border/60 bg-background/95 px-4 py-3 shadow-sm">
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div className="min-w-0">
               <div className="text-[12px] font-semibold uppercase tracking-[0.18em] text-text-muted">
@@ -1083,29 +1083,7 @@ export default function ChatPanel() {
     )),
     Footer: () => <div className="h-4" />,
     EmptyPlaceholder: () => (
-      <div className="flex flex-col h-full w-full bg-background/40 backdrop-blur-3xl relative overflow-hidden">
-        {/* Background Ambience - More subtle & Animated */}
-        <div className="absolute inset-0 pointer-events-none overflow-hidden">
-          <motion.div
-            animate={{
-              scale: [1, 1.2, 1],
-              opacity: [0.3, 0.5, 0.3],
-              x: [0, 20, 0]
-            }}
-            transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
-            className="absolute top-[-20%] right-[-10%] w-[500px] h-[500px] bg-accent/5 rounded-full blur-[120px] mix-blend-screen"
-          />
-          <motion.div
-            animate={{
-              scale: [1, 1.1, 1],
-              opacity: [0.2, 0.4, 0.2],
-              x: [0, -30, 0]
-            }}
-            transition={{ duration: 10, repeat: Infinity, ease: "easeInOut", delay: 1 }}
-            className="absolute bottom-[-10%] left-[-20%] w-[600px] h-[600px] bg-blue-500/5 rounded-full blur-[120px] mix-blend-screen"
-          />
-        </div>
-
+      <div className="flex flex-col h-full w-full bg-background relative overflow-hidden">
         <div className="relative z-10 w-full h-full">
           <EmptyChatSuggestions onSelectSuggestion={(prompt) => {
             setInput(prompt)
@@ -1128,7 +1106,7 @@ export default function ChatPanel() {
       <div className="flex flex-col h-full">
 
         {/* Header - 简洁版 */}
-        <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between h-10 px-3 bg-background/80 backdrop-blur-xl select-none transition-all duration-300">
+        <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between h-10 px-3 bg-background/95 select-none transition-all duration-300">
           <div className="flex items-center gap-2">
             {/* 分支选择器 - 始终显示，点击展开分支管理 */}
             <BranchSelector
@@ -1208,7 +1186,7 @@ export default function ChatPanel() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center pointer-events-none"
+              className="absolute inset-0 z-50 bg-background/80 flex items-center justify-center pointer-events-none"
             >
               <motion.div
                 initial={{ scale: 0.9, y: 20 }}

@@ -66,7 +66,7 @@ export const CompressionDigestCard = memo(({ part, variant = 'card' }: Compressi
           className="group flex w-full items-center gap-3 text-left text-text-muted transition-colors hover:text-text-secondary"
         >
           <div className="h-px flex-1 bg-border/50 transition-colors group-hover:bg-border" />
-          <div className="flex min-w-0 items-center gap-2 rounded-full border border-border/50 bg-surface/35 px-3 py-1.5 text-[12px] shadow-sm backdrop-blur-sm">
+          <div className="flex min-w-0 items-center gap-2 rounded-full border border-border/50 bg-surface px-3 py-1.5 text-[12px] shadow-sm">
             <div className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
             <span className="truncate font-medium text-text-secondary">{title}</span>
             <span className="shrink-0 text-text-muted/85">· {detailLabel}</span>
@@ -111,7 +111,7 @@ export const CompressionDigestCard = memo(({ part, variant = 'card' }: Compressi
   }
 
   return (
-    <div className={`my-3 overflow-hidden rounded-2xl border border-border/50 bg-surface/40 backdrop-blur-md shadow-[0_10px_30px_-18px_rgba(0,0,0,0.45)] transition-all ${tone.glow}`}>
+    <div className={`my-3 overflow-hidden rounded-2xl border border-border/50 bg-surface shadow-[0_10px_30px_-18px_rgba(0,0,0,0.45)] transition-all ${tone.glow}`}>
       <button
         onClick={() => setExpanded(value => !value)}
         className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-text-primary/[0.03]"

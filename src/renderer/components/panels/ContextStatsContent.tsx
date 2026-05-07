@@ -105,7 +105,7 @@ export default function ContextStatsContent({
   }
 
   return (
-    <div className="flex flex-col h-full bg-background/50 backdrop-blur-xl select-none">
+    <div className="flex flex-col h-full bg-background select-none">
       <div className="p-4 border-b border-border/40">
         <div className="mb-3">
           <div className="flex items-center justify-between mb-2">

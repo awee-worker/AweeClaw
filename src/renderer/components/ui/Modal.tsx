@@ -46,7 +46,7 @@ export const Modal: React.FC<ModalProps> = memo(function Modal({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.3 }}
-                className={`absolute inset-0 ${disableGlassEffect ? 'bg-text-inverted/60' : 'bg-text-inverted/40 backdrop-blur-sm'}`}
+                className={`absolute inset-0 ${disableGlassEffect ? 'bg-text-inverted/60' : 'bg-text-inverted/50'}`}
                 onClick={onClose}
             />
 
@@ -57,7 +57,7 @@ export const Modal: React.FC<ModalProps> = memo(function Modal({
                 transition={{ type: "spring", duration: 0.5, bounce: 0.2 }}
                 className={`
                     relative w-full ${sizeClass} 
-                    ${disableGlassEffect ? 'bg-background/95' : 'bg-background/80 backdrop-blur-2xl'}
+                    ${disableGlassEffect ? 'bg-background/95' : 'bg-background/95'}
                     border border-border/50 
                     rounded-3xl shadow-2xl shadow-black/20 
                     overflow-hidden 

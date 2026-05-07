@@ -50,12 +50,25 @@ class KnowledgeExtractor {
           const content = match[1].trim().slice(0, 300)
           longTermMemoryService.addEntry({
             content,
-            source: 'auto_extracted',
+            source: 'self_correction',
             status: 'short_term',
             tags: [pattern.tag, 'user-stated'],
             confidence: 0.9,
-          }).then(() => {
+            verificationStatus: 'verified',
+          }).then(async (entry) => {
             logger.agent.info(`[MemoryExtractor] Rule-based extraction (${pattern.tag}): ${content.slice(0, 80)}`)
+            const searchResults = await longTermMemoryService.search({ query: content, limit: 3 })
+            for (const result of searchResults) {
+              if (result.entry.id !== entry.id && result.score > 3) {
+                await longTermMemoryService.supersedeEntry(
+                  result.entry.id,
+                  content,
+                  `User correction detected: "${content.slice(0, 60)}"`,
+                  { source: 'self_correction', confidence: 0.9 }
+                )
+                break
+              }
+            }
           }).catch(() => {})
           added++
           break
@@ -72,6 +85,7 @@ class KnowledgeExtractor {
             status: 'short_term',
             tags: [pattern.tag, 'user-stated'],
             confidence: 0.85,
+            verificationStatus: 'verified',
           }).then(() => {
             logger.agent.info(`[MemoryExtractor] Rule-based extraction (${pattern.tag}): ${content.slice(0, 80)}`)
           }).catch(() => {})

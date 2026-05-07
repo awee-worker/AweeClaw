@@ -42,7 +42,6 @@ import {
     type ContextIndicatorKind,
     type ContextIndicatorTransition,
 } from '../domains/context/contextIndicator'
-import type { EmotionDetection, EmotionHistory } from '../types/emotion'
 import type { ToolStreamingPreview } from '@/shared/types'
 import type { LLMStreamSource } from '@/shared/types/llm'
 
@@ -77,9 +76,6 @@ interface UIState {
     // 代码审查状态
     codeReviewSession: import('../types/codeReview').CodeReviewSession | null
     reviewProgress: { current: number; total: number; currentFile: string } | null
-    // 情绪感知状态
-    emotionDetection: EmotionDetection | null
-    emotionHistory: EmotionHistory[]
     setInputPrompt: (prompt: string) => void
     setCurrentSessionId: (id: string | null) => void
     setContextTransition: (transition: ContextTransitionState) => void
@@ -89,10 +85,6 @@ interface UIState {
     setCodeReviewSession: (session: import('../types/codeReview').CodeReviewSession | null) => void
     updateReviewProgress: (current: number, total: number, currentFile: string) => void
     updateReviewComment: (comment: import('../types/codeReview').ReviewComment) => void
-    // 情绪感知方法
-    setEmotionDetection: (detection: EmotionDetection | null) => void
-    updateEmotionHistory: (history: EmotionHistory) => void
-
 }
 
 // 线程绑定的 Store 操作接口
@@ -256,8 +248,6 @@ export const useAgentStore = create<AgentStore>()(
                 contextTransition: { status: 'idle' },
                 codeReviewSession: null,
                 reviewProgress: null,
-                emotionDetection: null,
-                emotionHistory: [],
                 setInputPrompt: (prompt) => set({ inputPrompt: prompt }),
                 setCurrentSessionId: (id) => set({ currentSessionId: id }),
                 setContextTransition: (transition) => set({ contextTransition: transition }),
@@ -393,11 +383,6 @@ export const useAgentStore = create<AgentStore>()(
                         }
                     })
                 },
-                // 情绪感知方法
-                setEmotionDetection: (detection) => set({ emotionDetection: detection }),
-                updateEmotionHistory: (history) => set(state => ({
-                    emotionHistory: [...state.emotionHistory, history].slice(-1440) // 保留最近24小时
-                })),
             }
 
             // 重写 finalizeAssistant 先刷新 StreamingBuffer

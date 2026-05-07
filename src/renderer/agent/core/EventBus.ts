@@ -47,13 +47,6 @@ export type AgentEvent =
   | { type: 'loop:end'; reason: string; threadId?: string; assistantId?: string; requestId?: string; planTaskId?: string }
   | { type: 'loop:warning'; message: string; threadId?: string; assistantId?: string; requestId?: string; planTaskId?: string }
 
-  // 情绪感知事件
-  | { type: 'emotion:changed'; emotion: import('../types/emotion').EmotionDetection }
-  | { type: 'emotion:message'; message: string; state: import('../types/emotion').EmotionState }
-  | { type: 'break:micro'; message: string }
-  | { type: 'break:suggested'; message: string }
-  | { type: 'emotion:feedback'; feedback: import('../types/emotion').EmotionFeedbackPayload }
-
   // Plan 执行事件
   | { type: 'plan:start'; planId: string; sessionId?: string }
   | { type: 'plan:complete'; planId: string; stats: import('../plan/types').ExecutionStats; sessionId?: string }

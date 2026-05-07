@@ -1,6 +1,9 @@
 import { logger } from '@utils/Logger'
 import { LongTermMemory, longTermMemory } from './LongTermMemory'
 import { ProjectKnowledgeGraph, projectKnowledgeGraph } from './ProjectKnowledgeGraph'
+import { metacognitiveService } from '../services/longTermMemoryService/metacognitiveService'
+import { longTermMemoryService } from '../services/longTermMemoryService'
+import type { MemoryRetrievalContext, TaskType } from '../services/longTermMemoryService/types'
 
 export interface AdaptivePromptContext {
   query: string
@@ -66,6 +69,37 @@ export class AdaptivePromptEngine {
       totalTokens += Math.ceil(memoryPrompt.length / 4)
     }
 
+    try {
+      const retrievalContext: MemoryRetrievalContext = {
+        query: context.query,
+        currentFile: context.currentFile,
+        taskType: this.inferTaskType(context),
+        recentTopics: context.recentMessages?.slice(-5).map(m => m.content.slice(0, 50)),
+        errorContext: context.recentMessages?.some(m =>
+          m.role === 'assistant' && (m.content.includes('Error') || m.content.includes('error'))
+        ),
+      }
+      const contextResults = await longTermMemoryService.contextAwareSearch(retrievalContext, 5)
+      if (contextResults.length > 0) {
+        const contextLines = contextResults
+          .filter(r => r.score > 3)
+          .map(r => `- ${r.entry.content}`)
+          .slice(0, 5)
+        if (contextLines.length > 0) {
+          const contextPrompt = `<contextual_memory>
+Context-relevant memories:
+${contextLines.join('\n')}
+</contextual_memory>`
+          const contextTokens = Math.ceil(contextPrompt.length / 4)
+          if (totalTokens + contextTokens <= this.maxContextTokens) {
+            contextSections.push(contextPrompt)
+            totalTokens += contextTokens
+          }
+        }
+      }
+    } catch {
+    }
+
     if (context.currentFile) {
       const fileEntities = this.graph.search(context.currentFile, 5)
       if (fileEntities.length > 0) {
@@ -81,10 +115,22 @@ export class AdaptivePromptEngine {
       }
     }
 
-    const systemPromptAddition = contextSections.join('\n\n')
+    try {
+      const metaState = await metacognitiveService.assess()
+      const metaPrompt = metacognitiveService.buildMetacognitivePrompt(metaState)
+      if (metaPrompt && totalTokens + 200 <= this.maxContextTokens) {
+        contextSections.push(`<metacognitive>
+${metaPrompt}
+</metacognitive>`)
+        totalTokens += 200
+      }
+    } catch {
+    }
+
+    const finalPromptAddition = contextSections.join('\n\n')
 
     return {
-      systemPromptAddition,
+      systemPromptAddition: finalPromptAddition,
       contextSections,
       totalEstimatedTokens: totalTokens,
     }
@@ -172,6 +218,18 @@ ${structure.map(f => `  ${f}`).join('\n')}
         },
       },
     ]
+  }
+
+  private inferTaskType(context: AdaptivePromptContext): TaskType {
+    const query = context.query.toLowerCase()
+    const recentContent = context.recentMessages?.slice(-3).map(m => m.content.toLowerCase()).join(' ') ?? ''
+
+    if (query.includes('debug') || query.includes('fix') || query.includes('error') || recentContent.includes('error')) return 'debugging'
+    if (query.includes('refactor') || query.includes('improve') || query.includes('optimize')) return 'refactoring'
+    if (query.includes('architect') || query.includes('design') || query.includes('structure')) return 'architecture'
+    if (query.includes('test') || query.includes('spec') || query.includes('coverage')) return 'testing'
+    if (query.includes('doc') || query.includes('readme') || query.includes('comment')) return 'documentation'
+    return 'coding'
   }
 }
 

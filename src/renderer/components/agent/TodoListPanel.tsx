@@ -128,7 +128,7 @@ export const TodoListPanel = memo(({ todos, isStreaming = true }: TodoListPanelP
   }
 
   return (
-    <div className="rounded-xl border border-border/50 bg-surface/40 backdrop-blur-md overflow-hidden shadow-[0_4px_16px_-8px_rgba(0,0,0,0.1)] transition-all">
+    <div className="rounded-xl border border-border/50 bg-surface overflow-hidden shadow-[0_4px_16px_-8px_rgba(0,0,0,0.1)] transition-all">
       {!isStreaming && hasInProgress && (
         <div className="flex items-center gap-3 px-4 py-2 border-b border-border/50">
           <Pause className="w-3.5 h-3.5 text-orange-400 flex-shrink-0" />

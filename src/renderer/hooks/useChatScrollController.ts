@@ -229,7 +229,7 @@ export function useChatScrollController({
       if (atBottomRef.current) {
         stickToBottom()
       }
-    }, 120)
+    }, 300)
 
     return () => window.clearInterval(timer)
   }, [isStreaming, stickToBottom])

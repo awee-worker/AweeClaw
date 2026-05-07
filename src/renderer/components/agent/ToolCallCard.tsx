@@ -775,7 +775,7 @@ function ToolElapsedTime({ startTime, endTime, isRunning }: { startTime?: number
 
     useEffect(() => {
         if (!isRunning || !startTime) return
-        const id = setInterval(() => setNow(Date.now()), 100)
+        const id = setInterval(() => setNow(Date.now()), 1000)
         return () => clearInterval(id)
     }, [isRunning, startTime])
 
