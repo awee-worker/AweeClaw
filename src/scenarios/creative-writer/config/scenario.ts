@@ -12,6 +12,7 @@ import type {
   ScenarioUI,
   ScenarioDataSources,
 } from '@shared/types/scenario'
+import { CREATIVE_WRITER_WELCOME_SUGGESTIONS, CREATIVE_WRITER_WELCOME_TITLE } from './welcome'
 
 const CREATIVE_WRITER_IDENTITY: ScenarioIdentity = {
   systemPrompt: `You are an AI assistant integrated into **AweeClaw**, currently in **Creative Writer** scenario, created by **awee** (微信: awee_worker, Email: awee.worker@qq.com).
@@ -152,6 +153,8 @@ const CREATIVE_WRITER_UI: ScenarioUI = {
     { id: 'word-count', component: 'WordCountIndicator', position: 'left', order: 0 },
   ],
   welcomeComponent: 'WritingWelcomePage',
+  welcomeSuggestions: CREATIVE_WRITER_WELCOME_SUGGESTIONS,
+  welcomeTitle: CREATIVE_WRITER_WELCOME_TITLE,
 }
 
 const CREATIVE_WRITER_DATA_SOURCES: ScenarioDataSources = {

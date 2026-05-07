@@ -7,11 +7,17 @@
  * 然后修改以下文件：
  * 1. index.ts              - 场景入口，实现 ScenarioModule 接口
  * 2. config/scenario.ts    - 场景插件配置（身份、能力、UI、数据源）
- * 3. db/scripts.ts         - 数据库安装/卸载脚本（如需数据库）
- * 4. tools/                - 工具定义和执行器（可选）
- * 5. services/             - 场景特有服务（可选）
- * 6. components/           - 场景特有 UI 组件（可选）
+ * 3. components/           - 场景特有 UI 组件（sidebar 面板等）
+ * 4. db/scripts.ts         - 数据库安装/卸载脚本（如需数据库）
+ * 5. tools/                - 工具定义和执行器（可选）
+ * 6. services/             - 场景特有服务（可选）
  * 7. types/                - 场景特有类型（可选）
+ *
+ * 架构说明：
+ * - src/scenario-system/   核心架构（加载器、数据总线、数据库管理等）
+ * - src/scenarios/         具体场景目录（每个场景一个独立文件夹）
+ * - 场景的所有文件（组件、工具、类型等）都应放在自己的文件夹内
+ * - 新增场景只需在 src/scenarios/ 下创建目录，系统会自动发现
  *
  * 数据库生命周期（可选）：
  * - 如果场景需要数据库，实现 getInstallScripts() 和 getUninstallScripts()
@@ -19,8 +25,6 @@
  * - 卸载场景时自动执行卸载脚本并删除数据库文件
  * - 数据库路径: {userDataPath}/scenario-data/{scenarioId}/{scenarioId}.db
  * - 在生命周期钩子中通过 context.executeSql(sql) 操作数据库
- *
- * 最后在 src/scenarios/index.ts 中注册新场景。
  */
 
 import type {
@@ -31,6 +35,7 @@ import type {
   ScenarioDependency,
 } from '@shared/types/scenario-arch'
 import type { ScenarioPlugin } from '@shared/types/scenario'
+import { TEMPLATE_WELCOME_SUGGESTIONS, TEMPLATE_WELCOME_TITLE } from './config/welcome'
 
 const SCENARIO_ID = 'template'
 const SCENARIO_VERSION = '0.1.0'
@@ -109,6 +114,8 @@ const TEMPLATE_PLUGIN: ScenarioPlugin = {
     ],
     sidebarItems: [],
     statusBarItems: [],
+    welcomeSuggestions: TEMPLATE_WELCOME_SUGGESTIONS,
+    welcomeTitle: TEMPLATE_WELCOME_TITLE,
   },
 
   dataSources: {
@@ -201,7 +208,7 @@ const templateModule: ScenarioModule = {
 
   onHealthCheck: async (): Promise<ScenarioHealthCheck[]> => {
     // 如需检查数据库健康状态：
-    // const { scenarioDatabaseManager } = await import('@/scenarios/core/ScenarioDatabaseManager')
+    // const { scenarioDatabaseManager } = await import('@/scenario-system/core/ScenarioDatabaseManager')
     // const result = await scenarioDatabaseManager.executeSql(SCENARIO_ID, 'SELECT COUNT(*) as count FROM example')
     // return [{ name: 'database', status: result.success ? 'healthy' : 'unhealthy', message: result.success ? `OK` : result.error }]
 

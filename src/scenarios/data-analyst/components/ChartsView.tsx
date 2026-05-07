@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import { BarChart3, LineChart, PieChart, ScatterChart, AreaChart, Plus, Grid3x3, List, X, Check } from 'lucide-react'
 import { useStore } from '@store'
-import { Button } from '../../ui'
+import { Button } from '@/renderer/components/ui'
 import { Agent } from '@/renderer/agent/core'
 import { getAgentConfig } from '@/renderer/agent/utils/AgentConfig'
 

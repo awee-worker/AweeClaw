@@ -16,6 +16,7 @@ import type {
   ScenarioDependency,
 } from '@shared/types/scenario-arch'
 import { creativeWriterScenario } from './config/scenario'
+import { creativeWriterComponents } from './components'
 
 const CREATIVE_WRITER_MANIFEST: ScenarioManifest = {
   id: 'creative-writer',
@@ -52,7 +53,7 @@ const creativeWriterModule: ScenarioModule = {
 
   getTools: () => [],
 
-  getComponents: () => ({}),
+  getComponents: () => creativeWriterComponents,
 
   onActivate: async (context: ScenarioModuleContext) => {
     const log = context.getLogger()

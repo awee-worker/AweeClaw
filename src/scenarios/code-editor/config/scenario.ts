@@ -12,6 +12,7 @@ import type {
   ScenarioUI,
   ScenarioDataSources,
 } from '@shared/types/scenario'
+import { CODE_EDITOR_WELCOME_SUGGESTIONS, CODE_EDITOR_WELCOME_TITLE } from './welcome'
 
 const CODE_EDITOR_IDENTITY: ScenarioIdentity = {
   systemPrompt: `You are an AI assistant integrated into **AweeClaw**, currently in **Code Editor** scenario, created by **awee** (微信: awee_worker, Email: awee.worker@qq.com).
@@ -240,6 +241,8 @@ const CODE_EDITOR_UI: ScenarioUI = {
   ],
   welcomeComponent: 'WelcomePage',
   onboardingComponent: 'OnboardingWizard',
+  welcomeSuggestions: CODE_EDITOR_WELCOME_SUGGESTIONS,
+  welcomeTitle: CODE_EDITOR_WELCOME_TITLE,
 }
 
 const CODE_EDITOR_DATA_SOURCES: ScenarioDataSources = {

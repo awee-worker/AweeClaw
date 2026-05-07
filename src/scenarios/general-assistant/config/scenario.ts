@@ -12,6 +12,7 @@ import type {
   ScenarioUI,
   ScenarioDataSources,
 } from '@shared/types/scenario'
+import { GENERAL_ASSISTANT_WELCOME_SUGGESTIONS, GENERAL_ASSISTANT_WELCOME_TITLE } from './welcome'
 
 const GENERAL_ASSISTANT_IDENTITY: ScenarioIdentity = {
   systemPrompt: `You are an AI assistant integrated into **AweeClaw**, currently in **General Assistant** scenario, created by **awee** (微信: awee_worker, Email: awee.worker@qq.com).
@@ -148,6 +149,8 @@ const GENERAL_ASSISTANT_UI: ScenarioUI = {
   ],
   statusBarItems: [],
   welcomeComponent: 'GeneralWelcomePage',
+  welcomeSuggestions: GENERAL_ASSISTANT_WELCOME_SUGGESTIONS,
+  welcomeTitle: GENERAL_ASSISTANT_WELCOME_TITLE,
 }
 
 const GENERAL_ASSISTANT_DATA_SOURCES: ScenarioDataSources = {

@@ -29,9 +29,11 @@ export interface AutoApproveSettings {
 }
 
 export interface LoopDetectionConfig {
+  enabled: boolean
   maxHistory: number
   maxExactRepeats: number
   maxSameTargetRepeats: number
+  patternRepeatHardStop: number
   dynamicThreshold?: boolean
 }
 

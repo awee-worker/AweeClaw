@@ -1,7 +1,7 @@
 import { StateCreator } from 'zustand'
 import { LAYOUT } from '@shared/constants'
 
-export type SidePanel = 'explorer' | 'search' | 'git' | 'problems' | 'outline' | 'history' | 'extensions' | 'shell' | 'data-sources' | 'charts' | 'characters' | 'scenarios' | 'notes' | 'knowledge' | 'prompts' | 'tasks' | 'bookmarks' | null
+export type SidePanel = 'explorer' | 'search' | 'git' | 'problems' | 'outline' | 'history' | 'extensions' | 'shell' | 'data-sources' | 'charts' | 'characters' | 'scenarios' | 'notes' | 'knowledge' | 'prompts' | 'tasks' | 'bookmarks' | 'stores' | 'diagnosis' | 'plans' | 'benchmarks' | null
 
 export interface LayoutSlice {
   activeSidePanel: SidePanel

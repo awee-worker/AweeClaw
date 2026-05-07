@@ -292,7 +292,7 @@ export function registerScenarioInstallIpcHandlers(
 export function registerScenarioMarketplaceHandlers(): void {
   safeIpcHandle('scenario:marketplaceSearch', async (_event, query: string, page?: number, pageSize?: number) => {
     try {
-      const { marketplaceAPI } = await import('../../scenarios/marketplace')
+      const { marketplaceAPI } = await import('../../scenario-system/marketplace')
       return await marketplaceAPI.search(query, page, pageSize)
     } catch (err) {
       logger.agent.error('[ScenarioMarketplace] Search failed:', err)
@@ -302,7 +302,7 @@ export function registerScenarioMarketplaceHandlers(): void {
 
   safeIpcHandle('scenario:marketplaceFeatured', async () => {
     try {
-      const { marketplaceAPI } = await import('../../scenarios/marketplace')
+      const { marketplaceAPI } = await import('../../scenario-system/marketplace')
       return await marketplaceAPI.getFeatured()
     } catch (err) {
       logger.agent.error('[ScenarioMarketplace] Get featured failed:', err)
@@ -312,7 +312,7 @@ export function registerScenarioMarketplaceHandlers(): void {
 
   safeIpcHandle('scenario:marketplaceDetails', async (_event, scenarioId: string) => {
     try {
-      const { marketplaceAPI } = await import('../../scenarios/marketplace')
+      const { marketplaceAPI } = await import('../../scenario-system/marketplace')
       return await marketplaceAPI.getDetails(scenarioId)
     } catch (err) {
       logger.agent.error('[ScenarioMarketplace] Get details failed:', err)
@@ -322,7 +322,7 @@ export function registerScenarioMarketplaceHandlers(): void {
 
   safeIpcHandle('scenario:marketplaceCategories', async () => {
     try {
-      const { marketplaceAPI } = await import('../../scenarios/marketplace')
+      const { marketplaceAPI } = await import('../../scenario-system/marketplace')
       return await marketplaceAPI.getCategories()
     } catch (err) {
       logger.agent.error('[ScenarioMarketplace] Get categories failed:', err)
@@ -332,7 +332,7 @@ export function registerScenarioMarketplaceHandlers(): void {
 
   safeIpcHandle('scenario:marketplaceDownload', async (_event, scenarioId: string) => {
     try {
-      const { marketplaceAPI } = await import('../../scenarios/marketplace')
+      const { marketplaceAPI } = await import('../../scenario-system/marketplace')
       return await marketplaceAPI.download(scenarioId)
     } catch (err) {
       logger.agent.error('[ScenarioMarketplace] Download failed:', err)

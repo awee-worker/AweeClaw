@@ -182,9 +182,12 @@ export interface AgentConfigSchema {
   enableLLMSummary?: boolean
   autoHandoff?: boolean
   loopDetection?: {
+    enabled?: boolean
     maxHistory?: number
     maxExactRepeats?: number
     maxSameTargetRepeats?: number
+    patternRepeatHardStop?: number
+    dynamicThreshold?: boolean
   }
   ignoredDirectories?: string[]
 }
@@ -216,9 +219,12 @@ export function cleanAgentConfig(config: Record<string, unknown>): AgentConfigSc
   if (config.loopDetection && typeof config.loopDetection === 'object') {
     const ld = config.loopDetection as Record<string, unknown>
     cleaned.loopDetection = {}
+    if (typeof ld.enabled === 'boolean') cleaned.loopDetection.enabled = ld.enabled
     if (typeof ld.maxHistory === 'number') cleaned.loopDetection.maxHistory = ld.maxHistory
     if (typeof ld.maxExactRepeats === 'number') cleaned.loopDetection.maxExactRepeats = ld.maxExactRepeats
     if (typeof ld.maxSameTargetRepeats === 'number') cleaned.loopDetection.maxSameTargetRepeats = ld.maxSameTargetRepeats
+    if (typeof ld.patternRepeatHardStop === 'number') cleaned.loopDetection.patternRepeatHardStop = ld.patternRepeatHardStop
+    if (typeof ld.dynamicThreshold === 'boolean') cleaned.loopDetection.dynamicThreshold = ld.dynamicThreshold
   }
 
   // ignoredDirectories 数组

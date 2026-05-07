@@ -11,6 +11,7 @@ import {
 import { scenarioRegistry } from '@shared/config/scenarios'
 import { useStore } from '@store'
 import type { ScenarioPlugin } from '@shared/types/scenario'
+import { activateScenarioPanels, switchToFirstPanel } from './panelUtils'
 import type { LucideIcon } from 'lucide-react'
 
 const ICON_MAP: Record<string, LucideIcon> = {
@@ -73,6 +74,8 @@ export function ScenarioSelector() {
   function handleSelect(scenario: ScenarioPlugin) {
     scenarioRegistry.setActive(scenario.id)
     useStore.getState().set('activeScenarioId', scenario.id)
+    activateScenarioPanels(scenario)
+    switchToFirstPanel(scenario)
     setIsOpen(false)
   }
 

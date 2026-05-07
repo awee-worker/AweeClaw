@@ -101,6 +101,21 @@ export interface StatusBarItemDescriptor {
   order?: number
 }
 
+export interface WelcomeSuggestionItem {
+  icon: string
+  title: string
+  titleZh: string
+  prompt: string
+  color: string
+}
+
+export interface WelcomeTitleConfig {
+  title: string
+  titleZh: string
+  subtitle: string
+  subtitleZh: string
+}
+
 export interface ScenarioUI {
   layout: UILayout
   panels: PanelDescriptor[]
@@ -108,6 +123,9 @@ export interface ScenarioUI {
   statusBarItems: StatusBarItemDescriptor[]
   welcomeComponent?: string
   onboardingComponent?: string
+  defaultSidePanel?: string
+  welcomeSuggestions?: WelcomeSuggestionItem[]
+  welcomeTitle?: WelcomeTitleConfig
 }
 
 // ============================================

@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import { Users, Plus, X, Check, ChevronRight, ChevronDown, User, Trash2 } from 'lucide-react'
 import { useStore } from '@store'
-import { Button } from '../../ui'
+import { Button } from '@/renderer/components/ui'
 import { Agent } from '@/renderer/agent/core'
 import { getAgentConfig } from '@/renderer/agent/utils/AgentConfig'
 

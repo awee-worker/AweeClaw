@@ -169,10 +169,12 @@ export interface AgentRuntimeConfig {
 
   // 循环检测（支持动态调整）
   loopDetection: {
+    enabled: boolean
     maxHistory: number
     maxExactRepeats: number
     maxSameTargetRepeats: number
-    dynamicThreshold: boolean  // 是否根据任务复杂度动态调整
+    patternRepeatHardStop: number
+    dynamicThreshold: boolean
   }
 
   // 目录忽略列表

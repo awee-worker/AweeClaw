@@ -436,62 +436,134 @@ export function AgentSettings({
                                             <div className="w-1.5 h-1.5 rounded-full bg-accent" />
                                             <label className="text-xs font-bold text-text-primary uppercase tracking-wider">{t('循环检测', 'Loop Detection')}</label>
                                         </div>
-                                        <span className="text-[10px] text-text-muted bg-surface/50 px-2 py-0.5 rounded-full border border-border/30">{t('仅警告，不中断', 'Warning only')}</span>
+                                        <Switch
+                                            label={t('启用', 'Enabled')}
+                                            checked={agentConfig.loopDetection?.enabled ?? true}
+                                            onChange={(e) => setAgentConfig({
+                                                ...agentConfig,
+                                                loopDetection: {
+                                                    ...agentConfig.loopDetection,
+                                                    enabled: e.target.checked,
+                                                    maxHistory: agentConfig.loopDetection?.maxHistory ?? 50,
+                                                    maxExactRepeats: agentConfig.loopDetection?.maxExactRepeats ?? 5,
+                                                    maxSameTargetRepeats: agentConfig.loopDetection?.maxSameTargetRepeats ?? 8,
+                                                    patternRepeatHardStop: agentConfig.loopDetection?.patternRepeatHardStop ?? 3,
+                                                    dynamicThreshold: agentConfig.loopDetection?.dynamicThreshold ?? true,
+                                                }
+                                            })}
+                                            className="text-[12px]"
+                                        />
                                     </div>
 
-                                    <div className="grid grid-cols-3 gap-4">
-                                        <div className="space-y-1.5">
-                                            <label className="text-[11px] font-medium text-text-muted px-0.5">{t('历史记录', 'History')}</label>
-                                            <Input
-                                                type="number"
-                                                value={agentConfig.loopDetection?.maxHistory ?? 50}
-                                                onChange={(e) => setAgentConfig({
-                                                    ...agentConfig,
-                                                    loopDetection: {
-                                                        ...agentConfig.loopDetection,
-                                                        maxHistory: parseInt(e.target.value) || 50
-                                                    }
-                                                })}
-                                                min={10}
-                                                max={100}
-                                                className="bg-background/40 border-border/60 focus:border-accent/50 h-9 text-xs"
-                                            />
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <label className="text-[11px] font-medium text-text-muted px-0.5">{t('重复阈值', 'Exact Repeats')}</label>
-                                            <Input
-                                                type="number"
-                                                value={agentConfig.loopDetection?.maxExactRepeats ?? 5}
-                                                onChange={(e) => setAgentConfig({
-                                                    ...agentConfig,
-                                                    loopDetection: {
-                                                        ...agentConfig.loopDetection,
-                                                        maxExactRepeats: parseInt(e.target.value) || 5
-                                                    }
-                                                })}
-                                                min={3}
-                                                max={20}
-                                                className="bg-background/40 border-border/60 focus:border-accent/50 h-9 text-xs"
-                                            />
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <label className="text-[11px] font-medium text-text-muted px-0.5">{t('编辑阈值', 'File Edits')}</label>
-                                            <Input
-                                                type="number"
-                                                value={agentConfig.loopDetection?.maxSameTargetRepeats ?? 8}
-                                                onChange={(e) => setAgentConfig({
-                                                    ...agentConfig,
-                                                    loopDetection: {
-                                                        ...agentConfig.loopDetection,
-                                                        maxSameTargetRepeats: parseInt(e.target.value) || 8
-                                                    }
-                                                })}
-                                                min={3}
-                                                max={20}
-                                                className="bg-background/40 border-border/60 focus:border-accent/50 h-9 text-xs"
-                                            />
-                                        </div>
-                                    </div>
+                                    {agentConfig.loopDetection?.enabled !== false && (
+                                        <>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="space-y-1.5">
+                                                    <label className="text-xs font-medium text-text-secondary px-0.5">{t('历史记录数量', 'History Size')}</label>
+                                                    <Input
+                                                        type="number"
+                                                        value={agentConfig.loopDetection?.maxHistory ?? 50}
+                                                        onChange={(e) => setAgentConfig({
+                                                            ...agentConfig,
+                                                            loopDetection: {
+                                                                ...agentConfig.loopDetection,
+                                                                enabled: true,
+                                                                maxHistory: parseInt(e.target.value) || 50
+                                                            }
+                                                        })}
+                                                        min={10}
+                                                        max={200}
+                                                        className="bg-background/50 focus:border-accent/50 focus:ring-1 focus:ring-accent/50 transition-all rounded-lg border-border text-xs"
+                                                    />
+                                                    <p className="text-[11px] text-text-muted px-0.5">{t('保留最近 N 次工具调用记录', 'Keep last N tool call records')}</p>
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <label className="text-xs font-medium text-text-secondary px-0.5">{t('精确重复阈值', 'Exact Repeat Limit')}</label>
+                                                    <Input
+                                                        type="number"
+                                                        value={agentConfig.loopDetection?.maxExactRepeats ?? 5}
+                                                        onChange={(e) => setAgentConfig({
+                                                            ...agentConfig,
+                                                            loopDetection: {
+                                                                ...agentConfig.loopDetection,
+                                                                enabled: true,
+                                                                maxExactRepeats: parseInt(e.target.value) || 5
+                                                            }
+                                                        })}
+                                                        min={2}
+                                                        max={30}
+                                                        className="bg-background/50 focus:border-accent/50 focus:ring-1 focus:ring-accent/50 transition-all rounded-lg border-border text-xs"
+                                                    />
+                                                    <p className="text-[11px] text-text-muted px-0.5">{t('同一工具+相同参数的最大次数', 'Max calls of same tool with identical args')}</p>
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="space-y-1.5">
+                                                    <label className="text-xs font-medium text-text-secondary px-0.5">{t('同目标编辑阈值', 'Same Target Edit Limit')}</label>
+                                                    <Input
+                                                        type="number"
+                                                        value={agentConfig.loopDetection?.maxSameTargetRepeats ?? 8}
+                                                        onChange={(e) => setAgentConfig({
+                                                            ...agentConfig,
+                                                            loopDetection: {
+                                                                ...agentConfig.loopDetection,
+                                                                enabled: true,
+                                                                maxSameTargetRepeats: parseInt(e.target.value) || 8
+                                                            }
+                                                        })}
+                                                        min={3}
+                                                        max={30}
+                                                        className="bg-background/50 focus:border-accent/50 focus:ring-1 focus:ring-accent/50 transition-all rounded-lg border-border text-xs"
+                                                    />
+                                                    <p className="text-[11px] text-text-muted px-0.5">{t('同一文件连续编辑的最大次数', 'Max consecutive edits on same file')}</p>
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <label className="text-xs font-medium text-text-secondary px-0.5">{t('模式重复硬停止', 'Pattern Hard Stop')}</label>
+                                                    <Input
+                                                        type="number"
+                                                        value={agentConfig.loopDetection?.patternRepeatHardStop ?? 3}
+                                                        onChange={(e) => setAgentConfig({
+                                                            ...agentConfig,
+                                                            loopDetection: {
+                                                                ...agentConfig.loopDetection,
+                                                                enabled: true,
+                                                                patternRepeatHardStop: parseInt(e.target.value) || 3
+                                                            }
+                                                        })}
+                                                        min={2}
+                                                        max={10}
+                                                        className="bg-background/50 focus:border-accent/50 focus:ring-1 focus:ring-accent/50 transition-all rounded-lg border-border text-xs"
+                                                    />
+                                                    <p className="text-[11px] text-text-muted px-0.5">{t('工具调用模式重复 N 次后强制停止', 'Force stop after pattern repeats N times')}</p>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex flex-col gap-3 pt-2 border-t border-border/30">
+                                                <Switch
+                                                    label={t('动态阈值（复杂任务自动放宽）', 'Dynamic Threshold (auto-relax for complex tasks)')}
+                                                    checked={agentConfig.loopDetection?.dynamicThreshold ?? true}
+                                                    onChange={(e) => setAgentConfig({
+                                                        ...agentConfig,
+                                                        loopDetection: {
+                                                            ...agentConfig.loopDetection,
+                                                            enabled: true,
+                                                            dynamicThreshold: e.target.checked
+                                                        }
+                                                    })}
+                                                    className="text-[12px]"
+                                                />
+                                            </div>
+
+                                            <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs">
+                                                <AlertOctagon className="w-4 h-4 shrink-0 mt-0.5" />
+                                                <div className="space-y-1">
+                                                    <p>{t('循环检测会在 AI 反复执行相同操作时发出警告或强制停止。', 'Loop detection warns or force-stops when AI repeats the same operations.')}</p>
+                                                    <p className="text-[11px] opacity-80">{t('读取类操作的阈值会自动乘以 6 倍，允许更多重复读取。关闭后 AI 可能陷入无限循环。', 'Read operations have 6x threshold multiplier. Disabling may cause infinite loops.')}</p>
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
 
                                 {/* 忽略目录 */}

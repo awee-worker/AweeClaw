@@ -183,9 +183,11 @@ export const AGENT_DEFAULTS = {
 
   // 循环检测
   loopDetection: {
+    enabled: true,             // 是否启用循环检测
     maxHistory: 50,            // 历史记录保留数量
     maxExactRepeats: 5,        // 相同参数的精确重复阈值
     maxSameTargetRepeats: 8,   // 同一文件的连续编辑阈值
+    patternRepeatHardStop: 3,  // 模式重复硬停止阈值
     dynamicThreshold: true,    // 根据任务复杂度动态调整阈值
   },
 

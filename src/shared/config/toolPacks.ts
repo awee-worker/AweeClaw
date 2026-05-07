@@ -238,6 +238,24 @@ class ToolPackRegistryClass {
 
 export const toolPackRegistry = new ToolPackRegistryClass()
 
+const STORE_DIAGNOSIS_TOOL_PACK: ToolPack = {
+  id: 'store-diagnosis',
+  name: 'Store Diagnosis Tools',
+  nameZh: '门店诊断工具',
+  description: 'Store management, diagnosis analysis, report generation, and optimization planning',
+  descriptionZh: '门店管理、诊断分析、报告生成和优化规划',
+  icon: 'Stethoscope',
+  category: 'custom',
+  tools: [
+    'store_manage',
+    'store_diagnose',
+    'report_generate',
+    'optimization_plan',
+    'benchmark_query',
+  ],
+  dependencies: ['code'],
+}
+
 // ============================================
 // 注册内置工具包
 // ============================================
@@ -247,3 +265,4 @@ toolPackRegistry.register(DATA_TOOL_PACK)
 toolPackRegistry.register(WEB_TOOL_PACK)
 toolPackRegistry.register(MEDIA_TOOL_PACK)
 toolPackRegistry.register(OFFICE_TOOL_PACK)
+toolPackRegistry.register(STORE_DIAGNOSIS_TOOL_PACK)

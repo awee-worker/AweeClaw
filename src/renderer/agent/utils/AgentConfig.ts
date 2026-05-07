@@ -65,9 +65,11 @@ export function getAgentConfig(): AgentRuntimeConfig {
 
         // 循环检测配置
         loopDetection: {
+            enabled: agentConfig.loopDetection?.enabled ?? DEFAULT_AGENT_CONFIG.loopDetection.enabled,
             maxHistory: agentConfig.loopDetection?.maxHistory ?? DEFAULT_AGENT_CONFIG.loopDetection.maxHistory,
             maxExactRepeats: agentConfig.loopDetection?.maxExactRepeats ?? DEFAULT_AGENT_CONFIG.loopDetection.maxExactRepeats,
             maxSameTargetRepeats: agentConfig.loopDetection?.maxSameTargetRepeats ?? DEFAULT_AGENT_CONFIG.loopDetection.maxSameTargetRepeats,
+            patternRepeatHardStop: agentConfig.loopDetection?.patternRepeatHardStop ?? DEFAULT_AGENT_CONFIG.loopDetection.patternRepeatHardStop,
             dynamicThreshold: agentConfig.loopDetection?.dynamicThreshold ?? DEFAULT_AGENT_CONFIG.loopDetection.dynamicThreshold,
         },
 

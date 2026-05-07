@@ -12,6 +12,7 @@ import type {
   ScenarioUI,
   ScenarioDataSources,
 } from '@shared/types/scenario'
+import { DATA_ANALYST_WELCOME_SUGGESTIONS, DATA_ANALYST_WELCOME_TITLE } from './welcome'
 
 const DATA_ANALYST_IDENTITY: ScenarioIdentity = {
   systemPrompt: `You are an AI assistant integrated into **AweeClaw**, currently in **Data Analyst** scenario, created by **awee** (微信: awee_worker, Email: awee.worker@qq.com).
@@ -158,6 +159,8 @@ const DATA_ANALYST_UI: ScenarioUI = {
     { id: 'data-status', component: 'DataStatusIndicator', position: 'left', order: 0 },
   ],
   welcomeComponent: 'DataWelcomePage',
+  welcomeSuggestions: DATA_ANALYST_WELCOME_SUGGESTIONS,
+  welcomeTitle: DATA_ANALYST_WELCOME_TITLE,
 }
 
 const DATA_ANALYST_DATA_SOURCES: ScenarioDataSources = {

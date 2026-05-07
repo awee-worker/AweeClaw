@@ -41,6 +41,7 @@ export interface LoopCheckResult {
 }
 
 interface LoopDetectorInternalConfig {
+  enabled: boolean
   timeWindowMs: number
   maxExactRepeats: number
   maxNoChangeEdits: number
@@ -62,6 +63,7 @@ function getLoopConfig(): LoopDetectorInternalConfig {
   const loopConfig = agentConfig.loopDetection
 
   return {
+    enabled: loopConfig.enabled ?? true,
     timeWindowMs: 5 * 60 * 1000,
     maxExactRepeats: loopConfig.maxExactRepeats,
     maxNoChangeEdits: loopConfig.maxSameTargetRepeats,
@@ -75,7 +77,7 @@ function getLoopConfig(): LoopDetectorInternalConfig {
     maxHistory: loopConfig.maxHistory,
     minPatternLength: 2,
     maxPatternLength: 4,
-    patternRepeatHardStop: 3,
+    patternRepeatHardStop: loopConfig.patternRepeatHardStop ?? 3,
     readOpMultiplier: 6,
     dynamicThreshold: loopConfig.dynamicThreshold ?? true,
     progressiveWarningRatio: 0.6,
@@ -178,6 +180,10 @@ export class LoopDetector {
     toolCalls: LLMToolCall[],
     fileContents?: Map<string, string>
   ): LoopCheckResult {
+    if (!this.config.enabled) {
+      return { isLoop: false }
+    }
+
     const now = Date.now()
     this.cleanupOldRecords(now)
 

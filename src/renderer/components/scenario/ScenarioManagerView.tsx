@@ -12,12 +12,13 @@ import {
 } from 'lucide-react'
 import { useStore } from '@store'
 import { scenarioRegistry } from '@shared/config/scenarios'
-import { scenarioLoader } from '@/scenarios/core/ScenarioLoader'
-import { DeclarativeScenarioModule } from '@/scenarios/core/DeclarativeScenarioModule'
+import { scenarioLoader } from '@/scenario-system/core/ScenarioLoader'
+import { DeclarativeScenarioModule } from '@/scenario-system/core/DeclarativeScenarioModule'
 import { api } from '@/renderer/services/electronAPI'
 import { Button, Modal } from '../ui'
 import ConfirmDialog from '../common/ConfirmDialog'
 import type { ScenarioPlugin, UILayout, ScenarioCategory } from '@shared/types/scenario'
+import { activateScenarioPanels, switchToFirstPanel } from './panelUtils'
 import type { ScenarioHealthReport } from '@shared/types/scenario-arch'
 import type { LucideIcon } from 'lucide-react'
 
@@ -151,6 +152,8 @@ export function ScenarioManagerView() {
     const handleSwitch = useCallback((scenario: ScenarioPlugin) => {
         scenarioRegistry.setActive(scenario.id)
         useStore.getState().set('activeScenarioId', scenario.id)
+        activateScenarioPanels(scenario)
+        switchToFirstPanel(scenario)
     }, [])
 
     const handleOpenDetail = useCallback(async (scenarioId: string) => {

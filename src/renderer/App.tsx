@@ -6,7 +6,7 @@ import TitleBar from './components/layout/TitleBar'
 import ActivityBar from './components/layout/ActivityBar'
 import { scenarioRegistry, initializeScenarios } from '@shared/config/scenarios'
 import { scenarioLoader, registerBuiltinScenarios } from '@/scenarios'
-import { loadExternalScenarios, setExternalScenarioLoadFunctions } from '@/scenarios/core/ExternalScenarioLoader'
+import { loadExternalScenarios, setExternalScenarioLoadFunctions } from '@/scenario-system/core/ExternalScenarioLoader'
 import { api } from './services/electronAPI'
 import { shellComposer, type LayoutConfig } from './shell/ShellComposer'
 import StatusBar from './components/layout/StatusBar'
@@ -30,6 +30,7 @@ const TerminalPanel = lazy(() => import('./components/panels/TerminalPanel'))
 const DebugPanel = lazy(() => import('./components/panels/DebugPanel'))
 const WorkflowPanel = lazy(() => import('./components/workflow/WorkflowPanel'))
 const DataDashboard = lazy(() => import('./components/dashboard/DataDashboard'))
+const StoreDiagnosisDashboard = lazy(() => import('@/scenarios/store-diagnosis/components/StoreDiagnosisDashboard'))
 const CanvasWorkspace = lazy(() => import('./components/canvas/CanvasWorkspace'))
 
 const OnboardingWizard = lazy(() => import('./components/dialogs/OnboardingWizard'))
@@ -343,6 +344,22 @@ function AppContent() {
                           <ErrorBoundary>
                             <Suspense fallback={<PanelSkeleton />}>
                               <DataDashboard />
+                            </Suspense>
+                          </ErrorBoundary>
+                        )
+                      ) : layoutConfig.layout === 'analytics-centric' ? (
+                        openFiles.length > 0 && activeFilePath ? (
+                          <div className="flex-1 min-h-0 flex flex-col relative overflow-hidden">
+                            <ErrorBoundary>
+                              <Suspense fallback={<EditorSkeleton />}>
+                                <Editor />
+                              </Suspense>
+                            </ErrorBoundary>
+                          </div>
+                        ) : (
+                          <ErrorBoundary>
+                            <Suspense fallback={<PanelSkeleton />}>
+                              <StoreDiagnosisDashboard />
                             </Suspense>
                           </ErrorBoundary>
                         )
