@@ -1088,7 +1088,7 @@ export default function ChatPanel() {
     )),
     Footer: () => <div className="h-4" />,
     EmptyPlaceholder: () => (
-      <div className="flex flex-col h-full w-full bg-background relative overflow-hidden">
+      <div className="flex flex-col h-full w-full bg-background-chat relative overflow-hidden">
         <div className="relative z-10 w-full h-full">
           <EmptyChatSuggestions onSelectSuggestion={(prompt) => {
             setInput(prompt)

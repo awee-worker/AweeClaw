@@ -27,39 +27,39 @@ export default function TitleBar() {
   return (
     <div className="h-12 flex items-center justify-between px-0 drag-region select-none bg-background z-50 border-b border-border/30">
 
-      {/* Left - Workspace & Scenario */}
+      {/* Left - Scenario, Workspace & Search */}
       <div className={`
         flex items-center gap-4 h-full transition-all duration-300
         ${isMac ? 'pl-[76px]' : 'pl-4'}
       `}>
+        {/* Scenario Selector */}
+        <div className="no-drag pl-[15px]">
+          <ScenarioSelector />
+        </div>
+
+        <div className="w-[1px] h-4 bg-border/50" />
+
         {/* Workspace Selector */}
         <div className="no-drag">
           <WorkspaceDropdown />
         </div>
 
-        {/* Scenario Selector */}
-        <div className="no-drag">
-          <ScenarioSelector />
+        <div className="w-[1px] h-4 bg-border/50" />
+
+        {/* Search */}
+        <div
+          onClick={() => setShowQuickOpen(true)}
+          className="no-drag flex items-center gap-1.5 px-2 h-[28px] rounded-md hover:bg-text-primary/[0.06] transition-all duration-200 cursor-pointer group"
+        >
+          <Search className="w-3.5 h-3.5 text-text-muted opacity-70 group-hover:text-accent transition-colors" />
+          <span className="text-xs text-text-muted opacity-70 group-hover:text-text-primary transition-colors">
+            {language === 'zh' ? '搜索' : 'Search'}
+          </span>
         </div>
       </div>
 
-      {/* Center - Command Palette */}
-      <div className="flex-1 flex justify-center min-w-0 px-4">
-        <div
-          onClick={() => setShowQuickOpen(true)}
-          className="no-drag flex items-center gap-3 px-3 h-[30px] w-full max-w-[480px] rounded-lg bg-text-primary/[0.04] border border-text-primary/[0.03] hover:bg-text-primary/[0.08] hover:border-text-primary/[0.08] shadow-[inset_0_1px_2px_rgba(0,0,0,0.1)] transition-all duration-200 cursor-pointer group"
-        >
-          <Search className="w-3.5 h-3.5 text-text-muted opacity-80 group-hover:text-accent transition-colors" />
-          <span className="text-xs text-text-muted opacity-80 group-hover:text-text-primary transition-colors truncate">
-            {language === 'zh' ? '搜索文件,命令...' : 'Search files, commands...'}
-          </span>
-          <div className="flex items-center gap-1 ml-auto shrink-0 opacity-40 group-hover:opacity-100 transition-opacity">
-            <kbd className="hidden sm:inline-flex items-center justify-center min-w-[20px] h-5 bg-text-inverted/[0.1] border border-text-primary/5 rounded px-1.5 text-[11px] text-text-muted font-mono font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-              {isMac ? '⌘' : 'Ctrl'} P
-            </kbd>
-          </div>
-        </div>
-      </div>
+      {/* Center - Spacer */}
+      <div className="flex-1 min-w-0" />
 
       {/* Right - Panel Toggles & Window Controls */}
       <div className="flex items-center justify-end h-full pr-2 gap-1">

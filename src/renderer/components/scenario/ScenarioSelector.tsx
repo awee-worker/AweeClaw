@@ -133,9 +133,11 @@ export function ScenarioSelector() {
     <div ref={dropdownRef} className="relative">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs text-text-muted hover:text-text-primary hover:bg-surface-hover transition-all duration-200"
+        className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-text-muted hover:text-text-primary hover:bg-surface-hover transition-all duration-200"
       >
-        <IconComponent className="w-3.5 h-3.5" strokeWidth={1.5} />
+        <div className="p-1 rounded-md bg-text-primary/5">
+          <IconComponent className="w-3.5 h-3.5" strokeWidth={1.5} />
+        </div>
         <span>{language === 'zh' ? activeScenario.nameZh : activeScenario.name}</span>
         <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
       </button>

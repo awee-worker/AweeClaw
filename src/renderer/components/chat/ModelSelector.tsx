@@ -31,7 +31,7 @@ interface ModelSelectorProps {
 }
 
 export default function ModelSelector({ className = '', alignLeft = false }: ModelSelectorProps) {
-  const { llmConfig, update, providerConfigs } = useStore(useShallow(s => ({ llmConfig: s.llmConfig, update: s.update, providerConfigs: s.providerConfigs })))
+  const { llmConfig, update, providerConfigs, save } = useStore(useShallow(s => ({ llmConfig: s.llmConfig, update: s.update, providerConfigs: s.providerConfigs, save: s.save })))
   const [isOpen, setIsOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedProviderId, setSelectedProviderId] = useState<string>('')
@@ -141,6 +141,7 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
   const applyProviderConfig = useCallback((providerId: string, modelId: string) => {
     if (llmConfig.provider === providerId) {
       update('llmConfig', { model: modelId })
+      save()
       return
     }
 
@@ -156,7 +157,8 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
       protocol: builtinProvider?.protocol || config?.protocol,
       headers: config?.headers,
     })
-  }, [llmConfig.provider, llmConfig.timeout, providerConfigs, update])
+    save()
+  }, [llmConfig.provider, llmConfig.timeout, providerConfigs, update, save])
 
   const filteredGroups = useMemo(() => {
     if (!searchQuery.trim()) return groupedModels
