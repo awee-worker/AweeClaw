@@ -21,7 +21,7 @@ export interface AdaptivePromptResult {
 
 interface PromptStrategy {
   id: string
-  condition: (ctx: AdaptivePromptContext) => boolean
+  condition: (ctx: AdaptivePromptContext) => boolean | Promise<boolean>
   generate: (ctx: AdaptivePromptContext) => Promise<string>
   estimatedTokens: number
   priority: number
@@ -39,8 +39,12 @@ export class AdaptivePromptEngine {
   }
 
   async generateAdaptivePrompt(context: AdaptivePromptContext): Promise<AdaptivePromptResult> {
-    const applicableStrategies = this.strategies
-      .filter(s => s.condition(context))
+    const conditionResults = await Promise.all(
+      this.strategies.map(async s => ({ strategy: s, applicable: await s.condition(context) }))
+    )
+    const applicableStrategies = conditionResults
+      .filter(r => r.applicable)
+      .map(r => r.strategy)
       .sort((a, b) => b.priority - a.priority)
 
     const contextSections: string[] = []

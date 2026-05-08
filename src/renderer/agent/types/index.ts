@@ -45,6 +45,9 @@ export * from './context'
 // 交互式内容类型
 export * from './interactive'
 
+// 表单交互类型
+export * from './form'
+
 // 文件变更类型
 export * from './fileChange'
 

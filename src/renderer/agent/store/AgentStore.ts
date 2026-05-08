@@ -156,6 +156,7 @@ export interface ThreadBoundStore {
 
     // 交互式内容操作
     setInteractive: (messageId: string, interactive: import('../types').InteractiveContent) => void
+    addFormPart: (messageId: string, form: import('../types').FormContent) => void
 }
 
 export type AgentStore = ThreadSlice & MessageSlice & CheckpointSlice & BranchSlice & PlanSlice & UIState & {
@@ -476,6 +477,9 @@ export const useAgentStore = create<AgentStore>()(
                 // 交互式内容操作
                 setInteractive: (messageId, interactive) =>
                     messageSlice.setInteractive(messageId, interactive, threadId),
+
+                addFormPart: (messageId, form) =>
+                    messageSlice.addFormPart(messageId, form, threadId),
             })
 
             return {

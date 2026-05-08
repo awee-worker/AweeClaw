@@ -275,7 +275,9 @@ class SettingsService {
       promptTemplateId: (saved.promptTemplateId as string) || defaults.promptTemplateId,
       activeScenarioId: (saved.activeScenarioId as string) || defaults.activeScenarioId,
       providerConfigs: providerConfigs as Record<string, ProviderModelConfig>,
-      agentConfig: { ...defaults.agentConfig, ...(saved.agentConfig as object || {}) },
+      agentConfig: saved.agentConfig
+        ? deepMerge(defaults.agentConfig, saved.agentConfig as object)
+        : defaults.agentConfig,
       editorConfig: saved.editorConfig
         ? deepMerge(defaults.editorConfig, saved.editorConfig as object)
         : defaults.editorConfig,

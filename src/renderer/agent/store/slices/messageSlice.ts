@@ -20,6 +20,7 @@ import type {
     SearchPart,
     SourcesPart,
     InteractiveContent,
+    FormContent,
 } from '../../types'
 import type { LLMStreamSource } from '@/shared/types/llm'
 import { createIdleHandoffState } from '../../types'
@@ -85,6 +86,7 @@ export interface MessageActions {
 
     // 交互式内容操作
     setInteractive: (messageId: string, interactive: InteractiveContent, targetThreadId?: string) => void
+    addFormPart: (messageId: string, form: FormContent, targetThreadId?: string) => void
 
     // 上下文操作
     addSkillsToMessage: (messageId: string, skills: { name: string; description: string }[], targetThreadId?: string) => void
@@ -1223,6 +1225,41 @@ export const createMessageSlice: StateCreator<
             const messages = thread.messages.map(msg => {
                 if (msg.id === messageId && msg.role === 'assistant') {
                     return { ...msg, interactive, isStreaming: false }
+                }
+                return msg
+            })
+
+            return {
+                threadMessageVersions: bumpThreadMessageVersion(state.threadMessageVersions, threadId),
+                threads: {
+                    ...state.threads,
+                    [threadId]: {
+                        ...thread,
+                        messages,
+                        streamState: { ...thread.streamState, phase: 'idle' },
+                        lastModified: Date.now(),
+                    },
+                },
+            }
+        })
+    },
+
+    addFormPart: (messageId, form, targetThreadId) => {
+        const threadId = targetThreadId || get().currentThreadId
+        if (!threadId) return
+
+        set(state => {
+            const thread = state.threads[threadId]
+            if (!thread) return state
+
+            const messages = thread.messages.map(msg => {
+                if (msg.id === messageId && msg.role === 'assistant') {
+                    const assistantMsg = msg as AssistantMessage
+                    const newPart: AssistantPart = {
+                        type: 'form',
+                        form,
+                    }
+                    return { ...assistantMsg, parts: [...assistantMsg.parts, newPart], isStreaming: false }
                 }
                 return msg
             })

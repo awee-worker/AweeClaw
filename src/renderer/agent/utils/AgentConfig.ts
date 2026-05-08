@@ -13,18 +13,28 @@ import { getReadOnlyTools } from '@/shared/config/tools'
 export type { AgentRuntimeConfig }
 
 // 缓存：store.agentConfig 引用不变时复用上次结果
-let _cachedSource: Record<string, any> | null = null
+let _cachedKey: string | null = null
 let _cachedResult: AgentRuntimeConfig | null = null
 
-/**
- * 从 store 获取动态配置
- * 合并用户配置和默认配置（带引用缓存）
- */
+function buildCacheKey(obj: Record<string, any>): string {
+    try {
+        return JSON.stringify(obj)
+    } catch {
+        return String(Date.now())
+    }
+}
+
+export function invalidateAgentConfigCache(): void {
+    _cachedKey = null
+    _cachedResult = null
+}
+
 export function getAgentConfig(): AgentRuntimeConfig {
     const agentConfig = useStore.getState().agentConfig || {}
-    if (agentConfig === _cachedSource && _cachedResult) return _cachedResult
+    const cacheKey = buildCacheKey(agentConfig)
+    if (cacheKey === _cachedKey && _cachedResult) return _cachedResult
 
-    _cachedSource = agentConfig
+    _cachedKey = cacheKey
     const result: AgentRuntimeConfig = {
         // 基础配置
         maxToolLoops: agentConfig.maxToolLoops ?? DEFAULT_AGENT_CONFIG.maxToolLoops,

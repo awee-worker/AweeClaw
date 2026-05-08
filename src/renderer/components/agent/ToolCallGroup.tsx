@@ -67,6 +67,11 @@ export function renderToolCallCard(
     return null
   }
 
+  // ask_form 由 FormCard 独立渲染，跳过原始工具卡片
+  if (tc.name === 'ask_form') {
+    return null
+  }
+
   // todo_write 通过底部 TodoListPanel 展示，不在聊天流中渲染卡片
   if (tc.name === 'todo_write') {
     return null

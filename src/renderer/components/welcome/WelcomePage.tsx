@@ -6,7 +6,7 @@ import { useStore } from '@/renderer/store'
 import { logger } from '@utils/Logger'
 import { toast } from '@components/common/ToastProvider'
 import { getFileName } from '@shared/utils/pathUtils'
-import { t, type Language } from '@renderer/i18n'
+import { t } from '@renderer/i18n'
 
 interface RecentWorkspace {
   path: string

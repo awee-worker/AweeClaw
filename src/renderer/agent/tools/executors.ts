@@ -1718,20 +1718,80 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         const rawOptions = args.options as Array<{ id?: string; value?: string; label: string; description?: string }>
         const multiSelect = (args.multi_select as boolean) || false
 
-        // 兼容处理：支持 id 或 value 作为选项标识符
         const options = rawOptions.map((opt, idx) => ({
             id: opt.id || opt.value || `option-${idx}`,
             label: opt.label,
             description: opt.description,
         }))
 
-        // 返回 interactive 数据，由 loop.ts 负责设置到 store
         return {
             success: true,
             result: `Waiting for user to select from options. Question: "${question}"`,
             meta: {
                 waitingForUser: true,
                 interactive: { type: 'interactive' as const, question, options, multiSelect },
+            },
+        }
+    },
+
+    async ask_form(args, _ctx) {
+        const title = args.title as string
+        const description = args.description as string | undefined
+        const submitLabel = (args.submit_label as string) || 'Submit'
+        const rawFields = args.fields as Array<Record<string, unknown>>
+
+        const fields = rawFields.map(field => {
+            const type = (field.type as string) || 'text'
+            const fieldDef: Record<string, unknown> = {
+                id: field.id as string,
+                type,
+                label: field.label as string,
+                placeholder: field.placeholder as string | undefined,
+                required: field.required === true,
+                description: field.description as string | undefined,
+            }
+
+            if (field.default_value !== undefined) {
+                if (type === 'number') {
+                    fieldDef.defaultValue = Number(field.default_value)
+                } else if (type === 'checkbox') {
+                    fieldDef.defaultValue = field.default_value === 'true' || field.default_value === true
+                } else {
+                    fieldDef.defaultValue = String(field.default_value)
+                }
+            }
+
+            if (['select', 'radio'].includes(type) && Array.isArray(field.options)) {
+                fieldDef.options = (field.options as Array<Record<string, string>>).map(opt => ({
+                    label: opt.label,
+                    value: opt.value,
+                }))
+            }
+
+            if (type === 'number') {
+                if (field.min !== undefined) fieldDef.min = Number(field.min)
+                if (field.max !== undefined) fieldDef.max = Number(field.max)
+            }
+
+            if (field.pattern !== undefined) {
+                fieldDef.pattern = String(field.pattern)
+            }
+
+            return fieldDef
+        })
+
+        return {
+            success: true,
+            result: `Waiting for user to fill in form: "${title}"`,
+            meta: {
+                waitingForUser: true,
+                form: {
+                    type: 'form' as const,
+                    title,
+                    description,
+                    fields,
+                    submitLabel,
+                },
             },
         }
     },

@@ -36,7 +36,7 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
   chatWidth: 600,
   terminalLayout: 'tabs',
 
-  setActiveSidePanel: (panel) => set((state) => ({
+  setActiveSidePanel: (panel) => set(() => ({
     activeSidePanel: panel,
     ...(panel ? { lastActiveSidePanel: panel } : {}),
   })),

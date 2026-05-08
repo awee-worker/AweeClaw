@@ -5,6 +5,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { PROVIDERS } from '@/shared/config/providers'
 import stableStringify from 'fast-json-stable-stringify'
 import { getEditorConfig } from '@renderer/settings'
+import { invalidateAgentConfigCache } from '@renderer/agent/utils/AgentConfig'
 import { t, type Language } from '@renderer/i18n'
 import { toast } from '@components/common/ToastProvider'
 import { globalConfirm } from '@components/common/ConfirmDialog'
@@ -300,6 +301,7 @@ export default function SettingsModal() {
             set('autoApprove', localAutoApprove)
             set('promptTemplateId', localPromptTemplateId)
             set('agentConfig', localAgentConfig)
+            invalidateAgentConfigCache()
             set('aiInstructions', localAiInstructions)
             set('webSearchConfig', localWebSearchConfig)
             set('mcpConfig', localMcpConfig)

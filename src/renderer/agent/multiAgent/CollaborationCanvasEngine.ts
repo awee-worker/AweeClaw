@@ -1,6 +1,6 @@
 import { logger } from '@utils/Logger'
 import type { Orchestrator, OrchestratorEvent, SessionState } from '../multiAgent/Orchestrator'
-import type { AgentInstance, AgentMessage, CollaborationTask } from '@shared/types/multiAgent'
+import type { AgentMessage } from '@shared/types/multiAgent'
 
 export interface CanvasNode {
   id: string
@@ -205,7 +205,6 @@ class CollaborationCanvasEngine {
 
     for (const task of tasks) {
       for (const agentId of task.assignedTo) {
-        const agentNodeId = `agent-${agentId}`
         const taskNodeId = `task-${task.id}`
         const agent = agents.find(a => a.id === agentId || a.role.id === agentId)
         if (agent) {
@@ -308,7 +307,7 @@ class CollaborationCanvasEngine {
     })
   }
 
-  private notifyListeners(sessionId: string, layout: CollaborationLayout): void {
+  private notifyListeners(_sessionId: string, layout: CollaborationLayout): void {
     for (const listener of this.listeners) {
       try {
         listener(layout)

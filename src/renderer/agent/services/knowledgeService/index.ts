@@ -694,16 +694,6 @@ ${lines.join('\n')}
     return [...new Set(tags)]
   }
 
-  private async getEmbeddingConfig() {
-    try {
-      const { getLLMConfigForTask } = await import('../llmConfigService')
-      const store = useStore.getState()
-      return getLLMConfigForTask(store.llmConfig.provider, store.llmConfig.model)
-    } catch {
-      return null
-    }
-  }
-
   private parseJsonContent(content: string, fileName: string): { title: string; content: string; category: KnowledgeCategory }[] {
     const entries: { title: string; content: string; category: KnowledgeCategory }[] = []
     try {
@@ -776,47 +766,6 @@ ${lines.join('\n')}
     }
 
     return entries.length > 0 ? entries : [{ title: fileName, content, category: 'document' }]
-  }
-
-  private htmlToMarkdown(html: string): string {
-    let text = html
-    text = text.replace(/<script[\s\S]*?<\/script>/gi, '')
-    text = text.replace(/<style[\s\S]*?<\/style>/gi, '')
-    text = text.replace(/<nav[\s\S]*?<\/nav>/gi, '')
-    text = text.replace(/<footer[\s\S]*?<\/footer>/gi, '')
-    text = text.replace(/<header[\s\S]*?<\/header>/gi, '')
-    text = text.replace(/<h1[^>]*>([\s\S]*?)<\/h1>/gi, '# $1\n')
-    text = text.replace(/<h2[^>]*>([\s\S]*?)<\/h2>/gi, '## $1\n')
-    text = text.replace(/<h3[^>]*>([\s\S]*?)<\/h3>/gi, '### $1\n')
-    text = text.replace(/<h4[^>]*>([\s\S]*?)<\/h4>/gi, '#### $1\n')
-    text = text.replace(/<h5[^>]*>([\s\S]*?)<\/h5>/gi, '##### $1\n')
-    text = text.replace(/<h6[^>]*>([\s\S]*?)<\/h6>/gi, '###### $1\n')
-    text = text.replace(/<p[^>]*>([\s\S]*?)<\/p>/gi, '$1\n\n')
-    text = text.replace(/<br\s*\/?>/gi, '\n')
-    text = text.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, '- $1\n')
-    text = text.replace(/<strong[^>]*>([\s\S]*?)<\/strong>/gi, '**$1**')
-    text = text.replace(/<em[^>]*>([\s\S]*?)<\/em>/gi, '*$1*')
-    text = text.replace(/<code[^>]*>([\s\S]*?)<\/code>/gi, '`$1`')
-    text = text.replace(/<pre[^>]*>([\s\S]*?)<\/pre>/gi, '```\n$1\n```\n')
-    text = text.replace(/<a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, '[$2]($1)')
-    text = text.replace(/<img[^>]*alt="([^"]*)"[^>]*>/gi, '![$1]')
-    text = text.replace(/<blockquote[^>]*>([\s\S]*?)<\/blockquote>/gi, '> $1\n')
-    text = text.replace(/<table[^>]*>([\s\S]*?)<\/table>/gi, (_, tableContent) => {
-      const rows = tableContent.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || []
-      return rows.map((row: string) => {
-        const cells = row.match(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/gi) || []
-        return '| ' + cells.map((c: string) => c.replace(/<\/?t[hd][^>]*>/gi, '').trim()).join(' | ') + ' |'
-      }).join('\n') + '\n'
-    })
-    text = text.replace(/<[^>]+>/g, '')
-    text = text.replace(/&amp;/g, '&')
-    text = text.replace(/&lt;/g, '<')
-    text = text.replace(/&gt;/g, '>')
-    text = text.replace(/&quot;/g, '"')
-    text = text.replace(/&#39;/g, "'")
-    text = text.replace(/&nbsp;/g, ' ')
-    text = text.replace(/\n{3,}/g, '\n\n')
-    return text.trim()
   }
 }
 

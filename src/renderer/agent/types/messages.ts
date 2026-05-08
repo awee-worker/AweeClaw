@@ -6,6 +6,7 @@ import type { TextContent, ImageContent, FileContent, MessageContent, ToolCall, 
 import type { LLMStreamSource } from '@/shared/types/llm'
 import type { ContextItem } from './context'
 import type { InteractiveContent } from './interactive'
+import type { FormContent } from './form'
 import type { FileSnapshot } from './checkpoint'
 import type { StructuredSummary, CompressionLevel } from '../domains/context/types'
 
@@ -98,6 +99,12 @@ export type AssistantPart =
   | SystemAlertPart
   | ContextSnapshotPart
   | SourcesPart
+  | FormPart
+
+export interface FormPart {
+  type: 'form'
+  form: FormContent
+}
 
 /** Token 使用统计 */
 export interface TokenUsage {
@@ -235,6 +242,10 @@ export function isContextSnapshotPart(part: AssistantPart): part is ContextSnaps
 
 export function isSourcesPart(part: AssistantPart): part is SourcesPart {
   return part.type === 'sources'
+}
+
+export function isFormPart(part: AssistantPart): part is FormPart {
+  return part.type === 'form'
 }
 
 // ============================================

@@ -28,18 +28,19 @@ describe('LongTermMemory', () => {
     expect(results[0].content).toContain('React')
   })
 
-  it('deduplicates similar entries', () => {
+  it('deduplicates similar entries', async () => {
     memory.add({ content: 'Uses PostgreSQL', type: 'fact', source: 'user_explicit', confidence: 0.8, relevanceTags: [] })
     memory.add({ content: 'Uses PostgreSQL', type: 'fact', source: 'user_explicit', confidence: 0.8, relevanceTags: [] })
 
-    expect(memory.getStats().total).toBe(1)
+    const stats = await memory.getStats()
+    expect(stats.total).toBe(1)
   })
 
-  it('searches by type', () => {
+  it('searches by type', async () => {
     memory.add({ content: 'Prefers dark mode', type: 'preference', source: 'user_explicit', confidence: 0.9, relevanceTags: [] })
     memory.add({ content: 'Uses React', type: 'fact', source: 'user_explicit', confidence: 0.9, relevanceTags: [] })
 
-    const prefs = memory.getByType('preference')
+    const prefs = await memory.getByType('preference')
     expect(prefs.length).toBe(1)
     expect(prefs[0].type).toBe('preference')
   })
@@ -52,7 +53,7 @@ describe('LongTermMemory', () => {
     expect(results.every(r => r.confidence >= 0.5)).toBe(true)
   })
 
-  it('extracts memories from conversation', () => {
+  it('extracts memories from conversation', async () => {
     const messages = [
       { role: 'user', content: 'Remember: always use strict TypeScript' },
       { role: 'assistant', content: 'I will remember that.' },
@@ -60,39 +61,41 @@ describe('LongTermMemory', () => {
       { role: 'user', content: 'The error was caused by missing null check, the fix is to add optional chaining' },
     ]
 
-    const result = memory.extractFromConversation(messages)
+    const result = await memory.extractFromConversation(messages)
     expect(result.entries.length).toBeGreaterThanOrEqual(2)
   })
 
-  it('builds context prompt', () => {
+  it('builds context prompt', async () => {
     memory.add({ content: 'Uses React 18', type: 'fact', source: 'user_explicit', confidence: 0.9, relevanceTags: ['react'] })
     memory.add({ content: 'Prefers Tailwind CSS', type: 'preference', source: 'user_explicit', confidence: 0.85, relevanceTags: ['css'] })
 
-    const prompt = memory.buildContextPrompt('React')
+    const prompt = await memory.buildContextPrompt('React')
     expect(prompt).toContain('long_term_memory')
     expect(prompt).toContain('React 18')
   })
 
-  it('removes entries', () => {
+  it('removes entries', async () => {
     const entry = memory.add({ content: 'To be removed', type: 'fact', source: 'user_explicit', confidence: 0.9, relevanceTags: [] })
-    expect(memory.remove(entry.id)).toBe(true)
-    expect(memory.getStats().total).toBe(0)
+    expect(await memory.remove(entry.id)).toBe(true)
+    const stats = await memory.getStats()
+    expect(stats.total).toBe(0)
   })
 
-  it('compacts low-confidence entries', () => {
+  it('compacts low-confidence entries', async () => {
     for (let i = 0; i < 10; i++) {
       memory.add({ content: `Low confidence ${i}`, type: 'fact', source: 'pattern_detected', confidence: 0.1, relevanceTags: [] })
     }
 
     memory.compact()
-    expect(memory.getStats().total).toBe(0)
+    const stats = await memory.getStats()
+    expect(stats.total).toBe(0)
   })
 
-  it('returns stats', () => {
+  it('returns stats', async () => {
     memory.add({ content: 'Fact 1', type: 'fact', source: 'user_explicit', confidence: 0.9, relevanceTags: [] })
     memory.add({ content: 'Pref 1', type: 'preference', source: 'user_explicit', confidence: 0.8, relevanceTags: [] })
 
-    const stats = memory.getStats()
+    const stats = await memory.getStats()
     expect(stats.total).toBe(2)
     expect(stats.byType.fact).toBe(1)
     expect(stats.byType.preference).toBe(1)
@@ -235,7 +238,7 @@ describe('AdaptivePromptEngine', () => {
     await memory.init()
     graph = new ProjectKnowledgeGraph()
     await graph.init()
-    engine = new AdaptivePromptEngine(3000, memory, graph)
+    engine = new AdaptivePromptEngine(3000, graph)
   })
 
   it('generates empty prompt when no context', async () => {
@@ -284,7 +287,7 @@ describe('AdaptivePromptEngine', () => {
       priority: 100,
       estimatedTokens: 100,
       condition: () => true,
-      generate: () => '<custom>Custom strategy output</custom>',
+      generate: async () => '<custom>Custom strategy output</custom>',
     })
 
     const result = await engine.generateAdaptivePrompt({ query: 'test' })

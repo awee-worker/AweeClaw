@@ -705,6 +705,77 @@ TIPS:
         },
     },
 
+    ask_form: {
+        name: 'ask_form',
+        displayName: 'Ask Form',
+        description: 'Generate a structured form for the user to fill in specific information. Use this when you need structured data input from the user, such as configuration details, personal information, or task parameters.',
+        detailedDescription: `Present a structured form to the user and wait for them to fill it in.
+- Use when you need structured data input (not just a choice)
+- Supports various field types: text, textarea, select, number, email, date, checkbox, radio, password
+- Each field can have validation rules (required, min/max, pattern)
+- The tool blocks until user submits the form
+- Form data is returned as structured key-value pairs`,
+        examples: [
+            'ask_form title="User Registration" fields=[{id:"name",type:"text",label:"Full Name",required:true},{id:"email",type:"email",label:"Email",required:true},{id:"role",type:"select",label:"Role",options:[{label:"Developer",value:"dev"},{label:"Designer",value:"design"}]}]',
+            'ask_form title="Database Config" description="Please provide database connection details" fields=[{id:"host",type:"text",label:"Host",defaultValue:"localhost"},{id:"port",type:"number",label:"Port",defaultValue:5432,min:1,max:65535},{id:"password",type:"password",label:"Password",required:true}]',
+        ],
+        criticalRules: [
+            'Use ask_form when you need structured data, not just a choice (use ask_user for choices)',
+            'Keep forms concise - prefer 3-8 fields per form',
+            'Always mark required fields',
+            'Provide sensible default values when possible',
+            'Use appropriate field types (email for emails, number for numbers, etc.)',
+        ],
+        category: 'interaction',
+        approvalType: 'none',
+        parallel: false,
+        concurrencyMode: 'approval-gated',
+        resourceScope: ['interaction:user'],
+        resultSemantics: 'interactive',
+        retryPolicy: { maxAttempts: 1 },
+        validationLevel: 'strict',
+        requiresWorkspace: false,
+        enabled: true,
+        parameters: {
+            title: { type: 'string', description: 'Form title', required: true },
+            description: { type: 'string', description: 'Optional description or instructions shown below the title' },
+            submit_label: { type: 'string', description: 'Custom label for the submit button (default: "Submit")', default: 'Submit' },
+            fields: {
+                type: 'array',
+                description: 'Form fields definition',
+                required: true,
+                items: {
+                    type: 'object',
+                    description: 'A form field',
+                    properties: {
+                        id: { type: 'string', description: 'Unique field identifier (used as key in returned data)', required: true },
+                        type: { type: 'string', description: 'Field type: text, textarea, select, number, email, date, checkbox, radio, password', required: true },
+                        label: { type: 'string', description: 'Display label', required: true },
+                        placeholder: { type: 'string', description: 'Placeholder text' },
+                        required: { type: 'boolean', description: 'Whether the field is required (default: false)', default: false },
+                        default_value: { type: 'string', description: 'Default value for the field' },
+                        options: {
+                            type: 'array',
+                            description: 'Options for select/radio fields',
+                            items: {
+                                type: 'object',
+                                description: 'An option item',
+                                properties: {
+                                    label: { type: 'string', description: 'Display label', required: true },
+                                    value: { type: 'string', description: 'Option value', required: true },
+                                },
+                            },
+                        },
+                        min: { type: 'number', description: 'Minimum value for number fields' },
+                        max: { type: 'number', description: 'Maximum value for number fields' },
+                        pattern: { type: 'string', description: 'Regex pattern for validation' },
+                        description: { type: 'string', description: 'Help text shown below the field' },
+                    },
+                },
+            },
+        },
+    },
+
     create_task_plan: {
         name: 'create_task_plan',
         displayName: 'Create Task Plan',

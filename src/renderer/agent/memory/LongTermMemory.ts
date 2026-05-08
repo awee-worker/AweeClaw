@@ -100,7 +100,7 @@ export class LongTermMemory {
     }
   }
 
-  search(params: MemorySearchParams): LongTermMemoryEntry[] {
+  search(_params: MemorySearchParams): LongTermMemoryEntry[] {
     return []
   }
 

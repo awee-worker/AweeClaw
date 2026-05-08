@@ -513,7 +513,7 @@ class IntelligentExtractor {
     return true
   }
 
-  private deriveTitle(content: string, fileName: string): string {
+  private deriveTitle(content: string, _fileName: string): string {
     const firstLine = content.split('\n')[0].trim()
     if (firstLine.length <= 60) return firstLine
     return firstLine.slice(0, 57) + '...'

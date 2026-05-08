@@ -3,7 +3,6 @@ import {
   Plus, Trash2, Search, BookOpen, Star, Copy, Check,
   Edit2, X, ToggleLeft, ToggleRight, Tag,
   FileUp, Link, Loader2, Database, Globe, User, FileText,
-  FileSpreadsheet, FileType, File,
 } from 'lucide-react'
 import { useStore } from '@store'
 import { knowledgeService } from '@/renderer/agent/services/knowledgeService'

@@ -30,12 +30,6 @@ export interface SandboxResult {
   durationMs: number
 }
 
-const DEFAULT_OPTIONS: Required<SandboxOptions> = {
-  timeoutMs: 5000,
-  maxMemoryBytes: 10 * 1024 * 1024,
-  maxStackSize: 1024 * 1024,
-}
-
 let quickjsModule: QuickJSWASMModule | null = null
 
 async function getQuickJSModule(): Promise<QuickJSWASMModule> {

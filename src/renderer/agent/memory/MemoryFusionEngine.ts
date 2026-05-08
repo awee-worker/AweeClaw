@@ -1,8 +1,8 @@
 import { logger } from '@utils/Logger'
 import { longTermMemoryService } from '../services/longTermMemoryService'
 import { knowledgeService } from '../services/knowledgeService'
-import type { MemoryEntry, MemorySearchResult, MemoryRetrievalContext } from '../services/longTermMemoryService/types'
-import type { KnowledgeEntry, KnowledgeSearchResult, KnowledgeCategory } from '../services/knowledgeService/types'
+import type { MemorySearchResult, MemoryRetrievalContext } from '../services/longTermMemoryService/types'
+import type { KnowledgeSearchResult, KnowledgeCategory } from '../services/knowledgeService/types'
 
 export type MemoryLayer = 'working' | 'short_term' | 'long_term' | 'project_knowledge'
 

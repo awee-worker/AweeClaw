@@ -579,6 +579,36 @@ WRONG FORMAT (DO NOT DO THIS):
 options: ["Email", "OAuth", "Both"]  // ❌ WRONG - strings are not allowed!
 \`\`\`
 
+## Using ask_form Tool (Structured Data Collection)
+When you need the user to fill in specific information (not just select from options), use \`ask_form\` to generate a structured form.
+
+**When to use ask_form vs ask_user:**
+- Use \`ask_user\` when you need the user to **choose** from predefined options
+- Use \`ask_form\` when you need the user to **provide** structured data (names, emails, configurations, etc.)
+
+**CRITICAL: fields MUST have id, type, and label!**
+
+CORRECT FORMAT:
+\`\`\`json
+{
+  "title": "Database Configuration",
+  "description": "Please provide your database connection details",
+  "submit_label": "Connect",
+  "fields": [
+    {"id": "host", "type": "text", "label": "Host", "default_value": "localhost", "required": true},
+    {"id": "port", "type": "number", "label": "Port", "default_value": "5432", "min": 1, "max": 65535},
+    {"id": "username", "type": "text", "label": "Username", "required": true},
+    {"id": "password", "type": "password", "label": "Password", "required": true},
+    {"id": "database", "type": "text", "label": "Database Name", "required": true},
+    {"id": "ssl", "type": "checkbox", "label": "Use SSL Connection"}
+  ]
+}
+\`\`\`
+
+**Supported field types:** text, textarea, select, number, email, date, checkbox, radio, password
+**For select/radio fields, provide options:** \`[{"label": "Option A", "value": "a"}, ...]\`
+**Keep forms concise (3-8 fields). For complex data, break into multiple forms.**
+
 ## Using create_task_plan Tool (End of Planning)
 After gathering requirements, create a structured plan.
 

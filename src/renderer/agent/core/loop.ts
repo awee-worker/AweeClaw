@@ -18,7 +18,7 @@ import { getRelativeChangePath, isFileWriteToolResult } from '../utils/fileChang
 import { agentHarness } from '../harness'
 import type { Span } from '../harness/observability/Trace'
 import type { TokenBudgetController } from '../domains/budget/TokenBudgetController'
-import type { LintCheckFile, ChatMessage, AssistantMessage, InteractiveContent } from '../types'
+import type { LintCheckFile, ChatMessage, AssistantMessage, InteractiveContent, FormContent } from '../types'
 import type { LLMMessage } from '@/shared/types'
 import type { WorkMode } from '@/renderer/modes/types'
 import type { LLMConfig, LLMCallResult, ExecutionContext, LoopCheckResult } from './types'
@@ -738,7 +738,10 @@ Try again with the corrected tool call.`,
     if (result.content) {
       loopDetector.signalProgress()
     }
-    const loopCheck = loopDetector.checkLoop(result.toolCalls)
+    const loopDetectionEnabled = useStore.getState().agentConfig?.loopDetection?.enabled ?? true
+    const loopCheck = loopDetectionEnabled
+      ? loopDetector.checkLoop(result.toolCalls)
+      : { isLoop: false } as LoopCheckResult
     if (loopCheck.isLoop) {
       const { language } = useStore.getState()
       const loopTitle = getLocalizedText(language, '检测到循环执行', 'Loop Detected')
@@ -825,8 +828,11 @@ Try again with the corrected tool call.`,
     const waitingResult = toolResults.find(r => r.result.meta?.waitingForUser)
     if (waitingResult) {
       const interactive = waitingResult.result.meta?.interactive as InteractiveContent | undefined
+      const form = waitingResult.result.meta?.form as FormContent | undefined
       if (interactive) {
         threadStore.setInteractive(assistantId, interactive)
+      } else if (form) {
+        threadStore.addFormPart(assistantId, form)
       } else {
         threadStore.finalizeAssistant(assistantId)
       }

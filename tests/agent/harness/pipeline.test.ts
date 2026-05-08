@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { Pipeline, PipelineAbortedError } from '@renderer/agent/harness/pipeline/Pipeline'
-import type { Middleware, MiddlewareContext } from '@renderer/agent/harness/pipeline/Middleware'
+import type { Middleware } from '@renderer/agent/harness/pipeline/Middleware'
 import { AuditMiddleware, getAuditLog, clearAuditLog } from '@renderer/agent/harness/pipeline/builtins/audit'
 import { RateLimitMiddleware, RateLimitError } from '@renderer/agent/harness/pipeline/builtins/rateLimit'
 import { ErrorBoundaryMiddleware } from '@renderer/agent/harness/pipeline/builtins/errorBoundary'
@@ -54,7 +54,7 @@ describe('Pipeline', () => {
     pipeline.use({
       id: 'catcher',
       order: 1,
-      async onError(error) { errorCaught = true },
+      async onError(_error) { errorCaught = true },
     })
 
     await expect(

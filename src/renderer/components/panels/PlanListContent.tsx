@@ -1,4 +1,4 @@
-import { memo, useMemo, useState, useCallback } from 'react'
+import { memo, useMemo, useCallback } from 'react'
 import { useAgentStore } from '@renderer/agent/store/AgentStore'
 import { useStore } from '@store'
 import { globalConfirm } from '@renderer/components/common/ConfirmDialog'
