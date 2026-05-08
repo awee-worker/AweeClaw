@@ -14,6 +14,7 @@
 import { logger } from '@utils/Logger'
 import type { LLMToolCall } from '@/shared/types'
 import { getAgentConfig } from './AgentConfig'
+import { useStore } from '@store'
 
 interface ToolCallRecord {
   name: string
@@ -61,9 +62,10 @@ interface LoopDetectorInternalConfig {
 function getLoopConfig(): LoopDetectorInternalConfig {
   const agentConfig = getAgentConfig()
   const loopConfig = agentConfig.loopDetection
+  const storeEnabled = useStore.getState().agentConfig?.loopDetection?.enabled
 
   return {
-    enabled: loopConfig.enabled ?? true,
+    enabled: storeEnabled === false ? false : (loopConfig.enabled ?? true),
     timeWindowMs: 5 * 60 * 1000,
     maxExactRepeats: loopConfig.maxExactRepeats,
     maxNoChangeEdits: loopConfig.maxSameTargetRepeats,
@@ -181,6 +183,9 @@ export class LoopDetector {
     fileContents?: Map<string, string>
   ): LoopCheckResult {
     if (!this.config.enabled) {
+      return { isLoop: false }
+    }
+    if (useStore.getState().agentConfig?.loopDetection?.enabled === false) {
       return { isLoop: false }
     }
 

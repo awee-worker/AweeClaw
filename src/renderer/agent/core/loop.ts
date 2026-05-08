@@ -738,57 +738,59 @@ Try again with the corrected tool call.`,
     if (result.content) {
       loopDetector.signalProgress()
     }
-    const loopDetectionEnabled = useStore.getState().agentConfig?.loopDetection?.enabled ?? true
-    const loopCheck = loopDetectionEnabled
-      ? loopDetector.checkLoop(result.toolCalls)
-      : { isLoop: false } as LoopCheckResult
-    if (loopCheck.isLoop) {
-      const { language } = useStore.getState()
-      const loopTitle = getLocalizedText(language, '检测到循环执行', 'Loop Detected')
-      const loopMessage = getLoopCheckMessage(language, loopCheck)
-      const loopSuggestion = getLoopCheckSuggestion(language, loopCheck)
+    const loopDetectionEnabled = useStore.getState().agentConfig?.loopDetection?.enabled
+    if (loopDetectionEnabled === false) {
+      // skip
+    } else {
+      const loopCheck = loopDetector.checkLoop(result.toolCalls)
+      if (loopCheck.isLoop) {
+        const { language } = useStore.getState()
+        const loopTitle = getLocalizedText(language, '检测到循环执行', 'Loop Detected')
+        const loopMessage = getLoopCheckMessage(language, loopCheck)
+        const loopSuggestion = getLoopCheckSuggestion(language, loopCheck)
 
-      logger.agent.warn(`[Loop] Loop detected: ${loopCheck.reason}`)
-      clearUnexecutedToolCards(result.toolCalls)
-      threadStore.addSystemAlertPart(assistantId, {
-        alertType: 'warning',
-        title: loopTitle,
-        message: loopMessage,
-        suggestion: loopSuggestion,
-        compact: true,
-      })
-      EventBus.emit({ type: 'loop:warning', message: loopMessage, threadId, assistantId, requestId, planTaskId: context.planTaskId })
-      await completeWithSoftLimitFeedback(loopTitle, loopMessage, loopSuggestion, loopCheck)
-      break
-    }
+        logger.agent.warn(`[Loop] Loop detected: ${loopCheck.reason}`)
+        clearUnexecutedToolCards(result.toolCalls)
+        threadStore.addSystemAlertPart(assistantId, {
+          alertType: 'warning',
+          title: loopTitle,
+          message: loopMessage,
+          suggestion: loopSuggestion,
+          compact: true,
+        })
+        EventBus.emit({ type: 'loop:warning', message: loopMessage, threadId, assistantId, requestId, planTaskId: context.planTaskId })
+        await completeWithSoftLimitFeedback(loopTitle, loopMessage, loopSuggestion, loopCheck)
+        break
+      }
 
-    if (loopCheck.warning) {
-      const { language } = useStore.getState()
-      const warningTitle = getLocalizedText(language, '循环预警', 'Loop Warning')
-      const warningMessage = getLoopCheckMessage(language, loopCheck)
-      const warningSuggestion = getLoopCheckSuggestion(language, loopCheck)
+      if (loopCheck.warning) {
+        const { language } = useStore.getState()
+        const warningTitle = getLocalizedText(language, '循环预警', 'Loop Warning')
+        const warningMessage = getLoopCheckMessage(language, loopCheck)
+        const warningSuggestion = getLoopCheckSuggestion(language, loopCheck)
 
-      logger.agent.warn(`[Loop] Non-blocking loop warning: ${loopCheck.warning}`)
-      clearUnexecutedToolCards(result.toolCalls)
-      threadStore.addSystemAlertPart(assistantId, {
-        alertType: 'warning',
-        title: warningTitle,
-        message: warningMessage,
-        suggestion: warningSuggestion,
-        compact: true,
-      })
-      EventBus.emit({ type: 'loop:warning', message: warningMessage, threadId, assistantId, requestId, planTaskId: context.planTaskId })
+        logger.agent.warn(`[Loop] Non-blocking loop warning: ${loopCheck.warning}`)
+        clearUnexecutedToolCards(result.toolCalls)
+        threadStore.addSystemAlertPart(assistantId, {
+          alertType: 'warning',
+          title: warningTitle,
+          message: warningMessage,
+          suggestion: warningSuggestion,
+          compact: true,
+        })
+        EventBus.emit({ type: 'loop:warning', message: warningMessage, threadId, assistantId, requestId, planTaskId: context.planTaskId })
 
-      llmMessages.push({
-        role: 'user',
-        content: [
-          buildSoftLimitFeedback(language, warningTitle, warningMessage, warningSuggestion, loopCheck),
-          formatLoopDiagnostic(language, loopCheck),
-        ].filter(Boolean).join('\n\n'),
-      })
+        llmMessages.push({
+          role: 'user',
+          content: [
+            buildSoftLimitFeedback(language, warningTitle, warningMessage, warningSuggestion, loopCheck),
+            formatLoopDiagnostic(language, loopCheck),
+          ].filter(Boolean).join('\n\n'),
+        })
 
-      shouldContinue = true
-      continue
+        shouldContinue = true
+        continue
+      }
     }
 
     const assistantLLMMsg: LLMMessage = {

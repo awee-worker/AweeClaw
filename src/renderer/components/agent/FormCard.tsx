@@ -383,7 +383,7 @@ export function FormCard({ content, onSubmit, disabled }: FormCardProps) {
                 </div>
 
                 <div className="flex-1 min-w-0 flex items-center gap-2 overflow-hidden relative z-10">
-                    <span className={`text-[12px] truncate ${
+                    <span className={`text-[12px] ${submitted && !isExpanded ? 'truncate' : ''} ${
                         submitted
                             ? 'text-text-secondary group-hover:text-text-primary transition-colors'
                             : 'text-text-primary font-medium'

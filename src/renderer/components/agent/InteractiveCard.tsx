@@ -172,7 +172,7 @@ export function InteractiveCard({ content, onSelect, disabled }: InteractiveCard
                 </div>
 
                 <div className="flex-1 min-w-0 flex items-center gap-2 overflow-hidden relative z-10">
-                    <span className={`text-[12px] truncate ${submitted
+                    <span className={`text-[12px] ${submitted && !isExpanded ? 'truncate' : ''} ${submitted
                         ? 'text-text-secondary group-hover:text-text-primary transition-colors'
                         : 'text-text-primary'
                         }`}>
@@ -234,11 +234,11 @@ export function InteractiveCard({ content, onSelect, disabled }: InteractiveCard
                                             </div>
 
                                             <div className="flex-1 min-w-0">
-                                                <span className={`text-[12px] font-medium block truncate ${isSelected ? 'text-text-primary' : ''}`}>
+                                                <span className={`text-[12px] font-medium block ${isSelected ? 'text-text-primary' : ''}`}>
                                                     {option.label}
                                                 </span>
                                                 {option.description && (
-                                                    <span className="text-[11px] text-text-muted block truncate mt-0.5">
+                                                    <span className="text-[11px] text-text-muted block mt-0.5">
                                                         {option.description}
                                                     </span>
                                                 )}

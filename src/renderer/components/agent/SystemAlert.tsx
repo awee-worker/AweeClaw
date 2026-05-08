@@ -131,7 +131,7 @@ export const SystemAlert: React.FC<SystemAlertProps> = ({
 
 /**
  * 从文本中解析系统警告
- * 格式：⚠️ reason\n💡 suggestion
+ * 仅匹配循环检测相关的特定格式，避免误判 AI 回复中的 ⚠️ 标记
  */
 export function parseSystemAlert(text: string, language?: string): {
   type: AlertType
@@ -141,12 +141,30 @@ export function parseSystemAlert(text: string, language?: string): {
 } | null {
   const lang = (language || 'en') as any
 
+  const loopKeywords = [
+    /repeating\s+pattern/i,
+    /exact\s+repeat/i,
+    /same\s+(tool|arguments|parameters)\s+(repeatedly|again)/i,
+    /content\s+cycl/i,
+    /loop\s+detect/i,
+    /stuck\s+in\s+a?\s*loop/i,
+    /重复模式/,
+    /精确重复/,
+    /相同.*重复/,
+    /内容循环/,
+    /循环检测/,
+    /陷入循环/,
+  ]
+
   const loopPattern = /⚠️\s*(.+?)(?:\n💡\s*(.+))?$/s
   const match = text.match(loopPattern)
 
   if (match) {
     const message = match[1].trim()
     const suggestion = match[2]?.trim()
+
+    const isLoopRelated = loopKeywords.some(kw => kw.test(message))
+    if (!isLoopRelated) return null
 
     let type: AlertType = 'warning'
     let title = t('alert.loopDetected', lang)
