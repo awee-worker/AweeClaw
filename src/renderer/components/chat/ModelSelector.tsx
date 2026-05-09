@@ -4,10 +4,11 @@
  */
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
-import { ChevronDown, Check, Search } from 'lucide-react'
+import { ChevronDown, Check, Search, Cloud } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { BUILTIN_PROVIDERS, getBuiltinProvider } from '@shared/config/providers'
+import { backendApi, getServerUrl } from '@renderer/services/backendApi'
 
 const PROVIDER_ICONS: Record<string, string> = {
   openai: '🤖',
@@ -31,10 +32,18 @@ interface ModelSelectorProps {
 }
 
 export default function ModelSelector({ className = '', alignLeft = false }: ModelSelectorProps) {
-  const { llmConfig, update, providerConfigs, save } = useStore(useShallow(s => ({ llmConfig: s.llmConfig, update: s.update, providerConfigs: s.providerConfigs, save: s.save })))
+  const { llmConfig, update, providerConfigs, save, cloudMode, isAuthenticated } = useStore(useShallow(s => ({
+    llmConfig: s.llmConfig,
+    update: s.update,
+    providerConfigs: s.providerConfigs,
+    save: s.save,
+    cloudMode: s.cloudMode,
+    isAuthenticated: s.isAuthenticated,
+  })))
   const [isOpen, setIsOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedProviderId, setSelectedProviderId] = useState<string>('')
+  const [cloudModels, setCloudModels] = useState<ModelGroup[]>([])
   const containerRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
@@ -71,7 +80,45 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
     return llmConfig.provider === providerId && !!llmConfig.apiKey
   }, [llmConfig, providerConfigs])
 
+  const fetchCloudModels = useCallback(() => {
+    if (cloudMode !== 'cloud' || !isAuthenticated) {
+      setCloudModels([])
+      return
+    }
+
+    const serverUrl = getServerUrl()
+    if (!serverUrl) return
+
+    backendApi
+      .get<Array<{ provider: string; models: string[] }>>('/api/v1/llm/models')
+      .then((data) => {
+        const groups: ModelGroup[] = data.map((item) => ({
+          providerId: item.provider.toLowerCase(),
+          providerName: item.provider,
+          models: item.models.map((id) => ({ id, name: id })),
+        }))
+        setCloudModels(groups)
+      })
+      .catch(() => {
+        setCloudModels([])
+      })
+  }, [cloudMode, isAuthenticated])
+
+  useEffect(() => {
+    fetchCloudModels()
+  }, [fetchCloudModels])
+
+  useEffect(() => {
+    if (isOpen && cloudMode === 'cloud' && isAuthenticated) {
+      fetchCloudModels()
+    }
+  }, [isOpen, cloudMode, isAuthenticated, fetchCloudModels])
+
   const groupedModels = useMemo<ModelGroup[]>(() => {
+    if (cloudMode === 'cloud' && isAuthenticated && cloudModels.length > 0) {
+      return cloudModels
+    }
+
     const groups: ModelGroup[] = []
 
     for (const [providerId, provider] of Object.entries(BUILTIN_PROVIDERS)) {
@@ -107,7 +154,7 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
     }
 
     return groups
-  }, [providerConfigs, hasApiKey])
+  }, [providerConfigs, hasApiKey, cloudMode, isAuthenticated, cloudModels])
 
   const getIcon = useCallback((providerId: string) => {
     return PROVIDER_ICONS[providerId] || '🔮'
@@ -139,6 +186,15 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
   }, [isOpen, groupedModels, llmConfig.provider])
 
   const applyProviderConfig = useCallback((providerId: string, modelId: string) => {
+    if (cloudMode === 'cloud' && isAuthenticated) {
+      update('llmConfig', {
+        provider: providerId,
+        model: modelId,
+      })
+      save()
+      return
+    }
+
     if (llmConfig.provider === providerId) {
       update('llmConfig', { model: modelId })
       save()
@@ -158,7 +214,7 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
       headers: config?.headers,
     })
     save()
-  }, [llmConfig.provider, llmConfig.timeout, providerConfigs, update, save])
+  }, [llmConfig.provider, llmConfig.timeout, providerConfigs, update, save, cloudMode, isAuthenticated])
 
   const filteredGroups = useMemo(() => {
     if (!searchQuery.trim()) return groupedModels
@@ -204,6 +260,9 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
         `}
         >
         <span className="text-[11px] grayscale opacity-80 flex-shrink-0">{getIcon(currentProviderGroup.providerId)}</span>
+        {cloudMode === 'cloud' && isAuthenticated && (
+          <Cloud className="w-3 h-3 text-accent flex-shrink-0" />
+        )}
         <span className="truncate max-w-[200px]" title={`${currentProviderGroup.providerName}/${currentModel.name}`}>
           {currentProviderGroup.providerName}/{currentModel.name.split('/').pop()}
         </span>

@@ -25,6 +25,7 @@ import { t } from '@renderer/i18n'
 import { composerService, FileChange } from '@renderer/agent/services/composerService'
 import { getEditorConfig } from '@renderer/settings'
 import { Modal } from '@components/ui'
+import { getEffectiveLLMConfig } from '@renderer/services/llmConfigHelper'
 
 interface FileEdit {
   path: string
@@ -146,7 +147,7 @@ export default function ComposerPanel({ onClose, initialChanges }: ComposerPanel
       const prompt = buildComposerPrompt(instruction, fileContents)
 
       // 调用 LLM 生成编辑
-      const result = await generateComposerEdits(llmConfig, prompt, fileContents)
+      const result = await generateComposerEdits(getEffectiveLLMConfig(llmConfig), prompt, fileContents)
 
       if (result.success && result.edits) {
         setFileEdits(result.edits.map(edit => ({

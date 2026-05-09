@@ -5,7 +5,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { t } from '@renderer/i18n'
 import { scenarioRegistry } from '@shared/config/scenarios'
 import { getLucideIcon } from '../common/IconMap'
-import { Logo } from '../common/Logo'
+import { UserAccountPopover } from './UserAccountPopover'
 import type { SidebarItemDescriptor } from '@shared/types/scenario'
 import type { SidePanel } from '@store/slices'
 
@@ -60,16 +60,7 @@ export default function ActivityBar() {
       </div>
 
       <div className="flex flex-col w-full items-center gap-3 pb-2">
-        <Tooltip content={language === 'zh' ? '关于 AweeClaw' : 'About AweeClaw'} side="right">
-          <button
-            onClick={() => useStore.getState().setShowAbout(true)}
-            className="w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 group hover:bg-accent/5 active:scale-95"
-          >
-            <div className="w-6 h-6 flex items-center justify-center opacity-70 group-hover:opacity-100 transition-all">
-              <Logo className="w-full group-hover:drop-shadow-[0_0_8px_rgba(var(--accent)/0.6)]" glow />
-            </div>
-          </button>
-        </Tooltip>
+        <UserAccountPopover language={language} />
         <Tooltip content={language === 'zh' ? '工作流' : 'Workflow'} side="right">
           <button
             onClick={() => setShowWorkflow(true)}

@@ -14,6 +14,7 @@ import {
   createLayoutSlice, LayoutSlice,
   createGitSlice, GitSlice,
   createEditorStateSlice, EditorStateSlice,
+  createAuthSlice, AuthSlice,
 } from './slices'
 
 
@@ -28,6 +29,7 @@ export type { ToolCallLogEntry } from './slices'
 export type { McpSlice } from './slices'
 export type { DebugSlice, Breakpoint } from './slices'
 export type { SidePanel } from './slices'
+export type { CloudUser, CloudQuota } from './slices'
 
 // 模式管理统一从 modeStore 导出
 export { useModeStore } from '@/renderer/modes/modeStore'
@@ -35,7 +37,7 @@ export type { WorkMode } from '@/renderer/modes/types'
 
 // 组合所有 slices
 type StoreState = FileSlice & SettingsSlice & ThemeSlice & LogSlice & McpSlice & DebugSlice
-  & DialogSlice & LayoutSlice & GitSlice & EditorStateSlice
+  & DialogSlice & LayoutSlice & GitSlice & EditorStateSlice & AuthSlice
 
 export const useStore = create<StoreState>()((...args) => ({
   ...createFileSlice(...args),
@@ -48,4 +50,5 @@ export const useStore = create<StoreState>()((...args) => ({
   ...createLayoutSlice(...args),
   ...createGitSlice(...args),
   ...createEditorStateSlice(...args),
+  ...createAuthSlice(...args),
 }))

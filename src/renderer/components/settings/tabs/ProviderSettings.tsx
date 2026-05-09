@@ -7,7 +7,7 @@
 
 import { memo, useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { Plus, Trash, Eye, EyeOff, Check, AlertTriangle, X, Server, Sliders, Box, RefreshCw, Pencil } from 'lucide-react'
+import { Plus, Trash, Eye, EyeOff, Check, AlertTriangle, X, Server, Sliders, Box, RefreshCw, Pencil, CloudOff } from 'lucide-react'
 import {
   PROVIDERS,
   type ApiProtocol,
@@ -23,6 +23,9 @@ import { toast } from '@components/common/ToastProvider'
 import { Button, Input, Select, Switch } from '@components/ui'
 import { ProviderSettingsProps } from '../types'
 import { isCustomProvider } from '@renderer/types/provider'
+import { useStore } from '@store'
+import { useShallow } from 'zustand/react/shallow'
+import type { CloudProviderModel } from '@renderer/store/slices/authSlice'
 
 // 内置厂商 ID
 const BUILTIN_PROVIDER_IDS = ['openai', 'anthropic', 'gemini', 'deepseek', 'groq']
@@ -732,6 +735,71 @@ export function ProviderSettings({
   const [editingProviderName, setEditingProviderName] = useState('')
   const previousProviderRef = useRef(localConfig.provider)
 
+  const {
+    cloudMode,
+    isAuthenticated,
+    cloudModels,
+    setCloudMode,
+    fetchCloudModels,
+  } = useStore(
+    useShallow((s) => ({
+      cloudMode: s.cloudMode,
+      isAuthenticated: s.isAuthenticated,
+      cloudModels: s.cloudModels,
+      setCloudMode: s.setCloudMode,
+      fetchCloudModels: s.fetchCloudModels,
+    })),
+  )
+
+  const isCloudMode = cloudMode === 'cloud'
+
+  useEffect(() => {
+    if (isCloudMode && isAuthenticated) {
+      fetchCloudModels().catch(() => {})
+    }
+  }, [isCloudMode, isAuthenticated])
+
+  const handleModeChange = useCallback(
+    (mode: 'local' | 'cloud') => {
+      setCloudMode(mode)
+      if (mode === 'cloud' && isAuthenticated) {
+        fetchCloudModels().catch(() => {})
+      }
+    },
+    [setCloudMode, isAuthenticated, fetchCloudModels],
+  )
+
+  const handleSelectCloudProvider = useCallback(
+    (cloudProvider: CloudProviderModel) => {
+      const providerName = cloudProvider.provider.toLowerCase()
+      const firstModel = cloudProvider.models[0] || ''
+      setLocalConfig((prev) => ({
+        ...prev,
+        provider: providerName,
+        model: firstModel,
+        baseUrl: cloudProvider.baseUrl || prev.baseUrl,
+      }))
+    },
+    [setLocalConfig],
+  )
+
+  const cloudProviderOptions = useMemo(() => {
+    if (!cloudModels || cloudModels.length === 0) return []
+    return cloudModels.map((cp) => ({
+      id: cp.provider.toLowerCase(),
+      name: cp.provider.charAt(0) + cp.provider.slice(1).toLowerCase(),
+      models: cp.models,
+      baseUrl: cp.baseUrl,
+    }))
+  }, [cloudModels])
+
+  const cloudModelOptions = useMemo(() => {
+    const currentProvider = localConfig.provider.toUpperCase()
+    const found = cloudModels?.find((cp) => cp.provider === currentProvider || cp.provider.toLowerCase() === localConfig.provider)
+    if (!found) return []
+    return found.models.map((m) => ({ value: m, label: m }))
+  }, [cloudModels, localConfig.provider])
+
   // Headers 状态
   const [customHeaders, setCustomHeaders] = useState<EditableHeader[]>([])
 
@@ -1119,20 +1187,125 @@ export function ProviderSettings({
 
   return (
     <div className="space-y-6 animate-fade-in pb-10">
+      {/* 运行模式切换 */}
+      <section className="space-y-3">
+        <div className="flex items-center gap-2 mb-1.5">
+          <Sliders className="w-4 h-4 text-accent" />
+          <h4 className="text-sm font-semibold text-text-primary">
+            {language === 'zh' ? '运行模式' : 'Mode'}
+          </h4>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={() => handleModeChange('local')}
+            className={`p-4 rounded-xl border text-left transition-all duration-200 ${
+              !isCloudMode
+                ? 'bg-accent/5 border-accent/30 text-text-primary'
+                : 'bg-surface/30 border-border/50 text-text-secondary hover:bg-surface/50 hover:border-border'
+            }`}
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <div
+                className={`w-3 h-3 rounded-full border-2 transition-colors ${
+                  !isCloudMode ? 'border-accent bg-accent' : 'border-border'
+                }`}
+              />
+              <span className="text-sm font-medium">
+                {language === 'zh' ? '本地模式' : 'Local Mode'}
+              </span>
+            </div>
+            <p className="text-xs text-text-muted leading-relaxed">
+              {language === 'zh'
+                ? '直连 AI 供应商，使用自己的 API Key'
+                : 'Connect directly to AI providers with your own API Key'}
+            </p>
+          </button>
+          <button
+            onClick={() => handleModeChange('cloud')}
+            className={`p-4 rounded-xl border text-left transition-all duration-200 ${
+              isCloudMode
+                ? 'bg-accent/5 border-accent/30 text-text-primary'
+                : 'bg-surface/30 border-border/50 text-text-secondary hover:bg-surface/50 hover:border-border'
+            }`}
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <div
+                className={`w-3 h-3 rounded-full border-2 transition-colors ${
+                  isCloudMode ? 'border-accent bg-accent' : 'border-border'
+                }`}
+              />
+              <span className="text-sm font-medium">
+                {language === 'zh' ? '云端模式' : 'Cloud Mode'}
+              </span>
+            </div>
+            <p className="text-xs text-text-muted leading-relaxed">
+              {language === 'zh'
+                ? '通过后端代理访问，无需自带 Key'
+                : 'Access via backend proxy, no API Key needed'}
+            </p>
+          </button>
+        </div>
+
+        {isCloudMode && !isAuthenticated && (
+          <div className="flex items-center gap-2 p-3 rounded-lg bg-accent/5 border border-accent/20 text-xs text-text-secondary">
+            <CloudOff className="w-4 h-4 shrink-0 text-accent/60" />
+            <span>
+              {language === 'zh'
+                ? '云端模式需要先登录，请点击左下角头像进行登录'
+                : 'Cloud mode requires login. Click the avatar in the bottom left to sign in'}
+            </span>
+          </div>
+        )}
+      </section>
+
       {/* Provider 选择器 */}
       <section className="space-y-4">
         <div className="mb-4">
           <div className="flex items-center gap-2 mb-1.5">
             <Box className="w-4 h-4 text-accent" />
             <h4 className="text-sm font-semibold text-text-primary">
-              {language === 'zh' ? '选择提供商' : 'Select Provider'}
+              {isCloudMode
+                ? language === 'zh' ? '云端提供商' : 'Cloud Providers'
+                : language === 'zh' ? '选择提供商' : 'Select Provider'}
             </h4>
           </div>
           <p className="text-[12px] text-text-muted">
-            {language === 'zh' ? '选择您要使用的模型服务提供商' : 'Select the model service provider you want to use'}
+            {isCloudMode
+              ? language === 'zh' ? '由后端服务提供的模型供应商' : 'Model providers from backend service'
+              : language === 'zh' ? '选择您要使用的模型服务提供商' : 'Select the model service provider you want to use'}
           </p>
         </div>
 
+        {isCloudMode ? (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+            {cloudProviderOptions.length === 0 ? (
+              <div className="col-span-full text-center py-8 text-text-muted text-xs">
+                {isAuthenticated
+                  ? language === 'zh' ? '暂无可用云端提供商' : 'No cloud providers available'
+                  : language === 'zh' ? '请先登录以查看云端提供商' : 'Please login to view cloud providers'}
+              </div>
+            ) : (
+              cloudProviderOptions.map((cp) => (
+                <button
+                  key={cp.id}
+                  onClick={() => handleSelectCloudProvider({ provider: cp.id.toUpperCase(), models: cp.models, baseUrl: cp.baseUrl })}
+                  className={`group relative flex min-h-[72px] flex-col items-center justify-center rounded-lg border px-4 py-3 transition-colors ${localConfig.provider === cp.id || localConfig.provider === cp.id.toUpperCase()
+                    ? 'border-accent/25 bg-background/80 text-accent'
+                    : 'border-border/70 bg-background/35 text-text-secondary hover:bg-surface/35 hover:border-border-active hover:text-text-primary'
+                  }`}
+                >
+                  <span className={`text-sm font-semibold ${localConfig.provider === cp.id || localConfig.provider === cp.id.toUpperCase() ? 'text-text-primary' : ''}`}>{cp.name}</span>
+                  <span className="text-[10px] text-text-muted mt-1">{cp.models.length} {language === 'zh' ? '个模型' : 'models'}</span>
+                  {(localConfig.provider === cp.id || localConfig.provider === cp.id.toUpperCase()) && (
+                    <div className="absolute top-2.5 right-2.5 rounded-full bg-accent p-0.5">
+                      <Check className="w-3 h-3 text-white" strokeWidth={3} />
+                    </div>
+                  )}
+                </button>
+              ))
+            )}
+          </div>
+        ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {/* 内置厂商 */}
           {builtinProviders.map((p) => (
@@ -1238,9 +1411,10 @@ export function ProviderSettings({
             <span className="text-xs font-medium">{language === 'zh' ? '添加自定义' : 'Add Custom'}</span>
           </button>
         </div>
+        )}
 
-        {/* 添加新 Provider 表单 */}
-        {isAddingCustom && (
+        {/* 添加新 Provider 表单 - 仅本地模式 */}
+        {!isCloudMode && isAddingCustom && (
           <div className="mt-6 rounded-xl border border-border bg-surface/25 p-6 animate-slide-down">
             <div className="flex justify-between items-center mb-4">
               <h5 className="text-sm font-medium text-text-primary">
@@ -1275,6 +1449,7 @@ export function ProviderSettings({
                     {language === 'zh' ? '模型配置' : 'Model Configuration'}
                   </h5>
                 </div>
+                {!isCloudMode && (
                 <FetchModelsButton
                   provider={localConfig.provider}
                   apiKey={localConfig.apiKey}
@@ -1288,6 +1463,7 @@ export function ProviderSettings({
                   onModelRemoved={(m) => handleRemoveModel(m)}
                   onBatchRemoved={(models) => handleBatchRemoveModels(models)}
                 />
+                )}
               </div>
 
               <div className="space-y-4">
@@ -1301,11 +1477,12 @@ export function ProviderSettings({
                   <Select
                     value={localConfig.model}
                     onChange={(value) => setLocalConfig({ ...localConfig, model: value })}
-                    options={availableModelOptions}
+                    options={isCloudMode ? cloudModelOptions : availableModelOptions}
                     className="w-full bg-background/50 border-border"
                   />
                 </div>
 
+                {!isCloudMode && (
                 <div className="pt-2">
                   <div className="flex gap-2">
                     <Input
@@ -1339,6 +1516,7 @@ export function ProviderSettings({
                     </div>
                   )}
                 </div>
+                )}
               </div>
             </div>
           </section>
@@ -1980,7 +2158,8 @@ export function ProviderSettings({
           </div>
           </section>
 
-          {/* 认证 & 网络配置 */}
+          {/* 认证 & 网络配置 - 仅本地模式 */}
+          {!isCloudMode && (
           <section className="rounded-2xl border border-border/50 bg-surface/20 p-6 backdrop-blur-xl shadow-sm relative overflow-hidden group">
             <div className="absolute inset-0 bg-gradient-to-br from-accent/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
             <div className="relative">
@@ -2127,6 +2306,7 @@ export function ProviderSettings({
             </div>
             </div>
           </section>
+          )}
         </div>
       )}
     </div>

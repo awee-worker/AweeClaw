@@ -98,7 +98,7 @@ export class AgentClass {
     }
 
     // 验证 API Key
-    if (!config.apiKey) {
+    if (!config.apiKey && !config.cloudMode) {
       this.showError(translateAgentText('apiKeyWarning'))
       throw new Error('Missing API key')
     }
@@ -322,8 +322,11 @@ export class AgentClass {
     const effectiveRequestId = requestId
       || currentThread?.streamState?.requestId
       || currentThread?.executionMeta?.requestId
+    const pendingToolCalls = currentThread?.streamState?.pendingApprovalToolCalls
 
-    if (effectiveRequestId) {
+    if (effectiveRequestId && pendingToolCalls && pendingToolCalls.length > 0) {
+      approvalService.approve(`${effectiveRequestId}_${pendingToolCalls[0].id}`)
+    } else if (effectiveRequestId) {
       approvalService.approve(effectiveRequestId)
     }
   }
@@ -337,8 +340,11 @@ export class AgentClass {
     const effectiveRequestId = requestId
       || currentThread?.streamState?.requestId
       || currentThread?.executionMeta?.requestId
+    const pendingToolCalls = currentThread?.streamState?.pendingApprovalToolCalls
 
-    if (effectiveRequestId) {
+    if (effectiveRequestId && pendingToolCalls && pendingToolCalls.length > 0) {
+      approvalService.reject(`${effectiveRequestId}_${pendingToolCalls[0].id}`)
+    } else if (effectiveRequestId) {
       approvalService.reject(effectiveRequestId)
     }
   }

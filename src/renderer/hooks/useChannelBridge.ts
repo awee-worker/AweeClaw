@@ -8,6 +8,7 @@ import { logger } from '@renderer/utils/Logger'
 import { getBuiltinProvider } from '@shared/config/providers'
 import { channelConversationService } from '@renderer/agent/services/channelConversationService'
 import { approvalService } from '@renderer/agent/core/tools'
+import { getEffectiveLLMConfig } from '@renderer/services/llmConfigHelper'
 import type { ChannelConfig, ImProcessingStatus } from '@shared/types/channel'
 import { activeStatuses, emitChange } from './useImProcessingStatus'
 
@@ -104,14 +105,14 @@ export function useChannelBridge() {
       const currentLLMConfig = llmConfigRef.current
       const currentWorkspace = workspacePathRef.current
 
-      if (!currentLLMConfig?.apiKey) {
+      if (!currentLLMConfig?.apiKey && !currentLLMConfig?.cloudMode) {
         logger.channel.warn('[ChannelBridge] No API key configured')
         updateImStatus('error')
         return
       }
 
       const accountLLMConfig = await resolveAccountLLMConfig(message.channelId, message.accountId)
-      const effectiveLLMConfig = accountLLMConfig || currentLLMConfig
+      const effectiveLLMConfig = accountLLMConfig ? getEffectiveLLMConfig(accountLLMConfig) : getEffectiveLLMConfig(currentLLMConfig)
 
       updateImStatus('thinking')
 

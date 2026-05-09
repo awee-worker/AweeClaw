@@ -14,6 +14,9 @@ import { supportsFullOpenAIStyleFeatures } from '@shared/config/providers'
 
 export interface ModelOptions {
     enableThinking?: boolean
+    cloudMode?: boolean
+    serverUrl?: string
+    accessToken?: string
 }
 
 interface ResolvedModelRoute {
@@ -61,6 +64,28 @@ function normalizeBaseUrl(baseUrl: string | undefined, protocol: string): string
 }
 
 export function createModel(config: LLMConfig, options: ModelOptions = {}): LanguageModel {
+    const cloudMode = options.cloudMode ?? config.cloudMode
+    const serverUrl = options.serverUrl ?? config.serverUrl
+    const accessToken = options.accessToken ?? config.accessToken
+
+    if (cloudMode && serverUrl && accessToken) {
+        console.log('[modelFactory] Creating cloud model:', {
+            provider: config.provider,
+            model: config.model,
+            serverUrl,
+            hasAccessToken: !!accessToken,
+            accessTokenLength: accessToken?.length,
+        })
+        return createCloudModel(config, { cloudMode, serverUrl, accessToken })
+    }
+
+    console.log('[modelFactory] Creating local model:', {
+        provider: config.provider,
+        model: config.model,
+        cloudMode,
+        hasServerUrl: !!serverUrl,
+        hasAccessToken: !!accessToken,
+    })
     const route = resolveModelRoute(config)
     return createModelFromRoute(route, options)
 }
@@ -94,6 +119,32 @@ function resolveModelRoute(config: LLMConfig): ResolvedModelRoute {
         isBuiltin: Boolean(builtinProvider),
         openAICompatibilityProfile: config.openAICompatibilityProfile,
     }
+}
+
+function createCloudModel(config: LLMConfig, options: ModelOptions): LanguageModel {
+    const serverUrl = options.serverUrl!.replace(/\/+$/, '')
+    const baseURL = `${serverUrl}/api/v1/llm`
+
+    const cloudFetch = (() => {
+        try {
+            const undici = require('undici')
+            return undici.fetch as typeof globalThis.fetch
+        } catch {
+            return globalThis.fetch.bind(globalThis)
+        }
+    })()
+
+    const provider = createOpenAICompatible({
+        name: 'aweeclaw-cloud',
+        apiKey: options.accessToken!,
+        baseURL,
+        headers: {
+            'X-Provider': config.provider,
+            'X-Model': config.model,
+        },
+        fetch: cloudFetch,
+    })
+    return provider(config.model)
 }
 
 function createModelFromRoute(

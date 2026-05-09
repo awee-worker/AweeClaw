@@ -12,6 +12,7 @@ import { t } from '@renderer/i18n'
 import { composerService } from '@renderer/agent/services/composerService'
 import { buildFileChangeDescriptor } from '@renderer/agent/utils/fileChangeUtils'
 import { toast } from '../common/ToastProvider'
+import { getEffectiveLLMConfig } from '@renderer/services/llmConfigHelper'
 
 interface InlineEditProps {
 	position: { x: number; y: number }
@@ -79,7 +80,7 @@ export default function InlineEdit({
 
 		try {
 			const prompt = buildEditPrompt(instruction, selectedCode, filePath, lineRange)
-			const config = llmConfig
+			const config = getEffectiveLLMConfig(llmConfig)
 			const requestId = crypto.randomUUID()
 			setActiveRequestId(requestId)
 

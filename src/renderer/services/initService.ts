@@ -145,6 +145,16 @@ async function restoreWorkspace(): Promise<boolean> {
 function scheduleBackgroundInit(): void {
   scheduleIdleTask(() => {
     try {
+      useStore.getState().restoreSession().catch((e) => {
+        logger.system.warn('[Init] Cloud session restore failed:', e)
+      })
+    } catch (e) {
+      logger.system.warn('[Init] Cloud session restore failed:', e)
+    }
+  })
+
+  scheduleIdleTask(() => {
+    try {
       workerService.init()
       logger.system.debug('[Init] Worker service initialized')
     } catch (e) {

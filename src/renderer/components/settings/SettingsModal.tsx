@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState, useEffect, useMemo, useCallback } from 'react'
-import { Cpu, Settings2, Code, Keyboard, Database, Shield, Monitor, Globe, Plug, Braces, Brain, FileCode, FileText, Zap, Check, X, Palette, Radio } from 'lucide-react'
+import { Cpu, Settings2, Code, Keyboard, Database, Shield, Monitor, Globe, Plug, Braces, Brain, FileCode, FileText, Zap, Check, X, Palette, Radio, Cloud } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { PROVIDERS } from '@/shared/config/providers'
@@ -56,6 +56,9 @@ const SystemSettings = lazy(() =>
 )
 const ChannelSettings = lazy(() =>
     import('./tabs/ChannelSettings').then(module => ({ default: module.ChannelSettings })),
+)
+const CloudSettings = lazy(() =>
+    import('./tabs/CloudSettings').then(module => ({ default: module.CloudSettings })),
 )
 
 function serializeComparable(value: unknown): string {
@@ -406,6 +409,7 @@ export default function SettingsModal() {
         { id: 'keybindings', label: language === 'zh' ? '快捷键' : 'Keybindings', icon: <Keyboard className="w-4 h-4" /> },
         { id: 'security', label: language === 'zh' ? '安全设置' : 'Security', icon: <Shield className="w-4 h-4" /> },
         { id: 'system', label: language === 'zh' ? '系统' : 'System', icon: <Monitor className="w-4 h-4" /> },
+        { id: 'cloud', label: language === 'zh' ? '云端服务' : 'Cloud', icon: <Cloud className="w-4 h-4" /> },
     ] as const, [language])
 
     const renderActiveTab = () => {
@@ -495,13 +499,15 @@ export default function SettingsModal() {
                         setEnableFileLogging={setLocalEnableFileLogging}
                     />
                 )
+            case 'cloud':
+                return <CloudSettings language={language} />
             default:
                 return null
         }
     }
 
     return (
-        <Modal isOpen={true} onClose={handleClose} title="" size="5xl" noPadding className="overflow-hidden bg-background/80 backdrop-blur-2xl border border-border/50 shadow-2xl shadow-black/20 rounded-3xl">
+        <Modal isOpen={true} onClose={handleClose} title="" size="5xl" noPadding showCloseButton={false} className="overflow-hidden bg-background/80 backdrop-blur-2xl border border-border/50 shadow-2xl shadow-black/20 rounded-3xl">
             <div className="flex h-[75vh] max-h-[800px]">
                 <div className="w-64 bg-surface/30 backdrop-blur-xl border-r border-border/50 flex flex-col pt-8 pb-6">
                     <div className="px-6 mb-6">

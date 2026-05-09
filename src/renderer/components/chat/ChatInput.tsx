@@ -32,9 +32,9 @@ import { t } from '@renderer/i18n'
 import { Button } from '../ui'
 import ModelSelector from './ModelSelector'
 import ModeSelector from './ModeSelector'
-
 import { ContextItem, FileContext } from '@/renderer/agent/types'
 import { api } from '@/renderer/services/electronAPI'
+import { getEffectiveLLMConfig } from '@renderer/services/llmConfigHelper'
 
 export interface PendingAttachment {
   id: string
@@ -154,8 +154,8 @@ const ChatInput = memo(function ChatInput({
   const handleOptimize = useCallback(async () => {
     if (!input.trim() || isOptimizing || isStreaming) return
 
-    const config = useStore.getState().llmConfig
-    if (!config?.apiKey) return
+    const config = getEffectiveLLMConfig()
+    if (!config?.apiKey && !config?.cloudMode) return
 
     setIsOptimizing(true)
     const requestId = crypto.randomUUID()

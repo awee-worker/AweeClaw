@@ -377,6 +377,12 @@ export class StreamingService {
       // 创建模型
       const model = createModel(config)
 
+      logger.llm.info('[StreamingService] Model created', {
+        provider: config.provider,
+        model: config.model,
+        cloudMode: config.cloudMode,
+      })
+
       // 转换消息
       let coreMessages = this.messageConverter.convert(messages, systemPrompt)
 
@@ -469,7 +475,17 @@ export class StreamingService {
       }
 
       // LLMError.fromError 会自动使用 mapAISDKError 获取友好消息
-      throw LLMError.fromError(error)
+      const llmError = LLMError.fromError(error)
+      logger.llm.error('[StreamingService] Stream error', {
+        errorType: error?.constructor?.name,
+        errorMessage: (error as Error)?.message?.substring(0, 500),
+        errorCode: llmError.code,
+        provider: config.provider,
+        model: config.model,
+        cloudMode: config.cloudMode,
+        serverUrl: config.serverUrl,
+      })
+      throw llmError
     }
   }
 

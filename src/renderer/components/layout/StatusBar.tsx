@@ -17,6 +17,7 @@ import {
   ListTodo,
   Bell,
   Volume2,
+  Cloud,
 } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -44,6 +45,59 @@ import LspStatusIndicator from './LspStatusIndicator'
 import { motion, AnimatePresence } from 'framer-motion'
 import { shellComposer } from '@/renderer/shell/ShellComposer'
 import { scenarioRegistry } from '@shared/config/scenarios'
+
+function CloudStatusIndicator() {
+  const { isAuthenticated, cloudMode, cloudUser, quota } = useStore(
+    useShallow((s) => ({
+      isAuthenticated: s.isAuthenticated,
+      cloudMode: s.cloudMode,
+      cloudUser: s.cloudUser,
+      quota: s.quota,
+    })),
+  )
+
+  if (!isAuthenticated || cloudMode !== 'cloud') return null
+
+  const quotaPercent = quota && quota.remaining !== -1
+    ? Math.max(0, Math.round((1 - quota.used / quota.limit) * 100))
+    : null
+
+  const isQuotaLow = quotaPercent !== null && quotaPercent <= 20
+  const isQuotaExceeded = quotaPercent !== null && quotaPercent <= 0
+
+  const quotaLabel = quota
+    ? quota.remaining === -1
+      ? '∞'
+      : `${quotaPercent}%`
+    : ''
+
+  const quotaColorClass = isQuotaExceeded
+    ? 'text-red-400'
+    : isQuotaLow
+      ? 'text-yellow-400'
+      : 'text-text-muted group-hover:text-text-primary'
+
+  const cloudColorClass = isQuotaExceeded
+    ? 'text-red-400'
+    : 'text-accent drop-shadow-[0_0_6px_rgba(var(--accent-rgb),0.5)]'
+
+  return (
+    <div
+      className="flex items-center gap-1.5 px-2 py-1 h-6 rounded-md cursor-default group hover:bg-white/5 transition-colors"
+      title={quota ? `Token: ${quota.used.toLocaleString()} / ${quota.limit.toLocaleString()}${isQuotaExceeded ? ' (配额已用完)' : isQuotaLow ? ' (配额不足)' : ''}` : ''}
+    >
+      <Cloud className={`w-3 h-3 ${cloudColorClass}`} />
+      <span className="text-[10px] font-medium text-text-muted group-hover:text-text-primary transition-colors max-w-[80px] truncate">
+        {cloudUser?.username || cloudUser?.email || 'Cloud'}
+      </span>
+      {quotaLabel && (
+        <span className={`text-[10px] font-mono ${quotaColorClass} transition-colors`}>
+          {quotaLabel}
+        </span>
+      )}
+    </div>
+  )
+}
 
 export default function StatusBar() {
   const {
@@ -493,6 +547,8 @@ export default function StatusBar() {
         )}
 
         <div className="flex items-center h-full pr-1">
+          <CloudStatusIndicator />
+
           <BottomBarPopover
             icon={
               <div className={`group relative flex items-center h-6 rounded-md transition-all ease-out duration-500 overflow-hidden ${activeToast && !shouldEject ? 'bg-transparent px-1 max-w-[320px]' : 'justify-center w-6 hover:bg-white/5'}`}>

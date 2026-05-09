@@ -56,6 +56,7 @@ export enum ErrorCode {
   LLM_NO_SUCH_MODEL = 'LLM_NO_SUCH_MODEL',
   LLM_VALIDATION_FAILED = 'LLM_VALIDATION_FAILED',
   LLM_UNSUPPORTED = 'LLM_UNSUPPORTED',
+  LLM_QUOTA_EXCEEDED = 'LLM_QUOTA_EXCEEDED',
 }
 
 /**
@@ -184,6 +185,10 @@ const ERROR_MESSAGES: Record<ErrorCode, { en: string; zh: string }> = {
     en: 'Functionality not supported',
     zh: '功能不支持'
   },
+  [ErrorCode.LLM_QUOTA_EXCEEDED]: {
+    en: 'Token quota exceeded. Please upgrade your plan or wait for the next billing cycle.',
+    zh: 'Token 配额已用完，请升级套餐或等待下个计费周期'
+  },
 }
 
 /**
@@ -295,6 +300,16 @@ export function mapAISDKError(error: unknown): { code: ErrorCode; originalMessag
     }
 
     if (statusCode === 429) {
+      const isQuotaExceeded =
+        detailMessage.toLowerCase().includes('quota') ||
+        (typeof responseBody === 'string' && responseBody.includes('QUOTA_EXCEEDED'))
+      if (isQuotaExceeded) {
+        return {
+          code: ErrorCode.LLM_QUOTA_EXCEEDED,
+          originalMessage: detailMessage,
+          retryable: false,
+        }
+      }
       return {
         code: ErrorCode.API_RATE_LIMIT,
         originalMessage: detailMessage,
@@ -398,6 +413,9 @@ export function mapAISDKError(error: unknown): { code: ErrorCode; originalMessag
   const statusCode = (error as Error & { statusCode?: number }).statusCode
   if (error.name === 'APICallError' && typeof statusCode === 'number') {
     if (statusCode === 429) {
+      if (originalMessage.toLowerCase().includes('quota')) {
+        return { code: ErrorCode.LLM_QUOTA_EXCEEDED, originalMessage, retryable: false }
+      }
       return { code: ErrorCode.API_RATE_LIMIT, originalMessage, retryable: true }
     }
     if (statusCode === 401 || statusCode === 403) {

@@ -9,6 +9,7 @@ import { api } from '@/renderer/services/electronAPI'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useStore, useModeStore } from '@/renderer/store'
 import { useShallow } from 'zustand/react/shallow'
+import { getEffectiveLLMConfig } from '@renderer/services/llmConfigHelper'
 import {
   useAgentStore,
   selectMessageListState,
@@ -106,13 +107,16 @@ export function useAgentCommands() {
     } = sendParamsRef.current
 
     const agentConfig = getAgentConfig()
+    const effectiveConfig = getEffectiveLLMConfig(config)
+
+    const enhancedConfig = {
+      ...effectiveConfig,
+      contextLimit: agentConfig.maxContextTokens,
+    }
 
     await Agent.send(
       content,
-      {
-        ...config,
-        contextLimit: agentConfig.maxContextTokens,
-      },
+      enhancedConfig,
       currentWorkspacePath,
       currentChatMode,
       {

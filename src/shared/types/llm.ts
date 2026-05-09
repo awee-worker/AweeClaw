@@ -125,6 +125,10 @@ export interface LLMConfig {
      * Uses canonical protocol keys instead of transport-specific aliases.
      */
     providerOptions?: LLMProviderOptions
+
+    cloudMode?: boolean
+    serverUrl?: string
+    accessToken?: string
 }
 
 export interface LLMParameters {

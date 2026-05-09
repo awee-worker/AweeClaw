@@ -74,12 +74,16 @@ export const Modal: React.FC<ModalProps> = memo(function Modal({
                 {title && (
                     <div className="relative flex items-center justify-between px-5 py-3 border-b border-border/50 bg-text-primary/[0.02] z-10 shrink-0">
                         <h3 className="text-sm font-bold text-text-primary tracking-tight">{title}</h3>
-                        {showCloseButton && (
-                            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-text-primary/[0.05] text-text-muted hover:text-text-primary transition-all duration-200 group">
-                                <X className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" />
-                            </button>
-                        )}
                     </div>
+                )}
+
+                {showCloseButton && (
+                    <button
+                        onClick={onClose}
+                        className="absolute top-3 right-3 z-20 p-1.5 rounded-lg hover:bg-text-primary/[0.05] text-text-muted hover:text-text-primary transition-all duration-200 group"
+                    >
+                        <X className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" />
+                    </button>
                 )}
 
                 <div className={`relative z-10 custom-scrollbar ${noPadding ? '' : 'p-6'} flex-1 overflow-auto`}>

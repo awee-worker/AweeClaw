@@ -16,6 +16,7 @@ import { logger } from '@utils/Logger'
 import { useStore } from '@store'
 import { getEditorConfig } from '@renderer/settings'
 import { getLanguageFromPath as sharedGetLanguageFromPath } from '@shared/languages'
+import { getEffectiveLLMConfig } from '@renderer/services/llmConfigHelper'
 import { CacheService } from '@shared/utils/CacheService'
 import { getCacheConfig } from '@shared/config/agentConfig'
 
@@ -548,9 +549,9 @@ class CompletionService {
   ): Promise<CompletionResult> {
     return new Promise((resolve, reject) => {
       const state = useStore.getState()
-      const { llmConfig } = state
+      const llmConfig = getEffectiveLLMConfig(state.llmConfig)
 
-      if (!llmConfig.apiKey) {
+      if (!llmConfig.apiKey && !llmConfig.cloudMode) {
         reject(new Error('API key not configured'))
         return
       }

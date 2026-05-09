@@ -181,6 +181,18 @@ export default function ChatPanel() {
     }
   }, [])
 
+  // 流式请求完成后刷新云端配额
+  const prevStreamingRef = useRef(isStreaming)
+  useEffect(() => {
+    if (prevStreamingRef.current && !isStreaming) {
+      const { isAuthenticated, cloudMode, fetchQuota } = useStore.getState()
+      if (isAuthenticated && cloudMode === 'cloud') {
+        fetchQuota().catch(() => {})
+      }
+    }
+    prevStreamingRef.current = isStreaming
+  }, [isStreaming])
+
   // 缓存过滤后的消息列表，避免每次渲染都创建新数组
   const filteredMessages = useMemo(
     () => messages.filter(m => m.role === 'user' || m.role === 'assistant'),
