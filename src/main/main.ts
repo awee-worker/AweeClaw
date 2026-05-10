@@ -611,6 +611,20 @@ async function initializeModules(firstWin: BrowserWindow) {
     getWindowWorkspace: (id: number) => windowWorkspaces.get(id) || null,
   })
 
+  // 系统唤醒后通知渲染进程刷新 token
+  try {
+    const { powerMonitor } = await import('electron')
+    powerMonitor.on('resume', () => {
+      logger.system.info('[Main] System resumed from sleep, notifying renderer to refresh token')
+      const win = getMainWindow()
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('system:resume')
+      }
+    })
+  } catch (err) {
+    logger.system.warn('[Main] powerMonitor setup skipped:', err instanceof Error ? err.message : String(err))
+  }
+
   // 自动初始化渠道服务（飞书等 WebSocket 长连接）
   try {
     const { channelService } = await import('./services/channel')

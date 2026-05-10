@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
-import { LogIn, UserPlus, LogOut, Eye, EyeOff, Server, AlertCircle, Loader2, Cloud, User, Crown, Zap, Feather, Rocket, ArrowUpCircle, CreditCard, ExternalLink } from 'lucide-react'
+import { LogIn, UserPlus, LogOut, Eye, EyeOff, Server, AlertCircle, Loader2, Cloud, User, Crown, Zap, Feather, Rocket, ArrowUpCircle, CreditCard, ExternalLink, Mail, Lock } from 'lucide-react'
 import QRCode from 'qrcode'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -725,7 +725,7 @@ export function UserAccountPopover({ language }: { language: Language }) {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder={language === 'zh' ? '输入邮箱地址' : 'Enter email address'}
-                leftIcon={<Cloud className="w-4 h-4" />}
+                leftIcon={<Mail className="w-4 h-4" />}
                 required
               />
             </div>
@@ -739,7 +739,7 @@ export function UserAccountPopover({ language }: { language: Language }) {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder={language === 'zh' ? '输入密码' : 'Enter password'}
-                leftIcon={<Cloud className="w-4 h-4" />}
+                leftIcon={<Lock className="w-4 h-4" />}
                 rightIcon={
                   <button
                     type="button"

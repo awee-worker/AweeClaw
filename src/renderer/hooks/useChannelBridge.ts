@@ -8,7 +8,7 @@ import { logger } from '@renderer/utils/Logger'
 import { getBuiltinProvider } from '@shared/config/providers'
 import { channelConversationService } from '@renderer/agent/services/channelConversationService'
 import { approvalService } from '@renderer/agent/core/tools'
-import { getEffectiveLLMConfig } from '@renderer/services/llmConfigHelper'
+import { getEffectiveLLMConfigAsync } from '@renderer/services/llmConfigHelper'
 import type { ChannelConfig, ImProcessingStatus } from '@shared/types/channel'
 import { activeStatuses, emitChange } from './useImProcessingStatus'
 
@@ -106,10 +106,17 @@ export function useChannelBridge() {
       const currentWorkspace = workspacePathRef.current
 
       const accountLLMConfig = await resolveAccountLLMConfig(message.channelId, message.accountId)
-      const effectiveLLMConfig = accountLLMConfig ? getEffectiveLLMConfig(accountLLMConfig) : getEffectiveLLMConfig(currentLLMConfig)
+      const effectiveLLMConfig = accountLLMConfig ? await getEffectiveLLMConfigAsync(accountLLMConfig) : await getEffectiveLLMConfigAsync(currentLLMConfig)
 
       if (!effectiveLLMConfig.cloudMode && !effectiveLLMConfig.apiKey) {
-        logger.channel.warn('[ChannelBridge] No API key configured')
+        const { isAuthenticated, cloudMode, language } = useStore.getState()
+        if (cloudMode === 'cloud' && !isAuthenticated) {
+          logger.channel.warn('[ChannelBridge] Cloud session expired')
+          const replyText = language === 'zh' ? '云端登录已过期，请联系管理员重新登录后继续。' : 'Cloud session has expired. Please contact the admin to sign in again.'
+          await api.channel.sendReply(message.conversationKey, replyText, message.id)
+        } else {
+          logger.channel.warn('[ChannelBridge] No API key configured')
+        }
         updateImStatus('error')
         return
       }

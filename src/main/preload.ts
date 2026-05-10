@@ -1066,4 +1066,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   auditAppend: (entries: any) => ipcRenderer.invoke('audit:append', entries),
   auditQuery: (filter?: any) => ipcRenderer.invoke('audit:query', filter),
   auditFlush: () => ipcRenderer.invoke('audit:flush'),
+
+  // System resume event (wake from sleep)
+  onSystemResume: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on('system:resume', handler)
+    return () => ipcRenderer.removeListener('system:resume', handler)
+  },
 })

@@ -561,6 +561,10 @@ function createGroupedAPI() {
       getCategories: () => raw.scenarioMarketplaceCategories(),
       download: (scenarioId: string) => raw.scenarioMarketplaceDownload(scenarioId),
     },
+
+    system: {
+      onResume: (callback: () => void) => raw.onSystemResume(callback),
+    },
   }
 }
 

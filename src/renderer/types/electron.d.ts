@@ -723,6 +723,9 @@ export interface ElectronAPI {
   auditAppend: (entries: AuditEntry | AuditEntry[]) => Promise<{ success: boolean }>
   auditQuery: (filter?: AuditQueryFilter) => Promise<{ success: boolean; entries: AuditEntry[] }>
   auditFlush: () => Promise<{ success: boolean }>
+
+  // System
+  onSystemResume: (callback: () => void) => () => void
 }
 
 declare global {

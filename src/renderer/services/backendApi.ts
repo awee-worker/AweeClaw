@@ -16,6 +16,52 @@ let serverUrl = '';
 let onTokenRefresh: ((newTokens: AuthTokens) => void) | null = null;
 let onAuthFailed: (() => void) | null = null;
 let refreshPromise: Promise<AuthTokens | null> | null = null;
+let proactiveRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+const ACCESS_TOKEN_REFRESH_MARGIN_MS = 2 * 60 * 1000;
+
+function decodeJwtExp(token: string): number | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    let payload = parts[1];
+    payload = payload.replace(/-/g, '+').replace(/_/g, '/');
+    while (payload.length % 4 !== 0) {
+      payload += '=';
+    }
+    const decoded = atob(payload);
+    const json = JSON.parse(decoded);
+    return typeof json.exp === 'number' ? json.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
+function scheduleProactiveRefresh() {
+  if (proactiveRefreshTimer) {
+    clearTimeout(proactiveRefreshTimer);
+    proactiveRefreshTimer = null;
+  }
+
+  if (!tokens?.accessToken) return;
+
+  const expiresAt = decodeJwtExp(tokens.accessToken);
+  if (!expiresAt) return;
+
+  const now = Date.now();
+  const refreshAt = expiresAt - ACCESS_TOKEN_REFRESH_MARGIN_MS;
+  const delay = refreshAt - now;
+
+  if (delay <= 0) {
+    refreshAccessToken().catch(() => {});
+    return;
+  }
+
+  proactiveRefreshTimer = setTimeout(() => {
+    proactiveRefreshTimer = null;
+    refreshAccessToken().catch(() => {});
+  }, delay);
+}
 
 export function setServerUrl(url: string) {
   serverUrl = url.replace(/\/+$/, '');
@@ -27,6 +73,14 @@ export function getServerUrl(): string {
 
 export function setTokens(newTokens: AuthTokens | null) {
   tokens = newTokens;
+  if (newTokens) {
+    scheduleProactiveRefresh();
+  } else {
+    if (proactiveRefreshTimer) {
+      clearTimeout(proactiveRefreshTimer);
+      proactiveRefreshTimer = null;
+    }
+  }
 }
 
 export function getTokens(): AuthTokens | null {
@@ -49,6 +103,11 @@ export function isAuthenticated(): boolean {
   return !!tokens?.accessToken;
 }
 
+export async function tryRefreshToken(): Promise<boolean> {
+  const newTokens = await refreshAccessToken();
+  return !!newTokens;
+}
+
 async function refreshAccessToken(): Promise<AuthTokens | null> {
   if (!tokens?.refreshToken || !serverUrl) return null;
 
@@ -64,6 +123,10 @@ async function refreshAccessToken(): Promise<AuthTokens | null> {
 
       if (!res.ok) {
         tokens = null;
+        if (proactiveRefreshTimer) {
+          clearTimeout(proactiveRefreshTimer);
+          proactiveRefreshTimer = null;
+        }
         onAuthFailed?.();
         return null;
       }
@@ -76,6 +139,7 @@ async function refreshAccessToken(): Promise<AuthTokens | null> {
 
       tokens = newTokens;
       onTokenRefresh?.(newTokens);
+      scheduleProactiveRefresh();
       return newTokens;
     } catch {
       return null;

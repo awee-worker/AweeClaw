@@ -634,13 +634,30 @@ Try again with the corrected tool call.`,
         continue
       }
 
-      const { language } = useStore.getState()
+      const { language, cloudMode, isAuthenticated } = useStore.getState()
       logger.agent.error('[Loop] LLM error:', result.error)
-      threadStore.addSystemAlertPart(assistantId, {
-        alertType: 'error',
-        title: getLocalizedText(language, '模型错误', 'Model Error'),
-        message: result.error,
-      })
+
+      const isCloudAuthError = config.cloudMode && cloudMode === 'cloud' && isAuthenticated && (
+        result.error.includes('API_KEY_INVALID') ||
+        result.error.includes('Invalid API key') ||
+        result.error.includes('API Key 无效') ||
+        result.error.includes('401') ||
+        result.error.includes('Unauthorized')
+      )
+
+      if (isCloudAuthError) {
+        threadStore.addSystemAlertPart(assistantId, {
+          alertType: 'error',
+          title: getLocalizedText(language, '登录已过期', 'Session Expired'),
+          message: getLocalizedText(language, '您的云端登录已过期，请重新登录后继续。点击左下角头像进行登录。', 'Your cloud session has expired. Please sign in again to continue. Click the avatar in the bottom left to sign in.'),
+        })
+      } else {
+        threadStore.addSystemAlertPart(assistantId, {
+          alertType: 'error',
+          title: getLocalizedText(language, '模型错误', 'Model Error'),
+          message: result.error,
+        })
+      }
       threadStore.updateExecutionMeta({ loopState: 'failed' })
       EventBus.emit({ type: 'loop:end', reason: 'error', threadId, assistantId, requestId, planTaskId: context.planTaskId })
       break

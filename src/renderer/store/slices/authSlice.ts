@@ -6,8 +6,11 @@ import {
   getTokens,
   setOnTokenRefresh,
   setOnAuthFailed,
+  tryRefreshToken,
   backendApi,
 } from '@renderer/services/backendApi'
+import { toast } from '@renderer/components/common/ToastProvider'
+import { api } from '@renderer/services/electronAPI'
 
 export interface CloudUser {
   id: string
@@ -88,7 +91,27 @@ function clearPersistedAuth() {
   } catch {}
 }
 
-export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set, get) => ({
+let authFailedHandler: (() => void) | null = null
+
+export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set, get) => {
+  authFailedHandler = () => {
+    clearPersistedAuth();
+    const state = get();
+    if (state.isAuthenticated) {
+      set({ isAuthenticated: false, cloudUser: null, quota: null, cloudMode: 'local' });
+      import('@store').then(({ useStore }) => {
+        const language = useStore.getState().language as 'en' | 'zh';
+        toast.error(
+          language === 'zh' ? '登录已过期' : 'Session Expired',
+          language === 'zh' ? '您的登录已过期，请重新登录' : 'Your session has expired. Please sign in again.',
+        );
+      }).catch(() => {
+        toast.error('登录已过期', '您的登录已过期，请重新登录');
+      });
+    }
+  }
+
+  return {
   isAuthenticated: false,
   cloudUser: null,
   cloudMode: 'local',
@@ -244,16 +267,17 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
         } catch {
           setTokens(null);
           clearPersistedAuth();
-          set({ isAuthenticated: false, cloudUser: null });
+          set({ isAuthenticated: false, cloudUser: null, cloudMode: 'local' });
         }
       } else {
         setTokens(null);
         clearPersistedAuth();
-        set({ isAuthenticated: false, cloudUser: null });
+        set({ isAuthenticated: false, cloudUser: null, cloudMode: 'local' });
       }
     }
   },
-});
+  }
+}
 
 setOnTokenRefresh((newTokens) => {
   const persisted = loadPersistedAuth();
@@ -267,5 +291,12 @@ setOnTokenRefresh((newTokens) => {
 });
 
 setOnAuthFailed(() => {
-  clearPersistedAuth();
+  if (authFailedHandler) {
+    authFailedHandler();
+  }
 });
+
+api.system.onResume(() => {
+  logger.system.info('[Auth] System resumed from sleep, attempting token refresh')
+  tryRefreshToken().catch(() => {})
+})
