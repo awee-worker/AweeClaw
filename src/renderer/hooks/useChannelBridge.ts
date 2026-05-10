@@ -105,14 +105,14 @@ export function useChannelBridge() {
       const currentLLMConfig = llmConfigRef.current
       const currentWorkspace = workspacePathRef.current
 
-      if (!currentLLMConfig?.apiKey && !currentLLMConfig?.cloudMode) {
+      const accountLLMConfig = await resolveAccountLLMConfig(message.channelId, message.accountId)
+      const effectiveLLMConfig = accountLLMConfig ? getEffectiveLLMConfig(accountLLMConfig) : getEffectiveLLMConfig(currentLLMConfig)
+
+      if (!effectiveLLMConfig.cloudMode && !effectiveLLMConfig.apiKey) {
         logger.channel.warn('[ChannelBridge] No API key configured')
         updateImStatus('error')
         return
       }
-
-      const accountLLMConfig = await resolveAccountLLMConfig(message.channelId, message.accountId)
-      const effectiveLLMConfig = accountLLMConfig ? getEffectiveLLMConfig(accountLLMConfig) : getEffectiveLLMConfig(currentLLMConfig)
 
       updateImStatus('thinking')
 
@@ -208,6 +208,11 @@ export function useChannelBridge() {
         }
 
         updateImStatus('done')
+
+        if (effectiveLLMConfig.cloudMode) {
+          const { fetchQuota } = useStore.getState()
+          fetchQuota().catch(() => {})
+        }
       } finally {
         clearInterval(autoApproveInterval)
       }

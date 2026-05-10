@@ -127,6 +127,7 @@ export default function SettingsModal() {
         set,
         setProvider,
         setShowSettings,
+        settingsInitialTab,
         save,
     } = useStore(useShallow(s => ({
         llmConfig: s.llmConfig,
@@ -144,12 +145,20 @@ export default function SettingsModal() {
         set: s.set,
         setProvider: s.setProvider,
         setShowSettings: s.setShowSettings,
+        settingsInitialTab: s.settingsInitialTab,
         save: s.save,
     })))
 
     const [activeTab, setActiveTab] = useState<SettingsTab>('provider')
     const [showApiKey, setShowApiKey] = useState(false)
     const [saved, setSaved] = useState(false)
+
+    useEffect(() => {
+        if (settingsInitialTab) {
+            setActiveTab(settingsInitialTab as SettingsTab)
+            useStore.getState().setShowSettings(true, undefined)
+        }
+    }, [settingsInitialTab])
 
     const [localConfig, setLocalConfig] = useState(llmConfig)
     const [localLanguage, setLocalLanguage] = useState(language)

@@ -259,9 +259,10 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
           }
         `}
         >
-        <span className="text-[11px] grayscale opacity-80 flex-shrink-0">{getIcon(currentProviderGroup.providerId)}</span>
-        {cloudMode === 'cloud' && isAuthenticated && (
+        {cloudMode === 'cloud' && isAuthenticated ? (
           <Cloud className="w-3 h-3 text-accent flex-shrink-0" />
+        ) : (
+          <span className="text-[11px] grayscale opacity-80 flex-shrink-0">{getIcon(currentProviderGroup.providerId)}</span>
         )}
         <span className="truncate max-w-[200px]" title={`${currentProviderGroup.providerName}/${currentModel.name}`}>
           {currentProviderGroup.providerName}/{currentModel.name.split('/').pop()}
@@ -302,7 +303,11 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
                         ${isSelectedProvider ? 'bg-accent/10 text-accent font-medium' : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'}
                       `}
                     >
-                      <span className="grayscale text-[12px] flex-shrink-0">{getIcon(group.providerId)}</span>
+                      <span className="grayscale text-[12px] flex-shrink-0">
+                        {cloudMode === 'cloud' && isAuthenticated
+                          ? <Cloud className="w-3.5 h-3.5 text-accent" />
+                          : getIcon(group.providerId)}
+                      </span>
                       <span className="truncate" title={group.providerName}>{group.providerName}</span>
                     </button>
                   )
@@ -316,7 +321,11 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
               ) : (
                 <>
                   <div className="px-2 py-1.5 text-[11px] font-bold text-text-muted/90 uppercase tracking-wider flex items-center gap-1.5 sticky top-0 bg-surface z-10 border-b border-border/30">
-                    <span className="grayscale">{getIcon(visibleProviderGroup.providerId)}</span>
+                    <span className="grayscale">
+                      {cloudMode === 'cloud' && isAuthenticated
+                        ? <Cloud className="w-3 h-3 text-accent" />
+                        : getIcon(visibleProviderGroup.providerId)}
+                    </span>
                     {visibleProviderGroup.providerName}
                   </div>
                   {visibleProviderGroup.models.length === 0 ? (

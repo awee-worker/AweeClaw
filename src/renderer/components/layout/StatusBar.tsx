@@ -45,16 +45,24 @@ import LspStatusIndicator from './LspStatusIndicator'
 import { motion, AnimatePresence } from 'framer-motion'
 import { shellComposer } from '@/renderer/shell/ShellComposer'
 import { scenarioRegistry } from '@shared/config/scenarios'
+import { Modal } from '../ui/Modal'
 
-function CloudStatusIndicator() {
-  const { isAuthenticated, cloudMode, cloudUser, quota } = useStore(
+function CloudQuotaIndicator({ language }: { language: string }) {
+  const { isAuthenticated, cloudMode, quota, fetchQuota } = useStore(
     useShallow((s) => ({
       isAuthenticated: s.isAuthenticated,
       cloudMode: s.cloudMode,
-      cloudUser: s.cloudUser,
       quota: s.quota,
+      fetchQuota: s.fetchQuota,
     })),
   )
+  const [showQuotaModal, setShowQuotaModal] = useState(false)
+
+  useEffect(() => {
+    if (isAuthenticated && cloudMode === 'cloud' && !quota) {
+      fetchQuota().catch(() => {})
+    }
+  }, [isAuthenticated, cloudMode, quota, fetchQuota])
 
   if (!isAuthenticated || cloudMode !== 'cloud') return null
 
@@ -62,8 +70,14 @@ function CloudStatusIndicator() {
     ? Math.max(0, Math.round((1 - quota.used / quota.limit) * 100))
     : null
 
-  const isQuotaLow = quotaPercent !== null && quotaPercent <= 20
   const isQuotaExceeded = quotaPercent !== null && quotaPercent <= 0
+  const isQuotaLow = quotaPercent !== null && quotaPercent <= 20
+
+  const cloudColorClass = isQuotaExceeded
+    ? 'text-red-400'
+    : isQuotaLow
+      ? 'text-yellow-400'
+      : 'text-accent'
 
   const quotaLabel = quota
     ? quota.remaining === -1
@@ -77,25 +91,112 @@ function CloudStatusIndicator() {
       ? 'text-yellow-400'
       : 'text-text-muted group-hover:text-text-primary'
 
-  const cloudColorClass = isQuotaExceeded
-    ? 'text-red-400'
-    : 'text-accent drop-shadow-[0_0_6px_rgba(var(--accent-rgb),0.5)]'
-
   return (
-    <div
-      className="flex items-center gap-1.5 px-2 py-1 h-6 rounded-md cursor-default group hover:bg-white/5 transition-colors"
-      title={quota ? `Token: ${quota.used.toLocaleString()} / ${quota.limit.toLocaleString()}${isQuotaExceeded ? ' (配额已用完)' : isQuotaLow ? ' (配额不足)' : ''}` : ''}
-    >
-      <Cloud className={`w-3 h-3 ${cloudColorClass}`} />
-      <span className="text-[10px] font-medium text-text-muted group-hover:text-text-primary transition-colors max-w-[80px] truncate">
-        {cloudUser?.username || cloudUser?.email || 'Cloud'}
-      </span>
-      {quotaLabel && (
-        <span className={`text-[10px] font-mono ${quotaColorClass} transition-colors`}>
-          {quotaLabel}
+    <>
+      <div
+        className="flex items-center gap-1.5 px-2 py-1 h-6 rounded-md cursor-pointer group hover:bg-white/5 transition-colors"
+        title={quota ? `Token: ${quota.used.toLocaleString()} / ${quota.limit.toLocaleString()}${isQuotaExceeded ? (language === 'zh' ? ' (配额已用完)' : ' (Exceeded)') : isQuotaLow ? (language === 'zh' ? ' (配额不足)' : ' (Low)') : ''}` : ''}
+        onClick={() => setShowQuotaModal(true)}
+      >
+        <Cloud className={`w-3 h-3 ${cloudColorClass}`} />
+        <span className="text-[10px] font-medium text-text-muted group-hover:text-text-primary transition-colors max-w-[80px] truncate">
+          {quota?.displayName || (language === 'zh' ? '用量' : 'Usage')}
         </span>
-      )}
-    </div>
+        {quotaLabel && (
+          <span className={`text-[10px] font-mono ${quotaColorClass} transition-colors`}>
+            {quotaLabel}
+          </span>
+        )}
+      </div>
+
+      <Modal
+        isOpen={showQuotaModal}
+        onClose={() => setShowQuotaModal(false)}
+        size="sm"
+      >
+        <div className="p-2 space-y-5">
+          <div className="flex items-center gap-2.5 pt-2">
+            <div className="w-8 h-8 rounded-xl bg-accent/10 flex items-center justify-center">
+              <Cloud className="w-4 h-4 text-accent" />
+            </div>
+            <h3 className="text-base font-bold text-text-primary">
+              {language === 'zh' ? 'Token 用量' : 'Token Usage'}
+            </h3>
+          </div>
+
+          {quota && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="flex flex-col items-center p-3 rounded-xl bg-surface/80">
+                  <span className="text-[10px] text-text-muted mb-1">{language === 'zh' ? '已使用' : 'Used'}</span>
+                  <span className="text-sm font-bold text-text-primary">{quota.used.toLocaleString()}</span>
+                </div>
+                <div className="flex flex-col items-center p-3 rounded-xl bg-surface/80">
+                  <span className="text-[10px] text-text-muted mb-1">{language === 'zh' ? '剩余' : 'Remaining'}</span>
+                  <span className="text-sm font-bold text-text-primary">
+                    {quota.remaining === -1
+                      ? (language === 'zh' ? '无限' : '∞')
+                      : quota.remaining.toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex flex-col items-center p-3 rounded-xl bg-surface/80">
+                  <span className="text-[10px] text-text-muted mb-1">{language === 'zh' ? '总额度' : 'Total'}</span>
+                  <span className="text-sm font-bold text-text-primary">
+                    {quota.limit === -1
+                      ? (language === 'zh' ? '无限' : '∞')
+                      : quota.limit.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+
+              {quota.limit !== -1 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-text-muted">
+                      {language === 'zh' ? '使用进度' : 'Progress'}
+                    </span>
+                    <span className={`font-mono ${isQuotaExceeded ? 'text-red-400' : isQuotaLow ? 'text-yellow-400' : 'text-accent'}`}>
+                      {((quota.used / quota.limit) * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                  <div className="h-2 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        isQuotaExceeded
+                          ? 'bg-red-400'
+                          : isQuotaLow
+                            ? 'bg-yellow-400'
+                            : 'bg-gradient-to-r from-accent to-accent/60'
+                      }`}
+                      style={{ width: `${Math.min(100, (quota.used / quota.limit) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-accent/5 border border-accent/10">
+                <span className="text-xs text-text-muted">
+                  {language === 'zh' ? '当前套餐' : 'Plan'}
+                </span>
+                <span className="text-xs font-medium text-accent ml-auto">
+                  {quota.displayName || (language === 'zh' ? '免费版' : 'Free')}
+                </span>
+              </div>
+            </div>
+          )}
+
+          <button
+            onClick={() => {
+              setShowQuotaModal(false)
+              useStore.getState().setShowSettings(true, 'cloud')
+            }}
+            className="w-full py-2 text-xs text-accent hover:text-accent-hover transition-colors text-center"
+          >
+            {language === 'zh' ? '管理云端服务 →' : 'Manage Cloud →'}
+          </button>
+        </div>
+      </Modal>
+    </>
   )
 }
 
@@ -361,6 +462,8 @@ export default function StatusBar() {
       <div className="flex-1" />
 
       <div className="flex items-center gap-4 h-full">
+        <CloudQuotaIndicator language={language} />
+
         {showEditor && (
           <div className="flex items-center gap-3 pr-1 h-full font-mono">
             <div className="flex items-center gap-2 cursor-pointer hover:bg-white/5 hover:text-text-primary px-2 py-1 rounded-md transition-colors text-[10px] hidden md:flex">
@@ -547,8 +650,6 @@ export default function StatusBar() {
         )}
 
         <div className="flex items-center h-full pr-1">
-          <CloudStatusIndicator />
-
           <BottomBarPopover
             icon={
               <div className={`group relative flex items-center h-6 rounded-md transition-all ease-out duration-500 overflow-hidden ${activeToast && !shouldEject ? 'bg-transparent px-1 max-w-[320px]' : 'justify-center w-6 hover:bg-white/5'}`}>

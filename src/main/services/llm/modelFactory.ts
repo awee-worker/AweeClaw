@@ -134,14 +134,28 @@ function createCloudModel(config: LLMConfig, options: ModelOptions): LanguageMod
         }
     })()
 
+    const isCustomProvider = config.provider.startsWith('custom-')
+    const providerHeader = isCustomProvider ? 'CUSTOM' : config.provider
+
+    const headers: Record<string, string> = {
+        'X-Provider': providerHeader,
+        'X-Model': config.model,
+    }
+
+    if (isCustomProvider) {
+        if (config.baseUrl) {
+            headers['X-Base-Url'] = config.baseUrl
+        }
+        if (config.apiKey) {
+            headers['X-Api-Key'] = config.apiKey
+        }
+    }
+
     const provider = createOpenAICompatible({
         name: 'aweeclaw-cloud',
         apiKey: options.accessToken!,
         baseURL,
-        headers: {
-            'X-Provider': config.provider,
-            'X-Model': config.model,
-        },
+        headers,
         fetch: cloudFetch,
     })
     return provider(config.model)

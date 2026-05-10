@@ -15,11 +15,12 @@ export interface CloudUser {
   username?: string
   avatarUrl?: string
   role: string
-  subscriptionPlan: string
+  planId: string
 }
 
 export interface CloudQuota {
   plan: string
+  displayName?: string
   limit: number
   used: number
   remaining: number
