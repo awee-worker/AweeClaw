@@ -1,6 +1,7 @@
 import { api } from '@/renderer/services/electronAPI'
 import { logger } from '@utils/Logger'
 import { useEffect, useMemo, useState } from 'react'
+import { getQuotaBarColor, getQuotaTextColor, getQuotaGlowColor } from '@utils/quotaColors'
 import {
   GitBranch,
   AlertCircle,
@@ -45,7 +46,6 @@ import LspStatusIndicator from './LspStatusIndicator'
 import { motion, AnimatePresence } from 'framer-motion'
 import { shellComposer } from '@/renderer/shell/ShellComposer'
 import { scenarioRegistry } from '@shared/config/scenarios'
-import { Modal } from '../ui/Modal'
 
 function CloudQuotaIndicator({ language }: { language: string }) {
   const { isAuthenticated, cloudMode, quota, fetchQuota } = useStore(
@@ -56,7 +56,6 @@ function CloudQuotaIndicator({ language }: { language: string }) {
       fetchQuota: s.fetchQuota,
     })),
   )
-  const [showQuotaModal, setShowQuotaModal] = useState(false)
 
   useEffect(() => {
     if (isAuthenticated && cloudMode === 'cloud' && !quota) {
@@ -66,6 +65,10 @@ function CloudQuotaIndicator({ language }: { language: string }) {
 
   if (!isAuthenticated || cloudMode !== 'cloud') return null
 
+  const usedPercent = quota && quota.limit !== -1
+    ? Math.min(100, (quota.used / quota.limit) * 100)
+    : 0
+
   const quotaPercent = quota && quota.remaining !== -1
     ? Math.max(0, Math.round((1 - quota.used / quota.limit) * 100))
     : null
@@ -73,130 +76,103 @@ function CloudQuotaIndicator({ language }: { language: string }) {
   const isQuotaExceeded = quotaPercent !== null && quotaPercent <= 0
   const isQuotaLow = quotaPercent !== null && quotaPercent <= 20
 
-  const cloudColorClass = isQuotaExceeded
-    ? 'text-red-400'
-    : isQuotaLow
-      ? 'text-yellow-400'
-      : 'text-accent'
-
+  const cloudColorClass = getQuotaTextColor(usedPercent)
   const quotaLabel = quota
     ? quota.remaining === -1
       ? '∞'
       : `${quotaPercent}%`
     : ''
-
-  const quotaColorClass = isQuotaExceeded
-    ? 'text-red-400'
-    : isQuotaLow
-      ? 'text-yellow-400'
-      : 'text-text-muted group-hover:text-text-primary'
+  const quotaColorClass = getQuotaTextColor(usedPercent)
 
   return (
-    <>
-      <div
-        className="flex items-center gap-1.5 px-2 py-1 h-6 rounded-md cursor-pointer group hover:bg-white/5 transition-colors"
-        title={quota ? `Token: ${quota.used.toLocaleString()} / ${quota.limit.toLocaleString()}${isQuotaExceeded ? (language === 'zh' ? ' (配额已用完)' : ' (Exceeded)') : isQuotaLow ? (language === 'zh' ? ' (配额不足)' : ' (Low)') : ''}` : ''}
-        onClick={() => setShowQuotaModal(true)}
-      >
-        <Cloud className={`w-3 h-3 ${cloudColorClass}`} />
-        <span className="text-[10px] font-medium text-text-muted group-hover:text-text-primary transition-colors max-w-[80px] truncate">
-          {quota?.displayName || (language === 'zh' ? '用量' : 'Usage')}
-        </span>
-        {quotaLabel && (
-          <span className={`text-[10px] font-mono ${quotaColorClass} transition-colors`}>
-            {quotaLabel}
+    <BottomBarPopover
+      icon={
+        <div
+          className="flex items-center gap-1.5 px-2 py-1 h-6 rounded-md cursor-pointer group hover:bg-white/5 transition-colors"
+          title={quota ? `Token: ${quota.used.toLocaleString()} / ${quota.limit.toLocaleString()}${isQuotaExceeded ? (language === 'zh' ? ' (配额已用完)' : ' (Exceeded)') : isQuotaLow ? (language === 'zh' ? ' (配额不足)' : ' (Low)') : ''}` : ''}
+        >
+          <Cloud className={`w-3 h-3 ${cloudColorClass} ${getQuotaGlowColor(usedPercent)}`} />
+          <span className="text-[10px] font-medium text-text-muted group-hover:text-text-primary transition-colors max-w-[80px] truncate">
+            {quota?.displayName || (language === 'zh' ? '用量' : 'Usage')}
           </span>
-        )}
-      </div>
-
-      <Modal
-        isOpen={showQuotaModal}
-        onClose={() => setShowQuotaModal(false)}
-        size="sm"
-      >
-        <div className="p-2 space-y-5">
-          <div className="flex items-center gap-2.5 pt-2">
-            <div className="w-8 h-8 rounded-xl bg-accent/10 flex items-center justify-center">
-              <Cloud className="w-4 h-4 text-accent" />
-            </div>
-            <h3 className="text-base font-bold text-text-primary">
-              {language === 'zh' ? 'Token 用量' : 'Token Usage'}
-            </h3>
-          </div>
-
-          {quota && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-3 gap-3">
-                <div className="flex flex-col items-center p-3 rounded-xl bg-surface/80">
-                  <span className="text-[10px] text-text-muted mb-1">{language === 'zh' ? '已使用' : 'Used'}</span>
-                  <span className="text-sm font-bold text-text-primary">{quota.used.toLocaleString()}</span>
-                </div>
-                <div className="flex flex-col items-center p-3 rounded-xl bg-surface/80">
-                  <span className="text-[10px] text-text-muted mb-1">{language === 'zh' ? '剩余' : 'Remaining'}</span>
-                  <span className="text-sm font-bold text-text-primary">
-                    {quota.remaining === -1
-                      ? (language === 'zh' ? '无限' : '∞')
-                      : quota.remaining.toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex flex-col items-center p-3 rounded-xl bg-surface/80">
-                  <span className="text-[10px] text-text-muted mb-1">{language === 'zh' ? '总额度' : 'Total'}</span>
-                  <span className="text-sm font-bold text-text-primary">
-                    {quota.limit === -1
-                      ? (language === 'zh' ? '无限' : '∞')
-                      : quota.limit.toLocaleString()}
-                  </span>
-                </div>
-              </div>
-
-              {quota.limit !== -1 && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-text-muted">
-                      {language === 'zh' ? '使用进度' : 'Progress'}
-                    </span>
-                    <span className={`font-mono ${isQuotaExceeded ? 'text-red-400' : isQuotaLow ? 'text-yellow-400' : 'text-accent'}`}>
-                      {((quota.used / quota.limit) * 100).toFixed(1)}%
-                    </span>
-                  </div>
-                  <div className="h-2 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 ${
-                        isQuotaExceeded
-                          ? 'bg-red-400'
-                          : isQuotaLow
-                            ? 'bg-yellow-400'
-                            : 'bg-gradient-to-r from-accent to-accent/60'
-                      }`}
-                      style={{ width: `${Math.min(100, (quota.used / quota.limit) * 100)}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-accent/5 border border-accent/10">
-                <span className="text-xs text-text-muted">
-                  {language === 'zh' ? '当前套餐' : 'Plan'}
-                </span>
-                <span className="text-xs font-medium text-accent ml-auto">
-                  {quota.displayName || (language === 'zh' ? '免费版' : 'Free')}
-                </span>
-              </div>
-            </div>
+          {quotaLabel && (
+            <span className={`text-[10px] font-mono ${quotaColorClass} transition-colors`}>
+              {quotaLabel}
+            </span>
           )}
-
-          <button
-            onClick={() => {
-              setShowQuotaModal(false)
-              useStore.getState().setShowSettings(true, 'cloud')
-            }}
-            className="w-full py-2 text-xs text-accent hover:text-accent-hover transition-colors text-center"
-          >
-            {language === 'zh' ? '管理云端服务 →' : 'Manage Cloud →'}
-          </button>
         </div>
-      </Modal>
-    </>
+      }
+      title={language === 'zh' ? 'Token 用量' : 'Token Usage'}
+      width={300}
+      height={280}
+      language={language as 'en' | 'zh'}
+    >
+      <div className="p-3 space-y-4">
+        {quota && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-3 gap-2">
+              <div className="flex flex-col items-center p-2.5 rounded-xl bg-surface/80">
+                <span className="text-[10px] text-text-muted mb-1">{language === 'zh' ? '已使用' : 'Used'}</span>
+                <span className="text-sm font-bold text-text-primary">{quota.used.toLocaleString()}</span>
+              </div>
+              <div className="flex flex-col items-center p-2.5 rounded-xl bg-surface/80">
+                <span className="text-[10px] text-text-muted mb-1">{language === 'zh' ? '剩余' : 'Remaining'}</span>
+                <span className="text-sm font-bold text-text-primary">
+                  {quota.remaining === -1
+                    ? (language === 'zh' ? '无限' : '∞')
+                    : quota.remaining.toLocaleString()}
+                </span>
+              </div>
+              <div className="flex flex-col items-center p-2.5 rounded-xl bg-surface/80">
+                <span className="text-[10px] text-text-muted mb-1">{language === 'zh' ? '总额度' : 'Total'}</span>
+                <span className="text-sm font-bold text-text-primary">
+                  {quota.limit === -1
+                    ? (language === 'zh' ? '无限' : '∞')
+                    : quota.limit.toLocaleString()}
+                </span>
+              </div>
+            </div>
+
+            {quota.limit !== -1 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-text-muted">
+                    {language === 'zh' ? '使用进度' : 'Progress'}
+                  </span>
+                  <span className={`font-mono ${getQuotaTextColor(usedPercent)}`}>
+                    {usedPercent.toFixed(1)}%
+                  </span>
+                </div>
+                <div className="h-2 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${getQuotaBarColor(usedPercent)}`}
+                    style={{ width: `${usedPercent}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-accent/5 border border-accent/10">
+              <span className="text-xs text-text-muted">
+                {language === 'zh' ? '当前套餐' : 'Plan'}
+              </span>
+              <span className="text-xs font-medium text-accent ml-auto">
+                {quota.displayName || (language === 'zh' ? '免费版' : 'Free')}
+              </span>
+            </div>
+          </div>
+        )}
+
+        <button
+          onClick={() => {
+            useStore.getState().setShowSettings(true, 'cloud')
+          }}
+          className="w-full py-2 text-xs text-accent hover:text-accent-hover transition-colors text-center"
+        >
+          {language === 'zh' ? '管理云端服务 →' : 'Manage Cloud →'}
+        </button>
+      </div>
+    </BottomBarPopover>
   )
 }
 

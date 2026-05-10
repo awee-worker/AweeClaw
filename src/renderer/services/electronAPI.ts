@@ -198,6 +198,7 @@ function createGroupedAPI() {
       rename: (oldPath: string, newPath: string) => raw.renameFile(oldPath, newPath),
       showInFolder: (path: string) => raw.showItemInFolder(path),
       openInBrowser: (path: string) => raw.openInBrowser(path),
+      openExternalUrl: (url: string) => raw.openExternalUrl(url),
       search: (query: string, rootPath: string | string[], options?: Parameters<typeof raw.searchFiles>[2]) =>
         raw.searchFiles(query, rootPath, options),
       /** 流式搜索 — 结果通过事件增量推送 */

@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import { LogOut, CheckCircle2, CreditCard, Zap, Crown, X, ExternalLink } from 'lucide-react'
+import QRCode from 'qrcode'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { Button } from '@components/ui'
 import { backendApi } from '@renderer/services/backendApi'
 import { type Language } from '@renderer/i18n'
+import { getQuotaBarColor, getQuotaTextColor } from '@utils/quotaColors'
 
 interface PlanItem {
   id: string
@@ -23,6 +25,11 @@ interface PaymentResult {
   paymentUrl?: string
 }
 
+interface PaymentChannelInfo {
+  channels: string[]
+  mockMode: boolean
+}
+
 const planIcons: Record<string, React.ReactNode> = {
   FREE: <Zap className="w-5 h-5 text-blue-400" />,
   PRO: <CreditCard className="w-5 h-5 text-violet-400" />,
@@ -33,6 +40,27 @@ const planColors: Record<string, string> = {
   FREE: 'border-blue-500/30 bg-blue-500/5',
   PRO: 'border-violet-500/30 bg-violet-500/5',
   ENTERPRISE: 'border-amber-500/30 bg-amber-500/5',
+}
+
+const channelLabels: Record<string, { zh: string; en: string }> = {
+  WECHAT: { zh: '微信支付', en: 'WeChat Pay' },
+  ALIPAY: { zh: '支付宝', en: 'Alipay' },
+  MOCK: { zh: '模拟支付', en: 'Mock Pay' },
+}
+
+const channelStyles: Record<string, { active: string; inactive: string }> = {
+  WECHAT: {
+    active: 'border-green-500/50 bg-green-500/10 text-green-400',
+    inactive: 'border-border/50 text-text-secondary hover:border-border',
+  },
+  ALIPAY: {
+    active: 'border-blue-500/50 bg-blue-500/10 text-blue-400',
+    inactive: 'border-border/50 text-text-secondary hover:border-border',
+  },
+  MOCK: {
+    active: 'border-amber-500/50 bg-amber-500/10 text-amber-400',
+    inactive: 'border-border/50 text-text-secondary hover:border-border',
+  },
 }
 
 export function CloudSettings({ language }: { language: Language }) {
@@ -57,6 +85,8 @@ export function CloudSettings({ language }: { language: Language }) {
   )
 
   const [plans, setPlans] = useState<PlanItem[]>([])
+  const [availableChannels, setAvailableChannels] = useState<string[]>([])
+  const [mockMode, setMockMode] = useState(false)
   const [showUpgrade, setShowUpgrade] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState<PlanItem | null>(null)
   const [paymentChannel, setPaymentChannel] = useState<string>('')
@@ -64,6 +94,7 @@ export function CloudSettings({ language }: { language: Language }) {
   const [paymentResult, setPaymentResult] = useState<PaymentResult | null>(null)
   const [paymentError, setPaymentError] = useState('')
   const [polling, setPolling] = useState(false)
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('')
 
   useEffect(() => {
     if (isAuthenticated && !quota) {
@@ -77,6 +108,31 @@ export function CloudSettings({ language }: { language: Language }) {
       setPlans((data || []).filter((p) => p.isActive && p.price > 0))
     } catch {}
   }, [])
+
+  const fetchChannels = useCallback(async () => {
+    try {
+      const data = await backendApi.get<PaymentChannelInfo>('/api/v1/payment/channels')
+      setAvailableChannels(data?.channels || [])
+      setMockMode(data?.mockMode ?? false)
+    } catch {
+      setAvailableChannels(['WECHAT', 'ALIPAY'])
+      setMockMode(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (paymentResult?.qrCodeUrl) {
+      QRCode.toDataURL(paymentResult.qrCodeUrl, {
+        width: 192,
+        margin: 2,
+        color: { dark: '#000000', light: '#ffffff' },
+      })
+        .then((url) => setQrCodeDataUrl(url))
+        .catch(() => setQrCodeDataUrl(''))
+    } else {
+      setQrCodeDataUrl('')
+    }
+  }, [paymentResult?.qrCodeUrl])
 
   const handleLogout = useCallback(() => {
     logout()
@@ -93,6 +149,7 @@ export function CloudSettings({ language }: { language: Language }) {
     setPaymentLoading(true)
     setPaymentError('')
     setPaymentResult(null)
+    setQrCodeDataUrl('')
 
     try {
       const result = await backendApi.post<{ order: any; payment: PaymentResult }>(
@@ -105,8 +162,8 @@ export function CloudSettings({ language }: { language: Language }) {
       )
       setPaymentResult(result.payment)
 
-      if (result.payment?.paymentUrl) {
-        window.open(result.payment.paymentUrl, '_blank')
+      if (paymentChannel === 'ALIPAY' && result.payment?.paymentUrl) {
+        window.electronAPI?.openExternalUrl?.(result.payment.paymentUrl)
       }
 
       setPolling(true)
@@ -137,6 +194,7 @@ export function CloudSettings({ language }: { language: Language }) {
           setSelectedPlan(null)
           setPaymentChannel('')
           setPaymentResult(null)
+          setQrCodeDataUrl('')
           await fetchQuota()
           await fetchProfile()
           return
@@ -165,6 +223,26 @@ export function CloudSettings({ language }: { language: Language }) {
       await fetch(url)
     } catch {}
   }, [paymentResult, serverUrl])
+
+  const handleOpenUpgrade = useCallback(() => {
+    setShowUpgrade(true)
+    fetchPlans()
+    fetchChannels()
+  }, [fetchPlans, fetchChannels])
+
+  const handleCloseUpgrade = useCallback(() => {
+    setShowUpgrade(false)
+    setPaymentResult(null)
+    setPaymentError('')
+    setPolling(false)
+    setQrCodeDataUrl('')
+    setSelectedPlan(null)
+    setPaymentChannel('')
+  }, [])
+
+  const displayChannels = mockMode
+    ? ['MOCK', ...availableChannels.filter((c) => c !== 'MOCK')]
+    : availableChannels
 
   if (!isAuthenticated || !cloudUser) {
     return (
@@ -233,10 +311,10 @@ export function CloudSettings({ language }: { language: Language }) {
         {quota ? (
           <div className="space-y-2">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-text-muted">
+              <span className={getQuotaTextColor(quota.limit === -1 || quota.remaining === -1 ? 0 : (quota.used / quota.limit) * 100)}>
                 {language === 'zh' ? '已使用' : 'Used'}: {quota.used.toLocaleString()} tokens
               </span>
-              <span className="text-text-muted">
+              <span className={getQuotaTextColor(quota.limit === -1 || quota.remaining === -1 ? 0 : (quota.used / quota.limit) * 100)}>
                 {quota.remaining === -1
                   ? language === 'zh'
                     ? '无限'
@@ -246,7 +324,7 @@ export function CloudSettings({ language }: { language: Language }) {
             </div>
             <div className="h-2 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
               <div
-                className="h-full rounded-full bg-accent transition-all duration-500"
+                className={`h-full rounded-full transition-all duration-500 ${getQuotaBarColor(quota.limit === -1 || quota.remaining === -1 ? 0 : (quota.used / quota.limit) * 100)}`}
                 style={{
                   width:
                     quota.limit === -1 || quota.remaining === -1
@@ -267,10 +345,7 @@ export function CloudSettings({ language }: { language: Language }) {
       <div className="pt-2 space-y-3">
         <Button
           variant="secondary"
-          onClick={() => {
-            setShowUpgrade(true)
-            fetchPlans()
-          }}
+          onClick={handleOpenUpgrade}
           className="w-full"
         >
           <CreditCard className="w-4 h-4" />
@@ -283,13 +358,13 @@ export function CloudSettings({ language }: { language: Language }) {
       </div>
 
       {showUpgrade && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setShowUpgrade(false)}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50" onClick={handleCloseUpgrade}>
           <div className="bg-surface border border-border rounded-2xl p-6 max-w-md w-full mx-4 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-text-primary">
                 {language === 'zh' ? '升级套餐' : 'Upgrade Plan'}
               </h3>
-              <button onClick={() => setShowUpgrade(false)} className="text-text-muted hover:text-text-primary">
+              <button onClick={handleCloseUpgrade} className="text-text-muted hover:text-text-primary">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -340,27 +415,22 @@ export function CloudSettings({ language }: { language: Language }) {
                     <p className="text-xs text-text-muted">
                       {language === 'zh' ? '选择支付方式' : 'Select payment method'}
                     </p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        onClick={() => setPaymentChannel('WECHAT')}
-                        className={`p-3 rounded-xl border text-sm transition-all ${
-                          paymentChannel === 'WECHAT'
-                            ? 'border-green-500/50 bg-green-500/10 text-green-400'
-                            : 'border-border/50 text-text-secondary hover:border-border'
-                        }`}
-                      >
-                        {language === 'zh' ? '微信支付' : 'WeChat Pay'}
-                      </button>
-                      <button
-                        onClick={() => setPaymentChannel('ALIPAY')}
-                        className={`p-3 rounded-xl border text-sm transition-all ${
-                          paymentChannel === 'ALIPAY'
-                            ? 'border-blue-500/50 bg-blue-500/10 text-blue-400'
-                            : 'border-border/50 text-text-secondary hover:border-border'
-                        }`}
-                      >
-                        {language === 'zh' ? '支付宝' : 'Alipay'}
-                      </button>
+                    <div className={`grid gap-2 ${displayChannels.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                      {displayChannels.map((ch) => {
+                        const style = channelStyles[ch] || channelStyles.MOCK
+                        const label = channelLabels[ch] || { zh: ch, en: ch }
+                        return (
+                          <button
+                            key={ch}
+                            onClick={() => setPaymentChannel(ch)}
+                            className={`p-3 rounded-xl border text-sm transition-all ${
+                              paymentChannel === ch ? style.active : style.inactive
+                            }`}
+                          >
+                            {language === 'zh' ? label.zh : label.en}
+                          </button>
+                        )
+                      })}
                     </div>
 
                     {paymentError && (
@@ -389,10 +459,14 @@ export function CloudSettings({ language }: { language: Language }) {
                       <p className="text-sm text-text-primary">
                         {language === 'zh' ? '请使用微信扫码支付' : 'Scan with WeChat to pay'}
                       </p>
-                      <div className="w-48 h-48 mx-auto bg-white rounded-xl flex items-center justify-center">
-                        <p className="text-xs text-gray-500">
-                          {language === 'zh' ? '微信二维码' : 'WeChat QR Code'}
-                        </p>
+                      <div className="w-48 h-48 mx-auto bg-white rounded-xl flex items-center justify-center overflow-hidden">
+                        {qrCodeDataUrl ? (
+                          <img src={qrCodeDataUrl} alt="WeChat QR Code" className="w-full h-full" />
+                        ) : (
+                          <p className="text-xs text-gray-500">
+                            {language === 'zh' ? '二维码生成中...' : 'Generating QR code...'}
+                          </p>
+                        )}
                       </div>
                     </div>
                   )}
@@ -403,7 +477,7 @@ export function CloudSettings({ language }: { language: Language }) {
                       </p>
                       <Button
                         variant="secondary"
-                        onClick={() => window.open(paymentResult.paymentUrl, '_blank')}
+                        onClick={() => window.electronAPI?.openExternalUrl?.(paymentResult.paymentUrl!)}
                         leftIcon={<ExternalLink className="w-4 h-4" />}
                       >
                         {language === 'zh' ? '前往支付' : 'Go to Pay'}
@@ -438,6 +512,7 @@ export function CloudSettings({ language }: { language: Language }) {
                     setPaymentResult(null)
                     setPaymentError('')
                     setPolling(false)
+                    setQrCodeDataUrl('')
                   }}
                 >
                   {language === 'zh' ? '返回' : 'Back'}

@@ -382,6 +382,7 @@ export interface ElectronAPI {
   fileExists: (path: string) => Promise<boolean>
   showItemInFolder: (path: string) => Promise<void>
   openInBrowser: (path: string) => Promise<boolean>
+  openExternalUrl: (url: string) => Promise<boolean>
   mkdir: (path: string) => Promise<boolean>
   deleteFile: (path: string) => Promise<boolean>
   copyFile: (sourcePath: string, destinationPath: string) => Promise<boolean>

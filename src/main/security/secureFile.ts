@@ -914,11 +914,21 @@ export function registerSecureFileHandlers(
   // 在浏览器中打开文件
   ipcMain.handle('file:openInBrowser', async (_, filePath: string) => {
     try {
-      // 验证文件存在
       await fsPromises.access(filePath)
-      // 转换为 file:// URL
       const fileUrl = pathToFileURL(filePath).href
       await shell.openExternal(fileUrl)
+      return true
+    } catch {
+      return false
+    }
+  })
+
+  ipcMain.handle('shell:openExternalUrl', async (_, url: string) => {
+    try {
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        return false
+      }
+      await shell.openExternal(url)
       return true
     } catch {
       return false

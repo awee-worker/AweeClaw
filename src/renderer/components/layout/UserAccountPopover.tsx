@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react'
-import { LogIn, UserPlus, LogOut, Eye, EyeOff, Server, AlertCircle, Loader2, Cloud, User, Crown, Zap, Feather, Rocket, ArrowUpCircle, CreditCard } from 'lucide-react'
+import { LogIn, UserPlus, LogOut, Eye, EyeOff, Server, AlertCircle, Loader2, Cloud, User, Crown, Zap, Feather, Rocket, ArrowUpCircle, CreditCard, ExternalLink } from 'lucide-react'
+import QRCode from 'qrcode'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { Button, Input } from '@components/ui'
@@ -7,6 +8,7 @@ import { Tooltip } from '../ui/Tooltip'
 import { Modal } from '../ui/Modal'
 import { type Language } from '@renderer/i18n'
 import { BackendApiError } from '@renderer/services/backendApi'
+import { getQuotaBarColor, getQuotaTextColor } from '@utils/quotaColors'
 import { backendApi } from '@renderer/services/backendApi'
 
 interface PlanItem {
@@ -26,6 +28,11 @@ interface PaymentResult {
   paymentUrl?: string
 }
 
+interface PaymentChannelInfo {
+  channels: string[]
+  mockMode: boolean
+}
+
 const planIcons: Record<string, React.ReactNode> = {
   FREE: <Feather className="w-5 h-5 text-text-muted" />,
   PRO: <Crown className="w-5 h-5 text-violet-400" />,
@@ -36,6 +43,27 @@ const planColors: Record<string, string> = {
   FREE: 'border-text-muted/30 bg-text-muted/5',
   PRO: 'border-violet-500/30 bg-violet-500/5',
   ENTERPRISE: 'border-amber-500/30 bg-amber-500/5',
+}
+
+const channelLabels: Record<string, { zh: string; en: string }> = {
+  WECHAT: { zh: '微信支付', en: 'WeChat Pay' },
+  ALIPAY: { zh: '支付宝', en: 'Alipay' },
+  MOCK: { zh: '模拟支付', en: 'Mock Pay' },
+}
+
+const channelStyles: Record<string, { active: string; inactive: string }> = {
+  WECHAT: {
+    active: 'border-green-500/50 bg-green-500/10 ring-1 ring-green-500/30',
+    inactive: 'border-border/50 bg-surface/30 hover:border-border',
+  },
+  ALIPAY: {
+    active: 'border-blue-500/50 bg-blue-500/10 ring-1 ring-blue-500/30',
+    inactive: 'border-border/50 bg-surface/30 hover:border-border',
+  },
+  MOCK: {
+    active: 'border-amber-500/50 bg-amber-500/10 ring-1 ring-amber-500/30',
+    inactive: 'border-border/50 bg-surface/30 hover:border-border',
+  },
 }
 
 function UpgradePlanModal({
@@ -52,6 +80,8 @@ function UpgradePlanModal({
   onUpgradeSuccess: () => void
 }) {
   const [plans, setPlans] = useState<PlanItem[]>([])
+  const [availableChannels, setAvailableChannels] = useState<string[]>([])
+  const [mockMode, setMockMode] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState<PlanItem | null>(null)
   const [paymentChannel, setPaymentChannel] = useState<string>('')
   const [paymentLoading, setPaymentLoading] = useState(false)
@@ -59,17 +89,29 @@ function UpgradePlanModal({
   const [paymentError, setPaymentError] = useState('')
   const [polling, setPolling] = useState(false)
   const [loadingPlans, setLoadingPlans] = useState(false)
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('')
 
   useEffect(() => {
     if (!isOpen) return
     setLoadingPlans(true)
-    backendApi
-      .get<PlanItem[]>('/api/v1/payment/plans')
-      .then((data) => {
-        setPlans((data || []).filter((p) => p.isActive && Number(p.price) > 0 && p.name !== currentPlanId))
-      })
-      .catch(() => setPlans([]))
-      .finally(() => setLoadingPlans(false))
+    Promise.all([
+      backendApi
+        .get<PlanItem[]>('/api/v1/payment/plans')
+        .then((data) => {
+          setPlans((data || []).filter((p) => p.isActive && Number(p.price) > 0 && p.name !== currentPlanId))
+        })
+        .catch(() => setPlans([])),
+      backendApi
+        .get<PaymentChannelInfo>('/api/v1/payment/channels')
+        .then((data) => {
+          setAvailableChannels(data?.channels || [])
+          setMockMode(data?.mockMode ?? false)
+        })
+        .catch(() => {
+          setAvailableChannels(['WECHAT', 'ALIPAY'])
+          setMockMode(false)
+        }),
+    ]).finally(() => setLoadingPlans(false))
   }, [isOpen, currentPlanId])
 
   useEffect(() => {
@@ -79,14 +121,30 @@ function UpgradePlanModal({
       setPaymentResult(null)
       setPaymentError('')
       setPolling(false)
+      setQrCodeDataUrl('')
     }
   }, [isOpen])
+
+  useEffect(() => {
+    if (paymentResult?.qrCodeUrl) {
+      QRCode.toDataURL(paymentResult.qrCodeUrl, {
+        width: 192,
+        margin: 2,
+        color: { dark: '#000000', light: '#ffffff' },
+      })
+        .then((url) => setQrCodeDataUrl(url))
+        .catch(() => setQrCodeDataUrl(''))
+    } else {
+      setQrCodeDataUrl('')
+    }
+  }, [paymentResult?.qrCodeUrl])
 
   const handleUpgrade = useCallback(async () => {
     if (!selectedPlan || !paymentChannel) return
     setPaymentLoading(true)
     setPaymentError('')
     setPaymentResult(null)
+    setQrCodeDataUrl('')
 
     try {
       const result = await backendApi.post<{ order: any; payment: PaymentResult }>(
@@ -99,8 +157,8 @@ function UpgradePlanModal({
       )
       setPaymentResult(result.payment)
 
-      if (result.payment?.paymentUrl) {
-        window.open(result.payment.paymentUrl, '_blank')
+      if (paymentChannel === 'ALIPAY' && result.payment?.paymentUrl) {
+        window.electronAPI?.openExternalUrl?.(result.payment.paymentUrl)
       }
 
       setPolling(true)
@@ -147,6 +205,10 @@ function UpgradePlanModal({
 
     poll()
   }, [language, onUpgradeSuccess, onClose])
+
+  const displayChannels = mockMode
+    ? ['MOCK', ...availableChannels.filter((c) => c !== 'MOCK')]
+    : availableChannels
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="sm">
@@ -214,31 +276,24 @@ function UpgradePlanModal({
                 <p className="text-xs text-text-muted">
                   {language === 'zh' ? '选择支付方式' : 'Select payment method'}
                 </p>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => setPaymentChannel('WECHAT')}
-                    className={`p-3 rounded-xl border text-center transition-all ${
-                      paymentChannel === 'WECHAT'
-                        ? 'border-green-500/50 bg-green-500/10 ring-1 ring-green-500/30'
-                        : 'border-border/50 bg-surface/30 hover:border-border'
-                    }`}
-                  >
-                    <span className="text-sm font-medium text-text-primary">
-                      {language === 'zh' ? '微信支付' : 'WeChat Pay'}
-                    </span>
-                  </button>
-                  <button
-                    onClick={() => setPaymentChannel('ALIPAY')}
-                    className={`p-3 rounded-xl border text-center transition-all ${
-                      paymentChannel === 'ALIPAY'
-                        ? 'border-blue-500/50 bg-blue-500/10 ring-1 ring-blue-500/30'
-                        : 'border-border/50 bg-surface/30 hover:border-border'
-                    }`}
-                  >
-                    <span className="text-sm font-medium text-text-primary">
-                      {language === 'zh' ? '支付宝' : 'Alipay'}
-                    </span>
-                  </button>
+                <div className={`grid gap-2 ${displayChannels.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                  {displayChannels.map((ch) => {
+                    const style = channelStyles[ch] || channelStyles.MOCK
+                    const label = channelLabels[ch] || { zh: ch, en: ch }
+                    return (
+                      <button
+                        key={ch}
+                        onClick={() => setPaymentChannel(ch)}
+                        className={`p-3 rounded-xl border text-center transition-all ${
+                          paymentChannel === ch ? style.active : style.inactive
+                        }`}
+                      >
+                        <span className="text-sm font-medium text-text-primary">
+                          {language === 'zh' ? label.zh : label.en}
+                        </span>
+                      </button>
+                    )
+                  })}
                 </div>
 
                 {paymentError && (
@@ -273,10 +328,14 @@ function UpgradePlanModal({
                   <p className="text-sm text-text-primary">
                     {language === 'zh' ? '请使用微信扫码支付' : 'Scan with WeChat to pay'}
                   </p>
-                  <div className="w-48 h-48 mx-auto bg-white rounded-xl flex items-center justify-center">
-                    <p className="text-xs text-gray-500">
-                      {language === 'zh' ? '微信二维码' : 'WeChat QR Code'}
-                    </p>
+                  <div className="w-48 h-48 mx-auto bg-white rounded-xl flex items-center justify-center overflow-hidden">
+                    {qrCodeDataUrl ? (
+                      <img src={qrCodeDataUrl} alt="WeChat QR Code" className="w-full h-full" />
+                    ) : (
+                      <p className="text-xs text-gray-500">
+                        {language === 'zh' ? '二维码生成中...' : 'Generating QR code...'}
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
@@ -285,6 +344,33 @@ function UpgradePlanModal({
                   <p className="text-sm text-text-primary">
                     {language === 'zh' ? '即将跳转到支付宝' : 'Redirecting to Alipay'}
                   </p>
+                  <Button
+                    variant="secondary"
+                    onClick={() => window.electronAPI?.openExternalUrl?.(paymentResult.paymentUrl!)}
+                    leftIcon={<ExternalLink className="w-4 h-4" />}
+                  >
+                    {language === 'zh' ? '前往支付' : 'Go to Pay'}
+                  </Button>
+                </div>
+              )}
+              {paymentChannel === 'MOCK' && (
+                <div className="space-y-3">
+                  <p className="text-sm text-text-primary">
+                    {language === 'zh' ? '模拟支付模式' : 'Mock Payment Mode'}
+                  </p>
+                  <Button
+                    variant="success"
+                    onClick={async () => {
+                      if (!paymentResult.qrCodeUrl) return
+                      try {
+                        const serverUrl = useStore.getState().serverUrl
+                        const url = paymentResult.qrCodeUrl.replace('mock://qr', `${serverUrl}/api/v1/payment/mock-pay`)
+                        await fetch(url)
+                      } catch {}
+                    }}
+                  >
+                    {language === 'zh' ? '模拟支付成功' : 'Mock Pay Success'}
+                  </Button>
                 </div>
               )}
             </div>
@@ -302,6 +388,18 @@ function UpgradePlanModal({
                 <span>{paymentError}</span>
               </div>
             )}
+
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setPaymentResult(null)
+                setPaymentError('')
+                setPolling(false)
+                setQrCodeDataUrl('')
+              }}
+            >
+              {language === 'zh' ? '返回' : 'Back'}
+            </Button>
           </div>
         )}
       </div>
@@ -509,11 +607,11 @@ export function UserAccountPopover({ language }: { language: Language }) {
             {quota && (
               <div className="space-y-2 px-1">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="flex items-center gap-1 text-text-muted">
+                  <span className={`flex items-center gap-1 ${getQuotaTextColor(quotaPercent)}`}>
                     <Zap className="w-3 h-3" />
                     {language === 'zh' ? 'Token 用量' : 'Token Usage'}
                   </span>
-                  <span className="text-text-muted">
+                  <span className={`${getQuotaTextColor(quotaPercent)} font-mono`}>
                     {quota.used.toLocaleString()} /{' '}
                     {quota.remaining === -1
                       ? language === 'zh'
@@ -524,7 +622,7 @@ export function UserAccountPopover({ language }: { language: Language }) {
                 </div>
                 <div className="h-1.5 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
                   <div
-                    className="h-full rounded-full bg-gradient-to-r from-accent to-accent/60 transition-all duration-500"
+                    className={`h-full rounded-full transition-all duration-500 ${getQuotaBarColor(quotaPercent)}`}
                     style={{ width: `${Math.max(quotaPercent, quotaPercent > 0 ? 3 : 0)}%` }}
                   />
                 </div>
