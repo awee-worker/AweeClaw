@@ -14,6 +14,7 @@ import { app, BrowserWindow } from 'electron'
 import { autoUpdater, type ProgressInfo, type UpdateInfo } from 'electron-updater'
 import { logger } from '@shared/utils/Logger'
 import { ErrorCode, toAppError } from '@shared/utils/errorHandler'
+import { BRAND } from '@shared/brand'
 import * as fs from 'fs'
 import * as path from 'path'
 
@@ -96,7 +97,7 @@ class UpdateService {
     autoUpdater.setFeedURL({
       provider: 'github',
       owner: 'awee-worker',
-      repo: 'aweeclaw',
+      repo: BRAND.name.toLowerCase(),
     })
 
     logger.system.info(`[Updater] Using update channel: ${channel}`)
@@ -424,7 +425,7 @@ class UpdateService {
       }
     }
 
-    return 'https://github.com/jweelee/aweeclaw/releases/latest'
+    return BRAND.links.releases
   }
 
   private getUpdateChannel(): string {

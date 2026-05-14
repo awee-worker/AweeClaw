@@ -3,6 +3,7 @@ import { Cpu, Settings2, Code, Keyboard, Database, Shield, Monitor, Globe, Plug,
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { PROVIDERS } from '@/shared/config/providers'
+import { BRAND } from '@shared/brand'
 import stableStringify from 'fast-json-stable-stringify'
 import { getEditorConfig } from '@renderer/settings'
 import { invalidateAgentConfigCache } from '@renderer/agent/utils/AgentConfig'
@@ -77,7 +78,7 @@ function toEditorSettingsState(config: ReturnType<typeof getEditorConfig>): Edit
         formatOnSave: config.formatOnSave,
         autoSave: config.autoSave,
         autoSaveDelay: config.autoSaveDelay,
-        theme: 'aweeclaw-dark',
+        theme: BRAND.defaultTheme,
         completionEnabled: config.ai.completionEnabled,
         completionDebounceMs: config.performance.completionDebounceMs,
         completionMaxTokens: config.ai.completionMaxTokens,

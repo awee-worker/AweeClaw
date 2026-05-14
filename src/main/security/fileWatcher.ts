@@ -10,6 +10,7 @@ import { getIndexService } from '../indexing/indexService'
 import { lspManager } from '../lsp/lspManager'
 import * as watcher from '@parcel/watcher'
 import picomatch from 'picomatch'
+import { BRAND } from '@shared/brand'
 
 export interface FileWatcherEvent {
   event: 'create' | 'update' | 'delete'
@@ -32,7 +33,7 @@ interface WatcherEntry {
 }
 
 const DEFAULT_CONFIG: FileWatcherConfig = {
-  ignored: [/node_modules/, /\.git/, /dist/, /build/, /\.aweeclaw/, '**/*.tmp', '**/*.temp'],
+  ignored: [/node_modules/, /\.git/, /dist/, /build/, new RegExp(`\\.${BRAND.dirName.slice(1)}`), '**/*.tmp', '**/*.temp'],
   persistent: true,
   ignoreInitial: true,
   bufferTimeMs: 500,

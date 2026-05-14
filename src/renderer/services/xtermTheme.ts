@@ -2,6 +2,7 @@
  * xterm theme helpers.
  */
 import { themeManager } from '@/renderer/config/themeConfig'
+import { BRAND } from '@shared/brand'
 
 export const XTERM_STYLE = `
 .xterm { font-feature-settings: "liga" 0; position: relative; user-select: none; -ms-user-select: none; -webkit-user-select: none; padding: 4px; }
@@ -64,7 +65,7 @@ function darken(rgb: string, ratio: number): string {
 }
 
 export function getTerminalTheme(themeName: string): Record<string, string> {
-  const theme = themeManager.getThemeById(themeName) ?? themeManager.getThemeById('aweeclaw-dark')!
+  const theme = themeManager.getThemeById(themeName) ?? themeManager.getThemeById(BRAND.defaultTheme)!
   const c = theme.colors
   const isLight = theme.type === 'light'
 

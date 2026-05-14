@@ -14,6 +14,7 @@
 
 import { api } from '@/renderer/services/electronAPI'
 import { logger } from '@shared/utils/Logger'
+import { BRAND } from '@shared/brand'
 import {
   SETTINGS,
   type SettingsState,
@@ -41,7 +42,7 @@ const STORAGE_KEYS = {
   SECURITY: 'securitySettings',
 } as const
 
-const LOCAL_CACHE_KEY = 'aweeclaw-settings-cache'
+const LOCAL_CACHE_KEY = BRAND.storageKeys.settingsCache
 
 function deepMerge<T extends object>(target: T, source: Partial<T>): T {
   const result = { ...target }

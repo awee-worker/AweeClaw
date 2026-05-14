@@ -7,12 +7,17 @@
  * - 结构化输出（代码分析、重构、修复、测试生成）
  * - Embeddings（向量嵌入、语义搜索）
  * - 多窗口隔离
+ * - [AweeClaw] 请求中间件管道
+ * - [AweeClaw] Token 预算管理
+ * - [AweeClaw] 场景感知路由
  */
 
 import { logger } from '@shared/utils/Logger'
 import { ipcMain, BrowserWindow } from 'electron'
 import { LLMService, LLMError } from '../services/llm'
 import type { TokenUsage as LLMTokenUsage } from '../services/llm/types'
+import { BRAND } from '@shared/brand'
+import { ErrorCode } from '@shared/utils/errorHandler'
 
 // 按窗口 webContents.id 管理独立的 LLM 服务
 const llmServices = new Map<number, LLMService>()
@@ -328,6 +333,9 @@ export function registerLLMHandlers(_getMainWindow: () => BrowserWindow | null) 
       logAndThrowError(error, 'Similarity search')
     }
   })
+
+  // [AweeClaw] 注册增强 IPC handlers
+  registerAweeClawLLMHandlers()
 }
 
 /**
@@ -355,4 +363,231 @@ export function cleanupAllLLMServices() {
   for (const [id] of llmServices) {
     cleanupLLMService(id)
   }
+}
+
+// ============================================
+// [AweeClaw] 请求中间件管道
+// ============================================
+
+type LLMMiddleware = {
+  name: string
+  beforeRequest?: (params: any) => any | Promise<any>
+  afterResponse?: (params: any, response: any) => any | Promise<any>
+  onError?: (params: any, error: any) => void
+}
+
+const middlewarePipeline: LLMMiddleware[] = []
+
+function registerMiddleware(middleware: LLMMiddleware): void {
+  if (middlewarePipeline.some(m => m.name === middleware.name)) {
+    logger.ipc.warn(`[LLM] Middleware "${middleware.name}" already registered, skipping`)
+    return
+  }
+  middlewarePipeline.push(middleware)
+  logger.ipc.info(`[LLM] Middleware registered: ${middleware.name}`)
+}
+
+async function runBeforeRequest(params: any): Promise<any> {
+  let result = params
+  for (const mw of middlewarePipeline) {
+    if (mw.beforeRequest) {
+      try {
+        result = await mw.beforeRequest(result)
+      } catch (err) {
+        logger.ipc.error(`[LLM] Middleware "${mw.name}" beforeRequest failed:`, err)
+      }
+    }
+  }
+  return result
+}
+
+export async function _runAfterResponse(params: any, response: any): Promise<any> {
+  let result = response
+  for (const mw of middlewarePipeline) {
+    if (mw.afterResponse) {
+      try {
+        result = await mw.afterResponse(params, result)
+      } catch (err) {
+        logger.ipc.error(`[LLM] Middleware "${mw.name}" afterResponse failed:`, err)
+      }
+    }
+  }
+  return result
+}
+
+function runOnError(params: any, error: any): void {
+  for (const mw of middlewarePipeline) {
+    if (mw.onError) {
+      try {
+        mw.onError(params, error)
+      } catch (err) {
+        logger.ipc.error(`[LLM] Middleware "${mw.name}" onError failed:`, err)
+      }
+    }
+  }
+}
+
+// ============================================
+// [AweeClaw] Token 预算管理
+// ============================================
+
+interface TokenBudget {
+  windowId: number
+  totalBudget: number
+  usedTokens: number
+  resetAt: number
+}
+
+const tokenBudgets = new Map<number, TokenBudget>()
+
+function getTokenBudget(windowId: number): TokenBudget {
+  if (!tokenBudgets.has(windowId)) {
+    tokenBudgets.set(windowId, {
+      windowId,
+      totalBudget: 1_000_000,
+      usedTokens: 0,
+      resetAt: Date.now() + 24 * 60 * 60 * 1000,
+    })
+  }
+  const budget = tokenBudgets.get(windowId)!
+  if (Date.now() > budget.resetAt) {
+    budget.usedTokens = 0
+    budget.resetAt = Date.now() + 24 * 60 * 60 * 1000
+  }
+  return budget
+}
+
+function checkTokenBudget(windowId: number, estimatedTokens: number): boolean {
+  const budget = getTokenBudget(windowId)
+  return (budget.usedTokens + estimatedTokens) <= budget.totalBudget
+}
+
+function recordTokenUsage(windowId: number, tokens: number): void {
+  const budget = getTokenBudget(windowId)
+  budget.usedTokens += tokens
+}
+
+// ============================================
+// [AweeClaw] 场景感知路由
+// ============================================
+
+interface ScenarioModelRoute {
+  scenarioId: string
+  preferredModel?: string
+  fallbackModel?: string
+  maxTokens?: number
+  temperature?: number
+}
+
+const scenarioRoutes = new Map<string, ScenarioModelRoute>()
+
+function getScenarioRoute(scenarioId: string): ScenarioModelRoute | undefined {
+  return scenarioRoutes.get(scenarioId)
+}
+
+// ============================================
+// [AweeClaw] 独有 IPC Handlers
+// ============================================
+
+function registerAweeClawLLMHandlers(): void {
+  // 中间件管理
+  ipcMain.handle('llm:registerMiddleware', async (_, middleware: LLMMiddleware) => {
+    registerMiddleware(middleware)
+    return { success: true }
+  })
+
+  ipcMain.handle('llm:listMiddleware', async () => {
+    return { success: true, middleware: middlewarePipeline.map(m => ({ name: m.name })) }
+  })
+
+  ipcMain.handle('llm:removeMiddleware', async (_, name: string) => {
+    const idx = middlewarePipeline.findIndex(m => m.name === name)
+    if (idx >= 0) {
+      middlewarePipeline.splice(idx, 1)
+      logger.ipc.info(`[LLM] Middleware removed: ${name}`)
+      return { success: true }
+    }
+    return { success: false, error: 'Middleware not found' }
+  })
+
+  // Token 预算管理
+  ipcMain.handle('llm:getTokenBudget', async (_, windowId?: number) => {
+    const wid = windowId ?? 0
+    const budget = getTokenBudget(wid)
+    return {
+      success: true,
+      budget: {
+        totalBudget: budget.totalBudget,
+        usedTokens: budget.usedTokens,
+        remainingTokens: budget.totalBudget - budget.usedTokens,
+        resetAt: budget.resetAt,
+      },
+    }
+  })
+
+  ipcMain.handle('llm:setTokenBudget', async (_, windowId: number, totalBudget: number) => {
+    const budget = getTokenBudget(windowId)
+    budget.totalBudget = totalBudget
+    return { success: true }
+  })
+
+  ipcMain.handle('llm:resetTokenBudget', async (_, windowId?: number) => {
+    const wid = windowId ?? 0
+    const budget = getTokenBudget(wid)
+    budget.usedTokens = 0
+    budget.resetAt = Date.now() + 24 * 60 * 60 * 1000
+    return { success: true }
+  })
+
+  // 场景感知路由
+  ipcMain.handle('llm:setScenarioRoute', async (_, route: ScenarioModelRoute) => {
+    scenarioRoutes.set(route.scenarioId, route)
+    logger.ipc.info(`[LLM] Scenario route set: ${route.scenarioId} -> ${route.preferredModel || 'default'}`)
+    return { success: true }
+  })
+
+  ipcMain.handle('llm:getScenarioRoute', async (_, scenarioId: string) => {
+    const route = getScenarioRoute(scenarioId)
+    return { success: true, route: route || null }
+  })
+
+  ipcMain.handle('llm:removeScenarioRoute', async (_, scenarioId: string) => {
+    scenarioRoutes.delete(scenarioId)
+    return { success: true }
+  })
+
+  ipcMain.handle('llm:listScenarioRoutes', async () => {
+    return { success: true, routes: Array.from(scenarioRoutes.values()) }
+  })
+
+  // 带中间件的流式对话
+  ipcMain.handle('llm:sendMessageWithMiddleware', async (event, params) => {
+    const window = BrowserWindow.fromWebContents(event.sender)
+    if (!window) throw new Error('Window not found for LLM request')
+
+    const estimatedTokens = (params.messages?.reduce((sum: number, m: any) => sum + (m.content?.length || 0), 0) || 0) / 4
+    if (!checkTokenBudget(event.sender.id, estimatedTokens)) {
+      throw new LLMError('Token budget exceeded for this window', ErrorCode.LLM_QUOTA_EXCEEDED, false)
+    }
+
+    const processedParams = await runBeforeRequest(params)
+    const service = getOrCreateService(event.sender.id, window)
+
+    try {
+      await service.sendMessage(processedParams)
+      if (processedParams._estimatedTokens) {
+        recordTokenUsage(event.sender.id, processedParams._estimatedTokens)
+      }
+    } catch (error) {
+      runOnError(processedParams, error)
+      const llmError = error instanceof LLMError ? error : LLMError.fromError(error)
+      logger.ipc.error(`[LLMService] Send message with middleware failed:`, {
+        code: llmError.code,
+        message: llmError.message,
+        retryable: llmError.retryable,
+      })
+    }
+  })
+
+  logger.ipc.info(`[LLM] ${BRAND.name} enhanced IPC handlers registered (middleware, budget, scenario routing)`)
 }

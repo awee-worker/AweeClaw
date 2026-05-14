@@ -23,6 +23,7 @@ import {
 import { Button, Select } from '@/renderer/components/ui'
 import { MarkdownPreview } from '@/renderer/components/editor/FilePreview'
 import { useAgentStore } from '@/renderer/agent/store/AgentStore'
+import { BRAND } from '@shared/brand'
 import { useStore } from '@/renderer/store'
 import { toast } from '@/renderer/components/common/ToastProvider'
 import { api } from '@/renderer/services/electronAPI'
@@ -369,7 +370,7 @@ export const TaskBoard = memo(function TaskBoard({ planId }: TaskBoardProps) {
         if (!plan?.requirementsDoc || !workspacePath) return
         const loadRequirements = async () => {
             try {
-                const mdPath = `${workspacePath}/.aweeclaw/plan/${plan.requirementsDoc}`
+                const mdPath = `${workspacePath}/${BRAND.dirName}/plan/${plan.requirementsDoc}`
                 const content = await api.file.read(mdPath)
                 if (content) {
                     setRequirementsContent(content)

@@ -2,6 +2,7 @@ import { api } from '@/renderer/services/electronAPI'
 import { logger } from '@utils/Logger'
 import { useStore } from '@store'
 import { joinPath } from '@shared/utils/pathUtils'
+import { BRAND } from '@shared/brand'
 
 interface VectorEntry {
   id: string
@@ -15,7 +16,7 @@ interface VectorStore {
   lastRebuildAt: number
 }
 
-const STORE_FILE = '.aweeclaw/knowledge/vectors.json'
+const STORE_FILE = BRAND.paths.knowledgeVectors
 const MAX_CACHE_SIZE = 500
 const EMBEDDING_BATCH_SIZE = 20
 
@@ -150,7 +151,7 @@ class VectorIndex {
         store.entries = store.entries.slice(0, MAX_CACHE_SIZE)
       }
 
-      const dirPath = joinPath(workspacePath, '.aweeclaw/knowledge')
+      const dirPath = joinPath(workspacePath, BRAND.paths.knowledge)
       await api.file.ensureDir(dirPath)
 
       const filePath = joinPath(workspacePath, STORE_FILE)

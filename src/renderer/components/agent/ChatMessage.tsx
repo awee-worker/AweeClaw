@@ -12,6 +12,7 @@ import { playNotificationSound } from '@renderer/utils/notificationSound'
 import { vscDarkPlus, vs } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { themeManager } from '../../config/themeConfig'
 import { motion, AnimatePresence } from 'framer-motion'
+import { BRAND } from '@shared/brand'
 import {
   ChatMessage as ChatMessageType,
   isUserMessage,
@@ -265,7 +266,7 @@ const MessageMetaGroup = React.memo(({ autoSkills, manualSkills, searchContent, 
   const handleOpenSkill = async (e: React.MouseEvent, skillId: string) => {
     e.stopPropagation()
     if (!workspacePath) return
-    const filePath = `${workspacePath}/.aweeclaw/skills/${skillId}/SKILL.md`.replace(/\//g, '\\')
+    const filePath = `${workspacePath}/${BRAND.dirName}/skills/${skillId}/SKILL.md`.replace(/\//g, '\\')
     const content = await api.file.read(filePath)
     if (content !== null) {
       openFile(filePath, content)

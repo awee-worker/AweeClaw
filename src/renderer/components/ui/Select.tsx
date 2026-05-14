@@ -1,12 +1,14 @@
-import React, { useState, useRef, useEffect, memo } from 'react'
+import React, { useState, useRef, useEffect, memo, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronDown, Check } from 'lucide-react'
+import { ChevronDown, Check, Search } from 'lucide-react'
 import { useClickOutside } from '@renderer/hooks/usePerformance'
+import { BRAND } from '@shared/brand'
 
 export interface SelectOption {
     value: string
     label: string
     icon?: React.ReactNode
+    group?: string
 }
 
 interface SelectProps {
@@ -17,6 +19,8 @@ interface SelectProps {
     className?: string
     disabled?: boolean
     dropdownPosition?: 'top' | 'bottom' | 'auto'
+    searchable?: boolean
+    emptyText?: string
 }
 
 export const Select = memo(function Select({
@@ -26,16 +30,37 @@ export const Select = memo(function Select({
     placeholder = 'Select...',
     className = '',
     disabled = false,
-    dropdownPosition = 'auto'
+    dropdownPosition = 'auto',
+    searchable = false,
+    emptyText = 'No options',
 }: SelectProps) {
     const [isOpen, setIsOpen] = useState(false)
     const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({})
+    const [searchQuery, setSearchQuery] = useState('')
     const containerRef = useRef<HTMLDivElement>(null)
     const dropdownRef = useRef<HTMLDivElement>(null)
+    const searchInputRef = useRef<HTMLInputElement>(null)
 
     const selectedOption = options.find(opt => opt.value === value)
 
-    // 使用自定义 hook 处理点击外部关闭
+    const filteredOptions = useMemo(() => {
+        if (!searchQuery) return options
+        const q = searchQuery.toLowerCase()
+        return options.filter(opt =>
+            opt.label.toLowerCase().includes(q) || opt.value.toLowerCase().includes(q)
+        )
+    }, [options, searchQuery])
+
+    const groupedOptions = useMemo(() => {
+        const groups = new Map<string, SelectOption[]>()
+        for (const opt of filteredOptions) {
+            const group = opt.group || ''
+            if (!groups.has(group)) groups.set(group, [])
+            groups.get(group)!.push(opt)
+        }
+        return groups
+    }, [filteredOptions])
+
     useClickOutside(() => setIsOpen(false), isOpen, [containerRef, dropdownRef])
 
     useEffect(() => {
@@ -56,10 +81,16 @@ export const Select = memo(function Select({
                     : { top: rect.bottom + 6 }
                 ),
             })
+
+            if (searchable && searchInputRef.current) {
+                setTimeout(() => searchInputRef.current?.focus(), 50)
+            }
         }
-    }, [isOpen, dropdownPosition])
+    }, [isOpen, dropdownPosition, searchable])
 
-
+    useEffect(() => {
+        if (!isOpen) setSearchQuery('')
+    }, [isOpen])
 
     const dropdown = isOpen && (
         <div
@@ -67,24 +98,56 @@ export const Select = memo(function Select({
             style={dropdownStyle}
             className="p-1.5 bg-background/95 backdrop-blur-2xl border border-border rounded-xl shadow-2xl animate-scale-in max-h-64 overflow-auto custom-scrollbar flex flex-col gap-0.5"
         >
-            {options.map((option) => (
-                <button
-                    key={option.value}
-                    onClick={() => { onChange(option.value); setIsOpen(false); }}
-                    className={`
-                        w-full flex items-center justify-between px-3 py-2 text-sm text-left rounded-lg transition-all duration-200
-                        ${option.value === value
-                            ? 'text-accent bg-accent/10 font-bold'
-                            : 'text-text-secondary hover:bg-text-primary/[0.05] hover:text-text-primary'
-                        }
-                    `}
-                >
-                    <div className="flex items-center gap-2.5 truncate">
-                        {option.icon && <span className="flex-shrink-0 w-4 h-4 opacity-70">{option.icon}</span>}
-                        <span>{option.label}</span>
+            {searchable && (
+                <div className="sticky top-0 z-10 p-1 bg-background/95 backdrop-blur-xl">
+                    <div className="relative flex items-center">
+                        <Search className="absolute left-2 w-3.5 h-3.5 text-text-muted" />
+                        <input
+                            ref={searchInputRef}
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full h-7 pl-7 pr-2 text-xs bg-surface/50 border border-border rounded-lg text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent/40"
+                            placeholder="Search..."
+                            onKeyDown={(e) => {
+                                if (e.key === 'Escape') {
+                                    setSearchQuery('')
+                                }
+                            }}
+                        />
                     </div>
-                    {option.value === value && <Check className="w-3.5 h-3.5" strokeWidth={2} />}
-                </button>
+                </div>
+            )}
+            {filteredOptions.length === 0 && (
+                <div className="px-3 py-4 text-xs text-text-muted text-center">{emptyText}</div>
+            )}
+            {Array.from(groupedOptions.entries()).map(([group, opts]) => (
+                <React.Fragment key={group}>
+                    {group && (
+                        <div className="px-3 py-1 text-[10px] font-semibold text-text-muted uppercase tracking-wider mt-1 first:mt-0">
+                            {group}
+                        </div>
+                    )}
+                    {opts.map((option) => (
+                        <button
+                            key={option.value}
+                            onClick={() => { onChange(option.value); setIsOpen(false); }}
+                            className={`
+                                w-full flex items-center justify-between px-3 py-2 text-sm text-left rounded-lg transition-all duration-200
+                                ${option.value === value
+                                    ? 'text-accent bg-accent/10 font-bold'
+                                    : 'text-text-secondary hover:bg-text-primary/[0.05] hover:text-text-primary'
+                                }
+                            `}
+                        >
+                            <div className="flex items-center gap-2.5 truncate">
+                                {option.icon && <span className="flex-shrink-0 w-4 h-4 opacity-70">{option.icon}</span>}
+                                <span>{option.label}</span>
+                            </div>
+                            {option.value === value && <Check className="w-3.5 h-3.5" strokeWidth={2} />}
+                        </button>
+                    ))}
+                </React.Fragment>
             ))}
         </div>
     )
@@ -117,3 +180,5 @@ export const Select = memo(function Select({
         </div>
     )
 })
+
+Select.displayName = `${BRAND.name}Select`

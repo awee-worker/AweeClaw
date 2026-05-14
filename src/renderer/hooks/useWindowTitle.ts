@@ -7,6 +7,7 @@
 import { useEffect } from 'react'
 import { useStore } from '@store'
 import { getFileName } from '@shared/utils/pathUtils'
+import { BRAND } from '@shared/brand'
 
 export function useWindowTitle() {
   const activeFilePath = useStore((state) => state.activeFilePath)
@@ -31,7 +32,7 @@ export function useWindowTitle() {
     }
 
     // 3. 应用名称
-    parts.push('AweeClaw')
+    parts.push(BRAND.name)
 
     // 设置标题
     document.title = parts.join(' - ')

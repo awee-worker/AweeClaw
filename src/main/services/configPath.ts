@@ -2,6 +2,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { app } from 'electron'
 import Store from 'electron-store'
+import { BRAND } from '@shared/brand'
 
 const BOOTSTRAP_STORE_NAME = 'bootstrap'
 
@@ -52,9 +53,7 @@ export function getWorkspaceConfigFilePath(
   filename: string,
   subdir?: string
 ): string {
-  return subdir
-    ? path.join(workspaceRoot, '.aweeclaw', subdir, filename)
-    : path.join(workspaceRoot, '.aweeclaw', filename)
+  return subdir ? path.join(workspaceRoot, BRAND.dirName, subdir, filename) : path.join(workspaceRoot, BRAND.dirName, filename)
 }
 
 export const CONFIG_FILES = {

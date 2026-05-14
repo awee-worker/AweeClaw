@@ -4,6 +4,7 @@
 
 import { ipcMain, shell } from 'electron'
 import { updateService } from '../services/updater'
+import { BRAND } from '@shared/brand'
 
 export function registerUpdaterHandlers(): void {
   ipcMain.handle('updater:check', async () => {
@@ -25,7 +26,7 @@ export function registerUpdaterHandlers(): void {
 
   ipcMain.handle('updater:openDownloadPage', (_, url?: string) => {
     const status = updateService.getStatus()
-    const targetUrl = url || status.downloadUrl || 'https://github.com/jweelee/aweeclaw/releases/latest'
+    const targetUrl = url || status.downloadUrl || BRAND.links.releases
     void shell.openExternal(targetUrl)
   })
 }

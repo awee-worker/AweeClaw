@@ -10,6 +10,7 @@ import { Logo } from '../common/Logo'
 import { useStore } from '@store'
 import { Modal } from '../ui'
 import { motion } from 'framer-motion'
+import { BRAND } from '@shared/brand'
 
 interface AboutDialogProps {
     onClose: () => void
@@ -158,8 +159,8 @@ export default function AboutDialog({ onClose }: AboutDialogProps) {
 
                         {/* Social Actions */}
                         <div className="flex gap-2">
-                            <SocialButton href="https://github.com/jweelee/aweeclaw" icon={Github} label="GitHub" />
-                            <SocialButton href="https://gitee.com/jweelee/aweeclaw.git" icon={ExternalLink} label="Gitee" />
+                            <SocialButton href={BRAND.links.github} icon={Github} label="GitHub" />
+                            <SocialButton href={BRAND.links.gitee} icon={ExternalLink} label="Gitee" />
                         </div>
                     </div>
 

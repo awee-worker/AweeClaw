@@ -11,6 +11,7 @@
  */
 
 import { registerTemplateTools, type TemplateToolConfig } from '@/shared/config/toolGroups'
+import { BRAND } from '@shared/brand'
 
 export interface PromptTemplate {
   id: string
@@ -769,7 +770,7 @@ export function getPromptTemplatePreview(templateId: string): string {
     date: '[Current date]',
     mode: 'agent',
     personality: template.personality,
-    projectRules: { content: '[Project-specific rules from .aweeclaw/rules.md]', source: 'preview', lastModified: 0 },
+    projectRules: { content: `[Project-specific rules from ${BRAND.paths.rules}]`, source: 'preview', lastModified: 0 },
     memories: [],
     knowledgeEntries: [],
     longTermMemories: [],

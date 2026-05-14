@@ -23,6 +23,7 @@ import {
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import type { FileItem } from '@shared/types'
+import { BRAND } from '@shared/brand'
 import { t } from '@renderer/i18n'
 import { getDirPath, joinPath, pathEquals, normalizePath } from '@shared/utils/pathUtils'
 import { formatShortcut, keybindingService } from '@services/keybindingService'
@@ -964,7 +965,7 @@ export const VirtualFileTree = memo(function VirtualFileTree({
         onDragStart={(e) => {
           dragSourcePathRef.current = item.path
           e.dataTransfer.effectAllowed = 'move'
-          e.dataTransfer.setData('application/aweeclaw-file-path', item.path)
+          e.dataTransfer.setData(BRAND.dragDrop.fileMimeType, item.path)
           e.dataTransfer.setData('text/uri-list', `file:///${item.path.replace(/\\/g, '/')}`)
           e.dataTransfer.setData('text/plain', item.path)
           // 设置拖动时的图标

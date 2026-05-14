@@ -2,6 +2,7 @@ import { api } from '@/renderer/services/electronAPI'
 import { logger } from '@utils/Logger'
 import { useStore } from '@store'
 import { joinPath } from '@shared/utils/pathUtils'
+import { BRAND } from '@shared/brand'
 import { vectorIndex } from './vectorIndex'
 import { intelligentExtractor } from './intelligentExtractor'
 import {
@@ -16,9 +17,9 @@ import {
 
 const CURRENT_VERSION = 2
 const MAX_ENTRIES = 500
-const STORE_FILE = '.aweeclaw/knowledge/store.json'
-const OLD_MANUAL_FILE = '.aweeclaw/knowledge/manual.json'
-const OLD_MEMORY_FILE = '.aweeclaw/memory.json'
+const STORE_FILE = BRAND.paths.knowledgeStore
+const OLD_MANUAL_FILE = BRAND.paths.oldKnowledge
+const OLD_MEMORY_FILE = BRAND.paths.oldMemory
 
 class KnowledgeService {
   private cache: KnowledgeStore | null = null
@@ -585,7 +586,7 @@ ${lines.join('\n')}
 
     this.cache = store
 
-    const knowledgeDir = joinPath(workspacePath, '.aweeclaw/knowledge')
+    const knowledgeDir = joinPath(workspacePath, BRAND.paths.knowledge)
     const filePath = joinPath(workspacePath, STORE_FILE)
     const content = JSON.stringify(store, null, 2)
 

@@ -1,11 +1,13 @@
 /**
  * Agent 状态栏组件
  * 精致的内嵌式设计 - 与输入框融为一体
+ * [AweeClaw] 增强功能：场景感知状态、安全策略指示、Token 预算
  *
  * 职责：
  * 1. 显示流式状态和等待审批状态
  * 2. 显示文件变更列表（复用 useChangesReview）
  * 3. 提供 Accept/Reject 操作
+ * 4. [AweeClaw] 场景状态和安全策略指示
  */
 
 import { useState, useCallback, useMemo, memo } from 'react'
@@ -23,6 +25,8 @@ import {
   FolderOpen,
   Eye,
   Loader2,
+  Shield,
+  Zap,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { getFileName, getDirname } from '@shared/utils/pathUtils'
@@ -82,6 +86,8 @@ interface AgentStatusBarProps {
   pendingApprovalCount?: number
   pendingApprovalToolCalls?: ToolCall[]
   onViewAllChanges?: () => void
+  activeScenarioId?: string
+  securityPolicyActive?: boolean
 }
 
 function AgentStatusBar({
@@ -106,6 +112,8 @@ function AgentStatusBar({
   pendingApprovalCount,
   pendingApprovalToolCalls,
   onViewAllChanges,
+  activeScenarioId,
+  securityPolicyActive,
 }: AgentStatusBarProps) {
   const expandAgentBlocksByDefault = useStore(s => s.agentConfig.expandAgentBlocksByDefault ?? false)
   const language = useStore(s => s.language)
@@ -253,6 +261,15 @@ function AgentStatusBar({
                   <span className="text-[12px] font-medium tool-text-shimmer truncate">
                     {statusLabel}
                   </span>
+                  {activeScenarioId && (
+                    <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-accent/5 text-accent text-[10px] font-medium flex-shrink-0">
+                      <Zap className="w-2.5 h-2.5" />
+                      {activeScenarioId}
+                    </span>
+                  )}
+                  {securityPolicyActive && (
+                    <Shield className="w-3 h-3 text-accent/50 flex-shrink-0" />
+                  )}
                 </>
               ) : (
                 <>

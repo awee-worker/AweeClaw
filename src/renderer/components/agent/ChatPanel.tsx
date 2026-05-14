@@ -13,6 +13,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion'
 import { useStore, useModeStore } from '@/renderer/store'
 import { useShallow } from 'zustand/react/shallow'
+import { BRAND } from '@shared/brand'
 import { useAgentActions, useAgentCommands, useAgentViewState } from '@/renderer/hooks/useAgent'
 import { useChatScrollController } from '@/renderer/hooks'
 import { useAgentStore } from '@/renderer/agent/store/AgentStore'
@@ -551,7 +552,7 @@ export default function ChatPanel() {
     for (let i = 0; i < items.length; i++) {
       const item = items[i]
       if (item.kind === 'string') {
-        if (item.type === 'application/aweeclaw-file-path') {
+        if (item.type === BRAND.dragDrop.fileMimeType) {
           filePath = await new Promise<string>((resolve) => {
             item.getAsString((s) => resolve(s))
           })
@@ -721,7 +722,7 @@ export default function ChatPanel() {
         if (!workspacePath) {
           logger.agent.warn('[ChatPanel] Cannot save uploaded file: workspacePath is empty')
         } else {
-          const uploadDir = `${workspacePath}/.aweeclaw/uploads`
+          const uploadDir = `${workspacePath}/${BRAND.dirName}/uploads`
           try {
             const dirCreated = await api.file.ensureDir(uploadDir)
             if (!dirCreated) {

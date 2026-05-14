@@ -7,6 +7,7 @@ import { logger } from '@shared/utils/Logger'
 import * as path from 'path'
 import * as fs from 'fs'
 import { IndexedChunk, SearchResult } from './types'
+import { BRAND } from '@shared/brand'
 
 /**
  * LanceDB 类型定义
@@ -67,7 +68,7 @@ export class VectorStoreService {
   private tableName = 'code_chunks'
 
   constructor(workspacePath: string) {
-    this.indexPath = path.join(workspacePath, '.aweeclaw', 'index')
+    this.indexPath = path.join(workspacePath, BRAND.dirName, 'index')
   }
 
   /**

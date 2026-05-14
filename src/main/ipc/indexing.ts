@@ -1,5 +1,6 @@
 /**
  * 代码库索引 IPC handlers
+ * [AweeClaw] 增强功能：知识库索引、跨项目搜索、索引健康检查
  */
 
 import { logger } from '@shared/utils/Logger'
@@ -7,6 +8,7 @@ import { ipcMain, BrowserWindow } from 'electron'
 import { getIndexService, initIndexServiceWithConfig, EmbeddingConfig, IndexMode, IndexConfig } from '../indexing'
 import { ok, failFromError, Result } from '@shared/types/result'
 import Store from 'electron-store'
+import { BRAND } from '@shared/brand'
 
 let _configStore: Store | null = null
 
@@ -258,4 +260,147 @@ export function registerIndexingHandlers(getMainWindow: () => BrowserWindow | nu
       return []
     }
   })
+
+  // ============================================
+  // [AweeClaw] 知识库索引
+  // ============================================
+
+  interface KnowledgeEntry {
+    id: string
+    title: string
+    content: string
+    source: string
+    tags: string[]
+    createdAt: number
+    updatedAt: number
+  }
+
+  const knowledgeStore = new Map<string, KnowledgeEntry>()
+
+  ipcMain.handle('index:addKnowledge', async (_, _workspacePath: string, entry: Omit<KnowledgeEntry, 'id' | 'createdAt' | 'updatedAt'>) => {
+    try {
+      const id = `kn_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      const now = Date.now()
+      const knowledge: KnowledgeEntry = {
+        ...entry,
+        id,
+        createdAt: now,
+        updatedAt: now,
+      }
+      knowledgeStore.set(id, knowledge)
+      return { success: true, id }
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+
+  ipcMain.handle('index:updateKnowledge', async (_, id: string, updates: Partial<KnowledgeEntry>) => {
+    const entry = knowledgeStore.get(id)
+    if (!entry) return { success: false, error: 'Knowledge entry not found' }
+    knowledgeStore.set(id, { ...entry, ...updates, updatedAt: Date.now() })
+    return { success: true }
+  })
+
+  ipcMain.handle('index:removeKnowledge', async (_, id: string) => {
+    knowledgeStore.delete(id)
+    return { success: true }
+  })
+
+  ipcMain.handle('index:listKnowledge', async (_, filter?: { tag?: string; source?: string }) => {
+    let results = Array.from(knowledgeStore.values())
+    if (filter?.tag) results = results.filter(e => e.tags.includes(filter.tag!))
+    if (filter?.source) results = results.filter(e => e.source === filter.source)
+    return { success: true, entries: results }
+  })
+
+  ipcMain.handle('index:searchKnowledge', async (_, query: string, topK?: number) => {
+    const queryLower = query.toLowerCase()
+    const results = Array.from(knowledgeStore.values())
+      .filter(e =>
+        e.title.toLowerCase().includes(queryLower) ||
+        e.content.toLowerCase().includes(queryLower) ||
+        e.tags.some(t => t.toLowerCase().includes(queryLower))
+      )
+      .slice(0, topK || 10)
+    return { success: true, entries: results }
+  })
+
+  // ============================================
+  // [AweeClaw] 索引健康检查
+  // ============================================
+
+  ipcMain.handle('index:healthCheck', async (_, workspacePath: string) => {
+    try {
+      const indexService = getIndexService(workspacePath)
+      const status = indexService.getStatus()
+      const hasIndex = await indexService.hasIndex()
+
+      const health = {
+        status: 'healthy' as string,
+        checks: [] as { name: string; status: string; message?: string }[],
+      }
+
+      health.checks.push({
+        name: 'index_exists',
+        status: hasIndex ? 'ok' : 'warning',
+        message: hasIndex ? undefined : 'No index found for workspace',
+      })
+
+      if (status.isIndexing) {
+        health.checks.push({
+          name: 'indexing_progress',
+          status: 'info',
+          message: `Indexing: ${status.indexedFiles}/${status.totalFiles} files`,
+        })
+      }
+
+      if (status.totalFiles > 0 && status.indexedFiles < status.totalFiles * 0.5) {
+        health.checks.push({
+          name: 'index_coverage',
+          status: 'warning',
+          message: `Low index coverage: ${Math.round(status.indexedFiles / status.totalFiles * 100)}%`,
+        })
+        health.status = 'degraded'
+      }
+
+      return { success: true, health }
+    } catch (e) {
+      return {
+        success: true,
+        health: {
+          status: 'unhealthy',
+          checks: [{ name: 'index_service', status: 'error', message: e instanceof Error ? e.message : String(e) }],
+        },
+      }
+    }
+  })
+
+  // ============================================
+  // [AweeClaw] 跨项目搜索
+  // ============================================
+
+  ipcMain.handle('index:crossProjectSearch', async (_, workspacePaths: string[], query: string, topK?: number) => {
+    try {
+      const allResults: any[] = []
+      for (const wsPath of workspacePaths) {
+        try {
+          const saved = getSavedConfig()
+          const indexService = saved
+            ? initIndexServiceWithConfig(wsPath, saved)
+            : getIndexService(wsPath)
+          await indexService.initialize()
+          const results = await indexService.search(query, topK || 5)
+          allResults.push(...results.map((r: any) => ({ ...r, workspacePath: wsPath })))
+        } catch {
+          // skip failed workspaces
+        }
+      }
+      allResults.sort((a, b) => (b.score || 0) - (a.score || 0))
+      return { success: true, results: allResults.slice(0, topK || 10) }
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+
+  logger.ipc.info(`[Index] ${BRAND.name} enhanced IPC handlers registered (knowledge, health check, cross-project search)`)
 }

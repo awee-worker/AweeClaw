@@ -2,6 +2,7 @@
  * MCP IPC 处理器
  * 处理渲染进程与 MCP 服务的通信
  * 支持本地和远程 MCP 服务器，包括 OAuth 认证
+ * [AweeClaw] 增强功能：工具沙箱策略、工具审计日志、场景权限控制
  */
 
 import { BrowserWindow } from 'electron'
@@ -14,6 +15,7 @@ import type {
   McpPromptGetRequest,
   McpServerConfig,
 } from '@shared/types/mcp'
+import { BRAND } from '@shared/brand'
 
 export function registerMcpHandlers(_getMainWindow: () => BrowserWindow | null): void {
   // 初始化 MCP 管理器
@@ -178,7 +180,179 @@ export function registerMcpHandlers(_getMainWindow: () => BrowserWindow | null):
     }
   )
 
+  // [AweeClaw] 注册增强 IPC handlers
+  registerAweeClawMcpHandlers()
+
   logger.mcp?.info('[MCP IPC] Handlers registered')
+}
+
+// ============================================
+// [AweeClaw] MCP 工具沙箱策略
+// ============================================
+
+interface McpToolPolicy {
+  serverId: string
+  toolName: string
+  allowed: boolean
+  maxCallsPerMinute?: number
+  requireConfirmation?: boolean
+  allowedScenarios?: string[]
+}
+
+const toolPolicies = new Map<string, McpToolPolicy>()
+const toolCallCounts = new Map<string, { count: number; resetAt: number }>()
+
+function getPolicyKey(serverId: string, toolName: string): string {
+  return `${serverId}::${toolName}`
+}
+
+function checkToolPolicy(serverId: string, toolName: string, scenarioId?: string): { allowed: boolean; reason?: string } {
+  const key = getPolicyKey(serverId, toolName)
+  const policy = toolPolicies.get(key)
+
+  if (!policy) return { allowed: true }
+
+  if (!policy.allowed) {
+    return { allowed: false, reason: `Tool ${toolName} is blocked by policy` }
+  }
+
+  if (policy.allowedScenarios && policy.allowedScenarios.length > 0 && scenarioId) {
+    if (!policy.allowedScenarios.includes(scenarioId)) {
+      return { allowed: false, reason: `Tool ${toolName} is not allowed in scenario ${scenarioId}` }
+    }
+  }
+
+  if (policy.maxCallsPerMinute) {
+    const now = Date.now()
+    const callRecord = toolCallCounts.get(key)
+    if (!callRecord || now > callRecord.resetAt) {
+      toolCallCounts.set(key, { count: 1, resetAt: now + 60_000 })
+    } else {
+      callRecord.count++
+      if (callRecord.count > policy.maxCallsPerMinute) {
+        return { allowed: false, reason: `Tool ${toolName} exceeded rate limit (${policy.maxCallsPerMinute}/min)` }
+      }
+    }
+  }
+
+  return { allowed: true }
+}
+
+// ============================================
+// [AweeClaw] MCP 工具审计日志
+// ============================================
+
+interface McpToolAuditEntry {
+  timestamp: number
+  serverId: string
+  toolName: string
+  arguments?: any
+  result?: any
+  error?: string
+  duration: number
+  scenarioId?: string
+  windowId?: number
+}
+
+const auditEntries: McpToolAuditEntry[] = []
+const MAX_AUDIT_ENTRIES = 1000
+
+function appendAudit(entry: McpToolAuditEntry): void {
+  auditEntries.push(entry)
+  if (auditEntries.length > MAX_AUDIT_ENTRIES) {
+    auditEntries.splice(0, auditEntries.length - MAX_AUDIT_ENTRIES)
+  }
+}
+
+// ============================================
+// [AweeClaw] 独有 MCP IPC Handlers
+// ============================================
+
+function registerAweeClawMcpHandlers(): void {
+  // 工具策略管理
+  safeIpcHandle('mcp:setToolPolicy', async (_, policy: McpToolPolicy) => {
+    const key = getPolicyKey(policy.serverId, policy.toolName)
+    toolPolicies.set(key, policy)
+    logger.mcp?.info(`[MCP] Tool policy set: ${key} -> allowed=${policy.allowed}`)
+    return { success: true }
+  })
+
+  safeIpcHandle('mcp:getToolPolicy', async (_, serverId: string, toolName: string) => {
+    const key = getPolicyKey(serverId, toolName)
+    return { success: true, policy: toolPolicies.get(key) || null }
+  })
+
+  safeIpcHandle('mcp:removeToolPolicy', async (_, serverId: string, toolName: string) => {
+    const key = getPolicyKey(serverId, toolName)
+    toolPolicies.delete(key)
+    return { success: true }
+  })
+
+  safeIpcHandle('mcp:listToolPolicies', async () => {
+    return { success: true, policies: Array.from(toolPolicies.values()) }
+  })
+
+  // 审计日志查询
+  safeIpcHandle('mcp:getAuditLog', async (_, filter?: {
+    serverId?: string
+    toolName?: string
+    since?: number
+    limit?: number
+  }) => {
+    let results = [...auditEntries]
+    if (filter?.serverId) results = results.filter(e => e.serverId === filter.serverId)
+    if (filter?.toolName) results = results.filter(e => e.toolName === filter.toolName)
+    if (filter?.since) results = results.filter(e => e.timestamp >= filter.since!)
+    if (filter?.limit) results = results.slice(-filter.limit)
+    return { success: true, entries: results }
+  })
+
+  safeIpcHandle('mcp:clearAuditLog', async () => {
+    auditEntries.length = 0
+    return { success: true }
+  })
+
+  // 带策略检查和审计的工具调用
+  safeIpcHandle('mcp:callToolWithPolicy', async (_, request: McpToolCallRequest, scenarioId?: string) => {
+    const policyCheck = checkToolPolicy(request.serverId, request.toolName, scenarioId)
+    if (!policyCheck.allowed) {
+      return { success: false, error: policyCheck.reason, blocked: true }
+    }
+
+    const startTime = Date.now()
+    try {
+      const result = await mcpManager.callTool(
+        request.serverId,
+        request.toolName,
+        request.arguments
+      )
+
+      appendAudit({
+        timestamp: Date.now(),
+        serverId: request.serverId,
+        toolName: request.toolName,
+        arguments: request.arguments,
+        result: result,
+        duration: Date.now() - startTime,
+        scenarioId,
+      })
+
+      return result
+    } catch (error) {
+      appendAudit({
+        timestamp: Date.now(),
+        serverId: request.serverId,
+        toolName: request.toolName,
+        arguments: request.arguments,
+        error: error instanceof Error ? error.message : String(error),
+        duration: Date.now() - startTime,
+        scenarioId,
+      })
+      throw error
+    }
+  })
+
+  logger.mcp?.info(`[MCP] ${BRAND.name} enhanced IPC handlers registered (tool policy, audit, scenario control)`)
 }
 
 export function cleanupMcpHandlers(): void {

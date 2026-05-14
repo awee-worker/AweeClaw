@@ -17,6 +17,7 @@ import * as https from 'https'
 import { logger } from '@shared/utils/Logger'
 import { toAppError } from '@shared/utils/errorHandler'
 import Store from 'electron-store'
+import { BRAND } from '@shared/brand'
 
 const store = new Store({ name: 'python-config' })
 
@@ -703,7 +704,7 @@ class PythonManager {
     const { script, dependencies = [], args = [], cwd, timeout = 120000 } = params
 
     const baseDir = cwd || DEFAULT_PYTHON_DIR
-    const tempDir = path.join(baseDir, '.aweeclaw', 'python-temp')
+    const tempDir = path.join(baseDir, BRAND.dirName, 'python-temp')
     if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true })
 
     const tempFile = path.join(tempDir, `script-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.py`)

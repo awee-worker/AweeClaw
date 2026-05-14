@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { rulesService } from '@/renderer/agent/services/rulesService'
 import { Button } from '@components/ui'
 import { FileText, RefreshCw, AlertCircle, Save, RotateCcw } from 'lucide-react'
+import { BRAND } from '@shared/brand'
 
 interface RulesSettingsProps {
   language: string
@@ -39,7 +40,7 @@ export function RulesSettings({ language }: RulesSettingsProps) {
     setRulesSaving(true)
     const success = await rulesService.saveRules(rulesContent)
     if (success) {
-      setRulesSource('.aweeclaw/rules.md')
+      setRulesSource(BRAND.paths.rules)
       setRulesModified(false)
       setSaved(true)
       window.setTimeout(() => setSaved(false), 2000)
@@ -53,8 +54,8 @@ export function RulesSettings({ language }: RulesSettingsProps) {
   }
 
   const supportedFiles = [
-    { path: '.aweeclaw/rules.md', desc: t('推荐', 'Recommended') },
-    { path: '.aweeclawrules', desc: '' },
+    { path: BRAND.paths.rules, desc: t('推荐', 'Recommended') },
+    { path: `.${BRAND.cssPrefix}rules`, desc: '' },
     { path: '.cursorrules', desc: t('Cursor 兼容', 'Cursor compatible') },
     { path: '.cursor/rules.md', desc: t('Cursor 兼容', 'Cursor compatible') },
     { path: 'CODING_GUIDELINES.md', desc: '' },

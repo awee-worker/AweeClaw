@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Folder, FolderOpen, History, Plus, Settings } from 'lucide-react'
 import { api } from '@/renderer/services/electronAPI'
+import { BRAND } from '@shared/brand'
 import { workspaceManager, WorkspaceOpenError } from '@/renderer/services/WorkspaceManager'
 import { useStore } from '@/renderer/store'
 import { logger } from '@utils/Logger'
@@ -75,55 +76,57 @@ export default function WelcomePage() {
     }
   }
 
+  const p = BRAND.cssPrefix
+
   return (
-    <div className="aweeclaw-welcome-page h-full w-full overflow-hidden bg-background text-text-primary">
-      <WelcomeStyles rootClass="aweeclaw-welcome-page" />
+    <div className={`${p}-welcome-page h-full w-full overflow-hidden bg-background text-text-primary`}>
+      <WelcomeStyles rootClass={`${p}-welcome-page`} />
 
       <main className="h-full overflow-y-auto custom-scrollbar">
-        <section className="aweeclaw-welcome-shell">
-          <div className="aweeclaw-welcome-hero">
-            <h1 className="aweeclaw-welcome-title">{t('welcome.title', language)}</h1>
-            <p className="aweeclaw-welcome-subtitle">{t('welcome.subtitle', language)}</p>
+        <section className={`${p}-welcome-shell`}>
+          <div className={`${p}-welcome-hero`}>
+            <h1 className={`${p}-welcome-title`}>{t('welcome.title', language)}</h1>
+            <p className={`${p}-welcome-subtitle`}>{t('welcome.subtitle', language)}</p>
 
-            <div className="aweeclaw-welcome-actions">
-              <button className="aweeclaw-welcome-primary-button" onClick={handleOpenFolder}>
+            <div className={`${p}-welcome-actions`}>
+              <button className={`${p}-welcome-primary-button`} onClick={handleOpenFolder}>
                 <FolderOpen className="h-4 w-4" />
                 <span>{t('welcome.openFolder', language)}</span>
               </button>
-              <button className="aweeclaw-welcome-outline-button" onClick={handleOpenWorkspace}>
+              <button className={`${p}-welcome-outline-button`} onClick={handleOpenWorkspace}>
                 <Folder className="h-4 w-4" />
                 <span>{t('welcome.openWorkspace', language)}</span>
               </button>
             </div>
           </div>
 
-          <section className="aweeclaw-welcome-recent">
-            <div className="aweeclaw-welcome-recent-header">
+          <section className={`${p}-welcome-recent`}>
+            <div className={`${p}-welcome-recent-header`}>
               <h3>
                 <History className="h-4 w-4" />
                 {t('welcome.recent', language)}
               </h3>
-              <div className="aweeclaw-welcome-footer-actions">
-                <button className="aweeclaw-welcome-ghost-button" onClick={() => api.window.new()}>
+              <div className={`${p}-welcome-footer-actions`}>
+                <button className={`${p}-welcome-ghost-button`} onClick={() => api.window.new()}>
                   <Plus className="h-3.5 w-3.5" />
                   <span>{t('welcome.newWindow', language)}</span>
                 </button>
-                <button className="aweeclaw-welcome-ghost-button" onClick={() => setShowSettings(true)}>
+                <button className={`${p}-welcome-ghost-button`} onClick={() => setShowSettings(true)}>
                   <Settings className="h-3.5 w-3.5" />
                   <span>{t('settings', language)}</span>
                 </button>
               </div>
             </div>
 
-            <div className="aweeclaw-welcome-recent-list custom-scrollbar">
+            <div className={`${p}-welcome-recent-list custom-scrollbar`}>
               {recentWorkspaces.length > 0 ? (
                 recentWorkspaces.map((workspace) => (
                   <button
                     key={workspace.path}
                     onClick={() => handleOpenRecent(workspace.path)}
-                    className="aweeclaw-welcome-recent-item group"
+                    className={`${p}-welcome-recent-item group`}
                   >
-                    <span className="aweeclaw-welcome-recent-icon">
+                    <span className={`${p}-welcome-recent-icon`}>
                       <Folder className="h-4 w-4" />
                     </span>
                     <span className="min-w-0 flex-1">
@@ -133,7 +136,7 @@ export default function WelcomePage() {
                   </button>
                 ))
               ) : (
-                <div className="aweeclaw-welcome-empty-recent">{t('welcome.noRecentItems', language)}</div>
+                <div className={`${p}-welcome-empty-recent`}>{t('welcome.noRecentItems', language)}</div>
               )}
             </div>
           </section>
@@ -144,13 +147,14 @@ export default function WelcomePage() {
 }
 
 function WelcomeStyles({ rootClass }: { rootClass: string }) {
+  const p = BRAND.cssPrefix
   return (
     <style>{`
       .${rootClass} {
         container-type: inline-size;
       }
 
-      .${rootClass} .aweeclaw-welcome-shell {
+      .${rootClass} .${p}-welcome-shell {
         width: 100%;
         max-width: 720px;
         margin: 0 auto;
@@ -160,13 +164,13 @@ function WelcomeStyles({ rootClass }: { rootClass: string }) {
         min-height: 100%;
       }
 
-      .${rootClass} .aweeclaw-welcome-hero {
+      .${rootClass} .${p}-welcome-hero {
         text-align: center;
         padding-bottom: 48px;
         padding-top: 20vh;
       }
 
-      .${rootClass} .aweeclaw-welcome-title {
+      .${rootClass} .${p}-welcome-title {
         font-size: 28px;
         font-weight: 700;
         color: rgb(var(--text-primary));
@@ -174,22 +178,22 @@ function WelcomeStyles({ rootClass }: { rootClass: string }) {
         margin: 0;
       }
 
-      .${rootClass} .aweeclaw-welcome-subtitle {
+      .${rootClass} .${p}-welcome-subtitle {
         margin-top: 10px;
         font-size: 14px;
         line-height: 1.6;
         color: rgb(var(--text-muted));
       }
 
-      .${rootClass} .aweeclaw-welcome-actions {
+      .${rootClass} .${p}-welcome-actions {
         display: flex;
         justify-content: center;
         gap: 12px;
         margin-top: 28px;
       }
 
-      .${rootClass} .aweeclaw-welcome-primary-button,
-      .${rootClass} .aweeclaw-welcome-outline-button {
+      .${rootClass} .${p}-welcome-primary-button,
+      .${rootClass} .${p}-welcome-outline-button {
         display: inline-flex;
         height: 40px;
         align-items: center;
@@ -204,28 +208,28 @@ function WelcomeStyles({ rootClass }: { rootClass: string }) {
         cursor: pointer;
       }
 
-      .${rootClass} .aweeclaw-welcome-primary-button {
+      .${rootClass} .${p}-welcome-primary-button {
         color: white;
         background: rgb(var(--accent));
         border: none;
       }
 
-      .${rootClass} .aweeclaw-welcome-primary-button:hover {
+      .${rootClass} .${p}-welcome-primary-button:hover {
         filter: brightness(1.1);
       }
 
-      .${rootClass} .aweeclaw-welcome-outline-button {
+      .${rootClass} .${p}-welcome-outline-button {
         border: 1px solid rgb(var(--border));
         color: rgb(var(--text-primary));
         background: transparent;
       }
 
-      .${rootClass} .aweeclaw-welcome-outline-button:hover {
+      .${rootClass} .${p}-welcome-outline-button:hover {
         background: rgba(var(--surface-hover), 0.6);
         border-color: rgba(var(--accent), 0.4);
       }
 
-      .${rootClass} .aweeclaw-welcome-ghost-button {
+      .${rootClass} .${p}-welcome-ghost-button {
         display: inline-flex;
         height: 30px;
         align-items: center;
@@ -241,25 +245,25 @@ function WelcomeStyles({ rootClass }: { rootClass: string }) {
         transition: all 0.15s ease;
       }
 
-      .${rootClass} .aweeclaw-welcome-ghost-button:hover {
+      .${rootClass} .${p}-welcome-ghost-button:hover {
         color: rgb(var(--text-primary));
         background: rgba(var(--surface-hover), 0.5);
       }
 
-      .${rootClass} .aweeclaw-welcome-recent {
+      .${rootClass} .${p}-welcome-recent {
         margin-top: auto;
         padding-top: 32px;
         border-top: 1px solid rgb(var(--border) / 0.5);
       }
 
-      .${rootClass} .aweeclaw-welcome-recent-header {
+      .${rootClass} .${p}-welcome-recent-header {
         display: flex;
         align-items: center;
         justify-content: space-between;
         margin-bottom: 16px;
       }
 
-      .${rootClass} .aweeclaw-welcome-recent-header h3 {
+      .${rootClass} .${p}-welcome-recent-header h3 {
         display: flex;
         align-items: center;
         gap: 8px;
@@ -268,12 +272,12 @@ function WelcomeStyles({ rootClass }: { rootClass: string }) {
         color: rgb(var(--text-secondary));
       }
 
-      .${rootClass} .aweeclaw-welcome-footer-actions {
+      .${rootClass} .${p}-welcome-footer-actions {
         display: flex;
         gap: 4px;
       }
 
-      .${rootClass} .aweeclaw-welcome-recent-list {
+      .${rootClass} .${p}-welcome-recent-list {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
         gap: 8px;
@@ -281,7 +285,7 @@ function WelcomeStyles({ rootClass }: { rootClass: string }) {
         overflow-y: auto;
       }
 
-      .${rootClass} .aweeclaw-welcome-recent-item {
+      .${rootClass} .${p}-welcome-recent-item {
         display: flex;
         align-items: center;
         gap: 12px;
@@ -295,13 +299,13 @@ function WelcomeStyles({ rootClass }: { rootClass: string }) {
         cursor: pointer;
       }
 
-      .${rootClass} .aweeclaw-welcome-recent-item:hover {
+      .${rootClass} .${p}-welcome-recent-item:hover {
         color: rgb(var(--text-primary));
         background: rgba(var(--surface-hover), 0.6);
         border-color: rgba(var(--accent), 0.25);
       }
 
-      .${rootClass} .aweeclaw-welcome-recent-icon {
+      .${rootClass} .${p}-welcome-recent-icon {
         display: flex;
         width: 32px;
         height: 32px;
@@ -314,12 +318,12 @@ function WelcomeStyles({ rootClass }: { rootClass: string }) {
         transition: color 0.15s ease;
       }
 
-      .${rootClass} .aweeclaw-welcome-recent-item:hover .aweeclaw-welcome-recent-icon {
+      .${rootClass} .${p}-welcome-recent-item:hover .${p}-welcome-recent-icon {
         color: rgb(var(--accent));
         background: rgba(var(--accent), 0.1);
       }
 
-      .${rootClass} .aweeclaw-welcome-empty-recent {
+      .${rootClass} .${p}-welcome-empty-recent {
         grid-column: 1 / -1;
         display: flex;
         min-height: 80px;
@@ -332,24 +336,24 @@ function WelcomeStyles({ rootClass }: { rootClass: string }) {
       }
 
       @container (max-width: 520px) {
-        .${rootClass} .aweeclaw-welcome-shell {
+        .${rootClass} .${p}-welcome-shell {
           padding: 40px 24px 32px;
         }
 
-        .${rootClass} .aweeclaw-welcome-title {
+        .${rootClass} .${p}-welcome-title {
           font-size: 22px;
         }
 
-        .${rootClass} .aweeclaw-welcome-actions {
+        .${rootClass} .${p}-welcome-actions {
           flex-direction: column;
         }
 
-        .${rootClass} .aweeclaw-welcome-primary-button,
-        .${rootClass} .aweeclaw-welcome-outline-button {
+        .${rootClass} .${p}-welcome-primary-button,
+        .${rootClass} .${p}-welcome-outline-button {
           width: 100%;
         }
 
-        .${rootClass} .aweeclaw-welcome-recent-list {
+        .${rootClass} .${p}-welcome-recent-list {
           grid-template-columns: 1fr;
         }
       }

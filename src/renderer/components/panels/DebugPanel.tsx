@@ -13,6 +13,7 @@ import {
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { Button } from '../ui'
+import { BRAND } from '@shared/brand'
 import { toast } from '@components/common/ToastProvider'
 import type { DebugConfig, DebugEvent } from '@renderer/types/electron'
 import { getFileName, getDirPath } from '@shared/utils/pathUtils'
@@ -58,12 +59,12 @@ export default function DebugPanel() {
   const openLaunchConfig = useCallback(async () => {
     if (!workspacePath) return
 
-    const launchPath = `${workspacePath}/.aweeclaw/launch.json`
+    const launchPath = `${workspacePath}/${BRAND.dirName}/launch.json`
 
     // 检查文件是否存在，不存在则创建默认配置
     let content = await api.file.read(launchPath)
     if (!content) {
-      await api.file.ensureDir(`${workspacePath}/.aweeclaw`)
+      await api.file.ensureDir(`${workspacePath}/${BRAND.dirName}`)
       const defaultConfig = {
         version: '0.2.0',
         configurations: [
@@ -92,12 +93,12 @@ export default function DebugPanel() {
     useStore.getState().setActiveFile(launchPath)
   }, [workspacePath])
 
-  // 加载 launch.json 配置（从 .aweeclaw/launch.json）
+  // 加载 launch.json 配置（从 BRAND.dirName/launch.json）
   const loadLaunchConfigs = useCallback(async () => {
     if (!workspacePath) return
 
     try {
-      const launchPath = `${workspacePath}/.aweeclaw/launch.json`
+      const launchPath = `${workspacePath}/${BRAND.dirName}/launch.json`
       const content = await api.file.read(launchPath)
       if (content) {
         // 移除注释后解析

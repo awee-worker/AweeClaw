@@ -1,6 +1,7 @@
 /**
  * 安全审计和权限管理模块
  * 统一管理所有敏感操作的权限校验和审计日志
+ * [AweeClaw] 增强功能：场景权限策略、操作频率限制、安全事件通知
  */
 
 import { logger } from '@shared/utils/Logger'
@@ -9,6 +10,7 @@ import * as path from 'path'
 import { dialog, BrowserWindow } from 'electron'
 import { SECURITY_DEFAULTS, isSensitivePath as sharedIsSensitivePath } from '@shared/constants'
 import { pathStartsWith, pathEquals } from '@shared/utils/pathUtils'
+import { BRAND } from '@shared/brand'
 
 // 敏感操作类型
 export enum OperationType {
@@ -305,3 +307,224 @@ export async function checkWorkspacePermission(
   if (securityManager.isSensitivePath(filePath)) return false
   return await securityManager.checkPermission(operation, filePath)
 }
+
+// ============================================
+// [AweeClaw] 场景权限策略
+// ============================================
+
+export interface ScenarioPermissionPolicy {
+  scenarioId: string
+  allowedOperations: OperationType[]
+  deniedOperations: OperationType[]
+  maxFileOperationsPerMinute?: number
+  maxShellOperationsPerMinute?: number
+  restrictedPaths?: string[]
+  allowedFileExtensions?: string[]
+}
+
+const scenarioPolicies = new Map<string, ScenarioPermissionPolicy>()
+const scenarioOperationCounts = new Map<string, { fileOps: { count: number; resetAt: number }; shellOps: { count: number; resetAt: number } }>()
+
+export function setScenarioPermissionPolicy(policy: ScenarioPermissionPolicy): void {
+  scenarioPolicies.set(policy.scenarioId, policy)
+  logger.security.info(`[Security] Scenario policy set: ${policy.scenarioId}`)
+}
+
+export function getScenarioPermissionPolicy(scenarioId: string): ScenarioPermissionPolicy | undefined {
+  return scenarioPolicies.get(scenarioId)
+}
+
+export function removeScenarioPermissionPolicy(scenarioId: string): void {
+  scenarioPolicies.delete(scenarioId)
+  scenarioOperationCounts.delete(scenarioId)
+}
+
+export function listScenarioPermissionPolicies(): ScenarioPermissionPolicy[] {
+  return Array.from(scenarioPolicies.values())
+}
+
+export function checkScenarioPermission(
+  scenarioId: string,
+  operation: OperationType,
+  target?: string
+): { allowed: boolean; reason?: string } {
+  const policy = scenarioPolicies.get(scenarioId)
+  if (!policy) return { allowed: true }
+
+  if (policy.deniedOperations.includes(operation)) {
+    return { allowed: false, reason: `Operation ${operation} is denied in scenario ${scenarioId}` }
+  }
+
+  if (policy.allowedOperations.length > 0 && !policy.allowedOperations.includes(operation)) {
+    return { allowed: false, reason: `Operation ${operation} is not in allowed list for scenario ${scenarioId}` }
+  }
+
+  if (policy.restrictedPaths && target) {
+    const resolvedTarget = path.resolve(target)
+    if (policy.restrictedPaths.some(rp => resolvedTarget.startsWith(path.resolve(rp)))) {
+      return { allowed: false, reason: `Path is restricted in scenario ${scenarioId}` }
+    }
+  }
+
+  if (policy.allowedFileExtensions && target && operation.startsWith('file:')) {
+    const ext = path.extname(target).toLowerCase()
+    if (policy.allowedFileExtensions.length > 0 && !policy.allowedFileExtensions.includes(ext)) {
+      return { allowed: false, reason: `File extension ${ext} is not allowed in scenario ${scenarioId}` }
+    }
+  }
+
+  const now = Date.now()
+  let counts = scenarioOperationCounts.get(scenarioId)
+  if (!counts) {
+    counts = {
+      fileOps: { count: 0, resetAt: now + 60_000 },
+      shellOps: { count: 0, resetAt: now + 60_000 },
+    }
+    scenarioOperationCounts.set(scenarioId, counts)
+  }
+
+  if (operation.startsWith('file:') && policy.maxFileOperationsPerMinute) {
+    if (now > counts.fileOps.resetAt) {
+      counts.fileOps = { count: 1, resetAt: now + 60_000 }
+    } else {
+      counts.fileOps.count++
+      if (counts.fileOps.count > policy.maxFileOperationsPerMinute) {
+        return { allowed: false, reason: `File operation rate limit exceeded in scenario ${scenarioId}` }
+      }
+    }
+  }
+
+  if (operation.startsWith('shell:') && policy.maxShellOperationsPerMinute) {
+    if (now > counts.shellOps.resetAt) {
+      counts.shellOps = { count: 1, resetAt: now + 60_000 }
+    } else {
+      counts.shellOps.count++
+      if (counts.shellOps.count > policy.maxShellOperationsPerMinute) {
+        return { allowed: false, reason: `Shell operation rate limit exceeded in scenario ${scenarioId}` }
+      }
+    }
+  }
+
+  return { allowed: true }
+}
+
+// ============================================
+// [AweeClaw] 安全事件通知
+// ============================================
+
+export interface SecurityEvent {
+  id: string
+  timestamp: number
+  type: 'permission_denied' | 'rate_limited' | 'sensitive_access' | 'workspace_violation' | 'policy_violation'
+  operation: OperationType
+  target: string
+  scenarioId?: string
+  reason?: string
+}
+
+const securityEvents: SecurityEvent[] = []
+const MAX_SECURITY_EVENTS = 500
+const eventListeners: ((event: SecurityEvent) => void)[] = []
+
+export function onSecurityEvent(listener: (event: SecurityEvent) => void): () => void {
+  eventListeners.push(listener)
+  return () => {
+    const idx = eventListeners.indexOf(listener)
+    if (idx >= 0) eventListeners.splice(idx, 1)
+  }
+}
+
+export function emitSecurityEvent(event: SecurityEvent): void {
+  securityEvents.push(event)
+  if (securityEvents.length > MAX_SECURITY_EVENTS) {
+    securityEvents.splice(0, securityEvents.length - MAX_SECURITY_EVENTS)
+  }
+  for (const listener of eventListeners) {
+    try { listener(event) } catch {}
+  }
+}
+
+export function getSecurityEvents(filter?: {
+  type?: SecurityEvent['type']
+  since?: number
+  scenarioId?: string
+  limit?: number
+}): SecurityEvent[] {
+  let results = [...securityEvents]
+  if (filter?.type) results = results.filter(e => e.type === filter.type)
+  if (filter?.since) results = results.filter(e => e.timestamp >= filter.since!)
+  if (filter?.scenarioId) results = results.filter(e => e.scenarioId === filter.scenarioId)
+  if (filter?.limit) results = results.slice(-filter.limit)
+  return results
+}
+
+export function clearSecurityEvents(): void {
+  securityEvents.length = 0
+}
+
+// ============================================
+// [AweeClaw] 内置场景权限预设
+// ============================================
+
+export const BUILTIN_SCENARIO_POLICIES: Record<string, Partial<ScenarioPermissionPolicy>> = {
+  'code-editor': {
+    allowedOperations: [
+      OperationType.FILE_READ, OperationType.FILE_WRITE, OperationType.FILE_RENAME,
+      OperationType.SHELL_EXECUTE, OperationType.TERMINAL_INTERACTIVE, OperationType.GIT_EXEC,
+    ],
+    deniedOperations: [OperationType.SYSTEM_SHELL],
+    maxFileOperationsPerMinute: 120,
+    maxShellOperationsPerMinute: 60,
+  },
+  'data-analyst': {
+    allowedOperations: [
+      OperationType.FILE_READ, OperationType.FILE_WRITE,
+      OperationType.SHELL_EXECUTE, OperationType.TERMINAL_INTERACTIVE,
+    ],
+    deniedOperations: [OperationType.FILE_DELETE, OperationType.SYSTEM_SHELL],
+    maxFileOperationsPerMinute: 60,
+    maxShellOperationsPerMinute: 30,
+  },
+  'creative-writer': {
+    allowedOperations: [
+      OperationType.FILE_READ, OperationType.FILE_WRITE, OperationType.FILE_RENAME,
+    ],
+    deniedOperations: [OperationType.SHELL_EXECUTE, OperationType.TERMINAL_INTERACTIVE, OperationType.SYSTEM_SHELL],
+    maxFileOperationsPerMinute: 60,
+  },
+  'general-assistant': {
+    allowedOperations: [
+      OperationType.FILE_READ, OperationType.FILE_WRITE,
+      OperationType.SHELL_EXECUTE, OperationType.GIT_EXEC,
+    ],
+    deniedOperations: [OperationType.SYSTEM_SHELL],
+    maxFileOperationsPerMinute: 80,
+    maxShellOperationsPerMinute: 40,
+  },
+  'store-diagnosis': {
+    allowedOperations: [
+      OperationType.FILE_READ,
+      OperationType.SHELL_EXECUTE, OperationType.TERMINAL_INTERACTIVE,
+    ],
+    deniedOperations: [OperationType.FILE_WRITE, OperationType.FILE_DELETE, OperationType.SYSTEM_SHELL],
+    maxFileOperationsPerMinute: 40,
+    maxShellOperationsPerMinute: 20,
+  },
+}
+
+function initBuiltinPolicies(): void {
+  for (const [scenarioId, policy] of Object.entries(BUILTIN_SCENARIO_POLICIES)) {
+    setScenarioPermissionPolicy({
+      scenarioId,
+      allowedOperations: policy.allowedOperations || [],
+      deniedOperations: policy.deniedOperations || [],
+      maxFileOperationsPerMinute: policy.maxFileOperationsPerMinute,
+      maxShellOperationsPerMinute: policy.maxShellOperationsPerMinute,
+      restrictedPaths: policy.restrictedPaths,
+      allowedFileExtensions: policy.allowedFileExtensions,
+    })
+  }
+  logger.security.info(`[Security] ${BRAND.name} builtin scenario policies initialized`)
+}
+
+initBuiltinPolicies()

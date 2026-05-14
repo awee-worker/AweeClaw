@@ -3,6 +3,7 @@
  */
 import { themeManager } from '@/renderer/config/themeConfig'
 import type { ThemeName } from '@store/slices/themeSlice'
+import { BRAND } from '@shared/brand'
 
 // RGB 字符串转 Hex
 const rgbToHex = (rgbStr: string) => {
@@ -23,7 +24,7 @@ export function defineMonacoTheme(
   monacoInstance: typeof import('monaco-editor') | typeof import('monaco-editor/esm/vs/editor/editor.api'),
   themeName: ThemeName
 ) {
-  const theme = themeManager.getThemeById(themeName) || themeManager.getThemeById('aweeclaw-dark')!
+  const theme = themeManager.getThemeById(themeName) || themeManager.getThemeById(BRAND.defaultTheme)!
   const colors = theme.colors
   const isLight = theme.type === 'light'
 

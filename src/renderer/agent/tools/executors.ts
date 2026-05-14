@@ -17,6 +17,7 @@ import {
 } from '@/renderer/utils/searchReplace'
 import { smartReplace, normalizeLineEndings, checkLineReplaceWarnings } from '@/renderer/utils/smartReplace'
 import { getAgentConfig } from '../utils/AgentConfig'
+import { BRAND } from '@shared/brand'
 import { fileCacheService } from '../services/fileCacheService'
 import { lintService } from '../services/lintService'
 import { memoryService } from '../services/memoryService'
@@ -489,7 +490,7 @@ async function runInlineScriptViaTempFile(
     }
 
     const baseDir = ctx.workspacePath || await api.settings.getUserDataPath()
-    const tempDir = joinPath(baseDir, '.aweeclaw', 'agent-temp')
+    const tempDir = joinPath(baseDir, BRAND.dirName, 'agent-temp')
     const tempFile = joinPath(
         tempDir,
         `inline-${parsed.runtime}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${parsed.extension}`
@@ -1819,8 +1820,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 30)
             const planId = `${slug}-${timestamp}`
 
-            // 创建 .aweeclaw/plan 目录
-            const planDir = `${ctx.workspacePath}/.aweeclaw/plan`
+            const planDir = `${ctx.workspacePath}/${BRAND.dirName}/plan`
             await api.file.mkdir(planDir)
 
             // 保存需求文档 (markdown)
@@ -1918,7 +1918,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
 
             // 更新需求文档
             if (updateRequirements) {
-                const mdPath = `${ctx.workspacePath}/.aweeclaw/plan/${plan.requirementsDoc}`
+                const mdPath = `${ctx.workspacePath}/${BRAND.dirName}/plan/${plan.requirementsDoc}`
                 const existingContent = (await api.file.read(mdPath)) || ''
                 const newContent = `${existingContent}\n\n---\n## Updates\n${updateRequirements}`
                 internalWriteTracker.mark(mdPath)
@@ -1977,7 +1977,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             // 更新 JSON 文件
             const updatedPlan = store.getPlanById(planId)
             if (updatedPlan) {
-                const jsonPath = `${ctx.workspacePath}/.aweeclaw/plan/${planId}.json`
+                const jsonPath = `${ctx.workspacePath}/${BRAND.dirName}/plan/${planId}.json`
                 internalWriteTracker.mark(jsonPath)
                 await api.file.write(jsonPath, JSON.stringify(updatedPlan, null, 2))
             }

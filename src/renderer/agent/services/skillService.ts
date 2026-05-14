@@ -2,7 +2,7 @@
  * Skill 服务
  * 
  * 基于 agentskills.io 标准实现 Skill 系统
- * 扫描 .aweeclaw/skills/ 目录下的 SKILL.md 文件
+ * 扫描 BRAND.paths.skills 目录下的 SKILL.md 文件
  * 支持从 skills.sh 市场安装和 GitHub 克隆安装
  */
 
@@ -11,6 +11,7 @@ import { logger } from '@utils/Logger'
 import { useStore } from '@store'
 import { joinPath, platform } from '@shared/utils/pathUtils'
 import { parse as parseYaml } from 'yaml'
+import { BRAND } from '@shared/brand'
 
 // ============================================
 // 类型定义
@@ -82,8 +83,8 @@ class SkillService {
     private configCache: SkillConfig | null = null
     private lastScanTime = 0
     private readonly SCAN_INTERVAL = 5000 // 5 秒缓存
-    private readonly SKILLS_DIR = '.aweeclaw/skills'
-    private readonly CONFIG_FILE = '.aweeclaw/skills/.skills-config.json'
+    private readonly SKILLS_DIR = BRAND.paths.skills
+    private readonly CONFIG_FILE = BRAND.paths.skillsConfig
 
     /**
      * 获取所有已启用的 Skills
@@ -95,7 +96,7 @@ class SkillService {
 
     /**
      * 获取所有 Skills（包括禁用的）
-     * 双层扫描：全局 ({userData}/skills/) + 工作区 (.aweeclaw/skills/)
+     * 双层扫描：全局 ({userData}/skills/) + 工作区 (BRAND.paths.skills)
      * 工作区级按 name 覆盖全局级
      */
     async getAllSkills(forceRefresh = false): Promise<SkillItem[]> {
@@ -233,7 +234,7 @@ class SkillService {
      * 从 skills.sh 安装 Skill（标准 Claude Code 流程）
      * 1. 克隆仓库到临时目录
      * 2. 在仓库中找到包含 SKILL.md 的技能目录
-     * 3. 仅提取该技能目录（解引用符号链接为真实文件）到 .aweeclaw/skills/[skillId]
+     * 3. 仅提取该技能目录（解引用符号链接为真实文件）到 BRAND.paths.skills/[skillId]
      * 4. 清理临时克隆
      */
     async installFromMarketplace(packageId: string, level: SkillSource = 'project'): Promise<{ success: boolean; error?: string }> {

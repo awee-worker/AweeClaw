@@ -6,7 +6,7 @@
  * 
  * 配置优先级：
  * 1. 用户配置 (UI 设置)
- * 2. 项目配置 (.aweeclaw/agent.json)
+ * 2. 项目配置 (BRAND.dirName/agent.json)
  * 3. 默认配置 (defaults.ts + 本文件)
  */
 

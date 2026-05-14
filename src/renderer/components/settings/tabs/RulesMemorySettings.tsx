@@ -1,14 +1,15 @@
 /**
  * Rules & Memory 设置组件
- * 
- * 行为规则：.aweeclaw/rules.md - 静态规则文件
- * 上下文记忆：.aweeclaw/memory.json - 动态记忆列表
+ *
+ * 行为规则：BRAND.paths.rules - 静态规则文件
+ * 上下文记忆：BRAND.paths.memoryStore - 动态记忆列表
  */
 
 import { useState, useEffect, useCallback } from 'react'
 import { rulesService } from '@/renderer/agent/services/rulesService'
 import { memoryService, type MemoryItem } from '@/renderer/agent/services/memoryService'
 import { Button, Input } from '@components/ui'
+import { BRAND } from '@shared/brand'
 import {
   FileText, Brain, Plus, Trash2, Edit2, Check, X,
   RefreshCw, AlertCircle, ToggleLeft, ToggleRight
@@ -68,7 +69,7 @@ export function RulesMemorySettings({ language }: RulesMemorySettingsProps) {
     setRulesSaving(true)
     const success = await rulesService.saveRules(rulesContent)
     if (success) {
-      setRulesSource('.aweeclaw/rules.md')
+      setRulesSource(BRAND.paths.rules)
       setRulesModified(false)
     }
     setRulesSaving(false)
@@ -145,8 +146,8 @@ export function RulesMemorySettings({ language }: RulesMemorySettingsProps) {
 
           <p className="text-xs text-text-muted">
             {t(
-              '定义AI智能体的行为规则，支持 .aweeclaw/rules.md、.cursorrules 等格式',
-              'Define AI agent behavior rules. Supports .aweeclaw/rules.md, .cursorrules, etc.'
+              `定义AI智能体的行为规则，支持 ${BRAND.paths.rules}、.cursorrules 等格式`,
+              `Define AI agent behavior rules. Supports ${BRAND.paths.rules}, .cursorrules, etc.`
             )}
           </p>
 

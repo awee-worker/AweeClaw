@@ -7,6 +7,7 @@ import { api } from '@/renderer/services/electronAPI'
 import { logger } from '@utils/Logger'
 import { FileText, Folder, Database, Globe, FileCode, Terminal, GitBranch, AlertCircle, Wrench } from 'lucide-react'
 import { skillService } from '@/renderer/agent/services/skillService'
+import { BRAND } from '@shared/brand'
 
 export type MentionType = 'file' | 'folder' | 'codebase' | 'web' | 'git' | 'terminal' | 'symbols' | 'problems' | 'skill'
 
@@ -171,7 +172,7 @@ export class MentionParser {
 
             for (const item of items) {
                 if (item.name.startsWith('.') && item.name !== '.env') continue
-                if (['node_modules', 'dist', 'build', '.git', '.aweeclaw'].includes(item.name)) continue
+                if (['node_modules', 'dist', 'build', '.git', BRAND.dirName].includes(item.name)) continue
 
                 const relativePath = item.path.replace(rootPath, '').replace(/^[/\\]/, '')
                 const match = item.name.toLowerCase().includes(query) || relativePath.toLowerCase().includes(query)

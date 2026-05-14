@@ -8,6 +8,7 @@
  */
 
 import { z } from 'zod'
+import { BRAND } from '@shared/brand'
 import type { ToolApprovalType } from '@/shared/types/llm'
 import { normalizeEditFileArgs, resolveEditFileRequest } from '@/shared/utils/editFile'
 import { normalizeReadFileArgs, resolveReadFileRequest } from '@/shared/utils/readFile'
@@ -781,7 +782,7 @@ TIPS:
         displayName: 'Create Task Plan',
         description: 'Create a structured task plan with requirements document and task list.',
         detailedDescription: `Generate a task plan file that will be displayed in the TaskBoard.
-- Creates a plan file in .aweeclaw/plan/ directory
+- Creates a plan file in ${BRAND.dirName}/plan/ directory
 - Automatically opens the TaskBoard tab
 - Each task includes suggested provider/model/role
 - User can modify assignments before execution`,

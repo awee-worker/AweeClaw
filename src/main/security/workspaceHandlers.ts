@@ -7,6 +7,7 @@ import { logger } from '@shared/utils/Logger'
 import { ipcMain, dialog, BrowserWindow, ShareMenu } from 'electron'
 import { promises as fsPromises } from 'fs'
 import * as path from 'path'
+import { BRAND } from '@shared/brand'
 import { setupFileWatcher, cleanupFileWatcher, FileWatcherEvent } from './fileWatcher'
 import { securityManager } from './securityModule'
 
@@ -30,7 +31,7 @@ export interface WindowManagerContext {
   setWindowWorkspace?: (windowId: number, roots: string[]) => void
 }
 
-const WORKSPACE_MARKER_RELATIVE_PATH = path.join('.aweeclaw', 'workspace.json')
+const WORKSPACE_MARKER_RELATIVE_PATH = path.join(BRAND.dirName, 'workspace.json')
 
 interface StoredWorkspaceSession {
   configPath: string | null
@@ -208,7 +209,7 @@ export function registerWorkspaceHandlers(
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: ['openFile', 'openDirectory'],
       filters: [
-        { name: 'AweeClaw Workspace', extensions: ['aweeclaw-workspace'] },
+        { name: `${BRAND.name} Workspace`, extensions: [BRAND.workspaceExt] },
         { name: 'All Files', extensions: ['*'] }
       ]
     })
@@ -217,7 +218,7 @@ export function registerWorkspaceHandlers(
       const targetPath = result.filePaths[0]
       let roots: string[] = []
 
-      if (targetPath.endsWith('.aweeclaw-workspace')) {
+      if (targetPath.endsWith(`.${BRAND.workspaceExt}`)) {
         try {
           const content = await fsPromises.readFile(targetPath, 'utf-8')
           const config = JSON.parse(content)
@@ -254,7 +255,7 @@ export function registerWorkspaceHandlers(
       securityManager.setWorkspacePath(roots[0] || null)
 
       const session = {
-        configPath: targetPath.endsWith('.aweeclaw-workspace') ? targetPath : null,
+        configPath: targetPath.endsWith(`.${BRAND.workspaceExt}`) ? targetPath : null,
         roots,
         workspaceId: workspaceId || undefined,
       }
@@ -290,7 +291,7 @@ export function registerWorkspaceHandlers(
     if (!targetPath) {
       const mainWindow = getMainWindowFn()
       const result = await dialog.showSaveDialog(mainWindow!, {
-        filters: [{ name: 'AweeClaw Workspace', extensions: ['aweeclaw-workspace'] }]
+        filters: [{ name: `${BRAND.name} Workspace`, extensions: [BRAND.workspaceExt] }]
       })
       if (result.canceled || !result.filePath) return false
       targetPath = result.filePath

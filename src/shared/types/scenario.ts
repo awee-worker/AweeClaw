@@ -12,6 +12,7 @@
  */
 
 import type { WorkMode } from './workMode'
+import { BRAND } from '@shared/brand'
 
 // ============================================
 // 场景身份定义
@@ -217,8 +218,8 @@ export interface ScenarioContext {
 
 export type SerializableScenario = Omit<ScenarioPlugin, 'onActivate' | 'onDeactivate'>
 
-const CUSTOM_SCENARIOS_STORAGE_KEY = 'aweeclaw-custom-scenarios'
-const UNINSTALLED_BUILTIN_KEY = 'aweeclaw-uninstalled-builtin-scenarios'
+const CUSTOM_SCENARIOS_STORAGE_KEY = BRAND.storageKeys.customScenarios
+const UNINSTALLED_BUILTIN_KEY = BRAND.storageKeys.uninstalledBuiltin
 
 export class ScenarioRegistry {
   private scenarios = new Map<string, ScenarioPlugin>()

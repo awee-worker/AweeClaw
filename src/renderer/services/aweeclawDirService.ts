@@ -1,8 +1,8 @@
 /**
- * .aweeclaw 目录统一管理服务
+ * 项目数据目录统一管理服务
  *
- * 所有项目级数据都存储在 .aweeclaw 目录下：
- * .aweeclaw/
+ * 所有项目级数据都存储在 BRAND.dirName 目录下：
+ * 目录结构：
  *   ├── index/               # 代码库向量索引
  *   ├── sessions/            # Agent 会话（按线程拆分）
  *   │   ├── _meta.json       # 线程索引元数据（currentThreadId, threadIds, version）
@@ -17,6 +17,7 @@ import { api } from '@/renderer/services/electronAPI'
 import { logger } from '@utils/Logger'
 import { getEditorConfig } from '@renderer/settings'
 import type { OpenPreviewMetadata } from '@shared/types/preview'
+import { BRAND } from '@shared/brand'
 import {
   fromPersistedChatThread,
   toPersistedChatThread,
@@ -40,7 +41,7 @@ import {
 } from './sessionStorageSupport'
 import { SessionFileStore } from './sessionFileStore'
 
-export const ADNIFY_DIR_NAME = '.aweeclaw'
+export const ADNIFY_DIR_NAME = BRAND.dirName
 
 export const ADNIFY_FILES = {
   INDEX_DIR: 'index',

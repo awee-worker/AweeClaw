@@ -1,11 +1,12 @@
 /**
  * 上下文忽略服务
- * 支持 .aweeclawignore 文件，语法兼容 .gitignore
+ * 支持 .{BRAND.cssPrefix}ignore 文件，语法兼容 .gitignore
  */
 
 import { api } from '@/renderer/services/electronAPI'
 import { logger } from '@utils/Logger'
 import picomatch from 'picomatch'
+import { BRAND } from '@shared/brand'
 
 // 默认忽略规则
 const DEFAULT_IGNORE_PATTERNS = [
@@ -41,7 +42,7 @@ class IgnoreServiceClass {
 
     /**
      * 加载忽略文件
-     * 优先级: .aweeclawignore > .cursorignore > .gitignore (仅作为参考)
+     * 优先级: .${BRAND.cssPrefix}ignore > .cursorignore > .gitignore (仅作为参考)
      */
     async loadIgnoreFile(workspacePath: string): Promise<void> {
         // 如果已经加载了相同工作区，跳过
@@ -50,7 +51,7 @@ class IgnoreServiceClass {
         }
 
         this.workspacePath = workspacePath
-        const ignoreFiles = ['.aweeclawignore', '.cursorignore']
+        const ignoreFiles = [`.${BRAND.cssPrefix}ignore`, '.cursorignore']
 
         for (const fileName of ignoreFiles) {
             const ignorePath = `${workspacePath}/${fileName}`

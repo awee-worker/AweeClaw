@@ -8,6 +8,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
+import { BRAND } from '@shared/brand'
 import { UnauthorizedError } from '@modelcontextprotocol/sdk/client/auth.js'
 import * as cp from 'child_process'
 import {
@@ -153,7 +154,7 @@ export class McpClient extends EventEmitter {
     })
 
     const client = new Client({
-      name: 'aweeclaw',
+      name: BRAND.mcp.clientId,
       version: process.env.npm_package_version || '1.0.0',
     })
 
@@ -230,7 +231,7 @@ export class McpClient extends EventEmitter {
       try {
         transport = create()
         client = new Client({
-          name: 'aweeclaw',
+          name: BRAND.mcp.clientId,
           version: process.env.npm_package_version || '1.0.0',
         })
 

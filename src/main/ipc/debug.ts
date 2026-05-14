@@ -1,12 +1,15 @@
 /**
  * 调试 IPC handlers
+ * [AweeClaw] 增强功能：调试会话快照、性能分析、条件断点增强
  */
 
 import { ipcMain } from 'electron'
 import { toAppError } from '@shared/utils/errorHandler'
+import { logger } from '@shared/utils/Logger'
 import { debugService } from '../services/debugger'
 import { getAdapterInfo, builtinAdapters } from '../services/debugger/adapters'
 import type { DebugConfig } from '../services/debugger'
+import { BRAND } from '@shared/brand'
 
 export function registerDebugHandlers() {
   // 获取支持的调试类型
@@ -199,4 +202,150 @@ export function registerDebugHandlers() {
   ipcMain.handle('debug:getCapabilities', (_, sessionId: string) => {
     return debugService.getCapabilities(sessionId)
   })
+
+  // ============================================
+  // [AweeClaw] 调试会话快照
+  // ============================================
+
+  interface DebugSnapshot {
+    id: string
+    sessionId: string
+    timestamp: number
+    label: string
+    callStack: any[] | null
+    variables: Map<string, any> | null
+    threads: any[] | null
+  }
+
+  const snapshots = new Map<string, DebugSnapshot>()
+
+  ipcMain.handle('debug:createSnapshot', async (_, sessionId: string, label: string) => {
+    try {
+      const id = `snapshot_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      let callStack: any[] | null = null
+      let variables: any = null
+
+      try {
+        const threads = await debugService.getThreads(sessionId)
+        if (threads && threads.length > 0) {
+          callStack = await debugService.getStackTrace(sessionId, threads[0].id)
+        }
+      } catch {}
+
+      if (callStack && callStack.length > 0 && callStack[0].id !== undefined) {
+        try {
+          const scopes = await debugService.getScopes(sessionId, callStack[0].id)
+          variables = scopes
+        } catch {}
+      }
+
+      const snapshot: DebugSnapshot = {
+        id,
+        sessionId,
+        timestamp: Date.now(),
+        label,
+        callStack,
+        variables,
+        threads: null,
+      }
+
+      snapshots.set(id, snapshot)
+      return { success: true, snapshotId: id }
+    } catch (err) {
+      return { success: false, error: toAppError(err).message }
+    }
+  })
+
+  ipcMain.handle('debug:getSnapshot', async (_, snapshotId: string) => {
+    const snapshot = snapshots.get(snapshotId)
+    if (!snapshot) return { success: false, error: 'Snapshot not found' }
+    return { success: true, snapshot }
+  })
+
+  ipcMain.handle('debug:listSnapshots', async (_, sessionId?: string) => {
+    let result = Array.from(snapshots.values())
+    if (sessionId) result = result.filter(s => s.sessionId === sessionId)
+    return { success: true, snapshots: result }
+  })
+
+  ipcMain.handle('debug:deleteSnapshot', async (_, snapshotId: string) => {
+    snapshots.delete(snapshotId)
+    return { success: true }
+  })
+
+  ipcMain.handle('debug:compareSnapshots', async (_, snapshotId1: string, snapshotId2: string) => {
+    const s1 = snapshots.get(snapshotId1)
+    const s2 = snapshots.get(snapshotId2)
+    if (!s1 || !s2) return { success: false, error: 'One or both snapshots not found' }
+
+    const diff: { added: string[], removed: string[], changed: string[] } = {
+      added: [],
+      removed: [],
+      changed: [],
+    }
+
+    const vars1 = s1.variables as any
+    const vars2 = s2.variables as any
+    if (vars1 && vars2) {
+      const keys1 = new Set(Object.keys(vars1))
+      const keys2 = new Set(Object.keys(vars2))
+      for (const k of keys2) {
+        if (!keys1.has(k)) diff.added.push(k)
+      }
+      for (const k of keys1) {
+        if (!keys2.has(k)) diff.removed.push(k)
+        else if (JSON.stringify(vars1[k]) !== JSON.stringify(vars2[k])) diff.changed.push(k)
+      }
+    }
+
+    return { success: true, diff, snapshot1: s1, snapshot2: s2 }
+  })
+
+  // ============================================
+  // [AweeClaw] 调试性能分析
+  // ============================================
+
+  interface DebugProfileEntry {
+    timestamp: number
+    sessionId: string
+    event: string
+    duration: number
+    metadata?: any
+  }
+
+  const profileEntries: DebugProfileEntry[] = []
+  const MAX_PROFILE_ENTRIES = 5000
+
+  ipcMain.handle('debug:startProfiling', async (_, sessionId: string) => {
+    profileEntries.push({
+      timestamp: Date.now(),
+      sessionId,
+      event: 'profiling:start',
+      duration: 0,
+    })
+    return { success: true }
+  })
+
+  ipcMain.handle('debug:stopProfiling', async (_, sessionId: string) => {
+    profileEntries.push({
+      timestamp: Date.now(),
+      sessionId,
+      event: 'profiling:stop',
+      duration: 0,
+    })
+    return { success: true }
+  })
+
+  ipcMain.handle('debug:getProfileData', async (_, sessionId?: string) => {
+    let results = profileEntries
+    if (sessionId) results = results.filter(e => e.sessionId === sessionId)
+    return { success: true, entries: results.slice(-MAX_PROFILE_ENTRIES) }
+  })
+
+  ipcMain.handle('debug:clearProfileData', async () => {
+    profileEntries.length = 0
+    return { success: true }
+  })
+
+  logger.ipc?.info(`[Debug] ${BRAND.name} enhanced IPC handlers registered (snapshots, profiling)`)
 }

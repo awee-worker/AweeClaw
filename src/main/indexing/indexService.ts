@@ -10,6 +10,7 @@ import * as path from 'path'
 import { BrowserWindow } from 'electron'
 import { Worker } from 'worker_threads'
 import { logger, normalizePath } from '@shared/utils'
+import { BRAND } from '@shared/brand'
 import { TreeSitterChunker } from './treeSitterChunker'
 import { ChunkerService } from './chunker'
 import { EmbeddingService } from './embedder'
@@ -93,11 +94,11 @@ export class CodebaseIndexService {
   }
 
   private get structuralIndexPath(): string {
-    return path.join(this.workspacePath, '.aweeclaw', 'structural-index.json')
+    return path.join(this.workspacePath, BRAND.dirName, 'structural-index.json')
   }
 
   private get indexStatusPath(): string {
-    return path.join(this.workspacePath, '.aweeclaw', 'index-status.json')
+    return path.join(this.workspacePath, BRAND.dirName, 'index-status.json')
   }
 
   private initialized = false

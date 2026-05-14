@@ -10,6 +10,7 @@ import { skillService, type SkillItem, type SkillTriggerType, type SkillSource }
 import { api } from '@/renderer/services/electronAPI'
 import { useStore } from '@store'
 import { Button, Input } from '@components/ui'
+import { BRAND } from '@shared/brand'
 import {
     Zap, Plus, Trash2, RefreshCw, Download, Search,
     ToggleLeft, ToggleRight, ExternalLink, Github, FolderOpen
@@ -488,8 +489,8 @@ export function SkillSettings({ language }: SkillSettingsProps) {
                         </div>
                         <p className="text-[12px] text-text-muted">
                             {t(
-                                '将在 .aweeclaw/skills/ 下创建目录和 SKILL.md 模板',
-                                'Creates a directory and SKILL.md template under .aweeclaw/skills/'
+                                `将在 ${BRAND.dirName}/skills/ 下创建目录和 SKILL.md 模板`,
+                                `Creates a directory and SKILL.md template under ${BRAND.dirName}/skills/`
                             )}
                         </p>
                     </div>

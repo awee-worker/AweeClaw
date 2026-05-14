@@ -3,6 +3,7 @@ import { useStore } from '@store';
 import { ThemeName } from '@store/slices/themeSlice';
 import { themeManager } from '@/renderer/config/themeConfig';
 import { api } from '@/renderer/services/electronAPI';
+import { BRAND } from '@shared/brand';
 
 interface ThemeManagerProps {
     children: ReactNode;
@@ -12,7 +13,7 @@ export const ThemeManager: React.FC<ThemeManagerProps> = ({ children }) => {
     const currentTheme = useStore((state) => state.currentTheme) as ThemeName;
 
     useEffect(() => {
-        const theme = themeManager.getThemeById(currentTheme) || themeManager.getThemeById('aweeclaw-dark')!;
+        const theme = themeManager.getThemeById(currentTheme) || themeManager.getThemeById(BRAND.defaultTheme)!;
 
         // Use the global themeManager to apply CSS vars and attributes
         themeManager.applyTheme(theme);

@@ -104,7 +104,7 @@ export interface TaskPlan {
     updatedAt: number
     /** 持久化修订号，用于避免并发覆盖 */
     revision?: number
-    /** 需求文档路径（相对于 .aweeclaw/plan/） */
+    /** 需求文档路径（相对于 BRAND.dirName/plan/） */
     requirementsDoc: string
     /** 需求文档内容（缓存，用于注入上下文） */
     requirementsContent?: string

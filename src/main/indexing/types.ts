@@ -2,6 +2,8 @@
  * 代码库索引类型定义
  */
 
+import { BRAND } from '@shared/brand'
+
 // ==================== 索引模式 ====================
 
 /** 索引模式 */
@@ -149,6 +151,6 @@ export const DEFAULT_INDEX_CONFIG: IndexConfig = {
   chunkSize: 80,
   chunkOverlap: 10,
   maxFileSize: 1024 * 1024,
-  ignoredDirs: ['node_modules', '.git', 'dist', 'build', '.aweeclaw', 'coverage', '__pycache__', '.venv', 'venv'],
+  ignoredDirs: ['node_modules', '.git', 'dist', 'build', BRAND.dirName, 'coverage', '__pycache__', '.venv', 'venv'],
   includedExts: ['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs', '.java', '.cpp', '.c', '.h', '.hpp', '.cs', '.rb', '.php', '.swift', '.kt', '.scala', '.vue', '.svelte'],
 }

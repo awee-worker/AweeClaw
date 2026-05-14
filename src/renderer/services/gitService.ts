@@ -2,6 +2,7 @@ import { api } from '@/renderer/services/electronAPI'
 import { toAppError } from '@shared/utils/errorHandler'
 import { logger } from '@utils/Logger'
 import { normalizePath, toRelativePath } from '@shared/utils/pathUtils'
+import { BRAND } from '@shared/brand'
 
 /**
  * Git 服务 (使用安全的 Git API)
@@ -85,7 +86,7 @@ class GitService {
         'dist',
         'build',
         '.next',
-        '.aweeclaw',
+        BRAND.dirName,
         'coverage',
         '__pycache__',
         '.venv',

@@ -7,6 +7,7 @@ import { spawn, ChildProcess } from 'child_process'
 import { Socket } from 'net'
 import { EventEmitter } from 'events'
 import { logger } from '@shared/utils/Logger'
+import { BRAND } from '@shared/brand'
 import type {
   DebugAdapterDescriptor,
   DebugConfig,
@@ -117,10 +118,10 @@ export class DAPClient extends EventEmitter {
   /**
    * 初始化请求
    */
-  async initialize(clientId: string = 'aweeclaw'): Promise<DebugCapabilities> {
+  async initialize(clientId: string = BRAND.debug.clientId): Promise<DebugCapabilities> {
     const response = await this.sendRequest('initialize', {
       clientID: clientId,
-      clientName: 'AweeClaw',
+      clientName: BRAND.debug.clientName,
       adapterID: 'debug-adapter',
       pathFormat: 'path',
       linesStartAt1: true,

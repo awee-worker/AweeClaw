@@ -1,6 +1,6 @@
 /**
  * 项目规则服务
- * 支持 .aweeclaw/rules.md 或 .cursorrules 文件
+ * 支持 BRAND.paths.rules 或 .cursorrules 文件
  * 让用户定义项目级 AI 行为偏好
  */
 
@@ -8,6 +8,7 @@ import { api } from '@/renderer/services/electronAPI'
 import { logger } from '@utils/Logger'
 import { useStore } from '@store'
 import { joinPath } from '@shared/utils/pathUtils'
+import { BRAND } from '@shared/brand'
 
 export interface ProjectRules {
   content: string
@@ -22,8 +23,8 @@ class RulesService {
 
   // 支持的规则文件名（按优先级）
   private ruleFiles = [
-    '.aweeclaw/rules.md',
-    '.aweeclawrules',
+    BRAND.paths.rules,
+    `.${BRAND.cssPrefix}rules`,
     '.cursorrules',
     '.cursor/rules.md',
     'CODING_GUIDELINES.md',
@@ -70,17 +71,17 @@ class RulesService {
     const { workspacePath } = useStore.getState()
     if (!workspacePath) return false
 
-    // 确保 .aweeclaw 目录存在
-    const aweeclawDir = joinPath(workspacePath, '.aweeclaw')
+    // 确保 BRAND.dirName 目录存在
+    const aweeclawDir = joinPath(workspacePath, BRAND.dirName)
     await api.file.mkdir(aweeclawDir)
 
-    const rulesPath = joinPath(workspacePath, '.aweeclaw/rules.md')
+    const rulesPath = joinPath(workspacePath, BRAND.paths.rules)
     const success = await api.file.write(rulesPath, content)
     
     if (success) {
       this.cachedRules = {
         content: content.trim(),
-        source: '.aweeclaw/rules.md',
+        source: BRAND.paths.rules,
         lastModified: Date.now(),
       }
     }

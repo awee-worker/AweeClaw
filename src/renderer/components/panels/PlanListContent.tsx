@@ -1,6 +1,7 @@
 import { memo, useMemo, useCallback } from 'react'
 import { useAgentStore } from '@renderer/agent/store/AgentStore'
 import { useStore } from '@store'
+import { BRAND } from '@shared/brand'
 import { globalConfirm } from '@renderer/components/common/ConfirmDialog'
 import {
     PlayCircle,
@@ -197,7 +198,7 @@ export default memo(function PlanListContent({
     const handlePlanClick = (plan: TaskPlan) => {
         setActivePlan(plan.id)
         if (workspacePath) {
-            const jsonPath = `${workspacePath}/.aweeclaw/plan/${plan.id}.json`
+            const jsonPath = `${workspacePath}/${BRAND.dirName}/plan/${plan.id}.json`
             openFile(jsonPath, JSON.stringify(plan, null, 2))
         }
         onPlanSelect?.()
@@ -218,7 +219,7 @@ export default memo(function PlanListContent({
         deletePlan(plan.id)
         if (workspacePath) {
             try {
-                const planPath = `${workspacePath}/.aweeclaw/plan/${plan.id}.json`
+                const planPath = `${workspacePath}/${BRAND.dirName}/plan/${plan.id}.json`
                 const { api } = await import('@/renderer/services/electronAPI')
                 await api.file.delete(planPath)
             } catch {}

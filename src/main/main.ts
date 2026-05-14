@@ -13,6 +13,7 @@ import { randomUUID } from 'crypto'
 import * as path from 'path'
 import { logger } from '@shared/utils/Logger'
 import { SECURITY_DEFAULTS } from '@shared/constants'
+import { BRAND } from '@shared/brand'
 import type Store from 'electron-store'
 import { destroyIndexService } from './indexing/indexService'
 import { setCustomLspBinDir } from './lsp/installer'
@@ -179,9 +180,9 @@ function getThemeBackgroundColor(): string {
     }
 
     // Fallback dictionary for older configurations before migration
-    const themeId = configStore?.get('themeId') as string || 'aweeclaw-dark';
+    const themeId = configStore?.get('themeId') as string || BRAND.defaultTheme;
     const themes: Record<string, string> = {
-      'aweeclaw-dark': '#121215',
+      [BRAND.defaultTheme]: '#121215',
       'midnight': '#161b22',
       'cyberpunk': '#030305',
       'dawn': '#ffffff'

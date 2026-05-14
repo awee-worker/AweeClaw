@@ -1,5 +1,6 @@
 import { StateCreator } from 'zustand'
 import { logger } from '@shared/utils/Logger'
+import { BRAND } from '@shared/brand'
 import {
   setServerUrl,
   setTokens,
@@ -57,7 +58,7 @@ export interface AuthSlice {
   selectCloudModel: () => Promise<void>
 }
 
-const STORAGE_KEY = 'aweeclaw-cloud-auth';
+const STORAGE_KEY = BRAND.storageKeys.cloudAuth;
 
 function persistAuth(data: {
   serverUrl: string;

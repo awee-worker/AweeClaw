@@ -2,9 +2,11 @@
  * English translations
  */
 
+import { BRAND } from '@shared/brand'
+
 export const en = {
   // Title bar
-  'app.name': 'AweeClaw',
+  'app.name': BRAND.name,
   'settings': 'Settings',
 
   // Sidebar
@@ -526,12 +528,12 @@ export const en = {
   'welcome.openFolder': 'Open Folder',
   'welcome.openFolderDesc': 'Open a local project folder',
   'welcome.openWorkspace': 'Open Workspace',
-  'welcome.openWorkspaceDesc': 'Open workspace file (.aweeclaw)',
+  'welcome.openWorkspaceDesc': `Open workspace file (.${BRAND.workspaceExt})`,
   'welcome.newWindow': 'New Window',
   'welcome.settings': 'Settings',
   'welcome.noRecentItems': 'No recent items',
   'welcome.pressForCommands': 'Press {shortcut} for commands',
-  'welcome.brandName': 'AweeClaw',
+  'welcome.brandName': BRAND.name,
   'welcome.brandTagline': 'AI-Native Intelligent Workspace',
   'welcome.eyebrow': 'Start',
   'welcome.title': 'Welcome back. Build what comes next.',

@@ -217,7 +217,7 @@ export default function CommandPalette({ onClose, onShowKeyboardShortcuts }: Com
         if (path) {
           const { addRoot } = useStore.getState()
           addRoot(path)
-          // 初始化新根目录的 .aweeclaw
+          // 初始化新根目录的项目数据目录
           await aweeclawDir.initialize(path)
           toast.success(`Added ${path} to workspace`)
         }

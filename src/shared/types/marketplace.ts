@@ -11,6 +11,8 @@
  * - 评分系统：社区驱动的质量评估
  */
 
+import { BRAND } from '@shared/brand'
+
 // ============================================
 // 市场条目
 // ============================================
@@ -126,7 +128,7 @@ class ScenarioMarketplaceClass {
     this.addSource({
       id: 'official',
       name: 'Official Marketplace',
-      baseUrl: 'https://marketplace.aweeclaw.com/api',
+      baseUrl: BRAND.marketplace.baseUrl,
       type: 'official',
       enabled: true,
     })

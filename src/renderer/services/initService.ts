@@ -8,6 +8,7 @@ import { logger } from '@utils/Logger'
 import { startupMetrics } from '@shared/utils/startupMetrics'
 import { globalConfirm } from '@components/common/ConfirmDialog'
 import { useStore } from '../store'
+import { BRAND } from '@shared/brand'
 import { initializeAgentStore } from '@renderer/agent/store/AgentStore'
 import { themeManager } from '../config/themeConfig'
 import { keybindingService } from './keybindingService'
@@ -273,7 +274,7 @@ function isAutoApproveSettings(value: unknown): value is Partial<import('@store'
 }
 
 function isThemeName(value: unknown): value is import('@store').ThemeName {
-  const validThemes = ['aweeclaw-dark', 'midnight', 'cyberpunk', 'dawn']
+  const validThemes = [BRAND.defaultTheme, 'midnight', 'cyberpunk', 'dawn']
   return typeof value === 'string' && validThemes.includes(value)
 }
 

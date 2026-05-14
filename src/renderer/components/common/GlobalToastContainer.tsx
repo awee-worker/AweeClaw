@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowUpRight, Terminal, Volume2, X } from 'lucide-react'
 import { useHasElevatedToastLayer } from './toastLayerStore'
 import { Button } from '../ui'
+import { BRAND } from '@shared/brand'
 
 export default function GlobalToastContainer() {
   const { toasts, visibleIds, dismissToast } = useInlineToast()
@@ -24,7 +25,7 @@ export default function GlobalToastContainer() {
         <AnimatePresence mode="wait">
           {shouldEject && activeInlineToast && (
             <motion.div
-              layoutId="aweeclaw-dynamic-island"
+              layoutId={BRAND.layout.dynamicIslandId}
               key={activeInlineToast.id}
               initial={{ opacity: 0, y: -20, scale: 0.9 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}

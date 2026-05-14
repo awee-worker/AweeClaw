@@ -8,6 +8,7 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { LanguageModel } from 'ai'
 import type { LLMConfig } from '@shared/types/llm'
+import { BRAND } from '@shared/brand'
 import { BUILTIN_PROVIDERS, isBuiltinProvider } from '@shared/config/providers'
 import type { ApiProtocol } from '@shared/config/providers'
 import { supportsFullOpenAIStyleFeatures } from '@shared/config/providers'
@@ -152,7 +153,7 @@ function createCloudModel(config: LLMConfig, options: ModelOptions): LanguageMod
     }
 
     const provider = createOpenAICompatible({
-        name: 'aweeclaw-cloud',
+        name: BRAND.cloud.providerId,
         apiKey: options.accessToken!,
         baseURL,
         headers,

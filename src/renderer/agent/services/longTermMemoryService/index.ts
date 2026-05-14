@@ -2,6 +2,7 @@ import { api } from '@/renderer/services/electronAPI'
 import { logger } from '@utils/Logger'
 import { useStore } from '@store'
 import { joinPath } from '@shared/utils/pathUtils'
+import { BRAND } from '@shared/brand'
 import { reflectiveDreamingService } from './reflectiveDreamingService'
 import {
   type MemoryEntry,
@@ -18,8 +19,8 @@ import {
 const CURRENT_VERSION = 1
 const MAX_SHORT_TERM = 500
 const MAX_LONG_TERM = 200
-const FILE_PATH = '.aweeclaw/memory/store.json'
-const OLD_KNOWLEDGE_CONV_FILE = '.aweeclaw/knowledge/conversation.json'
+const FILE_PATH = BRAND.paths.memoryStore
+const OLD_KNOWLEDGE_CONV_FILE = BRAND.paths.knowledgeConversation
 
 class LongTermMemoryService {
   private cache: MemoryStore | null = null
@@ -766,7 +767,7 @@ ${lines.join('\n')}
 
     this.cache = store
 
-    const dir = joinPath(workspacePath, '.aweeclaw/memory')
+    const dir = joinPath(workspacePath, BRAND.paths.memory)
     const filePath = joinPath(workspacePath, FILE_PATH)
     const content = JSON.stringify(store, null, 2)
 

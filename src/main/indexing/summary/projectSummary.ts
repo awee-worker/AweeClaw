@@ -7,6 +7,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { logger } from '@shared/utils/Logger'
 import { ProjectSummary, DirectorySummary, FileSummary, SymbolInfo } from '../types'
+import { BRAND } from '@shared/brand'
 
 // 常见目录描述
 const DIR_DESCRIPTIONS: Record<string, string> = {
@@ -88,7 +89,7 @@ export class ProjectSummaryGenerator {
 
   constructor(workspacePath: string) {
     this.workspacePath = workspacePath
-    this.cachePath = path.join(workspacePath, '.aweeclaw', 'project-summary.json')
+    this.cachePath = path.join(workspacePath, BRAND.dirName, 'project-summary.json')
   }
 
   /** 检测项目类型 */

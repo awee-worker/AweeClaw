@@ -6,6 +6,7 @@
 
 import { api } from '@/renderer/services/electronAPI'
 import { logger } from '@utils/Logger'
+import { BRAND } from '@shared/brand'
 
 export interface ThemeColors {
   // 背景色 (RGB 格式: "r g b")
@@ -63,8 +64,8 @@ function hexToRgb(hex: string): string {
 // 内置主题 (使用 RGB 格式)
 export const builtinThemes: Theme[] = [
   {
-    id: 'aweeclaw-light',
-    name: 'AweeClaw Light',
+    id: BRAND.lightTheme,
+    name: `${BRAND.name} Light`,
     type: 'light',
     monacoTheme: 'vs',
     colors: {
@@ -299,8 +300,8 @@ export const builtinThemes: Theme[] = [
 ]
 
 // 主题管理器
-const LOCAL_STORAGE_THEME_KEY = 'aweeclaw-theme-id'
-const LOCAL_STORAGE_CUSTOM_THEMES_KEY = 'aweeclaw-custom-themes'
+const LOCAL_STORAGE_THEME_KEY = BRAND.storageKeys.themeId
+const LOCAL_STORAGE_CUSTOM_THEMES_KEY = `${BRAND.cssPrefix}-custom-themes`
 
 /** 校验自定义主题的 colors 字段是否完整且为字符串 */
 function isValidTheme(t: unknown): t is Theme {
@@ -363,8 +364,8 @@ class ThemeManager {
         if (theme) {
           this.currentTheme = theme
           localStorage.setItem(LOCAL_STORAGE_THEME_KEY, savedThemeId)
-          localStorage.setItem('aweeclaw-theme-bg', theme.colors.background)
-          localStorage.setItem('aweeclaw-theme-type', theme.type)
+          localStorage.setItem(BRAND.storageKeys.themeBg, theme.colors.background)
+          localStorage.setItem(BRAND.storageKeys.themeType, theme.type)
           // Migrate old configs so main.ts can access themeBg on next startup
           try { api.settings.set('themeBg', theme.colors.background) } catch (e) { }
         }
@@ -378,8 +379,8 @@ class ThemeManager {
     // 同步写入 localStorage
     try {
       localStorage.setItem(LOCAL_STORAGE_THEME_KEY, this.currentTheme.id)
-      localStorage.setItem('aweeclaw-theme-bg', this.currentTheme.colors.background)
-      localStorage.setItem('aweeclaw-theme-type', this.currentTheme.type)
+      localStorage.setItem(BRAND.storageKeys.themeBg, this.currentTheme.colors.background)
+      localStorage.setItem(BRAND.storageKeys.themeType, this.currentTheme.type)
       localStorage.setItem(LOCAL_STORAGE_CUSTOM_THEMES_KEY, JSON.stringify(this.customThemes))
     } catch (e) {
       // 忽略 localStorage 错误
@@ -427,7 +428,7 @@ class ThemeManager {
   removeCustomTheme(themeId: string) {
     this.customThemes = this.customThemes.filter(t => t.id !== themeId)
     if (this.currentTheme.id === themeId) {
-      this.setTheme('aweeclaw-dark')
+      this.setTheme(BRAND.defaultTheme)
     }
     this.saveToConfig()
   }

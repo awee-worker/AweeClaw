@@ -8,6 +8,7 @@ import { Eye, Edit, Columns } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { t } from '@renderer/i18n'
+import { BRAND } from '@shared/brand'
 import { useAgentChangeState } from '@hooks/useAgent'
 import { useLspIntegration, useFileSave, useLintCheck } from '@renderer/hooks'
 import { toast } from '../common/ToastProvider'
@@ -46,7 +47,7 @@ const BrowserPreviewTab = lazy(() => import('./BrowserPreviewTab'))
 
 function isPlanJsonFile(filePath: string): boolean {
   const normalizedPath = normalizePath(filePath)
-  return normalizedPath.includes('/.aweeclaw/plan/') && normalizedPath.endsWith('.json')
+  return normalizedPath.includes(`/${BRAND.dirName}/plan/`) && normalizedPath.endsWith('.json')
 }
 
 function getPlanIdFromPlanFilePath(filePath: string): string {

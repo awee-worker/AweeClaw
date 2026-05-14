@@ -1,10 +1,9 @@
 import { StateCreator } from 'zustand'
 import { builtinThemes } from '@/renderer/config/themeConfig'
+import { BRAND } from '@shared/brand'
 
-/** 内置主题 ID 联合类型 */
-export type BuiltinThemeName = 'aweeclaw-light' | 'aweeclaw-dark' | 'midnight' | 'dawn' | 'cyberpunk' | 'lobster'
+export type BuiltinThemeName = typeof BRAND.lightTheme | typeof BRAND.defaultTheme | 'midnight' | 'dawn' | 'cyberpunk' | 'lobster'
 
-/** 主题名称，支持内置和自定义主题 */
 export type ThemeName = string
 
 export interface ThemeSlice {
@@ -13,12 +12,11 @@ export interface ThemeSlice {
 }
 
 export const createThemeSlice: StateCreator<ThemeSlice, [], [], ThemeSlice> = (set) => {
-    const savedTheme = typeof localStorage !== 'undefined' ? localStorage.getItem('aweeclaw-theme-id') : null
+    const savedTheme = typeof localStorage !== 'undefined' ? localStorage.getItem(BRAND.storageKeys.themeId) : null
     const validIds = builtinThemes.map(t => t.id)
-    // 允许内置主题或已保存的自定义主题 ID
     const initialTheme = savedTheme && (validIds.includes(savedTheme) || savedTheme.startsWith('custom-'))
         ? savedTheme
-        : 'aweeclaw-light'
+        : BRAND.lightTheme
 
     return {
         currentTheme: initialTheme,

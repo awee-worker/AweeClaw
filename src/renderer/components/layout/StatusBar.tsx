@@ -1,6 +1,7 @@
 import { api } from '@/renderer/services/electronAPI'
 import { logger } from '@utils/Logger'
 import { useEffect, useMemo, useState } from 'react'
+import { BRAND } from '@shared/brand'
 import { getQuotaBarColor, getQuotaTextColor, getQuotaGlowColor } from '@utils/quotaColors'
 import {
   GitBranch,
@@ -632,7 +633,7 @@ export default function StatusBar() {
                 <AnimatePresence mode="wait">
                   {activeToast && !shouldEject ? (
                     <motion.div
-                      layoutId="aweeclaw-dynamic-island"
+                      layoutId={BRAND.layout.dynamicIslandId}
                       key={activeToast.id}
                       initial={{ opacity: 0, width: 0 }}
                       animate={{ opacity: 1, width: 'auto' }}

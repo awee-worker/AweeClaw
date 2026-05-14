@@ -2,9 +2,11 @@
  * Chinese translations
  */
 
+import { BRAND } from '@shared/brand'
+
 export const zh = {
   // Title bar
-  'app.name': 'AweeClaw',
+  'app.name': BRAND.name,
   'settings': '设置',
 
   // Sidebar
@@ -527,12 +529,12 @@ export const zh = {
   'welcome.openFolder': '打开文件夹',
   'welcome.openFolderDesc': '打开本地项目文件夹',
   'welcome.openWorkspace': '打开工作区',
-  'welcome.openWorkspaceDesc': '打开工作区文件 (.aweeclaw)',
+  'welcome.openWorkspaceDesc': `打开工作区文件 (.${BRAND.workspaceExt})`,
   'welcome.newWindow': '新建窗口',
   'welcome.settings': '设置',
   'welcome.noRecentItems': '没有最近的项目',
   'welcome.pressForCommands': '按 {shortcut} 打开命令面板',
-  'welcome.brandName': 'AweeClaw',
+  'welcome.brandName': BRAND.name,
   'welcome.brandTagline': 'AI 原生智能工作台',
   'welcome.eyebrow': '开始',
   'welcome.title': '欢迎回来，一起创造无限可能',

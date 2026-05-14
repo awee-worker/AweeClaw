@@ -19,6 +19,7 @@ import { api } from '@/renderer/services/electronAPI'
 import { logger } from '@utils/Logger'
 import { EventBus } from '../core/EventBus'
 import { Agent } from '../core/Agent'
+import { BRAND } from '@shared/brand'
 import { gitService } from '@/renderer/services/gitService'
 import { ExecutionScheduler } from './PlanScheduler'
 import { getLLMConfigForTask } from '../services/llmConfigService'
@@ -215,7 +216,7 @@ export async function startPlanExecution(
     }
 
     try {
-        const requirementsPath = `${workspacePath}/.aweeclaw/plan/${plan.requirementsDoc}`
+        const requirementsPath = `${workspacePath}/${BRAND.dirName}/plan/${plan.requirementsDoc}`
         const requirementsContent = await api.file.read(requirementsPath)
         store.updatePlan(plan.id, { requirementsContent: requirementsContent || undefined })
     } catch (e) {
