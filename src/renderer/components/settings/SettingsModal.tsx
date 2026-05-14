@@ -129,6 +129,7 @@ export default function SettingsModal() {
         setShowSettings,
         settingsInitialTab,
         save,
+        activeScenarioId,
     } = useStore(useShallow(s => ({
         llmConfig: s.llmConfig,
         language: s.language,
@@ -147,6 +148,7 @@ export default function SettingsModal() {
         setShowSettings: s.setShowSettings,
         settingsInitialTab: s.settingsInitialTab,
         save: s.save,
+        activeScenarioId: s.activeScenarioId,
     })))
 
     const [activeTab, setActiveTab] = useState<SettingsTab>('provider')
@@ -159,6 +161,13 @@ export default function SettingsModal() {
             useStore.getState().setShowSettings(true, undefined)
         }
     }, [settingsInitialTab])
+
+    useEffect(() => {
+        const codeEditorOnlyTabs = new Set(['editor', 'snippets', 'indexing', 'lsp', 'keybindings'])
+        if (activeScenarioId !== 'code-editor' && codeEditorOnlyTabs.has(activeTab)) {
+            setActiveTab('provider')
+        }
+    }, [activeScenarioId, activeTab])
 
     const [localConfig, setLocalConfig] = useState(llmConfig)
     const [localLanguage, setLocalLanguage] = useState(language)
@@ -402,24 +411,31 @@ export default function SettingsModal() {
         providers.find(provider => provider.id === localConfig.provider),
         [localConfig.provider, providers])
 
-    const tabs = useMemo(() => [
-        { id: 'provider', label: language === 'zh' ? '模型提供商' : 'Providers', icon: <Cpu className="w-4 h-4" /> },
-        { id: 'appearance', label: language === 'zh' ? '外观' : 'Appearance', icon: <Palette className="w-4 h-4" /> },
-        { id: 'agent', label: language === 'zh' ? '智能体' : 'Agent', icon: <Settings2 className="w-4 h-4" /> },
-        { id: 'rules', label: language === 'zh' ? '行为规则' : 'Rules', icon: <FileText className="w-4 h-4" /> },
-        { id: 'memory', label: language === 'zh' ? '上下文记忆' : 'Memory', icon: <Brain className="w-4 h-4" /> },
-        { id: 'skills', label: 'Skills', icon: <Zap className="w-4 h-4" /> },
-        { id: 'mcp', label: 'MCP', icon: <Plug className="w-4 h-4" /> },
-        { id: 'channel', label: language === 'zh' ? '多渠道' : 'Channels', icon: <Radio className="w-4 h-4" /> },
-        { id: 'editor', label: language === 'zh' ? '编辑器' : 'Editor', icon: <Code className="w-4 h-4" /> },
-        { id: 'snippets', label: language === 'zh' ? '代码片段' : 'Snippets', icon: <FileCode className="w-4 h-4" /> },
-        { id: 'indexing', label: language === 'zh' ? '代码索引' : 'Indexing', icon: <Database className="w-4 h-4" /> },
-        { id: 'lsp', label: language === 'zh' ? '语言服务' : 'LSP', icon: <Braces className="w-4 h-4" /> },
-        { id: 'keybindings', label: language === 'zh' ? '快捷键' : 'Keybindings', icon: <Keyboard className="w-4 h-4" /> },
-        { id: 'security', label: language === 'zh' ? '安全设置' : 'Security', icon: <Shield className="w-4 h-4" /> },
-        { id: 'system', label: language === 'zh' ? '系统' : 'System', icon: <Monitor className="w-4 h-4" /> },
-        { id: 'cloud', label: language === 'zh' ? '云端服务' : 'Cloud', icon: <Cloud className="w-4 h-4" /> },
-    ] as const, [language])
+    const isCodeEditor = activeScenarioId === 'code-editor'
+    const codeEditorOnlyTabs = new Set(['editor', 'snippets', 'indexing', 'lsp', 'keybindings'])
+
+    const tabs = useMemo(() => {
+        const allTabs = [
+            { id: 'provider', label: language === 'zh' ? '模型提供商' : 'Providers', icon: <Cpu className="w-4 h-4" /> },
+            { id: 'appearance', label: language === 'zh' ? '外观' : 'Appearance', icon: <Palette className="w-4 h-4" /> },
+            { id: 'agent', label: language === 'zh' ? '智能体' : 'Agent', icon: <Settings2 className="w-4 h-4" /> },
+            { id: 'rules', label: language === 'zh' ? '行为规则' : 'Rules', icon: <FileText className="w-4 h-4" /> },
+            { id: 'memory', label: language === 'zh' ? '上下文记忆' : 'Memory', icon: <Brain className="w-4 h-4" /> },
+            { id: 'skills', label: 'Skills', icon: <Zap className="w-4 h-4" /> },
+            { id: 'mcp', label: 'MCP', icon: <Plug className="w-4 h-4" /> },
+            { id: 'channel', label: language === 'zh' ? '多渠道' : 'Channels', icon: <Radio className="w-4 h-4" /> },
+            { id: 'editor', label: language === 'zh' ? '编辑器' : 'Editor', icon: <Code className="w-4 h-4" /> },
+            { id: 'snippets', label: language === 'zh' ? '代码片段' : 'Snippets', icon: <FileCode className="w-4 h-4" /> },
+            { id: 'indexing', label: language === 'zh' ? '代码索引' : 'Indexing', icon: <Database className="w-4 h-4" /> },
+            { id: 'lsp', label: language === 'zh' ? '语言服务' : 'LSP', icon: <Braces className="w-4 h-4" /> },
+            { id: 'keybindings', label: language === 'zh' ? '快捷键' : 'Keybindings', icon: <Keyboard className="w-4 h-4" /> },
+            { id: 'security', label: language === 'zh' ? '安全设置' : 'Security', icon: <Shield className="w-4 h-4" /> },
+            { id: 'system', label: language === 'zh' ? '系统' : 'System', icon: <Monitor className="w-4 h-4" /> },
+            { id: 'cloud', label: language === 'zh' ? '云端服务' : 'Cloud', icon: <Cloud className="w-4 h-4" /> },
+        ]
+        if (isCodeEditor) return allTabs
+        return allTabs.filter(tab => !codeEditorOnlyTabs.has(tab.id))
+    }, [language, isCodeEditor])
 
     const renderActiveTab = () => {
         switch (activeTab) {
@@ -498,6 +514,7 @@ export default function SettingsModal() {
                         language={language}
                         securitySettings={localSecuritySettings}
                         setSecuritySettings={setLocalSecuritySettings}
+                        isCodeEditor={isCodeEditor}
                     />
                 )
             case 'system':
@@ -532,7 +549,7 @@ export default function SettingsModal() {
                         {tabs.map(tab => (
                             <button
                                 key={tab.id}
-                                onClick={() => setActiveTab(tab.id)}
+                                onClick={() => setActiveTab(tab.id as SettingsTab)}
                                 className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-200 group ${activeTab === tab.id ? 'bg-accent/10 text-text-primary border border-accent/20' : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary border border-transparent'}`}
                             >
                                 <span className={`transition-colors duration-200 ${activeTab === tab.id ? 'text-accent' : 'text-text-muted group-hover:text-text-primary'}`}>

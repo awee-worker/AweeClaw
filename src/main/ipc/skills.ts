@@ -8,13 +8,18 @@ import * as fs from 'fs'
 import { safeIpcHandle } from './safeHandle'
 import { logger } from '@shared/utils/Logger'
 import { getUserConfigDir } from '../services/configPath'
+import { securityManager } from '../security/securityModule'
 
 export function registerSkillsHandlers(): void {
-  // 获取全局 Skills 目录路径
+  const globalSkillsDir = path.join(getUserConfigDir(), 'skills')
+
+  securityManager.addAllowedAppPath(globalSkillsDir)
+
+  fs.promises.mkdir(globalSkillsDir, { recursive: true }).catch(() => {})
+
   safeIpcHandle('skills:getGlobalDir', async () => {
-    const dir = path.join(getUserConfigDir(), 'skills')
-    await fs.promises.mkdir(dir, { recursive: true })
-    return dir
+    await fs.promises.mkdir(globalSkillsDir, { recursive: true })
+    return globalSkillsDir
   })
 
   logger.ipc.info('[Skills IPC] Handlers registered')

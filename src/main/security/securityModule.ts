@@ -108,6 +108,30 @@ function normalizeCommandName(command: string): string {
 class SecurityManager implements SecurityModule {
   private sessionStorage: Map<string, boolean> = new Map()
   private config: Partial<SecuritySettings> = {}
+  private allowedAppPaths: string[] = []
+
+  /**
+   * 注册应用可信路径（如全局 Skills 目录）
+   * 可信路径下的文件操作跳过工作区边界检查，但仍检查敏感路径
+   */
+  addAllowedAppPath(dirPath: string): void {
+    const resolved = path.resolve(dirPath)
+    if (!this.allowedAppPaths.includes(resolved)) {
+      this.allowedAppPaths.push(resolved)
+      logger.security.info(`[Security] Added allowed app path: ${resolved}`)
+    }
+  }
+
+  /**
+   * 检查路径是否在应用可信路径下
+   */
+  isAllowedAppPath(filePath: string): boolean {
+    if (this.allowedAppPaths.length === 0) return false
+    const resolved = path.resolve(filePath)
+    return this.allowedAppPaths.some(allowed =>
+      resolved === allowed || resolved.startsWith(allowed + path.sep)
+    )
+  }
 
   /**
    * 设置当前工作区路径（保留接口兼容）
@@ -202,6 +226,12 @@ class SecurityManager implements SecurityModule {
    * 验证工作区边界
    */
   validateWorkspacePath(filePath: string, workspace: string | string[]): boolean {
+    // 可信应用路径跳过工作区边界检查，但仍检查敏感路径
+    if (this.isAllowedAppPath(filePath)) {
+      const resolvedPath = path.resolve(filePath)
+      return !this.isSensitivePath(resolvedPath)
+    }
+
     // 如果未启用严格工作区模式，允许所有路径（但仍检查敏感路径）
     if (this.config.strictWorkspaceMode === false) {
       const resolvedPath = path.resolve(filePath)
