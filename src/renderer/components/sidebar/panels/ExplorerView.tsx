@@ -4,7 +4,7 @@
 
 import { api } from '@/renderer/services/electronAPI'
 import { useState, useEffect, useCallback } from 'react'
-import { FolderOpen, Plus, RefreshCw, FolderPlus, GitBranch, FilePlus, ExternalLink, Crosshair, Terminal, Clipboard } from 'lucide-react'
+import { FolderOpen, Plus, RefreshCw, FolderPlus, GitBranch, FilePlus, ExternalLink, Crosshair, Terminal, Clipboard, Download } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { t } from '@renderer/i18n'
@@ -47,11 +47,13 @@ export function ExplorerView() {
     setIsGitRepo,
     expandFolder,
     activeFilePath,
+    activeScenarioId,
   } = useStore(useShallow(s => ({
     workspacePath: s.workspacePath, workspace: s.workspace, files: s.files, setFiles: s.setFiles,
     language: s.language, gitStatus: s.gitStatus,
     setGitStatus: s.setGitStatus, isGitRepo: s.isGitRepo, setIsGitRepo: s.setIsGitRepo,
     expandFolder: s.expandFolder, activeFilePath: s.activeFilePath,
+    activeScenarioId: s.activeScenarioId,
   })))
   const setTerminalVisible = useStore(state => state.setTerminalVisible)
 
@@ -321,17 +323,52 @@ export function ExplorerView() {
     }))
   }, [clipboardItem, workspacePath])
 
+  const handleImportToDirectory = useCallback(async (targetDir: string) => {
+    const selectedPaths = await api.file.selectForImport({
+      title: language === 'zh' ? '导入文件或文件夹' : 'Import Files or Folders',
+      allowFiles: true,
+      allowDirs: true,
+      multiSelection: true,
+    })
+    if (!selectedPaths || selectedPaths.length === 0) return
+
+    const result = await api.file.importIntoWorkspace(selectedPaths, targetDir)
+    if (result.success) {
+      toast.success(language === 'zh' ? `成功导入 ${selectedPaths.length} 项` : `Successfully imported ${selectedPaths.length} item(s)`)
+      await refreshFiles({ affectedPaths: [targetDir], refreshRoot: targetDir === workspacePath })
+    } else {
+      const failedCount = result.results?.filter(r => !r.success).length || selectedPaths.length
+      toast.error(language === 'zh' ? `导入失败 ${failedCount} 项` : `Failed to import ${failedCount} item(s)`)
+      if (targetDir === workspacePath || result.results?.some(r => r.success)) {
+        await refreshFiles({ affectedPaths: [targetDir], refreshRoot: targetDir === workspacePath })
+      }
+    }
+  }, [language, refreshFiles, workspacePath])
+
+  const isCodeEditor = activeScenarioId === 'code-editor'
+
   const rootMenuItems: ContextMenuItem[] = [
     { id: 'newFile', label: t('newFile', 'zh'), icon: FilePlus, onClick: () => handleRootCreate('file') },
     { id: 'newFolder', label: t('newFolder', 'zh'), icon: FolderPlus, onClick: () => handleRootCreate('folder') },
     { id: 'sep1', label: '', separator: true },
     {
-      id: 'openTerminal',
-      label: t('openIntegratedTerminalHere', 'zh') || '在此处打开集成终端',
-      icon: Terminal,
-      onClick: () => workspacePath && openTerminalAtPath(workspacePath),
+      id: 'import',
+      label: language === 'zh' ? '导入...' : 'Import...',
+      icon: Download,
+      onClick: () => workspacePath && handleImportToDirectory(workspacePath),
     },
-    { id: 'sep2', label: '', separator: true },
+    ...(isCodeEditor
+      ? [
+          { id: 'sep2', label: '', separator: true } as ContextMenuItem,
+          {
+            id: 'openTerminal',
+            label: t('openIntegratedTerminalHere', 'zh') || '在此处打开集成终端',
+            icon: Terminal,
+            onClick: () => workspacePath && openTerminalAtPath(workspacePath),
+          } as ContextMenuItem,
+        ]
+      : []),
+    { id: 'sepTerminal', label: '', separator: true },
     {
       id: 'paste',
       label: t('paste', 'zh') || '粘贴',

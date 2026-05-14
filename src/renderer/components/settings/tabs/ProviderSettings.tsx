@@ -1436,6 +1436,137 @@ export function ProviderSettings({
       {/* 配置区域（非添加模式时显示） */}
       {!isAddingCustom && (
         <div className="space-y-6">
+          {/* 认证 & 网络配置 - 仅本地模式 */}
+          {!isCloudMode && (
+          <section className="rounded-2xl border border-border/50 bg-surface/20 p-6 backdrop-blur-xl shadow-sm relative overflow-hidden group">
+            <div className="absolute inset-0 bg-gradient-to-br from-accent/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+            <div className="relative">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-accent/10 rounded-lg text-accent">
+                  <Server className="w-4 h-4" />
+                </div>
+                <div>
+                  <h5 className="text-sm font-semibold text-text-primary">
+                    {language === 'zh' ? '认证 & 网络配置' : 'Authentication & Network'}
+                  </h5>
+                  <p className="text-[11px] text-text-muted mt-0.5">
+                    {language === 'zh' ? '配置 API 访问密钥和服务器连接参数' : 'Configure API keys and server connection parameters'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <TestConnectionButton localConfig={localConfig} language={language} />
+                <TestModelButton localConfig={localConfig} language={language} />
+              </div>
+            </div>
+
+            {/* 基础配置：三列布局 */}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-5 mb-6">
+              {/* API Key */}
+              <div className="md:col-span-5 space-y-2">
+                <label className="text-[12px] font-bold text-text-secondary uppercase tracking-wider px-0.5">
+                  API Key
+                </label>
+                <Input
+                  type={showApiKey ? 'text' : 'password'}
+                  value={localConfig.apiKey}
+                  onChange={(e) => setLocalConfig({ ...localConfig, apiKey: e.target.value })}
+                  placeholder={PROVIDERS[localConfig.provider]?.auth.placeholder || 'sk-...'}
+                  className="bg-background/40 border-border/60 focus:border-accent/50 focus:ring-accent/20 font-mono text-xs h-10 transition-all"
+                  rightIcon={
+                    <button onClick={() => setShowApiKey(!showApiKey)} className="text-text-muted hover:text-text-primary p-1.5 hover:bg-surface/50 rounded-md transition-colors">
+                      {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  }
+                />
+              </div>
+
+              {/* API 端点 */}
+              <div className="md:col-span-5 space-y-2">
+                <label className="text-[12px] font-bold text-text-secondary uppercase tracking-wider px-0.5">
+                  {language === 'zh' ? 'API 端点' : 'API Endpoint'}
+                </label>
+                <Input
+                  value={localConfig.baseUrl || ''}
+                  onChange={(e) => setLocalConfig({ ...localConfig, baseUrl: e.target.value || undefined })}
+                  placeholder="https://api.example.com/v1"
+                  className="bg-background/40 border-border/60 focus:border-accent/50 focus:ring-accent/20 text-xs font-mono h-10 transition-all"
+                />
+              </div>
+
+              {/* 超时时间 */}
+              <div className="md:col-span-2 space-y-2">
+                <label className="text-[12px] font-bold text-text-secondary uppercase tracking-wider px-0.5">
+                  {language === 'zh' ? '超时 (秒)' : 'Timeout (s)'}
+                </label>
+                <Input
+                  type="number"
+                  value={(localConfig.timeout || 120000) / 1000}
+                  onChange={(e) => setLocalConfig({ ...localConfig, timeout: (parseInt(e.target.value) || 120) * 1000 })}
+                  min={10}
+                  className="bg-background/40 border-border/60 focus:border-accent/50 focus:ring-accent/20 text-xs h-10 transition-all"
+                />
+              </div>
+            </div>
+
+            {/* 底部功能栏：协议选择 + 提示信息 */}
+            <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto] items-start gap-4 pt-5 border-t border-border/50">
+              <div className="w-full space-y-3">
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                  <div className="space-y-2">
+                    <label className="text-[12px] font-bold text-text-secondary uppercase tracking-wider px-0.5">
+                      {language === 'zh' ? 'API 协议' : 'API Protocol'}
+                    </label>
+                    <Select
+                      value={localConfig.protocol || (isCustomSelected ? selectedCustomConfig?.protocol : (selectedProvider as any)?.protocol) || 'openai'}
+                      onChange={(val) => {
+                        const nextProtocol = val as ApiProtocol
+                        setLocalConfig({
+                          ...localConfig,
+                          protocol: nextProtocol,
+                          openAICompatibilityProfile: resolveOpenAICompatibilityProfile(
+                            localConfig.provider,
+                            nextProtocol,
+                            localConfig.openAICompatibilityProfile,
+                          ),
+                        })
+                      }}
+                      options={PROTOCOL_OPTIONS}
+                      className="w-full max-w-[320px] bg-background/40 border-border/60 h-9 text-xs"
+                    />
+                    <p className="text-[11px] text-text-muted leading-relaxed max-w-md">
+                      {language === 'zh' ? '对于兼容模型，通常建议使用 OpenAI Compatible' : 'For compatible models, OpenAI Compatible is generally recommended'}
+                    </p>
+                  </div>
+                  {isCustomSelected && isOpenAIStyleProtocol(currentProtocol) && currentOpenAICompatibilityProfile && (
+                    <div className="space-y-2 md:pt-0">
+                      <label className="text-[12px] font-bold text-text-secondary uppercase tracking-wider px-0.5">
+                        {language === 'zh' ? 'OpenAI 能力档位' : 'OpenAI Capability'}
+                      </label>
+                      <Select
+                        value={currentOpenAICompatibilityProfile}
+                        onChange={(value) => setLocalConfig({
+                          ...localConfig,
+                          openAICompatibilityProfile: value as OpenAICompatibilityProfile,
+                        })}
+                        options={openAICompatibilityProfileOptions}
+                        className="w-full max-w-[320px] bg-background/40 border-border/60 h-9 text-xs"
+                      />
+                      <p className="text-[11px] text-text-muted leading-relaxed max-w-md">
+                        {openAICompatibilityProfileDescription}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+            </div>
+          </section>
+          )}
+
           <section className="rounded-2xl border border-border/50 bg-surface/20 p-6 backdrop-blur-xl shadow-sm relative overflow-hidden group">
             <div className="absolute inset-0 bg-gradient-to-br from-accent/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
             <div className="relative">
@@ -2158,155 +2289,6 @@ export function ProviderSettings({
           </div>
           </section>
 
-          {/* 认证 & 网络配置 - 仅本地模式 */}
-          {!isCloudMode && (
-          <section className="rounded-2xl border border-border/50 bg-surface/20 p-6 backdrop-blur-xl shadow-sm relative overflow-hidden group">
-            <div className="absolute inset-0 bg-gradient-to-br from-accent/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-            <div className="relative">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-accent/10 rounded-lg text-accent">
-                  <Server className="w-4 h-4" />
-                </div>
-                <div>
-                  <h5 className="text-sm font-semibold text-text-primary">
-                    {language === 'zh' ? '认证 & 网络配置' : 'Authentication & Network'}
-                  </h5>
-                  <p className="text-[11px] text-text-muted mt-0.5">
-                    {language === 'zh' ? '配置 API 访问密钥和服务器连接参数' : 'Configure API keys and server connection parameters'}
-                  </p>
-                  {false && currentOpenAICompatibilityProfile && (
-                    <div className="space-y-1.5 pt-1">
-                      <label className="text-[12px] font-bold text-text-secondary uppercase tracking-wider px-0.5">
-                        {language === 'zh' ? 'OpenAI 能力档位' : 'OpenAI Capability'}
-                      </label>
-                      <Select
-                        value={currentOpenAICompatibilityProfile ?? 'compatible'}
-                        onChange={(value) => setLocalConfig({
-                          ...localConfig,
-                          openAICompatibilityProfile: value as OpenAICompatibilityProfile,
-                        })}
-                        options={openAICompatibilityProfileOptions}
-                        className="w-56 bg-background/40 border-border/60 h-9 text-xs"
-                      />
-                      <p className="text-[11px] text-text-muted leading-relaxed">
-                        {openAICompatibilityProfileDescription}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <TestConnectionButton localConfig={localConfig} language={language} />
-                <TestModelButton localConfig={localConfig} language={language} />
-              </div>
-            </div>
-
-            {/* 基础配置：三列布局 */}
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-5 mb-6">
-              {/* API Key */}
-              <div className="md:col-span-5 space-y-2">
-                <label className="text-[12px] font-bold text-text-secondary uppercase tracking-wider px-0.5">
-                  API Key
-                </label>
-                <Input
-                  type={showApiKey ? 'text' : 'password'}
-                  value={localConfig.apiKey}
-                  onChange={(e) => setLocalConfig({ ...localConfig, apiKey: e.target.value })}
-                  placeholder={PROVIDERS[localConfig.provider]?.auth.placeholder || 'sk-...'}
-                  className="bg-background/40 border-border/60 focus:border-accent/50 focus:ring-accent/20 font-mono text-xs h-10 transition-all"
-                  rightIcon={
-                    <button onClick={() => setShowApiKey(!showApiKey)} className="text-text-muted hover:text-text-primary p-1.5 hover:bg-surface/50 rounded-md transition-colors">
-                      {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  }
-                />
-              </div>
-
-              {/* API 端点 */}
-              <div className="md:col-span-5 space-y-2">
-                <label className="text-[12px] font-bold text-text-secondary uppercase tracking-wider px-0.5">
-                  {language === 'zh' ? 'API 端点' : 'API Endpoint'}
-                </label>
-                <Input
-                  value={localConfig.baseUrl || ''}
-                  onChange={(e) => setLocalConfig({ ...localConfig, baseUrl: e.target.value || undefined })}
-                  placeholder="https://api.example.com/v1"
-                  className="bg-background/40 border-border/60 focus:border-accent/50 focus:ring-accent/20 text-xs font-mono h-10 transition-all"
-                />
-              </div>
-
-              {/* 超时时间 */}
-              <div className="md:col-span-2 space-y-2">
-                <label className="text-[12px] font-bold text-text-secondary uppercase tracking-wider px-0.5">
-                  {language === 'zh' ? '超时 (秒)' : 'Timeout (s)'}
-                </label>
-                <Input
-                  type="number"
-                  value={(localConfig.timeout || 120000) / 1000}
-                  onChange={(e) => setLocalConfig({ ...localConfig, timeout: (parseInt(e.target.value) || 120) * 1000 })}
-                  min={10}
-                  className="bg-background/40 border-border/60 focus:border-accent/50 focus:ring-accent/20 text-xs h-10 transition-all"
-                />
-              </div>
-            </div>
-
-            {/* 底部功能栏：协议选择 + 提示信息 */}
-            <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto] items-start gap-4 pt-5 border-t border-border/50">
-              <div className="w-full space-y-3">
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-                  <div className="space-y-2">
-                    <label className="text-[12px] font-bold text-text-secondary uppercase tracking-wider px-0.5">
-                      {language === 'zh' ? 'API 协议' : 'API Protocol'}
-                    </label>
-                    <Select
-                      value={localConfig.protocol || (isCustomSelected ? selectedCustomConfig?.protocol : (selectedProvider as any)?.protocol) || 'openai'}
-                      onChange={(val) => {
-                        const nextProtocol = val as ApiProtocol
-                        setLocalConfig({
-                          ...localConfig,
-                          protocol: nextProtocol,
-                          openAICompatibilityProfile: resolveOpenAICompatibilityProfile(
-                            localConfig.provider,
-                            nextProtocol,
-                            localConfig.openAICompatibilityProfile,
-                          ),
-                        })
-                      }}
-                      options={PROTOCOL_OPTIONS}
-                      className="w-full max-w-[320px] bg-background/40 border-border/60 h-9 text-xs"
-                    />
-                    <p className="text-[11px] text-text-muted leading-relaxed max-w-md">
-                      {language === 'zh' ? '对于兼容模型，通常建议使用 OpenAI Compatible' : 'For compatible models, OpenAI Compatible is generally recommended'}
-                    </p>
-                  </div>
-                  {isCustomSelected && isOpenAIStyleProtocol(currentProtocol) && currentOpenAICompatibilityProfile && (
-                    <div className="space-y-2 md:pt-0">
-                      <label className="text-[12px] font-bold text-text-secondary uppercase tracking-wider px-0.5">
-                        {language === 'zh' ? 'OpenAI 能力档位' : 'OpenAI Capability'}
-                      </label>
-                      <Select
-                        value={currentOpenAICompatibilityProfile}
-                        onChange={(value) => setLocalConfig({
-                          ...localConfig,
-                          openAICompatibilityProfile: value as OpenAICompatibilityProfile,
-                        })}
-                        options={openAICompatibilityProfileOptions}
-                        className="w-full max-w-[320px] bg-background/40 border-border/60 h-9 text-xs"
-                      />
-                      <p className="text-[11px] text-text-muted leading-relaxed max-w-md">
-                        {openAICompatibilityProfileDescription}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-            </div>
-          </section>
-          )}
         </div>
       )}
     </div>

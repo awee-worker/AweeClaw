@@ -4,11 +4,25 @@
  */
 
 import { logger } from '@shared/utils/Logger'
-import { ipcMain, dialog, BrowserWindow } from 'electron'
+import { ipcMain, dialog, BrowserWindow, ShareMenu } from 'electron'
 import { promises as fsPromises } from 'fs'
 import * as path from 'path'
 import { setupFileWatcher, cleanupFileWatcher, FileWatcherEvent } from './fileWatcher'
 import { securityManager } from './securityModule'
+
+async function copyDirRecursive(source: string, destination: string): Promise<void> {
+  await fsPromises.mkdir(destination, { recursive: true })
+  const entries = await fsPromises.readdir(source, { withFileTypes: true })
+  for (const entry of entries) {
+    const srcPath = path.join(source, entry.name)
+    const destPath = path.join(destination, entry.name)
+    if (entry.isDirectory()) {
+      await copyDirRecursive(srcPath, destPath)
+    } else {
+      await fsPromises.copyFile(srcPath, destPath)
+    }
+  }
+}
 
 // 窗口管理上下文类型
 export interface WindowManagerContext {
@@ -453,5 +467,119 @@ export function registerWorkspaceHandlers(
       return result.filePaths[0]
     }
     return null
+  })
+
+  ipcMain.handle('dialog:selectForImport', async (_event, options: { title?: string; allowFiles?: boolean; allowDirs?: boolean; multiSelection?: boolean }) => {
+    const mainWindow = getMainWindowFn()
+    if (!mainWindow) return []
+
+    const properties: Electron.OpenDialogOptions['properties'] = []
+    if (options.allowFiles !== false) properties.push('openFile')
+    if (options.allowDirs) properties.push('openDirectory')
+    if (options.multiSelection) properties.push('multiSelections')
+
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: options.title || 'Import',
+      properties,
+    })
+
+    if (!result.canceled && result.filePaths.length > 0) {
+      return result.filePaths
+    }
+    return []
+  })
+
+  ipcMain.handle('dialog:selectForExport', async (_event, options: { title?: string; defaultPath?: string }) => {
+    const mainWindow = getMainWindowFn()
+    if (!mainWindow) return null
+
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: options.title || 'Export',
+      defaultPath: options.defaultPath,
+      properties: ['openDirectory', 'createDirectory'],
+    })
+
+    if (!result.canceled && result.filePaths[0]) {
+      return result.filePaths[0]
+    }
+    return null
+  })
+
+  ipcMain.handle('file:importIntoWorkspace', async (_event, sourcePaths: string[], targetDir: string) => {
+    if (!Array.isArray(sourcePaths) || sourcePaths.length === 0 || !targetDir) {
+      return { success: false, error: 'Invalid parameters' }
+    }
+
+    const results: Array<{ source: string; target: string; success: boolean; error?: string }> = []
+
+    for (const src of sourcePaths) {
+      try {
+        const stat = await fsPromises.stat(src)
+        const baseName = path.basename(src)
+        const destPath = path.join(targetDir, baseName)
+
+        if (stat.isDirectory()) {
+          await copyDirRecursive(src, destPath)
+          results.push({ source: src, target: destPath, success: true })
+        } else {
+          await fsPromises.copyFile(src, destPath)
+          results.push({ source: src, target: destPath, success: true })
+        }
+      } catch (err) {
+        results.push({ source: src, target: '', success: false, error: err instanceof Error ? err.message : String(err) })
+      }
+    }
+
+    const allSuccess = results.every(r => r.success)
+    return { success: allSuccess, results }
+  })
+
+  ipcMain.handle('file:exportFromWorkspace', async (_event, sourcePath: string, targetDir: string) => {
+    if (!sourcePath || !targetDir) {
+      return { success: false, error: 'Invalid parameters' }
+    }
+
+    try {
+      const stat = await fsPromises.stat(sourcePath)
+      const baseName = path.basename(sourcePath)
+      const destPath = path.join(targetDir, baseName)
+
+      if (stat.isDirectory()) {
+        await copyDirRecursive(sourcePath, destPath)
+      } else {
+        await fsPromises.copyFile(sourcePath, destPath)
+      }
+
+      return { success: true, target: destPath }
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
+  ipcMain.handle('file:shareItem', async (_event, filePaths: string[]) => {
+    if (!Array.isArray(filePaths) || filePaths.length === 0) {
+      return { success: false, error: 'No file paths provided' }
+    }
+
+    if (process.platform !== 'darwin') {
+      return { success: false, error: 'Share is only supported on macOS' }
+    }
+
+    try {
+      const mainWindow = getMainWindowFn()
+      if (!mainWindow) {
+        return { success: false, error: 'No main window' }
+      }
+
+      const shareMenu = new ShareMenu({
+        filePaths,
+      })
+
+      shareMenu.popup()
+
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
+    }
   })
 }

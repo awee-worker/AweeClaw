@@ -15,7 +15,10 @@ import {
   ExternalLink,
   Loader2,
   Globe,
-  Terminal
+  Terminal,
+  Download,
+  Upload,
+  Share2
 } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -84,7 +87,8 @@ export const VirtualFileTree = memo(function VirtualFileTree({
     setActiveFile,
     activeFilePath,
     language,
-    workspacePath
+    workspacePath,
+    activeScenarioId
   } = useStore(useShallow(s => ({
     expandedFolders: s.expandedFolders,
     toggleFolder: s.toggleFolder,
@@ -93,7 +97,8 @@ export const VirtualFileTree = memo(function VirtualFileTree({
     setActiveFile: s.setActiveFile,
     activeFilePath: s.activeFilePath,
     language: s.language,
-    workspacePath: s.workspacePath
+    workspacePath: s.workspacePath,
+    activeScenarioId: s.activeScenarioId
   })))
 
   // 焦点状态
@@ -737,6 +742,65 @@ export const VirtualFileTree = memo(function VirtualFileTree({
     void onOpenTerminal(cwd)
   }, [onOpenTerminal])
 
+  const handleImportIntoFolder = useCallback(async (node: FlattenedNode) => {
+    const targetDir = node.item.isDirectory ? node.item.path : getDirPath(node.item.path)
+    const selectedPaths = await api.file.selectForImport({
+      title: language === 'zh' ? '导入文件或文件夹' : 'Import Files or Folders',
+      allowFiles: true,
+      allowDirs: true,
+      multiSelection: true,
+    })
+    if (!selectedPaths || selectedPaths.length === 0) return
+
+    const result = await api.file.importIntoWorkspace(selectedPaths, targetDir)
+    if (result.success) {
+      toast.success(language === 'zh' ? `成功导入 ${selectedPaths.length} 项` : `Successfully imported ${selectedPaths.length} item(s)`)
+      if (node.item.isDirectory) {
+        expandFolder(targetDir)
+      }
+      onRefresh({
+        affectedPaths: [targetDir],
+        refreshRoot: targetDir === workspacePath,
+      })
+    } else {
+      const failedCount = result.results?.filter(r => !r.success).length || selectedPaths.length
+      toast.error(language === 'zh' ? `导入失败 ${failedCount} 项` : `Failed to import ${failedCount} item(s)`)
+      if (result.results?.some(r => r.success)) {
+        onRefresh({
+          affectedPaths: [targetDir],
+          refreshRoot: targetDir === workspacePath,
+        })
+      }
+    }
+  }, [language, expandFolder, onRefresh, workspacePath])
+
+  const handleExportFromNode = useCallback(async (node: FlattenedNode) => {
+    const sourcePath = node.item.path
+    const targetDir = await api.file.selectForExport({
+      title: language === 'zh' ? '导出到...' : 'Export to...',
+      defaultPath: getDirPath(sourcePath),
+    })
+    if (!targetDir) return
+
+    const result = await api.file.exportFromWorkspace(sourcePath, targetDir)
+    if (result.success) {
+      toast.success(language === 'zh' ? `成功导出到 ${result.target}` : `Successfully exported to ${result.target}`)
+    } else {
+      toast.error(language === 'zh' ? `导出失败: ${result.error}` : `Export failed: ${result.error}`)
+    }
+  }, [language])
+
+  const handleShareItem = useCallback(async (node: FlattenedNode) => {
+    const result = await api.file.shareItem([node.item.path])
+    if (!result.success) {
+      if (result.error === 'Share is only supported on macOS') {
+        toast.warning(language === 'zh' ? '分享功能仅支持 macOS 系统' : 'Share is only supported on macOS')
+      } else {
+        toast.error(language === 'zh' ? `分享失败: ${result.error}` : `Share failed: ${result.error}`)
+      }
+    }
+  }, [language])
+
   // 聚焦重命名输入框
   useEffect(() => {
     if (renamingPath && renameInputRef.current) {
@@ -748,14 +812,23 @@ export const VirtualFileTree = memo(function VirtualFileTree({
   // 构建右键菜单项
   const getContextMenuItems = useCallback((node: FlattenedNode): ContextMenuItem[] => {
     const contextMenuLanguage = 'zh'
+    const isCodeEditor = activeScenarioId === 'code-editor'
 
     if (node.item.isDirectory) {
       return [
         { id: 'newFile', label: t('newFile', contextMenuLanguage), icon: FilePlus, onClick: () => handleNewFile(node) },
         { id: 'newFolder', label: t('newFolder', contextMenuLanguage), icon: FolderPlus, onClick: () => handleNewFolder(node) },
         { id: 'sep1', label: '', separator: true },
-        { id: 'openTerminal', label: t('openIntegratedTerminalHere', contextMenuLanguage) || '在此处打开集成终端', icon: Terminal, onClick: () => handleOpenTerminalHere(node) },
-        { id: 'sep2', label: '', separator: true },
+        { id: 'import', label: contextMenuLanguage === 'zh' ? '导入...' : 'Import...', icon: Download, onClick: () => handleImportIntoFolder(node) },
+        { id: 'export', label: contextMenuLanguage === 'zh' ? '导出...' : 'Export...', icon: Upload, onClick: () => handleExportFromNode(node) },
+        { id: 'share', label: contextMenuLanguage === 'zh' ? '分享...' : 'Share...', icon: Share2, onClick: () => handleShareItem(node) },
+        ...(isCodeEditor
+          ? [
+              { id: 'sep2', label: '', separator: true } as ContextMenuItem,
+              { id: 'openTerminal', label: t('openIntegratedTerminalHere', contextMenuLanguage) || '在此处打开集成终端', icon: Terminal, onClick: () => handleOpenTerminalHere(node) } as ContextMenuItem,
+            ]
+          : []),
+        { id: 'sepTerminal', label: '', separator: true },
         { id: 'copy', label: t('copy', contextMenuLanguage) || '复制', icon: Copy, shortcut: formatShortcut('Ctrl+C'), onClick: () => handleCopyItem(node) },
         { id: 'paste', label: t('paste', contextMenuLanguage) || '粘贴', icon: Clipboard, shortcut: formatShortcut('Ctrl+V'), disabled: !clipboardItem, onClick: () => handlePasteForNode(node) },
         { id: 'sepClipboard', label: '', separator: true },
@@ -771,8 +844,15 @@ export const VirtualFileTree = memo(function VirtualFileTree({
       node.item.name.toLowerCase().endsWith('.htm')
 
     const items: ContextMenuItem[] = [
-      { id: 'openTerminal', label: t('openIntegratedTerminalHere', contextMenuLanguage) || '在此处打开集成终端', icon: Terminal, onClick: () => handleOpenTerminalHere(node) },
-      { id: 'sep1', label: '', separator: true },
+      { id: 'export', label: contextMenuLanguage === 'zh' ? '导出...' : 'Export...', icon: Upload, onClick: () => handleExportFromNode(node) },
+      { id: 'share', label: contextMenuLanguage === 'zh' ? '分享...' : 'Share...', icon: Share2, onClick: () => handleShareItem(node) },
+      ...(isCodeEditor
+        ? [
+            { id: 'sep1', label: '', separator: true } as ContextMenuItem,
+            { id: 'openTerminal', label: t('openIntegratedTerminalHere', contextMenuLanguage) || '在此处打开集成终端', icon: Terminal, onClick: () => handleOpenTerminalHere(node) } as ContextMenuItem,
+          ]
+        : []),
+      { id: 'sepTerminal', label: '', separator: true },
       { id: 'copy', label: t('copy', contextMenuLanguage) || '复制', icon: Copy, shortcut: formatShortcut('Ctrl+C'), onClick: () => handleCopyItem(node) },
       { id: 'paste', label: t('paste', contextMenuLanguage) || '粘贴', icon: Clipboard, shortcut: formatShortcut('Ctrl+V'), disabled: !clipboardItem, onClick: () => handlePasteForNode(node) },
       { id: 'sepClipboard', label: '', separator: true },
@@ -784,14 +864,13 @@ export const VirtualFileTree = memo(function VirtualFileTree({
       { id: 'reveal', label: t('revealInExplorer', contextMenuLanguage) || '在资源管理器中显示', icon: ExternalLink, onClick: () => handleRevealInExplorer(node) },
     ]
 
-    // 对 HTML 文件添加"在浏览器中打开"选项
     if (isHtmlFile) {
-      items.push({ id: 'sep2', label: '', separator: true })
+      items.push({ id: 'sepHtml', label: '', separator: true })
       items.push({ id: 'openInBrowser', label: t('openInBrowser', contextMenuLanguage) || '在浏览器中打开', icon: Globe, onClick: () => handleOpenInBrowser(node) })
     }
 
     return items
-  }, [clipboardItem, handleNewFile, handleNewFolder, handleOpenTerminalHere, handleCopyItem, handlePasteForNode, handleRenameStart, handleDelete, handleCopyPath, handleCopyRelativePath, handleRevealInExplorer, handleOpenInBrowser])
+  }, [activeScenarioId, clipboardItem, handleNewFile, handleNewFolder, handleOpenTerminalHere, handleCopyItem, handlePasteForNode, handleRenameStart, handleDelete, handleCopyPath, handleCopyRelativePath, handleRevealInExplorer, handleOpenInBrowser, handleImportIntoFolder, handleExportFromNode, handleShareItem])
 
   // 渲染单个节点
   const renderNode = (node: FlattenedNode, index: number) => {

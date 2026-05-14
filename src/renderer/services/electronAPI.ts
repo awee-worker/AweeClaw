@@ -108,6 +108,13 @@ type ElectronAPIWithRemoteShell = ElectronAPI & {
   dataConnectDatabase: (config: { id: string; driver: string; host?: string; port?: number; database?: string; username?: string; password?: string; filePath?: string }) => Promise<{ success: boolean; error?: string }>
   dataDisconnectDatabase: (connectionId: string) => Promise<{ success: boolean }>
   dataGetConnections: () => Promise<Array<{ id: string; driver: string; host?: string; port?: number; database?: string; filePath?: string }>>
+  dataClearCache: () => Promise<{ success: boolean }>
+  dataEda: (params: { path: string; targetColumns?: string[]; sampleSize?: number }) => Promise<{ success: boolean; data?: Record<string, unknown>; error?: string }>
+  dataCleanData: (params: { source: string; operations: Array<{ type: string; config: Record<string, unknown> }>; output?: string }) => Promise<{ success: boolean; data?: Record<string, unknown>; error?: string }>
+  dataBrowseSchema: (params: { connectionId: string; filter?: string }) => Promise<{ success: boolean; data?: Record<string, unknown>; error?: string }>
+  dataSaveQuery: (params: { query: string; connectionId: string; executionTime?: number; rowCount?: number; success: boolean }) => Promise<{ success: boolean }>
+  dataGetQueryHistory: (params?: { limit?: number; connectionId?: string }) => Promise<{ success: boolean; data?: Array<Record<string, unknown>> }>
+  dataExportReport: (params: { title: string; sections: Array<{ type: string; title: string; content: string }>; format: string; outputPath?: string }) => Promise<{ success: boolean; data?: Record<string, unknown>; error?: string }>
 
   scenarioDbInitialize: (params: { scenarioId: string; installScripts: Array<{ id: string; description?: string; sql: string }> }) => Promise<{
     success: boolean
@@ -178,6 +185,11 @@ function createGroupedAPI() {
       extractKnowledgePdfText: (path: string) => raw.extractKnowledgePdfText(path),
       openFolder: () => raw.openFolder(),
       selectFolder: () => raw.selectFolder(),
+      selectForImport: (options: { title?: string; allowFiles?: boolean; allowDirs?: boolean; multiSelection?: boolean }) => raw.selectForImport(options),
+      selectForExport: (options: { title?: string; defaultPath?: string }) => raw.selectForExport(options),
+      importIntoWorkspace: (sourcePaths: string[], targetDir: string) => raw.importIntoWorkspace(sourcePaths, targetDir),
+      exportFromWorkspace: (sourcePath: string, targetDir: string) => raw.exportFromWorkspace(sourcePath, targetDir),
+      shareItem: (filePaths: string[]) => raw.shareItem(filePaths),
       readDir: (path: string) => raw.readDir(path),
       getTree: (path: string, maxDepth?: number) => raw.getFileTree(path, maxDepth),
       read: (path: string) => raw.readFile(path),
@@ -535,6 +547,13 @@ function createGroupedAPI() {
       connectDatabase: (config: Parameters<typeof raw.dataConnectDatabase>[0]) => raw.dataConnectDatabase(config),
       disconnectDatabase: (connectionId: string) => raw.dataDisconnectDatabase(connectionId),
       getConnections: () => raw.dataGetConnections(),
+      clearCache: () => raw.dataClearCache(),
+      eda: (params: Parameters<typeof raw.dataEda>[0]) => raw.dataEda(params),
+      cleanData: (params: Parameters<typeof raw.dataCleanData>[0]) => raw.dataCleanData(params),
+      browseSchema: (params: Parameters<typeof raw.dataBrowseSchema>[0]) => raw.dataBrowseSchema(params),
+      saveQuery: (params: Parameters<typeof raw.dataSaveQuery>[0]) => raw.dataSaveQuery(params),
+      getQueryHistory: (params?: Parameters<typeof raw.dataGetQueryHistory>[0]) => raw.dataGetQueryHistory(params),
+      exportReport: (params: Parameters<typeof raw.dataExportReport>[0]) => raw.dataExportReport(params),
     },
 
     scenarioDb: {

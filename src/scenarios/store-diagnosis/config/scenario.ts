@@ -111,7 +111,13 @@ When diagnosing a store, follow this structured approach:
 - Use store_diagnose for running diagnosis analysis
 - Use report_generate for creating visual diagnosis reports
 - Use optimization_plan for creating and tracking improvement plans
-- Use benchmark_query for industry benchmark data comparison`,
+- Use benchmark_query for industry benchmark data comparison
+- Use health_check for one-click comprehensive store checkup with auto-generated prescription
+- Use store_data_entry for entering financial and traffic data
+- Use competitor_manage for competitor CRUD and analysis
+- Use recheck_manage for follow-up diagnosis reminders
+- Use knowledge_query for industry best practices and case studies
+- Use store_profile for store portrait, trend tracking, and store comparison`,
 }
 
 const STORE_DIAGNOSIS_CAPABILITIES: ScenarioCapabilities = {
@@ -157,6 +163,8 @@ const STORE_DIAGNOSIS_UI: ScenarioUI = {
     { id: 'plans', icon: 'ClipboardList', label: 'Plans', labelZh: '优化方案', component: 'OptimizationPlanView', position: 3 },
     { id: 'benchmarks', icon: 'TrendingUp', label: 'Benchmarks', labelZh: '行业基准', component: 'BenchmarkView', position: 4 },
     { id: 'knowledge', icon: 'BookOpen', label: 'Knowledge', labelZh: '知识库', component: 'KnowledgeView', position: 5 },
+    { id: 'data-entry', icon: 'Database', label: 'Data Entry', labelZh: '数据录入', component: 'DataEntryView', position: 6 },
+    { id: 'competitors', icon: 'Swords', label: 'Competitors', labelZh: '竞品分析', component: 'CompetitorView', position: 7 },
   ],
   statusBarItems: [
     { id: 'store-status', component: 'StoreStatusIndicator', position: 'left', order: 0 },

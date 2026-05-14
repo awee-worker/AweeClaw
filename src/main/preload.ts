@@ -183,6 +183,11 @@ export interface ElectronAPI {
   extractKnowledgePdfText: (filePath: string) => Promise<string | null>
   openFolder: () => Promise<string | null>
   selectFolder: () => Promise<string | null>
+  selectForImport: (options: { title?: string; allowFiles?: boolean; allowDirs?: boolean; multiSelection?: boolean }) => Promise<string[]>
+  selectForExport: (options: { title?: string; defaultPath?: string }) => Promise<string | null>
+  importIntoWorkspace: (sourcePaths: string[], targetDir: string) => Promise<{ success: boolean; error?: string; results?: Array<{ source: string; target: string; success: boolean; error?: string }> }>
+  exportFromWorkspace: (sourcePath: string, targetDir: string) => Promise<{ success: boolean; error?: string; target?: string }>
+  shareItem: (filePaths: string[]) => Promise<{ success: boolean; error?: string }>
   openWorkspace: () => Promise<{
     configPath: string | null
     roots: string[]
@@ -569,6 +574,7 @@ export interface ElectronAPI {
   dataConnectDatabase: (config: { id: string; driver: string; host?: string; port?: number; database?: string; username?: string; password?: string; filePath?: string }) => Promise<{ success: boolean; error?: string }>
   dataDisconnectDatabase: (connectionId: string) => Promise<{ success: boolean }>
   dataGetConnections: () => Promise<Array<{ id: string; driver: string; host?: string; port?: number; database?: string; filePath?: string }>>
+  dataClearCache: () => Promise<{ success: boolean }>
 
   // Command Execution
   onExecuteCommand: (callback: (commandId: string) => void) => () => void
@@ -606,6 +612,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   extractKnowledgePdfText: (filePath: string) => ipcRenderer.invoke('file:extractKnowledgePdfText', filePath),
   openFolder: () => ipcRenderer.invoke('file:openFolder'),
   selectFolder: () => ipcRenderer.invoke('dialog:selectFolder'),
+  selectForImport: (options: { title?: string; allowFiles?: boolean; allowDirs?: boolean; multiSelection?: boolean }) => ipcRenderer.invoke('dialog:selectForImport', options),
+  selectForExport: (options: { title?: string; defaultPath?: string }) => ipcRenderer.invoke('dialog:selectForExport', options),
+  importIntoWorkspace: (sourcePaths: string[], targetDir: string) => ipcRenderer.invoke('file:importIntoWorkspace', sourcePaths, targetDir),
+  exportFromWorkspace: (sourcePath: string, targetDir: string) => ipcRenderer.invoke('file:exportFromWorkspace', sourcePath, targetDir),
+  shareItem: (filePaths: string[]) => ipcRenderer.invoke('file:shareItem', filePaths),
   openWorkspace: () => ipcRenderer.invoke('workspace:open'),
   addFolderToWorkspace: () => ipcRenderer.invoke('workspace:addFolder'),
   saveWorkspace: (configPath: string, roots: string[]) => ipcRenderer.invoke('workspace:save', configPath, roots),
@@ -973,6 +984,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   dataConnectDatabase: (config: any) => ipcRenderer.invoke('data:connectDatabase', config),
   dataDisconnectDatabase: (connectionId: string) => ipcRenderer.invoke('data:disconnectDatabase', connectionId),
   dataGetConnections: () => ipcRenderer.invoke('data:getConnections'),
+  dataClearCache: () => ipcRenderer.invoke('data:clearCache'),
+  dataEda: (params: any) => ipcRenderer.invoke('data:eda', params),
+  dataCleanData: (params: any) => ipcRenderer.invoke('data:cleanData', params),
+  dataBrowseSchema: (params: any) => ipcRenderer.invoke('data:browseSchema', params),
+  dataSaveQuery: (params: any) => ipcRenderer.invoke('data:saveQuery', params),
+  dataGetQueryHistory: (params?: any) => ipcRenderer.invoke('data:getQueryHistory', params),
+  dataExportReport: (params: any) => ipcRenderer.invoke('data:exportReport', params),
 
   // Scenario DB API
   scenarioDbInitialize: (params: { scenarioId: string; installScripts: Array<{ id: string; description?: string; sql: string }> }) => ipcRenderer.invoke('scenario-db:initialize', params),
