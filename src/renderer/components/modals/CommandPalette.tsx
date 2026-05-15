@@ -92,7 +92,7 @@ export default function CommandPalette({ onClose, onShowKeyboardShortcuts }: Com
   useElevatedToastLayer(true)
   // ... (hooks and state logic remains the same)
   const {
-    setShowSettings,
+    setShowSettingsPage,
     setTerminalVisible,
     terminalVisible,
     workspacePath,
@@ -104,7 +104,7 @@ export default function CommandPalette({ onClose, onShowKeyboardShortcuts }: Com
     chatVisible,
     setChatVisible,
   } = useStore(useShallow(s => ({
-    setShowSettings: s.setShowSettings,
+    setShowSettingsPage: s.setShowSettingsPage,
     setTerminalVisible: s.setTerminalVisible,
     terminalVisible: s.terminalVisible,
     workspacePath: s.workspacePath,
@@ -311,7 +311,7 @@ export default function CommandPalette({ onClose, onShowKeyboardShortcuts }: Com
       description: 'Configure API keys and preferences',
       icon: Settings,
       category: 'Preferences',
-      action: () => setShowSettings(true),
+      action: () => setShowSettingsPage(true),
       shortcut: formatShortcut('Ctrl+,'),
     },
     {

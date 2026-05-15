@@ -31,6 +31,7 @@ import {
   resolveOpenAICompatibilityProfile,
 } from '@shared/configuration/aiProviders'
 import { serializePersistedLLMConfig } from '@configuration/modelPersistence'
+import { DEFAULT_SCENARIO_PREFERENCES } from '@shared/configuration/preferenceSchema'
 import type {
   ProviderConfig,
   PersistedLLMConfig,
@@ -170,6 +171,7 @@ function buildPersistedSettingsPayload(
     webSearchConfig: settings.webSearchConfig,
     mcpConfig: settings.mcpConfig,
     enableFileLogging: settings.enableFileLogging,
+    scenarioPreferences: settings.scenarioPreferences ?? DEFAULT_SCENARIO_PREFERENCES,
   }
 }
 
@@ -294,6 +296,9 @@ class SettingsService {
       enableFileLogging: typeof saved.enableFileLogging === 'boolean'
         ? saved.enableFileLogging
         : defaults.enableFileLogging,
+      scenarioPreferences: saved.scenarioPreferences
+        ? { ...DEFAULT_SCENARIO_PREFERENCES, ...(saved.scenarioPreferences as object) }
+        : defaults.scenarioPreferences,
     }
   }
 

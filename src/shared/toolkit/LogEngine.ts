@@ -34,6 +34,7 @@ export type LogCategory =
   | 'MCP'
   | 'Plan'
   | 'Channel'
+  | 'Scenario'
 
 // 日志条目
 export interface LogEntry {
@@ -44,6 +45,7 @@ export interface LogEntry {
   data?: unknown
   duration?: number
   source?: 'main' | 'renderer'
+  scenarioId?: string
 }
 
 // 日志级别优先级
@@ -84,6 +86,7 @@ const CATEGORY_COLORS: Record<LogCategory, string> = {
   MCP: '#00acc1',
   Plan: '#ab47bc',
   Channel: '#26a69a',
+  Scenario: '#e040fb',
 }
 
 // 日志配置
@@ -218,6 +221,7 @@ const CATEGORY_ANSI: Record<LogCategory | string, string> = {
   Plan: ANSI_COLORS.magenta,
   Security: ANSI_COLORS.red,
   Channel: ANSI_COLORS.cyan,
+  Scenario: ANSI_COLORS.magenta,
 }
 
 // 日志配置
@@ -631,6 +635,11 @@ class LoggerClass {
   mcp = this.createCategoryLogger('MCP')
   plan = this.createCategoryLogger('Plan')
   channel = this.createCategoryLogger('Channel')
+  scenario = this.createCategoryLogger('Scenario')
+
+  logScenario(level: LogLevel, scenarioId: string, message: string, data?: unknown): void {
+    this.log(level, 'Scenario', `[${scenarioId}] ${message}`, data)
+  }
 
   logWithCategory(level: LogLevel, category: LogCategory, message: string, data?: unknown): void {
     this.log(level, category, message, data)

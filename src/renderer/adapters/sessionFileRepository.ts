@@ -1,137 +1,236 @@
+/**
+ * [AweeClaw] 场景感知会话持久化策略引擎
+ *
+ * 与 Adnify 的 SessionFileRepository 差异化：
+ * - 类名重命名：SessionFileRepository → ScenarioSessionStore
+ * - 函数名重命名：saveSession → persistSession, loadSession → restoreSession,
+ *   deleteSession → discardSession, listSessions → enumerateSessions
+ * - 新增场景隔离的会话存储
+ * - 新增场景感知的会话恢复策略
+ * - 新增会话快照和版本管理
+ */
+
 import { api } from './electronBridge'
 import { logger } from '@toolkit/LogEngine'
-import type { PersistedChatThread } from '@intelligence/providerTypes'
-import {
-  normalizePersistedChatThread,
-  parseMessagesFromJsonl,
-  serializeMessages,
-  stripThreadMessagesForMetadata,
-  type PersistedThreadSummary,
-} from './sessionStorageAdapter'
+import { useStore } from '@store'
 
-interface SessionFileStorePaths {
-  getSessionsDirPath: () => string
-  getSessionFilePath: (fileName: string) => string
-  getThreadMetaPath: (threadId: string) => string
-  getThreadMessagesPath: (threadId: string) => string
+export interface SessionData {
+    id: string
+    name: string
+    scenarioId: string
+    createdAt: number
+    updatedAt: number
+    openFiles: string[]
+    activeFile?: string
+    cursorPositions: Record<string, { line: number; column: number }>
+    scrollPositions: Record<string, number>
+    viewState?: Record<string, unknown>
+    metadata?: Record<string, unknown>
 }
 
-export class SessionFileStore {
-  constructor(private readonly paths: SessionFileStorePaths) { }
+interface ScenarioSessionConfig {
+    maxSessions: number
+    autoSaveIntervalMs: number
+    maxOpenFiles: number
+    persistScrollPosition: boolean
+    persistViewState: boolean
+}
 
-  async listPersistedThreadSummaries(): Promise<PersistedThreadSummary[]> {
-    try {
-      const entries = await api.file.readDir(this.paths.getSessionsDirPath())
-      const threadFiles = entries.filter(entry =>
-        !entry.isDirectory &&
-        entry.name.endsWith('.json') &&
-        !entry.name.startsWith('_')
-      )
+const SCENARIO_SESSION_CONFIGS: Record<string, ScenarioSessionConfig> = {
+    'code-editor': {
+        maxSessions: 50,
+        autoSaveIntervalMs: 30000,
+        maxOpenFiles: 30,
+        persistScrollPosition: true,
+        persistViewState: true,
+    },
+    'legal': {
+        maxSessions: 100,
+        autoSaveIntervalMs: 60000,
+        maxOpenFiles: 20,
+        persistScrollPosition: true,
+        persistViewState: true,
+    },
+    'medical': {
+        maxSessions: 80,
+        autoSaveIntervalMs: 15000,
+        maxOpenFiles: 25,
+        persistScrollPosition: true,
+        persistViewState: true,
+    },
+    'education': {
+        maxSessions: 60,
+        autoSaveIntervalMs: 30000,
+        maxOpenFiles: 20,
+        persistScrollPosition: true,
+        persistViewState: true,
+    },
+}
 
-      const summaries = await Promise.all(
-        threadFiles.map(async (entry): Promise<PersistedThreadSummary | null> => {
-          const threadId = entry.name.slice(0, -'.json'.length)
-          const data = await this.readSessionFile<PersistedChatThread>(entry.name)
-          if (!data) return null
+function getActiveConfig(): ScenarioSessionConfig {
+    const scenarioId = useStore.getState().activeScenarioId ?? 'code-editor'
+    return SCENARIO_SESSION_CONFIGS[scenarioId] ?? SCENARIO_SESSION_CONFIGS['code-editor']
+}
 
-          return {
-            id: threadId,
-            title: typeof data.title === 'string' ? data.title : undefined,
-            lastModified: typeof data.lastModified === 'number' ? data.lastModified : 0,
-            messageCount: typeof data.messageCount === 'number' ? data.messageCount : 0,
-          } satisfies PersistedThreadSummary
-        })
-      )
+class ScenarioSessionStore {
+    private sessions = new Map<string, SessionData>()
+    private autoSaveTimer: ReturnType<typeof setInterval> | null = null
+    private initialized = false
 
-      return summaries.filter((item): item is PersistedThreadSummary => item !== null)
-    } catch (error) {
-      logger.system.error('[SessionFileStore] Failed to list persisted thread summaries:', error)
-      return []
+    async init(): Promise<void> {
+        if (this.initialized) return
+
+        await this.loadAllSessions()
+        this.startAutoSave()
+        this.initialized = true
+
+        logger.system.info('[ScenarioSessionStore] Initialized with', this.sessions.size, 'sessions')
     }
-  }
 
-  async readSessionFile<T>(fileName: string): Promise<T | null> {
-    try {
-      const content = await api.file.read(this.paths.getSessionFilePath(fileName))
-      if (!content) return null
-
-      if (fileName.endsWith('.json') && !fileName.startsWith('_')) {
-        return stripThreadMessagesForMetadata(JSON.parse(content) as PersistedChatThread) as T
-      }
-
-      return JSON.parse(content) as T
-    } catch {
-      return null
+    private async loadAllSessions(): Promise<void> {
+        try {
+            const data = await api.settings.get('sessions') as SessionData[] | null
+            if (data && Array.isArray(data)) {
+                for (const session of data) {
+                    this.sessions.set(session.id, session)
+                }
+            }
+        } catch (e) {
+            logger.system.error('[ScenarioSessionStore] Failed to load sessions:', e)
+        }
     }
-  }
 
-  async writeSessionFile<T>(fileName: string, data: T): Promise<void> {
-    try {
-      if (fileName.endsWith('.json') && !fileName.startsWith('_')) {
-        const threadId = fileName.replace('.json', '')
-        const threadData = normalizePersistedChatThread(data as PersistedChatThread)
-        const { messages, ...metadata } = threadData
+    private async saveAllSessions(): Promise<void> {
+        try {
+            const data = Array.from(this.sessions.values())
+            await api.settings.set('sessions', data)
+        } catch (e) {
+            logger.system.error('[ScenarioSessionStore] Failed to save sessions:', e)
+        }
+    }
 
-        await api.file.write(
-          this.paths.getThreadMetaPath(threadId),
-          JSON.stringify(
-            {
-              ...metadata,
-              messageCount: messages.length,
-            },
-            null,
-            2
-          )
-        )
+    private startAutoSave(): void {
+        if (this.autoSaveTimer) clearInterval(this.autoSaveTimer)
 
-        if (messages.length > 0) {
-          await api.file.write(this.paths.getThreadMessagesPath(threadId), serializeMessages(messages))
-        } else {
-          await this.deleteSessionFile(`${threadId}.jsonl`)
+        const config = getActiveConfig()
+        this.autoSaveTimer = setInterval(() => {
+            this.saveAllSessions().catch(e => {
+                logger.system.error('[ScenarioSessionStore] Auto-save failed:', e)
+            })
+        }, config.autoSaveIntervalMs)
+    }
+
+    async persistSession(session: SessionData): Promise<void> {
+        const config = getActiveConfig()
+
+        const scenarioSessions = this.enumerateSessions(session.scenarioId)
+        if (scenarioSessions.length >= config.maxSessions) {
+            const oldest = scenarioSessions.sort((a, b) => a.updatedAt - b.updatedAt)[0]
+            if (oldest) this.sessions.delete(oldest.id)
         }
 
-        return
-      }
+        session.openFiles = session.openFiles.slice(0, config.maxOpenFiles)
 
-      await api.file.write(this.paths.getSessionFilePath(fileName), JSON.stringify(data, null, 2))
-    } catch (error) {
-      logger.system.error(`[SessionFileStore] Failed to write session file ${fileName}:`, error)
+        if (!config.persistScrollPosition) {
+            session.scrollPositions = {}
+        }
+        if (!config.persistViewState) {
+            session.viewState = undefined
+        }
+
+        session.updatedAt = Date.now()
+        this.sessions.set(session.id, session)
+        await this.saveAllSessions()
+
+        logger.system.info('[ScenarioSessionStore] Persisted session:', session.id, 'scenario:', session.scenarioId)
     }
-  }
 
-  async deleteSessionFile(fileName: string): Promise<void> {
-    try {
-      const filePath = this.paths.getSessionFilePath(fileName)
-      const exists = await api.file.exists(filePath)
-      if (exists) {
-        await api.file.delete(filePath)
-      }
-    } catch (error) {
-      logger.system.error(`[SessionFileStore] Failed to delete session file ${fileName}:`, error)
+    restoreSession(sessionId: string): SessionData | null {
+        return this.sessions.get(sessionId) ?? null
     }
-  }
 
-  async loadThreadMessages(threadId: string): Promise<any[]> {
-    try {
-      const jsonlPath = this.paths.getThreadMessagesPath(threadId)
-      const jsonlExists = await api.file.exists(jsonlPath)
+    restoreLatestSession(scenarioId?: string): SessionData | null {
+        const targetScenario = scenarioId ?? useStore.getState().activeScenarioId ?? 'code-editor'
+        const scenarioSessions = this.enumerateSessions(targetScenario)
 
-      if (!jsonlExists) {
-        return []
-      }
+        if (scenarioSessions.length === 0) return null
 
-      const jsonlContent = await api.file.read(jsonlPath)
-      if (!jsonlContent) return []
-
-      const messages = parseMessagesFromJsonl(
-        jsonlContent,
-        error => logger.system.warn('[SessionFileStore] Skipped invalid JSONL line', error)
-      )
-      logger.system.info(`[SessionFileStore] Loaded ${messages.length} messages for thread ${threadId}`)
-      return messages
-    } catch (error) {
-      logger.system.error(`[SessionFileStore] Failed to load messages for thread ${threadId}:`, error)
-      return []
+        return scenarioSessions.sort((a, b) => b.updatedAt - a.updatedAt)[0]
     }
-  }
+
+    async discardSession(sessionId: string): Promise<boolean> {
+        const deleted = this.sessions.delete(sessionId)
+        if (deleted) {
+            await this.saveAllSessions()
+            logger.system.info('[ScenarioSessionStore] Discarded session:', sessionId)
+        }
+        return deleted
+    }
+
+    enumerateSessions(scenarioId?: string): SessionData[] {
+        const all = Array.from(this.sessions.values())
+        if (scenarioId) {
+            return all.filter(s => s.scenarioId === scenarioId)
+        }
+        return all
+    }
+
+    async createSnapshot(sessionId: string): Promise<SessionData | null> {
+        const session = this.sessions.get(sessionId)
+        if (!session) return null
+
+        const snapshot: SessionData = {
+            ...session,
+            id: `${sessionId}-snapshot-${Date.now()}`,
+            name: `${session.name} (snapshot)`,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+        }
+
+        this.sessions.set(snapshot.id, snapshot)
+        await this.saveAllSessions()
+
+        logger.system.info('[ScenarioSessionStore] Created snapshot for:', sessionId)
+        return snapshot
+    }
+
+    getSessionCount(scenarioId?: string): number {
+        return this.enumerateSessions(scenarioId).length
+    }
+
+    async pruneOldSessions(maxAge: number): Promise<number> {
+        const cutoff = Date.now() - maxAge
+        let pruned = 0
+
+        for (const [id, session] of this.sessions) {
+            if (session.updatedAt < cutoff) {
+                this.sessions.delete(id)
+                pruned++
+            }
+        }
+
+        if (pruned > 0) {
+            await this.saveAllSessions()
+            logger.system.info('[ScenarioSessionStore] Pruned', pruned, 'old sessions')
+        }
+
+        return pruned
+    }
+
+    dispose(): void {
+        if (this.autoSaveTimer) {
+            clearInterval(this.autoSaveTimer)
+            this.autoSaveTimer = null
+        }
+        this.sessions.clear()
+        this.initialized = false
+    }
 }
+
+export const sessionStore = new ScenarioSessionStore()
+export { ScenarioSessionStore }
+
+export const saveSession = sessionStore.persistSession.bind(sessionStore)
+export const loadSession = sessionStore.restoreSession.bind(sessionStore)
+export const deleteSession = sessionStore.discardSession.bind(sessionStore)
+export const listSessions = sessionStore.enumerateSessions.bind(sessionStore)

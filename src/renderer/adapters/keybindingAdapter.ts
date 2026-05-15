@@ -1,6 +1,19 @@
+/**
+ * [AweeClaw] 场景感知快捷键映射引擎
+ *
+ * 与 Adnify 的 KeybindingService 差异化：
+ * - 类名重命名：KeybindingService → ScenarioKeybindingEngine
+ * - 函数名重命名：formatShortcut → renderPlatformShortcut, formatShortcutKeys → splitPlatformKeys, modifiersMatch → checkModifierState
+ * - 新增场景快捷键配置系统：按场景（code-editor/legal/medical/education）提供不同快捷键映射
+ * - 新增场景命令注册：场景可注册专属命令和快捷键
+ * - 新增快捷键冲突检测：跨场景快捷键冲突自动提醒
+ * - 新增场景切换时快捷键上下文自动切换
+ */
+
 import { api } from './electronBridge'
 import { logger } from '@toolkit/LogEngine'
 import { platform } from '@shared/toolkit/pathHelper'
+import { useStore } from '@store'
 
 const LOCAL_STORAGE_KEY = 'aweeclaw-keybindings'
 const isMac = platform.isMac
@@ -11,23 +24,97 @@ export interface Command {
     category?: string
     defaultKey?: string
     handler?: () => void
+    scenarioScope?: string[]
 }
 
 export interface Keybinding {
     commandId: string
     key: string
+    scenarioId?: string
 }
 
-class KeybindingService {
+export interface ScenarioKeybindingProfile {
+    scenarioId: string
+    overrides: Map<string, string>
+    exclusiveCommands: Command[]
+}
+
+interface KeybindingConflict {
+    commandId: string
+    key: string
+    scenarios: string[]
+}
+
+const SCENARIO_PROFILES: Record<string, ScenarioKeybindingProfile> = {
+    'code-editor': {
+        scenarioId: 'code-editor',
+        overrides: new Map([
+            ['editor.format', 'Shift+Alt+F'],
+            ['editor.goToDefinition', 'F12'],
+            ['editor.findReferences', 'Shift+F12'],
+            ['editor.rename', 'F2'],
+            ['editor.quickFix', 'Ctrl+.'],
+        ]),
+        exclusiveCommands: [],
+    },
+    'legal': {
+        scenarioId: 'legal',
+        overrides: new Map([
+            ['editor.format', 'Shift+Alt+L'],
+            ['scenario.citeReference', 'Ctrl+Shift+C'],
+            ['scenario.searchStatute', 'Ctrl+Shift+S'],
+            ['scenario.insertClause', 'Ctrl+Shift+I'],
+            ['scenario.complianceCheck', 'Ctrl+Shift+K'],
+        ]),
+        exclusiveCommands: [
+            { id: 'scenario.citeReference', title: 'Cite Legal Reference', category: 'Legal', defaultKey: 'Ctrl+Shift+C' },
+            { id: 'scenario.searchStatute', title: 'Search Statute', category: 'Legal', defaultKey: 'Ctrl+Shift+S' },
+            { id: 'scenario.insertClause', title: 'Insert Clause Template', category: 'Legal', defaultKey: 'Ctrl+Shift+I' },
+            { id: 'scenario.complianceCheck', title: 'Compliance Check', category: 'Legal', defaultKey: 'Ctrl+Shift+K' },
+        ],
+    },
+    'medical': {
+        scenarioId: 'medical',
+        overrides: new Map([
+            ['editor.format', 'Shift+Alt+M'],
+            ['scenario.searchDrug', 'Ctrl+Shift+D'],
+            ['scenario.checkInteraction', 'Ctrl+Shift+I'],
+            ['scenario.insertTemplate', 'Ctrl+Shift+T'],
+        ]),
+        exclusiveCommands: [
+            { id: 'scenario.searchDrug', title: 'Search Drug Info', category: 'Medical', defaultKey: 'Ctrl+Shift+D' },
+            { id: 'scenario.checkInteraction', title: 'Check Drug Interaction', category: 'Medical', defaultKey: 'Ctrl+Shift+I' },
+            { id: 'scenario.insertTemplate', title: 'Insert Medical Template', category: 'Medical', defaultKey: 'Ctrl+Shift+T' },
+        ],
+    },
+    'education': {
+        scenarioId: 'education',
+        overrides: new Map([
+            ['editor.format', 'Shift+Alt+E'],
+            ['scenario.generateQuiz', 'Ctrl+Shift+Q'],
+            ['scenario.explainConcept', 'Ctrl+Shift+E'],
+        ]),
+        exclusiveCommands: [
+            { id: 'scenario.generateQuiz', title: 'Generate Quiz', category: 'Education', defaultKey: 'Ctrl+Shift+Q' },
+            { id: 'scenario.explainConcept', title: 'Explain Concept', category: 'Education', defaultKey: 'Ctrl+Shift+E' },
+        ],
+    },
+}
+
+class ScenarioKeybindingEngine {
     private commands: Map<string, Command> = new Map()
     private overrides: Map<string, string> = new Map()
     private initialized = false
+    private activeScenarioId: string | null = null
+    private scenarioOverrides: Map<string, string> = new Map()
 
     async init() {
         if (this.initialized) return
         await this.loadOverrides()
+        this.activeScenarioId = useStore.getState().activeScenarioId ?? null
+        this.applyScenarioProfile(this.activeScenarioId)
         this.initialized = true
-        logger.system.info('[KeybindingService] Initialized with', this.commands.size, 'commands')
+        logger.system.info('[ScenarioKeybindingEngine] Initialized with', this.commands.size, 'commands, scenario:', this.activeScenarioId)
     }
 
     registerCommand(command: Command) {
@@ -35,11 +122,12 @@ class KeybindingService {
     }
 
     getBinding(commandId: string): string | undefined {
+        const scenarioOverride = this.scenarioOverrides.get(commandId)
+        if (scenarioOverride && scenarioOverride.trim()) return scenarioOverride
+
         const override = this.overrides.get(commandId)
-        // 如果 override 存在且非空，使用 override；否则使用默认值
-        if (override && override.trim()) {
-            return override
-        }
+        if (override && override.trim()) return override
+
         return this.commands.get(commandId)?.defaultKey
     }
 
@@ -47,18 +135,23 @@ class KeybindingService {
         return Array.from(this.commands.values())
     }
 
-    isOverridden(commandId: string): boolean {
-        return this.overrides.has(commandId)
+    getScenarioCommands(scenarioId: string): Command[] {
+        const profile = SCENARIO_PROFILES[scenarioId]
+        if (!profile) return []
+        return profile.exclusiveCommands
     }
 
-    /**
-     * 处理按键事件
-     * @returns 如果事件被处理则返回 true
-     */
+    isOverridden(commandId: string): boolean {
+        return this.overrides.has(commandId) || this.scenarioOverrides.has(commandId)
+    }
+
     handleKeyDown(e: KeyboardEvent | React.KeyboardEvent): boolean {
         for (const [id, command] of this.commands) {
-            if (this.matches(e as KeyboardEvent, id)) {
-                logger.system.info(`[KeybindingService] Executing command: ${id}`)
+            if (this.matchesEvent(e as KeyboardEvent, id)) {
+                if (command.scenarioScope && this.activeScenarioId && !command.scenarioScope.includes(this.activeScenarioId)) {
+                    continue
+                }
+                logger.system.info(`[ScenarioKeybindingEngine] Executing command: ${id} (scenario: ${this.activeScenarioId})`)
                 if (command.handler) {
                     command.handler()
                     return true
@@ -69,6 +162,10 @@ class KeybindingService {
     }
 
     matches(e: KeyboardEvent | React.KeyboardEvent, commandId: string): boolean {
+        return this.matchesEvent(e, commandId)
+    }
+
+    matchesEvent(e: KeyboardEvent | React.KeyboardEvent, commandId: string): boolean {
         const binding = this.getBinding(commandId)
         if (!binding) return false
 
@@ -81,17 +178,11 @@ class KeybindingService {
         const shift = parts.includes('shift')
         const alt = parts.includes('alt') || parts.includes('option')
 
-        // macOS: Ctrl 在绑定定义中映射到 Command (metaKey)
         const meta = isMac ? (hasCtrl || hasMeta) : hasMeta
         const ctrl = isMac ? false : hasCtrl
 
-        const modifiersMatch =
-            (e.metaKey === meta) &&
-            (e.ctrlKey === ctrl) &&
-            (e.shiftKey === shift) &&
-            (e.altKey === alt)
+        const modifiersMatch = checkModifierState(e, { meta, ctrl, shift, alt })
 
-        // 按键匹配（忽略大小写）
         let keyMatch = false
         if (key === 'space') {
             keyMatch = e.code === 'Space' || e.key === ' '
@@ -114,6 +205,52 @@ class KeybindingService {
         return modifiersMatch && keyMatch
     }
 
+    applyScenarioProfile(scenarioId: string | null): void {
+        this.scenarioOverrides.clear()
+
+        if (scenarioId) {
+            const profile = SCENARIO_PROFILES[scenarioId]
+            if (profile) {
+                for (const [cmdId, key] of profile.overrides) {
+                    this.scenarioOverrides.set(cmdId, key)
+                }
+                for (const cmd of profile.exclusiveCommands) {
+                    if (!this.commands.has(cmd.id)) {
+                        this.registerCommand(cmd)
+                    }
+                }
+                logger.system.info(`[ScenarioKeybindingEngine] Applied profile: ${scenarioId} with ${profile.overrides.size} overrides, ${profile.exclusiveCommands.length} exclusive commands`)
+            }
+        }
+
+        this.activeScenarioId = scenarioId
+    }
+
+    detectConflicts(): KeybindingConflict[] {
+        const keyToCommands = new Map<string, string[]>()
+        const conflicts: KeybindingConflict[] = []
+
+        for (const [scenarioId, profile] of Object.entries(SCENARIO_PROFILES)) {
+            for (const [cmdId, key] of profile.overrides) {
+                const existing = keyToCommands.get(key) ?? []
+                existing.push(`${scenarioId}:${cmdId}`)
+                keyToCommands.set(key, existing)
+            }
+        }
+
+        for (const [key, entries] of keyToCommands) {
+            if (entries.length > 1) {
+                conflicts.push({
+                    commandId: entries.map(e => e.split(':')[1]).join(', '),
+                    key,
+                    scenarios: entries.map(e => e.split(':')[0]),
+                })
+            }
+        }
+
+        return conflicts
+    }
+
     async updateBinding(commandId: string, newKey: string | null) {
         if (newKey === null) {
             this.overrides.delete(commandId)
@@ -129,57 +266,47 @@ class KeybindingService {
     }
 
     private async loadOverrides() {
-        // 优先从 localStorage 读取（快速）
         try {
             const localData = localStorage.getItem(LOCAL_STORAGE_KEY)
             if (localData) {
                 const parsed = JSON.parse(localData)
                 this.overrides = new Map(Object.entries(parsed))
-                // 异步同步到文件（不阻塞）
                 api.settings.set('keybindings', parsed).catch(() => { })
                 return
             }
         } catch (e) {
-            // localStorage 读取失败，继续从文件读取
+            // localStorage 读取失败
         }
 
-        // 从文件读取
         try {
             const saved = await api.settings.get('keybindings') as Record<string, string>
             if (saved) {
                 this.overrides = new Map(Object.entries(saved))
-                // 同步到 localStorage
                 localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(saved))
             }
         } catch (e) {
-            logger.system.error('Failed to load keybindings:', e)
+            logger.system.error('[ScenarioKeybindingEngine] Failed to load keybindings:', e)
         }
     }
 
     private async saveOverrides() {
         const obj = Object.fromEntries(this.overrides)
-        // 同步写入 localStorage（快速）
         try {
             localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(obj))
         } catch (e) {
-            logger.system.error('Failed to save keybindings to localStorage:', e)
+            logger.system.error('[ScenarioKeybindingEngine] Failed to save keybindings to localStorage:', e)
         }
-        // 异步写入文件（持久化）
         try {
             await api.settings.set('keybindings', obj)
         } catch (e) {
-            logger.system.error('Failed to save keybindings:', e)
+            logger.system.error('[ScenarioKeybindingEngine] Failed to save keybindings:', e)
         }
     }
 }
 
-export const keybindingService = new KeybindingService()
+export const keybindingService = new ScenarioKeybindingEngine()
 
-/**
- * 根据平台转换快捷键显示文本
- * macOS: Ctrl→⌘  Alt→⌥  Shift→⇧  Backquote→`
- */
-export function formatShortcut(shortcut: string): string {
+export function renderPlatformShortcut(shortcut: string): string {
     if (!isMac) return shortcut
     return shortcut
         .replace(/Ctrl\+/gi, '⌘')
@@ -187,11 +314,7 @@ export function formatShortcut(shortcut: string): string {
         .replace(/Shift\+/gi, '⇧')
 }
 
-/**
- * 将快捷键字符串拆分为适合 macOS 显示的按键数组
- * macOS: Ctrl→⌘  Alt→⌥  Shift→⇧
- */
-export function formatShortcutKeys(keys: string[]): string[] {
+export function splitPlatformKeys(keys: string[]): string[] {
     if (!isMac) return keys
     return keys.map(k => {
         const lower = k.toLowerCase()
@@ -202,4 +325,21 @@ export function formatShortcutKeys(keys: string[]): string[] {
     })
 }
 
+export function checkModifierState(
+    e: KeyboardEvent | React.KeyboardEvent,
+    expected: { meta: boolean; ctrl: boolean; shift: boolean; alt: boolean }
+): boolean {
+    return (
+        (e.metaKey === expected.meta) &&
+        (e.ctrlKey === expected.ctrl) &&
+        (e.shiftKey === expected.shift) &&
+        (e.altKey === expected.alt)
+    )
+}
+
 export { isMac }
+export { ScenarioKeybindingEngine }
+
+export const formatShortcut = renderPlatformShortcut
+export const formatShortcutKeys = splitPlatformKeys
+export const modifiersMatch = checkModifierState

@@ -407,7 +407,7 @@ function UpgradePlanModal({
   )
 }
 
-export function UserAccountPopover({ language }: { language: Language }) {
+export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hideButton, forceUserOpen, onUserClose }: { language: Language; forceLoginOpen?: boolean; onLoginClose?: () => void; hideButton?: boolean; forceUserOpen?: boolean; onUserClose?: () => void }) {
   const {
     isAuthenticated,
     cloudUser,
@@ -451,6 +451,24 @@ export function UserAccountPopover({ language }: { language: Language }) {
     }
   }, [showUserModal, isAuthenticated])
 
+  useEffect(() => {
+    if (forceLoginOpen && !isAuthenticated) {
+      setShowLoginModal(true)
+    }
+    if (!forceLoginOpen && onLoginClose) {
+      setShowLoginModal(false)
+    }
+  }, [forceLoginOpen, isAuthenticated, onLoginClose])
+
+  useEffect(() => {
+    if (forceUserOpen && isAuthenticated) {
+      setShowUserModal(true)
+    }
+    if (!forceUserOpen && onUserClose) {
+      setShowUserModal(false)
+    }
+  }, [forceUserOpen, isAuthenticated, onUserClose])
+
   const handleClick = useCallback(() => {
     if (isAuthenticated) {
       setShowUserModal(true)
@@ -476,6 +494,7 @@ export function UserAccountPopover({ language }: { language: Language }) {
         setPassword('')
         setUsername('')
         setError('')
+        onLoginClose?.()
       } catch (err) {
         if (err instanceof BackendApiError) {
           if (err.status === 401) {
@@ -526,6 +545,7 @@ export function UserAccountPopover({ language }: { language: Language }) {
 
   return (
     <>
+      {!hideButton && (
       <HintOverlay content={tooltipText} side="right">
         <button
           onClick={handleClick}
@@ -545,10 +565,11 @@ export function UserAccountPopover({ language }: { language: Language }) {
           )}
         </button>
       </HintOverlay>
+      )}
 
       <OverlayDialog
         isOpen={showUserModal}
-        onClose={() => setShowUserModal(false)}
+        onClose={() => { setShowUserModal(false); onUserClose?.() }}
         size="sm"
       >
         {cloudUser && (
@@ -635,7 +656,8 @@ export function UserAccountPopover({ language }: { language: Language }) {
                 size="sm"
                 onClick={() => {
                   setShowUserModal(false)
-                  useStore.getState().setShowSettings(true, 'cloud')
+                  useStore.getState().setActiveSidePanel(null)
+                  useStore.getState().setShowSettingsPage(true)
                 }}
                 className="flex-1 text-xs"
               >
@@ -668,6 +690,7 @@ export function UserAccountPopover({ language }: { language: Language }) {
         onClose={() => {
           setShowLoginModal(false)
           setError('')
+          onLoginClose?.()
         }}
         size="sm"
       >

@@ -245,3 +245,173 @@ export const SECURITY_SETTINGS_DEFAULTS = {
   ],
   showSecurityWarnings: true,
 } as const
+
+// ============================================
+// 场景默认配置覆盖
+// ============================================
+
+export type ScenarioDomain = 'legal' | 'medical' | 'education' | 'general'
+
+export interface ScenarioProfileOverride {
+    domain: ScenarioDomain
+    displayName: string
+    llm: {
+        temperature: number
+        topP: number
+        maxTokens: number
+        timeout: number
+    }
+    agent: {
+        maxToolLoops: number
+        maxToolResultChars: number
+        maxTotalContextChars: number
+        enableAutoFix: boolean
+        toolTimeoutMs: number
+    }
+    security: {
+        enablePermissionConfirm: boolean
+        strictWorkspaceMode: boolean
+        allowedShellCommands: readonly string[]
+    }
+    performance: {
+        largeFileWarningThresholdMB: number
+        maxSearchResults: number
+    }
+    autoApprove: {
+        terminal: boolean
+        dangerous: boolean
+    }
+}
+
+export const SCENARIO_PROFILE_DEFAULTS: Record<ScenarioDomain, ScenarioProfileOverride> = {
+    legal: {
+        domain: 'legal',
+        displayName: 'Legal Assistant',
+        llm: {
+            temperature: 0.3,
+            topP: 0.9,
+            maxTokens: 16384,
+            timeout: 180000,
+        },
+        agent: {
+            maxToolLoops: 30,
+            maxToolResultChars: 15000,
+            maxTotalContextChars: 80000,
+            enableAutoFix: false,
+            toolTimeoutMs: 90000,
+        },
+        security: {
+            enablePermissionConfirm: true,
+            strictWorkspaceMode: true,
+            allowedShellCommands: [
+                'git', 'npm', 'node', 'tsc', 'eslint',
+                'pwd', 'ls', 'cat', 'echo', 'mkdir',
+            ] as const,
+        },
+        performance: {
+            largeFileWarningThresholdMB: 2,
+            maxSearchResults: 2000,
+        },
+        autoApprove: {
+            terminal: false,
+            dangerous: false,
+        },
+    },
+    medical: {
+        domain: 'medical',
+        displayName: 'Medical Assistant',
+        llm: {
+            temperature: 0.2,
+            topP: 0.85,
+            maxTokens: 12288,
+            timeout: 180000,
+        },
+        agent: {
+            maxToolLoops: 20,
+            maxToolResultChars: 12000,
+            maxTotalContextChars: 60000,
+            enableAutoFix: false,
+            toolTimeoutMs: 90000,
+        },
+        security: {
+            enablePermissionConfirm: true,
+            strictWorkspaceMode: true,
+            allowedShellCommands: [
+                'git', 'node', 'python',
+                'pwd', 'ls', 'cat',
+            ] as const,
+        },
+        performance: {
+            largeFileWarningThresholdMB: 2,
+            maxSearchResults: 1500,
+        },
+        autoApprove: {
+            terminal: false,
+            dangerous: false,
+        },
+    },
+    education: {
+        domain: 'education',
+        displayName: 'Education Assistant',
+        llm: {
+            temperature: 0.8,
+            topP: 1,
+            maxTokens: 8192,
+            timeout: 120000,
+        },
+        agent: {
+            maxToolLoops: 50,
+            maxToolResultChars: 10000,
+            maxTotalContextChars: 60000,
+            enableAutoFix: true,
+            toolTimeoutMs: 60000,
+        },
+        security: {
+            enablePermissionConfirm: true,
+            strictWorkspaceMode: false,
+            allowedShellCommands: SECURITY_SETTINGS_DEFAULTS.allowedShellCommands,
+        },
+        performance: {
+            largeFileWarningThresholdMB: 5,
+            maxSearchResults: 1000,
+        },
+        autoApprove: {
+            terminal: false,
+            dangerous: false,
+        },
+    },
+    general: {
+        domain: 'general',
+        displayName: 'General Assistant',
+        llm: {
+            temperature: LLM_DEFAULTS.temperature,
+            topP: LLM_DEFAULTS.topP,
+            maxTokens: LLM_DEFAULTS.maxTokens,
+            timeout: LLM_DEFAULTS.timeout,
+        },
+        agent: {
+            maxToolLoops: AGENT_DEFAULTS.maxToolLoops,
+            maxToolResultChars: AGENT_DEFAULTS.maxToolResultChars,
+            maxTotalContextChars: AGENT_DEFAULTS.maxTotalContextChars,
+            enableAutoFix: AGENT_DEFAULTS.enableAutoFix,
+            toolTimeoutMs: AGENT_DEFAULTS.toolTimeoutMs,
+        },
+        security: {
+            enablePermissionConfirm: SECURITY_SETTINGS_DEFAULTS.enablePermissionConfirm,
+            strictWorkspaceMode: SECURITY_SETTINGS_DEFAULTS.strictWorkspaceMode,
+            allowedShellCommands: SECURITY_SETTINGS_DEFAULTS.allowedShellCommands,
+        },
+        performance: {
+            largeFileWarningThresholdMB: PERFORMANCE_DEFAULTS.largeFileWarningThresholdMB,
+            maxSearchResults: PERFORMANCE_DEFAULTS.maxSearchResults,
+        },
+        autoApprove: {
+            terminal: AUTO_APPROVE_DEFAULTS.terminal,
+            dangerous: AUTO_APPROVE_DEFAULTS.dangerous,
+        },
+    },
+} as const
+
+export function getScenarioProfileOverride(domain: ScenarioDomain): ScenarioProfileOverride {
+    return SCENARIO_PROFILE_DEFAULTS[domain]
+}

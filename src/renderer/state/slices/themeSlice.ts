@@ -6,9 +6,29 @@ export type BuiltinThemeName = typeof BRAND.lightTheme | typeof BRAND.defaultThe
 
 export type ThemeName = string
 
+export type ThemeMode = 'light' | 'dark' | 'system'
+
 export interface ThemeSlice {
     currentTheme: ThemeName;
+    themeMode: ThemeMode;
+    systemPrefersDark: boolean;
     setTheme: (theme: ThemeName) => void;
+    setThemeMode: (mode: ThemeMode) => void;
+    setSystemPrefersDark: (prefersDark: boolean) => void;
+}
+
+const STORAGE_KEY_THEME_MODE = `${BRAND.cssPrefix}-theme-mode`
+
+function getInitialThemeMode(): ThemeMode {
+    if (typeof localStorage === 'undefined') return 'light'
+    const saved = localStorage.getItem(STORAGE_KEY_THEME_MODE)
+    if (saved === 'light' || saved === 'dark' || saved === 'system') return saved
+    return 'light'
+}
+
+function getSystemPrefersDark(): boolean {
+    if (typeof window === 'undefined' || typeof window.matchMedia === 'undefined') return false
+    return window.matchMedia('(prefers-color-scheme: dark)').matches
 }
 
 export const createThemeSlice: StateCreator<ThemeSlice, [], [], ThemeSlice> = (set) => {
@@ -18,8 +38,17 @@ export const createThemeSlice: StateCreator<ThemeSlice, [], [], ThemeSlice> = (s
         ? savedTheme
         : BRAND.lightTheme
 
+    const initialMode = getInitialThemeMode()
+
     return {
         currentTheme: initialTheme,
+        themeMode: initialMode,
+        systemPrefersDark: getSystemPrefersDark(),
         setTheme: (theme) => set({ currentTheme: theme }),
+        setThemeMode: (mode) => {
+            localStorage.setItem(STORAGE_KEY_THEME_MODE, mode)
+            set({ themeMode: mode })
+        },
+        setSystemPrefersDark: (prefersDark) => set({ systemPrefersDark: prefersDark }),
     }
 }

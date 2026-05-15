@@ -13,6 +13,7 @@ import {
   type ProviderModelConfig,
   getAllDefaults,
 } from '@shared/configuration/preferenceSync'
+import { DEFAULT_SCENARIO_PREFERENCES } from '@shared/configuration/preferenceSchema'
 import type { ApiProtocol } from '@shared/configuration/aiProviders'
 
 // ============================================
@@ -151,6 +152,7 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [], [], SettingsSl
         aiInstructions: state.aiInstructions,
         onboardingCompleted: state.onboardingCompleted,
         enableFileLogging: state.enableFileLogging,
+        scenarioPreferences: state.scenarioPreferences ?? DEFAULT_SCENARIO_PREFERENCES,
       })
       logger.settings.info('[Settings] Saved')
     } catch (e) {

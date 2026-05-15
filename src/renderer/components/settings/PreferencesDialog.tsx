@@ -111,7 +111,11 @@ function SettingsTabFallback({ language }: { language: Language }) {
     )
 }
 
-export default function PreferencesDialog() {
+interface PreferencesDialogProps {
+    embedded?: boolean
+}
+
+export default function PreferencesDialog({ embedded = false }: PreferencesDialogProps) {
     const {
         llmConfig,
         language,
@@ -128,6 +132,7 @@ export default function PreferencesDialog() {
         set,
         setProvider,
         setShowSettings,
+        setShowSettingsPage,
         settingsInitialTab,
         save,
         activeScenarioId,
@@ -147,6 +152,7 @@ export default function PreferencesDialog() {
         set: s.set,
         setProvider: s.setProvider,
         setShowSettings: s.setShowSettings,
+        setShowSettingsPage: s.setShowSettingsPage,
         settingsInitialTab: s.settingsInitialTab,
         save: s.save,
         activeScenarioId: s.activeScenarioId,
@@ -159,7 +165,6 @@ export default function PreferencesDialog() {
     useEffect(() => {
         if (settingsInitialTab) {
             setActiveTab(settingsInitialTab as SettingsTab)
-            useStore.getState().setShowSettings(true, undefined)
         }
     }, [settingsInitialTab])
 
@@ -392,9 +397,13 @@ export default function PreferencesDialog() {
             }
         }
 
-        setShowSettings(false)
+        if (embedded) {
+            setShowSettingsPage(false)
+        } else {
+            setShowSettings(false)
+        }
         setIsClosing(false)
-    }, [isClosing, isDirty, language, setShowSettings])
+    }, [isClosing, isDirty, language, setShowSettings, setShowSettingsPage, embedded])
 
     const handleClose = useCallback(() => {
         void requestClose()
@@ -533,58 +542,58 @@ export default function PreferencesDialog() {
         }
     }
 
-    return (
-        <OverlayDialog isOpen={true} onClose={handleClose} title="" size="5xl" noPadding showCloseButton={false} className="overflow-hidden bg-background/80 backdrop-blur-2xl border border-border/50 shadow-2xl shadow-black/20 rounded-3xl">
-            <div className="flex h-[75vh] max-h-[800px]">
-                <div className="w-64 bg-surface/30 backdrop-blur-xl border-r border-border/50 flex flex-col pt-8 pb-6">
-                    <div className="px-6 mb-6">
-                        <h2 className="text-lg font-semibold text-text-primary tracking-tight flex items-center gap-2.5">
-                            <div className="p-1.5 rounded-lg bg-accent/10 border border-accent/20">
-                                <Settings2 className="w-5 h-5 text-accent" />
-                            </div>
-                            {language === 'zh' ? '设置' : 'Settings'}
-                        </h2>
-                    </div>
-
-                    <nav className="flex-1 p-4 space-y-1 overflow-y-auto no-scrollbar">
-                        {tabs.map(tab => (
-                            <button
-                                key={tab.id}
-                                onClick={() => setActiveTab(tab.id as SettingsTab)}
-                                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-200 group ${activeTab === tab.id ? 'bg-accent/10 text-text-primary border border-accent/20' : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary border border-transparent'}`}
-                            >
-                                <span className={`transition-colors duration-200 ${activeTab === tab.id ? 'text-accent' : 'text-text-muted group-hover:text-text-primary'}`}>
-                                    {tab.icon}
-                                </span>
-                                <span>{tab.label}</span>
-                            </button>
-                        ))}
-                    </nav>
-
-                    <div className="mt-auto px-6 pt-6 border-t border-border/50 space-y-3">
-                        <div className="flex items-center gap-2 px-1 text-text-muted opacity-80">
-                            <Globe className="w-3.5 h-3.5" />
-                            <span className="text-xs font-bold uppercase tracking-widest">{language === 'zh' ? '语言' : 'Language'}</span>
+    const dialogContent = (
+        <div className={`flex h-full ${embedded ? '' : 'max-h-[800px]'}`}>
+            <div className={`bg-surface/30 backdrop-blur-xl border-r border-border/50 flex flex-col pt-8 pb-6 ${embedded ? 'w-56' : 'w-64'}`}>
+                <div className="px-6 mb-6">
+                    <h2 className="text-lg font-semibold text-text-primary tracking-tight flex items-center gap-2.5">
+                        <div className="p-1.5 rounded-lg bg-accent/10 border border-accent/20">
+                            <Settings2 className="w-5 h-5 text-accent" />
                         </div>
-                        <DropdownSelector
-                            value={localLanguage}
-                            onChange={(value) => setLocalLanguage(value as 'en' | 'zh')}
-                            options={LANGUAGES.map(item => ({ value: item.id, label: item.name }))}
-                            className="w-full text-xs bg-surface/50 border-border/50 hover:border-accent/50 transition-colors"
-                        />
-                    </div>
+                        {language === 'zh' ? '设置' : 'Settings'}
+                    </h2>
                 </div>
 
-                <div className="flex-1 flex flex-col min-w-0 bg-transparent relative">
-                    <div className="shrink-0 px-8 pt-6 pb-4 border-b border-border/40 flex items-center justify-between">
-                        <div>
-                            <h3 className="text-2xl font-semibold text-text-primary tracking-tight">
-                                {tabs.find(tab => tab.id === activeTab)?.label}
-                            </h3>
-                            <p className="text-sm text-text-muted mt-1.5 opacity-80">
-                                {t('settings.managePreferences', language as Language)}
-                            </p>
-                        </div>
+                <nav className="flex-1 p-4 space-y-1 overflow-y-auto no-scrollbar">
+                    {tabs.map(tab => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id as SettingsTab)}
+                            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-200 group ${activeTab === tab.id ? 'bg-accent/10 text-text-primary border border-accent/20' : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary border border-transparent'}`}
+                        >
+                            <span className={`transition-colors duration-200 ${activeTab === tab.id ? 'text-accent' : 'text-text-muted group-hover:text-text-primary'}`}>
+                                {tab.icon}
+                            </span>
+                            <span>{tab.label}</span>
+                        </button>
+                    ))}
+                </nav>
+
+                <div className="mt-auto px-6 pt-6 border-t border-border/50 space-y-3">
+                    <div className="flex items-center gap-2 px-1 text-text-muted opacity-80">
+                        <Globe className="w-3.5 h-3.5" />
+                        <span className="text-xs font-bold uppercase tracking-widest">{language === 'zh' ? '语言' : 'Language'}</span>
+                    </div>
+                    <DropdownSelector
+                        value={localLanguage}
+                        onChange={(value) => setLocalLanguage(value as 'en' | 'zh')}
+                        options={LANGUAGES.map(item => ({ value: item.id, label: item.name }))}
+                        className="w-full text-xs bg-surface/50 border-border/50 hover:border-accent/50 transition-colors"
+                    />
+                </div>
+            </div>
+
+            <div className="flex-1 flex flex-col min-w-0 bg-transparent relative">
+                <div className="shrink-0 px-8 pt-6 pb-4 border-b border-border/40 flex items-center justify-between">
+                    <div>
+                        <h3 className="text-2xl font-semibold text-text-primary tracking-tight">
+                            {tabs.find(tab => tab.id === activeTab)?.label}
+                        </h3>
+                        <p className="text-sm text-text-muted mt-1.5 opacity-80">
+                            {t('settings.managePreferences', language as Language)}
+                        </p>
+                    </div>
+                    {!embedded && (
                         <button
                             onClick={handleClose}
                             className="p-2 rounded-xl hover:bg-text-primary/[0.05] text-text-muted hover:text-text-primary transition-all duration-200 group"
@@ -592,47 +601,57 @@ export default function PreferencesDialog() {
                         >
                             <X className="w-5 h-5 group-hover:rotate-90 transition-transform duration-300" />
                         </button>
-                    </div>
-
-                    <div className="settings-scroll-region flex-1 overflow-y-auto px-8 py-6 custom-scrollbar pb-28">
-                        <div className="settings-tab-panel space-y-6">
-                            <Suspense fallback={<SettingsTabFallback language={language as Language} />}>
-                                {renderActiveTab()}
-                            </Suspense>
-                        </div>
-                    </div>
-
-                    {(isDirty || saved) && (
-                        <div className="absolute bottom-6 right-8 left-8 p-4 rounded-xl bg-surface/95 border border-border/60 shadow-lg flex items-center justify-between z-10 transition-all duration-300">
-                            <span className="text-xs text-text-muted ml-2 font-medium">
-                                {saved && !isDirty
-                                    ? t('settings.allChangesSaved', language as Language)
-                                    : t('settings.unsavedChanges', language as Language)}
-                            </span>
-                            <div className="flex items-center gap-3">
-                                <ActionButton variant="ghost" onClick={handleClose} className="hover:bg-text-inverted/[0.05] hover:bg-text-primary/[0.05] text-text-secondary rounded-lg">
-                                    {t('cancel', language as Language)}
-                                </ActionButton>
-                                <ActionButton
-                                    variant={saved ? 'success' : 'primary'}
-                                    onClick={handleSave}
-                                    disabled={!isDirty}
-                                    className={`min-w-[140px] shadow-lg transition-all duration-300 rounded-xl ${saved ? 'bg-status-success hover:bg-status-success/90 text-white' : 'bg-accent hover:bg-accent-hover text-white shadow-accent/20 disabled:opacity-50 disabled:cursor-not-allowed'}`}
-                                >
-                                    {saved ? (
-                                        <span className="flex items-center gap-2 justify-center font-bold">
-                                            <Check className="w-4 h-4" />
-                                            {t('saved', language as Language)}
-                                        </span>
-                                    ) : (
-                                        <span className="font-bold">{t('settings.saveChanges', language as Language)}</span>
-                                    )}
-                                </ActionButton>
-                            </div>
-                        </div>
                     )}
                 </div>
+
+                <div className="settings-scroll-region flex-1 overflow-y-auto px-8 py-6 custom-scrollbar pb-28">
+                    <div className="settings-tab-panel space-y-6">
+                        <Suspense fallback={<SettingsTabFallback language={language as Language} />}>
+                            {renderActiveTab()}
+                        </Suspense>
+                    </div>
+                </div>
+
+                {(isDirty || saved) && (
+                    <div className="absolute bottom-6 right-8 left-8 p-4 rounded-xl bg-surface/95 border border-border/60 shadow-lg flex items-center justify-between z-10 transition-all duration-300">
+                        <span className="text-xs text-text-muted ml-2 font-medium">
+                            {saved && !isDirty
+                                ? t('settings.allChangesSaved', language as Language)
+                                : t('settings.unsavedChanges', language as Language)}
+                        </span>
+                        <div className="flex items-center gap-3">
+                            <ActionButton variant="ghost" onClick={handleClose} className="hover:bg-text-inverted/[0.05] hover:bg-text-primary/[0.05] text-text-secondary rounded-lg">
+                                {t('cancel', language as Language)}
+                            </ActionButton>
+                            <ActionButton
+                                variant={saved ? 'success' : 'primary'}
+                                onClick={handleSave}
+                                disabled={!isDirty}
+                                className={`min-w-[140px] shadow-lg transition-all duration-300 rounded-xl ${saved ? 'bg-status-success hover:bg-status-success/90 text-white' : 'bg-accent hover:bg-accent-hover text-white shadow-accent/20 disabled:opacity-50 disabled:cursor-not-allowed'}`}
+                            >
+                                {saved ? (
+                                    <span className="flex items-center gap-2 justify-center font-bold">
+                                        <Check className="w-4 h-4" />
+                                        {t('saved', language as Language)}
+                                    </span>
+                                ) : (
+                                    <span className="font-bold">{t('settings.saveChanges', language as Language)}</span>
+                                )}
+                            </ActionButton>
+                        </div>
+                    </div>
+                )}
             </div>
+        </div>
+    )
+
+    if (embedded) {
+        return dialogContent
+    }
+
+    return (
+        <OverlayDialog isOpen={true} onClose={handleClose} title="" size="5xl" noPadding showCloseButton={false} className="overflow-hidden bg-background/80 backdrop-blur-2xl border border-border/50 shadow-2xl shadow-black/20 rounded-3xl">
+            {dialogContent}
         </OverlayDialog>
     )
 }

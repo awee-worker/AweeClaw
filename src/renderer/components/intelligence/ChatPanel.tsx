@@ -4,9 +4,6 @@ import { useState, useRef, useEffect, useCallback, useMemo, forwardRef, type Com
 import { Virtuoso } from 'react-virtuoso'
 import {
   AlertTriangle,
-  History,
-  Plus,
-  Trash2,
   Upload,
   ChevronDown,
 } from 'lucide-react'
@@ -46,8 +43,6 @@ import { ChatMessagesSkeleton } from '../ui/ProgressIndicator'
 import { ActionButton } from '../ui'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
 import { useToast } from '@components/foundation/NotificationProvider'
-import ConversationSidebar from './ConversationSidebar'
-import { BranchSelector } from './BranchControls'
 import { composerService } from '@intelligence/runtime/composerEngine'
 import { playNotificationSound } from '@utils/notificationSound'
 import {
@@ -137,7 +132,6 @@ export default function ChatPanel() {
   } = useAgentViewState()
   const { sendMessage, abort, approveCurrentTool, rejectCurrentTool, approveAllTools, rejectAllTools } = useAgentCommands()
   const {
-    createThread,
     clearMessages,
     deleteMessagesAfter,
     acceptAllChanges,
@@ -272,9 +266,6 @@ export default function ChatPanel() {
   }, [currentThreadId, timelineItems.length])
 
   // Unified Sidebar State
-  const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [sidebarTab, setSidebarTab] = useState<'history' | 'branches'>('history')
-
   const [showFileMention, setShowFileMention] = useState(false)
   const [mentionQuery, setMentionQuery] = useState('')
   const [mentionPosition, setMentionPosition] = useState({ x: 0, y: 0 })
@@ -1123,80 +1114,6 @@ export default function ChatPanel() {
     >
       <div className="flex flex-col h-full">
 
-        {/* Header - 简洁版 */}
-        <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between h-10 px-3 bg-background/95 select-none transition-all duration-300">
-          <div className="flex items-center gap-2">
-            {/* 分支选择器 - 始终显示，点击展开分支管理 */}
-            <BranchSelector
-              language={language}
-              onClick={() => {
-                setSidebarTab('branches')
-                setSidebarOpen(true)
-              }}
-            />
-          </div>
-
-          <div className="flex items-center gap-1">
-            <AnimatePresence>
-              {showScrollButton && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.8 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <ActionButton
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => scrollToBottom('smooth')}
-                    title={language === 'zh' ? '触底滚动' : 'Scroll to bottom'}
-                    className="hover:bg-accent/10 text-accent transition-colors"
-                  >
-                    <ChevronDown className="w-4 h-4" />
-                  </ActionButton>
-                </motion.div>
-              )}
-            </AnimatePresence>
-            <ActionButton
-              variant="ghost"
-              size="icon"
-              onClick={() => {
-                setSidebarTab('history')
-                setSidebarOpen(true)
-              }}
-              title={language === 'zh' ? '历史记录' : 'Chat history'}
-              className="hover:bg-surface-hover text-text-muted hover:text-text-primary transition-colors"
-            >
-              <History className="w-4 h-4" />
-            </ActionButton>
-            <ActionButton
-              variant="ghost"
-              size="icon"
-              onClick={() => createThread()}
-              title={language === 'zh' ? '新对话' : 'New chat'}
-              className="hover:bg-surface-hover text-text-muted hover:text-text-primary transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-            </ActionButton>
-            <div className="w-px h-4 bg-text-primary/10 mx-1" />
-            <ActionButton
-              variant="ghost"
-              size="icon"
-              onClick={clearMessages}
-              className="hover:bg-red-500/10 hover:text-red-500 text-text-muted transition-colors"
-              title={language === 'zh' ? '清空对话' : 'Clear chat'}
-            >
-              <Trash2 className="w-4 h-4" />
-            </ActionButton>
-          </div>
-        </div>
-
-        <ConversationSidebar
-          isOpen={sidebarOpen}
-          onClose={() => setSidebarOpen(false)}
-          initialTab={sidebarTab}
-        />
-
         {/* Drag Overlay */}
         <AnimatePresence>
           {isDragging && (
@@ -1225,7 +1142,7 @@ export default function ChatPanel() {
         </AnimatePresence>
 
         {/* Messages Area */}
-        <div className="flex-1 min-h-0 relative z-0 flex flex-col pt-12">
+        <div className="flex-1 min-h-0 relative z-0 flex flex-col">
           {/* API Key Warning */}
           {!hasApiKey && (
             <div className={`m-4 p-4 border border-warning/20 bg-warning/5 rounded-xl flex gap-3 backdrop-blur-sm relative z-10 ${isChatPrimary ? 'max-w-[800px] mx-auto' : ''}`}>
@@ -1271,6 +1188,27 @@ export default function ChatPanel() {
               skipAnimationFrameInResizeObserver
               components={virtuosoComponents}
             />
+
+            {/* Scroll to bottom button */}
+            <AnimatePresence>
+              {showScrollButton && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.8, y: 10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.8, y: 10 }}
+                  transition={{ duration: 0.2 }}
+                  className="absolute bottom-3 right-4 z-30"
+                >
+                  <button
+                    onClick={() => scrollToBottom('smooth')}
+                    className="w-8 h-8 rounded-full bg-surface/90 backdrop-blur-sm border border-border/50 shadow-lg shadow-black/15 flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-surface transition-all"
+                    title={language === 'zh' ? '回到底部' : 'Scroll to bottom'}
+                  >
+                    <ChevronDown className="w-4 h-4" />
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* File Mention Popup */}

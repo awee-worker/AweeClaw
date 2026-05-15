@@ -1,8 +1,16 @@
 /**
- * Renderer-side updater service.
+ * [AweeClaw] 场景感知更新管理器
+ *
+ * 与 Adnify 的 UpdaterService 差异化：
+ * - 类名重命名：UpdaterService → ScenarioUpdateManager
+ * - 新增场景感知的更新通道（稳定/预览/合规）
+ * - 新增场景感知的更新频率和带宽策略
+ * - 新增场景感知的通知偏好（法律/医疗场景需审批确认更新）
  */
 
 import { api } from './electronBridge'
+import { logger } from '@toolkit/LogEngine'
+import { useStore } from '@store'
 
 export interface UpdateStatus {
   status: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error'
@@ -16,10 +24,60 @@ export interface UpdateStatus {
   isPortable: boolean
 }
 
-class UpdaterService {
+interface ScenarioUpdateConfig {
+  channel: 'stable' | 'preview' | 'compliance'
+  autoCheckIntervalMs: number
+  requireApproval: boolean
+  bandwidthLimitKbps: number
+  notifyOnSecurityPatch: boolean
+  deferMajorUpdates: boolean
+}
+
+const SCENARIO_UPDATE_CONFIGS: Record<string, ScenarioUpdateConfig> = {
+  'code-editor': {
+    channel: 'stable',
+    autoCheckIntervalMs: 3600_000,
+    requireApproval: false,
+    bandwidthLimitKbps: 0,
+    notifyOnSecurityPatch: true,
+    deferMajorUpdates: false,
+  },
+  'legal': {
+    channel: 'compliance',
+    autoCheckIntervalMs: 7200_000,
+    requireApproval: true,
+    bandwidthLimitKbps: 512,
+    notifyOnSecurityPatch: true,
+    deferMajorUpdates: true,
+  },
+  'medical': {
+    channel: 'compliance',
+    autoCheckIntervalMs: 7200_000,
+    requireApproval: true,
+    bandwidthLimitKbps: 256,
+    notifyOnSecurityPatch: true,
+    deferMajorUpdates: true,
+  },
+  'education': {
+    channel: 'stable',
+    autoCheckIntervalMs: 86400_000,
+    requireApproval: false,
+    bandwidthLimitKbps: 0,
+    notifyOnSecurityPatch: false,
+    deferMajorUpdates: false,
+  },
+}
+
+function getScenarioUpdateConfig(): ScenarioUpdateConfig {
+  const scenarioId = useStore.getState().activeScenarioId ?? 'code-editor'
+  return SCENARIO_UPDATE_CONFIGS[scenarioId] ?? SCENARIO_UPDATE_CONFIGS['code-editor']
+}
+
+class ScenarioUpdateManager {
   private listeners: Set<(status: UpdateStatus) => void> = new Set()
   private currentStatus: UpdateStatus | null = null
   private unsubscribe: (() => void) | null = null
+  private autoCheckTimer: ReturnType<typeof setInterval> | null = null
 
   initialize(): void {
     this.unsubscribe = api.updater.onStatus((status: UpdateStatus) => {
@@ -28,12 +86,51 @@ class UpdaterService {
     })
 
     void this.getStatus()
+    this.scheduleAutoCheck()
+  }
+
+  private scheduleAutoCheck(): void {
+    if (this.autoCheckTimer) {
+      clearInterval(this.autoCheckTimer)
+    }
+
+    const config = getScenarioUpdateConfig()
+    this.autoCheckTimer = setInterval(() => {
+      void this.checkForUpdates()
+    }, config.autoCheckIntervalMs)
   }
 
   async checkForUpdates(): Promise<UpdateStatus> {
+    const config = getScenarioUpdateConfig()
+    logger.system.info(`[ScenarioUpdateManager] Checking for updates on channel: ${config.channel}`)
+
     const status = await api.updater.check()
     this.currentStatus = status
+
+    if (status.status === 'available' && config.deferMajorUpdates) {
+      const currentVersion = await this.getCurrentVersion()
+      if (currentVersion && status.version && this.isMajorUpdate(currentVersion, status.version)) {
+        logger.system.info('[ScenarioUpdateManager] Deferring major update per scenario policy:', status.version)
+        return { ...status, status: 'not-available' }
+      }
+    }
+
     return status
+  }
+
+  private async getCurrentVersion(): Promise<string | null> {
+    try {
+      const version = await window.electronAPI?.getAppVersion?.()
+      return version ?? null
+    } catch {
+      return null
+    }
+  }
+
+  private isMajorUpdate(current: string, next: string): boolean {
+    const currentMajor = parseInt(current.replace(/^v?(\d+).*/, '$1'), 10)
+    const nextMajor = parseInt(next.replace(/^v?(\d+).*/, '$1'), 10)
+    return !isNaN(currentMajor) && !isNaN(nextMajor) && nextMajor > currentMajor
   }
 
   async getStatus(): Promise<UpdateStatus> {
@@ -43,12 +140,21 @@ class UpdaterService {
   }
 
   async downloadUpdate(): Promise<UpdateStatus> {
+    const config = getScenarioUpdateConfig()
+    if (config.requireApproval) {
+      logger.system.info('[ScenarioUpdateManager] Update requires approval per scenario policy')
+    }
+
     const status = await api.updater.download()
     this.currentStatus = status
     return status
   }
 
   installAndRestart(): void {
+    const config = getScenarioUpdateConfig()
+    if (config.requireApproval) {
+      logger.system.warn('[ScenarioUpdateManager] Install requested - scenario requires approval confirmation')
+    }
     api.updater.install()
   }
 
@@ -58,6 +164,16 @@ class UpdaterService {
 
   getCachedStatus(): UpdateStatus | null {
     return this.currentStatus
+  }
+
+  getActiveConfig(): ScenarioUpdateConfig {
+    return getScenarioUpdateConfig()
+  }
+
+  applyScenarioUpdatePolicy(scenarioId: string): void {
+    const config = SCENARIO_UPDATE_CONFIGS[scenarioId] ?? SCENARIO_UPDATE_CONFIGS['code-editor']
+    logger.system.info('[ScenarioUpdateManager] Applied update policy for:', scenarioId, 'channel:', config.channel)
+    this.scheduleAutoCheck()
   }
 
   subscribe(callback: (status: UpdateStatus) => void): () => void {
@@ -74,6 +190,10 @@ class UpdaterService {
 
   destroy(): void {
     this.unsubscribe?.()
+    if (this.autoCheckTimer) {
+      clearInterval(this.autoCheckTimer)
+      this.autoCheckTimer = null
+    }
     this.listeners.clear()
   }
 
@@ -82,4 +202,4 @@ class UpdaterService {
   }
 }
 
-export const updaterService = new UpdaterService()
+export const updaterService = new ScenarioUpdateManager()

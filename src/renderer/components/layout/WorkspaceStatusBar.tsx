@@ -166,7 +166,7 @@ function CloudQuotaIndicator({ language }: { language: string }) {
 
         <button
           onClick={() => {
-            useStore.getState().setShowSettings(true, 'cloud')
+            useStore.getState().setShowSettingsPage(true)
           }}
           className="w-full py-2 text-xs text-accent hover:text-accent-hover transition-colors text-center"
         >
@@ -181,7 +181,7 @@ export default function WorkspaceStatusBar() {
   const {
     activeFilePath,
     workspacePath,
-    setShowSettings,
+    setShowSettingsPage,
     language,
     terminalVisible,
     setTerminalVisible,
@@ -194,7 +194,7 @@ export default function WorkspaceStatusBar() {
   } = useStore(useShallow(s => ({
     activeFilePath: s.activeFilePath,
     workspacePath: s.workspacePath,
-    setShowSettings: s.setShowSettings,
+    setShowSettingsPage: s.setShowSettingsPage,
     language: s.language,
     terminalVisible: s.terminalVisible,
     setTerminalVisible: s.setTerminalVisible,
@@ -281,7 +281,7 @@ export default function WorkspaceStatusBar() {
     return unsubscribe
   }, [workspacePath])
 
-  const handleIndexClick = () => setShowSettings(true)
+  const handleIndexClick = () => setShowSettingsPage(true)
   const handleDiagnosticsClick = () => setActiveSidePanel('problems')
   const toolCallLogs = useStore(state => state.toolCallLogs)
   const currentThreadToolCallCount = useMemo(

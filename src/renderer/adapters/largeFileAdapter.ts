@@ -1,291 +1,350 @@
 /**
- * 大文件处理服务
- * 提供大文件的分块加载、虚拟滚动支持、性能优化
+ * [AweeClaw] 场景感知智能大文件策略引擎
+ *
+ * 与 Adnify 的 largeFileService 差异化：
+ * - 函数名重命名：estimateLineCount → approximateLineCount, chunkFile → segmentContent,
+ *   formatFileSize → renderByteSize, getFileInfo → analyzeDocumentProfile,
+ *   getLargeFileEditorOptions → computeEditorConstraints, getLargeFileWarning → generateSizeAdvisory,
+ *   shouldUseReadOnlyMode → requiresReadOnlyMode, getLargeFileThreshold → resolveSizeThreshold,
+ *   getLargeLineCount → resolveLineThreshold, isLargeFile → exceedsSizeBudget,
+ *   isVeryLargeFile → farExceedsSizeBudget
+ * - 新增场景感知阈值：法律文档（大量文本）vs 代码文件 vs 日志文件
+ * - 新增场景感知编辑器策略
+ * - 新增文档类型检测和分类
  */
 
 import { getEditorConfig } from '@shared/configuration/preferenceSync'
+import { useStore } from '@store'
 
-// 文件大小阈值（字节）- 从配置获取
-function getLargeFileThreshold(): number {
-  const config = getEditorConfig()
-  return (config.performance.largeFileWarningThresholdMB || 5) * 1024 * 1024
+interface ScenarioFilePolicy {
+    sizeMultiplier: number
+    lineMultiplier: number
+    chunkSizeKB: number
+    readOnlyThresholdMB: number
+    contextLines: number
+    fileCategories: Record<string, { extensions: string[]; sizeMultiplier: number }>
 }
 
-// 行数阈值 - 从配置获取
-function getLargeLineCount(): number {
-  return getEditorConfig().performance.largeFileLineCount
+const SCENARIO_FILE_POLICIES: Record<string, ScenarioFilePolicy> = {
+    'code-editor': {
+        sizeMultiplier: 1.0,
+        lineMultiplier: 1.0,
+        chunkSizeKB: 64,
+        readOnlyThresholdMB: 50,
+        contextLines: 50,
+        fileCategories: {
+            source: { extensions: ['ts', 'tsx', 'js', 'jsx', 'py', 'go', 'rs', 'java'], sizeMultiplier: 1.0 },
+            config: { extensions: ['json', 'yaml', 'yml', 'toml', 'xml'], sizeMultiplier: 0.5 },
+            log: { extensions: ['log', 'out'], sizeMultiplier: 3.0 },
+        },
+    },
+    'legal': {
+        sizeMultiplier: 2.0,
+        lineMultiplier: 1.5,
+        chunkSizeKB: 128,
+        readOnlyThresholdMB: 100,
+        contextLines: 100,
+        fileCategories: {
+            contract: { extensions: ['docx', 'pdf', 'txt', 'md'], sizeMultiplier: 2.0 },
+            statute: { extensions: ['html', 'xml'], sizeMultiplier: 1.5 },
+            evidence: { extensions: ['csv', 'xlsx'], sizeMultiplier: 1.0 },
+        },
+    },
+    'medical': {
+        sizeMultiplier: 1.5,
+        lineMultiplier: 1.2,
+        chunkSizeKB: 96,
+        readOnlyThresholdMB: 80,
+        contextLines: 80,
+        fileCategories: {
+            imaging: { extensions: ['dcm', 'dicom', 'nii'], sizeMultiplier: 5.0 },
+            records: { extensions: ['pdf', 'txt', 'html'], sizeMultiplier: 1.5 },
+            data: { extensions: ['csv', 'json', 'hl7'], sizeMultiplier: 1.0 },
+        },
+    },
+    'education': {
+        sizeMultiplier: 1.5,
+        lineMultiplier: 1.2,
+        chunkSizeKB: 64,
+        readOnlyThresholdMB: 60,
+        contextLines: 60,
+        fileCategories: {
+            material: { extensions: ['pdf', 'pptx', 'docx'], sizeMultiplier: 2.0 },
+            code: { extensions: ['py', 'ipynb', 'js', 'ts'], sizeMultiplier: 1.0 },
+            media: { extensions: ['mp4', 'mp3', 'wav'], sizeMultiplier: 10.0 },
+        },
+    },
 }
 
-function getVeryLargeLineCount(): number {
-  return getEditorConfig().performance.veryLargeFileLineCount
+function resolveActivePolicy(): ScenarioFilePolicy {
+    const scenarioId = useStore.getState().activeScenarioId ?? 'code-editor'
+    return SCENARIO_FILE_POLICIES[scenarioId] ?? SCENARIO_FILE_POLICIES['code-editor']
 }
 
-const CHUNK_SIZE = 64 * 1024 // 64KB per chunk
+function detectFileCategory(filePath: string, policy: ScenarioFilePolicy): { category: string; sizeMultiplier: number } {
+    const ext = filePath.split('.').pop()?.toLowerCase() || ''
+    for (const [category, config] of Object.entries(policy.fileCategories)) {
+        if (config.extensions.includes(ext)) {
+            return { category, sizeMultiplier: config.sizeMultiplier }
+        }
+    }
+    return { category: 'unknown', sizeMultiplier: 1.0 }
+}
+
+function resolveSizeThreshold(): number {
+    const config = getEditorConfig()
+    const policy = resolveActivePolicy()
+    return (config.performance.largeFileWarningThresholdMB || 5) * 1024 * 1024 * policy.sizeMultiplier
+}
+
+function resolveLineThreshold(): number {
+    const config = getEditorConfig()
+    const policy = resolveActivePolicy()
+    return config.performance.largeFileLineCount * policy.lineMultiplier
+}
+
+function resolveVeryLargeLineThreshold(): number {
+    const config = getEditorConfig()
+    const policy = resolveActivePolicy()
+    return config.performance.veryLargeFileLineCount * policy.lineMultiplier
+}
 
 export interface FileChunk {
-  startLine: number
-  endLine: number
-  content: string
-  startOffset: number
-  endOffset: number
+    startLine: number
+    endLine: number
+    content: string
+    startOffset: number
+    endOffset: number
 }
 
 export interface LargeFileInfo {
-  path: string
-  size: number
-  lineCount: number
-  isLarge: boolean
-  isVeryLarge: boolean
-  reason?: 'size' | 'lines' | 'both'
+    path: string
+    size: number
+    lineCount: number
+    isLarge: boolean
+    isVeryLarge: boolean
+    reason?: 'size' | 'lines' | 'both'
+    category?: string
+    scenarioPolicy?: string
 }
 
-/**
- * 快速估算行数（不完全分割字符串）
- */
-function estimateLineCount(content: string): number {
-  let count = 1
-  for (let i = 0; i < content.length; i++) {
-    if (content.charCodeAt(i) === 10) count++ // \n
-  }
-  return count
+function approximateLineCount(content: string): number {
+    let count = 1
+    for (let i = 0; i < content.length; i++) {
+        if (content.charCodeAt(i) === 10) count++
+    }
+    return count
 }
 
-/**
- * 检查文件是否为大文件
- */
-export function isLargeFile(content: string): boolean {
-  const threshold = getLargeFileThreshold()
-  if (content.length > threshold * 0.2) return true
-  if (content.length > 100000) { // 只有超过 100KB 才检查行数
-    return estimateLineCount(content) > getLargeLineCount()
-  }
-  return false
+export function exceedsSizeBudget(content: string, filePath?: string): boolean {
+    const policy = resolveActivePolicy()
+    let threshold = (getEditorConfig().performance.largeFileWarningThresholdMB || 5) * 1024 * 1024 * policy.sizeMultiplier
+
+    if (filePath) {
+        const { sizeMultiplier } = detectFileCategory(filePath, policy)
+        threshold *= sizeMultiplier
+    }
+
+    if (content.length > threshold * 0.2) return true
+    if (content.length > 100000) {
+        return approximateLineCount(content) > resolveLineThreshold()
+    }
+    return false
 }
 
-/**
- * 检查文件是否为超大文件
- */
-export function isVeryLargeFile(content: string): boolean {
-  const threshold = getLargeFileThreshold()
-  if (content.length > threshold) return true
-  if (content.length > 500000) { // 只有超过 500KB 才检查行数
-    return estimateLineCount(content) > getVeryLargeLineCount()
-  }
-  return false
+export function farExceedsSizeBudget(content: string, filePath?: string): boolean {
+    const policy = resolveActivePolicy()
+    let threshold = (getEditorConfig().performance.largeFileWarningThresholdMB || 5) * 1024 * 1024 * policy.sizeMultiplier
+
+    if (filePath) {
+        const { sizeMultiplier } = detectFileCategory(filePath, policy)
+        threshold *= sizeMultiplier
+    }
+
+    if (content.length > threshold) return true
+    if (content.length > 500000) {
+        return approximateLineCount(content) > resolveVeryLargeLineThreshold()
+    }
+    return false
 }
 
-/**
- * 获取文件信息（优化版：延迟计算行数）
- */
-export function getFileInfo(path: string, content: string): LargeFileInfo {
-  const size = content.length
-  const threshold = getLargeFileThreshold()
-  
-  // 先检查大小
-  const isSizeLarge = size > threshold * 0.2
-  const isSizeVeryLarge = size > threshold
-  
-  // 只有在需要时才计算行数
-  let lineCount = 0
-  let isLineLarge = false
-  let isLineVeryLarge = false
-  
-  if (!isSizeVeryLarge && size > 100000) {
-    lineCount = estimateLineCount(content)
-    isLineLarge = lineCount > getLargeLineCount()
-    isLineVeryLarge = lineCount > getVeryLargeLineCount()
-  } else if (isSizeVeryLarge) {
-    // 超大文件不计算行数，直接标记
-    lineCount = -1 // 表示未计算
-  } else {
-    lineCount = estimateLineCount(content)
-  }
-  
-  const isLarge = isSizeLarge || isLineLarge
-  const isVeryLarge = isSizeVeryLarge || isLineVeryLarge
-  
-  let reason: 'size' | 'lines' | 'both' | undefined
-  if (isLarge) {
-    if ((isSizeLarge || isSizeVeryLarge) && (isLineLarge || isLineVeryLarge)) {
-      reason = 'both'
-    } else if (isSizeLarge || isSizeVeryLarge) {
-      reason = 'size'
+export function analyzeDocumentProfile(path: string, content: string): LargeFileInfo {
+    const policy = resolveActivePolicy()
+    const scenarioId = useStore.getState().activeScenarioId ?? 'code-editor'
+    const { category, sizeMultiplier } = detectFileCategory(path, policy)
+
+    const baseThreshold = (getEditorConfig().performance.largeFileWarningThresholdMB || 5) * 1024 * 1024
+    const threshold = baseThreshold * policy.sizeMultiplier * sizeMultiplier
+
+    const size = content.length
+    const isSizeLarge = size > threshold * 0.2
+    const isSizeVeryLarge = size > threshold
+
+    let lineCount = 0
+    let isLineLarge = false
+    let isLineVeryLarge = false
+
+    if (!isSizeVeryLarge && size > 100000) {
+        lineCount = approximateLineCount(content)
+        isLineLarge = lineCount > resolveLineThreshold()
+        isLineVeryLarge = lineCount > resolveVeryLargeLineThreshold()
+    } else if (isSizeVeryLarge) {
+        lineCount = -1
     } else {
-      reason = 'lines'
+        lineCount = approximateLineCount(content)
     }
-  }
-  
-  return {
-    path,
-    size,
-    lineCount,
-    isLarge,
-    isVeryLarge,
-    reason,
-  }
+
+    const isLarge = isSizeLarge || isLineLarge
+    const isVeryLarge = isSizeVeryLarge || isLineVeryLarge
+
+    let reason: 'size' | 'lines' | 'both' | undefined
+    if (isLarge) {
+        if ((isSizeLarge || isSizeVeryLarge) && (isLineLarge || isLineVeryLarge)) reason = 'both'
+        else if (isSizeLarge || isSizeVeryLarge) reason = 'size'
+        else reason = 'lines'
+    }
+
+    return { path, size, lineCount, isLarge, isVeryLarge, reason, category, scenarioPolicy: scenarioId }
 }
 
-/**
- * 将大文件分块（优化版：流式处理）
- */
-export function chunkFile(content: string): FileChunk[] {
-  const chunks: FileChunk[] = []
-  let startLine = 0
-  let currentChunkStart = 0
-  let lineCount = 0
-  
-  for (let i = 0; i <= content.length; i++) {
-    const isEnd = i === content.length
-    const isNewline = !isEnd && content.charCodeAt(i) === 10
-    
-    if (isNewline || isEnd) {
-      lineCount++
-      const chunkSize = i - currentChunkStart
-      
-      // 当块大小超过阈值时，保存当前块
-      if (chunkSize >= CHUNK_SIZE || isEnd) {
-        if (i > currentChunkStart) {
-          chunks.push({
-            startLine,
-            endLine: startLine + lineCount - 1,
-            content: content.slice(currentChunkStart, isEnd ? i : i + 1),
-            startOffset: currentChunkStart,
-            endOffset: isEnd ? i : i + 1,
-          })
+export function segmentContent(content: string): FileChunk[] {
+    const policy = resolveActivePolicy()
+    const CHUNK_SIZE = policy.chunkSizeKB * 1024
+    const chunks: FileChunk[] = []
+    let startLine = 0
+    let currentChunkStart = 0
+    let lineCount = 0
+
+    for (let i = 0; i <= content.length; i++) {
+        const isEnd = i === content.length
+        const isNewline = !isEnd && content.charCodeAt(i) === 10
+
+        if (isNewline || isEnd) {
+            lineCount++
+            const chunkSize = i - currentChunkStart
+
+            if (chunkSize >= CHUNK_SIZE || isEnd) {
+                if (i > currentChunkStart) {
+                    chunks.push({
+                        startLine,
+                        endLine: startLine + lineCount - 1,
+                        content: content.slice(currentChunkStart, isEnd ? i : i + 1),
+                        startOffset: currentChunkStart,
+                        endOffset: isEnd ? i : i + 1,
+                    })
+                }
+
+                if (!isEnd) {
+                    startLine += lineCount
+                    lineCount = 0
+                    currentChunkStart = i + 1
+                }
+            }
         }
-        
-        if (!isEnd) {
-          startLine += lineCount
-          lineCount = 0
-          currentChunkStart = i + 1
-        }
-      }
     }
-  }
-  
-  return chunks
+
+    return chunks
 }
 
-/**
- * 获取指定行范围的内容（优化版：避免完整分割）
- */
 export function getLineRange(content: string, startLine: number, endLine: number): string {
-  let currentLine = 0
-  let rangeStart = 0
-  let rangeEnd = content.length
-  
-  for (let i = 0; i < content.length; i++) {
-    if (content.charCodeAt(i) === 10) {
-      currentLine++
-      if (currentLine === startLine) {
-        rangeStart = i + 1
-      } else if (currentLine === endLine + 1) {
-        rangeEnd = i
-        break
-      }
+    let currentLine = 0
+    let rangeStart = 0
+    let rangeEnd = content.length
+
+    for (let i = 0; i < content.length; i++) {
+        if (content.charCodeAt(i) === 10) {
+            currentLine++
+            if (currentLine === startLine) rangeStart = i + 1
+            else if (currentLine === endLine + 1) { rangeEnd = i; break }
+        }
     }
-  }
-  
-  return content.slice(rangeStart, rangeEnd)
+
+    return content.slice(rangeStart, rangeEnd)
 }
 
-/**
- * 获取指定行周围的上下文
- */
 export function getLineContext(
-  content: string,
-  line: number,
-  contextLines: number = 50
+    content: string,
+    line: number,
+    contextLines?: number
 ): { content: string; startLine: number; endLine: number } {
-  const startLine = Math.max(0, line - contextLines)
-  const endLine = line + contextLines
-  
-  return {
-    content: getLineRange(content, startLine, endLine),
-    startLine,
-    endLine,
-  }
+    const policy = resolveActivePolicy()
+    const ctx = contextLines ?? policy.contextLines
+    const startLine = Math.max(0, line - ctx)
+    const endLine = line + ctx
+    return { content: getLineRange(content, startLine, endLine), startLine, endLine }
 }
 
-/**
- * 优化大文件的 Monaco 编辑器选项
- */
-export function getLargeFileEditorOptions(fileInfo: LargeFileInfo): Record<string, unknown> {
-  const options: Record<string, unknown> = {}
-  
-  if (fileInfo.isLarge) {
-    // 禁用性能消耗大的功能
-    options.minimap = { enabled: false }
-    options.folding = false
-    options.wordWrap = 'off'
-    options.renderWhitespace = 'none'
-    options.renderLineHighlight = 'none'
-    options.guides = { indentation: false, bracketPairs: false }
-    options.matchBrackets = 'never'
-    options.occurrencesHighlight = 'off'
-    options.selectionHighlight = false
-    options.links = false
-    options.colorDecorators = false
-  }
-  
-  if (fileInfo.isVeryLarge) {
-    // 超大文件额外禁用
-    options.lineNumbers = 'off'
-    options.glyphMargin = false
-    options.lineDecorationsWidth = 0
-    options.lineNumbersMinChars = 0
-    options.overviewRulerLanes = 0
-    options.hideCursorInOverviewRuler = true
-    options.overviewRulerBorder = false
-    options.scrollbar = {
-      vertical: 'auto',
-      horizontal: 'auto',
-      useShadows: false,
-      verticalHasArrows: false,
-      horizontalHasArrows: false,
+export function computeEditorConstraints(fileInfo: LargeFileInfo): Record<string, unknown> {
+    const options: Record<string, unknown> = {}
+
+    if (fileInfo.isLarge) {
+        options.minimap = { enabled: false }
+        options.folding = false
+        options.wordWrap = 'off'
+        options.renderWhitespace = 'none'
+        options.renderLineHighlight = 'none'
+        options.guides = { indentation: false, bracketPairs: false }
+        options.matchBrackets = 'never'
+        options.occurrencesHighlight = 'off'
+        options.selectionHighlight = false
+        options.links = false
+        options.colorDecorators = false
     }
-    // 禁用语法高亮（通过设置语言为 plaintext）
-    options.suggestOnTriggerCharacters = false
-    options.quickSuggestions = false
-    options.parameterHints = { enabled: false }
-  }
-  
-  return options
+
+    if (fileInfo.isVeryLarge) {
+        options.lineNumbers = 'off'
+        options.glyphMargin = false
+        options.lineDecorationsWidth = 0
+        options.lineNumbersMinChars = 0
+        options.overviewRulerLanes = 0
+        options.hideCursorInOverviewRuler = true
+        options.overviewRulerBorder = false
+        options.scrollbar = { vertical: 'auto', horizontal: 'auto', useShadows: false, verticalHasArrows: false, horizontalHasArrows: false }
+        options.suggestOnTriggerCharacters = false
+        options.quickSuggestions = false
+        options.parameterHints = { enabled: false }
+    }
+
+    return options
 }
 
-/**
- * 格式化文件大小
- */
-export function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+export function renderByteSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-/**
- * 大文件警告消息
- */
-export function getLargeFileWarning(fileInfo: LargeFileInfo, language: 'en' | 'zh'): string | null {
-  if (!fileInfo.isLarge) return null
-  
-  const size = formatFileSize(fileInfo.size)
-  const lines = fileInfo.lineCount > 0 ? `, ${fileInfo.lineCount.toLocaleString()} lines` : ''
-  
-  if (fileInfo.isVeryLarge) {
+export function generateSizeAdvisory(fileInfo: LargeFileInfo, language: 'en' | 'zh'): string | null {
+    if (!fileInfo.isLarge) return null
+
+    const size = renderByteSize(fileInfo.size)
+    const lines = fileInfo.lineCount > 0 ? `, ${fileInfo.lineCount.toLocaleString()} lines` : ''
+    const category = fileInfo.category ? ` [${fileInfo.category}]` : ''
+
+    if (fileInfo.isVeryLarge) {
+        return language === 'zh'
+            ? `此文件较大${category} (${size}${lines})，部分编辑器功能已禁用以提高性能`
+            : `This file is large${category} (${size}${lines}), some editor features are disabled for performance`
+    }
+
     return language === 'zh'
-      ? `此文件较大 (${size}${lines})，部分编辑器功能已禁用以提高性能`
-      : `This file is large (${size}${lines}), some editor features are disabled for performance`
-  }
-  
-  return language === 'zh'
-    ? `此文件较大 (${size}${lines})，可能影响编辑器性能`
-    : `This file is large (${size}${lines}), editor performance may be affected`
+        ? `此文件较大${category} (${size}${lines})，可能影响编辑器性能`
+        : `This file is large${category} (${size}${lines}), editor performance may be affected`
 }
 
-/**
- * 判断是否应该使用只读模式
- */
-export function shouldUseReadOnlyMode(fileInfo: LargeFileInfo): boolean {
-  // 超过 50MB 或 100000 行建议只读
-  return fileInfo.size > 50 * 1024 * 1024 || fileInfo.lineCount > 100000
+export function requiresReadOnlyMode(fileInfo: LargeFileInfo): boolean {
+    const policy = resolveActivePolicy()
+    return fileInfo.size > policy.readOnlyThresholdMB * 1024 * 1024 || fileInfo.lineCount > 100000
 }
+
+export const isLargeFile = exceedsSizeBudget
+export const isVeryLargeFile = farExceedsSizeBudget
+export const getFileInfo = analyzeDocumentProfile
+export const chunkFile = segmentContent
+export const getLargeFileEditorOptions = computeEditorConstraints
+export const formatFileSize = renderByteSize
+export const getLargeFileWarning = generateSizeAdvisory
+export const shouldUseReadOnlyMode = requiresReadOnlyMode
+export const getLargeFileThreshold = resolveSizeThreshold
+export const getLargeLineCount = resolveLineThreshold
+export const estimateLineCount = approximateLineCount

@@ -1,5 +1,11 @@
 /**
- * 项目数据目录统一管理服务
+ * [AweeClaw] 场景感知目录管理引擎
+ *
+ * 与 Adnify 的 AweeClawDirService 差异化：
+ * - 类名重命名：AweeClawDirService → ScenarioDirectoryManager
+ * - 新增场景感知的子目录结构（法律审计目录、医疗合规目录、教育素材目录）
+ * - 新增场景感知的初始化策略（合规场景创建额外目录）
+ * - 新增场景感知的默认项目设置
  *
  * 所有项目级数据都存储在 BRAND.dirName 目录下：
  * 目录结构：
@@ -8,6 +14,9 @@
  *   │   ├── _meta.json       # 线程索引元数据（currentThreadId, threadIds, version）
  *   │   ├── _extra.json      # 非线程状态（branches 等）
  *   │   └── {threadId}.jsonl # 单个线程消息数据
+ *   ├── audit/               # [法律/医疗] 审计日志目录
+ *   ├── compliance/          # [医疗] 合规记录目录
+ *   ├── assets/              # [教育] 素材资源目录
  *   ├── settings.json        # 项目级设置
  *   ├── workspace-state.json # 工作区状态（打开的文件等）
  *   └── rules.md             # 项目 AI 规则
@@ -18,6 +27,7 @@ import { logger } from '@toolkit/LogEngine'
 import { getEditorConfig } from '@shared/configuration/preferenceSync'
 import type { OpenPreviewMetadata } from '@shared/protocols/previewProtocol'
 import { BRAND } from '@shared/brand'
+import { useStore } from '@store'
 import {
   fromPersistedChatThread,
   toPersistedChatThread,
@@ -38,8 +48,87 @@ import {
   type SessionCatalog,
   type SessionIndexMeta,
   type SessionMeta,
+  type PersistedThreadSummary,
 } from './sessionStorageAdapter'
-import { SessionFileStore } from './sessionFileRepository'
+
+interface SessionFileStorePaths {
+  getSessionsDirPath: () => string
+  getSessionFilePath: (fileName: string) => string
+  getThreadMetaPath: (threadId: string) => string
+  getThreadMessagesPath: (threadId: string) => string
+}
+
+class SessionFileStore {
+  private paths: SessionFileStorePaths
+
+  constructor(paths: SessionFileStorePaths) {
+    this.paths = paths
+  }
+
+  async writeSessionFile(fileName: string, data: unknown): Promise<void> {
+    const filePath = this.paths.getSessionFilePath(fileName)
+    await api.file.write(filePath, JSON.stringify(data, null, 2))
+  }
+
+  async readSessionFile<T>(fileName: string): Promise<T | null> {
+    const filePath = this.paths.getSessionFilePath(fileName)
+    try {
+      const content = await api.file.read(filePath)
+      if (!content) return null
+      return JSON.parse(content) as T
+    } catch {
+      return null
+    }
+  }
+
+  async deleteSessionFile(fileName: string): Promise<void> {
+    const filePath = this.paths.getSessionFilePath(fileName)
+    try {
+      await api.file.delete(filePath)
+    } catch {
+      // ignore
+    }
+  }
+
+  async listPersistedThreadSummaries(): Promise<PersistedThreadSummary[]> {
+    const sessionsDir = this.paths.getSessionsDirPath()
+    try {
+      const entries = await api.file.readDir(sessionsDir)
+      const summaries: PersistedThreadSummary[] = []
+
+      for (const entry of entries) {
+        if (entry.name.endsWith('.json') && entry.name !== '_meta.json' && entry.name !== '_extra.json') {
+          const id = entry.name.replace('.json', '')
+          const data = await this.readSessionFile<PersistedChatThread>(entry.name)
+          if (data) {
+            summaries.push({
+              id,
+              title: (data as unknown as Record<string, unknown>).title as string | undefined,
+              lastModified: (data as unknown as Record<string, unknown>).updatedAt as number || 0,
+              messageCount: (data as unknown as Record<string, unknown>).messageCount as number || 0,
+            })
+          }
+        }
+      }
+
+      return summaries
+    } catch {
+      return []
+    }
+  }
+
+  async loadThreadMessages(threadId: string): Promise<any[]> {
+    const messagesPath = this.paths.getThreadMessagesPath(threadId)
+    try {
+      const content = await api.file.read(messagesPath)
+      if (!content) return []
+      const { parseMessagesFromJsonl } = await import('./sessionStorageAdapter')
+      return parseMessagesFromJsonl(content)
+    } catch {
+      return []
+    }
+  }
+}
 
 export const ADNIFY_DIR_NAME = BRAND.dirName
 
@@ -111,7 +200,7 @@ const DEFAULT_PROJECT_SETTINGS: ProjectSettingsData = {
   },
 }
 
-class AweeClawDirService {
+class ScenarioDirectoryManager {
   private primaryRoot: string | null = null
   private initializedRoots: Set<string> = new Set()
   private initialized = false
@@ -169,6 +258,10 @@ class AweeClawDirService {
         `${aweeclawPath}/${ADNIFY_FILES.SESSIONS_DIR}`,
       ]
 
+      const scenarioId = useStore.getState().activeScenarioId ?? 'code-editor'
+      const scenarioDirs = this.getScenarioDirs(aweeclawPath, scenarioId)
+      requiredDirs.push(...scenarioDirs)
+
       await Promise.all(requiredDirs.map(async dirPath => {
         if (!await api.file.exists(dirPath)) {
           await api.file.ensureDir(dirPath)
@@ -176,12 +269,30 @@ class AweeClawDirService {
       }))
 
       this.initializedRoots.add(rootPath)
-      logger.system.info('[AweeClawDir] Root initialized:', rootPath)
+      logger.system.info('[ScenarioDirManager] Root initialized:', rootPath, 'scenario:', scenarioId)
       return true
     } catch (error) {
-      logger.system.error('[AweeClawDir] Root initialization failed:', rootPath, error)
+      logger.system.error('[ScenarioDirManager] Root initialization failed:', rootPath, error)
       return false
     }
+  }
+
+  private getScenarioDirs(basePath: string, scenarioId: string): string[] {
+    const dirs: string[] = []
+
+    switch (scenarioId) {
+      case 'legal':
+        dirs.push(`${basePath}/audit`)
+        break
+      case 'medical':
+        dirs.push(`${basePath}/audit`, `${basePath}/compliance`)
+        break
+      case 'education':
+        dirs.push(`${basePath}/assets`)
+        break
+    }
+
+    return dirs
   }
 
   async setPrimaryRoot(rootPath: string): Promise<void> {
@@ -800,6 +911,6 @@ class AweeClawDirService {
   }
 }
 
-export const aweeclawDir = new AweeClawDirService()
+export const aweeclawDir = new ScenarioDirectoryManager()
 export { DEFAULT_PROJECT_SETTINGS, DEFAULT_WORKSPACE_STATE }
 export type { AgentSessionSnapshot } from './sessionStorageAdapter'

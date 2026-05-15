@@ -12,6 +12,8 @@ export interface LayoutSlice {
   sidebarWidth: number
   chatWidth: number
   terminalLayout: 'tabs' | 'split'
+  navRailExpanded: boolean
+  showSettingsPage: boolean
 
   setActiveSidePanel: (panel: SidePanel) => void
   setTerminalVisible: (visible: boolean) => void
@@ -24,6 +26,9 @@ export interface LayoutSlice {
   toggleDebug: () => void
   toggleSidebar: () => void
   toggleChat: () => void
+  setNavRailExpanded: (expanded: boolean) => void
+  toggleNavRail: () => void
+  setShowSettingsPage: (show: boolean) => void
 }
 
 export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> = (set) => ({
@@ -35,6 +40,8 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
   sidebarWidth: 260,
   chatWidth: 600,
   terminalLayout: 'tabs',
+  navRailExpanded: true,
+  showSettingsPage: false,
 
   setActiveSidePanel: (panel) => set(() => ({
     activeSidePanel: panel,
@@ -52,4 +59,7 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
     activeSidePanel: state.activeSidePanel ? null : state.lastActiveSidePanel,
   })),
   toggleChat: () => set((state) => ({ chatVisible: !state.chatVisible })),
+  setNavRailExpanded: (expanded) => set({ navRailExpanded: expanded }),
+  toggleNavRail: () => set((state) => ({ navRailExpanded: !state.navRailExpanded })),
+  setShowSettingsPage: (show) => set({ showSettingsPage: show }),
 })

@@ -147,7 +147,7 @@ const STORE_DIAGNOSIS_UI: ScenarioUI = {
     { id: 'chat', component: 'ChatPanel', region: 'auxiliary', defaultVisible: true, resizable: true, minWidth: 300, maxWidth: 800 },
   ],
   sidebarItems: [
-    { id: 'explorer', icon: 'Files', label: 'Explorer', labelZh: '资源管理器', component: 'ExplorerView', position: 0 },
+    { id: 'explorer', icon: 'Files', label: 'Workspace', labelZh: '工作区', component: 'ExplorerView', position: 0 },
     { id: 'stores', icon: 'Building2', label: 'Stores', labelZh: '门店管理', component: 'StoreListView', position: 1 },
     { id: 'diagnosis', icon: 'Stethoscope', label: 'Diagnosis', labelZh: '诊断记录', component: 'DiagnosisHistoryView', position: 2 },
     { id: 'plans', icon: 'ClipboardList', label: 'Plans', labelZh: '优化方案', component: 'OptimizationPlanView', position: 3 },

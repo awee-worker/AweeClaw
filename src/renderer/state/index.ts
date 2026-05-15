@@ -24,7 +24,7 @@ export type { ProviderModelConfig, SettingsState, SettingKey } from './slices'
 // 类型从 shared/config/types 导入
 export type { LLMConfig, AutoApproveSettings, AgentConfig } from '@shared/configuration/providerTypes'
 export type { SecurityPolicyPanel } from '@shared/configuration/providerTypes'
-export type { ThemeName } from './slices'
+export type { ThemeName, ThemeMode } from './slices'
 export type { ToolCallLogEntry } from './slices'
 export type { McpSlice } from './slices'
 export type { DebugSlice, Breakpoint } from './slices'

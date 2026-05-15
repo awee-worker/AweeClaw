@@ -110,7 +110,7 @@ const HubCommandRow = memo(function HubCommandRow({
 export default function CommandHub({ onClose, onShowKeyboardShortcuts }: CommandHubProps) {
   useElevatedToastLayer(true)
   const {
-    setShowSettings,
+    setShowSettingsPage,
     setTerminalVisible,
     terminalVisible,
     workspacePath,
@@ -122,7 +122,7 @@ export default function CommandHub({ onClose, onShowKeyboardShortcuts }: Command
     chatVisible,
     setChatVisible,
   } = useStore(useShallow(s => ({
-    setShowSettings: s.setShowSettings,
+    setShowSettingsPage: s.setShowSettingsPage,
     setTerminalVisible: s.setTerminalVisible,
     terminalVisible: s.terminalVisible,
     workspacePath: s.workspacePath,
@@ -313,7 +313,7 @@ export default function CommandHub({ onClose, onShowKeyboardShortcuts }: Command
       description: 'Configure API keys and preferences',
       icon: Settings,
       category: 'Preferences',
-      action: () => setShowSettings(true),
+      action: () => setShowSettingsPage(true),
       shortcut: formatShortcut('Ctrl+,'),
     },
     {

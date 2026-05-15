@@ -3,7 +3,7 @@
  */
 export { createFileSlice, type FileSlice, type OpenFile, type WorkspaceConfig, type LargeFileInfo } from './fileSlice'
 export { createSettingsSlice, type SettingsSlice, type SettingsState, type SettingKey, type ProviderModelConfig } from './settingsSlice'
-export { createThemeSlice, type ThemeSlice, type ThemeName } from './themeSlice'
+export { createThemeSlice, type ThemeSlice, type ThemeName, type ThemeMode } from './themeSlice'
 export { createLogSlice, type LogSlice, type ToolCallLogEntry } from './logSlice'
 export { createMcpSlice, type McpSlice } from './mcpSlice'
 export { createDebugSlice, type DebugSlice, type Breakpoint } from './debugSlice'

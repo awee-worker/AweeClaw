@@ -10,11 +10,11 @@ export const zh = {
   'settings': '设置',
 
   // Sidebar
-  'explorer': '资源管理器',
+  'explorer': '工作区',
   'openFolder': '打开文件夹',
   'refresh': '刷新',
   'noFolderOpened': '未打开文件夹',
-  'revealActiveFile': '在资源管理器中显示',
+  'revealActiveFile': '在工作区中显示',
 
   // Editor
   'welcome': '欢迎使用 AweeClaw',
@@ -437,7 +437,7 @@ export const zh = {
   'kb.category.Chat': '聊天',
   'kb.category.List': '列表',
   'kb.category.Git': 'Git',
-  'kb.category.Explorer': '资源管理器',
+  'kb.category.Explorer': '工作区',
   'kb.category.Help': '帮助',
   // Commands
   'cmd.file.save': '保存文件',
@@ -472,7 +472,7 @@ export const zh = {
   'cmd.workbench.action.toggleComposer': '切换工作流',
   'cmd.workbench.action.toggleDevTools': '切换开发者工具',
   'cmd.workbench.action.closePanel': '关闭面板',
-  'cmd.explorer.revealActiveFile': '在资源管理器中显示',
+  'cmd.explorer.revealActiveFile': '在工作区中显示',
   'cmd.explorer.revealInSidebar': '在侧边栏中定位',
   'cmd.explorer.rename': '重命名文件/文件夹',
   'cmd.help.about': '关于',
@@ -563,7 +563,7 @@ export const zh = {
   'paste': '粘贴',
   'copyPath': '复制路径',
   'copyRelativePath': '复制相对路径',
-  'revealInExplorer': '在资源管理器中显示',
+  'revealInExplorer': '在工作区中显示',
   'openInBrowser': '在浏览器中打开',
   'pathCopied': '路径已复制',
   'failedToOpenInBrowser': '无法在浏览器中打开',

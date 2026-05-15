@@ -546,7 +546,7 @@ export const VirtualFileTree = memo(function VirtualFileTree({
       path: node.item.path,
       name: node.item.name,
       isDirectory: node.item.isDirectory,
-      timestamp: Date.now(),
+      copiedAt: Date.now(),
     })
     toast.success(node.item.isDirectory
       ? (language === 'zh' ? '目录已复制' : 'Folder copied')
@@ -838,7 +838,7 @@ export const VirtualFileTree = memo(function VirtualFileTree({
         { id: 'sep3', label: '', separator: true },
         { id: 'copyPath', label: t('copyPath', contextMenuLanguage) || '复制路径', icon: Copy, onClick: () => handleCopyPath(node) },
         { id: 'copyRelPath', label: t('copyRelativePath', contextMenuLanguage) || '复制相对路径', icon: Clipboard, onClick: () => handleCopyRelativePath(node) },
-        { id: 'reveal', label: t('revealInExplorer', contextMenuLanguage) || '在资源管理器中显示', icon: ExternalLink, onClick: () => handleRevealInExplorer(node) },
+        { id: 'reveal', label: t('revealInExplorer', contextMenuLanguage) || '在工作区中显示', icon: ExternalLink, onClick: () => handleRevealInExplorer(node) },
       ]
     }
     const isHtmlFile = node.item.name.toLowerCase().endsWith('.html') ||
@@ -862,7 +862,7 @@ export const VirtualFileTree = memo(function VirtualFileTree({
       { id: 'sep2', label: '', separator: true },
       { id: 'copyPath', label: t('copyPath', contextMenuLanguage) || '复制路径', icon: Copy, onClick: () => handleCopyPath(node) },
       { id: 'copyRelPath', label: t('copyRelativePath', contextMenuLanguage) || '复制相对路径', icon: Clipboard, onClick: () => handleCopyRelativePath(node) },
-      { id: 'reveal', label: t('revealInExplorer', contextMenuLanguage) || '在资源管理器中显示', icon: ExternalLink, onClick: () => handleRevealInExplorer(node) },
+      { id: 'reveal', label: t('revealInExplorer', contextMenuLanguage) || '在工作区中显示', icon: ExternalLink, onClick: () => handleRevealInExplorer(node) },
     ]
 
     if (isHtmlFile) {

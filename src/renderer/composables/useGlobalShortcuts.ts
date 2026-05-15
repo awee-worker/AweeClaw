@@ -18,7 +18,7 @@ const kb = keybindingService
 
 export function useGlobalShortcuts() {
   // setter 函数引用稳定，直接从 store 获取
-  const setShowSettings = useStore((state) => state.setShowSettings)
+  const setShowSettingsPage = useStore((state) => state.setShowSettingsPage)
   const setShowCommandPalette = useStore((state) => state.setShowCommandPalette)
   const setShowWorkflow = useStore((state) => state.setShowWorkflow)
   const setShowQuickOpen = useStore((state) => state.setShowQuickOpen)
@@ -100,7 +100,7 @@ export function useGlobalShortcuts() {
     // Settings: workbench.action.openSettings (Ctrl+,)
     if (kb.matches(e, 'workbench.action.openSettings')) {
       e.preventDefault()
-      setShowSettings(true)
+      setShowSettingsPage(true)
       return
     }
 

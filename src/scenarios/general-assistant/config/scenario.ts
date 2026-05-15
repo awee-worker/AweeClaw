@@ -111,9 +111,8 @@ const GENERAL_ASSISTANT_UI: ScenarioUI = {
     { id: 'terminal', component: 'TerminalPanel', region: 'floating', defaultVisible: false },
   ],
   sidebarItems: [
-    { id: 'explorer', icon: 'Files', label: 'Explorer', labelZh: '资源管理器', component: 'ExplorerView', position: 0 },
+    { id: 'explorer', icon: 'Files', label: 'Workspace', labelZh: '工作区', component: 'ExplorerView', position: 0 },
     { id: 'knowledge', icon: 'BookOpen', label: 'Knowledge', labelZh: '知识库', component: 'KnowledgeView', position: 1 },
-    { id: 'history', icon: 'History', label: 'History', labelZh: '历史', component: 'HistoryView', position: 2 },
   ],
   statusBarItems: [],
   welcomeComponent: 'GeneralWelcomePage',

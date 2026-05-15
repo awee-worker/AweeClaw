@@ -23,6 +23,7 @@ import {
   PERFORMANCE_DEFAULTS,
   AI_COMPLETION_DEFAULTS,
   SECURITY_SETTINGS_DEFAULTS,
+  type ScenarioDomain,
 } from './defaultProfile'
 import type {
   LLMConfig,
@@ -47,6 +48,32 @@ import type { ApiProtocol } from '@shared/configuration/aiProviders'
 export interface ProviderModelConfig extends Omit<ProviderConfig, 'protocol'> {
   customModels?: string[]
   protocol?: ApiProtocol
+}
+
+export interface ScenarioPreferences {
+    activeDomain: ScenarioDomain
+    customScenarioLabels: Record<ScenarioDomain, string>
+    domainEnabled: Record<ScenarioDomain, boolean>
+    auditLoggingEnabled: boolean
+    complianceModeEnabled: boolean
+}
+
+export const DEFAULT_SCENARIO_PREFERENCES: ScenarioPreferences = {
+    activeDomain: 'general',
+    customScenarioLabels: {
+        legal: 'Legal',
+        medical: 'Medical',
+        education: 'Education',
+        general: 'General',
+    },
+    domainEnabled: {
+        legal: true,
+        medical: true,
+        education: true,
+        general: true,
+    },
+    auditLoggingEnabled: false,
+    complianceModeEnabled: false,
 }
 
 // ============================================
@@ -230,6 +257,9 @@ export const SETTINGS = {
   enableFileLogging: {
     default: false as boolean,
   },
+  scenarioPreferences: {
+    default: DEFAULT_SCENARIO_PREFERENCES,
+  },
 }
 
 // ============================================
@@ -258,6 +288,7 @@ export type SettingsState = {
   aiInstructions: string
   onboardingCompleted: boolean
   enableFileLogging: boolean
+  scenarioPreferences: ScenarioPreferences
 }
 
 // ============================================
@@ -286,6 +317,7 @@ export function getAllDefaults(): SettingsState {
     aiInstructions: SETTINGS.aiInstructions.default,
     onboardingCompleted: SETTINGS.onboardingCompleted.default,
     enableFileLogging: SETTINGS.enableFileLogging.default,
+    scenarioPreferences: SETTINGS.scenarioPreferences.default,
   }
 }
 

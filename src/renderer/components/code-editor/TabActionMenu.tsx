@@ -79,7 +79,7 @@ export function TabContextMenu({
     ...(!isPreview
       ? [
           {
-            label: isZh ? '在资源管理器中显示' : 'Reveal in Explorer',
+            label: isZh ? '在工作区中显示' : 'Reveal in Explorer',
             action: () => api.file.showInFolder(filePath),
           },
           {

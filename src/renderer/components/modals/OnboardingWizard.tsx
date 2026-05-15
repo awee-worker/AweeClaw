@@ -15,6 +15,7 @@ import { Language } from '@renderer/i18n'
 import { themeManager, Theme } from '@renderer/config/themeDefinition'
 import { PROVIDERS } from '@configuration/aiProviders'
 import { LLM_DEFAULTS } from '@shared/configuration/defaultProfile'
+import { DEFAULT_SCENARIO_PREFERENCES } from '@shared/configuration/preferenceSchema'
 import { Logo } from '../foundation/BrandMark'
 import { workspaceManager } from '@services/WorkspaceAdapter'
 import { ActionButton, TextField, DropdownSelector } from '../ui'
@@ -100,6 +101,7 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
         promptTemplateId: 'default',
         activeScenarioId: 'code-editor',
         enableFileLogging: false,
+        scenarioPreferences: DEFAULT_SCENARIO_PREFERENCES,
       })
 
       // Double check store update

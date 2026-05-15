@@ -110,7 +110,7 @@ const CREATIVE_WRITER_UI: ScenarioUI = {
     { id: 'chat', component: 'ChatPanel', region: 'auxiliary', defaultVisible: true, resizable: true, minWidth: 300, maxWidth: 800 },
   ],
   sidebarItems: [
-    { id: 'explorer', icon: 'Files', label: 'Explorer', labelZh: '资源管理器', component: 'ExplorerView', position: 0 },
+    { id: 'explorer', icon: 'Files', label: 'Workspace', labelZh: '工作区', component: 'ExplorerView', position: 0 },
     { id: 'outline', icon: 'ListTree', label: 'Outline', labelZh: '大纲', component: 'OutlineView', position: 1 },
     { id: 'characters', icon: 'Users', label: 'Characters', labelZh: '角色', component: 'CharacterView', position: 2 },
     { id: 'research', icon: 'Search', label: 'Research', labelZh: '研究', component: 'ResearchView', position: 3 },

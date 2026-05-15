@@ -3,6 +3,8 @@ import { SETTINGS, type ProviderModelConfig } from '@shared/configuration/prefer
 import type { ApiProtocol, ProviderConfig, PersistedLLMConfig, LLMConfig } from './providerTypes'
 import { resolvePersistedLLMBehavior } from '@configuration/modelPersistence'
 import { resolveOpenAICompatibilityProfile } from '@shared/configuration/aiProviders'
+import type { ScenarioDomain } from './defaultProfile'
+import { SCENARIO_PROFILE_DEFAULTS } from './defaultProfile'
 
 type ProviderConfigMap = Record<string, ProviderConfig | ProviderModelConfig | undefined>
 
@@ -64,6 +66,73 @@ export function resolveRuntimeLLMConfig(
     protocol: transport.protocol,
     openAICompatibilityProfile: transport.openAICompatibilityProfile,
   }
+}
+
+// ============================================
+// 场景感知模型配置解析
+// ============================================
+
+interface ScenarioModelOverrides {
+    temperature: number
+    topP: number
+    maxTokens: number
+    timeout: number
+}
+
+function getScenarioModelOverrides(domain: ScenarioDomain): ScenarioModelOverrides {
+    const profile = SCENARIO_PROFILE_DEFAULTS[domain]
+    return {
+        temperature: Number(profile.llm.temperature),
+        topP: Number(profile.llm.topP),
+        maxTokens: Number(profile.llm.maxTokens),
+        timeout: Number(profile.llm.timeout),
+    }
+}
+
+export function resolveScenarioLLMConfig(
+    saved: Partial<PersistedLLMConfig> | undefined,
+    providerConfigs: ProviderConfigMap,
+    domain: ScenarioDomain
+): LLMConfig {
+    const baseConfig = resolveRuntimeLLMConfig(saved, providerConfigs)
+    const overrides = getScenarioModelOverrides(domain)
+
+    return {
+        ...baseConfig,
+        temperature: overrides.temperature,
+        topP: overrides.topP,
+        maxTokens: baseConfig.maxTokens != null
+            ? Math.min(overrides.maxTokens, baseConfig.maxTokens)
+            : overrides.maxTokens,
+        timeout: baseConfig.timeout != null
+            ? Math.max(overrides.timeout, baseConfig.timeout)
+            : overrides.timeout,
+    }
+}
+
+export function resolveScenarioTaskLLMConfig(
+    providerId: string,
+    modelId: string,
+    providerConfigs: ProviderConfigMap,
+    domain: ScenarioDomain,
+    activeConfig?: Partial<LLMConfig>
+): LLMConfig | null {
+    const baseConfig = resolveTaskLLMConfig(providerId, modelId, providerConfigs, activeConfig)
+    if (!baseConfig) return null
+
+    const overrides = getScenarioModelOverrides(domain)
+
+    return {
+        ...baseConfig,
+        temperature: overrides.temperature,
+        topP: overrides.topP,
+        maxTokens: baseConfig.maxTokens != null
+            ? Math.min(overrides.maxTokens, baseConfig.maxTokens)
+            : overrides.maxTokens,
+        timeout: baseConfig.timeout != null
+            ? Math.max(overrides.timeout, baseConfig.timeout)
+            : overrides.timeout,
+    }
 }
 
 export function resolveTaskLLMConfig(

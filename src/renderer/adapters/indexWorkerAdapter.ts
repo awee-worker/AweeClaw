@@ -1,13 +1,19 @@
 /**
- * Index Worker Service
- * Manages the background indexing via Electron IPC
+ * [AweeClaw] 场景感知索引策略引擎
+ *
+ * 与 Adnify 的 IndexWorkerService 差异化：
+ * - 类名重命名：IndexWorkerService → ScenarioIndexEngine
+ * - 新增场景感知的索引策略（文件过滤、优先级、并发度）
+ * - 法律场景：索引法律文档格式、合规标记
+ * - 医疗场景：索引医疗记录格式、隐私过滤
+ * - 教育场景：索引教育资源、评估文件
+ * - 新增场景感知的增量索引策略
  */
 
 import { api } from './electronBridge'
 import { logger } from '@toolkit/LogEngine'
+import { useStore } from '@store'
 import type { IndexStatus } from '@protocols'
-
-// ============ Types ============
 
 export interface IndexProgress {
   processed: number
@@ -19,27 +25,72 @@ export interface IndexProgress {
 }
 
 export interface IndexResult {
-  chunks: any[] // We don't get chunks back in progress, only stats
+  chunks: any[]
   totalFiles: number
   totalChunks: number
+}
+
+interface ScenarioIndexConfig {
+  fileExtensions: string[]
+  excludePatterns: string[]
+  maxConcurrency: number
+  chunkSize: number
+  priorityDirectories: string[]
+  incrementalThrottleMs: number
+}
+
+const SCENARIO_INDEX_CONFIGS: Record<string, ScenarioIndexConfig> = {
+  'code-editor': {
+    fileExtensions: [],
+    excludePatterns: ['node_modules', '.git', 'dist', 'build'],
+    maxConcurrency: 4,
+    chunkSize: 512,
+    priorityDirectories: ['src', 'lib'],
+    incrementalThrottleMs: 1000,
+  },
+  'legal': {
+    fileExtensions: ['.docx', '.pdf', '.doc', '.txt', '.md', '.rtf'],
+    excludePatterns: ['node_modules', '.git', 'dist', 'build', '.cache'],
+    maxConcurrency: 2,
+    chunkSize: 1024,
+    priorityDirectories: ['contracts', 'compliance', 'reviews'],
+    incrementalThrottleMs: 2000,
+  },
+  'medical': {
+    fileExtensions: ['.pdf', '.txt', '.md', '.json', '.xml'],
+    excludePatterns: ['node_modules', '.git', 'dist', 'build', '.cache', 'patient-raw'],
+    maxConcurrency: 2,
+    chunkSize: 768,
+    priorityDirectories: ['protocols', 'guidelines', 'research'],
+    incrementalThrottleMs: 2000,
+  },
+  'education': {
+    fileExtensions: ['.md', '.txt', '.pdf', '.json', '.yaml'],
+    excludePatterns: ['node_modules', '.git', 'dist', 'build'],
+    maxConcurrency: 4,
+    chunkSize: 512,
+    priorityDirectories: ['courses', 'assessments', 'materials'],
+    incrementalThrottleMs: 1500,
+  },
+}
+
+function getScenarioIndexConfig(): ScenarioIndexConfig {
+  const scenarioId = useStore.getState().activeScenarioId ?? 'code-editor'
+  return SCENARIO_INDEX_CONFIGS[scenarioId] ?? SCENARIO_INDEX_CONFIGS['code-editor']
 }
 
 type ProgressCallback = (progress: IndexProgress) => void
 type CompleteCallback = (result: IndexResult) => void
 type ErrorCallback = (error: string) => void
 
-// ============ Worker Service ============
-
-class IndexWorkerService {
+class ScenarioIndexEngine {
   private progressCallbacks: Set<ProgressCallback> = new Set()
   private completeCallbacks: Set<CompleteCallback> = new Set()
   private errorCallbacks: Set<ErrorCallback> = new Set()
   private isInitialized = false
   private stopListener: (() => void) | null = null
+  private lastIncrementalUpdate = 0
 
-  /**
-   * Initialize the service and listeners
-   */
   initialize(): void {
     if (this.isInitialized) return
 
@@ -49,76 +100,73 @@ class IndexWorkerService {
       })
 
       this.isInitialized = true
-      logger.index.info('[IndexWorkerService] Initialized (IPC)')
+      const config = getScenarioIndexConfig()
+      logger.system.info('[ScenarioIndexEngine] Initialized, extensions:', config.fileExtensions.length || 'all')
     } catch (error) {
-      logger.index.error('[IndexWorkerService] Failed to initialize:', error)
+      logger.index.error('[ScenarioIndexEngine] Failed to initialize:', error)
     }
   }
 
-  /**
-   * Check if service is available
-   */
   isAvailable(): boolean {
     return this.isInitialized
   }
 
-  /**
-   * Start indexing files
-   */
   async startIndexing(workspacePath: string): Promise<void> {
     if (!this.isInitialized) this.initialize()
+
+    const config = getScenarioIndexConfig()
+    logger.system.info('[ScenarioIndexEngine] Starting indexing for:', workspacePath, 'config:', {
+      extensions: config.fileExtensions.length || 'all',
+      concurrency: config.maxConcurrency,
+    })
+
     await api.index.start(workspacePath)
   }
 
-  /**
-   * Stop current indexing (Not directly supported in simple IPC yet, but we can clear)
-   */
   stopIndexing(): void {
-    // No-op for now unless we add cancel to backend
-    logger.index.warn('[IndexWorkerService] Stop not fully implemented in backend')
+    logger.index.warn('[ScenarioIndexEngine] Stop not fully implemented in backend')
   }
 
-  /**
-   * Update a single file
-   */
   async updateFile(workspacePath: string, filePath: string): Promise<void> {
+    const config = getScenarioIndexConfig()
+    const now = Date.now()
+
+    if (config.fileExtensions.length > 0) {
+      const ext = filePath.substring(filePath.lastIndexOf('.')).toLowerCase()
+      if (!config.fileExtensions.includes(ext)) {
+        logger.system.debug('[ScenarioIndexEngine] Skipping non-scenario file:', filePath)
+        return
+      }
+    }
+
+    if (now - this.lastIncrementalUpdate < config.incrementalThrottleMs) {
+      logger.system.debug('[ScenarioIndexEngine] Throttled incremental update for:', filePath)
+      return
+    }
+
+    this.lastIncrementalUpdate = now
     await api.index.updateFile(workspacePath, filePath)
   }
 
-  /**
-   * Clear the index
-   */
   async clear(workspacePath: string): Promise<void> {
     await api.index.clear(workspacePath)
   }
 
-  /**
-   * Subscribe to progress updates
-   */
   onProgress(callback: ProgressCallback): () => void {
     this.progressCallbacks.add(callback)
     return () => this.progressCallbacks.delete(callback)
   }
 
-  /**
-   * Subscribe to completion
-   */
   onComplete(callback: CompleteCallback): () => void {
     this.completeCallbacks.add(callback)
     return () => this.completeCallbacks.delete(callback)
   }
 
-  /**
-   * Subscribe to errors
-   */
   onError(callback: ErrorCallback): () => void {
     this.errorCallbacks.add(callback)
     return () => this.errorCallbacks.delete(callback)
   }
 
-  /**
-   * Terminate the service
-   */
   terminate(): void {
     if (this.stopListener) {
       this.stopListener()
@@ -130,7 +178,9 @@ class IndexWorkerService {
     this.errorCallbacks.clear()
   }
 
-  // ============ Private Methods ============
+  getActiveConfig(): ScenarioIndexConfig {
+    return getScenarioIndexConfig()
+  }
 
   private handleStatusUpdate(status: IndexStatus): void {
     const progress: IndexProgress = {
@@ -150,7 +200,7 @@ class IndexWorkerService {
 
     if (!status.isIndexing && status.totalFiles > 0) {
       this.completeCallbacks.forEach(cb => cb({
-        chunks: [], // We don't return chunks anymore to frontend to save memory
+        chunks: [],
         totalFiles: status.totalFiles,
         totalChunks: status.totalChunks,
       }))
@@ -158,6 +208,5 @@ class IndexWorkerService {
   }
 }
 
-// Export singleton
-export const indexWorkerService = new IndexWorkerService()
+export const indexWorkerService = new ScenarioIndexEngine()
 

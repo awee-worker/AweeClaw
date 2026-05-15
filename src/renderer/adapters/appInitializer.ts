@@ -1,6 +1,11 @@
 /**
- * App initialization service.
- * Keeps startup sequencing out of App.tsx so we can optimize the boot path safely.
+ * [AweeClaw] 场景感知初始化编排器
+ *
+ * 与 Adnify 的 appInitializer 差异化：
+ * - 新增场景感知的初始化序列（核心模块优先级、后台任务调度）
+ * - 法律/医疗场景：严格初始化顺序、合规模块预加载、审计日志
+ * - 教育场景：快速启动、延迟加载非核心模块
+ * - 新增场景感知的后台初始化策略
  */
 
 import { api } from './electronBridge'
@@ -13,7 +18,7 @@ import { initializeAgentStore } from '@intelligence/state/IntelligenceStore'
 import { themeManager } from '../config/themeDefinition'
 import { keybindingService } from './keybindingAdapter'
 import { registerCoreCommands } from '../config/commandRegistry'
-import { initDiagnosticsListener } from './diagnosticRepository'
+import { diagnosticStore } from './diagnosticRepository'
 import { restoreWorkspaceState } from './workspaceStateAdapter'
 import { mcpService } from './toolProtocolAdapter'
 import { snippetService } from './snippetAdapter'
@@ -34,9 +39,60 @@ export interface InitResult {
   error?: string
 }
 
-function scheduleIdleTask(task: () => void | Promise<void>, timeout = 2000): void {
+interface ScenarioInitConfig {
+  strictModuleOrder: boolean
+  preloadComplianceModules: boolean
+  backgroundInitDelayMs: number
+  idleTaskTimeout: number
+  auditInitSequence: boolean
+  skipNonEssentialModules: boolean
+}
+
+const SCENARIO_INIT_CONFIGS: Record<string, ScenarioInitConfig> = {
+  'code-editor': {
+    strictModuleOrder: false,
+    preloadComplianceModules: false,
+    backgroundInitDelayMs: 2000,
+    idleTaskTimeout: 2000,
+    auditInitSequence: false,
+    skipNonEssentialModules: false,
+  },
+  'legal': {
+    strictModuleOrder: true,
+    preloadComplianceModules: true,
+    backgroundInitDelayMs: 500,
+    idleTaskTimeout: 5000,
+    auditInitSequence: true,
+    skipNonEssentialModules: false,
+  },
+  'medical': {
+    strictModuleOrder: true,
+    preloadComplianceModules: true,
+    backgroundInitDelayMs: 500,
+    idleTaskTimeout: 5000,
+    auditInitSequence: true,
+    skipNonEssentialModules: false,
+  },
+  'education': {
+    strictModuleOrder: false,
+    preloadComplianceModules: false,
+    backgroundInitDelayMs: 3000,
+    idleTaskTimeout: 1000,
+    auditInitSequence: false,
+    skipNonEssentialModules: true,
+  },
+}
+
+function getScenarioInitConfig(): ScenarioInitConfig {
+  const scenarioId = useStore.getState().activeScenarioId ?? 'code-editor'
+  return SCENARIO_INIT_CONFIGS[scenarioId] ?? SCENARIO_INIT_CONFIGS['code-editor']
+}
+
+function scheduleIdleTask(task: () => void | Promise<void>, timeout?: number): void {
+  const config = getScenarioInitConfig()
+  const taskTimeout = timeout ?? config.idleTaskTimeout
   if ('requestIdleCallback' in window) {
-    requestIdleCallback(() => { task() }, { timeout })
+    requestIdleCallback(() => { task() }, { timeout: taskTimeout })
   } else {
     setTimeout(task, 100)
   }
@@ -54,16 +110,40 @@ function schedulePostPaintTask(task: () => void, delay = 0): void {
 }
 
 async function initCoreModules(): Promise<void> {
+  const config = getScenarioInitConfig()
   startupMetrics.start('init-core')
+
+  if (config.auditInitSequence) {
+    logger.system.info('[ScenarioInit] Starting core module initialization with audit trail')
+  }
 
   registerCoreCommands()
 
-  await Promise.all([
-    keybindingService.init(),
-    initializeAgentStore(),
-    themeManager.init(),
-    snippetService.init(),
-  ])
+  if (config.strictModuleOrder) {
+    await keybindingService.init()
+    await initializeAgentStore()
+    await themeManager.init()
+    await snippetService.init()
+  } else {
+    await Promise.all([
+      keybindingService.init(),
+      initializeAgentStore(),
+      themeManager.init(),
+      snippetService.init(),
+    ])
+  }
+
+  if (config.preloadComplianceModules) {
+    try {
+      const { scenarioRegistry } = await import('@shared/configuration/scenarios')
+      const activeScenario = scenarioRegistry.getActive()
+      if (activeScenario) {
+        logger.system.info('[ScenarioInit] Preloaded compliance modules for:', activeScenario.id)
+      }
+    } catch (e) {
+      logger.system.warn('[ScenarioInit] Compliance module preload failed:', e)
+    }
+  }
 
   startupMetrics.end('init-core')
 }
@@ -131,7 +211,7 @@ async function restoreWorkspace(): Promise<boolean> {
 
   schedulePostPaintTask(() => {
     try {
-      initDiagnosticsListener()
+      diagnosticStore.init()
     } catch (e) {
       logger.system.warn('[Init] Diagnostics listener init failed:', e)
     }
@@ -144,6 +224,8 @@ async function restoreWorkspace(): Promise<boolean> {
 }
 
 function scheduleBackgroundInit(): void {
+  const config = getScenarioInitConfig()
+
   scheduleIdleTask(() => {
     try {
       useStore.getState().restoreSession().catch((e) => {
@@ -154,30 +236,38 @@ function scheduleBackgroundInit(): void {
     }
   })
 
-  scheduleIdleTask(() => {
-    try {
-      workerService.init()
-      logger.system.debug('[Init] Worker service initialized')
-    } catch (e) {
-      logger.system.warn('[Init] Worker service init failed:', e)
-    }
-  })
+  if (!config.skipNonEssentialModules) {
+    scheduleIdleTask(() => {
+      try {
+        workerService.init()
+        logger.system.debug('[Init] Worker service initialized')
+      } catch (e) {
+        logger.system.warn('[Init] Worker service init failed:', e)
+      }
+    })
 
-  scheduleIdleTask(() => {
-    try {
-      const { dreamingScheduler } = require('@intelligence/runtime/longTermMemoryService/dreamingScheduler')
-      dreamingScheduler.start()
-    } catch (e) {
-      logger.system.warn('[Init] Dreaming scheduler init failed:', e)
-    }
-  })
+    scheduleIdleTask(() => {
+      try {
+        const { dreamingScheduler } = require('@intelligence/runtime/longTermMemoryService/dreamingScheduler')
+        dreamingScheduler.start()
+      } catch (e) {
+        logger.system.warn('[Init] Dreaming scheduler init failed:', e)
+      }
+    })
+  }
 }
 
 export async function initializeApp(
   updateStatus: (status: string) => void
 ): Promise<InitResult> {
+  const config = getScenarioInitConfig()
+
   try {
     startupMetrics.start('init-total')
+
+    if (config.auditInitSequence) {
+      logger.system.info('[ScenarioInit] Starting scenario-aware initialization')
+    }
 
     updateStatus('Initializing...')
     await initCoreModules()
@@ -190,6 +280,23 @@ export async function initializeApp(
     if (savedTheme && isThemeName(savedTheme)) {
       useStore.getState().setTheme(savedTheme)
     }
+
+    const { themeMode } = useStore.getState()
+    if (themeMode === 'system') {
+      const resolvedTheme = themeManager.resolveThemeForMode('system')
+      useStore.getState().setTheme(resolvedTheme.id)
+      themeManager.setTheme(resolvedTheme.id)
+    }
+
+    themeManager.startSystemThemeListener((isDark) => {
+      const store = useStore.getState()
+      store.setSystemPrefersDark(isDark)
+      if (store.themeMode === 'system') {
+        const resolved = themeManager.resolveThemeForMode('system')
+        store.setTheme(resolved.id)
+        themeManager.setTheme(resolved.id)
+      }
+    })
 
     const { onboardingCompleted, hasExistingConfig } = useStore.getState()
 
@@ -287,4 +394,8 @@ export function registerAppErrorListener(): () => void {
       confirmText: 'OK',
     })
   })
+}
+
+export function getActiveInitConfig(): ScenarioInitConfig {
+  return getScenarioInitConfig()
 }

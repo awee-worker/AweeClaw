@@ -16,6 +16,7 @@ import { settingsService } from '../../../settings/preferencesService'
 import { Agent } from '@intelligence/engine'
 import { memoryService } from '@intelligence/runtime/recallService'
 import type { ProviderModelConfig, SettingsState } from '@shared/configuration/preferenceSync'
+import { DEFAULT_SCENARIO_PREFERENCES } from '@shared/configuration/preferenceSchema'
 
 interface SystemSettingsProps {
     language: Language
@@ -235,6 +236,7 @@ export function SystemPreferencesPanel({ language, enableFileLogging, setEnableF
             aiInstructions: getStore().aiInstructions,
             onboardingCompleted: getStore().onboardingCompleted,
             enableFileLogging: getStore().enableFileLogging,
+            scenarioPreferences: getStore().scenarioPreferences ?? DEFAULT_SCENARIO_PREFERENCES,
         }
     }
 

@@ -318,6 +318,8 @@ class ThemeManager {
   private customThemes: Theme[] = []
   private listeners: Set<(theme: Theme) => void> = new Set()
   private initialized = false
+  private mediaQuery: MediaQueryList | null = null
+  private mediaQueryHandler: ((e: MediaQueryListEvent) => void) | null = null
 
   constructor() {
     // 从 localStorage 快速恢复主题（同步，避免闪烁）
@@ -415,6 +417,36 @@ class ThemeManager {
       this.saveToConfig()
       this.notifyListeners()
     }
+  }
+
+  resolveThemeForMode(mode: 'light' | 'dark' | 'system'): Theme {
+    if (mode === 'system') {
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+      const targetType = prefersDark ? 'dark' : 'light'
+      const matched = this.getAllThemes().find(t => t.type === targetType)
+      return matched || this.currentTheme
+    }
+    const matched = this.getAllThemes().find(t => t.type === mode)
+    return matched || this.currentTheme
+  }
+
+  startSystemThemeListener(onSystemChange: (isDark: boolean) => void) {
+    if (typeof window === 'undefined' || typeof window.matchMedia === 'undefined') return
+    this.stopSystemThemeListener()
+
+    this.mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+    this.mediaQueryHandler = (e: MediaQueryListEvent) => {
+      onSystemChange(e.matches)
+    }
+    this.mediaQuery.addEventListener('change', this.mediaQueryHandler)
+  }
+
+  stopSystemThemeListener() {
+    if (this.mediaQuery && this.mediaQueryHandler) {
+      this.mediaQuery.removeEventListener('change', this.mediaQueryHandler)
+      this.mediaQueryHandler = null
+    }
+    this.mediaQuery = null
   }
 
   addCustomTheme(theme: Theme) {

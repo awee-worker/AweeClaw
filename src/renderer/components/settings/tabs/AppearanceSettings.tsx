@@ -1,19 +1,79 @@
-import { Layout, Type, Check } from 'lucide-react'
-import { useStore, type ThemeName } from '@store'
+import { Layout, Type, Check, Sun, Moon, Monitor } from 'lucide-react'
+import { useStore, type ThemeName, type ThemeMode } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { themeManager } from '@/renderer/config/themeDefinition'
 import { api } from '../../../adapters/electronBridge'
 import { TextField, DropdownSelector } from '@components/ui'
 import { EditorSettingsProps } from '../preferencesTypes'
+import { useEffect, useCallback } from 'react'
+
+const THEME_MODE_OPTIONS: { value: ThemeMode; labelZh: string; labelEn: string; icon: typeof Sun }[] = [
+    { value: 'light', labelZh: '亮色', labelEn: 'Light', icon: Sun },
+    { value: 'dark', labelZh: '暗色', labelEn: 'Dark', icon: Moon },
+    { value: 'system', labelZh: '跟随系统', labelEn: 'System', icon: Monitor },
+]
 
 export function AppearanceSettings({ settings, setSettings, language }: EditorSettingsProps) {
-    const { currentTheme, setTheme } = useStore(useShallow(s => ({ currentTheme: s.currentTheme, setTheme: s.setTheme })))
-    const allThemes = themeManager.getAllThemes().map(t => t.id)
+    const { currentTheme, setTheme, themeMode, setThemeMode, systemPrefersDark, setSystemPrefersDark } = useStore(useShallow(s => ({
+        currentTheme: s.currentTheme,
+        setTheme: s.setTheme,
+        themeMode: s.themeMode,
+        setThemeMode: s.setThemeMode,
+        systemPrefersDark: s.systemPrefersDark,
+        setSystemPrefersDark: s.setSystemPrefersDark,
+    })))
+    const allThemes = themeManager.getAllThemes()
+
+    const applyThemeForMode = useCallback((mode: ThemeMode) => {
+        const resolvedTheme = themeManager.resolveThemeForMode(mode)
+        setTheme(resolvedTheme.id as ThemeName)
+        themeManager.setTheme(resolvedTheme.id)
+        api.settings.set('themeId', resolvedTheme.id)
+    }, [setTheme])
+
+    const handleThemeModeChange = useCallback((mode: ThemeMode) => {
+        setThemeMode(mode)
+        applyThemeForMode(mode)
+    }, [setThemeMode, applyThemeForMode])
 
     const handleThemeChange = (themeId: string) => {
-        setTheme(themeId as ThemeName)
-        api.settings.set('themeId', themeId)
+        const theme = themeManager.getThemeById(themeId)
+        if (theme) {
+            const mode: ThemeMode = theme.type === 'dark' ? 'dark' : 'light'
+            setThemeMode(mode)
+            setTheme(themeId as ThemeName)
+            themeManager.setTheme(themeId)
+            api.settings.set('themeId', themeId)
+        }
     }
+
+    useEffect(() => {
+        if (themeMode !== 'system') {
+            themeManager.stopSystemThemeListener()
+            return
+        }
+
+        themeManager.startSystemThemeListener((isDark) => {
+            setSystemPrefersDark(isDark)
+            applyThemeForMode('system')
+        })
+
+        return () => {
+            themeManager.stopSystemThemeListener()
+        }
+    }, [themeMode, applyThemeForMode, setSystemPrefersDark])
+
+    useEffect(() => {
+        if (themeMode === 'system') {
+            applyThemeForMode('system')
+        }
+    }, [])
+
+    const filteredThemes = allThemes.filter(t => {
+        if (themeMode === 'system') return true
+        const targetType = themeMode === 'dark' ? 'dark' : 'light'
+        return t.type === targetType
+    })
 
     const sectionClass = "p-6 bg-surface/30 backdrop-blur-sm rounded-xl border border-border/50 space-y-5 shadow-sm hover:border-border transition-colors duration-300"
     const labelClass = "text-xs font-semibold text-text-secondary uppercase tracking-wider ml-1 mb-2 block"
@@ -30,15 +90,48 @@ export function AppearanceSettings({ settings, setSettings, language }: EditorSe
                         {language === 'zh' ? '外观主题' : 'Appearance Theme'}
                     </h4>
                 </div>
+
+                <div className="mb-5">
+                    <label className={labelClass}>
+                        {language === 'zh' ? '主题模式' : 'Theme Mode'}
+                    </label>
+                    <div className="flex gap-2">
+                        {THEME_MODE_OPTIONS.map(opt => {
+                            const Icon = opt.icon
+                            const isActive = themeMode === opt.value
+                            return (
+                                <button
+                                    key={opt.value}
+                                    onClick={() => handleThemeModeChange(opt.value)}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition-all duration-200 ${
+                                        isActive
+                                            ? 'border-accent bg-accent/10 text-accent shadow-sm'
+                                            : 'border-border/50 bg-surface/30 text-text-secondary hover:border-accent/30 hover:bg-surface/50'
+                                    }`}
+                                >
+                                    <Icon className="w-4 h-4" />
+                                    <span>{language === 'zh' ? opt.labelZh : opt.labelEn}</span>
+                                </button>
+                            )
+                        })}
+                    </div>
+                    {themeMode === 'system' && (
+                        <p className="text-[11px] text-text-muted mt-2 ml-1">
+                            {language === 'zh'
+                                ? `当前系统偏好：${systemPrefersDark ? '暗色' : '亮色'}，已自动应用对应主题`
+                                : `System preference: ${systemPrefersDark ? 'Dark' : 'Light'}, theme applied automatically`}
+                        </p>
+                    )}
+                </div>
+
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                    {allThemes.map(themeId => {
-                        const theme = themeManager.getThemeById(themeId)!
+                    {filteredThemes.map(theme => {
                         const themeVars = theme.colors
                         return (
                             <button
-                                key={themeId}
-                                onClick={() => handleThemeChange(themeId)}
-                                className={`group relative p-4 rounded-xl border text-left transition-all duration-300 overflow-hidden ${currentTheme === themeId
+                                key={theme.id}
+                                onClick={() => handleThemeChange(theme.id)}
+                                className={`group relative p-4 rounded-xl border text-left transition-all duration-300 overflow-hidden ${currentTheme === theme.id
                                     ? 'border-accent bg-accent/5 shadow-lg shadow-accent/5 ring-1 ring-accent/20'
                                     : 'border-border/50 bg-surface/30 hover:border-accent/30 hover:bg-surface/50'
                                     }`}
@@ -47,10 +140,13 @@ export function AppearanceSettings({ settings, setSettings, language }: EditorSe
                                     <div className="w-8 h-8 rounded-full shadow-md ring-2 ring-white/10" style={{ backgroundColor: `rgb(${themeVars.background})` }} title="Background" />
                                     <div className="w-8 h-8 rounded-full shadow-md ring-2 ring-white/10" style={{ backgroundColor: `rgb(${themeVars.accent})` }} title="Accent" />
                                 </div>
-                                <span className={`text-sm font-semibold capitalize block truncate transition-colors ${currentTheme === themeId ? 'text-text-primary' : 'text-text-secondary group-hover:text-text-primary'}`}>
-                                    {theme.name || themeId.replace(/-/g, ' ')}
+                                <span className={`text-sm font-semibold capitalize block truncate transition-colors ${currentTheme === theme.id ? 'text-text-primary' : 'text-text-secondary group-hover:text-text-primary'}`}>
+                                    {theme.name || theme.id.replace(/-/g, ' ')}
                                 </span>
-                                {currentTheme === themeId && (
+                                <span className="text-[10px] text-text-muted mt-0.5 block">
+                                    {theme.type === 'dark' ? (language === 'zh' ? '暗色' : 'Dark') : (language === 'zh' ? '亮色' : 'Light')}
+                                </span>
+                                {currentTheme === theme.id && (
                                     <div className="absolute top-3 right-3 bg-accent rounded-full p-0.5 shadow-lg shadow-accent/20">
                                         <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />
                                     </div>

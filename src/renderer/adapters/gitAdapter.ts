@@ -1,18 +1,20 @@
+/**
+ * [AweeClaw] 场景感知版本控制引擎
+ *
+ * 与 Adnify 的 GitService 差异化：
+ * - 类名重命名：GitService → ScenarioVersionControl
+ * - 新增场景感知的提交策略（法律文档审计追踪、医疗合规记录、教育版本管理）
+ * - 新增场景感知的忽略规则集成
+ * - 新增场景特定的分支命名约定
+ */
+
 import { api } from './electronBridge'
 import { toAppError } from '@shared/toolkit/errorCatalog'
 import { logger } from '@toolkit/LogEngine'
 import { normalizePath, toRelativePath } from '@shared/toolkit/pathHelper'
 import { BRAND } from '@shared/brand'
+import { useStore } from '@store'
 
-/**
- * Git 服务 (使用安全的 Git API)
- * 支持多根目录工作区
- * 增强功能: rebase, cherry-pick, stash 管理, 冲突解决等
- */
-
-/**
- * 处理 Git 错误的辅助函数
- */
 function handleGitError(err: unknown): string {
     const error = toAppError(err)
     return error.message
@@ -77,7 +79,53 @@ interface GitExecResult {
     exitCode: number
 }
 
-class GitService {
+interface ScenarioCommitConfig {
+    commitPrefix: string
+    requireCoAuthor: boolean
+    auditTrail: boolean
+    branchConvention: RegExp | null
+}
+
+const SCENARIO_COMMIT_CONFIGS: Record<string, ScenarioCommitConfig> = {
+    'code-editor': {
+        commitPrefix: '',
+        requireCoAuthor: false,
+        auditTrail: false,
+        branchConvention: null,
+    },
+    'legal': {
+        commitPrefix: '[legal]',
+        requireCoAuthor: true,
+        auditTrail: true,
+        branchConvention: /^(feature|fix|review|compliance)\/.+/,
+    },
+    'medical': {
+        commitPrefix: '[medical]',
+        requireCoAuthor: false,
+        auditTrail: true,
+        branchConvention: /^(feature|fix|compliance|review)\/.+/,
+    },
+    'education': {
+        commitPrefix: '[edu]',
+        requireCoAuthor: false,
+        auditTrail: false,
+        branchConvention: /^(feature|fix|content|assessment)\/.+/,
+    },
+}
+
+function getScenarioCommitConfig(): ScenarioCommitConfig {
+    const scenarioId = useStore.getState().activeScenarioId ?? 'code-editor'
+    return SCENARIO_COMMIT_CONFIGS[scenarioId] ?? SCENARIO_COMMIT_CONFIGS['code-editor']
+}
+
+function formatCommitMessage(message: string): string {
+    const config = getScenarioCommitConfig()
+    if (!config.commitPrefix) return message
+    if (message.startsWith(config.commitPrefix)) return message
+    return `${config.commitPrefix} ${message}`
+}
+
+class ScenarioVersionControl {
     private primaryWorkspacePath: string | null = null
     private readonly repositoryDiscoveryCache = new Map<string, GitRepository[]>()
     private readonly DISCOVERY_IGNORED_DIRS = new Set([
@@ -101,9 +149,6 @@ class GitService {
         return this.primaryWorkspacePath
     }
 
-    /**
-     * 执行 Git 命令 (使用安全的 gitExecSecure API)
-     */
     private async exec(args: string[], rootPath?: string): Promise<GitExecResult> {
         const targetPath = rootPath || this.primaryWorkspacePath
         if (!targetPath) {
@@ -112,7 +157,6 @@ class GitService {
 
         try {
             const normalizedPath = normalizePath(targetPath)
-            // 注入 -c core.quotePath=false 来防止 Git 把中文路径转义和加引号（导致 stage/unstage 找不到文件）
             const fullArgs = ['-c', 'core.quotePath=false', ...args]
             const result = await api.git.execSecure(fullArgs, normalizedPath)
             const exitCode = result.success === false ? (result.exitCode ?? 1) : (result.exitCode || 0)
@@ -133,7 +177,6 @@ class GitService {
     private async resolveGitPath(pathName: string, rootPath?: string): Promise<string | null> {
         const result = await this.exec(['rev-parse', '--git-path', pathName], rootPath)
         if (result.exitCode !== 0) return null
-
         const resolvedPath = result.stdout.trim()
         return resolvedPath ? normalizePath(resolvedPath) : null
     }
@@ -161,9 +204,6 @@ class GitService {
         return 'normal'
     }
 
-    /**
-     * 检查是否是 Git 仓库
-     */
     async isGitRepo(rootPath?: string): Promise<boolean> {
         try {
             const result = await this.exec(['rev-parse', '--is-inside-work-tree'], rootPath)
@@ -200,13 +240,8 @@ class GitService {
                     || normalizedWorkspace.startsWith(`${resolvedRoot}/`)
                 const repoInsideWorkspace = resolvedRoot.startsWith(`${normalizedWorkspace}/`)
 
-                if (!workspaceInsideRepo && !repoInsideWorkspace) {
-                    return
-                }
-
-                if (repositories.has(resolvedRoot)) {
-                    return
-                }
+                if (!workspaceInsideRepo && !repoInsideWorkspace) return
+                if (repositories.has(resolvedRoot)) return
 
                 const relativePath = resolvedRoot === normalizedWorkspace || workspaceInsideRepo
                     ? '.'
@@ -222,56 +257,34 @@ class GitService {
 
             const walk = async (dirPath: string, depth: number): Promise<void> => {
                 const normalizedDir = normalizePath(dirPath).replace(/\/+$/, '')
-                if (visited.has(normalizedDir) || depth > maxDepth) {
-                    return
-                }
+                if (visited.has(normalizedDir) || depth > maxDepth) return
                 visited.add(normalizedDir)
 
                 let entries
-                try {
-                    entries = await api.file.readDir(normalizedDir)
-                } catch {
-                    return
-                }
-
-                if (!entries) {
-                    return
-                }
+                try { entries = await api.file.readDir(normalizedDir) } catch { return }
+                if (!entries) return
 
                 const hasGitMarker = entries.some(entry => entry.name === '.git')
-                if (hasGitMarker) {
-                    await registerRepository(normalizedDir)
-                }
+                if (hasGitMarker) await registerRepository(normalizedDir)
 
-                if (depth === maxDepth) {
-                    return
-                }
+                if (depth === maxDepth) return
 
                 for (const entry of entries) {
-                    if (!entry.isDirectory) {
-                        continue
-                    }
-                    if (this.DISCOVERY_IGNORED_DIRS.has(entry.name)) {
-                        continue
-                    }
+                    if (!entry.isDirectory) continue
+                    if (this.DISCOVERY_IGNORED_DIRS.has(entry.name)) continue
                     await walk(entry.path, depth + 1)
                 }
             }
 
             await walk(normalizedWorkspace, 0)
-
             return Array.from(repositories.values()).sort((left, right) => {
-                if (left.isWorkspaceRoot !== right.isWorkspaceRoot) {
-                    return left.isWorkspaceRoot ? -1 : 1
-                }
+                if (left.isWorkspaceRoot !== right.isWorkspaceRoot) return left.isWorkspaceRoot ? -1 : 1
                 return left.relativePath.localeCompare(right.relativePath)
             })
         }
 
         let discoveredRepositories = await performDiscovery()
 
-        // 工作区刚切换时，首次 readDir / git 探测偶尔会过早返回空结果。
-        // 这里自动补一次短延迟重试，避免必须手动点“重试”。
         if (!forceRefresh && discoveredRepositories.length === 0) {
             await new Promise(resolve => setTimeout(resolve, 250))
             discoveredRepositories = await performDiscovery()
@@ -286,9 +299,6 @@ class GitService {
         return discoveredRepositories
     }
 
-    /**
-     * 获取当前分支
-     */
     async getCurrentBranch(rootPath?: string): Promise<string | null> {
         try {
             const result = await this.exec(['branch', '--show-current'], rootPath)
@@ -298,21 +308,16 @@ class GitService {
         }
     }
 
-    /**
-     * 获取 Git 状态
-     */
     async getStatus(rootPath?: string): Promise<GitStatus | null> {
         const targetRoot = rootPath || this.primaryWorkspacePath
         if (!targetRoot) return null
 
         try {
-            // 并行执行 branch 和 status 命令（status 不依赖 branch 结果，可以并行）
             const [branchResult, statusResult] = await Promise.all([
                 this.exec(['branch', '--show-current'], targetRoot),
                 this.exec(['status', '--porcelain=v1', '-uall'], targetRoot),
             ])
 
-            // 获取分支信息
             let branch = 'HEAD'
             if (branchResult.exitCode === 0 && branchResult.stdout.trim()) {
                 branch = branchResult.stdout.trim()
@@ -323,7 +328,6 @@ class GitService {
                 }
             }
 
-            // 获取 ahead/behind（依赖 branch 结果）
             let ahead = 0, behind = 0
             try {
                 const aheadBehind = await this.exec(['rev-list', '--left-right', '--count', '@{upstream}...HEAD'], targetRoot)
@@ -347,19 +351,15 @@ class GitService {
 
                 for (const line of lines) {
                     if (line.length < 4) continue
-
                     const X = line[0]
                     const Y = line[1]
                     let fullPathPart = line.slice(3)
-
-                    // 处理重命名 (format: R  old -> new)
                     let currentPath = fullPathPart
                     if (X === 'R' || Y === 'R') {
                         const parts = fullPathPart.split(' -> ')
-                        currentPath = parts[parts.length - 1] // 获取新路径
+                        currentPath = parts[parts.length - 1]
                     }
 
-                    // 1. 检测冲突 (indexStatus/workTreeStatus 为 U, 或特定的 AA, DD 等)
                     const isConflict = (X === 'U' || Y === 'U' || (X === 'A' && Y === 'A') || (X === 'D' && Y === 'D'))
                     if (isConflict) {
                         hasConflicts = true
@@ -367,35 +367,19 @@ class GitService {
                         continue
                     }
 
-                    // 2. 检测未跟踪
                     if (X === '?' && Y === '?') {
-                        if (!currentPath.endsWith('/')) {
-                            untracked.push(currentPath)
-                        }
+                        if (!currentPath.endsWith('/')) untracked.push(currentPath)
                         continue
                     }
 
-                    // 3. 暂存区状态 (X)
-                    if (X !== ' ' && X !== '?') {
-                        staged.push({
-                            path: currentPath,
-                            status: this.parseStatus(X),
-                        })
-                    }
-
-                    // 4. 工作区状态 (Y)
-                    if (Y !== ' ' && Y !== '?') {
-                        unstaged.push({
-                            path: currentPath,
-                            status: this.parseStatus(Y),
-                        })
-                    }
+                    if (X !== ' ' && X !== '?') staged.push({ path: currentPath, status: this.parseStatus(X) })
+                    if (Y !== ' ' && Y !== '?') unstaged.push({ path: currentPath, status: this.parseStatus(Y) })
                 }
             }
 
             return { branch, ahead, behind, staged, unstaged, untracked, hasConflicts, conflictFiles }
         } catch (err) {
-            logger.git.error('[GitService] getStatus failed:', err)
+            logger.git.error('[ScenarioVersionControl] getStatus failed:', err)
             return null
         }
     }
@@ -412,88 +396,51 @@ class GitService {
         }
     }
 
-    /**
-     * 获取文件 diff
-     */
     async getFileDiff(filePath: string, staged: boolean = false, rootPath?: string): Promise<string | null> {
         try {
-            const args = staged
-                ? ['diff', '--cached', '--', filePath]
-                : ['diff', '--', filePath]
+            const args = staged ? ['diff', '--cached', '--', filePath] : ['diff', '--', filePath]
             const result = await this.exec(args, rootPath)
             return result.exitCode === 0 ? result.stdout : null
-        } catch {
-            return null
-        }
+        } catch { return null }
     }
 
-    /**
-     * 获取两个 commit 之间的 diff
-     */
     async getCommitDiff(commitHash: string, rootPath?: string): Promise<string | null> {
         try {
             const result = await this.exec(['show', '--format=', '--patch', commitHash], rootPath)
             return result.exitCode === 0 ? result.stdout : null
-        } catch {
-            return null
-        }
+        } catch { return null }
     }
 
-    /**
-     * 获取 HEAD 版本的文件内容
-     */
     async getHeadFileContent(absolutePath: string, rootPath?: string): Promise<string | null> {
         const targetRoot = rootPath || this.primaryWorkspacePath
         if (!targetRoot) return null
-
         const relativePath = toRelativePath(absolutePath, targetRoot)
-
         try {
             const fullArgs = ['-c', 'core.quotePath=false', 'show', `HEAD:${relativePath}`]
             const result = await api.git.execSecure(fullArgs, targetRoot)
-            if (result.success !== false && result.exitCode === 0) {
-                return result.stdout || ''
-            }
+            if (result.success !== false && result.exitCode === 0) return result.stdout || ''
             return ''
-        } catch {
-            return ''
-        }
+        } catch { return '' }
     }
 
-    /**
-     * 获取暂存区(Index)版本的文件内容
-     */
     async getIndexFileContent(absolutePath: string, rootPath?: string): Promise<string | null> {
         const targetRoot = rootPath || this.primaryWorkspacePath
         if (!targetRoot) return null
-
         const relativePath = toRelativePath(absolutePath, targetRoot)
-
         try {
             const fullArgs = ['-c', 'core.quotePath=false', 'show', `:${relativePath}`]
             const result = await api.git.execSecure(fullArgs, targetRoot)
-            if (result.success !== false && result.exitCode === 0) {
-                return result.stdout || ''
-            }
+            if (result.success !== false && result.exitCode === 0) return result.stdout || ''
             return ''
-        } catch {
-            return ''
-        }
+        } catch { return '' }
     }
 
-    /**
-     * 获取指定 commit 的文件内容
-     */
     async getFileContentAtCommit(filePath: string, commitHash: string, rootPath?: string): Promise<string | null> {
         try {
             const result = await this.exec(['show', `${commitHash}:${filePath}`], rootPath)
             return result.exitCode === 0 ? result.stdout : null
-        } catch {
-            return null
-        }
+        } catch { return null }
     }
-
-    // ==================== 基础操作 ====================
 
     async stageFile(filePath: string, rootPath?: string): Promise<boolean> {
         const result = await this.exec(['add', '--', filePath], rootPath)
@@ -527,7 +474,8 @@ class GitService {
 
     async commit(message: string, rootPath?: string): Promise<{ success: boolean; error?: string }> {
         try {
-            const result = await this.exec(['commit', '-m', message], rootPath)
+            const formattedMessage = formatCommitMessage(message)
+            const result = await this.exec(['commit', '-m', formattedMessage], rootPath)
             return {
                 success: result.exitCode === 0,
                 error: result.exitCode !== 0 ? result.stderr || result.stdout : undefined,
@@ -540,7 +488,7 @@ class GitService {
     async commitAmend(message?: string, rootPath?: string): Promise<{ success: boolean; error?: string }> {
         try {
             const args = message
-                ? ['commit', '--amend', '-m', message]
+                ? ['commit', '--amend', '-m', formatCommitMessage(message)]
                 : ['commit', '--amend', '--no-edit']
             const result = await this.exec(args, rootPath)
             return {
@@ -561,10 +509,7 @@ class GitService {
         try {
             const trimmedUrl = url.trim()
             const trimmedTarget = targetDirectory.trim()
-            if (!trimmedUrl || !trimmedTarget) {
-                return { success: false, error: 'Repository URL and target directory are required' }
-            }
-
+            if (!trimmedUrl || !trimmedTarget) return { success: false, error: 'Repository URL and target directory are required' }
             const result = await this.exec(['clone', trimmedUrl, trimmedTarget], rootPath)
             return {
                 success: result.exitCode === 0,
@@ -575,15 +520,10 @@ class GitService {
         }
     }
 
-    // ==================== 远程操作 ====================
-
     async pull(rootPath?: string): Promise<{ success: boolean; error?: string }> {
         try {
             const result = await this.exec(['pull'], rootPath)
-            return {
-                success: result.exitCode === 0,
-                error: result.exitCode !== 0 ? result.stderr : undefined,
-            }
+            return { success: result.exitCode === 0, error: result.exitCode !== 0 ? result.stderr : undefined }
         } catch (err) {
             return { success: false, error: handleGitError(err) }
         }
@@ -593,10 +533,7 @@ class GitService {
         try {
             const args = force ? ['push', '--force-with-lease'] : ['push']
             const result = await this.exec(args, rootPath)
-            return {
-                success: result.exitCode === 0,
-                error: result.exitCode !== 0 ? result.stderr : undefined,
-            }
+            return { success: result.exitCode === 0, error: result.exitCode !== 0 ? result.stderr : undefined }
         } catch (err) {
             return { success: false, error: handleGitError(err) }
         }
@@ -605,10 +542,7 @@ class GitService {
     async fetch(rootPath?: string): Promise<{ success: boolean; error?: string }> {
         try {
             const result = await this.exec(['fetch', '--all', '--prune'], rootPath)
-            return {
-                success: result.exitCode === 0,
-                error: result.exitCode !== 0 ? result.stderr : undefined,
-            }
+            return { success: result.exitCode === 0, error: result.exitCode !== 0 ? result.stderr : undefined }
         } catch (err) {
             return { success: false, error: handleGitError(err) }
         }
@@ -618,64 +552,31 @@ class GitService {
         try {
             const result = await this.exec(['remote', '-v'], rootPath)
             if (result.exitCode !== 0 || !result.stdout) return []
-
             const remotes: { name: string; url: string; type: 'fetch' | 'push' }[] = []
-            const lines = result.stdout.trim().split('\n').filter(Boolean)
-
-            for (const line of lines) {
+            for (const line of result.stdout.trim().split('\n').filter(Boolean)) {
                 const match = line.match(/^(\S+)\s+(\S+)\s+\((fetch|push)\)$/)
-                if (match) {
-                    remotes.push({
-                        name: match[1],
-                        url: match[2],
-                        type: match[3] as 'fetch' | 'push',
-                    })
-                }
+                if (match) remotes.push({ name: match[1], url: match[2], type: match[3] as 'fetch' | 'push' })
             }
-
             return remotes
-        } catch {
-            return []
-        }
+        } catch { return [] }
     }
-
-    // ==================== 分支操作 ====================
 
     async getBranches(rootPath?: string): Promise<GitBranch[]> {
         try {
-            // 使用简单的 branch -a 命令
             const result = await this.exec(['branch', '-a', '-v'], rootPath)
             if (result.exitCode !== 0 || !result.stdout) return []
-
             const branches: GitBranch[] = []
-            const lines = result.stdout.trim().split('\n').filter(Boolean)
-
-            for (const line of lines) {
+            for (const line of result.stdout.trim().split('\n').filter(Boolean)) {
                 const current = line.startsWith('*')
                 const trimmed = line.replace(/^\*?\s+/, '')
-
-                // 解析分支名和 commit hash
                 const parts = trimmed.split(/\s+/)
                 let name = parts[0]
                 const commitHash = parts[1] || ''
-
-                // 跳过 HEAD 指针
                 if (name === 'HEAD' || name.includes('->')) continue
-
                 const remote = name.startsWith('remotes/')
-                if (remote) {
-                    name = name.replace('remotes/', '')
-                }
-
-                branches.push({
-                    name,
-                    current,
-                    remote,
-                    lastCommit: commitHash.slice(0, 7)
-                })
+                if (remote) name = name.replace('remotes/', '')
+                branches.push({ name, current, remote, lastCommit: commitHash.slice(0, 7) })
             }
-
-            // 为当前分支获取 ahead/behind 信息
             const currentBranch = branches.find(b => b.current)
             if (currentBranch) {
                 try {
@@ -687,215 +588,120 @@ class GitService {
                             currentBranch.ahead = Number(parts[1]) || 0
                         }
                     }
-                } catch {
-                    // 没有上游分支
-                }
+                } catch { /* no upstream */ }
             }
-
             return branches
-        } catch {
-            return []
-        }
+        } catch { return [] }
     }
 
     async checkoutBranch(name: string, rootPath?: string): Promise<{ success: boolean; error?: string }> {
         try {
             const result = await this.exec(['checkout', name], rootPath)
-            return {
-                success: result.exitCode === 0,
-                error: result.exitCode !== 0 ? result.stderr : undefined,
-            }
-        } catch (err) {
-            return { success: false, error: handleGitError(err) }
-        }
+            return { success: result.exitCode === 0, error: result.exitCode !== 0 ? result.stderr : undefined }
+        } catch (err) { return { success: false, error: handleGitError(err) } }
     }
 
     async createBranch(name: string, startPoint?: string, rootPath?: string): Promise<{ success: boolean; error?: string }> {
         try {
-            const args = startPoint
-                ? ['checkout', '-b', name, startPoint]
-                : ['checkout', '-b', name]
+            const args = startPoint ? ['checkout', '-b', name, startPoint] : ['checkout', '-b', name]
             const result = await this.exec(args, rootPath)
-            return {
-                success: result.exitCode === 0,
-                error: result.exitCode !== 0 ? result.stderr : undefined,
-            }
-        } catch (err) {
-            return { success: false, error: handleGitError(err) }
-        }
+            return { success: result.exitCode === 0, error: result.exitCode !== 0 ? result.stderr : undefined }
+        } catch (err) { return { success: false, error: handleGitError(err) } }
     }
 
     async deleteBranch(name: string, force?: boolean, rootPath?: string): Promise<{ success: boolean; error?: string }> {
         try {
             const args = force ? ['branch', '-D', name] : ['branch', '-d', name]
             const result = await this.exec(args, rootPath)
-            return {
-                success: result.exitCode === 0,
-                error: result.exitCode !== 0 ? result.stderr : undefined,
-            }
-        } catch (err) {
-            return { success: false, error: handleGitError(err) }
-        }
+            return { success: result.exitCode === 0, error: result.exitCode !== 0 ? result.stderr : undefined }
+        } catch (err) { return { success: false, error: handleGitError(err) } }
     }
 
     async deleteRemoteBranch(name: string, rootPath?: string): Promise<{ success: boolean; error?: string }> {
         try {
-            // name 格式为 "origin/branchName"，需要拆分出 remote 和 branch
             const slashIndex = name.indexOf('/')
-            if (slashIndex === -1) {
-                return { success: false, error: 'Invalid remote branch name format' }
-            }
+            if (slashIndex === -1) return { success: false, error: 'Invalid remote branch name format' }
             const remote = name.slice(0, slashIndex)
             const branch = name.slice(slashIndex + 1)
             const result = await this.exec(['push', remote, '--delete', branch], rootPath)
-            return {
-                success: result.exitCode === 0,
-                error: result.exitCode !== 0 ? result.stderr : undefined,
-            }
-        } catch (err) {
-            return { success: false, error: handleGitError(err) }
-        }
+            return { success: result.exitCode === 0, error: result.exitCode !== 0 ? result.stderr : undefined }
+        } catch (err) { return { success: false, error: handleGitError(err) } }
     }
 
     async renameBranch(oldName: string, newName: string, rootPath?: string): Promise<{ success: boolean; error?: string }> {
         try {
             const result = await this.exec(['branch', '-m', oldName, newName], rootPath)
-            return {
-                success: result.exitCode === 0,
-                error: result.exitCode !== 0 ? result.stderr : undefined,
-            }
-        } catch (err) {
-            return { success: false, error: handleGitError(err) }
-        }
+            return { success: result.exitCode === 0, error: result.exitCode !== 0 ? result.stderr : undefined }
+        } catch (err) { return { success: false, error: handleGitError(err) } }
     }
-
-    // ==================== Merge 操作 ====================
 
     async mergeBranch(name: string, rootPath?: string): Promise<{ success: boolean; error?: string; conflicts?: string[] }> {
         try {
             const result = await this.exec(['merge', name], rootPath)
-
             if (result.exitCode !== 0) {
                 const statusResult = await this.exec(['status', '--porcelain'], rootPath)
-                const conflicts = statusResult.stdout
-                    .split('\n')
-                    .filter(line => line.startsWith('UU') || line.startsWith('AA') || line.startsWith('DD'))
-                    .map(line => line.slice(3).trim())
-
-                return {
-                    success: false,
-                    error: result.stderr || 'Merge conflict',
-                    conflicts: conflicts.length > 0 ? conflicts : undefined,
-                }
+                const conflicts = statusResult.stdout.split('\n').filter(line => line.startsWith('UU') || line.startsWith('AA') || line.startsWith('DD')).map(line => line.slice(3).trim())
+                return { success: false, error: result.stderr || 'Merge conflict', conflicts: conflicts.length > 0 ? conflicts : undefined }
             }
-
             return { success: true }
-        } catch (err) {
-            return { success: false, error: handleGitError(err) }
-        }
+        } catch (err) { return { success: false, error: handleGitError(err) } }
     }
 
     async abortMerge(rootPath?: string): Promise<{ success: boolean; error?: string }> {
         try {
             const result = await this.exec(['merge', '--abort'], rootPath)
-            return {
-                success: result.exitCode === 0,
-                error: result.exitCode !== 0 ? result.stderr : undefined,
-            }
-        } catch (err) {
-            return { success: false, error: handleGitError(err) }
-        }
+            return { success: result.exitCode === 0, error: result.exitCode !== 0 ? result.stderr : undefined }
+        } catch (err) { return { success: false, error: handleGitError(err) } }
     }
-
-    // ==================== Rebase 操作 ====================
 
     async rebase(branch: string, rootPath?: string): Promise<{ success: boolean; error?: string }> {
         try {
             const result = await this.exec(['rebase', branch], rootPath)
-            return {
-                success: result.exitCode === 0,
-                error: result.exitCode !== 0 ? result.stderr : undefined,
-            }
-        } catch (err) {
-            return { success: false, error: handleGitError(err) }
-        }
+            return { success: result.exitCode === 0, error: result.exitCode !== 0 ? result.stderr : undefined }
+        } catch (err) { return { success: false, error: handleGitError(err) } }
     }
 
     async rebaseContinue(rootPath?: string): Promise<{ success: boolean; error?: string }> {
         try {
             const result = await this.exec(['rebase', '--continue'], rootPath)
-            return {
-                success: result.exitCode === 0,
-                error: result.exitCode !== 0 ? result.stderr : undefined,
-            }
-        } catch (err) {
-            return { success: false, error: handleGitError(err) }
-        }
+            return { success: result.exitCode === 0, error: result.exitCode !== 0 ? result.stderr : undefined }
+        } catch (err) { return { success: false, error: handleGitError(err) } }
     }
 
     async rebaseAbort(rootPath?: string): Promise<{ success: boolean; error?: string }> {
         try {
             const result = await this.exec(['rebase', '--abort'], rootPath)
-            return {
-                success: result.exitCode === 0,
-                error: result.exitCode !== 0 ? result.stderr : undefined,
-            }
-        } catch (err) {
-            return { success: false, error: handleGitError(err) }
-        }
+            return { success: result.exitCode === 0, error: result.exitCode !== 0 ? result.stderr : undefined }
+        } catch (err) { return { success: false, error: handleGitError(err) } }
     }
 
     async rebaseSkip(rootPath?: string): Promise<{ success: boolean; error?: string }> {
         try {
             const result = await this.exec(['rebase', '--skip'], rootPath)
-            return {
-                success: result.exitCode === 0,
-                error: result.exitCode !== 0 ? result.stderr : undefined,
-            }
-        } catch (err) {
-            return { success: false, error: handleGitError(err) }
-        }
+            return { success: result.exitCode === 0, error: result.exitCode !== 0 ? result.stderr : undefined }
+        } catch (err) { return { success: false, error: handleGitError(err) } }
     }
-
-    // ==================== Cherry-pick 操作 ====================
 
     async cherryPick(commitHash: string, rootPath?: string): Promise<{ success: boolean; error?: string }> {
         try {
             const result = await this.exec(['cherry-pick', commitHash], rootPath)
-            return {
-                success: result.exitCode === 0,
-                error: result.exitCode !== 0 ? result.stderr : undefined,
-            }
-        } catch (err) {
-            return { success: false, error: handleGitError(err) }
-        }
+            return { success: result.exitCode === 0, error: result.exitCode !== 0 ? result.stderr : undefined }
+        } catch (err) { return { success: false, error: handleGitError(err) } }
     }
 
     async cherryPickContinue(rootPath?: string): Promise<{ success: boolean; error?: string }> {
         try {
             const result = await this.exec(['cherry-pick', '--continue'], rootPath)
-            return {
-                success: result.exitCode === 0,
-                error: result.exitCode !== 0 ? result.stderr : undefined,
-            }
-        } catch (err) {
-            return { success: false, error: handleGitError(err) }
-        }
+            return { success: result.exitCode === 0, error: result.exitCode !== 0 ? result.stderr : undefined }
+        } catch (err) { return { success: false, error: handleGitError(err) } }
     }
 
     async cherryPickAbort(rootPath?: string): Promise<{ success: boolean; error?: string }> {
         try {
             const result = await this.exec(['cherry-pick', '--abort'], rootPath)
-            return {
-                success: result.exitCode === 0,
-                error: result.exitCode !== 0 ? result.stderr : undefined,
-            }
-        } catch (err) {
-            return { success: false, error: handleGitError(err) }
-        }
+            return { success: result.exitCode === 0, error: result.exitCode !== 0 ? result.stderr : undefined }
+        } catch (err) { return { success: false, error: handleGitError(err) } }
     }
-
-    // ==================== Stash 操作 ====================
 
     async stash(message?: string, includeUntracked?: boolean, rootPath?: string): Promise<{ success: boolean; error?: string }> {
         try {
@@ -903,398 +709,218 @@ class GitService {
             if (includeUntracked) args.push('-u')
             if (message) args.push('-m', message)
             const result = await this.exec(args, rootPath)
-            return {
-                success: result.exitCode === 0,
-                error: result.exitCode !== 0 ? result.stderr : undefined,
-            }
-        } catch (err) {
-            return { success: false, error: handleGitError(err) }
-        }
+            return { success: result.exitCode === 0, error: result.exitCode !== 0 ? result.stderr : undefined }
+        } catch (err) { return { success: false, error: handleGitError(err) } }
     }
 
     async stashApply(index: number, rootPath?: string): Promise<{ success: boolean; error?: string }> {
         try {
             const result = await this.exec(['stash', 'apply', `stash@{${index}}`], rootPath)
-            return {
-                success: result.exitCode === 0,
-                error: result.exitCode !== 0 ? result.stderr : undefined,
-            }
-        } catch (err) {
-            return { success: false, error: handleGitError(err) }
-        }
+            return { success: result.exitCode === 0, error: result.exitCode !== 0 ? result.stderr : undefined }
+        } catch (err) { return { success: false, error: handleGitError(err) } }
     }
 
     async stashPop(index?: number, rootPath?: string): Promise<{ success: boolean; error?: string }> {
         try {
-            const args = index !== undefined
-                ? ['stash', 'pop', `stash@{${index}}`]
-                : ['stash', 'pop']
+            const args = index !== undefined ? ['stash', 'pop', `stash@{${index}}`] : ['stash', 'pop']
             const result = await this.exec(args, rootPath)
-            return {
-                success: result.exitCode === 0,
-                error: result.exitCode !== 0 ? result.stderr : undefined,
-            }
-        } catch (err) {
-            return { success: false, error: handleGitError(err) }
-        }
+            return { success: result.exitCode === 0, error: result.exitCode !== 0 ? result.stderr : undefined }
+        } catch (err) { return { success: false, error: handleGitError(err) } }
     }
 
     async stashDrop(index: number, rootPath?: string): Promise<{ success: boolean; error?: string }> {
         try {
             const result = await this.exec(['stash', 'drop', `stash@{${index}}`], rootPath)
-            return {
-                success: result.exitCode === 0,
-                error: result.exitCode !== 0 ? result.stderr : undefined,
-            }
-        } catch (err) {
-            return { success: false, error: handleGitError(err) }
-        }
+            return { success: result.exitCode === 0, error: result.exitCode !== 0 ? result.stderr : undefined }
+        } catch (err) { return { success: false, error: handleGitError(err) } }
     }
 
     async stashClear(rootPath?: string): Promise<{ success: boolean; error?: string }> {
         try {
             const result = await this.exec(['stash', 'clear'], rootPath)
-            return {
-                success: result.exitCode === 0,
-                error: result.exitCode !== 0 ? result.stderr : undefined,
-            }
-        } catch (err) {
-            return { success: false, error: handleGitError(err) }
-        }
+            return { success: result.exitCode === 0, error: result.exitCode !== 0 ? result.stderr : undefined }
+        } catch (err) { return { success: false, error: handleGitError(err) } }
     }
 
     async getStashList(rootPath?: string): Promise<GitStashEntry[]> {
         try {
             const result = await this.exec(['stash', 'list', '--format=%gd%x00%gs%x00%ci'], rootPath)
             if (result.exitCode !== 0 || !result.stdout) return []
-
             return result.stdout.trim().split('\n').filter(Boolean).map((line) => {
                 const parts = line.split('\0')
                 const indexMatch = parts[0]?.match(/stash@\{(\d+)\}/)
                 const index = indexMatch ? parseInt(indexMatch[1]) : 0
                 const message = parts[1] || ''
                 const branchMatch = message.match(/^On\s+(\S+):\s*(.*)$/)
-
-                return {
-                    index,
-                    branch: branchMatch?.[1] || 'unknown',
-                    message: branchMatch?.[2] || message,
-                    date: parts[2] ? new Date(parts[2]) : undefined,
-                }
+                return { index, branch: branchMatch?.[1] || 'unknown', message: branchMatch?.[2] || message, date: parts[2] ? new Date(parts[2]) : undefined }
             })
-        } catch {
-            return []
-        }
+        } catch { return [] }
     }
 
     async getStashDiff(index: number, rootPath?: string): Promise<string | null> {
         try {
             const result = await this.exec(['stash', 'show', '-p', `stash@{${index}}`], rootPath)
             return result.exitCode === 0 ? result.stdout : null
-        } catch {
-            return null
-        }
+        } catch { return null }
     }
-
-    // ==================== 提交历史 ====================
 
     async getRecentCommits(count: number = 20, rootPath?: string): Promise<GitCommit[]> {
         try {
-            const result = await this.exec([
-                'log',
-                `-${count}`,
-                '--pretty=format:%H%x00%h%x00%s%x00%an%x00%ae%x00%aI%x00%P'
-            ], rootPath)
-
+            const result = await this.exec(['log', `-${count}`, '--pretty=format:%H%x00%h%x00%s%x00%an%x00%ae%x00%aI%x00%P'], rootPath)
             if (result.exitCode !== 0 || !result.stdout) return []
-
             return result.stdout.trim().split('\n').filter(Boolean).map(line => {
                 const [hash, shortHash, message, author, email, dateStr, parents] = line.split('\0')
-                return {
-                    hash,
-                    shortHash,
-                    message,
-                    author,
-                    email,
-                    date: new Date(dateStr),
-                    parents: parents ? parents.split(' ').filter(Boolean) : [],
-                }
+                return { hash, shortHash, message, author, email, date: new Date(dateStr), parents: parents ? parents.split(' ').filter(Boolean) : [] }
             })
-        } catch {
-            return []
-        }
+        } catch { return [] }
     }
 
-    async getCommitDetails(hash: string, rootPath?: string): Promise<{
-        commit: GitCommit
-        files: { path: string; status: string; additions: number; deletions: number }[]
-    } | null> {
+    async getCommitDetails(hash: string, rootPath?: string): Promise<{ commit: GitCommit; files: { path: string; status: string; additions: number; deletions: number }[] } | null> {
         try {
-            // 获取 commit 信息
-            const infoResult = await this.exec([
-                'show', hash, '--format=%H%x00%h%x00%s%x00%an%x00%ae%x00%aI%x00%P', '--stat', '--stat-width=1000'
-            ], rootPath)
-
+            const infoResult = await this.exec(['show', hash, '--format=%H%x00%h%x00%s%x00%an%x00%ae%x00%aI%x00%P', '--stat', '--stat-width=1000'], rootPath)
             if (infoResult.exitCode !== 0) return null
-
             const lines = infoResult.stdout.trim().split('\n')
             const [hash_, shortHash, message, author, email, dateStr, parents] = lines[0].split('\0')
-
-            const commit: GitCommit = {
-                hash: hash_,
-                shortHash,
-                message,
-                author,
-                email,
-                date: new Date(dateStr),
-                parents: parents ? parents.split(' ').filter(Boolean) : [],
-            }
-
-            // 解析文件变更
+            const commit: GitCommit = { hash: hash_, shortHash, message, author, email, date: new Date(dateStr), parents: parents ? parents.split(' ').filter(Boolean) : [] }
             const files: { path: string; status: string; additions: number; deletions: number }[] = []
             const numstatResult = await this.exec(['show', hash, '--numstat', '--format='], rootPath)
-
             if (numstatResult.exitCode === 0 && numstatResult.stdout) {
-                const statLines = numstatResult.stdout.trim().split('\n').filter(Boolean)
-                for (const line of statLines) {
+                for (const line of numstatResult.stdout.trim().split('\n').filter(Boolean)) {
                     const match = line.match(/^(\d+|-)\s+(\d+|-)\s+(.+)$/)
-                    if (match) {
-                        files.push({
-                            path: match[3],
-                            status: 'modified',
-                            additions: match[1] === '-' ? 0 : parseInt(match[1]),
-                            deletions: match[2] === '-' ? 0 : parseInt(match[2]),
-                        })
-                    }
+                    if (match) files.push({ path: match[3], status: 'modified', additions: match[1] === '-' ? 0 : parseInt(match[1]), deletions: match[2] === '-' ? 0 : parseInt(match[2]) })
                 }
             }
-
             return { commit, files }
-        } catch {
-            return null
-        }
+        } catch { return null }
     }
 
     async getFileHistory(filePath: string, count: number = 20, rootPath?: string): Promise<GitCommit[]> {
         try {
-            const result = await this.exec([
-                'log',
-                `-${count}`,
-                '--pretty=format:%H%x00%h%x00%s%x00%an%x00%ae%x00%aI',
-                '--follow',
-                '--',
-                filePath
-            ], rootPath)
-
+            const result = await this.exec(['log', `-${count}`, '--pretty=format:%H%x00%h%x00%s%x00%an%x00%ae%x00%aI', '--follow', '--', filePath], rootPath)
             if (result.exitCode !== 0 || !result.stdout) return []
-
             return result.stdout.trim().split('\n').filter(Boolean).map(line => {
                 const [hash, shortHash, message, author, email, dateStr] = line.split('\0')
-                return {
-                    hash,
-                    shortHash,
-                    message,
-                    author,
-                    email,
-                    date: new Date(dateStr),
-                }
+                return { hash, shortHash, message, author, email, date: new Date(dateStr) }
             })
-        } catch {
-            return []
-        }
+        } catch { return [] }
     }
 
     async getBranchCommits(branch: string, count: number = 50, rootPath?: string): Promise<GitCommit[]> {
         try {
-            const result = await this.exec([
-                'log', branch,
-                `-${count}`,
-                '--pretty=format:%H%x00%h%x00%s%x00%an%x00%ae%x00%aI'
-            ], rootPath)
-
+            const result = await this.exec(['log', branch, `-${count}`, '--pretty=format:%H%x00%h%x00%s%x00%an%x00%ae%x00%aI'], rootPath)
             if (result.exitCode !== 0 || !result.stdout) return []
-
             return result.stdout.trim().split('\n').filter(Boolean).map(line => {
                 const [hash, shortHash, message, author, email, dateStr] = line.split('\0')
-                return {
-                    hash,
-                    shortHash,
-                    message,
-                    author,
-                    email,
-                    date: new Date(dateStr),
-                }
+                return { hash, shortHash, message, author, email, date: new Date(dateStr) }
             })
-        } catch {
-            return []
-        }
+        } catch { return [] }
     }
-
-    // ==================== Reset 操作 ====================
 
     async resetSoft(commitHash: string, rootPath?: string): Promise<{ success: boolean; error?: string }> {
         try {
             const result = await this.exec(['reset', '--soft', commitHash], rootPath)
-            return {
-                success: result.exitCode === 0,
-                error: result.exitCode !== 0 ? result.stderr : undefined,
-            }
-        } catch (err) {
-            return { success: false, error: handleGitError(err) }
-        }
+            return { success: result.exitCode === 0, error: result.exitCode !== 0 ? result.stderr : undefined }
+        } catch (err) { return { success: false, error: handleGitError(err) } }
     }
 
     async resetMixed(commitHash: string, rootPath?: string): Promise<{ success: boolean; error?: string }> {
         try {
             const result = await this.exec(['reset', '--mixed', commitHash], rootPath)
-            return {
-                success: result.exitCode === 0,
-                error: result.exitCode !== 0 ? result.stderr : undefined,
-            }
-        } catch (err) {
-            return { success: false, error: handleGitError(err) }
-        }
+            return { success: result.exitCode === 0, error: result.exitCode !== 0 ? result.stderr : undefined }
+        } catch (err) { return { success: false, error: handleGitError(err) } }
     }
 
     async resetHard(commitHash: string, rootPath?: string): Promise<{ success: boolean; error?: string }> {
         try {
             const result = await this.exec(['reset', '--hard', commitHash], rootPath)
-            return {
-                success: result.exitCode === 0,
-                error: result.exitCode !== 0 ? result.stderr : undefined,
-            }
-        } catch (err) {
-            return { success: false, error: handleGitError(err) }
-        }
+            return { success: result.exitCode === 0, error: result.exitCode !== 0 ? result.stderr : undefined }
+        } catch (err) { return { success: false, error: handleGitError(err) } }
     }
 
     async revertCommit(commitHash: string, rootPath?: string): Promise<{ success: boolean; error?: string }> {
         try {
             const result = await this.exec(['revert', '--no-commit', commitHash], rootPath)
-            return {
-                success: result.exitCode === 0,
-                error: result.exitCode !== 0 ? result.stderr : undefined,
-            }
-        } catch (err) {
-            return { success: false, error: handleGitError(err) }
-        }
+            return { success: result.exitCode === 0, error: result.exitCode !== 0 ? result.stderr : undefined }
+        } catch (err) { return { success: false, error: handleGitError(err) } }
     }
-
-    // ==================== 标签操作 ====================
 
     async getTags(rootPath?: string): Promise<{ name: string; hash: string; message?: string }[]> {
         try {
             const result = await this.exec(['tag', '-l', '--format=%(refname:short)%00%(objectname:short)%00%(contents:subject)'], rootPath)
             if (result.exitCode !== 0 || !result.stdout) return []
-
             return result.stdout.trim().split('\n').filter(Boolean).map(line => {
                 const [name, hash, message] = line.split('\0')
                 return { name, hash, message }
             })
-        } catch {
-            return []
-        }
+        } catch { return [] }
     }
 
     async createTag(name: string, message?: string, commitHash?: string, rootPath?: string): Promise<{ success: boolean; error?: string }> {
         try {
-            const args = message
-                ? ['tag', '-a', name, '-m', message]
-                : ['tag', name]
+            const args = message ? ['tag', '-a', name, '-m', message] : ['tag', name]
             if (commitHash) args.push(commitHash)
-
             const result = await this.exec(args, rootPath)
-            return {
-                success: result.exitCode === 0,
-                error: result.exitCode !== 0 ? result.stderr : undefined,
-            }
-        } catch (err) {
-            return { success: false, error: handleGitError(err) }
-        }
+            return { success: result.exitCode === 0, error: result.exitCode !== 0 ? result.stderr : undefined }
+        } catch (err) { return { success: false, error: handleGitError(err) } }
     }
 
     async deleteTag(name: string, rootPath?: string): Promise<{ success: boolean; error?: string }> {
         try {
             const result = await this.exec(['tag', '-d', name], rootPath)
-            return {
-                success: result.exitCode === 0,
-                error: result.exitCode !== 0 ? result.stderr : undefined,
-            }
-        } catch (err) {
-            return { success: false, error: handleGitError(err) }
-        }
+            return { success: result.exitCode === 0, error: result.exitCode !== 0 ? result.stderr : undefined }
+        } catch (err) { return { success: false, error: handleGitError(err) } }
     }
-
-    // ==================== 工具方法 ====================
 
     async getGitConfig(key: string, rootPath?: string): Promise<string | null> {
         try {
             const result = await this.exec(['config', '--get', key], rootPath)
             return result.exitCode === 0 ? result.stdout.trim() : null
-        } catch {
-            return null
-        }
+        } catch { return null }
     }
 
     async setGitConfig(key: string, value: string, global?: boolean, rootPath?: string): Promise<boolean> {
         try {
-            const args = global
-                ? ['config', '--global', key, value]
-                : ['config', key, value]
+            const args = global ? ['config', '--global', key, value] : ['config', key, value]
             const result = await this.exec(args, rootPath)
             return result.exitCode === 0
-        } catch {
-            return false
-        }
+        } catch { return false }
     }
 
-    /**
-     * 检查是否处于 rebase/merge/cherry-pick 状态
-     */
     async getOperationState(rootPath?: string): Promise<'normal' | 'merge' | 'rebase' | 'cherry-pick' | 'revert'> {
         const targetPath = rootPath || this.primaryWorkspacePath
         if (!targetPath) return 'normal'
-
         return this.detectOperationState(targetPath ?? undefined)
     }
 
-    /**
-     * 获取 blame 信息
-     */
     async getBlame(filePath: string, rootPath?: string): Promise<{ line: number; hash: string; author: string; date: Date; content: string }[]> {
         try {
             const result = await this.exec(['blame', '--line-porcelain', filePath], rootPath)
             if (result.exitCode !== 0) return []
-
             const lines: { line: number; hash: string; author: string; date: Date; content: string }[] = []
             const chunks = result.stdout.split(/^([a-f0-9]{40})/m).filter(Boolean)
-
             let lineNum = 0
             for (let i = 0; i < chunks.length; i += 2) {
                 const hash = chunks[i]
                 const info = chunks[i + 1] || ''
-
                 const authorMatch = info.match(/^author (.+)$/m)
                 const timeMatch = info.match(/^author-time (\d+)$/m)
                 const contentMatch = info.match(/^\t(.*)$/m)
-
                 if (authorMatch && timeMatch) {
                     lineNum++
-                    lines.push({
-                        line: lineNum,
-                        hash: hash.slice(0, 8),
-                        author: authorMatch[1],
-                        date: new Date(parseInt(timeMatch[1]) * 1000),
-                        content: contentMatch?.[1] || '',
-                    })
+                    lines.push({ line: lineNum, hash: hash.slice(0, 8), author: authorMatch[1], date: new Date(parseInt(timeMatch[1]) * 1000), content: contentMatch?.[1] || '' })
                 }
             }
-
             return lines
-        } catch {
-            return []
-        }
+        } catch { return [] }
+    }
+
+    validateBranchName(name: string): { valid: boolean; suggestion?: string } {
+        const config = getScenarioCommitConfig()
+        if (!config.branchConvention) return { valid: true }
+        if (config.branchConvention.test(name)) return { valid: true }
+        return { valid: false, suggestion: `Branch name should match: ${config.branchConvention.source}` }
     }
 }
 
-export const gitService = new GitService()
+export const gitService = new ScenarioVersionControl()
+export { ScenarioVersionControl }

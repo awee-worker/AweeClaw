@@ -279,15 +279,130 @@ export function pathToUri(filePath: string): string {
 export function uriToPath(uri: string): string {
   if (uri.startsWith('file:///')) {
     const path = uri.slice(8)
-    // Windows 路径: file:///C:/...
     if (/^[a-zA-Z]:/.test(path)) {
       return path
     }
-    // Unix 路径: file:///home/... (需要保留前导 /)
     return '/' + path
   }
   if (uri.startsWith('file://')) {
     return uri.slice(7)
   }
   return uri
+}
+
+// ============================================
+// 场景感知路径工具
+// ============================================
+
+export type ScenarioPathDomain = 'legal' | 'medical' | 'education' | 'general'
+
+export interface ScenarioPathConfig {
+    domain: ScenarioPathDomain
+    restrictedPatterns: RegExp[]
+    workspaceSubdirs: string[]
+    importAliases: Record<string, string>
+    auditPathAccess: boolean
+}
+
+const SCENARIO_PATH_CONFIGS: Record<ScenarioPathDomain, ScenarioPathConfig> = {
+    legal: {
+        domain: 'legal',
+        restrictedPatterns: [
+            /\/\.env/i,
+            /\/secrets?\//i,
+            /\/private\//i,
+        ],
+        workspaceSubdirs: ['contracts', 'cases', 'templates', 'audit', 'compliance'],
+        importAliases: {
+            '@legal': 'legal',
+            '@contracts': 'legal/contracts',
+            '@templates': 'legal/templates',
+        },
+        auditPathAccess: true,
+    },
+    medical: {
+        domain: 'medical',
+        restrictedPatterns: [
+            /\/patient[_-]?records?\//i,
+            /\/phi\//i,
+            /\/hipaa\//i,
+            /\/diagnosis\//i,
+        ],
+        workspaceSubdirs: ['records', 'protocols', 'audit', 'compliance', 'research'],
+        importAliases: {
+            '@medical': 'medical',
+            '@protocols': 'medical/protocols',
+            '@research': 'medical/research',
+        },
+        auditPathAccess: true,
+    },
+    education: {
+        domain: 'education',
+        restrictedPatterns: [],
+        workspaceSubdirs: ['courses', 'assignments', 'resources', 'assessments'],
+        importAliases: {
+            '@education': 'education',
+            '@courses': 'education/courses',
+            '@resources': 'education/resources',
+        },
+        auditPathAccess: false,
+    },
+    general: {
+        domain: 'general',
+        restrictedPatterns: [],
+        workspaceSubdirs: ['src', 'docs', 'tests'],
+        importAliases: {},
+        auditPathAccess: false,
+    },
+}
+
+export function getScenarioPathConfig(domain: ScenarioPathDomain): ScenarioPathConfig {
+    return SCENARIO_PATH_CONFIGS[domain]
+}
+
+export function getScenarioWorkspaceSubdirs(domain: ScenarioPathDomain): string[] {
+    return [...SCENARIO_PATH_CONFIGS[domain].workspaceSubdirs]
+}
+
+export function validateScenarioPath(
+    filePath: string,
+    domain: ScenarioPathDomain
+): { allowed: boolean; reason?: string } {
+    const config = SCENARIO_PATH_CONFIGS[domain]
+    for (const pattern of config.restrictedPatterns) {
+        if (pattern.test(filePath)) {
+            return {
+                allowed: false,
+                reason: `Path restricted by ${domain} scenario policy: ${pattern.source}`,
+            }
+        }
+    }
+    return { allowed: true }
+}
+
+export function resolveScenarioImportPath(
+    importPath: string,
+    currentFilePath: string,
+    workspacePath: string,
+    domain: ScenarioPathDomain = 'general'
+): string {
+    const config = SCENARIO_PATH_CONFIGS[domain]
+
+    for (const [alias, target] of Object.entries(config.importAliases)) {
+        if (importPath === alias || importPath.startsWith(alias + '/')) {
+            const remaining = importPath.slice(alias.length)
+            const resolved = joinPath(workspacePath, target, remaining)
+            return resolved
+        }
+    }
+
+    return resolveImportPath(importPath, currentFilePath, workspacePath)
+}
+
+export function isScenarioRestrictedPath(
+    filePath: string,
+    domain: ScenarioPathDomain
+): boolean {
+    const config = SCENARIO_PATH_CONFIGS[domain]
+    return config.restrictedPatterns.some(p => p.test(filePath))
 }

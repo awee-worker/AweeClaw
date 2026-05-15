@@ -519,7 +519,7 @@ export function SearchView() {
                         if (!isAbsolute && workspacePath) {
                           absPath = joinPath(workspacePath, absPath)
                         }
-                        // 先切换到资源管理器面板
+                        // 先切换到工作区面板
                         setActiveSidePanel('explorer')
                         // 延迟一帧等面板渲染，再触发定位
                         requestAnimationFrame(() => {

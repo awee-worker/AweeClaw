@@ -227,3 +227,38 @@ export const SettingsSkeleton = memo(() => (
   </div>
 ))
 SettingsSkeleton.displayName = 'SettingsSkeleton'
+
+export const InlineSettingsSkeleton = memo(() => (
+  <div className="flex h-full w-full">
+    <div className="w-64 bg-surface/30 backdrop-blur-xl border-r border-border/50 flex flex-col pt-8 pb-6">
+      <div className="px-6 mb-6">
+        <div className="h-7 w-20 bg-surface-active/50 rounded animate-pulse" />
+      </div>
+      <nav className="flex-1 px-4 space-y-1">
+        {Array.from({ length: 11 }, (_, i) => (
+          <div key={i} className={`flex items-center gap-3 px-3 py-2 rounded-lg animate-pulse ${i === 0 ? 'bg-accent/10' : ''}`}>
+            <div className="w-4 h-4 bg-surface-active/50 rounded flex-shrink-0" />
+            <div className="h-3 bg-surface-active/50 rounded" style={{ width: `${60 + (i % 3) * 15}%` }} />
+          </div>
+        ))}
+      </nav>
+    </div>
+    <div className="flex-1 flex flex-col min-w-0 bg-transparent relative">
+      <div className="flex-1 overflow-y-auto px-10 py-10">
+        <div className="mb-8 pb-6 border-b border-border/40">
+          <div className="h-9 w-40 bg-surface-active/50 rounded animate-pulse mb-2" />
+          <div className="h-4 w-80 bg-surface-active/30 rounded animate-pulse" />
+        </div>
+        <div className="space-y-8">
+          {Array.from({ length: 4 }, (_, i) => (
+            <div key={i} className="space-y-2 animate-pulse">
+              <div className="h-4 w-32 bg-surface-active/50 rounded" />
+              <div className="h-10 bg-surface-active/30 rounded-lg" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  </div>
+))
+InlineSettingsSkeleton.displayName = 'InlineSettingsSkeleton'

@@ -5,6 +5,7 @@
  */
 
 import { sanitizePersistedLLMConfig } from '@configuration/modelPersistence'
+import type { ScenarioDomain } from './defaultProfile'
 
 // ============================================
 // EditorConfig 清理
@@ -358,4 +359,129 @@ export function cleanConfigValue(key: string, value: unknown): unknown {
     default:
       return value
   }
+}
+
+// ============================================
+// 场景感知配置清洗
+// ============================================
+
+export interface ScenarioConfigConstraints {
+    domain: ScenarioDomain
+    maxTemperature: number
+    minTemperature: number
+    maxTopP: number
+    forcePermissionConfirm: boolean
+    forceStrictWorkspace: boolean
+    forbidDangerousAutoApprove: boolean
+    forbidTerminalAutoApprove: boolean
+    maxToolLoops: number
+}
+
+const SCENARIO_CONSTRAINTS: Record<ScenarioDomain, ScenarioConfigConstraints> = {
+    legal: {
+        domain: 'legal',
+        maxTemperature: 0.5,
+        minTemperature: 0,
+        maxTopP: 0.95,
+        forcePermissionConfirm: true,
+        forceStrictWorkspace: true,
+        forbidDangerousAutoApprove: true,
+        forbidTerminalAutoApprove: true,
+        maxToolLoops: 30,
+    },
+    medical: {
+        domain: 'medical',
+        maxTemperature: 0.4,
+        minTemperature: 0,
+        maxTopP: 0.9,
+        forcePermissionConfirm: true,
+        forceStrictWorkspace: true,
+        forbidDangerousAutoApprove: true,
+        forbidTerminalAutoApprove: true,
+        maxToolLoops: 20,
+    },
+    education: {
+        domain: 'education',
+        maxTemperature: 1.0,
+        minTemperature: 0,
+        maxTopP: 1.0,
+        forcePermissionConfirm: false,
+        forceStrictWorkspace: false,
+        forbidDangerousAutoApprove: false,
+        forbidTerminalAutoApprove: false,
+        maxToolLoops: 50,
+    },
+    general: {
+        domain: 'general',
+        maxTemperature: 2.0,
+        minTemperature: 0,
+        maxTopP: 1.0,
+        forcePermissionConfirm: false,
+        forceStrictWorkspace: false,
+        forbidDangerousAutoApprove: false,
+        forbidTerminalAutoApprove: false,
+        maxToolLoops: 50,
+    },
+}
+
+export function sanitizeScenarioConfig(
+    config: Record<string, unknown>,
+    domain: ScenarioDomain
+): Record<string, unknown> {
+    const constraints = SCENARIO_CONSTRAINTS[domain]
+    const sanitized = { ...config }
+
+    if (sanitized.llmConfig && typeof sanitized.llmConfig === 'object') {
+        const llm = sanitized.llmConfig as Record<string, unknown>
+        if (typeof llm.temperature === 'number') {
+            llm.temperature = Math.min(
+                Math.max(llm.temperature, constraints.minTemperature),
+                constraints.maxTemperature
+            )
+        }
+        if (typeof llm.topP === 'number') {
+            llm.topP = Math.min(llm.topP, constraints.maxTopP)
+        }
+    }
+
+    if (sanitized.autoApprove && typeof sanitized.autoApprove === 'object') {
+        const aa = sanitized.autoApprove as Record<string, unknown>
+        if (constraints.forbidTerminalAutoApprove) {
+            aa.terminal = false
+        }
+        if (constraints.forbidDangerousAutoApprove) {
+            aa.dangerous = false
+        }
+    }
+
+    if (sanitized.securitySettings && typeof sanitized.securitySettings === 'object') {
+        const ss = sanitized.securitySettings as Record<string, unknown>
+        if (constraints.forcePermissionConfirm) {
+            ss.enablePermissionConfirm = true
+        }
+        if (constraints.forceStrictWorkspace) {
+            ss.strictWorkspaceMode = true
+        }
+    }
+
+    if (sanitized.agentConfig && typeof sanitized.agentConfig === 'object') {
+        const ac = sanitized.agentConfig as Record<string, unknown>
+        if (typeof ac.maxToolLoops === 'number') {
+            ac.maxToolLoops = Math.min(ac.maxToolLoops, constraints.maxToolLoops)
+        }
+    }
+
+    return sanitized
+}
+
+export function getScenarioConstraints(domain: ScenarioDomain): ScenarioConfigConstraints {
+    return { ...SCENARIO_CONSTRAINTS[domain] }
+}
+
+export function sanitizeAppSettingsForScenario(
+    config: Record<string, unknown>,
+    domain: ScenarioDomain
+): AppSettingsSchema {
+    const scenarioSanitized = sanitizeScenarioConfig(config, domain)
+    return cleanAppSettings(scenarioSanitized)
 }

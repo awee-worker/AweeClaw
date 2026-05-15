@@ -4,7 +4,7 @@ import { t } from '@renderer/i18n'
 
 export function EditorWelcome() {
   const language = useStore((state) => state.language)
-  const setShowSettings = useStore((state) => state.setShowSettings)
+  const setShowSettingsPage = useStore((state) => state.setShowSettingsPage)
   const openQuickOpen = () => useStore.getState().setShowQuickOpen(true)
   const openCommandPalette = () => useStore.getState().setShowCommandPalette(true)
 
@@ -12,7 +12,7 @@ export function EditorWelcome() {
     { icon: <Search className="w-4 h-4" />, label: t('editorWelcome.searchTitle', language), action: openQuickOpen, keys: ['Ctrl', 'P'] },
     { icon: <TerminalSquare className="w-4 h-4" />, label: t('editorWelcome.commandsTitle', language), action: openCommandPalette, keys: ['Ctrl', 'Shift', 'P'] },
     { icon: <FolderOpen className="w-4 h-4" />, label: t('editorWelcome.openRecentFile', language), action: openQuickOpen, keys: null },
-    { icon: <Settings className="w-4 h-4" />, label: t('settings', language), action: () => setShowSettings(true), keys: ['Ctrl', ','] },
+    { icon: <Settings className="w-4 h-4" />, label: t('settings', language), action: () => setShowSettingsPage(true), keys: ['Ctrl', ','] },
   ]
 
   return (

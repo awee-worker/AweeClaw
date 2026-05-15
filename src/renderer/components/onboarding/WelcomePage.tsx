@@ -117,7 +117,7 @@ function ParticleField() {
 export default function WelcomePage() {
   const [recentWorkspaces, setRecentWorkspaces] = useState<RecentWorkspace[]>([])
   const [hoveredScenario, setHoveredScenario] = useState<string | null>(null)
-  const setShowSettings = useStore(s => s.setShowSettings)
+  const setShowSettingsPage = useStore(s => s.setShowSettingsPage)
   const language = useStore(s => s.language)
   const setSetting = useStore(s => s.set)
 
@@ -257,7 +257,7 @@ export default function WelcomePage() {
                   <Plus className="w-3 h-3" />
                   <span>{t('welcome.newWindow', language)}</span>
                 </button>
-                <button className={`${p}-welcome-footer-btn`} onClick={() => setShowSettings(true)}>
+                <button className={`${p}-welcome-footer-btn`} onClick={() => setShowSettingsPage(true)}>
                   <Settings className="w-3 h-3" />
                   <span>{t('settings', language)}</span>
                 </button>

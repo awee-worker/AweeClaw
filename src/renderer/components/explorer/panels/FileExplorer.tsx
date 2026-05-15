@@ -1,5 +1,5 @@
 /**
- * 文件资源管理器视图
+ * 工作区视图
  */
 
 import { api } from '../../../adapters/electronBridge'
@@ -381,7 +381,7 @@ export function ExplorerView() {
     { id: 'refresh', label: t('refresh', 'zh'), icon: RefreshCw, onClick: () => refreshFiles({ refreshRoot: true }) },
     {
       id: 'reveal',
-      label: '在资源管理器中显示',
+      label: '在工作区中显示',
       icon: ExternalLink,
       onClick: () => workspacePath && api.file.showInFolder(workspacePath),
     },
