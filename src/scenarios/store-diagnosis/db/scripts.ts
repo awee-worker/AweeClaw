@@ -1,4 +1,4 @@
-import type { ScenarioDbScript } from '@shared/types/scenario-arch'
+import type { ScenarioDbScript } from '@shared/protocols/scenario-arch'
 
 export const INSTALL_SCRIPTS: ScenarioDbScript[] = [
   {

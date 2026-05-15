@@ -2,7 +2,7 @@
  * 测试 fast-edit 精华功能：智能警告系统
  */
 import { describe, it, expect } from 'vitest'
-import { checkLineReplaceWarnings } from '../../src/renderer/utils/smartReplace'
+import { checkLineReplaceWarnings } from '@utils/smartReplace'
 
 describe('Fast-Edit 智能警告系统', () => {
   describe('重复行检测', () => {

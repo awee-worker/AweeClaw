@@ -4,7 +4,7 @@
  * @deprecated 请使用 core/ScenarioLoader 中的增强版 scenarioLoader
  *
  * 此文件保留旧版加载器实现，用于向后兼容。
- * 新代码应从 './core' 导入 scenarioLoader。
+ * 新代码应从 './engine' 导入 scenarioLoader。
  *
  * 增强版新增能力：
  * - 场景清单 (Manifest) 管理
@@ -16,10 +16,10 @@
  * - 状态机驱动的生命周期管理
  */
 
-import type { ScenarioPlugin } from '@shared/types/scenario'
-import type { ScenarioModule, ScenarioToolDefinition, ScenarioModuleContext } from './types'
-import { toolRegistry } from '@/renderer/agent/tools/registry'
-import { logger } from '@utils/Logger'
+import type { ScenarioPlugin } from '@shared/protocols/scenario'
+import type { ScenarioModule, ScenarioToolDefinition, ScenarioModuleContext } from './providerTypes'
+import { toolRegistry } from '@intelligence/toolkit/toolRegistry'
+import { logger } from '@toolkit/LogEngine'
 
 interface LoadedScenario {
   module: ScenarioModule

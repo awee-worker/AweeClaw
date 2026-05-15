@@ -10,7 +10,7 @@ export {
   getEditorConfig,
   saveEditorConfig,
   resetEditorConfig,
-} from './service'
+} from './preferencesService'
 
 // Schema 和类型（从 shared 重新导出）
 export {
@@ -29,7 +29,7 @@ export {
   defaultAutoApprove,
   defaultWebSearchConfig,
   defaultMcpConfig,
-} from '@shared/config/settings'
+} from '@shared/configuration/preferenceSync'
 
 // 类型重新导出
 export type {
@@ -37,11 +37,11 @@ export type {
   AgentConfig,
   AutoApproveSettings,
   EditorConfig,
-  SecuritySettings,
+  SecurityPolicyPanel,
   WebSearchConfig,
   McpConfig,
   ProviderConfig,
-} from '@shared/config/types'
+} from '@shared/configuration/providerTypes'
 
 // 配置导出/导入工具
-export { exportSettings, importSettings, downloadSettings } from './exportImport'
+export { exportSettings, importSettings, downloadSettings } from './configMigration'

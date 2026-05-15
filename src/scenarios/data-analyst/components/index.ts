@@ -1,4 +1,4 @@
-import type { ScenarioComponentRegistry } from '@shared/types/scenario-arch'
+import type { ScenarioComponentRegistry } from '@shared/protocols/scenario-arch'
 import { DataSourceView } from './DataSourceView'
 import { ChartsView } from './ChartsView'
 

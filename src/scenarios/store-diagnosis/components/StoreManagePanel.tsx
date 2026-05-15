@@ -1,9 +1,9 @@
 import { useState, useCallback, useEffect } from 'react'
 import { Building2, Plus, RefreshCw, ChevronDown, Trash2, Pencil, MapPin, Clock, Users, Ruler, DollarSign, Stethoscope, Tag, Store } from 'lucide-react'
 import { useStore } from '@store'
-import { Button, Modal } from '@/renderer/components/ui'
-import { Agent } from '@/renderer/agent/core'
-import { getAgentConfig } from '@/renderer/agent/utils/AgentConfig'
+import { ActionButton, OverlayDialog } from '@/renderer/components/ui'
+import { Agent } from '@intelligence/engine'
+import { getAgentConfig } from '@intelligence/utils/intelligenceConfig'
 
 interface StoreRecord {
   id: string
@@ -87,7 +87,7 @@ export function StoreManagePanel() {
   const [saving, setSaving] = useState(false)
 
   const getDb = useCallback(async () => {
-    const { scenarioDatabaseManager } = await import('@/scenario-system/core/ScenarioDatabaseManager')
+    const { scenarioDatabaseManager } = await import('@scenario-system/core/ScenarioDatabaseManager')
     return scenarioDatabaseManager
   }, [])
 
@@ -285,7 +285,7 @@ export function StoreManagePanel() {
       </div>
 
       <div className="flex gap-3 pt-2">
-        <Button
+        <ActionButton
           variant="ghost"
           size="sm"
           className="h-9 flex-1 text-sm"
@@ -295,8 +295,8 @@ export function StoreManagePanel() {
           }}
         >
           {language === 'zh' ? '取消' : 'Cancel'}
-        </Button>
-        <Button
+        </ActionButton>
+        <ActionButton
           variant="secondary"
           size="sm"
           className="h-9 flex-1 text-sm"
@@ -304,7 +304,7 @@ export function StoreManagePanel() {
           disabled={!form.name.trim() || saving}
         >
           {saving ? (language === 'zh' ? '保存中...' : 'Saving...') : submitLabel}
-        </Button>
+        </ActionButton>
       </div>
     </div>
   )
@@ -316,12 +316,12 @@ export function StoreManagePanel() {
           {language === 'zh' ? '门店管理' : 'STORES'}
         </span>
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={loadStores} title={language === 'zh' ? '刷新' : 'Refresh'}>
+          <ActionButton variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={loadStores} title={language === 'zh' ? '刷新' : 'Refresh'}>
             <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
-          </Button>
-          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setShowAddModal(true)} title={language === 'zh' ? '添加门店' : 'Add Store'}>
+          </ActionButton>
+          <ActionButton variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setShowAddModal(true)} title={language === 'zh' ? '添加门店' : 'Add Store'}>
             <Plus className="w-3 h-3" />
-          </Button>
+          </ActionButton>
         </div>
       </div>
 
@@ -473,30 +473,30 @@ export function StoreManagePanel() {
 
       {stores.length > 0 && (
         <div className="px-3 py-2 border-t border-border/30">
-          <Button variant="ghost" size="sm" className="h-7 w-full text-xs gap-1.5" onClick={() => setShowAddModal(true)}>
+          <ActionButton variant="ghost" size="sm" className="h-7 w-full text-xs gap-1.5" onClick={() => setShowAddModal(true)}>
             <Plus className="w-3 h-3" />
             {language === 'zh' ? '添加门店' : 'Add Store'}
-          </Button>
+          </ActionButton>
         </div>
       )}
 
-      <Modal
+      <OverlayDialog
         isOpen={showAddModal}
         onClose={() => { setShowAddModal(false); setAddForm({ ...EMPTY_FORM }) }}
         title={language === 'zh' ? '添加门店' : 'Add Store'}
         size="md"
       >
         {renderForm(addForm, setAddForm, handleAddStore, language === 'zh' ? '添加' : 'Add')}
-      </Modal>
+      </OverlayDialog>
 
-      <Modal
+      <OverlayDialog
         isOpen={!!editStore}
         onClose={() => { setEditStore(null); setEditForm({ ...EMPTY_FORM }) }}
         title={language === 'zh' ? '编辑门店' : 'Edit Store'}
         size="md"
       >
         {renderForm(editForm, setEditForm, handleEditStore, language === 'zh' ? '保存' : 'Save')}
-      </Modal>
+      </OverlayDialog>
     </div>
   )
 }

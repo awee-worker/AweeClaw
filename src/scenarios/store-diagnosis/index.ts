@@ -4,7 +4,7 @@ import type {
   ScenarioManifest,
   ScenarioHealthCheck,
   ScenarioDependency,
-} from '@shared/types/scenario-arch'
+} from '@shared/protocols/scenario-arch'
 import { storeDiagnosisScenario } from './config/scenario'
 import STORE_DIAGNOSIS_TOOLS from './tools/definitions'
 import { storeDiagnosisComponents } from './components'
@@ -102,7 +102,7 @@ const storeDiagnosisModule: ScenarioModule = {
     const checks: ScenarioHealthCheck[] = []
 
     try {
-      const { scenarioDatabaseManager } = await import('@/scenario-system/core/ScenarioDatabaseManager')
+      const { scenarioDatabaseManager } = await import('@scenario-system/core/ScenarioDatabaseManager')
       const storeCount = await scenarioDatabaseManager.executeSql(SCENARIO_ID, 'SELECT COUNT(*) as count FROM stores')
       const count = storeCount.rows?.[0]?.count as number || 0
       checks.push({

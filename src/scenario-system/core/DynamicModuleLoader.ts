@@ -9,13 +9,13 @@
  * 所有外部来源的场景都在沙箱中验证后才加载。
  */
 
-import { scenarioRegistry } from '@shared/config/scenarios'
+import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { scenarioLoader } from './ScenarioLoader'
 import { DeclarativeScenarioModule } from './DeclarativeScenarioModule'
 import { validateScenarioPackage } from '../cli'
 import { validateScript } from './SandboxEngine'
-import type { DeclarativeScenarioConfig } from '@shared/types/scenario-declarative'
-import { logger } from '@shared/utils/Logger'
+import type { DeclarativeScenarioConfig } from '@shared/protocols/scenario-declarative'
+import { logger } from '@shared/toolkit/LogEngine'
 
 export interface DynamicLoadSource {
   type: 'local' | 'url' | 'marketplace'

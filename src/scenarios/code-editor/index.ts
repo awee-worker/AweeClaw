@@ -14,7 +14,7 @@ import type {
   ScenarioManifest,
   ScenarioHealthCheck,
   ScenarioDependency,
-} from '@shared/types/scenario-arch'
+} from '@shared/protocols/scenario-arch'
 import { codeEditorScenario } from './config/scenario'
 
 const CODE_EDITOR_MANIFEST: ScenarioManifest = {

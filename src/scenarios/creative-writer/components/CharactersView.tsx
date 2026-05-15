@@ -1,9 +1,9 @@
 import { useState, useCallback } from 'react'
 import { Users, Plus, X, Check, ChevronRight, ChevronDown, User, Trash2 } from 'lucide-react'
 import { useStore } from '@store'
-import { Button } from '@/renderer/components/ui'
-import { Agent } from '@/renderer/agent/core'
-import { getAgentConfig } from '@/renderer/agent/utils/AgentConfig'
+import { ActionButton } from '@/renderer/components/ui'
+import { Agent } from '@intelligence/engine'
+import { getAgentConfig } from '@intelligence/utils/intelligenceConfig'
 
 interface Character {
     id: string
@@ -105,9 +105,9 @@ export function CharactersView() {
                 <span className="text-xs font-medium text-text-muted uppercase tracking-wider">
                     {language === 'zh' ? '角色' : 'CHARACTERS'}
                 </span>
-                <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setShowAddForm(true)} title={language === 'zh' ? '添加角色' : 'Add Character'}>
+                <ActionButton variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setShowAddForm(true)} title={language === 'zh' ? '添加角色' : 'Add Character'}>
                     <Plus className="w-3 h-3" />
-                </Button>
+                </ActionButton>
             </div>
 
             <div className="flex-1 overflow-y-auto">
@@ -149,7 +149,7 @@ export function CharactersView() {
                                     </div>
                                 )}
                                 <div className="flex gap-1">
-                                    <Button
+                                    <ActionButton
                                         variant="ghost"
                                         size="sm"
                                         className="h-6 flex-1 text-xs gap-1"
@@ -157,15 +157,15 @@ export function CharactersView() {
                                     >
                                         <Users className="w-3 h-3" />
                                         {language === 'zh' ? '发展角色' : 'Develop'}
-                                    </Button>
-                                    <Button
+                                    </ActionButton>
+                                    <ActionButton
                                         variant="ghost"
                                         size="sm"
                                         className="h-6 w-6 p-0 text-text-muted hover:text-red-400"
                                         onClick={() => handleDeleteCharacter(char.id)}
                                     >
                                         <Trash2 className="w-3 h-3" />
-                                    </Button>
+                                    </ActionButton>
                                 </div>
                             </div>
                         )}
@@ -220,7 +220,7 @@ export function CharactersView() {
                         className="w-full h-7 px-2 text-xs bg-background border border-border/50 rounded focus:outline-none focus:border-accent/50 text-text-primary placeholder:text-text-muted/85"
                     />
 
-                    <Button
+                    <ActionButton
                         variant="secondary"
                         size="sm"
                         className="h-7 w-full text-xs gap-1"
@@ -229,13 +229,13 @@ export function CharactersView() {
                     >
                         <Check className="w-3 h-3" />
                         {language === 'zh' ? '添加' : 'Add'}
-                    </Button>
+                    </ActionButton>
                 </div>
             )}
 
             {!showAddForm && (
                 <div className="px-3 py-2 border-t border-border/30">
-                    <Button
+                    <ActionButton
                         variant="ghost"
                         size="sm"
                         className="h-7 w-full text-xs gap-1.5"
@@ -243,7 +243,7 @@ export function CharactersView() {
                     >
                         <Plus className="w-3 h-3" />
                         {language === 'zh' ? '添加角色' : 'Add Character'}
-                    </Button>
+                    </ActionButton>
                 </div>
             )}
         </div>

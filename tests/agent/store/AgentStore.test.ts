@@ -4,8 +4,8 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useAgentStore } from '@renderer/agent/store/AgentStore'
-import type { HandoffDocument } from '@renderer/agent/domains/context/types'
+import { useAgentStore } from '@intelligence/state/AgentStore'
+import type { HandoffDocument } from '@intelligence/types'
 
 describe('AgentStore', () => {
   beforeEach(() => {

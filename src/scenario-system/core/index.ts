@@ -33,4 +33,4 @@ export {
 } from './DynamicModuleLoader'
 export type { DynamicLoadSource, DynamicLoadResult } from './DynamicModuleLoader'
 
-export type { ScenarioLoaderEvent } from '@shared/types/scenario-arch'
+export type { ScenarioLoaderEvent } from '@shared/protocols/scenario-arch'

@@ -14,7 +14,7 @@
 
 import { getQuickJS } from 'quickjs-emscripten'
 import type { QuickJSWASMModule, QuickJSContext, QuickJSHandle } from 'quickjs-emscripten'
-import { logger } from '@shared/utils/Logger'
+import { logger } from '@shared/toolkit/LogEngine'
 
 export interface SandboxOptions {
   timeoutMs?: number

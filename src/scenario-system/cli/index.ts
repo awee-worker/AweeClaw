@@ -10,7 +10,7 @@
  * - pack: 打包场景为可分发的 .scenario 文件
  */
 
-import type { DeclarativeScenarioConfig } from '@shared/types/scenario-declarative'
+import type { DeclarativeScenarioConfig } from '@shared/protocols/scenario-declarative'
 import { validateScenarioConfig, type ValidationResult } from '../sdk'
 
 export interface ScenarioPackageStructure {

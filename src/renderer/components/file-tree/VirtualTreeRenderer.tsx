@@ -1,0 +1,1131 @@
+/**
+ * 虚拟化文件树组件
+ * 只渲染可见区域的节点，提升大目录性能
+ */
+import { api } from '../../adapters/electronBridge'
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react'
+import {
+  ChevronRight,
+  FilePlus,
+  FolderPlus,
+  Edit2,
+  Trash2,
+  Copy,
+  Clipboard,
+  ExternalLink,
+  Loader2,
+  Globe,
+  Terminal,
+  Download,
+  Upload,
+  Share2
+} from 'lucide-react'
+import { useStore } from '@store'
+import { useShallow } from 'zustand/react/shallow'
+import type { FileItem } from '@protocols'
+import { BRAND } from '@shared/brand'
+import { t } from '@renderer/i18n'
+import { getDirPath, joinPath, pathEquals, normalizePath } from '@shared/toolkit/pathHelper'
+import { formatShortcut, keybindingService } from '@services/keybindingAdapter'
+import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
+import { toast } from '@components/foundation/NotificationProvider'
+import { TextField, FloatingMenu, ContextMenuItem } from '../ui'
+import { directoryCacheService } from '@services/dirCacheAdapter'
+import { explorerClipboardService, type ExplorerClipboardItem } from '@services/clipboardService'
+import { FileIcon } from '../foundation/FileTypeIcon'
+import { getFileType } from '../code-editor/FilePreviewPanel'
+import type { TreeRefreshOptions } from '../explorer/panels/FileExplorer'
+
+// 每个节点的高度（像素）
+const ITEM_HEIGHT = 30
+// 额外渲染的缓冲区节点数
+const BUFFER_SIZE = 5
+
+interface FlattenedNode {
+  item: FileItem
+  depth: number
+  isExpanded: boolean
+  hasChildren: boolean
+  kind?: 'item' | 'loading'
+}
+
+interface VirtualFileTreeProps {
+  items: FileItem[]
+  treeVersion: number
+  refreshSignal: { tick: number; affectedPaths: string[]; deletedPaths: string[] }
+  onRefresh: (options?: TreeRefreshOptions) => void | Promise<void>
+  creatingIn: { path: string; type: 'file' | 'folder' } | null
+  onStartCreate: (path: string, type: 'file' | 'folder') => void
+  onCancelCreate: () => void
+  onCreateSubmit: (parentPath: string, name: string, type: 'file' | 'folder') => void
+  onOpenTerminal: (cwd: string) => Promise<void>
+}
+
+export const VirtualFileTree = memo(function VirtualFileTree({
+  items,
+  treeVersion,
+  refreshSignal,
+  onRefresh,
+  creatingIn,
+  onStartCreate,
+  onCancelCreate,
+  onCreateSubmit,
+  onOpenTerminal
+}: VirtualFileTreeProps) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [scrollTop, setScrollTop] = useState(0)
+  const [containerHeight, setContainerHeight] = useState(0)
+
+  // 子目录缓存
+  const [childrenCache, setChildrenCache] = useState<Map<string, FileItem[]>>(new Map())
+  const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set())
+
+  const {
+    expandedFolders,
+    toggleFolder,
+    expandFolder,
+    openFile,
+    setActiveFile,
+    activeFilePath,
+    language,
+    workspacePath,
+    activeScenarioId
+  } = useStore(useShallow(s => ({
+    expandedFolders: s.expandedFolders,
+    toggleFolder: s.toggleFolder,
+    expandFolder: s.expandFolder,
+    openFile: s.openFile,
+    setActiveFile: s.setActiveFile,
+    activeFilePath: s.activeFilePath,
+    language: s.language,
+    workspacePath: s.workspacePath,
+    activeScenarioId: s.activeScenarioId
+  })))
+
+  // 焦点状态
+  const [focusedPath, setFocusedPath] = useState<string | null>(null)
+
+  // 定位高亮状态（闪烁动画）
+  const [highlightPath, setHighlightPath] = useState<string | null>(null)
+
+  // 右键菜单状态
+  const [contextMenu, setContextMenu] = useState<{
+    x: number
+    y: number
+    node: FlattenedNode
+  } | null>(null)
+  const [clipboardItem, setClipboardItem] = useState<ExplorerClipboardItem | null>(
+    () => explorerClipboardService.getState().entry
+  )
+
+  // 重命名状态
+  const [renamingPath, setRenamingPath] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const renameInputRef = useRef<HTMLInputElement>(null)
+  const [dragOverPath, setDragOverPath] = useState<string | null>(null)
+  const dragSourcePathRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    return explorerClipboardService.subscribe(state => {
+      setClipboardItem(state.entry)
+    })
+  }, [])
+
+  // 监听容器尺寸变化
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerHeight(entry.contentRect.height)
+      }
+    })
+
+    observer.observe(container)
+    setContainerHeight(container.clientHeight)
+
+    return () => observer.disconnect()
+  }, [])
+
+  const childrenCacheRef = useRef(childrenCache)
+  const loadingDirsRef = useRef(loadingDirs)
+  
+  useEffect(() => {
+    childrenCacheRef.current = childrenCache
+    loadingDirsRef.current = loadingDirs
+  }, [childrenCache, loadingDirs])
+
+  // 加载子目录
+  const loadChildren = useCallback(async (
+    path: string,
+    options?: { forceRefresh?: boolean; showLoading?: boolean }
+  ) => {
+    const forceRefresh = options?.forceRefresh === true
+    const hasCachedChildren = childrenCacheRef.current.has(path)
+    if ((!forceRefresh && hasCachedChildren) || loadingDirsRef.current.has(path)) return
+
+    const shouldShowLoading = options?.showLoading ?? !hasCachedChildren
+    if (shouldShowLoading) {
+      setLoadingDirs((prev) => new Set(prev).add(path))
+    }
+    try {
+      const children = await directoryCacheService.getDirectory(path, forceRefresh)
+      setChildrenCache((prev) => new Map(prev).set(path, children))
+
+      // 预加载下一层
+      const subDirs = children.filter((c) => c.isDirectory).slice(0, 3)
+      if (subDirs.length > 0) {
+        directoryCacheService.preload(subDirs.map((d) => d.path))
+      }
+    } finally {
+      if (shouldShowLoading) {
+        setLoadingDirs((prev) => {
+          const next = new Set(prev)
+          next.delete(path)
+          return next
+        })
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    setChildrenCache(new Map())
+    setLoadingDirs(new Set())
+    setFocusedPath(null)
+    setHighlightPath(null)
+  }, [treeVersion, workspacePath])
+
+  useEffect(() => {
+    if (!refreshSignal.tick) return
+
+    setChildrenCache((prev) => {
+      let changed = false
+      const next = new Map(prev)
+
+      refreshSignal.affectedPaths.forEach((path) => {
+        if (!expandedFolders.has(path)) {
+          if (next.has(path)) {
+            next.delete(path)
+            changed = true
+          }
+        }
+      })
+
+      refreshSignal.deletedPaths.forEach((deletedPath) => {
+        for (const key of next.keys()) {
+          if (pathEquals(key, deletedPath) || key.startsWith(`${deletedPath}/`) || key.startsWith(`${deletedPath}\\`)) {
+            next.delete(key)
+            changed = true
+          }
+        }
+      })
+
+      return changed ? next : prev
+    })
+
+    refreshSignal.affectedPaths.forEach((path) => {
+      if (expandedFolders.has(path)) {
+        void loadChildren(path, { forceRefresh: true, showLoading: false })
+      }
+    })
+  }, [refreshSignal, expandedFolders, loadChildren])
+
+  // 展开文件夹时加载子目录
+  useEffect(() => {
+    expandedFolders.forEach((path) => {
+      if (!childrenCacheRef.current.has(path)) {
+        loadChildren(path)
+      }
+    })
+  }, [expandedFolders, loadChildren])
+
+  // 滚动到指定文件的状态（使用文件路径作为触发器）
+  const [scrollToFile, setScrollToFile] = useState<string | null>(null)
+
+  // 加载目录并返回子项（直接返回，不依赖状态更新）
+  const loadDirectoryChildren = useCallback(async (dirPath: string): Promise<FileItem[]> => {
+    // 先检查缓存
+    const cached = childrenCacheRef.current.get(dirPath)
+    if (cached) return cached
+
+    try {
+      const children = await directoryCacheService.getDirectory(dirPath)
+      // 更新缓存状态
+      setChildrenCache((prev) => new Map(prev).set(dirPath, children))
+      return children
+    } catch {
+      return []
+    }
+  }, [])
+
+  // 展开文件所在的所有父目录
+  const revealFile = useCallback(async (filePath: string) => {
+    if (!workspacePath) return
+
+    const normalizedFilePath = normalizePath(filePath)
+    const normalizedWorkspace = normalizePath(workspacePath)
+
+    // 收集需要展开的目录路径（从工作区根目录开始，到文件的直接父目录）
+    const pathsToExpand: string[] = []
+    let currentPath = getDirPath(normalizedFilePath)
+
+    while (currentPath && currentPath.length > normalizedWorkspace.length) {
+      pathsToExpand.unshift(currentPath)
+      const parentPath = getDirPath(currentPath)
+      if (parentPath === currentPath) break
+      currentPath = parentPath
+    }
+
+    // 从根目录的 items 开始，逐级查找并展开
+    let currentItems: FileItem[] = items
+    const pathsToExpandActual: string[] = []
+
+    for (const normalizedPath of pathsToExpand) {
+      // 在当前层级的 items 中查找匹配的目录
+      const targetDir = currentItems.find(item =>
+        item.isDirectory && pathEquals(item.path, normalizedPath)
+      )
+
+      if (targetDir) {
+        pathsToExpandActual.push(targetDir.path)
+
+        // 展开该目录
+        const isExpanded = expandedFolders.has(targetDir.path)
+        if (!isExpanded) {
+          expandFolder(targetDir.path)
+        }
+
+        // 加载子目录内容（直接获取返回值，不等待状态更新）
+        currentItems = await loadDirectoryChildren(targetDir.path)
+      } else {
+        // 找不到匹配的目录，可能路径格式不一致，尝试直接使用 normalized 路径
+        pathsToExpandActual.push(normalizedPath)
+        expandFolder(normalizedPath)
+        currentItems = await loadDirectoryChildren(normalizedPath)
+      }
+    }
+
+    setFocusedPath(filePath)
+    setScrollToFile(filePath)
+  }, [workspacePath, items, expandedFolders, expandFolder, loadDirectoryChildren])
+
+  // 监听 "Reveal in Explorer" 事件
+  useEffect(() => {
+    const handleReveal = () => {
+      if (activeFilePath && workspacePath) {
+        revealFile(activeFilePath)
+      }
+    }
+    // 支持定位任意文件（通过 detail.filePath 传入）
+    const handleRevealFile = (e: Event) => {
+      const customEvent = e as CustomEvent<{ filePath: string }>
+      if (customEvent.detail?.filePath && workspacePath) {
+        revealFile(customEvent.detail.filePath)
+      }
+    }
+    window.addEventListener('explorer:reveal-active-file', handleReveal)
+    window.addEventListener('explorer:reveal-file', handleRevealFile)
+    return () => {
+      window.removeEventListener('explorer:reveal-active-file', handleReveal)
+      window.removeEventListener('explorer:reveal-file', handleRevealFile)
+    }
+  }, [activeFilePath, workspacePath, revealFile])
+
+  // 扁平化树结构（只包含可见节点）
+  const flattenedNodes = useMemo(() => {
+    const result: FlattenedNode[] = []
+
+    const sortItems = (items: FileItem[]) => {
+      return [...items].sort((a, b) => {
+        if (a.isDirectory === b.isDirectory) return a.name.localeCompare(b.name)
+        return a.isDirectory ? -1 : 1
+      })
+    }
+
+    const traverse = (items: FileItem[], depth: number) => {
+      for (const item of sortItems(items)) {
+        const isExpanded = expandedFolders.has(item.path)
+        const children = childrenCache.get(item.path)
+        const hasChildren = item.isDirectory
+
+        result.push({ item, depth, isExpanded, hasChildren })
+
+        // 如果是正在创建的目录，添加创建输入框占位
+        if (creatingIn?.path === item.path && isExpanded) {
+          result.push({
+            item: { name: '__creating__', path: `${item.path}/__creating__`, isDirectory: false },
+            depth: depth + 1,
+            isExpanded: false,
+            hasChildren: false
+          })
+        }
+
+        if (item.isDirectory && isExpanded && children) {
+          traverse(children, depth + 1)
+        } else if (item.isDirectory && isExpanded && loadingDirs.has(item.path)) {
+          for (let i = 0; i < 4; i++) {
+            result.push({
+              item: {
+                name: `__loading__${i}`,
+                path: `${item.path}/__loading__${i}`,
+                isDirectory: false
+              },
+              depth: depth + 1,
+              isExpanded: false,
+              hasChildren: false,
+              kind: 'loading'
+            })
+          }
+        }
+      }
+    }
+
+    // 根目录创建输入框
+    if (creatingIn?.path === workspacePath) {
+      result.push({
+        item: { name: '__creating__', path: `${workspacePath}/__creating__`, isDirectory: false },
+        depth: 0,
+        isExpanded: false,
+        hasChildren: false
+      })
+    }
+
+    traverse(items, 0)
+    return result
+  }, [items, expandedFolders, childrenCache, creatingIn, workspacePath])
+
+  // 处理滚动到目标文件（必须在 flattenedNodes 定义之后）
+  useEffect(() => {
+    if (!scrollToFile) return
+
+    const index = flattenedNodes.findIndex(node => pathEquals(node.item.path, scrollToFile))
+
+    if (index !== -1 && containerRef.current) {
+      const top = index * ITEM_HEIGHT
+      containerRef.current.scrollTo({
+        top: Math.max(0, top - containerHeight / 2),
+        behavior: 'smooth'
+      })
+
+      // 触发闪烁高亮动画
+      setHighlightPath(scrollToFile)
+      setTimeout(() => setHighlightPath(null), 2000)
+    }
+
+    setScrollToFile(null)
+  }, [scrollToFile, flattenedNodes, containerHeight])
+
+  // 计算可见范围
+  const visibleRange = useMemo(() => {
+    const startIndex = Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - BUFFER_SIZE)
+    const endIndex = Math.min(
+      flattenedNodes.length,
+      Math.ceil((scrollTop + containerHeight) / ITEM_HEIGHT) + BUFFER_SIZE
+    )
+    return { startIndex, endIndex }
+  }, [scrollTop, containerHeight, flattenedNodes.length])
+
+  // 可见节点
+  const visibleNodes = useMemo(() => {
+    return flattenedNodes.slice(visibleRange.startIndex, visibleRange.endIndex)
+  }, [flattenedNodes, visibleRange])
+
+  // 总高度
+  const totalHeight = flattenedNodes.length * ITEM_HEIGHT
+
+  // 滚动处理
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    setScrollTop(e.currentTarget.scrollTop)
+  }, [])
+
+  // 点击节点
+  const handleNodeClick = useCallback(async (node: FlattenedNode) => {
+    setFocusedPath(node.item.path)
+
+    if (renamingPath === node.item.path) return
+
+    if (node.item.isDirectory) {
+      toggleFolder(node.item.path)
+      if (!expandedFolders.has(node.item.path)) {
+        loadChildren(node.item.path)
+      }
+    } else {
+      // 检查文件类型
+      const fileType = getFileType(node.item.path)
+
+      if (fileType === 'image' || fileType === 'binary') {
+        // 图片和二进制文件不需要读取内容，直接打开
+        openFile(node.item.path, '')
+        setActiveFile(node.item.path)
+      } else {
+        const content = await api.file.read(node.item.path)
+        if (content !== null) {
+          openFile(node.item.path, content)
+          setActiveFile(node.item.path)
+        } else {
+          // 文件读取失败，可能是二进制文件或权限问题
+          toast.warning(t('error.fileNotFound', language, { path: node.item.name }))
+        }
+      }
+    }
+  }, [renamingPath, toggleFolder, expandedFolders, loadChildren, openFile, setActiveFile, language])
+
+  // 右键菜单
+  const handleContextMenu = useCallback((e: React.MouseEvent, node: FlattenedNode) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (node.item.name === '__creating__') return
+    setFocusedPath(node.item.path)
+    setContextMenu({ x: e.clientX, y: e.clientY, node })
+  }, [])
+
+  // 菜单操作
+  const handleDelete = useCallback(async (node: FlattenedNode) => {
+    const confirmed = await globalConfirm({
+      title: '删除',
+      message: t('confirmDelete', 'zh', { name: node.item.name }) || `确定要删除 ${node.item.name} 吗？`,
+      confirmText: '确定',
+      cancelText: '取消',
+      variant: 'danger',
+    })
+    if (confirmed) {
+      await api.file.delete(node.item.path)
+      directoryCacheService.invalidate(getDirPath(node.item.path))
+      setChildrenCache((prev) => {
+        const next = new Map(prev)
+        next.delete(node.item.path)
+        return next
+      })
+      onRefresh({
+        affectedPaths: [getDirPath(node.item.path)],
+        deletedPaths: [node.item.path],
+        refreshRoot: pathEquals(getDirPath(node.item.path), workspacePath || ''),
+      })
+    }
+  }, [language, onRefresh, workspacePath])
+
+  const handleRenameStart = useCallback((node: FlattenedNode) => {
+    setRenamingPath(node.item.path)
+    setRenameValue(node.item.name)
+  }, [])
+
+  const handleRenameSubmit = useCallback(async () => {
+    if (!renamingPath || !renameValue.trim()) {
+      setRenamingPath(null)
+      return
+    }
+
+    const node = flattenedNodes.find((n) => n.item.path === renamingPath)
+    if (!node || renameValue === node.item.name) {
+      setRenamingPath(null)
+      return
+    }
+
+    const newPath = joinPath(getDirPath(renamingPath), renameValue)
+    const success = await api.file.rename(renamingPath, newPath)
+    if (success) {
+      directoryCacheService.invalidate(getDirPath(renamingPath))
+      setChildrenCache((prev) => {
+        const next = new Map(prev)
+        next.delete(renamingPath)
+        return next
+      })
+      onRefresh({
+        affectedPaths: [getDirPath(renamingPath), getDirPath(newPath)],
+        deletedPaths: [renamingPath],
+        refreshRoot: pathEquals(getDirPath(renamingPath), workspacePath || ''),
+      })
+    }
+    setRenamingPath(null)
+  }, [renamingPath, renameValue, flattenedNodes, onRefresh, workspacePath])
+
+  // 全局快捷键处理 (F2 重命名)
+  const handleCopyItem = useCallback((node: FlattenedNode) => {
+    explorerClipboardService.setItem({
+      path: node.item.path,
+      name: node.item.name,
+      isDirectory: node.item.isDirectory,
+      timestamp: Date.now(),
+    })
+    toast.success(node.item.isDirectory
+      ? (language === 'zh' ? '目录已复制' : 'Folder copied')
+      : (language === 'zh' ? '文件已复制' : 'File copied'))
+  }, [language])
+
+  const getCopyDestinationPath = useCallback(async (targetDirectoryPath: string, item: ExplorerClipboardItem) => {
+    const nameParts = item.isDirectory ? null : item.name.match(/^(.*?)(\.[^.]*)?$/)
+    const baseName = item.isDirectory ? item.name : (nameParts?.[1] || item.name)
+    const extension = item.isDirectory ? '' : (nameParts?.[2] || '')
+
+    let candidateName = `${baseName} - 副本${extension}`
+    let candidatePath = joinPath(targetDirectoryPath, candidateName)
+    let counter = 2
+
+    while (await api.file.exists(candidatePath)) {
+      candidateName = `${baseName} - 副本 ${counter}${extension}`
+      candidatePath = joinPath(targetDirectoryPath, candidateName)
+      counter += 1
+    }
+
+    return candidatePath
+  }, [])
+
+  const handlePasteIntoDirectory = useCallback(async (targetDirectoryPath: string) => {
+    const item = explorerClipboardService.getState().entry
+    if (!item) return
+
+    const normalizedSourcePath = normalizePath(item.path)
+    const normalizedTargetDirectoryPath = normalizePath(targetDirectoryPath)
+    if (!normalizedSourcePath || !normalizedTargetDirectoryPath) return
+
+    if (item.isDirectory && normalizedTargetDirectoryPath.startsWith(`${normalizedSourcePath}/`)) {
+      toast.error(language === 'zh' ? '不能将目录粘贴到自身内部' : 'Cannot paste a folder inside itself')
+      return
+    }
+
+    const destinationPath = await getCopyDestinationPath(targetDirectoryPath, item)
+    const success = await api.file.copy(item.path, destinationPath)
+    if (!success) {
+      toast.error(language === 'zh' ? '粘贴失败' : 'Paste failed')
+      return
+    }
+
+    directoryCacheService.invalidate(targetDirectoryPath)
+    onRefresh({
+      affectedPaths: [targetDirectoryPath],
+      refreshRoot: pathEquals(targetDirectoryPath, workspacePath || ''),
+    })
+    toast.success(item.isDirectory
+      ? (language === 'zh' ? '目录已粘贴' : 'Folder pasted')
+      : (language === 'zh' ? '文件已粘贴' : 'File pasted'))
+  }, [getCopyDestinationPath, language, onRefresh, workspacePath])
+
+  const handlePasteForNode = useCallback((node: FlattenedNode) => {
+    const targetDirectoryPath = node.item.isDirectory ? node.item.path : getDirPath(node.item.path)
+    void handlePasteIntoDirectory(targetDirectoryPath)
+  }, [handlePasteIntoDirectory])
+
+  useEffect(() => {
+    const handlePasteInto = (event: Event) => {
+      const customEvent = event as CustomEvent<{ targetDirectoryPath?: string }>
+      const targetDirectoryPath = customEvent.detail?.targetDirectoryPath
+      if (!targetDirectoryPath) return
+      void handlePasteIntoDirectory(targetDirectoryPath)
+    }
+
+    window.addEventListener('explorer:paste-into', handlePasteInto)
+    return () => {
+      window.removeEventListener('explorer:paste-into', handlePasteInto)
+    }
+  }, [handlePasteIntoDirectory])
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'F2' && focusedPath && !renamingPath) {
+      e.preventDefault()
+      const node = flattenedNodes.find(n => pathEquals(n.item.path, focusedPath))
+      if (node) {
+        handleRenameStart(node)
+      }
+      return
+    }
+
+    if (keybindingService.matches(e, 'explorer.copy') && focusedPath) {
+      const node = flattenedNodes.find(n => pathEquals(n.item.path, focusedPath))
+      if (node) {
+        e.preventDefault()
+        handleCopyItem(node)
+      }
+      return
+    }
+
+    if (keybindingService.matches(e, 'explorer.paste') && clipboardItem) {
+      e.preventDefault()
+      const node = focusedPath
+        ? flattenedNodes.find(n => pathEquals(n.item.path, focusedPath))
+        : null
+
+      if (node) {
+        handlePasteForNode(node)
+      } else if (workspacePath) {
+        void handlePasteIntoDirectory(workspacePath)
+      }
+    }
+  }, [clipboardItem, focusedPath, flattenedNodes, handleCopyItem, handlePasteForNode, handlePasteIntoDirectory, renamingPath, workspacePath, handleRenameStart])
+
+  const handleCopyPath = useCallback((node: FlattenedNode) => {
+    navigator.clipboard.writeText(node.item.path)
+    toast.success(t('pathCopied', language) || 'Path copied')
+  }, [language])
+
+  const handleCopyRelativePath = useCallback((node: FlattenedNode) => {
+    if (workspacePath) {
+      const relativePath = node.item.path.replace(workspacePath, '').replace(/^[\\/]/, '')
+      navigator.clipboard.writeText(relativePath)
+      toast.success(t('pathCopied', language) || 'Path copied')
+    }
+  }, [workspacePath, language])
+
+  const handleRevealInExplorer = useCallback((node: FlattenedNode) => {
+    api.file.showInFolder(node.item.path)
+  }, [])
+
+  const handleOpenInBrowser = useCallback(async (node: FlattenedNode) => {
+    const success = await api.file.openInBrowser(node.item.path)
+    if (!success) {
+      toast.error(t('failedToOpenInBrowser', language) || 'Failed to open in browser')
+    }
+  }, [language])
+
+  const handleNewFile = useCallback((node: FlattenedNode) => {
+    if (node.item.isDirectory) {
+      expandFolder(node.item.path)
+      loadChildren(node.item.path)
+      onStartCreate(node.item.path, 'file')
+    }
+  }, [expandFolder, loadChildren, onStartCreate])
+
+  const handleNewFolder = useCallback((node: FlattenedNode) => {
+    if (node.item.isDirectory) {
+      expandFolder(node.item.path)
+      loadChildren(node.item.path)
+      onStartCreate(node.item.path, 'folder')
+    }
+  }, [expandFolder, loadChildren, onStartCreate])
+
+  const moveItemToDirectory = useCallback(async (sourcePath: string, targetDirectoryPath: string) => {
+    const normalizedSourcePath = normalizePath(sourcePath)
+    const normalizedTargetDirectoryPath = normalizePath(targetDirectoryPath)
+
+    if (!normalizedSourcePath || !normalizedTargetDirectoryPath) return
+    if (normalizedSourcePath === normalizedTargetDirectoryPath) return
+    if (normalizedTargetDirectoryPath.startsWith(`${normalizedSourcePath}/`)) return
+
+    const sourceName = sourcePath.split(/[/\\]/).pop()
+    if (!sourceName) return
+
+    const sourceParentPath = getDirPath(sourcePath)
+    const destinationPath = joinPath(targetDirectoryPath, sourceName)
+    if (pathEquals(sourcePath, destinationPath)) return
+
+    const success = await api.file.rename(sourcePath, destinationPath)
+    if (success) {
+      directoryCacheService.invalidate(sourceParentPath)
+      directoryCacheService.invalidate(targetDirectoryPath)
+      setChildrenCache((prev) => {
+        const next = new Map(prev)
+        next.delete(sourcePath)
+        return next
+      })
+      expandFolder(targetDirectoryPath)
+      onRefresh({
+        affectedPaths: [sourceParentPath, targetDirectoryPath],
+        deletedPaths: [sourcePath],
+        refreshRoot: pathEquals(sourceParentPath, workspacePath || '') || pathEquals(targetDirectoryPath, workspacePath || ''),
+      })
+    } else {
+      toast.error('Move failed')
+    }
+  }, [expandFolder, onRefresh, workspacePath])
+
+  const handleDropOnDirectory = useCallback(async (targetNode: FlattenedNode, sourcePath: string) => {
+    if (!targetNode.item.isDirectory) return
+    await moveItemToDirectory(sourcePath, targetNode.item.path)
+  }, [moveItemToDirectory])
+
+  const handleDropNextToNode = useCallback(async (targetNode: FlattenedNode, sourcePath: string) => {
+    const targetDirectoryPath = targetNode.item.isDirectory ? targetNode.item.path : getDirPath(targetNode.item.path)
+    await moveItemToDirectory(sourcePath, targetDirectoryPath)
+  }, [moveItemToDirectory])
+
+  const handleOpenTerminalHere = useCallback((node: FlattenedNode) => {
+    const cwd = node.item.isDirectory ? node.item.path : getDirPath(node.item.path)
+    void onOpenTerminal(cwd)
+  }, [onOpenTerminal])
+
+  const handleImportIntoFolder = useCallback(async (node: FlattenedNode) => {
+    const targetDir = node.item.isDirectory ? node.item.path : getDirPath(node.item.path)
+    const selectedPaths = await api.file.selectForImport({
+      title: language === 'zh' ? '导入文件或文件夹' : 'Import Files or Folders',
+      allowFiles: true,
+      allowDirs: true,
+      multiSelection: true,
+    })
+    if (!selectedPaths || selectedPaths.length === 0) return
+
+    const result = await api.file.importIntoWorkspace(selectedPaths, targetDir)
+    if (result.success) {
+      toast.success(language === 'zh' ? `成功导入 ${selectedPaths.length} 项` : `Successfully imported ${selectedPaths.length} item(s)`)
+      if (node.item.isDirectory) {
+        expandFolder(targetDir)
+      }
+      onRefresh({
+        affectedPaths: [targetDir],
+        refreshRoot: targetDir === workspacePath,
+      })
+    } else {
+      const failedCount = result.results?.filter(r => !r.success).length || selectedPaths.length
+      toast.error(language === 'zh' ? `导入失败 ${failedCount} 项` : `Failed to import ${failedCount} item(s)`)
+      if (result.results?.some(r => r.success)) {
+        onRefresh({
+          affectedPaths: [targetDir],
+          refreshRoot: targetDir === workspacePath,
+        })
+      }
+    }
+  }, [language, expandFolder, onRefresh, workspacePath])
+
+  const handleExportFromNode = useCallback(async (node: FlattenedNode) => {
+    const sourcePath = node.item.path
+    const targetDir = await api.file.selectForExport({
+      title: language === 'zh' ? '导出到...' : 'Export to...',
+      defaultPath: getDirPath(sourcePath),
+    })
+    if (!targetDir) return
+
+    const result = await api.file.exportFromWorkspace(sourcePath, targetDir)
+    if (result.success) {
+      toast.success(language === 'zh' ? `成功导出到 ${result.target}` : `Successfully exported to ${result.target}`)
+    } else {
+      toast.error(language === 'zh' ? `导出失败: ${result.error}` : `Export failed: ${result.error}`)
+    }
+  }, [language])
+
+  const handleShareItem = useCallback(async (node: FlattenedNode) => {
+    const result = await api.file.shareItem([node.item.path])
+    if (!result.success) {
+      if (result.error === 'Share is only supported on macOS') {
+        toast.warning(language === 'zh' ? '分享功能仅支持 macOS 系统' : 'Share is only supported on macOS')
+      } else {
+        toast.error(language === 'zh' ? `分享失败: ${result.error}` : `Share failed: ${result.error}`)
+      }
+    }
+  }, [language])
+
+  // 聚焦重命名输入框
+  useEffect(() => {
+    if (renamingPath && renameInputRef.current) {
+      renameInputRef.current.focus()
+      renameInputRef.current.select()
+    }
+  }, [renamingPath])
+
+  // 构建右键菜单项
+  const getContextMenuItems = useCallback((node: FlattenedNode): ContextMenuItem[] => {
+    const contextMenuLanguage = 'zh'
+    const isCodeEditor = activeScenarioId === 'code-editor'
+
+    if (node.item.isDirectory) {
+      return [
+        { id: 'newFile', label: t('newFile', contextMenuLanguage), icon: FilePlus, onClick: () => handleNewFile(node) },
+        { id: 'newFolder', label: t('newFolder', contextMenuLanguage), icon: FolderPlus, onClick: () => handleNewFolder(node) },
+        { id: 'sep1', label: '', separator: true },
+        { id: 'import', label: contextMenuLanguage === 'zh' ? '导入...' : 'Import...', icon: Download, onClick: () => handleImportIntoFolder(node) },
+        { id: 'export', label: contextMenuLanguage === 'zh' ? '导出...' : 'Export...', icon: Upload, onClick: () => handleExportFromNode(node) },
+        { id: 'share', label: contextMenuLanguage === 'zh' ? '分享...' : 'Share...', icon: Share2, onClick: () => handleShareItem(node) },
+        ...(isCodeEditor
+          ? [
+              { id: 'sep2', label: '', separator: true } as ContextMenuItem,
+              { id: 'openTerminal', label: t('openIntegratedTerminalHere', contextMenuLanguage) || '在此处打开集成终端', icon: Terminal, onClick: () => handleOpenTerminalHere(node) } as ContextMenuItem,
+            ]
+          : []),
+        { id: 'sepTerminal', label: '', separator: true },
+        { id: 'copy', label: t('copy', contextMenuLanguage) || '复制', icon: Copy, shortcut: formatShortcut('Ctrl+C'), onClick: () => handleCopyItem(node) },
+        { id: 'paste', label: t('paste', contextMenuLanguage) || '粘贴', icon: Clipboard, shortcut: formatShortcut('Ctrl+V'), disabled: !clipboardItem, onClick: () => handlePasteForNode(node) },
+        { id: 'sepClipboard', label: '', separator: true },
+        { id: 'rename', label: t('rename', contextMenuLanguage), icon: Edit2, onClick: () => handleRenameStart(node) },
+        { id: 'delete', label: t('delete', contextMenuLanguage), icon: Trash2, danger: true, onClick: () => handleDelete(node) },
+        { id: 'sep3', label: '', separator: true },
+        { id: 'copyPath', label: t('copyPath', contextMenuLanguage) || '复制路径', icon: Copy, onClick: () => handleCopyPath(node) },
+        { id: 'copyRelPath', label: t('copyRelativePath', contextMenuLanguage) || '复制相对路径', icon: Clipboard, onClick: () => handleCopyRelativePath(node) },
+        { id: 'reveal', label: t('revealInExplorer', contextMenuLanguage) || '在资源管理器中显示', icon: ExternalLink, onClick: () => handleRevealInExplorer(node) },
+      ]
+    }
+    const isHtmlFile = node.item.name.toLowerCase().endsWith('.html') ||
+      node.item.name.toLowerCase().endsWith('.htm')
+
+    const items: ContextMenuItem[] = [
+      { id: 'export', label: contextMenuLanguage === 'zh' ? '导出...' : 'Export...', icon: Upload, onClick: () => handleExportFromNode(node) },
+      { id: 'share', label: contextMenuLanguage === 'zh' ? '分享...' : 'Share...', icon: Share2, onClick: () => handleShareItem(node) },
+      ...(isCodeEditor
+        ? [
+            { id: 'sep1', label: '', separator: true } as ContextMenuItem,
+            { id: 'openTerminal', label: t('openIntegratedTerminalHere', contextMenuLanguage) || '在此处打开集成终端', icon: Terminal, onClick: () => handleOpenTerminalHere(node) } as ContextMenuItem,
+          ]
+        : []),
+      { id: 'sepTerminal', label: '', separator: true },
+      { id: 'copy', label: t('copy', contextMenuLanguage) || '复制', icon: Copy, shortcut: formatShortcut('Ctrl+C'), onClick: () => handleCopyItem(node) },
+      { id: 'paste', label: t('paste', contextMenuLanguage) || '粘贴', icon: Clipboard, shortcut: formatShortcut('Ctrl+V'), disabled: !clipboardItem, onClick: () => handlePasteForNode(node) },
+      { id: 'sepClipboard', label: '', separator: true },
+      { id: 'rename', label: t('rename', contextMenuLanguage), icon: Edit2, onClick: () => handleRenameStart(node) },
+      { id: 'delete', label: t('delete', contextMenuLanguage), icon: Trash2, danger: true, onClick: () => handleDelete(node) },
+      { id: 'sep2', label: '', separator: true },
+      { id: 'copyPath', label: t('copyPath', contextMenuLanguage) || '复制路径', icon: Copy, onClick: () => handleCopyPath(node) },
+      { id: 'copyRelPath', label: t('copyRelativePath', contextMenuLanguage) || '复制相对路径', icon: Clipboard, onClick: () => handleCopyRelativePath(node) },
+      { id: 'reveal', label: t('revealInExplorer', contextMenuLanguage) || '在资源管理器中显示', icon: ExternalLink, onClick: () => handleRevealInExplorer(node) },
+    ]
+
+    if (isHtmlFile) {
+      items.push({ id: 'sepHtml', label: '', separator: true })
+      items.push({ id: 'openInBrowser', label: t('openInBrowser', contextMenuLanguage) || '在浏览器中打开', icon: Globe, onClick: () => handleOpenInBrowser(node) })
+    }
+
+    return items
+  }, [activeScenarioId, clipboardItem, handleNewFile, handleNewFolder, handleOpenTerminalHere, handleCopyItem, handlePasteForNode, handleRenameStart, handleDelete, handleCopyPath, handleCopyRelativePath, handleRevealInExplorer, handleOpenInBrowser, handleImportIntoFolder, handleExportFromNode, handleShareItem])
+
+  // 渲染单个节点
+  const renderNode = (node: FlattenedNode, index: number) => {
+    const { item, depth, isExpanded } = node
+    const isActive = pathEquals(activeFilePath || '', item.path)
+    const isFocused = focusedPath ? pathEquals(focusedPath, item.path) && !isActive : false
+    const isHighlighted = highlightPath ? pathEquals(highlightPath, item.path) : false
+    const isRenaming = renamingPath === item.path
+    const isLoading = loadingDirs.has(item.path)
+    const isCreatingInput = item.name === '__creating__'
+    const isLoadingPlaceholder = node.kind === 'loading'
+
+    // 创建输入框
+    if (isCreatingInput && creatingIn) {
+      return (
+        <div
+          key={item.path}
+          className="flex items-center gap-1.5 py-1 pr-2"
+          style={{
+            height: ITEM_HEIGHT,
+            paddingLeft: `${depth * 12 + 12}px`,
+            position: 'absolute',
+            top: (visibleRange.startIndex + index) * ITEM_HEIGHT,
+            left: 0,
+            right: 0
+          }}
+        >
+          <span className="w-3.5 flex-shrink-0" />
+          {creatingIn.type === 'folder' ? (
+            <FolderPlus className="w-3.5 h-3.5 text-accent flex-shrink-0" />
+          ) : (
+            <FilePlus className="w-3.5 h-3.5 text-accent flex-shrink-0" />
+          )}
+          <TextField
+            autoFocus
+            placeholder={creatingIn.type === 'file' ? 'filename.ext' : 'folder name'}
+            className="flex-1 h-6 text-[13px]"
+            onBlur={(e) => {
+              if (e.target.value.trim()) {
+                onCreateSubmit(creatingIn.path, e.target.value.trim(), creatingIn.type)
+              } else {
+                onCancelCreate()
+              }
+            }}
+            onKeyDown={(e) => {
+              // 输入法组合中不处理回车
+              if (e.nativeEvent.isComposing) return
+
+              if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                e.preventDefault()
+                onCreateSubmit(creatingIn.path, e.currentTarget.value.trim(), creatingIn.type)
+              } else if (e.key === 'Escape') {
+                onCancelCreate()
+              }
+            }}
+          />
+        </div>
+      )
+    }
+
+    if (isLoadingPlaceholder) {
+      return (
+        <div
+          key={item.path}
+          className="flex items-center gap-2 px-2 py-1.5"
+          style={{
+            height: ITEM_HEIGHT,
+            paddingLeft: `${depth * 12 + 8}px`,
+            position: 'absolute',
+            top: (visibleRange.startIndex + index) * ITEM_HEIGHT,
+            left: 0,
+            right: 0
+          }}
+        >
+          <div className="w-3 flex-shrink-0" />
+          <div className="w-3.5 h-3.5 rounded-sm bg-surface-active/45 animate-pulse flex-shrink-0" />
+          <div
+            className="h-3 rounded bg-surface-active/30 animate-pulse"
+            style={{ width: `${58 + (index % 3) * 10}%` }}
+          />
+        </div>
+      )
+    }
+
+    return (
+      <div
+        key={item.path}
+        onClick={() => handleNodeClick(node)}
+        onContextMenu={(e) => handleContextMenu(e, node)}
+        draggable={!isRenaming}
+        onDragStart={(e) => {
+          dragSourcePathRef.current = item.path
+          e.dataTransfer.effectAllowed = 'move'
+          e.dataTransfer.setData(BRAND.dragDrop.fileMimeType, item.path)
+          e.dataTransfer.setData('text/uri-list', `file:///${item.path.replace(/\\/g, '/')}`)
+          e.dataTransfer.setData('text/plain', item.path)
+          // 设置拖动时的图标
+          const dragImage = document.createElement('div')
+          dragImage.textContent = item.name
+          dragImage.style.cssText = 'position: absolute; top: -1000px; padding: 4px 8px; background: var(--surface); border-radius: 4px; font-size: 12px; color: var(--text-primary);'
+          document.body.appendChild(dragImage)
+          e.dataTransfer.setDragImage(dragImage, 0, 0)
+          setTimeout(() => document.body.removeChild(dragImage), 0)
+        }}
+        onDragEnd={() => {
+          dragSourcePathRef.current = null
+          setDragOverPath(null)
+        }}
+        onDragEnter={(e) => {
+          if (isRenaming) return
+          const sourcePath = dragSourcePathRef.current
+          if (!sourcePath || pathEquals(sourcePath, item.path)) return
+          e.preventDefault()
+          setDragOverPath(item.path)
+        }}
+        onDragOver={(e) => {
+          if (isRenaming) return
+          const sourcePath = dragSourcePathRef.current
+          if (!sourcePath || pathEquals(sourcePath, item.path)) return
+          e.preventDefault()
+          e.stopPropagation()
+          e.dataTransfer.dropEffect = 'move'
+          if (!pathEquals(dragOverPath || '', item.path)) {
+            setDragOverPath(item.path)
+          }
+        }}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+            setDragOverPath((prev) => (prev === item.path ? null : prev))
+          }
+        }}
+        onDrop={async (e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          const sourcePath = dragSourcePathRef.current
+          dragSourcePathRef.current = null
+          setDragOverPath(null)
+          if (!sourcePath) return
+          if (item.isDirectory) {
+            await handleDropOnDirectory(node, sourcePath)
+            return
+          }
+          await handleDropNextToNode(node, sourcePath)
+        }}
+        className={`
+          group flex items-center gap-2 pr-2 cursor-pointer transition-colors duration-150 relative select-none rounded-md mx-2 my-[2px] min-w-max
+          ${isActive
+            ? 'bg-accent/15 text-accent font-medium'
+            : isFocused
+              ? 'bg-surface-hover/80 text-text-primary'
+              : 'text-text-secondary hover:text-text-primary hover:bg-surface-hover/40'
+          }
+          ${isHighlighted ? 'animate-reveal-highlight' : ''}
+          ${dragOverPath && pathEquals(dragOverPath, item.path) ? 'ring-1 ring-accent bg-accent/10' : ''}
+        `}
+        style={{
+          height: ITEM_HEIGHT,
+          paddingLeft: `${depth * 12 + 8}px`,
+          position: 'absolute',
+          top: (visibleRange.startIndex + index) * ITEM_HEIGHT,
+          left: 0,
+          minWidth: 'calc(100% - 16px)'
+        }}
+      >
+        {/* Indent Guide - Very subtle line */}
+        {depth > 0 && Array.from({ length: depth }).map((_, i) => (
+          <div
+            key={i}
+            className="absolute top-0 bottom-0 border-l border-border/20 group-hover:border-border/40 transition-colors"
+            style={{ left: `${(i + 1) * 12}px` }}
+          />
+        ))}
+
+        {/* Icon & Toggle */}
+        {item.isDirectory ? (
+          <>
+            <div className="flex items-center justify-center w-4 h-4 -ml-1 transition-transform duration-200" style={{ transform: isExpanded ? 'rotate(90deg)' : 'none' }}>
+              <ChevronRight className="w-3.5 h-3.5 text-text-muted opacity-40 group-hover:opacity-100" />
+            </div>
+            {isLoading ? (
+              <Loader2 className="w-4 h-4 text-accent animate-spin flex-shrink-0" />
+            ) : (
+              <FileIcon filename={item.name} isDirectory isOpen={isExpanded} size={16} className="flex-shrink-0" />
+            )}
+          </>
+        ) : (
+          <>
+            <div className="w-3 flex-shrink-0" />
+            <FileIcon filename={item.name} size={16} className="flex-shrink-0" />
+          </>
+        )}
+
+        {/* Name */}
+        {isRenaming ? (
+          <TextField
+            ref={renameInputRef}
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onBlur={handleRenameSubmit}
+            onKeyDown={(e) => {
+              // 输入法组合中不处理回车
+              if (e.nativeEvent.isComposing) return
+
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                handleRenameSubmit()
+              }
+              if (e.key === 'Escape') setRenamingPath(null)
+            }}
+            onClick={(e) => e.stopPropagation()}
+            className="flex-1 h-5 text-[13px] px-1 py-0"
+            autoFocus
+          />
+        ) : (
+          <span className="text-[13px] leading-normal whitespace-nowrap opacity-90 group-hover:opacity-100">
+            {item.name}
+          </span>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      className="flex-1 overflow-y-auto overflow-x-auto custom-scrollbar focus:outline-none"
+      onScroll={handleScroll}
+      onKeyDown={handleKeyDown}
+      tabIndex={0}
+      onBlur={() => {
+        // Only clear focus if not renaming and not opening context menu
+        if (!renamingPath && !contextMenu) {
+          setFocusedPath(null)
+        }
+      }}
+      onDragLeave={() => setDragOverPath(null)}
+      onDrop={() => {
+        dragSourcePathRef.current = null
+        setDragOverPath(null)
+      }}
+    >
+      <div style={{ height: totalHeight, position: 'relative', minWidth: 'max-content', width: '100%' }}>
+        {visibleNodes.map((node, index) => renderNode(node, index))}
+      </div>
+
+      {/* 右键菜单 */}
+      {contextMenu && (
+        <FloatingMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={getContextMenuItems(contextMenu.node)}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
+    </div>
+  )
+})

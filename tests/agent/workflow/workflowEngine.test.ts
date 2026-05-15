@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { workflowEngine } from '@shared/types/workflow'
-import type { WorkflowDefinition } from '@shared/types/workflow'
+import { workflowEngine } from '@protocols/workflow'
+import type { WorkflowDefinition } from '@protocols/workflow'
 
 const simpleWorkflow: WorkflowDefinition = {
   id: 'test-simple',

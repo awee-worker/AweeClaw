@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { Orchestrator, MessageBus } from '@renderer/agent/multiAgent/Orchestrator'
-import type { AgentRole } from '@shared/types/multiAgent'
+import { Orchestrator, MessageBus } from '@intelligence/multiAgent/Orchestrator'
+import type { AgentRole } from '@protocols/multiAgent'
 
 const coordinatorRole: AgentRole = {
   id: 'coordinator',

@@ -1,14 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { LoopDetector } from '@renderer/agent/utils/LoopDetector'
-import type { LLMToolCall } from '@/shared/types'
+import { LoopDetector } from '@intelligence/utils/LoopDetector'
+import type { ToolCall } from '@protocols'
 
-vi.mock('@renderer/agent/utils/AgentConfig', () => ({
+vi.mock('@intelligence/utils/AgentConfig', () => ({
   getAgentConfig: () => ({
     loopDetection: {
       maxExactRepeats: 3,
       maxSameTargetRepeats: 4,
       maxHistory: 100,
       dynamicThreshold: false,
+      enabled: true,
+      patternRepeatHardStop: 3,
     },
     maxToolLoops: 50,
     dynamicConcurrency: { enabled: false },
@@ -17,11 +19,31 @@ vi.mock('@renderer/agent/utils/AgentConfig', () => ({
   }),
 }))
 
-function makeToolCall(name: string, args: Record<string, unknown>): LLMToolCall {
+vi.mock('@store', () => ({
+  useStore: {
+    getState: () => ({
+      agentConfig: { loopDetection: { enabled: true } },
+    }),
+  },
+}))
+
+vi.mock('@utils/Logger', () => ({
+  logger: {
+    agent: {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+    },
+  },
+}))
+
+function makeToolCall(name: string, args: Record<string, unknown>): ToolCall {
   return {
     id: `tc-${Math.random().toString(36).slice(2, 8)}`,
     name,
     arguments: args,
+    status: 'running' as const,
   }
 }
 

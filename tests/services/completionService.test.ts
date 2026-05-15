@@ -13,7 +13,7 @@ import {
   CompletionContext,
   Position,
   completionService
-} from '../../src/renderer/services/completionService'
+} from '@services/completionService'
 
 // Mock the store for testing
 const mockStore = {

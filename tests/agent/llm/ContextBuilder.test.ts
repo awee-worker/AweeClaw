@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { buildUserContent } from '@renderer/agent/llm/ContextBuilder'
+import { buildUserContent } from '@intelligence/llm-layer/ContextBuilder'
 
 describe('ContextBuilder', () => {
   describe('buildUserContent', () => {

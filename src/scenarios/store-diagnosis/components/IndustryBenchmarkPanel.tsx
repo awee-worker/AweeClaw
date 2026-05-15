@@ -1,9 +1,9 @@
 import { useState, useCallback, useEffect } from 'react'
 import { TrendingUp, RefreshCw, ChevronRight, ChevronDown, ArrowUpRight, ArrowDownRight, Minus } from 'lucide-react'
 import { useStore } from '@store'
-import { Button } from '@/renderer/components/ui'
-import { Agent } from '@/renderer/agent/core'
-import { getAgentConfig } from '@/renderer/agent/utils/AgentConfig'
+import { ActionButton } from '@/renderer/components/ui'
+import { Agent } from '@intelligence/engine'
+import { getAgentConfig } from '@intelligence/utils/intelligenceConfig'
 
 interface BenchmarkRecord {
   category: string
@@ -104,7 +104,7 @@ export function IndustryBenchmarkPanel() {
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const { scenarioDatabaseManager } = await import('@/scenario-system/core/ScenarioDatabaseManager')
+      const { scenarioDatabaseManager } = await import('@scenario-system/core/ScenarioDatabaseManager')
       const result = await scenarioDatabaseManager.executeSql('store-diagnosis', 'SELECT * FROM industry_benchmarks ORDER BY category, metric')
       if (result.success && result.rows) {
         setBenchmarks(result.rows as unknown as BenchmarkRecord[])
@@ -124,7 +124,7 @@ export function IndustryBenchmarkPanel() {
     if (!storeId) { setCompareStoreId(null); setStoreMetrics({}); return }
     setCompareStoreId(storeId)
     try {
-      const { scenarioDatabaseManager } = await import('@/scenario-system/core/ScenarioDatabaseManager')
+      const { scenarioDatabaseManager } = await import('@scenario-system/core/ScenarioDatabaseManager')
       const finResult = await scenarioDatabaseManager.executeSql('store-diagnosis', `SELECT * FROM store_financials WHERE store_id = '${storeId}' ORDER BY period DESC LIMIT 1`)
       if (finResult.success && finResult.rows && finResult.rows.length > 0) {
         const fin = finResult.rows[0] as Record<string, unknown>
@@ -174,9 +174,9 @@ export function IndustryBenchmarkPanel() {
           {language === 'zh' ? '行业基准' : 'BENCHMARKS'}
         </span>
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={loadData} title={language === 'zh' ? '刷新' : 'Refresh'}>
+          <ActionButton variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={loadData} title={language === 'zh' ? '刷新' : 'Refresh'}>
             <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
-          </Button>
+          </ActionButton>
         </div>
       </div>
 
@@ -187,7 +187,7 @@ export function IndustryBenchmarkPanel() {
             onChange={e => loadStoreComparison(e.target.value)}
             className="w-full h-7 px-2 text-xs bg-background border border-border/50 rounded focus:outline-none focus:border-accent/50 text-text-primary"
           >
-            <option value="">{language === 'zh' ? '选择门店对比...' : 'Select store to compare...'}</option>
+            <option value="">{language === 'zh' ? '选择门店对比...' : 'DropdownSelector store to compare...'}</option>
             {storeList.map(s => (
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}

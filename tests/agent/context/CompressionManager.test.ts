@@ -5,8 +5,8 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { prepareMessages, estimateMessagesTokens } from '@renderer/agent/domains/context/CompressionManager'
-import type { UserMessage, AssistantMessage } from '@renderer/agent/types'
+import { prepareMessages, estimateMessagesTokens } from '@intelligence/context'
+import type { UserMessage, AssistantMessage } from '@intelligence/types'
 
 describe('CompressionManager - Image Handling', () => {
   it('should replace images with placeholder in history messages but keep current message', () => {

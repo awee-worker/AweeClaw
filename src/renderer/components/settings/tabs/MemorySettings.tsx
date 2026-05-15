@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { longTermMemoryService } from '@/renderer/agent/services/longTermMemoryService'
-import type { MemoryEntry, MemorySource, MemoryStatus } from '@/renderer/agent/services/longTermMemoryService/types'
-import { memoryService } from '@/renderer/agent/services/memoryService'
-import { Button, Input } from '@components/ui'
+import { longTermMemoryService } from '@intelligence/runtime/longTermMemoryService'
+import type { MemoryEntry, MemorySource, MemoryStatus } from '@intelligence/runtime/longTermMemoryService/providerTypes'
+import { memoryService } from '@intelligence/runtime/recallService'
+import { ActionButton, TextField } from '@components/ui'
 import {
   Brain, Plus, Trash2, Edit2, Check, X,
   RefreshCw, Search, ToggleLeft, ToggleRight,
@@ -197,14 +197,14 @@ export function MemorySettings({ language }: MemorySettingsProps) {
         </div>
 
         <div className="flex gap-2">
-          <Input
+          <TextField
             value={newMemory}
             onChange={(e) => setNewMemory(e.target.value)}
             placeholder={t('手动添加记忆内容...', 'Add memory manually...')}
             className="flex-1 bg-white/[0.04] border-border text-xs"
             onKeyDown={(e) => e.key === 'Enter' && handleAddMemory()}
           />
-          <Button
+          <ActionButton
             variant="secondary"
             onClick={handleAddMemory}
             disabled={!newMemory.trim()}
@@ -212,7 +212,7 @@ export function MemorySettings({ language }: MemorySettingsProps) {
           >
             <Plus className="w-3.5 h-3.5" />
             {t('添加', 'Add')}
-          </Button>
+          </ActionButton>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
@@ -289,7 +289,7 @@ export function MemorySettings({ language }: MemorySettingsProps) {
               >
                 {editingId === item.id ? (
                   <div className="flex items-start gap-2">
-                    <Input
+                    <TextField
                       value={editingContent}
                       onChange={(e) => setEditingContent(e.target.value)}
                       className="flex-1 bg-white/[0.06] border-accent/50 text-xs"

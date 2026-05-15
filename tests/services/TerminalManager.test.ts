@@ -7,7 +7,7 @@ const killMock = vi.fn()
 let dataHandler: ((event: { id: string; data: string; seq: number; occurredAt: number }) => void) | null = null
 let exitHandler: ((event: { id: string; exitCode: number; signal?: number; seq: number; occurredAt: number; reason: 'process_exit' | 'killed_by_user' | 'remote_close' }) => void) | null = null
 
-vi.mock('@renderer/services/electronAPI', () => ({
+vi.mock('@services/electronAPI', () => ({
   api: {
     terminal: {
       create: createMock,
@@ -91,7 +91,7 @@ vi.mock('@services/keybindingService', () => ({
   isMac: true,
 }))
 
-vi.mock('@renderer/agent/tools/commandRuntime', () => ({
+vi.mock('@intelligence/toolkit/commandRuntime', () => ({
   getInteractiveTerminalBackend: vi.fn(() => 'pipe'),
 }))
 
@@ -116,7 +116,7 @@ describe('TerminalManager command sessions', () => {
   })
 
   it('tracks detached background commands as last session state', async () => {
-    const { terminalManager } = await import('@renderer/services/TerminalManager')
+    const { terminalManager } = await import('@services/TerminalManager')
 
     try {
       const termId = await terminalManager.getOrCreateAgentTerminal('/tmp/aweeclaw-agent')
@@ -133,7 +133,7 @@ describe('TerminalManager command sessions', () => {
   })
 
   it('finalizes command when terminal exits before sentinel matches', async () => {
-    const { terminalManager } = await import('@renderer/services/TerminalManager')
+    const { terminalManager } = await import('@services/TerminalManager')
 
     try {
       const termId = await terminalManager.getOrCreateAgentTerminal('/tmp/aweeclaw-agent')

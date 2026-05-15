@@ -1,6 +1,6 @@
-import type { ScenarioToolDefinition } from '@shared/types/scenario-arch'
-import type { ToolDefinition } from '@shared/types'
-import { storeDiagnosisExecutors } from './executors'
+import type { ScenarioToolDefinition } from '@shared/protocols/scenario-arch'
+import type { ToolDefinition } from '@protocols'
+import { storeDiagnosisExecutors } from './toolExecutors'
 
 const STORE_MANAGE: ToolDefinition = {
   name: 'store_manage',

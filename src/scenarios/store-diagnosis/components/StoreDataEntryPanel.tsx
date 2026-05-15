@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { DollarSign, Users, Plus, RefreshCw, ChevronDown, Calendar } from 'lucide-react'
 import { useStore } from '@store'
-import { Button, Modal } from '@/renderer/components/ui'
+import { ActionButton, OverlayDialog } from '@/renderer/components/ui'
 
 interface FinancialRecord {
   id: number
@@ -79,7 +79,7 @@ export function StoreDataEntryPanel() {
   const [expandedPeriod, setExpandedPeriod] = useState<string | null>(null)
 
   const getDb = useCallback(async () => {
-    const { scenarioDatabaseManager } = await import('@/scenario-system/core/ScenarioDatabaseManager')
+    const { scenarioDatabaseManager } = await import('@scenario-system/core/ScenarioDatabaseManager')
     return scenarioDatabaseManager
   }, [])
 
@@ -169,9 +169,9 @@ export function StoreDataEntryPanel() {
           {language === 'zh' ? '数据录入' : 'DATA ENTRY'}
         </span>
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={loadFinancials} title={language === 'zh' ? '刷新' : 'Refresh'}>
+          <ActionButton variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={loadFinancials} title={language === 'zh' ? '刷新' : 'Refresh'}>
             <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
-          </Button>
+          </ActionButton>
         </div>
       </div>
 
@@ -214,7 +214,7 @@ export function StoreDataEntryPanel() {
               <span className="text-xs text-text-muted">
                 {language === 'zh' ? `共 ${financials.length} 期数据` : `${financials.length} periods`}
               </span>
-              <Button
+              <ActionButton
                 variant="ghost"
                 size="sm"
                 className="h-6 text-xs gap-1"
@@ -223,7 +223,7 @@ export function StoreDataEntryPanel() {
               >
                 <Plus className="w-3 h-3" />
                 {language === 'zh' ? '录入' : 'Add'}
-              </Button>
+              </ActionButton>
             </div>
 
             {financials.length === 0 && !loading && (
@@ -311,7 +311,7 @@ export function StoreDataEntryPanel() {
               <span className="text-xs text-text-muted">
                 {language === 'zh' ? '录入每日客流数据' : 'Enter daily traffic data'}
               </span>
-              <Button
+              <ActionButton
                 variant="ghost"
                 size="sm"
                 className="h-6 text-xs gap-1"
@@ -320,13 +320,13 @@ export function StoreDataEntryPanel() {
               >
                 <Plus className="w-3 h-3" />
                 {language === 'zh' ? '录入' : 'Add'}
-              </Button>
+              </ActionButton>
             </div>
 
             {!selectedStoreId && (
               <div className="flex flex-col items-center py-8 text-text-muted">
                 <Users className="w-8 h-8 opacity-30 mb-2" />
-                <p className="text-xs">{language === 'zh' ? '请先选择门店' : 'Select a store first'}</p>
+                <p className="text-xs">{language === 'zh' ? '请先选择门店' : 'DropdownSelector a store first'}</p>
               </div>
             )}
 
@@ -348,7 +348,7 @@ export function StoreDataEntryPanel() {
         )}
       </div>
 
-      <Modal
+      <OverlayDialog
         isOpen={showAddFinancial}
         onClose={() => { setShowAddFinancial(false); setFinancialForm({ ...EMPTY_FINANCIAL }) }}
         title={language === 'zh' ? '录入财务数据' : 'Add Financial Data'}
@@ -488,17 +488,17 @@ export function StoreDataEntryPanel() {
           </div>
 
           <div className="flex gap-3 pt-2">
-            <Button variant="ghost" size="sm" className="h-9 flex-1 text-sm" onClick={() => { setShowAddFinancial(false); setFinancialForm({ ...EMPTY_FINANCIAL }) }}>
+            <ActionButton variant="ghost" size="sm" className="h-9 flex-1 text-sm" onClick={() => { setShowAddFinancial(false); setFinancialForm({ ...EMPTY_FINANCIAL }) }}>
               {language === 'zh' ? '取消' : 'Cancel'}
-            </Button>
-            <Button variant="secondary" size="sm" className="h-9 flex-1 text-sm" onClick={handleAddFinancial} disabled={!financialForm.period || !financialForm.revenue || saving}>
+            </ActionButton>
+            <ActionButton variant="secondary" size="sm" className="h-9 flex-1 text-sm" onClick={handleAddFinancial} disabled={!financialForm.period || !financialForm.revenue || saving}>
               {saving ? (language === 'zh' ? '保存中...' : 'Saving...') : (language === 'zh' ? '保存' : 'Save')}
-            </Button>
+            </ActionButton>
           </div>
         </div>
-      </Modal>
+      </OverlayDialog>
 
-      <Modal
+      <OverlayDialog
         isOpen={showAddTraffic}
         onClose={() => { setShowAddTraffic(false); setTrafficForm({ ...EMPTY_TRAFFIC }) }}
         title={language === 'zh' ? '录入客流数据' : 'Add Traffic Data'}
@@ -587,15 +587,15 @@ export function StoreDataEntryPanel() {
           </div>
 
           <div className="flex gap-3 pt-2">
-            <Button variant="ghost" size="sm" className="h-9 flex-1 text-sm" onClick={() => { setShowAddTraffic(false); setTrafficForm({ ...EMPTY_TRAFFIC }) }}>
+            <ActionButton variant="ghost" size="sm" className="h-9 flex-1 text-sm" onClick={() => { setShowAddTraffic(false); setTrafficForm({ ...EMPTY_TRAFFIC }) }}>
               {language === 'zh' ? '取消' : 'Cancel'}
-            </Button>
-            <Button variant="secondary" size="sm" className="h-9 flex-1 text-sm" onClick={handleAddTraffic} disabled={!trafficForm.date || !trafficForm.customer_count || saving}>
+            </ActionButton>
+            <ActionButton variant="secondary" size="sm" className="h-9 flex-1 text-sm" onClick={handleAddTraffic} disabled={!trafficForm.date || !trafficForm.customer_count || saving}>
               {saving ? (language === 'zh' ? '保存中...' : 'Saving...') : (language === 'zh' ? '保存' : 'Save')}
-            </Button>
+            </ActionButton>
           </div>
         </div>
-      </Modal>
+      </OverlayDialog>
     </div>
   )
 }

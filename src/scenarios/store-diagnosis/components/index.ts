@@ -1,4 +1,4 @@
-import type { ScenarioComponentRegistry } from '@shared/types/scenario-arch'
+import type { ScenarioComponentRegistry } from '@shared/protocols/scenario-arch'
 import { StoreManagePanel } from './StoreManagePanel'
 import { DiagnosisRecordsPanel } from './DiagnosisRecordsPanel'
 import { OptimizationPlansPanel } from './OptimizationPlansPanel'

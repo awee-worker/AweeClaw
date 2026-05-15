@@ -4,7 +4,7 @@ import type {
   ScenarioCapabilities,
   ScenarioUI,
   ScenarioDataSources,
-} from '@shared/types/scenario'
+} from '@shared/protocols/scenario'
 import { STORE_DIAGNOSIS_WELCOME_SUGGESTIONS, STORE_DIAGNOSIS_WELCOME_TITLE } from './welcome'
 import { buildScenarioIdentity } from '../../scenarioBrandIdentity'
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { ToolPermissionManager } from '@renderer/agent/harness/permissions/ToolPermissionManager'
-import type { ToolPermissionRule } from '@renderer/agent/harness/permissions/ToolPermissionManager'
+import { ToolPermissionManager } from '@intelligence/harness/permissions/ToolPermissionManager'
+import type { ToolPermissionRule } from '@intelligence/harness/permissions/ToolPermissionManager'
 
 describe('ToolPermissionManager', () => {
   let manager: ToolPermissionManager

@@ -5,8 +5,8 @@
  * 主进程的 IPC handler 在 src/main/ipc/data.ts 中实现。
  */
 
-import { api } from '@/renderer/services/electronAPI'
-import type { DatabaseConnectionConfig } from '../types'
+import { api } from '@services/electronBridge'
+import type { DatabaseConnectionConfig } from '../providerTypes'
 
 export async function connectDatabase(config: DatabaseConnectionConfig): Promise<{ success: boolean; error?: string }> {
   return api.data.connectDatabase(config)

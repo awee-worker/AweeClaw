@@ -1,0 +1,1095 @@
+/**
+ * 安全的 Preload Script
+ */
+
+import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
+
+// 本地类型定义（避免从 renderer 导入）
+type Language = 'en' | 'zh'
+
+// =================== 类型定义 ===================
+
+interface SearchFilesOptions {
+  isRegex: boolean
+  isCaseSensitive: boolean
+  isWholeWord?: boolean
+  include?: string
+  exclude?: string
+}
+
+interface SearchFileResult {
+  path: string
+  line: number
+  text: string
+}
+
+interface LLMStreamChunk {
+  type: 'text' | 'reasoning' | 'error' | 'tool_call' | 'tool_call_start' | 'tool_call_delta' | 'tool_call_delta_end' | 'tool_call_end' | 'tool_call_available' | 'source'
+  content?: string
+  error?: string
+  id?: string
+  name?: string
+  arguments?: Record<string, unknown>
+  argumentsDelta?: string
+  source?: {
+    id: string
+    sourceType: 'url' | 'document'
+    url?: string
+    title?: string
+    mediaType?: string
+    filename?: string
+  }
+}
+
+interface LLMError {
+  message: string
+  code: string
+  retryable: boolean
+}
+
+interface LLMResult {
+  content: string
+  reasoning?: string
+  usage?: {
+    promptTokens: number
+    completionTokens: number
+    totalTokens: number
+    cachedInputTokens?: number
+    cacheWriteTokens?: number
+    reasoningTokens?: number
+  }
+}
+
+type MessageContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image'; source: { type: 'base64' | 'url'; media_type: string; data: string } }
+
+type MessageContent = string | MessageContentPart[]
+
+interface LLMMessage {
+  role: 'user' | 'assistant' | 'system' | 'tool'
+  content: MessageContent
+  toolCallId?: string
+  toolName?: string
+}
+
+interface ToolDefinition {
+  name: string
+  description: string
+  parameters: {
+    type: 'object'
+    properties: Record<string, {
+      type: string
+      description: string
+      enum?: string[]
+    }>
+    required?: string[]
+  }
+}
+
+interface LLMConfig {
+  provider: string
+  model: string
+  apiKey: string
+  baseUrl?: string
+  protocol?: string
+}
+
+interface LLMSendMessageParams {
+  config: LLMConfig
+  messages: LLMMessage[]
+  tools?: ToolDefinition[]
+  systemPrompt?: string
+  activeTools?: string[]
+  requestId: string  // 必传，用于 IPC 频道隔离
+}
+
+interface EmbeddingConfigInput {
+  provider?: 'jina' | 'voyage' | 'openai' | 'cohere' | 'huggingface' | 'ollama' | 'custom'
+  apiKey?: string
+  model?: string
+  baseUrl?: string
+  dimensions?: number
+}
+
+interface IndexStatusData {
+  mode: 'structural' | 'semantic'
+  isIndexing: boolean
+  totalFiles: number
+  indexedFiles: number
+  totalChunks: number
+  lastIndexedAt?: number
+  error?: string
+  message?: string
+}
+
+interface IndexSearchResult {
+  filePath: string
+  relativePath: string
+  content: string
+  startLine: number
+  endLine: number
+  score: number
+  type: string
+  language: string
+}
+
+interface EmbeddingProvider {
+  id: string
+  name: string
+  description: string
+  free: boolean
+}
+
+interface RemoteShellEntry {
+  name: string
+  path: string
+  isDirectory: boolean
+  size: number
+  modifyTime?: number
+}
+
+interface RemoteShellServer {
+  host: string
+  port?: number
+  username?: string
+  password?: string
+  privateKeyPath?: string
+  remotePath?: string
+}
+
+export interface ElectronAPI {
+  // App lifecycle
+  appReady: () => void
+  getAppVersion: () => Promise<string>
+
+  // Window controls
+  minimize: () => void
+  maximize: () => void
+  close: () => void
+  newWindow: () => void
+  getWindowId: () => Promise<number>
+  resizeWindow: (width: number, height: number, minWidth?: number, minHeight?: number) => Promise<void>
+  setTheme: (theme: 'light' | 'dark' | 'system', bgColor?: string) => Promise<boolean>
+
+  // File operations
+  openFile: () => Promise<{ path: string; content: string } | null>
+  openKnowledgeFiles: () => Promise<string[] | null>
+  readKnowledgeFile: (filePath: string) => Promise<string | null>
+  extractKnowledgeDocxText: (filePath: string) => Promise<string | null>
+  extractKnowledgeDocText: (filePath: string) => Promise<string | null>
+  extractKnowledgeXlsxText: (filePath: string) => Promise<string | null>
+  extractKnowledgePptText: (filePath: string) => Promise<string | null>
+  extractKnowledgePdfText: (filePath: string) => Promise<string | null>
+  openFolder: () => Promise<string | null>
+  selectFolder: () => Promise<string | null>
+  selectForImport: (options: { title?: string; allowFiles?: boolean; allowDirs?: boolean; multiSelection?: boolean }) => Promise<string[]>
+  selectForExport: (options: { title?: string; defaultPath?: string }) => Promise<string | null>
+  importIntoWorkspace: (sourcePaths: string[], targetDir: string) => Promise<{ success: boolean; error?: string; results?: Array<{ source: string; target: string; success: boolean; error?: string }> }>
+  exportFromWorkspace: (sourcePath: string, targetDir: string) => Promise<{ success: boolean; error?: string; target?: string }>
+  shareItem: (filePaths: string[]) => Promise<{ success: boolean; error?: string }>
+  openWorkspace: () => Promise<{
+    configPath: string | null
+    roots: string[]
+    restoreError?: 'missing-workspace'
+    missingRoots?: string[]
+    workspaceId?: string
+  } | null>
+  addFolderToWorkspace: () => Promise<string | null>
+  saveWorkspace: (configPath: string, roots: string[]) => Promise<boolean>
+  restoreWorkspace: () => Promise<{
+    configPath: string | null
+    roots: string[]
+    restoreError?: 'missing-workspace'
+    missingRoots?: string[]
+    workspaceId?: string
+  } | null>
+  getRecentWorkspaces: () => Promise<string[]>
+  workspaceExists: (path: string) => Promise<boolean>
+  clearRecentWorkspaces: () => Promise<boolean>
+  removeFromRecentWorkspaces: (path: string) => Promise<boolean>
+  readDir: (path: string) => Promise<{ name: string; path: string; isDirectory: boolean }[]>
+  getFileTree: (path: string, maxDepth?: number) => Promise<string>
+  readFile: (path: string) => Promise<string | null>
+  readBinaryFile: (path: string) => Promise<string | null>
+  extractDocText: (path: string) => Promise<string | null>
+  extractPptText: (path: string) => Promise<string | null>
+  extractDocxText: (path: string) => Promise<string | null>
+  extractXlsxText: (path: string) => Promise<string | null>
+  extractPdfText: (path: string) => Promise<string | null>
+  writeFile: (path: string, content: string) => Promise<boolean>
+  writeBinaryFile: (path: string, base64Data: string) => Promise<boolean>
+  ensureDir: (path: string) => Promise<boolean>
+  saveFile: (content: string, path?: string) => Promise<string | null>
+  fileExists: (path: string) => Promise<boolean>
+  showItemInFolder: (path: string) => Promise<void>
+  mkdir: (path: string) => Promise<boolean>
+  deleteFile: (path: string) => Promise<boolean>
+  copyFile: (sourcePath: string, destinationPath: string) => Promise<boolean>
+  renameFile: (oldPath: string, newPath: string) => Promise<boolean>
+  searchFiles: (query: string, rootPath: string | string[], options?: SearchFilesOptions) => Promise<SearchFileResult[]>
+
+  // Settings
+  getSetting: (key: string) => Promise<unknown>
+  setSetting: (key: string, value: unknown) => Promise<boolean>
+  getConfigPath: () => Promise<string>
+  setConfigPath: (path: string) => Promise<boolean>
+  onSettingsChanged: (callback: (event: { key: string; value: unknown }) => void) => () => void
+  getWhitelist: () => Promise<{ shell: string[]; git: string[] }>
+  resetWhitelist: () => Promise<{ shell: string[]; git: string[] }>
+
+  // LLM
+  sendMessage: (params: LLMSendMessageParams) => Promise<void>
+  compactContext: (params: LLMSendMessageParams) => Promise<{ content?: string; usage?: any; metadata?: any; error?: string; code?: string }>
+  abortMessage: () => void
+  // Structured Output
+  analyzeCode: (params: any) => Promise<any>
+  analyzeCodeStream: (params: any) => Promise<any>
+  suggestRefactoring: (params: any) => Promise<any>
+  suggestFixes: (params: any) => Promise<any>
+  generateTests: (params: any) => Promise<any>
+  generateObject: (params: { config: any; schema: any; system: string; prompt: string }) => Promise<{ object: any; usage?: any; metadata?: any; error?: string }>
+  // Embeddings
+  embedText: (params: { text: string; config: any }) => Promise<any>
+  embedMany: (params: { texts: string[]; config: any }) => Promise<any>
+  findSimilar: (params: { query: string; candidates: string[]; config: any; topK?: number }) => Promise<any>
+  onLLMStream: (requestId: string, callback: (data: LLMStreamChunk) => void) => () => void
+  onLLMError: (requestId: string, callback: (error: LLMError) => void) => () => void
+  onLLMDone: (requestId: string, callback: (data: LLMResult) => void) => () => void
+
+  // Interactive Terminal
+  createTerminal: (options: { id: string; cwd?: string; shell?: string; backend?: 'pty' | 'pipe'; remote?: RemoteShellServer }) => Promise<{ success: boolean; error?: string }>
+  writeTerminal: (id: string, data: string) => Promise<void>
+  resizeTerminal: (id: string, cols: number, rows: number) => Promise<void>
+  killTerminal: (id?: string) => void
+  getAvailableShells: () => Promise<{ label: string; path: string }[]>
+  onTerminalData: (callback: (event: { id: string; data: string }) => void) => () => void
+  onTerminalExit: (callback: (event: { id: string; exitCode: number; signal?: number }) => void) => () => void
+  onTerminalError: (callback: (event: { id: string; error: string }) => void) => () => void
+
+  // Remote Shell / SFTP
+  remoteShellList: (server: RemoteShellServer, remotePath?: string) => Promise<RemoteShellEntry[]>
+  remoteShellReadText: (server: RemoteShellServer, remotePath: string) => Promise<string | null>
+  remoteShellWriteText: (server: RemoteShellServer, remotePath: string, content: string) => Promise<boolean>
+  remoteShellMkdir: (server: RemoteShellServer, remotePath: string) => Promise<boolean>
+  remoteShellRename: (server: RemoteShellServer, oldPath: string, newPath: string) => Promise<boolean>
+  remoteShellDelete: (server: RemoteShellServer, remotePath: string) => Promise<boolean>
+  remoteShellTestConnection: (server: RemoteShellServer) => Promise<{ success: boolean; error?: string }>
+  remoteShellUpload: (server: RemoteShellServer, remoteDirectory: string) => Promise<{ canceled: boolean; uploaded: string[] }>
+  remoteShellDownload: (server: RemoteShellServer, remotePath: string) => Promise<{ canceled: boolean; localPath?: string }>
+
+  // Secure Shell Execution
+  executeSecureCommand: (request: {
+    command: string
+    args?: string[]
+    cwd?: string
+    timeout?: number
+    requireConfirm?: boolean
+  }) => Promise<{
+    success: boolean
+    output?: string
+    errorOutput?: string
+    exitCode?: number
+    error?: string
+  }>
+
+  // Secure Git Execution
+  gitExecSecure: (args: string[], cwd: string) => Promise<{
+    success: boolean
+    stdout?: string
+    stderr?: string
+    exitCode?: number
+    error?: string
+  }>
+
+  // Security Management
+  getPermissions: () => Promise<Record<string, string>>
+  resetPermissions: () => Promise<boolean>
+
+  // File watcher
+  onFileChanged: (callback: (event: { event: 'create' | 'update' | 'delete'; path: string }) => void) => () => void
+
+  // Codebase Indexing
+  indexInitialize: (workspacePath: string) => Promise<{ success: boolean; error?: string }>
+  indexStart: (workspacePath: string) => Promise<{ success: boolean; error?: string }>
+  indexStatus: (workspacePath: string) => Promise<IndexStatusData>
+  indexHasIndex: (workspacePath: string) => Promise<boolean>
+  indexSearch: (workspacePath: string, query: string, topK?: number) => Promise<IndexSearchResult[]>
+  indexHybridSearch: (workspacePath: string, query: string, topK?: number) => Promise<IndexSearchResult[]>
+  indexSearchSymbols: (workspacePath: string, query: string, topK?: number) => Promise<any[]>
+  indexGetProjectSummary: (workspacePath: string) => Promise<any>
+  indexGetProjectSummaryText: (workspacePath: string) => Promise<string>
+  indexSetMode: (workspacePath: string, mode: 'structural' | 'semantic') => Promise<{ success: boolean; error?: string }>
+  indexUpdateFile: (workspacePath: string, filePath: string) => Promise<{ success: boolean; error?: string }>
+  indexClear: (workspacePath: string) => Promise<{ success: boolean; error?: string }>
+  indexUpdateEmbeddingConfig: (workspacePath: string, config: EmbeddingConfigInput) => Promise<{ success: boolean; error?: string }>
+  indexTestConnection: (workspacePath: string) => Promise<{ success: boolean; error?: string; latency?: number }>
+  indexGetProviders: () => Promise<EmbeddingProvider[]>
+  indexParseCallGraph: (filePath: string, content: string) => Promise<import('@protocols').CodeGraphNode[]>
+  onIndexProgress: (callback: (status: IndexStatusData) => void) => () => void
+
+  // LSP
+  lspStart: (workspacePath: string) => Promise<{ success: boolean }>
+  lspStop: () => Promise<{ success: boolean }>
+  lspDidOpen: (params: { uri: string; languageId: string; version: number; text: string; workspacePath?: string | null }) => Promise<{ success: boolean; serverName: string | null }>
+  lspDidChange: (params: { uri: string; version: number; text: string; workspacePath?: string | null }) => Promise<void>
+  lspDidClose: (params: { uri: string; workspacePath?: string | null }) => Promise<void>
+  lspDidSave: (params: { uri: string; text?: string; workspacePath?: string | null }) => Promise<void>
+  lspDefinition: (params: { uri: string; line: number; character: number; workspacePath?: string | null }) => Promise<any>
+  lspTypeDefinition: (params: { uri: string; line: number; character: number; workspacePath?: string | null }) => Promise<any>
+  lspImplementation: (params: { uri: string; line: number; character: number; workspacePath?: string | null }) => Promise<any>
+  lspReferences: (params: { uri: string; line: number; character: number; workspacePath?: string | null }) => Promise<any>
+  lspHover: (params: { uri: string; line: number; character: number; workspacePath?: string | null }) => Promise<any>
+  lspCompletion: (params: { uri: string; line: number; character: number; workspacePath?: string | null }) => Promise<any>
+  lspCompletionResolve: (item: any) => Promise<any>
+  lspSignatureHelp: (params: { uri: string; line: number; character: number; workspacePath?: string | null }) => Promise<any>
+  lspRename: (params: { uri: string; line: number; character: number; newName: string; workspacePath?: string | null }) => Promise<any>
+  lspPrepareRename: (params: { uri: string; line: number; character: number; workspacePath?: string | null }) => Promise<any>
+  lspDocumentSymbol: (params: { uri: string; workspacePath?: string | null }) => Promise<any>
+  lspWorkspaceSymbol: (params: { query: string }) => Promise<any>
+  lspCodeAction: (params: { uri: string; range: any; diagnostics?: any[]; workspacePath?: string | null }) => Promise<any>
+  lspFormatting: (params: { uri: string; options?: any; workspacePath?: string | null }) => Promise<any>
+  lspRangeFormatting: (params: { uri: string; range: any; options?: any; workspacePath?: string | null }) => Promise<any>
+  lspDocumentHighlight: (params: { uri: string; line: number; character: number; workspacePath?: string | null }) => Promise<any>
+  lspFoldingRange: (params: { uri: string; workspacePath?: string | null }) => Promise<any>
+  lspInlayHint: (params: { uri: string; range: any; workspacePath?: string | null }) => Promise<any>
+  getLspDiagnostics: (filePath: string) => Promise<any[]>
+  onLspDiagnostics: (callback: (params: { uri: string; diagnostics: any[] }) => void) => () => void
+  // 新增 LSP 功能
+  lspPrepareCallHierarchy: (params: { uri: string; line: number; character: number; workspacePath?: string | null }) => Promise<any>
+  lspIncomingCalls: (params: { uri: string; line: number; character: number; workspacePath?: string | null }) => Promise<any>
+  lspOutgoingCalls: (params: { uri: string; line: number; character: number; workspacePath?: string | null }) => Promise<any>
+  lspWaitForDiagnostics: (params: { uri: string }) => Promise<{ success: boolean }>
+  lspFindBestRoot: (params: { filePath: string; languageId: string; workspacePath: string }) => Promise<string>
+  lspEnsureServerForFile: (params: { filePath: string; languageId: string; workspacePath: string }) => Promise<{ success: boolean; serverName?: string }>
+  lspDidChangeWatchedFiles: (params: { changes: Array<{ uri: string; type: number }>; workspacePath?: string | null }) => Promise<void>
+  lspGetSupportedLanguages: () => Promise<string[]>
+  // LSP 服务器安装管理
+  lspGetServerStatus: () => Promise<Record<string, { installed: boolean; path?: string }>>
+  lspGetBinDir: () => Promise<string>
+  lspGetDefaultBinDir: () => Promise<string>
+  lspSetCustomBinDir: (customPath: string | null) => Promise<{ success: boolean }>
+  lspInstallServer: (serverType: string) => Promise<{ success: boolean; path?: string; error?: string }>
+  lspInstallBasicServers: () => Promise<{ success: boolean; error?: string }>
+
+  // HTTP (网络请求)
+  httpReadUrl: (url: string, timeout?: number) => Promise<{
+    success: boolean
+    content?: string
+    title?: string
+    error?: string
+    contentType?: string
+    statusCode?: number
+  }>
+  httpWebSearch: (query: string, maxResults?: number, timeout?: number) => Promise<{
+    success: boolean
+    results?: { title: string; url: string; snippet: string }[]
+    error?: string
+  }>
+  httpSetGoogleSearch: (apiKey: string, cx: string) => Promise<{ success: boolean }>
+
+  // Health Check
+  healthCheckProvider: (provider: string, apiKey: string, baseUrl?: string, timeout?: number, protocol?: string) => Promise<{
+    provider: string
+    status: 'healthy' | 'unhealthy' | 'unknown'
+    latency?: number
+    error?: string
+    checkedAt: Date
+  }>
+  testModel: (config: LLMConfig) => Promise<{
+    success: boolean
+    content?: string
+    latency?: number
+    error?: string
+  }>
+  fetchModels: (provider: string, apiKey: string, baseUrl?: string, protocol?: string) => Promise<{
+    success: boolean
+    models?: string[]
+    error?: string
+  }>
+
+  // MCP (Model Context Protocol)
+  mcpInitialize: (workspaceRoots: string[]) => Promise<{ success: boolean; error?: string }>
+  mcpGetServersState: () => Promise<{ success: boolean; servers?: any[]; error?: string }>
+  mcpGetAllTools: () => Promise<{ success: boolean; tools?: any[]; error?: string }>
+  mcpConnectServer: (serverId: string) => Promise<{ success: boolean; error?: string }>
+  mcpDisconnectServer: (serverId: string) => Promise<{ success: boolean; error?: string }>
+  mcpReconnectServer: (serverId: string) => Promise<{ success: boolean; error?: string }>
+  mcpCallTool: (request: { serverId: string; toolName: string; arguments: Record<string, unknown> }) => Promise<{
+    success: boolean
+    content?: any[]
+    error?: string
+    isError?: boolean
+  }>
+  mcpReadResource: (request: { serverId: string; uri: string }) => Promise<{
+    success: boolean
+    contents?: any[]
+    error?: string
+  }>
+  mcpGetPrompt: (request: { serverId: string; promptName: string; arguments?: Record<string, string> }) => Promise<{
+    success: boolean
+    description?: string
+    messages?: any[]
+    error?: string
+  }>
+  mcpRefreshCapabilities: (serverId: string) => Promise<{ success: boolean; error?: string }>
+  mcpGetConfigPaths: () => Promise<{ success: boolean; paths?: { user: string; workspace: string[] }; error?: string }>
+  mcpReloadConfig: () => Promise<{ success: boolean; error?: string }>
+  mcpAddServer: (config: {
+    id: string
+    name: string
+    command: string
+    args: string[]
+    env: Record<string, string>
+    autoApprove: string[]
+    disabled: boolean
+  }, level?: 'user' | 'workspace') => Promise<{ success: boolean; error?: string }>
+  mcpRemoveServer: (serverId: string, level?: 'user' | 'workspace') => Promise<{ success: boolean; error?: string }>
+  mcpToggleServer: (serverId: string, disabled: boolean, level?: 'user' | 'workspace') => Promise<{ success: boolean; error?: string }>
+  mcpSetAutoConnect: (enabled: boolean) => Promise<{ success: boolean; error?: string }>
+  // Registry
+  mcpRegistrySearch: (query?: string) => Promise<{ success: boolean; servers?: any[]; error?: string }>
+  mcpRegistryGetDetails: (serverName: string) => Promise<{ success: boolean; server?: any; requiredEnvVars?: any[]; localConfig?: any; error?: string }>
+  mcpRegistryInstall: (serverName: string, envValues?: Record<string, string>) => Promise<{ success: boolean; config?: any; error?: string }>
+  onMcpServerStatus: (callback: (event: { serverId: string; status: string; error?: string }) => void) => () => void
+  onMcpToolsUpdated: (callback: (event: { serverId: string; tools: any[] }) => void) => () => void
+  onMcpResourcesUpdated: (callback: (event: { serverId: string; resources: any[] }) => void) => () => void
+  onMcpStateChanged: (callback: (servers: any[]) => void) => () => void
+
+  // Skills
+  skillsGetGlobalDir: () => Promise<string>
+
+  // Channel 多渠道
+  channelInitialize: () => Promise<{ success: boolean; error?: string }>
+  channelShutdown: () => Promise<{ success: boolean; error?: string }>
+  channelGetRegisteredChannels: () => Promise<{ success: boolean; channels?: any[]; error?: string }>
+  channelGetSecretSchema: (channelId: string) => Promise<{ success: boolean; schema?: any[]; error?: string }>
+  channelValidateCredentials: (channelId: string, credentials: Record<string, string>) => Promise<{ success: boolean; valid?: boolean; error?: string }>
+  channelAddAccount: (channelId: string, account: any) => Promise<{ success: boolean; error?: string }>
+  channelRemoveAccount: (channelId: string, accountId: string) => Promise<{ success: boolean; error?: string }>
+  channelUpdateAccount: (channelId: string, account: any) => Promise<{ success: boolean; error?: string }>
+  channelConnectAccount: (channelId: string, accountId: string) => Promise<{ success: boolean; error?: string }>
+  channelDisconnectAccount: (channelId: string, accountId: string) => Promise<{ success: boolean; error?: string }>
+  channelSendMessage: (message: any) => Promise<{ success: boolean; messageId?: string; error?: string }>
+  channelGetAccountStatus: (channelId: string, accountId: string) => Promise<{ success: boolean; status?: any; error?: string }>
+  channelGetAllAccountStatuses: () => Promise<{ success: boolean; statuses?: any[]; error?: string }>
+  channelGetConfig: (channelId: string) => Promise<{ success: boolean; config?: any; error?: string }>
+  channelGetAllConfigs: () => Promise<{ success: boolean; configs?: any[]; error?: string }>
+  channelSetChannelEnabled: (channelId: string, enabled: boolean) => Promise<{ success: boolean; error?: string }>
+  channelSendReply: (conversationKey: string, text: string, replyToId?: string) => Promise<{ success: boolean; error?: string; messageId?: string }>
+  channelUpdateReaction: (accountId: string, messageId: string, status: string) => Promise<{ success: boolean }>
+  channelStreamReply: (accountId: string, to: string, fullText: string, replyToId?: string) => Promise<{ success: boolean; error?: string; messageId?: string }>
+  channelRendererReply: (messageId: string, replyText: string) => Promise<{ success: boolean }>
+  onChannelMessage: (callback: (message: any) => void) => () => void
+  onChannelInboundMessage: (callback: (message: any) => void) => () => void
+  onChannelStatusChange: (callback: (snapshot: any) => void) => () => void
+  onChannelImProcessingStatus: (callback: (status: any) => void) => () => void
+
+  // Python 环境
+  pythonGetStatus: () => Promise<{
+    ready: boolean
+    pythonPath: string | null
+    uvPath: string | null
+    source: 'system' | 'managed' | 'none'
+    version: string | null
+    venvDir: string | null
+    installedPackages: string[]
+    error?: string
+  }>
+  pythonGetPath: () => Promise<string | null>
+  pythonGetUvPath: () => Promise<string | null>
+  pythonEnsureReady: () => Promise<{
+    ready: boolean
+    pythonPath: string | null
+    uvPath: string | null
+    source: 'system' | 'managed' | 'none'
+    version: string | null
+    venvDir: string | null
+    installedPackages: string[]
+    error?: string
+  }>
+  pythonReinstall: () => Promise<{
+    ready: boolean
+    pythonPath: string | null
+    uvPath: string | null
+    source: 'system' | 'managed' | 'none'
+    version: string | null
+    venvDir: string | null
+    installedPackages: string[]
+    error?: string
+  }>
+  pythonInstallPkg: (pkg: string) => Promise<{ success: boolean; error?: string }>
+  pythonSetCustomPath: (customPath: string | null) => Promise<{ success: boolean; error?: string }>
+  pythonExecuteScript: (params: {
+    scriptPath: string
+    args?: string[]
+    cwd?: string
+    timeout?: number
+  }) => Promise<{ success: boolean; stdout: string; stderr: string; exitCode: number | null; error?: string }>
+  pythonExecuteInlineScript: (params: {
+    script: string
+    dependencies?: string[]
+    args?: string[]
+    cwd?: string
+    timeout?: number
+  }) => Promise<{ success: boolean; stdout: string; stderr: string; exitCode: number | null; error?: string; tempFile?: string }>
+
+  // Data API
+  dataExecuteQuery: (params: { query: string; connectionId: string; limit: number }) => Promise<{
+    success: boolean
+    columns?: string[]
+    rows?: Record<string, unknown>[]
+    rowCount?: number
+    error?: string
+    executionTime?: number
+  }>
+  dataTransform: (params: { operation: string; source: string; config: Record<string, unknown>; output?: string }) => Promise<{
+    success: boolean
+    rowCount?: number
+    data?: unknown
+    error?: string
+  }>
+  dataAnalyzeCsv: (params: { path: string; analysisType: string; sampleSize: number }) => Promise<{
+    success: boolean
+    data?: Record<string, unknown>
+    error?: string
+  }>
+  dataGenerateChart: (params: { chartType: string; data: Record<string, unknown>; title?: string; xLabel?: string; yLabel?: string; format?: string }) => Promise<{
+    success: boolean
+    html?: string
+    path?: string
+    error?: string
+  }>
+  dataStatisticalTest: (params: { testType: string; data: Record<string, unknown>; alpha: number; hypothesis?: string }) => Promise<{
+    success: boolean
+    result?: { statistic: number; pValue: number; significant: boolean; conclusion: string }
+    error?: string
+  }>
+  dataRestApiCall: (params: { url: string; method: string; headers: Record<string, string>; body?: string; authType: string; authToken?: string; authHeaderName?: string }) => Promise<{
+    success: boolean
+    status?: number
+    data?: unknown
+    error?: string
+  }>
+  dataConnectDatabase: (config: { id: string; driver: string; host?: string; port?: number; database?: string; username?: string; password?: string; filePath?: string }) => Promise<{ success: boolean; error?: string }>
+  dataDisconnectDatabase: (connectionId: string) => Promise<{ success: boolean }>
+  dataGetConnections: () => Promise<Array<{ id: string; driver: string; host?: string; port?: number; database?: string; filePath?: string }>>
+  dataClearCache: () => Promise<{ success: boolean }>
+
+  // Command Execution
+  onExecuteCommand: (callback: (commandId: string) => void) => () => void
+}
+
+// =================== 暴露 API ===================
+
+contextBridge.exposeInMainWorld('electronAPI', {
+  appReady: () => ipcRenderer.send('app:ready'),
+  getAppVersion: () => ipcRenderer.invoke('app:getVersion'),
+  respondToShutdownRequest: (requestId: string, success: boolean) =>
+    ipcRenderer.invoke('app:shutdown-response', requestId, success),
+  onShutdownRequested: (callback: (event: { requestId: string; reason: 'window-close' | 'app-quit' }) => void) => {
+    const handler = (_: IpcRendererEvent, event: { requestId: string; reason: 'window-close' | 'app-quit' }) => callback(event)
+    ipcRenderer.on('app:shutdown-requested', handler)
+    return () => ipcRenderer.removeListener('app:shutdown-requested', handler)
+  },
+  minimize: () => ipcRenderer.send('window:minimize'),
+  maximize: () => ipcRenderer.send('window:maximize'),
+  close: () => ipcRenderer.send('window:close'),
+  toggleDevTools: () => ipcRenderer.send('window:toggleDevTools'),
+  newWindow: () => ipcRenderer.invoke('window:new'),
+  getWindowId: () => ipcRenderer.invoke('window:getId'),
+  resizeWindow: (width: number, height: number, minWidth?: number, minHeight?: number) =>
+    ipcRenderer.invoke('window:resize', width, height, minWidth, minHeight),
+  setTheme: (theme: 'light' | 'dark' | 'system', bgColor?: string) => ipcRenderer.invoke('window:setTheme', theme, bgColor),
+  setLanguage: (lang: Language) => ipcRenderer.send('i18n:changed', lang),
+  openFile: () => ipcRenderer.invoke('file:open'),
+  openKnowledgeFiles: () => ipcRenderer.invoke('file:openKnowledgeFiles'),
+  readKnowledgeFile: (filePath: string) => ipcRenderer.invoke('file:readKnowledgeFile', filePath),
+  extractKnowledgeDocxText: (filePath: string) => ipcRenderer.invoke('file:extractKnowledgeDocxText', filePath),
+  extractKnowledgeDocText: (filePath: string) => ipcRenderer.invoke('file:extractKnowledgeDocText', filePath),
+  extractKnowledgeXlsxText: (filePath: string) => ipcRenderer.invoke('file:extractKnowledgeXlsxText', filePath),
+  extractKnowledgePptText: (filePath: string) => ipcRenderer.invoke('file:extractKnowledgePptText', filePath),
+  extractKnowledgePdfText: (filePath: string) => ipcRenderer.invoke('file:extractKnowledgePdfText', filePath),
+  openFolder: () => ipcRenderer.invoke('file:openFolder'),
+  selectFolder: () => ipcRenderer.invoke('dialog:selectFolder'),
+  selectForImport: (options: { title?: string; allowFiles?: boolean; allowDirs?: boolean; multiSelection?: boolean }) => ipcRenderer.invoke('dialog:selectForImport', options),
+  selectForExport: (options: { title?: string; defaultPath?: string }) => ipcRenderer.invoke('dialog:selectForExport', options),
+  importIntoWorkspace: (sourcePaths: string[], targetDir: string) => ipcRenderer.invoke('file:importIntoWorkspace', sourcePaths, targetDir),
+  exportFromWorkspace: (sourcePath: string, targetDir: string) => ipcRenderer.invoke('file:exportFromWorkspace', sourcePath, targetDir),
+  shareItem: (filePaths: string[]) => ipcRenderer.invoke('file:shareItem', filePaths),
+  openWorkspace: () => ipcRenderer.invoke('workspace:open'),
+  addFolderToWorkspace: () => ipcRenderer.invoke('workspace:addFolder'),
+  saveWorkspace: (configPath: string, roots: string[]) => ipcRenderer.invoke('workspace:save', configPath, roots),
+  restoreWorkspace: () => ipcRenderer.invoke('workspace:restore'),
+  setActiveWorkspace: (roots: string[]) => ipcRenderer.invoke('workspace:setActive', roots),
+  getRecentWorkspaces: () => ipcRenderer.invoke('workspace:getRecent'),
+  workspaceExists: (path: string) => ipcRenderer.invoke('workspace:exists', path),
+  clearRecentWorkspaces: () => ipcRenderer.invoke('workspace:clearRecent'),
+  removeFromRecentWorkspaces: (path: string) => ipcRenderer.invoke('workspace:removeFromRecent', path),
+  readDir: (path: string) => ipcRenderer.invoke('file:readDir', path),
+  getFileTree: (path: string, maxDepth?: number) => ipcRenderer.invoke('file:getTree', path, maxDepth),
+  readFile: (path: string) => ipcRenderer.invoke('file:read', path),
+  readBinaryFile: (path: string) => ipcRenderer.invoke('file:readBinary', path),
+  extractDocText: (path: string) => ipcRenderer.invoke('file:extractDocText', path),
+  extractPptText: (path: string) => ipcRenderer.invoke('file:extractPptText', path),
+  extractDocxText: (path: string) => ipcRenderer.invoke('file:extractDocxText', path),
+  extractXlsxText: (path: string) => ipcRenderer.invoke('file:extractXlsxText', path),
+  extractPdfText: (path: string) => ipcRenderer.invoke('file:extractPdfText', path),
+  writeFile: (path: string, content: string) => ipcRenderer.invoke('file:write', path, content),
+  writeBinaryFile: (path: string, base64Data: string) => ipcRenderer.invoke('file:writeBinary', path, base64Data),
+  ensureDir: (path: string) => ipcRenderer.invoke('file:ensureDir', path),
+  saveFile: (content: string, path?: string) => ipcRenderer.invoke('file:save', content, path),
+  fileExists: (path: string) => ipcRenderer.invoke('file:exists', path),
+  showItemInFolder: (path: string) => ipcRenderer.invoke('file:showInFolder', path),
+  openInBrowser: (path: string) => ipcRenderer.invoke('file:openInBrowser', path),
+  openExternalUrl: (url: string) => ipcRenderer.invoke('shell:openExternalUrl', url),
+  mkdir: (path: string) => ipcRenderer.invoke('file:mkdir', path),
+  deleteFile: (path: string) => ipcRenderer.invoke('file:delete', path),
+  copyFile: (sourcePath: string, destinationPath: string) => ipcRenderer.invoke('file:copy', sourcePath, destinationPath),
+  renameFile: (oldPath: string, newPath: string) => ipcRenderer.invoke('file:rename', oldPath, newPath),
+  searchFiles: (query: string, rootPath: string | string[], options?: SearchFilesOptions) =>
+    ipcRenderer.invoke('file:search', query, rootPath, options),
+  /** 流式搜索 — 结果通过 search:results 事件增量推送 */
+  searchStream: (query: string, rootPath: string | string[], options: SearchFilesOptions, searchId: string) =>
+    ipcRenderer.invoke('file:search-stream', query, rootPath, options, searchId),
+  onSearchResults: (callback: (searchId: string, results: SearchFileResult[]) => void) => {
+    const handler = (_: IpcRendererEvent, searchId: string, results: SearchFileResult[]) => callback(searchId, results)
+    ipcRenderer.on('search:results', handler)
+    return () => { ipcRenderer.removeListener('search:results', handler) }
+  },
+  onSearchDone: (callback: (searchId: string) => void) => {
+    const handler = (_: IpcRendererEvent, searchId: string) => callback(searchId)
+    ipcRenderer.on('search:done', handler)
+    return () => { ipcRenderer.removeListener('search:done', handler) }
+  },
+
+  getSetting: (key: string) => ipcRenderer.invoke('settings:get', key),
+  setSetting: (key: string, value: unknown) => ipcRenderer.invoke('settings:set', key, value),
+  getConfigPath: () => ipcRenderer.invoke('settings:getConfigPath'),
+  setConfigPath: (path: string) => ipcRenderer.invoke('settings:setConfigPath', path),
+  onSettingsChanged: (callback: (event: { key: string; value: unknown }) => void) => {
+    const handler = (_: IpcRendererEvent, event: { key: string; value: unknown }) => callback(event)
+    ipcRenderer.on('settings:changed', handler)
+    return () => ipcRenderer.removeListener('settings:changed', handler)
+  },
+  getWhitelist: () => ipcRenderer.invoke('settings:getWhitelist'),
+  resetWhitelist: () => ipcRenderer.invoke('settings:resetWhitelist'),
+  getUserDataPath: () => ipcRenderer.invoke('settings:getUserDataPath'),
+  getRecentLogs: () => ipcRenderer.invoke('settings:getRecentLogs'),
+
+  sendMessage: (params: LLMSendMessageParams) => ipcRenderer.invoke('llm:sendMessage', params),
+  compactContext: (params: LLMSendMessageParams) => ipcRenderer.invoke('llm:compactContext', params),
+  abortMessage: () => ipcRenderer.send('llm:abort'),
+  // Structured Output
+  analyzeCode: (params: any) => ipcRenderer.invoke('llm:analyzeCode', params),
+  analyzeCodeStream: (params: any) => ipcRenderer.invoke('llm:analyzeCodeStream', params),
+  suggestRefactoring: (params: any) => ipcRenderer.invoke('llm:suggestRefactoring', params),
+  suggestFixes: (params: any) => ipcRenderer.invoke('llm:suggestFixes', params),
+  generateTests: (params: any) => ipcRenderer.invoke('llm:generateTests', params),
+  generateObject: (params: { config: any; schema: any; system: string; prompt: string }) => ipcRenderer.invoke('llm:generateObject', params),
+  // Embeddings
+  embedText: (params: { text: string; config: any }) => ipcRenderer.invoke('llm:embedText', params),
+  embedMany: (params: { texts: string[]; config: any }) => ipcRenderer.invoke('llm:embedMany', params),
+  findSimilar: (params: { query: string; candidates: string[]; config: any; topK?: number }) => ipcRenderer.invoke('llm:findSimilar', params),
+  // LLM 事件订阅（使用动态 IPC 频道实现请求隔离）
+  onLLMStream: (requestId: string, callback: (data: LLMStreamChunk) => void) => {
+    const channel = `llm:stream:${requestId}`
+    const handler = (_: IpcRendererEvent, data: LLMStreamChunk | { type: 'batch'; events: LLMStreamChunk[] }) => {
+      // 处理批量事件
+      if (data.type === 'batch' && 'events' in data) {
+        data.events.forEach(event => callback(event))
+      } else {
+        callback(data as LLMStreamChunk)
+      }
+    }
+    ipcRenderer.on(channel, handler)
+    return () => ipcRenderer.removeListener(channel, handler)
+  },
+  onLLMError: (requestId: string, callback: (error: LLMError) => void) => {
+    const channel = `llm:error:${requestId}`
+    const handler = (_: IpcRendererEvent, error: LLMError) => callback(error)
+    ipcRenderer.on(channel, handler)
+    return () => ipcRenderer.removeListener(channel, handler)
+  },
+  onLLMDone: (requestId: string, callback: (data: LLMResult) => void) => {
+    const channel = `llm:done:${requestId}`
+    const handler = (_: IpcRendererEvent, data: LLMResult) => callback(data)
+    ipcRenderer.on(channel, handler)
+    return () => ipcRenderer.removeListener(channel, handler)
+  },
+
+  createTerminal: (options: { id: string; cwd?: string; shell?: string; backend?: 'pty' | 'pipe'; remote?: RemoteShellServer }) =>
+    ipcRenderer.invoke('terminal:interactive', options),
+  writeTerminal: (id: string, data: string) => ipcRenderer.invoke('terminal:input', { id, data }),
+  executeBackground: (params: { command: string; cwd?: string; timeout?: number; shell?: string }) =>
+    ipcRenderer.invoke('shell:executeBackground', params),
+  onShellOutput: (callback: (event: { command: string; type: 'stdout' | 'stderr'; data: string; timestamp: number }) => void) => {
+    const handler = (_: IpcRendererEvent, event: { command: string; type: 'stdout' | 'stderr'; data: string; timestamp: number }) => callback(event)
+    ipcRenderer.on('shell:output', handler)
+    return () => ipcRenderer.removeListener('shell:output', handler)
+  },
+  resizeTerminal: (id: string, cols: number, rows: number) =>
+    ipcRenderer.invoke('terminal:resize', { id, cols, rows }),
+  killTerminal: (id?: string) => ipcRenderer.send('terminal:kill', id),
+  getAvailableShells: () => ipcRenderer.invoke('shell:getAvailableShells'),
+  onTerminalData: (callback: (event: { id: string; data: string; seq: number; occurredAt: number }) => void) => {
+    const handler = (_: IpcRendererEvent, event: { id: string; data: string; seq: number; occurredAt: number }) => callback(event)
+    ipcRenderer.on('terminal:data', handler)
+    return () => ipcRenderer.removeListener('terminal:data', handler)
+  },
+  onTerminalExit: (callback: (event: { id: string; exitCode: number; signal?: number; seq: number; occurredAt: number; reason: 'process_exit' | 'killed_by_user' | 'remote_close' }) => void) => {
+    const handler = (_: IpcRendererEvent, event: { id: string; exitCode: number; signal?: number; seq: number; occurredAt: number; reason: 'process_exit' | 'killed_by_user' | 'remote_close' }) => callback(event)
+    ipcRenderer.on('terminal:exit', handler)
+    return () => ipcRenderer.removeListener('terminal:exit', handler)
+  },
+  onTerminalError: (callback: (event: { id: string; error: string; seq: number; occurredAt: number; fatal?: boolean; reason: 'process_error' | 'spawn_error' | 'unknown' }) => void) => {
+    const handler = (_: IpcRendererEvent, event: { id: string; error: string; seq: number; occurredAt: number; fatal?: boolean; reason: 'process_error' | 'spawn_error' | 'unknown' }) => callback(event)
+    ipcRenderer.on('terminal:error', handler)
+    return () => ipcRenderer.removeListener('terminal:error', handler)
+  },
+
+  remoteShellList: (server: RemoteShellServer, remotePath?: string) => ipcRenderer.invoke('remote:list', server, remotePath),
+  remoteShellReadText: (server: RemoteShellServer, remotePath: string) => ipcRenderer.invoke('remote:readText', server, remotePath),
+  remoteShellWriteText: (server: RemoteShellServer, remotePath: string, content: string) => ipcRenderer.invoke('remote:writeText', server, remotePath, content),
+  remoteShellMkdir: (server: RemoteShellServer, remotePath: string) => ipcRenderer.invoke('remote:mkdir', server, remotePath),
+  remoteShellRename: (server: RemoteShellServer, oldPath: string, newPath: string) => ipcRenderer.invoke('remote:rename', server, oldPath, newPath),
+  remoteShellDelete: (server: RemoteShellServer, remotePath: string) => ipcRenderer.invoke('remote:delete', server, remotePath),
+  remoteShellTestConnection: (server: RemoteShellServer) => ipcRenderer.invoke('remote:testConnection', server),
+  remoteShellUpload: (server: RemoteShellServer, remoteDirectory: string) => ipcRenderer.invoke('remote:upload', server, remoteDirectory),
+  remoteShellDownload: (server: RemoteShellServer, remotePath: string) => ipcRenderer.invoke('remote:download', server, remotePath),
+  remoteShellConnectionStatus: (server: RemoteShellServer) => ipcRenderer.invoke('remote:connectionStatus', server),
+
+  executeSecureCommand: (request: { command: string; args?: string[]; cwd?: string; timeout?: number; requireConfirm?: boolean }) =>
+    ipcRenderer.invoke('shell:executeSecure', request),
+
+  gitExecSecure: (args: string[], cwd: string) => ipcRenderer.invoke('git:execSecure', args, cwd),
+
+  getPermissions: () => ipcRenderer.invoke('security:getPermissions'),
+  resetPermissions: () => ipcRenderer.invoke('security:resetPermissions'),
+
+  onFileChanged: (callback: (event: { event: 'create' | 'update' | 'delete'; path: string }) => void) => {
+    const handler = (_: IpcRendererEvent, data: { event: 'create' | 'update' | 'delete'; path: string }) => callback(data)
+    ipcRenderer.on('file:changed', handler)
+    return () => ipcRenderer.removeListener('file:changed', handler)
+  },
+
+  indexInitialize: (workspacePath: string) => ipcRenderer.invoke('index:initialize', workspacePath),
+  indexStart: (workspacePath: string) => ipcRenderer.invoke('index:start', workspacePath),
+  indexStatus: (workspacePath: string) => ipcRenderer.invoke('index:status', workspacePath),
+  indexHasIndex: (workspacePath: string) => ipcRenderer.invoke('index:hasIndex', workspacePath),
+  indexSearch: (workspacePath: string, query: string, topK?: number) => ipcRenderer.invoke('index:search', workspacePath, query, topK),
+  indexHybridSearch: (workspacePath: string, query: string, topK?: number) => ipcRenderer.invoke('index:hybridSearch', workspacePath, query, topK),
+  indexSearchSymbols: (workspacePath: string, query: string, topK?: number) => ipcRenderer.invoke('index:searchSymbols', workspacePath, query, topK),
+  indexGetProjectSummary: (workspacePath: string) => ipcRenderer.invoke('index:getProjectSummary', workspacePath),
+  indexGetProjectSummaryText: (workspacePath: string) => ipcRenderer.invoke('index:getProjectSummaryText', workspacePath),
+  indexSetMode: (workspacePath: string, mode: 'structural' | 'semantic') => ipcRenderer.invoke('index:setMode', workspacePath, mode),
+  indexUpdateFile: (workspacePath: string, filePath: string) => ipcRenderer.invoke('index:updateFile', workspacePath, filePath),
+  indexClear: (workspacePath: string) => ipcRenderer.invoke('index:clear', workspacePath),
+  indexUpdateEmbeddingConfig: (workspacePath: string, config: EmbeddingConfigInput) => ipcRenderer.invoke('index:updateEmbeddingConfig', workspacePath, config),
+  indexTestConnection: (workspacePath: string) => ipcRenderer.invoke('index:testConnection', workspacePath),
+  indexGetProviders: () => ipcRenderer.invoke('index:getProviders'),
+  indexParseCallGraph: (filePath: string, content: string) => ipcRenderer.invoke('index:parseCallGraph', filePath, content),
+  onIndexProgress: (callback: (status: IndexStatusData) => void) => {
+    const handler = (_: IpcRendererEvent, status: IndexStatusData) => callback(status)
+    ipcRenderer.on('index:progress', handler)
+    return () => ipcRenderer.removeListener('index:progress', handler)
+  },
+
+  lspStart: (workspacePath: string) => ipcRenderer.invoke('lsp:start', workspacePath),
+  lspStop: () => ipcRenderer.invoke('lsp:stop'),
+  lspDidOpen: (params: any) => ipcRenderer.invoke('lsp:didOpen', params),
+  lspDidChange: (params: any) => ipcRenderer.invoke('lsp:didChange', params),
+  lspDidClose: (params: any) => ipcRenderer.invoke('lsp:didClose', params),
+  lspDidSave: (params: any) => ipcRenderer.invoke('lsp:didSave', params),
+  lspDefinition: (params: any) => ipcRenderer.invoke('lsp:definition', params),
+  lspTypeDefinition: (params: any) => ipcRenderer.invoke('lsp:typeDefinition', params),
+  lspImplementation: (params: any) => ipcRenderer.invoke('lsp:implementation', params),
+  lspReferences: (params: any) => ipcRenderer.invoke('lsp:references', params),
+  lspHover: (params: any) => ipcRenderer.invoke('lsp:hover', params),
+  lspCompletion: (params: any) => ipcRenderer.invoke('lsp:completion', params),
+  lspCompletionResolve: (item: any) => ipcRenderer.invoke('lsp:completionResolve', item),
+  lspSignatureHelp: (params: any) => ipcRenderer.invoke('lsp:signatureHelp', params),
+  lspRename: (params: any) => ipcRenderer.invoke('lsp:rename', params),
+  lspPrepareRename: (params: any) => ipcRenderer.invoke('lsp:prepareRename', params),
+  lspDocumentSymbol: (params: any) => ipcRenderer.invoke('lsp:documentSymbol', params),
+  lspWorkspaceSymbol: (params: any) => ipcRenderer.invoke('lsp:workspaceSymbol', params),
+  lspCodeAction: (params: any) => ipcRenderer.invoke('lsp:codeAction', params),
+  lspFormatting: (params: any) => ipcRenderer.invoke('lsp:formatting', params),
+  lspRangeFormatting: (params: any) => ipcRenderer.invoke('lsp:rangeFormatting', params),
+  lspDocumentHighlight: (params: any) => ipcRenderer.invoke('lsp:documentHighlight', params),
+  lspFoldingRange: (params: any) => ipcRenderer.invoke('lsp:foldingRange', params),
+  lspInlayHint: (params: any) => ipcRenderer.invoke('lsp:inlayHint', params),
+  getLspDiagnostics: (filePath: string) => ipcRenderer.invoke('lsp:getDiagnostics', filePath),
+  onLspDiagnostics: (callback: (params: { uri: string; diagnostics: any[] }) => void) => {
+    const handler = (_: IpcRendererEvent, params: { uri: string; diagnostics: any[] }) => callback(params)
+    ipcRenderer.on('lsp:diagnostics', handler)
+    return () => ipcRenderer.removeListener('lsp:diagnostics', handler)
+  },
+  // 新增 LSP 功能
+  lspPrepareCallHierarchy: (params: any) => ipcRenderer.invoke('lsp:prepareCallHierarchy', params),
+  lspIncomingCalls: (params: any) => ipcRenderer.invoke('lsp:incomingCalls', params),
+  lspOutgoingCalls: (params: any) => ipcRenderer.invoke('lsp:outgoingCalls', params),
+  lspWaitForDiagnostics: (params: any) => ipcRenderer.invoke('lsp:waitForDiagnostics', params),
+  lspFindBestRoot: (params: any) => ipcRenderer.invoke('lsp:findBestRoot', params),
+  lspEnsureServerForFile: (params: any) => ipcRenderer.invoke('lsp:ensureServerForFile', params),
+  lspDidChangeWatchedFiles: (params: any) => ipcRenderer.invoke('lsp:didChangeWatchedFiles', params),
+  lspGetSupportedLanguages: () => ipcRenderer.invoke('lsp:getSupportedLanguages'),
+  // LSP 服务器安装管理
+  lspGetServerStatus: () => ipcRenderer.invoke('lsp:getServerStatus'),
+  lspGetBinDir: () => ipcRenderer.invoke('lsp:getBinDir'),
+  lspGetDefaultBinDir: () => ipcRenderer.invoke('lsp:getDefaultBinDir'),
+  lspSetCustomBinDir: (customPath: string | null) => ipcRenderer.invoke('lsp:setCustomBinDir', customPath),
+  lspInstallServer: (serverType: string) => ipcRenderer.invoke('lsp:installServer', serverType),
+  lspInstallBasicServers: () => ipcRenderer.invoke('lsp:installBasicServers'),
+
+  // HTTP API
+  httpReadUrl: (url: string, timeout?: number) => ipcRenderer.invoke('http:readUrl', url, timeout),
+  httpWebSearch: (query: string, maxResults?: number, timeout?: number) => ipcRenderer.invoke('http:webSearch', query, maxResults, timeout),
+  httpSetGoogleSearch: (apiKey: string, cx: string) => ipcRenderer.invoke('http:setGoogleSearch', apiKey, cx),
+
+  // Health Check API
+  healthCheckProvider: (provider: string, apiKey: string, baseUrl?: string, timeout?: number, protocol?: string) =>
+    ipcRenderer.invoke('healthCheck:check', provider, apiKey, baseUrl, timeout, protocol),
+  testModel: (config: LLMConfig) =>
+    ipcRenderer.invoke('healthCheck:testModel', config),
+  fetchModels: (provider: string, apiKey: string, baseUrl?: string, protocol?: string) =>
+    ipcRenderer.invoke('healthCheck:fetchModels', provider, apiKey, baseUrl, protocol),
+
+  // MCP API
+  mcpInitialize: (workspaceRoots: string[]) => ipcRenderer.invoke('mcp:initialize', workspaceRoots),
+  mcpGetServersState: () => ipcRenderer.invoke('mcp:getServersState'),
+  mcpGetAllTools: () => ipcRenderer.invoke('mcp:getAllTools'),
+  mcpConnectServer: (serverId: string) => ipcRenderer.invoke('mcp:connectServer', serverId),
+  mcpDisconnectServer: (serverId: string) => ipcRenderer.invoke('mcp:disconnectServer', serverId),
+  mcpReconnectServer: (serverId: string) => ipcRenderer.invoke('mcp:reconnectServer', serverId),
+  mcpCallTool: (request: { serverId: string; toolName: string; arguments: Record<string, unknown> }) =>
+    ipcRenderer.invoke('mcp:callTool', request),
+  mcpReadResource: (request: { serverId: string; uri: string }) =>
+    ipcRenderer.invoke('mcp:readResource', request),
+  mcpGetPrompt: (request: { serverId: string; promptName: string; arguments?: Record<string, string> }) =>
+    ipcRenderer.invoke('mcp:getPrompt', request),
+  mcpRefreshCapabilities: (serverId: string) => ipcRenderer.invoke('mcp:refreshCapabilities', serverId),
+  mcpGetConfigPaths: () => ipcRenderer.invoke('mcp:getConfigPaths'),
+  mcpReloadConfig: () => ipcRenderer.invoke('mcp:reloadConfig'),
+  mcpAddServer: (config: {
+    type?: 'local' | 'remote'
+    id: string
+    name: string
+    command?: string
+    args?: string[]
+    env?: Record<string, string>
+    url?: string
+    headers?: Record<string, string>
+    oauth?: { clientId?: string; clientSecret?: string; scope?: string } | false
+    autoApprove?: string[]
+    disabled?: boolean
+  }, level?: 'user' | 'workspace') => ipcRenderer.invoke('mcp:addServer', config, level),
+  mcpRemoveServer: (serverId: string, level?: 'user' | 'workspace') => ipcRenderer.invoke('mcp:removeServer', serverId, level),
+  mcpToggleServer: (serverId: string, disabled: boolean, level?: 'user' | 'workspace') => ipcRenderer.invoke('mcp:toggleServer', serverId, disabled, level),
+  mcpSetAutoConnect: (enabled: boolean) => ipcRenderer.invoke('mcp:setAutoConnect', enabled),
+  // Registry
+  mcpRegistrySearch: (query?: string) => ipcRenderer.invoke('mcp:registrySearch', query),
+  mcpRegistryGetDetails: (serverName: string) => ipcRenderer.invoke('mcp:registryGetDetails', serverName),
+  mcpRegistryInstall: (serverName: string, envValues?: Record<string, string>) =>
+    ipcRenderer.invoke('mcp:registryInstall', serverName, envValues),
+  // OAuth 相关
+  mcpStartOAuth: (serverId: string) => ipcRenderer.invoke('mcp:startOAuth', serverId),
+  mcpFinishOAuth: (serverId: string, authorizationCode: string) => ipcRenderer.invoke('mcp:finishOAuth', serverId, authorizationCode),
+  mcpRefreshOAuthToken: (serverId: string) => ipcRenderer.invoke('mcp:refreshOAuthToken', serverId),
+  onMcpServerStatus: (callback: (event: { serverId: string; status: string; error?: string; authUrl?: string }) => void) => {
+    const handler = (_: IpcRendererEvent, event: { serverId: string; status: string; error?: string; authUrl?: string }) => callback(event)
+    ipcRenderer.on('mcp:serverStatus', handler)
+    return () => ipcRenderer.removeListener('mcp:serverStatus', handler)
+  },
+  onMcpToolsUpdated: (callback: (event: { serverId: string; tools: any[] }) => void) => {
+    const handler = (_: IpcRendererEvent, event: { serverId: string; tools: any[] }) => callback(event)
+    ipcRenderer.on('mcp:toolsUpdated', handler)
+    return () => ipcRenderer.removeListener('mcp:toolsUpdated', handler)
+  },
+  onMcpResourcesUpdated: (callback: (event: { serverId: string; resources: any[] }) => void) => {
+    const handler = (_: IpcRendererEvent, event: { serverId: string; resources: any[] }) => callback(event)
+    ipcRenderer.on('mcp:resourcesUpdated', handler)
+    return () => ipcRenderer.removeListener('mcp:resourcesUpdated', handler)
+  },
+  onMcpStateChanged: (callback: (servers: any[]) => void) => {
+    const handler = (_: IpcRendererEvent, servers: any[]) => callback(servers)
+    ipcRenderer.on('mcp:stateChanged', handler)
+    return () => ipcRenderer.removeListener('mcp:stateChanged', handler)
+  },
+
+  // Skills
+  skillsGetGlobalDir: () => ipcRenderer.invoke('skills:getGlobalDir'),
+
+  // Channel 多渠道
+  channelInitialize: () => ipcRenderer.invoke('channel:initialize'),
+  channelShutdown: () => ipcRenderer.invoke('channel:shutdown'),
+  channelGetRegisteredChannels: () => ipcRenderer.invoke('channel:getRegisteredChannels'),
+  channelGetSecretSchema: (channelId: string) => ipcRenderer.invoke('channel:getSecretSchema', channelId),
+  channelValidateCredentials: (channelId: string, credentials: Record<string, string>) => ipcRenderer.invoke('channel:validateCredentials', channelId, credentials),
+  channelAddAccount: (channelId: string, account: any) => ipcRenderer.invoke('channel:addAccount', channelId, account),
+  channelRemoveAccount: (channelId: string, accountId: string) => ipcRenderer.invoke('channel:removeAccount', channelId, accountId),
+  channelUpdateAccount: (channelId: string, account: any) => ipcRenderer.invoke('channel:updateAccount', channelId, account),
+  channelConnectAccount: (channelId: string, accountId: string) => ipcRenderer.invoke('channel:connectAccount', channelId, accountId),
+  channelDisconnectAccount: (channelId: string, accountId: string) => ipcRenderer.invoke('channel:disconnectAccount', channelId, accountId),
+  channelSendMessage: (message: any) => ipcRenderer.invoke('channel:sendMessage', message),
+  channelGetAccountStatus: (channelId: string, accountId: string) => ipcRenderer.invoke('channel:getAccountStatus', channelId, accountId),
+  channelGetAllAccountStatuses: () => ipcRenderer.invoke('channel:getAllAccountStatuses'),
+  channelGetConfig: (channelId: string) => ipcRenderer.invoke('channel:getConfig', channelId),
+  channelGetAllConfigs: () => ipcRenderer.invoke('channel:getAllConfigs'),
+  channelSetChannelEnabled: (channelId: string, enabled: boolean) => ipcRenderer.invoke('channel:setChannelEnabled', channelId, enabled),
+  channelGetWebhookInfo: () => ipcRenderer.invoke('channel:getWebhookInfo'),
+  channelSendReply: (conversationKey: string, text: string, replyToId?: string) => ipcRenderer.invoke('channel:sendReply', conversationKey, text, replyToId),
+  channelSendFile: (conversationKey: string, filePath: string, fileName?: string, mediaType?: 'file' | 'image' | 'audio' | 'video', replyToId?: string) => ipcRenderer.invoke('channel:sendFile', conversationKey, filePath, fileName, mediaType, replyToId),
+  channelUpdateReaction: (accountId: string, messageId: string, status: string) => ipcRenderer.invoke('channel:updateReaction', accountId, messageId, status),
+  channelStreamReply: (accountId: string, to: string, fullText: string, replyToId?: string) => ipcRenderer.invoke('channel:streamReply', accountId, to, fullText, replyToId),
+  channelRendererReply: (messageId: string, replyText: string) => ipcRenderer.invoke('channel:rendererReply', messageId, replyText),
+  onChannelMessage: (callback: (message: any) => void) => {
+    const handler = (_: IpcRendererEvent, message: any) => callback(message)
+    ipcRenderer.on('channel:message', handler)
+    return () => ipcRenderer.removeListener('channel:message', handler)
+  },
+  onChannelInboundMessage: (callback: (message: any) => void) => {
+    const handler = (_: IpcRendererEvent, message: any) => callback(message)
+    ipcRenderer.on('channel:inboundMessage', handler)
+    return () => ipcRenderer.removeListener('channel:inboundMessage', handler)
+  },
+  onChannelStatusChange: (callback: (snapshot: any) => void) => {
+    const handler = (_: IpcRendererEvent, snapshot: any) => callback(snapshot)
+    ipcRenderer.on('channel:statusChange', handler)
+    return () => ipcRenderer.removeListener('channel:statusChange', handler)
+  },
+  onChannelImProcessingStatus: (callback: (status: any) => void) => {
+    const handler = (_: IpcRendererEvent, status: any) => callback(status)
+    ipcRenderer.on('channel:imProcessingStatus', handler)
+    return () => ipcRenderer.removeListener('channel:imProcessingStatus', handler)
+  },
+
+  // Python 环境
+  pythonGetStatus: () => ipcRenderer.invoke('python:getStatus'),
+  pythonGetPath: () => ipcRenderer.invoke('python:getPath'),
+  pythonGetUvPath: () => ipcRenderer.invoke('python:getUvPath'),
+  pythonEnsureReady: () => ipcRenderer.invoke('python:ensureReady'),
+  pythonReinstall: () => ipcRenderer.invoke('python:reinstall'),
+  pythonInstallPkg: (pkg: string) => ipcRenderer.invoke('python:installPkg', pkg),
+  pythonSetCustomPath: (customPath: string | null) => ipcRenderer.invoke('python:setCustomPath', customPath),
+  pythonExecuteScript: (params: { scriptPath: string; args?: string[]; cwd?: string; timeout?: number }) => ipcRenderer.invoke('python:executeScript', params),
+  pythonExecuteInlineScript: (params: { script: string; dependencies?: string[]; args?: string[]; cwd?: string; timeout?: number }) => ipcRenderer.invoke('python:executeInlineScript', params),
+
+  // Data API
+  dataExecuteQuery: (params: any) => ipcRenderer.invoke('data:executeQuery', params),
+  dataTransform: (params: any) => ipcRenderer.invoke('data:transform', params),
+  dataAnalyzeCsv: (params: any) => ipcRenderer.invoke('data:analyzeCsv', params),
+  dataGenerateChart: (params: any) => ipcRenderer.invoke('data:generateChart', params),
+  dataStatisticalTest: (params: any) => ipcRenderer.invoke('data:statisticalTest', params),
+  dataRestApiCall: (params: any) => ipcRenderer.invoke('data:restApiCall', params),
+  dataConnectDatabase: (config: any) => ipcRenderer.invoke('data:connectDatabase', config),
+  dataDisconnectDatabase: (connectionId: string) => ipcRenderer.invoke('data:disconnectDatabase', connectionId),
+  dataGetConnections: () => ipcRenderer.invoke('data:getConnections'),
+  dataClearCache: () => ipcRenderer.invoke('data:clearCache'),
+  dataEda: (params: any) => ipcRenderer.invoke('data:eda', params),
+  dataCleanData: (params: any) => ipcRenderer.invoke('data:cleanData', params),
+  dataBrowseSchema: (params: any) => ipcRenderer.invoke('data:browseSchema', params),
+  dataSaveQuery: (params: any) => ipcRenderer.invoke('data:saveQuery', params),
+  dataGetQueryHistory: (params?: any) => ipcRenderer.invoke('data:getQueryHistory', params),
+  dataExportReport: (params: any) => ipcRenderer.invoke('data:exportReport', params),
+
+  // Scenario DB API
+  scenarioDbInitialize: (params: { scenarioId: string; installScripts: Array<{ id: string; description?: string; sql: string }> }) => ipcRenderer.invoke('scenario-db:initialize', params),
+  scenarioDbExecuteSql: (params: { scenarioId: string; sql: string }) => ipcRenderer.invoke('scenario-db:executeSql', params),
+  scenarioDbDrop: (params: { scenarioId: string; uninstallScripts: Array<{ id: string; description?: string; sql: string }> }) => ipcRenderer.invoke('scenario-db:drop', params),
+  scenarioDbGetPath: (scenarioId: string) => ipcRenderer.invoke('scenario-db:getPath', scenarioId),
+
+  // Scenario Install API
+  scenarioGetScenariosDir: () => ipcRenderer.invoke('scenario:getScenariosDir'),
+  scenarioSelectScenarioDir: () => ipcRenderer.invoke('scenario:selectScenarioDir'),
+  scenarioReadScenarioConfig: (sourceDir: string) => ipcRenderer.invoke('scenario:readScenarioConfig', sourceDir),
+  scenarioInstallFromLocal: (sourceDir: string) => ipcRenderer.invoke('scenario:installFromLocal', sourceDir),
+  scenarioGetInstalledScenarioDirs: () => ipcRenderer.invoke('scenario:getInstalledScenarioDirs'),
+  scenarioDeleteScenarioDir: (scenarioId: string) => ipcRenderer.invoke('scenario:deleteScenarioDir', scenarioId),
+  scenarioDeleteBuiltinSourceDir: (scenarioId: string) => ipcRenderer.invoke('scenario:deleteBuiltinSourceDir', scenarioId),
+  scenarioLoadScenarioFiles: (scenarioId: string) => ipcRenderer.invoke('scenario:loadScenarioFiles', scenarioId),
+
+  // Scenario Marketplace
+  scenarioMarketplaceSearch: (query: string, page?: number, pageSize?: number) => ipcRenderer.invoke('scenario:marketplaceSearch', query, page, pageSize),
+  scenarioMarketplaceFeatured: () => ipcRenderer.invoke('scenario:marketplaceFeatured'),
+  scenarioMarketplaceDetails: (scenarioId: string) => ipcRenderer.invoke('scenario:marketplaceDetails', scenarioId),
+  scenarioMarketplaceCategories: () => ipcRenderer.invoke('scenario:marketplaceCategories'),
+  scenarioMarketplaceDownload: (scenarioId: string) => ipcRenderer.invoke('scenario:marketplaceDownload', scenarioId),
+
+  // Command Execution
+  onExecuteCommand: (callback: (commandId: string) => void) => {
+    const handler = (_: IpcRendererEvent, commandId: string) => callback(commandId)
+    ipcRenderer.on('workbench:execute-command', handler)
+    return () => ipcRenderer.removeListener('workbench:execute-command', handler)
+  },
+
+  // Resources API (静态资源读取)
+  resourcesReadJson: (relativePath: string) => ipcRenderer.invoke('resources:readJson', relativePath),
+  resourcesReadText: (relativePath: string) => ipcRenderer.invoke('resources:readText', relativePath),
+  resourcesExists: (relativePath: string) => ipcRenderer.invoke('resources:exists', relativePath),
+  resourcesClearCache: (prefix?: string) => ipcRenderer.invoke('resources:clearCache', prefix),
+
+  // Debug API
+  debugCreateSession: (config: any) => ipcRenderer.invoke('debug:createSession', config),
+  debugLaunch: (sessionId: string) => ipcRenderer.invoke('debug:launch', sessionId),
+  debugAttach: (sessionId: string) => ipcRenderer.invoke('debug:attach', sessionId),
+  debugStop: (sessionId: string) => ipcRenderer.invoke('debug:stop', sessionId),
+  debugContinue: (sessionId: string) => ipcRenderer.invoke('debug:continue', sessionId),
+  debugStepOver: (sessionId: string) => ipcRenderer.invoke('debug:stepOver', sessionId),
+  debugStepInto: (sessionId: string) => ipcRenderer.invoke('debug:stepInto', sessionId),
+  debugStepOut: (sessionId: string) => ipcRenderer.invoke('debug:stepOut', sessionId),
+  debugPause: (sessionId: string) => ipcRenderer.invoke('debug:pause', sessionId),
+  debugSetBreakpoints: (sessionId: string, file: string, breakpoints: any[]) =>
+    ipcRenderer.invoke('debug:setBreakpoints', sessionId, file, breakpoints),
+  debugGetStackTrace: (sessionId: string, threadId: number) =>
+    ipcRenderer.invoke('debug:getStackTrace', sessionId, threadId),
+  debugGetScopes: (sessionId: string, frameId: number) =>
+    ipcRenderer.invoke('debug:getScopes', sessionId, frameId),
+  debugGetVariables: (sessionId: string, variablesReference: number) =>
+    ipcRenderer.invoke('debug:getVariables', sessionId, variablesReference),
+  debugEvaluate: (sessionId: string, expression: string, frameId?: number) =>
+    ipcRenderer.invoke('debug:evaluate', sessionId, expression, frameId),
+  debugGetSessionState: (sessionId: string) => ipcRenderer.invoke('debug:getSessionState', sessionId),
+  debugGetAllSessions: () => ipcRenderer.invoke('debug:getAllSessions'),
+  debugGetSupportedTypes: () => ipcRenderer.invoke('debug:getSupportedTypes'),
+  debugGetConfigSnippets: (type: string) => ipcRenderer.invoke('debug:getConfigSnippets', type),
+  debugConfigurationDone: (sessionId: string) => ipcRenderer.invoke('debug:configurationDone', sessionId),
+  debugGetThreads: (sessionId: string) => ipcRenderer.invoke('debug:getThreads', sessionId),
+  debugGetCapabilities: (sessionId: string) => ipcRenderer.invoke('debug:getCapabilities', sessionId),
+  onDebugEvent: (callback: (event: { sessionId: string; event: any }) => void) => {
+    const handler = (_: IpcRendererEvent, data: { sessionId: string; event: any }) => callback(data)
+    ipcRenderer.on('debug:event', handler)
+    return () => ipcRenderer.removeListener('debug:event', handler)
+  },
+
+  // Updater API
+  updaterCheck: () => ipcRenderer.invoke('updater:check'),
+  updaterGetStatus: () => ipcRenderer.invoke('updater:getStatus'),
+  updaterDownload: () => ipcRenderer.invoke('updater:download'),
+  updaterInstall: () => ipcRenderer.invoke('updater:install'),
+  updaterOpenDownloadPage: (url?: string) => ipcRenderer.invoke('updater:openDownloadPage', url),
+  onUpdaterStatus: (callback: (status: any) => void) => {
+    const handler = (_: IpcRendererEvent, status: any) => callback(status)
+    ipcRenderer.on('updater:status', handler)
+    return () => ipcRenderer.removeListener('updater:status', handler)
+  },
+
+  // App Error (from main process)
+  onAppError: (callback: (error: { title: string; message: string; variant?: string }) => void) => {
+    const handler = (_: IpcRendererEvent, error: { title: string; message: string; variant?: string }) => callback(error)
+    ipcRenderer.on('app:error', handler)
+    return () => ipcRenderer.removeListener('app:error', handler)
+  },
+
+  // Audit API
+  auditAppend: (entries: any) => ipcRenderer.invoke('audit:append', entries),
+  auditQuery: (filter?: any) => ipcRenderer.invoke('audit:query', filter),
+  auditFlush: () => ipcRenderer.invoke('audit:flush'),
+
+  // System resume event (wake from sleep)
+  onSystemResume: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on('system:resume', handler)
+    return () => ipcRenderer.removeListener('system:resume', handler)
+  },
+})

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   getInteractiveTerminalBackend,
   isLongRunningCommand,
-} from '@renderer/agent/tools/commandRuntime'
+} from '@intelligence/toolkit/commandRuntime'
 
 describe('commandRuntime', () => {
   it('routes macOS interactive agent sessions away from PTY', () => {

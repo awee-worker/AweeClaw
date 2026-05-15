@@ -12,11 +12,11 @@
  * - 大文件保护反馈
  */
 
-import { api } from '@/renderer/services/electronAPI'
-import type { ToolExecutionResult, ToolExecutionContext } from '@/shared/types'
+import { api } from '@services/electronBridge'
+import type { ToolExecutionResult, ToolExecutionContext } from '../../../scenario-system/providerTypes'
 import type {
   SqlQueryResult,
-} from '../types'
+} from '../providerTypes'
 
 function dataError(message: string): ToolExecutionResult {
   return { success: false, result: '', error: message }

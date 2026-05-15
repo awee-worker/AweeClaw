@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { EventBus } from '@renderer/agent/core/EventBus'
+import { EventBus } from '@intelligence/engine/EventBus'
 
 describe('EventBus', () => {
   beforeEach(() => {

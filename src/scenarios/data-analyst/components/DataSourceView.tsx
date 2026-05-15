@@ -1,10 +1,10 @@
 import { useState, useCallback, useEffect } from 'react'
 import { Database, FileSpreadsheet, Plus, RefreshCw, FolderOpen, ChevronRight, ChevronDown, Server, Cable, X, Check, Loader2, Trash2, Table2, Search } from 'lucide-react'
 import { useStore } from '@store'
-import { Button } from '@/renderer/components/ui'
-import { Agent } from '@/renderer/agent/core'
-import { getAgentConfig } from '@/renderer/agent/utils/AgentConfig'
-import { api } from '@/renderer/services/electronAPI'
+import { ActionButton } from '@/renderer/components/ui'
+import { Agent } from '@intelligence/engine'
+import { getAgentConfig } from '@intelligence/utils/intelligenceConfig'
+import { api } from '@services/electronBridge'
 
 interface SchemaTable {
     name: string
@@ -283,12 +283,12 @@ export function DataSourceView() {
                     {language === 'zh' ? '数据源' : 'DATA SOURCES'}
                 </span>
                 <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={syncConnections} title={language === 'zh' ? '刷新' : 'Refresh'}>
+                    <ActionButton variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={syncConnections} title={language === 'zh' ? '刷新' : 'Refresh'}>
                         <RefreshCw className="w-3 h-3" />
-                    </Button>
-                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setShowAddForm('database')} title={language === 'zh' ? '添加数据源' : 'Add Source'}>
+                    </ActionButton>
+                    <ActionButton variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setShowAddForm('database')} title={language === 'zh' ? '添加数据源' : 'Add Source'}>
                         <Plus className="w-3 h-3" />
-                    </Button>
+                    </ActionButton>
                 </div>
             </div>
 
@@ -339,7 +339,7 @@ export function DataSourceView() {
                                     <div className="text-[11px] text-red-400 break-all">{source.lastError}</div>
                                 )}
                                 {source.type === 'file' && (
-                                    <Button
+                                    <ActionButton
                                         variant="ghost"
                                         size="sm"
                                         className="h-6 w-full text-xs gap-1 justify-start"
@@ -347,12 +347,12 @@ export function DataSourceView() {
                                     >
                                         <FolderOpen className="w-3 h-3" />
                                         {language === 'zh' ? '浏览文件' : 'Browse Files'}
-                                    </Button>
+                                    </ActionButton>
                                 )}
                                 {source.type === 'database' && source.id !== 'workspace' && (
                                     <>
                                         <div className="flex gap-1">
-                                            <Button
+                                            <ActionButton
                                                 variant="ghost"
                                                 size="sm"
                                                 className="h-6 flex-1 text-xs gap-1 justify-start"
@@ -363,9 +363,9 @@ export function DataSourceView() {
                                                 {source.status === 'connected'
                                                     ? (language === 'zh' ? '断开连接' : 'Disconnect')
                                                     : (language === 'zh' ? '连接' : 'Connect')}
-                                            </Button>
+                                            </ActionButton>
                                             {source.status === 'connected' && (
-                                                <Button
+                                                <ActionButton
                                                     variant="ghost"
                                                     size="sm"
                                                     className="h-6 w-6 p-0"
@@ -374,17 +374,17 @@ export function DataSourceView() {
                                                     title={language === 'zh' ? '刷新Schema' : 'Refresh Schema'}
                                                 >
                                                     <RefreshCw className={`w-3 h-3 ${source.schemaLoading ? 'animate-spin' : ''}`} />
-                                                </Button>
+                                                </ActionButton>
                                             )}
                                             {source.status !== 'connected' && (
-                                                <Button
+                                                <ActionButton
                                                     variant="ghost"
                                                     size="sm"
                                                     className="h-6 w-6 p-0 text-text-muted hover:text-red-400"
                                                     onClick={() => handleDelete(source.id)}
                                                 >
                                                     <Trash2 className="w-3 h-3" />
-                                                </Button>
+                                                </ActionButton>
                                             )}
                                         </div>
                                         {source.status === 'connected' && source.schema && source.schema.length > 0 && (
@@ -422,14 +422,14 @@ export function DataSourceView() {
                                         {source.status === 'connected' && source.schemaLoading && (
                                             <div className="flex items-center gap-1.5 text-[11px] text-text-muted">
                                                 <Loader2 className="w-3 h-3 animate-spin" />
-                                                {language === 'zh' ? '加载Schema...' : 'Loading schema...'}
+                                                {language === 'zh' ? '加载Schema...' : 'ProgressIndicator schema...'}
                                             </div>
                                         )}
                                     </>
                                 )}
                                 {source.type === 'api' && source.id !== 'workspace' && (
                                     <div className="flex gap-1">
-                                        <Button
+                                        <ActionButton
                                             variant="ghost"
                                             size="sm"
                                             className="h-6 flex-1 text-xs gap-1 justify-start"
@@ -443,15 +443,15 @@ export function DataSourceView() {
                                         >
                                             <Cable className="w-3 h-3" />
                                             {language === 'zh' ? '请求数据' : 'Fetch Data'}
-                                        </Button>
-                                        <Button
+                                        </ActionButton>
+                                        <ActionButton
                                             variant="ghost"
                                             size="sm"
                                             className="h-6 w-6 p-0 text-text-muted hover:text-red-400"
                                             onClick={() => handleDelete(source.id)}
                                         >
                                             <Trash2 className="w-3 h-3" />
-                                        </Button>
+                                        </ActionButton>
                                     </div>
                                 )}
                             </div>
@@ -562,7 +562,7 @@ export function DataSourceView() {
                         />
                     )}
 
-                    <Button
+                    <ActionButton
                         variant="secondary"
                         size="sm"
                         className="h-7 w-full text-xs gap-1"
@@ -571,13 +571,13 @@ export function DataSourceView() {
                     >
                         <Check className="w-3 h-3" />
                         {language === 'zh' ? '添加并连接' : 'Add & Connect'}
-                    </Button>
+                    </ActionButton>
                 </div>
             )}
 
             {!showAddForm && (
                 <div className="px-3 py-2 border-t border-border/30">
-                    <Button
+                    <ActionButton
                         variant="ghost"
                         size="sm"
                         className="h-7 w-full text-xs gap-1.5"
@@ -585,7 +585,7 @@ export function DataSourceView() {
                     >
                         <Plus className="w-3 h-3" />
                         {language === 'zh' ? '添加数据源' : 'Add Data Source'}
-                    </Button>
+                    </ActionButton>
                 </div>
             )}
         </div>

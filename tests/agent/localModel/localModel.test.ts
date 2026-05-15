@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { LocalModelDiscovery } from '@renderer/agent/localModel/LocalModelDiscovery'
+import { LocalModelDiscovery } from '@intelligence/localModel/LocalModelDiscovery'
 import {
   getDefaultPort,
   getDefaultBaseUrl,
   getApiPaths,
   toLLMConfig,
   detectLocalProviderFromUrl,
-} from '@renderer/agent/localModel/types'
+} from '@intelligence/localModel/types'
 
 describe('LocalModel types', () => {
   it('returns default ports', () => {

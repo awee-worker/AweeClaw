@@ -3,8 +3,8 @@ import { LogOut, CheckCircle2, CreditCard, Zap, Crown, X, ExternalLink } from 'l
 import QRCode from 'qrcode'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
-import { Button } from '@components/ui'
-import { backendApi } from '@renderer/services/backendApi'
+import { ActionButton } from '@components/ui'
+import { backendApi } from '@services/backendApi'
 import { type Language } from '@renderer/i18n'
 import { getQuotaBarColor, getQuotaTextColor } from '@utils/quotaColors'
 
@@ -338,23 +338,23 @@ export function CloudSettings({ language }: { language: Language }) {
             </p>
           </div>
         ) : (
-          <p className="text-xs text-text-muted">{language === 'zh' ? '加载中...' : 'Loading...'}</p>
+          <p className="text-xs text-text-muted">{language === 'zh' ? '加载中...' : 'ProgressIndicator...'}</p>
         )}
       </div>
 
       <div className="pt-2 space-y-3">
-        <Button
+        <ActionButton
           variant="secondary"
           onClick={handleOpenUpgrade}
           className="w-full"
         >
           <CreditCard className="w-4 h-4" />
           {language === 'zh' ? '升级套餐' : 'Upgrade Plan'}
-        </Button>
-        <Button variant="danger" onClick={handleLogout} className="w-full">
+        </ActionButton>
+        <ActionButton variant="danger" onClick={handleLogout} className="w-full">
           <LogOut className="w-4 h-4" />
           {language === 'zh' ? '退出登录' : 'Sign Out'}
-        </Button>
+        </ActionButton>
       </div>
 
       {showUpgrade && (
@@ -413,7 +413,7 @@ export function CloudSettings({ language }: { language: Language }) {
                 {selectedPlan && (
                   <div className="space-y-3">
                     <p className="text-xs text-text-muted">
-                      {language === 'zh' ? '选择支付方式' : 'Select payment method'}
+                      {language === 'zh' ? '选择支付方式' : 'DropdownSelector payment method'}
                     </p>
                     <div className={`grid gap-2 ${displayChannels.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
                       {displayChannels.map((ch) => {
@@ -437,7 +437,7 @@ export function CloudSettings({ language }: { language: Language }) {
                       <p className="text-xs text-status-error">{paymentError}</p>
                     )}
 
-                    <Button
+                    <ActionButton
                       variant="primary"
                       className="w-full"
                       onClick={handleUpgrade}
@@ -447,7 +447,7 @@ export function CloudSettings({ language }: { language: Language }) {
                       {language === 'zh'
                         ? `支付 ¥${Number(selectedPlan.price).toFixed(2)}`
                         : `Pay ¥${Number(selectedPlan.price).toFixed(2)}`}
-                    </Button>
+                    </ActionButton>
                   </div>
                 )}
               </>
@@ -475,13 +475,13 @@ export function CloudSettings({ language }: { language: Language }) {
                       <p className="text-sm text-text-primary">
                         {language === 'zh' ? '即将跳转到支付宝' : 'Redirecting to Alipay'}
                       </p>
-                      <Button
+                      <ActionButton
                         variant="secondary"
                         onClick={() => window.electronAPI?.openExternalUrl?.(paymentResult.paymentUrl!)}
                         leftIcon={<ExternalLink className="w-4 h-4" />}
                       >
                         {language === 'zh' ? '前往支付' : 'Go to Pay'}
-                      </Button>
+                      </ActionButton>
                     </div>
                   )}
                   {paymentChannel === 'MOCK' && (
@@ -489,9 +489,9 @@ export function CloudSettings({ language }: { language: Language }) {
                       <p className="text-sm text-text-primary">
                         {language === 'zh' ? '模拟支付模式' : 'Mock Payment Mode'}
                       </p>
-                      <Button variant="success" onClick={handleMockPay}>
+                      <ActionButton variant="success" onClick={handleMockPay}>
                         {language === 'zh' ? '模拟支付成功' : 'Mock Pay Success'}
-                      </Button>
+                      </ActionButton>
                     </div>
                   )}
                 </div>
@@ -506,7 +506,7 @@ export function CloudSettings({ language }: { language: Language }) {
                   <p className="text-xs text-status-error">{paymentError}</p>
                 )}
 
-                <Button
+                <ActionButton
                   variant="ghost"
                   onClick={() => {
                     setPaymentResult(null)
@@ -516,7 +516,7 @@ export function CloudSettings({ language }: { language: Language }) {
                   }}
                 >
                   {language === 'zh' ? '返回' : 'Back'}
-                </Button>
+                </ActionButton>
               </div>
             )}
           </div>

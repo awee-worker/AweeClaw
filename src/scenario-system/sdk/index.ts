@@ -18,8 +18,8 @@ import type {
   DeclarativeCustomTool,
   DeclarativeScriptTool,
   DeclarativeToolParam,
-} from '@shared/types/scenario-declarative'
-import type { ScenarioCategory } from '@shared/types/scenario'
+} from '@shared/protocols/scenario-declarative'
+import type { ScenarioCategory } from '@shared/protocols/scenario'
 
 export interface ScenarioDefinitionOptions {
   id: string

@@ -15,7 +15,7 @@ import type {
   ScenarioManifest,
   ScenarioHealthCheck,
   ScenarioDependency,
-} from '@shared/types/scenario-arch'
+} from '@shared/protocols/scenario-arch'
 import { dataAnalystScenario } from './config/scenario'
 import DATA_ANALYST_TOOLS from './tools/definitions'
 import { dataAnalystComponents } from './components'
@@ -66,7 +66,7 @@ const dataAnalystModule: ScenarioModule = {
     if (context.workspacePath) {
       const dbPath = `${context.workspacePath}/.data/default.db`
       try {
-        const { api } = await import('@/renderer/services/electronAPI')
+        const { api } = await import('@services/electronBridge')
         await api.data.connectDatabase({
           id: 'default',
           driver: 'sqlite',
@@ -91,7 +91,7 @@ const dataAnalystModule: ScenarioModule = {
     log.info('Deactivating data-analyst scenario')
 
     try {
-      const { api } = await import('@/renderer/services/electronAPI')
+      const { api } = await import('@services/electronBridge')
       await api.data.disconnectDatabase('default')
       log.info('Disconnected default database')
     } catch (err) {
@@ -105,7 +105,7 @@ const dataAnalystModule: ScenarioModule = {
     const checks: ScenarioHealthCheck[] = []
 
     try {
-      const { api } = await import('@/renderer/services/electronAPI')
+      const { api } = await import('@services/electronBridge')
       const connections = await api.data.getConnections()
       const defaultConn = (connections as Array<{ id: string }>).find(c => c.id === 'default')
       checks.push({

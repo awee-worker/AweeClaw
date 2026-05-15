@@ -1,12 +1,12 @@
 import { useState, useCallback, useMemo } from 'react'
-import { BUILTIN_AGENT_ROLES, workflowEngine } from '@shared/types/workflow'
+import { BUILTIN_AGENT_ROLES, workflowEngine } from '@shared/protocols/workflow'
 import type {
   WorkflowDefinition,
   WorkflowStep,
   WorkflowStepType,
   AgentRole,
   WorkflowInputParam,
-} from '@shared/types/workflow'
+} from '@shared/protocols/workflow'
 import {
   Plus,
   Trash2,
@@ -46,7 +46,7 @@ const STEP_TYPE_OPTIONS: Array<{
   {
     type: 'user_input',
     icon: UserCheck,
-    labelEn: 'Human Input',
+    labelEn: 'Human TextField',
     labelZh: '人工输入',
     descEn: 'Pause for human approval or input',
     descZh: '暂停等待人工审批或输入',
@@ -286,7 +286,7 @@ export default function WorkflowBuilder({ workflow, onSave, onCancel, language }
           )}
         </div>
 
-        {/* Add Step Button */}
+        {/* Add Step ActionButton */}
         <div className="p-3 border-t border-border/30 relative">
           {showAddMenu && (
             <div className="absolute bottom-full left-3 right-3 mb-2 bg-background border border-border/50 rounded-xl shadow-xl overflow-hidden z-10">
@@ -390,11 +390,11 @@ export default function WorkflowBuilder({ workflow, onSave, onCancel, language }
                 </select>
               </div>
 
-              {/* Input Parameters */}
+              {/* TextField Parameters */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="text-[11px] font-medium text-text-secondary">
-                    {language === 'zh' ? '输入参数' : 'Input Parameters'}
+                    {language === 'zh' ? '输入参数' : 'TextField Parameters'}
                   </label>
                   <button
                     onClick={() => {
@@ -493,7 +493,7 @@ export default function WorkflowBuilder({ workflow, onSave, onCancel, language }
               <div className="pt-4 border-t border-border/20 text-center text-text-muted/30">
                 <Sparkles className="w-6 h-6 mx-auto mb-2" />
                 <p className="text-[11px]">
-                  {language === 'zh' ? '选择左侧步骤进行编辑' : 'Select a step on the left to edit'}
+                  {language === 'zh' ? '选择左侧步骤进行编辑' : 'DropdownSelector a step on the left to edit'}
                 </p>
               </div>
             </div>
@@ -656,7 +656,7 @@ function StepEditor({ step, allSteps, workflow, onUpdate, onUpdateConfig, langua
         </>
       )}
 
-      {/* User Input */}
+      {/* User TextField */}
       {step.type === 'user_input' && (
         <>
           <div>

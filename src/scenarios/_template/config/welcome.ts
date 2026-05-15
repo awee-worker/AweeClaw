@@ -1,4 +1,4 @@
-import type { WelcomeSuggestionItem, WelcomeTitleConfig } from '@shared/types/scenario'
+import type { WelcomeSuggestionItem, WelcomeTitleConfig } from '@shared/protocols/scenario'
 
 export const TEMPLATE_WELCOME_SUGGESTIONS: WelcomeSuggestionItem[] = [
   { icon: 'Sparkles', title: 'Get started', titleZh: '开始使用', prompt: 'Help me get started with this scenario.', color: 'text-blue-500 bg-blue-500/10 border-blue-500/20 hover:bg-blue-500/20' },

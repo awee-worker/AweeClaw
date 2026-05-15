@@ -1,9 +1,9 @@
 import { useState, useCallback, useEffect } from 'react'
 import { Stethoscope, RefreshCw, ChevronRight, ChevronDown, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react'
 import { useStore } from '@store'
-import { Button } from '@/renderer/components/ui'
-import { Agent } from '@/renderer/agent/core'
-import { getAgentConfig } from '@/renderer/agent/utils/AgentConfig'
+import { ActionButton } from '@/renderer/components/ui'
+import { Agent } from '@intelligence/engine'
+import { getAgentConfig } from '@intelligence/utils/intelligenceConfig'
 
 interface DiagnosisRecord {
   id: string
@@ -76,7 +76,7 @@ export function DiagnosisRecordsPanel() {
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const { scenarioDatabaseManager } = await import('@/scenario-system/core/ScenarioDatabaseManager')
+      const { scenarioDatabaseManager } = await import('@scenario-system/core/ScenarioDatabaseManager')
       const storeResult = await scenarioDatabaseManager.executeSql('store-diagnosis', 'SELECT id, name FROM stores')
       if (storeResult.success && storeResult.rows) {
         const map: Record<string, string> = {}
@@ -119,9 +119,9 @@ export function DiagnosisRecordsPanel() {
           {language === 'zh' ? '诊断记录' : 'DIAGNOSIS'}
         </span>
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={loadData} title={language === 'zh' ? '刷新' : 'Refresh'}>
+          <ActionButton variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={loadData} title={language === 'zh' ? '刷新' : 'Refresh'}>
             <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
-          </Button>
+          </ActionButton>
         </div>
       </div>
 
@@ -187,9 +187,9 @@ export function DiagnosisRecordsPanel() {
                   <div className="flex items-center justify-between text-xs text-text-muted">
                     <span>{record.diagnosed_at}</span>
                   </div>
-                  <Button variant="ghost" size="sm" className="h-6 w-full text-xs gap-1" onClick={() => handleViewDetail(record)}>
+                  <ActionButton variant="ghost" size="sm" className="h-6 w-full text-xs gap-1" onClick={() => handleViewDetail(record)}>
                     {language === 'zh' ? '查看完整报告' : 'View Full Report'}
-                  </Button>
+                  </ActionButton>
                 </div>
               )}
             </div>

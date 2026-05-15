@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { PluginRegistry } from '@renderer/agent/plugins/PluginRegistry'
-import type { PluginManifest } from '@renderer/agent/plugins/types'
+import { PluginRegistry } from '@intelligence/plugins/PluginRegistry'
+import type { PluginManifest } from '@intelligence/plugins/types'
 
 const createManifest = (id: string, overrides?: Partial<PluginManifest>): PluginManifest => ({
   id,

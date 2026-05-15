@@ -7,11 +7,11 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
   toolRegistry,
   initializeToolProviders,
-} from '@renderer/agent/tools'
-import { TOOL_SCHEMAS, TOOL_CONFIGS } from '@/shared/config/tools'
+} from '@intelligence/toolkit'
+import { TOOL_SCHEMAS, TOOL_CONFIGS } from '@configuration/tools'
 
 // Mock dependencies that tools need
-vi.mock('@renderer/services/WorkspaceManager', () => ({
+vi.mock('@services/WorkspaceManager', () => ({
   workspaceManager: {
     getCurrentWorkspacePath: vi.fn(() => '/test/workspace'),
   },

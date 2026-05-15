@@ -1,7 +1,7 @@
 import { PenTool, BookOpen, Users, FileText, Sparkles, Lightbulb } from 'lucide-react'
 import { useStore } from '@store'
-import { Agent } from '@/renderer/agent/core'
-import { getAgentConfig } from '@/renderer/agent/utils/AgentConfig'
+import { Agent } from '@intelligence/engine'
+import { getAgentConfig } from '@intelligence/utils/intelligenceConfig'
 
 export default function WritingWorkspace() {
     const language = useStore(s => s.language)

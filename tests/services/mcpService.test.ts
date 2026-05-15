@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { mcpService } from '@renderer/services/mcpService'
+import { mcpService } from '@services/mcpService'
 
 // Mock useStore
 vi.mock('@renderer/store', () => ({

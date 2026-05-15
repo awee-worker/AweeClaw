@@ -1,18 +1,18 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
-import { Modal } from '../ui/Modal'
+import { OverlayDialog } from '../ui/OverlayDialog'
 import { useStore } from '@store'
-import { workflowEngine, BUILTIN_AGENT_ROLES } from '@shared/types/workflow'
-import type { WorkflowDefinition, WorkflowRun, WorkflowExecutionCallbacks } from '@shared/types/workflow'
-import { builtinWorkflows } from '@shared/config/workflows'
-import { loadCustomWorkflows, saveCustomWorkflow } from '@shared/config/workflows/customStorage'
+import { workflowEngine, BUILTIN_AGENT_ROLES } from '@shared/protocols/workflow'
+import type { WorkflowDefinition, WorkflowRun, WorkflowExecutionCallbacks } from '@shared/protocols/workflow'
+import { builtinWorkflows } from '@shared/configuration/workflows'
+import { loadCustomWorkflows, saveCustomWorkflow } from '@shared/configuration/workflows/customStorage'
 import WorkflowCanvas from './WorkflowCanvas'
 import WorkflowRunner from './WorkflowRunner'
 import WorkflowHistory from './WorkflowHistory'
 import WorkflowBuilder from './WorkflowBuilder'
 import NodeEditor from './NodeEditor'
-import { Agent } from '@/renderer/agent/core'
-import { useAgentStore } from '@/renderer/agent/store/AgentStore'
-import { getAgentConfig } from '@/renderer/agent/utils/AgentConfig'
+import { Agent } from '@intelligence/engine'
+import { useAgentStore } from '@intelligence/state/IntelligenceStore'
+import { getAgentConfig } from '@intelligence/utils/intelligenceConfig'
 import {
   X,
   Play,
@@ -217,7 +217,7 @@ export default function WorkflowPanel({ onClose }: WorkflowPanelProps) {
   }, [])
 
   return (
-    <Modal
+    <OverlayDialog
       isOpen={true}
       onClose={onClose}
       title=""
@@ -373,7 +373,7 @@ export default function WorkflowPanel({ onClose }: WorkflowPanelProps) {
           )}
         </div>
       </div>
-    </Modal>
+    </OverlayDialog>
   )
 }
 

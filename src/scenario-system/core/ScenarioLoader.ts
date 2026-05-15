@@ -27,14 +27,14 @@ import type {
   ScenarioManifest,
   ScenarioHealthReport,
   ScenarioDependency,
-} from '@shared/types/scenario-arch'
-import type { ScenarioPlugin } from '@shared/types/scenario'
-import { toolRegistry } from '@/renderer/agent/tools/registry'
+} from '@shared/protocols/scenario-arch'
+import type { ScenarioPlugin } from '@shared/protocols/scenario'
+import { toolRegistry } from '@intelligence/toolkit/toolRegistry'
 import { scenarioDataBus } from './ScenarioDataBus'
 import { scenarioVersionManager, compareVersions } from './ScenarioVersionManager'
 import { scenarioMonitor } from './ScenarioMonitor'
 import { scenarioDatabaseManager } from './ScenarioDatabaseManager'
-import { logger } from '@shared/utils/Logger'
+import { logger } from '@shared/toolkit/LogEngine'
 
 const APP_VERSION = '1.7.41'
 

@@ -22,13 +22,13 @@ import {
   X,
   Check,
 } from 'lucide-react'
-import { Button, Input } from '@components/ui'
-import { toast } from '@components/common/ToastProvider'
-import { getAPI } from '@renderer/services/electronAPI'
+import { ActionButton, TextField } from '@components/ui'
+import { toast } from '@components/foundation/NotificationProvider'
+import { getAPI } from '../../../adapters/electronBridge'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
-import { BUILTIN_PROVIDERS } from '@shared/config/providers'
-import type { ChannelId, ChannelAccountConfig, ChannelAccountSnapshot, ChannelConfig, ChannelSecretSchema } from '@shared/types/channel'
+import { BUILTIN_PROVIDERS } from '@shared/configuration/aiProviders'
+import type { ChannelId, ChannelAccountConfig, ChannelAccountSnapshot, ChannelConfig, ChannelSecretSchema } from '@shared/protocols/channel'
 
 const CHANNEL_ICONS: Record<ChannelId, React.ReactNode> = {
   feishu: <MessageCircle className="w-4 h-4" />,
@@ -66,7 +66,7 @@ function WebhookUrlDisplay({ channelId, language }: { channelId: ChannelId; lang
           {fullUrl || (language === 'zh' ? '未启动' : 'Not running')}
         </code>
         {fullUrl && (
-          <Button
+          <ActionButton
             variant="ghost"
             size="sm"
             onClick={() => {
@@ -75,7 +75,7 @@ function WebhookUrlDisplay({ channelId, language }: { channelId: ChannelId; lang
             }}
           >
             <CheckCircle className="w-3 h-3" />
-          </Button>
+          </ActionButton>
         )}
       </div>
       <div className="text-xs text-text-muted">
@@ -327,9 +327,9 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
         <h3 className="text-lg font-medium text-text-primary">
           {language === 'zh' ? '多渠道集成' : 'Multi-Channel Integration'}
         </h3>
-        <Button variant="ghost" size="sm" onClick={loadData} disabled={loading}>
+        <ActionButton variant="ghost" size="sm" onClick={loadData} disabled={loading}>
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-        </Button>
+        </ActionButton>
       </div>
 
       <p className="text-sm text-text-muted">
@@ -342,7 +342,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
         <div className="flex items-center justify-center py-12">
           <div className="flex items-center gap-3 text-sm text-text-muted">
             <Loader2 className="w-4 h-4 animate-spin" />
-            <span>{language === 'zh' ? '正在加载渠道配置...' : 'Loading channel configuration...'}</span>
+            <span>{language === 'zh' ? '正在加载渠道配置...' : 'ProgressIndicator channel configuration...'}</span>
           </div>
         </div>
       ) : channels.length === 0 ? (
@@ -422,15 +422,15 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                           {renderStatusBadge(status)}
                           <div className="flex items-center gap-1">
                             {status?.connected ? (
-                              <Button variant="ghost" size="sm" onClick={() => handleDisconnect(channel.id, account.id)} disabled={isLoading}>
+                              <ActionButton variant="ghost" size="sm" onClick={() => handleDisconnect(channel.id, account.id)} disabled={isLoading}>
                                 {isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <PowerOff className="w-3 h-3" />}
-                              </Button>
+                              </ActionButton>
                             ) : (
-                              <Button variant="ghost" size="sm" onClick={() => handleConnect(channel.id, account.id)} disabled={isLoading}>
+                              <ActionButton variant="ghost" size="sm" onClick={() => handleConnect(channel.id, account.id)} disabled={isLoading}>
                                 {isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Power className="w-3 h-3" />}
-                              </Button>
+                              </ActionButton>
                             )}
-                            <Button variant="ghost" size="sm" onClick={() => {
+                            <ActionButton variant="ghost" size="sm" onClick={() => {
                               if (isEditing) {
                                 setEditingAccountId(null)
                                 setEditForm({})
@@ -440,10 +440,10 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                               setExpandedAccount(isAccountExpanded ? null : account.id)
                             }}>
                               {isEditing ? <X className="w-3 h-3" /> : <Pencil className="w-3 h-3" />}
-                            </Button>
-                            <Button variant="ghost" size="sm" onClick={() => handleRemoveAccount(channel.id, account.id)}>
+                            </ActionButton>
+                            <ActionButton variant="ghost" size="sm" onClick={() => handleRemoveAccount(channel.id, account.id)}>
                               <Trash2 className="w-3 h-3 text-red-400" />
-                            </Button>
+                            </ActionButton>
                           </div>
                         </div>
 
@@ -455,7 +455,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                                   <label className="text-xs text-text-muted">
                                     {language === 'zh' ? '账户名称' : 'Account Name'}
                                   </label>
-                                  <Input
+                                  <TextField
                                     value={editForm.name || ''}
                                     onChange={e => setEditForm(prev => ({ ...prev, name: e.target.value }))}
                                     className="text-xs"
@@ -467,7 +467,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                                       {language === 'zh' ? s.labelZh : s.label}
                                     </label>
                                     <div className="relative">
-                                      <Input
+                                      <TextField
                                         type={s.secret && !showSecrets[`edit:${s.key}`] ? 'password' : 'text'}
                                         value={editForm.credentials?.[s.key] ?? account.credentials[s.key] ?? ''}
                                         onChange={e => setEditForm(prev => ({
@@ -549,7 +549,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                                           }}
                                           className="w-full mt-1 px-2 py-1.5 rounded-md border border-border/50 bg-surface text-xs text-text-primary focus:outline-none focus:border-accent/40"
                                         >
-                                          <option value="">{language === 'zh' ? '选择供应商' : 'Select provider'}</option>
+                                          <option value="">{language === 'zh' ? '选择供应商' : 'DropdownSelector provider'}</option>
                                           {availableProviders.map(p => (
                                             <option key={p.id} value={p.id}>{p.name}</option>
                                           ))}
@@ -568,7 +568,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                                             }))}
                                             className="w-full mt-1 px-2 py-1.5 rounded-md border border-border/50 bg-surface text-xs text-text-primary focus:outline-none focus:border-accent/40"
                                           >
-                                            <option value="">{language === 'zh' ? '选择模型' : 'Select model'}</option>
+                                            <option value="">{language === 'zh' ? '选择模型' : 'DropdownSelector model'}</option>
                                             {availableProviders.find(p => p.id === editForm.llmConfig?.provider)?.models.map(m => (
                                               <option key={m} value={m}>{m}</option>
                                             ))}
@@ -588,13 +588,13 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
 
                                 <div className="flex items-center gap-2 pt-2 border-t border-border/20">
                                   <div className="flex-1" />
-                                  <Button variant="ghost" size="sm" onClick={() => { setEditingAccountId(null); setEditForm({}) }}>
+                                  <ActionButton variant="ghost" size="sm" onClick={() => { setEditingAccountId(null); setEditForm({}) }}>
                                     {language === 'zh' ? '取消' : 'Cancel'}
-                                  </Button>
-                                  <Button variant="primary" size="sm" onClick={() => handleSaveAccount(channel.id)}>
+                                  </ActionButton>
+                                  <ActionButton variant="primary" size="sm" onClick={() => handleSaveAccount(channel.id)}>
                                     <Check className="w-3 h-3 mr-1" />
                                     {language === 'zh' ? '保存' : 'Save'}
-                                  </Button>
+                                  </ActionButton>
                                 </div>
                               </>
                             ) : (
@@ -605,7 +605,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                                       {language === 'zh' ? s.labelZh : s.label}
                                     </label>
                                     <div className="relative">
-                                      <Input
+                                      <TextField
                                         type={s.secret && !showSecrets[`${account.id}:${s.key}`] ? 'password' : 'text'}
                                         value={account.credentials[s.key] || ''}
                                         readOnly
@@ -665,7 +665,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                           <label className="text-xs text-text-muted">
                             {language === 'zh' ? '账户ID' : 'Account ID'} <span className="text-red-400">*</span>
                           </label>
-                          <Input
+                          <TextField
                             value={newAccountForm.id || ''}
                             onChange={e => setNewAccountForm(prev => ({ ...prev, id: e.target.value }))}
                             placeholder={language === 'zh' ? '例如: my-feishu-bot' : 'e.g. my-feishu-bot'}
@@ -676,7 +676,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                           <label className="text-xs text-text-muted">
                             {language === 'zh' ? '账户名称' : 'Account Name'}
                           </label>
-                          <Input
+                          <TextField
                             value={newAccountForm.name || ''}
                             onChange={e => setNewAccountForm(prev => ({ ...prev, name: e.target.value }))}
                             placeholder={language === 'zh' ? '例如: 我的飞书机器人' : 'e.g. My Feishu Bot'}
@@ -690,7 +690,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                               {s.required && <span className="text-red-400 ml-1">*</span>}
                             </label>
                             <div className="relative">
-                              <Input
+                              <TextField
                                 type={s.secret && !showSecrets[`new:${s.key}`] ? 'password' : 'text'}
                                 value={newAccountForm.credentials?.[s.key] || ''}
                                 onChange={e => setNewAccountForm(prev => ({
@@ -775,7 +775,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                                   }}
                                   className="w-full mt-1 px-2 py-1.5 rounded-md border border-border/50 bg-surface text-xs text-text-primary focus:outline-none focus:border-accent/40"
                                 >
-                                  <option value="">{language === 'zh' ? '选择供应商' : 'Select provider'}</option>
+                                  <option value="">{language === 'zh' ? '选择供应商' : 'DropdownSelector provider'}</option>
                                   {availableProviders.map(p => (
                                     <option key={p.id} value={p.id}>{p.name}</option>
                                   ))}
@@ -794,7 +794,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                                     }))}
                                     className="w-full mt-1 px-2 py-1.5 rounded-md border border-border/50 bg-surface text-xs text-text-primary focus:outline-none focus:border-accent/40"
                                   >
-                                    <option value="">{language === 'zh' ? '选择模型' : 'Select model'}</option>
+                                    <option value="">{language === 'zh' ? '选择模型' : 'DropdownSelector model'}</option>
                                     {availableProviders.find(p => p.id === newAccountForm.llmConfig?.provider)?.models.map(m => (
                                       <option key={m} value={m}>{m}</option>
                                     ))}
@@ -813,24 +813,24 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Button variant="ghost" size="sm" onClick={() => handleValidateCredentials(channel.id)}>
+                        <ActionButton variant="ghost" size="sm" onClick={() => handleValidateCredentials(channel.id)}>
                           <Shield className="w-3 h-3 mr-1" />
                           {language === 'zh' ? '验证凭据' : 'Validate'}
-                        </Button>
+                        </ActionButton>
                         <div className="flex-1" />
-                        <Button variant="ghost" size="sm" onClick={() => { setShowAddAccount(null); setNewAccountForm({ id: '', name: '', enabled: true, credentials: {} }) }}>
+                        <ActionButton variant="ghost" size="sm" onClick={() => { setShowAddAccount(null); setNewAccountForm({ id: '', name: '', enabled: true, credentials: {} }) }}>
                           {language === 'zh' ? '取消' : 'Cancel'}
-                        </Button>
-                        <Button variant="primary" size="sm" onClick={handleAddAccount}>
+                        </ActionButton>
+                        <ActionButton variant="primary" size="sm" onClick={handleAddAccount}>
                           {language === 'zh' ? '添加' : 'Add'}
-                        </Button>
+                        </ActionButton>
                       </div>
                     </div>
                   ) : (
-                    <Button variant="ghost" size="sm" className="w-full" onClick={() => { setShowAddAccount(channel.id); setNewAccountForm({ id: '', name: '', enabled: true, credentials: {} }) }}>
+                    <ActionButton variant="ghost" size="sm" className="w-full" onClick={() => { setShowAddAccount(channel.id); setNewAccountForm({ id: '', name: '', enabled: true, credentials: {} }) }}>
                       <Plus className="w-4 h-4 mr-1" />
                       {language === 'zh' ? '添加账户' : 'Add Account'}
-                    </Button>
+                    </ActionButton>
                   )}
                 </div>
               )}

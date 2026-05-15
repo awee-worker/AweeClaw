@@ -11,7 +11,7 @@ import type {
   ScenarioCapabilities,
   ScenarioUI,
   ScenarioDataSources,
-} from '@shared/types/scenario'
+} from '@shared/protocols/scenario'
 import { DATA_ANALYST_WELCOME_SUGGESTIONS, DATA_ANALYST_WELCOME_TITLE } from './welcome'
 import { buildScenarioIdentity } from '../../scenarioBrandIdentity'
 

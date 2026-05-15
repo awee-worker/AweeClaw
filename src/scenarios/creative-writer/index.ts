@@ -14,7 +14,7 @@ import type {
   ScenarioManifest,
   ScenarioHealthCheck,
   ScenarioDependency,
-} from '@shared/types/scenario-arch'
+} from '@shared/protocols/scenario-arch'
 import { creativeWriterScenario } from './config/scenario'
 import { creativeWriterComponents } from './components'
 

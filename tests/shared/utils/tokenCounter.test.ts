@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { countTokens, countContentTokens, countMessagesTokens } from '@shared/utils/tokenCounter'
+import { countTokens, countContentTokens, countMessagesTokens } from '@toolkit/tokenCounter'
 
 describe('TokenCounter - Basic Counting', () => {
   it('should count English text tokens accurately', () => {

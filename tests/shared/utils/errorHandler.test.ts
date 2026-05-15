@@ -10,7 +10,7 @@ import {
   getErrorMessage,
   mapAISDKError,
   mapNodeError,
-} from '@shared/utils/errorHandler'
+} from '@toolkit/errorHandler'
 
 describe('errorHandler', () => {
   describe('toAppError', () => {

@@ -14,7 +14,7 @@ import type {
   ScenarioManifest,
   ScenarioHealthCheck,
   ScenarioDependency,
-} from '@shared/types/scenario-arch'
+} from '@shared/protocols/scenario-arch'
 import { generalAssistantScenario } from './config/scenario'
 
 const GENERAL_ASSISTANT_MANIFEST: ScenarioManifest = {

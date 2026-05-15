@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeReadFileArgs, resolveReadFileRequest } from '@/shared/utils/readFile'
+import { normalizeReadFileArgs, resolveReadFileRequest } from '@toolkit/readFile'
 
 describe('readFile utils', () => {
   it('normalizes JSON array path strings into arrays', () => {

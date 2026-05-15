@@ -13,7 +13,7 @@
 import type {
   ScenarioModule,
   ScenarioManifest,
-} from '@shared/types/scenario-arch'
+} from '@shared/protocols/scenario-arch'
 import { scenarioLoader } from './ScenarioLoader'
 import { scenarioDataBus } from './ScenarioDataBus'
 
@@ -419,7 +419,7 @@ class ScenarioTestFrameworkClass {
     }
   }
 
-  private createMockContext(scenarioId: string): import('@shared/types/scenario-arch').ScenarioModuleContext {
+  private createMockContext(scenarioId: string): import('@shared/protocols/scenario-arch').ScenarioModuleContext {
     return {
       scenarioId,
       workspacePath: null,

@@ -15,7 +15,7 @@ import {
   pathStartsWith,
   // toFullPath,
   toRelativePath,
-} from '@shared/utils/pathUtils'
+} from '@toolkit/pathUtils'
 
 describe('pathUtils', () => {
   describe('normalizePath', () => {

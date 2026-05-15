@@ -1,4 +1,4 @@
-import type { WelcomeSuggestionItem, WelcomeTitleConfig } from '@shared/types/scenario'
+import type { WelcomeSuggestionItem, WelcomeTitleConfig } from '@shared/protocols/scenario'
 
 export const CREATIVE_WRITER_WELCOME_SUGGESTIONS: WelcomeSuggestionItem[] = [
   { icon: 'PenTool', title: 'Start a story', titleZh: '开始一个故事', prompt: 'Help me start writing a story. I need help with plot, characters, and setting.', color: 'text-pink-500 bg-pink-500/10 border-pink-500/20 hover:bg-pink-500/20' },

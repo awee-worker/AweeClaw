@@ -1,5 +1,5 @@
-export * from './types';
-export { shellService } from './services/shellService';
-export { shellRegistryService } from './services/shellRegistryService';
-export { ShellMenu } from './components/ShellMenu';
-export { ShellManagerDialog } from './components/ShellManagerDialog';
+export * from './types/terminalTypes';
+export { shellService } from './services/terminalRuntime';
+export { shellRegistryService } from './services/terminalRegistry';
+export { TerminalLauncher } from './components/TerminalLauncher';
+export { TerminalManagerDialog } from './components/TerminalManagerDialog';

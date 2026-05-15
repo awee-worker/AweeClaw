@@ -22,18 +22,18 @@ export type {
   ScenarioHealthReporter,
   ScenarioDbScript,
   ScenarioSqlResult,
-} from '@shared/types/scenario-arch'
+} from '@shared/protocols/scenario-arch'
 
 export type {
   ScenarioToolDefinition as LegacyScenarioToolDefinition,
   ScenarioIpcHandler as LegacyScenarioIpcHandler,
   ScenarioComponentRegistry as LegacyScenarioComponentRegistry,
   ScenarioModuleContext as LegacyScenarioModuleContext,
-} from './types'
+} from './providerTypes'
 
 import { scenarioLoader } from './core'
-import { scenarioRegistry } from '@shared/config/scenarios'
-import type { ScenarioModule } from '@shared/types/scenario-arch'
+import { scenarioRegistry } from '@shared/configuration/scenarios'
+import type { ScenarioModule } from '@shared/protocols/scenario-arch'
 
 type ScenarioModuleEntry = { default: ScenarioModule }
 

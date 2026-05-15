@@ -8,7 +8,7 @@ import {
   ErrorCode,
   formatErrorMessage,
   isRetryableError,
-} from '@shared/errors'
+} from '@shared/exceptions'
 
 describe('Error Classes', () => {
   describe('AppError', () => {

@@ -9,8 +9,8 @@
  * - 版本变更通知
  */
 
-import type { ScenarioVersionInfo, ScenarioLoaderEvent } from '@shared/types/scenario-arch'
-import { logger } from '@shared/utils/Logger'
+import type { ScenarioVersionInfo, ScenarioLoaderEvent } from '@shared/protocols/scenario-arch'
+import { logger } from '@shared/toolkit/LogEngine'
 
 interface VersionEntry {
   scenarioId: string

@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { Pipeline, PipelineAbortedError } from '@renderer/agent/harness/pipeline/Pipeline'
-import type { Middleware } from '@renderer/agent/harness/pipeline/Middleware'
-import { AuditMiddleware, getAuditLog, clearAuditLog } from '@renderer/agent/harness/pipeline/builtins/audit'
-import { RateLimitMiddleware, RateLimitError } from '@renderer/agent/harness/pipeline/builtins/rateLimit'
-import { ErrorBoundaryMiddleware } from '@renderer/agent/harness/pipeline/builtins/errorBoundary'
+import { Pipeline, PipelineAbortedError } from '@intelligence/harness/pipeline/Pipeline'
+import type { Middleware } from '@intelligence/harness/pipeline/Middleware'
+import { AuditMiddleware, getAuditLog, clearAuditLog } from '@intelligence/harness/pipeline/builtins/audit'
+import { RateLimitMiddleware, RateLimitError } from '@intelligence/harness/pipeline/builtins/rateLimit'
+import { ErrorBoundaryMiddleware } from '@intelligence/harness/pipeline/builtins/errorBoundary'
 
 describe('Pipeline', () => {
   it('executes handler without middleware', async () => {

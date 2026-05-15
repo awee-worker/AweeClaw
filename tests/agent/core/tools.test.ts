@@ -4,10 +4,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { executeTools } from '@renderer/agent/core/tools'
-import { useAgentStore } from '@renderer/agent/store/AgentStore'
-import type { ToolCall } from '@shared/types'
-import type { ToolExecutionContext } from '@renderer/agent/core/types'
+import { executeTools } from '@intelligence/engine'
+import { useAgentStore } from '@intelligence/state/AgentStore'
+import type { ToolCall } from '@protocols'
+import type { ToolExecutionContext } from '@intelligence/types'
 
 // Mock dependencies
 vi.mock('@renderer/services/electronAPI', () => ({
@@ -23,7 +23,7 @@ vi.mock('@renderer/services/electronAPI', () => ({
   },
 }))
 
-vi.mock('@renderer/agent/tools/providers', () => ({
+vi.mock('@intelligence/toolkit/providers', () => ({
   toolManager: {
     execute: vi.fn(async (name: string, args: any) => {
       // 模拟不同工具的执行时间
@@ -48,7 +48,7 @@ vi.mock('@renderer/agent/tools/providers', () => ({
   },
 }))
 
-vi.mock('@renderer/agent/tools/registry', () => ({
+vi.mock('@intelligence/toolkit/registry', () => ({
   toolRegistry: {
     execute: vi.fn(async () => ({
       success: true,
@@ -184,7 +184,7 @@ describe('Tools Core - Parallel Execution', () => {
       let currentConcurrent = 0
 
       // Mock toolManager.execute 来追踪并发数
-      const { toolManager } = await import('@renderer/agent/tools/providers')
+      const { toolManager } = await import('@intelligence/toolkit/providers')
       const originalExecute = toolManager.execute
       toolManager.execute = vi.fn(async (name: string, _args: any) => {
         currentConcurrent++
@@ -238,7 +238,7 @@ describe('Tools Core - Parallel Execution', () => {
 
   describe('Error Handling in Parallel Execution', () => {
     it('should not block other tools when one tool fails', async () => {
-      const { toolManager } = await import('@renderer/agent/tools/providers')
+      const { toolManager } = await import('@intelligence/toolkit/providers')
 
       // Mock 一个会失败的工具
       toolManager.execute = vi.fn(async (name: string, args: any) => {
@@ -278,7 +278,7 @@ describe('Tools Core - Parallel Execution', () => {
     })
 
     it('should continue executing other tools even if one is very slow', async () => {
-      const { toolManager } = await import('@renderer/agent/tools/providers')
+      const { toolManager } = await import('@intelligence/toolkit/providers')
 
       // Mock 一个很慢的工具和几个快速工具
       toolManager.execute = vi.fn(async (name: string, args: any) => {
@@ -361,7 +361,7 @@ describe('Tools Core - Parallel Execution', () => {
       ]
 
       const executionOrder: string[] = []
-      const { toolManager } = await import('@renderer/agent/tools/providers')
+      const { toolManager } = await import('@intelligence/toolkit/providers')
       const originalExecute = toolManager.execute
 
       toolManager.execute = vi.fn(async (name: string, args: any) => {

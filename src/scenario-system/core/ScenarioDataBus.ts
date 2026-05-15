@@ -17,8 +17,8 @@ import type {
   ScenarioDataMessage,
   ScenarioDataSubscription,
   ScenarioSharedDataEntry,
-} from '@shared/types/scenario-arch'
-import { logger } from '@shared/utils/Logger'
+} from '@shared/protocols/scenario-arch'
+import { logger } from '@shared/toolkit/LogEngine'
 
 const MAX_MESSAGE_HISTORY = 100
 const MAX_SHARED_DATA_ENTRIES = 500

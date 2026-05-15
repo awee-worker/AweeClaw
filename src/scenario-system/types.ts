@@ -2,7 +2,7 @@
  * ScenarioModule - 场景模块接口（兼容层）
  *
  * 此文件保留旧版接口定义，用于向后兼容。
- * 新场景应使用 @shared/types/scenario-arch 中的增强版接口。
+ * 新场景应使用 @shared/protocols/scenario-arch 中的增强版接口。
  *
  * 增强版接口新增：
  * - getManifest(): 场景清单
@@ -27,8 +27,10 @@
  *     └── *.ts
  */
 
-import type { ScenarioPlugin } from '@shared/types/scenario'
-import type { ToolExecutor, ToolDefinition } from '@shared/types'
+import type { ScenarioPlugin } from '@shared/protocols/scenario'
+import type { ToolExecutor, ToolDefinition, ToolExecutionResult, ToolExecutionContext, ToolPropertySchema } from '@protocols'
+
+export type { ToolExecutionResult, ToolExecutionContext, ToolPropertySchema, ToolDefinition, ToolExecutor }
 
 export interface ScenarioToolDefinition {
   name: string

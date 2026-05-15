@@ -1,7 +1,7 @@
 import { useStore } from '@store'
-import type { ScenarioPlugin } from '@shared/types/scenario'
+import type { ScenarioPlugin } from '@shared/protocols/scenario'
 import type { SidePanel } from '@store/slices/layoutSlice'
-import { registerScenarioPanelComponents, unregisterScenarioPanelComponents } from '../sidebar/PanelComponentRegistry'
+import { registerScenarioPanelComponents, unregisterScenarioPanelComponents } from '../explorer/PanelRegistry'
 
 export function activateScenarioPanels(scenario: ScenarioPlugin): void {
   const prevScenarioId = useStore.getState().activeScenarioId

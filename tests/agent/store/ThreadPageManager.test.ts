@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { ThreadPageManager } from '@renderer/agent/store/ThreadPageManager'
-import { inactiveThreadPersister } from '@renderer/agent/store/InactiveThreadPersister'
+import { ThreadPageManager } from '@intelligence/state/ThreadPageManager'
+import { inactiveThreadPersister } from '@intelligence/state/InactiveThreadPersister'
 
 describe('ThreadPageManager', () => {
   let manager: ThreadPageManager

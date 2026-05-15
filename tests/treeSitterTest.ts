@@ -1,5 +1,5 @@
 // import * as path from 'path'
-import { TreeSitterChunker } from '../src/main/indexing/treeSitterChunker'
+import { TreeSitterChunker } from '../src/main/search-engine'
 
 async function test() {
   const chunker = new TreeSitterChunker()

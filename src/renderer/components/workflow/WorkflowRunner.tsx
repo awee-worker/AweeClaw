@@ -13,9 +13,9 @@ import {
   Zap,
 } from 'lucide-react'
 import { motion } from 'framer-motion'
-import { workflowEngine } from '@shared/types/workflow'
-import type { WorkflowDefinition, WorkflowRun, WorkflowStep, WorkflowStepType } from '@shared/types/workflow'
-import { saveWorkflowRun } from '@shared/config/workflows/persistence'
+import { workflowEngine } from '@shared/protocols/workflow'
+import type { WorkflowDefinition, WorkflowRun, WorkflowStep, WorkflowStepType } from '@shared/protocols/workflow'
+import { saveWorkflowRun } from '@shared/configuration/workflows/persistence'
 
 interface WorkflowRunnerProps {
   workflow: WorkflowDefinition
@@ -193,11 +193,11 @@ export default function WorkflowRunner({ workflow, run: initialRun, language }: 
         </div>
       </div>
 
-      {/* Input Parameters */}
+      {/* TextField Parameters */}
       {isIdle && hasInputSchema && (
         <div className="px-6 py-4 border-b border-border/30 bg-surface/10">
           <h4 className="text-[11px] font-semibold text-text-secondary mb-3">
-            {language === 'zh' ? '输入参数' : 'Input Parameters'}
+            {language === 'zh' ? '输入参数' : 'TextField Parameters'}
           </h4>
           <div className="space-y-3">
             {Object.entries(workflow.inputSchema!).map(([key, param]) => (
@@ -219,7 +219,7 @@ export default function WorkflowRunner({ workflow, run: initialRun, language }: 
         </div>
       )}
 
-      {/* Paused User Input Panel */}
+      {/* Paused User TextField Panel */}
       {isPaused && pausedStep && pausedStep.config.type === 'user_input' && (
         <UserInputPanel
           step={pausedStep}
@@ -318,7 +318,7 @@ function UserInputPanel({ step, onResume, language }: UserInputPanelProps) {
       <div className="flex items-center gap-2 mb-2">
         <UserCheck className="w-4 h-4 text-amber-400" />
         <h4 className="text-[12px] font-semibold text-amber-400">
-          {language === 'zh' ? '等待输入' : 'Awaiting Input'}
+          {language === 'zh' ? '等待输入' : 'Awaiting TextField'}
         </h4>
       </div>
       {config.prompt && (

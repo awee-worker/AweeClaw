@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { Swords, Plus, RefreshCw, ChevronDown, MapPin, AlertTriangle, Shield, ShieldOff } from 'lucide-react'
 import { useStore } from '@store'
-import { Button, Modal } from '@/renderer/components/ui'
+import { ActionButton, OverlayDialog } from '@/renderer/components/ui'
 
 interface CompetitorRecord {
   id: string
@@ -51,7 +51,7 @@ export function CompetitorPanel() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
   const getDb = useCallback(async () => {
-    const { scenarioDatabaseManager } = await import('@/scenario-system/core/ScenarioDatabaseManager')
+    const { scenarioDatabaseManager } = await import('@scenario-system/core/ScenarioDatabaseManager')
     return scenarioDatabaseManager
   }, [])
 
@@ -123,12 +123,12 @@ export function CompetitorPanel() {
           {language === 'zh' ? '竞品分析' : 'COMPETITORS'}
         </span>
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={loadCompetitors} title={language === 'zh' ? '刷新' : 'Refresh'}>
+          <ActionButton variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={loadCompetitors} title={language === 'zh' ? '刷新' : 'Refresh'}>
             <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
-          </Button>
-          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setShowAddModal(true)} title={language === 'zh' ? '添加竞品' : 'Add Competitor'}>
+          </ActionButton>
+          <ActionButton variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setShowAddModal(true)} title={language === 'zh' ? '添加竞品' : 'Add Competitor'}>
             <Plus className="w-3 h-3" />
-          </Button>
+          </ActionButton>
         </div>
       </div>
 
@@ -245,14 +245,14 @@ export function CompetitorPanel() {
                     </div>
 
                     <div className="px-3 py-2 border-t border-border/10 bg-background/20 flex justify-end">
-                      <Button
+                      <ActionButton
                         variant="ghost"
                         size="sm"
                         className="h-6 text-xs text-red-400/70 hover:text-red-400"
                         onClick={() => handleDelete(comp.id)}
                       >
                         {language === 'zh' ? '删除' : 'Delete'}
-                      </Button>
+                      </ActionButton>
                     </div>
                   </div>
                 </div>
@@ -262,7 +262,7 @@ export function CompetitorPanel() {
         })}
       </div>
 
-      <Modal
+      <OverlayDialog
         isOpen={showAddModal}
         onClose={() => { setShowAddModal(false); setAddForm({ ...EMPTY_FORM }) }}
         title={language === 'zh' ? '添加竞品' : 'Add Competitor'}
@@ -369,15 +369,15 @@ export function CompetitorPanel() {
           </div>
 
           <div className="flex gap-3 pt-2">
-            <Button variant="ghost" size="sm" className="h-9 flex-1 text-sm" onClick={() => { setShowAddModal(false); setAddForm({ ...EMPTY_FORM }) }}>
+            <ActionButton variant="ghost" size="sm" className="h-9 flex-1 text-sm" onClick={() => { setShowAddModal(false); setAddForm({ ...EMPTY_FORM }) }}>
               {language === 'zh' ? '取消' : 'Cancel'}
-            </Button>
-            <Button variant="secondary" size="sm" className="h-9 flex-1 text-sm" onClick={handleAdd} disabled={!addForm.competitor_name.trim() || saving}>
+            </ActionButton>
+            <ActionButton variant="secondary" size="sm" className="h-9 flex-1 text-sm" onClick={handleAdd} disabled={!addForm.competitor_name.trim() || saving}>
               {saving ? (language === 'zh' ? '保存中...' : 'Saving...') : (language === 'zh' ? '保存' : 'Save')}
-            </Button>
+            </ActionButton>
           </div>
         </div>
-      </Modal>
+      </OverlayDialog>
     </div>
   )
 }

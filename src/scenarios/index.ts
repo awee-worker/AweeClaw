@@ -49,11 +49,11 @@ export type {
   ScenarioHealthReporter,
   ScenarioDbScript,
   ScenarioSqlResult,
-} from '@shared/types/scenario-arch'
+} from '@shared/protocols/scenario-arch'
 
 export type {
   ScenarioToolDefinition as LegacyScenarioToolDefinition,
   ScenarioIpcHandler as LegacyScenarioIpcHandler,
   ScenarioComponentRegistry as LegacyScenarioComponentRegistry,
   ScenarioModuleContext as LegacyScenarioModuleContext,
-} from '@/scenario-system/types'
+} from '@/scenario-system/providerTypes'

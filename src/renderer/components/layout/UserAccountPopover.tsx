@@ -3,13 +3,13 @@ import { LogIn, UserPlus, LogOut, Eye, EyeOff, Server, AlertCircle, Loader2, Clo
 import QRCode from 'qrcode'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
-import { Button, Input } from '@components/ui'
-import { Tooltip } from '../ui/Tooltip'
-import { Modal } from '../ui/Modal'
+import { ActionButton, TextField } from '@components/ui'
+import { HintOverlay } from '../ui/HintOverlay'
+import { OverlayDialog } from '../ui/OverlayDialog'
 import { type Language } from '@renderer/i18n'
-import { BackendApiError } from '@renderer/services/backendApi'
+import { BackendApiError } from '@services/backendApi'
 import { getQuotaBarColor, getQuotaTextColor } from '@utils/quotaColors'
-import { backendApi } from '@renderer/services/backendApi'
+import { backendApi } from '@services/backendApi'
 
 interface PlanItem {
   id: string
@@ -211,7 +211,7 @@ function UpgradePlanModal({
     : availableChannels
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="sm">
+    <OverlayDialog isOpen={isOpen} onClose={onClose} size="sm">
       <div className="p-2 space-y-5">
         <div className="flex items-center gap-2.5 pt-2">
           <div className="w-8 h-8 rounded-xl bg-accent/10 flex items-center justify-center">
@@ -274,7 +274,7 @@ function UpgradePlanModal({
             {selectedPlan && (
               <div className="space-y-3">
                 <p className="text-xs text-text-muted">
-                  {language === 'zh' ? '选择支付方式' : 'Select payment method'}
+                  {language === 'zh' ? '选择支付方式' : 'DropdownSelector payment method'}
                 </p>
                 <div className={`grid gap-2 ${displayChannels.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
                   {displayChannels.map((ch) => {
@@ -303,7 +303,7 @@ function UpgradePlanModal({
                   </div>
                 )}
 
-                <Button
+                <ActionButton
                   variant="primary"
                   className="w-full"
                   onClick={handleUpgrade}
@@ -316,7 +316,7 @@ function UpgradePlanModal({
                       ? `支付 ¥${Number(selectedPlan.price).toFixed(2)}`
                       : `Pay ¥${Number(selectedPlan.price).toFixed(2)}`
                   )}
-                </Button>
+                </ActionButton>
               </div>
             )}
           </>
@@ -344,13 +344,13 @@ function UpgradePlanModal({
                   <p className="text-sm text-text-primary">
                     {language === 'zh' ? '即将跳转到支付宝' : 'Redirecting to Alipay'}
                   </p>
-                  <Button
+                  <ActionButton
                     variant="secondary"
                     onClick={() => window.electronAPI?.openExternalUrl?.(paymentResult.paymentUrl!)}
                     leftIcon={<ExternalLink className="w-4 h-4" />}
                   >
                     {language === 'zh' ? '前往支付' : 'Go to Pay'}
-                  </Button>
+                  </ActionButton>
                 </div>
               )}
               {paymentChannel === 'MOCK' && (
@@ -358,7 +358,7 @@ function UpgradePlanModal({
                   <p className="text-sm text-text-primary">
                     {language === 'zh' ? '模拟支付模式' : 'Mock Payment Mode'}
                   </p>
-                  <Button
+                  <ActionButton
                     variant="success"
                     onClick={async () => {
                       if (!paymentResult.qrCodeUrl) return
@@ -370,7 +370,7 @@ function UpgradePlanModal({
                     }}
                   >
                     {language === 'zh' ? '模拟支付成功' : 'Mock Pay Success'}
-                  </Button>
+                  </ActionButton>
                 </div>
               )}
             </div>
@@ -389,7 +389,7 @@ function UpgradePlanModal({
               </div>
             )}
 
-            <Button
+            <ActionButton
               variant="ghost"
               onClick={() => {
                 setPaymentResult(null)
@@ -399,11 +399,11 @@ function UpgradePlanModal({
               }}
             >
               {language === 'zh' ? '返回' : 'Back'}
-            </Button>
+            </ActionButton>
           </div>
         )}
       </div>
-    </Modal>
+    </OverlayDialog>
   )
 }
 
@@ -526,7 +526,7 @@ export function UserAccountPopover({ language }: { language: Language }) {
 
   return (
     <>
-      <Tooltip content={tooltipText} side="right">
+      <HintOverlay content={tooltipText} side="right">
         <button
           onClick={handleClick}
           className={`
@@ -544,9 +544,9 @@ export function UserAccountPopover({ language }: { language: Language }) {
             </div>
           )}
         </button>
-      </Tooltip>
+      </HintOverlay>
 
-      <Modal
+      <OverlayDialog
         isOpen={showUserModal}
         onClose={() => setShowUserModal(false)}
         size="sm"
@@ -630,7 +630,7 @@ export function UserAccountPopover({ language }: { language: Language }) {
             )}
 
             <div className="flex gap-2 pt-1">
-              <Button
+              <ActionButton
                 variant="ghost"
                 size="sm"
                 onClick={() => {
@@ -640,8 +640,8 @@ export function UserAccountPopover({ language }: { language: Language }) {
                 className="flex-1 text-xs"
               >
                 {language === 'zh' ? '云端服务' : 'Cloud'}
-              </Button>
-              <Button
+              </ActionButton>
+              <ActionButton
                 variant="danger"
                 size="sm"
                 onClick={handleLogout}
@@ -649,11 +649,11 @@ export function UserAccountPopover({ language }: { language: Language }) {
               >
                 <LogOut className="w-3 h-3" />
                 {language === 'zh' ? '退出登录' : 'Sign Out'}
-              </Button>
+              </ActionButton>
             </div>
           </div>
         )}
-      </Modal>
+      </OverlayDialog>
 
       <UpgradePlanModal
         isOpen={showUpgradeModal}
@@ -663,7 +663,7 @@ export function UserAccountPopover({ language }: { language: Language }) {
         onUpgradeSuccess={handleUpgradeSuccess}
       />
 
-      <Modal
+      <OverlayDialog
         isOpen={showLoginModal}
         onClose={() => {
           setShowLoginModal(false)
@@ -694,7 +694,7 @@ export function UserAccountPopover({ language }: { language: Language }) {
               <label className="text-xs font-medium text-text-secondary">
                 {language === 'zh' ? '服务器地址' : 'Server URL'}
               </label>
-              <Input
+              <TextField
                 value={serverUrl}
                 onChange={(e) => setServerUrl(e.target.value)}
                 placeholder="http://localhost:3000"
@@ -707,7 +707,7 @@ export function UserAccountPopover({ language }: { language: Language }) {
                 <label className="text-xs font-medium text-text-secondary">
                   {language === 'zh' ? '用户名' : 'Username'}
                 </label>
-                <Input
+                <TextField
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder={language === 'zh' ? '输入用户名（可选）' : 'Username (optional)'}
@@ -720,7 +720,7 @@ export function UserAccountPopover({ language }: { language: Language }) {
               <label className="text-xs font-medium text-text-secondary">
                 {language === 'zh' ? '邮箱' : 'Email'}
               </label>
-              <Input
+              <TextField
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -734,7 +734,7 @@ export function UserAccountPopover({ language }: { language: Language }) {
               <label className="text-xs font-medium text-text-secondary">
                 {language === 'zh' ? '密码' : 'Password'}
               </label>
-              <Input
+              <TextField
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -764,7 +764,7 @@ export function UserAccountPopover({ language }: { language: Language }) {
               </div>
             )}
 
-            <Button type="submit" variant="primary" className="w-full" disabled={loading}>
+            <ActionButton type="submit" variant="primary" className="w-full" disabled={loading}>
               {loading ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : isRegister ? (
@@ -779,7 +779,7 @@ export function UserAccountPopover({ language }: { language: Language }) {
                 : language === 'zh'
                   ? '登录'
                   : 'Sign In'}
-            </Button>
+            </ActionButton>
 
             <p className="text-center text-xs text-text-muted">
               {isRegister
@@ -808,7 +808,7 @@ export function UserAccountPopover({ language }: { language: Language }) {
             </p>
           </form>
         </div>
-      </Modal>
+      </OverlayDialog>
     </>
   )
 }

@@ -10,7 +10,7 @@
     "type": "git",
     "url": "https://github.com/jweelee/aweeclaw.git"
   },
-  "main": "dist/main/main.js",
+  "main": "dist/main/appBootstrap.js",
   "scripts": {
     "dev": "concurrently \"npm run dev:main\" \"npm run dev:renderer\"",
     "dev:main": "node --max-old-space-size=8192 ./node_modules/typescript/bin/tsc -p tsconfig.main.json --noEmit --watch",

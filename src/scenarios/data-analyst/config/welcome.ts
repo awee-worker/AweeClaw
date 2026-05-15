@@ -1,4 +1,4 @@
-import type { WelcomeSuggestionItem, WelcomeTitleConfig } from '@shared/types/scenario'
+import type { WelcomeSuggestionItem, WelcomeTitleConfig } from '@shared/protocols/scenario'
 
 export const DATA_ANALYST_WELCOME_SUGGESTIONS: WelcomeSuggestionItem[] = [
   { icon: 'BarChart3', title: 'Analyze a dataset', titleZh: '分析数据集', prompt: 'I have a dataset I want to analyze. Help me explore its structure, find patterns, and generate insights.', color: 'text-blue-500 bg-blue-500/10 border-blue-500/20 hover:bg-blue-500/20' },

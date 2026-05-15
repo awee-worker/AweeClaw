@@ -11,7 +11,7 @@
  * - 向后兼容：默认代码编辑器场景保持现有布局
  */
 
-import type { ScenarioPlugin, UILayout, PanelDescriptor } from '@shared/types/scenario'
+import type { ScenarioPlugin, UILayout, PanelDescriptor } from '@shared/protocols/scenario'
 
 // ============================================
 // 布局配置输出

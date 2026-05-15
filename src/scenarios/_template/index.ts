@@ -33,8 +33,8 @@ import type {
   ScenarioManifest,
   ScenarioHealthCheck,
   ScenarioDependency,
-} from '@shared/types/scenario-arch'
-import type { ScenarioPlugin } from '@shared/types/scenario'
+} from '@shared/protocols/scenario-arch'
+import type { ScenarioPlugin } from '@shared/protocols/scenario'
 import { TEMPLATE_WELCOME_SUGGESTIONS, TEMPLATE_WELCOME_TITLE } from './config/welcome'
 
 const SCENARIO_ID = 'template'
@@ -208,7 +208,7 @@ const templateModule: ScenarioModule = {
 
   onHealthCheck: async (): Promise<ScenarioHealthCheck[]> => {
     // 如需检查数据库健康状态：
-    // const { scenarioDatabaseManager } = await import('@/scenario-system/core/ScenarioDatabaseManager')
+    // const { scenarioDatabaseManager } = await import('@scenario-system/core/ScenarioDatabaseManager')
     // const result = await scenarioDatabaseManager.executeSql(SCENARIO_ID, 'SELECT COUNT(*) as count FROM example')
     // return [{ name: 'database', status: result.success ? 'healthy' : 'unhealthy', message: result.success ? `OK` : result.error }]
 

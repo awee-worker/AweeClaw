@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { normalizePipeTerminalInput } from '@main/security/terminalInput'
+import { normalizePipeTerminalInput } from '@guard/terminalInput'
 
 describe('normalizePipeTerminalInput', () => {
   it('converts carriage returns into newlines for pipe-backed shells', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildSystemPrompt, type PromptContext } from '@renderer/agent/prompts/PromptBuilder'
+import { buildSystemPrompt, type PromptContext } from '@intelligence/prompt-engine/PromptBuilder'
 
 describe('PromptBuilder', () => {
   it('keeps task-list state out of the stable system prompt', () => {

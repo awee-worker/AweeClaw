@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { convertUsage } from '@main/services/llm/types'
+import { convertUsage } from '@modules/ai-provider/types'
 
 describe('convertUsage', () => {
   it('prefers AI SDK standard cache fields when available', () => {

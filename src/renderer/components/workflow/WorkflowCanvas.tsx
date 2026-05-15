@@ -8,7 +8,7 @@ import {
   Zap,
 } from 'lucide-react'
 import { motion } from 'framer-motion'
-import type { WorkflowDefinition, WorkflowStep, WorkflowStepType } from '@shared/types/workflow'
+import type { WorkflowDefinition, WorkflowStep, WorkflowStepType } from '@shared/protocols/workflow'
 
 interface WorkflowCanvasProps {
   workflow: WorkflowDefinition

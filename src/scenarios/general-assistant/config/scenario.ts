@@ -11,7 +11,7 @@ import type {
   ScenarioCapabilities,
   ScenarioUI,
   ScenarioDataSources,
-} from '@shared/types/scenario'
+} from '@shared/protocols/scenario'
 import { GENERAL_ASSISTANT_WELCOME_SUGGESTIONS, GENERAL_ASSISTANT_WELCOME_TITLE } from './welcome'
 import { buildScenarioIdentity } from '../../scenarioBrandIdentity'
 

@@ -1,9 +1,9 @@
 import { useState, useCallback } from 'react'
 import { BarChart3, LineChart, PieChart, ScatterChart, AreaChart, Plus, Grid3x3, List, X, Check } from 'lucide-react'
 import { useStore } from '@store'
-import { Button } from '@/renderer/components/ui'
-import { Agent } from '@/renderer/agent/core'
-import { getAgentConfig } from '@/renderer/agent/utils/AgentConfig'
+import { ActionButton } from '@/renderer/components/ui'
+import { Agent } from '@intelligence/engine'
+import { getAgentConfig } from '@intelligence/utils/intelligenceConfig'
 
 interface ChartItem {
     id: string
@@ -103,25 +103,25 @@ export function ChartsView() {
                     {language === 'zh' ? '图表' : 'CHARTS'}
                 </span>
                 <div className="flex items-center gap-1">
-                    <Button
+                    <ActionButton
                         variant={viewMode === 'list' ? 'secondary' : 'ghost'}
                         size="sm"
                         className="h-6 w-6 p-0"
                         onClick={() => setViewMode('list')}
                     >
                         <List className="w-3 h-3" />
-                    </Button>
-                    <Button
+                    </ActionButton>
+                    <ActionButton
                         variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
                         size="sm"
                         className="h-6 w-6 p-0"
                         onClick={() => setViewMode('grid')}
                     >
                         <Grid3x3 className="w-3 h-3" />
-                    </Button>
-                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setShowNewForm(true)} title={language === 'zh' ? '新建图表' : 'New Chart'}>
+                    </ActionButton>
+                    <ActionButton variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setShowNewForm(true)} title={language === 'zh' ? '新建图表' : 'New Chart'}>
                         <Plus className="w-3 h-3" />
-                    </Button>
+                    </ActionButton>
                 </div>
             </div>
 
@@ -215,7 +215,7 @@ export function ChartsView() {
                         })}
                     </div>
 
-                    <Button
+                    <ActionButton
                         variant="secondary"
                         size="sm"
                         className="h-7 w-full text-xs gap-1"
@@ -224,13 +224,13 @@ export function ChartsView() {
                     >
                         <Check className="w-3 h-3" />
                         {language === 'zh' ? '创建' : 'Create'}
-                    </Button>
+                    </ActionButton>
                 </div>
             )}
 
             {!showNewForm && (
                 <div className="px-3 py-2 border-t border-border/30">
-                    <Button
+                    <ActionButton
                         variant="ghost"
                         size="sm"
                         className="h-7 w-full text-xs gap-1.5"
@@ -238,7 +238,7 @@ export function ChartsView() {
                     >
                         <Plus className="w-3 h-3" />
                         {language === 'zh' ? '新建图表' : 'New Chart'}
-                    </Button>
+                    </ActionButton>
                 </div>
             )}
         </div>

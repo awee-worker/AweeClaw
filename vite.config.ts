@@ -44,11 +44,21 @@ const aliases = {
   '@shared': path.resolve(__dirname, './src/shared'),
   '@components': path.resolve(__dirname, './src/renderer/components'),
   '@features': path.resolve(__dirname, './src/renderer/features'),
-  '@services': path.resolve(__dirname, './src/renderer/services'),
-  '@store': path.resolve(__dirname, './src/renderer/store'),
-  '@hooks': path.resolve(__dirname, './src/renderer/hooks'),
-  '@utils': path.resolve(__dirname, './src/renderer/utils'),
+  '@services': path.resolve(__dirname, './src/renderer/adapters'),
+  '@store': path.resolve(__dirname, './src/renderer/state'),
+  '@hooks': path.resolve(__dirname, './src/renderer/composables'),
+  '@utils': path.resolve(__dirname, './src/renderer/toolkit'),
   '@app-types': path.resolve(__dirname, './src/renderer/types'),
+  '@intelligence': path.resolve(__dirname, './src/renderer/intelligence'),
+  '@bridge': path.resolve(__dirname, './src/main/bridge'),
+  '@guard': path.resolve(__dirname, './src/main/guard'),
+  '@modules': path.resolve(__dirname, './src/main/modules'),
+  '@search-engine': path.resolve(__dirname, './src/main/search-engine'),
+  '@toolkit': path.resolve(__dirname, './src/shared/toolkit'),
+  '@protocols': path.resolve(__dirname, './src/shared/protocols'),
+  '@configuration': path.resolve(__dirname, './src/shared/configuration'),
+  '@scenario-system': path.resolve(__dirname, './src/scenario-system'),
+  '@scenarios': path.resolve(__dirname, './src/scenarios'),
   'vscode-nls': path.resolve(__dirname, './node_modules/monaco-editor-nls')
 }
 
@@ -57,7 +67,7 @@ export default defineConfig({
     react(),
     electron([
       {
-        entry: 'src/main/main.ts',
+        entry: 'src/main/appBootstrap.ts',
         vite: {
           resolve: { alias: aliases },
           build: {
@@ -73,13 +83,13 @@ export default defineConfig({
         }
       },
       {
-        entry: 'src/main/indexing/indexer.worker.ts',
+        entry: 'src/main/search-engine/indexWorker.ts',
         vite: {
           resolve: { alias: aliases },
           build: {
             outDir: 'dist/main',
             lib: {
-              entry: 'src/main/indexing/indexer.worker.ts',
+              entry: 'src/main/search-engine/indexWorker.ts',
               formats: ['cjs'],
               fileName: () => 'indexer.worker.js'
             },
@@ -97,9 +107,10 @@ export default defineConfig({
         }
       },
       {
-        entry: 'src/main/preload.ts',
+        entry: 'src/main/preloadBridge.ts',
         onstart(options) { options.reload() },
         vite: {
+          resolve: { alias: aliases },
           build: { outDir: 'dist/preload' }
         }
       }
@@ -148,11 +159,10 @@ export default defineConfig({
             return 'animation'
           }
           // Agent 模块
-          if (id.includes('/renderer/agent/')) {
+          if (id.includes('/renderer/intelligence/')) {
             return 'agent'
           }
-          // Sidebar 模块
-          if (id.includes('/renderer/components/sidebar/')) {
+          if (id.includes('/renderer/components/explorer/')) {
             return 'sidebar'
           }
         },

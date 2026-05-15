@@ -1,9 +1,9 @@
 import { useState, useCallback, useEffect } from 'react'
 import { ClipboardList, RefreshCw, ChevronRight, ChevronDown, Plus, CheckCircle2, Clock, AlertCircle } from 'lucide-react'
 import { useStore } from '@store'
-import { Button } from '@/renderer/components/ui'
-import { Agent } from '@/renderer/agent/core'
-import { getAgentConfig } from '@/renderer/agent/utils/AgentConfig'
+import { ActionButton } from '@/renderer/components/ui'
+import { Agent } from '@intelligence/engine'
+import { getAgentConfig } from '@intelligence/utils/intelligenceConfig'
 
 interface PlanRecord {
   id: string
@@ -71,7 +71,7 @@ export function OptimizationPlansPanel() {
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const { scenarioDatabaseManager } = await import('@/scenario-system/core/ScenarioDatabaseManager')
+      const { scenarioDatabaseManager } = await import('@scenario-system/core/ScenarioDatabaseManager')
       const storeResult = await scenarioDatabaseManager.executeSql('store-diagnosis', 'SELECT id, name FROM stores')
       if (storeResult.success && storeResult.rows) {
         const map: Record<string, string> = {}
@@ -133,12 +133,12 @@ export function OptimizationPlansPanel() {
           {language === 'zh' ? '优化方案' : 'PLANS'}
         </span>
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={loadData} title={language === 'zh' ? '刷新' : 'Refresh'}>
+          <ActionButton variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={loadData} title={language === 'zh' ? '刷新' : 'Refresh'}>
             <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
-          </Button>
-          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setShowCreate(true)} title={language === 'zh' ? '新建方案' : 'New Plan'}>
+          </ActionButton>
+          <ActionButton variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setShowCreate(true)} title={language === 'zh' ? '新建方案' : 'New Plan'}>
             <Plus className="w-3 h-3" />
-          </Button>
+          </ActionButton>
         </div>
       </div>
 
@@ -209,9 +209,9 @@ export function OptimizationPlansPanel() {
                       </span>
                     </div>
                   ))}
-                  <Button variant="ghost" size="sm" className="h-6 w-full text-xs gap-1" onClick={() => handleViewPlan(plan)}>
+                  <ActionButton variant="ghost" size="sm" className="h-6 w-full text-xs gap-1" onClick={() => handleViewPlan(plan)}>
                     {language === 'zh' ? '查看详情' : 'View Details'}
-                  </Button>
+                  </ActionButton>
                 </div>
               )}
             </div>
@@ -232,18 +232,18 @@ export function OptimizationPlansPanel() {
               ? 'AI 将根据诊断结果自动生成优化方案和任务清单'
               : 'AI will auto-generate optimization plans and task lists based on diagnosis results'}
           </p>
-          <Button variant="secondary" size="sm" className="h-7 w-full text-xs" onClick={handleCreatePlan}>
+          <ActionButton variant="secondary" size="sm" className="h-7 w-full text-xs" onClick={handleCreatePlan}>
             {language === 'zh' ? '开始创建' : 'Start Creating'}
-          </Button>
+          </ActionButton>
         </div>
       )}
 
       {!showCreate && plans.length > 0 && (
         <div className="px-3 py-2 border-t border-border/30">
-          <Button variant="ghost" size="sm" className="h-7 w-full text-xs gap-1.5" onClick={() => setShowCreate(true)}>
+          <ActionButton variant="ghost" size="sm" className="h-7 w-full text-xs gap-1.5" onClick={() => setShowCreate(true)}>
             <Plus className="w-3 h-3" />
             {language === 'zh' ? '新建方案' : 'New Plan'}
-          </Button>
+          </ActionButton>
         </div>
       )}
     </div>

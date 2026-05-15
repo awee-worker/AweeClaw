@@ -14,8 +14,8 @@
  *   路径: {userDataPath}/scenario-data/{scenarioId}/{scenarioId}.db
  */
 
-import type { ScenarioDbScript, ScenarioSqlResult } from '@shared/types/scenario-arch'
-import { api } from '@/renderer/services/electronAPI'
+import type { ScenarioDbScript, ScenarioSqlResult } from '@shared/protocols/scenario-arch'
+import { api } from '@services/electronBridge'
 
 class ScenarioDatabaseManagerClass {
   private initializedScenarios = new Set<string>()

@@ -1,4 +1,4 @@
-import type { WelcomeSuggestionItem, WelcomeTitleConfig } from '@shared/types/scenario'
+import type { WelcomeSuggestionItem, WelcomeTitleConfig } from '@shared/protocols/scenario'
 
 export const STORE_DIAGNOSIS_WELCOME_SUGGESTIONS: WelcomeSuggestionItem[] = [
   { icon: 'Building2', title: 'Add a store', titleZh: '添加门店', prompt: '我想添加一个新门店，请帮我录入门店信息。', color: 'text-blue-500 bg-blue-500/10 border-blue-500/20 hover:bg-blue-500/20' },

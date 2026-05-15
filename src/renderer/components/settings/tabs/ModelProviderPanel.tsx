@@ -1,0 +1,2296 @@
+/**
+ * Provider 设置组件
+ * 
+ * 重构后版本：移除 CustomProviderEditor 和 AdapterOverridesEditor 依赖
+ * 使用内联表单添加自定义厂商，使用 AI SDK 原生配置
+ */
+
+import { memo, useState, useMemo, useEffect, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
+import { Plus, Trash, Eye, EyeOff, Check, AlertTriangle, X, Server, Sliders, Box, RefreshCw, Pencil, CloudOff } from 'lucide-react'
+import {
+  PROVIDERS,
+  type ApiProtocol,
+  type OpenAICompatibilityProfile,
+  getProviderDefaultHeaders,
+  isOpenAIStyleProtocol,
+  resolveOpenAICompatibilityProfile,
+} from '@configuration/aiProviders'
+import { REASONING_EFFORT_VALUES } from '@configuration/modelPersistence'
+import { LLM_DEFAULTS } from '@configuration/defaultProfile'
+import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
+import { toast } from '@components/foundation/NotificationProvider'
+import { ActionButton, TextField, DropdownSelector, ToggleSwitch } from '@components/ui'
+import { ProviderSettingsProps } from '../preferencesTypes'
+import { isCustomProvider } from '@renderer/types/modelProvider'
+import { useStore } from '@store'
+import { useShallow } from 'zustand/react/shallow'
+import type { CloudProviderModel } from '@store/slices/authSlice'
+
+// 内置厂商 ID
+const BUILTIN_PROVIDER_IDS = ['openai', 'anthropic', 'gemini', 'deepseek', 'groq']
+
+// 协议类型选项
+const PROTOCOL_OPTIONS = [
+  { value: 'openai', label: 'OpenAI Compatible' },
+  { value: 'openai-responses', label: 'OpenAI Responses API' },
+  { value: 'anthropic', label: 'Anthropic' },
+  { value: 'google', label: 'Google (Gemini)' },
+  { value: 'custom', label: 'Custom' },
+]
+
+type EditableHeader = { key: string; value: string; isCustom?: boolean }
+
+const PREDEFINED_HEADER_OPTIONS = [
+  { value: '', label: 'DropdownSelector header' },
+  { value: 'X-Request-ID', label: 'X-Request-ID' },
+  { value: 'X-Organization', label: 'X-Organization' },
+  { value: 'X-Project-ID', label: 'X-Project-ID' },
+  { value: 'User-Agent', label: 'User-Agent' },
+  { value: 'Content-Type', label: 'Content-Type' },
+  { value: 'Accept', label: 'Accept' },
+]
+
+const PREDEFINED_HEADER_KEYS = new Set(PREDEFINED_HEADER_OPTIONS.map(option => option.value).filter(Boolean))
+
+type ReasoningEffortValue = typeof REASONING_EFFORT_VALUES[number]
+
+const OPENAI_COMPATIBILITY_PROFILE_OPTIONS: Array<{
+  value: OpenAICompatibilityProfile
+  label: { en: string; zh: string }
+}> = [
+    {
+      value: 'compatible',
+      label: { en: 'Compatible (Safe)', zh: '兼容模式（安全）' },
+    },
+    {
+      value: 'full',
+      label: { en: 'Full OpenAI', zh: '完整 OpenAI' },
+    },
+  ]
+
+function getReasoningEffortOptions(
+  provider: string,
+  protocol: ApiProtocol | undefined,
+  openAICompatibilityProfile: OpenAICompatibilityProfile | undefined,
+  language: 'en' | 'zh',
+): Array<{ value: ReasoningEffortValue; label: string }> {
+  const optionLabels: Record<ReasoningEffortValue, { en: string; zh: string }> = {
+    none: { en: 'None', zh: '关闭' },
+    minimal: { en: 'Minimal', zh: '极低' },
+    low: { en: 'Low', zh: '低' },
+    medium: { en: 'Medium', zh: '中' },
+    high: { en: 'High', zh: '高' },
+    xhigh: { en: 'X-High', zh: '极高' },
+  }
+
+  const supportedValues: ReasoningEffortValue[] =
+    provider === 'anthropic' || protocol === 'anthropic'
+      ? ['low', 'medium', 'high']
+      : provider === 'gemini' || protocol === 'google'
+        ? ['minimal', 'low', 'medium', 'high']
+        : isOpenAIStyleProtocol(protocol) && openAICompatibilityProfile === 'compatible'
+          ? ['minimal', 'low', 'medium', 'high']
+          : [...REASONING_EFFORT_VALUES]
+
+  return supportedValues.map(value => ({
+    value,
+    label: optionLabels[value][language],
+  }))
+}
+
+function getReasoningEffortDescription(
+  provider: string,
+  protocol: ApiProtocol | undefined,
+  openAICompatibilityProfile: OpenAICompatibilityProfile | undefined,
+  language: 'en' | 'zh',
+): string {
+  if (provider === 'anthropic' || protocol === 'anthropic') {
+    return language === 'zh'
+      ? 'Anthropic 使用 low / medium / high 三档 effort'
+      : 'Anthropic uses low / medium / high effort levels'
+  }
+
+  if (provider === 'gemini' || protocol === 'google') {
+    return language === 'zh'
+      ? 'Gemini 3 使用 thinking level；Gemini 2.5 主要看下方 thinking budget'
+      : 'Gemini 3 uses thinking level; Gemini 2.5 mainly relies on the thinking budget below'
+  }
+
+  if (isOpenAIStyleProtocol(protocol) && openAICompatibilityProfile === 'compatible') {
+    return language === 'zh'
+      ? '第三方 OpenAI Compatible 接口通常只兼容 minimal / low / medium / high'
+      : 'Compatible mode only sends the safer OpenAI subset for broader third-party gateway support'
+  }
+
+  if (isOpenAIStyleProtocol(protocol)) {
+    return language === 'zh'
+      ? '完整 OpenAI 会启用更完整的 reasoning、并行工具和结构化输出能力'
+      : 'Full OpenAI enables richer reasoning, parallel tool, and structured output support'
+  }
+
+  return language === 'zh'
+    ? 'OpenAI 协议使用 reasoning effort；不同模型支持范围可能不同'
+    : 'OpenAI-style protocols use reasoning effort; exact support depends on the model'
+}
+
+function getOpenAICompatibilityProfileDescription(
+  protocol: ApiProtocol | undefined,
+  language: 'en' | 'zh',
+): string {
+  if (protocol === 'openai-responses') {
+    return language === 'zh'
+      ? 'Responses 协议下也会按这个档位决定是否发送更完整的 OpenAI 专属参数'
+      : 'This profile also decides whether Responses requests send richer OpenAI-only parameters'
+  }
+
+  return language === 'zh'
+    ? '决定第三方 OpenAI 风格接口使用保守兼容参数，还是完整 OpenAI 参数集'
+    : 'Choose between the safer compatibility subset and the full OpenAI parameter set'
+}
+
+function getHeaderSelectOptions(language: 'en' | 'zh') {
+  return [
+    ...PREDEFINED_HEADER_OPTIONS.map(option => ({
+      value: option.value,
+      label: option.value ? option.label : language === 'zh' ? '选择请求头' : 'DropdownSelector header',
+    })),
+    { value: 'X-Custom-Header', label: language === 'zh' ? '自定义...' : 'Custom...' },
+  ]
+}
+
+function splitCustomHeaders(
+  headers: Record<string, string> | undefined,
+  defaultHeaders: Record<string, string>,
+): EditableHeader[] {
+  if (!headers) return []
+
+  return Object.entries(headers)
+    .filter(([key]) => !Object.prototype.hasOwnProperty.call(defaultHeaders, key))
+    .map(([key, value]) => ({
+      key,
+      value,
+      isCustom: !PREDEFINED_HEADER_KEYS.has(key),
+    }))
+}
+
+function mergeHeaders(
+  defaultHeaders: Record<string, string>,
+  customHeaders: EditableHeader[],
+): Record<string, string> | undefined {
+  const merged: Record<string, string> = { ...defaultHeaders }
+
+  for (const header of customHeaders) {
+    if (header.key) {
+      merged[header.key] = header.value || ''
+    }
+  }
+
+  return Object.keys(merged).length > 0 ? merged : undefined
+}
+
+function isIncompleteHeaderDraft(header: EditableHeader): boolean {
+  return !header.key.trim()
+}
+
+function reconcileCustomHeaderDrafts(
+  persistedHeaders: Record<string, string> | undefined,
+  defaultHeaders: Record<string, string>,
+  currentDrafts: EditableHeader[],
+  preserveDrafts: boolean,
+): EditableHeader[] {
+  const syncedHeaders = splitCustomHeaders(persistedHeaders, defaultHeaders)
+  if (!preserveDrafts) {
+    return syncedHeaders
+  }
+
+  const incompleteDrafts = currentDrafts.filter(isIncompleteHeaderDraft)
+  return incompleteDrafts.length > 0
+    ? [...syncedHeaders, ...incompleteDrafts]
+    : syncedHeaders
+}
+
+const TestConnectionButton = memo(function TestConnectionButton({ localConfig, language }: { localConfig: any; language: 'en' | 'zh' }) {
+  const [testing, setTesting] = useState(false)
+  const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle')
+  const [errorMsg, setErrorMsg] = useState('')
+
+  const handleTest = async () => {
+    if (!localConfig.apiKey && localConfig.provider !== 'ollama') {
+      setStatus('error')
+      setErrorMsg(language === 'zh' ? '请先输入 API Key' : 'Please enter API Key first')
+      return
+    }
+    setTesting(true)
+    setStatus('idle')
+    setErrorMsg('')
+    try {
+      const { checkProviderHealth } = await import('@services/providerHealthAdapter')
+      const result = await checkProviderHealth(localConfig.provider, localConfig.apiKey, localConfig.baseUrl, localConfig.protocol)
+      if (result.status === 'healthy') {
+        setStatus('success')
+        toast.success(language === 'zh' ? `连接成功！延迟: ${result.latency}ms` : `Connected! Latency: ${result.latency}ms`)
+      } else {
+        setStatus('error')
+        setErrorMsg(result.error || 'Connection failed')
+      }
+    } catch (err: any) {
+      setStatus('error')
+      setErrorMsg(err.message || 'Connection failed')
+    } finally {
+      setTesting(false)
+    }
+  }
+  return (
+    <div className="flex items-center gap-3">
+      <ActionButton variant="secondary" size="sm" onClick={handleTest} disabled={testing} className="h-9 px-3 text-xs font-medium">
+        {testing ? (
+          <span className="flex items-center gap-2">
+            <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+            {language === 'zh' ? '测试中...' : 'Testing...'}
+          </span>
+        ) : (
+          language === 'zh' ? '测试连接' : 'Test Connection'
+        )}
+      </ActionButton>
+      {status === 'success' && (
+        <span className="flex items-center gap-1.5 rounded-md border border-emerald-400/20 bg-emerald-400/10 px-2 py-1 text-xs font-medium text-emerald-400">
+          <Check className="w-3 h-3" />
+          {language === 'zh' ? '连接成功' : 'Connected'}
+        </span>
+      )}
+      {status === 'error' && (
+        <span className="flex items-center gap-1.5 rounded-md border border-red-400/20 bg-red-400/10 px-2 py-1 text-xs font-medium text-red-400" title={errorMsg}>
+          <AlertTriangle className="w-3 h-3" />
+          {errorMsg.length > 30 ? errorMsg.slice(0, 30) + '...' : errorMsg}
+        </span>
+      )}
+    </div>
+  )
+})
+
+const TestModelButton = memo(function TestModelButton({ localConfig, language }: { localConfig: any; language: 'en' | 'zh' }) {
+  const [testing, setTesting] = useState(false)
+
+  const handleTest = async () => {
+    if (!localConfig.apiKey && localConfig.provider !== 'ollama') {
+      toast.error(language === 'zh' ? '请先输入 API Key' : 'Please enter API Key first')
+      return
+    }
+    if (!localConfig.model) {
+      toast.error(language === 'zh' ? '请先选择或输入模型' : 'Please select or enter a model first')
+      return
+    }
+
+    setTesting(true)
+    try {
+      const { testModelCall } = await import('@services/providerHealthAdapter')
+      const result = await testModelCall(localConfig)
+
+      if (result.success) {
+        const message = language === 'zh'
+          ? `调用成功！延时: ${result.latency}ms, 结果: ${result.content}`
+          : `Call success! Latency: ${result.latency}ms, Result: ${result.content}`
+        toast.success(message)
+      } else {
+        const errorMsg = result.error || 'Test failed'
+        toast.error(language === 'zh' ? `调用失败: ${errorMsg}` : `Call failed: ${errorMsg}`)
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Test failed')
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  return (
+    <ActionButton variant="secondary" size="sm" onClick={handleTest} disabled={testing} className="h-9 px-3 text-xs font-medium">
+      {testing ? (
+        <span className="flex items-center gap-2">
+          <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+          {language === 'zh' ? '调用中...' : 'Calling...'}
+        </span>
+      ) : (
+        language === 'zh' ? '测试模型调用' : 'Test Model Call'
+      )}
+    </ActionButton>
+  )
+})
+
+const FetchModelsButton = memo(function FetchModelsButton({
+  provider,
+  apiKey,
+  baseUrl,
+  protocol,
+  language,
+  existingModels = [],
+  onModelsFetched,
+  onModelRemoved,
+  onBatchRemoved
+}: {
+  provider: string;
+  apiKey: string;
+  baseUrl?: string;
+  protocol?: string;
+  language: 'en' | 'zh';
+  existingModels?: string[];
+  onModelsFetched: (models: string[]) => void;
+  onModelRemoved?: (model: string) => void;
+  onBatchRemoved?: (models: string[]) => void;
+}) {
+  const [fetching, setFetching] = useState(false)
+  const [showList, setShowList] = useState(false)
+  const [fetchedModels, setFetchedModels] = useState<string[]>([])
+  const [searchQuery, setSearchQuery] = useState('')
+  const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 })
+  const containerRef = useRef<HTMLDivElement>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+
+  const handleFetch = async () => {
+    if (!apiKey && provider !== 'ollama') {
+      toast.error(language === 'zh' ? '请先输入 API Key' : 'Please enter API Key first')
+      return
+    }
+
+    // 计算位置
+    if (buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect()
+      setCoords({
+        top: rect.bottom + window.scrollY,
+        left: rect.left + window.scrollX,
+        width: rect.width
+      })
+    }
+
+    setFetching(true)
+    setSearchQuery('')
+    try {
+      const { fetchModelsCall } = await import('@services/providerHealthAdapter')
+      const result = await fetchModelsCall(provider, apiKey, baseUrl, protocol)
+      if (result.success && result.models) {
+        setFetchedModels(result.models)
+        setShowList(true)
+        if (result.models.length === 0) {
+          toast.info(language === 'zh' ? '未找到可用模型' : 'No models found')
+        }
+      } else {
+        toast.error(language === 'zh' ? `获取失败: ${result.error}` : `Fetch failed: ${result.error}`)
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Fetch failed')
+    } finally {
+      setFetching(false)
+    }
+  }
+
+  // 点击外部关闭列表
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        // 还要检查是否点击了 portal 里的内容
+        const portal = document.getElementById('fetch-models-portal')
+        if (portal && portal.contains(event.target as Node)) return
+        setShowList(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // 监听滚动和调整大小以更新位置
+  useEffect(() => {
+    if (!showList) return
+
+    const updateCoords = () => {
+      if (buttonRef.current) {
+        const rect = buttonRef.current.getBoundingClientRect()
+        setCoords({
+          top: rect.bottom + window.scrollY,
+          left: rect.left + window.scrollX,
+          width: rect.width
+        })
+      }
+    }
+
+    window.addEventListener('scroll', updateCoords, true)
+    window.addEventListener('resize', updateCoords)
+    return () => {
+      window.removeEventListener('scroll', updateCoords, true)
+      window.removeEventListener('resize', updateCoords)
+    }
+  }, [showList])
+
+  // 搜索过滤
+  const filteredModels = searchQuery
+    ? fetchedModels.filter(m => m.toLowerCase().includes(searchQuery.toLowerCase()))
+    : fetchedModels
+
+  const dropdownMenu = showList && fetchedModels.length > 0 && createPortal(
+    <div
+      id="fetch-models-portal"
+      className="fixed z-[9999] mt-2 w-72 overflow-hidden bg-surface border border-border rounded-xl shadow-2xl animate-in fade-in zoom-in duration-200 flex flex-col"
+      style={{
+        top: coords.top,
+        left: Math.max(10, coords.left + coords.width - 288),
+        maxHeight: Math.min(384, window.innerHeight - coords.top - 24), // 动态计算：视口底部留 24px 安全边距
+      }}
+    >
+      {/* 搜索和统计 */}
+      <div className="p-2 border-b border-border bg-background/50 flex-shrink-0 space-y-1.5">
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          placeholder={language === 'zh' ? '搜索模型...' : 'Search models...'}
+          className="w-full px-2.5 py-1.5 text-xs bg-surface/50 border border-border rounded-lg outline-none focus:border-accent/50 transition-colors text-text-primary placeholder:text-text-muted"
+          autoFocus
+        />
+        <div className="flex items-center justify-between px-1">
+          <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">
+            {searchQuery
+              ? (language === 'zh' ? `匹配 ${filteredModels.length}/${fetchedModels.length}` : `${filteredModels.length}/${fetchedModels.length} matched`)
+              : (language === 'zh' ? `共 ${fetchedModels.length} 个模型` : `${fetchedModels.length} models`)
+            }
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => {
+                const toAdd = filteredModels.filter(m => !existingModels.includes(m))
+                if (toAdd.length > 0) onModelsFetched(toAdd)
+              }}
+              className="text-[10px] text-accent hover:text-accent-hover px-1.5 py-0.5 rounded hover:bg-accent/10 transition-colors"
+            >
+              {language === 'zh' ? '全选' : 'All'}
+            </button>
+            <button
+              onClick={() => {
+                const toRemove = filteredModels.filter(m => existingModels.includes(m))
+                if (toRemove.length > 0) onBatchRemoved?.(toRemove)
+              }}
+              className="text-[10px] text-red-400 hover:text-red-300 px-1.5 py-0.5 rounded hover:bg-red-400/10 transition-colors"
+            >
+              {language === 'zh' ? '全取消' : 'None'}
+            </button>
+          </div>
+        </div>
+      </div>
+      <div className="overflow-y-auto flex-1 p-1 custom-scrollbar">
+        {filteredModels.map(model => {
+          const isAdded = existingModels.includes(model)
+          return (
+            <button
+              key={model}
+              onClick={() => {
+                if (isAdded) {
+                  onModelRemoved?.(model)
+                } else {
+                  onModelsFetched([model])
+                }
+              }}
+              className={`w-full text-left px-3 py-1.5 text-[12px] rounded-lg transition-all flex items-center justify-between group mb-0.5 ${isAdded
+                ? 'text-accent bg-accent/5 hover:bg-accent/10'
+                : 'text-text-secondary hover:text-accent hover:bg-accent/5 active:scale-[0.98]'
+                }`}
+            >
+              <span className="truncate mr-2 flex-1">{model}</span>
+              {isAdded ? (
+                <Check className="w-3 h-3" />
+              ) : (
+                <Plus className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity text-accent" />
+              )}
+            </button>
+          )
+        })}
+      </div>
+      <div className="p-1.5 border-t border-border bg-background/50 flex-shrink-0 flex gap-2">
+        <button
+          onClick={() => {
+            const addedModels = fetchedModels.filter(m => existingModels.includes(m))
+            if (addedModels.length > 0) {
+              onBatchRemoved?.(addedModels)
+            }
+            setShowList(false)
+          }}
+          className="flex-1 py-1.5 text-[11px] font-bold text-text-muted hover:text-red-400 hover:bg-red-400/5 rounded-lg transition-colors uppercase flex items-center justify-center gap-1.5 border border-transparent hover:border-red-400/20"
+        >
+          <Trash className="w-3 h-3" />
+          {language === 'zh' ? '全部清空' : 'Clear All'}
+        </button>
+        <button
+          onClick={() => {
+            const toAdd = fetchedModels.filter(m => !existingModels.includes(m))
+            if (toAdd.length > 0) {
+              onModelsFetched(toAdd)
+            }
+            setShowList(false)
+          }}
+          className="flex-1 py-1.5 text-[11px] font-bold bg-accent text-white hover:bg-accent-hover rounded-lg transition-colors uppercase flex items-center justify-center gap-1.5 shadow-lg shadow-accent/20"
+        >
+          <Check className="w-3 h-3" />
+          {language === 'zh' ? '全部添加' : 'Add All'}
+        </button>
+      </div>
+    </div>,
+    document.body
+  )
+
+  return (
+    <div className="relative inline-block" ref={containerRef}>
+      <ActionButton
+        ref={buttonRef}
+        variant="secondary"
+        size="sm"
+        onClick={handleFetch}
+        disabled={fetching}
+        className="h-8 px-2.5 flex items-center gap-1.5"
+        title={language === 'zh' ? '从 API 获取模型列表' : 'Fetch models from API'}
+      >
+        <RefreshCw className={`w-3 h-3 ${fetching ? 'animate-spin' : ''}`} />
+        <span className="text-[11px] font-semibold">{language === 'zh' ? '获取模型' : 'Fetch Models'}</span>
+      </ActionButton>
+
+      {dropdownMenu}
+    </div>
+  )
+})
+
+// 内联的添加自定义 Provider 表单
+function InlineCustomProviderForm({
+  language,
+  onSave,
+  onCancel
+}: {
+  language: 'en' | 'zh'
+  onSave: (config: { displayName: string; baseUrl: string; apiKey: string; protocol: string; model: string; customModels: string[] }) => void
+  onCancel: () => void
+}) {
+  const [displayName, setDisplayName] = useState('')
+  const [baseUrl, setBaseUrl] = useState('')
+  const [apiKey, setApiKey] = useState('')
+  const [protocol, setProtocol] = useState('openai')
+  const [model, setModel] = useState('')
+  const [customModels, setCustomModels] = useState<string[]>([])
+
+  const handleSubmit = () => {
+    if (!displayName.trim() || !baseUrl.trim()) {
+      toast.error(language === 'zh' ? '请填写名称和 API 端点' : 'Please enter name and API endpoint')
+      return
+    }
+    onSave({
+      displayName: displayName.trim(),
+      baseUrl: baseUrl.trim(),
+      apiKey,
+      protocol,
+      model: model.trim() || customModels[0] || '',
+      customModels: [...new Set([...customModels, ...(model ? [model] : [])])]
+    })
+  }
+
+  const handleFetchModels = (models: string[]) => {
+    const newModels = models.filter(m => !customModels.includes(m))
+    if (newModels.length > 0) {
+      setCustomModels([...customModels, ...newModels])
+      if (!model && newModels.length > 0) {
+        setModel(newModels[0])
+      }
+      toast.success(language === 'zh' ? `已获取并添加 ${newModels.length} 个模型` : `Fetched and added ${newModels.length} models`)
+    }
+  }
+
+  const handleBatchRemoveModels = (models: string[]) => {
+    const remaining = customModels.filter(m => !models.includes(m))
+    setCustomModels(remaining)
+    if (models.includes(model)) {
+      setModel(remaining[0] || '')
+    }
+    toast.success(language === 'zh' ? `已清空 ${models.length} 个模型` : `Cleared ${models.length} models`)
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-text-secondary">
+            {language === 'zh' ? '显示名称' : 'Display Name'}
+          </label>
+          <TextField
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            placeholder={language === 'zh' ? '例如: 智谱 GLM' : 'e.g. My Provider'}
+            className="bg-background/50 border-border text-sm"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-text-secondary">
+            {language === 'zh' ? '协议类型' : 'Protocol'}
+          </label>
+          <DropdownSelector
+            value={protocol}
+            onChange={setProtocol}
+            options={PROTOCOL_OPTIONS}
+            className="bg-background/50 border-border"
+          />
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium text-text-secondary">
+          {language === 'zh' ? 'API 端点' : 'API Endpoint'}
+        </label>
+        <TextField
+          value={baseUrl}
+          onChange={(e) => setBaseUrl(e.target.value)}
+          placeholder="https://api.example.com/v1"
+          className="bg-background/50 border-border font-mono text-xs"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-text-secondary">API Key</label>
+          <TextField
+            type="password"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder="sk-..."
+            className="bg-background/50 border-border font-mono text-xs"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-medium text-text-secondary">
+              {language === 'zh' ? '默认模型' : 'Default Model'}
+            </label>
+            <FetchModelsButton
+              provider="custom"
+              apiKey={apiKey}
+              baseUrl={baseUrl}
+              protocol={protocol}
+              language={language}
+              existingModels={customModels}
+              onModelsFetched={handleFetchModels}
+              onModelRemoved={(m) => setCustomModels(customModels.filter(x => x !== m))}
+              onBatchRemoved={handleBatchRemoveModels}
+            />
+          </div>
+          <TextField
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            placeholder={language === 'zh' ? '例如: gpt-4 (支持逗号分隔)' : 'e.g. gpt-4 (Supports comma)'}
+            className="bg-background/50 border-border text-xs"
+          />
+        </div>
+      </div>
+
+      {customModels.length > 0 && (
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-text-secondary">
+            {language === 'zh' ? `已添加模型 (${customModels.length})` : `Added Models (${customModels.length})`}
+          </label>
+          <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto p-2 bg-background/30 rounded-xl border border-border/50 custom-scrollbar">
+            {customModels.map(m => (
+              <div key={m} className="group flex items-center gap-1.5 px-2 py-1 bg-surface/50 rounded-md border border-border text-xs text-text-secondary hover:border-accent/30 transition-all">
+                <span className="truncate max-w-[150px]">{m}</span>
+                <button
+                  onClick={() => setCustomModels(customModels.filter(x => x !== m))}
+                  className="text-text-muted hover:text-red-400 opacity-50 group-hover:opacity-100 transition-all"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="flex justify-end gap-2 pt-2">
+        <ActionButton variant="ghost" size="sm" onClick={onCancel}>
+          {language === 'zh' ? '取消' : 'Cancel'}
+        </ActionButton>
+        <ActionButton variant="primary" size="sm" onClick={handleSubmit}>
+          {language === 'zh' ? '添加' : 'Add'}
+        </ActionButton>
+      </div>
+    </div>
+  )
+}
+
+export function ModelProviderPanel({
+  localConfig,
+  setLocalConfig,
+  localProviderConfigs,
+  setLocalProviderConfigs,
+  showApiKey,
+  setShowApiKey,
+  selectedProvider,
+  providers,
+  language,
+  setProvider,
+}: ProviderSettingsProps) {
+  const [newModelName, setNewModelName] = useState('')
+  const [isAddingCustom, setIsAddingCustom] = useState(false)
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [logitBiasString, setLogitBiasString] = useState('')
+  const [editingProviderId, setEditingProviderId] = useState<string | null>(null)
+  const [editingProviderName, setEditingProviderName] = useState('')
+  const previousProviderRef = useRef(localConfig.provider)
+
+  const {
+    cloudMode,
+    isAuthenticated,
+    cloudModels,
+    setCloudMode,
+    fetchCloudModels,
+  } = useStore(
+    useShallow((s) => ({
+      cloudMode: s.cloudMode,
+      isAuthenticated: s.isAuthenticated,
+      cloudModels: s.cloudModels,
+      setCloudMode: s.setCloudMode,
+      fetchCloudModels: s.fetchCloudModels,
+    })),
+  )
+
+  const isCloudMode = cloudMode === 'cloud'
+
+  useEffect(() => {
+    if (isCloudMode && isAuthenticated) {
+      fetchCloudModels().catch(() => {})
+    }
+  }, [isCloudMode, isAuthenticated])
+
+  const handleModeChange = useCallback(
+    (mode: 'local' | 'cloud') => {
+      setCloudMode(mode)
+      if (mode === 'cloud' && isAuthenticated) {
+        fetchCloudModels().catch(() => {})
+      }
+    },
+    [setCloudMode, isAuthenticated, fetchCloudModels],
+  )
+
+  const handleSelectCloudProvider = useCallback(
+    (cloudProvider: CloudProviderModel) => {
+      const providerName = cloudProvider.provider.toLowerCase()
+      const firstModel = cloudProvider.models[0] || ''
+      setLocalConfig((prev) => ({
+        ...prev,
+        provider: providerName,
+        model: firstModel,
+        baseUrl: cloudProvider.baseUrl || prev.baseUrl,
+      }))
+    },
+    [setLocalConfig],
+  )
+
+  const cloudProviderOptions = useMemo(() => {
+    if (!cloudModels || cloudModels.length === 0) return []
+    return cloudModels.map((cp) => ({
+      id: cp.provider.toLowerCase(),
+      name: cp.provider.charAt(0) + cp.provider.slice(1).toLowerCase(),
+      models: cp.models,
+      baseUrl: cp.baseUrl,
+    }))
+  }, [cloudModels])
+
+  const cloudModelOptions = useMemo(() => {
+    const currentProvider = localConfig.provider.toUpperCase()
+    const found = cloudModels?.find((cp) => cp.provider === currentProvider || cp.provider.toLowerCase() === localConfig.provider)
+    if (!found) return []
+    return found.models.map((m) => ({ value: m, label: m }))
+  }, [cloudModels, localConfig.provider])
+
+  // Headers 状态
+  const [customHeaders, setCustomHeaders] = useState<EditableHeader[]>([])
+
+  // 从 localProviderConfigs 获取自定义厂商列表
+  const customProviders = useMemo(() => {
+    return Object.entries(localProviderConfigs)
+      .filter(([id]) => isCustomProvider(id))
+      .map(([id, config]) => ({ id, config }))
+  }, [localProviderConfigs])
+
+  // 当前选中的是自定义 Provider 吗？
+  const isCustomSelected = isCustomProvider(localConfig.provider)
+  const selectedCustomConfig = isCustomSelected ? localProviderConfigs[localConfig.provider] : null
+  const selectedProviderProtocol = (selectedProvider as { protocol?: ApiProtocol } | undefined)?.protocol
+
+  const currentProtocol = useMemo<ApiProtocol | undefined>(() => {
+    return localConfig.protocol
+      ?? selectedCustomConfig?.protocol
+      ?? selectedProviderProtocol
+  }, [localConfig.protocol, selectedCustomConfig?.protocol, selectedProviderProtocol])
+
+  const currentOpenAICompatibilityProfile = useMemo(
+    () => resolveOpenAICompatibilityProfile(
+      localConfig.provider,
+      currentProtocol,
+      localConfig.openAICompatibilityProfile ?? selectedCustomConfig?.openAICompatibilityProfile,
+    ),
+    [
+      currentProtocol,
+      localConfig.openAICompatibilityProfile,
+      localConfig.provider,
+      selectedCustomConfig?.openAICompatibilityProfile,
+    ],
+  )
+
+  const defaultHeaders = useMemo(
+    () => getProviderDefaultHeaders(localConfig.provider, currentProtocol),
+    [localConfig.provider, currentProtocol],
+  )
+
+  const reasoningEffortOptions = useMemo(
+    () => getReasoningEffortOptions(
+      localConfig.provider,
+      currentProtocol,
+      currentOpenAICompatibilityProfile,
+      language,
+    ),
+    [currentOpenAICompatibilityProfile, currentProtocol, language, localConfig.provider],
+  )
+
+  const reasoningEffortDescription = useMemo(
+    () => getReasoningEffortDescription(
+      localConfig.provider,
+      currentProtocol,
+      currentOpenAICompatibilityProfile,
+      language,
+    ),
+    [currentOpenAICompatibilityProfile, currentProtocol, language, localConfig.provider],
+  )
+
+  const openAICompatibilityProfileOptions = useMemo(
+    () => OPENAI_COMPATIBILITY_PROFILE_OPTIONS.map(option => ({
+      value: option.value,
+      label: option.label[language],
+    })),
+    [language],
+  )
+
+  const openAICompatibilityProfileDescription = useMemo(
+    () => getOpenAICompatibilityProfileDescription(currentProtocol, language),
+    [currentProtocol, language],
+  )
+
+  const selectedReasoningEffort = useMemo(() => {
+    const currentValue = localConfig.reasoningEffort ?? 'medium'
+    const preferredFallback = reasoningEffortOptions.find(option => option.value === 'medium')?.value
+      ?? reasoningEffortOptions[0]?.value
+
+    return reasoningEffortOptions.some(option => option.value === currentValue)
+      ? currentValue
+      : preferredFallback ?? 'medium'
+  }, [localConfig.reasoningEffort, reasoningEffortOptions])
+
+  const headerSelectOptions = useMemo(
+    () => getHeaderSelectOptions(language),
+    [language],
+  )
+
+  const startEditingCustomProvider = (id: string, displayName: string) => {
+    setEditingProviderId(id)
+    setEditingProviderName(displayName)
+  }
+
+  const cancelEditingCustomProvider = () => {
+    setEditingProviderId(null)
+    setEditingProviderName('')
+  }
+
+  const saveEditingCustomProvider = () => {
+    const nextName = editingProviderName.trim()
+    if (!editingProviderId || !nextName) return
+
+    setLocalProviderConfigs(prev => ({
+      ...prev,
+      [editingProviderId]: {
+        ...prev[editingProviderId],
+        displayName: nextName,
+        updatedAt: Date.now(),
+      },
+    }))
+
+    cancelEditingCustomProvider()
+  }
+
+  const syncCustomHeaders = useCallback((nextHeaders: EditableHeader[]) => {
+    setCustomHeaders(nextHeaders)
+    setLocalConfig(prev => ({
+      ...prev,
+      headers: mergeHeaders(defaultHeaders, nextHeaders),
+    }))
+  }, [defaultHeaders, setLocalConfig])
+
+  // Sync logitBiasString with localConfig
+  useEffect(() => {
+    setLogitBiasString(localConfig.logitBias ? JSON.stringify(localConfig.logitBias, null, 2) : '')
+  }, [localConfig.logitBias])
+
+  // 不再使用 useEffect 同步，而是在初始化时设置
+  // customHeaders 只用于额外的请求头，不包括默认请求头
+  useEffect(() => {
+    const preserveDrafts = previousProviderRef.current === localConfig.provider
+
+    // 每次切换 provider 或者 config.headers 被外部重新加载时，我们需要恢复 customHeaders UI 状态。
+    // 未完成的自定义 header 草稿只保留在本地 UI，不写入持久化 headers。
+    setCustomHeaders(currentDrafts =>
+      reconcileCustomHeaderDrafts(
+        localConfig.headers,
+        defaultHeaders,
+        currentDrafts,
+        preserveDrafts,
+      ),
+    )
+
+    previousProviderRef.current = localConfig.provider
+  }, [defaultHeaders, localConfig.headers, localConfig.provider])
+
+  // 添加模型到本地配置
+  const handleAddModel = (name?: string) => {
+    const modelName = name || newModelName
+    if (!modelName.trim()) return
+
+    const namesToAdd = modelName.split(',').map(s => s.trim()).filter(Boolean)
+    handleBatchAddModels(namesToAdd)
+    if (!name) setNewModelName('')
+  }
+
+  // 批量添加模型
+  const handleBatchAddModels = useCallback((models: string[]) => {
+    if (models.length === 0) return
+
+    const currentConfig = localProviderConfigs[localConfig.provider] || {}
+    const currentModels = currentConfig.customModels || []
+
+    // 过滤掉已存在的
+    const newModels = models.filter(n => !currentModels.includes(n))
+    if (newModels.length === 0) return
+
+    const updatedConfigs = {
+      ...localProviderConfigs,
+      [localConfig.provider]: {
+        ...currentConfig,
+        customModels: [...currentModels, ...newModels]
+      }
+    }
+
+    setLocalProviderConfigs(updatedConfigs)
+    setProvider(localConfig.provider, updatedConfigs[localConfig.provider])
+
+    toast.success(language === 'zh' ? `已添加 ${newModels.length} 个模型` : `Added ${newModels.length} models`)
+  }, [language, localConfig.provider, localProviderConfigs, setLocalProviderConfigs, setProvider])
+
+  // 删除模型从本地配置
+  const handleRemoveModel = (model: string) => {
+    handleBatchRemoveModels([model])
+  }
+
+  // 批量删除模型
+  const handleBatchRemoveModels = useCallback((models: string[]) => {
+    const currentConfig = localProviderConfigs[localConfig.provider]
+    if (!currentConfig) return
+
+    const updatedConfigs = {
+      ...localProviderConfigs,
+      [localConfig.provider]: {
+        ...currentConfig,
+        customModels: (currentConfig.customModels || []).filter(m => !models.includes(m))
+      }
+    }
+
+    setLocalProviderConfigs(updatedConfigs)
+    setProvider(localConfig.provider, updatedConfigs[localConfig.provider])
+
+    if (models.length === 1) {
+      toast.success(language === 'zh' ? `已删除模型: ${models[0]}` : `Removed model: ${models[0]}`)
+    } else {
+      toast.success(language === 'zh' ? `已清空 ${models.length} 个模型` : `Cleared ${models.length} models`)
+    }
+  }, [language, localConfig.provider, localProviderConfigs, setLocalProviderConfigs, setProvider])
+
+  // 选择内置 Provider
+  const handleSelectBuiltinProvider = (providerId: string, skipSaveCurrent = false) => {
+    // 保存当前配置（仅当当前 provider 未被删除时）
+    let updatedConfigs = localProviderConfigs
+    if (!skipSaveCurrent && (localProviderConfigs[localConfig.provider] || BUILTIN_PROVIDER_IDS.includes(localConfig.provider))) {
+      updatedConfigs = {
+        ...localProviderConfigs,
+        [localConfig.provider]: {
+          ...localProviderConfigs[localConfig.provider],
+          displayName: localProviderConfigs[localConfig.provider]?.displayName,
+          apiKey: localConfig.apiKey,
+          baseUrl: localConfig.baseUrl,
+          timeout: localConfig.timeout,
+          model: localConfig.model,
+          headers: localConfig.headers,
+          openAICompatibilityProfile: localConfig.openAICompatibilityProfile,
+          protocol: localConfig.protocol,
+        },
+      }
+      setLocalProviderConfigs(updatedConfigs)
+    }
+
+    // 加载新 Provider 配置
+    const nextConfig = updatedConfigs[providerId] || {}
+    const providerInfo = PROVIDERS[providerId]
+    setLocalConfig({
+      ...localConfig,
+      provider: providerId,
+      apiKey: nextConfig.apiKey || '',
+      baseUrl: nextConfig.baseUrl || providerInfo?.baseUrl || '',
+      timeout: nextConfig.timeout || providerInfo?.defaults.timeout || 120000,
+      model: nextConfig.model || providerInfo?.models[0] || '',
+      headers: nextConfig.headers,
+      openAICompatibilityProfile: resolveOpenAICompatibilityProfile(
+        providerId,
+        nextConfig.protocol || providerInfo?.protocol,
+        nextConfig.openAICompatibilityProfile,
+      ),
+      protocol: nextConfig.protocol || providerInfo?.protocol,
+    })
+    setIsAddingCustom(false)
+  }
+
+  // 选择自定义 Provider
+  const handleSelectCustomProvider = (id: string) => {
+    // 保存当前配置（包括 headers）
+    const updatedConfigs = {
+      ...localProviderConfigs,
+      [localConfig.provider]: {
+        ...localProviderConfigs[localConfig.provider],
+        displayName: localProviderConfigs[localConfig.provider]?.displayName,
+        apiKey: localConfig.apiKey,
+        baseUrl: localConfig.baseUrl,
+        timeout: localConfig.timeout,
+        model: localConfig.model,
+        headers: localConfig.headers,
+        openAICompatibilityProfile: localConfig.openAICompatibilityProfile,
+        protocol: localConfig.protocol,
+      },
+    }
+    setLocalProviderConfigs(updatedConfigs)
+
+    // 获取自定义厂商配置（从更新后的配置中获取）
+    const customConfig = updatedConfigs[id] || {}
+    const models = customConfig.customModels || []
+
+    setLocalConfig({
+      ...localConfig,
+      provider: id,
+      apiKey: customConfig.apiKey || '',
+      baseUrl: customConfig.baseUrl || '',
+      timeout: customConfig.timeout || 120000,
+      model: customConfig.model || models[0] || '',
+      headers: customConfig.headers,
+      openAICompatibilityProfile: resolveOpenAICompatibilityProfile(
+        id,
+        customConfig.protocol,
+        customConfig.openAICompatibilityProfile,
+      ),
+      protocol: customConfig.protocol,
+    })
+    setIsAddingCustom(false)
+  }
+
+  // 添加自定义 Provider（只更新本地状态）
+  const handleAddCustomProvider = (config: { displayName: string; baseUrl: string; apiKey: string; protocol: string; model: string; customModels: string[] }) => {
+    const id = `custom-${Date.now()}`
+    const newConfig = {
+      displayName: config.displayName,
+      baseUrl: config.baseUrl,
+      apiKey: config.apiKey,
+      protocol: config.protocol as ApiProtocol,
+      model: config.model,
+      openAICompatibilityProfile: resolveOpenAICompatibilityProfile(
+        id,
+        config.protocol as ApiProtocol,
+      ),
+      customModels: config.customModels || (config.model ? [config.model] : []),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    }
+
+    // 只更新本地状态，保存时由 PreferencesDialog 统一处理
+    setLocalProviderConfigs({
+      ...localProviderConfigs,
+      [id]: newConfig
+    })
+
+    toast.success(language === 'zh' ? `已添加 ${config.displayName}` : `Added ${config.displayName}`)
+    setIsAddingCustom(false)
+
+    // 自动选择新添加的 Provider
+    setLocalConfig({
+      ...localConfig,
+      provider: id,
+      apiKey: config.apiKey,
+      baseUrl: config.baseUrl,
+      timeout: 120000,
+      openAICompatibilityProfile: resolveOpenAICompatibilityProfile(
+        id,
+        config.protocol as ApiProtocol,
+      ),
+      model: config.model,
+      protocol: config.protocol as ApiProtocol, // 增加协议同步
+    })
+  }
+
+  // 删除自定义 Provider（只更新本地状态）
+  const handleDeleteCustomProvider = async (e: React.MouseEvent, id: string, name: string) => {
+    e.stopPropagation()
+    const confirmed = await globalConfirm({
+      title: language === 'zh' ? '删除提供商' : 'Delete Provider',
+      message: language === 'zh' ? `删除 ${name}？` : `Delete ${name}?`,
+      variant: 'danger',
+    })
+    if (confirmed) {
+      // 如果当前选中的是被删除的 provider，先切换到默认（跳过保存当前配置）
+      if (localConfig.provider === id) {
+        handleSelectBuiltinProvider('openai', true)
+      }
+
+      // 从本地配置中删除（放在切换之后，确保不会被重新创建）
+      setLocalProviderConfigs(prev => {
+        const { [id]: _, ...rest } = prev
+        return rest
+      })
+    }
+  }
+
+  const builtinProviders = useMemo(
+    () => providers.filter((p) => BUILTIN_PROVIDER_IDS.includes(p.id)),
+    [providers],
+  )
+  const availableModels = useMemo(() => {
+    const modelsSet = new Set<string>()
+
+    if (isCustomSelected && selectedCustomConfig) {
+      ;(selectedCustomConfig.customModels || []).forEach((model: string) => modelsSet.add(model))
+    } else if (selectedProvider) {
+      selectedProvider.models.forEach((model: string) => modelsSet.add(model))
+    }
+
+    const localCustomModels = localProviderConfigs[localConfig.provider]?.customModels || []
+    localCustomModels.forEach((model: string) => modelsSet.add(model))
+
+    if (localConfig.model) {
+      modelsSet.add(localConfig.model)
+    }
+
+    return Array.from(modelsSet)
+  }, [isCustomSelected, localConfig.model, localConfig.provider, localProviderConfigs, selectedCustomConfig, selectedProvider])
+  const availableModelOptions = useMemo(
+    () => availableModels.map((model) => ({ value: model, label: model })),
+    [availableModels],
+  )
+
+  return (
+    <div className="space-y-6 animate-fade-in pb-10">
+      {/* 运行模式切换 */}
+      <section className="space-y-3">
+        <div className="flex items-center gap-2 mb-1.5">
+          <Sliders className="w-4 h-4 text-accent" />
+          <h4 className="text-sm font-semibold text-text-primary">
+            {language === 'zh' ? '运行模式' : 'Mode'}
+          </h4>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={() => handleModeChange('local')}
+            className={`p-4 rounded-xl border text-left transition-all duration-200 ${
+              !isCloudMode
+                ? 'bg-accent/5 border-accent/30 text-text-primary'
+                : 'bg-surface/30 border-border/50 text-text-secondary hover:bg-surface/50 hover:border-border'
+            }`}
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <div
+                className={`w-3 h-3 rounded-full border-2 transition-colors ${
+                  !isCloudMode ? 'border-accent bg-accent' : 'border-border'
+                }`}
+              />
+              <span className="text-sm font-medium">
+                {language === 'zh' ? '本地模式' : 'Local Mode'}
+              </span>
+            </div>
+            <p className="text-xs text-text-muted leading-relaxed">
+              {language === 'zh'
+                ? '直连 AI 供应商，使用自己的 API Key'
+                : 'Connect directly to AI providers with your own API Key'}
+            </p>
+          </button>
+          <button
+            onClick={() => handleModeChange('cloud')}
+            className={`p-4 rounded-xl border text-left transition-all duration-200 ${
+              isCloudMode
+                ? 'bg-accent/5 border-accent/30 text-text-primary'
+                : 'bg-surface/30 border-border/50 text-text-secondary hover:bg-surface/50 hover:border-border'
+            }`}
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <div
+                className={`w-3 h-3 rounded-full border-2 transition-colors ${
+                  isCloudMode ? 'border-accent bg-accent' : 'border-border'
+                }`}
+              />
+              <span className="text-sm font-medium">
+                {language === 'zh' ? '云端模式' : 'Cloud Mode'}
+              </span>
+            </div>
+            <p className="text-xs text-text-muted leading-relaxed">
+              {language === 'zh'
+                ? '通过后端代理访问，无需自带 Key'
+                : 'Access via backend proxy, no API Key needed'}
+            </p>
+          </button>
+        </div>
+
+        {isCloudMode && !isAuthenticated && (
+          <div className="flex items-center gap-2 p-3 rounded-lg bg-accent/5 border border-accent/20 text-xs text-text-secondary">
+            <CloudOff className="w-4 h-4 shrink-0 text-accent/60" />
+            <span>
+              {language === 'zh'
+                ? '云端模式需要先登录，请点击左下角头像进行登录'
+                : 'Cloud mode requires login. Click the avatar in the bottom left to sign in'}
+            </span>
+          </div>
+        )}
+      </section>
+
+      {/* Provider 选择器 */}
+      <section className="space-y-4">
+        <div className="mb-4">
+          <div className="flex items-center gap-2 mb-1.5">
+            <Box className="w-4 h-4 text-accent" />
+            <h4 className="text-sm font-semibold text-text-primary">
+              {isCloudMode
+                ? language === 'zh' ? '云端提供商' : 'Cloud Providers'
+                : language === 'zh' ? '选择提供商' : 'DropdownSelector Provider'}
+            </h4>
+          </div>
+          <p className="text-[12px] text-text-muted">
+            {isCloudMode
+              ? language === 'zh' ? '由后端服务提供的模型供应商' : 'Model providers from backend service'
+              : language === 'zh' ? '选择您要使用的模型服务提供商' : 'DropdownSelector the model service provider you want to use'}
+          </p>
+        </div>
+
+        {isCloudMode ? (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+            {cloudProviderOptions.length === 0 ? (
+              <div className="col-span-full text-center py-8 text-text-muted text-xs">
+                {isAuthenticated
+                  ? language === 'zh' ? '暂无可用云端提供商' : 'No cloud providers available'
+                  : language === 'zh' ? '请先登录以查看云端提供商' : 'Please login to view cloud providers'}
+              </div>
+            ) : (
+              cloudProviderOptions.map((cp) => (
+                <button
+                  key={cp.id}
+                  onClick={() => handleSelectCloudProvider({ provider: cp.id.toUpperCase(), models: cp.models, baseUrl: cp.baseUrl })}
+                  className={`group relative flex min-h-[72px] flex-col items-center justify-center rounded-lg border px-4 py-3 transition-colors ${localConfig.provider === cp.id || localConfig.provider === cp.id.toUpperCase()
+                    ? 'border-accent/25 bg-background/80 text-accent'
+                    : 'border-border/70 bg-background/35 text-text-secondary hover:bg-surface/35 hover:border-border-active hover:text-text-primary'
+                  }`}
+                >
+                  <span className={`text-sm font-semibold ${localConfig.provider === cp.id || localConfig.provider === cp.id.toUpperCase() ? 'text-text-primary' : ''}`}>{cp.name}</span>
+                  <span className="text-[10px] text-text-muted mt-1">{cp.models.length} {language === 'zh' ? '个模型' : 'models'}</span>
+                  {(localConfig.provider === cp.id || localConfig.provider === cp.id.toUpperCase()) && (
+                    <div className="absolute top-2.5 right-2.5 rounded-full bg-accent p-0.5">
+                      <Check className="w-3 h-3 text-white" strokeWidth={3} />
+                    </div>
+                  )}
+                </button>
+              ))
+            )}
+          </div>
+        ) : (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+          {/* 内置厂商 */}
+          {builtinProviders.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => handleSelectBuiltinProvider(p.id)}
+              className={`group relative flex min-h-[72px] flex-col items-center justify-center rounded-lg border px-4 py-3 transition-colors ${localConfig.provider === p.id
+                ? 'border-accent/25 bg-background/80 text-accent'
+                : 'border-border/70 bg-background/35 text-text-secondary hover:bg-surface/35 hover:border-border-active hover:text-text-primary'
+                }`}
+            >
+              <span className={`text-sm font-semibold ${localConfig.provider === p.id ? 'text-text-primary' : ''}`}>{p.name}</span>
+              {localConfig.provider === p.id && (
+                <div className="absolute top-2.5 right-2.5 rounded-full bg-accent p-0.5">
+                  <Check className="w-3 h-3 text-white" strokeWidth={3} />
+                </div>
+              )}
+            </button>
+          ))}
+
+          {/* 自定义 Provider */}
+          {customProviders.map(({ id, config }) => {
+            const displayName = config.displayName || id
+            const isEditing = editingProviderId === id
+            return (
+              <div
+                key={id}
+                onClick={() => handleSelectCustomProvider(id)}
+                className={`group relative flex min-h-[72px] cursor-pointer flex-col items-center justify-center rounded-lg border px-4 py-3 transition-colors ${localConfig.provider === id
+                  ? 'border-accent/25 bg-background/80 text-accent'
+                  : 'border-border/70 bg-background/35 text-text-secondary hover:bg-surface/35 hover:border-border-active hover:text-text-primary'
+                  }`}
+              >
+                {isEditing ? (
+                  <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-surface-active rounded-lg border border-accent/60 shadow-sm" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      value={editingProviderName}
+                      onChange={(e) => setEditingProviderName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') { e.preventDefault(); saveEditingCustomProvider() }
+                        if (e.key === 'Escape') { e.preventDefault(); cancelEditingCustomProvider() }
+                      }}
+                      autoFocus
+                      className="w-full flex-1 bg-transparent text-sm font-semibold text-center outline-none px-2 text-text-primary placeholder:text-text-muted/85"
+                      placeholder="Provider Name"
+                    />
+                    <div className="absolute bottom-1 right-1 flex items-center gap-0.5 bg-background/80 backdrop-blur-md rounded border border-border/50 p-0.5 shadow-sm">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); saveEditingCustomProvider(); }}
+                        disabled={!editingProviderName.trim()}
+                        className="p-0.5 rounded hover:bg-accent/10 text-accent disabled:opacity-40 transition-colors"
+                      >
+                        <Check className="w-3.5 h-3.5" strokeWidth={3} />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); cancelEditingCustomProvider(); }}
+                        className="p-0.5 rounded hover:bg-red-500/10 text-text-muted hover:text-red-500 transition-colors"
+                      >
+                        <X className="w-3.5 h-3.5" strokeWidth={3} />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <span className={`w-full truncate text-center text-sm font-semibold ${localConfig.provider === id ? 'text-text-primary' : ''}`}>{displayName}</span>
+                )}
+                {localConfig.provider === id && (
+                  <div className="absolute top-2.5 right-2.5 rounded-full bg-accent p-0.5">
+                    <Check className="w-3 h-3 text-white" strokeWidth={3} />
+                  </div>
+                )}
+                {!isEditing && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      startEditingCustomProvider(id, displayName)
+                    }}
+                    className="absolute -top-2 -left-2 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-background text-text-muted opacity-0 transition-all group-hover:opacity-100 hover:border-accent/30 hover:text-accent"
+                    title={language === 'zh' ? '重命名' : 'Rename'}
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                  <button
+                    onClick={(e) => handleDeleteCustomProvider(e, id, displayName)}
+                    className="absolute -top-2 -right-2 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-background text-text-muted opacity-0 transition-all group-hover:opacity-100 hover:border-red-500/30 hover:text-red-500"
+                    title={language === 'zh' ? '删除' : 'Delete'}
+                  >
+                    <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )
+          })}
+
+          {/* 添加按钮 */}
+          <button
+            onClick={() => setIsAddingCustom(true)}
+            className={`flex min-h-[72px] flex-col items-center justify-center rounded-lg border border-dashed px-4 py-3 transition-colors ${isAddingCustom
+              ? 'border-accent/30 bg-background/80 text-accent'
+              : 'border-border/70 bg-background/20 text-text-muted hover:border-border-active hover:text-text-primary hover:bg-surface/30'
+              }`}
+          >
+            <Plus className="mb-1 w-5 h-5" />
+            <span className="text-xs font-medium">{language === 'zh' ? '添加自定义' : 'Add Custom'}</span>
+          </button>
+        </div>
+        )}
+
+        {/* 添加新 Provider 表单 - 仅本地模式 */}
+        {!isCloudMode && isAddingCustom && (
+          <div className="mt-6 rounded-xl border border-border bg-surface/25 p-6 animate-slide-down">
+            <div className="flex justify-between items-center mb-4">
+              <h5 className="text-sm font-medium text-text-primary">
+                {language === 'zh' ? '添加新提供商' : 'Add New Provider'}
+              </h5>
+              <ActionButton variant="ghost" size="sm" onClick={() => setIsAddingCustom(false)}>
+                <X className="w-4 h-4" />
+              </ActionButton>
+            </div>
+            <InlineCustomProviderForm
+              language={language}
+              onSave={handleAddCustomProvider}
+              onCancel={() => setIsAddingCustom(false)}
+            />
+          </div>
+        )}
+      </section>
+
+      {/* 配置区域（非添加模式时显示） */}
+      {!isAddingCustom && (
+        <div className="space-y-6">
+          {/* 认证 & 网络配置 - 仅本地模式 */}
+          {!isCloudMode && (
+          <section className="rounded-2xl border border-border/50 bg-surface/20 p-6 backdrop-blur-xl shadow-sm relative overflow-hidden group">
+            <div className="absolute inset-0 bg-gradient-to-br from-accent/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+            <div className="relative">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-accent/10 rounded-lg text-accent">
+                  <Server className="w-4 h-4" />
+                </div>
+                <div>
+                  <h5 className="text-sm font-semibold text-text-primary">
+                    {language === 'zh' ? '认证 & 网络配置' : 'Authentication & Network'}
+                  </h5>
+                  <p className="text-[11px] text-text-muted mt-0.5">
+                    {language === 'zh' ? '配置 API 访问密钥和服务器连接参数' : 'Configure API keys and server connection parameters'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <TestConnectionButton localConfig={localConfig} language={language} />
+                <TestModelButton localConfig={localConfig} language={language} />
+              </div>
+            </div>
+
+            {/* 基础配置：三列布局 */}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-5 mb-6">
+              {/* API Key */}
+              <div className="md:col-span-5 space-y-2">
+                <label className="text-[12px] font-bold text-text-secondary uppercase tracking-wider px-0.5">
+                  API Key
+                </label>
+                <TextField
+                  type={showApiKey ? 'text' : 'password'}
+                  value={localConfig.apiKey}
+                  onChange={(e) => setLocalConfig({ ...localConfig, apiKey: e.target.value })}
+                  placeholder={PROVIDERS[localConfig.provider]?.auth.placeholder || 'sk-...'}
+                  className="bg-background/40 border-border/60 focus:border-accent/50 focus:ring-accent/20 font-mono text-xs h-10 transition-all"
+                  rightIcon={
+                    <button onClick={() => setShowApiKey(!showApiKey)} className="text-text-muted hover:text-text-primary p-1.5 hover:bg-surface/50 rounded-md transition-colors">
+                      {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  }
+                />
+              </div>
+
+              {/* API 端点 */}
+              <div className="md:col-span-5 space-y-2">
+                <label className="text-[12px] font-bold text-text-secondary uppercase tracking-wider px-0.5">
+                  {language === 'zh' ? 'API 端点' : 'API Endpoint'}
+                </label>
+                <TextField
+                  value={localConfig.baseUrl || ''}
+                  onChange={(e) => setLocalConfig({ ...localConfig, baseUrl: e.target.value || undefined })}
+                  placeholder="https://api.example.com/v1"
+                  className="bg-background/40 border-border/60 focus:border-accent/50 focus:ring-accent/20 text-xs font-mono h-10 transition-all"
+                />
+              </div>
+
+              {/* 超时时间 */}
+              <div className="md:col-span-2 space-y-2">
+                <label className="text-[12px] font-bold text-text-secondary uppercase tracking-wider px-0.5">
+                  {language === 'zh' ? '超时 (秒)' : 'Timeout (s)'}
+                </label>
+                <TextField
+                  type="number"
+                  value={(localConfig.timeout || 120000) / 1000}
+                  onChange={(e) => setLocalConfig({ ...localConfig, timeout: (parseInt(e.target.value) || 120) * 1000 })}
+                  min={10}
+                  className="bg-background/40 border-border/60 focus:border-accent/50 focus:ring-accent/20 text-xs h-10 transition-all"
+                />
+              </div>
+            </div>
+
+            {/* 底部功能栏：协议选择 + 提示信息 */}
+            <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto] items-start gap-4 pt-5 border-t border-border/50">
+              <div className="w-full space-y-3">
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                  <div className="space-y-2">
+                    <label className="text-[12px] font-bold text-text-secondary uppercase tracking-wider px-0.5">
+                      {language === 'zh' ? 'API 协议' : 'API Protocol'}
+                    </label>
+                    <DropdownSelector
+                      value={localConfig.protocol || (isCustomSelected ? selectedCustomConfig?.protocol : (selectedProvider as any)?.protocol) || 'openai'}
+                      onChange={(val) => {
+                        const nextProtocol = val as ApiProtocol
+                        setLocalConfig({
+                          ...localConfig,
+                          protocol: nextProtocol,
+                          openAICompatibilityProfile: resolveOpenAICompatibilityProfile(
+                            localConfig.provider,
+                            nextProtocol,
+                            localConfig.openAICompatibilityProfile,
+                          ),
+                        })
+                      }}
+                      options={PROTOCOL_OPTIONS}
+                      className="w-full max-w-[320px] bg-background/40 border-border/60 h-9 text-xs"
+                    />
+                    <p className="text-[11px] text-text-muted leading-relaxed max-w-md">
+                      {language === 'zh' ? '对于兼容模型，通常建议使用 OpenAI Compatible' : 'For compatible models, OpenAI Compatible is generally recommended'}
+                    </p>
+                  </div>
+                  {isCustomSelected && isOpenAIStyleProtocol(currentProtocol) && currentOpenAICompatibilityProfile && (
+                    <div className="space-y-2 md:pt-0">
+                      <label className="text-[12px] font-bold text-text-secondary uppercase tracking-wider px-0.5">
+                        {language === 'zh' ? 'OpenAI 能力档位' : 'OpenAI Capability'}
+                      </label>
+                      <DropdownSelector
+                        value={currentOpenAICompatibilityProfile}
+                        onChange={(value) => setLocalConfig({
+                          ...localConfig,
+                          openAICompatibilityProfile: value as OpenAICompatibilityProfile,
+                        })}
+                        options={openAICompatibilityProfileOptions}
+                        className="w-full max-w-[320px] bg-background/40 border-border/60 h-9 text-xs"
+                      />
+                      <p className="text-[11px] text-text-muted leading-relaxed max-w-md">
+                        {openAICompatibilityProfileDescription}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+            </div>
+          </section>
+          )}
+
+          <section className="rounded-2xl border border-border/50 bg-surface/20 p-6 backdrop-blur-xl shadow-sm relative overflow-hidden group">
+            <div className="absolute inset-0 bg-gradient-to-br from-accent/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+            <div className="relative">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Box className="w-4 h-4 text-accent" />
+                  <h5 className="sr-only text-sm font-medium text-text-primary">
+                    {language === 'zh' ? '模型配置' : 'Model Configuration'}
+                  </h5>
+                  <h5 className="text-sm font-medium text-text-primary">
+                    {language === 'zh' ? '模型配置' : 'Model Configuration'}
+                  </h5>
+                </div>
+                {!isCloudMode && (
+                <FetchModelsButton
+                  provider={localConfig.provider}
+                  apiKey={localConfig.apiKey}
+                  baseUrl={localConfig.baseUrl}
+                  protocol={isCustomSelected ? selectedCustomConfig?.protocol : localConfig.protocol}
+                  language={language}
+                  existingModels={availableModels}
+                  onModelsFetched={(models) => {
+                    handleBatchAddModels(models)
+                  }}
+                  onModelRemoved={(m) => handleRemoveModel(m)}
+                  onBatchRemoved={(models) => handleBatchRemoveModels(models)}
+                />
+                )}
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="sr-only text-xs font-medium text-text-secondary">
+                    {language === 'zh' ? '选择模型' : 'DropdownSelector Model'}
+                  </label>
+                  <label className="text-xs font-medium text-text-secondary">
+                    {language === 'zh' ? '选择模型' : 'DropdownSelector Model'}
+                  </label>
+                  <DropdownSelector
+                    value={localConfig.model}
+                    onChange={(value) => setLocalConfig({ ...localConfig, model: value })}
+                    options={isCloudMode ? cloudModelOptions : availableModelOptions}
+                    className="w-full bg-background/50 border-border"
+                  />
+                </div>
+
+                {!isCloudMode && (
+                <div className="pt-2">
+                  <div className="flex gap-2">
+                    <TextField
+                      value={newModelName}
+                      onChange={(e) => setNewModelName(e.target.value)}
+                      placeholder={language === 'zh' ? '输入模型名称 (支持逗号分隔)...' : 'Enter model names (Supports comma)...'}
+                      onKeyDown={(e) => e.key === 'Enter' && handleAddModel()}
+                      className="flex-1 h-9 text-xs bg-background/50 border-border"
+                    />
+                    <ActionButton variant="secondary" size="sm" onClick={() => handleAddModel()} disabled={!newModelName.trim()} className="h-9 px-3">
+                      <Plus className="w-4 h-4" />
+                    </ActionButton>
+                  </div>
+
+                  {(localProviderConfigs[localConfig.provider]?.customModels?.length ?? 0) > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-3">
+                      {localProviderConfigs[localConfig.provider]?.customModels?.map((model: string) => (
+                        <div
+                          key={model}
+                          className="group flex items-center gap-1.5 px-2 py-1 bg-surface/50 rounded-md border border-border text-xs text-text-secondary hover:border-border"
+                        >
+                          <span>{model}</span>
+                          <button
+                            onClick={() => handleRemoveModel(model)}
+                            className="text-text-muted hover:text-red-400 opacity-50 group-hover:opacity-100 transition-opacity"
+                          >
+                            <Trash className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                )}
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-border/50 bg-surface/20 backdrop-blur-xl shadow-sm relative overflow-hidden group">
+            <div className="absolute inset-0 bg-gradient-to-br from-accent/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+            
+            <button 
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="w-full flex items-center justify-between p-6 cursor-pointer focus:outline-none relative z-10"
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-accent/10 rounded-lg text-accent">
+                  <Sliders className="w-4 h-4" />
+                </div>
+                <div className="text-left">
+                  <h5 className="text-sm font-semibold text-text-primary">
+                    {language === 'zh' ? '生成参数' : 'Generation Parameters'}
+                  </h5>
+                  <p className="text-[11px] text-text-muted mt-0.5">
+                    {language === 'zh' ? '调整温度、Top P、最大 Token 等高级配置' : 'Adjust temperature, top P, max tokens, and other advanced settings'}
+                  </p>
+                </div>
+              </div>
+              <div className={`p-1.5 rounded-full bg-surface-hover transition-transform duration-300 ${showAdvanced ? 'rotate-180' : ''}`}>
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+            </button>
+
+            <div className={`grid transition-all duration-300 ease-in-out ${showAdvanced ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+              <div className="overflow-hidden">
+                <div className="p-6 pt-0 space-y-6 relative z-10">
+              <div className="flex items-center gap-2 mb-4">
+                <Sliders className="w-4 h-4 text-accent" />
+                <h5 className="text-sm font-medium text-text-primary">
+                  {language === 'zh' ? '生成参数' : 'Generation Parameters'}
+                </h5>
+              </div>
+
+              <div className="space-y-5">
+
+                  {/* Max Tokens */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs text-text-secondary">{language === 'zh' ? '最大 Token' : 'Max Tokens'}</label>
+                      <span className="text-xs font-mono bg-background/50 px-1.5 py-0.5 rounded text-accent">
+                        {localConfig.maxTokens ?? LLM_DEFAULTS.maxTokens}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={1024}
+                      max={32768}
+                      step={1024}
+                      value={localConfig.maxTokens ?? LLM_DEFAULTS.maxTokens}
+                      onChange={(e) => setLocalConfig({
+                        ...localConfig,
+                        maxTokens: parseInt(e.target.value)
+                      })}
+                      className="w-full h-1.5 bg-surface-active rounded-full appearance-none cursor-pointer accent-accent hover:accent-accent-hover"
+                    />
+                  </div>
+
+                  {/* Temperature */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs text-text-secondary">
+                        {language === 'zh' ? '随机性 (Temperature)' : 'Temperature'}
+                      </label>
+                      <span className="text-xs font-mono bg-background/50 px-1.5 py-0.5 rounded text-accent">
+                        {(localConfig.temperature ?? LLM_DEFAULTS.temperature).toFixed(1)}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={2}
+                      step={0.1}
+                      value={localConfig.temperature ?? LLM_DEFAULTS.temperature}
+                      onChange={(e) => setLocalConfig({
+                        ...localConfig,
+                        temperature: parseFloat(e.target.value)
+                      })}
+                      className="w-full h-1.5 bg-surface-active rounded-full appearance-none cursor-pointer accent-accent hover:accent-accent-hover"
+                    />
+                    <div className="flex justify-between text-[11px] text-text-muted px-1">
+                      <span>{language === 'zh' ? '精确' : 'Precise'}</span>
+                      <span>{language === 'zh' ? '创意' : 'Creative'}</span>
+                    </div>
+                  </div>
+
+                  {/* Top P */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <label className="text-xs text-text-secondary">Top P</label>
+                        <p className="text-[11px] text-text-muted">
+                          {language === 'zh'
+                            ? '核采样：仅考虑累积概率达到 P 的 Token 集合'
+                            : 'Nucleus sampling: considers tokens with top_p probability mass'}
+                        </p>
+                      </div>
+                      <span className="text-xs font-mono bg-background/50 px-1.5 py-0.5 rounded text-accent">
+                        {(localConfig.topP ?? LLM_DEFAULTS.topP).toFixed(2)}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      value={localConfig.topP ?? LLM_DEFAULTS.topP}
+                      onChange={(e) => setLocalConfig({
+                        ...localConfig,
+                        topP: parseFloat(e.target.value)
+                      })}
+                      className="w-full h-1.5 bg-surface-active rounded-full appearance-none cursor-pointer accent-accent hover:accent-accent-hover"
+                    />
+                  </div>
+
+                  {/* Top K */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <label className="text-xs text-text-secondary">Top K</label>
+                        <p className="text-[11px] text-text-muted">
+                          {language === 'zh'
+                            ? '仅从概率最高的 K 个 Token 中采样'
+                            : 'Limits selection to the top K tokens'}
+                        </p>
+                      </div>
+                      <span className="text-xs font-mono bg-background/50 px-1.5 py-0.5 rounded text-accent">
+                        {localConfig.topK ?? 'Default'}
+                      </span>
+                    </div>
+                    <input
+                      type="number"
+                      min={0}
+                      value={localConfig.topK ?? ''}
+                      onChange={(e) => setLocalConfig({
+                        ...localConfig,
+                        topK: e.target.value ? parseInt(e.target.value) : undefined
+                      })}
+                      placeholder="Default"
+                      className="w-full bg-surface-active rounded-lg px-3 py-1.5 text-xs border border-border focus:border-accent focus:ring-1 focus:ring-accent/50 outline-none transition-all"
+                    />
+                  </div>
+
+                  {/* 深度思考模式 */}
+                  <div className="space-y-3 pt-3 border-t border-border/50">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5 flex-1">
+                        <label className="text-xs font-medium text-text-secondary">
+                          {language === 'zh' ? '深度思考模式' : 'Extended Thinking'}
+                        </label>
+                        <p className="text-[11px] text-text-muted">
+                          {language === 'zh'
+                            ? '启用后，模型会进行更深入的推理（如 Claude thinking, OpenAI o1/o3）'
+                            : 'Enable deeper reasoning (e.g., Claude thinking, OpenAI o1/o3)'}
+                        </p>
+                      </div>
+                      <ToggleSwitch
+                        checked={localConfig.enableThinking}
+                        onChange={(e) => setLocalConfig({ ...localConfig, enableThinking: e.target.checked })}
+                        className="flex-shrink-0"
+                      />
+                    </div>
+
+                    {/* 思考模式详细配置 - 仅在启用时展示 */}
+                    {localConfig.enableThinking && (
+                      <div className="space-y-3 pl-1 animate-in fade-in slide-in-from-top-1 duration-200">
+                        {/* 推理深度 */}
+                        <div className="space-y-2">
+                          <div className="space-y-0.5">
+                            <label className="text-xs text-text-secondary">
+                              {language === 'zh' ? '推理深度' : 'Reasoning Effort'}
+                            </label>
+                            <p className="text-[11px] text-text-muted">
+                              {reasoningEffortDescription}
+                            </p>
+                          </div>
+                          <DropdownSelector
+                            options={reasoningEffortOptions}
+                            value={selectedReasoningEffort}
+                            onChange={(val) => setLocalConfig({ ...localConfig, reasoningEffort: val as typeof REASONING_EFFORT_VALUES[number] })}
+                          />
+                        </div>
+
+                        {/* Thinking Budget */}
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <div className="space-y-0.5">
+                              <label className="text-xs text-text-secondary">
+                                {language === 'zh' ? '思考 Token 预算' : 'Thinking Budget'}
+                              </label>
+                              <p className="text-[11px] text-text-muted">
+                                {language === 'zh'
+                                  ? 'Anthropic / Gemini 2.5 使用此参数控制思考 token 上限'
+                                  : 'Max thinking tokens for Anthropic / Gemini 2.5'}
+                              </p>
+                            </div>
+                            <span className="text-xs font-mono bg-background/50 px-1.5 py-0.5 rounded text-accent">
+                              {(localConfig.thinkingBudget || 10000).toLocaleString()}
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min={1024}
+                            max={100000}
+                            step={1024}
+                            value={localConfig.thinkingBudget || 10000}
+                            onChange={(e) => setLocalConfig({
+                              ...localConfig,
+                              thinkingBudget: parseInt(e.target.value)
+                            })}
+                            className="w-full h-1.5 bg-surface-active rounded-full appearance-none cursor-pointer accent-accent hover:accent-accent-hover"
+                          />
+                          <div className="flex justify-between text-[11px] text-text-muted px-1">
+                            <span>1K</span>
+                            <span>100K</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-4 pt-3 border-t border-border/50">
+                    <div className="space-y-0.5">
+                      <label className="sr-only text-xs font-medium text-text-secondary">
+                        {language === 'zh' ? '请求行为' : 'Request Behavior'}
+                      </label>
+                      <label className="text-xs font-medium text-text-secondary">
+                        {language === 'zh' ? '请求行为' : 'Request Behavior'}
+                      </label>
+                      <p className="sr-only text-[11px] text-text-muted">
+                        {language === 'zh'
+                          ? '控制重试、工具调用策略和并行工具执行方式'
+                          : 'Controls retries, tool policy, and parallel tool execution'}
+                      </p>
+                      <p className="text-[11px] text-text-muted">
+                        {language === 'zh'
+                          ? '控制重试、工具调用策略和并行工具执行方式'
+                          : 'Controls retries, tool policy, and parallel tool execution'}
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <label className="sr-only text-xs text-text-secondary">
+                          {language === 'zh' ? '工具调用策略' : 'Tool Choice'}
+                        </label>
+                        <label className="text-xs text-text-secondary">
+                          {language === 'zh' ? '工具调用策略' : 'Tool Choice'}
+                        </label>
+                        <DropdownSelector
+                          value={typeof localConfig.toolChoice === 'string' ? localConfig.toolChoice : 'required'}
+                          onChange={(value) => setLocalConfig({
+                            ...localConfig,
+                            toolChoice: value as 'auto' | 'none' | 'required',
+                          })}
+                          options={[
+                            { value: 'auto', label: language === 'zh' ? '自动' : 'Auto' },
+                            { value: 'required', label: language === 'zh' ? '需要工具' : 'Required' },
+                            { value: 'none', label: language === 'zh' ? '禁用工具' : 'None' },
+                          ]}
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="sr-only text-xs text-text-secondary">
+                          {language === 'zh' ? '最大重试次数' : 'Max Retries'}
+                        </label>
+                        <label className="text-xs text-text-secondary">
+                          {language === 'zh' ? '最大重试次数' : 'Max Retries'}
+                        </label>
+                        <TextField
+                          type="number"
+                          min={0}
+                          max={10}
+                          value={localConfig.maxRetries ?? LLM_DEFAULTS.maxRetries}
+                          onChange={(e) => setLocalConfig({
+                            ...localConfig,
+                            maxRetries: Math.max(0, parseInt(e.target.value || '0', 10) || 0),
+                          })}
+                          className="bg-surface-active border-border text-xs h-9"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between rounded-lg border border-border/60 bg-background/30 px-3 py-2.5">
+                      <div className="space-y-0.5 pr-4">
+                        <label className="sr-only text-xs text-text-secondary">
+                          {language === 'zh' ? '并行工具调用' : 'Parallel Tool Calls'}
+                        </label>
+                        <label className="text-xs text-text-secondary">
+                          {language === 'zh' ? '并行工具调用' : 'Parallel Tool Calls'}
+                        </label>
+                        <p className="sr-only text-[11px] text-text-muted">
+                          {language === 'zh'
+                            ? '允许模型在一次回复中同时规划多个工具调用'
+                            : 'Allows the model to plan multiple tool calls in one response'}
+                        </p>
+                        <p className="text-[11px] text-text-muted">
+                          {language === 'zh'
+                            ? '允许模型在一次回复中同时规划多个工具调用'
+                            : 'Allows the model to plan multiple tool calls in one response'}
+                        </p>
+                      </div>
+                      <ToggleSwitch
+                        checked={localConfig.parallelToolCalls ?? LLM_DEFAULTS.parallelToolCalls}
+                        onChange={(e) => setLocalConfig({
+                          ...localConfig,
+                          parallelToolCalls: e.target.checked,
+                        })}
+                        className="flex-shrink-0"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Frequency Penalty */}
+                  <div className="space-y-3 pt-3 border-t border-border/50">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <label className="text-xs text-text-secondary">Frequency Penalty</label>
+                        <p className="text-[11px] text-text-muted">
+                          {language === 'zh'
+                            ? '根据 Token 出现频率降低其重复概率'
+                            : 'Penalizes tokens based on their frequency in the text'}
+                        </p>
+                      </div>
+                      <span className="text-xs font-mono bg-background/50 px-1.5 py-0.5 rounded text-accent">
+                        {(localConfig.frequencyPenalty || 0).toFixed(1)}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={-2}
+                      max={2}
+                      step={0.1}
+                      value={localConfig.frequencyPenalty || 0}
+                      onChange={(e) => setLocalConfig({
+                        ...localConfig,
+                        frequencyPenalty: parseFloat(e.target.value)
+                      })}
+                      className="w-full h-1.5 bg-surface-active rounded-full appearance-none cursor-pointer accent-accent hover:accent-accent-hover"
+                    />
+                  </div>
+
+                  {/* Presence Penalty */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <label className="text-xs text-text-secondary">Presence Penalty</label>
+                        <p className="text-[11px] text-text-muted">
+                          {language === 'zh'
+                            ? '根据 Token 是否出现过降低其重复概率'
+                            : 'Penalizes tokens based on their presence in the text'}
+                        </p>
+                      </div>
+                      <span className="text-xs font-mono bg-background/50 px-1.5 py-0.5 rounded text-accent">
+                        {(localConfig.presencePenalty || 0).toFixed(1)}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={-2}
+                      max={2}
+                      step={0.1}
+                      value={localConfig.presencePenalty || 0}
+                      onChange={(e) => setLocalConfig({
+                        ...localConfig,
+                        presencePenalty: parseFloat(e.target.value)
+                      })}
+                      className="w-full h-1.5 bg-surface-active rounded-full appearance-none cursor-pointer accent-accent hover:accent-accent-hover"
+                    />
+                  </div>
+
+                  {/* Seed */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <label className="text-xs text-text-secondary">Seed</label>
+                        <p className="text-[11px] text-text-muted">
+                          {language === 'zh'
+                            ? '固定随机种子以获得可重现的结果'
+                            : 'Fixed seed for reproducible outputs'}
+                        </p>
+                      </div>
+                      <span className="text-xs font-mono bg-background/50 px-1.5 py-0.5 rounded text-accent">
+                        {localConfig.seed ?? 'Random'}
+                      </span>
+                    </div>
+                    <input
+                      type="number"
+                      value={localConfig.seed ?? ''}
+                      onChange={(e) => setLocalConfig({
+                        ...localConfig,
+                        seed: e.target.value ? parseInt(e.target.value) : undefined
+                      })}
+                      placeholder="Random"
+                      className="w-full bg-surface-active rounded-lg px-3 py-1.5 text-xs border border-border focus:border-accent focus:ring-1 focus:ring-accent/50 outline-none transition-all"
+                    />
+                  </div>
+
+                  {/* Stop Sequences */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <label className="text-xs text-text-secondary">Stop Sequences</label>
+                        <p className="text-[11px] text-text-muted">
+                          {language === 'zh'
+                            ? '遇到这些字符时停止生成'
+                            : 'Stop generation when these sequences are encountered'}
+                        </p>
+                      </div>
+                      <span className="text-[11px] text-text-muted bg-background/50 px-1.5 py-0.5 rounded">
+                        Comma separated
+                      </span>
+                    </div>
+                    <input
+                      type="text"
+                      value={localConfig.stopSequences?.join(', ') || ''}
+                      onChange={(e) => {
+                        const val = e.target.value
+                        setLocalConfig({
+                          ...localConfig,
+                          stopSequences: val ? val.split(',').map(s => s.trim()).filter(Boolean) : undefined
+                        })
+                      }}
+                      placeholder="e.g. \n, User:"
+                      className="w-full bg-surface-active rounded-lg px-3 py-1.5 text-xs border border-border focus:border-accent focus:ring-1 focus:ring-accent/50 outline-none transition-all"
+                    />
+                  </div>
+
+                  {/* Logit Bias */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <label className="text-xs text-text-secondary">Logit Bias (JSON)</label>
+                        <p className="text-[11px] text-text-muted">
+                          {language === 'zh'
+                            ? '调整特定 Token 出现的概率 (-100 到 100)'
+                            : 'Modify likelihood of specific tokens (-100 to 100)'}
+                        </p>
+                      </div>
+                      <span className="text-[11px] text-text-muted bg-background/50 px-1.5 py-0.5 rounded">
+                        Token ID: Bias
+                      </span>
+                    </div>
+                    <textarea
+                      value={logitBiasString}
+                      onChange={(e) => setLogitBiasString(e.target.value)}
+                      onBlur={() => {
+                        try {
+                          if (!logitBiasString.trim()) {
+                            setLocalConfig({ ...localConfig, logitBias: undefined })
+                            return
+                          }
+                          const parsed = JSON.parse(logitBiasString)
+                          if (typeof parsed === 'object' && parsed !== null) {
+                            setLocalConfig({ ...localConfig, logitBias: parsed })
+                          }
+                        } catch {
+                          // Invalid JSON
+                        }
+                      }}
+                      placeholder='{"50256": -100}'
+                      className="w-full h-20 bg-surface-active rounded-lg px-3 py-1.5 text-xs border border-border focus:border-accent focus:ring-1 focus:ring-accent/50 outline-none transition-all font-mono"
+                    />
+                  </div>
+
+                  {/* Custom Headers */}
+                  <div className="space-y-3 pt-3 border-t border-border/50">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <label className="text-xs text-text-secondary">
+                          {language === 'zh' ? '自定义请求头' : 'Custom Headers'}
+                        </label>
+                        <p className="text-[11px] text-text-muted">
+                          {language === 'zh'
+                            ? '添加额外的 HTTP 请求头（如组织 ID、项目 ID 等）'
+                            : 'Add extra HTTP headers (e.g., organization ID, project ID, etc.)'}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setCustomHeaders([...customHeaders, { key: '', value: '' }])
+                        }}
+                        className="text-xs text-accent hover:text-accent-hover flex items-center gap-1 flex-shrink-0"
+                      >
+                        <Plus className="w-3 h-3" />
+                        {language === 'zh' ? '添加' : 'Add'}
+                      </button>
+                    </div>
+
+                    {/* 默认请求头（可编辑） */}
+                    {(() => {
+                      const defaultKeys = Object.keys(defaultHeaders)
+
+                      return defaultKeys.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="text-[11px] font-medium text-text-muted uppercase tracking-wider">
+                            {language === 'zh' ? '默认请求头（可修改）' : 'Default Headers (Editable)'}
+                          </div>
+                          {defaultKeys.map((key) => {
+                            const defaultValue = defaultHeaders[key]
+                            const currentValue = localConfig.headers?.[key] ?? defaultValue
+                            return (
+                              <div key={key} className="p-3 bg-surface/20 rounded-lg border border-accent/20 space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <TextField
+                                    type="text"
+                                    value={key}
+                                    onChange={(e) => {
+                                      const newKey = e.target.value
+                                      if (!newKey) return
+
+                                      // 重命名 key
+                                      const newHeaders = { ...localConfig.headers }
+                                      delete newHeaders[key]
+                                      newHeaders[newKey] = currentValue
+                                      setLocalConfig({
+                                        ...localConfig,
+                                        headers: newHeaders
+                                      })
+                                    }}
+                                    className="flex-1 bg-background/50 border-border text-xs font-mono h-8"
+                                  />
+                                  <span className="text-[11px] text-accent bg-accent/10 px-2 py-0.5 rounded-full border border-accent/20 flex-shrink-0 ml-2">
+                                    {language === 'zh' ? '默认' : 'Default'}
+                                  </span>
+                                </div>
+                                <TextField
+                                  type="text"
+                                  value={currentValue}
+                                  onChange={(e) => {
+                                    const newHeaders = { ...localConfig.headers, [key]: e.target.value }
+                                    setLocalConfig({
+                                      ...localConfig,
+                                      headers: newHeaders
+                                    })
+                                  }}
+                                  placeholder={defaultValue}
+                                  className="bg-background/50 border-border text-xs font-mono h-8"
+                                />
+                                <p className="text-[11px] text-text-muted">
+                                  {language === 'zh'
+                                    ? '使用 {{apiKey}} 作为 API Key 的占位符'
+                                    : 'Use {{apiKey}} as placeholder for API Key'}
+                                </p>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )
+                    })()}
+
+                    {/* 自定义请求头 */}
+                    {customHeaders.length > 0 && (
+                      <div className="space-y-2">
+                        {Object.keys(defaultHeaders).length > 0 && (
+                          <div className="text-[11px] font-medium text-text-muted uppercase tracking-wider">
+                            {language === 'zh' ? '额外请求头' : 'Additional Headers'}
+                          </div>
+                        )}
+                        {customHeaders.map((header, index) => (
+                          <div key={index} className="space-y-1.5 p-2.5 bg-background/30 rounded-lg border border-border/50">
+                            <div className="flex items-start gap-2">
+                              <div className="flex-1 space-y-1.5">
+                                <DropdownSelector
+                                  value={header.isCustom ? 'X-Custom-Header' : header.key}
+                                  onChange={(value) => {
+                                    const newHeaders = [...customHeaders]
+                                    if (value === 'X-Custom-Header') {
+                                      newHeaders[index].isCustom = true
+                                      newHeaders[index].key = ''
+                                    } else {
+                                      newHeaders[index].isCustom = false
+                                      newHeaders[index].key = value
+                                    }
+                                    syncCustomHeaders(newHeaders)
+                                  }}
+                                  options={headerSelectOptions}
+                                  className="w-full bg-surface-active border-border text-xs h-8"
+                                />
+                                {header.isCustom && (
+                                  <TextField
+                                    type="text"
+                                    value={header.key}
+                                    onChange={(e) => {
+                                      const newHeaders = [...customHeaders]
+                                      newHeaders[index].key = e.target.value
+                                      syncCustomHeaders(newHeaders)
+                                    }}
+                                    placeholder={language === 'zh' ? '请求头名称' : 'Header name'}
+                                    className="bg-surface-active border-border text-xs font-mono h-8"
+                                  />
+                                )}
+                                <TextField
+                                  type="text"
+                                  value={header.value}
+                                  onChange={(e) => {
+                                    const newHeaders = [...customHeaders]
+                                    newHeaders[index].value = e.target.value
+                                    syncCustomHeaders(newHeaders)
+                                  }}
+                                  placeholder={language === 'zh' ? '值' : 'Value'}
+                                  className="bg-surface-active border-border text-xs font-mono h-8"
+                                />
+                              </div>
+                              <button
+                                onClick={() => {
+                                  const newHeaders = customHeaders.filter((_, i) => i !== index)
+                                  syncCustomHeaders(newHeaders)
+                                }}
+                                className="p-1 text-red-400 hover:text-red-300 hover:bg-red-400/10 rounded transition-colors flex-shrink-0 mt-0.5"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {customHeaders.length === 0 && Object.keys(defaultHeaders).length === 0 && (
+                      <div className="text-[11px] text-text-muted bg-background/50 px-3 py-2 rounded-lg border border-border text-center">
+                        {language === 'zh'
+                          ? '点击"添加"按钮添加自定义请求头'
+                          : 'Click "Add" to add custom headers'}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          </section>
+
+        </div>
+      )}
+    </div>
+  )
+}

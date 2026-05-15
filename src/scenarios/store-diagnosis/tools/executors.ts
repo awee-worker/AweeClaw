@@ -1,5 +1,5 @@
-import type { ToolExecutionResult, ToolExecutionContext } from '@/shared/types'
-import { scenarioDatabaseManager } from '@/scenario-system/core/ScenarioDatabaseManager'
+import type { ToolExecutionResult, ToolExecutionContext } from '../../../scenario-system/providerTypes'
+import { scenarioDatabaseManager } from '@scenario-system/core/ScenarioDatabaseManager'
 
 const SCENARIO_ID = 'store-diagnosis'
 

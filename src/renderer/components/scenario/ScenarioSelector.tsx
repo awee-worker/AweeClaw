@@ -8,9 +8,9 @@ import {
   Music, Palette, Rocket, Scale, Search,
   ShieldCheck, Stethoscope, TrendingUp, Users, Zap,
 } from 'lucide-react'
-import { scenarioRegistry } from '@shared/config/scenarios'
+import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { useStore } from '@store'
-import type { ScenarioPlugin } from '@shared/types/scenario'
+import type { ScenarioPlugin } from '@shared/protocols/scenario'
 import { activateScenarioPanels, switchToFirstPanel } from './panelUtils'
 import type { LucideIcon } from 'lucide-react'
 

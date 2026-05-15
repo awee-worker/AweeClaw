@@ -1,4 +1,4 @@
-import type { WelcomeSuggestionItem, WelcomeTitleConfig } from '@shared/types/scenario'
+import type { WelcomeSuggestionItem, WelcomeTitleConfig } from '@shared/protocols/scenario'
 
 export const CODE_EDITOR_WELCOME_SUGGESTIONS: WelcomeSuggestionItem[] = [
   { icon: 'Sparkles', title: 'Explain this project', titleZh: '解释当前项目', prompt: 'Please explain the overall architecture and purpose of the current project.', color: 'text-purple-500 bg-purple-500/10 border-purple-500/20 hover:bg-purple-500/20' },

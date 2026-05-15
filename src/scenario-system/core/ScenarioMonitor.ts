@@ -15,8 +15,8 @@ import type {
   ScenarioLifecycleState,
   ScenarioLogger,
   ScenarioHealthReporter,
-} from '@shared/types/scenario-arch'
-import { logger } from '@shared/utils/Logger'
+} from '@shared/protocols/scenario-arch'
+import { logger } from '@shared/toolkit/LogEngine'
 
 interface ScenarioMetrics {
   activationCount: number

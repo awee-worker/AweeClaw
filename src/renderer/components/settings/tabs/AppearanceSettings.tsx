@@ -1,10 +1,10 @@
 import { Layout, Type, Check } from 'lucide-react'
 import { useStore, type ThemeName } from '@store'
 import { useShallow } from 'zustand/react/shallow'
-import { themeManager } from '@/renderer/config/themeConfig'
-import { api } from '@/renderer/services/electronAPI'
-import { Input, Select } from '@components/ui'
-import { EditorSettingsProps } from '../types'
+import { themeManager } from '@/renderer/config/themeDefinition'
+import { api } from '../../../adapters/electronBridge'
+import { TextField, DropdownSelector } from '@components/ui'
+import { EditorSettingsProps } from '../preferencesTypes'
 
 export function AppearanceSettings({ settings, setSettings, language }: EditorSettingsProps) {
     const { currentTheme, setTheme } = useStore(useShallow(s => ({ currentTheme: s.currentTheme, setTheme: s.setTheme })))
@@ -71,7 +71,7 @@ export function AppearanceSettings({ settings, setSettings, language }: EditorSe
                     <div className="grid grid-cols-2 gap-5">
                         <div>
                             <label className={labelClass}>{language === 'zh' ? '字体大小' : 'Font Size'}</label>
-                            <Input
+                            <TextField
                                 type="number"
                                 value={settings.fontSize}
                                 onChange={(e) => setSettings({ ...settings, fontSize: parseInt(e.target.value) || 14 })}
@@ -82,7 +82,7 @@ export function AppearanceSettings({ settings, setSettings, language }: EditorSe
                         </div>
                         <div>
                             <label className={labelClass}>{language === 'zh' ? 'Tab 大小' : 'Tab Size'}</label>
-                            <Select
+                            <DropdownSelector
                                 value={settings.tabSize.toString()}
                                 onChange={(value) => setSettings({ ...settings, tabSize: parseInt(value) })}
                                 options={[{ value: '2', label: '2 Spaces' }, { value: '4', label: '4 Spaces' }, { value: '8', label: '8 Spaces' }]}
@@ -91,7 +91,7 @@ export function AppearanceSettings({ settings, setSettings, language }: EditorSe
                         </div>
                         <div>
                             <label className={labelClass}>{language === 'zh' ? '自动换行' : 'Word Wrap'}</label>
-                            <Select
+                            <DropdownSelector
                                 value={settings.wordWrap}
                                 onChange={(value) => setSettings({ ...settings, wordWrap: value as 'on' | 'off' | 'wordWrapColumn' })}
                                 options={[{ value: 'on', label: 'On' }, { value: 'off', label: 'Off' }, { value: 'wordWrapColumn', label: 'Column' }]}
@@ -100,7 +100,7 @@ export function AppearanceSettings({ settings, setSettings, language }: EditorSe
                         </div>
                         <div>
                             <label className={labelClass}>{language === 'zh' ? '行号' : 'Line Numbers'}</label>
-                            <Select
+                            <DropdownSelector
                                 value={settings.lineNumbers}
                                 onChange={(value) => setSettings({ ...settings, lineNumbers: value as 'on' | 'off' | 'relative' })}
                                 options={[{ value: 'on', label: 'On' }, { value: 'off', label: 'Off' }, { value: 'relative', label: 'Relative' }]}
@@ -117,7 +117,7 @@ export function AppearanceSettings({ settings, setSettings, language }: EditorSe
                     </div>
                     <div>
                         <label className={labelClass}>{language === 'zh' ? '字体大小' : 'Font Size'}</label>
-                        <Input
+                        <TextField
                             type="number"
                             value={settings.chatFontSize}
                             onChange={(e) => setSettings({ ...settings, chatFontSize: parseInt(e.target.value) || 14 })}

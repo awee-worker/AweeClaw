@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { rulesService } from '@/renderer/agent/services/rulesService'
-import { Button } from '@components/ui'
+import { rulesService } from '@intelligence/runtime/ruleEngine'
+import { ActionButton } from '@components/ui'
 import { FileText, RefreshCw, AlertCircle, Save, RotateCcw } from 'lucide-react'
 import { BRAND } from '@shared/brand'
 
@@ -146,7 +146,7 @@ export function RulesSettings({ language }: RulesSettingsProps) {
                     {t('已保存', 'Saved')}
                   </span>
                 )}
-                <Button
+                <ActionButton
                   variant="primary"
                   size="sm"
                   onClick={handleSaveRules}
@@ -157,7 +157,7 @@ export function RulesSettings({ language }: RulesSettingsProps) {
                     ? t('保存中...', 'Saving...')
                     : t('保存规则', 'Save Rules')
                   }
-                </Button>
+                </ActionButton>
               </div>
             </div>
           </>
@@ -181,7 +181,7 @@ export function RulesSettings({ language }: RulesSettingsProps) {
 
 ## Project Structure
 - Components: src/components/
-- Utilities: src/utils/`}</pre>
+- Utilities: src/`}</pre>
           </div>
           <div className="space-y-1.5">
             <p className="font-medium text-text-secondary">{t('最佳实践', 'Best Practices')}</p>

@@ -1,0 +1,276 @@
+/**
+ * Focused Agent hooks.
+ *
+ * Keep view subscriptions, command wiring, and maintenance actions separate so
+ * renderer components only subscribe to the state they actually render.
+ */
+
+import { api } from '../adapters/electronBridge'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useStore, useModeStore } from '@store'
+import { useShallow } from 'zustand/react/shallow'
+import { getEffectiveLLMConfigAsync } from '@services/modelConfigHelper'
+import {
+  useAgentStore,
+  selectMessageListState,
+  selectStreamState,
+  selectContextItems,
+  selectIsStreaming,
+  selectIsAwaitingApproval,
+  selectPendingChanges,
+  selectMessageCheckpoints,
+} from '@intelligence/state/IntelligenceStore'
+import { Agent } from '@intelligence/engine'
+import { getAgentConfig } from '@intelligence/utils/intelligenceConfig'
+import { MessageContent, ChatThread, ToolCall } from '@intelligence/providerTypes'
+
+let cachedThreadsRef: Record<string, ChatThread> | null = null
+let cachedSortedThreads: ChatThread[] = []
+
+export function useAllThreads(): ChatThread[] {
+  return useAgentStore(state => {
+    if (state.threads === cachedThreadsRef) {
+      return cachedSortedThreads
+    }
+
+    cachedThreadsRef = state.threads
+    cachedSortedThreads = Object.values(state.threads).sort((a, b) => b.lastModified - a.lastModified)
+    return cachedSortedThreads
+  })
+}
+
+const getAgentActions = () => useAgentStore.getState()
+
+function clearAgentConversationState(): void {
+  getAgentActions().clearMessages()
+  useStore.getState().clearToolCallLogs()
+}
+
+export function useAgentCommands() {
+  const llmConfig = useStore(state => state.llmConfig)
+  const workspacePath = useStore(state => state.workspacePath)
+  const promptTemplateId = useStore(state => state.promptTemplateId)
+  const openFiles = useStore(state => state.openFiles)
+  const activeFilePath = useStore(state => state.activeFilePath)
+  const chatMode = useModeStore(state => state.currentMode)
+
+  const [aiInstructions, setAiInstructions] = useState('')
+
+  useEffect(() => {
+    api.settings.get('app-settings').then((settings: any) => {
+      if (settings?.aiInstructions) {
+        setAiInstructions(settings.aiInstructions)
+      }
+    })
+  }, [])
+
+  const planPhase = useAgentStore<'planning' | 'executing'>(state => {
+    const activePlan = state.plans.find(plan => plan.id === state.activePlanId)
+    return activePlan?.status === 'executing' || activePlan?.status === 'pausing' || activePlan?.status === 'stopping'
+      ? 'executing'
+      : 'planning'
+  })
+  const streamState = useAgentStore(selectStreamState)
+
+  const sendParamsRef = useRef({
+    llmConfig,
+    workspacePath,
+    chatMode,
+    promptTemplateId,
+    aiInstructions,
+    openFiles,
+    activeFilePath,
+    planPhase,
+  })
+
+  sendParamsRef.current = {
+    llmConfig,
+    workspacePath,
+    chatMode,
+    promptTemplateId,
+    aiInstructions,
+    openFiles,
+    activeFilePath,
+    planPhase,
+  }
+
+  const sendMessage = useCallback(async (content: MessageContent) => {
+    const {
+      llmConfig: config,
+      workspacePath: currentWorkspacePath,
+      chatMode: currentChatMode,
+      promptTemplateId: currentPromptTemplateId,
+      aiInstructions: currentAiInstructions,
+      openFiles: currentOpenFiles,
+      activeFilePath: currentActiveFilePath,
+      planPhase: currentPlanPhase,
+    } = sendParamsRef.current
+
+    const agentConfig = getAgentConfig()
+    const effectiveConfig = await getEffectiveLLMConfigAsync(config)
+
+    const enhancedConfig = {
+      ...effectiveConfig,
+      contextLimit: agentConfig.maxContextTokens,
+    }
+
+    await Agent.send(
+      content,
+      enhancedConfig,
+      currentWorkspacePath,
+      currentChatMode,
+      {
+        openFiles: currentOpenFiles.map(file => file.path),
+        activeFile: currentActiveFilePath || undefined,
+        customInstructions: currentAiInstructions,
+        promptTemplateId: currentPromptTemplateId,
+        planPhase: currentChatMode === 'plan' ? currentPlanPhase : undefined,
+      }
+    )
+  }, [])
+
+  const abort = useCallback(() => {
+    Agent.abort()
+  }, [])
+
+  const pendingApprovalRequestId = useMemo(() => {
+    if (streamState.phase !== 'tool_pending') {
+      return undefined
+    }
+
+    return streamState.requestId
+  }, [streamState.phase, streamState.requestId])
+
+  const approveCurrentTool = useCallback(() => {
+    Agent.approve(pendingApprovalRequestId)
+  }, [pendingApprovalRequestId])
+
+  const rejectCurrentTool = useCallback(() => {
+    Agent.reject(pendingApprovalRequestId)
+  }, [pendingApprovalRequestId])
+
+  const approveAllTools = useCallback(() => {
+    Agent.approveAll()
+  }, [])
+
+  const rejectAllTools = useCallback(() => {
+    Agent.rejectAll()
+  }, [])
+
+  return {
+    sendMessage,
+    abort,
+    approveCurrentTool,
+    rejectCurrentTool,
+    approveAllTools,
+    rejectAllTools,
+  }
+}
+
+export function useAgentActions() {
+  return useMemo(() => ({
+    createThread: getAgentActions().createThread,
+    renameThread: getAgentActions().renameThread,
+    switchThread: getAgentActions().switchThread,
+    deleteThread: getAgentActions().deleteThread,
+    deleteMessagesAfter: getAgentActions().deleteMessagesAfter,
+    acceptAllChanges: getAgentActions().acceptAllChanges,
+    undoAllChanges: getAgentActions().undoAllChanges,
+    acceptChange: getAgentActions().acceptChange,
+    undoChange: getAgentActions().undoChange,
+    restoreToCheckpoint: getAgentActions().restoreToCheckpoint,
+    getCheckpointForMessage: getAgentActions().getCheckpointForMessage,
+    addContextItem: getAgentActions().addContextItem,
+    removeContextItem: getAgentActions().removeContextItem,
+    clearContextItems: getAgentActions().clearContextItems,
+    createBranch: getAgentActions().createBranch,
+    switchBranch: getAgentActions().switchBranch,
+    regenerateFromMessage: getAgentActions().regenerateFromMessage,
+    clearMessages: clearAgentConversationState,
+  }), [])
+}
+
+export function useAgentHistoryActions() {
+  return useMemo(() => ({
+    clearMessages: clearAgentConversationState,
+    clearCheckpoints: getAgentActions().clearMessageCheckpoints,
+  }), [])
+}
+
+export function useAgentChangeState() {
+  const pendingChanges = useAgentStore(selectPendingChanges)
+
+  return useMemo(() => ({
+    pendingChanges,
+    acceptChange: getAgentActions().acceptChange,
+    undoChange: getAgentActions().undoChange,
+  }), [pendingChanges])
+}
+
+export function useAgentViewState() {
+  const {
+    messages,
+    messageListVersion,
+    streamState,
+    contextItems,
+    isStreaming,
+    isAwaitingApproval,
+    pendingChanges,
+    messageCheckpoints,
+    currentThreadId,
+  } = useAgentStore(useShallow(state => ({
+    messages: selectMessageListState(state).messages,
+    messageListVersion: selectMessageListState(state).version,
+    streamState: selectStreamState(state),
+    contextItems: selectContextItems(state),
+    isStreaming: selectIsStreaming(state),
+    isAwaitingApproval: selectIsAwaitingApproval(state),
+    pendingChanges: selectPendingChanges(state),
+    messageCheckpoints: selectMessageCheckpoints(state),
+    currentThreadId: state.currentThreadId,
+  })))
+
+  const pendingToolCall = useMemo((): ToolCall | undefined => {
+    if (streamState.phase === 'tool_pending' && streamState.currentToolCall) {
+      return streamState.currentToolCall
+    }
+
+    return undefined
+  }, [streamState])
+
+  const pendingApprovalToolCalls = useMemo((): ToolCall[] => {
+    if (streamState.phase === 'tool_pending' && streamState.pendingApprovalToolCalls) {
+      return streamState.pendingApprovalToolCalls
+    }
+
+    return []
+  }, [streamState])
+
+  return {
+    messages,
+    messageListVersion,
+    streamState,
+    contextItems,
+    isStreaming,
+    isAwaitingApproval,
+    pendingToolCall,
+    pendingApprovalToolCalls,
+    pendingChanges,
+    messageCheckpoints,
+    currentThreadId,
+  }
+}
+
+export function useAgent() {
+  const viewState = useAgentViewState()
+  const commands = useAgentCommands()
+  const actions = useAgentActions()
+  const historyActions = useAgentHistoryActions()
+
+  return {
+    ...viewState,
+    ...commands,
+    ...actions,
+    ...historyActions,
+  }
+}

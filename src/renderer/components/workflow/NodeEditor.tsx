@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { X, MessageSquare, GitBranch, Clock, UserCheck, Zap } from 'lucide-react'
-import type { WorkflowDefinition, WorkflowStep, WorkflowStepType } from '@shared/types/workflow'
+import type { WorkflowDefinition, WorkflowStep, WorkflowStepType } from '@shared/protocols/workflow'
 
 interface NodeEditorProps {
   workflow: WorkflowDefinition
@@ -13,7 +13,7 @@ const STEP_TYPE_LABELS: Record<WorkflowStepType, { en: string; zh: string }> = {
   'agent_message': { en: 'Agent Message', zh: '智能体消息' },
   'condition': { en: 'Condition', zh: '条件判断' },
   'parallel': { en: 'Parallel', zh: '并行执行' },
-  'user_input': { en: 'User Input', zh: '用户输入' },
+  'user_input': { en: 'User TextField', zh: '用户输入' },
   'delay': { en: 'Delay', zh: '延迟' },
 }
 

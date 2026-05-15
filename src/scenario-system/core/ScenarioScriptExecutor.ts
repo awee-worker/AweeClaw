@@ -11,10 +11,10 @@
 
 import { executeInSandbox, validateScript, type SandboxAPIProvider } from './SandboxEngine'
 import { createContextAPI, createCoreAPI, type ScenarioSandboxContext } from './SandboxAPI'
-import type { DeclarativeScripts, DeclarativeScriptTool } from '@shared/types/scenario-declarative'
-import type { ScenarioModuleContext, ScenarioHealthCheck, ScenarioToolDefinition } from '@shared/types/scenario-arch'
-import type { ToolDefinition, ToolExecutionResult, ToolExecutionContext, ToolExecutor, ToolPropertySchema } from '@/shared/types'
-import { logger } from '@shared/utils/Logger'
+import type { DeclarativeScripts, DeclarativeScriptTool } from '@shared/protocols/scenario-declarative'
+import type { ScenarioModuleContext, ScenarioHealthCheck, ScenarioToolDefinition } from '@shared/protocols/scenario-arch'
+import type { ToolDefinition, ToolExecutionResult, ToolExecutionContext, ToolExecutor, ToolPropertySchema } from '../providerTypes'
+import { logger } from '@shared/toolkit/LogEngine'
 
 export class ScenarioScriptExecutor {
   private scenarioId: string

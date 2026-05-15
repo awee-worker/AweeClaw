@@ -5,9 +5,9 @@
  * 等工具的名称、描述、参数 schema。
  */
 
-import type { ScenarioToolDefinition } from '@shared/types/scenario-arch'
-import type { ToolDefinition } from '@shared/types'
-import { dataAnalystExecutors } from './executors'
+import type { ScenarioToolDefinition } from '@shared/protocols/scenario-arch'
+import type { ToolDefinition } from '@protocols'
+import { dataAnalystExecutors } from './toolExecutors'
 
 const SQL_QUERY: ToolDefinition = {
   name: 'sql_query',

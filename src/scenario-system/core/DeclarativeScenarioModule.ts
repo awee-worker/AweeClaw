@@ -21,7 +21,7 @@ import type {
   ScenarioToolDefinition,
   ScenarioDbScript,
   ScenarioComponentRegistry,
-} from '@shared/types/scenario-arch'
+} from '@shared/protocols/scenario-arch'
 import type {
   ScenarioPlugin,
   ScenarioIdentity,
@@ -29,14 +29,14 @@ import type {
   ScenarioUI,
   ScenarioDataSources,
   UILayout,
-} from '@shared/types/scenario'
+} from '@shared/protocols/scenario'
 import type {
   DeclarativeScenarioConfig,
   DeclarativeCustomTool,
-} from '@shared/types/scenario-declarative'
+} from '@shared/protocols/scenario-declarative'
 import { builtinToolRegistry } from './BuiltinToolRegistry'
 import { ScenarioScriptExecutor } from './ScenarioScriptExecutor'
-import type { ToolDefinition, ToolExecutionResult, ToolExecutionContext, ToolExecutor, ToolPropertySchema } from '@/shared/types'
+import type { ToolDefinition, ToolExecutionResult, ToolExecutionContext, ToolExecutor, ToolPropertySchema } from '../providerTypes'
 
 function resolveFileContent(files: Record<string, string>, filePath: string, inlineContent?: string): string {
   if (inlineContent) return inlineContent
@@ -84,10 +84,10 @@ function buildCustomToolExecutor(tool: DeclarativeCustomTool): ToolExecutor {
           return { success: false, result: '', error: `Unknown executor type: ${executorType}` }
       }
 
-      const { toolRegistry } = await import('@/renderer/agent/tools/registry')
+      const { toolRegistry } = await import('@intelligence/toolkit/toolRegistry')
       result = await toolRegistry.execute(executorType, executorArgs, context)
     } else {
-      const { toolRegistry } = await import('@/renderer/agent/tools/registry')
+      const { toolRegistry } = await import('@intelligence/toolkit/toolRegistry')
       result = await toolRegistry.execute(executorType, args, context)
     }
 

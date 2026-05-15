@@ -13,6 +13,16 @@ vi.mock('electron', () => ({
   BrowserWindow: class MockBrowserWindow {},
   ipcMain: {
     on: vi.fn(),
+    handle: vi.fn(),
+  },
+  app: {
+    getPath: vi.fn((name: string) => {
+      if (name === 'userData') return '/tmp/test-user-data'
+      if (name === 'home') return '/tmp/test-home'
+      return '/tmp/test-path'
+    }),
+    getVersion: vi.fn(() => '1.0.0'),
+    isPackaged: false,
   },
 }))
 
@@ -22,7 +32,7 @@ vi.mock('child_process', () => ({
   execFile: vi.fn(),
 }))
 
-vi.mock('@shared/utils/Logger', () => ({
+vi.mock('@shared/toolkit/Logger', () => ({
   logger: {
     security: {
       info: vi.fn(),
@@ -33,17 +43,17 @@ vi.mock('@shared/utils/Logger', () => ({
   },
 }))
 
-vi.mock('@shared/utils/errorHandler', () => ({
+vi.mock('@shared/toolkit/errorHandler', () => ({
   toAppError: (err: unknown) => err instanceof Error ? err : new Error(String(err)),
 }))
 
-vi.mock('@main/ipc/safeHandle', () => ({
+vi.mock('@bridge/safeHandle', () => ({
   safeIpcHandle: vi.fn((channel: string, handler: Function) => {
     handlers.set(channel, handler)
   }),
 }))
 
-vi.mock('@main/security/securityModule', () => ({
+vi.mock('@guard/securityModule', () => ({
   OperationType: {
     TERMINAL_INTERACTIVE: 'terminal:interactive',
     SHELL_EXECUTE: 'shell:execute',
@@ -56,6 +66,36 @@ vi.mock('@main/security/securityModule', () => ({
   },
 }))
 
+vi.mock('@guard/terminalInput', () => ({
+  normalizePipeTerminalInput: vi.fn((input: string) => input),
+}))
+
+vi.mock('@shared/constants', () => ({
+  SECURITY_DEFAULTS: {
+    SHELL_COMMANDS: [
+      'npm', 'yarn', 'pnpm', 'bun', 'node', 'npx', 'deno', 'git',
+      'python', 'python3', 'pip', 'pip3', 'uv',
+      'pwd', 'ls', 'cat', 'echo', 'mkdir', 'rm', 'mv', 'cp',
+    ],
+    GIT_SUBCOMMANDS: [
+      'status', 'log', 'diff', 'show', 'add', 'commit', 'push', 'pull',
+      'branch', 'checkout', 'merge', 'rebase', 'clone', 'init', 'stash', 'tag',
+    ],
+  },
+}))
+
+vi.mock('@modules/python-runtime', () => ({
+  pythonManager: {
+    getExecutable: vi.fn(() => 'python3'),
+    isReady: vi.fn(() => true),
+    status: {
+      installed: true,
+      venvDir: '/tmp/test-venv',
+      version: '3.11.0',
+    },
+  },
+}))
+
 describe('secureTerminal', () => {
   beforeEach(() => {
     handlers.clear()
@@ -64,7 +104,7 @@ describe('secureTerminal', () => {
   })
 
   afterEach(async () => {
-    const module = await import('@main/security/secureTerminal')
+    const module = await import('@guard/secureTerminal')
     module.cleanupTerminals()
     vi.restoreAllMocks()
   })
@@ -96,7 +136,7 @@ describe('secureTerminal', () => {
 
     childSpawnMock.mockReturnValue(child)
 
-    const module = await import('@main/security/secureTerminal')
+    const module = await import('@guard/secureTerminal')
     module.registerSecureTerminalHandlers(
       () => ({ isDestroyed: () => false, webContents: { send: vi.fn() } }) as any,
       () => ({ roots: [workspaceRoot] }),

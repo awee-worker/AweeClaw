@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { useStore } from '@store'
-import { generateHandoffDocument } from '@renderer/agent/domains/context/summaryService'
-import type { ChatMessage, TodoItem } from '@renderer/agent/types'
+import { generateHandoffDocument } from '@intelligence/context'
+import type { ChatMessage, TodoItem } from '@intelligence/types'
 
 describe('summaryService handoff', () => {
   beforeEach(() => {

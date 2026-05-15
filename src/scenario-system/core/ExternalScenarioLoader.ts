@@ -11,11 +11,11 @@
  * 4. 注册到 scenarioLoader
  */
 
-import { scenarioRegistry } from '@shared/config/scenarios'
+import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { scenarioLoader } from './ScenarioLoader'
 import { DeclarativeScenarioModule } from './DeclarativeScenarioModule'
-import type { DeclarativeScenarioConfig } from '@shared/types/scenario-declarative'
-import { logger } from '@shared/utils/Logger'
+import type { DeclarativeScenarioConfig } from '@shared/protocols/scenario-declarative'
+import { logger } from '@shared/toolkit/LogEngine'
 
 interface LoadScenarioResult {
   success: boolean

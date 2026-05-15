@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { LLMConfig } from '@shared/types'
-import { prepareRequestCache } from '@main/services/llm/core/RequestCache'
+import type { LLMConfig } from '@protocols'
+import { prepareRequestCache } from '@modules/ai-provider/core/RequestCache'
 import {
   clearCacheCompatibilityState,
   isCacheFeatureUnsupported,
   markCacheFeatureUnsupported,
-} from '@main/services/llm/core/CacheCompatibility'
+} from '@modules/ai-provider/core/CacheCompatibility'
 
 const longPrompt = 'cacheable prefix '.repeat(2000)
 
@@ -30,8 +30,8 @@ describe('RequestCache', () => {
       { role: 'user', content: 'Newest turn' },
     ])
 
-    expect(result.providerOptions?.openai?.promptCacheKey).toBeTypeOf('string')
-    expect(result.providerOptions?.custom?.promptCacheKey).toBeTypeOf('string')
+    expect(result.providerOptions?.openaiCompatible?.promptCacheKey).toBeTypeOf('string')
+    expect(result.providerOptions?.['custom-openai']?.prompt_cache_key).toBeTypeOf('string')
   })
 })
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { MessageAssembler } from '@renderer/agent/domains/message/MessageAssembler'
-import type { ChatMessage } from '@renderer/agent/types'
+import { MessageAssembler } from '@intelligence/capabilities/message'
+import type { ChatMessage } from '@intelligence/types'
 
 describe('MessageAssembler', () => {
   it('injects resume state as a separate runtime assistant message', () => {

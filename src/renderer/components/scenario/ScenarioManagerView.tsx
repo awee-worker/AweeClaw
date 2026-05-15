@@ -11,15 +11,15 @@ import {
     Layers, Activity, Loader2, FolderOpen, CheckCircle2, XCircle,
 } from 'lucide-react'
 import { useStore } from '@store'
-import { scenarioRegistry } from '@shared/config/scenarios'
-import { scenarioLoader } from '@/scenario-system/core/ScenarioLoader'
-import { DeclarativeScenarioModule } from '@/scenario-system/core/DeclarativeScenarioModule'
-import { api } from '@/renderer/services/electronAPI'
-import { Button, Modal } from '../ui'
-import ConfirmDialog from '../common/ConfirmDialog'
-import type { ScenarioPlugin, UILayout, ScenarioCategory } from '@shared/types/scenario'
+import { scenarioRegistry } from '@shared/configuration/scenarios'
+import { scenarioLoader } from '@scenario-system/core/ScenarioLoader'
+import { DeclarativeScenarioModule } from '@scenario-system/core/DeclarativeScenarioModule'
+import { api } from '../../adapters/electronBridge'
+import { ActionButton, OverlayDialog } from '../ui'
+import DecisionOverlay from '@components/foundation/DecisionOverlay'
+import type { ScenarioPlugin, UILayout, ScenarioCategory } from '@shared/protocols/scenario'
 import { activateScenarioPanels, switchToFirstPanel } from './panelUtils'
-import type { ScenarioHealthReport } from '@shared/types/scenario-arch'
+import type { ScenarioHealthReport } from '@shared/protocols/scenario-arch'
 import type { LucideIcon } from 'lucide-react'
 
 const ICON_MAP: Record<string, LucideIcon> = {
@@ -463,18 +463,18 @@ export function ScenarioManagerView() {
                         </div>
                         <div className="flex items-center gap-2">
                             {!isActive && (
-                                <Button
+                                <ActionButton
                                     variant="secondary"
                                     size="sm"
                                     className="h-7 text-[12px] gap-1.5 px-3 rounded-lg"
                                     onClick={(e) => { e.stopPropagation(); handleSwitch(scenario) }}
                                 >
                                     <Check className="w-3 h-3" />
-                                    {language === 'zh' ? '切换' : 'Switch'}
-                                </Button>
+                                    {language === 'zh' ? '切换' : 'ToggleSwitch'}
+                                </ActionButton>
                             )}
                             {showSettings && (
-                                <Button
+                                <ActionButton
                                     variant="ghost"
                                     size="sm"
                                     className="h-7 text-[12px] gap-1.5 px-3 rounded-lg"
@@ -482,10 +482,10 @@ export function ScenarioManagerView() {
                                 >
                                     <Settings className="w-3 h-3" />
                                     {language === 'zh' ? '设置' : 'Settings'}
-                                </Button>
+                                </ActionButton>
                             )}
                             {!isBuiltin && (
-                                <Button
+                                <ActionButton
                                     variant="ghost"
                                     size="sm"
                                     className="h-7 text-[12px] gap-1.5 px-3 rounded-lg text-red-400/60 hover:text-red-400 hover:bg-red-400/10"
@@ -493,10 +493,10 @@ export function ScenarioManagerView() {
                                 >
                                     <PackageX className="w-3 h-3" />
                                     {language === 'zh' ? '卸载' : 'Uninstall'}
-                                </Button>
+                                </ActionButton>
                             )}
                             {isBuiltin && !scenario.isDefault && (
-                                <Button
+                                <ActionButton
                                     variant="ghost"
                                     size="sm"
                                     className="h-7 text-[12px] gap-1.5 px-3 rounded-lg text-red-400/60 hover:text-red-400 hover:bg-red-400/10"
@@ -504,9 +504,9 @@ export function ScenarioManagerView() {
                                 >
                                     <PackageX className="w-3 h-3" />
                                     {language === 'zh' ? '卸载' : 'Uninstall'}
-                                </Button>
+                                </ActionButton>
                             )}
-                            <Button
+                            <ActionButton
                                 variant="ghost"
                                 size="sm"
                                 className="h-7 text-[12px] gap-1.5 px-3 rounded-lg ml-auto"
@@ -514,7 +514,7 @@ export function ScenarioManagerView() {
                             >
                                 <Info className="w-3 h-3" />
                                 {language === 'zh' ? '详情' : 'Details'}
-                            </Button>
+                            </ActionButton>
                         </div>
                     </div>
                 )}
@@ -535,9 +535,9 @@ export function ScenarioManagerView() {
                             : `${scenarios.length} installed`}
                     </p>
                 </div>
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0 rounded-lg" onClick={handleInstallScenario} title={language === 'zh' ? '安装场景' : 'Install Scenario'}>
+                <ActionButton variant="ghost" size="sm" className="h-7 w-7 p-0 rounded-lg" onClick={handleInstallScenario} title={language === 'zh' ? '安装场景' : 'Install Scenario'}>
                     <Download className="w-4 h-4" />
-                </Button>
+                </ActionButton>
             </div>
 
             {sortedCategories.length > 1 && (
@@ -605,7 +605,7 @@ export function ScenarioManagerView() {
             </div>
 
             <div className="px-3 py-2.5 border-t border-border/20">
-                <Button
+                <ActionButton
                     variant="ghost"
                     size="sm"
                     className="h-8 w-full text-xs gap-1.5 rounded-lg border border-dashed border-border/30 hover:border-accent/30 hover:text-accent"
@@ -613,11 +613,11 @@ export function ScenarioManagerView() {
                 >
                     <Download className="w-3.5 h-3.5" />
                     {language === 'zh' ? '安装场景' : 'Install Scenario'}
-                </Button>
+                </ActionButton>
             </div>
 
             {installState.phase !== 'idle' && (
-                <Modal
+                <OverlayDialog
                     isOpen
                     onClose={handleCloseInstall}
                     title={language === 'zh' ? '安装场景' : 'Install Scenario'}
@@ -627,7 +627,7 @@ export function ScenarioManagerView() {
                         <div className="flex flex-col items-center justify-center py-8 gap-3">
                             <FolderOpen className="w-8 h-8 text-accent/60" strokeWidth={1.5} />
                             <p className="text-sm text-text-secondary">
-                                {language === 'zh' ? '请选择场景目录...' : 'Select scenario directory...'}
+                                {language === 'zh' ? '请选择场景目录...' : 'DropdownSelector scenario directory...'}
                             </p>
                         </div>
                     )}
@@ -658,12 +658,12 @@ export function ScenarioManagerView() {
                                 {installState.config.description as string}
                             </p>
                             <div className="flex items-center gap-2 justify-end">
-                                <Button variant="ghost" size="sm" onClick={handleCloseInstall}>
+                                <ActionButton variant="ghost" size="sm" onClick={handleCloseInstall}>
                                     {language === 'zh' ? '取消' : 'Cancel'}
-                                </Button>
-                                <Button variant="primary" size="sm" onClick={handleConfirmInstall}>
+                                </ActionButton>
+                                <ActionButton variant="primary" size="sm" onClick={handleConfirmInstall}>
                                     {language === 'zh' ? '确认安装' : 'Install'}
-                                </Button>
+                                </ActionButton>
                             </div>
                         </div>
                     )}
@@ -681,9 +681,9 @@ export function ScenarioManagerView() {
                             <p className="text-sm text-text-secondary">
                                 {language === 'zh' ? '安装成功！' : 'Installed successfully!'}
                             </p>
-                            <Button variant="primary" size="sm" onClick={handleCloseInstall}>
+                            <ActionButton variant="primary" size="sm" onClick={handleCloseInstall}>
                                 {language === 'zh' ? '完成' : 'Done'}
-                            </Button>
+                            </ActionButton>
                         </div>
                     )}
                     {installState.phase === 'error' && (
@@ -695,15 +695,15 @@ export function ScenarioManagerView() {
                             <p className="text-[12px] text-text-muted max-w-md text-center">
                                 {installState.error}
                             </p>
-                            <Button variant="primary" size="sm" onClick={handleCloseInstall}>
+                            <ActionButton variant="primary" size="sm" onClick={handleCloseInstall}>
                                 {language === 'zh' ? '关闭' : 'Close'}
-                            </Button>
+                            </ActionButton>
                         </div>
                     )}
-                </Modal>
+                </OverlayDialog>
             )}
 
-            <ConfirmDialog
+            <DecisionOverlay
                 isOpen={uninstallState?.isConfirming === true}
                 title={language === 'zh' ? '确认卸载' : 'Confirm Uninstall'}
                 message={language === 'zh'
@@ -712,13 +712,15 @@ export function ScenarioManagerView() {
                 }
                 confirmText={language === 'zh' ? '确认卸载' : 'Uninstall'}
                 cancelText={language === 'zh' ? '取消' : 'Cancel'}
-                variant="danger"
+                severity="danger"
+                riskTag={language === 'zh' ? '不可恢复' : 'Irreversible'}
+                auditAction="scenario-uninstall"
                 onConfirm={handleConfirmUninstall}
                 onCancel={handleCancelUninstall}
             />
 
             {uninstallState?.isUninstalling && (
-                <Modal isOpen onClose={() => {}} showCloseButton={false} size="sm">
+                <OverlayDialog isOpen onClose={() => {}} showCloseButton={false} size="sm">
                     <div className="flex flex-col items-center justify-center py-6 gap-3">
                         <Loader2 className="w-8 h-8 text-accent animate-spin" strokeWidth={1.5} />
                         <p className="text-sm text-text-secondary">
@@ -731,10 +733,10 @@ export function ScenarioManagerView() {
                             {language === 'zh' ? '正在执行卸载脚本并清理数据' : 'Running uninstall scripts and cleaning up data'}
                         </p>
                     </div>
-                </Modal>
+                </OverlayDialog>
             )}
 
-            <Modal
+            <OverlayDialog
                 isOpen={detailScenarioId !== null}
                 onClose={() => { setDetailScenarioId(null); setHealthReport(null) }}
                 title={language === 'zh' ? '场景详情' : 'Scenario Details'}
@@ -947,9 +949,9 @@ export function ScenarioManagerView() {
                         )}
                     </div>
                 )}
-            </Modal>
+            </OverlayDialog>
 
-            <Modal
+            <OverlayDialog
                 isOpen={settingsScenarioId !== null}
                 onClose={() => setSettingsScenarioId(null)}
                 title={language === 'zh'
@@ -983,7 +985,7 @@ export function ScenarioManagerView() {
                         </p>
                     </div>
                 ) : null}
-            </Modal>
+            </OverlayDialog>
         </div>
     )
 }

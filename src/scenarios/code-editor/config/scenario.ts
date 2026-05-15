@@ -11,7 +11,7 @@ import type {
   ScenarioCapabilities,
   ScenarioUI,
   ScenarioDataSources,
-} from '@shared/types/scenario'
+} from '@shared/protocols/scenario'
 import { CODE_EDITOR_WELCOME_SUGGESTIONS, CODE_EDITOR_WELCOME_TITLE } from './welcome'
 import { buildScenarioIdentity } from '../../scenarioBrandIdentity'
 
@@ -201,8 +201,8 @@ const CODE_EDITOR_UI: ScenarioUI = {
     { id: 'history', icon: 'History', label: 'History', labelZh: '历史', component: 'HistoryView', position: 7 },
   ],
   statusBarItems: [
-    { id: 'lsp-status', component: 'LspStatusIndicator', position: 'left', order: 0 },
-    { id: 'update', component: 'UpdateIndicator', position: 'right', order: 0 },
+    { id: 'lsp-status', component: 'LanguageServiceIndicator', position: 'left', order: 0 },
+    { id: 'update', component: 'VersionNotifier', position: 'right', order: 0 },
   ],
   welcomeComponent: 'WelcomePage',
   onboardingComponent: 'OnboardingWizard',

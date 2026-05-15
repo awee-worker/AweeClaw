@@ -6,9 +6,9 @@
  * 本注册表负责查找并返回对应的工具定义和执行器。
  */
 
-import { toolRegistry } from '@/renderer/agent/tools/registry'
-import type { ScenarioToolDefinition } from '@shared/types/scenario-arch'
-import type { ToolDefinition, ToolExecutor } from '@/shared/types'
+import { toolRegistry } from '@intelligence/toolkit/toolRegistry'
+import type { ScenarioToolDefinition } from '@shared/protocols/scenario-arch'
+import type { ToolDefinition, ToolExecutor } from '../providerTypes'
 
 const AVAILABLE_BUILTIN_TOOLS: ReadonlySet<string> = new Set([
   'read_file',

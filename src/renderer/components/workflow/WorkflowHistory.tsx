@@ -6,9 +6,9 @@ import {
   Trash2,
   RotateCcw,
 } from 'lucide-react'
-import { loadWorkflowHistory, deleteWorkflowRun, clearWorkflowHistory } from '@shared/config/workflows/persistence'
-import { workflowEngine } from '@shared/types/workflow'
-import type { WorkflowRun, WorkflowRunStatus } from '@shared/types/workflow'
+import { loadWorkflowHistory, deleteWorkflowRun, clearWorkflowHistory } from '@shared/configuration/workflows/persistence'
+import { workflowEngine } from '@shared/protocols/workflow'
+import type { WorkflowRun, WorkflowRunStatus } from '@shared/protocols/workflow'
 
 interface WorkflowHistoryProps {
   onRerun: (workflowId: string) => void
