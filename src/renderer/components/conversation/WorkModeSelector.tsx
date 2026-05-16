@@ -1,10 +1,5 @@
-/**
- * 模式选择器组件
- * 下拉方式选择 Chat/Agent 模式
- */
-
 import { useState, useRef, useEffect } from 'react'
-import { ChevronDown, Check, MessageSquare, Sparkles, Workflow } from 'lucide-react'
+import { ChevronDown, Check, Zap, Brain, GraduationCap } from 'lucide-react'
 import { WorkMode } from '@/renderer/modes/workModeTypes'
 import { useStore } from '@store'
 
@@ -16,34 +11,38 @@ interface ModeSelectorProps {
 
 const MODES: Array<{
   id: WorkMode
-  icon: typeof MessageSquare
-  labelKey: string
+  icon: typeof Zap
+  labelZh: string
+  labelEn: string
   descZh: string
   descEn: string
   color: string
 }> = [
     {
       id: 'chat',
-      icon: MessageSquare,
-      labelKey: 'Chat',
-      descZh: '普通对话，不执行工具',
-      descEn: 'Chat only, no tool execution',
+      icon: Zap,
+      labelZh: '快速',
+      labelEn: 'Quick',
+      descZh: '适用于大部分情况',
+      descEn: 'Suitable for most situations',
       color: 'text-blue-400',
     },
     {
       id: 'agent',
-      icon: Sparkles,
-      labelKey: 'Agent',
-      descZh: 'AI 代理，可执行工具',
-      descEn: 'AI agent with tool execution',
+      icon: Brain,
+      labelZh: '思考',
+      labelEn: 'Think',
+      descZh: '擅长解决更难的问题',
+      descEn: 'Excels at harder problems',
       color: 'text-accent',
     },
     {
       id: 'plan',
-      icon: Workflow,
-      labelKey: 'Plan',
-      descZh: '多轮需求收集与任务规划',
-      descEn: 'Requirement gathering & task planning',
+      icon: GraduationCap,
+      labelZh: '专家',
+      labelEn: 'Expert',
+      descZh: '研究级智能模式',
+      descEn: 'Research-grade intelligence',
       color: 'text-purple-400',
     },
   ]
@@ -53,7 +52,6 @@ export default function ModeSelector({ mode, onModeChange, className = '' }: Mod
   const [isOpen, setIsOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  // 点击外部关闭
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
@@ -68,10 +66,10 @@ export default function ModeSelector({ mode, onModeChange, className = '' }: Mod
 
   const currentMode = MODES.find((m) => m.id === mode) || MODES[0]
   const Icon = currentMode.icon
+  const isZh = language === 'zh'
 
   return (
     <div ref={dropdownRef} className={`relative ${className}`}>
-      {/* 触发按钮 */}
       <button
         onClick={() => setIsOpen(!isOpen)}
         className={`
@@ -84,13 +82,12 @@ export default function ModeSelector({ mode, onModeChange, className = '' }: Mod
         `}
       >
         <Icon className={`w-3.5 h-3.5 ${currentMode.color}`} />
-        <span>{currentMode.labelKey}</span>
+        <span>{isZh ? currentMode.labelZh : currentMode.labelEn}</span>
         <ChevronDown className={`w-3 h-3 text-text-muted transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
-      {/* 下拉菜单 */}
       {isOpen && (
-        <div className="absolute bottom-full left-0 mb-2 w-48 bg-surface border border-border rounded-xl shadow-2xl z-50 py-1 animate-scale-in">
+        <div className="absolute bottom-full left-0 mb-2 w-52 bg-surface border border-border rounded-xl shadow-2xl z-50 py-1 animate-scale-in">
           {MODES.map((m) => {
             const ModeIcon = m.icon
             const isSelected = mode === m.id
@@ -113,10 +110,10 @@ export default function ModeSelector({ mode, onModeChange, className = '' }: Mod
                 <ModeIcon className={`w-4 h-4 ${m.color}`} />
                 <div className="flex-1 min-w-0">
                   <div className={`text-xs font-medium ${isSelected ? 'text-accent' : 'text-text-primary'}`}>
-                    {m.labelKey}
+                    {isZh ? m.labelZh : m.labelEn}
                   </div>
                   <div className="text-[11px] text-text-muted truncate opacity-80">
-                    {language === 'zh' ? m.descZh : m.descEn}
+                    {isZh ? m.descZh : m.descEn}
                   </div>
                 </div>
                 {isSelected && <Check className="w-3.5 h-3.5 text-accent flex-shrink-0" />}

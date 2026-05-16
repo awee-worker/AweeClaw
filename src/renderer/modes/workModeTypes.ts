@@ -1,12 +1,7 @@
-/**
- * 工作模式类型定义
- */
-
-// 从 shared 导入共享类型
-export type { WorkMode } from '@protocols/workModeProtocol'
 import type { WorkMode } from '@protocols/workModeProtocol'
 
-/** 模式配置 */
+export type { WorkMode } from '@protocols/workModeProtocol'
+
 export interface ModeConfig {
     id: WorkMode
     label: string
@@ -14,24 +9,23 @@ export interface ModeConfig {
     description: string
 }
 
-/** 所有模式配置 */
 export const MODE_CONFIGS: Record<WorkMode, ModeConfig> = {
     chat: {
         id: 'chat',
-        label: 'Chat',
-        icon: 'MessageSquare',
-        description: '快速问答，无工具调用'
+        label: 'Quick',
+        icon: 'Zap',
+        description: '适用于大部分情况'
     },
     agent: {
         id: 'agent',
-        label: 'Agent',
-        icon: 'Sparkles',
-        description: '单次任务，工具调用'
+        label: 'Think',
+        icon: 'Brain',
+        description: '擅长解决更难的问题'
     },
     plan: {
         id: 'plan',
-        label: 'Plan',
-        icon: 'Workflow',
-        description: '多步规划，任务编排'
+        label: 'Expert',
+        icon: 'GraduationCap',
+        description: '研究级智能模式'
     }
 }

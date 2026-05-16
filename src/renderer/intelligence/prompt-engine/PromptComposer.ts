@@ -32,6 +32,7 @@ import {
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { api } from '../../adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
+import { useStore } from '@store'
 
 let projectSummaryCache: { path: string; summary: string; timestamp: number } | null = null
 const SUMMARY_CACHE_TTL = 5 * 60 * 1000
@@ -68,6 +69,13 @@ export const MAX_SEARCH_RESULTS = PERFORMANCE_DEFAULTS.maxSearchResults
 export const MAX_TERMINAL_OUTPUT = DEFAULT_AGENT_CONFIG.maxTerminalChars
 export const MAX_CONTEXT_CHARS = DEFAULT_AGENT_CONFIG.maxTotalContextChars
 
+export interface UserInfo {
+  username?: string
+  realName?: string
+  gender?: string
+  occupation?: string
+}
+
 export interface PromptContext {
   os: string
   workspacePath: string | null
@@ -87,6 +95,7 @@ export interface PromptContext {
   templateId?: string
   projectSummary?: string | null
   planPhase?: 'planning' | 'executing'
+  userInfo?: UserInfo | null
 }
 
 function getActiveScenarioIdentity() {
@@ -227,6 +236,28 @@ function buildSkillsSections(autoSkills: SkillItem[], mentionedSkills: SkillItem
   return [index, fullContent]
 }
 
+function buildUserContext(userInfo: UserInfo | null | undefined): string | null {
+  if (!userInfo) return null
+  const lines: string[] = []
+  const displayName = userInfo.realName || userInfo.username
+  if (displayName) {
+    lines.push(`- Name: ${displayName}`)
+  }
+  if (userInfo.occupation) {
+    lines.push(`- Occupation: ${userInfo.occupation}`)
+  }
+  if (userInfo.gender) {
+    const genderMap: Record<string, string> = {
+      male: 'Male',
+      female: 'Female',
+      other: 'Other',
+    }
+    lines.push(`- Gender: ${genderMap[userInfo.gender] || userInfo.gender}`)
+  }
+  if (lines.length === 0) return null
+  return `## Current User\nYou are chatting with the following user. Use this information to personalize your responses (e.g., address them by name, consider their profession). Do NOT mention these details unless relevant.\n\n${lines.join('\n')}`
+}
+
 export function buildSystemPrompt(ctx: PromptContext): string {
   const identity = getActiveScenarioIdentity()
   const sections: (string | null)[] = [
@@ -239,6 +270,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     identity.workflow,
     identity.outputFormat,
     buildEnvironment(ctx),
+    buildUserContext(ctx.userInfo),
     buildProjectSummary(ctx.projectSummary || null),
     buildProjectRules(ctx.projectRules),
     buildLongTermMemory(ctx.longTermMemories),
@@ -257,9 +289,11 @@ export function buildChatPrompt(ctx: PromptContext): string {
     identity.systemPrompt,
     PROFESSIONAL_OBJECTIVITY,
     identity.securityRules,
+    buildTools(ctx.mode, ctx.templateId, ctx.planPhase),
     identity.conventions,
     identity.outputFormat,
     buildEnvironment(ctx),
+    buildUserContext(ctx.userInfo),
     buildProjectSummary(ctx.projectSummary || null),
     buildProjectRules(ctx.projectRules),
     buildLongTermMemory(ctx.longTermMemories),
@@ -347,6 +381,16 @@ export async function buildAgentSystemPrompt(
     }
   }
 
+  const cloudUser = useStore.getState().cloudUser
+  const userInfo: UserInfo | null = cloudUser
+    ? {
+        username: cloudUser.username,
+        realName: cloudUser.realName,
+        gender: cloudUser.gender,
+        occupation: cloudUser.occupation,
+      }
+    : null
+
   const ctx: PromptContext = {
     os: getOS(),
     workspacePath,
@@ -366,6 +410,7 @@ export async function buildAgentSystemPrompt(
     templateId: template.id,
     projectSummary,
     planPhase,
+    userInfo,
   }
 
   const prompt = mode === 'chat' ? buildChatPrompt(ctx) : buildSystemPrompt(ctx)

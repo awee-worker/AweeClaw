@@ -8,8 +8,8 @@
  * - 场景工具：不同场景加载不同的 ToolPack
  * 
  * 加载规则：
- * - chat 模式：无工具
- * - agent 模式：core 工具组（或场景指定的 ToolPack）
+ * - chat 模式：core 工具组（或场景指定的 ToolPack），免审批
+ * - agent 模式：core 工具组（或场景指定的 ToolPack），需审批
  * - 角色扩展：在模式基础上添加角色专属工具组
  * - 场景扩展：场景声明 toolPacks，自动解析依赖
  */
@@ -174,22 +174,15 @@ export function getToolGroup(id: string): string[] | undefined {
  * 根据上下文获取工具列表
  *
  * 加载规则：
- * - chat: 空（无工具）
- * - agent: core 工具组（或场景 ToolPack）
+ * - chat: core 工具组（或场景 ToolPack），免审批
+ * - agent: core 工具组（或场景 ToolPack），需审批
  * - plan: plan 规划工具组（ask_user, create_task_plan, update_task_plan）
  * - 角色: 在模式基础上 + 角色专属工具组
  * - 场景: 场景声明 toolPacks，自动解析依赖
  */
 export function getToolsForContext(context: ToolLoadingContext): string[] {
-  // chat 模式无工具
-  if (context.mode === 'chat') {
-    return []
-  }
-
-  // 收集工具（使用 Set 去重）
   const tools = new Set<string>()
 
-  // 场景工具包解析：如果指定了 scenarioToolPacks，优先使用 ToolPack 系统
   const scenarioPacks = context.scenarioToolPacks
   if (scenarioPacks && scenarioPacks.length > 0) {
     const packTools = toolPackRegistry.resolveTools(scenarioPacks)
@@ -198,29 +191,42 @@ export function getToolsForContext(context: ToolLoadingContext): string[] {
     }
   }
 
-  // plan 模式：根据阶段加载不同工具
-  if (context.mode === 'plan') {
-    // 执行阶段：加载所有工具（core + plan）以及执行控制工具
-    if (context.planPhase === 'executing') {
-      if (!scenarioPacks || scenarioPacks.length === 0) {
-        for (const tool of CORE_TOOLS) {
-          tools.add(tool)
+  if (context.mode === 'chat') {
+    if (!scenarioPacks || scenarioPacks.length === 0) {
+      for (const tool of CORE_TOOLS) {
+        tools.add(tool)
+      }
+    }
+    if (context.templateId) {
+      const templateConfig = TEMPLATE_TOOLS[context.templateId]
+      if (templateConfig) {
+        for (const groupId of templateConfig.toolGroups) {
+          const groupTools = TOOL_GROUPS[groupId]
+          if (groupTools) {
+            for (const tool of groupTools) {
+              tools.add(tool)
+            }
+          }
         }
       }
-      for (const tool of TOOL_GROUPS['plan'] || []) {
-        tools.add(tool)
-      }
-      for (const tool of PLAN_EXECUTION_CONTROL_TOOLS) {
-        tools.add(tool)
-      }
-      return Array.from(tools)
     }
+    return Array.from(tools)
+  }
 
-    // 规划阶段（默认）：只使用探索工具和规划工具，不允许直接启动执行
-    for (const tool of PLAN_EXPLORATION_TOOLS) {
-      tools.add(tool)
+  // plan 模式：专家模式拥有最大权限，所有阶段均可使用全部工具
+  if (context.mode === 'plan') {
+    if (!scenarioPacks || scenarioPacks.length === 0) {
+      for (const tool of CORE_TOOLS) {
+        tools.add(tool)
+      }
     }
     for (const tool of TOOL_GROUPS['plan'] || []) {
+      tools.add(tool)
+    }
+    for (const tool of PLAN_EXECUTION_CONTROL_TOOLS) {
+      tools.add(tool)
+    }
+    for (const tool of PLAN_EXPLORATION_TOOLS) {
       tools.add(tool)
     }
     return Array.from(tools)

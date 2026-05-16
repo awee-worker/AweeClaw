@@ -42,6 +42,8 @@ const ShortcutReference = lazy(() => import('@components/modals/ShortcutReferenc
 const FileNavigator = lazy(() => import('@components/modals/FileNavigator'))
 const AppIdentityPanel = lazy(() => import('@components/modals/AppIdentityPanel'))
 const WelcomePage = lazy(() => import('@components/onboarding/WelcomePage'))
+const UserProfilePage = lazy(() => import('@components/user/UserProfilePage'))
+const BillingCenterPage = lazy(() => import('@components/user/BillingCenterPage'))
 
 initializeScenarios()
 registerBuiltinScenarios()
@@ -74,7 +76,7 @@ function AppContent() {
     showCommandPalette, setShowCommandPalette,
     terminalVisible, debugVisible, chatVisible,
     activeScenarioId, openFiles, activeFilePath, language,
-    showSettingsPage,
+    showSettingsPage, showWelcomePage, showUserProfilePage, showBillingCenterPage,
   } = useStore(useShallow((state) => ({
     workspace: state.workspace,
     activeSidePanel: state.activeSidePanel,
@@ -98,6 +100,9 @@ function AppContent() {
     activeFilePath: state.activeFilePath,
     language: state.language,
     showSettingsPage: state.showSettingsPage,
+    showWelcomePage: state.showWelcomePage,
+    showUserProfilePage: state.showUserProfilePage,
+    showBillingCenterPage: state.showBillingCenterPage,
   })))
 
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false)
@@ -186,7 +191,7 @@ function AppContent() {
                     <AppTitleBar />
 
                     <div className="flex-1 flex min-w-0 overflow-hidden">
-                      {layoutConfig.showSidebar && activeSidePanel && !showSettingsPage && (
+                      {layoutConfig.showSidebar && activeSidePanel && !showSettingsPage && !showWelcomePage && !showUserProfilePage && !showBillingCenterPage && (
                         <div ref={sidebarRef} style={{ width: sidebarWidth, minWidth: sidebarWidth }} className="flex-shrink-0 relative min-w-[220px]">
                           <ErrorBoundary>
                             <Suspense fallback={<PanelSkeleton />}>
@@ -201,11 +206,35 @@ function AppContent() {
                       )}
 
                       <div className="flex-1 flex min-w-0 bg-background relative">
-                        {showSettingsPage ? (
+                        {showWelcomePage ? (
+                          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+                            <ErrorBoundary>
+                              <Suspense fallback={<FullScreenLoading />}>
+                                <WelcomePage />
+                              </Suspense>
+                            </ErrorBoundary>
+                          </div>
+                        ) : showSettingsPage ? (
                           <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
                             <ErrorBoundary>
                               <Suspense fallback={<InlineSettingsSkeleton />}>
                                 <PreferencesDialog embedded />
+                              </Suspense>
+                            </ErrorBoundary>
+                          </div>
+                        ) : showUserProfilePage ? (
+                          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+                            <ErrorBoundary>
+                              <Suspense fallback={<InlineSettingsSkeleton />}>
+                                <UserProfilePage />
+                              </Suspense>
+                            </ErrorBoundary>
+                          </div>
+                        ) : showBillingCenterPage ? (
+                          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+                            <ErrorBoundary>
+                              <Suspense fallback={<InlineSettingsSkeleton />}>
+                                <BillingCenterPage />
                               </Suspense>
                             </ErrorBoundary>
                           </div>
@@ -265,7 +294,7 @@ function AppContent() {
                     <AppTitleBar />
 
                     <div className="flex-1 flex min-w-0 overflow-hidden">
-                      {layoutConfig.showSidebar && activeSidePanel && !isShellStudioActive && !showSettingsPage && (
+                      {layoutConfig.showSidebar && activeSidePanel && !isShellStudioActive && !showSettingsPage && !showWelcomePage && !showUserProfilePage && !showBillingCenterPage && (
                         <div ref={sidebarRef} style={{ width: sidebarWidth, minWidth: sidebarWidth }} className="flex-shrink-0 relative min-w-[220px]">
                           <ErrorBoundary>
                             <Suspense fallback={<PanelSkeleton />}>
@@ -281,10 +310,28 @@ function AppContent() {
 
                       <div className="flex-1 flex min-w-0 bg-background relative">
                         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-                          {showSettingsPage ? (
+                          {showWelcomePage ? (
+                            <ErrorBoundary>
+                              <Suspense fallback={<FullScreenLoading />}>
+                                <WelcomePage />
+                              </Suspense>
+                            </ErrorBoundary>
+                          ) : showSettingsPage ? (
                             <ErrorBoundary>
                               <Suspense fallback={<InlineSettingsSkeleton />}>
                                 <PreferencesDialog embedded />
+                              </Suspense>
+                            </ErrorBoundary>
+                          ) : showUserProfilePage ? (
+                            <ErrorBoundary>
+                              <Suspense fallback={<InlineSettingsSkeleton />}>
+                                <UserProfilePage />
+                              </Suspense>
+                            </ErrorBoundary>
+                          ) : showBillingCenterPage ? (
+                            <ErrorBoundary>
+                              <Suspense fallback={<InlineSettingsSkeleton />}>
+                                <BillingCenterPage />
                               </Suspense>
                             </ErrorBoundary>
                           ) : layoutConfig.showEditor ? (

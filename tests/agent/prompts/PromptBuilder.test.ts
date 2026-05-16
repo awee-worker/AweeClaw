@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildSystemPrompt, type PromptContext } from '@intelligence/prompt-engine/PromptBuilder'
+import { buildSystemPrompt, type PromptContext } from '@intelligence/prompt-engine/PromptComposer'
 
 describe('PromptBuilder', () => {
   it('keeps task-list state out of the stable system prompt', () => {
@@ -20,6 +20,7 @@ describe('PromptBuilder', () => {
       customInstructions: null,
       templateId: 'default',
       projectSummary: null,
+      userInfo: null,
     } satisfies PromptContext)
 
     expect(prompt).not.toContain('## Current Task List')

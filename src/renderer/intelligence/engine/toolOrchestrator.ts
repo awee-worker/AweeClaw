@@ -210,26 +210,24 @@ function hasDependencyFailure(content: string): boolean {
  * 检查工具是否需要审批
  * 基于 TOOL_CONFIGS 中的 approvalType 配置和用户的 autoApprove 设置
  */
-function needsApproval(toolName: string): boolean {
+function needsApproval(toolName: string, chatMode?: string): boolean {
+  if (chatMode === 'chat') return false
+
   const approvalType = getToolApprovalType(toolName)
 
-  // 如果工具本身不需要审批，直接返回 false
   if (approvalType === 'none') return false
 
-  // 检查用户的 autoApprove 设置
   const mainStore = useStore.getState()
   const autoApprove = mainStore.autoApprove
 
-  // 根据工具类型检查对应的 autoApprove 设置
   if (approvalType === 'terminal' && autoApprove?.terminal) {
-    return false // 终端命令已设置自动批准
+    return false
   }
 
   if (approvalType === 'dangerous' && autoApprove?.dangerous) {
-    return false // 危险操作已设置自动批准
+    return false
   }
 
-  // 默认需要审批
   return true
 }
 
@@ -576,8 +574,8 @@ export async function executeTools(
   const pending = new Set(toolCalls.map(tc => tc.id))
 
   // 分离需要审批和不需要审批的工具
-  const approvalRequired = toolCalls.filter(tc => needsApproval(tc.name))
-  const noApprovalRequired = toolCalls.filter(tc => !needsApproval(tc.name))
+  const approvalRequired = toolCalls.filter(tc => needsApproval(tc.name, context.chatMode))
+  const noApprovalRequired = toolCalls.filter(tc => !needsApproval(tc.name, context.chatMode))
 
   // 在执行前保存文件快照
   await saveFileSnapshots(toolCalls, context)

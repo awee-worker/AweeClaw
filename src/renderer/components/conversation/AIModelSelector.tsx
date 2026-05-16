@@ -1,8 +1,3 @@
-/**
- * 模型选择器组件
- * 支持先选择供应商，再选择该供应商下的模型
- */
-
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { ChevronDown, Check, Search, Cloud } from 'lucide-react'
 import { useStore } from '@store'
@@ -20,10 +15,12 @@ const PROVIDER_ICONS: Record<string, string> = {
   ollama: '🦙',
 }
 
-interface ModelGroup {
+interface FlatModel {
+  id: string
+  name: string
   providerId: string
   providerName: string
-  models: Array<{ id: string; name: string; isCustom?: boolean }>
+  isCustom?: boolean
 }
 
 interface ModelSelectorProps {
@@ -42,8 +39,7 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
   })))
   const [isOpen, setIsOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
-  const [selectedProviderId, setSelectedProviderId] = useState<string>('')
-  const [cloudModels, setCloudModels] = useState<ModelGroup[]>([])
+  const [cloudModels, setCloudModels] = useState<FlatModel[]>([])
   const containerRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
@@ -60,8 +56,7 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
     }
 
     document.addEventListener('mousedown', handleClickOutside)
-    
-    // 延迟确保渲染后 focus 且不触发滚动条移动（防偏移）
+
     const focusTimer = setTimeout(() => {
       if (searchInputRef.current) {
         searchInputRef.current.focus({ preventScroll: true })
@@ -92,12 +87,18 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
     backendApi
       .get<Array<{ provider: string; models: string[] }>>('/api/v1/llm/models')
       .then((data) => {
-        const groups: ModelGroup[] = data.map((item) => ({
-          providerId: item.provider.toLowerCase(),
-          providerName: item.provider,
-          models: item.models.map((id) => ({ id, name: id })),
-        }))
-        setCloudModels(groups)
+        const flat: FlatModel[] = []
+        for (const item of data) {
+          for (const modelId of item.models) {
+            flat.push({
+              id: modelId,
+              name: modelId.split('/').pop() || modelId,
+              providerId: item.provider.toLowerCase(),
+              providerName: item.provider,
+            })
+          }
+        }
+        setCloudModels(flat)
       })
       .catch(() => {
         setCloudModels([])
@@ -114,12 +115,13 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
     }
   }, [isOpen, cloudMode, isAuthenticated, fetchCloudModels])
 
-  const groupedModels = useMemo<ModelGroup[]>(() => {
+  const allModels = useMemo<FlatModel[]>(() => {
     if (cloudMode === 'cloud' && isAuthenticated && cloudModels.length > 0) {
       return cloudModels
     }
 
-    const groups: ModelGroup[] = []
+    const models: FlatModel[] = []
+    const seen = new Set<string>()
 
     for (const [providerId, provider] of Object.entries(BUILTIN_PROVIDERS)) {
       if (!hasApiKey(providerId)) continue
@@ -128,15 +130,21 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
       const customModels = providerConfig?.customModels || []
       const builtinModelIds = new Set(provider.models)
 
-      const models = [
-        ...provider.models.map(id => ({ id, name: id })),
-        ...customModels
-          .filter(id => !builtinModelIds.has(id))
-          .map(id => ({ id, name: id, isCustom: true })),
-      ]
+      for (const id of provider.models) {
+        const key = `${providerId}::${id}`
+        if (!seen.has(key)) {
+          seen.add(key)
+          models.push({ id, name: id.split('/').pop() || id, providerId, providerName: provider.displayName })
+        }
+      }
 
-      if (models.length > 0) {
-        groups.push({ providerId, providerName: provider.displayName, models })
+      for (const id of customModels) {
+        if (builtinModelIds.has(id)) continue
+        const key = `${providerId}::${id}`
+        if (!seen.has(key)) {
+          seen.add(key)
+          models.push({ id, name: id.split('/').pop() || id, providerId, providerName: provider.displayName, isCustom: true })
+        }
       }
     }
 
@@ -145,52 +153,31 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
       if (!config?.apiKey) continue
 
       const modelIds = config.customModels || []
-      if (modelIds.length === 0) continue
-
-      const models = modelIds.map(id => ({ id, name: id }))
       const providerName = config.displayName || providerId
 
-      groups.push({ providerId, providerName, models })
+      for (const id of modelIds) {
+        const key = `${providerId}::${id}`
+        if (!seen.has(key)) {
+          seen.add(key)
+          models.push({ id, name: id.split('/').pop() || id, providerId, providerName, isCustom: true })
+        }
+      }
     }
 
-    return groups
+    return models
   }, [providerConfigs, hasApiKey, cloudMode, isAuthenticated, cloudModels])
 
   const getIcon = useCallback((providerId: string) => {
     return PROVIDER_ICONS[providerId] || '🔮'
   }, [])
 
-  const currentProviderGroup = useMemo(() => {
-    return groupedModels.find(group => group.providerId === llmConfig.provider) || groupedModels[0]
-  }, [groupedModels, llmConfig.provider])
-
   const currentModel = useMemo(() => {
-    if (!currentProviderGroup) return null
-    return currentProviderGroup.models.find(model => model.id === llmConfig.model) || currentProviderGroup.models[0] || null
-  }, [currentProviderGroup, llmConfig.model])
-
-  useEffect(() => {
-    if (!isOpen) return
-    if (groupedModels.length === 0) {
-      setSelectedProviderId('')
-      return
-    }
-
-    const providerExists = groupedModels.some(group => group.providerId === llmConfig.provider)
-    if (providerExists) {
-      setSelectedProviderId(llmConfig.provider)
-      return
-    }
-
-    setSelectedProviderId(groupedModels[0].providerId)
-  }, [isOpen, groupedModels, llmConfig.provider])
+    return allModels.find(m => m.providerId === llmConfig.provider && m.id === llmConfig.model) || allModels[0] || null
+  }, [allModels, llmConfig.provider, llmConfig.model])
 
   const applyProviderConfig = useCallback((providerId: string, modelId: string) => {
     if (cloudMode === 'cloud' && isAuthenticated) {
-      update('llmConfig', {
-        provider: providerId,
-        model: modelId,
-      })
+      update('llmConfig', { provider: providerId, model: modelId })
       save()
       return
     }
@@ -216,35 +203,18 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
     save()
   }, [llmConfig.provider, llmConfig.timeout, providerConfigs, update, save, cloudMode, isAuthenticated])
 
-  const filteredGroups = useMemo(() => {
-    if (!searchQuery.trim()) return groupedModels
+  const filteredModels = useMemo(() => {
+    if (!searchQuery.trim()) return allModels
 
     const query = searchQuery.toLowerCase()
-    return groupedModels
-      .map(group => ({
-        ...group,
-        models: group.models.filter(m =>
-          m.name.toLowerCase().includes(query) ||
-          m.id.toLowerCase().includes(query) ||
-          group.providerName.toLowerCase().includes(query)
-        )
-      }))
-      .filter(group => group.models.length > 0 || group.providerName.toLowerCase().includes(query))
-  }, [groupedModels, searchQuery])
+    return allModels.filter(m =>
+      m.name.toLowerCase().includes(query) ||
+      m.id.toLowerCase().includes(query) ||
+      m.providerName.toLowerCase().includes(query)
+    )
+  }, [allModels, searchQuery])
 
-  const visibleProviderGroup = useMemo(() => {
-    if (filteredGroups.length === 0) return null
-    return filteredGroups.find(group => group.providerId === selectedProviderId) || filteredGroups[0]
-  }, [filteredGroups, selectedProviderId])
-
-  useEffect(() => {
-    if (!isOpen || filteredGroups.length === 0) return
-    if (!visibleProviderGroup) {
-      setSelectedProviderId(filteredGroups[0].providerId)
-    }
-  }, [isOpen, filteredGroups, visibleProviderGroup])
-
-  if (!currentProviderGroup || !currentModel) return null
+  if (!currentModel) return null
 
   return (
     <div ref={containerRef} className={`${alignLeft ? '' : 'relative'} flex items-center ${className}`}>
@@ -258,28 +228,27 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
             : 'bg-white/[0.03] text-text-secondary hover:text-text-primary hover:bg-white/[0.08]'
           }
         `}
-        >
+      >
         {cloudMode === 'cloud' && isAuthenticated ? (
           <Cloud className="w-3 h-3 text-accent flex-shrink-0" />
         ) : (
-          <span className="text-[11px] grayscale opacity-80 flex-shrink-0">{getIcon(currentProviderGroup.providerId)}</span>
+          <span className="text-[11px] grayscale opacity-80 flex-shrink-0">{getIcon(currentModel.providerId)}</span>
         )}
-        <span className="truncate max-w-[200px]" title={`${currentProviderGroup.providerName}/${currentModel.name}`}>
-          {currentProviderGroup.providerName}/{currentModel.name.split('/').pop()}
+        <span className="truncate max-w-[200px]" title={currentModel.name}>
+          {currentModel.name}
         </span>
         <ChevronDown className={`w-3 h-3 text-text-muted transition-transform flex-shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
       {isOpen && (
-        <div className="absolute bottom-full left-0 mb-2 max-w-[400px] w-[calc(100%-30px)] max-h-[360px] flex flex-col bg-surface border border-border rounded-xl shadow-2xl z-50 animate-scale-in overflow-hidden">
-          {/* 搜索框 */}
+        <div className="absolute bottom-full left-0 mb-2 max-w-[320px] w-[calc(100%-30px)] max-h-[360px] flex flex-col bg-surface border border-border rounded-xl shadow-2xl z-50 animate-scale-in overflow-hidden">
           <div className="p-2 border-b border-border/50 sticky top-0 bg-surface/95 backdrop-blur-sm z-10 rounded-t-xl shrink-0">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted" />
               <input
                 ref={searchInputRef}
                 type="text"
-                placeholder="搜索模型或供应商..."
+                placeholder="搜索模型..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 className="w-full bg-background border border-border rounded-lg pl-8 pr-3 py-1.5 text-xs text-text-primary placeholder:text-text-muted/85 focus:outline-none focus:border-accent/40 focus:ring-1 focus:ring-accent/20 transition-all custom-scrollbar"
@@ -287,82 +256,43 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
             </div>
           </div>
 
-          <div className="grid grid-cols-[150px_minmax(0,1fr)] min-h-0 flex-1">
-            <div className="border-r border-border/50 overflow-y-auto p-1 custom-scrollbar">
-              {filteredGroups.length === 0 ? (
-                <div className="py-6 text-center text-xs text-text-muted">无相关供应商</div>
-              ) : (
-                filteredGroups.map(group => {
-                  const isSelectedProvider = visibleProviderGroup?.providerId === group.providerId
-                  return (
-                    <button
-                      key={group.providerId}
-                      onClick={() => setSelectedProviderId(group.providerId)}
-                      className={`
-                        w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left text-xs transition-colors mb-0.5 last:mb-0
-                        ${isSelectedProvider ? 'bg-accent/10 text-accent font-medium' : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'}
-                      `}
-                    >
-                      <span className="grayscale text-[12px] flex-shrink-0">
+          <div className="overflow-y-auto flex-1 p-1 custom-scrollbar">
+            {filteredModels.length === 0 ? (
+              <div className="py-6 text-center text-xs text-text-muted">无相关模型</div>
+            ) : (
+              filteredModels.map(model => {
+                const isSelected = llmConfig.provider === model.providerId && llmConfig.model === model.id
+                return (
+                  <button
+                    key={`${model.providerId}-${model.id}`}
+                    onClick={() => {
+                      applyProviderConfig(model.providerId, model.id)
+                      setIsOpen(false)
+                    }}
+                    className={`
+                      w-full flex items-center justify-between px-3 py-2 rounded-lg text-left text-xs transition-colors mb-0.5 last:mb-0
+                      ${isSelected ? 'bg-accent/10 text-accent font-medium' : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'}
+                    `}
+                  >
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span className="text-[11px] grayscale opacity-60 flex-shrink-0">
                         {cloudMode === 'cloud' && isAuthenticated
-                          ? <Cloud className="w-3.5 h-3.5 text-accent" />
-                          : getIcon(group.providerId)}
+                          ? <Cloud className="w-3 h-3 text-accent" />
+                          : getIcon(model.providerId)}
                       </span>
-                      <span className="truncate" title={group.providerName}>{group.providerName}</span>
-                    </button>
-                  )
-                })
-              )}
-            </div>
-
-            <div className="overflow-y-auto flex-1 p-1 custom-scrollbar">
-              {!visibleProviderGroup ? (
-                <div className="py-6 text-center text-xs text-text-muted">无相关模型</div>
-              ) : (
-                <>
-                  <div className="px-2 py-1.5 text-[11px] font-bold text-text-muted/90 uppercase tracking-wider flex items-center gap-1.5 sticky top-0 bg-surface z-10 border-b border-border/30">
-                    <span className="grayscale">
-                      {cloudMode === 'cloud' && isAuthenticated
-                        ? <Cloud className="w-3 h-3 text-accent" />
-                        : getIcon(visibleProviderGroup.providerId)}
+                      <span className="truncate" title={model.name}>{model.name}</span>
+                      {model.isCustom && (
+                        <span className="flex-shrink-0 px-1.5 py-0.5 text-[10px] bg-purple-500/10 text-purple-500 rounded border border-purple-500/20">
+                          Custom
+                        </span>
+                      )}
                     </span>
-                    {visibleProviderGroup.providerName}
-                  </div>
-                  {visibleProviderGroup.models.length === 0 ? (
-                    <div className="py-6 text-center text-xs text-text-muted">无相关模型</div>
-                  ) : (
-                    visibleProviderGroup.models.map(model => {
-                      const isSelected = llmConfig.provider === visibleProviderGroup.providerId && llmConfig.model === model.id
-                      return (
-                        <button
-                          key={`${visibleProviderGroup.providerId}-${model.id}`}
-                          onClick={() => {
-                            applyProviderConfig(visibleProviderGroup.providerId, model.id)
-                            setIsOpen(false)
-                          }}
-                          className={`
-                            w-full flex items-center justify-between px-3 py-2 rounded-lg text-left text-xs transition-colors mb-0.5 last:mb-0
-                            ${isSelected ? 'bg-accent/10 text-accent font-medium' : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'}
-                          `}
-                        >
-                          <span className="flex items-center gap-2 min-w-0">
-                            <span className="truncate" title={model.name}>{model.name}</span>
-                            {model.isCustom && (
-                              <span className="flex-shrink-0 px-1.5 py-0.5 text-[10px] bg-purple-500/10 text-purple-500 rounded border border-purple-500/20">
-                                Custom
-                              </span>
-                            )}
-                          </span>
-                          {isSelected && <Check className="w-3.5 h-3.5 flex-shrink-0 ml-2" />}
-                        </button>
-                      )
-                    })
-                  )}
-                </>
-              )}
-            </div>
+                    {isSelected && <Check className="w-3.5 h-3.5 flex-shrink-0 ml-2" />}
+                  </button>
+                )
+              })
+            )}
           </div>
-
         </div>
       )}
     </div>

@@ -481,7 +481,7 @@ export async function runLoop(
     scenarioToolPacks,
   })
 
-  const agentTools = context.chatMode === 'chat' ? [] : toolManager.getAllToolDefinitions()
+  const agentTools = toolManager.getAllToolDefinitions()
   const loopDetector = new LoopDetector()
   let iteration = 0
   let shouldContinue = true

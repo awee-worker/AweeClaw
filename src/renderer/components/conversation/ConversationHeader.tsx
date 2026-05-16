@@ -1,7 +1,3 @@
-/**
- * 聊天面板头部组件
- * [AweeClaw] 增强功能：场景指示器、快捷操作
- */
 import { History, Trash2, Zap, Shield } from 'lucide-react'
 import { useStore } from '@store'
 import { WorkMode } from '@/renderer/modes/workModeTypes'
@@ -15,6 +11,12 @@ interface ChatHeaderProps {
   onClearMessages: () => void
 }
 
+const HEADER_MODES: Array<{ id: WorkMode; labelZh: string; labelEn: string }> = [
+  { id: 'chat', labelZh: '快速', labelEn: 'Quick' },
+  { id: 'agent', labelZh: '思考', labelEn: 'Think' },
+  { id: 'plan', labelZh: '专家', labelEn: 'Expert' },
+]
+
 export default function ChatHeader({
   chatMode,
   setChatMode,
@@ -24,29 +26,26 @@ export default function ChatHeader({
 }: ChatHeaderProps) {
   const language = useStore(s => s.language)
   const activeScenarioId = useStore(s => s.activeScenarioId)
+  const isZh = language === 'zh'
 
   return (
     <div className="h-12 flex items-center justify-between px-4 border-b border-border bg-background/50 backdrop-blur-sm z-20">
       <div className="flex items-center gap-2">
         <div className="flex bg-surface rounded-lg p-0.5 border border-border-subtle">
-          <button
-            onClick={() => setChatMode('chat')}
-            className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${chatMode === 'chat'
-              ? 'bg-background text-text-primary shadow-sm'
-              : 'text-text-muted hover:text-text-primary'
+          {HEADER_MODES.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => setChatMode(m.id)}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${chatMode === m.id
+                ? m.id === 'chat'
+                  ? 'bg-background text-text-primary shadow-sm'
+                  : 'text-accent bg-accent/10 shadow-sm'
+                : 'text-text-muted hover:text-text-primary'
               }`}
-          >
-            Chat
-          </button>
-          <button
-            onClick={() => setChatMode('agent')}
-            className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${chatMode === 'agent'
-              ? 'text-accent bg-accent/10 shadow-sm'
-              : 'text-text-muted hover:text-text-primary'
-              }`}
-          >
-            Agent
-          </button>
+            >
+              {isZh ? m.labelZh : m.labelEn}
+            </button>
+          ))}
         </div>
         {activeScenarioId && (
           <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-accent/5 border border-accent/10 text-accent text-[10px] font-medium">

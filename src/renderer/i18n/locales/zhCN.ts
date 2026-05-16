@@ -22,18 +22,18 @@ export const zh = {
 
   // Chat
   'aiAssistant': 'AI 助手',
-  'chat': '对话',
-  'agent': '代理',
+  'chat': '快速',
+  'agent': '思考',
   'clearChat': '清空对话',
-  'chatMode': '对话模式',
-  'agentMode': '代理模式',
-  'chatModeDesc': '问我任何关于代码的问题',
-  'agentModeDesc': '我可以帮你读取、编辑文件和执行命令',
+  'chatMode': '快速模式',
+  'agentMode': '思考模式',
+  'chatModeDesc': '适用于大部分情况',
+  'agentModeDesc': '擅长解决更难的问题',
   'askAnything': '问我任何问题...',
   'configureApiKey': '请先配置 API 密钥...',
   'apiKeyWarning': '请在设置中配置 API 密钥以开始对话',
-  'chatModeHint': '💬 对话模式：仅对话',
-  'agentModeHint': '⚡ 代理模式：可执行工具',
+  'chatModeHint': '⚡ 快速模式：适用于大部分情况',
+  'agentModeHint': '🧠 思考模式：擅长解决更难的问题',
 
   // Settings
   'provider': '服务商',

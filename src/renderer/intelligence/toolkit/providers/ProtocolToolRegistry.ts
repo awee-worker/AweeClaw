@@ -104,11 +104,6 @@ export class McpToolProvider implements ToolProvider {
   }
 
   getToolDefinitions(): ToolDefinition[] {
-    // Plan 模式的 planning 阶段不提供 MCP 工具
-    if (this.context.mode === 'plan' && this.context.planPhase !== 'executing') {
-      return []
-    }
-
     const servers = this.getConnectedServers()
     const definitions: ToolDefinition[] = []
 
@@ -124,7 +119,11 @@ export class McpToolProvider implements ToolProvider {
   getApprovalType(toolName: string): ToolApprovalType {
     const parsed = McpToolProvider.parseToolName(toolName)
     if (!parsed) {
-      return 'dangerous' // 未知工具需要审批
+      return 'dangerous'
+    }
+
+    if (this.context.mode === 'plan') {
+      return 'none'
     }
 
     const server = this.getServer(parsed.serverId)

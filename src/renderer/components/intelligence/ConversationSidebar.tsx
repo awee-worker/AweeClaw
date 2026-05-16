@@ -283,7 +283,7 @@ function ThreadItem({ thread, isActive, isEditing, editName, language, onSelect,
           </div>
         ) : (
           <div className="flex items-center justify-between gap-2">
-            <h4 className={`text-sm font-medium truncate pr-6 ${isActive ? 'text-accent' : 'text-text-primary'}`}>
+            <h4 className={`text-sm font-medium truncate pr-2 ${isActive ? 'text-accent' : 'text-text-primary'}`} title={preview || 'New Chat'}>
               {preview || 'New Chat'}
             </h4>
           </div>
@@ -447,7 +447,7 @@ function BranchList({ searchQuery, onClose, language }: { searchQuery: string, o
                     <>
                       <div className="flex items-center justify-between">
                         <span className={`text-sm font-medium truncate ${isActive ? 'text-accent' : 'text-text-primary'
-                          }`}>
+                          }`} title={branch.name}>
                           {branch.name}
                         </span>
                         {isActive && (

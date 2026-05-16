@@ -18,6 +18,11 @@ export interface CloudUser {
   email: string
   username?: string
   avatarUrl?: string
+  phone?: string
+  realName?: string
+  gender?: string
+  birthday?: string
+  occupation?: string
   role: string
   planId: string
 }
@@ -47,6 +52,7 @@ export interface AuthSlice {
   cloudModels: CloudProviderModel[]
 
   login: (serverUrl: string, email: string, password: string) => Promise<void>
+  phoneLogin: (serverUrl: string, phone: string, code: string) => Promise<void>
   register: (serverUrl: string, email: string, password: string, username?: string) => Promise<void>
   logout: () => void
   setCloudMode: (mode: 'local' | 'cloud') => void
@@ -125,6 +131,25 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
     const data = await backendApi.post<{ accessToken: string; refreshToken: string }>(
       '/api/v1/auth/login',
       { email, password },
+    );
+    setTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken });
+    set({ serverUrl: url, isAuthenticated: true, cloudMode: 'cloud' });
+    persistAuth({
+      serverUrl: url,
+      accessToken: data.accessToken,
+      refreshToken: data.refreshToken,
+      cloudMode: 'cloud',
+    });
+    await get().fetchProfile();
+    get().fetchQuota().catch(() => {});
+    get().selectCloudModel().catch(() => {});
+  },
+
+  phoneLogin: async (url, phone, code) => {
+    setServerUrl(url);
+    const data = await backendApi.post<{ accessToken: string; refreshToken: string }>(
+      '/api/v1/auth/phone-login',
+      { phone, code },
     );
     setTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken });
     set({ serverUrl: url, isAuthenticated: true, cloudMode: 'cloud' });

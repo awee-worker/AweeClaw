@@ -6,7 +6,7 @@ import { Language } from '@renderer/i18n'
 import type { LLMConfig, AutoApproveSettings, AgentConfig, WebSearchConfig } from '@shared/configuration/providerTypes'
 import type { ProviderModelConfig } from '@shared/configuration/preferenceSync'
 
-export type SettingsTab = 'provider' | 'appearance' | 'editor' | 'snippets' | 'agent' | 'rules' | 'memory' | 'skills' | 'mcp' | 'channel' | 'lsp' | 'keybindings' | 'indexing' | 'security' | 'system' | 'cloud'
+export type SettingsTab = 'language' | 'provider' | 'appearance' | 'editor' | 'snippets' | 'agent' | 'rules' | 'memory' | 'skills' | 'mcp' | 'channel' | 'lsp' | 'keybindings' | 'indexing' | 'security' | 'system' | 'cloud'
 
 export interface ProviderSettingsProps {
     localConfig: LLMConfig
@@ -91,6 +91,6 @@ export interface PromptPreviewModalProps {
 }
 
 export const LANGUAGES: { id: Language; name: string }[] = [
-    { id: 'en', name: 'English' },
     { id: 'zh', name: '中文' },
+    { id: 'en', name: 'English' },
 ]

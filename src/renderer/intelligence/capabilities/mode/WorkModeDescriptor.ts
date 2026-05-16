@@ -1,144 +1,85 @@
-/**
- * Mode Descriptor - Unified mode capability description
- *
- * Defines how each mode (chat/plan) behaves in terms of:
- * - Tool policy
- * - Prompt profile
- * - Context profile
- * - Budget profile
- * - Persistence profile
- */
-
 import type { WorkMode } from '@protocols/workModeProtocol'
 import type { CompressionLevel } from '../context/compressionUtils'
 
-// ===== Tool Policy =====
-
 export interface ToolPolicy {
-  /** Whether tools are enabled */
   enabled: boolean
-  /** Whether to require approval for dangerous tools */
   requireApproval?: boolean
 }
 
-// ===== Prompt Profile =====
-
 export interface PromptProfile {
-  /** Base system prompt template */
   baseTemplate?: string
-  /** Whether to inject workspace context */
   includeWorkspaceContext: boolean
-  /** Whether to inject open files context */
   includeOpenFiles: boolean
-  /** Whether to inject active file context */
   includeActiveFile: boolean
-  /** Whether to inject custom instructions */
   includeCustomInstructions: boolean
-  /** Additional prompt sections */
   additionalSections?: string[]
 }
 
-// ===== Context Profile =====
-
 export interface ContextProfile {
-  /** Whether to include full message history */
   includeFullHistory: boolean
-  /** Whether to include tool call history */
   includeToolHistory: boolean
-  /** Whether to include summary/handoff context */
   includeSummaryContext: boolean
-  /** Whether to include plan-specific context */
   includePlanContext: boolean
-  /** Maximum context items to include */
   maxContextItems?: number
-  /** Context priority order */
   contextPriority?: ('history' | 'tools' | 'summary' | 'plan' | 'dependencies')[]
 }
 
-// ===== Budget Profile =====
-
 export interface BudgetProfile {
-  /** Target context usage ratio (0-1) */
   targetRatio: number
-  /** Reserved output token budget */
   reservedOutputTokens: number
-  /** Reserved safety margin tokens */
   reservedSafetyTokens: number
-  /** Initial compression level */
   initialCompressionLevel: CompressionLevel
-  /** Whether to enable auto-compression */
   enableAutoCompression: boolean
-  /** Whether to enable summary generation at L3 */
   enableSummaryGeneration: boolean
-  /** Whether to enable handoff generation at L4 */
   enableHandoffGeneration: boolean
 }
 
-// ===== Persistence Profile =====
-
 export interface PersistenceProfile {
-  /** Whether to persist thread state */
   persistThread: boolean
-  /** Whether to persist messages */
   persistMessages: boolean
-  /** Whether to persist context items */
   persistContextItems: boolean
-  /** Whether to persist compression stats */
   persistCompressionStats: boolean
-  /** Whether to persist summary */
   persistSummary: boolean
-  /** Whether to restore on startup */
   restoreOnStartup: boolean
 }
 
-// ===== Mode Descriptor =====
-
 export interface ModeDescriptor {
-  /** Mode identifier */
   id: WorkMode
-  /** Display name */
   displayName: string
-  /** Description */
   description: string
-  /** Tool policy */
   toolPolicy: ToolPolicy
-  /** Prompt profile */
   promptProfile: PromptProfile
-  /** Context profile */
   contextProfile: ContextProfile
-  /** Budget profile */
   budgetProfile: BudgetProfile
-  /** Persistence profile */
   persistenceProfile: PersistenceProfile
 }
 
-// ===== Default Descriptors =====
-
 export const CHAT_MODE_DESCRIPTOR: ModeDescriptor = {
   id: 'chat',
-  displayName: 'Chat',
-  description: 'Quick Q&A without tool execution',
+  displayName: 'Quick',
+  description: '适用于大部分情况 — 快速响应，轻量上下文',
   toolPolicy: {
-    enabled: false,
+    enabled: true,
+    requireApproval: false,
   },
   promptProfile: {
     includeWorkspaceContext: false,
-    includeOpenFiles: false,
-    includeActiveFile: false,
+    includeOpenFiles: true,
+    includeActiveFile: true,
     includeCustomInstructions: true,
   },
   contextProfile: {
     includeFullHistory: true,
-    includeToolHistory: false,
+    includeToolHistory: true,
     includeSummaryContext: false,
     includePlanContext: false,
-    maxContextItems: 5,
-    contextPriority: ['history'],
+    maxContextItems: 8,
+    contextPriority: ['history', 'tools'],
   },
   budgetProfile: {
-    targetRatio: 0.7,
+    targetRatio: 0.6,
     reservedOutputTokens: 4096,
-    reservedSafetyTokens: 2048,
+    reservedSafetyTokens: 1024,
     initialCompressionLevel: 0,
     enableAutoCompression: true,
     enableSummaryGeneration: false,
@@ -156,8 +97,8 @@ export const CHAT_MODE_DESCRIPTOR: ModeDescriptor = {
 
 export const AGENT_MODE_DESCRIPTOR: ModeDescriptor = {
   id: 'agent',
-  displayName: 'Agent',
-  description: 'Autonomous task execution with tools',
+  displayName: 'Think',
+  description: '擅长解决更难的问题 — 深度推理，丰富上下文',
   toolPolicy: {
     enabled: true,
     requireApproval: true,
@@ -167,12 +108,16 @@ export const AGENT_MODE_DESCRIPTOR: ModeDescriptor = {
     includeOpenFiles: true,
     includeActiveFile: true,
     includeCustomInstructions: true,
+    additionalSections: [
+      'Think step by step before acting. Analyze the problem thoroughly, consider edge cases, and provide well-reasoned solutions.',
+    ],
   },
   contextProfile: {
     includeFullHistory: true,
     includeToolHistory: true,
     includeSummaryContext: true,
     includePlanContext: false,
+    maxContextItems: 15,
     contextPriority: ['summary', 'tools', 'history'],
   },
   budgetProfile: {
@@ -196,17 +141,22 @@ export const AGENT_MODE_DESCRIPTOR: ModeDescriptor = {
 
 export const PLAN_MODE_DESCRIPTOR: ModeDescriptor = {
   id: 'plan',
-  displayName: 'Plan',
-  description: 'Multi-step planning and task orchestration',
+  displayName: 'Expert',
+  description: '研究级智能模式 — 深度思考、制定计划、执行任务、事后验证',
   toolPolicy: {
     enabled: true,
-    requireApproval: true,
+    requireApproval: false,
   },
   promptProfile: {
     includeWorkspaceContext: true,
     includeOpenFiles: true,
     includeActiveFile: true,
     includeCustomInstructions: true,
+    additionalSections: [
+      'MAXIMUM PRIVILEGE: Expert Mode has full access to ALL tools (built-in, MCP, Skills) with no approval required. Use this power responsibly.',
+      'Four-Phase Expert Workflow: Deep Thinking → Plan → Execute → Verify. Never skip deep analysis. Never skip verification after write operations.',
+      'MCP and Skill tools are available in ALL phases for deep analysis. Use them proactively for comprehensive understanding.',
+    ],
   },
   contextProfile: {
     includeFullHistory: true,
@@ -216,8 +166,8 @@ export const PLAN_MODE_DESCRIPTOR: ModeDescriptor = {
     contextPriority: ['plan', 'dependencies', 'summary', 'tools', 'history'],
   },
   budgetProfile: {
-    targetRatio: 0.85,
-    reservedOutputTokens: 8192,
+    targetRatio: 0.9,
+    reservedOutputTokens: 16384,
     reservedSafetyTokens: 4096,
     initialCompressionLevel: 0,
     enableAutoCompression: true,
@@ -234,14 +184,13 @@ export const PLAN_MODE_DESCRIPTOR: ModeDescriptor = {
   },
 }
 
-// Plan task worker descriptor (internal, not user-facing)
 export const PLAN_TASK_WORKER_DESCRIPTOR: ModeDescriptor = {
-  id: 'agent', // Reuses agent execution kernel
-  displayName: 'Plan Task Worker',
-  description: 'Background worker for plan task execution',
+  id: 'agent',
+  displayName: 'Expert Task Worker',
+  description: 'Background worker for expert plan task execution',
   toolPolicy: {
     enabled: true,
-    requireApproval: false, // Auto-approve for background tasks
+    requireApproval: false,
   },
   promptProfile: {
     includeWorkspaceContext: true,
@@ -250,7 +199,7 @@ export const PLAN_TASK_WORKER_DESCRIPTOR: ModeDescriptor = {
     includeCustomInstructions: false,
   },
   contextProfile: {
-    includeFullHistory: false, // Only task-specific context
+    includeFullHistory: false,
     includeToolHistory: true,
     includeSummaryContext: false,
     includePlanContext: true,
@@ -259,15 +208,15 @@ export const PLAN_TASK_WORKER_DESCRIPTOR: ModeDescriptor = {
   },
   budgetProfile: {
     targetRatio: 0.8,
-    reservedOutputTokens: 4096,
+    reservedOutputTokens: 8192,
     reservedSafetyTokens: 2048,
-    initialCompressionLevel: 1, // Start with some compression
+    initialCompressionLevel: 1,
     enableAutoCompression: true,
     enableSummaryGeneration: false,
     enableHandoffGeneration: false,
   },
   persistenceProfile: {
-    persistThread: false, // Worker threads are ephemeral
+    persistThread: false,
     persistMessages: false,
     persistContextItems: false,
     persistCompressionStats: false,

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { Settings, Workflow, Compass, LogIn, User, ChevronUp, CloudSync, Info, MessageSquare, Plus, MoreHorizontal, Edit2, Trash2 } from 'lucide-react'
+import { Settings, Workflow, Compass, LogIn, ChevronUp, CloudSync, Info, MessageSquare, Plus, MoreHorizontal, Edit2, Trash2, LogOut, UserCircle, Wallet } from 'lucide-react'
 import { HintOverlay } from '../ui/HintOverlay'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -47,8 +47,12 @@ function UserMenuDropdown({
   onExploreClick,
   onWorkflowClick,
   onUserInfoClick,
+  onBillingCenterClick,
   onCheckUpdate,
   onAbout,
+  onLogout,
+  isAuthenticated,
+  cloudUser,
 }: {
   isOpen: boolean
   onClose: () => void
@@ -57,13 +61,18 @@ function UserMenuDropdown({
   onExploreClick: () => void
   onWorkflowClick: () => void
   onUserInfoClick: () => void
+  onBillingCenterClick: () => void
   onCheckUpdate: () => void
   onAbout: () => void
+  onLogout: () => void
+  isAuthenticated: boolean
+  cloudUser: { username?: string; email: string; avatarUrl?: string; planId: string; phone?: string } | null
 }) {
   const ref = useRef<HTMLDivElement>(null)
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
 
   useEffect(() => {
-    if (!isOpen) return
+    if (!isOpen) { setShowLogoutConfirm(false); return }
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) {
         onClose()
@@ -75,9 +84,14 @@ function UserMenuDropdown({
 
   if (!isOpen) return null
 
-  const accountItems = [
-    { icon: User, label: language === 'zh' ? '用户信息' : 'User Info', onClick: onUserInfoClick },
-  ]
+  const planLabel = cloudUser?.planId === 'ENTERPRISE'
+    ? (language === 'zh' ? '企业版' : 'Enterprise')
+    : cloudUser?.planId === 'PRO' || cloudUser?.planId === 'PROFESSIONAL'
+      ? (language === 'zh' ? '专业版' : 'Pro')
+      : language === 'zh' ? '免费版' : 'Free'
+
+  const initial = cloudUser?.username?.[0]?.toUpperCase() || cloudUser?.email?.[0]?.toUpperCase() || '?'
+  const displayName = cloudUser?.username || cloudUser?.email || ''
 
   const featureItems = [
     { icon: Compass, label: language === 'zh' ? '探索' : 'Explore', onClick: onExploreClick },
@@ -95,18 +109,47 @@ function UserMenuDropdown({
       ref={ref}
       className="absolute bottom-full left-0 right-0 mb-1 mx-1 py-1 rounded-xl bg-surface/95 backdrop-blur-xl border border-border/50 shadow-xl shadow-black/20 z-50"
     >
-      {accountItems.map((item) => (
+      {isAuthenticated && (
         <button
-          key={item.label}
-          onClick={() => { item.onClick(); onClose() }}
-          className="w-full h-8 flex items-center gap-2.5 px-3 text-text-primary hover:bg-text-primary/[0.06] transition-colors text-[13px]"
+          onClick={() => { onUserInfoClick(); onClose() }}
+          className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-text-primary/[0.06] transition-colors"
         >
-          <item.icon className="w-[16px] h-[16px]" strokeWidth={1.5} />
-          <span>{item.label}</span>
+          {cloudUser?.avatarUrl ? (
+            <img src={cloudUser.avatarUrl} alt="" className="w-8 h-8 rounded-full object-cover border border-border/40 flex-shrink-0" />
+          ) : (
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-accent/80 to-accent/40 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 shadow-sm shadow-accent/20">
+              {initial}
+            </div>
+          )}
+          <div className="flex-1 min-w-0 text-left">
+            <p className="text-[13px] font-medium text-text-primary truncate">{displayName}</p>
+            <p className="text-[11px] text-text-muted">{planLabel}</p>
+          </div>
         </button>
-      ))}
+      )}
 
-      <div className="h-px bg-border/50 my-1 mx-2" />
+      {isAuthenticated && <div className="h-px bg-border/50 my-1 mx-2" />}
+
+      {isAuthenticated && (
+        <>
+          <button
+            onClick={() => { onUserInfoClick(); onClose() }}
+            className="w-full h-8 flex items-center gap-2.5 px-3 text-text-primary hover:bg-text-primary/[0.06] transition-colors text-[13px]"
+          >
+            <UserCircle className="w-[16px] h-[16px]" strokeWidth={1.5} />
+            <span>{language === 'zh' ? '用户中心' : 'Account'}</span>
+          </button>
+          <button
+            onClick={() => { onBillingCenterClick(); onClose() }}
+            className="w-full h-8 flex items-center gap-2.5 px-3 text-text-primary hover:bg-text-primary/[0.06] transition-colors text-[13px]"
+          >
+            <Wallet className="w-[16px] h-[16px]" strokeWidth={1.5} />
+            <span>{language === 'zh' ? '费用中心' : 'Billing'}</span>
+          </button>
+        </>
+      )}
+
+      {isAuthenticated && <div className="h-px bg-border/50 my-1 mx-2" />}
 
       {featureItems.map((item) => (
         <button
@@ -131,6 +174,39 @@ function UserMenuDropdown({
           <span>{item.label}</span>
         </button>
       ))}
+
+      {isAuthenticated && (
+        <>
+          <div className="h-px bg-border/50 my-1 mx-2" />
+          {showLogoutConfirm ? (
+            <div className="px-3 py-2 space-y-2">
+              <p className="text-[12px] text-text-secondary">{language === 'zh' ? '确定要退出登录吗？' : 'Are you sure you want to sign out?'}</p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowLogoutConfirm(false)}
+                  className="flex-1 h-7 rounded-md text-[12px] font-medium border border-border/50 text-text-secondary hover:bg-surface-hover transition-colors"
+                >
+                  {language === 'zh' ? '取消' : 'Cancel'}
+                </button>
+                <button
+                  onClick={() => { onLogout(); onClose() }}
+                  className="flex-1 h-7 rounded-md text-[12px] font-medium bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors"
+                >
+                  {language === 'zh' ? '退出' : 'Sign Out'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowLogoutConfirm(true)}
+              className="w-full h-8 flex items-center gap-2.5 px-3 text-red-500 hover:bg-red-500/5 transition-colors text-[13px]"
+            >
+              <LogOut className="w-[16px] h-[16px]" strokeWidth={1.5} />
+              <span>{language === 'zh' ? '退出登录' : 'Sign Out'}</span>
+            </button>
+          )}
+        </>
+      )}
     </div>
   )
 }
@@ -224,9 +300,14 @@ export default function NavigationRail() {
     activeScenarioId,
     navRailExpanded,
     showSettingsPage,
+    showUserProfilePage,
     isAuthenticated,
     cloudUser,
     setShowAbout,
+    setShowWelcomePage,
+    setShowUserProfilePage,
+    setShowBillingCenterPage,
+    logout,
   } = useStore(useShallow(s => ({
     activeSidePanel: s.activeSidePanel,
     setActiveSidePanel: s.setActiveSidePanel,
@@ -236,9 +317,14 @@ export default function NavigationRail() {
     activeScenarioId: s.activeScenarioId,
     navRailExpanded: s.navRailExpanded,
     showSettingsPage: s.showSettingsPage,
+    showUserProfilePage: s.showUserProfilePage,
     isAuthenticated: s.isAuthenticated,
     cloudUser: s.cloudUser,
     setShowAbout: s.setShowAbout,
+    setShowWelcomePage: s.setShowWelcomePage,
+    setShowUserProfilePage: s.setShowUserProfilePage,
+    setShowBillingCenterPage: s.setShowBillingCenterPage,
+    logout: s.logout,
   })))
 
   const currentThreadId = useAgentStore(state => state.currentThreadId)
@@ -247,7 +333,6 @@ export default function NavigationRail() {
 
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [showLoginModal, setShowLoginModal] = useState(false)
-  const [showUserDetailModal, setShowUserDetailModal] = useState(false)
   const [showUpdateModal, setShowUpdateModal] = useState(false)
   const [renamingThreadId, setRenamingThreadId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
@@ -266,25 +351,50 @@ export default function NavigationRail() {
   const handleMenuItemClick = (itemId: string, isActive: boolean) => {
     setActiveSidePanel(isActive ? null : (itemId as SidePanel))
     setShowSettingsPage(false)
+    setShowWelcomePage(false)
   }
 
   const handleSettingsClick = useCallback(() => {
     setActiveSidePanel(null)
     setShowSettingsPage(true)
-  }, [setActiveSidePanel, setShowSettingsPage])
+    setShowWelcomePage(false)
+    setShowUserProfilePage(false)
+    setShowBillingCenterPage(false)
+  }, [setActiveSidePanel, setShowSettingsPage, setShowWelcomePage, setShowUserProfilePage, setShowBillingCenterPage])
 
   const handleExploreClick = useCallback(() => {
     setActiveSidePanel(activeSidePanel === 'scenarios' ? null : 'scenarios')
     setShowSettingsPage(false)
-  }, [activeSidePanel, setActiveSidePanel, setShowSettingsPage])
+    setShowUserProfilePage(false)
+    setShowBillingCenterPage(false)
+  }, [activeSidePanel, setActiveSidePanel, setShowSettingsPage, setShowUserProfilePage, setShowBillingCenterPage])
 
   const handleWorkflowClick = useCallback(() => {
     setShowWorkflow(true)
-  }, [setShowWorkflow])
+    setShowUserProfilePage(false)
+    setShowBillingCenterPage(false)
+  }, [setShowWorkflow, setShowUserProfilePage, setShowBillingCenterPage])
 
   const handleUserInfoClick = useCallback(() => {
-    setShowUserDetailModal(true)
-  }, [])
+    setActiveSidePanel(null)
+    setShowSettingsPage(false)
+    setShowWelcomePage(false)
+    setShowUserProfilePage(true)
+    setShowBillingCenterPage(false)
+  }, [setActiveSidePanel, setShowSettingsPage, setShowWelcomePage, setShowUserProfilePage, setShowBillingCenterPage])
+
+  const handleBillingCenterClick = useCallback(() => {
+    setActiveSidePanel(null)
+    setShowSettingsPage(false)
+    setShowWelcomePage(false)
+    setShowUserProfilePage(false)
+    setShowBillingCenterPage(true)
+  }, [setActiveSidePanel, setShowSettingsPage, setShowWelcomePage, setShowUserProfilePage, setShowBillingCenterPage])
+
+  const handleLogout = useCallback(() => {
+    logout()
+    setShowUserMenu(false)
+  }, [logout])
 
   const handleCheckUpdate = useCallback(() => {
     setShowUpdateModal(true)
@@ -350,6 +460,12 @@ export default function NavigationRail() {
           gap: 10px;
           padding: 4px 6px 12px 6px;
           flex-shrink: 0;
+          cursor: pointer;
+          border-radius: 8px;
+          transition: background 0.2s ease;
+        }
+        .${p}-nav-rail-brand:hover {
+          background: rgb(var(--text-primary) / 0.06);
         }
         .${p}-nav-rail[data-expanded="false"] .${p}-nav-rail-brand {
           justify-content: center;
@@ -564,12 +680,12 @@ export default function NavigationRail() {
       `}</style>
 
       {navRailExpanded ? (
-        <div className={`${p}-nav-rail-brand`}>
+        <div className={`${p}-nav-rail-brand`} onClick={() => { setActiveSidePanel(null); setShowSettingsPage(false); setShowWelcomePage(true) }}>
           <div className={`${p}-nav-rail-brand-icon`}>A</div>
           <span className={`${p}-nav-rail-brand-name`}>{BRAND.name}</span>
         </div>
       ) : (
-        <div className={`${p}-nav-rail-brand`}>
+        <div className={`${p}-nav-rail-brand`} onClick={() => { setActiveSidePanel(null); setShowSettingsPage(false); setShowWelcomePage(true) }}>
           <div className={`${p}-nav-rail-brand-icon`}>A</div>
         </div>
       )}
@@ -578,7 +694,7 @@ export default function NavigationRail() {
         {sidebarItems.map((item) => {
           const IconComponent = getLucideIcon(item.icon)
           const label = language === 'zh' ? item.labelZh : item.label
-          const isActive = !showSettingsPage && activeSidePanel === item.id
+          const isActive = !showSettingsPage && !showUserProfilePage && activeSidePanel === item.id
           return navRailExpanded ? (
             <button
               key={item.id}
@@ -714,8 +830,12 @@ export default function NavigationRail() {
           onExploreClick={handleExploreClick}
           onWorkflowClick={handleWorkflowClick}
           onUserInfoClick={handleUserInfoClick}
+          onBillingCenterClick={handleBillingCenterClick}
           onCheckUpdate={handleCheckUpdate}
           onAbout={handleAbout}
+          onLogout={handleLogout}
+          isAuthenticated={isAuthenticated}
+          cloudUser={cloudUser}
         />
 
         {isAuthenticated ? (
@@ -758,7 +878,7 @@ export default function NavigationRail() {
         )}
       </div>
 
-      <UserAccountPopover language={language} forceLoginOpen={showLoginModal} onLoginClose={() => setShowLoginModal(false)} hideButton forceUserOpen={showUserDetailModal} onUserClose={() => setShowUserDetailModal(false)} />
+      <UserAccountPopover language={language} forceLoginOpen={showLoginModal} onLoginClose={() => setShowLoginModal(false)} hideButton />
       <UpdateModal isOpen={showUpdateModal} onClose={() => setShowUpdateModal(false)} />
     </div>
   )

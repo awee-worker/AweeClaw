@@ -221,6 +221,30 @@ export const DEFAULT_AGENT_CONFIG: AgentRuntimeConfig = {
   },
   // Auto-Context Configuration
   enableAutoContext: true,
+
+  modePostProcessHooks: {
+    plan: {
+      enabled: true,
+      hook: ({ mode, hasWriteOps, iteration, maxIterations }) => {
+        if (mode !== 'plan') return null
+        if (!hasWriteOps) return null
+        if (iteration >= maxIterations - 1) return null
+
+        return {
+          shouldContinue: true,
+          reminderMessage:
+            '⚠️ Expert Mode Verification Required: You have made write operations but have NOT yet verified the results. ' +
+            'You MUST now enter Phase 4 (Verification). Please:\n' +
+            '1. Run linting/type-checking to verify code quality\n' +
+            '2. Run existing tests to ensure nothing is broken\n' +
+            '3. Review your changes for common issues (missing imports, typos, logic errors)\n' +
+            '4. Verify integration with existing code\n' +
+            '5. Output a Verification Report summarizing the results\n\n' +
+            'Do NOT declare completion without verification. If issues are found, fix them first.',
+        }
+      },
+    },
+  },
 }
 
 // ============================================

@@ -14,6 +14,9 @@ export interface LayoutSlice {
   terminalLayout: 'tabs' | 'split'
   navRailExpanded: boolean
   showSettingsPage: boolean
+  showWelcomePage: boolean
+  showUserProfilePage: boolean
+  showBillingCenterPage: boolean
 
   setActiveSidePanel: (panel: SidePanel) => void
   setTerminalVisible: (visible: boolean) => void
@@ -29,6 +32,9 @@ export interface LayoutSlice {
   setNavRailExpanded: (expanded: boolean) => void
   toggleNavRail: () => void
   setShowSettingsPage: (show: boolean) => void
+  setShowWelcomePage: (show: boolean) => void
+  setShowUserProfilePage: (show: boolean) => void
+  setShowBillingCenterPage: (show: boolean) => void
 }
 
 export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> = (set) => ({
@@ -42,6 +48,9 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
   terminalLayout: 'tabs',
   navRailExpanded: true,
   showSettingsPage: false,
+  showWelcomePage: false,
+  showUserProfilePage: false,
+  showBillingCenterPage: false,
 
   setActiveSidePanel: (panel) => set(() => ({
     activeSidePanel: panel,
@@ -62,4 +71,7 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
   setNavRailExpanded: (expanded) => set({ navRailExpanded: expanded }),
   toggleNavRail: () => set((state) => ({ navRailExpanded: !state.navRailExpanded })),
   setShowSettingsPage: (show) => set({ showSettingsPage: show }),
+  setShowWelcomePage: (show) => set({ showWelcomePage: show }),
+  setShowUserProfilePage: (show) => set({ showUserProfilePage: show }),
+  setShowBillingCenterPage: (show) => set({ showBillingCenterPage: show }),
 })

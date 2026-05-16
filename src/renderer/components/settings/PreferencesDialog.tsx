@@ -19,6 +19,9 @@ const ModelProviderPanel = lazy(() =>
 const EditorPreferencesPanel = lazy(() =>
     import('./tabs/EditorPreferencesPanel').then(module => ({ default: module.EditorPreferencesPanel })),
 )
+const LanguageSettings = lazy(() =>
+    import('./tabs/LanguageSettings').then(module => ({ default: module.LanguageSettings })),
+)
 const AppearanceSettings = lazy(() =>
     import('./tabs/AppearanceSettings').then(module => ({ default: module.AppearanceSettings })),
 )
@@ -426,8 +429,9 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
 
     const tabs = useMemo(() => {
         const allTabs = [
-            { id: 'provider', label: language === 'zh' ? '模型提供商' : 'Providers', icon: <Cpu className="w-4 h-4" /> },
-            { id: 'appearance', label: language === 'zh' ? '外观' : 'Appearance', icon: <Palette className="w-4 h-4" /> },
+            { id: 'provider', label: language === 'zh' ? '模型设置' : 'Model', icon: <Cpu className="w-4 h-4" /> },
+            { id: 'language', label: language === 'zh' ? '语言设置' : 'Language', icon: <Globe className="w-4 h-4" /> },
+            { id: 'appearance', label: language === 'zh' ? '外观设置' : 'Appearance', icon: <Palette className="w-4 h-4" /> },
             { id: 'agent', label: language === 'zh' ? '智能体' : 'Agent', icon: <Settings2 className="w-4 h-4" /> },
             { id: 'rules', label: language === 'zh' ? '行为规则' : 'Rules', icon: <FileText className="w-4 h-4" /> },
             { id: 'memory', label: language === 'zh' ? '上下文记忆' : 'Memory', icon: <Brain className="w-4 h-4" /> },
@@ -440,7 +444,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
             { id: 'lsp', label: language === 'zh' ? '语言服务' : 'LSP', icon: <Braces className="w-4 h-4" /> },
             { id: 'keybindings', label: language === 'zh' ? '快捷键' : 'Keybindings', icon: <Keyboard className="w-4 h-4" /> },
             { id: 'security', label: language === 'zh' ? '安全设置' : 'Security', icon: <Shield className="w-4 h-4" /> },
-            { id: 'system', label: language === 'zh' ? '系统' : 'System', icon: <Monitor className="w-4 h-4" /> },
+            { id: 'system', label: language === 'zh' ? '系统设置' : 'System', icon: <Monitor className="w-4 h-4" /> },
             { id: 'cloud', label: language === 'zh' ? '云端服务' : 'Cloud', icon: <Cloud className="w-4 h-4" /> },
         ]
         if (isCodeEditor) return allTabs
@@ -449,6 +453,14 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
 
     const renderActiveTab = () => {
         switch (activeTab) {
+            case 'language':
+                return (
+                    <LanguageSettings
+                        language={language as Language}
+                        localLanguage={localLanguage as Language}
+                        setLocalLanguage={(lang) => setLocalLanguage(lang)}
+                    />
+                )
             case 'provider':
                 return (
                     <ModelProviderPanel
@@ -544,7 +556,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
 
     const dialogContent = (
         <div className={`flex h-full ${embedded ? '' : 'max-h-[800px]'}`}>
-            <div className={`bg-surface/30 backdrop-blur-xl border-r border-border/50 flex flex-col pt-8 pb-6 ${embedded ? 'w-56' : 'w-64'}`}>
+            <div className={`bg-surface/30 backdrop-blur-xl flex flex-col pt-8 pb-6 ${embedded ? 'w-56' : 'w-64'}`}>
                 <div className="px-6 mb-6">
                     <h2 className="text-lg font-semibold text-text-primary tracking-tight flex items-center gap-2.5">
                         <div className="p-1.5 rounded-lg bg-accent/10 border border-accent/20">
@@ -568,22 +580,10 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                         </button>
                     ))}
                 </nav>
-
-                <div className="mt-auto px-6 pt-6 border-t border-border/50 space-y-3">
-                    <div className="flex items-center gap-2 px-1 text-text-muted opacity-80">
-                        <Globe className="w-3.5 h-3.5" />
-                        <span className="text-xs font-bold uppercase tracking-widest">{language === 'zh' ? '语言' : 'Language'}</span>
-                    </div>
-                    <DropdownSelector
-                        value={localLanguage}
-                        onChange={(value) => setLocalLanguage(value as 'en' | 'zh')}
-                        options={LANGUAGES.map(item => ({ value: item.id, label: item.name }))}
-                        className="w-full text-xs bg-surface/50 border-border/50 hover:border-accent/50 transition-colors"
-                    />
-                </div>
             </div>
 
-            <div className="flex-1 flex flex-col min-w-0 bg-transparent relative">
+            <div className="flex-1 flex justify-center overflow-hidden">
+                <div className="w-full max-w-[1000px] flex flex-col min-w-0 bg-transparent relative">
                 <div className="shrink-0 px-8 pt-6 pb-4 border-b border-border/40 flex items-center justify-between">
                     <div>
                         <h3 className="text-2xl font-semibold text-text-primary tracking-tight">
@@ -593,15 +593,13 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                             {t('settings.managePreferences', language as Language)}
                         </p>
                     </div>
-                    {!embedded && (
-                        <button
-                            onClick={handleClose}
-                            className="p-2 rounded-xl hover:bg-text-primary/[0.05] text-text-muted hover:text-text-primary transition-all duration-200 group"
-                            title={language === 'zh' ? '关闭设置' : 'Close settings'}
-                        >
-                            <X className="w-5 h-5 group-hover:rotate-90 transition-transform duration-300" />
-                        </button>
-                    )}
+                    <button
+                        onClick={handleClose}
+                        className="p-2 rounded-xl hover:bg-text-primary/[0.05] text-text-muted hover:text-text-primary transition-all duration-200 group"
+                        title={language === 'zh' ? '关闭设置' : 'Close settings'}
+                    >
+                        <X className="w-5 h-5 group-hover:rotate-90 transition-transform duration-300" />
+                    </button>
                 </div>
 
                 <div className="settings-scroll-region flex-1 overflow-y-auto px-8 py-6 custom-scrollbar pb-28">
@@ -641,6 +639,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                         </div>
                     </div>
                 )}
+                </div>
             </div>
         </div>
     )

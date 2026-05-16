@@ -22,18 +22,18 @@ export const en = {
 
   // Chat
   'aiAssistant': 'AI Assistant',
-  'chat': 'Chat',
-  'agent': 'Agent',
+  'chat': 'Quick',
+  'agent': 'Think',
   'clearChat': 'Clear chat',
-  'chatMode': 'Chat Mode',
-  'agentMode': 'Agent Mode',
-  'chatModeDesc': 'Ask me anything about your code',
-  'agentModeDesc': 'I can read, edit files, and run commands for you',
+  'chatMode': 'Quick Mode',
+  'agentMode': 'Think Mode',
+  'chatModeDesc': 'Suitable for most situations',
+  'agentModeDesc': 'Excels at harder problems',
   'askAnything': 'Ask me anything...',
   'configureApiKey': 'Configure API key first...',
   'apiKeyWarning': 'Please configure your API key in Settings to start chatting',
-  'chatModeHint': '💬 Chat mode: Conversation only',
-  'agentModeHint': '⚡ Agent mode: Can execute tools',
+  'chatModeHint': '⚡ Quick mode: Suitable for most situations',
+  'agentModeHint': '🧠 Think mode: Excels at harder problems',
 
   // Settings
   'provider': 'Provider',

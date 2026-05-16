@@ -1,41 +1,44 @@
-import { useEffect, useState, useCallback,  useRef } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import {
   FolderOpen,
-  Folder,
   Plus,
-  Settings,
   Sparkles,
-  Scale,
-  GraduationCap,
-  Stethoscope,
-  Code2,
   ChevronRight,
   Clock,
   Zap,
+  MessageSquare,
+  ArrowRight,
+  FolderSearch,
 } from 'lucide-react'
 import { api } from '../../adapters/electronBridge'
 import { BRAND } from '@shared/brand'
 import { workspaceManager, WorkspaceOpenError } from '@services/WorkspaceAdapter'
 import { useStore } from '@/renderer/state'
+import { scenarioRegistry } from '@shared/configuration/scenarios'
+import { getLucideIcon } from '../foundation/IconMap'
 import { logger } from '@toolkit/LogEngine'
 import { toast } from '@components/foundation/NotificationProvider'
 import { getFileName } from '@shared/toolkit/pathHelper'
-import { t } from '@renderer/i18n'
-
+import { t, type Language } from '@renderer/i18n'
+import type { ScenarioPlugin } from '@shared/protocols/scenario'
 
 interface RecentWorkspace {
   path: string
   name: string
 }
 
-const SCENARIO_SHORTCUTS = [
-  { id: 'coding', icon: Code2, labelEn: 'Code', labelZh: '编程', color: 'from-blue-500/20 to-cyan-500/10', accent: 'text-blue-400' },
-  { id: 'legal', icon: Scale, labelEn: 'Legal', labelZh: '法律', color: 'from-amber-500/20 to-orange-500/10', accent: 'text-amber-400' },
-  { id: 'education', icon: GraduationCap, labelEn: 'Education', labelZh: '教育', color: 'from-emerald-500/20 to-green-500/10', accent: 'text-emerald-400' },
-  { id: 'medical', icon: Stethoscope, labelEn: 'Medical', labelZh: '医疗', color: 'from-rose-500/20 to-pink-500/10', accent: 'text-rose-400' },
-]
+const CATEGORY_COLORS: Record<string, { bg: string; accent: string; border: string }> = {
+  productivity: { bg: 'from-violet-500/15 to-purple-500/8', accent: 'text-violet-400', border: 'hover:border-violet-400/40' },
+  development: { bg: 'from-blue-500/15 to-cyan-500/8', accent: 'text-blue-400', border: 'hover:border-blue-400/40' },
+  data: { bg: 'from-emerald-500/15 to-teal-500/8', accent: 'text-emerald-400', border: 'hover:border-emerald-400/40' },
+  creative: { bg: 'from-pink-500/15 to-rose-500/8', accent: 'text-pink-400', border: 'hover:border-pink-400/40' },
+  legal: { bg: 'from-amber-500/15 to-orange-500/8', accent: 'text-amber-400', border: 'hover:border-amber-400/40' },
+  health: { bg: 'from-rose-500/15 to-red-500/8', accent: 'text-rose-400', border: 'hover:border-rose-400/40' },
+  education: { bg: 'from-sky-500/15 to-indigo-500/8', accent: 'text-sky-400', border: 'hover:border-sky-400/40' },
+  business: { bg: 'from-orange-500/15 to-yellow-500/8', accent: 'text-orange-400', border: 'hover:border-orange-400/40' },
+}
 
-function ParticleField() {
+function AmbientOrbs() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const animRef = useRef<number>(0)
 
@@ -48,62 +51,50 @@ function ParticleField() {
     const resize = () => {
       canvas.width = canvas.offsetWidth * devicePixelRatio
       canvas.height = canvas.offsetHeight * devicePixelRatio
-      ctx.scale(devicePixelRatio, devicePixelRatio)
+      ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0)
     }
     resize()
     window.addEventListener('resize', resize)
 
-    const particles: Array<{ x: number; y: number; vx: number; vy: number; r: number; a: number }> = []
-    const count = 40
+    const orbs: Array<{ x: number; y: number; r: number; vx: number; vy: number; hue: number; phase: number }> = []
+    const count = 4
     for (let i = 0; i < count; i++) {
-      particles.push({
+      orbs.push({
         x: Math.random() * canvas.offsetWidth,
         y: Math.random() * canvas.offsetHeight,
-        vx: (Math.random() - 0.5) * 0.3,
-        vy: (Math.random() - 0.5) * 0.3,
-        r: Math.random() * 2 + 0.5,
-        a: Math.random() * 0.3 + 0.05,
+        r: 120 + Math.random() * 160,
+        vx: (Math.random() - 0.5) * 0.4,
+        vy: (Math.random() - 0.5) * 0.4,
+        hue: 220 + Math.random() * 80,
+        phase: Math.random() * Math.PI * 2,
       })
     }
 
-    const draw = () => {
+    const draw = (time: number) => {
       ctx.clearRect(0, 0, canvas.offsetWidth, canvas.offsetHeight)
       const w = canvas.offsetWidth
       const h = canvas.offsetHeight
 
-      for (const p of particles) {
-        p.x += p.vx
-        p.y += p.vy
-        if (p.x < 0) p.x = w
-        if (p.x > w) p.x = 0
-        if (p.y < 0) p.y = h
-        if (p.y > h) p.y = 0
+      for (const orb of orbs) {
+        orb.x += orb.vx
+        orb.y += orb.vy
+        if (orb.x < -orb.r) orb.x = w + orb.r
+        if (orb.x > w + orb.r) orb.x = -orb.r
+        if (orb.y < -orb.r) orb.y = h + orb.r
+        if (orb.y > h + orb.r) orb.y = -orb.r
 
-        ctx.beginPath()
-        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2)
-        ctx.fillStyle = `rgba(var(--accent-rgb), ${p.a})`
-        ctx.fill()
-      }
-
-      for (let i = 0; i < particles.length; i++) {
-        for (let j = i + 1; j < particles.length; j++) {
-          const dx = particles[i].x - particles[j].x
-          const dy = particles[i].y - particles[j].y
-          const dist = Math.sqrt(dx * dx + dy * dy)
-          if (dist < 120) {
-            ctx.beginPath()
-            ctx.moveTo(particles[i].x, particles[i].y)
-            ctx.lineTo(particles[j].x, particles[j].y)
-            ctx.strokeStyle = `rgba(var(--accent-rgb), ${0.06 * (1 - dist / 120)})`
-            ctx.lineWidth = 0.5
-            ctx.stroke()
-          }
-        }
+        const pulse = 0.08 + 0.04 * Math.sin(time * 0.0008 + orb.phase)
+        const gradient = ctx.createRadialGradient(orb.x, orb.y, 0, orb.x, orb.y, orb.r)
+        gradient.addColorStop(0, `hsla(${orb.hue}, 70%, 60%, ${pulse})`)
+        gradient.addColorStop(0.5, `hsla(${orb.hue}, 60%, 55%, ${pulse * 0.4})`)
+        gradient.addColorStop(1, `hsla(${orb.hue}, 50%, 50%, 0)`)
+        ctx.fillStyle = gradient
+        ctx.fillRect(orb.x - orb.r, orb.y - orb.r, orb.r * 2, orb.r * 2)
       }
 
       animRef.current = requestAnimationFrame(draw)
     }
-    draw()
+    animRef.current = requestAnimationFrame(draw)
 
     return () => {
       window.removeEventListener('resize', resize)
@@ -116,12 +107,24 @@ function ParticleField() {
 
 export default function WelcomePage() {
   const [recentWorkspaces, setRecentWorkspaces] = useState<RecentWorkspace[]>([])
-  const [hoveredScenario, setHoveredScenario] = useState<string | null>(null)
-  const setShowSettingsPage = useStore(s => s.setShowSettingsPage)
-  const language = useStore(s => s.language)
+  const [scenarios, setScenarios] = useState<ScenarioPlugin[]>([])
+  const setShowWelcomePage = useStore(s => s.setShowWelcomePage)
+  const setChatVisible = useStore(s => s.setChatVisible)
+  const language = useStore(s => s.language) as Language
   const setSetting = useStore(s => s.set)
+  const activeScenarioId = useStore(s => s.activeScenarioId)
+  const workspace = useStore(s => s.workspace)
+
+  const hasWorkspace = !!workspace
 
   useEffect(() => {
+    const all = scenarioRegistry.getAll()
+    const sorted = [...all].sort((a, b) => {
+      if (a.id === 'general-assistant') return -1
+      if (b.id === 'general-assistant') return 1
+      return 0
+    })
+    setScenarios(sorted)
     loadRecentWorkspaces()
   }, [])
 
@@ -129,7 +132,7 @@ export default function WelcomePage() {
     try {
       const recent = await api.workspace.getRecent()
       setRecentWorkspaces(
-        recent.slice(0, 6).map((path: string) => ({
+        recent.slice(0, 5).map((path: string) => ({
           path,
           name: getFileName(path),
         }))
@@ -151,18 +154,6 @@ export default function WelcomePage() {
     }
   }
 
-  const handleOpenWorkspace = async () => {
-    try {
-      const result = await api.workspace.open()
-      if (result && !('redirected' in result)) {
-        await workspaceManager.switchTo(result)
-      }
-    } catch (e) {
-      logger.ui.error('[WelcomePage] Failed to open workspace:', e)
-      toast.error(t('workspace.openWorkspaceFailed', language))
-    }
-  }
-
   const handleOpenRecent = async (path: string) => {
     try {
       await workspaceManager.openFolder(path)
@@ -179,116 +170,251 @@ export default function WelcomePage() {
 
   const handleScenarioSelect = useCallback((scenarioId: string) => {
     setSetting('activeScenarioId', scenarioId)
-  }, [setSetting])
+    scenarioRegistry.setActive(scenarioId)
+    setChatVisible(true)
+    setShowWelcomePage(false)
+  }, [setSetting, setChatVisible, setShowWelcomePage])
 
+  const handleNewChat = useCallback(() => {
+    setChatVisible(true)
+    setShowWelcomePage(false)
+  }, [setChatVisible, setShowWelcomePage])
+
+  const isZh = language === 'zh'
   const p = BRAND.cssPrefix
 
   return (
     <div className={`${p}-welcome-page h-full w-full overflow-hidden bg-background text-text-primary relative`}>
-      <ParticleField />
+      <AmbientOrbs />
       <WelcomeStyles rootClass={`${p}-welcome-page`} />
 
       <main className="h-full overflow-y-auto custom-scrollbar relative z-10">
         <section className={`${p}-welcome-shell`}>
-          <div className={`${p}-welcome-hero`}>
-            <div className={`${p}-welcome-badge`}>
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>{language === 'zh' ? '智能工作空间' : 'Intelligent Workspace'}</span>
-            </div>
-            <h1 className={`${p}-welcome-title`}>
-              {t('welcome.title', language)}
-            </h1>
-            <p className={`${p}-welcome-subtitle`}>
-              {language === 'zh'
-                ? '选择一个场景开始，或打开项目文件夹'
-                : 'Pick a scenario to start, or open a project folder'}
-            </p>
-
-            <div className={`${p}-welcome-actions`}>
-              <button className={`${p}-welcome-primary-btn`} onClick={handleOpenFolder}>
-                <FolderOpen className="w-4 h-4" />
-                <span>{t('welcome.openFolder', language)}</span>
-                <ChevronRight className="w-3.5 h-3.5 opacity-50" />
-              </button>
-              <button className={`${p}-welcome-ghost-btn`} onClick={handleOpenWorkspace}>
-                <Folder className="w-4 h-4" />
-                <span>{t('welcome.openWorkspace', language)}</span>
-              </button>
-            </div>
-          </div>
-
-          <div className={`${p}-welcome-scenarios`}>
-            <h3 className={`${p}-welcome-section-label`}>
-              <Zap className="w-3.5 h-3.5" />
-              {language === 'zh' ? '快速场景' : 'Quick Scenarios'}
-            </h3>
-            <div className={`${p}-welcome-scenario-grid`}>
-              {SCENARIO_SHORTCUTS.map((sc) => {
-                const Icon = sc.icon
-                const isActive = hoveredScenario === sc.id
-                return (
-                  <button
-                    key={sc.id}
-                    className={`${p}-welcome-scenario-card ${isActive ? 'ring-1 ring-accent/40' : ''}`}
-                    onMouseEnter={() => setHoveredScenario(sc.id)}
-                    onMouseLeave={() => setHoveredScenario(null)}
-                    onClick={() => handleScenarioSelect(sc.id)}
-                  >
-                    <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${sc.color} flex items-center justify-center mb-2.5 transition-transform duration-200 ${isActive ? 'scale-110' : ''}`}>
-                      <Icon className={`w-5 h-5 ${sc.accent}`} />
-                    </div>
-                    <span className="text-xs font-semibold text-text-primary">
-                      {language === 'zh' ? sc.labelZh : sc.labelEn}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          <section className={`${p}-welcome-recent`}>
-            <div className={`${p}-welcome-recent-header`}>
-              <h3 className={`${p}-welcome-section-label`}>
-                <Clock className="w-3.5 h-3.5" />
-                {t('welcome.recent', language)}
-              </h3>
-              <div className={`${p}-welcome-footer-actions`}>
-                <button className={`${p}-welcome-footer-btn`} onClick={() => api.window.new()}>
-                  <Plus className="w-3 h-3" />
-                  <span>{t('welcome.newWindow', language)}</span>
-                </button>
-                <button className={`${p}-welcome-footer-btn`} onClick={() => setShowSettingsPage(true)}>
-                  <Settings className="w-3 h-3" />
-                  <span>{t('settings', language)}</span>
-                </button>
-              </div>
-            </div>
-
-            <div className={`${p}-welcome-recent-list custom-scrollbar`}>
-              {recentWorkspaces.length > 0 ? (
-                recentWorkspaces.map((workspace) => (
-                  <button
-                    key={workspace.path}
-                    onClick={() => handleOpenRecent(workspace.path)}
-                    className={`${p}-welcome-recent-item group`}
-                  >
-                    <div className={`${p}-welcome-recent-dot`} />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13px] font-medium text-text-primary group-hover:text-accent transition-colors">{workspace.name}</span>
-                      <span className="block truncate font-mono text-[10px] text-text-muted/70 mt-0.5">{workspace.path}</span>
-                    </span>
-                    <ChevronRight className="w-3 h-3 text-text-muted/30 group-hover:text-accent/60 transition-colors flex-shrink-0" />
-                  </button>
-                ))
-              ) : (
-                <div className={`${p}-welcome-empty-recent`}>
-                  {t('welcome.noRecentItems', language)}
-                </div>
-              )}
-            </div>
-          </section>
+          {hasWorkspace ? (
+            <WorkspaceWelcome
+              p={p}
+              isZh={isZh}
+              scenarios={scenarios}
+              activeScenarioId={activeScenarioId}
+              recentWorkspaces={recentWorkspaces}
+              onNewChat={handleNewChat}
+              onOpenFolder={handleOpenFolder}
+              onScenarioSelect={handleScenarioSelect}
+              onOpenRecent={handleOpenRecent}
+              language={language}
+            />
+          ) : (
+            <NoWorkspaceWelcome
+              p={p}
+              isZh={isZh}
+              recentWorkspaces={recentWorkspaces}
+              onOpenFolder={handleOpenFolder}
+              onOpenRecent={handleOpenRecent}
+              language={language}
+            />
+          )}
         </section>
       </main>
+    </div>
+  )
+}
+
+interface WorkspaceWelcomeProps {
+  p: string
+  isZh: boolean
+  scenarios: ScenarioPlugin[]
+  activeScenarioId: string | null
+  recentWorkspaces: RecentWorkspace[]
+  onNewChat: () => void
+  onOpenFolder: () => void
+  onScenarioSelect: (id: string) => void
+  onOpenRecent: (path: string) => void
+  language: Language
+}
+
+function WorkspaceWelcome({
+  p, isZh, scenarios, activeScenarioId, recentWorkspaces,
+  onNewChat, onOpenFolder, onScenarioSelect, onOpenRecent, language,
+}: WorkspaceWelcomeProps) {
+  return (
+    <>
+      <div className={`${p}-welcome-hero`}>
+        <div className={`${p}-welcome-badge`}>
+          <Sparkles className="w-3.5 h-3.5" />
+          <span>{isZh ? '智能工作空间' : 'Intelligent Workspace'}</span>
+        </div>
+        <h1 className={`${p}-welcome-title`}>
+          {t('welcome.title', language)}
+        </h1>
+        <p className={`${p}-welcome-subtitle`}>
+          {isZh
+            ? '选择一个场景开始你的旅程'
+            : 'Choose a scenario to start your journey'}
+        </p>
+
+        <div className={`${p}-welcome-actions`}>
+          <button className={`${p}-welcome-primary-btn`} onClick={onNewChat}>
+            <MessageSquare className="w-4 h-4" />
+            <span>{isZh ? '开始对话' : 'Start Chat'}</span>
+            <ArrowRight className="w-3.5 h-3.5 opacity-50" />
+          </button>
+          <button className={`${p}-welcome-ghost-btn`} onClick={onOpenFolder}>
+            <FolderOpen className="w-4 h-4" />
+            <span>{t('welcome.openFolder', language)}</span>
+          </button>
+        </div>
+      </div>
+
+      <div className={`${p}-welcome-scenarios`}>
+        <h3 className={`${p}-welcome-section-label`}>
+          <Zap className="w-3.5 h-3.5" />
+          {isZh ? '选择场景' : 'Choose Scenario'}
+        </h3>
+        <div className={`${p}-welcome-scenario-grid`}>
+          {scenarios.map((scenario) => {
+            const IconComponent = getLucideIcon(scenario.icon)
+            const colors = CATEGORY_COLORS[scenario.category] || CATEGORY_COLORS.productivity
+            const isActive = activeScenarioId === scenario.id
+            return (
+              <button
+                key={scenario.id}
+                className={`${p}-welcome-scenario-card ${colors.border} ${isActive ? 'ring-1 ring-accent/50 bg-accent/5' : ''}`}
+                onClick={() => onScenarioSelect(scenario.id)}
+              >
+                <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${colors.bg} flex items-center justify-center mb-2.5 transition-transform duration-200`}>
+                  {IconComponent ? (
+                    <IconComponent className={`w-5 h-5 ${colors.accent}`} />
+                  ) : (
+                    <Sparkles className={`w-5 h-5 ${colors.accent}`} />
+                  )}
+                </div>
+                <span className="text-[13px] font-semibold text-text-primary block">
+                  {isZh ? scenario.nameZh : scenario.name}
+                </span>
+                <span className="text-[10px] text-text-muted mt-0.5 block leading-tight line-clamp-2">
+                  {isZh ? scenario.descriptionZh : scenario.description}
+                </span>
+                {isActive && (
+                  <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-accent shadow-[0_0_6px_rgba(var(--accent-rgb),0.5)]" />
+                )}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      <section className={`${p}-welcome-recent`}>
+        <div className={`${p}-welcome-recent-header`}>
+          <h3 className={`${p}-welcome-section-label`}>
+            <Clock className="w-3.5 h-3.5" />
+            {isZh ? '最近工作' : 'Recent Work'}
+          </h3>
+          <div className={`${p}-welcome-footer-actions`}>
+            <button className={`${p}-welcome-footer-btn`} onClick={() => api.window.new()}>
+              <Plus className="w-3 h-3" />
+              <span>{isZh ? '新建工作区' : 'New Workspace'}</span>
+            </button>
+          </div>
+        </div>
+
+        <RecentList
+          p={p}
+          items={recentWorkspaces}
+          onOpenRecent={onOpenRecent}
+          language={language}
+        />
+      </section>
+    </>
+  )
+}
+
+interface NoWorkspaceWelcomeProps {
+  p: string
+  isZh: boolean
+  recentWorkspaces: RecentWorkspace[]
+  onOpenFolder: () => void
+  onOpenRecent: (path: string) => void
+  language: Language
+}
+
+function NoWorkspaceWelcome({
+  p, isZh, recentWorkspaces, onOpenFolder, onOpenRecent, language,
+}: NoWorkspaceWelcomeProps) {
+  return (
+    <>
+      <div className={`${p}-welcome-hero`}>
+        <div className={`${p}-welcome-badge`}>
+          <Sparkles className="w-3.5 h-3.5" />
+          <span>{isZh ? '智能工作空间' : 'Intelligent Workspace'}</span>
+        </div>
+        <h1 className={`${p}-welcome-title`}>
+          {t('welcome.title', language)}
+        </h1>
+        <p className={`${p}-welcome-subtitle`}>
+          {isZh
+            ? '选择一个工作区目录开始使用'
+            : 'Select a workspace directory to get started'}
+        </p>
+
+        <div className={`${p}-welcome-actions`}>
+          <button className={`${p}-welcome-primary-btn`} onClick={onOpenFolder}>
+            <FolderSearch className="w-4 h-4" />
+            <span>{isZh ? '选择工作区目录' : 'Select Workspace Directory'}</span>
+            <ArrowRight className="w-3.5 h-3.5 opacity-50" />
+          </button>
+        </div>
+      </div>
+
+      {recentWorkspaces.length > 0 && (
+        <section className={`${p}-welcome-recent`}>
+          <h3 className={`${p}-welcome-section-label`}>
+            <Clock className="w-3.5 h-3.5" />
+            {isZh ? '最近工作' : 'Recent Work'}
+          </h3>
+
+          <RecentList
+            p={p}
+            items={recentWorkspaces}
+            onOpenRecent={onOpenRecent}
+            language={language}
+          />
+        </section>
+      )}
+    </>
+  )
+}
+
+interface RecentListProps {
+  p: string
+  items: RecentWorkspace[]
+  onOpenRecent: (path: string) => void
+  language: Language
+}
+
+function RecentList({ p, items, onOpenRecent, language }: RecentListProps) {
+  const isZh = language === 'zh'
+  return (
+    <div className={`${p}-welcome-recent-list custom-scrollbar`}>
+      {items.length > 0 ? (
+        items.map((workspace) => (
+          <button
+            key={workspace.path}
+            onClick={() => onOpenRecent(workspace.path)}
+            className={`${p}-welcome-recent-item group`}
+          >
+            <div className={`${p}-welcome-recent-dot`} />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[13px] font-medium text-text-primary group-hover:text-accent transition-colors">{workspace.name}</span>
+              <span className="block truncate font-mono text-[10px] text-text-muted/70 mt-0.5">{workspace.path}</span>
+            </span>
+            <ChevronRight className="w-3 h-3 text-text-muted/30 group-hover:text-accent/60 transition-colors flex-shrink-0" />
+          </button>
+        ))
+      ) : (
+        <div className={`${p}-welcome-empty-recent`}>
+          {isZh ? '没有最近的工作' : 'No recent work'}
+        </div>
+      )}
     </div>
   )
 }
@@ -303,18 +429,18 @@ function WelcomeStyles({ rootClass }: { rootClass: string }) {
 
       .${rootClass} .${p}-welcome-shell {
         width: 100%;
-        max-width: 640px;
+        max-width: 720px;
         margin: 0 auto;
-        padding: 48px 40px 32px;
+        padding: 40px 40px 32px;
         display: flex;
         flex-direction: column;
         min-height: 100%;
-        gap: 36px;
+        gap: 32px;
       }
 
       .${rootClass} .${p}-welcome-hero {
         text-align: center;
-        padding-top: 12vh;
+        padding-top: 8vh;
       }
 
       .${rootClass} .${p}-welcome-badge {
@@ -352,7 +478,7 @@ function WelcomeStyles({ rootClass }: { rootClass: string }) {
         display: flex;
         justify-content: center;
         gap: 10px;
-        margin-top: 28px;
+        margin-top: 24px;
       }
 
       .${rootClass} .${p}-welcome-primary-btn {
@@ -401,7 +527,7 @@ function WelcomeStyles({ rootClass }: { rootClass: string }) {
       }
 
       .${rootClass} .${p}-welcome-scenarios {
-        padding: 0 8px;
+        padding: 0 4px;
       }
 
       .${rootClass} .${p}-welcome-section-label {
@@ -423,25 +549,27 @@ function WelcomeStyles({ rootClass }: { rootClass: string }) {
       }
 
       .${rootClass} .${p}-welcome-scenario-card {
+        position: relative;
         display: flex;
         flex-direction: column;
         align-items: center;
-        padding: 16px 8px;
+        padding: 16px 8px 12px;
         border-radius: 12px;
         background: rgba(var(--surface), 0.4);
         border: 1px solid rgba(var(--border), 0.25);
         cursor: pointer;
         transition: all 0.2s ease;
+        text-align: center;
       }
 
       .${rootClass} .${p}-welcome-scenario-card:hover {
         background: rgba(var(--surface-hover), 0.6);
-        border-color: rgba(var(--accent), 0.3);
         transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
       }
 
       .${rootClass} .${p}-welcome-recent {
-        padding: 0 8px;
+        padding: 0 4px;
         border-top: 1px solid rgba(var(--border), 0.3);
         padding-top: 24px;
       }
@@ -483,7 +611,7 @@ function WelcomeStyles({ rootClass }: { rootClass: string }) {
         display: flex;
         flex-direction: column;
         gap: 4px;
-        max-height: 240px;
+        max-height: 200px;
         overflow-y: auto;
       }
 
@@ -534,7 +662,7 @@ function WelcomeStyles({ rootClass }: { rootClass: string }) {
         color: rgb(var(--text-muted));
       }
 
-      @container (max-width: 520px) {
+      @container (max-width: 560px) {
         .${rootClass} .${p}-welcome-shell {
           padding: 32px 20px 24px;
         }
