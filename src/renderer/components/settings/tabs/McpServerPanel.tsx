@@ -1,10 +1,11 @@
 /**
  * MCP 设置页面
  * 管理 MCP 服务器配置和状态
+ * 单列流式布局，列表式展示服务器
  */
 
 import { api } from '../../../adapters/electronBridge'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { logger } from '@shared/toolkit/LogEngine'
 import {
   Server,
@@ -12,7 +13,6 @@ import {
   Power,
   PowerOff,
   AlertCircle,
-  CheckCircle,
   Loader2,
   Wrench,
   FileText,
@@ -25,14 +25,19 @@ import {
   ChevronDown,
   Globe,
   Key,
-  LogIn,
   Lightbulb,
+  Search,
+  MoreHorizontal,
+  Info,
+  Zap,
+  ToggleLeft,
+  ToggleRight,
 } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { mcpService } from '@services/toolProtocolAdapter'
 import { ActionButton, ToggleSwitch } from '@components/ui'
-import type { McpServerState, McpServerStatus } from '@shared/protocols/toolProtocolBridge'
+import type { McpServerStatus } from '@shared/protocols/toolProtocolBridge'
 import { isRemoteConfig, isLocalConfig } from '@shared/protocols/toolProtocolBridge'
 import { MCP_PRESETS } from '@shared/configuration/toolProtocolPresets'
 import McpServerConnectDialog, { type McpServerFormData } from './McpServerConnectDialog'
@@ -43,21 +48,39 @@ interface McpSettingsProps {
   setMcpConfig: (config: { autoConnect?: boolean }) => void
 }
 
+const STATUS_STYLES: Record<McpServerStatus, { dot: string; text: string }> = {
+  connected: { dot: 'bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.5)]', text: 'text-green-400' },
+  connecting: { dot: 'bg-yellow-500 animate-pulse', text: 'text-yellow-400' },
+  error: { dot: 'bg-red-500', text: 'text-red-400' },
+  disconnected: { dot: 'bg-text-muted/40', text: 'text-text-muted' },
+  needs_auth: { dot: 'bg-orange-500', text: 'text-orange-400' },
+  needs_registration: { dot: 'bg-orange-500', text: 'text-orange-400' },
+}
+
 export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: McpSettingsProps) {
-  const { mcpServers, mcpLoading, mcpError } = useStore(useShallow(s => ({ mcpServers: s.mcpServers, mcpLoading: s.mcpLoading, mcpError: s.mcpError })))
+  const { mcpServers, mcpLoading, mcpError } = useStore(useShallow(s => ({
+    mcpServers: s.mcpServers,
+    mcpLoading: s.mcpLoading,
+    mcpError: s.mcpError,
+  })))
+
   const [expandedServer, setExpandedServer] = useState<string | null>(null)
   const [configPaths, setConfigPaths] = useState<{ user: string; workspace: string[] } | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [showAddModal, setShowAddModal] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
-  // 追踪正在等待浏览器授权的服务器（OAuth pending）
   const [oauthPendingServers, setOauthPendingServers] = useState<Set<string>>(new Set())
+  const [serverSearch, setServerSearch] = useState('')
+  const [filterStatus, setFilterStatus] = useState<'all' | 'connected' | 'disconnected' | 'error'>('all')
+
+  const [activeMenu, setActiveMenu] = useState<string | null>(null)
+  const [menuPosition, setMenuPosition] = useState<{ top: number; right: number } | null>(null)
+  const menuButtonRefs = useRef<Map<string, HTMLButtonElement>>(new Map())
 
   useEffect(() => {
     loadConfigPaths()
   }, [])
 
-  // 当服务器状态变为 connected/error/disconnected/needs_auth 时，清除 OAuth pending 标记
   useEffect(() => {
     setOauthPendingServers(prev => {
       if (prev.size === 0) return prev
@@ -75,11 +98,22 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
   }, [mcpServers])
 
   useEffect(() => {
-    const errorServer = mcpServers.find(s => s.status === 'error' && s.error)
-    if (errorServer && expandedServer !== errorServer.id) {
-      setExpandedServer(errorServer.id)
+    if (!activeMenu) return
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest('[data-mcp-menu]')) {
+        setActiveMenu(null)
+        setMenuPosition(null)
+      }
     }
-  }, [mcpServers])
+    const timer = setTimeout(() => {
+      document.addEventListener('click', handleClickOutside)
+    }, 0)
+    return () => {
+      clearTimeout(timer)
+      document.removeEventListener('click', handleClickOutside)
+    }
+  }, [activeMenu])
 
   const loadConfigPaths = async () => {
     const paths = await mcpService.getConfigPaths()
@@ -135,6 +169,8 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
     }
     setActionLoading(null)
     setDeleteConfirm(null)
+    setActiveMenu(null)
+    setMenuPosition(null)
   }
 
   const handleToggleServer = async (serverId: string, disabled: boolean) => {
@@ -156,21 +192,20 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
     }
   }
 
-  const getStatusIcon = (status: McpServerStatus) => {
-    switch (status) {
-      case 'connected':
-        return <CheckCircle className="w-4 h-4 text-green-500" />
-      case 'connecting':
-        return <Loader2 className="w-4 h-4 text-yellow-500 animate-spin" />
-      case 'error':
-        return <AlertCircle className="w-4 h-4 text-red-500" />
-      case 'needs_auth':
-        return <Key className="w-4 h-4 text-orange-500" />
-      case 'needs_registration':
-        return <LogIn className="w-4 h-4 text-orange-500" />
-      default:
-        return <PowerOff className="w-4 h-4 text-text-muted" />
+  const handleStartOAuth = async (serverId: string) => {
+    setActionLoading(`oauth-${serverId}`)
+    try {
+      await mcpService.startOAuth(serverId)
+      setOauthPendingServers(prev => new Set(prev).add(serverId))
+    } catch (err) {
+      logger.settings.error('Failed to start OAuth:', err)
     }
+    setActionLoading(null)
+  }
+
+  const handleCancelOAuth = async (serverId: string) => {
+    setOauthPendingServers(prev => { const s = new Set(prev); s.delete(serverId); return s })
+    await mcpService.disconnectServer(serverId)
   }
 
   const getStatusText = (status: McpServerStatus) => {
@@ -185,613 +220,663 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
     return texts[status]
   }
 
-  const handleStartOAuth = async (serverId: string) => {
-    setActionLoading(`oauth-${serverId}`)
-    try {
-      await mcpService.startOAuth(serverId)
-      // 标记为等待浏览器授权状态
-      setOauthPendingServers(prev => new Set(prev).add(serverId))
-    } catch (err) {
-      logger.settings.error('Failed to start OAuth:', err)
+  const filteredServers = useMemo(() => {
+    let result = mcpServers
+    if (filterStatus !== 'all') {
+      result = result.filter(s => {
+        if (filterStatus === 'connected') return s.status === 'connected'
+        if (filterStatus === 'disconnected') return s.status === 'disconnected'
+        if (filterStatus === 'error') return s.status === 'error'
+        return true
+      })
     }
-    setActionLoading(null)
-  }
+    if (serverSearch.trim()) {
+      const q = serverSearch.toLowerCase()
+      result = result.filter(s =>
+        s.config.name.toLowerCase().includes(q) ||
+        s.id.toLowerCase().includes(q) ||
+        (isLocalConfig(s.config) && s.config.command?.toLowerCase().includes(q)) ||
+        (isRemoteConfig(s.config) && s.config.url?.toLowerCase().includes(q))
+      )
+    }
+    return result
+  }, [mcpServers, filterStatus, serverSearch])
 
-  const handleCancelOAuth = async (serverId: string) => {
-    setOauthPendingServers(prev => { const s = new Set(prev); s.delete(serverId); return s })
-    await mcpService.disconnectServer(serverId)
-  }
+  const connectedCount = mcpServers.filter(s => s.status === 'connected').length
+  const errorCount = mcpServers.filter(s => s.status === 'error').length
+  const disconnectedCount = mcpServers.filter(s => s.status === 'disconnected').length
 
-  const renderServerCard = (server: McpServerState) => {
-    const isExpanded = expandedServer === server.id
-    const isLoading = actionLoading?.startsWith(server.id) || actionLoading === `refresh-${server.id}` || actionLoading === `oauth-${server.id}`
-    const isDeleting = actionLoading === `delete-${server.id}`
-    const showDeleteConfirm = deleteConfirm === server.id
-    const isRemote = server.config.type === 'remote'
-    const isOAuthPending = oauthPendingServers.has(server.id)
+  const t = (zh: string, en: string) => language === 'zh' ? zh : en
 
-    // 通过 presetId 查找预设获取使用示例
-    const presetId = server.config.presetId
-    const preset = presetId ? MCP_PRESETS.find(p => p.id === presetId) : undefined
-    const usageExamples = language === 'zh' ? preset?.usageExamplesZh : preset?.usageExamples
-
-    return (
-      <div
-        key={server.id}
-        className={`rounded-xl border transition-all duration-300 relative group overflow-hidden ${
-          server.config.disabled
-            ? 'bg-surface/5 border-border/50 opacity-60 grayscale'
-            : 'bg-surface/70 border-border hover:border-accent/30 hover:bg-surface/80 hover:shadow-md hover:shadow-accent/5'
-        }`}
-      >
-        {/* Active Pulse Glow */}
-        {!server.config.disabled && server.status === 'connected' && (
-          <div className="settings-glow absolute top-0 right-0 w-32 h-32 bg-accent/5 rounded-full blur-[60px] pointer-events-none -translate-y-1/2 translate-x-1/2" />
-        )}
-
-        {/* Header */}
-        <div className="flex items-start justify-between p-5">
-          <div
-            className="flex gap-4 flex-1 cursor-pointer"
-            onClick={() => setExpandedServer(isExpanded ? null : server.id)}
-          >
-            <div className="relative">
-              <div className={`p-2.5 rounded-xl ${server.config.disabled ? 'bg-white/5' : isRemote ? 'bg-blue-500/10' : 'bg-accent/10'}`}>
-                {isRemote ? (
-                  <Globe className={`w-6 h-6 ${server.config.disabled ? 'text-text-muted' : 'text-blue-400'}`} />
-                ) : (
-                  <Server className={`w-6 h-6 ${server.config.disabled ? 'text-text-muted' : 'text-accent'}`} />
-                )}
-              </div>
-              {/* Status Dot */}
-              {!server.config.disabled && (
-                <div className="absolute -bottom-1 -right-1 p-0.5 bg-background rounded-full">
-                  <div className={`w-2.5 h-2.5 rounded-full border-2 border-background ${
-                    server.status === 'connected' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' :
-                    server.status === 'error' ? 'bg-red-500' :
-                    server.status === 'connecting' ? 'bg-yellow-500 animate-pulse' :
-                    'bg-text-muted'
-                  }`} />
-                </div>
-              )}
-            </div>
-            
-            <div className="flex-1 min-w-0 pt-0.5">
-              <div className="flex items-center gap-2.5">
-                <h4 className="text-base font-bold text-text-primary tracking-tight">{server.config.name}</h4>
-                {server.config.source && (
-                  <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded border uppercase tracking-tight ${
-                    server.config.source === 'workspace'
-                      ? 'bg-green-500/10 text-green-400 border-green-500/20'
-                      : 'bg-purple-500/10 text-purple-400 border-purple-500/20'
-                  }`}>
-                    {server.config.source === 'workspace' ? (language === 'zh' ? '工作区' : 'Workspace') : (language === 'zh' ? '全局' : 'Global')}
-                  </span>
-                )}
-                {isRemote && (
-                  <span className="px-1.5 py-0.5 text-[10px] font-bold bg-blue-500/10 text-blue-400 rounded border border-blue-500/20 uppercase tracking-tight">
-                    Remote
-                  </span>
-                )}
-              </div>
-              <div className="text-xs text-text-muted mt-1.5 font-mono truncate max-w-[300px] opacity-70 bg-black/20 px-2 py-0.5 rounded w-fit">
-                {isRemote
-                  ? ('url' in server.config ? server.config.url : '')
-                  : `${'command' in server.config ? server.config.command : ''} ...`
-                }
-              </div>
-            </div>
-          </div>
-
-          {/* Status & Actions */}
-          <div className="flex items-center gap-3 ml-4">
-            {/* Status */}
-            {!server.config.disabled && (
-              <div className="flex items-center gap-2">
-                {getStatusIcon(server.status)}
-                <span className="text-sm text-text-secondary">{getStatusText(server.status)}</span>
-              </div>
-            )}
-
-            {/* Actions */}
-            <div className="flex items-center gap-1">
-              {/* OAuth waiting state */}
-              {!server.config.disabled && isOAuthPending && (
-                <div className="flex items-center gap-2">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-orange-400" />
-                  <span className="text-xs text-orange-400">
-                    {language === 'zh' ? '等待浏览器授权...' : 'Waiting for browser...'}
-                  </span>
-                  <ActionButton
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleCancelOAuth(server.id)}
-                    title={language === 'zh' ? '取消' : 'Cancel'}
-                    className="text-text-muted hover:text-red-400 text-xs"
-                  >
-                    {language === 'zh' ? '取消' : 'Cancel'}
-                  </ActionButton>
-                </div>
-              )}
-
-              {/* OAuth ActionButton for remote servers needing auth */}
-              {!server.config.disabled && !isOAuthPending && (server.status === 'needs_auth' || server.status === 'needs_registration') && (
-                <ActionButton
-                  variant="primary"
-                  size="sm"
-                  onClick={() => handleStartOAuth(server.id)}
-                  disabled={isLoading}
-                  title={language === 'zh' ? '开始认证' : 'Start Authentication'}
-                >
-                  <Key className="w-4 h-4 mr-1" />
-                  {language === 'zh' ? '认证' : 'Auth'}
-                </ActionButton>
-              )}
-
-              {!server.config.disabled && server.status === 'connected' && (
-                <>
-                  <ActionButton
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleRefreshCapabilities(server.id)}
-                    disabled={isLoading}
-                    title={language === 'zh' ? '刷新能力' : 'Refresh capabilities'}
-                  >
-                    <RefreshCw className={`w-4 h-4 ${actionLoading === `refresh-${server.id}` ? 'animate-spin' : ''}`} />
-                  </ActionButton>
-                  <ActionButton
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleDisconnectServer(server.id)}
-                    disabled={isLoading}
-                    title={language === 'zh' ? '断开连接' : 'Disconnect'}
-                  >
-                    <PowerOff className="w-4 h-4" />
-                  </ActionButton>
-                </>
-              )}
-              {!server.config.disabled && server.status === 'connecting' && (
-                <Loader2 className="w-4 h-4 animate-spin text-text-muted" />
-              )}
-              {!server.config.disabled && server.status !== 'connected' && server.status !== 'connecting' && server.status !== 'needs_auth' && server.status !== 'needs_registration' && (
-                <ActionButton
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleConnectServer(server.id)}
-                  disabled={isLoading}
-                  title={language === 'zh' ? '连接' : 'Connect'}
-                >
-                  <Power className="w-4 h-4" />
-                </ActionButton>
-              )}
-
-              {/* Toggle Enable/Disable */}
-              <ActionButton
-                variant="ghost"
-                size="sm"
-                onClick={() => handleToggleServer(server.id, !server.config.disabled)}
-                disabled={isLoading}
-                title={server.config.disabled 
-                  ? (language === 'zh' ? '启用' : 'Enable')
-                  : (language === 'zh' ? '禁用' : 'Disable')
-                }
-              >
-                {server.config.disabled ? (
-                  <Power className="w-4 h-4 text-green-500" />
-                ) : (
-                  <PowerOff className="w-4 h-4 text-text-muted" />
-                )}
-              </ActionButton>
-
-              {/* Delete */}
-              <ActionButton
-                variant="ghost"
-                size="sm"
-                onClick={() => setDeleteConfirm(server.id)}
-                disabled={isLoading}
-                title={language === 'zh' ? '删除' : 'Delete'}
-                className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
-              >
-                <Trash2 className="w-4 h-4" />
-              </ActionButton>
-            </div>
-          </div>
-        </div>
-
-        {/* Delete Confirmation */}
-        {showDeleteConfirm && (
-          <div className="px-4 pb-4">
-            <div className="flex items-center justify-between p-3 bg-red-500/10 rounded-lg">
-              <span className="text-sm text-red-400">
-                {language === 'zh' ? '确定要删除此服务器吗？' : 'Are you sure you want to delete this server?'}
-              </span>
-              <div className="flex gap-2">
-                <ActionButton
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setDeleteConfirm(null)}
-                >
-                  {language === 'zh' ? '取消' : 'Cancel'}
-                </ActionButton>
-                <ActionButton
-                  variant="primary"
-                  size="sm"
-                  onClick={() => handleDeleteServer(server.id)}
-                  disabled={isDeleting}
-                  className="bg-red-500 hover:bg-red-600"
-                >
-                  {isDeleting ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    language === 'zh' ? '删除' : 'Delete'
-                  )}
-                </ActionButton>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Expanded Content */}
-        {isExpanded && !showDeleteConfirm && (
-          <div className="border-t border-border/50 p-5 space-y-6 animate-slide-down">
-            {/* OAuth Pending Banner */}
-            {isOAuthPending && (
-              <div className="flex items-start gap-3 p-4 bg-orange-500/10 rounded-xl border border-orange-500/20 text-orange-300 text-xs font-medium">
-                <Loader2 className="w-4 h-4 mt-0.5 flex-shrink-0 animate-spin" />
-                <div>
-                  <div className="font-bold mb-1">
-                    {language === 'zh' ? '正在等待浏览器授权...' : 'Waiting for browser authorization...'}
-                  </div>
-                  <div className="opacity-80">
-                    {language === 'zh'
-                      ? '请在打开的浏览器窗口中完成授权，完成后将自动连接。'
-                      : 'Please complete authorization in the opened browser window. The server will connect automatically.'}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Error Message */}
-            {server.error && !isOAuthPending && (
-              <div className="flex items-start gap-3 p-4 bg-red-500/10 rounded-xl border border-red-500/20 text-red-400 text-xs font-medium">
-                <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                <span className="leading-relaxed">{server.error}</span>
-              </div>
-            )}
-
-            {/* Auth Status for remote servers */}
-            {isRemote && server.authStatus && (
-              <div className={`flex items-center gap-2.5 p-3 rounded-xl text-sm font-medium border ${
-                server.authStatus === 'authenticated' 
-                  ? 'bg-green-500/10 text-green-400 border-green-500/20'
-                  : server.authStatus === 'expired'
-                  ? 'bg-orange-500/10 text-orange-400 border-orange-500/20'
-                  : 'bg-white/5 text-text-muted border-border'
-              }`}>
-                <Key className="w-4 h-4" />
-                <span>
-                  {server.authStatus === 'authenticated' && (language === 'zh' ? '已认证' : 'Authenticated')}
-                  {server.authStatus === 'expired' && (language === 'zh' ? '认证已过期' : 'Authentication Expired')}
-                  {server.authStatus === 'not_authenticated' && (language === 'zh' ? '未认证' : 'Not Authenticated')}
-                </span>
-              </div>
-            )}
-
-            {/* Config Details */}
-            <div className="space-y-2">
-              <h5 className="text-[12px] font-bold text-text-muted uppercase tracking-wider ml-1">
-                {language === 'zh' ? '配置详情' : 'Configuration'}
-              </h5>
-              <div className="text-xs text-text-secondary space-y-1.5 font-mono bg-black/20 p-4 rounded-xl border border-border shadow-inner">
-                <div className="flex"><span className="text-text-muted w-20 shrink-0">id:</span> <span className="select-all">{server.id}</span></div>
-                <div className="flex"><span className="text-text-muted w-20 shrink-0">type:</span> <span>{server.config.type}</span></div>
-                {isRemote ? (
-                  <>
-                    <div className="flex"><span className="text-text-muted w-20 shrink-0">url:</span> <span className="select-all">{isRemoteConfig(server.config) && server.config.url}</span></div>
-                    {isRemoteConfig(server.config) && server.config.oauth !== false && (
-                      <div className="flex"><span className="text-text-muted w-20 shrink-0">oauth:</span> <span>enabled</span></div>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <div className="flex"><span className="text-text-muted w-20 shrink-0">command:</span> <span className="text-accent">{isLocalConfig(server.config) && server.config.command}</span></div>
-                    {isLocalConfig(server.config) && server.config.args && server.config.args.length > 0 && (
-                      <div className="flex"><span className="text-text-muted w-20 shrink-0">args:</span> <span>{isLocalConfig(server.config) && server.config.args?.join(' ')}</span></div>
-                    )}
-                    {isLocalConfig(server.config) && server.config.env && Object.keys(server.config.env).length > 0 && (
-                      <div>
-                        <span className="text-text-muted block mb-1">env:</span>
-                        {Object.entries((isLocalConfig(server.config) ? server.config.env : {}) as Record<string, string>).map(([k, v]) => (
-                          <div key={k} className="ml-4 flex gap-2"><span className="text-text-primary">{k}</span>=<span className="text-text-muted">{v.length > 20 ? v.slice(0, 8) + '***' : v}</span></div>
-                        ))}
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* Tools */}
-            {server.tools.length > 0 && (
-              <div className="space-y-3">
-                <h5 className="text-[12px] font-bold text-text-muted uppercase tracking-wider flex items-center gap-2 ml-1">
-                  <Wrench className="w-3.5 h-3.5" />
-                  {language === 'zh' ? '工具列表' : 'Tools'} <span className="bg-white/10 px-1.5 rounded-md text-[11px]">{server.tools.length}</span>
-                </h5>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {server.tools.map((tool) => (
-                    <div
-                      key={tool.name}
-                      className="p-3 bg-black/20 rounded-lg border border-border hover:border-accent/30 transition-colors group"
-                      title={tool.description}
-                    >
-                      <div className="font-bold text-xs text-text-primary mb-1 group-hover:text-accent transition-colors">{tool.name}</div>
-                      {tool.description && (
-                        <div className="text-[12px] text-text-muted line-clamp-2 leading-relaxed opacity-80">{tool.description}</div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Resources */}
-            {server.resources.length > 0 && (
-              <div className="space-y-2">
-                <h5 className="text-sm font-medium text-text-secondary flex items-center gap-2">
-                  <FileText className="w-4 h-4" />
-                  {language === 'zh' ? '资源' : 'Resources'} ({server.resources.length})
-                </h5>
-                <div className="space-y-1">
-                  {server.resources.map((resource) => (
-                    <div
-                      key={resource.uri}
-                      className="p-2 bg-black/20 rounded text-xs"
-                      title={resource.description}
-                    >
-                      <div className="font-medium text-text-primary truncate">{resource.name}</div>
-                      <div className="text-text-muted truncate">{resource.uri}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Prompts */}
-            {server.prompts.length > 0 && (
-              <div className="space-y-2">
-                <h5 className="text-sm font-medium text-text-secondary flex items-center gap-2">
-                  <MessageSquare className="w-4 h-4" />
-                  {language === 'zh' ? '提示模板' : 'Prompts'} ({server.prompts.length})
-                </h5>
-                <div className="space-y-1">
-                  {server.prompts.map((prompt) => (
-                    <div
-                      key={prompt.name}
-                      className="p-2 bg-black/20 rounded text-xs"
-                      title={prompt.description}
-                    >
-                      <div className="font-medium text-text-primary">{prompt.name}</div>
-                      {prompt.description && (
-                        <div className="text-text-muted truncate">{prompt.description}</div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Auto Approve */}
-            {server.config.autoApprove && server.config.autoApprove.length > 0 && (
-              <div className="space-y-2">
-                <h5 className="text-sm font-medium text-text-secondary">
-                  {language === 'zh' ? '自动批准的工具' : 'Auto-approved Tools'}
-                </h5>
-                <div className="flex flex-wrap gap-1">
-                  {server.config.autoApprove.map((tool) => (
-                    <span
-                      key={tool}
-                      className="px-2 py-0.5 bg-accent/20 text-accent text-xs rounded"
-                    >
-                      {tool}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Usage Examples */}
-            {usageExamples && usageExamples.length > 0 && (
-              <div className="space-y-2">
-                <h5 className="text-sm font-medium text-text-secondary flex items-center gap-2">
-                  <Lightbulb className="w-4 h-4 text-yellow-500" />
-                  {language === 'zh' ? '使用示例' : 'Usage Examples'}
-                </h5>
-                <div className="space-y-1.5">
-                  {usageExamples.map((example) => (
-                    <div
-                      key={`example-${example.slice(0, 30)}`}
-                      className="p-2.5 bg-yellow-500/5 border border-yellow-500/20 rounded-lg text-sm text-text-secondary"
-                    >
-                      <span className="text-yellow-500/70 mr-2">💡</span>
-                      {example}
-                    </div>
-                  ))}
-                </div>
-                <p className="text-xs text-text-muted">
-                  {language === 'zh' 
-                    ? '在聊天中输入类似的内容即可触发此工具' 
-                    : 'Type similar prompts in chat to trigger this tool'}
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  const existingServerIds = mcpServers.map(s => s.id)
+  const activeMenuServer = activeMenu ? mcpServers.find(s => s.id === activeMenu) : null
 
   return (
-    <div className="space-y-6">
-      {/* Auto Connect Setting */}
-      <div className="p-4 bg-surface/20 rounded-xl border border-border">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-accent/10">
-              <Power className="w-4 h-4 text-accent" />
-            </div>
-            <div>
-              <h4 className="text-sm font-medium text-text-primary">
-                {language === 'zh' ? '启动时自动连接' : 'Auto-connect on Startup'}
-              </h4>
-              <p className="text-xs text-text-muted mt-0.5">
-                {language === 'zh'
-                  ? '应用启动时自动连接所有已启用的 MCP 服务器'
-                  : 'Automatically connect all enabled MCP servers when the app starts'}
-              </p>
-            </div>
-          </div>
-          <ToggleSwitch
-            checked={mcpConfig.autoConnect ?? true}
-            onChange={(e) => setMcpConfig({ autoConnect: e.target.checked })}
-          />
-        </div>
-      </div>
-
-      {/* Header Actions */}
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm text-text-muted">
-            {language === 'zh'
-              ? '配置和管理 MCP (Model Context Protocol) 服务器，扩展 AI 助手的能力。'
-              : 'Configure and manage MCP (Model Context Protocol) servers to extend AI assistant capabilities.'}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <ActionButton
-            variant="secondary"
-            size="sm"
-            onClick={handleReloadConfig}
-            disabled={actionLoading === 'reload'}
-          >
-            <RefreshCw className={`w-4 h-4 mr-2 ${actionLoading === 'reload' ? 'animate-spin' : ''}`} />
-            {language === 'zh' ? '刷新' : 'Refresh'}
-          </ActionButton>
-          <ActionButton
-            variant="primary"
-            size="sm"
-            onClick={() => setShowAddModal(true)}
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            {language === 'zh' ? '添加服务器' : 'Add Server'}
-          </ActionButton>
-        </div>
-      </div>
-
-      {/* Error Banner */}
-      {mcpError && (
-        <div className="flex items-start gap-2 p-3 bg-red-500/10 rounded-lg text-red-400 text-sm">
-          <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-          <span>{mcpError}</span>
-        </div>
-      )}
-
-      {/* Server List */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h4 className="text-sm font-medium text-text-secondary">
-            {language === 'zh' ? 'MCP 服务器' : 'MCP Servers'} ({mcpServers.length})
-          </h4>
-        </div>
-        
-        {mcpLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="w-6 h-6 animate-spin text-accent" />
-          </div>
-        ) : mcpServers.length === 0 ? (
-          <div className="text-center py-12 text-text-muted border border-dashed border-border rounded-lg">
-            <Server className="w-12 h-12 mx-auto mb-3 opacity-50" />
-            <p className="text-sm font-medium">
-              {language === 'zh'
-                ? '暂无配置的 MCP 服务器'
-                : 'No MCP servers configured'}
-            </p>
-            <p className="text-xs mt-1 mb-4">
-              {language === 'zh'
-                ? '添加 MCP 服务器来扩展 AI 助手的能力'
-                : 'Add MCP servers to extend AI assistant capabilities'}
-            </p>
-            <ActionButton variant="primary" size="sm" onClick={() => setShowAddModal(true)}>
-              <Plus className="w-4 h-4 mr-2" />
-              {language === 'zh' ? '添加服务器' : 'Add Server'}
-            </ActionButton>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {mcpServers.map(renderServerCard)}
-          </div>
-        )}
-      </div>
-
-      {/* Config Paths (Collapsed) */}
-      {configPaths && (
-        <details className="group">
-          <summary className="flex items-center gap-2 cursor-pointer text-sm text-text-muted hover:text-text-secondary">
-            <Settings className="w-4 h-4" />
-            {language === 'zh' ? '配置文件位置' : 'Configuration Files'}
-            <ChevronDown className="w-4 h-4 group-open:rotate-180 transition-transform" />
-          </summary>
-          <div className="mt-3 space-y-2 pl-6">
-            <div
-              className="flex items-center justify-between p-3 bg-surface/30 rounded-lg cursor-pointer hover:bg-surface/50 transition-colors"
-              onClick={() => openConfigFile(configPaths.user)}
-            >
-              <div className="flex items-center gap-2">
-                <FolderOpen className="w-4 h-4 text-text-muted" />
-                <span className="text-sm text-text-secondary">
-                  {language === 'zh' ? '用户配置' : 'User Config'}
-                </span>
+    <div className="space-y-4 animate-fade-in pb-10">
+      {/* 已配置服务器 */}
+      <section className="rounded-2xl border border-border/50 bg-surface/20 backdrop-blur-xl shadow-sm relative overflow-hidden group">
+        <div className="absolute inset-0 bg-gradient-to-br from-accent/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+        <div className="relative">
+          {/* 标题栏 */}
+          <div className="flex items-center justify-between p-5 pb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="p-1.5 bg-accent/10 rounded-md text-accent">
+                <Server className="w-4 h-4" />
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-text-muted font-mono truncate max-w-[250px]">
-                  {configPaths.user}
-                </span>
-                <ExternalLink className="w-3 h-3 text-text-muted" />
+              <div>
+                <h5 className="text-sm font-semibold text-text-primary">{t('MCP 服务器', 'MCP Servers')}</h5>
+                <p className="text-[11px] text-text-muted mt-0.5">
+                  {connectedCount}/{mcpServers.length} {t('已连接', 'connected')}
+                  {errorCount > 0 && (
+                    <span className="ml-2 text-red-400">{errorCount} {t('错误', 'error')}</span>
+                  )}
+                </p>
               </div>
             </div>
-            {configPaths.workspace.map((path, index) => (
-              <div
-                key={path}
-                className="flex items-center justify-between p-3 bg-surface/30 rounded-lg cursor-pointer hover:bg-surface/50 transition-colors"
-                onClick={() => openConfigFile(path)}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleReloadConfig}
+                disabled={actionLoading === 'reload'}
+                className="p-1.5 text-text-muted hover:text-accent transition-colors rounded-md hover:bg-accent/10 disabled:opacity-50"
+                title={t('刷新配置', 'Refresh config')}
               >
-                <div className="flex items-center gap-2">
-                  <FolderOpen className="w-4 h-4 text-text-muted" />
-                  <span className="text-sm text-text-secondary">
-                    {language === 'zh' ? `工作区配置 ${index + 1}` : `Workspace Config ${index + 1}`}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-text-muted font-mono truncate max-w-[250px]">
-                    {path}
-                  </span>
-                  <ExternalLink className="w-3 h-3 text-text-muted" />
-                </div>
-              </div>
-            ))}
+                <RefreshCw className={`w-3.5 h-3.5 ${actionLoading === 'reload' ? 'animate-spin' : ''}`} />
+              </button>
+              <ActionButton
+                variant="primary"
+                size="sm"
+                onClick={() => setShowAddModal(true)}
+                className="text-xs"
+              >
+                <Plus className="w-3.5 h-3.5 mr-1" />
+                {t('添加', 'Add')}
+              </ActionButton>
+            </div>
           </div>
-        </details>
+
+          {/* 搜索和筛选 */}
+          <div className="px-5 pb-3 flex items-center gap-3">
+            <div className="flex-1 relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted/50" />
+              <input
+                type="text"
+                value={serverSearch}
+                onChange={(e) => setServerSearch(e.target.value)}
+                placeholder={t('搜索服务器名称或命令...', 'Search servers by name or command...')}
+                className="w-full pl-8 pr-3 py-1.5 text-xs bg-background/40 border border-border/40 rounded-lg text-text-primary placeholder:text-text-muted/40 focus:outline-none focus:border-accent/40 focus:ring-1 focus:ring-accent/20 transition-all"
+              />
+              {serverSearch && (
+                <button onClick={() => setServerSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted/50 hover:text-text-muted text-xs">✕</button>
+              )}
+            </div>
+            <div className="flex items-center rounded-lg border border-border/50 bg-background/30 overflow-hidden">
+              {([
+                ['all', t('全部', 'All'), mcpServers.length],
+                ['connected', t('已连接', 'On'), connectedCount],
+                ['disconnected', t('未连接', 'Off'), disconnectedCount],
+                ['error', t('错误', 'Err'), errorCount],
+              ] as [string, string, number][]).filter(([, , count]) => count > 0 || filterStatus === 'all').map(([val, label, count]) => (
+                <button
+                  key={val}
+                  onClick={() => setFilterStatus(val as typeof filterStatus)}
+                  className={`text-[11px] px-2 py-1 transition-colors flex items-center gap-1 ${filterStatus === val
+                    ? 'bg-accent/15 text-accent font-medium'
+                    : 'text-text-muted hover:bg-surface-hover hover:text-text-secondary'
+                  }`}
+                >
+                  {label}
+                  <span className="text-[10px] opacity-60">{count}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 说明 */}
+          <div className="px-5 pb-3">
+            <p className="text-[11px] text-text-muted/70">
+              {t(
+                'MCP (Model Context Protocol) 服务器可扩展 AI 助手的能力，如搜索、数据库、API 调用等。',
+                'MCP servers extend AI capabilities such as search, databases, API calls, and more.'
+              )}
+            </p>
+          </div>
+
+          {/* 自动连接开关 */}
+          <div className="px-5 pb-3">
+            <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-background/20 border border-border/30">
+              <div className="flex items-center gap-2">
+                <Zap className="w-3.5 h-3.5 text-accent/60" />
+                <span className="text-[11px] text-text-secondary">{t('启动时自动连接', 'Auto-connect on startup')}</span>
+              </div>
+              <ToggleSwitch
+                checked={mcpConfig.autoConnect ?? true}
+                onChange={(e) => setMcpConfig({ autoConnect: e.target.checked })}
+              />
+            </div>
+          </div>
+
+          {/* 服务器列表 */}
+          <div className="px-5 pb-5">
+            {mcpError && (
+              <div className="flex items-start gap-2 p-3 mb-3 bg-red-500/10 rounded-lg text-red-400 text-xs">
+                <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                <span>{mcpError}</span>
+              </div>
+            )}
+
+            {mcpLoading ? (
+              <div className="h-32 flex items-center justify-center text-text-muted">
+                <Loader2 className="w-5 h-5 animate-spin" />
+              </div>
+            ) : mcpServers.length === 0 ? (
+              <div className="h-40 flex flex-col items-center justify-center text-text-muted border border-dashed border-border/50 rounded-xl gap-2">
+                <Server className="w-10 h-10 opacity-30" />
+                <span className="text-xs">{t('暂无 MCP 服务器，点击上方添加按钮配置', 'No MCP servers. Click "Add" above to configure one.')}</span>
+              </div>
+            ) : filteredServers.length === 0 ? (
+              <div className="h-24 flex items-center justify-center text-text-muted text-xs">
+                {serverSearch
+                  ? t('未找到匹配的服务器', 'No servers match your search')
+                  : t('当前筛选条件下无服务器', 'No servers match the current filter')}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {filteredServers.map((server) => {
+                  const isExpanded = expandedServer === server.id
+                  const isLoading = actionLoading?.startsWith(server.id) || actionLoading === `refresh-${server.id}` || actionLoading === `oauth-${server.id}`
+                  const isRemote = server.config.type === 'remote'
+                  const isOAuthPending = oauthPendingServers.has(server.id)
+                  const style = STATUS_STYLES[server.status] || STATUS_STYLES.disconnected
+
+                  return (
+                    <div
+                      key={server.id}
+                      className={`rounded-xl border transition-all duration-200 overflow-hidden ${server.config.disabled
+                        ? 'bg-surface/10 border-border/30 opacity-50'
+                        : 'bg-surface/40 border-border/60 hover:border-accent/30'
+                      }`}
+                    >
+                      {/* 主内容行 */}
+                      <div className="flex items-center gap-3 px-4 py-3">
+                        {/* 图标 + 状态点 */}
+                        <div className="relative flex-shrink-0">
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${server.config.disabled ? 'bg-white/5' : isRemote ? 'bg-blue-500/10' : 'bg-accent/10'}`}>
+                            {isRemote ? (
+                              <Globe className={`w-4 h-4 ${server.config.disabled ? 'text-text-muted/50' : 'text-blue-400'}`} />
+                            ) : (
+                              <Server className={`w-4 h-4 ${server.config.disabled ? 'text-text-muted/50' : 'text-accent'}`} />
+                            )}
+                          </div>
+                          {!server.config.disabled && (
+                            <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-background">
+                              <div className={`w-full h-full rounded-full ${style.dot}`} />
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 名称和信息 */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-xs font-semibold text-text-primary">{server.config.name}</span>
+                            {server.config.source && (
+                              <span className={`text-[10px] px-1.5 py-px rounded ${server.config.source === 'workspace'
+                                ? 'bg-green-500/15 text-green-400'
+                                : 'bg-purple-500/15 text-purple-400'
+                              }`}>
+                                {server.config.source === 'workspace' ? t('工作区', 'Workspace') : t('全局', 'Global')}
+                              </span>
+                            )}
+                            {isRemote && (
+                              <span className="text-[10px] px-1.5 py-px rounded bg-blue-500/15 text-blue-400">Remote</span>
+                            )}
+                            {!server.config.disabled && (
+                              <span className={`text-[10px] px-1.5 py-px rounded ${style.text} bg-white/5`}>
+                                {getStatusText(server.status)}
+                              </span>
+                            )}
+                            {server.config.disabled && (
+                              <span className="text-[10px] px-1.5 py-px rounded bg-white/5 text-text-muted/50">{t('已禁用', 'Disabled')}</span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-text-muted/60 mt-0.5 truncate font-mono">
+                            {isRemote
+                              ? ('url' in server.config ? server.config.url : '')
+                              : `${'command' in server.config ? server.config.command : ''}${isLocalConfig(server.config) && server.config.args?.length ? ' ' + server.config.args.join(' ') : ''}`
+                            }
+                          </p>
+                        </div>
+
+                        {/* 工具数量 */}
+                        {server.tools.length > 0 && !server.config.disabled && (
+                          <div className="hidden md:flex items-center gap-1 text-[10px] text-text-muted/50 flex-shrink-0">
+                            <Wrench className="w-3 h-3" />
+                            {server.tools.length}
+                          </div>
+                        )}
+
+                        {/* OAuth 等待状态 */}
+                        {isOAuthPending && (
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-orange-400" />
+                            <span className="text-[11px] text-orange-400">{t('授权中...', 'Auth...')}</span>
+                            <button
+                              onClick={() => handleCancelOAuth(server.id)}
+                              className="text-[11px] text-text-muted hover:text-red-400 ml-1"
+                            >
+                              {t('取消', 'Cancel')}
+                            </button>
+                          </div>
+                        )}
+
+                        {/* 快捷操作：连接/断开/认证 */}
+                        {!server.config.disabled && !isOAuthPending && (
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            {(server.status === 'needs_auth' || server.status === 'needs_registration') && (
+                              <button
+                                onClick={() => handleStartOAuth(server.id)}
+                                disabled={isLoading}
+                                className="p-1 text-orange-400 hover:bg-orange-500/10 rounded-md transition-colors"
+                                title={t('认证', 'Auth')}
+                              >
+                                <Key className="w-4 h-4" />
+                              </button>
+                            )}
+                            {server.status === 'connected' && (
+                              <button
+                                onClick={() => handleDisconnectServer(server.id)}
+                                disabled={isLoading}
+                                className="p-1 text-text-muted/50 hover:text-text-secondary hover:bg-surface-hover/50 rounded-md transition-colors"
+                                title={t('断开', 'Disconnect')}
+                              >
+                                <PowerOff className="w-4 h-4" />
+                              </button>
+                            )}
+                            {server.status === 'disconnected' && (
+                              <button
+                                onClick={() => handleConnectServer(server.id)}
+                                disabled={isLoading}
+                                className="p-1 text-green-400/70 hover:text-green-400 hover:bg-green-500/10 rounded-md transition-colors"
+                                title={t('连接', 'Connect')}
+                              >
+                                <Power className="w-4 h-4" />
+                              </button>
+                            )}
+                            {server.status === 'connecting' && (
+                              <Loader2 className="w-4 h-4 animate-spin text-text-muted" />
+                            )}
+                          </div>
+                        )}
+
+                        {/* 启用/禁用开关 */}
+                        <button
+                          onClick={() => handleToggleServer(server.id, !server.config.disabled)}
+                          disabled={isLoading}
+                          className={`flex-shrink-0 transition-colors ${server.config.disabled ? 'text-text-muted/40' : 'text-accent'}`}
+                          title={server.config.disabled ? t('启用', 'Enable') : t('禁用', 'Disable')}
+                        >
+                          {server.config.disabled ? (
+                            <ToggleLeft className="w-5 h-5" />
+                          ) : (
+                            <ToggleRight className="w-5 h-5" />
+                          )}
+                        </button>
+
+                        {/* 更多操作 */}
+                        <div className="relative flex-shrink-0" data-mcp-menu={server.id}>
+                          <button
+                            ref={(el) => {
+                              if (el) menuButtonRefs.current.set(server.id, el)
+                              else menuButtonRefs.current.delete(server.id)
+                            }}
+                            onClick={() => {
+                              if (activeMenu === server.id) {
+                                setActiveMenu(null)
+                                setMenuPosition(null)
+                              } else {
+                                const btn = menuButtonRefs.current.get(server.id)
+                                if (btn) {
+                                  const rect = btn.getBoundingClientRect()
+                                  setMenuPosition({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
+                                }
+                                setActiveMenu(server.id)
+                              }
+                            }}
+                            className="p-1 text-text-muted/50 hover:text-text-secondary hover:bg-surface-hover/50 rounded-md transition-colors"
+                          >
+                            <MoreHorizontal className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* 展开详情 */}
+                      {isExpanded && (
+                        <div className="px-4 pb-3 pt-0 animate-fade-in">
+                          <div className="ml-11 p-3 rounded-lg bg-background/30 border border-border/30 space-y-4">
+                            {/* 错误信息 */}
+                            {server.error && !isOAuthPending && (
+                              <div className="flex items-start gap-2 p-2.5 bg-red-500/10 rounded-lg border border-red-500/20 text-red-400 text-[11px]">
+                                <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                                <span className="leading-relaxed">{server.error}</span>
+                              </div>
+                            )}
+
+                            {/* OAuth 等待提示 */}
+                            {isOAuthPending && (
+                              <div className="flex items-start gap-2 p-2.5 bg-orange-500/10 rounded-lg border border-orange-500/20 text-orange-300 text-[11px]">
+                                <Loader2 className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 animate-spin" />
+                                <span>{t('请在浏览器中完成授权，完成后将自动连接。', 'Complete authorization in browser. Will connect automatically.')}</span>
+                              </div>
+                            )}
+
+                            {/* 认证状态 */}
+                            {isRemote && server.authStatus && (
+                              <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11px] font-medium border ${
+                                server.authStatus === 'authenticated'
+                                  ? 'bg-green-500/10 text-green-400 border-green-500/20'
+                                  : server.authStatus === 'expired'
+                                  ? 'bg-orange-500/10 text-orange-400 border-orange-500/20'
+                                  : 'bg-white/5 text-text-muted border-border/50'
+                              }`}>
+                                <Key className="w-3.5 h-3.5" />
+                                {server.authStatus === 'authenticated' && t('已认证', 'Authenticated')}
+                                {server.authStatus === 'expired' && t('认证已过期', 'Auth Expired')}
+                                {server.authStatus === 'not_authenticated' && t('未认证', 'Not Authenticated')}
+                              </div>
+                            )}
+
+                            {/* 配置详情 */}
+                            <div>
+                              <span className="text-[10px] text-text-muted/60 uppercase tracking-wider">{t('配置详情', 'Configuration')}</span>
+                              <div className="text-[11px] text-text-secondary space-y-1 font-mono bg-black/20 p-3 rounded-lg border border-border/30 mt-1">
+                                <div className="flex"><span className="text-text-muted/60 w-16 shrink-0">id:</span> <span className="select-all">{server.id}</span></div>
+                                <div className="flex"><span className="text-text-muted/60 w-16 shrink-0">type:</span> <span>{server.config.type}</span></div>
+                                {isRemote ? (
+                                  <>
+                                    {isRemoteConfig(server.config) && (
+                                      <div className="flex"><span className="text-text-muted/60 w-16 shrink-0">url:</span> <span className="select-all">{server.config.url}</span></div>
+                                    )}
+                                    {isRemoteConfig(server.config) && server.config.oauth !== false && (
+                                      <div className="flex"><span className="text-text-muted/60 w-16 shrink-0">oauth:</span> <span>enabled</span></div>
+                                    )}
+                                  </>
+                                ) : (
+                                  <>
+                                    {isLocalConfig(server.config) && (
+                                      <div className="flex"><span className="text-text-muted/60 w-16 shrink-0">command:</span> <span className="text-accent">{server.config.command}</span></div>
+                                    )}
+                                    {isLocalConfig(server.config) && server.config.args && server.config.args.length > 0 && (
+                                      <div className="flex"><span className="text-text-muted/60 w-16 shrink-0">args:</span> <span>{server.config.args.join(' ')}</span></div>
+                                    )}
+                                    {isLocalConfig(server.config) && server.config.env && Object.keys(server.config.env).length > 0 && (
+                                      <div>
+                                        <span className="text-text-muted/60 block mb-0.5">env:</span>
+                                        {Object.entries(server.config.env as Record<string, string>).map(([k, v]) => (
+                                          <div key={k} className="ml-4 flex gap-1"><span className="text-text-primary">{k}</span>=<span className="text-text-muted/60">{v.length > 20 ? v.slice(0, 8) + '***' : v}</span></div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* 工具列表 */}
+                            {server.tools.length > 0 && (
+                              <div>
+                                <span className="text-[10px] text-text-muted/60 uppercase tracking-wider flex items-center gap-1">
+                                  <Wrench className="w-3 h-3" />
+                                  {t('工具', 'Tools')} ({server.tools.length})
+                                </span>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mt-1">
+                                  {server.tools.map((tool) => (
+                                    <div
+                                      key={tool.name}
+                                      className="px-2.5 py-1.5 bg-black/20 rounded-md border border-border/30 hover:border-accent/30 transition-colors"
+                                      title={tool.description}
+                                    >
+                                      <div className="text-[11px] font-medium text-text-primary truncate">{tool.name}</div>
+                                      {tool.description && (
+                                        <div className="text-[10px] text-text-muted/60 line-clamp-1 mt-0.5">{tool.description}</div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* 资源 */}
+                            {server.resources.length > 0 && (
+                              <div>
+                                <span className="text-[10px] text-text-muted/60 uppercase tracking-wider flex items-center gap-1">
+                                  <FileText className="w-3 h-3" />
+                                  {t('资源', 'Resources')} ({server.resources.length})
+                                </span>
+                                <div className="space-y-1 mt-1">
+                                  {server.resources.map((resource) => (
+                                    <div key={resource.uri} className="px-2.5 py-1.5 bg-black/20 rounded-md border border-border/30">
+                                      <div className="text-[11px] font-medium text-text-primary truncate">{resource.name}</div>
+                                      <div className="text-[10px] text-text-muted/60 truncate">{resource.uri}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* 提示模板 */}
+                            {server.prompts.length > 0 && (
+                              <div>
+                                <span className="text-[10px] text-text-muted/60 uppercase tracking-wider flex items-center gap-1">
+                                  <MessageSquare className="w-3 h-3" />
+                                  {t('提示模板', 'Prompts')} ({server.prompts.length})
+                                </span>
+                                <div className="space-y-1 mt-1">
+                                  {server.prompts.map((prompt) => (
+                                    <div key={prompt.name} className="px-2.5 py-1.5 bg-black/20 rounded-md border border-border/30">
+                                      <div className="text-[11px] font-medium text-text-primary">{prompt.name}</div>
+                                      {prompt.description && (
+                                        <div className="text-[10px] text-text-muted/60 truncate">{prompt.description}</div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* 自动批准 */}
+                            {server.config.autoApprove && server.config.autoApprove.length > 0 && (
+                              <div>
+                                <span className="text-[10px] text-text-muted/60 uppercase tracking-wider">{t('自动批准', 'Auto-approved')}</span>
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {server.config.autoApprove.map((tool) => (
+                                    <span key={tool} className="text-[10px] px-1.5 py-0.5 bg-accent/15 text-accent rounded">{tool}</span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* 使用示例 */}
+                            {(() => {
+                              const presetId = server.config.presetId
+                              const preset = presetId ? MCP_PRESETS.find(p => p.id === presetId) : undefined
+                              const usageExamples = language === 'zh' ? preset?.usageExamplesZh : preset?.usageExamples
+                              if (!usageExamples || usageExamples.length === 0) return null
+                              return (
+                                <div>
+                                  <span className="text-[10px] text-text-muted/60 uppercase tracking-wider flex items-center gap-1">
+                                    <Lightbulb className="w-3 h-3" />
+                                    {t('使用示例', 'Examples')}
+                                  </span>
+                                  <div className="space-y-1 mt-1">
+                                    {usageExamples.map((example) => (
+                                      <div key={example.slice(0, 30)} className="px-2.5 py-1.5 bg-yellow-500/5 border border-yellow-500/15 rounded-md text-[11px] text-text-secondary">
+                                        {example}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )
+                            })()}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* 配置文件位置 */}
+      {configPaths && (
+        <section className="rounded-2xl border border-border/50 bg-surface/20 backdrop-blur-xl shadow-sm relative overflow-hidden group">
+          <div className="absolute inset-0 bg-gradient-to-br from-accent/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+          <button
+            onClick={() => setExpandedServer(expandedServer === '__config__' ? null : '__config__')}
+            className="w-full flex items-center justify-between p-5 cursor-pointer focus:outline-none relative z-10"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="p-1.5 bg-accent/10 rounded-md text-accent">
+                <Settings className="w-4 h-4" />
+              </div>
+              <div className="text-left">
+                <h5 className="text-sm font-semibold text-text-primary">{t('配置文件位置', 'Configuration Files')}</h5>
+                <p className="text-[11px] text-text-muted mt-0.5">{t('点击查看和编辑 MCP 配置文件', 'View and edit MCP configuration files')}</p>
+              </div>
+            </div>
+            <div className={`p-1.5 rounded-full bg-surface-hover transition-transform duration-300 ${expandedServer === '__config__' ? 'rotate-180' : ''}`}>
+              <ChevronDown className="w-3.5 h-3.5 text-text-muted" />
+            </div>
+          </button>
+
+          <div className={`grid transition-all duration-300 ease-in-out ${expandedServer === '__config__' ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+            <div className="overflow-hidden">
+              <div className="px-5 pb-5 space-y-2 relative z-10">
+                <div
+                  className="flex items-center justify-between p-3 bg-background/30 rounded-lg border border-border/40 cursor-pointer hover:border-accent/30 transition-colors"
+                  onClick={() => openConfigFile(configPaths.user)}
+                >
+                  <div className="flex items-center gap-2">
+                    <FolderOpen className="w-3.5 h-3.5 text-text-muted" />
+                    <span className="text-xs text-text-secondary">{t('用户配置', 'User Config')}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-text-muted/60 font-mono truncate max-w-[250px]">{configPaths.user}</span>
+                    <ExternalLink className="w-3 h-3 text-text-muted/50" />
+                  </div>
+                </div>
+                {configPaths.workspace.map((path, index) => (
+                  <div
+                    key={path}
+                    className="flex items-center justify-between p-3 bg-background/30 rounded-lg border border-border/40 cursor-pointer hover:border-accent/30 transition-colors"
+                    onClick={() => openConfigFile(path)}
+                  >
+                    <div className="flex items-center gap-2">
+                      <FolderOpen className="w-3.5 h-3.5 text-text-muted" />
+                      <span className="text-xs text-text-secondary">{t(`工作区配置 ${index + 1}`, `Workspace Config ${index + 1}`)}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-text-muted/60 font-mono truncate max-w-[250px]">{path}</span>
+                      <ExternalLink className="w-3 h-3 text-text-muted/50" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
       )}
 
-      {/* Add Server OverlayDialog */}
+      {/* 使用提示 */}
+      <div className="p-4 rounded-xl bg-accent/5 border border-accent/10 text-xs text-text-muted">
+        <p className="font-medium text-accent/80 mb-2">{t('使用提示', 'Tips')}</p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="flex items-start gap-2">
+            <Server className="w-3.5 h-3.5 text-accent/60 mt-0.5 flex-shrink-0" />
+            <div>
+              <span className="text-text-secondary font-medium">{t('本地服务器', 'Local Server')}</span>
+              <p className="text-[11px] text-text-muted/70 mt-0.5">{t('通过 stdio 运行本地进程', 'Run local process via stdio')}</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-2">
+            <Globe className="w-3.5 h-3.5 text-accent/60 mt-0.5 flex-shrink-0" />
+            <div>
+              <span className="text-text-secondary font-medium">{t('远程服务器', 'Remote Server')}</span>
+              <p className="text-[11px] text-text-muted/70 mt-0.5">{t('通过 SSE/Streamable HTTP 连接', 'Connect via SSE/HTTP')}</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-2">
+            <Wrench className="w-3.5 h-3.5 text-accent/60 mt-0.5 flex-shrink-0" />
+            <div>
+              <span className="text-text-secondary font-medium">{t('工具扩展', 'Tool Extension')}</span>
+              <p className="text-[11px] text-text-muted/70 mt-0.5">{t('为 AI 提供搜索、数据库等能力', 'Give AI search, DB capabilities')}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 浮动菜单 */}
+      {activeMenu && menuPosition && activeMenuServer && (() => {
+        const server = activeMenuServer
+        return (
+          <div
+            style={{ position: 'fixed', top: menuPosition.top, right: menuPosition.right, zIndex: 9999 }}
+            className="w-36 bg-surface border border-border/60 rounded-lg shadow-xl py-1 animate-fade-in"
+            data-mcp-menu={server.id}
+          >
+            {server.status === 'connected' && (
+              <button
+                onClick={() => {
+                  setActiveMenu(null)
+                  setMenuPosition(null)
+                  handleRefreshCapabilities(server.id)
+                }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-text-secondary hover:bg-accent/10 hover:text-accent transition-colors"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                {t('刷新能力', 'Refresh')}
+              </button>
+            )}
+            <button
+              onClick={() => {
+                setActiveMenu(null)
+                setMenuPosition(null)
+                setExpandedServer(expandedServer === server.id ? null : server.id)
+              }}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-text-secondary hover:bg-accent/10 hover:text-accent transition-colors"
+            >
+              <Info className="w-3.5 h-3.5" />
+              {t('详情', 'Details')}
+            </button>
+            <div className="border-t border-border/30 my-1"></div>
+            <button
+              onClick={() => {
+                if (deleteConfirm === server.id) {
+                  handleDeleteServer(server.id)
+                } else {
+                  setDeleteConfirm(server.id)
+                  setTimeout(() => setDeleteConfirm(null), 3000)
+                }
+              }}
+              className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-colors ${deleteConfirm === server.id
+                ? 'text-red-400 bg-red-500/10 font-medium'
+                : 'text-red-400/70 hover:bg-red-500/10 hover:text-red-400'
+              }`}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              {deleteConfirm === server.id ? t('确认删除', 'Confirm') : t('删除', 'Delete')}
+            </button>
+          </div>
+        )
+      })()}
+
+      {/* 添加服务器弹窗 */}
       <McpServerConnectDialog
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
         onAdd={handleAddServer}
         language={language}
-        existingServerIds={existingServerIds}
+        existingServerIds={mcpServers.map(s => s.id)}
       />
     </div>
   )

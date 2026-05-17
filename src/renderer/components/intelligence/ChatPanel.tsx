@@ -6,6 +6,9 @@ import {
   AlertTriangle,
   Upload,
   ChevronDown,
+  ShieldAlert,
+  Check,
+  X,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useStore, useModeStore } from '@store'
@@ -14,7 +17,6 @@ import { BRAND } from '@shared/brand'
 import { useAgentActions, useAgentCommands, useAgentViewState } from '@hooks/useAgent'
 import { useChatScrollController } from '@hooks'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
-import { selectTodos } from '@intelligence/state/IntelligenceStore'
 import { EventBus } from '@intelligence/engine/EventDispatcher'
 import { knowledgeExtractor } from '@intelligence/runtime/knowledgeService/extractor'
 import { t } from '@renderer/i18n'
@@ -32,9 +34,7 @@ import { ChatInput, PendingAttachment } from '../conversation'
 import MentionPopup from '@components/intelligence/MentionPopup'
 import { MentionParser, MentionCandidate } from '@intelligence/utils/mentionDecoder'
 import ChatMessageUI from './ChatMessage'
-import AgentStatusBar from './AgentStatusBar'
 import ChangesReviewPanel from './ChangesReviewPanel'
-import { TodoListPanel } from './TodoListPanel'
 import { keybindingService } from '@services/keybindingAdapter'
 import { slashCommandService, SlashCommand } from '@services/slashCommandAdapter'
 import SlashCommandPopup from './SlashCommandPopup'
@@ -45,6 +45,8 @@ import { globalDecide as globalConfirm } from '@components/foundation/DecisionOv
 import { useToast } from '@components/foundation/NotificationProvider'
 import { composerService } from '@intelligence/runtime/composerEngine'
 import { playNotificationSound } from '@utils/notificationSound'
+import { getFriendlyToolName } from '@intelligence/display/toolFriendlyName'
+import { TodoListPanel } from './TodoListPanel'
 import {
   buildChatTimelineProjection,
   type ChatTimelineItem,
@@ -59,6 +61,7 @@ interface RenderableMessageItem {
 
 const HISTORY_REVEAL_BATCH_SIZE = 50
 const HISTORY_VISIBLE_TAIL_COUNT = 100
+const EMPTY_TODOS: import('@intelligence/providerTypes').TodoItem[] = []
 
 function buildRenderableMessageItems(
   messages: ChatMessageType[],
@@ -103,6 +106,10 @@ export default function ChatPanel() {
   // 从 AgentStore 获取 inputPrompt
   const inputPrompt = useAgentStore(state => state.inputPrompt)
   const setInputPrompt = useAgentStore(state => state.setInputPrompt)
+  const todos = useAgentStore(state => {
+    if (!state.currentThreadId) return EMPTY_TODOS
+    return state.threads[state.currentThreadId]?.todos || EMPTY_TODOS
+  })
   const hasActiveThread = useAgentStore(state => {
     if (!state.currentThreadId) return false
     return !!state.threads[state.currentThreadId]
@@ -122,15 +129,14 @@ export default function ChatPanel() {
     isStreaming,
     isAwaitingApproval,
     pendingToolCall,
-    pendingApprovalToolCalls,
     pendingChanges,
     messageCheckpoints,
     contextItems,
     currentThreadId,
     messageListVersion,
-    streamState,
+    pendingApprovalToolCalls,
   } = useAgentViewState()
-  const { sendMessage, abort, approveCurrentTool, rejectCurrentTool, approveAllTools, rejectAllTools } = useAgentCommands()
+  const { sendMessage, abort, approveCurrentTool, rejectCurrentTool } = useAgentCommands()
   const {
     clearMessages,
     deleteMessagesAfter,
@@ -142,10 +148,12 @@ export default function ChatPanel() {
     getCheckpointForMessage,
     addContextItem,
     removeContextItem,
-    regenerateFromMessage,
+    deleteMessagesByIds,
   } = useAgentActions()
 
   const [inputState, setInputState] = useState('')
+  const [deleteSelectionMode, setDeleteSelectionMode] = useState(false)
+  const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(new Set())
   const input = inputState
   const setInput = useCallback((value: string | null | undefined) => {
     setInputState(value ?? '')
@@ -278,8 +286,6 @@ export default function ChatPanel() {
   const [showSlashCommand, setShowSlashCommand] = useState(false)
   const [slashCommandQuery, setSlashCommandQuery] = useState('')
 
-  // Task List 状态
-  const todos = useAgentStore(selectTodos)
   const [showReviewPanel, setShowReviewPanel] = useState(false)
 
   // 监听选项卡片选择事件
@@ -796,39 +802,89 @@ export default function ChatPanel() {
 
   // 重新生成（创建分支）
   const handleRegenerate = useCallback(async (messageId: string) => {
-    // 使用分支功能重新生成
-    const result = regenerateFromMessage(messageId)
+    const msgIndex = messages.findIndex((m: ChatMessageType) => m.id === messageId)
+    if (msgIndex <= 0) return
 
-    if (result) {
-      // 成功创建分支，发送消息重新生成
-      toast.success(language === 'zh' ? '已创建新分支' : 'Branch created')
-      await sendMessage(result.messageContent)
-    } else {
-      // 回退到原来的逻辑（直接删除并重新发送）
-      const msgIndex = messages.findIndex((m: ChatMessageType) => m.id === messageId)
-      if (msgIndex <= 0) return
-
-      let userMsgIndex = msgIndex - 1
-      while (userMsgIndex >= 0 && messages[userMsgIndex].role !== 'user') {
-        userMsgIndex--
-      }
-
-      if (userMsgIndex < 0) return
-      const userMsg = messages[userMsgIndex]
-      if (!isUserMessage(userMsg)) return
-
-      // 找到用户消息的前一条消息，删除它之后的所有消息（包括用户消息本身）
-      if (userMsgIndex > 0) {
-        const prevMsg = messages[userMsgIndex - 1]
-        deleteMessagesAfter(prevMsg.id)
-      } else {
-        // 如果用户消息是第一条，清空所有消息
-        clearMessages()
-      }
-
-      await sendMessage(userMsg.content)
+    let userMsgIndex = msgIndex - 1
+    while (userMsgIndex >= 0 && messages[userMsgIndex].role !== 'user') {
+      userMsgIndex--
     }
-  }, [messages, deleteMessagesAfter, clearMessages, sendMessage, regenerateFromMessage, toast, language])
+
+    if (userMsgIndex < 0) return
+    const userMsg = messages[userMsgIndex]
+    if (!isUserMessage(userMsg)) return
+
+    if (userMsgIndex > 0) {
+      const prevMsg = messages[userMsgIndex - 1]
+      deleteMessagesAfter(prevMsg.id)
+    } else {
+      clearMessages()
+    }
+
+    await sendMessage(userMsg.content)
+  }, [messages, deleteMessagesAfter, clearMessages, sendMessage])
+
+  const handleDeleteRound = useCallback((messageId: string) => {
+    const msgIndex = messages.findIndex((m: ChatMessageType) => m.id === messageId)
+    if (msgIndex === -1) return
+
+    let roundStartIndex = msgIndex
+    if (messages[msgIndex].role !== 'user') {
+      roundStartIndex = msgIndex - 1
+      while (roundStartIndex >= 0 && messages[roundStartIndex].role !== 'user') {
+        roundStartIndex--
+      }
+      if (roundStartIndex < 0) return
+    }
+
+    let roundEndIndex = roundStartIndex + 1
+    while (roundEndIndex < messages.length && messages[roundEndIndex].role !== 'user') {
+      roundEndIndex++
+    }
+    roundEndIndex--
+
+    const idsToSelect = new Set(
+      messages.slice(roundStartIndex, roundEndIndex + 1).map(m => m.id)
+    )
+
+    setSelectedMessageIds(idsToSelect)
+    setDeleteSelectionMode(true)
+  }, [messages])
+
+  const handleToggleSelectMessage = useCallback((messageId: string) => {
+    setSelectedMessageIds(prev => {
+      const next = new Set(prev)
+      if (next.has(messageId)) {
+        next.delete(messageId)
+      } else {
+        next.add(messageId)
+      }
+      return next
+    })
+  }, [])
+
+  const handleCancelDeleteSelection = useCallback(() => {
+    setDeleteSelectionMode(false)
+    setSelectedMessageIds(new Set())
+  }, [])
+
+  const handleConfirmDeleteSelection = useCallback(async () => {
+    if (selectedMessageIds.size === 0) return
+
+    const confirmed = await globalConfirm({
+      title: language === 'zh' ? '删除对话' : 'Delete Conversation',
+      message: language === 'zh'
+        ? `确定要删除选中的 ${selectedMessageIds.size} 条消息吗？`
+        : `Delete ${selectedMessageIds.size} selected message(s)?`,
+      confirmText: language === 'zh' ? '删除' : 'Delete',
+      variant: 'danger',
+    })
+    if (!confirmed) return
+
+    deleteMessagesByIds(Array.from(selectedMessageIds))
+    setDeleteSelectionMode(false)
+    setSelectedMessageIds(new Set())
+  }, [selectedMessageIds, deleteMessagesByIds, language])
 
   // 添加当前文件
   const handleAddCurrentFile = useCallback(() => {
@@ -949,17 +1005,6 @@ export default function ChatPanel() {
   }, [getCheckpointForMessage, restoreToCheckpoint, toast, language, messages, addContextItem])
 
   // AgentStatusBar 回调（提取为 useCallback 避免打破 memo）
-  const handleReviewFile = useCallback(async (filePath: string) => {
-    const change = pendingChanges.find(c => c.filePath === filePath)
-    if (!change) return
-    const currentContent = await api.file.read(filePath)
-    if (currentContent !== null) {
-      const diffUri = `diff://${filePath}`
-      openFile(diffUri, currentContent, change.snapshot.content || '')
-      setActiveFile(diffUri)
-    }
-  }, [pendingChanges, openFile, setActiveFile])
-
   const handleAcceptFile = useCallback(async (filePath: string) => {
     acceptChange(filePath)
     await composerService.acceptChange(filePath)
@@ -991,10 +1036,6 @@ export default function ChatPanel() {
     await composerService.acceptAll()
     toast.success('All changes accepted')
   }, [acceptAllChanges, toast])
-
-  const handleViewAllChanges = useCallback(() => {
-    setShowReviewPanel(true)
-  }, [])
 
   // 渲染消息
   const renderArchiveItem = useCallback((item: TimelineArchiveItem) => {
@@ -1065,10 +1106,15 @@ export default function ChatPanel() {
           onOpenDiff={handleShowDiff}
           pendingToolId={pendingToolCall?.id}
           hasCheckpoint={item.item.hasCheckpoint}
+          isCodeEditor={activeScenarioId === 'code-editor'}
+          onDeleteRound={handleDeleteRound}
+          selectionMode={deleteSelectionMode}
+          isSelected={selectedMessageIds.has(msg.id)}
+          onToggleSelect={handleToggleSelectMessage}
         />
       </div>
     )
-  }, [approveCurrentTool, handleEditMessage, handleRegenerate, handleRestore, handleShowDiff, isChatPrimary, pendingToolCall?.id, rejectCurrentTool, renderArchiveItem])
+  }, [approveCurrentTool, deleteSelectionMode, handleDeleteRound, handleEditMessage, handleRegenerate, handleRestore, handleShowDiff, handleToggleSelectMessage, isChatPrimary, pendingToolCall?.id, rejectCurrentTool, renderArchiveItem, selectedMessageIds])
 
   const handleTimelineRangeChanged = useCallback((range: { startIndex: number; endIndex: number }) => {
     visibleRangeRef.current = range
@@ -1238,64 +1284,58 @@ export default function ChatPanel() {
           }
 
           {/* Bottom TextField Area - Unified Tray */}
+          {!deleteSelectionMode && (
           <div className={`shrink-0 z-20 flex flex-col pt-2 ${isChatPrimary ? 'max-w-[840px] mx-auto w-full' : ''}`}>
             <div className="mx-4 mb-4 flex flex-col">
-              {/* Status Bar + Task List + File Changes */}
-              {(() => {
-                const hasFileChanges = pendingChanges.length > 0
-                const hasTodos = todos.length > 0
-                const isActive = isStreaming || isAwaitingApproval
-                const showAny = hasFileChanges || hasTodos || isActive
+              {/* Tool Approval Banner */}
+              <AnimatePresence>
+                {isAwaitingApproval && pendingApprovalToolCalls && pendingApprovalToolCalls.length > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+                    animate={{ opacity: 1, height: 'auto', marginBottom: 12 }}
+                    exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+                    transition={{ duration: 0.25, ease: 'easeOut' }}
+                    className="overflow-hidden"
+                  >
+                    <div className="flex items-center gap-3 px-4 py-3 rounded-xl border border-amber-500/30 bg-amber-500/8 backdrop-blur-sm">
+                      <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-amber-500/15 shrink-0">
+                        <ShieldAlert className="w-4 h-4 text-amber-500 animate-pulse" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[13px] font-medium text-text-primary">
+                          {t('toolAwaitingApproval', language as any)}
+                        </div>
+                        <div className="text-[11px] text-text-muted mt-0.5 truncate">
+                          {pendingApprovalToolCalls.map(tc => getFriendlyToolName(tc.name, language).label).join('、')}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={rejectCurrentTool}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-text-muted hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                          {t('toolReject', language as any)}
+                        </button>
+                        <button
+                          onClick={approveCurrentTool}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium bg-accent text-white hover:bg-accent-hover rounded-lg transition-all"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          {t('toolApprove', language as any)}
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
-                return showAny ? (
-                  <div className="mb-3 space-y-2">
-                    {isActive && (
-                      <AgentStatusBar
-                        pendingChanges={pendingChanges}
-                        isStreaming={isStreaming}
-                        isAwaitingApproval={isAwaitingApproval}
-                        streamDetail={streamState.streamDetail}
-                        currentToolName={streamState.currentToolCall?.name}
-                        currentToolCall={streamState.currentToolCall}
-                        currentTaskLabel={todos.find(t => t.status === 'in_progress')?.activeForm}
-                        iterationIndex={streamState.iterationIndex}
-                        onStop={abort}
-                        onReviewFile={handleReviewFile}
-                        onAcceptFile={handleAcceptFile}
-                        onRejectFile={handleRejectFile}
-                        onUndoAll={handleUndoAll}
-                        onKeepAll={handleKeepAll}
-                        onApproveTool={approveCurrentTool}
-                        onRejectTool={rejectCurrentTool}
-                        onApproveAllTools={approveAllTools}
-                        onRejectAllTools={rejectAllTools}
-                        pendingApprovalCount={pendingApprovalToolCalls.length}
-                        pendingApprovalToolCalls={pendingApprovalToolCalls}
-                        onViewAllChanges={handleViewAllChanges}
-                      />
-                    )}
-
-                    {!isActive && hasFileChanges && (
-                      <AgentStatusBar
-                        pendingChanges={pendingChanges}
-                        isStreaming={false}
-                        isAwaitingApproval={false}
-                        onStop={abort}
-                        onReviewFile={handleReviewFile}
-                        onAcceptFile={handleAcceptFile}
-                        onRejectFile={handleRejectFile}
-                        onUndoAll={handleUndoAll}
-                        onKeepAll={handleKeepAll}
-                        onViewAllChanges={handleViewAllChanges}
-                      />
-                    )}
-
-                    {hasTodos && (
-                      <TodoListPanel todos={todos} isStreaming={isStreaming} />
-                    )}
-                  </div>
-                ) : null
-              })()}
+              {/* Todo List */}
+              {todos.length > 0 && (
+                <div className="mb-3">
+                  <TodoListPanel todos={todos} isStreaming={isStreaming} />
+                </div>
+              )}
 
               {/* TextField Component */}
               <ChatInput
@@ -1327,6 +1367,7 @@ export default function ChatPanel() {
               />
             </div>
           </div>
+          )}
         </div>
       </div>
 
@@ -1339,6 +1380,31 @@ export default function ChatPanel() {
         onAcceptAll={handleKeepAll}
         onRejectAll={handleUndoAll}
       />
+
+      {deleteSelectionMode && (
+        <div className="absolute bottom-0 left-0 right-0 z-50 flex justify-center pb-6 pointer-events-none">
+          <div className="pointer-events-auto flex items-center gap-3 px-5 py-3 rounded-2xl bg-surface/95 backdrop-blur-xl border border-border/60 shadow-2xl shadow-black/30">
+            <span className="text-sm text-text-secondary">
+              {language === 'zh'
+                ? `已选择 ${selectedMessageIds.size} 条消息`
+                : `${selectedMessageIds.size} selected`}
+            </span>
+            <button
+              onClick={handleCancelDeleteSelection}
+              className="px-4 py-1.5 rounded-lg text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-all border border-border/50"
+            >
+              {language === 'zh' ? '取消' : 'Cancel'}
+            </button>
+            <button
+              onClick={handleConfirmDeleteSelection}
+              disabled={selectedMessageIds.size === 0}
+              className="px-4 py-1.5 rounded-lg text-sm text-white bg-red-500 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+            >
+              {language === 'zh' ? '确定删除' : 'Delete'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

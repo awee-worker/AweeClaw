@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react'
-import { User, Copy, Check, Edit2, RotateCcw, ChevronDown, X, Wrench, FileText, Code, Folder, Link2, Clock } from 'lucide-react'
+import { Copy, Check, Edit2, RotateCcw, ChevronDown, X, Wrench, FileText, Code, Folder, Link2, Clock, MoreHorizontal, Trash2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { SyntaxHighlighter } from '@utils/syntaxHighlighter'
 import { playNotificationSound } from '@utils/notificationSound'
@@ -54,7 +54,6 @@ import { api } from '../../adapters/electronBridge'
 import { toFullPath, getFileName } from '@shared/toolkit/pathHelper'
 import { stripToolCallLeaks } from '@intelligence/utils/toolCallSanitizer'
 import type { ToolStreamingPreview } from '@protocols'
-import { publicAsset } from '@utils/publicAsset'
 
 interface ChatMessageProps {
   message: ChatMessageType
@@ -67,6 +66,11 @@ interface ChatMessageProps {
   onSelectOption?: (messageId: string, selectedIds: string[]) => void
   pendingToolId?: string
   hasCheckpoint?: boolean
+  isCodeEditor?: boolean
+  onDeleteRound?: (messageId: string) => void
+  selectionMode?: boolean
+  isSelected?: boolean
+  onToggleSelect?: (messageId: string) => void
 }
 
 interface RenderPartProps {
@@ -365,13 +369,32 @@ const MessageMetaGroup = React.memo(({ autoSkills, manualSkills, searchContent, 
 MessageMetaGroup.displayName = 'MessageMetaGroup'
 
 const ThinkingBlock = React.memo(({ content, startTime, isStreaming, fontSize }: ThinkingBlockProps) => {
-  const expandAgentBlocksByDefault = useStore(s => s.agentConfig.expandAgentBlocksByDefault ?? false)
   const language = useStore(s => s.language)
-  const [isExpanded, setIsExpanded] = useState(expandAgentBlocksByDefault)
+  const [isExpanded, setIsExpanded] = useState(false)
   const [elapsed, setElapsed] = useState<number>(0)
   const lastElapsed = React.useRef<number>(0)
   const scrollRef = React.useRef<HTMLDivElement>(null)
   const [shadowClass, setShadowClass] = useState('')
+  const prevIsStreamingRef = React.useRef(isStreaming)
+  const userToggledRef = React.useRef(false)
+
+  useEffect(() => {
+    if (isStreaming && !prevIsStreamingRef.current) {
+      setIsExpanded(true)
+      userToggledRef.current = false
+    } else if (!isStreaming && prevIsStreamingRef.current) {
+      if (!userToggledRef.current) {
+        const timer = setTimeout(() => setIsExpanded(false), 600)
+        return () => clearTimeout(timer)
+      }
+    }
+    prevIsStreamingRef.current = isStreaming
+  }, [isStreaming])
+
+  const handleToggle = useCallback(() => {
+    userToggledRef.current = true
+    setIsExpanded(prev => !prev)
+  }, [])
 
   useEffect(() => {
     if (!startTime || !isStreaming) return
@@ -383,7 +406,6 @@ const ThinkingBlock = React.memo(({ content, startTime, isStreaming, fontSize }:
     return () => clearInterval(timer)
   }, [startTime, isStreaming])
 
-  // 检测滚动位置，显示/隐藏阴影
   useEffect(() => {
     const el = scrollRef.current
     if (!el || !isExpanded) return
@@ -397,10 +419,8 @@ const ThinkingBlock = React.memo(({ content, startTime, isStreaming, fontSize }:
     return () => el.removeEventListener('scroll', checkScroll)
   }, [isExpanded, content])
 
-  // Fluid effect for thinking content, ONLY when streaming
   const { displayedContent: fluidContent } = useSmoothStream(content, isStreaming, 1.5)
 
-  // 流式输出时自动滚动到底部
   useEffect(() => {
     if (isStreaming && isExpanded && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
@@ -418,15 +438,22 @@ const ThinkingBlock = React.memo(({ content, startTime, isStreaming, fontSize }:
   }, [content])
 
   return (
-    <div className="my-3 group/think overflow-hidden">
+    <div className="my-2.5 group/think overflow-hidden">
       <button
-        onClick={() => setIsExpanded(!isExpanded)}
+        onClick={handleToggle}
         className="flex w-full items-center gap-2 py-1.5 text-text-muted/85 hover:text-text-muted rounded-md hover:bg-text-primary/[0.03] transition-colors select-none"
       >
         <div className={`transition-transform duration-200 ${isExpanded ? 'rotate-0' : '-rotate-90'}`}>
           <ChevronDown className="w-3.5 h-3.5" />
         </div>
-        <span className="text-[12px]">
+        <div className="flex items-center gap-1.5">
+          {isStreaming ? (
+            <span className="thinking-indicator-icon" />
+          ) : (
+            <span className="w-2 h-2 rounded-full bg-accent/25" />
+          )}
+        </div>
+        <span className={`text-[12px] ${isStreaming ? 'text-accent/80 font-medium' : ''}`}>
           {durationText}
         </span>
         {!isExpanded && previewText && (
@@ -439,27 +466,45 @@ const ThinkingBlock = React.memo(({ content, startTime, isStreaming, fontSize }:
         )}
       </button>
 
-      {isExpanded && (
-        <div className={`relative scroll-shadow-container ${isStreaming ? 'animate-slide-down' : ''} ${shadowClass}`}>
-          <div
-            ref={scrollRef}
-            className="max-h-[300px] overflow-y-auto scrollbar-none pl-[38px] pr-3 pb-3"
+      <AnimatePresence initial={false}>
+        {isExpanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+            className="overflow-hidden"
           >
-            {content ? (
-              <div
-                style={{ fontSize: `${fontSize - 1}px` }}
-                className={`text-text-muted/85 leading-relaxed whitespace-pre-wrap font-sans ${isStreaming ? 'animate-block-reveal' : ''}`}
-              >
-                {isStreaming ? renderStreamingTailText(fluidContent, 'think-tail') : fluidContent}
+            <div className="relative ml-[14px] mt-0.5 mb-1">
+              <div className={`absolute left-0 top-0 bottom-0 w-[2px] rounded-full ${isStreaming ? 'thinking-border-glow' : 'bg-accent/20'}`} />
+              {isStreaming && (
+                <div className="absolute left-0 top-0 bottom-0 w-[2px] rounded-full thinking-sweep-line" />
+              )}
+              <div className={`relative rounded-xl ${isStreaming ? 'bg-accent/[0.03]' : 'bg-surface/30'} border ${isStreaming ? 'border-accent/[0.08]' : 'border-border/30'} overflow-hidden`}>
+                <div className={`scroll-shadow-container ${shadowClass}`}>
+                  <div
+                    ref={scrollRef}
+                    className="max-h-[300px] overflow-y-auto scrollbar-none pl-5 pr-3 py-3"
+                  >
+                    {content ? (
+                      <div
+                        style={{ fontSize: `${fontSize - 1}px` }}
+                        className={`text-text-muted/80 leading-relaxed whitespace-pre-wrap font-sans ${isStreaming ? 'animate-block-reveal' : ''}`}
+                      >
+                        {isStreaming ? renderStreamingTailText(fluidContent, 'think-tail') : fluidContent}
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-text-muted/80 italic text-xs py-1">
+                        <span className="text-shimmer">{language === 'zh' ? '正在分析...' : 'Analyzing...'}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
-            ) : (
-              <div className="flex items-center gap-2 text-text-muted/85 italic text-xs py-1">
-                <span className="text-shimmer">Analyzing...</span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 })
@@ -1130,6 +1175,11 @@ const ChatMessage = React.memo(({
   onOpenDiff,
   pendingToolId,
   hasCheckpoint,
+  isCodeEditor,
+  onDeleteRound,
+  selectionMode,
+  isSelected,
+  onToggleSelect,
 }: ChatMessageProps) => {
   const message = messageProp
 
@@ -1137,8 +1187,29 @@ const ChatMessage = React.memo(({
   const [editContent, setEditContent] = useState('')
   const [copied, setCopied] = useState(false)
   const [previewImage, setPreviewImage] = useState<string | null>(null)
+  const [showMsgMenu, setShowMsgMenu] = useState(false)
+  const [msgMenuPos, setMsgMenuPos] = useState<{ top: number; right: number } | null>(null)
+  const menuBtnRef = useRef<HTMLButtonElement>(null)
   const { editorConfig, language } = useStore(useShallow(s => ({ editorConfig: s.editorConfig, language: s.language })))
   const fontSize = editorConfig.chatFontSize ?? editorConfig.fontSize
+
+  useEffect(() => {
+    if (!showMsgMenu) return
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest('[data-msg-menu]')) {
+        setShowMsgMenu(false)
+        setMsgMenuPos(null)
+      }
+    }
+    const timer = setTimeout(() => {
+      document.addEventListener('click', handleClickOutside)
+    }, 0)
+    return () => {
+      clearTimeout(timer)
+      document.removeEventListener('click', handleClickOutside)
+    }
+  }, [showMsgMenu])
 
   if (!isUserMessage(message) && !isAssistantMessage(message)) {
     return null
@@ -1239,42 +1310,51 @@ const ChatMessage = React.memo(({
     <div className={`
       w-full group/msg transition-colors duration-300
       ${isUser ? 'py-1 bg-transparent' : 'py-2 bg-transparent'}
+      ${selectionMode && isSelected ? 'bg-accent/5' : ''}
     `}>
+      {selectionMode ? (
+        <div className="w-full px-4 flex items-start gap-3">
+          <button
+            onClick={(e) => { e.stopPropagation(); onToggleSelect?.(message.id) }}
+            className={`flex-shrink-0 mt-2 w-[18px] h-[18px] rounded flex items-center justify-center transition-all cursor-pointer ${
+              isSelected
+                ? 'bg-accent border-accent'
+                : 'bg-transparent border-2 border-border/60 hover:border-accent/50'
+            }`}
+          >
+            {isSelected && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
+          </button>
+          <div className={`flex-1 min-w-0 px-3.5 py-2.5 rounded-2xl border ${isUser ? 'bg-accent/8 border-accent/15' : 'bg-surface/80 border-border/40'}`}>
+            {isUser ? (
+              <div className="text-[14px] leading-relaxed text-text-primary/90">
+                <MarkdownContent content={textContent} fontSize={fontSize} preserveLineBreaks />
+              </div>
+            ) : (
+              <div className="prose-custom w-full max-w-none text-[15px] leading-relaxed text-text-primary/90">
+                {assistantParts && assistantParts.length > 0 && (
+                  <AssistantMessageContent
+                    parts={assistantParts}
+                    pendingToolId={pendingToolId}
+                    onApproveTool={onApproveTool}
+                    onRejectTool={onRejectTool}
+                    onOpenDiff={onOpenDiff}
+                    fontSize={fontSize}
+                    isStreaming={message.isStreaming}
+                    messageId={message.id}
+                  />
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
       <div className="w-full px-4 flex flex-col gap-1">
 
         {/* User Layout */}
         {isUser && (
           <div className="w-full flex flex-col items-end gap-1.5">
-            {/* Header Row */}
-            <div className="flex items-center gap-2.5 px-1 select-none">
-              {(() => {
-                const channelMatch = textContent.match(/^\[(飞书|微信|WhatsApp|Telegram|钉钉|Slack)\]/)
-                if (channelMatch) {
-                  const channelName = channelMatch[1]
-                  const channelColors: Record<string, string> = {
-                    '飞书': 'bg-blue-500/15 text-blue-400 border-blue-500/25',
-                    '微信': 'bg-green-500/15 text-green-400 border-green-500/25',
-                    'WhatsApp': 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25',
-                    'Telegram': 'bg-sky-500/15 text-sky-400 border-sky-500/25',
-                    '钉钉': 'bg-indigo-500/15 text-indigo-400 border-indigo-500/25',
-                    'Slack': 'bg-purple-500/15 text-purple-400 border-purple-500/25',
-                  }
-                  return (
-                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md border ${channelColors[channelName] || 'bg-text-primary/10 text-text-muted border-border/50'}`}>
-                      {channelName}
-                    </span>
-                  )
-                }
-                return null
-              })()}
-              <span className="text-[12px] font-bold text-text-muted/90 uppercase tracking-tight">You</span>
-              <div className="w-7 h-7 rounded-full bg-surface/60 border border-text-primary/10 flex items-center justify-center text-text-muted shadow-sm flex-shrink-0">
-                <User className="w-3.5 h-3.5" />
-              </div>
-            </div>
-
             {/* Bubble / Editing */}
-            <div className="flex flex-col items-end max-w-[85%] sm:max-w-[75%] min-w-0 mr-8 sm:mr-12 w-full">
+            <div className="flex flex-col items-end max-w-[85%] sm:max-w-[75%] min-w-0 w-full">
               {isEditing ? (
                 <div className="w-full relative group/edit">
                   <div className="absolute inset-0 -m-1 rounded-[20px] bg-accent/5 opacity-0 group-focus-within/edit:opacity-100 transition-opacity duration-300 pointer-events-none" />
@@ -1448,12 +1528,36 @@ const ChatMessage = React.memo(({
                       </button>
                     </HintOverlay>
                   )}
-                  {hasCheckpoint && onRestore && (
+                  {isCodeEditor && hasCheckpoint && onRestore && (
                     <HintOverlay content={tt.restore}>
                       <button onClick={() => onRestore(message.id)} className="p-1 rounded-md text-text-muted hover:text-amber-400 hover:bg-surface-hover transition-all">
                         <RotateCcw className="w-3 h-3" />
                       </button>
                     </HintOverlay>
+                  )}
+                  {onDeleteRound && (
+                    <div data-msg-menu={message.id}>
+                      <HintOverlay content={language === 'zh' ? '更多' : 'More'}>
+                        <button
+                          ref={menuBtnRef}
+                          onClick={() => {
+                            if (showMsgMenu) {
+                              setShowMsgMenu(false)
+                              setMsgMenuPos(null)
+                            } else {
+                              if (menuBtnRef.current) {
+                                const rect = menuBtnRef.current.getBoundingClientRect()
+                                setMsgMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
+                              }
+                              setShowMsgMenu(true)
+                            }
+                          }}
+                          className="p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-hover transition-all"
+                        >
+                          <MoreHorizontal className="w-3 h-3" />
+                        </button>
+                      </HintOverlay>
+                    </div>
                   )}
                 </div>
               )}
@@ -1464,24 +1568,6 @@ const ChatMessage = React.memo(({
         {/* Assistant Layout */}
         {!isUser && (
           <div className="w-full min-w-0 flex flex-col gap-2">
-            <div className="flex items-center gap-3 px-1">
-              <div className="relative flex-shrink-0">
-                <div className="w-9 h-9 rounded-xl overflow-hidden border border-border shadow-[0_4px_12px_-2px_rgba(0,0,0,0.1)] bg-surface">
-                  <div className="absolute inset-0 bg-accent/5 pointer-events-none" />
-                  <img src={publicAsset('brand/ip/ai-avatar.gif')} alt="AI" className="w-full h-full object-cover" />
-                </div>
-                {isStreaming && (
-                  <span className="absolute -bottom-0.5 -right-0.5 flex h-[10px] w-[10px] items-center justify-center">
-                    <span className="animate-ping absolute inline-flex h-[10px] w-[10px] rounded-full bg-accent/40 opacity-75" style={{ animationDuration: '2s' }} />
-                    <span className="relative inline-flex rounded-full h-[6px] w-[6px] bg-accent shadow-[0_0_6px_rgba(var(--accent-rgb),0.6)]" />
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-2 select-none overflow-hidden pr-2">
-                <span className="text-[13px] font-bold tracking-tight text-text-primary">AweeClaw</span>
-              </div>
-            </div>
-
             <div className="w-full text-[15px] leading-relaxed text-text-primary/90 pl-1">
               {/* System Context Widget at the top of the content — hidden per user preference */}
               {/* {isAssistantMessage(message) && (message.contextItems?.some((item: any) => item.type === 'Skill') || assistantParts?.some(isSearchPart)) && (
@@ -1574,11 +1660,56 @@ const ChatMessage = React.memo(({
                     </HintOverlay>
                   )
                 })()}
+                {onDeleteRound && (
+                  <div data-msg-menu={message.id}>
+                    <HintOverlay content={language === 'zh' ? '更多' : 'More'}>
+                      <button
+                        ref={menuBtnRef}
+                        onClick={() => {
+                          if (showMsgMenu) {
+                            setShowMsgMenu(false)
+                            setMsgMenuPos(null)
+                          } else {
+                            if (menuBtnRef.current) {
+                              const rect = menuBtnRef.current.getBoundingClientRect()
+                              setMsgMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
+                            }
+                            setShowMsgMenu(true)
+                          }
+                        }}
+                        className="p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-hover transition-all"
+                      >
+                        <MoreHorizontal className="w-3.5 h-3.5" />
+                      </button>
+                    </HintOverlay>
+                  </div>
+                )}
               </div>
             )}
           </div>
         )}
+
+      {showMsgMenu && msgMenuPos && onDeleteRound && (
+        <div
+          style={{ position: 'fixed', top: msgMenuPos.top, right: msgMenuPos.right, zIndex: 9999 }}
+          className="w-32 bg-surface border border-border/60 rounded-lg shadow-xl py-1 animate-fade-in"
+          data-msg-menu={message.id}
+        >
+          <button
+            onClick={() => {
+              setShowMsgMenu(false)
+              setMsgMenuPos(null)
+              onDeleteRound(message.id)
+            }}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400/70 hover:bg-red-500/10 hover:text-red-400 transition-colors"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            {language === 'zh' ? '删除' : 'Delete'}
+          </button>
+        </div>
+      )}
       </div>
+      )}
     </div>
   )
 })

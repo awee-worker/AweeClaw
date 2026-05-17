@@ -581,7 +581,6 @@ export async function runLoop(
       break
     }
 
-    iteration++
     threadStore.setStreamState({ waitPhase: 'waiting_model', iterationIndex: iteration })
 
     const result = await callLLMWithRetry(
@@ -932,9 +931,15 @@ Try again with the corrected tool call.`,
     }
 
     if (userRejected) {
-      threadStore.updateExecutionMeta({ loopState: 'aborted' })
-      EventBus.emit({ type: 'loop:end', reason: 'user_rejected', threadId, assistantId, requestId, planTaskId: context.planTaskId })
-      break
+      const { language } = useStore.getState()
+      const rejectMsg = language === 'zh'
+        ? '用户拒绝了该工具的授权。请根据已有信息继续完成任务，不要再次请求相同或类似的授权操作。如果无法继续，请说明原因。'
+        : 'The user rejected the tool authorization. Please continue the task with the information you already have, without requesting the same or similar authorization again. If you cannot proceed, explain why.'
+      llmMessages.push({ role: 'user', content: rejectMsg })
+      shouldContinue = true
+      threadStore.setStreamPhase('streaming')
+      threadStore.setStreamState({ streamDetail: 'reasoning' })
+      continue
     }
 
     shouldContinue = true

@@ -12,6 +12,7 @@
 
 import { registerTemplateTools, type TemplateToolConfig } from '@configuration/toolCategoryDefs'
 import { BRAND } from '@shared/brand'
+import { modeRegistry } from '../capabilities/mode/WorkModeRegistry'
 
 export interface PromptTemplate {
   id: string
@@ -199,7 +200,7 @@ You are an AUTONOMOUS agent. This means:
 
 **ALWAYS:**
 - Read files before editing them
-- Use the same language as the user (respond in Chinese if user writes in Chinese)
+- **Language Matching (CRITICAL)**: You MUST respond in the SAME language as the user's message. If the user writes in Chinese, you MUST respond entirely in Chinese — including your thinking/reasoning process, explanations, code comments, and all output. If the user writes in English, respond in English. This applies to ALL parts of your response: thinking, analysis, explanations, summaries, and any text output. NEVER mix languages — if the user speaks Chinese, do NOT use English for your thinking or explanations.
 - Bias toward action - execute tasks immediately
 - Make parallel tool calls when operations are independent (but NOT for MCP tools)
 - Stop only when the task is fully completed
@@ -883,6 +884,7 @@ export function getPromptTemplatePreview(templateId: string): string {
     openFiles: ['[List of open files]'],
     date: '[Current date]',
     mode: 'agent',
+    modeDescriptor: modeRegistry.getOrDefault('agent'),
     personality: template.personality,
     projectRules: { content: `[Project-specific rules from ${BRAND.paths.rules}]`, source: 'preview', lastModified: 0 },
     memories: [],

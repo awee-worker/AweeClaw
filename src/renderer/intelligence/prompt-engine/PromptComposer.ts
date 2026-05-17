@@ -7,6 +7,8 @@
  */
 
 import { WorkMode } from '@/renderer/modes/workModeTypes'
+import { modeRegistry } from '../capabilities/mode/WorkModeRegistry'
+import type { ModeDescriptor } from '../capabilities/mode/WorkModeDescriptor'
 import { generateToolsPromptDescriptionFiltered, type ToolCategory } from '@configuration/toolDefinitions'
 import { getToolsForContext } from '@configuration/toolCategoryDefs'
 import { DEFAULT_AGENT_CONFIG } from '@configuration/agentProfile'
@@ -83,6 +85,7 @@ export interface PromptContext {
   openFiles: string[]
   date: string
   mode: WorkMode
+  modeDescriptor: ModeDescriptor
   personality: string
   projectRules: ProjectRules | null
   memories: MemoryItem[]
@@ -258,6 +261,17 @@ function buildUserContext(userInfo: UserInfo | null | undefined): string | null 
   return `## Current User\nYou are chatting with the following user. Use this information to personalize your responses (e.g., address them by name, consider their profession). Do NOT mention these details unless relevant.\n\n${lines.join('\n')}`
 }
 
+function buildModeSpecificSections(modeDescriptor: ModeDescriptor): string | null {
+  const sections = modeDescriptor.promptProfile.additionalSections
+  if (!sections || sections.length === 0) return null
+
+  const modeName = modeDescriptor.displayName
+  const header = `## ${modeName} Mode Directives`
+  const body = sections.join('\n\n')
+
+  return `${header}\n\n${body}`
+}
+
 export function buildSystemPrompt(ctx: PromptContext): string {
   const identity = getActiveScenarioIdentity()
   const sections: (string | null)[] = [
@@ -269,6 +283,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     identity.conventions,
     identity.workflow,
     identity.outputFormat,
+    buildModeSpecificSections(ctx.modeDescriptor),
     buildEnvironment(ctx),
     buildUserContext(ctx.userInfo),
     buildProjectSummary(ctx.projectSummary || null),
@@ -292,12 +307,11 @@ export function buildChatPrompt(ctx: PromptContext): string {
     buildTools(ctx.mode, ctx.templateId, ctx.planPhase),
     identity.conventions,
     identity.outputFormat,
+    buildModeSpecificSections(ctx.modeDescriptor),
     buildEnvironment(ctx),
     buildUserContext(ctx.userInfo),
-    buildProjectSummary(ctx.projectSummary || null),
     buildProjectRules(ctx.projectRules),
     buildLongTermMemory(ctx.longTermMemories),
-    buildKnowledge(ctx.knowledgeEntries),
     ...buildSkillsSections(ctx.autoSkills, ctx.mentionedSkills),
     buildCustomInstructions(ctx.customInstructions),
   ]
@@ -391,6 +405,8 @@ export async function buildAgentSystemPrompt(
       }
     : null
 
+  const modeDescriptor = modeRegistry.getOrDefault(mode)
+
   const ctx: PromptContext = {
     os: getOS(),
     workspacePath,
@@ -398,6 +414,7 @@ export async function buildAgentSystemPrompt(
     openFiles,
     date: new Date().toISOString(),
     mode,
+    modeDescriptor,
     personality: template.personality,
     projectRules,
     memories,

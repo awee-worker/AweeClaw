@@ -240,7 +240,7 @@ function ThreadItem({ thread, isActive, isEditing, editName, language, onSelect,
 
     const firstUserMsg = thread.messages.find(m => m.role === 'user')
     if (firstUserMsg) {
-      return getMessageText(firstUserMsg.content).slice(0, 60)
+      return getMessageText(firstUserMsg.content).slice(0, 62)
     }
 
     return getThreadDisplayTitle(thread)

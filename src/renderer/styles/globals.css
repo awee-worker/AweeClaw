@@ -492,6 +492,53 @@ textarea,
   100% { transform: translateX(-100%); }
 }
 
+/* --- Thinking Block Styles --- */
+@keyframes thinking-border-pulse {
+  0%, 100% {
+    background: linear-gradient(180deg, rgb(var(--accent) / 0.6), rgb(var(--accent) / 0.15), rgb(var(--accent) / 0.6));
+    background-size: 100% 200%;
+    background-position: 0% 0%;
+  }
+  50% {
+    background: linear-gradient(180deg, rgb(var(--accent) / 0.6), rgb(var(--accent) / 0.15), rgb(var(--accent) / 0.6));
+    background-size: 100% 200%;
+    background-position: 0% 100%;
+  }
+}
+
+.thinking-border-glow {
+  animation: thinking-border-pulse 3s ease-in-out infinite;
+  box-shadow: 0 0 6px rgb(var(--accent) / 0.15);
+}
+
+@keyframes thinking-sweep {
+  0% { top: 0%; opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { top: 100%; opacity: 0; }
+}
+
+.thinking-sweep-line {
+  background: linear-gradient(180deg, transparent, rgb(var(--accent) / 0.8), transparent);
+  height: 30%;
+  animation: thinking-sweep 2.5s ease-in-out infinite;
+}
+
+@keyframes thinking-dot-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.6; }
+  50% { transform: scale(1.3); opacity: 1; }
+}
+
+.thinking-indicator-icon {
+  display: block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, rgb(var(--accent-subtle)), rgb(var(--accent)));
+  box-shadow: 0 0 6px rgb(var(--accent) / 0.4);
+  animation: thinking-dot-pulse 1.8s ease-in-out infinite;
+}
+
 /* --- Inline Diff Styles (Composer) --- */
 .inline-diff-add-line {
   background-color: rgba(34, 197, 94, 0.15) !important;

@@ -49,6 +49,7 @@ export interface MessageActions {
     addCheckpoint: (type: 'user_message' | 'tool_edit', fileSnapshots: Record<string, FileSnapshot>, targetThreadId?: string) => string
     clearMessages: (targetThreadId?: string) => void
     deleteMessagesAfter: (messageId: string, targetThreadId?: string) => void
+    deleteMessagesByIds: (messageIds: string[], targetThreadId?: string) => void
     getMessages: (targetThreadId?: string) => ChatMessage[]
 
     // 工具调用操作
@@ -674,6 +675,36 @@ export const createMessageSlice: StateCreator<
                         contextSummary: null,
                         compressionPhase: 'idle',
                         handoff: createIdleHandoffState(),
+                        lastModified: Date.now(),
+                    },
+                },
+            }
+        })
+
+        get().clearToolStreamingPreviews(threadId)
+    },
+
+    deleteMessagesByIds: (messageIds, targetThreadId) => {
+        const threadId = targetThreadId || get().currentThreadId
+        if (!threadId || messageIds.length === 0) return
+
+        const idsToDelete = new Set(messageIds)
+
+        set(state => {
+            const thread = state.threads[threadId]
+            if (!thread) return state
+
+            const remainingMessages = thread.messages.filter(m => !idsToDelete.has(m.id))
+            const remainingMessageIds = new Set(remainingMessages.map(m => m.id))
+
+            return {
+                threadMessageVersions: bumpThreadMessageVersion(state.threadMessageVersions, threadId),
+                threads: {
+                    ...state.threads,
+                    [threadId]: {
+                        ...thread,
+                        messages: remainingMessages,
+                        messageCheckpoints: (thread.messageCheckpoints || []).filter(checkpoint => remainingMessageIds.has(checkpoint.messageId)),
                         lastModified: Date.now(),
                     },
                 },

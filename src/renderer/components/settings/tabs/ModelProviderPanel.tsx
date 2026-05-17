@@ -1186,240 +1186,199 @@ export function ModelProviderPanel({
   )
 
   return (
-    <div className="space-y-6 animate-fade-in pb-10">
-      {/* 运行模式切换 */}
-      <section className="space-y-3">
-        <div className="flex items-center gap-2 mb-1.5">
-          <Sliders className="w-4 h-4 text-accent" />
-          <h4 className="text-sm font-semibold text-text-primary">
+    <div className="flex gap-5 animate-fade-in pb-10">
+      {/* 左侧边栏：运行模式 + 提供商 */}
+      <div className="w-52 flex-shrink-0 space-y-3 pr-4 border-r border-border/30">
+        {/* 运行模式 */}
+        <div className="space-y-2">
+          <h4 className="text-[11px] font-semibold text-text-muted uppercase tracking-wider">
             {language === 'zh' ? '运行模式' : 'Mode'}
           </h4>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            onClick={() => handleModeChange('local')}
-            className={`p-4 rounded-xl border text-left transition-all duration-200 ${
-              !isCloudMode
-                ? 'bg-accent/5 border-accent/30 text-text-primary'
-                : 'bg-surface/30 border-border/50 text-text-secondary hover:bg-surface/50 hover:border-border'
-            }`}
-          >
-            <div className="flex items-center gap-2 mb-2">
-              <div
-                className={`w-3 h-3 rounded-full border-2 transition-colors ${
-                  !isCloudMode ? 'border-accent bg-accent' : 'border-border'
-                }`}
-              />
-              <span className="text-sm font-medium">
-                {language === 'zh' ? '本地模式' : 'Local Mode'}
-              </span>
+          <div className="flex rounded-lg border border-border/50 bg-surface/20 p-0.5">
+            <button
+              onClick={() => handleModeChange('local')}
+              className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                !isCloudMode
+                  ? 'bg-accent text-white shadow-sm'
+                  : 'text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              {language === 'zh' ? '本地' : 'Local'}
+            </button>
+            <button
+              onClick={() => handleModeChange('cloud')}
+              className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                isCloudMode
+                  ? 'bg-accent text-white shadow-sm'
+                  : 'text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              {language === 'zh' ? '云端' : 'Cloud'}
+            </button>
+          </div>
+          {isCloudMode && !isAuthenticated && (
+            <div className="flex items-center gap-1.5 p-2 rounded-md bg-accent/5 border border-accent/20 text-[10px] text-text-secondary">
+              <CloudOff className="w-3 h-3 shrink-0 text-accent/60" />
+              <span>{language === 'zh' ? '需先登录' : 'Login required'}</span>
             </div>
-            <p className="text-xs text-text-muted leading-relaxed">
-              {language === 'zh'
-                ? '直连 AI 供应商，使用自己的 API Key'
-                : 'Connect directly to AI providers with your own API Key'}
-            </p>
-          </button>
-          <button
-            onClick={() => handleModeChange('cloud')}
-            className={`p-4 rounded-xl border text-left transition-all duration-200 ${
-              isCloudMode
-                ? 'bg-accent/5 border-accent/30 text-text-primary'
-                : 'bg-surface/30 border-border/50 text-text-secondary hover:bg-surface/50 hover:border-border'
-            }`}
-          >
-            <div className="flex items-center gap-2 mb-2">
-              <div
-                className={`w-3 h-3 rounded-full border-2 transition-colors ${
-                  isCloudMode ? 'border-accent bg-accent' : 'border-border'
-                }`}
-              />
-              <span className="text-sm font-medium">
-                {language === 'zh' ? '云端模式' : 'Cloud Mode'}
-              </span>
-            </div>
-            <p className="text-xs text-text-muted leading-relaxed">
-              {language === 'zh'
-                ? '通过后端代理访问，无需自带 Key'
-                : 'Access via backend proxy, no API Key needed'}
-            </p>
-          </button>
+          )}
         </div>
 
-        {isCloudMode && !isAuthenticated && (
-          <div className="flex items-center gap-2 p-3 rounded-lg bg-accent/5 border border-accent/20 text-xs text-text-secondary">
-            <CloudOff className="w-4 h-4 shrink-0 text-accent/60" />
-            <span>
-              {language === 'zh'
-                ? '云端模式需要先登录，请点击左下角头像进行登录'
-                : 'Cloud mode requires login. Click the avatar in the bottom left to sign in'}
-            </span>
-          </div>
-        )}
-      </section>
+        <div className="border-t border-border/30" />
 
-      {/* Provider 选择器 */}
-      <section className="space-y-4">
-        <div className="mb-4">
-          <div className="flex items-center gap-2 mb-1.5">
-            <Box className="w-4 h-4 text-accent" />
-            <h4 className="text-sm font-semibold text-text-primary">
-              {isCloudMode
-                ? language === 'zh' ? '云端提供商' : 'Cloud Providers'
-                : language === 'zh' ? '选择提供商' : 'DropdownSelector Provider'}
-            </h4>
-          </div>
-          <p className="text-[12px] text-text-muted">
+      {/* 提供商列表 */}
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between">
+          <h4 className="text-[11px] font-semibold text-text-muted uppercase tracking-wider">
             {isCloudMode
-              ? language === 'zh' ? '由后端服务提供的模型供应商' : 'Model providers from backend service'
-              : language === 'zh' ? '选择您要使用的模型服务提供商' : 'DropdownSelector the model service provider you want to use'}
-          </p>
+              ? language === 'zh' ? '云端提供商' : 'Cloud'
+              : language === 'zh' ? '提供商' : 'Providers'}
+          </h4>
+          {!isCloudMode && (
+            <button
+              onClick={() => setIsAddingCustom(true)}
+              className="p-0.5 rounded hover:bg-accent/10 text-text-muted hover:text-accent transition-colors"
+              title={language === 'zh' ? '添加自定义提供商' : 'Add Custom Provider'}
+            >
+              <Plus className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
-        {isCloudMode ? (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-            {cloudProviderOptions.length === 0 ? (
-              <div className="col-span-full text-center py-8 text-text-muted text-xs">
+        <div className="space-y-0.5 max-h-[calc(100vh-380px)] overflow-y-auto custom-scrollbar -mx-1 px-1">
+          {isCloudMode ? (
+            cloudProviderOptions.length === 0 ? (
+              <div className="text-center py-4 text-text-muted text-[10px]">
                 {isAuthenticated
-                  ? language === 'zh' ? '暂无可用云端提供商' : 'No cloud providers available'
-                  : language === 'zh' ? '请先登录以查看云端提供商' : 'Please login to view cloud providers'}
+                  ? language === 'zh' ? '暂无可用提供商' : 'No providers'
+                  : language === 'zh' ? '请先登录' : 'Please login'}
               </div>
             ) : (
               cloudProviderOptions.map((cp) => (
                 <button
                   key={cp.id}
                   onClick={() => handleSelectCloudProvider({ provider: cp.id.toUpperCase(), models: cp.models, baseUrl: cp.baseUrl })}
-                  className={`group relative flex min-h-[72px] flex-col items-center justify-center rounded-lg border px-4 py-3 transition-colors ${localConfig.provider === cp.id || localConfig.provider === cp.id.toUpperCase()
-                    ? 'border-accent/25 bg-background/80 text-accent'
-                    : 'border-border/70 bg-background/35 text-text-secondary hover:bg-surface/35 hover:border-border-active hover:text-text-primary'
+                  className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left text-xs transition-all ${
+                    localConfig.provider === cp.id || localConfig.provider === cp.id.toUpperCase()
+                      ? 'bg-accent/10 text-accent border border-accent/20'
+                      : 'hover:bg-surface/30 text-text-secondary border border-transparent'
                   }`}
                 >
-                  <span className={`text-sm font-semibold ${localConfig.provider === cp.id || localConfig.provider === cp.id.toUpperCase() ? 'text-text-primary' : ''}`}>{cp.name}</span>
-                  <span className="text-[10px] text-text-muted mt-1">{cp.models.length} {language === 'zh' ? '个模型' : 'models'}</span>
+                  <span className="font-medium truncate flex-1">{cp.name}</span>
+                  <span className="text-[10px] text-text-muted">{cp.models.length}</span>
                   {(localConfig.provider === cp.id || localConfig.provider === cp.id.toUpperCase()) && (
-                    <div className="absolute top-2.5 right-2.5 rounded-full bg-accent p-0.5">
-                      <Check className="w-3 h-3 text-white" strokeWidth={3} />
-                    </div>
+                    <Check className="w-3 h-3 flex-shrink-0" strokeWidth={3} />
                   )}
                 </button>
               ))
-            )}
-          </div>
-        ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-          {/* 内置厂商 */}
-          {builtinProviders.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => handleSelectBuiltinProvider(p.id)}
-              className={`group relative flex min-h-[72px] flex-col items-center justify-center rounded-lg border px-4 py-3 transition-colors ${localConfig.provider === p.id
-                ? 'border-accent/25 bg-background/80 text-accent'
-                : 'border-border/70 bg-background/35 text-text-secondary hover:bg-surface/35 hover:border-border-active hover:text-text-primary'
-                }`}
-            >
-              <span className={`text-sm font-semibold ${localConfig.provider === p.id ? 'text-text-primary' : ''}`}>{p.name}</span>
-              {localConfig.provider === p.id && (
-                <div className="absolute top-2.5 right-2.5 rounded-full bg-accent p-0.5">
-                  <Check className="w-3 h-3 text-white" strokeWidth={3} />
-                </div>
-              )}
-            </button>
-          ))}
-
-          {/* 自定义 Provider */}
-          {customProviders.map(({ id, config }) => {
-            const displayName = config.displayName || id
-            const isEditing = editingProviderId === id
-            return (
-              <div
-                key={id}
-                onClick={() => handleSelectCustomProvider(id)}
-                className={`group relative flex min-h-[72px] cursor-pointer flex-col items-center justify-center rounded-lg border px-4 py-3 transition-colors ${localConfig.provider === id
-                  ? 'border-accent/25 bg-background/80 text-accent'
-                  : 'border-border/70 bg-background/35 text-text-secondary hover:bg-surface/35 hover:border-border-active hover:text-text-primary'
-                  }`}
-              >
-                {isEditing ? (
-                  <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-surface-active rounded-lg border border-accent/60 shadow-sm" onClick={(e) => e.stopPropagation()}>
-                    <input
-                      value={editingProviderName}
-                      onChange={(e) => setEditingProviderName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') { e.preventDefault(); saveEditingCustomProvider() }
-                        if (e.key === 'Escape') { e.preventDefault(); cancelEditingCustomProvider() }
-                      }}
-                      autoFocus
-                      className="w-full flex-1 bg-transparent text-sm font-semibold text-center outline-none px-2 text-text-primary placeholder:text-text-muted/85"
-                      placeholder="Provider Name"
-                    />
-                    <div className="absolute bottom-1 right-1 flex items-center gap-0.5 bg-background/80 backdrop-blur-md rounded border border-border/50 p-0.5 shadow-sm">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); saveEditingCustomProvider(); }}
-                        disabled={!editingProviderName.trim()}
-                        className="p-0.5 rounded hover:bg-accent/10 text-accent disabled:opacity-40 transition-colors"
-                      >
-                        <Check className="w-3.5 h-3.5" strokeWidth={3} />
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); cancelEditingCustomProvider(); }}
-                        className="p-0.5 rounded hover:bg-red-500/10 text-text-muted hover:text-red-500 transition-colors"
-                      >
-                        <X className="w-3.5 h-3.5" strokeWidth={3} />
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <span className={`w-full truncate text-center text-sm font-semibold ${localConfig.provider === id ? 'text-text-primary' : ''}`}>{displayName}</span>
-                )}
-                {localConfig.provider === id && (
-                  <div className="absolute top-2.5 right-2.5 rounded-full bg-accent p-0.5">
-                    <Check className="w-3 h-3 text-white" strokeWidth={3} />
-                  </div>
-                )}
-                {!isEditing && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      startEditingCustomProvider(id, displayName)
-                    }}
-                    className="absolute -top-2 -left-2 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-background text-text-muted opacity-0 transition-all group-hover:opacity-100 hover:border-accent/30 hover:text-accent"
-                    title={language === 'zh' ? '重命名' : 'Rename'}
-                  >
-                    <Pencil className="w-3.5 h-3.5" />
-                  </button>
-                )}
-                  <button
-                    onClick={(e) => handleDeleteCustomProvider(e, id, displayName)}
-                    className="absolute -top-2 -right-2 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-background text-text-muted opacity-0 transition-all group-hover:opacity-100 hover:border-red-500/30 hover:text-red-500"
-                    title={language === 'zh' ? '删除' : 'Delete'}
-                  >
-                    <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
             )
-          })}
+          ) : (
+            <>
+              {builtinProviders.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => handleSelectBuiltinProvider(p.id)}
+                  className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left text-xs transition-all ${
+                    localConfig.provider === p.id
+                      ? 'bg-accent/10 text-accent border border-accent/20'
+                      : 'hover:bg-surface/30 text-text-secondary border border-transparent'
+                  }`}
+                >
+                  <span className="font-medium truncate flex-1">{p.name}</span>
+                  {localConfig.provider === p.id && (
+                    <Check className="w-3 h-3 flex-shrink-0" strokeWidth={3} />
+                  )}
+                </button>
+              ))}
 
-          {/* 添加按钮 */}
-          <button
-            onClick={() => setIsAddingCustom(true)}
-            className={`flex min-h-[72px] flex-col items-center justify-center rounded-lg border border-dashed px-4 py-3 transition-colors ${isAddingCustom
-              ? 'border-accent/30 bg-background/80 text-accent'
-              : 'border-border/70 bg-background/20 text-text-muted hover:border-border-active hover:text-text-primary hover:bg-surface/30'
-              }`}
-          >
-            <Plus className="mb-1 w-5 h-5" />
-            <span className="text-xs font-medium">{language === 'zh' ? '添加自定义' : 'Add Custom'}</span>
-          </button>
+              {customProviders.map(({ id, config }) => {
+                const displayName = config.displayName || id
+                const isEditing = editingProviderId === id
+                return (
+                  <div
+                    key={id}
+                    onClick={() => handleSelectCustomProvider(id)}
+                    className={`group relative w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left text-xs cursor-pointer transition-all ${
+                      localConfig.provider === id
+                        ? 'bg-accent/10 text-accent border border-accent/20'
+                        : 'hover:bg-surface/30 text-text-secondary border border-transparent'
+                    }`}
+                  >
+                    {isEditing ? (
+                      <>
+                        <input
+                          value={editingProviderName}
+                          onChange={(e) => setEditingProviderName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') { e.preventDefault(); saveEditingCustomProvider() }
+                            if (e.key === 'Escape') { e.preventDefault(); cancelEditingCustomProvider() }
+                          }}
+                          autoFocus
+                          className="flex-1 bg-transparent text-xs font-medium outline-none text-text-primary placeholder:text-text-muted/85 min-w-0"
+                          placeholder="Name"
+                        />
+                        <div className="flex items-center gap-0.5 flex-shrink-0">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); saveEditingCustomProvider() }}
+                            disabled={!editingProviderName.trim()}
+                            className="p-0.5 rounded hover:bg-accent/10 text-accent disabled:opacity-40"
+                          >
+                            <Check className="w-3 h-3" strokeWidth={3} />
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); cancelEditingCustomProvider() }}
+                            className="p-0.5 rounded hover:bg-red-500/10 text-text-muted hover:text-red-500"
+                          >
+                            <X className="w-3 h-3" strokeWidth={3} />
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-medium truncate flex-1">{displayName}</span>
+                        {localConfig.provider === id && (
+                          <Check className="w-3 h-3 flex-shrink-0" strokeWidth={3} />
+                        )}
+                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); startEditingCustomProvider(id, displayName) }}
+                            className="p-0.5 rounded hover:bg-accent/10 text-text-muted hover:text-accent"
+                            title={language === 'zh' ? '重命名' : 'Rename'}
+                          >
+                            <Pencil className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={(e) => handleDeleteCustomProvider(e, id, displayName)}
+                            className="p-0.5 rounded hover:bg-red-500/10 text-text-muted hover:text-red-500"
+                            title={language === 'zh' ? '删除' : 'Delete'}
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )
+              })}
+            </>
+          )}
         </div>
-        )}
+      </div>
+      </div>
 
-        {/* 添加新 Provider 表单 - 仅本地模式 */}
-        {!isCloudMode && isAddingCustom && (
-          <div className="mt-6 rounded-xl border border-border bg-surface/25 p-6 animate-slide-down">
+      {/* 右侧内容：配置详情 */}
+      <div className="flex-1 min-w-0 space-y-4">
+        {isAddingCustom && !isCloudMode ? (
+          <div className="rounded-2xl border border-border/50 bg-surface/20 p-6 backdrop-blur-xl shadow-sm animate-slide-down">
             <div className="flex justify-between items-center mb-4">
-              <h5 className="text-sm font-medium text-text-primary">
-                {language === 'zh' ? '添加新提供商' : 'Add New Provider'}
-              </h5>
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-accent/10 rounded-lg text-accent">
+                  <Plus className="w-4 h-4" />
+                </div>
+                <h5 className="text-sm font-semibold text-text-primary">
+                  {language === 'zh' ? '添加新提供商' : 'Add New Provider'}
+                </h5>
+              </div>
               <ActionButton variant="ghost" size="sm" onClick={() => setIsAddingCustom(false)}>
                 <X className="w-4 h-4" />
               </ActionButton>
@@ -1430,30 +1389,21 @@ export function ModelProviderPanel({
               onCancel={() => setIsAddingCustom(false)}
             />
           </div>
-        )}
-      </section>
-
-      {/* 配置区域（非添加模式时显示） */}
-      {!isAddingCustom && (
-        <div className="space-y-6">
+        ) : (
+          <>
           {/* 认证 & 网络配置 - 仅本地模式 */}
           {!isCloudMode && (
-          <section className="rounded-2xl border border-border/50 bg-surface/20 p-6 backdrop-blur-xl shadow-sm relative overflow-hidden group">
+          <section className="rounded-2xl border border-border/50 bg-surface/20 p-5 backdrop-blur-xl shadow-sm relative overflow-hidden group">
             <div className="absolute inset-0 bg-gradient-to-br from-accent/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
             <div className="relative">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-accent/10 rounded-lg text-accent">
-                  <Server className="w-4 h-4" />
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-accent/10 rounded-md text-accent">
+                  <Server className="w-3.5 h-3.5" />
                 </div>
-                <div>
-                  <h5 className="text-sm font-semibold text-text-primary">
-                    {language === 'zh' ? '认证 & 网络配置' : 'Authentication & Network'}
-                  </h5>
-                  <p className="text-[11px] text-text-muted mt-0.5">
-                    {language === 'zh' ? '配置 API 访问密钥和服务器连接参数' : 'Configure API keys and server connection parameters'}
-                  </p>
-                </div>
+                <h5 className="text-sm font-semibold text-text-primary">
+                  {language === 'zh' ? '连接配置' : 'Connection'}
+                </h5>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
@@ -1567,17 +1517,16 @@ export function ModelProviderPanel({
           </section>
           )}
 
-          <section className="rounded-2xl border border-border/50 bg-surface/20 p-6 backdrop-blur-xl shadow-sm relative overflow-hidden group">
+          <section className="rounded-2xl border border-border/50 bg-surface/20 p-5 backdrop-blur-xl shadow-sm relative overflow-hidden group">
             <div className="absolute inset-0 bg-gradient-to-br from-accent/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
             <div className="relative">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
-                  <Box className="w-4 h-4 text-accent" />
-                  <h5 className="sr-only text-sm font-medium text-text-primary">
-                    {language === 'zh' ? '模型配置' : 'Model Configuration'}
-                  </h5>
-                  <h5 className="text-sm font-medium text-text-primary">
-                    {language === 'zh' ? '模型配置' : 'Model Configuration'}
+                  <div className="p-1.5 bg-accent/10 rounded-md text-accent">
+                    <Box className="w-3.5 h-3.5" />
+                  </div>
+                  <h5 className="text-sm font-semibold text-text-primary">
+                    {language === 'zh' ? '模型选择' : 'Model'}
                   </h5>
                 </div>
                 {!isCloudMode && (
@@ -1599,11 +1548,8 @@ export function ModelProviderPanel({
 
               <div className="space-y-4">
                 <div className="space-y-1.5">
-                  <label className="sr-only text-xs font-medium text-text-secondary">
-                    {language === 'zh' ? '选择模型' : 'DropdownSelector Model'}
-                  </label>
                   <label className="text-xs font-medium text-text-secondary">
-                    {language === 'zh' ? '选择模型' : 'DropdownSelector Model'}
+                    {language === 'zh' ? '选择模型' : 'Select Model'}
                   </label>
                   <DropdownSelector
                     value={localConfig.model}
@@ -1657,18 +1603,18 @@ export function ModelProviderPanel({
             
             <button 
               onClick={() => setShowAdvanced(!showAdvanced)}
-              className="w-full flex items-center justify-between p-6 cursor-pointer focus:outline-none relative z-10"
+              className="w-full flex items-center justify-between p-5 cursor-pointer focus:outline-none relative z-10"
             >
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-accent/10 rounded-lg text-accent">
-                  <Sliders className="w-4 h-4" />
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-accent/10 rounded-md text-accent">
+                  <Sliders className="w-3.5 h-3.5" />
                 </div>
                 <div className="text-left">
                   <h5 className="text-sm font-semibold text-text-primary">
-                    {language === 'zh' ? '生成参数' : 'Generation Parameters'}
+                    {language === 'zh' ? '生成参数' : 'Generation'}
                   </h5>
                   <p className="text-[11px] text-text-muted mt-0.5">
-                    {language === 'zh' ? '调整温度、Top P、最大 Token 等高级配置' : 'Adjust temperature, top P, max tokens, and other advanced settings'}
+                    {language === 'zh' ? '温度、Top P、最大 Token 等' : 'Temperature, Top P, Max Tokens, etc.'}
                   </p>
                 </div>
               </div>
@@ -1681,14 +1627,7 @@ export function ModelProviderPanel({
 
             <div className={`grid transition-all duration-300 ease-in-out ${showAdvanced ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
               <div className="overflow-hidden">
-                <div className="p-6 pt-0 space-y-6 relative z-10">
-              <div className="flex items-center gap-2 mb-4">
-                <Sliders className="w-4 h-4 text-accent" />
-                <h5 className="text-sm font-medium text-text-primary">
-                  {language === 'zh' ? '生成参数' : 'Generation Parameters'}
-                </h5>
-              </div>
-
+                <div className="p-5 pt-0 space-y-5 relative z-10">
               <div className="space-y-5">
 
                   {/* Max Tokens */}
@@ -1878,17 +1817,9 @@ export function ModelProviderPanel({
 
                   <div className="space-y-4 pt-3 border-t border-border/50">
                     <div className="space-y-0.5">
-                      <label className="sr-only text-xs font-medium text-text-secondary">
-                        {language === 'zh' ? '请求行为' : 'Request Behavior'}
-                      </label>
                       <label className="text-xs font-medium text-text-secondary">
                         {language === 'zh' ? '请求行为' : 'Request Behavior'}
                       </label>
-                      <p className="sr-only text-[11px] text-text-muted">
-                        {language === 'zh'
-                          ? '控制重试、工具调用策略和并行工具执行方式'
-                          : 'Controls retries, tool policy, and parallel tool execution'}
-                      </p>
                       <p className="text-[11px] text-text-muted">
                         {language === 'zh'
                           ? '控制重试、工具调用策略和并行工具执行方式'
@@ -1898,9 +1829,6 @@ export function ModelProviderPanel({
 
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                       <div className="space-y-1.5">
-                        <label className="sr-only text-xs text-text-secondary">
-                          {language === 'zh' ? '工具调用策略' : 'Tool Choice'}
-                        </label>
                         <label className="text-xs text-text-secondary">
                           {language === 'zh' ? '工具调用策略' : 'Tool Choice'}
                         </label>
@@ -1919,9 +1847,6 @@ export function ModelProviderPanel({
                       </div>
 
                       <div className="space-y-1.5">
-                        <label className="sr-only text-xs text-text-secondary">
-                          {language === 'zh' ? '最大重试次数' : 'Max Retries'}
-                        </label>
                         <label className="text-xs text-text-secondary">
                           {language === 'zh' ? '最大重试次数' : 'Max Retries'}
                         </label>
@@ -1941,17 +1866,9 @@ export function ModelProviderPanel({
 
                     <div className="flex items-center justify-between rounded-lg border border-border/60 bg-background/30 px-3 py-2.5">
                       <div className="space-y-0.5 pr-4">
-                        <label className="sr-only text-xs text-text-secondary">
-                          {language === 'zh' ? '并行工具调用' : 'Parallel Tool Calls'}
-                        </label>
                         <label className="text-xs text-text-secondary">
                           {language === 'zh' ? '并行工具调用' : 'Parallel Tool Calls'}
                         </label>
-                        <p className="sr-only text-[11px] text-text-muted">
-                          {language === 'zh'
-                            ? '允许模型在一次回复中同时规划多个工具调用'
-                            : 'Allows the model to plan multiple tool calls in one response'}
-                        </p>
                         <p className="text-[11px] text-text-muted">
                           {language === 'zh'
                             ? '允许模型在一次回复中同时规划多个工具调用'
@@ -2288,9 +2205,9 @@ export function ModelProviderPanel({
             </div>
           </div>
           </section>
-
-        </div>
-      )}
+          </>
+        )}
+      </div>
     </div>
   )
 }

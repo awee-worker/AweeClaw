@@ -1,10 +1,5 @@
-/**
- * 任务列表面板
- * 显示 Agent 拆解的子任务及其进度
- */
-
 import { useState, memo, useEffect, useRef } from 'react'
-import { Check, Circle, ChevronDown, X, Pause } from 'lucide-react'
+import { Check, Circle, ChevronDown, X, Pause, Loader2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { TodoItem } from '@intelligence/providerTypes'
 import { useStore } from '@store'
@@ -16,7 +11,6 @@ function playCompletionSound() {
   try {
     const ctx = new AudioContext()
     const now = ctx.currentTime
-
     const playTone = (freq: number, startTime: number, duration: number, gain: number) => {
       const osc = ctx.createOscillator()
       const gainNode = ctx.createGain()
@@ -29,15 +23,11 @@ function playCompletionSound() {
       osc.start(startTime)
       osc.stop(startTime + duration)
     }
-
     playTone(880, now, 0.15, 0.15)
     playTone(1108.73, now + 0.12, 0.15, 0.15)
     playTone(1318.51, now + 0.24, 0.3, 0.12)
-
     setTimeout(() => ctx.close(), 1000)
-  } catch {
-    // AudioContext not available, silently ignore
-  }
+  } catch {}
 }
 
 interface TodoListPanelProps {
@@ -45,42 +35,81 @@ interface TodoListPanelProps {
   isStreaming?: boolean
 }
 
-const StatusIcon = memo(({ status, stopped }: { status: TodoItem['status']; stopped?: boolean }) => {
+const MiniProgress = memo(({ percent, stopped, allCompleted }: { percent: number; stopped?: boolean; allCompleted?: boolean }) => {
+  const r = 8
+  const c = 2 * Math.PI * r
+  const offset = c - (percent / 100) * c
+
+  return (
+    <div className="relative w-5 h-5 flex-shrink-0">
+      <svg className="w-5 h-5 -rotate-90" viewBox="0 0 20 20">
+        <circle cx="10" cy="10" r={r} fill="none" stroke="currentColor" strokeWidth="2" className="text-border/60" />
+        <motion.circle
+          cx="10" cy="10" r={r} fill="none" strokeWidth="2" strokeLinecap="round"
+          strokeDasharray={c}
+          initial={{ strokeDashoffset: c }}
+          animate={{ strokeDashoffset: offset }}
+          transition={{ duration: 0.4, ease: 'easeOut' }}
+          className={stopped ? 'text-orange-400' : allCompleted ? 'text-green-400' : 'text-accent'}
+          style={{ stroke: 'currentColor' }}
+        />
+      </svg>
+      {percent === 100 && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <Check className="w-2.5 h-2.5 text-green-400" />
+        </div>
+      )}
+    </div>
+  )
+})
+MiniProgress.displayName = 'MiniProgress'
+
+const StatusDot = memo(({ status, stopped }: { status: TodoItem['status']; stopped?: boolean }) => {
   if (stopped && status === 'in_progress') {
-    return <Pause className="w-3.5 h-3.5 text-orange-400 flex-shrink-0" />
+    return <Pause className="w-3 h-3 text-orange-400 flex-shrink-0" />
   }
   switch (status) {
     case 'completed':
-      return <Check className="w-3.5 h-3.5 text-green-400 flex-shrink-0" />
+      return (
+        <div className="w-4 h-4 rounded-full bg-green-500/15 flex items-center justify-center flex-shrink-0">
+          <Check className="w-2.5 h-2.5 text-green-400" strokeWidth={3} />
+        </div>
+      )
     case 'in_progress':
-      return <div className="w-2 h-2 rounded-full bg-accent animate-pulse flex-shrink-0 mx-[3px]" />
+      return (
+        <div className="w-4 h-4 rounded-full bg-accent/15 flex items-center justify-center flex-shrink-0">
+          <Loader2 className="w-2.5 h-2.5 text-accent animate-spin" />
+        </div>
+      )
     case 'pending':
-      return <Circle className="w-3.5 h-3.5 text-text-muted/85 flex-shrink-0" />
+      return (
+        <div className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0">
+          <Circle className="w-3 h-3 text-text-muted/40" strokeWidth={1.5} />
+        </div>
+      )
   }
 })
-StatusIcon.displayName = 'StatusIcon'
+StatusDot.displayName = 'StatusDot'
 
-const TodoRow = memo(({ todo, stopped }: { todo: TodoItem; stopped?: boolean }) => {
+const TodoRow = memo(({ todo, index, stopped }: { todo: TodoItem; index: number; stopped?: boolean }) => {
   const isCompleted = todo.status === 'completed'
   const isActive = todo.status === 'in_progress'
 
   return (
     <motion.div
-      initial={isActive ? { opacity: 0.6, x: -4 } : false}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.25, ease: 'easeOut' }}
-      className={`flex items-start gap-2 py-1 px-1 rounded-md transition-colors
-        ${isActive && !stopped ? 'bg-accent/5' : ''}
-        ${isActive && stopped ? 'bg-orange-500/5' : ''}`}
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, delay: index * 0.03 }}
+      className={`flex items-center gap-2.5 py-1.5 px-2 rounded-lg transition-colors
+        ${isActive && !stopped ? 'bg-accent/[0.06]' : ''}
+        ${isActive && stopped ? 'bg-orange-500/[0.06]' : ''}`}
     >
-      <div className="mt-0.5">
-        <StatusIcon status={todo.status} stopped={stopped} />
-      </div>
-      <span className={`text-[12px] leading-relaxed
-        ${isCompleted ? 'text-text-muted/90 line-through' : ''}
+      <StatusDot status={todo.status} stopped={stopped} />
+      <span className={`text-[12px] leading-[1.6] flex-1
+        ${isCompleted ? 'text-text-muted/70 line-through decoration-text-muted/30' : ''}
         ${isActive && !stopped ? 'text-text-primary font-medium' : ''}
         ${isActive && stopped ? 'text-orange-400 font-medium' : ''}
-        ${todo.status === 'pending' ? 'text-text-muted' : ''}
+        ${todo.status === 'pending' ? 'text-text-muted/80' : ''}
       `}>
         {isActive ? todo.activeForm : todo.content}
       </span>
@@ -120,7 +149,7 @@ export const TodoListPanel = memo(({ todos, isStreaming = true }: TodoListPanelP
   const completed = todos.filter(t => t.status === 'completed').length
   const hasInProgress = todos.some(t => t.status === 'in_progress')
   const total = todos.length
-  const progress = total > 0 ? (completed / total) * 100 : 0
+  const progress = total > 0 ? Math.round((completed / total) * 100) : 0
   const allCompleted = completed === total && total > 0
 
   const handleClearTodos = () => {
@@ -128,67 +157,41 @@ export const TodoListPanel = memo(({ todos, isStreaming = true }: TodoListPanelP
   }
 
   return (
-    <div className="rounded-xl border border-border/50 bg-surface overflow-hidden shadow-[0_4px_16px_-8px_rgba(0,0,0,0.1)] transition-all">
-      {!isStreaming && hasInProgress && (
-        <div className="flex items-center gap-3 px-4 py-2 border-b border-border/50">
-          <Pause className="w-3.5 h-3.5 text-orange-400 flex-shrink-0" />
-          <span className="text-[12px] font-medium text-orange-400 truncate">
-            {t('task.stopped', language as any)}
-          </span>
-        </div>
-      )}
-
+    <div className={`rounded-lg overflow-hidden transition-all
+      ${allCompleted
+        ? 'border border-green-500/20 bg-green-500/[0.03]'
+        : stopped && hasInProgress
+          ? 'border border-orange-500/20 bg-orange-500/[0.03]'
+          : 'border border-border/40 bg-surface/80'
+      }`}
+    >
       {/* Header */}
-      <div className="w-full flex items-center justify-between px-4 py-2">
-        <div
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="flex items-center gap-2.5 hover:opacity-80 transition-opacity cursor-pointer"
+      <div
+        className="flex items-center gap-2.5 px-3 py-2 cursor-pointer select-none hover:bg-white/[0.02] transition-colors"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <MiniProgress percent={progress} stopped={stopped && hasInProgress} allCompleted={allCompleted} />
+
+        <span className={`text-[12px] font-medium flex-1
+          ${allCompleted ? 'text-green-400' : stopped && hasInProgress ? 'text-orange-400' : 'text-text-primary'}`}
         >
-          <ChevronDown className={`w-3.5 h-3.5 text-text-muted transition-transform ${isExpanded ? '' : '-rotate-90'}`} />
-          <span className="text-[12px] font-medium text-text-primary">
-            {allCompleted ? (
-              <span className="text-green-400">{t('task.allCompleted', language as any)}</span>
-            ) : (
-              <>{completed}/{total} {t('task.tasks', language as any)}</>
-            )}
-          </span>
-        </div>
+          {allCompleted
+            ? t('task.allCompleted', language as any)
+            : `${completed}/${total} ${t('task.tasks', language as any)}`
+          }
+        </span>
 
-        <div className="flex items-center gap-2">
-          {/* Progress bar */}
-          <div className="w-20 h-1 rounded-full bg-border/50 overflow-hidden relative">
-            <motion.div
-              className={`h-full rounded-full ${stopped && hasInProgress ? 'bg-orange-400' : 'bg-accent'}`}
-              initial={{ width: 0 }}
-              animate={{ width: `${progress}%` }}
-              transition={{ duration: 0.3, ease: 'easeOut' }}
-            />
-            {hasInProgress && !stopped && (
-              <motion.div
-                className="absolute inset-y-0 w-1/2 rounded-full"
-                style={{
-                  background: 'linear-gradient(90deg, transparent, rgb(var(--accent) / 0.5), transparent)',
-                }}
-                animate={{ left: ['-50%', '150%'] }}
-                transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
-              />
-            )}
-          </div>
+        {(stopped || allCompleted) && (
+          <button
+            onClick={(e) => { e.stopPropagation(); handleClearTodos() }}
+            className="p-1 rounded-md text-text-muted/50 hover:text-text-primary hover:bg-white/5 transition-colors"
+            title={t('task.clear', language as any)}
+          >
+            <X className="w-3 h-3" />
+          </button>
+        )}
 
-          {/* Clear button - show when stopped or all completed */}
-          {(stopped || allCompleted) && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                handleClearTodos()
-              }}
-              className="p-1 rounded-md text-text-muted/70 hover:text-text-primary hover:bg-white/5 transition-colors"
-              title={t('task.clear', language as any)}
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
+        <ChevronDown className={`w-3.5 h-3.5 text-text-muted/60 transition-transform duration-200 ${isExpanded ? '' : '-rotate-90'}`} />
       </div>
 
       {/* Task list */}
@@ -201,9 +204,9 @@ export const TodoListPanel = memo(({ todos, isStreaming = true }: TodoListPanelP
             transition={{ duration: 0.15 }}
             className="overflow-hidden"
           >
-            <div className="px-3 pb-2.5 pt-0.5 max-h-[200px] overflow-y-auto space-y-0.5">
+            <div className="px-1.5 pb-2 pt-0.5 max-h-[140px] overflow-y-auto custom-scrollbar">
               {todos.map((todo, i) => (
-                <TodoRow key={i} todo={todo} stopped={stopped && todo.status === 'in_progress'} />
+                <TodoRow key={i} todo={todo} index={i} stopped={stopped && todo.status === 'in_progress'} />
               ))}
             </div>
           </motion.div>

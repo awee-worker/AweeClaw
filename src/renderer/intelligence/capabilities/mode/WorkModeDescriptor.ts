@@ -67,6 +67,10 @@ export const CHAT_MODE_DESCRIPTOR: ModeDescriptor = {
     includeOpenFiles: true,
     includeActiveFile: true,
     includeCustomInstructions: true,
+    additionalSections: [
+      'Quick Mode: Prioritize speed and efficiency. Give concise, direct answers. Minimize tool usage — only use tools when absolutely necessary to answer the question. Prefer answering from your own knowledge. Do NOT over-analyze or provide excessive detail unless explicitly requested.',
+      'Response Style: Keep responses short and to the point. One-sentence answers are ideal for simple questions. Skip preamble and postamble. Do NOT show your reasoning process unless asked.',
+    ],
   },
   contextProfile: {
     includeFullHistory: true,
@@ -109,7 +113,9 @@ export const AGENT_MODE_DESCRIPTOR: ModeDescriptor = {
     includeActiveFile: true,
     includeCustomInstructions: true,
     additionalSections: [
-      'Think step by step before acting. Analyze the problem thoroughly, consider edge cases, and provide well-reasoned solutions.',
+      'Think Mode: Engage deep reasoning before acting. Always think step by step — analyze the problem thoroughly, consider edge cases, explore multiple approaches, and provide well-reasoned solutions. Show your reasoning process to help the user understand your logic.',
+      'Proactive Analysis: Before answering, consider what information you might be missing. Use tools proactively to gather context (read files, search codebase, check dependencies). Do NOT guess when you can verify.',
+      'Structured Thinking: Break complex problems into sub-problems. Address each sub-problem methodically. Synthesize findings into a coherent response. Highlight assumptions and potential risks.',
     ],
   },
   contextProfile: {
@@ -153,9 +159,10 @@ export const PLAN_MODE_DESCRIPTOR: ModeDescriptor = {
     includeActiveFile: true,
     includeCustomInstructions: true,
     additionalSections: [
-      'MAXIMUM PRIVILEGE: Expert Mode has full access to ALL tools (built-in, MCP, Skills) with no approval required. Use this power responsibly.',
-      'Four-Phase Expert Workflow: Deep Thinking → Plan → Execute → Verify. Never skip deep analysis. Never skip verification after write operations.',
-      'MCP and Skill tools are available in ALL phases for deep analysis. Use them proactively for comprehensive understanding.',
+      'Expert Mode: MAXIMUM PRIVILEGE — full access to ALL tools (built-in, MCP, Skills) with no approval required. Use this power responsibly. This mode is for complex, multi-step tasks that require deep expertise and comprehensive execution.',
+      'Four-Phase Expert Workflow (MANDATORY): (1) Deep Thinking — Thoroughly analyze the problem, research the codebase, understand dependencies and constraints. (2) Plan — Create a detailed execution plan with clear steps and success criteria. (3) Execute — Implement the plan systematically, making changes file by file. (4) Verify — After each write operation, verify the result (lint, test, read-back). Never skip deep analysis. Never skip verification after write operations.',
+      'MCP and Skill tools are available in ALL phases for deep analysis. Use them proactively for comprehensive understanding. Leverage external tools when they can provide better insights or capabilities.',
+      'Expert Standards: Provide production-quality output. Consider performance, security, maintainability, and edge cases. Document your reasoning. When multiple approaches exist, explain trade-offs and justify your choice. After completing tasks, summarize what was done and suggest follow-up improvements.',
     ],
   },
   contextProfile: {

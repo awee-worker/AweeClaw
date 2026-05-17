@@ -10,8 +10,8 @@ import { invalidateAgentConfigCache } from '@intelligence/utils/intelligenceConf
 import { t, type Language } from '@renderer/i18n'
 import { toast } from '@components/foundation/NotificationProvider'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
-import { ActionButton, OverlayDialog, DropdownSelector } from '@components/ui'
-import { SettingsTab, EditorSettingsState, LANGUAGES } from './preferencesTypes'
+import { ActionButton, OverlayDialog } from '@components/ui'
+import { SettingsTab, EditorSettingsState } from './preferencesTypes'
 
 const ModelProviderPanel = lazy(() =>
     import('./tabs/ModelProviderPanel').then(module => ({ default: module.ModelProviderPanel })),

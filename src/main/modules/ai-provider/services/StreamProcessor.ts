@@ -48,6 +48,48 @@ function createCompatToolCallId(): string {
   return globalThis.crypto?.randomUUID?.() ?? `compat-tool-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
+function repairTruncatedJsonString(json: string): string {
+  let result = json
+
+  // 扫描字符串，追踪是否在 JSON 字符串值内部
+  let inString = false
+  let escape = false
+  let lastUnescapedQuoteIdx = -1
+
+  for (let i = 0; i < result.length; i++) {
+    const ch = result[i]
+    if (escape) {
+      escape = false
+      continue
+    }
+    if (ch === '\\' && inString) {
+      escape = true
+      continue
+    }
+    if (ch === '"') {
+      if (inString) {
+        inString = false
+      } else {
+        inString = true
+        lastUnescapedQuoteIdx = i
+      }
+    }
+  }
+
+  // 如果扫描结束后仍在字符串内部，说明字符串被截断
+  if (inString && lastUnescapedQuoteIdx >= 0) {
+    // 处理末尾可能残留的不完整转义序列（如末尾是 \ 但后面没有字符）
+    if (escape) {
+      result = result.slice(0, -1)
+    }
+
+    // 闭合当前字符串值
+    result += '"'
+  }
+
+  return result
+}
+
 function looksLikePseudoToolPayloadStart(text: string): PseudoToolCaptureMode | null {
   const trimmed = text.trimStart()
   if (!trimmed) return null
@@ -62,6 +104,42 @@ function looksLikePseudoToolPayloadStart(text: string): PseudoToolCaptureMode | 
   const probe = trimmed.slice(0, 256)
   if (/"name"\s*:/.test(probe) && /"parameters"\s*:/.test(probe)) {
     return 'json-array'
+  }
+
+  return null
+}
+
+function extractFirstJsonObject(text: string): string | null {
+  const startIdx = text.indexOf('{')
+  if (startIdx === -1) return null
+
+  let depth = 0
+  let inString = false
+  let escape = false
+
+  for (let i = startIdx; i < text.length; i++) {
+    const ch = text[i]
+    if (escape) {
+      escape = false
+      continue
+    }
+    if (ch === '\\' && inString) {
+      escape = true
+      continue
+    }
+    if (ch === '"') {
+      inString = !inString
+      continue
+    }
+    if (inString) continue
+
+    if (ch === '{') depth++
+    else if (ch === '}') {
+      depth--
+      if (depth === 0) {
+        return text.slice(startIdx, i + 1)
+      }
+    }
   }
 
   return null
@@ -420,10 +498,14 @@ export class StreamingService {
           })
 
           try {
-            const inputText = toolCall.input
+            const inputText = typeof toolCall.input === 'string'
+              ? toolCall.input
+              : JSON.stringify(toolCall.input)
 
-            // 1. 修复未闭合的引号
-            let fixed = inputText.replace(/([^\\])"([^"]*?)$/g, '$1"$2"')
+            let fixed = inputText.trim()
+
+            // 1. 修复截断的 JSON 字符串值（最常见：超长内容被流式截断）
+            fixed = repairTruncatedJsonString(fixed)
 
             // 2. 修复未闭合的大括号
             const openBraces = (fixed.match(/\{/g) || []).length
@@ -439,7 +521,18 @@ export class StreamingService {
               fixed += ']'.repeat(openBrackets - closeBrackets)
             }
 
-            // 4. 尝试解析修复后的 JSON
+            // 4. 处理 JSON 后有多余内容的情况（如多个 JSON 对象拼接）
+            //    尝试找到第一个完整 JSON 对象的结束位置
+            try {
+              JSON.parse(fixed)
+            } catch {
+              const extracted = extractFirstJsonObject(fixed)
+              if (extracted) {
+                fixed = extracted
+              }
+            }
+
+            // 5. 最终验证
             JSON.parse(fixed)
 
             logger.llm.info('[StreamingService] Tool call repaired successfully')
@@ -449,7 +542,7 @@ export class StreamingService {
             }
           } catch (repairError) {
             logger.llm.error('[StreamingService] Tool call repair failed:', repairError)
-            return null // 返回 null 表示无法修复
+            return null
           }
         },
       })

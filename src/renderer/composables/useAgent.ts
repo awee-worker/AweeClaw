@@ -22,7 +22,36 @@ import {
 } from '@intelligence/state/IntelligenceStore'
 import { Agent } from '@intelligence/engine'
 import { getAgentConfig } from '@intelligence/utils/intelligenceConfig'
-import { MessageContent, ChatThread, ToolCall } from '@intelligence/providerTypes'
+import { MessageContent, ChatThread, ToolCall, type LLMConfig } from '@intelligence/providerTypes'
+import type { WorkMode } from '@/renderer/modes/workModeTypes'
+
+function getModeReasoningOverrides(
+  mode: WorkMode,
+  baseConfig: LLMConfig,
+): Partial<LLMConfig> {
+  const userEffort = baseConfig.reasoningEffort
+  const userThinking = baseConfig.enableThinking
+
+  switch (mode) {
+    case 'chat':
+      return {
+        reasoningEffort: userEffort ?? 'low',
+        enableThinking: userThinking ?? false,
+      }
+    case 'agent':
+      return {
+        reasoningEffort: userEffort ?? 'high',
+        enableThinking: userThinking ?? true,
+      }
+    case 'plan':
+      return {
+        reasoningEffort: userEffort ?? 'xhigh',
+        enableThinking: userThinking ?? true,
+      }
+    default:
+      return {}
+  }
+}
 
 let cachedThreadsRef: Record<string, ChatThread> | null = null
 let cachedSortedThreads: ChatThread[] = []
@@ -109,8 +138,11 @@ export function useAgentCommands() {
     const agentConfig = getAgentConfig()
     const effectiveConfig = await getEffectiveLLMConfigAsync(config)
 
+    const modeReasoningOverrides = getModeReasoningOverrides(currentChatMode, effectiveConfig)
+
     const enhancedConfig = {
       ...effectiveConfig,
+      ...modeReasoningOverrides,
       contextLimit: agentConfig.maxContextTokens,
     }
 
@@ -174,6 +206,7 @@ export function useAgentActions() {
     switchThread: getAgentActions().switchThread,
     deleteThread: getAgentActions().deleteThread,
     deleteMessagesAfter: getAgentActions().deleteMessagesAfter,
+    deleteMessagesByIds: getAgentActions().deleteMessagesByIds,
     acceptAllChanges: getAgentActions().acceptAllChanges,
     undoAllChanges: getAgentActions().undoAllChanges,
     acceptChange: getAgentActions().acceptChange,

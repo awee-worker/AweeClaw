@@ -232,7 +232,7 @@ function ThreadListItem({
   const title = useMemo(() => {
     if (thread.title?.trim()) return thread.title.trim()
     const firstUserMsg = thread.messages.find(m => m.role === 'user')
-    if (firstUserMsg) return getMessageText(firstUserMsg.content).slice(0, 40)
+    if (firstUserMsg) return getMessageText(firstUserMsg.content).slice(0, 42)
     return getThreadDisplayTitle(thread)
   }, [thread])
 
@@ -257,10 +257,10 @@ function ThreadListItem({
       onClick={onSelect}
     >
       <MessageSquare className="w-3.5 h-3.5 shrink-0 opacity-50" strokeWidth={1.5} />
-      <div className="flex-1 min-w-0 pr-0 group-hover:pr-5 transition-all">
+      <div className="flex-1 min-w-0 group-hover:pr-5 transition-all">
         <div className="text-[13px] font-medium truncate leading-tight">{title}</div>
       </div>
-      <div className="relative shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" ref={menuRef}>
+      <div className="absolute right-1.5 top-1/2 -translate-y-1/2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" ref={menuRef}>
         <button
           onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen) }}
           className="p-0.5 rounded hover:opacity-100 transition-all"

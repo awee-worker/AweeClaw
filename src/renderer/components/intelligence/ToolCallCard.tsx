@@ -1,5 +1,5 @@
 import { memo, useLayoutEffect, useMemo, useRef, useState, useEffect } from 'react'
-import { AlertTriangle, Check, ChevronDown, Copy, FileCode, Search, Terminal, X } from 'lucide-react'
+import { AlertTriangle, Check, ChevronDown, Copy, FileCode, Search, Terminal, X, Zap } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useShallow } from 'zustand/react/shallow'
 import { vscDarkPlus, vs } from 'react-syntax-highlighter/dist/esm/styles/prism'
@@ -7,6 +7,7 @@ import { useStore } from '@store'
 import { t } from '@renderer/i18n'
 import type { ToolCall } from '@intelligence/providerTypes'
 import { useToolDisplayState } from '@intelligence/display/toolResultRenderer'
+import { getMcpToolStatusText, getFriendlyToolName, isMcpToolName } from '@intelligence/display/toolFriendlyName'
 import { useToolCardExpansion } from '@hooks'
 import { api } from '../../adapters/electronBridge'
 import { JsonHighlight } from '@utils/jsonHighlight'
@@ -229,7 +230,17 @@ function getStatusText(name: string, args: ToolArgs, status: ToolCall['status'],
         return t('tool.status.updatingTasks', language as any)
     }
 
-    return isRunning ? t('tool.status.processing', language as any) : ''
+    if (isMcpToolName(name)) {
+        const mcpStatus = getMcpToolStatusText(name, status, isStreaming, language)
+        if (mcpStatus) return mcpStatus
+    }
+
+    if (isRunning) {
+        const friendly = getFriendlyToolName(name, language)
+        return friendly.label
+    }
+
+    return ''
 }
 
 const getHeightPx = (heightClass: string): number => {
@@ -698,6 +709,31 @@ function ToolPreview({
         )
     }
 
+    if (effectiveName === 'apply_skill') {
+        const skillName = asString(args.skill_name)
+        const isDone = toolCall.status === 'success'
+        const isFailed = toolCall.status === 'error'
+
+        return (
+            <div className="space-y-1">
+                <div className="flex items-center gap-1.5 text-[12px]">
+                    <Zap className={`w-3 h-3 ${isRunning ? 'text-accent animate-pulse' : isDone ? 'text-green-400' : isFailed ? 'text-red-400' : 'text-text-muted'}`} />
+                    <span className="text-text-muted">{isDone ? t('tool.status.applied', language as any, { name: skillName || 'Skill' }) : isRunning ? t('tool.status.applying', language as any, { name: skillName || 'Skill' }) : skillName || 'Skill'}</span>
+                </div>
+                {stringResult ? (
+                    <ExpandablePreviewContainer language={language} maxHeight="max-h-[150px]">
+                        <div className="p-2 text-[12px] text-text-muted whitespace-pre-wrap break-all">
+                            {stringResult.slice(0, 3000)}
+                            {stringResult.length > 3000 && <span className="opacity-50 mt-1 block">{t('tool.truncated', language as any)}</span>}
+                        </div>
+                    </ExpandablePreviewContainer>
+                ) : (isRunning || isStreaming) && (
+                    pendingPreview(t('tool.status.applyingEllipsis', language as any))
+                )}
+            </div>
+        )
+    }
+
     if (['get_lint_errors', 'find_references', 'go_to_definition', 'get_hover_info', 'get_document_symbols'].includes(effectiveName)) {
         const path = getPrimaryToolPath(args)
         const line = typeof args.line === 'number' ? args.line : undefined
@@ -814,8 +850,9 @@ const ToolCallCard = memo(function ToolCallCard({
     })))
     const { args, effectiveName, isSuccess, isError, isRejected, isRunning, isStreaming } = useToolDisplayState(toolCall)
     const isActive = isRunning || isStreaming
+    const shouldAutoExpand = effectiveName === 'todo_write'
     const { isExpanded, animateContent, handleToggleExpanded } = useToolCardExpansion({
-        defaultExpanded: defaultExpanded ?? expandAgentBlocksByDefault,
+        defaultExpanded: defaultExpanded ?? (shouldAutoExpand || expandAgentBlocksByDefault),
         isActive,
     })
 
@@ -903,7 +940,7 @@ const ToolCallCard = memo(function ToolCallCard({
                     <span className={`text-[12px] truncate ${isStreaming || isRunning ? 'text-text-primary tool-text-shimmer' : 'text-text-secondary group-hover:text-text-primary transition-colors'}`}>
                         {statusText || (
                             <span className="opacity-50 inline-flex items-center gap-1.5">
-                                <span>{TOOL_LABEL_KEYS[effectiveName] ? t(TOOL_LABEL_KEYS[effectiveName] as any, language as any) : effectiveName}</span>
+                                <span>{TOOL_LABEL_KEYS[effectiveName] ? t(TOOL_LABEL_KEYS[effectiveName] as any, language as any) : getFriendlyToolName(effectiveName, language).label}</span>
                             </span>
                         )}
                     </span>
