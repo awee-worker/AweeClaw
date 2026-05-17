@@ -941,6 +941,7 @@ export function ScenarioManagerView() {
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="text-[12px] text-accent hover:underline flex items-center gap-1"
+                                    onClick={(e) => { e.preventDefault(); api.file.openExternalUrl(detailManifest.homepage!) }}
                                 >
                                     <Globe className="w-3 h-3" />
                                     {language === 'zh' ? '主页' : 'Homepage'}

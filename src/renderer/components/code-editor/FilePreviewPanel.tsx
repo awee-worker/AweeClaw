@@ -105,11 +105,16 @@ export function MarkdownPreview({ content, fontSize = 14 }: MarkdownPreviewProps
                         ul: ({ children }) => <ul className="list-disc pl-6 mb-4 space-y-1 text-text-secondary">{children}</ul>,
                         ol: ({ children }) => <ol className="list-decimal pl-6 mb-4 space-y-1 text-text-secondary">{children}</ol>,
                         li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-                        a: ({ href, children }) => (
-                            <a href={href} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
-                                {children}
-                            </a>
-                        ),
+                        a: ({ href, children }) => {
+                            const cleanHref = href ? href.replace(/[*_~`#|]+$/g, '').replace(/^[*_~`#|]+/g, '').trim() : href
+                            return (
+                                <a href={cleanHref} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline"
+                                    onClick={(e) => { e.preventDefault(); if (cleanHref) api.file.openExternalUrl(cleanHref) }}
+                                >
+                                    {children}
+                                </a>
+                            )
+                        },
                         blockquote: ({ children }) => (
                             <blockquote className="border-l-4 border-accent/50 pl-4 my-4 text-text-muted italic bg-white/5 py-2 rounded-r">
                                 {children}

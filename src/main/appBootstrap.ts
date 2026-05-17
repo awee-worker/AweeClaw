@@ -7,9 +7,9 @@
  */
 
 import { app, BrowserWindow, Menu, shell, ipcMain, protocol, net, screen } from 'electron'
-// 补充 Language 类型（与渲染端对齐）
 export type Language = 'zh' | 'en'
 import { randomUUID } from 'crypto'
+import { exec } from 'child_process'
 import * as path from 'path'
 import { logger } from '@shared/toolkit/LogEngine'
 import { SECURITY_DEFAULTS } from '@shared/appConstants'
@@ -478,18 +478,38 @@ function createWindow(isEmpty = false, deferLoad = false): BrowserWindow {
   })
 
   // 外部链接处理
+  const openUrlSafely = (rawUrl: string) => {
+    const url = rawUrl
+      .replace(/[*_~`#|]+$/g, '')
+      .replace(/^[*_~`#|]+/g, '')
+      .trim()
+    if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('devtools://')) {
+      return
+    }
+    shell.openExternal(url).catch(() => {
+      const cmd = process.platform === 'darwin'
+        ? `open "${url.replace(/"/g, '\\"')}"`
+        : process.platform === 'win32'
+          ? `start "" "${url.replace(/"/g, '\\"')}"`
+          : `xdg-open "${url.replace(/"/g, '\\"')}"`
+      exec(cmd, (err) => {
+        if (err) logger.system.warn('[Window] Fallback open also failed:', url, err.message)
+      })
+    })
+  }
+
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('devtools://') || isLocalDevServerUrl(url)) {
       return { action: 'allow' }
     }
-    shell.openExternal(url)
+    openUrlSafely(url)
     return { action: 'deny' }
   })
 
   win.webContents.on('will-navigate', (event, url) => {
     if (!isLocalDevServerUrl(url) && !url.startsWith('file://')) {
       event.preventDefault()
-      shell.openExternal(url)
+      openUrlSafely(url)
     }
   })
 

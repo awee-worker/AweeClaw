@@ -6,6 +6,7 @@ import { useStore } from '@store'
 import { OverlayDialog } from '../ui'
 import { motion } from 'framer-motion'
 import { BRAND } from '@shared/brand'
+import { api } from '../../adapters/electronBridge'
 
 interface AppIdentityPanelProps {
   onClose: () => void
@@ -183,6 +184,7 @@ export default function AppIdentityPanel({ onClose }: AppIdentityPanelProps) {
                       animate={{ opacity: 1, scale: 1 }}
                       transition={{ delay: i * 0.05 }}
                       className="flex flex-col items-center gap-2 p-4 rounded-xl bg-white/[0.02] border border-border/40 hover:border-accent/20 transition-all group"
+                      onClick={(e) => { e.preventDefault(); api.file.openExternalUrl(member.url) }}
                     >
                       <img src={member.avatar} alt={member.name} className="w-10 h-10 rounded-full border-2 border-border group-hover:border-accent/40 transition-colors shadow-sm" />
                       <div className="text-[12px] font-bold text-text-primary">{member.name}</div>
@@ -277,7 +279,9 @@ function EnvItem({ label, value }: { label: string; value: string }) {
 function SocialLink({ href, icon: Icon, label }: { href: string; icon: any; label: string }) {
   return (
     <a href={href} target="_blank" rel="noopener noreferrer"
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-white/5 text-text-muted hover:text-text-primary transition-all text-[11px] font-medium">
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-white/5 text-text-muted hover:text-text-primary transition-all text-[11px] font-medium"
+      onClick={(e) => { e.preventDefault(); api.file.openExternalUrl(href) }}
+    >
       <Icon className="w-3.5 h-3.5" />
       {label}
     </a>

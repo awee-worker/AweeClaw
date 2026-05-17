@@ -650,9 +650,20 @@ const MarkdownContent = React.memo(({ content: rawContent, fontSize, isStreaming
     ul: ({ children }: any) => <ul className={`list-disc pl-5 mb-3 space-y-1 ${enableBlockReveal ? 'animate-block-reveal' : ''}`}>{children}</ul>,
     ol: ({ children }: any) => <ol className={`list-decimal pl-5 mb-3 space-y-1 ${enableBlockReveal ? 'animate-block-reveal' : ''}`}>{children}</ol>,
     li: ({ children }: any) => <li className={`pl-1 ${enableBlockReveal ? 'animate-block-reveal' : ''}`}>{renderStreamingChildren(children)}</li>,
-    a: ({ href, children }: any) => (
-      <a href={href} target="_blank" className="text-accent hover:underline decoration-accent/50 underline-offset-2 font-medium">{renderStreamingChildren(children)}</a>
-    ),
+    a: ({ href, children }: any) => {
+      const cleanHref = href ? href.replace(/[*_~`#|]+$/g, '').replace(/^[*_~`#|]+/g, '').trim() : href
+      return (
+        <a
+          href={cleanHref}
+          target="_blank"
+          className="text-accent hover:underline decoration-accent/50 underline-offset-2 font-medium"
+          onClick={(e) => {
+            e.preventDefault()
+            if (cleanHref) api.file.openExternalUrl(cleanHref)
+          }}
+        >{renderStreamingChildren(children)}</a>
+      )
+    },
     strong: ({ children, ...props }: any) => <strong {...props}>{renderStreamingChildren(children)}</strong>,
     em: ({ children, ...props }: any) => <em {...props}>{renderStreamingChildren(children)}</em>,
     blockquote: ({ children }: any) => (
@@ -744,6 +755,10 @@ const SourcesBlock = React.memo(({ sources }: { sources: LLMStreamSource[] }) =>
                   target="_blank"
                   rel="noreferrer"
                   className="block text-sm font-medium text-accent transition-colors hover:text-accent-hover hover:underline"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    api.file.openExternalUrl(href)
+                  }}
                 >
                   {label}
                 </a>

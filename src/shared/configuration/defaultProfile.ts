@@ -140,7 +140,7 @@ export const PERFORMANCE_DEFAULTS = {
 
 export const AGENT_DEFAULTS = {
   // 循环控制
-  maxToolLoops: 50,
+  maxToolLoops: 150,
   maxHistoryMessages: 60,
 
   // 上下文限制
@@ -294,7 +294,7 @@ export const SCENARIO_PROFILE_DEFAULTS: Record<ScenarioDomain, ScenarioProfileOv
             timeout: 180000,
         },
         agent: {
-            maxToolLoops: 30,
+            maxToolLoops: 90,
             maxToolResultChars: 15000,
             maxTotalContextChars: 80000,
             enableAutoFix: false,
@@ -327,7 +327,7 @@ export const SCENARIO_PROFILE_DEFAULTS: Record<ScenarioDomain, ScenarioProfileOv
             timeout: 180000,
         },
         agent: {
-            maxToolLoops: 20,
+            maxToolLoops: 60,
             maxToolResultChars: 12000,
             maxTotalContextChars: 60000,
             enableAutoFix: false,
@@ -360,7 +360,7 @@ export const SCENARIO_PROFILE_DEFAULTS: Record<ScenarioDomain, ScenarioProfileOv
             timeout: 120000,
         },
         agent: {
-            maxToolLoops: 50,
+            maxToolLoops: 150,
             maxToolResultChars: 10000,
             maxTotalContextChars: 60000,
             enableAutoFix: true,

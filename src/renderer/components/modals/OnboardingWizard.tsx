@@ -648,6 +648,7 @@ function ProviderStep({
                 target="_blank"
                 rel="noreferrer"
                 className="text-xs text-accent hover:text-accent-hover hover:underline inline-flex items-center gap-1 transition-colors"
+                onClick={(e) => { e.preventDefault(); api.file.openExternalUrl(selectedProvider.auth.helpUrl!) }}
               >
                 <span>{isZh ? '获取 API Key' : 'Get API Key'}</span>
                 <ChevronRight className="w-3 h-3" />

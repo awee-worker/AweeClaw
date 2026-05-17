@@ -75,8 +75,8 @@ export default function Editor() {
   } | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [tabContextMenu, setTabContextMenu] = useState<{ x: number; y: number; filePath: string } | null>(null)
-  const [markdownMode, setMarkdownMode] = useState<'edit' | 'preview' | 'split'>('edit')
-  const [htmlMode, setHtmlMode] = useState<'edit' | 'preview' | 'split'>('edit')
+  const [markdownMode, setMarkdownMode] = useState<'edit' | 'preview' | 'split'>('preview')
+  const [htmlMode, setHtmlMode] = useState<'edit' | 'preview' | 'split'>('preview')
 
   const isContextMenuFileDirty = useStore(state => tabContextMenu ? state.openFiles.find(f => f.path === tabContextMenu.filePath)?.isDirty : false)
   const setActiveFile = useStore((state) => state.setActiveFile)

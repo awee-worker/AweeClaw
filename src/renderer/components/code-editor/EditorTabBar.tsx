@@ -3,7 +3,7 @@
  * [AweeClaw] 增强功能：场景标签指示、文件类型图标、拖拽排序视觉反馈
  */
 import { memo } from 'react'
-import { X, AlertCircle, AlertTriangle, RefreshCw, FileX, FileDiff, Globe, Zap, Shield } from 'lucide-react'
+import { X, AlertCircle, AlertTriangle, RefreshCw, FileX, FileDiff, Globe } from 'lucide-react'
 import { getFileName, normalizePath } from '@shared/toolkit/pathHelper'
 import { useStore } from '@store'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
@@ -50,7 +50,6 @@ export const EditorTabs = memo(function EditorTabs({
   const openFiles = useStore(state => state.openFiles)
   const language = useStore(state => state.language)
   const plans = useAgentStore(state => state.plans)
-  const activeScenarioId = useStore(state => state.activeScenarioId)
 
   return (
     <div
@@ -130,15 +129,6 @@ export const EditorTabs = memo(function EditorTabs({
           </div>
         )
       })}
-
-      {/* 场景指示器 [AweeClaw] */}
-      {activeScenarioId && (
-        <div className="ml-auto flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-accent/5 border border-accent/10 text-accent text-[10px] font-medium flex-shrink-0 mr-1">
-          <Zap className="w-2.5 h-2.5" />
-          <span>{activeScenarioId}</span>
-          <Shield className="w-2.5 h-2.5 opacity-50" />
-        </div>
-      )}
 
       {/* Lint 状态 */}
       {activeFilePath && activeFileKind !== 'preview' && (

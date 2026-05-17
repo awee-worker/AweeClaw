@@ -11,6 +11,7 @@ import { useStore } from '@store'
 import { OverlayDialog } from '../ui'
 import { motion } from 'framer-motion'
 import { BRAND } from '@shared/brand'
+import { api } from '../../adapters/electronBridge'
 
 interface AboutDialogProps {
     onClose: () => void
@@ -128,6 +129,7 @@ export default function AboutDialog({ onClose }: AboutDialogProps) {
                                     rel="noopener noreferrer"
                                     className="relative group/avatar"
                                     title={c.name}
+                                    onClick={(e) => { e.preventDefault(); api.file.openExternalUrl(c.url) }}
                                 >
                                     <div className="absolute inset-0 bg-black/20 rounded-full group-hover/avatar:bg-transparent transition-colors" />
                                     <img
@@ -192,6 +194,7 @@ function SocialButton({ href, icon: Icon, label }: { href: string; icon: any; la
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 text-text-secondary hover:text-text-primary transition-all duration-200 group"
+            onClick={(e) => { e.preventDefault(); api.file.openExternalUrl(href) }}
         >
             <Icon className="w-4 h-4 group-hover:scale-110 transition-transform" />
             <span className="text-xs font-bold">{label}</span>

@@ -387,7 +387,7 @@ const SCENARIO_CONSTRAINTS: Record<ScenarioDomain, ScenarioConfigConstraints> = 
         forceStrictWorkspace: true,
         forbidDangerousAutoApprove: true,
         forbidTerminalAutoApprove: true,
-        maxToolLoops: 30,
+        maxToolLoops: 90,
     },
     medical: {
         domain: 'medical',
@@ -398,7 +398,7 @@ const SCENARIO_CONSTRAINTS: Record<ScenarioDomain, ScenarioConfigConstraints> = 
         forceStrictWorkspace: true,
         forbidDangerousAutoApprove: true,
         forbidTerminalAutoApprove: true,
-        maxToolLoops: 20,
+        maxToolLoops: 60,
     },
     education: {
         domain: 'education',
@@ -409,7 +409,7 @@ const SCENARIO_CONSTRAINTS: Record<ScenarioDomain, ScenarioConfigConstraints> = 
         forceStrictWorkspace: false,
         forbidDangerousAutoApprove: false,
         forbidTerminalAutoApprove: false,
-        maxToolLoops: 50,
+        maxToolLoops: 150,
     },
     general: {
         domain: 'general',
@@ -420,7 +420,7 @@ const SCENARIO_CONSTRAINTS: Record<ScenarioDomain, ScenarioConfigConstraints> = 
         forceStrictWorkspace: false,
         forbidDangerousAutoApprove: false,
         forbidTerminalAutoApprove: false,
-        maxToolLoops: 50,
+        maxToolLoops: 150,
     },
 }
 

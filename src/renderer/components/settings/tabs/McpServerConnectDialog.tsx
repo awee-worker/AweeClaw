@@ -638,7 +638,9 @@ export default function McpServerConnectDialog({
                 </p>
                 {selectedPreset.docsUrl && (
                   <a href={selectedPreset.docsUrl} target="_blank" rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-xs text-accent hover:underline mt-2">
+                    className="inline-flex items-center gap-1 text-xs text-accent hover:underline mt-2"
+                    onClick={(e) => { e.preventDefault(); api.file.openExternalUrl(selectedPreset.docsUrl!) }}
+                  >
                     {language === 'zh' ? '查看文档' : 'View Documentation'}<ExternalLink className="w-3 h-3" />
                   </a>
                 )}

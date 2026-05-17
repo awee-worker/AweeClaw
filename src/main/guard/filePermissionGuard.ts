@@ -9,6 +9,7 @@ import { ipcMain, dialog, shell } from 'electron'
 import * as path from 'path'
 import { pathToFileURL } from 'url'
 import { promises as fsPromises } from 'fs'
+import { exec } from 'child_process'
 import Store from 'electron-store'
 import { securityManager, OperationType } from './securityPolicyEngine'
 
@@ -923,13 +924,36 @@ export function registerSecureFileHandlers(
     }
   })
 
-  ipcMain.handle('shell:openExternalUrl', async (_, url: string) => {
+  ipcMain.handle('shell:openExternalUrl', async (_, rawUrl: string) => {
     try {
+      const url = rawUrl
+        .replace(/[*_~`#|]+$/g, '')
+        .replace(/^[*_~`#|]+/g, '')
+        .trim()
       if (!url.startsWith('http://') && !url.startsWith('https://')) {
         return false
       }
-      await shell.openExternal(url)
-      return true
+      try {
+        await shell.openExternal(url)
+        return true
+      } catch {
+        logger.system.warn('[Shell] shell.openExternal failed, falling back to system open command:', url)
+        return await new Promise<boolean>((resolve) => {
+          const cmd = process.platform === 'darwin'
+            ? `open "${url.replace(/"/g, '\\"')}"`
+            : process.platform === 'win32'
+              ? `start "" "${url.replace(/"/g, '\\"')}"`
+              : `xdg-open "${url.replace(/"/g, '\\"')}"`
+          exec(cmd, (err) => {
+            if (err) {
+              logger.system.error('[Shell] Fallback open command also failed:', err.message)
+              resolve(false)
+            } else {
+              resolve(true)
+            }
+          })
+        })
+      }
     } catch {
       return false
     }

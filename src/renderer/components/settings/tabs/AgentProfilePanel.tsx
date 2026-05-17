@@ -224,7 +224,7 @@ export function AgentProfilePanel({
                                     value={agentConfig.maxToolLoops}
                                     onChange={(e) => setAgentConfig({ ...agentConfig, maxToolLoops: parseInt(e.target.value) || 20 })}
                                     min={5}
-                                    max={100}
+                                    max={500}
                                     className="bg-background/50 focus:border-accent/50 focus:ring-1 focus:ring-accent/50 transition-all rounded-lg border-border text-xs"
                                 />
                             </div>

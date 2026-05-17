@@ -78,7 +78,8 @@ export function FilePathAnchor({ text, className = '', enableLineNumbers = true 
 
     const handleUrlClick = useCallback((e: React.MouseEvent, url: string) => {
         e.stopPropagation()
-        window.open(url, '_blank', 'noopener,noreferrer')
+        e.preventDefault()
+        api.file.openExternalUrl(url)
     }, [])
 
     const renderedSegments = useMemo(() => {
