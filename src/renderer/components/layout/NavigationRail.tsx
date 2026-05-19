@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { Settings, Workflow, Compass, LogIn, ChevronUp, CloudSync, Info, MessageSquare, Plus, MoreHorizontal, Edit2, Trash2, LogOut, UserCircle, Wallet } from 'lucide-react'
 import { HintOverlay } from '../ui/HintOverlay'
 import { useStore } from '@store'
@@ -53,6 +54,7 @@ function UserMenuDropdown({
   onLogout,
   isAuthenticated,
   cloudUser,
+  anchorRef,
 }: {
   isOpen: boolean
   onClose: () => void
@@ -67,9 +69,11 @@ function UserMenuDropdown({
   onLogout: () => void
   isAuthenticated: boolean
   cloudUser: { username?: string; email: string; avatarUrl?: string; planId: string; phone?: string } | null
+  anchorRef: React.RefObject<HTMLDivElement | null>
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
+  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({})
 
   useEffect(() => {
     if (!isOpen) { setShowLogoutConfirm(false); return }
@@ -81,6 +85,18 @@ function UserMenuDropdown({
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [isOpen, onClose])
+
+  useEffect(() => {
+    if (!isOpen || !anchorRef.current) return
+    const anchor = anchorRef.current
+    const rect = anchor.getBoundingClientRect()
+    setMenuStyle({
+      position: 'fixed',
+      left: rect.left,
+      bottom: window.innerHeight - rect.top + 4,
+      width: 200,
+    })
+  }, [isOpen, anchorRef])
 
   if (!isOpen) return null
 
@@ -104,10 +120,11 @@ function UserMenuDropdown({
     { icon: Info, label: language === 'zh' ? '关于 AweeClaw' : 'About AweeClaw', onClick: onAbout },
   ]
 
-  return (
+  return createPortal(
     <div
       ref={ref}
-      className="absolute bottom-full left-0 right-0 mb-1 mx-1 py-1 rounded-xl bg-surface/95 backdrop-blur-xl border border-border/50 shadow-xl shadow-black/20 z-50"
+      style={menuStyle}
+      className="py-1 rounded-xl bg-surface/95 backdrop-blur-xl border border-border/50 shadow-xl shadow-black/20 z-[9999]"
     >
       {isAuthenticated && (
         <button
@@ -207,7 +224,8 @@ function UserMenuDropdown({
           )}
         </>
       )}
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -228,6 +246,8 @@ function ThreadListItem({
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+  const menuBtnRef = useRef<HTMLButtonElement>(null)
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number }>({ top: 0, right: 0 })
 
   const title = useMemo(() => {
     if (thread.title?.trim()) return thread.title.trim()
@@ -247,45 +267,58 @@ function ThreadListItem({
     return () => document.removeEventListener('mousedown', handler)
   }, [menuOpen])
 
+  useEffect(() => {
+    if (menuOpen && menuBtnRef.current) {
+      const rect = menuBtnRef.current.getBoundingClientRect()
+      setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
+    }
+  }, [menuOpen])
+
   return (
     <div
-      className={`group relative flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer hover:bg-text-primary/[0.06] transition-all ${
+      className={`group relative flex items-center gap-2 px-2 py-2.5 rounded-lg cursor-pointer hover:bg-text-primary/[0.06] transition-all ${
         isActive
           ? 'bg-accent/8 text-accent'
           : 'aweeclaw-thread-item hover:bg-surface-hover/50'
-      }`}
+      } ${menuOpen ? 'z-30 bg-surface-hover/50' : 'z-0'}`}
       onClick={onSelect}
     >
       <MessageSquare className="w-3.5 h-3.5 shrink-0 opacity-50" strokeWidth={1.5} />
       <div className="flex-1 min-w-0 group-hover:pr-5 transition-all">
-        <div className="text-[13px] font-medium truncate leading-tight">{title}</div>
+        <div className="text-[13px] font-medium truncate leading-snug">{title}</div>
       </div>
       <div className="absolute right-1.5 top-1/2 -translate-y-1/2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" ref={menuRef}>
         <button
+          ref={menuBtnRef}
           onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen) }}
           className="p-0.5 rounded hover:opacity-100 transition-all"
         >
           <MoreHorizontal className="w-3.5 h-3.5" />
         </button>
-        {menuOpen && (
-          <div className="absolute right-0 top-full mt-1 py-1 rounded-lg bg-surface/95 backdrop-blur-xl border border-border/50 shadow-lg shadow-black/15 z-50 min-w-[120px]">
-            <button
-              onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onRename(thread.id) }}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-text-primary/[0.06] transition-colors"
-            >
-              <Edit2 className="w-3 h-3" strokeWidth={1.5} />
-              {language === 'zh' ? '重命名' : 'Rename'}
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onDelete() }}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:text-red-500 hover:bg-red-500/5 transition-colors"
-            >
-              <Trash2 className="w-3 h-3" strokeWidth={1.5} />
-              {language === 'zh' ? '删除' : 'Delete'}
-            </button>
-          </div>
-        )}
       </div>
+      {menuOpen && createPortal(
+        <div
+          ref={menuRef}
+          className="fixed py-1 rounded-lg bg-surface/95 backdrop-blur-xl border border-border/50 shadow-lg shadow-black/15 z-[9999] min-w-[120px]"
+          style={{ top: menuPos.top, right: menuPos.right }}
+        >
+          <button
+            onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onRename(thread.id) }}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-text-primary/[0.06] transition-colors"
+          >
+            <Edit2 className="w-3 h-3" strokeWidth={1.5} />
+            {language === 'zh' ? '重命名' : 'Rename'}
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onDelete() }}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:text-red-500 hover:bg-red-500/5 transition-colors"
+          >
+            <Trash2 className="w-3 h-3" strokeWidth={1.5} />
+            {language === 'zh' ? '删除' : 'Delete'}
+          </button>
+        </div>,
+        document.body
+      )}
     </div>
   )
 }
@@ -334,6 +367,7 @@ export default function NavigationRail() {
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [showLoginModal, setShowLoginModal] = useState(false)
   const [showUpdateModal, setShowUpdateModal] = useState(false)
+  const userAreaRef = useRef<HTMLDivElement>(null)
   const [renamingThreadId, setRenamingThreadId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
 
@@ -353,6 +387,12 @@ export default function NavigationRail() {
     setShowSettingsPage(false)
     setShowWelcomePage(false)
   }
+
+  const handleBrandClick = useCallback(() => {
+    setActiveSidePanel(null)
+    setShowSettingsPage(false)
+    setShowWelcomePage(true)
+  }, [setActiveSidePanel, setShowSettingsPage, setShowWelcomePage])
 
   const handleSettingsClick = useCallback(() => {
     setActiveSidePanel(null)
@@ -680,12 +720,12 @@ export default function NavigationRail() {
       `}</style>
 
       {navRailExpanded ? (
-        <div className={`${p}-nav-rail-brand`} onClick={() => { setActiveSidePanel(null); setShowSettingsPage(false); setShowWelcomePage(true) }}>
+        <div className={`${p}-nav-rail-brand`} onClick={handleBrandClick}>
           <div className={`${p}-nav-rail-brand-icon`}>A</div>
           <span className={`${p}-nav-rail-brand-name`}>{BRAND.name}</span>
         </div>
       ) : (
-        <div className={`${p}-nav-rail-brand`} onClick={() => { setActiveSidePanel(null); setShowSettingsPage(false); setShowWelcomePage(true) }}>
+        <div className={`${p}-nav-rail-brand`} onClick={handleBrandClick}>
           <div className={`${p}-nav-rail-brand-icon`}>A</div>
         </div>
       )}
@@ -821,7 +861,7 @@ export default function NavigationRail() {
 
       <div className={`${p}-nav-rail-divider`} />
 
-      <div className={`${p}-nav-rail-user`}>
+      <div className={`${p}-nav-rail-user`} ref={userAreaRef}>
         <UserMenuDropdown
           isOpen={showUserMenu}
           onClose={() => setShowUserMenu(false)}
@@ -836,6 +876,7 @@ export default function NavigationRail() {
           onLogout={handleLogout}
           isAuthenticated={isAuthenticated}
           cloudUser={cloudUser}
+          anchorRef={userAreaRef}
         />
 
         {isAuthenticated ? (

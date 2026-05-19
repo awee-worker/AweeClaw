@@ -55,15 +55,26 @@ function getModeReasoningOverrides(
 
 let cachedThreadsRef: Record<string, ChatThread> | null = null
 let cachedSortedThreads: ChatThread[] = []
+let cachedUserId: string | undefined = undefined
 
 export function useAllThreads(): ChatThread[] {
+  const currentUserId = useStore(s => s.cloudUser?.id)
+
   return useAgentStore(state => {
-    if (state.threads === cachedThreadsRef) {
+    if (state.threads === cachedThreadsRef && currentUserId === cachedUserId) {
       return cachedSortedThreads
     }
 
     cachedThreadsRef = state.threads
-    cachedSortedThreads = Object.values(state.threads).sort((a, b) => b.lastModified - a.lastModified)
+    cachedUserId = currentUserId
+    cachedSortedThreads = Object.values(state.threads)
+      .filter(thread => {
+        if (currentUserId) {
+          return thread.userId === currentUserId
+        }
+        return !thread.userId
+      })
+      .sort((a, b) => b.lastModified - a.lastModified)
     return cachedSortedThreads
   })
 }

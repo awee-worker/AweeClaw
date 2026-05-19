@@ -10,6 +10,7 @@ import { EDUCATION_WELCOME_SUGGESTIONS, EDUCATION_WELCOME_TITLE } from './config
 import { buildScenarioIdentity } from '../scenarioBrandIdentity'
 import EDUCATION_TOOLS from './tools/definitions'
 import { educationComponents } from './components'
+import { INSTALL_SCRIPTS, UNINSTALL_SCRIPTS } from './db/scripts'
 
 const SCENARIO_ID = 'education'
 const SCENARIO_VERSION = '1.0.0'
@@ -106,17 +107,19 @@ const EDUCATION_PLUGIN: ScenarioPlugin = {
 - Quiz format: Question → Options → Answer → Explanation`,
 
     toolGuidelines: `## Education Tool Usage
-- Use topic_explain for structured topic explanations
-- Use quiz_generate for creating assessments and quizzes
-- Use study_plan for designing learning paths
-- Use concept_map for visualizing concept relationships
-- Use practice_problems for generating exercises
-- Use progress_track for monitoring and reviewing progress
-- Save generated materials for future reference`,
+- Use subject_manage to organize courses and subjects
+- Use topic_explain for structured topic explanations with adaptive difficulty
+- Use quiz_manage for creating assessments, adding questions, and recording results
+- Use study_plan_manage for designing learning paths with milestones
+- Use practice_problems for generating exercises with progressive hints
+- Use progress_manage for monitoring comprehension and scheduling reviews
+- Use flashcard_manage for creating and reviewing knowledge cards (SM-2 spaced repetition)
+- Use mistake_manage for tracking wrong answers and marking them as mastered
+- Always save generated materials for future reference`,
   },
 
   capabilities: {
-    toolPacks: ['code', 'knowledge'],
+    toolPacks: ['education'],
     modes: [
       {
         id: 'chat',
@@ -156,18 +159,23 @@ const EDUCATION_PLUGIN: ScenarioPlugin = {
   },
 
   ui: {
-    layout: 'focus-centric',
+    layout: 'chat-centric',
     panels: [
       { id: 'chat', component: 'ChatPanel', region: 'primary', defaultVisible: true, resizable: true, minWidth: 400, maxWidth: 900 },
       { id: 'sidebar', component: 'Sidebar', region: 'secondary', defaultVisible: true, resizable: true, minWidth: 220, maxWidth: 500 },
     ],
     sidebarItems: [
-      { id: 'knowledge', icon: 'BookOpen', label: 'Courses', labelZh: '课程', component: 'KnowledgeView', position: 0 },
-      { id: 'quiz', icon: 'PenLine', label: 'Quiz', labelZh: '测验', component: 'QuizPanel', position: 1 },
-      { id: 'study-plan', icon: 'Calendar', label: 'Study Plan', labelZh: '学习计划', component: 'StudyPlanView', position: 2 },
-      { id: 'explorer', icon: 'FolderTree', label: 'Materials', labelZh: '资料', component: 'ExplorerView', position: 3 },
-      { id: 'history', icon: 'History', label: 'History', labelZh: '历史', component: 'HistoryView', position: 4 },
+      { id: 'explorer', icon: 'Files', label: 'Workspace', labelZh: '工作区', component: 'ExplorerView', position: 0 },
+      { id: 'dashboard', icon: 'LayoutDashboard', label: 'Dashboard', labelZh: '仪表盘', component: 'SubjectDashboardPanel', position: 1 },
+      { id: 'subjects', icon: 'BookOpen', label: 'Subjects', labelZh: '学科管理', component: 'SubjectPanel', position: 2 },
+      { id: 'topics', icon: 'Network', label: 'Topics', labelZh: '知识点', component: 'TopicPanel', position: 3 },
+      { id: 'quiz-center', icon: 'PenLine', label: 'Quiz Center', labelZh: '测验中心', component: 'QuizCenterPanel', position: 4 },
+      { id: 'study-plan', icon: 'Calendar', label: 'Study Plan', labelZh: '学习计划', component: 'StudyPlanPanel', position: 5 },
+      { id: 'progress', icon: 'BarChart3', label: 'Progress', labelZh: '学习进度', component: 'ProgressPanel', position: 6 },
+      { id: 'flashcards', icon: 'Layers', label: 'Flashcards', labelZh: '知识卡片', component: 'FlashCardPanel', position: 7 },
+      { id: 'mistakes', icon: 'AlertCircle', label: 'Mistakes', labelZh: '错题本', component: 'MistakeBookPanel', position: 8 },
     ],
+    defaultSidePanel: 'explorer',
     statusBarItems: [],
     welcomeSuggestions: EDUCATION_WELCOME_SUGGESTIONS,
     welcomeTitle: EDUCATION_WELCOME_TITLE,
@@ -187,6 +195,8 @@ const educationModule: ScenarioModule = {
   getPlugin: () => EDUCATION_PLUGIN,
   getTools: () => EDUCATION_TOOLS,
   getComponents: () => educationComponents,
+  getInstallScripts: () => INSTALL_SCRIPTS,
+  getUninstallScripts: () => UNINSTALL_SCRIPTS,
 
   onInstall: async (context: ScenarioModuleContext) => {
     const log = context.getLogger()
@@ -210,14 +220,46 @@ const educationModule: ScenarioModule = {
     const health = context.getHealthReporter()
     log.info(`Activating education scenario: v${context.version}`)
 
+    try {
+      const dbPath = await context.getDatabasePath()
+      health.reportCheck('database', 'healthy', `Database ready at ${dbPath}`)
+      log.info(`Education database ready at ${dbPath}`)
+    } catch (err) {
+      health.reportCheck('database', 'degraded', `Database check failed: ${err instanceof Error ? err.message : String(err)}`)
+      log.warn(`Failed to verify database: ${err}`)
+    }
+
+    try {
+      const subjectResult = await context.executeSql('SELECT COUNT(*) as count FROM subjects')
+      const subjectCount = subjectResult.rows?.[0]?.count as number || 0
+      health.reportCheck('subjects', subjectCount > 0 ? 'healthy' : 'degraded', `${subjectCount} subjects loaded`)
+    } catch {
+      health.reportCheck('subjects', 'degraded', 'Cannot query subjects')
+    }
+
     health.reportCheck('tools', 'healthy', `${EDUCATION_TOOLS.length} education tools available`)
-    health.reportCheck('components', 'healthy', '2 education components registered')
+    health.reportCheck('components', 'healthy', '9 education components registered')
 
     context.publishData('scenario:activated', {
       scenarioId: context.scenarioId,
       version: context.version,
-      capabilities: ['topic_explain', 'quiz_generate', 'study_plan', 'concept_map', 'practice_problems', 'progress_track'],
+      capabilities: ['subject_manage', 'topic_manage', 'quiz_manage', 'study_plan_manage', 'progress_manage', 'flashcard_manage', 'mistake_manage', 'topic_explain', 'practice_problems', 'subject_dashboard', 'learning_suggest'],
     })
+
+    try {
+      const reviewResult = await context.executeSql(`SELECT COUNT(*) as count FROM review_schedule WHERE next_review_at <= datetime('now') AND status = 'pending'`)
+      const dueCount = reviewResult.rows?.[0]?.count as number || 0
+      if (dueCount > 0) {
+        context.publishData('education:reviews-due', {
+          count: dueCount,
+          message: `You have ${dueCount} items due for review`,
+          messageZh: `你有 ${dueCount} 项待复习`,
+        })
+        log.info(`Spaced repetition: ${dueCount} items due for review`)
+      }
+    } catch {
+      log.warn('Failed to check due reviews on activation')
+    }
   },
 
   onDeactivate: async (context: ScenarioModuleContext) => {
@@ -229,10 +271,32 @@ const educationModule: ScenarioModule = {
   },
 
   onHealthCheck: async (): Promise<ScenarioHealthCheck[]> => {
-    return [
-      { name: 'tools', status: 'healthy', message: `${EDUCATION_TOOLS.length} tools available` },
-      { name: 'components', status: 'healthy', message: '2 components registered' },
-    ]
+    const checks: ScenarioHealthCheck[] = []
+
+    try {
+      const { scenarioDatabaseManager } = await import('@scenario-system/core/ScenarioDatabaseManager')
+      const subjectCount = await scenarioDatabaseManager.executeSql(SCENARIO_ID, 'SELECT COUNT(*) as count FROM subjects')
+      const count = subjectCount.rows?.[0]?.count as number || 0
+      checks.push({
+        name: 'database',
+        status: subjectCount.success ? 'healthy' : 'unhealthy',
+        message: subjectCount.success ? `${count} subjects in database` : subjectCount.error || 'Database error',
+      })
+    } catch {
+      checks.push({
+        name: 'database',
+        status: 'unhealthy',
+        message: 'Cannot check database status',
+      })
+    }
+
+    checks.push({
+      name: 'tools',
+      status: 'healthy',
+      message: `${EDUCATION_TOOLS.length} tools available`,
+    })
+
+    return checks
   },
 
   getDependencies: (): ScenarioDependency[] => [],

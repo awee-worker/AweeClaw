@@ -112,6 +112,7 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
           language === 'zh' ? '登录已过期' : 'Session Expired',
           language === 'zh' ? '您的登录已过期，请重新登录' : 'Your session has expired. Please sign in again.',
         );
+        useStore.getState().setShowWelcomePage(true);
       }).catch(() => {
         toast.error('登录已过期', '您的登录已过期，请重新登录');
       });
@@ -187,6 +188,9 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
     setTokens(null);
     clearPersistedAuth();
     set({ isAuthenticated: false, cloudUser: null, quota: null, cloudMode: 'local' });
+    import('@store').then(({ useStore }) => {
+      useStore.getState().setShowWelcomePage(true);
+    }).catch(() => {});
   },
 
   setCloudMode: (mode) => {

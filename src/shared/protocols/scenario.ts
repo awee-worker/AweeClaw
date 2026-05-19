@@ -93,6 +93,7 @@ export interface SidebarItemDescriptor {
   labelZh: string
   component: string
   position?: number
+  wideMode?: boolean
 }
 
 export interface StatusBarItemDescriptor {
@@ -125,6 +126,7 @@ export interface ScenarioUI {
   welcomeComponent?: string
   onboardingComponent?: string
   defaultSidePanel?: string
+  wideModeHidesChat?: boolean
   welcomeSuggestions?: WelcomeSuggestionItem[]
   welcomeTitle?: WelcomeTitleConfig
 }
@@ -399,6 +401,14 @@ export class ScenarioRegistry {
       this.notifyUninstallListeners(scenarioId)
     }
     return deleted
+  }
+
+  updateScenario(scenarioId: string, updates: Partial<ScenarioPlugin>): boolean {
+    const scenario = this.scenarios.get(scenarioId)
+    if (!scenario) return false
+    Object.assign(scenario, updates)
+    this.persistCustomScenarios()
+    return true
   }
 
   persistCustomScenarios(): void {

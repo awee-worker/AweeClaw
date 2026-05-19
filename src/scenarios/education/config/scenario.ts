@@ -12,12 +12,14 @@ const EDUCATION_IDENTITY: ScenarioIdentity = {
   systemPrompt: buildScenarioIdentity('Education Assistant', 'focused on learning and knowledge transfer') + `
 
 **Core Education Capabilities:**
-- **Topic Explanation**: Break down complex topics into digestible explanations
-- **Adaptive Tutoring**: Adjust teaching style to learner's level and progress
-- **Quiz Generation**: Create assessments with varying difficulty levels
-- **Study Planning**: Design structured learning paths with milestones
-- **Concept Mapping**: Visualize relationships between concepts
-- **Practice Problems**: Generate exercises with step-by-step solutions`,
+- **Subject Management**: Organize courses and subjects for structured learning
+- **Topic Explanation**: Break down complex topics into digestible explanations with adaptive difficulty
+- **Quiz Generation**: Create assessments with varying difficulty levels and question types
+- **Study Planning**: Design structured learning paths with milestones and daily schedules
+- **Practice Problems**: Generate exercises with step-by-step solutions and progressive hints
+- **Progress Tracking**: Monitor learning progress with comprehension scores and review scheduling
+- **Flashcards**: Create and review knowledge cards using SM-2 spaced repetition algorithm
+- **Mistake Book**: Track wrong answers, review mistakes, and mark them as mastered`,
 
   securityRules: `## Education Scenario Security Rules
 - Present information accurately and cite sources when possible
@@ -67,14 +69,19 @@ const EDUCATION_IDENTITY: ScenarioIdentity = {
 - Quiz format: Question → Options → Answer → Explanation`,
 
   toolGuidelines: `## Education Tool Usage
-- Use knowledge base for storing course materials and notes
-- Use file tools to create and manage study documents
-- Use search tools for finding supplementary resources
-- Save generated quizzes and study plans for future reference`,
+- Use subject_manage to organize courses and subjects
+- Use topic_explain for structured topic explanations with adaptive difficulty
+- Use quiz_manage for creating assessments, adding questions, and recording results
+- Use study_plan_manage for designing learning paths with milestones
+- Use practice_problems for generating exercises with progressive hints
+- Use progress_manage for monitoring comprehension and scheduling reviews
+- Use flashcard_manage for creating and reviewing knowledge cards (SM-2 spaced repetition)
+- Use mistake_manage for tracking wrong answers and marking them as mastered
+- Always save generated materials for future reference`,
 }
 
 const EDUCATION_CAPABILITIES: ScenarioCapabilities = {
-  toolPacks: ['code', 'knowledge'],
+  toolPacks: ['education'],
   modes: [
     {
       id: 'chat',
@@ -114,16 +121,21 @@ const EDUCATION_CAPABILITIES: ScenarioCapabilities = {
 }
 
 const EDUCATION_UI: ScenarioUI = {
-  layout: 'focus-centric',
+  layout: 'chat-centric',
   panels: [
     { id: 'chat', component: 'ChatPanel', region: 'primary', defaultVisible: true, resizable: true, minWidth: 400, maxWidth: 900 },
     { id: 'sidebar', component: 'Sidebar', region: 'secondary', defaultVisible: true, resizable: true, minWidth: 220, maxWidth: 500 },
   ],
   sidebarItems: [
-    { id: 'knowledge', icon: 'BookOpen', label: 'Courses', labelZh: '课程', component: 'KnowledgeView', position: 0 },
-    { id: 'explorer', icon: 'FolderTree', label: 'Materials', labelZh: '资料', component: 'ExplorerView', position: 1 },
-    { id: 'history', icon: 'History', label: 'History', labelZh: '历史', component: 'HistoryView', position: 2 },
+    { id: 'explorer', icon: 'Files', label: 'Workspace', labelZh: '工作区', component: 'ExplorerView', position: 0 },
+    { id: 'subjects', icon: 'BookOpen', label: 'Subjects', labelZh: '学科管理', component: 'SubjectPanel', position: 1 },
+    { id: 'quiz-center', icon: 'PenLine', label: 'Quiz Center', labelZh: '测验中心', component: 'QuizCenterPanel', position: 2 },
+    { id: 'study-plan', icon: 'Calendar', label: 'Study Plan', labelZh: '学习计划', component: 'StudyPlanPanel', position: 3 },
+    { id: 'progress', icon: 'BarChart3', label: 'Progress', labelZh: '学习进度', component: 'ProgressPanel', position: 4 },
+    { id: 'flashcards', icon: 'Layers', label: 'Flashcards', labelZh: '知识卡片', component: 'FlashCardPanel', position: 5 },
+    { id: 'mistakes', icon: 'AlertCircle', label: 'Mistakes', labelZh: '错题本', component: 'MistakeBookPanel', position: 6 },
   ],
+  defaultSidePanel: 'explorer',
   statusBarItems: [],
   welcomeSuggestions: EDUCATION_WELCOME_SUGGESTIONS,
   welcomeTitle: EDUCATION_WELCOME_TITLE,

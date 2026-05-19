@@ -287,7 +287,16 @@ export class AgentClass {
 
     api.llm.abort()
     if (targetThreadId) {
-      approvalService.reject(useAgentStore.getState().threads[targetThreadId]?.executionMeta?.requestId)
+      const thread = useAgentStore.getState().threads[targetThreadId]
+      const reqId = thread?.executionMeta?.requestId
+      const pendingToolCalls = thread?.streamState?.pendingApprovalToolCalls
+      if (reqId && pendingToolCalls && pendingToolCalls.length > 0) {
+        for (const tc of pendingToolCalls) {
+          approvalService.reject(`${reqId}_${tc.id}`)
+        }
+      } else if (reqId) {
+        approvalService.reject(reqId)
+      }
     }
 
     const thread = targetThreadId ? store.threads[targetThreadId] : store.getCurrentThread()
@@ -325,7 +334,9 @@ export class AgentClass {
     const pendingToolCalls = currentThread?.streamState?.pendingApprovalToolCalls
 
     if (effectiveRequestId && pendingToolCalls && pendingToolCalls.length > 0) {
-      approvalService.approve(`${effectiveRequestId}_${pendingToolCalls[0].id}`)
+      for (const tc of pendingToolCalls) {
+        approvalService.approve(`${effectiveRequestId}_${tc.id}`)
+      }
     } else if (effectiveRequestId) {
       approvalService.approve(effectiveRequestId)
     }
@@ -343,7 +354,9 @@ export class AgentClass {
     const pendingToolCalls = currentThread?.streamState?.pendingApprovalToolCalls
 
     if (effectiveRequestId && pendingToolCalls && pendingToolCalls.length > 0) {
-      approvalService.reject(`${effectiveRequestId}_${pendingToolCalls[0].id}`)
+      for (const tc of pendingToolCalls) {
+        approvalService.reject(`${effectiveRequestId}_${tc.id}`)
+      }
     } else if (effectiveRequestId) {
       approvalService.reject(effectiveRequestId)
     }

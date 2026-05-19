@@ -10,6 +10,7 @@ import { useToolDisplayState } from '@intelligence/display/toolResultRenderer'
 import { getMcpToolStatusText, getFriendlyToolName, isMcpToolName } from '@intelligence/display/toolFriendlyName'
 import { useToolCardExpansion } from '@hooks'
 import { api } from '../../adapters/electronBridge'
+import { openUrlInBrowser } from '@utils/browserLauncher'
 import { JsonHighlight } from '@utils/jsonHighlight'
 import { toast } from '@components/foundation/NotificationProvider'
 import { RichContentRenderer } from './RichContentRenderer'
@@ -690,7 +691,7 @@ function ToolPreview({
                 <div className="flex items-center gap-1.5 text-[12px] text-text-muted">
                     <Search className="w-3 h-3" />
                     <a href={url} target="_blank" rel="noreferrer" className="text-text-primary font-medium hover:underline truncate hover:text-accent transition-colors"
-                        onClick={(e) => { e.preventDefault(); api.file.openExternalUrl(url) }}
+                        onClick={(e) => { e.preventDefault(); openUrlInBrowser(url) }}
                     >
                         {hostname}
                     </a>

@@ -13,6 +13,8 @@ import { PromptsView } from './panels/PromptLibrary'
 import { TasksView } from './panels/TaskExplorer'
 import { BookmarksView } from './panels/BookmarkExplorer'
 import { DynamicPanelView } from './AdaptivePanelView'
+import { scenarioRegistry } from '@shared/configuration/scenarios'
+import { useMemo } from 'react'
 
 const BUILTIN_PANELS: Record<string, React.ComponentType> = {
   explorer: ExplorerView,
@@ -30,10 +32,23 @@ const BUILTIN_PANELS: Record<string, React.ComponentType> = {
   bookmarks: BookmarksView,
 }
 
+function useWideModePanelIds(): string[] {
+  const activeScenarioId = useStore(s => s.activeScenarioId)
+  return useMemo(() => {
+    if (!activeScenarioId) return []
+    const scenario = scenarioRegistry.get(activeScenarioId)
+    if (!scenario?.ui?.sidebarItems) return []
+    return scenario.ui.sidebarItems.filter(item => item.wideMode).map(item => item.id)
+  }, [activeScenarioId])
+}
+
 export default function Sidebar() {
     const activeSidePanel = useStore(s => s.activeSidePanel)
+    const wideModePanelIds = useWideModePanelIds()
 
     if (!activeSidePanel) return null
+
+    if (wideModePanelIds.includes(activeSidePanel)) return null
 
     const BuiltinPanel = BUILTIN_PANELS[activeSidePanel]
 

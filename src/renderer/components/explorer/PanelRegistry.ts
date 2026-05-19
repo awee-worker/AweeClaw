@@ -36,6 +36,13 @@ export function registerScenarioPanelComponents(scenarioId: string): void {
         registerPanelComponent(item.id, comp)
       }
     }
+
+    if (scenario.ui.welcomeComponent) {
+      const welcomeComp = components[scenario.ui.welcomeComponent]
+      if (welcomeComp) {
+        registerPanelComponent(`welcome-${scenarioId}`, welcomeComp)
+      }
+    }
   } catch {}
 }
 
@@ -45,6 +52,10 @@ export function unregisterScenarioPanelComponents(scenarioId: string): void {
 
   for (const item of scenario.ui.sidebarItems) {
     unregisterPanelComponent(item.id)
+  }
+
+  if (scenario.ui.welcomeComponent) {
+    unregisterPanelComponent(`welcome-${scenarioId}`)
   }
 }
 

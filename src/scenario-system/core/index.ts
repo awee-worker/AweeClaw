@@ -24,6 +24,14 @@ export type { SandboxOptions, SandboxResult, SandboxAPIProvider } from './Sandbo
 export { ScenarioScriptExecutor } from './ScenarioScriptExecutor'
 export { createContextAPI, createCoreAPI } from './SandboxAPI'
 export type { ScenarioSandboxContext } from './SandboxAPI'
+export { sharedDependencyProvider, injectSharedDependencies } from './SharedDependencyProvider'
+export type { SharedDependencyRegistry, SharedDependencyMap, SharedDependencyMeta } from './SharedDependencyProvider'
+export { ProgrammaticScenarioModule } from './ProgrammaticScenarioModule'
+export type { ProgrammaticScenarioConfig, ProgrammaticScenarioExports } from './ProgrammaticScenarioModule'
+export { loadProgrammaticScenario, loadAllProgrammaticScenarios, setProgrammaticLoadFunction } from './ProgrammaticScenarioLoader'
+export { scenarioStyleManager } from './ScenarioStyleManager'
+export { createScenarioSDK, injectScenarioSDK, removeScenarioSDK, getScenarioSDK } from './ScenarioSDK'
+export type { ScenarioSDK, ScenarioStorageAPI, ScenarioStyleAPI, ScenarioContextAPI, ScenarioDataBusAPI, ScenarioLoggerAPI, ScenarioHealthAPI } from './ScenarioSDK'
 export {
   loadScenarioFromInstalled,
   loadAllInstalledScenarios,

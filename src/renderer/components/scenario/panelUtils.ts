@@ -12,7 +12,12 @@ export function activateScenarioPanels(scenario: ScenarioPlugin): void {
 }
 
 export function switchToFirstPanel(scenario: ScenarioPlugin): void {
+  const store = useStore.getState()
   const sidebarItemIds = (scenario.ui?.sidebarItems || []).map(item => item.id)
   const firstPanel = scenario.ui?.defaultSidePanel || sidebarItemIds[0] || 'explorer'
-  useStore.getState().setActiveSidePanel(firstPanel as SidePanel)
+  store.setActiveSidePanel(firstPanel as SidePanel)
+  store.setShowWelcomePage(false)
+  store.setShowSettingsPage(false)
+  store.setShowUserProfilePage(false)
+  store.setShowBillingCenterPage(false)
 }

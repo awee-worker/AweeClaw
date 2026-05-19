@@ -12,6 +12,7 @@ import type { ToolStreamingPreview } from '@intelligence/providerTypes'
 import { agentSessionRepository } from '@services/sessionRepository'
 import { createIdleHandoffState, createRuntimeThreadState } from '@intelligence/providerTypes'
 import { EventBus } from '../../engine/EventDispatcher'
+import { useStore } from '@store'
 
 export interface ThreadStoreState {
     threads: Record<string, ChatThread>
@@ -123,6 +124,10 @@ export const createThreadSlice: StateCreator<
 
     createThread: (options) => {
         const thread = createEmptyThread()
+        const cloudUser = useStore.getState().cloudUser
+        if (cloudUser?.id) {
+            thread.userId = cloudUser.id
+        }
         const activate = options?.activate ?? true
         set(state => {
             const newThreads = { ...state.threads, [thread.id]: thread }

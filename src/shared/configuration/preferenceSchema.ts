@@ -192,6 +192,10 @@ const defaultMcpConfig: McpConfig = {
   autoConnect: true,
 }
 
+export type BrowserMode = 'internal' | 'external'
+
+const defaultBrowserMode: BrowserMode = 'internal'
+
 function generateDefaultProviderConfigs(): Record<string, ProviderModelConfig> {
   const configs: Record<string, ProviderModelConfig> = {}
   for (const [id, provider] of Object.entries(BUILTIN_PROVIDERS)) {
@@ -257,6 +261,9 @@ export const SETTINGS = {
   enableFileLogging: {
     default: false as boolean,
   },
+  browserMode: {
+    default: defaultBrowserMode,
+  },
   scenarioPreferences: {
     default: DEFAULT_SCENARIO_PREFERENCES,
   },
@@ -288,6 +295,7 @@ export type SettingsState = {
   aiInstructions: string
   onboardingCompleted: boolean
   enableFileLogging: boolean
+  browserMode: BrowserMode
   scenarioPreferences: ScenarioPreferences
 }
 
@@ -317,6 +325,7 @@ export function getAllDefaults(): SettingsState {
     aiInstructions: SETTINGS.aiInstructions.default,
     onboardingCompleted: SETTINGS.onboardingCompleted.default,
     enableFileLogging: SETTINGS.enableFileLogging.default,
+    browserMode: SETTINGS.browserMode.default,
     scenarioPreferences: SETTINGS.scenarioPreferences.default,
   }
 }

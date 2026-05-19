@@ -120,6 +120,8 @@ export interface ChatThread {
   planId?: string
   /** Associated task ID (if origin is plan-task) */
   taskId?: string
+  /** Owner user ID (associated with logged-in user, empty for anonymous) */
+  userId?: string
 }
 
 export interface PersistedChatThread {
@@ -141,6 +143,7 @@ export interface PersistedChatThread {
   origin?: 'user' | 'plan-task'
   planId?: string
   taskId?: string
+  userId?: string
 }
 
 export function createRuntimeThreadState(): Pick<
@@ -186,6 +189,7 @@ export function toPersistedChatThread(thread: ChatThread): PersistedChatThread {
     origin: thread.origin,
     planId: thread.planId,
     taskId: thread.taskId,
+    userId: thread.userId,
   }
 }
 

@@ -149,6 +149,13 @@ type ElectronAPIWithRemoteShell = ElectronAPI & {
   scenarioMarketplaceDetails: (scenarioId: string) => Promise<unknown | null>
   scenarioMarketplaceCategories: () => Promise<unknown[]>
   scenarioMarketplaceDownload: (scenarioId: string) => Promise<{ success: boolean; error?: string; path?: string }>
+  scenarioMarketplaceInstall: (params: { scenarioId: string; downloadUrl: string; checksum: string; signature?: string; version: string; fileSize: number; packageType: string }) => Promise<{ success: boolean; scenarioId?: string; version?: string; targetDir?: string; config?: Record<string, unknown>; packageType?: string; error?: string }>
+  scenarioMarketplaceCheckUpdates: (installedScenarios: Array<{ id: string; version: string }>) => Promise<Array<{ scenarioId: string; currentVersion: string; needsUpdate: boolean }>>
+  scenarioMarketplaceUpdate: (params: { scenarioId: string; downloadUrl: string; checksum: string; signature?: string; version: string; fileSize: number; packageType: string }) => Promise<{ success: boolean; scenarioId?: string; version?: string; targetDir?: string; config?: Record<string, unknown>; packageType?: string; error?: string }>
+  scenarioGetRollbackInfo: (scenarioId: string) => Promise<{ available: boolean; previousVersion?: string; backedUpAt?: string }>
+  scenarioRollbackScenario: (scenarioId: string) => Promise<{ success: boolean; scenarioId?: string; version?: string; targetDir?: string; config?: Record<string, unknown>; error?: string }>
+  scenarioClearRollbackData: (scenarioId?: string) => Promise<{ success: boolean; error?: string }>
+  onScenarioInstallProgress: (callback: (data: { scenarioId: string; phase: string; bytesDownloaded: number; bytesTotal: number; percent: number }) => void) => () => void
 }
 
 // 创建分组 API 适配器
@@ -579,10 +586,23 @@ function createGroupedAPI() {
       getDetails: (scenarioId: string) => raw.scenarioMarketplaceDetails(scenarioId),
       getCategories: () => raw.scenarioMarketplaceCategories(),
       download: (scenarioId: string) => raw.scenarioMarketplaceDownload(scenarioId),
+      install: (params: { scenarioId: string; downloadUrl: string; checksum: string; signature?: string; version: string; fileSize: number; packageType: string }) => raw.scenarioMarketplaceInstall(params),
+      checkUpdates: (installedScenarios: Array<{ id: string; version: string }>) => raw.scenarioMarketplaceCheckUpdates(installedScenarios),
+      update: (params: { scenarioId: string; downloadUrl: string; checksum: string; signature?: string; version: string; fileSize: number; packageType: string }) => raw.scenarioMarketplaceUpdate(params),
+    },
+
+    scenarioRollback: {
+      getInfo: (scenarioId: string) => raw.scenarioGetRollbackInfo(scenarioId),
+      rollback: (scenarioId: string) => raw.scenarioRollbackScenario(scenarioId),
+      clearData: (scenarioId?: string) => raw.scenarioClearRollbackData(scenarioId),
     },
 
     system: {
       onResume: (callback: () => void) => raw.onSystemResume(callback),
+    },
+
+    onScenarioInstallProgress: (callback: (data: { scenarioId: string; phase: string; bytesDownloaded: number; bytesTotal: number; percent: number }) => void) => {
+      return raw.onScenarioInstallProgress(callback)
     },
   }
 }

@@ -238,6 +238,30 @@ class ToolPackRegistryClass {
 
 export const toolPackRegistry = new ToolPackRegistryClass()
 
+const EDUCATION_TOOL_PACK: ToolPack = {
+  id: 'education',
+  name: 'Education Tools',
+  nameZh: '教育工具',
+  description: 'Subject management, topic explanation, quiz generation, study planning, progress tracking, flashcards, and mistake book',
+  descriptionZh: '学科管理、知识点讲解、测验生成、学习计划、进度追踪、知识卡片和错题本',
+  icon: 'GraduationCap',
+  category: 'custom',
+  tools: [
+    'subject_manage',
+    'topic_manage',
+    'quiz_manage',
+    'study_plan_manage',
+    'progress_manage',
+    'flashcard_manage',
+    'mistake_manage',
+    'topic_explain',
+    'practice_problems',
+    'subject_dashboard',
+    'learning_suggest',
+  ],
+  dependencies: ['code'],
+}
+
 const STORE_DIAGNOSIS_TOOL_PACK: ToolPack = {
   id: 'store-diagnosis',
   name: 'Store Diagnosis Tools',
@@ -265,4 +289,5 @@ toolPackRegistry.register(DATA_TOOL_PACK)
 toolPackRegistry.register(WEB_TOOL_PACK)
 toolPackRegistry.register(MEDIA_TOOL_PACK)
 toolPackRegistry.register(OFFICE_TOOL_PACK)
+toolPackRegistry.register(EDUCATION_TOOL_PACK)
 toolPackRegistry.register(STORE_DIAGNOSIS_TOOL_PACK)

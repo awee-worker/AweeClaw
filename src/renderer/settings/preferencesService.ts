@@ -171,6 +171,7 @@ function buildPersistedSettingsPayload(
     webSearchConfig: settings.webSearchConfig,
     mcpConfig: settings.mcpConfig,
     enableFileLogging: settings.enableFileLogging,
+    browserMode: settings.browserMode,
     scenarioPreferences: settings.scenarioPreferences ?? DEFAULT_SCENARIO_PREFERENCES,
   }
 }
@@ -296,6 +297,9 @@ class SettingsService {
       enableFileLogging: typeof saved.enableFileLogging === 'boolean'
         ? saved.enableFileLogging
         : defaults.enableFileLogging,
+      browserMode: (saved.browserMode as string) === 'internal' || (saved.browserMode as string) === 'external'
+        ? saved.browserMode as 'internal' | 'external'
+        : defaults.browserMode,
       scenarioPreferences: saved.scenarioPreferences
         ? { ...DEFAULT_SCENARIO_PREFERENCES, ...(saved.scenarioPreferences as object) }
         : defaults.scenarioPreferences,

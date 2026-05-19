@@ -47,6 +47,7 @@ import { composerService } from '@intelligence/runtime/composerEngine'
 import { playNotificationSound } from '@utils/notificationSound'
 import { getFriendlyToolName } from '@intelligence/display/toolFriendlyName'
 import { TodoListPanel } from './TodoListPanel'
+import { channelConversationService } from '@intelligence/runtime/channelConversationService'
 import {
   buildChatTimelineProjection,
   type ChatTimelineItem,
@@ -136,6 +137,12 @@ export default function ChatPanel() {
     messageListVersion,
     pendingApprovalToolCalls,
   } = useAgentViewState()
+
+  const isChannelThread = useMemo(() => {
+    if (!currentThreadId) return false
+    return !!channelConversationService.getConversationKey(currentThreadId)
+  }, [currentThreadId])
+
   const { sendMessage, abort, approveCurrentTool, rejectCurrentTool } = useAgentCommands()
   const {
     clearMessages,
@@ -1331,7 +1338,7 @@ export default function ChatPanel() {
               </AnimatePresence>
 
               {/* Todo List */}
-              {todos.length > 0 && (
+              {todos.length > 0 && !isChannelThread && (
                 <div className="mb-3">
                   <TodoListPanel todos={todos} isStreaming={isStreaming} />
                 </div>

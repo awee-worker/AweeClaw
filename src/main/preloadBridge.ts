@@ -1015,6 +1015,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   scenarioMarketplaceDetails: (scenarioId: string) => ipcRenderer.invoke('scenario:marketplaceDetails', scenarioId),
   scenarioMarketplaceCategories: () => ipcRenderer.invoke('scenario:marketplaceCategories'),
   scenarioMarketplaceDownload: (scenarioId: string) => ipcRenderer.invoke('scenario:marketplaceDownload', scenarioId),
+  scenarioMarketplaceInstall: (params: { scenarioId: string; downloadUrl: string; checksum: string; signature?: string; version: string; fileSize: number; packageType: string }) => ipcRenderer.invoke('scenario:marketplaceInstall', params),
+  scenarioMarketplaceCheckUpdates: (installedScenarios: Array<{ id: string; version: string }>) => ipcRenderer.invoke('scenario:marketplaceCheckUpdates', installedScenarios),
+  scenarioMarketplaceUpdate: (params: { scenarioId: string; downloadUrl: string; checksum: string; signature?: string; version: string; fileSize: number; packageType: string }) => ipcRenderer.invoke('scenario:marketplaceUpdate', params),
+  scenarioGetRollbackInfo: (scenarioId: string) => ipcRenderer.invoke('scenario:getRollbackInfo', scenarioId),
+  scenarioRollbackScenario: (scenarioId: string) => ipcRenderer.invoke('scenario:rollbackScenario', scenarioId),
+  scenarioClearRollbackData: (scenarioId?: string) => ipcRenderer.invoke('scenario:clearRollbackData', scenarioId),
 
   // Command Execution
   onExecuteCommand: (callback: (commandId: string) => void) => {
@@ -1091,5 +1097,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = () => callback()
     ipcRenderer.on('system:resume', handler)
     return () => ipcRenderer.removeListener('system:resume', handler)
+  },
+  onScenarioInstallProgress: (callback: (data: { scenarioId: string; phase: string; bytesDownloaded: number; bytesTotal: number; percent: number }) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: { scenarioId: string; phase: string; bytesDownloaded: number; bytesTotal: number; percent: number }) => callback(data)
+    ipcRenderer.on('scenario:installProgress', handler)
+    return () => ipcRenderer.removeListener('scenario:installProgress', handler)
   },
 })

@@ -1,6 +1,6 @@
 import {
   Files, Search, GitBranch, Settings, Sparkles, AlertCircle, ListTree, History,
-  Brain, Terminal, Database, BarChart3, Users, FolderTree, Code2, PenTool,
+  Brain, Terminal, Database, BarChart3, Users, FolderTree, Code2, PenTool, PenLine,
   Globe, Cpu, Layers, Zap, BookOpen, FileText, Image, Music, Video, Mail,
   Calendar, Map, PieChart, TrendingUp, Activity, Shield, Key, Cloud,
   Monitor, Smartphone, Server, Home, Star, Heart, MessageSquare, Bell,
@@ -14,12 +14,13 @@ import {
   Package, Box, Container, Database as DatabaseIcon, HardDrive, Server as ServerIcon,
   StickyNote, Briefcase, Calculator, FlaskConical, GraduationCap,
   Lightbulb, Palette, Scale, ShieldCheck, Stethoscope, Store, Building2, ClipboardList,
+  LayoutDashboard, Network,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 export const LUCIDE_ICON_MAP: Record<string, LucideIcon> = {
   Files, Search, GitBranch, Settings, Sparkles, AlertCircle, ListTree, History,
-  Brain, Terminal, Database, BarChart3, Users, FolderTree, Code2, PenTool,
+  Brain, Terminal, Database, BarChart3, Users, FolderTree, Code2, PenTool, PenLine,
   Globe, Cpu, Layers, Zap, BookOpen, FileText, Image, Music, Video, Mail,
   Calendar, Map, PieChart, TrendingUp, Activity, Shield, Key, Cloud,
   Monitor, Smartphone, Server, Home, Star, Heart, MessageSquare, Bell,
@@ -33,6 +34,7 @@ export const LUCIDE_ICON_MAP: Record<string, LucideIcon> = {
   Package, Box, Container, DatabaseIcon, HardDrive, ServerIcon,
   StickyNote, Briefcase, Calculator, FlaskConical, GraduationCap,
   Lightbulb, Palette, Scale, ShieldCheck, Stethoscope, Store, Building2, ClipboardList,
+  LayoutDashboard, Network,
 }
 
 export function getLucideIcon(name: string): LucideIcon {

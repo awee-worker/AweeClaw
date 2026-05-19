@@ -9,6 +9,7 @@ import { scenarioLoader, registerBuiltinScenarios } from '@/scenarios'
 import { loadExternalScenarios, setExternalScenarioLoadFunctions } from '@scenario-system/core/ExternalScenarioLoader'
 import { api } from './adapters/electronBridge'
 import { shellComposer, type LayoutConfig } from './shell/ShellComposer'
+import { getPanelComponent } from '@components/explorer/PanelRegistry'
 import WorkspaceStatusBar from './components/layout/WorkspaceStatusBar'
 import ImStatusFloating from './components/layout/ImStatusFloating'
 import EditorBottomBar from './components/layout/EditorBottomBar'
@@ -34,6 +35,8 @@ const WorkflowPanel = lazy(() => import('@components/workflow/WorkflowPanel'))
 const DataDashboard = lazy(() => import('@components/dashboard/InsightDashboard'))
 const StoreDiagnosisDashboard = lazy(() => import('@/scenarios/store-diagnosis/components/StoreDiagnosisDashboard'))
 const CanvasWorkspace = lazy(() => import('@components/canvas/WorkspaceCanvas'))
+const DynamicPanelView = lazy(() => import('@components/explorer/AdaptivePanelView').then(m => ({ default: m.DynamicPanelView })))
+const ScenarioManagerView = lazy(() => import('@components/scenario/ScenarioManagerView').then(m => ({ default: m.ScenarioManagerView })))
 
 const OnboardingWizard = lazy(() => import('@components/modals/OnboardingWizard'))
 const PreferencesDialog = lazy(() => import('@components/settings/PreferencesDialog'))
@@ -148,6 +151,19 @@ function AppContent() {
     return shellComposer.getLayoutConfig(defaultScenario)
   }, [activeScenarioId])
 
+  const isWideModePanel = useMemo(() => {
+    if (!activeSidePanel) return false
+    if (activeSidePanel === 'scenarios') return true
+    return layoutConfig.wideModePanelIds.includes(activeSidePanel)
+  }, [activeSidePanel, layoutConfig.wideModePanelIds])
+
+  const scenarioWelcomeComponent = useMemo(() => {
+    if (!activeScenarioId) return null
+    const scenario = scenarioRegistry.get(activeScenarioId)
+    if (!scenario?.ui?.welcomeComponent) return null
+    return getPanelComponent(`welcome-${activeScenarioId}`)
+  }, [activeScenarioId])
+
   const [layoutAnimating, setLayoutAnimating] = useState(false)
   const prevLayoutRef = useRef(layoutConfig.layout)
   useEffect(() => {
@@ -191,7 +207,7 @@ function AppContent() {
                     <AppTitleBar />
 
                     <div className="flex-1 flex min-w-0 overflow-hidden">
-                      {layoutConfig.showSidebar && activeSidePanel && !showSettingsPage && !showWelcomePage && !showUserProfilePage && !showBillingCenterPage && (
+                      {layoutConfig.showSidebar && activeSidePanel && !isWideModePanel && !showSettingsPage && !showWelcomePage && !showUserProfilePage && !showBillingCenterPage && (
                         <div ref={sidebarRef} style={{ width: sidebarWidth, minWidth: sidebarWidth }} className="flex-shrink-0 relative min-w-[220px]">
                           <ErrorBoundary>
                             <Suspense fallback={<PanelSkeleton />}>
@@ -206,7 +222,19 @@ function AppContent() {
                       )}
 
                       <div className="flex-1 flex min-w-0 bg-background relative">
-                        {showWelcomePage ? (
+                        {isWideModePanel && activeSidePanel ? (
+                          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+                            <ErrorBoundary>
+                              <Suspense fallback={<PanelSkeleton />}>
+                                {activeSidePanel === 'scenarios' ? (
+                                  <ScenarioManagerView />
+                                ) : (
+                                  <DynamicPanelView panelId={activeSidePanel} />
+                                )}
+                              </Suspense>
+                            </ErrorBoundary>
+                          </div>
+                        ) : showWelcomePage ? (
                           <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
                             <ErrorBoundary>
                               <Suspense fallback={<FullScreenLoading />}>
@@ -294,7 +322,7 @@ function AppContent() {
                     <AppTitleBar />
 
                     <div className="flex-1 flex min-w-0 overflow-hidden">
-                      {layoutConfig.showSidebar && activeSidePanel && !isShellStudioActive && !showSettingsPage && !showWelcomePage && !showUserProfilePage && !showBillingCenterPage && (
+                      {layoutConfig.showSidebar && activeSidePanel && !isShellStudioActive && !isWideModePanel && !showSettingsPage && !showWelcomePage && !showUserProfilePage && !showBillingCenterPage && (
                         <div ref={sidebarRef} style={{ width: sidebarWidth, minWidth: sidebarWidth }} className="flex-shrink-0 relative min-w-[220px]">
                           <ErrorBoundary>
                             <Suspense fallback={<PanelSkeleton />}>
@@ -310,7 +338,17 @@ function AppContent() {
 
                       <div className="flex-1 flex min-w-0 bg-background relative">
                         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-                          {showWelcomePage ? (
+                          {isWideModePanel && activeSidePanel ? (
+                            <ErrorBoundary>
+                              <Suspense fallback={<PanelSkeleton />}>
+                                {activeSidePanel === 'scenarios' ? (
+                                  <ScenarioManagerView />
+                                ) : (
+                                  <DynamicPanelView panelId={activeSidePanel} />
+                                )}
+                              </Suspense>
+                            </ErrorBoundary>
+                          ) : showWelcomePage ? (
                             <ErrorBoundary>
                               <Suspense fallback={<FullScreenLoading />}>
                                 <WelcomePage />
@@ -418,6 +456,12 @@ function AppContent() {
                                   </Suspense>
                                 </ErrorBoundary>
                               </div>
+                            ) : scenarioWelcomeComponent ? (
+                              <ErrorBoundary>
+                                <Suspense fallback={<PanelSkeleton />}>
+                                  {(() => { const W = scenarioWelcomeComponent; return <W /> })()}
+                                </Suspense>
+                              </ErrorBoundary>
                             ) : (
                               <ErrorBoundary>
                                 <Suspense fallback={<PanelSkeleton />}>
@@ -444,7 +488,7 @@ function AppContent() {
                           ) : null}
                         </div>
 
-                        {layoutConfig.showChat && chatVisible && (
+                        {layoutConfig.showChat && chatVisible && !(isWideModePanel && (layoutConfig.wideModeHidesChat || activeSidePanel === 'scenarios')) && !(scenarioWelcomeComponent && activeSidePanel === 'explorer' && !(openFiles.length > 0 && activeFilePath)) && (
                           <div ref={chatRef} style={{ width: chatWidth }} className="flex-shrink-0 relative border-l border-border/30 shadow-[-1px_0_15px_rgba(0,0,0,0.03)] z-20 bg-background-chat">
                             <div
                               className="absolute top-0 left-0 w-1 h-full cursor-col-resize active:bg-accent transition-colors z-50 -translate-x-[2px]"

@@ -5,7 +5,7 @@
 import { api } from '../../../adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
 import { useState, useEffect, useRef } from 'react'
-import { HardDrive, AlertTriangle, Download, Upload, FileText, ExternalLink, Terminal } from 'lucide-react'
+import { HardDrive, AlertTriangle, Download, Upload, FileText, ExternalLink, Terminal, Globe } from 'lucide-react'
 import { toast } from '@components/foundation/NotificationProvider'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
 import { ActionButton, ToggleSwitch } from '@components/ui'
@@ -195,6 +195,7 @@ export function SystemPreferencesPanel({ language, enableFileLogging, setEnableF
     const [logPath, setLogPath] = useState('')
     const fileInputRef = useRef<HTMLInputElement>(null)
     const getStore = () => useStore.getState()
+    const browserMode = useStore(s => s.browserMode)
 
     // 获取日志文件路径
     useEffect(() => {
@@ -236,6 +237,7 @@ export function SystemPreferencesPanel({ language, enableFileLogging, setEnableF
             aiInstructions: getStore().aiInstructions,
             onboardingCompleted: getStore().onboardingCompleted,
             enableFileLogging: getStore().enableFileLogging,
+            browserMode: getStore().browserMode,
             scenarioPreferences: getStore().scenarioPreferences ?? DEFAULT_SCENARIO_PREFERENCES,
         }
     }
@@ -549,6 +551,75 @@ export function SystemPreferencesPanel({ language, enableFileLogging, setEnableF
                                 </div>
                             </div>
                         )}
+                    </div>
+                </div>
+            </section>
+
+            {/* 浏览器设置 */}
+            <section>
+                <div className="flex items-center gap-2 mb-5 ml-1">
+                    <Globe className="w-4 h-4 text-accent" />
+                    <h4 className="text-[12px] font-bold text-text-muted uppercase tracking-[0.2em]">
+                        {language === 'zh' ? '浏览器' : 'Browser'}
+                    </h4>
+                </div>
+                <div className="space-y-4">
+                    <div className="p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border space-y-5 shadow-sm">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <div className="text-sm font-bold text-text-primary">
+                                    {language === 'zh' ? '链接打开方式' : 'Link Open Mode'}
+                                </div>
+                                <div className="text-xs text-text-muted mt-1 opacity-70">
+                                    {language === 'zh'
+                                        ? '选择点击 HTTP 链接时使用的浏览器'
+                                        : 'Choose which browser to use when clicking HTTP links'}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <button
+                                onClick={() => useStore.getState().set('browserMode', 'internal')}
+                                className={`relative p-4 rounded-xl border-2 transition-all text-left ${
+                                    browserMode === 'internal'
+                                        ? 'border-accent bg-accent/5 shadow-sm'
+                                        : 'border-border hover:border-border/80 hover:bg-surface/30'
+                                }`}
+                            >
+                                <div className="flex items-center gap-2 mb-2">
+                                    <Globe className={`w-4 h-4 ${browserMode === 'internal' ? 'text-accent' : 'text-text-muted'}`} />
+                                    <span className={`text-sm font-semibold ${browserMode === 'internal' ? 'text-accent' : 'text-text-primary'}`}>
+                                        {language === 'zh' ? '内部浏览器' : 'Internal Browser'}
+                                    </span>
+                                </div>
+                                <p className="text-[11px] text-text-muted leading-relaxed">
+                                    {language === 'zh'
+                                        ? '在应用内嵌浏览器中打开链接，无需切换窗口'
+                                        : 'Open links in the built-in browser without switching windows'}
+                                </p>
+                            </button>
+                            <button
+                                onClick={() => useStore.getState().set('browserMode', 'external')}
+                                className={`relative p-4 rounded-xl border-2 transition-all text-left ${
+                                    browserMode === 'external'
+                                        ? 'border-accent bg-accent/5 shadow-sm'
+                                        : 'border-border hover:border-border/80 hover:bg-surface/30'
+                                }`}
+                            >
+                                <div className="flex items-center gap-2 mb-2">
+                                    <ExternalLink className={`w-4 h-4 ${browserMode === 'external' ? 'text-accent' : 'text-text-muted'}`} />
+                                    <span className={`text-sm font-semibold ${browserMode === 'external' ? 'text-accent' : 'text-text-primary'}`}>
+                                        {language === 'zh' ? '外部浏览器' : 'External Browser'}
+                                    </span>
+                                </div>
+                                <p className="text-[11px] text-text-muted leading-relaxed">
+                                    {language === 'zh'
+                                        ? '使用系统默认浏览器打开链接'
+                                        : 'Open links in the system default browser'}
+                                </p>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </section>

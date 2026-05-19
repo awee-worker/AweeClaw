@@ -152,6 +152,7 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [], [], SettingsSl
         aiInstructions: state.aiInstructions,
         onboardingCompleted: state.onboardingCompleted,
         enableFileLogging: state.enableFileLogging,
+        browserMode: state.browserMode,
         scenarioPreferences: state.scenarioPreferences ?? DEFAULT_SCENARIO_PREFERENCES,
       })
       logger.settings.info('[Settings] Saved')

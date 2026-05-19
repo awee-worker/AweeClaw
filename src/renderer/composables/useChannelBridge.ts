@@ -154,7 +154,12 @@ export function useChannelBridge() {
         const thread = useAgentStore.getState().threads[threadId!]
         if (thread?.streamState?.phase === 'tool_pending') {
           const requestId = thread.streamState.requestId || thread.executionMeta?.requestId
-          if (requestId) {
+          const pendingToolCalls = thread.streamState.pendingApprovalToolCalls
+          if (requestId && pendingToolCalls && pendingToolCalls.length > 0) {
+            for (const tc of pendingToolCalls) {
+              approvalService.approve(`${requestId}_${tc.id}`)
+            }
+          } else if (requestId) {
             approvalService.approve(requestId)
           }
         }

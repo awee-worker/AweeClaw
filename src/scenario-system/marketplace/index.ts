@@ -2,13 +2,12 @@
  * 场景市场 API
  *
  * 定义在线场景市场的接口和数据结构。
- * 当前为接口定义，实际市场后端待接入。
+ * 渲染进程通过 backendApi 直接调用后端 marketplace 接口，
+ * 主进程通过 IPC 负责文件下载、校验、解压。
  *
- * 功能：
- * - 浏览市场场景列表
- * - 搜索场景
- * - 获取场景详情
- * - 下载并安装场景
+ * 架构：
+ *   渲染进程 (backendApi) → 后端 API (marketplace/*) → 返回场景列表/详情/下载URL
+ *   渲染进程 (IPC) → 主进程 (scenario:marketplaceInstall) → 下载+校验+解压
  */
 
 export interface MarketplaceScenario {
@@ -34,6 +33,10 @@ export interface MarketplaceScenario {
   minAppVersion: string
   license: string
   homepage: string
+  packageType?: string
+  isFree?: boolean
+  price?: number
+  permissions?: string[]
 }
 
 export interface MarketplaceSearchResult {
@@ -51,6 +54,31 @@ export interface MarketplaceCategory {
   count: number
 }
 
+export interface MarketplaceInstallResult {
+  installed: boolean
+  downloadUrl: string
+  version: string
+  checksum: string
+  signature?: string
+  fileSize: number
+  minAppVersion: string
+  packageType: string
+  changelog: string
+  permissions?: string[]
+}
+
+export interface MarketplaceUpdateInfo {
+  scenarioId: string
+  scenarioName: string
+  scenarioNameZh: string
+  scenarioIcon: string
+  currentVersion: string
+  latestVersion: string
+  changelog: string
+  minAppVersion: string
+  fileSize: number
+}
+
 export interface MarketplaceAPI {
   search(query: string, page?: number, pageSize?: number): Promise<MarketplaceSearchResult>
   getByCategory(category: string, page?: number, pageSize?: number): Promise<MarketplaceSearchResult>
@@ -58,6 +86,8 @@ export interface MarketplaceAPI {
   getDetails(scenarioId: string): Promise<MarketplaceScenario | null>
   getCategories(): Promise<MarketplaceCategory[]>
   download(scenarioId: string): Promise<{ success: boolean; error?: string; path?: string }>
+  install(scenarioId: string, targetVersion?: string): Promise<MarketplaceInstallResult>
+  checkUpdates(scenarios: Array<{ id: string; version: string }>): Promise<MarketplaceUpdateInfo[]>
 }
 
 class MockMarketplaceAPI implements MarketplaceAPI {
@@ -103,6 +133,14 @@ class MockMarketplaceAPI implements MarketplaceAPI {
       success: false,
       error: 'Marketplace is not yet available. Please install scenarios from local directory.',
     }
+  }
+
+  async install(_scenarioId: string, _targetVersion?: string): Promise<MarketplaceInstallResult> {
+    throw new Error('Marketplace is not yet available')
+  }
+
+  async checkUpdates(_scenarios: Array<{ id: string; version: string }>): Promise<MarketplaceUpdateInfo[]> {
+    return []
   }
 }
 

@@ -3,6 +3,7 @@
  * 支持 Markdown 预览、图片显示、不支持文件类型提示
  */
 import { api } from '../../adapters/electronBridge'
+import { openUrlInBrowser } from '@utils/browserLauncher'
 import { logger } from '@toolkit/LogEngine'
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
@@ -109,7 +110,7 @@ export function MarkdownPreview({ content, fontSize = 14 }: MarkdownPreviewProps
                             const cleanHref = href ? href.replace(/[*_~`#|]+$/g, '').replace(/^[*_~`#|]+/g, '').trim() : href
                             return (
                                 <a href={cleanHref} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline"
-                                    onClick={(e) => { e.preventDefault(); if (cleanHref) api.file.openExternalUrl(cleanHref) }}
+                                    onClick={(e) => { e.preventDefault(); if (cleanHref) openUrlInBrowser(cleanHref) }}
                                 >
                                     {children}
                                 </a>

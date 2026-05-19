@@ -34,6 +34,7 @@ const EXTERNAL_DEPS = [
   'ws',
   'bufferutil',
   'utf-8-validate',
+  'tar',
 ]
 
 // 路径别名配置

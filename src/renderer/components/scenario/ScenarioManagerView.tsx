@@ -1,7 +1,9 @@
-import { useState, useCallback, useEffect, useRef, Suspense } from 'react'
+import { useState, useCallback, useEffect, Suspense } from 'react'
+import { ScenarioUpdatePanel } from './ScenarioUpdatePanel'
+import { ScenarioUpdateNotification } from './ScenarioUpdateNotification'
 import {
     Check, Sparkles, Code2, BarChart3, PenTool,
-    Settings, Shield, MoreHorizontal, Package,
+    Settings, Shield, Package,
     BookOpen, Brain, Briefcase, Calculator, Calendar,
     Cpu, Database, FileText, FlaskConical, Globe,
     GraduationCap, Heart, Lightbulb, MessageSquare,
@@ -9,6 +11,8 @@ import {
     ShieldCheck, Stethoscope, TrendingUp, Users, Zap,
     PackageX, Download, Info, HardDrive, Tag,
     Layers, Activity, Loader2, FolderOpen, CheckCircle2, XCircle,
+    AlertTriangle, RotateCcw, Star, RefreshCw, ArrowLeft, Clock,
+    ChevronRight,
 } from 'lucide-react'
 import { useStore } from '@store'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
@@ -17,10 +21,23 @@ import { DeclarativeScenarioModule } from '@scenario-system/core/DeclarativeScen
 import { api } from '../../adapters/electronBridge'
 import { ActionButton, OverlayDialog } from '../ui'
 import DecisionOverlay from '@components/foundation/DecisionOverlay'
+import { PermissionConfirmDialog } from './PermissionConfirmDialog'
+import { ScenarioReviewPanel } from './ScenarioReviewPanel'
 import type { ScenarioPlugin, UILayout, ScenarioCategory } from '@shared/protocols/scenario'
 import { activateScenarioPanels, switchToFirstPanel } from './panelUtils'
 import type { ScenarioHealthReport } from '@shared/protocols/scenario-arch'
 import type { LucideIcon } from 'lucide-react'
+import {
+    browseScenarios,
+    getFeaturedScenarios,
+    getMarketplaceCategories,
+    installScenarioFromMarketplace,
+} from '@services/marketplaceService'
+import type {
+    MarketplaceScenario,
+    MarketplaceCategory,
+} from '@scenario-system/marketplace'
+import { toast } from '../foundation/NotificationProvider'
 
 const ICON_MAP: Record<string, LucideIcon> = {
     Code2, BarChart3, PenTool, Sparkles, Settings,
@@ -77,6 +94,20 @@ const HEALTH_STATUS_STYLES: Record<string, { color: string; bg: string }> = {
     unhealthy: { color: 'text-red-400', bg: 'bg-red-500/10' },
 }
 
+const CATEGORY_ICONS: Record<string, React.ReactNode> = {
+    development: <Code2 className="w-4 h-4" />,
+    data: <BarChart3 className="w-4 h-4" />,
+    creative: <PenTool className="w-4 h-4" />,
+    productivity: <Zap className="w-4 h-4" />,
+    education: <GraduationCap className="w-4 h-4" />,
+    business: <TrendingUp className="w-4 h-4" />,
+    health: <Stethoscope className="w-4 h-4" />,
+    legal: <Scale className="w-4 h-4" />,
+    research: <BookOpen className="w-4 h-4" />,
+    lifestyle: <Heart className="w-4 h-4" />,
+    custom: <Sparkles className="w-4 h-4" />,
+}
+
 const SCENARIO_SETTINGS_COMPONENTS: Record<string, React.LazyExoticComponent<React.ComponentType<{ scenarioId: string; onClose: () => void }>>> = {}
 
 function getSettingsComponent(scenarioId: string) {
@@ -93,12 +124,13 @@ export function registerScenarioSettingsComponent(
     SCENARIO_SETTINGS_COMPONENTS[scenarioId] = component
 }
 
+type ManagerTab = 'installed' | 'marketplace'
+
 export function ScenarioManagerView() {
     const language = useStore(s => s.language)
     const activeScenarioId = useStore(s => s.activeScenarioId)
-    const setSidebarWidth = useStore(s => s.setSidebarWidth)
-    const prevWidthRef = useRef<number | null>(null)
-    const [expandedId, setExpandedId] = useState<string | null>(null)
+    const isAuthenticated = useStore(s => s.isAuthenticated)
+    const [activeTab, setActiveTab] = useState<ManagerTab>('installed')
     const [filterCategory, setFilterCategory] = useState<string | null>(null)
 
     const [detailScenarioId, setDetailScenarioId] = useState<string | null>(null)
@@ -121,18 +153,12 @@ export function ScenarioManagerView() {
         error: string | null
     }>({ phase: 'idle', sourceDir: null, config: null, scenarioId: null, error: null })
 
-    useEffect(() => {
-        const currentWidth = useStore.getState().sidebarWidth
-        if (currentWidth < 420) {
-            prevWidthRef.current = currentWidth
-            setSidebarWidth(420)
-        }
-        return () => {
-            if (prevWidthRef.current !== null) {
-                setSidebarWidth(prevWidthRef.current)
-            }
-        }
-    }, [setSidebarWidth])
+    const [rollbackInfo, setRollbackInfo] = useState<{
+        available: boolean
+        previousVersion: string
+        backedUpAt: string
+    } | null>(null)
+    const [isRollingBack, setIsRollingBack] = useState(false)
 
     const scenarios = scenarioRegistry.getInstalled()
     const builtinScenarios = scenarios.filter(s => s.isBuiltin).sort((a, b) => {
@@ -160,6 +186,7 @@ export function ScenarioManagerView() {
         setDetailScenarioId(scenarioId)
         setIsLoadingHealth(true)
         setHealthReport(null)
+        setRollbackInfo(null)
         try {
             const report = await scenarioLoader.healthCheck(scenarioId)
             setHealthReport(report)
@@ -168,6 +195,16 @@ export function ScenarioManagerView() {
         } finally {
             setIsLoadingHealth(false)
         }
+        try {
+            const info = await api.scenarioRollback.getInfo(scenarioId)
+            if (info.available) {
+                setRollbackInfo({
+                    available: true,
+                    previousVersion: info.previousVersion || '',
+                    backedUpAt: info.backedUpAt || '',
+                })
+            }
+        } catch {}
     }, [])
 
     const handleOpenSettings = useCallback((scenarioId: string) => {
@@ -203,22 +240,17 @@ export function ScenarioManagerView() {
 
             try {
                 await api.scenarioInstall.deleteScenarioDir(uninstallState.scenarioId)
-            } catch {
-                // ignore dir deletion errors
-            }
+            } catch {}
 
             if (isBuiltin) {
                 try {
                     await api.scenarioInstall.deleteBuiltinSourceDir(uninstallState.scenarioId)
-                } catch {
-                    // ignore source dir deletion errors
-                }
+                } catch {}
             }
         } catch (err) {
             console.error('[ScenarioManager] Uninstall failed:', err)
         } finally {
             setUninstallState(null)
-            setExpandedId(null)
         }
     }, [uninstallState])
 
@@ -368,6 +400,38 @@ export function ScenarioManagerView() {
         setInstallState({ phase: 'idle', sourceDir: null, config: null, scenarioId: null, error: null })
     }, [])
 
+    const handleRollback = useCallback(async (scenarioId: string) => {
+        setIsRollingBack(true)
+        try {
+            const result = await api.scenarioRollback.rollback(scenarioId)
+            if (result.success) {
+                const scenario = scenarioRegistry.get(scenarioId)
+                if (scenario && result.version) {
+                    scenarioRegistry.updateScenario(scenarioId, { version: result.version })
+                }
+                setRollbackInfo(null)
+                toast.success(
+                    language === 'zh' ? '回滚成功' : 'Rollback Successful',
+                    language === 'zh'
+                        ? `场景已回滚至 v${result.version}`
+                        : `Scenario rolled back to v${result.version}`
+                )
+            } else {
+                toast.error(
+                    language === 'zh' ? '回滚失败' : 'Rollback Failed',
+                    result.error || ''
+                )
+            }
+        } catch (err) {
+            toast.error(
+                language === 'zh' ? '回滚失败' : 'Rollback Failed',
+                err instanceof Error ? err.message : ''
+            )
+        } finally {
+            setIsRollingBack(false)
+        }
+    }, [language])
+
     const usedCategories = [...new Set(scenarios.map(s => s.category))]
     const sortedCategories = usedCategories.sort((a, b) => {
         const aLabel = CATEGORY_LABELS[a]?.zh || a
@@ -387,8 +451,6 @@ export function ScenarioManagerView() {
         const isActive = scenario.id === activeScenarioId
         const isBuiltin = scenario.isBuiltin === true
         const catLabel = CATEGORY_LABELS[scenario.category] || CATEGORY_LABELS.custom
-        const layoutIcon = LAYOUT_ICONS[scenario.ui.layout] || '✨'
-        const isExpanded = expandedId === scenario.id
         const sourceInfo = SOURCE_LABELS[scenario.source || (isBuiltin ? 'builtin' : 'local')]
         const SourceIcon = sourceInfo?.icon || Package
         const showSettings = scenario.hasSettings === true
@@ -403,217 +465,178 @@ export function ScenarioManagerView() {
                         : 'border-border/20 bg-surface/20 hover:bg-surface/40 hover:border-border/40'}
                 `}
             >
-                <div
-                    className="px-3.5 py-3 cursor-pointer"
-                    onClick={() => setExpandedId(isExpanded ? null : scenario.id)}
-                >
+                <div className="px-4 py-3.5">
                     <div className="flex items-center gap-3">
-                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors ${isActive ? 'bg-accent/15' : 'bg-surface/60'}`}>
-                            <IconComponent className={`w-4 h-4 ${isActive ? 'text-accent' : 'text-text-muted'}`} strokeWidth={1.5} />
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors ${isActive ? 'bg-accent/15' : 'bg-surface/60'}`}>
+                            <IconComponent className={`w-5 h-5 ${isActive ? 'text-accent' : 'text-text-muted'}`} strokeWidth={1.5} />
                         </div>
                         <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
-                                <span className={`text-[13px] font-medium truncate ${isActive ? 'text-accent' : 'text-text-primary'}`}>
+                                <span className="text-sm font-semibold text-text-primary truncate">
                                     {language === 'zh' ? scenario.nameZh : scenario.name}
                                 </span>
                                 {isActive && (
                                     <span className="flex items-center gap-0.5 text-[10px] font-medium text-accent bg-accent/10 px-1.5 py-0.5 rounded-full">
-                                        <Check className="w-2.5 h-2.5" strokeWidth={2.5} />
-                                        {language === 'zh' ? '当前' : 'Active'}
+                                        <Check className="w-2.5 h-2.5" />
+                                        {language === 'zh' ? '使用中' : 'Active'}
                                     </span>
                                 )}
                                 {isBuiltin && (
-                                    <Shield className="w-3 h-3 text-amber-400/50 flex-shrink-0" strokeWidth={1.5} />
+                                    <span className="flex items-center gap-0.5 text-[10px] font-medium text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded-full">
+                                        <Shield className="w-2.5 h-2.5" />
+                                        {language === 'zh' ? '内置' : 'Built-in'}
+                                    </span>
                                 )}
                             </div>
-                            <div className="flex items-center gap-2 mt-1">
-                                <span className={`text-[11px] font-medium ${catLabel.color}`}>
+                            <div className="flex items-center gap-2 mt-0.5 text-[11px] text-text-muted">
+                                <span className={`flex items-center gap-0.5 ${catLabel.color}`}>
                                     {language === 'zh' ? catLabel.zh : catLabel.en}
                                 </span>
-                                <span className="text-[11px] text-text-muted/85">·</span>
-                                <span className="text-[11px] text-text-muted/85">
-                                    {layoutIcon} {scenario.ui.layout.replace('-', ' ')}
-                                </span>
-                                <span className="text-[11px] text-text-muted/85">·</span>
-                                <span className="text-[11px] text-text-muted/85 flex items-center gap-0.5">
-                                    <SourceIcon className="w-2.5 h-2.5" />
-                                    {language === 'zh' ? sourceInfo?.zh : sourceInfo?.en}
-                                </span>
+                                <span>·</span>
+                                <span>v{scenario.version}</span>
+                                <span>·</span>
+                                <SourceIcon className="w-3 h-3" />
+                                <span>{language === 'zh' ? sourceInfo?.zh : sourceInfo?.en}</span>
                             </div>
                         </div>
-                        <MoreHorizontal className={`w-4 h-4 text-text-muted/75 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
                     </div>
-                </div>
 
-                {isExpanded && (
-                    <div className="px-3.5 pb-3 border-t border-border/10 pt-2.5">
-                        <p className="text-[12px] text-text-secondary leading-relaxed mb-1">
-                            {language === 'zh' ? scenario.descriptionZh : scenario.description}
-                        </p>
-                        <div className="flex items-center gap-3 text-[11px] text-text-muted/85 mb-3">
-                            <span>v{scenario.version}</span>
-                            <span>·</span>
-                            <span>{scenario.author}</span>
-                            {scenario.installSize && (
-                                <>
-                                    <span>·</span>
-                                    <span>{scenario.installSize}</span>
-                                </>
-                            )}
-                        </div>
-                        <div className="flex items-center gap-2">
-                            {!isActive && (
-                                <ActionButton
-                                    variant="secondary"
-                                    size="sm"
-                                    className="h-7 text-[12px] gap-1.5 px-3 rounded-lg"
-                                    onClick={(e) => { e.stopPropagation(); handleSwitch(scenario) }}
-                                >
-                                    <Check className="w-3 h-3" />
-                                    {language === 'zh' ? '切换' : 'ToggleSwitch'}
-                                </ActionButton>
-                            )}
-                            {showSettings && (
-                                <ActionButton
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-7 text-[12px] gap-1.5 px-3 rounded-lg"
-                                    onClick={(e) => { e.stopPropagation(); handleOpenSettings(scenario.id) }}
-                                >
-                                    <Settings className="w-3 h-3" />
-                                    {language === 'zh' ? '设置' : 'Settings'}
-                                </ActionButton>
-                            )}
-                            {!isBuiltin && (
-                                <ActionButton
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-7 text-[12px] gap-1.5 px-3 rounded-lg text-red-400/60 hover:text-red-400 hover:bg-red-400/10"
-                                    onClick={(e) => { e.stopPropagation(); handleRequestUninstall(scenario) }}
-                                >
-                                    <PackageX className="w-3 h-3" />
-                                    {language === 'zh' ? '卸载' : 'Uninstall'}
-                                </ActionButton>
-                            )}
-                            {isBuiltin && !scenario.isDefault && (
-                                <ActionButton
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-7 text-[12px] gap-1.5 px-3 rounded-lg text-red-400/60 hover:text-red-400 hover:bg-red-400/10"
-                                    onClick={(e) => { e.stopPropagation(); handleRequestUninstall(scenario) }}
-                                >
-                                    <PackageX className="w-3 h-3" />
-                                    {language === 'zh' ? '卸载' : 'Uninstall'}
-                                </ActionButton>
-                            )}
+                    <p className="text-[12px] text-text-muted/80 mt-2 line-clamp-2 leading-relaxed">
+                        {language === 'zh' ? scenario.descriptionZh : scenario.description}
+                    </p>
+
+                    <div className="flex items-center gap-2 mt-3">
+                        {!isActive && (
+                            <ActionButton
+                                variant="primary"
+                                size="sm"
+                                className="h-7 text-[12px] gap-1.5 px-3 rounded-lg"
+                                onClick={(e) => { e.stopPropagation(); handleSwitch(scenario) }}
+                            >
+                                <Check className="w-3 h-3" />
+                                {language === 'zh' ? '切换' : 'Switch'}
+                            </ActionButton>
+                        )}
+                        {showSettings && (
                             <ActionButton
                                 variant="ghost"
                                 size="sm"
-                                className="h-7 text-[12px] gap-1.5 px-3 rounded-lg ml-auto"
-                                onClick={(e) => { e.stopPropagation(); handleOpenDetail(scenario.id) }}
+                                className="h-7 text-[12px] gap-1.5 px-3 rounded-lg"
+                                onClick={(e) => { e.stopPropagation(); handleOpenSettings(scenario.id) }}
                             >
-                                <Info className="w-3 h-3" />
-                                {language === 'zh' ? '详情' : 'Details'}
+                                <Settings className="w-3 h-3" />
+                                {language === 'zh' ? '设置' : 'Settings'}
                             </ActionButton>
-                        </div>
+                        )}
+                        <ActionButton
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-[12px] gap-1.5 px-3 rounded-lg"
+                            onClick={(e) => { e.stopPropagation(); handleOpenDetail(scenario.id) }}
+                        >
+                            <Info className="w-3 h-3" />
+                            {language === 'zh' ? '详情' : 'Details'}
+                        </ActionButton>
+                        {!isBuiltin && (
+                            <ActionButton
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-[12px] gap-1.5 px-3 rounded-lg text-red-400/60 hover:text-red-400 hover:bg-red-400/10 ml-auto"
+                                onClick={(e) => { e.stopPropagation(); handleRequestUninstall(scenario) }}
+                            >
+                                <PackageX className="w-3 h-3" />
+                                {language === 'zh' ? '卸载' : 'Uninstall'}
+                            </ActionButton>
+                        )}
+                        {isBuiltin && !scenario.isDefault && (
+                            <ActionButton
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-[12px] gap-1.5 px-3 rounded-lg text-red-400/60 hover:text-red-400 hover:bg-red-400/10 ml-auto"
+                                onClick={(e) => { e.stopPropagation(); handleRequestUninstall(scenario) }}
+                            >
+                                <PackageX className="w-3 h-3" />
+                                {language === 'zh' ? '卸载' : 'Uninstall'}
+                            </ActionButton>
+                        )}
                     </div>
-                )}
+                </div>
             </div>
         )
     }
 
     return (
         <div className="flex flex-col h-full">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border/20">
-                <div>
-                    <h2 className="text-sm font-semibold text-text-primary">
-                        {language === 'zh' ? '场景管理' : 'Scenarios'}
-                    </h2>
-                    <p className="text-[11px] text-text-muted mt-0.5">
-                        {language === 'zh'
-                            ? `${scenarios.length} 个已安装场景`
-                            : `${scenarios.length} installed`}
-                    </p>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border/20 bg-background/80 backdrop-blur-sm">
+                <div className="flex items-center gap-6">
+                    <h1 className="text-base font-bold text-text-primary">
+                        {language === 'zh' ? '场景管理' : 'Scenario Manager'}
+                    </h1>
+                    <div className="flex items-center bg-surface/40 rounded-lg p-0.5 border border-border/20">
+                        <button
+                            onClick={() => setActiveTab('installed')}
+                            className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all ${
+                                activeTab === 'installed'
+                                    ? 'bg-background text-text-primary shadow-sm border border-border/30'
+                                    : 'text-text-muted hover:text-text-primary'
+                            }`}
+                        >
+                            <span className="flex items-center gap-1.5">
+                                <Package className="w-3.5 h-3.5" />
+                                {language === 'zh' ? '已安装' : 'Installed'}
+                                <span className="text-[10px] opacity-60">({scenarios.length})</span>
+                            </span>
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('marketplace')}
+                            className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all ${
+                                activeTab === 'marketplace'
+                                    ? 'bg-background text-text-primary shadow-sm border border-border/30'
+                                    : 'text-text-muted hover:text-text-primary'
+                            }`}
+                        >
+                            <span className="flex items-center gap-1.5">
+                                <Globe className="w-3.5 h-3.5" />
+                                {language === 'zh' ? '场景市场' : 'Marketplace'}
+                            </span>
+                        </button>
+                    </div>
                 </div>
-                <ActionButton variant="ghost" size="sm" className="h-7 w-7 p-0 rounded-lg" onClick={handleInstallScenario} title={language === 'zh' ? '安装场景' : 'Install Scenario'}>
-                    <Download className="w-4 h-4" />
-                </ActionButton>
+                <div className="flex items-center gap-2">
+                    {activeTab === 'installed' && (
+                        <ActionButton
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 gap-1.5 px-3 rounded-lg border border-dashed border-border/30 hover:border-accent/30 hover:text-accent"
+                            onClick={handleInstallScenario}
+                        >
+                            <FolderOpen className="w-3.5 h-3.5" />
+                            {language === 'zh' ? '本地安装' : 'Local Install'}
+                        </ActionButton>
+                    )}
+                </div>
             </div>
 
-            {sortedCategories.length > 1 && (
-                <div className="px-3 py-2 border-b border-border/10 flex items-center gap-1 overflow-x-auto">
-                    <button
-                        onClick={() => setFilterCategory(null)}
-                        className={`text-[11px] px-2 py-1 rounded-md whitespace-nowrap transition-all ${!filterCategory ? 'bg-accent/15 text-accent border border-accent/30' : 'text-text-muted hover:text-text-primary border border-transparent'}`}
-                    >
-                        {language === 'zh' ? '全部' : 'All'}
-                    </button>
-                    {sortedCategories.map(cat => {
-                        const catLabel = CATEGORY_LABELS[cat] || CATEGORY_LABELS.custom
-                        return (
-                            <button
-                                key={cat}
-                                onClick={() => setFilterCategory(filterCategory === cat ? null : cat)}
-                                className={`text-[11px] px-2 py-1 rounded-md whitespace-nowrap transition-all ${filterCategory === cat ? 'bg-accent/15 text-accent border border-accent/30' : `${catLabel.color} hover:opacity-80 border border-transparent`}`}
-                            >
-                                {language === 'zh' ? catLabel.zh : catLabel.en}
-                            </button>
-                        )
-                    })}
-                </div>
-            )}
+            <ScenarioUpdateNotification onNavigateToUpdate={() => {
+                const el = document.querySelector('[data-scenario-update-panel]')
+                el?.scrollIntoView({ behavior: 'smooth' })
+            }} />
 
-            <div className="flex-1 overflow-y-auto p-3 space-y-4">
-                {filteredBuiltin.length > 0 && (
-                    <div>
-                        <div className="flex items-center gap-1.5 px-1 mb-2">
-                            <Shield className="w-3 h-3 text-amber-400/60" strokeWidth={1.5} />
-                            <span className="text-[11px] font-medium text-text-muted uppercase tracking-wider">
-                                {language === 'zh' ? '内置场景' : 'Built-in'}
-                            </span>
-                            <span className="text-[10px] text-text-muted/60">({filteredBuiltin.length})</span>
-                        </div>
-                        <div className="space-y-2">
-                            {filteredBuiltin.map(renderScenarioCard)}
-                        </div>
-                    </div>
+            <div className="flex-1 overflow-hidden">
+                {activeTab === 'installed' ? (
+                    <InstalledTab
+                        language={language}
+                        scenarios={scenarios}
+                        filteredBuiltin={filteredBuiltin}
+                        filteredInstalled={filteredInstalled}
+                        filterCategory={filterCategory}
+                        setFilterCategory={setFilterCategory}
+                        sortedCategories={sortedCategories}
+                        renderScenarioCard={renderScenarioCard}
+                    />
+                ) : (
+                    <MarketplaceTab language={language} isAuthenticated={isAuthenticated} />
                 )}
-
-                {filteredInstalled.length > 0 && (
-                    <div>
-                        <div className="flex items-center gap-1.5 px-1 mb-2">
-                            <Package className="w-3 h-3 text-accent/60" strokeWidth={1.5} />
-                            <span className="text-[11px] font-medium text-text-muted uppercase tracking-wider">
-                                {language === 'zh' ? '已安装场景' : 'Installed'}
-                            </span>
-                            <span className="text-[10px] text-text-muted/60">({filteredInstalled.length})</span>
-                        </div>
-                        <div className="space-y-2">
-                            {filteredInstalled.map(renderScenarioCard)}
-                        </div>
-                    </div>
-                )}
-
-                {scenarios.length === 0 && (
-                    <div className="flex flex-col items-center justify-center py-12 text-center">
-                        <Package className="w-10 h-10 text-text-muted/30 mb-3" strokeWidth={1} />
-                        <p className="text-sm text-text-muted/60">
-                            {language === 'zh' ? '暂无已安装的场景' : 'No scenarios installed'}
-                        </p>
-                    </div>
-                )}
-            </div>
-
-            <div className="px-3 py-2.5 border-t border-border/20">
-                <ActionButton
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 w-full text-xs gap-1.5 rounded-lg border border-dashed border-border/30 hover:border-accent/30 hover:text-accent"
-                    onClick={handleInstallScenario}
-                >
-                    <Download className="w-3.5 h-3.5" />
-                    {language === 'zh' ? '安装场景' : 'Install Scenario'}
-                </ActionButton>
             </div>
 
             {installState.phase !== 'idle' && (
@@ -627,7 +650,7 @@ export function ScenarioManagerView() {
                         <div className="flex flex-col items-center justify-center py-8 gap-3">
                             <FolderOpen className="w-8 h-8 text-accent/60" strokeWidth={1.5} />
                             <p className="text-sm text-text-secondary">
-                                {language === 'zh' ? '请选择场景目录...' : 'DropdownSelector scenario directory...'}
+                                {language === 'zh' ? '请选择场景目录...' : 'Select scenario directory...'}
                             </p>
                         </div>
                     )}
@@ -899,6 +922,39 @@ export function ScenarioManagerView() {
                             )}
                         </div>
 
+                        {rollbackInfo?.available && (
+                            <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <h4 className="text-[12px] font-medium text-amber-400 flex items-center gap-1.5">
+                                            <AlertTriangle className="w-3.5 h-3.5" />
+                                            {language === 'zh' ? '可回滚版本' : 'Rollback Available'}
+                                        </h4>
+                                        <p className="text-[11px] text-text-muted mt-1">
+                                            {language === 'zh'
+                                                ? `可回滚至 v${rollbackInfo.previousVersion}（备份于 ${new Date(rollbackInfo.backedUpAt).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US')}）`
+                                                : `Roll back to v${rollbackInfo.previousVersion} (backed up ${new Date(rollbackInfo.backedUpAt).toLocaleString('en-US')})`
+                                            }
+                                        </p>
+                                    </div>
+                                    <ActionButton
+                                        variant="secondary"
+                                        size="sm"
+                                        className="h-7 text-[11px] gap-1.5 px-3 rounded-lg border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
+                                        onClick={() => handleRollback(detailScenarioId!)}
+                                        disabled={isRollingBack}
+                                    >
+                                        {isRollingBack ? (
+                                            <Loader2 className="w-3 h-3 animate-spin" />
+                                        ) : (
+                                            <RotateCcw className="w-3 h-3" />
+                                        )}
+                                        {language === 'zh' ? '回滚' : 'Rollback'}
+                                    </ActionButton>
+                                </div>
+                            </div>
+                        )}
+
                         {detailScenario.capabilities && (
                             <div>
                                 <h4 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
@@ -987,6 +1043,495 @@ export function ScenarioManagerView() {
                     </div>
                 ) : null}
             </OverlayDialog>
+        </div>
+    )
+}
+
+function InstalledTab({
+    language,
+    scenarios,
+    filteredBuiltin,
+    filteredInstalled,
+    filterCategory,
+    setFilterCategory,
+    sortedCategories,
+    renderScenarioCard,
+}: {
+    language: string
+    scenarios: ScenarioPlugin[]
+    filteredBuiltin: ScenarioPlugin[]
+    filteredInstalled: ScenarioPlugin[]
+    filterCategory: string | null
+    setFilterCategory: (cat: string | null) => void
+    sortedCategories: string[]
+    renderScenarioCard: (scenario: ScenarioPlugin) => React.ReactNode
+}) {
+    return (
+        <div className="h-full overflow-y-auto p-6">
+            <ScenarioUpdatePanel />
+
+            {sortedCategories.length > 1 && (
+                <div className="flex items-center gap-1.5 mb-5 overflow-x-auto no-scrollbar">
+                    <button
+                        onClick={() => setFilterCategory(null)}
+                        className={`text-[11px] px-3 py-1.5 rounded-lg whitespace-nowrap transition-all font-medium ${
+                            !filterCategory
+                                ? 'bg-accent/15 text-accent border border-accent/30'
+                                : 'text-text-muted hover:text-text-primary border border-border/20 hover:border-border/40'
+                        }`}
+                    >
+                        {language === 'zh' ? '全部' : 'All'}
+                    </button>
+                    {sortedCategories.map(cat => {
+                        const catLabel = CATEGORY_LABELS[cat] || CATEGORY_LABELS.custom
+                        return (
+                            <button
+                                key={cat}
+                                onClick={() => setFilterCategory(filterCategory === cat ? null : cat)}
+                                className={`text-[11px] px-3 py-1.5 rounded-lg whitespace-nowrap transition-all font-medium ${
+                                    filterCategory === cat
+                                        ? 'bg-accent/15 text-accent border border-accent/30'
+                                        : `${catLabel.color} hover:opacity-80 border border-border/20 hover:border-border/40`
+                                }`}
+                            >
+                                {language === 'zh' ? catLabel.zh : catLabel.en}
+                            </button>
+                        )
+                    })}
+                </div>
+            )}
+
+            {filteredBuiltin.length > 0 && (
+                <div className="mb-6">
+                    <div className="flex items-center gap-1.5 mb-3">
+                        <Shield className="w-3.5 h-3.5 text-amber-400/60" strokeWidth={1.5} />
+                        <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">
+                            {language === 'zh' ? '内置场景' : 'Built-in'}
+                        </span>
+                        <span className="text-[10px] text-text-muted/60">({filteredBuiltin.length})</span>
+                    </div>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
+                        {filteredBuiltin.map(renderScenarioCard)}
+                    </div>
+                </div>
+            )}
+
+            {filteredInstalled.length > 0 && (
+                <div className="mb-6">
+                    <div className="flex items-center gap-1.5 mb-3">
+                        <Package className="w-3.5 h-3.5 text-accent/60" strokeWidth={1.5} />
+                        <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">
+                            {language === 'zh' ? '已安装场景' : 'Installed'}
+                        </span>
+                        <span className="text-[10px] text-text-muted/60">({filteredInstalled.length})</span>
+                    </div>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
+                        {filteredInstalled.map(renderScenarioCard)}
+                    </div>
+                </div>
+            )}
+
+            {scenarios.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-20 text-center">
+                    <Package className="w-12 h-12 text-text-muted/20 mb-4" strokeWidth={1} />
+                    <p className="text-sm text-text-muted/60">
+                        {language === 'zh' ? '暂无已安装的场景' : 'No scenarios installed'}
+                    </p>
+                    <p className="text-xs text-text-muted/40 mt-1">
+                        {language === 'zh' ? '从场景市场安装场景，或点击「本地安装」从本地目录安装' : 'Install from marketplace or click "Local Install" to install from a local directory'}
+                    </p>
+                </div>
+            )}
+        </div>
+    )
+}
+
+function MarketplaceTab({ language, isAuthenticated }: { language: string; isAuthenticated: boolean }) {
+    const [items, setItems] = useState<MarketplaceScenario[]>([])
+    const [featured, setFeatured] = useState<MarketplaceScenario[]>([])
+    const [categories, setCategories] = useState<MarketplaceCategory[]>([])
+    const [searchQuery, setSearchQuery] = useState('')
+    const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
+    const [selectedItem, setSelectedItem] = useState<MarketplaceScenario | null>(null)
+    const [isLoading, setIsLoading] = useState(false)
+    const [installing, setInstalling] = useState<string | null>(null)
+    const [total, setTotal] = useState(0)
+    const [page, setPage] = useState(1)
+    const [permissionPending, setPermissionPending] = useState<MarketplaceScenario | null>(null)
+
+    const t = useCallback((zh: string, en: string) => language === 'zh' ? zh : en, [language])
+
+    useEffect(() => {
+        loadFeatured()
+        loadCategories()
+    }, [isAuthenticated])
+
+    useEffect(() => {
+        loadItems()
+    }, [searchQuery, selectedCategory, page, isAuthenticated])
+
+    async function loadItems() {
+        setIsLoading(true)
+        try {
+            const result = await browseScenarios({
+                category: selectedCategory || undefined,
+                search: searchQuery || undefined,
+                page,
+                limit: 20,
+            })
+            setItems(result.scenarios)
+            setTotal(result.total)
+        } catch {
+            setItems([])
+            setTotal(0)
+        } finally {
+            setIsLoading(false)
+        }
+    }
+
+    async function loadFeatured() {
+        try {
+            const result = await getFeaturedScenarios()
+            setFeatured(result)
+        } catch {
+            setFeatured([])
+        }
+    }
+
+    async function loadCategories() {
+        try {
+            const result = await getMarketplaceCategories()
+            setCategories(result)
+        } catch {
+            setCategories([])
+        }
+    }
+
+    async function handleInstall(item: MarketplaceScenario) {
+        if (item.permissions && item.permissions.length > 0) {
+            setPermissionPending(item)
+            return
+        }
+        await doInstall(item)
+    }
+
+    async function doInstall(item: MarketplaceScenario) {
+        setInstalling(item.id)
+        try {
+            const result = await installScenarioFromMarketplace(item.id, item.version)
+            if (result.success) {
+                toast.success(
+                    language === 'zh' ? `场景 "${item.nameZh}" 安装成功` : `Scenario "${item.name}" installed successfully`,
+                )
+                setSelectedItem(null)
+                await loadItems()
+            } else {
+                toast.error(
+                    language === 'zh' ? `安装失败: ${result.error}` : `Install failed: ${result.error}`,
+                )
+            }
+        } catch (err) {
+            toast.error(
+                language === 'zh' ? '安装失败' : 'Install failed',
+                err instanceof Error ? err.message : '',
+            )
+        } finally {
+            setInstalling(null)
+        }
+    }
+
+    function renderStars(rating: number) {
+        const stars = []
+        for (let i = 1; i <= 5; i++) {
+            stars.push(
+                <Star
+                    key={i}
+                    className={`w-3 h-3 ${i <= Math.round(rating) ? 'text-yellow-400 fill-yellow-400' : 'text-border/40'}`}
+                />
+            )
+        }
+        return <div className="flex items-center gap-0.5">{stars}</div>
+    }
+
+    if (!isAuthenticated) {
+        return (
+            <div className="flex flex-col items-center justify-center h-full px-4 text-center">
+                <Globe className="w-12 h-12 text-text-muted/30 mb-4" strokeWidth={1} />
+                <p className="text-sm text-text-muted mb-1">{t('请先登录', 'Please log in first')}</p>
+                <p className="text-xs text-text-muted/60">{t('登录后可浏览和安装在线场景', 'Log in to browse and install online scenarios')}</p>
+            </div>
+        )
+    }
+
+    if (selectedItem) {
+        return (
+            <div className="h-full overflow-auto p-6">
+                <button
+                    onClick={() => setSelectedItem(null)}
+                    className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text-primary mb-4 transition-colors"
+                >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    {t('返回列表', 'Back to list')}
+                </button>
+
+                <div className="max-w-3xl mx-auto">
+                    <div className="flex items-start gap-4 mb-6">
+                        <div className="w-16 h-16 rounded-2xl bg-accent/10 flex items-center justify-center text-accent flex-shrink-0">
+                            {CATEGORY_ICONS[selectedItem.category] || <Package className="w-7 h-7" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <h2 className="text-xl font-bold text-text-primary">
+                                {language === 'zh' ? selectedItem.nameZh : selectedItem.name}
+                            </h2>
+                            <p className="text-sm text-text-secondary mt-1">
+                                {language === 'zh' ? selectedItem.descriptionZh : selectedItem.description}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-3 mb-6">
+                        <div className="text-center p-3 rounded-xl bg-surface/30 border border-border/10">
+                            <div className="text-lg font-bold text-text-primary">{selectedItem.rating.toFixed(1)}</div>
+                            <div className="text-[11px] text-text-muted mt-0.5">{t('评分', 'Rating')}</div>
+                            <div className="flex items-center justify-center mt-1">{renderStars(selectedItem.rating)}</div>
+                        </div>
+                        <div className="text-center p-3 rounded-xl bg-surface/30 border border-border/10">
+                            <div className="text-lg font-bold text-text-primary">{selectedItem.downloads}</div>
+                            <div className="text-[11px] text-text-muted mt-0.5">{t('下载', 'Downloads')}</div>
+                        </div>
+                        <div className="text-center p-3 rounded-xl bg-surface/30 border border-border/10">
+                            <div className="text-lg font-bold text-text-primary">v{selectedItem.version}</div>
+                            <div className="text-[11px] text-text-muted mt-0.5">{t('版本', 'Version')}</div>
+                        </div>
+                    </div>
+
+                    {selectedItem.tags?.length > 0 && (
+                        <div className="mb-6">
+                            <h4 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">{t('标签', 'Tags')}</h4>
+                            <div className="flex flex-wrap gap-1.5">
+                                {selectedItem.tags.map(tag => (
+                                    <span key={tag} className="px-2 py-0.5 text-[11px] rounded-md bg-surface/40 text-text-secondary border border-border/15 flex items-center gap-1">
+                                        <Tag className="w-2.5 h-2.5" />
+                                        {tag}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {selectedItem.minAppVersion && (
+                        <div className="text-[12px] text-text-muted mb-4">
+                            {t(`最低应用版本: ${selectedItem.minAppVersion}`, `Min App Version: ${selectedItem.minAppVersion}`)}
+                        </div>
+                    )}
+
+                    <div className="flex items-center gap-2 text-[12px] text-text-muted mb-6">
+                        <Shield className="w-3.5 h-3.5 text-green-400" />
+                        <span>{t('安全审查已通过', 'Security review passed')}</span>
+                    </div>
+
+                    <div className="flex items-center gap-3 mb-8">
+                        <ActionButton
+                            className="h-10 text-sm gap-2 px-6 rounded-xl"
+                            onClick={() => handleInstall(selectedItem)}
+                            disabled={installing === selectedItem.id}
+                        >
+                            {installing === selectedItem.id ? (
+                                <>
+                                    <Clock className="w-4 h-4 animate-spin" />
+                                    {t('安装中...', 'Installing...')}
+                                </>
+                            ) : (
+                                <>
+                                    <Download className="w-4 h-4" />
+                                    {t('安装场景', 'Install Scenario')}
+                                </>
+                            )}
+                        </ActionButton>
+                    </div>
+
+                    <ScenarioReviewPanel
+                        scenarioId={selectedItem.id}
+                        scenarioName={selectedItem.name}
+                        scenarioNameZh={selectedItem.nameZh}
+                        currentRating={selectedItem.rating}
+                        ratingCount={selectedItem.ratingCount}
+                    />
+                </div>
+            </div>
+        )
+    }
+
+    return (
+        <div className="flex flex-col h-full">
+            <div className="px-6 py-3 border-b border-border/10">
+                <div className="flex items-center gap-3 mb-3">
+                    <div className="relative flex-1 max-w-md">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+                        <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={e => { setSearchQuery(e.target.value); setPage(1) }}
+                            placeholder={t('搜索场景...', 'Search scenarios...')}
+                            className="w-full h-9 pl-9 pr-3 rounded-lg bg-surface/30 border border-border/15 text-sm text-text-primary placeholder:text-text-muted/50 outline-none focus:border-accent/30 transition-colors"
+                        />
+                    </div>
+                    <button
+                        onClick={() => { loadItems(); loadFeatured(); loadCategories(); }}
+                        className="p-2 rounded-lg hover:bg-surface/40 text-text-muted hover:text-text-primary transition-colors"
+                        title={t('刷新', 'Refresh')}
+                    >
+                        <RefreshCw className="w-4 h-4" />
+                    </button>
+                </div>
+
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                    <button
+                        onClick={() => { setSelectedCategory(null); setPage(1) }}
+                        className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all ${
+                            !selectedCategory
+                                ? 'bg-accent/15 text-accent border border-accent/30'
+                                : 'text-text-muted hover:text-text-secondary border border-border/20'
+                        }`}
+                    >
+                        {t('全部', 'All')}
+                    </button>
+                    {categories.map(cat => (
+                        <button
+                            key={cat.id}
+                            onClick={() => { setSelectedCategory(cat.id === selectedCategory ? null : cat.id); setPage(1) }}
+                            className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all flex items-center gap-1 ${
+                                cat.id === selectedCategory
+                                    ? 'bg-accent/15 text-accent border border-accent/30'
+                                    : 'text-text-muted hover:text-text-secondary border border-border/20'
+                            }`}
+                        >
+                            {CATEGORY_ICONS[cat.id]}
+                            <span>{cat.nameZh && language === 'zh' ? cat.nameZh : cat.name}</span>
+                            <span className="opacity-60">{cat.count}</span>
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            <div className="flex-1 overflow-auto p-6">
+                {featured.length > 0 && !searchQuery && !selectedCategory && (
+                    <div className="mb-8">
+                        <h3 className="text-sm font-semibold text-text-primary mb-3">{t('✨ 精选推荐', '✨ Featured')}</h3>
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                            {featured.slice(0, 8).map(item => (
+                                <button
+                                    key={item.id}
+                                    onClick={() => setSelectedItem(item)}
+                                    className="p-3 rounded-xl border border-border/15 bg-surface/20 hover:bg-surface/40 text-left transition-all group"
+                                >
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center text-accent">
+                                            {CATEGORY_ICONS[item.category] || <Package className="w-4 h-4" />}
+                                        </div>
+                                        <span className="text-[12px] font-medium text-text-primary truncate">
+                                            {language === 'zh' ? item.nameZh : item.name}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        {renderStars(item.rating)}
+                                        <span className="text-[10px] text-text-muted">({item.downloads} {t('下载', 'dl')})</span>
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                <div>
+                    <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-sm font-semibold text-text-primary">
+                            {searchQuery || selectedCategory
+                                ? t('搜索结果', 'Search Results')
+                                : t('所有场景', 'All Scenarios')}
+                            {total > 0 && <span className="ml-1.5 text-text-muted font-normal text-xs">({total})</span>}
+                        </h3>
+                        {isLoading && <Loader2 className="w-4 h-4 text-text-muted animate-spin" />}
+                    </div>
+
+                    {items.length === 0 && !isLoading && (
+                        <div className="flex flex-col items-center justify-center py-16 text-text-muted">
+                            <Package className="w-10 h-10 mb-3 opacity-30" strokeWidth={1} />
+                            <p className="text-sm">{t('暂无场景', 'No scenarios found')}</p>
+                        </div>
+                    )}
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
+                        {items.map(item => (
+                            <button
+                                key={item.id}
+                                onClick={() => setSelectedItem(item)}
+                                className="w-full p-4 rounded-xl border border-border/10 bg-surface/15 hover:bg-surface/30 text-left transition-all group"
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-accent/8 flex items-center justify-center text-accent flex-shrink-0">
+                                        {CATEGORY_ICONS[item.category] || <Package className="w-5 h-5" />}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="text-[13px] font-medium text-text-primary truncate">
+                                                {language === 'zh' ? item.nameZh : item.name}
+                                            </span>
+                                            {item.isFree && (
+                                                <span className="px-1.5 py-0.5 text-[9px] rounded-md bg-green-500/10 text-green-400 font-semibold flex-shrink-0">
+                                                    {t('免费', 'FREE')}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            {renderStars(item.rating)}
+                                            <span className="text-[10px] text-text-muted">{item.downloads} {t('下载', 'dl')}</span>
+                                        </div>
+                                    </div>
+                                    <ChevronRight className="w-4 h-4 text-text-muted/30 group-hover:text-text-muted/60 flex-shrink-0" />
+                                </div>
+                                <p className="text-[11px] text-text-muted/70 mt-2 line-clamp-2 leading-relaxed">
+                                    {language === 'zh' ? item.descriptionZh : item.description}
+                                </p>
+                            </button>
+                        ))}
+                    </div>
+
+                    {total > 20 && (
+                        <div className="flex items-center justify-center gap-3 mt-6">
+                            <button
+                                onClick={() => setPage(p => Math.max(1, p - 1))}
+                                disabled={page <= 1}
+                                className="px-3 py-1.5 text-[11px] rounded-lg bg-surface/30 text-text-muted disabled:opacity-40 hover:bg-surface/50 transition-colors"
+                            >
+                                {t('上一页', 'Prev')}
+                            </button>
+                            <span className="text-[11px] text-text-muted">{page} / {Math.ceil(total / 20)}</span>
+                            <button
+                                onClick={() => setPage(p => p + 1)}
+                                disabled={page * 20 >= total}
+                                className="px-3 py-1.5 text-[11px] rounded-lg bg-surface/30 text-text-muted disabled:opacity-40 hover:bg-surface/50 transition-colors"
+                            >
+                                {t('下一页', 'Next')}
+                            </button>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {permissionPending && (
+                <PermissionConfirmDialog
+                    scenarioName={permissionPending.name}
+                    scenarioNameZh={permissionPending.nameZh}
+                    permissions={permissionPending.permissions || []}
+                    onConfirm={() => {
+                        const item = permissionPending
+                        setPermissionPending(null)
+                        doInstall(item)
+                    }}
+                    onCancel={() => setPermissionPending(null)}
+                />
+            )}
         </div>
     )
 }

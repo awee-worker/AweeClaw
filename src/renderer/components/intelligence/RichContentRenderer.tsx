@@ -17,6 +17,7 @@ import { SafeMarkdownHTML, SafeHTML } from '@components/foundation/SanitizedHTML
 import { useStore } from '@store'
 import { t } from '@renderer/i18n'
 import { api } from '../../adapters/electronBridge'
+import { openUrlInBrowser } from '@utils/browserLauncher'
 
 interface RichContentRendererProps {
   content: ToolRichContent[]
@@ -237,7 +238,7 @@ function FileContent({ item }: { item: ToolRichContent }) {
 function LinkContent({ item }: { item: ToolRichContent }) {
   return (
     <a href={item.url} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-[12px] group mt-1"
-      onClick={(e) => { e.preventDefault(); if (item.url) api.file.openExternalUrl(item.url) }}
+      onClick={(e) => { e.preventDefault(); if (item.url) openUrlInBrowser(item.url) }}
     >
       <LinkIcon className="w-3 h-3 text-text-muted" />
       <span className="font-medium text-text-primary hover:text-accent truncate transition-colors cursor-pointer hover:underline">{item.title || item.url}</span>

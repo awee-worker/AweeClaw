@@ -51,6 +51,7 @@ import { SystemAlert, parseSystemAlert } from './SystemAlert'
 import { CompressionDigestCard } from './CompressionDigestCard'
 import { t } from '../../i18n'
 import { api } from '../../adapters/electronBridge'
+import { openUrlInBrowser } from '@utils/browserLauncher'
 import { toFullPath, getFileName } from '@shared/toolkit/pathHelper'
 import { stripToolCallLeaks } from '@intelligence/utils/toolCallSanitizer'
 import type { ToolStreamingPreview } from '@protocols'
@@ -704,7 +705,7 @@ const MarkdownContent = React.memo(({ content: rawContent, fontSize, isStreaming
           className="text-accent hover:underline decoration-accent/50 underline-offset-2 font-medium"
           onClick={(e) => {
             e.preventDefault()
-            if (cleanHref) api.file.openExternalUrl(cleanHref)
+            if (cleanHref) openUrlInBrowser(cleanHref)
           }}
         >{renderStreamingChildren(children)}</a>
       )
@@ -802,7 +803,7 @@ const SourcesBlock = React.memo(({ sources }: { sources: LLMStreamSource[] }) =>
                   className="block text-sm font-medium text-accent transition-colors hover:text-accent-hover hover:underline"
                   onClick={(e) => {
                     e.preventDefault()
-                    api.file.openExternalUrl(href)
+                    openUrlInBrowser(href)
                   }}
                 >
                   {label}

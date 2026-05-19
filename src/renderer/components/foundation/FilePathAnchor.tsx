@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo } from 'react'
 import { api } from '../../adapters/electronBridge'
+import { openUrlInBrowser } from '@utils/browserLauncher'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { joinPath } from '@shared/toolkit/pathHelper'
@@ -79,7 +80,7 @@ export function FilePathAnchor({ text, className = '', enableLineNumbers = true 
     const handleUrlClick = useCallback((e: React.MouseEvent, url: string) => {
         e.stopPropagation()
         e.preventDefault()
-        api.file.openExternalUrl(url)
+        openUrlInBrowser(url)
     }, [])
 
     const renderedSegments = useMemo(() => {
