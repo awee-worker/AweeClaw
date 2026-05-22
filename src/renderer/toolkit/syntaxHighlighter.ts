@@ -38,4 +38,35 @@ SyntaxHighlighter.registerLanguage('csharp', csharp)
 SyntaxHighlighter.registerLanguage('cpp', cpp)
 SyntaxHighlighter.registerLanguage('sql', sql)
 
+/**
+ * 替换语法高亮样式中的灰色为 #333333
+ * 遍历样式对象，将纯灰色 hex 颜色（RGB 通道相等，范围 #666~#E0）统一替换
+ * 解决高亮主题下灰色文字太浅看不清的问题
+ */
+function isGrayHex(val: unknown): val is string {
+  if (typeof val !== 'string') return false
+  const match = val.match(/^#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$/)
+  if (!match) return false
+  const r = parseInt(match[1], 16)
+  const g = parseInt(match[2], 16)
+  const b = parseInt(match[3], 16)
+  return r === g && g === b && r >= 0x66 && r <= 0xe0
+}
+
+export function patchSyntaxStyle<T extends Record<string, unknown>>(style: T): T {
+  const cloned = JSON.parse(JSON.stringify(style)) as T
+  const walk = (obj: Record<string, unknown>) => {
+    for (const key of Object.keys(obj)) {
+      const val = obj[key]
+      if (isGrayHex(val)) {
+        obj[key] = '#333333'
+      } else if (val && typeof val === 'object' && !Array.isArray(val)) {
+        walk(val as Record<string, unknown>)
+      }
+    }
+  }
+  walk(cloned as Record<string, unknown>)
+  return cloned
+}
+
 export { SyntaxHighlighter }

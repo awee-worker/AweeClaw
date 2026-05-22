@@ -7,7 +7,7 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { Copy, Check, Edit2, RotateCcw, ChevronDown, X, Wrench, FileText, Code, Folder, Link2, Clock, MoreHorizontal, Trash2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
-import { SyntaxHighlighter } from '@utils/syntaxHighlighter'
+import { SyntaxHighlighter, patchSyntaxStyle } from '@utils/syntaxHighlighter'
 import { playNotificationSound } from '@utils/notificationSound'
 import { vscDarkPlus, vs } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { themeManager } from '../../config/themeDefinition'
@@ -97,7 +97,10 @@ const CodeBlock = React.memo(({ language, children, fontSize }: { language: stri
   const [copied, setCopied] = useState(false)
   const currentTheme = useStore(s => s.currentTheme)
   const theme = themeManager.getThemeById(currentTheme)
-  const syntaxStyle = theme?.type === 'light' ? vs : vscDarkPlus
+  const syntaxStyle = useMemo(
+    () => patchSyntaxStyle(theme?.type === 'light' ? vs : vscDarkPlus),
+    [theme?.type]
+  )
 
   // Flatten text from children
   const codeText = React.useMemo(() => {

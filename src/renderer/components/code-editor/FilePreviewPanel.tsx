@@ -10,12 +10,13 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
-import { SyntaxHighlighter } from '@utils/syntaxHighlighter'
+import { SyntaxHighlighter, patchSyntaxStyle } from '@utils/syntaxHighlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { Eye, Edit, FileQuestion, Image as ImageIcon, AlertTriangle, Columns } from 'lucide-react'
 import { ActionButton } from '../ui'
 import { getFileName } from '@shared/toolkit/pathHelper'
 import { useStore } from '@store'
+import { themeManager } from '../../config/themeDefinition'
 import { t } from '@renderer/i18n'
 
 // 文件类型分类
@@ -68,12 +69,16 @@ interface MarkdownPreviewProps {
 }
 
 export function MarkdownPreview({ content, fontSize = 14 }: MarkdownPreviewProps) {
+    const currentTheme = useStore(s => s.currentTheme)
+    const theme = themeManager.getThemeById(currentTheme)
+    const isLight = theme?.type === 'light'
+
     return (
         <div
             className="absolute inset-0 overflow-y-auto p-6 bg-background custom-scrollbar"
             style={{ fontSize: `${fontSize}px` }}
         >
-            <div className="max-w-3xl mx-auto prose prose-invert">
+            <div className={`max-w-3xl mx-auto prose ${isLight ? '' : 'prose-invert'}`}>
                 <ReactMarkdown
                     remarkPlugins={[remarkGfm, remarkMath]}
                     rehypePlugins={[rehypeKatex]}
@@ -89,7 +94,7 @@ export function MarkdownPreview({ content, fontSize = 14 }: MarkdownPreviewProps
                                 </code>
                             ) : (
                                 <SyntaxHighlighter
-                                    style={vscDarkPlus}
+                                    style={patchSyntaxStyle(vscDarkPlus)}
                                     language={match?.[1] || 'text'}
                                     PreTag="div"
                                     className="!bg-surface/50 !rounded-lg !border !border-border !my-4"

@@ -392,7 +392,8 @@ export default function NavigationRail() {
     setActiveSidePanel(null)
     setShowSettingsPage(false)
     setShowWelcomePage(true)
-  }, [setActiveSidePanel, setShowSettingsPage, setShowWelcomePage])
+    setShowWorkflow(false)
+  }, [setActiveSidePanel, setShowSettingsPage, setShowWelcomePage, setShowWorkflow])
 
   const handleSettingsClick = useCallback(() => {
     setActiveSidePanel(null)
@@ -400,20 +401,25 @@ export default function NavigationRail() {
     setShowWelcomePage(false)
     setShowUserProfilePage(false)
     setShowBillingCenterPage(false)
-  }, [setActiveSidePanel, setShowSettingsPage, setShowWelcomePage, setShowUserProfilePage, setShowBillingCenterPage])
+    setShowWorkflow(false)
+  }, [setActiveSidePanel, setShowSettingsPage, setShowWelcomePage, setShowUserProfilePage, setShowBillingCenterPage, setShowWorkflow])
 
   const handleExploreClick = useCallback(() => {
     setActiveSidePanel(activeSidePanel === 'scenarios' ? null : 'scenarios')
     setShowSettingsPage(false)
     setShowUserProfilePage(false)
     setShowBillingCenterPage(false)
-  }, [activeSidePanel, setActiveSidePanel, setShowSettingsPage, setShowUserProfilePage, setShowBillingCenterPage])
+    setShowWorkflow(false)
+  }, [activeSidePanel, setActiveSidePanel, setShowSettingsPage, setShowUserProfilePage, setShowBillingCenterPage, setShowWorkflow])
 
   const handleWorkflowClick = useCallback(() => {
-    setShowWorkflow(true)
+    setActiveSidePanel(null)
+    setShowSettingsPage(false)
+    setShowWelcomePage(false)
     setShowUserProfilePage(false)
     setShowBillingCenterPage(false)
-  }, [setShowWorkflow, setShowUserProfilePage, setShowBillingCenterPage])
+    setShowWorkflow(true)
+  }, [setActiveSidePanel, setShowSettingsPage, setShowWelcomePage, setShowUserProfilePage, setShowBillingCenterPage, setShowWorkflow])
 
   const handleUserInfoClick = useCallback(() => {
     setActiveSidePanel(null)
@@ -421,7 +427,8 @@ export default function NavigationRail() {
     setShowWelcomePage(false)
     setShowUserProfilePage(true)
     setShowBillingCenterPage(false)
-  }, [setActiveSidePanel, setShowSettingsPage, setShowWelcomePage, setShowUserProfilePage, setShowBillingCenterPage])
+    setShowWorkflow(false)
+  }, [setActiveSidePanel, setShowSettingsPage, setShowWelcomePage, setShowUserProfilePage, setShowBillingCenterPage, setShowWorkflow])
 
   const handleBillingCenterClick = useCallback(() => {
     setActiveSidePanel(null)
@@ -429,7 +436,8 @@ export default function NavigationRail() {
     setShowWelcomePage(false)
     setShowUserProfilePage(false)
     setShowBillingCenterPage(true)
-  }, [setActiveSidePanel, setShowSettingsPage, setShowWelcomePage, setShowUserProfilePage, setShowBillingCenterPage])
+    setShowWorkflow(false)
+  }, [setActiveSidePanel, setShowSettingsPage, setShowWelcomePage, setShowUserProfilePage, setShowBillingCenterPage, setShowWorkflow])
 
   const handleLogout = useCallback(() => {
     logout()

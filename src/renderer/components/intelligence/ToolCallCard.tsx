@@ -17,7 +17,7 @@ import { RichContentRenderer } from './RichContentRenderer'
 import InlineDiffPreview from './InlineDiffPreview'
 import { getExtension, getFileName } from '@shared/toolkit/pathHelper'
 import { FilePathAnchor as TextWithFileLinks } from '../foundation/FilePathAnchor'
-import { SyntaxHighlighter } from '@utils/syntaxHighlighter'
+import { SyntaxHighlighter, patchSyntaxStyle } from '@utils/syntaxHighlighter'
 import { themeManager } from '../../config/themeDefinition'
 
 interface ToolCallCardProps {
@@ -643,7 +643,10 @@ function ToolPreview({
         }
         const displayName = paths.length > 1 ? getPathSummary(paths) : (filePath ? getPathDisplayName(filePath) : '<no path>')
         const theme = themeManager.getThemeById(currentTheme)
-        const syntaxStyle = theme?.type === 'light' ? vs : vscDarkPlus
+        const syntaxStyle = useMemo(
+            () => patchSyntaxStyle(theme?.type === 'light' ? vs : vscDarkPlus),
+            [theme?.type]
+        )
         const safeResult = stringResult || ''
 
         return (

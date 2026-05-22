@@ -15,6 +15,7 @@ import { JsonHighlight } from '@utils/jsonHighlight'
 import { getFileName } from '@shared/toolkit/pathHelper'
 import { SafeMarkdownHTML, SafeHTML } from '@components/foundation/SanitizedHTML'
 import { useStore } from '@store'
+import { themeManager } from '../../config/themeDefinition'
 import { t } from '@renderer/i18n'
 import { api } from '../../adapters/electronBridge'
 import { openUrlInBrowser } from '@utils/browserLauncher'
@@ -259,9 +260,13 @@ function JsonContent({ item, maxHeight }: { item: ToolRichContent; maxHeight: st
 }
 
 function MarkdownContent({ item, maxHeight }: { item: ToolRichContent; maxHeight: string }) {
+  const currentTheme = useStore(s => s.currentTheme)
+  const theme = themeManager.getThemeById(currentTheme)
+  const isLight = theme?.type === 'light'
+
   return (
     <ContentCard title={t('rich.markdown', useStore.getState().language as any)} icon={FileText} noPadding>
-      <div className={`${maxHeight} overflow-auto custom-scrollbar prose prose-invert prose-sm max-w-none text-[12px]`}>
+      <div className={`${maxHeight} overflow-auto custom-scrollbar prose prose-sm max-w-none text-[12px] ${isLight ? '' : 'prose-invert'}`}>
         <SafeMarkdownHTML html={item.text} />
       </div>
     </ContentCard>

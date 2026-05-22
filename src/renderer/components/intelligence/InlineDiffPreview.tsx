@@ -4,7 +4,7 @@
  */
 
 import React, { useMemo, useState, useEffect, useRef } from 'react'
-import { SyntaxHighlighter } from '@utils/syntaxHighlighter'
+import { SyntaxHighlighter, patchSyntaxStyle } from '@utils/syntaxHighlighter'
 import { oneDark, vs } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { useStore } from '@store'
 import { t } from '@renderer/i18n'
@@ -231,7 +231,7 @@ function useAsyncDiff(
 }
 
 const getCustomStyle = (isLight: boolean) => {
-    const baseStyle = isLight ? vs : oneDark
+    const baseStyle = patchSyntaxStyle(isLight ? vs : oneDark)
     return {
         ...baseStyle,
         'pre[class*="language-"]': {

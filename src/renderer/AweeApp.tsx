@@ -31,7 +31,7 @@ const TerminalStudio = lazy(() => import('./shell/components/TerminalStudio'))
 
 const TerminalPanel = lazy(() => import('@components/dock-panels/TerminalConsolePanel'))
 const DebugPanel = lazy(() => import('@components/dock-panels/DebugConsolePanel'))
-const WorkflowPanel = lazy(() => import('@components/workflow/WorkflowPanel'))
+const WorkflowWorkbench = lazy(() => import('@components/workflow/Workbench/WorkflowWorkbench'))
 const DataDashboard = lazy(() => import('@components/dashboard/InsightDashboard'))
 const StoreDiagnosisDashboard = lazy(() => import('@/scenarios/store-diagnosis/components/StoreDiagnosisDashboard'))
 const CanvasWorkspace = lazy(() => import('@components/canvas/WorkspaceCanvas'))
@@ -195,6 +195,17 @@ function AppContent() {
 
   return (
     <div className="h-screen flex bg-background overflow-hidden text-text-primary selection:bg-accent/30 selection:text-white relative">
+
+      {showWorkflow && (
+        <div className="fixed inset-0 z-[100] bg-background animate-in fade-in duration-200">
+          <ErrorBoundary>
+            <Suspense fallback={<FullScreenLoading />}>
+              <WorkflowWorkbench onClose={() => setShowWorkflow(false)} language={language as 'en' | 'zh'} />
+            </Suspense>
+          </ErrorBoundary>
+        </div>
+      )}
+
       <div className="relative z-10 flex h-full w-full">
         {hasWorkspace ? (
           <>
@@ -538,11 +549,6 @@ function AppContent() {
       {showQuickOpen && (
         <Suspense fallback={null}>
           <FileNavigator onClose={() => setShowQuickOpen(false)} />
-        </Suspense>
-      )}
-      {showWorkflow && (
-        <Suspense fallback={null}>
-          <WorkflowPanel onClose={() => setShowWorkflow(false)} />
         </Suspense>
       )}
       {showOnboarding && isInitialized && (
