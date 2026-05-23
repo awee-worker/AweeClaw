@@ -7,10 +7,9 @@
   <link rel="icon" type="image/png" href="%BASE_URL%brand/icons/app.png" />
   <title>AweeClaw</title>
 
-  <!-- 立即设置背景色和主题，在任何渲染之前 -->
   <script>
     (function () {
-      var bg = '#121215'; // Default aweeclaw-dark background (updated from #09090b)
+      var bg = '#121215';
       var loaderBg = '#121215';
       var isLight = false;
       try {
@@ -26,7 +25,6 @@
           }
           loaderBg = bg;
         } else {
-          // Fallback parsing for first launch or missing configs
           var themes = {
             'aweeclaw-dark': { bg: '#121215', twBg: '18 18 21' },
             'midnight': { bg: '#161B22', twBg: '22 27 34' },
@@ -58,10 +56,11 @@
 
       if (isLight) {
         document.documentElement.style.setProperty('--loader-logo-url', 'url("' + publicBase + 'brand/logos/app-light.png")');
-        document.documentElement.style.setProperty('--loader-text', '#333333');
-        document.documentElement.style.setProperty('--loader-text-dim', '#738087');
-        document.documentElement.style.setProperty('--loader-surface', '#f1f3f5');
-        // Define root variables preemptively for Tailwind before globals.css
+        document.documentElement.style.setProperty('--loader-text', '#1a1a2e');
+        document.documentElement.style.setProperty('--loader-text-dim', '#6b7280');
+        document.documentElement.style.setProperty('--loader-surface', '#f3f4f6');
+        document.documentElement.style.setProperty('--loader-accent-rgb', '139, 92, 246');
+        document.documentElement.style.setProperty('--loader-glow-opacity', '0.08');
         if (!document.documentElement.style.getPropertyValue('--background')) {
           document.documentElement.style.setProperty('--background', '255 255 255');
         }
@@ -71,15 +70,16 @@
     })();
   </script>
 
-  <!-- 关键 CSS 内联 -->
   <style>
     :root {
-      --loader-bg: #09090b;
+      --loader-bg: #121215;
       --loader-accent: #8b5cf6;
+      --loader-accent-rgb: 139, 92, 246;
       --loader-text: #fafafa;
       --loader-text-dim: #71717a;
       --loader-surface: #18181b;
       --loader-logo-url: url('%BASE_URL%brand/logos/app.png');
+      --loader-glow-opacity: 0.12;
     }
 
     * {
@@ -123,139 +123,172 @@
     #initial-loader.fade-out {
       opacity: 0;
       pointer-events: none;
-      transition: opacity 0.3s;
+      transition: opacity 0.4s ease-out;
     }
 
     .loader-content {
       display: flex;
       flex-direction: column;
       align-items: center;
-      animation: reveal 0.5s ease-out;
+      animation: reveal 0.6s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
     .loader-logo-container {
       position: relative;
-      width: 80px;
-      height: 80px;
-      margin-bottom: 32px;
+      width: 96px;
+      height: 96px;
+      margin-bottom: 36px;
     }
 
     .loader-logo-bg {
       position: absolute;
       inset: 0;
-      background: linear-gradient(145deg, var(--loader-surface), var(--loader-bg));
-      border-radius: 22px;
+      border-radius: 26px;
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+      box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.04),
+        0 24px 48px rgba(0, 0, 0, 0.5);
       z-index: 2;
+      overflow: hidden;
     }
 
     .loader-logo-icon {
-      width: 44px;
-      height: 44px;
+      width: 100%;
+      height: 100%;
       background-image: var(--loader-logo-url);
       background-position: center;
       background-repeat: no-repeat;
-      background-size: contain;
-      filter: drop-shadow(0 0 12px var(--loader-accent));
+      background-size: cover;
     }
 
     .loader-glow {
       position: absolute;
-      inset: -20px;
-      background: radial-gradient(circle, var(--loader-accent) 0%, transparent 70%);
-      opacity: 0.15;
-      filter: blur(20px);
-      animation: pulse 3s ease-in-out infinite;
+      inset: -30px;
+      background: radial-gradient(circle, rgba(var(--loader-accent-rgb), 0.35) 0%, transparent 65%);
+      filter: blur(24px);
+      animation: breathe 3s ease-in-out infinite;
+      z-index: 1;
     }
 
-    .loader-ring {
+    .loader-orbit {
       position: absolute;
-      inset: -4px;
-      border-radius: 26px;
-      padding: 2px;
-      background: conic-gradient(from 0deg, transparent, var(--loader-accent), transparent);
-      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-      mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      inset: -12px;
+      border-radius: 38px;
+      z-index: 3;
+    }
+
+    .loader-orbit-ring {
+      position: absolute;
+      inset: 0;
+      border-radius: 38px;
+      border: 1.5px solid transparent;
+      background: conic-gradient(from 0deg, transparent 0%, rgba(var(--loader-accent-rgb), 0.6) 25%, transparent 50%) border-box;
+      -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+      mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
       -webkit-mask-composite: xor;
       mask-composite: exclude;
-      animation: spin 2s linear infinite;
+      animation: orbit 2.4s linear infinite;
+    }
+
+    .loader-orbit-dot {
+      position: absolute;
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--loader-accent);
+      box-shadow: 0 0 8px rgba(var(--loader-accent-rgb), 0.8), 0 0 20px rgba(var(--loader-accent-rgb), 0.4);
+      animation: orbitDot 2.4s linear infinite;
+      top: -2.5px;
+      left: 50%;
+      margin-left: -2.5px;
     }
 
     .loader-title {
-      font-size: 24px;
+      font-size: 26px;
       font-weight: 700;
       color: var(--loader-text);
-      margin-bottom: 4px;
+      margin-bottom: 6px;
+      letter-spacing: -0.02em;
     }
 
     .loader-subtitle {
-      font-size: 13px;
+      font-size: 12px;
       color: var(--loader-text-dim);
-      margin-bottom: 40px;
-      letter-spacing: 1px;
+      margin-bottom: 44px;
+      letter-spacing: 2.5px;
       text-transform: uppercase;
+      font-weight: 500;
     }
 
     .loader-progress {
-      width: 160px;
-      height: 2px;
-      background: rgba(255, 255, 255, 0.05);
+      width: 120px;
+      height: 1.5px;
+      background: rgba(255, 255, 255, 0.04);
       border-radius: 1px;
       overflow: hidden;
     }
 
     .loader-bar {
       height: 100%;
-      width: 30%;
-      background: var(--loader-accent);
-      box-shadow: 0 0 10px var(--loader-accent);
-      animation: move 1.5s ease-in-out infinite;
+      width: 40%;
+      background: linear-gradient(90deg, transparent, var(--loader-accent), transparent);
+      border-radius: 1px;
+      animation: shimmer 1.8s ease-in-out infinite;
+    }
+
+    .loader-status {
+      margin-top: 16px;
+      font-size: 11px;
+      color: var(--loader-text-dim);
+      opacity: 0.6;
+      min-height: 16px;
     }
 
     @keyframes reveal {
       from {
         opacity: 0;
-        transform: scale(0.96);
+        transform: scale(0.92) translateY(8px);
       }
-
       to {
         opacity: 1;
+        transform: scale(1) translateY(0);
+      }
+    }
+
+    @keyframes breathe {
+      0%, 100% {
+        opacity: var(--loader-glow-opacity);
         transform: scale(1);
       }
-    }
-
-    @keyframes pulse {
-
-      0%,
-      100% {
-        opacity: 0.1;
-      }
-
       50% {
-        opacity: 0.2;
+        opacity: 0.22;
+        transform: scale(1.08);
       }
     }
 
-    @keyframes spin {
+    @keyframes orbit {
       to {
         transform: rotate(360deg);
       }
     }
 
-    @keyframes move {
+    @keyframes orbitDot {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    @keyframes shimmer {
       0% {
-        margin-left: -30%;
+        transform: translateX(-100%);
       }
-
       50% {
-        margin-left: 50%;
+        transform: translateX(150%);
       }
-
       100% {
-        margin-left: 100%;
+        transform: translateX(250%);
       }
     }
   </style>
@@ -266,16 +299,20 @@
     <div class="loader-content">
       <div class="loader-logo-container">
         <div class="loader-glow"></div>
-        <div class="loader-ring"></div>
+        <div class="loader-orbit">
+          <div class="loader-orbit-ring"></div>
+          <div class="loader-orbit-dot"></div>
+        </div>
         <div class="loader-logo-bg">
           <div class="loader-logo-icon" role="img" aria-label="AweeClaw"></div>
         </div>
       </div>
       <div class="loader-title">AweeClaw</div>
-      <div class="loader-subtitle">Next-Gen AI Editor</div>
+      <div class="loader-subtitle">Connect AI to Your World</div>
       <div class="loader-progress">
         <div class="loader-bar"></div>
       </div>
+      <div class="loader-status"></div>
     </div>
   </div>
   <div id="root"></div>

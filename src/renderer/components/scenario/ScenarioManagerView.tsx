@@ -10,19 +10,19 @@ import {
     PackageX, Download, Info, HardDrive, Tag,
     Layers, Activity, Loader2, FolderOpen, CheckCircle2, XCircle,
     AlertTriangle, RotateCcw, Star, RefreshCw, ArrowLeft, Clock,
-    ChevronRight, X, ArrowUpCircle, AlertCircle,
+    ChevronRight, X, ArrowUpCircle,
 } from 'lucide-react'
 import { useStore } from '@store'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { scenarioLoader } from '@scenario-system/core/ScenarioLoader'
-import { DeclarativeScenarioModule } from '@scenario-system/core/DeclarativeScenarioModule'
 import { api } from '../../adapters/electronBridge'
 import { ActionButton, OverlayDialog } from '../ui'
 import DecisionOverlay from '@components/foundation/DecisionOverlay'
 import { PermissionConfirmDialog } from './PermissionConfirmDialog'
 import { ScenarioReviewPanel } from './ScenarioReviewPanel'
-import type { ScenarioPlugin, UILayout, ScenarioCategory } from '@shared/protocols/scenario'
+import type { ScenarioPlugin, UILayout } from '@shared/protocols/scenario'
 import { activateScenarioPanels, switchToFirstPanel } from './panelUtils'
+import { registerInstalledScenario } from './scenarioInstallUtils'
 import type { ScenarioHealthReport } from '@shared/protocols/scenario-arch'
 import type { LucideIcon } from 'lucide-react'
 import {
@@ -403,66 +403,11 @@ export function ScenarioManagerView() {
             const config = installResult.config || installState.config
             const scenarioId = installResult.scenarioId || (config.id as string)
 
-            const plugin: ScenarioPlugin = {
-                id: scenarioId,
-                name: (config.name as string) || scenarioId,
-                nameZh: (config.nameZh as string) || (config.name as string) || scenarioId,
-                icon: (config.icon as string) || 'Package',
-                description: (config.description as string) || '',
-                descriptionZh: (config.descriptionZh as string) || (config.description as string) || '',
-                version: (config.version as string) || '1.0.0',
-                author: (config.author as string) || 'unknown',
-                category: (config.category as ScenarioCategory) || 'custom',
-                tags: (config.tags as string[]) || [],
+            await registerInstalledScenario(config as any, {
+                scenarioId,
                 source: 'local',
-                hasSettings: (config.hasSettings as boolean) || false,
-                requiresWorkspace: (config.requiresWorkspace as boolean) || false,
-                isBuiltin: false,
-                identity: (config.identity as ScenarioPlugin['identity']) || {
-                    systemPrompt: '',
-                    securityRules: '',
-                    conventions: '',
-                    workflow: '',
-                },
-                capabilities: (config.capabilities as ScenarioPlugin['capabilities']) || {
-                    toolPacks: [],
-                    modes: [],
-                    contextTypes: [],
-                    outputFormats: [],
-                },
-                ui: (config.ui as ScenarioPlugin['ui']) || {
-                    layout: 'chat-centric' as UILayout,
-                    panels: [],
-                    sidebarItems: [],
-                    statusBarItems: [],
-                },
-                dataSources: (config.dataSources as ScenarioPlugin['dataSources']) || {
-                    workspace: false,
-                },
-            }
-
-            scenarioRegistry.registerAndPersist(plugin)
-
-            try {
-                const filesResult = await api.scenarioInstall.loadScenarioFiles(scenarioId)
-                if (filesResult.success) {
-                    const declarativeModule = new DeclarativeScenarioModule(
-                        config as any,
-                        filesResult.files,
-                    )
-                    scenarioLoader.register(declarativeModule)
-                }
-            } catch (moduleErr) {
-                console.warn('[ScenarioInstall] Failed to register DeclarativeScenarioModule:', moduleErr)
-            }
-
-            const installScripts = config.installScripts as Array<{ id: string; description?: string; sql: string }> | undefined
-            if (installScripts && installScripts.length > 0) {
-                await api.scenarioDb.initialize({
-                    scenarioId,
-                    installScripts,
-                })
-            }
+                version: (config.version as string) || '1.0.0',
+            })
 
             setInstallState(prev => ({ ...prev, phase: 'success', scenarioId }))
         } catch (err) {
@@ -906,7 +851,7 @@ export function ScenarioManagerView() {
                             />
                             <InfoItem
                                 label={language === 'zh' ? '布局' : 'Layout'}
-                                value={`${LAYOUT_ICONS[detailScenario.ui.layout] || ''} ${detailScenario.ui.layout}`}
+                                value={`${LAYOUT_ICONS[detailScenario.ui?.layout] || ''} ${detailScenario.ui?.layout || 'chat-centric'}`}
                             />
                             <InfoItem
                                 label={language === 'zh' ? '需要工作区' : 'Workspace'}
@@ -917,7 +862,7 @@ export function ScenarioManagerView() {
                             />
                         </div>
 
-                        {detailScenario.tags.length > 0 && (
+                        {(detailScenario.tags?.length ?? 0) > 0 && (
                             <div>
                                 <h4 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
                                     <Tag className="w-3 h-3" />
@@ -935,7 +880,7 @@ export function ScenarioManagerView() {
 
                         {detailManifest && (
                             <>
-                                {detailManifest.permissions && detailManifest.permissions.length > 0 && (
+                                {detailManifest.permissions && (detailManifest.permissions?.length ?? 0) > 0 && (
                                     <div>
                                         <h4 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
                                             <ShieldCheck className="w-3 h-3" />
@@ -951,7 +896,7 @@ export function ScenarioManagerView() {
                                     </div>
                                 )}
 
-                                {detailManifest.dependencies && detailManifest.dependencies.length > 0 && (
+                                {detailManifest.dependencies && (detailManifest.dependencies?.length ?? 0) > 0 && (
                                     <div>
                                         <h4 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
                                             <Layers className="w-3 h-3" />
@@ -993,7 +938,7 @@ export function ScenarioManagerView() {
                                         <span className="text-text-muted">{language === 'zh' ? '状态' : 'State'}:</span>
                                         <StateBadge state={detailEntry?.state || 'unregistered'} language={language} />
                                     </div>
-                                    {healthReport && healthReport.checks.length > 0 && (
+                                    {healthReport && (healthReport.checks?.length ?? 0) > 0 && (
                                         <div className="mt-2 space-y-1">
                                             {healthReport.checks.map((check, i) => {
                                                 const style = HEALTH_STATUS_STYLES[check.status] || HEALTH_STATUS_STYLES.healthy
@@ -1063,7 +1008,7 @@ export function ScenarioManagerView() {
                                     {language === 'zh' ? '能力' : 'Capabilities'}
                                 </h4>
                                 <div className="space-y-2">
-                                    {detailScenario.capabilities.toolPacks.length > 0 && (
+                                    {(detailScenario.capabilities.toolPacks?.length ?? 0) > 0 && (
                                         <div>
                                             <span className="text-[11px] text-text-muted">{language === 'zh' ? '工具包' : 'Tool Packs'}:</span>
                                             <div className="flex flex-wrap gap-1 mt-1">
@@ -1075,7 +1020,7 @@ export function ScenarioManagerView() {
                                             </div>
                                         </div>
                                     )}
-                                    {detailScenario.capabilities.modes.length > 0 && (
+                                    {(detailScenario.capabilities.modes?.length ?? 0) > 0 && (
                                         <div>
                                             <span className="text-[11px] text-text-muted">{language === 'zh' ? '工作模式' : 'Modes'}:</span>
                                             <div className="flex flex-wrap gap-1 mt-1">
@@ -1325,7 +1270,13 @@ function MarketplaceTab({ language, isAuthenticated }: { language: string; isAut
     }
 
     async function handleInstall(item: MarketplaceScenario) {
-        if (item.permissions && item.permissions.length > 0) {
+        if (scenarioRegistry.has(item.id)) {
+            toast.warning(
+                language === 'zh' ? `场景 "${item.nameZh}" 已安装` : `Scenario "${item.name}" is already installed`
+            )
+            return
+        }
+        if (item.permissions && (item.permissions?.length ?? 0) > 0) {
             setPermissionPending(item)
             return
         }
@@ -1337,6 +1288,17 @@ function MarketplaceTab({ language, isAuthenticated }: { language: string; isAut
         try {
             const result = await installScenarioFromMarketplace(item.id, item.version)
             if (result.success) {
+                const config = result.config
+                const scenarioId = result.scenarioId || item.id
+
+                if (config) {
+                    await registerInstalledScenario(config as any, {
+                        scenarioId,
+                        source: 'marketplace',
+                        version: result.version,
+                    })
+                }
+
                 toast.success(
                     language === 'zh' ? `场景 "${item.nameZh}" 安装成功` : `Scenario "${item.name}" installed successfully`,
                 )
@@ -1467,23 +1429,33 @@ function MarketplaceTab({ language, isAuthenticated }: { language: string; isAut
                     </div>
 
                     <div className="flex items-center gap-3 mb-8">
-                        <ActionButton
-                            className="h-10 text-sm gap-2 px-6 rounded-xl"
-                            onClick={() => handleInstall(selectedItem)}
-                            disabled={installing === selectedItem.id}
-                        >
-                            {installing === selectedItem.id ? (
-                                <>
-                                    <Clock className="w-4 h-4 animate-spin" />
-                                    {t('安装中...', 'Installing...')}
-                                </>
-                            ) : (
-                                <>
-                                    <Download className="w-4 h-4" />
-                                    {t('安装场景', 'Install Scenario')}
-                                </>
-                            )}
-                        </ActionButton>
+                        {scenarioRegistry.has(selectedItem.id) ? (
+                            <ActionButton
+                                className="h-10 text-sm gap-2 px-6 rounded-xl"
+                                disabled
+                            >
+                                <CheckCircle2 className="w-4 h-4" />
+                                {t('已安装', 'Installed')}
+                            </ActionButton>
+                        ) : (
+                            <ActionButton
+                                className="h-10 text-sm gap-2 px-6 rounded-xl"
+                                onClick={() => handleInstall(selectedItem)}
+                                disabled={installing === selectedItem.id}
+                            >
+                                {installing === selectedItem.id ? (
+                                    <>
+                                        <Clock className="w-4 h-4 animate-spin" />
+                                        {t('安装中...', 'Installing...')}
+                                    </>
+                                ) : (
+                                    <>
+                                        <Download className="w-4 h-4" />
+                                        {t('安装场景', 'Install Scenario')}
+                                    </>
+                                )}
+                            </ActionButton>
+                        )}
                     </div>
 
                     <ScenarioReviewPanel
@@ -1616,6 +1588,12 @@ function MarketplaceTab({ language, isAuthenticated }: { language: string; isAut
                                             {item.isFree && (
                                                 <span className="px-1.5 py-0.5 text-[9px] rounded-md bg-green-500/10 text-green-400 font-semibold flex-shrink-0">
                                                     {t('免费', 'FREE')}
+                                                </span>
+                                            )}
+                                            {scenarioRegistry.has(item.id) && (
+                                                <span className="px-1.5 py-0.5 text-[9px] rounded-md bg-accent/10 text-accent font-semibold flex-shrink-0 flex items-center gap-0.5">
+                                                    <CheckCircle2 className="w-2.5 h-2.5" />
+                                                    {t('已安装', 'Installed')}
                                                 </span>
                                             )}
                                         </div>

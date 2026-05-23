@@ -57,6 +57,14 @@ export async function loadExternalScenarios(): Promise<number> {
       const files = result.files || {}
       const module = new DeclarativeScenarioModule(config, files)
       scenarioLoader.register(module)
+
+      const modulePlugin = module.getPlugin()
+      scenarioRegistry.updateScenario(scenario.id, {
+        identity: modulePlugin.identity,
+        capabilities: modulePlugin.capabilities,
+        ui: modulePlugin.ui,
+      })
+
       loaded++
 
       logger.agent.info(`[ExternalScenarioLoader] Loaded external scenario: ${scenario.id}`)

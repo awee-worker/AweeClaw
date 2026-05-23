@@ -265,7 +265,7 @@ function validateTarHeader(buffer: Buffer): boolean {
   if (storedChecksum === null || isNaN(storedChecksum)) return false
 
   const headerForCalc = Buffer.from(header)
-  headerForCalc.fill(0, checksumOffset, checksumOffset + checksumLength)
+  headerForCalc.fill(0x20, checksumOffset, checksumOffset + checksumLength)
   let calculatedChecksum = 0
   for (let i = 0; i < 512; i++) {
     calculatedChecksum += headerForCalc[i]

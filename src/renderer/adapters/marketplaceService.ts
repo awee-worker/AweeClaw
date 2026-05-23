@@ -93,6 +93,7 @@ export async function installScenarioFromMarketplace(
   version?: string
   targetDir?: string
   packageType?: string
+  config?: Record<string, unknown>
   error?: string
   requiresPayment?: boolean
   price?: number
@@ -194,6 +195,7 @@ export async function updateScenarioFromMarketplace(
   version?: string
   targetDir?: string
   packageType?: string
+  config?: Record<string, unknown>
   error?: string
   requiresPayment?: boolean
   price?: number

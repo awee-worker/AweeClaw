@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Search, Download, Star, Tag, ChevronRight, Shield, Clock, ArrowLeft, Package, Heart, Stethoscope, Scale, GraduationCap, Code2, BarChart3, PenTool, Sparkles, TrendingUp, BookOpen, Globe, Zap, RefreshCw } from 'lucide-react'
+import { Search, Download, Star, Tag, ChevronRight, Shield, Clock, ArrowLeft, Package, Heart, Stethoscope, Scale, GraduationCap, Code2, BarChart3, PenTool, Sparkles, TrendingUp, BookOpen, Globe, Zap, RefreshCw, CheckCircle2 } from 'lucide-react'
 import { useStore } from '@store'
 import { ActionButton } from '../ui'
 import { toast } from '../foundation/NotificationProvider'
 import { PermissionConfirmDialog } from './PermissionConfirmDialog'
 import { ScenarioReviewPanel } from './ScenarioReviewPanel'
+import { scenarioRegistry } from '@shared/configuration/scenarios'
+import { registerInstalledScenario } from './scenarioInstallUtils'
 import {
   browseScenarios,
   getFeaturedScenarios,
@@ -107,6 +109,12 @@ export function ScenarioMarketplacePanel() {
   }
 
   async function handleInstall(item: MarketplaceScenario) {
+    if (scenarioRegistry.has(item.id)) {
+      toast.warning(
+        language === 'zh' ? `场景 "${item.nameZh}" 已安装` : `Scenario "${item.name}" is already installed`
+      )
+      return
+    }
     if (item.permissions && item.permissions.length > 0) {
       setPermissionPending(item)
       return
@@ -138,6 +146,17 @@ export function ScenarioMarketplacePanel() {
     try {
       const result = await installScenarioFromMarketplace(item.id, item.version)
       if (result.success) {
+        const config = result.config
+        const scenarioId = result.scenarioId || item.id
+
+        if (config) {
+          await registerInstalledScenario(config as any, {
+            scenarioId,
+            source: 'marketplace',
+            version: result.version,
+          })
+        }
+
         toast.success(
           language === 'zh' ? `场景 "${item.nameZh}" 安装成功` : `Scenario "${item.name}" installed successfully`,
         )
@@ -276,23 +295,33 @@ export function ScenarioMarketplacePanel() {
         </div>
 
         <div className="px-4 py-3 border-t border-border/10">
-          <ActionButton
-            className="w-full h-9 text-xs gap-1.5"
-            onClick={() => handleInstall(selectedItem)}
-            disabled={installing === selectedItem.id}
-          >
-            {installing === selectedItem.id ? (
-              <>
-                <Clock className="w-3.5 h-3.5 animate-spin" />
-                {t('安装中...', 'Installing...')}
-              </>
-            ) : (
-              <>
-                <Download className="w-3.5 h-3.5" />
-                {t('安装场景', 'Install Scenario')}
-              </>
-            )}
-          </ActionButton>
+          {scenarioRegistry.has(selectedItem.id) ? (
+            <ActionButton
+              className="w-full h-9 text-xs gap-1.5"
+              disabled
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              {t('已安装', 'Installed')}
+            </ActionButton>
+          ) : (
+            <ActionButton
+              className="w-full h-9 text-xs gap-1.5"
+              onClick={() => handleInstall(selectedItem)}
+              disabled={installing === selectedItem.id}
+            >
+              {installing === selectedItem.id ? (
+                <>
+                  <Clock className="w-3.5 h-3.5 animate-spin" />
+                  {t('安装中...', 'Installing...')}
+                </>
+              ) : (
+                <>
+                  <Download className="w-3.5 h-3.5" />
+                  {t('安装场景', 'Install Scenario')}
+                </>
+              )}
+            </ActionButton>
+          )}
         </div>
 
         <div className="px-4 py-3 border-t border-border/10">
@@ -435,6 +464,12 @@ export function ScenarioMarketplacePanel() {
                         ) : (
                           <span className="flex items-center gap-0.5 text-[10px] font-medium text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded-full flex-shrink-0">
                             ¥{item.price}
+                          </span>
+                        )}
+                        {scenarioRegistry.has(item.id) && (
+                          <span className="flex items-center gap-0.5 text-[10px] font-medium text-accent bg-accent/10 px-1.5 py-0.5 rounded-full flex-shrink-0">
+                            <CheckCircle2 className="w-2.5 h-2.5" />
+                            {t('已安装', 'Installed')}
                           </span>
                         )}
                       </div>

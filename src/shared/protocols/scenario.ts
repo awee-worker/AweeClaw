@@ -437,6 +437,11 @@ export class ScenarioRegistry {
         if (!this.scenarios.has(data.id)) {
           const scenario: ScenarioPlugin = {
             ...data,
+            tags: data.tags || [],
+            identity: data.identity || { systemPrompt: '', securityRules: '', conventions: '', workflow: '' },
+            capabilities: data.capabilities || { toolPacks: [], modes: [], contextTypes: [], outputFormats: [] },
+            ui: data.ui || { layout: 'chat-centric' as UILayout, panels: [], sidebarItems: [], statusBarItems: [] },
+            dataSources: data.dataSources || { workspace: false },
           }
           this.scenarios.set(scenario.id, scenario)
           loaded++
