@@ -1,4 +1,5 @@
-import { Trash2, Bell, CheckCircle2, XCircle, AlertTriangle, Info, CheckCheck } from 'lucide-react'
+import { useState, useCallback } from 'react'
+import { Trash2, CheckCircle2, XCircle, AlertTriangle, Info, CheckCheck, Copy, Check } from 'lucide-react'
 import { useInlineToast } from '@components/foundation/InlineNotification'
 
 interface NotificationCenterContentProps {
@@ -7,9 +8,10 @@ interface NotificationCenterContentProps {
 
 export default function NotificationCenterContent({ language = 'zh' }: NotificationCenterContentProps) {
   const { toasts, removeToast } = useInlineToast()
+  const [copiedId, setCopiedId] = useState<string | null>(null)
 
   const t = (zh: string, en: string) => (language === 'zh' ? zh : en)
-  
+
   const getIcon = (type: string) => {
     switch (type) {
       case 'success': return <CheckCircle2 className="w-4 h-4 text-emerald-400" />
@@ -28,27 +30,14 @@ export default function NotificationCenterContent({ language = 'zh' }: Notificat
     return `${Math.floor(mins / 60)}${t('小时前', 'h ago')}`
   }
 
+  const handleCopy = useCallback((id: string, message: string) => {
+    navigator.clipboard.writeText(message).catch(() => {})
+    setCopiedId(id)
+    setTimeout(() => setCopiedId(null), 2000)
+  }, [])
+
   return (
     <div className="h-full flex flex-col">
-      {/* 极简高级区头 */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 shrink-0">
-        <div className="flex items-center gap-2">
-          <Bell className="w-3.5 h-3.5 text-text-muted" />
-          <span className="text-[12px] font-bold tracking-wider uppercase text-text-muted">
-            {t('消息记录', 'Notifications')}
-          </span>
-        </div>
-
-        <button 
-          onClick={() => toasts.forEach(t => removeToast(t.id))}
-          className="flex items-center justify-center p-1.5 rounded-md text-text-muted hover:text-red-400 hover:bg-red-400/10 transition-colors" 
-          title={t('清空', 'Clear')}
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-        </button>
-      </div>
-
-      {/* 内容区域 */}
       <div className="flex-1 overflow-auto custom-scrollbar p-2">
         {toasts.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-text-muted gap-3 opacity-60">
@@ -62,8 +51,8 @@ export default function NotificationCenterContent({ language = 'zh' }: Notificat
                 <div className="shrink-0 mt-[1px]">
                   {getIcon(toast.type)}
                 </div>
-                
-                <div className="flex-1 min-w-0 flex flex-col pr-8">
+
+                <div className="flex-1 min-w-0 flex flex-col pr-16">
                   {toast.title && (
                     <div className="mb-1 flex items-center gap-2">
                       <div className="text-[12px] font-semibold text-text-primary">
@@ -79,24 +68,49 @@ export default function NotificationCenterContent({ language = 'zh' }: Notificat
                   </div>
                 </div>
 
-                {/* 时间与操作按钮 */}
-                <div className="absolute right-3.5 top-3 flex items-center">
-                  <span className="text-[10px] text-text-muted/85 font-mono tracking-wide group-hover:opacity-0 transition-opacity">
+                <div className="absolute right-2 top-1.5 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <span className="text-[10px] text-text-muted/85 font-mono tracking-wide px-1">
                     {formatTime(toast.timestamp || Date.now())}
                   </span>
+                  <button
+                    onClick={() => handleCopy(toast.id, toast.message)}
+                    className="p-1.5 rounded-md text-text-muted/85 hover:text-text-primary hover:bg-white/5 transition-all"
+                    title={copiedId === toast.id ? t('已复制', 'Copied') : t('复制', 'Copy')}
+                  >
+                    {copiedId === toast.id
+                      ? <Check className="w-3.5 h-3.5 text-green-400" />
+                      : <Copy className="w-3.5 h-3.5" />}
+                  </button>
+                  <button
+                    onClick={() => removeToast(toast.id)}
+                    className="p-1.5 rounded-md text-text-muted/85 hover:text-red-400 hover:bg-red-400/10 transition-all"
+                    title={t('删除', 'Delete')}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
-
-                <button 
-                  onClick={() => removeToast(toast.id)}
-                  className="absolute right-2 top-1.5 p-1.5 rounded-md text-text-muted/85 hover:text-red-400 hover:bg-red-400/10 transition-all opacity-0 group-hover:opacity-100"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
               </div>
             ))}
           </div>
         )}
       </div>
     </div>
+  )
+}
+
+export function NotificationClearButton({ language = 'zh' }: { language?: 'en' | 'zh' }) {
+  const { toasts, removeToast } = useInlineToast()
+  const t = (zh: string, en: string) => (language === 'zh' ? zh : en)
+
+  if (toasts.length === 0) return null
+
+  return (
+    <button
+      onClick={() => toasts.forEach(t => removeToast(t.id))}
+      className="p-1 rounded-md text-text-muted hover:text-red-400 hover:bg-red-400/10 transition-colors"
+      title={t('清空', 'Clear')}
+    >
+      <Trash2 className="w-3.5 h-3.5" />
+    </button>
   )
 }

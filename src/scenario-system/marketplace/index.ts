@@ -56,6 +56,8 @@ export interface MarketplaceCategory {
 
 export interface MarketplaceInstallResult {
   installed: boolean
+  requiresPayment?: boolean
+  price?: number
   downloadUrl: string
   version: string
   checksum: string

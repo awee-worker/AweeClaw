@@ -52,14 +52,14 @@ export default function GlobalToastContainer() {
         </AnimatePresence>
       </div>
 
-      <div className="fixed right-3 bottom-9 z-[9500] pointer-events-none">
+      <div className="fixed right-3 top-12 z-[9500] pointer-events-none">
         <AnimatePresence mode="wait">
           {activeCardToast && (
             <motion.div
               key={activeCardToast.id}
-              initial={{ opacity: 0, x: 18, scale: 0.985 }}
-              animate={{ opacity: 1, x: 0, scale: 1 }}
-              exit={{ opacity: 0, x: 12, scale: 0.99 }}
+              initial={{ opacity: 0, y: -12, scale: 0.985 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -8, scale: 0.99 }}
               transition={{ duration: 0.16, ease: 'easeOut' }}
               className="pointer-events-auto w-[292px] max-w-[calc(100vw-1rem)] rounded-[16px] border border-border/70 bg-background-secondary shadow-[0_14px_32px_-24px_rgba(0,0,0,0.5)]"
             >

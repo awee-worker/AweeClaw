@@ -34,18 +34,18 @@ export default function ImStatusFloating() {
     <AnimatePresence>
       {displayStatus && (displayStatus.phase === 'thinking' || displayStatus.phase === 'replying' || displayStatus.phase === 'received') && (
         <motion.div
-          initial={{ opacity: 0, y: 20, x: 20 }}
-          animate={{ opacity: 1, y: 0, x: 0 }}
-          exit={{ opacity: 0, y: 20, x: 20 }}
-          transition={{ duration: 0.25 }}
-          className="fixed bottom-4 right-4 z-[100] flex items-center gap-2 px-3 py-2 rounded-xl bg-surface/90 backdrop-blur-xl border border-border/50 shadow-lg shadow-black/15 text-[12px] font-medium select-none"
+          initial={{ opacity: 0, width: 0 }}
+          animate={{ opacity: 1, width: 'auto' }}
+          exit={{ opacity: 0, width: 0 }}
+          transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+          className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-surface/80 backdrop-blur-sm text-[11px] font-medium select-none whitespace-nowrap overflow-hidden"
         >
           {displayStatus.phase === 'thinking' || displayStatus.phase === 'replying' ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin text-accent shrink-0" />
+            <Loader2 className="w-3 h-3 animate-spin text-accent shrink-0" />
           ) : (
-            <MessageSquare className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+            <MessageSquare className="w-3 h-3 text-blue-400 shrink-0" />
           )}
-          <span className={`truncate max-w-[280px] ${
+          <span className={`truncate max-w-[200px] ${
             displayStatus.phase === 'thinking' || displayStatus.phase === 'replying'
               ? 'text-accent'
               : 'text-text-muted'

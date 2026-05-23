@@ -31,7 +31,7 @@ import DockPopover from '../ui/DockPopover'
 import ToolCallLogContent from '../dock-panels/ToolLogPanel'
 import ContextStatsContent from '../dock-panels/ContextMetricsPanel'
 import PlanListContent from '../dock-panels/TaskListPanel'
-import NotificationCenterContent from '../dock-panels/NotificationPanel'
+import NotificationCenterContent, { NotificationClearButton } from '../dock-panels/NotificationPanel'
 import { useInlineToast } from '@components/foundation/InlineNotification'
 import { useHasElevatedToastLayer } from '@components/foundation/toastLayerStore'
 import {
@@ -675,15 +675,17 @@ export default function WorkspaceStatusBar() {
                       exit={{ opacity: 0, scale: 0.8 }}
                       className="relative flex items-center justify-center w-4 h-4 transition-colors"
                     >
-                      <Bell className={`w-3 h-3 ${notificationCount > 0 ? 'text-blue-400 drop-shadow-[0_0_6px_rgba(96,165,250,0.6)]' : 'text-text-muted group-hover:text-text-primary'}`} />
+                      <Bell className={`w-3 h-3 ${notificationCount > 0 ? 'text-accent drop-shadow-[0_0_6px_rgba(var(--accent-rgb),0.6)]' : 'text-text-muted group-hover:text-text-primary'}`} />
                       {notificationCount > 0 && (
-                        <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-blue-400 shadow-[0_0_8px_currentColor] rounded-full" />
+                        <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-accent shadow-[0_0_8px_currentColor] rounded-full" />
                       )}
                     </motion.div>
                   )}
                 </AnimatePresence>
               </div>
             }
+            title={language === 'zh' ? '消息' : 'Messages'}
+            headerActions={<NotificationClearButton language={language as 'en' | 'zh'} />}
             badge={undefined}
             width={360}
             height={420}

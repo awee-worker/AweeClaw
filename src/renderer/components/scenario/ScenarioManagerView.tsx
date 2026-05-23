@@ -1,6 +1,4 @@
 import { useState, useCallback, useEffect, Suspense } from 'react'
-import { ScenarioUpdatePanel } from './ScenarioUpdatePanel'
-import { ScenarioUpdateNotification } from './ScenarioUpdateNotification'
 import {
     Check, Sparkles, Code2, BarChart3, PenTool,
     Settings, Shield, Package,
@@ -12,7 +10,7 @@ import {
     PackageX, Download, Info, HardDrive, Tag,
     Layers, Activity, Loader2, FolderOpen, CheckCircle2, XCircle,
     AlertTriangle, RotateCcw, Star, RefreshCw, ArrowLeft, Clock,
-    ChevronRight,
+    ChevronRight, X, ArrowUpCircle, AlertCircle,
 } from 'lucide-react'
 import { useStore } from '@store'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
@@ -32,10 +30,13 @@ import {
     getFeaturedScenarios,
     getMarketplaceCategories,
     installScenarioFromMarketplace,
+    checkScenarioUpdates,
+    updateScenarioFromMarketplace,
 } from '@services/marketplaceService'
 import type {
     MarketplaceScenario,
     MarketplaceCategory,
+    MarketplaceUpdateInfo,
 } from '@scenario-system/marketplace'
 import { toast } from '../foundation/NotificationProvider'
 
@@ -130,8 +131,30 @@ export function ScenarioManagerView() {
     const language = useStore(s => s.language)
     const activeScenarioId = useStore(s => s.activeScenarioId)
     const isAuthenticated = useStore(s => s.isAuthenticated)
+    const setActiveSidePanel = useStore(s => s.setActiveSidePanel)
     const [activeTab, setActiveTab] = useState<ManagerTab>('installed')
     const [filterCategory, setFilterCategory] = useState<string | null>(null)
+
+    const [scenarioUpdates, setScenarioUpdates] = useState<Map<string, MarketplaceUpdateInfo>>(new Map())
+    const [updatingScenarioId, setUpdatingScenarioId] = useState<string | null>(null)
+    function translateInstallError(error: string): string {
+        if (language !== 'zh') return error
+        const map: Record<string, string> = {
+            'Package archive is corrupted or in an unsupported format. Please verify the scenario package.': '安装包已损坏或格式不受支持，请检查场景包是否正确。',
+            'Package archive is corrupted or contains invalid entries. Please verify the scenario package.': '安装包已损坏或包含无效内容，请检查场景包是否正确。',
+            'Package archive extraction failed. The package may be corrupted.': '安装包解压失败，安装包可能已损坏。',
+            'Checksum verification failed. The package may be corrupted or tampered with.': '校验和验证失败，安装包可能已损坏或被篡改。',
+            'Signature verification failed. The package may be tampered with or from an untrusted source.': '签名验证失败，安装包可能被篡改或来自不受信任的来源。',
+            'Network error occurred while downloading the scenario package.': '下载场景包时发生网络错误。',
+            'File size mismatch': '文件大小不匹配',
+            'No download URL returned from server': '服务器未返回下载地址',
+            'Not authenticated. Please log in first.': '未登录，请先登录。',
+        }
+        for (const [en, zh] of Object.entries(map)) {
+            if (error.includes(en) || error.startsWith(en)) return zh
+        }
+        return error
+    }
 
     const [detailScenarioId, setDetailScenarioId] = useState<string | null>(null)
     const [settingsScenarioId, setSettingsScenarioId] = useState<string | null>(null)
@@ -159,6 +182,61 @@ export function ScenarioManagerView() {
         backedUpAt: string
     } | null>(null)
     const [isRollingBack, setIsRollingBack] = useState(false)
+
+    useEffect(() => {
+        if (!isAuthenticated) return
+        const doCheck = async () => {
+            try {
+                const installed = scenarioRegistry.getInstalled()
+                const checkList = installed.map(s => ({ id: s.id, version: s.version || '1.0.0' }))
+                if (checkList.length === 0) return
+                const results = await checkScenarioUpdates(checkList)
+                const map = new Map<string, MarketplaceUpdateInfo>()
+                results.forEach(r => map.set(r.scenarioId, r))
+                setScenarioUpdates(map)
+            } catch { /* ignore */ }
+        }
+        doCheck()
+        const timer = setInterval(doCheck, 30 * 60 * 1000)
+        return () => clearInterval(timer)
+    }, [isAuthenticated])
+
+    const handleUpdateScenario = useCallback(async (scenarioId: string) => {
+        const updateInfo = scenarioUpdates.get(scenarioId)
+        if (!updateInfo) return
+        setUpdatingScenarioId(scenarioId)
+        try {
+            const result = await updateScenarioFromMarketplace(scenarioId, updateInfo.latestVersion)
+            if (result.success) {
+                toast.success(language === 'zh' ? `场景已更新至 v${result.version}` : `Scenario updated to v${result.version}`)
+                setScenarioUpdates(prev => {
+                    const next = new Map(prev)
+                    next.delete(scenarioId)
+                    return next
+                })
+            } else {
+                const errorMsg = translateInstallError(result.error || (language === 'zh' ? '未知错误' : 'Unknown error'))
+                toast.card({
+                    type: 'error',
+                    title: language === 'zh' ? '更新失败' : 'Update Failed',
+                    message: errorMsg,
+                    duration: 5000,
+                    source: 'ScenarioMarketplace',
+                })
+            }
+        } catch (err) {
+            const errorMsg = translateInstallError(err instanceof Error ? err.message : String(err))
+            toast.card({
+                type: 'error',
+                title: language === 'zh' ? '更新失败' : 'Update Failed',
+                message: errorMsg,
+                duration: 5000,
+                source: 'ScenarioMarketplace',
+            })
+        } finally {
+            setUpdatingScenarioId(null)
+        }
+    }, [scenarioUpdates, language])
 
     const scenarios = scenarioRegistry.getInstalled()
     const builtinScenarios = scenarios.filter(s => s.isBuiltin).sort((a, b) => {
@@ -454,15 +532,17 @@ export function ScenarioManagerView() {
         const sourceInfo = SOURCE_LABELS[scenario.source || (isBuiltin ? 'builtin' : 'local')]
         const SourceIcon = sourceInfo?.icon || Package
         const showSettings = scenario.hasSettings === true
+        const updateInfo = scenarioUpdates.get(scenario.id)
+        const isUpdating = updatingScenarioId === scenario.id
 
         return (
             <div
                 key={scenario.id}
                 className={`
-                    rounded-xl border transition-all duration-200 overflow-hidden
+                    rounded-xl border transition-all duration-200 overflow-hidden shadow-sm
                     ${isActive
-                        ? 'border-accent/30 bg-accent/[0.06] shadow-sm shadow-accent/5'
-                        : 'border-border/20 bg-surface/20 hover:bg-surface/40 hover:border-border/40'}
+                        ? 'border-accent/30 bg-accent/[0.06] shadow-accent/5'
+                        : 'border-border/20 bg-surface/20 hover:bg-surface/40 hover:border-border/40 shadow-black/5'}
                 `}
             >
                 <div className="px-4 py-3.5">
@@ -504,6 +584,25 @@ export function ScenarioManagerView() {
                     <p className="text-[12px] text-text-muted/80 mt-2 line-clamp-2 leading-relaxed">
                         {language === 'zh' ? scenario.descriptionZh : scenario.description}
                     </p>
+
+                    {updateInfo && (
+                        <div className="flex items-center gap-2 mt-2 px-2.5 py-1.5 rounded-lg bg-blue-500/5 border border-blue-500/15">
+                            <ArrowUpCircle className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                            <span className="text-[11px] text-blue-400 font-medium">
+                                {language === 'zh' ? `新版本 v${updateInfo.latestVersion} 可更新` : `v${updateInfo.latestVersion} available`}
+                            </span>
+                            {isUpdating ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400 ml-auto" />
+                            ) : (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); handleUpdateScenario(scenario.id) }}
+                                    className="ml-auto text-[11px] px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-colors font-medium"
+                                >
+                                    {language === 'zh' ? '更新' : 'Update'}
+                                </button>
+                            )}
+                        </div>
+                    )}
 
                     <div className="flex items-center gap-2 mt-3">
                         {!isActive && (
@@ -614,13 +713,15 @@ export function ScenarioManagerView() {
                             {language === 'zh' ? '本地安装' : 'Local Install'}
                         </ActionButton>
                     )}
+                    <button
+                        onClick={() => setActiveSidePanel(null)}
+                        className="w-8 h-8 rounded-lg flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-surface/60 transition-colors"
+                        title={language === 'zh' ? '关闭' : 'Close'}
+                    >
+                        <X className="w-4 h-4" />
+                    </button>
                 </div>
             </div>
-
-            <ScenarioUpdateNotification onNavigateToUpdate={() => {
-                const el = document.querySelector('[data-scenario-update-panel]')
-                el?.scrollIntoView({ behavior: 'smooth' })
-            }} />
 
             <div className="flex-1 overflow-hidden">
                 {activeTab === 'installed' ? (
@@ -1068,8 +1169,6 @@ function InstalledTab({
 }) {
     return (
         <div className="h-full overflow-y-auto p-6">
-            <ScenarioUpdatePanel />
-
             {sortedCategories.length > 1 && (
                 <div className="flex items-center gap-1.5 mb-5 overflow-x-auto no-scrollbar">
                     <button
@@ -1158,8 +1257,26 @@ function MarketplaceTab({ language, isAuthenticated }: { language: string; isAut
     const [total, setTotal] = useState(0)
     const [page, setPage] = useState(1)
     const [permissionPending, setPermissionPending] = useState<MarketplaceScenario | null>(null)
-
     const t = useCallback((zh: string, en: string) => language === 'zh' ? zh : en, [language])
+
+    function translateInstallError(error: string): string {
+        if (language !== 'zh') return error
+        const map: Record<string, string> = {
+            'Package archive is corrupted or in an unsupported format. Please verify the scenario package.': '安装包已损坏或格式不受支持，请检查场景包是否正确。',
+            'Package archive is corrupted or contains invalid entries. Please verify the scenario package.': '安装包已损坏或包含无效内容，请检查场景包是否正确。',
+            'Package archive extraction failed. The package may be corrupted.': '安装包解压失败，安装包可能已损坏。',
+            'Checksum verification failed. The package may be corrupted or tampered with.': '校验和验证失败，安装包可能已损坏或被篡改。',
+            'Signature verification failed. The package may be tampered with or from an untrusted source.': '签名验证失败，安装包可能被篡改或来自不受信任的来源。',
+            'Network error occurred while downloading the scenario package.': '下载场景包时发生网络错误。',
+            'File size mismatch': '文件大小不匹配',
+            'No download URL returned from server': '服务器未返回下载地址',
+            'Not authenticated. Please log in first.': '未登录，请先登录。',
+        }
+        for (const [en, zh] of Object.entries(map)) {
+            if (error.includes(en) || error.startsWith(en)) return zh
+        }
+        return error
+    }
 
     useEffect(() => {
         loadFeatured()
@@ -1225,16 +1342,35 @@ function MarketplaceTab({ language, isAuthenticated }: { language: string; isAut
                 )
                 setSelectedItem(null)
                 await loadItems()
+            } else if (result.requiresPayment) {
+                toast.card({
+                    type: 'warning',
+                    title: language === 'zh' ? '付费场景' : 'Paid Scenario',
+                    message: language === 'zh'
+                        ? `该场景为付费场景，价格: ¥${result.price}，暂不支持在线支付`
+                        : `This is a paid scenario (¥${result.price}). Online payment is not yet supported.`,
+                    duration: 5000,
+                    source: 'ScenarioMarketplace',
+                })
             } else {
-                toast.error(
-                    language === 'zh' ? `安装失败: ${result.error}` : `Install failed: ${result.error}`,
-                )
+                const errorMsg = translateInstallError(result.error || (language === 'zh' ? '未知错误' : 'Unknown error'))
+                toast.card({
+                    type: 'error',
+                    title: language === 'zh' ? '安装失败' : 'Install Failed',
+                    message: errorMsg,
+                    duration: 5000,
+                    source: 'ScenarioMarketplace',
+                })
             }
         } catch (err) {
-            toast.error(
-                language === 'zh' ? '安装失败' : 'Install failed',
-                err instanceof Error ? err.message : '',
-            )
+            const errorMsg = translateInstallError(err instanceof Error ? err.message : String(err))
+            toast.card({
+                type: 'error',
+                title: language === 'zh' ? '安装失败' : 'Install Failed',
+                message: errorMsg,
+                duration: 5000,
+                source: 'ScenarioMarketplace',
+            })
         } finally {
             setInstalling(null)
         }
@@ -1290,16 +1426,16 @@ function MarketplaceTab({ language, isAuthenticated }: { language: string; isAut
                     </div>
 
                     <div className="grid grid-cols-3 gap-3 mb-6">
-                        <div className="text-center p-3 rounded-xl bg-surface/30 border border-border/10">
+                        <div className="text-center p-3 rounded-xl bg-surface/30 border border-border/20 shadow-sm shadow-black/5">
                             <div className="text-lg font-bold text-text-primary">{selectedItem.rating.toFixed(1)}</div>
                             <div className="text-[11px] text-text-muted mt-0.5">{t('评分', 'Rating')}</div>
                             <div className="flex items-center justify-center mt-1">{renderStars(selectedItem.rating)}</div>
                         </div>
-                        <div className="text-center p-3 rounded-xl bg-surface/30 border border-border/10">
+                        <div className="text-center p-3 rounded-xl bg-surface/30 border border-border/20 shadow-sm shadow-black/5">
                             <div className="text-lg font-bold text-text-primary">{selectedItem.downloads}</div>
                             <div className="text-[11px] text-text-muted mt-0.5">{t('下载', 'Downloads')}</div>
                         </div>
-                        <div className="text-center p-3 rounded-xl bg-surface/30 border border-border/10">
+                        <div className="text-center p-3 rounded-xl bg-surface/30 border border-border/20 shadow-sm shadow-black/5">
                             <div className="text-lg font-bold text-text-primary">v{selectedItem.version}</div>
                             <div className="text-[11px] text-text-muted mt-0.5">{t('版本', 'Version')}</div>
                         </div>
@@ -1423,7 +1559,7 @@ function MarketplaceTab({ language, isAuthenticated }: { language: string; isAut
                                 <button
                                     key={item.id}
                                     onClick={() => setSelectedItem(item)}
-                                    className="p-3 rounded-xl border border-border/15 bg-surface/20 hover:bg-surface/40 text-left transition-all group"
+                                    className="p-3 rounded-xl border border-border/20 bg-surface/20 hover:bg-surface/40 hover:border-border/40 shadow-sm shadow-black/5 text-left transition-all group"
                                 >
                                     <div className="flex items-center gap-2 mb-2">
                                         <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center text-accent">
@@ -1466,7 +1602,7 @@ function MarketplaceTab({ language, isAuthenticated }: { language: string; isAut
                             <button
                                 key={item.id}
                                 onClick={() => setSelectedItem(item)}
-                                className="w-full p-4 rounded-xl border border-border/10 bg-surface/15 hover:bg-surface/30 text-left transition-all group"
+                                className="w-full p-4 rounded-xl border border-border/20 bg-surface/20 hover:bg-surface/40 hover:border-border/40 shadow-sm shadow-black/5 text-left transition-all group"
                             >
                                 <div className="flex items-center gap-3">
                                     <div className="w-10 h-10 rounded-xl bg-accent/8 flex items-center justify-center text-accent flex-shrink-0">

@@ -94,6 +94,8 @@ export async function installScenarioFromMarketplace(
   targetDir?: string
   packageType?: string
   error?: string
+  requiresPayment?: boolean
+  price?: number
 }> {
   if (!isAuthenticated()) {
     return { success: false, error: 'Not authenticated. Please log in first.' }
@@ -104,6 +106,15 @@ export async function installScenarioFromMarketplace(
     const installResult = await backendApi.post<MarketplaceInstallResult>(
       `/api/v1/marketplace/install/${scenarioId}${versionParam}`,
     )
+
+    if (installResult.requiresPayment && !installResult.installed) {
+      return {
+        success: false,
+        requiresPayment: true,
+        price: installResult.price,
+        error: `This scenario requires payment. Price: ¥${installResult.price}`,
+      }
+    }
 
     if (!installResult.downloadUrl) {
       return { success: false, error: 'No download URL returned from server' }
@@ -120,6 +131,7 @@ export async function installScenarioFromMarketplace(
       packageType: installResult.packageType,
     })
 
+    console.log('[marketplaceService] IPC install result:', JSON.stringify(ipcResult))
     return ipcResult
   } catch (err) {
     return {
@@ -183,6 +195,8 @@ export async function updateScenarioFromMarketplace(
   targetDir?: string
   packageType?: string
   error?: string
+  requiresPayment?: boolean
+  price?: number
 }> {
   if (!isAuthenticated()) {
     return { success: false, error: 'Not authenticated. Please log in first.' }
@@ -193,6 +207,15 @@ export async function updateScenarioFromMarketplace(
     const installResult = await backendApi.post<MarketplaceInstallResult>(
       `/api/v1/marketplace/install/${scenarioId}${versionParam}`,
     )
+
+    if (installResult.requiresPayment && !installResult.installed) {
+      return {
+        success: false,
+        requiresPayment: true,
+        price: installResult.price,
+        error: `This scenario requires payment. Price: ¥${installResult.price}`,
+      }
+    }
 
     if (!installResult.downloadUrl) {
       return { success: false, error: 'No download URL returned from server' }

@@ -11,7 +11,6 @@ import { api } from './adapters/electronBridge'
 import { shellComposer, type LayoutConfig } from './shell/ShellComposer'
 import { getPanelComponent } from '@components/explorer/PanelRegistry'
 import WorkspaceStatusBar from './components/layout/WorkspaceStatusBar'
-import ImStatusFloating from './components/layout/ImStatusFloating'
 import EditorBottomBar from './components/layout/EditorBottomBar'
 import { ToastProvider, useToast, setGlobalToast } from '@components/foundation/NotificationProvider'
 import { GlobalDecisionOverlay } from '@components/foundation/DecisionOverlay'
@@ -564,7 +563,6 @@ function AppContent() {
 
       <GlobalDecisionOverlay />
       <GlobalToastContainer />
-      <ImStatusFloating />
     </div>
   )
 }

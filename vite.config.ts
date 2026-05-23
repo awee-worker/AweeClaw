@@ -112,7 +112,19 @@ export default defineConfig({
         onstart(options) { options.reload() },
         vite: {
           resolve: { alias: aliases },
-          build: { outDir: 'dist/preload' }
+          build: {
+            outDir: 'dist/preload',
+            lib: {
+              entry: 'src/main/preloadBridge.ts',
+              formats: ['cjs'],
+              fileName: () => 'preload.js'
+            },
+            rollupOptions: {
+              output: {
+                entryFileNames: 'preload.js'
+              }
+            }
+          }
         }
       }
     ])

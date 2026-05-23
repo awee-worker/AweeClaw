@@ -12,9 +12,10 @@ export interface BottomBarPopoverProps {
   badge?: string | number
   language?: 'en' | 'zh'
   placement?: 'top' | 'bottom'
+  headerActions?: ReactNode
 }
 
-export default memo(function DockPopover({ icon, tooltip, title, children, width = 400, height = 300, badge, placement = 'top' }: BottomBarPopoverProps) {
+export default memo(function DockPopover({ icon, tooltip, title, children, width = 400, height = 300, badge, placement = 'top', headerActions }: BottomBarPopoverProps) {
   const [open, setOpen] = useState(false)
   const panelRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -45,7 +46,10 @@ export default memo(function DockPopover({ icon, tooltip, title, children, width
           {title && (
             <div className="flex items-center justify-between px-4 py-3 border-b border-border/50 bg-white/[0.02] z-10 shrink-0">
               <span className="text-[12px] font-bold text-text-muted uppercase tracking-wider">{title}</span>
-              <button onClick={close} className="p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-white/10 transition-colors"><X className="w-3.5 h-3.5" /></button>
+              <div className="flex items-center gap-1">
+                {headerActions}
+                <button onClick={close} className="p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-white/10 transition-colors"><X className="w-3.5 h-3.5" /></button>
+              </div>
             </div>
           )}
           <div className="overflow-auto custom-scrollbar" style={{ height: bodyH }}>{children}</div>

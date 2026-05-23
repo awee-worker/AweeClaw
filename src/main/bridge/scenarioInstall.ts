@@ -25,6 +25,7 @@ import * as crypto from 'crypto'
 import { pipeline as callbackPipeline } from 'stream'
 import { promisify } from 'util'
 import { app, net } from 'electron'
+import * as zlib from 'zlib'
 import * as tar from 'tar'
 
 const pipeline = promisify(callbackPipeline)
@@ -248,13 +249,55 @@ async function getSigningPublicKey(): Promise<string | null> {
   return null
 }
 
+function validateTarHeader(buffer: Buffer): boolean {
+  if (buffer.length < 512) return false
+
+  const header = buffer.subarray(0, 512)
+  const checksumOffset = 148
+  const checksumLength = 8
+
+  let storedChecksum: number | null = null
+  const checksumStr = header.subarray(checksumOffset, checksumOffset + checksumLength).toString('ascii').trim()
+  if (checksumStr) {
+    storedChecksum = parseInt(checksumStr, 8)
+  }
+
+  if (storedChecksum === null || isNaN(storedChecksum)) return false
+
+  const headerForCalc = Buffer.from(header)
+  headerForCalc.fill(0, checksumOffset, checksumOffset + checksumLength)
+  let calculatedChecksum = 0
+  for (let i = 0; i < 512; i++) {
+    calculatedChecksum += headerForCalc[i]
+  }
+
+  return storedChecksum === calculatedChecksum
+}
+
 async function extractTarGz(archivePath: string, targetDir: string): Promise<void> {
+  const fileBuffer = fs.readFileSync(archivePath)
+
+  if (fileBuffer.length < 2 || fileBuffer[0] !== 0x1f || fileBuffer[1] !== 0x8b) {
+    throw new Error('TAR_BAD_ARCHIVE: Not a valid gzip file')
+  }
+
+  let decompressed: Buffer
+  try {
+    decompressed = zlib.gunzipSync(fileBuffer)
+  } catch {
+    throw new Error('TAR_BAD_ARCHIVE: Gzip decompression failed, file may be corrupted')
+  }
+
+  if (decompressed.length < 512 || !validateTarHeader(decompressed)) {
+    throw new Error('TAR_BAD_ARCHIVE: Unrecognized archive format')
+  }
+
   if (fs.existsSync(targetDir)) {
     fs.rmSync(targetDir, { recursive: true, force: true })
   }
   fs.mkdirSync(targetDir, { recursive: true })
 
-  await tar.x({
+  return tar.x({
     file: archivePath,
     cwd: targetDir,
     strip: 1,
@@ -568,10 +611,32 @@ export function registerScenarioInstallIpcHandlers(
         try { fs.unlinkSync(archivePath) } catch {}
       }
 
-      return {
-        success: false,
-        error: err instanceof Error ? err.message : String(err),
+      if (fs.existsSync(targetDir)) {
+        try { fs.rmSync(targetDir, { recursive: true, force: true }) } catch {}
       }
+
+      const rawError = err instanceof Error ? err.message : String(err)
+      let friendlyError = rawError
+      if (rawError.includes('TAR_BAD_ARCHIVE') || rawError.includes('Unrecognized archive format')) {
+        friendlyError = 'Package archive is corrupted or in an unsupported format. Please verify the scenario package.'
+      } else if (rawError.includes('TAR_ENTRY_INVALID') || rawError.includes('checksum failure')) {
+        friendlyError = 'Package archive is corrupted or contains invalid entries. Please verify the scenario package.'
+      } else if (rawError.includes('TAR_ENTRY_ERROR') || rawError.includes('TAR_ABORT')) {
+        friendlyError = 'Package archive extraction failed. The package may be corrupted.'
+      } else if (rawError.includes('Checksum verification failed')) {
+        friendlyError = 'Checksum verification failed. The package may be corrupted or tampered with.'
+      } else if (rawError.includes('Signature verification failed')) {
+        friendlyError = 'Signature verification failed. The package may be tampered with or from an untrusted source.'
+      } else if (rawError.includes('ECONNREFUSED') || rawError.includes('ENOTFOUND') || rawError.includes('network') || rawError.includes('fetch failed')) {
+        friendlyError = 'Network error occurred while downloading the scenario package.'
+      }
+
+      const result = {
+        success: false,
+        error: friendlyError,
+      }
+      logger.agent.info(`[ScenarioMarketplace] Returning error result for "${scenarioId}":`, JSON.stringify(result))
+      return result
     }
   })
 
@@ -697,9 +762,25 @@ export function registerScenarioInstallIpcHandlers(
         try { fs.unlinkSync(archivePath) } catch {}
       }
 
+      const rawError = err instanceof Error ? err.message : String(err)
+      let friendlyError = rawError
+      if (rawError.includes('TAR_BAD_ARCHIVE') || rawError.includes('Unrecognized archive format')) {
+        friendlyError = 'Package archive is corrupted or in an unsupported format. Please verify the scenario package.'
+      } else if (rawError.includes('TAR_ENTRY_INVALID') || rawError.includes('checksum failure')) {
+        friendlyError = 'Package archive is corrupted or contains invalid entries. Please verify the scenario package.'
+      } else if (rawError.includes('TAR_ENTRY_ERROR') || rawError.includes('TAR_ABORT')) {
+        friendlyError = 'Package archive extraction failed. The package may be corrupted.'
+      } else if (rawError.includes('Checksum verification failed')) {
+        friendlyError = 'Checksum verification failed. The package may be corrupted or tampered with.'
+      } else if (rawError.includes('Signature verification failed')) {
+        friendlyError = 'Signature verification failed. The package may be tampered with or from an untrusted source.'
+      } else if (rawError.includes('ECONNREFUSED') || rawError.includes('ENOTFOUND') || rawError.includes('network') || rawError.includes('fetch failed')) {
+        friendlyError = 'Network error occurred while downloading the scenario package.'
+      }
+
       return {
         success: false,
-        error: err instanceof Error ? err.message : String(err),
+        error: friendlyError,
       }
     }
   })

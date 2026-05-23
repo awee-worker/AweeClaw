@@ -110,7 +110,7 @@ function UserMenuDropdown({
   const displayName = cloudUser?.username || cloudUser?.email || ''
 
   const featureItems = [
-    { icon: Compass, label: language === 'zh' ? '探索' : 'Explore', onClick: onExploreClick },
+    { icon: Compass, label: language === 'zh' ? '工作场景' : 'Work Scenes', onClick: onExploreClick },
     { icon: Workflow, label: language === 'zh' ? '工作流' : 'Workflow', onClick: onWorkflowClick },
   ]
 
@@ -276,7 +276,7 @@ function ThreadListItem({
 
   return (
     <div
-      className={`group relative flex items-center gap-2 px-2 py-2.5 rounded-lg cursor-pointer hover:bg-text-primary/[0.06] transition-all ${
+      className={`group relative flex items-center gap-2 px-2 py-2 rounded-lg cursor-pointer hover:bg-text-primary/[0.06] transition-all ${
         isActive
           ? 'bg-accent/8 text-accent'
           : 'aweeclaw-thread-item hover:bg-surface-hover/50'

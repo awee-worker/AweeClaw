@@ -1,4 +1,28 @@
-import { Minus, Square, X, Search, PanelLeftOpen, PanelLeftClose, PanelRightOpen, PanelRightClose, Plus, Bell, Cloud } from 'lucide-react'
+import { Minus, Square, X, Search, Plus, Bell, Cloud } from 'lucide-react'
+
+function PanelLeftIcon({ filled = false, className }: { filled?: boolean; className?: string }) {
+    return (
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            className={className}>
+            <rect width="18" height="18" x="3" y="3" rx="2" />
+            {filled && <path d="M3 5a2 2 0 0 1 2-2h4v18H5a2 2 0 0 1-2-2V5z" fill="currentColor" opacity="0.25" stroke="none" />}
+            <line x1="9" x2="9" y1="3" y2="21" />
+        </svg>
+    )
+}
+
+function PanelRightIcon({ filled = false, className }: { filled?: boolean; className?: string }) {
+    return (
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            className={className}>
+            <rect width="18" height="18" x="3" y="3" rx="2" />
+            {filled && <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4V3z" fill="currentColor" opacity="0.25" stroke="none" />}
+            <line x1="15" x2="15" y1="3" y2="21" />
+        </svg>
+    )
+}
 import { api } from '../../adapters/electronBridge'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -8,10 +32,11 @@ import { ScenarioSelector } from '../scenario/ScenarioSelector'
 import { useInlineToast } from '@components/foundation/InlineNotification'
 import { useHasElevatedToastLayer } from '@components/foundation/toastLayerStore'
 import { BRAND } from '@shared/brand'
+import ImStatusFloating from './ImStatusFloating'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Volume2 } from 'lucide-react'
 import DockPopover from '../ui/DockPopover'
-import NotificationCenterContent from '../dock-panels/NotificationPanel'
+import NotificationCenterContent, { NotificationClearButton } from '../dock-panels/NotificationPanel'
 import { getQuotaBarColor, getQuotaTextColor, getQuotaGlowColor } from '@utils/quotaColors'
 import { useEffect } from 'react'
 
@@ -182,8 +207,8 @@ export default function AppTitleBar() {
             : (language === 'zh' ? '展开菜单' : 'Expand menu')}
         >
           {navRailExpanded
-            ? <PanelLeftClose className="w-4 h-4" />
-            : <PanelLeftOpen className="w-4 h-4" />
+            ? <PanelLeftIcon filled className="w-4 h-4" />
+            : <PanelLeftIcon className="w-4 h-4" />
           }
         </button>
 
@@ -214,6 +239,8 @@ export default function AppTitleBar() {
 
       <div className="flex items-center justify-end h-full pr-2 gap-1">
         <div className="no-drag flex items-center gap-1 h-full mr-2">
+          <ImStatusFloating />
+
           {chatVisible && (
             <button
               onClick={() => createThread()}
@@ -262,16 +289,17 @@ export default function AppTitleBar() {
                       exit={{ opacity: 0, scale: 0.8 }}
                       className="relative flex items-center justify-center"
                     >
-                      <Bell className={`w-4 h-4 ${notificationCount > 0 ? 'text-blue-400' : ''}`} />
+                      <Bell className={`w-4 h-4 ${notificationCount > 0 ? 'text-accent' : ''}`} />
                       {notificationCount > 0 && (
-                        <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-blue-400 rounded-full" />
+                        <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-accent rounded-full" />
                       )}
                     </motion.div>
                   )}
                 </AnimatePresence>
               </div>
             }
-            title={language === 'zh' ? '消息记录' : 'Notifications'}
+            title={language === 'zh' ? '消息' : 'Messages'}
+            headerActions={<NotificationClearButton language={language as 'en' | 'zh'} />}
             width={360}
             height={420}
             language={language as 'en' | 'zh'}
@@ -286,7 +314,7 @@ export default function AppTitleBar() {
             className="w-8 h-8 rounded-lg flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-text-primary/[0.05] transition-colors"
             title={language === 'zh' ? (sidebarVisible ? '隐藏侧边栏' : '显示侧边栏') : (sidebarVisible ? 'Hide Sidebar' : 'Show Sidebar')}
           >
-            {sidebarVisible ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
+            {sidebarVisible ? <PanelLeftIcon filled className="w-4 h-4" /> : <PanelLeftIcon className="w-4 h-4" />}
           </button>
 
           <button
@@ -294,7 +322,7 @@ export default function AppTitleBar() {
             className="w-8 h-8 rounded-lg flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-text-primary/[0.05] transition-colors"
             title={language === 'zh' ? (chatVisible ? '隐藏 AI 助手' : '显示 AI 助手') : (chatVisible ? 'Hide AI Assistant' : 'Show AI Assistant')}
           >
-            {chatVisible ? <PanelRightClose className="w-4 h-4" /> : <PanelRightOpen className="w-4 h-4" />}
+            {chatVisible ? <PanelRightIcon filled className="w-4 h-4" /> : <PanelRightIcon className="w-4 h-4" />}
           </button>
         </div>
 
