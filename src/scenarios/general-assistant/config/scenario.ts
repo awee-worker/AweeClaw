@@ -112,7 +112,7 @@ const GENERAL_ASSISTANT_UI: ScenarioUI = {
   ],
   sidebarItems: [
     { id: 'explorer', icon: 'Files', label: 'Workspace', labelZh: '工作区', component: 'ExplorerView', position: 0 },
-    { id: 'knowledge', icon: 'BookOpen', label: 'Knowledge', labelZh: '知识库', component: 'KnowledgeView', position: 1 },
+    { id: 'knowledge', icon: 'BookOpen', label: 'Knowledge', labelZh: '知识库', component: 'KnowledgeView', position: 1, wideMode: true },
   ],
   statusBarItems: [],
   welcomeComponent: 'GeneralWelcomePage',

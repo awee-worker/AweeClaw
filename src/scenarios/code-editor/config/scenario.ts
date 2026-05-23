@@ -197,7 +197,7 @@ const CODE_EDITOR_UI: ScenarioUI = {
     { id: 'outline', icon: 'ListTree', label: 'Outline', labelZh: '大纲', component: 'OutlineView', position: 3 },
     { id: 'problems', icon: 'AlertCircle', label: 'Problems', labelZh: '问题', component: 'ProblemsView', position: 4 },
     { id: 'shell', icon: 'Terminal', label: 'Shell', labelZh: 'Shell', component: 'ShellView', position: 5 },
-    { id: 'knowledge', icon: 'BookOpen', label: 'Knowledge', labelZh: '知识库', component: 'KnowledgeView', position: 6 },
+    { id: 'knowledge', icon: 'BookOpen', label: 'Knowledge', labelZh: '知识库', component: 'KnowledgeView', position: 6, wideMode: true },
     { id: 'checkpoint', icon: 'History', label: 'Checkpoint', labelZh: '检查点', component: 'HistoryView', position: 7 },
   ],
   statusBarItems: [

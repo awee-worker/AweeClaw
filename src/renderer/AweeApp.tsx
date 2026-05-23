@@ -36,6 +36,7 @@ const StoreDiagnosisDashboard = lazy(() => import('@/scenarios/store-diagnosis/c
 const CanvasWorkspace = lazy(() => import('@components/canvas/WorkspaceCanvas'))
 const DynamicPanelView = lazy(() => import('@components/explorer/AdaptivePanelView').then(m => ({ default: m.DynamicPanelView })))
 const ScenarioManagerView = lazy(() => import('@components/scenario/ScenarioManagerView').then(m => ({ default: m.ScenarioManagerView })))
+const KnowledgeView = lazy(() => import('@components/explorer/panels/KnowledgeExplorer').then(m => ({ default: m.KnowledgeView })))
 
 const OnboardingWizard = lazy(() => import('@components/modals/OnboardingWizard'))
 const PreferencesDialog = lazy(() => import('@components/settings/PreferencesDialog'))
@@ -233,17 +234,46 @@ function AppContent() {
 
                       <div className="flex-1 flex min-w-0 bg-background relative">
                         {isWideModePanel && activeSidePanel ? (
-                          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-                            <ErrorBoundary>
-                              <Suspense fallback={<PanelSkeleton />}>
-                                {activeSidePanel === 'scenarios' ? (
-                                  <ScenarioManagerView />
-                                ) : (
-                                  <DynamicPanelView panelId={activeSidePanel} />
-                                )}
-                              </Suspense>
-                            </ErrorBoundary>
-                          </div>
+                          activeSidePanel === 'knowledge' ? (
+                            <>
+                              <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+                                <ErrorBoundary>
+                                  <Suspense fallback={<PanelSkeleton />}>
+                                    <KnowledgeView />
+                                  </Suspense>
+                                </ErrorBoundary>
+                              </div>
+                              {layoutConfig.showChat && chatVisible && (
+                                <div
+                                  ref={chatRef}
+                                  style={{ width: chatWidth }}
+                                  className="flex-shrink-0 relative border-l border-border/30 shadow-[-1px_0_15px_rgba(0,0,0,0.03)] z-20 bg-background-chat"
+                                >
+                                  <div
+                                    className="absolute top-0 left-0 w-1 h-full cursor-col-resize active:bg-accent transition-colors z-50 -translate-x-[2px]"
+                                    onMouseDown={startChatResize}
+                                  />
+                                  <ErrorBoundary>
+                                    <Suspense fallback={<ChatSkeleton />}>
+                                      <ChatPanel />
+                                    </Suspense>
+                                  </ErrorBoundary>
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+                              <ErrorBoundary>
+                                <Suspense fallback={<PanelSkeleton />}>
+                                  {activeSidePanel === 'scenarios' ? (
+                                    <ScenarioManagerView />
+                                  ) : (
+                                    <DynamicPanelView panelId={activeSidePanel} />
+                                  )}
+                                </Suspense>
+                              </ErrorBoundary>
+                            </div>
+                          )
                         ) : showWelcomePage ? (
                           <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
                             <ErrorBoundary>
@@ -353,6 +383,8 @@ function AppContent() {
                               <Suspense fallback={<PanelSkeleton />}>
                                 {activeSidePanel === 'scenarios' ? (
                                   <ScenarioManagerView />
+                                ) : activeSidePanel === 'knowledge' ? (
+                                  <KnowledgeView />
                                 ) : (
                                   <DynamicPanelView panelId={activeSidePanel} />
                                 )}
@@ -498,7 +530,7 @@ function AppContent() {
                           ) : null}
                         </div>
 
-                        {layoutConfig.showChat && chatVisible && !(isWideModePanel && (layoutConfig.wideModeHidesChat || activeSidePanel === 'scenarios')) && !(scenarioWelcomeComponent && activeSidePanel === 'explorer' && !(openFiles.length > 0 && activeFilePath)) && (
+                        {layoutConfig.showChat && chatVisible && !(isWideModePanel && activeSidePanel !== 'knowledge' && (layoutConfig.wideModeHidesChat || activeSidePanel === 'scenarios')) && !(scenarioWelcomeComponent && activeSidePanel === 'explorer' && !(openFiles.length > 0 && activeFilePath)) && (
                           <div ref={chatRef} style={{ width: chatWidth }} className="flex-shrink-0 relative border-l border-border/30 shadow-[-1px_0_15px_rgba(0,0,0,0.03)] z-20 bg-background-chat">
                             <div
                               className="absolute top-0 left-0 w-1 h-full cursor-col-resize active:bg-accent transition-colors z-50 -translate-x-[2px]"

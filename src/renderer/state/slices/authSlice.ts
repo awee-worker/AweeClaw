@@ -12,6 +12,8 @@ import {
 } from '@services/backendApi'
 import { toast } from '@components/foundation/NotificationProvider'
 import { api } from '../../adapters/electronBridge'
+import { knowledgeSyncService } from '@intelligence/runtime/knowledgeService/syncService'
+import { knowledgeGraphSyncService } from '@intelligence/runtime/knowledgeService/graphSyncService'
 
 export interface CloudUser {
   id: string
@@ -144,6 +146,9 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
     await get().fetchProfile();
     get().fetchQuota().catch(() => {});
     get().selectCloudModel().catch(() => {});
+    knowledgeSyncService.startAutoSync();
+    knowledgeSyncService.syncToServer().catch(() => {});
+    knowledgeGraphSyncService.startAutoSync();
   },
 
   phoneLogin: async (url, phone, code) => {
@@ -163,6 +168,9 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
     await get().fetchProfile();
     get().fetchQuota().catch(() => {});
     get().selectCloudModel().catch(() => {});
+    knowledgeSyncService.startAutoSync();
+    knowledgeSyncService.syncToServer().catch(() => {});
+    knowledgeGraphSyncService.startAutoSync();
   },
 
   register: async (url, email, password, username) => {
@@ -182,9 +190,14 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
     await get().fetchProfile();
     get().fetchQuota().catch(() => {});
     get().selectCloudModel().catch(() => {});
+    knowledgeSyncService.startAutoSync();
+    knowledgeSyncService.syncToServer().catch(() => {});
+    knowledgeGraphSyncService.startAutoSync();
   },
 
   logout: () => {
+    knowledgeSyncService.stopAutoSync();
+    knowledgeGraphSyncService.stopAutoSync();
     setTokens(null);
     clearPersistedAuth();
     set({ isAuthenticated: false, cloudUser: null, quota: null, cloudMode: 'local' });
@@ -273,6 +286,9 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
       if (persisted.cloudMode === 'cloud') {
         get().selectCloudModel().catch(() => {});
       }
+      knowledgeSyncService.startAutoSync();
+      knowledgeSyncService.syncToServer().catch(() => {});
+      knowledgeGraphSyncService.startAutoSync();
     } catch {
       const currentTokens = getTokens();
       if (currentTokens?.refreshToken) {
@@ -294,6 +310,9 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
           if (persisted.cloudMode === 'cloud') {
             get().selectCloudModel().catch(() => {});
           }
+          knowledgeSyncService.startAutoSync();
+          knowledgeSyncService.syncToServer().catch(() => {});
+          knowledgeGraphSyncService.startAutoSync();
         } catch {
           setTokens(null);
           clearPersistedAuth();

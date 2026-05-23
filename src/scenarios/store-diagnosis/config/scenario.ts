@@ -152,7 +152,7 @@ const STORE_DIAGNOSIS_UI: ScenarioUI = {
     { id: 'diagnosis', icon: 'Stethoscope', label: 'Diagnosis', labelZh: '诊断记录', component: 'DiagnosisHistoryView', position: 2 },
     { id: 'plans', icon: 'ClipboardList', label: 'Plans', labelZh: '优化方案', component: 'OptimizationPlanView', position: 3 },
     { id: 'benchmarks', icon: 'TrendingUp', label: 'Benchmarks', labelZh: '行业基准', component: 'BenchmarkView', position: 4 },
-    { id: 'knowledge', icon: 'BookOpen', label: 'Knowledge', labelZh: '知识库', component: 'KnowledgeView', position: 5 },
+    { id: 'knowledge', icon: 'BookOpen', label: 'Knowledge', labelZh: '知识库', component: 'KnowledgeView', position: 5, wideMode: true },
     { id: 'data-entry', icon: 'Database', label: 'Data Entry', labelZh: '数据录入', component: 'DataEntryView', position: 6 },
     { id: 'competitors', icon: 'Swords', label: 'Competitors', labelZh: '竞品分析', component: 'CompetitorView', position: 7 },
   ],

@@ -26,7 +26,7 @@ class KnowledgeService {
 
   async getEntries(): Promise<KnowledgeEntry[]> {
     const store = await this.loadStore()
-    return store.entries
+    return [...store.entries]
   }
 
   async getEnabledEntries(): Promise<KnowledgeEntry[]> {
@@ -771,3 +771,4 @@ ${lines.join('\n')}
 }
 
 export const knowledgeService = new KnowledgeService()
+export { knowledgeGraphSyncService } from './graphSyncService'

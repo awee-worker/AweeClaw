@@ -120,7 +120,7 @@ const DATA_ANALYST_UI: ScenarioUI = {
     { id: 'explorer', icon: 'Files', label: 'Workspace', labelZh: '工作区', component: 'ExplorerView', position: 0 },
     { id: 'data-sources', icon: 'Database', label: 'Data Sources', labelZh: '数据源', component: 'DataSourceView', position: 1 },
     { id: 'charts', icon: 'BarChart3', label: 'Charts', labelZh: '图表', component: 'ChartGalleryView', position: 2 },
-    { id: 'knowledge', icon: 'BookOpen', label: 'Knowledge', labelZh: '知识库', component: 'KnowledgeView', position: 3 },
+    { id: 'knowledge', icon: 'BookOpen', label: 'Knowledge', labelZh: '知识库', component: 'KnowledgeView', position: 3, wideMode: true },
   ],
   statusBarItems: [
     { id: 'data-status', component: 'DataStatusIndicator', position: 'left', order: 0 },
