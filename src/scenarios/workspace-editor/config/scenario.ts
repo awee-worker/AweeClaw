@@ -216,7 +216,7 @@ const CODE_EDITOR_DATA_SOURCES: ScenarioDataSources = {
 }
 
 export const codeEditorScenario: ScenarioPlugin = {
-  id: 'code-editor',
+  id: 'workspace-editor',
   name: 'Code Editor',
   nameZh: '代码编辑器',
   icon: 'Code2',

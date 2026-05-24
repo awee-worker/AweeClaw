@@ -14,7 +14,7 @@ interface NodeExecutionCardProps {
 }
 
 export function NodeExecutionCard({ node, index, status, record, language, onClick, showConnector }: NodeExecutionCardProps) {
-  const NodeIcon = NODE_ICONS[node.type as WorkflowNodeTypeV2] || NODE_ICONS.agent_task
+  const NodeIcon = (NODE_ICONS[node.type as WorkflowNodeTypeV2] || NODE_ICONS.agent_task) as React.ComponentType<{ className?: string }>
   const displayConfig = NODE_STATUS_DISPLAY[status]
   const categoryInfo = NODE_CATEGORY_MAP[node.type as WorkflowNodeTypeV2]
 

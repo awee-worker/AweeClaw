@@ -24,7 +24,7 @@
  */
 
 import type React from 'react'
-import type { SharedDependencyRegistry, SharedDependencyMap } from './SharedDependencyProvider'
+import type { SharedDependencyRegistry } from './SharedDependencyProvider'
 import { sharedDependencyProvider } from './SharedDependencyProvider'
 import { scenarioStyleManager } from './ScenarioStyleManager'
 import { scenarioDataBus } from './ScenarioDataBus'

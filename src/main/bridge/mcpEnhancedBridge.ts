@@ -152,7 +152,7 @@ interface BatchToolResult {
   duration: number
 }
 
-async function executeBatchToolCalls(calls: BatchToolCall[], concurrency = 3): Promise<BatchToolResult[]> {
+async function executeBatchToolCalls(calls: BatchToolCall[], _concurrency = 3): Promise<BatchToolResult[]> {
   const results: BatchToolResult[] = []
 
   // 按 serverId 分组，避免同时冲击同一服务器

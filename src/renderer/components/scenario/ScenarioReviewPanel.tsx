@@ -73,8 +73,6 @@ function StarRating({
 
 export function ScenarioReviewPanel({
   scenarioId,
-  scenarioName,
-  scenarioNameZh,
   currentRating,
   ratingCount,
 }: ScenarioReviewPanelProps) {

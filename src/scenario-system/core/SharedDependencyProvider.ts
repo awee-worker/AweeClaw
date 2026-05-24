@@ -53,7 +53,7 @@ class SharedDependencyProviderClass {
       return
     }
 
-    const appVersion = (globalThis.__APP_VERSION__ as string) || '0.0.0'
+    const appVersion = ((globalThis as any).__APP_VERSION__ as string) || '0.0.0'
 
     const sharedMap: SharedDependencyMap = {
       modules: modules as SharedDependencyRegistry,

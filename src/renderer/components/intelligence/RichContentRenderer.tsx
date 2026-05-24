@@ -17,7 +17,6 @@ import { SafeMarkdownHTML, SafeHTML } from '@components/foundation/SanitizedHTML
 import { useStore } from '@store'
 import { themeManager } from '../../config/themeDefinition'
 import { t } from '@renderer/i18n'
-import { api } from '../../adapters/electronBridge'
 import { openUrlInBrowser } from '@utils/browserLauncher'
 
 interface RichContentRendererProps {

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Shield, AlertTriangle, X, FolderOpen, Globe, Terminal, Clipboard, Bell, Monitor, Database, HardDrive } from 'lucide-react'
 import { useStore } from '@store'
-import type { ScenarioPermission } from '@shared/protocols/scenario-arch'
+// import type { ScenarioPermission } from '@shared/protocols/scenario-arch'
 
 const PERMISSION_META: Record<string, { icon: React.ReactNode; labelZh: string; labelEn: string; riskLevel: 'low' | 'medium' | 'high' }> = {
   'filesystem:read': {
@@ -91,8 +91,6 @@ export function PermissionConfirmDialog({
   const [agreed, setAgreed] = useState(false)
 
   const t = (zh: string, en: string) => (language === 'zh' ? zh : en)
-
-  const displayName = language === 'zh' ? scenarioNameZh : scenarioName
 
   const hasHighRisk = permissions.some(p => PERMISSION_META[p]?.riskLevel === 'high')
 

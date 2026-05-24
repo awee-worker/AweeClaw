@@ -387,7 +387,7 @@ export default function NavigationRail() {
     ? [...scenario.ui.sidebarItems].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
     : DEFAULT_ITEMS
   const sidebarItems = rawSidebarItems.filter(item => {
-    if (item.id === 'checkpoint' && activeScenarioId !== 'code-editor') return false
+    if (item.id === 'checkpoint' && activeScenarioId !== 'workspace-editor') return false
     return true
   })
 

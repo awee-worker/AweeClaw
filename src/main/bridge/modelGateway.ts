@@ -495,7 +495,7 @@ function saveBudgetsToStore(): void {
 }
 
 // 每 30 秒自动保存一次
-const saveInterval = setInterval(saveBudgetsToStore, 30000)
+setInterval(saveBudgetsToStore, 30000)
 
 function getTokenBudget(windowId: number): TokenBudget {
   if (!tokenBudgets.has(windowId)) {
@@ -530,7 +530,7 @@ function recordTokenUsage(windowId: number, tokens: number): void {
 /**
  * 清理已关闭窗口的预算数据
  */
-function cleanupClosedWindowBudgets(activeWindowIds: Set<number>): void {
+export function cleanupClosedWindowBudgets(activeWindowIds: Set<number>): void {
   let cleaned = 0
   tokenBudgets.forEach((_, windowId) => {
     if (!activeWindowIds.has(windowId)) {

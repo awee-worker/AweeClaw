@@ -102,7 +102,7 @@ export default function ChatPanel() {
     activeScenarioId: s.activeScenarioId,
   })))
 
-  const isChatPrimary = activeScenarioId !== 'code-editor'
+  const isChatPrimary = activeScenarioId !== 'workspace-editor'
 
   // 从 AgentStore 获取 inputPrompt
   const inputPrompt = useAgentStore(state => state.inputPrompt)
@@ -1172,7 +1172,7 @@ export default function ChatPanel() {
           onOpenDiff={handleShowDiff}
           pendingToolId={pendingToolCall?.id}
           hasCheckpoint={item.item.hasCheckpoint}
-          isCodeEditor={activeScenarioId === 'code-editor'}
+          isWorkspaceEditor={activeScenarioId === 'workspace-editor'}
           onDeleteRound={handleDeleteRound}
           selectionMode={deleteSelectionMode}
           isSelected={selectedMessageIds.has(msg.id)}

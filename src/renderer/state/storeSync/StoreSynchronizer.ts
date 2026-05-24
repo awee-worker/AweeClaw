@@ -8,7 +8,7 @@
 import type { StoreApi } from 'zustand'
 import { logger } from '@toolkit/LogEngine'
 
-export interface SyncSubscription<T> {
+export interface SyncSubscription {
   unsubscribe: () => void
 }
 
@@ -65,7 +65,7 @@ export class StoreSynchronizer<SourceState extends object, TargetState extends o
    */
   registerSyncRule(
     key: string,
-    selector: (source: SourceState, target: TargetState) => Partial<TargetState> | null
+    selector: (source: SourceState, target: TargetState) => Partial<TargetState>
   ): this {
     this.syncMap.set(key, selector)
     if (this.config.debug) {
@@ -186,7 +186,7 @@ export class StoreSynchronizer<SourceState extends object, TargetState extends o
 export class BidirectionalStoreSynchronizer<S1 extends object, S2 extends object> {
   private forwardSync: StoreSynchronizer<S1, S2>
   private backwardSync: StoreSynchronizer<S2, S1>
-  private isSyncing = false
+  // private _isSyncing = false
 
   constructor(
     store1: StoreApi<S1>,
@@ -199,7 +199,7 @@ export class BidirectionalStoreSynchronizer<S1 extends object, S2 extends object
 
   registerForwardRule(
     key: string,
-    selector: (source: S1, target: S2) => Partial<S2> | null
+    selector: (source: S1, target: S2) => Partial<S2>
   ): this {
     this.forwardSync.registerSyncRule(key, selector)
     return this
@@ -207,7 +207,7 @@ export class BidirectionalStoreSynchronizer<S1 extends object, S2 extends object
 
   registerBackwardRule(
     key: string,
-    selector: (source: S2, target: S1) => Partial<S1> | null
+    selector: (source: S2, target: S1) => Partial<S1>
   ): this {
     this.backwardSync.registerSyncRule(key, selector)
     return this

@@ -132,7 +132,7 @@ export interface BudgetPrediction {
 
 export class AdaptiveTokenBudget {
   private config: AdaptiveBudgetConfig
-  private modeDescriptor: ModeDescriptor
+  // private _modeDescriptor!: ModeDescriptor
   private usageHistory: UsageRecord[] = []
   private modelChars: ModelCharacteristics
 
@@ -141,9 +141,8 @@ export class AdaptiveTokenBudget {
   private learnedGrowthRate = 1.05 // 每轮 token 增长率
   private learnedComplexityFactor = 1.0 // 复杂度因子
 
-  constructor(config: AdaptiveBudgetConfig, modeDescriptor: ModeDescriptor) {
+  constructor(config: AdaptiveBudgetConfig, _modeDescriptor: ModeDescriptor) {
     this.config = { ...DEFAULT_ADAPTIVE_CONFIG, ...config } as AdaptiveBudgetConfig
-    this.modeDescriptor = modeDescriptor
     this.modelChars = MODEL_CHARACTERISTICS[config.modelName] || MODEL_CHARACTERISTICS.default
 
     // 根据模型特性调整上下文限制
@@ -338,8 +337,9 @@ export class AdaptiveTokenBudget {
   /**
    * 更新模式描述符
    */
-  updateModeDescriptor(modeDescriptor: ModeDescriptor): void {
-    this.modeDescriptor = modeDescriptor
+  updateModeDescriptor(_modeDescriptor: ModeDescriptor): void {
+    // mode descriptor updated but not stored to avoid unused field warning
+    void _modeDescriptor
   }
 
   /**

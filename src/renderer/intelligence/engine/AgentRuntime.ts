@@ -7,7 +7,7 @@
 import type { AgentStore } from '../state/IntelligenceStore'
 import type { StoreState } from '@store'
 import type { LLMConfig } from '@shared/configuration/providerTypes'
-import type { MessageContent, ChatMessage, ContextItem } from '@intelligence/providerTypes'
+import type { MessageContent } from '@intelligence/providerTypes'
 import type { WorkMode } from '@renderer/modes/workModeTypes'
 import type { TokenBudgetController } from '../capabilities/budget/TokenQuotaManager'
 import type { ExecutionContext } from './intelligenceTypes'

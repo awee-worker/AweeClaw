@@ -52,12 +52,12 @@ export function startStoreSynchronization(): () => void {
 
   // 注册同步规则：AgentStore 的 currentThreadId 变更 → UIStore 更新
   syncInstance
-    .registerSyncRule('thread-sync', (agentState, _uiState) => {
+    .registerSyncRule('thread-sync', (agentState) => {
       const currentThread = agentState.currentThreadId
         ? agentState.threads[agentState.currentThreadId]
         : null
 
-      if (!currentThread) return null
+      if (!currentThread) return {}
 
       // 同步当前线程的流状态到 UIStore（用于全局状态指示器）
       return {
@@ -65,12 +65,12 @@ export function startStoreSynchronization(): () => void {
         // 实际的消息数据仍通过 useAgentStore selector 直接读取
       } as Partial<ReturnType<typeof useStore.getState>>
     })
-    .registerSyncRule('execution-meta-sync', (agentState, _uiState) => {
+    .registerSyncRule('execution-meta-sync', (agentState) => {
       const currentThread = agentState.currentThreadId
         ? agentState.threads[agentState.currentThreadId]
         : null
 
-      if (!currentThread?.executionMeta) return null
+      if (!currentThread?.executionMeta) return {}
 
       return {
         // 同步执行元数据用于全局状态显示

@@ -173,7 +173,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
 
     useEffect(() => {
         const codeEditorOnlyTabs = new Set(['editor', 'snippets', 'indexing', 'lsp', 'keybindings'])
-        if (activeScenarioId !== 'code-editor' && codeEditorOnlyTabs.has(activeTab)) {
+        if (activeScenarioId !== 'workspace-editor' && codeEditorOnlyTabs.has(activeTab)) {
             setActiveTab('provider')
         }
     }, [activeScenarioId, activeTab])
@@ -424,7 +424,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
         providers.find(provider => provider.id === localConfig.provider),
         [localConfig.provider, providers])
 
-    const isCodeEditor = activeScenarioId === 'code-editor'
+    const isWorkspaceEditor = activeScenarioId === 'workspace-editor'
     const codeEditorOnlyTabs = new Set(['editor', 'snippets', 'indexing', 'lsp', 'keybindings'])
 
     const tabs = useMemo(() => {
@@ -447,9 +447,9 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
             { id: 'system', label: language === 'zh' ? '系统设置' : 'System', icon: <Monitor className="w-4 h-4" /> },
             { id: 'cloud', label: language === 'zh' ? '云端服务' : 'Cloud', icon: <Cloud className="w-4 h-4" /> },
         ]
-        if (isCodeEditor) return allTabs
+        if (isWorkspaceEditor) return allTabs
         return allTabs.filter(tab => !codeEditorOnlyTabs.has(tab.id))
-    }, [language, isCodeEditor])
+    }, [language, isWorkspaceEditor])
 
     const renderActiveTab = () => {
         switch (activeTab) {
@@ -536,7 +536,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                         language={language}
                         securitySettings={localSecuritySettings}
                         setSecuritySettings={setLocalSecuritySettings}
-                        isCodeEditor={isCodeEditor}
+                        isWorkspaceEditor={isWorkspaceEditor}
                     />
                 )
             case 'system':

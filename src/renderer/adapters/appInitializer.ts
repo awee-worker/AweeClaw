@@ -50,7 +50,7 @@ interface ScenarioInitConfig {
 }
 
 const SCENARIO_INIT_CONFIGS: Record<string, ScenarioInitConfig> = {
-  'code-editor': {
+  'workspace-editor': {
     strictModuleOrder: false,
     preloadComplianceModules: false,
     backgroundInitDelayMs: 2000,
@@ -85,8 +85,8 @@ const SCENARIO_INIT_CONFIGS: Record<string, ScenarioInitConfig> = {
 }
 
 function getScenarioInitConfig(): ScenarioInitConfig {
-  const scenarioId = useStore.getState().activeScenarioId ?? 'code-editor'
-  return SCENARIO_INIT_CONFIGS[scenarioId] ?? SCENARIO_INIT_CONFIGS['code-editor']
+  const scenarioId = useStore.getState().activeScenarioId ?? 'workspace-editor'
+  return SCENARIO_INIT_CONFIGS[scenarioId] ?? SCENARIO_INIT_CONFIGS['workspace-editor']
 }
 
 function scheduleIdleTask(task: () => void | Promise<void>, timeout?: number): void {

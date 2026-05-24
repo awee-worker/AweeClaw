@@ -17,13 +17,13 @@ import { GlobalDecisionOverlay } from '@components/foundation/DecisionOverlay'
 import { CrashGuard as ErrorBoundary } from '@components/foundation/CrashGuard'
 import { GlobalErrorHandler } from '@components/foundation/AppErrorHandler'
 import GlobalToastContainer from '@components/foundation/AppToastContainer'
-import { ThemeManager } from '@components/code-editor/EditorThemeProvider'
+import { ThemeManager } from '@components/workspace-editor/EditorThemeProvider'
 import { EditorSkeleton, PanelSkeleton, ChatSkeleton, FullScreenLoading, InlineSettingsSkeleton } from './components/ui/ProgressIndicator'
 import { startupMetrics } from '@shared/toolkit/bootMetrics'
 
 startupMetrics.mark('app-module-loaded')
 
-const Editor = lazy(() => import('@components/code-editor/CodeEditor'))
+const Editor = lazy(() => import('@components/workspace-editor/WorkspaceEditor'))
 const Sidebar = lazy(() => import('@components/explorer/ExplorerSidebar'))
 const ChatPanel = lazy(() => import('@components/intelligence/ChatPanel'))
 const TerminalStudio = lazy(() => import('./shell/components/TerminalStudio'))

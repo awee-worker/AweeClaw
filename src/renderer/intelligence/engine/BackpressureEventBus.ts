@@ -11,7 +11,7 @@
 import { logger } from '@toolkit/LogEngine'
 import { EventBusClass, type AgentEvent, type EventType } from './EventDispatcher'
 
-type EventHandler<T extends AgentEvent = AgentEvent> = (event: T) => void
+// type EventHandler<T extends AgentEvent = AgentEvent> = (event: T) => void
 
 interface BackpressureConfig {
   /** 队列最大长度，超过则触发背压 */

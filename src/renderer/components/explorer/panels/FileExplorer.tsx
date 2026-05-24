@@ -345,7 +345,7 @@ export function ExplorerView() {
     }
   }, [language, refreshFiles, workspacePath])
 
-  const isCodeEditor = activeScenarioId === 'code-editor'
+  const isWorkspaceEditor = activeScenarioId === 'workspace-editor'
 
   const rootMenuItems: ContextMenuItem[] = [
     { id: 'newFile', label: t('newFile', 'zh'), icon: FilePlus, onClick: () => handleRootCreate('file') },
@@ -357,7 +357,7 @@ export function ExplorerView() {
       icon: Download,
       onClick: () => workspacePath && handleImportToDirectory(workspacePath),
     },
-    ...(isCodeEditor
+    ...(isWorkspaceEditor
       ? [
           { id: 'sep2', label: '', separator: true } as ContextMenuItem,
           {

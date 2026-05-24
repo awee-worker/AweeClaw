@@ -158,7 +158,6 @@ export class TaskDecomposer {
     availableAgents: AgentProfile[]
   ): Promise<SubTask[]> {
     const subTasks: SubTask[] = []
-    const taskLower = task.toLowerCase()
 
     // 更智能的关键词匹配
     const hasDesign = /设计|架构|规划|方案|结构/.test(task)
@@ -262,7 +261,7 @@ export class ConsensusEngine {
   async vote(
     proposal: string,
     voters: AgentProfile[],
-    context: string
+    _context: string
   ): Promise<{ approved: boolean; votes: Array<{ agentId: string; approved: boolean; reason: string }> }> {
     const votes: Array<{ agentId: string; approved: boolean; reason: string }> = []
 
@@ -373,12 +372,10 @@ export class WorkflowEngine {
 export class MultiAgentOrchestrator {
   private taskDecomposer: TaskDecomposer
   private consensusEngine: ConsensusEngine
-  private workflowEngine: WorkflowEngine
 
   constructor() {
     this.taskDecomposer = new TaskDecomposer()
     this.consensusEngine = new ConsensusEngine()
-    this.workflowEngine = new WorkflowEngine()
   }
 
   /**

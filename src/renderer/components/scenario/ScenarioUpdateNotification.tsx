@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { ArrowUpCircle, Bell, X, Loader2 } from 'lucide-react'
+import { ArrowUpCircle, Bell, X } from 'lucide-react'
 import { useStore } from '@store'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { checkScenarioUpdates } from '@services/marketplaceService'
@@ -15,7 +15,7 @@ export function ScenarioUpdateNotification({ onNavigateToUpdate }: ScenarioUpdat
   const language = useStore(s => s.language)
   const isAuthenticated = useStore(s => s.isAuthenticated)
   const [availableUpdates, setAvailableUpdates] = useState<MarketplaceUpdateInfo[]>([])
-  const [isChecking, setIsChecking] = useState(false)
+  const [, setIsChecking] = useState(false)
   const [isDismissed, setIsDismissed] = useState(false)
   const [lastChecked, setLastChecked] = useState<number>(0)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)

@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useMemo } from 'react';
 import { workflowSSEClient, type RunEvent } from '@shared/configuration/workflows/workflowSSEClient';
 import type { WorkflowDefinitionV2 } from '@shared/protocols/workflowV2';
-import type { NodeExecutionRecord, NodeDisplayStatus } from './runnerTypes';
+import type { NodeExecutionRecord, NodeDisplayStatus, WorkflowRunV2 } from './runnerTypes';
 
 export type RunStatus = 'idle' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
 
@@ -63,7 +63,9 @@ export function useWorkflowExecution(workflow: WorkflowDefinitionV2) {
 
   const getNodeStatus = useCallback(
     (nodeId: string): NodeDisplayStatus => {
-      const record = state.nodeHistory.get(nodeId);
+      const record = state.nodeHistory instanceof Map
+        ? state.nodeHistory.get(nodeId)
+        : (state.nodeHistory as NodeExecutionRecord[]).find(r => r.nodeId === nodeId);
       if (record) {
         if (record.status === 'completed') return 'completed';
         if (record.status === 'failed') return 'failed';
@@ -107,7 +109,6 @@ export function useWorkflowExecution(workflow: WorkflowDefinitionV2) {
 
         case 'node:start': {
           if (event.nodeId) {
-            const existing = newHistory.get(event.nodeId);
             newHistory.set(event.nodeId, {
               nodeId: event.nodeId,
               nodeType: (event.nodeType as WorkflowDefinitionV2['nodes'][0]['type']) || 'agent_task',
@@ -283,15 +284,16 @@ export function useWorkflowExecution(workflow: WorkflowDefinitionV2) {
 
   return {
     run: {
-      id: state.runId,
-      status: state.status,
-      startedAt: state.startedAt,
-      completedAt: state.completedAt,
+      id: state.runId ?? '',
+      workflowId: workflow.id,
+      status: state.status === 'idle' ? 'pending' : state.status,
+      startedAt: state.startedAt ?? Date.now(),
+      completedAt: state.completedAt ?? undefined,
       variables: {},
-      nodeHistory: state.nodeHistory,
-      currentNodeId: state.currentNodeId,
-      error: state.error,
-    },
+      nodeHistory: Array.from(state.nodeHistory.values()),
+      currentNodeId: state.currentNodeId ?? undefined,
+      error: state.error ?? undefined,
+    } as WorkflowRunV2,
     executionOrder,
     entryNodes,
     getNodeStatus,

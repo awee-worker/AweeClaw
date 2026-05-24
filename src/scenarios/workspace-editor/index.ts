@@ -18,7 +18,7 @@ import type {
 import { codeEditorScenario } from './config/scenario'
 
 const CODE_EDITOR_MANIFEST: ScenarioManifest = {
-  id: 'code-editor',
+  id: 'workspace-editor',
   version: '1.0.0',
   name: 'Code Editor',
   nameZh: '代码编辑器',
@@ -43,7 +43,7 @@ const CODE_EDITOR_MANIFEST: ScenarioManifest = {
 }
 
 const codeEditorModule: ScenarioModule = {
-  id: 'code-editor',
+  id: 'workspace-editor',
   version: '1.0.0',
 
   getManifest: () => CODE_EDITOR_MANIFEST,
@@ -56,19 +56,19 @@ const codeEditorModule: ScenarioModule = {
 
   onActivate: async (context: ScenarioModuleContext) => {
     const log = context.getLogger()
-    log.info(`Activating code-editor scenario v${context.version}`)
+    log.info(`Activating workspace-editor scenario v${context.version}`)
 
     context.publishData('scenario:activated', {
-      scenarioId: 'code-editor',
+      scenarioId: 'workspace-editor',
       capabilities: ['code_edit', 'file_management', 'terminal', 'git', 'search'],
     })
   },
 
   onDeactivate: async (context: ScenarioModuleContext) => {
     const log = context.getLogger()
-    log.info('Deactivating code-editor scenario')
+    log.info('Deactivating workspace-editor scenario')
 
-    context.publishData('scenario:deactivated', { scenarioId: 'code-editor' })
+    context.publishData('scenario:deactivated', { scenarioId: 'workspace-editor' })
   },
 
   onHealthCheck: async (): Promise<ScenarioHealthCheck[]> => {

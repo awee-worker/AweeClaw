@@ -21,7 +21,7 @@ interface ScenarioSyncConfig {
 }
 
 const SCENARIO_SYNC_CONFIGS: Record<string, ScenarioSyncConfig> = {
-    'code-editor': {
+    'workspace-editor': {
         maxAttempts: 8,
         retryDelayFrames: 1,
         strictContentMatch: false,
@@ -52,8 +52,8 @@ const SCENARIO_SYNC_CONFIGS: Record<string, ScenarioSyncConfig> = {
 }
 
 function getScenarioSyncConfig(): ScenarioSyncConfig {
-    const scenarioId = useStore.getState().activeScenarioId ?? 'code-editor'
-    return SCENARIO_SYNC_CONFIGS[scenarioId] ?? SCENARIO_SYNC_CONFIGS['code-editor']
+    const scenarioId = useStore.getState().activeScenarioId ?? 'workspace-editor'
+    return SCENARIO_SYNC_CONFIGS[scenarioId] ?? SCENARIO_SYNC_CONFIGS['workspace-editor']
 }
 
 function contentMatches(actual: string, expected: string, strict: boolean): boolean {

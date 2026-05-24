@@ -9,14 +9,13 @@
  */
 
 import { logger } from '@toolkit/LogEngine'
-import { getAgentConfig } from '@intelligence/utils/intelligenceConfig'
+// import { getAgentConfig } from '@intelligence/utils/intelligenceConfig'
 import { countTokens, countContentTokens } from '@shared/toolkit/tokenEstimator'
 import type {
   ChatMessage,
   AssistantMessage,
   ToolResultMessage,
   UserMessage,
-  ToolCall,
   MessageContent,
 } from '@intelligence/providerTypes'
 import { type CompressionLevel } from './compressionUtils'
@@ -242,7 +241,6 @@ export function smartCompressMessages(
   lastLevel: CompressionLevel,
   contextLimit: number
 ): PrepareResult {
-  const config = getAgentConfig()
   let result = [...messages]
   let truncatedToolCalls = 0
   let clearedToolResults = 0
@@ -311,7 +309,6 @@ export function smartCompressMessages(
       if (scored.category !== 'assistant_tool') continue
 
       const msg = scored.message as AssistantMessage
-      let hasChanges = false
       let newToolCalls = msg.toolCalls
 
       if (msg.toolCalls?.length) {

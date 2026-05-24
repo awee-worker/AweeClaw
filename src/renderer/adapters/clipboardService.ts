@@ -33,7 +33,7 @@ interface ScenarioClipboardConfig {
 }
 
 const SCENARIO_CLIPBOARD_CONFIGS: Record<string, ScenarioClipboardConfig> = {
-    'code-editor': {
+    'workspace-editor': {
         maxHistorySize: 50,
         trackFormats: true,
         autoFormatOnPaste: false,
@@ -73,8 +73,8 @@ const SCENARIO_CLIPBOARD_CONFIGS: Record<string, ScenarioClipboardConfig> = {
 }
 
 function getActiveConfig(): ScenarioClipboardConfig {
-    const scenarioId = useStore.getState().activeScenarioId ?? 'code-editor'
-    return SCENARIO_CLIPBOARD_CONFIGS[scenarioId] ?? SCENARIO_CLIPBOARD_CONFIGS['code-editor']
+    const scenarioId = useStore.getState().activeScenarioId ?? 'workspace-editor'
+    return SCENARIO_CLIPBOARD_CONFIGS[scenarioId] ?? SCENARIO_CLIPBOARD_CONFIGS['workspace-editor']
 }
 
 function detectFormat(content: string, language?: string): ClipboardEntry['format'] {
@@ -148,7 +148,7 @@ class ScenarioClipboardEngine {
         if (!content) return
 
         const config = getActiveConfig()
-        const scenarioId = useStore.getState().activeScenarioId ?? 'code-editor'
+        const scenarioId = useStore.getState().activeScenarioId ?? 'workspace-editor'
 
         let processedContent = content
         if (config.sanitizeOnCopy) {

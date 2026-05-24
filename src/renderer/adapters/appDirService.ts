@@ -258,7 +258,7 @@ class ScenarioDirectoryManager {
         `${aweeclawPath}/${ADNIFY_FILES.SESSIONS_DIR}`,
       ]
 
-      const scenarioId = useStore.getState().activeScenarioId ?? 'code-editor'
+      const scenarioId = useStore.getState().activeScenarioId ?? 'workspace-editor'
       const scenarioDirs = this.getScenarioDirs(aweeclawPath, scenarioId)
       requiredDirs.push(...scenarioDirs)
 

@@ -67,7 +67,7 @@ interface ChatMessageProps {
   onSelectOption?: (messageId: string, selectedIds: string[]) => void
   pendingToolId?: string
   hasCheckpoint?: boolean
-  isCodeEditor?: boolean
+  isWorkspaceEditor?: boolean
   onDeleteRound?: (messageId: string) => void
   selectionMode?: boolean
   isSelected?: boolean
@@ -1179,7 +1179,7 @@ const ChatMessage = React.memo(({
   onOpenDiff,
   pendingToolId,
   hasCheckpoint,
-  isCodeEditor,
+  isWorkspaceEditor,
   onDeleteRound,
   selectionMode,
   isSelected,
@@ -1532,7 +1532,7 @@ const ChatMessage = React.memo(({
                       </button>
                     </HintOverlay>
                   )}
-                  {isCodeEditor && hasCheckpoint && onRestore && (
+                  {isWorkspaceEditor && hasCheckpoint && onRestore && (
                     <HintOverlay content={tt.restore}>
                       <button onClick={() => onRestore(message.id)} className="p-1 rounded-md text-text-muted hover:text-amber-400 hover:bg-surface-hover transition-all">
                         <RotateCcw className="w-3 h-3" />

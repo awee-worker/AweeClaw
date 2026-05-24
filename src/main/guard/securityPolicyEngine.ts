@@ -467,7 +467,7 @@ export function clearSecurityEvents(): void {
 // ============================================
 
 export const BUILTIN_SCENARIO_POLICIES: Record<string, Partial<ScenarioPermissionPolicy>> = {
-  'code-editor': {
+  'workspace-editor': {
     allowedOperations: [
       OperationType.FILE_READ, OperationType.FILE_WRITE, OperationType.FILE_RENAME,
       OperationType.SHELL_EXECUTE, OperationType.TERMINAL_INTERACTIVE, OperationType.GIT_EXEC,

@@ -26,7 +26,7 @@ interface ScenarioCacheConfig {
 }
 
 const SCENARIO_CACHE_CONFIGS: Record<string, ScenarioCacheConfig> = {
-    'code-editor': {
+    'workspace-editor': {
         ttlMultiplier: 1.0,
         sizeMultiplier: 1.0,
         preloadDepth: 1,
@@ -57,8 +57,8 @@ const SCENARIO_CACHE_CONFIGS: Record<string, ScenarioCacheConfig> = {
 }
 
 function getScenarioCacheConfig(): ScenarioCacheConfig {
-    const scenarioId = useStore.getState().activeScenarioId ?? 'code-editor'
-    return SCENARIO_CACHE_CONFIGS[scenarioId] ?? SCENARIO_CACHE_CONFIGS['code-editor']
+    const scenarioId = useStore.getState().activeScenarioId ?? 'workspace-editor'
+    return SCENARIO_CACHE_CONFIGS[scenarioId] ?? SCENARIO_CACHE_CONFIGS['workspace-editor']
 }
 
 class ScenarioDirectoryCache {

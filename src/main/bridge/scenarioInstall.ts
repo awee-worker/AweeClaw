@@ -28,7 +28,7 @@ import { app, net } from 'electron'
 import * as zlib from 'zlib'
 import * as tar from 'tar'
 
-const pipeline = promisify(callbackPipeline)
+void promisify(callbackPipeline)
 
 function getScenariosDir(): string {
   return path.join(app.getPath('userData'), 'scenarios')

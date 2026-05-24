@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
-import { Play, XCircle, CheckCircle2, RotateCcw, FlaskConical } from 'lucide-react'
+import { Play, XCircle, RotateCcw, FlaskConical } from 'lucide-react'
 import type { WorkflowDefinitionV2 } from '@shared/protocols/workflowV2'
-import { RUN_STATUS_CONFIG, type WorkflowRunV2, type NodeDisplayStatus } from './runnerTypes'
+import { RUN_STATUS_CONFIG, type WorkflowRunV2, type NodeExecutionRecord } from './runnerTypes'
 import { NodeExecutionCard } from './NodeExecutionCard'
 import { useWorkflowExecution } from './useWorkflowExecution'
 
@@ -86,7 +86,9 @@ export default function WorkflowRunnerV2({ workflow, language, onNodeClick }: Wo
             const node = nodeMap.get(nodeId)
             if (!node) return null
             const nodeStatus = getNodeStatus(nodeId)
-            const record = run.nodeHistory?.get?.(nodeId)
+            const record = Array.isArray(run.nodeHistory)
+              ? run.nodeHistory.find(r => r.nodeId === nodeId)
+              : (run.nodeHistory as Map<string, NodeExecutionRecord>)?.get?.(nodeId)
             return (
               <NodeExecutionCard
                 key={nodeId}
@@ -179,7 +181,7 @@ function InputSchemaPanel({ workflow, inputValues, onInputChange, language }: {
               type="text"
               value={inputValues[key] ?? (param.default as string) ?? ''}
               onChange={e => onInputChange(prev => ({ ...prev, [key]: e.target.value }))}
-              placeholder={param.placeholder || param.description}
+              placeholder={(param as any).placeholder || param.description}
               className="w-full px-2.5 py-1.5 text-xs bg-[var(--background)] border border-[var(--border)] rounded-lg focus:outline-none focus:ring-1 focus:ring-[var(--accent)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
             />
           </div>

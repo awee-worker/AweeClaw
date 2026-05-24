@@ -185,6 +185,46 @@ export default function Editor() {
     }
   }, [activeFilePath, isPreviewDocument])
 
+  // 文档类型文件流式预览时自动滚动到底部
+  useEffect(() => {
+    if (!editorRef.current || !activeFile || isPreviewDocument) return
+    if (!activeFile.content) return
+
+    // 仅对文档类型文件启用自动滚动
+    const isDocumentFile = (filePath: string): boolean => {
+      const DOCUMENT_EXTENSIONS = new Set([
+        'md', 'mdx', 'txt', 'rst', 'adoc', 'asciidoc',
+        'html', 'htm', 'css', 'json', 'yaml', 'yml', 'xml',
+        'csv', 'tsv', 'log', 'ini', 'conf', 'config',
+        'dockerfile', 'makefile', 'gitignore', 'gitattributes',
+        'env', 'properties', 'toml',
+      ])
+      const lowerPath = filePath.toLowerCase()
+      const baseName = lowerPath.split(/[/\\]/).pop() || ''
+      if (DOCUMENT_EXTENSIONS.has(baseName)) return true
+      const ext = lowerPath.split('.').pop() || ''
+      return DOCUMENT_EXTENSIONS.has(ext)
+    }
+
+    if (!isDocumentFile(activeFile.path)) return
+
+    // 文件内容被外部更新（非用户手动编辑）时滚动到底部
+    if (!activeFile.isDirty) {
+      const editor = editorRef.current
+      const model = editor.getModel()
+      if (!model) return
+
+      const lineCount = model.getLineCount()
+      if (lineCount > 0) {
+        // 使用 requestAnimationFrame 确保在内容渲染完成后滚动
+        requestAnimationFrame(() => {
+          editor.revealLine(lineCount, 1) // 1 = monaco.editor.ScrollType.Smooth
+          editor.setPosition({ lineNumber: lineCount, column: model.getLineMaxColumn(lineCount) })
+        })
+      }
+    }
+  }, [activeFile?.content, activeFile?.path, activeFile?.isDirty, isPreviewDocument])
+
 
   const handleBeforeMount: BeforeMount = (monacoInstance) => {
     const { currentTheme } = useStore.getState() as { currentTheme: ThemeName }

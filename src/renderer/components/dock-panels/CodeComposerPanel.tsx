@@ -20,7 +20,7 @@ import {
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { getFileName } from '@shared/toolkit/pathHelper'
-import DiffViewer from '../code-editor/CodeDiffViewer'
+import DiffViewer from '../workspace-editor/CodeDiffViewer'
 import { t } from '@renderer/i18n'
 import { composerService, FileChange } from '@intelligence/runtime/composerEngine'
 import { getEditorConfig } from '@shared/configuration/preferenceSync'

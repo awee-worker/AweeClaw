@@ -87,7 +87,7 @@ interface ScenarioCommitConfig {
 }
 
 const SCENARIO_COMMIT_CONFIGS: Record<string, ScenarioCommitConfig> = {
-    'code-editor': {
+    'workspace-editor': {
         commitPrefix: '',
         requireCoAuthor: false,
         auditTrail: false,
@@ -114,8 +114,8 @@ const SCENARIO_COMMIT_CONFIGS: Record<string, ScenarioCommitConfig> = {
 }
 
 function getScenarioCommitConfig(): ScenarioCommitConfig {
-    const scenarioId = useStore.getState().activeScenarioId ?? 'code-editor'
-    return SCENARIO_COMMIT_CONFIGS[scenarioId] ?? SCENARIO_COMMIT_CONFIGS['code-editor']
+    const scenarioId = useStore.getState().activeScenarioId ?? 'workspace-editor'
+    return SCENARIO_COMMIT_CONFIGS[scenarioId] ?? SCENARIO_COMMIT_CONFIGS['workspace-editor']
 }
 
 function formatCommitMessage(message: string): string {

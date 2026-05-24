@@ -53,7 +53,7 @@ export interface NodeExecutionRecord {
 
 export type NodeDisplayStatus = 'pending' | 'running' | 'completed' | 'failed' | 'waiting'
 
-export const NODE_ICONS: Record<WorkflowNodeTypeV2, React.ComponentType<{ className?: string }>> = {
+export const NODE_ICONS: Partial<Record<WorkflowNodeTypeV2, React.ComponentType<{ className?: string }>>> = {
   agent_task: Bot,
   agent_group: Users,
   sub_workflow: Workflow,

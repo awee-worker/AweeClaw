@@ -40,7 +40,7 @@ interface ScenarioIndexConfig {
 }
 
 const SCENARIO_INDEX_CONFIGS: Record<string, ScenarioIndexConfig> = {
-  'code-editor': {
+  'workspace-editor': {
     fileExtensions: [],
     excludePatterns: ['node_modules', '.git', 'dist', 'build'],
     maxConcurrency: 4,
@@ -75,8 +75,8 @@ const SCENARIO_INDEX_CONFIGS: Record<string, ScenarioIndexConfig> = {
 }
 
 function getScenarioIndexConfig(): ScenarioIndexConfig {
-  const scenarioId = useStore.getState().activeScenarioId ?? 'code-editor'
-  return SCENARIO_INDEX_CONFIGS[scenarioId] ?? SCENARIO_INDEX_CONFIGS['code-editor']
+  const scenarioId = useStore.getState().activeScenarioId ?? 'workspace-editor'
+  return SCENARIO_INDEX_CONFIGS[scenarioId] ?? SCENARIO_INDEX_CONFIGS['workspace-editor']
 }
 
 type ProgressCallback = (progress: IndexProgress) => void

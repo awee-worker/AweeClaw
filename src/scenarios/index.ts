@@ -8,7 +8,7 @@
  * - src/scenarios/         具体场景目录（每个场景一个文件夹）
  *   - _template/           场景开发模板
  *   - general-assistant/   通用助手
- *   - code-editor/         代码编辑器
+ *   - workspace-editor/         代码编辑器
  *   - data-analyst/        数据分析师
  *   - creative-writer/     创意写作
  *   - store-diagnosis/     门店诊断

@@ -10,10 +10,10 @@ interface SecuritySettingsProps {
     language: Language
     securitySettings: SecuritySettingsState
     setSecuritySettings: Dispatch<SetStateAction<SecuritySettingsState>>
-    isCodeEditor?: boolean
+    isWorkspaceEditor?: boolean
 }
 
-export function SecurityPolicyPanel({ language, securitySettings, setSecuritySettings, isCodeEditor = true }: SecuritySettingsProps) {
+export function SecurityPolicyPanel({ language, securitySettings, setSecuritySettings, isWorkspaceEditor = true }: SecuritySettingsProps) {
     const [newShellCmd, setNewShellCmd] = useState('')
     const [newGitCmd, setNewGitCmd] = useState('')
 
@@ -140,7 +140,7 @@ export function SecurityPolicyPanel({ language, securitySettings, setSecuritySet
                 </div>
             </section>
 
-            {isCodeEditor && (
+            {isWorkspaceEditor && (
             <section className="space-y-4 p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border shadow-sm">
                 <h4 className="text-[12px] font-bold text-text-muted uppercase tracking-widest opacity-60">
                     {language === 'zh' ? 'Git 子命令白名单' : 'Git Subcommand Whitelist'}

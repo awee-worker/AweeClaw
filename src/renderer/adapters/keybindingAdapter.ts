@@ -4,7 +4,7 @@
  * 与 Adnify 的 KeybindingService 差异化：
  * - 类名重命名：KeybindingService → ScenarioKeybindingEngine
  * - 函数名重命名：formatShortcut → renderPlatformShortcut, formatShortcutKeys → splitPlatformKeys, modifiersMatch → checkModifierState
- * - 新增场景快捷键配置系统：按场景（code-editor/legal/medical/education）提供不同快捷键映射
+ * - 新增场景快捷键配置系统：按场景（workspace-editor/legal/medical/education）提供不同快捷键映射
  * - 新增场景命令注册：场景可注册专属命令和快捷键
  * - 新增快捷键冲突检测：跨场景快捷键冲突自动提醒
  * - 新增场景切换时快捷键上下文自动切换
@@ -46,8 +46,8 @@ interface KeybindingConflict {
 }
 
 const SCENARIO_PROFILES: Record<string, ScenarioKeybindingProfile> = {
-    'code-editor': {
-        scenarioId: 'code-editor',
+    'workspace-editor': {
+        scenarioId: 'workspace-editor',
         overrides: new Map([
             ['editor.format', 'Shift+Alt+F'],
             ['editor.goToDefinition', 'F12'],

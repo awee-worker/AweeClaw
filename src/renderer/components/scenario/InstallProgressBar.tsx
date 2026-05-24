@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Download, CheckCircle, Loader2, AlertCircle, Shield, FileArchive, Settings } from 'lucide-react'
+import { Download, CheckCircle, AlertCircle, Shield, FileArchive, Settings } from 'lucide-react'
 import { useStore } from '@store'
 import { getAPI } from '@services/electronBridge'
 
@@ -58,16 +58,16 @@ export function InstallProgressBar({
   const language = useStore(s => s.language)
   const [progress, setProgress] = useState<InstallProgress | null>(null)
   const [completed, setCompleted] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error] = useState<string | null>(null)
 
   const t = (zh: string, en: string) => (language === 'zh' ? zh : en)
   const displayName = language === 'zh' ? scenarioNameZh : scenarioName
 
   useEffect(() => {
     const api = getAPI()
-    const unsub = api.onScenarioInstallProgress?.((data: InstallProgress) => {
+    const unsub = api.onScenarioInstallProgress?.((data: { scenarioId: string; phase: string; bytesDownloaded: number; bytesTotal: number; percent: number }) => {
       if (data.scenarioId === scenarioId) {
-        setProgress(data)
+        setProgress(data as InstallProgress)
       }
     })
 

@@ -7,7 +7,7 @@ import {
   FileX,
 } from 'lucide-react'
 import { OverlayDialog } from '../ui/OverlayDialog'
-import { DiffPreview, type DiffView } from '../code-editor/DiffViewerPanel'
+import { DiffPreview, type DiffView } from '../workspace-editor/DiffViewerPanel'
 import { getFileName, getDirname } from '@shared/toolkit/pathHelper'
 import type { PendingChange } from '@intelligence/providerTypes'
 import { useStore } from '@store'

@@ -3,7 +3,7 @@
  * 完整的 Agent 高级配置面板
  */
 
-import { useState, useCallback } from 'react'
+import { useState } from 'react'
 import { getPromptTemplates } from '@intelligence/prompt-engine/promptLibrary'
 import { DEFAULT_AGENT_CONFIG } from '@configuration/agentProfile'
 import { ActionButton, TextField, DropdownSelector, ToggleSwitch } from '@components/ui'

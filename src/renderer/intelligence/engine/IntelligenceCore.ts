@@ -42,7 +42,7 @@ import { agentExecutor } from '../application/AgentExecutor'
 import type { ExecutionConfig } from '../application/AgentExecutor'
 import { translateAgentText } from '@intelligence/utils/intelligenceTextUtils'
 import { agentRuntime } from './AgentRuntime'
-import type { RunLoopFn } from './AgentRuntime'
+// import type { RunLoopFn } from './AgentRuntime'
 
 import { buildAgentSystemPrompt } from '../prompt-engine/PromptComposer'
 import { taskComplexityDetector } from '../capabilities/planning/TaskComplexityDetector'
@@ -501,7 +501,7 @@ export class AgentClass {
     workspacePath: string | null,
     threadId: string,
     assistantId: string,
-    requestId: string,
+    _requestId: string,
     complexityResult: import('../capabilities/planning/TaskComplexityDetector').ComplexityScore,
     multiAgentConfig: { enabled: boolean; threshold: number; requireConsensus: boolean; maxAgents: number }
   ): Promise<void> {

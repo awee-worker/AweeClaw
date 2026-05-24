@@ -33,7 +33,7 @@ import { TextField, FloatingMenu, ContextMenuItem } from '../ui'
 import { directoryCacheService } from '@services/dirCacheAdapter'
 import { explorerClipboardService, type ExplorerClipboardItem } from '@services/clipboardService'
 import { FileIcon } from '../foundation/FileTypeIcon'
-import { getFileType } from '../code-editor/FilePreviewPanel'
+import { getFileType } from '../workspace-editor/FilePreviewPanel'
 import type { TreeRefreshOptions } from '../explorer/panels/FileExplorer'
 
 // 每个节点的高度（像素）
@@ -813,7 +813,7 @@ export const VirtualFileTree = memo(function VirtualFileTree({
   // 构建右键菜单项
   const getContextMenuItems = useCallback((node: FlattenedNode): ContextMenuItem[] => {
     const contextMenuLanguage = 'zh'
-    const isCodeEditor = activeScenarioId === 'code-editor'
+    const isWorkspaceEditor = activeScenarioId === 'workspace-editor'
 
     if (node.item.isDirectory) {
       return [
@@ -823,7 +823,7 @@ export const VirtualFileTree = memo(function VirtualFileTree({
         { id: 'import', label: contextMenuLanguage === 'zh' ? '导入...' : 'Import...', icon: Download, onClick: () => handleImportIntoFolder(node) },
         { id: 'export', label: contextMenuLanguage === 'zh' ? '导出...' : 'Export...', icon: Upload, onClick: () => handleExportFromNode(node) },
         { id: 'share', label: contextMenuLanguage === 'zh' ? '分享...' : 'Share...', icon: Share2, onClick: () => handleShareItem(node) },
-        ...(isCodeEditor
+        ...(isWorkspaceEditor
           ? [
               { id: 'sep2', label: '', separator: true } as ContextMenuItem,
               { id: 'openTerminal', label: t('openIntegratedTerminalHere', contextMenuLanguage) || '在此处打开集成终端', icon: Terminal, onClick: () => handleOpenTerminalHere(node) } as ContextMenuItem,
@@ -847,7 +847,7 @@ export const VirtualFileTree = memo(function VirtualFileTree({
     const items: ContextMenuItem[] = [
       { id: 'export', label: contextMenuLanguage === 'zh' ? '导出...' : 'Export...', icon: Upload, onClick: () => handleExportFromNode(node) },
       { id: 'share', label: contextMenuLanguage === 'zh' ? '分享...' : 'Share...', icon: Share2, onClick: () => handleShareItem(node) },
-      ...(isCodeEditor
+      ...(isWorkspaceEditor
         ? [
             { id: 'sep1', label: '', separator: true } as ContextMenuItem,
             { id: 'openTerminal', label: t('openIntegratedTerminalHere', contextMenuLanguage) || '在此处打开集成终端', icon: Terminal, onClick: () => handleOpenTerminalHere(node) } as ContextMenuItem,

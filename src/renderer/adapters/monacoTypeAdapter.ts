@@ -41,7 +41,7 @@ interface ScenarioTypeConfig {
 }
 
 const SCENARIO_TYPE_CONFIGS: Record<string, ScenarioTypeConfig> = {
-    'code-editor': {
+    'workspace-editor': {
         extraTypeDeclarations: {},
         fileExtensions: ['ts', 'tsx', 'js', 'jsx'],
         maxFiles: 500,
@@ -165,8 +165,8 @@ export function bootstrapLanguageHost(
 }
 
 function injectScenarioTypeDeclarations(): void {
-    const scenarioId = useStore.getState().activeScenarioId ?? 'code-editor'
-    const config = SCENARIO_TYPE_CONFIGS[scenarioId] ?? SCENARIO_TYPE_CONFIGS['code-editor']
+    const scenarioId = useStore.getState().activeScenarioId ?? 'workspace-editor'
+    const config = SCENARIO_TYPE_CONFIGS[scenarioId] ?? SCENARIO_TYPE_CONFIGS['workspace-editor']
 
     for (const [fileName, content] of Object.entries(config.extraTypeDeclarations)) {
         try {
@@ -239,8 +239,8 @@ async function collectSourceFiles(
     maxDepth?: number,
     currentDepth = 0
 ): Promise<string[]> {
-    const scenarioId = useStore.getState().activeScenarioId ?? 'code-editor'
-    const config = SCENARIO_TYPE_CONFIGS[scenarioId] ?? SCENARIO_TYPE_CONFIGS['code-editor']
+    const scenarioId = useStore.getState().activeScenarioId ?? 'workspace-editor'
+    const config = SCENARIO_TYPE_CONFIGS[scenarioId] ?? SCENARIO_TYPE_CONFIGS['workspace-editor']
     const editorConfig = getEditorConfig()
     const agentConfig = getAgentConfig()
     const actualMaxDepth = maxDepth ?? (config.scanDepth || editorConfig.performance.maxFileTreeDepth)
@@ -277,8 +277,8 @@ export async function indexWorkspaceSources(workspacePath: string): Promise<void
     if (!monacoInstance || !workspacePath) return
 
     try {
-        const scenarioId = useStore.getState().activeScenarioId ?? 'code-editor'
-        const config = SCENARIO_TYPE_CONFIGS[scenarioId] ?? SCENARIO_TYPE_CONFIGS['code-editor']
+        const scenarioId = useStore.getState().activeScenarioId ?? 'workspace-editor'
+        const config = SCENARIO_TYPE_CONFIGS[scenarioId] ?? SCENARIO_TYPE_CONFIGS['workspace-editor']
 
         logger.system.info(`[ScenarioLanguageHost] Indexing workspace sources (scenario: ${scenarioId})...`)
 

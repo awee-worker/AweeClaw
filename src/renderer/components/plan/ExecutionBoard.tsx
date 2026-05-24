@@ -23,7 +23,7 @@ import {
     Zap,
 } from 'lucide-react'
 import { ActionButton, DropdownSelector } from '@/renderer/components/ui'
-import { MarkdownPreview } from '@components/code-editor/FilePreviewPanel'
+import { MarkdownPreview } from '@components/workspace-editor/FilePreviewPanel'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { BRAND } from '@shared/brand'
 import { useStore } from '@store'

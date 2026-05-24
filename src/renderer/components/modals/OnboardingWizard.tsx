@@ -99,10 +99,11 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
         webSearchConfig: defaultWebSearchConfig,
         mcpConfig: defaultMcpConfig,
         promptTemplateId: 'default',
-        activeScenarioId: 'code-editor',
+        activeScenarioId: 'workspace-editor',
         enableFileLogging: false,
         scenarioPreferences: DEFAULT_SCENARIO_PREFERENCES,
-      })
+        browserMode: 'normal',
+      } as any)
 
       // Double check store update
       useStore.getState().set('onboardingCompleted', true)
