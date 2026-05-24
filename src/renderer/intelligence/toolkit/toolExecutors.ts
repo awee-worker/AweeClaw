@@ -28,6 +28,7 @@ import { composerService } from '../runtime/composerEngine'
 import { agentStorePlanBridge, agentStoreTodoBridge } from '../state/intelligenceBridge'
 import { useAgentStore } from '../state/IntelligenceStore'
 import { buildFileChangeDescriptor } from '@intelligence/utils/fileMutationHelper'
+import { EventBus } from '../engine/EventDispatcher'
 import { isLongRunningCommand } from './commandExecutor'
 import { internalWriteTracker } from '@services/writeTracker'
 import { toolRegistry } from './toolRegistry'
@@ -874,6 +875,10 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
 
     async edit_file(args, ctx) {
         const path = resolvePath(args.path, ctx.workspacePath)
+
+        // 发送文件正在编写事件，触发自动打开预览
+        EventBus.emit({ type: 'file:writing', filePath: path, workspacePath: ctx.workspacePath || '' })
+
         const originalContent = await api.file.read(path)
         if (originalContent === null || originalContent === undefined) return { success: false, result: '', error: `File not found: ${path}. Use write_file to create new files.` }
 
@@ -1057,6 +1062,10 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                     ...(allWarnings.length > 0 && { warnings: allWarnings }),
                 }
             )
+
+            // 发送文件编写完成事件
+            EventBus.emit({ type: 'file:written', filePath: path, workspacePath: ctx.workspacePath || '', content: newContent })
+
             return {
                 success: true,
                 result: `File updated successfully (batch mode: ${edits.length} edits applied)${warningsSuffix}`,
@@ -1159,6 +1168,10 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                     ...(warnings.length > 0 && { warnings }),
                 }
             )
+
+            // 发送文件编写完成事件
+            EventBus.emit({ type: 'file:written', filePath: path, workspacePath: ctx.workspacePath || '', content: newContent })
+
             return {
                 success: true,
                 result: `File updated successfully (line mode)${warningsSuffix}`,
@@ -1246,6 +1259,10 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                     matchStrategy: result.strategy,
                 }
             )
+
+            // 发送文件编写完成事件
+            EventBus.emit({ type: 'file:written', filePath: path, workspacePath: ctx.workspacePath || '', content: newContent })
+
             return {
                 success: true,
                 result: `File updated successfully${strategyInfo}`,
@@ -1257,6 +1274,9 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
     async write_file(args, ctx) {
         const path = resolvePath(args.path, ctx.workspacePath)
         const content = args.content as string
+
+        // 发送文件正在编写事件，触发自动打开预览
+        EventBus.emit({ type: 'file:writing', filePath: path, workspacePath: ctx.workspacePath || '' })
 
         const parentConflict = await checkParentPathNotFile(path)
         if (parentConflict) {
@@ -1309,6 +1329,9 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             ...getWritePreviewFlags(originalContent, content),
             toolCallId: ctx.toolCallId
         })
+
+        // 发送文件编写完成事件
+        EventBus.emit({ type: 'file:written', filePath: path, workspacePath: ctx.workspacePath || '', content })
         return {
             success: true,
             result: 'File written successfully',
@@ -1322,6 +1345,11 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
     async create_file_or_folder(args, ctx) {
         const path = resolvePath(args.path, ctx.workspacePath)
         const isFolder = path.endsWith('/') || path.endsWith('\\')
+
+        // 发送文件正在编写事件（仅文件），触发自动打开预览
+        if (!isFolder) {
+            EventBus.emit({ type: 'file:writing', filePath: path, workspacePath: ctx.workspacePath || '' })
+        }
 
         if (isFolder) {
             const parentConflict = await checkParentPathNotFile(path)
@@ -1375,6 +1403,9 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         }
 
         if (!guardedWrite.success) return guardedWrite.result
+
+        // 发送文件编写完成事件
+        EventBus.emit({ type: 'file:written', filePath: path, workspacePath: ctx.workspacePath || '', content })
 
         return {
             success: true,

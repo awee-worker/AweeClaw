@@ -14,6 +14,7 @@
 
 import { logger } from '@shared/toolkit/LogEngine'
 import { ipcMain, BrowserWindow } from 'electron'
+import Store from 'electron-store'
 import { LLMService, LLMError } from '../modules/ai-provider'
 import type { TokenUsage as LLMTokenUsage } from '../modules/ai-provider/providerTypes'
 import { BRAND } from '@shared/brand'
@@ -428,7 +429,7 @@ function runOnError(params: any, error: any): void {
 }
 
 // ============================================
-// [AweeClaw] Token 预算管理
+// [AweeClaw] Token 预算管理（持久化版）
 // ============================================
 
 interface TokenBudget {
@@ -438,21 +439,79 @@ interface TokenBudget {
   resetAt: number
 }
 
+interface TokenBudgetStoreSchema {
+  budgets: Record<string, TokenBudget>
+  version: number
+}
+
+const TOKEN_BUDGET_STORE_VERSION = 1
+const TOKEN_BUDGET_STORE_KEY = 'tokenBudgets'
+const DEFAULT_DAILY_BUDGET = 1_000_000
+const BUDGET_RESET_INTERVAL_MS = 24 * 60 * 60 * 1000
+
+// 使用 electron-store 持久化 Token 预算
+const tokenBudgetStore = new Store<TokenBudgetStoreSchema>({ name: 'token-budget' })
+
+// 内存缓存，避免频繁读写磁盘
 const tokenBudgets = new Map<number, TokenBudget>()
+let storeDirty = false
+
+/**
+ * 从持久化存储加载预算数据
+ */
+function loadBudgetsFromStore(): void {
+  try {
+    const data = tokenBudgetStore.get(TOKEN_BUDGET_STORE_KEY) as TokenBudgetStoreSchema | undefined
+    if (data?.version === TOKEN_BUDGET_STORE_VERSION && data.budgets) {
+      Object.entries(data.budgets).forEach(([windowId, budget]) => {
+        tokenBudgets.set(Number(windowId), budget)
+      })
+      logger.ipc.info(`[TokenBudget] Loaded ${Object.keys(data.budgets).length} budgets from store`)
+    }
+  } catch (e) {
+    logger.ipc.warn('[TokenBudget] Failed to load from store:', e)
+  }
+}
+
+/**
+ * 保存预算数据到持久化存储（防抖写入）
+ */
+function saveBudgetsToStore(): void {
+  if (!storeDirty) return
+  try {
+    const budgets: Record<string, TokenBudget> = {}
+    tokenBudgets.forEach((budget, windowId) => {
+      budgets[String(windowId)] = budget
+    })
+    tokenBudgetStore.set(TOKEN_BUDGET_STORE_KEY, {
+      budgets,
+      version: TOKEN_BUDGET_STORE_VERSION,
+    })
+    storeDirty = false
+    logger.ipc.debug(`[TokenBudget] Saved ${tokenBudgets.size} budgets to store`)
+  } catch (e) {
+    logger.ipc.error('[TokenBudget] Failed to save to store:', e)
+  }
+}
+
+// 每 30 秒自动保存一次
+const saveInterval = setInterval(saveBudgetsToStore, 30000)
 
 function getTokenBudget(windowId: number): TokenBudget {
   if (!tokenBudgets.has(windowId)) {
     tokenBudgets.set(windowId, {
       windowId,
-      totalBudget: 1_000_000,
+      totalBudget: DEFAULT_DAILY_BUDGET,
       usedTokens: 0,
-      resetAt: Date.now() + 24 * 60 * 60 * 1000,
+      resetAt: Date.now() + BUDGET_RESET_INTERVAL_MS,
     })
+    storeDirty = true
   }
   const budget = tokenBudgets.get(windowId)!
   if (Date.now() > budget.resetAt) {
     budget.usedTokens = 0
-    budget.resetAt = Date.now() + 24 * 60 * 60 * 1000
+    budget.resetAt = Date.now() + BUDGET_RESET_INTERVAL_MS
+    storeDirty = true
   }
   return budget
 }
@@ -465,7 +524,28 @@ function checkTokenBudget(windowId: number, estimatedTokens: number): boolean {
 function recordTokenUsage(windowId: number, tokens: number): void {
   const budget = getTokenBudget(windowId)
   budget.usedTokens += tokens
+  storeDirty = true
 }
+
+/**
+ * 清理已关闭窗口的预算数据
+ */
+function cleanupClosedWindowBudgets(activeWindowIds: Set<number>): void {
+  let cleaned = 0
+  tokenBudgets.forEach((_, windowId) => {
+    if (!activeWindowIds.has(windowId)) {
+      tokenBudgets.delete(windowId)
+      cleaned++
+    }
+  })
+  if (cleaned > 0) {
+    storeDirty = true
+    logger.ipc.info(`[TokenBudget] Cleaned up ${cleaned} closed window budgets`)
+  }
+}
+
+// 启动时加载持久化数据
+loadBudgetsFromStore()
 
 // ============================================
 // [AweeClaw] 场景感知路由

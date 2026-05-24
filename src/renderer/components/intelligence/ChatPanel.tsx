@@ -417,6 +417,65 @@ export default function ChatPanel() {
     }
   }, [isAwaitingApproval])
 
+  // 监听 AI 文件编写事件，自动打开文件实时预览
+  useEffect(() => {
+    const unsubWriting = EventBus.on('file:writing', async (event) => {
+      if (!event.filePath || !workspacePath) return
+      // event.filePath 已经是绝对路径（toolExecutors/streamProcessor 中已 resolve）
+      const fullPath = event.filePath
+      // 如果文件已经在打开列表中且是 active 的，不需要重复激活
+      if (activeFilePath === fullPath) return
+      // 读取文件当前内容并打开
+      const content = await api.file.read(fullPath)
+      if (content !== null) {
+        openFile(fullPath, content)
+        setActiveFile(fullPath)
+      }
+    })
+
+    const unsubStreamContent = EventBus.on('file:stream_content', async (event) => {
+      if (!event.filePath || !workspacePath) return
+      // event.filePath 已经是绝对路径（streamProcessor 中已 resolve）
+      const fullPath = event.filePath
+
+      // 检查文件是否已打开
+      const { openFiles } = useStore.getState()
+      const isOpen = openFiles.some(f => f.path === fullPath)
+
+      if (!isOpen) {
+        // 首次打开文件进行预览
+        openFile(fullPath, event.content)
+        setActiveFile(fullPath)
+      } else {
+        // 实时更新已打开文件的内容（打字机效果）
+        const store = useStore.getState()
+        const file = openFiles.find(f => f.path === fullPath)
+        if (file && !file.isDirty) {
+          // 只有在用户未手动编辑时才自动更新
+          store.updateFileContent(fullPath, event.content)
+          if (activeFilePath !== fullPath) {
+            setActiveFile(fullPath)
+          }
+        }
+      }
+    })
+
+    const unsubWritten = EventBus.on('file:written', async (event) => {
+      if (!event.filePath || !workspacePath) return
+      // event.filePath 已经是绝对路径（toolExecutors 中已 resolve）
+      const fullPath = event.filePath
+      // 更新已打开文件的内容
+      openFile(fullPath, event.content)
+      setActiveFile(fullPath)
+    })
+
+    return () => {
+      unsubWriting()
+      unsubStreamContent()
+      unsubWritten()
+    }
+  }, [workspacePath, openFile, setActiveFile, activeFilePath])
+
 
   // 处理显示 diff
   const handleShowDiff = useCallback(async (filePath: string, oldContent: string, newContent: string) => {

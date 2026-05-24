@@ -15,6 +15,7 @@ import { registerIndexingHandlers } from './indexOrchestrator' // 索引
 import { registerLspHandlers } from './languageServerBridge' // LSP
 import { registerHttpHandlers } from './httpTransport' // HTTP
 import { registerMcpHandlers, cleanupMcpHandlers } from './toolProtocolBridge' // MCP
+import { registerMcpEnhancedHandlers } from './mcpEnhancedBridge' // MCP 增强
 import { registerResourcesHandlers } from './assetManager' // 资源
 import { registerDebugHandlers } from './sessionInspector' // 调试
 import { registerHealthCheckHandlers } from './providerMonitor' // 健康检查
@@ -56,16 +57,39 @@ export interface IPCContext {
 }
 
 /**
+ * IPC Handler 注册状态追踪
+ * 防止重复注册导致的不可预期行为
+ */
+const registeredHandlers = new Set<string>()
+
+function registerOnce(name: string, registerFn: () => void): void {
+  if (registeredHandlers.has(name)) {
+    logger.ipc.warn(`[IPC] Handler "${name}" already registered, skipping`)
+    return
+  }
+  registerFn()
+  registeredHandlers.add(name)
+}
+
+export function isHandlerRegistered(name: string): boolean {
+  return registeredHandlers.has(name)
+}
+
+export function clearHandlerRegistry(): void {
+  registeredHandlers.clear()
+}
+
+/**
  * 注册所有安全的 IPC handlers
  */
 export function registerAllHandlers(context: IPCContext) {
   const { getMainWindow, createWindow, resolveStore, preferencesStore, workspaceMetaStore, bootstrapStore } = context
 
   // 窗口控制
-  registerWindowHandlers(createWindow)
+  registerOnce('window', () => registerWindowHandlers(createWindow))
 
   // 文件操作（安全版）
-  registerSecureFileHandlers(getMainWindow, workspaceMetaStore, (event) => {
+  registerOnce('secure-file', () => registerSecureFileHandlers(getMainWindow, workspaceMetaStore, (event) => {
     // 优先使用请求来源窗口的工作区（支持多窗口隔离）
     if (event && context.getWindowWorkspace) {
       const windowId = event.sender.id
@@ -79,17 +103,17 @@ export function registerAllHandlers(context: IPCContext) {
   }, {
     findWindowByWorkspace: context.findWindowByWorkspace,
     setWindowWorkspace: context.setWindowWorkspace,
-  })
+  }))
 
   // 设置（传入 resolveStore 和各 store 引用）
-  registerSettingsHandlers(resolveStore, preferencesStore, bootstrapStore, {
+  registerOnce('settings', () => registerSettingsHandlers(resolveStore, preferencesStore, bootstrapStore, {
     securityManager,
     updateWhitelist,
     getWhitelist
-  })
+  }))
 
   // 终端（安全版）- 传入窗口工作区获取函数实现多窗口隔离
-  registerSecureTerminalHandlers(getMainWindow, (event) => {
+  registerOnce('secure-terminal', () => registerSecureTerminalHandlers(getMainWindow, (event) => {
     // 优先使用请求来源窗口的工作区（支持多窗口隔离）
     if (event && context.getWindowWorkspace) {
       const windowId = event.sender.id
@@ -100,63 +124,66 @@ export function registerAllHandlers(context: IPCContext) {
     }
     // 回退到全局存储
     return workspaceMetaStore.get('lastWorkspaceSession') as { roots: string[] } | null
-  }, context.getWindowWorkspace)
+  }, context.getWindowWorkspace))
 
   // 搜索
-  registerSearchHandlers()
+  registerOnce('search', () => registerSearchHandlers())
 
   // LLM
-  registerLLMHandlers(getMainWindow)
+  registerOnce('llm', () => registerLLMHandlers(getMainWindow))
 
   // 索引 - 传入 workspaceMetaStore 以读取保存的 embedding 配置
-  registerIndexingHandlers(getMainWindow, workspaceMetaStore)
+  registerOnce('indexing', () => registerIndexingHandlers(getMainWindow, workspaceMetaStore))
 
   // LSP 语言服务
-  registerLspHandlers(preferencesStore)
+  registerOnce('lsp', () => registerLspHandlers(preferencesStore))
 
   // HTTP 请求（用于 web_search / read_url）
-  registerHttpHandlers()
+  registerOnce('http', () => registerHttpHandlers())
 
   // MCP 服务
-  registerMcpHandlers(getMainWindow)
+  registerOnce('mcp', () => registerMcpHandlers(getMainWindow))
+
+  // MCP 增强服务
+  registerOnce('mcp-enhanced', () => registerMcpEnhancedHandlers(getMainWindow))
 
   // 静态资源
-  registerResourcesHandlers()
+  registerOnce('resources', () => registerResourcesHandlers())
 
   // 调试服务
-  registerDebugHandlers()
+  registerOnce('debug', () => registerDebugHandlers())
 
   // 健康检查
-  registerHealthCheckHandlers()
+  registerOnce('health-check', () => registerHealthCheckHandlers())
 
   // 远程 Shell / SFTP
-  registerRemoteExecutionHandlers()
+  registerOnce('remote-execution', () => registerRemoteExecutionHandlers())
 
   // Skills
-  registerSkillsHandlers()
+  registerOnce('skills', () => registerSkillsHandlers())
 
   // Channel 多渠道
-  registerChannelHandlers(getMainWindow, resolveStore('config'))
+  registerOnce('channel', () => registerChannelHandlers(getMainWindow, resolveStore('config')))
 
   // Python 环境
-  registerPythonHandlers()
+  registerOnce('python', () => registerPythonHandlers())
 
   // 数据服务
-  registerDataIpcHandlers()
+  registerOnce('data', () => registerDataIpcHandlers())
 
   // 场景数据库
-  registerScenarioDbIpcHandlers()
+  registerOnce('scenario-db', () => registerScenarioDbIpcHandlers())
 
   // 场景安装
-  registerScenarioInstallIpcHandlers(getMainWindow)
+  registerOnce('scenario-install', () => registerScenarioInstallIpcHandlers(getMainWindow))
 
   // 场景市场
-  registerScenarioMarketplaceHandlers()
+  registerOnce('scenario-marketplace', () => registerScenarioMarketplaceHandlers())
 
   // 审计日志
-  registerAuditHandlers()
+  registerOnce('audit', () => registerAuditHandlers())
 
-  logger.ipc.info('[Security] 所有安全IPC处理器已注册')
+  logger.ipc.info(`[Security] 所有安全IPC处理器已注册 (${registeredHandlers.size} 个)`)
 }
 
 /**

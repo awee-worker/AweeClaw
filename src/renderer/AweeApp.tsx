@@ -47,6 +47,7 @@ const AppIdentityPanel = lazy(() => import('@components/modals/AppIdentityPanel'
 const WelcomePage = lazy(() => import('@components/onboarding/WelcomePage'))
 const UserProfilePage = lazy(() => import('@components/user/UserProfilePage'))
 const BillingCenterPage = lazy(() => import('@components/user/BillingCenterPage'))
+const SessionHistoryPage = lazy(() => import('@components/user/SessionHistoryPage'))
 
 initializeScenarios()
 registerBuiltinScenarios()
@@ -79,7 +80,7 @@ function AppContent() {
     showCommandPalette, setShowCommandPalette,
     terminalVisible, debugVisible, chatVisible,
     activeScenarioId, openFiles, activeFilePath, language,
-    showSettingsPage, showWelcomePage, showUserProfilePage, showBillingCenterPage,
+    showSettingsPage, showWelcomePage, showUserProfilePage, showBillingCenterPage, showSessionHistoryPage,
   } = useStore(useShallow((state) => ({
     workspace: state.workspace,
     activeSidePanel: state.activeSidePanel,
@@ -106,6 +107,7 @@ function AppContent() {
     showWelcomePage: state.showWelcomePage,
     showUserProfilePage: state.showUserProfilePage,
     showBillingCenterPage: state.showBillingCenterPage,
+    showSessionHistoryPage: state.showSessionHistoryPage,
   })))
 
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false)
@@ -306,6 +308,14 @@ function AppContent() {
                               </Suspense>
                             </ErrorBoundary>
                           </div>
+                        ) : showSessionHistoryPage ? (
+                          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+                            <ErrorBoundary>
+                              <Suspense fallback={<InlineSettingsSkeleton />}>
+                                <SessionHistoryPage />
+                              </Suspense>
+                            </ErrorBoundary>
+                          </div>
                         ) : openFiles.length > 0 && activeFilePath ? (
                           <>
                             <div className="flex-1 min-h-0 flex flex-col relative overflow-hidden min-w-0">
@@ -412,6 +422,12 @@ function AppContent() {
                             <ErrorBoundary>
                               <Suspense fallback={<InlineSettingsSkeleton />}>
                                 <BillingCenterPage />
+                              </Suspense>
+                            </ErrorBoundary>
+                          ) : showSessionHistoryPage ? (
+                            <ErrorBoundary>
+                              <Suspense fallback={<InlineSettingsSkeleton />}>
+                                <SessionHistoryPage />
                               </Suspense>
                             </ErrorBoundary>
                           ) : layoutConfig.showEditor ? (

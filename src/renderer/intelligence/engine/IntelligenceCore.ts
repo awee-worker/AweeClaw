@@ -41,11 +41,13 @@ import type { LLMConfig, ExecutionContext } from '@intelligence/providerTypes'
 import { agentExecutor } from '../application/AgentExecutor'
 import type { ExecutionConfig } from '../application/AgentExecutor'
 import { translateAgentText } from '@intelligence/utils/intelligenceTextUtils'
-
-// 动态导入 runLoop 避免循环依赖
-const importRunLoop = () => import('./loopDetector').then(m => m.runLoop)
+import { agentRuntime } from './AgentRuntime'
+import type { RunLoopFn } from './AgentRuntime'
 
 import { buildAgentSystemPrompt } from '../prompt-engine/PromptComposer'
+import { taskComplexityDetector } from '../capabilities/planning/TaskComplexityDetector'
+import { multiAgentOrchestrator, agentRegistry, DEFAULT_AGENT_PROFILES, loadCustomAgentProfiles } from './MultiAgentOrchestrator'
+import { useStore } from '@renderer/state'
 
 export class AgentClass {
   /** 运行中的任务（按线程追踪） */
@@ -55,6 +57,9 @@ export class AgentClass {
     requestId?: string
     planTaskId?: string
   }> = new Map()
+
+  /** 多 Agent 协作是否已初始化 */
+  private multiAgentInitialized = false
 
   // ===== 公共 API =====
 
@@ -162,11 +167,56 @@ export class AgentClass {
         userMessage: userMsgText,
       })
 
+      // 提前提取，避免后续重复声明
+      const userQueryText = userMsgText
+
       // 将 auto 选中的 skills 追加到 assistant message（排除已 @mention 的）
       const mentionedSet = new Set(mentionedSkills)
       const autoSelectedSkills = activeSkills.filter(s => !mentionedSet.has(s.name))
       if (autoSelectedSkills.length > 0) {
         store.addSkillsToMessage(assistantId, autoSelectedSkills, threadId)
+      }
+
+      // ===== 多 Agent 协作路由 =====
+      // 检测任务复杂度，决定是否启用多 Agent 协作
+      const complexityResult = taskComplexityDetector.analyze(userQueryText)
+
+      // 读取用户多 Agent 配置
+      const globalStore = useStore.getState()
+      const multiAgentConfig = globalStore.agentConfig.multiAgent ?? { enabled: true, threshold: 50, requireConsensus: true, maxAgents: 5 }
+
+      if (
+        multiAgentConfig.enabled &&
+        complexityResult.total >= multiAgentConfig.threshold &&
+        chatMode === 'agent'
+      ) {
+        logger.agent.info(
+          `[Agent] Complex task detected (score: ${complexityResult.total} >= threshold: ${multiAgentConfig.threshold}), ` +
+          `features: [${complexityResult.features.join(', ')}]`
+        )
+
+        // 初始化多 Agent 环境（只执行一次）
+        if (!this.multiAgentInitialized) {
+          DEFAULT_AGENT_PROFILES.forEach(p => agentRegistry.register(p))
+          // 加载用户自定义角色
+          loadCustomAgentProfiles(globalStore.agentConfig.customAgentProfiles)
+          this.multiAgentInitialized = true
+          logger.agent.info('[Agent] Multi-agent environment initialized')
+        }
+
+        // 执行多 Agent 协作
+        await this.executeMultiAgent(
+          userQueryText,
+          config,
+          workspacePath,
+          threadId,
+          assistantId,
+          requestId,
+          complexityResult,
+          multiAgentConfig
+        )
+
+        return { threadId, assistantId, requestId }
       }
 
       // 5. 创建检查点（用于撤销）
@@ -201,7 +251,6 @@ export class AgentClass {
       store.setStreamState({ streamDetail: 'reasoning' }, threadId)
 
       // 8. 运行主循环
-      const runLoop = await importRunLoop()
       const executionContext: ExecutionContext = {
         workspacePath,
         chatMode,
@@ -217,7 +266,13 @@ export class AgentClass {
         agentHarness.createThreadScope(threadId)
       }
 
-      await runLoop(config, preparation.messages, executionContext, assistantId, preparation.budgetController)
+      await agentRuntime.get().runLoop({
+        config,
+        llmMessages: preparation.messages,
+        context: executionContext,
+        assistantId,
+        budgetController: preparation.budgetController,
+      })
 
       return { threadId, assistantId, requestId }
     } catch (error) {
@@ -432,6 +487,168 @@ export class AgentClass {
    */
   isThreadRunning(threadId: string): boolean {
     return this.runningTasks.has(threadId)
+  }
+
+  /**
+   * 执行多 Agent 协作任务
+   *
+   * 将复杂任务分解为子任务，分配给不同角色的 Agent 并行执行，
+   * 最后汇总结果并更新到 UI。
+   */
+  private async executeMultiAgent(
+    task: string,
+    config: LLMConfig,
+    workspacePath: string | null,
+    threadId: string,
+    assistantId: string,
+    requestId: string,
+    complexityResult: import('../capabilities/planning/TaskComplexityDetector').ComplexityScore,
+    multiAgentConfig: { enabled: boolean; threshold: number; requireConsensus: boolean; maxAgents: number }
+  ): Promise<void> {
+    const store = useAgentStore.getState()
+
+    // 更新状态：显示多 Agent 协作中
+    store.setStreamPhase('streaming', threadId)
+    store.setStreamState({ streamDetail: 'reasoning' }, threadId)
+
+    // 添加系统提示，告知用户正在使用多 Agent 协作
+    store.appendToAssistant(assistantId, `🤖 **多 Agent 协作模式**\n\n`, threadId)
+    store.appendToAssistant(
+      assistantId,
+      `检测到复杂任务（复杂度: ${complexityResult.total}/100），已启用多 Agent 协作。\n` +
+      `涉及领域: ${complexityResult.features.join('、')}\n\n`,
+      threadId
+    )
+
+    try {
+        // 定义 Agent 执行器：调用 LLM 完成子任务
+        const agentExecutor = async (agentId: string, subTask: string): Promise<string> => {
+          const agent = agentRegistry.get(agentId)
+          if (!agent) {
+            throw new Error(`Agent ${agentId} not found`)
+          }
+
+          logger.agent.info(`[MultiAgent] Executing sub-task with ${agent.name}: ${subTask.slice(0, 50)}...`)
+
+          // 构建带角色 systemPrompt 的 LLM 请求
+          const messages = [
+            { role: 'system' as const, content: agent.systemPrompt },
+            { role: 'user' as const, content: subTask },
+          ]
+
+          // 使用流式接口但等待完整结果
+          const subRequestId = crypto.randomUUID()
+          let fullContent = ''
+          let done = false
+          let error: Error | null = null
+
+          return new Promise<string>((resolve, reject) => {
+            api.llm.onStream(subRequestId, (data) => {
+              if (data.type === 'text' && data.content) {
+                fullContent += data.content
+              }
+            })
+
+            api.llm.onError(subRequestId, (err) => {
+              error = new Error(err.message)
+              done = true
+            })
+
+            api.llm.onDone(subRequestId, () => {
+              done = true
+            })
+
+            api.llm.send({
+              config,
+              messages,
+              requestId: subRequestId,
+            }).catch(reject)
+
+            // 轮询等待完成
+            const checkInterval = setInterval(() => {
+              if (done) {
+                clearInterval(checkInterval)
+                if (error) {
+                  reject(error)
+                } else {
+                  resolve(fullContent || '无响应')
+                }
+              }
+            }, 100)
+
+            // 超时处理（60秒）
+            setTimeout(() => {
+              clearInterval(checkInterval)
+              if (!done) {
+                reject(new Error('Sub-task timeout'))
+              }
+            }, 60000)
+          })
+        }
+
+      // 执行多 Agent 协作
+      const result = await multiAgentOrchestrator.collaborate(
+        task,
+        {
+          mode: 'chat',
+          workspacePath,
+          requireConsensus: multiAgentConfig.requireConsensus && complexityResult.total > 50,
+          maxAgents: multiAgentConfig.maxAgents,
+        },
+        agentExecutor
+      )
+
+      // 汇总结果输出到 UI
+      if (result.success) {
+        store.appendToAssistant(assistantId, `✅ **协作完成**（耗时 ${result.duration}ms）\n\n`, threadId)
+
+        // 显示各子任务结果
+        for (const subTask of result.subTasks) {
+          const status = subTask.status === 'completed' ? '✅' : '❌'
+          store.appendToAssistant(
+            assistantId,
+            `${status} **${subTask.title}**\n${subTask.result || ''}\n\n`,
+            threadId
+          )
+        }
+
+        // 显示共识结果
+        if (result.consensusReached !== undefined) {
+          store.appendToAssistant(
+            assistantId,
+            `📊 **共识投票**: ${result.consensusReached ? '✅ 已通过' : '⚠️ 未通过'}\n\n`,
+            threadId
+          )
+        }
+
+        // 最终汇总
+        if (result.finalAnswer) {
+          store.appendToAssistant(assistantId, `---\n\n📋 **最终汇总**:\n${result.finalAnswer}`, threadId)
+        }
+      } else {
+        store.appendToAssistant(
+          assistantId,
+          `⚠️ **协作未完成**，部分子任务失败。\n\n${result.finalAnswer || ''}`,
+          threadId
+        )
+      }
+
+      // 完成助手消息
+      store.finalizeAssistant(assistantId, threadId)
+      store.setStreamPhase('idle', threadId)
+
+      logger.agent.info(
+        `[MultiAgent] Collaboration completed: success=${result.success}, ` +
+        `subTasks=${result.subTasks.length}, duration=${result.duration}ms`
+      )
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      logger.agent.error('[MultiAgent] Collaboration failed:', errorMsg)
+      store.appendToAssistant(assistantId, `\n\n❌ **多 Agent 协作出错**: ${errorMsg}`, threadId)
+      store.finalizeAssistant(assistantId, threadId)
+      store.setStreamPhase('idle', threadId)
+      throw error
+    }
   }
 
   /**

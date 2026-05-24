@@ -18,10 +18,11 @@ import { getRelativeChangePath, isFileWriteToolResult } from '@intelligence/util
 import { agentHarness } from '../harness'
 import type { Span } from '../harness/observability/Trace'
 import type { TokenBudgetController } from '../capabilities/budget/TokenQuotaManager'
-import type { LintCheckFile, ChatMessage, AssistantMessage, InteractiveContent, FormContent } from '@intelligence/providerTypes'
+import type { LintCheckFile, ChatMessage, AssistantMessage, InteractiveContent, FormContent, ToolCall } from '@intelligence/providerTypes'
 import type { LLMMessage } from '@intelligence/providerTypes'
 import type { WorkMode } from '@/renderer/modes/workModeTypes'
 import type { LLMConfig, LLMCallResult, ExecutionContext, LoopCheckResult } from '@intelligence/providerTypes'
+import type { AssistantPart } from '../types/conversationModel'
 import { pickLocalizedText, translateAgentText } from '@intelligence/utils/intelligenceTextUtils'
 import { checkAndHandleCompression as runCompressionCheck } from './contextOptimizer'
 
@@ -322,14 +323,15 @@ async function callLLMWithRetry(
       async () => {
         if (abortSignal?.aborted) throw new Error('Aborted')
 
-        let snapshot: { content: string; parts: any[]; toolCalls: any[] } | null = null
+        let snapshot: { content: string; parts: AssistantPart[]; toolCalls: ToolCall[] } | null = null
         if (assistantId) {
           const msg = threadStore.getMessages().find(m => m.id === assistantId)
           if (msg?.role === 'assistant') {
+            const assistantMsg = msg as AssistantMessage
             snapshot = {
-              content: msg.content,
-              parts: [...(msg.parts || [])],
-              toolCalls: [...(msg.toolCalls || [])],
+              content: assistantMsg.content,
+              parts: [...(assistantMsg.parts || [])],
+              toolCalls: [...(assistantMsg.toolCalls || [])],
             }
           }
         }
@@ -347,8 +349,8 @@ async function callLLMWithRetry(
               return result
             }
 
-            const err = new Error(result.error)
-            ;(err as any).retryable = result.retryable
+            const err = new Error(result.error) as Error & { retryable?: boolean }
+            err.retryable = result.retryable
             throw err
           }
 
@@ -368,8 +370,9 @@ async function callLLMWithRetry(
         isRetryable: error => {
           const msg = error instanceof Error ? error.message : String(error)
           if (msg === 'Aborted') return false
-          if (error instanceof Error && (error as any).retryable === true) return true
-          if (error instanceof Error && (error as any).retryable === false) return false
+          const retryableError = error instanceof Error ? error as Error & { retryable?: boolean } : null
+          if (retryableError?.retryable === true) return true
+          if (retryableError?.retryable === false) return false
           return isRetryableError(error)
         },
         onRetry: (attempt, error, delay) => {
@@ -388,14 +391,14 @@ interface AutoFixResult {
   files: LintCheckFile[]
 }
 
-async function autoFix(toolCalls: any[], workspacePath: string): Promise<AutoFixResult | null> {
+async function autoFix(toolCalls: ToolCall[], workspacePath: string): Promise<AutoFixResult | null> {
   const writeToolCalls = toolCalls.filter(tc => !READ_TOOLS.includes(tc.name))
   if (writeToolCalls.length === 0) return null
 
   const editedFiles = writeToolCalls
     .filter(tc => isFileEditTool(tc.name))
     .map(tc => {
-      const path = tc.arguments.path as string
+      const path = (tc.arguments.path as string) || ''
       return pathStartsWith(path, workspacePath) ? path : joinPath(workspacePath, path)
     })
     .filter(path => !path.endsWith('/'))
@@ -731,11 +734,15 @@ Try again with the corrected tool call.`,
         messages: llmMessages,
         hasWriteOps: llmMessages.some(m => {
           const readOnlyTools = getReadOnlyTools()
-          return m.role === 'assistant' && m.tool_calls?.some((tc: any) => !readOnlyTools.includes(tc.function.name))
+          if (m.role !== 'assistant') return false
+          const assistantMsg = m as AssistantMessage
+          return assistantMsg.toolCalls?.some(tc => !readOnlyTools.includes(tc.name)) ?? false
         }),
-        hasSpecificTool: (toolName: string) => llmMessages.some(m =>
-          m.role === 'assistant' && m.tool_calls?.some((tc: any) => tc.function.name === toolName)
-        ),
+        hasSpecificTool: (toolName: string) => llmMessages.some(m => {
+          if (m.role !== 'assistant') return false
+          const assistantMsg = m as AssistantMessage
+          return assistantMsg.toolCalls?.some(tc => tc.name === toolName) ?? false
+        }),
         iteration,
         maxIterations,
       })
@@ -972,4 +979,21 @@ Try again with the corrected tool call.`,
   if (loopSpan) {
     agentHarness.observability.endSpan(loopSpan)
   }
+}
+
+// 适配 AgentRuntime 接口的包装函数
+export async function runLoopAdapter(params: {
+  config: LLMConfig
+  llmMessages: LLMMessage[]
+  context: ExecutionContext
+  assistantId: string
+  budgetController?: TokenBudgetController
+}): Promise<void> {
+  return runLoop(
+    params.config,
+    params.llmMessages,
+    params.context,
+    params.assistantId,
+    params.budgetController
+  )
 }

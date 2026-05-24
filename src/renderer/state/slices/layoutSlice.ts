@@ -17,6 +17,7 @@ export interface LayoutSlice {
   showWelcomePage: boolean
   showUserProfilePage: boolean
   showBillingCenterPage: boolean
+  showSessionHistoryPage: boolean
 
   setActiveSidePanel: (panel: SidePanel) => void
   setTerminalVisible: (visible: boolean) => void
@@ -35,6 +36,7 @@ export interface LayoutSlice {
   setShowWelcomePage: (show: boolean) => void
   setShowUserProfilePage: (show: boolean) => void
   setShowBillingCenterPage: (show: boolean) => void
+  setShowSessionHistoryPage: (show: boolean) => void
 }
 
 export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> = (set) => ({
@@ -51,6 +53,7 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
   showWelcomePage: false,
   showUserProfilePage: false,
   showBillingCenterPage: false,
+  showSessionHistoryPage: false,
 
   setActiveSidePanel: (panel) => set(() => ({
     activeSidePanel: panel,
@@ -74,4 +77,5 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
   setShowWelcomePage: (show) => set({ showWelcomePage: show }),
   setShowUserProfilePage: (show) => set({ showUserProfilePage: show }),
   setShowBillingCenterPage: (show) => set({ showBillingCenterPage: show }),
+  setShowSessionHistoryPage: (show) => set({ showSessionHistoryPage: show }),
 })

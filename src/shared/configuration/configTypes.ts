@@ -77,6 +77,22 @@ export interface AgentConfig {
   modePostProcessHooks?: Record<string, unknown>
   toolDependencies?: Record<string, unknown>
   ignoredDirectories: string[]
+  multiAgent?: {
+    enabled: boolean
+    threshold: number
+    requireConsensus: boolean
+    maxAgents: number
+  }
+  /** 自定义 Agent 角色配置 */
+  customAgentProfiles?: Array<{
+    id: string
+    name: string
+    description: string
+    systemPrompt: string
+    capabilities: string[]
+    priority: number
+    enabled: boolean
+  }>
 }
 
 export interface TerminalConfig {

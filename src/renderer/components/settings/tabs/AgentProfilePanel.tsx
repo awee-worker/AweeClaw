@@ -3,13 +3,13 @@
  * 完整的 Agent 高级配置面板
  */
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { getPromptTemplates } from '@intelligence/prompt-engine/promptLibrary'
 import { DEFAULT_AGENT_CONFIG } from '@configuration/agentProfile'
 import { ActionButton, TextField, DropdownSelector, ToggleSwitch } from '@components/ui'
 import { AgentSettingsProps } from '../preferencesTypes'
 import { PromptPreviewDialog } from './PromptPreviewDialog'
-import { Bot, FileText, Zap, BrainCircuit, AlertOctagon, Search, Eye, EyeOff, RefreshCw } from 'lucide-react'
+import { Bot, FileText, Zap, BrainCircuit, AlertOctagon, Search, Eye, EyeOff, RefreshCw, Users, UserPlus, Trash2, GripVertical, X, Check } from 'lucide-react'
 
 export function AgentProfilePanel({
     autoApprove, setAutoApprove, aiInstructions, setAiInstructions,
@@ -21,6 +21,8 @@ export function AgentProfilePanel({
     const [selectedTemplateForPreview, setSelectedTemplateForPreview] = useState<string | null>(null)
     const [showAdvanced, setShowAdvanced] = useState(false)
     const [showGoogleApiKey, setShowGoogleApiKey] = useState(false)
+    const [showAgentRoles, setShowAgentRoles] = useState(false)
+    const [capabilityInput, setCapabilityInput] = useState<{ index: number; value: string } | null>(null)
 
     // 使用 DEFAULT_AGENT_CONFIG 中的忽略目录作为默认值
     const defaultIgnoredDirs = DEFAULT_AGENT_CONFIG.ignoredDirectories
@@ -574,6 +576,95 @@ export function AgentProfilePanel({
                                 </div>
                             </div>
 
+                            {/* 多 Agent 协作 */}
+                            <div className="space-y-3 pt-4 border-t border-border/30">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-accent" />
+                                        <label className="text-xs font-bold text-text-primary uppercase tracking-wider">{t('多 Agent 协作', 'Multi-Agent Collaboration')}</label>
+                                    </div>
+                                    <ToggleSwitch
+                                        label={t('启用', 'Enabled')}
+                                        checked={agentConfig.multiAgent?.enabled ?? true}
+                                        onChange={(e) => setAgentConfig({
+                                            ...agentConfig,
+                                            multiAgent: {
+                                                enabled: e.target.checked,
+                                                threshold: agentConfig.multiAgent?.threshold ?? 50,
+                                                requireConsensus: agentConfig.multiAgent?.requireConsensus ?? true,
+                                                maxAgents: agentConfig.multiAgent?.maxAgents ?? 5,
+                                            } as NonNullable<typeof agentConfig.multiAgent>
+                                        })}
+                                        className="text-[12px]"
+                                    />
+                                </div>
+
+                                {agentConfig.multiAgent?.enabled !== false && (
+                                    <>
+                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                            <div className="space-y-1.5">
+                                                <label className="text-[11px] font-medium text-text-muted">{t('触发阈值 (0-100)', 'Trigger Threshold')}</label>
+                                                <TextField
+                                                    type="number"
+                                                    value={agentConfig.multiAgent?.threshold ?? 50}
+                                                    onChange={(e) => setAgentConfig({
+                                                        ...agentConfig,
+                                                        multiAgent: {
+                                                            enabled: true,
+                                                            threshold: Math.min(100, Math.max(0, parseInt(e.target.value) || 50)),
+                                                            requireConsensus: agentConfig.multiAgent?.requireConsensus ?? true,
+                                                            maxAgents: agentConfig.multiAgent?.maxAgents ?? 5,
+                                                        } as NonNullable<typeof agentConfig.multiAgent>
+                                                    })}
+                                                    min={0}
+                                                    max={100}
+                                                    className="bg-background/50 border-border text-xs h-9"
+                                                />
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                <label className="text-[11px] font-medium text-text-muted">{t('最大 Agent 数', 'Max Agents')}</label>
+                                                <TextField
+                                                    type="number"
+                                                    value={agentConfig.multiAgent?.maxAgents ?? 5}
+                                                    onChange={(e) => setAgentConfig({
+                                                        ...agentConfig,
+                                                        multiAgent: {
+                                                            enabled: true,
+                                                            threshold: agentConfig.multiAgent?.threshold ?? 50,
+                                                            requireConsensus: agentConfig.multiAgent?.requireConsensus ?? true,
+                                                            maxAgents: Math.min(10, Math.max(2, parseInt(e.target.value) || 5)),
+                                                        } as NonNullable<typeof agentConfig.multiAgent>
+                                                    })}
+                                                    min={2}
+                                                    max={10}
+                                                    className="bg-background/50 border-border text-xs h-9"
+                                                />
+                                            </div>
+                                            <div className="flex items-center justify-center">
+                                                <ToggleSwitch
+                                                    label={t('要求共识投票', 'Require Consensus')}
+                                                    checked={agentConfig.multiAgent?.requireConsensus ?? true}
+                                                    onChange={(e) => setAgentConfig({
+                                                        ...agentConfig,
+                                                        multiAgent: {
+                                                            enabled: true,
+                                                            threshold: agentConfig.multiAgent?.threshold ?? 50,
+                                                            requireConsensus: e.target.checked,
+                                                            maxAgents: agentConfig.multiAgent?.maxAgents ?? 5,
+                                                        } as NonNullable<typeof agentConfig.multiAgent>
+                                                    })}
+                                                    className="text-[12px]"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="flex items-start gap-2 p-2.5 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-400 text-[11px]">
+                                            <Users className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                                            <p>{t('当任务复杂度超过阈值时，自动启用多 Agent 协作。多个专业 Agent 并行处理子任务，最后汇总结果。', 'When task complexity exceeds threshold, multi-agent collaboration is triggered. Multiple specialized agents process subtasks in parallel.')}</p>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+
                             {/* 忽略目录 */}
                             <div className="space-y-3 pt-4 border-t border-border/30">
                                 <div className="flex items-center justify-between">
@@ -595,6 +686,233 @@ export function AgentProfilePanel({
                                     className="w-full h-20 p-3 bg-background/50 rounded-lg border border-border focus:border-accent/50 focus:ring-1 focus:ring-accent/20 outline-none text-xs font-mono resize-none text-text-secondary custom-scrollbar"
                                     placeholder="node_modules, .git, ..."
                                 />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            {/* Agent 角色自定义 */}
+            <section className="rounded-2xl border border-border/50 bg-surface/20 backdrop-blur-xl shadow-sm relative overflow-hidden group">
+                <div className="absolute inset-0 bg-gradient-to-br from-accent/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                <button
+                    onClick={() => setShowAgentRoles(!showAgentRoles)}
+                    className="w-full flex items-center justify-between p-5 cursor-pointer focus:outline-none relative z-10"
+                >
+                    <div className="flex items-center gap-2">
+                        <div className="p-1.5 bg-accent/10 rounded-md text-accent">
+                            <UserPlus className="w-3.5 h-3.5" />
+                        </div>
+                        <div className="text-left">
+                            <h5 className="text-sm font-semibold text-text-primary">{t('Agent 角色自定义', 'Custom Agent Roles')}</h5>
+                            <p className="text-[11px] text-text-muted mt-0.5">{t('创建和管理自定义多 Agent 协作角色', 'Create and manage custom multi-agent collaboration roles')}</p>
+                        </div>
+                    </div>
+                    <div className={`p-1.5 rounded-full bg-surface-hover transition-transform duration-300 ${showAgentRoles ? 'rotate-180' : ''}`}>
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                    </div>
+                </button>
+
+                <div className={`grid transition-all duration-300 ease-in-out ${showAgentRoles ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+                    <div className="overflow-hidden">
+                        <div className="p-5 pt-0 space-y-4 relative z-10">
+                            {/* 现有角色列表 */}
+                            {(agentConfig.customAgentProfiles ?? []).length === 0 ? (
+                                <div className="text-center py-6 text-text-muted text-xs">
+                                    {t('暂无自定义角色，点击下方按钮添加', 'No custom roles yet. Click below to add one')}
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    {(agentConfig.customAgentProfiles ?? []).map((profile, index) => (
+                                        <div
+                                            key={profile.id}
+                                            className="flex items-start gap-3 p-3 rounded-lg border border-border/50 bg-background/30 group/role"
+                                        >
+                                            <GripVertical className="w-3.5 h-3.5 text-text-muted mt-1 cursor-grab" />
+                                            <div className="flex-1 min-w-0 space-y-2">
+                                                <div className="flex items-center gap-2">
+                                                    <TextField
+                                                        type="text"
+                                                        value={profile.name}
+                                                        onChange={(e) => {
+                                                            const profiles = [...(agentConfig.customAgentProfiles ?? [])]
+                                                            profiles[index] = { ...profile, name: e.target.value }
+                                                            setAgentConfig({ ...agentConfig, customAgentProfiles: profiles })
+                                                        }}
+                                                        placeholder={t('角色名称', 'Role Name')}
+                                                        className="bg-background/50 border-border text-xs h-8 flex-1"
+                                                    />
+                                                    <TextField
+                                                        type="number"
+                                                        value={profile.priority}
+                                                        onChange={(e) => {
+                                                            const profiles = [...(agentConfig.customAgentProfiles ?? [])]
+                                                            profiles[index] = { ...profile, priority: Math.min(10, Math.max(1, parseInt(e.target.value) || 5)) }
+                                                            setAgentConfig({ ...agentConfig, customAgentProfiles: profiles })
+                                                        }}
+                                                        min={1}
+                                                        max={10}
+                                                        className="bg-background/50 border-border text-xs h-8 w-16"
+                                                    />
+                                                    <ToggleSwitch
+                                                        checked={profile.enabled}
+                                                        onChange={(e) => {
+                                                            const profiles = [...(agentConfig.customAgentProfiles ?? [])]
+                                                            profiles[index] = { ...profile, enabled: e.target.checked }
+                                                            setAgentConfig({ ...agentConfig, customAgentProfiles: profiles })
+                                                        }}
+                                                        className="flex-shrink-0"
+                                                    />
+                                                </div>
+                                                <TextField
+                                                    type="text"
+                                                    value={profile.description}
+                                                    onChange={(e) => {
+                                                        const profiles = [...(agentConfig.customAgentProfiles ?? [])]
+                                                        profiles[index] = { ...profile, description: e.target.value }
+                                                        setAgentConfig({ ...agentConfig, customAgentProfiles: profiles })
+                                                    }}
+                                                    placeholder={t('角色描述', 'Role Description')}
+                                                    className="bg-background/50 border-border text-xs h-8 w-full"
+                                                />
+                                                <textarea
+                                                    value={profile.systemPrompt}
+                                                    onChange={(e) => {
+                                                        const profiles = [...(agentConfig.customAgentProfiles ?? [])]
+                                                        profiles[index] = { ...profile, systemPrompt: e.target.value }
+                                                        setAgentConfig({ ...agentConfig, customAgentProfiles: profiles })
+                                                    }}
+                                                    placeholder={t('系统提示词（定义该角色的行为和专业领域）', 'System prompt (defines behavior and expertise)')}
+                                                    className="w-full h-16 p-2 bg-background/50 rounded-lg border border-border focus:border-accent/50 focus:ring-1 focus:ring-accent/20 outline-none resize-none text-[11px] font-mono custom-scrollbar text-text-secondary placeholder-text-muted/50"
+                                                />
+                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                    {profile.capabilities.map((cap, capIdx) => (
+                                                        <span
+                                                            key={capIdx}
+                                                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-accent/10 text-accent text-[10px]"
+                                                        >
+                                                            {cap}
+                                                            <button
+                                                                onClick={() => {
+                                                                    const profiles = [...(agentConfig.customAgentProfiles ?? [])]
+                                                                    profiles[index] = {
+                                                                        ...profile,
+                                                                        capabilities: profile.capabilities.filter((_, i) => i !== capIdx)
+                                                                    }
+                                                                    setAgentConfig({ ...agentConfig, customAgentProfiles: profiles })
+                                                                }}
+                                                                className="hover:text-red-400"
+                                                            >
+                                                                <X className="w-2.5 h-2.5" />
+                                                            </button>
+                                                        </span>
+                                                    ))}
+
+                                                    {/* 能力标签输入框 */}
+                                                    {capabilityInput?.index === index ? (
+                                                        <div className="inline-flex items-center gap-1">
+                                                            <TextField
+                                                                type="text"
+                                                                value={capabilityInput.value}
+                                                                onChange={(e) => setCapabilityInput({ index, value: e.target.value })}
+                                                                onKeyDown={(e) => {
+                                                                    if (e.key === 'Enter') {
+                                                                        const cap = capabilityInput.value.trim()
+                                                                        if (cap) {
+                                                                            const profiles = [...(agentConfig.customAgentProfiles ?? [])]
+                                                                            profiles[index] = {
+                                                                                ...profile,
+                                                                                capabilities: [...profile.capabilities, cap]
+                                                                            }
+                                                                            setAgentConfig({ ...agentConfig, customAgentProfiles: profiles })
+                                                                        }
+                                                                        setCapabilityInput(null)
+                                                                    } else if (e.key === 'Escape') {
+                                                                        setCapabilityInput(null)
+                                                                    }
+                                                                }}
+                                                                placeholder={t('能力标签', 'Capability tag')}
+                                                                className="bg-background/50 border-border text-[10px] h-6 w-24 py-0"
+                                                                autoFocus
+                                                            />
+                                                            <button
+                                                                onClick={() => {
+                                                                    const cap = capabilityInput.value.trim()
+                                                                    if (cap) {
+                                                                        const profiles = [...(agentConfig.customAgentProfiles ?? [])]
+                                                                        profiles[index] = {
+                                                                            ...profile,
+                                                                            capabilities: [...profile.capabilities, cap]
+                                                                        }
+                                                                        setAgentConfig({ ...agentConfig, customAgentProfiles: profiles })
+                                                                    }
+                                                                    setCapabilityInput(null)
+                                                                }}
+                                                                className="text-accent hover:text-accent-hover"
+                                                            >
+                                                                <Check className="w-3 h-3" />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => setCapabilityInput(null)}
+                                                                className="text-text-muted hover:text-text-primary"
+                                                            >
+                                                                <X className="w-3 h-3" />
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <button
+                                                            onClick={() => setCapabilityInput({ index, value: '' })}
+                                                            className="px-1.5 py-0.5 rounded border border-dashed border-border text-text-muted text-[10px] hover:border-accent hover:text-accent transition-colors"
+                                                        >
+                                                            + {t('能力', 'Capability')}
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={() => {
+                                                    const profiles = (agentConfig.customAgentProfiles ?? []).filter((_, i) => i !== index)
+                                                    setAgentConfig({ ...agentConfig, customAgentProfiles: profiles })
+                                                }}
+                                                className="p-1.5 rounded-lg text-text-muted hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-0 group-hover/role:opacity-100"
+                                            >
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* 添加角色按钮 */}
+                            <ActionButton
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => {
+                                    const newProfile = {
+                                        id: `custom-${Date.now()}`,
+                                        name: t('新角色', 'New Role'),
+                                        description: '',
+                                        systemPrompt: '',
+                                        capabilities: [],
+                                        priority: 5,
+                                        enabled: true,
+                                    }
+                                    setAgentConfig({
+                                        ...agentConfig,
+                                        customAgentProfiles: [...(agentConfig.customAgentProfiles ?? []), newProfile]
+                                    })
+                                }}
+                                className="w-full text-xs h-8"
+                            >
+                                <UserPlus className="w-3.5 h-3.5 mr-1" />
+                                {t('添加自定义角色', 'Add Custom Role')}
+                            </ActionButton>
+
+                            <div className="flex items-start gap-2 p-2.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[11px]">
+                                <Users className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                                <p>{t('自定义角色将在多 Agent 协作时与默认角色一起参与任务分解和执行。优先级越高，越优先分配关键子任务。', 'Custom roles will participate alongside default roles in multi-agent collaboration. Higher priority means more critical subtasks.')}</p>
                             </div>
                         </div>
                     </div>

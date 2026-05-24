@@ -284,16 +284,56 @@ function buildSplitCentricConfig(scenario: ScenarioPlugin): LayoutConfig {
 }
 
 // ============================================
+// 缓存条目（带 TTL）
+// ============================================
+
+interface CacheEntry {
+  config: LayoutConfig
+  createdAt: number
+}
+
+const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000 // 5 分钟
+
+// ============================================
 // ShellComposer 主类
 // ============================================
 
 class ShellComposerClass {
-  private cache = new Map<string, LayoutConfig>()
+  private cache = new Map<string, CacheEntry>()
+  private ttlMs: number
+
+  constructor(ttlMs = DEFAULT_CACHE_TTL_MS) {
+    this.ttlMs = ttlMs
+    // 启动定时清理
+    this.startCleanupTimer()
+  }
+
+  private startCleanupTimer(): void {
+    setInterval(() => {
+      this.cleanupExpiredEntries()
+    }, 60000) // 每分钟清理一次
+  }
+
+  private cleanupExpiredEntries(): void {
+    const now = Date.now()
+    let cleaned = 0
+    for (const [key, entry] of this.cache.entries()) {
+      if (now - entry.createdAt > this.ttlMs) {
+        this.cache.delete(key)
+        cleaned++
+      }
+    }
+    if (cleaned > 0) {
+      console.debug(`[ShellComposer] Cleaned ${cleaned} expired cache entries`)
+    }
+  }
 
   getLayoutConfig(scenario: ScenarioPlugin): LayoutConfig {
     const cacheKey = `${scenario.id}:${scenario.ui.layout}`
-    if (this.cache.has(cacheKey)) {
-      return this.cache.get(cacheKey)!
+    const cached = this.cache.get(cacheKey)
+
+    if (cached && Date.now() - cached.createdAt <= this.ttlMs) {
+      return cached.config
     }
 
     let config: LayoutConfig
@@ -333,12 +373,20 @@ class ShellComposerClass {
         config = buildEditorCentricConfig(scenario)
     }
 
-    this.cache.set(cacheKey, config)
+    this.cache.set(cacheKey, { config, createdAt: Date.now() })
     return config
   }
 
   clearCache(): void {
     this.cache.clear()
+  }
+
+  setCacheTTL(ttlMs: number): void {
+    this.ttlMs = ttlMs
+  }
+
+  getCacheStats(): { size: number; ttlMs: number } {
+    return { size: this.cache.size, ttlMs: this.ttlMs }
   }
 }
 

@@ -191,6 +191,21 @@ export interface AgentConfigSchema {
     dynamicThreshold?: boolean
   }
   ignoredDirectories?: string[]
+  multiAgent?: {
+    enabled?: boolean
+    threshold?: number
+    requireConsensus?: boolean
+    maxAgents?: number
+  }
+  customAgentProfiles?: Array<{
+    id: string
+    name: string
+    description: string
+    systemPrompt: string
+    capabilities: string[]
+    priority: number
+    enabled: boolean
+  }>
 }
 
 export function cleanAgentConfig(config: Record<string, unknown>): AgentConfigSchema {
@@ -231,6 +246,34 @@ export function cleanAgentConfig(config: Record<string, unknown>): AgentConfigSc
   // ignoredDirectories 数组
   if (Array.isArray(config.ignoredDirectories)) {
     cleaned.ignoredDirectories = config.ignoredDirectories.filter(d => typeof d === 'string')
+  }
+
+  // multiAgent 子对象
+  if (config.multiAgent && typeof config.multiAgent === 'object') {
+    const ma = config.multiAgent as Record<string, unknown>
+    cleaned.multiAgent = {}
+    if (typeof ma.enabled === 'boolean') cleaned.multiAgent.enabled = ma.enabled
+    if (typeof ma.threshold === 'number') cleaned.multiAgent.threshold = ma.threshold
+    if (typeof ma.requireConsensus === 'boolean') cleaned.multiAgent.requireConsensus = ma.requireConsensus
+    if (typeof ma.maxAgents === 'number') cleaned.multiAgent.maxAgents = ma.maxAgents
+  }
+
+  // customAgentProfiles 数组
+  if (Array.isArray(config.customAgentProfiles)) {
+    cleaned.customAgentProfiles = config.customAgentProfiles
+      .filter((p): p is Record<string, unknown> => typeof p === 'object' && p !== null)
+      .map((p) => ({
+        id: typeof p.id === 'string' ? p.id : '',
+        name: typeof p.name === 'string' ? p.name : '',
+        description: typeof p.description === 'string' ? p.description : '',
+        systemPrompt: typeof p.systemPrompt === 'string' ? p.systemPrompt : '',
+        capabilities: Array.isArray(p.capabilities)
+          ? p.capabilities.filter((c): c is string => typeof c === 'string')
+          : [],
+        priority: typeof p.priority === 'number' ? p.priority : 5,
+        enabled: typeof p.enabled === 'boolean' ? p.enabled : true,
+      }))
+      .filter((p) => p.id && p.name)
   }
 
   return cleaned

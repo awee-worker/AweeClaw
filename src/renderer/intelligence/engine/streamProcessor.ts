@@ -19,6 +19,7 @@ import {
   parseFinalJsonArgs,
   parsePartialJsonArgs,
 } from './toolArgStreamDecoder'
+import { joinPath } from '@shared/toolkit/pathHelper'
 
 // Tracks active IPC listeners for leak debugging.
 let activeListenerCount = 0
@@ -64,6 +65,21 @@ export function createStreamProcessor(
     lastPreviewArgs?: Record<string, unknown>
   }>()
   const streamingEditPreviewCoordinator = new StreamingEditPreviewCoordinator()
+
+  // 流式文件内容预览状态
+  const streamingFilePreview = new Map<string, {
+    filePath: string
+    workspacePath: string
+    lastContent: string
+    hasEmittedWriting: boolean
+  }>()
+  let filePreviewRafId: number | null = null
+  const pendingFilePreviewUpdates = new Map<string, {
+    content: string
+    filePath: string
+    workspacePath: string
+    isComplete: boolean
+  }>()
 
   let toolUpdateRafId: number | null = null
   const pendingToolPreviewUpdates = new Map<string, {
@@ -131,6 +147,141 @@ export function createStreamProcessor(
     )
   }
 
+  // ===== 流式文件内容预览（打字机效果）=====
+  const STREAMABLE_FILE_TOOLS = new Set(['write_file', 'create_file_or_folder'])
+  const MIN_CONTENT_LENGTH_FOR_PREVIEW = 20
+  const FILE_PREVIEW_THROTTLE_MS = 80
+
+  // 仅对文档类型文件启用实时预览（代码文件不预览）
+  const DOCUMENT_EXTENSIONS = new Set([
+    'md', 'mdx', 'txt', 'rst', 'adoc', 'asciidoc', 'json', 'yaml', 'yml', 'xml',
+    'csv', 'tsv', 'log', 'ini', 'conf', 'config',
+    'dockerfile', 'makefile', 'gitignore', 'gitattributes',
+    'env', 'properties', 'toml',
+  ])
+
+  const isDocumentFile = (filePath: string): boolean => {
+    const lowerPath = filePath.toLowerCase()
+    // 无扩展名的文件（如 Dockerfile、Makefile）
+    const baseName = lowerPath.split(/[/\\]/).pop() || ''
+    if (DOCUMENT_EXTENSIONS.has(baseName)) return true
+    // 有扩展名的文件
+    const ext = lowerPath.split('.').pop() || ''
+    return DOCUMENT_EXTENSIONS.has(ext)
+  }
+
+  const resolveFilePath = (path: string, workspacePath: string | null): string => {
+    if (!workspacePath) return path
+    const isAbsolute = /^([a-zA-Z]:[\\/]|[/])/.test(path)
+    return isAbsolute ? path : joinPath(workspacePath, path)
+  }
+
+  const extractPartialContent = (argsString: string): string | null => {
+    const contentMatch = argsString.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)/)
+    if (!contentMatch) return null
+    return contentMatch[1]
+      .replace(/\\n/g, '\n')
+      .replace(/\\"/g, '"')
+      .replace(/\\\\/g, '\\')
+  }
+
+  const flushFilePreviewUpdates = () => {
+    if (filePreviewRafId !== null) {
+      clearTimeout(filePreviewRafId)
+      filePreviewRafId = null
+    }
+
+    for (const [toolId, update] of pendingFilePreviewUpdates) {
+      EventBus.emit({
+        type: 'file:stream_content',
+        filePath: update.filePath,
+        workspacePath: update.workspacePath,
+        content: update.content,
+        toolCallId: toolId,
+        isComplete: update.isComplete,
+      })
+    }
+    pendingFilePreviewUpdates.clear()
+  }
+
+  const scheduleFilePreviewUpdate = () => {
+    if (filePreviewRafId !== null) return
+    filePreviewRafId = window.setTimeout(() => {
+      filePreviewRafId = null
+      flushFilePreviewUpdates()
+    }, FILE_PREVIEW_THROTTLE_MS) as unknown as number
+  }
+
+  const syncStreamingFilePreview = (toolId: string, toolName: string, argsString: string) => {
+    if (!STREAMABLE_FILE_TOOLS.has(toolName)) return
+
+    const workspacePath = useStore.getState().workspacePath
+    const partialArgs = parsePartialJsonArgs(argsString)
+    if (!partialArgs || typeof partialArgs.path !== 'string') return
+
+    const filePath = resolveFilePath(partialArgs.path, workspacePath)
+
+    // 仅文档类型文件启用实时预览
+    if (!isDocumentFile(filePath)) return
+
+    const partialContent = extractPartialContent(argsString)
+    if (partialContent === null) return
+
+    const previewState = streamingFilePreview.get(toolId)
+    if (previewState) {
+      if (partialContent === previewState.lastContent) return
+      previewState.lastContent = partialContent
+      if (!previewState.hasEmittedWriting && partialContent.length >= MIN_CONTENT_LENGTH_FOR_PREVIEW) {
+        previewState.hasEmittedWriting = true
+        EventBus.emit({ type: 'file:writing', filePath, workspacePath: workspacePath || '' })
+      }
+    } else {
+      const hasEnoughContent = partialContent.length >= MIN_CONTENT_LENGTH_FOR_PREVIEW
+      streamingFilePreview.set(toolId, {
+        filePath,
+        workspacePath: workspacePath || '',
+        lastContent: partialContent,
+        hasEmittedWriting: hasEnoughContent,
+      })
+      if (hasEnoughContent) {
+        EventBus.emit({ type: 'file:writing', filePath, workspacePath: workspacePath || '' })
+      }
+    }
+
+    pendingFilePreviewUpdates.set(toolId, {
+      content: partialContent,
+      filePath,
+      workspacePath: workspacePath || '',
+      isComplete: false,
+    })
+    scheduleFilePreviewUpdate()
+  }
+
+  const finalizeStreamingFilePreview = (toolId: string, toolName: string, finalArgs: Record<string, unknown>) => {
+    if (!STREAMABLE_FILE_TOOLS.has(toolName)) return
+
+    const workspacePath = useStore.getState().workspacePath
+    const path = typeof finalArgs.path === 'string' ? finalArgs.path : ''
+    if (!path) return
+
+    const filePath = resolveFilePath(path, workspacePath)
+
+    // 仅文档类型文件启用实时预览
+    if (!isDocumentFile(filePath)) return
+
+    const content = typeof finalArgs.content === 'string' ? finalArgs.content : ''
+
+    streamingFilePreview.delete(toolId)
+
+    pendingFilePreviewUpdates.set(toolId, {
+      content,
+      filePath,
+      workspacePath: workspacePath || '',
+      isComplete: true,
+    })
+    flushFilePreviewUpdates()
+  }
+
   const cleanup = () => {
     if (isCleanedUp) return
     isCleanedUp = true
@@ -139,7 +290,13 @@ export function createStreamProcessor(
       clearTimeout(toolUpdateRafId)
       toolUpdateRafId = null
     }
+    if (filePreviewRafId !== null) {
+      clearTimeout(filePreviewRafId)
+      filePreviewRafId = null
+    }
     pendingToolPreviewUpdates.clear()
+    pendingFilePreviewUpdates.clear()
+    streamingFilePreview.clear()
     streamingEditPreviewCoordinator.releaseAll()
 
     for (const fn of cleanups) {
@@ -277,6 +434,9 @@ export function createStreamProcessor(
                   }
                 }
               }
+
+              // 流式文件内容预览（打字机效果）
+              syncStreamingFilePreview(tc.id, tc.name, tc.argsString)
             }
             if (data.name && data.name !== tc.name) {
               tc.name = data.name
@@ -326,6 +486,11 @@ export function createStreamProcessor(
             } else {
               toolCalls[existingIdx] = toolCall
             }
+
+            // 最终化流式文件内容预览
+            if (finalArgs) {
+              finalizeStreamingFilePreview(tc.id, tc.name, finalArgs)
+            }
           }
         }
         break
@@ -374,6 +539,9 @@ export function createStreamProcessor(
         }
 
         void syncStreamingEditPreview(tcId, toolName, args)
+
+        // 最终化流式文件内容预览（兜底处理）
+        finalizeStreamingFilePreview(tcId, toolName, args)
 
         EventBus.emit({ type: 'stream:tool_available', id: tcId, name: toolName, args })
         break

@@ -32,6 +32,7 @@ import {
   restoreWorkspaceAgentStore,
 } from './workspaceLoader'
 import { initializeHarness } from '@intelligence/harness'
+import { setupAgentRuntime } from '@intelligence/engine'
 
 export interface InitResult {
   success: boolean
@@ -303,6 +304,15 @@ export async function initializeApp(
     if (!isEmptyWindow) {
       updateStatus('Restoring workspace...')
       await restoreWorkspace()
+    }
+
+    // 初始化 AgentRuntime（解耦循环依赖）
+    updateStatus('Initializing agent runtime...')
+    try {
+      setupAgentRuntime()
+      logger.system.info('[Init] AgentRuntime initialized')
+    } catch (e) {
+      logger.system.warn('[Init] AgentRuntime initialization failed:', e)
     }
 
     scheduleBackgroundInit()

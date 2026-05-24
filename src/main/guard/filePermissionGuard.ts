@@ -8,7 +8,7 @@ import { toAppError, ErrorCode } from '@shared/toolkit/errorCatalog'
 import { ipcMain, dialog, shell } from 'electron'
 import * as path from 'path'
 import { pathToFileURL } from 'url'
-import { promises as fsPromises } from 'fs'
+import fs, { promises as fsPromises } from 'fs'
 import { exec } from 'child_process'
 import Store from 'electron-store'
 import { securityManager, OperationType } from './securityPolicyEngine'
@@ -34,6 +34,16 @@ function showSecurityError(mainWindow: any, title: string, message: string): voi
   } else {
     // 如果窗口不可用，回退到原生对话框
     dialog.showErrorBox(title, message)
+  }
+}
+
+/**
+ * 向所有渲染进程发送文件变更通知
+ */
+function notifyFileChanged(getMainWindowFn: () => any, event: FileWatcherEvent): void {
+  const win = getMainWindowFn()
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('file:changed', event)
   }
 }
 
@@ -576,11 +586,17 @@ export function registerSecureFileHandlers(
 
     try {
       const dir = path.dirname(filePath)
+      const isNewFile = !fs.existsSync(filePath)
       await fsPromises.mkdir(dir, { recursive: true })
       await fsPromises.writeFile(filePath, content, 'utf-8')
       securityManager.logOperation(OperationType.FILE_WRITE, filePath, true, {
         size: content.length,
         bypass: true,
+      })
+      // 主动通知渲染进程文件变更
+      notifyFileChanged(getMainWindowFn, {
+        event: isNewFile ? 'create' : 'update',
+        path: filePath,
       })
       return true
     } catch (err) {
@@ -623,6 +639,7 @@ export function registerSecureFileHandlers(
 
     try {
       const dir = path.dirname(filePath)
+      const isNewFile = !fs.existsSync(filePath)
       await fsPromises.mkdir(dir, { recursive: true })
       const buffer = Buffer.from(base64Data, 'base64')
       await fsPromises.writeFile(filePath, buffer)
@@ -630,6 +647,11 @@ export function registerSecureFileHandlers(
         size: buffer.length,
         binary: true,
         bypass: true,
+      })
+      // 主动通知渲染进程文件变更
+      notifyFileChanged(getMainWindowFn, {
+        event: isNewFile ? 'create' : 'update',
+        path: filePath,
       })
       return true
     } catch (err) {
@@ -667,9 +689,15 @@ export function registerSecureFileHandlers(
 
       try {
         const dir = path.dirname(currentPath)
+        const isNewFile = !fs.existsSync(currentPath)
         await fsPromises.mkdir(dir, { recursive: true })
         await fsPromises.writeFile(currentPath, content, 'utf-8')
         securityManager.logOperation(OperationType.FILE_WRITE, currentPath, true)
+        // 主动通知渲染进程文件变更
+        notifyFileChanged(getMainWindowFn, {
+          event: isNewFile ? 'create' : 'update',
+          path: currentPath,
+        })
         return currentPath
       } catch {
         return null
@@ -701,6 +729,11 @@ export function registerSecureFileHandlers(
         securityManager.logOperation(OperationType.FILE_WRITE, savePath, true, {
           isNewFile: true,
           bypass: true,
+        })
+        // 主动通知渲染进程文件创建
+        notifyFileChanged(getMainWindowFn, {
+          event: 'create',
+          path: savePath,
         })
         return savePath
       } catch {
@@ -735,11 +768,19 @@ export function registerSecureFileHandlers(
     if (securityManager.isSensitivePath(dirPath)) return false
 
     try {
+      const isNewDir = !fs.existsSync(dirPath)
       await fsPromises.mkdir(dirPath, { recursive: true })
       securityManager.logOperation(OperationType.FILE_WRITE, dirPath, true, {
         isDirectory: true,
         bypass: true,
       })
+      // 主动通知渲染进程目录创建
+      if (isNewDir) {
+        notifyFileChanged(getMainWindowFn, {
+          event: 'create',
+          path: dirPath,
+        })
+      }
       return true
     } catch (err) {
       logger.security.error('[File] mkdir failed:', dirPath, toAppError(err).message)
@@ -820,6 +861,11 @@ export function registerSecureFileHandlers(
         size: stat.size,
         bypass: true,
       })
+      // 主动通知渲染进程文件/目录删除
+      notifyFileChanged(getMainWindowFn, {
+        event: 'delete',
+        path: filePath,
+      })
       return true
     } catch (err) {
       logger.security.error('[File] delete failed:', filePath, toAppError(err).message)
@@ -863,6 +909,11 @@ export function registerSecureFileHandlers(
         isDirectory: stat.isDirectory(),
         bypass: true,
       })
+      // 主动通知渲染进程文件创建
+      notifyFileChanged(getMainWindowFn, {
+        event: 'create',
+        path: destinationPath,
+      })
       return true
     } catch (err) {
       logger.security.error('[File] copy failed:', sourcePath, toAppError(err).message)
@@ -894,6 +945,15 @@ export function registerSecureFileHandlers(
       securityManager.logOperation(OperationType.FILE_RENAME, oldPath, true, {
         newPath,
         bypass: true,
+      })
+      // 主动通知渲染进程：旧路径删除 + 新路径创建
+      notifyFileChanged(getMainWindowFn, {
+        event: 'delete',
+        path: oldPath,
+      })
+      notifyFileChanged(getMainWindowFn, {
+        event: 'create',
+        path: newPath,
       })
       return true
     } catch (err) {

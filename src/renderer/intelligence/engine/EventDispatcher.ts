@@ -60,6 +60,11 @@ export type AgentEvent =
   // 任务列表事件
   | { type: 'todos:all_completed'; total: number }
 
+  // 文件实时预览事件
+  | { type: 'file:writing'; filePath: string; workspacePath: string }
+  | { type: 'file:stream_content'; filePath: string; workspacePath: string; content: string; toolCallId: string; isComplete: boolean }
+  | { type: 'file:written'; filePath: string; workspacePath: string; content: string }
+
 export type EventType = AgentEvent['type']
 
 type EventHandler<T extends AgentEvent = AgentEvent> = (event: T) => void

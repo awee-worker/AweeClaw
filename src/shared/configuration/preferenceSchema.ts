@@ -144,6 +144,8 @@ const defaultAgentConfig: AgentConfig = {
   autoHandoff: AGENT_DEFAULTS.autoHandoff,
   loopDetection: { ...AGENT_DEFAULTS.loopDetection },
   ignoredDirectories: [...AGENT_DEFAULTS.ignoredDirectories],
+  multiAgent: { ...AGENT_DEFAULTS.multiAgent },
+  customAgentProfiles: [...AGENT_DEFAULTS.customAgentProfiles],
 }
 
 const defaultEditorConfig: EditorConfig = {

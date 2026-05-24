@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { Settings, Workflow, Compass, LogIn, ChevronUp, CloudSync, Info, MessageSquare, Plus, MoreHorizontal, Edit2, Trash2, LogOut, UserCircle, Wallet } from 'lucide-react'
+import { Settings, Workflow, Compass, LogIn, ChevronUp, CloudSync, Info, MessageSquare, Plus, MoreHorizontal, Edit2, Trash2, LogOut, UserCircle, Wallet, History } from 'lucide-react'
 import { HintOverlay } from '../ui/HintOverlay'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -49,6 +49,7 @@ function UserMenuDropdown({
   onWorkflowClick,
   onUserInfoClick,
   onBillingCenterClick,
+  onSessionHistoryClick,
   onCheckUpdate,
   onAbout,
   onLogout,
@@ -64,6 +65,7 @@ function UserMenuDropdown({
   onWorkflowClick: () => void
   onUserInfoClick: () => void
   onBillingCenterClick: () => void
+  onSessionHistoryClick: () => void
   onCheckUpdate: () => void
   onAbout: () => void
   onLogout: () => void
@@ -162,6 +164,13 @@ function UserMenuDropdown({
           >
             <Wallet className="w-[16px] h-[16px]" strokeWidth={1.5} />
             <span>{language === 'zh' ? '费用中心' : 'Billing'}</span>
+          </button>
+          <button
+            onClick={() => { onSessionHistoryClick(); onClose() }}
+            className="w-full h-8 flex items-center gap-2.5 px-3 text-text-primary hover:bg-text-primary/[0.06] transition-colors text-[13px]"
+          >
+            <History className="w-[16px] h-[16px]" strokeWidth={1.5} />
+            <span>{language === 'zh' ? '历史会话' : 'Session History'}</span>
           </button>
         </>
       )}
@@ -340,6 +349,7 @@ export default function NavigationRail() {
     setShowWelcomePage,
     setShowUserProfilePage,
     setShowBillingCenterPage,
+    setShowSessionHistoryPage,
     logout,
   } = useStore(useShallow(s => ({
     activeSidePanel: s.activeSidePanel,
@@ -357,6 +367,7 @@ export default function NavigationRail() {
     setShowWelcomePage: s.setShowWelcomePage,
     setShowUserProfilePage: s.setShowUserProfilePage,
     setShowBillingCenterPage: s.setShowBillingCenterPage,
+    setShowSessionHistoryPage: s.setShowSessionHistoryPage,
     logout: s.logout,
   })))
 
@@ -436,8 +447,19 @@ export default function NavigationRail() {
     setShowWelcomePage(false)
     setShowUserProfilePage(false)
     setShowBillingCenterPage(true)
+    setShowSessionHistoryPage(false)
     setShowWorkflow(false)
-  }, [setActiveSidePanel, setShowSettingsPage, setShowWelcomePage, setShowUserProfilePage, setShowBillingCenterPage, setShowWorkflow])
+  }, [setActiveSidePanel, setShowSettingsPage, setShowWelcomePage, setShowUserProfilePage, setShowBillingCenterPage, setShowSessionHistoryPage, setShowWorkflow])
+
+  const handleSessionHistoryClick = useCallback(() => {
+    setActiveSidePanel(null)
+    setShowSettingsPage(false)
+    setShowWelcomePage(false)
+    setShowUserProfilePage(false)
+    setShowBillingCenterPage(false)
+    setShowSessionHistoryPage(true)
+    setShowWorkflow(false)
+  }, [setActiveSidePanel, setShowSettingsPage, setShowWelcomePage, setShowUserProfilePage, setShowBillingCenterPage, setShowSessionHistoryPage, setShowWorkflow])
 
   const handleLogout = useCallback(() => {
     logout()
@@ -879,6 +901,7 @@ export default function NavigationRail() {
           onWorkflowClick={handleWorkflowClick}
           onUserInfoClick={handleUserInfoClick}
           onBillingCenterClick={handleBillingCenterClick}
+          onSessionHistoryClick={handleSessionHistoryClick}
           onCheckUpdate={handleCheckUpdate}
           onAbout={handleAbout}
           onLogout={handleLogout}

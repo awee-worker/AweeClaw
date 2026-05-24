@@ -19,6 +19,8 @@ import {
     ListTodo,
     Settings2,
     Sparkles,
+    Loader2,
+    Zap,
 } from 'lucide-react'
 import { ActionButton, DropdownSelector } from '@/renderer/components/ui'
 import { MarkdownPreview } from '@components/code-editor/FilePreviewPanel'
@@ -51,9 +53,21 @@ const TaskStatusIcon = memo(function TaskStatusIcon({ status }: { status: PlanTa
         case 'completed':
             return <CheckCircle2 className="w-4 h-4 text-green-500" />
         case 'running':
-            return <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}>
-                <Sparkles className="w-4 h-4 text-blue-500" />
-            </motion.div>
+            return (
+                <div className="relative">
+                    <motion.div
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 1.2, repeat: Infinity, ease: 'linear' }}
+                    >
+                        <Loader2 className="w-4 h-4 text-blue-500" />
+                    </motion.div>
+                    <motion.div
+                        className="absolute inset-0 rounded-full bg-blue-500/20"
+                        animate={{ scale: [1, 1.6, 1], opacity: [0.6, 0, 0.6] }}
+                        transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+                    />
+                </div>
+            )
         case 'failed':
             return <AlertCircle className="w-4 h-4 text-red-500" />
         case 'skipped':
@@ -208,6 +222,7 @@ const TaskCard = memo(function TaskCard({
     )
 
     const isActive = task.status === 'running'
+    const isPending = task.status === 'pending'
 
     return (
         <motion.div
@@ -223,12 +238,25 @@ const TaskCard = memo(function TaskCard({
         >
             {/* 进度条 */}
             {isActive && (
-                <motion.div
-                    className="absolute top-0 left-0 h-0.5 bg-gradient-to-r from-blue-500 to-purple-500 rounded-t-lg"
-                    initial={{ width: '0%' }}
-                    animate={{ width: '100%' }}
-                    transition={{ duration: 30, ease: 'linear' }}
-                />
+                <>
+                    <motion.div
+                        className="absolute top-0 left-0 h-0.5 bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500 rounded-t-lg"
+                        style={{ backgroundSize: '200% 100%' }}
+                        animate={{ backgroundPosition: ['0% 0%', '200% 0%'] }}
+                        transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+                    />
+                    <motion.div
+                        className="absolute inset-0 rounded-lg pointer-events-none"
+                        animate={{
+                            boxShadow: [
+                                'inset 0 0 0 0 rgba(59,130,246,0)',
+                                'inset 0 0 20px 0 rgba(59,130,246,0.08)',
+                                'inset 0 0 0 0 rgba(59,130,246,0)',
+                            ]
+                        }}
+                        transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+                    />
+                </>
             )}
 
             {/* 头部 */}
@@ -238,7 +266,29 @@ const TaskCard = memo(function TaskCard({
             >
                 <TaskStatusIcon status={task.status} />
                 <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm text-text-primary truncate">{task.title}</div>
+                    <div className="font-medium text-sm text-text-primary truncate flex items-center gap-2">
+                        {task.title}
+                        {isActive && (
+                            <motion.span
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-400 text-[10px] font-medium"
+                                animate={{ opacity: [1, 0.5, 1] }}
+                                transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+                            >
+                                <Zap className="w-2.5 h-2.5" />
+                                执行中
+                            </motion.span>
+                        )}
+                        {isPending && isExecuting && (
+                            <motion.span
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 text-[10px] font-medium"
+                                animate={{ opacity: [0.4, 1, 0.4] }}
+                                transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+                            >
+                                <Clock className="w-2.5 h-2.5" />
+                                等待中
+                            </motion.span>
+                        )}
+                    </div>
                     <div className="text-xs text-muted-foreground truncate">{task.description}</div>
                 </div>
                 <motion.div animate={{ rotate: expanded ? 90 : 0 }}>

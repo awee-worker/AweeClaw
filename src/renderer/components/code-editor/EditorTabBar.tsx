@@ -27,7 +27,8 @@ interface EditorTabsProps {
  * 获取 tab 显示名称
  */
 function getTabDisplayName(filePath: string): string {
-  return getFileName(filePath)
+  const name = getFileName(filePath)
+  return name || 'Untitled'
 }
 
 function isPlanJsonFile(filePath: string): boolean {
