@@ -1,6 +1,6 @@
 import { api } from '../../adapters/electronBridge'
 import { useState, useEffect, useCallback, useRef, memo } from 'react'
-import { Search, X, Clock, Star, Filter } from 'lucide-react'
+import { Search, X, Clock, Star, Filter, MessageSquare, FileText } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { getFileName } from '@shared/toolkit/pathHelper'
@@ -9,6 +9,10 @@ import { t } from '@renderer/i18n'
 import { ActionButton } from '../ui'
 import FileIcon from '../foundation/FileTypeIcon'
 import { useElevatedToastLayer } from '@components/foundation/toastLayerStore'
+import { useAgentStore } from '@intelligence/state/IntelligenceStore'
+import { useAgentActions, useAllThreads } from '@hooks/useAgent'
+import { getThreadDisplayTitle, getMessageText } from '@intelligence/providerTypes'
+import type { ChatThread } from '@intelligence/providerTypes'
 
 interface FileNavigatorProps {
   onClose: () => void
@@ -22,6 +26,16 @@ interface FileCandidate {
   lastOpened?: number
   isFavorite?: boolean
 }
+
+interface SessionCandidate {
+  thread: ChatThread
+  score: number
+  matchIndices: number[]
+  title: string
+  preview: string
+}
+
+type TabType = 'files' | 'sessions'
 
 const RECENT_FILES_KEY = 'aweeclaw_recent_files'
 const FAVORITES_KEY = 'aweeclaw_file_favorites'
@@ -67,7 +81,37 @@ function computeRelevanceScore(query: string, text: string): { score: number; in
   return { score, indices }
 }
 
-const HighlightedFileName = memo(function HighlightedFileName({
+function computeSessionRelevanceScore(query: string, thread: ChatThread): { score: number; indices: number[] } | null {
+  const title = getThreadDisplayTitle(thread)
+  const firstUserMsg = thread.messages.find(m => m.role === 'user')
+  const preview = firstUserMsg ? getMessageText(firstUserMsg.content).slice(0, 80) : ''
+  const searchText = `${title} ${preview}`.toLowerCase()
+  const qLower = query.toLowerCase()
+
+  if (!query.trim()) return { score: 0, indices: [] }
+  if (searchText.includes(qLower)) {
+    let score = 0
+    const indices: number[] = []
+    const titleLower = title.toLowerCase()
+    const previewLower = preview.toLowerCase()
+
+    if (titleLower.includes(qLower)) {
+      score += 20
+      const idx = titleLower.indexOf(qLower)
+      for (let i = idx; i < idx + query.length && i < title.length; i++) {
+        indices.push(i)
+      }
+    }
+    if (previewLower.includes(qLower)) {
+      score += 10
+    }
+    score += thread.lastModified > Date.now() - 86400000 * 7 ? 5 : 0
+    return { score, indices }
+  }
+  return null
+}
+
+const HighlightedText = memo(function HighlightedText({
   text,
   matchIndices,
 }: {
@@ -120,7 +164,7 @@ const FileCandidateRow = memo(function FileCandidateRow({
 
       <div className="flex-1 min-w-0 flex flex-col justify-center gap-0.5">
         <div className="text-[13px] font-medium truncate leading-tight flex items-center gap-2">
-          <HighlightedFileName text={fileName} matchIndices={fileNameMatches} />
+          <HighlightedText text={fileName} matchIndices={fileNameMatches} />
           {candidate.isFavorite && <Star className="w-3 h-3 text-yellow-400 fill-yellow-400 flex-shrink-0" />}
         </div>
         {dirPath && (
@@ -137,12 +181,94 @@ const FileCandidateRow = memo(function FileCandidateRow({
   )
 })
 
+const SessionCandidateRow = memo(function SessionCandidateRow({
+  candidate,
+  isSelected,
+  isCurrent,
+  onSelect,
+  language,
+}: {
+  candidate: SessionCandidate
+  isSelected: boolean
+  isCurrent: boolean
+  onSelect: () => void
+  language: string
+}) {
+  const { thread, title, preview } = candidate
+  const msgCount = thread.messageCount ?? thread.messages.length ?? 0
+
+  const formatTime = (timestamp: number): string => {
+    const date = new Date(timestamp)
+    const now = new Date()
+    const isToday = date.toDateString() === now.toDateString()
+    if (isToday) {
+      return language === 'zh'
+        ? `今天 ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`
+        : `Today ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`
+    }
+    const y = date.getFullYear()
+    const m = (date.getMonth() + 1).toString().padStart(2, '0')
+    const d = date.getDate().toString().padStart(2, '0')
+    return language === 'zh' ? `${y}-${m}-${d}` : `${m}/${d}/${y}`
+  }
+
+  return (
+    <div
+      onClick={onSelect}
+      className={`
+        relative flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-all duration-150 mx-2 rounded-lg group
+        ${isSelected ? 'bg-accent/10 text-text-primary ring-1 ring-accent/15' : 'text-text-secondary hover:bg-surface-hover'}
+      `}
+    >
+      <div className="flex-shrink-0 p-1.5 rounded-md bg-accent/10 text-accent">
+        <MessageSquare className="w-4 h-4" />
+      </div>
+
+      <div className="flex-1 min-w-0 flex flex-col justify-center gap-0.5">
+        <div className="text-[13px] font-medium truncate leading-tight flex items-center gap-2">
+          <HighlightedText text={title} matchIndices={candidate.matchIndices} />
+          {isCurrent && (
+            <span className="shrink-0 px-1.5 py-0.5 rounded-full bg-accent/10 text-accent text-[10px] font-medium">
+              {language === 'zh' ? '当前' : 'Current'}
+            </span>
+          )}
+        </div>
+        {preview && preview !== '-' && (
+          <div className="text-[11px] text-text-muted truncate opacity-60 leading-tight">{preview}</div>
+        )}
+      </div>
+
+      <div className="flex-shrink-0 flex items-center gap-2">
+        <span className="text-[10px] text-text-muted/50 font-mono">{msgCount}</span>
+        <span className="text-[10px] text-text-muted/40">{formatTime(thread.lastModified)}</span>
+      </div>
+
+      {isSelected && (
+        <div className="flex-shrink-0 text-[10px] font-mono text-text-muted bg-surface px-1.5 py-0.5 rounded border border-border opacity-0 group-hover:opacity-100 transition-opacity">
+          ⏎
+        </div>
+      )}
+    </div>
+  )
+})
+
 export default function FileNavigator({ onClose }: FileNavigatorProps) {
   useElevatedToastLayer(true)
-  const { workspacePath, openFile, language } = useStore(useShallow(s => ({ workspacePath: s.workspacePath, openFile: s.openFile, language: s.language })))
+  const { workspacePath, openFile, language, setChatVisible } = useStore(useShallow(s => ({
+    workspacePath: s.workspacePath,
+    openFile: s.openFile,
+    language: s.language,
+    setChatVisible: s.setChatVisible,
+  })))
+  const { switchThread } = useAgentActions()
+  const currentThreadId = useAgentStore(state => state.currentThreadId)
+  const allThreads = useAllThreads()
+
   const [query, setQuery] = useState('')
+  const [activeTab, setActiveTab] = useState<TabType>('files')
   const [allFiles, setAllFiles] = useState<string[]>([])
-  const [candidates, setCandidates] = useState<FileCandidate[]>([])
+  const [fileCandidates, setFileCandidates] = useState<FileCandidate[]>([])
+  const [sessionCandidates, setSessionCandidates] = useState<SessionCandidate[]>([])
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
   const [showRecent, setShowRecent] = useState(false)
@@ -174,6 +300,8 @@ export default function FileNavigator({ onClose }: FileNavigatorProps) {
   }, [workspacePath, collectWorkspaceFiles])
 
   useEffect(() => {
+    if (activeTab !== 'files') return
+
     if (showRecent && !query.trim()) {
       const recentPaths = loadRecentFiles()
       const recentCandidates: FileCandidate[] = recentPaths
@@ -186,19 +314,20 @@ export default function FileNavigator({ onClose }: FileNavigatorProps) {
           lastOpened: Date.now(),
           isFavorite: favorites.current.includes(path),
         }))
-      setCandidates(recentCandidates.slice(0, 30))
+      setFileCandidates(recentCandidates.slice(0, 30))
       setSelectedIndex(0)
       return
     }
 
     if (!query.trim()) {
-      setCandidates(allFiles.slice(0, 20).map(path => ({
+      setFileCandidates(allFiles.slice(0, 20).map(path => ({
         path,
         name: getFileName(path) || path,
         score: 0,
         matchIndices: [],
         isFavorite: favorites.current.includes(path),
       })))
+      setSelectedIndex(0)
       return
     }
 
@@ -216,9 +345,52 @@ export default function FileNavigator({ onClose }: FileNavigatorProps) {
       }
     }
     results.sort((a, b) => b.score - a.score)
-    setCandidates(results.slice(0, 50))
+    setFileCandidates(results.slice(0, 50))
     setSelectedIndex(0)
-  }, [query, allFiles, showRecent])
+  }, [query, allFiles, showRecent, activeTab])
+
+  useEffect(() => {
+    if (activeTab !== 'sessions') return
+
+    if (!query.trim()) {
+      setSessionCandidates(
+        allThreads.slice(0, 30).map(thread => {
+          const title = getThreadDisplayTitle(thread)
+          const firstUserMsg = thread.messages.find(m => m.role === 'user')
+          const preview = firstUserMsg ? getMessageText(firstUserMsg.content).slice(0, 80) : '-'
+          return {
+            thread,
+            score: 0,
+            matchIndices: [],
+            title,
+            preview,
+          }
+        })
+      )
+      setSelectedIndex(0)
+      return
+    }
+
+    const results: SessionCandidate[] = []
+    for (const thread of allThreads) {
+      const result = computeSessionRelevanceScore(query, thread)
+      if (result) {
+        const title = getThreadDisplayTitle(thread)
+        const firstUserMsg = thread.messages.find(m => m.role === 'user')
+        const preview = firstUserMsg ? getMessageText(firstUserMsg.content).slice(0, 80) : '-'
+        results.push({
+          thread,
+          score: result.score,
+          matchIndices: result.indices,
+          title,
+          preview,
+        })
+      }
+    }
+    results.sort((a, b) => b.score - a.score || b.thread.lastModified - a.thread.lastModified)
+    setSessionCandidates(results.slice(0, 50))
+    setSelectedIndex(0)
+  }, [query, allThreads, activeTab])
 
   const openFilePath = useCallback(async (filePath: string) => {
     if (!workspacePath) return
@@ -231,29 +403,55 @@ export default function FileNavigator({ onClose }: FileNavigatorProps) {
     }
   }, [workspacePath, openFile, onClose])
 
+  const openSession = useCallback((threadId: string) => {
+    switchThread(threadId)
+    setChatVisible(true)
+    onClose()
+  }, [switchThread, setChatVisible, onClose])
+
+  const currentCandidates = activeTab === 'files' ? fileCandidates : sessionCandidates
+  const currentCount = currentCandidates.length
+
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (keybindingService.matches(e, 'list.focusDown')) {
       e.preventDefault()
-      setSelectedIndex(prev => Math.min(prev + 1, candidates.length - 1))
+      setSelectedIndex(prev => Math.min(prev + 1, currentCount - 1))
     } else if (keybindingService.matches(e, 'list.focusUp')) {
       e.preventDefault()
       setSelectedIndex(prev => Math.max(prev - 1, 0))
     } else if (keybindingService.matches(e, 'list.select')) {
       e.preventDefault()
-      if (candidates[selectedIndex]) openFilePath(candidates[selectedIndex].path)
+      if (activeTab === 'files' && fileCandidates[selectedIndex]) {
+        openFilePath(fileCandidates[selectedIndex].path)
+      } else if (activeTab === 'sessions' && sessionCandidates[selectedIndex]) {
+        openSession(sessionCandidates[selectedIndex].thread.id)
+      }
     } else if (keybindingService.matches(e, 'list.cancel')) {
       e.preventDefault()
       onClose()
     }
-  }, [candidates, selectedIndex, openFilePath, onClose])
+  }, [currentCount, activeTab, fileCandidates, sessionCandidates, selectedIndex, openFilePath, openSession, onClose])
 
   useEffect(() => { inputRef.current?.focus() }, [])
+  useEffect(() => { setSelectedIndex(0) }, [query, activeTab, showRecent])
   useEffect(() => {
     if (listRef.current) {
       const selectedEl = listRef.current.querySelector(`[data-index="${selectedIndex}"]`)
       selectedEl?.scrollIntoView({ block: 'nearest' })
     }
   }, [selectedIndex])
+
+  const placeholder = activeTab === 'files'
+    ? t('searchFilesPlaceholder', language)
+    : (language === 'zh' ? '搜索历史会话...' : 'Search session history...')
+
+  const emptyText = activeTab === 'files'
+    ? (query ? t('noFilesFound', language) : t('noFilesInWorkspace', language))
+    : (language === 'zh' ? '暂无会话记录' : 'No session records yet')
+
+  const emptySearchText = activeTab === 'files'
+    ? (query ? t('noFilesFound', language) : t('noFilesInWorkspace', language))
+    : (language === 'zh' ? '未找到匹配的会话' : 'No matching sessions found')
 
   return (
     <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[12vh] animate-fade-in" onClick={onClose}>
@@ -271,7 +469,7 @@ export default function FileNavigator({ onClose }: FileNavigatorProps) {
             value={query}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={t('searchFilesPlaceholder', language)}
+            placeholder={placeholder}
             className="flex-1 bg-transparent text-lg font-medium text-text-primary placeholder:text-text-muted/70 focus:outline-none"
             spellCheck={false}
           />
@@ -284,40 +482,63 @@ export default function FileNavigator({ onClose }: FileNavigatorProps) {
 
         <div className="flex items-center gap-1 px-4 py-1.5 border-b border-border/25 bg-surface/15">
           <button
-            onClick={() => { setShowRecent(false); setQuery('') }}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all ${!showRecent ? 'bg-accent/10 text-accent' : 'text-text-muted hover:text-text-secondary'}`}
+            onClick={() => { setActiveTab('files'); setShowRecent(false); setQuery('') }}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all ${activeTab === 'files' && !showRecent ? 'bg-accent/10 text-accent' : 'text-text-muted hover:text-text-secondary'}`}
           >
-            <Filter className="w-3 h-3" />
-            {language === 'zh' ? '全部' : 'All'}
+            <FileText className="w-3 h-3" />
+            {language === 'zh' ? '文件' : 'Files'}
           </button>
+          {activeTab === 'files' && (
+            <button
+              onClick={() => { setShowRecent(true); setQuery('') }}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all ${showRecent ? 'bg-accent/10 text-accent' : 'text-text-muted hover:text-text-secondary'}`}
+            >
+              <Clock className="w-3 h-3" />
+              {language === 'zh' ? '最近' : 'Recent'}
+            </button>
+          )}
           <button
-            onClick={() => { setShowRecent(true); setQuery('') }}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all ${showRecent ? 'bg-accent/10 text-accent' : 'text-text-muted hover:text-text-secondary'}`}
+            onClick={() => { setActiveTab('sessions'); setShowRecent(false); setQuery('') }}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all ${activeTab === 'sessions' ? 'bg-accent/10 text-accent' : 'text-text-muted hover:text-text-secondary'}`}
           >
-            <Clock className="w-3 h-3" />
-            {language === 'zh' ? '最近' : 'Recent'}
+            <MessageSquare className="w-3 h-3" />
+            {language === 'zh' ? '会话' : 'Sessions'}
           </button>
-          <span className="ml-auto text-[10px] text-text-muted/50 font-mono">{candidates.length} {language === 'zh' ? '项' : 'items'}</span>
+          <span className="ml-auto text-[10px] text-text-muted/50 font-mono">{currentCount} {language === 'zh' ? '项' : 'items'}</span>
         </div>
 
         <div ref={listRef} className="flex-1 overflow-y-auto py-2 custom-scrollbar scroll-p-2">
-          {isLoading ? (
+          {isLoading && activeTab === 'files' ? (
             <div className="px-4 py-14 text-center text-text-muted flex flex-col items-center gap-3">
               <div className="w-7 h-7 border-2 border-accent border-t-transparent rounded-full animate-spin" />
               <p className="text-xs font-medium opacity-60">{t('loadingFiles', language)}</p>
             </div>
-          ) : candidates.length === 0 ? (
+          ) : currentCount === 0 ? (
             <div className="px-4 py-14 text-center text-text-muted flex flex-col items-center gap-2">
-              <p className="text-sm font-medium">{query ? t('noFilesFound', language) : t('noFilesInWorkspace', language)}</p>
+              <p className="text-sm font-medium">{query ? emptySearchText : emptyText}</p>
             </div>
-          ) : (
+          ) : activeTab === 'files' ? (
             <div className="flex flex-col gap-0.5">
-              {candidates.map((candidate, idx) => (
+              {fileCandidates.map((candidate, idx) => (
                 <div key={candidate.path} data-index={idx}>
                   <FileCandidateRow
                     candidate={candidate}
                     isSelected={idx === selectedIndex}
                     onSelect={() => openFilePath(candidate.path)}
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-0.5">
+              {sessionCandidates.map((candidate, idx) => (
+                <div key={candidate.thread.id} data-index={idx}>
+                  <SessionCandidateRow
+                    candidate={candidate}
+                    isSelected={idx === selectedIndex}
+                    isCurrent={currentThreadId === candidate.thread.id}
+                    onSelect={() => openSession(candidate.thread.id)}
+                    language={language}
                   />
                 </div>
               ))}
@@ -333,7 +554,7 @@ export default function FileNavigator({ onClose }: FileNavigatorProps) {
             </span>
             <span className="flex items-center gap-1">
               <kbd className="font-sans bg-surface/70 border border-border/40 px-1.5 py-0.5 rounded text-[9px]">↵</kbd>
-              <span>open</span>
+              <span>{activeTab === 'files' ? 'open' : 'switch'}</span>
             </span>
             <span className="flex items-center gap-1">
               <kbd className="font-sans bg-surface/70 border border-border/40 px-1.5 py-0.5 rounded text-[9px]">esc</kbd>

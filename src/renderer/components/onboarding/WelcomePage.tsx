@@ -185,7 +185,6 @@ export default function WelcomePage() {
 
   return (
     <div className={`${p}-welcome-page h-full w-full overflow-hidden bg-background text-text-primary relative`}>
-      <AmbientOrbs />
       <WelcomeStyles rootClass={`${p}-welcome-page`} />
 
       <main className="h-full overflow-y-auto custom-scrollbar relative z-10">

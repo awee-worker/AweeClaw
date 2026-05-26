@@ -346,14 +346,25 @@ async function webSearch(query: string, maxResults = 5, timeout?: number): Promi
         }
     }
 
-    // 回退到 DuckDuckGo
+    // 回退到 DuckDuckGo（国内网络可能无法访问，增加 Bing 作为最终回退）
     try {
-        return await searchWithDuckDuckGo(query, maxResults, ddgTimeout)
+        const ddgResult = await searchWithDuckDuckGo(query, maxResults, ddgTimeout)
+        if (ddgResult.success && ddgResult.results && ddgResult.results.length > 0) {
+            return ddgResult
+        }
+        logger.ipc.warn('[HTTP] DuckDuckGo returned empty, falling back to Bing')
     } catch (error) {
-        logger.ipc.error('[HTTP] DuckDuckGo search failed:', error)
+        logger.ipc.warn('[HTTP] DuckDuckGo search failed:', error)
+    }
+
+    // 最终回退到 Bing（国内可访问）
+    try {
+        return await searchWithBing(query, maxResults, ddgTimeout)
+    } catch (error) {
+        logger.ipc.error('[HTTP] Bing search failed:', error)
         return {
             success: false,
-            error: `搜索失败: ${error}`,
+            error: `所有搜索源均不可用。请检查网络连接，或配置 Google PSE API Key 以获得更稳定的搜索体验。`,
         }
     }
 }
@@ -425,7 +436,6 @@ async function searchWithGoogle(query: string, apiKey: string, cx: string, maxRe
 async function searchWithDuckDuckGo(query: string, maxResults: number, timeout = 25000): Promise<WebSearchResult> {
     return new Promise((resolve) => {
         const encodedQuery = encodeURIComponent(query)
-        // 使用 DuckDuckGo 的 HTML 版本，更容易抓取
         const url = `/html/?q=${encodedQuery}`
 
         const options = {
@@ -434,9 +444,14 @@ async function searchWithDuckDuckGo(query: string, maxResults: number, timeout =
             path: url,
             method: 'GET',
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                 'Accept-Language': 'en-US,en;q=0.9',
+                'Referer': 'https://html.duckduckgo.com/',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'same-origin',
+                'Upgrade-Insecure-Requests': '1',
             },
         }
 
@@ -447,6 +462,9 @@ async function searchWithDuckDuckGo(query: string, maxResults: number, timeout =
             res.on('end', () => {
                 try {
                     const results = parseDuckDuckGoHtml(data, maxResults)
+                    if (results.length === 0) {
+                        logger.ipc.warn('[HTTP] DuckDuckGo returned 0 results, response length:', data.length)
+                    }
                     resolve({ success: true, results })
                 } catch (error) {
                     resolve({ success: false, error: `Failed to parse DuckDuckGo response: ${error}` })
@@ -476,13 +494,13 @@ function parseDuckDuckGoHtml(html: string, maxResults: number): SearchResult[] {
     // 摘要在 class="result__snippet" 的 a 标签中
 
     // 匹配结果块
-    const resultRegex = /<div[^>]*class="[^"]*result[^"]*"[^>]*>[\s\S]*?<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>[\s\S]*?<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([^<]*)<\/a>/gi
+    const resultRegex = /<div[^>]*class="[^"]*result[^"]*"[^>]*>[\s\S]*?<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/gi
 
     let match
     while ((match = resultRegex.exec(html)) !== null && results.length < maxResults) {
         let url = match[1]
-        const title = decodeHtmlEntities(match[2].trim())
-        const snippet = decodeHtmlEntities(match[3].trim())
+        const title = stripHtml(decodeHtmlEntities(match[2].trim()))
+        const snippet = stripHtml(decodeHtmlEntities(match[3].trim()))
 
         // DuckDuckGo 的链接是重定向链接，需要提取真实 URL
         if (url.includes('uddg=')) {
@@ -499,8 +517,8 @@ function parseDuckDuckGoHtml(html: string, maxResults: number): SearchResult[] {
 
     // 如果上面的正则没匹配到，尝试更宽松的匹配
     if (results.length === 0) {
-        const linkRegex = /<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]*)"[^>]*>([^<]+)<\/a>/gi
-        const snippetRegex = /<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([^<]+)<\/a>/gi
+        const linkRegex = /<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi
+        const snippetRegex = /<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/gi
 
         const links: { url: string; title: string }[] = []
         const snippets: string[] = []
@@ -511,11 +529,11 @@ function parseDuckDuckGoHtml(html: string, maxResults: number): SearchResult[] {
                 const uddgMatch = url.match(/uddg=([^&]+)/)
                 if (uddgMatch) url = decodeURIComponent(uddgMatch[1])
             }
-            links.push({ url, title: decodeHtmlEntities(match[2].trim()) })
+            links.push({ url, title: stripHtml(decodeHtmlEntities(match[2].trim())) })
         }
 
         while ((match = snippetRegex.exec(html)) !== null) {
-            snippets.push(decodeHtmlEntities(match[1].trim()))
+            snippets.push(stripHtml(decodeHtmlEntities(match[1].trim())))
         }
 
         for (let i = 0; i < Math.min(links.length, maxResults); i++) {
@@ -524,6 +542,101 @@ function parseDuckDuckGoHtml(html: string, maxResults: number): SearchResult[] {
                 url: links[i].url,
                 snippet: snippets[i] || '',
             })
+        }
+    }
+
+    return results
+}
+
+// 移除 HTML 标签
+function stripHtml(html: string): string {
+    return html.replace(/<[^>]+>/g, '').trim()
+}
+
+// Bing 搜索（国内可访问）
+async function searchWithBing(query: string, maxResults: number, timeout = 25000): Promise<WebSearchResult> {
+    return new Promise((resolve) => {
+        const encodedQuery = encodeURIComponent(query)
+        const url = `/search?q=${encodedQuery}&count=${Math.min(maxResults, 10)}`
+
+        const options = {
+            hostname: 'www.bing.com',
+            port: 443,
+            path: url,
+            method: 'GET',
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9,zh-CN;q=0.8',
+            },
+        }
+
+        const req = https.request(options, (res) => {
+            let data = ''
+            res.setEncoding('utf8')
+            res.on('data', (chunk) => data += chunk)
+            res.on('end', () => {
+                try {
+                    const results = parseBingHtml(data, maxResults)
+                    if (results.length === 0) {
+                        logger.ipc.warn('[HTTP] Bing returned 0 results, response length:', data.length)
+                    }
+                    resolve({ success: true, results })
+                } catch (error) {
+                    resolve({ success: false, error: `Failed to parse Bing response: ${error}` })
+                }
+            })
+        })
+
+        req.on('error', (error) => {
+            resolve({ success: false, error: `Bing request failed: ${error.message}` })
+        })
+
+        req.setTimeout(timeout, () => {
+            req.destroy()
+            resolve({ success: false, error: 'Bing request timed out' })
+        })
+
+        req.end()
+    })
+}
+
+// 解析 Bing HTML 响应
+function parseBingHtml(html: string, maxResults: number): SearchResult[] {
+    const results: SearchResult[] = []
+
+    // Bing 结果在 class="b_algo" 的 li 中
+    // 标题在 h2 > a 中（跳过 class="tilk" 的站点链接）
+    // 摘要在 class="b_caption" 的 p 中
+    const resultRegex = /<li[^>]*class="[^"]*b_algo[^"]*"[^>]*>[\s\S]*?<h2[^>]*>[\s\S]*?<a(?![^>]*class="tilk")[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<\/h2>[\s\S]*?<p[^>]*>([\s\S]*?)<\/p>/gi
+
+    let match
+    while ((match = resultRegex.exec(html)) !== null && results.length < maxResults) {
+        const url = match[1]
+        const title = stripHtml(decodeHtmlEntities(match[2].trim()))
+        const snippet = stripHtml(decodeHtmlEntities(match[3].trim()))
+
+        if (title && url) {
+            results.push({ title, url, snippet })
+        }
+    }
+
+    // 回退：更宽松的匹配
+    if (results.length === 0) {
+        const algoRegex = /<li[^>]*class="[^"]*b_algo[^"]*"[^>]*>[\s\S]*?<\/li>/gi
+        let algoMatch
+        while ((algoMatch = algoRegex.exec(html)) !== null && results.length < maxResults) {
+            const block = algoMatch[0]
+            // 优先匹配 h2 内的链接（跳过 tilk 站点链接）
+            const h2Match = block.match(/<h2[^>]*>[\s\S]*?<a(?![^>]*class="tilk")[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<\/h2>/i)
+            const snippetMatch = block.match(/<p[^>]*>([\s\S]*?)<\/p>/i)
+            if (h2Match) {
+                results.push({
+                    title: stripHtml(decodeHtmlEntities(h2Match[2].trim())),
+                    url: h2Match[1],
+                    snippet: snippetMatch ? stripHtml(decodeHtmlEntities(snippetMatch[1].trim())) : '',
+                })
+            }
         }
     }
 

@@ -81,6 +81,7 @@ function AppContent() {
     terminalVisible, debugVisible, chatVisible,
     activeScenarioId, openFiles, activeFilePath, language,
     showSettingsPage, showWelcomePage, showUserProfilePage, showBillingCenterPage, showSessionHistoryPage,
+    isAuthenticated, setShowWelcomePage,
   } = useStore(useShallow((state) => ({
     workspace: state.workspace,
     activeSidePanel: state.activeSidePanel,
@@ -108,6 +109,8 @@ function AppContent() {
     showUserProfilePage: state.showUserProfilePage,
     showBillingCenterPage: state.showBillingCenterPage,
     showSessionHistoryPage: state.showSessionHistoryPage,
+    isAuthenticated: state.isAuthenticated,
+    setShowWelcomePage: state.setShowWelcomePage,
   })))
 
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false)
@@ -182,6 +185,9 @@ function AppContent() {
       setIsInitialized(true)
       if (result.shouldShowOnboarding) {
         setShowOnboarding(true)
+      }
+      if (!isAuthenticated) {
+        setShowWelcomePage(true)
       }
     },
   })

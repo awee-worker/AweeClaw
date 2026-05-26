@@ -187,9 +187,7 @@ export function getFriendlyToolName(
             const toolDisplay = action || formatToolNameHuman(parsed.toolName)
 
             return {
-                label: language === 'zh'
-                    ? `${serverDisplayName} · ${toolDisplay}`
-                    : `${serverDisplayName} · ${toolDisplay}`,
+                label: toolDisplay,
                 isMcp: true,
                 serverName: serverDisplayName,
                 toolName: parsed.toolName,
@@ -226,10 +224,6 @@ export function getMcpToolStatusText(
     const parsed = parseMcpToolName(effectiveName)
     if (!parsed) return null
 
-    const servers = useStore.getState().mcpServers
-    const server = servers.find(s => s.id === parsed.serverId)
-    const serverDisplayName = server?.config?.name || parsed.serverId
-
     const action = guessMcpToolAction(parsed.toolName, language)
     const isRunning = status === 'running' || status === 'pending' || isStreaming
     const isSuccess = status === 'success'
@@ -237,25 +231,25 @@ export function getMcpToolStatusText(
 
     if (language === 'zh') {
         if (action) {
-            if (isRunning) return `${serverDisplayName} · 正在${action}...`
-            if (isSuccess) return `${serverDisplayName} · 已${action}`
-            if (isError) return `${serverDisplayName} · ${action}失败`
-            return `${serverDisplayName} · ${action}`
+            if (isRunning) return `正在${action}...`
+            if (isSuccess) return `已${action}`
+            if (isError) return `${action}失败`
+            return `${action}`
         }
-        if (isRunning) return `${serverDisplayName} · 处理中...`
-        if (isSuccess) return `${serverDisplayName} · 已完成`
-        if (isError) return `${serverDisplayName} · 执行失败`
-        return `${serverDisplayName} · ${formatToolNameHuman(parsed.toolName)}`
+        if (isRunning) return `处理中...`
+        if (isSuccess) return `已完成`
+        if (isError) return `执行失败`
+        return `${formatToolNameHuman(parsed.toolName)}`
     }
 
     if (action) {
-        if (isRunning) return `${serverDisplayName} · ${action}...`
-        if (isSuccess) return `${serverDisplayName} · Done`
-        if (isError) return `${serverDisplayName} · Failed`
-        return `${serverDisplayName} · ${action}`
+        if (isRunning) return `${action}...`
+        if (isSuccess) return `Done`
+        if (isError) return `Failed`
+        return `${action}`
     }
-    if (isRunning) return `${serverDisplayName} · Processing...`
-    if (isSuccess) return `${serverDisplayName} · Done`
-    if (isError) return `${serverDisplayName} · Failed`
-    return `${serverDisplayName} · ${formatToolNameHuman(parsed.toolName)}`
+    if (isRunning) return `Processing...`
+    if (isSuccess) return `Done`
+    if (isError) return `Failed`
+    return `${formatToolNameHuman(parsed.toolName)}`
 }

@@ -6,6 +6,7 @@ import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { getLucideIcon } from '../foundation/IconMap'
+import { Logo } from '../foundation/BrandMark'
 import { UserAccountPopover } from './UserAccountPopover'
 import { UpdateModal } from './UpdateModal'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
@@ -508,21 +509,21 @@ export default function NavigationRail() {
           flex-direction: column;
           z-index: 30;
           user-select: none;
-          padding: 8px 8px 8px 8px;
+          padding: 20px 8px 8px 8px;
           transition: width 200ms cubic-bezier(0.4, 0, 0.2, 1), padding 200ms cubic-bezier(0.4, 0, 0.2, 1);
           overflow: hidden;
           flex-shrink: 0;
         }
         .${p}-nav-rail[data-expanded="false"] {
           width: 48px;
-          padding: 8px 4px 8px 4px;
+          padding: 20px 4px 8px 4px;
           align-items: center;
         }
         .${p}-nav-rail[data-mac="true"] {
-          padding-top: 36px;
+          padding-top: 48px;
         }
         .${p}-nav-rail[data-mac="true"][data-expanded="false"] {
-          padding-top: 36px;
+          padding-top: 48px;
         }
         .${p}-nav-rail-brand {
           display: flex;
@@ -542,24 +543,24 @@ export default function NavigationRail() {
           padding: 4px 0 12px 0;
         }
         .${p}-nav-rail-brand-icon {
-          width: 28px;
-          height: 28px;
-          border-radius: 8px;
-          background: linear-gradient(135deg, rgb(var(--accent)), rgb(var(--accent)) 60%, rgba(var(--accent-rgb), 0.6));
+          width: 24px;
+          height: 24px;
+          border-radius: 50%;
           display: flex;
           align-items: center;
           justify-content: center;
-          color: white;
-          font-size: 14px;
-          font-weight: 800;
           flex-shrink: 0;
-          box-shadow: 0 2px 8px rgba(var(--accent-rgb), 0.3);
+          overflow: hidden;
+        }
+        .${p}-nav-rail-brand-icon img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
         }
         .${p}-nav-rail-brand-name {
-          font-size: 16px;
-          font-weight: 700;
+          font-size: 13px;
+          font-weight: 500;
           color: rgb(var(--text-primary));
-          letter-spacing: -0.02em;
         }
         .${p}-nav-rail[data-expanded="false"] .${p}-nav-rail-brand-name {
           display: none;
@@ -751,12 +752,16 @@ export default function NavigationRail() {
 
       {navRailExpanded ? (
         <div className={`${p}-nav-rail-brand`} onClick={handleBrandClick}>
-          <div className={`${p}-nav-rail-brand-icon`}>A</div>
+          <div className={`${p}-nav-rail-brand-icon`}>
+            <Logo className="w-full h-full" />
+          </div>
           <span className={`${p}-nav-rail-brand-name`}>{BRAND.name}</span>
         </div>
       ) : (
         <div className={`${p}-nav-rail-brand`} onClick={handleBrandClick}>
-          <div className={`${p}-nav-rail-brand-icon`}>A</div>
+          <div className={`${p}-nav-rail-brand-icon`}>
+            <Logo className="w-full h-full" />
+          </div>
         </div>
       )}
 
