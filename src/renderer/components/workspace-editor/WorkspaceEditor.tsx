@@ -23,6 +23,7 @@ import { monaco } from '@renderer/monacoWorkerEntry'
 import { initMonacoTypeService } from '@services/monacoTypeAdapter'
 import { streamingEditService } from '@intelligence/runtime/streamingEditor'
 import { composerService } from '@intelligence/runtime/composerEngine'
+import { EventBus } from '@intelligence/engine/EventDispatcher'
 import type { StreamingEditState } from '@intelligence/providerTypes'
 import type { ThemeName } from '@store/slices/themeSlice'
 import { useEditorBreakpoints } from '@hooks/useEditorBreakpoints'
@@ -70,6 +71,7 @@ export default function Editor() {
   // 状态
   const [streamingEdit, setStreamingEdit] = useState<StreamingEditState | null>(null)
   const [showDiffPreview, setShowDiffPreview] = useState(false)
+  const [isFileStreaming, setIsFileStreaming] = useState(false)
   const [inlineEditState, setInlineEditState] = useState<{
     show: boolean; position: { x: number; y: number }; selectedCode: string; lineRange: [number, number]
   } | null>(null)
@@ -184,6 +186,31 @@ export default function Editor() {
       setShowDiffPreview(false)
     }
   }, [activeFilePath, isPreviewDocument])
+
+  // 监听文件流式写入事件，追踪当前文件是否正在被 AI 写入
+  useEffect(() => {
+    if (!activeFilePath) {
+      setIsFileStreaming(false)
+      return
+    }
+
+    const unsub = EventBus.on('file:stream_content', (event) => {
+      if (event.filePath === activeFilePath) {
+        setIsFileStreaming(!event.isComplete)
+      }
+    })
+
+    const unsubWritten = EventBus.on('file:written', (event) => {
+      if (event.filePath === activeFilePath) {
+        setIsFileStreaming(false)
+      }
+    })
+
+    return () => {
+      unsub()
+      unsubWritten()
+    }
+  }, [activeFilePath])
 
   // 文档类型文件流式预览时自动滚动到底部
   useEffect(() => {
@@ -503,7 +530,7 @@ export default function Editor() {
             ) : isPlanJsonFile(activeFile.path) ? (
               <ExecutionBoard planId={getPlanIdFromPlanFilePath(activeFile.path)} />
             ) : activeFileType === 'markdown' && markdownMode === 'preview' ? (
-              <MarkdownPreview content={activeFile.content} fontSize={getEditorConfig().fontSize} />
+              <MarkdownPreview content={activeFile.content} fontSize={getEditorConfig().fontSize} isStreaming={isFileStreaming} />
             ) : activeFileType === 'markdown' && markdownMode === 'split' ? (
               <div className="flex h-full">
                 <div className="flex-1 border-r border-border">
@@ -527,7 +554,7 @@ export default function Editor() {
                   />
                 </div>
                 <div className="flex-1 relative overflow-hidden">
-                  <MarkdownPreview content={activeFile.content} fontSize={getEditorConfig().fontSize} />
+                  <MarkdownPreview content={activeFile.content} fontSize={getEditorConfig().fontSize} isStreaming={isFileStreaming} />
                 </div>
               </div>
             ) : activeFileType === 'html' && htmlMode === 'preview' ? (

@@ -66,17 +66,76 @@ export function isBinaryFile(path: string): boolean {
 interface MarkdownPreviewProps {
     content: string
     fontSize?: number
+    isStreaming?: boolean
 }
 
-export function MarkdownPreview({ content, fontSize = 14 }: MarkdownPreviewProps) {
+export function MarkdownPreview({ content, fontSize = 14, isStreaming }: MarkdownPreviewProps) {
     const currentTheme = useStore(s => s.currentTheme)
     const theme = themeManager.getThemeById(currentTheme)
     const isLight = theme?.type === 'light'
+    const containerRef = useRef<HTMLDivElement>(null)
+    const isUserScrollingRef = useRef(false)
+    const lastContentLengthRef = useRef(0)
+    const autoScrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const recentGrowthCountRef = useRef(0)
+    const growthWindowRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+    const handleScroll = useCallback(() => {
+        const el = containerRef.current
+        if (!el) return
+        const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+        isUserScrollingRef.current = distanceFromBottom > 80
+    }, [])
+
+    useEffect(() => {
+        const contentGrew = content.length > lastContentLengthRef.current
+        lastContentLengthRef.current = content.length
+
+        if (!contentGrew) return
+
+        const shouldAutoScroll = isStreaming === true || recentGrowthCountRef.current >= 3
+        if (!shouldAutoScroll) {
+            recentGrowthCountRef.current++
+            if (growthWindowRef.current) clearTimeout(growthWindowRef.current)
+            growthWindowRef.current = setTimeout(() => {
+                recentGrowthCountRef.current = 0
+            }, 2000)
+            return
+        }
+
+        if (isUserScrollingRef.current) return
+
+        if (autoScrollTimerRef.current) clearTimeout(autoScrollTimerRef.current)
+        autoScrollTimerRef.current = setTimeout(() => {
+            if (containerRef.current && !isUserScrollingRef.current) {
+                containerRef.current.scrollTo({
+                    top: containerRef.current.scrollHeight,
+                    behavior: 'smooth',
+                })
+            }
+        }, 60)
+    }, [content, isStreaming])
+
+    useEffect(() => {
+        if (isStreaming === false) {
+            isUserScrollingRef.current = false
+            recentGrowthCountRef.current = 0
+        }
+    }, [isStreaming])
+
+    useEffect(() => {
+        return () => {
+            if (autoScrollTimerRef.current) clearTimeout(autoScrollTimerRef.current)
+            if (growthWindowRef.current) clearTimeout(growthWindowRef.current)
+        }
+    }, [])
 
     return (
         <div
+            ref={containerRef}
             className="absolute inset-0 overflow-y-auto p-6 bg-background custom-scrollbar"
             style={{ fontSize: `${fontSize}px` }}
+            onScroll={handleScroll}
         >
             <div className={`max-w-3xl mx-auto prose ${isLight ? '' : 'prose-invert'}`}>
                 <ReactMarkdown

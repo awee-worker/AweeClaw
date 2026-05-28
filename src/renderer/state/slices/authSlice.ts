@@ -56,6 +56,8 @@ export interface AuthSlice {
   login: (serverUrl: string, email: string, password: string) => Promise<void>
   phoneLogin: (serverUrl: string, phone: string, code: string) => Promise<void>
   register: (serverUrl: string, email: string, password: string, username?: string) => Promise<void>
+  forgotPassword: (serverUrl: string, email: string) => Promise<void>
+  resetPassword: (serverUrl: string, email: string, code: string, newPassword: string) => Promise<void>
   logout: () => void
   setCloudMode: (mode: 'local' | 'cloud') => void
   setServerUrl: (url: string) => void
@@ -193,6 +195,22 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
     knowledgeSyncService.startAutoSync();
     knowledgeSyncService.syncToServer().catch(() => {});
     knowledgeGraphSyncService.startAutoSync();
+  },
+
+  forgotPassword: async (url, email) => {
+    setServerUrl(url);
+    await backendApi.post<{ message: string }>(
+      '/api/v1/auth/forgot-password',
+      { email },
+    );
+  },
+
+  resetPassword: async (url, email, code, newPassword) => {
+    setServerUrl(url);
+    await backendApi.post<{ message: string }>(
+      '/api/v1/auth/reset-password',
+      { email, code, newPassword },
+    );
   },
 
   logout: () => {

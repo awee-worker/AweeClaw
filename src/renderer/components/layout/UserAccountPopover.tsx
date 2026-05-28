@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
-import { LogIn, UserPlus, Eye, EyeOff, Server, AlertCircle, Loader2, Cloud, User, Mail, Lock, Smartphone, ShieldCheck } from 'lucide-react'
+import { LogIn, UserPlus, Eye, EyeOff, Server, AlertCircle, Loader2, Cloud, User, Mail, Lock, Smartphone, ShieldCheck, ArrowLeft, KeyRound } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { ActionButton, TextField } from '@components/ui'
@@ -9,6 +9,8 @@ import { type Language } from '@renderer/i18n'
 import { BackendApiError } from '@services/backendApi'
 import { backendApi } from '@services/backendApi'
 
+type AuthStep = 'login' | 'forgot' | 'reset'
+
 export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hideButton }: { language: Language; forceLoginOpen?: boolean; onLoginClose?: () => void; hideButton?: boolean }) {
   const {
     isAuthenticated,
@@ -17,6 +19,8 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
     login,
     phoneLogin,
     register,
+    forgotPassword,
+    resetPassword,
     fetchQuota,
   } = useStore(
     useShallow((s) => ({
@@ -26,12 +30,15 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
       login: s.login,
       phoneLogin: s.phoneLogin,
       register: s.register,
+      forgotPassword: s.forgotPassword,
+      resetPassword: s.resetPassword,
       fetchQuota: s.fetchQuota,
     })),
   )
 
   const [showLoginModal, setShowLoginModal] = useState(false)
 
+  const [authStep, setAuthStep] = useState<AuthStep>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [username, setUsername] = useState('')
@@ -47,6 +54,14 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
     useStore.getState().serverUrl || 'http://localhost:3000',
   )
 
+  const [forgotEmail, setForgotEmail] = useState('')
+  const [resetCode, setResetCode] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [showNewPassword, setShowNewPassword] = useState(false)
+  const [forgotCodeCooldown, setForgotCodeCooldown] = useState(0)
+  const [forgotSuccess, setForgotSuccess] = useState(false)
+
   useEffect(() => {
     if (isAuthenticated && !quota) {
       fetchQuota().catch(() => {})
@@ -61,6 +76,22 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
       setShowLoginModal(false)
     }
   }, [forceLoginOpen, isAuthenticated, onLoginClose])
+
+  const resetAuthForm = useCallback(() => {
+    setAuthStep('login')
+    setIsRegister(false)
+    setEmail('')
+    setPassword('')
+    setUsername('')
+    setPhone('')
+    setSmsCode('')
+    setForgotEmail('')
+    setResetCode('')
+    setNewPassword('')
+    setConfirmPassword('')
+    setError('')
+    setForgotSuccess(false)
+  }, [])
 
   const handleClick = useCallback(() => {
     if (isAuthenticated) {
@@ -85,12 +116,7 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
           await login(serverUrl, email, password)
         }
         setShowLoginModal(false)
-        setEmail('')
-        setPassword('')
-        setUsername('')
-        setPhone('')
-        setSmsCode('')
-        setError('')
+        resetAuthForm()
         onLoginClose?.()
       } catch (err) {
         if (err instanceof BackendApiError) {
@@ -108,7 +134,7 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
         setLoading(false)
       }
     },
-    [isRegister, loginMode, serverUrl, email, password, username, phone, smsCode, login, phoneLogin, register, language],
+    [isRegister, loginMode, serverUrl, email, password, username, phone, smsCode, login, phoneLogin, register, language, resetAuthForm],
   )
 
   const handleSendCode = useCallback(async () => {
@@ -130,6 +156,106 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
     }
   }, [codeCooldown, phone, language])
 
+  const handleForgotPassword = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault()
+      setError('')
+      setLoading(true)
+
+      try {
+        await forgotPassword(serverUrl, forgotEmail)
+        setForgotSuccess(true)
+        setForgotCodeCooldown(60)
+        const timer = setInterval(() => {
+          setForgotCodeCooldown((prev) => {
+            if (prev <= 1) {
+              clearInterval(timer)
+              return 0
+            }
+            return prev - 1
+          })
+        }, 1000)
+      } catch (err) {
+        if (err instanceof BackendApiError) {
+          setError(err.message || (language === 'zh' ? '发送失败' : 'Failed to send'))
+        } else {
+          setError(language === 'zh' ? '无法连接到服务器' : 'Cannot connect to server')
+        }
+      } finally {
+        setLoading(false)
+      }
+    },
+    [serverUrl, forgotEmail, forgotPassword, language],
+  )
+
+  const handleResetPassword = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault()
+      setError('')
+
+      if (newPassword !== confirmPassword) {
+        setError(language === 'zh' ? '两次输入的密码不一致' : 'Passwords do not match')
+        return
+      }
+      if (newPassword.length < 6) {
+        setError(language === 'zh' ? '密码至少6位' : 'Password must be at least 6 characters')
+        return
+      }
+
+      setLoading(true)
+      try {
+        await resetPassword(serverUrl, forgotEmail, resetCode, newPassword)
+        setAuthStep('login')
+        setIsRegister(false)
+        setEmail(forgotEmail)
+        setPassword('')
+        setForgotEmail('')
+        setResetCode('')
+        setNewPassword('')
+        setConfirmPassword('')
+        setForgotSuccess(false)
+        setError('')
+      } catch (err) {
+        if (err instanceof BackendApiError) {
+          if (err.status === 400) {
+            setError(language === 'zh' ? '验证码无效或已过期' : 'Invalid or expired verification code')
+          } else {
+            setError(err.message || (language === 'zh' ? '重置失败' : 'Reset failed'))
+          }
+        } else {
+          setError(language === 'zh' ? '无法连接到服务器' : 'Cannot connect to server')
+        }
+      } finally {
+        setLoading(false)
+      }
+    },
+    [serverUrl, forgotEmail, resetCode, newPassword, confirmPassword, resetPassword, language],
+  )
+
+  const handleResendForgotCode = useCallback(async () => {
+    if (forgotCodeCooldown > 0) return
+    setError('')
+    try {
+      await forgotPassword(serverUrl, forgotEmail)
+      setForgotCodeCooldown(60)
+      const timer = setInterval(() => {
+        setForgotCodeCooldown((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer)
+            return 0
+          }
+          return prev - 1
+        })
+      }, 1000)
+    } catch (err) {
+      if (err instanceof BackendApiError) {
+        setError(err.message || (language === 'zh' ? '发送失败' : 'Failed to send'))
+      } else {
+        setError(language === 'zh' ? '无法连接到服务器' : 'Cannot connect to server')
+      }
+    }
+  }, [forgotCodeCooldown, serverUrl, forgotEmail, forgotPassword, language])
+
   const initial = cloudUser?.username?.[0]?.toUpperCase() || cloudUser?.email?.[0]?.toUpperCase() || '?'
 
   const displayName = cloudUser?.username || cloudUser?.email || ''
@@ -139,6 +265,18 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
     : language === 'zh'
       ? '您还未登录'
       : 'Not signed in'
+
+  const stepTitle = authStep === 'forgot'
+    ? language === 'zh' ? '忘记密码' : 'Forgot Password'
+    : authStep === 'reset'
+      ? language === 'zh' ? '重置密码' : 'Reset Password'
+      : isRegister
+        ? language === 'zh' ? '注册账号' : 'Create Account'
+        : language === 'zh' ? '登录 AweeClaw' : 'Sign In to AweeClaw'
+
+  const stepIcon = authStep === 'forgot' || authStep === 'reset'
+    ? <KeyRound className="w-4 h-4 text-accent" />
+    : <Cloud className="w-4 h-4 text-accent" />
 
   return (
     <>
@@ -168,7 +306,7 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
         isOpen={showLoginModal}
         onClose={() => {
           setShowLoginModal(false)
-          setError('')
+          resetAuthForm()
           onLoginClose?.()
         }}
         size="sm"
@@ -176,21 +314,214 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
         <div className="p-2">
           <div className="flex items-center justify-between mb-5">
             <div className="flex items-center gap-2.5">
+              {authStep !== 'login' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthStep('login')
+                    setError('')
+                    setForgotSuccess(false)
+                  }}
+                  className="p-1 rounded-md hover:bg-bg-secondary transition-colors text-text-muted hover:text-text-primary"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                </button>
+              )}
               <div className="w-8 h-8 rounded-xl bg-accent/10 flex items-center justify-center">
-                <Cloud className="w-4 h-4 text-accent" />
+                {stepIcon}
               </div>
               <h3 className="text-base font-bold text-text-primary">
-                {isRegister
-                  ? language === 'zh'
-                    ? '注册账号'
-                    : 'Create Account'
-                  : language === 'zh'
-                    ? '登录 AweeClaw'
-                    : 'Sign In to AweeClaw'}
+                {stepTitle}
               </h3>
             </div>
           </div>
 
+          {authStep === 'forgot' && (
+            <form onSubmit={handleForgotPassword} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-text-secondary">
+                  {language === 'zh' ? '服务器地址' : 'Server URL'}
+                </label>
+                <TextField
+                  value={serverUrl}
+                  onChange={(e) => setServerUrl(e.target.value)}
+                  placeholder="http://localhost:3000"
+                  leftIcon={<Server className="w-4 h-4" />}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-text-secondary">
+                  {language === 'zh' ? '邮箱' : 'Email'}
+                </label>
+                <TextField
+                  type="email"
+                  value={forgotEmail}
+                  onChange={(e) => setForgotEmail(e.target.value)}
+                  placeholder={language === 'zh' ? '输入注册时使用的邮箱' : 'Enter your registered email'}
+                  leftIcon={<Mail className="w-4 h-4" />}
+                  required
+                />
+              </div>
+
+              {forgotSuccess && (
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-status-success/5 border border-status-success/20 text-status-success text-xs">
+                  <ShieldCheck className="w-4 h-4 shrink-0" />
+                  <span>{language === 'zh' ? '验证码已发送到您的邮箱，请查收' : 'Verification code sent to your email'}</span>
+                </div>
+              )}
+
+              {error && (
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-status-error/5 border border-status-error/20 text-status-error text-xs">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              <ActionButton type="submit" variant="primary" className="w-full" disabled={loading || !forgotEmail}>
+                {loading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Mail className="w-4 h-4" />
+                )}
+                {language === 'zh' ? '发送验证码' : 'Send Verification Code'}
+              </ActionButton>
+
+              {forgotSuccess && (
+                <p className="text-center text-xs text-text-muted">
+                  <button
+                    type="button"
+                    onClick={handleResendForgotCode}
+                    disabled={forgotCodeCooldown > 0}
+                    className={`transition-colors font-medium ${
+                      forgotCodeCooldown > 0
+                        ? 'text-text-muted cursor-not-allowed'
+                        : 'text-accent hover:text-accent-hover'
+                    }`}
+                  >
+                    {forgotCodeCooldown > 0
+                      ? language === 'zh'
+                        ? `重新发送 (${forgotCodeCooldown}s)`
+                        : `Resend (${forgotCodeCooldown}s)`
+                      : language === 'zh'
+                        ? '重新发送验证码'
+                        : 'Resend Code'}
+                  </button>
+                </p>
+              )}
+
+              {forgotSuccess && (
+                <ActionButton
+                  type="button"
+                  variant="secondary"
+                  className="w-full"
+                  onClick={() => {
+                    setAuthStep('reset')
+                    setError('')
+                  }}
+                >
+                  {language === 'zh' ? '我已收到验证码，去重置密码' : 'I have the code, reset password'}
+                </ActionButton>
+              )}
+            </form>
+          )}
+
+          {authStep === 'reset' && (
+            <form onSubmit={handleResetPassword} className="space-y-4">
+              <div className="p-3 rounded-lg bg-accent/5 border border-accent/10 text-xs text-text-secondary">
+                {language === 'zh'
+                  ? `验证码已发送至 ${forgotEmail}`
+                  : `Code sent to ${forgotEmail}`}
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-text-secondary">
+                  {language === 'zh' ? '验证码' : 'Verification Code'}
+                </label>
+                <div className="flex gap-2">
+                  <TextField
+                    type="text"
+                    value={resetCode}
+                    onChange={(e) => setResetCode(e.target.value)}
+                    placeholder={language === 'zh' ? '输入6位验证码' : 'Enter 6-digit code'}
+                    leftIcon={<ShieldCheck className="w-4 h-4" />}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={handleResendForgotCode}
+                    disabled={forgotCodeCooldown > 0}
+                    className={`shrink-0 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                      forgotCodeCooldown > 0
+                        ? 'bg-bg-tertiary text-text-muted cursor-not-allowed'
+                        : 'bg-accent/10 text-accent hover:bg-accent/20'
+                    }`}
+                  >
+                    {forgotCodeCooldown > 0
+                      ? `${forgotCodeCooldown}s`
+                      : language === 'zh'
+                        ? '重新发送'
+                        : 'Resend'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-text-secondary">
+                  {language === 'zh' ? '新密码' : 'New Password'}
+                </label>
+                <TextField
+                  type={showNewPassword ? 'text' : 'password'}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder={language === 'zh' ? '输入新密码（至少6位）' : 'New password (min 6 chars)'}
+                  leftIcon={<Lock className="w-4 h-4" />}
+                  rightIcon={
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="hover:text-text-primary transition-colors"
+                    >
+                      {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  }
+                  required
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-text-secondary">
+                  {language === 'zh' ? '确认密码' : 'Confirm Password'}
+                </label>
+                <TextField
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder={language === 'zh' ? '再次输入新密码' : 'Re-enter new password'}
+                  leftIcon={<Lock className="w-4 h-4" />}
+                  required
+                />
+              </div>
+
+              {error && (
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-status-error/5 border border-status-error/20 text-status-error text-xs">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              <ActionButton type="submit" variant="primary" className="w-full" disabled={loading || !resetCode || !newPassword || !confirmPassword}>
+                {loading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <KeyRound className="w-4 h-4" />
+                )}
+                {language === 'zh' ? '重置密码' : 'Reset Password'}
+              </ActionButton>
+            </form>
+          )}
+
+          {authStep === 'login' && (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-text-secondary">
@@ -362,32 +693,50 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
                   : 'Sign In'}
             </ActionButton>
 
-            <p className="text-center text-xs text-text-muted">
-              {isRegister
-                ? language === 'zh'
-                  ? '已有账号？'
-                  : 'Already have an account? '
-                : language === 'zh'
-                  ? '没有账号？'
-                  : "Don't have an account? "}
-              <button
-                type="button"
-                onClick={() => {
-                  setIsRegister(!isRegister)
-                  setError('')
-                }}
-                className="text-accent hover:text-accent-hover transition-colors font-medium"
-              >
+            <div className="flex items-center justify-between text-xs text-text-muted">
+              <p>
                 {isRegister
                   ? language === 'zh'
-                    ? '登录'
-                    : 'Sign In'
+                    ? '已有账号？'
+                    : 'Already have an account? '
                   : language === 'zh'
-                    ? '注册'
-                    : 'Sign Up'}
-              </button>
-            </p>
+                    ? '没有账号？'
+                    : "Don't have an account? "}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsRegister(!isRegister)
+                    setError('')
+                  }}
+                  className="text-accent hover:text-accent-hover transition-colors font-medium"
+                >
+                  {isRegister
+                    ? language === 'zh'
+                      ? '登录'
+                      : 'Sign In'
+                    : language === 'zh'
+                      ? '注册'
+                      : 'Sign Up'}
+                </button>
+              </p>
+
+              {!isRegister && loginMode === 'email' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthStep('forgot')
+                    setForgotEmail(email)
+                    setError('')
+                    setForgotSuccess(false)
+                  }}
+                  className="text-accent hover:text-accent-hover transition-colors font-medium"
+                >
+                  {language === 'zh' ? '忘记密码？' : 'Forgot Password?'}
+                </button>
+              )}
+            </div>
           </form>
+          )}
         </div>
       </OverlayDialog>
     </>

@@ -1,8 +1,0 @@
-export { channelRegistry } from './ChannelRegistry'
-export { channelConfigStore } from './ChannelConfigStore'
-export { channelSecurityManager } from './ChannelSecurityManager'
-export { channelErrorHandler } from './ChannelErrorHandler'
-export { channelService } from './ChannelService'
-export { FeishuChannelPlugin, feishuChannelPlugin } from './adapters/FeishuChannelPlugin'
-export { WechatChannelPlugin, wechatChannelPlugin } from './adapters/WechatChannelPlugin'
-export { WhatsAppChannelPlugin, whatsappChannelPlugin } from './adapters/WhatsAppChannelPlugin'
