@@ -21,7 +21,9 @@ import {
   FileCode,
   Archive,
   Sparkles,
-  Loader2
+  Loader2,
+  Eye,
+  EyeOff
 } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -43,6 +45,8 @@ export interface PendingAttachment {
   previewUrl?: string
   base64?: string
   isImage: boolean
+  analyzeMode?: boolean
+  localPath?: string
 }
 
 interface ChatInputProps {
@@ -91,6 +95,7 @@ const ChatInput = memo(function ChatInput({
   onAddFile,
 }: ChatInputProps) {
   const { language, editorConfig } = useStore(useShallow(s => ({ language: s.language, editorConfig: s.editorConfig })))
+  const lt = (zh: string, en: string) => language === 'zh' ? zh : en
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isFocused, setIsFocused] = useState(false)
   const [isOptimizing, setIsOptimizing] = useState(false)
@@ -146,6 +151,19 @@ const ChatInput = memo(function ChatInput({
         if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl)
         return prev.filter((img) => img.id !== id)
       })
+    },
+    [setImages]
+  )
+
+  const toggleAnalyzeMode = useCallback(
+    (id: string) => {
+      setImages((prev) =>
+        prev.map((img) =>
+          img.id === id && img.isImage
+            ? { ...img, analyzeMode: !img.analyzeMode }
+            : img
+        )
+      )
     },
     [setImages]
   )
@@ -256,14 +274,35 @@ const ChatInput = memo(function ChatInput({
                 className="relative group/att flex-shrink-0 rounded-xl overflow-hidden border border-border shadow-sm"
               >
                 {att.isImage && att.previewUrl ? (
-                  <div className="w-16 h-16">
+                  <div className="w-16 h-16 relative">
                     <img src={att.previewUrl} alt="preview" className="w-full h-full object-cover" />
+                    {att.analyzeMode && (
+                      <div className="absolute inset-0 bg-accent/20 flex items-center justify-center">
+                        <Eye className="w-4 h-4 text-accent" />
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="flex items-center gap-2 px-3 py-2 bg-surface/50 min-w-[120px] max-w-[180px]">
                     {getFileIcon(att.file.name, att.file.type)}
                     <span className="text-[12px] text-text-secondary truncate max-w-[100px]">{att.file.name}</span>
                   </div>
+                )}
+                {att.isImage && (
+                  <button
+                    onClick={() => toggleAnalyzeMode(att.id)}
+                    className={`absolute top-1 left-1 p-1 backdrop-blur rounded-full transition-all opacity-0 group-hover/att:opacity-100 scale-90 hover:scale-100 ${
+                      att.analyzeMode
+                        ? 'bg-accent/80 text-white'
+                        : 'bg-black/50 text-white/70 hover:text-white'
+                    }`}
+                    title={att.analyzeMode
+                      ? lt('视觉分析已开启：AI 将识别图片内容', 'Visual analysis on: AI will analyze image content')
+                      : lt('点击开启视觉分析：让 AI 识别图片内容', 'Click to enable visual analysis: let AI see image content')
+                    }
+                  >
+                    {att.analyzeMode ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                  </button>
                 )}
                 <button
                   onClick={() => removeAttachment(att.id)}

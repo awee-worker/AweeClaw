@@ -86,15 +86,24 @@ export class MessageConverter {
       if (item.type === 'text' && 'text' in item) {
         parts.push({ type: 'text', text: item.text })
       } else if (item.type === 'image' && 'source' in item) {
-        const result = this.convertImageSource(
-          item.source as { type: string; url?: string; data?: string; media_type?: string }
-        )
-        if (result) {
-          parts.push({
-            type: 'image',
-            image: result.image,
-            ...(result.mediaType && { mediaType: result.mediaType }),
-          })
+        const imageItem = item as { type: 'image'; source: { type: string; url?: string; data?: string; media_type?: string }; referenceOnly?: boolean; localPath?: string }
+
+        if (imageItem.referenceOnly) {
+          const pathInfo = imageItem.localPath
+            ? `[User uploaded image saved at: ${imageItem.localPath}]`
+            : '[User uploaded an image (reference only)]'
+          parts.push({ type: 'text', text: pathInfo })
+        } else {
+          const result = this.convertImageSource(
+            item.source as { type: string; url?: string; data?: string; media_type?: string }
+          )
+          if (result) {
+            parts.push({
+              type: 'image',
+              image: result.image,
+              ...(result.mediaType && { mediaType: result.mediaType }),
+            })
+          }
         }
       } else if (item.type === 'file' && 'data' in item) {
         const fileItem = item as { type: 'file'; name: string; media_type: string; data: string }

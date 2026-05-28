@@ -19,6 +19,8 @@ export interface ImageContent {
         media_type?: string
         data: string
     }
+    referenceOnly?: boolean
+    localPath?: string
 }
 
 export interface FileContent {

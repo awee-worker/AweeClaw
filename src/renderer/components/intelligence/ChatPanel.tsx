@@ -46,6 +46,8 @@ import { useToast } from '@components/foundation/NotificationProvider'
 import { composerService } from '@intelligence/runtime/composerEngine'
 import { playNotificationSound } from '@utils/notificationSound'
 import { getFriendlyToolName } from '@intelligence/display/toolFriendlyName'
+import { compressImage } from '@intelligence/utils/imageCompressor'
+import { needsVisualAnalysis } from '@intelligence/utils/imageIntentDetector'
 import { TodoListPanel } from './TodoListPanel'
 import { channelConversationService } from '@intelligence/runtime/channelConversationService'
 import {
@@ -770,7 +772,7 @@ export default function ChatPanel() {
     // Handoff 现在由 WorkspaceStatusBar 自动处理，不再阻止发送
     // 如果正在过渡中，等待完成后会自动继续
 
-    let userMessage: string | Array<{ type: 'text'; text: string } | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } } | { type: 'file'; name: string; media_type: string; data: string }> = input.trim()
+    let userMessage: string | Array<{ type: 'text'; text: string } | { type: 'image'; source: { type: 'base64'; media_type: string; data: string }; referenceOnly?: boolean; localPath?: string } | { type: 'file'; name: string; media_type: string; data: string }> = input.trim()
 
     if (images.length > 0) {
       const readyImages = images.filter(img => img.base64)
@@ -778,30 +780,54 @@ export default function ChatPanel() {
 
       const imageParts = readyImages.filter(img => img.isImage)
       const fileParts = readyImages.filter(img => !img.isImage)
-      const savedFilePaths: { name: string; path: string; type: string }[] = []
 
-      // 非图片文件保存到工作空间临时目录，并添加为 FileContext
-      if (fileParts.length > 0) {
-        if (!workspacePath) {
-          logger.agent.warn('[ChatPanel] Cannot save uploaded file: workspacePath is empty')
-        } else {
-          const uploadDir = `${workspacePath}/${BRAND.dirName}/uploads`
+      const uploadDir = workspacePath ? `${workspacePath}/${BRAND.dirName}/uploads` : null
+
+      if (uploadDir) {
+        try {
+          const dirCreated = await api.file.ensureDir(uploadDir)
+          if (!dirCreated) {
+            logger.agent.error('[ChatPanel] Failed to create upload directory:', uploadDir)
+          }
+        } catch (err) {
+          logger.agent.error('[ChatPanel] Failed to create upload directory:', err)
+        }
+      }
+
+      // 所有图片都保存到工作空间
+      const savedImagePaths: string[] = []
+      if (imageParts.length > 0 && uploadDir) {
+        for (const img of imageParts) {
+          const timestamp = Date.now()
+          const safeName = img.file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+          const filePath = `${uploadDir}/${timestamp}_${safeName}`
           try {
-            const dirCreated = await api.file.ensureDir(uploadDir)
-            if (!dirCreated) {
-              logger.agent.error('[ChatPanel] Failed to create upload directory:', uploadDir)
+            const saved = await api.file.writeBinary(filePath, img.base64!)
+            if (saved) {
+              savedImagePaths.push(filePath)
+            } else {
+              logger.agent.error('[ChatPanel] Failed to save uploaded image:', filePath)
             }
-            for (const fileImg of fileParts) {
-              const timestamp = Date.now()
-              const safeName = fileImg.file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-              const filePath = `${uploadDir}/${timestamp}_${safeName}`
-              const saved = await api.file.writeBinary(filePath, fileImg.base64!)
-              if (saved) {
-                addContextItem({ type: 'File', uri: filePath })
-                savedFilePaths.push({ name: fileImg.file.name, path: filePath, type: fileImg.file.type })
-              } else {
-                logger.agent.error('[ChatPanel] Failed to save uploaded file:', filePath)
-              }
+          } catch (err) {
+            logger.agent.error('[ChatPanel] Failed to save uploaded image:', err)
+          }
+        }
+      }
+
+      // 非图片文件保存到工作空间
+      const savedFilePaths: string[] = []
+      if (fileParts.length > 0 && uploadDir) {
+        for (const fileImg of fileParts) {
+          const timestamp = Date.now()
+          const safeName = fileImg.file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+          const filePath = `${uploadDir}/${timestamp}_${safeName}`
+          try {
+            const saved = await api.file.writeBinary(filePath, fileImg.base64!)
+            if (saved) {
+              addContextItem({ type: 'File', uri: filePath })
+              savedFilePaths.push(filePath)
+            } else {
+              logger.agent.error('[ChatPanel] Failed to save uploaded file:', filePath)
             }
           } catch (err) {
             logger.agent.error('[ChatPanel] Failed to save uploaded file:', err)
@@ -809,24 +835,73 @@ export default function ChatPanel() {
         }
       }
 
-      const fileDescriptions = savedFilePaths.length > 0
-        ? savedFilePaths.map(f => {
-            return `[Uploaded file: ${f.name} | Path: ${f.path} | Type: ${f.type}]`
-          }).join('\n')
-        : ''
+      // 智能判断是否需要视觉分析
+      const userWantsAnalysis = needsVisualAnalysis(input.trim())
 
-      const userText = input.trim() + (fileDescriptions ? `\n\n${fileDescriptions}` : '')
+      // 构建消息内容
+      const imageContentParts: Array<{
+        type: 'image'
+        source: { type: 'base64'; media_type: string; data: string }
+        referenceOnly?: boolean
+        localPath?: string
+      }> = []
+
+      for (let i = 0; i < imageParts.length; i++) {
+        const img = imageParts[i]
+        const localPath = savedImagePaths[i]
+        const shouldAnalyze = img.analyzeMode || userWantsAnalysis
+
+        if (shouldAnalyze) {
+          try {
+            const compressed = await compressImage(img.file, {
+              maxDimension: 1024,
+              quality: 0.8,
+            })
+            imageContentParts.push({
+              type: 'image' as const,
+              source: {
+                type: 'base64' as const,
+                media_type: compressed.mimeType,
+                data: compressed.base64,
+              },
+              localPath,
+            })
+            logger.agent.info('[ChatPanel] Image compressed for analysis:', {
+              name: img.file.name,
+              originalSize: compressed.originalSize,
+              compressedSize: compressed.compressedSize,
+              ratio: `${Math.round((1 - compressed.compressedSize / compressed.originalSize) * 100)}%`,
+            })
+          } catch (err) {
+            logger.agent.warn('[ChatPanel] Image compression failed, falling back to reference mode:', err)
+            imageContentParts.push({
+              type: 'image' as const,
+              source: {
+                type: 'base64' as const,
+                media_type: img.file.type,
+                data: img.base64!,
+              },
+              referenceOnly: true,
+              localPath,
+            })
+          }
+        } else {
+          imageContentParts.push({
+            type: 'image' as const,
+            source: {
+              type: 'base64' as const,
+              media_type: img.file.type,
+              data: img.base64!,
+            },
+            referenceOnly: true,
+            localPath,
+          })
+        }
+      }
 
       userMessage = [
-        { type: 'text' as const, text: userText },
-        ...imageParts.map(img => ({
-          type: 'image' as const,
-          source: {
-            type: 'base64' as const,
-            media_type: img.file.type,
-            data: img.base64!,
-          },
-        })),
+        { type: 'text' as const, text: input.trim() },
+        ...imageContentParts,
         ...fileParts.map(img => ({
           type: 'file' as const,
           name: img.file.name,
