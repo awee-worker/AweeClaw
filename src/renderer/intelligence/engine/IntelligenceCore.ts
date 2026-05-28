@@ -178,33 +178,32 @@ export class AgentClass {
       }
 
       // ===== 多 Agent 协作路由 =====
-      // 检测任务复杂度，决定是否启用多 Agent 协作
       const complexityResult = taskComplexityDetector.analyze(userQueryText)
 
-      // 读取用户多 Agent 配置
       const globalStore = useStore.getState()
-      const multiAgentConfig = globalStore.agentConfig.multiAgent ?? { enabled: true, threshold: 50, requireConsensus: true, maxAgents: 5 }
+      const multiAgentConfig = globalStore.agentConfig.multiAgent ?? { enabled: true, mode: 'auto' as const, threshold: 50, requireConsensus: true, maxAgents: 5 }
 
-      if (
-        multiAgentConfig.enabled &&
-        complexityResult.total >= multiAgentConfig.threshold &&
-        chatMode === 'agent'
-      ) {
+      const shouldUseMultiAgent = multiAgentConfig.enabled && chatMode === 'agent' && (
+        multiAgentConfig.mode === 'always' ||
+        (multiAgentConfig.mode === 'auto' && complexityResult.total >= multiAgentConfig.threshold)
+      )
+
+      if (shouldUseMultiAgent) {
+        const modeReason = multiAgentConfig.mode === 'always'
+          ? 'always-enabled mode'
+          : `complexity score ${complexityResult.total} >= threshold ${multiAgentConfig.threshold}`
         logger.agent.info(
-          `[Agent] Complex task detected (score: ${complexityResult.total} >= threshold: ${multiAgentConfig.threshold}), ` +
+          `[Agent] Multi-agent collaboration triggered (${modeReason}), ` +
           `features: [${complexityResult.features.join(', ')}]`
         )
 
-        // 初始化多 Agent 环境（只执行一次）
         if (!this.multiAgentInitialized) {
           DEFAULT_AGENT_PROFILES.forEach(p => agentRegistry.register(p))
-          // 加载用户自定义角色
           loadCustomAgentProfiles(globalStore.agentConfig.customAgentProfiles)
           this.multiAgentInitialized = true
           logger.agent.info('[Agent] Multi-agent environment initialized')
         }
 
-        // 执行多 Agent 协作
         await this.executeMultiAgent(
           userQueryText,
           config,
@@ -503,20 +502,21 @@ export class AgentClass {
     assistantId: string,
     _requestId: string,
     complexityResult: import('../capabilities/planning/TaskComplexityDetector').ComplexityScore,
-    multiAgentConfig: { enabled: boolean; threshold: number; requireConsensus: boolean; maxAgents: number }
+    multiAgentConfig: { enabled: boolean; mode: 'auto' | 'always'; threshold: number; requireConsensus: boolean; maxAgents: number }
   ): Promise<void> {
     const store = useAgentStore.getState()
 
-    // 更新状态：显示多 Agent 协作中
     store.setStreamPhase('streaming', threadId)
     store.setStreamState({ streamDetail: 'reasoning' }, threadId)
 
-    // 添加系统提示，告知用户正在使用多 Agent 协作
-    store.appendToAssistant(assistantId, `🤖 **多 Agent 协作模式**\n\n`, threadId)
+    store.appendToAssistant(assistantId, `🤖 **多智能体协作模式**\n\n`, threadId)
+
+    const modeHint = multiAgentConfig.mode === 'always'
+      ? `协作模式: 总是启用\n`
+      : `检测到复杂任务（复杂度: ${complexityResult.total}/100 >= 阈值: ${multiAgentConfig.threshold}）\n`
     store.appendToAssistant(
       assistantId,
-      `检测到复杂任务（复杂度: ${complexityResult.total}/100），已启用多 Agent 协作。\n` +
-      `涉及领域: ${complexityResult.features.join('、')}\n\n`,
+      modeHint + `涉及领域: ${complexityResult.features.join('、')}\n\n`,
       threadId
     )
 
@@ -592,7 +592,7 @@ export class AgentClass {
         {
           mode: 'chat',
           workspacePath,
-          requireConsensus: multiAgentConfig.requireConsensus && complexityResult.total > 50,
+          requireConsensus: multiAgentConfig.requireConsensus && (multiAgentConfig.mode === 'always' || complexityResult.total > 50),
           maxAgents: multiAgentConfig.maxAgents,
         },
         agentExecutor

@@ -208,10 +208,11 @@ export const AGENT_DEFAULTS = {
 
   // 多 Agent 协作配置
   multiAgent: {
-    enabled: true,      // 默认启用
-    threshold: 50,      // 触发阈值 (0-100)
-    requireConsensus: true,  // 是否要求共识投票
-    maxAgents: 5,       // 最大 Agent 数量
+    enabled: true,
+    mode: 'auto',
+    threshold: 50,
+    requireConsensus: true,
+    maxAgents: 5,
   },
 
   // 自定义 Agent 角色

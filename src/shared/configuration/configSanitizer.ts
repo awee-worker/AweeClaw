@@ -193,6 +193,7 @@ export interface AgentConfigSchema {
   ignoredDirectories?: string[]
   multiAgent?: {
     enabled?: boolean
+    mode?: 'auto' | 'always'
     threshold?: number
     requireConsensus?: boolean
     maxAgents?: number
@@ -253,6 +254,7 @@ export function cleanAgentConfig(config: Record<string, unknown>): AgentConfigSc
     const ma = config.multiAgent as Record<string, unknown>
     cleaned.multiAgent = {}
     if (typeof ma.enabled === 'boolean') cleaned.multiAgent.enabled = ma.enabled
+    if (ma.mode === 'auto' || ma.mode === 'always') cleaned.multiAgent.mode = ma.mode
     if (typeof ma.threshold === 'number') cleaned.multiAgent.threshold = ma.threshold
     if (typeof ma.requireConsensus === 'boolean') cleaned.multiAgent.requireConsensus = ma.requireConsensus
     if (typeof ma.maxAgents === 'number') cleaned.multiAgent.maxAgents = ma.maxAgents

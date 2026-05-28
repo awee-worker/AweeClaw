@@ -79,6 +79,7 @@ export interface AgentConfig {
   ignoredDirectories: string[]
   multiAgent?: {
     enabled: boolean
+    mode: 'auto' | 'always'
     threshold: number
     requireConsensus: boolean
     maxAgents: number
