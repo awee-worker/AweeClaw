@@ -14,3 +14,4 @@ export { createLayoutSlice, type LayoutSlice, type SidePanel } from './layoutSli
 export { createGitSlice, type GitSlice } from './gitSlice'
 export { createEditorStateSlice, type EditorStateSlice } from './editorStateSlice'
 export { createAuthSlice, type AuthSlice, type CloudUser, type CloudQuota } from './authSlice'
+export { createAgentWorkspaceSlice, type AgentWorkspaceSlice, type AgentWorkspaceSession, type WorkspaceAgent, type AgentToolCall, type AgentProgressEvent, type TeamChatMessage } from './agentWorkspaceSlice'

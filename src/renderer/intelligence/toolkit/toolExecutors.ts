@@ -2383,6 +2383,10 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
     },
 
     async todo_write(args) {
+        if (useStore.getState().teamModeEnabled) {
+            return { success: true, result: 'Task list skipped in team mode' }
+        }
+
         const todos = args.todos as Array<{ content: string; status: string; activeForm: string }>
         if (!Array.isArray(todos)) {
             return { success: false, result: '', error: 'todos must be an array' }

@@ -18,34 +18,34 @@ const MODES: Array<{
   descEn: string
   color: string
 }> = [
-    {
-      id: 'chat',
-      icon: Zap,
-      labelZh: '快速',
-      labelEn: 'Quick',
-      descZh: '适用于大部分情况',
-      descEn: 'Suitable for most situations',
-      color: 'text-blue-400',
-    },
-    {
-      id: 'agent',
-      icon: Brain,
-      labelZh: '思考',
-      labelEn: 'Think',
-      descZh: '擅长解决更难的问题',
-      descEn: 'Excels at harder problems',
-      color: 'text-accent',
-    },
-    {
-      id: 'plan',
-      icon: GraduationCap,
-      labelZh: '专家',
-      labelEn: 'Expert',
-      descZh: '研究级智能模式',
-      descEn: 'Research-grade intelligence',
-      color: 'text-purple-400',
-    },
-  ]
+  {
+    id: 'chat',
+    icon: Zap,
+    labelZh: '快速',
+    labelEn: 'Quick',
+    descZh: '适用于大部分情况',
+    descEn: 'Suitable for most situations',
+    color: 'text-blue-400',
+  },
+  {
+    id: 'agent',
+    icon: Brain,
+    labelZh: '思考',
+    labelEn: 'Think',
+    descZh: '擅长解决更难的问题',
+    descEn: 'Excels at harder problems',
+    color: 'text-accent',
+  },
+  {
+    id: 'plan',
+    icon: GraduationCap,
+    labelZh: '专家',
+    labelEn: 'Expert',
+    descZh: '研究级智能模式',
+    descEn: 'Research-grade intelligence',
+    color: 'text-purple-400',
+  },
+]
 
 export default function ModeSelector({ mode, onModeChange, className = '' }: ModeSelectorProps) {
   const language = useStore(s => s.language)
@@ -70,21 +70,23 @@ export default function ModeSelector({ mode, onModeChange, className = '' }: Mod
 
   return (
     <div ref={dropdownRef} className={`relative ${className}`}>
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className={`
-          flex items-center gap-2 px-3 py-1.5 rounded-full text-[12px] font-semibold border border-transparent
-          transition-all duration-200
-          ${isOpen
-            ? 'bg-surface-active text-text-primary shadow-[0_0_0_2px_rgba(var(--accent)/0.15)]'
-            : 'bg-white/[0.03] text-text-secondary hover:text-text-primary hover:bg-white/[0.08]'
-          }
-        `}
-      >
-        <Icon className={`w-3.5 h-3.5 ${currentMode.color}`} />
-        <span>{isZh ? currentMode.labelZh : currentMode.labelEn}</span>
-        <ChevronDown className={`w-3 h-3 text-text-muted transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-      </button>
+      <div className="flex items-center">
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className={`
+            flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold
+            transition-all duration-200
+            ${isOpen
+              ? 'bg-surface-active text-text-primary shadow-[0_0_0_1px_rgba(var(--accent)/0.15)]'
+              : 'text-text-muted hover:text-text-secondary'
+            }
+          `}
+        >
+          <Icon className={`w-3 h-3 ${currentMode.color}`} />
+          <span>{isZh ? currentMode.labelZh : currentMode.labelEn}</span>
+          <ChevronDown className={`w-2.5 h-2.5 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        </button>
+      </div>
 
       {isOpen && (
         <div className="absolute bottom-full left-0 mb-2 w-52 bg-surface border border-border rounded-xl shadow-2xl z-50 py-1 animate-scale-in">

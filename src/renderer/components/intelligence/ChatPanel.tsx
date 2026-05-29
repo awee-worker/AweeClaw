@@ -9,6 +9,8 @@ import {
   ShieldAlert,
   Check,
   X,
+  MessageSquare,
+  BrainCircuit,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useStore, useModeStore } from '@store'
@@ -49,6 +51,7 @@ import { getFriendlyToolName } from '@intelligence/display/toolFriendlyName'
 import { compressImage } from '@intelligence/utils/imageCompressor'
 import { needsVisualAnalysis } from '@intelligence/utils/imageIntentDetector'
 import { TodoListPanel } from './TodoListPanel'
+import { AgentWorkspace } from './AgentWorkspace'
 import { channelConversationService } from '@intelligence/runtime/channelConversationService'
 import {
   buildChatTimelineProjection,
@@ -93,6 +96,11 @@ export default function ChatPanel() {
     activeFilePath,
     selectedCode,
     activeScenarioId,
+    workspaceViewVisible,
+    setWorkspaceViewVisible,
+    activeWorkspaceSession,
+    teamModeEnabled,
+    setTeamModeEnabled,
   } = useStore(useShallow(s => ({
     llmConfig: s.llmConfig,
     workspacePath: s.workspacePath,
@@ -102,6 +110,11 @@ export default function ChatPanel() {
     activeFilePath: s.activeFilePath,
     selectedCode: s.selectedCode,
     activeScenarioId: s.activeScenarioId,
+    workspaceViewVisible: s.workspaceViewVisible,
+    setWorkspaceViewVisible: s.setWorkspaceViewVisible,
+    activeWorkspaceSession: s.activeWorkspaceSession,
+    teamModeEnabled: s.teamModeEnabled,
+    setTeamModeEnabled: s.setTeamModeEnabled,
   })))
 
   const isChatPrimary = activeScenarioId !== 'workspace-editor'
@@ -179,6 +192,12 @@ export default function ChatPanel() {
       inputPromptConsumedRef.current = false
     }
   }, [inputPrompt, setInputPrompt])
+
+  useEffect(() => {
+    if (activeWorkspaceSession && !teamModeEnabled) {
+      setTeamModeEnabled(true)
+    }
+  }, [activeWorkspaceSession])
   const [images, setImages] = useState<PendingAttachment[]>([])
   const imagesRef = useRef(images)
   imagesRef.current = images
@@ -423,6 +442,7 @@ export default function ChatPanel() {
   useEffect(() => {
     const unsubWriting = EventBus.on('file:writing', async (event) => {
       if (!event.filePath || !workspacePath) return
+      if (teamModeEnabled) return
       // event.filePath 已经是绝对路径（toolExecutors/streamProcessor 中已 resolve）
       const fullPath = event.filePath
       // 如果文件已经在打开列表中且是 active 的，不需要重复激活
@@ -437,6 +457,7 @@ export default function ChatPanel() {
 
     const unsubStreamContent = EventBus.on('file:stream_content', async (event) => {
       if (!event.filePath || !workspacePath) return
+      if (teamModeEnabled) return
       // event.filePath 已经是绝对路径（streamProcessor 中已 resolve）
       const fullPath = event.filePath
 
@@ -464,6 +485,7 @@ export default function ChatPanel() {
 
     const unsubWritten = EventBus.on('file:written', async (event) => {
       if (!event.filePath || !workspacePath) return
+      if (teamModeEnabled) return
       // event.filePath 已经是绝对路径（toolExecutors 中已 resolve）
       const fullPath = event.filePath
       // 更新已打开文件的内容
@@ -476,7 +498,7 @@ export default function ChatPanel() {
       unsubStreamContent()
       unsubWritten()
     }
-  }, [workspacePath, openFile, setActiveFile, activeFilePath])
+  }, [workspacePath, openFile, setActiveFile, activeFilePath, teamModeEnabled])
 
 
   // 处理显示 diff
@@ -1278,19 +1300,8 @@ export default function ChatPanel() {
       />
     )),
     Footer: () => <div className="h-4" />,
-    EmptyPlaceholder: () => (
-      <div className="flex flex-col h-full w-full bg-background-chat relative overflow-hidden">
-        <div className="relative z-10 w-full h-full">
-          <EmptyChatSuggestions onSelectSuggestion={(prompt) => {
-            setInput(prompt)
-            if (textareaRef.current) {
-              textareaRef.current.focus()
-            }
-          }} />
-        </div>
-      </div>
-    )
-  }), [attachScrollerNode, language, setInput, textareaRef])
+    EmptyPlaceholder: () => <div />
+  }), [attachScrollerNode])
 
   return (
     <div
@@ -1330,6 +1341,43 @@ export default function ChatPanel() {
 
         {/* Messages Area */}
         <div className="flex-1 min-h-0 relative z-0 flex flex-col">
+          {/* Workspace / Chat Toggle - hidden in team mode (always show workspace) */}
+          {activeWorkspaceSession && !teamModeEnabled && (
+            <div className="flex items-center justify-center gap-1 px-4 pt-2 pb-1 border-b border-border/30 bg-surface/30">
+              <button
+                onClick={() => setWorkspaceViewVisible(false)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
+                  !workspaceViewVisible ? 'bg-accent/10 text-accent' : 'text-text-muted hover:text-text-primary hover:bg-surface-hover'
+                }`}
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+                {language === 'zh' ? '对话' : 'Chat'}
+              </button>
+              <button
+                onClick={() => setWorkspaceViewVisible(true)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
+                  workspaceViewVisible ? 'bg-accent/10 text-accent' : 'text-text-muted hover:text-text-primary hover:bg-surface-hover'
+                }`}
+              >
+                <BrainCircuit className="w-3.5 h-3.5" />
+                {language === 'zh' ? '工作台' : 'Workspace'}
+                {activeWorkspaceSession.status === 'executing' && (
+                  <span className="relative flex h-1.5 w-1.5 ml-0.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-blue-400" />
+                  </span>
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* Agent Workspace View - in team mode always show workspace */}
+          {((workspaceViewVisible && activeWorkspaceSession) || (teamModeEnabled && activeWorkspaceSession)) ? (
+            <div className="flex-1 min-h-0">
+              <AgentWorkspace />
+            </div>
+          ) : (
+          <>
           {/* API Key Warning */}
           {!hasApiKey && (
             <div className={`m-4 p-4 border border-warning/20 bg-warning/5 rounded-xl flex gap-3 backdrop-blur-sm relative z-10 ${isChatPrimary ? 'max-w-[800px] mx-auto' : ''}`}>
@@ -1341,6 +1389,42 @@ export default function ChatPanel() {
             </div>
           )}
 
+          {/* Empty Welcome Screen */}
+          {messages.length === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center min-h-0 overflow-y-auto px-4">
+              <EmptyChatSuggestions />
+              <div className="w-full max-w-[640px] mt-6">
+                <ChatInput
+                  input={input}
+                  setInput={setInput}
+                  images={images}
+                  setImages={setImages}
+                  isStreaming={isStreaming}
+                  hasApiKey={hasApiKey}
+                  hasPendingToolCall={!!pendingToolCall}
+                  chatMode={chatMode}
+                  setChatMode={setChatMode}
+                  onSubmit={handleSubmit}
+                  onAbort={abort}
+                  onInputChange={handleInputChange}
+                  onKeyDown={handleKeyDown}
+                  onPaste={handlePaste}
+                  textareaRef={textareaRef}
+                  inputContainerRef={inputContainerRef}
+                  contextItems={contextItems}
+                  onRemoveContextItem={(item) => {
+                    const index = contextItems.indexOf(item)
+                    if (index !== -1) {
+                      removeContextItem(index)
+                    }
+                  }}
+                  activeFilePath={activeFilePath}
+                  onAddFile={handleAddCurrentFile}
+                />
+              </div>
+            </div>
+          ) : (
+          <>
           {/* Message List */}
           <div className="flex-1 relative overflow-hidden flex flex-col min-h-0">
             {/* 过渡用的骨架屏 */}
@@ -1424,8 +1508,13 @@ export default function ChatPanel() {
             )
           }
 
+          </>
+          )}
+          </>
+          )}
+
           {/* Bottom TextField Area - Unified Tray */}
-          {!deleteSelectionMode && (
+          {!deleteSelectionMode && messages.length > 0 && (
           <div className={`shrink-0 z-20 flex flex-col pt-2 ${isChatPrimary ? 'max-w-[840px] mx-auto w-full' : ''}`}>
             <div className="mx-4 mb-4 flex flex-col">
               {/* Tool Approval Banner */}

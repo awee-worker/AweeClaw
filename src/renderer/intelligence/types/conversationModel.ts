@@ -89,6 +89,33 @@ export interface LintCheckFile {
   errors: { severity: 'error' | 'warning'; message: string; line: number }[]
 }
 
+export interface AgentWorkflowNode {
+  id: string
+  name: string
+  icon: string
+  status: 'waiting' | 'working' | 'completed' | 'failed'
+  description: string
+  startedAt?: number
+  completedAt?: number
+  progress?: number
+  currentStep?: string
+  toolCallCount?: number
+  outputFileCount?: number
+  retryCount?: number
+  errorMessage?: string
+}
+
+export interface MultiAgentWorkflowPart {
+  type: 'multi_agent_workflow'
+  sessionId: string
+  status: 'planning' | 'plan_review' | 'executing' | 'completed' | 'failed'
+  agents: AgentWorkflowNode[]
+  currentAgentId?: string
+  summary?: string
+  projectName?: string
+  executionOrder?: string[][]
+}
+
 /** 助手消息部分 */
 export type AssistantPart =
   | TextPart
@@ -100,6 +127,7 @@ export type AssistantPart =
   | ContextSnapshotPart
   | SourcesPart
   | FormPart
+  | MultiAgentWorkflowPart
 
 export interface FormPart {
   type: 'form'
@@ -246,6 +274,10 @@ export function isSourcesPart(part: AssistantPart): part is SourcesPart {
 
 export function isFormPart(part: AssistantPart): part is FormPart {
   return part.type === 'form'
+}
+
+export function isMultiAgentWorkflowPart(part: AssistantPart): part is MultiAgentWorkflowPart {
+  return part.type === 'multi_agent_workflow'
 }
 
 // ============================================

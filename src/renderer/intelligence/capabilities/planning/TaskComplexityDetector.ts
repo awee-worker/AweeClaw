@@ -22,6 +22,8 @@ export interface ComplexityScore {
   total: number
   /** 是否需要多 Agent */
   needsMultiAgent: boolean
+  /** 是否为简单对话（打招呼、闲聊等） */
+  isSimpleConversation: boolean
   /** 各维度得分 */
   dimensions: {
     multiStep: number
@@ -101,6 +103,18 @@ const FILE_SCOPE_PATTERNS = [
   { pattern: /修改.*配置|调整.*结构|改动.*流程/, score: 5, feature: '结构性修改' },
 ]
 
+// 简单对话模式（打招呼、简单问答、闲聊等，不应触发多智能体协作）
+const SIMPLE_CONVERSATION_PATTERNS: RegExp[] = [
+  /^(你好|hi|hello|hey|嗨|哈喽|早上好|下午好|晚上好|早安|晚安)[\s!！.。~～]*$/i,
+  /^(谢谢|感谢|thanks|thx|多谢|辛苦了|3q)[\s!！.。~～]*$/i,
+  /^(好的|ok|okay|嗯|行|可以|没问题|收到|明白|了解|知道了|懂了)[\s!！.。~～]*$/i,
+  /^(再见|拜拜|bye|下次见|回见)[\s!！.。~～]*$/i,
+  /^(是|否|对|不对|不是|没有|有|在)[\s!！.。~～]*$/i,
+  /^(什么|为什么|怎么|如何|啥|what|why|how|where|when)\s*.{0,10}$/,
+  /^\?{1,3}$/,
+  /^[.!！。，,、]+$/,
+]
+
 export class TaskComplexityDetector {
   private config: DetectorConfig
 
@@ -118,7 +132,22 @@ export class TaskComplexityDetector {
         0,
         { multiStep: 0, length: 0, domainCrossing: 0, fileScope: 0, specialKeywords: 0 },
         [],
-        []
+        [],
+        true
+      )
+    }
+
+    const isSimpleConversation = this.detectSimpleConversation(trimmed)
+    if (isSimpleConversation) {
+      logger.agent.debug(
+        `[ComplexityDetector] Simple conversation detected, skipping multi-agent`
+      )
+      return this.createScore(
+        0,
+        { multiStep: 0, length: 0, domainCrossing: 0, fileScope: 0, specialKeywords: 0 },
+        ['简单对话'],
+        [],
+        true
       )
     }
 
@@ -172,7 +201,8 @@ export class TaskComplexityDetector {
       total,
       dimensions,
       features,
-      Array.from(suggestedRoles)
+      Array.from(suggestedRoles),
+      false
     )
 
     logger.agent.debug(
@@ -293,15 +323,33 @@ export class TaskComplexityDetector {
     return { score, feature }
   }
 
+  private detectSimpleConversation(task: string): boolean {
+    const trimmed = task.trim()
+
+    if (trimmed.length <= 3) return true
+
+    for (const pattern of SIMPLE_CONVERSATION_PATTERNS) {
+      if (pattern.test(trimmed)) return true
+    }
+
+    if (trimmed.length <= 8 && !/[做写创建开发设计实现搭建构建部署测试]{1}/.test(trimmed)) {
+      return true
+    }
+
+    return false
+  }
+
   private createScore(
     total: number,
     dimensions: ComplexityScore['dimensions'],
     features: string[],
-    suggestedRoles: string[]
+    suggestedRoles: string[],
+    isSimpleConversation: boolean
   ): ComplexityScore {
     return {
       total,
-      needsMultiAgent: total >= this.config.threshold,
+      needsMultiAgent: !isSimpleConversation && total >= this.config.threshold,
+      isSimpleConversation,
       dimensions,
       features,
       suggestedRoles,

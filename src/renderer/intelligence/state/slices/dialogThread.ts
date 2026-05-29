@@ -165,6 +165,13 @@ export const createThreadSlice: StateCreator<
             }
         })
 
+        if (activate) {
+            const storeState = useStore.getState()
+            if (storeState.activeWorkspaceSession) {
+                useStore.getState().clearWorkspaceSession()
+            }
+        }
+
         return thread.id
     },
 
@@ -196,6 +203,12 @@ export const createThreadSlice: StateCreator<
         if (!state.threads[threadId]) return
         if (state.currentThreadId === threadId) return
         set({ currentThreadId: threadId })
+
+        // 切换会话时，清理不属于新会话的工作台会话
+        const storeState = useStore.getState()
+        if (storeState.activeWorkspaceSession && storeState.activeWorkspaceSession.threadId !== threadId) {
+            useStore.getState().clearWorkspaceSession()
+        }
 
         // 懒加载切换后线程的消息
         const thread = state.threads[threadId]
@@ -258,6 +271,12 @@ export const createThreadSlice: StateCreator<
         if (didDelete) {
             // 删除 JSONL 文件和元数据
             void agentSessionRepository.deleteThread(threadId)
+
+            // 清理关联的工作台会话
+            const storeState = useStore.getState()
+            if (storeState.activeWorkspaceSession?.threadId === threadId) {
+                useStore.getState().clearWorkspaceSession()
+            }
         }
     },
 

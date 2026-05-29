@@ -1,0 +1,402 @@
+import { api } from '../../adapters/electronBridge'
+import { logger } from '@toolkit/LogEngine'
+import { toolManager, initializeToolProviders, setToolLoadingContext, initializeTools } from '@intelligence/toolkit'
+import { scenarioRegistry } from '@shared/configuration/scenarios'
+import { useStore } from '@store'
+import type { LLMConfig, LLMMessage, ToolDefinition, ToolExecutionContext, ToolExecutionResult } from '@intelligence/providerTypes'
+
+export interface SubLoopOptions {
+  config: LLMConfig
+  systemPrompt: string
+  userMessage: string
+  workspacePath: string | null
+  maxIterations?: number
+  abortSignal?: AbortSignal
+}
+
+export interface SubLoopResult {
+  content: string
+  iterations: number
+  toolCallsCount: number
+  error?: string
+}
+
+interface CollectedToolCall {
+  id: string
+  name: string
+  arguments: Record<string, unknown>
+}
+
+interface LLMCallResult {
+  content: string
+  reasoning: string
+  toolCalls: CollectedToolCall[]
+  error?: string
+}
+
+const DEFAULT_MAX_ITERATIONS = 15
+
+let toolsInitialized = false
+
+async function ensureToolsInitialized(): Promise<void> {
+  if (toolsInitialized) return
+
+  logger.agent.info('[AgentSubLoop] Initializing tools...')
+
+  try {
+    initializeToolProviders()
+
+    const activeScenarioId = useStore.getState().activeScenarioId
+    const activeScenario = scenarioRegistry.getActive()
+    const scenarioToolPacks = activeScenario?.capabilities?.toolPacks
+
+    setToolLoadingContext({
+      mode: 'agent',
+      templateId: useStore.getState().promptTemplateId,
+      scenarioId: activeScenarioId,
+      scenarioToolPacks,
+    })
+
+    await initializeTools()
+    toolsInitialized = true
+
+    const toolCount = toolManager.getAllToolDefinitions().length
+    logger.agent.info(`[AgentSubLoop] Tools initialized: ${toolCount} tools available`)
+  } catch (err) {
+    logger.agent.error('[AgentSubLoop] Failed to initialize tools:', err)
+    throw err
+  }
+}
+
+function callLLMWithTools(
+  config: LLMConfig,
+  messages: LLMMessage[],
+  tools: ToolDefinition[],
+  requestId: string
+): Promise<LLMCallResult> {
+  return new Promise((resolve) => {
+    let fullContent = ''
+    let fullReasoning = ''
+    const toolCalls: CollectedToolCall[] = []
+    const streamingToolCalls = new Map<string, { id: string; name: string; argsString: string }>()
+    let settled = false
+
+    const cleanup = () => {
+      unsubStream()
+      unsubError()
+      unsubDone()
+    }
+
+    const doResolve = (error?: string) => {
+      if (settled) return
+      settled = true
+      cleanup()
+      resolve({ content: fullContent, reasoning: fullReasoning, toolCalls, error })
+    }
+
+    const unsubStream = api.llm.onStream(requestId, (data) => {
+      if (settled) return
+
+      switch (data.type) {
+        case 'text':
+          if (data.content) {
+            fullContent += data.content
+          }
+          break
+
+        case 'reasoning':
+          if (data.content) {
+            fullReasoning += data.content
+          }
+          break
+
+        case 'tool_call_start': {
+          const toolId = data.id || `tc-${Date.now()}`
+          const toolName = data.name || ''
+          streamingToolCalls.set(toolId, { id: toolId, name: toolName, argsString: '' })
+          break
+        }
+
+        case 'tool_call_delta': {
+          const tcId = data.id
+          if (tcId) {
+            const tc = streamingToolCalls.get(tcId)
+            if (tc && data.argumentsDelta) {
+              tc.argsString += data.argumentsDelta
+            }
+            if (tc && data.name && data.name !== tc.name) {
+              tc.name = data.name
+            }
+          }
+          break
+        }
+
+        case 'tool_call_delta_end': {
+          const tcId = data.id
+          if (tcId) {
+            const tc = streamingToolCalls.get(tcId)
+            if (tc) {
+              try {
+                const args = tc.argsString ? JSON.parse(tc.argsString) : {}
+                const toolCall = { id: tc.id, name: tc.name, arguments: args }
+                const existingIdx = toolCalls.findIndex(t => t.id === tc.id)
+                if (existingIdx === -1) {
+                  toolCalls.push(toolCall)
+                } else {
+                  toolCalls[existingIdx] = toolCall
+                }
+              } catch {
+                const toolCall = { id: tc.id, name: tc.name, arguments: {} as Record<string, unknown> }
+                const existingIdx = toolCalls.findIndex(t => t.id === tc.id)
+                if (existingIdx === -1) {
+                  toolCalls.push(toolCall)
+                } else {
+                  toolCalls[existingIdx] = toolCall
+                }
+              }
+              streamingToolCalls.delete(tcId)
+            }
+          }
+          break
+        }
+
+        case 'tool_call_available': {
+          const tcId = data.id || ''
+          const toolName = data.name || ''
+          const args = (data.arguments || {}) as Record<string, unknown>
+          if (tcId) {
+            streamingToolCalls.delete(tcId)
+          }
+          const toolCall = { id: tcId, name: toolName, arguments: args }
+          const existingIdx = toolCalls.findIndex(t => t.id === tcId)
+          if (existingIdx === -1) {
+            toolCalls.push(toolCall)
+          } else {
+            toolCalls[existingIdx] = toolCall
+          }
+          break
+        }
+      }
+    })
+
+    const unsubError = api.llm.onError(requestId, (err) => {
+      if (settled) return
+      doResolve(err.message || 'LLM error')
+    })
+
+    const unsubDone = api.llm.onDone(requestId, (data) => {
+      if (settled) return
+
+      if (typeof data?.reasoning === 'string' && data.reasoning.length >= fullReasoning.length) {
+        fullReasoning = data.reasoning
+      }
+
+      doResolve()
+    })
+
+    const sendParams: Record<string, unknown> = {
+      config: {
+        provider: config.provider,
+        model: config.model,
+        apiKey: config.apiKey,
+        baseUrl: config.baseUrl,
+        protocol: config.protocol,
+        temperature: config.temperature,
+        maxTokens: config.maxTokens,
+        topP: config.topP,
+        topK: config.topK,
+        frequencyPenalty: config.frequencyPenalty,
+        presencePenalty: config.presencePenalty,
+        stopSequences: config.stopSequences,
+        maxRetries: config.maxRetries,
+        toolChoice: config.toolChoice,
+        parallelToolCalls: config.parallelToolCalls,
+        headers: config.headers,
+        openAICompatibilityProfile: config.openAICompatibilityProfile,
+        enableThinking: config.enableThinking,
+        thinkingBudget: config.thinkingBudget,
+        reasoningEffort: config.reasoningEffort,
+        providerOptions: config.providerOptions,
+        cloudMode: config.cloudMode,
+        serverUrl: config.serverUrl,
+        accessToken: config.accessToken,
+        contextLimit: config.contextLimit,
+        timeout: config.timeout,
+        seed: config.seed,
+        logitBias: config.logitBias,
+      },
+      messages,
+      requestId,
+    }
+
+    if (tools.length > 0) {
+      sendParams.tools = tools
+    }
+
+    logger.agent.info(`[AgentSubLoop] Sending LLM request: model=${config.provider}/${config.model}, messages=${messages.length}, tools=${tools.length}`)
+
+    api.llm.send(sendParams as any).catch((err) => {
+      if (settled) return
+      const errMsg = err instanceof Error ? err.message : String(err)
+      logger.agent.error(`[AgentSubLoop] api.llm.send failed: ${errMsg}`)
+      doResolve(errMsg)
+    })
+
+    setTimeout(() => {
+      if (settled) return
+      doResolve('Sub-task timeout (180s)')
+    }, 180000)
+  })
+}
+
+async function executeToolCall(
+  toolCall: CollectedToolCall,
+  workspacePath: string | null,
+  requestId: string
+): Promise<{ role: string; content: string; name: string }> {
+  const context: ToolExecutionContext = {
+    workspacePath,
+    chatMode: 'agent',
+    requestId,
+  }
+
+  try {
+    const result: ToolExecutionResult = await toolManager.execute(
+      toolCall.name,
+      toolCall.arguments,
+      context
+    )
+
+    if (result.success) {
+      const output = typeof result.result === 'string' ? result.result : JSON.stringify(result.result)
+      logger.agent.info(`[AgentSubLoop] Tool ${toolCall.name} executed successfully`)
+      return { role: 'tool', content: output || 'Tool executed successfully (no output)', name: toolCall.name }
+    } else {
+      const errorOutput = result.error || 'Tool execution failed'
+      logger.agent.warn(`[AgentSubLoop] Tool ${toolCall.name} failed: ${errorOutput}`)
+      return { role: 'tool', content: `Error: ${errorOutput}`, name: toolCall.name }
+    }
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err)
+    logger.agent.error(`[AgentSubLoop] Tool ${toolCall.name} exception: ${errorMsg}`)
+    return { role: 'tool', content: `Error: ${errorMsg}`, name: toolCall.name }
+  }
+}
+
+export async function runAgentSubLoop(options: SubLoopOptions): Promise<SubLoopResult> {
+  const {
+    config,
+    systemPrompt,
+    userMessage,
+    workspacePath,
+    maxIterations = DEFAULT_MAX_ITERATIONS,
+    abortSignal,
+  } = options
+
+  logger.agent.info(`[AgentSubLoop] Starting sub-loop for task: ${userMessage.slice(0, 100)}...`)
+
+  await ensureToolsInitialized()
+
+  const agentTools = toolManager.getAllToolDefinitions()
+
+  if (agentTools.length === 0) {
+    logger.agent.warn('[AgentSubLoop] No tools available, agents will not be able to use tools')
+  }
+
+  logger.agent.info(`[AgentSubLoop] Available tools: ${agentTools.length} (${agentTools.slice(0, 5).map(t => t.name).join(', ')}${agentTools.length > 5 ? '...' : ''})`)
+
+  const messages: LLMMessage[] = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userMessage },
+  ]
+
+  let totalToolCallsCount = 0
+  let iteration = 0
+
+  while (iteration < maxIterations) {
+    if (abortSignal?.aborted) {
+      return { content: '', iterations: iteration, toolCallsCount: totalToolCallsCount, error: 'Aborted' }
+    }
+
+    iteration++
+    const requestId = `sub-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
+    logger.agent.info(`[AgentSubLoop] Iteration ${iteration}, sending to LLM with ${messages.length} messages...`)
+
+    const result = await callLLMWithTools(config, messages, agentTools, requestId)
+
+    if (result.error) {
+      logger.agent.warn(`[AgentSubLoop] LLM error on iteration ${iteration}: ${result.error}`)
+      return {
+        content: result.content || '',
+        iterations: iteration,
+        toolCallsCount: totalToolCallsCount,
+        error: result.error,
+      }
+    }
+
+    if (result.toolCalls.length === 0) {
+      logger.agent.info(`[AgentSubLoop] No tool calls, loop complete after ${iteration} iterations`)
+      return {
+        content: result.content,
+        iterations: iteration,
+        toolCallsCount: totalToolCallsCount,
+      }
+    }
+
+    totalToolCallsCount += result.toolCalls.length
+
+    const assistantMsg: LLMMessage = {
+      role: 'assistant',
+      content: result.content || null,
+      tool_calls: result.toolCalls.map(tc => ({
+        id: tc.id,
+        type: 'function' as const,
+        function: {
+          name: tc.name,
+          arguments: JSON.stringify(tc.arguments),
+        },
+      })),
+    }
+
+    if (result.reasoning) {
+      assistantMsg.reasoning_content = result.reasoning
+    }
+
+    messages.push(assistantMsg)
+
+    logger.agent.info(
+      `[AgentSubLoop] Executing ${result.toolCalls.length} tool calls: ${result.toolCalls.map(tc => tc.name).join(', ')}`
+    )
+
+    const toolPromises = result.toolCalls.map(tc =>
+      executeToolCall(tc, workspacePath, requestId)
+        .then(toolResult => ({
+          tool_call_id: tc.id,
+          ...toolResult,
+        }))
+    )
+    const toolResults = await Promise.all(toolPromises)
+
+    for (const toolResult of toolResults) {
+      messages.push({
+        role: 'tool' as const,
+        content: toolResult.content,
+        tool_call_id: toolResult.tool_call_id,
+        name: toolResult.name,
+      })
+    }
+
+    if (abortSignal?.aborted) {
+      return { content: '', iterations: iteration, toolCallsCount: totalToolCallsCount, error: 'Aborted' }
+    }
+  }
+
+  logger.agent.warn(`[AgentSubLoop] Max iterations (${maxIterations}) reached`)
+  return {
+    content: '',
+    iterations: iteration,
+    toolCallsCount: totalToolCallsCount,
+    error: `Max iterations (${maxIterations}) reached`,
+  }
+}

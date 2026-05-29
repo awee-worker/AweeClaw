@@ -23,7 +23,7 @@ import {
   Sparkles,
   Loader2,
   Eye,
-  EyeOff
+  EyeOff,
 } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'

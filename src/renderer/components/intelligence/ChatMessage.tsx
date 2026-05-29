@@ -30,6 +30,7 @@ import {
   isContextSnapshotPart,
   isSourcesPart,
   isFormPart,
+  isMultiAgentWorkflowPart,
   ToolCall,
 } from '@intelligence/providerTypes'
 import type { LLMStreamSource } from '@shared/protocols/modelGateway'
@@ -929,6 +930,10 @@ const RenderPart = React.memo(({
         />
       </div>
     )
+  }
+
+  if (isMultiAgentWorkflowPart(part)) {
+    return null
   }
 
   if (isToolCallPart(part)) {

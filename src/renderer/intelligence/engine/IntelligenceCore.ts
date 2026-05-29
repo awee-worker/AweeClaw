@@ -46,8 +46,12 @@ import { agentRuntime } from './AgentRuntime'
 
 import { buildAgentSystemPrompt } from '../prompt-engine/PromptComposer'
 import { taskComplexityDetector } from '../capabilities/planning/TaskComplexityDetector'
-import { multiAgentOrchestrator, agentRegistry, DEFAULT_AGENT_PROFILES, loadCustomAgentProfiles } from './MultiAgentOrchestrator'
+import { smartOrchestrator, type ExtractedFile, type AgentProgressEvent } from '../multiAgent/SmartOrchestrator'
+import { runAgentSubLoop } from '../multiAgent/AgentSubLoop'
+import { TeamCollaborationProtocol } from '../multiAgent/TeamCollaborationProtocol'
 import { useStore } from '@renderer/state'
+import type { WorkspaceAgent } from '@renderer/state/slices/agentWorkspaceSlice'
+import { playNotificationSound } from '@utils/notificationSound'
 
 export class AgentClass {
   /** 运行中的任务（按线程追踪） */
@@ -59,7 +63,7 @@ export class AgentClass {
   }> = new Map()
 
   /** 多 Agent 协作是否已初始化 */
-  private multiAgentInitialized = false
+
 
   // ===== 公共 API =====
 
@@ -181,28 +185,15 @@ export class AgentClass {
       const complexityResult = taskComplexityDetector.analyze(userQueryText)
 
       const globalStore = useStore.getState()
-      const multiAgentConfig = globalStore.agentConfig.multiAgent ?? { enabled: true, mode: 'auto' as const, threshold: 50, requireConsensus: true, maxAgents: 5 }
+      const teamModeEnabled = globalStore.teamModeEnabled
 
-      const shouldUseMultiAgent = multiAgentConfig.enabled && chatMode === 'agent' && (
-        multiAgentConfig.mode === 'always' ||
-        (multiAgentConfig.mode === 'auto' && complexityResult.total >= multiAgentConfig.threshold)
-      )
+      const shouldUseMultiAgent = teamModeEnabled && chatMode === 'agent'
 
       if (shouldUseMultiAgent) {
-        const modeReason = multiAgentConfig.mode === 'always'
-          ? 'always-enabled mode'
-          : `complexity score ${complexityResult.total} >= threshold ${multiAgentConfig.threshold}`
         logger.agent.info(
-          `[Agent] Multi-agent collaboration triggered (${modeReason}), ` +
+          `[Agent] Team mode enabled, triggering multi-agent collaboration, ` +
           `features: [${complexityResult.features.join(', ')}]`
         )
-
-        if (!this.multiAgentInitialized) {
-          DEFAULT_AGENT_PROFILES.forEach(p => agentRegistry.register(p))
-          loadCustomAgentProfiles(globalStore.agentConfig.customAgentProfiles)
-          this.multiAgentInitialized = true
-          logger.agent.info('[Agent] Multi-agent environment initialized')
-        }
 
         await this.executeMultiAgent(
           userQueryText,
@@ -211,8 +202,7 @@ export class AgentClass {
           threadId,
           assistantId,
           requestId,
-          complexityResult,
-          multiAgentConfig
+          { enabled: true, mode: 'always', threshold: 0, requireConsensus: true, maxAgents: 6 }
         )
 
         return { threadId, assistantId, requestId }
@@ -340,6 +330,16 @@ export class AgentClass {
     }
 
     api.llm.abort()
+
+    const globalStore = useStore.getState()
+    const activeSession = globalStore.activeWorkspaceSession
+    if (activeSession && activeSession.status !== 'completed' && activeSession.status !== 'failed') {
+      globalStore.updateWorkspaceSession({
+        status: 'failed',
+        currentAgentId: undefined,
+      })
+    }
+
     if (targetThreadId) {
       const thread = useAgentStore.getState().threads[targetThreadId]
       const reqId = thread?.executionMeta?.requestId
@@ -501,153 +501,586 @@ export class AgentClass {
     threadId: string,
     assistantId: string,
     _requestId: string,
-    complexityResult: import('../capabilities/planning/TaskComplexityDetector').ComplexityScore,
-    multiAgentConfig: { enabled: boolean; mode: 'auto' | 'always'; threshold: number; requireConsensus: boolean; maxAgents: number }
+    _multiAgentConfig: { enabled: boolean; mode: 'auto' | 'always'; threshold: number; requireConsensus: boolean; maxAgents: number }
   ): Promise<void> {
-    const store = useAgentStore.getState()
+    const agentStore = useAgentStore.getState()
+    const globalStore = useStore.getState()
 
-    store.setStreamPhase('streaming', threadId)
-    store.setStreamState({ streamDetail: 'reasoning' }, threadId)
+    agentStore.setStreamPhase('streaming', threadId)
+    agentStore.setStreamState({ streamDetail: 'reasoning' }, threadId)
 
-    store.appendToAssistant(assistantId, `🤖 **多智能体协作模式**\n\n`, threadId)
+    const sessionId = `ma-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
-    const modeHint = multiAgentConfig.mode === 'always'
-      ? `协作模式: 总是启用\n`
-      : `检测到复杂任务（复杂度: ${complexityResult.total}/100 >= 阈值: ${multiAgentConfig.threshold}）\n`
-    store.appendToAssistant(
-      assistantId,
-      modeHint + `涉及领域: ${complexityResult.features.join('、')}\n\n`,
-      threadId
-    )
+    const abortController = this.runningTasks.get(threadId)?.abortController
 
-    try {
-        // 定义 Agent 执行器：调用 LLM 完成子任务
-        const agentExecutor = async (agentId: string, subTask: string): Promise<string> => {
-          const agent = agentRegistry.get(agentId)
-          if (!agent) {
-            throw new Error(`Agent ${agentId} not found`)
-          }
-
-          logger.agent.info(`[MultiAgent] Executing sub-task with ${agent.name}: ${subTask.slice(0, 50)}...`)
-
-          // 构建带角色 systemPrompt 的 LLM 请求
-          const messages = [
-            { role: 'system' as const, content: agent.systemPrompt },
-            { role: 'user' as const, content: subTask },
-          ]
-
-          // 使用流式接口但等待完整结果
-          const subRequestId = crypto.randomUUID()
-          let fullContent = ''
-          let done = false
-          let error: Error | null = null
-
-          return new Promise<string>((resolve, reject) => {
-            api.llm.onStream(subRequestId, (data) => {
-              if (data.type === 'text' && data.content) {
-                fullContent += data.content
-              }
-            })
-
-            api.llm.onError(subRequestId, (err) => {
-              error = new Error(err.message)
-              done = true
-            })
-
-            api.llm.onDone(subRequestId, () => {
-              done = true
-            })
-
-            api.llm.send({
-              config,
-              messages,
-              requestId: subRequestId,
-            }).catch(reject)
-
-            // 轮询等待完成
-            const checkInterval = setInterval(() => {
-              if (done) {
-                clearInterval(checkInterval)
-                if (error) {
-                  reject(error)
-                } else {
-                  resolve(fullContent || '无响应')
-                }
-              }
-            }, 100)
-
-            // 超时处理（60秒）
-            setTimeout(() => {
-              clearInterval(checkInterval)
-              if (!done) {
-                reject(new Error('Sub-task timeout'))
-              }
-            }, 60000)
-          })
-        }
-
-      // 执行多 Agent 协作
-      const result = await multiAgentOrchestrator.collaborate(
-        task,
-        {
-          mode: 'chat',
-          workspacePath,
-          requireConsensus: multiAgentConfig.requireConsensus && (multiAgentConfig.mode === 'always' || complexityResult.total > 50),
-          maxAgents: multiAgentConfig.maxAgents,
-        },
-        agentExecutor
-      )
-
-      // 汇总结果输出到 UI
-      if (result.success) {
-        store.appendToAssistant(assistantId, `✅ **协作完成**（耗时 ${result.duration}ms）\n\n`, threadId)
-
-        // 显示各子任务结果
-        for (const subTask of result.subTasks) {
-          const status = subTask.status === 'completed' ? '✅' : '❌'
-          store.appendToAssistant(
-            assistantId,
-            `${status} **${subTask.title}**\n${subTask.result || ''}\n\n`,
-            threadId
-          )
-        }
-
-        // 显示共识结果
-        if (result.consensusReached !== undefined) {
-          store.appendToAssistant(
-            assistantId,
-            `📊 **共识投票**: ${result.consensusReached ? '✅ 已通过' : '⚠️ 未通过'}\n\n`,
-            threadId
-          )
-        }
-
-        // 最终汇总
-        if (result.finalAnswer) {
-          store.appendToAssistant(assistantId, `---\n\n📋 **最终汇总**:\n${result.finalAnswer}`, threadId)
-        }
-      } else {
-        store.appendToAssistant(
-          assistantId,
-          `⚠️ **协作未完成**，部分子任务失败。\n\n${result.finalAnswer || ''}`,
-          threadId
-        )
+    const callLLM = async (systemPrompt: string, userMessage: string): Promise<string> => {
+      if (abortController?.signal.aborted) {
+        throw new Error('Aborted by user')
       }
 
-      // 完成助手消息
-      store.finalizeAssistant(assistantId, threadId)
-      store.setStreamPhase('idle', threadId)
+      const messages = [
+        { role: 'system' as const, content: systemPrompt },
+        { role: 'user' as const, content: userMessage },
+      ]
+
+      const subRequestId = crypto.randomUUID()
+      let fullContent = ''
+      let fullReasoning = ''
+      let settled = false
+
+      return new Promise<string>((resolve, reject) => {
+        let checkInterval: ReturnType<typeof setInterval> | null = null
+
+        const cleanup = () => {
+          if (checkInterval) clearInterval(checkInterval)
+          unsubStream()
+          unsubError()
+          unsubDone()
+        }
+
+        const onAbort = () => {
+          if (settled) return
+          settled = true
+          cleanup()
+          api.llm.abort()
+          reject(new Error('Aborted by user'))
+        }
+
+        abortController?.signal.addEventListener('abort', onAbort, { once: true })
+
+        const unsubStream = api.llm.onStream(subRequestId, (data) => {
+          if (data.type === 'text' && data.content) {
+            fullContent += data.content
+          }
+          if (data.type === 'reasoning' && data.content) {
+            fullReasoning += data.content
+          }
+        })
+
+        const unsubError = api.llm.onError(subRequestId, (err) => {
+          if (settled) return
+          settled = true
+          abortController?.signal.removeEventListener('abort', onAbort)
+          cleanup()
+          reject(new Error(err.message))
+        })
+
+        const unsubDone = api.llm.onDone(subRequestId, (data) => {
+          if (settled) return
+          settled = true
+          abortController?.signal.removeEventListener('abort', onAbort)
+          if (typeof data?.reasoning === 'string' && data.reasoning.length >= fullReasoning.length) {
+            fullReasoning = data.reasoning
+          }
+          cleanup()
+          resolve(fullContent || '无响应')
+        })
+
+        api.llm.send({
+          config,
+          messages,
+          requestId: subRequestId,
+        }).catch((err) => {
+          if (settled) return
+          settled = true
+          abortController?.signal.removeEventListener('abort', onAbort)
+          cleanup()
+          reject(err)
+        })
+
+        checkInterval = setInterval(() => {
+          if (settled && checkInterval) {
+            clearInterval(checkInterval)
+          }
+          if (abortController?.signal.aborted && !settled) {
+            settled = true
+            cleanup()
+            api.llm.abort()
+            reject(new Error('Aborted by user'))
+          }
+        }, 200)
+
+        setTimeout(() => {
+          if (settled) return
+          settled = true
+          abortController?.signal.removeEventListener('abort', onAbort)
+          cleanup()
+          reject(new Error('Sub-task timeout (120s)'))
+        }, 120000)
+      })
+    }
+
+    try {
+      globalStore.setActiveWorkspaceSession({
+        sessionId,
+        threadId,
+        status: 'planning',
+        summary: '',
+        agents: [],
+        teamChat: [],
+        createdAt: Date.now(),
+      })
+      globalStore.setWorkspaceViewVisible(true)
+
+      agentStore.appendToAssistant(assistantId, '🧠 **多智能体协作已启动**，已切换到智能体工作台查看详情', threadId)
+
+      const context = workspacePath ? `Workspace: ${workspacePath}` : ''
+      const plan = await smartOrchestrator.plan(task, context, callLLM)
+
+      const projectName = plan.projectName
+        .replace(/[^a-zA-Z0-9_-]/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '')
+        || 'project'
+      const dirName = `${projectName}_${sessionId.slice(-6)}`
+
+      let projectDir: string | null = null
+      if (workspacePath) {
+        projectDir = `${workspacePath}/${dirName}`
+        try {
+          await api.file.ensureDir(projectDir)
+        } catch {
+          // directory may already exist
+        }
+      }
+
+      globalStore.updateWorkspaceSession({
+        projectPath: projectDir || undefined,
+      })
+
+      const collaborationProtocol = new TeamCollaborationProtocol({
+        onStateChange: (state) => {
+          useStore.getState().updateWorkspaceSession({
+            collaborationPhase: state.phase,
+          })
+        },
+        onChatMessage: (message) => {
+          useStore.getState().addTeamChatMessage(message)
+        },
+        callLLM,
+        userLanguage: useStore.getState().language || 'zh',
+      })
+
+      const executeAgent = async (systemPrompt: string, userMessage: string): Promise<string> => {
+        const lang = useStore.getState().language || 'zh'
+        const langDirective = lang === 'zh'
+          ? '\n\n【语言要求】你必须使用中文进行所有交流和输出，包括讨论、分析、文档、注释等。代码变量名和文件路径保持英文。'
+          : '\n\n[Language] You MUST use English for all communication and output.'
+        const result = await runAgentSubLoop({
+          config,
+          systemPrompt: systemPrompt + langDirective,
+          userMessage,
+          workspacePath: projectDir,
+          maxIterations: 15,
+          abortSignal: abortController?.signal,
+        })
+
+        if (result.error && !result.content) {
+          throw new Error(result.error)
+        }
+
+        return result.content || ''
+      }
+
+      const saveExtractedFiles = async (
+        _agentId: string,
+        agentName: string,
+        content: string,
+        extractedFiles: ExtractedFile[]
+      ): Promise<string[]> => {
+        if (!projectDir) return []
+        const savedPaths: string[] = []
+
+        if (extractedFiles.length > 0) {
+          for (const file of extractedFiles) {
+            try {
+              const dirPart = file.path.includes('/')
+                ? file.path.substring(0, file.path.lastIndexOf('/'))
+                : ''
+              if (dirPart) {
+                await api.file.ensureDir(`${projectDir}/${dirPart}`)
+              }
+              const fullPath = `${projectDir}/${file.path}`
+              await api.file.write(fullPath, file.content)
+              savedPaths.push(fullPath)
+            } catch (err) {
+              logger.agent.warn(`[SmartOrchestrator] Failed to save file ${file.path}:`, err)
+            }
+          }
+        } else {
+          try {
+            const safeName = agentName.replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]/g, '_')
+            const outputPath = `${projectDir}/${safeName}.md`
+            await api.file.write(outputPath, content)
+            savedPaths.push(outputPath)
+          } catch (err) {
+            logger.agent.warn(`[SmartOrchestrator] Failed to save output for ${agentName}:`, err)
+          }
+        }
+
+        return savedPaths
+      }
+
+      const ROLE_MAP: Record<string, WorkspaceAgent['role']> = {
+        'architect': 'architect',
+        'developer': 'backend',
+        'reviewer': 'analyst',
+        'tester': 'tester',
+        'coordinator': 'pm',
+        'frontend': 'frontend',
+        'designer': 'designer',
+        'devops': 'devops',
+      }
+
+      const workspaceAgents: WorkspaceAgent[] = plan.agents.map(a => {
+        const idLower = a.id.toLowerCase()
+        const detectedRole: WorkspaceAgent['role'] = Object.entries(ROLE_MAP).find(([key]) => idLower.includes(key))?.[1] ?? 'custom'
+        return {
+          id: a.id,
+          name: a.name,
+          icon: a.icon,
+          role: detectedRole,
+          status: 'waiting' as const,
+          taskDescription: a.taskDescription,
+          scope: a.scope,
+          forbidden: a.forbidden,
+          outputFiles: [],
+          progress: 0,
+          currentStep: '',
+          toolCalls: [],
+          progressEvents: [],
+          outputPreview: '',
+          iterationCount: 0,
+          retryCount: 0,
+        }
+      })
+
+      const agentStatusMap = new Map<string, 'waiting' | 'working' | 'completed' | 'failed'>()
+      for (const a of workspaceAgents) {
+        agentStatusMap.set(a.id, 'waiting')
+      }
+
+      globalStore.updateWorkspaceSession({
+        status: 'plan_review',
+        agents: workspaceAgents,
+        summary: plan.summary,
+        collaborationPhase: 'meeting',
+        plan: {
+          agents: plan.agents.map(a => ({
+            id: a.id,
+            name: a.name,
+            icon: a.icon,
+            taskDescription: a.taskDescription,
+            scope: a.scope,
+            forbidden: a.forbidden,
+          })),
+          executionOrder: plan.executionOrder,
+          summary: plan.summary,
+        },
+      })
+
+      const agentInfoList = workspaceAgents.map(a => ({
+        id: a.id,
+        name: a.name,
+        role: a.role,
+      }))
+
+      await collaborationProtocol.startMeeting(task, agentInfoList)
+
+      agentStore.appendToAssistant(assistantId, `\n\n📋 **协作计划已生成**: ${plan.summary}，共 ${plan.agents.length} 个智能体，请在工作台审核`, threadId)
+
+      await new Promise<void>((resolve, reject) => {
+        const checkInterval = setInterval(() => {
+          if (abortController?.signal.aborted) {
+            clearInterval(checkInterval)
+            reject(new Error('Aborted by user'))
+            return
+          }
+          const currentSession = useStore.getState().activeWorkspaceSession
+          if (!currentSession || currentSession.sessionId !== sessionId) {
+            clearInterval(checkInterval)
+            reject(new Error('Session cancelled'))
+            return
+          }
+          if (currentSession.status === 'executing') {
+            clearInterval(checkInterval)
+            resolve()
+          }
+          if (currentSession.status === 'failed') {
+            clearInterval(checkInterval)
+            reject(new Error('Plan rejected'))
+          }
+        }, 300)
+
+        setTimeout(() => {
+          clearInterval(checkInterval)
+          const currentSession = useStore.getState().activeWorkspaceSession
+          if (currentSession?.status === 'plan_review') {
+            useStore.getState().updateWorkspaceSession({ status: 'executing' })
+            resolve()
+          }
+        }, 30000)
+      })
+
+      await collaborationProtocol.startDiscussion(agentInfoList, task)
+
+      await collaborationProtocol.startVoting(
+        agentInfoList,
+        ['按计划执行', '优化后执行']
+      )
+
+      collaborationProtocol.delegateTasks(
+        workspaceAgents.map(a => ({
+          agentId: a.id,
+          agentName: a.name,
+          task: a.taskDescription,
+        }))
+      )
+
+      collaborationProtocol.startExecution()
+
+      await smartOrchestrator.execute(plan, {
+        onPlanCreated: () => {},
+
+        onAgentStart: (agentId: string) => {
+          agentStatusMap.set(agentId, 'working')
+          useStore.getState().updateWorkspaceAgent(agentId, {
+            status: 'working',
+            startedAt: Date.now(),
+            currentStep: '开始执行任务...',
+          })
+          useStore.getState().updateWorkspaceSession({ currentAgentId: agentId })
+
+          const agent = plan.agents.find(a => a.id === agentId)
+          if (agent) {
+            useStore.getState().addTeamChatMessage({
+              id: `chat-${Date.now()}-${agentId}-start`,
+              fromAgentId: agentId,
+              fromAgentName: agent.name,
+              type: 'announce',
+              content: `开始执行任务：${agent.taskDescription.slice(0, 100)}`,
+              timestamp: Date.now(),
+            })
+          }
+        },
+
+        onAgentProgress: (agentId: string, event: AgentProgressEvent) => {
+          const store = useStore.getState()
+          store.addAgentProgressEvent(agentId, {
+            type: event.type,
+            content: event.content,
+            toolName: event.toolName,
+            timestamp: event.timestamp,
+          })
+
+          if (event.type === 'thinking') {
+            store.updateWorkspaceAgent(agentId, {
+              currentStep: event.content.length > 50 ? event.content.slice(0, 50) + '...' : event.content,
+            })
+          }
+
+          if (event.type === 'tool_call' && event.toolName) {
+            store.addAgentToolCall(agentId, {
+              id: `tc-${agentId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              name: event.toolName,
+              arguments: {},
+              status: 'running',
+              timestamp: event.timestamp,
+            })
+          }
+
+          if (event.type === 'tool_result' && event.toolName) {
+            const agent = store.activeWorkspaceSession?.agents.find(a => a.id === agentId)
+            if (agent) {
+              const lastToolCall = [...agent.toolCalls].reverse().find(tc => tc.name === event.toolName && tc.status === 'running')
+              if (lastToolCall) {
+                store.updateAgentToolCall(agentId, lastToolCall.id, {
+                  status: 'completed',
+                  result: event.content.length > 500 ? event.content.slice(0, 500) + '...' : event.content,
+                })
+              }
+            }
+          }
+        },
+
+        onAgentRetry: (agentId: string, retryCount: number, maxRetries: number) => {
+          useStore.getState().updateWorkspaceAgent(agentId, {
+            retryCount,
+            currentStep: `重试中 (${retryCount}/${maxRetries})...`,
+          })
+
+          const agent = plan.agents.find(a => a.id === agentId)
+          if (agent) {
+            agentStore.appendToAssistant(assistantId, `\n\n🔄 **${agent.icon} ${agent.name}** 正在重试 (${retryCount}/${maxRetries})`, threadId)
+          }
+        },
+
+        onAgentComplete: async (agentId: string, _result: string, files: ExtractedFile[]) => {
+          agentStatusMap.set(agentId, 'completed')
+          const agent = plan.agents.find(a => a.id === agentId)
+          const savedFiles = await saveExtractedFiles(agentId, agent?.name || agentId, _result, files)
+
+          const session = useStore.getState().activeWorkspaceSession
+          const wsAgent = session?.agents.find(a => a.id === agentId)
+          const toolCreatedFiles: string[] = []
+          if (wsAgent) {
+            for (const tc of wsAgent.toolCalls) {
+              if ((tc.name === 'write_file' || tc.name === 'create_file_or_folder') && tc.status === 'completed') {
+                try {
+                  const args = typeof tc.arguments === 'string' ? JSON.parse(tc.arguments) : tc.arguments
+                  const filePath = args?.path || args?.filePath || args?.file_path
+                  if (filePath && projectDir) {
+                    const fullPath = filePath.startsWith('/') ? filePath : `${projectDir}/${filePath}`
+                    if (!toolCreatedFiles.includes(fullPath)) {
+                      toolCreatedFiles.push(fullPath)
+                    }
+                  }
+                } catch {}
+              }
+            }
+          }
+
+          const allOutputFiles = [...new Set([...savedFiles, ...toolCreatedFiles])]
+
+          const outputPreview = _result.length > 500 ? _result.slice(0, 500) + '...' : _result
+
+          useStore.getState().updateWorkspaceAgent(agentId, {
+            status: 'completed',
+            completedAt: Date.now(),
+            outputFiles: allOutputFiles,
+            progress: 100,
+            currentStep: '已完成',
+            outputPreview,
+          })
+
+          if (agent) {
+            const store = useStore.getState()
+            store.addTeamChatMessage({
+              id: `chat-${Date.now()}-${agentId}`,
+              fromAgentId: agentId,
+              fromAgentName: agent.name,
+              type: 'announce',
+              content: allOutputFiles.length > 0
+                ? `任务完成！已产出 ${allOutputFiles.length} 个文件：${allOutputFiles.map(f => f.split('/').pop()).join(', ')}`
+                : '任务已完成！',
+              attachments: allOutputFiles,
+              timestamp: Date.now(),
+            })
+
+            const fileCount = savedFiles.length
+            const fileNames = savedFiles.map(f => f.split('/').pop()).join(', ')
+            const fileNote = fileCount > 0
+              ? `（产出 ${fileCount} 个文件: ${fileNames}）`
+              : ''
+            agentStore.appendToAssistant(assistantId, `\n\n✅ **${agent.icon} ${agent.name}** 已完成 ${fileNote}`, threadId)
+
+            const nextLayerAgents = plan.executionOrder
+              .flatMap(layer => layer)
+              .filter(id => !agentStatusMap.has(id) || agentStatusMap.get(id) === 'waiting')
+            const nextAgentId = nextLayerAgents[0]
+            if (nextAgentId) {
+              const nextAgent = plan.agents.find(a => a.id === nextAgentId)
+              if (nextAgent) {
+                collaborationProtocol.createHandoff(
+                  agentId,
+                  agent.name,
+                  nextAgentId,
+                  nextAgent.name,
+                  savedFiles.length > 0
+                    ? `我已完成任务，产出文件：${savedFiles.map(f => f.split('/').pop()).join(', ')}，请继续。`
+                    : '我已完成任务，请继续。',
+                  savedFiles,
+                )
+              }
+            }
+          }
+        },
+
+        onAgentError: (agentId: string, error: string) => {
+          agentStatusMap.set(agentId, 'failed')
+          useStore.getState().updateWorkspaceAgent(agentId, {
+            status: 'failed',
+            completedAt: Date.now(),
+            errorMessage: error,
+            currentStep: '执行失败',
+          })
+
+          const agent = plan.agents.find(a => a.id === agentId)
+          if (agent) {
+            agentStore.appendToAssistant(assistantId, `\n\n❌ **${agent.icon} ${agent.name}** 执行失败: ${error}`, threadId)
+          }
+        },
+
+        onAllComplete: (_results: Map<string, string>, finalAnswer: string) => {
+          collaborationProtocol.startReview()
+
+          const failedCount = [...agentStatusMap.values()].filter(s => s === 'failed').length
+          const completedCount = [...agentStatusMap.values()].filter(s => s === 'completed').length
+          const allCompleted = failedCount === 0 && completedCount === workspaceAgents.length
+          const finalStatus = allCompleted ? 'completed' : (completedCount > 0 ? 'completed' : 'failed')
+
+          const session = useStore.getState().activeWorkspaceSession
+          const totalDuration = session ? Date.now() - session.createdAt : undefined
+
+          useStore.getState().updateWorkspaceSession({
+            status: finalStatus,
+            currentAgentId: undefined,
+            totalDuration,
+          })
+
+          collaborationProtocol.complete()
+
+          if (finalAnswer) {
+            agentStore.appendToAssistant(assistantId, `\n\n---\n\n${finalAnswer}`, threadId)
+          }
+
+          const statusIcon = finalStatus === 'completed' ? '✅' : '⚠️'
+          const statusText = finalStatus === 'completed' ? '全部完成' : `完成 ${completedCount} 项，失败 ${failedCount} 项`
+          const projectNote = projectDir
+            ? `\n\n📁 **项目位置**: \`${projectDir}\``
+            : ''
+          agentStore.appendToAssistant(
+            assistantId,
+            `\n\n${statusIcon} **多智能体协作${statusText}**${projectNote}`,
+            threadId,
+          )
+
+          try {
+            playNotificationSound(finalStatus === 'completed' ? 'success' : 'attention')
+          } catch {}
+        },
+
+        callLLM,
+        executeAgent,
+      }, projectDir)
+
+      agentStore.finalizeAssistant(assistantId, threadId)
+      agentStore.setStreamPhase('idle', threadId)
 
       logger.agent.info(
-        `[MultiAgent] Collaboration completed: success=${result.success}, ` +
-        `subTasks=${result.subTasks.length}, duration=${result.duration}ms`
+        `[SmartOrchestrator] Collaboration completed: agents=${plan.agents.length}, project=${projectName}`
       )
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error)
-      logger.agent.error('[MultiAgent] Collaboration failed:', errorMsg)
-      store.appendToAssistant(assistantId, `\n\n❌ **多 Agent 协作出错**: ${errorMsg}`, threadId)
-      store.finalizeAssistant(assistantId, threadId)
-      store.setStreamPhase('idle', threadId)
-      throw error
+      logger.agent.error('[SmartOrchestrator] Collaboration failed:', errorMsg)
+
+      const isAborted = errorMsg === 'Aborted by user'
+      useStore.getState().updateWorkspaceSession({
+        status: 'failed',
+        currentAgentId: undefined,
+      })
+
+      try {
+        playNotificationSound('error')
+      } catch {}
+
+      if (isAborted) {
+        agentStore.appendToAssistant(assistantId, '\n\n⏹️ **多智能体协作已停止**', threadId)
+      } else {
+        agentStore.appendToAssistant(assistantId, `\n\n❌ **多智能体协作出错**: ${errorMsg}`, threadId)
+      }
+      agentStore.finalizeAssistant(assistantId, threadId)
+      agentStore.setStreamPhase('idle', threadId)
     }
   }
 

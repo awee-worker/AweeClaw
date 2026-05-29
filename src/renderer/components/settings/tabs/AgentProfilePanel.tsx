@@ -629,213 +629,20 @@ export function AgentProfilePanel({
                 <div className={`grid transition-all duration-300 ease-in-out ${showAgentRoles ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
                     <div className="overflow-hidden">
                         <div className="p-5 pt-0 space-y-5 relative z-10">
-                            {/* 启用开关 */}
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-accent" />
-                                    <label className="text-xs font-bold text-text-primary uppercase tracking-wider">{t('启用协作', 'Enable Collaboration')}</label>
+                            <div className="flex items-start gap-2 p-3 rounded-lg bg-orange-500/10 border border-orange-500/20 text-orange-400 text-[11px]">
+                                <span className="text-base shrink-0 mt-0.5">🦞</span>
+                                <div>
+                                    <p className="font-medium text-xs text-text-primary mb-1">{t('团队协作模式', 'Team Collaboration Mode')}</p>
+                                    <p>{t('在聊天输入框中点击 🦞 按钮即可开启团队协作模式。开启后，AI 将组建专业团队协作完成任务。', 'Click the 🦞 button in the chat input to enable team collaboration mode. When enabled, AI will assemble a professional team to collaborate on tasks.')}</p>
                                 </div>
-                                <ToggleSwitch
-                                    label={t('启用', 'Enabled')}
-                                    checked={agentConfig.multiAgent?.enabled ?? true}
-                                    onChange={(e) => setAgentConfig({
-                                        ...agentConfig,
-                                        multiAgent: {
-                                            enabled: e.target.checked,
-                                            mode: agentConfig.multiAgent?.mode ?? 'auto',
-                                            threshold: agentConfig.multiAgent?.threshold ?? 50,
-                                            requireConsensus: agentConfig.multiAgent?.requireConsensus ?? true,
-                                            maxAgents: agentConfig.multiAgent?.maxAgents ?? 5,
-                                        } as NonNullable<typeof agentConfig.multiAgent>
-                                    })}
-                                    className="text-[12px]"
-                                />
                             </div>
 
-                            {agentConfig.multiAgent?.enabled !== false && (
-                                <>
-                                    {/* 协作模式选择 */}
-                                    <div className="space-y-3 pt-4 border-t border-border/30">
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-accent" />
-                                            <label className="text-xs font-bold text-text-primary uppercase tracking-wider">{t('协作模式', 'Collaboration Mode')}</label>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <button
-                                                type="button"
-                                                onClick={() => setAgentConfig({
-                                                    ...agentConfig,
-                                                    multiAgent: {
-                                                        ...agentConfig.multiAgent!,
-                                                        mode: 'auto',
-                                                    } as NonNullable<typeof agentConfig.multiAgent>
-                                                })}
-                                                className={`p-3 rounded-lg border text-left transition-all ${
-                                                    (agentConfig.multiAgent?.mode ?? 'auto') === 'auto'
-                                                        ? 'border-accent/50 bg-accent/10 text-text-primary'
-                                                        : 'border-border/50 bg-background/30 text-text-secondary hover:border-accent/30'
-                                                }`}
-                                            >
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <Zap className="w-3.5 h-3.5 text-accent" />
-                                                    <span className="text-xs font-semibold">{t('按任务复杂度自动启用', 'Auto by Complexity')}</span>
-                                                </div>
-                                                <p className="text-[11px] text-text-muted leading-relaxed">{t('当任务复杂度超过阈值时，自动启用多智能体协作', 'Auto-enable multi-agent collaboration when task complexity exceeds threshold')}</p>
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => setAgentConfig({
-                                                    ...agentConfig,
-                                                    multiAgent: {
-                                                        ...agentConfig.multiAgent!,
-                                                        mode: 'always',
-                                                    } as NonNullable<typeof agentConfig.multiAgent>
-                                                })}
-                                                className={`p-3 rounded-lg border text-left transition-all ${
-                                                    agentConfig.multiAgent?.mode === 'always'
-                                                        ? 'border-accent/50 bg-accent/10 text-text-primary'
-                                                        : 'border-border/50 bg-background/30 text-text-secondary hover:border-accent/30'
-                                                }`}
-                                            >
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <Users className="w-3.5 h-3.5 text-accent" />
-                                                    <span className="text-xs font-semibold">{t('总是启用', 'Always Enabled')}</span>
-                                                </div>
-                                                <p className="text-[11px] text-text-muted leading-relaxed">{t('所有任务都使用多智能体协作，不判断任务复杂度', 'Always use multi-agent collaboration for all tasks')}</p>
-                                            </button>
-                                        </div>
+                            {agentConfig.customAgentProfiles && agentConfig.customAgentProfiles.length > 0 && (
+                                <div className="space-y-3 pt-4 border-t border-border/30">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-accent" />
+                                        <label className="text-xs font-bold text-text-primary uppercase tracking-wider">{t('自定义角色', 'Custom Roles')}</label>
                                     </div>
-
-                                    {/* 参数配置 */}
-                                    {(agentConfig.multiAgent?.mode ?? 'auto') === 'auto' && (
-                                        <div className="space-y-3 pt-4 border-t border-border/30">
-                                            <div className="flex items-center gap-2">
-                                                <div className="w-1.5 h-1.5 rounded-full bg-accent" />
-                                                <label className="text-xs font-bold text-text-primary uppercase tracking-wider">{t('自动触发配置', 'Auto Trigger Config')}</label>
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <div className="space-y-1.5">
-                                                    <label className="text-[11px] font-medium text-text-muted">{t('触发阈值 (0-100)', 'Trigger Threshold')}</label>
-                                                    <TextField
-                                                        type="number"
-                                                        value={agentConfig.multiAgent?.threshold ?? 50}
-                                                        onChange={(e) => setAgentConfig({
-                                                            ...agentConfig,
-                                                            multiAgent: {
-                                                                enabled: true,
-                                                                mode: agentConfig.multiAgent?.mode ?? 'auto',
-                                                                threshold: Math.min(100, Math.max(0, parseInt(e.target.value) || 50)),
-                                                                requireConsensus: agentConfig.multiAgent?.requireConsensus ?? true,
-                                                                maxAgents: agentConfig.multiAgent?.maxAgents ?? 5,
-                                                            } as NonNullable<typeof agentConfig.multiAgent>
-                                                        })}
-                                                        min={0}
-                                                        max={100}
-                                                        className="bg-background/50 border-border text-xs h-9"
-                                                    />
-                                                </div>
-                                                <div className="space-y-1.5">
-                                                    <label className="text-[11px] font-medium text-text-muted">{t('最大智能体数', 'Max Agents')}</label>
-                                                    <TextField
-                                                        type="number"
-                                                        value={agentConfig.multiAgent?.maxAgents ?? 5}
-                                                        onChange={(e) => setAgentConfig({
-                                                            ...agentConfig,
-                                                            multiAgent: {
-                                                                enabled: true,
-                                                                mode: agentConfig.multiAgent?.mode ?? 'auto',
-                                                                threshold: agentConfig.multiAgent?.threshold ?? 50,
-                                                                requireConsensus: agentConfig.multiAgent?.requireConsensus ?? true,
-                                                                maxAgents: Math.min(10, Math.max(2, parseInt(e.target.value) || 5)),
-                                                            } as NonNullable<typeof agentConfig.multiAgent>
-                                                        })}
-                                                        min={2}
-                                                        max={10}
-                                                        className="bg-background/50 border-border text-xs h-9"
-                                                    />
-                                                </div>
-                                            </div>
-                                            <ToggleSwitch
-                                                label={t('要求共识投票', 'Require Consensus')}
-                                                checked={agentConfig.multiAgent?.requireConsensus ?? true}
-                                                onChange={(e) => setAgentConfig({
-                                                    ...agentConfig,
-                                                    multiAgent: {
-                                                        enabled: true,
-                                                        mode: agentConfig.multiAgent?.mode ?? 'auto',
-                                                        threshold: agentConfig.multiAgent?.threshold ?? 50,
-                                                        requireConsensus: e.target.checked,
-                                                        maxAgents: agentConfig.multiAgent?.maxAgents ?? 5,
-                                                    } as NonNullable<typeof agentConfig.multiAgent>
-                                                })}
-                                                className="text-[12px]"
-                                            />
-                                        </div>
-                                    )}
-
-                                    {(agentConfig.multiAgent?.mode ?? 'auto') === 'always' && (
-                                        <div className="space-y-3 pt-4 border-t border-border/30">
-                                            <div className="flex items-center gap-2">
-                                                <div className="w-1.5 h-1.5 rounded-full bg-accent" />
-                                                <label className="text-xs font-bold text-text-primary uppercase tracking-wider">{t('协作参数', 'Collaboration Params')}</label>
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <div className="space-y-1.5">
-                                                    <label className="text-[11px] font-medium text-text-muted">{t('最大智能体数', 'Max Agents')}</label>
-                                                    <TextField
-                                                        type="number"
-                                                        value={agentConfig.multiAgent?.maxAgents ?? 5}
-                                                        onChange={(e) => setAgentConfig({
-                                                            ...agentConfig,
-                                                            multiAgent: {
-                                                                enabled: true,
-                                                                mode: 'always',
-                                                                threshold: agentConfig.multiAgent?.threshold ?? 50,
-                                                                requireConsensus: agentConfig.multiAgent?.requireConsensus ?? true,
-                                                                maxAgents: Math.min(10, Math.max(2, parseInt(e.target.value) || 5)),
-                                                            } as NonNullable<typeof agentConfig.multiAgent>
-                                                        })}
-                                                        min={2}
-                                                        max={10}
-                                                        className="bg-background/50 border-border text-xs h-9"
-                                                    />
-                                                </div>
-                                                <div className="flex items-center">
-                                                    <ToggleSwitch
-                                                        label={t('要求共识投票', 'Require Consensus')}
-                                                        checked={agentConfig.multiAgent?.requireConsensus ?? true}
-                                                        onChange={(e) => setAgentConfig({
-                                                            ...agentConfig,
-                                                            multiAgent: {
-                                                                enabled: true,
-                                                                mode: 'always',
-                                                                threshold: agentConfig.multiAgent?.threshold ?? 50,
-                                                                requireConsensus: e.target.checked,
-                                                                maxAgents: agentConfig.multiAgent?.maxAgents ?? 5,
-                                                            } as NonNullable<typeof agentConfig.multiAgent>
-                                                        })}
-                                                        className="text-[12px]"
-                                                    />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* 提示信息 */}
-                                    <div className="flex items-start gap-2 p-2.5 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-400 text-[11px]">
-                                        <Users className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                                        <p>{(agentConfig.multiAgent?.mode ?? 'auto') === 'auto'
-                                            ? t('当任务复杂度超过阈值时，自动启用多智能体协作。多个专业智能体并行处理子任务，最后汇总结果。', 'When task complexity exceeds threshold, multi-agent collaboration is triggered. Multiple specialized agents process subtasks in parallel.')
-                                            : t('所有任务都将使用多智能体协作模式处理，不判断任务复杂度。适合需要多角度分析的复杂场景。', 'All tasks will use multi-agent collaboration regardless of complexity. Suitable for complex scenarios requiring multi-perspective analysis.')
-                                        }</p>
-                                    </div>
-
-                                    {/* Agent 角色自定义 */}
-                                    <div className="space-y-3 pt-4 border-t border-border/30">
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-accent" />
-                                            <label className="text-xs font-bold text-text-primary uppercase tracking-wider">{t('Agent 角色自定义', 'Custom Agent Roles')}</label>
-                                        </div>
 
                                         {(agentConfig.customAgentProfiles ?? []).length === 0 ? (
                                             <div className="text-center py-6 text-text-muted text-xs">
@@ -1031,8 +838,7 @@ export function AgentProfilePanel({
                                             <p>{t('自定义角色将在多智能体协作时与默认角色一起参与任务分解和执行。优先级越高，越优先分配关键子任务。', 'Custom roles will participate alongside default roles in multi-agent collaboration. Higher priority means more critical subtasks.')}</p>
                                         </div>
                                     </div>
-                                </>
-                            )}
+                                )}
                         </div>
                     </div>
                 </div>

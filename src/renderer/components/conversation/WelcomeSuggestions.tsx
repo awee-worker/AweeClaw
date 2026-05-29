@@ -1,52 +1,87 @@
+import { useState, useCallback } from 'react'
 import { useStore } from '@store'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
-import type { WelcomeSuggestionItem, WelcomeTitleConfig } from '@shared/protocols/scenario'
+import type { WelcomeTitleConfig } from '@shared/protocols/scenario'
+import { Users, Sparkles } from 'lucide-react'
 
 const DEFAULT_TITLE: WelcomeTitleConfig = {
   title: 'How can I help?',
-  titleZh: '有什么可以帮你的？',
+  titleZh: '有什么可以帮您的？',
   subtitle: 'Choose a suggestion below, or ask me anything.',
   subtitleZh: '选择下方建议，或直接问我任何问题',
 }
 
-const DEFAULT_SUGGESTIONS: WelcomeSuggestionItem[] = [
-  { icon: 'Lightbulb', title: 'Brainstorm ideas', titleZh: '头脑风暴', prompt: "I need some creative ideas. Let's brainstorm together and explore different possibilities.", color: '' },
-  { icon: 'HelpCircle', title: 'Answer questions', titleZh: '回答问题', prompt: 'I have a question I need help with. Can you provide a clear and thorough explanation?', color: '' },
-  { icon: 'Globe', title: 'Research a topic', titleZh: '研究一个话题', prompt: 'Help me research a topic. Find relevant information and summarize the key points.', color: '' },
-  { icon: 'Brain', title: 'Solve a problem', titleZh: '解决问题', prompt: "I'm facing a problem and need help thinking through it. Let's work through it step by step.", color: '' },
-]
-
-interface EmptyChatSuggestionsProps {
-  onSelectSuggestion: (text: string) => void
+const TEAM_TITLE = {
+  zh: '多智能体协作模式，AI 团队将协同完成复杂任务',
+  en: 'Multi-agent collaboration — AI team works together on complex tasks',
 }
 
-export default function EmptyChatSuggestions({ onSelectSuggestion }: EmptyChatSuggestionsProps) {
+export default function EmptyChatSuggestions() {
   const language = useStore(s => s.language)
   const activeScenarioId = useStore(s => s.activeScenarioId)
+  const teamModeEnabled = useStore(s => s.teamModeEnabled)
+  const setTeamModeEnabled = useStore(s => s.setTeamModeEnabled)
+
+  const [activeWorkTab, setActiveWorkTab] = useState<'daily' | 'team'>(teamModeEnabled ? 'team' : 'daily')
 
   const scenario = scenarioRegistry.get(activeScenarioId)
   const ui = scenario?.ui
-  const suggestions = ui?.welcomeSuggestions || DEFAULT_SUGGESTIONS
   const titleConfig = ui?.welcomeTitle || DEFAULT_TITLE
 
-  return (
-    <div className="flex flex-col items-center justify-center p-6 select-none z-10 w-full max-w-lg mx-auto my-auto min-h-[65vh]">
-      <div className="relative mb-8 flex flex-col items-center w-full">
-        <h1 className="text-2xl font-semibold text-text-primary tracking-tight">
-          {language === 'zh' ? titleConfig.titleZh : titleConfig.title}
-        </h1>
-      </div>
+  const handleWorkTabChange = useCallback((tab: 'daily' | 'team') => {
+    setActiveWorkTab(tab)
+    setTeamModeEnabled(tab === 'team')
+  }, [setTeamModeEnabled])
 
-      <div className="flex flex-wrap gap-2 justify-center w-full relative z-10">
-        {suggestions.map((item) => (
+  const displayTitle = activeWorkTab === 'team'
+    ? (language === 'zh' ? TEAM_TITLE.zh : TEAM_TITLE.en)
+    : (language === 'zh' ? titleConfig.titleZh : titleConfig.title)
+
+  return (
+    <div className="flex flex-col items-center w-full select-none z-10">
+      <div className="flex flex-col items-center w-full max-w-[640px] gap-6">
+        <h1 className="text-3xl font-bold text-text-primary tracking-tight text-center">
+          {displayTitle}
+        </h1>
+
+        <div className="relative flex items-center bg-surface/40 rounded-full p-1 border border-border/50 shadow-sm">
+          <div
+            className="absolute top-1 bottom-1 rounded-full bg-surface-active/80 shadow-sm transition-all duration-300 ease-out"
+            style={{
+              left: activeWorkTab === 'daily' ? '4px' : '50%',
+              width: 'calc(50% - 4px)',
+            }}
+          />
           <button
-            key={item.prompt}
-            onClick={() => onSelectSuggestion(item.prompt)}
-            className="inline-flex items-center px-3.5 py-2 rounded-lg text-[13px] font-medium transition-all duration-200 bg-[#f5f5f5] dark:bg-[#2a2a2e] text-[#333333] dark:text-[#cccccc] hover:bg-[#ebebeb] dark:hover:bg-[#353538] border border-transparent"
+            onClick={() => handleWorkTabChange('daily')}
+            className={`
+              relative z-10 flex items-center gap-2 px-6 py-2 rounded-full text-sm font-semibold
+              transition-colors duration-300
+              ${activeWorkTab === 'daily'
+                ? 'text-text-primary'
+                : 'text-text-muted hover:text-text-secondary'
+              }
+            `}
           >
-            <span>{language === 'zh' ? item.titleZh : item.title}</span>
+            <Sparkles className="w-4 h-4" />
+            <span>{language === 'zh' ? '日常模式' : 'Daily'}</span>
           </button>
-        ))}
+
+          <button
+            onClick={() => handleWorkTabChange('team')}
+            className={`
+              relative z-10 flex items-center gap-2 px-6 py-2 rounded-full text-sm font-semibold
+              transition-colors duration-300
+              ${activeWorkTab === 'team'
+                ? 'text-orange-400'
+                : 'text-text-muted hover:text-orange-400/70'
+              }
+            `}
+          >
+            <Users className="w-4 h-4" />
+            <span>{language === 'zh' ? '团队模式' : 'Team'}</span>
+          </button>
+        </div>
       </div>
     </div>
   )

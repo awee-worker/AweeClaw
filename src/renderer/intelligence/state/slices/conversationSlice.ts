@@ -89,6 +89,10 @@ export interface MessageActions {
     setInteractive: (messageId: string, interactive: InteractiveContent, targetThreadId?: string) => void
     addFormPart: (messageId: string, form: FormContent, targetThreadId?: string) => void
 
+    // 多智能体工作流操作
+    addMultiAgentWorkflowPart: (messageId: string, part: import('../../types/conversationModel').MultiAgentWorkflowPart, targetThreadId?: string) => void
+    updateMultiAgentWorkflowPart: (messageId: string, sessionId: string, updates: Partial<import('../../types/conversationModel').MultiAgentWorkflowPart>, targetThreadId?: string) => void
+
     // 上下文操作
     addSkillsToMessage: (messageId: string, skills: { name: string; description: string }[], targetThreadId?: string) => void
     addContextItem: (item: ContextItem, targetThreadId?: string) => void
@@ -1305,6 +1309,64 @@ export const createMessageSlice: StateCreator<
                         streamState: { ...thread.streamState, phase: 'idle' },
                         lastModified: Date.now(),
                     },
+                },
+            }
+        })
+    },
+
+    addMultiAgentWorkflowPart: (messageId, part, targetThreadId) => {
+        const threadId = targetThreadId || get().currentThreadId
+        if (!threadId) return
+
+        set(state => {
+            const thread = state.threads[threadId]
+            if (!thread) return state
+
+            const messages = thread.messages.map(msg => {
+                if (msg.id === messageId && msg.role === 'assistant') {
+                    const assistantMsg = msg as AssistantMessage
+                    return { ...assistantMsg, parts: [...assistantMsg.parts, part] }
+                }
+                return msg
+            })
+
+            return {
+                threadMessageVersions: bumpThreadMessageVersion(state.threadMessageVersions, threadId),
+                threads: {
+                    ...state.threads,
+                    [threadId]: { ...thread, messages, lastModified: Date.now() },
+                },
+            }
+        })
+    },
+
+    updateMultiAgentWorkflowPart: (messageId, sessionId, updates, targetThreadId) => {
+        const threadId = targetThreadId || get().currentThreadId
+        if (!threadId) return
+
+        set(state => {
+            const thread = state.threads[threadId]
+            if (!thread) return state
+
+            const messages = thread.messages.map(msg => {
+                if (msg.id === messageId && msg.role === 'assistant') {
+                    const assistantMsg = msg as AssistantMessage
+                    const newParts = assistantMsg.parts.map(p => {
+                        if (p.type === 'multi_agent_workflow' && (p as import('../../types/conversationModel').MultiAgentWorkflowPart).sessionId === sessionId) {
+                            return { ...p, ...updates } as AssistantPart
+                        }
+                        return p
+                    })
+                    return { ...assistantMsg, parts: newParts }
+                }
+                return msg
+            })
+
+            return {
+                threadMessageVersions: bumpThreadMessageVersion(state.threadMessageVersions, threadId),
+                threads: {
+                    ...state.threads,
+                    [threadId]: { ...thread, messages, lastModified: Date.now() },
                 },
             }
         })

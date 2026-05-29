@@ -157,6 +157,10 @@ export interface ThreadBoundStore {
     // 交互式内容操作
     setInteractive: (messageId: string, interactive: import('../providerTypes').InteractiveContent) => void
     addFormPart: (messageId: string, form: import('../providerTypes').FormContent) => void
+
+    // 多智能体工作流操作
+    addMultiAgentWorkflowPart: (messageId: string, part: import('../types/conversationModel').MultiAgentWorkflowPart) => void
+    updateMultiAgentWorkflowPart: (messageId: string, sessionId: string, updates: Partial<import('../types/conversationModel').MultiAgentWorkflowPart>) => void
 }
 
 export type AgentStore = ThreadSlice & MessageSlice & CheckpointSlice & BranchSlice & PlanSlice & UIState & {
@@ -480,6 +484,12 @@ export const useAgentStore = create<AgentStore>()(
 
                 addFormPart: (messageId, form) =>
                     messageSlice.addFormPart(messageId, form, threadId),
+
+                // 多智能体工作流操作
+                addMultiAgentWorkflowPart: (messageId, part) =>
+                    messageSlice.addMultiAgentWorkflowPart(messageId, part, threadId),
+                updateMultiAgentWorkflowPart: (messageId, sessionId, updates) =>
+                    messageSlice.updateMultiAgentWorkflowPart(messageId, sessionId, updates, threadId),
             })
 
             return {
