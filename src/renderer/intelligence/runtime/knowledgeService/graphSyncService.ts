@@ -7,6 +7,17 @@ import {
   type EntityType,
   type RelationType,
 } from '../../cognitive/ProjectKnowledgeGraph'
+import { useStore } from '@store'
+
+function isGraphSyncAllowed(): boolean {
+  try {
+    const privacy = useStore.getState().privacySettings
+    if (!privacy) return true
+    return privacy.knowledgeSyncMode !== 'local-only'
+  } catch {
+    return true
+  }
+}
 
 interface ServerGraphEntity {
   id: string
@@ -34,16 +45,174 @@ interface GraphSyncMeta {
   serverRelationIdMap: Record<string, string>
 }
 
-const GRAPH_SYNC_META_KEY = 'knowledge_graph_sync_meta'
+const GRAPH_SYNC_DB_NAME = 'aweeclaw_graph_sync'
+const GRAPH_SYNC_STORE = 'sync_meta'
+const GRAPH_SYNC_KEY = 'knowledge_graph_sync_meta'
 const GRAPH_SYNC_INTERVAL_MS = 10 * 60 * 1000
+
+class BidirectionalIdMap {
+  private localToServer = new Map<string, string>()
+  private serverToLocal = new Map<string, string>()
+
+  get size(): number {
+    return this.localToServer.size
+  }
+
+  set(localId: string, serverId: string): void {
+    const oldServerId = this.localToServer.get(localId)
+    if (oldServerId) {
+      this.serverToLocal.delete(oldServerId)
+    }
+    this.localToServer.set(localId, serverId)
+    this.serverToLocal.set(serverId, localId)
+  }
+
+  delete(localId: string): void {
+    const serverId = this.localToServer.get(localId)
+    if (serverId) {
+      this.serverToLocal.delete(serverId)
+    }
+    this.localToServer.delete(localId)
+  }
+
+  getServerId(localId: string): string | undefined {
+    return this.localToServer.get(localId)
+  }
+
+  getLocalId(serverId: string): string | undefined {
+    return this.serverToLocal.get(serverId)
+  }
+
+  hasLocalId(localId: string): boolean {
+    return this.localToServer.has(localId)
+  }
+
+  hasServerId(serverId: string): boolean {
+    return this.serverToLocal.has(serverId)
+  }
+
+  entries(): IterableIterator<[string, string]> {
+    return this.localToServer.entries()
+  }
+
+  toObject(): Record<string, string> {
+    const obj: Record<string, string> = {}
+    for (const [k, v] of this.localToServer.entries()) {
+      obj[k] = v
+    }
+    return obj
+  }
+
+  static fromObject(data: Record<string, string>): BidirectionalIdMap {
+    const map = new BidirectionalIdMap()
+    for (const [localId, serverId] of Object.entries(data)) {
+      map.set(localId, serverId)
+    }
+    return map
+  }
+}
+
+class IndexedDBStorage {
+  private db: IDBDatabase | null = null
+  private initPromise: Promise<IDBDatabase> | null = null
+
+  private async getDB(): Promise<IDBDatabase> {
+    if (this.db) return this.db
+
+    if (this.initPromise) return this.initPromise
+
+    this.initPromise = new Promise((resolve, reject) => {
+      const request = indexedDB.open(GRAPH_SYNC_DB_NAME, 1)
+
+      request.onupgradeneeded = () => {
+        const db = request.result
+        if (!db.objectStoreNames.contains(GRAPH_SYNC_STORE)) {
+          db.createObjectStore(GRAPH_SYNC_STORE)
+        }
+      }
+
+      request.onsuccess = () => {
+        this.db = request.result
+        resolve(this.db)
+      }
+
+      request.onerror = () => {
+        this.initPromise = null
+        reject(request.error)
+      }
+    })
+
+    return this.initPromise
+  }
+
+  async get<T>(key: string): Promise<T | null> {
+    try {
+      const db = await this.getDB()
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(GRAPH_SYNC_STORE, 'readonly')
+        const store = tx.objectStore(GRAPH_SYNC_STORE)
+        const request = store.get(key)
+
+        request.onsuccess = () => {
+          resolve(request.result ?? null)
+        }
+
+        request.onerror = () => {
+          reject(request.error)
+        }
+      })
+    } catch {
+      return null
+    }
+  }
+
+  async set(key: string, value: unknown): Promise<void> {
+    try {
+      const db = await this.getDB()
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(GRAPH_SYNC_STORE, 'readwrite')
+        const store = tx.objectStore(GRAPH_SYNC_STORE)
+        const request = store.put(value, key)
+
+        request.onsuccess = () => {
+          resolve()
+        }
+
+        request.onerror = () => {
+          reject(request.error)
+        }
+      })
+    } catch (err) {
+      logger.agent.warn('[IndexedDBStorage] Failed to set:', err)
+    }
+  }
+}
 
 class KnowledgeGraphSyncService {
   private syncTimer: ReturnType<typeof setInterval> | null = null
   private isSyncing = false
+  private storage = new IndexedDBStorage()
+  private entityMap = new BidirectionalIdMap()
+  private relationMap = new BidirectionalIdMap()
+  private mapsInitialized = false
+
+  private async ensureMapsInitialized(): Promise<void> {
+    if (this.mapsInitialized) return
+
+    const meta = await this.loadSyncMeta()
+    this.entityMap = BidirectionalIdMap.fromObject(meta.serverEntityIdMap)
+    this.relationMap = BidirectionalIdMap.fromObject(meta.serverRelationIdMap)
+    this.mapsInitialized = true
+  }
 
   startAutoSync(): void {
     if (this.syncTimer) return
+    if (!isGraphSyncAllowed()) {
+      logger.agent.info('[GraphSync] Sync disabled by privacy settings (local-only mode)')
+      return
+    }
     this.syncTimer = setInterval(() => {
+      if (!isGraphSyncAllowed()) return
       this.syncToServer().catch((err) => {
         logger.agent.warn('[GraphSync] Auto sync failed:', err)
       })
@@ -62,10 +231,14 @@ class KnowledgeGraphSyncService {
   async syncToServer(): Promise<{ syncedEntities: number; syncedRelations: number } | null> {
     if (this.isSyncing) return null
     if (!isAuthenticated()) return null
+    if (!isGraphSyncAllowed()) {
+      logger.agent.debug('[GraphSync] Sync skipped - privacy settings: local-only mode')
+      return null
+    }
 
     this.isSyncing = true
     try {
-      const meta = this.loadSyncMeta()
+      await this.ensureMapsInitialized()
       const stats = projectKnowledgeGraph.getStats()
 
       let syncedEntities = 0
@@ -76,25 +249,20 @@ class KnowledgeGraphSyncService {
       )
 
       const localEntities = this.getLocalEntitiesAsArray()
-      const reverseEntityMap = new Map<string, string>()
-      for (const [localId, serverId] of Object.entries(meta.serverEntityIdMap)) {
-        reverseEntityMap.set(serverId, localId)
-      }
 
       for (const serverEntity of serverEntities ?? []) {
-        const existingLocalId = reverseEntityMap.get(serverEntity.id)
-        if (!existingLocalId) {
+        if (!this.entityMap.hasServerId(serverEntity.id)) {
           const localEntity = projectKnowledgeGraph.addEntity({
             name: serverEntity.name,
             type: serverEntity.type as EntityType,
             properties: serverEntity.properties ?? {},
           })
-          meta.serverEntityIdMap[localEntity.id] = serverEntity.id
+          this.entityMap.set(localEntity.id, serverEntity.id)
         }
       }
 
       for (const localEntity of localEntities) {
-        const serverId = meta.serverEntityIdMap[localEntity.id]
+        const serverId = this.entityMap.getServerId(localEntity.id)
         if (!serverId) {
           try {
             const result = await backendApi.post<ServerGraphEntity>(
@@ -105,7 +273,7 @@ class KnowledgeGraphSyncService {
                 properties: localEntity.properties,
               },
             )
-            meta.serverEntityIdMap[localEntity.id] = result.id
+            this.entityMap.set(localEntity.id, result.id)
             syncedEntities++
           } catch (err) {
             logger.agent.warn(`[GraphSync] Failed to push entity "${localEntity.name}":`, err)
@@ -117,16 +285,10 @@ class KnowledgeGraphSyncService {
         '/api/v1/knowledge/graph/relations',
       )
 
-      const reverseRelationMap = new Map<string, string>()
-      for (const [localId, serverId] of Object.entries(meta.serverRelationIdMap)) {
-        reverseRelationMap.set(serverId, localId)
-      }
-
       for (const serverRelation of serverRelations ?? []) {
-        const existingLocalId = reverseRelationMap.get(serverRelation.id)
-        if (!existingLocalId) {
-          const localSourceId = this.findLocalIdByServerId(serverRelation.sourceId, meta.serverEntityIdMap)
-          const localTargetId = this.findLocalIdByServerId(serverRelation.targetId, meta.serverEntityIdMap)
+        if (!this.relationMap.hasServerId(serverRelation.id)) {
+          const localSourceId = this.entityMap.getLocalId(serverRelation.sourceId)
+          const localTargetId = this.entityMap.getLocalId(serverRelation.targetId)
           if (localSourceId && localTargetId) {
             const localRel = projectKnowledgeGraph.addRelation({
               sourceId: localSourceId,
@@ -135,7 +297,7 @@ class KnowledgeGraphSyncService {
               properties: serverRelation.properties ?? {},
             })
             if (localRel) {
-              meta.serverRelationIdMap[localRel.id] = serverRelation.id
+              this.relationMap.set(localRel.id, serverRelation.id)
             }
           }
         }
@@ -143,10 +305,10 @@ class KnowledgeGraphSyncService {
 
       const localRelations = this.getLocalRelationsAsArray()
       for (const localRel of localRelations) {
-        const serverId = meta.serverRelationIdMap[localRel.id]
+        const serverId = this.relationMap.getServerId(localRel.id)
         if (!serverId) {
-          const serverSourceId = meta.serverEntityIdMap[localRel.sourceId]
-          const serverTargetId = meta.serverEntityIdMap[localRel.targetId]
+          const serverSourceId = this.entityMap.getServerId(localRel.sourceId)
+          const serverTargetId = this.entityMap.getServerId(localRel.targetId)
           if (!serverSourceId || !serverTargetId) continue
 
           try {
@@ -159,7 +321,7 @@ class KnowledgeGraphSyncService {
                 properties: localRel.properties,
               },
             )
-            meta.serverRelationIdMap[localRel.id] = result.id
+            this.relationMap.set(localRel.id, result.id)
             syncedRelations++
           } catch (err) {
             logger.agent.warn(`[GraphSync] Failed to push relation:`, err)
@@ -167,8 +329,7 @@ class KnowledgeGraphSyncService {
         }
       }
 
-      meta.lastSyncAt = new Date().toISOString()
-      this.saveSyncMeta(meta)
+      await this.persistSyncMeta()
 
       logger.agent.info(
         `[GraphSync] Sync completed: entities=${syncedEntities}, relations=${syncedRelations}, total_entities=${stats.entityCount}, total_relations=${stats.relationCount}`,
@@ -187,28 +348,23 @@ class KnowledgeGraphSyncService {
     if (!isAuthenticated()) return 0
 
     try {
+      await this.ensureMapsInitialized()
+
       const serverEntities = await backendApi.get<ServerGraphEntity[]>(
         '/api/v1/knowledge/graph/entities',
       )
 
       if (!serverEntities || serverEntities.length === 0) return 0
 
-      const meta = this.loadSyncMeta()
-      const reverseEntityMap = new Map<string, string>()
-      for (const [localId, serverId] of Object.entries(meta.serverEntityIdMap)) {
-        reverseEntityMap.set(serverId, localId)
-      }
-
       let pulled = 0
       for (const serverEntity of serverEntities) {
-        const existingLocalId = reverseEntityMap.get(serverEntity.id)
-        if (!existingLocalId) {
+        if (!this.entityMap.hasServerId(serverEntity.id)) {
           const localEntity = projectKnowledgeGraph.addEntity({
             name: serverEntity.name,
             type: serverEntity.type as EntityType,
             properties: serverEntity.properties ?? {},
           })
-          meta.serverEntityIdMap[localEntity.id] = serverEntity.id
+          this.entityMap.set(localEntity.id, serverEntity.id)
           pulled++
         }
       }
@@ -217,16 +373,10 @@ class KnowledgeGraphSyncService {
         '/api/v1/knowledge/graph/relations',
       )
 
-      const reverseRelationMap = new Map<string, string>()
-      for (const [localId, serverId] of Object.entries(meta.serverRelationIdMap)) {
-        reverseRelationMap.set(serverId, localId)
-      }
-
       for (const serverRelation of serverRelations ?? []) {
-        const existingLocalId = reverseRelationMap.get(serverRelation.id)
-        if (!existingLocalId) {
-          const localSourceId = this.findLocalIdByServerId(serverRelation.sourceId, meta.serverEntityIdMap)
-          const localTargetId = this.findLocalIdByServerId(serverRelation.targetId, meta.serverEntityIdMap)
+        if (!this.relationMap.hasServerId(serverRelation.id)) {
+          const localSourceId = this.entityMap.getLocalId(serverRelation.sourceId)
+          const localTargetId = this.entityMap.getLocalId(serverRelation.targetId)
           if (localSourceId && localTargetId) {
             const localRel = projectKnowledgeGraph.addRelation({
               sourceId: localSourceId,
@@ -235,7 +385,7 @@ class KnowledgeGraphSyncService {
               properties: serverRelation.properties ?? {},
             })
             if (localRel) {
-              meta.serverRelationIdMap[localRel.id] = serverRelation.id
+              this.relationMap.set(localRel.id, serverRelation.id)
               pulled++
             }
           }
@@ -243,7 +393,7 @@ class KnowledgeGraphSyncService {
       }
 
       if (pulled > 0) {
-        this.saveSyncMeta(meta)
+        await this.persistSyncMeta()
       }
 
       logger.agent.info(`[GraphSync] Pulled ${pulled} items from server`)
@@ -258,8 +408,8 @@ class KnowledgeGraphSyncService {
     if (!isAuthenticated()) return false
 
     try {
-      const meta = this.loadSyncMeta()
-      const serverEntryId = meta.serverEntityIdMap[entryId]
+      await this.ensureMapsInitialized()
+      const serverEntryId = this.entityMap.getServerId(entryId)
 
       const result = await backendApi.post<{
         entities: ServerGraphEntity[]
@@ -276,12 +426,12 @@ class KnowledgeGraphSyncService {
           type: serverEntity.type as EntityType,
           properties: serverEntity.properties ?? {},
         })
-        meta.serverEntityIdMap[localEntity.id] = serverEntity.id
+        this.entityMap.set(localEntity.id, serverEntity.id)
       }
 
       for (const serverRelation of result.relations ?? []) {
-        const localSourceId = this.findLocalIdByServerId(serverRelation.sourceId, meta.serverEntityIdMap)
-        const localTargetId = this.findLocalIdByServerId(serverRelation.targetId, meta.serverEntityIdMap)
+        const localSourceId = this.entityMap.getLocalId(serverRelation.sourceId)
+        const localTargetId = this.entityMap.getLocalId(serverRelation.targetId)
         if (localSourceId && localTargetId) {
           const localRel = projectKnowledgeGraph.addRelation({
             sourceId: localSourceId,
@@ -290,12 +440,12 @@ class KnowledgeGraphSyncService {
             properties: serverRelation.properties ?? {},
           })
           if (localRel) {
-            meta.serverRelationIdMap[localRel.id] = serverRelation.id
+            this.relationMap.set(localRel.id, serverRelation.id)
           }
         }
       }
 
-      this.saveSyncMeta(meta)
+      await this.persistSyncMeta()
       return true
     } catch (err) {
       logger.agent.warn('[GraphSync] Extract graph failed:', err)
@@ -319,8 +469,8 @@ class KnowledgeGraphSyncService {
     }
   }
 
-  getSyncStatus(): { isSyncing: boolean; lastSyncAt: string | null } {
-    const meta = this.loadSyncMeta()
+  async getSyncStatus(): Promise<{ isSyncing: boolean; lastSyncAt: string | null }> {
+    const meta = await this.loadSyncMeta()
     return { isSyncing: this.isSyncing, lastSyncAt: meta.lastSyncAt }
   }
 
@@ -351,30 +501,48 @@ class KnowledgeGraphSyncService {
     return results
   }
 
-  private findLocalIdByServerId(
-    serverId: string,
-    serverEntityIdMap: Record<string, string>,
-  ): string | null {
-    for (const [localId, sid] of Object.entries(serverEntityIdMap)) {
-      if (sid === serverId) return localId
-    }
-    return null
-  }
-
-  private loadSyncMeta(): GraphSyncMeta {
+  private async loadSyncMeta(): Promise<GraphSyncMeta> {
     try {
-      const raw = localStorage.getItem(GRAPH_SYNC_META_KEY)
-      if (raw) return JSON.parse(raw)
-    } catch {}
+      const raw = await this.storage.get<string>(GRAPH_SYNC_KEY)
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        return {
+          lastSyncAt: parsed.lastSyncAt ?? null,
+          serverEntityIdMap: parsed.serverEntityIdMap ?? {},
+          serverRelationIdMap: parsed.serverRelationIdMap ?? {},
+        }
+      }
+    } catch {
+      // fall through
+    }
+
+    try {
+      const raw = localStorage.getItem(GRAPH_SYNC_KEY)
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        const meta: GraphSyncMeta = {
+          lastSyncAt: parsed.lastSyncAt ?? null,
+          serverEntityIdMap: parsed.serverEntityIdMap ?? {},
+          serverRelationIdMap: parsed.serverRelationIdMap ?? {},
+        }
+        await this.storage.set(GRAPH_SYNC_KEY, JSON.stringify(meta))
+        localStorage.removeItem(GRAPH_SYNC_KEY)
+        return meta
+      }
+    } catch {
+      // fall through
+    }
+
     return { lastSyncAt: null, serverEntityIdMap: {}, serverRelationIdMap: {} }
   }
 
-  private saveSyncMeta(meta: GraphSyncMeta): void {
-    try {
-      localStorage.setItem(GRAPH_SYNC_META_KEY, JSON.stringify(meta))
-    } catch (err) {
-      logger.agent.warn('[GraphSync] Failed to save sync meta:', err)
+  private async persistSyncMeta(): Promise<void> {
+    const meta: GraphSyncMeta = {
+      lastSyncAt: new Date().toISOString(),
+      serverEntityIdMap: this.entityMap.toObject(),
+      serverRelationIdMap: this.relationMap.toObject(),
     }
+    await this.storage.set(GRAPH_SYNC_KEY, JSON.stringify(meta))
   }
 }
 

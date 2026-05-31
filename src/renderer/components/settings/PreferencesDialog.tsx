@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState, useEffect, useMemo, useCallback } from 'react'
-import { Cpu, Settings2, Code, Keyboard, Database, Shield, Monitor, Globe, Plug, Braces, Brain, FileCode, FileText, Zap, Check, X, Palette, Radio, Cloud } from 'lucide-react'
+import { Cpu, Settings2, Code, Keyboard, Database, Shield, Monitor, Globe, Plug, Braces, Brain, FileCode, FileText, Zap, Check, X, Palette, Radio, Cloud, Eye } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { PROVIDERS } from '@configuration/aiProviders'
@@ -63,6 +63,9 @@ const ChannelSettings = lazy(() =>
 )
 const CloudSettings = lazy(() =>
     import('./tabs/CloudSettings').then(module => ({ default: module.CloudSettings })),
+)
+const PrivacySettingsPanel = lazy(() =>
+    import('./tabs/PrivacySettingsPanel').then(module => ({ default: module.PrivacySettingsPanel })),
 )
 
 function serializeComparable(value: unknown): string {
@@ -132,6 +135,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
         enableFileLogging,
         editorConfig,
         securitySettings,
+        privacySettings,
         set,
         setProvider,
         setShowSettings,
@@ -152,6 +156,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
         enableFileLogging: s.enableFileLogging,
         editorConfig: s.editorConfig,
         securitySettings: s.securitySettings,
+        privacySettings: s.privacySettings,
         set: s.set,
         setProvider: s.setProvider,
         setShowSettings: s.setShowSettings,
@@ -189,6 +194,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
     const [localMcpConfig, setLocalMcpConfig] = useState(mcpConfig)
     const [localEnableFileLogging, setLocalEnableFileLogging] = useState(enableFileLogging)
     const [localSecuritySettings, setLocalSecuritySettings] = useState(securitySettings)
+    const [localPrivacySettings, setLocalPrivacySettings] = useState(privacySettings)
     const [editorSettings, setEditorSettings] = useState<EditorSettingsState>(() => toEditorSettingsState(editorConfig))
     const [advancedEditorConfig, setAdvancedEditorConfig] = useState(editorConfig)
     const [isClosing, setIsClosing] = useState(false)
@@ -205,6 +211,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
         setLocalMcpConfig(mcpConfig)
         setLocalEnableFileLogging(enableFileLogging)
         setLocalSecuritySettings(securitySettings)
+        setLocalPrivacySettings(privacySettings)
         setEditorSettings(toEditorSettingsState(editorConfig))
         setAdvancedEditorConfig(editorConfig)
     }, [
@@ -219,6 +226,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
         promptTemplateId,
         providerConfigs,
         securitySettings,
+        privacySettings,
         webSearchConfig,
     ])
 
@@ -337,6 +345,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
             set('mcpConfig', localMcpConfig)
             set('enableFileLogging', localEnableFileLogging)
             set('securitySettings', localSecuritySettings)
+            set('privacySettings', localPrivacySettings)
             set('providerConfigs', finalProviderConfigs)
             set('editorConfig', finalEditorConfig)
 
@@ -444,6 +453,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
             { id: 'lsp', label: language === 'zh' ? '语言服务' : 'LSP', icon: <Braces className="w-4 h-4" /> },
             { id: 'keybindings', label: language === 'zh' ? '快捷键' : 'Keybindings', icon: <Keyboard className="w-4 h-4" /> },
             { id: 'security', label: language === 'zh' ? '安全设置' : 'Security', icon: <Shield className="w-4 h-4" /> },
+            { id: 'privacy', label: language === 'zh' ? '隐私设置' : 'Privacy', icon: <Eye className="w-4 h-4" /> },
             { id: 'system', label: language === 'zh' ? '系统设置' : 'System', icon: <Monitor className="w-4 h-4" /> },
             { id: 'cloud', label: language === 'zh' ? '云端服务' : 'Cloud', icon: <Cloud className="w-4 h-4" /> },
         ]
@@ -537,6 +547,14 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                         securitySettings={localSecuritySettings}
                         setSecuritySettings={setLocalSecuritySettings}
                         isWorkspaceEditor={isWorkspaceEditor}
+                    />
+                )
+            case 'privacy':
+                return (
+                    <PrivacySettingsPanel
+                        language={language}
+                        privacySettings={localPrivacySettings}
+                        setPrivacySettings={setLocalPrivacySettings}
                     />
                 )
             case 'system':

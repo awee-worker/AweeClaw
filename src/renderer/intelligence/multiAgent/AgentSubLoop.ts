@@ -3,6 +3,10 @@ import { logger } from '@toolkit/LogEngine'
 import { toolManager, initializeToolProviders, setToolLoadingContext, initializeTools } from '@intelligence/toolkit'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { useStore } from '@store'
+import { useAgentStore } from '@intelligence/state/IntelligenceStore'
+import { playNotificationSound } from '@utils/notificationSound'
+import { getToolApprovalType, getToolDisplayName } from '@configuration/toolDefinitions'
+import { approvalService } from '@intelligence/engine/toolOrchestrator'
 import type { LLMConfig, LLMMessage, ToolDefinition, ToolExecutionContext, ToolExecutionResult } from '@intelligence/providerTypes'
 
 export interface SubLoopOptions {
@@ -258,6 +262,46 @@ async function executeToolCall(
     workspacePath,
     chatMode: 'agent',
     requestId,
+  }
+
+  const approvalType = getToolApprovalType(toolCall.name)
+  if (approvalType === 'terminal' || approvalType === 'dangerous') {
+    const autoApprove = useStore.getState().autoApprove
+    const isAutoApproved = (approvalType === 'terminal' && autoApprove?.terminal)
+      || (approvalType === 'dangerous' && autoApprove?.dangerous)
+
+    if (!isAutoApproved) {
+      const toolDisplayName = getToolDisplayName(toolCall.name)
+
+      const agentStore = useAgentStore.getState()
+      const activeThreadId = agentStore.currentThreadId
+      if (activeThreadId) {
+        const pendingToolCall = {
+          id: toolCall.id,
+          name: toolCall.name,
+          arguments: toolCall.arguments,
+          status: 'awaiting' as const,
+        }
+        agentStore.setStreamState({
+          phase: 'tool_pending',
+          streamDetail: 'tool_awaiting',
+          currentToolCall: pendingToolCall,
+          pendingApprovalToolCalls: [pendingToolCall],
+          statusText: `Agent 请求执行: ${toolDisplayName}`,
+        }, activeThreadId)
+      }
+
+      try {
+        playNotificationSound('attention')
+      } catch {}
+
+      const approved = await approvalService.waitForApproval(`${requestId}_${toolCall.id}`)
+
+      if (!approved) {
+        logger.agent.info(`[AgentSubLoop] Tool ${toolCall.name} rejected by user`)
+        return { role: 'tool', content: '用户拒绝了此操作', name: toolCall.name }
+      }
+    }
   }
 
   try {

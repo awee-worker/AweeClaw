@@ -258,6 +258,30 @@ export const SECURITY_SETTINGS_DEFAULTS = {
   showSecurityWarnings: true,
 } as const
 
+export const PRIVACY_SETTINGS_DEFAULTS: PrivacySettings = {
+  knowledgeSyncMode: 'local-only',
+  enableLocalGraphExtraction: true,
+  enableServerSync: false,
+  enableE2EE: false,
+  e2eePublicKey: '',
+  e2eeEncryptedPrivateKey: '',
+  autoSyncIntervalMs: 300000,
+  enableOfflineMode: true,
+  dataRetentionDays: 0,
+}
+
+export interface PrivacySettings {
+  knowledgeSyncMode: 'local-only' | 'sync-with-encryption' | 'sync-plain'
+  enableLocalGraphExtraction: boolean
+  enableServerSync: boolean
+  enableE2EE: boolean
+  e2eePublicKey: string
+  e2eeEncryptedPrivateKey: string
+  autoSyncIntervalMs: number
+  enableOfflineMode: boolean
+  dataRetentionDays: number
+}
+
 // ============================================
 // 场景默认配置覆盖
 // ============================================

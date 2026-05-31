@@ -23,6 +23,8 @@ import {
   PERFORMANCE_DEFAULTS,
   AI_COMPLETION_DEFAULTS,
   SECURITY_SETTINGS_DEFAULTS,
+  PRIVACY_SETTINGS_DEFAULTS,
+  type PrivacySettings,
   type ScenarioDomain,
 } from './defaultProfile'
 import type {
@@ -269,6 +271,10 @@ export const SETTINGS = {
   scenarioPreferences: {
     default: DEFAULT_SCENARIO_PREFERENCES,
   },
+  privacySettings: {
+    default: PRIVACY_SETTINGS_DEFAULTS,
+    storageKey: 'privacySettings',
+  },
 }
 
 // ============================================
@@ -299,6 +305,7 @@ export type SettingsState = {
   enableFileLogging: boolean
   browserMode: BrowserMode
   scenarioPreferences: ScenarioPreferences
+  privacySettings: PrivacySettings
 }
 
 // ============================================
@@ -329,6 +336,7 @@ export function getAllDefaults(): SettingsState {
     enableFileLogging: SETTINGS.enableFileLogging.default,
     browserMode: SETTINGS.browserMode.default,
     scenarioPreferences: SETTINGS.scenarioPreferences.default,
+    privacySettings: SETTINGS.privacySettings.default,
   }
 }
 

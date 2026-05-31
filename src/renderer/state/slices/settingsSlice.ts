@@ -154,6 +154,7 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [], [], SettingsSl
         enableFileLogging: state.enableFileLogging,
         browserMode: state.browserMode,
         scenarioPreferences: state.scenarioPreferences ?? DEFAULT_SCENARIO_PREFERENCES,
+        privacySettings: state.privacySettings,
       })
       logger.settings.info('[Settings] Saved')
     } catch (e) {

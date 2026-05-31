@@ -3,6 +3,7 @@ import { Canvas } from '@react-three/fiber'
 import { OrbitControls, PerspectiveCamera } from '@react-three/drei'
 import { OfficeScene } from './OfficeScene'
 import type { WorkspaceAgent } from '@store'
+import type { CollaborationPhase } from '@intelligence/multiAgent/TeamCollaborationProtocol'
 
 function LoadingFallback() {
   return (
@@ -13,11 +14,12 @@ function LoadingFallback() {
   )
 }
 
-function DaytimeAwareScene({ agents, onAgentClick, handoffFrom, handoffTo }: {
+function DaytimeAwareScene({ agents, onAgentClick, handoffFrom, handoffTo, collaborationPhase }: {
   agents: WorkspaceAgent[]
   onAgentClick: (agent: WorkspaceAgent) => void
   handoffFrom?: string
   handoffTo?: string
+  collaborationPhase?: CollaborationPhase
 }) {
   const hour = new Date().getHours()
   const isDaytime = hour >= 6 && hour < 18
@@ -46,6 +48,7 @@ function DaytimeAwareScene({ agents, onAgentClick, handoffFrom, handoffTo }: {
             onAgentClick={onAgentClick}
             handoffFrom={handoffFrom}
             handoffTo={handoffTo}
+            collaborationPhase={collaborationPhase}
           />
         </Suspense>
         <fog attach="fog" args={[fogColor, 10, 22]} />
@@ -59,11 +62,13 @@ export const TeamOffice = memo(function TeamOffice({
   onAgentClick,
   handoffFrom,
   handoffTo,
+  collaborationPhase,
 }: {
   agents: WorkspaceAgent[]
   onAgentClick: (agent: WorkspaceAgent) => void
   handoffFrom?: string
   handoffTo?: string
+  collaborationPhase?: CollaborationPhase
 }) {
   return (
     <DaytimeAwareScene
@@ -71,6 +76,7 @@ export const TeamOffice = memo(function TeamOffice({
       onAgentClick={onAgentClick}
       handoffFrom={handoffFrom}
       handoffTo={handoffTo}
+      collaborationPhase={collaborationPhase}
     />
   )
 })

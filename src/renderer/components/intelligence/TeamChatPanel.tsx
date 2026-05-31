@@ -46,7 +46,7 @@ function ChatBubble({ message }: { message: TeamChatMessage }) {
       ) : (
         <>
           <div className={`w-6 h-6 rounded-full ${config.bgColor} flex items-center justify-center shrink-0 mt-0.5`}>
-            <span className="text-[10px]">🦞</span>
+            <span className="text-[10px]">🐱</span>
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-0.5">

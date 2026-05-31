@@ -630,10 +630,10 @@ export function AgentProfilePanel({
                     <div className="overflow-hidden">
                         <div className="p-5 pt-0 space-y-5 relative z-10">
                             <div className="flex items-start gap-2 p-3 rounded-lg bg-orange-500/10 border border-orange-500/20 text-orange-400 text-[11px]">
-                                <span className="text-base shrink-0 mt-0.5">🦞</span>
+                                <span className="text-base shrink-0 mt-0.5">🐱</span>
                                 <div>
                                     <p className="font-medium text-xs text-text-primary mb-1">{t('团队协作模式', 'Team Collaboration Mode')}</p>
-                                    <p>{t('在聊天输入框中点击 🦞 按钮即可开启团队协作模式。开启后，AI 将组建专业团队协作完成任务。', 'Click the 🦞 button in the chat input to enable team collaboration mode. When enabled, AI will assemble a professional team to collaborate on tasks.')}</p>
+                                    <p>{t('在聊天输入框中点击 🐱 按钮即可开启团队协作模式。开启后，AI 将组建专业团队协作完成任务。', 'Click the 🐱 button in the chat input to enable team collaboration mode. When enabled, AI will assemble a professional team to collaborate on tasks.')}</p>
                                 </div>
                             </div>
 

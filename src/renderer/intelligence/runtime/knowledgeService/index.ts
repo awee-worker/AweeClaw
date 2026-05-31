@@ -5,6 +5,8 @@ import { joinPath } from '@shared/toolkit/pathHelper'
 import { BRAND } from '@shared/brand'
 import { vectorIndex } from './vectorIndex'
 import { intelligentExtractor } from './intelligentExtractor'
+import { localGraphStore } from './localGraphStore'
+import { computeKeywordScore, computeWeightedFusion, SEARCH_SCORING } from './scoring'
 import {
   type KnowledgeEntry,
   type KnowledgeEntryInput,
@@ -75,6 +77,11 @@ class KnowledgeService {
 
     await this.saveStore(store)
     logger.agent.info('[KnowledgeService] Added entry:', entry.id, 'source:', entry.source)
+
+    localGraphStore.extractAndStore(entry.id, entry.title, entry.content, entry.tags).catch((err: unknown) => {
+      logger.agent.warn('[KnowledgeService] Local graph extraction failed:', err)
+    })
+
     return entry
   }
 
@@ -95,6 +102,13 @@ class KnowledgeService {
     entry.updatedAt = Date.now()
 
     await this.saveStore(store)
+
+    if (updates.title !== undefined || updates.content !== undefined || updates.tags !== undefined) {
+      localGraphStore.extractAndStore(entry.id, entry.title, entry.content, entry.tags).catch((err: unknown) => {
+        logger.agent.warn('[KnowledgeService] Local graph extraction on update failed:', err)
+      })
+    }
+
     return true
   }
 
@@ -105,7 +119,68 @@ class KnowledgeService {
 
     store.entries.splice(idx, 1)
     await this.saveStore(store)
+
+    localGraphStore.deleteEntitiesByEntryId(id).catch((err: unknown) => {
+      logger.agent.warn('[KnowledgeService] Local graph cleanup on delete failed:', err)
+    })
+
     return true
+  }
+
+  async batchUpdateEntries(
+    ids: string[],
+    updates: {
+      enabled?: boolean
+      starred?: boolean
+      category?: KnowledgeCategory
+      addTags?: string[]
+      removeTags?: string[]
+    },
+  ): Promise<{ updated: number; skipped: number }> {
+    if (!ids || ids.length === 0) return { updated: 0, skipped: 0 }
+
+    const store = await this.loadStore()
+    let updated = 0
+    let skipped = 0
+
+    for (const id of ids) {
+      const entry = store.entries.find(e => e.id === id)
+      if (!entry) { skipped++; continue }
+
+      if (updates.enabled !== undefined) entry.enabled = updates.enabled
+      if (updates.starred !== undefined) entry.starred = updates.starred
+      if (updates.category !== undefined) entry.category = updates.category
+
+      if (updates.addTags) {
+        const addSet = new Set(updates.addTags)
+        for (const t of addSet) {
+          if (!entry.tags.includes(t)) entry.tags.push(t)
+        }
+      }
+      if (updates.removeTags) {
+        const removeSet = new Set(updates.removeTags)
+        entry.tags = entry.tags.filter(t => !removeSet.has(t))
+      }
+
+      entry.updatedAt = Date.now()
+      updated++
+    }
+
+    if (updated > 0) await this.saveStore(store)
+    return { updated, skipped }
+  }
+
+  async batchDeleteEntries(ids: string[]): Promise<{ deleted: number; skipped: number }> {
+    if (!ids || ids.length === 0) return { deleted: 0, skipped: 0 }
+
+    const store = await this.loadStore()
+    const idSet = new Set(ids)
+    const before = store.entries.length
+    store.entries = store.entries.filter(e => !idSet.has(e.id))
+    const deleted = before - store.entries.length
+
+    if (deleted > 0) await this.saveStore(store)
+    return { deleted, skipped: ids.length - deleted }
   }
 
   async search(params: KnowledgeSearchParams): Promise<KnowledgeSearchResult[]> {
@@ -124,31 +199,15 @@ class KnowledgeService {
 
     const results: KnowledgeSearchResult[] = filtered
       .map(entry => {
-        let score = 0
-        const titleLower = entry.title.toLowerCase()
-        const contentLower = entry.content.toLowerCase()
-
-        if (titleLower === query) score += 10
-        else if (titleLower.includes(query)) score += 5
-
-        if (contentLower.includes(query)) score += 3
-
-        for (const tag of entry.tags) {
-          if (tag.toLowerCase().includes(query)) score += 2
-          if (query.includes(tag.toLowerCase())) score += 1
-        }
-
-        for (const word of query.split(/\s+/)) {
-          if (word.length < 2) continue
-          if (titleLower.includes(word)) score += 2
-          if (contentLower.includes(word)) score += 1
-        }
-
-        score += entry.starred ? 1 : 0
-        score += entry.confidence * 2
-        const recencyBoost = Math.max(0, 1 - (Date.now() - entry.updatedAt) / (30 * 86_400_000))
-        score += recencyBoost
-
+        const score = computeKeywordScore({
+          query,
+          title: entry.title,
+          content: entry.content,
+          tags: entry.tags,
+          starred: entry.starred,
+          confidence: entry.confidence,
+          updatedAtMs: entry.updatedAt,
+        })
         return { entry, score }
       })
       .filter(r => r.score > 0)
@@ -179,20 +238,20 @@ class KnowledgeService {
         .map(v => {
           const entry = entryMap.get(v.id)
           if (!entry) return null
-          return { entry, score: v.score * 10 }
+          return { entry, score: v.score * SEARCH_SCORING.vector.scoreMultiplier }
         })
         .filter((r): r is KnowledgeSearchResult => r !== null)
 
       const merged = new Map<string, KnowledgeSearchResult>()
       for (const r of keywordResults) {
-        merged.set(r.entry.id, { ...r, score: r.score * 0.4 })
+        merged.set(r.entry.id, { ...r, score: r.score * SEARCH_SCORING.fusion.keywordWeight })
       }
       for (const r of semanticResults) {
         const existing = merged.get(r.entry.id)
         if (existing) {
-          existing.score = existing.score + r.score * 0.6
+          existing.score = existing.score + r.score * SEARCH_SCORING.fusion.semanticWeight
         } else {
-          merged.set(r.entry.id, { ...r, score: r.score * 0.6 })
+          merged.set(r.entry.id, { ...r, score: r.score * SEARCH_SCORING.fusion.semanticWeight })
         }
       }
 
@@ -658,10 +717,23 @@ ${lines.join('\n')}
   }
 
   private autoTitle(content: string): string {
+    if (!content || typeof content !== 'string') return 'Untitled'
+
     const trimmed = content.trim()
-    const firstLine = trimmed.split('\n')[0]
-    if (firstLine.length <= 50) return firstLine
-    return firstLine.slice(0, 47) + '...'
+    if (trimmed.length === 0) return 'Untitled'
+
+    const firstLine = trimmed.split('\n')[0].trim()
+    if (firstLine.length === 0) return 'Untitled'
+
+    const cleaned = firstLine
+      .replace(/^#{1,6}\s+/, '')
+      .replace(/^\s*[-*+]\s+/, '')
+      .replace(/^\s*\d+[.)]\s+/, '')
+      .trim()
+
+    if (cleaned.length === 0) return 'Untitled'
+    if (cleaned.length <= 60) return cleaned
+    return cleaned.slice(0, 57) + '...'
   }
 
   private inferCategory(content: string): KnowledgeCategory {
@@ -772,3 +844,14 @@ ${lines.join('\n')}
 
 export const knowledgeService = new KnowledgeService()
 export { knowledgeGraphSyncService } from './graphSyncService'
+export { localGraphStore } from './localGraphStore'
+export { localGraphExtractor } from './localGraphExtractor'
+export { localLLMGraphExtractor } from './localLLMGraphExtractor'
+export { e2eEncryption } from './e2eEncryption'
+export type { EncryptedPayload } from './e2eEncryption'
+export { deltaSyncService } from './deltaSyncService'
+export { localVectorIndex } from './localVectorIndex'
+export { offlineModeService } from './offlineModeService'
+export { dataExportImport } from './dataExportImport'
+export type { LocalGraphEntity, LocalGraphRelation } from './localGraphStore'
+export type { ExtractedEntity, ExtractedRelation, GraphExtractionResult } from './localGraphExtractor'

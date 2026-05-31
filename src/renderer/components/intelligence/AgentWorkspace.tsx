@@ -15,7 +15,6 @@ import {
   Volume2,
   Clock,
   Wrench,
-  Eye,
   ChevronRight,
   RotateCcw,
   LayoutList,
@@ -28,7 +27,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { api } from '@renderer/adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
 import { AgentAvatar } from './AgentAvatar'
-import { LobsterAvatar } from './LobsterAvatar'
+import { CatAvatar } from './CatAvatar'
 import { TeamOffice } from './TeamOffice'
 import { TeamChatPanel } from './TeamChatPanel'
 import type { WorkspaceAgent, AgentToolCall, AgentWorkspaceSession } from '@store'
@@ -264,7 +263,7 @@ function AgentGridItem({
       whileHover={{ scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
     >
-      <LobsterAvatar agent={agent} size="lg" />
+      <CatAvatar agent={agent} size="lg" />
 
       {agent.status === 'working' && agent.currentStep && (
         <p className="text-[9px] text-blue-400 text-center max-w-[100px] truncate">{agent.currentStep}</p>
@@ -309,16 +308,23 @@ function CompletionBanner({ session, onOpenFile }: {
   const allFiles = session.agents.flatMap(a => a.outputFiles)
   const totalToolCalls = session.agents.reduce((sum, a) => sum + a.toolCalls.length, 0)
 
+  const ROLE_PREFIXES = ['pm_', 'architect_', 'frontend_', 'backend_', 'designer_', 'tester_', 'devops_', 'analyst_', 'agent_']
+  const deliverableFiles = allFiles.filter(f => {
+    const name = f.split('/').pop() || ''
+    return !(name.endsWith('.md') && ROLE_PREFIXES.some(p => name.startsWith(p)))
+  })
+  const roleRecordFiles = allFiles.filter(f => !deliverableFiles.includes(f))
+
   const fileStats = useMemo(() => {
     const extMap = new Map<string, number>()
-    for (const file of allFiles) {
+    for (const file of deliverableFiles.length > 0 ? deliverableFiles : allFiles) {
       const ext = file.split('.').pop()?.toLowerCase() || 'other'
       extMap.set(ext, (extMap.get(ext) || 0) + 1)
     }
     return Array.from(extMap.entries())
       .sort((a, b) => b[1] - a[1])
       .map(([ext, count]) => ({ ext, count }))
-  }, [allFiles])
+  }, [deliverableFiles, allFiles])
 
   const handleOpenProjectPath = useCallback(() => {
     if (session.projectPath) {
@@ -375,10 +381,10 @@ function CompletionBanner({ session, onOpenFile }: {
                 {durationText}
               </span>
             )}
-            {allFiles.length > 0 && (
-              <span className="flex items-center gap-1">
-                <FileText className="w-3 h-3" />
-                {allFiles.length} 个文件
+            {deliverableFiles.length > 0 && (
+              <span className="flex items-center gap-1 text-accent">
+                <Package className="w-3 h-3" />
+                {deliverableFiles.length} 个结果文件
               </span>
             )}
           </div>
@@ -394,38 +400,55 @@ function CompletionBanner({ session, onOpenFile }: {
             </div>
           )}
 
-          {session.projectPath && (
-            <button
-              onClick={handleOpenProjectPath}
-              className="flex items-center gap-1.5 mt-1.5 group cursor-pointer"
-            >
-              <FolderOpen className="w-3.5 h-3.5 text-text-muted group-hover:text-accent flex-shrink-0 transition-colors" />
-              <span className="text-xs text-text-muted group-hover:text-accent transition-colors">项目位置：</span>
-              <code className="text-xs text-accent bg-accent/5 group-hover:bg-accent/10 px-1.5 py-0.5 rounded break-all transition-colors">
-                {session.projectPath}
-              </code>
-            </button>
-          )}
-
-          {allFiles.length > 0 && (
+          {deliverableFiles.length > 0 && (
             <div className="mt-2.5">
-              <span className="text-[10px] text-text-muted">产出文件（点击预览）：</span>
+              <span className="text-[10px] text-text-muted font-medium">📦 项目结果文件：</span>
               <div className="flex flex-wrap gap-1.5 mt-1">
-                {allFiles.map((file, i) => {
+                {deliverableFiles.slice(0, 12).map((file, i) => {
                   const displayName = session.projectPath ? file.replace(session.projectPath + '/', '') : file.split('/').pop() || file
                   return (
                     <button
                       key={i}
                       onClick={() => onOpenFile(file)}
-                      className="flex items-center gap-1 px-2 py-1 rounded-md bg-surface/60 hover:bg-accent/10 text-xs text-text-secondary hover:text-accent transition-colors"
+                      className="flex items-center gap-1 px-2 py-1 rounded-md bg-accent/5 hover:bg-accent/15 text-xs text-accent transition-colors border border-accent/10"
                     >
                       {getFileIcon(displayName)}
                       {displayName}
                     </button>
                   )
                 })}
+                {deliverableFiles.length > 12 && (
+                  <span className="text-[10px] text-text-muted px-2 py-1">
+                    +{deliverableFiles.length - 12} 更多
+                  </span>
+                )}
               </div>
             </div>
+          )}
+
+          {roleRecordFiles.length > 0 && (
+            <div className="mt-1.5">
+              <span className="text-[10px] text-text-muted">📝 角色工作记录：{roleRecordFiles.map(f => f.split('/').pop()).join(', ')}</span>
+            </div>
+          )}
+
+          {session.projectPath && (
+            <button
+              onClick={handleOpenProjectPath}
+              className="flex items-center gap-1.5 mt-2 group cursor-pointer"
+            >
+              <FolderOpen className="w-3.5 h-3.5 text-text-muted group-hover:text-accent flex-shrink-0 transition-colors" />
+              <span className="text-xs text-text-muted group-hover:text-accent transition-colors">打开项目文件夹：</span>
+              <code className="text-xs text-accent bg-accent/5 group-hover:bg-accent/10 px-1.5 py-0.5 rounded break-all transition-colors">
+                {session.projectPath}
+              </code>
+            </button>
+          )}
+
+          {session.projectPath && deliverableFiles.length > 0 && (
+            <p className="text-[10px] text-text-muted/60 mt-1.5">
+              💡 点击文件名可预览内容，点击上方路径可打开项目文件夹
+            </p>
           )}
         </div>
       </div>
@@ -570,7 +593,7 @@ function ActivityTab({ agents, selectedAgentId, onSelectAgent }: {
 
                       <div className="flex-1 min-w-0 pt-0.5">
                         <div className="flex items-center gap-2">
-                          <LobsterAvatar role={event.agentRole} size="sm" showName={false} />
+                          <CatAvatar role={event.agentRole} size="sm" showName={false} />
                           <span className="text-[11px] font-medium text-text-primary truncate">{event.agentName}</span>
                           <span className={`text-[10px] font-medium ${style.color}`}>{style.label}</span>
                           {event.toolName && (
@@ -597,7 +620,7 @@ function ActivityTab({ agents, selectedAgentId, onSelectAgent }: {
         <div className="w-56 flex-shrink-0 border-l border-border/40 bg-surface/20 overflow-y-auto">
           <div className="px-3 py-2 border-b border-border/30">
             <div className="flex items-center gap-2">
-              <LobsterAvatar agent={activeAgent} size="sm" showName={false} />
+              <CatAvatar agent={activeAgent} size="sm" showName={false} />
               <span className="text-xs font-medium text-text-primary">{activeAgent.name}</span>
             </div>
           </div>
@@ -626,9 +649,25 @@ function OutputTab({ agents, projectPath, onOpenFile }: {
   projectPath?: string
   onOpenFile: (filePath: string) => void
 }) {
-  const completedAgents = agents.filter(a => a.status === 'completed' && a.outputFiles.length > 0)
+  const allOutputFiles = agents.flatMap(a => a.outputFiles)
 
-  if (completedAgents.length === 0) {
+  const { deliverableFiles, roleRecordFiles } = useMemo(() => {
+    const ROLE_PREFIXES = ['pm_', 'architect_', 'frontend_', 'backend_', 'designer_', 'tester_', 'devops_', 'analyst_', 'agent_']
+    const deliverable: string[] = []
+    const roleRecord: string[] = []
+    for (const file of allOutputFiles) {
+      const name = file.split('/').pop() || ''
+      const isRoleRecord = name.endsWith('.md') && ROLE_PREFIXES.some(p => name.startsWith(p))
+      if (isRoleRecord) {
+        roleRecord.push(file)
+      } else {
+        deliverable.push(file)
+      }
+    }
+    return { deliverableFiles: deliverable, roleRecordFiles: roleRecord }
+  }, [allOutputFiles])
+
+  if (allOutputFiles.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-text-muted text-xs">
         暂无产出文件
@@ -638,19 +677,19 @@ function OutputTab({ agents, projectPath, onOpenFile }: {
 
   return (
     <div className="overflow-y-auto p-4 space-y-4">
-      {completedAgents.map(agent => (
-        <div key={agent.id} className="rounded-xl border border-border/30 bg-surface/30 overflow-hidden">
-          <div className="flex items-center gap-2 px-3 py-2 border-b border-border/20 bg-surface/50">
-            <span className="text-sm">{agent.icon}</span>
-            <span className="text-xs font-medium text-text-primary">{agent.name}</span>
-            <span className="text-[9px] text-text-muted ml-auto">{agent.outputFiles.length} 个文件</span>
+      {deliverableFiles.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <Package className="w-3.5 h-3.5 text-accent" />
+            <h3 className="text-xs font-semibold text-text-primary">项目结果文件</h3>
+            <span className="text-[10px] text-text-muted">{deliverableFiles.length} 个</span>
           </div>
-          <div className="p-3 space-y-1.5">
-            {agent.outputFiles.map((file, i) => {
+          <div className="space-y-1">
+            {deliverableFiles.map((file, i) => {
               const displayName = projectPath ? file.replace(projectPath + '/', '') : file.split('/').pop() || file
               return (
                 <div
-                  key={i}
+                  key={`d-${i}`}
                   onClick={() => onOpenFile(file)}
                   className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-surface/40 hover:bg-accent/10 transition-colors cursor-pointer group"
                 >
@@ -663,20 +702,44 @@ function OutputTab({ agents, projectPath, onOpenFile }: {
               )
             })}
           </div>
-
-          {agent.outputPreview && (
-            <div className="border-t border-border/20 px-3 py-2">
-              <div className="flex items-center gap-1.5 mb-1">
-                <Eye className="w-3 h-3 text-text-muted" />
-                <span className="text-[9px] text-text-muted font-medium uppercase tracking-wider">输出预览</span>
-              </div>
-              <pre className="text-[10px] text-text-secondary bg-background/50 rounded p-2 overflow-x-auto max-h-40 overflow-y-auto whitespace-pre-wrap">
-                {agent.outputPreview.length > 800 ? agent.outputPreview.slice(0, 800) + '...' : agent.outputPreview}
-              </pre>
-            </div>
-          )}
         </div>
-      ))}
+      )}
+
+      {roleRecordFiles.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <FileText className="w-3.5 h-3.5 text-text-muted" />
+            <h3 className="text-xs font-semibold text-text-muted">角色工作记录</h3>
+            <span className="text-[10px] text-text-muted">{roleRecordFiles.length} 个</span>
+          </div>
+          <div className="space-y-1">
+            {roleRecordFiles.map((file, i) => {
+              const displayName = projectPath ? file.replace(projectPath + '/', '') : file.split('/').pop() || file
+              return (
+                <div
+                  key={`r-${i}`}
+                  onClick={() => onOpenFile(file)}
+                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-surface/20 hover:bg-surface/40 transition-colors cursor-pointer group"
+                >
+                  {getFileIcon(displayName)}
+                  <span className="text-xs text-text-muted group-hover:text-text-secondary transition-colors truncate flex-1">
+                    {displayName}
+                  </span>
+                  <ExternalLink className="w-3 h-3 text-text-muted/0 group-hover:text-text-muted transition-colors" />
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {deliverableFiles.length === 0 && roleRecordFiles.length > 0 && (
+        <div className="p-3 rounded-lg bg-amber-500/8 border border-amber-500/15">
+          <p className="text-[10px] text-amber-400/80">
+            当前仅有角色工作记录文件。项目结果文件将由各 Agent 使用工具（如 write_file）创建，请确保 Agent 配置中启用了文件写入工具。
+          </p>
+        </div>
+      )}
     </div>
   )
 }
@@ -863,6 +926,7 @@ export const AgentWorkspace = memo(function AgentWorkspace() {
                   onAgentClick={(agent) => setSelectedAgentId(selectedAgentId === agent.id ? null : agent.id)}
                   handoffFrom={session.agents.find(a => a.isMoving)?.id}
                   handoffTo={session.agents.find(a => a.isMoving)?.moveTarget}
+                  collaborationPhase={(session.collaborationPhase || 'meeting') as CollaborationPhase}
                 />
               </div>
               <div className="flex-[2] min-h-0 border-t border-border/40">

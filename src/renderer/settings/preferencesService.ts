@@ -41,6 +41,7 @@ const STORAGE_KEYS = {
   APP: 'app-settings',
   EDITOR: 'editorConfig',
   SECURITY: 'securitySettings',
+  PRIVACY: 'privacySettings',
 } as const
 
 const LOCAL_CACHE_KEY = BRAND.storageKeys.settingsCache
@@ -233,6 +234,7 @@ class SettingsService {
         api.settings.set(STORAGE_KEYS.APP, appSettings),
         api.settings.set(STORAGE_KEYS.EDITOR, settings.editorConfig),
         api.settings.set(STORAGE_KEYS.SECURITY, settings.securitySettings),
+        api.settings.set(STORAGE_KEYS.PRIVACY, settings.privacySettings),
       ])
 
       await this.syncToMain(settings)
@@ -303,23 +305,28 @@ class SettingsService {
       scenarioPreferences: saved.scenarioPreferences
         ? { ...DEFAULT_SCENARIO_PREFERENCES, ...(saved.scenarioPreferences as object) }
         : defaults.scenarioPreferences,
+      privacySettings: saved.privacySettings
+        ? { ...defaults.privacySettings, ...(saved.privacySettings as object) }
+        : defaults.privacySettings,
     }
   }
 
   private async syncFromFile(): Promise<void> {
     try {
-      const [appSettings, editorConfig, securitySettings] = await Promise.all([
+      const [appSettings, editorConfig, securitySettings, privacySettings] = await Promise.all([
         api.settings.get(STORAGE_KEYS.APP),
         api.settings.get(STORAGE_KEYS.EDITOR),
         api.settings.get(STORAGE_KEYS.SECURITY),
+        api.settings.get(STORAGE_KEYS.PRIVACY),
       ])
 
-      if (!appSettings && !editorConfig && !securitySettings) return
+      if (!appSettings && !editorConfig && !securitySettings && !privacySettings) return
 
       const merged = this.merge({
         ...(appSettings as object || {}),
         editorConfig,
         securitySettings,
+        privacySettings,
       })
 
       this.cache = merged
