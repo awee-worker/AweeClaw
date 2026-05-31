@@ -4,6 +4,7 @@ import { useStore } from '@store'
 import { joinPath } from '@shared/toolkit/pathHelper'
 import { BRAND } from '@shared/brand'
 import { reflectiveDreamingService } from './reflectiveDreamingService'
+import { computeImportance } from '../knowledgeService/scoring'
 import {
   type MemoryEntry,
   type MemoryEntryInput,
@@ -51,8 +52,27 @@ class LongTermMemoryService {
     const status = input.status ?? 'short_term'
     const list = this.getList(store, status)
 
-    const existing = list.find(e => e.content.trim() === content)
-    if (existing) return existing
+    const exactMatch = list.find(e => e.content.trim() === content)
+    if (exactMatch) return exactMatch
+
+    const normalizedContent = this.normalizeForDedup(content)
+    const nearDuplicate = [...store.shortTerm, ...store.longTerm].find(e => {
+      if (!e.enabled || e.verificationStatus === 'superseded') return false
+      const normalized = this.normalizeForDedup(e.content.trim())
+      if (normalized === normalizedContent) return true
+      return this.computeSimilarity(normalized, normalizedContent) > 0.9
+    })
+
+    if (nearDuplicate) {
+      const mergedTags = [...new Set([...nearDuplicate.tags, ...(input.tags ?? [])])]
+      const mergedConfidence = Math.max(nearDuplicate.confidence, input.confidence ?? 0.7)
+      await this.updateEntry(nearDuplicate.id, {
+        tags: mergedTags,
+        confidence: mergedConfidence,
+      })
+      logger.agent.info(`[LongTermMemory] Merged near-duplicate into existing entry: ${nearDuplicate.id}`)
+      return { ...nearDuplicate, tags: mergedTags, confidence: mergedConfidence }
+    }
 
     const now = Date.now()
     const entry: MemoryEntry = {
@@ -216,6 +236,19 @@ class LongTermMemoryService {
         if (entry.verificationStatus === 'verified') score += 1.5
         if (entry.verificationStatus === 'contradicted') score -= 2
         if (entry.source === 'self_correction') score += 0.5
+
+        const importance = computeImportance({
+          source: entry.source,
+          verificationStatus: entry.verificationStatus ?? 'unverified',
+          recallCount: entry.recallCount,
+          derivedFromCount: entry.derivedFrom?.length ?? 0,
+          tagsCount: entry.tags.length,
+          createdAtMs: entry.createdAt,
+          lastRecalledAtMs: entry.lastRecalledAt,
+          content: entry.content,
+          confidence: entry.confidence,
+        })
+        score += importance * 3
 
         return { entry, score }
       })
@@ -630,6 +663,14 @@ class LongTermMemoryService {
 
     const union = wordsA.size + wordsB.size - intersection
     return union === 0 ? 0 : intersection / union
+  }
+
+  private normalizeForDedup(text: string): string {
+    return text
+      .toLowerCase()
+      .replace(/[^\w\s\u4e00-\u9fff]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
   }
 
   buildMemoryPrompt(entries: MemoryEntry[], tokenBudget: number = 1000): string {

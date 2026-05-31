@@ -79,7 +79,7 @@ export interface DreamingConfig {
 }
 
 export const DEFAULT_DREAMING_CONFIG: DreamingConfig = {
-  enabled: false,
+  enabled: true,
   lightFrequency: '0 */6 * * *',
   deepFrequency: '0 3 * * *',
   remFrequency: '0 5 * * 0',

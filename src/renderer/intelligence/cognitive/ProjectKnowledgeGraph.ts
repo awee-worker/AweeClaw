@@ -1,4 +1,6 @@
 import { logger } from '@toolkit/LogEngine'
+import { api } from '../../adapters/electronBridge'
+import { useStore } from '@store'
 
 export interface KnowledgeEntity {
   id: string
@@ -294,6 +296,171 @@ ${lines.join('\n')}
     this.relations.clear()
     this.nameIndex.clear()
     this.typeIndex.clear()
+  }
+
+  async extractFromContent(content: string, source: string = 'unknown'): Promise<{
+    entitiesAdded: number
+    relationsAdded: number
+  }> {
+    if (!content || content.trim().length < 20) {
+      return { entitiesAdded: 0, relationsAdded: 0 }
+    }
+
+    try {
+      const extraction = await this.callLLMForExtraction(content)
+      if (!extraction) {
+        return { entitiesAdded: 0, relationsAdded: 0 }
+      }
+
+      let entitiesAdded = 0
+      let relationsAdded = 0
+
+      const entityMap = new Map<string, KnowledgeEntity>()
+
+      for (const raw of extraction.entities) {
+        if (!raw.name || !raw.type) continue
+        const entity = this.addEntity({
+          name: raw.name,
+          type: raw.type as EntityType,
+          properties: { ...raw.properties, source },
+        })
+        entityMap.set(raw.name, entity)
+        entitiesAdded++
+      }
+
+      for (const raw of extraction.relations) {
+        const sourceEntity = entityMap.get(raw.source) ?? this.findEntityByNameAny(raw.source)
+        const targetEntity = entityMap.get(raw.target) ?? this.findEntityByNameAny(raw.target)
+
+        if (sourceEntity && targetEntity) {
+          const rel = this.addRelation({
+            sourceId: sourceEntity.id,
+            targetId: targetEntity.id,
+            type: raw.type as RelationType,
+            properties: raw.properties ?? {},
+          })
+          if (rel) relationsAdded++
+        }
+      }
+
+      if (entitiesAdded > 0 || relationsAdded > 0) {
+        logger.agent.info(
+          `[KnowledgeGraph] LLM extraction: +${entitiesAdded} entities, +${relationsAdded} relations from "${source}"`
+        )
+      }
+
+      return { entitiesAdded, relationsAdded }
+    } catch (err) {
+      logger.agent.warn('[KnowledgeGraph] LLM extraction failed:', err)
+      return { entitiesAdded: 0, relationsAdded: 0 }
+    }
+  }
+
+  private async callLLMForExtraction(content: string): Promise<{
+    entities: Array<{ name: string; type: string; properties?: Record<string, unknown> }>
+    relations: Array<{ source: string; target: string; type: string; properties?: Record<string, unknown> }>
+  } | null> {
+    const { llmConfig } = useStore.getState()
+    if (!llmConfig?.apiKey) return null
+
+    const truncatedContent = content.length > 3000 ? content.slice(0, 3000) + '...' : content
+
+    const systemPrompt = `You are a knowledge graph extraction engine. Extract entities and relations from the given content.
+
+Return ONLY a valid JSON object with this exact structure:
+{
+  "entities": [{"name": "EntityName", "type": "entity_type", "properties": {}}],
+  "relations": [{"source": "EntityName", "target": "EntityName", "type": "relation_type", "properties": {}}]
+}
+
+Entity types: file, module, function, class, interface, component, api_endpoint, database_table, config, dependency, concept
+Relation types: imports, exports, calls, implements, extends, depends_on, contains, references, related_to
+
+Rules:
+- Only extract clearly mentioned entities, do not infer
+- Use precise names from the content
+- Each entity must have name and type
+- Each relation must have source, target, and type
+- Return empty arrays if nothing found
+- No markdown, no explanation, only the JSON object`
+
+    const requestId = `kg-extract-${Date.now()}`
+
+    return new Promise((resolve) => {
+      let fullContent = ''
+      let settled = false
+
+      const doResolve = (result: any) => {
+        if (settled) return
+        settled = true
+        resolve(result)
+      }
+
+      const unsubStream = api.llm.onStream(requestId, (data: any) => {
+        if (data.type === 'text' && data.content) {
+          fullContent += data.content
+        }
+      })
+
+      const unsubError = api.llm.onError(requestId, (err: any) => {
+        if (settled) return
+        cleanup()
+        logger.agent.warn('[KnowledgeGraph] LLM extraction stream error:', err?.message)
+        doResolve(null)
+      })
+
+      const unsubDone = api.llm.onDone(requestId, () => {
+        if (settled) return
+        cleanup()
+
+        try {
+          const cleaned = fullContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+          const parsed = JSON.parse(cleaned)
+
+          if (parsed.entities && Array.isArray(parsed.entities)) {
+            doResolve(parsed)
+          } else {
+            doResolve(null)
+          }
+        } catch {
+          doResolve(null)
+        }
+      })
+
+      const cleanup = () => {
+        unsubStream()
+        unsubError()
+        unsubDone()
+      }
+
+      api.llm.send({
+        config: llmConfig,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: truncatedContent },
+        ],
+        requestId,
+      }).catch((err: Error) => {
+        if (settled) return
+        cleanup()
+        logger.agent.warn('[KnowledgeGraph] LLM extraction send failed:', err.message)
+        doResolve(null)
+      })
+
+      setTimeout(() => {
+        if (settled) return
+        cleanup()
+        doResolve(null)
+      }, 30000)
+    })
+  }
+
+  private findEntityByNameAny(name: string): KnowledgeEntity | undefined {
+    const ids = this.nameIndex.get(name.toLowerCase())
+    if (!ids || ids.size === 0) return undefined
+    const firstId = ids.values().next().value as string | undefined
+    if (!firstId) return undefined
+    return this.entities.get(firstId)
   }
 
   private indexEntity(entity: KnowledgeEntity): void {

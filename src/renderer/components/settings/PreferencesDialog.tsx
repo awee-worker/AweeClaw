@@ -443,7 +443,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
             { id: 'appearance', label: language === 'zh' ? '外观设置' : 'Appearance', icon: <Palette className="w-4 h-4" /> },
             { id: 'agent', label: language === 'zh' ? '智能体' : 'Agent', icon: <Settings2 className="w-4 h-4" /> },
             { id: 'rules', label: language === 'zh' ? '行为规则' : 'Rules', icon: <FileText className="w-4 h-4" /> },
-            { id: 'memory', label: language === 'zh' ? '上下文记忆' : 'Memory', icon: <Brain className="w-4 h-4" /> },
+            { id: 'memory', label: language === 'zh' ? '记忆系统' : 'Memory System', icon: <Brain className="w-4 h-4" /> },
             { id: 'skills', label: language === 'zh' ? 'Skills技能' : 'Skills', icon: <Zap className="w-4 h-4" /> },
             { id: 'mcp', label: language === 'zh' ? 'MCP服务' : 'MCP', icon: <Plug className="w-4 h-4" /> },
             { id: 'channel', label: language === 'zh' ? '多渠道' : 'Channels', icon: <Radio className="w-4 h-4" /> },

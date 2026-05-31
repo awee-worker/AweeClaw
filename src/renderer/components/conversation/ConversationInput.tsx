@@ -32,7 +32,7 @@ import { WorkMode } from '@/renderer/modes/workModeTypes'
 import { motion, AnimatePresence } from 'framer-motion'
 import { t } from '@renderer/i18n'
 import { ActionButton } from '../ui'
-import { ComplexityIndicator } from '../intelligence/ComplexityIndicator'
+
 import ModelSelector from './AIModelSelector'
 import ModeSelector from './WorkModeSelector'
 import { ContextItem, FileContext } from '@intelligence/providerTypes'
@@ -247,13 +247,6 @@ const ChatInput = memo(function ChatInput({
 
   return (
     <div ref={inputContainerRef} className="z-20">
-      {/* 复杂度分析指示器 */}
-      <ComplexityIndicator
-        text={input}
-        language={language === 'zh' ? 'zh' : 'en'}
-        chatMode={chatMode}
-      />
-
       <div
         className={`
             relative group flex flex-col rounded-xl transition-all duration-500 ease-out border

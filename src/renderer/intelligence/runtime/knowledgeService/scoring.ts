@@ -85,3 +85,77 @@ export function computeWeightedFusion(
 export function rrfScore(rank: number, k: number = SEARCH_SCORING.fusion.rrfK): number {
   return 1 / (k + rank);
 }
+
+const IMPORTANCE_WEIGHTS = {
+  sourceReliability: 0.2,
+  verificationStatus: 0.15,
+  recallFrequency: 0.2,
+  connectionDensity: 0.15,
+  recencyRelevance: 0.15,
+  uniqueness: 0.15,
+} as const;
+
+const SOURCE_RELIABILITY: Record<string, number> = {
+  user: 1.0,
+  self_correction: 0.95,
+  self_reflection: 0.85,
+  dreaming_rem: 0.8,
+  dreaming_deep: 0.75,
+  dreaming_light: 0.7,
+  auto_extracted: 0.6,
+};
+
+const VERIFICATION_SCORES: Record<string, number> = {
+  verified: 1.0,
+  unverified: 0.4,
+  contradicted: 0.1,
+  superseded: 0.0,
+};
+
+export function computeImportance(params: {
+  source: string;
+  verificationStatus: string;
+  recallCount: number;
+  derivedFromCount: number;
+  tagsCount: number;
+  createdAtMs: number;
+  lastRecalledAtMs: number;
+  content: string;
+  confidence: number;
+}): number {
+  const {
+    source,
+    verificationStatus,
+    recallCount,
+    derivedFromCount,
+    tagsCount,
+    createdAtMs,
+    lastRecalledAtMs,
+    content,
+    confidence,
+  } = params;
+
+  const sourceScore = SOURCE_RELIABILITY[source] ?? 0.5;
+  const verificationScore = VERIFICATION_SCORES[verificationStatus] ?? 0.3;
+  const recallScore = Math.min(recallCount / 10, 1);
+  const connectionScore = Math.min((derivedFromCount + tagsCount * 0.2) / 5, 1);
+
+  const now = Date.now();
+  const ageDays = (now - createdAtMs) / 86_400_000;
+  const daysSinceRecall = (now - lastRecalledAtMs) / 86_400_000;
+  const recencyScore = Math.max(0, 1 - daysSinceRecall / 30) * Math.max(0.3, 1 - ageDays / 365);
+
+  const wordCount = content.split(/\s+/).filter(w => w.length > 0).length
+  const avgWordLength = wordCount > 0 ? content.length / wordCount : 0
+  const uniquenessScore = Math.min(avgWordLength / 8, 1) * confidence;
+
+  const importance =
+    sourceScore * IMPORTANCE_WEIGHTS.sourceReliability +
+    verificationScore * IMPORTANCE_WEIGHTS.verificationStatus +
+    recallScore * IMPORTANCE_WEIGHTS.recallFrequency +
+    connectionScore * IMPORTANCE_WEIGHTS.connectionDensity +
+    recencyScore * IMPORTANCE_WEIGHTS.recencyRelevance +
+    uniquenessScore * IMPORTANCE_WEIGHTS.uniqueness;
+
+  return Math.max(0, Math.min(1, importance));
+}

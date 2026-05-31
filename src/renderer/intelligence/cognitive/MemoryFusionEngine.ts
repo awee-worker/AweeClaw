@@ -45,49 +45,99 @@ const DEFAULT_FORGETTING_CONFIG: ForgettingCurveConfig = {
   autoForgetThreshold: 0.15,
 }
 
+const RRF_K = 60
+
+const LAYER_WEIGHTS: Record<MemoryLayer, number> = {
+  working: 1.2,
+  short_term: 1.0,
+  long_term: 1.1,
+  project_knowledge: 0.9,
+}
+
+interface RankedItem {
+  id: string
+  result: UnifiedMemoryResult
+}
+
 class MemoryFusionEngine {
   private forgettingConfig: ForgettingCurveConfig = DEFAULT_FORGETTING_CONFIG
   private workingMemory = new Map<string, { content: string; timestamp: number; accessCount: number }>()
   private maxWorkingMemory = 20
   private workingMemoryTTL = 30 * 60 * 1000
+  private workingMemoryMaxTokens = 4000
+  private workingMemoryUsedTokens = 0
 
   async search(params: UnifiedSearchParams): Promise<UnifiedMemoryResult[]> {
     const { query, layers, maxTokens = 3000, limit = 20, minConfidence = 0.3, context } = params
     const activeLayers = layers || ['working', 'short_term', 'long_term', 'project_knowledge']
-    const results: UnifiedMemoryResult[] = []
+
+    const rankedLists: RankedItem[][] = []
 
     if (activeLayers.includes('working')) {
       const workingResults = this.searchWorkingMemory(query)
-      results.push(...workingResults)
+      rankedLists.push(workingResults.map(r => ({ id: r.id, result: r })))
     }
 
     if (activeLayers.includes('short_term') || activeLayers.includes('long_term')) {
       const memoryResults = await this.searchMemoryLayer(query, activeLayers, context)
-      results.push(...memoryResults)
+      rankedLists.push(memoryResults.map(r => ({ id: r.id, result: r })))
     }
 
     if (activeLayers.includes('project_knowledge')) {
       const knowledgeResults = await this.searchKnowledgeLayer(query)
-      results.push(...knowledgeResults)
+      rankedLists.push(knowledgeResults.map(r => ({ id: r.id, result: r })))
     }
 
-    const deduplicated = this.deduplicateResults(results)
+    const fused = this.reciprocalRankFusion(rankedLists)
 
-    const filtered = deduplicated
+    const filtered = fused
       .filter(r => r.confidence >= minConfidence)
-      .sort((a, b) => b.score - a.score)
 
     const tokenLimited = this.applyTokenBudget(filtered, maxTokens)
     return tokenLimited.slice(0, limit)
   }
 
+  private reciprocalRankFusion(rankedLists: RankedItem[][]): UnifiedMemoryResult[] {
+    const rrfScores = new Map<string, number>()
+    const resultMap = new Map<string, UnifiedMemoryResult>()
+
+    for (const list of rankedLists) {
+      for (let rank = 0; rank < list.length; rank++) {
+        const { id, result } = list[rank]
+        const layerWeight = LAYER_WEIGHTS[result.layer]
+        const rrfContribution = layerWeight / (RRF_K + rank + 1)
+
+        const existing = rrfScores.get(id)
+        if (existing !== undefined) {
+          rrfScores.set(id, existing + rrfContribution)
+        } else {
+          rrfScores.set(id, rrfContribution)
+          resultMap.set(id, result)
+        }
+      }
+    }
+
+    const fused: UnifiedMemoryResult[] = []
+    for (const [id, score] of rrfScores) {
+      const result = resultMap.get(id)
+      if (!result) continue
+      fused.push({ ...result, score })
+    }
+
+    return fused.sort((a, b) => b.score - a.score)
+  }
+
   addToWorkingMemory(key: string, content: string): void {
+    const tokens = this.estimateTokens(content)
+
     this.workingMemory.set(key, {
       content,
       timestamp: Date.now(),
       accessCount: 1,
     })
-    this.trimWorkingMemory()
+    this.workingMemoryUsedTokens += tokens
+
+    this.evictWorkingMemory()
   }
 
   getFromWorkingMemory(key: string): string | undefined {
@@ -95,7 +145,7 @@ class MemoryFusionEngine {
     if (!entry) return undefined
 
     if (Date.now() - entry.timestamp > this.workingMemoryTTL) {
-      this.workingMemory.delete(key)
+      this.removeWorkingMemoryEntry(key)
       return undefined
     }
 
@@ -139,14 +189,16 @@ class MemoryFusionEngine {
     decayed: number
     forgotten: number
     promoted: number
+    halfLifeExtended: number
   }> {
     if (!this.forgettingConfig.enabled) {
-      return { decayed: 0, forgotten: 0, promoted: 0 }
+      return { decayed: 0, forgotten: 0, promoted: 0, halfLifeExtended: 0 }
     }
 
     let decayed = 0
     let forgotten = 0
     let promoted = 0
+    let halfLifeExtended = 0
 
     const entries = await longTermMemoryService.getEntries()
     const now = Date.now()
@@ -154,30 +206,32 @@ class MemoryFusionEngine {
     for (const entry of entries) {
       if (entry.status === 'forgotten') continue
 
-      const ageDays = (now - entry.createdAt) / 86_400_000
       const daysSinceLastRecall = (now - entry.lastRecalledAt) / 86_400_000
+      const retention = this.computeRetention(entry, daysSinceLastRecall)
+      const effectiveConfidence = entry.confidence * retention
 
-      const shouldReview = this.forgettingConfig.reviewIntervalDays.some(interval => {
-        const diff = Math.abs(ageDays - interval)
-        return diff < 0.5 && daysSinceLastRecall > interval * 0.8
-      })
+      if (effectiveConfidence < this.forgettingConfig.autoForgetThreshold) {
+        await longTermMemoryService.forget(entry.id)
+        forgotten++
+      } else if (effectiveConfidence < this.forgettingConfig.minimumConfidence) {
+        await longTermMemoryService.updateEntry(entry.id, {
+          confidence: effectiveConfidence,
+        })
+        decayed++
+      }
 
-      if (shouldReview && entry.recallCount < 2) {
-        const decayFactor = Math.pow(this.forgettingConfig.decayRate, daysSinceLastRecall / 7)
-        const newConfidence = entry.confidence * decayFactor
-
-        if (newConfidence < this.forgettingConfig.autoForgetThreshold) {
-          await longTermMemoryService.forget(entry.id)
-          forgotten++
-        } else if (newConfidence < this.forgettingConfig.minimumConfidence) {
+      if (entry.recallCount > 0 && daysSinceLastRecall < 1) {
+        const extensionFactor = 1 + Math.min(entry.recallCount * 0.3, 2.0)
+        const newHalfLife = Math.min(entry.halfLifeDays * extensionFactor, 365)
+        if (newHalfLife > entry.halfLifeDays * 1.1) {
           await longTermMemoryService.updateEntry(entry.id, {
-            confidence: newConfidence,
+            confidence: Math.min(1, entry.confidence + 0.02),
           })
-          decayed++
+          halfLifeExtended++
         }
       }
 
-      if (entry.status === 'short_term' && entry.recallCount >= 3 && entry.confidence >= 0.7) {
+      if (entry.status === 'short_term' && this.shouldPromote(entry)) {
         await longTermMemoryService.promoteToLongTerm(entry.id)
         promoted++
       }
@@ -185,11 +239,52 @@ class MemoryFusionEngine {
 
     this.cleanWorkingMemory()
 
-    if (decayed > 0 || forgotten > 0 || promoted > 0) {
-      logger.agent.info(`[MemoryFusion] Forgetting curve applied: ${decayed} decayed, ${forgotten} forgotten, ${promoted} promoted`)
+    if (decayed > 0 || forgotten > 0 || promoted > 0 || halfLifeExtended > 0) {
+      logger.agent.info(
+        `[MemoryFusion] Ebbinghaus curve: ${decayed} decayed, ${forgotten} forgotten, ${promoted} promoted, ${halfLifeExtended} half-life extended`
+      )
     }
 
-    return { decayed, forgotten, promoted }
+    return { decayed, forgotten, promoted, halfLifeExtended }
+  }
+
+  private computeRetention(entry: { halfLifeDays: number; recallCount: number }, daysSinceLastRecall: number): number {
+    const lambda = Math.log(2) / entry.halfLifeDays
+    const baseRetention = Math.exp(-lambda * daysSinceLastRecall)
+
+    const repetitionBonus = Math.min(entry.recallCount * 0.4, 3)
+    const effectiveRetention = 1 - (1 - baseRetention) / (1 + repetitionBonus)
+
+    return Math.max(0, Math.min(1, effectiveRetention))
+  }
+
+  private shouldPromote(entry: { recallCount: number; confidence: number; source: string; tags: string[] }): boolean {
+    const isUserStated = entry.tags.includes('user-stated') || entry.source === 'user'
+
+    if (isUserStated) {
+      return entry.recallCount >= 1 && entry.confidence >= 0.6
+    }
+
+    return entry.recallCount >= 3 && entry.confidence >= 0.7
+  }
+
+  async getMemoriesNeedingReview(limit: number = 5): Promise<Array<{ id: string; content: string; retention: number }>> {
+    const entries = await longTermMemoryService.getEntries()
+    const now = Date.now()
+    const candidates: Array<{ id: string; content: string; retention: number }> = []
+
+    for (const entry of entries) {
+      if (entry.status === 'forgotten' || !entry.enabled) continue
+
+      const daysSinceLastRecall = (now - entry.lastRecalledAt) / 86_400_000
+      const retention = this.computeRetention(entry, daysSinceLastRecall)
+
+      if (retention < 0.5 && retention > 0.15) {
+        candidates.push({ id: entry.id, content: entry.content, retention })
+      }
+    }
+
+    return candidates.sort((a, b) => a.retention - b.retention).slice(0, limit)
   }
 
   async buildUnifiedContextPrompt(query: string, maxTokens: number = 2000): Promise<string> {
@@ -356,39 +451,12 @@ ${lines.join('\n')}
     }))
   }
 
-  private deduplicateResults(results: UnifiedMemoryResult[]): UnifiedMemoryResult[] {
-    const contentMap = new Map<string, UnifiedMemoryResult>()
-
-    const sorted = [...results].sort((a, b) => b.score - a.score)
-
-    for (const result of sorted) {
-      const normalizedContent = result.content.toLowerCase().trim()
-      const existing = contentMap.get(normalizedContent)
-
-      if (!existing) {
-        contentMap.set(normalizedContent, result)
-      } else {
-        const layerPriority: Record<MemoryLayer, number> = {
-          working: 4,
-          short_term: 3,
-          long_term: 2,
-          project_knowledge: 1,
-        }
-        if (layerPriority[result.layer] > layerPriority[existing.layer]) {
-          contentMap.set(normalizedContent, result)
-        }
-      }
-    }
-
-    return Array.from(contentMap.values())
-  }
-
   private applyTokenBudget(results: UnifiedMemoryResult[], maxTokens: number): UnifiedMemoryResult[] {
     const limited: UnifiedMemoryResult[] = []
     let usedTokens = 0
 
     for (const result of results) {
-      const tokens = Math.ceil(result.content.length / 4)
+      const tokens = this.estimateTokens(result.content)
       if (usedTokens + tokens > maxTokens) break
       limited.push(result)
       usedTokens += tokens
@@ -397,14 +465,52 @@ ${lines.join('\n')}
     return limited
   }
 
-  private trimWorkingMemory(): void {
-    if (this.workingMemory.size <= this.maxWorkingMemory) return
+  private estimateTokens(text: string): number {
+    const cjkChars = (text.match(/[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff]/g) || []).length
+    const otherChars = text.length - cjkChars
+    return Math.ceil(cjkChars / 1.5 + otherChars / 4)
+  }
 
-    const entries = Array.from(this.workingMemory.entries())
-      .sort(([, a], [, b]) => a.timestamp - b.timestamp)
+  private evictWorkingMemory(): void {
+    this.cleanWorkingMemory()
 
-    while (this.workingMemory.size > this.maxWorkingMemory) {
-      const [key] = entries.shift()!
+    while (this.workingMemoryUsedTokens > this.workingMemoryMaxTokens && this.workingMemory.size > 0) {
+      const entries = Array.from(this.workingMemory.entries())
+        .map(([key, entry]) => ({
+          key,
+          entry,
+          score: entry.accessCount * 0.4 + this.recencyScore(entry.timestamp) * 0.6,
+        }))
+        .sort((a, b) => a.score - b.score)
+
+      const [victim] = entries
+      if (victim) {
+        this.removeWorkingMemoryEntry(victim.key)
+      } else {
+        break
+      }
+    }
+
+    if (this.workingMemory.size > this.maxWorkingMemory * 2) {
+      const entries = Array.from(this.workingMemory.entries())
+        .sort(([, a], [, b]) => a.timestamp - b.timestamp)
+
+      while (this.workingMemory.size > this.maxWorkingMemory) {
+        const [key] = entries.shift()!
+        this.removeWorkingMemoryEntry(key)
+      }
+    }
+  }
+
+  private recencyScore(timestamp: number): number {
+    const ageMs = Date.now() - timestamp
+    return Math.max(0, 1 - ageMs / this.workingMemoryTTL)
+  }
+
+  private removeWorkingMemoryEntry(key: string): void {
+    const entry = this.workingMemory.get(key)
+    if (entry) {
+      this.workingMemoryUsedTokens -= this.estimateTokens(entry.content)
       this.workingMemory.delete(key)
     }
   }
@@ -413,7 +519,7 @@ ${lines.join('\n')}
     const now = Date.now()
     for (const [key, entry] of this.workingMemory) {
       if (now - entry.timestamp > this.workingMemoryTTL) {
-        this.workingMemory.delete(key)
+        this.removeWorkingMemoryEntry(key)
       }
     }
   }

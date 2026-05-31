@@ -4,11 +4,51 @@ import type { SelfLearningRecord, BehavioralPattern, LearningResult, LearningEve
 
 const MAX_RECORDS = 1000
 const PATTERN_MIN_FREQUENCY = 3
+const STORAGE_KEY = 'aweeclaw-proactive-learning-records'
+const PERSIST_DEBOUNCE_MS = 5000
 
 class ProactiveLearningService {
   private records: SelfLearningRecord[] = []
+  private loaded = false
+  private persistTimer: ReturnType<typeof setTimeout> | null = null
 
-  recordEvent(eventType: LearningEventType, context: string, outcome?: string, metadata?: Record<string, unknown>): void {
+  private async ensureLoaded(): Promise<void> {
+    if (this.loaded) return
+    this.loaded = true
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY)
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (Array.isArray(parsed)) {
+          this.records = parsed.slice(-MAX_RECORDS)
+          logger.agent.info(`[ProactiveLearning] Loaded ${this.records.length} records from storage`)
+        }
+      }
+    } catch (err) {
+      logger.agent.warn('[ProactiveLearning] Failed to load records from storage:', err)
+    }
+  }
+
+  private schedulePersist(): void {
+    if (this.persistTimer) clearTimeout(this.persistTimer)
+    this.persistTimer = setTimeout(() => {
+      this.doPersist()
+    }, PERSIST_DEBOUNCE_MS)
+  }
+
+  private doPersist(): void {
+    this.persistTimer = null
+    try {
+      const toStore = this.records.slice(-MAX_RECORDS)
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(toStore))
+    } catch (err) {
+      logger.agent.warn('[ProactiveLearning] Failed to persist records:', err)
+    }
+  }
+
+  async recordEvent(eventType: LearningEventType, context: string, outcome?: string, metadata?: Record<string, unknown>): Promise<void> {
+    await this.ensureLoaded()
+
     const record: SelfLearningRecord = {
       id: crypto.randomUUID(),
       eventType,
@@ -22,9 +62,13 @@ class ProactiveLearningService {
     if (this.records.length > MAX_RECORDS) {
       this.records = this.records.slice(-MAX_RECORDS)
     }
+
+    this.schedulePersist()
   }
 
   async analyzePatterns(): Promise<LearningResult> {
+    await this.ensureLoaded()
+
     const result: LearningResult = {
       patterns: [],
       newMemoryIds: [],
@@ -209,12 +253,16 @@ class ProactiveLearningService {
     return errorMatch ? errorMatch[1].trim() : lower.slice(0, 50)
   }
 
-  getRecentRecords(limit: number = 50): SelfLearningRecord[] {
+  async getRecentRecords(limit: number = 50): Promise<SelfLearningRecord[]> {
+    await this.ensureLoaded()
     return this.records.slice(-limit)
   }
 
-  clearRecords(): void {
+  async clearRecords(): Promise<void> {
     this.records = []
+    try {
+      localStorage.removeItem(STORAGE_KEY)
+    } catch {}
   }
 }
 

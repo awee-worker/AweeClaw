@@ -161,7 +161,7 @@ export function MemorySettings({ language }: MemorySettingsProps) {
             </div>
             <div>
               <h5 className="text-sm font-medium text-text-primary">
-                {t('上下文记忆', 'Context Memory')}
+                {t('记忆系统', 'Memory System')}
               </h5>
               <p className="text-xs text-text-muted mt-0.5">
                 {t('AI 在对话中自动记住的重要信息', 'Important info AI remembers across conversations')}

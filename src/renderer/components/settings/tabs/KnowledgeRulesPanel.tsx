@@ -2,7 +2,7 @@
  * Rules & Memory 设置组件
  *
  * 行为规则：BRAND.paths.rules - 静态规则文件
- * 上下文记忆：BRAND.paths.memoryStore - 动态记忆列表
+ * 记忆系统：BRAND.paths.memoryStore - 动态记忆列表
  */
 
 import { useState, useEffect, useCallback } from 'react'
@@ -195,7 +195,7 @@ export function KnowledgeRulesPanel({ language }: RulesMemorySettingsProps) {
             <div className="flex items-center gap-2">
               <Brain className="w-4 h-4 text-accent" />
               <h5 className="text-sm font-medium text-text-primary">
-                {t('上下文记忆', 'Context Memory')}
+                {t('记忆系统', 'Memory System')}
               </h5>
             </div>
             <span className="text-[11px] text-text-muted px-2 py-0.5 bg-black/20 rounded">

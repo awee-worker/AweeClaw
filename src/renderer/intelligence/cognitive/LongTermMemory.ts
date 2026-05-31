@@ -73,35 +73,36 @@ export class LongTermMemory {
     return '{}'
   }
 
-  add(entry: Omit<LongTermMemoryEntry, 'id' | 'createdAt' | 'lastAccessedAt' | 'accessCount'>): LongTermMemoryEntry {
+  async add(entry: Omit<LongTermMemoryEntry, 'id' | 'createdAt' | 'lastAccessedAt' | 'accessCount'>): Promise<LongTermMemoryEntry> {
     const tags = [...(entry.relevanceTags || [])]
     if (entry.type) tags.push(TYPE_TO_TAG[entry.type])
 
     const source: MemorySource = SOURCE_MAP[entry.source] || 'auto_extracted'
 
-    let result: MemoryEntry | null = null
-    longTermMemoryService.addEntry({
-      content: entry.content,
-      source,
-      status: 'short_term',
-      confidence: entry.confidence,
-      tags,
-      enabled: true,
-    }).then(r => { result = r }).catch(() => {})
-
-    if (result) return toMemoryEntry(result)
-
-    return {
-      ...entry,
-      id: `mem-proxy-${Date.now()}`,
-      createdAt: Date.now(),
-      lastAccessedAt: Date.now(),
-      accessCount: 1,
+    try {
+      const result = await longTermMemoryService.addEntry({
+        content: entry.content,
+        source,
+        status: 'short_term',
+        confidence: entry.confidence,
+        tags,
+        enabled: true,
+      })
+      return toMemoryEntry(result)
+    } catch (err) {
+      logger.agent.warn('[LongTermMemory] add() failed, returning proxy entry:', err)
+      return {
+        ...entry,
+        id: `mem-proxy-${Date.now()}`,
+        createdAt: Date.now(),
+        lastAccessedAt: Date.now(),
+        accessCount: 1,
+      }
     }
   }
 
-  search(_params: MemorySearchParams): LongTermMemoryEntry[] {
-    return []
+  search(params: MemorySearchParams): Promise<LongTermMemoryEntry[]> {
+    return this.searchAsync(params)
   }
 
   async searchAsync(params: MemorySearchParams): Promise<LongTermMemoryEntry[]> {

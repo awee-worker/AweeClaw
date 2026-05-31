@@ -549,8 +549,12 @@ class VectorIndex {
       clearTimeout(this.pendingPersist)
     }
 
-    this.pendingPersist = setTimeout(() => {
-      this.doPersist()
+    this.pendingPersist = setTimeout(async () => {
+      try {
+        await this.doPersist()
+      } catch (err) {
+        logger.agent.warn('[VectorIndex] Delayed persist failed:', err)
+      }
     }, 2000)
   }
 
@@ -561,6 +565,9 @@ class VectorIndex {
     }
     await this.doPersist()
   }
+
+  private persistRetryCount = 0
+  private readonly MAX_PERSIST_RETRIES = 3
 
   private async doPersist(): Promise<void> {
     this.pendingPersist = null
@@ -594,8 +601,22 @@ class VectorIndex {
       const filePath = joinPath(workspacePath, STORE_FILE)
       await api.file.write(filePath, JSON.stringify(store))
       this.dirty = false
+      this.persistRetryCount = 0
     } catch (err) {
-      logger.agent.warn('[VectorIndex] Persist failed:', err)
+      this.persistRetryCount++
+      if (this.persistRetryCount < this.MAX_PERSIST_RETRIES) {
+        logger.agent.warn(`[VectorIndex] Persist failed (attempt ${this.persistRetryCount}/${this.MAX_PERSIST_RETRIES}), will retry:`, err)
+        this.pendingPersist = setTimeout(async () => {
+          try {
+            await this.doPersist()
+          } catch (retryErr) {
+            logger.agent.warn('[VectorIndex] Persist retry failed:', retryErr)
+          }
+        }, 5000 * this.persistRetryCount)
+      } else {
+        logger.agent.error(`[VectorIndex] Persist failed after ${this.MAX_PERSIST_RETRIES} attempts:`, err)
+        this.persistRetryCount = 0
+      }
     }
   }
 
