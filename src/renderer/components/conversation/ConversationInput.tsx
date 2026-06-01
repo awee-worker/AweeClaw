@@ -24,6 +24,8 @@ import {
   Loader2,
   Eye,
   EyeOff,
+  Mic,
+  Square,
 } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -35,6 +37,9 @@ import { ActionButton } from '../ui'
 
 import ModelSelector from './AIModelSelector'
 import ModeSelector from './WorkModeSelector'
+import { useVoiceInput } from '../../composables/useVoiceInput'
+import VoiceVisualizer from '../voice/VoiceVisualizer'
+import { VoiceRealtimePanel } from '../voice/VoiceRealtimePanel'
 import { ContextItem, FileContext } from '@intelligence/providerTypes'
 import { api } from '../../adapters/electronBridge'
 import { getEffectiveLLMConfig } from '@services/modelConfigHelper'
@@ -99,6 +104,19 @@ const ChatInput = memo(function ChatInput({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isFocused, setIsFocused] = useState(false)
   const [isOptimizing, setIsOptimizing] = useState(false)
+  const [showRealtimeVoice, setShowRealtimeVoice] = useState(false)
+
+  const voiceInput = useVoiceInput({
+    onResult: (text) => {
+      setInput(input ? `${input} ${text}` : text)
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.style.height = 'auto'
+          textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`
+        }
+      }, 0)
+    },
+  })
 
   // Auto-resize
   useLayoutEffect(() => {
@@ -245,6 +263,24 @@ const ChatInput = memo(function ChatInput({
 
   return (
     <div ref={inputContainerRef} className="z-20">
+      <AnimatePresence>
+        {showRealtimeVoice && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            transition={{ duration: 0.2 }}
+            className="mb-3"
+          >
+            <VoiceRealtimePanel
+              onSttResult={(text) => {
+                setInput(input ? `${input} ${text}` : text);
+              }}
+              onClose={() => setShowRealtimeVoice(false)}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
       <div
         className={`
             relative group flex flex-col rounded-xl transition-all duration-500 ease-out border
@@ -411,6 +447,12 @@ const ChatInput = memo(function ChatInput({
             style={{ minHeight: '48px', fontSize: `${Math.max(14, editorConfig.chatFontSize ?? editorConfig.fontSize)}px` }}
           />
 
+          {voiceInput.state === 'recording' && voiceInput.partialText && (
+            <div className="px-0 py-1 text-sm text-accent/70 italic truncate">
+              {voiceInput.partialText}
+            </div>
+          )}
+
           {/* Bottom Actions */}
           <div className="relative flex items-center justify-between pt-1 gap-2">
             <div className="flex items-center gap-2 opacity-80 hover:opacity-100 transition-opacity">
@@ -460,26 +502,90 @@ const ChatInput = memo(function ChatInput({
                 )}
               </button>
 
-              <button
-                onClick={isStreaming ? onAbort : onSubmit}
-                disabled={
-                  !hasApiKey || ((!input.trim() && images.length === 0) && !isStreaming) || hasPendingToolCall
-                }
-                className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300
-                  ${isStreaming
-                    ? 'bg-surface/50 text-text-primary border border-text-primary/10 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20'
-                    : isSendable
+              {isStreaming ? (
+                <button
+                  onClick={onAbort}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300 bg-surface/50 text-text-primary border border-text-primary/10 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20"
+                >
+                  <div className="w-2.5 h-2.5 bg-current rounded-[1px] animate-pulse" />
+                </button>
+              ) : voiceInput.state !== 'idle' ? (
+                <div className="relative flex items-center gap-2">
+                  {voiceInput.state === 'recording' && voiceInput.stream && (
+                    <div className="w-20 h-8 flex items-center">
+                      <VoiceVisualizer
+                        stream={voiceInput.stream}
+                        isActive={voiceInput.state === 'recording'}
+                        color="rgb(239, 68, 68)"
+                        height={32}
+                        barCount={16}
+                        barGap={1}
+                      />
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={voiceInput.state === 'recording' ? voiceInput.stopRecording : undefined}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      if (voiceInput.state === 'recording') {
+                        voiceInput.cancelRecording();
+                      }
+                    }}
+                    disabled={voiceInput.state === 'requesting' || voiceInput.state === 'processing'}
+                    className={`relative flex items-center justify-center rounded-full transition-all duration-200 focus:outline-none
+                      ${voiceInput.state === 'recording'
+                        ? 'w-9 h-9 bg-red-500 text-white shadow-lg shadow-red-500/30 hover:bg-red-600'
+                        : 'w-8 h-8 bg-blue-500/20 text-blue-400 cursor-wait'
+                      }`}
+                    title={voiceInput.state === 'recording' ? 'Stop recording' : voiceInput.state === 'processing' ? 'Processing...' : 'Requesting microphone...'}
+                  >
+                    {voiceInput.state === 'recording' && (
+                      <motion.div
+                        className="absolute inset-0 rounded-full border-2 border-red-400"
+                        animate={{ scale: [1, 1.3, 1], opacity: [0.6, 0, 0.6] }}
+                        transition={{ duration: 1.5, repeat: Infinity }}
+                      />
+                    )}
+                    {(voiceInput.state === 'requesting' || voiceInput.state === 'processing') ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Square className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                </div>
+              ) : isSendable ? (
+                <button
+                  onClick={onSubmit}
+                  disabled={!hasApiKey || hasPendingToolCall}
+                  className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300
+                    ${hasApiKey && !hasPendingToolCall
                       ? 'bg-accent text-white shadow-md shadow-accent/20 hover:shadow-accent/40 hover:-translate-y-0.5 active:translate-y-0 border border-transparent'
                       : 'bg-text-primary/5 text-text-muted/75 cursor-not-allowed border border-transparent'
-                  }
-                  `}
-              >
-                {isStreaming ? (
-                  <div className="w-2.5 h-2.5 bg-current rounded-[1px] animate-pulse" />
-                ) : (
+                    }
+                    `}
+                >
                   <ArrowUp className="w-5 h-5 stroke-[3]" />
-                )}
-              </button>
+                </button>
+              ) : (
+                <button
+                  onClick={voiceInput.startRecording}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setShowRealtimeVoice(true);
+                  }}
+                  disabled={!hasApiKey}
+                  className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300
+                    ${hasApiKey
+                      ? 'bg-surface/50 text-text-muted hover:text-accent hover:bg-accent/10 border border-border/30 hover:border-accent/20 active:scale-95'
+                      : 'bg-text-primary/5 text-text-muted/75 cursor-not-allowed border border-transparent'
+                    }
+                    `}
+                  title={lt('语音输入（右键开启实时对话）', 'Voice input (right-click for realtime)')}
+                >
+                  <Mic className="w-4 h-4" />
+                </button>
+              )}
             </div>
           </div>
         </div>

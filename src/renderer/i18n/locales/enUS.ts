@@ -592,6 +592,8 @@ export const en = {
   'settings.privacy': 'Privacy',
   'settings.system': 'System',
   'settings.cloud': 'Cloud',
+  'settings.voice': 'Voice',
+  'settings.voiceSettings': 'Voice Settings',
   'settings.loadingSettings': 'Loading settings...',
   'settings.closeSettings': 'Close settings',
   'settings.unsavedChangesConfirm': 'You have unsaved changes. Discard them?',

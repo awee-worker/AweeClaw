@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState, useEffect, useMemo, useCallback } from 'react'
-import { Cpu, Settings2, Code, Keyboard, Database, Shield, Monitor, Plug, Braces, Brain, FileCode, FileText, Zap, Check, X, Palette, Radio, Cloud, Eye, Search, Mail } from 'lucide-react'
+import { Cpu, Settings2, Code, Keyboard, Database, Shield, Monitor, Plug, Braces, Brain, FileCode, FileText, Zap, Check, X, Palette, Radio, Cloud, Eye, Search, Mail, Mic } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { PROVIDERS } from '@configuration/aiProviders'
@@ -69,6 +69,9 @@ const CloudSettings = lazy(() =>
 )
 const PrivacySettingsPanel = lazy(() =>
     import('./tabs/PrivacySettingsPanel').then(module => ({ default: module.PrivacySettingsPanel })),
+)
+const VoiceSettingsPanel = lazy(() =>
+    import('./tabs/VoiceSettingsPanel').then(module => ({ default: module.default })),
 )
 
 function serializeComparable(value: unknown): string {
@@ -455,6 +458,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
             { id: 'appearance', label: t('settings.appearance', language as Language), icon: <Palette className="w-4 h-4" /> },
             { id: 'agent', label: t('settings.agent', language as Language), icon: <Settings2 className="w-4 h-4" /> },
             { id: 'search', label: t('settings.searchEngine', language as Language), icon: <Search className="w-4 h-4" /> },
+            { id: 'voice', label: t('settings.voiceSettings', language as Language), icon: <Mic className="w-4 h-4" /> },
             { id: 'rules', label: t('settings.rules', language as Language), icon: <FileText className="w-4 h-4" /> },
             { id: 'memory', label: t('settings.memory', language as Language), icon: <Brain className="w-4 h-4" /> },
             { id: 'skills', label: t('settings.skills', language as Language), icon: <Zap className="w-4 h-4" /> },
@@ -585,6 +589,8 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                 )
             case 'cloud':
                 return <CloudSettings language={language} />
+            case 'voice':
+                return <VoiceSettingsPanel language={language} />
             default:
                 return null
         }

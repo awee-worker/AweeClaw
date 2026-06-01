@@ -50,6 +50,8 @@ import { LazyImage } from '../foundation/DeferredImage'
 import { useSmoothStream } from '@hooks/useSmoothStream'
 import { SystemAlert, parseSystemAlert } from './SystemAlert'
 import { CompressionDigestCard } from './CompressionDigestCard'
+import VoiceOutputButton from '../conversation/VoiceOutputButton'
+import { useVoiceOutput } from '../../composables/useVoiceOutput'
 
 import { api } from '../../adapters/electronBridge'
 import { openUrlInBrowser } from '@utils/browserLauncher'
@@ -1638,6 +1640,7 @@ const ChatMessage = React.memo(({
 
             {!message.isStreaming && (
               <div className="flex items-center gap-1 pl-1 opacity-0 group-hover/msg:opacity-100 transition-opacity duration-200">
+                <VoiceOutputButtonForMessage text={textContent} />
                 <HintOverlay content={tt.copy}>
                   <button onClick={handleCopy} className="p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-hover transition-all">
                     {copied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
@@ -1724,5 +1727,24 @@ const ChatMessage = React.memo(({
 })
 
 ChatMessage.displayName = 'ChatMessage'
+
+const VoiceOutputButtonForMessage = React.memo(function VoiceOutputButtonForMessage({
+  text,
+}: {
+  text: string
+}) {
+  const voiceOutput = useVoiceOutput()
+  if (!text || text.trim().length === 0) return null
+  return (
+    <VoiceOutputButton
+      playbackState={voiceOutput.playbackState}
+      onSpeak={voiceOutput.speak}
+      onStop={voiceOutput.stop}
+      onPause={voiceOutput.pause}
+      onResume={voiceOutput.resume}
+      text={text}
+    />
+  )
+})
 
 export default ChatMessage

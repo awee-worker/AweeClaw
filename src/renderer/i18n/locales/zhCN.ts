@@ -593,6 +593,8 @@ export const zh = {
   'settings.privacy': '隐私设置',
   'settings.system': '系统设置',
   'settings.cloud': '云端服务',
+  'settings.voice': '语音',
+  'settings.voiceSettings': '语音设置',
   'settings.loadingSettings': '正在加载设置项...',
   'settings.closeSettings': '关闭设置',
   'settings.unsavedChangesConfirm': '您有未保存的更改，确定要放弃吗？',
