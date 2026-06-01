@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useImProcessingStatus } from '@hooks/useImProcessingStatus'
 import { useStore } from '@store'
 import type { ImProcessingPhase } from '@shared/protocols/channel'
+import { t, type Language } from '@renderer/i18n'
 
 const phaseLabels: Record<ImProcessingPhase, { zh: string; en: string }> = {
   received: { zh: '已收到消息', en: 'Message received' },
@@ -22,10 +23,10 @@ export default function ImStatusFloating() {
     const status = imStatuses[imStatuses.length - 1]
     const labels = phaseLabels[status.phase]
     const countLabel = imStatuses.length > 1
-      ? (language === 'zh' ? ` (${imStatuses.length}条)` : ` (${imStatuses.length})`)
+      ? (t('layout.text2', language as Language, { length: imStatuses.length }))
       : ''
     return {
-      text: `${status.channelLabel} · ${status.senderName} - ${labels[language === 'zh' ? 'zh' : 'en']}${countLabel}`,
+      text: `${status.channelLabel} · ${status.senderName} - ${language === 'zh' ? labels.zh : labels.en}${countLabel}`,
       phase: status.phase,
     }
   }, [imStatuses, language])

@@ -9,7 +9,7 @@ import { ActionButton, TextField, DropdownSelector } from '@components/ui'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
 import { toast } from '@components/foundation/NotificationProvider'
 import { snippetService, type CodeSnippet } from '@services/snippetAdapter'
-import { Language } from '@renderer/i18n'
+import {Language, t} from '@renderer/i18n'
 
 interface SnippetSettingsProps {
   language: Language
@@ -81,7 +81,7 @@ export function SnippetLibraryPanel({ language }: SnippetSettingsProps) {
 
   const handleEdit = (snippet: CodeSnippet) => {
     if (snippetService.isDefaultSnippet(snippet.id)) {
-      toast.warning(language === 'zh' ? '默认片段不可编辑' : 'Default snippets cannot be edited')
+      toast.warning(t('settings.defaultsnippetscannotbeedited', language as Language))
       return
     }
     setEditingId(snippet.id)
@@ -97,43 +97,43 @@ export function SnippetLibraryPanel({ language }: SnippetSettingsProps) {
 
   const handleDelete = async (id: string) => {
     if (snippetService.isDefaultSnippet(id)) {
-      toast.warning(language === 'zh' ? '默认片段不可删除' : 'Default snippets cannot be deleted')
+      toast.warning(t('settings.defaultsnippetscannotbedeleted', language as Language))
       return
     }
     const confirmed = await globalConfirm({
-      title: language === 'zh' ? '删除片段' : 'Delete Snippet',
-      message: language === 'zh' ? '确定删除此片段？' : 'Delete this snippet?',
+      title: t('settings.deletesnippet', language as Language),
+      message: t('settings.deletethissnippet', language as Language),
       variant: 'danger',
     })
     if (!confirmed) return
     
     const success = await snippetService.delete(id)
     if (success) {
-      toast.success(language === 'zh' ? '已删除' : 'Deleted')
+      toast.success(t('settings.deleted', language as Language))
       loadSnippets()
     }
   }
 
   const handleSave = async () => {
     if (!formData.name.trim() || !formData.prefix.trim() || !formData.body.trim()) {
-      toast.error(language === 'zh' ? '请填写必填字段' : 'Please fill required fields')
+      toast.error(t('settings.pleasefillrequiredfields', language as Language))
       return
     }
 
     try {
       if (editingId) {
         await snippetService.update(editingId, formData)
-        toast.success(language === 'zh' ? '已更新' : 'Updated')
+        toast.success(t('settings.updated', language as Language))
       } else {
         await snippetService.add(formData)
-        toast.success(language === 'zh' ? '已创建' : 'Created')
+        toast.success(t('settings.created', language as Language))
       }
       setShowForm(false)
       setFormData(defaultFormData)
       setEditingId(null)
       loadSnippets()
     } catch (error) {
-      toast.error(language === 'zh' ? '保存失败' : 'Save failed')
+      toast.error(t('settings.savefailed', language as Language))
     }
   }
 
@@ -146,7 +146,7 @@ export function SnippetLibraryPanel({ language }: SnippetSettingsProps) {
     a.download = 'snippets.json'
     a.click()
     URL.revokeObjectURL(url)
-    toast.success(language === 'zh' ? '已导出' : 'Exported')
+    toast.success(t('settings.exported', language as Language))
   }
 
   const handleImport = () => {
@@ -161,13 +161,11 @@ export function SnippetLibraryPanel({ language }: SnippetSettingsProps) {
       const text = await file.text()
       const result = await snippetService.importSnippets(text)
       toast.success(
-        language === 'zh' 
-          ? `导入成功 ${result.success} 个，失败 ${result.failed} 个`
-          : `Imported ${result.success}, failed ${result.failed}`
+        t('settings.importedfailed', language as Language, { success: result.success, failed: result.failed })
       )
       loadSnippets()
     } catch {
-      toast.error(language === 'zh' ? '导入失败' : 'Import failed')
+      toast.error(t('settings.importfailed', language as Language))
     }
     e.target.value = ''
   }
@@ -200,7 +198,7 @@ export function SnippetLibraryPanel({ language }: SnippetSettingsProps) {
             <TextField
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              placeholder={language === 'zh' ? '搜索片段...' : 'Search snippets...'}
+              placeholder={t('settings.searchsnippets', language as Language)}
               className="pl-9 h-9 bg-background/50 border-border/50 text-xs rounded-lg focus:border-accent/50 focus:ring-1 focus:ring-accent/50 transition-all"
             />
           </div>
@@ -214,15 +212,15 @@ export function SnippetLibraryPanel({ language }: SnippetSettingsProps) {
         <div className="flex items-center gap-2">
           <ActionButton variant="ghost" size="sm" onClick={handleImport}>
             <Upload className="w-4 h-4 mr-1" />
-            {language === 'zh' ? '导入' : 'Import'}
+            {t('settings.import', language as Language)}
           </ActionButton>
           <ActionButton variant="ghost" size="sm" onClick={handleExport}>
             <Download className="w-4 h-4 mr-1" />
-            {language === 'zh' ? '导出' : 'Export'}
+            {t('settings.export', language as Language)}
           </ActionButton>
           <ActionButton variant="primary" size="sm" onClick={handleCreate}>
             <Plus className="w-4 h-4 mr-1" />
-            {language === 'zh' ? '新建' : 'New'}
+            {t('settings.new', language as Language)}
           </ActionButton>
         </div>
         <input
@@ -239,17 +237,17 @@ export function SnippetLibraryPanel({ language }: SnippetSettingsProps) {
         <div className="p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border space-y-4">
           <div className="flex items-center justify-between">
             <h4 className="text-sm font-bold text-text-primary">
-              {editingId ? (language === 'zh' ? '编辑片段' : 'Edit Snippet') : (language === 'zh' ? '新建片段' : 'New Snippet')}
+              {editingId ? (t('settings.editsnippet', language as Language)) : (t('settings.newsnippet', language as Language))}
             </h4>
             <ActionButton variant="ghost" size="sm" onClick={() => setShowForm(false)}>
-              {language === 'zh' ? '取消' : 'Cancel'}
+              {t('settings.cancel', language as Language)}
             </ActionButton>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs text-text-muted mb-1.5">
-                {language === 'zh' ? '名称 *' : 'Name *'}
+                {t('settings.name', language as Language)}
               </label>
               <TextField
                 value={formData.name}
@@ -260,7 +258,7 @@ export function SnippetLibraryPanel({ language }: SnippetSettingsProps) {
             </div>
             <div>
               <label className="block text-xs text-text-muted mb-1.5">
-                {language === 'zh' ? '触发前缀 *' : 'Trigger Prefix *'}
+                {t('settings.triggerprefix', language as Language)}
               </label>
               <TextField
                 value={formData.prefix}
@@ -273,21 +271,21 @@ export function SnippetLibraryPanel({ language }: SnippetSettingsProps) {
 
           <div>
             <label className="block text-xs text-text-muted mb-1.5">
-              {language === 'zh' ? '描述' : 'Description'}
+              {t('settings.description', language as Language)}
             </label>
             <TextField
               value={formData.description}
               onChange={e => setFormData(prev => ({ ...prev, description: e.target.value }))}
-              placeholder={language === 'zh' ? '片段描述...' : 'Snippet description...'}
+              placeholder={t('settings.snippetdescription', language as Language)}
               className="bg-background/50 border-border/50 text-xs rounded-lg focus:border-accent/50 focus:ring-1 focus:ring-accent/50 transition-all"
             />
           </div>
 
           <div>
             <label className="block text-xs text-text-muted mb-1.5">
-              {language === 'zh' ? '代码模板 *' : 'Code Template *'}
+              {t('settings.codetemplate', language as Language)}
               <span className="ml-2 text-text-muted/90">
-                {language === 'zh' ? '支持 $1, ${1:placeholder} 占位符' : 'Supports $1, ${1:placeholder} placeholders'}
+                {t('settings.supports11placeholderplaceholders', language as Language)}
               </span>
             </label>
             <textarea
@@ -300,7 +298,7 @@ export function SnippetLibraryPanel({ language }: SnippetSettingsProps) {
 
           <div>
             <label className="block text-xs text-text-muted mb-2">
-              {language === 'zh' ? '适用语言（留空表示所有语言）' : 'Languages (empty for all)'}
+              {t('settings.languagesemptyforall', language as Language)}
             </label>
             <div className="flex flex-wrap gap-2">
               {COMMON_LANGUAGES.slice(1).map(lang => (
@@ -321,7 +319,7 @@ export function SnippetLibraryPanel({ language }: SnippetSettingsProps) {
 
           <div className="flex justify-end pt-2">
             <ActionButton variant="primary" onClick={handleSave}>
-              {language === 'zh' ? '保存' : 'Save'}
+              {t('settings.save', language as Language)}
             </ActionButton>
           </div>
         </div>
@@ -332,7 +330,7 @@ export function SnippetLibraryPanel({ language }: SnippetSettingsProps) {
         {filteredSnippets.length === 0 ? (
           <div className="col-span-full text-center py-16 text-text-muted border border-dashed border-border/50 rounded-xl bg-surface/5">
             <Code className="w-12 h-12 mx-auto mb-3 opacity-20" />
-            <p className="text-sm font-medium opacity-60">{language === 'zh' ? '没有找到片段' : 'No snippets found'}</p>
+            <p className="text-sm font-medium opacity-60">{t('settings.nosnippetsfound', language as Language)}</p>
           </div>
         ) : (
           filteredSnippets.map(snippet => {

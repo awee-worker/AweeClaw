@@ -7,7 +7,7 @@ import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { ChevronRight, ChevronDown, FileText, Edit2, Box, MoreHorizontal, Loader2, Search, Crosshair } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
-import { t } from '@renderer/i18n'
+import {t, type Language} from '@renderer/i18n'
 import { getFileName, joinPath } from '@shared/toolkit/pathHelper'
 import { scheduleSavedVersionSync } from '@services/fileVersionSync'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
@@ -255,12 +255,10 @@ export function SearchView() {
     const matchCount = searchResults.length
 
     // 确认对话框
-    const confirmMessage = language === 'zh'
-      ? `确定要在 ${fileCount} 个文件中替换 ${matchCount} 处匹配吗？`
-      : `Replace ${matchCount} matches in ${fileCount} files?`
+    const confirmMessage = t('explorer.replacematchesinfiles', language as Language, { matchCount: matchCount, fileCount: fileCount })
 
     const confirmed = await globalConfirm({
-      title: language === 'zh' ? '替换确认' : 'Replace Confirmation',
+      title: t('explorer.replaceconfirmation', language as Language),
       message: confirmMessage,
       variant: 'warning',
     })
@@ -299,9 +297,7 @@ export function SearchView() {
     }
 
     // 显示替换结果
-    const resultMessage = language === 'zh'
-      ? `已在 ${replacedCount} 个文件中完成替换`
-      : `Replaced in ${replacedCount} files`
+    const resultMessage = t('explorer.replacedinfiles', language as Language, { replacedCount: replacedCount })
     toast.success(resultMessage)
 
     handleSearch()
@@ -395,7 +391,7 @@ export function SearchView() {
             {showReplace && (
               <button
                 onClick={() => setReplaceInSelection(!replaceInSelection)}
-                title={language === 'zh' ? '仅在选中区域替换' : 'Replace in selection only'}
+                title={t('explorer.replaceinselectiononly', language as Language)}
                 className={`p-1 rounded transition-colors ${replaceInSelection ? 'bg-accent/20 text-accent' : 'text-text-muted hover:bg-surface-active hover:text-text-primary'}`}
               >
                 <span className="text-[11px] font-bold px-1 border border-current rounded-[2px]">Sel</span>
@@ -474,9 +470,7 @@ export function SearchView() {
             {visibleCount < searchResults.length && (
               <div className="px-3 py-1 text-[11px] text-accent cursor-pointer hover:underline text-center"
                 onClick={() => setVisibleCount(prev => Math.min(prev + 500, searchResults.length))}>
-                {language === 'zh'
-                  ? `显示了 ${visibleCount} / ${searchResults.length} 条，点击或滚动加载更多`
-                  : `Showing ${visibleCount} / ${searchResults.length}, click or scroll to load more`}
+                {t('explorer.showingclickorscrollto', language as Language, { visibleCount: visibleCount, length: searchResults.length })}
               </div>
             )}
 
@@ -505,7 +499,7 @@ export function SearchView() {
                         }}
                         disabled={!replaceQuery}
                         className="p-0.5 rounded hover:bg-surface-active text-text-muted hover:text-accent transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-30"
-                        title={language === 'zh' ? '替换此文件中的匹配' : 'Replace in this file'}
+                        title={t('explorer.replaceinthisfile', language as Language)}
                       >
                         <Edit2 className="w-3 h-3" />
                       </button>
@@ -527,7 +521,7 @@ export function SearchView() {
                         })
                       }}
                       className="p-0.5 rounded hover:bg-surface-active text-text-muted hover:text-accent transition-colors opacity-0 group-hover:opacity-100"
-                      title={language === 'zh' ? '在侧边栏中定位' : 'Reveal in Sidebar'}
+                      title={t('explorer.revealinsidebar', language as Language)}
                     >
                       <Crosshair className="w-3 h-3" />
                     </button>

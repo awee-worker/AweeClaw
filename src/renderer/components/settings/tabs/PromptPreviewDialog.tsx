@@ -8,6 +8,7 @@ import { getPromptTemplateById, getPromptTemplatePreview } from '@intelligence/p
 import { toast } from '@components/foundation/NotificationProvider'
 import { ActionButton, OverlayDialog } from '@components/ui'
 import { PromptPreviewModalProps } from '../preferencesTypes'
+import { t, type Language } from '@renderer/i18n'
 
 export function PromptPreviewDialog({ templateId, language, onClose }: PromptPreviewModalProps) {
     const template = getPromptTemplateById(templateId)
@@ -39,10 +40,10 @@ export function PromptPreviewDialog({ templateId, language, onClose }: PromptPre
         try {
             await navigator.clipboard.writeText(previewContent)
             setCopied(true)
-            toast.success(language === 'zh' ? '已复制到剪贴板' : 'Copied to clipboard')
+            toast.success(t('settings.copiedtoclipboard', language as Language))
             setTimeout(() => setCopied(false), 2000)
         } catch {
-            toast.error(language === 'zh' ? '复制失败' : 'Copy failed')
+            toast.error(t('settings.copyfailed', language as Language))
         }
     }
 
@@ -82,7 +83,7 @@ export function PromptPreviewDialog({ templateId, language, onClose }: PromptPre
     if (!template) return null
 
     return (
-        <OverlayDialog isOpen={true} onClose={onClose} title={language === 'zh' ? '完整提示词预览' : 'Full Prompt Preview'} size="5xl" noPadding>
+        <OverlayDialog isOpen={true} onClose={onClose} title={t('settings.fullpromptpreview', language as Language)} size="5xl" noPadding>
             <div className="flex h-[700px] bg-background">
                 {/* Sidebar Navigation */}
                 <div className="w-64 border-r border-border-subtle bg-surface/30 flex flex-col">
@@ -93,7 +94,7 @@ export function PromptPreviewDialog({ templateId, language, onClose }: PromptPre
                                 type="text"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                placeholder={language === 'zh' ? '搜索提示词...' : 'Search prompt...'}
+                                placeholder={t('settings.searchprompt', language as Language)}
                                 className="w-full bg-surface/50 border border-border-subtle rounded-lg pl-9 pr-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent/50 transition-all"
                             />
                         </div>
@@ -118,7 +119,7 @@ export function PromptPreviewDialog({ templateId, language, onClose }: PromptPre
                     </nav>
                     <div className="p-4 border-t border-border-subtle bg-surface/20">
                         <ActionButton variant={copied ? 'success' : 'secondary'} size="sm" onClick={handleCopy} className="w-full" leftIcon={copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}>
-                            {copied ? (language === 'zh' ? '已复制' : 'Copied') : (language === 'zh' ? '复制全文' : 'Copy Full')}
+                            {copied ? (t('settings.copied', language as Language)) : (t('settings.copyfull', language as Language))}
                         </ActionButton>
                     </div>
                 </div>
@@ -164,10 +165,10 @@ export function PromptPreviewDialog({ templateId, language, onClose }: PromptPre
                     </div>
                     <div className="px-8 py-4 border-t border-border-subtle bg-surface/30 flex items-center justify-between">
                         <p className="text-xs text-text-muted italic">
-                            {language === 'zh' ? '提示词包含：核心身份、沟通风格、代码质量标准、工具定义、工作流规范和环境信息' : 'Prompt includes: Core identity, communication style, code quality standards, tool definitions, workflow guidelines, and environment info'}
+                            {t('settings.promptincludescoreidentitycommunication', language as Language)}
                         </p>
                         <ActionButton variant="ghost" size="sm" onClick={onClose} className="text-text-muted hover:text-text-primary">
-                            {language === 'zh' ? '关闭' : 'Close'}
+                            {t('settings.close', language as Language)}
                         </ActionButton>
                     </div>
                 </div>

@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { X, MessageSquare, GitBranch, Clock, UserCheck, Zap } from 'lucide-react'
 import type { WorkflowDefinition, WorkflowStep, WorkflowStepType } from '@shared/protocols/workflow'
+import { t, type Language } from '@renderer/i18n'
 
 interface NodeEditorProps {
   workflow: WorkflowDefinition
@@ -32,7 +33,7 @@ export default function NodeEditor({ workflow, nodeId, onClose, language }: Node
     return (
       <div className="w-[320px] border-l border-border/50 bg-background p-4">
         <p className="text-[12px] text-text-muted/50">
-          {language === 'zh' ? '未找到节点' : 'Node not found'}
+          {t('wf.nodenotfound', language as Language)}
         </p>
       </div>
     )
@@ -48,7 +49,7 @@ export default function NodeEditor({ workflow, nodeId, onClose, language }: Node
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border/30">
         <h3 className="text-[12px] font-semibold text-text-primary">
-          {language === 'zh' ? '节点属性' : 'Node Properties'}
+          {t('wf.nodeproperties', language as Language)}
         </h3>
         <button
           onClick={onClose}
@@ -71,7 +72,7 @@ export default function NodeEditor({ workflow, nodeId, onClose, language }: Node
         {/* Step Name */}
         <div>
           <label className="text-[11px] font-medium text-text-secondary mb-1 block">
-            {language === 'zh' ? '名称' : 'Name'}
+            {t('wf.name', language as Language)}
           </label>
           <div className="px-3 py-2 text-[12px] text-text-primary bg-surface/30 border border-border/30 rounded-lg">
             {step.nameZh && language === 'zh' ? step.nameZh : step.name}
@@ -108,7 +109,7 @@ export default function NodeEditor({ workflow, nodeId, onClose, language }: Node
         {/* Next Step */}
         <div>
           <label className="text-[11px] font-medium text-text-secondary mb-1 block">
-            {language === 'zh' ? '下一步' : 'Next Step'}
+            {t('wf.nextstep', language as Language)}
           </label>
           {nextStep ? (
             <div className="px-3 py-2 text-[12px] text-text-primary bg-surface/30 border border-border/30 rounded-lg flex items-center gap-2">
@@ -117,7 +118,7 @@ export default function NodeEditor({ workflow, nodeId, onClose, language }: Node
             </div>
           ) : (
             <div className="px-3 py-2 text-[12px] text-text-muted/40 bg-surface/30 border border-border/30 rounded-lg">
-              {language === 'zh' ? '无（结束）' : 'None (End)'}
+              {t('wf.noneend', language as Language)}
             </div>
           )}
         </div>
@@ -126,7 +127,7 @@ export default function NodeEditor({ workflow, nodeId, onClose, language }: Node
         {step.timeout && (
           <div>
             <label className="text-[11px] font-medium text-text-secondary mb-1 block">
-              {language === 'zh' ? '超时' : 'Timeout'}
+              {t('wf.timeout', language as Language)}
             </label>
             <div className="px-3 py-2 text-[12px] text-text-primary bg-surface/30 border border-border/30 rounded-lg">
               {step.timeout}ms
@@ -143,7 +144,7 @@ function AgentMessageConfig({ config, language }: { config: any; language: 'en' 
     <div className="space-y-3">
       <div>
         <label className="text-[11px] font-medium text-text-secondary mb-1 block">
-          {language === 'zh' ? '消息模板' : 'Message Template'}
+          {t('wf.messagetemplate', language as Language)}
         </label>
         <div className="px-3 py-2 text-[11px] text-text-muted/70 bg-surface/30 border border-border/30 rounded-lg max-h-[120px] overflow-y-auto custom-scrollbar whitespace-pre-wrap font-mono">
           {config.message || '-'}
@@ -152,7 +153,7 @@ function AgentMessageConfig({ config, language }: { config: any; language: 'en' 
       {config.outputVar && (
         <div>
           <label className="text-[11px] font-medium text-text-secondary mb-1 block">
-            {language === 'zh' ? '输出变量' : 'Output Variable'}
+            {t('wf.outputvariable', language as Language)}
           </label>
           <div className="px-3 py-2 text-[11px] text-accent font-mono bg-accent/5 border border-accent/20 rounded-lg">
             {'{{' + config.outputVar + '}}'}
@@ -161,10 +162,10 @@ function AgentMessageConfig({ config, language }: { config: any; language: 'en' 
       )}
       <div>
         <label className="text-[11px] font-medium text-text-secondary mb-1 block">
-          {language === 'zh' ? '等待响应' : 'Wait for Response'}
+          {t('wf.waitforresponse', language as Language)}
         </label>
         <div className="px-3 py-2 text-[12px] text-text-primary bg-surface/30 border border-border/30 rounded-lg">
-          {config.waitForResponse ? (language === 'zh' ? '是' : 'Yes') : (language === 'zh' ? '否' : 'No')}
+          {config.waitForResponse ? (t('wf.yes', language as Language)) : (t('wf.no', language as Language))}
         </div>
       </div>
     </div>
@@ -176,7 +177,7 @@ function ConditionConfig({ config, language }: { config: any; language: 'en' | '
     <div className="space-y-3">
       <div>
         <label className="text-[11px] font-medium text-text-secondary mb-1 block">
-          {language === 'zh' ? '条件表达式' : 'Condition'}
+          {t('wf.condition', language as Language)}
         </label>
         <div className="px-3 py-2 text-[11px] text-text-muted/70 bg-surface/30 border border-border/30 rounded-lg font-mono">
           {config.expression || '-'}
@@ -191,7 +192,7 @@ function UserInputConfig({ config, language }: { config: any; language: 'en' | '
     <div className="space-y-3">
       <div>
         <label className="text-[11px] font-medium text-text-secondary mb-1 block">
-          {language === 'zh' ? '提示信息' : 'Prompt'}
+          {t('wf.prompt', language as Language)}
         </label>
         <div className="px-3 py-2 text-[11px] text-text-muted/70 bg-surface/30 border border-border/30 rounded-lg">
           {config.prompt || '-'}
@@ -206,7 +207,7 @@ function ParallelConfig({ config, language }: { config: any; language: 'en' | 'z
     <div className="space-y-3">
       <div>
         <label className="text-[11px] font-medium text-text-secondary mb-1 block">
-          {language === 'zh' ? '并行步骤数' : 'Parallel Steps'}
+          {t('wf.parallelsteps', language as Language)}
         </label>
         <div className="px-3 py-2 text-[12px] text-text-primary bg-surface/30 border border-border/30 rounded-lg">
           {config.steps?.length || 0}
@@ -221,7 +222,7 @@ function DelayConfig({ config, language }: { config: any; language: 'en' | 'zh' 
     <div className="space-y-3">
       <div>
         <label className="text-[11px] font-medium text-text-secondary mb-1 block">
-          {language === 'zh' ? '延迟时间' : 'Delay Duration'}
+          {t('wf.delayduration', language as Language)}
         </label>
         <div className="px-3 py-2 text-[12px] text-text-primary bg-surface/30 border border-border/30 rounded-lg">
           {config.duration || 0}ms

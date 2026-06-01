@@ -7,7 +7,7 @@ import type { editor } from 'monaco-editor'
 import { Eye, Edit, Columns } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
-import { t } from '@renderer/i18n'
+import {t, type Language} from '@renderer/i18n'
 import { BRAND } from '@shared/brand'
 import { useAgentChangeState } from '@hooks/useAgent'
 import { useLspIntegration, useFileSave, useLintCheck } from '@hooks'
@@ -357,9 +357,9 @@ export default function Editor() {
         const model = editorRef.current.getModel()
         const versionId = model?.getAlternativeVersionId()
         markFileSaved(activeFile.path, versionId)
-        toast.success(language === 'zh' ? '文件已保存' : 'File Saved', getFileName(activeFile.path))
+        toast.success(t('editor.filesaved', language as Language), getFileName(activeFile.path))
       } else {
-        toast.error(language === 'zh' ? '保存失败' : 'Save Failed', language === 'zh' ? '无法写入文件' : 'Could not write to file')
+        toast.error(t('editor.savefailed', language as Language), t('editor.couldnotwritetofile', language as Language))
       }
     }
   }, [activeFile, markFileSaved, language, updateFileContent])

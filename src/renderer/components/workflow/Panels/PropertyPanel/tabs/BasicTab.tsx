@@ -7,18 +7,19 @@ import { SwitchCaseBuilder } from '../builders/SwitchCaseBuilder'
 import { DelaySection, LoopSection, ParallelSection, MergeSection } from './FlowSections'
 import { UserInputSection, UserApprovalSection } from './InteractionSections'
 import { HttpRequestSection, TextOutputSection, NotificationSection } from './OutputSections'
+import { t, type Language } from '@renderer/i18n'
 
 export function BasicTab({ nodeType, data, onChange, language }: TabProps) {
   return (
     <>
       <Section
-        title={language === 'zh' ? '节点描述' : 'Description'}
-        tip={language === 'zh' ? '简单描述这个节点做什么' : 'Briefly describe what this node does'}
+        title={t('wf.description', language as Language)}
+        tip={t('wf.brieflydescribewhatthisnode', language as Language)}
       >
         <textarea
           value={data.description || ''}
           onChange={(e) => onChange('description', e.target.value)}
-          placeholder={language === 'zh' ? '例如：调用AI分析用户输入并生成回复' : 'e.g. Call AI to analyze user input and generate reply'}
+          placeholder={t('wf.egcallaitoanalyze', language as Language)}
           rows={2}
           className={TEXTAREA_CLASS}
         />
@@ -75,15 +76,15 @@ function AgentTaskBasicSection({ data, onChange, language }: Omit<TabProps, 'nod
   return (
     <>
       <Section
-        title={language === 'zh' ? '选择角色' : 'Select Role'}
-        tip={language === 'zh' ? '选择一个AI角色来执行此任务' : 'Choose an AI role to perform this task'}
+        title={t('wf.selectrole', language as Language)}
+        tip={t('wf.chooseanairoleto', language as Language)}
       >
         <select
           value={data.roleId || ''}
           onChange={(e) => onChange('roleId', e.target.value)}
           className={SELECT_CLASS}
         >
-          <option value="">{language === 'zh' ? '选择角色...' : 'Select a role...'}</option>
+          <option value="">{t('wf.selectarole', language as Language)}</option>
           {BUILTIN_AGENT_ROLES.filter(r => r.id !== 'custom').map(role => (
             <option key={role.id} value={role.id}>
               {language === 'zh' ? role.nameZh : role.name}
@@ -101,8 +102,8 @@ function AgentTaskBasicSection({ data, onChange, language }: Omit<TabProps, 'nod
       </Section>
 
       <Section
-        title={language === 'zh' ? '对话模式' : 'Chat Mode'}
-        tip={language === 'zh' ? 'Agent模式可以调用工具，Chat模式仅对话' : 'Agent mode can use tools, Chat mode is text-only'}
+        title={t('wf.chatmode', language as Language)}
+        tip={t('wf.agentmodecanusetools', language as Language)}
       >
         <div className="flex gap-1.5">
           {(['chat', 'agent', 'plan'] as const).map(mode => (
@@ -115,15 +116,15 @@ function AgentTaskBasicSection({ data, onChange, language }: Omit<TabProps, 'nod
                   : 'bg-white border-gray-150 text-gray-500 hover:border-gray-300 hover:bg-gray-50'
               }`}
             >
-              {{ chat: language === 'zh' ? '对话' : 'Chat', agent: 'Agent', plan: language === 'zh' ? '规划' : 'Plan' }[mode]}
+              {{ chat: t('wf.chat', language as Language), agent: 'Agent', plan: t('wf.plan', language as Language) }[mode]}
             </button>
           ))}
         </div>
       </Section>
 
       <Section
-        title={language === 'zh' ? '创意度' : 'Temperature'}
-        tip={language === 'zh' ? '0=精确执行, 1=更有创意' : '0=precise, 1=more creative'}
+        title={t('wf.temperature', language as Language)}
+        tip={t('wf.0precise1morecreative', language as Language)}
       >
         <div className="flex items-center gap-2">
           <input
@@ -142,14 +143,14 @@ function AgentTaskBasicSection({ data, onChange, language }: Omit<TabProps, 'nod
       </Section>
 
       <Section
-        title={language === 'zh' ? '系统提示词' : 'System Prompt'}
-        tip={language === 'zh' ? '可选的额外指令，会追加到角色默认提示词之后' : 'Optional extra instructions, appended to role default prompt'}
+        title={t('wf.systemprompt', language as Language)}
+        tip={t('wf.optionalextrainstructionsappendedto', language as Language)}
         collapsible
       >
         <textarea
           value={data.systemPrompt || ''}
           onChange={(e) => onChange('systemPrompt', e.target.value)}
-          placeholder={language === 'zh' ? '例如：请用友好、专业的语气回答...' : 'e.g. Please answer in a friendly, professional tone...'}
+          placeholder={t('wf.egpleaseanswerina', language as Language)}
           rows={3}
           className={TEXTAREA_CLASS}
         />
@@ -168,8 +169,8 @@ function AgentGroupBasicSection({ data, onChange, language }: Omit<TabProps, 'no
   return (
     <>
       <Section
-        title={language === 'zh' ? '协作模式' : 'Collaboration Mode'}
-        tip={language === 'zh' ? '顺序：逐个发言；辩论：各自表达后讨论；投票：各自给出结论后投票' : 'Sequential, debate, or voting mode'}
+        title={t('wf.collaborationmode', language as Language)}
+        tip={t('wf.sequentialdebateorvotingmode', language as Language)}
       >
         <div className="flex gap-1.5">
           {(['sequential', 'debate', 'voting'] as const).map(mode => (
@@ -182,13 +183,13 @@ function AgentGroupBasicSection({ data, onChange, language }: Omit<TabProps, 'no
                   : 'bg-white border-gray-150 text-gray-500 hover:border-gray-300 hover:bg-gray-50'
               }`}
             >
-              {{ sequential: language === 'zh' ? '顺序' : 'Seq', debate: language === 'zh' ? '辩论' : 'Debate', voting: language === 'zh' ? '投票' : 'Vote' }[mode]}
+              {{ sequential: t('wf.seq', language as Language), debate: t('wf.debate', language as Language), voting: t('wf.vote', language as Language) }[mode]}
             </button>
           ))}
         </div>
       </Section>
 
-      <Section title={language === 'zh' ? '最大讨论轮次' : 'Max Rounds'}>
+      <Section title={t('wf.maxrounds', language as Language)}>
         <input
           type="number"
           value={data.maxRounds || 3}
@@ -200,8 +201,8 @@ function AgentGroupBasicSection({ data, onChange, language }: Omit<TabProps, 'no
       </Section>
 
       <Section
-        title={language === 'zh' ? '参与角色' : 'Participants'}
-        tip={language === 'zh' ? '勾选参与协作的AI角色' : 'Select AI roles to participate'}
+        title={t('wf.participants', language as Language)}
+        tip={t('wf.selectairolestoparticipate', language as Language)}
       >
         <div className="space-y-0.5 max-h-40 overflow-y-auto">
           {BUILTIN_AGENT_ROLES.filter(r => r.id !== 'custom').map(role => {
@@ -237,13 +238,13 @@ function AgentGroupBasicSection({ data, onChange, language }: Omit<TabProps, 'no
 function VariableSetBasicSection({ data, onChange, language }: Omit<TabProps, 'nodeType'>) {
   return (
     <Section
-      title={language === 'zh' ? '设置变量' : 'Set Variable'}
-      tip={language === 'zh' ? '设置一个工作流变量，后续节点可通过 {{变量名}} 引用' : 'Set a variable, reference as {{name}} in later nodes'}
+      title={t('wf.setvariable', language as Language)}
+      tip={t('wf.setavariablereferenceas', language as Language)}
     >
       <div className="space-y-2">
         <div>
           <label className="text-[10px] font-medium text-gray-400 mb-0.5 block">
-            {language === 'zh' ? '变量名' : 'Variable Name'}
+            {t('wf.variablename', language as Language)}
           </label>
           <input
             type="text"
@@ -255,7 +256,7 @@ function VariableSetBasicSection({ data, onChange, language }: Omit<TabProps, 'n
         </div>
         <div>
           <label className="text-[10px] font-medium text-gray-400 mb-0.5 block">
-            {language === 'zh' ? '变量值' : 'Variable Value'}
+            {t('wf.variablevalue', language as Language)}
           </label>
           <input
             type="text"
@@ -268,7 +269,7 @@ function VariableSetBasicSection({ data, onChange, language }: Omit<TabProps, 'n
                 onChange('variableValue', val)
               }
             }}
-            placeholder={language === 'zh' ? '值或表达式，如：{{agentReply}}' : 'Value or expression, e.g. {{agentReply}}'}
+            placeholder={t('wf.valueorexpressioneg', language as Language)}
             className={INPUT_CLASS}
           />
         </div>
@@ -282,18 +283,18 @@ function VariableSetBasicSection({ data, onChange, language }: Omit<TabProps, 'n
 function DataTransformBasicSection({ data, onChange, language }: Omit<TabProps, 'nodeType'>) {
   return (
     <Section
-      title={language === 'zh' ? '转换表达式' : 'Transform Expression'}
-      tip={language === 'zh' ? 'JavaScript表达式，data为输入数据' : 'JavaScript expression, data=the input'}
+      title={t('wf.transformexpression', language as Language)}
+      tip={t('wf.javascriptexpressiondatatheinput', language as Language)}
     >
       <textarea
         value={data.transformExpression || ''}
         onChange={(e) => onChange('transformExpression', e.target.value)}
-        placeholder={language === 'zh' ? 'data.map(item => item.name)' : 'data.map(item => item.name)'}
+        placeholder={t('wf.datamapitemitemname', language as Language)}
         rows={4}
         className={TEXTAREA_MONO_CLASS}
       />
       <p className="mt-1 text-[10px] text-gray-400">
-        {language === 'zh' ? '💡 输入数据通过 data 变量访问，结果由 return 或表达式返回' : '💡 Input available via data, result returned by expression'}
+        {t('wf.inputavailableviadataresult', language as Language)}
       </p>
     </Section>
   )
@@ -305,7 +306,7 @@ function FormCollectorBasicSection({ data, onChange, language }: Omit<TabProps, 
   const fields: FormFieldDefinition[] = data.formFields || []
 
   const addField = () => {
-    const newField: FormFieldDefinition = { name: `field${fields.length + 1}`, label: `${language === 'zh' ? '字段' : 'Field'} ${fields.length + 1}`, type: 'text', required: false }
+    const newField: FormFieldDefinition = { name: `field${fields.length + 1}`, label: `${t('wf.field', language as Language)} ${fields.length + 1}`, type: 'text', required: false }
     onChange('formFields', [...fields, newField])
   }
 
@@ -320,8 +321,8 @@ function FormCollectorBasicSection({ data, onChange, language }: Omit<TabProps, 
 
   return (
     <Section
-      title={language === 'zh' ? '表单字段' : 'Form Fields'}
-      tip={language === 'zh' ? '定义需要用户填写的表单项' : 'Define form fields users need to fill'}
+      title={t('wf.formfields', language as Language)}
+      tip={t('wf.defineformfieldsusersneed', language as Language)}
     >
       <div className="space-y-2">
         {fields.map((field, idx) => (
@@ -330,14 +331,14 @@ function FormCollectorBasicSection({ data, onChange, language }: Omit<TabProps, 
               type="text"
               value={field.name}
               onChange={(e) => updateField(idx, 'name', e.target.value)}
-              placeholder={language === 'zh' ? '字段标识' : 'Field key'}
+              placeholder={t('wf.fieldkey', language as Language)}
               className="w-24 px-1.5 py-1 text-[11px] rounded border border-gray-200 bg-white"
             />
             <input
               type="text"
               value={field.label}
               onChange={(e) => updateField(idx, 'label', e.target.value)}
-              placeholder={language === 'zh' ? '显示名' : 'Label'}
+              placeholder={t('wf.label', language as Language)}
               className="flex-1 px-1.5 py-1 text-[11px] rounded border border-gray-200 bg-white"
             />
             <select
@@ -345,11 +346,11 @@ function FormCollectorBasicSection({ data, onChange, language }: Omit<TabProps, 
               onChange={(e) => updateField(idx, 'type', e.target.value)}
               className="w-20 px-1 py-1 text-[11px] rounded border border-gray-200 bg-white"
             >
-              <option value="text">{language === 'zh' ? '文本' : 'Text'}</option>
-              <option value="number">{language === 'zh' ? '数字' : 'Num'}</option>
-              <option value="select">{language === 'zh' ? '选择' : 'Select'}</option>
-              <option value="checkbox">{language === 'zh' ? '勾选' : 'Chk'}</option>
-              <option value="textarea">{language === 'zh' ? '长文' : 'Area'}</option>
+              <option value="text">{t('wf.text', language as Language)}</option>
+              <option value="number">{t('wf.num', language as Language)}</option>
+              <option value="select">{t('wf.select', language as Language)}</option>
+              <option value="checkbox">{t('wf.chk', language as Language)}</option>
+              <option value="textarea">{t('wf.area', language as Language)}</option>
             </select>
             <label className="flex items-center gap-0.5 text-[10px] text-gray-400">
               <input
@@ -358,7 +359,7 @@ function FormCollectorBasicSection({ data, onChange, language }: Omit<TabProps, 
                 onChange={(e) => updateField(idx, 'required', e.target.checked)}
                 className="rounded"
               />
-              {language === 'zh' ? '必填' : 'Req'}
+              {t('wf.req', language as Language)}
             </label>
             <button
               onClick={() => removeField(idx)}
@@ -372,7 +373,7 @@ function FormCollectorBasicSection({ data, onChange, language }: Omit<TabProps, 
           onClick={addField}
           className="w-full py-1.5 text-[11px] font-medium text-blue-500 hover:text-blue-600 border border-dashed border-blue-200 hover:border-blue-300 rounded-lg bg-blue-50/50 hover:bg-blue-50 transition-colors"
         >
-          + {language === 'zh' ? '添加字段' : 'Add Field'}
+          + {t('wf.addfield', language as Language)}
         </button>
       </div>
     </Section>
@@ -385,20 +386,20 @@ function ToolCallBasicSection({ data, onChange, language }: Omit<TabProps, 'node
   return (
     <>
       <Section
-        title={language === 'zh' ? '工具名称' : 'Tool Name'}
-        tip={language === 'zh' ? '要调用的内置工具标识' : 'Built-in tool identifier to call'}
+        title={t('wf.toolname', language as Language)}
+        tip={t('wf.builtintoolidentifiertocall', language as Language)}
       >
         <input
           type="text"
           value={data.toolName || ''}
           onChange={(e) => onChange('toolName', e.target.value)}
-          placeholder={language === 'zh' ? '如：read_file, search_code' : 'e.g. read_file, search_code'}
+          placeholder={t('wf.egreadfilesearchcode', language as Language)}
           className={INPUT_CLASS}
         />
       </Section>
       <Section
-        title={language === 'zh' ? '工具参数(JSON)' : 'Tool Arguments (JSON)'}
-        tip={language === 'zh' ? '以JSON格式传入参数' : 'Pass arguments in JSON format'}
+        title={t('wf.toolargumentsjson', language as Language)}
+        tip={t('wf.passargumentsinjsonformat', language as Language)}
       >
         <textarea
           value={data.toolArgs ? JSON.stringify(data.toolArgs, null, 2) : '{}'}
@@ -420,26 +421,26 @@ function McpServiceBasicSection({ data, onChange, language }: Omit<TabProps, 'no
   return (
     <>
       <Section
-        title={language === 'zh' ? 'MCP 服务器' : 'MCP Server'}
-        tip={language === 'zh' ? 'MCP协议服务器的标识' : 'MCP protocol server identifier'}
+        title={t('wf.mcpserver', language as Language)}
+        tip={t('wf.mcpprotocolserveridentifier', language as Language)}
       >
         <input
           type="text"
           value={data.mcpServerId || ''}
           onChange={(e) => onChange('mcpServerId', e.target.value)}
-          placeholder={language === 'zh' ? '服务器 ID' : 'Server ID'}
+          placeholder={t('wf.serverid', language as Language)}
           className={INPUT_CLASS}
         />
       </Section>
       <Section
-        title={language === 'zh' ? '工具名称' : 'Tool Name'}
-        tip={language === 'zh' ? '该MCP服务器提供的工具名' : 'Tool name provided by this MCP server'}
+        title={t('wf.toolname2', language as Language)}
+        tip={t('wf.toolnameprovidedbythis', language as Language)}
       >
         <input
           type="text"
           value={data.mcpToolName || ''}
           onChange={(e) => onChange('mcpToolName', e.target.value)}
-          placeholder={language === 'zh' ? '工具名' : 'Tool name'}
+          placeholder={t('wf.toolname3', language as Language)}
           className={INPUT_CLASS}
         />
       </Section>
@@ -452,7 +453,7 @@ function McpServiceBasicSection({ data, onChange, language }: Omit<TabProps, 'no
 function CodeRunnerBasicSection({ data, onChange, language }: Omit<TabProps, 'nodeType'>) {
   return (
     <>
-      <Section title={language === 'zh' ? '编程语言' : 'Language'}>
+      <Section title={t('wf.language', language as Language)}>
         <div className="flex gap-1.5">
           {(['javascript', 'python'] as const).map(lang => (
             <button
@@ -470,8 +471,8 @@ function CodeRunnerBasicSection({ data, onChange, language }: Omit<TabProps, 'no
         </div>
       </Section>
       <Section
-        title={language === 'zh' ? '代码' : 'Code'}
-        tip={language === 'zh' ? '输入变量通过 $input 访问，使用 return 返回结果' : 'Input vars via $input, use return for output'}
+        title={t('wf.code', language as Language)}
+        tip={t('wf.inputvarsviainputuse', language as Language)}
       >
         <textarea
           value={data.codeSnippet || ''}
@@ -481,12 +482,12 @@ function CodeRunnerBasicSection({ data, onChange, language }: Omit<TabProps, 'no
           spellCheck={false}
         />
       </Section>
-      <Section title={language === 'zh' ? '输入变量' : 'Input Variables'} collapsible>
+      <Section title={t('wf.inputvariables', language as Language)} collapsible>
         <input
           type="text"
           value={(data.codeInputVars || []).join(', ')}
           onChange={(e) => onChange('codeInputVars', e.target.value.split(',').map((s: string) => s.trim()).filter(Boolean))}
-          placeholder={language === 'zh' ? '变量名, 逗号分隔' : 'Var names, comma separated'}
+          placeholder={t('wf.varnamescommaseparated', language as Language)}
           className={INPUT_CLASS}
         />
       </Section>
@@ -500,14 +501,14 @@ function KnowledgeQueryBasicSection({ data, onChange, language }: Omit<TabProps,
   return (
     <>
       <Section
-        title={language === 'zh' ? '知识库' : 'Knowledge Base'}
-        tip={language === 'zh' ? '选择要查询的知识库' : 'Select knowledge base to query'}
+        title={t('wf.knowledgebase', language as Language)}
+        tip={t('wf.selectknowledgebasetoquery', language as Language)}
       >
         <input
           type="text"
           value={data.knowledgeBaseId || ''}
           onChange={(e) => onChange('knowledgeBaseId', e.target.value)}
-          placeholder={language === 'zh' ? '知识库名称或ID' : 'KB name or ID'}
+          placeholder={t('wf.kbnameorid', language as Language)}
           className={INPUT_CLASS}
         />
       </Section>
@@ -522,7 +523,7 @@ function KnowledgeQueryBasicSection({ data, onChange, language }: Omit<TabProps,
             className={INPUT_CLASS}
           />
         </Section>
-        <Section title={language === 'zh' ? '相似度阈值' : 'Threshold'}>
+        <Section title={t('wf.threshold', language as Language)}>
           <div className="flex items-center gap-2">
             <input
               type="range"
@@ -546,14 +547,14 @@ function KnowledgeQueryBasicSection({ data, onChange, language }: Omit<TabProps,
 function FileOutputBasicSection({ data, onChange, language }: Omit<TabProps, 'nodeType'>) {
   return (
     <Section
-      title={language === 'zh' ? '文件路径' : 'File Path'}
-      tip={language === 'zh' ? '输出结果写入的文件路径' : 'File path to write output to'}
+      title={t('wf.filepath', language as Language)}
+      tip={t('wf.filepathtowriteoutput', language as Language)}
     >
       <input
         type="text"
         value={data.filePath || ''}
         onChange={(e) => onChange('filePath', e.target.value)}
-        placeholder={language === 'zh' ? '/output/result.txt' : '/output/result.txt'}
+        placeholder={t('wf.outputresulttxt', language as Language)}
         className={INPUT_CLASS}
       />
     </Section>
@@ -565,7 +566,7 @@ function FileOutputBasicSection({ data, onChange, language }: Omit<TabProps, 'no
 function WebhookTriggerBasicSection({ data, onChange, language }: Omit<TabProps, 'nodeType'>) {
   return (
     <>
-      <Section title={language === 'zh' ? '请求方法' : 'Method'}>
+      <Section title={t('wf.method', language as Language)}>
         <div className="flex gap-1">
           {(['GET', 'POST'] as const).map(m => (
             <button
@@ -583,8 +584,8 @@ function WebhookTriggerBasicSection({ data, onChange, language }: Omit<TabProps,
         </div>
       </Section>
       <Section
-        title={language === 'zh' ? '路径' : 'Path'}
-        tip={language === 'zh' ? 'Webhook接收路径' : 'Webhook endpoint path'}
+        title={t('wf.path', language as Language)}
+        tip={t('wf.webhookendpointpath', language as Language)}
       >
         <div className="flex items-center rounded-lg border border-gray-200 bg-gray-50 overflow-hidden">
           <span className="px-2 py-1.5 text-[10px] text-gray-400 bg-gray-100 border-r border-gray-200">
@@ -609,20 +610,20 @@ function EventWaitBasicSection({ data, onChange, language }: Omit<TabProps, 'nod
   return (
     <>
       <Section
-        title={language === 'zh' ? '事件类型' : 'Event Type'}
-        tip={language === 'zh' ? '要等待的事件名称' : 'Event name to wait for'}
+        title={t('wf.eventtype', language as Language)}
+        tip={t('wf.eventnametowaitfor', language as Language)}
       >
         <input
           type="text"
           value={data.eventType || ''}
           onChange={(e) => onChange('eventType', e.target.value)}
-          placeholder={language === 'zh' ? '例如：file.uploaded' : 'e.g. file.uploaded'}
+          placeholder={t('wf.egfileuploaded', language as Language)}
           className={INPUT_CLASS}
         />
       </Section>
       <Section
-        title={language === 'zh' ? '超时时间(毫秒)' : 'Timeout (ms)'}
-        tip={language === 'zh' ? '0表示永不超时' : '0 means never timeout'}
+        title={t('wf.timeoutms', language as Language)}
+        tip={t('wf.0meansnevertimeout', language as Language)}
       >
         <input
           type="number"
@@ -641,18 +642,18 @@ function EventWaitBasicSection({ data, onChange, language }: Omit<TabProps, 'nod
 function SubWorkflowBasicSection({ data, onChange, language }: Omit<TabProps, 'nodeType'>) {
   return (
     <Section
-      title={language === 'zh' ? '子工作流' : 'Sub Workflow'}
-      tip={language === 'zh' ? '输入要调用的工作流ID' : 'Enter workflow ID to call'}
+      title={t('wf.subworkflow', language as Language)}
+      tip={t('wf.enterworkflowidtocall', language as Language)}
     >
       <input
         type="text"
         value={data.subWorkflowId || ''}
         onChange={(e) => onChange('subWorkflowId', e.target.value)}
-        placeholder={language === 'zh' ? '工作流 ID...' : 'Workflow ID...'}
+        placeholder={t('wf.workflowid', language as Language)}
         className={INPUT_CLASS}
       />
       <p className="mt-1 text-[10px] text-gray-400">
-        {language === 'zh' ? '💡 子工作流将独立执行，结果通过 {{subResult}} 返回' : '💡 Sub-workflow runs independently, result via {{subResult}}'}
+        {t('wf.subworkflowrunsindependentlyresultvia', language as Language)}
       </p>
     </Section>
   )

@@ -25,16 +25,17 @@ import type { LLMConfig, LLMCallResult, ExecutionContext, LoopCheckResult } from
 import type { AssistantPart } from '../types/conversationModel'
 import { pickLocalizedText, translateAgentText } from '@intelligence/utils/intelligenceTextUtils'
 import { checkAndHandleCompression as runCompressionCheck } from './contextOptimizer'
+import { t, type Language } from '@renderer/i18n'
 
-function getLocalizedText(language: string, zh: string, en: string): string {
+function getLocalizedText(language: Language, zh: string, en: string): string {
   return pickLocalizedText(zh, en, language as 'en' | 'zh')
 }
 
-function translate(language: string, key: Parameters<typeof translateAgentText>[0], params?: Record<string, string | number>): string {
+function translate(language: Language, key: Parameters<typeof translateAgentText>[0], params?: Record<string, string | number>): string {
   return translateAgentText(key, params, language as 'en' | 'zh')
 }
 
-function getLoopCheckMessage(language: string, loopCheck: LoopCheckResult): string {
+function getLoopCheckMessage(language: Language, loopCheck: LoopCheckResult): string {
   const details = loopCheck.details
   if (!details) {
     return loopCheck.reason || loopCheck.warning || translate(language, 'agent.loop.generic')
@@ -70,7 +71,7 @@ function getLoopCheckMessage(language: string, loopCheck: LoopCheckResult): stri
   }
 }
 
-function getLoopCheckSuggestion(language: string, loopCheck: LoopCheckResult): string | undefined {
+function getLoopCheckSuggestion(language: Language, loopCheck: LoopCheckResult): string | undefined {
   const details = loopCheck.details
   switch (details?.category) {
     case 'exact_repeat':
@@ -96,7 +97,7 @@ function getLoopCheckSuggestion(language: string, loopCheck: LoopCheckResult): s
   }
 }
 
-function buildSoftLimitFeedback(language: string, title: string, detail: string, suggestion?: string, loopCheck?: LoopCheckResult): string {
+function buildSoftLimitFeedback(language: Language, title: string, detail: string, suggestion?: string, loopCheck?: LoopCheckResult): string {
   const severity = loopCheck?.details?.severity || 'high'
   const isWarning = !loopCheck?.isLoop
 
@@ -159,7 +160,7 @@ function buildSoftLimitFeedback(language: string, title: string, detail: string,
   return lines.filter(Boolean).join('\n')
 }
 
-function formatLoopDiagnostic(language: string, loopCheck?: LoopCheckResult): string {
+function formatLoopDiagnostic(language: Language, loopCheck?: LoopCheckResult): string {
   const details = loopCheck?.details
   if (!details) return ''
 
@@ -613,23 +614,7 @@ export async function runLoop(
 
         llmMessages.push({
           role: 'user',
-          content: language === 'zh'
-            ? `工具调用出错: ${result.error}
-
-请修正后重试，并确保：
-1. 已提供所有必填参数
-2. 参数类型正确
-3. 参数名完全匹配
-
-请基于修正后的工具调用继续。`
-            : `Tool call error: ${result.error}
-
-Please fix the tool call and try again. Make sure:
-1. All required parameters are provided
-2. Parameter types are correct
-3. Parameter names match exactly
-
-Try again with the corrected tool call.`,
+          content: t('ai.toolcallerrorpleasefix', language as Language, { error: result.error }),
         })
 
         shouldContinue = true
@@ -939,9 +924,7 @@ Try again with the corrected tool call.`,
 
     if (userRejected) {
       const { language } = useStore.getState()
-      const rejectMsg = language === 'zh'
-        ? '用户拒绝了该工具的授权。请根据已有信息继续完成任务，不要再次请求相同或类似的授权操作。如果无法继续，请说明原因。'
-        : 'The user rejected the tool authorization. Please continue the task with the information you already have, without requesting the same or similar authorization again. If you cannot proceed, explain why.'
+      const rejectMsg = t('ai.theuserrejectedthetool', language as Language)
       llmMessages.push({ role: 'user', content: rejectMsg })
       shouldContinue = true
       threadStore.setStreamPhase('streaming')

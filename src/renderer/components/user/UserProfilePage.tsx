@@ -8,10 +8,11 @@ import {
 } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
-import { type ProfileTab, type Language } from './tabs'
+import { type ProfileTab } from './tabs'
 import { PlanPanel } from './tabs/PlanPanel'
 import { ProfilePanel } from './tabs/ProfilePanel'
 import { SecurityPanel } from './tabs/SecurityPanel'
+import { t, type Language } from '@renderer/i18n'
 
 const tabs: { id: ProfileTab; icon: React.ReactNode; labelZh: string; labelEn: string }[] = [
   { id: 'plan', icon: <Crown className="w-4 h-4" />, labelZh: '套餐管理', labelEn: 'Plan' },
@@ -40,7 +41,7 @@ export default function UserProfilePage() {
             <div className="p-1.5 rounded-lg bg-accent/10 border border-accent/20">
               <UserCircle className="w-5 h-5 text-accent" />
             </div>
-            {language === 'zh' ? '用户中心' : 'Account'}
+            {t('user.account', language as Language)}
           </h2>
         </div>
 
@@ -69,16 +70,16 @@ export default function UserProfilePage() {
           <div className="shrink-0 px-8 pt-6 pb-4 border-b border-border/40 flex items-center justify-between">
             <div>
               <h3 className="text-2xl font-semibold text-text-primary tracking-tight">
-                {tabs.find(t => t.id === activeTab)?.[language === 'zh' ? 'labelZh' : 'labelEn']}
+                {tabs.find(tab => tab.id === activeTab)?.[language === 'zh' ? 'labelZh' : 'labelEn']}
               </h3>
               <p className="text-sm text-text-muted mt-1.5 opacity-80">
-                {language === 'zh' ? '管理您的账号信息' : 'Manage your account'}
+                {t('user.manageyouraccount', language as Language)}
               </p>
             </div>
             <button
               onClick={handleClose}
               className="p-2 rounded-xl hover:bg-text-primary/[0.05] text-text-muted hover:text-text-primary transition-all duration-200 group"
-              title={language === 'zh' ? '关闭' : 'Close'}
+              title={t('user.close', language as Language)}
             >
               <X className="w-5 h-5 group-hover:rotate-90 transition-transform duration-300" />
             </button>

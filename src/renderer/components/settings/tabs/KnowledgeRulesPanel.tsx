@@ -14,13 +14,13 @@ import {
   FileText, Brain, Plus, Trash2, Edit2, Check, X,
   RefreshCw, AlertCircle, ToggleLeft, ToggleRight
 } from 'lucide-react'
+import { t, type Language } from '@renderer/i18n'
 
 interface RulesMemorySettingsProps {
-  language: string
+  language: Language
 }
 
 export function KnowledgeRulesPanel({ language }: RulesMemorySettingsProps) {
-  const t = (zh: string, en: string) => language === 'zh' ? zh : en
 
   // Rules state
   const [rulesContent, setRulesContent] = useState('')
@@ -125,7 +125,7 @@ export function KnowledgeRulesPanel({ language }: RulesMemorySettingsProps) {
             <div className="flex items-center gap-2">
               <FileText className="w-4 h-4 text-accent" />
               <h5 className="text-sm font-medium text-text-primary">
-                {t('行为规则', 'Behavior Rules')}
+                {t('app.behaviorrules', language as Language)}
               </h5>
             </div>
             <div className="flex items-center gap-2">
@@ -137,7 +137,7 @@ export function KnowledgeRulesPanel({ language }: RulesMemorySettingsProps) {
               <button
                 onClick={loadRules}
                 className="p-1.5 text-text-muted hover:text-accent transition-colors"
-                title={t('刷新', 'Refresh')}
+                title={t('app.refresh', language as Language)}
               >
                 <RefreshCw className="w-3.5 h-3.5" />
               </button>
@@ -145,10 +145,7 @@ export function KnowledgeRulesPanel({ language }: RulesMemorySettingsProps) {
           </div>
 
           <p className="text-xs text-text-muted">
-            {t(
-              `定义AI智能体的行为规则，支持 ${BRAND.paths.rules}、.cursorrules 等格式`,
-              `Define AI agent behavior rules. Supports ${BRAND.paths.rules}, .cursorrules, etc.`
-            )}
+            {t('app.defineaiagentbehavior', language as Language, { paths: BRAND.paths.rules })}
           </p>
 
           {rulesLoading ? (
@@ -164,14 +161,14 @@ export function KnowledgeRulesPanel({ language }: RulesMemorySettingsProps) {
                   setRulesModified(true)
                 }}
                 className="w-full h-64 p-3 bg-black/20 rounded-lg border border-border focus:border-accent/50 focus:ring-1 focus:ring-accent/20 outline-none transition-all resize-none text-xs font-mono custom-scrollbar text-text-primary placeholder-text-muted/50"
-                placeholder={t('# 行为规则\n\n在此编写 AI 行为规则...', '# Behavior Rules\n\nWrite AI behavior rules here...')}
+                placeholder={t('app.behaviorrulesnnwriteaibehavior', language as Language)}
               />
 
               <div className="flex items-center justify-between">
                 {rulesModified && (
                   <div className="flex items-center gap-1.5 text-amber-400 text-xs">
                     <AlertCircle className="w-3.5 h-3.5" />
-                    <span>{t('有未保存的更改', 'Unsaved changes')}</span>
+                    <span>{t('app.unsavedchanges2', language as Language)}</span>
                   </div>
                 )}
                 <div className="flex-1" />
@@ -182,7 +179,7 @@ export function KnowledgeRulesPanel({ language }: RulesMemorySettingsProps) {
                   disabled={!rulesModified || rulesSaving}
                   className="text-xs"
                 >
-                  {rulesSaving ? t('保存中...', 'Saving...') : t('保存规则', 'Save Rules')}
+                  {rulesSaving ? t('app.saving', language as Language) : t('app.saverules', language as Language)}
                 </ActionButton>
               </div>
             </>
@@ -195,7 +192,7 @@ export function KnowledgeRulesPanel({ language }: RulesMemorySettingsProps) {
             <div className="flex items-center gap-2">
               <Brain className="w-4 h-4 text-accent" />
               <h5 className="text-sm font-medium text-text-primary">
-                {t('记忆系统', 'Memory System')}
+                {t('app.memorysystem', language as Language)}
               </h5>
             </div>
             <span className="text-[11px] text-text-muted px-2 py-0.5 bg-black/20 rounded">
@@ -204,10 +201,7 @@ export function KnowledgeRulesPanel({ language }: RulesMemorySettingsProps) {
           </div>
 
           <p className="text-xs text-text-muted">
-            {t(
-              '添加工作相关的重要信息，AI 会在每次对话中记住这些内容',
-              'Add important workspace information. AI will remember these in every conversation.'
-            )}
+            {t('app.addimportantworkspaceinformation', language as Language)}
           </p>
 
           {/* Add new memory */}
@@ -215,7 +209,7 @@ export function KnowledgeRulesPanel({ language }: RulesMemorySettingsProps) {
             <TextField
               value={newMemory}
               onChange={(e) => setNewMemory(e.target.value)}
-              placeholder={t('添加新记忆...', 'Add new memory...')}
+              placeholder={t('app.addnewmemory', language as Language)}
               className="flex-1 bg-black/20 border-border text-xs"
               onKeyDown={(e) => e.key === 'Enter' && handleAddMemory()}
             />
@@ -237,7 +231,7 @@ export function KnowledgeRulesPanel({ language }: RulesMemorySettingsProps) {
               </div>
             ) : memories.length === 0 ? (
               <div className="h-20 flex items-center justify-center text-text-muted text-xs">
-                {t('暂无记忆', 'No memories yet')}
+                {t('app.nomemoriesyet', language as Language)}
               </div>
             ) : (
               memories.map((item) => (
@@ -279,7 +273,7 @@ export function KnowledgeRulesPanel({ language }: RulesMemorySettingsProps) {
                         onClick={() => handleToggleMemory(item.id, item.enabled)}
                         className={`p-0.5 transition-colors ${item.enabled ? 'text-accent' : 'text-text-muted'
                           }`}
-                        title={item.enabled ? t('禁用', 'Disable') : t('启用', 'Enable')}
+                        title={item.enabled ? t('app.disable', language as Language) : t('app.enable', language as Language)}
                       >
                         {item.enabled ? (
                           <ToggleRight className="w-4 h-4" />
@@ -313,11 +307,11 @@ export function KnowledgeRulesPanel({ language }: RulesMemorySettingsProps) {
 
           {/* Tips */}
           <div className="p-3 rounded-lg bg-accent/5 border border-accent/20 text-xs text-text-muted space-y-1">
-            <p className="font-medium text-accent/80">{t('💡 使用提示', '💡 Tips')}</p>
+            <p className="font-medium text-accent/80">{t('app.tips', language as Language)}</p>
             <ul className="list-disc list-inside space-y-0.5 text-[12px]">
-              <li>{t('记忆会全量注入到 AI 上下文中', 'Memories are fully injected into AI context')}</li>
-              <li>{t('建议保持简洁，避免过多记忆影响性能', 'Keep it concise to avoid performance impact')}</li>
-              <li>{t('可以禁用暂时不需要的记忆', 'You can disable memories temporarily')}</li>
+              <li>{t('app.memoriesarefullyinjected', language as Language)}</li>
+              <li>{t('app.keepitconciseto', language as Language)}</li>
+              <li>{t('app.youcandisablememories', language as Language)}</li>
             </ul>
           </div>
         </section>

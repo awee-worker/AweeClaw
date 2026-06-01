@@ -4,6 +4,7 @@ import { NODE_CATEGORY_MAP, NODE_TYPE_LABELS, NODE_CATEGORY_LABELS } from '@shar
 import { getNodeColor, getNodeIcon, getNodeLabel } from '../shared/nodeTypes'
 import { Search, X, ChevronDown, Blocks, Sparkles } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { t, type Language } from '@renderer/i18n'
 
 interface NodePaletteProps {
   onAddNode: (type: WorkflowNodeTypeV2) => void
@@ -100,10 +101,10 @@ export default function NodePalette({ onAddNode, language = 'zh' }: NodePaletteP
           </div>
           <div>
             <h3 className="text-xs font-semibold text-gray-700 leading-tight">
-              {language === 'zh' ? '节点面板' : 'Node Palette'}
+              {t('wf.nodepalette', language as Language)}
             </h3>
             <p className="text-[10px] text-gray-400 leading-tight mt-0.5">
-              {language === 'zh' ? '点击或拖拽添加节点' : 'Click or drag to add'}
+              {t('wf.clickordragtoadd', language as Language)}
             </p>
           </div>
         </div>
@@ -118,7 +119,7 @@ export default function NodePalette({ onAddNode, language = 'zh' }: NodePaletteP
             type="text"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            placeholder={language === 'zh' ? '搜索节点…' : 'Search nodes…'}
+            placeholder={t('wf.searchnodes', language as Language)}
             className="w-full h-8 pl-7 pr-7 text-[11px] rounded-lg border border-gray-200 bg-gray-50 text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-400/50 focus:bg-white transition-all"
           />
           {searchQuery && (
@@ -146,10 +147,10 @@ export default function NodePalette({ onAddNode, language = 'zh' }: NodePaletteP
               <Search className="w-4 h-4 text-gray-400" />
             </div>
             <p className="text-xs text-gray-500 font-medium">
-              {language === 'zh' ? '未找到匹配的节点' : 'No matching nodes'}
+              {t('wf.nomatchingnodes', language as Language)}
             </p>
             <p className="text-[10px] text-gray-400 mt-1">
-              {language === 'zh' ? '尝试其他关键词' : 'Try a different keyword'}
+              {t('wf.tryadifferentkeyword', language as Language)}
             </p>
           </div>
         )}
@@ -217,7 +218,7 @@ function RecommendedSection({
       <div className="flex items-center gap-1.5 px-1 mb-1.5">
         <Sparkles className="w-3 h-3 text-amber-500" />
         <span className="text-[10px] font-semibold text-amber-600 tracking-wide">
-          {language === 'zh' ? '推荐使用' : 'Quick Start'}
+          {t('wf.quickstart', language as Language)}
         </span>
       </div>
       <div className="grid grid-cols-2 gap-1">

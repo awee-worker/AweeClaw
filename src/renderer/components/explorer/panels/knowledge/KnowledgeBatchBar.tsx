@@ -6,10 +6,11 @@ import {
   type KnowledgeCategory,
   KNOWLEDGE_CATEGORIES,
 } from '@intelligence/runtime/knowledgeService/providerTypes'
+import { t, type Language } from '@renderer/i18n'
 
 interface BatchActionBarProps {
   selectedIds: string[]
-  language: string
+  language: Language
   onBatchUpdate: (updates: {
     enabled?: boolean
     starred?: boolean
@@ -33,7 +34,6 @@ export function BatchActionBar({
   const [tagInput, setTagInput] = useState('')
   const [tagMode, setTagMode] = useState<'add' | 'remove'>('add')
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const t = (zh: string, en: string) => (language === 'zh' ? zh : en)
 
   const handleTagSubmit = useCallback(() => {
     if (!tagInput.trim()) return
@@ -56,27 +56,27 @@ export function BatchActionBar({
   return (
     <div className="px-3 py-2 bg-accent/5 border-t border-accent/20 flex items-center gap-2 flex-shrink-0">
       <span className="text-[12px] text-accent font-medium mr-1">
-        {t(`已选 ${selectedIds.length} 项`, `${selectedIds.length} selected`)}
+        {t('app.selected', language as Language, { count: selectedIds.length })}
       </span>
 
       <button
         onClick={() => onBatchUpdate({ enabled: true })}
         className="p-1.5 text-text-muted hover:text-green-500 hover:bg-green-500/10 rounded-lg transition-colors"
-        title={t('批量启用', 'Batch Enable')}
+        title={t('app.batchenable', language as Language)}
       >
         <ToggleRight className="w-4 h-4" />
       </button>
       <button
         onClick={() => onBatchUpdate({ enabled: false })}
         className="p-1.5 text-text-muted hover:text-orange-500 hover:bg-orange-500/10 rounded-lg transition-colors"
-        title={t('批量禁用', 'Batch Disable')}
+        title={t('app.batchdisable', language as Language)}
       >
         <ToggleLeft className="w-4 h-4" />
       </button>
       <button
         onClick={() => onBatchUpdate({ starred: true })}
         className="p-1.5 text-text-muted hover:text-amber-500 hover:bg-amber-500/10 rounded-lg transition-colors"
-        title={t('批量收藏', 'Batch Star')}
+        title={t('app.batchstar', language as Language)}
       >
         <Star className="w-4 h-4" />
       </button>
@@ -85,7 +85,7 @@ export function BatchActionBar({
         <button
           onClick={() => setShowCategoryPicker(!showCategoryPicker)}
           className="p-1.5 text-text-muted hover:text-accent hover:bg-accent/10 rounded-lg transition-colors"
-          title={t('修改分类', 'Change Category')}
+          title={t('app.changecategory', language as Language)}
         >
           <Tag className="w-4 h-4" />
         </button>
@@ -100,7 +100,7 @@ export function BatchActionBar({
                 }}
                 className={`w-full text-left text-[12px] px-3 py-1.5 hover:bg-surface-hover ${cat.color}`}
               >
-                {t(cat.labelZh, cat.labelEn)}
+                {language === 'zh' ? cat.labelZh : cat.labelEn}
               </button>
             ))}
           </div>
@@ -114,7 +114,7 @@ export function BatchActionBar({
             setTagMode('add')
           }}
           className="p-1.5 text-text-muted hover:text-accent hover:bg-accent/10 rounded-lg transition-colors text-[12px]"
-          title={t('标签操作', 'Tag Actions')}
+          title={t('app.tagactions', language as Language)}
         >
           <Tag className="w-4 h-4" />
         </button>
@@ -125,20 +125,20 @@ export function BatchActionBar({
                 onClick={() => setTagMode('add')}
                 className={`text-[11px] px-2 py-0.5 rounded ${tagMode === 'add' ? 'bg-accent/20 text-accent' : 'text-text-muted'}`}
               >
-                {t('添加', 'Add')}
+                {t('app.add', language as Language)}
               </button>
               <button
                 onClick={() => setTagMode('remove')}
                 className={`text-[11px] px-2 py-0.5 rounded ${tagMode === 'remove' ? 'bg-red-500/20 text-red-500' : 'text-text-muted'}`}
               >
-                {t('移除', 'Remove')}
+                {t('app.remove', language as Language)}
               </button>
             </div>
             <div className="flex items-center gap-1">
               <input
                 value={tagInput}
                 onChange={(e) => setTagInput(e.target.value)}
-                placeholder={t('逗号分隔标签', 'Comma separated tags')}
+                placeholder={t('app.commaseparatedtags', language as Language)}
                 className="flex-1 bg-surface/30 border border-border/30 rounded px-2 py-1 text-[12px] text-text-primary outline-none"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleTagSubmit()
@@ -160,7 +160,7 @@ export function BatchActionBar({
       {confirmDelete ? (
         <div className="flex items-center gap-1">
           <span className="text-[11px] text-red-500">
-            {t('确认删除?', 'Confirm delete?')}
+            {t('app.confirmdelete', language as Language)}
           </span>
           <button
             onClick={() => {
@@ -182,7 +182,7 @@ export function BatchActionBar({
         <button
           onClick={() => setConfirmDelete(true)}
           className="p-1.5 text-text-muted hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
-          title={t('批量删除', 'Batch Delete')}
+          title={t('app.batchdelete', language as Language)}
         >
           <Trash2 className="w-4 h-4" />
         </button>
@@ -191,7 +191,7 @@ export function BatchActionBar({
       <button
         onClick={onClearSelection}
         className="p-1.5 text-text-muted hover:text-text-primary hover:bg-surface-hover rounded-lg transition-colors"
-        title={t('取消选择', 'Clear Selection')}
+        title={t('app.clearselection', language as Language)}
       >
         <X className="w-4 h-4" />
       </button>

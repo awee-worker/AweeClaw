@@ -7,6 +7,7 @@ import { useEffect, useRef } from 'react'
 import { toast } from '@components/foundation/NotificationProvider'
 import { keybindingService, formatShortcut } from '@services/keybindingAdapter'
 import { isPreviewDocumentPath } from '@shared/protocols/previewProtocol'
+import { type Language } from '@renderer/i18n'
 
 interface TabContextMenuProps {
   x: number
@@ -19,7 +20,7 @@ interface TabContextMenuProps {
   onCloseToRight: (path: string) => void
   onSave: (path: string) => void
   isDirty: boolean
-  language: string
+  language: Language
 }
 
 export function TabContextMenu({

@@ -47,8 +47,9 @@ import LanguageServiceIndicator from './LanguageServiceIndicator'
 import { motion, AnimatePresence } from 'framer-motion'
 import { shellComposer } from '@/renderer/shell/ShellComposer'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
+import { t, type Language } from '@renderer/i18n'
 
-function CloudQuotaIndicator({ language }: { language: string }) {
+function CloudQuotaIndicator({ language }: { language: Language }) {
   const { isAuthenticated, cloudMode, quota, fetchQuota } = useStore(
     useShallow((s) => ({
       isAuthenticated: s.isAuthenticated,
@@ -90,11 +91,11 @@ function CloudQuotaIndicator({ language }: { language: string }) {
       icon={
         <div
           className="flex items-center gap-1.5 px-2 py-1 h-6 rounded-md cursor-pointer group hover:bg-white/5 transition-colors"
-          title={quota ? `Token: ${quota.used.toLocaleString()} / ${quota.limit.toLocaleString()}${isQuotaExceeded ? (language === 'zh' ? ' (配额已用完)' : ' (Exceeded)') : isQuotaLow ? (language === 'zh' ? ' (配额不足)' : ' (Low)') : ''}` : ''}
+          title={quota ? `Token: ${quota.used.toLocaleString()} / ${quota.limit.toLocaleString()}${isQuotaExceeded ? (t('layout.exceeded', language as Language)) : isQuotaLow ? (t('layout.low', language as Language)) : ''}` : ''}
         >
           <Cloud className={`w-3 h-3 ${cloudColorClass} ${getQuotaGlowColor(usedPercent)}`} />
           <span className="text-[10px] font-medium text-text-muted group-hover:text-text-primary transition-colors max-w-[80px] truncate">
-            {quota?.displayName || (language === 'zh' ? '用量' : 'Usage')}
+            {quota?.displayName || (t('layout.usage', language as Language))}
           </span>
           {quotaLabel && (
             <span className={`text-[10px] font-mono ${quotaColorClass} transition-colors`}>
@@ -103,7 +104,7 @@ function CloudQuotaIndicator({ language }: { language: string }) {
           )}
         </div>
       }
-      title={language === 'zh' ? 'Token 用量' : 'Token Usage'}
+      title={t('layout.tokenusage', language as Language)}
       width={300}
       height={280}
       language={language as 'en' | 'zh'}
@@ -113,22 +114,22 @@ function CloudQuotaIndicator({ language }: { language: string }) {
           <div className="space-y-4">
             <div className="grid grid-cols-3 gap-2">
               <div className="flex flex-col items-center p-2.5 rounded-xl bg-surface/80">
-                <span className="text-[10px] text-text-muted mb-1">{language === 'zh' ? '已使用' : 'Used'}</span>
+                <span className="text-[10px] text-text-muted mb-1">{t('layout.used', language as Language)}</span>
                 <span className="text-sm font-bold text-text-primary">{quota.used.toLocaleString()}</span>
               </div>
               <div className="flex flex-col items-center p-2.5 rounded-xl bg-surface/80">
-                <span className="text-[10px] text-text-muted mb-1">{language === 'zh' ? '剩余' : 'Remaining'}</span>
+                <span className="text-[10px] text-text-muted mb-1">{t('layout.remaining', language as Language)}</span>
                 <span className="text-sm font-bold text-text-primary">
                   {quota.remaining === -1
-                    ? (language === 'zh' ? '无限' : '∞')
+                    ? (t('layout.text3', language as Language))
                     : quota.remaining.toLocaleString()}
                 </span>
               </div>
               <div className="flex flex-col items-center p-2.5 rounded-xl bg-surface/80">
-                <span className="text-[10px] text-text-muted mb-1">{language === 'zh' ? '总额度' : 'Total'}</span>
+                <span className="text-[10px] text-text-muted mb-1">{t('layout.total', language as Language)}</span>
                 <span className="text-sm font-bold text-text-primary">
                   {quota.limit === -1
-                    ? (language === 'zh' ? '无限' : '∞')
+                    ? (t('layout.text4', language as Language))
                     : quota.limit.toLocaleString()}
                 </span>
               </div>
@@ -138,7 +139,7 @@ function CloudQuotaIndicator({ language }: { language: string }) {
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-text-muted">
-                    {language === 'zh' ? '使用进度' : 'Progress'}
+                    {t('layout.progress', language as Language)}
                   </span>
                   <span className={`font-mono ${getQuotaTextColor(usedPercent)}`}>
                     {usedPercent.toFixed(1)}%
@@ -155,10 +156,10 @@ function CloudQuotaIndicator({ language }: { language: string }) {
 
             <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-accent/5 border border-accent/10">
               <span className="text-xs text-text-muted">
-                {language === 'zh' ? '当前套餐' : 'Plan'}
+                {t('layout.plan', language as Language)}
               </span>
               <span className="text-xs font-medium text-accent ml-auto">
-                {quota.displayName || (language === 'zh' ? '免费版' : 'Free')}
+                {quota.displayName || (t('layout.free', language as Language))}
               </span>
             </div>
           </div>
@@ -170,7 +171,7 @@ function CloudQuotaIndicator({ language }: { language: string }) {
           }}
           className="w-full py-2 text-xs text-accent hover:text-accent-hover transition-colors text-center"
         >
-          {language === 'zh' ? '管理云端服务 →' : 'Manage Cloud →'}
+          {t('layout.managecloud', language as Language)}
         </button>
       </div>
     </DockPopover>
@@ -310,10 +311,10 @@ export default function WorkspaceStatusBar() {
             'text-text-muted group-hover:text-text-primary'
 
   const contextIndicatorCopy = useMemo(() => ({
-    compressing: language === 'zh' ? '压缩中' : 'Compressing',
-    handoffReady: language === 'zh' ? '已生成交接包' : 'Handoff Ready',
-    switching: language === 'zh' ? '切换中' : 'Switching',
-    switched: language === 'zh' ? '已切换' : 'Switched',
+    compressing: t('layout.compressing', language as Language),
+    handoffReady: t('layout.handoffready', language as Language),
+    switching: t('layout.switching', language as Language),
+    switched: t('layout.switched', language as Language),
   }), [language])
 
   const imStatuses = useImProcessingStatus()
@@ -322,14 +323,14 @@ export default function WorkspaceStatusBar() {
     if (imStatuses.length === 0) return null
     const status = imStatuses[imStatuses.length - 1]
     const phaseLabels: Record<ImProcessingPhase, string> = {
-      received: language === 'zh' ? '已收到消息' : 'Message received',
-      thinking: language === 'zh' ? '正在思考' : 'Thinking',
-      replying: language === 'zh' ? '正在回复' : 'Replying',
-      done: language === 'zh' ? '回复完成' : 'Reply sent',
-      error: language === 'zh' ? '处理出错' : 'Error',
+      received: t('layout.messagereceived', language as Language),
+      thinking: t('layout.thinking', language as Language),
+      replying: t('layout.replying', language as Language),
+      done: t('layout.replysent', language as Language),
+      error: t('layout.error', language as Language),
     }
     const countLabel = imStatuses.length > 1
-      ? (language === 'zh' ? ` (${imStatuses.length}条)` : ` (${imStatuses.length})`)
+      ? (t('layout.text5', language as Language, { length: imStatuses.length }))
       : ''
     return {
       text: `${status.channelLabel} · ${status.senderName} - ${phaseLabels[status.phase]}${countLabel}`,
@@ -589,8 +590,8 @@ export default function WorkspaceStatusBar() {
                   </div>
                 </div>
               }
-              tooltip={language === 'zh' ? '任务计划' : 'Task Plans'}
-              title={language === 'zh' ? '任务计划' : 'Task Plans'}
+              tooltip={t('layout.taskplans', language as Language)}
+              title={t('layout.taskplans2', language as Language)}
               badge={activePlanId ? undefined : plans.length}
               width={340}
               height={360}
@@ -684,7 +685,7 @@ export default function WorkspaceStatusBar() {
                 </AnimatePresence>
               </div>
             }
-            title={language === 'zh' ? '消息' : 'Messages'}
+            title={t('layout.messages', language as Language)}
             headerActions={<NotificationClearButton language={language as 'en' | 'zh'} />}
             badge={undefined}
             width={360}

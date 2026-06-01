@@ -50,12 +50,13 @@ import { LazyImage } from '../foundation/DeferredImage'
 import { useSmoothStream } from '@hooks/useSmoothStream'
 import { SystemAlert, parseSystemAlert } from './SystemAlert'
 import { CompressionDigestCard } from './CompressionDigestCard'
-import { t } from '../../i18n'
+
 import { api } from '../../adapters/electronBridge'
 import { openUrlInBrowser } from '@utils/browserLauncher'
 import { toFullPath, getFileName } from '@shared/toolkit/pathHelper'
 import { stripToolCallLeaks } from '@intelligence/utils/toolCallSanitizer'
 import type { ToolStreamingPreview } from '@protocols'
+import { t, type Language } from '@renderer/i18n'
 
 interface ChatMessageProps {
   message: ChatMessageType
@@ -236,7 +237,6 @@ const decorateStreamingChildren = (children: React.ReactNode, basePath = 'tail')
   return children
 }
 
-
 // ThinkingBlock 组件 - 扁平化折叠样式
 interface ThinkingBlockProps {
   content: string
@@ -309,7 +309,7 @@ const MessageMetaGroup = React.memo(({ autoSkills, manualSkills, searchContent, 
         </div>
 
         <span className={`text-[12px] ${isStreaming ? 'text-text-primary' : 'text-text-secondary group-hover:text-text-primary transition-colors'}`}>
-          {language === 'zh' ? '上下文' : 'Context'}
+          {t('ai.context', language as Language)}
         </span>
 
         {/* 折叠时显示 skill 名称列表 */}
@@ -334,7 +334,7 @@ const MessageMetaGroup = React.memo(({ autoSkills, manualSkills, searchContent, 
               {/* Skill Referenced */}
               {hasSkills && (
                 <div className="flex items-center gap-1.5 text-[12px]">
-                  <span className="text-text-muted/75 shrink-0">{language === 'zh' ? '引用技能' : 'Skill Referenced'}</span>
+                  <span className="text-text-muted/75 shrink-0">{t('ai.skillreferenced', language as Language)}</span>
                   {allSkills.map((item: any, i: number) => (
                     <React.Fragment key={item.skillId || i}>
                       {i > 0 && <span className="text-text-muted/85">,</span>}
@@ -354,13 +354,13 @@ const MessageMetaGroup = React.memo(({ autoSkills, manualSkills, searchContent, 
                 <div className="text-[12px]">
                   {searchContent ? (
                     <div className="flex items-start gap-1.5">
-                      <span className="text-text-muted/75 shrink-0">{language === 'zh' ? '引用文件' : 'File Referenced'}</span>
+                      <span className="text-text-muted/75 shrink-0">{t('ai.filereferenced', language as Language)}</span>
                       <div className="text-text-muted/85 leading-relaxed max-h-32 overflow-auto custom-scrollbar whitespace-pre-wrap">
                         {searchContent}
                       </div>
                     </div>
                   ) : (
-                    <span className="text-text-muted/65 italic">{language === 'zh' ? '正在搜索文件...' : 'Searching files...'}</span>
+                    <span className="text-text-muted/65 italic">{t('ai.searchingfiles', language as Language)}</span>
                   )}
                 </div>
               )}
@@ -500,7 +500,7 @@ const ThinkingBlock = React.memo(({ content, startTime, isStreaming, fontSize }:
                       </div>
                     ) : (
                       <div className="flex items-center gap-2 text-text-muted/80 italic text-xs py-1">
-                        <span className="text-shimmer">{language === 'zh' ? '正在分析...' : 'Analyzing...'}</span>
+                        <span className="text-shimmer">{t('ai.analyzing', language as Language)}</span>
                       </div>
                     )}
                   </div>
@@ -1248,11 +1248,11 @@ const ChatMessage = React.memo(({
   }
 
   const tt = {
-    copy: language === 'zh' ? '复制内容' : 'Copy Content',
-    edit: language === 'zh' ? '编辑消息' : 'Edit Message',
-    restore: language === 'zh' ? '恢复到此检查点' : 'Restore checkpoint',
-    save: language === 'zh' ? '保存并重发' : 'Save & Resend',
-    cancel: language === 'zh' ? '取消' : 'Cancel',
+    copy: t('ai.copycontent', language as Language),
+    edit: t('ai.editmessage', language as Language),
+    restore: t('ai.restorecheckpoint', language as Language),
+    save: t('ai.saveresend', language as Language),
+    cancel: t('ai.cancel', language as Language),
   }
 
   const { isStreaming, previewMap, liveParts, liveInteractive, waitPhase, streamStartTime, retryAttempt, retryDelay, streamDetail } = useAgentStore(useShallow(state => {
@@ -1546,7 +1546,7 @@ const ChatMessage = React.memo(({
                   )}
                   {onDeleteRound && (
                     <div data-msg-menu={message.id}>
-                      <HintOverlay content={language === 'zh' ? '更多' : 'More'}>
+                      <HintOverlay content={t('ai.more', language as Language)}>
                         <button
                           ref={menuBtnRef}
                           onClick={() => {
@@ -1644,7 +1644,7 @@ const ChatMessage = React.memo(({
                   </button>
                 </HintOverlay>
                 {onRegenerate && (
-                  <HintOverlay content={language === 'zh' ? '重新生成' : 'Regenerate'}>
+                  <HintOverlay content={t('ai.regenerate', language as Language)}>
                     <button
                       onClick={() => onRegenerate(message.id)}
                       className="p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-hover transition-all"
@@ -1661,7 +1661,7 @@ const ChatMessage = React.memo(({
                   const totalSec = totalMs / 1000
                   const display = totalSec < 10 ? totalSec.toFixed(1) : Math.round(totalSec).toString()
                   return (
-                    <HintOverlay content={language === 'zh' ? `总耗时 ${display}s` : `${display}s total`}>
+                    <HintOverlay content={t('ai.stotal', language as Language, { display: display })}>
                       <span className="flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] text-text-muted/60 tabular-nums">
                         <Clock className="w-3 h-3" />
                         {display}s
@@ -1671,7 +1671,7 @@ const ChatMessage = React.memo(({
                 })()}
                 {onDeleteRound && (
                   <div data-msg-menu={message.id}>
-                    <HintOverlay content={language === 'zh' ? '更多' : 'More'}>
+                    <HintOverlay content={t('ai.more2', language as Language)}>
                       <button
                         ref={menuBtnRef}
                         onClick={() => {
@@ -1713,7 +1713,7 @@ const ChatMessage = React.memo(({
             className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400/70 hover:bg-red-500/10 hover:text-red-400 transition-colors"
           >
             <Trash2 className="w-3.5 h-3.5" />
-            {language === 'zh' ? '删除' : 'Delete'}
+            {t('ai.delete', language as Language)}
           </button>
         </div>
       )}
@@ -1722,8 +1722,6 @@ const ChatMessage = React.memo(({
     </div>
   )
 })
-
-
 
 ChatMessage.displayName = 'ChatMessage'
 

@@ -9,7 +9,7 @@ import { api } from '../adapters/electronBridge'
 import { getFileName } from '@shared/toolkit/pathHelper'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
 import { toast } from '@components/foundation/NotificationProvider'
-import { t } from '@renderer/i18n'
+import {t, type Language} from '@renderer/i18n'
 import { getEditorConfig } from '@shared/configuration/preferenceSync'
 import { monaco } from '@renderer/monacoWorkerEntry'
 
@@ -40,19 +40,19 @@ export function useFileSave() {
           markFileRestored(file.path)
         }
         toast.success(
-          language === 'zh' ? '文件已保存' : 'File Saved',
+          t('app.filesaved', language as Language),
           getFileName(file.path)
         )
       } else {
         toast.error(
-          language === 'zh' ? '保存失败' : 'Save Failed',
-          language === 'zh' ? '无法写入文件' : 'Could not write to file'
+          t('app.savefailed', language as Language),
+          t('app.couldnotwritetofile', language as Language)
         )
       }
       return success
     } catch (error) {
       toast.error(
-        language === 'zh' ? '保存失败' : 'Save Failed',
+        t('app.savefailed2', language as Language),
         String(error)
       )
       return false
@@ -65,10 +65,10 @@ export function useFileSave() {
     if (file?.isDirty) {
       const fileName = getFileName(filePath)
       const result = await globalConfirm({
-        title: language === 'zh' ? '未保存的更改' : 'Unsaved Changes',
+        title: t('app.unsavedchanges', language as Language),
         message: t('confirmUnsavedChanges', language, { name: fileName }),
-        confirmText: language === 'zh' ? '保存' : 'Save',
-        cancelText: language === 'zh' ? '不保存' : "Don't Save",
+        confirmText: t('app.save', language as Language),
+        cancelText: t('app.dontsave', language as Language),
         variant: 'warning',
       })
       if (result) {

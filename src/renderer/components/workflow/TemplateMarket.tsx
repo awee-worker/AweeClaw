@@ -6,6 +6,7 @@ import {
   getCategoryLabel,
 } from '@shared/configuration/workflows/templateClientAPI'
 import type { WorkflowTemplateEntry, TemplateQuery } from '@shared/configuration/workflows/templateClientAPI'
+import { t, type Language } from '@renderer/i18n'
 
 interface TemplateMarketProps {
   onUseTemplate: (template: WorkflowTemplateEntry) => void
@@ -45,7 +46,7 @@ export default function TemplateMarket({ onUseTemplate, language }: TemplateMark
         setTemplates(result.items)
         setTotal(result.total)
       } catch (err) {
-        setError(language === 'zh' ? '加载模板失败' : 'Failed to load templates')
+        setError(t('wf.failedtoloadtemplates', language as Language))
         console.error('Template load error:', err)
       } finally {
         setLoading(false)
@@ -128,21 +129,19 @@ export default function TemplateMarket({ onUseTemplate, language }: TemplateMark
   )
 
   const totalPages = Math.ceil(total / PAGE_SIZE)
-  const t = (en: string, zh: string) => (language === 'zh' ? zh : en)
-
   return (
     <div className="h-full flex flex-col bg-white dark:bg-gray-900">
       {/* Header */}
       <div className="flex-shrink-0 border-b border-gray-200 dark:border-gray-700 p-4">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            {t('Template Market', '模板市场')}
+            {t('app.templatemarket', language as Language)}
           </h2>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
               className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400"
-              title={viewMode === 'grid' ? t('List View', '列表视图') : t('Grid View', '网格视图')}
+              title={viewMode === 'grid' ? t('app.listview', language as Language) : t('app.gridview', language as Language)}
             >
               {viewMode === 'grid' ? <List size={18} /> : <LayoutGrid size={18} />}
             </button>
@@ -170,7 +169,7 @@ export default function TemplateMarket({ onUseTemplate, language }: TemplateMark
             type="text"
             value={search}
             onChange={(e) => handleSearchChange(e.target.value)}
-            placeholder={t('Search templates...', '搜索模板...')}
+            placeholder={t('app.searchtemplates', language as Language)}
             className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
           />
           {search && (
@@ -191,10 +190,10 @@ export default function TemplateMarket({ onUseTemplate, language }: TemplateMark
               onChange={(e) => setTypeFilter(e.target.value)}
               className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              <option value="">{t('All Types', '全部类型')}</option>
-              <option value="WORKFLOW">{t('Workflow', '工作流')}</option>
-              <option value="CHAT">{t('Chat', '对话')}</option>
-              <option value="RAG">{t('RAG', '检索增强')}</option>
+              <option value="">{t('app.alltypes', language as Language)}</option>
+              <option value="WORKFLOW">{t('app.workflow', language as Language)}</option>
+              <option value="CHAT">{t('app.chat', language as Language)}</option>
+              <option value="RAG">{t('app.rag', language as Language)}</option>
             </select>
 
             <select
@@ -202,7 +201,7 @@ export default function TemplateMarket({ onUseTemplate, language }: TemplateMark
               onChange={(e) => setCategoryFilter(e.target.value)}
               className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              <option value="">{t('All Categories', '全部分类')}</option>
+              <option value="">{t('app.allcategories', language as Language)}</option>
               {CATEGORIES.map((cat) => (
                 <option key={cat.key} value={cat.key}>
                   {getCategoryLabel(cat.key, language as 'en' | 'zh')}
@@ -215,7 +214,7 @@ export default function TemplateMarket({ onUseTemplate, language }: TemplateMark
                 onClick={clearFilters}
                 className="px-3 py-1.5 rounded-lg text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
               >
-                {t('Clear Filters', '清除筛选')}
+                {t('app.clearfilters', language as Language)}
               </button>
             )}
           </div>
@@ -237,13 +236,13 @@ export default function TemplateMarket({ onUseTemplate, language }: TemplateMark
               }
               className="px-4 py-2 rounded-lg bg-blue-500 text-white text-sm hover:bg-blue-600"
             >
-              {t('Retry', '重试')}
+              {t('app.retry', language as Language)}
             </button>
           </div>
         ) : templates.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-3">
             <Download size={48} strokeWidth={1} />
-            <p>{t('No templates found', '未找到模板')}</p>
+            <p>{t('app.notemplatesfound', language as Language)}</p>
           </div>
         ) : viewMode === 'grid' ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -280,7 +279,7 @@ export default function TemplateMarket({ onUseTemplate, language }: TemplateMark
       {totalPages > 1 && (
         <div className="flex-shrink-0 border-t border-gray-200 dark:border-gray-700 px-4 py-3 flex items-center justify-between">
           <span className="text-sm text-gray-500">
-            {t(`Total ${total} templates`, `共 ${total} 个模板`)}
+            {t('app.totaltemplates', language as Language, { total: total })}
           </span>
           <div className="flex items-center gap-1">
             <button
@@ -288,7 +287,7 @@ export default function TemplateMarket({ onUseTemplate, language }: TemplateMark
               disabled={page <= 1}
               className="px-3 py-1.5 rounded-lg text-sm border border-gray-200 dark:border-gray-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
             >
-              {t('Prev', '上一页')}
+              {t('app.prev2', language as Language)}
             </button>
             {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
               let pageNum: number
@@ -320,7 +319,7 @@ export default function TemplateMarket({ onUseTemplate, language }: TemplateMark
               disabled={page >= totalPages}
               className="px-3 py-1.5 rounded-lg text-sm border border-gray-200 dark:border-gray-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
             >
-              {t('Next', '下一页')}
+              {t('app.next2', language as Language)}
             </button>
           </div>
         </div>
@@ -359,7 +358,7 @@ function TemplateCard({
   onRate: (id: string, rating: number) => void
   onSelect: (tmpl: WorkflowTemplateEntry) => void
   ratingState: Record<string, number>
-  t: (en: string, zh: string) => string
+  t: (key: string, lang: Language, params?: Record<string, string | number | undefined>) => string
 }) {
   const name = language === 'zh' && template.nameZh ? template.nameZh : template.name
   const desc =
@@ -378,7 +377,7 @@ function TemplateCard({
         <div className="flex flex-col items-end gap-1">
           {template.isOfficial && (
             <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-              {t('Official', '官方')}
+              {t('app.official', language as Language)}
             </span>
           )}
           <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
@@ -429,7 +428,7 @@ function TemplateCard({
           }}
           className="px-4 py-2 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 transition-colors"
         >
-          {t('Use Template', '使用模板')}
+          {t('app.usetemplate', language as Language)}
         </button>
         <button
           onClick={(e) => {
@@ -438,7 +437,7 @@ function TemplateCard({
           }}
           className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
         >
-          {t('Details', '详情')}
+          {t('app.details2', language as Language)}
         </button>
       </div>
 
@@ -490,7 +489,7 @@ function TemplateRow({
   language: 'en' | 'zh'
   onUse: (tmpl: WorkflowTemplateEntry) => void
   onSelect: (tmpl: WorkflowTemplateEntry) => void
-  t: (en: string, zh: string) => string
+  t: (key: string, lang: Language, params?: Record<string, string | number | undefined>) => string
 }) {
   const name = language === 'zh' && template.nameZh ? template.nameZh : template.name
   const desc =
@@ -510,7 +509,7 @@ function TemplateRow({
           <h3 className="font-medium text-gray-900 dark:text-gray-100 truncate">{name}</h3>
           {template.isOfficial && (
             <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-              {t('Official', '官方')}
+              {t('app.official2', language as Language)}
             </span>
           )}
           <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
@@ -535,7 +534,7 @@ function TemplateRow({
           onClick={() => onUse(template)}
           className="px-3 py-1.5 rounded-lg bg-blue-500 text-white text-xs font-medium hover:bg-blue-600 transition-colors"
         >
-          {t('Use', '使用')}
+          {t('app.use', language as Language)}
         </button>
         <button
           onClick={() => onSelect(template)}
@@ -565,7 +564,7 @@ function TemplateDetailModal({
   onUse: (tmpl: WorkflowTemplateEntry) => void
   onRate: (id: string, rating: number) => void
   ratingState: Record<string, number>
-  t: (en: string, zh: string) => string
+  t: (key: string, lang: Language, params?: Record<string, string | number | undefined>) => string
 }) {
   const name = language === 'zh' && template.nameZh ? template.nameZh : template.name
   const desc =
@@ -614,22 +613,22 @@ function TemplateDetailModal({
           <div className="grid grid-cols-3 gap-3">
             <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-900/50 text-center">
               <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">{nodeCount}</p>
-              <p className="text-xs text-gray-400">{t('Nodes', '节点')}</p>
+              <p className="text-xs text-gray-400">{t('app.nodes', language as Language)}</p>
             </div>
             <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-900/50 text-center">
               <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">{edgeCount}</p>
-              <p className="text-xs text-gray-400">{t('Edges', '连线')}</p>
+              <p className="text-xs text-gray-400">{t('app.edges', language as Language)}</p>
             </div>
             <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-900/50 text-center">
               <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">{template.usageCount}</p>
-              <p className="text-xs text-gray-400">{t('Uses', '使用')}</p>
+              <p className="text-xs text-gray-400">{t('app.uses', language as Language)}</p>
             </div>
           </div>
 
           {/* Rating */}
           <div>
             <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              {t('Rating', '评分')}: {template.rating ? template.rating.toFixed(1) : '-'}
+              {t('app.rating2', language as Language)}: {template.rating ? template.rating.toFixed(1) : '-'}
             </p>
             <div className="flex items-center gap-1">
               {[1, 2, 3, 4, 5].map((star) => (
@@ -664,7 +663,7 @@ function TemplateDetailModal({
           {template.tags && template.tags.length > 0 && (
             <div>
               <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                {t('Tags', '标签')}
+                {t('app.tags2', language as Language)}
               </p>
               <div className="flex flex-wrap gap-1.5">
                 {template.tags.map((tag) => (
@@ -686,7 +685,7 @@ function TemplateDetailModal({
             onClick={onClose}
             className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700"
           >
-            {t('Cancel', '取消')}
+            {t('app.cancel2', language as Language)}
           </button>
           <button
             onClick={() => {
@@ -695,7 +694,7 @@ function TemplateDetailModal({
             }}
             className="px-4 py-2 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 transition-colors"
           >
-            {t('Use This Template', '使用此模板')}
+            {t('app.usethistemplate', language as Language)}
           </button>
         </div>
       </div>

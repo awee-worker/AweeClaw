@@ -13,7 +13,7 @@ import QRCode from 'qrcode'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { ActionButton } from '@components/ui'
-import { type Language } from '@renderer/i18n'
+import { t, type Language } from '@renderer/i18n'
 import { backendApi } from '@services/backendApi'
 import { getQuotaBarColor, getQuotaTextColor } from '@utils/quotaColors'
 import {
@@ -99,7 +99,7 @@ export function PlanPanel({ language }: PlanPanelProps) {
       setPolling(true)
       pollOrderStatus(result.order.orderNo || result.payment.orderNo)
     } catch (e: any) {
-      setPaymentError(e?.message || (language === 'zh' ? '创建订单失败' : 'Failed to create order'))
+      setPaymentError(e?.message || (t('user.failedtocreateorder', language as Language)))
     } finally {
       setPaymentLoading(false)
     }
@@ -121,7 +121,7 @@ export function PlanPanel({ language }: PlanPanelProps) {
         }
         if (order?.status === 'CANCELLED' || order?.status === 'EXPIRED') {
           setPolling(false)
-          setPaymentError(language === 'zh' ? `订单已${order.status === 'CANCELLED' ? '取消' : '过期'}` : `Order ${order.status.toLowerCase()}`)
+          setPaymentError(t('user.order', language as Language, { status: order.status.toLowerCase(), status2: order.status === 'CANCELLED' ? '取消' : '过期' }))
           return
         }
       } catch {}
@@ -146,11 +146,11 @@ export function PlanPanel({ language }: PlanPanelProps) {
         <div className="flex-1">
           <p className="text-sm font-semibold text-text-primary">
             {quota?.displayName || (cloudUser?.planId === 'FREE'
-              ? language === 'zh' ? '免费版' : 'Free Plan'
+              ? t('user.freeplan', language as Language)
               : cloudUser?.planId === 'PRO' || cloudUser?.planId === 'PROFESSIONAL'
-                ? language === 'zh' ? '专业版' : 'Pro Plan'
+                ? t('user.proplan', language as Language)
                 : cloudUser?.planId === 'ENTERPRISE'
-                  ? language === 'zh' ? '企业版' : 'Enterprise Plan'
+                  ? t('user.enterpriseplan', language as Language)
                   : cloudUser?.planId)}
           </p>
           <p className="text-xs text-text-muted">{cloudUser?.role}</p>
@@ -162,10 +162,10 @@ export function PlanPanel({ language }: PlanPanelProps) {
           <div className="flex items-center justify-between text-xs">
             <span className={`flex items-center gap-1 ${getQuotaTextColor(quotaPercent)}`}>
               <Zap className="w-3 h-3" />
-              {language === 'zh' ? 'Token 用量' : 'Token Usage'}
+              {t('user.tokenusage', language as Language)}
             </span>
             <span className={`${getQuotaTextColor(quotaPercent)} font-mono`}>
-              {quota.used.toLocaleString()} / {quota.remaining === -1 ? (language === 'zh' ? '无限' : '∞') : quota.limit.toLocaleString()}
+              {quota.used.toLocaleString()} / {quota.remaining === -1 ? (t('user.text1', language as Language)) : quota.limit.toLocaleString()}
             </span>
           </div>
           <div className="h-1.5 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
@@ -181,7 +181,7 @@ export function PlanPanel({ language }: PlanPanelProps) {
         {cloudUser?.planId !== 'ENTERPRISE' && !paymentResult && (
           <>
             <h4 className="text-sm font-medium text-text-primary mb-3">
-              {language === 'zh' ? '升级套餐' : 'Upgrade Plan'}
+              {t('user.upgradeplan', language as Language)}
             </h4>
             {loadingPlans ? (
               <div className="flex items-center justify-center py-6">
@@ -189,7 +189,7 @@ export function PlanPanel({ language }: PlanPanelProps) {
               </div>
             ) : plans.length === 0 ? (
               <div className="text-center py-4 text-sm text-text-muted">
-                {language === 'zh' ? '暂无可升级套餐' : 'No upgrade plans available'}
+                {t('user.noupgradeplansavailable', language as Language)}
               </div>
             ) : (
               <div className="space-y-2">
@@ -211,7 +211,7 @@ export function PlanPanel({ language }: PlanPanelProps) {
                       </div>
                       <div className="text-right">
                         <p className="text-lg font-bold text-text-primary">¥{Number(plan.price).toFixed(0)}</p>
-                        <p className="text-xs text-text-muted">{language === 'zh' ? '/月' : '/mo'}</p>
+                        <p className="text-xs text-text-muted">{t('user.mo', language as Language)}</p>
                       </div>
                     </div>
                   </button>
@@ -221,7 +221,7 @@ export function PlanPanel({ language }: PlanPanelProps) {
 
             {selectedPlan && (
               <div className="space-y-3 mt-4">
-                <p className="text-xs text-text-muted">{language === 'zh' ? '选择支付方式' : 'Select payment method'}</p>
+                <p className="text-xs text-text-muted">{t('user.selectpaymentmethod', language as Language)}</p>
                 <div className={`grid gap-2 ${displayChannels.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
                   {displayChannels.map(ch => {
                     const style = channelStyles[ch] || channelStyles.MOCK
@@ -246,7 +246,7 @@ export function PlanPanel({ language }: PlanPanelProps) {
                 <ActionButton variant="primary" className="w-full" onClick={handleUpgrade} disabled={!paymentChannel || paymentLoading}>
                   {paymentLoading ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : language === 'zh' ? `支付 ¥${Number(selectedPlan.price).toFixed(2)}` : `Pay ¥${Number(selectedPlan.price).toFixed(2)}`}
+                  ) : t('user.pay', language as Language, { price: Number(selectedPlan.price).toFixed(2) })}
                 </ActionButton>
               </div>
             )}
@@ -259,7 +259,7 @@ export function PlanPanel({ language }: PlanPanelProps) {
           <div className="p-6 rounded-xl bg-surface/50 border border-border/50">
             {paymentChannel === 'WECHAT' && paymentResult.qrCodeUrl && (
               <div className="space-y-3">
-                <p className="text-sm text-text-primary">{language === 'zh' ? '请使用微信扫码支付' : 'Scan with WeChat to pay'}</p>
+                <p className="text-sm text-text-primary">{t('user.scanwithwechattopay', language as Language)}</p>
                 <div className="w-48 h-48 mx-auto bg-white rounded-xl flex items-center justify-center overflow-hidden">
                   {qrCodeDataUrl ? <img src={qrCodeDataUrl} alt="QR" className="w-full h-full" /> : <Loader2 className="w-5 h-5 animate-spin text-gray-400" />}
                 </div>
@@ -267,15 +267,15 @@ export function PlanPanel({ language }: PlanPanelProps) {
             )}
             {paymentChannel === 'ALIPAY' && paymentResult.paymentUrl && (
               <div className="space-y-3">
-                <p className="text-sm text-text-primary">{language === 'zh' ? '即将跳转到支付宝' : 'Redirecting to Alipay'}</p>
+                <p className="text-sm text-text-primary">{t('user.redirectingtoalipay', language as Language)}</p>
                 <ActionButton variant="secondary" onClick={() => window.electronAPI?.openExternalUrl?.(paymentResult.paymentUrl!)} leftIcon={<ExternalLink className="w-4 h-4" />}>
-                  {language === 'zh' ? '前往支付' : 'Go to Pay'}
+                  {t('user.gotopay', language as Language)}
                 </ActionButton>
               </div>
             )}
             {paymentChannel === 'MOCK' && (
               <div className="space-y-3">
-                <p className="text-sm text-text-primary">{language === 'zh' ? '模拟支付模式' : 'Mock Payment Mode'}</p>
+                <p className="text-sm text-text-primary">{t('user.mockpaymentmode', language as Language)}</p>
                 <ActionButton variant="success" onClick={async () => {
                   if (!paymentResult.qrCodeUrl) return
                   try {
@@ -284,7 +284,7 @@ export function PlanPanel({ language }: PlanPanelProps) {
                     await fetch(url)
                   } catch {}
                 }}>
-                  {language === 'zh' ? '模拟支付成功' : 'Mock Pay Success'}
+                  {t('user.mockpaysuccess', language as Language)}
                 </ActionButton>
               </div>
             )}
@@ -292,11 +292,11 @@ export function PlanPanel({ language }: PlanPanelProps) {
           {polling && (
             <div className="flex items-center justify-center gap-2 text-xs text-text-muted">
               <Loader2 className="w-3 h-3 animate-spin" />
-              {language === 'zh' ? '等待支付确认...' : 'Waiting for payment confirmation...'}
+              {t('user.waitingforpaymentconfirmation', language as Language)}
             </div>
           )}
           <ActionButton variant="ghost" onClick={() => { setPaymentResult(null); setPaymentError(''); setPolling(false); setQrCodeDataUrl('') }}>
-            {language === 'zh' ? '返回' : 'Back'}
+            {t('user.back', language as Language)}
           </ActionButton>
         </div>
       )}

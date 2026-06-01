@@ -1,10 +1,11 @@
 import type { TabProps } from '../types'
 import { Section } from '../Section'
 import { INPUT_CLASS, SELECT_CLASS } from '../shared'
+import { t, type Language } from '@renderer/i18n'
 
 export function DelaySection({ data, onChange, language }: Omit<TabProps, 'nodeType'>) {
   return (
-    <Section title={language === 'zh' ? '延时' : 'Delay'}>
+    <Section title={t('wf.delay', language as Language)}>
       <div className="flex items-center gap-2">
         <input
           type="number"
@@ -22,7 +23,7 @@ export function DelaySection({ data, onChange, language }: Omit<TabProps, 'nodeT
 export function LoopSection({ data, onChange, language }: Omit<TabProps, 'nodeType'>) {
   return (
     <>
-      <Section title={language === 'zh' ? '最大迭代次数' : 'Max Iterations'}>
+      <Section title={t('wf.maxiterations', language as Language)}>
         <input
           type="number"
           value={data.loopMaxIterations || 10}
@@ -31,7 +32,7 @@ export function LoopSection({ data, onChange, language }: Omit<TabProps, 'nodeTy
           className={INPUT_CLASS}
         />
       </Section>
-      <Section title={language === 'zh' ? '循环变量' : 'Loop Variable'}>
+      <Section title={t('wf.loopvariable', language as Language)}>
         <input
           type="text"
           value={data.loopVariable || ''}
@@ -46,15 +47,15 @@ export function LoopSection({ data, onChange, language }: Omit<TabProps, 'nodeTy
 
 export function ParallelSection({ data, onChange, language }: Omit<TabProps, 'nodeType'>) {
   return (
-    <Section title={language === 'zh' ? '并行策略' : 'Parallel Strategy'}>
+    <Section title={t('wf.parallelstrategy', language as Language)}>
       <select
         value={data.parallelStrategy || 'all'}
         onChange={(e) => onChange('parallelStrategy', e.target.value)}
         className={SELECT_CLASS}
       >
-        <option value="all">{language === 'zh' ? '全部完成' : 'All Complete'}</option>
-        <option value="any">{language === 'zh' ? '任一完成' : 'Any Complete'}</option>
-        <option value="count">{language === 'zh' ? '指定数量' : 'Count Based'}</option>
+        <option value="all">{t('wf.allcomplete', language as Language)}</option>
+        <option value="any">{t('wf.anycomplete', language as Language)}</option>
+        <option value="count">{t('wf.countbased', language as Language)}</option>
       </select>
     </Section>
   )
@@ -62,14 +63,14 @@ export function ParallelSection({ data, onChange, language }: Omit<TabProps, 'no
 
 export function MergeSection({ data, onChange, language }: Omit<TabProps, 'nodeType'>) {
   return (
-    <Section title={language === 'zh' ? '合并策略' : 'Merge Strategy'}>
+    <Section title={t('wf.mergestrategy', language as Language)}>
       <select
         value={data.mergeStrategy || 'all'}
         onChange={(e) => onChange('mergeStrategy', e.target.value)}
         className={SELECT_CLASS}
       >
-        <option value="all">{language === 'zh' ? '等待全部' : 'Wait All'}</option>
-        <option value="any">{language === 'zh' ? '等待任一' : 'Wait Any'}</option>
+        <option value="all">{t('wf.waitall', language as Language)}</option>
+        <option value="any">{t('wf.waitany', language as Language)}</option>
       </select>
     </Section>
   )

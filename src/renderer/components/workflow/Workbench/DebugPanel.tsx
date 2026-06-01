@@ -1,6 +1,7 @@
 import { Bug, X } from 'lucide-react'
 import type { WorkflowDefinitionV2 } from '@shared/protocols/workflowV2'
 import WorkflowRunnerV2 from './WorkflowRunnerV2'
+import { t, type Language } from '@renderer/i18n'
 
 interface DebugPanelProps {
   workflow: WorkflowDefinitionV2
@@ -19,7 +20,7 @@ export default function DebugPanel({ workflow, visible, onClose, onNodeClick, la
         <div className="flex items-center gap-1.5">
           <Bug className="w-3.5 h-3.5 text-[var(--accent)]" />
           <span className="text-xs font-medium text-[var(--text-primary)]">
-            {language === 'zh' ? '调试面板' : 'Debug Panel'}
+            {t('wf.debugpanel', language as Language)}
           </span>
         </div>
         <button
@@ -42,7 +43,7 @@ export function DebugPanelToggle({ onClick, language = 'zh' }: { onClick: () => 
       <button
         onClick={onClick}
         className="p-2 rounded-lg bg-[var(--background)] border border-[var(--border)] shadow-lg hover:bg-[var(--border)]/50 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all"
-        title={language === 'zh' ? '打开调试面板' : 'Open Debug Panel'}
+        title={t('wf.opendebugpanel', language as Language)}
       >
         <Bug className="w-4 h-4" />
       </button>

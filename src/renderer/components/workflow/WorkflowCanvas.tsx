@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import type { WorkflowDefinition, WorkflowStep, WorkflowStepType } from '@shared/protocols/workflow'
+import { t, type Language } from '@renderer/i18n'
 
 interface WorkflowCanvasProps {
   workflow: WorkflowDefinition
@@ -73,7 +74,7 @@ export default function WorkflowCanvas({ workflow, onEditNode, language }: Workf
         </p>
         <div className="flex items-center gap-4 mt-3">
           <span className="text-[11px] text-text-muted/50">
-            {orderedSteps.length} {language === 'zh' ? '步骤' : 'steps'}
+            {orderedSteps.length} {t('wf.steps', language as Language)}
           </span>
           <span className="text-[11px] text-text-muted/50">
             v{workflow.version}
@@ -92,7 +93,7 @@ export default function WorkflowCanvas({ workflow, onEditNode, language }: Workf
       <div className="flex flex-col items-center gap-0">
         {/* Start Node */}
         <div className="flex items-center justify-center w-10 h-10 rounded-full bg-accent/10 border border-accent/30 text-accent text-[11px] font-bold">
-          {language === 'zh' ? '开始' : 'Start'}
+          {t('wf.start', language as Language)}
         </div>
 
         {orderedSteps.map((step, index) => {
@@ -150,7 +151,7 @@ export default function WorkflowCanvas({ workflow, onEditNode, language }: Workf
           <ArrowRight className="w-3 h-3 text-text-muted/40 -rotate-90" />
         </div>
         <div className="flex items-center justify-center w-10 h-10 rounded-full bg-surface/50 border border-border/50 text-text-muted/50 text-[11px] font-bold">
-          {language === 'zh' ? '结束' : 'End'}
+          {t('wf.end', language as Language)}
         </div>
       </div>
     </div>

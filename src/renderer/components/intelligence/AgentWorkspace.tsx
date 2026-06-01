@@ -32,6 +32,7 @@ import { TeamOffice } from './TeamOffice'
 import { TeamChatPanel } from './TeamChatPanel'
 import type { WorkspaceAgent, AgentToolCall, AgentWorkspaceSession } from '@store'
 import type { CollaborationPhase } from '@intelligence/multiAgent/TeamCollaborationProtocol'
+import { t, type Language } from '@renderer/i18n'
 
 function getFileIcon(fileName: string) {
   const ext = fileName.split('.').pop()?.toLowerCase() || ''
@@ -777,7 +778,7 @@ export const AgentWorkspace = memo(function AgentWorkspace() {
         <div className="text-center">
           <BrainCircuit className="w-12 h-12 text-text-muted/30 mx-auto mb-3" />
           <p className="text-sm text-text-muted">
-            {language === 'zh' ? '暂无进行中的智能体协作' : 'No active agent collaboration'}
+            {t('ai.noactiveagentcollaboration', language as Language)}
           </p>
         </div>
       </div>
@@ -809,7 +810,7 @@ export const AgentWorkspace = memo(function AgentWorkspace() {
               session.status === 'plan_review' ? 'text-purple-400' : 'text-purple-400'
             }`} />
             <span className="text-sm font-semibold text-text-primary">
-              {language === 'zh' ? '智能体工作台' : 'Agent Workspace'}
+              {t('ai.agentworkspace', language as Language)}
             </span>
           </div>
 
@@ -966,7 +967,7 @@ export const AgentWorkspace = memo(function AgentWorkspace() {
               {session.agents.length > 0 && (
                 <div className="mt-5">
                   <h3 className="text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-2">
-                    {language === 'zh' ? '活动时间线' : 'Activity Timeline'}
+                    {t('ai.activitytimeline', language as Language)}
                   </h3>
                   <div className="space-y-1.5">
                     {session.agents

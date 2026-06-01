@@ -131,7 +131,7 @@ export default function InlineEdit({
 			const unsubError = api.llm.onError(requestId, (err) => {
 				cleanup()
 				console.error('[InlineEdit] AI Edit stream error:', err)
-				toast.error(t('error', language) || 'Error', err.message || 'AI request failed')
+				toast.error(t('settings.error', language) || 'Error', err.message || 'AI request failed')
 				updateFileContent(filePath, currentFile.content)
 				composerService.rejectChange(filePath)
 				setState('idle')
@@ -146,7 +146,7 @@ export default function InlineEdit({
 			})
 		} catch (err: any) {
 			console.error(err)
-			toast.error(t('error', language) || 'Error', err.message || 'Generation failed')
+			toast.error(t('settings.error', language) || 'Error', err.message || 'Generation failed')
 			updateFileContent(filePath, currentFile.content)
 			composerService.rejectChange(filePath)
 			setState('idle')
@@ -227,7 +227,7 @@ export default function InlineEdit({
 							value={instruction}
 							onChange={(e) => setInstruction(e.target.value)}
 							onKeyDown={handleKeyDown}
-							placeholder={t('describeChangesInline', language) || 'Ask AI to edit...'}
+							placeholder={t('editor.describeChangesInline', language) || 'Ask AI to edit...'}
 							spellCheck={false}
 							className="flex-1 bg-transparent border-none text-[13px] text-text-primary placeholder-text-muted focus:outline-none focus:ring-0 py-0.5"
 						/>
@@ -241,7 +241,7 @@ export default function InlineEdit({
 						<button
 							onClick={handleCancelStream}
 							className="p-1 rounded-full text-text-muted hover:text-status-error hover:bg-status-error/10 transition-colors tooltip"
-							title={t('cancel', language) || 'Cancel'}
+							title={t('statusBar.cancel', language) || 'Cancel'}
 						>
 							<StopCircle className="w-4 h-4" />
 						</button>
@@ -251,7 +251,7 @@ export default function InlineEdit({
 				{state === 'preview' && (
 					<>
 						<span className="text-[12px] text-text-secondary pr-2 border-r border-border/50">
-							{t('apply' as any, language) || 'Accept'} (Enter) / {t('cancel' as any, language) || 'Reject'} (Esc)
+							{t('diff.acceptChanges' as any, language) || 'Accept'} (Enter) / {t('statusBar.cancel' as any, language) || 'Reject'} (Esc)
 						</span>
 						<button
 							onClick={handleAccept}

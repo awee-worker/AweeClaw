@@ -35,6 +35,7 @@ import type {
   SecurityPolicyPanel,
   WebSearchConfig,
   McpConfig,
+  EmailConfig,
   ProviderConfig,
 } from './providerTypes'
 import {
@@ -42,6 +43,7 @@ import {
   getDefaultOpenAICompatibilityProfile,
 } from '@shared/configuration/aiProviders'
 import type { ApiProtocol } from '@shared/configuration/aiProviders'
+import { generateDefaultSearchEngineConfigs } from '@shared/configuration/searchProviders'
 
 // ============================================
 // Provider 扩展类型（运行时使用）
@@ -190,10 +192,17 @@ const defaultAutoApprove: AutoApproveSettings = { ...AUTO_APPROVE_DEFAULTS }
 const defaultWebSearchConfig: WebSearchConfig = {
   googleApiKey: '',
   googleCx: '',
+  searchEngines: generateDefaultSearchEngineConfigs(),
+  activeSearchEngine: 'duckduckgo',
+  searchTimeout: 30,
 }
 
 const defaultMcpConfig: McpConfig = {
   autoConnect: true,
+}
+
+const defaultEmailConfig: EmailConfig = {
+  enabled: false,
 }
 
 export type BrowserMode = 'internal' | 'external'
@@ -256,6 +265,9 @@ export const SETTINGS = {
     default: defaultMcpConfig,
     syncToMain: 'mcpAutoConnect',
   },
+  emailConfig: {
+    default: defaultEmailConfig,
+  },
   aiInstructions: {
     default: '' as string,
   },
@@ -300,6 +312,7 @@ export type SettingsState = {
   securitySettings: SecurityPolicyPanel
   webSearchConfig: WebSearchConfig
   mcpConfig: McpConfig
+  emailConfig: EmailConfig
   aiInstructions: string
   onboardingCompleted: boolean
   enableFileLogging: boolean
@@ -331,6 +344,7 @@ export function getAllDefaults(): SettingsState {
     securitySettings: SETTINGS.securitySettings.default,
     webSearchConfig: SETTINGS.webSearchConfig.default,
     mcpConfig: SETTINGS.mcpConfig.default,
+    emailConfig: SETTINGS.emailConfig.default,
     aiInstructions: SETTINGS.aiInstructions.default,
     onboardingCompleted: SETTINGS.onboardingCompleted.default,
     enableFileLogging: SETTINGS.enableFileLogging.default,
@@ -359,4 +373,5 @@ export {
   defaultAutoApprove,
   defaultWebSearchConfig,
   defaultMcpConfig,
+  defaultEmailConfig,
 }

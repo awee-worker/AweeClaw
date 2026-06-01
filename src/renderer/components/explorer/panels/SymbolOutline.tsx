@@ -10,6 +10,7 @@ import type { LspDocumentSymbol } from '@protocols'
 import { getFileName } from '@shared/toolkit/pathHelper'
 import { logger } from '@toolkit/LogEngine'
 import { getDocumentSymbols } from '@services/languageServerAdapter'
+import { t, type Language } from '@renderer/i18n'
 
 export function OutlineView() {
   const { activeFilePath, language, isLspReady } = useStore(useShallow(s => ({ activeFilePath: s.activeFilePath, language: s.language, isLspReady: s.isLspReady })))
@@ -136,7 +137,7 @@ export function OutlineView() {
     <div className="flex flex-col h-full bg-transparent">
       <div className="h-10 px-3 flex items-center justify-between border-b border-border bg-background-secondary/95 backdrop-blur-md sticky top-0 z-10">
         <span className="text-[12px] font-bold text-text-muted uppercase tracking-wider opacity-80">
-          {language === 'zh' ? '大纲' : 'Outline'}
+          {t('explorer.outline', language as Language)}
         </span>
         {isLoading && <Loader2 className="w-3.5 h-3.5 text-accent animate-spin" />}
       </div>
@@ -147,7 +148,7 @@ export function OutlineView() {
           type="text"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          placeholder={language === 'zh' ? '过滤符号...' : 'Filter symbols...'}
+          placeholder={t('explorer.filtersymbols', language as Language)}
           className="w-full bg-surface border border-border-subtle rounded-lg px-2.5 py-1.5 text-xs text-text-primary focus:border-accent/50 focus:ring-1 focus:ring-accent/20 focus:outline-none transition-all placeholder:text-text-muted/85"
         />
       </div>
@@ -165,11 +166,11 @@ export function OutlineView() {
       <div className="flex-1 overflow-y-auto custom-scrollbar py-1">
         {!activeFilePath ? (
           <div className="p-6 text-center text-xs text-text-muted">
-            {language === 'zh' ? '没有打开的文件' : 'No file open'}
+            {t('explorer.nofileopen', language as Language)}
           </div>
         ) : symbols.length === 0 && !isLoading ? (
           <div className="p-6 text-center text-xs text-text-muted">
-            {language === 'zh' ? '没有找到符号' : 'No symbols found'}
+            {t('explorer.nosymbolsfound', language as Language)}
           </div>
         ) : (
           symbols.map((symbol, idx) => renderSymbol(symbol, 0, String(idx)))

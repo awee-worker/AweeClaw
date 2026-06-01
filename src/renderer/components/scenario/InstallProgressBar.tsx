@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Download, CheckCircle, AlertCircle, Shield, FileArchive, Settings } from 'lucide-react'
 import { useStore } from '@store'
 import { getAPI } from '@services/electronBridge'
+import { t, type Language } from '@renderer/i18n'
 
 interface InstallProgress {
   scenarioId: string
@@ -60,7 +61,6 @@ export function InstallProgressBar({
   const [completed, setCompleted] = useState(false)
   const [error] = useState<string | null>(null)
 
-  const t = (zh: string, en: string) => (language === 'zh' ? zh : en)
   const displayName = language === 'zh' ? scenarioNameZh : scenarioName
 
   useEffect(() => {
@@ -113,7 +113,7 @@ export function InstallProgressBar({
       <div className="flex items-center gap-2 px-3 py-2 bg-green-500/5 border border-green-500/20 rounded-lg">
         <CheckCircle className="w-4 h-4 text-green-400 shrink-0" />
         <span className="text-xs text-green-400">
-          {t(`"${scenarioNameZh}" 安装完成`, `"${scenarioName}" installed successfully`)}
+          {t('app.installedsuccessfully', language as Language, { scenarioName: scenarioName, scenarioNameZh: scenarioNameZh })}
         </span>
       </div>
     )
@@ -125,10 +125,10 @@ export function InstallProgressBar({
         <div className="flex items-center gap-2">
           {phaseMeta.icon}
           <span className="text-xs text-[var(--color-text)]">
-            {t(
-              `${displayName} ${phaseMeta.labelZh}`,
-              `${displayName} ${phaseMeta.labelEn}`,
-            )}
+            {language === 'zh'
+              ? `${displayName} ${phaseMeta.labelZh}`
+              : `${displayName} ${phaseMeta.labelEn}`
+            }
           </span>
         </div>
         <span className="text-xs font-mono text-[var(--color-text)] opacity-60">

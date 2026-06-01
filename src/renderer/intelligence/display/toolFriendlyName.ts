@@ -1,5 +1,6 @@
 import { McpToolProvider } from '@intelligence/toolkit/providers/ProtocolToolRegistry'
 import { useStore } from '@store'
+import { t, type Language } from '@renderer/i18n'
 
 const MCP_TOOL_PREFIX = 'mcp_'
 const MCP_TOOL_SEPARATOR = '__'
@@ -121,7 +122,7 @@ const MCP_TOOL_ACTION_MAP_EN: Record<string, string> = {
     execute_sql: 'Executing SQL',
 }
 
-function guessMcpToolAction(toolName: string, language: string): string | null {
+function guessMcpToolAction(toolName: string, language: Language): string | null {
     const actionMap = language === 'zh' ? MCP_TOOL_ACTION_MAP_ZH : MCP_TOOL_ACTION_MAP_EN
     const lowerName = toolName.toLowerCase()
 
@@ -174,7 +175,7 @@ export function isMcpToolName(name: string): boolean {
 
 export function getFriendlyToolName(
     effectiveName: string,
-    language: string,
+    language: Language,
 ): FriendlyNameResult {
     if (isMcpToolName(effectiveName)) {
         const parsed = parseMcpToolName(effectiveName)
@@ -202,7 +203,7 @@ export function getFriendlyToolName(
 
     if (effectiveName === 'apply_skill') {
         return {
-            label: language === 'zh' ? '加载技能' : 'Loading Skill',
+            label: t('ai.loadingskill', language as Language),
             isMcp: false,
         }
     }
@@ -217,7 +218,7 @@ export function getMcpToolStatusText(
     effectiveName: string,
     status: string,
     isStreaming: boolean,
-    language: string,
+    language: Language,
 ): string | null {
     if (!isMcpToolName(effectiveName)) return null
 

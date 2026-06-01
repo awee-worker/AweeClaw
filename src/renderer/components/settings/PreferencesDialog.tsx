@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState, useEffect, useMemo, useCallback } from 'react'
-import { Cpu, Settings2, Code, Keyboard, Database, Shield, Monitor, Globe, Plug, Braces, Brain, FileCode, FileText, Zap, Check, X, Palette, Radio, Cloud, Eye } from 'lucide-react'
+import { Cpu, Settings2, Code, Keyboard, Database, Shield, Monitor, Plug, Braces, Brain, FileCode, FileText, Zap, Check, X, Palette, Radio, Cloud, Eye, Search, Mail } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { PROVIDERS } from '@configuration/aiProviders'
@@ -19,9 +19,6 @@ const ModelProviderPanel = lazy(() =>
 const EditorPreferencesPanel = lazy(() =>
     import('./tabs/EditorPreferencesPanel').then(module => ({ default: module.EditorPreferencesPanel })),
 )
-const LanguageSettings = lazy(() =>
-    import('./tabs/LanguageSettings').then(module => ({ default: module.LanguageSettings })),
-)
 const AppearanceSettings = lazy(() =>
     import('./tabs/AppearanceSettings').then(module => ({ default: module.AppearanceSettings })),
 )
@@ -30,6 +27,9 @@ const SnippetLibraryPanel = lazy(() =>
 )
 const AgentProfilePanel = lazy(() =>
     import('./tabs/AgentProfilePanel').then(module => ({ default: module.AgentProfilePanel })),
+)
+const SearchEnginePanel = lazy(() =>
+    import('./tabs/SearchEnginePanel').then(module => ({ default: module.SearchEnginePanel })),
 )
 const RulesSettings = lazy(() =>
     import('./tabs/RulesSettings').then(module => ({ default: module.RulesSettings })),
@@ -42,6 +42,9 @@ const SkillRegistryPanel = lazy(() =>
 )
 const McpServerPanel = lazy(() =>
     import('./tabs/McpServerPanel'),
+)
+const EmailServicePanel = lazy(() =>
+    import('./tabs/EmailServicePanel'),
 )
 const LanguageServicePanel = lazy(() =>
     import('./tabs/LanguageServicePanel').then(module => ({ default: module.LanguageServicePanel })),
@@ -111,7 +114,7 @@ function SettingsTabFallback({ language }: { language: Language }) {
         <div className="min-h-[320px] flex items-center justify-center rounded-2xl border border-border/40 bg-surface/70">
             <div className="flex items-center gap-3 text-sm text-text-muted">
                 <div className="w-4 h-4 border-2 border-accent/60 border-t-transparent rounded-full animate-spin" />
-                <span>{language === 'zh' ? '正在加载设置项...' : 'ProgressIndicator settings...'}</span>
+                <span>{t('settings.loadingSettings', language)}</span>
             </div>
         </div>
     )
@@ -132,6 +135,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
         aiInstructions,
         webSearchConfig,
         mcpConfig,
+        emailConfig,
         enableFileLogging,
         editorConfig,
         securitySettings,
@@ -153,6 +157,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
         aiInstructions: s.aiInstructions,
         webSearchConfig: s.webSearchConfig,
         mcpConfig: s.mcpConfig,
+        emailConfig: s.emailConfig,
         enableFileLogging: s.enableFileLogging,
         editorConfig: s.editorConfig,
         securitySettings: s.securitySettings,
@@ -192,6 +197,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
     const [localAiInstructions, setLocalAiInstructions] = useState(aiInstructions)
     const [localWebSearchConfig, setLocalWebSearchConfig] = useState(webSearchConfig)
     const [localMcpConfig, setLocalMcpConfig] = useState(mcpConfig)
+    const [localEmailConfig, setLocalEmailConfig] = useState(emailConfig)
     const [localEnableFileLogging, setLocalEnableFileLogging] = useState(enableFileLogging)
     const [localSecuritySettings, setLocalSecuritySettings] = useState(securitySettings)
     const [localPrivacySettings, setLocalPrivacySettings] = useState(privacySettings)
@@ -209,6 +215,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
         setLocalAiInstructions(aiInstructions)
         setLocalWebSearchConfig(webSearchConfig)
         setLocalMcpConfig(mcpConfig)
+        setLocalEmailConfig(emailConfig)
         setLocalEnableFileLogging(enableFileLogging)
         setLocalSecuritySettings(securitySettings)
         setLocalPrivacySettings(privacySettings)
@@ -219,6 +226,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
         aiInstructions,
         autoApprove,
         editorConfig,
+        emailConfig,
         enableFileLogging,
         language,
         llmConfig,
@@ -279,6 +287,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
         agentConfig: serializeComparable(agentConfig),
         webSearchConfig: serializeComparable(webSearchConfig),
         mcpConfig: serializeComparable(mcpConfig),
+        emailConfig: serializeComparable(emailConfig),
         providerConfigs: serializeComparable(providerConfigs),
         securitySettings: serializeComparable(securitySettings),
         editorConfig: serializeComparable(editorConfig),
@@ -289,10 +298,11 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
         agentConfig: serializeComparable(localAgentConfig),
         webSearchConfig: serializeComparable(localWebSearchConfig),
         mcpConfig: serializeComparable(localMcpConfig),
+        emailConfig: serializeComparable(localEmailConfig),
         providerConfigs: serializeComparable(localProviderConfigs),
         securitySettings: serializeComparable(localSecuritySettings),
         editorConfig: serializeComparable(finalEditorConfig),
-    }), [finalEditorConfig, localAgentConfig, localConfig, localMcpConfig, localProviderConfigs, localSecuritySettings, localWebSearchConfig])
+    }), [finalEditorConfig, localAgentConfig, localConfig, localEmailConfig, localMcpConfig, localProviderConfigs, localSecuritySettings, localWebSearchConfig])
 
     const isDirty = useMemo(() => {
         return localSnapshots.llmConfig !== sourceSnapshots.llmConfig ||
@@ -303,6 +313,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
             localAiInstructions !== aiInstructions ||
             localSnapshots.webSearchConfig !== sourceSnapshots.webSearchConfig ||
             localSnapshots.mcpConfig !== sourceSnapshots.mcpConfig ||
+            localSnapshots.emailConfig !== sourceSnapshots.emailConfig ||
             localEnableFileLogging !== enableFileLogging ||
             localSnapshots.providerConfigs !== sourceSnapshots.providerConfigs ||
             localSnapshots.securitySettings !== sourceSnapshots.securitySettings ||
@@ -343,6 +354,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
             set('aiInstructions', localAiInstructions)
             set('webSearchConfig', localWebSearchConfig)
             set('mcpConfig', localMcpConfig)
+            set('emailConfig', localEmailConfig)
             set('enableFileLogging', localEnableFileLogging)
             set('securitySettings', localSecuritySettings)
             set('privacySettings', localPrivacySettings)
@@ -357,10 +369,10 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                 console.error('语言同步失败:', e)
             }
 
-
-            if (localWebSearchConfig.googleApiKey && localWebSearchConfig.googleCx) {
-                window.electronAPI?.httpSetGoogleSearch?.(localWebSearchConfig.googleApiKey, localWebSearchConfig.googleCx)
-            }
+            window.electronAPI?.httpSetSearchEngineState?.({
+                searchEngines: localWebSearchConfig.searchEngines || {},
+                activeSearchEngine: localWebSearchConfig.activeSearchEngine || 'duckduckgo',
+            })
 
             window.electronAPI?.mcpSetAutoConnect?.(localMcpConfig.autoConnect ?? true)
 
@@ -377,6 +389,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
         localAiInstructions,
         localAutoApprove,
         localConfig,
+        localEmailConfig,
         localEnableFileLogging,
         localLanguage,
         localMcpConfig,
@@ -397,10 +410,10 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
 
         if (isDirty) {
             const confirmed = await globalConfirm({
-                title: t('settings', language as Language),
-                message: t('unsavedChangesConfirm', language as Language),
-                confirmText: t('discard', language as Language),
-                cancelText: t('cancel', language as Language),
+                title: t('settings.managePreferences', language as Language),
+                message: t('settings.unsavedChangesConfirm', language as Language),
+                confirmText: t('statusBar.discard', language as Language),
+                cancelText: t('statusBar.cancel', language as Language),
                 variant: 'warning',
             })
             if (!confirmed) {
@@ -438,24 +451,25 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
 
     const tabs = useMemo(() => {
         const allTabs = [
-            { id: 'provider', label: language === 'zh' ? '模型设置' : 'Model', icon: <Cpu className="w-4 h-4" /> },
-            { id: 'language', label: language === 'zh' ? '语言设置' : 'Language', icon: <Globe className="w-4 h-4" /> },
-            { id: 'appearance', label: language === 'zh' ? '外观设置' : 'Appearance', icon: <Palette className="w-4 h-4" /> },
-            { id: 'agent', label: language === 'zh' ? '智能体' : 'Agent', icon: <Settings2 className="w-4 h-4" /> },
-            { id: 'rules', label: language === 'zh' ? '行为规则' : 'Rules', icon: <FileText className="w-4 h-4" /> },
-            { id: 'memory', label: language === 'zh' ? '记忆系统' : 'Memory System', icon: <Brain className="w-4 h-4" /> },
-            { id: 'skills', label: language === 'zh' ? 'Skills技能' : 'Skills', icon: <Zap className="w-4 h-4" /> },
-            { id: 'mcp', label: language === 'zh' ? 'MCP服务' : 'MCP', icon: <Plug className="w-4 h-4" /> },
-            { id: 'channel', label: language === 'zh' ? '多渠道' : 'Channels', icon: <Radio className="w-4 h-4" /> },
-            { id: 'editor', label: language === 'zh' ? '编辑器' : 'Editor', icon: <Code className="w-4 h-4" /> },
-            { id: 'snippets', label: language === 'zh' ? '代码片段' : 'Snippets', icon: <FileCode className="w-4 h-4" /> },
-            { id: 'indexing', label: language === 'zh' ? '代码索引' : 'Indexing', icon: <Database className="w-4 h-4" /> },
-            { id: 'lsp', label: language === 'zh' ? '语言服务' : 'LSP', icon: <Braces className="w-4 h-4" /> },
-            { id: 'keybindings', label: language === 'zh' ? '快捷键' : 'Keybindings', icon: <Keyboard className="w-4 h-4" /> },
-            { id: 'security', label: language === 'zh' ? '安全设置' : 'Security', icon: <Shield className="w-4 h-4" /> },
-            { id: 'privacy', label: language === 'zh' ? '隐私设置' : 'Privacy', icon: <Eye className="w-4 h-4" /> },
-            { id: 'system', label: language === 'zh' ? '系统设置' : 'System', icon: <Monitor className="w-4 h-4" /> },
-            { id: 'cloud', label: language === 'zh' ? '云端服务' : 'Cloud', icon: <Cloud className="w-4 h-4" /> },
+            { id: 'provider', label: t('settings.provider', language as Language), icon: <Cpu className="w-4 h-4" /> },
+            { id: 'appearance', label: t('settings.appearance', language as Language), icon: <Palette className="w-4 h-4" /> },
+            { id: 'agent', label: t('settings.agent', language as Language), icon: <Settings2 className="w-4 h-4" /> },
+            { id: 'search', label: t('settings.searchEngine', language as Language), icon: <Search className="w-4 h-4" /> },
+            { id: 'rules', label: t('settings.rules', language as Language), icon: <FileText className="w-4 h-4" /> },
+            { id: 'memory', label: t('settings.memory', language as Language), icon: <Brain className="w-4 h-4" /> },
+            { id: 'skills', label: t('settings.skills', language as Language), icon: <Zap className="w-4 h-4" /> },
+            { id: 'mcp', label: t('settings.mcp', language as Language), icon: <Plug className="w-4 h-4" /> },
+            { id: 'email', label: t('settings.email', language as Language), icon: <Mail className="w-4 h-4" /> },
+            { id: 'channel', label: t('settings.channels', language as Language), icon: <Radio className="w-4 h-4" /> },
+            { id: 'editor', label: t('settings.editor', language as Language), icon: <Code className="w-4 h-4" /> },
+            { id: 'snippets', label: t('settings.snippets', language as Language), icon: <FileCode className="w-4 h-4" /> },
+            { id: 'indexing', label: t('settings.indexing', language as Language), icon: <Database className="w-4 h-4" /> },
+            { id: 'lsp', label: t('settings.lsp', language as Language), icon: <Braces className="w-4 h-4" /> },
+            { id: 'keybindings', label: t('settings.keybindings', language as Language), icon: <Keyboard className="w-4 h-4" /> },
+            { id: 'security', label: t('settings.security', language as Language), icon: <Shield className="w-4 h-4" /> },
+            { id: 'privacy', label: t('settings.privacy', language as Language), icon: <Eye className="w-4 h-4" /> },
+            { id: 'system', label: t('settings.system', language as Language), icon: <Monitor className="w-4 h-4" /> },
+            { id: 'cloud', label: t('settings.cloud', language as Language), icon: <Cloud className="w-4 h-4" /> },
         ]
         if (isWorkspaceEditor) return allTabs
         return allTabs.filter(tab => !codeEditorOnlyTabs.has(tab.id))
@@ -463,14 +477,6 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
 
     const renderActiveTab = () => {
         switch (activeTab) {
-            case 'language':
-                return (
-                    <LanguageSettings
-                        language={language as Language}
-                        localLanguage={localLanguage as Language}
-                        setLocalLanguage={(lang) => setLocalLanguage(lang)}
-                    />
-                )
             case 'provider':
                 return (
                     <ModelProviderPanel
@@ -494,6 +500,8 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                         advancedConfig={advancedEditorConfig}
                         setAdvancedConfig={setAdvancedEditorConfig}
                         language={language}
+                        localLanguage={localLanguage as Language}
+                        setLocalLanguage={(lang) => setLocalLanguage(lang)}
                     />
                 )
             case 'editor':
@@ -524,6 +532,14 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                         language={language}
                     />
                 )
+            case 'search':
+                return (
+                    <SearchEnginePanel
+                        webSearchConfig={localWebSearchConfig}
+                        setWebSearchConfig={setLocalWebSearchConfig}
+                        language={language}
+                    />
+                )
             case 'rules':
                 return <RulesSettings language={language} />
             case 'memory':
@@ -532,6 +548,8 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                 return <SkillRegistryPanel language={language} />
             case 'mcp':
                 return <McpServerPanel language={language} mcpConfig={localMcpConfig} setMcpConfig={setLocalMcpConfig} />
+            case 'email':
+                return <EmailServicePanel language={language} emailConfig={localEmailConfig} setEmailConfig={setLocalEmailConfig} />
             case 'channel':
                 return <ChannelSettings language={language} />
             case 'lsp':
@@ -580,7 +598,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                         <div className="p-1.5 rounded-lg bg-accent/10 border border-accent/20">
                             <Settings2 className="w-5 h-5 text-accent" />
                         </div>
-                        {language === 'zh' ? '设置' : 'Settings'}
+                        {t('welcome.settings', language as Language)}
                     </h2>
                 </div>
 
@@ -614,7 +632,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                     <button
                         onClick={handleClose}
                         className="p-2 rounded-xl hover:bg-text-primary/[0.05] text-text-muted hover:text-text-primary transition-all duration-200 group"
-                        title={language === 'zh' ? '关闭设置' : 'Close settings'}
+                        title={t('settings.closeSettings', language as Language)}
                     >
                         <X className="w-5 h-5 group-hover:rotate-90 transition-transform duration-300" />
                     </button>
@@ -637,7 +655,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                         </span>
                         <div className="flex items-center gap-3">
                             <ActionButton variant="ghost" onClick={handleClose} className="hover:bg-text-inverted/[0.05] hover:bg-text-primary/[0.05] text-text-secondary rounded-lg">
-                                {t('cancel', language as Language)}
+                                {t('statusBar.cancel', language as Language)}
                             </ActionButton>
                             <ActionButton
                                 variant={saved ? 'success' : 'primary'}
@@ -648,7 +666,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                                 {saved ? (
                                     <span className="flex items-center gap-2 justify-center font-bold">
                                         <Check className="w-4 h-4" />
-                                        {t('saved', language as Language)}
+                                        {t('settings.saved', language as Language)}
                                     </span>
                                 ) : (
                                     <span className="font-bold">{t('settings.saveChanges', language as Language)}</span>

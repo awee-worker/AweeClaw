@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { workflowClientAPI } from '@shared/configuration/workflows/workflowClientAPI';
 import { teamClientAPI, type TeamEntry } from '@shared/configuration/workflows/teamClientAPI';
+import { t, type Language } from '@renderer/i18n'
 
 interface PermissionUser {
   id: string;
@@ -74,7 +75,7 @@ export default function SharePanel({
   const [selectedTeamId, setSelectedTeamId] = useState('');
   const [teamRole, setTeamRole] = useState('VIEWER');
 
-  const t = (zh: string, en: string) => (language === 'zh' ? zh : en);
+  ;
 
   const loadPermissions = useCallback(async () => {
     if (!workflowId) return;
@@ -121,7 +122,7 @@ export default function SharePanel({
     try {
       await workflowClientAPI.grantPermission(workflowId, email.trim(), selectedRole);
       setSuccessMsg(
-        t(`已授权 ${email} 为 ${selectedRole}`, `Granted ${email} as ${selectedRole}`),
+        t('app.grantedas', language as Language, { email: email, selectedRole: selectedRole }),
       );
       setEmail('');
       await loadPermissions();
@@ -140,10 +141,7 @@ export default function SharePanel({
       await workflowClientAPI.grantTeamPermission(workflowId, selectedTeamId, teamRole);
       const teamName = teams.find((t) => t.id === selectedTeamId)?.name || selectedTeamId;
       setSuccessMsg(
-        t(
-          `已授权团队 ${teamName} 为 ${teamRole}`,
-          `Granted team ${teamName} as ${teamRole}`,
-        ),
+        t('wf.grantedteamasrole', language as Language, { teamName, teamRole }),
       );
       await loadPermissions();
     } catch (err) {
@@ -158,7 +156,7 @@ export default function SharePanel({
       try {
         await workflowClientAPI.revokePermission(workflowId, permId);
         setSuccessMsg(
-          t(`已撤销 ${name} 的权限`, `Revoked permission for ${name}`),
+          t('app.revokedpermissionfor', language as Language, { name: name }),
         );
         await loadPermissions();
       } catch (err) {
@@ -173,10 +171,7 @@ export default function SharePanel({
       try {
         await workflowClientAPI.updatePermission(workflowId, permId, newRole);
         setSuccessMsg(
-          t(
-            `已将 ${name} 的角色改为 ${newRole}`,
-            `Changed ${name}'s role to ${newRole}`,
-          ),
+          t('wf.changedroletto', language as Language, { name, newRole }),
         );
         await loadPermissions();
       } catch (err) {
@@ -187,7 +182,7 @@ export default function SharePanel({
   );
 
   const getDisplayName = (user: PermissionUser | null) => {
-    if (!user) return t('未知用户', 'Unknown');
+    if (!user) return t('app.unknown', language as Language);
     return user.username || user.email || user.id;
   };
 
@@ -203,7 +198,7 @@ export default function SharePanel({
           <div className="flex items-center gap-2">
             <Users className="w-4 h-4 text-[var(--accent)]" />
             <span className="text-sm font-semibold text-[var(--text-primary)]">
-              {t('共享管理', 'Share & Permissions')}
+              {t('app.sharepermissions', language as Language)}
             </span>
           </div>
           <button
@@ -224,7 +219,7 @@ export default function SharePanel({
             }`}
           >
             <Users className="w-3.5 h-3.5 inline mr-1.5 -mt-px" />
-            {t('用户权限', 'User Permissions')}
+            {t('app.userpermissions', language as Language)}
           </button>
           <button
             onClick={() => setActiveTab('teams')}
@@ -235,7 +230,7 @@ export default function SharePanel({
             }`}
           >
             <Building2 className="w-3.5 h-3.5 inline mr-1.5 -mt-px" />
-            {t('团队权限', 'Team Permissions')}
+            {t('app.teampermissions', language as Language)}
           </button>
         </div>
 
@@ -243,7 +238,7 @@ export default function SharePanel({
           <>
             <div className="p-5 border-b border-[var(--border)]/20">
               <label className="block text-xs font-medium text-[var(--text-muted)] mb-2">
-                {t('通过邮箱添加成员', 'Add member by email')}
+                {t('app.addmemberbyemail', language as Language)}
               </label>
               <div className="flex gap-2">
                 <div className="flex-1 relative">
@@ -253,7 +248,7 @@ export default function SharePanel({
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleGrant()}
-                    placeholder={t('输入用户邮箱...', 'Enter user email...')}
+                    placeholder={t('app.enteruseremail', language as Language)}
                     className="w-full h-9 pl-9 pr-3 text-sm bg-[var(--border)]/5 border border-[var(--border)]/30 rounded-lg text-[var(--text-primary)] placeholder:text-[var(--text-muted)]/40 focus:outline-none focus:border-[var(--accent)]/50 focus:ring-1 focus:ring-[var(--accent)]/20 transition-colors"
                   />
                 </div>
@@ -274,7 +269,7 @@ export default function SharePanel({
                   className="flex items-center gap-1 h-9 px-4 text-xs font-semibold rounded-lg bg-[var(--accent)] text-white hover:opacity-90 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  {t('添加', 'Add')}
+                  {t('app.add', language as Language)}
                 </button>
               </div>
             </div>
@@ -290,7 +285,7 @@ export default function SharePanel({
           <>
             <div className="p-5 border-b border-[var(--border)]/20">
               <label className="block text-xs font-medium text-[var(--text-muted)] mb-2">
-                {t('将工作流共享给团队', 'Share workflow with a team')}
+                {t('app.shareworkflowwitha', language as Language)}
               </label>
               {teamsLoading ? (
                 <div className="flex items-center justify-center py-3">
@@ -298,7 +293,7 @@ export default function SharePanel({
                 </div>
               ) : teams.length === 0 ? (
                 <div className="text-xs text-[var(--text-muted)]/60 py-2">
-                  {t('你还没有团队', 'You have no teams')}
+                  {t('app.youhavenoteams', language as Language)}
                 </div>
               ) : (
                 <div className="flex gap-2">
@@ -330,7 +325,7 @@ export default function SharePanel({
                     className="flex items-center gap-1 h-9 px-4 text-xs font-semibold rounded-lg bg-[var(--accent)] text-white hover:opacity-90 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    {t('共享', 'Share')}
+                    {t('app.share', language as Language)}
                   </button>
                 </div>
               )}
@@ -347,17 +342,17 @@ export default function SharePanel({
           <div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)]/70">
             <div className="flex items-center gap-1">
               <Eye className="w-3 h-3" />
-              {t('只读=查看', 'Viewer=Read')}
+              {t('app.viewerread', language as Language)}
             </div>
             <span className="text-[var(--border)]/50">|</span>
             <div className="flex items-center gap-1">
               <Edit3 className="w-3 h-3" />
-              {t('编辑=修改', 'Editor=Edit')}
+              {t('app.editoredit', language as Language)}
             </div>
             <span className="text-[var(--border)]/50">|</span>
             <div className="flex items-center gap-1">
               <Shield className="w-3 h-3" />
-              {t('管理=全部+共享', 'Admin=Full+Share')}
+              {t('app.adminfullshare', language as Language)}
             </div>
           </div>
         </div>
@@ -404,7 +399,7 @@ export default function SharePanel({
         <div className="flex flex-col items-center justify-center py-12 text-[var(--text-muted)]">
           <Users className="w-8 h-8 opacity-20 mb-2" />
           <span className="text-xs">
-            {t('尚未共享给任何人', 'Not shared with anyone yet')}
+            {t('app.notsharedwithanyone', language as Language)}
           </span>
         </div>
       );
@@ -459,7 +454,7 @@ export default function SharePanel({
                 <button
                   onClick={() => handleRevoke(perm.id, name)}
                   className="p-1 rounded-md hover:bg-red-500/10 text-[var(--text-muted)] hover:text-red-400 transition-colors"
-                  title={t('撤销权限', 'Revoke')}
+                  title={t('app.revoke', language as Language)}
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -485,7 +480,7 @@ export default function SharePanel({
         <div className="flex flex-col items-center justify-center py-12 text-[var(--text-muted)]">
           <Building2 className="w-8 h-8 opacity-20 mb-2" />
           <span className="text-xs">
-            {t('尚未共享给任何团队', 'Not shared with any team yet')}
+            {t('app.notsharedwithany', language as Language)}
           </span>
         </div>
       );
@@ -496,7 +491,7 @@ export default function SharePanel({
         {list.map((perm) => {
           const RoleIcon =
             ROLE_OPTIONS.find((o) => o.value === perm.role)?.icon || Eye;
-          const name = perm.team?.name || t('未知团队', 'Unknown team');
+          const name = perm.team?.name || t('app.unknownteam', language as Language);
 
           return (
             <div
@@ -512,7 +507,7 @@ export default function SharePanel({
                   {name}
                 </div>
                 <div className="text-[11px] text-[var(--text-muted)]/60">
-                  {t('团队共享', 'Team share')}
+                  {t('app.teamshare', language as Language)}
                 </div>
               </div>
 
@@ -538,7 +533,7 @@ export default function SharePanel({
                 <button
                   onClick={() => handleRevoke(perm.id, name)}
                   className="p-1 rounded-md hover:bg-red-500/10 text-[var(--text-muted)] hover:text-red-400 transition-colors"
-                  title={t('撤销权限', 'Revoke')}
+                  title={t('app.revoke2', language as Language)}
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>

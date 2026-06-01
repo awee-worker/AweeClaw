@@ -16,6 +16,7 @@ import type { ChatThread } from '@intelligence/providerTypes'
 import type { SidebarItemDescriptor } from '@shared/protocols/scenario'
 import type { SidePanel } from '@store/slices'
 import { BRAND } from '@shared/brand'
+import { t, type Language } from '@renderer/i18n'
 
 const isMac = typeof navigator !== 'undefined' && (
   navigator.platform.toUpperCase().indexOf('MAC') >= 0 ||
@@ -60,7 +61,7 @@ function UserMenuDropdown({
 }: {
   isOpen: boolean
   onClose: () => void
-  language: string
+  language: Language
   onSettingsClick: () => void
   onExploreClick: () => void
   onWorkflowClick: () => void
@@ -104,23 +105,23 @@ function UserMenuDropdown({
   if (!isOpen) return null
 
   const planLabel = cloudUser?.planId === 'ENTERPRISE'
-    ? (language === 'zh' ? '企业版' : 'Enterprise')
+    ? (t('layout.enterprise', language as Language))
     : cloudUser?.planId === 'PRO' || cloudUser?.planId === 'PROFESSIONAL'
-      ? (language === 'zh' ? '专业版' : 'Pro')
-      : language === 'zh' ? '免费版' : 'Free'
+      ? (t('layout.pro', language as Language))
+      : t('layout.free', language as Language)
 
   const initial = cloudUser?.username?.[0]?.toUpperCase() || cloudUser?.email?.[0]?.toUpperCase() || '?'
   const displayName = cloudUser?.username || cloudUser?.email || ''
 
   const featureItems = [
-    { icon: Compass, label: language === 'zh' ? '工作场景' : 'Work Scenes', onClick: onExploreClick },
-    { icon: Workflow, label: language === 'zh' ? '工作流' : 'Workflow', onClick: onWorkflowClick },
+    { icon: Compass, label: t('layout.workscenes', language as Language), onClick: onExploreClick },
+    { icon: Workflow, label: t('layout.workflow', language as Language), onClick: onWorkflowClick },
   ]
 
   const systemItems = [
-    { icon: Settings, label: language === 'zh' ? '设置' : 'Settings', onClick: onSettingsClick },
-    { icon: CloudSync, label: language === 'zh' ? '检测更新' : 'Check for Updates', onClick: onCheckUpdate },
-    { icon: Info, label: language === 'zh' ? '关于 AweeClaw' : 'About AweeClaw', onClick: onAbout },
+    { icon: Settings, label: t('layout.settings', language as Language), onClick: onSettingsClick },
+    { icon: CloudSync, label: t('layout.checkforupdates', language as Language), onClick: onCheckUpdate },
+    { icon: Info, label: t('layout.aboutaweeclaw', language as Language), onClick: onAbout },
   ]
 
   return createPortal(
@@ -157,21 +158,21 @@ function UserMenuDropdown({
             className="w-full h-8 flex items-center gap-2.5 px-3 text-text-primary hover:bg-text-primary/[0.06] transition-colors text-[13px]"
           >
             <UserCircle className="w-[16px] h-[16px]" strokeWidth={1.5} />
-            <span>{language === 'zh' ? '用户中心' : 'Account'}</span>
+            <span>{t('layout.account', language as Language)}</span>
           </button>
           <button
             onClick={() => { onBillingCenterClick(); onClose() }}
             className="w-full h-8 flex items-center gap-2.5 px-3 text-text-primary hover:bg-text-primary/[0.06] transition-colors text-[13px]"
           >
             <Wallet className="w-[16px] h-[16px]" strokeWidth={1.5} />
-            <span>{language === 'zh' ? '费用中心' : 'Billing'}</span>
+            <span>{t('layout.billing', language as Language)}</span>
           </button>
           <button
             onClick={() => { onSessionHistoryClick(); onClose() }}
             className="w-full h-8 flex items-center gap-2.5 px-3 text-text-primary hover:bg-text-primary/[0.06] transition-colors text-[13px]"
           >
             <History className="w-[16px] h-[16px]" strokeWidth={1.5} />
-            <span>{language === 'zh' ? '历史会话' : 'Session History'}</span>
+            <span>{t('layout.sessionhistory', language as Language)}</span>
           </button>
         </>
       )}
@@ -207,19 +208,19 @@ function UserMenuDropdown({
           <div className="h-px bg-border/50 my-1 mx-2" />
           {showLogoutConfirm ? (
             <div className="px-3 py-2 space-y-2">
-              <p className="text-[12px] text-text-secondary">{language === 'zh' ? '确定要退出登录吗？' : 'Are you sure you want to sign out?'}</p>
+              <p className="text-[12px] text-text-secondary">{t('layout.areyousureyouwant', language as Language)}</p>
               <div className="flex gap-2">
                 <button
                   onClick={() => setShowLogoutConfirm(false)}
                   className="flex-1 h-7 rounded-md text-[12px] font-medium border border-border/50 text-text-secondary hover:bg-surface-hover transition-colors"
                 >
-                  {language === 'zh' ? '取消' : 'Cancel'}
+                  {t('layout.cancel', language as Language)}
                 </button>
                 <button
                   onClick={() => { onLogout(); onClose() }}
                   className="flex-1 h-7 rounded-md text-[12px] font-medium bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors"
                 >
-                  {language === 'zh' ? '退出' : 'Sign Out'}
+                  {t('layout.signout', language as Language)}
                 </button>
               </div>
             </div>
@@ -229,7 +230,7 @@ function UserMenuDropdown({
               className="w-full h-8 flex items-center gap-2.5 px-3 text-red-500 hover:bg-red-500/5 transition-colors text-[13px]"
             >
               <LogOut className="w-[16px] h-[16px]" strokeWidth={1.5} />
-              <span>{language === 'zh' ? '退出登录' : 'Sign Out'}</span>
+              <span>{t('layout.signout2', language as Language)}</span>
             </button>
           )}
         </>
@@ -249,7 +250,7 @@ function ThreadListItem({
 }: {
   thread: ChatThread
   isActive: boolean
-  language: string
+  language: Language
   onSelect: () => void
   onDelete: () => void
   onRename: (threadId: string) => void
@@ -317,14 +318,14 @@ function ThreadListItem({
             className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-text-primary/[0.06] transition-colors"
           >
             <Edit2 className="w-3 h-3" strokeWidth={1.5} />
-            {language === 'zh' ? '重命名' : 'Rename'}
+            {t('layout.rename', language as Language)}
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onDelete() }}
             className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:text-red-500 hover:bg-red-500/5 transition-colors"
           >
             <Trash2 className="w-3 h-3" strokeWidth={1.5} />
-            {language === 'zh' ? '删除' : 'Delete'}
+            {t('layout.delete', language as Language)}
           </button>
         </div>,
         document.body
@@ -809,12 +810,12 @@ export default function NavigationRail() {
         <div className="flex-1 flex flex-col min-h-0 w-full">
           <div className={`${p}-nav-rail-history-header`}>
             <span className={`${p}-nav-rail-history-title`}>
-              {language === 'zh' ? '历史会话' : 'Chat History'}
+              {t('layout.chathistory', language as Language)}
             </span>
             <button
               className={`${p}-nav-rail-history-new-btn`}
               onClick={handleNewThread}
-              title={language === 'zh' ? '新对话' : 'New Chat'}
+              title={t('layout.newchat', language as Language)}
             >
               <Plus className="w-3.5 h-3.5" />
             </button>
@@ -822,7 +823,7 @@ export default function NavigationRail() {
           <div className="flex-1 overflow-y-auto no-scrollbar">
             {allThreads.length === 0 ? (
               <div className="px-2 py-4 text-[11px] text-text-muted opacity-40 text-center">
-                {language === 'zh' ? '暂无会话' : 'No chats yet'}
+                {t('layout.nochatsyet', language as Language)}
               </div>
             ) : (
               <div className="flex flex-col gap-0.5">
@@ -860,7 +861,7 @@ export default function NavigationRail() {
         </div>
       ) : (
         <div className="flex-1 flex flex-col items-center min-h-0">
-          <HintOverlay content={language === 'zh' ? '新对话' : 'New Chat'} side="right" delay={400}>
+          <HintOverlay content={t('layout.newchat2', language as Language)} side="right" delay={400}>
             <button
               onClick={handleNewThread}
               className="w-[38px] h-[38px] rounded-lg flex items-center justify-center text-text-muted hover:text-accent hover:bg-accent/8 transition-all"
@@ -943,10 +944,10 @@ export default function NavigationRail() {
           navRailExpanded ? (
             <button className={`${p}-nav-rail-login-btn`} onClick={() => setShowLoginModal(true)}>
               <LogIn className="w-3.5 h-3.5" />
-              <span>{language === 'zh' ? '登录' : 'Sign In'}</span>
+              <span>{t('layout.signin', language as Language)}</span>
             </button>
           ) : (
-            <HintOverlay content={language === 'zh' ? '登录' : 'Sign In'} side="right" delay={400}>
+            <HintOverlay content={t('layout.signin2', language as Language)} side="right" delay={400}>
               <button className={`${p}-nav-rail-login-btn`} onClick={() => setShowLoginModal(true)}>
                 <LogIn className="w-3.5 h-3.5" />
               </button>

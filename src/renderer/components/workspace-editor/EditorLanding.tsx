@@ -12,7 +12,7 @@ export function EditorWelcome() {
     { icon: <Search className="w-4 h-4" />, label: t('editorWelcome.searchTitle', language), action: openQuickOpen, keys: ['Ctrl', 'P'] },
     { icon: <TerminalSquare className="w-4 h-4" />, label: t('editorWelcome.commandsTitle', language), action: openCommandPalette, keys: ['Ctrl', 'Shift', 'P'] },
     { icon: <FolderOpen className="w-4 h-4" />, label: t('editorWelcome.openRecentFile', language), action: openQuickOpen, keys: null },
-    { icon: <Settings className="w-4 h-4" />, label: t('settings', language), action: () => setShowSettingsPage(true), keys: ['Ctrl', ','] },
+    { icon: <Settings className="w-4 h-4" />, label: t('welcome.settings', language), action: () => setShowSettingsPage(true), keys: ['Ctrl', ','] },
   ]
 
   return (

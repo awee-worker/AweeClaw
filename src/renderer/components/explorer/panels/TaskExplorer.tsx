@@ -3,6 +3,7 @@ import {
     Plus, Trash2, Search, CheckSquare, Square,
 } from 'lucide-react'
 import { useStore } from '@store'
+import { t, type Language } from '@renderer/i18n'
 
 interface TaskItem {
     id: string
@@ -22,7 +23,7 @@ const PRIORITY_CONFIG = {
 export function TasksView() {
     const language = useStore(s => s.language)
     const [tasks, setTasks] = useState<TaskItem[]>([
-        { id: 'task-1', title: language === 'zh' ? '欢迎使用任务管理' : 'Welcome to Tasks', completed: false, priority: 'medium', tags: [language === 'zh' ? '示例' : 'demo'], createdAt: Date.now() },
+        { id: 'task-1', title: t('explorer.welcometotasks', language as Language), completed: false, priority: 'medium', tags: [t('explorer.demo', language as Language)], createdAt: Date.now() },
     ])
     const [searchQuery, setSearchQuery] = useState('')
     const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'completed'>('all')
@@ -72,7 +73,7 @@ export function TasksView() {
         <div className="h-full flex flex-col bg-transparent">
             <div className="h-11 min-w-0 px-4 flex items-center justify-between gap-2 group border-b border-border/50 bg-transparent sticky top-0 z-10">
                 <span className="min-w-0 flex-shrink-0 whitespace-nowrap text-[11px] font-black text-text-primary/60 uppercase tracking-[0.2em] font-sans">
-                    {language === 'zh' ? '任务' : 'Tasks'}
+                    {t('explorer.tasks', language as Language)}
                 </span>
                 <div className="flex items-center gap-1 text-[10px] text-text-muted">
                     <span>{activeTasks.length}</span>
@@ -88,7 +89,7 @@ export function TasksView() {
                         value={newTaskTitle}
                         onChange={e => setNewTaskTitle(e.target.value)}
                         onKeyDown={e => e.key === 'Enter' && handleAdd()}
-                        placeholder={language === 'zh' ? '添加任务...' : 'Add task...'}
+                        placeholder={t('explorer.addtask', language as Language)}
                         className="flex-1 bg-transparent text-[11px] text-text-primary outline-none placeholder:text-text-muted/70"
                     />
                 </div>
@@ -98,7 +99,7 @@ export function TasksView() {
                     <input
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
-                        placeholder={language === 'zh' ? '搜索任务...' : 'Search tasks...'}
+                        placeholder={t('explorer.searchtasks', language as Language)}
                         className="flex-1 bg-transparent text-[11px] text-text-primary outline-none placeholder:text-text-muted/70"
                     />
                 </div>
@@ -110,7 +111,7 @@ export function TasksView() {
                             onClick={() => setFilterStatus(status)}
                             className={`text-[10px] px-2 py-0.5 rounded transition-colors ${filterStatus === status ? 'text-accent bg-accent/10' : 'text-text-muted hover:text-text-primary'}`}
                         >
-                            {status === 'all' ? (language === 'zh' ? '全部' : 'All') : status === 'active' ? (language === 'zh' ? '进行中' : 'Active') : (language === 'zh' ? '已完成' : 'Done')}
+                            {status === 'all' ? (t('explorer.all', language as Language)) : status === 'active' ? (t('explorer.active', language as Language)) : (t('explorer.done', language as Language))}
                         </button>
                     ))}
                 </div>
@@ -137,7 +138,7 @@ export function TasksView() {
                         <div className="flex items-center gap-1.5 px-2 py-1">
                             <CheckSquare className="w-3 h-3 text-text-muted" />
                             <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">
-                                {language === 'zh' ? '已完成' : 'Completed'} ({completedTasks.length})
+                                {t('explorer.completed', language as Language)} ({completedTasks.length})
                             </span>
                         </div>
                         <div className="space-y-0.5">
@@ -158,7 +159,7 @@ export function TasksView() {
                 {filteredTasks.length === 0 && (
                     <div className="flex flex-col items-center justify-center py-12 text-text-muted">
                         <CheckSquare className="w-8 h-8 mb-2 opacity-30" />
-                        <p className="text-xs">{language === 'zh' ? '暂无任务' : 'No tasks yet'}</p>
+                        <p className="text-xs">{t('explorer.notasksyet', language as Language)}</p>
                     </div>
                 )}
             </div>
@@ -173,7 +174,7 @@ function TaskRow({
     onToggle: (id: string) => void
     onDelete: (id: string) => void
     onCyclePriority: (id: string) => void
-    language: string
+    language: Language
 }) {
     const priorityConfig = PRIORITY_CONFIG[task.priority]
     return (

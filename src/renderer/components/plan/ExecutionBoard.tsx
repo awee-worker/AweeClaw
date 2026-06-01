@@ -34,12 +34,13 @@ import {
     getPromptTemplateSummary,
 } from '@intelligence/prompt-engine/promptLibrary'
 import type { PlanTask, ExecutionMode } from '@intelligence/state/slices/taskSlice'
+import { type Language } from '@renderer/i18n'
 
 interface TaskBoardProps {
     planId: string
 }
 
-function getLocalizedText(language: string, zh: string, en: string): string {
+function getLocalizedText(language: Language, zh: string, en: string): string {
     return language === 'zh' ? zh : en
 }
 
@@ -116,8 +117,6 @@ const ModelSelector = memo(function ModelSelector({
 
         return result
     }, [providerConfigs])
-
-
 
     // 转换厂商列表为 DropdownSelector 选项
     const providerOptions = useMemo(() => {

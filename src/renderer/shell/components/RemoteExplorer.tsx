@@ -7,10 +7,11 @@ import { api } from '../../adapters/electronBridge'
 import { useStore } from '@store'
 import { buildRemoteEditorPath } from '../services/remoteEditorBridge'
 import type { RemoteFileEntry, RemoteServerConfig } from '../types/terminalTypes'
+import { t, type Language } from '@renderer/i18n'
 
 interface RemoteFileBrowserProps {
   server: RemoteServerConfig
-  language: string
+  language: Language
   onClose?: () => void
 }
 
@@ -114,7 +115,7 @@ export function RemoteExplorer({ server, language, onClose }: RemoteFileBrowserP
       setSelectedFileContent(content || '')
       setDirty(false)
     } catch (readError) {
-      toast.error(language === 'zh' ? '远程文件打开失败' : 'Failed to open remote file', readError instanceof Error ? readError.message : String(readError))
+      toast.error(t('shell.failedtoopenremotefile', language as Language), readError instanceof Error ? readError.message : String(readError))
     }
   }, [language, server])
 
@@ -125,7 +126,7 @@ export function RemoteExplorer({ server, language, onClose }: RemoteFileBrowserP
         remote: { server, remotePath: filePath },
       })
     } catch (readError) {
-      toast.error(language === 'zh' ? '远程文件打开失败' : 'Failed to open remote file', readError instanceof Error ? readError.message : String(readError))
+      toast.error(t('shell.failedtoopenremotefile2', language as Language), readError instanceof Error ? readError.message : String(readError))
     }
   }, [language, openEditorFile, server])
 
@@ -135,10 +136,10 @@ export function RemoteExplorer({ server, language, onClose }: RemoteFileBrowserP
     try {
       await api.remoteShell.writeText(server, selectedFilePath, selectedFileContent)
       setDirty(false)
-      toast.success(language === 'zh' ? '远程文件已保存' : 'Remote file saved')
+      toast.success(t('shell.remotefilesaved', language as Language))
       await loadEntries(currentPath)
     } catch (saveError) {
-      toast.error(language === 'zh' ? '远程文件保存失败' : 'Failed to save remote file', saveError instanceof Error ? saveError.message : String(saveError))
+      toast.error(t('shell.failedtosaveremotefile', language as Language), saveError instanceof Error ? saveError.message : String(saveError))
     } finally {
       setSaving(false)
     }
@@ -182,19 +183,19 @@ export function RemoteExplorer({ server, language, onClose }: RemoteFileBrowserP
     } catch (dialogError) {
       const fallbackMessage =
         nameDialog.mode === 'create-folder'
-          ? language === 'zh' ? '创建目录失败' : 'Failed to create folder'
+          ? t('shell.failedtocreatefolder', language as Language)
           : nameDialog.mode === 'create-file'
-            ? language === 'zh' ? '创建文件失败' : 'Failed to create file'
-            : language === 'zh' ? '重命名失败' : 'Failed to rename'
+            ? t('shell.failedtocreatefile', language as Language)
+            : t('shell.failedtorename', language as Language)
       toast.error(fallbackMessage, dialogError instanceof Error ? dialogError.message : String(dialogError))
     }
   }, [currentPath, language, loadEntries, nameDialog, openEmbeddedFile, selectedFilePath, server])
 
   const handleDelete = useCallback(async (entry: RemoteFileEntry) => {
     const confirmed = await globalConfirm({
-      title: language === 'zh' ? '删除远程文件' : 'Delete Remote File',
-      message: language === 'zh' ? `确认删除 ${entry.name} 吗？` : `Delete ${entry.name}?`,
-      confirmText: language === 'zh' ? '删除' : 'Delete',
+      title: t('shell.deleteremotefile', language as Language),
+      message: t('shell.delete', language as Language, { name: entry.name }),
+      confirmText: t('shell.delete2', language as Language),
       variant: 'danger',
     })
     if (!confirmed) return
@@ -207,7 +208,7 @@ export function RemoteExplorer({ server, language, onClose }: RemoteFileBrowserP
       }
       await loadEntries(currentPath)
     } catch (deleteError) {
-      toast.error(language === 'zh' ? '删除失败' : 'Failed to delete', deleteError instanceof Error ? deleteError.message : String(deleteError))
+      toast.error(t('shell.failedtodelete', language as Language), deleteError instanceof Error ? deleteError.message : String(deleteError))
     }
   }, [currentPath, language, loadEntries, selectedFilePath, server])
 
@@ -215,8 +216,8 @@ export function RemoteExplorer({ server, language, onClose }: RemoteFileBrowserP
     setTesting(true)
     try {
       const result = await api.remoteShell.testConnection(server)
-      if (result.success) toast.success(language === 'zh' ? '远程连接正常' : 'Remote connection succeeded')
-      else toast.error(language === 'zh' ? '远程连接失败' : 'Remote connection failed', result.error)
+      if (result.success) toast.success(t('shell.remoteconnectionsucceeded', language as Language))
+      else toast.error(t('shell.remoteconnectionfailed', language as Language), result.error)
     } finally {
       setTesting(false)
     }
@@ -228,21 +229,19 @@ export function RemoteExplorer({ server, language, onClose }: RemoteFileBrowserP
       if (result.canceled) return
       if (result.uploaded.length > 0) {
         toast.success(
-          language === 'zh' ? '文件上传成功' : 'Upload completed',
-          language === 'zh'
-            ? `已上传 ${result.uploaded.length} 个文件到当前目录`
-            : `${result.uploaded.length} file(s) uploaded to the current directory`,
+          t('shell.uploadcompleted', language as Language),
+          t('shell.filesuploadedtothecurrent', language as Language, { uploaded: result.uploaded.length }),
         )
         await loadEntries(currentPath)
       }
     } catch (uploadError) {
-      toast.error(language === 'zh' ? '上传失败' : 'Upload failed', uploadError instanceof Error ? uploadError.message : String(uploadError))
+      toast.error(t('shell.uploadfailed', language as Language), uploadError instanceof Error ? uploadError.message : String(uploadError))
     }
   }, [currentPath, language, loadEntries, server])
 
   const handleDownload = useCallback(async (entry: RemoteFileEntry) => {
     if (entry.isDirectory) {
-      toast.error(language === 'zh' ? '暂不支持下载目录' : 'Directory download is not supported yet')
+      toast.error(t('shell.directorydownloadisnotsupported', language as Language))
       return
     }
 
@@ -250,11 +249,11 @@ export function RemoteExplorer({ server, language, onClose }: RemoteFileBrowserP
       const result = await api.remoteShell.download(server, entry.path)
       if (result.canceled) return
       toast.success(
-        language === 'zh' ? '下载完成' : 'Download completed',
+        t('shell.downloadcompleted', language as Language),
         result.localPath || undefined,
       )
     } catch (downloadError) {
-      toast.error(language === 'zh' ? '下载失败' : 'Download failed', downloadError instanceof Error ? downloadError.message : String(downloadError))
+      toast.error(t('shell.downloadfailed', language as Language), downloadError instanceof Error ? downloadError.message : String(downloadError))
     }
   }, [language, server])
 
@@ -275,7 +274,7 @@ export function RemoteExplorer({ server, language, onClose }: RemoteFileBrowserP
   }, [currentPath])
 
   if (!server.host.trim()) {
-    return <div className="rounded-2xl border border-border bg-surface/40 p-4 text-sm text-text-muted">{language === 'zh' ? '请先完善远程服务器 Host。' : 'Set a remote host to browse files.'}</div>
+    return <div className="rounded-2xl border border-border bg-surface/40 p-4 text-sm text-text-muted">{t('shell.setaremotehostto', language as Language)}</div>
   }
 
   return (
@@ -286,11 +285,11 @@ export function RemoteExplorer({ server, language, onClose }: RemoteFileBrowserP
           <div className="mt-1 text-sm text-text-primary break-all">{server.username ? `${server.username}@` : ''}{server.host}:{server.port || 22}</div>
         </div>
         <div className="flex items-center gap-2">
-          <ActionButton variant="ghost" size="icon" onClick={handleTestConnection} disabled={testing} title={language === 'zh' ? '测试连接' : 'Test connection'}>
+          <ActionButton variant="ghost" size="icon" onClick={handleTestConnection} disabled={testing} title={t('shell.testconnection', language as Language)}>
             <Wifi className="h-4 w-4" />
           </ActionButton>
           {onClose && (
-            <ActionButton variant="ghost" size="icon" onClick={onClose} title={language === 'zh' ? '关闭 SFTP 面板' : 'Close SFTP panel'}>
+            <ActionButton variant="ghost" size="icon" onClick={onClose} title={t('shell.closesftppanel', language as Language)}>
               <X className="h-4 w-4" />
             </ActionButton>
           )}
@@ -307,15 +306,15 @@ export function RemoteExplorer({ server, language, onClose }: RemoteFileBrowserP
           ))}
         </div>
         <div className="flex flex-wrap gap-2">
-          <ActionButton variant="ghost" size="sm" onClick={() => loadEntries(currentPath)} leftIcon={<RefreshCw className="h-4 w-4" />}>{language === 'zh' ? '刷新' : 'Refresh'}</ActionButton>
-          <ActionButton variant="ghost" size="sm" onClick={() => loadEntries(getParentPath(currentPath))}>{language === 'zh' ? '上级目录' : 'Up'}</ActionButton>
-          <ActionButton variant="ghost" size="sm" onClick={handleUpload} leftIcon={<Upload className="h-4 w-4" />}>{language === 'zh' ? '上传文件' : 'Upload'}</ActionButton>
-          <ActionButton variant="ghost" size="sm" onClick={handleCreateFolder} leftIcon={<FolderPlus className="h-4 w-4" />}>{language === 'zh' ? '新建目录' : 'New folder'}</ActionButton>
-          <ActionButton variant="ghost" size="sm" onClick={handleCreateFile} leftIcon={<FileText className="h-4 w-4" />}>{language === 'zh' ? '新建文件' : 'New file'}</ActionButton>
+          <ActionButton variant="ghost" size="sm" onClick={() => loadEntries(currentPath)} leftIcon={<RefreshCw className="h-4 w-4" />}>{t('shell.refresh', language as Language)}</ActionButton>
+          <ActionButton variant="ghost" size="sm" onClick={() => loadEntries(getParentPath(currentPath))}>{t('shell.up', language as Language)}</ActionButton>
+          <ActionButton variant="ghost" size="sm" onClick={handleUpload} leftIcon={<Upload className="h-4 w-4" />}>{t('shell.upload', language as Language)}</ActionButton>
+          <ActionButton variant="ghost" size="sm" onClick={handleCreateFolder} leftIcon={<FolderPlus className="h-4 w-4" />}>{t('shell.newfolder', language as Language)}</ActionButton>
+          <ActionButton variant="ghost" size="sm" onClick={handleCreateFile} leftIcon={<FileText className="h-4 w-4" />}>{t('shell.newfile', language as Language)}</ActionButton>
         </div>
         {error && <div className="rounded-lg border border-status-error/40 bg-status-error/10 px-3 py-2 text-xs text-status-error">{error}</div>}
         <div className="max-h-72 overflow-y-auto space-y-2">
-          {loading ? <div className="px-2 py-3 text-sm text-text-muted">{language === 'zh' ? '正在读取远程目录…' : 'ProgressIndicator remote directory…'}</div> : entries.length === 0 ? <div className="px-2 py-3 text-sm text-text-muted">{language === 'zh' ? '当前目录为空' : 'Directory is empty'}</div> : entries.map((entry) => (
+          {loading ? <div className="px-2 py-3 text-sm text-text-muted">{t('shell.progressindicatorremotedirectory', language as Language)}</div> : entries.length === 0 ? <div className="px-2 py-3 text-sm text-text-muted">{t('shell.directoryisempty', language as Language)}</div> : entries.map((entry) => (
             <div key={entry.path} className={`rounded-xl border px-3 py-2 ${selectedFilePath === entry.path ? 'border-accent/50 bg-accent/10' : 'border-border bg-background/50'}`}>
               <div className="flex items-center gap-2">
                 <button
@@ -326,21 +325,21 @@ export function RemoteExplorer({ server, language, onClose }: RemoteFileBrowserP
                   {entry.isDirectory ? <Folder className="h-4 w-4 text-accent" /> : <FileText className="h-4 w-4 text-text-muted" />}
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm text-text-primary">{entry.name}</div>
-                    <div className="truncate text-xs text-text-muted">{entry.isDirectory ? (language === 'zh' ? '目录' : 'Directory') : formatSize(entry.size)}</div>
+                    <div className="truncate text-xs text-text-muted">{entry.isDirectory ? (t('shell.directory', language as Language)) : formatSize(entry.size)}</div>
                   </div>
                 </button>
                 {!entry.isDirectory && (
                   <>
-                    <ActionButton variant="ghost" size="icon" onClick={() => handleDownload(entry)} title={language === 'zh' ? '下载文件' : 'Download file'}>
+                    <ActionButton variant="ghost" size="icon" onClick={() => handleDownload(entry)} title={t('shell.downloadfile', language as Language)}>
                       <Download className="h-3.5 w-3.5" />
                     </ActionButton>
-                    <ActionButton variant="ghost" size="icon" onClick={() => void openInEditor(entry.path)} title={language === 'zh' ? '在编辑器打开' : 'Open in editor'}>
+                    <ActionButton variant="ghost" size="icon" onClick={() => void openInEditor(entry.path)} title={t('shell.openineditor', language as Language)}>
                       <SquareArrowOutUpRight className="h-3.5 w-3.5" />
                     </ActionButton>
                   </>
                 )}
-                <ActionButton variant="ghost" size="icon" onClick={() => handleRename(entry)} title={language === 'zh' ? '重命名' : 'Rename'}><Pencil className="h-3.5 w-3.5" /></ActionButton>
-                <ActionButton variant="ghost" size="icon" onClick={() => handleDelete(entry)} title={language === 'zh' ? '删除' : 'Delete'}><Trash2 className="h-3.5 w-3.5" /></ActionButton>
+                <ActionButton variant="ghost" size="icon" onClick={() => handleRename(entry)} title={t('shell.rename', language as Language)}><Pencil className="h-3.5 w-3.5" /></ActionButton>
+                <ActionButton variant="ghost" size="icon" onClick={() => handleDelete(entry)} title={t('shell.delete3', language as Language)}><Trash2 className="h-3.5 w-3.5" /></ActionButton>
               </div>
             </div>
           ))}
@@ -352,9 +351,9 @@ export function RemoteExplorer({ server, language, onClose }: RemoteFileBrowserP
           <div className="flex items-center justify-between gap-2">
             <TextField value={selectedFilePath} readOnly className="text-xs" />
             <div className="flex items-center gap-2">
-              <ActionButton variant="ghost" size="sm" onClick={() => handleDownload({ name: selectedFilePath.split('/').pop() || selectedFilePath, path: selectedFilePath, isDirectory: false, size: selectedFileContent.length })} leftIcon={<Download className="h-4 w-4" />}>{language === 'zh' ? '下载' : 'Download'}</ActionButton>
-              <ActionButton variant="ghost" size="sm" onClick={() => void openInEditor(selectedFilePath)} leftIcon={<SquareArrowOutUpRight className="h-4 w-4" />}>{language === 'zh' ? '打开到编辑器' : 'Open in editor'}</ActionButton>
-              <ActionButton variant="primary" size="sm" onClick={saveFile} disabled={saving || !dirty} leftIcon={<Save className="h-4 w-4" />}>{saving ? (language === 'zh' ? '保存中…' : 'Saving…') : (language === 'zh' ? '保存' : 'Save')}</ActionButton>
+              <ActionButton variant="ghost" size="sm" onClick={() => handleDownload({ name: selectedFilePath.split('/').pop() || selectedFilePath, path: selectedFilePath, isDirectory: false, size: selectedFileContent.length })} leftIcon={<Download className="h-4 w-4" />}>{t('shell.download', language as Language)}</ActionButton>
+              <ActionButton variant="ghost" size="sm" onClick={() => void openInEditor(selectedFilePath)} leftIcon={<SquareArrowOutUpRight className="h-4 w-4" />}>{t('shell.openineditor2', language as Language)}</ActionButton>
+              <ActionButton variant="primary" size="sm" onClick={saveFile} disabled={saving || !dirty} leftIcon={<Save className="h-4 w-4" />}>{saving ? (t('shell.saving', language as Language)) : (t('shell.save', language as Language))}</ActionButton>
             </div>
           </div>
           <textarea
@@ -376,10 +375,10 @@ export function RemoteExplorer({ server, language, onClose }: RemoteFileBrowserP
           !nameDialog
             ? ''
             : nameDialog.mode === 'create-folder'
-              ? language === 'zh' ? '新建目录' : 'Create folder'
+              ? t('shell.createfolder', language as Language)
               : nameDialog.mode === 'create-file'
-                ? language === 'zh' ? '新建文件' : 'Create file'
-                : language === 'zh' ? '重命名' : 'Rename'
+                ? t('shell.createfile', language as Language)
+                : t('shell.rename2', language as Language)
         }
         size="sm"
       >
@@ -389,10 +388,10 @@ export function RemoteExplorer({ server, language, onClose }: RemoteFileBrowserP
             onChange={(event) => setNameDialog((prev) => (prev ? { ...prev, value: event.target.value } : prev))}
             placeholder={
               nameDialog?.mode === 'create-folder'
-                ? language === 'zh' ? '输入目录名' : 'Enter folder name'
+                ? t('shell.enterfoldername', language as Language)
                 : nameDialog?.mode === 'create-file'
-                  ? language === 'zh' ? '输入文件名' : 'Enter file name'
-                  : language === 'zh' ? '输入新名称' : 'Enter new name'
+                  ? t('shell.enterfilename', language as Language)
+                  : t('shell.enternewname', language as Language)
             }
             autoFocus
             onKeyDown={(event) => {
@@ -401,10 +400,10 @@ export function RemoteExplorer({ server, language, onClose }: RemoteFileBrowserP
           />
           <div className="flex items-center justify-end gap-2">
             <ActionButton variant="ghost" size="sm" onClick={() => setNameDialog(null)}>
-              {language === 'zh' ? '取消' : 'Cancel'}
+              {t('shell.cancel', language as Language)}
             </ActionButton>
             <ActionButton variant="primary" size="sm" onClick={() => void handleNameDialogConfirm()} disabled={!nameDialog?.value.trim()}>
-              {language === 'zh' ? '确认' : 'Confirm'}
+              {t('shell.confirm', language as Language)}
             </ActionButton>
           </div>
         </div>

@@ -1,8 +1,9 @@
-import { useState, useCallback } from 'react'
+import { useState } from 'react'
 import { Star, MessageSquare, Send, Loader2, User } from 'lucide-react'
 import { useStore } from '@store'
 import { backendApi, isAuthenticated } from '@services/backendApi'
 import { toast } from '../foundation/NotificationProvider'
+import { t, type Language } from '@renderer/i18n'
 
 interface ReviewItem {
   id: string
@@ -87,8 +88,6 @@ export function ScenarioReviewPanel({
   const [submitting, setSubmitting] = useState(false)
   const [loaded, setLoaded] = useState(false)
 
-  const t = useCallback((zh: string, en: string) => language === 'zh' ? zh : en, [language])
-
   async function loadReviews(p = 1) {
     setLoading(true)
     try {
@@ -108,11 +107,11 @@ export function ScenarioReviewPanel({
 
   async function handleSubmitReview() {
     if (!isAuthenticated()) {
-      toast.error(t('请先登录', 'Please log in first'))
+      toast.error(t('app.pleaseloginfirst', language as Language))
       return
     }
     if (myRating === 0) {
-      toast.error(t('请选择评分', 'Please select a rating'))
+      toast.error(t('app.pleaseselectarating', language as Language))
       return
     }
 
@@ -123,14 +122,14 @@ export function ScenarioReviewPanel({
         comment: myComment,
       })
       toast.success(
-        t('评价成功', 'Review submitted'),
+        t('app.reviewsubmitted', language as Language),
       )
       setMyRating(0)
       setMyComment('')
       loadReviews(1)
     } catch (err) {
       toast.error(
-        t('评价失败', 'Failed to submit review'),
+        t('app.failedtosubmitreview', language as Language),
         err instanceof Error ? err.message : '',
       )
     } finally {
@@ -144,13 +143,13 @@ export function ScenarioReviewPanel({
         <div className="flex items-center justify-between">
           <h4 className="text-xs font-medium text-[var(--color-text)] opacity-60 flex items-center gap-1.5">
             <MessageSquare className="w-3.5 h-3.5" />
-            {t('用户评价', 'Reviews')}
+            {t('app.reviews', language as Language)}
           </h4>
           <button
             onClick={() => loadReviews(1)}
             className="text-[11px] text-violet-400 hover:text-violet-300 transition-colors"
           >
-            {t('加载评论', 'Load reviews')}
+            {t('app.loadreviews', language as Language)}
           </button>
         </div>
         <div className="flex items-center gap-2 text-xs text-[var(--color-text)] opacity-50">
@@ -167,7 +166,7 @@ export function ScenarioReviewPanel({
       <div className="flex items-center justify-between">
         <h4 className="text-xs font-medium text-[var(--color-text)] opacity-60 flex items-center gap-1.5">
           <MessageSquare className="w-3.5 h-3.5" />
-          {t('用户评价', 'Reviews')}
+          {t('app.reviews2', language as Language)}
           <span className="text-[10px] opacity-50">({total})</span>
         </h4>
       </div>
@@ -179,14 +178,14 @@ export function ScenarioReviewPanel({
           </p>
           <StarRating value={Math.round(currentRating)} readonly />
           <p className="text-[10px] text-[var(--color-text)] opacity-50 mt-0.5">
-            {total} {t('条评价', 'reviews')}
+            {total} {t('app.reviews3', language as Language)}
           </p>
         </div>
 
         {isLoggedIn && (
           <div className="flex-1 pl-3 border-l border-[var(--color-border)]">
             <p className="text-[11px] text-[var(--color-text)] mb-1.5">
-              {t('写下你的评价', 'Write your review')}
+              {t('app.writeyourreview', language as Language)}
             </p>
             <StarRating value={myRating} onChange={setMyRating} size="sm" />
             <div className="flex items-center gap-1.5 mt-2">
@@ -194,7 +193,7 @@ export function ScenarioReviewPanel({
                 value={myComment}
                 onChange={e => setMyComment(e.target.value)}
                 className="flex-1 px-2 py-1.5 bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg text-xs text-[var(--color-text-bright)] placeholder:text-[var(--color-text)] placeholder:opacity-40"
-                placeholder={t('评论（可选）', 'Comment (optional)')}
+                placeholder={t('app.commentoptional', language as Language)}
                 maxLength={500}
               />
               <button
@@ -219,7 +218,7 @@ export function ScenarioReviewPanel({
         </div>
       ) : reviews.length === 0 ? (
         <p className="text-xs text-[var(--color-text)] opacity-40 text-center py-3">
-          {t('暂无评价', 'No reviews yet')}
+          {t('app.noreviewsyet', language as Language)}
         </p>
       ) : (
         <div className="space-y-2 max-h-48 overflow-y-auto">
@@ -246,7 +245,7 @@ export function ScenarioReviewPanel({
                 <StarRating value={review.rating} readonly />
                 <span className="text-[10px] text-[var(--color-text)] opacity-40 ml-auto">
                   {new Date(review.createdAt).toLocaleDateString(
-                    language === 'zh' ? 'zh-CN' : 'en-US',
+                    t('scenario.enus', language as Language),
                   )}
                 </span>
               </div>
@@ -263,7 +262,7 @@ export function ScenarioReviewPanel({
               onClick={() => loadReviews(page + 1)}
               className="w-full py-1.5 text-[11px] text-violet-400 hover:text-violet-300 transition-colors"
             >
-              {t('加载更多', 'Load more')}
+              {t('app.loadmore', language as Language)}
             </button>
           )}
         </div>

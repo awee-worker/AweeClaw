@@ -9,18 +9,18 @@ import { DEFAULT_AGENT_CONFIG } from '@configuration/agentProfile'
 import { ActionButton, TextField, DropdownSelector, ToggleSwitch } from '@components/ui'
 import { AgentSettingsProps } from '../preferencesTypes'
 import { PromptPreviewDialog } from './PromptPreviewDialog'
-import { Bot, FileText, Zap, BrainCircuit, AlertOctagon, Search, Eye, EyeOff, RefreshCw, Users, UserPlus, Trash2, GripVertical, X, Check } from 'lucide-react'
+import { Bot, FileText, Zap, BrainCircuit, AlertOctagon, RefreshCw, Users, UserPlus, Trash2, GripVertical, X, Check } from 'lucide-react'
+import { t, type Language } from '@renderer/i18n'
 
 export function AgentProfilePanel({
     autoApprove, setAutoApprove, aiInstructions, setAiInstructions,
     promptTemplateId, setPromptTemplateId, agentConfig, setAgentConfig,
-    webSearchConfig, setWebSearchConfig, language
+    language
 }: AgentSettingsProps) {
     const templates = getPromptTemplates()
     const [showPreview, setShowPreview] = useState(false)
     const [selectedTemplateForPreview, setSelectedTemplateForPreview] = useState<string | null>(null)
     const [showAdvanced, setShowAdvanced] = useState(false)
-    const [showGoogleApiKey, setShowGoogleApiKey] = useState(false)
     const [showAgentRoles, setShowAgentRoles] = useState(false)
     const [capabilityInput, setCapabilityInput] = useState<{ index: number; value: string } | null>(null)
 
@@ -46,8 +46,6 @@ export function AgentProfilePanel({
         setAgentConfig({ ...agentConfig, ignoredDirectories: defaultIgnoredDirs })
     }
 
-    const t = (zh: string, en: string) => language === 'zh' ? zh : en
-
     return (
         <div className="space-y-4 animate-fade-in pb-10">
             {/* 行为权限 */}
@@ -58,13 +56,13 @@ export function AgentProfilePanel({
                         <div className="p-1.5 bg-accent/10 rounded-md text-accent">
                             <Zap className="w-3.5 h-3.5" />
                         </div>
-                        <h5 className="text-sm font-semibold text-text-primary">{t('行为权限', 'Permissions')}</h5>
+                        <h5 className="text-sm font-semibold text-text-primary">{t('app.permissions', language as Language)}</h5>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div className="flex items-center justify-between rounded-lg border border-border/50 bg-background/30 px-3 py-2.5">
                             <div className="space-y-0.5 pr-3">
-                                <label className="text-xs text-text-secondary">{t('自动批准终端命令', 'Auto-approve terminal')}</label>
-                                <p className="text-[10px] text-text-muted">{t('终端命令无需确认', 'Terminal commands without confirmation')}</p>
+                                <label className="text-xs text-text-secondary">{t('app.autoapproveterminal', language as Language)}</label>
+                                <p className="text-[10px] text-text-muted">{t('app.terminalcommandswithoutconfirmation', language as Language)}</p>
                             </div>
                             <ToggleSwitch
                                 checked={autoApprove.terminal}
@@ -74,8 +72,8 @@ export function AgentProfilePanel({
                         </div>
                         <div className="flex items-center justify-between rounded-lg border border-border/50 bg-background/30 px-3 py-2.5">
                             <div className="space-y-0.5 pr-3">
-                                <label className="text-xs text-text-secondary">{t('自动批准危险操作', 'Auto-approve dangerous')}</label>
-                                <p className="text-[10px] text-text-muted">{t('危险操作无需确认', 'Dangerous ops without confirmation')}</p>
+                                <label className="text-xs text-text-secondary">{t('app.autoapprovedangerous', language as Language)}</label>
+                                <p className="text-[10px] text-text-muted">{t('app.dangerousopswithoutconfirmation', language as Language)}</p>
                             </div>
                             <ToggleSwitch
                                 checked={autoApprove.dangerous}
@@ -85,8 +83,8 @@ export function AgentProfilePanel({
                         </div>
                         <div className="flex items-center justify-between rounded-lg border border-border/50 bg-background/30 px-3 py-2.5">
                             <div className="space-y-0.5 pr-3">
-                                <label className="text-xs text-text-secondary">{t('启用自动检查与修复', 'Auto-check & Fix')}</label>
-                                <p className="text-[10px] text-text-muted">{t('自动检测并修复问题', 'Auto detect and fix issues')}</p>
+                                <label className="text-xs text-text-secondary">{t('app.autocheckfix', language as Language)}</label>
+                                <p className="text-[10px] text-text-muted">{t('app.autodetectandfix', language as Language)}</p>
                             </div>
                             <ToggleSwitch
                                 checked={agentConfig.enableAutoFix}
@@ -96,8 +94,8 @@ export function AgentProfilePanel({
                         </div>
                         <div className="flex items-center justify-between rounded-lg border border-border/50 bg-background/30 px-3 py-2.5">
                             <div className="space-y-0.5 pr-3">
-                                <label className="text-xs text-text-secondary">{t('展开 Agent 内容块', 'Expand Agent blocks')}</label>
-                                <p className="text-[10px] text-text-muted">{t('默认展开 Think/工具/上下文', 'Expand Think/Tool/Context')}</p>
+                                <label className="text-xs text-text-secondary">{t('app.expandagentblocks', language as Language)}</label>
+                                <p className="text-[10px] text-text-muted">{t('app.expandthinktoolcontext', language as Language)}</p>
                             </div>
                             <ToggleSwitch
                                 checked={agentConfig.expandAgentBlocksByDefault ?? false}
@@ -109,7 +107,7 @@ export function AgentProfilePanel({
                     {(autoApprove.terminal || autoApprove.dangerous) && (
                         <div className="flex items-start gap-2 p-2.5 mt-3 rounded-lg bg-orange-500/10 border border-orange-500/20 text-orange-400 text-[11px]">
                             <AlertOctagon className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                            <p>{t('已开启自动批准，Agent 将无需确认直接执行操作，请谨慎使用。', 'Auto-approve enabled. Agent will execute without confirmation. Use with caution.')}</p>
+                            <p>{t('app.autoapproveenabledagentwill', language as Language)}</p>
                         </div>
                     )}
                 </div>
@@ -123,12 +121,12 @@ export function AgentProfilePanel({
                         <div className="p-1.5 bg-accent/10 rounded-md text-accent">
                             <Bot className="w-3.5 h-3.5" />
                         </div>
-                        <h5 className="text-sm font-semibold text-text-primary">{t('Prompt 模板 & 指令', 'Prompt & Instructions')}</h5>
+                        <h5 className="text-sm font-semibold text-text-primary">{t('app.promptinstructions', language as Language)}</h5>
                     </div>
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                         <div className="space-y-3">
                             <div className="space-y-1.5">
-                                <label className="text-xs font-medium text-text-secondary">{t('选择模板', 'Select Template')}</label>
+                                <label className="text-xs font-medium text-text-secondary">{t('app.selecttemplate', language as Language)}</label>
                                 <DropdownSelector
                                     value={promptTemplateId}
                                     onChange={(value) => setPromptTemplateId(value)}
@@ -164,19 +162,16 @@ export function AgentProfilePanel({
                                     onClick={() => handlePreviewTemplate(promptTemplateId)}
                                     className="w-full text-xs h-7 mt-1"
                                 >
-                                    {t('预览完整提示词', 'Preview Full Prompt')}
+                                    {t('app.previewfullprompt', language as Language)}
                                 </ActionButton>
                             </div>
                         </div>
                         <div className="space-y-1.5">
-                            <label className="text-xs font-medium text-text-secondary">{t('自定义系统指令', 'Custom Instructions')}</label>
+                            <label className="text-xs font-medium text-text-secondary">{t('app.custominstructions', language as Language)}</label>
                             <textarea
                                 value={aiInstructions}
                                 onChange={(e) => setAiInstructions(e.target.value)}
-                                placeholder={t(
-                                    '在此输入全局系统指令，例如："总是使用中文回答"、"代码风格偏好..."',
-                                    'Enter global system instructions here...'
-                                )}
+                                placeholder={t('app.enterglobalsysteminstructions', language as Language)}
                                 className="w-full h-[calc(100%-24px)] min-h-[140px] p-3 bg-background/50 rounded-lg border border-border focus:border-accent/50 focus:ring-1 focus:ring-accent/20 outline-none resize-none text-xs font-mono custom-scrollbar text-text-primary placeholder-text-muted/50"
                             />
                         </div>
@@ -192,11 +187,11 @@ export function AgentProfilePanel({
                         <div className="p-1.5 bg-accent/10 rounded-md text-accent">
                             <BrainCircuit className="w-3.5 h-3.5" />
                         </div>
-                        <h5 className="text-sm font-semibold text-text-primary">{t('基础参数', 'Parameters')}</h5>
+                        <h5 className="text-sm font-semibold text-text-primary">{t('app.parameters', language as Language)}</h5>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div className="space-y-1.5">
-                            <label className="text-xs font-medium text-text-secondary">{t('最大循环', 'Max Loops')}</label>
+                            <label className="text-xs font-medium text-text-secondary">{t('app.maxloops', language as Language)}</label>
                             <TextField
                                 type="number"
                                 value={agentConfig.maxToolLoops}
@@ -207,7 +202,7 @@ export function AgentProfilePanel({
                             />
                         </div>
                         <div className="space-y-1.5">
-                            <label className="text-xs font-medium text-text-secondary">{t('最大历史消息', 'Max History')}</label>
+                            <label className="text-xs font-medium text-text-secondary">{t('app.maxhistory', language as Language)}</label>
                             <TextField
                                 type="number"
                                 value={agentConfig.maxHistoryMessages}
@@ -218,7 +213,7 @@ export function AgentProfilePanel({
                             />
                         </div>
                         <div className="space-y-1.5">
-                            <label className="text-xs font-medium text-text-secondary">{t('工具结果限制', 'Tool Result Limit')}</label>
+                            <label className="text-xs font-medium text-text-secondary">{t('app.toolresultlimit', language as Language)}</label>
                             <TextField
                                 type="number"
                                 value={agentConfig.maxToolResultChars}
@@ -228,7 +223,7 @@ export function AgentProfilePanel({
                             />
                         </div>
                         <div className="space-y-1.5">
-                            <label className="text-xs font-medium text-text-secondary">{t('上下文 Token 限制', 'Context Token Limit')}</label>
+                            <label className="text-xs font-medium text-text-secondary">{t('app.contexttokenlimit', language as Language)}</label>
                             <TextField
                                 type="number"
                                 value={agentConfig.maxContextTokens ?? 128000}
@@ -237,54 +232,6 @@ export function AgentProfilePanel({
                                 className="bg-background/50 border-border text-xs"
                             />
                         </div>
-                    </div>
-                </div>
-            </section>
-
-            {/* 网络搜索 */}
-            <section className="rounded-2xl border border-border/50 bg-surface/20 p-5 backdrop-blur-xl shadow-sm relative overflow-hidden group">
-                <div className="absolute inset-0 bg-gradient-to-br from-accent/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                <div className="relative">
-                    <div className="flex items-center gap-2 mb-4">
-                        <div className="p-1.5 bg-accent/10 rounded-md text-accent">
-                            <Search className="w-3.5 h-3.5" />
-                        </div>
-                        <h5 className="text-sm font-semibold text-text-primary">{t('网络搜索', 'Web Search')}</h5>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
-                            <label className="text-xs font-medium text-text-secondary">Google API Key</label>
-                            <div className="relative">
-                                <TextField
-                                    type={showGoogleApiKey ? 'text' : 'password'}
-                                    value={webSearchConfig.googleApiKey || ''}
-                                    onChange={(e) => setWebSearchConfig({ ...webSearchConfig, googleApiKey: e.target.value })}
-                                    placeholder={t('输入 Google API Key', 'Enter Google API Key')}
-                                    className="bg-background/50 border-border text-xs pr-10"
-                                />
-                                <button
-                                    type="button"
-                                    onClick={() => setShowGoogleApiKey(!showGoogleApiKey)}
-                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary transition-colors"
-                                >
-                                    {showGoogleApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                                </button>
-                            </div>
-                        </div>
-                        <div className="space-y-1.5">
-                            <label className="text-xs font-medium text-text-secondary">{t('搜索引擎 ID (CX)', 'Search Engine ID (CX)')}</label>
-                            <TextField
-                                type="text"
-                                value={webSearchConfig.googleCx || ''}
-                                onChange={(e) => setWebSearchConfig({ ...webSearchConfig, googleCx: e.target.value })}
-                                placeholder={t('输入搜索引擎 ID', 'Enter Search Engine ID')}
-                                className="bg-background/50 border-border text-xs"
-                            />
-                        </div>
-                    </div>
-                    <div className="flex items-start gap-2 p-2.5 mt-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[11px]">
-                        <Search className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                        <p>{t('免费额度：每天 100 次搜索。未配置时使用 DuckDuckGo 备选。获取密钥：console.cloud.google.com', 'Free tier: 100 searches/day. Falls back to DuckDuckGo when not configured. Get keys at: console.cloud.google.com')}</p>
                     </div>
                 </div>
             </section>
@@ -301,8 +248,8 @@ export function AgentProfilePanel({
                             <FileText className="w-3.5 h-3.5" />
                         </div>
                         <div className="text-left">
-                            <h5 className="text-sm font-semibold text-text-primary">{t('高级设置', 'Advanced')}</h5>
-                            <p className="text-[11px] text-text-muted mt-0.5">{t('上下文压缩、循环检测、忽略目录等', 'Context compression, loop detection, ignored dirs')}</p>
+                            <h5 className="text-sm font-semibold text-text-primary">{t('app.advanced', language as Language)}</h5>
+                            <p className="text-[11px] text-text-muted mt-0.5">{t('app.contextcompressionloopdetection', language as Language)}</p>
                         </div>
                     </div>
                     <div className={`p-1.5 rounded-full bg-surface-hover transition-transform duration-300 ${showAdvanced ? 'rotate-180' : ''}`}>
@@ -319,11 +266,11 @@ export function AgentProfilePanel({
                             <div className="space-y-3">
                                 <div className="flex items-center gap-2">
                                     <div className="w-1.5 h-1.5 rounded-full bg-accent" />
-                                    <label className="text-xs font-bold text-text-primary uppercase tracking-wider">{t('上下文限制', 'Context Limits')}</label>
+                                    <label className="text-xs font-bold text-text-primary uppercase tracking-wider">{t('app.contextlimits', language as Language)}</label>
                                 </div>
                                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                                     <div className="space-y-1.5">
-                                        <label className="text-[11px] font-medium text-text-muted">{t('单文件内容限制', 'File Content Limit')}</label>
+                                        <label className="text-[11px] font-medium text-text-muted">{t('app.filecontentlimit', language as Language)}</label>
                                         <TextField
                                             type="number"
                                             value={agentConfig.maxFileContentChars ?? 15000}
@@ -333,7 +280,7 @@ export function AgentProfilePanel({
                                         />
                                     </div>
                                     <div className="space-y-1.5">
-                                        <label className="text-[11px] font-medium text-text-muted">{t('最大文件数', 'Max Files')}</label>
+                                        <label className="text-[11px] font-medium text-text-muted">{t('app.maxfiles', language as Language)}</label>
                                         <TextField
                                             type="number"
                                             value={agentConfig.maxContextFiles ?? 6}
@@ -344,7 +291,7 @@ export function AgentProfilePanel({
                                         />
                                     </div>
                                     <div className="space-y-1.5">
-                                        <label className="text-[11px] font-medium text-text-muted">{t('语义搜索结果数', 'Semantic Results')}</label>
+                                        <label className="text-[11px] font-medium text-text-muted">{t('app.semanticresults', language as Language)}</label>
                                         <TextField
                                             type="number"
                                             value={agentConfig.maxSemanticResults ?? 5}
@@ -355,7 +302,7 @@ export function AgentProfilePanel({
                                         />
                                     </div>
                                     <div className="space-y-1.5">
-                                        <label className="text-[11px] font-medium text-text-muted">{t('终端输出限制', 'Terminal Limit')}</label>
+                                        <label className="text-[11px] font-medium text-text-muted">{t('app.terminallimit', language as Language)}</label>
                                         <TextField
                                             type="number"
                                             value={agentConfig.maxTerminalChars ?? 3000}
@@ -371,11 +318,11 @@ export function AgentProfilePanel({
                             <div className="space-y-3 pt-4 border-t border-border/30">
                                 <div className="flex items-center gap-2">
                                     <div className="w-1.5 h-1.5 rounded-full bg-accent" />
-                                    <label className="text-xs font-bold text-text-primary uppercase tracking-wider">{t('上下文压缩', 'Context Compression')}</label>
+                                    <label className="text-xs font-bold text-text-primary uppercase tracking-wider">{t('app.contextcompression', language as Language)}</label>
                                 </div>
                                 <div className="grid grid-cols-3 gap-4">
                                     <div className="space-y-1.5">
-                                        <label className="text-[11px] font-medium text-text-muted">{t('保留最近轮次', 'Keep Recent Turns')}</label>
+                                        <label className="text-[11px] font-medium text-text-muted">{t('app.keeprecentturns', language as Language)}</label>
                                         <TextField
                                             type="number"
                                             value={agentConfig.keepRecentTurns ?? 5}
@@ -386,7 +333,7 @@ export function AgentProfilePanel({
                                         />
                                     </div>
                                     <div className="space-y-1.5">
-                                        <label className="text-[11px] font-medium text-text-muted">{t('深度压缩轮次', 'Deep Compression')}</label>
+                                        <label className="text-[11px] font-medium text-text-muted">{t('app.deepcompression', language as Language)}</label>
                                         <TextField
                                             type="number"
                                             value={agentConfig.deepCompressionTurns ?? 2}
@@ -397,7 +344,7 @@ export function AgentProfilePanel({
                                         />
                                     </div>
                                     <div className="space-y-1.5">
-                                        <label className="text-[11px] font-medium text-text-muted">{t('重要旧轮次', 'Important Old')}</label>
+                                        <label className="text-[11px] font-medium text-text-muted">{t('app.importantold', language as Language)}</label>
                                         <TextField
                                             type="number"
                                             value={agentConfig.maxImportantOldTurns ?? 3}
@@ -410,19 +357,19 @@ export function AgentProfilePanel({
                                 </div>
                                 <div className="flex flex-wrap gap-x-6 gap-y-3 pt-2">
                                     <ToggleSwitch
-                                        label={t('启用 LLM 摘要', 'Enable LLM Summary')}
+                                        label={t('app.enablellmsummary', language as Language)}
                                         checked={agentConfig.enableLLMSummary ?? true}
                                         onChange={(e) => setAgentConfig({ ...agentConfig, enableLLMSummary: e.target.checked })}
                                         className="text-[12px]"
                                     />
                                     <ToggleSwitch
-                                        label={t('自动会话交接', 'Auto Handoff')}
+                                        label={t('app.autohandoff', language as Language)}
                                         checked={agentConfig.autoHandoff ?? true}
                                         onChange={(e) => setAgentConfig({ ...agentConfig, autoHandoff: e.target.checked })}
                                         className="text-[12px]"
                                     />
                                     <ToggleSwitch
-                                        label={t('智能上下文 (隐式检索)', 'Auto-Context (RAG)')}
+                                        label={t('app.autocontextrag', language as Language)}
                                         checked={agentConfig.enableAutoContext ?? true}
                                         onChange={(e) => setAgentConfig({ ...agentConfig, enableAutoContext: e.target.checked })}
                                         className="text-[12px]"
@@ -435,10 +382,10 @@ export function AgentProfilePanel({
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                         <div className="w-1.5 h-1.5 rounded-full bg-accent" />
-                                        <label className="text-xs font-bold text-text-primary uppercase tracking-wider">{t('循环检测', 'Loop Detection')}</label>
+                                        <label className="text-xs font-bold text-text-primary uppercase tracking-wider">{t('app.loopdetection', language as Language)}</label>
                                     </div>
                                     <ToggleSwitch
-                                        label={t('启用', 'Enabled')}
+                                        label={t('app.enabled', language as Language)}
                                         checked={agentConfig.loopDetection?.enabled ?? true}
                                         onChange={(e) => setAgentConfig({
                                             ...agentConfig,
@@ -460,7 +407,7 @@ export function AgentProfilePanel({
                                     <>
                                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                             <div className="space-y-1.5">
-                                                <label className="text-[11px] font-medium text-text-muted">{t('历史记录数量', 'History Size')}</label>
+                                                <label className="text-[11px] font-medium text-text-muted">{t('app.historysize', language as Language)}</label>
                                                 <TextField
                                                     type="number"
                                                     value={agentConfig.loopDetection?.maxHistory ?? 50}
@@ -474,7 +421,7 @@ export function AgentProfilePanel({
                                                 />
                                             </div>
                                             <div className="space-y-1.5">
-                                                <label className="text-[11px] font-medium text-text-muted">{t('精确重复阈值', 'Exact Repeat Limit')}</label>
+                                                <label className="text-[11px] font-medium text-text-muted">{t('app.exactrepeatlimit', language as Language)}</label>
                                                 <TextField
                                                     type="number"
                                                     value={agentConfig.loopDetection?.maxExactRepeats ?? 5}
@@ -488,7 +435,7 @@ export function AgentProfilePanel({
                                                 />
                                             </div>
                                             <div className="space-y-1.5">
-                                                <label className="text-[11px] font-medium text-text-muted">{t('同目标编辑阈值', 'Same Target Limit')}</label>
+                                                <label className="text-[11px] font-medium text-text-muted">{t('app.sametargetlimit', language as Language)}</label>
                                                 <TextField
                                                     type="number"
                                                     value={agentConfig.loopDetection?.maxSameTargetRepeats ?? 8}
@@ -502,7 +449,7 @@ export function AgentProfilePanel({
                                                 />
                                             </div>
                                             <div className="space-y-1.5">
-                                                <label className="text-[11px] font-medium text-text-muted">{t('模式硬停止', 'Pattern Hard Stop')}</label>
+                                                <label className="text-[11px] font-medium text-text-muted">{t('app.patternhardstop', language as Language)}</label>
                                                 <TextField
                                                     type="number"
                                                     value={agentConfig.loopDetection?.patternRepeatHardStop ?? 3}
@@ -518,7 +465,7 @@ export function AgentProfilePanel({
                                         </div>
                                         <div className="flex flex-wrap gap-x-6 gap-y-3 pt-2">
                                             <ToggleSwitch
-                                                label={t('动态阈值（复杂任务自动放宽）', 'Dynamic Threshold (auto-relax)')}
+                                                label={t('app.dynamicthresholdautorelax', language as Language)}
                                                 checked={agentConfig.loopDetection?.dynamicThreshold ?? true}
                                                 onChange={(e) => setAgentConfig({
                                                     ...agentConfig,
@@ -529,7 +476,7 @@ export function AgentProfilePanel({
                                         </div>
                                         <div className="flex items-start gap-2 p-2.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[11px]">
                                             <AlertOctagon className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                                            <p>{t('循环检测会在 AI 反复执行相同操作时发出警告或强制停止。读取类操作阈值自动乘以 6 倍。', 'Loop detection warns or force-stops when AI repeats. Read operations have 6x threshold multiplier.')}</p>
+                                            <p>{t('app.loopdetectionwarnsor', language as Language)}</p>
                                         </div>
                                     </>
                                 )}
@@ -539,11 +486,11 @@ export function AgentProfilePanel({
                             <div className="space-y-3 pt-4 border-t border-border/30">
                                 <div className="flex items-center gap-2">
                                     <div className="w-1.5 h-1.5 rounded-full bg-accent" />
-                                    <label className="text-xs font-bold text-text-primary uppercase tracking-wider">{t('重试 & 超时', 'Retry & Timeout')}</label>
+                                    <label className="text-xs font-bold text-text-primary uppercase tracking-wider">{t('app.retrytimeout', language as Language)}</label>
                                 </div>
                                 <div className="grid grid-cols-3 gap-4">
                                     <div className="space-y-1.5">
-                                        <label className="text-[11px] font-medium text-text-muted">{t('最大重试', 'Max Retries')}</label>
+                                        <label className="text-[11px] font-medium text-text-muted">{t('app.maxretries', language as Language)}</label>
                                         <TextField
                                             type="number"
                                             value={agentConfig.maxRetries ?? 3}
@@ -554,7 +501,7 @@ export function AgentProfilePanel({
                                         />
                                     </div>
                                     <div className="space-y-1.5">
-                                        <label className="text-[11px] font-medium text-text-muted">{t('重试延迟 (ms)', 'Retry Delay')}</label>
+                                        <label className="text-[11px] font-medium text-text-muted">{t('app.retrydelay', language as Language)}</label>
                                         <TextField
                                             type="number"
                                             value={agentConfig.retryDelayMs ?? 1000}
@@ -564,7 +511,7 @@ export function AgentProfilePanel({
                                         />
                                     </div>
                                     <div className="space-y-1.5">
-                                        <label className="text-[11px] font-medium text-text-muted">{t('工具超时 (ms)', 'Tool Timeout')}</label>
+                                        <label className="text-[11px] font-medium text-text-muted">{t('app.tooltimeout', language as Language)}</label>
                                         <TextField
                                             type="number"
                                             value={agentConfig.toolTimeoutMs ?? 60000}
@@ -581,14 +528,14 @@ export function AgentProfilePanel({
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                         <div className="w-1.5 h-1.5 rounded-full bg-accent" />
-                                        <label className="text-xs font-bold text-text-primary uppercase tracking-wider">{t('忽略目录', 'Ignored Dirs')}</label>
+                                        <label className="text-xs font-bold text-text-primary uppercase tracking-wider">{t('app.ignoreddirs', language as Language)}</label>
                                     </div>
                                     <button
                                         onClick={resetIgnoredDirs}
                                         className="text-[11px] font-bold text-accent hover:text-accent-hover transition-colors flex items-center gap-1 bg-accent/5 px-2 py-0.5 rounded border border-accent/20"
                                     >
                                         <RefreshCw className="w-2.5 h-2.5" />
-                                        {t('重置', 'Reset')}
+                                        {t('app.reset', language as Language)}
                                     </button>
                                 </div>
                                 <textarea
@@ -615,8 +562,8 @@ export function AgentProfilePanel({
                             <Users className="w-3.5 h-3.5" />
                         </div>
                         <div className="text-left">
-                            <h5 className="text-sm font-semibold text-text-primary">{t('多智能体协作', 'Multi-Agent Collaboration')}</h5>
-                            <p className="text-[11px] text-text-muted mt-0.5">{t('配置多智能体协作模式和自定义角色', 'Configure multi-agent collaboration mode and custom roles')}</p>
+                            <h5 className="text-sm font-semibold text-text-primary">{t('app.multiagentcollaboration', language as Language)}</h5>
+                            <p className="text-[11px] text-text-muted mt-0.5">{t('app.configuremultiagentcollaborationmode', language as Language)}</p>
                         </div>
                     </div>
                     <div className={`p-1.5 rounded-full bg-surface-hover transition-transform duration-300 ${showAgentRoles ? 'rotate-180' : ''}`}>
@@ -632,8 +579,8 @@ export function AgentProfilePanel({
                             <div className="flex items-start gap-2 p-3 rounded-lg bg-orange-500/10 border border-orange-500/20 text-orange-400 text-[11px]">
                                 <span className="text-base shrink-0 mt-0.5">🐱</span>
                                 <div>
-                                    <p className="font-medium text-xs text-text-primary mb-1">{t('团队协作模式', 'Team Collaboration Mode')}</p>
-                                    <p>{t('在聊天输入框中点击 🐱 按钮即可开启团队协作模式。开启后，AI 将组建专业团队协作完成任务。', 'Click the 🐱 button in the chat input to enable team collaboration mode. When enabled, AI will assemble a professional team to collaborate on tasks.')}</p>
+                                    <p className="font-medium text-xs text-text-primary mb-1">{t('app.teamcollaborationmode', language as Language)}</p>
+                                    <p>{t('app.clickthebuttonin', language as Language)}</p>
                                 </div>
                             </div>
 
@@ -641,12 +588,12 @@ export function AgentProfilePanel({
                                 <div className="space-y-3 pt-4 border-t border-border/30">
                                     <div className="flex items-center gap-2">
                                         <div className="w-1.5 h-1.5 rounded-full bg-accent" />
-                                        <label className="text-xs font-bold text-text-primary uppercase tracking-wider">{t('自定义角色', 'Custom Roles')}</label>
+                                        <label className="text-xs font-bold text-text-primary uppercase tracking-wider">{t('app.customroles', language as Language)}</label>
                                     </div>
 
                                         {(agentConfig.customAgentProfiles ?? []).length === 0 ? (
                                             <div className="text-center py-6 text-text-muted text-xs">
-                                                {t('暂无自定义角色，点击下方按钮添加', 'No custom roles yet. Click below to add one')}
+                                                {t('app.nocustomrolesyet', language as Language)}
                                             </div>
                                         ) : (
                                             <div className="space-y-2">
@@ -666,7 +613,7 @@ export function AgentProfilePanel({
                                                                         profiles[index] = { ...profile, name: e.target.value }
                                                                         setAgentConfig({ ...agentConfig, customAgentProfiles: profiles })
                                                                     }}
-                                                                    placeholder={t('角色名称', 'Role Name')}
+                                                                    placeholder={t('app.rolename', language as Language)}
                                                                     className="bg-background/50 border-border text-xs h-8 flex-1"
                                                                 />
                                                                 <TextField
@@ -699,7 +646,7 @@ export function AgentProfilePanel({
                                                                     profiles[index] = { ...profile, description: e.target.value }
                                                                     setAgentConfig({ ...agentConfig, customAgentProfiles: profiles })
                                                                 }}
-                                                                placeholder={t('角色描述', 'Role Description')}
+                                                                placeholder={t('app.roledescription', language as Language)}
                                                                 className="bg-background/50 border-border text-xs h-8 w-full"
                                                             />
                                                             <textarea
@@ -709,7 +656,7 @@ export function AgentProfilePanel({
                                                                     profiles[index] = { ...profile, systemPrompt: e.target.value }
                                                                     setAgentConfig({ ...agentConfig, customAgentProfiles: profiles })
                                                                 }}
-                                                                placeholder={t('系统提示词（定义该角色的行为和专业领域）', 'System prompt (defines behavior and expertise)')}
+                                                                placeholder={t('app.systempromptdefinesbehavior', language as Language)}
                                                                 className="w-full h-16 p-2 bg-background/50 rounded-lg border border-border focus:border-accent/50 focus:ring-1 focus:ring-accent/20 outline-none resize-none text-[11px] font-mono custom-scrollbar text-text-secondary placeholder-text-muted/50"
                                                             />
                                                             <div className="flex items-center gap-1.5 flex-wrap">
@@ -757,7 +704,7 @@ export function AgentProfilePanel({
                                                                                     setCapabilityInput(null)
                                                                                 }
                                                                             }}
-                                                                            placeholder={t('能力标签', 'Capability tag')}
+                                                                            placeholder={t('app.capabilitytag', language as Language)}
                                                                             className="bg-background/50 border-border text-[10px] h-6 w-24 py-0"
                                                                             autoFocus
                                                                         />
@@ -790,7 +737,7 @@ export function AgentProfilePanel({
                                                                         onClick={() => setCapabilityInput({ index, value: '' })}
                                                                         className="px-1.5 py-0.5 rounded border border-dashed border-border text-text-muted text-[10px] hover:border-accent hover:text-accent transition-colors"
                                                                     >
-                                                                        + {t('能力', 'Capability')}
+                                                                        + {t('app.capability', language as Language)}
                                                                     </button>
                                                                 )}
                                                             </div>
@@ -815,7 +762,7 @@ export function AgentProfilePanel({
                                             onClick={() => {
                                                 const newProfile = {
                                                     id: `custom-${Date.now()}`,
-                                                    name: t('新角色', 'New Role'),
+                                                    name: t('app.newrole', language as Language),
                                                     description: '',
                                                     systemPrompt: '',
                                                     capabilities: [],
@@ -830,12 +777,12 @@ export function AgentProfilePanel({
                                             className="w-full text-xs h-8"
                                         >
                                             <UserPlus className="w-3.5 h-3.5 mr-1" />
-                                            {t('添加自定义角色', 'Add Custom Role')}
+                                            {t('app.addcustomrole', language as Language)}
                                         </ActionButton>
 
                                         <div className="flex items-start gap-2 p-2.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[11px]">
                                             <Users className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                                            <p>{t('自定义角色将在多智能体协作时与默认角色一起参与任务分解和执行。优先级越高，越优先分配关键子任务。', 'Custom roles will participate alongside default roles in multi-agent collaboration. Higher priority means more critical subtasks.')}</p>
+                                            <p>{t('app.customroleswillparticipate', language as Language)}</p>
                                         </div>
                                     </div>
                                 )}

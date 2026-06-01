@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { GitBranch, GitCompare, RotateCcw, X, Clock, ArrowRight, Check, AlertTriangle } from 'lucide-react'
 import { workflowClientAPI } from '@shared/configuration/workflows/workflowClientAPI'
+import { t, type Language } from '@renderer/i18n'
 
 interface VersionInfo {
   id: string
@@ -101,16 +102,12 @@ export default function VersionPanel({
     try {
       await workflowClientAPI.restoreVersion(workflowId, selectedVersion.id)
       setRestoreMessage(
-        language === 'zh'
-          ? `已恢复到版本 ${selectedVersion.version}`
-          : `Restored to version ${selectedVersion.version}`,
+        t('wf.restoredtoversion', language as Language, { version: selectedVersion.version }),
       )
       onRestored()
     } catch (err) {
       setRestoreMessage(
-        language === 'zh'
-          ? `恢复失败: ${(err as Error).message}`
-          : `Restore failed: ${(err as Error).message}`,
+        t('wf.restorefailed', language as Language, { p0: (err as Error).message }),
       )
     } finally {
       setRestoring(false)
@@ -125,7 +122,7 @@ export default function VersionPanel({
         <div className="flex items-center gap-1.5">
           <GitBranch className="w-3.5 h-3.5 text-[var(--accent)]" />
           <span className="text-xs font-medium text-[var(--text-primary)]">
-            {language === 'zh' ? '版本管理' : 'Versions'}
+            {t('wf.versions', language as Language)}
           </span>
         </div>
         <button
@@ -140,7 +137,7 @@ export default function VersionPanel({
         {loading && (
           <div className="flex items-center justify-center py-8 text-xs text-[var(--text-muted)]">
             <div className="w-4 h-4 border-2 border-[var(--accent)]/30 border-t-[var(--accent)] rounded-full animate-spin mr-2" />
-            {language === 'zh' ? '加载中...' : 'Loading...'}
+            {t('wf.loading', language as Language)}
           </div>
         )}
 
@@ -154,7 +151,7 @@ export default function VersionPanel({
           <div className="flex flex-col items-center justify-center py-12 px-4">
             <Clock className="w-8 h-8 text-[var(--text-muted)]/30 mb-2" />
             <span className="text-xs text-[var(--text-muted)]">
-              {language === 'zh' ? '暂无版本记录' : 'No versions yet'}
+              {t('wf.noversionsyet', language as Language)}
             </span>
           </div>
         )}
@@ -177,7 +174,7 @@ export default function VersionPanel({
                   </span>
                   <span className="text-[var(--text-muted)] text-[11px]">
                     {new Date(v.createdAt).toLocaleDateString(
-                      language === 'zh' ? 'zh-CN' : 'en-US',
+                      t('wf.enus', language as Language),
                       { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' },
                     )}
                   </span>
@@ -198,7 +195,7 @@ export default function VersionPanel({
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-[var(--text-primary)]">
-                {language === 'zh' ? '版本详情' : 'Version Detail'}
+                {t('wf.versiondetail', language as Language)}
               </span>
               <span className="font-mono text-xs text-[var(--accent)]">
                 v{selectedVersion.version}
@@ -208,7 +205,7 @@ export default function VersionPanel({
             <div className="grid grid-cols-2 gap-2 text-[11px]">
               <div className="p-1.5 rounded bg-[var(--border)]/20">
                 <span className="text-[var(--text-muted)]">
-                  {language === 'zh' ? '节点数' : 'Nodes'}
+                  {t('wf.nodes', language as Language)}
                 </span>
                 <span className="ml-1 text-[var(--text-primary)] font-medium">
                   {(selectedVersion.nodes as unknown[])?.length || 0}
@@ -216,7 +213,7 @@ export default function VersionPanel({
               </div>
               <div className="p-1.5 rounded bg-[var(--border)]/20">
                 <span className="text-[var(--text-muted)]">
-                  {language === 'zh' ? '连线数' : 'Edges'}
+                  {t('wf.edges', language as Language)}
                 </span>
                 <span className="ml-1 text-[var(--text-primary)] font-medium">
                   {(selectedVersion.edges as unknown[])?.length || 0}
@@ -227,7 +224,7 @@ export default function VersionPanel({
             {selectedVersion.note && (
               <p className="text-[11px] text-[var(--text-muted)]">
                 <span className="text-[var(--text-muted)]/60">
-                  {language === 'zh' ? '备注: ' : 'Note: '}
+                  {t('wf.note', language as Language)}
                 </span>
                 {selectedVersion.note}
               </p>
@@ -241,7 +238,7 @@ export default function VersionPanel({
               className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-xs rounded-lg border border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--border)]/30 transition-colors disabled:opacity-50"
             >
               <GitCompare className="w-3 h-3" />
-              {language === 'zh' ? '对比' : 'Compare'}
+              {t('wf.compare', language as Language)}
             </button>
             <button
               onClick={handleRestore}
@@ -249,7 +246,7 @@ export default function VersionPanel({
               className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-xs rounded-lg bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20 border border-[var(--accent)]/20 transition-colors disabled:opacity-50"
             >
               <RotateCcw className={`w-3 h-3 ${restoring ? 'animate-spin' : ''}`} />
-              {language === 'zh' ? '恢复' : 'Restore'}
+              {t('wf.restore', language as Language)}
             </button>
           </div>
 
@@ -298,7 +295,7 @@ function DiffView({
     <div className="p-2 rounded-lg bg-[var(--border)]/20 space-y-1.5 text-[11px]">
       <div className="flex items-center justify-between">
         <span className="text-[var(--text-muted)]">
-          {language === 'zh' ? '节点变化' : 'Node changes'}
+          {t('wf.nodechanges', language as Language)}
         </span>
         <span
           className={`font-mono ${nodeDiff > 0 ? 'text-green-400' : nodeDiff < 0 ? 'text-red-400' : 'text-[var(--text-muted)]'}`}
@@ -309,7 +306,7 @@ function DiffView({
       </div>
       <div className="flex items-center justify-between">
         <span className="text-[var(--text-muted)]">
-          {language === 'zh' ? '连线变化' : 'Edge changes'}
+          {t('wf.edgechanges', language as Language)}
         </span>
         <span
           className={`font-mono ${edgeDiff > 0 ? 'text-green-400' : edgeDiff < 0 ? 'text-red-400' : 'text-[var(--text-muted)]'}`}
@@ -321,7 +318,7 @@ function DiffView({
       <div className="flex items-center gap-1 text-[var(--text-muted)]/60">
         <span>v{String((diff.version as Record<string, unknown>)?.['version']) || '?'}</span>
         <ArrowRight className="w-2.5 h-2.5" />
-        <span>{language === 'zh' ? '当前' : 'current'}</span>
+        <span>{t('wf.current', language as Language)}</span>
       </div>
     </div>
   )

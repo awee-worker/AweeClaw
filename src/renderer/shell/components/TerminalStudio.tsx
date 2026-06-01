@@ -36,6 +36,7 @@ import type { AvailableShell, RemoteServerConfig, ShellLink, ShellPreset, ShellS
 import { TerminalManagerDialog } from './TerminalManagerDialog'
 import { RemoteExplorer } from './RemoteExplorer'
 import { XTERM_STYLE, getTerminalTheme } from '@services/terminalThemeAdapter'
+import { t, type Language } from '@renderer/i18n'
 
 type Selection =
   | { kind: 'root'; root: string }
@@ -53,8 +54,8 @@ const SHELL_STUDIO_NAV_WIDTH_KEY = 'aweeclaw.shellStudio.navWidth'
 const DEFAULT_INSPECTOR_WIDTH = 320
 const DEFAULT_NAV_WIDTH = 280
 
-function formatTime(timestamp: number, language: string) {
-  return new Intl.DateTimeFormat(language === 'zh' ? 'zh-CN' : 'en-US', {
+function formatTime(timestamp: number, language: Language) {
+  return new Intl.DateTimeFormat(t('shell.enus', language as Language), {
     hour: '2-digit',
     minute: '2-digit',
     month: 'short',
@@ -71,10 +72,10 @@ function formatDuration(durationMs?: number) {
   return remain > 0 ? `${minutes}m ${remain}s` : `${minutes}m`
 }
 
-function getCommandStatusMeta(session: TerminalManagerState['commandInfoByTerminal'][string]['current'] | TerminalManagerState['commandInfoByTerminal'][string]['last'], language: string) {
+function getCommandStatusMeta(session: TerminalManagerState['commandInfoByTerminal'][string]['current'] | TerminalManagerState['commandInfoByTerminal'][string]['last'], language: Language) {
   if (!session) {
     return {
-      label: language === 'zh' ? '空闲' : 'Idle',
+      label: t('shell.idle', language as Language),
       tone: 'muted' as const,
       icon: null as React.ReactNode,
     }
@@ -84,25 +85,25 @@ function getCommandStatusMeta(session: TerminalManagerState['commandInfoByTermin
     case 'queued':
     case 'running':
       return {
-        label: language === 'zh' ? '运行中' : 'Running',
+        label: t('shell.running', language as Language),
         tone: 'accent' as const,
         icon: <Loader2 className="h-3.5 w-3.5 animate-spin" />,
       }
     case 'completed':
       return {
-        label: language === 'zh' ? '已完成' : 'Completed',
+        label: t('shell.completed', language as Language),
         tone: 'success' as const,
         icon: <CheckCircle2 className="h-3.5 w-3.5" />,
       }
     case 'detached':
       return {
-        label: language === 'zh' ? '后台运行' : 'Detached',
+        label: t('shell.detached', language as Language),
         tone: 'success' as const,
         icon: <Play className="h-3.5 w-3.5" />,
       }
     case 'timed_out':
       return {
-        label: language === 'zh' ? '已超时' : 'Timed out',
+        label: t('shell.timedout', language as Language),
         tone: 'warning' as const,
         icon: <Clock3 className="h-3.5 w-3.5" />,
       }
@@ -111,7 +112,7 @@ function getCommandStatusMeta(session: TerminalManagerState['commandInfoByTermin
     case 'interrupted':
     case 'shell_exited':
       return {
-        label: language === 'zh' ? '异常结束' : 'Ended with issues',
+        label: t('shell.endedwithissues', language as Language),
         tone: 'danger' as const,
         icon: <AlertTriangle className="h-3.5 w-3.5" />,
       }
@@ -385,7 +386,7 @@ export default function TerminalStudio() {
 
   const sendTerminalOutputToAi = useCallback(() => {
     if (!terminalPreview) return
-    setInputPrompt(`${language === 'zh' ? '请分析下面的终端输出并给出排查建议：' : 'Please analyze the following terminal output and suggest next steps:'}\n\n\`\`\`\n${terminalPreview}\n\`\`\``)
+    setInputPrompt(`${t('shell.pleaseanalyzethefollowingterminal', language as Language)}\n\n\`\`\`\n${terminalPreview}\n\`\`\``)
     setShowWorkflow(true)
   }, [language, setInputPrompt, setShowWorkflow, terminalPreview])
 
@@ -482,24 +483,24 @@ export default function TerminalStudio() {
                 <LayoutPanelLeft className="h-5 w-5" />
               </div>
               <div className="min-w-0">
-                <div className="text-sm font-semibold text-text-primary">{language === 'zh' ? 'Shell Studio' : 'Shell Studio'}</div>
-                <div className="truncate text-xs text-text-muted">{language === 'zh' ? '统一管理入口、终端会话与配置编辑' : 'Unified shell launch, sessions and configuration'}</div>
+                <div className="text-sm font-semibold text-text-primary">{t('shell.shellstudio', language as Language)}</div>
+                <div className="truncate text-xs text-text-muted">{t('shell.unifiedshelllaunchsessionsand', language as Language)}</div>
               </div>
             </div>
             <div className="flex items-center gap-2">
               {!focusMode && (
-                <ActionButton variant="ghost" size="icon" onClick={toggleNavCollapsed} title={navCollapsed ? (language === 'zh' ? '展开左侧导航' : 'Expand navigation') : (language === 'zh' ? '收起左侧导航' : 'Collapse navigation')}>
+                <ActionButton variant="ghost" size="icon" onClick={toggleNavCollapsed} title={navCollapsed ? (t('shell.expandnavigation', language as Language)) : (t('shell.collapsenavigation', language as Language))}>
                   {navCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
                 </ActionButton>
               )}
-              <ActionButton variant="ghost" size="icon" onClick={toggleFocusMode} title={focusMode ? (language === 'zh' ? '退出专注模式' : 'Exit focus mode') : (language === 'zh' ? '终端最大化' : 'Maximize terminal')}>
+              <ActionButton variant="ghost" size="icon" onClick={toggleFocusMode} title={focusMode ? (t('shell.exitfocusmode', language as Language)) : (t('shell.maximizeterminal', language as Language))}>
                 {focusMode ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
               </ActionButton>
               <ActionButton variant="ghost" size="sm" onClick={() => openManagerCreate('preset')} leftIcon={<Star className="h-4 w-4" />}>
-                {language === 'zh' ? '新建预设' : 'New preset'}
+                {t('shell.newpreset', language as Language)}
               </ActionButton>
               <ActionButton variant="primary" size="sm" onClick={() => createTerminalAtRoot()} leftIcon={<Plus className="h-4 w-4" />}>
-                {language === 'zh' ? '新建终端' : 'New terminal'}
+                {t('shell.newterminal', language as Language)}
               </ActionButton>
             </div>
           </div>
@@ -509,14 +510,14 @@ export default function TerminalStudio() {
               <TextField
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder={language === 'zh' ? '搜索根目录、预设、链接、会话...' : 'Search roots, presets, links and sessions...'}
+                placeholder={t('shell.searchrootspresetslinksand', language as Language)}
                 leftIcon={<Search className="h-4 w-4" />}
               />
 
               <div className="mt-4 h-[calc(100%-3rem)] space-y-5 overflow-y-auto pr-1">
                 {favoriteItems.length > 0 && (
                   <section>
-                    {renderSectionHeader('favorites', <Sparkles className="h-3.5 w-3.5" />, language === 'zh' ? '收藏' : 'Favorites', favoriteItems.length)}
+                    {renderSectionHeader('favorites', <Sparkles className="h-3.5 w-3.5" />, t('shell.favorites', language as Language), favoriteItems.length)}
                     {!collapsedSections.favorites && (
                       <div className="space-y-2">
                         {favoriteItems.map((item) => renderNavButton({
@@ -530,7 +531,7 @@ export default function TerminalStudio() {
                             <button
                               onClick={(event) => { event.stopPropagation(); item.action() }}
                               className="rounded-lg p-1 text-text-muted hover:bg-white/5 hover:text-text-primary"
-                              title={language === 'zh' ? '立即打开' : 'Launch'}
+                              title={t('shell.launch', language as Language)}
                             >
                               <Play className="h-3.5 w-3.5" />
                             </button>
@@ -542,7 +543,7 @@ export default function TerminalStudio() {
                 )}
 
                 <section>
-                  {renderSectionHeader('roots', <FolderTree className="h-3.5 w-3.5" />, language === 'zh' ? '工作区根目录' : 'Workspace roots', filteredRoots.length)}
+                  {renderSectionHeader('roots', <FolderTree className="h-3.5 w-3.5" />, t('shell.workspaceroots', language as Language), filteredRoots.length)}
                   {!collapsedSections.roots && (
                     <div className="space-y-2">
                       {filteredRoots.map((root) => renderNavButton({
@@ -573,7 +574,7 @@ export default function TerminalStudio() {
                         key: preset.id,
                         icon: <TerminalIcon className="h-4 w-4" />,
                         title: preset.name,
-                        subtitle: preset.cwd || preset.group || (language === 'zh' ? '可复用启动预设' : 'Reusable launch preset'),
+                        subtitle: preset.cwd || preset.group || (t('shell.reusablelaunchpreset', language as Language)),
                         active: selection?.kind === 'preset' && selection.id === preset.id,
                         onClick: () => setSelection({ kind: 'preset', id: preset.id }),
                         trailing: (
@@ -590,7 +591,7 @@ export default function TerminalStudio() {
                 </section>
 
                 <section>
-                  {renderSectionHeader('links', <HardDrive className="h-3.5 w-3.5" />, language === 'zh' ? '链接与命令' : 'Links & commands', filteredLinks.length)}
+                  {renderSectionHeader('links', <HardDrive className="h-3.5 w-3.5" />, t('shell.linkscommands', language as Language), filteredLinks.length)}
                   {!collapsedSections.links && (
                     <div className="space-y-2">
                       {filteredLinks.map((link) => renderNavButton({
@@ -620,7 +621,7 @@ export default function TerminalStudio() {
                 className="w-1 cursor-col-resize bg-transparent transition-colors hover:bg-accent/30 active:bg-accent"
                 onMouseDown={startNavResize}
                 onDoubleClick={resetNavWidth}
-                title={language === 'zh' ? '拖拽调整导航宽度，双击恢复默认' : 'Drag to resize navigation, double click to reset'}
+                title={t('shell.dragtoresizenavigationdouble', language as Language)}
               />
             )}
 
@@ -628,7 +629,7 @@ export default function TerminalStudio() {
               <div className="flex h-full min-h-0 flex-col gap-4">
                 <div className="grid grid-cols-4 gap-3">
                   <div className="rounded-2xl border border-border bg-surface/40 p-3">
-                    <div className="text-xs text-text-muted">{language === 'zh' ? '运行会话' : 'Active sessions'}</div>
+                    <div className="text-xs text-text-muted">{t('shell.activesessions', language as Language)}</div>
                     <div className="mt-2 text-2xl font-semibold text-text-primary">{managerState.terminals.length}</div>
                   </div>
                   <div className="rounded-2xl border border-border bg-surface/40 p-3">
@@ -636,11 +637,11 @@ export default function TerminalStudio() {
                     <div className="mt-2 text-2xl font-semibold text-text-primary">{shellState.presets.length}</div>
                   </div>
                   <div className="rounded-2xl border border-border bg-surface/40 p-3">
-                    <div className="text-xs text-text-muted">{language === 'zh' ? '链接总数' : 'Links'}</div>
+                    <div className="text-xs text-text-muted">{t('shell.links', language as Language)}</div>
                     <div className="mt-2 text-2xl font-semibold text-text-primary">{shellState.links.length}</div>
                   </div>
                   <div className="rounded-2xl border border-border bg-surface/40 p-3">
-                    <div className="text-xs text-text-muted">{language === 'zh' ? '缓存输出' : 'Buffered output'}</div>
+                    <div className="text-xs text-text-muted">{t('shell.bufferedoutput', language as Language)}</div>
                     <div className="mt-2 text-2xl font-semibold text-text-primary">{activeBufferStats?.lines || 0}</div>
                   </div>
                 </div>
@@ -705,7 +706,7 @@ export default function TerminalStudio() {
                         <TerminalIcon className="mt-0.5 h-4 w-4 flex-shrink-0 text-accent" />
                         <div className="min-w-0">
                           <div className="truncate text-sm font-medium text-text-primary">
-                            {activeSession?.name || (language === 'zh' ? '还没有活动终端' : 'No active terminal')}
+                            {activeSession?.name || (t('shell.noactiveterminal', language as Language))}
                           </div>
                           {activeSession && (
                             <div
@@ -741,23 +742,23 @@ export default function TerminalStudio() {
                               size="sm"
                               onClick={() => openSftpPanel(activeSession.remote!, activeSession.name)}
                               leftIcon={<Server className="h-4 w-4" />}
-                              title={language === 'zh' ? '打开 SFTP 面板' : 'Open SFTP panel'}
+                              title={t('shell.opensftppanel', language as Language)}
                             >
                               SFTP
                             </ActionButton>
                           )}
-                          <ActionButton variant="ghost" size="icon" onClick={copyTerminalOutput} title={language === 'zh' ? '复制输出摘要' : 'Copy output'}>
+                          <ActionButton variant="ghost" size="icon" onClick={copyTerminalOutput} title={t('shell.copyoutput', language as Language)}>
                             <Copy className="h-4 w-4" />
                           </ActionButton>
-                          <ActionButton variant="ghost" size="icon" onClick={sendTerminalOutputToAi} title={language === 'zh' ? '发送到 AI' : 'Send to AI'}>
+                          <ActionButton variant="ghost" size="icon" onClick={sendTerminalOutputToAi} title={t('shell.sendtoai', language as Language)}>
                             <MessageSquare className="h-4 w-4" />
                           </ActionButton>
                           {!focusMode && (
-                            <ActionButton variant="ghost" size="icon" onClick={toggleNavCollapsed} title={navCollapsed ? (language === 'zh' ? '展开左侧导航' : 'Expand navigation') : (language === 'zh' ? '收起左侧导航' : 'Collapse navigation')}>
+                            <ActionButton variant="ghost" size="icon" onClick={toggleNavCollapsed} title={navCollapsed ? (t('shell.expandnavigation2', language as Language)) : (t('shell.collapsenavigation2', language as Language))}>
                               {navCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
                             </ActionButton>
                           )}
-                          <ActionButton variant="ghost" size="icon" onClick={toggleFocusMode} title={focusMode ? (language === 'zh' ? '退出专注模式' : 'Exit focus mode') : (language === 'zh' ? '终端最大化' : 'Maximize terminal')}>
+                          <ActionButton variant="ghost" size="icon" onClick={toggleFocusMode} title={focusMode ? (t('shell.exitfocusmode2', language as Language)) : (t('shell.maximizeterminal2', language as Language))}>
                             {focusMode ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
                           </ActionButton>
                         </div>
@@ -772,15 +773,15 @@ export default function TerminalStudio() {
                         <TerminalIcon className="h-8 w-8" />
                       </div>
                       <div>
-                        <div className="text-lg font-semibold text-text-primary">{language === 'zh' ? '创建你的第一个 Shell 会话' : 'Start your first shell session'}</div>
-                        <div className="mt-2 text-sm text-text-muted">{language === 'zh' ? '你可以从左侧根目录、Preset 或命令模板直接启动。' : 'Launch directly from a workspace root, preset or command template.'}</div>
+                        <div className="text-lg font-semibold text-text-primary">{t('shell.startyourfirstshellsession', language as Language)}</div>
+                        <div className="mt-2 text-sm text-text-muted">{t('shell.launchdirectlyfromaworkspace', language as Language)}</div>
                       </div>
                       <div className="flex items-center gap-2">
                         <ActionButton variant="primary" size="sm" onClick={() => createTerminalAtRoot()} leftIcon={<Plus className="h-4 w-4" />}>
-                          {language === 'zh' ? '新建终端' : 'New terminal'}
+                          {t('shell.newterminal2', language as Language)}
                         </ActionButton>
                         <ActionButton variant="outline" size="sm" onClick={() => openManagerCreate('command')} leftIcon={<Sparkles className="h-4 w-4" />}>
-                          {language === 'zh' ? '创建命令模板' : 'Create command'}
+                          {t('shell.createcommand', language as Language)}
                         </ActionButton>
                       </div>
                     </div>
@@ -790,13 +791,13 @@ export default function TerminalStudio() {
                   <div className="min-h-0 h-[360px] rounded-[24px] border border-border bg-background-secondary/55 overflow-hidden">
                     <div className="flex items-center justify-between border-b border-border px-4 py-3">
                       <div className="min-w-0">
-                        <div className="text-sm font-semibold text-text-primary">{language === 'zh' ? 'SFTP 文件面板' : 'SFTP file panel'}</div>
+                        <div className="text-sm font-semibold text-text-primary">{t('shell.sftpfilepanel', language as Language)}</div>
                         <div className="truncate text-xs text-text-muted">
-                          {sftpPanelLabel || (language === 'zh' ? '远程文件浏览器' : 'Remote file browser')}
+                          {sftpPanelLabel || (t('shell.remotefilebrowser', language as Language))}
                         </div>
                       </div>
                       <ActionButton variant="ghost" size="sm" onClick={closeSftpPanel} leftIcon={<X className="h-4 w-4" />}>
-                        {language === 'zh' ? '关闭' : 'Close'}
+                        {t('shell.close', language as Language)}
                       </ActionButton>
                     </div>
                     <div className="h-[calc(100%-57px)] p-4">
@@ -813,17 +814,17 @@ export default function TerminalStudio() {
                   className="w-1 flex-shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-accent/30 active:bg-accent"
                   onMouseDown={startInspectorResize}
                   onDoubleClick={resetInspectorWidth}
-                  title={language === 'zh' ? '拖拽调整宽度，双击恢复默认' : 'Drag to resize, double click to reset'}
+                  title={t('shell.dragtoresizedoubleclick', language as Language)}
                 />
                 <div ref={inspectorRef} style={{ width: inspectorWidth }} className="min-h-0 w-full max-w-full flex-shrink-0 overflow-hidden border-l border-border bg-background/30 p-4">
                   <div className="flex h-full min-h-0 min-w-0 flex-col gap-4 overflow-y-auto pr-1">
                     <div className="rounded-2xl border border-border bg-surface/40 p-4">
                   <div className="flex min-w-0 items-center justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                      <div className="text-sm font-semibold text-text-primary">{language === 'zh' ? 'Inspector' : 'Inspector'}</div>
-                      <div className="mt-1 text-xs text-text-muted">{language === 'zh' ? '查看并编辑当前选中项的上下文与动作。' : 'Inspect context and actions for the selected item.'}</div>
+                      <div className="text-sm font-semibold text-text-primary">{t('shell.inspector', language as Language)}</div>
+                      <div className="mt-1 text-xs text-text-muted">{t('shell.inspectcontextandactionsfor', language as Language)}</div>
                     </div>
-                    <ActionButton variant="ghost" size="icon" onClick={() => setShowManager(true)} title={language === 'zh' ? '打开管理器' : 'Open manager'}>
+                    <ActionButton variant="ghost" size="icon" onClick={() => setShowManager(true)} title={t('shell.openmanager', language as Language)}>
                       <Settings2 className="h-4 w-4" />
                     </ActionButton>
                   </div>
@@ -833,16 +834,16 @@ export default function TerminalStudio() {
                   <>
                     <div className="rounded-2xl border border-border bg-surface/40 p-4 space-y-4">
                       <div>
-                        <div className="text-xs uppercase tracking-[0.18em] text-text-muted">{language === 'zh' ? '活动会话' : 'Session'}</div>
+                        <div className="text-xs uppercase tracking-[0.18em] text-text-muted">{t('shell.session', language as Language)}</div>
                         <div className="mt-2 text-lg font-semibold text-text-primary">{selectedSession.name}</div>
                         <div className="mt-1 text-sm text-text-muted break-all">{selectedSession.cwd}</div>
                       </div>
                       <div className="grid grid-cols-2 gap-3 text-sm">
                         <div className="rounded-xl border border-border bg-background/60 p-3"><div className="text-text-muted">Shell</div><div className="mt-1 text-text-primary break-all">{selectedSession.shell || 'default'}</div></div>
-                        <div className="rounded-xl border border-border bg-background/60 p-3"><div className="text-text-muted">{language === 'zh' ? '创建时间' : 'Created'}</div><div className="mt-1 text-text-primary">{formatTime(selectedSession.createdAt, language)}</div></div>
+                        <div className="rounded-xl border border-border bg-background/60 p-3"><div className="text-text-muted">{t('shell.created', language as Language)}</div><div className="mt-1 text-text-primary">{formatTime(selectedSession.createdAt, language)}</div></div>
                         {selectedSession.remote && (
                           <div className="col-span-2 rounded-xl border border-border bg-background/60 p-3">
-                            <div className="text-text-muted">{language === 'zh' ? '远程连接' : 'Remote host'}</div>
+                            <div className="text-text-muted">{t('shell.remotehost', language as Language)}</div>
                             <div className="mt-1 text-text-primary break-all">
                               {selectedSession.remote.username ? `${selectedSession.remote.username}@` : ''}
                               {selectedSession.remote.host}
@@ -867,8 +868,8 @@ export default function TerminalStudio() {
                             <div className="text-sm text-text-primary break-all">{commandSession.command}</div>
                             <div className="grid grid-cols-2 gap-3 text-xs text-text-muted">
                               <div>Exit code: {commandSession.exitCode ?? '—'}</div>
-                              <div>{language === 'zh' ? '运行时长' : 'Duration'}: {formatDuration(commandSession.endedAt ? commandSession.endedAt - commandSession.startedAt : Date.now() - commandSession.startedAt)}</div>
-                              <div>{language === 'zh' ? '终止原因' : 'Reason'}: {commandSession.terminationReason || '—'}</div>
+                              <div>{t('shell.duration', language as Language)}: {formatDuration(commandSession.endedAt ? commandSession.endedAt - commandSession.startedAt : Date.now() - commandSession.startedAt)}</div>
+                              <div>{t('shell.reason', language as Language)}: {commandSession.terminationReason || '—'}</div>
                               <div>Sentinel: {commandSession.sentinelMatched ? 'yes' : 'no'}</div>
                             </div>
                             {(commandSession.output || commandSession.partialOutput) && (
@@ -878,12 +879,12 @@ export default function TerminalStudio() {
                         ) : null
                       })()}
                       <div className="rounded-xl border border-border bg-background/60 p-3">
-                        <div className="text-text-muted text-sm">{language === 'zh' ? '终端摘要' : 'Terminal snippet'}</div>
-                        <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs text-text-primary">{terminalPreview || (language === 'zh' ? '暂无输出' : 'No output yet')}</pre>
+                        <div className="text-text-muted text-sm">{t('shell.terminalsnippet', language as Language)}</div>
+                        <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs text-text-primary">{terminalPreview || (t('shell.nooutputyet', language as Language))}</pre>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <ActionButton variant="outline" size="sm" onClick={() => terminalManager.setActiveTerminal(selectedSession.id)} leftIcon={<Play className="h-4 w-4" />}>
-                          {language === 'zh' ? '聚焦会话' : 'Focus'}
+                          {t('shell.focus', language as Language)}
                         </ActionButton>
                         {selectedSession.remote && (
                           <ActionButton
@@ -892,17 +893,17 @@ export default function TerminalStudio() {
                             onClick={() => openSftpPanel(selectedSession.remote!, selectedSession.name)}
                             leftIcon={<Server className="h-4 w-4" />}
                           >
-                            {language === 'zh' ? '打开 SFTP' : 'Open SFTP'}
+                            {t('shell.opensftp', language as Language)}
                           </ActionButton>
                         )}
                         <ActionButton variant="outline" size="sm" onClick={copyTerminalOutput} leftIcon={<Copy className="h-4 w-4" />}>
-                          {language === 'zh' ? '复制输出' : 'Copy output'}
+                          {t('shell.copyoutput2', language as Language)}
                         </ActionButton>
                         <ActionButton variant="outline" size="sm" onClick={sendTerminalOutputToAi} leftIcon={<MessageSquare className="h-4 w-4" />}>
-                          {language === 'zh' ? '交给 AI' : 'Ask AI'}
+                          {t('shell.askai', language as Language)}
                         </ActionButton>
                         <ActionButton variant="danger" size="sm" onClick={() => terminalManager.closeTerminal(selectedSession.id)} leftIcon={<X className="h-4 w-4" />}>
-                          {language === 'zh' ? '关闭会话' : 'Close'}
+                          {t('shell.close2', language as Language)}
                         </ActionButton>
                       </div>
                     </div>
@@ -911,11 +912,11 @@ export default function TerminalStudio() {
 
                 {selectedRoot && (
                   <div className="rounded-2xl border border-border bg-surface/40 p-4 space-y-4">
-                    <div className="text-xs uppercase tracking-[0.18em] text-text-muted">{language === 'zh' ? '目录入口' : 'Root launch'}</div>
+                    <div className="text-xs uppercase tracking-[0.18em] text-text-muted">{t('shell.rootlaunch', language as Language)}</div>
                     <div className="text-lg font-semibold text-text-primary">{selectedRoot.split('/').filter(Boolean).pop() || selectedRoot}</div>
                     <div className="text-sm text-text-muted break-all">{selectedRoot}</div>
                     <ActionButton variant="primary" size="sm" onClick={() => createTerminalAtRoot(selectedRoot)} leftIcon={<Play className="h-4 w-4" />}>
-                      {language === 'zh' ? '在此目录启动' : 'Launch here'}
+                      {t('shell.launchhere', language as Language)}
                     </ActionButton>
                   </div>
                 )}
@@ -931,10 +932,10 @@ export default function TerminalStudio() {
                     </div>
                     <div className="flex gap-2">
                       <ActionButton variant="primary" size="sm" onClick={() => openPreset(selectedPreset)} leftIcon={<Play className="h-4 w-4" />}>
-                        {language === 'zh' ? '运行预设' : 'Run preset'}
+                        {t('shell.runpreset', language as Language)}
                       </ActionButton>
                       <ActionButton variant="outline" size="sm" onClick={() => openManagerEdit('preset', selectedPreset.id)} leftIcon={<Settings2 className="h-4 w-4" />}>
-                        {language === 'zh' ? '编辑' : 'Edit'}
+                        {t('shell.edit', language as Language)}
                       </ActionButton>
                     </div>
                   </div>
@@ -943,7 +944,7 @@ export default function TerminalStudio() {
                 {selectedLink && (
                   <>
                     <div className="rounded-2xl border border-border bg-surface/40 p-4 space-y-4">
-                      <div className="text-xs uppercase tracking-[0.18em] text-text-muted">{language === 'zh' ? '链接' : 'Link'}</div>
+                      <div className="text-xs uppercase tracking-[0.18em] text-text-muted">{t('shell.link', language as Language)}</div>
                       <div className="flex items-center gap-2">
                         {selectedLink.type === 'remote' ? <Server className="h-4 w-4 text-accent" /> : <TerminalIcon className="h-4 w-4 text-accent" />}
                         <div className="text-lg font-semibold text-text-primary">{selectedLink.name}</div>
@@ -953,12 +954,12 @@ export default function TerminalStudio() {
                         <div className="rounded-xl border border-border bg-background/60 p-3"><div className="text-text-muted">Target</div><div className="mt-1 text-text-primary break-all">{selectedLink.target || '-'}</div></div>
                         <div className="rounded-xl border border-border bg-background/60 p-3"><div className="text-text-muted">CWD</div><div className="mt-1 text-text-primary break-all">{selectedLink.cwd || roots[0] || '-'}</div></div>
                         {selectedLink.type === 'remote' && (
-                          <div className="rounded-xl border border-border bg-background/60 p-3"><div className="text-text-muted">Auth</div><div className="mt-1 text-text-primary break-all">{selectedLink.remote?.privateKeyPath ? (language === 'zh' ? '私钥' : 'Private key') : ''}{selectedLink.remote?.privateKeyPath && selectedLink.remote?.password ? ' + ' : ''}{selectedLink.remote?.password ? (language === 'zh' ? '密码' : 'Password') : (!selectedLink.remote?.privateKeyPath ? '-' : '')}</div></div>
+                          <div className="rounded-xl border border-border bg-background/60 p-3"><div className="text-text-muted">Auth</div><div className="mt-1 text-text-primary break-all">{selectedLink.remote?.privateKeyPath ? (t('shell.privatekey', language as Language)) : ''}{selectedLink.remote?.privateKeyPath && selectedLink.remote?.password ? ' + ' : ''}{selectedLink.remote?.password ? (t('shell.password', language as Language)) : (!selectedLink.remote?.privateKeyPath ? '-' : '')}</div></div>
                         )}
                       </div>
                       <div className="flex gap-2">
                         <ActionButton variant="primary" size="sm" onClick={() => openLink(selectedLink)} leftIcon={<Play className="h-4 w-4" />}>
-                          {language === 'zh' ? '打开链接' : 'Open link'}
+                          {t('shell.openlink', language as Language)}
                         </ActionButton>
                         {selectedLink.type === 'remote' && selectedLink.remote && (
                           <ActionButton
@@ -967,11 +968,11 @@ export default function TerminalStudio() {
                             onClick={() => openSftpPanel(selectedLink.remote!, selectedLink.name)}
                             leftIcon={<Server className="h-4 w-4" />}
                           >
-                            {language === 'zh' ? '打开 SFTP' : 'Open SFTP'}
+                            {t('shell.opensftp2', language as Language)}
                           </ActionButton>
                         )}
                         <ActionButton variant="outline" size="sm" onClick={() => openManagerEdit('link', selectedLink.id)} leftIcon={<Settings2 className="h-4 w-4" />}>
-                          {language === 'zh' ? '编辑' : 'Edit'}
+                          {t('shell.edit2', language as Language)}
                         </ActionButton>
                       </div>
                     </div>
@@ -979,19 +980,19 @@ export default function TerminalStudio() {
                 )}
 
                 <div className="rounded-2xl border border-border bg-surface/40 p-4">
-                  <div className="text-xs uppercase tracking-[0.18em] text-text-muted">{language === 'zh' ? '快速创建' : 'Quick create'}</div>
+                  <div className="text-xs uppercase tracking-[0.18em] text-text-muted">{t('shell.quickcreate', language as Language)}</div>
                   <div className="mt-3 grid grid-cols-2 gap-2">
                     <ActionButton variant="ghost" size="sm" onClick={() => openManagerCreate('preset')} leftIcon={<Star className="h-4 w-4" />}>Preset</ActionButton>
-                    <ActionButton variant="ghost" size="sm" onClick={() => openManagerCreate('directory')} leftIcon={<FolderOpen className="h-4 w-4" />}>{language === 'zh' ? '目录' : 'Directory'}</ActionButton>
-                    <ActionButton variant="ghost" size="sm" onClick={() => openManagerCreate('remote')} leftIcon={<Server className="h-4 w-4" />}>{language === 'zh' ? '远程' : 'Remote'}</ActionButton>
-                    <ActionButton variant="ghost" size="sm" onClick={() => openManagerCreate('command')} leftIcon={<TerminalIcon className="h-4 w-4" />}>{language === 'zh' ? '命令' : 'Command'}</ActionButton>
+                    <ActionButton variant="ghost" size="sm" onClick={() => openManagerCreate('directory')} leftIcon={<FolderOpen className="h-4 w-4" />}>{t('shell.directory', language as Language)}</ActionButton>
+                    <ActionButton variant="ghost" size="sm" onClick={() => openManagerCreate('remote')} leftIcon={<Server className="h-4 w-4" />}>{t('shell.remote', language as Language)}</ActionButton>
+                    <ActionButton variant="ghost" size="sm" onClick={() => openManagerCreate('command')} leftIcon={<TerminalIcon className="h-4 w-4" />}>{t('shell.command', language as Language)}</ActionButton>
                   </div>
                 </div>
 
                 <div className="rounded-2xl border border-border bg-surface/40 p-4">
                   <div className="mb-3 flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-text-muted">
                     <Clock3 className="h-3.5 w-3.5" />
-                    {language === 'zh' ? '最近会话' : 'Recent sessions'}
+                    {t('shell.recentsessions', language as Language)}
                   </div>
                   <div className="space-y-2">
                     {managerState.terminals.slice(-4).reverse().map((session) => (

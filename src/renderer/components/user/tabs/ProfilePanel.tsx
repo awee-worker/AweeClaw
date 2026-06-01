@@ -10,7 +10,7 @@ import {
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { ActionButton, TextField } from '@components/ui'
-import { type Language } from '@renderer/i18n'
+import { t, type Language } from '@renderer/i18n'
 import { backendApi } from '@services/backendApi'
 import { toast } from '@components/foundation/NotificationProvider'
 
@@ -44,7 +44,7 @@ export function ProfilePanel({ language, onSwitchToSecurity }: ProfilePanelProps
     const file = e.target.files?.[0]
     if (!file) return
     if (file.size > 2 * 1024 * 1024) {
-      toast.error(language === 'zh' ? '文件过大' : 'File too large', language === 'zh' ? '头像文件不能超过2MB' : 'Avatar must be under 2MB')
+      toast.error(t('user.filetoolarge', language as Language), t('user.avatarmustbeunder2mb', language as Language))
       return
     }
     const formData = new FormData()
@@ -53,9 +53,9 @@ export function ProfilePanel({ language, onSwitchToSecurity }: ProfilePanelProps
       const result = await backendApi.post<{ url: string }>('/api/v1/upload/avatar', formData)
       await backendApi.put('/api/v1/user/profile', { avatar: result.url })
       await fetchProfile()
-      toast.success(language === 'zh' ? '头像已更新' : 'Avatar updated', '')
+      toast.success(t('user.avatarupdated', language as Language), '')
     } catch {
-      toast.error(language === 'zh' ? '上传失败' : 'Upload failed', language === 'zh' ? '头像上传失败，请重试' : 'Failed to upload avatar')
+      toast.error(t('user.uploadfailed', language as Language), t('user.failedtouploadavatar', language as Language))
     }
     e.target.value = ''
   }, [language, fetchProfile])
@@ -73,7 +73,7 @@ export function ProfilePanel({ language, onSwitchToSecurity }: ProfilePanelProps
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     } catch {
-      toast.error(language === 'zh' ? '保存失败' : 'Save failed', '')
+      toast.error(t('user.savefailed', language as Language), '')
     } finally {
       setSaving(false)
     }
@@ -114,7 +114,7 @@ export function ProfilePanel({ language, onSwitchToSecurity }: ProfilePanelProps
 
       <div className="space-y-4">
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-text-secondary">{language === 'zh' ? '用户名' : 'Username'}</label>
+          <label className="text-xs font-medium text-text-secondary">{t('user.username', language as Language)}</label>
           <div className="flex items-center h-9 px-3 rounded-lg bg-surface/30 border border-border/30 text-sm text-text-muted">
             <User className="w-4 h-4 mr-2 opacity-50" />
             <span>{cloudUser?.username || '-'}</span>
@@ -122,7 +122,7 @@ export function ProfilePanel({ language, onSwitchToSecurity }: ProfilePanelProps
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-text-secondary">{language === 'zh' ? '邮箱' : 'Email'}</label>
+          <label className="text-xs font-medium text-text-secondary">{t('user.email', language as Language)}</label>
           <div className="flex items-center gap-2">
             <div className="flex-1 flex items-center h-9 px-3 rounded-lg bg-surface/30 border border-border/30 text-sm text-text-muted">
               <Mail className="w-4 h-4 mr-2 opacity-50" />
@@ -132,23 +132,23 @@ export function ProfilePanel({ language, onSwitchToSecurity }: ProfilePanelProps
               onClick={() => onSwitchToSecurity('email')}
               className="shrink-0 h-9 px-3 rounded-lg text-xs font-medium bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
             >
-              {language === 'zh' ? '修改' : 'Edit'}
+              {t('user.edit', language as Language)}
             </button>
           </div>
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-text-secondary">{language === 'zh' ? '手机号' : 'Phone'}</label>
+          <label className="text-xs font-medium text-text-secondary">{t('user.phone', language as Language)}</label>
           <div className="flex items-center gap-2">
             <div className="flex-1 flex items-center h-9 px-3 rounded-lg bg-surface/30 border border-border/30 text-sm text-text-muted">
               <Smartphone className="w-4 h-4 mr-2 opacity-50" />
-              <span>{cloudUser?.phone || (language === 'zh' ? '未绑定' : 'Not bound')}</span>
+              <span>{cloudUser?.phone || (t('user.notbound', language as Language))}</span>
             </div>
             <button
               onClick={() => onSwitchToSecurity('phone')}
               className="shrink-0 h-9 px-3 rounded-lg text-xs font-medium bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
             >
-              {language === 'zh' ? '修改' : 'Edit'}
+              {t('user.edit2', language as Language)}
             </button>
           </div>
         </div>
@@ -156,16 +156,16 @@ export function ProfilePanel({ language, onSwitchToSecurity }: ProfilePanelProps
         <div className="h-px bg-border/30" />
 
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-text-secondary">{language === 'zh' ? '姓名' : 'Real Name'}</label>
+          <label className="text-xs font-medium text-text-secondary">{t('user.realname', language as Language)}</label>
           <TextField
             value={realName}
             onChange={e => setRealName(e.target.value)}
-            placeholder={language === 'zh' ? '输入姓名' : 'Enter real name'}
+            placeholder={t('user.enterrealname', language as Language)}
           />
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-text-secondary">{language === 'zh' ? '性别' : 'Gender'}</label>
+          <label className="text-xs font-medium text-text-secondary">{t('user.gender', language as Language)}</label>
           <div className="flex gap-2">
             {genderOptions.filter(o => o.value).map(opt => (
               <button
@@ -184,7 +184,7 @@ export function ProfilePanel({ language, onSwitchToSecurity }: ProfilePanelProps
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-text-secondary">{language === 'zh' ? '生日' : 'Birthday'}</label>
+          <label className="text-xs font-medium text-text-secondary">{t('user.birthday', language as Language)}</label>
           <input
             type="date"
             value={birthday}
@@ -194,11 +194,11 @@ export function ProfilePanel({ language, onSwitchToSecurity }: ProfilePanelProps
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-text-secondary">{language === 'zh' ? '职业' : 'Occupation'}</label>
+          <label className="text-xs font-medium text-text-secondary">{t('user.occupation', language as Language)}</label>
           <TextField
             value={occupation}
             onChange={e => setOccupation(e.target.value)}
-            placeholder={language === 'zh' ? '输入职业' : 'Enter occupation'}
+            placeholder={t('user.enteroccupation', language as Language)}
           />
         </div>
 
@@ -209,7 +209,7 @@ export function ProfilePanel({ language, onSwitchToSecurity }: ProfilePanelProps
             disabled={saving}
             className="min-w-[120px]"
           >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : saved ? <><Check className="w-4 h-4" />{language === 'zh' ? '已保存' : 'Saved'}</> : language === 'zh' ? '保存' : 'Save'}
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : saved ? <><Check className="w-4 h-4" />{t('user.saved', language as Language)}</> : t('user.save', language as Language)}
           </ActionButton>
         </div>
       </div>

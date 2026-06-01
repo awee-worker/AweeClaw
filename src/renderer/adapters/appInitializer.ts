@@ -158,9 +158,12 @@ async function loadUserSettings(_isEmptyWindow: boolean): Promise<string | null>
   ])
 
   const { webSearchConfig, mcpConfig } = useStore.getState()
-  if (webSearchConfig?.googleApiKey && webSearchConfig?.googleCx) {
-    api.http.setGoogleSearch(webSearchConfig.googleApiKey, webSearchConfig.googleCx).catch((e) => {
-      logger.system.warn('[Init] Failed to set Google Search config:', e)
+  if (webSearchConfig?.searchEngines) {
+    api.http.setSearchEngineState({
+      searchEngines: webSearchConfig.searchEngines,
+      activeSearchEngine: webSearchConfig.activeSearchEngine || 'duckduckgo',
+    }).catch((e) => {
+      logger.system.warn('[Init] Failed to set search engine state:', e)
     })
   }
 

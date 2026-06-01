@@ -1,4 +1,3 @@
-import { logger } from '@toolkit/LogEngine'
 import {
   type EntityType,
   type RelationType,
@@ -208,7 +207,6 @@ class LocalGraphExtractor {
     relations: ExtractedRelation[],
   ): void {
     const entities = Array.from(entityMap.values())
-    const entityNames = new Map(entities.map(e => [e.name.toLowerCase(), e]))
 
     for (const entity of entities) {
       if (entity.type === 'class') {

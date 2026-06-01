@@ -171,6 +171,7 @@ function buildPersistedSettingsPayload(
     onboardingCompleted: settings.onboardingCompleted,
     webSearchConfig: settings.webSearchConfig,
     mcpConfig: settings.mcpConfig,
+    emailConfig: settings.emailConfig,
     enableFileLogging: settings.enableFileLogging,
     browserMode: settings.browserMode,
     scenarioPreferences: settings.scenarioPreferences ?? DEFAULT_SCENARIO_PREFERENCES,
@@ -292,6 +293,7 @@ class SettingsService {
         : defaults.securitySettings,
       webSearchConfig: { ...defaults.webSearchConfig, ...(saved.webSearchConfig as object || {}) },
       mcpConfig: { ...defaults.mcpConfig, ...(saved.mcpConfig as object || {}) },
+      emailConfig: { ...defaults.emailConfig, ...(saved.emailConfig as object || {}) },
       aiInstructions: (saved.aiInstructions as string) || defaults.aiInstructions,
       onboardingCompleted: typeof saved.onboardingCompleted === 'boolean'
         ? saved.onboardingCompleted
@@ -350,12 +352,12 @@ class SettingsService {
   private async syncToMain(settings: SettingsState): Promise<void> {
     const promises: Promise<unknown>[] = []
 
-    if (settings.webSearchConfig.googleApiKey && settings.webSearchConfig.googleCx) {
+    if (settings.webSearchConfig.searchEngines) {
       promises.push(
-        api.http.setGoogleSearch(
-          settings.webSearchConfig.googleApiKey,
-          settings.webSearchConfig.googleCx,
-        ),
+        api.http.setSearchEngineState({
+          searchEngines: settings.webSearchConfig.searchEngines,
+          activeSearchEngine: settings.webSearchConfig.activeSearchEngine || 'duckduckgo',
+        }),
       )
     }
 

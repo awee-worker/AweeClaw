@@ -1,0 +1,297 @@
+themeId: Theme Id
+empty: Empty
+promptTemplateId: Prompt Template Id
+enableFileLogging: Enable File Logging
+.: 
+keybindings: Keybindings
+category: Category
+isFree: Is Free
+page: Page
+limit: Limit
+snippets: Snippets
+canvas.title: Title
+canvas.typecontent: Typecontent
+canvas.doubleclicktoedit: Doubleclicktoedit
+canvas.welcometocanvas: Welcometocanvas
+canvas.dragnodesaddideasbuild: Dragnodesaddideasbuild
+canvas.freecreation: Freecreation
+canvas.organizeandexploreideason: Organizeandexploreideason
+canvas.taskplanning: Taskplanning
+canvas.visualizetasksclarifyprioritiesand: Visualizetasksclarifyprioritiesand
+canvas.addnode: Addnode
+canvas.dragtomovenodes: Dragtomovenodes
+canvas.nodes: Nodes
+dashboard.importdata: Importdata
+dashboard.csvexceljsonfiles: Csvexceljsonfiles
+dashboard.createchart: Createchart
+dashboard.barlinepieandmore: Barlinepieandmore
+dashboard.startanalysis: Startanalysis
+dashboard.chatwithaitoanalyze: Chatwithaitoanalyze
+dashboard.datasources: Datasources
+dashboard.charts: Charts
+dashboard.datasets: Datasets
+dashboard.tasks: Tasks
+dashboard.dataanalysisworkspace: Dataanalysisworkspace
+dashboard.importdatacreatevisualizationsand: Importdatacreatevisualizationsand
+dashboard.openaworkspacetoaccess: Openaworkspacetoaccess
+dashboard.quickstart: Quickstart
+dashboard.addadataconnectionin: Addadataconnectionin
+dashboard.tellaiwhatyouwant: Tellaiwhatyouwant
+dashboard.aiwillautomaticallygeneratecharts: Aiwillautomaticallygeneratecharts
+tabs: Tabs
+split: Split
+a: A
+explorer.panel: Panel
+explorer.progressindicatorcomponent: Progressindicatorcomponent
+explorer.projectroot: Projectroot
+explorer.bookmarks: Bookmarks
+explorer.searchbookmarks: Searchbookmarks
+explorer.file: File
+explorer.url: Url
+explorer.folder: Folder
+explorer.starred: Starred
+explorer.all: All
+explorer.nobookmarksyet: Nobookmarksyet
+explorer.problems: Problems
+explorer.errors: Errors
+explorer.warnings: Warnings
+explorer.noproblemsdetected: Noproblemsdetected
+explorer.yourcodelooksgreat: Yourcodelooksgreat
+explorer.ln: Ln
+explorer.importfilesorfolders: Importfilesorfolders
+explorer.successfullyimporteditems: Successfullyimporteditems
+explorer.failedtoimportitems: Failedtoimportitems
+explorer.import: Import
+explorer.welcometonotes: Welcometonotes
+explorer.quicklycaptureyourthoughtsand: Quicklycaptureyourthoughtsand
+explorer.notes: Notes
+explorer.searchnotes: Searchnotes
+explorer.pinned: Pinned
+explorer.allnotes: Allnotes
+explorer.nonotesyet: Nonotesyet
+explorer.createyourfirstnote: Createyourfirstnote
+explorer.title: Title
+explorer.typecontent: Typecontent
+explorer.save: Save
+explorer.untitled: Untitled
+explorer.clickedittoaddcontent: Clickedittoaddcontent
+explorer.untitled2: Untitled2
+explorer.emptynote: Emptynote
+explorer.codereviewassistant: Codereviewassistant
+explorer.reviewthefollowingcodefocusing: Reviewthefollowingcodefocusing
+explorer.articlepolish: Articlepolish
+explorer.polishthefollowingarticlewhile: Polishthefollowingarticlewhile
+explorer.dataanalysisreport: Dataanalysisreport
+explorer.analyzethefollowingdataand: Analyzethefollowingdataand
+explorer.prompts: Prompts
+explorer.searchprompts: Searchprompts
+explorer.nopromptsyet: Nopromptsyet
+explorer.replacematchesinfiles: Replacematchesinfiles
+explorer.replaceconfirmation: Replaceconfirmation
+explorer.replacedinfiles: Replacedinfiles
+explorer.replaceinselectiononly: Replaceinselectiononly
+explorer.showingclickorscrollto: Showingclickorscrollto
+explorer.replaceinthisfile: Replaceinthisfile
+explorer.revealinsidebar: Revealinsidebar
+explorer.openaworkspacebeforecreating: Openaworkspacebeforecreating
+explorer.ungroupedpresets: Ungroupedpresets
+explorer.servers: Servers
+explorer.commands: Commands
+explorer.quicklinks: Quicklinks
+explorer.linkconfigurationisincomplete: Linkconfigurationisincomplete
+preset: Preset
+link: Link
+explorer.newterminal: Newterminal
+explorer.shellmanager: Shellmanager
+explorer.availableshells: Availableshells
+explorer.noshellsdetected: Noshellsdetected
+explorer.favorites: Favorites
+explorer.unfavorite: Unfavorite
+explorer.edit: Edit
+explorer.favorite: Favorite
+explorer.edit2: Edit2
+explorer.favorite2: Favorite2
+explorer.edit3: Edit3
+explorer.quickadd: Quickadd
+explorer.link: Link
+explorer.server: Server
+explorer.currentrepository: Currentrepository
+explorer.listmode: Listmode
+explorer.singlerepomode: Singlerepomode
+explorer.outline: Outline
+explorer.filtersymbols: Filtersymbols
+explorer.nofileopen: Nofileopen
+explorer.nosymbolsfound: Nosymbolsfound
+explorer.welcometotasks: Welcometotasks
+explorer.demo: Demo
+explorer.tasks: Tasks
+explorer.addtask: Addtask
+explorer.searchtasks: Searchtasks
+explorer.active: Active
+explorer.done: Done
+explorer.completed: Completed
+explorer.notasksyet: Notasksyet
+T:  T
+2d: 2d
+mark: Mark
+div: Div
+warning: Warning
+info: Info
+keydown: Keydown
+llmConfig: Llm Config
+onboardingCompleted: Onboarding Completed
+activeScenarioId: Active Scenario Id
+autoApprove: Auto Approve
+agentConfig: Agent Config
+aiInstructions: Ai Instructions
+webSearchConfig: Web Search Config
+mcpConfig: Mcp Config
+emailConfig: Email Config
+securitySettings: Security Settings
+privacySettings: Privacy Settings
+providerConfigs: Provider Configs
+editorConfig: Editor Config
+indexConfig: Index Config
+installPath: Install Path
+pathNote: Path Note
+currentPath: Current Path
+customPath: Custom Path
+reset: Reset
+lspServers: Lsp Servers
+installAll: Install All
+installNote: Install Note
+installed: Installed
+notInstalled: Not Installed
+supportedLanguages: Supported Languages
+installing: Installing
+install: Install
+browserMode: Browser Mode
+style: Style
+git.unresolvedConflicts: Unresolved Conflicts
+git.conflictResolved: Conflict Resolved
+git.resolveConflicts: Resolve Conflicts
+git.conflictsRemaining: Conflicts Remaining
+git.acceptOurs: Accept Ours
+git.acceptTheirs: Accept Theirs
+git.acceptBoth: Accept Both
+git.currentChanges: Current Changes
+git.incomingChanges: Incoming Changes
+git.allConflictsResolved: All Conflicts Resolved
+git.markResolved: Mark Resolved
+role: Role
+temperature: Temperature
+systemPrompt: System Prompt
+outputVar: Output Var
+collaborationMode: Collaboration Mode
+maxRounds: Max Rounds
+consensusCondition: Consensus Condition
+subWorkflowId: Sub Workflow Id
+inputMapping: Input Mapping
+addMapping: Add Mapping
+inputType: Input Type
+inputLabel: Input Label
+inputPlaceholder: Input Placeholder
+required: Required
+options: Options
+optionValue: Option Value
+optionLabel: Option Label
+addOption: Add Option
+fileConfig: File Config
+allowMultiple: Allow Multiple
+allowedTypes: Allowed Types
+maxSize: Max Size
+approvalTitle: Approval Title
+approvalDescription: Approval Description
+approvers: Approvers
+addApprover: Add Approver
+timeoutMs: Timeout Ms
+autoAction: Auto Action
+formTitle: Form Title
+formFields: Form Fields
+fieldName: Field Name
+addField: Add Field
+conditions: Conditions
+addCondition: Add Condition
+switchVariable: Switch Variable
+switchCases: Switch Cases
+addCase: Add Case
+loopType: Loop Type
+loopData: Loop Data
+loopVariable: Loop Variable
+max: Max
+collectionVar: Collection Var
+strategy: Strategy
+all: All
+any: Any
+count: Count
+waitAll: Wait All
+waitAny: Wait Any
+toolName: Tool Name
+toolArgs: Tool Args
+mcpServer: Mcp Server
+mcpTool: Mcp Tool
+inputVars: Input Vars
+code: Code
+method: Method
+url: Url
+headers: Headers
+auth: Auth
+none: None
+bearer: Bearer
+basic: Basic
+token: Token
+user: User
+pass: Pass
+keyHeader: Key Header
+keyValue: Key Value
+body: Body
+variableName: Variable Name
+varType: Var Type
+variableValue: Variable Value
+expression: Expression
+knowledgeBase: Knowledge Base
+queryContent: Query Content
+topK: Top K
+threshold: Threshold
+delayMs: Delay Ms
+path: Path
+eventType: Event Type
+eventTimeout: Event Timeout
+textContent: Text Content
+outputFormat: Output Format
+filePath: File Path
+fileFormat: File Format
+encoding: Encoding
+channel: Channel
+template: Template
+recipients: Recipients
+addRecipient: Add Recipient
+Workflow:  Workflow
+Chat:  Chat
+RAG:  R A G
+Retry:  Retry
+Prev:  Prev
+Next:  Next
+Official:  Official
+Details:  Details
+Use:  Use
+Nodes:  Nodes
+Edges:  Edges
+Uses:  Uses
+Rating:  Rating
+Tags:  Tags
+Cancel:  Cancel
+run: Run
+test: Test
+span: Span
+customThemes: Custom Themes
+themeBg: Theme Bg
+message: Message
+broadcast: Broadcast
+__audit_entry__: __audit_entry__
+__circuit_half_open__: __circuit_half_open__
+__retry_count__: __retry_count__
+__retry_original_input__: __retry_original_input__
+__retry_delay__: __retry_delay__
+__should_retry__: __should_retry__
+canvas: Canvas

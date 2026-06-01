@@ -1,11 +1,12 @@
 import type { TabProps } from '../types'
 import { Section } from '../Section'
 import { INPUT_CLASS, SELECT_CLASS, TEXTAREA_CLASS } from '../shared'
+import { t, type Language } from '@renderer/i18n'
 
 export function HttpRequestSection({ data, onChange, language }: Omit<TabProps, 'nodeType'>) {
   return (
     <>
-      <Section title={language === 'zh' ? '请求方法' : 'HTTP Method'}>
+      <Section title={t('wf.httpmethod', language as Language)}>
         <select
           value={data.httpMethod || 'GET'}
           onChange={(e) => onChange('httpMethod', e.target.value)}
@@ -25,7 +26,7 @@ export function HttpRequestSection({ data, onChange, language }: Omit<TabProps, 
           className={INPUT_CLASS}
         />
       </Section>
-      <Section title={language === 'zh' ? '请求头' : 'Headers'}>
+      <Section title={t('wf.headers', language as Language)}>
         <textarea
           value={data.httpHeaders ? Object.entries(data.httpHeaders).map(([k, v]) => `${k}: ${v}`).join('\n') : ''}
           onChange={(e) => {
@@ -56,7 +57,7 @@ export function HttpRequestSection({ data, onChange, language }: Omit<TabProps, 
 
 export function TextOutputSection({ data, onChange, language }: Omit<TabProps, 'nodeType'>) {
   return (
-    <Section title={language === 'zh' ? '文本内容' : 'Text Content'}>
+    <Section title={t('wf.textcontent', language as Language)}>
       <textarea
         value={data.textContent || ''}
         onChange={(e) => onChange('textContent', e.target.value)}
@@ -70,18 +71,18 @@ export function TextOutputSection({ data, onChange, language }: Omit<TabProps, '
 export function NotificationSection({ data, onChange, language }: Omit<TabProps, 'nodeType'>) {
   return (
     <>
-      <Section title={language === 'zh' ? '通知渠道' : 'Channel'}>
+      <Section title={t('wf.channel', language as Language)}>
         <select
           value={data.notificationChannel || 'system'}
           onChange={(e) => onChange('notificationChannel', e.target.value)}
           className={SELECT_CLASS}
         >
-          <option value="system">{language === 'zh' ? '系统通知' : 'System'}</option>
-          <option value="email">{language === 'zh' ? '邮件' : 'Email'}</option>
+          <option value="system">{t('wf.system', language as Language)}</option>
+          <option value="email">{t('wf.email', language as Language)}</option>
           <option value="webhook">Webhook</option>
         </select>
       </Section>
-      <Section title={language === 'zh' ? '通知模板' : 'Template'}>
+      <Section title={t('wf.template', language as Language)}>
         <textarea
           value={data.notificationTemplate || ''}
           onChange={(e) => onChange('notificationTemplate', e.target.value)}

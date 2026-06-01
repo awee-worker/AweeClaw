@@ -39,6 +39,7 @@ import type {
     MarketplaceUpdateInfo,
 } from '@scenario-system/marketplace'
 import { toast } from '../foundation/NotificationProvider'
+import { t, type Language } from '@renderer/i18n'
 
 const ICON_MAP: Record<string, LucideIcon> = {
     Code2, BarChart3, PenTool, Sparkles, Settings,
@@ -208,17 +209,17 @@ export function ScenarioManagerView() {
         try {
             const result = await updateScenarioFromMarketplace(scenarioId, updateInfo.latestVersion)
             if (result.success) {
-                toast.success(language === 'zh' ? `场景已更新至 v${result.version}` : `Scenario updated to v${result.version}`)
+                toast.success(t('scenario.scenarioupdatedtov', language as Language, { version: result.version }))
                 setScenarioUpdates(prev => {
                     const next = new Map(prev)
                     next.delete(scenarioId)
                     return next
                 })
             } else {
-                const errorMsg = translateInstallError(result.error || (language === 'zh' ? '未知错误' : 'Unknown error'))
+                const errorMsg = translateInstallError(result.error || (t('scenario.unknownerror', language as Language)))
                 toast.card({
                     type: 'error',
-                    title: language === 'zh' ? '更新失败' : 'Update Failed',
+                    title: t('scenario.updatefailed', language as Language),
                     message: errorMsg,
                     duration: 5000,
                     source: 'ScenarioMarketplace',
@@ -228,7 +229,7 @@ export function ScenarioManagerView() {
             const errorMsg = translateInstallError(err instanceof Error ? err.message : String(err))
             toast.card({
                 type: 'error',
-                title: language === 'zh' ? '更新失败' : 'Update Failed',
+                title: t('scenario.updatefailed2', language as Language),
                 message: errorMsg,
                 duration: 5000,
                 source: 'ScenarioMarketplace',
@@ -367,9 +368,7 @@ export function ScenarioManagerView() {
                     phase: 'error',
                     config,
                     scenarioId,
-                    error: language === 'zh'
-                        ? `场景「${config.nameZh || config.name}」已安装，请先卸载后再重新安装`
-                        : `Scenario "${config.name}" is already installed. Please uninstall first.`,
+                    error: t('scenario.scenarioisalreadyinstalledplease', language as Language, { name: String(config.name), nameZh: String(config.nameZh || config.name) }),
                 }))
                 return
             }
@@ -434,20 +433,18 @@ export function ScenarioManagerView() {
                 }
                 setRollbackInfo(null)
                 toast.success(
-                    language === 'zh' ? '回滚成功' : 'Rollback Successful',
-                    language === 'zh'
-                        ? `场景已回滚至 v${result.version}`
-                        : `Scenario rolled back to v${result.version}`
+                    t('scenario.rollbacksuccessful', language as Language),
+                    t('scenario.scenariorolledbacktov', language as Language, { version: result.version })
                 )
             } else {
                 toast.error(
-                    language === 'zh' ? '回滚失败' : 'Rollback Failed',
+                    t('scenario.rollbackfailed', language as Language),
                     result.error || ''
                 )
             }
         } catch (err) {
             toast.error(
-                language === 'zh' ? '回滚失败' : 'Rollback Failed',
+                t('scenario.rollbackfailed2', language as Language),
                 err instanceof Error ? err.message : ''
             )
         } finally {
@@ -503,13 +500,13 @@ export function ScenarioManagerView() {
                                 {isActive && (
                                     <span className="flex items-center gap-0.5 text-[10px] font-medium text-accent bg-accent/10 px-1.5 py-0.5 rounded-full">
                                         <Check className="w-2.5 h-2.5" />
-                                        {language === 'zh' ? '使用中' : 'Active'}
+                                        {t('scenario.active', language as Language)}
                                     </span>
                                 )}
                                 {isBuiltin && (
                                     <span className="flex items-center gap-0.5 text-[10px] font-medium text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded-full">
                                         <Shield className="w-2.5 h-2.5" />
-                                        {language === 'zh' ? '内置' : 'Built-in'}
+                                        {t('scenario.builtin', language as Language)}
                                     </span>
                                 )}
                             </div>
@@ -534,7 +531,7 @@ export function ScenarioManagerView() {
                         <div className="flex items-center gap-2 mt-2 px-2.5 py-1.5 rounded-lg bg-blue-500/5 border border-blue-500/15">
                             <ArrowUpCircle className="w-3.5 h-3.5 text-blue-400 shrink-0" />
                             <span className="text-[11px] text-blue-400 font-medium">
-                                {language === 'zh' ? `新版本 v${updateInfo.latestVersion} 可更新` : `v${updateInfo.latestVersion} available`}
+                                {t('scenario.vavailable', language as Language, { latestVersion: updateInfo.latestVersion })}
                             </span>
                             {isUpdating ? (
                                 <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400 ml-auto" />
@@ -543,7 +540,7 @@ export function ScenarioManagerView() {
                                     onClick={(e) => { e.stopPropagation(); handleUpdateScenario(scenario.id) }}
                                     className="ml-auto text-[11px] px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-colors font-medium"
                                 >
-                                    {language === 'zh' ? '更新' : 'Update'}
+                                    {t('scenario.update', language as Language)}
                                 </button>
                             )}
                         </div>
@@ -558,7 +555,7 @@ export function ScenarioManagerView() {
                                 onClick={(e) => { e.stopPropagation(); handleSwitch(scenario) }}
                             >
                                 <Check className="w-3 h-3" />
-                                {language === 'zh' ? '切换' : 'Switch'}
+                                {t('scenario.switch', language as Language)}
                             </ActionButton>
                         )}
                         {showSettings && (
@@ -569,7 +566,7 @@ export function ScenarioManagerView() {
                                 onClick={(e) => { e.stopPropagation(); handleOpenSettings(scenario.id) }}
                             >
                                 <Settings className="w-3 h-3" />
-                                {language === 'zh' ? '设置' : 'Settings'}
+                                {t('scenario.settings', language as Language)}
                             </ActionButton>
                         )}
                         <ActionButton
@@ -579,7 +576,7 @@ export function ScenarioManagerView() {
                             onClick={(e) => { e.stopPropagation(); handleOpenDetail(scenario.id) }}
                         >
                             <Info className="w-3 h-3" />
-                            {language === 'zh' ? '详情' : 'Details'}
+                            {t('scenario.details', language as Language)}
                         </ActionButton>
                         {!isBuiltin && (
                             <ActionButton
@@ -589,7 +586,7 @@ export function ScenarioManagerView() {
                                 onClick={(e) => { e.stopPropagation(); handleRequestUninstall(scenario) }}
                             >
                                 <PackageX className="w-3 h-3" />
-                                {language === 'zh' ? '卸载' : 'Uninstall'}
+                                {t('scenario.uninstall', language as Language)}
                             </ActionButton>
                         )}
                         {isBuiltin && !scenario.isDefault && (
@@ -600,7 +597,7 @@ export function ScenarioManagerView() {
                                 onClick={(e) => { e.stopPropagation(); handleRequestUninstall(scenario) }}
                             >
                                 <PackageX className="w-3 h-3" />
-                                {language === 'zh' ? '卸载' : 'Uninstall'}
+                                {t('scenario.uninstall2', language as Language)}
                             </ActionButton>
                         )}
                     </div>
@@ -614,7 +611,7 @@ export function ScenarioManagerView() {
             <div className="flex items-center justify-between px-6 py-4 border-b border-border/20 bg-background/80 backdrop-blur-sm">
                 <div className="flex items-center gap-6">
                     <h1 className="text-base font-bold text-text-primary">
-                        {language === 'zh' ? '场景管理' : 'Scenario Manager'}
+                        {t('scenario.scenariomanager', language as Language)}
                     </h1>
                     <div className="flex items-center bg-surface/40 rounded-lg p-0.5 border border-border/20">
                         <button
@@ -627,7 +624,7 @@ export function ScenarioManagerView() {
                         >
                             <span className="flex items-center gap-1.5">
                                 <Package className="w-3.5 h-3.5" />
-                                {language === 'zh' ? '已安装' : 'Installed'}
+                                {t('scenario.installed', language as Language)}
                                 <span className="text-[10px] opacity-60">({scenarios.length})</span>
                             </span>
                         </button>
@@ -641,7 +638,7 @@ export function ScenarioManagerView() {
                         >
                             <span className="flex items-center gap-1.5">
                                 <Globe className="w-3.5 h-3.5" />
-                                {language === 'zh' ? '场景市场' : 'Marketplace'}
+                                {t('scenario.marketplace', language as Language)}
                             </span>
                         </button>
                     </div>
@@ -655,13 +652,13 @@ export function ScenarioManagerView() {
                             onClick={handleInstallScenario}
                         >
                             <FolderOpen className="w-3.5 h-3.5" />
-                            {language === 'zh' ? '本地安装' : 'Local Install'}
+                            {t('scenario.localinstall', language as Language)}
                         </ActionButton>
                     )}
                     <button
                         onClick={() => setActiveSidePanel(null)}
                         className="w-8 h-8 rounded-lg flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-surface/60 transition-colors"
-                        title={language === 'zh' ? '关闭' : 'Close'}
+                        title={t('scenario.close', language as Language)}
                     >
                         <X className="w-4 h-4" />
                     </button>
@@ -689,14 +686,14 @@ export function ScenarioManagerView() {
                 <OverlayDialog
                     isOpen
                     onClose={handleCloseInstall}
-                    title={language === 'zh' ? '安装场景' : 'Install Scenario'}
+                    title={t('scenario.installscenario', language as Language)}
                     size="md"
                 >
                     {installState.phase === 'selecting' && (
                         <div className="flex flex-col items-center justify-center py-8 gap-3">
                             <FolderOpen className="w-8 h-8 text-accent/60" strokeWidth={1.5} />
                             <p className="text-sm text-text-secondary">
-                                {language === 'zh' ? '请选择场景目录...' : 'Select scenario directory...'}
+                                {t('scenario.selectscenariodirectory', language as Language)}
                             </p>
                         </div>
                     )}
@@ -704,7 +701,7 @@ export function ScenarioManagerView() {
                         <div className="flex flex-col items-center justify-center py-8 gap-3">
                             <Loader2 className="w-8 h-8 text-accent animate-spin" strokeWidth={1.5} />
                             <p className="text-sm text-text-secondary">
-                                {language === 'zh' ? '正在读取场景配置...' : 'Reading scenario config...'}
+                                {t('scenario.readingscenarioconfig', language as Language)}
                             </p>
                         </div>
                     )}
@@ -728,10 +725,10 @@ export function ScenarioManagerView() {
                             </p>
                             <div className="flex items-center gap-2 justify-end">
                                 <ActionButton variant="ghost" size="sm" onClick={handleCloseInstall}>
-                                    {language === 'zh' ? '取消' : 'Cancel'}
+                                    {t('scenario.cancel', language as Language)}
                                 </ActionButton>
                                 <ActionButton variant="primary" size="sm" onClick={handleConfirmInstall}>
-                                    {language === 'zh' ? '确认安装' : 'Install'}
+                                    {t('scenario.install', language as Language)}
                                 </ActionButton>
                             </div>
                         </div>
@@ -740,7 +737,7 @@ export function ScenarioManagerView() {
                         <div className="flex flex-col items-center justify-center py-8 gap-3">
                             <Loader2 className="w-8 h-8 text-accent animate-spin" strokeWidth={1.5} />
                             <p className="text-sm text-text-secondary">
-                                {language === 'zh' ? '正在安装场景...' : 'Installing scenario...'}
+                                {t('scenario.installingscenario', language as Language)}
                             </p>
                         </div>
                     )}
@@ -748,10 +745,10 @@ export function ScenarioManagerView() {
                         <div className="flex flex-col items-center justify-center py-8 gap-3">
                             <CheckCircle2 className="w-8 h-8 text-green-400" strokeWidth={1.5} />
                             <p className="text-sm text-text-secondary">
-                                {language === 'zh' ? '安装成功！' : 'Installed successfully!'}
+                                {t('scenario.installedsuccessfully', language as Language)}
                             </p>
                             <ActionButton variant="primary" size="sm" onClick={handleCloseInstall}>
-                                {language === 'zh' ? '完成' : 'Done'}
+                                {t('scenario.done', language as Language)}
                             </ActionButton>
                         </div>
                     )}
@@ -759,13 +756,13 @@ export function ScenarioManagerView() {
                         <div className="flex flex-col items-center justify-center py-8 gap-3">
                             <XCircle className="w-8 h-8 text-red-400" strokeWidth={1.5} />
                             <p className="text-sm text-text-secondary">
-                                {language === 'zh' ? '安装失败' : 'Installation Failed'}
+                                {t('scenario.installationfailed', language as Language)}
                             </p>
                             <p className="text-[12px] text-text-muted max-w-md text-center">
                                 {installState.error}
                             </p>
                             <ActionButton variant="primary" size="sm" onClick={handleCloseInstall}>
-                                {language === 'zh' ? '关闭' : 'Close'}
+                                {t('scenario.close2', language as Language)}
                             </ActionButton>
                         </div>
                     )}
@@ -774,15 +771,13 @@ export function ScenarioManagerView() {
 
             <DecisionOverlay
                 isOpen={uninstallState?.isConfirming === true}
-                title={language === 'zh' ? '确认卸载' : 'Confirm Uninstall'}
-                message={language === 'zh'
-                    ? `确定要卸载场景「${uninstallState?.scenarioName}」吗？卸载将删除场景文件、数据库及所有相关数据，此操作不可恢复。`
-                    : `Are you sure you want to uninstall "${uninstallState?.scenarioName}"? This will remove scenario files, database, and all related data. This action cannot be undone.`
+                title={t('scenario.confirmuninstall', language as Language)}
+                message={t('scenario.areyousureyouwant', language as Language, { p0: uninstallState?.scenarioName })
                 }
-                confirmText={language === 'zh' ? '确认卸载' : 'Uninstall'}
-                cancelText={language === 'zh' ? '取消' : 'Cancel'}
+                confirmText={t('scenario.uninstall3', language as Language)}
+                cancelText={t('scenario.cancel2', language as Language)}
                 severity="danger"
-                riskTag={language === 'zh' ? '不可恢复' : 'Irreversible'}
+                riskTag={t('scenario.irreversible', language as Language)}
                 auditAction="scenario-uninstall"
                 onConfirm={handleConfirmUninstall}
                 onCancel={handleCancelUninstall}
@@ -793,13 +788,11 @@ export function ScenarioManagerView() {
                     <div className="flex flex-col items-center justify-center py-6 gap-3">
                         <Loader2 className="w-8 h-8 text-accent animate-spin" strokeWidth={1.5} />
                         <p className="text-sm text-text-secondary">
-                            {language === 'zh'
-                                ? `正在卸载「${uninstallState.scenarioName}」...`
-                                : `Uninstalling "${uninstallState.scenarioName}"...`
+                            {t('scenario.uninstalling', language as Language, { scenarioName: uninstallState.scenarioName })
                             }
                         </p>
                         <p className="text-[11px] text-text-muted">
-                            {language === 'zh' ? '正在执行卸载脚本并清理数据' : 'Running uninstall scripts and cleaning up data'}
+                            {t('scenario.runninguninstallscriptsandcleaning', language as Language)}
                         </p>
                     </div>
                 </OverlayDialog>
@@ -808,7 +801,7 @@ export function ScenarioManagerView() {
             <OverlayDialog
                 isOpen={detailScenarioId !== null}
                 onClose={() => { setDetailScenarioId(null); setHealthReport(null) }}
-                title={language === 'zh' ? '场景详情' : 'Scenario Details'}
+                title={t('scenario.scenariodetails', language as Language)}
                 size="lg"
             >
                 {detailScenario && (
@@ -828,7 +821,7 @@ export function ScenarioManagerView() {
                                     {detailScenario.isBuiltin && (
                                         <span className="flex items-center gap-0.5 text-[10px] font-medium text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded-full">
                                             <Shield className="w-2.5 h-2.5" />
-                                            {language === 'zh' ? '内置' : 'Built-in'}
+                                            {t('scenario.builtin2', language as Language)}
                                         </span>
                                     )}
                                 </div>
@@ -839,25 +832,25 @@ export function ScenarioManagerView() {
                         </div>
 
                         <div className="grid grid-cols-2 gap-3">
-                            <InfoItem label={language === 'zh' ? '版本' : 'Version'} value={`v${detailScenario.version}`} />
-                            <InfoItem label={language === 'zh' ? '作者' : 'Author'} value={detailScenario.author} />
+                            <InfoItem label={t('scenario.version', language as Language)} value={`v${detailScenario.version}`} />
+                            <InfoItem label={t('scenario.author', language as Language)} value={detailScenario.author} />
                             <InfoItem
-                                label={language === 'zh' ? '分类' : 'Category'}
+                                label={t('scenario.category', language as Language)}
                                 value={CATEGORY_LABELS[detailScenario.category]?.[language === 'zh' ? 'zh' : 'en'] || detailScenario.category}
                             />
                             <InfoItem
-                                label={language === 'zh' ? '来源' : 'Source'}
+                                label={t('scenario.source', language as Language)}
                                 value={SOURCE_LABELS[detailScenario.source || (detailScenario.isBuiltin ? 'builtin' : 'local')]?.[language === 'zh' ? 'zh' : 'en'] || '-'}
                             />
                             <InfoItem
-                                label={language === 'zh' ? '布局' : 'Layout'}
+                                label={t('scenario.layout', language as Language)}
                                 value={`${LAYOUT_ICONS[detailScenario.ui?.layout] || ''} ${detailScenario.ui?.layout || 'chat-centric'}`}
                             />
                             <InfoItem
-                                label={language === 'zh' ? '需要工作区' : 'Workspace'}
+                                label={t('scenario.workspace', language as Language)}
                                 value={detailScenario.requiresWorkspace
-                                    ? (language === 'zh' ? '是' : 'Yes')
-                                    : (language === 'zh' ? '否' : 'No')
+                                    ? (t('scenario.yes', language as Language))
+                                    : (t('scenario.no', language as Language))
                                 }
                             />
                         </div>
@@ -866,7 +859,7 @@ export function ScenarioManagerView() {
                             <div>
                                 <h4 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
                                     <Tag className="w-3 h-3" />
-                                    {language === 'zh' ? '标签' : 'Tags'}
+                                    {t('scenario.tags', language as Language)}
                                 </h4>
                                 <div className="flex flex-wrap gap-1.5">
                                     {detailScenario.tags.map(tag => (
@@ -884,7 +877,7 @@ export function ScenarioManagerView() {
                                     <div>
                                         <h4 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
                                             <ShieldCheck className="w-3 h-3" />
-                                            {language === 'zh' ? '权限' : 'Permissions'}
+                                            {t('scenario.permissions', language as Language)}
                                         </h4>
                                         <div className="flex flex-wrap gap-1.5">
                                             {detailManifest.permissions.map(perm => (
@@ -900,7 +893,7 @@ export function ScenarioManagerView() {
                                     <div>
                                         <h4 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
                                             <Layers className="w-3 h-3" />
-                                            {language === 'zh' ? '依赖' : 'Dependencies'}
+                                            {t('scenario.dependencies', language as Language)}
                                         </h4>
                                         <div className="space-y-1">
                                             {detailManifest.dependencies.map(dep => (
@@ -911,7 +904,7 @@ export function ScenarioManagerView() {
                                                     )}
                                                     {dep.required === false && (
                                                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface/40 text-text-muted">
-                                                            {language === 'zh' ? '可选' : 'optional'}
+                                                            {t('scenario.optional', language as Language)}
                                                         </span>
                                                     )}
                                                 </div>
@@ -925,17 +918,17 @@ export function ScenarioManagerView() {
                         <div>
                             <h4 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
                                 <Activity className="w-3 h-3" />
-                                {language === 'zh' ? '运行状态' : 'Runtime Status'}
+                                {t('scenario.runtimestatus', language as Language)}
                             </h4>
                             {isLoadingHealth ? (
                                 <div className="flex items-center gap-2 text-[12px] text-text-muted">
                                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                    {language === 'zh' ? '检查中...' : 'Checking...'}
+                                    {t('scenario.checking', language as Language)}
                                 </div>
                             ) : (
                                 <div className="space-y-1.5">
                                     <div className="flex items-center gap-2 text-[12px]">
-                                        <span className="text-text-muted">{language === 'zh' ? '状态' : 'State'}:</span>
+                                        <span className="text-text-muted">{t('scenario.state', language as Language)}:</span>
                                         <StateBadge state={detailEntry?.state || 'unregistered'} language={language} />
                                     </div>
                                     {healthReport && (healthReport.checks?.length ?? 0) > 0 && (
@@ -957,10 +950,10 @@ export function ScenarioManagerView() {
                                     )}
                                     {healthReport && (
                                         <div className="flex items-center gap-4 text-[11px] text-text-muted mt-2">
-                                            <span>{language === 'zh' ? '工具' : 'Tools'}: {healthReport.toolCount}</span>
-                                            <span>{language === 'zh' ? '组件' : 'Components'}: {healthReport.componentCount}</span>
+                                            <span>{t('scenario.tools', language as Language)}: {healthReport.toolCount}</span>
+                                            <span>{t('scenario.components', language as Language)}: {healthReport.componentCount}</span>
                                             {healthReport.uptime != null && (
-                                                <span>{language === 'zh' ? '运行时间' : 'Uptime'}: {formatUptime(healthReport.uptime, language)}</span>
+                                                <span>{t('scenario.uptime', language as Language)}: {formatUptime(healthReport.uptime, language)}</span>
                                             )}
                                         </div>
                                     )}
@@ -974,12 +967,10 @@ export function ScenarioManagerView() {
                                     <div>
                                         <h4 className="text-[12px] font-medium text-amber-400 flex items-center gap-1.5">
                                             <AlertTriangle className="w-3.5 h-3.5" />
-                                            {language === 'zh' ? '可回滚版本' : 'Rollback Available'}
+                                            {t('scenario.rollbackavailable', language as Language)}
                                         </h4>
                                         <p className="text-[11px] text-text-muted mt-1">
-                                            {language === 'zh'
-                                                ? `可回滚至 v${rollbackInfo.previousVersion}（备份于 ${new Date(rollbackInfo.backedUpAt).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US')}）`
-                                                : `Roll back to v${rollbackInfo.previousVersion} (backed up ${new Date(rollbackInfo.backedUpAt).toLocaleString('en-US')})`
+                                            {t('scenario.rollbacktovbacked', language as Language, { previousVersion: rollbackInfo.previousVersion, backedUpAt: new Date(rollbackInfo.backedUpAt).toLocaleString('en-US'), backedUpAt2: new Date(rollbackInfo.backedUpAt).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US') })
                                             }
                                         </p>
                                     </div>
@@ -995,7 +986,7 @@ export function ScenarioManagerView() {
                                         ) : (
                                             <RotateCcw className="w-3 h-3" />
                                         )}
-                                        {language === 'zh' ? '回滚' : 'Rollback'}
+                                        {t('scenario.rollback', language as Language)}
                                     </ActionButton>
                                 </div>
                             </div>
@@ -1005,12 +996,12 @@ export function ScenarioManagerView() {
                             <div>
                                 <h4 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
                                     <Zap className="w-3 h-3" />
-                                    {language === 'zh' ? '能力' : 'Capabilities'}
+                                    {t('scenario.capabilities', language as Language)}
                                 </h4>
                                 <div className="space-y-2">
                                     {(detailScenario.capabilities.toolPacks?.length ?? 0) > 0 && (
                                         <div>
-                                            <span className="text-[11px] text-text-muted">{language === 'zh' ? '工具包' : 'Tool Packs'}:</span>
+                                            <span className="text-[11px] text-text-muted">{t('scenario.toolpacks', language as Language)}:</span>
                                             <div className="flex flex-wrap gap-1 mt-1">
                                                 {detailScenario.capabilities.toolPacks.map(tp => (
                                                     <span key={tp} className="text-[11px] px-2 py-0.5 rounded-md bg-accent/5 text-accent/80 border border-accent/10">
@@ -1022,7 +1013,7 @@ export function ScenarioManagerView() {
                                     )}
                                     {(detailScenario.capabilities.modes?.length ?? 0) > 0 && (
                                         <div>
-                                            <span className="text-[11px] text-text-muted">{language === 'zh' ? '工作模式' : 'Modes'}:</span>
+                                            <span className="text-[11px] text-text-muted">{t('scenario.modes', language as Language)}:</span>
                                             <div className="flex flex-wrap gap-1 mt-1">
                                                 {detailScenario.capabilities.modes.map(m => (
                                                     <span key={m.id} className="text-[11px] px-2 py-0.5 rounded-md bg-surface/60 text-text-muted border border-border/20">
@@ -1046,7 +1037,7 @@ export function ScenarioManagerView() {
                                     onClick={(e) => { e.preventDefault(); api.file.openExternalUrl(detailManifest.homepage!) }}
                                 >
                                     <Globe className="w-3 h-3" />
-                                    {language === 'zh' ? '主页' : 'Homepage'}
+                                    {t('scenario.homepage', language as Language)}
                                 </a>
                             </div>
                         )}
@@ -1057,9 +1048,7 @@ export function ScenarioManagerView() {
             <OverlayDialog
                 isOpen={settingsScenarioId !== null}
                 onClose={() => setSettingsScenarioId(null)}
-                title={language === 'zh'
-                    ? `设置 - ${settingsScenario ? (language === 'zh' ? settingsScenario.nameZh : settingsScenario.name) : ''}`
-                    : `Settings - ${settingsScenario ? settingsScenario.name : ''}`
+                title={t('scenario.settings2', language as Language, { name: settingsScenario ? settingsScenario.name : '', nameZh: settingsScenario ? (language === 'zh' ? settingsScenario.nameZh : settingsScenario.name) : '' })
                 }
                 size="md"
             >
@@ -1075,15 +1064,11 @@ export function ScenarioManagerView() {
                     <div className="flex flex-col items-center justify-center py-8 text-center">
                         <Settings className="w-10 h-10 text-text-muted/30 mb-3" strokeWidth={1} />
                         <p className="text-sm text-text-muted/60">
-                            {language === 'zh'
-                                ? `场景「${settingsScenario.nameZh}」暂未提供设置面板`
-                                : `Scenario "${settingsScenario.name}" does not provide a settings panel`
+                            {t('scenario.scenariodoesnotprovidea', language as Language, { name: settingsScenario.name, nameZh: settingsScenario.nameZh })
                             }
                         </p>
                         <p className="text-[11px] text-text-muted/40 mt-1">
-                            {language === 'zh'
-                                ? '开发者可以通过 registerScenarioSettingsComponent 注册设置组件'
-                                : 'Developers can register a settings component via registerScenarioSettingsComponent'
+                            {t('scenario.developerscanregisterasettings', language as Language)
                             }
                         </p>
                     </div>
@@ -1103,7 +1088,7 @@ function InstalledTab({
     sortedCategories,
     renderScenarioCard,
 }: {
-    language: string
+    language: Language
     scenarios: ScenarioPlugin[]
     filteredBuiltin: ScenarioPlugin[]
     filteredInstalled: ScenarioPlugin[]
@@ -1124,7 +1109,7 @@ function InstalledTab({
                                 : 'text-text-muted hover:text-text-primary border border-border/20 hover:border-border/40'
                         }`}
                     >
-                        {language === 'zh' ? '全部' : 'All'}
+                        {t('scenario.all', language as Language)}
                     </button>
                     {sortedCategories.map(cat => {
                         const catLabel = CATEGORY_LABELS[cat] || CATEGORY_LABELS.custom
@@ -1150,7 +1135,7 @@ function InstalledTab({
                     <div className="flex items-center gap-1.5 mb-3">
                         <Shield className="w-3.5 h-3.5 text-amber-400/60" strokeWidth={1.5} />
                         <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">
-                            {language === 'zh' ? '内置场景' : 'Built-in'}
+                            {t('scenario.builtin3', language as Language)}
                         </span>
                         <span className="text-[10px] text-text-muted/60">({filteredBuiltin.length})</span>
                     </div>
@@ -1165,7 +1150,7 @@ function InstalledTab({
                     <div className="flex items-center gap-1.5 mb-3">
                         <Package className="w-3.5 h-3.5 text-accent/60" strokeWidth={1.5} />
                         <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">
-                            {language === 'zh' ? '已安装场景' : 'Installed'}
+                            {t('scenario.installed2', language as Language)}
                         </span>
                         <span className="text-[10px] text-text-muted/60">({filteredInstalled.length})</span>
                     </div>
@@ -1179,10 +1164,10 @@ function InstalledTab({
                 <div className="flex flex-col items-center justify-center py-20 text-center">
                     <Package className="w-12 h-12 text-text-muted/20 mb-4" strokeWidth={1} />
                     <p className="text-sm text-text-muted/60">
-                        {language === 'zh' ? '暂无已安装的场景' : 'No scenarios installed'}
+                        {t('scenario.noscenariosinstalled', language as Language)}
                     </p>
                     <p className="text-xs text-text-muted/40 mt-1">
-                        {language === 'zh' ? '从场景市场安装场景，或点击「本地安装」从本地目录安装' : 'Install from marketplace or click "Local Install" to install from a local directory'}
+                        {t('scenario.installfrommarketplaceorclick', language as Language)}
                     </p>
                 </div>
             )}
@@ -1190,7 +1175,7 @@ function InstalledTab({
     )
 }
 
-function MarketplaceTab({ language, isAuthenticated }: { language: string; isAuthenticated: boolean }) {
+function MarketplaceTab({ language, isAuthenticated }: { language: Language; isAuthenticated: boolean }) {
     const [items, setItems] = useState<MarketplaceScenario[]>([])
     const [featured, setFeatured] = useState<MarketplaceScenario[]>([])
     const [categories, setCategories] = useState<MarketplaceCategory[]>([])
@@ -1202,7 +1187,6 @@ function MarketplaceTab({ language, isAuthenticated }: { language: string; isAut
     const [total, setTotal] = useState(0)
     const [page, setPage] = useState(1)
     const [permissionPending, setPermissionPending] = useState<MarketplaceScenario | null>(null)
-    const t = useCallback((zh: string, en: string) => language === 'zh' ? zh : en, [language])
 
     function translateInstallError(error: string): string {
         if (language !== 'zh') return error
@@ -1272,7 +1256,7 @@ function MarketplaceTab({ language, isAuthenticated }: { language: string; isAut
     async function handleInstall(item: MarketplaceScenario) {
         if (scenarioRegistry.has(item.id)) {
             toast.warning(
-                language === 'zh' ? `场景 "${item.nameZh}" 已安装` : `Scenario "${item.name}" is already installed`
+                t('scenario.scenarioisalreadyinstalled', language as Language, { name: item.name, nameZh: item.nameZh })
             )
             return
         }
@@ -1300,25 +1284,23 @@ function MarketplaceTab({ language, isAuthenticated }: { language: string; isAut
                 }
 
                 toast.success(
-                    language === 'zh' ? `场景 "${item.nameZh}" 安装成功` : `Scenario "${item.name}" installed successfully`,
+                    t('scenario.scenarioinstalledsuccessfully', language as Language, { name: item.name, nameZh: item.nameZh }),
                 )
                 setSelectedItem(null)
                 await loadItems()
             } else if (result.requiresPayment) {
                 toast.card({
                     type: 'warning',
-                    title: language === 'zh' ? '付费场景' : 'Paid Scenario',
-                    message: language === 'zh'
-                        ? `该场景为付费场景，价格: ¥${result.price}，暂不支持在线支付`
-                        : `This is a paid scenario (¥${result.price}). Online payment is not yet supported.`,
+                    title: t('scenario.paidscenario', language as Language),
+                    message: t('scenario.thisisapaidscenario', language as Language, { price: result.price }),
                     duration: 5000,
                     source: 'ScenarioMarketplace',
                 })
             } else {
-                const errorMsg = translateInstallError(result.error || (language === 'zh' ? '未知错误' : 'Unknown error'))
+                const errorMsg = translateInstallError(result.error || (t('scenario.unknownerror2', language as Language)))
                 toast.card({
                     type: 'error',
-                    title: language === 'zh' ? '安装失败' : 'Install Failed',
+                    title: t('scenario.installfailed', language as Language),
                     message: errorMsg,
                     duration: 5000,
                     source: 'ScenarioMarketplace',
@@ -1328,7 +1310,7 @@ function MarketplaceTab({ language, isAuthenticated }: { language: string; isAut
             const errorMsg = translateInstallError(err instanceof Error ? err.message : String(err))
             toast.card({
                 type: 'error',
-                title: language === 'zh' ? '安装失败' : 'Install Failed',
+                title: t('scenario.installfailed2', language as Language),
                 message: errorMsg,
                 duration: 5000,
                 source: 'ScenarioMarketplace',
@@ -1355,8 +1337,8 @@ function MarketplaceTab({ language, isAuthenticated }: { language: string; isAut
         return (
             <div className="flex flex-col items-center justify-center h-full px-4 text-center">
                 <Globe className="w-12 h-12 text-text-muted/30 mb-4" strokeWidth={1} />
-                <p className="text-sm text-text-muted mb-1">{t('请先登录', 'Please log in first')}</p>
-                <p className="text-xs text-text-muted/60">{t('登录后可浏览和安装在线场景', 'Log in to browse and install online scenarios')}</p>
+                <p className="text-sm text-text-muted mb-1">{t('app.pleaseloginfirst', language as Language)}</p>
+                <p className="text-xs text-text-muted/60">{t('app.logintobrowse', language as Language)}</p>
             </div>
         )
     }
@@ -1369,7 +1351,7 @@ function MarketplaceTab({ language, isAuthenticated }: { language: string; isAut
                     className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text-primary mb-4 transition-colors"
                 >
                     <ArrowLeft className="w-3.5 h-3.5" />
-                    {t('返回列表', 'Back to list')}
+                    {t('app.backtolist', language as Language)}
                 </button>
 
                 <div className="max-w-3xl mx-auto">
@@ -1390,22 +1372,22 @@ function MarketplaceTab({ language, isAuthenticated }: { language: string; isAut
                     <div className="grid grid-cols-3 gap-3 mb-6">
                         <div className="text-center p-3 rounded-xl bg-surface/30 border border-border/20 shadow-sm shadow-black/5">
                             <div className="text-lg font-bold text-text-primary">{selectedItem.rating.toFixed(1)}</div>
-                            <div className="text-[11px] text-text-muted mt-0.5">{t('评分', 'Rating')}</div>
+                            <div className="text-[11px] text-text-muted mt-0.5">{t('app.rating', language as Language)}</div>
                             <div className="flex items-center justify-center mt-1">{renderStars(selectedItem.rating)}</div>
                         </div>
                         <div className="text-center p-3 rounded-xl bg-surface/30 border border-border/20 shadow-sm shadow-black/5">
                             <div className="text-lg font-bold text-text-primary">{selectedItem.downloads}</div>
-                            <div className="text-[11px] text-text-muted mt-0.5">{t('下载', 'Downloads')}</div>
+                            <div className="text-[11px] text-text-muted mt-0.5">{t('app.downloads', language as Language)}</div>
                         </div>
                         <div className="text-center p-3 rounded-xl bg-surface/30 border border-border/20 shadow-sm shadow-black/5">
                             <div className="text-lg font-bold text-text-primary">v{selectedItem.version}</div>
-                            <div className="text-[11px] text-text-muted mt-0.5">{t('版本', 'Version')}</div>
+                            <div className="text-[11px] text-text-muted mt-0.5">{t('app.version', language as Language)}</div>
                         </div>
                     </div>
 
                     {selectedItem.tags?.length > 0 && (
                         <div className="mb-6">
-                            <h4 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">{t('标签', 'Tags')}</h4>
+                            <h4 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">{t('app.tags', language as Language)}</h4>
                             <div className="flex flex-wrap gap-1.5">
                                 {selectedItem.tags.map(tag => (
                                     <span key={tag} className="px-2 py-0.5 text-[11px] rounded-md bg-surface/40 text-text-secondary border border-border/15 flex items-center gap-1">
@@ -1419,13 +1401,13 @@ function MarketplaceTab({ language, isAuthenticated }: { language: string; isAut
 
                     {selectedItem.minAppVersion && (
                         <div className="text-[12px] text-text-muted mb-4">
-                            {t(`最低应用版本: ${selectedItem.minAppVersion}`, `Min App Version: ${selectedItem.minAppVersion}`)}
+                            {t('app.minappversion', language as Language, { minAppVersion: selectedItem.minAppVersion })}
                         </div>
                     )}
 
                     <div className="flex items-center gap-2 text-[12px] text-text-muted mb-6">
                         <Shield className="w-3.5 h-3.5 text-green-400" />
-                        <span>{t('安全审查已通过', 'Security review passed')}</span>
+                        <span>{t('app.securityreviewpassed', language as Language)}</span>
                     </div>
 
                     <div className="flex items-center gap-3 mb-8">
@@ -1435,7 +1417,7 @@ function MarketplaceTab({ language, isAuthenticated }: { language: string; isAut
                                 disabled
                             >
                                 <CheckCircle2 className="w-4 h-4" />
-                                {t('已安装', 'Installed')}
+                                {t('app.installed', language as Language)}
                             </ActionButton>
                         ) : (
                             <ActionButton
@@ -1446,12 +1428,12 @@ function MarketplaceTab({ language, isAuthenticated }: { language: string; isAut
                                 {installing === selectedItem.id ? (
                                     <>
                                         <Clock className="w-4 h-4 animate-spin" />
-                                        {t('安装中...', 'Installing...')}
+                                        {t('app.installing', language as Language)}
                                     </>
                                 ) : (
                                     <>
                                         <Download className="w-4 h-4" />
-                                        {t('安装场景', 'Install Scenario')}
+                                        {t('app.installscenario', language as Language)}
                                     </>
                                 )}
                             </ActionButton>
@@ -1480,14 +1462,14 @@ function MarketplaceTab({ language, isAuthenticated }: { language: string; isAut
                             type="text"
                             value={searchQuery}
                             onChange={e => { setSearchQuery(e.target.value); setPage(1) }}
-                            placeholder={t('搜索场景...', 'Search scenarios...')}
+                            placeholder={t('app.searchscenarios', language as Language)}
                             className="w-full h-9 pl-9 pr-3 rounded-lg bg-surface/30 border border-border/15 text-sm text-text-primary placeholder:text-text-muted/50 outline-none focus:border-accent/30 transition-colors"
                         />
                     </div>
                     <button
                         onClick={() => { loadItems(); loadFeatured(); loadCategories(); }}
                         className="p-2 rounded-lg hover:bg-surface/40 text-text-muted hover:text-text-primary transition-colors"
-                        title={t('刷新', 'Refresh')}
+                        title={t('app.refresh', language as Language)}
                     >
                         <RefreshCw className="w-4 h-4" />
                     </button>
@@ -1502,7 +1484,7 @@ function MarketplaceTab({ language, isAuthenticated }: { language: string; isAut
                                 : 'text-text-muted hover:text-text-secondary border border-border/20'
                         }`}
                     >
-                        {t('全部', 'All')}
+                        {t('app.all', language as Language)}
                     </button>
                     {categories.map(cat => (
                         <button
@@ -1525,7 +1507,7 @@ function MarketplaceTab({ language, isAuthenticated }: { language: string; isAut
             <div className="flex-1 overflow-auto p-6">
                 {featured.length > 0 && !searchQuery && !selectedCategory && (
                     <div className="mb-8">
-                        <h3 className="text-sm font-semibold text-text-primary mb-3">{t('✨ 精选推荐', '✨ Featured')}</h3>
+                        <h3 className="text-sm font-semibold text-text-primary mb-3">{t('app.featured', language as Language)}</h3>
                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                             {featured.slice(0, 8).map(item => (
                                 <button
@@ -1543,7 +1525,7 @@ function MarketplaceTab({ language, isAuthenticated }: { language: string; isAut
                                     </div>
                                     <div className="flex items-center gap-2">
                                         {renderStars(item.rating)}
-                                        <span className="text-[10px] text-text-muted">({item.downloads} {t('下载', 'dl')})</span>
+                                        <span className="text-[10px] text-text-muted">({item.downloads} {t('app.dl', language as Language)})</span>
                                     </div>
                                 </button>
                             ))}
@@ -1555,8 +1537,8 @@ function MarketplaceTab({ language, isAuthenticated }: { language: string; isAut
                     <div className="flex items-center justify-between mb-3">
                         <h3 className="text-sm font-semibold text-text-primary">
                             {searchQuery || selectedCategory
-                                ? t('搜索结果', 'Search Results')
-                                : t('所有场景', 'All Scenarios')}
+                                ? t('app.searchresults', language as Language)
+                                : t('app.allscenarios', language as Language)}
                             {total > 0 && <span className="ml-1.5 text-text-muted font-normal text-xs">({total})</span>}
                         </h3>
                         {isLoading && <Loader2 className="w-4 h-4 text-text-muted animate-spin" />}
@@ -1565,7 +1547,7 @@ function MarketplaceTab({ language, isAuthenticated }: { language: string; isAut
                     {items.length === 0 && !isLoading && (
                         <div className="flex flex-col items-center justify-center py-16 text-text-muted">
                             <Package className="w-10 h-10 mb-3 opacity-30" strokeWidth={1} />
-                            <p className="text-sm">{t('暂无场景', 'No scenarios found')}</p>
+                            <p className="text-sm">{t('app.noscenariosfound', language as Language)}</p>
                         </div>
                     )}
 
@@ -1587,19 +1569,19 @@ function MarketplaceTab({ language, isAuthenticated }: { language: string; isAut
                                             </span>
                                             {item.isFree && (
                                                 <span className="px-1.5 py-0.5 text-[9px] rounded-md bg-green-500/10 text-green-400 font-semibold flex-shrink-0">
-                                                    {t('免费', 'FREE')}
+                                                    {t('app.free', language as Language)}
                                                 </span>
                                             )}
                                             {scenarioRegistry.has(item.id) && (
                                                 <span className="px-1.5 py-0.5 text-[9px] rounded-md bg-accent/10 text-accent font-semibold flex-shrink-0 flex items-center gap-0.5">
                                                     <CheckCircle2 className="w-2.5 h-2.5" />
-                                                    {t('已安装', 'Installed')}
+                                                    {t('app.installed2', language as Language)}
                                                 </span>
                                             )}
                                         </div>
                                         <div className="flex items-center gap-2 mt-1">
                                             {renderStars(item.rating)}
-                                            <span className="text-[10px] text-text-muted">{item.downloads} {t('下载', 'dl')}</span>
+                                            <span className="text-[10px] text-text-muted">{item.downloads} {t('app.dl2', language as Language)}</span>
                                         </div>
                                     </div>
                                     <ChevronRight className="w-4 h-4 text-text-muted/30 group-hover:text-text-muted/60 flex-shrink-0" />
@@ -1618,7 +1600,7 @@ function MarketplaceTab({ language, isAuthenticated }: { language: string; isAut
                                 disabled={page <= 1}
                                 className="px-3 py-1.5 text-[11px] rounded-lg bg-surface/30 text-text-muted disabled:opacity-40 hover:bg-surface/50 transition-colors"
                             >
-                                {t('上一页', 'Prev')}
+                                {t('app.prev', language as Language)}
                             </button>
                             <span className="text-[11px] text-text-muted">{page} / {Math.ceil(total / 20)}</span>
                             <button
@@ -1626,7 +1608,7 @@ function MarketplaceTab({ language, isAuthenticated }: { language: string; isAut
                                 disabled={page * 20 >= total}
                                 className="px-3 py-1.5 text-[11px] rounded-lg bg-surface/30 text-text-muted disabled:opacity-40 hover:bg-surface/50 transition-colors"
                             >
-                                {t('下一页', 'Next')}
+                                {t('app.next', language as Language)}
                             </button>
                         </div>
                     )}
@@ -1659,7 +1641,7 @@ function InfoItem({ label, value }: { label: string; value: string }) {
     )
 }
 
-function StateBadge({ state, language }: { state: string; language: string }) {
+function StateBadge({ state, language }: { state: string; language: Language }) {
     const stateMap: Record<string, { label: string; labelZh: string; color: string }> = {
         registered: { label: 'Registered', labelZh: '已注册', color: 'text-blue-400 bg-blue-500/10' },
         activating: { label: 'Activating', labelZh: '激活中', color: 'text-yellow-400 bg-yellow-500/10' },
@@ -1677,11 +1659,11 @@ function StateBadge({ state, language }: { state: string; language: string }) {
     )
 }
 
-function formatUptime(ms: number, language: string): string {
+function formatUptime(ms: number, language: Language): string {
     const seconds = Math.floor(ms / 1000)
-    if (seconds < 60) return language === 'zh' ? `${seconds}秒` : `${seconds}s`
+    if (seconds < 60) return t('scenario.s', language as Language, { seconds: seconds })
     const minutes = Math.floor(seconds / 60)
-    if (minutes < 60) return language === 'zh' ? `${minutes}分钟` : `${minutes}m`
+    if (minutes < 60) return t('scenario.m', language as Language, { minutes: minutes })
     const hours = Math.floor(minutes / 60)
-    return language === 'zh' ? `${hours}小时` : `${hours}h`
+    return t('scenario.h', language as Language, { hours: hours })
 }

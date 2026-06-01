@@ -11,6 +11,7 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import { backendApi, isAuthenticated } from '@services/backendApi'
+import { t, type Language } from '@renderer/i18n'
 
 interface DashboardMetrics {
   today: {
@@ -73,8 +74,6 @@ export default function MonitorDashboard({
 
   if (!visible) return null
 
-  const t = (zh: string, en: string) => (language === 'zh' ? zh : en)
-
   const successRate =
     metrics && metrics.today.total > 0
       ? Math.round((metrics.today.success / metrics.today.total) * 100)
@@ -120,37 +119,37 @@ export default function MonitorDashboard({
               <div className="grid grid-cols-4 gap-4">
                 <MetricCard
                   icon={<Activity className="w-4 h-4" />}
-                  label={t('今日执行', 'Today Runs')}
+                  label={t('app.todayruns', language as Language)}
                   value={String(metrics.today.total)}
-                  sub={t('次', 'runs')}
+                  sub={t('app.runs', language as Language)}
                   accent="blue"
                 />
                 <MetricCard
                   icon={<CheckCircle2 className="w-4 h-4" />}
-                  label={t('成功率', 'Success Rate')}
+                  label={t('app.successrate', language as Language)}
                   value={`${successRate}%`}
                   sub={`${metrics.today.success}/${metrics.today.total}`}
                   accent={successRate >= 90 ? 'green' : successRate >= 70 ? 'amber' : 'red'}
                 />
                 <MetricCard
                   icon={<TrendingDown className="w-4 h-4" />}
-                  label={t('失败数', 'Failed')}
+                  label={t('app.failed', language as Language)}
                   value={String(metrics.today.failed)}
-                  sub={t('次', 'runs')}
+                  sub={t('app.runs2', language as Language)}
                   accent={metrics.today.failed > 0 ? 'red' : 'green'}
                 />
                 <MetricCard
                   icon={<Clock className="w-4 h-4" />}
-                  label={t('平均耗时', 'Avg Duration')}
+                  label={t('app.avgduration', language as Language)}
                   value={formatDuration(metrics.today.avgDurationMs)}
-                  sub={t('活跃: ', 'Active: ') + String(metrics.active)}
+                  sub={t('app.active', language as Language) + String(metrics.active)}
                   accent="purple"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <ChartCard
-                  title={t('24小时趋势', '24h Trend')}
+                  title={t('app.24htrend', language as Language)}
                   icon={<TrendingUp className="w-3.5 h-3.5" />}
                 >
                   <div className="flex items-end gap-[2px] h-32 pt-2">
@@ -171,12 +170,12 @@ export default function MonitorDashboard({
                   </div>
                   <div className="flex justify-between text-[10px] text-[var(--text-muted)]/50 mt-1">
                     <span>24h ago</span>
-                    <span>{t('现在', 'now')}</span>
+                    <span>{t('app.now', language as Language)}</span>
                   </div>
                 </ChartCard>
 
                 <ChartCard
-                  title={t('7日成功率', '7-Day Success Rate')}
+                  title={t('app.7daysuccessrate', language as Language)}
                   icon={<TrendingUp className="w-3.5 h-3.5" />}
                 >
                   <div className="flex items-end gap-1 h-32 pt-2">
@@ -238,7 +237,7 @@ function Header({
       <div className="flex items-center gap-2">
         <BarChart3 className="w-4 h-4 text-[var(--accent)]" />
         <span className="text-sm font-semibold text-[var(--text-primary)]">
-          {language === 'zh' ? '运行监控' : 'Run Monitor'}
+          {t('wf.runmonitor', language as Language)}
         </span>
       </div>
       <div className="flex items-center gap-2">
@@ -333,7 +332,7 @@ function NodeStatsSection({
       <div className="flex items-center gap-1.5">
         <Activity className="w-3.5 h-3.5 text-[var(--text-muted)]" />
         <span className="text-xs font-medium text-[var(--text-muted)]">
-          {t('节点执行统计', 'Node Execution Stats')}
+          {t('app.nodeexecutionstats', language as Language)}
         </span>
       </div>
       <div className="overflow-x-auto">
@@ -341,16 +340,16 @@ function NodeStatsSection({
           <thead>
             <tr className="border-b border-[var(--border)]/30">
               <th className="text-left py-2 px-3 text-[var(--text-muted)] font-medium">
-                {t('节点类型', 'Type')}
+                {t('app.type', language as Language)}
               </th>
               <th className="text-right py-2 px-3 text-[var(--text-muted)] font-medium">
-                {t('执行次数', 'Count')}
+                {t('app.count', language as Language)}
               </th>
               <th className="text-right py-2 px-3 text-[var(--text-muted)] font-medium">
-                {t('平均耗时', 'Avg')}
+                {t('app.avg', language as Language)}
               </th>
               <th className="text-right py-2 px-3 text-[var(--text-muted)] font-medium">
-                {t('失败率', 'Fail %')}
+                {t('app.fail', language as Language)}
               </th>
             </tr>
           </thead>
@@ -399,7 +398,7 @@ function LoadingState({ language }: { language: 'en' | 'zh' }) {
     <div className="flex flex-col items-center justify-center py-20">
       <RefreshCw className="w-8 h-8 text-[var(--accent)] animate-spin mb-4" />
       <span className="text-sm text-[var(--text-muted)]">
-        {language === 'zh' ? '加载监控数据...' : 'Loading metrics...'}
+        {t('wf.loadingmetrics', language as Language)}
       </span>
     </div>
   )

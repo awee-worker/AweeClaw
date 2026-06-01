@@ -6,7 +6,7 @@ import { Language } from '@renderer/i18n'
 import type { LLMConfig, AutoApproveSettings, AgentConfig, WebSearchConfig } from '@shared/configuration/providerTypes'
 import type { ProviderModelConfig } from '@shared/configuration/preferenceSync'
 
-export type SettingsTab = 'language' | 'provider' | 'appearance' | 'editor' | 'snippets' | 'agent' | 'rules' | 'memory' | 'skills' | 'mcp' | 'channel' | 'lsp' | 'keybindings' | 'indexing' | 'security' | 'privacy' | 'system' | 'cloud'
+export type SettingsTab = 'provider' | 'appearance' | 'editor' | 'snippets' | 'agent' | 'search' | 'rules' | 'memory' | 'skills' | 'mcp' | 'email' | 'channel' | 'lsp' | 'keybindings' | 'indexing' | 'security' | 'privacy' | 'system' | 'cloud'
 
 export interface ProviderSettingsProps {
     localConfig: LLMConfig
@@ -68,6 +68,8 @@ export interface EditorSettingsProps {
     advancedConfig: import('@shared/configuration/configTypes').EditorConfig
     setAdvancedConfig: (config: import('@shared/configuration/configTypes').EditorConfig) => void
     language: Language
+    localLanguage?: Language
+    setLocalLanguage?: (lang: Language) => void
 }
 
 export interface AgentSettingsProps {

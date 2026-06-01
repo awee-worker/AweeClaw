@@ -35,22 +35,22 @@ import { toolRegistry } from './toolRegistry'
 import { terminalManager } from '@services/TerminalAdapter'
 import pLimit from 'p-limit'
 import { skillService } from '../runtime/skillRepository'
-import type { TranslationKey } from '@renderer/i18n'
+import type { Language } from '@renderer/i18n'
 import type { ReplaceErrorCode } from '@utils/smartReplace'
 import { getAgentLanguage, pickLocalizedText, translateAgentText } from '@intelligence/utils/intelligenceTextUtils'
 import { guardWriteFile } from './fileWritePolicy'
 
 // ===== 辅助函数 =====
 
-function getLocalizedText(language: string, zh: string, en: string): string {
+function getLocalizedText(language: Language, zh: string, en: string): string {
     return pickLocalizedText(zh, en, language as 'en' | 'zh')
 }
 
-function getCurrentLanguage(): string {
-    return getAgentLanguage()
+function getCurrentLanguage(): Language {
+    return getAgentLanguage() as Language
 }
 
-function translate(key: TranslationKey, params?: Record<string, string | number>): string {
+function translate(key: string, params?: Record<string, string | number>): string {
     return translateAgentText(key, params)
 }
 

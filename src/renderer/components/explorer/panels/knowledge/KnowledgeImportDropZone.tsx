@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'react'
 import { Upload, FileText, X, Check, AlertCircle, Loader2 } from 'lucide-react'
+import { t, type Language } from '@renderer/i18n'
 
 interface ImportFileItem {
   name: string
@@ -9,7 +10,7 @@ interface ImportFileItem {
 }
 
 interface ImportDropZoneProps {
-  language: string
+  language: Language
   onImportFiles: (paths: string[]) => Promise<void>
   onClose: () => void
 }
@@ -23,8 +24,6 @@ export function ImportDropZone({
   const [files, setFiles] = useState<ImportFileItem[]>([])
   const [importing, setImporting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const t = (zh: string, en: string) => (language === 'zh' ? zh : en)
-
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
@@ -105,7 +104,7 @@ export function ImportDropZone({
         prev.map((f) => ({
           ...f,
           status: 'error' as const,
-          error: t('导入失败', 'Import failed'),
+          error: t('app.importfailed', language as Language),
         })),
       )
     }
@@ -120,7 +119,7 @@ export function ImportDropZone({
     <div className="flex flex-col h-full">
       <div className="px-5 py-4 border-b border-border/30 flex items-center justify-between">
         <h3 className="text-[14px] font-semibold text-text-primary">
-          {t('导入文件', 'Import Files')}
+          {t('app.importfiles', language as Language)}
         </h3>
         <button
           onClick={onClose}
@@ -147,14 +146,14 @@ export function ImportDropZone({
           />
           <p className="text-[13px] text-text-primary font-medium">
             {isDragging
-              ? t('释放文件', 'Drop files here')
-              : t('拖拽文件到此处', 'Drag files here')}
+              ? t('app.dropfileshere', language as Language)
+              : t('app.dragfileshere', language as Language)}
           </p>
           <p className="text-[12px] text-text-muted mt-1">
-            {t('或点击选择文件', 'or click to select files')}
+            {t('app.orclicktoselect', language as Language)}
           </p>
           <p className="text-[11px] text-text-muted mt-2">
-            {t('支持 txt, md, json, csv, pdf, doc, docx', 'Supports txt, md, json, csv, pdf, doc, docx')}
+            {t('app.supportstxtmdjson', language as Language)}
           </p>
           <input
             ref={fileInputRef}
@@ -170,11 +169,11 @@ export function ImportDropZone({
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-[12px] text-text-secondary">
-                {t(`${files.length} 个文件`, `${files.length} files`)}
+                {t('app.files', language as Language, { length: files.length })}
               </span>
               {successCount > 0 && (
                 <span className="text-[12px] text-green-500">
-                  {t(`${successCount} 成功`, `${successCount} done`)}
+                  {t('app.done2', language as Language, { successCount: successCount })}
                 </span>
               )}
             </div>
@@ -221,7 +220,7 @@ export function ImportDropZone({
           onClick={onClose}
           className="px-4 py-2 text-[13px] text-text-secondary hover:text-text-primary transition-colors rounded-lg hover:bg-surface-hover"
         >
-          {allDone ? t('完成', 'Done') : t('取消', 'Cancel')}
+          {allDone ? t('app.done', language as Language) : t('app.cancel', language as Language)}
         </button>
         {!allDone && (
           <button
@@ -230,8 +229,8 @@ export function ImportDropZone({
             className="px-4 py-2 text-[13px] text-white bg-accent hover:bg-accent/90 disabled:opacity-40 transition-colors rounded-lg"
           >
             {importing
-              ? t('导入中...', 'Importing...')
-              : t(`导入 ${files.length} 个文件`, `Import ${files.length} files`)}
+              ? t('app.importing', language as Language)
+              : t('app.importfiles2', language as Language, { length: files.length })}
           </button>
         )}
       </div>

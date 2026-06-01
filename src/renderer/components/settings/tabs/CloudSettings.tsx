@@ -5,7 +5,7 @@ import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { ActionButton } from '@components/ui'
 import { backendApi } from '@services/backendApi'
-import { type Language } from '@renderer/i18n'
+import { t, type Language } from '@renderer/i18n'
 import { getQuotaBarColor, getQuotaTextColor } from '@utils/quotaColors'
 
 interface PlanItem {
@@ -169,7 +169,7 @@ export function CloudSettings({ language }: { language: Language }) {
       setPolling(true)
       pollOrderStatus(result.order.orderNo || result.payment.orderNo)
     } catch (e: any) {
-      setPaymentError(e?.message || (language === 'zh' ? '创建订单失败' : 'Failed to create order'))
+      setPaymentError(e?.message || (t('settings.failedtocreateorder', language as Language)))
     } finally {
       setPaymentLoading(false)
     }
@@ -202,9 +202,7 @@ export function CloudSettings({ language }: { language: Language }) {
         if (order?.status === 'CANCELLED' || order?.status === 'EXPIRED') {
           setPolling(false)
           setPaymentError(
-            language === 'zh'
-              ? `订单已${order.status === 'CANCELLED' ? '取消' : '过期'}`
-              : `Order ${order.status.toLowerCase()}`,
+            t('settings.order', language as Language, { status: order.status.toLowerCase(), status2: order.status === 'CANCELLED' ? '取消' : '过期' }),
           )
           return
         }
@@ -249,9 +247,7 @@ export function CloudSettings({ language }: { language: Language }) {
       <div className="space-y-6">
         <div className="text-center py-12">
           <p className="text-sm text-text-muted">
-            {language === 'zh'
-              ? '请点击左下角头像登录以查看云端服务信息'
-              : 'Click the avatar in the bottom left to sign in and view cloud service info'}
+            {t('settings.clicktheavatarinthe', language as Language)}
           </p>
         </div>
       </div>
@@ -264,7 +260,7 @@ export function CloudSettings({ language }: { language: Language }) {
         <CheckCircle2 className="w-5 h-5 text-status-success shrink-0" />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-text-primary">
-            {language === 'zh' ? '已连接到云端服务' : 'Connected to cloud service'}
+            {t('settings.connectedtocloudservice', language as Language)}
           </p>
           <p className="text-xs text-text-muted mt-0.5 truncate">
             {serverUrl}
@@ -274,23 +270,23 @@ export function CloudSettings({ language }: { language: Language }) {
 
       <div className="space-y-4">
         <h4 className="text-sm font-semibold text-text-primary">
-          {language === 'zh' ? '账户信息' : 'Account Info'}
+          {t('settings.accountinfo', language as Language)}
         </h4>
         <div className="grid grid-cols-2 gap-3">
           <div className="p-3 rounded-lg bg-surface/50 border border-border/50">
-            <p className="text-xs text-text-muted">{language === 'zh' ? '用户名' : 'Username'}</p>
+            <p className="text-xs text-text-muted">{t('settings.username', language as Language)}</p>
             <p className="text-sm text-text-primary font-medium mt-0.5">{cloudUser.username || '-'}</p>
           </div>
           <div className="p-3 rounded-lg bg-surface/50 border border-border/50">
-            <p className="text-xs text-text-muted">{language === 'zh' ? '邮箱' : 'Email'}</p>
+            <p className="text-xs text-text-muted">{t('settings.email2', language as Language)}</p>
             <p className="text-sm text-text-primary font-medium mt-0.5 truncate">{cloudUser.email}</p>
           </div>
           <div className="p-3 rounded-lg bg-surface/50 border border-border/50">
-            <p className="text-xs text-text-muted">{language === 'zh' ? '角色' : 'Role'}</p>
+            <p className="text-xs text-text-muted">{t('settings.role', language as Language)}</p>
             <p className="text-sm text-text-primary font-medium mt-0.5">{cloudUser.role}</p>
           </div>
           <div className="p-3 rounded-lg bg-surface/50 border border-border/50">
-            <p className="text-xs text-text-muted">{language === 'zh' ? '订阅计划' : 'Plan'}</p>
+            <p className="text-xs text-text-muted">{t('settings.plan', language as Language)}</p>
             <p className="text-sm text-text-primary font-medium mt-0.5">{quota?.displayName || cloudUser.planId}</p>
           </div>
         </div>
@@ -299,26 +295,24 @@ export function CloudSettings({ language }: { language: Language }) {
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h4 className="text-sm font-semibold text-text-primary">
-            {language === 'zh' ? '用量配额' : 'Usage Quota'}
+            {t('settings.usagequota', language as Language)}
           </h4>
           <button
             onClick={handleRefreshQuota}
             className="text-xs text-accent hover:text-accent-hover transition-colors"
           >
-            {language === 'zh' ? '刷新' : 'Refresh'}
+            {t('settings.refresh', language as Language)}
           </button>
         </div>
         {quota ? (
           <div className="space-y-2">
             <div className="flex items-center justify-between text-xs">
               <span className={getQuotaTextColor(quota.limit === -1 || quota.remaining === -1 ? 0 : (quota.used / quota.limit) * 100)}>
-                {language === 'zh' ? '已使用' : 'Used'}: {quota.used.toLocaleString()} tokens
+                {t('settings.used', language as Language)}: {quota.used.toLocaleString()} tokens
               </span>
               <span className={getQuotaTextColor(quota.limit === -1 || quota.remaining === -1 ? 0 : (quota.used / quota.limit) * 100)}>
                 {quota.remaining === -1
-                  ? language === 'zh'
-                    ? '无限'
-                    : 'Unlimited'
+                  ? t('settings.unlimited', language as Language)
                   : `${quota.remaining.toLocaleString()} tokens`}
               </span>
             </div>
@@ -334,11 +328,11 @@ export function CloudSettings({ language }: { language: Language }) {
               />
             </div>
             <p className="text-xs text-text-muted">
-              {language === 'zh' ? '计费周期' : 'Billing period'}: {new Date(quota.periodStart).toLocaleDateString()} - {new Date(quota.periodEnd).toLocaleDateString()}
+              {t('settings.billingperiod', language as Language)}: {new Date(quota.periodStart).toLocaleDateString()} - {new Date(quota.periodEnd).toLocaleDateString()}
             </p>
           </div>
         ) : (
-          <p className="text-xs text-text-muted">{language === 'zh' ? '加载中...' : 'ProgressIndicator...'}</p>
+          <p className="text-xs text-text-muted">{t('settings.progressindicator', language as Language)}</p>
         )}
       </div>
 
@@ -349,11 +343,11 @@ export function CloudSettings({ language }: { language: Language }) {
           className="w-full"
         >
           <CreditCard className="w-4 h-4" />
-          {language === 'zh' ? '升级套餐' : 'Upgrade Plan'}
+          {t('settings.upgradeplan', language as Language)}
         </ActionButton>
         <ActionButton variant="danger" onClick={handleLogout} className="w-full">
           <LogOut className="w-4 h-4" />
-          {language === 'zh' ? '退出登录' : 'Sign Out'}
+          {t('settings.signout', language as Language)}
         </ActionButton>
       </div>
 
@@ -362,7 +356,7 @@ export function CloudSettings({ language }: { language: Language }) {
           <div className="bg-surface border border-border rounded-2xl p-6 max-w-md w-full mx-4 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-text-primary">
-                {language === 'zh' ? '升级套餐' : 'Upgrade Plan'}
+                {t('settings.upgradeplan2', language as Language)}
               </h3>
               <button onClick={handleCloseUpgrade} className="text-text-muted hover:text-text-primary">
                 <X className="w-5 h-5" />
@@ -396,15 +390,13 @@ export function CloudSettings({ language }: { language: Language }) {
                         </div>
                         <div className="text-right">
                           <p className="text-lg font-bold text-text-primary">¥{Number(plan.price).toFixed(0)}</p>
-                          <p className="text-xs text-text-muted">{language === 'zh' ? '/月' : '/mo'}</p>
+                          <p className="text-xs text-text-muted">{t('settings.mo', language as Language)}</p>
                         </div>
                       </div>
                       <p className="text-xs text-text-muted mt-2">
                         {plan.tokenLimit === -1
-                          ? language === 'zh'
-                            ? '无限 Token 配额'
-                            : 'Unlimited tokens'
-                          : `${(plan.tokenLimit / 10000).toFixed(0)}${language === 'zh' ? '万' : '0k'} tokens/${language === 'zh' ? '月' : 'mo'}`}
+                          ? t('settings.unlimitedtokens', language as Language)
+                          : `${(plan.tokenLimit / 10000).toFixed(0)}${t('settings.0k', language as Language)} tokens/${t('settings.mo2', language as Language)}`}
                       </p>
                     </button>
                   ))}
@@ -413,7 +405,7 @@ export function CloudSettings({ language }: { language: Language }) {
                 {selectedPlan && (
                   <div className="space-y-3">
                     <p className="text-xs text-text-muted">
-                      {language === 'zh' ? '选择支付方式' : 'DropdownSelector payment method'}
+                      {t('settings.dropdownselectorpaymentmethod', language as Language)}
                     </p>
                     <div className={`grid gap-2 ${displayChannels.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
                       {displayChannels.map((ch) => {
@@ -444,9 +436,7 @@ export function CloudSettings({ language }: { language: Language }) {
                       isLoading={paymentLoading}
                       disabled={!paymentChannel}
                     >
-                      {language === 'zh'
-                        ? `支付 ¥${Number(selectedPlan.price).toFixed(2)}`
-                        : `Pay ¥${Number(selectedPlan.price).toFixed(2)}`}
+                      {t('settings.pay', language as Language, { price: Number(selectedPlan.price).toFixed(2) })}
                     </ActionButton>
                   </div>
                 )}
@@ -457,14 +447,14 @@ export function CloudSettings({ language }: { language: Language }) {
                   {paymentChannel === 'WECHAT' && paymentResult.qrCodeUrl && (
                     <div className="space-y-3">
                       <p className="text-sm text-text-primary">
-                        {language === 'zh' ? '请使用微信扫码支付' : 'Scan with WeChat to pay'}
+                        {t('settings.scanwithwechattopay', language as Language)}
                       </p>
                       <div className="w-48 h-48 mx-auto bg-white rounded-xl flex items-center justify-center overflow-hidden">
                         {qrCodeDataUrl ? (
                           <img src={qrCodeDataUrl} alt="WeChat QR Code" className="w-full h-full" />
                         ) : (
                           <p className="text-xs text-gray-500">
-                            {language === 'zh' ? '二维码生成中...' : 'Generating QR code...'}
+                            {t('settings.generatingqrcode', language as Language)}
                           </p>
                         )}
                       </div>
@@ -473,24 +463,24 @@ export function CloudSettings({ language }: { language: Language }) {
                   {paymentChannel === 'ALIPAY' && paymentResult.paymentUrl && (
                     <div className="space-y-3">
                       <p className="text-sm text-text-primary">
-                        {language === 'zh' ? '即将跳转到支付宝' : 'Redirecting to Alipay'}
+                        {t('settings.redirectingtoalipay', language as Language)}
                       </p>
                       <ActionButton
                         variant="secondary"
                         onClick={() => window.electronAPI?.openExternalUrl?.(paymentResult.paymentUrl!)}
                         leftIcon={<ExternalLink className="w-4 h-4" />}
                       >
-                        {language === 'zh' ? '前往支付' : 'Go to Pay'}
+                        {t('settings.gotopay', language as Language)}
                       </ActionButton>
                     </div>
                   )}
                   {paymentChannel === 'MOCK' && (
                     <div className="space-y-3">
                       <p className="text-sm text-text-primary">
-                        {language === 'zh' ? '模拟支付模式' : 'Mock Payment Mode'}
+                        {t('settings.mockpaymentmode', language as Language)}
                       </p>
                       <ActionButton variant="success" onClick={handleMockPay}>
-                        {language === 'zh' ? '模拟支付成功' : 'Mock Pay Success'}
+                        {t('settings.mockpaysuccess', language as Language)}
                       </ActionButton>
                     </div>
                   )}
@@ -498,7 +488,7 @@ export function CloudSettings({ language }: { language: Language }) {
 
                 {polling && (
                   <p className="text-xs text-text-muted">
-                    {language === 'zh' ? '等待支付确认...' : 'Waiting for payment confirmation...'}
+                    {t('settings.waitingforpaymentconfirmation', language as Language)}
                   </p>
                 )}
 
@@ -515,7 +505,7 @@ export function CloudSettings({ language }: { language: Language }) {
                     setQrCodeDataUrl('')
                   }}
                 >
-                  {language === 'zh' ? '返回' : 'Back'}
+                  {t('settings.back', language as Language)}
                 </ActionButton>
               </div>
             )}

@@ -4,7 +4,7 @@ import { Search, RotateCcw } from 'lucide-react'
 import { keybindingService, Command, formatShortcut, isMac } from '@services/keybindingAdapter'
 import { registerCoreCommands } from '@renderer/config/commandRegistry'
 import { useStore } from '@store'
-import { t, type TranslationKey } from '@renderer/i18n'
+import { t } from '@renderer/i18n'
 import { TextField, ActionButton, OverlayDialog } from '../ui'
 
 export default function KeybindingPanel() {
@@ -66,8 +66,8 @@ export default function KeybindingPanel() {
     }
 
     const filteredCommands = commands.filter(cmd => {
-        const translatedTitle = t(`cmd.${cmd.id}` as TranslationKey, language) || cmd.title
-        const translatedCategory = cmd.category ? (t(`kb.category.${cmd.category}` as TranslationKey, language) || cmd.category) : ''
+        const translatedTitle = t(`cmd.${cmd.id}`, language) || cmd.title
+        const translatedCategory = cmd.category ? (t(`kb.category.${cmd.category}`, language) || cmd.category) : ''
 
         return translatedTitle.toLowerCase().includes(searchQuery.toLowerCase()) ||
             translatedCategory.toLowerCase().includes(searchQuery.toLowerCase())
@@ -79,7 +79,7 @@ export default function KeybindingPanel() {
                 <div className="relative flex-1">
                     <TextField
                         leftIcon={<Search className="w-4 h-4" />}
-                        placeholder={t('kb.searchPlaceholder' as TranslationKey, language) || "Search keybindings..."}
+                        placeholder={t('kb.searchPlaceholder', language) || "Search keybindings..."}
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
                     />
@@ -91,8 +91,8 @@ export default function KeybindingPanel() {
                     {filteredCommands.map(cmd => (
                         <div key={cmd.id} className="flex items-center justify-between p-3 rounded-lg hover:bg-surface-hover group transition-colors">
                             <div className="flex flex-col gap-0.5">
-                                <span className="text-sm font-medium">{t(`cmd.${cmd.id}` as TranslationKey, language) || cmd.title}</span>
-                                <span className="text-xs text-text-muted">{cmd.category ? (t(`kb.category.${cmd.category}` as TranslationKey, language) || cmd.category) : ''} • {cmd.id}</span>
+                                <span className="text-sm font-medium">{t(`cmd.${cmd.id}`, language) || cmd.title}</span>
+                                <span className="text-xs text-text-muted">{cmd.category ? (t(`kb.category.${cmd.category}`, language) || cmd.category) : ''} • {cmd.id}</span>
                             </div>
 
                             <div className="flex items-center gap-2">
@@ -111,7 +111,7 @@ export default function KeybindingPanel() {
                                         size="icon"
                                         onClick={() => handleReset(cmd.id)}
                                         className="opacity-0 group-hover:opacity-100 transition-opacity"
-                                        title={t('kb.resetToDefault' as TranslationKey, language) || "Reset to default"}
+                                        title={t('kb.resetToDefault', language) || "Reset to default"}
                                     >
                                         <RotateCcw className="w-3.5 h-3.5" />
                                     </ActionButton>
@@ -126,7 +126,7 @@ export default function KeybindingPanel() {
             <OverlayDialog
                 isOpen={!!recordingId}
                 onClose={() => setRecordingId(null)}
-                title={t('kb.pressKeyCombination' as TranslationKey, language) || "Press desired key combination"}
+                title={t('kb.pressKeyCombination', language) || "Press desired key combination"}
                 size="sm"
             >
                 <div
@@ -143,10 +143,10 @@ export default function KeybindingPanel() {
                         handleKeyDown(e)
                     }}
                 >
-                    <p className="text-text-muted text-sm">{t('kb.pressEscToCancel' as TranslationKey, language) || "Press Esc to cancel"}</p>
+                    <p className="text-text-muted text-sm">{t('kb.pressEscToCancel', language) || "Press Esc to cancel"}</p>
 
                     <div className="px-6 py-3 bg-surface-active rounded-lg border border-accent/30 text-2xl font-mono text-accent shadow-lg shadow-accent/10 animate-pulse">
-                        {t('kb.recording' as TranslationKey, language) || "Recording..."}
+                        {t('kb.recording', language) || "Recording..."}
                     </div>
                 </div>
             </OverlayDialog>

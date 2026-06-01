@@ -174,13 +174,39 @@ export interface SecurityPolicyPanel {
   showSecurityWarnings: boolean
 }
 
+export interface SearchEngineConfig {
+  enabled: boolean
+  apiKey?: string
+  extraValues?: Record<string, string>
+  customBaseUrl?: string
+  timeout?: number
+}
+
 export interface WebSearchConfig {
   googleApiKey?: string
   googleCx?: string
+  searchEngines?: Record<string, SearchEngineConfig>
+  activeSearchEngine?: string
+  searchTimeout?: number
 }
 
 export interface McpConfig {
   autoConnect?: boolean
+}
+
+export interface EmailSmtpConfig {
+  host: string
+  port: number
+  secure: boolean
+  user: string
+  pass: string
+}
+
+export interface EmailConfig {
+  enabled: boolean
+  smtp?: EmailSmtpConfig
+  fromName?: string
+  fromAddress?: string
 }
 
 export interface PersistedLLMConfig {
@@ -215,4 +241,5 @@ export interface AppSettings {
   onboardingCompleted: boolean
   webSearchConfig?: WebSearchConfig
   mcpConfig?: McpConfig
+  emailConfig?: EmailConfig
 }

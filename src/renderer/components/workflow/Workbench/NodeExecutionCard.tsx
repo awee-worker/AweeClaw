@@ -2,6 +2,7 @@ import { Loader2 } from 'lucide-react'
 import type { WorkflowNodeV2, WorkflowNodeTypeV2 } from '@shared/protocols/workflowV2'
 import { NODE_CATEGORY_MAP } from '@shared/protocols/workflowV2'
 import { NODE_ICONS, NODE_STATUS_DISPLAY, type NodeDisplayStatus, type NodeExecutionRecord } from './runnerTypes'
+import { t, type Language } from '@renderer/i18n'
 
 interface NodeExecutionCardProps {
   node: WorkflowNodeV2
@@ -57,7 +58,7 @@ export function NodeExecutionCard({ node, index, status, record, language, onCli
             </div>
             {status === 'running' && (
               <p className="text-[10px] text-blue-400/70 mt-0.5">
-                {language === 'zh' ? '正在执行...' : 'Executing...'}
+                {t('wf.executing', language as Language)}
               </p>
             )}
             {status === 'completed' && record?.output != null && <NodeOutputPreview output={record.output} />}

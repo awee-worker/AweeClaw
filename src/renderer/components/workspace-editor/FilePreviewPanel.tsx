@@ -17,7 +17,7 @@ import { ActionButton } from '../ui'
 import { getFileName } from '@shared/toolkit/pathHelper'
 import { useStore } from '@store'
 import { themeManager } from '../../config/themeDefinition'
-import { t } from '@renderer/i18n'
+import {t, type Language} from '@renderer/i18n'
 
 // 文件类型分类
 const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico']
@@ -334,7 +334,7 @@ export function ImagePreview({ path }: ImagePreviewProps) {
     if (loading) {
         return (
             <div className="h-full flex items-center justify-center bg-background">
-                <div className="text-text-muted">{t('loading', language)}</div>
+                <div className="text-text-muted">{t('settings.loadingSettings', language)}</div>
             </div>
         )
     }
@@ -556,7 +556,7 @@ export function HtmlPreview({ content, filePath }: HtmlPreviewProps) {
         <div className="h-full flex flex-col bg-white">
             <iframe
                 ref={iframeRef}
-                title={language === 'zh' ? 'HTML 预览' : 'HTML Preview'}
+                title={t('editor.htmlpreview', language as Language)}
                 className="flex-1 w-full border-0"
                 sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
             />

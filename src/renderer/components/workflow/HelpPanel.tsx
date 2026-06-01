@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { X, Search, Keyboard } from 'lucide-react'
 import { NODE_TYPE_LABELS } from '@shared/protocols/workflowV2'
 import type { WorkflowNodeTypeV2 } from '@shared/protocols/workflowV2'
+import { t, type Language } from '@renderer/i18n'
 
 interface ShortcutEntry {
   key: string
@@ -70,7 +71,7 @@ export default function HelpPanel({ visible, onClose, language }: HelpPanelProps
           <div className="flex items-center gap-3">
             <Keyboard size={18} className="text-blue-500" />
             <h2 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
-              {language === 'zh' ? '帮助与快捷键' : 'Help & Shortcuts'}
+              {t('wf.helpshortcuts', language as Language)}
             </h2>
           </div>
           <button
@@ -90,7 +91,7 @@ export default function HelpPanel({ visible, onClose, language }: HelpPanelProps
                 : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
             }`}
           >
-            {language === 'zh' ? '快捷键' : 'Shortcuts'}
+            {t('wf.shortcuts', language as Language)}
           </button>
           <button
             onClick={() => setTab('nodes')}
@@ -100,7 +101,7 @@ export default function HelpPanel({ visible, onClose, language }: HelpPanelProps
                 : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
             }`}
           >
-            {language === 'zh' ? '节点参考' : 'Node Reference'}
+            {t('wf.nodereference', language as Language)}
           </button>
         </div>
 
@@ -111,7 +112,7 @@ export default function HelpPanel({ visible, onClose, language }: HelpPanelProps
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder={language === 'zh' ? '搜索节点...' : 'Search nodes...'}
+                placeholder={t('wf.searchnodes', language as Language)}
                 className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
@@ -124,9 +125,9 @@ export default function HelpPanel({ visible, onClose, language }: HelpPanelProps
               {(['general', 'canvas', 'nodes'] as const).map((category) => (
                 <div key={category}>
                   <h3 className="text-xs font-semibold text-gray-400 uppercase mb-2">
-                    {category === 'general' ? (language === 'zh' ? '通用' : 'General') : ''}
-                    {category === 'canvas' ? (language === 'zh' ? '画布' : 'Canvas') : ''}
-                    {category === 'nodes' ? (language === 'zh' ? '节点操作' : 'Node Operations') : ''}
+                    {category === 'general' ? (t('wf.general', language as Language)) : ''}
+                    {category === 'canvas' ? (t('wf.canvas', language as Language)) : ''}
+                    {category === 'nodes' ? (t('wf.nodeoperations', language as Language)) : ''}
                   </h3>
                   <div className="space-y-1">
                     {SHORTCUTS.filter((s) => s.category === category).map((s) => (
@@ -151,7 +152,7 @@ export default function HelpPanel({ visible, onClose, language }: HelpPanelProps
           {tab === 'nodes' && (
             <div className="space-y-5">
               {(filteredNodes
-                ? [{ key: 'search', labelEn: language === 'zh' ? '搜索结果' : 'Search Results', labelZh: '搜索结果', types: filteredNodes }]
+                ? [{ key: 'search', labelEn: t('wf.searchresults', language as Language), labelZh: '搜索结果', types: filteredNodes }]
                 : NODE_CATEGORIES
               ).map((category) => (
                 <div key={category.key}>
@@ -191,7 +192,7 @@ export default function HelpPanel({ visible, onClose, language }: HelpPanelProps
 
         <div className="px-5 py-2 border-t border-gray-100 dark:border-gray-750 text-center">
           <p className="text-[10px] text-gray-400">
-            {language === 'zh' ? '按 ? 键打开此面板' : 'Press ? to toggle this panel'}
+            {t('wf.presstotogglethispanel', language as Language)}
           </p>
         </div>
       </div>

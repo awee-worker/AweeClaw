@@ -75,19 +75,19 @@ export default function DiffViewer({
       <div className="bg-background border border-border rounded-lg overflow-hidden flex flex-col">
         {/* Minimal Top Bar */}
         <div className="flex justify-between items-center px-3 py-2 bg-surface-active/30 border-b border-border-subtle">
-          <span className="text-[12px] font-bold text-text-muted">{t('reviewChanges', language)}</span>
+          <span className="text-[12px] font-bold text-text-muted">{t('diff.reviewChanges', language)}</span>
           <div className="flex items-center gap-1 bg-surface-hover rounded-md p-0.5">
             <button
               onClick={() => setViewMode('unified')}
               className={`p-1 rounded text-[11px] transition-colors ${viewMode === 'unified' ? 'bg-accent/20 text-accent' : 'text-text-muted hover:text-text-primary'}`}
-              title={t('unifiedView', language)}
+              title={t('diff.unifiedView', language)}
             >
               <AlignJustify className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => setViewMode('split')}
               className={`p-1 rounded text-[11px] transition-colors ${viewMode === 'split' ? 'bg-accent/20 text-accent' : 'text-text-muted hover:text-text-primary'}`}
-              title={t('splitView', language)}
+              title={t('diff.splitView', language)}
             >
               <Columns className="w-3.5 h-3.5" />
             </button>
@@ -109,7 +109,7 @@ export default function DiffViewer({
           <div className="flex items-center gap-2 text-sm text-status-warning">
             {isStreaming && (
               <span className="animate-pulse flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest">
-                <Loader2 className="w-3.5 h-3.5 animate-spin" /> {t('streaming', language)}
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> {t('diff.streamingChanges', language)}
               </span>
             )}
           </div>
@@ -129,14 +129,14 @@ export default function DiffViewer({
               <Columns className="w-4 h-4" />
             </button>
           </div>
-          <button onClick={copyToClipboard} className="p-2 rounded-lg hover:bg-editor-hover transition-colors" title={t('copyModified', language)}>
+          <button onClick={copyToClipboard} className="p-2 rounded-lg hover:bg-editor-hover transition-colors" title={t('diff.copyModified', language)}>
             <Copy className="w-4 h-4 text-text-primary-muted" />
           </button>
           <button onClick={() => setCollapsed(!collapsed)} className="p-2 rounded-lg hover:bg-editor-hover transition-colors">
             {collapsed ? <ChevronDown className="w-4 h-4 text-text-primary-muted" /> : <ChevronUp className="w-4 h-4 text-text-primary-muted" />}
           </button>
           {onClose && (
-            <button onClick={onClose} className="p-2 rounded-lg hover:bg-editor-hover transition-colors" title={t('closeMenu', language)}>
+            <button onClick={onClose} className="p-2 rounded-lg hover:bg-editor-hover transition-colors" title={t('diff.closeMenu', language)}>
               <X className="w-4 h-4 text-text-primary-muted" />
             </button>
           )}
@@ -155,7 +155,7 @@ export default function DiffViewer({
               disabled={isStreaming}
             >
               <X className="w-4 h-4" />
-              {t('rejectChanges', language)}
+              {t('diff.rejectChanges', language)}
             </button>
             <button
               onClick={onAccept}
@@ -163,7 +163,7 @@ export default function DiffViewer({
               disabled={isStreaming}
             >
               <Check className="w-4 h-4" />
-              {t('acceptChanges', language)}
+              {t('diff.acceptChanges', language)}
             </button>
           </div>
         </div>

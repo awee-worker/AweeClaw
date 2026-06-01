@@ -5,7 +5,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { ActionButton, TextField } from '@components/ui'
 import { HintOverlay } from '../ui/HintOverlay'
 import { OverlayDialog } from '../ui/OverlayDialog'
-import { type Language } from '@renderer/i18n'
+import { t, type Language } from '@renderer/i18n'
 import { BackendApiError } from '@services/backendApi'
 import { backendApi } from '@services/backendApi'
 
@@ -121,14 +121,14 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
       } catch (err) {
         if (err instanceof BackendApiError) {
           if (err.status === 401) {
-            setError(language === 'zh' ? '登录信息错误' : 'Invalid credentials')
+            setError(t('layout.invalidcredentials', language as Language))
           } else if (err.status === 409) {
-            setError(language === 'zh' ? '该邮箱已被注册' : 'Email already registered')
+            setError(t('layout.emailalreadyregistered', language as Language))
           } else {
-            setError(err.message || (language === 'zh' ? '请求失败' : 'Request failed'))
+            setError(err.message || (t('layout.requestfailed', language as Language)))
           }
         } else {
-          setError(language === 'zh' ? '无法连接到服务器' : 'Cannot connect to server')
+          setError(t('layout.cannotconnecttoserver', language as Language))
         }
       } finally {
         setLoading(false)
@@ -152,7 +152,7 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
         })
       }, 1000)
     } catch {
-      setError(language === 'zh' ? '验证码发送失败' : 'Failed to send code')
+      setError(t('layout.failedtosendcode', language as Language))
     }
   }, [codeCooldown, phone, language])
 
@@ -177,9 +177,9 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
         }, 1000)
       } catch (err) {
         if (err instanceof BackendApiError) {
-          setError(err.message || (language === 'zh' ? '发送失败' : 'Failed to send'))
+          setError(err.message || (t('layout.failedtosend', language as Language)))
         } else {
-          setError(language === 'zh' ? '无法连接到服务器' : 'Cannot connect to server')
+          setError(t('layout.cannotconnecttoserver2', language as Language))
         }
       } finally {
         setLoading(false)
@@ -194,11 +194,11 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
       setError('')
 
       if (newPassword !== confirmPassword) {
-        setError(language === 'zh' ? '两次输入的密码不一致' : 'Passwords do not match')
+        setError(t('layout.passwordsdonotmatch', language as Language))
         return
       }
       if (newPassword.length < 6) {
-        setError(language === 'zh' ? '密码至少6位' : 'Password must be at least 6 characters')
+        setError(t('layout.passwordmustbeatleast', language as Language))
         return
       }
 
@@ -218,12 +218,12 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
       } catch (err) {
         if (err instanceof BackendApiError) {
           if (err.status === 400) {
-            setError(language === 'zh' ? '验证码无效或已过期' : 'Invalid or expired verification code')
+            setError(t('layout.invalidorexpiredverificationcode', language as Language))
           } else {
-            setError(err.message || (language === 'zh' ? '重置失败' : 'Reset failed'))
+            setError(err.message || (t('layout.resetfailed', language as Language)))
           }
         } else {
-          setError(language === 'zh' ? '无法连接到服务器' : 'Cannot connect to server')
+          setError(t('layout.cannotconnecttoserver3', language as Language))
         }
       } finally {
         setLoading(false)
@@ -249,9 +249,9 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
       }, 1000)
     } catch (err) {
       if (err instanceof BackendApiError) {
-        setError(err.message || (language === 'zh' ? '发送失败' : 'Failed to send'))
+        setError(err.message || (t('layout.failedtosend2', language as Language)))
       } else {
-        setError(language === 'zh' ? '无法连接到服务器' : 'Cannot connect to server')
+        setError(t('layout.cannotconnecttoserver4', language as Language))
       }
     }
   }, [forgotCodeCooldown, serverUrl, forgotEmail, forgotPassword, language])
@@ -262,17 +262,15 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
 
   const tooltipText = isAuthenticated
     ? displayName
-    : language === 'zh'
-      ? '您还未登录'
-      : 'Not signed in'
+    : t('layout.notsignedin', language as Language)
 
   const stepTitle = authStep === 'forgot'
-    ? language === 'zh' ? '忘记密码' : 'Forgot Password'
+    ? t('layout.forgotpassword', language as Language)
     : authStep === 'reset'
-      ? language === 'zh' ? '重置密码' : 'Reset Password'
+      ? t('layout.resetpassword', language as Language)
       : isRegister
-        ? language === 'zh' ? '注册账号' : 'Create Account'
-        : language === 'zh' ? '登录 AweeClaw' : 'Sign In to AweeClaw'
+        ? t('layout.createaccount', language as Language)
+        : t('layout.signintoaweeclaw', language as Language)
 
   const stepIcon = authStep === 'forgot' || authStep === 'reset'
     ? <KeyRound className="w-4 h-4 text-accent" />
@@ -340,7 +338,7 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
             <form onSubmit={handleForgotPassword} className="space-y-4">
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-text-secondary">
-                  {language === 'zh' ? '服务器地址' : 'Server URL'}
+                  {t('layout.serverurl', language as Language)}
                 </label>
                 <TextField
                   value={serverUrl}
@@ -352,13 +350,13 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
 
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-text-secondary">
-                  {language === 'zh' ? '邮箱' : 'Email'}
+                  {t('layout.email', language as Language)}
                 </label>
                 <TextField
                   type="email"
                   value={forgotEmail}
                   onChange={(e) => setForgotEmail(e.target.value)}
-                  placeholder={language === 'zh' ? '输入注册时使用的邮箱' : 'Enter your registered email'}
+                  placeholder={t('layout.enteryourregisteredemail', language as Language)}
                   leftIcon={<Mail className="w-4 h-4" />}
                   required
                 />
@@ -367,7 +365,7 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
               {forgotSuccess && (
                 <div className="flex items-center gap-2 p-3 rounded-lg bg-status-success/5 border border-status-success/20 text-status-success text-xs">
                   <ShieldCheck className="w-4 h-4 shrink-0" />
-                  <span>{language === 'zh' ? '验证码已发送到您的邮箱，请查收' : 'Verification code sent to your email'}</span>
+                  <span>{t('layout.verificationcodesenttoyour', language as Language)}</span>
                 </div>
               )}
 
@@ -384,7 +382,7 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
                 ) : (
                   <Mail className="w-4 h-4" />
                 )}
-                {language === 'zh' ? '发送验证码' : 'Send Verification Code'}
+                {t('layout.sendverificationcode', language as Language)}
               </ActionButton>
 
               {forgotSuccess && (
@@ -400,12 +398,8 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
                     }`}
                   >
                     {forgotCodeCooldown > 0
-                      ? language === 'zh'
-                        ? `重新发送 (${forgotCodeCooldown}s)`
-                        : `Resend (${forgotCodeCooldown}s)`
-                      : language === 'zh'
-                        ? '重新发送验证码'
-                        : 'Resend Code'}
+                      ? t('layout.resends', language as Language, { forgotCodeCooldown: forgotCodeCooldown })
+                      : t('layout.resendcode', language as Language)}
                   </button>
                 </p>
               )}
@@ -420,7 +414,7 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
                     setError('')
                   }}
                 >
-                  {language === 'zh' ? '我已收到验证码，去重置密码' : 'I have the code, reset password'}
+                  {t('layout.ihavethecodereset', language as Language)}
                 </ActionButton>
               )}
             </form>
@@ -429,21 +423,19 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
           {authStep === 'reset' && (
             <form onSubmit={handleResetPassword} className="space-y-4">
               <div className="p-3 rounded-lg bg-accent/5 border border-accent/10 text-xs text-text-secondary">
-                {language === 'zh'
-                  ? `验证码已发送至 ${forgotEmail}`
-                  : `Code sent to ${forgotEmail}`}
+                {t('layout.codesentto', language as Language, { forgotEmail: forgotEmail })}
               </div>
 
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-text-secondary">
-                  {language === 'zh' ? '验证码' : 'Verification Code'}
+                  {t('layout.verificationcode', language as Language)}
                 </label>
                 <div className="flex gap-2">
                   <TextField
                     type="text"
                     value={resetCode}
                     onChange={(e) => setResetCode(e.target.value)}
-                    placeholder={language === 'zh' ? '输入6位验证码' : 'Enter 6-digit code'}
+                    placeholder={t('layout.enter6digitcode', language as Language)}
                     leftIcon={<ShieldCheck className="w-4 h-4" />}
                     required
                   />
@@ -459,22 +451,20 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
                   >
                     {forgotCodeCooldown > 0
                       ? `${forgotCodeCooldown}s`
-                      : language === 'zh'
-                        ? '重新发送'
-                        : 'Resend'}
+                      : t('layout.resend', language as Language)}
                   </button>
                 </div>
               </div>
 
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-text-secondary">
-                  {language === 'zh' ? '新密码' : 'New Password'}
+                  {t('layout.newpassword', language as Language)}
                 </label>
                 <TextField
                   type={showNewPassword ? 'text' : 'password'}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder={language === 'zh' ? '输入新密码（至少6位）' : 'New password (min 6 chars)'}
+                  placeholder={t('layout.newpasswordmin6chars', language as Language)}
                   leftIcon={<Lock className="w-4 h-4" />}
                   rightIcon={
                     <button
@@ -491,13 +481,13 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
 
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-text-secondary">
-                  {language === 'zh' ? '确认密码' : 'Confirm Password'}
+                  {t('layout.confirmpassword', language as Language)}
                 </label>
                 <TextField
                   type="password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder={language === 'zh' ? '再次输入新密码' : 'Re-enter new password'}
+                  placeholder={t('layout.reenternewpassword', language as Language)}
                   leftIcon={<Lock className="w-4 h-4" />}
                   required
                 />
@@ -516,7 +506,7 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
                 ) : (
                   <KeyRound className="w-4 h-4" />
                 )}
-                {language === 'zh' ? '重置密码' : 'Reset Password'}
+                {t('layout.resetpassword2', language as Language)}
               </ActionButton>
             </form>
           )}
@@ -525,7 +515,7 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-text-secondary">
-                {language === 'zh' ? '服务器地址' : 'Server URL'}
+                {t('layout.serverurl2', language as Language)}
               </label>
               <TextField
                 value={serverUrl}
@@ -546,7 +536,7 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
                       : 'text-text-muted hover:text-text-secondary'
                   }`}
                 >
-                  {language === 'zh' ? '邮箱登录' : 'Email'}
+                  {t('layout.email2', language as Language)}
                 </button>
                 <button
                   type="button"
@@ -557,7 +547,7 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
                       : 'text-text-muted hover:text-text-secondary'
                   }`}
                 >
-                  {language === 'zh' ? '手机号登录' : 'Phone'}
+                  {t('layout.phone', language as Language)}
                 </button>
               </div>
             )}
@@ -565,12 +555,12 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
             {isRegister && (
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-text-secondary">
-                  {language === 'zh' ? '用户名' : 'Username'}
+                  {t('layout.username', language as Language)}
                 </label>
                 <TextField
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder={language === 'zh' ? '输入用户名（可选）' : 'Username (optional)'}
+                  placeholder={t('layout.usernameoptional', language as Language)}
                   leftIcon={<User className="w-4 h-4" />}
                 />
               </div>
@@ -580,13 +570,13 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
               <>
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-text-secondary">
-                    {language === 'zh' ? '邮箱' : 'Email'}
+                    {t('layout.email3', language as Language)}
                   </label>
                   <TextField
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder={language === 'zh' ? '输入邮箱地址' : 'Enter email address'}
+                    placeholder={t('layout.enteremailaddress', language as Language)}
                     leftIcon={<Mail className="w-4 h-4" />}
                     required
                   />
@@ -594,13 +584,13 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
 
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-text-secondary">
-                    {language === 'zh' ? '密码' : 'Password'}
+                    {t('layout.password', language as Language)}
                   </label>
                   <TextField
                     type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder={language === 'zh' ? '输入密码' : 'Enter password'}
+                    placeholder={t('layout.enterpassword', language as Language)}
                     leftIcon={<Lock className="w-4 h-4" />}
                     rightIcon={
                       <button
@@ -623,13 +613,13 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
               <>
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-text-secondary">
-                    {language === 'zh' ? '手机号' : 'Phone Number'}
+                    {t('layout.phonenumber', language as Language)}
                   </label>
                   <TextField
                     type="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    placeholder={language === 'zh' ? '输入手机号' : 'Enter phone number'}
+                    placeholder={t('layout.enterphonenumber', language as Language)}
                     leftIcon={<Smartphone className="w-4 h-4" />}
                     required
                   />
@@ -637,14 +627,14 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
 
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-text-secondary">
-                    {language === 'zh' ? '验证码' : 'Verification Code'}
+                    {t('layout.verificationcode2', language as Language)}
                   </label>
                   <div className="flex gap-2">
                     <TextField
                       type="text"
                       value={smsCode}
                       onChange={(e) => setSmsCode(e.target.value)}
-                      placeholder={language === 'zh' ? '输入验证码' : 'Enter code'}
+                      placeholder={t('layout.entercode', language as Language)}
                       leftIcon={<ShieldCheck className="w-4 h-4" />}
                       required
                     />
@@ -660,9 +650,7 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
                     >
                       {codeCooldown > 0
                         ? `${codeCooldown}s`
-                        : language === 'zh'
-                          ? '获取验证码'
-                          : 'Send Code'}
+                        : t('layout.sendcode', language as Language)}
                     </button>
                   </div>
                 </div>
@@ -685,23 +673,15 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
                 <LogIn className="w-4 h-4" />
               )}
               {isRegister
-                ? language === 'zh'
-                  ? '注册'
-                  : 'Sign Up'
-                : language === 'zh'
-                  ? '登录'
-                  : 'Sign In'}
+                ? t('layout.signup', language as Language)
+                : t('layout.signin', language as Language)}
             </ActionButton>
 
             <div className="flex items-center justify-between text-xs text-text-muted">
               <p>
                 {isRegister
-                  ? language === 'zh'
-                    ? '已有账号？'
-                    : 'Already have an account? '
-                  : language === 'zh'
-                    ? '没有账号？'
-                    : "Don't have an account? "}
+                  ? t('layout.alreadyhaveanaccount', language as Language)
+                  : t('layout.donthaveanaccount', language as Language)}
                 <button
                   type="button"
                   onClick={() => {
@@ -711,12 +691,8 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
                   className="text-accent hover:text-accent-hover transition-colors font-medium"
                 >
                   {isRegister
-                    ? language === 'zh'
-                      ? '登录'
-                      : 'Sign In'
-                    : language === 'zh'
-                      ? '注册'
-                      : 'Sign Up'}
+                    ? t('layout.signin2', language as Language)
+                    : t('layout.signup2', language as Language)}
                 </button>
               </p>
 
@@ -731,7 +707,7 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
                   }}
                   className="text-accent hover:text-accent-hover transition-colors font-medium"
                 >
-                  {language === 'zh' ? '忘记密码？' : 'Forgot Password?'}
+                  {t('layout.forgotpassword2', language as Language)}
                 </button>
               )}
             </div>

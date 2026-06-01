@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { X, ChevronRight, ChevronLeft } from 'lucide-react'
+import { t, type Language } from '@renderer/i18n'
 
 const STORAGE_KEY = 'aweeclaw-workflow-tour-completed'
 
@@ -243,14 +244,14 @@ export default function WorkflowTour({ visible, onClose, language }: WorkflowTou
                 className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
               >
                 <ChevronLeft size={14} />
-                {language === 'zh' ? '上一步' : 'Back'}
+                {t('wf.back', language as Language)}
               </button>
             )}
             <button
               onClick={next}
               className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-500 text-white hover:bg-blue-600"
             >
-              {isLast ? (language === 'zh' ? '完成' : 'Finish') : (language === 'zh' ? '下一步' : 'Next')}
+              {isLast ? (t('wf.finish', language as Language)) : (t('wf.next', language as Language))}
               {!isLast && <ChevronRight size={14} />}
             </button>
           </div>
@@ -259,7 +260,7 @@ export default function WorkflowTour({ visible, onClose, language }: WorkflowTou
           onClick={skip}
           className="mt-3 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 w-full text-center"
         >
-          {language === 'zh' ? '跳过引导' : 'Skip tour'}
+          {t('wf.skiptour', language as Language)}
         </button>
       </div>
     </div>

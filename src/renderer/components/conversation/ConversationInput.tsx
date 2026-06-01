@@ -30,7 +30,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { getFileName } from '@shared/toolkit/pathHelper'
 import { WorkMode } from '@/renderer/modes/workModeTypes'
 import { motion, AnimatePresence } from 'framer-motion'
-import { t } from '@renderer/i18n'
+import {t, type Language} from '@renderer/i18n'
 import { ActionButton } from '../ui'
 
 import ModelSelector from './AIModelSelector'
@@ -229,9 +229,7 @@ const ChatInput = memo(function ChatInput({
     }, 30000)
 
     try {
-      const systemPrompt = language === 'zh'
-        ? '你是一个输入优化助手。优化用户的输入，使其更清晰、更具体、更有条理，便于AI理解和执行。直接输出优化后的内容，不要添加任何解释或前缀。保持用户的原始意图，不要改变核心意思。如果用户输入的是中文，优化后也用中文；如果是英文，优化后也用英文。'
-        : 'You are an input optimization assistant. Optimize the user\'s input to be clearer, more specific, and better structured for AI understanding and execution. Output only the optimized content without any explanation or prefix. Preserve the user\'s original intent without changing the core meaning. If the user writes in Chinese, respond in Chinese; if in English, respond in English.'
+      const systemPrompt = t('app.youareaninputoptimization', language as Language)
 
       await api.llm.send({
         config,
@@ -290,8 +288,8 @@ const ChatInput = memo(function ChatInput({
                         : 'bg-black/50 text-white/70 hover:text-white'
                     }`}
                     title={att.analyzeMode
-                      ? lt('视觉分析已开启：AI 将识别图片内容', 'Visual analysis on: AI will analyze image content')
-                      : lt('点击开启视觉分析：让 AI 识别图片内容', 'Click to enable visual analysis: let AI see image content')
+                      ? lt('app.visualanalysisonai', language as Language)
+                      : lt('app.clicktoenablevisual', language as Language)
                     }
                   >
                     {att.analyzeMode ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
@@ -436,7 +434,7 @@ const ChatInput = memo(function ChatInput({
                 variant="ghost"
                 size="icon"
                 onClick={() => fileInputRef.current?.click()}
-                title={language === 'zh' ? '上传附件' : 'Upload attachment'}
+                title={t('app.uploadattachment', language as Language)}
                 className="rounded-xl w-8 h-8 hover:bg-surface-active text-text-muted hover:text-text-primary transition-all active:scale-95"
               >
                 <Paperclip className="w-4 h-4 opacity-70 group-hover:opacity-100" />
@@ -445,7 +443,7 @@ const ChatInput = memo(function ChatInput({
               <button
                 onClick={handleOptimize}
                 disabled={!input.trim() || isOptimizing || isStreaming || !hasApiKey}
-                title={language === 'zh' ? '优化输入内容' : 'Optimize input'}
+                title={t('app.optimizeinput', language as Language)}
                 className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300
                   ${isOptimizing
                     ? 'bg-accent/10 text-accent border border-accent/20'

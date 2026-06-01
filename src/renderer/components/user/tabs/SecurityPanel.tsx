@@ -13,7 +13,7 @@ import {
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { ActionButton, TextField } from '@components/ui'
-import { type Language } from '@renderer/i18n'
+import { t, type Language } from '@renderer/i18n'
 import { backendApi } from '@services/backendApi'
 
 interface SecurityPanelProps {
@@ -61,11 +61,11 @@ export function SecurityPanel({ language, initialSection, onSectionConsumed }: S
 
   const handlePasswordSave = useCallback(async () => {
     if (!currentPassword || !newPassword || newPassword !== confirmPassword) {
-      setError(language === 'zh' ? '请正确填写密码信息' : 'Please fill in password correctly')
+      setError(t('user.pleasefillinpasswordcorrectly', language as Language))
       return
     }
     if (newPassword.length < 6) {
-      setError(language === 'zh' ? '新密码至少6位' : 'Password must be at least 6 characters')
+      setError(t('user.passwordmustbeatleast', language as Language))
       return
     }
     setPasswordSaving(true)
@@ -78,7 +78,7 @@ export function SecurityPanel({ language, initialSection, onSectionConsumed }: S
       setConfirmPassword('')
       setTimeout(() => { setPasswordSaved(false); setActiveSection(null) }, 2000)
     } catch (e: any) {
-      setError(e?.message || (language === 'zh' ? '修改密码失败' : 'Failed to update password'))
+      setError(e?.message || (t('user.failedtoupdatepassword', language as Language)))
     } finally {
       setPasswordSaving(false)
     }
@@ -96,13 +96,13 @@ export function SecurityPanel({ language, initialSection, onSectionConsumed }: S
         })
       }, 1000)
     } catch {
-      setError(language === 'zh' ? '验证码发送失败' : 'Failed to send code')
+      setError(t('user.failedtosendcode', language as Language))
     }
   }, [emailCodeCooldown, newEmail, language])
 
   const handleEmailSave = useCallback(async () => {
     if (!newEmail || !emailCode) {
-      setError(language === 'zh' ? '请填写邮箱和验证码' : 'Please enter email and code')
+      setError(t('user.pleaseenteremailandcode', language as Language))
       return
     }
     setEmailSaving(true)
@@ -115,7 +115,7 @@ export function SecurityPanel({ language, initialSection, onSectionConsumed }: S
       setEmailCode('')
       setTimeout(() => { setEmailSaved(false); setActiveSection(null) }, 2000)
     } catch (e: any) {
-      setError(e?.message || (language === 'zh' ? '修改邮箱失败' : 'Failed to update email'))
+      setError(e?.message || (t('user.failedtoupdateemail', language as Language)))
     } finally {
       setEmailSaving(false)
     }
@@ -133,13 +133,13 @@ export function SecurityPanel({ language, initialSection, onSectionConsumed }: S
         })
       }, 1000)
     } catch {
-      setError(language === 'zh' ? '验证码发送失败' : 'Failed to send code')
+      setError(t('user.failedtosendcode2', language as Language))
     }
   }, [phoneCodeCooldown, newPhone, language])
 
   const handlePhoneSave = useCallback(async () => {
     if (!newPhone || !phoneCode) {
-      setError(language === 'zh' ? '请填写手机号和验证码' : 'Please enter phone and code')
+      setError(t('user.pleaseenterphoneandcode', language as Language))
       return
     }
     setPhoneSaving(true)
@@ -152,7 +152,7 @@ export function SecurityPanel({ language, initialSection, onSectionConsumed }: S
       setPhoneCode('')
       setTimeout(() => { setPhoneSaved(false); setActiveSection(null) }, 2000)
     } catch (e: any) {
-      setError(e?.message || (language === 'zh' ? '修改手机号失败' : 'Failed to update phone'))
+      setError(e?.message || (t('user.failedtoupdatephone', language as Language)))
     } finally {
       setPhoneSaving(false)
     }
@@ -165,45 +165,45 @@ export function SecurityPanel({ language, initialSection, onSectionConsumed }: S
           <div className="space-y-4">
             <div className="flex items-center gap-2 mb-2">
               <button onClick={() => setActiveSection(null)} className="text-xs text-text-muted hover:text-text-primary transition-colors">
-                {language === 'zh' ? '← 返回' : '← Back'}
+                {t('user.back', language as Language)}
               </button>
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-text-secondary">{language === 'zh' ? '当前密码' : 'Current Password'}</label>
+              <label className="text-xs font-medium text-text-secondary">{t('user.currentpassword', language as Language)}</label>
               <TextField
                 type={showCurrentPassword ? 'text' : 'password'}
                 value={currentPassword}
                 onChange={e => setCurrentPassword(e.target.value)}
-                placeholder={language === 'zh' ? '输入当前密码' : 'Enter current password'}
+                placeholder={t('user.entercurrentpassword', language as Language)}
                 leftIcon={<Lock className="w-4 h-4" />}
                 rightIcon={<button type="button" onClick={() => setShowCurrentPassword(!showCurrentPassword)} className="hover:text-text-primary transition-colors">{showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button>}
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-text-secondary">{language === 'zh' ? '新密码' : 'New Password'}</label>
+              <label className="text-xs font-medium text-text-secondary">{t('user.newpassword', language as Language)}</label>
               <TextField
                 type={showNewPassword ? 'text' : 'password'}
                 value={newPassword}
                 onChange={e => setNewPassword(e.target.value)}
-                placeholder={language === 'zh' ? '输入新密码（至少6位）' : 'Enter new password (min 6 chars)'}
+                placeholder={t('user.enternewpasswordmin6', language as Language)}
                 leftIcon={<Lock className="w-4 h-4" />}
                 rightIcon={<button type="button" onClick={() => setShowNewPassword(!showNewPassword)} className="hover:text-text-primary transition-colors">{showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button>}
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-text-secondary">{language === 'zh' ? '确认新密码' : 'Confirm New Password'}</label>
+              <label className="text-xs font-medium text-text-secondary">{t('user.confirmnewpassword', language as Language)}</label>
               <TextField
                 type="password"
                 value={confirmPassword}
                 onChange={e => setConfirmPassword(e.target.value)}
-                placeholder={language === 'zh' ? '再次输入新密码' : 'Re-enter new password'}
+                placeholder={t('user.reenternewpassword', language as Language)}
                 leftIcon={<Lock className="w-4 h-4" />}
               />
             </div>
             {error && <div className="flex items-center gap-2 p-3 rounded-lg bg-status-error/5 border border-status-error/20 text-status-error text-xs"><AlertCircle className="w-4 h-4 shrink-0" /><span>{error}</span></div>}
             <div className="flex justify-end">
               <ActionButton variant={passwordSaved ? 'success' : 'primary'} onClick={handlePasswordSave} disabled={passwordSaving} className="min-w-[120px]">
-                {passwordSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : passwordSaved ? <><Check className="w-4 h-4" />{language === 'zh' ? '已修改' : 'Updated'}</> : language === 'zh' ? '修改密码' : 'Update Password'}
+                {passwordSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : passwordSaved ? <><Check className="w-4 h-4" />{t('user.updated', language as Language)}</> : t('user.updatepassword', language as Language)}
               </ActionButton>
             </div>
           </div>
@@ -213,30 +213,30 @@ export function SecurityPanel({ language, initialSection, onSectionConsumed }: S
           <div className="space-y-4">
             <div className="flex items-center gap-2 mb-2">
               <button onClick={() => setActiveSection(null)} className="text-xs text-text-muted hover:text-text-primary transition-colors">
-                {language === 'zh' ? '← 返回' : '← Back'}
+                {t('user.back2', language as Language)}
               </button>
             </div>
             <div className="p-3 rounded-lg bg-surface/50 border border-border/30 text-xs text-text-muted">
-              {language === 'zh' ? '当前邮箱：' : 'Current email: '}{cloudUser?.email || (language === 'zh' ? '未设置' : 'Not set')}
+              {t('user.currentemail', language as Language)}{cloudUser?.email || (t('user.notset', language as Language))}
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-text-secondary">{language === 'zh' ? '新邮箱' : 'New Email'}</label>
+              <label className="text-xs font-medium text-text-secondary">{t('user.newemail', language as Language)}</label>
               <TextField
                 type="email"
                 value={newEmail}
                 onChange={e => setNewEmail(e.target.value)}
-                placeholder={language === 'zh' ? '输入新邮箱地址' : 'Enter new email address'}
+                placeholder={t('user.enternewemailaddress', language as Language)}
                 leftIcon={<Mail className="w-4 h-4" />}
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-text-secondary">{language === 'zh' ? '验证码' : 'Verification Code'}</label>
+              <label className="text-xs font-medium text-text-secondary">{t('user.verificationcode', language as Language)}</label>
               <div className="flex gap-2">
                 <TextField
                   type="text"
                   value={emailCode}
                   onChange={e => setEmailCode(e.target.value)}
-                  placeholder={language === 'zh' ? '输入验证码' : 'Enter verification code'}
+                  placeholder={t('user.enterverificationcode', language as Language)}
                   leftIcon={<ShieldCheck className="w-4 h-4" />}
                 />
                 <button
@@ -249,14 +249,14 @@ export function SecurityPanel({ language, initialSection, onSectionConsumed }: S
                       : 'bg-accent/10 text-accent hover:bg-accent/20'
                   }`}
                 >
-                  {emailCodeCooldown > 0 ? `${emailCodeCooldown}s` : language === 'zh' ? '获取验证码' : 'Send Code'}
+                  {emailCodeCooldown > 0 ? `${emailCodeCooldown}s` : t('user.sendcode', language as Language)}
                 </button>
               </div>
             </div>
             {error && <div className="flex items-center gap-2 p-3 rounded-lg bg-status-error/5 border border-status-error/20 text-status-error text-xs"><AlertCircle className="w-4 h-4 shrink-0" /><span>{error}</span></div>}
             <div className="flex justify-end">
               <ActionButton variant={emailSaved ? 'success' : 'primary'} onClick={handleEmailSave} disabled={emailSaving} className="min-w-[120px]">
-                {emailSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : emailSaved ? <><Check className="w-4 h-4" />{language === 'zh' ? '已修改' : 'Updated'}</> : language === 'zh' ? '修改邮箱' : 'Update Email'}
+                {emailSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : emailSaved ? <><Check className="w-4 h-4" />{t('user.updated2', language as Language)}</> : t('user.updateemail', language as Language)}
               </ActionButton>
             </div>
           </div>
@@ -266,30 +266,30 @@ export function SecurityPanel({ language, initialSection, onSectionConsumed }: S
           <div className="space-y-4">
             <div className="flex items-center gap-2 mb-2">
               <button onClick={() => setActiveSection(null)} className="text-xs text-text-muted hover:text-text-primary transition-colors">
-                {language === 'zh' ? '← 返回' : '← Back'}
+                {t('user.back3', language as Language)}
               </button>
             </div>
             <div className="p-3 rounded-lg bg-surface/50 border border-border/30 text-xs text-text-muted">
-              {language === 'zh' ? '当前手机号：' : 'Current phone: '}{cloudUser?.phone || (language === 'zh' ? '未绑定' : 'Not bound')}
+              {t('user.currentphone', language as Language)}{cloudUser?.phone || (t('user.notbound', language as Language))}
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-text-secondary">{language === 'zh' ? '新手机号' : 'New Phone Number'}</label>
+              <label className="text-xs font-medium text-text-secondary">{t('user.newphonenumber', language as Language)}</label>
               <TextField
                 type="tel"
                 value={newPhone}
                 onChange={e => setNewPhone(e.target.value)}
-                placeholder={language === 'zh' ? '输入新手机号' : 'Enter new phone number'}
+                placeholder={t('user.enternewphonenumber', language as Language)}
                 leftIcon={<Smartphone className="w-4 h-4" />}
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-text-secondary">{language === 'zh' ? '验证码' : 'Verification Code'}</label>
+              <label className="text-xs font-medium text-text-secondary">{t('user.verificationcode2', language as Language)}</label>
               <div className="flex gap-2">
                 <TextField
                   type="text"
                   value={phoneCode}
                   onChange={e => setPhoneCode(e.target.value)}
-                  placeholder={language === 'zh' ? '输入验证码' : 'Enter code'}
+                  placeholder={t('user.entercode', language as Language)}
                   leftIcon={<ShieldCheck className="w-4 h-4" />}
                 />
                 <button
@@ -302,14 +302,14 @@ export function SecurityPanel({ language, initialSection, onSectionConsumed }: S
                       : 'bg-accent/10 text-accent hover:bg-accent/20'
                   }`}
                 >
-                  {phoneCodeCooldown > 0 ? `${phoneCodeCooldown}s` : language === 'zh' ? '获取验证码' : 'Send Code'}
+                  {phoneCodeCooldown > 0 ? `${phoneCodeCooldown}s` : t('user.sendcode2', language as Language)}
                 </button>
               </div>
             </div>
             {error && <div className="flex items-center gap-2 p-3 rounded-lg bg-status-error/5 border border-status-error/20 text-status-error text-xs"><AlertCircle className="w-4 h-4 shrink-0" /><span>{error}</span></div>}
             <div className="flex justify-end">
               <ActionButton variant={phoneSaved ? 'success' : 'primary'} onClick={handlePhoneSave} disabled={phoneSaving} className="min-w-[120px]">
-                {phoneSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : phoneSaved ? <><Check className="w-4 h-4" />{language === 'zh' ? '已修改' : 'Updated'}</> : language === 'zh' ? '修改手机号' : 'Update Phone'}
+                {phoneSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : phoneSaved ? <><Check className="w-4 h-4" />{t('user.updated3', language as Language)}</> : t('user.updatephone', language as Language)}
               </ActionButton>
             </div>
           </div>
@@ -329,8 +329,8 @@ export function SecurityPanel({ language, initialSection, onSectionConsumed }: S
       >
         <div className="p-2 rounded-lg bg-accent/10"><Lock className="w-4 h-4 text-accent" /></div>
         <div className="flex-1">
-          <p className="text-sm font-medium text-text-primary">{language === 'zh' ? '修改密码' : 'Change Password'}</p>
-          <p className="text-xs text-text-muted mt-0.5">{language === 'zh' ? '更新您的登录密码' : 'Update your login password'}</p>
+          <p className="text-sm font-medium text-text-primary">{t('user.changepassword', language as Language)}</p>
+          <p className="text-xs text-text-muted mt-0.5">{t('user.updateyourloginpassword', language as Language)}</p>
         </div>
       </button>
 
@@ -340,8 +340,8 @@ export function SecurityPanel({ language, initialSection, onSectionConsumed }: S
       >
         <div className="p-2 rounded-lg bg-accent/10"><Mail className="w-4 h-4 text-accent" /></div>
         <div className="flex-1">
-          <p className="text-sm font-medium text-text-primary">{language === 'zh' ? '修改邮箱' : 'Change Email'}</p>
-          <p className="text-xs text-text-muted mt-0.5">{cloudUser?.email || (language === 'zh' ? '未设置' : 'Not set')}</p>
+          <p className="text-sm font-medium text-text-primary">{t('user.changeemail', language as Language)}</p>
+          <p className="text-xs text-text-muted mt-0.5">{cloudUser?.email || (t('user.notset2', language as Language))}</p>
         </div>
       </button>
 
@@ -351,8 +351,8 @@ export function SecurityPanel({ language, initialSection, onSectionConsumed }: S
       >
         <div className="p-2 rounded-lg bg-accent/10"><Smartphone className="w-4 h-4 text-accent" /></div>
         <div className="flex-1">
-          <p className="text-sm font-medium text-text-primary">{language === 'zh' ? '修改手机号' : 'Change Phone'}</p>
-          <p className="text-xs text-text-muted mt-0.5">{cloudUser?.phone || (language === 'zh' ? '未绑定' : 'Not bound')}</p>
+          <p className="text-sm font-medium text-text-primary">{t('user.changephone', language as Language)}</p>
+          <p className="text-xs text-text-muted mt-0.5">{cloudUser?.phone || (t('user.notbound2', language as Language))}</p>
         </div>
       </button>
     </div>

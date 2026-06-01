@@ -11,6 +11,7 @@ import { BUILTIN_AGENT_ROLES } from '@shared/protocols/workflow'
 import { BUILTIN_PROVIDERS } from '@shared/configuration/aiProviders'
 import { backendApi, getServerUrl } from '@services/backendApi'
 import { getNodeLabel } from '../../shared/nodeTypes'
+import { t, type Language } from '@renderer/i18n'
 
 interface InlineEditorProps {
   nodeId: string
@@ -28,7 +29,7 @@ const TEXTAREA_CLASS =
 const SELECT_CLASS =
   'nodrag no-wheel w-full h-7 px-2 text-[11px] rounded-md border border-gray-200 bg-white text-gray-700 focus:outline-none focus:ring-1.5 focus:ring-blue-400/30 focus:border-blue-400 transition-all'
 
-const T: Record<string, { en: string; zh: string }> = {
+const NODE_LABELS: Record<string, { en: string; zh: string }> = {
   systemPrompt: { en: 'System Prompt', zh: '系统提示词' },
   chatMode: { en: 'Chat Mode', zh: '对话模式' },
   temperature: { en: 'Temperature', zh: '温度' },
@@ -163,8 +164,8 @@ const NOTIFICATION_CHANNELS: Record<string, { en: string; zh: string }> = {
   webhook: { en: 'Webhook', zh: 'Webhook' },
 }
 
-function t(key: string, lang: 'en' | 'zh' = 'zh'): string {
-  return T[key]?.[lang] || T[key]?.en || key
+function nodeT(key: string, lang: 'en' | 'zh' = 'zh'): string {
+  return NODE_LABELS[key]?.[lang] || NODE_LABELS[key]?.en || key
 }
 
 function FieldLabel({ children, className = '' }: { children: ReactNode; className?: string }) {
@@ -484,7 +485,7 @@ function AgentTaskEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
     <div className="space-y-2.5">
       {/* Chat Mode */}
       <div>
-        <FieldLabel>{t('chatMode', l)}</FieldLabel>
+        <FieldLabel>{nodeT('chatMode', l)}</FieldLabel>
         <div className="flex gap-0.5">
           {([
             { id: 'chat', icon: Zap, labelZh: '快速', labelEn: 'Quick', color: 'text-blue-400' },
@@ -510,7 +511,7 @@ function AgentTaskEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
 
       {/* Role */}
       <div>
-        <FieldLabel>{t('role', l)}</FieldLabel>
+        <FieldLabel>{nodeT('role', l)}</FieldLabel>
         <select
           value={roleId}
           onChange={(e) => {
@@ -562,7 +563,7 @@ function AgentTaskEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
       {/* Model */}
       <div>
         <div className="flex items-center gap-1.5">
-          <FieldLabel className="!mb-0">{t('model', l)}</FieldLabel>
+          <FieldLabel className="!mb-0">{nodeT('model', l)}</FieldLabel>
           {isCloud && <Cloud className="w-2.5 h-2.5 text-accent" />}
         </div>
         <select
@@ -582,7 +583,7 @@ function AgentTaskEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
       {/* Temperature slider */}
       <div>
         <div className="flex items-center justify-between mb-0.5">
-          <FieldLabel className="!mb-0">{t('temperature', l)}</FieldLabel>
+          <FieldLabel className="!mb-0">{nodeT('temperature', l)}</FieldLabel>
           <span className="text-[10px] font-mono font-semibold text-gray-500">{tempVal.toFixed(1)}</span>
         </div>
         <div className="flex items-center gap-2">
@@ -608,7 +609,7 @@ function AgentTaskEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
       {/* System Prompt */}
       <div>
         <div className="flex items-center justify-between mb-0.5">
-          <FieldLabel className="!mb-0">{t('systemPrompt', l)}</FieldLabel>
+          <FieldLabel className="!mb-0">{nodeT('systemPrompt', l)}</FieldLabel>
           <VariableInserter
             nodeId={nodeId}
             language={l}
@@ -661,7 +662,7 @@ function AgentTaskEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
 
       {/* Output Variable */}
       <div>
-        <FieldLabel>{t('outputVar', l)}</FieldLabel>
+        <FieldLabel>{nodeT('outputVar', l)}</FieldLabel>
         <input
           type="text"
           value={(data.outputVar as string) || ''}
@@ -683,7 +684,7 @@ function AgentGroupEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) 
     <div className="space-y-2.5">
       <div className="flex gap-2">
         <div className="flex-1">
-          <FieldLabel>{t('collaborationMode', language)}</FieldLabel>
+          <FieldLabel>{nodeT('collaborationMode', language)}</FieldLabel>
           <select value={(data.collaborationMode as string) || 'sequential'} onChange={(e) => onChange('collaborationMode', e.target.value)} className={SELECT_CLASS}>
             {Object.entries(COLLAB_MODES).map(([value, labels]) => (
               <option key={value} value={value}>{labels[language] || labels.en}</option>
@@ -691,22 +692,22 @@ function AgentGroupEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) 
           </select>
         </div>
         <div className="w-20">
-          <FieldLabel>{t('maxRounds', language)}</FieldLabel>
+          <FieldLabel>{nodeT('maxRounds', language)}</FieldLabel>
           <input type="number" value={data.maxRounds as number || 3} onChange={(e) => onChange('maxRounds', parseInt(e.target.value) || 3)} min={1} max={10} className={INPUT_CLASS} />
         </div>
       </div>
       <div>
-        <FieldLabel>{t('consensusCondition', language)}</FieldLabel>
+        <FieldLabel>{nodeT('consensusCondition', language)}</FieldLabel>
         <input
           type="text"
           value={(data.consensusCondition as string) || ''}
           onChange={(e) => onChange('consensusCondition', e.target.value)}
-          placeholder={language === 'zh' ? '如：同意人数≥2' : 'e.g. agree >= 2'}
+          placeholder={t('wf.egagree2', language as Language)}
           className={INPUT_CLASS}
         />
       </div>
       <div>
-        <FieldLabel>{t('outputVar', language)}</FieldLabel>
+        <FieldLabel>{nodeT('outputVar', language)}</FieldLabel>
         <input
           type="text"
           value={(data.outputVar as string) || ''}
@@ -753,12 +754,12 @@ function SubWorkflowEditor({ nodeId, data, language = 'zh' }: InlineEditorProps)
   return (
     <div className="space-y-2.5">
       <div>
-        <FieldLabel>{t('subWorkflowId', language)}</FieldLabel>
-        <input type="text" value={(data.subWorkflowId as string) || ''} onChange={(e) => onChange('subWorkflowId', e.target.value)} placeholder={language === 'zh' ? '选择子工作流...' : 'Select sub workflow...'} className={INPUT_CLASS} />
+        <FieldLabel>{nodeT('subWorkflowId', language)}</FieldLabel>
+        <input type="text" value={(data.subWorkflowId as string) || ''} onChange={(e) => onChange('subWorkflowId', e.target.value)} placeholder={t('wf.selectsubworkflow', language as Language)} className={INPUT_CLASS} />
       </div>
       <div>
         <FieldLabel>
-          {t('inputMapping', language)} ({inputEntries.length})
+          {nodeT('inputMapping', language)} ({inputEntries.length})
         </FieldLabel>
         <div className="nodrag no-wheel space-y-1 max-h-[100px] overflow-y-auto">
           {inputEntries.map(([k, v]) => (
@@ -791,11 +792,11 @@ function SubWorkflowEditor({ nodeId, data, language = 'zh' }: InlineEditorProps)
           onClick={() => addMapping('inputMapping', inputMapping)}
           className="mt-1 text-[10px] text-blue-500 hover:text-blue-600 font-medium transition-colors"
         >
-          {t('addMapping', language)}
+          {nodeT('addMapping', language)}
         </button>
       </div>
       <div>
-        <FieldLabel>{t('outputVar', language)}</FieldLabel>
+        <FieldLabel>{nodeT('outputVar', language)}</FieldLabel>
         <input
           type="text"
           value={(data.outputVar as string) || ''}
@@ -871,7 +872,7 @@ function UserInputEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
   return (
     <div className="space-y-2.5 px-3 pb-3">
       <div>
-        <FieldLabel>{t('inputType', language)}</FieldLabel>
+        <FieldLabel>{nodeT('inputType', language)}</FieldLabel>
         <div className="grid grid-cols-3 gap-1">
           {(['text', 'multiline', 'number', 'select', 'confirm', 'file'] as const).map((tpe) => (
             <button
@@ -890,29 +891,29 @@ function UserInputEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
       </div>
 
       <div>
-        <FieldLabel>{t('inputLabel', language)}</FieldLabel>
+        <FieldLabel>{nodeT('inputLabel', language)}</FieldLabel>
         <input
           type="text"
           value={inputLabel}
           onChange={(e) => onChange('inputLabel', e.target.value)}
-          placeholder={language === 'zh' ? '例如：请输入您的姓名' : 'e.g. Enter your name'}
+          placeholder={t('wf.egenteryourname', language as Language)}
           className={INPUT_CLASS}
         />
       </div>
 
       <div className="flex gap-2">
         <div className="flex-1">
-          <FieldLabel>{t('inputPlaceholder', language)}</FieldLabel>
+          <FieldLabel>{nodeT('inputPlaceholder', language)}</FieldLabel>
           <input
             type="text"
             value={inputPlaceholder}
             onChange={(e) => onChange('inputPlaceholder', e.target.value)}
-            placeholder={language === 'zh' ? '输入提示文字' : 'Placeholder text'}
+            placeholder={t('wf.placeholdertext', language as Language)}
             className={INPUT_CLASS}
           />
         </div>
         <div className="w-16">
-          <FieldLabel>{t('required', language)}</FieldLabel>
+          <FieldLabel>{nodeT('required', language)}</FieldLabel>
           <button
             onClick={() => onChange('required', !required)}
             className={`w-full h-7 text-[10px] font-medium rounded-md border transition-all ${
@@ -929,7 +930,7 @@ function UserInputEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
       {inputType === 'select' && (
         <div>
           <FieldLabel>
-            {t('options', language)} ({inputOptions.length})
+            {nodeT('options', language)} ({inputOptions.length})
           </FieldLabel>
           <div className="nodrag no-wheel space-y-1 max-h-[140px] overflow-y-auto">
             {inputOptions.map((opt, i) => (
@@ -938,20 +939,20 @@ function UserInputEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
                   type="text"
                   value={opt.value}
                   onChange={(e) => updateOption(i, 'value', e.target.value)}
-                  placeholder={t('optionValue', language)}
+                  placeholder={nodeT('optionValue', language)}
                   className={`${INPUT_CLASS} w-[60px]`}
                 />
                 <input
                   type="text"
                   value={opt.label}
                   onChange={(e) => updateOption(i, 'label', e.target.value)}
-                  placeholder={t('optionLabel', language)}
+                  placeholder={nodeT('optionLabel', language)}
                   className={`${INPUT_CLASS} flex-1`}
                 />
                 <button
                   onClick={() => removeOption(i)}
                   className="w-5 h-5 flex items-center justify-center rounded text-gray-350 hover:text-red-500 hover:bg-red-50 flex-shrink-0"
-                  title={language === 'zh' ? '删除' : 'Remove'}
+                  title={t('wf.remove', language as Language)}
                 >
                   ×
                 </button>
@@ -962,7 +963,7 @@ function UserInputEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
             onClick={addOption}
             className="mt-1 text-[10px] text-blue-500 hover:text-blue-600 font-medium transition-colors"
           >
-            + {t('addOption', language)}
+            + {nodeT('addOption', language)}
           </button>
         </div>
       )}
@@ -970,7 +971,7 @@ function UserInputEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
       {inputType === 'file' && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <FieldLabel>{t('fileConfig', language)}</FieldLabel>
+            <FieldLabel>{nodeT('fileConfig', language)}</FieldLabel>
             <button
               onClick={() => onChange('allowMultipleFiles', !allowMultipleFiles)}
               className={`text-[10px] px-1.5 py-0.5 rounded border transition-all ${
@@ -979,13 +980,13 @@ function UserInputEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
                   : 'bg-white border-gray-150 text-gray-400'
               }`}
             >
-              {t('allowMultiple', language)}
+              {nodeT('allowMultiple', language)}
             </button>
           </div>
 
           <div>
             <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
-              {t('allowedTypes', language)}
+              {nodeT('allowedTypes', language)}
             </div>
             <div className="flex flex-wrap gap-1">
               {COMMON_FILE_TYPES.map((ft) => (
@@ -1007,7 +1008,7 @@ function UserInputEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
 
           <div className="flex items-center gap-2">
             <span className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider">
-              {t('maxSize', language)}
+              {nodeT('maxSize', language)}
             </span>
             <input
               type="number"
@@ -1024,12 +1025,12 @@ function UserInputEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
       )}
 
       <div>
-        <FieldLabel>{t('outputVar', language)}</FieldLabel>
+        <FieldLabel>{nodeT('outputVar', language)}</FieldLabel>
         <input
           type="text"
           value={outputVar}
           onChange={(e) => onChange('outputVar', e.target.value)}
-          placeholder={language === 'zh' ? '例如：user_name' : 'e.g. user_name'}
+          placeholder={t('wf.egusername', language as Language)}
           className={INPUT_CLASS}
         />
       </div>
@@ -1069,28 +1070,28 @@ function UserApprovalEditor({ nodeId, data, language = 'zh' }: InlineEditorProps
   return (
     <div className="space-y-2.5">
       <div>
-        <FieldLabel>{t('approvalTitle', language)}</FieldLabel>
+        <FieldLabel>{nodeT('approvalTitle', language)}</FieldLabel>
         <input
           type="text"
           value={approvalTitle}
           onChange={(e) => onChange('approvalTitle', e.target.value)}
-          placeholder={language === 'zh' ? '例如：请假审批' : 'e.g. Leave approval'}
+          placeholder={t('wf.egleaveapproval', language as Language)}
           className={INPUT_CLASS}
         />
       </div>
       <div>
-        <FieldLabel>{t('approvalDescription', language)}</FieldLabel>
+        <FieldLabel>{nodeT('approvalDescription', language)}</FieldLabel>
         <input
           type="text"
           value={approvalDescription}
           onChange={(e) => onChange('approvalDescription', e.target.value)}
-          placeholder={language === 'zh' ? '审批说明...' : 'Description...'}
+          placeholder={t('wf.description', language as Language)}
           className={INPUT_CLASS}
         />
       </div>
       <div>
         <FieldLabel>
-          {t('approvers', language)} ({approverList.length})
+          {nodeT('approvers', language)} ({approverList.length})
         </FieldLabel>
         <div className="nodrag no-wheel space-y-1 max-h-[100px] overflow-y-auto">
           {approverList.map((approver, i) => (
@@ -1099,7 +1100,7 @@ function UserApprovalEditor({ nodeId, data, language = 'zh' }: InlineEditorProps
                 type="text"
                 value={approver}
                 onChange={(e) => updateApprover(i, e.target.value)}
-                placeholder={language === 'zh' ? '审批人ID/名称' : 'Approver ID/Name'}
+                placeholder={t('wf.approveridname', language as Language)}
                 className={`${INPUT_CLASS} flex-1`}
               />
               <button
@@ -1115,12 +1116,12 @@ function UserApprovalEditor({ nodeId, data, language = 'zh' }: InlineEditorProps
           onClick={addApprover}
           className="mt-1 text-[10px] text-blue-500 hover:text-blue-600 font-medium transition-colors"
         >
-          {t('addApprover', language)}
+          {nodeT('addApprover', language)}
         </button>
       </div>
       <div className="flex gap-2">
         <div className="flex-1">
-          <FieldLabel>{t('timeoutMs', language)}</FieldLabel>
+          <FieldLabel>{nodeT('timeoutMs', language)}</FieldLabel>
           <input
             type="number"
             value={data.approvalTimeout as number || 3600000}
@@ -1131,20 +1132,20 @@ function UserApprovalEditor({ nodeId, data, language = 'zh' }: InlineEditorProps
           />
         </div>
         <div className="flex-1">
-          <FieldLabel>{t('autoAction', language)}</FieldLabel>
+          <FieldLabel>{nodeT('autoAction', language)}</FieldLabel>
           <select
             value={autoAction}
             onChange={(e) => onChange('approvalAutoAction', e.target.value)}
             className={SELECT_CLASS}
           >
-            <option value="pause">{language === 'zh' ? '暂停等待' : 'Pause'}</option>
-            <option value="approve">{language === 'zh' ? '自动通过' : 'Auto Approve'}</option>
-            <option value="reject">{language === 'zh' ? '自动拒绝' : 'Auto Reject'}</option>
+            <option value="pause">{t('wf.pause', language as Language)}</option>
+            <option value="approve">{t('wf.autoapprove', language as Language)}</option>
+            <option value="reject">{t('wf.autoreject', language as Language)}</option>
           </select>
         </div>
       </div>
       <div>
-        <FieldLabel>{t('outputVar', language)}</FieldLabel>
+        <FieldLabel>{nodeT('outputVar', language)}</FieldLabel>
         <input
           type="text"
           value={(data.outputVar as string) || ''}
@@ -1198,18 +1199,18 @@ function FormCollectorEditor({ nodeId, data, language = 'zh' }: InlineEditorProp
   return (
     <div className="space-y-2.5">
       <div>
-        <FieldLabel>{t('formTitle', language)}</FieldLabel>
+        <FieldLabel>{nodeT('formTitle', language)}</FieldLabel>
         <input
           type="text"
           value={formTitle}
           onChange={(e) => onChange('formTitle', e.target.value)}
-          placeholder={language === 'zh' ? '例如：客户信息采集表' : 'e.g. Customer info form'}
+          placeholder={t('wf.egcustomerinfoform', language as Language)}
           className={INPUT_CLASS}
         />
       </div>
       <div>
         <FieldLabel>
-          {t('formFields', language)} ({fields.length})
+          {nodeT('formFields', language)} ({fields.length})
         </FieldLabel>
         <div className="nodrag no-wheel space-y-2 max-h-[260px] overflow-y-auto">
           {fields.map((f, i) => {
@@ -1223,7 +1224,7 @@ function FormCollectorEditor({ nodeId, data, language = 'zh' }: InlineEditorProp
                     type="text"
                     value={(f.name as string) || ''}
                     onChange={(e) => updateField(i, 'name', e.target.value)}
-                    placeholder={t('fieldName', language)}
+                    placeholder={nodeT('fieldName', language)}
                     className={`${INPUT_CLASS} flex-1 h-6 text-[10px]`}
                   />
                   <select
@@ -1231,18 +1232,18 @@ function FormCollectorEditor({ nodeId, data, language = 'zh' }: InlineEditorProp
                     onChange={(e) => updateField(i, 'type', e.target.value)}
                     className={`${SELECT_CLASS} w-[80px] h-6 text-[10px]`}
                   >
-                    <option value="text">{language === 'zh' ? '文本' : 'Text'}</option>
-                    <option value="textarea">{language === 'zh' ? '长文本' : 'Textarea'}</option>
-                    <option value="number">{language === 'zh' ? '数字' : 'Number'}</option>
-                    <option value="select">{language === 'zh' ? '选择' : 'Select'}</option>
-                    <option value="checkbox">{language === 'zh' ? '勾选' : 'Checkbox'}</option>
+                    <option value="text">{t('wf.text', language as Language)}</option>
+                    <option value="textarea">{t('wf.textarea', language as Language)}</option>
+                    <option value="number">{t('wf.number', language as Language)}</option>
+                    <option value="select">{t('wf.select', language as Language)}</option>
+                    <option value="checkbox">{t('wf.checkbox', language as Language)}</option>
                   </select>
                   <button
                     onClick={() => updateField(i, 'required', !isRequired)}
                     className={`px-1 h-6 text-[9px] rounded border transition-all flex-shrink-0 ${
                       isRequired ? 'bg-red-50 border-red-200 text-red-600' : 'bg-white border-gray-150 text-gray-350'
                     }`}
-                    title={t('required', language)}
+                    title={nodeT('required', language)}
                   >
                     *
                   </button>
@@ -1257,7 +1258,7 @@ function FormCollectorEditor({ nodeId, data, language = 'zh' }: InlineEditorProp
                   type="text"
                   value={(f.label as string) || ''}
                   onChange={(e) => updateField(i, 'label', e.target.value)}
-                  placeholder={language === 'zh' ? '显示标签...' : 'Display label...'}
+                  placeholder={t('wf.displaylabel', language as Language)}
                   className={`${INPUT_CLASS} h-6 text-[10px]`}
                 />
                 {fieldType === 'select' && (
@@ -1310,11 +1311,11 @@ function FormCollectorEditor({ nodeId, data, language = 'zh' }: InlineEditorProp
           onClick={addField}
           className="mt-1.5 text-[10px] text-blue-500 hover:text-blue-600 font-medium transition-colors"
         >
-          {t('addField', language)}
+          {nodeT('addField', language)}
         </button>
       </div>
       <div>
-        <FieldLabel>{t('outputVar', language)}</FieldLabel>
+        <FieldLabel>{nodeT('outputVar', language)}</FieldLabel>
         <input
           type="text"
           value={(data.outputVar as string) || ''}
@@ -1357,7 +1358,7 @@ function ConditionEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
     <div className="space-y-2.5">
       <div>
         <FieldLabel>
-          {t('conditions', language)} ({conditions.length})
+          {nodeT('conditions', language)} ({conditions.length})
         </FieldLabel>
         <div className="nodrag no-wheel space-y-1.5 max-h-[200px] overflow-y-auto">
           {conditions.map((c, i) => (
@@ -1378,10 +1379,10 @@ function ConditionEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
                 >
                   <option value="equals">==</option>
                   <option value="not_equals">!=</option>
-                  <option value="contains">{language === 'zh' ? '含' : 'has'}</option>
+                  <option value="contains">{t('wf.has', language as Language)}</option>
                   <option value="greater_than">&gt;</option>
                   <option value="less_than">&lt;</option>
-                  <option value="is_empty">{language === 'zh' ? '空' : 'nil'}</option>
+                  <option value="is_empty">{t('wf.nil', language as Language)}</option>
                 </select>
                 <input
                   type="text"
@@ -1411,7 +1412,7 @@ function ConditionEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
           onClick={addCondition}
           className="mt-1.5 text-[10px] text-blue-500 hover:text-blue-600 font-medium transition-colors"
         >
-          {t('addCondition', language)}
+          {nodeT('addCondition', language)}
         </button>
       </div>
     </div>
@@ -1447,18 +1448,18 @@ function SwitchCaseEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) 
   return (
     <div className="space-y-2.5">
       <div>
-        <FieldLabel>{t('switchVariable', language)}</FieldLabel>
+        <FieldLabel>{nodeT('switchVariable', language)}</FieldLabel>
         <input
           type="text"
           value={(data.switchVariable as string) || ''}
           onChange={(e) => onChange('switchVariable', e.target.value)}
-          placeholder={language === 'zh' ? '如：{{status}}' : 'e.g. {{status}}'}
+          placeholder={t('wf.eg', language as Language)}
           className={INPUT_CLASS}
         />
       </div>
       <div>
         <FieldLabel>
-          {t('switchCases', language)} ({cases.length})
+          {nodeT('switchCases', language)} ({cases.length})
         </FieldLabel>
         <div className="nodrag no-wheel space-y-1 max-h-[180px] overflow-y-auto">
           {cases.map((c, i) => (
@@ -1491,7 +1492,7 @@ function SwitchCaseEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) 
           onClick={addCase}
           className="mt-1 text-[10px] text-blue-500 hover:text-blue-600 font-medium transition-colors"
         >
-          {t('addCase', language)}
+          {nodeT('addCase', language)}
         </button>
       </div>
     </div>
@@ -1507,7 +1508,7 @@ function LoopEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
   return (
     <div className="space-y-2.5">
       <div>
-        <FieldLabel>{t('loopType', language)}</FieldLabel>
+        <FieldLabel>{nodeT('loopType', language)}</FieldLabel>
         <div className="flex gap-0.5">
           {(['for_each', 'while', 'times'] as const).map((lt) => (
             <button
@@ -1529,17 +1530,17 @@ function LoopEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
       {loopType === 'for_each' && (
         <>
           <div>
-            <FieldLabel>{t('loopData', language)}</FieldLabel>
+            <FieldLabel>{nodeT('loopData', language)}</FieldLabel>
             <input
               type="text"
               value={(data.loopMode as string) || ''}
               onChange={(e) => onChange('loopMode', e.target.value)}
-              placeholder={language === 'zh' ? '如：{{items}}' : 'e.g. {{items}}'}
+              placeholder={t('wf.eg2', language as Language)}
               className={INPUT_CLASS}
             />
           </div>
           <div>
-            <FieldLabel>{t('loopVariable', language)}</FieldLabel>
+            <FieldLabel>{nodeT('loopVariable', language)}</FieldLabel>
             <input
               type="text"
               value={(data.loopVariable as string) || 'item'}
@@ -1551,12 +1552,12 @@ function LoopEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
       )}
       {loopType === 'while' && (
         <div>
-          <FieldLabel>{t('conditions', language)}</FieldLabel>
+          <FieldLabel>{nodeT('conditions', language)}</FieldLabel>
           <input
             type="text"
             value={(data.loopMode as string) || ''}
             onChange={(e) => onChange('loopMode', e.target.value)}
-            placeholder={language === 'zh' ? '如：{{count < 10}}' : 'e.g. {{count < 10}}'}
+            placeholder={t('wf.eg3', language as Language)}
             className={INPUT_CLASS}
           />
         </div>
@@ -1564,7 +1565,7 @@ function LoopEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
       {loopType === 'times' && (
         <div className="flex gap-2">
           <div className="flex-1">
-            <FieldLabel>{t('max', language)}</FieldLabel>
+            <FieldLabel>{nodeT('max', language)}</FieldLabel>
             <input
               type="number"
               value={data.loopMaxIterations as number || 10}
@@ -1574,7 +1575,7 @@ function LoopEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
             />
           </div>
           <div className="flex-1">
-            <FieldLabel>{t('loopVariable', language)}</FieldLabel>
+            <FieldLabel>{nodeT('loopVariable', language)}</FieldLabel>
             <input
               type="text"
               value={(data.loopVariable as string) || 'index'}
@@ -1585,7 +1586,7 @@ function LoopEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
         </div>
       )}
       <div>
-        <FieldLabel>{t('collectionVar', language)}</FieldLabel>
+        <FieldLabel>{nodeT('collectionVar', language)}</FieldLabel>
         <input
           type="text"
           value={(data.outputVar as string) || ''}
@@ -1607,16 +1608,16 @@ function ParallelEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
   return (
     <div className="space-y-2">
       <div>
-        <FieldLabel>{t('strategy', language)}</FieldLabel>
+        <FieldLabel>{nodeT('strategy', language)}</FieldLabel>
         <select value={strategy} onChange={(e) => onChange('parallelStrategy', e.target.value)} className={SELECT_CLASS}>
-          <option value="all">{t('all', language)}</option>
-          <option value="any">{t('any', language)}</option>
-          <option value="count">{t('count', language)}</option>
+          <option value="all">{nodeT('all', language)}</option>
+          <option value="any">{nodeT('any', language)}</option>
+          <option value="count">{nodeT('count', language)}</option>
         </select>
       </div>
       {strategy === 'count' && (
         <div>
-          <FieldLabel>{t('count', language)}</FieldLabel>
+          <FieldLabel>{nodeT('count', language)}</FieldLabel>
           <input
             type="number"
             value={data.parallelCount as number || 2}
@@ -1639,16 +1640,16 @@ function MergeEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
   return (
     <div className="space-y-2">
       <div>
-        <FieldLabel>{t('strategy', language)}</FieldLabel>
+        <FieldLabel>{nodeT('strategy', language)}</FieldLabel>
         <select value={strategy} onChange={(e) => onChange('mergeStrategy', e.target.value)} className={SELECT_CLASS}>
-          <option value="all">{t('waitAll', language)}</option>
-          <option value="any">{t('waitAny', language)}</option>
-          <option value="count">{t('count', language)}</option>
+          <option value="all">{nodeT('waitAll', language)}</option>
+          <option value="any">{nodeT('waitAny', language)}</option>
+          <option value="count">{nodeT('count', language)}</option>
         </select>
       </div>
       {strategy === 'count' && (
         <div>
-          <FieldLabel>{t('count', language)}</FieldLabel>
+          <FieldLabel>{nodeT('count', language)}</FieldLabel>
           <input
             type="number"
             value={data.mergeCount as number || 2}
@@ -1690,18 +1691,18 @@ function ToolCallEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
   return (
     <div className="space-y-2.5">
       <div>
-        <FieldLabel>{t('toolName', language)}</FieldLabel>
+        <FieldLabel>{nodeT('toolName', language)}</FieldLabel>
         <input
           type="text"
           value={(data.toolName as string) || ''}
           onChange={(e) => onChange('toolName', e.target.value)}
-          placeholder={language === 'zh' ? '选择工具...' : 'Select tool...'}
+          placeholder={t('wf.selecttool', language as Language)}
           className={INPUT_CLASS}
         />
       </div>
       <div>
         <FieldLabel>
-          {t('toolArgs', language)} ({argEntries.length})
+          {nodeT('toolArgs', language)} ({argEntries.length})
         </FieldLabel>
         <div className="nodrag no-wheel space-y-1 max-h-[120px] overflow-y-auto">
           {argEntries.map(([key, val]) => (
@@ -1740,7 +1741,7 @@ function ToolCallEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
         </button>
       </div>
       <div>
-        <FieldLabel>{t('outputVar', language)}</FieldLabel>
+        <FieldLabel>{nodeT('outputVar', language)}</FieldLabel>
         <input
           type="text"
           value={(data.outputVar as string) || ''}
@@ -1761,15 +1762,15 @@ function McpServiceEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) 
   return (
     <div className="space-y-2.5">
       <div>
-        <FieldLabel>{t('mcpServer', language)}</FieldLabel>
-        <input type="text" value={(data.mcpServerId as string) || ''} onChange={(e) => onChange('mcpServerId', e.target.value)} placeholder={language === 'zh' ? '选择MCP服务器...' : 'Select MCP server...'} className={INPUT_CLASS} />
+        <FieldLabel>{nodeT('mcpServer', language)}</FieldLabel>
+        <input type="text" value={(data.mcpServerId as string) || ''} onChange={(e) => onChange('mcpServerId', e.target.value)} placeholder={t('wf.selectmcpserver', language as Language)} className={INPUT_CLASS} />
       </div>
       <div>
-        <FieldLabel>{t('mcpTool', language)}</FieldLabel>
-        <input type="text" value={(data.mcpToolName as string) || ''} onChange={(e) => onChange('mcpToolName', e.target.value)} placeholder={language === 'zh' ? '工具名称' : 'Tool name'} className={INPUT_CLASS} />
+        <FieldLabel>{nodeT('mcpTool', language)}</FieldLabel>
+        <input type="text" value={(data.mcpToolName as string) || ''} onChange={(e) => onChange('mcpToolName', e.target.value)} placeholder={t('wf.toolname', language as Language)} className={INPUT_CLASS} />
       </div>
       <div>
-        <FieldLabel>{t('outputVar', language)}</FieldLabel>
+        <FieldLabel>{nodeT('outputVar', language)}</FieldLabel>
         <input type="text" value={(data.outputVar as string) || ''} onChange={(e) => onChange('outputVar', e.target.value)} placeholder="mcp_result" className={INPUT_CLASS} />
       </div>
     </div>
@@ -1805,7 +1806,7 @@ function CodeRunnerEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) 
   return (
     <div className="space-y-2.5">
       <div>
-        <FieldLabel>{t('language', language)}</FieldLabel>
+        <FieldLabel>{nodeT('language', language)}</FieldLabel>
         <select
           value={(data.codeLanguage as string) || 'javascript'}
           onChange={(e) => onChange('codeLanguage', e.target.value)}
@@ -1818,7 +1819,7 @@ function CodeRunnerEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) 
       </div>
       <div>
         <FieldLabel>
-          {t('inputVars', language)} ({inputVars.length})
+          {nodeT('inputVars', language)} ({inputVars.length})
         </FieldLabel>
         <div className="nodrag no-wheel space-y-1 max-h-[100px] overflow-y-auto">
           {inputVars.map((v, i) => (
@@ -1827,7 +1828,7 @@ function CodeRunnerEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) 
                 type="text"
                 value={(v.name as string) || ''}
                 onChange={(e) => updateInput(i, 'name', e.target.value)}
-                placeholder={language === 'zh' ? '变量名' : 'name'}
+                placeholder={t('wf.name', language as Language)}
                 className={`${INPUT_CLASS} flex-1 h-6 text-[10px]`}
               />
               <select
@@ -1857,18 +1858,18 @@ function CodeRunnerEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) 
         </button>
       </div>
       <div>
-        <FieldLabel>{t('code', language)}</FieldLabel>
+        <FieldLabel>{nodeT('code', language)}</FieldLabel>
         <textarea
           value={(data.codeSnippet as string) || ''}
           onChange={(e) => onChange('codeSnippet', e.target.value)}
-          placeholder={language === 'zh' ? '// 可通过 inputVars 访问输入变量\nreturn result;' : '// Access input vars via inputVars\nreturn result;'}
+          placeholder={t('wf.accessinputvarsviainputvarsnreturn', language as Language)}
           rows={5}
           className={`${TEXTAREA_CLASS} font-mono text-[10px]`}
           spellCheck={false}
         />
       </div>
       <div>
-        <FieldLabel>{t('outputVar', language)}</FieldLabel>
+        <FieldLabel>{nodeT('outputVar', language)}</FieldLabel>
         <input
           type="text"
           value={(data.outputVar as string) || ''}
@@ -1922,7 +1923,7 @@ function HttpRequestEditor({ nodeId, data, language = 'zh' }: InlineEditorProps)
     <div className="space-y-2.5">
       <div className="flex gap-2">
         <div className="w-24">
-          <FieldLabel>{t('method', language)}</FieldLabel>
+          <FieldLabel>{nodeT('method', language)}</FieldLabel>
           <select
             value={(data.httpMethod as string) || 'GET'}
             onChange={(e) => onChange('httpMethod', e.target.value)}
@@ -1934,7 +1935,7 @@ function HttpRequestEditor({ nodeId, data, language = 'zh' }: InlineEditorProps)
           </select>
         </div>
         <div className="flex-1">
-          <FieldLabel>{t('url', language)}</FieldLabel>
+          <FieldLabel>{nodeT('url', language)}</FieldLabel>
           <input
             type="text"
             value={(data.httpUrl as string) || ''}
@@ -1946,7 +1947,7 @@ function HttpRequestEditor({ nodeId, data, language = 'zh' }: InlineEditorProps)
       </div>
       <div>
         <FieldLabel>
-          {t('headers', language)} ({headerEntries.length})
+          {nodeT('headers', language)} ({headerEntries.length})
         </FieldLabel>
         <div className="nodrag no-wheel space-y-1 max-h-[100px] overflow-y-auto">
           {headerEntries.map(([key, val]) => (
@@ -1982,23 +1983,23 @@ function HttpRequestEditor({ nodeId, data, language = 'zh' }: InlineEditorProps)
         </button>
       </div>
       <div>
-        <FieldLabel>{t('auth', language)}</FieldLabel>
+        <FieldLabel>{nodeT('auth', language)}</FieldLabel>
         <select
             value={authType}
             onChange={(e) => updateAuth('type', e.target.value)}
             className={SELECT_CLASS}
           >
-            <option value="none">{t('none', language)}</option>
-            <option value="bearer">{t('bearer', language)}</option>
-            <option value="basic">{t('basic', language)}</option>
-            <option value="api-key">{t('apiKey', language)}</option>
+            <option value="none">{nodeT('none', language)}</option>
+            <option value="bearer">{nodeT('bearer', language)}</option>
+            <option value="basic">{nodeT('basic', language)}</option>
+            <option value="api-key">{nodeT('apiKey', language)}</option>
           </select>
           {authType === 'bearer' && (
             <input
               type="text"
               value={(auth?.token as string) || ''}
               onChange={(e) => updateAuth('token', e.target.value)}
-              placeholder={t('token', language)}
+              placeholder={nodeT('token', language)}
               className={`${INPUT_CLASS} mt-1`}
             />
           )}
@@ -2008,14 +2009,14 @@ function HttpRequestEditor({ nodeId, data, language = 'zh' }: InlineEditorProps)
                 type="text"
                 value={(auth?.user as string) || ''}
                 onChange={(e) => updateAuth('user', e.target.value)}
-                placeholder={t('user', language)}
+                placeholder={nodeT('user', language)}
                 className={`${INPUT_CLASS} flex-1`}
               />
               <input
                 type="text"
                 value={(auth?.pass as string) || ''}
                 onChange={(e) => updateAuth('pass', e.target.value)}
-                placeholder={t('pass', language)}
+                placeholder={nodeT('pass', language)}
                 className={`${INPUT_CLASS} flex-1`}
               />
             </div>
@@ -2026,21 +2027,21 @@ function HttpRequestEditor({ nodeId, data, language = 'zh' }: InlineEditorProps)
                 type="text"
                 value={(auth?.headerName as string) || ''}
                 onChange={(e) => updateAuth('headerName', e.target.value)}
-                placeholder={t('keyHeader', language)}
+                placeholder={nodeT('keyHeader', language)}
                 className={`${INPUT_CLASS} flex-1`}
               />
               <input
                 type="text"
                 value={(auth?.headerValue as string) || ''}
                 onChange={(e) => updateAuth('headerValue', e.target.value)}
-                placeholder={t('keyValue', language)}
+                placeholder={nodeT('keyValue', language)}
                 className={`${INPUT_CLASS} flex-1`}
               />
             </div>
           )}
       </div>
       <div>
-        <FieldLabel>{t('body', language)}</FieldLabel>
+        <FieldLabel>{nodeT('body', language)}</FieldLabel>
         <textarea
           value={(data.httpBody as string) || ''}
           onChange={(e) => onChange('httpBody', e.target.value)}
@@ -2050,7 +2051,7 @@ function HttpRequestEditor({ nodeId, data, language = 'zh' }: InlineEditorProps)
         />
       </div>
       <div>
-        <FieldLabel>{t('outputVar', language)}</FieldLabel>
+        <FieldLabel>{nodeT('outputVar', language)}</FieldLabel>
         <input
           type="text"
           value={(data.outputVar as string) || ''}
@@ -2072,11 +2073,11 @@ function VariableSetEditor({ nodeId, data, language = 'zh' }: InlineEditorProps)
     <div className="space-y-2.5">
       <div className="flex gap-2">
         <div className="flex-1">
-          <FieldLabel>{t('variableName', language)}</FieldLabel>
+          <FieldLabel>{nodeT('variableName', language)}</FieldLabel>
           <input type="text" value={(data.variableName as string) || ''} onChange={(e) => onChange('variableName', e.target.value)} placeholder="myVariable" className={INPUT_CLASS} />
         </div>
         <div className="w-24">
-          <FieldLabel>{t('varType', language)}</FieldLabel>
+          <FieldLabel>{nodeT('varType', language)}</FieldLabel>
           <select
             value={(data.variableType as string) || 'string'}
             onChange={(e) => onChange('variableType', e.target.value)}
@@ -2090,8 +2091,8 @@ function VariableSetEditor({ nodeId, data, language = 'zh' }: InlineEditorProps)
         </div>
       </div>
       <div>
-        <FieldLabel>{t('variableValue', language)}</FieldLabel>
-        <input type="text" value={(data.variableValue as string) || ''} onChange={(e) => onChange('variableValue', e.target.value)} placeholder={language === 'zh' ? '直接输入值或 {{expression}}' : 'Value or {{expression}}'} className={INPUT_CLASS} />
+        <FieldLabel>{nodeT('variableValue', language)}</FieldLabel>
+        <input type="text" value={(data.variableValue as string) || ''} onChange={(e) => onChange('variableValue', e.target.value)} placeholder={t('wf.valueor', language as Language)} className={INPUT_CLASS} />
       </div>
     </div>
   )
@@ -2105,7 +2106,7 @@ function DataTransformEditor({ nodeId, data, language = 'zh' }: InlineEditorProp
   return (
     <div className="space-y-2.5">
       <div>
-        <FieldLabel>{t('expression', language)}</FieldLabel>
+        <FieldLabel>{nodeT('expression', language)}</FieldLabel>
         <textarea
           value={(data.transformExpression as string) || ''}
           onChange={(e) => onChange('transformExpression', e.target.value)}
@@ -2115,7 +2116,7 @@ function DataTransformEditor({ nodeId, data, language = 'zh' }: InlineEditorProp
         />
       </div>
       <div>
-        <FieldLabel>{t('outputVar', language)}</FieldLabel>
+        <FieldLabel>{nodeT('outputVar', language)}</FieldLabel>
         <input
           type="text"
           value={(data.outputVar as string) || ''}
@@ -2136,25 +2137,25 @@ function KnowledgeQueryEditor({ nodeId, data, language = 'zh' }: InlineEditorPro
   return (
     <div className="space-y-2.5">
       <div>
-        <FieldLabel>{t('knowledgeBase', language)}</FieldLabel>
-        <input type="text" value={(data.knowledgeBaseId as string) || ''} onChange={(e) => onChange('knowledgeBaseId', e.target.value)} placeholder={language === 'zh' ? '选择知识库...' : 'Select knowledge base...'} className={INPUT_CLASS} />
+        <FieldLabel>{nodeT('knowledgeBase', language)}</FieldLabel>
+        <input type="text" value={(data.knowledgeBaseId as string) || ''} onChange={(e) => onChange('knowledgeBaseId', e.target.value)} placeholder={t('wf.selectknowledgebase', language as Language)} className={INPUT_CLASS} />
       </div>
       <div>
-        <FieldLabel>{t('queryContent', language)}</FieldLabel>
-        <input type="text" value={(data.queryContent as string) || (data.queryContentZh as string) || ''} onChange={(e) => onChange('queryContent', e.target.value)} placeholder={language === 'zh' ? '查询问题，可使用 {{变量}}' : 'Query with {{variables}}'} className={INPUT_CLASS} />
+        <FieldLabel>{nodeT('queryContent', language)}</FieldLabel>
+        <input type="text" value={(data.queryContent as string) || (data.queryContentZh as string) || ''} onChange={(e) => onChange('queryContent', e.target.value)} placeholder={t('wf.querywith', language as Language)} className={INPUT_CLASS} />
       </div>
       <div className="flex gap-2">
         <div className="w-20">
-          <FieldLabel>{t('topK', language)}</FieldLabel>
+          <FieldLabel>{nodeT('topK', language)}</FieldLabel>
           <input type="number" value={data.topK as number || 5} onChange={(e) => onChange('topK', parseInt(e.target.value) || 5)} min={1} max={20} className={INPUT_CLASS} />
         </div>
         <div className="flex-1">
-          <FieldLabel>{t('threshold', language)}</FieldLabel>
+          <FieldLabel>{nodeT('threshold', language)}</FieldLabel>
           <input type="number" value={data.similarityThreshold as number || 0.7} onChange={(e) => onChange('similarityThreshold', parseFloat(e.target.value) || 0.7)} min={0} max={1} step={0.05} className={INPUT_CLASS} />
         </div>
       </div>
       <div>
-        <FieldLabel>{t('outputVar', language)}</FieldLabel>
+        <FieldLabel>{nodeT('outputVar', language)}</FieldLabel>
         <input type="text" value={(data.outputVar as string) || ''} onChange={(e) => onChange('outputVar', e.target.value)} placeholder="knowledge_result" className={INPUT_CLASS} />
       </div>
     </div>
@@ -2168,7 +2169,7 @@ function DelayEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
   )
   return (
     <div>
-      <FieldLabel>{t('delayMs', language)}</FieldLabel>
+      <FieldLabel>{nodeT('delayMs', language)}</FieldLabel>
       <input
         type="number"
         value={data.delayMs as number || 1000}
@@ -2178,7 +2179,7 @@ function DelayEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
         className={INPUT_CLASS}
       />
       <p className="text-[9px] text-gray-350 mt-0.5">
-        {language === 'zh' ? '单位：毫秒 (1000ms = 1s)' : 'Unit: ms (1000ms = 1s)'}
+        {t('wf.unitms1000ms1s', language as Language)}
       </p>
     </div>
   )
@@ -2192,7 +2193,7 @@ function WebhookTriggerEditor({ nodeId, data, language = 'zh' }: InlineEditorPro
   return (
     <div className="flex gap-2">
       <div className="w-24">
-        <FieldLabel>{t('method', language)}</FieldLabel>
+        <FieldLabel>{nodeT('method', language)}</FieldLabel>
         <select value={(data.webhookMethod as string) || 'POST'} onChange={(e) => onChange('webhookMethod', e.target.value)} className={SELECT_CLASS}>
           {['POST', 'GET'].map((m) => (
             <option key={m} value={m}>{m}</option>
@@ -2200,7 +2201,7 @@ function WebhookTriggerEditor({ nodeId, data, language = 'zh' }: InlineEditorPro
         </select>
       </div>
       <div className="flex-1">
-        <FieldLabel>{t('path', language)}</FieldLabel>
+        <FieldLabel>{nodeT('path', language)}</FieldLabel>
         <input type="text" value={(data.webhookPath as string) || '/webhook/my-trigger'} onChange={(e) => onChange('webhookPath', e.target.value)} placeholder="/webhook/..." className={INPUT_CLASS} />
       </div>
     </div>
@@ -2215,11 +2216,11 @@ function EventWaitEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
   return (
     <div className="space-y-2">
       <div>
-        <FieldLabel>{t('eventType', language)}</FieldLabel>
+        <FieldLabel>{nodeT('eventType', language)}</FieldLabel>
         <input type="text" value={(data.eventType as string) || ''} onChange={(e) => onChange('eventType', e.target.value)} placeholder="event.name" className={INPUT_CLASS} />
       </div>
       <div>
-        <FieldLabel>{t('eventTimeout', language)}</FieldLabel>
+        <FieldLabel>{nodeT('eventTimeout', language)}</FieldLabel>
         <input type="number" value={data.eventTimeout as number || 0} onChange={(e) => onChange('eventTimeout', parseInt(e.target.value) || 0)} min={0} step={1000} className={INPUT_CLASS} />
       </div>
     </div>
@@ -2234,17 +2235,17 @@ function TextOutputEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) 
   return (
     <div className="space-y-2.5">
       <div>
-        <FieldLabel>{t('textContent', language)}</FieldLabel>
+        <FieldLabel>{nodeT('textContent', language)}</FieldLabel>
         <textarea
           value={(data.textContent as string) || ''}
           onChange={(e) => onChange('textContent', e.target.value)}
-          placeholder={language === 'zh' ? '输出文本内容...' : 'Output text content...'}
+          placeholder={t('wf.outputtextcontent', language as Language)}
           rows={3}
           className={TEXTAREA_CLASS}
         />
       </div>
       <div>
-        <FieldLabel>{t('outputFormat', language)}</FieldLabel>
+        <FieldLabel>{nodeT('outputFormat', language)}</FieldLabel>
         <select
           value={(data.outputFormat as string) || 'text'}
           onChange={(e) => onChange('outputFormat', e.target.value)}
@@ -2268,12 +2269,12 @@ function FileOutputEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) 
   return (
     <div className="space-y-2.5">
       <div>
-        <FieldLabel>{t('filePath', language)}</FieldLabel>
+        <FieldLabel>{nodeT('filePath', language)}</FieldLabel>
         <input type="text" value={(data.filePath as string) || ''} onChange={(e) => onChange('filePath', e.target.value)} placeholder="/path/to/output.txt" className={INPUT_CLASS} />
       </div>
       <div className="flex gap-2">
         <div className="flex-1">
-          <FieldLabel>{t('fileFormat', language)}</FieldLabel>
+          <FieldLabel>{nodeT('fileFormat', language)}</FieldLabel>
           <select
             value={(data.fileFormat as string) || 'txt'}
             onChange={(e) => onChange('fileFormat', e.target.value)}
@@ -2288,7 +2289,7 @@ function FileOutputEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) 
           </select>
         </div>
         <div className="w-24">
-          <FieldLabel>{t('encoding', language)}</FieldLabel>
+          <FieldLabel>{nodeT('encoding', language)}</FieldLabel>
           <select
             value={(data.encoding as string) || 'utf-8'}
             onChange={(e) => onChange('encoding', e.target.value)}
@@ -2333,7 +2334,7 @@ function NotificationEditor({ nodeId, data, language = 'zh' }: InlineEditorProps
   return (
     <div className="space-y-2.5">
       <div>
-        <FieldLabel>{t('channel', language)}</FieldLabel>
+        <FieldLabel>{nodeT('channel', language)}</FieldLabel>
         <select value={(data.notificationChannel as string) || 'system'} onChange={(e) => onChange('notificationChannel', e.target.value)} className={SELECT_CLASS}>
           {Object.entries(NOTIFICATION_CHANNELS).map(([value, labels]) => (
             <option key={value} value={value}>{labels[language] || labels.en}</option>
@@ -2341,18 +2342,18 @@ function NotificationEditor({ nodeId, data, language = 'zh' }: InlineEditorProps
         </select>
       </div>
       <div>
-        <FieldLabel>{t('template', language)}</FieldLabel>
+        <FieldLabel>{nodeT('template', language)}</FieldLabel>
         <textarea
           value={(data.notificationTemplate as string) || ''}
           onChange={(e) => onChange('notificationTemplate', e.target.value)}
-          placeholder={language === 'zh' ? '消息模板，支持 {{变量}}' : 'Message template, supports {{variable}}'}
+          placeholder={t('wf.messagetemplatesupports', language as Language)}
           rows={2}
           className={TEXTAREA_CLASS}
         />
       </div>
       <div>
         <FieldLabel>
-          {t('recipients', language)} ({recipients.length})
+          {nodeT('recipients', language)} ({recipients.length})
         </FieldLabel>
         <div className="nodrag no-wheel space-y-1 max-h-[100px] overflow-y-auto">
           {recipients.map((r, i) => (
@@ -2361,7 +2362,7 @@ function NotificationEditor({ nodeId, data, language = 'zh' }: InlineEditorProps
                 type="text"
                 value={r}
                 onChange={(e) => updateRecipient(i, e.target.value)}
-                placeholder={language === 'zh' ? '接收人ID/邮箱' : 'Recipient ID/Email'}
+                placeholder={t('wf.recipientidemail', language as Language)}
                 className={`${INPUT_CLASS} flex-1 h-6 text-[10px]`}
               />
               <button
@@ -2377,7 +2378,7 @@ function NotificationEditor({ nodeId, data, language = 'zh' }: InlineEditorProps
           onClick={addRecipient}
           className="mt-1 text-[10px] text-blue-500 hover:text-blue-600 font-medium transition-colors"
         >
-          {t('addRecipient', language)}
+          {nodeT('addRecipient', language)}
         </button>
       </div>
     </div>

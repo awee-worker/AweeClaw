@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { FolderOpen, Plus, RefreshCw, FolderPlus, GitBranch, FilePlus, ExternalLink, Crosshair, Terminal, Clipboard, Download } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
-import { t } from '@renderer/i18n'
+import {t, type Language} from '@renderer/i18n'
 import { getDirPath, joinPath, pathStartsWith, pathEquals } from '@shared/toolkit/pathHelper'
 import { gitService } from '@services/gitAdapter'
 import { getEditorConfig } from '@shared/configuration/preferenceSync'
@@ -325,7 +325,7 @@ export function ExplorerView() {
 
   const handleImportToDirectory = useCallback(async (targetDir: string) => {
     const selectedPaths = await api.file.selectForImport({
-      title: language === 'zh' ? '导入文件或文件夹' : 'Import Files or Folders',
+      title: t('explorer.importfilesorfolders', language as Language),
       allowFiles: true,
       allowDirs: true,
       multiSelection: true,
@@ -334,11 +334,11 @@ export function ExplorerView() {
 
     const result = await api.file.importIntoWorkspace(selectedPaths, targetDir)
     if (result.success) {
-      toast.success(language === 'zh' ? `成功导入 ${selectedPaths.length} 项` : `Successfully imported ${selectedPaths.length} item(s)`)
+      toast.success(t('explorer.successfullyimporteditems', language as Language, { length: selectedPaths.length }))
       await refreshFiles({ affectedPaths: [targetDir], refreshRoot: targetDir === workspacePath })
     } else {
       const failedCount = result.results?.filter(r => !r.success).length || selectedPaths.length
-      toast.error(language === 'zh' ? `导入失败 ${failedCount} 项` : `Failed to import ${failedCount} item(s)`)
+      toast.error(t('explorer.failedtoimportitems', language as Language, { failedCount: failedCount }))
       if (targetDir === workspacePath || result.results?.some(r => r.success)) {
         await refreshFiles({ affectedPaths: [targetDir], refreshRoot: targetDir === workspacePath })
       }
@@ -353,7 +353,7 @@ export function ExplorerView() {
     { id: 'sep1', label: '', separator: true },
     {
       id: 'import',
-      label: language === 'zh' ? '导入...' : 'Import...',
+      label: t('explorer.import', language as Language),
       icon: Download,
       onClick: () => workspacePath && handleImportToDirectory(workspacePath),
     },

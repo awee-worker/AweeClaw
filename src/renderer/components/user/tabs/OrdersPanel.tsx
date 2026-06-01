@@ -5,7 +5,7 @@ import {
   Trash2,
   Loader2,
 } from 'lucide-react'
-import { type Language } from '@renderer/i18n'
+import { t, type Language } from '@renderer/i18n'
 import { backendApi } from '@services/backendApi'
 import { toast } from '@components/foundation/NotificationProvider'
 import { type OrderItem, type PaymentResult, channelLabels, orderStatusMap } from './shared'
@@ -29,7 +29,7 @@ export function OrdersPanel({ language }: OrdersPanelProps) {
       setOrders(result?.orders || [])
       setTotal(result?.total || 0)
     } catch {
-      toast.error(language === 'zh' ? '获取订单失败' : 'Failed to load orders', '')
+      toast.error(t('user.failedtoloadorders', language as Language), '')
     } finally {
       setLoading(false)
     }
@@ -43,10 +43,10 @@ export function OrdersPanel({ language }: OrdersPanelProps) {
     setActionLoading(orderNo)
     try {
       await backendApi.post(`/api/v1/payment/cancel/${orderNo}`)
-      toast.success(language === 'zh' ? '订单已取消' : 'Order cancelled', '')
+      toast.success(t('user.ordercancelled', language as Language), '')
       await fetchOrders()
     } catch (e: any) {
-      toast.error(language === 'zh' ? '取消失败' : 'Cancel failed', e?.message || '')
+      toast.error(t('user.cancelfailed', language as Language), e?.message || '')
     } finally {
       setActionLoading(null)
     }
@@ -56,10 +56,10 @@ export function OrdersPanel({ language }: OrdersPanelProps) {
     setActionLoading(orderNo)
     try {
       await backendApi.delete(`/api/v1/payment/order/${orderNo}`)
-      toast.success(language === 'zh' ? '订单已删除' : 'Order deleted', '')
+      toast.success(t('user.orderdeleted', language as Language), '')
       await fetchOrders()
     } catch (e: any) {
-      toast.error(language === 'zh' ? '删除失败' : 'Delete failed', e?.message || '')
+      toast.error(t('user.deletefailed', language as Language), e?.message || '')
     } finally {
       setActionLoading(null)
     }
@@ -76,10 +76,10 @@ export function OrdersPanel({ language }: OrdersPanelProps) {
         window.electronAPI?.openExternalUrl?.(result.payment.paymentUrl)
       }
       if (result.payment?.qrCodeUrl) {
-        toast.info(language === 'zh' ? '请扫码支付' : 'Please scan QR code to pay', '')
+        toast.info(t('user.pleasescanqrcodeto', language as Language), '')
       }
     } catch (e: any) {
-      toast.error(language === 'zh' ? '发起支付失败' : 'Failed to initiate payment', e?.message || '')
+      toast.error(t('user.failedtoinitiatepayment', language as Language), e?.message || '')
     }
   }, [language])
 
@@ -103,7 +103,7 @@ export function OrdersPanel({ language }: OrdersPanelProps) {
       ) : orders.length === 0 ? (
         <div className="text-center py-12">
           <CreditCard className="w-10 h-10 text-text-muted/30 mx-auto mb-3" />
-          <p className="text-sm text-text-muted">{language === 'zh' ? '暂无订单' : 'No orders yet'}</p>
+          <p className="text-sm text-text-muted">{t('user.noordersyet', language as Language)}</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -132,7 +132,7 @@ export function OrdersPanel({ language }: OrdersPanelProps) {
                     <p className="text-sm font-medium text-text-primary">{order.planDisplayName}</p>
                     <p className="text-xs text-text-muted mt-0.5">
                       {channelLabels[order.channel]?.[language === 'zh' ? 'zh' : 'en'] || order.channel}
-                      {order.periodMonths > 1 ? ` · ${order.periodMonths}${language === 'zh' ? '个月' : ' months'}` : ` · 1${language === 'zh' ? '个月' : ' month'}`}
+                      {order.periodMonths > 1 ? ` · ${order.periodMonths}${t('user.months', language as Language)}` : ` · 1${t('user.month', language as Language)}`}
                     </p>
                   </div>
                   <p className="text-lg font-bold text-text-primary">¥{Number(order.amount).toFixed(2)}</p>
@@ -145,14 +145,14 @@ export function OrdersPanel({ language }: OrdersPanelProps) {
                         disabled={actionLoading === order.orderNo}
                         className="px-3 py-1.5 rounded-lg text-xs font-medium bg-accent/10 text-accent hover:bg-accent/20 transition-colors disabled:opacity-50"
                       >
-                        {language === 'zh' ? '去支付' : 'Pay Now'}
+                        {t('user.paynow', language as Language)}
                       </button>
                       <button
                         onClick={() => handleCancel(order.orderNo)}
                         disabled={actionLoading === order.orderNo}
                         className="px-3 py-1.5 rounded-lg text-xs font-medium bg-surface/50 text-text-secondary hover:bg-surface-hover transition-colors disabled:opacity-50"
                       >
-                        {actionLoading === order.orderNo ? <Loader2 className="w-3 h-3 animate-spin" /> : language === 'zh' ? '取消' : 'Cancel'}
+                        {actionLoading === order.orderNo ? <Loader2 className="w-3 h-3 animate-spin" /> : t('user.cancel', language as Language)}
                       </button>
                     </>
                   )}
@@ -162,7 +162,7 @@ export function OrdersPanel({ language }: OrdersPanelProps) {
                       disabled={actionLoading === order.orderNo}
                       className="px-3 py-1.5 rounded-lg text-xs font-medium text-status-error/70 hover:text-status-error hover:bg-status-error/5 transition-colors disabled:opacity-50"
                     >
-                      {actionLoading === order.orderNo ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Trash2 className="w-3 h-3 inline mr-1" />{language === 'zh' ? '删除' : 'Delete'}</>}
+                      {actionLoading === order.orderNo ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Trash2 className="w-3 h-3 inline mr-1" />{t('user.delete', language as Language)}</>}
                     </button>
                   )}
                 </div>
@@ -177,7 +177,7 @@ export function OrdersPanel({ language }: OrdersPanelProps) {
                 disabled={page <= 1}
                 className="px-3 py-1.5 rounded-lg text-xs font-medium bg-surface/50 text-text-secondary hover:bg-surface-hover transition-colors disabled:opacity-50"
               >
-                {language === 'zh' ? '上一页' : 'Prev'}
+                {t('user.prev', language as Language)}
               </button>
               <span className="text-xs text-text-muted">{page} / {totalPages}</span>
               <button
@@ -185,7 +185,7 @@ export function OrdersPanel({ language }: OrdersPanelProps) {
                 disabled={page >= totalPages}
                 className="px-3 py-1.5 rounded-lg text-xs font-medium bg-surface/50 text-text-secondary hover:bg-surface-hover transition-colors disabled:opacity-50"
               >
-                {language === 'zh' ? '下一页' : 'Next'}
+                {t('user.next', language as Language)}
               </button>
             </div>
           )}

@@ -9,6 +9,7 @@ import {
 import { loadWorkflowHistory, deleteWorkflowRun, clearWorkflowHistory } from '@shared/configuration/workflows/persistence'
 import { workflowEngine } from '@shared/protocols/workflow'
 import type { WorkflowRun, WorkflowRunStatus } from '@shared/protocols/workflow'
+import { t, type Language } from '@renderer/i18n'
 
 interface WorkflowHistoryProps {
   onRerun: (workflowId: string) => void
@@ -67,10 +68,10 @@ export default function WorkflowHistory({ onRerun, language }: WorkflowHistoryPr
     const diffHours = Math.floor(diffMs / 3600000)
     const diffDays = Math.floor(diffMs / 86400000)
 
-    if (diffMins < 1) return language === 'zh' ? '刚刚' : 'just now'
-    if (diffMins < 60) return language === 'zh' ? `${diffMins}分钟前` : `${diffMins}m ago`
-    if (diffHours < 24) return language === 'zh' ? `${diffHours}小时前` : `${diffHours}h ago`
-    if (diffDays < 7) return language === 'zh' ? `${diffDays}天前` : `${diffDays}d ago`
+    if (diffMins < 1) return t('wf.justnow', language as Language)
+    if (diffMins < 60) return t('wf.mago', language as Language, { diffMins: diffMins })
+    if (diffHours < 24) return t('wf.hago', language as Language, { diffHours: diffHours })
+    if (diffDays < 7) return t('wf.dago', language as Language, { diffDays: diffDays })
     return date.toLocaleDateString()
   }, [language])
 
@@ -94,7 +95,7 @@ export default function WorkflowHistory({ onRerun, language }: WorkflowHistoryPr
       <div className="flex flex-col items-center justify-center py-16 text-text-muted/40">
         <Clock className="w-10 h-10 mb-3" />
         <p className="text-[13px]">
-          {language === 'zh' ? '暂无执行历史' : 'No execution history'}
+          {t('wf.noexecutionhistory', language as Language)}
         </p>
       </div>
     )
@@ -104,13 +105,13 @@ export default function WorkflowHistory({ onRerun, language }: WorkflowHistoryPr
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between px-6 py-3 border-b border-border/30">
         <h3 className="text-[12px] font-semibold text-text-secondary">
-          {language === 'zh' ? '执行历史' : 'Execution History'}
+          {t('wf.executionhistory', language as Language)}
         </h3>
         <button
           onClick={handleClearAll}
           className="text-[10px] text-text-muted/50 hover:text-red-400 transition-colors"
         >
-          {language === 'zh' ? '清空' : 'Clear All'}
+          {t('wf.clearall', language as Language)}
         </button>
       </div>
 
@@ -145,7 +146,7 @@ export default function WorkflowHistory({ onRerun, language }: WorkflowHistoryPr
                       {formatTime(run.startedAt)}
                     </span>
                     <span className="text-[10px] text-text-muted/50">
-                      {run.stepHistory.length} {language === 'zh' ? '步骤' : 'steps'}
+                      {run.stepHistory.length} {t('wf.steps', language as Language)}
                     </span>
                     {run.completedAt && (
                       <span className="text-[10px] text-text-muted/50">
@@ -163,14 +164,14 @@ export default function WorkflowHistory({ onRerun, language }: WorkflowHistoryPr
                   <button
                     onClick={() => handleRerun(run.workflowId)}
                     className="p-1 rounded text-text-muted/50 hover:text-accent hover:bg-accent/10 transition-colors"
-                    title={language === 'zh' ? '重新运行' : 'Re-run'}
+                    title={t('wf.rerun', language as Language)}
                   >
                     <RotateCcw className="w-3 h-3" />
                   </button>
                   <button
                     onClick={() => handleDelete(run.id)}
                     className="p-1 rounded text-text-muted/50 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                    title={language === 'zh' ? '删除' : 'Delete'}
+                    title={t('wf.delete', language as Language)}
                   >
                     <Trash2 className="w-3 h-3" />
                   </button>

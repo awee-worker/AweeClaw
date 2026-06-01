@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Code2, RotateCcw, AlertTriangle, Check, Gauge, Shield, Sparkles } from 'lucide-react'
+import { t, type Language } from '@renderer/i18n'
 
 interface ProviderPreset {
   payload: Record<string, unknown>
@@ -177,24 +178,24 @@ export default function ApiPayloadConfigurator({ providerId, scenarioId, request
       <div className="flex items-center justify-between">
         <label className="flex items-center gap-2.5 text-[12px] font-bold text-text-muted uppercase tracking-widest opacity-60 ml-1">
           <Code2 className="w-3.5 h-3.5 text-accent" />
-          {language === 'zh' ? 'API 载荷配置器' : 'API Payload Configurator'}
+          {t('modals.apipayloadconfigurator', language as Language)}
         </label>
         <div className="flex items-center gap-3">
           {confirmed && (
             <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-full border border-emerald-400/20 animate-fade-in">
               <Check className="w-3 h-3" strokeWidth={3} />
-              {language === 'zh' ? '已保存' : 'SAVED'}
+              {t('modals.saved', language as Language)}
             </span>
           )}
-          <button onClick={onReset} className="flex items-center gap-1.5 px-3 py-1 text-[11px] font-bold text-text-muted hover:text-text-primary transition-all rounded-lg bg-white/5 border border-transparent hover:border-border" title={language === 'zh' ? '重置为场景默认' : 'Reset to scenario default'}>
+          <button onClick={onReset} className="flex items-center gap-1.5 px-3 py-1 text-[11px] font-bold text-text-muted hover:text-text-primary transition-all rounded-lg bg-white/5 border border-transparent hover:border-border" title={t('modals.resettoscenariodefault', language as Language)}>
             <RotateCcw className="w-3 h-3" />
-            {language === 'zh' ? '重置' : 'RESET'}
+            {t('modals.reset', language as Language)}
           </button>
         </div>
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider opacity-50">{language === 'zh' ? '场景模板' : 'Scenario'}:</span>
+        <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider opacity-50">{t('modals.scenario', language as Language)}:</span>
         {Object.entries(SCENARIO_LABELS).map(([id, label]) => (
           <button
             key={id}
@@ -208,9 +209,7 @@ export default function ApiPayloadConfigurator({ providerId, scenarioId, request
       </div>
 
       <p className="text-[12px] text-text-muted leading-relaxed opacity-60 ml-1">
-        {language === 'zh'
-          ? `场景化 API 载荷配置。\`{{model}}\` 将被当前模型替换。当前场景: ${SCENARIO_LABELS[activeScenario]?.zh || activeScenario}`
-          : `Scenario-aware API payload configuration. \`{{model}}\` will be replaced by current model. Active: ${SCENARIO_LABELS[activeScenario]?.en || activeScenario}`}
+        {t('modals.scenarioawareapipayloadconfigurationwill', language as Language, { p0: SCENARIO_LABELS[activeScenario]?.en || activeScenario, p1: SCENARIO_LABELS[activeScenario]?.zh || activeScenario })}
       </p>
 
       <div className="relative group">
@@ -242,7 +241,7 @@ export default function ApiPayloadConfigurator({ providerId, scenarioId, request
 
       <div className="grid grid-cols-2 gap-3">
         <div className="p-3 bg-white/[0.02] rounded-xl border border-border flex flex-col gap-2 shadow-sm">
-          <div className="text-[11px] font-black text-text-muted uppercase tracking-widest opacity-40">{language === 'zh' ? '常用参数' : 'Common Fields'}</div>
+          <div className="text-[11px] font-black text-text-muted uppercase tracking-widest opacity-40">{t('modals.commonfields', language as Language)}</div>
           <div className="flex flex-wrap gap-x-3 gap-y-1.5">
             <code className="text-[11px] text-accent/80 font-mono hover:text-accent transition-colors cursor-help">temperature</code>
             <code className="text-[11px] text-accent/80 font-mono hover:text-accent transition-colors cursor-help">top_p</code>
@@ -255,7 +254,7 @@ export default function ApiPayloadConfigurator({ providerId, scenarioId, request
         <div className="p-3 bg-white/[0.02] rounded-xl border border-border flex flex-col gap-2 shadow-sm">
           <div className="flex items-center gap-1.5">
             <Gauge className="w-3 h-3 text-accent/60" />
-            <span className="text-[11px] font-black text-text-muted uppercase tracking-widest opacity-40">{language === 'zh' ? 'Token 预算' : 'Token Budget'}</span>
+            <span className="text-[11px] font-black text-text-muted uppercase tracking-widest opacity-40">{t('modals.tokenbudget', language as Language)}</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="flex-1 h-2 bg-white/5 rounded-full overflow-hidden">

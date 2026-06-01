@@ -29,6 +29,7 @@ import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { BUILTIN_PROVIDERS } from '@shared/configuration/aiProviders'
 import type { ChannelId, ChannelAccountConfig, ChannelAccountSnapshot, ChannelConfig, ChannelSecretSchema } from '@shared/protocols/channel'
+import { t, type Language } from '@renderer/i18n'
 
 const CHANNEL_ICONS: Record<ChannelId, React.ReactNode> = {
   feishu: <MessageCircle className="w-4 h-4" />,
@@ -59,11 +60,11 @@ function WebhookUrlDisplay({ channelId, language }: { channelId: ChannelId; lang
   return (
     <div className="rounded-lg border border-border/30 bg-surface/30 px-3 py-2 space-y-1">
       <div className="text-xs font-medium text-text-muted">
-        {language === 'zh' ? 'Webhook 回调地址' : 'Webhook Callback URL'}
+        {t('settings.webhookcallbackurl', language as Language)}
       </div>
       <div className="flex items-center gap-2">
         <code className="flex-1 text-xs bg-surface-active/30 px-2 py-1 rounded text-text-primary break-all">
-          {fullUrl || (language === 'zh' ? '未启动' : 'Not running')}
+          {fullUrl || (t('settings.notrunning', language as Language))}
         </code>
         {fullUrl && (
           <ActionButton
@@ -71,7 +72,7 @@ function WebhookUrlDisplay({ channelId, language }: { channelId: ChannelId; lang
             size="sm"
             onClick={() => {
               navigator.clipboard.writeText(fullUrl)
-              toast.success(language === 'zh' ? '已复制' : 'Copied')
+              toast.success(t('settings.copied', language as Language))
             }}
           >
             <CheckCircle className="w-3 h-3" />
@@ -79,9 +80,7 @@ function WebhookUrlDisplay({ channelId, language }: { channelId: ChannelId; lang
         )}
       </div>
       <div className="text-xs text-text-muted">
-        {language === 'zh'
-          ? '将此地址填入平台回调URL配置（需公网可访问，可使用 ngrok 等内网穿透工具）'
-          : 'Use this URL as the callback URL in the platform config (requires public access, use ngrok etc.)'}
+        {t('settings.usethisurlasthe', language as Language)}
       </div>
     </div>
   )
@@ -166,10 +165,10 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
     setActionLoading(`${channelId}:${accountId}`)
     try {
       await api.channel.connectAccount(channelId, accountId)
-      toast.success(language === 'zh' ? '连接成功' : 'Connected')
+      toast.success(t('settings.connected', language as Language))
       await loadData()
     } catch (err: any) {
-      toast.error(err?.message || (language === 'zh' ? '连接失败' : 'Connection failed'))
+      toast.error(err?.message || (t('settings.connectionfailed', language as Language)))
     } finally {
       setActionLoading(null)
     }
@@ -179,10 +178,10 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
     setActionLoading(`${channelId}:${accountId}`)
     try {
       await api.channel.disconnectAccount(channelId, accountId)
-      toast.success(language === 'zh' ? '已断开' : 'Disconnected')
+      toast.success(t('settings.disconnected', language as Language))
       await loadData()
     } catch (err: any) {
-      toast.error(err?.message || (language === 'zh' ? '断开失败' : 'Disconnect failed'))
+      toast.error(err?.message || (t('settings.disconnectfailed', language as Language)))
     } finally {
       setActionLoading(null)
     }
@@ -191,10 +190,10 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
   const handleRemoveAccount = async (channelId: ChannelId, accountId: string) => {
     try {
       await api.channel.removeAccount(channelId, accountId)
-      toast.success(language === 'zh' ? '已删除' : 'Removed')
+      toast.success(t('settings.removed', language as Language))
       await loadData()
     } catch (err: any) {
-      toast.error(err?.message || (language === 'zh' ? '删除失败' : 'Remove failed'))
+      toast.error(err?.message || (t('settings.removefailed', language as Language)))
     }
   }
 
@@ -203,11 +202,11 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
     const schema = secretSchemas[showAddAccount] || []
     const missingRequired = schema.filter(s => s.required && !newAccountForm.credentials?.[s.key])
     if (missingRequired.length > 0) {
-      toast.error(language === 'zh' ? '请填写所有必填项' : 'Please fill all required fields')
+      toast.error(t('settings.pleasefillallrequiredfields', language as Language))
       return
     }
     if (!newAccountForm.id) {
-      toast.error(language === 'zh' ? '请输入账户ID' : 'Please enter account ID')
+      toast.error(t('settings.pleaseenteraccountid', language as Language))
       return
     }
     const account: ChannelAccountConfig = {
@@ -221,12 +220,12 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
     }
     try {
       await api.channel.addAccount(showAddAccount, account)
-      toast.success(language === 'zh' ? '添加成功' : 'Account added')
+      toast.success(t('settings.accountadded', language as Language))
       setShowAddAccount(null)
       setNewAccountForm({ id: '', name: '', enabled: true, credentials: {} })
       await loadData()
     } catch (err: any) {
-      toast.error(err?.message || (language === 'zh' ? '添加失败' : 'Add failed'))
+      toast.error(err?.message || (t('settings.addfailed', language as Language)))
     }
   }
 
@@ -234,12 +233,12 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
     try {
       const result = await api.channel.validateCredentials(channelId, newAccountForm.credentials || {})
       if (result?.valid) {
-        toast.success(language === 'zh' ? '验证通过' : 'Valid credentials')
+        toast.success(t('settings.validcredentials', language as Language))
       } else {
-        toast.error(result?.error || (language === 'zh' ? '验证失败' : 'Invalid credentials'))
+        toast.error(result?.error || (t('settings.invalidcredentials', language as Language)))
       }
     } catch (err: any) {
-      toast.error(err?.message || (language === 'zh' ? '验证失败' : 'Validation failed'))
+      toast.error(err?.message || (t('settings.validationfailed', language as Language)))
     }
   }
 
@@ -270,12 +269,12 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
 
     try {
       await api.channel.updateAccount(channelId, updated)
-      toast.success(language === 'zh' ? '保存成功' : 'Saved')
+      toast.success(t('settings.saved', language as Language))
       setEditingAccountId(null)
       setEditForm({})
       await loadData()
     } catch (err: any) {
-      toast.error(err?.message || (language === 'zh' ? '保存失败' : 'Save failed'))
+      toast.error(err?.message || (t('settings.savefailed', language as Language)))
     }
   }
 
@@ -294,28 +293,28 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
         return (
           <span className="flex items-center gap-1 text-xs text-green-500">
             <CheckCircle className="w-3 h-3" />
-            {language === 'zh' ? '已连接' : 'Connected'}
+            {t('settings.connected2', language as Language)}
           </span>
         )
       case 'connecting':
         return (
           <span className="flex items-center gap-1 text-xs text-yellow-500">
             <Loader2 className="w-3 h-3 animate-spin" />
-            {language === 'zh' ? '连接中' : 'Connecting'}
+            {t('settings.connecting', language as Language)}
           </span>
         )
       case 'error':
         return (
           <span className="flex items-center gap-1 text-xs text-red-500" title={status.lastError || ''}>
             <AlertCircle className="w-3 h-3" />
-            {language === 'zh' ? '错误' : 'Error'}
+            {t('settings.error', language as Language)}
           </span>
         )
       default:
         return (
           <span className="flex items-center gap-1 text-xs text-text-muted">
             <PowerOff className="w-3 h-3" />
-            {language === 'zh' ? '未连接' : 'Disconnected'}
+            {t('settings.disconnected2', language as Language)}
           </span>
         )
     }
@@ -325,7 +324,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-medium text-text-primary">
-          {language === 'zh' ? '多渠道集成' : 'Multi-Channel Integration'}
+          {t('settings.multichannelintegration', language as Language)}
         </h3>
         <ActionButton variant="ghost" size="sm" onClick={loadData} disabled={loading}>
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
@@ -333,23 +332,21 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
       </div>
 
       <p className="text-sm text-text-muted">
-        {language === 'zh'
-          ? '配置即时通讯平台集成，支持飞书、企业微信、WhatsApp等渠道的消息收发。'
-          : 'Configure IM platform integrations for messaging across Feishu, WeCom, WhatsApp, and more.'}
+        {t('settings.configureimplatformintegrationsfor', language as Language)}
       </p>
 
       {loading ? (
         <div className="flex items-center justify-center py-12">
           <div className="flex items-center gap-3 text-sm text-text-muted">
             <Loader2 className="w-4 h-4 animate-spin" />
-            <span>{language === 'zh' ? '正在加载渠道配置...' : 'ProgressIndicator channel configuration...'}</span>
+            <span>{t('settings.progressindicatorchannelconfiguration', language as Language)}</span>
           </div>
         </div>
       ) : channels.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12 text-text-muted">
           <MessageCircle className="w-8 h-8 mb-3 opacity-50" />
-          <p className="text-sm">{language === 'zh' ? '暂无可用的渠道插件' : 'No channel plugins available'}</p>
-          <p className="text-xs mt-1">{language === 'zh' ? '请检查渠道服务是否正常启动' : 'Please check if the channel service is running properly'}</p>
+          <p className="text-sm">{t('settings.nochannelpluginsavailable', language as Language)}</p>
+          <p className="text-xs mt-1">{t('settings.pleasecheckifthechannel', language as Language)}</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -377,7 +374,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                 <div className="flex items-center gap-2">
                   {accounts.length > 0 && (
                     <span className="text-xs text-text-muted">
-                      {accounts.filter(a => a.enabled).length}/{accounts.length} {language === 'zh' ? '账户' : 'accounts'}
+                      {accounts.filter(a => a.enabled).length}/{accounts.length} {t('settings.accounts', language as Language)}
                     </span>
                   )}
                   {isExpanded ? <ChevronDown className="w-4 h-4 text-text-muted" /> : <ChevronRight className="w-4 h-4 text-text-muted" />}
@@ -388,7 +385,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                 <div className="border-t border-border/30 px-4 py-3 space-y-3">
                   {accounts.length === 0 && (
                     <div className="text-sm text-text-muted py-2 text-center">
-                      {language === 'zh' ? '暂无账户，点击下方添加' : 'No accounts yet. Add one below.'}
+                      {t('settings.noaccountsyetaddone', language as Language)}
                     </div>
                   )}
 
@@ -453,7 +450,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                               <>
                                 <div>
                                   <label className="text-xs text-text-muted">
-                                    {language === 'zh' ? '账户名称' : 'Account Name'}
+                                    {t('settings.accountname', language as Language)}
                                   </label>
                                   <TextField
                                     value={editForm.name || ''}
@@ -493,7 +490,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                                   <div className="flex items-center gap-2 mb-2">
                                     <Settings2 className="w-3.5 h-3.5 text-text-muted" />
                                     <label className="text-xs font-medium text-text-muted">
-                                      {language === 'zh' ? '模型配置' : 'Model Configuration'}
+                                      {t('settings.modelconfiguration', language as Language)}
                                     </label>
                                   </div>
                                   <div className="flex items-center gap-2 mb-2">
@@ -509,7 +506,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                                       }))}
                                     >
                                       <Globe className="w-3 h-3" />
-                                      {language === 'zh' ? '使用全局配置' : 'Use Global'}
+                                      {t('settings.useglobal', language as Language)}
                                     </button>
                                     <button
                                       className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${
@@ -527,14 +524,14 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                                       }))}
                                     >
                                       <Settings2 className="w-3 h-3" />
-                                      {language === 'zh' ? '自定义' : 'Custom'}
+                                      {t('settings.custom', language as Language)}
                                     </button>
                                   </div>
                                   {editForm.llmConfig?.useGlobal === false && (
                                     <div className="space-y-2 pl-1">
                                       <div>
                                         <label className="text-xs text-text-muted">
-                                          {language === 'zh' ? '供应商' : 'Provider'}
+                                          {t('settings.provider2', language as Language)}
                                         </label>
                                         <select
                                           value={editForm.llmConfig?.provider || ''}
@@ -549,7 +546,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                                           }}
                                           className="w-full mt-1 px-2 py-1.5 rounded-md border border-border/50 bg-surface text-xs text-text-primary focus:outline-none focus:border-accent/40"
                                         >
-                                          <option value="">{language === 'zh' ? '选择供应商' : 'DropdownSelector provider'}</option>
+                                          <option value="">{t('settings.dropdownselectorprovider', language as Language)}</option>
                                           {availableProviders.map(p => (
                                             <option key={p.id} value={p.id}>{p.name}</option>
                                           ))}
@@ -558,7 +555,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                                       {editForm.llmConfig?.provider && (
                                         <div>
                                           <label className="text-xs text-text-muted">
-                                            {language === 'zh' ? '模型' : 'Model'}
+                                            {t('settings.model', language as Language)}
                                           </label>
                                           <select
                                             value={editForm.llmConfig?.model || ''}
@@ -568,7 +565,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                                             }))}
                                             className="w-full mt-1 px-2 py-1.5 rounded-md border border-border/50 bg-surface text-xs text-text-primary focus:outline-none focus:border-accent/40"
                                           >
-                                            <option value="">{language === 'zh' ? '选择模型' : 'DropdownSelector model'}</option>
+                                            <option value="">{t('settings.dropdownselectormodel', language as Language)}</option>
                                             {availableProviders.find(p => p.id === editForm.llmConfig?.provider)?.models.map(m => (
                                               <option key={m} value={m}>{m}</option>
                                             ))}
@@ -579,9 +576,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                                   )}
                                   {(editForm.llmConfig?.useGlobal !== false) && (
                                     <p className="text-xs text-text-muted">
-                                      {language === 'zh'
-                                        ? `将使用全局配置: ${llmConfig.provider}/${llmConfig.model}`
-                                        : `Will use global config: ${llmConfig.provider}/${llmConfig.model}`}
+                                      {t('settings.willuseglobalconfig', language as Language, { provider: llmConfig.provider, model: llmConfig.model })}
                                     </p>
                                   )}
                                 </div>
@@ -589,11 +584,11 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                                 <div className="flex items-center gap-2 pt-2 border-t border-border/20">
                                   <div className="flex-1" />
                                   <ActionButton variant="ghost" size="sm" onClick={() => { setEditingAccountId(null); setEditForm({}) }}>
-                                    {language === 'zh' ? '取消' : 'Cancel'}
+                                    {t('settings.cancel', language as Language)}
                                   </ActionButton>
                                   <ActionButton variant="primary" size="sm" onClick={() => handleSaveAccount(channel.id)}>
                                     <Check className="w-3 h-3 mr-1" />
-                                    {language === 'zh' ? '保存' : 'Save'}
+                                    {t('settings.save', language as Language)}
                                   </ActionButton>
                                 </div>
                               </>
@@ -627,7 +622,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                                   <div className="flex items-center gap-1.5 mb-1">
                                     <Settings2 className="w-3 h-3 text-text-muted" />
                                     <span className="text-xs text-text-muted">
-                                      {language === 'zh' ? '模型' : 'Model'}
+                                      {t('settings.model2', language as Language)}
                                     </span>
                                   </div>
                                   {account.llmConfig?.useGlobal === false ? (
@@ -636,9 +631,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                                     </span>
                                   ) : (
                                     <span className="text-xs text-text-muted">
-                                      {language === 'zh'
-                                        ? `全局: ${llmConfig.provider}/${llmConfig.model}`
-                                        : `Global: ${llmConfig.provider}/${llmConfig.model}`}
+                                      {t('settings.global', language as Language, { provider: llmConfig.provider, model: llmConfig.model })}
                                     </span>
                                   )}
                                 </div>
@@ -658,28 +651,28 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                   {showAddAccount === channel.id ? (
                     <div className="rounded-lg border border-accent/30 bg-accent/5 p-3 space-y-3">
                       <h4 className="text-sm font-medium text-text-primary">
-                        {language === 'zh' ? '添加新账户' : 'Add New Account'}
+                        {t('settings.addnewaccount', language as Language)}
                       </h4>
                       <div className="space-y-2">
                         <div>
                           <label className="text-xs text-text-muted">
-                            {language === 'zh' ? '账户ID' : 'Account ID'} <span className="text-red-400">*</span>
+                            {t('settings.accountid', language as Language)} <span className="text-red-400">*</span>
                           </label>
                           <TextField
                             value={newAccountForm.id || ''}
                             onChange={e => setNewAccountForm(prev => ({ ...prev, id: e.target.value }))}
-                            placeholder={language === 'zh' ? '例如: my-feishu-bot' : 'e.g. my-feishu-bot'}
+                            placeholder={t('settings.egmyfeishubot', language as Language)}
                             className="text-xs"
                           />
                         </div>
                         <div>
                           <label className="text-xs text-text-muted">
-                            {language === 'zh' ? '账户名称' : 'Account Name'}
+                            {t('settings.accountname2', language as Language)}
                           </label>
                           <TextField
                             value={newAccountForm.name || ''}
                             onChange={e => setNewAccountForm(prev => ({ ...prev, name: e.target.value }))}
-                            placeholder={language === 'zh' ? '例如: 我的飞书机器人' : 'e.g. My Feishu Bot'}
+                            placeholder={t('settings.egmyfeishubot2', language as Language)}
                             className="text-xs"
                           />
                         </div>
@@ -719,7 +712,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                           <div className="flex items-center gap-2 mb-2">
                             <Settings2 className="w-3.5 h-3.5 text-text-muted" />
                             <label className="text-xs font-medium text-text-muted">
-                              {language === 'zh' ? '模型配置' : 'Model Configuration'}
+                              {t('settings.modelconfiguration2', language as Language)}
                             </label>
                           </div>
                           <div className="flex items-center gap-2 mb-2">
@@ -735,7 +728,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                               }))}
                             >
                               <Globe className="w-3 h-3" />
-                              {language === 'zh' ? '使用全局配置' : 'Use Global'}
+                              {t('settings.useglobal2', language as Language)}
                             </button>
                             <button
                               className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${
@@ -753,14 +746,14 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                               }))}
                             >
                               <Settings2 className="w-3 h-3" />
-                              {language === 'zh' ? '自定义' : 'Custom'}
+                              {t('settings.custom2', language as Language)}
                             </button>
                           </div>
                           {newAccountForm.llmConfig?.useGlobal === false && (
                             <div className="space-y-2 pl-1">
                               <div>
                                 <label className="text-xs text-text-muted">
-                                  {language === 'zh' ? '供应商' : 'Provider'}
+                                  {t('settings.provider3', language as Language)}
                                 </label>
                                 <select
                                   value={newAccountForm.llmConfig?.provider || ''}
@@ -775,7 +768,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                                   }}
                                   className="w-full mt-1 px-2 py-1.5 rounded-md border border-border/50 bg-surface text-xs text-text-primary focus:outline-none focus:border-accent/40"
                                 >
-                                  <option value="">{language === 'zh' ? '选择供应商' : 'DropdownSelector provider'}</option>
+                                  <option value="">{t('settings.dropdownselectorprovider2', language as Language)}</option>
                                   {availableProviders.map(p => (
                                     <option key={p.id} value={p.id}>{p.name}</option>
                                   ))}
@@ -784,7 +777,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                               {newAccountForm.llmConfig?.provider && (
                                 <div>
                                   <label className="text-xs text-text-muted">
-                                    {language === 'zh' ? '模型' : 'Model'}
+                                    {t('settings.model3', language as Language)}
                                   </label>
                                   <select
                                     value={newAccountForm.llmConfig?.model || ''}
@@ -794,7 +787,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                                     }))}
                                     className="w-full mt-1 px-2 py-1.5 rounded-md border border-border/50 bg-surface text-xs text-text-primary focus:outline-none focus:border-accent/40"
                                   >
-                                    <option value="">{language === 'zh' ? '选择模型' : 'DropdownSelector model'}</option>
+                                    <option value="">{t('settings.dropdownselectormodel2', language as Language)}</option>
                                     {availableProviders.find(p => p.id === newAccountForm.llmConfig?.provider)?.models.map(m => (
                                       <option key={m} value={m}>{m}</option>
                                     ))}
@@ -805,9 +798,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                           )}
                           {(newAccountForm.llmConfig?.useGlobal !== false) && (
                             <p className="text-xs text-text-muted">
-                              {language === 'zh'
-                                ? `将使用全局配置: ${llmConfig.provider}/${llmConfig.model}`
-                                : `Will use global config: ${llmConfig.provider}/${llmConfig.model}`}
+                              {t('settings.willuseglobalconfig2', language as Language, { provider: llmConfig.provider, model: llmConfig.model })}
                             </p>
                           )}
                         </div>
@@ -815,21 +806,21 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                       <div className="flex items-center gap-2">
                         <ActionButton variant="ghost" size="sm" onClick={() => handleValidateCredentials(channel.id)}>
                           <Shield className="w-3 h-3 mr-1" />
-                          {language === 'zh' ? '验证凭据' : 'Validate'}
+                          {t('settings.validate', language as Language)}
                         </ActionButton>
                         <div className="flex-1" />
                         <ActionButton variant="ghost" size="sm" onClick={() => { setShowAddAccount(null); setNewAccountForm({ id: '', name: '', enabled: true, credentials: {} }) }}>
-                          {language === 'zh' ? '取消' : 'Cancel'}
+                          {t('settings.cancel2', language as Language)}
                         </ActionButton>
                         <ActionButton variant="primary" size="sm" onClick={handleAddAccount}>
-                          {language === 'zh' ? '添加' : 'Add'}
+                          {t('settings.add', language as Language)}
                         </ActionButton>
                       </div>
                     </div>
                   ) : (
                     <ActionButton variant="ghost" size="sm" className="w-full" onClick={() => { setShowAddAccount(channel.id); setNewAccountForm({ id: '', name: '', enabled: true, credentials: {} }) }}>
                       <Plus className="w-4 h-4 mr-1" />
-                      {language === 'zh' ? '添加账户' : 'Add Account'}
+                      {t('settings.addaccount', language as Language)}
                     </ActionButton>
                   )}
                 </div>

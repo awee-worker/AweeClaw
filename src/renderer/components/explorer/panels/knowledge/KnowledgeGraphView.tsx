@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { ZoomIn, ZoomOut, X, RotateCcw, Loader2, AlertCircle, RefreshCw, Database, Cloud } from 'lucide-react'
 import { localGraphStore } from '@intelligence/runtime/knowledgeService/localGraphStore'
 import { backendApi, isAuthenticated } from '@services/backendApi'
+import { type Language } from '@renderer/i18n'
 
 const ENTITY_COLORS: Record<string, string> = {
   file: '#3b82f6',
@@ -65,7 +66,7 @@ interface GraphEdge {
 }
 
 interface KnowledgeGraphViewProps {
-  language: string
+  language: Language
   onClose: () => void
   onSelectEntity?: (entity: LocalEntity) => void
 }

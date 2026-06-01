@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useShallow } from 'zustand/react/shallow'
 import { vscDarkPlus, vs } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { useStore } from '@store'
-import { t } from '@renderer/i18n'
+import { t, type Language } from '@renderer/i18n'
 import type { ToolCall } from '@intelligence/providerTypes'
 import { useToolDisplayState } from '@intelligence/display/toolResultRenderer'
 import { getMcpToolStatusText, getFriendlyToolName, isMcpToolName } from '@intelligence/display/toolFriendlyName'
@@ -114,7 +114,7 @@ const getPathSummary = (paths: string[], maxItems = 3): string => {
     return `${paths.length} files (${preview}${paths.length > maxItems ? ', ...' : ''})`
 }
 
-function getStatusText(name: string, args: ToolArgs, status: ToolCall['status'], isStreaming: boolean, language: string): string {
+function getStatusText(name: string, args: ToolArgs, status: ToolCall['status'], isStreaming: boolean, language: Language): string {
     const isRunning = status === 'running' || status === 'pending' || isStreaming
     const isSuccess = status === 'success'
     const isError = status === 'error'
@@ -274,7 +274,7 @@ export function ExpandablePreviewContainer({
     children: React.ReactNode
     maxHeight?: string
     expandedHeight?: string
-    language?: string
+    language?: Language
 }) {
     const [expanded, setExpanded] = useState(false);
     const contentRef = useRef<HTMLDivElement>(null);
@@ -366,7 +366,7 @@ function ToolPreview({
     effectiveName: string
     isRunning: boolean
     isStreaming: boolean
-    language: string
+    language: Language
     currentTheme: string
     onCopyResult: () => void
     setTerminalVisible: (visible: boolean) => void

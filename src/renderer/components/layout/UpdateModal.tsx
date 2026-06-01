@@ -5,6 +5,7 @@ import { updaterService, type UpdateStatus } from '@services/updateAdapter'
 import { useStore } from '@store'
 import { api } from '../../adapters/electronBridge'
 import { OverlayDialog } from '../ui/OverlayDialog'
+import { t, type Language } from '@renderer/i18n'
 
 export function UpdateModal({
   isOpen,
@@ -48,28 +49,28 @@ export function UpdateModal({
   const isDownloading = status?.status === 'downloading'
   const isError = status?.status === 'error'
 
-  const t = {
-    title: language === 'zh' ? '系统更新' : 'System Update',
-    checking: language === 'zh' ? '正在检查新版本...' : 'Checking for updates...',
-    available: language === 'zh' ? '发现新版本' : 'New Version Available',
-    downloaded: language === 'zh' ? '更新已就绪' : 'Update Ready',
-    downloading: language === 'zh' ? '正在下载更新' : 'Downloading Update',
-    notAvailable: language === 'zh' ? '已经是最新版本' : 'You are up to date',
-    error: language === 'zh' ? '检查失败' : 'Update Failed',
-    download: language === 'zh' ? '立即更新' : 'Update Now',
-    install: language === 'zh' ? '重启生效' : 'Restart to Apply',
-    openPage: language === 'zh' ? '前往下载页' : 'Open Download Page',
-    checkNow: language === 'zh' ? '检查更新' : 'Check for Updates',
+  const labels = {
+    title: t('layout.systemupdate', language as Language),
+    checking: t('layout.checkingforupdates', language as Language),
+    available: t('layout.newversionavailable', language as Language),
+    downloaded: t('layout.updateready', language as Language),
+    downloading: t('layout.downloadingupdate', language as Language),
+    notAvailable: t('layout.youareuptodate', language as Language),
+    error: t('layout.updatefailed', language as Language),
+    download: t('layout.updatenow', language as Language),
+    install: t('layout.restarttoapply', language as Language),
+    openPage: t('layout.opendownloadpage', language as Language),
+    checkNow: t('layout.checkforupdates', language as Language),
     manualHint:
-      language === 'zh' ? '当前安装方式不支持应用内更新，请前往发布页下载最新版本。' : 'This install type cannot update in-app. Please download the latest release manually.',
-    current: language === 'zh' ? '当前版本' : 'Current',
+      t('layout.thisinstalltypecannotupdate', language as Language),
+    current: t('layout.current', language as Language),
   }
 
   return (
     <OverlayDialog isOpen={isOpen} onClose={onClose} size="sm">
       <div className="p-6">
         <div className="flex items-center justify-between mb-6">
-          <span className="text-[11px] font-black text-text-muted uppercase tracking-[0.2em]">{t.title}</span>
+          <span className="text-[11px] font-black text-text-muted uppercase tracking-[0.2em]">{labels.title}</span>
           <button
             onClick={onClose}
             className="p-1.5 rounded-full hover:bg-white/10 text-text-muted transition-colors"
@@ -110,16 +111,16 @@ export function UpdateModal({
 
           <h4 className="text-lg font-bold text-text-primary tracking-tight">
             {status?.status === 'available'
-              ? t.available
+              ? labels.available
               : status?.status === 'downloaded'
-                ? t.downloaded
+                ? labels.downloaded
                 : status?.status === 'downloading'
-                  ? t.downloading
+                  ? labels.downloading
                   : status?.status === 'checking'
-                    ? t.checking
+                    ? labels.checking
                     : status?.status === 'error'
-                      ? t.error
-                      : t.notAvailable}
+                      ? labels.error
+                      : labels.notAvailable}
           </h4>
 
           <div className="mt-2 flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/5 text-[12px] font-medium">
@@ -131,7 +132,7 @@ export function UpdateModal({
               </>
             ) : (
               <span className="text-text-muted">
-                {t.current}: v{currentVersion}
+                {labels.current}: v{currentVersion}
               </span>
             )}
           </div>
@@ -148,7 +149,7 @@ export function UpdateModal({
               />
             </div>
             <div className="flex justify-between text-[10px] font-bold text-text-muted uppercase tracking-widest opacity-60">
-              <span>{t.downloading}</span>
+              <span>{labels.downloading}</span>
               <span className="text-accent">{status.progress.toFixed(0)}%</span>
             </div>
           </div>
@@ -156,7 +157,7 @@ export function UpdateModal({
 
         {hasUpdate && status?.requiresManualDownload && (
           <div className="mb-6 px-4 py-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-[12px] text-amber-200/80 leading-relaxed text-center">
-            {t.manualHint}
+            {labels.manualHint}
           </div>
         )}
 
@@ -168,7 +169,7 @@ export function UpdateModal({
                 className="w-full h-11 rounded-2xl bg-green-500 hover:bg-green-600 text-white text-sm font-bold shadow-[0_10px_20px_-5px_rgba(34,197,94,0.4)] transition-all active:scale-95 flex items-center justify-center gap-2"
               >
                 <RefreshCw className="w-4 h-4" />
-                {t.install}
+                {labels.install}
               </button>
             ) : (
               <button
@@ -176,7 +177,7 @@ export function UpdateModal({
                 className="w-full h-11 rounded-2xl bg-accent hover:bg-accent-hover text-white text-sm font-bold shadow-[0_10px_20px_-5px_rgba(var(--accent)/0.4)] transition-all active:scale-95 flex items-center justify-center gap-2"
               >
                 {status?.requiresManualDownload ? <ExternalLink className="w-4 h-4" /> : <Download className="w-4 h-4" />}
-                {status?.requiresManualDownload ? t.openPage : t.download}
+                {status?.requiresManualDownload ? labels.openPage : labels.download}
               </button>
             )
           ) : (
@@ -187,7 +188,7 @@ export function UpdateModal({
                 className="w-full h-11 rounded-2xl bg-surface-active hover:bg-white/10 border border-border/50 text-text-primary text-sm font-bold transition-all active:scale-95 flex items-center justify-center gap-2"
               >
                 <RefreshCw className="w-4 h-4" />
-                {t.checkNow}
+                {labels.checkNow}
               </button>
             )
           )}

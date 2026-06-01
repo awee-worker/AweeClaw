@@ -2,6 +2,7 @@ import { useState, useMemo, memo } from 'react'
 import { Keyboard, X, Search, AlertTriangle, Layers } from 'lucide-react'
 import { formatShortcutKeys } from '@services/keybindingAdapter'
 import { useStore } from '@store'
+import { t, type Language } from '@renderer/i18n'
 
 interface BindingEntry {
   keys: string[]
@@ -113,8 +114,8 @@ export default function ShortcutReference({ onClose }: ShortcutReferenceProps) {
               <Keyboard className="w-5 h-5 text-accent" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-text-primary">{language === 'zh' ? '快捷键参考' : 'Shortcut Reference'}</h2>
-              <p className="text-[11px] text-text-muted">{language === 'zh' ? 'AweeClaw 场景感知快捷键' : 'AweeClaw scenario-aware keybindings'}</p>
+              <h2 className="text-base font-bold text-text-primary">{t('modals.shortcutreference', language as Language)}</h2>
+              <p className="text-[11px] text-text-muted">{t('modals.aweeclawscenarioawarekeybindings', language as Language)}</p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 rounded-lg hover:bg-surface-hover transition-colors">
@@ -128,7 +129,7 @@ export default function ShortcutReference({ onClose }: ShortcutReferenceProps) {
             type="text"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            placeholder={language === 'zh' ? '搜索快捷键...' : 'Search shortcuts...'}
+            placeholder={t('modals.searchshortcuts', language as Language)}
             className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-muted/50 focus:outline-none"
           />
           <div className="flex items-center gap-1">
@@ -138,7 +139,7 @@ export default function ShortcutReference({ onClose }: ShortcutReferenceProps) {
                 onClick={() => setActiveCategory(cat)}
                 className={`px-2.5 py-1 rounded-full text-[10px] font-bold transition-all ${activeCategory === cat ? 'bg-accent/10 text-accent' : 'text-text-muted hover:text-text-secondary hover:bg-white/5'}`}
               >
-                {cat === 'all' ? (language === 'zh' ? '全部' : 'All') : cat}
+                {cat === 'all' ? (t('modals.all', language as Language)) : cat}
               </button>
             ))}
           </div>
@@ -147,7 +148,7 @@ export default function ShortcutReference({ onClose }: ShortcutReferenceProps) {
         {conflictKeys.length > 0 && (
           <div className="mx-6 mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-yellow-500/5 border border-yellow-500/15 text-[11px] text-yellow-400/80">
             <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
-            <span>{conflictKeys.length} {language === 'zh' ? '个快捷键冲突' : 'keybinding conflict(s) detected'}</span>
+            <span>{conflictKeys.length} {t('modals.keybindingconflictsdetected', language as Language)}</span>
           </div>
         )}
 
@@ -196,7 +197,7 @@ export default function ShortcutReference({ onClose }: ShortcutReferenceProps) {
         <div className="px-6 py-3 border-t border-border/30 bg-surface/20 backdrop-blur-md flex items-center justify-between">
           <div className="flex items-center gap-2 text-[10px] text-text-muted/50">
             <Layers className="w-3 h-3" />
-            <span>{language === 'zh' ? '场景标签表示快捷键仅在特定场景下可用' : 'Scenario tags indicate context-specific bindings'}</span>
+            <span>{t('modals.scenariotagsindicatecontextspecificbindings', language as Language)}</span>
           </div>
           <span className="text-[10px] text-text-muted/40">
             Press <KeyCap keyName="?" /> to toggle

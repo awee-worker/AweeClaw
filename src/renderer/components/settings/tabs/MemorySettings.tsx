@@ -8,9 +8,10 @@ import {
   RefreshCw, Search, ToggleLeft, ToggleRight,
   Clock, Tag, Zap, Eye, Filter
 } from 'lucide-react'
+import { t, type Language } from '@renderer/i18n'
 
 interface MemorySettingsProps {
-  language: string
+  language: Language
 }
 
 const SOURCE_LABELS: Record<MemorySource, { zh: string; en: string; color: string }> = {
@@ -30,7 +31,6 @@ const STATUS_LABELS: Record<MemoryStatus, { zh: string; en: string; color: strin
 }
 
 export function MemorySettings({ language }: MemorySettingsProps) {
-  const t = (zh: string, en: string) => language === 'zh' ? zh : en
 
   const [entries, setEntries] = useState<MemoryEntry[]>([])
   const [loading, setLoading] = useState(true)
@@ -144,10 +144,10 @@ export function MemorySettings({ language }: MemorySettingsProps) {
     const diffHours = Math.floor(diffMs / 3600000)
     const diffDays = Math.floor(diffMs / 86400000)
 
-    if (diffMins < 1) return t('刚刚', 'Just now')
-    if (diffMins < 60) return t(`${diffMins} 分钟前`, `${diffMins}m ago`)
-    if (diffHours < 24) return t(`${diffHours} 小时前`, `${diffHours}h ago`)
-    if (diffDays < 7) return t(`${diffDays} 天前`, `${diffDays}d ago`)
+    if (diffMins < 1) return t('app.justnow', language as Language)
+    if (diffMins < 60) return t('app.mago', language as Language, { diffMins: diffMins })
+    if (diffHours < 24) return t('app.hago', language as Language, { diffHours: diffHours })
+    if (diffDays < 7) return t('app.dago', language as Language, { diffDays: diffDays })
     return d.toLocaleDateString()
   }
 
@@ -161,17 +161,17 @@ export function MemorySettings({ language }: MemorySettingsProps) {
             </div>
             <div>
               <h5 className="text-sm font-medium text-text-primary">
-                {t('记忆系统', 'Memory System')}
+                {t('app.memorysystem', language as Language)}
               </h5>
               <p className="text-xs text-text-muted mt-0.5">
-                {t('AI 在对话中自动记住的重要信息', 'Important info AI remembers across conversations')}
+                {t('app.importantinfoairemembers', language as Language)}
               </p>
             </div>
           </div>
           <button
             onClick={loadEntries}
             className="p-1.5 text-text-muted hover:text-accent transition-colors rounded-md hover:bg-accent/10"
-            title={t('刷新', 'Refresh')}
+            title={t('app.refresh', language as Language)}
           >
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
@@ -180,19 +180,19 @@ export function MemorySettings({ language }: MemorySettingsProps) {
         <div className="grid grid-cols-4 gap-3">
           <div className="p-3 rounded-lg bg-white/[0.04] border border-border/50 text-center">
             <div className="text-lg font-semibold text-text-primary">{stats.active}</div>
-            <div className="text-[11px] text-text-muted">{t('活跃记忆', 'Active')}</div>
+            <div className="text-[11px] text-text-muted">{t('app.active', language as Language)}</div>
           </div>
           <div className="p-3 rounded-lg bg-white/[0.04] border border-border/50 text-center">
             <div className="text-lg font-semibold text-cyan-400">{stats.shortTerm}</div>
-            <div className="text-[11px] text-text-muted">{t('短期', 'Short')}</div>
+            <div className="text-[11px] text-text-muted">{t('app.short', language as Language)}</div>
           </div>
           <div className="p-3 rounded-lg bg-white/[0.04] border border-border/50 text-center">
             <div className="text-lg font-semibold text-accent">{stats.longTerm}</div>
-            <div className="text-[11px] text-text-muted">{t('长期', 'Long')}</div>
+            <div className="text-[11px] text-text-muted">{t('app.long', language as Language)}</div>
           </div>
           <div className="p-3 rounded-lg bg-white/[0.04] border border-border/50 text-center">
             <div className="text-lg font-semibold text-text-muted">{stats.enabled}/{stats.active}</div>
-            <div className="text-[11px] text-text-muted">{t('已启用', 'Enabled')}</div>
+            <div className="text-[11px] text-text-muted">{t('app.enabled', language as Language)}</div>
           </div>
         </div>
 
@@ -200,7 +200,7 @@ export function MemorySettings({ language }: MemorySettingsProps) {
           <TextField
             value={newMemory}
             onChange={(e) => setNewMemory(e.target.value)}
-            placeholder={t('手动添加记忆内容...', 'Add memory manually...')}
+            placeholder={t('app.addmemorymanually', language as Language)}
             className="flex-1 bg-white/[0.04] border-border text-xs"
             onKeyDown={(e) => e.key === 'Enter' && handleAddMemory()}
           />
@@ -211,7 +211,7 @@ export function MemorySettings({ language }: MemorySettingsProps) {
             className="px-3 gap-1"
           >
             <Plus className="w-3.5 h-3.5" />
-            {t('添加', 'Add')}
+            {t('app.add', language as Language)}
           </ActionButton>
         </div>
 
@@ -222,7 +222,7 @@ export function MemorySettings({ language }: MemorySettingsProps) {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={t('搜索记忆...', 'Search memories...')}
+              placeholder={t('app.searchmemories', language as Language)}
               className="w-full h-7 pl-8 pr-3 text-xs rounded-md bg-white/[0.04] border border-border/50 text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-accent/50"
             />
           </div>
@@ -234,10 +234,10 @@ export function MemorySettings({ language }: MemorySettingsProps) {
               onChange={(e) => setFilterStatus(e.target.value as MemoryStatus | 'active')}
               className="h-7 px-2 text-xs rounded-md bg-white/[0.04] border border-border/50 text-text-primary focus:outline-none focus:border-accent/50"
             >
-              <option value="active">{t('活跃', 'Active')}</option>
-              <option value="short_term">{t('短期', 'Short-term')}</option>
-              <option value="long_term">{t('长期', 'Long-term')}</option>
-              <option value="forgotten">{t('已遗忘', 'Forgotten')}</option>
+              <option value="active">{t('app.active2', language as Language)}</option>
+              <option value="short_term">{t('app.shortterm', language as Language)}</option>
+              <option value="long_term">{t('app.longterm', language as Language)}</option>
+              <option value="forgotten">{t('app.forgotten', language as Language)}</option>
             </select>
           </div>
 
@@ -247,12 +247,12 @@ export function MemorySettings({ language }: MemorySettingsProps) {
               onChange={(e) => setFilterSource(e.target.value as MemorySource | 'all')}
               className="h-7 px-2 text-xs rounded-md bg-white/[0.04] border border-border/50 text-text-primary focus:outline-none focus:border-accent/50"
             >
-              <option value="all">{t('全部来源', 'All Sources')}</option>
-              <option value="user">{t('手动', 'Manual')}</option>
-              <option value="auto_extracted">{t('自动提取', 'Auto')}</option>
-              <option value="dreaming_light">{t('轻梦', 'Light')}</option>
-              <option value="dreaming_rem">{t('深梦', 'REM')}</option>
-              <option value="dreaming_deep">{t('沉梦', 'Deep')}</option>
+              <option value="all">{t('app.allsources', language as Language)}</option>
+              <option value="user">{t('app.manual', language as Language)}</option>
+              <option value="auto_extracted">{t('app.auto', language as Language)}</option>
+              <option value="dreaming_light">{t('app.light', language as Language)}</option>
+              <option value="dreaming_rem">{t('app.rem', language as Language)}</option>
+              <option value="dreaming_deep">{t('app.deep', language as Language)}</option>
             </select>
           </div>
         </div>
@@ -266,8 +266,8 @@ export function MemorySettings({ language }: MemorySettingsProps) {
         ) : filteredEntries.length === 0 ? (
           <div className="h-40 flex items-center justify-center text-text-muted text-sm">
             {searchQuery || filterSource !== 'all' || filterStatus !== 'active'
-              ? t('没有匹配的记忆', 'No matching memories')
-              : t('暂无记忆', 'No memories yet')
+              ? t('app.nomatchingmemories', language as Language)
+              : t('app.nomemoriesyet', language as Language)
             }
           </div>
         ) : (
@@ -318,7 +318,7 @@ export function MemorySettings({ language }: MemorySettingsProps) {
                       <button
                         onClick={() => handleToggle(item.id, item.enabled)}
                         className={`mt-0.5 p-0.5 transition-colors flex-shrink-0 ${item.enabled ? 'text-accent' : 'text-text-muted'}`}
-                        title={item.enabled ? t('禁用', 'Disable') : t('启用', 'Enable')}
+                        title={item.enabled ? t('app.disable', language as Language) : t('app.enable', language as Language)}
                       >
                         {item.enabled ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
                       </button>
@@ -369,7 +369,7 @@ export function MemorySettings({ language }: MemorySettingsProps) {
                           <button
                             onClick={() => handleRestore(item.id)}
                             className="p-1.5 text-accent hover:bg-accent/10 rounded transition-colors"
-                            title={t('恢复', 'Restore')}
+                            title={t('app.restore', language as Language)}
                           >
                             <Eye className="w-3.5 h-3.5" />
                           </button>
@@ -378,14 +378,14 @@ export function MemorySettings({ language }: MemorySettingsProps) {
                             <button
                               onClick={() => handleStartEdit(item)}
                               className="p-1.5 text-text-muted hover:text-accent hover:bg-accent/10 rounded transition-colors"
-                              title={t('编辑', 'Edit')}
+                              title={t('app.edit', language as Language)}
                             >
                               <Edit2 className="w-3.5 h-3.5" />
                             </button>
                             <button
                               onClick={() => handleDelete(item.id)}
                               className="p-1.5 text-text-muted hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
-                              title={t('删除', 'Delete')}
+                              title={t('app.delete', language as Language)}
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -402,28 +402,28 @@ export function MemorySettings({ language }: MemorySettingsProps) {
       </div>
 
       <div className="p-4 bg-surface/20 rounded-xl border border-border/50 space-y-2">
-        <h6 className="text-xs font-medium text-text-primary">{t('💡 记忆机制说明', '💡 How Memory Works')}</h6>
+        <h6 className="text-xs font-medium text-text-primary">{t('app.howmemoryworks', language as Language)}</h6>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[12px] text-text-muted">
           <div className="space-y-1">
             <p className="font-medium text-text-secondary flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-cyan-400" />
-              {t('短期记忆', 'Short-term')}
+              {t('app.shortterm2', language as Language)}
             </p>
-            <p>{t('新产生的记忆，需要经过沉淀才能转为长期', 'New memories that need consolidation to become long-term')}</p>
+            <p>{t('app.newmemoriesthatneed', language as Language)}</p>
           </div>
           <div className="space-y-1">
             <p className="font-medium text-text-secondary flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-accent" />
-              {t('长期记忆', 'Long-term')}
+              {t('app.longterm2', language as Language)}
             </p>
-            <p>{t('经过 Dreaming 沉淀后晋升的稳定记忆', 'Stable memories promoted through Dreaming consolidation')}</p>
+            <p>{t('app.stablememoriespromotedthrough', language as Language)}</p>
           </div>
           <div className="space-y-1">
             <p className="font-medium text-text-secondary flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-gray-400" />
-              {t('已遗忘', 'Forgotten')}
+              {t('app.forgotten2', language as Language)}
             </p>
-            <p>{t('不再活跃的记忆，可手动恢复', 'Inactive memories that can be manually restored')}</p>
+            <p>{t('app.inactivememoriesthatcan', language as Language)}</p>
           </div>
         </div>
       </div>

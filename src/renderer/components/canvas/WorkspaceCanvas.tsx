@@ -5,6 +5,7 @@ import {
     ZoomIn, ZoomOut, Maximize2,
 } from 'lucide-react'
 import { useStore } from '@store'
+import { t, type Language } from '@renderer/i18n'
 
 interface CanvasNode {
     id: string
@@ -58,7 +59,7 @@ function CanvasNodeCard({
     node: CanvasNode
     onUpdate: (id: string, updates: Partial<CanvasNode>) => void
     onDelete: (id: string) => void
-    language: string
+    language: Language
 }) {
     const [isEditing, setIsEditing] = useState(false)
     const [editTitle, setEditTitle] = useState(node.title)
@@ -107,7 +108,7 @@ function CanvasNodeCard({
                         value={editTitle}
                         onChange={e => setEditTitle(e.target.value)}
                         className="flex-1 bg-transparent text-xs font-medium text-text-primary outline-none"
-                        placeholder={language === 'zh' ? '标题...' : 'Title...'}
+                        placeholder={t('canvas.title', language as Language)}
                         autoFocus
                     />
                 ) : (
@@ -132,7 +133,7 @@ function CanvasNodeCard({
                             value={editContent}
                             onChange={e => setEditContent(e.target.value)}
                             className="w-full bg-transparent text-[11px] text-text-secondary outline-none resize-none min-h-[40px]"
-                            placeholder={language === 'zh' ? '输入内容...' : 'Type content...'}
+                            placeholder={t('canvas.typecontent', language as Language)}
                             rows={3}
                         />
                         <div className="flex gap-1 justify-end">
@@ -142,7 +143,7 @@ function CanvasNodeCard({
                     </div>
                 ) : (
                     <p className="text-[11px] text-text-muted leading-relaxed line-clamp-3">
-                        {node.content || (language === 'zh' ? '双击编辑内容...' : 'Double-click to edit...')}
+                        {node.content || (t('canvas.doubleclicktoedit', language as Language))}
                     </p>
                 )}
             </div>
@@ -153,9 +154,9 @@ function CanvasNodeCard({
 export default function CanvasWorkspace() {
     const language = useStore(s => s.language)
     const [nodes, setNodes] = useState<CanvasNode[]>([
-        { id: 'welcome-1', type: 'note', x: 60, y: 60, width: 240, height: 120, title: language === 'zh' ? '欢迎使用画布' : 'Welcome to Canvas', content: language === 'zh' ? '拖拽节点、添加想法、构建思维导图' : 'Drag nodes, add ideas, build mind maps', color: 'violet' },
-        { id: 'welcome-2', type: 'idea', x: 340, y: 80, width: 220, height: 120, title: language === 'zh' ? '自由创作' : 'Free Creation', content: language === 'zh' ? '在无限画布上自由组织和探索思路' : 'Organize and explore ideas on an infinite canvas', color: 'blue' },
-        { id: 'welcome-3', type: 'task', x: 180, y: 240, width: 220, height: 120, title: language === 'zh' ? '任务规划' : 'Task Planning', content: language === 'zh' ? '将任务可视化，理清优先级和依赖关系' : 'Visualize tasks, clarify priorities and dependencies', color: 'emerald' },
+        { id: 'welcome-1', type: 'note', x: 60, y: 60, width: 240, height: 120, title: t('canvas.welcometocanvas', language as Language), content: t('canvas.dragnodesaddideasbuild', language as Language), color: 'violet' },
+        { id: 'welcome-2', type: 'idea', x: 340, y: 80, width: 220, height: 120, title: t('canvas.freecreation', language as Language), content: t('canvas.organizeandexploreideason', language as Language), color: 'blue' },
+        { id: 'welcome-3', type: 'task', x: 180, y: 240, width: 220, height: 120, title: t('canvas.taskplanning', language as Language), content: t('canvas.visualizetasksclarifyprioritiesand', language as Language), color: 'emerald' },
     ])
     const [zoom, setZoom] = useState(1)
     const [showAddMenu, setShowAddMenu] = useState(false)
@@ -184,7 +185,7 @@ export default function CanvasWorkspace() {
                         className="h-8 px-3 flex items-center gap-1.5 bg-surface/80 backdrop-blur-md border border-border/30 rounded-lg text-xs font-medium text-text-primary hover:bg-surface-hover transition-colors"
                     >
                         <Plus className="w-3.5 h-3.5" />
-                        {language === 'zh' ? '添加节点' : 'Add Node'}
+                        {t('canvas.addnode', language as Language)}
                     </button>
                     {showAddMenu && (
                         <div className="absolute top-full left-0 mt-1 bg-surface/95 backdrop-blur-md border border-border/30 rounded-lg shadow-xl py-1 min-w-[140px] z-50">
@@ -222,9 +223,9 @@ export default function CanvasWorkspace() {
 
             <div className="absolute bottom-3 left-3 z-40 flex items-center gap-2 text-[10px] text-text-muted/75">
                 <Move className="w-3 h-3" />
-                {language === 'zh' ? '拖拽移动节点' : 'Drag to move nodes'}
+                {t('canvas.dragtomovenodes', language as Language)}
                 <span className="text-text-muted/40">·</span>
-                <span>{nodes.length} {language === 'zh' ? '个节点' : 'nodes'}</span>
+                <span>{nodes.length} {t('canvas.nodes', language as Language)}</span>
             </div>
 
             <div

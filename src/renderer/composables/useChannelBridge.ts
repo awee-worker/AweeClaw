@@ -11,6 +11,7 @@ import { approvalService } from '@intelligence/engine/toolOrchestrator'
 import { getEffectiveLLMConfigAsync } from '@services/modelConfigHelper'
 import type { ChannelConfig, ImProcessingStatus } from '@shared/protocols/channel'
 import { activeStatuses, emitChange } from './useImProcessingStatus'
+import { t, type Language } from '@renderer/i18n'
 
 interface InboundChannelMessage {
   id: string
@@ -112,7 +113,7 @@ export function useChannelBridge() {
         const { isAuthenticated, cloudMode, language } = useStore.getState()
         if (cloudMode === 'cloud' && !isAuthenticated) {
           logger.channel.warn('[ChannelBridge] Cloud session expired')
-          const replyText = language === 'zh' ? '云端登录已过期，请联系管理员重新登录后继续。' : 'Cloud session has expired. Please contact the admin to sign in again.'
+          const replyText = t('app.cloudsessionhasexpiredplease', language as Language)
           await api.channel.sendReply(message.conversationKey, replyText, message.id)
         } else {
           logger.channel.warn('[ChannelBridge] No API key configured')

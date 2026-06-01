@@ -7,6 +7,7 @@ import {
 } from '@intelligence/runtime/knowledgeService/providerTypes'
 import { SOURCE_CONFIG } from './KnowledgeEntryCard'
 import { generateSearchSuggestions } from './searchUtils'
+import { t, type Language } from '@renderer/i18n'
 
 interface AdvancedSearchPanelProps {
   searchQuery: string
@@ -24,7 +25,7 @@ interface AdvancedSearchPanelProps {
   dateRange: { from: Date | null; to: Date | null }
   onDateRangeChange: (range: { from: Date | null; to: Date | null }) => void
   entries: { title: string; tags: string[]; category: string }[]
-  language: string
+  language: Language
 }
 
 export function AdvancedSearchPanel({
@@ -45,8 +46,6 @@ export function AdvancedSearchPanel({
   entries,
   language,
 }: AdvancedSearchPanelProps) {
-  const t = (zh: string, en: string) => (language === 'zh' ? zh : en)
-
   const suggestions = useMemo(
     () => generateSearchSuggestions(entries, searchQuery),
     [entries, searchQuery],
@@ -67,7 +66,7 @@ export function AdvancedSearchPanel({
         <input
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
-          placeholder={t('搜索知识...', 'Search knowledge...')}
+          placeholder={t('app.searchknowledge', language as Language)}
           className="flex-1 bg-transparent text-[13px] text-text-primary outline-none placeholder:text-text-muted"
         />
         {searchQuery && (
@@ -81,7 +80,7 @@ export function AdvancedSearchPanel({
         <button
           onClick={onToggleAdvanced}
           className={`p-0.5 transition-colors ${showAdvanced || hasActiveFilters ? 'text-accent' : 'text-text-muted hover:text-text-primary'}`}
-          title={t('高级搜索', 'Advanced Search')}
+          title={t('app.advancedsearch', language as Language)}
         >
           <SlidersHorizontal className="w-4 h-4" />
         </button>
@@ -91,7 +90,7 @@ export function AdvancedSearchPanel({
         <div className="px-3 py-1.5 bg-surface/20 rounded-lg border border-border/10">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-[11px] text-text-muted mr-1">
-              {t('建议', 'Suggest')}:
+              {t('app.suggest', language as Language)}:
             </span>
             {suggestions.map((s) => (
               <button
@@ -110,7 +109,7 @@ export function AdvancedSearchPanel({
         <div className="px-3 py-2.5 bg-surface/20 rounded-lg border border-border/10 space-y-2.5">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[11px] text-text-muted min-w-[32px]">
-              {t('来源', 'Source')}:
+              {t('app.source', language as Language)}:
             </span>
             {Object.entries(SOURCE_CONFIG).map(([key, cfg]) => {
               const Icon = cfg.icon
@@ -129,7 +128,7 @@ export function AdvancedSearchPanel({
                   }`}
                 >
                   <Icon className={`w-3 h-3 ${cfg.color}`} />
-                  {t(cfg.zh, cfg.en)}
+                  {language === 'zh' ? cfg.zh : cfg.en}
                 </button>
               )
             })}
@@ -137,7 +136,7 @@ export function AdvancedSearchPanel({
 
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[11px] text-text-muted min-w-[32px]">
-              {t('分类', 'Cat')}:
+              {t('app.cat', language as Language)}:
             </span>
             {KNOWLEDGE_CATEGORIES.map((cat) => (
               <button
@@ -153,7 +152,7 @@ export function AdvancedSearchPanel({
                     : 'text-text-muted hover:text-text-primary border border-transparent'
                 }`}
               >
-                {t(cat.labelZh, cat.labelEn)}
+                {language === 'zh' ? cat.labelZh : cat.labelEn}
               </button>
             ))}
           </div>
@@ -166,7 +165,7 @@ export function AdvancedSearchPanel({
                 onChange={(e) => onStarredOnlyChange(e.target.checked)}
                 className="accent-accent"
               />
-              {t('仅收藏', 'Starred only')}
+              {t('app.starredonly', language as Language)}
             </label>
             <label className="flex items-center gap-1.5 text-[11px] text-text-muted cursor-pointer">
               <input
@@ -175,13 +174,13 @@ export function AdvancedSearchPanel({
                 onChange={(e) => onEnabledOnlyChange(e.target.checked)}
                 className="accent-accent"
               />
-              {t('仅启用', 'Enabled only')}
+              {t('app.enabledonly', language as Language)}
             </label>
           </div>
 
           <div className="flex items-center gap-2">
             <span className="text-[11px] text-text-muted min-w-[32px]">
-              {t('时间', 'Date')}:
+              {t('app.date', language as Language)}:
             </span>
             <input
               type="date"
@@ -225,7 +224,7 @@ export function AdvancedSearchPanel({
               }}
               className="text-[11px] text-accent hover:text-accent/80 transition-colors"
             >
-              {t('清除所有筛选', 'Clear all filters')}
+              {t('app.clearallfilters', language as Language)}
             </button>
           )}
         </div>

@@ -12,6 +12,7 @@ import { ToolsTab } from './tabs/ToolsTab'
 import { IOTab } from './tabs/IOTab'
 import { ErrorTab } from './tabs/ErrorTab'
 import { AdvancedTab } from './tabs/AdvancedTab'
+import { t, type Language } from '@renderer/i18n'
 
 const tabComponents: Record<TabId, React.ComponentType<import('./types').TabProps>> = {
   basic: BasicTab,
@@ -56,12 +57,10 @@ const PropertyPanelInner = function PropertyPanel({
         </div>
         <div className="text-center px-8">
           <p className="text-sm font-semibold text-gray-500 mb-1.5">
-            {language === 'zh' ? '属性面板' : 'Properties'}
+            {t('wf.properties', language as Language)}
           </p>
           <p className="text-xs text-gray-400 leading-relaxed max-w-[200px]">
-            {language === 'zh'
-              ? '点击画布上的节点查看和编辑属性'
-              : 'Click a node on the canvas to view and edit its properties'}
+            {t('wf.clickanodeonthe', language as Language)}
           </p>
         </div>
         <div className="flex flex-col items-center gap-1.5 mt-2">
@@ -71,7 +70,7 @@ const PropertyPanelInner = function PropertyPanel({
             <span className="w-1 h-1 rounded-full bg-gray-200" />
           </div>
           <p className="text-[10px] text-gray-350 tracking-wide">
-            {language === 'zh' ? '选择节点开始编辑' : 'Select a node to start'}
+            {t('wf.selectanodetostart', language as Language)}
           </p>
         </div>
       </aside>
@@ -106,7 +105,7 @@ const PropertyPanelInner = function PropertyPanel({
           value={node.name}
           onChange={handleNameChange}
           className="w-full h-9 px-3 text-sm font-medium rounded-lg border border-gray-200 bg-gray-50 text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-400/50 focus:bg-white transition-all"
-          placeholder={language === 'zh' ? '节点名称' : 'Node name'}
+          placeholder={t('wf.nodename', language as Language)}
         />
       </div>
 
@@ -162,7 +161,7 @@ const PropertyPanelInner = function PropertyPanel({
           className="w-full flex items-center justify-center gap-1.5 h-8 text-xs font-medium text-red-500 rounded-lg border border-red-200 bg-white hover:bg-red-50 hover:border-red-300 active:bg-red-100 transition-all"
         >
           <Trash2 className="w-3 h-3" />
-          {language === 'zh' ? '删除节点' : 'Delete Node'}
+          {t('wf.deletenode', language as Language)}
         </button>
       </div>
     </aside>

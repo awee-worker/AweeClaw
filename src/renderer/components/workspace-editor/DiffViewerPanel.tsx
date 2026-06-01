@@ -105,11 +105,11 @@ export const DiffPreview = memo(function DiffPreview({
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <span className="text-[13px] font-medium text-text-primary">
-              {t('reviewChanges', language)}
+              {t('diff.reviewChanges', language)}
             </span>
             {isPending && (
               <span className="px-1.5 py-0.5 text-[11px] font-medium bg-amber-500/10 text-amber-500 border border-amber-500/20 rounded">
-                {t('pending', language)}
+                {t('diff.pending', language)}
               </span>
             )}
           </div>
@@ -121,14 +121,14 @@ export const DiffPreview = memo(function DiffPreview({
             <button
               onClick={() => setViewMode('unified')}
               className={`p-1.5 rounded transition-all ${viewMode === 'unified' ? 'bg-background shadow-sm text-accent' : 'text-text-muted hover:text-text-primary'}`}
-              title={t('unifiedView', language)}
+              title={t('diff.unifiedView', language)}
             >
               <AlignJustify className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => setViewMode('split')}
               className={`p-1.5 rounded transition-all ${viewMode === 'split' ? 'bg-background shadow-sm text-accent' : 'text-text-muted hover:text-text-primary'}`}
-              title={t('splitView', language)}
+              title={t('diff.splitView', language)}
             >
               <Columns className="w-3.5 h-3.5" />
             </button>
@@ -141,21 +141,21 @@ export const DiffPreview = memo(function DiffPreview({
             <button
               onClick={goToPrevChange}
               className="p-1.5 text-text-muted hover:text-text-primary hover:bg-surface-hover rounded-md transition-colors"
-              title={t('previousChange', language)}
+              title={t('diff.previousChange', language)}
             >
               <ChevronUp className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={goToNextChange}
               className="p-1.5 text-text-muted hover:text-text-primary hover:bg-surface-hover rounded-md transition-colors"
-              title={t('nextChange', language)}
+              title={t('diff.nextChange', language)}
             >
               <ChevronDown className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => setIgnoreWhitespace(!ignoreWhitespace)}
               className={`p-1.5 rounded transition-all ${ignoreWhitespace ? 'text-accent bg-accent/10' : 'text-text-muted hover:text-text-primary hover:bg-surface-hover'}`}
-              title={t('ignoreWhitespace', language)}
+              title={t('diff.ignoreWhitespace', language)}
             >
               <Settings2 className="w-3.5 h-3.5" />
             </button>
@@ -170,14 +170,14 @@ export const DiffPreview = memo(function DiffPreview({
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-text-muted hover:text-status-error hover:bg-status-error/10 rounded-md transition-colors"
               >
                 <X className="w-3.5 h-3.5" />
-                {t('rejectChanges', language)}
+                {t('diff.rejectChanges', language)}
               </button>
               <button
                 onClick={onAccept}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-status-success/10 text-status-success border border-status-success/20 hover:bg-status-success hover:text-white rounded-md transition-all"
               >
                 <Check className="w-3.5 h-3.5" />
-                {t('acceptChanges', language)}
+                {t('diff.acceptChanges', language)}
               </button>
             </>
           ) : (
@@ -185,7 +185,7 @@ export const DiffPreview = memo(function DiffPreview({
               onClick={handleClose}
               className="px-3 py-1.5 text-xs font-medium text-text-muted hover:text-text-primary hover:bg-surface-active rounded-md transition-colors"
             >
-              {t('closeMenu', language) || 'Close'}
+              {t('diff.closeMenu', language) || 'Close'}
             </button>
           )}
         </div>

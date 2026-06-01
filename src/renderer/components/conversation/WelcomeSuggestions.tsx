@@ -3,6 +3,7 @@ import { useStore } from '@store'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import type { WelcomeTitleConfig } from '@shared/protocols/scenario'
 import { Users, Sparkles } from 'lucide-react'
+import { t, type Language } from '@renderer/i18n'
 
 const DEFAULT_TITLE: WelcomeTitleConfig = {
   title: 'How can I help?',
@@ -64,7 +65,7 @@ export default function EmptyChatSuggestions() {
             `}
           >
             <Sparkles className="w-4 h-4" />
-            <span>{language === 'zh' ? '日常模式' : 'Daily'}</span>
+            <span>{t('app.daily', language as Language)}</span>
           </button>
 
           <button
@@ -73,13 +74,13 @@ export default function EmptyChatSuggestions() {
               relative z-10 flex items-center gap-2 px-6 py-2 rounded-full text-sm font-semibold
               transition-colors duration-300
               ${activeWorkTab === 'team'
-                ? 'text-orange-400'
-                : 'text-text-muted hover:text-orange-400/70'
+                ? 'text-accent'
+                : 'text-text-muted hover:text-accent/70'
               }
             `}
           >
             <Users className="w-4 h-4" />
-            <span>{language === 'zh' ? '团队模式' : 'Team'}</span>
+            <span>{t('app.team', language as Language)}</span>
           </button>
         </div>
       </div>

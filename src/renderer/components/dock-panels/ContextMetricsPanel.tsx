@@ -10,6 +10,7 @@ import { createManualHandoffSession } from '@intelligence/runtime/handoffSession
 import type { CompressionLevel } from '@intelligence/providerTypes'
 import type { TokenUsage } from '@intelligence/providerTypes'
 import { toast } from '@components/foundation/NotificationProvider'
+import { t, type Language } from '@renderer/i18n'
 
 interface ContextStatsContentProps {
   totalUsage: TokenUsage
@@ -50,11 +51,11 @@ export default function ContextStatsContent({
   const inputTokens = compressionStats?.inputTokens ?? 0
 
   const levelNames = {
-    0: language === 'zh' ? '完整' : 'Full',
-    1: language === 'zh' ? '截断' : 'Truncate',
-    2: language === 'zh' ? '滑窗' : 'Window',
-    3: language === 'zh' ? '深压' : 'Deep',
-    4: language === 'zh' ? '交接' : 'Handoff',
+    0: t('dock-panels.full', language as Language),
+    1: t('dock-panels.truncate', language as Language),
+    2: t('dock-panels.window', language as Language),
+    3: t('dock-panels.deep', language as Language),
+    4: t('dock-panels.handoff', language as Language),
   }
 
   const formatK = (n: number | undefined) => {
@@ -79,8 +80,8 @@ export default function ContextStatsContent({
 
     if (currentThread.messages.length === 0) {
       toast.error(
-        language === 'zh' ? '无法压缩' : 'Cannot compress',
-        language === 'zh' ? '当前对话还没有可压缩的内容' : 'There is no conversation content to compress yet.',
+        t('dock-panels.cannotcompress', language as Language),
+        t('dock-panels.thereisnoconversationcontent', language as Language),
       )
       return
     }
@@ -90,14 +91,14 @@ export default function ContextStatsContent({
     try {
       await createManualHandoffSession(currentThread.id)
       toast.success(
-        language === 'zh' ? '已切换到新线程' : 'Switched to new thread',
-        language === 'zh' ? '已基于最新上下文快照创建续接线程' : 'Created a new thread from the latest context snapshot.',
+        t('dock-panels.switchedtonewthread', language as Language),
+        t('dock-panels.createdanewthreadfrom', language as Language),
       )
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       toast.error(
-        language === 'zh' ? '压缩失败' : 'Compression failed',
-        message || (language === 'zh' ? '未能生成上下文续接快照' : 'Could not generate a handoff snapshot.'),
+        t('dock-panels.compressionfailed', language as Language),
+        message || (t('dock-panels.couldnotgenerateahandoff', language as Language)),
       )
     } finally {
       setIsCreatingHandoff(false)
@@ -112,7 +113,7 @@ export default function ContextStatsContent({
             <div className="flex items-center gap-2">
               <Layers className="w-4 h-4 text-text-muted" />
               <span className="text-xs font-medium text-text-secondary">
-                {language === 'zh' ? '上下文使用' : 'Context Usage'}
+                {t('dock-panels.contextusage', language as Language)}
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -142,7 +143,7 @@ export default function ContextStatsContent({
         <div className="grid grid-cols-3 gap-2 text-center">
           <div className="p-2 rounded-lg bg-surface/50 border border-text-primary/[0.05]">
             <div className="text-[10px] text-text-muted uppercase">
-              {language === 'zh' ? '当前输入' : 'TextField'}
+              {t('dock-panels.textfield', language as Language)}
             </div>
             <div className="text-sm font-mono font-bold text-text-primary">
               {formatK(inputTokens)}
@@ -150,7 +151,7 @@ export default function ContextStatsContent({
           </div>
           <div className="p-2 rounded-lg bg-surface/50 border border-text-primary/[0.05]">
             <div className="text-[10px] text-text-muted uppercase">
-              {language === 'zh' ? '上下文限制' : 'Limit'}
+              {t('dock-panels.limit', language as Language)}
             </div>
             <div className="text-sm font-mono font-bold text-text-secondary">
               {formatK(contextLimit)}
@@ -158,7 +159,7 @@ export default function ContextStatsContent({
           </div>
           <div className="p-2 rounded-lg bg-surface/50 border border-text-primary/[0.05]">
             <div className="text-[10px] text-text-muted uppercase">
-              {language === 'zh' ? '压缩等级' : 'Level'}
+              {t('dock-panels.level', language as Language)}
             </div>
             <div className={`text-sm font-mono font-bold ${LEVEL_COLORS[currentLevel]}`}>
               {levelNames[currentLevel]}
@@ -171,7 +172,7 @@ export default function ContextStatsContent({
         <div className="flex items-center gap-2 mb-3">
           <Coins className="w-4 h-4 text-accent" />
           <span className="text-xs font-medium text-text-secondary">
-            {language === 'zh' ? '费用统计' : 'Cost Stats'}
+            {t('dock-panels.coststats', language as Language)}
           </span>
           <span className="ml-auto text-lg font-bold font-mono text-accent">
             {formatK(totalUsage?.totalTokens ?? 0)}
@@ -180,20 +181,20 @@ export default function ContextStatsContent({
 
         <div className="grid grid-cols-2 gap-2">
           <StatRow
-            label={language === 'zh' ? '累计输入' : 'Total In'}
+            label={t('dock-panels.totalin', language as Language)}
             value={formatNumber(totalUsage?.promptTokens ?? 0)}
           />
           <StatRow
-            label={language === 'zh' ? '累计输出' : 'Total Out'}
+            label={t('dock-panels.totalout', language as Language)}
             value={formatNumber(totalUsage?.completionTokens ?? 0)}
           />
           <StatRow
-            label={language === 'zh' ? '缓存命中' : 'Cache Read'}
+            label={t('dock-panels.cacheread', language as Language)}
             value={formatNumber(totalUsage?.cachedInputTokens ?? 0)}
             valueClassName="text-emerald-300"
           />
           <StatRow
-            label={language === 'zh' ? '缓存写入' : 'Cache Write'}
+            label={t('dock-panels.cachewrite', language as Language)}
             value={formatNumber(totalUsage?.cacheWriteTokens ?? 0)}
             valueClassName="text-sky-300"
           />
@@ -204,14 +205,14 @@ export default function ContextStatsContent({
             <div className="mt-2 flex items-center justify-between text-[11px] text-text-muted">
               <span className="flex items-center gap-1">
                 <Zap className="w-3 h-3" />
-                {language === 'zh' ? '最近一次' : 'Last request'}
+                {t('dock-panels.lastrequest', language as Language)}
               </span>
               <span>
                 {formatK(lastUsage.promptTokens)} <ChevronRight className="w-3 h-3 inline" /> {formatK(lastUsage.completionTokens)}
               </span>
             </div>
             <div className="mt-1 flex items-center justify-between text-[11px] text-text-muted">
-              <span>{language === 'zh' ? '最近缓存' : 'Last cache'}</span>
+              <span>{t('dock-panels.lastcache', language as Language)}</span>
               <span>
                 {formatK(lastUsage.cachedInputTokens ?? 0)} <ChevronRight className="w-3 h-3 inline" /> {formatK(lastUsage.cacheWriteTokens ?? 0)}
               </span>
@@ -226,10 +227,10 @@ export default function ContextStatsContent({
             <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
             <div>
               <h4 className="text-xs font-bold text-red-400 mb-0.5">
-                {language === 'zh' ? '上下文已满' : 'Context Full'}
+                {t('dock-panels.contextfull', language as Language)}
               </h4>
               <p className="text-[11px] text-red-400/70">
-                {language === 'zh' ? '建议压缩后切换到新线程继续' : 'Compress and continue in a new thread.'}
+                {t('dock-panels.compressandcontinueina', language as Language)}
               </p>
             </div>
           </div>
@@ -238,7 +239,7 @@ export default function ContextStatsContent({
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2 mb-2">
             <div className="text-[10px] text-text-muted uppercase tracking-wider">
-              {language === 'zh' ? '压缩策略' : 'Compression Strategy'}
+              {t('dock-panels.compressionstrategy', language as Language)}
             </div>
             <button
               type="button"
@@ -252,7 +253,7 @@ export default function ContextStatsContent({
                 <ArrowRightCircle className="w-3 h-3" />
               )}
               <span>
-                {language === 'zh' ? '手动压缩并新开线程' : 'Compress to New Thread'}
+                {t('dock-panels.compresstonewthread', language as Language)}
               </span>
             </button>
           </div>
@@ -266,11 +267,11 @@ export default function ContextStatsContent({
                 L{level}
               </span>
               <span className="text-[11px] text-text-secondary flex-1">
-                {level === 0 && (language === 'zh' ? '保留全部消息' : 'Keep all messages')}
-                {level === 1 && (language === 'zh' ? '截断工具参数' : 'Truncate tool args')}
-                {level === 2 && (language === 'zh' ? '清理旧工具结果' : 'Clear old results')}
-                {level === 3 && (language === 'zh' ? '深度压缩 + 摘要' : 'Deep compress + summary')}
-                {level === 4 && (language === 'zh' ? '需要新会话' : 'New session needed')}
+                {level === 0 && (t('dock-panels.keepallmessages', language as Language))}
+                {level === 1 && (t('dock-panels.truncatetoolargs', language as Language))}
+                {level === 2 && (t('dock-panels.clearoldresults', language as Language))}
+                {level === 3 && (t('dock-panels.deepcompresssummary', language as Language))}
+                {level === 4 && (t('dock-panels.newsessionneeded', language as Language))}
               </span>
               {level === currentLevel && (
                 <span className={`w-1.5 h-1.5 rounded-full ${LEVEL_BG[level]}`} />
@@ -283,12 +284,12 @@ export default function ContextStatsContent({
           <div className="mt-4 p-3 rounded-xl bg-surface/30 border border-border/40">
             <div className="flex items-center justify-between gap-2 mb-1">
               <div className="text-[10px] text-accent font-bold uppercase tracking-wider">
-                {language === 'zh' ? '当前任务' : 'Current Task'}
+                {t('dock-panels.currenttask', language as Language)}
               </div>
               <span className="text-[10px] text-text-muted uppercase tracking-wider">
                 {latestSnapshot.source === 'handoff'
-                  ? (language === 'zh' ? '续接快照' : 'Handoff Snapshot')
-                  : (language === 'zh' ? '压缩快照' : 'Compression Snapshot')}
+                  ? (t('dock-panels.handoffsnapshot', language as Language))
+                  : (t('dock-panels.compressionsnapshot', language as Language))}
               </span>
             </div>
             <p className="text-[12px] text-text-secondary leading-relaxed line-clamp-3">
@@ -296,17 +297,17 @@ export default function ContextStatsContent({
             </p>
             {latestSnapshot.summary.pendingSteps[0] && (
               <p className="mt-2 text-[11px] text-text-muted leading-relaxed line-clamp-2">
-                {language === 'zh' ? '下一步：' : 'Next:'} {latestSnapshot.summary.pendingSteps[0]}
+                {t('dock-panels.next', language as Language)} {latestSnapshot.summary.pendingSteps[0]}
               </p>
             )}
           </div>
         ) : (
           <div className="mt-4 p-3 rounded-xl bg-surface/20 border border-border/30">
             <div className="text-[10px] text-text-muted uppercase tracking-wider mb-1">
-              {language === 'zh' ? '当前任务' : 'Current Task'}
+              {t('dock-panels.currenttask2', language as Language)}
             </div>
             <p className="text-[12px] text-text-muted leading-relaxed">
-              {language === 'zh' ? '暂无上下文快照' : 'No context snapshot yet'}
+              {t('dock-panels.nocontextsnapshotyet', language as Language)}
             </p>
           </div>
         )}

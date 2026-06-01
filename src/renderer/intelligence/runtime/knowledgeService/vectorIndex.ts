@@ -108,7 +108,6 @@ function kmeansPlusPlus(
       return bestCluster
     })
 
-    const newCentroids: number[][] = Array.from({ length: k }, () => [])
     const counts = new Array(k).fill(0)
     const sums = Array.from({ length: k }, () => new Array(vectors[0].length).fill(0))
 

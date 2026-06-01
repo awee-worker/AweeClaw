@@ -17,6 +17,7 @@ import { ImportDropZone } from './knowledge/KnowledgeImportDropZone'
 import { KnowledgeGraphView } from './knowledge/KnowledgeGraphView'
 import { HealthDashboard } from './knowledge/KnowledgeHealthDashboard'
 import { TipButton } from './knowledge/TipButton'
+import { t, type Language } from '@renderer/i18n'
 
 type RightView = 'import' | 'graph' | 'health' | 'add' | 'detail' | 'empty'
 
@@ -41,8 +42,6 @@ export function KnowledgeView() {
   const [enabledOnly, setEnabledOnly] = useState(false)
   const [dateRange, setDateRange] = useState<{ from: Date | null; to: Date | null }>({ from: null, to: null })
   const [rightView, setRightView] = useState<RightView>('empty')
-
-  const t = (zh: string, en: string) => (language === 'zh' ? zh : en)
 
   const switchView = useCallback((view: RightView) => {
     setRightView((prev) => (prev === view ? 'empty' : view))
@@ -243,7 +242,7 @@ export function KnowledgeView() {
       <div className="w-[380px] min-w-[320px] flex flex-col border-r border-border/30 bg-transparent flex-shrink-0">
         <div className="h-12 px-4 flex items-center justify-between gap-2 border-b border-border/50 flex-shrink-0">
           <span className="min-w-0 flex-shrink-0 whitespace-nowrap text-[13px] font-black text-text-secondary uppercase tracking-[0.2em] font-sans">
-            {t('知识库', 'Knowledge')}
+            {t('app.knowledge', language as Language)}
           </span>
           <div className="flex items-center gap-1.5">
             <span className="text-[12px] text-text-muted tabular-nums mr-1">
@@ -254,7 +253,7 @@ export function KnowledgeView() {
               onClick={() => switchView('import')}
               disabled={importing}
               active={rightView === 'import'}
-              tip={t('导入文件', 'Import Files')}
+              tip={t('app.importfiles', language as Language)}
               className="p-1"
             >
               <FileUp className="w-4 h-4" />
@@ -262,7 +261,7 @@ export function KnowledgeView() {
             <TipButton
               onClick={() => setShowUrlInput(!showUrlInput)}
               disabled={importing}
-              tip={t('导入 URL', 'Import URL')}
+              tip={t('app.importurl', language as Language)}
               className="p-1"
             >
               <Link className="w-4 h-4" />
@@ -270,7 +269,7 @@ export function KnowledgeView() {
             <TipButton
               onClick={() => switchView('add')}
               active={rightView === 'add'}
-              tip={t('添加知识', 'Add Knowledge')}
+              tip={t('app.addknowledge', language as Language)}
               className="p-1"
             >
               <Plus className="w-4 h-4" />
@@ -278,7 +277,7 @@ export function KnowledgeView() {
             <TipButton
               onClick={() => switchView('graph')}
               active={rightView === 'graph'}
-              tip={t('知识图谱', 'Knowledge Graph')}
+              tip={t('app.knowledgegraph', language as Language)}
               className="p-1"
             >
               <Network className="w-4 h-4" />
@@ -286,7 +285,7 @@ export function KnowledgeView() {
             <TipButton
               onClick={() => switchView('health')}
               active={rightView === 'health'}
-              tip={t('健康度', 'Health')}
+              tip={t('app.health', language as Language)}
               className="p-1"
             >
               <Activity className="w-4 h-4" />
@@ -319,7 +318,7 @@ export function KnowledgeView() {
               <input
                 value={importUrl}
                 onChange={(e) => setImportUrl(e.target.value)}
-                placeholder={t('输入 URL...', 'Enter URL...')}
+                placeholder={t('app.enterurl', language as Language)}
                 className="flex-1 bg-transparent text-[13px] text-text-primary outline-none placeholder:text-text-muted"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleUrlImport()
@@ -330,7 +329,7 @@ export function KnowledgeView() {
                 disabled={!importUrl.trim() || importing}
                 className="text-[12px] text-accent hover:text-accent/80 disabled:opacity-40 px-1"
               >
-                {t('导入', 'Import')}
+                {t('app.import', language as Language)}
               </button>
             </div>
           )}
@@ -340,7 +339,7 @@ export function KnowledgeView() {
           {loading ? (
             <div className="flex flex-col items-center justify-center py-16 text-text-muted">
               <BookOpen className="w-10 h-10 mb-3 opacity-30 animate-pulse" />
-              <p className="text-[13px]">{t('加载中...', 'Loading...')}</p>
+              <p className="text-[13px]">{t('app.loading', language as Language)}</p>
             </div>
           ) : filteredEntries.length === 0 ? (
             <EmptyList hasEntries={entries.length > 0} language={language} />
@@ -349,20 +348,20 @@ export function KnowledgeView() {
               {!batchMode && filteredEntries.length > 1 && (
                 <div className="px-3 py-1.5 flex items-center justify-between">
                   <span className="text-[11px] text-text-muted">
-                    {t(`${filteredEntries.length} 条结果`, `${filteredEntries.length} results`)}
+                    {t('app.results', language as Language, { length: filteredEntries.length })}
                   </span>
                   <button
                     onClick={() => setBatchMode(true)}
                     className="text-[11px] text-text-muted hover:text-accent transition-colors"
                   >
-                    {t('批量操作', 'Batch')}
+                    {t('app.batch', language as Language)}
                   </button>
                 </div>
               )}
               {starredEntries.length > 0 && (
                 <div className="mb-2">
                   <div className="px-3 py-1.5 text-[11px] font-semibold text-text-muted uppercase tracking-wider">
-                    {t('收藏', 'Starred')}
+                    {t('app.starred', language as Language)}
                   </div>
                   {starredEntries.map((entry) => (
                     <EntryCard
@@ -386,7 +385,7 @@ export function KnowledgeView() {
                 <div>
                   {starredEntries.length > 0 && (
                     <div className="px-3 py-1.5 text-[11px] font-semibold text-text-muted uppercase tracking-wider">
-                      {t('全部', 'All')}
+                      {t('app.all', language as Language)}
                     </div>
                   )}
                   {normalEntries.map((entry) => (

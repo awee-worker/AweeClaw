@@ -10,6 +10,7 @@ import { useShallow } from 'zustand/react/shallow'
 import type { LspDiagnostic } from '@protocols'
 import { useDiagnosticsStore } from '@services/diagnosticRepository'
 import { getFileName } from '@shared/toolkit/pathHelper'
+import { t, type Language } from '@renderer/i18n'
 
 export function ProblemsView() {
   const { openFile, setActiveFile, language } = useStore(useShallow(s => ({ openFile: s.openFile, setActiveFile: s.setActiveFile, language: s.language })))
@@ -81,7 +82,7 @@ export function ProblemsView() {
     <div className="flex flex-col h-full bg-transparent">
       <div className="h-10 px-3 flex items-center justify-between border-b border-border bg-transparent sticky top-0 z-10">
         <span className="text-[12px] font-bold text-text-muted uppercase tracking-wider opacity-80">
-          {language === 'zh' ? '问题' : 'Problems'}
+          {t('explorer.problems', language as Language)}
         </span>
         <div className="flex items-center gap-2 text-[11px]">
           {errorCount > 0 && (
@@ -108,16 +109,10 @@ export function ProblemsView() {
             }`}
           >
             {f === 'all'
-              ? language === 'zh'
-                ? '全部'
-                : 'All'
+              ? t('explorer.all', language as Language)
               : f === 'errors'
-                ? language === 'zh'
-                  ? '错误'
-                  : 'Errors'
-                : language === 'zh'
-                  ? '警告'
-                  : 'Warnings'}
+                ? t('explorer.errors', language as Language)
+                : t('explorer.warnings', language as Language)}
           </button>
         ))}
       </div>
@@ -129,10 +124,10 @@ export function ProblemsView() {
               <CheckCircle2 className="w-6 h-6 text-status-success" />
             </div>
             <p className="text-xs font-medium text-text-primary">
-              {language === 'zh' ? '未发现问题' : 'No problems detected'}
+              {t('explorer.noproblemsdetected', language as Language)}
             </p>
             <p className="text-[11px] text-text-muted mt-1 opacity-60">
-              {language === 'zh' ? '代码看起来很棒！' : 'Your code looks great!'}
+              {t('explorer.yourcodelooksgreat', language as Language)}
             </p>
           </div>
         ) : (
@@ -166,7 +161,7 @@ export function ProblemsView() {
                         <div className="flex-1 min-w-0">
                           <p className="text-[12px] text-text-primary truncate font-medium">{diag.message}</p>
                           <p className="text-[11px] text-text-muted opacity-70 mt-0.5 font-mono">
-                            {language === 'zh' ? 'Ln' : 'Ln'} {diag.range.start.line + 1}
+                            {t('explorer.ln', language as Language)} {diag.range.start.line + 1}
                             {diag.source && ` • ${diag.source}`}
                             {diag.code && ` (${diag.code})`}
                           </p>

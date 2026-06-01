@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import { Trash2, CheckCircle2, XCircle, AlertTriangle, Info, CheckCheck, Copy, Check } from 'lucide-react'
 import { useInlineToast } from '@components/foundation/InlineNotification'
+import { t, type Language } from '@renderer/i18n'
 
 interface NotificationCenterContentProps {
   language?: 'en' | 'zh'
@@ -9,8 +10,6 @@ interface NotificationCenterContentProps {
 export default function NotificationCenterContent({ language = 'zh' }: NotificationCenterContentProps) {
   const { toasts, removeToast } = useInlineToast()
   const [copiedId, setCopiedId] = useState<string | null>(null)
-
-  const t = (zh: string, en: string) => (language === 'zh' ? zh : en)
 
   const getIcon = (type: string) => {
     switch (type) {
@@ -25,9 +24,9 @@ export default function NotificationCenterContent({ language = 'zh' }: Notificat
   const formatTime = (ts: number) => {
     const diff = Date.now() - ts
     const mins = Math.floor(diff / 60000)
-    if (mins < 1) return t('刚刚', 'Just now')
-    if (mins < 60) return `${mins}${t('分钟前', 'm ago')}`
-    return `${Math.floor(mins / 60)}${t('小时前', 'h ago')}`
+    if (mins < 1) return t('app.justnow', language as Language)
+    if (mins < 60) return `${mins}${t('app.mago', language as Language)}`
+    return `${Math.floor(mins / 60)}${t('app.hago', language as Language)}`
   }
 
   const handleCopy = useCallback((id: string, message: string) => {
@@ -42,7 +41,7 @@ export default function NotificationCenterContent({ language = 'zh' }: Notificat
         {toasts.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-text-muted gap-3 opacity-60">
             <CheckCheck className="w-8 h-8 opacity-40" />
-            <span className="text-[12px] font-medium tracking-wide">{t('暂无消息', 'No records')}</span>
+            <span className="text-[12px] font-medium tracking-wide">{t('app.norecords', language as Language)}</span>
           </div>
         ) : (
           <div className="space-y-1.5">
@@ -75,7 +74,7 @@ export default function NotificationCenterContent({ language = 'zh' }: Notificat
                   <button
                     onClick={() => handleCopy(toast.id, toast.message)}
                     className="p-1.5 rounded-md text-text-muted/85 hover:text-text-primary hover:bg-white/5 transition-all"
-                    title={copiedId === toast.id ? t('已复制', 'Copied') : t('复制', 'Copy')}
+                    title={copiedId === toast.id ? t('app.copied', language as Language) : t('app.copy', language as Language)}
                   >
                     {copiedId === toast.id
                       ? <Check className="w-3.5 h-3.5 text-green-400" />
@@ -84,7 +83,7 @@ export default function NotificationCenterContent({ language = 'zh' }: Notificat
                   <button
                     onClick={() => removeToast(toast.id)}
                     className="p-1.5 rounded-md text-text-muted/85 hover:text-red-400 hover:bg-red-400/10 transition-all"
-                    title={t('删除', 'Delete')}
+                    title={t('app.delete', language as Language)}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -108,7 +107,7 @@ export function NotificationClearButton({ language = 'zh' }: { language?: 'en' |
     <button
       onClick={() => toasts.forEach(t => removeToast(t.id))}
       className="p-1 rounded-md text-text-muted hover:text-red-400 hover:bg-red-400/10 transition-colors"
-      title={t('清空', 'Clear')}
+      title={t('app.clear', language as Language)}
     >
       <Trash2 className="w-3.5 h-3.5" />
     </button>

@@ -24,7 +24,7 @@ import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import type { FileItem } from '@protocols'
 import { BRAND } from '@shared/brand'
-import { t } from '@renderer/i18n'
+import {t, type Language} from '@renderer/i18n'
 import { getDirPath, joinPath, pathEquals, normalizePath } from '@shared/toolkit/pathHelper'
 import { formatShortcut, keybindingService } from '@services/keybindingAdapter'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
@@ -549,8 +549,8 @@ export const VirtualFileTree = memo(function VirtualFileTree({
       copiedAt: Date.now(),
     })
     toast.success(node.item.isDirectory
-      ? (language === 'zh' ? '目录已复制' : 'Folder copied')
-      : (language === 'zh' ? '文件已复制' : 'File copied'))
+      ? (t('file-tree.foldercopied', language as Language))
+      : (t('file-tree.filecopied', language as Language)))
   }, [language])
 
   const getCopyDestinationPath = useCallback(async (targetDirectoryPath: string, item: ExplorerClipboardItem) => {
@@ -580,14 +580,14 @@ export const VirtualFileTree = memo(function VirtualFileTree({
     if (!normalizedSourcePath || !normalizedTargetDirectoryPath) return
 
     if (item.isDirectory && normalizedTargetDirectoryPath.startsWith(`${normalizedSourcePath}/`)) {
-      toast.error(language === 'zh' ? '不能将目录粘贴到自身内部' : 'Cannot paste a folder inside itself')
+      toast.error(t('file-tree.cannotpasteafolderinside', language as Language))
       return
     }
 
     const destinationPath = await getCopyDestinationPath(targetDirectoryPath, item)
     const success = await api.file.copy(item.path, destinationPath)
     if (!success) {
-      toast.error(language === 'zh' ? '粘贴失败' : 'Paste failed')
+      toast.error(t('file-tree.pastefailed', language as Language))
       return
     }
 
@@ -597,8 +597,8 @@ export const VirtualFileTree = memo(function VirtualFileTree({
       refreshRoot: pathEquals(targetDirectoryPath, workspacePath || ''),
     })
     toast.success(item.isDirectory
-      ? (language === 'zh' ? '目录已粘贴' : 'Folder pasted')
-      : (language === 'zh' ? '文件已粘贴' : 'File pasted'))
+      ? (t('file-tree.folderpasted', language as Language))
+      : (t('file-tree.filepasted', language as Language)))
   }, [getCopyDestinationPath, language, onRefresh, workspacePath])
 
   const handlePasteForNode = useCallback((node: FlattenedNode) => {
@@ -746,7 +746,7 @@ export const VirtualFileTree = memo(function VirtualFileTree({
   const handleImportIntoFolder = useCallback(async (node: FlattenedNode) => {
     const targetDir = node.item.isDirectory ? node.item.path : getDirPath(node.item.path)
     const selectedPaths = await api.file.selectForImport({
-      title: language === 'zh' ? '导入文件或文件夹' : 'Import Files or Folders',
+      title: t('file-tree.importfilesorfolders', language as Language),
       allowFiles: true,
       allowDirs: true,
       multiSelection: true,
@@ -755,7 +755,7 @@ export const VirtualFileTree = memo(function VirtualFileTree({
 
     const result = await api.file.importIntoWorkspace(selectedPaths, targetDir)
     if (result.success) {
-      toast.success(language === 'zh' ? `成功导入 ${selectedPaths.length} 项` : `Successfully imported ${selectedPaths.length} item(s)`)
+      toast.success(t('file-tree.successfullyimporteditems', language as Language, { count: selectedPaths.length }))
       if (node.item.isDirectory) {
         expandFolder(targetDir)
       }
@@ -765,7 +765,7 @@ export const VirtualFileTree = memo(function VirtualFileTree({
       })
     } else {
       const failedCount = result.results?.filter(r => !r.success).length || selectedPaths.length
-      toast.error(language === 'zh' ? `导入失败 ${failedCount} 项` : `Failed to import ${failedCount} item(s)`)
+      toast.error(t('file-tree.failedtoimportitems', language as Language, { failedCount }))
       if (result.results?.some(r => r.success)) {
         onRefresh({
           affectedPaths: [targetDir],
@@ -778,16 +778,16 @@ export const VirtualFileTree = memo(function VirtualFileTree({
   const handleExportFromNode = useCallback(async (node: FlattenedNode) => {
     const sourcePath = node.item.path
     const targetDir = await api.file.selectForExport({
-      title: language === 'zh' ? '导出到...' : 'Export to...',
+      title: t('file-tree.exportto', language as Language),
       defaultPath: getDirPath(sourcePath),
     })
     if (!targetDir) return
 
     const result = await api.file.exportFromWorkspace(sourcePath, targetDir)
     if (result.success) {
-      toast.success(language === 'zh' ? `成功导出到 ${result.target}` : `Successfully exported to ${result.target}`)
+      toast.success(t('file-tree.successfullyexportedto', language as Language, { target: result.target }))
     } else {
-      toast.error(language === 'zh' ? `导出失败: ${result.error}` : `Export failed: ${result.error}`)
+      toast.error(t('file-tree.exportfailed', language as Language, { error: result.error }))
     }
   }, [language])
 
@@ -795,9 +795,9 @@ export const VirtualFileTree = memo(function VirtualFileTree({
     const result = await api.file.shareItem([node.item.path])
     if (!result.success) {
       if (result.error === 'Share is only supported on macOS') {
-        toast.warning(language === 'zh' ? '分享功能仅支持 macOS 系统' : 'Share is only supported on macOS')
+        toast.warning(t('file-tree.shareisonlysupportedon', language as Language))
       } else {
-        toast.error(language === 'zh' ? `分享失败: ${result.error}` : `Share failed: ${result.error}`)
+        toast.error(t('file-tree.sharefailed', language as Language, { error: result.error }))
       }
     }
   }, [language])

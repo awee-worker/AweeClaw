@@ -41,6 +41,7 @@ import type { McpServerStatus } from '@shared/protocols/toolProtocolBridge'
 import { isRemoteConfig, isLocalConfig } from '@shared/protocols/toolProtocolBridge'
 import { MCP_PRESETS } from '@shared/configuration/toolProtocolPresets'
 import McpServerConnectDialog, { type McpServerFormData } from './McpServerConnectDialog'
+import { t, type Language } from '@renderer/i18n'
 
 interface McpSettingsProps {
   language: 'en' | 'zh'
@@ -210,12 +211,12 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
 
   const getStatusText = (status: McpServerStatus) => {
     const texts: Record<McpServerStatus, string> = {
-      connected: language === 'zh' ? '已连接' : 'Connected',
-      connecting: language === 'zh' ? '连接中' : 'Connecting',
-      error: language === 'zh' ? '错误' : 'Error',
-      disconnected: language === 'zh' ? '未连接' : 'Disconnected',
-      needs_auth: language === 'zh' ? '需要认证' : 'Auth Required',
-      needs_registration: language === 'zh' ? '需要注册' : 'Registration Required',
+      connected: t('mcp.statusConnected', language as Language),
+      connecting: t('mcp.statusConnecting', language as Language),
+      error: t('mcp.statusError', language as Language),
+      disconnected: t('mcp.statusDisconnected', language as Language),
+      needs_auth: t('mcp.statusNeedsAuth', language as Language),
+      needs_registration: t('mcp.statusNeedsRegistration', language as Language),
     }
     return texts[status]
   }
@@ -246,8 +247,7 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
   const errorCount = mcpServers.filter(s => s.status === 'error').length
   const disconnectedCount = mcpServers.filter(s => s.status === 'disconnected').length
 
-  const t = (zh: string, en: string) => language === 'zh' ? zh : en
-
+  
   const activeMenuServer = activeMenu ? mcpServers.find(s => s.id === activeMenu) : null
 
   return (
@@ -263,11 +263,11 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
                 <Server className="w-4 h-4" />
               </div>
               <div>
-                <h5 className="text-sm font-semibold text-text-primary">{t('MCP 服务器', 'MCP Servers')}</h5>
+                <h5 className="text-sm font-semibold text-text-primary">{t('mcp.servers', language as Language)}</h5>
                 <p className="text-[11px] text-text-muted mt-0.5">
-                  {connectedCount}/{mcpServers.length} {t('已连接', 'connected')}
+                  {connectedCount}/{mcpServers.length} {t('mcp.connected', language as Language)}
                   {errorCount > 0 && (
-                    <span className="ml-2 text-red-400">{errorCount} {t('错误', 'error')}</span>
+                    <span className="ml-2 text-red-400">{errorCount} {t('mcp.error', language as Language)}</span>
                   )}
                 </p>
               </div>
@@ -277,7 +277,7 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
                 onClick={handleReloadConfig}
                 disabled={actionLoading === 'reload'}
                 className="p-1.5 text-text-muted hover:text-accent transition-colors rounded-md hover:bg-accent/10 disabled:opacity-50"
-                title={t('刷新配置', 'Refresh config')}
+                title={t('mcp.refreshConfig', language as Language)}
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${actionLoading === 'reload' ? 'animate-spin' : ''}`} />
               </button>
@@ -288,7 +288,7 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
                 className="text-xs"
               >
                 <Plus className="w-3.5 h-3.5 mr-1" />
-                {t('添加', 'Add')}
+                {t('mcp.add', language as Language)}
               </ActionButton>
             </div>
           </div>
@@ -301,7 +301,7 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
                 type="text"
                 value={serverSearch}
                 onChange={(e) => setServerSearch(e.target.value)}
-                placeholder={t('搜索服务器名称或命令...', 'Search servers by name or command...')}
+                placeholder={t('mcp.searchServers', language as Language)}
                 className="w-full pl-8 pr-3 py-1.5 text-xs bg-background/40 border border-border/40 rounded-lg text-text-primary placeholder:text-text-muted/40 focus:outline-none focus:border-accent/40 focus:ring-1 focus:ring-accent/20 transition-all"
               />
               {serverSearch && (
@@ -310,10 +310,10 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
             </div>
             <div className="flex items-center rounded-lg border border-border/50 bg-background/30 overflow-hidden">
               {([
-                ['all', t('全部', 'All'), mcpServers.length],
-                ['connected', t('已连接', 'On'), connectedCount],
-                ['disconnected', t('未连接', 'Off'), disconnectedCount],
-                ['error', t('错误', 'Err'), errorCount],
+                ['all', t('mcp.filterAll', language as Language), mcpServers.length],
+                ['connected', t('mcp.filterConnected', language as Language), connectedCount],
+                ['disconnected', t('mcp.filterDisconnected', language as Language), disconnectedCount],
+                ['error', t('mcp.filterError', language as Language), errorCount],
               ] as [string, string, number][]).filter(([, , count]) => count > 0 || filterStatus === 'all').map(([val, label, count]) => (
                 <button
                   key={val}
@@ -333,10 +333,7 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
           {/* 说明 */}
           <div className="px-5 pb-3">
             <p className="text-[11px] text-text-muted/70">
-              {t(
-                'MCP (Model Context Protocol) 服务器可扩展 AI 助手的能力，如搜索、数据库、API 调用等。',
-                'MCP servers extend AI capabilities such as search, databases, API calls, and more.'
-              )}
+              {t('app.mcpserversextendai', language as Language)}
             </p>
           </div>
 
@@ -345,7 +342,7 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
             <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-background/20 border border-border/30">
               <div className="flex items-center gap-2">
                 <Zap className="w-3.5 h-3.5 text-accent/60" />
-                <span className="text-[11px] text-text-secondary">{t('启动时自动连接', 'Auto-connect on startup')}</span>
+                <span className="text-[11px] text-text-secondary">{t('mcp.autoConnect', language as Language)}</span>
               </div>
               <ToggleSwitch
                 checked={mcpConfig.autoConnect ?? true}
@@ -370,13 +367,13 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
             ) : mcpServers.length === 0 ? (
               <div className="h-40 flex flex-col items-center justify-center text-text-muted border border-dashed border-border/50 rounded-xl gap-2">
                 <Server className="w-10 h-10 opacity-30" />
-                <span className="text-xs">{t('暂无 MCP 服务器，点击上方添加按钮配置', 'No MCP servers. Click "Add" above to configure one.')}</span>
+                <span className="text-xs">{t('mcp.noServers', language as Language)}</span>
               </div>
             ) : filteredServers.length === 0 ? (
               <div className="h-24 flex items-center justify-center text-text-muted text-xs">
                 {serverSearch
-                  ? t('未找到匹配的服务器', 'No servers match your search')
-                  : t('当前筛选条件下无服务器', 'No servers match the current filter')}
+                  ? t('mcp.noMatchingServers', language as Language)
+                  : t('mcp.noFilterMatch', language as Language)}
               </div>
             ) : (
               <div className="space-y-2">
@@ -422,7 +419,7 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
                                 ? 'bg-green-500/15 text-green-400'
                                 : 'bg-purple-500/15 text-purple-400'
                               }`}>
-                                {server.config.source === 'workspace' ? t('工作区', 'Workspace') : t('全局', 'Global')}
+                                {server.config.source === 'workspace' ? t('mcp.workspace', language as Language) : t('mcp.global', language as Language)}
                               </span>
                             )}
                             {isRemote && (
@@ -434,7 +431,7 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
                               </span>
                             )}
                             {server.config.disabled && (
-                              <span className="text-[10px] px-1.5 py-px rounded bg-white/5 text-text-muted/50">{t('已禁用', 'Disabled')}</span>
+                              <span className="text-[10px] px-1.5 py-px rounded bg-white/5 text-text-muted/50">{t('mcp.disabled', language as Language)}</span>
                             )}
                           </div>
                           <p className="text-[11px] text-text-muted/60 mt-0.5 truncate font-mono">
@@ -457,12 +454,12 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
                         {isOAuthPending && (
                           <div className="flex items-center gap-1.5 flex-shrink-0">
                             <Loader2 className="w-3.5 h-3.5 animate-spin text-orange-400" />
-                            <span className="text-[11px] text-orange-400">{t('授权中...', 'Auth...')}</span>
+                            <span className="text-[11px] text-orange-400">{t('mcp.authInProgress', language as Language)}</span>
                             <button
                               onClick={() => handleCancelOAuth(server.id)}
                               className="text-[11px] text-text-muted hover:text-red-400 ml-1"
                             >
-                              {t('取消', 'Cancel')}
+                              {t('mcp.cancelOAuth', language as Language)}
                             </button>
                           </div>
                         )}
@@ -475,7 +472,7 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
                                 onClick={() => handleStartOAuth(server.id)}
                                 disabled={isLoading}
                                 className="p-1 text-orange-400 hover:bg-orange-500/10 rounded-md transition-colors"
-                                title={t('认证', 'Auth')}
+                                title={t('mcp.auth', language as Language)}
                               >
                                 <Key className="w-4 h-4" />
                               </button>
@@ -485,7 +482,7 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
                                 onClick={() => handleDisconnectServer(server.id)}
                                 disabled={isLoading}
                                 className="p-1 text-text-muted/50 hover:text-text-secondary hover:bg-surface-hover/50 rounded-md transition-colors"
-                                title={t('断开', 'Disconnect')}
+                                title={t('mcp.disconnect', language as Language)}
                               >
                                 <PowerOff className="w-4 h-4" />
                               </button>
@@ -495,7 +492,7 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
                                 onClick={() => handleConnectServer(server.id)}
                                 disabled={isLoading}
                                 className="p-1 text-green-400/70 hover:text-green-400 hover:bg-green-500/10 rounded-md transition-colors"
-                                title={t('连接', 'Connect')}
+                                title={t('mcp.connect', language as Language)}
                               >
                                 <Power className="w-4 h-4" />
                               </button>
@@ -511,7 +508,7 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
                           onClick={() => handleToggleServer(server.id, !server.config.disabled)}
                           disabled={isLoading}
                           className={`flex-shrink-0 transition-colors ${server.config.disabled ? 'text-text-muted/40' : 'text-accent'}`}
-                          title={server.config.disabled ? t('启用', 'Enable') : t('禁用', 'Disable')}
+                          title={server.config.disabled ? t('mcp.enable', language as Language) : t('mcp.disable', language as Language)}
                         >
                           {server.config.disabled ? (
                             <ToggleLeft className="w-5 h-5" />
@@ -563,7 +560,7 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
                             {isOAuthPending && (
                               <div className="flex items-start gap-2 p-2.5 bg-orange-500/10 rounded-lg border border-orange-500/20 text-orange-300 text-[11px]">
                                 <Loader2 className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 animate-spin" />
-                                <span>{t('请在浏览器中完成授权，完成后将自动连接。', 'Complete authorization in browser. Will connect automatically.')}</span>
+                                <span>{t('mcp.authBrowserHint', language as Language)}</span>
                               </div>
                             )}
 
@@ -577,15 +574,15 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
                                   : 'bg-white/5 text-text-muted border-border/50'
                               }`}>
                                 <Key className="w-3.5 h-3.5" />
-                                {server.authStatus === 'authenticated' && t('已认证', 'Authenticated')}
-                                {server.authStatus === 'expired' && t('认证已过期', 'Auth Expired')}
-                                {server.authStatus === 'not_authenticated' && t('未认证', 'Not Authenticated')}
+                                {server.authStatus === 'authenticated' && t('mcp.authenticated', language as Language)}
+                                {server.authStatus === 'expired' && t('mcp.authExpired', language as Language)}
+                                {server.authStatus === 'not_authenticated' && t('mcp.notAuthenticated', language as Language)}
                               </div>
                             )}
 
                             {/* 配置详情 */}
                             <div>
-                              <span className="text-[10px] text-text-muted/60 uppercase tracking-wider">{t('配置详情', 'Configuration')}</span>
+                              <span className="text-[10px] text-text-muted/60 uppercase tracking-wider">{t('mcp.configDetails', language as Language)}</span>
                               <div className="text-[11px] text-text-secondary space-y-1 font-mono bg-black/20 p-3 rounded-lg border border-border/30 mt-1">
                                 <div className="flex"><span className="text-text-muted/60 w-16 shrink-0">id:</span> <span className="select-all">{server.id}</span></div>
                                 <div className="flex"><span className="text-text-muted/60 w-16 shrink-0">type:</span> <span>{server.config.type}</span></div>
@@ -624,7 +621,7 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
                               <div>
                                 <span className="text-[10px] text-text-muted/60 uppercase tracking-wider flex items-center gap-1">
                                   <Wrench className="w-3 h-3" />
-                                  {t('工具', 'Tools')} ({server.tools.length})
+                                  {t('mcp.tools', language as Language)} ({server.tools.length})
                                 </span>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mt-1">
                                   {server.tools.map((tool) => (
@@ -648,7 +645,7 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
                               <div>
                                 <span className="text-[10px] text-text-muted/60 uppercase tracking-wider flex items-center gap-1">
                                   <FileText className="w-3 h-3" />
-                                  {t('资源', 'Resources')} ({server.resources.length})
+                                  {t('mcp.resources', language as Language)} ({server.resources.length})
                                 </span>
                                 <div className="space-y-1 mt-1">
                                   {server.resources.map((resource) => (
@@ -666,7 +663,7 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
                               <div>
                                 <span className="text-[10px] text-text-muted/60 uppercase tracking-wider flex items-center gap-1">
                                   <MessageSquare className="w-3 h-3" />
-                                  {t('提示模板', 'Prompts')} ({server.prompts.length})
+                                  {t('mcp.prompts', language as Language)} ({server.prompts.length})
                                 </span>
                                 <div className="space-y-1 mt-1">
                                   {server.prompts.map((prompt) => (
@@ -684,7 +681,7 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
                             {/* 自动批准 */}
                             {server.config.autoApprove && server.config.autoApprove.length > 0 && (
                               <div>
-                                <span className="text-[10px] text-text-muted/60 uppercase tracking-wider">{t('自动批准', 'Auto-approved')}</span>
+                                <span className="text-[10px] text-text-muted/60 uppercase tracking-wider">{t('mcp.autoApproved', language as Language)}</span>
                                 <div className="flex flex-wrap gap-1 mt-1">
                                   {server.config.autoApprove.map((tool) => (
                                     <span key={tool} className="text-[10px] px-1.5 py-0.5 bg-accent/15 text-accent rounded">{tool}</span>
@@ -703,7 +700,7 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
                                 <div>
                                   <span className="text-[10px] text-text-muted/60 uppercase tracking-wider flex items-center gap-1">
                                     <Lightbulb className="w-3 h-3" />
-                                    {t('使用示例', 'Examples')}
+                                    {t('mcp.examples', language as Language)}
                                   </span>
                                   <div className="space-y-1 mt-1">
                                     {usageExamples.map((example) => (
@@ -740,8 +737,8 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
                 <Settings className="w-4 h-4" />
               </div>
               <div className="text-left">
-                <h5 className="text-sm font-semibold text-text-primary">{t('配置文件位置', 'Configuration Files')}</h5>
-                <p className="text-[11px] text-text-muted mt-0.5">{t('点击查看和编辑 MCP 配置文件', 'View and edit MCP configuration files')}</p>
+                <h5 className="text-sm font-semibold text-text-primary">{t('mcp.configFiles', language as Language)}</h5>
+                <p className="text-[11px] text-text-muted mt-0.5">{t('mcp.configFilesDesc', language as Language)}</p>
               </div>
             </div>
             <div className={`p-1.5 rounded-full bg-surface-hover transition-transform duration-300 ${expandedServer === '__config__' ? 'rotate-180' : ''}`}>
@@ -758,7 +755,7 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
                 >
                   <div className="flex items-center gap-2">
                     <FolderOpen className="w-3.5 h-3.5 text-text-muted" />
-                    <span className="text-xs text-text-secondary">{t('用户配置', 'User Config')}</span>
+                    <span className="text-xs text-text-secondary">{t('mcp.userConfig', language as Language)}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] text-text-muted/60 font-mono truncate max-w-[250px]">{configPaths.user}</span>
@@ -773,7 +770,7 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
                   >
                     <div className="flex items-center gap-2">
                       <FolderOpen className="w-3.5 h-3.5 text-text-muted" />
-                      <span className="text-xs text-text-secondary">{t(`工作区配置 ${index + 1}`, `Workspace Config ${index + 1}`)}</span>
+                      <span className="text-xs text-text-secondary">{t('app.workspaceconfig', language as Language, { p0: index + 1 })}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] text-text-muted/60 font-mono truncate max-w-[250px]">{path}</span>
@@ -789,27 +786,27 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
 
       {/* 使用提示 */}
       <div className="p-4 rounded-xl bg-accent/5 border border-accent/10 text-xs text-text-muted">
-        <p className="font-medium text-accent/80 mb-2">{t('使用提示', 'Tips')}</p>
+        <p className="font-medium text-accent/80 mb-2">{t('mcp.tips', language as Language)}</p>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div className="flex items-start gap-2">
             <Server className="w-3.5 h-3.5 text-accent/60 mt-0.5 flex-shrink-0" />
             <div>
-              <span className="text-text-secondary font-medium">{t('本地服务器', 'Local Server')}</span>
-              <p className="text-[11px] text-text-muted/70 mt-0.5">{t('通过 stdio 运行本地进程', 'Run local process via stdio')}</p>
+              <span className="text-text-secondary font-medium">{t('mcp.localServer', language as Language)}</span>
+              <p className="text-[11px] text-text-muted/70 mt-0.5">{t('mcp.localServerDesc', language as Language)}</p>
             </div>
           </div>
           <div className="flex items-start gap-2">
             <Globe className="w-3.5 h-3.5 text-accent/60 mt-0.5 flex-shrink-0" />
             <div>
-              <span className="text-text-secondary font-medium">{t('远程服务器', 'Remote Server')}</span>
-              <p className="text-[11px] text-text-muted/70 mt-0.5">{t('通过 SSE/Streamable HTTP 连接', 'Connect via SSE/HTTP')}</p>
+              <span className="text-text-secondary font-medium">{t('mcp.remoteServer', language as Language)}</span>
+              <p className="text-[11px] text-text-muted/70 mt-0.5">{t('mcp.remoteServerDesc', language as Language)}</p>
             </div>
           </div>
           <div className="flex items-start gap-2">
             <Wrench className="w-3.5 h-3.5 text-accent/60 mt-0.5 flex-shrink-0" />
             <div>
-              <span className="text-text-secondary font-medium">{t('工具扩展', 'Tool Extension')}</span>
-              <p className="text-[11px] text-text-muted/70 mt-0.5">{t('为 AI 提供搜索、数据库等能力', 'Give AI search, DB capabilities')}</p>
+              <span className="text-text-secondary font-medium">{t('mcp.toolExtension', language as Language)}</span>
+              <p className="text-[11px] text-text-muted/70 mt-0.5">{t('mcp.toolExtensionDesc', language as Language)}</p>
             </div>
           </div>
         </div>
@@ -834,7 +831,7 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-text-secondary hover:bg-accent/10 hover:text-accent transition-colors"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
-                {t('刷新能力', 'Refresh')}
+                {t('mcp.refreshCapabilities', language as Language)}
               </button>
             )}
             <button
@@ -846,7 +843,7 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
               className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-text-secondary hover:bg-accent/10 hover:text-accent transition-colors"
             >
               <Info className="w-3.5 h-3.5" />
-              {t('详情', 'Details')}
+              {t('mcp.details', language as Language)}
             </button>
             <div className="border-t border-border/30 my-1"></div>
             <button
@@ -864,7 +861,7 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
               }`}
             >
               <Trash2 className="w-3.5 h-3.5" />
-              {deleteConfirm === server.id ? t('确认删除', 'Confirm') : t('删除', 'Delete')}
+              {deleteConfirm === server.id ? t('mcp.confirmDelete', language as Language) : t('mcp.delete', language as Language)}
             </button>
           </div>
         )

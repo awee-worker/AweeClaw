@@ -587,7 +587,7 @@ export interface ElectronAPI {
   httpWebSearch: (query: string, maxResults?: number, timeout?: number) => Promise<{
     success: boolean; results?: Array<{ title: string; url: string; snippet: string }>; error?: string
   }>
-  httpSetGoogleSearch: (apiKey: string, cx: string) => Promise<{ success: boolean }>
+  httpSetSearchEngineState: (state: unknown) => Promise<{ success: boolean }>
 
   // Health Check
   healthCheckProvider: (provider: string, apiKey: string, baseUrl?: string, timeout?: number, protocol?: string) => Promise<{
@@ -638,6 +638,10 @@ export interface ElectronAPI {
   mcpRemoveServer: (serverId: string, level?: 'user' | 'workspace') => Promise<{ success: boolean; error?: string }>
   mcpToggleServer: (serverId: string, disabled: boolean, level?: 'user' | 'workspace') => Promise<{ success: boolean; error?: string }>
   mcpSetAutoConnect: (enabled: boolean) => Promise<{ success: boolean; error?: string }>
+
+  // Email
+  emailTestConnection: (config: { host: string; port: number; secure: boolean; user: string; pass: string }) => Promise<{ success: boolean; error?: string }>
+  emailSend: (params: { to: string | string[]; subject: string; body: string; html?: boolean; cc?: string[]; bcc?: string[]; attachments?: Array<{ filename: string; content: string; encoding?: string }> }) => Promise<{ success: boolean; error?: string }>
   mcpRegistrySearch: (query?: string) => Promise<{ success: boolean; servers?: any[]; error?: string }>
   mcpRegistryGetDetails: (serverName: string) => Promise<{ success: boolean; server?: any; requiredEnvVars?: any[]; localConfig?: any; error?: string }>
   mcpRegistryInstall: (serverName: string, envValues?: Record<string, string>) => Promise<{ success: boolean; config?: any; error?: string }>

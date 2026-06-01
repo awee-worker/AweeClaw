@@ -3,9 +3,10 @@ import {
   type KnowledgeCategory,
   KNOWLEDGE_CATEGORIES,
 } from '@intelligence/runtime/knowledgeService/providerTypes'
+import { t, type Language } from '@renderer/i18n'
 
 interface AddEntryFormProps {
-  language: string
+  language: Language
   onAdd: (data: {
     title: string
     content: string
@@ -20,35 +21,33 @@ export function AddEntryForm({ language, onAdd, onCancel }: AddEntryFormProps) {
   const [content, setContent] = useState('')
   const [category, setCategory] = useState<KnowledgeCategory>('concept')
   const [tags, setTags] = useState('')
-  const t = (zh: string, en: string) => (language === 'zh' ? zh : en)
-
   return (
     <div className="flex flex-col h-full">
       <div className="px-5 py-4 border-b border-border/30">
         <h3 className="text-[14px] font-semibold text-text-primary">
-          {t('添加知识', 'Add Knowledge')}
+          {t('app.addknowledge', language as Language)}
         </h3>
       </div>
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
         <div>
           <label className="text-[12px] text-text-secondary mb-1.5 block">
-            {t('标题', 'Title')}
+            {t('app.title', language as Language)}
           </label>
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder={t('输入标题（可选）', 'Enter title (optional)')}
+            placeholder={t('app.entertitleoptional', language as Language)}
             className="w-full bg-surface/30 rounded-lg px-3 py-2.5 text-[13px] text-text-primary outline-none border border-border/30 focus:border-accent/50 transition-colors placeholder:text-text-muted"
           />
         </div>
         <div>
           <label className="text-[12px] text-text-secondary mb-1.5 block">
-            {t('内容', 'Content')}
+            {t('app.content', language as Language)}
           </label>
           <textarea
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            placeholder={t('输入知识内容...', 'Enter knowledge content...')}
+            placeholder={t('app.enterknowledgecontent', language as Language)}
             className="w-full bg-surface/30 rounded-lg px-3 py-2.5 text-[13px] text-text-primary outline-none border border-border/30 focus:border-accent/50 resize-none min-h-[180px] custom-scrollbar leading-relaxed placeholder:text-text-muted"
             autoFocus
           />
@@ -56,7 +55,7 @@ export function AddEntryForm({ language, onAdd, onCancel }: AddEntryFormProps) {
         <div className="flex items-center gap-3">
           <div className="flex-1">
             <label className="text-[12px] text-text-secondary mb-1.5 block">
-              {t('分类', 'Category')}
+              {t('app.category', language as Language)}
             </label>
             <select
               value={category}
@@ -65,19 +64,19 @@ export function AddEntryForm({ language, onAdd, onCancel }: AddEntryFormProps) {
             >
               {KNOWLEDGE_CATEGORIES.map((cat) => (
                 <option key={cat.id} value={cat.id}>
-                  {t(cat.labelZh, cat.labelEn)}
+                  {language === 'zh' ? cat.labelZh : cat.labelEn}
                 </option>
               ))}
             </select>
           </div>
           <div className="flex-1">
             <label className="text-[12px] text-text-secondary mb-1.5 block">
-              {t('标签', 'Tags')}
+              {t('app.tags', language as Language)}
             </label>
             <input
               value={tags}
               onChange={(e) => setTags(e.target.value)}
-              placeholder={t('逗号分隔', 'Comma separated')}
+              placeholder={t('app.commaseparated', language as Language)}
               className="w-full bg-surface/30 border border-border/30 rounded-lg px-3 py-2 text-[13px] text-text-primary outline-none focus:border-accent/50 transition-colors placeholder:text-text-muted"
             />
           </div>
@@ -88,14 +87,14 @@ export function AddEntryForm({ language, onAdd, onCancel }: AddEntryFormProps) {
           onClick={onCancel}
           className="px-4 py-2 text-[13px] text-text-secondary hover:text-text-primary transition-colors rounded-lg hover:bg-surface-hover"
         >
-          {t('取消', 'Cancel')}
+          {t('app.cancel', language as Language)}
         </button>
         <button
           onClick={() => onAdd({ title, content, category, tags })}
           disabled={!content.trim()}
           className="px-4 py-2 text-[13px] text-white bg-accent hover:bg-accent/90 disabled:opacity-40 transition-colors rounded-lg"
         >
-          {t('添加', 'Add')}
+          {t('app.add', language as Language)}
         </button>
       </div>
     </div>

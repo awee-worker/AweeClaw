@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { CheckCircle2, ChevronDown, Brain } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useStore } from '@store'
+import { t, type Language } from '@renderer/i18n'
 
 interface MemoryApprovalInlineProps {
     content: string
@@ -29,8 +30,8 @@ export const MemoryApprovalInline: React.FC<MemoryApprovalInlineProps> = ({
     }, [isSuccess])
 
     const statusText = isSuccess
-        ? (language === 'zh' ? '已存入记忆系统' : 'Memory Stored')
-        : (language === 'zh' ? '记忆提议' : 'Memory Proposal')
+        ? (t('ai.memorystored', language as Language))
+        : (t('ai.memoryproposal', language as Language))
 
     const isRunning = !isSuccess && !isAwaitingApproval
 

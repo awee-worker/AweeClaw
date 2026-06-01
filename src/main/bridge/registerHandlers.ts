@@ -16,6 +16,7 @@ import { registerLspHandlers } from './languageServerBridge' // LSP
 import { registerHttpHandlers } from './httpTransport' // HTTP
 import { registerMcpHandlers, cleanupMcpHandlers } from './toolProtocolBridge' // MCP
 import { registerMcpEnhancedHandlers } from './mcpEnhancedBridge' // MCP 增强
+import { registerEmailHandlers } from './emailService' // 邮件服务
 import { registerResourcesHandlers } from './assetManager' // 资源
 import { registerDebugHandlers } from './sessionInspector' // 调试
 import { registerHealthCheckHandlers } from './providerMonitor' // 健康检查
@@ -146,6 +147,9 @@ export function registerAllHandlers(context: IPCContext) {
 
   // MCP 增强服务
   registerOnce('mcp-enhanced', () => registerMcpEnhancedHandlers(getMainWindow))
+
+  // 邮件服务
+  registerOnce('email', () => registerEmailHandlers())
 
   // 静态资源
   registerOnce('resources', () => registerResourcesHandlers())

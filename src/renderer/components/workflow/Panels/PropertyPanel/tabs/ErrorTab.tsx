@@ -1,6 +1,7 @@
 import type { WorkflowNodeData } from '@shared/protocols/workflowV2'
 import { Section } from '../Section'
 import { INPUT_CLASS, SELECT_CLASS } from '../shared'
+import { t, type Language } from '@renderer/i18n'
 
 interface ErrorTabProps {
   data: WorkflowNodeData
@@ -13,22 +14,22 @@ export function ErrorTab({ data, onChange, language }: ErrorTabProps) {
 
   return (
     <>
-      <Section title={language === 'zh' ? '错误处理策略' : 'Error Handling Strategy'}>
+      <Section title={t('wf.errorhandlingstrategy', language as Language)}>
         <select
           value={onError?.action || 'abort'}
           onChange={(e) => onChange('onError', { ...onError, action: e.target.value })}
           className={SELECT_CLASS}
         >
-          <option value="abort">{language === 'zh' ? '中止工作流' : 'Abort Workflow'}</option>
-          <option value="skip">{language === 'zh' ? '跳过继续' : 'Skip & Continue'}</option>
-          <option value="retry">{language === 'zh' ? '重试' : 'Retry'}</option>
-          <option value="goto">{language === 'zh' ? '跳转到节点' : 'Go to Node'}</option>
+          <option value="abort">{t('wf.abortworkflow', language as Language)}</option>
+          <option value="skip">{t('wf.skipcontinue', language as Language)}</option>
+          <option value="retry">{t('wf.retry', language as Language)}</option>
+          <option value="goto">{t('wf.gotonode', language as Language)}</option>
         </select>
       </Section>
 
       {onError?.action === 'retry' && (
         <>
-          <Section title={language === 'zh' ? '最大重试次数' : 'Max Retries'}>
+          <Section title={t('wf.maxretries', language as Language)}>
             <input
               type="number"
               value={onError.maxRetries || 3}
@@ -38,7 +39,7 @@ export function ErrorTab({ data, onChange, language }: ErrorTabProps) {
               className={INPUT_CLASS}
             />
           </Section>
-          <Section title={language === 'zh' ? '重试间隔' : 'Retry Delay'}>
+          <Section title={t('wf.retrydelay', language as Language)}>
             <div className="flex items-center gap-2">
               <input
                 type="number"
@@ -54,23 +55,23 @@ export function ErrorTab({ data, onChange, language }: ErrorTabProps) {
       )}
 
       {onError?.action === 'goto' && (
-        <Section title={language === 'zh' ? '目标节点 ID' : 'Target Node ID'}>
+        <Section title={t('wf.targetnodeid', language as Language)}>
           <input
             type="text"
             value={onError.gotoNodeId || ''}
             onChange={(e) => onChange('onError', { ...onError, gotoNodeId: e.target.value })}
-            placeholder={language === 'zh' ? '节点 ID' : 'Node ID'}
+            placeholder={t('wf.nodeid', language as Language)}
             className={INPUT_CLASS}
           />
         </Section>
       )}
 
-      <Section title={language === 'zh' ? '备用输出' : 'Fallback Output'}>
+      <Section title={t('wf.fallbackoutput', language as Language)}>
         <input
           type="text"
           value={onError?.fallbackOutput != null ? String(onError.fallbackOutput) : ''}
           onChange={(e) => onChange('onError', { ...onError, fallbackOutput: e.target.value || undefined })}
-          placeholder={language === 'zh' ? '失败时的默认输出' : 'Default output on failure'}
+          placeholder={t('wf.defaultoutputonfailure', language as Language)}
           className={INPUT_CLASS}
         />
       </Section>

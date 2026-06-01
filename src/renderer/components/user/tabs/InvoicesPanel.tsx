@@ -9,7 +9,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import { ActionButton, TextField } from '@components/ui'
-import { type Language } from '@renderer/i18n'
+import { t, type Language } from '@renderer/i18n'
 import { backendApi } from '@services/backendApi'
 import { toast } from '@components/foundation/NotificationProvider'
 import { type OrderItem, type InvoiceItem, invoiceStatusMap } from './shared'
@@ -44,7 +44,7 @@ export function InvoicesPanel({ language }: InvoicesPanelProps) {
       setInvoices(result?.invoices || [])
       setTotal(result?.total || 0)
     } catch {
-      toast.error(language === 'zh' ? '获取发票列表失败' : 'Failed to load invoices', '')
+      toast.error(t('user.failedtoloadinvoices', language as Language), '')
     } finally {
       setLoading(false)
     }
@@ -61,7 +61,7 @@ export function InvoicesPanel({ language }: InvoicesPanelProps) {
       const paid = (result?.orders || []).filter(o => o.status === 'PAID')
       setPaidOrders(paid)
     } catch {
-      toast.error(language === 'zh' ? '获取订单失败' : 'Failed to load orders', '')
+      toast.error(t('user.failedtoloadorders', language as Language), '')
     } finally {
       setLoadingOrders(false)
     }
@@ -79,11 +79,11 @@ export function InvoicesPanel({ language }: InvoicesPanelProps) {
 
   const handleSubmitApply = useCallback(async () => {
     if (!selectedOrderId || !invoiceTitle.trim()) {
-      toast.error(language === 'zh' ? '请填写必要信息' : 'Please fill required fields', '')
+      toast.error(t('user.pleasefillrequiredfields', language as Language), '')
       return
     }
     if (titleType === 'company' && !invoiceTaxNumber.trim()) {
-      toast.error(language === 'zh' ? '请填写税号' : 'Please enter tax number', '')
+      toast.error(t('user.pleaseentertaxnumber', language as Language), '')
       return
     }
     setSubmitting(true)
@@ -95,11 +95,11 @@ export function InvoicesPanel({ language }: InvoicesPanelProps) {
         taxNumber: titleType === 'company' ? invoiceTaxNumber.trim() : undefined,
         email: invoiceEmail.trim() || undefined,
       })
-      toast.success(language === 'zh' ? '申请已提交' : 'Application submitted', '')
+      toast.success(t('user.applicationsubmitted', language as Language), '')
       setShowApplyForm(false)
       await fetchInvoices()
     } catch (e: any) {
-      toast.error(language === 'zh' ? '申请失败' : 'Apply failed', e?.message || '')
+      toast.error(t('user.applyfailed', language as Language), e?.message || '')
     } finally {
       setSubmitting(false)
     }
@@ -109,10 +109,10 @@ export function InvoicesPanel({ language }: InvoicesPanelProps) {
     setActionLoading(id)
     try {
       await backendApi.post(`/api/v1/invoice/${id}/cancel`)
-      toast.success(language === 'zh' ? '发票已取消' : 'Invoice cancelled', '')
+      toast.success(t('user.invoicecancelled', language as Language), '')
       await fetchInvoices()
     } catch (e: any) {
-      toast.error(language === 'zh' ? '取消失败' : 'Cancel failed', e?.message || '')
+      toast.error(t('user.cancelfailed', language as Language), e?.message || '')
     } finally {
       setActionLoading(null)
     }
@@ -122,10 +122,10 @@ export function InvoicesPanel({ language }: InvoicesPanelProps) {
     setActionLoading(id)
     try {
       await backendApi.delete(`/api/v1/invoice/${id}`)
-      toast.success(language === 'zh' ? '发票已删除' : 'Invoice deleted', '')
+      toast.success(t('user.invoicedeleted', language as Language), '')
       await fetchInvoices()
     } catch (e: any) {
-      toast.error(language === 'zh' ? '删除失败' : 'Delete failed', e?.message || '')
+      toast.error(t('user.deletefailed', language as Language), e?.message || '')
     } finally {
       setActionLoading(null)
     }
@@ -138,13 +138,13 @@ export function InvoicesPanel({ language }: InvoicesPanelProps) {
       <div className="space-y-4">
         <div className="flex items-center gap-2 mb-2">
           <button onClick={() => setShowApplyForm(false)} className="text-xs text-text-muted hover:text-text-primary transition-colors">
-            {language === 'zh' ? '← 返回' : '← Back'}
+            {t('user.back', language as Language)}
           </button>
         </div>
 
         <h4 className="text-sm font-medium text-text-primary flex items-center gap-1.5">
           <Receipt className="w-4 h-4 text-accent" />
-          {language === 'zh' ? '申请开票' : 'Apply for Invoice'}
+          {t('user.applyforinvoice', language as Language)}
         </h4>
 
         {loadingOrders ? (
@@ -153,18 +153,18 @@ export function InvoicesPanel({ language }: InvoicesPanelProps) {
           </div>
         ) : paidOrders.length === 0 ? (
           <div className="text-center py-8 text-sm text-text-muted">
-            {language === 'zh' ? '暂无可开票订单' : 'No paid orders available'}
+            {t('user.nopaidordersavailable', language as Language)}
           </div>
         ) : (
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-text-secondary">{language === 'zh' ? '选择订单' : 'Select Order'}</label>
+              <label className="text-xs font-medium text-text-secondary">{t('user.selectorder', language as Language)}</label>
               <select
                 value={selectedOrderId}
                 onChange={e => setSelectedOrderId(e.target.value)}
                 className="w-full h-9 px-3 rounded-lg bg-surface/30 border border-border/30 text-sm text-text-primary focus:outline-none focus:border-accent/50 transition-colors"
               >
-                <option value="">{language === 'zh' ? '请选择订单' : 'Select order'}</option>
+                <option value="">{t('user.selectorder2', language as Language)}</option>
                 {paidOrders.map(o => (
                   <option key={o.id} value={o.id}>
                     {o.orderNo} - {o.planDisplayName} ¥{Number(o.amount).toFixed(2)}
@@ -174,59 +174,59 @@ export function InvoicesPanel({ language }: InvoicesPanelProps) {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-text-secondary">{language === 'zh' ? '抬头类型' : 'Title Type'}</label>
+              <label className="text-xs font-medium text-text-secondary">{t('user.titletype', language as Language)}</label>
               <div className="flex gap-2">
-                {(['personal', 'company'] as const).map(t => (
+                {(['personal', 'company'] as const).map(titleOpt => (
                   <button
-                    key={t}
-                    onClick={() => setTitleType(t)}
+                    key={titleOpt}
+                    onClick={() => setTitleType(titleOpt)}
                     className={`flex-1 h-9 rounded-lg text-xs font-medium border transition-colors ${
-                      titleType === t
+                      titleType === titleOpt
                         ? 'bg-accent/10 border-accent/30 text-accent'
                         : 'bg-surface/30 border-border/30 text-text-secondary hover:bg-surface/50'
                     }`}
                   >
-                    {t === 'personal' ? (language === 'zh' ? '个人' : 'Personal') : (language === 'zh' ? '企业' : 'Company')}
+                    {titleOpt === 'personal' ? (t('user.personal', language as Language)) : (t('user.company', language as Language))}
                   </button>
                 ))}
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-text-secondary">{language === 'zh' ? '发票抬头' : 'Invoice Title'}</label>
+              <label className="text-xs font-medium text-text-secondary">{t('user.invoicetitle', language as Language)}</label>
               <TextField
                 value={invoiceTitle}
                 onChange={e => setInvoiceTitle(e.target.value)}
-                placeholder={language === 'zh' ? '输入发票抬头' : 'Enter invoice title'}
+                placeholder={t('user.enterinvoicetitle', language as Language)}
                 leftIcon={titleType === 'company' ? <Building2 className="w-4 h-4" /> : <User className="w-4 h-4" />}
               />
             </div>
 
             {titleType === 'company' && (
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-text-secondary">{language === 'zh' ? '税号' : 'Tax Number'}</label>
+                <label className="text-xs font-medium text-text-secondary">{t('user.taxnumber', language as Language)}</label>
                 <TextField
                   value={invoiceTaxNumber}
                   onChange={e => setInvoiceTaxNumber(e.target.value)}
-                  placeholder={language === 'zh' ? '输入纳税人识别号' : 'Enter tax ID'}
+                  placeholder={t('user.entertaxid', language as Language)}
                 />
               </div>
             )}
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-text-secondary">{language === 'zh' ? '接收邮箱' : 'Email'}</label>
+              <label className="text-xs font-medium text-text-secondary">{t('user.email', language as Language)}</label>
               <TextField
                 type="email"
                 value={invoiceEmail}
                 onChange={e => setInvoiceEmail(e.target.value)}
-                placeholder={language === 'zh' ? '输入接收发票的邮箱' : 'Enter email for invoice'}
+                placeholder={t('user.enteremailforinvoice', language as Language)}
                 leftIcon={<Mail className="w-4 h-4" />}
               />
             </div>
 
             <div className="flex justify-end">
               <ActionButton variant="primary" onClick={handleSubmitApply} disabled={submitting} className="min-w-[120px]">
-                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : language === 'zh' ? '提交申请' : 'Submit'}
+                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : t('user.submit', language as Language)}
               </ActionButton>
             </div>
           </div>
@@ -238,12 +238,12 @@ export function InvoicesPanel({ language }: InvoicesPanelProps) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h4 className="text-sm font-medium text-text-primary">{language === 'zh' ? '发票列表' : 'Invoice List'}</h4>
+        <h4 className="text-sm font-medium text-text-primary">{t('user.invoicelist', language as Language)}</h4>
         <button
           onClick={handleOpenApply}
           className="px-3 py-1.5 rounded-lg text-xs font-medium bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
         >
-          {language === 'zh' ? '+ 申请开票' : '+ Apply'}
+          {t('user.apply', language as Language)}
         </button>
       </div>
 
@@ -254,7 +254,7 @@ export function InvoicesPanel({ language }: InvoicesPanelProps) {
       ) : invoices.length === 0 ? (
         <div className="text-center py-12">
           <FileText className="w-10 h-10 text-text-muted/30 mx-auto mb-3" />
-          <p className="text-sm text-text-muted">{language === 'zh' ? '暂无发票' : 'No invoices yet'}</p>
+          <p className="text-sm text-text-muted">{t('user.noinvoicesyet', language as Language)}</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -274,17 +274,17 @@ export function InvoicesPanel({ language }: InvoicesPanelProps) {
                 </div>
                 <div className="flex items-center justify-between text-xs text-text-muted">
                   <div className="space-y-0.5">
-                    <p>{language === 'zh' ? '订单' : 'Order'}: {inv.order?.orderNo} · {inv.order?.planDisplayName} · ¥{Number(inv.order?.amount || 0).toFixed(2)}</p>
-                    <p>{language === 'zh' ? '类型' : 'Type'}: {inv.titleType === 'company' ? (language === 'zh' ? '企业' : 'Company') : (language === 'zh' ? '个人' : 'Personal')}{inv.taxNumber ? ` · ${inv.taxNumber}` : ''}</p>
-                    {inv.invoiceNo && <p>{language === 'zh' ? '发票号' : 'Invoice No'}: {inv.invoiceNo}</p>}
-                    {inv.rejectReason && <p className="text-red-400">{language === 'zh' ? '驳回原因' : 'Reason'}: {inv.rejectReason}</p>}
+                    <p>{t('user.order', language as Language)}: {inv.order?.orderNo} · {inv.order?.planDisplayName} · ¥{Number(inv.order?.amount || 0).toFixed(2)}</p>
+                    <p>{t('user.type', language as Language)}: {inv.titleType === 'company' ? (t('user.company2', language as Language)) : (t('user.personal2', language as Language))}{inv.taxNumber ? ` · ${inv.taxNumber}` : ''}</p>
+                    {inv.invoiceNo && <p>{t('user.invoiceno', language as Language)}: {inv.invoiceNo}</p>}
+                    {inv.rejectReason && <p className="text-red-400">{t('user.reason', language as Language)}: {inv.rejectReason}</p>}
                   </div>
                   {inv.invoiceUrl && inv.status === 'ISSUED' && (
                     <button
                       onClick={() => window.electronAPI?.openExternalUrl?.(inv.invoiceUrl!)}
                       className="px-2 py-1 rounded-md text-xs font-medium bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
                     >
-                      {language === 'zh' ? '查看' : 'View'}
+                      {t('user.view', language as Language)}
                     </button>
                   )}
                 </div>
@@ -295,7 +295,7 @@ export function InvoicesPanel({ language }: InvoicesPanelProps) {
                       disabled={actionLoading === inv.id}
                       className="px-3 py-1.5 rounded-lg text-xs font-medium bg-surface/50 text-text-secondary hover:bg-surface-hover transition-colors disabled:opacity-50"
                     >
-                      {actionLoading === inv.id ? <Loader2 className="w-3 h-3 animate-spin" /> : language === 'zh' ? '取消' : 'Cancel'}
+                      {actionLoading === inv.id ? <Loader2 className="w-3 h-3 animate-spin" /> : t('user.cancel', language as Language)}
                     </button>
                   )}
                   {(inv.status === 'CANCELLED' || inv.status === 'REJECTED' || inv.status === 'ISSUED') && (
@@ -304,7 +304,7 @@ export function InvoicesPanel({ language }: InvoicesPanelProps) {
                       disabled={actionLoading === inv.id}
                       className="px-3 py-1.5 rounded-lg text-xs font-medium text-status-error/70 hover:text-status-error hover:bg-status-error/5 transition-colors disabled:opacity-50"
                     >
-                      {actionLoading === inv.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Trash2 className="w-3 h-3 inline mr-1" />{language === 'zh' ? '删除' : 'Delete'}</>}
+                      {actionLoading === inv.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Trash2 className="w-3 h-3 inline mr-1" />{t('user.delete', language as Language)}</>}
                     </button>
                   )}
                 </div>
@@ -319,7 +319,7 @@ export function InvoicesPanel({ language }: InvoicesPanelProps) {
                 disabled={page <= 1}
                 className="px-3 py-1.5 rounded-lg text-xs font-medium bg-surface/50 text-text-secondary hover:bg-surface-hover transition-colors disabled:opacity-50"
               >
-                {language === 'zh' ? '上一页' : 'Prev'}
+                {t('user.prev', language as Language)}
               </button>
               <span className="text-xs text-text-muted">{page} / {totalPages}</span>
               <button
@@ -327,7 +327,7 @@ export function InvoicesPanel({ language }: InvoicesPanelProps) {
                 disabled={page >= totalPages}
                 className="px-3 py-1.5 rounded-lg text-xs font-medium bg-surface/50 text-text-secondary hover:bg-surface-hover transition-colors disabled:opacity-50"
               >
-                {language === 'zh' ? '下一页' : 'Next'}
+                {t('user.next', language as Language)}
               </button>
             </div>
           )}

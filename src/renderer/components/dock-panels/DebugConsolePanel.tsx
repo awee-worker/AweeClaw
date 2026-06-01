@@ -18,6 +18,7 @@ import { toast } from '@components/foundation/NotificationProvider'
 import type { DebugConfig, DebugEvent } from '@renderer/types/electronBridge'
 import { getFileName, getDirPath } from '@shared/toolkit/pathHelper'
 import { safeOpenFile } from '@utils/fileUtils'
+import { type Language } from '@renderer/i18n'
 
 type DebugTab = 'variables' | 'callstack' | 'breakpoints' | 'console'
 
@@ -229,7 +230,7 @@ export default function DebugPanel() {
   const handleStartDebug = async () => {
     const config = launchConfigs[selectedConfigIndex]
     if (!config) {
-      toast.warning(tt('请先配置调试选项', 'Please configure debug options first'))
+      toast.warning(tt('app.pleaseconfiguredebugoptions', language as Language))
       return
     }
 
@@ -242,7 +243,7 @@ export default function DebugPanel() {
 
     // 检查程序路径
     if (resolvedConfig.request === 'launch' && !resolvedConfig.program) {
-      toast.warning(tt('请指定要调试的程序', 'Please specify a program to debug'))
+      toast.warning(tt('app.pleasespecifyaprogram', language as Language))
       return
     }
 
@@ -419,10 +420,10 @@ export default function DebugPanel() {
             ))}
           </select>
 
-          <ActionButton variant="ghost" size="icon" onClick={openLaunchConfig} className="h-7 w-7" title={tt('编辑配置', 'Edit Configurations')}>
+          <ActionButton variant="ghost" size="icon" onClick={openLaunchConfig} className="h-7 w-7" title={tt('app.editconfigurations', language as Language)}>
             <FileCode className="w-3.5 h-3.5" />
           </ActionButton>
-          <ActionButton variant="ghost" size="icon" onClick={loadLaunchConfigs} className="h-7 w-7" title={tt('刷新配置', 'Reload')}>
+          <ActionButton variant="ghost" size="icon" onClick={loadLaunchConfigs} className="h-7 w-7" title={tt('app.reload2', language as Language)}>
             <RefreshCw className="w-3.5 h-3.5" />
           </ActionButton>
         </div>
@@ -435,7 +436,7 @@ export default function DebugPanel() {
             </ActionButton>
           ) : (
             <>
-              <ActionButton variant="ghost" size="icon" onClick={handleStop} className="h-7 w-7" title={tt('停止', 'Stop')}>
+              <ActionButton variant="ghost" size="icon" onClick={handleStop} className="h-7 w-7" title={tt('app.stop', language as Language)}>
                 <Square className="w-4 h-4 text-red-400" />
               </ActionButton>
               {isPaused ? (
@@ -463,13 +464,13 @@ export default function DebugPanel() {
 
         {/* 右侧：操作按钮 */}
         <div className="flex items-center gap-1 px-2">
-          <ActionButton variant="ghost" size="icon" onClick={loadSessions} className="h-7 w-7" title={tt('刷新', 'Refresh')}>
+          <ActionButton variant="ghost" size="icon" onClick={loadSessions} className="h-7 w-7" title={tt('app.refresh', language as Language)}>
             <RefreshCw className="w-3.5 h-3.5" />
           </ActionButton>
           <ActionButton variant="ghost" size="icon" onClick={() => setIsCollapsed(!isCollapsed)} className="h-7 w-7">
             {isCollapsed ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
           </ActionButton>
-          <ActionButton variant="ghost" size="icon" onClick={() => setDebugVisible(false)} className="h-7 w-7" title={tt('关闭', 'Close')}>
+          <ActionButton variant="ghost" size="icon" onClick={() => setDebugVisible(false)} className="h-7 w-7" title={tt('app.close', language as Language)}>
             <X className="w-3.5 h-3.5" />
           </ActionButton>
         </div>
@@ -490,10 +491,10 @@ export default function DebugPanel() {
               {tab === 'callstack' && <Layers className="w-3.5 h-3.5" />}
               {tab === 'breakpoints' && <CircleDot className="w-3.5 h-3.5" />}
               {tab === 'console' && <Bug className="w-3.5 h-3.5" />}
-              {tab === 'variables' && tt('变量', 'Variables')}
-              {tab === 'callstack' && tt('调用栈', 'Call Stack')}
-              {tab === 'breakpoints' && `${tt('断点', 'Breakpoints')} (${breakpoints.length})`}
-              {tab === 'console' && tt('控制台', 'Console')}
+              {tab === 'variables' && tt('app.variables', language as Language)}
+              {tab === 'callstack' && tt('app.callstack', language as Language)}
+              {tab === 'breakpoints' && `${tt('app.breakpoints', language as Language)} (${breakpoints.length})`}
+              {tab === 'console' && tt('app.console', language as Language)}
             </button>
           ))}
         </div>
@@ -506,7 +507,7 @@ export default function DebugPanel() {
               {scopes.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-text-muted opacity-40 italic">
                   <Variable className="w-8 h-8 mb-2" />
-                  <p className="text-xs">{tt('暂停时显示变量', 'Variables shown when paused')}</p>
+                  <p className="text-xs">{tt('app.variablesshownwhenpaused', language as Language)}</p>
                 </div>
               ) : (
                 scopes.map(scope => (
@@ -542,7 +543,7 @@ export default function DebugPanel() {
               {stackFrames.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-text-muted opacity-40 italic">
                   <Layers className="w-8 h-8 mb-2" />
-                  <p className="text-xs">{tt('暂停时显示调用栈', 'Call stack shown when paused')}</p>
+                  <p className="text-xs">{tt('app.callstackshownwhen', language as Language)}</p>
                 </div>
               ) : (
                 stackFrames.map((frame, i) => {
@@ -575,15 +576,15 @@ export default function DebugPanel() {
           {activeTab === 'breakpoints' && (
             <div className="text-xs">
               <div className="flex items-center justify-between px-2 py-1 mb-2">
-                <span className="text-text-muted">{tt('点击编辑器行号添加断点', 'Click line numbers to add breakpoints')}</span>
+                <span className="text-text-muted">{tt('app.clicklinenumbersto', language as Language)}</span>
                 {breakpoints.length > 0 && (
-                  <ActionButton variant="ghost" size="icon" onClick={() => clearBreakpoints()} className="h-6 w-6" title={tt('清除所有断点', 'Clear all breakpoints')}>
+                  <ActionButton variant="ghost" size="icon" onClick={() => clearBreakpoints()} className="h-6 w-6" title={tt('app.clearallbreakpoints', language as Language)}>
                     <Trash2 className="w-3 h-3 text-red-400" />
                   </ActionButton>
                 )}
               </div>
               {breakpoints.length === 0 ? (
-                <div className="text-text-muted text-center py-4">{tt('暂无断点', 'No breakpoints')}</div>
+                <div className="text-text-muted text-center py-4">{tt('app.nobreakpoints', language as Language)}</div>
               ) : (
                 // 按文件分组显示
                 Object.entries(
@@ -604,7 +605,7 @@ export default function DebugPanel() {
                         <button
                           onClick={() => toggleBreakpointEnabled(bp.id)}
                           className="flex-shrink-0"
-                          title={bp.enabled ? tt('禁用断点', 'Disable breakpoint') : tt('启用断点', 'Enable breakpoint')}
+                          title={bp.enabled ? tt('app.disablebreakpoint', language as Language) : tt('app.enablebreakpoint', language as Language)}
                         >
                           {bp.enabled ? (
                             <CircleDot className="w-3 h-3 text-red-400" />
@@ -616,7 +617,7 @@ export default function DebugPanel() {
                           onClick={() => gotoBreakpoint(bp.filePath, bp.line)}
                           className={`cursor-pointer hover:text-accent ${!bp.enabled ? 'opacity-50' : ''}`}
                         >
-                          {tt('行', 'Line')} {bp.line}
+                          {tt('app.line', language as Language)} {bp.line}
                         </span>
                         {bp.condition && (
                           <span className="text-yellow-400 text-[11px]">({bp.condition})</span>
@@ -638,7 +639,7 @@ export default function DebugPanel() {
             <div className="h-full flex flex-col">
               <div ref={consoleRef} className="flex-1 text-xs font-mono space-y-0.5 overflow-auto">
                 {consoleOutput.length === 0 ? (
-                  <div className="text-text-muted text-center py-4">{tt('调试输出将显示在这里', 'Debug output will appear here')}</div>
+                  <div className="text-text-muted text-center py-4">{tt('app.debugoutputwillappear', language as Language)}</div>
                 ) : (
                   consoleOutput.map((line, i) => (
                     <div key={i} className="text-text-secondary px-2 py-0.5 hover:bg-surface-hover whitespace-pre-wrap">{line}</div>
@@ -647,7 +648,7 @@ export default function DebugPanel() {
               </div>
               <div className="flex items-center gap-2 pt-2 border-t border-border-subtle">
                 <ActionButton variant="ghost" size="sm" onClick={clearConsoleOutput} className="text-xs">
-                  {tt('清除', 'Clear')}
+                  {tt('app.clear', language as Language)}
                 </ActionButton>
               </div>
             </div>

@@ -17,7 +17,7 @@ import {
   Trash2,
   ExternalLink,
 } from 'lucide-react'
-import { Language } from '@renderer/i18n'
+import {Language, t} from '@renderer/i18n'
 import { api } from '../../../adapters/electronBridge'
 import { ActionButton, TextField } from '@components/ui'
 import { LSP_SERVER_DEFINITIONS } from '@shared/languageRegistry'
@@ -296,7 +296,7 @@ export function LanguageServicePanel({ language }: LspSettingsProps) {
                     <span className="font-medium text-text-primary">{server.name}</span>
                     {isBuiltin && (
                       <span className="text-xs text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full">
-                        {language === 'zh' ? '内置' : 'Built-in'}
+                        {t('settings.builtin', language as Language)}
                       </span>
                     )}
                     {isInstalled ? (
@@ -344,7 +344,7 @@ export function LanguageServicePanel({ language }: LspSettingsProps) {
                     ) : isInstalled ? (
                       <>
                         <RefreshCw className="w-4 h-4 mr-1" />
-                        {language === 'zh' ? '重装' : 'Reinstall'}
+                        {t('settings.reinstall', language as Language)}
                       </>
                     ) : (
                       <>
@@ -357,7 +357,7 @@ export function LanguageServicePanel({ language }: LspSettingsProps) {
                   // 不可安装的服务器显示外部链接提示
                   <span className="text-xs text-text-muted flex items-center gap-1 ml-4">
                     <ExternalLink className="w-3 h-3" />
-                    {language === 'zh' ? '需手动安装' : 'Manual install'}
+                    {t('settings.manualinstall', language as Language)}
                   </span>
                 )}
               </div>

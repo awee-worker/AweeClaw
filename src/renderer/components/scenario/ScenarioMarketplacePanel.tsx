@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { Search, Download, Star, Tag, ChevronRight, Shield, Clock, ArrowLeft, Package, Heart, Stethoscope, Scale, GraduationCap, Code2, BarChart3, PenTool, Sparkles, TrendingUp, BookOpen, Globe, Zap, RefreshCw, CheckCircle2 } from 'lucide-react'
 import { useStore } from '@store'
 import { ActionButton } from '../ui'
@@ -17,6 +17,7 @@ import type {
   MarketplaceScenario,
   MarketplaceCategory,
 } from '@scenario-system/marketplace'
+import { t, type Language } from '@renderer/i18n'
 
 const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   development: <Code2 className="w-5 h-5" />,
@@ -60,8 +61,6 @@ export function ScenarioMarketplacePanel() {
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [permissionPending, setPermissionPending] = useState<MarketplaceScenario | null>(null)
-  const t = useCallback((zh: string, en: string) => language === 'zh' ? zh : en, [language])
-
   useEffect(() => {
     loadFeatured()
     loadCategories()
@@ -111,7 +110,7 @@ export function ScenarioMarketplacePanel() {
   async function handleInstall(item: MarketplaceScenario) {
     if (scenarioRegistry.has(item.id)) {
       toast.warning(
-        language === 'zh' ? `场景 "${item.nameZh}" 已安装` : `Scenario "${item.name}" is already installed`
+        t('scenario.scenarioisalreadyinstalled', language as Language, { name: item.name, nameZh: item.nameZh })
       )
       return
     }
@@ -158,25 +157,23 @@ export function ScenarioMarketplacePanel() {
         }
 
         toast.success(
-          language === 'zh' ? `场景 "${item.nameZh}" 安装成功` : `Scenario "${item.name}" installed successfully`,
+          t('scenario.scenarioinstalledsuccessfully', language as Language, { name: item.name, nameZh: item.nameZh }),
         )
         setSelectedItem(null)
         await loadItems()
       } else if (result.requiresPayment) {
         toast.card({
           type: 'warning',
-          title: language === 'zh' ? '付费场景' : 'Paid Scenario',
-          message: language === 'zh'
-            ? `该场景为付费场景，价格: ¥${result.price}，暂不支持在线支付`
-            : `This is a paid scenario (¥${result.price}). Online payment is not yet supported.`,
+          title: t('scenario.paidscenario', language as Language),
+          message: t('scenario.thisisapaidscenario', language as Language, { price: result.price }),
           duration: 5000,
           source: 'ScenarioMarketplace',
         })
       } else {
-        const errorMsg = translateInstallError(result.error || (language === 'zh' ? '未知错误' : 'Unknown error'))
+        const errorMsg = translateInstallError(result.error || (t('scenario.unknownerror', language as Language)))
         toast.card({
           type: 'error',
-          title: language === 'zh' ? '安装失败' : 'Install Failed',
+          title: t('scenario.installfailed', language as Language),
           message: errorMsg,
           duration: 5000,
           source: 'ScenarioMarketplace',
@@ -186,7 +183,7 @@ export function ScenarioMarketplacePanel() {
       const errorMsg = translateInstallError(err instanceof Error ? err.message : String(err))
       toast.card({
         type: 'error',
-        title: language === 'zh' ? '安装失败' : 'Install Failed',
+        title: t('scenario.installfailed2', language as Language),
         message: errorMsg,
         duration: 5000,
         source: 'ScenarioMarketplace',
@@ -213,8 +210,8 @@ export function ScenarioMarketplacePanel() {
     return (
       <div className="flex flex-col items-center justify-center h-full px-4 text-center">
         <Globe className="w-8 h-8 text-text-muted/40 mb-3" />
-        <p className="text-xs text-text-muted mb-1">{t('请先登录', 'Please log in first')}</p>
-        <p className="text-[10px] text-text-muted/60">{t('登录后可浏览和安装在线场景', 'Log in to browse and install online scenarios')}</p>
+        <p className="text-xs text-text-muted mb-1">{t('app.pleaseloginfirst', language as Language)}</p>
+        <p className="text-[10px] text-text-muted/60">{t('app.logintobrowse', language as Language)}</p>
       </div>
     )
   }
@@ -229,7 +226,7 @@ export function ScenarioMarketplacePanel() {
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
-          <span className="text-sm font-semibold text-text-primary">{t('场景详情', 'Scenario Details')}</span>
+          <span className="text-sm font-semibold text-text-primary">{t('app.scenariodetails', language as Language)}</span>
         </div>
 
         <div className="flex-1 overflow-auto p-4 space-y-4">
@@ -256,21 +253,21 @@ export function ScenarioMarketplacePanel() {
           <div className="grid grid-cols-3 gap-2">
             <div className="text-center p-2.5 rounded-xl bg-surface/30 border border-border/20 shadow-sm shadow-black/5">
               <div className="text-sm font-semibold text-text-primary">{selectedItem.rating.toFixed(1)}</div>
-              <div className="text-[10px] text-text-muted">{t('评分', 'Rating')}</div>
+              <div className="text-[10px] text-text-muted">{t('app.rating', language as Language)}</div>
             </div>
             <div className="text-center p-2.5 rounded-xl bg-surface/30 border border-border/20 shadow-sm shadow-black/5">
               <div className="text-sm font-semibold text-text-primary">{selectedItem.downloads}</div>
-              <div className="text-[10px] text-text-muted">{t('下载', 'Downloads')}</div>
+              <div className="text-[10px] text-text-muted">{t('app.downloads', language as Language)}</div>
             </div>
             <div className="text-center p-2.5 rounded-xl bg-surface/30 border border-border/20 shadow-sm shadow-black/5">
               <div className="text-sm font-semibold text-text-primary">v{selectedItem.version}</div>
-              <div className="text-[10px] text-text-muted">{t('版本', 'Version')}</div>
+              <div className="text-[10px] text-text-muted">{t('app.version', language as Language)}</div>
             </div>
           </div>
 
           {selectedItem.tags?.length > 0 && (
             <div>
-              <h4 className="text-[11px] font-medium text-text-muted mb-1.5">{t('标签', 'Tags')}</h4>
+              <h4 className="text-[11px] font-medium text-text-muted mb-1.5">{t('app.tags', language as Language)}</h4>
               <div className="flex flex-wrap gap-1">
                 {selectedItem.tags.map(tag => (
                   <span key={tag} className="text-[11px] px-2 py-0.5 rounded-md bg-surface/60 text-text-muted border border-border/20 flex items-center gap-0.5">
@@ -284,13 +281,13 @@ export function ScenarioMarketplacePanel() {
 
           {selectedItem.minAppVersion && (
             <div className="text-[11px] text-text-muted">
-              {t(`最低应用版本: ${selectedItem.minAppVersion}`, `Min App Version: ${selectedItem.minAppVersion}`)}
+              {t('app.minappversion', language as Language, { minAppVersion: selectedItem.minAppVersion })}
             </div>
           )}
 
           <div className="flex items-center gap-2 text-[11px] text-text-muted">
             <Shield className="w-3.5 h-3.5 text-green-400" />
-            <span>{t('安全审查已通过', 'Security review passed')}</span>
+            <span>{t('app.securityreviewpassed', language as Language)}</span>
           </div>
         </div>
 
@@ -301,7 +298,7 @@ export function ScenarioMarketplacePanel() {
               disabled
             >
               <CheckCircle2 className="w-3.5 h-3.5" />
-              {t('已安装', 'Installed')}
+              {t('app.installed', language as Language)}
             </ActionButton>
           ) : (
             <ActionButton
@@ -312,12 +309,12 @@ export function ScenarioMarketplacePanel() {
               {installing === selectedItem.id ? (
                 <>
                   <Clock className="w-3.5 h-3.5 animate-spin" />
-                  {t('安装中...', 'Installing...')}
+                  {t('app.installing', language as Language)}
                 </>
               ) : (
                 <>
                   <Download className="w-3.5 h-3.5" />
-                  {t('安装场景', 'Install Scenario')}
+                  {t('app.installscenario', language as Language)}
                 </>
               )}
             </ActionButton>
@@ -342,11 +339,11 @@ export function ScenarioMarketplacePanel() {
       <div className="px-4 py-3 border-b border-border/20 bg-background/80 backdrop-blur-sm">
         <div className="flex items-center gap-2 mb-2">
           <Globe className="w-4 h-4 text-accent" />
-          <span className="text-sm font-semibold text-text-primary">{t('场景市场', 'Scenario Marketplace')}</span>
+          <span className="text-sm font-semibold text-text-primary">{t('app.scenariomarketplace', language as Language)}</span>
           <button
             onClick={() => { loadItems(); loadFeatured(); loadCategories(); }}
             className="ml-auto p-1 rounded-md hover:bg-surface/40 text-text-muted transition-colors"
-            title={t('刷新', 'Refresh')}
+            title={t('app.refresh', language as Language)}
           >
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
@@ -357,7 +354,7 @@ export function ScenarioMarketplacePanel() {
             type="text"
             value={searchQuery}
             onChange={e => { setSearchQuery(e.target.value); setPage(1) }}
-            placeholder={t('搜索场景...', 'Search scenarios...')}
+            placeholder={t('app.searchscenarios', language as Language)}
             className="w-full h-8 pl-8 pr-3 rounded-lg bg-surface/30 border border-border/15 text-xs text-text-primary placeholder:text-text-muted/50 outline-none focus:border-accent/30 transition-colors"
           />
         </div>
@@ -373,7 +370,7 @@ export function ScenarioMarketplacePanel() {
                 : 'text-text-muted hover:text-text-secondary border border-transparent hover:border-border/20'
             }`}
           >
-            {t('全部', 'All')}
+            {t('app.all', language as Language)}
           </button>
           {categories.map(cat => (
             <button
@@ -396,7 +393,7 @@ export function ScenarioMarketplacePanel() {
       <div className="flex-1 overflow-auto">
         {featured.length > 0 && !searchQuery && !selectedCategory && (
           <div className="px-4 pt-4 pb-2">
-            <h3 className="text-sm font-semibold text-text-primary mb-3">{t('✨ 精选推荐', '✨ Featured')}</h3>
+            <h3 className="text-sm font-semibold text-text-primary mb-3">{t('app.featured', language as Language)}</h3>
             <div className="grid grid-cols-2 gap-2">
               {featured.slice(0, 4).map(item => (
                 <button
@@ -414,7 +411,7 @@ export function ScenarioMarketplacePanel() {
                   </div>
                   <div className="flex items-center gap-2">
                     {renderStars(item.rating)}
-                    <span className="text-[10px] text-text-muted">({item.downloads} {t('下载', 'dl')})</span>
+                    <span className="text-[10px] text-text-muted">({item.downloads} {t('app.dl', language as Language)})</span>
                   </div>
                 </button>
               ))}
@@ -426,8 +423,8 @@ export function ScenarioMarketplacePanel() {
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-text-primary">
               {searchQuery || selectedCategory
-                ? t('搜索结果', 'Search Results')
-                : t('所有场景', 'All Scenarios')}
+                ? t('app.searchresults', language as Language)
+                : t('app.allscenarios', language as Language)}
               {total > 0 && <span className="ml-1.5 text-text-muted font-normal text-xs">({total})</span>}
             </h3>
             {isLoading && <Clock className="w-3.5 h-3.5 text-text-muted animate-spin" />}
@@ -436,7 +433,7 @@ export function ScenarioMarketplacePanel() {
           {items.length === 0 && !isLoading && (
             <div className="flex flex-col items-center justify-center py-16 text-text-muted">
               <Package className="w-10 h-10 mb-3 opacity-30" strokeWidth={1} />
-              <p className="text-sm">{t('暂无场景', 'No scenarios found')}</p>
+              <p className="text-sm">{t('app.noscenariosfound', language as Language)}</p>
             </div>
           )}
 
@@ -459,7 +456,7 @@ export function ScenarioMarketplacePanel() {
                         </span>
                         {item.isFree ? (
                           <span className="flex items-center gap-0.5 text-[10px] font-medium text-green-400 bg-green-400/10 px-1.5 py-0.5 rounded-full flex-shrink-0">
-                            {t('免费', 'FREE')}
+                            {t('app.free', language as Language)}
                           </span>
                         ) : (
                           <span className="flex items-center gap-0.5 text-[10px] font-medium text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded-full flex-shrink-0">
@@ -469,13 +466,13 @@ export function ScenarioMarketplacePanel() {
                         {scenarioRegistry.has(item.id) && (
                           <span className="flex items-center gap-0.5 text-[10px] font-medium text-accent bg-accent/10 px-1.5 py-0.5 rounded-full flex-shrink-0">
                             <CheckCircle2 className="w-2.5 h-2.5" />
-                            {t('已安装', 'Installed')}
+                            {t('app.installed2', language as Language)}
                           </span>
                         )}
                       </div>
                       <div className="flex items-center gap-2 mt-0.5 text-[11px] text-text-muted">
                         {renderStars(item.rating)}
-                        <span>{item.downloads} {t('下载', 'dl')}</span>
+                        <span>{item.downloads} {t('app.dl2', language as Language)}</span>
                         <span>·</span>
                         <span>v{item.version}</span>
                       </div>
@@ -494,7 +491,7 @@ export function ScenarioMarketplacePanel() {
                 disabled={page <= 1}
                 className="px-3 py-1.5 text-[11px] rounded-lg bg-surface/30 border border-border/15 text-text-muted disabled:opacity-40 hover:bg-surface/50 transition-colors"
               >
-                {t('上一页', 'Prev')}
+                {t('app.prev', language as Language)}
               </button>
               <span className="text-[11px] text-text-muted">{page}</span>
               <button
@@ -502,7 +499,7 @@ export function ScenarioMarketplacePanel() {
                 disabled={page * 20 >= total}
                 className="px-3 py-1.5 text-[11px] rounded-lg bg-surface/30 border border-border/15 text-text-muted disabled:opacity-40 hover:bg-surface/50 transition-colors"
               >
-                {t('下一页', 'Next')}
+                {t('app.next', language as Language)}
               </button>
             </div>
           )}

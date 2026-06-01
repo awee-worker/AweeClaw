@@ -18,9 +18,10 @@ import {
     Sparkles, Globe, FileCode, Power, ChevronDown,
     MoreHorizontal, Pencil, Info
 } from 'lucide-react'
+import { t, type Language } from '@renderer/i18n'
 
 interface SkillSettingsProps {
-    language: string
+    language: Language
 }
 
 const SKILL_ICONS = [Sparkles, Globe, FileCode, Zap, Power]
@@ -51,7 +52,6 @@ function getSkillColor(name: string) {
 }
 
 export function SkillRegistryPanel({ language }: SkillSettingsProps) {
-    const t = (zh: string, en: string) => language === 'zh' ? zh : en
     const workspacePath = useStore(s => s.workspacePath)
 
     const [skills, setSkills] = useState<SkillItem[]>([])
@@ -136,13 +136,13 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
         setInstalling(packageId)
         const result = await skillService.installFromMarketplace(packageId, installLevel)
         if (result.success) {
-            showInstalledMessage('success', t('安装成功', 'Installed successfully'))
-            showInstallMessage('success', t('安装成功', 'Installed successfully'))
+            showInstalledMessage('success', t('app.installedsuccessfully', language as Language))
+            showInstallMessage('success', t('app.installedsuccessfully2', language as Language))
             loadSkills()
             setSearchResults([])
             setSearchQuery('')
         } else {
-            showInstallMessage('error', result.error || t('安装失败', 'Install failed'))
+            showInstallMessage('error', result.error || t('app.installfailed', language as Language))
         }
         setInstalling(null)
     }
@@ -152,12 +152,12 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
         setGithubInstalling(true)
         const result = await skillService.installFromGitHub(githubUrl, installLevel)
         if (result.success) {
-            showInstalledMessage('success', t('安装成功', 'Installed successfully'))
+            showInstalledMessage('success', t('app.installedsuccessfully3', language as Language))
             loadSkills()
             setGithubUrl('')
             setInstallMode(null)
         } else {
-            showInstallMessage('error', result.error || t('安装失败', 'Install failed'))
+            showInstallMessage('error', result.error || t('app.installfailed2', language as Language))
         }
         setGithubInstalling(false)
     }
@@ -167,7 +167,7 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
         setCreating(true)
         const result = await skillService.createSkill(newSkillName.trim(), '', createLevel)
         if (result.success) {
-            showInstalledMessage('success', t('创建成功', 'Created successfully'))
+            showInstalledMessage('success', t('app.createdsuccessfully', language as Language))
             loadSkills()
             setNewSkillName('')
             setInstallMode(null)
@@ -178,7 +178,7 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                 }
             }
         } else {
-            showInstallMessage('error', result.error || t('创建失败', 'Create failed'))
+            showInstallMessage('error', result.error || t('app.createfailed', language as Language))
         }
         setCreating(false)
     }
@@ -194,7 +194,7 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
         const skill = skills.find(s => s.name === name)
         const success = await skillService.deleteSkill(name, skill?.source || 'project')
         if (success) {
-            showInstalledMessage('success', t('已删除', 'Deleted'))
+            showInstalledMessage('success', t('app.deleted', language as Language))
             loadSkills()
         }
     }
@@ -221,11 +221,11 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
         setEditSaving(true)
         const success = await api.file.write(editingSkill.filePath, editingSkill.content)
         if (success) {
-            showInstalledMessage('success', t('保存成功', 'Saved successfully'))
+            showInstalledMessage('success', t('app.savedsuccessfully', language as Language))
             loadSkills()
             setEditingSkill(null)
         } else {
-            showInstalledMessage('error', t('保存失败', 'Save failed'))
+            showInstalledMessage('error', t('app.savefailed3', language as Language))
         }
         setEditSaving(false)
     }
@@ -272,14 +272,14 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                                 <Zap className="w-4 h-4" />
                             </div>
                             <div>
-                                <h5 className="text-sm font-semibold text-text-primary">{t('已安装技能', 'Installed Skills')}</h5>
+                                <h5 className="text-sm font-semibold text-text-primary">{t('app.installedskills', language as Language)}</h5>
                                 <p className="text-[11px] text-text-muted mt-0.5">
-                                    {enabledCount}/{skills.length} {t('已启用', 'enabled')}
+                                    {enabledCount}/{skills.length} {t('app.enabled', language as Language)}
                                     {skills.length > 0 && (
                                         <span className="ml-2">
-                                            <span className="text-blue-400">{globalCount}</span> {t('全局', 'Global')}
+                                            <span className="text-blue-400">{globalCount}</span> {t('app.global', language as Language)}
                                             <span className="mx-1 text-border">·</span>
-                                            <span className="text-green-400">{projectCount}</span> {t('工作区', 'Project')}
+                                            <span className="text-green-400">{projectCount}</span> {t('app.project', language as Language)}
                                         </span>
                                     )}
                                 </p>
@@ -288,7 +288,7 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                         <button
                             onClick={loadSkills}
                             className="p-1.5 text-text-muted hover:text-accent transition-colors rounded-md hover:bg-accent/10"
-                            title={t('刷新', 'Refresh')}
+                            title={t('app.refresh', language as Language)}
                         >
                             <RefreshCw className="w-3.5 h-3.5" />
                         </button>
@@ -302,7 +302,7 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                                 type="text"
                                 value={skillSearch}
                                 onChange={(e) => setSkillSearch(e.target.value)}
-                                placeholder={t('搜索技能名称、描述或关键词...', 'Search skills by name, description or keyword...')}
+                                placeholder={t('app.searchskillsbyname', language as Language)}
                                 className="w-full pl-8 pr-3 py-1.5 text-xs bg-background/40 border border-border/40 rounded-lg text-text-primary placeholder:text-text-muted/40 focus:outline-none focus:border-accent/40 focus:ring-1 focus:ring-accent/20 transition-all"
                             />
                             {skillSearch && (
@@ -315,7 +315,7 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                             )}
                         </div>
                         <div className="flex items-center rounded-lg border border-border/50 bg-background/30 overflow-hidden">
-                            {([['all', t('全部', 'All'), skills.length], ['global', t('全局', 'Global'), globalCount], ['project', t('工作区', 'Project'), projectCount]] as [string, string, number][]).map(([val, label, count]) => (
+                            {([['all', t('app.all', language as Language), skills.length], ['global', t('app.global2', language as Language), globalCount], ['project', t('app.project2', language as Language), projectCount]] as [string, string, number][]).map(([val, label, count]) => (
                                 <button
                                     key={val}
                                     onClick={() => setFilterSource(val as 'all' | 'global' | 'project')}
@@ -334,10 +334,7 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                     {/* 技能说明 */}
                     <div className="px-5 pb-3">
                         <p className="text-[11px] text-text-muted/70">
-                            {t(
-                                'Skills 是基于 agentskills.io 标准的指令包，让 AI 在特定领域拥有专业能力。',
-                                'Skills are instruction packages based on the agentskills.io standard that give AI specialized capabilities.'
-                            )}
+                            {t('app.skillsareinstructionpackages', language as Language)}
                         </p>
                     </div>
 
@@ -350,18 +347,18 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                         ) : !workspacePath ? (
                             <div className="h-32 flex flex-col items-center justify-center text-text-muted gap-2">
                                 <FolderOpen className="w-8 h-8 opacity-40" />
-                                <span className="text-xs">{t('请先打开一个工作区', 'Please open a workspace first')}</span>
+                                <span className="text-xs">{t('app.pleaseopenaworkspace', language as Language)}</span>
                             </div>
                         ) : skills.length === 0 ? (
                             <div className="h-40 flex flex-col items-center justify-center text-text-muted border border-dashed border-border/50 rounded-xl gap-2">
                                 <Zap className="w-10 h-10 opacity-30" />
-                                <span className="text-xs">{t('暂无技能，点击下方安装技能添加', 'No skills yet. Click "Install Skill" below to add one.')}</span>
+                                <span className="text-xs">{t('app.noskillsyetclick', language as Language)}</span>
                             </div>
                         ) : filteredSkills.length === 0 ? (
                             <div className="h-24 flex items-center justify-center text-text-muted text-xs">
                                 {skillSearch
-                                    ? t('未找到匹配的技能', 'No skills match your search')
-                                    : t('当前筛选条件下无技能', 'No skills match the current filter')}
+                                    ? t('app.noskillsmatchyour', language as Language)
+                                    : t('app.noskillsmatchthe', language as Language)}
                             </div>
                         ) : (
                             <div className="space-y-2">
@@ -393,7 +390,7 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                                                             ? 'bg-blue-500/15 text-blue-400'
                                                             : 'bg-green-500/15 text-green-400'
                                                         }`}>
-                                                            {skill.source === 'global' ? t('全局', 'Global') : t('工作区', 'Project')}
+                                                            {skill.source === 'global' ? t('app.global3', language as Language) : t('app.project3', language as Language)}
                                                         </span>
                                                         <button
                                                             onClick={() => handleTriggerTypeChange(skill.name, skill.type === 'auto' ? 'manual' : 'auto')}
@@ -401,9 +398,9 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                                                                 ? 'bg-accent/15 text-accent hover:bg-accent/25'
                                                                 : 'bg-surface-hover/60 text-text-muted hover:bg-surface-hover hover:text-text-secondary'
                                                             }`}
-                                                            title={t('点击切换触发模式', 'Click to toggle trigger mode')}
+                                                            title={t('app.clicktotoggletrigger', language as Language)}
                                                         >
-                                                            {skill.type === 'auto' ? t('自动', 'Auto') : t('手动', 'Manual')}
+                                                            {skill.type === 'auto' ? t('app.auto', language as Language) : t('app.manual', language as Language)}
                                                         </button>
                                                     </div>
                                                     {skill.description && (
@@ -429,7 +426,7 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                                                 <button
                                                     onClick={() => handleToggle(skill.name, skill.enabled)}
                                                     className={`flex-shrink-0 transition-colors ${skill.enabled ? 'text-accent' : 'text-text-muted/50'}`}
-                                                    title={skill.enabled ? t('禁用', 'Disable') : t('启用', 'Enable')}
+                                                    title={skill.enabled ? t('app.disable', language as Language) : t('app.enable', language as Language)}
                                                 >
                                                     {skill.enabled ? (
                                                         <ToggleRight className="w-6 h-6" />
@@ -471,13 +468,13 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                                                     <div className="ml-11 p-3 rounded-lg bg-background/30 border border-border/30 space-y-2">
                                                         {skill.description && (
                                                             <div>
-                                                                <span className="text-[10px] text-text-muted/60 uppercase tracking-wider">{t('描述', 'Description')}</span>
+                                                                <span className="text-[10px] text-text-muted/60 uppercase tracking-wider">{t('app.description', language as Language)}</span>
                                                                 <p className="text-[11px] text-text-secondary mt-0.5">{skill.description}</p>
                                                             </div>
                                                         )}
                                                         {skill.keywords && skill.keywords.length > 0 && (
                                                             <div>
-                                                                <span className="text-[10px] text-text-muted/60 uppercase tracking-wider">{t('关键词', 'Keywords')}</span>
+                                                                <span className="text-[10px] text-text-muted/60 uppercase tracking-wider">{t('app.keywords', language as Language)}</span>
                                                                 <div className="flex flex-wrap gap-1 mt-0.5">
                                                                     {skill.keywords.map(kw => (
                                                                         <span key={kw} className="text-[10px] px-1.5 py-0.5 bg-surface-hover/40 rounded text-text-muted">{kw}</span>
@@ -486,7 +483,7 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                                                             </div>
                                                         )}
                                                         <div>
-                                                            <span className="text-[10px] text-text-muted/60 uppercase tracking-wider">{t('文件路径', 'File Path')}</span>
+                                                            <span className="text-[10px] text-text-muted/60 uppercase tracking-wider">{t('app.filepath', language as Language)}</span>
                                                             <p className="text-[11px] text-text-muted mt-0.5 font-mono truncate" title={skill.filePath}>
                                                                 {skill.filePath}
                                                             </p>
@@ -516,8 +513,8 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                             <Download className="w-4 h-4" />
                         </div>
                         <div className="text-left">
-                            <h5 className="text-sm font-semibold text-text-primary">{t('安装技能', 'Install Skill')}</h5>
-                            <p className="text-[11px] text-text-muted mt-0.5">{t('从市场搜索、GitHub 克隆或手动创建', 'Search marketplace, clone from GitHub, or create manually')}</p>
+                            <h5 className="text-sm font-semibold text-text-primary">{t('app.installskill', language as Language)}</h5>
+                            <p className="text-[11px] text-text-muted mt-0.5">{t('app.searchmarketplaceclonefrom', language as Language)}</p>
                         </div>
                     </div>
                     <div className={`p-1.5 rounded-full bg-surface-hover transition-transform duration-300 ${installMode ? 'rotate-180' : ''}`}>
@@ -531,9 +528,9 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                             {/* 安装方式 Tab */}
                             <div className="flex items-center border-b border-border/30">
                                 {([
-                                    ['marketplace', t('搜索市场', 'Marketplace'), Search],
+                                    ['marketplace', t('app.marketplace', language as Language), Search],
                                     ['github', 'GitHub', Github],
-                                    ['create', t('手动创建', 'Create'), Plus],
+                                    ['create', t('app.create', language as Language), Plus],
                                 ] as [string, string, typeof Search][]).map(([key, label, TabIcon]) => (
                                     <button
                                         key={key}
@@ -552,9 +549,9 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                             {/* 安装位置选择 */}
                             {installMode && installMode !== 'create' && (
                                 <div className="flex items-center gap-2">
-                                    <span className="text-[11px] text-text-muted">{t('安装到：', 'Install to:')}</span>
+                                    <span className="text-[11px] text-text-muted">{t('app.installto', language as Language)}</span>
                                     <div className="flex items-center rounded-md border border-border/50 overflow-hidden">
-                                        {([['project', t('工作区', 'Workspace')], ['global', t('全局', 'Global')]] as [SkillSource, string][]).map(([val, label]) => (
+                                        {([['project', t('app.workspace', language as Language)], ['global', t('app.global4', language as Language)]] as [SkillSource, string][]).map(([val, label]) => (
                                             <button
                                                 key={val}
                                                 onClick={() => setInstallLevel(val)}
@@ -586,7 +583,7 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                                         <TextField
                                             value={searchQuery}
                                             onChange={(e) => setSearchQuery(e.target.value)}
-                                            placeholder={t('搜索 skills.sh 市场...', 'Search skills.sh marketplace...')}
+                                            placeholder={t('app.searchskillsshmarketplace', language as Language)}
                                             className="flex-1 bg-background/50 border-border text-xs"
                                             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                                         />
@@ -603,7 +600,7 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                                     <div className="flex items-center gap-1.5 text-[11px] text-text-muted">
                                         <ExternalLink className="w-3 h-3" />
                                         <a href="https://skills.sh" className="hover:text-accent transition-colors">
-                                            {t('浏览 skills.sh 市场', 'Browse skills.sh marketplace')}
+                                            {t('app.browseskillsshmarketplace', language as Language)}
                                         </a>
                                     </div>
 
@@ -616,7 +613,7 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                                                         <div className="text-[11px] text-text-muted">{result.package}</div>
                                                     </div>
                                                     <div className="flex items-center gap-2 ml-3">
-                                                        <span className="text-[10px] text-text-muted">{result.installs} {t('次安装', 'installs')}</span>
+                                                        <span className="text-[10px] text-text-muted">{result.installs} {t('app.installs', language as Language)}</span>
                                                         <ActionButton
                                                             variant="primary"
                                                             size="sm"
@@ -626,7 +623,7 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                                                         >
                                                             {installing === result.package
                                                                 ? <RefreshCw className="w-3 h-3 animate-spin" />
-                                                                : t('安装', 'Install')
+                                                                : t('app.install', language as Language)
                                                             }
                                                         </ActionButton>
                                                     </div>
@@ -655,11 +652,11 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                                             disabled={githubInstalling || !githubUrl.trim()}
                                             className="text-xs shrink-0"
                                         >
-                                            {githubInstalling ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : t('克隆安装', 'Clone')}
+                                            {githubInstalling ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : t('app.clone', language as Language)}
                                         </ActionButton>
                                     </div>
                                     <p className="text-[11px] text-text-muted">
-                                        {t('输入包含 SKILL.md 的 GitHub 仓库地址', 'Enter a GitHub repo URL containing a SKILL.md file')}
+                                        {t('app.enteragithubrepo', language as Language)}
                                     </p>
                                 </div>
                             )}
@@ -671,7 +668,7 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                                         <TextField
                                             value={newSkillName}
                                             onChange={(e) => setNewSkillName(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
-                                            placeholder={t('skill-name（小写字母和连字符）', 'skill-name (lowercase and hyphens)')}
+                                            placeholder={t('app.skillnamelowercaseandhyphens', language as Language)}
                                             className="flex-1 bg-background/50 border-border text-xs"
                                             onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
                                         />
@@ -682,14 +679,14 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                                             disabled={creating || !newSkillName.trim()}
                                             className="text-xs shrink-0"
                                         >
-                                            {creating ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : t('创建', 'Create')}
+                                            {creating ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : t('app.create2', language as Language)}
                                         </ActionButton>
                                     </div>
                                     <div className="flex items-center gap-3">
                                         <div className="flex items-center gap-2">
-                                            <span className="text-[11px] text-text-muted">{t('保存到：', 'Save to:')}</span>
+                                            <span className="text-[11px] text-text-muted">{t('app.saveto', language as Language)}</span>
                                             <div className="flex items-center rounded-md border border-border/50 overflow-hidden">
-                                                {([['project', t('工作区', 'Workspace')], ['global', t('全局', 'Global')]] as [SkillSource, string][]).map(([val, label]) => (
+                                                {([['project', t('app.workspace2', language as Language)], ['global', t('app.global5', language as Language)]] as [SkillSource, string][]).map(([val, label]) => (
                                                     <button
                                                         key={val}
                                                         onClick={() => setCreateLevel(val)}
@@ -704,10 +701,7 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                                             </div>
                                         </div>
                                         <span className="text-[11px] text-text-muted/50">
-                                            {t(
-                                                `将创建 ${BRAND.dirName}/skills/ 目录和模板`,
-                                                `Creates ${BRAND.dirName}/skills/ directory and template`
-                                            )}
+                                            {t('app.createsskillsdirectoryand', language as Language, { dirName: BRAND.dirName })}
                                         </span>
                                     </div>
                                 </div>
@@ -719,27 +713,27 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
 
             {/* 使用提示 */}
             <div className="p-4 rounded-xl bg-accent/5 border border-accent/10 text-xs text-text-muted">
-                <p className="font-medium text-accent/80 mb-2">{t('使用提示', 'Tips')}</p>
+                <p className="font-medium text-accent/80 mb-2">{t('app.tips', language as Language)}</p>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div className="flex items-start gap-2">
                         <Zap className="w-3.5 h-3.5 text-accent/60 mt-0.5 flex-shrink-0" />
                         <div>
-                            <span className="text-text-secondary font-medium">{t('自动模式', 'Auto Mode')}</span>
-                            <p className="text-[11px] text-text-muted/70 mt-0.5">{t('AI 判断相关时自动加载', 'AI loads on-demand when relevant')}</p>
+                            <span className="text-text-secondary font-medium">{t('app.automode', language as Language)}</span>
+                            <p className="text-[11px] text-text-muted/70 mt-0.5">{t('app.ailoadsondemandwhen', language as Language)}</p>
                         </div>
                     </div>
                     <div className="flex items-start gap-2">
                         <Search className="w-3.5 h-3.5 text-accent/60 mt-0.5 flex-shrink-0" />
                         <div>
-                            <span className="text-text-secondary font-medium">{t('手动模式', 'Manual Mode')}</span>
-                            <p className="text-[11px] text-text-muted/70 mt-0.5">{t('聊天中 @skill-name 引用', 'Use @skill-name in chat')}</p>
+                            <span className="text-text-secondary font-medium">{t('app.manualmode', language as Language)}</span>
+                            <p className="text-[11px] text-text-muted/70 mt-0.5">{t('app.useskillnameinchat', language as Language)}</p>
                         </div>
                     </div>
                     <div className="flex items-start gap-2">
                         <Info className="w-3.5 h-3.5 text-accent/60 mt-0.5 flex-shrink-0" />
                         <div>
-                            <span className="text-text-secondary font-medium">{t('优先级', 'Priority')}</span>
-                            <p className="text-[11px] text-text-muted/70 mt-0.5">{t('工作区覆盖同名全局技能', 'Workspace overrides global')}</p>
+                            <span className="text-text-secondary font-medium">{t('app.priority', language as Language)}</span>
+                            <p className="text-[11px] text-text-muted/70 mt-0.5">{t('app.workspaceoverridesglobal', language as Language)}</p>
                         </div>
                     </div>
                 </div>
@@ -764,7 +758,7 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                             className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-text-secondary hover:bg-accent/10 hover:text-accent transition-colors"
                         >
                             <Pencil className="w-3.5 h-3.5" />
-                            {t('编辑', 'Edit')}
+                            {t('app.edit', language as Language)}
                         </button>
                         <button
                             onClick={() => {
@@ -775,7 +769,7 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                             className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-text-secondary hover:bg-accent/10 hover:text-accent transition-colors"
                         >
                             <Info className="w-3.5 h-3.5" />
-                            {t('详情', 'Details')}
+                            {t('app.details', language as Language)}
                         </button>
                         <div className="border-t border-border/30 my-1"></div>
                         <button
@@ -794,7 +788,7 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                             }`}
                         >
                             <Trash2 className="w-3.5 h-3.5" />
-                            {deleteConfirm === skill.name ? t('确认删除', 'Confirm') : t('删除', 'Delete')}
+                            {deleteConfirm === skill.name ? t('app.confirm', language as Language) : t('app.delete', language as Language)}
                         </button>
                     </div>
                 )
@@ -803,7 +797,7 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
             <OverlayDialog
                 isOpen={!!editingSkill}
                 onClose={() => setEditingSkill(null)}
-                title={editingSkill ? `${t('编辑技能', 'Edit Skill')} - ${editingSkill.name}` : ''}
+                title={editingSkill ? `${t('app.editskill', language as Language)} - ${editingSkill.name}` : ''}
                 size="3xl"
                 showCloseButton={true}
             >
@@ -826,7 +820,7 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                                     onClick={() => setEditingSkill(null)}
                                     className="text-xs"
                                 >
-                                    {t('取消', 'Cancel')}
+                                    {t('app.cancel', language as Language)}
                                 </ActionButton>
                                 <ActionButton
                                     variant="primary"
@@ -837,7 +831,7 @@ export function SkillRegistryPanel({ language }: SkillSettingsProps) {
                                 >
                                     {editSaving
                                         ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                                        : t('保存', 'Save')
+                                        : t('app.save2', language as Language)
                                     }
                                 </ActionButton>
                             </div>

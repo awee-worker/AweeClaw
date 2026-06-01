@@ -2,6 +2,7 @@ import { PenTool, BookOpen, Users, FileText, Sparkles, Lightbulb } from 'lucide-
 import { useStore } from '@store'
 import { Agent } from '@intelligence/engine'
 import { getAgentConfig } from '@intelligence/utils/intelligenceConfig'
+import { t, type Language } from '@renderer/i18n'
 
 export default function WritingWorkspace() {
     const language = useStore(s => s.language)
@@ -24,35 +25,35 @@ export default function WritingWorkspace() {
     const quickActions = [
         {
             icon: Sparkles,
-            label: language === 'zh' ? '开始创作' : 'Start Writing',
-            desc: language === 'zh' ? '让 AI 帮你构思故事' : 'Let AI help you craft a story',
-            onClick: () => sendToChat(language === 'zh' ? '我想开始创作一个新故事，请帮我构思一个有趣的开头。' : 'I want to start writing a new story. Please help me brainstorm an interesting opening.'),
+            label: t('writing.startwriting', language as Language),
+            desc: t('writing.letaihelpyoucraft', language as Language),
+            onClick: () => sendToChat(t('writing.iwanttostartwriting', language as Language)),
         },
         {
             icon: BookOpen,
-            label: language === 'zh' ? '续写内容' : 'Continue Writing',
-            desc: language === 'zh' ? '从现有草稿继续' : 'Continue from existing draft',
+            label: t('writing.continuewriting', language as Language),
+            desc: t('writing.continuefromexistingdraft', language as Language),
             onClick: () => setActiveSidePanel('explorer'),
         },
         {
             icon: Users,
-            label: language === 'zh' ? '创建角色' : 'Create Character',
-            desc: language === 'zh' ? '设计故事中的人物' : 'Design story characters',
+            label: t('writing.createcharacter', language as Language),
+            desc: t('writing.designstorycharacters', language as Language),
             onClick: () => setActiveSidePanel('characters'),
         },
         {
             icon: FileText,
-            label: language === 'zh' ? '写大纲' : 'Write Outline',
-            desc: language === 'zh' ? '规划故事结构' : 'Plan story structure',
-            onClick: () => sendToChat(language === 'zh' ? '请帮我创建一个故事大纲，包括主要情节、转折点和结局。' : 'Please help me create a story outline with main plot points, twists, and ending.'),
+            label: t('writing.writeoutline', language as Language),
+            desc: t('writing.planstorystructure', language as Language),
+            onClick: () => sendToChat(t('writing.pleasehelpmecreatea', language as Language)),
         },
     ]
 
     const prompts = [
-        language === 'zh' ? '写一个关于时间旅行的短篇故事' : 'Write a short story about time travel',
-        language === 'zh' ? '帮我优化这段文案的语气和节奏' : 'Help me refine the tone and rhythm of this copy',
-        language === 'zh' ? '为我的小说创建一个反派角色' : 'Create an antagonist for my novel',
-        language === 'zh' ? '把这段文字改写成更生动的描写' : 'Rewrite this passage with more vivid descriptions',
+        t('writing.writeashortstoryabout', language as Language),
+        t('writing.helpmerefinethetone', language as Language),
+        t('writing.createanantagonistformy', language as Language),
+        t('writing.rewritethispassagewithmore', language as Language),
     ]
 
     return (
@@ -63,12 +64,10 @@ export default function WritingWorkspace() {
                         <PenTool className="w-8 h-8 text-accent" />
                     </div>
                     <h1 className="text-2xl font-semibold text-text-primary">
-                        {language === 'zh' ? '创意写作工作台' : 'Creative Writing Studio'}
+                        {t('writing.creativewritingstudio', language as Language)}
                     </h1>
                     <p className="text-sm text-text-muted max-w-md mx-auto">
-                        {language === 'zh'
-                            ? '构思故事、塑造角色、打磨文字，与 AI 协作完成创作'
-                            : 'Craft stories, shape characters, polish prose — collaborate with AI'}
+                        {t('writing.craftstoriesshapecharacterspolish', language as Language)}
                     </p>
                 </div>
 
@@ -92,7 +91,7 @@ export default function WritingWorkspace() {
                     <div className="flex items-center gap-2 mb-3">
                         <Lightbulb className="w-4 h-4 text-amber-400/70" />
                         <span className="text-xs font-medium text-text-muted uppercase tracking-wider">
-                            {language === 'zh' ? '灵感提示' : 'Prompts'}
+                            {t('writing.prompts', language as Language)}
                         </span>
                     </div>
                     <div className="space-y-1.5">

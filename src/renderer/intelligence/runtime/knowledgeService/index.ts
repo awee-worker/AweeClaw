@@ -6,7 +6,7 @@ import { BRAND } from '@shared/brand'
 import { vectorIndex } from './vectorIndex'
 import { intelligentExtractor } from './intelligentExtractor'
 import { localGraphStore } from './localGraphStore'
-import { computeKeywordScore, computeWeightedFusion, SEARCH_SCORING } from './scoring'
+import { computeKeywordScore, SEARCH_SCORING } from './scoring'
 import {
   type KnowledgeEntry,
   type KnowledgeEntryInput,

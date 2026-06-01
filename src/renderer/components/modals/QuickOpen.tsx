@@ -317,7 +317,7 @@ export default function QuickOpen({ onClose }: QuickOpenProps) {
             value={query}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={t('searchFilesPlaceholder', language)}
+            placeholder={t('modals.searchFilesPlaceholder', language)}
             className="flex-1 bg-transparent text-xl font-medium text-text-primary placeholder:text-text-muted/85 focus:outline-none"
             spellCheck={false}
           />
@@ -338,11 +338,11 @@ export default function QuickOpen({ onClose }: QuickOpenProps) {
           {isLoading ? (
             <div className="px-4 py-16 text-center text-text-muted flex flex-col items-center gap-4">
               <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-              <p className="text-xs font-medium opacity-70 tracking-wide">{t('loadingFiles', language)}</p>
+              <p className="text-xs font-medium opacity-70 tracking-wide">{t('modals.loadingFiles', language)}</p>
             </div>
           ) : matches.length === 0 ? (
             <div className="px-4 py-16 text-center text-text-muted flex flex-col items-center gap-2">
-              <p className="text-sm font-medium">{query ? t('noFilesFound', language) : t('noFilesInWorkspace', language)}</p>
+              <p className="text-sm font-medium">{query ? t('modals.noFilesFound', language) : t('modals.noFilesInWorkspace', language)}</p>
               {query && <p className="text-xs opacity-50">Try searching for something else</p>}
             </div>
           ) : (

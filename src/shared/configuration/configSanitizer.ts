@@ -326,9 +326,24 @@ export interface AppSettingsSchema {
   webSearchConfig?: {
     googleApiKey?: string
     googleCx?: string
+    activeSearchEngine?: string
+    searchTimeout?: number
+    searchEngines?: Record<string, { enabled: boolean; apiKey?: string; extraValues?: Record<string, string>; customBaseUrl?: string; timeout?: number }>
   }
   mcpConfig?: {
     autoConnect?: boolean
+  }
+  emailConfig?: {
+    enabled?: boolean
+    smtp?: {
+      host?: string
+      port?: number
+      secure?: boolean
+      user?: string
+      pass?: string
+    }
+    fromName?: string
+    fromAddress?: string
   }
 }
 
@@ -372,6 +387,24 @@ export function cleanAppSettings(config: Record<string, unknown>): AppSettingsSc
     cleaned.webSearchConfig = {}
     if (typeof ws.googleApiKey === 'string') cleaned.webSearchConfig.googleApiKey = ws.googleApiKey
     if (typeof ws.googleCx === 'string') cleaned.webSearchConfig.googleCx = ws.googleCx
+    if (typeof ws.activeSearchEngine === 'string') cleaned.webSearchConfig.activeSearchEngine = ws.activeSearchEngine
+    if (typeof ws.searchTimeout === 'number') cleaned.webSearchConfig.searchTimeout = ws.searchTimeout
+    if (ws.searchEngines && typeof ws.searchEngines === 'object') {
+      const engines: Record<string, { enabled: boolean; apiKey?: string; extraValues?: Record<string, string>; customBaseUrl?: string; timeout?: number }> = {}
+      for (const [id, cfg] of Object.entries(ws.searchEngines as Record<string, unknown>)) {
+        if (cfg && typeof cfg === 'object') {
+          const c = cfg as Record<string, unknown>
+          engines[id] = {
+            enabled: typeof c.enabled === 'boolean' ? c.enabled : false,
+          }
+          if (typeof c.apiKey === 'string') engines[id].apiKey = c.apiKey
+          if (c.extraValues && typeof c.extraValues === 'object') engines[id].extraValues = c.extraValues as Record<string, string>
+          if (typeof c.customBaseUrl === 'string') engines[id].customBaseUrl = c.customBaseUrl
+          if (typeof c.timeout === 'number') engines[id].timeout = c.timeout
+        }
+      }
+      cleaned.webSearchConfig.searchEngines = engines
+    }
   }
 
   // mcpConfig
@@ -379,6 +412,24 @@ export function cleanAppSettings(config: Record<string, unknown>): AppSettingsSc
     const mcp = config.mcpConfig as Record<string, unknown>
     cleaned.mcpConfig = {}
     if (typeof mcp.autoConnect === 'boolean') cleaned.mcpConfig.autoConnect = mcp.autoConnect
+  }
+
+  // emailConfig
+  if (config.emailConfig && typeof config.emailConfig === 'object') {
+    const email = config.emailConfig as Record<string, unknown>
+    cleaned.emailConfig = {}
+    if (typeof email.enabled === 'boolean') cleaned.emailConfig.enabled = email.enabled
+    if (email.smtp && typeof email.smtp === 'object') {
+      const smtp = email.smtp as Record<string, unknown>
+      cleaned.emailConfig.smtp = {}
+      if (typeof smtp.host === 'string') cleaned.emailConfig.smtp.host = smtp.host
+      if (typeof smtp.port === 'number') cleaned.emailConfig.smtp.port = smtp.port
+      if (typeof smtp.secure === 'boolean') cleaned.emailConfig.smtp.secure = smtp.secure
+      if (typeof smtp.user === 'string') cleaned.emailConfig.smtp.user = smtp.user
+      if (typeof smtp.pass === 'string') cleaned.emailConfig.smtp.pass = smtp.pass
+    }
+    if (typeof email.fromName === 'string') cleaned.emailConfig.fromName = email.fromName
+    if (typeof email.fromAddress === 'string') cleaned.emailConfig.fromAddress = email.fromAddress
   }
 
   return cleaned

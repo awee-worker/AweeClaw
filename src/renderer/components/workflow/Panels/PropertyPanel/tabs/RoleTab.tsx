@@ -2,6 +2,7 @@ import type { TabProps } from '../types'
 import { BUILTIN_AGENT_ROLES } from '@shared/protocols/workflow'
 import { Section } from '../Section'
 import { INPUT_CLASS, SELECT_CLASS, TEXTAREA_CLASS } from '../shared'
+import { t, type Language } from '@renderer/i18n'
 
 export function RoleTab({ nodeType, data, onChange, language }: TabProps) {
   if (nodeType === 'agent_group') {
@@ -14,18 +15,18 @@ export function RoleTab({ nodeType, data, onChange, language }: TabProps) {
 function AgentGroupRoleSection({ data, onChange, language }: Omit<TabProps, 'nodeType'>) {
   return (
     <>
-      <Section title={language === 'zh' ? '协作模式' : 'Collaboration Mode'}>
+      <Section title={t('wf.collaborationmode', language as Language)}>
         <select
           value={data.collaborationMode || 'sequential'}
           onChange={(e) => onChange('collaborationMode', e.target.value)}
           className={SELECT_CLASS}
         >
-          <option value="sequential">{language === 'zh' ? '顺序执行' : 'Sequential'}</option>
-          <option value="debate">{language === 'zh' ? '辩论模式' : 'Debate'}</option>
-          <option value="voting">{language === 'zh' ? '投票模式' : 'Voting'}</option>
+          <option value="sequential">{t('wf.sequential', language as Language)}</option>
+          <option value="debate">{t('wf.debate', language as Language)}</option>
+          <option value="voting">{t('wf.voting', language as Language)}</option>
         </select>
       </Section>
-      <Section title={language === 'zh' ? '最大轮次' : 'Max Rounds'}>
+      <Section title={t('wf.maxrounds', language as Language)}>
         <input
           type="number"
           value={data.maxRounds || 3}
@@ -35,7 +36,7 @@ function AgentGroupRoleSection({ data, onChange, language }: Omit<TabProps, 'nod
           className={INPUT_CLASS}
         />
       </Section>
-      <Section title={language === 'zh' ? '参与角色' : 'Participating Roles'}>
+      <Section title={t('wf.participatingroles', language as Language)}>
         <div className="space-y-1">
           {BUILTIN_AGENT_ROLES.filter(r => r.id !== 'custom').map(role => {
             const isSelected = (data.groupRoles || []).some(r2 => r2.id === role.id)
@@ -69,13 +70,13 @@ function AgentGroupRoleSection({ data, onChange, language }: Omit<TabProps, 'nod
 function AgentTaskRoleSection({ data, onChange, language }: Omit<TabProps, 'nodeType'>) {
   return (
     <>
-      <Section title={language === 'zh' ? '角色' : 'Role'}>
+      <Section title={t('wf.role', language as Language)}>
         <select
           value={data.roleId || ''}
           onChange={(e) => onChange('roleId', e.target.value)}
           className={SELECT_CLASS}
         >
-          <option value="">{language === 'zh' ? '选择角色...' : 'Select role...'}</option>
+          <option value="">{t('wf.selectrole', language as Language)}</option>
           {BUILTIN_AGENT_ROLES.map(role => (
             <option key={role.id} value={role.id}>
               {language === 'zh' ? role.nameZh : role.name}
@@ -93,17 +94,17 @@ function AgentTaskRoleSection({ data, onChange, language }: Omit<TabProps, 'node
         })()}
       </Section>
 
-      <Section title={language === 'zh' ? '自定义系统提示词' : 'Custom System Prompt'}>
+      <Section title={t('wf.customsystemprompt', language as Language)}>
         <textarea
           value={data.systemPrompt || ''}
           onChange={(e) => onChange('systemPrompt', e.target.value)}
-          placeholder={language === 'zh' ? '覆盖角色默认提示词...' : 'Override role default prompt...'}
+          placeholder={t('wf.overrideroledefaultprompt', language as Language)}
           rows={4}
           className={TEXTAREA_CLASS}
         />
       </Section>
 
-      <Section title={language === 'zh' ? '对话模式' : 'Chat Mode'}>
+      <Section title={t('wf.chatmode', language as Language)}>
         <div className="flex gap-1">
           {(['chat', 'agent', 'plan'] as const).map(mode => (
             <button
@@ -121,7 +122,7 @@ function AgentTaskRoleSection({ data, onChange, language }: Omit<TabProps, 'node
         </div>
       </Section>
 
-      <Section title={language === 'zh' ? 'Temperature' : 'Temperature'}>
+      <Section title={t('wf.temperature', language as Language)}>
         <div className="flex items-center gap-2">
           <input
             type="range"
@@ -136,12 +137,12 @@ function AgentTaskRoleSection({ data, onChange, language }: Omit<TabProps, 'node
         </div>
       </Section>
 
-      <Section title={language === 'zh' ? '模型' : 'Model'}>
+      <Section title={t('wf.model', language as Language)}>
         <input
           type="text"
           value={data.modelId || ''}
           onChange={(e) => onChange('modelId', e.target.value)}
-          placeholder={language === 'zh' ? '留空使用默认' : 'Leave empty for default'}
+          placeholder={t('wf.leaveemptyfordefault', language as Language)}
           className={INPUT_CLASS}
         />
       </Section>

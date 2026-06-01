@@ -21,7 +21,7 @@ import { useChatScrollController } from '@hooks'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { EventBus } from '@intelligence/engine/EventDispatcher'
 import { knowledgeExtractor } from '@intelligence/runtime/knowledgeService/extractor'
-import { t } from '@renderer/i18n'
+import {t, type Language} from '@renderer/i18n'
 import { toFullPath, getFileName } from '@shared/toolkit/pathHelper'
 import {
   ChatMessage as ChatMessageType,
@@ -1035,11 +1035,9 @@ export default function ChatPanel() {
     if (selectedMessageIds.size === 0) return
 
     const confirmed = await globalConfirm({
-      title: language === 'zh' ? '删除对话' : 'Delete Conversation',
-      message: language === 'zh'
-        ? `确定要删除选中的 ${selectedMessageIds.size} 条消息吗？`
-        : `Delete ${selectedMessageIds.size} selected message(s)?`,
-      confirmText: language === 'zh' ? '删除' : 'Delete',
+      title: t('ai.deleteconversation', language as Language),
+      message: t('ai.deleteselectedmessages', language as Language, { size: selectedMessageIds.size }),
+      confirmText: t('ai.delete', language as Language),
       variant: 'danger',
     })
     if (!confirmed) return
@@ -1115,9 +1113,9 @@ export default function ChatPanel() {
       : ''
 
     const confirmed = await globalConfirm({
-      title: language === 'zh' ? '恢复检查点' : 'Restore Checkpoint',
+      title: t('ai.restorecheckpoint', language as Language),
       message: t('confirmRestoreCheckpoint', language),
-      confirmText: language === 'zh' ? '恢复' : 'Restore',
+      confirmText: t('ai.restore', language as Language),
       variant: 'warning',
     })
     if (!confirmed) return
@@ -1202,15 +1200,11 @@ export default function ChatPanel() {
 
   // 渲染消息
   const renderArchiveItem = useCallback((item: TimelineArchiveItem) => {
-    const label = language === 'zh' ? '显示更多历史消息' : 'Show more history'
-    const hiddenLabel = language === 'zh'
-      ? `已归档 ${item.hiddenCount} 条历史消息`
-      : `${item.hiddenCount} older messages archived`
-    const revealLabel = language === 'zh'
-      ? `展开前 ${item.revealCount} 条`
-      : `Reveal ${item.revealCount} more`
+    const label = t('ai.showmorehistory', language as Language)
+    const hiddenLabel = t('ai.oldermessagesarchived', language as Language, { hiddenCount: item.hiddenCount })
+    const revealLabel = t('ai.revealmore', language as Language, { revealCount: item.revealCount })
     const remainingLabel = item.remainingCount > 0
-      ? (language === 'zh' ? `剩余 ${item.remainingCount} 条` : `${item.remainingCount} remaining`)
+      ? (t('ai.remaining', language as Language, { remainingCount: item.remainingCount }))
       : undefined
 
     return (
@@ -1331,8 +1325,8 @@ export default function ChatPanel() {
                   <Upload className="w-10 h-10 text-accent relative z-10" />
                 </div>
                 <div className="text-center">
-                  <p className="text-lg font-medium text-text-primary mb-1">{language === 'zh' ? '释放以添加文件' : 'Drop files to add context'}</p>
-                  <p className="text-sm text-text-muted">{language === 'zh' ? '支持代码和附件' : 'Supports code and attachments'}</p>
+                  <p className="text-lg font-medium text-text-primary mb-1">{t('ai.dropfilestoaddcontext', language as Language)}</p>
+                  <p className="text-sm text-text-muted">{t('ai.supportscodeandattachments', language as Language)}</p>
                 </div>
               </motion.div>
             </motion.div>
@@ -1351,7 +1345,7 @@ export default function ChatPanel() {
                 }`}
               >
                 <MessageSquare className="w-3.5 h-3.5" />
-                {language === 'zh' ? '对话' : 'Chat'}
+                {t('ai.chat', language as Language)}
               </button>
               <button
                 onClick={() => setWorkspaceViewVisible(true)}
@@ -1360,7 +1354,7 @@ export default function ChatPanel() {
                 }`}
               >
                 <BrainCircuit className="w-3.5 h-3.5" />
-                {language === 'zh' ? '工作台' : 'Workspace'}
+                {t('ai.workspace', language as Language)}
                 {activeWorkspaceSession.status === 'executing' && (
                   <span className="relative flex h-1.5 w-1.5 ml-0.5">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
@@ -1473,7 +1467,7 @@ export default function ChatPanel() {
                   <button
                     onClick={() => scrollToBottom('smooth')}
                     className="w-8 h-8 rounded-full bg-surface/90 backdrop-blur-sm border border-border/50 shadow-lg shadow-black/15 flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-surface transition-all"
-                    title={language === 'zh' ? '回到底部' : 'Scroll to bottom'}
+                    title={t('ai.scrolltobottom', language as Language)}
                   >
                     <ChevronDown className="w-4 h-4" />
                   </button>
@@ -1615,22 +1609,20 @@ export default function ChatPanel() {
         <div className="absolute bottom-0 left-0 right-0 z-50 flex justify-center pb-6 pointer-events-none">
           <div className="pointer-events-auto flex items-center gap-3 px-5 py-3 rounded-2xl bg-surface/95 backdrop-blur-xl border border-border/60 shadow-2xl shadow-black/30">
             <span className="text-sm text-text-secondary">
-              {language === 'zh'
-                ? `已选择 ${selectedMessageIds.size} 条消息`
-                : `${selectedMessageIds.size} selected`}
+              {t('ai.selected', language as Language, { size: selectedMessageIds.size })}
             </span>
             <button
               onClick={handleCancelDeleteSelection}
               className="px-4 py-1.5 rounded-lg text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-all border border-border/50"
             >
-              {language === 'zh' ? '取消' : 'Cancel'}
+              {t('ai.cancel', language as Language)}
             </button>
             <button
               onClick={handleConfirmDeleteSelection}
               disabled={selectedMessageIds.size === 0}
               className="px-4 py-1.5 rounded-lg text-sm text-white bg-red-500 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
             >
-              {language === 'zh' ? '确定删除' : 'Delete'}
+              {t('ai.delete2', language as Language)}
             </button>
           </div>
         </div>

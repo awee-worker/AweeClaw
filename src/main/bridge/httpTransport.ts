@@ -286,7 +286,6 @@ function htmlToText(html: string): string {
 }
 
 // ===== 网络搜索 =====
-// 优先级：Google PSE → DuckDuckGo
 
 interface SearchResult {
     title: string
@@ -300,72 +299,402 @@ interface WebSearchResult {
     error?: string
 }
 
-// 搜索 API 配置缓存
-let cachedGoogleApiKey: string | null = null
-let cachedGoogleCx: string | null = null
+interface SearchEngineState {
+    searchEngines: Record<string, { enabled: boolean; apiKey?: string; extraValues?: Record<string, string>; customBaseUrl?: string; timeout?: number }>
+    activeSearchEngine?: string
+    searchTimeout?: number
+}
 
-// 设置 Google PSE API 配置
-export function setGoogleSearchConfig(apiKey: string, cx: string) {
-    cachedGoogleApiKey = apiKey
-    cachedGoogleCx = cx
-    logger.ipc.info('[HTTP] Google PSE configured')
+let cachedSearchEngineState: SearchEngineState | null = null
+
+export function setSearchEngineState(state: SearchEngineState) {
+    cachedSearchEngineState = state
+    logger.ipc.info('[HTTP] Search engine state updated, active:', state.activeSearchEngine || 'none')
+}
+
+function getEnabledEngineOrder(): string[] {
+    if (!cachedSearchEngineState?.searchEngines) {
+        return ['duckduckgo']
+    }
+    const engines = cachedSearchEngineState.searchEngines
+    const enabled = Object.entries(engines)
+        .filter(([, cfg]) => cfg.enabled)
+        .map(([id]) => id)
+
+    if (enabled.length === 0) return ['duckduckgo']
+
+    const active = cachedSearchEngineState.activeSearchEngine
+    if (active && enabled.includes(active)) {
+        const rest = enabled.filter(id => id !== active)
+        return [active, ...rest]
+    }
+
+    const priority = ['google', 'brave', 'tavily', 'bing', 'serper', 'jina', 'exa', 'sogou', 'bocha', 'searxng', 'yandex', 'duckduckgo']
+    const ordered: string[] = []
+    for (const id of priority) {
+        if (enabled.includes(id)) ordered.push(id)
+    }
+    for (const id of enabled) {
+        if (!ordered.includes(id)) ordered.push(id)
+    }
+    return ordered
+}
+
+function getEngineConfig(engineId: string): { apiKey?: string; extraValues?: Record<string, string>; customBaseUrl?: string; timeout?: number } {
+    return cachedSearchEngineState?.searchEngines?.[engineId] || {}
 }
 
 async function webSearch(query: string, maxResults = 5, timeout?: number): Promise<WebSearchResult> {
-    // 优先使用 Google PSE（如果配置了）
-    const googleApiKey = cachedGoogleApiKey || process.env.GOOGLE_API_KEY || ''
-    const googleCx = cachedGoogleCx || process.env.GOOGLE_CX || ''
+    const engineOrder = getEnabledEngineOrder()
+    const globalTimeout = timeout || ((cachedSearchEngineState?.searchTimeout ?? 30) * 1000)
+    const perEngineTimeout = Math.max(Math.floor(globalTimeout / Math.min(engineOrder.length, 3)), 8000)
 
-    // 分配超时时间：Google 占 40%，DDG 占 60%（作为回退通常需要更久）
-    const totalTimeout = timeout || 30000
-    const googleTimeout = Math.floor(totalTimeout * 0.4)
-    const ddgTimeout = Math.floor(totalTimeout * 0.6)
+    const errors: string[] = []
 
-    if (googleApiKey && googleCx) {
+    for (const engineId of engineOrder) {
         try {
-            const result = await searchWithGoogle(query, googleApiKey, googleCx, maxResults, googleTimeout)
+            const result = await executeSearch(engineId, query, maxResults, perEngineTimeout)
             if (result.success && result.results && result.results.length > 0) {
+                logger.ipc.info(`[HTTP] Search succeeded with engine: ${engineId}, results: ${result.results.length}`)
                 return result
             }
-            // 如果是因为报错导致的失败（比如 API key 无效、额度用尽），不再静默回退，直接返回给 AI 让它告诉用户
-            if (!result.success && result.error) {
-                logger.ipc.error(`[HTTP] Google PSE failed with error: ${result.error}`)
-                return {
-                    success: false,
-                    error: `Google API Error: ${result.error}. Please check your Google API Key and CX in settings.`
-                }
+            if (result.error) {
+                errors.push(`${engineId}: ${result.error}`)
             }
-            // 只有当成功请求但 0 结果时，才回退
-            logger.ipc.warn('[HTTP] Google PSE returned 0 results, falling back to DuckDuckGo')
         } catch (error) {
-            logger.ipc.error('[HTTP] Google PSE failed with exception:', error)
-            return {
-                success: false,
-                error: `Google Search API Exception: ${error}. Please check your network or proxy settings.`
+            const msg = error instanceof Error ? error.message : String(error)
+            errors.push(`${engineId}: ${msg}`)
+            logger.ipc.warn(`[HTTP] Search engine ${engineId} failed:`, msg)
+        }
+    }
+
+    return {
+        success: false,
+        error: errors.length > 0
+            ? `所有搜索引擎均不可用: ${errors.join('; ')}`
+            : '没有可用的搜索引擎，请在设置中启用至少一个搜索引擎。',
+    }
+}
+
+async function executeSearch(engineId: string, query: string, maxResults: number, timeout: number): Promise<WebSearchResult> {
+    const cfg = getEngineConfig(engineId)
+    const engineTimeout = cfg.timeout ? cfg.timeout * 1000 : timeout
+
+    switch (engineId) {
+        case 'google': return searchWithGoogle(query, cfg.apiKey || '', cfg.extraValues?.cx || '', maxResults, engineTimeout)
+        case 'duckduckgo': return searchWithDuckDuckGo(query, maxResults, engineTimeout)
+        case 'bing': return searchWithBing(query, maxResults, engineTimeout)
+        case 'brave': return searchWithBrave(query, cfg.apiKey || '', maxResults, engineTimeout)
+        case 'tavily': return searchWithTavily(query, cfg.apiKey || '', maxResults, engineTimeout)
+        case 'serper': return searchWithSerper(query, cfg.apiKey || '', maxResults, engineTimeout)
+        case 'jina': return searchWithJina(query, cfg.apiKey || '', maxResults, engineTimeout)
+        case 'exa': return searchWithExa(query, cfg.apiKey || '', maxResults, engineTimeout)
+        case 'sogou': return searchWithSogou(query, cfg.apiKey || '', maxResults, engineTimeout)
+        case 'bocha': return searchWithBocha(query, cfg.apiKey || '', maxResults, engineTimeout)
+        case 'searxng': return searchWithSearXNG(query, cfg.extraValues?.baseUrl || cfg.customBaseUrl || '', maxResults, engineTimeout)
+        case 'yandex': return searchWithYandex(query, cfg.apiKey || '', maxResults, engineTimeout)
+        default: {
+            if (cfg.customBaseUrl) return searchWithCustom(engineId, cfg.customBaseUrl, cfg.apiKey, query, maxResults, engineTimeout)
+            return { success: false, error: `Unknown search engine: ${engineId}` }
+        }
+    }
+}
+
+function makeJsonRequest(urlStr: string, headers: Record<string, string>, timeout: number): Promise<{ status: number; data: string }> {
+    return new Promise((resolve) => {
+        const parsed = new URL(urlStr)
+        const isHttps = parsed.protocol === 'https:'
+        const lib = isHttps ? https : http
+        const options = {
+            hostname: parsed.hostname,
+            port: parsed.port || (isHttps ? 443 : 80),
+            path: parsed.pathname + parsed.search,
+            method: 'GET',
+            headers: { 'User-Agent': 'AweeClaw/1.0 (AI Agent Platform)', ...headers },
+        }
+
+        const req = lib.request(options, (res) => {
+            let data = ''
+            res.setEncoding('utf8')
+            res.on('data', (chunk: string) => data += chunk)
+            res.on('end', () => resolve({ status: res.statusCode || 0, data }))
+        })
+
+        req.on('error', (error: Error) => resolve({ status: 0, data: error.message }))
+        req.setTimeout(timeout, () => { req.destroy(); resolve({ status: 0, data: 'Request timed out' }) })
+        req.end()
+    })
+}
+
+function makePostRequest(urlStr: string, headers: Record<string, string>, body: string, timeout: number): Promise<{ status: number; data: string }> {
+    return new Promise((resolve) => {
+        const parsed = new URL(urlStr)
+        const isHttps = parsed.protocol === 'https:'
+        const lib = isHttps ? https : http
+        const options = {
+            hostname: parsed.hostname,
+            port: parsed.port || (isHttps ? 443 : 80),
+            path: parsed.pathname + parsed.search,
+            method: 'POST',
+            headers: { 'User-Agent': 'AweeClaw/1.0 (AI Agent Platform)', 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), ...headers },
+        }
+
+        const req = lib.request(options, (res) => {
+            let data = ''
+            res.setEncoding('utf8')
+            res.on('data', (chunk: string) => data += chunk)
+            res.on('end', () => resolve({ status: res.statusCode || 0, data }))
+        })
+
+        req.on('error', (error: Error) => resolve({ status: 0, data: error.message }))
+        req.setTimeout(timeout, () => { req.destroy(); resolve({ status: 0, data: 'Request timed out' }) })
+        req.write(body)
+        req.end()
+    })
+}
+
+async function searchWithBrave(query: string, apiKey: string, maxResults: number, timeout: number): Promise<WebSearchResult> {
+    if (!apiKey) return { success: false, error: 'Brave API Key not configured' }
+    try {
+        const encoded = encodeURIComponent(query)
+        const { status, data } = await makeJsonRequest(
+            `https://api.search.brave.com/res/v1/web/search?q=${encoded}&count=${Math.min(maxResults, 20)}`,
+            { 'X-Subscription-Token': apiKey, 'Accept': 'application/json' },
+            timeout,
+        )
+        if (status !== 200) return { success: false, error: `Brave API returned status ${status}` }
+        const json = JSON.parse(data)
+        const results: SearchResult[] = []
+        if (json.web?.results) {
+            for (const item of json.web.results.slice(0, maxResults)) {
+                results.push({ title: item.title || '', url: item.url || '', snippet: item.description || '' })
             }
         }
-    }
-
-    // 回退到 DuckDuckGo（国内网络可能无法访问，增加 Bing 作为最终回退）
-    try {
-        const ddgResult = await searchWithDuckDuckGo(query, maxResults, ddgTimeout)
-        if (ddgResult.success && ddgResult.results && ddgResult.results.length > 0) {
-            return ddgResult
-        }
-        logger.ipc.warn('[HTTP] DuckDuckGo returned empty, falling back to Bing')
+        return { success: true, results }
     } catch (error) {
-        logger.ipc.warn('[HTTP] DuckDuckGo search failed:', error)
+        return { success: false, error: `Brave search failed: ${error}` }
     }
+}
 
-    // 最终回退到 Bing（国内可访问）
+async function searchWithTavily(query: string, apiKey: string, maxResults: number, timeout: number): Promise<WebSearchResult> {
+    if (!apiKey) return { success: false, error: 'Tavily API Key not configured' }
     try {
-        return await searchWithBing(query, maxResults, ddgTimeout)
-    } catch (error) {
-        logger.ipc.error('[HTTP] Bing search failed:', error)
-        return {
-            success: false,
-            error: `所有搜索源均不可用。请检查网络连接，或配置 Google PSE API Key 以获得更稳定的搜索体验。`,
+        const body = JSON.stringify({ query, max_results: maxResults, api_key: apiKey })
+        const { status, data } = await makePostRequest(
+            'https://api.tavily.com/search',
+            { 'Content-Type': 'application/json' },
+            body,
+            timeout,
+        )
+        if (status !== 200) return { success: false, error: `Tavily API returned status ${status}` }
+        const json = JSON.parse(data)
+        const results: SearchResult[] = []
+        if (json.results) {
+            for (const item of json.results.slice(0, maxResults)) {
+                results.push({ title: item.title || '', url: item.url || '', snippet: item.content || '' })
+            }
         }
+        return { success: true, results }
+    } catch (error) {
+        return { success: false, error: `Tavily search failed: ${error}` }
+    }
+}
+
+async function searchWithSerper(query: string, apiKey: string, maxResults: number, timeout: number): Promise<WebSearchResult> {
+    if (!apiKey) return { success: false, error: 'Serper API Key not configured' }
+    try {
+        const body = JSON.stringify({ q: query, num: maxResults })
+        const { status, data } = await makePostRequest(
+            'https://google.serper.dev/search',
+            { 'X-API-KEY': apiKey, 'Content-Type': 'application/json' },
+            body,
+            timeout,
+        )
+        if (status !== 200) return { success: false, error: `Serper API returned status ${status}` }
+        const json = JSON.parse(data)
+        const results: SearchResult[] = []
+        if (json.organic) {
+            for (const item of json.organic.slice(0, maxResults)) {
+                results.push({ title: item.title || '', url: item.link || '', snippet: item.snippet || '' })
+            }
+        }
+        return { success: true, results }
+    } catch (error) {
+        return { success: false, error: `Serper search failed: ${error}` }
+    }
+}
+
+async function searchWithJina(query: string, apiKey: string, maxResults: number, timeout: number): Promise<WebSearchResult> {
+    if (!apiKey) return { success: false, error: 'Jina API Key not configured' }
+    try {
+        const encoded = encodeURIComponent(query)
+        const { status, data } = await makeJsonRequest(
+            `https://s.jina.ai/${encoded}?num=${maxResults}`,
+            { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' },
+            timeout,
+        )
+        if (status !== 200) return { success: false, error: `Jina API returned status ${status}` }
+        const json = JSON.parse(data)
+        const results: SearchResult[] = []
+        if (json.data) {
+            for (const item of json.data.slice(0, maxResults)) {
+                results.push({ title: item.title || '', url: item.url || '', snippet: (item.description || item.content || '').slice(0, 300) })
+            }
+        }
+        return { success: true, results }
+    } catch (error) {
+        return { success: false, error: `Jina search failed: ${error}` }
+    }
+}
+
+async function searchWithExa(query: string, apiKey: string, maxResults: number, timeout: number): Promise<WebSearchResult> {
+    if (!apiKey) return { success: false, error: 'Exa API Key not configured' }
+    try {
+        const body = JSON.stringify({ query, numResults: maxResults, type: 'auto', contents: { text: { maxCharacters: 300 } } })
+        const { status, data } = await makePostRequest(
+            'https://api.exa.ai/search',
+            { 'x-api-key': apiKey, 'Content-Type': 'application/json' },
+            body,
+            timeout,
+        )
+        if (status !== 200) return { success: false, error: `Exa API returned status ${status}` }
+        const json = JSON.parse(data)
+        const results: SearchResult[] = []
+        if (json.results) {
+            for (const item of json.results.slice(0, maxResults)) {
+                results.push({ title: item.title || '', url: item.url || '', snippet: item.text || '' })
+            }
+        }
+        return { success: true, results }
+    } catch (error) {
+        return { success: false, error: `Exa search failed: ${error}` }
+    }
+}
+
+async function searchWithSogou(query: string, apiKey: string, maxResults: number, timeout: number): Promise<WebSearchResult> {
+    if (!apiKey) return { success: false, error: 'Sogou API Key not configured' }
+    try {
+        const encoded = encodeURIComponent(query)
+        const { status, data } = await makeJsonRequest(
+            `https://api.sogou.com/search/v1?q=${encoded}&count=${maxResults}`,
+            { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' },
+            timeout,
+        )
+        if (status !== 200) return { success: false, error: `Sogou API returned status ${status}` }
+        const json = JSON.parse(data)
+        const results: SearchResult[] = []
+        const items = json.data?.items || json.items || []
+        for (const item of items.slice(0, maxResults)) {
+            results.push({ title: item.title || '', url: item.url || item.link || '', snippet: item.abstract || item.snippet || item.content || '' })
+        }
+        return { success: true, results }
+    } catch (error) {
+        return { success: false, error: `Sogou search failed: ${error}` }
+    }
+}
+
+async function searchWithBocha(query: string, apiKey: string, maxResults: number, timeout: number): Promise<WebSearchResult> {
+    if (!apiKey) return { success: false, error: 'Bocha API Key not configured' }
+    try {
+        const body = JSON.stringify({ query, count: maxResults, freshness: 'noLimit' })
+        const { status, data } = await makePostRequest(
+            'https://api.bochaai.com/v1/web-search',
+            { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+            body,
+            timeout,
+        )
+        if (status !== 200) return { success: false, error: `Bocha API returned status ${status}` }
+        const json = JSON.parse(data)
+        const results: SearchResult[] = []
+        const items = json.data?.webPages?.value || json.data?.items || []
+        for (const item of items.slice(0, maxResults)) {
+            results.push({ title: item.name || item.title || '', url: item.url || item.link || '', snippet: item.snippet || item.description || '' })
+        }
+        return { success: true, results }
+    } catch (error) {
+        return { success: false, error: `Bocha search failed: ${error}` }
+    }
+}
+
+async function searchWithSearXNG(query: string, baseUrl: string, maxResults: number, timeout: number): Promise<WebSearchResult> {
+    if (!baseUrl) return { success: false, error: 'SearXNG instance URL not configured' }
+    try {
+        const cleanBase = baseUrl.replace(/\/+$/, '')
+        const encoded = encodeURIComponent(query)
+        const { status, data } = await makeJsonRequest(
+            `${cleanBase}/search?q=${encoded}&format=json&categories=general&pageno=1`,
+            { 'Accept': 'application/json' },
+            timeout,
+        )
+        if (status !== 200) return { success: false, error: `SearXNG returned status ${status}` }
+        const json = JSON.parse(data)
+        const results: SearchResult[] = []
+        if (json.results) {
+            for (const item of json.results.slice(0, maxResults)) {
+                results.push({ title: item.title || '', url: item.url || '', snippet: item.content || '' })
+            }
+        }
+        return { success: true, results }
+    } catch (error) {
+        return { success: false, error: `SearXNG search failed: ${error}` }
+    }
+}
+
+async function searchWithYandex(query: string, apiKey: string, maxResults: number, timeout: number): Promise<WebSearchResult> {
+    if (!apiKey) return { success: false, error: 'Yandex API Key not configured' }
+    try {
+        const encoded = encodeURIComponent(query)
+        const { status, data } = await makeJsonRequest(
+            `https://yandex.com/search/xml?query=${encoded}&l10n=en&sortby=tm.order%3Dd&filter=strict&groupby=attr%3Dd.mode%3Ddeep.groups-on-page%3D${maxResults}`,
+            { 'Api-Key': apiKey, 'Accept': 'application/json' },
+            timeout,
+        )
+        if (status !== 200) return { success: false, error: `Yandex API returned status ${status}` }
+        const results: SearchResult[] = []
+        try {
+            const urlMatches = data.match(/<url>([^<]+)<\/url>/gi) || []
+            const titleMatches = data.match(/<title>([^<]+)<\/title>/gi) || []
+            const snippetMatches = data.match(/<passage>([^<]+)<\/passage>/gi) || []
+            for (let i = 0; i < Math.min(urlMatches.length, maxResults); i++) {
+                const url = urlMatches[i].replace(/<\/?url>/gi, '')
+                const title = (titleMatches[i] || '').replace(/<\/?title>/gi, '')
+                const snippet = (snippetMatches[i] || '').replace(/<\/?passage>/gi, '')
+                results.push({ title, url, snippet })
+            }
+        } catch {
+            return { success: false, error: 'Failed to parse Yandex XML response' }
+        }
+        return { success: true, results }
+    } catch (error) {
+        return { success: false, error: `Yandex search failed: ${error}` }
+    }
+}
+
+async function searchWithCustom(engineId: string, baseUrl: string, apiKey: string | undefined, query: string, maxResults: number, timeout: number): Promise<WebSearchResult> {
+    try {
+        const cleanBase = baseUrl.replace(/\/+$/, '')
+        const encoded = encodeURIComponent(query)
+        const headers: Record<string, string> = { 'Accept': 'application/json' }
+        if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`
+        const { status, data } = await makeJsonRequest(
+            `${cleanBase}/search?q=${encoded}&count=${maxResults}`,
+            headers,
+            timeout,
+        )
+        if (status !== 200) return { success: false, error: `Custom engine ${engineId} returned status ${status}` }
+        const json = JSON.parse(data)
+        const results: SearchResult[] = []
+        const items = json.results || json.data?.items || json.data?.webPages?.value || json.web?.results || json.organic || []
+        for (const item of items.slice(0, maxResults)) {
+            results.push({
+                title: item.title || item.name || '',
+                url: item.url || item.link || '',
+                snippet: item.snippet || item.description || item.content || item.text || '',
+            })
+        }
+        return { success: true, results }
+    } catch (error) {
+        return { success: false, error: `Custom engine ${engineId} failed: ${error}` }
     }
 }
 
@@ -671,9 +1000,9 @@ export function registerHttpHandlers() {
         return webSearch(query, maxResults, timeout)
     })
 
-    // 配置 Google PSE
-    safeIpcHandle('http:setGoogleSearch', async (_event, apiKey: string, cx: string) => {
-        setGoogleSearchConfig(apiKey, cx)
+    // 配置搜索引擎状态
+    safeIpcHandle('http:setSearchEngineState', async (_event, state: SearchEngineState) => {
+        setSearchEngineState(state)
         return { success: true }
     })
 

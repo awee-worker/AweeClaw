@@ -4,6 +4,7 @@ import {
     Zap, Check,
 } from 'lucide-react'
 import { useStore } from '@store'
+import { t, type Language } from '@renderer/i18n'
 
 interface PromptTemplate {
     id: string
@@ -27,9 +28,9 @@ const PROMPT_CATEGORIES = [
 export function PromptsView() {
     const language = useStore(s => s.language)
     const [prompts, setPrompts] = useState<PromptTemplate[]>([
-        { id: 'prompt-1', title: language === 'zh' ? '代码审查助手' : 'Code Review Assistant', content: language === 'zh' ? '请审查以下代码，关注：1) 安全漏洞 2) 性能问题 3) 代码风格 4) 最佳实践' : 'Review the following code, focusing on: 1) Security vulnerabilities 2) Performance issues 3) Code style 4) Best practices', category: 'coding', starred: true, variables: [], createdAt: Date.now() },
-        { id: 'prompt-2', title: language === 'zh' ? '文章润色' : 'Article Polish', content: language === 'zh' ? '请润色以下文章，保持原意不变，提升表达的流畅性和专业性' : 'Polish the following article while preserving the original meaning, improving fluency and professionalism', category: 'writing', starred: false, variables: [], createdAt: Date.now() },
-        { id: 'prompt-3', title: language === 'zh' ? '数据分析报告' : 'Data Analysis Report', content: language === 'zh' ? '分析以下数据，生成结构化报告：1) 数据概览 2) 关键发现 3) 趋势分析 4) 建议措施' : 'Analyze the following data and generate a structured report: 1) Data overview 2) Key findings 3) Trend analysis 4) Recommendations', category: 'analysis', starred: true, variables: [], createdAt: Date.now() },
+        { id: 'prompt-1', title: t('explorer.codereviewassistant', language as Language), content: t('explorer.reviewthefollowingcodefocusing', language as Language), category: 'coding', starred: true, variables: [], createdAt: Date.now() },
+        { id: 'prompt-2', title: t('explorer.articlepolish', language as Language), content: t('explorer.polishthefollowingarticlewhile', language as Language), category: 'writing', starred: false, variables: [], createdAt: Date.now() },
+        { id: 'prompt-3', title: t('explorer.dataanalysisreport', language as Language), content: t('explorer.analyzethefollowingdataand', language as Language), category: 'analysis', starred: true, variables: [], createdAt: Date.now() },
     ])
     const [selectedId, setSelectedId] = useState<string | null>(null)
     const [searchQuery, setSearchQuery] = useState('')
@@ -66,7 +67,7 @@ export function PromptsView() {
         <div className="h-full flex flex-col bg-transparent">
             <div className="h-11 min-w-0 px-4 flex items-center justify-between gap-2 group border-b border-border/50 bg-transparent sticky top-0 z-10">
                 <span className="min-w-0 flex-shrink-0 whitespace-nowrap text-[11px] font-black text-text-primary/60 uppercase tracking-[0.2em] font-sans">
-                    {language === 'zh' ? '提示词库' : 'Prompts'}
+                    {t('explorer.prompts', language as Language)}
                 </span>
                 <button className="p-1 text-text-muted hover:text-accent transition-colors">
                     <Plus className="w-3.5 h-3.5" />
@@ -79,7 +80,7 @@ export function PromptsView() {
                     <input
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
-                        placeholder={language === 'zh' ? '搜索提示词...' : 'Search prompts...'}
+                        placeholder={t('explorer.searchprompts', language as Language)}
                         className="flex-1 bg-transparent text-[11px] text-text-primary outline-none placeholder:text-text-muted/70"
                     />
                 </div>
@@ -127,7 +128,7 @@ export function PromptsView() {
                 {filteredPrompts.length === 0 && (
                     <div className="flex flex-col items-center justify-center py-12 text-text-muted">
                         <MessageSquare className="w-8 h-8 mb-2 opacity-30" />
-                        <p className="text-xs">{language === 'zh' ? '暂无提示词' : 'No prompts yet'}</p>
+                        <p className="text-xs">{t('explorer.nopromptsyet', language as Language)}</p>
                     </div>
                 )}
             </div>

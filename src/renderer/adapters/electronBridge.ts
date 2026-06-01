@@ -363,7 +363,7 @@ function createGroupedAPI() {
     http: {
       readUrl: (url: string, timeout?: number) => raw.httpReadUrl(url, timeout),
       webSearch: (query: string, maxResults?: number, timeout?: number) => raw.httpWebSearch(query, maxResults, timeout),
-      setGoogleSearch: (apiKey: string, cx: string) => raw.httpSetGoogleSearch(apiKey, cx),
+      setSearchEngineState: (state: unknown) => raw.httpSetSearchEngineState(state),
     },
 
     // 资源
@@ -401,6 +401,12 @@ function createGroupedAPI() {
       onStateChanged: (callback: Parameters<typeof raw.onMcpStateChanged>[0]) => raw.onMcpStateChanged(callback),
       registrySearch: (query?: string) => raw.mcpRegistrySearch(query),
       registryGetDetails: (serverName: string) => raw.mcpRegistryGetDetails(serverName),
+    },
+
+    // Email
+    email: {
+      testConnection: (config: Parameters<typeof raw.emailTestConnection>[0]) => raw.emailTestConnection(config),
+      send: (params: Parameters<typeof raw.emailSend>[0]) => raw.emailSend(params),
     },
 
     // Skills

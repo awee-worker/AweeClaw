@@ -16,6 +16,7 @@ import { motion } from 'framer-motion'
 import { workflowEngine } from '@shared/protocols/workflow'
 import type { WorkflowDefinition, WorkflowRun, WorkflowStep, WorkflowStepType } from '@shared/protocols/workflow'
 import { saveWorkflowRun } from '@shared/configuration/workflows/persistence'
+import { t, type Language } from '@renderer/i18n'
 
 interface WorkflowRunnerProps {
   workflow: WorkflowDefinition
@@ -151,7 +152,7 @@ export default function WorkflowRunner({ workflow, run: initialRun, language }: 
               className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium bg-accent text-white hover:bg-accent-hover rounded-lg transition-all"
             >
               <Play className="w-3 h-3" />
-              {language === 'zh' ? '启动' : 'Start'}
+              {t('wf.start', language as Language)}
             </button>
           )}
           {isRunning && (
@@ -160,7 +161,7 @@ export default function WorkflowRunner({ workflow, run: initialRun, language }: 
               className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded-lg transition-all"
             >
               <XCircle className="w-3 h-3" />
-              {language === 'zh' ? '取消' : 'Cancel'}
+              {t('wf.cancel', language as Language)}
             </button>
           )}
           {isPaused && (
@@ -170,14 +171,14 @@ export default function WorkflowRunner({ workflow, run: initialRun, language }: 
                 className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium bg-green-500/10 text-green-400 hover:bg-green-500/20 rounded-lg transition-all"
               >
                 <CheckCircle2 className="w-3 h-3" />
-                {language === 'zh' ? '批准继续' : 'Approve'}
+                {t('wf.approve', language as Language)}
               </button>
               <button
                 onClick={handleCancel}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded-lg transition-all"
               >
                 <XCircle className="w-3 h-3" />
-                {language === 'zh' ? '拒绝' : 'Reject'}
+                {t('wf.reject', language as Language)}
               </button>
             </>
           )}
@@ -187,7 +188,7 @@ export default function WorkflowRunner({ workflow, run: initialRun, language }: 
               className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium bg-accent/10 text-accent hover:bg-accent/20 rounded-lg transition-all"
             >
               <RotateCcw className="w-3 h-3" />
-              {language === 'zh' ? '重新运行' : 'Re-run'}
+              {t('wf.rerun', language as Language)}
             </button>
           )}
         </div>
@@ -197,7 +198,7 @@ export default function WorkflowRunner({ workflow, run: initialRun, language }: 
       {isIdle && hasInputSchema && (
         <div className="px-6 py-4 border-b border-border/30 bg-surface/10">
           <h4 className="text-[11px] font-semibold text-text-secondary mb-3">
-            {language === 'zh' ? '输入参数' : 'TextField Parameters'}
+            {t('wf.textfieldparameters', language as Language)}
           </h4>
           <div className="space-y-3">
             {Object.entries(workflow.inputSchema!).map(([key, param]) => (
@@ -275,7 +276,7 @@ export default function WorkflowRunner({ workflow, run: initialRun, language }: 
                       </div>
                       {stepStatus === 'running' && (
                         <p className="text-[10px] text-blue-400/70 mt-0.5">
-                          {language === 'zh' ? '正在执行...' : 'Executing...'}
+                          {t('wf.executing', language as Language)}
                         </p>
                       )}
                       {stepStatus === 'completed' && historyEntry?.output != null && (() => {
@@ -318,7 +319,7 @@ function UserInputPanel({ step, onResume, language }: UserInputPanelProps) {
       <div className="flex items-center gap-2 mb-2">
         <UserCheck className="w-4 h-4 text-amber-400" />
         <h4 className="text-[12px] font-semibold text-amber-400">
-          {language === 'zh' ? '等待输入' : 'Awaiting TextField'}
+          {t('wf.awaitingtextfield', language as Language)}
         </h4>
       </div>
       {config.prompt && (
@@ -331,7 +332,7 @@ function UserInputPanel({ step, onResume, language }: UserInputPanelProps) {
           type="text"
           value={value}
           onChange={e => setValue(e.target.value)}
-          placeholder={language === 'zh' ? '输入内容...' : 'Enter input...'}
+          placeholder={t('wf.enterinput', language as Language)}
           className="flex-1 px-3 py-2 text-[12px] bg-surface/50 border border-border/40 rounded-lg text-text-primary placeholder:text-text-muted/30 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all"
           onKeyDown={e => {
             if (e.key === 'Enter') onResume(value)
@@ -341,7 +342,7 @@ function UserInputPanel({ step, onResume, language }: UserInputPanelProps) {
           onClick={() => onResume(value)}
           className="px-4 py-2 text-[11px] font-medium bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 rounded-lg transition-all"
         >
-          {language === 'zh' ? '提交' : 'Submit'}
+          {t('wf.submit', language as Language)}
         </button>
       </div>
     </div>

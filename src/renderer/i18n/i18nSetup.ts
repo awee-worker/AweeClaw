@@ -1,25 +1,35 @@
 /**
  * 国际化模块
- * 支持中英文切换
+ * 支持中英文切换、命名空间扩展、React Hook
  */
 
+import { useCallback } from 'react'
+import { useStore } from '@store'
+import { useShallow } from 'zustand/react/shallow'
 import { en } from './locales/enUS'
 import { zh } from './locales/zhCN'
 
 export type Language = 'en' | 'zh'
 
-export const translations = { en, zh } as const
+type EnType = typeof en
+type BaseTranslationKeys = keyof EnType
 
-export type TranslationKey = keyof typeof en
+let extraEn: Record<string, string> = {}
+let extraZh: Record<string, string> = {}
 
-/**
- * 翻译函数
- * @param key 翻译键
- * @param lang 语言
- * @param params 参数替换
- */
-export function t(key: TranslationKey, lang: Language, params?: Record<string, string | number>): string {
-  let text: string = translations[lang][key] || translations.en[key] || key
+export function registerTranslations(translations: { en: Record<string, string>; zh: Record<string, string> }) {
+  extraEn = { ...extraEn, ...translations.en }
+  extraZh = { ...extraZh, ...translations.zh }
+}
+
+export function getTranslations(lang: Language): Record<string, string> {
+  const base = lang === 'zh' ? zh : en
+  return { ...base, ...(lang === 'zh' ? extraZh : extraEn) }
+}
+
+export function t(key: string, lang: Language, params?: Record<string, string | number | undefined>): string {
+  const dict = getTranslations(lang)
+  let text: string = dict[key] || getTranslations('en')[key] || key
   if (params) {
     Object.entries(params).forEach(([k, v]) => {
       text = text.replace(`{${k}}`, String(v))
@@ -28,16 +38,10 @@ export function t(key: TranslationKey, lang: Language, params?: Record<string, s
   return text
 }
 
-/**
- * 创建带有预设语言的翻译函数
- */
 export function createTranslator(lang: Language) {
-  return (key: TranslationKey, params?: Record<string, string | number>) => t(key, lang, params)
+  return (key: string, params?: Record<string, string | number>) => t(key, lang, params)
 }
 
-/**
- * 获取所有支持的语言
- */
 export function getSupportedLanguages(): Array<{ code: Language; name: string }> {
   return [
     { code: 'en', name: 'English' },
@@ -45,9 +49,6 @@ export function getSupportedLanguages(): Array<{ code: Language; name: string }>
   ]
 }
 
-/**
- * 检测浏览器语言
- */
 export function detectBrowserLanguage(): Language {
   const browserLang = navigator.language.toLowerCase()
   if (browserLang.startsWith('zh')) {
@@ -55,3 +56,21 @@ export function detectBrowserLanguage(): Language {
   }
   return 'en'
 }
+
+export function useI18n() {
+  const language = useStore(useShallow(s => s.language)) as Language
+  const translate = useCallback(
+    (key: string, params?: Record<string, string | number>) => t(key, language, params),
+    [language],
+  )
+  return { t: translate, language }
+}
+
+export function localize<T extends Record<string, unknown>>(obj: T, lang: Language): string {
+  if (lang === 'zh') {
+    return (obj.nameZh || obj.labelZh || obj.titleZh || obj.descriptionZh || obj.zh || obj.name || obj.label || obj.title || obj.description || obj.en || '') as string
+  }
+  return (obj.name || obj.label || obj.title || obj.description || obj.en || obj.nameEn || obj.labelEn || obj.titleEn || '') as string
+}
+
+export type { BaseTranslationKeys as TranslationKey }

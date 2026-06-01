@@ -5,6 +5,7 @@ import {
   KNOWLEDGE_CATEGORIES,
 } from '@intelligence/runtime/knowledgeService/providerTypes'
 import { SOURCE_CONFIG } from './KnowledgeEntryCard'
+import { t, type Language } from '@renderer/i18n'
 
 interface KnowledgeSearchBarProps {
   searchQuery: string
@@ -24,7 +25,7 @@ interface KnowledgeSearchBarProps {
   activeSources: KnowledgeSource[]
   onFileImport: () => void
   onAdd: () => void
-  language: string
+  language: Language
 }
 
 export function KnowledgeSearchBar({
@@ -47,13 +48,11 @@ export function KnowledgeSearchBar({
   onAdd,
   language,
 }: KnowledgeSearchBarProps) {
-  const t = (zh: string, en: string) => (language === 'zh' ? zh : en)
-
   return (
     <>
       <div className="h-12 px-4 flex items-center justify-between gap-2 border-b border-border/50 flex-shrink-0">
         <span className="min-w-0 flex-shrink-0 whitespace-nowrap text-[13px] font-black text-text-secondary uppercase tracking-[0.2em] font-sans">
-          {t('知识库', 'Knowledge')}
+          {t('app.knowledge', language as Language)}
         </span>
         <div className="flex items-center gap-1.5">
           <span className="text-[12px] text-text-muted tabular-nums mr-1">
@@ -64,7 +63,7 @@ export function KnowledgeSearchBar({
             onClick={onFileImport}
             disabled={importing}
             className="p-1 text-text-muted hover:text-accent transition-colors disabled:opacity-40"
-            title={t('导入文件', 'Import Files')}
+            title={t('app.importfiles', language as Language)}
           >
             <FileUp className="w-4 h-4" />
           </button>
@@ -72,14 +71,14 @@ export function KnowledgeSearchBar({
             onClick={onToggleUrlInput}
             disabled={importing}
             className="p-1 text-text-muted hover:text-accent transition-colors disabled:opacity-40"
-            title={t('导入 URL', 'Import URL')}
+            title={t('app.importurl', language as Language)}
           >
             <Link className="w-4 h-4" />
           </button>
           <button
             onClick={onAdd}
             className="p-1 text-text-muted hover:text-accent transition-colors"
-            title={t('添加知识', 'Add Knowledge')}
+            title={t('app.addknowledge', language as Language)}
           >
             <Plus className="w-4 h-4" />
           </button>
@@ -92,7 +91,7 @@ export function KnowledgeSearchBar({
           <input
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder={t('搜索知识...', 'Search knowledge...')}
+            placeholder={t('app.searchknowledge', language as Language)}
             className="flex-1 bg-transparent text-[13px] text-text-primary outline-none placeholder:text-text-muted"
           />
         </div>
@@ -103,7 +102,7 @@ export function KnowledgeSearchBar({
             <input
               value={importUrl}
               onChange={(e) => onImportUrlChange(e.target.value)}
-              placeholder={t('输入 URL...', 'Enter URL...')}
+              placeholder={t('app.enterurl', language as Language)}
               className="flex-1 bg-transparent text-[13px] text-text-primary outline-none placeholder:text-text-muted"
               onKeyDown={(e) => {
                 if (e.key === 'Enter') onImportUrl()
@@ -114,7 +113,7 @@ export function KnowledgeSearchBar({
               disabled={!importUrl.trim() || importing}
               className="text-[12px] text-accent hover:text-accent/80 disabled:opacity-40 px-1"
             >
-              {t('导入', 'Import')}
+              {t('app.import', language as Language)}
             </button>
           </div>
         )}
@@ -137,7 +136,7 @@ export function KnowledgeSearchBar({
                 }`}
               >
                 <Icon className={`w-3 h-3 ${cfg.color}`} />
-                {t(cfg.zh, cfg.en)}
+                {language === 'zh' ? cfg.zh : cfg.en}
               </button>
             )
           })}
@@ -158,7 +157,7 @@ export function KnowledgeSearchBar({
                   : 'text-text-muted hover:text-text-primary border border-transparent'
               }`}
             >
-              {t(cat.labelZh, cat.labelEn)}
+              {language === 'zh' ? cat.labelZh : cat.labelEn}
             </button>
           ))}
         </div>
@@ -172,7 +171,7 @@ export function EmptyList({
   language,
 }: {
   hasEntries: boolean
-  language: string
+  language: Language
 }) {
   const t = (zh: string, en: string) => (language === 'zh' ? zh : en)
   return (
@@ -180,12 +179,12 @@ export function EmptyList({
       <BookOpen className="w-10 h-10 mb-3 opacity-30" />
       <p className="text-[13px]">
         {hasEntries
-          ? t('无匹配结果', 'No matching results')
-          : t('暂无知识条目', 'No entries yet')}
+          ? t('app.nomatchingresults', language as Language)
+          : t('app.noentriesyet', language as Language)}
       </p>
       {!hasEntries && (
         <p className="text-[12px] mt-1.5 text-text-secondary">
-          {t('点击 + 添加知识，或导入文件/URL', 'Click + to add, or import files/URLs')}
+          {t('app.clicktoaddor', language as Language)}
         </p>
       )}
     </div>

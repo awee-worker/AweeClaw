@@ -11,6 +11,7 @@ import { api } from '../../adapters/electronBridge'
 import { getLanguageId, isLanguageSupported } from '@services/languageServerAdapter'
 import DockPopover from '../ui/DockPopover'
 import { logger } from '@shared/toolkit/LogEngine'
+import { t, type Language } from '@renderer/i18n'
 
 interface LspServerStatus {
   installed: boolean
@@ -176,10 +177,10 @@ export default function LanguageServiceIndicator() {
       }
       tooltip={
         isInstalled
-          ? (language === 'zh' ? 'LSP 已启用' : 'LSP Enabled')
-          : (language === 'zh' ? 'LSP 未安装，点击安装' : 'LSP not installed, click to install')
+          ? (t('layout.lspenabled', language as Language))
+          : (t('layout.lspnotinstalledclickto', language as Language))
       }
-      title={language === 'zh' ? 'LSP 语言服务器' : 'LSP Language Server'}
+      title={t('layout.lsplanguageserver', language as Language)}
       width={320}
       height={200}
       language={language as 'en' | 'zh'}
@@ -192,19 +193,19 @@ export default function LanguageServiceIndicator() {
               {SERVER_NAMES[currentServerType] || currentServerType}
             </div>
             <div className="text-xs text-text-muted mt-0.5">
-              {language === 'zh' ? '当前文件语言' : 'Current file language'}: {currentLanguageId}
+              {t('layout.currentfilelanguage', language as Language)}: {currentLanguageId}
             </div>
           </div>
           <div className={`flex items-center gap-1.5 ${isInstalled ? 'text-green-400' : 'text-yellow-400'}`}>
             {isInstalled ? (
               <>
                 <CheckCircle2 className="w-4 h-4" />
-                <span className="text-xs">{language === 'zh' ? '已安装' : 'Installed'}</span>
+                <span className="text-xs">{t('layout.installed', language as Language)}</span>
               </>
             ) : (
               <>
                 <ZapOff className="w-4 h-4" />
-                <span className="text-xs">{language === 'zh' ? '未安装' : 'Not installed'}</span>
+                <span className="text-xs">{t('layout.notinstalled', language as Language)}</span>
               </>
             )}
           </div>
@@ -225,18 +226,18 @@ export default function LanguageServiceIndicator() {
                 {installing === currentServerType ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>{language === 'zh' ? '安装中...' : 'Installing...'}</span>
+                    <span>{t('layout.installing', language as Language)}</span>
                   </>
                 ) : (
                   <>
                     <Download className="w-4 h-4" />
-                    <span>{language === 'zh' ? '安装语言服务器' : 'Install Language Server'}</span>
+                    <span>{t('layout.installlanguageserver', language as Language)}</span>
                   </>
                 )}
               </button>
             ) : (
               <div className="text-xs text-orange-400 bg-orange-400/10 px-3 py-2 rounded-md">
-                {language === 'zh' ? '需要手动安装' : 'Manual installation required'}
+                {t('layout.manualinstallationrequired', language as Language)}
               </div>
             )}
           </div>
@@ -247,7 +248,7 @@ export default function LanguageServiceIndicator() {
           <div className="space-y-1">
             {installInfo?.builtin && (
               <div className="text-xs text-blue-400">
-                {language === 'zh' ? '内置语言服务器' : 'Built-in Language Server'}
+                {t('layout.builtinlanguageserver', language as Language)}
               </div>
             )}
             <div className="text-xs text-text-muted bg-background-tertiary px-2 py-1.5 rounded font-mono truncate">

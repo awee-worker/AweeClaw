@@ -1,10 +1,11 @@
 import { useMemo } from 'react'
 import { X, Activity, Database, Zap, TrendingUp, AlertTriangle, CheckCircle2 } from 'lucide-react'
 import { type KnowledgeEntry, KNOWLEDGE_CATEGORIES } from '@intelligence/runtime/knowledgeService/providerTypes'
+import { t, type Language } from '@renderer/i18n'
 
 interface HealthDashboardProps {
   entries: KnowledgeEntry[]
-  language: string
+  language: Language
   onClose: () => void
 }
 
@@ -23,21 +24,13 @@ function computeHealthScores(entries: KnowledgeEntry[]): HealthScore[] {
   const enabled = entries.filter((e) => e.enabled).length
   const withTags = entries.filter((e) => e.tags.length > 0).length
   const withCategory = entries.filter((e) => e.category).length
-  const avgContentLen = total > 0 ? entries.reduce((s, e) => s + e.content.length, 0) / total : 0
   const shortContent = entries.filter((e) => e.content.length < 20).length
   const duplicateContent = total - new Set(entries.map((e) => e.content.trim())).size
-  const recentUpdated = entries.filter((e) => {
-    const updated = new Date(e.updatedAt)
-    const week = new Date()
-    week.setDate(week.getDate() - 7)
-    return updated > week
-  }).length
 
   const enabledRatio = total > 0 ? enabled / total : 1
   const tagRatio = total > 0 ? withTags / total : 0
   const categoryRatio = total > 0 ? withCategory / total : 0
   const qualityRatio = total > 0 ? (total - shortContent - duplicateContent) / total : 1
-  const freshnessRatio = total > 0 ? Math.min(recentUpdated / Math.max(total * 0.1, 1), 1) : 1
 
   return [
     {
@@ -80,8 +73,6 @@ function computeHealthScores(entries: KnowledgeEntry[]): HealthScore[] {
 }
 
 export function HealthDashboard({ entries, language, onClose }: HealthDashboardProps) {
-  const t = (zh: string, en: string) => (language === 'zh' ? zh : en)
-
   const scores = useMemo(() => computeHealthScores(entries), [entries])
   const totalScore = scores.reduce((s, h) => s + h.score, 0)
   const overallStatus = totalScore >= 80 ? 'good' : totalScore >= 50 ? 'warning' : 'critical'
@@ -139,7 +130,7 @@ export function HealthDashboard({ entries, language, onClose }: HealthDashboardP
       <div className="px-5 py-3 border-b border-border/30 flex items-center justify-between flex-shrink-0">
         <h3 className="text-[14px] font-semibold text-text-primary flex items-center gap-2">
           <Activity className="w-4 h-4 text-accent" />
-          {t('知识库健康度', 'Knowledge Health')}
+          {t('app.knowledgehealth', language as Language)}
         </h3>
         <button onClick={onClose} className="p-1 text-text-muted hover:text-text-primary transition-colors">
           <X className="w-4 h-4" />
@@ -161,18 +152,18 @@ export function HealthDashboard({ entries, language, onClose }: HealthDashboardP
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
               <span className={`text-2xl font-bold ${scoreColor(overallStatus)}`}>{totalScore}</span>
-              <span className="text-[10px] text-text-muted">{t('总分', 'Score')}</span>
+              <span className="text-[10px] text-text-muted">{t('app.score', language as Language)}</span>
             </div>
           </div>
           <div className="space-y-1">
             <p className="text-[13px] font-medium text-text-primary">
-              {t('知识库整体健康', 'Overall Health')}
+              {t('app.overallhealth', language as Language)}
             </p>
             <p className={`text-[12px] ${scoreColor(overallStatus)}`}>
-              {overallStatus === 'good' ? t('良好', 'Good') : overallStatus === 'warning' ? t('需关注', 'Needs Attention') : t('需改进', 'Needs Improvement')}
+              {overallStatus === 'good' ? t('app.good', language as Language) : overallStatus === 'warning' ? t('app.needsattention', language as Language) : t('app.needsimprovement', language as Language)}
             </p>
             <p className="text-[11px] text-text-muted">
-              {t(`共 ${entries.length} 条知识`, `${entries.length} entries`)}
+              {t('app.entries', language as Language, { length: entries.length })}
             </p>
           </div>
         </div>
@@ -183,7 +174,7 @@ export function HealthDashboard({ entries, language, onClose }: HealthDashboardP
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
                   {statusIcon(s.status)}
-                  <span className="text-[12px] text-text-primary">{t(s.label, s.labelEn)}</span>
+                  <span className="text-[12px] text-text-primary">{language === 'zh' ? s.label : s.labelEn}</span>
                 </div>
                 <span className={`text-[12px] font-medium ${scoreColor(s.status)}`}>
                   {s.score}/{s.maxScore}
@@ -195,7 +186,7 @@ export function HealthDashboard({ entries, language, onClose }: HealthDashboardP
                   style={{ width: `${(s.score / s.maxScore) * 100}%` }}
                 />
               </div>
-              <p className="text-[10px] text-text-muted">{t(s.detail, s.detailEn)}</p>
+              <p className="text-[10px] text-text-muted">{language === 'zh' ? s.detail : s.detailEn}</p>
             </div>
           ))}
         </div>
@@ -204,7 +195,7 @@ export function HealthDashboard({ entries, language, onClose }: HealthDashboardP
           <div className="bg-surface/30 rounded-lg p-3 border border-border/20">
             <div className="flex items-center gap-1.5 mb-2">
               <Database className="w-3.5 h-3.5 text-accent" />
-              <span className="text-[11px] font-medium text-text-primary">{t('分类分布', 'Categories')}</span>
+              <span className="text-[11px] font-medium text-text-primary">{t('app.categories', language as Language)}</span>
             </div>
             <div className="space-y-1.5">
               {categoryStats.slice(0, 5).map((c) => (
@@ -214,7 +205,7 @@ export function HealthDashboard({ entries, language, onClose }: HealthDashboardP
                 </div>
               ))}
               {categoryStats.length === 0 && (
-                <p className="text-[10px] text-text-muted">{t('暂无数据', 'No data')}</p>
+                <p className="text-[10px] text-text-muted">{t('app.nodata', language as Language)}</p>
               )}
             </div>
           </div>
@@ -222,7 +213,7 @@ export function HealthDashboard({ entries, language, onClose }: HealthDashboardP
           <div className="bg-surface/30 rounded-lg p-3 border border-border/20">
             <div className="flex items-center gap-1.5 mb-2">
               <Zap className="w-3.5 h-3.5 text-accent" />
-              <span className="text-[11px] font-medium text-text-primary">{t('来源分布', 'Sources')}</span>
+              <span className="text-[11px] font-medium text-text-primary">{t('app.sources', language as Language)}</span>
             </div>
             <div className="space-y-1.5">
               {sourceStats.slice(0, 5).map((s) => (
@@ -232,7 +223,7 @@ export function HealthDashboard({ entries, language, onClose }: HealthDashboardP
                 </div>
               ))}
               {sourceStats.length === 0 && (
-                <p className="text-[10px] text-text-muted">{t('暂无数据', 'No data')}</p>
+                <p className="text-[10px] text-text-muted">{t('app.nodata2', language as Language)}</p>
               )}
             </div>
           </div>
@@ -241,7 +232,7 @@ export function HealthDashboard({ entries, language, onClose }: HealthDashboardP
         <div className="bg-surface/30 rounded-lg p-3 border border-border/20">
           <div className="flex items-center gap-1.5 mb-2">
             <TrendingUp className="w-3.5 h-3.5 text-accent" />
-            <span className="text-[11px] font-medium text-text-primary">{t('最近更新', 'Recent Updates')}</span>
+            <span className="text-[11px] font-medium text-text-primary">{t('app.recentupdates', language as Language)}</span>
           </div>
           <div className="space-y-1.5">
             {recentEntries.map((e) => (
@@ -253,7 +244,7 @@ export function HealthDashboard({ entries, language, onClose }: HealthDashboardP
               </div>
             ))}
             {recentEntries.length === 0 && (
-              <p className="text-[10px] text-text-muted">{t('暂无数据', 'No data')}</p>
+              <p className="text-[10px] text-text-muted">{t('app.nodata3', language as Language)}</p>
             )}
           </div>
         </div>

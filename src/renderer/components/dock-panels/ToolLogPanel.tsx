@@ -22,6 +22,7 @@ import { JsonHighlight } from '@utils/jsonHighlight'
 import { useStore } from '@store'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { useShallow } from 'zustand/react/shallow'
+import { t, type Language } from '@renderer/i18n'
 
 interface ToolCallLogContentProps {
   language?: 'en' | 'zh'
@@ -72,9 +73,6 @@ export default function ToolCallLogContent({ language = 'zh' }: ToolCallLogConte
   }
 
   const filteredLogs = filter === 'all' ? threadLogs : threadLogs.filter((log) => log.type === filter)
-  const t = (zh: string, en: string) => (language === 'zh' ? zh : en)
-
-
   return (
     <div className="h-full flex flex-col">
       {/* 工具栏 */}
@@ -86,7 +84,7 @@ export default function ToolCallLogContent({ language = 'zh' }: ToolCallLogConte
             className={`px-1.5 py-0.5 text-[11px] rounded transition-colors ${
               viewMode === 'logs' ? 'bg-accent/20 text-accent' : 'text-text-muted hover:text-text-primary'
             }`}
-            title={t('日志', 'Logs')}
+            title={t('app.logs', language as Language)}
           >
             <List className="w-3 h-3" />
           </button>
@@ -95,7 +93,7 @@ export default function ToolCallLogContent({ language = 'zh' }: ToolCallLogConte
             className={`px-1.5 py-0.5 text-[11px] rounded transition-colors ${
               viewMode === 'stats' ? 'bg-accent/20 text-accent' : 'text-text-muted hover:text-text-primary'
             }`}
-            title={t('统计', 'Stats')}
+            title={t('app.stats', language as Language)}
           >
             <BarChart3 className="w-3 h-3" />
           </button>
@@ -107,20 +105,20 @@ export default function ToolCallLogContent({ language = 'zh' }: ToolCallLogConte
             onChange={(e) => setFilter(e.target.value as 'all' | 'request' | 'response')}
             className="px-1.5 py-0.5 text-[11px] bg-surface border border-border-subtle rounded text-text-secondary outline-none focus:border-accent/50"
           >
-            <option value="all">{t('全部', 'All')}</option>
-            <option value="request">{t('请求', 'Req')}</option>
-            <option value="response">{t('响应', 'Res')}</option>
+            <option value="all">{t('app.all', language as Language)}</option>
+            <option value="request">{t('app.req', language as Language)}</option>
+            <option value="response">{t('app.res', language as Language)}</option>
           </select>
         )}
 
         <div className="flex-1" />
 
         <ActionButton variant="ghost" size="sm" onClick={handleExport}
-          className="h-6 px-1.5 text-[11px] gap-1 text-text-muted hover:text-text-primary" title={t('导出', 'Export')}>
+          className="h-6 px-1.5 text-[11px] gap-1 text-text-muted hover:text-text-primary" title={t('app.export', language as Language)}>
           <Download className="w-3 h-3" />
         </ActionButton>
         <ActionButton variant="ghost" size="sm" onClick={() => clearToolCallLogs(currentThreadId || undefined)}
-          className="h-6 px-1.5 text-[11px] gap-1 text-text-muted hover:text-red-400 hover:bg-red-500/10" title={t('清除', 'Clear')}>
+          className="h-6 px-1.5 text-[11px] gap-1 text-text-muted hover:text-red-400 hover:bg-red-500/10" title={t('app.clear', language as Language)}>
           <Trash2 className="w-3 h-3" />
         </ActionButton>
       </div>
@@ -138,7 +136,6 @@ export default function ToolCallLogContent({ language = 'zh' }: ToolCallLogConte
   )
 }
 
-
 // 日志列表视图
 function LogsView({ logs, expandedIds, toggleExpand, handleCopy, copiedId, language }: {
   logs: import('@store/slices/logSlice').ToolCallLogEntry[]
@@ -151,7 +148,7 @@ function LogsView({ logs, expandedIds, toggleExpand, handleCopy, copiedId, langu
   const t = (zh: string, en: string) => (language === 'zh' ? zh : en)
 
   if (logs.length === 0) {
-    return <div className="flex items-center justify-center h-full text-text-muted text-xs">{t('暂无日志', 'No logs')}</div>
+    return <div className="flex items-center justify-center h-full text-text-muted text-xs">{t('app.nologs', language as Language)}</div>
   }
 
   return (
@@ -185,7 +182,6 @@ function LogsView({ logs, expandedIds, toggleExpand, handleCopy, copiedId, langu
   )
 }
 
-
 // 统计视图
 function StatsView({ stats, insights, language }: {
   stats: import('@store/slices/logSlice').ToolStats[]
@@ -195,7 +191,7 @@ function StatsView({ stats, insights, language }: {
   const t = (zh: string, en: string) => (language === 'zh' ? zh : en)
 
   if (stats.length === 0) {
-    return <div className="flex items-center justify-center h-full text-text-muted text-xs">{t('暂无统计数据', 'No statistics')}</div>
+    return <div className="flex items-center justify-center h-full text-text-muted text-xs">{t('app.nostatistics', language as Language)}</div>
   }
 
   return (
@@ -203,7 +199,7 @@ function StatsView({ stats, insights, language }: {
       {/* 性能洞察 */}
       {insights.length > 0 && (
         <div className="space-y-1">
-          <div className="text-[11px] font-medium text-text-muted uppercase tracking-wide">{t('性能洞察', 'Insights')}</div>
+          <div className="text-[11px] font-medium text-text-muted uppercase tracking-wide">{t('app.insights', language as Language)}</div>
           <div className="space-y-1">
             {insights.slice(0, 3).map((insight, i) => (
               <div key={i} className={`flex items-center gap-2 px-2 py-1 rounded text-[11px] ${
@@ -223,15 +219,15 @@ function StatsView({ stats, insights, language }: {
 
       {/* 工具统计表 */}
       <div className="space-y-1">
-        <div className="text-[11px] font-medium text-text-muted uppercase tracking-wide">{t('工具统计', 'Tool Stats')}</div>
+        <div className="text-[11px] font-medium text-text-muted uppercase tracking-wide">{t('app.toolstats', language as Language)}</div>
         <div className="bg-surface/30 rounded border border-border-subtle overflow-hidden">
           <table className="w-full text-[11px]">
             <thead>
               <tr className="bg-surface/50 text-text-muted">
-                <th className="text-left px-2 py-1 font-medium">{t('工具', 'Tool')}</th>
-                <th className="text-right px-2 py-1 font-medium">{t('调用', 'Calls')}</th>
-                <th className="text-right px-2 py-1 font-medium">{t('成功率', 'Rate')}</th>
-                <th className="text-right px-2 py-1 font-medium">{t('平均', 'Avg')}</th>
+                <th className="text-left px-2 py-1 font-medium">{t('app.tool', language as Language)}</th>
+                <th className="text-right px-2 py-1 font-medium">{t('app.calls', language as Language)}</th>
+                <th className="text-right px-2 py-1 font-medium">{t('app.rate', language as Language)}</th>
+                <th className="text-right px-2 py-1 font-medium">{t('app.avg', language as Language)}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border-subtle">

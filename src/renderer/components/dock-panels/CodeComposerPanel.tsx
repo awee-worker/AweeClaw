@@ -21,7 +21,7 @@ import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { getFileName } from '@shared/toolkit/pathHelper'
 import DiffViewer from '../workspace-editor/CodeDiffViewer'
-import { t } from '@renderer/i18n'
+import {t, type Language} from '@renderer/i18n'
 import { composerService, FileChange } from '@intelligence/runtime/composerEngine'
 import { getEditorConfig } from '@shared/configuration/preferenceSync'
 import { OverlayDialog } from '@components/ui'
@@ -461,7 +461,7 @@ export default function ComposerPanel({ onClose, initialChanges }: ComposerPanel
                   <div className="flex items-center gap-4">
                     <h3 className="text-[11px] font-black text-text-primary uppercase tracking-[0.2em] opacity-40 flex items-center gap-2">
                       <CheckCheck className="w-3 h-3" />
-                      {language === 'zh' ? '变更预览' : 'Changes Preview'}
+                      {t('dock-panels.changespreview', language as Language)}
                     </h3>
                     <div className="flex items-center gap-3 px-3 py-1 rounded-full bg-surface/20 border border-border-subtle">
                       <span className="text-[11px] font-bold text-green-400">+{composerState.currentSession?.totalLinesAdded || 0}</span>
@@ -476,7 +476,7 @@ export default function ComposerPanel({ onClose, initialChanges }: ComposerPanel
                       className="flex items-center gap-2 px-4 py-2 bg-surface/20 border border-border-subtle text-text-muted text-[11px] font-black uppercase tracking-widest rounded-xl hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 disabled:opacity-30 transition-all duration-300"
                     >
                       <XCircle className="w-3.5 h-3.5" />
-                      {language === 'zh' ? '全部拒绝' : 'Reject All'}
+                      {t('dock-panels.rejectall', language as Language)}
                     </button>
                     <button
                       onClick={fileEdits.length > 0 ? applyAllEdits : handleAcceptAllComposer}
@@ -484,7 +484,7 @@ export default function ComposerPanel({ onClose, initialChanges }: ComposerPanel
                       className="flex items-center gap-2 px-4 py-2 bg-green-600 text-accent-foreground text-[11px] font-black uppercase tracking-widest rounded-xl hover:bg-green-500 shadow-lg shadow-green-900/20 disabled:opacity-30 transition-all duration-300"
                     >
                       <CheckCheck className="w-3.5 h-3.5" />
-                      {language === 'zh' ? '全部接受' : 'Accept All'}
+                      {t('dock-panels.acceptall', language as Language)}
                     </button>
                   </div>
                 </div>
@@ -622,7 +622,7 @@ export default function ComposerPanel({ onClose, initialChanges }: ComposerPanel
                                       onClick={() => void openComposerFile(change.filePath)}
                                       className="px-3 py-1.5 rounded-lg border border-border-subtle bg-surface/20 text-[11px] font-black uppercase tracking-widest text-text-primary hover:border-accent/40 hover:text-accent transition-all duration-300"
                                     >
-                                      {language === 'zh' ? '打开文件' : 'Open File'}
+                                      {t('dock-panels.openfile', language as Language)}
                                     </button>
                                   </div>
                                 </div>

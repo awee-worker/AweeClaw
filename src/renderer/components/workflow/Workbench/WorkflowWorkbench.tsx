@@ -15,6 +15,7 @@ import TemplateMarket from '../TemplateMarket'
 import WorkflowTour, { isTourCompleted } from '../WorkflowTour'
 import HelpPanel from '../HelpPanel'
 import { useWorkflowEditor } from './useWorkflowEditor'
+import { t, type Language } from '@renderer/i18n'
 
 interface WorkflowWorkbenchInnerProps {
   onClose: () => void
@@ -170,9 +171,9 @@ function WorkflowWorkbenchInner({ onClose, initialWorkflow, language = 'zh' }: W
   }, [view, handleBackToList, onClose])
 
   const headerTitle = useMemo(() => {
-    if (view === 'list') return language === 'zh' ? '工作流' : 'Workflows'
-    if (view === 'market') return language === 'zh' ? '模板市场' : 'Template Market'
-    return editor.workflow?.name || (language === 'zh' ? '未命名工作流' : 'Untitled workflow')
+    if (view === 'list') return t('wf.workflows', language as Language)
+    if (view === 'market') return t('wf.templatemarket', language as Language)
+    return editor.workflow?.name || (t('wf.untitledworkflow', language as Language))
   }, [view, language, editor.workflow?.name])
 
   return (
@@ -186,7 +187,7 @@ function WorkflowWorkbenchInner({ onClose, initialWorkflow, language = 'zh' }: W
             <button
               onClick={handleBack}
               className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors flex-shrink-0"
-              title={language === 'zh' ? '返回列表' : 'Back to list'}
+              title={t('wf.backtolist', language as Language)}
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="15,18 9,12 15,6" />
@@ -203,7 +204,7 @@ function WorkflowWorkbenchInner({ onClose, initialWorkflow, language = 'zh' }: W
         <button
           onClick={onClose}
           className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500 transition-colors app-no-drag"
-          title={language === 'zh' ? '关闭工作流' : 'Close workflow'}
+          title={t('wf.closeworkflow', language as Language)}
         >
           <X className="w-4 h-4" />
         </button>
@@ -242,7 +243,7 @@ function WorkflowWorkbenchInner({ onClose, initialWorkflow, language = 'zh' }: W
             <button
               onClick={() => setShowTour(true)}
               className="ml-2 p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-blue-500 transition-colors"
-              title={language === 'zh' ? '新手引导' : 'Guide'}
+              title={t('wf.guide', language as Language)}
             >
               <HelpCircle size={16} />
             </button>
@@ -294,7 +295,7 @@ function WorkflowWorkbenchInner({ onClose, initialWorkflow, language = 'zh' }: W
               <button
                 onClick={() => setShowVersionPanel(true)}
                 className="p-2 rounded-lg bg-[var(--background)] border border-[var(--border)] shadow-lg hover:bg-[var(--border)]/50 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all"
-                title={language === 'zh' ? '版本管理' : 'Version History'}
+                title={t('wf.versionhistory', language as Language)}
               >
                 <GitBranch className="w-4 h-4" />
               </button>
@@ -310,7 +311,7 @@ function WorkflowWorkbenchInner({ onClose, initialWorkflow, language = 'zh' }: W
             <button
               onClick={() => setShowVersionPanel(true)}
               className="absolute bottom-4 right-4 z-10 p-2 rounded-lg bg-[var(--background)] border border-[var(--border)] shadow-lg hover:bg-[var(--border)]/50 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all"
-              title={language === 'zh' ? '版本管理' : 'Version History'}
+              title={t('wf.versionhistory2', language as Language)}
             >
               <GitBranch className="w-4 h-4" />
             </button>

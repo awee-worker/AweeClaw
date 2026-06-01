@@ -10,7 +10,7 @@ import { useStore, useModeStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { useAgentHistoryActions } from '@hooks/useAgent'
-import { t } from '@renderer/i18n'
+import {t, type Language} from '@renderer/i18n'
 import { keybindingService, formatShortcut, isMac } from '@services/keybindingAdapter'
 import { aweeclawDir } from '@services/appDirService'
 import { toast } from '@components/foundation/NotificationProvider'
@@ -454,7 +454,7 @@ export default function CommandHub({ onClose, onShowKeyboardShortcuts }: Command
           {activeFilter === 'recent' && recentIds.current.length === 0 && (
             <div className="px-4 py-10 text-center text-text-muted flex flex-col items-center gap-3 opacity-50">
               <Clock className="w-8 h-8" />
-              <p className="text-sm font-medium">{language === 'zh' ? '暂无最近使用的命令' : 'No recent commands yet'}</p>
+              <p className="text-sm font-medium">{t('modals.norecentcommandsyet', language as Language)}</p>
             </div>
           )}
           {Object.entries(groupedCommands).map(([category, cmds]) => (

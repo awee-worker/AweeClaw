@@ -28,6 +28,7 @@ import {
   Plus,
   Pencil,
 } from 'lucide-react'
+import { t, type Language } from '@renderer/i18n'
 
 interface WorkflowPanelProps {
   onClose: () => void
@@ -241,12 +242,12 @@ export default function WorkflowPanel({ onClose }: WorkflowPanelProps) {
               <Sparkles className="w-5 h-5 text-accent" />
               <h2 className="text-[15px] font-bold text-text-primary">
                 {viewMode === 'list'
-                  ? language === 'zh' ? '多智体工作流' : 'Multi-Agent Workflows'
+                  ? t('wf.multiagentworkflows', language as Language)
                   : viewMode === 'builder'
-                    ? language === 'zh' ? '创建工作流' : 'Create Workflow'
+                    ? t('wf.createworkflow', language as Language)
                     : viewMode === 'detail'
                       ? selectedWorkflow ? (language === 'zh' ? selectedWorkflow.nameZh : selectedWorkflow.name) : ''
-                      : language === 'zh' ? '执行工作流' : 'Running Workflow'}
+                      : t('wf.runningworkflow', language as Language)}
               </h2>
             </div>
           </div>
@@ -260,7 +261,7 @@ export default function WorkflowPanel({ onClose }: WorkflowPanelProps) {
                   className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium bg-accent/10 text-accent hover:bg-accent/15 rounded-lg transition-all"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  {language === 'zh' ? '创建工作流' : 'Create'}
+                  {t('wf.create', language as Language)}
                 </button>
                 <div className="flex items-center bg-surface/50 rounded-lg p-0.5 border border-border/30">
                   <button
@@ -272,7 +273,7 @@ export default function WorkflowPanel({ onClose }: WorkflowPanelProps) {
                     }`}
                   >
                     <Sparkles className="w-3 h-3" />
-                    {language === 'zh' ? '工作流' : 'Workflows'}
+                    {t('wf.workflows', language as Language)}
                   </button>
                   <button
                     onClick={() => setTabMode('history')}
@@ -283,7 +284,7 @@ export default function WorkflowPanel({ onClose }: WorkflowPanelProps) {
                     }`}
                   >
                     <Clock className="w-3 h-3" />
-                    {language === 'zh' ? '历史' : 'History'}
+                    {t('wf.history', language as Language)}
                   </button>
                 </div>
               </div>
@@ -295,14 +296,14 @@ export default function WorkflowPanel({ onClose }: WorkflowPanelProps) {
                   className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium bg-surface/50 text-text-secondary hover:bg-surface-hover border border-border/30 rounded-lg transition-all"
                 >
                   <Pencil className="w-3 h-3" />
-                  {language === 'zh' ? '编辑' : 'Edit'}
+                  {t('wf.edit', language as Language)}
                 </button>
                 <button
                   onClick={handleStartWorkflow}
                   className="flex items-center gap-1.5 px-4 py-1.5 text-[12px] font-medium bg-accent text-white hover:bg-accent-hover rounded-lg transition-all"
                 >
                   <Play className="w-3.5 h-3.5" />
-                  {language === 'zh' ? '启动' : 'Run'}
+                  {t('wf.run', language as Language)}
                 </button>
               </div>
             )}
@@ -420,7 +421,7 @@ function WorkflowList({ workflows, searchQuery, onSearchChange, onSelect, onEdit
             type="text"
             value={searchQuery}
             onChange={e => onSearchChange(e.target.value)}
-            placeholder={language === 'zh' ? '搜索工作流...' : 'Search workflows...'}
+            placeholder={t('wf.searchworkflows', language as Language)}
             className="w-full pl-9 pr-4 py-2 text-[13px] bg-surface/50 border border-border/50 rounded-lg text-text-primary placeholder:text-text-muted/40 focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-all"
           />
         </div>
@@ -470,7 +471,7 @@ function WorkflowList({ workflows, searchQuery, onSearchChange, onSelect, onEdit
                             </p>
                             <div className="flex items-center gap-3 mt-2">
                               <span className="text-[10px] text-text-muted/50">
-                                {stepCount} {language === 'zh' ? '步骤' : 'steps'}
+                                {stepCount} {t('wf.steps', language as Language)}
                               </span>
                               {roleIds.length > 0 && (
                                 <div className="flex items-center gap-1">
@@ -500,7 +501,7 @@ function WorkflowList({ workflows, searchQuery, onSearchChange, onSelect, onEdit
                             className="flex items-center gap-1 px-2 py-1 text-[10px] text-text-muted/50 hover:text-accent transition-colors"
                           >
                             <Pencil className="w-3 h-3" />
-                            {language === 'zh' ? '编辑' : 'Edit'}
+                            {t('wf.edit2', language as Language)}
                           </button>
                         </div>
                       )}
@@ -516,7 +517,7 @@ function WorkflowList({ workflows, searchQuery, onSearchChange, onSelect, onEdit
           <div className="flex flex-col items-center justify-center py-16 text-text-muted/40">
             <Sparkles className="w-10 h-10 mb-3" />
             <p className="text-[13px]">
-              {language === 'zh' ? '没有找到匹配的工作流' : 'No matching workflows found'}
+              {t('wf.nomatchingworkflowsfound', language as Language)}
             </p>
           </div>
         )}

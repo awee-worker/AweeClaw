@@ -2,7 +2,7 @@ import { useState, type Dispatch, type SetStateAction } from 'react'
 import { AlertTriangle, Plus, X, RotateCcw } from 'lucide-react'
 import { ToggleSwitch } from '@components/ui'
 import { toast } from '@components/foundation/NotificationProvider'
-import { type Language } from '@renderer/i18n'
+import { t, type Language } from '@renderer/i18n'
 import { api } from '../../../adapters/electronBridge'
 import type { SecurityPolicyPanel as SecuritySettingsState } from '@shared/configuration/providerTypes'
 
@@ -61,7 +61,7 @@ export function SecurityPolicyPanel({ language, securitySettings, setSecuritySet
                 allowedGitSubcommands: result.git,
             })
         } catch (error) {
-            toast.error(language === 'zh' ? '重置白名单失败' : 'Failed to reset whitelist', error instanceof Error ? error.message : String(error))
+            toast.error(t('settings.failedtoresetwhitelist', language as Language), error instanceof Error ? error.message : String(error))
         }
     }
 
@@ -73,43 +73,41 @@ export function SecurityPolicyPanel({ language, securitySettings, setSecuritySet
                 </div>
                 <div>
                     <h3 className="text-sm font-bold text-yellow-500 mb-1 tracking-tight">
-                        {language === 'zh' ? '安全沙箱' : 'Security Sandbox'}
+                        {t('settings.securitysandbox', language as Language)}
                     </h3>
                     <p className="text-xs text-text-secondary leading-relaxed opacity-90">
-                        {language === 'zh'
-                            ? 'AweeClaw 当前会直接在系统上执行命令，请只运行可信代码。后续我们会继续把执行边界收紧。'
-                            : 'AweeClaw currently runs commands directly on your system. Only run trusted code while we continue tightening execution boundaries.'}
+                        {t('settings.aweeclawcurrentlyrunscommandsdirectly', language as Language)}
                     </p>
                 </div>
             </div>
 
             <section className="space-y-5 p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border shadow-sm">
                 <h4 className="text-[12px] font-bold text-text-muted uppercase tracking-widest opacity-60 ml-1">
-                    {language === 'zh' ? '安全选项' : 'Security Options'}
+                    {t('settings.securityoptions', language as Language)}
                 </h4>
                 <div className="space-y-4">
-                    <ToggleSwitch label={language === 'zh' ? '启用操作确认' : 'Enable permission confirmation'} checked={securitySettings.enablePermissionConfirm} onChange={(e) => updateSecuritySettings({ enablePermissionConfirm: e.target.checked })} />
-                    <ToggleSwitch label={language === 'zh' ? '严格工作区模式' : 'Strict workspace mode'} checked={securitySettings.strictWorkspaceMode} onChange={(e) => updateSecuritySettings({ strictWorkspaceMode: e.target.checked })} />
-                    <ToggleSwitch label={language === 'zh' ? '显示安全警告' : 'Show security warnings'} checked={securitySettings.showSecurityWarnings} onChange={(e) => updateSecuritySettings({ showSecurityWarnings: e.target.checked })} />
+                    <ToggleSwitch label={t('settings.enablepermissionconfirmation', language as Language)} checked={securitySettings.enablePermissionConfirm} onChange={(e) => updateSecuritySettings({ enablePermissionConfirm: e.target.checked })} />
+                    <ToggleSwitch label={t('settings.strictworkspacemode', language as Language)} checked={securitySettings.strictWorkspaceMode} onChange={(e) => updateSecuritySettings({ strictWorkspaceMode: e.target.checked })} />
+                    <ToggleSwitch label={t('settings.showsecuritywarnings', language as Language)} checked={securitySettings.showSecurityWarnings} onChange={(e) => updateSecuritySettings({ showSecurityWarnings: e.target.checked })} />
                 </div>
             </section>
 
             <section className="space-y-4 p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border shadow-sm">
                 <div className="flex items-center justify-between">
                     <h4 className="text-[12px] font-bold text-text-muted uppercase tracking-widest opacity-60">
-                        {language === 'zh' ? 'Shell 命令白名单' : 'Shell Command Whitelist'}
+                        {t('settings.shellcommandwhitelist', language as Language)}
                     </h4>
                     <button
                         onClick={handleResetWhitelist}
                         className="flex items-center gap-1 text-xs text-text-secondary hover:text-text-primary transition-colors"
-                        title={language === 'zh' ? '重置为默认值' : 'Reset to defaults'}
+                        title={t('settings.resettodefaults', language as Language)}
                     >
                         <RotateCcw className="w-3 h-3" />
-                        {language === 'zh' ? '重置' : 'Reset'}
+                        {t('settings.reset', language as Language)}
                     </button>
                 </div>
                 <p className="text-xs text-text-secondary">
-                    {language === 'zh' ? '只有在此列表中的命令才允许执行。' : 'Only commands in this list are allowed to run.'}
+                    {t('settings.onlycommandsinthislist', language as Language)}
                 </p>
                 <div className="flex flex-wrap gap-2">
                     {securitySettings.allowedShellCommands.map(cmd => (
@@ -127,7 +125,7 @@ export function SecurityPolicyPanel({ language, securitySettings, setSecuritySet
                         value={newShellCmd}
                         onChange={(e) => setNewShellCmd(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleAddShellCommand()}
-                        placeholder={language === 'zh' ? '添加命令...' : 'Add command...'}
+                        placeholder={t('settings.addcommand', language as Language)}
                         className="flex-1 px-3 py-1.5 bg-surface border border-border rounded text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent"
                     />
                     <button
@@ -143,12 +141,10 @@ export function SecurityPolicyPanel({ language, securitySettings, setSecuritySet
             {isWorkspaceEditor && (
             <section className="space-y-4 p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border shadow-sm">
                 <h4 className="text-[12px] font-bold text-text-muted uppercase tracking-widest opacity-60">
-                    {language === 'zh' ? 'Git 子命令白名单' : 'Git Subcommand Whitelist'}
+                    {t('settings.gitsubcommandwhitelist', language as Language)}
                 </h4>
                 <p className="text-xs text-text-secondary">
-                    {language === 'zh'
-                        ? '只有在此列表中的 Git 子命令才允许执行，例如 status、commit、push。'
-                        : 'Only Git subcommands in this list are allowed to run, such as status, commit, and push.'}
+                    {t('settings.onlygitsubcommandsinthis', language as Language)}
                 </p>
                 <div className="flex flex-wrap gap-2">
                     {(securitySettings.allowedGitSubcommands || []).map(cmd => (
@@ -166,7 +162,7 @@ export function SecurityPolicyPanel({ language, securitySettings, setSecuritySet
                         value={newGitCmd}
                         onChange={(e) => setNewGitCmd(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleAddGitCommand()}
-                        placeholder={language === 'zh' ? '添加 Git 子命令...' : 'Add Git subcommand...'}
+                        placeholder={t('settings.addgitsubcommand', language as Language)}
                         className="flex-1 px-3 py-1.5 bg-surface border border-border rounded text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent"
                     />
                     <button

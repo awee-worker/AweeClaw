@@ -406,7 +406,7 @@ class KnowledgeSyncService {
 
   private async handleConflicts(
     conflicts: SyncConflict[],
-    meta: LocalSyncMeta,
+    _meta: LocalSyncMeta,
     localEntries: KnowledgeEntry[],
   ): Promise<void> {
     const enrichedConflicts: SyncConflict[] = conflicts.map((conflict) => {

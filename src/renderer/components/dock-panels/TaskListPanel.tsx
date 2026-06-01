@@ -14,6 +14,7 @@ import {
     Trash2,
 } from 'lucide-react'
 import type { TaskPlan, PlanStatus } from '@intelligence/planner/providerTypes'
+import { t, type Language } from '@renderer/i18n'
 
 interface PlanListContentProps {
     language?: 'en' | 'zh'
@@ -85,10 +86,10 @@ const PlanItem = memo(function PlanItem({
         const hours = Math.floor(minutes / 60)
         const days = Math.floor(hours / 24)
 
-        if (days > 0) return language === 'zh' ? `${days}天前` : `${days}d ago`
-        if (hours > 0) return language === 'zh' ? `${hours}小时前` : `${hours}h ago`
-        if (minutes > 0) return language === 'zh' ? `${minutes}分钟前` : `${minutes}m ago`
-        return language === 'zh' ? '刚刚' : 'Just now'
+        if (days > 0) return t('dock-panels.dago', language as Language, { days })
+        if (hours > 0) return t('dock-panels.hago', language as Language, { hours })
+        if (minutes > 0) return t('dock-panels.mago', language as Language, { minutes })
+        return t('dock-panels.justnow', language as Language)
     }, [plan.updatedAt, language])
 
     const handleDelete = useCallback((e: React.MouseEvent) => {
@@ -130,7 +131,7 @@ const PlanItem = memo(function PlanItem({
                         <button
                             onClick={handleDelete}
                             className="opacity-0 group-hover:opacity-100 p-1 rounded-md hover:bg-red-500/15 text-text-muted hover:text-red-400 transition-all"
-                            title={language === 'zh' ? '删除计划' : 'Delete plan'}
+                            title={t('dock-panels.deleteplan', language as Language)}
                         >
                             <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -143,7 +144,7 @@ const PlanItem = memo(function PlanItem({
                 <div className="mt-2.5">
                     <div className="flex items-center justify-between text-[11px] mb-1">
                         <span className="text-text-muted">
-                            {completed}/{total} {language === 'zh' ? '任务' : 'tasks'}
+                            {completed}/{total} {t('dock-panels.tasks', language as Language)}
                         </span>
                         <span className="text-text-muted font-mono">
                             {Math.round(progressPercent)}%
@@ -206,12 +207,10 @@ export default memo(function PlanListContent({
 
     const handleDeletePlan = useCallback(async (plan: TaskPlan) => {
         const confirmed = await globalConfirm({
-            title: language === 'zh' ? '删除计划' : 'Delete Plan',
-            message: language === 'zh'
-                ? `确定要删除计划「${plan.name}」吗？此操作不可撤销。`
-                : `Are you sure you want to delete plan "${plan.name}"? This action cannot be undone.`,
-            confirmText: language === 'zh' ? '删除' : 'Delete',
-            cancelText: language === 'zh' ? '取消' : 'Cancel',
+            title: t('dock-panels.deleteplan2', language as Language),
+            message: t('dock-panels.areyousureyouwant', language as Language, { name: plan.name }),
+            confirmText: t('dock-panels.delete', language as Language),
+            cancelText: t('dock-panels.cancel', language as Language),
             variant: 'danger',
         })
         if (!confirmed) return
@@ -231,12 +230,10 @@ export default memo(function PlanListContent({
             <div className="flex flex-col items-center justify-center h-full text-text-muted py-8">
                 <FileText className="w-10 h-10 mb-3 opacity-20" />
                 <p className="text-sm font-medium">
-                    {language === 'zh' ? '暂无计划' : 'No Plans Yet'}
+                    {t('dock-panels.noplansyet', language as Language)}
                 </p>
                 <p className="text-xs text-text-muted/85 mt-1 text-center px-4">
-                    {language === 'zh'
-                        ? '使用 Plan 模式创建任务计划'
-                        : 'Use Plan mode to create task plans'
+                    {t('dock-panels.useplanmodetocreate', language as Language)
                     }
                 </p>
             </div>

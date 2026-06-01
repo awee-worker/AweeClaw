@@ -297,6 +297,80 @@ export const builtinThemes: Theme[] = [
       statusInfo: '37 99 235',        // Blue 600
     },
   },
+  {
+    id: 'mars-green',
+    name: 'Mars Green',
+    type: 'light',
+    monacoTheme: 'vs',
+    colors: {
+      background: '245 252 252',
+      backgroundSecondary: '238 248 248',
+      backgroundTertiary: '228 242 242',
+      chatBg: '248 253 253',
+
+      surface: '245 252 252',
+      surfaceHover: '228 242 242',
+      surfaceActive: '215 234 234',
+      surfaceMuted: '200 225 225',
+
+      textPrimary: '20 50 50',
+      textSecondary: '50 80 80',
+      textMuted: '90 120 120',
+      textInverted: '245 252 252',
+
+      border: '200 225 225',
+      borderSubtle: '218 240 240',
+      borderActive: '0 140 140',
+
+      accent: '0 140 140',
+      accentHover: '0 120 120',
+      accentActive: '0 100 100',
+      accentForeground: '255 255 255',
+      accentSubtle: '0 170 170',
+
+      statusSuccess: '22 140 70',
+      statusWarning: '195 120 15',
+      statusError: '195 45 35',
+      statusInfo: '0 120 160',
+    },
+  },
+  {
+    id: 'prussian-blue',
+    name: 'Prussian Blue',
+    type: 'light',
+    monacoTheme: 'vs',
+    colors: {
+      background: '242 245 250',
+      backgroundSecondary: '235 239 246',
+      backgroundTertiary: '225 230 240',
+      chatBg: '246 248 252',
+
+      surface: '242 245 250',
+      surfaceHover: '225 230 240',
+      surfaceActive: '212 218 232',
+      surfaceMuted: '198 206 224',
+
+      textPrimary: '15 25 45',
+      textSecondary: '40 55 80',
+      textMuted: '80 95 120',
+      textInverted: '242 245 250',
+
+      border: '198 206 224',
+      borderSubtle: '218 224 238',
+      borderActive: '0 49 83',
+
+      accent: '0 49 83',
+      accentHover: '0 38 65',
+      accentActive: '0 28 48',
+      accentForeground: '255 255 255',
+      accentSubtle: '0 70 115',
+
+      statusSuccess: '22 140 70',
+      statusWarning: '195 120 15',
+      statusError: '195 45 35',
+      statusInfo: '0 80 140',
+    },
+  },
 ]
 
 // 主题管理器

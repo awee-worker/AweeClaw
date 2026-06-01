@@ -6,7 +6,7 @@ import JSZip from 'jszip'
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize2, Loader2, FileSpreadsheet, Presentation } from 'lucide-react'
 import { ActionButton } from '../ui'
 import { useStore } from '@store'
-import { t } from '@renderer/i18n'
+import {t, type Language} from '@renderer/i18n'
 import { api } from '../../adapters/electronBridge'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
@@ -304,15 +304,13 @@ export function DocPreview({ path }: DocPreviewProps) {
             <FileSpreadsheet className="w-8 h-8 text-text-muted" />
           </div>
           <h3 className="text-lg font-medium text-text-primary mb-2">
-            {language === 'zh' ? '无法预览此 .doc 文件' : 'Cannot preview this .doc file'}
+            {t('editor.cannotpreviewthisdocfile', language as Language)}
           </h3>
           <p className="text-sm text-text-muted mb-6">
-            {language === 'zh'
-              ? '该 .doc 文件无法提取文本内容，建议将文件另存为 .docx 格式后重试，或使用系统默认程序打开。'
-              : 'Unable to extract text from this .doc file. Please save as .docx format and try again, or open with the system default application.'}
+            {t('editor.unabletoextracttextfrom', language as Language)}
           </p>
           <ActionButton variant="secondary" onClick={handleOpenExternal} className="gap-2">
-            {language === 'zh' ? '用默认程序打开' : 'Open with Default App'}
+            {t('editor.openwithdefaultapp', language as Language)}
           </ActionButton>
         </div>
       </div>
@@ -457,7 +455,7 @@ export function XlsxPreview({ path }: XlsxPreviewProps) {
           </div>
         ) : (
           <div className="flex items-center justify-center h-full text-text-muted text-sm">
-            {language === 'zh' ? '空工作表' : 'Empty sheet'}
+            {t('editor.emptysheet', language as Language)}
           </div>
         )}
       </div>
@@ -607,7 +605,7 @@ export function CsvPreview({ path, content }: CsvPreviewProps) {
             onClick={() => setViewMode('table')}
             className="px-2.5 py-1 rounded-md text-xs font-medium bg-accent/20 text-accent hover:bg-accent/30 transition-colors"
           >
-            {language === 'zh' ? '表格视图' : 'Table View'}
+            {t('editor.tableview', language as Language)}
           </button>
         </div>
         <div className="flex-1 overflow-auto p-4">
@@ -629,7 +627,7 @@ export function CsvPreview({ path, content }: CsvPreviewProps) {
           onClick={() => setHasHeader(!hasHeader)}
           className={`px-2 py-0.5 rounded text-xs transition-colors ${hasHeader ? 'bg-accent/20 text-accent' : 'text-text-muted hover:text-text-primary'}`}
         >
-          {language === 'zh' ? '首行为表头' : 'Header Row'}
+          {t('editor.headerrow', language as Language)}
         </button>
         <div className="flex-1" />
         <div className="relative">
@@ -637,7 +635,7 @@ export function CsvPreview({ path, content }: CsvPreviewProps) {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={language === 'zh' ? '搜索...' : 'Search...'}
+            placeholder={t('editor.search', language as Language)}
             className="w-40 h-6 px-2 pr-6 text-xs rounded-md bg-surface/80 border border-border/50 text-text-primary placeholder:text-text-muted/60 focus:outline-none focus:border-accent/50"
           />
           {searchQuery && (
@@ -653,7 +651,7 @@ export function CsvPreview({ path, content }: CsvPreviewProps) {
           onClick={() => setViewMode('text')}
           className="px-2.5 py-1 rounded-md text-xs font-medium text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
         >
-          {language === 'zh' ? '文本视图' : 'Text View'}
+          {t('editor.textview', language as Language)}
         </button>
       </div>
       <div className="flex-1 overflow-auto">
@@ -701,17 +699,15 @@ export function CsvPreview({ path, content }: CsvPreviewProps) {
         ) : (
           <div className="flex items-center justify-center h-full text-text-muted text-sm">
             {searchQuery
-              ? (language === 'zh' ? '未找到匹配结果' : 'No matching results')
-              : (language === 'zh' ? '空文件' : 'Empty file')
+              ? (t('editor.nomatchingresults', language as Language))
+              : (t('editor.emptyfile', language as Language))
             }
           </div>
         )}
       </div>
       {searchQuery && (
         <div className="flex-shrink-0 px-3 py-1.5 border-t border-border bg-surface/30 text-xs text-text-muted">
-          {language === 'zh'
-            ? `找到 ${filteredRows.length} / ${totalRows} 行`
-            : `${filteredRows.length} / ${totalRows} rows`
+          {t('editor.rows', language as Language, { length: filteredRows.length, totalRows: totalRows })
           }
         </div>
       )}
@@ -795,7 +791,7 @@ export function PptxPreview({ path }: PptxPreviewProps) {
       <div className="h-full flex items-center justify-center bg-background">
         <div className="text-center p-8">
           <p className="text-text-muted">
-            {language === 'zh' ? '无法预览此 PPT 文件' : 'Cannot preview this PPT file'}
+            {t('editor.cannotpreviewthispptfile', language as Language)}
           </p>
         </div>
       </div>
@@ -809,7 +805,7 @@ export function PptxPreview({ path }: PptxPreviewProps) {
       <div className="flex items-center gap-2 px-4 py-2 border-b border-border/30 shrink-0">
         <Presentation className="w-4 h-4 text-accent" />
         <span className="text-sm text-text-secondary">
-          {language === 'zh' ? `幻灯片 ${activeSlide + 1} / ${slides.length}` : `Slide ${activeSlide + 1} / ${slides.length}`}
+          {t('editor.slide', language as Language, { p0: activeSlide + 1, length: slides.length })}
         </span>
         <div className="flex-1" />
         <ActionButton variant="ghost" size="sm" onClick={() => setActiveSlide(Math.max(0, activeSlide - 1))} disabled={activeSlide === 0}>
@@ -824,7 +820,7 @@ export function PptxPreview({ path }: PptxPreviewProps) {
         <div className="max-w-3xl mx-auto">
           <div className="rounded-lg border border-border/50 bg-surface/30 p-8 min-h-[300px]">
             <div className="text-xs text-text-muted mb-4">
-              {language === 'zh' ? `第 ${currentSlide.slideNumber} 页` : `Page ${currentSlide.slideNumber}`}
+              {t('editor.page', language as Language, { slideNumber: currentSlide.slideNumber })}
             </div>
             {currentSlide.texts.length > 0 ? (
               <div className="space-y-3">
@@ -836,7 +832,7 @@ export function PptxPreview({ path }: PptxPreviewProps) {
               </div>
             ) : (
               <p className="text-text-muted text-sm">
-                {language === 'zh' ? '此幻灯片无文本内容' : 'No text content on this slide'}
+                {t('editor.notextcontentonthis', language as Language)}
               </p>
             )}
           </div>
@@ -901,15 +897,13 @@ export function PptPreview({ path }: PptPreviewProps) {
             <Presentation className="w-8 h-8 text-text-muted" />
           </div>
           <h3 className="text-lg font-medium text-text-primary mb-2">
-            {language === 'zh' ? '无法预览此 .ppt 文件' : 'Cannot preview this .ppt file'}
+            {t('editor.cannotpreviewthispptfile2', language as Language)}
           </h3>
           <p className="text-sm text-text-muted mb-6">
-            {language === 'zh'
-              ? '旧版 .ppt 格式仅支持提取文本内容，建议将文件另存为 .pptx 格式后重试，或使用系统默认程序打开。'
-              : 'The legacy .ppt format only supports text extraction. Please save as .pptx format and try again, or open with the system default application.'}
+            {t('editor.thelegacypptformatonly', language as Language)}
           </p>
           <ActionButton variant="secondary" onClick={handleOpenExternal} className="gap-2">
-            {language === 'zh' ? '用默认程序打开' : 'Open with Default App'}
+            {t('editor.openwithdefaultapp2', language as Language)}
           </ActionButton>
         </div>
       </div>

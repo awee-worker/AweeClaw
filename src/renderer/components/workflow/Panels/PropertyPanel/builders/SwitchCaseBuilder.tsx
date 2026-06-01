@@ -1,5 +1,6 @@
 import type { WorkflowNodeData, SwitchCase } from '@shared/protocols/workflowV2'
 import { Section } from '../Section'
+import { t, type Language } from '@renderer/i18n'
 
 interface SwitchCaseBuilderProps {
   data: WorkflowNodeData
@@ -30,7 +31,7 @@ export function SwitchCaseBuilder({ data, onChange, language }: SwitchCaseBuilde
   }
 
   return (
-    <Section title={language === 'zh' ? '分支用例' : 'Switch Cases'}>
+    <Section title={t('wf.switchcases', language as Language)}>
       <div className="space-y-2">
         {cases.map((sc, index) => (
           <div key={sc.id} className="p-2 rounded-md border border-[var(--border)] bg-[var(--background)]/50 space-y-1.5">
@@ -49,14 +50,14 @@ export function SwitchCaseBuilder({ data, onChange, language }: SwitchCaseBuilde
               type="text"
               value={sc.label}
               onChange={(e) => updateCase(index, { label: e.target.value })}
-              placeholder={language === 'zh' ? '用例标签' : 'Case label'}
+              placeholder={t('wf.caselabel', language as Language)}
               className="w-full px-2 py-1 text-[11px] rounded border border-[var(--border)] bg-[var(--background)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
             />
             <input
               type="text"
               value={sc.condition}
               onChange={(e) => updateCase(index, { condition: e.target.value })}
-              placeholder={language === 'zh' ? '条件表达式' : 'Condition expression'}
+              placeholder={t('wf.conditionexpression', language as Language)}
               className="w-full px-2 py-1 text-[11px] rounded border border-[var(--border)] bg-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)] font-mono"
             />
           </div>
@@ -65,7 +66,7 @@ export function SwitchCaseBuilder({ data, onChange, language }: SwitchCaseBuilde
           onClick={addCase}
           className="w-full py-1.5 text-[11px] text-[var(--accent)] border border-dashed border-[var(--accent)]/30 rounded-md hover:bg-[var(--accent)]/5 transition-colors"
         >
-          + {language === 'zh' ? '添加用例' : 'Add Case'}
+          + {t('wf.addcase', language as Language)}
         </button>
       </div>
     </Section>

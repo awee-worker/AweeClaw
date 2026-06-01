@@ -1,11 +1,11 @@
 import { api } from '../../adapters/electronBridge'
 import { useState, useEffect, useCallback, useRef, memo } from 'react'
-import { Search, X, Clock, Star, Filter, MessageSquare, FileText } from 'lucide-react'
+import { Search, X, Clock, Star, MessageSquare, FileText } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { getFileName } from '@shared/toolkit/pathHelper'
 import { keybindingService } from '@services/keybindingAdapter'
-import { t } from '@renderer/i18n'
+import {t, type Language} from '@renderer/i18n'
 import { ActionButton } from '../ui'
 import FileIcon from '../foundation/FileTypeIcon'
 import { useElevatedToastLayer } from '@components/foundation/toastLayerStore'
@@ -192,7 +192,7 @@ const SessionCandidateRow = memo(function SessionCandidateRow({
   isSelected: boolean
   isCurrent: boolean
   onSelect: () => void
-  language: string
+  language: Language
 }) {
   const { thread, title, preview } = candidate
   const msgCount = thread.messageCount ?? thread.messages.length ?? 0
@@ -202,14 +202,12 @@ const SessionCandidateRow = memo(function SessionCandidateRow({
     const now = new Date()
     const isToday = date.toDateString() === now.toDateString()
     if (isToday) {
-      return language === 'zh'
-        ? `今天 ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`
-        : `Today ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`
+      return t('modals.today', language as Language, { hours: date.getHours().toString().padStart(2, '0'), minutes: date.getMinutes().toString().padStart(2, '0') })
     }
     const y = date.getFullYear()
     const m = (date.getMonth() + 1).toString().padStart(2, '0')
     const d = date.getDate().toString().padStart(2, '0')
-    return language === 'zh' ? `${y}-${m}-${d}` : `${m}/${d}/${y}`
+    return t('modals.text0', language as Language, { m: m, d: d, y: y })
   }
 
   return (
@@ -229,7 +227,7 @@ const SessionCandidateRow = memo(function SessionCandidateRow({
           <HighlightedText text={title} matchIndices={candidate.matchIndices} />
           {isCurrent && (
             <span className="shrink-0 px-1.5 py-0.5 rounded-full bg-accent/10 text-accent text-[10px] font-medium">
-              {language === 'zh' ? '当前' : 'Current'}
+              {t('modals.current', language as Language)}
             </span>
           )}
         </div>
@@ -442,16 +440,16 @@ export default function FileNavigator({ onClose }: FileNavigatorProps) {
   }, [selectedIndex])
 
   const placeholder = activeTab === 'files'
-    ? t('searchFilesPlaceholder', language)
-    : (language === 'zh' ? '搜索历史会话...' : 'Search session history...')
+    ? t('modals.searchFilesPlaceholder', language)
+    : (t('modals.searchsessionhistory', language as Language))
 
   const emptyText = activeTab === 'files'
-    ? (query ? t('noFilesFound', language) : t('noFilesInWorkspace', language))
-    : (language === 'zh' ? '暂无会话记录' : 'No session records yet')
+    ? (query ? t('modals.noFilesFound', language) : t('modals.noFilesInWorkspace', language))
+    : (t('modals.nosessionrecordsyet', language as Language))
 
   const emptySearchText = activeTab === 'files'
-    ? (query ? t('noFilesFound', language) : t('noFilesInWorkspace', language))
-    : (language === 'zh' ? '未找到匹配的会话' : 'No matching sessions found')
+    ? (query ? t('modals.noFilesFound', language) : t('modals.noFilesInWorkspace', language))
+    : (t('modals.nomatchingsessionsfound', language as Language))
 
   return (
     <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[12vh] animate-fade-in" onClick={onClose}>
@@ -486,7 +484,7 @@ export default function FileNavigator({ onClose }: FileNavigatorProps) {
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all ${activeTab === 'files' && !showRecent ? 'bg-accent/10 text-accent' : 'text-text-muted hover:text-text-secondary'}`}
           >
             <FileText className="w-3 h-3" />
-            {language === 'zh' ? '文件' : 'Files'}
+            {t('modals.files', language as Language)}
           </button>
           {activeTab === 'files' && (
             <button
@@ -494,7 +492,7 @@ export default function FileNavigator({ onClose }: FileNavigatorProps) {
               className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all ${showRecent ? 'bg-accent/10 text-accent' : 'text-text-muted hover:text-text-secondary'}`}
             >
               <Clock className="w-3 h-3" />
-              {language === 'zh' ? '最近' : 'Recent'}
+              {t('modals.recent', language as Language)}
             </button>
           )}
           <button
@@ -502,16 +500,16 @@ export default function FileNavigator({ onClose }: FileNavigatorProps) {
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all ${activeTab === 'sessions' ? 'bg-accent/10 text-accent' : 'text-text-muted hover:text-text-secondary'}`}
           >
             <MessageSquare className="w-3 h-3" />
-            {language === 'zh' ? '会话' : 'Sessions'}
+            {t('modals.sessions', language as Language)}
           </button>
-          <span className="ml-auto text-[10px] text-text-muted/50 font-mono">{currentCount} {language === 'zh' ? '项' : 'items'}</span>
+          <span className="ml-auto text-[10px] text-text-muted/50 font-mono">{currentCount} {t('modals.items', language as Language)}</span>
         </div>
 
         <div ref={listRef} className="flex-1 overflow-y-auto py-2 custom-scrollbar scroll-p-2">
           {isLoading && activeTab === 'files' ? (
             <div className="px-4 py-14 text-center text-text-muted flex flex-col items-center gap-3">
               <div className="w-7 h-7 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-              <p className="text-xs font-medium opacity-60">{t('loadingFiles', language)}</p>
+              <p className="text-xs font-medium opacity-60">{t('modals.loadingFiles', language)}</p>
             </div>
           ) : currentCount === 0 ? (
             <div className="px-4 py-14 text-center text-text-muted flex flex-col items-center gap-2">

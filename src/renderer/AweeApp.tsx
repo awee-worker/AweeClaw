@@ -20,6 +20,7 @@ import GlobalToastContainer from '@components/foundation/AppToastContainer'
 import { ThemeManager } from '@components/workspace-editor/EditorThemeProvider'
 import { EditorSkeleton, PanelSkeleton, ChatSkeleton, FullScreenLoading, InlineSettingsSkeleton } from './components/ui/ProgressIndicator'
 import { startupMetrics } from '@shared/toolkit/bootMetrics'
+import { t, type Language } from '@renderer/i18n'
 
 startupMetrics.mark('app-module-loaded')
 
@@ -360,7 +361,7 @@ function AppContent() {
                         ) : (
                           <div className="flex-1 min-w-0 overflow-hidden flex items-center justify-center">
                             <div className="text-text-muted text-sm">
-                              {language === 'zh' ? 'AI 助手已隐藏，点击右上角图标显示' : 'AI Assistant hidden, click the icon to show'}
+                              {t('app.aiassistanthiddenclickthe', language as Language)}
                             </div>
                           </div>
                         )}

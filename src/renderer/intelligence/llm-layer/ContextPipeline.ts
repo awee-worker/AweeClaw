@@ -25,6 +25,7 @@ import { normalizePath } from '@shared/toolkit/pathHelper'
 import { retrievalService } from '../runtime/knowledgeRetriever'
 import { getMessageText, ChatMessage } from '@intelligence/providerTypes'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
+import { type Language } from '@renderer/i18n'
 
 // ============================================
 // ContextProvider 接口
@@ -220,7 +221,7 @@ const CodebaseProvider: ContextProvider = {
       const results = await searchResultCache.getOrSet(cacheKey, async () => {
         const searchResults = await api.index.hybridSearch(ctx.workspacePath!, cleanQuery, 20)
         return searchResults || []
-      }) as Array<{ relativePath: string; score: number; language: string; content: string }>
+      }) as Array<{ relativePath: string; score: number; language: Language; content: string }>
 
       if (results && results.length > 0) {
         const limitedResults = results.slice(0, ctx.config.maxSemanticResults)

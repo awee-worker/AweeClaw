@@ -4,6 +4,7 @@ import { useStore } from '@store'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { checkScenarioUpdates } from '@services/marketplaceService'
 import type { MarketplaceUpdateInfo } from '@scenario-system/marketplace'
+import { t, type Language } from '@renderer/i18n'
 
 interface ScenarioUpdateNotificationProps {
   onNavigateToUpdate?: () => void
@@ -19,8 +20,6 @@ export function ScenarioUpdateNotification({ onNavigateToUpdate }: ScenarioUpdat
   const [isDismissed, setIsDismissed] = useState(false)
   const [lastChecked, setLastChecked] = useState<number>(0)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  const t = useCallback((zh: string, en: string) => language === 'zh' ? zh : en, [language])
 
   const doCheck = useCallback(async () => {
     if (!isAuthenticated) return
@@ -80,10 +79,7 @@ export function ScenarioUpdateNotification({ onNavigateToUpdate }: ScenarioUpdat
       <div className="flex items-center gap-1.5 flex-1 min-w-0">
         <Bell className="w-3.5 h-3.5 text-blue-400 shrink-0" />
         <span className="text-xs text-[var(--color-text)] truncate">
-          {t(
-            `${availableUpdates.length} 个场景有可用更新`,
-            `${availableUpdates.length} scenario update(s) available`
-          )}
+          {t('app.scenarioupdatesavailable', language as Language, { length: availableUpdates.length })}
         </span>
       </div>
 
@@ -92,7 +88,7 @@ export function ScenarioUpdateNotification({ onNavigateToUpdate }: ScenarioUpdat
         className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-colors shrink-0"
       >
         <ArrowUpCircle className="w-3 h-3" />
-        {t('查看', 'View')}
+        {t('app.view', language as Language)}
       </button>
 
       <button

@@ -11,6 +11,7 @@ import { DiffPreview, type DiffView } from '../workspace-editor/DiffViewerPanel'
 import { getFileName, getDirname } from '@shared/toolkit/pathHelper'
 import type { PendingChange } from '@intelligence/providerTypes'
 import { useStore } from '@store'
+import { t, type Language } from '@renderer/i18n'
 
 interface ChangesReviewPanelProps {
   isOpen: boolean
@@ -95,7 +96,7 @@ function ChangesReviewPanel({
     <OverlayDialog
       isOpen={isOpen}
       onClose={onClose}
-      title={language === 'zh' ? '变更审查' : 'Review Changes'}
+      title={t('ai.reviewchanges', language as Language)}
       size="5xl"
       noPadding
       showCloseButton
@@ -107,7 +108,7 @@ function ChangesReviewPanel({
           <div className="px-4 py-3 border-b border-border/50">
             <div className="flex items-center justify-between">
               <span className="text-[13px] font-medium text-text-primary">
-                {language === 'zh' ? '文件变更' : 'Files Changed'}
+                {t('ai.fileschanged', language as Language)}
               </span>
               <div className="flex items-center gap-1.5 text-[11px] font-mono">
                 <span className="text-green-400">+{stats.linesAdded}</span>
@@ -115,7 +116,7 @@ function ChangesReviewPanel({
               </div>
             </div>
             <div className="text-[11px] text-text-muted/70 mt-1">
-              {stats.total} {language === 'zh' ? '个文件' : 'files'}
+              {stats.total} {t('ai.files', language as Language)}
             </div>
           </div>
 
@@ -165,14 +166,14 @@ function ChangesReviewPanel({
               className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-medium text-text-muted hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all border border-border/50"
             >
               <XCircle className="w-3 h-3" />
-              {language === 'zh' ? '全部拒绝' : 'Reject All'}
+              {t('ai.rejectall', language as Language)}
             </button>
             <button
               onClick={onAcceptAll}
               className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-medium text-green-400 bg-green-500/10 hover:bg-green-500/20 rounded-lg transition-all border border-green-500/20"
             >
               <CheckCheck className="w-3 h-3" />
-              {language === 'zh' ? '全部接受' : 'Accept All'}
+              {t('ai.acceptall', language as Language)}
             </button>
           </div>
         </div>
@@ -194,7 +195,7 @@ function ChangesReviewPanel({
               <div className="text-center">
                 <FileCode className="w-12 h-12 mx-auto mb-3 opacity-30" />
                 <p className="text-[13px]">
-                  {language === 'zh' ? '选择文件查看变更' : 'DropdownSelector a file to review changes'}
+                  {t('ai.dropdownselectorafiletoreview', language as Language)}
                 </p>
               </div>
             </div>

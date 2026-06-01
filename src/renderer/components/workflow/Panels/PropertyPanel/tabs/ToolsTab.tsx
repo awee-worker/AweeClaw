@@ -1,6 +1,7 @@
 import type { TabProps } from '../types'
 import { Section } from '../Section'
 import { INPUT_CLASS, SELECT_CLASS, TEXTAREA_MONO_CLASS } from '../shared'
+import { t, type Language } from '@renderer/i18n'
 
 export function ToolsTab({ nodeType, data, onChange, language }: TabProps) {
   switch (nodeType) {
@@ -18,16 +19,16 @@ export function ToolsTab({ nodeType, data, onChange, language }: TabProps) {
 function ToolCallSection({ data, onChange, language }: Omit<TabProps, 'nodeType'>) {
   return (
     <>
-      <Section title={language === 'zh' ? '工具名称' : 'Tool Name'}>
+      <Section title={t('wf.toolname', language as Language)}>
         <input
           type="text"
           value={data.toolName || ''}
           onChange={(e) => onChange('toolName', e.target.value)}
-          placeholder={language === 'zh' ? '工具标识' : 'Tool identifier'}
+          placeholder={t('wf.toolidentifier', language as Language)}
           className={INPUT_CLASS}
         />
       </Section>
-      <Section title={language === 'zh' ? '工具参数' : 'Tool Arguments'}>
+      <Section title={t('wf.toolarguments', language as Language)}>
         <textarea
           value={data.toolArgs ? JSON.stringify(data.toolArgs, null, 2) : '{}'}
           onChange={(e) => {
@@ -46,21 +47,21 @@ function ToolCallSection({ data, onChange, language }: Omit<TabProps, 'nodeType'
 function McpServiceSection({ data, onChange, language }: Omit<TabProps, 'nodeType'>) {
   return (
     <>
-      <Section title={language === 'zh' ? 'MCP 服务器' : 'MCP Server'}>
+      <Section title={t('wf.mcpserver', language as Language)}>
         <input
           type="text"
           value={data.mcpServerId || ''}
           onChange={(e) => onChange('mcpServerId', e.target.value)}
-          placeholder={language === 'zh' ? '服务器 ID' : 'Server ID'}
+          placeholder={t('wf.serverid', language as Language)}
           className={INPUT_CLASS}
         />
       </Section>
-      <Section title={language === 'zh' ? 'MCP 工具' : 'MCP Tool'}>
+      <Section title={t('wf.mcptool', language as Language)}>
         <input
           type="text"
           value={data.mcpToolName || ''}
           onChange={(e) => onChange('mcpToolName', e.target.value)}
-          placeholder={language === 'zh' ? '工具名' : 'Tool name'}
+          placeholder={t('wf.toolname2', language as Language)}
           className={INPUT_CLASS}
         />
       </Section>
@@ -71,7 +72,7 @@ function McpServiceSection({ data, onChange, language }: Omit<TabProps, 'nodeTyp
 function CodeRunnerSection({ data, onChange, language }: Omit<TabProps, 'nodeType'>) {
   return (
     <>
-      <Section title={language === 'zh' ? '编程语言' : 'Language'}>
+      <Section title={t('wf.language', language as Language)}>
         <select
           value={data.codeLanguage || 'javascript'}
           onChange={(e) => onChange('codeLanguage', e.target.value)}
@@ -81,7 +82,7 @@ function CodeRunnerSection({ data, onChange, language }: Omit<TabProps, 'nodeTyp
           <option value="python">Python</option>
         </select>
       </Section>
-      <Section title={language === 'zh' ? '代码' : 'Code'}>
+      <Section title={t('wf.code', language as Language)}>
         <textarea
           value={data.codeSnippet || ''}
           onChange={(e) => onChange('codeSnippet', e.target.value)}
@@ -89,21 +90,21 @@ function CodeRunnerSection({ data, onChange, language }: Omit<TabProps, 'nodeTyp
           className={TEXTAREA_MONO_CLASS}
         />
       </Section>
-      <Section title={language === 'zh' ? '输入变量' : 'Input Variables'}>
+      <Section title={t('wf.inputvariables', language as Language)}>
         <input
           type="text"
           value={(data.codeInputVars || []).join(', ')}
           onChange={(e) => onChange('codeInputVars', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
-          placeholder={language === 'zh' ? '变量名, 逗号分隔' : 'Var names, comma separated'}
+          placeholder={t('wf.varnamescommaseparated', language as Language)}
           className={INPUT_CLASS}
         />
       </Section>
-      <Section title={language === 'zh' ? '输出变量' : 'Output Variables'}>
+      <Section title={t('wf.outputvariables', language as Language)}>
         <input
           type="text"
           value={(data.codeOutputVars || []).join(', ')}
           onChange={(e) => onChange('codeOutputVars', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
-          placeholder={language === 'zh' ? '变量名, 逗号分隔' : 'Var names, comma separated'}
+          placeholder={t('wf.varnamescommaseparated2', language as Language)}
           className={INPUT_CLASS}
         />
       </Section>
@@ -114,35 +115,35 @@ function CodeRunnerSection({ data, onChange, language }: Omit<TabProps, 'nodeTyp
 function AgentToolsSection({ data, onChange, language }: Omit<TabProps, 'nodeType'>) {
   return (
     <>
-      <Section title={language === 'zh' ? '绑定工具' : 'Bound Tools'}>
+      <Section title={t('wf.boundtools', language as Language)}>
         <input
           type="text"
           value={(data.boundTools || []).join(', ')}
           onChange={(e) => onChange('boundTools', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
-          placeholder={language === 'zh' ? '工具名, 逗号分隔' : 'Tool names, comma separated'}
+          placeholder={t('wf.toolnamescommaseparated', language as Language)}
           className={INPUT_CLASS}
         />
         <p className="mt-1 text-[10px] text-[var(--text-muted)]">
-          {language === 'zh' ? '为该智能体独立绑定工具，覆盖全局配置' : 'Bind tools for this agent, overriding global config'}
+          {t('wf.bindtoolsforthisagent', language as Language)}
         </p>
       </Section>
 
-      <Section title={language === 'zh' ? 'MCP 服务器' : 'MCP Servers'}>
+      <Section title={t('wf.mcpservers', language as Language)}>
         <input
           type="text"
           value={(data.boundMcpServers || []).join(', ')}
           onChange={(e) => onChange('boundMcpServers', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
-          placeholder={language === 'zh' ? 'MCP 服务ID, 逗号分隔' : 'MCP server IDs, comma separated'}
+          placeholder={t('wf.mcpserveridscommaseparated', language as Language)}
           className={INPUT_CLASS}
         />
       </Section>
 
-      <Section title={language === 'zh' ? 'MCP 工具' : 'MCP Tools'}>
+      <Section title={t('wf.mcptools', language as Language)}>
         <input
           type="text"
           value={(data.boundMcpTools || []).join(', ')}
           onChange={(e) => onChange('boundMcpTools', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
-          placeholder={language === 'zh' ? 'MCP 工具名, 逗号分隔' : 'MCP tool names, comma separated'}
+          placeholder={t('wf.mcptoolnamescommaseparated', language as Language)}
           className={INPUT_CLASS}
         />
       </Section>

@@ -1,11 +1,31 @@
-import { Layout, Type, Check, Sun, Moon, Monitor } from 'lucide-react'
+import { Layout, Type, Check, Sun, Moon, Monitor, Globe } from 'lucide-react'
 import { useStore, type ThemeName, type ThemeMode } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { themeManager } from '@/renderer/config/themeDefinition'
 import { api } from '../../../adapters/electronBridge'
 import { TextField, DropdownSelector } from '@components/ui'
 import { EditorSettingsProps } from '../preferencesTypes'
+import { LANGUAGES } from '../preferencesTypes'
+
 import { useEffect, useCallback } from 'react'
+import { t, type Language } from '@renderer/i18n'
+
+const LANGUAGE_META: Record<Language, { labelZh: string; labelEn: string; descriptionZh: string; descriptionEn: string; flag: string }> = {
+    zh: {
+        labelZh: '中文',
+        labelEn: 'Chinese',
+        descriptionZh: '界面文字显示为简体中文',
+        descriptionEn: 'Display interface in Simplified Chinese',
+        flag: '🇨🇳',
+    },
+    en: {
+        labelZh: 'English',
+        labelEn: 'English',
+        descriptionZh: '界面文字显示为英文',
+        descriptionEn: 'Display interface in English',
+        flag: '🇺🇸',
+    },
+}
 
 const THEME_MODE_OPTIONS: { value: ThemeMode; labelZh: string; labelEn: string; icon: typeof Sun }[] = [
     { value: 'light', labelZh: '亮色', labelEn: 'Light', icon: Sun },
@@ -13,7 +33,7 @@ const THEME_MODE_OPTIONS: { value: ThemeMode; labelZh: string; labelEn: string; 
     { value: 'system', labelZh: '跟随系统', labelEn: 'System', icon: Monitor },
 ]
 
-export function AppearanceSettings({ settings, setSettings, language }: EditorSettingsProps) {
+export function AppearanceSettings({ settings, setSettings, language, localLanguage, setLocalLanguage }: EditorSettingsProps) {
     const { currentTheme, setTheme, themeMode, setThemeMode, systemPrefersDark, setSystemPrefersDark } = useStore(useShallow(s => ({
         currentTheme: s.currentTheme,
         setTheme: s.setTheme,
@@ -81,19 +101,71 @@ export function AppearanceSettings({ settings, setSettings, language }: EditorSe
 
     return (
         <div className="space-y-8 animate-fade-in pb-10">
+            {localLanguage && setLocalLanguage && (
+                <section>
+                    <div className="flex items-center gap-2 mb-5 ml-1">
+                        <div className="p-1.5 rounded-md bg-accent/10">
+                            <Globe className="w-4 h-4 text-accent" />
+                        </div>
+                        <h4 className="text-sm font-bold text-text-primary tracking-tight">
+                            {t('settings.interfacelanguage', language as Language)}
+                        </h4>
+                    </div>
+
+                    <p className="text-sm text-text-muted mb-4 ml-1">
+                        {t('settings.chooseyourpreferredinterfacelanguage', language as Language)}
+                    </p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {LANGUAGES.map(item => {
+                            const meta = LANGUAGE_META[item.id]
+                            const isActive = localLanguage === item.id
+                            return (
+                                <button
+                                    key={item.id}
+                                    onClick={() => setLocalLanguage(item.id)}
+                                    className={`group relative p-4 rounded-xl border text-left transition-all duration-300 ${
+                                        isActive
+                                            ? 'border-accent bg-accent/5 shadow-lg shadow-accent/5 ring-1 ring-accent/20'
+                                            : 'border-border/50 bg-surface/30 hover:border-accent/30 hover:bg-surface/50'
+                                    }`}
+                                >
+                                    <div className="flex items-start gap-3">
+                                        <span className="text-2xl leading-none">{meta.flag}</span>
+                                        <div className="flex-1 min-w-0">
+                                            <span className={`text-sm font-semibold block truncate transition-colors ${isActive ? 'text-text-primary' : 'text-text-secondary group-hover:text-text-primary'}`}>
+                                                {language === 'zh' ? meta.labelZh : meta.labelEn}
+                                            </span>
+                                            <span className="text-xs text-text-muted mt-0.5 block">
+                                                {language === 'zh' ? meta.descriptionZh : meta.descriptionEn}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    {isActive && (
+                                        <div className="absolute top-3 right-3 bg-accent rounded-full p-0.5 shadow-lg shadow-accent/20">
+                                            <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />
+                                        </div>
+                                    )}
+                                </button>
+                            )
+                        })}
+                    </div>
+                </section>
+            )}
+
             <section>
                 <div className="flex items-center gap-2 mb-5 ml-1">
                     <div className="p-1.5 rounded-md bg-accent/10">
                         <Layout className="w-4 h-4 text-accent" />
                     </div>
                     <h4 className="text-sm font-bold text-text-primary tracking-tight">
-                        {language === 'zh' ? '外观主题' : 'Appearance Theme'}
+                        {t('settings.appearancetheme', language as Language)}
                     </h4>
                 </div>
 
                 <div className="mb-5">
                     <label className={labelClass}>
-                        {language === 'zh' ? '主题模式' : 'Theme Mode'}
+                        {t('settings.thememode', language as Language)}
                     </label>
                     <div className="flex gap-2">
                         {THEME_MODE_OPTIONS.map(opt => {
@@ -117,9 +189,7 @@ export function AppearanceSettings({ settings, setSettings, language }: EditorSe
                     </div>
                     {themeMode === 'system' && (
                         <p className="text-[11px] text-text-muted mt-2 ml-1">
-                            {language === 'zh'
-                                ? `当前系统偏好：${systemPrefersDark ? '暗色' : '亮色'}，已自动应用对应主题`
-                                : `System preference: ${systemPrefersDark ? 'Dark' : 'Light'}, theme applied automatically`}
+                            {t('settings.systempreferencethemeappliedautomatically', language as Language, { p0: systemPrefersDark ? 'Dark' : 'Light', p1: systemPrefersDark ? '暗色' : '亮色' })}
                         </p>
                     )}
                 </div>
@@ -131,26 +201,22 @@ export function AppearanceSettings({ settings, setSettings, language }: EditorSe
                             <button
                                 key={theme.id}
                                 onClick={() => handleThemeChange(theme.id)}
-                                className={`group relative p-4 rounded-xl border text-left transition-all duration-300 overflow-hidden ${currentTheme === theme.id
+                                className={`group relative p-3 rounded-xl border text-left transition-all duration-300 overflow-hidden ${currentTheme === theme.id
                                     ? 'border-accent bg-accent/5 shadow-lg shadow-accent/5 ring-1 ring-accent/20'
                                     : 'border-border/50 bg-surface/30 hover:border-accent/30 hover:bg-surface/50'
                                     }`}
                             >
-                                <div className="flex gap-2.5 mb-4">
-                                    <div className="w-8 h-8 rounded-full shadow-md ring-2 ring-white/10" style={{ backgroundColor: `rgb(${themeVars.background})` }} title="Background" />
-                                    <div className="w-8 h-8 rounded-full shadow-md ring-2 ring-white/10" style={{ backgroundColor: `rgb(${themeVars.accent})` }} title="Accent" />
-                                </div>
-                                <span className={`text-sm font-semibold capitalize block truncate transition-colors ${currentTheme === theme.id ? 'text-text-primary' : 'text-text-secondary group-hover:text-text-primary'}`}>
-                                    {theme.name || theme.id.replace(/-/g, ' ')}
-                                </span>
-                                <span className="text-[10px] text-text-muted mt-0.5 block">
-                                    {theme.type === 'dark' ? (language === 'zh' ? '暗色' : 'Dark') : (language === 'zh' ? '亮色' : 'Light')}
-                                </span>
-                                {currentTheme === theme.id && (
-                                    <div className="absolute top-3 right-3 bg-accent rounded-full p-0.5 shadow-lg shadow-accent/20">
-                                        <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />
+                                <div className="flex items-center justify-between">
+                                    <div className="flex gap-2.5">
+                                        <div className="w-8 h-8 rounded-full shadow-md ring-2 ring-white/10" style={{ backgroundColor: `rgb(${themeVars.background})` }} title="Background" />
+                                        <div className="w-8 h-8 rounded-full shadow-md ring-2 ring-white/10" style={{ backgroundColor: `rgb(${themeVars.accent})` }} title="Accent" />
                                     </div>
-                                )}
+                                    {currentTheme === theme.id && (
+                                        <div className="bg-accent rounded-full p-0.5 shadow-lg shadow-accent/20">
+                                            <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />
+                                        </div>
+                                    )}
+                                </div>
                             </button>
                         )
                     })}
@@ -161,12 +227,12 @@ export function AppearanceSettings({ settings, setSettings, language }: EditorSe
                 <section className={sectionClass}>
                     <div className="flex items-center gap-2 mb-1">
                         <Type className="w-4 h-4 text-accent" />
-                        <h5 className="text-sm font-bold text-text-primary">{language === 'zh' ? '排版与布局' : 'Typography & Layout'}</h5>
+                        <h5 className="text-sm font-bold text-text-primary">{t('settings.typographylayout', language as Language)}</h5>
                     </div>
 
                     <div className="grid grid-cols-2 gap-5">
                         <div>
-                            <label className={labelClass}>{language === 'zh' ? '字体大小' : 'Font Size'}</label>
+                            <label className={labelClass}>{t('settings.fontsize', language as Language)}</label>
                             <TextField
                                 type="number"
                                 value={settings.fontSize}
@@ -177,7 +243,7 @@ export function AppearanceSettings({ settings, setSettings, language }: EditorSe
                             />
                         </div>
                         <div>
-                            <label className={labelClass}>{language === 'zh' ? 'Tab 大小' : 'Tab Size'}</label>
+                            <label className={labelClass}>{t('settings.tabsize', language as Language)}</label>
                             <DropdownSelector
                                 value={settings.tabSize.toString()}
                                 onChange={(value) => setSettings({ ...settings, tabSize: parseInt(value) })}
@@ -186,7 +252,7 @@ export function AppearanceSettings({ settings, setSettings, language }: EditorSe
                             />
                         </div>
                         <div>
-                            <label className={labelClass}>{language === 'zh' ? '自动换行' : 'Word Wrap'}</label>
+                            <label className={labelClass}>{t('settings.wordwrap', language as Language)}</label>
                             <DropdownSelector
                                 value={settings.wordWrap}
                                 onChange={(value) => setSettings({ ...settings, wordWrap: value as 'on' | 'off' | 'wordWrapColumn' })}
@@ -195,7 +261,7 @@ export function AppearanceSettings({ settings, setSettings, language }: EditorSe
                             />
                         </div>
                         <div>
-                            <label className={labelClass}>{language === 'zh' ? '行号' : 'Line Numbers'}</label>
+                            <label className={labelClass}>{t('settings.linenumbers', language as Language)}</label>
                             <DropdownSelector
                                 value={settings.lineNumbers}
                                 onChange={(value) => setSettings({ ...settings, lineNumbers: value as 'on' | 'off' | 'relative' })}
@@ -209,10 +275,10 @@ export function AppearanceSettings({ settings, setSettings, language }: EditorSe
                 <section className={sectionClass}>
                     <div className="flex items-center gap-2 mb-1">
                         <Type className="w-4 h-4 text-accent" />
-                        <h5 className="text-sm font-bold text-text-primary">{language === 'zh' ? 'Agent 聊天区域' : 'Agent Chat Area'}</h5>
+                        <h5 className="text-sm font-bold text-text-primary">{t('settings.agentchatarea', language as Language)}</h5>
                     </div>
                     <div>
-                        <label className={labelClass}>{language === 'zh' ? '字体大小' : 'Font Size'}</label>
+                        <label className={labelClass}>{t('settings.fontsize2', language as Language)}</label>
                         <TextField
                             type="number"
                             value={settings.chatFontSize}

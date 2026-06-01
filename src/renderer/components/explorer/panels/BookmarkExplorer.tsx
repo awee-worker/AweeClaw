@@ -4,6 +4,7 @@ import {
     Star, FolderOpen, FileText, Globe,
 } from 'lucide-react'
 import { useStore } from '@store'
+import { t, type Language } from '@renderer/i18n'
 
 interface BookmarkItem {
     id: string
@@ -23,7 +24,7 @@ const TYPE_CONFIG = {
 export function BookmarksView() {
     const language = useStore(s => s.language)
     const [bookmarks, setBookmarks] = useState<BookmarkItem[]>([
-        { id: 'bm-1', title: language === 'zh' ? '项目根目录' : 'Project Root', path: '/', type: 'folder', starred: true, createdAt: Date.now() },
+        { id: 'bm-1', title: t('explorer.projectroot', language as Language), path: '/', type: 'folder', starred: true, createdAt: Date.now() },
     ])
     const [searchQuery, setSearchQuery] = useState('')
     const [filterType, setFilterType] = useState<string | null>(null)
@@ -52,7 +53,7 @@ export function BookmarksView() {
         <div className="h-full flex flex-col bg-transparent">
             <div className="h-11 min-w-0 px-4 flex items-center justify-between gap-2 group border-b border-border/50 bg-transparent sticky top-0 z-10">
                 <span className="min-w-0 flex-shrink-0 whitespace-nowrap text-[11px] font-black text-text-primary/60 uppercase tracking-[0.2em] font-sans">
-                    {language === 'zh' ? '书签' : 'Bookmarks'}
+                    {t('explorer.bookmarks', language as Language)}
                 </span>
                 <button className="p-1 text-text-muted hover:text-accent transition-colors">
                     <Plus className="w-3.5 h-3.5" />
@@ -65,7 +66,7 @@ export function BookmarksView() {
                     <input
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
-                        placeholder={language === 'zh' ? '搜索书签...' : 'Search bookmarks...'}
+                        placeholder={t('explorer.searchbookmarks', language as Language)}
                         className="flex-1 bg-transparent text-[11px] text-text-primary outline-none placeholder:text-text-muted/70"
                     />
                 </div>
@@ -80,7 +81,7 @@ export function BookmarksView() {
                                 className={`text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors ${filterType === type ? `${config.color} bg-surface-active` : 'text-text-muted hover:text-text-primary'}`}
                             >
                                 <Icon className="w-2.5 h-2.5" />
-                                {type === 'file' ? (language === 'zh' ? '文件' : 'File') : type === 'url' ? (language === 'zh' ? '链接' : 'URL') : (language === 'zh' ? '文件夹' : 'Folder')}
+                                {type === 'file' ? (t('explorer.file', language as Language)) : type === 'url' ? (t('explorer.url', language as Language)) : (t('explorer.folder', language as Language))}
                             </button>
                         )
                     })}
@@ -92,7 +93,7 @@ export function BookmarksView() {
                     <div className="mb-2">
                         <div className="flex items-center gap-1.5 px-2 py-1">
                             <Star className="w-3 h-3 text-amber-400" />
-                            <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">{language === 'zh' ? '收藏' : 'Starred'}</span>
+                            <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">{t('explorer.starred', language as Language)}</span>
                         </div>
                         {starredBookmarks.map(bm => (
                             <BookmarkRow key={bm.id} bookmark={bm} onDelete={handleDelete} onToggleStar={handleToggleStar} />
@@ -105,7 +106,7 @@ export function BookmarksView() {
                         {starredBookmarks.length > 0 && (
                             <div className="flex items-center gap-1.5 px-2 py-1">
                                 <BookmarkIcon className="w-3 h-3 text-text-muted" />
-                                <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">{language === 'zh' ? '全部' : 'All'}</span>
+                                <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">{t('explorer.all', language as Language)}</span>
                             </div>
                         )}
                         {otherBookmarks.map(bm => (
@@ -117,7 +118,7 @@ export function BookmarksView() {
                 {filteredBookmarks.length === 0 && (
                     <div className="flex flex-col items-center justify-center py-12 text-text-muted">
                         <BookmarkIcon className="w-8 h-8 mb-2 opacity-30" />
-                        <p className="text-xs">{language === 'zh' ? '暂无书签' : 'No bookmarks yet'}</p>
+                        <p className="text-xs">{t('explorer.nobookmarksyet', language as Language)}</p>
                     </div>
                 )}
             </div>

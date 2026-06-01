@@ -386,7 +386,7 @@ export interface ElectronAPI {
     results?: { title: string; url: string; snippet: string }[]
     error?: string
   }>
-  httpSetGoogleSearch: (apiKey: string, cx: string) => Promise<{ success: boolean }>
+  httpSetSearchEngineState: (state: unknown) => Promise<{ success: boolean }>
 
   // Health Check
   healthCheckProvider: (provider: string, apiKey: string, baseUrl?: string, timeout?: number, protocol?: string) => Promise<{
@@ -455,6 +455,10 @@ export interface ElectronAPI {
   onMcpToolsUpdated: (callback: (event: { serverId: string; tools: any[] }) => void) => () => void
   onMcpResourcesUpdated: (callback: (event: { serverId: string; resources: any[] }) => void) => () => void
   onMcpStateChanged: (callback: (servers: any[]) => void) => () => void
+
+  // Email
+  emailTestConnection: (config: { host: string; port: number; secure: boolean; user: string; pass: string }) => Promise<{ success: boolean; error?: string }>
+  emailSend: (params: { to: string | string[]; subject: string; body: string; html?: boolean; cc?: string[]; bcc?: string[]; attachments?: Array<{ filename: string; content: string; encoding?: string }> }) => Promise<{ success: boolean; error?: string }>
 
   // Skills
   skillsGetGlobalDir: () => Promise<string>
@@ -845,7 +849,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // HTTP API
   httpReadUrl: (url: string, timeout?: number) => ipcRenderer.invoke('http:readUrl', url, timeout),
   httpWebSearch: (query: string, maxResults?: number, timeout?: number) => ipcRenderer.invoke('http:webSearch', query, maxResults, timeout),
-  httpSetGoogleSearch: (apiKey: string, cx: string) => ipcRenderer.invoke('http:setGoogleSearch', apiKey, cx),
+  httpSetSearchEngineState: (state: unknown) => ipcRenderer.invoke('http:setSearchEngineState', state),
 
   // Health Check API
   healthCheckProvider: (provider: string, apiKey: string, baseUrl?: string, timeout?: number, protocol?: string) =>
@@ -916,6 +920,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('mcp:stateChanged', handler)
     return () => ipcRenderer.removeListener('mcp:stateChanged', handler)
   },
+
+  // Email
+  emailTestConnection: (config: { host: string; port: number; secure: boolean; user: string; pass: string }) =>
+    ipcRenderer.invoke('email:testConnection', config),
+  emailSend: (params: { to: string | string[]; subject: string; body: string; html?: boolean; cc?: string[]; bcc?: string[]; attachments?: Array<{ filename: string; content: string; encoding?: string }> }) =>
+    ipcRenderer.invoke('email:send', params),
 
   // Skills
   skillsGetGlobalDir: () => ipcRenderer.invoke('skills:getGlobalDir'),

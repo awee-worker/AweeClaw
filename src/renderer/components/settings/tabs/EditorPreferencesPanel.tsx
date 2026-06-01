@@ -5,6 +5,7 @@
 import { Sparkles, Terminal, Settings2, Zap } from 'lucide-react'
 import { TextField, DropdownSelector, ToggleSwitch } from '@components/ui'
 import { EditorSettingsProps } from '../preferencesTypes'
+import { t, type Language } from '@renderer/i18n'
 
 // 预定义的触发字符选项
 const TRIGGER_CHAR_OPTIONS = [
@@ -46,24 +47,24 @@ export function EditorPreferencesPanel({ settings, setSettings, advancedConfig, 
                     <section className={sectionClass}>
                         <div className="flex items-center gap-2 mb-1">
                             <Terminal className="w-4 h-4 text-accent" />
-                            <h5 className="text-sm font-bold text-text-primary">{language === 'zh' ? '终端配置' : 'Terminal'}</h5>
+                            <h5 className="text-sm font-bold text-text-primary">{t('settings.terminal', language as Language)}</h5>
                         </div>
                         <div className="grid grid-cols-2 gap-5">
                             <div>
-                                <label className={labelClass}>{language === 'zh' ? '字体大小' : 'Font Size'}</label>
+                                <label className={labelClass}>{t('settings.fontsize', language as Language)}</label>
                                 <TextField type="number" value={advancedConfig.terminal.fontSize} onChange={(e) => setAdvancedConfig({ ...advancedConfig, terminal: { ...advancedConfig.terminal, fontSize: parseInt(e.target.value) || 13 } })} min={10} max={24} className={inputClass} />
                             </div>
                             <div>
-                                <label className={labelClass}>{language === 'zh' ? '行高' : 'Line Height'}</label>
+                                <label className={labelClass}>{t('settings.lineheight', language as Language)}</label>
                                 <TextField type="number" value={advancedConfig.terminal.lineHeight} onChange={(e) => setAdvancedConfig({ ...advancedConfig, terminal: { ...advancedConfig.terminal, lineHeight: parseFloat(e.target.value) || 1.2 } })} min={1} max={2} step={0.1} className={inputClass} />
                             </div>
                             <div className="col-span-2">
-                                <label className={labelClass}>{language === 'zh' ? '滚动缓冲行数' : 'Scrollback Lines'}</label>
+                                <label className={labelClass}>{t('settings.scrollbacklines', language as Language)}</label>
                                 <TextField type="number" value={settings.terminalScrollback} onChange={(e) => setSettings({ ...settings, terminalScrollback: parseInt(e.target.value) || 1000 })} min={100} max={10000} step={100} className={inputClass} />
                             </div>
                         </div>
                         <div className="pt-2">
-                            <ToggleSwitch label={language === 'zh' ? '光标闪烁' : 'Cursor Blink'} checked={advancedConfig.terminal.cursorBlink} onChange={(e) => setAdvancedConfig({ ...advancedConfig, terminal: { ...advancedConfig.terminal, cursorBlink: e.target.checked } })} />
+                            <ToggleSwitch label={t('settings.cursorblink', language as Language)} checked={advancedConfig.terminal.cursorBlink} onChange={(e) => setAdvancedConfig({ ...advancedConfig, terminal: { ...advancedConfig.terminal, cursorBlink: e.target.checked } })} />
                         </div>
                     </section>
 
@@ -71,27 +72,27 @@ export function EditorPreferencesPanel({ settings, setSettings, advancedConfig, 
                     <section className={sectionClass}>
                         <div className="flex items-center gap-2 mb-1">
                             <Settings2 className="w-4 h-4 text-accent" />
-                            <h5 className="text-sm font-bold text-text-primary">{language === 'zh' ? '功能特性' : 'Features'}</h5>
+                            <h5 className="text-sm font-bold text-text-primary">{t('settings.features', language as Language)}</h5>
                         </div>
                         <div className="space-y-4 px-1">
-                            <ToggleSwitch label={language === 'zh' ? '显示小地图' : 'Show Minimap'} checked={settings.minimap} onChange={(e) => setSettings({ ...settings, minimap: e.target.checked })} />
-                            <ToggleSwitch label={language === 'zh' ? '括号配对着色' : 'Bracket Pair Colorization'} checked={settings.bracketPairColorization} onChange={(e) => setSettings({ ...settings, bracketPairColorization: e.target.checked })} />
-                            <ToggleSwitch label={language === 'zh' ? '保存时格式化' : 'Format on Save'} checked={settings.formatOnSave} onChange={(e) => setSettings({ ...settings, formatOnSave: e.target.checked })} />
+                            <ToggleSwitch label={t('settings.showminimap', language as Language)} checked={settings.minimap} onChange={(e) => setSettings({ ...settings, minimap: e.target.checked })} />
+                            <ToggleSwitch label={t('settings.bracketpaircolorization', language as Language)} checked={settings.bracketPairColorization} onChange={(e) => setSettings({ ...settings, bracketPairColorization: e.target.checked })} />
+                            <ToggleSwitch label={t('settings.formatonsave', language as Language)} checked={settings.formatOnSave} onChange={(e) => setSettings({ ...settings, formatOnSave: e.target.checked })} />
                         </div>
 
                         <div className="pt-4 border-t border-border/50">
                             <div className="flex items-center justify-between mb-4">
-                                <label className={labelClass.replace('mb-2', 'mb-0')}>{language === 'zh' ? '自动保存' : 'Auto Save'}</label>
+                                <label className={labelClass.replace('mb-2', 'mb-0')}>{t('settings.autosave', language as Language)}</label>
                                 <DropdownSelector
                                     value={settings.autoSave}
                                     onChange={(value) => setSettings({ ...settings, autoSave: value as 'off' | 'afterDelay' | 'onFocusChange' })}
-                                    options={[{ value: 'off', label: 'Off' }, { value: 'afterDelay', label: language === 'zh' ? '延迟后' : 'After Delay' }, { value: 'onFocusChange', label: language === 'zh' ? '失去焦点时' : 'On Focus Change' }]}
+                                    options={[{ value: 'off', label: 'Off' }, { value: 'afterDelay', label: t('settings.afterdelay', language as Language) }, { value: 'onFocusChange', label: t('settings.onfocuschange', language as Language) }]}
                                     className={`w-40 ${inputClass}`}
                                 />
                             </div>
                             {settings.autoSave === 'afterDelay' && (
                                 <div className="flex items-center justify-between animate-scale-in pl-1">
-                                    <label className="text-xs text-text-secondary">{language === 'zh' ? '延迟时间 (ms)' : 'Delay (ms)'}</label>
+                                    <label className="text-xs text-text-secondary">{t('settings.delayms', language as Language)}</label>
                                     <TextField
                                         type="number"
                                         value={settings.autoSaveDelay}
@@ -114,7 +115,7 @@ export function EditorPreferencesPanel({ settings, setSettings, advancedConfig, 
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                                 <Sparkles className="w-4 h-4 text-accent" />
-                                <h5 className="text-sm font-bold text-text-primary">{language === 'zh' ? 'AI 代码补全' : 'AI Completion'}</h5>
+                                <h5 className="text-sm font-bold text-text-primary">{t('settings.aicompletion', language as Language)}</h5>
                             </div>
                             <ToggleSwitch checked={settings.completionEnabled} onChange={(e) => setSettings({ ...settings, completionEnabled: e.target.checked })} />
                         </div>
@@ -123,7 +124,7 @@ export function EditorPreferencesPanel({ settings, setSettings, advancedConfig, 
                             <div className="space-y-5 pt-2 animate-scale-in">
                                 <div className="grid grid-cols-2 gap-5">
                                     <div>
-                                        <label className={labelClass}>{language === 'zh' ? '触发延迟 (ms)' : 'Trigger Delay'}</label>
+                                        <label className={labelClass}>{t('settings.triggerdelay', language as Language)}</label>
                                         <TextField
                                             type="number"
                                             value={settings.completionDebounceMs}
@@ -135,7 +136,7 @@ export function EditorPreferencesPanel({ settings, setSettings, advancedConfig, 
                                         />
                                     </div>
                                     <div>
-                                        <label className={labelClass}>{language === 'zh' ? '最大 Token' : 'Max Tokens'}</label>
+                                        <label className={labelClass}>{t('settings.maxtokens', language as Language)}</label>
                                         <TextField
                                             type="number"
                                             value={settings.completionMaxTokens}
@@ -148,7 +149,7 @@ export function EditorPreferencesPanel({ settings, setSettings, advancedConfig, 
                                     </div>
                                 </div>
                                 <div>
-                                    <label className={labelClass}>{language === 'zh' ? '触发字符' : 'Trigger Characters'}</label>
+                                    <label className={labelClass}>{t('settings.triggercharacters', language as Language)}</label>
                                     <div className="flex flex-wrap gap-2 p-3 bg-background/50 rounded-xl border border-border/50">
                                         {TRIGGER_CHAR_OPTIONS.map(({ char, label }) => {
                                             const isSelected = settings.completionTriggerChars.includes(char)
@@ -169,7 +170,7 @@ export function EditorPreferencesPanel({ settings, setSettings, advancedConfig, 
                                         })}
                                     </div>
                                     <p className="text-[11px] text-text-muted mt-2 ml-1">
-                                        {language === 'zh' ? '点击选择触发自动补全的特殊字符' : 'DropdownSelector characters that trigger AI suggestions'}
+                                        {t('settings.dropdownselectorcharactersthattriggerai', language as Language)}
                                     </p>
                                 </div>
                             </div>
@@ -184,14 +185,12 @@ export function EditorPreferencesPanel({ settings, setSettings, advancedConfig, 
                         </div>
                         <div className="space-y-4 px-1">
                             <ToggleSwitch
-                                label={language === 'zh' ? '自动刷新 Git 状态' : 'Auto Refresh Git Status'}
+                                label={t('settings.autorefreshgitstatus', language as Language)}
                                 checked={advancedConfig.git?.autoRefresh ?? true}
                                 onChange={(e) => setAdvancedConfig({ ...advancedConfig, git: { ...advancedConfig.git, autoRefresh: e.target.checked } })}
                             />
                             <p className="text-[11px] text-text-muted opacity-80 leading-relaxed">
-                                {language === 'zh'
-                                    ? '检测到文件变化时自动更新侧边栏状态。'
-                                    : 'Automatically refresh git indicators when file changes are detected.'}
+                                {t('settings.automaticallyrefreshgitindicatorswhen', language as Language)}
                             </p>
                         </div>
                     </section>
@@ -200,31 +199,31 @@ export function EditorPreferencesPanel({ settings, setSettings, advancedConfig, 
                     <section className={sectionClass}>
                         <div className="flex items-center gap-2 mb-1">
                             <Zap className="w-4 h-4 text-accent" />
-                            <h5 className="text-sm font-bold text-text-primary">{language === 'zh' ? '性能与限制' : 'Performance'}</h5>
+                            <h5 className="text-sm font-bold text-text-primary">{t('settings.performance', language as Language)}</h5>
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1">
-                                <label className="text-xs font-medium text-text-secondary">{language === 'zh' ? '大文件警告 (MB)' : 'Large File Warning (MB)'}</label>
+                                <label className="text-xs font-medium text-text-secondary">{t('settings.largefilewarningmb', language as Language)}</label>
                                 <TextField type="number" value={settings.largeFileWarningThresholdMB} onChange={(e) => setSettings({ ...settings, largeFileWarningThresholdMB: parseFloat(e.target.value) || 5 })} min={1} max={50} step={1} className={inputClass} />
                             </div>
                             <div className="space-y-1">
-                                <label className="text-xs font-medium text-text-secondary">{language === 'zh' ? '大文件行数阈值' : 'Large File Line Count'}</label>
+                                <label className="text-xs font-medium text-text-secondary">{t('settings.largefilelinecount', language as Language)}</label>
                                 <TextField type="number" value={settings.largeFileLineCount} onChange={(e) => setSettings({ ...settings, largeFileLineCount: parseInt(e.target.value) || 10000 })} min={1000} max={100000} step={1000} className={inputClass} />
                             </div>
                             <div className="space-y-1">
-                                <label className="text-xs font-medium text-text-secondary">{language === 'zh' ? '命令超时 (秒)' : 'Command Timeout (s)'}</label>
+                                <label className="text-xs font-medium text-text-secondary">{t('settings.commandtimeouts', language as Language)}</label>
                                 <TextField type="number" value={settings.commandTimeoutMs / 1000} onChange={(e) => setSettings({ ...settings, commandTimeoutMs: (parseInt(e.target.value) || 30) * 1000 })} min={10} max={300} step={10} className={inputClass} />
                             </div>
                             <div className="space-y-1">
-                                <label className="text-xs font-medium text-text-secondary">{language === 'zh' ? '最大扫描文件数' : 'Max Project Files'}</label>
+                                <label className="text-xs font-medium text-text-secondary">{t('settings.maxprojectfiles', language as Language)}</label>
                                 <TextField type="number" value={settings.maxProjectFiles} onChange={(e) => setSettings({ ...settings, maxProjectFiles: parseInt(e.target.value) || 500 })} min={100} max={2000} step={100} className={inputClass} />
                             </div>
                             <div className="space-y-1">
-                                <label className="text-xs font-medium text-text-secondary">{language === 'zh' ? '文件树最大深度' : 'File Tree Max Depth'}</label>
+                                <label className="text-xs font-medium text-text-secondary">{t('settings.filetreemaxdepth', language as Language)}</label>
                                 <TextField type="number" value={settings.maxFileTreeDepth} onChange={(e) => setSettings({ ...settings, maxFileTreeDepth: parseInt(e.target.value) || 5 })} min={2} max={15} step={1} className={inputClass} />
                             </div>
                             <div className="space-y-1">
-                                <label className="text-xs font-medium text-text-secondary">{language === 'zh' ? '最大搜索结果数' : 'Max Search Results'}</label>
+                                <label className="text-xs font-medium text-text-secondary">{t('settings.maxsearchresults', language as Language)}</label>
                                 <TextField type="number" value={settings.maxSearchResults} onChange={(e) => setSettings({ ...settings, maxSearchResults: parseInt(e.target.value) || 1000 })} min={100} max={5000} step={100} className={inputClass} />
                             </div>
                         </div>

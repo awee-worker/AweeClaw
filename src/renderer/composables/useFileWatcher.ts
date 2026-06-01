@@ -57,7 +57,7 @@ export function useFileWatcher() {
         const confirmed = await globalConfirm({
           title: getFileName(event.path),
           message: t('file.externalModifiedReload', language as Language, { name: getFileName(event.path) }),
-          confirmText: language === 'zh' ? '重新加载' : 'Reload',
+          confirmText: t('app.reload', language as Language),
           cancelText: t('cancel', language as Language),
           variant: 'warning',
         })

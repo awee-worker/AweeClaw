@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
-import { t, type TranslationKey } from '@renderer/i18n'
+import {t, type Language} from '@renderer/i18n'
 import { gitService, GitStatus, GitCommit, GitBranch as GitBranchType, GitStashEntry, type GitRepository } from '@services/gitAdapter'
 import { workspaceManager } from '@services/WorkspaceAdapter'
 import { getEditorConfig } from '@shared/configuration/preferenceSync'
@@ -88,7 +88,7 @@ const FileItem = memo(function FileItem({
     const fileName = getFileName(path)
     const dirPath = path.replace(fileName, '').replace(/[/\\]$/, '')
     const language = useStore(s => s.language)
-    const tt = useCallback((key: TranslationKey) => t(key, language), [language])
+    const tt = useCallback((key: string) => t(key, language), [language])
 
     return (
         <div
@@ -150,7 +150,7 @@ const BranchItem = memo(function BranchItem({
     const menuRef = useRef<HTMLDivElement>(null)
     const buttonRef = useRef<HTMLButtonElement>(null)
     const language = useStore(s => s.language)
-    const tt = useCallback((key: TranslationKey) => t(key, language), [language])
+    const tt = useCallback((key: string) => t(key, language), [language])
 
     // 使用性能 hook 处理点击外部关闭
     useClickOutside(() => setShowMenu(false), showMenu, [menuRef, buttonRef])
@@ -240,7 +240,7 @@ const CommitItem = memo(function CommitItem({
     const menuRef = useRef<HTMLDivElement>(null)
     const buttonRef = useRef<HTMLButtonElement>(null)
     const language = useStore(s => s.language)
-    const tt = useCallback((key: TranslationKey) => t(key, language), [language])
+    const tt = useCallback((key: string) => t(key, language), [language])
     const timeAgo = getTimeAgo(commit.date, language)
 
     // 使用性能 hook 处理点击外部关闭
@@ -315,7 +315,7 @@ const StashItem = memo(function StashItem({
     const menuRef = useRef<HTMLDivElement>(null)
     const buttonRef = useRef<HTMLButtonElement>(null)
     const language = useStore(s => s.language)
-    const tt = useCallback((key: TranslationKey) => t(key, language), [language])
+    const tt = useCallback((key: string) => t(key, language), [language])
 
     // 使用性能 hook 处理点击外部关闭
     useClickOutside(() => setShowMenu(false), showMenu, [menuRef, buttonRef])
@@ -380,7 +380,7 @@ const RepoMenu = memo(function RepoMenu({
     onFetch: (root: string) => void
     onPull: (root: string) => void
     onPush: (root: string) => void
-    tt: (key: TranslationKey) => string
+    tt: (key: string) => string
 }) {
     const [showMenu, setShowMenu] = useState(false)
     const menuRef = useRef<HTMLDivElement>(null)
@@ -505,7 +505,7 @@ export function GitView() {
     const [conflictFile, setConflictFile] = useState<string | null>(null)
 
     // 国际化辅助函数
-    const tt = useCallback((key: TranslationKey) => t(key, language), [language])
+    const tt = useCallback((key: string) => t(key, language), [language])
     const isMultiRepo = repoRoots.length > 1
     const isRepoListMode = isMultiRepo && activeTab === 'changes' && repoDisplayMode === 'list'
 
@@ -1368,7 +1368,7 @@ Commit message:`
     const repoSelectOptions = useMemo(() => repoRoots.map(repo => ({
         value: repo.root,
         label: repo.isWorkspaceRoot
-            ? `${repo.name} (${language === 'zh' ? '当前仓库' : 'Current Repository'})`
+            ? `${repo.name} (${t('explorer.currentrepository', language as Language)})`
             : repo.relativePath === '.'
                 ? repo.name
                 : repo.relativePath,
@@ -1702,14 +1702,14 @@ Commit message:`
                             <div className="flex items-center bg-surface-hover/80 rounded-md p-0.5 mr-1 ring-1 ring-border-subtle/50">
                                 <button
                                     onClick={() => setRepoDisplayMode('list')}
-                                    title={language === 'zh' ? '列表模式' : 'List Mode'}
+                                    title={t('explorer.listmode', language as Language)}
                                     className={`p-1 rounded-[4px] transition-all ${repoDisplayMode === 'list' ? 'bg-surface text-accent shadow-sm' : 'text-text-muted hover:text-text-primary'}`}
                                 >
                                     <List className="w-3.5 h-3.5" />
                                 </button>
                                 <button
                                     onClick={() => setRepoDisplayMode('select')}
-                                    title={language === 'zh' ? '单仓库模式' : 'Single Repo Mode'}
+                                    title={t('explorer.singlerepomode', language as Language)}
                                     className={`p-1 rounded-[4px] transition-all ${repoDisplayMode === 'select' ? 'bg-surface text-accent shadow-sm' : 'text-text-muted hover:text-text-primary'}`}
                                 >
                                     <Maximize className="w-3.5 h-3.5" />

@@ -4,6 +4,7 @@ import { useStore } from '@store'
 import { useAgentStore } from '../state/IntelligenceStore'
 import { z } from 'zod'
 import { getLLMConfigForTask } from './modelConfigService'
+import { t, type Language } from '@renderer/i18n'
 
 export interface RetrievalResult {
     relativePath: string
@@ -11,7 +12,7 @@ export interface RetrievalResult {
     content: string
     startLine: number
     endLine: number
-    language: string
+    language: Language
 }
 
 interface OptimizedQuery {
@@ -105,7 +106,7 @@ Rules:
             const threadBoundStore = useAgentStore.getState().forThread(threadId)
             searchPartId = threadBoundStore.addSearchPart(assistantId)
 
-            const initText = language === 'zh' ? '正在分析搜索意图...' : 'Analyzing search intent...'
+            const initText = t('ai.analyzingsearchintent', language as Language)
             threadBoundStore.updateSearchPart(assistantId, searchPartId, initText, true)
 
             // 让出线程，确保 "分析意图" 的状态块能立刻在 UI 展现
@@ -121,9 +122,7 @@ Rules:
             // 更新 UI，告知用户系统实际上在搜什么
             if (assistantId && threadId && searchPartId) {
                 const queryDisplay = optimized.keywords.join(', ') || optimized.semanticQuery
-                const searchingText = language === 'zh'
-                    ? `正在根据关键词 "${queryDisplay}" 检索代码...`
-                    : `Retrieving code for "${queryDisplay}"...`
+                const searchingText = t('ai.retrievingcodefor', language as Language, { queryDisplay: queryDisplay })
                 useAgentStore.getState().forThread(threadId).updateSearchPart(assistantId, searchPartId, searchingText, true)
             }
 
@@ -169,7 +168,7 @@ Rules:
         threadId: string | undefined,
         assistantId: string | undefined,
         searchPartId: string | undefined,
-        language: string,
+        language: Language,
         type: 'success' | 'no_results' | 'low_score' | 'error',
         data?: any
     ) {
@@ -180,20 +179,18 @@ Rules:
 
         switch (type) {
             case 'success':
-                const foundHeader = language === 'zh' ? `已找到 ${data.count} 个相关文件：\n` : `Found ${data.count} relevant files:\n`
+                const foundHeader = t('ai.foundrelevantfilesn', language as Language, { count: data.count })
                 const filesList = data.results.map((r: any) => `- ${r.relativePath}`).join('\n')
                 message = foundHeader + filesList
                 break
             case 'no_results':
-                message = language === 'zh' ? '未找到相关文件。' : 'No relevant files found.'
+                message = t('ai.norelevantfilesfound', language as Language)
                 break
             case 'low_score':
-                message = language === 'zh'
-                    ? `未找到足够相关的代码（最高相关度: ${data.bestScore}，阈值: ${data.threshold}）。`
-                    : `No highly relevant code found (Best score: ${data.bestScore}, Threshold: ${data.threshold}).`
+                message = t('ai.nohighlyrelevantcodefound', language as Language, { bestScore: data.bestScore, threshold: data.threshold })
                 break
             case 'error':
-                message = language === 'zh' ? '搜索过程中发生错误。' : 'An error occurred during search.'
+                message = t('ai.anerroroccurredduringsearch', language as Language)
                 break
         }
 

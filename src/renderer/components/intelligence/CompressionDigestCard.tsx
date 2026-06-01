@@ -2,7 +2,7 @@ import { memo, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Archive, ChevronDown, Layers3, ListTodo, MessageSquareQuote, Sparkles } from 'lucide-react'
 import { useStore } from '@store'
-import { t } from '@renderer/i18n'
+import { t, type Language } from '@renderer/i18n'
 import type { ContextSnapshotPart } from '@intelligence/providerTypes'
 
 interface CompressionDigestCardProps {
@@ -18,7 +18,7 @@ const levelTone: Record<number, { badge: string; dot: string; glow: string }> = 
   4: { badge: 'text-red-300 bg-red-500/10 border-red-500/20', dot: 'bg-red-400', glow: 'shadow-red-500/10' },
 }
 
-function getCopy(language: string, part: ContextSnapshotPart, activeTaskCount: number) {
+function getCopy(language: Language, part: ContextSnapshotPart, activeTaskCount: number) {
   const lang = language as any
   const isHandoff = part.snapshotKind === 'handoff'
 

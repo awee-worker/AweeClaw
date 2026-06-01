@@ -15,6 +15,7 @@
 
 import { getEditorConfig } from '@shared/configuration/preferenceSync'
 import { useStore } from '@store'
+import { t, type Language } from '@renderer/i18n'
 
 interface ScenarioFilePolicy {
     sizeMultiplier: number
@@ -322,14 +323,10 @@ export function generateSizeAdvisory(fileInfo: LargeFileInfo, language: 'en' | '
     const category = fileInfo.category ? ` [${fileInfo.category}]` : ''
 
     if (fileInfo.isVeryLarge) {
-        return language === 'zh'
-            ? `此文件较大${category} (${size}${lines})，部分编辑器功能已禁用以提高性能`
-            : `This file is large${category} (${size}${lines}), some editor features are disabled for performance`
+        return t('app.thisfileislargesome', language as Language, { category: category, size: size, lines: lines })
     }
 
-    return language === 'zh'
-        ? `此文件较大${category} (${size}${lines})，可能影响编辑器性能`
-        : `This file is large${category} (${size}${lines}), editor performance may be affected`
+    return t('app.thisfileislargeeditor', language as Language, { category: category, size: size, lines: lines })
 }
 
 export function requiresReadOnlyMode(fileInfo: LargeFileInfo): boolean {

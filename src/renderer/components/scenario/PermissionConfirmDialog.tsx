@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Shield, AlertTriangle, X, FolderOpen, Globe, Terminal, Clipboard, Bell, Monitor, Database, HardDrive } from 'lucide-react'
 import { useStore } from '@store'
+import { t, type Language } from '@renderer/i18n'
 // import type { ScenarioPermission } from '@shared/protocols/scenario-arch'
 
 const PERMISSION_META: Record<string, { icon: React.ReactNode; labelZh: string; labelEn: string; riskLevel: 'low' | 'medium' | 'high' }> = {
@@ -90,8 +91,6 @@ export function PermissionConfirmDialog({
   const language = useStore(s => s.language)
   const [agreed, setAgreed] = useState(false)
 
-  const t = (zh: string, en: string) => (language === 'zh' ? zh : en)
-
   const hasHighRisk = permissions.some(p => PERMISSION_META[p]?.riskLevel === 'high')
 
   const grouped = {
@@ -109,7 +108,7 @@ export function PermissionConfirmDialog({
           <div className="flex items-center gap-2">
             <Shield className="w-5 h-5 text-violet-400" />
             <h3 className="text-sm font-semibold text-[var(--color-text-bright)]">
-              {t('权限确认', 'Permission Confirmation')}
+              {t('app.permissionconfirmation', language as Language)}
             </h3>
           </div>
           <button
@@ -122,20 +121,14 @@ export function PermissionConfirmDialog({
 
         <div className="px-5 py-4 space-y-4 max-h-[60vh] overflow-y-auto">
           <p className="text-sm text-[var(--color-text)]">
-            {t(
-              `"${scenarioNameZh}" 需要以下权限才能正常运行：`,
-              `"${scenarioName}" requires the following permissions to function properly:`
-            )}
+            {t('app.requiresthefollowingpermissions', language as Language, { scenarioName: scenarioName, scenarioNameZh: scenarioNameZh })}
           </p>
 
           {hasHighRisk && (
             <div className="flex items-start gap-2 p-3 bg-red-500/5 border border-red-500/20 rounded-lg">
               <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
               <p className="text-xs text-red-400">
-                {t(
-                  '此场景包含高风险权限，请仔细审查后再确认安装。',
-                  'This scenario contains high-risk permissions. Please review carefully before confirming.'
-                )}
+                {t('app.thisscenariocontainshighrisk', language as Language)}
               </p>
             </div>
           )}
@@ -181,7 +174,7 @@ export function PermissionConfirmDialog({
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-gray-500/10 text-gray-400">
-                  {t('其他', 'Other')}
+                  {t('app.other', language as Language)}
                 </span>
               </div>
               {unknownPerms.map(perm => (
@@ -206,10 +199,7 @@ export function PermissionConfirmDialog({
               className="mt-0.5 rounded border-[var(--color-border)] bg-[var(--color-bg)] text-violet-500 focus:ring-violet-500/30"
             />
             <span className="text-xs text-[var(--color-text)] leading-relaxed">
-              {t(
-                '我已了解此场景所需的权限及其风险，同意授予以上权限并继续安装。',
-                'I understand the permissions required by this scenario and their risks. I agree to grant the above permissions and proceed with installation.'
-              )}
+              {t('app.iunderstandthepermissions', language as Language)}
             </span>
           </label>
 
@@ -218,14 +208,14 @@ export function PermissionConfirmDialog({
               onClick={onCancel}
               className="flex-1 px-4 py-2 rounded-lg text-sm bg-[var(--color-bg)] border border-[var(--color-border)] text-[var(--color-text)] hover:text-[var(--color-text-bright)] transition-colors"
             >
-              {t('取消', 'Cancel')}
+              {t('app.cancel', language as Language)}
             </button>
             <button
               onClick={onConfirm}
               disabled={!agreed}
               className="flex-1 px-4 py-2 rounded-lg text-sm bg-violet-500 text-white font-medium hover:bg-violet-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
-              {t('确认安装', 'Confirm Install')}
+              {t('app.confirminstall', language as Language)}
             </button>
           </div>
         </div>

@@ -39,13 +39,14 @@ import DockPopover from '../ui/DockPopover'
 import NotificationCenterContent, { NotificationClearButton } from '../dock-panels/NotificationPanel'
 import { getQuotaBarColor, getQuotaTextColor, getQuotaGlowColor } from '@utils/quotaColors'
 import { useEffect } from 'react'
+import { t, type Language } from '@renderer/i18n'
 
 const isMac = typeof navigator !== 'undefined' && (
   navigator.platform.toUpperCase().indexOf('MAC') >= 0 ||
   ((navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform?.toUpperCase().indexOf('MAC') ?? -1) >= 0
 )
 
-function CloudQuotaIndicator({ language }: { language: string }) {
+function CloudQuotaIndicator({ language }: { language: Language }) {
   const { isAuthenticated, cloudMode, quota, fetchQuota } = useStore(
     useShallow((s) => ({
       isAuthenticated: s.isAuthenticated,
@@ -88,7 +89,7 @@ function CloudQuotaIndicator({ language }: { language: string }) {
       icon={
         <div
           className="flex items-center gap-1.5 px-1.5 py-0.5 h-6 rounded-md cursor-pointer group hover:bg-white/5 transition-colors"
-          title={quota ? `Token: ${quota.used.toLocaleString()} / ${quota.limit.toLocaleString()}${isQuotaExceeded ? (language === 'zh' ? ' (配额已用完)' : ' (Exceeded)') : isQuotaLow ? (language === 'zh' ? ' (配额不足)' : ' (Low)') : ''}` : ''}
+          title={quota ? `Token: ${quota.used.toLocaleString()} / ${quota.limit.toLocaleString()}${isQuotaExceeded ? (t('layout.exceeded', language as Language)) : isQuotaLow ? (t('layout.low', language as Language)) : ''}` : ''}
         >
           <Cloud className={`w-3 h-3 ${cloudColorClass} ${getQuotaGlowColor(usedPercent)}`} />
           {quotaLabel && (
@@ -98,7 +99,7 @@ function CloudQuotaIndicator({ language }: { language: string }) {
           )}
         </div>
       }
-      title={language === 'zh' ? 'Token 用量' : 'Token Usage'}
+      title={t('layout.tokenusage', language as Language)}
       width={300}
       height={280}
       language={language as 'en' | 'zh'}
@@ -108,22 +109,22 @@ function CloudQuotaIndicator({ language }: { language: string }) {
           <div className="space-y-4">
             <div className="grid grid-cols-3 gap-2">
               <div className="flex flex-col items-center p-2.5 rounded-xl bg-surface/80">
-                <span className="text-[10px] text-text-muted mb-1">{language === 'zh' ? '已使用' : 'Used'}</span>
+                <span className="text-[10px] text-text-muted mb-1">{t('layout.used', language as Language)}</span>
                 <span className="text-sm font-bold text-text-primary">{quota.used.toLocaleString()}</span>
               </div>
               <div className="flex flex-col items-center p-2.5 rounded-xl bg-surface/80">
-                <span className="text-[10px] text-text-muted mb-1">{language === 'zh' ? '剩余' : 'Remaining'}</span>
+                <span className="text-[10px] text-text-muted mb-1">{t('layout.remaining', language as Language)}</span>
                 <span className="text-sm font-bold text-text-primary">
                   {quota.remaining === -1
-                    ? (language === 'zh' ? '无限' : '∞')
+                    ? (t('layout.text0', language as Language))
                     : quota.remaining.toLocaleString()}
                 </span>
               </div>
               <div className="flex flex-col items-center p-2.5 rounded-xl bg-surface/80">
-                <span className="text-[10px] text-text-muted mb-1">{language === 'zh' ? '总额度' : 'Total'}</span>
+                <span className="text-[10px] text-text-muted mb-1">{t('layout.total', language as Language)}</span>
                 <span className="text-sm font-bold text-text-primary">
                   {quota.limit === -1
-                    ? (language === 'zh' ? '无限' : '∞')
+                    ? (t('layout.text1', language as Language))
                     : quota.limit.toLocaleString()}
                 </span>
               </div>
@@ -133,7 +134,7 @@ function CloudQuotaIndicator({ language }: { language: string }) {
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-text-muted">
-                    {language === 'zh' ? '使用进度' : 'Progress'}
+                    {t('layout.progress', language as Language)}
                   </span>
                   <span className={`font-mono ${getQuotaTextColor(usedPercent)}`}>
                     {usedPercent.toFixed(1)}%
@@ -150,10 +151,10 @@ function CloudQuotaIndicator({ language }: { language: string }) {
 
             <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-accent/5 border border-accent/10">
               <span className="text-xs text-text-muted">
-                {language === 'zh' ? '当前套餐' : 'Plan'}
+                {t('layout.plan', language as Language)}
               </span>
               <span className="text-xs font-medium text-accent ml-auto">
-                {quota.displayName || (language === 'zh' ? '免费版' : 'Free')}
+                {quota.displayName || (t('layout.free', language as Language))}
               </span>
             </div>
           </div>
@@ -165,7 +166,7 @@ function CloudQuotaIndicator({ language }: { language: string }) {
           }}
           className="w-full py-2 text-xs text-accent hover:text-accent-hover transition-colors text-center"
         >
-          {language === 'zh' ? '管理云端服务 →' : 'Manage Cloud →'}
+          {t('layout.managecloud', language as Language)}
         </button>
       </div>
     </DockPopover>
@@ -203,8 +204,8 @@ export default function AppTitleBar() {
           onClick={() => setNavRailExpanded(!navRailExpanded)}
           className="no-drag w-7 h-7 rounded-md flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-surface-hover transition-all duration-200"
           title={navRailExpanded
-            ? (language === 'zh' ? '收起菜单' : 'Collapse menu')
-            : (language === 'zh' ? '展开菜单' : 'Expand menu')}
+            ? (t('layout.collapsemenu', language as Language))
+            : (t('layout.expandmenu', language as Language))}
         >
           {navRailExpanded
             ? <PanelLeftIcon filled className="w-4 h-4" />
@@ -230,7 +231,7 @@ export default function AppTitleBar() {
         >
           <Search className="w-3.5 h-3.5 text-text-muted opacity-70 group-hover:text-accent transition-colors" />
           <span className="text-xs text-text-muted opacity-70 group-hover:text-text-primary transition-colors">
-            {language === 'zh' ? '搜索' : 'Search'}
+            {t('layout.search', language as Language)}
           </span>
         </div>
       </div>
@@ -245,10 +246,10 @@ export default function AppTitleBar() {
             <button
               onClick={() => createThread()}
               className="flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-medium text-text-muted hover:text-text-primary hover:bg-[rgba(var(--text-primary),0.06)] rounded-md transition-colors"
-              title={language === 'zh' ? '新会话' : 'New chat'}
+              title={t('layout.newchat', language as Language)}
             >
               <Plus className="w-3.5 h-3.5" />
-              {language === 'zh' ? '新会话' : 'New chat'}
+              {t('layout.newchat2', language as Language)}
             </button>
           )}
 
@@ -298,7 +299,7 @@ export default function AppTitleBar() {
                 </AnimatePresence>
               </div>
             }
-            title={language === 'zh' ? '消息' : 'Messages'}
+            title={t('layout.messages', language as Language)}
             headerActions={<NotificationClearButton language={language as 'en' | 'zh'} />}
             width={360}
             height={420}

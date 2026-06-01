@@ -3,14 +3,13 @@ import { rulesService } from '@intelligence/runtime/ruleEngine'
 import { ActionButton } from '@components/ui'
 import { FileText, RefreshCw, AlertCircle, Save, RotateCcw } from 'lucide-react'
 import { BRAND } from '@shared/brand'
+import { t, type Language } from '@renderer/i18n'
 
 interface RulesSettingsProps {
-  language: string
+  language: Language
 }
 
 export function RulesSettings({ language }: RulesSettingsProps) {
-  const t = (zh: string, en: string) => language === 'zh' ? zh : en
-
   const [rulesContent, setRulesContent] = useState('')
   const [rulesSource, setRulesSource] = useState<string | null>(null)
   const [rulesLoading, setRulesLoading] = useState(true)
@@ -54,10 +53,10 @@ export function RulesSettings({ language }: RulesSettingsProps) {
   }
 
   const supportedFiles = [
-    { path: BRAND.paths.rules, desc: t('推荐', 'Recommended') },
+    { path: BRAND.paths.rules, desc: t('app.recommended', language as Language) },
     { path: `.${BRAND.cssPrefix}rules`, desc: '' },
-    { path: '.cursorrules', desc: t('Cursor 兼容', 'Cursor compatible') },
-    { path: '.cursor/rules.md', desc: t('Cursor 兼容', 'Cursor compatible') },
+    { path: '.cursorrules', desc: t('app.cursorcompatible', language as Language) },
+    { path: '.cursor/rules.md', desc: t('app.cursorcompatible2', language as Language) },
     { path: 'CODING_GUIDELINES.md', desc: '' },
   ]
 
@@ -71,10 +70,10 @@ export function RulesSettings({ language }: RulesSettingsProps) {
             </div>
             <div>
               <h5 className="text-sm font-medium text-text-primary">
-                {t('行为规则', 'Behavior Rules')}
+                {t('app.behaviorrules', language as Language)}
               </h5>
               <p className="text-xs text-text-muted mt-0.5">
-                {t('定义 AI 智能体的行为规则和偏好', 'Define AI agent behavior rules and preferences')}
+                {t('app.defineaiagentbehavior', language as Language)}
               </p>
             </div>
           </div>
@@ -87,7 +86,7 @@ export function RulesSettings({ language }: RulesSettingsProps) {
             <button
               onClick={loadRules}
               className="p-1.5 text-text-muted hover:text-accent transition-colors rounded-md hover:bg-accent/10"
-              title={t('刷新', 'Refresh')}
+              title={t('app.refresh', language as Language)}
             >
               <RefreshCw className="w-3.5 h-3.5" />
             </button>
@@ -95,7 +94,7 @@ export function RulesSettings({ language }: RulesSettingsProps) {
         </div>
 
         <div className="p-3 rounded-lg bg-accent/5 border border-accent/15 text-xs text-text-muted space-y-2">
-          <p className="font-medium text-accent/80">{t('📋 支持的规则文件（按优先级）', '📋 Supported rule files (by priority)')}</p>
+          <p className="font-medium text-accent/80">{t('app.supportedrulefilesby', language as Language)}</p>
           <div className="flex flex-wrap gap-x-4 gap-y-1">
             {supportedFiles.map((f) => (
               <span key={f.path} className="font-mono text-[12px]">
@@ -120,13 +119,13 @@ export function RulesSettings({ language }: RulesSettingsProps) {
                   setRulesModified(true)
                 }}
                 className="w-full h-80 p-4 bg-white/[0.04] rounded-lg border border-border focus:border-accent/50 focus:ring-1 focus:ring-accent/20 outline-none transition-all resize-y text-[13px] font-mono leading-relaxed custom-scrollbar text-text-primary placeholder-text-muted/50"
-                placeholder={t('# 行为规则\n\n在此编写 AI 行为规则...', '# Behavior Rules\n\nWrite AI behavior rules here...')}
+                placeholder={t('app.behaviorrulesnnwriteaibehavior', language as Language)}
                 spellCheck={false}
               />
               {rulesModified && (
                 <div className="absolute top-3 right-3 flex items-center gap-1.5 px-2 py-1 rounded-md bg-amber-500/10 border border-amber-500/20">
                   <AlertCircle className="w-3 h-3 text-amber-400" />
-                  <span className="text-[11px] text-amber-400">{t('未保存', 'Unsaved')}</span>
+                  <span className="text-[11px] text-amber-400">{t('app.unsaved', language as Language)}</span>
                 </div>
               )}
             </div>
@@ -137,13 +136,13 @@ export function RulesSettings({ language }: RulesSettingsProps) {
                 className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text-primary transition-colors"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                {t('重置为默认模板', 'Reset to default template')}
+                {t('app.resettodefaulttemplate', language as Language)}
               </button>
               <div className="flex items-center gap-2">
                 {saved && (
                   <span className="text-xs text-green-400 flex items-center gap-1 animate-fade-in">
                     <Save className="w-3 h-3" />
-                    {t('已保存', 'Saved')}
+                    {t('app.saved', language as Language)}
                   </span>
                 )}
                 <ActionButton
@@ -154,8 +153,8 @@ export function RulesSettings({ language }: RulesSettingsProps) {
                   className="text-xs gap-1.5"
                 >
                   {rulesSaving
-                    ? t('保存中...', 'Saving...')
-                    : t('保存规则', 'Save Rules')
+                    ? t('app.saving', language as Language)
+                    : t('app.saverules', language as Language)
                   }
                 </ActionButton>
               </div>
@@ -165,10 +164,10 @@ export function RulesSettings({ language }: RulesSettingsProps) {
       </div>
 
       <div className="p-4 bg-surface/20 rounded-xl border border-border/50 space-y-3">
-        <h6 className="text-xs font-medium text-text-primary">{t('💡 规则编写提示', '💡 Rule Writing Tips')}</h6>
+        <h6 className="text-xs font-medium text-text-primary">{t('app.rulewritingtips', language as Language)}</h6>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-text-muted">
           <div className="space-y-1.5">
-            <p className="font-medium text-text-secondary">{t('推荐结构', 'Recommended Structure')}</p>
+            <p className="font-medium text-text-secondary">{t('app.recommendedstructure', language as Language)}</p>
             <pre className="text-[12px] font-mono bg-white/[0.04] p-2.5 rounded-lg leading-relaxed text-text-muted">{`# Project Rules
 
 ## Code Style
@@ -184,23 +183,23 @@ export function RulesSettings({ language }: RulesSettingsProps) {
 - Utilities: src/`}</pre>
           </div>
           <div className="space-y-1.5">
-            <p className="font-medium text-text-secondary">{t('最佳实践', 'Best Practices')}</p>
+            <p className="font-medium text-text-secondary">{t('app.bestpractices', language as Language)}</p>
             <ul className="space-y-1.5 text-[12px]">
               <li className="flex items-start gap-1.5">
                 <span className="text-accent mt-0.5">•</span>
-                {t('规则应简洁明确，避免模糊描述', 'Keep rules concise and specific')}
+                {t('app.keeprulesconciseand', language as Language)}
               </li>
               <li className="flex items-start gap-1.5">
                 <span className="text-accent mt-0.5">•</span>
-                {t('使用 Markdown 格式，便于 AI 解析', 'Use Markdown format for better AI parsing')}
+                {t('app.usemarkdownformatfor', language as Language)}
               </li>
               <li className="flex items-start gap-1.5">
                 <span className="text-accent mt-0.5">•</span>
-                {t('按类别分组，如代码风格、命名规范等', 'Group by category: code style, naming, etc.')}
+                {t('app.groupbycategorycode', language as Language)}
               </li>
               <li className="flex items-start gap-1.5">
                 <span className="text-accent mt-0.5">•</span>
-                {t('规则会自动注入到 AI 上下文中', 'Rules are automatically injected into AI context')}
+                {t('app.rulesareautomaticallyinjected', language as Language)}
               </li>
             </ul>
           </div>

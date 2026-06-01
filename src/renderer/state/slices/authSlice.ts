@@ -14,6 +14,7 @@ import { toast } from '@components/foundation/NotificationProvider'
 import { api } from '../../adapters/electronBridge'
 import { knowledgeSyncService } from '@intelligence/runtime/knowledgeService/syncService'
 import { knowledgeGraphSyncService } from '@intelligence/runtime/knowledgeService/graphSyncService'
+import { t, type Language } from '@renderer/i18n'
 
 export interface CloudUser {
   id: string
@@ -113,8 +114,8 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
       import('@store').then(({ useStore }) => {
         const language = useStore.getState().language as 'en' | 'zh';
         toast.error(
-          language === 'zh' ? '登录已过期' : 'Session Expired',
-          language === 'zh' ? '您的登录已过期，请重新登录' : 'Your session has expired. Please sign in again.',
+          t('app.sessionexpired', language as Language),
+          t('app.yoursessionhasexpiredplease', language as Language),
         );
         useStore.getState().setShowWelcomePage(true);
       }).catch(() => {

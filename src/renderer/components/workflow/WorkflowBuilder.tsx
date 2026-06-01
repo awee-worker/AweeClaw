@@ -19,6 +19,7 @@ import {
   Save,
   Sparkles,
 } from 'lucide-react'
+import { t, type Language } from '@renderer/i18n'
 
 interface WorkflowBuilderProps {
   workflow: WorkflowDefinition
@@ -217,7 +218,7 @@ export default function WorkflowBuilder({ workflow, onSave, onCancel, language }
       <div className="w-[280px] border-r border-border/40 flex flex-col">
         <div className="px-4 py-3 border-b border-border/30">
           <h3 className="text-[12px] font-semibold text-text-secondary">
-            {language === 'zh' ? '步骤列表' : 'Steps'}
+            {t('wf.steps', language as Language)}
           </h3>
         </div>
 
@@ -280,7 +281,7 @@ export default function WorkflowBuilder({ workflow, onSave, onCancel, language }
           {orderedSteps.length === 0 && (
             <div className="text-center py-8 text-text-muted/30">
               <p className="text-[11px]">
-                {language === 'zh' ? '点击下方按钮添加步骤' : 'Add steps below'}
+                {t('wf.addstepsbelow', language as Language)}
               </p>
             </div>
           )}
@@ -317,7 +318,7 @@ export default function WorkflowBuilder({ workflow, onSave, onCancel, language }
             className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-[11px] font-medium bg-accent/10 text-accent hover:bg-accent/15 rounded-lg transition-colors"
           >
             <Plus className="w-3.5 h-3.5" />
-            {language === 'zh' ? '添加步骤' : 'Add Step'}
+            {t('wf.addstep', language as Language)}
           </button>
         </div>
       </div>
@@ -338,7 +339,7 @@ export default function WorkflowBuilder({ workflow, onSave, onCancel, language }
             <div className="space-y-4">
               <div>
                 <label className="text-[11px] font-medium text-text-secondary mb-1.5 block">
-                  {language === 'zh' ? '工作流名称' : 'Workflow Name'}
+                  {t('wf.workflowname', language as Language)}
                 </label>
                 <input
                   type="text"
@@ -350,13 +351,13 @@ export default function WorkflowBuilder({ workflow, onSave, onCancel, language }
                       updateWorkflow({ name: e.target.value })
                     }
                   }}
-                  placeholder={language === 'zh' ? '输入工作流名称' : 'Enter workflow name'}
+                  placeholder={t('wf.enterworkflowname', language as Language)}
                   className="w-full px-3 py-2 text-[12px] bg-surface/50 border border-border/40 rounded-lg text-text-primary placeholder:text-text-muted/30 focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-all"
                 />
               </div>
               <div>
                 <label className="text-[11px] font-medium text-text-secondary mb-1.5 block">
-                  {language === 'zh' ? '描述' : 'Description'}
+                  {t('wf.description', language as Language)}
                 </label>
                 <textarea
                   value={wf.descriptionZh && language === 'zh' ? wf.descriptionZh : wf.description}
@@ -367,26 +368,26 @@ export default function WorkflowBuilder({ workflow, onSave, onCancel, language }
                       updateWorkflow({ description: e.target.value })
                     }
                   }}
-                  placeholder={language === 'zh' ? '描述工作流的用途' : 'Describe the workflow purpose'}
+                  placeholder={t('wf.describetheworkflowpurpose', language as Language)}
                   rows={3}
                   className="w-full px-3 py-2 text-[12px] bg-surface/50 border border-border/40 rounded-lg text-text-primary placeholder:text-text-muted/30 focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-all resize-none"
                 />
               </div>
               <div>
                 <label className="text-[11px] font-medium text-text-secondary mb-1.5 block">
-                  {language === 'zh' ? '分类' : 'Category'}
+                  {t('wf.category', language as Language)}
                 </label>
                 <select
                   value={wf.category}
                   onChange={e => updateWorkflow({ category: e.target.value as any })}
                   className="w-full px-3 py-2 text-[12px] bg-surface/50 border border-border/40 rounded-lg text-text-primary focus:outline-none focus:border-accent/50 transition-all"
                 >
-                  <option value="development">{language === 'zh' ? '开发' : 'Development'}</option>
-                  <option value="code-review">{language === 'zh' ? '代码审查' : 'Code Review'}</option>
-                  <option value="documentation">{language === 'zh' ? '文档' : 'Documentation'}</option>
-                  <option value="testing">{language === 'zh' ? '测试' : 'Testing'}</option>
-                  <option value="automation">{language === 'zh' ? '自动化' : 'Automation'}</option>
-                  <option value="custom">{language === 'zh' ? '自定义' : 'Custom'}</option>
+                  <option value="development">{t('wf.development', language as Language)}</option>
+                  <option value="code-review">{t('wf.codereview', language as Language)}</option>
+                  <option value="documentation">{t('wf.documentation', language as Language)}</option>
+                  <option value="testing">{t('wf.testing', language as Language)}</option>
+                  <option value="automation">{t('wf.automation', language as Language)}</option>
+                  <option value="custom">{t('wf.custom', language as Language)}</option>
                 </select>
               </div>
 
@@ -394,7 +395,7 @@ export default function WorkflowBuilder({ workflow, onSave, onCancel, language }
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="text-[11px] font-medium text-text-secondary">
-                    {language === 'zh' ? '输入参数' : 'TextField Parameters'}
+                    {t('wf.textfieldparameters', language as Language)}
                   </label>
                   <button
                     onClick={() => {
@@ -406,12 +407,12 @@ export default function WorkflowBuilder({ workflow, onSave, onCancel, language }
                     className="flex items-center gap-1 text-[10px] text-accent/60 hover:text-accent transition-colors"
                   >
                     <Plus className="w-3 h-3" />
-                    {language === 'zh' ? '添加' : 'Add'}
+                    {t('wf.add', language as Language)}
                   </button>
                 </div>
                 {(!wf.inputSchema || Object.keys(wf.inputSchema).length === 0) ? (
                   <p className="text-[10px] text-text-muted/30 py-2">
-                    {language === 'zh' ? '暂无输入参数' : 'No input parameters'}
+                    {t('wf.noinputparameters', language as Language)}
                   </p>
                 ) : (
                   <div className="space-y-2">
@@ -427,7 +428,7 @@ export default function WorkflowBuilder({ workflow, onSave, onCancel, language }
                               newSchema[e.target.value] = param
                               updateWorkflow({ inputSchema: newSchema })
                             }}
-                            placeholder={language === 'zh' ? '参数名' : 'Param name'}
+                            placeholder={t('wf.paramname', language as Language)}
                             className="flex-1 px-2 py-1 text-[11px] bg-surface/50 border border-border/30 rounded text-text-primary font-mono focus:outline-none focus:border-accent/50 transition-all"
                           />
                           <button
@@ -453,7 +454,7 @@ export default function WorkflowBuilder({ workflow, onSave, onCancel, language }
                             }
                             updateWorkflow({ inputSchema: newSchema })
                           }}
-                          placeholder={language === 'zh' ? '参数说明' : 'Description'}
+                          placeholder={t('wf.description2', language as Language)}
                           className="w-full px-2 py-1 text-[10px] bg-surface/50 border border-border/30 rounded text-text-primary focus:outline-none focus:border-accent/50 transition-all"
                         />
                         <div className="flex items-center gap-3">
@@ -481,7 +482,7 @@ export default function WorkflowBuilder({ workflow, onSave, onCancel, language }
                               }}
                               className="rounded border-border/40"
                             />
-                            {language === 'zh' ? '必填' : 'Required'}
+                            {t('wf.required', language as Language)}
                           </label>
                         </div>
                       </div>
@@ -493,7 +494,7 @@ export default function WorkflowBuilder({ workflow, onSave, onCancel, language }
               <div className="pt-4 border-t border-border/20 text-center text-text-muted/30">
                 <Sparkles className="w-6 h-6 mx-auto mb-2" />
                 <p className="text-[11px]">
-                  {language === 'zh' ? '选择左侧步骤进行编辑' : 'DropdownSelector a step on the left to edit'}
+                  {t('wf.dropdownselectorasteponthe', language as Language)}
                 </p>
               </div>
             </div>
@@ -507,7 +508,7 @@ export default function WorkflowBuilder({ workflow, onSave, onCancel, language }
           onClick={onCancel}
           className="px-4 py-1.5 text-[12px] text-text-muted hover:text-text-primary transition-colors"
         >
-          {language === 'zh' ? '取消' : 'Cancel'}
+          {t('wf.cancel', language as Language)}
         </button>
         <button
           onClick={handleSave}
@@ -515,7 +516,7 @@ export default function WorkflowBuilder({ workflow, onSave, onCancel, language }
           className="flex items-center gap-1.5 px-4 py-1.5 text-[12px] font-medium bg-accent text-white hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-all"
         >
           <Save className="w-3.5 h-3.5" />
-          {language === 'zh' ? '保存工作流' : 'Save Workflow'}
+          {t('wf.saveworkflow', language as Language)}
         </button>
       </div>
     </div>
@@ -567,7 +568,7 @@ function StepEditor({ step, allSteps, workflow, onUpdate, onUpdateConfig, langua
       {/* Step Name */}
       <div>
         <label className="text-[11px] font-medium text-text-secondary mb-1.5 block">
-          {language === 'zh' ? '步骤名称' : 'Step Name'}
+          {t('wf.stepname', language as Language)}
         </label>
         <input
           type="text"
@@ -588,7 +589,7 @@ function StepEditor({ step, allSteps, workflow, onUpdate, onUpdateConfig, langua
       {step.type === 'agent_message' && (
         <div>
           <label className="text-[11px] font-medium text-text-secondary mb-1.5 block">
-            {language === 'zh' ? '智能体角色' : 'Agent Role'}
+            {t('wf.agentrole', language as Language)}
           </label>
           <div className="grid grid-cols-2 gap-2">
             {BUILTIN_AGENT_ROLES.map(r => {
@@ -631,25 +632,25 @@ function StepEditor({ step, allSteps, workflow, onUpdate, onUpdateConfig, langua
         <>
           <div>
             <label className="text-[11px] font-medium text-text-secondary mb-1.5 block">
-              {language === 'zh' ? '提示消息' : 'Prompt Message'}
+              {t('wf.promptmessage', language as Language)}
             </label>
             <textarea
               value={(step.config as any).message || ''}
               onChange={e => onUpdateConfig(step.id, { message: e.target.value })}
-              placeholder={language === 'zh' ? '输入发送给智能体的消息...（使用 {{变量名}} 引用前序步骤输出）' : 'Enter message to send to agent... (Use {{varName}} to reference previous step outputs)'}
+              placeholder={t('wf.entermessagetosendto', language as Language)}
               rows={5}
               className="w-full px-3 py-2 text-[12px] bg-surface/50 border border-border/40 rounded-lg text-text-primary placeholder:text-text-muted/30 focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-all resize-none font-mono"
             />
           </div>
           <div>
             <label className="text-[11px] font-medium text-text-secondary mb-1.5 block">
-              {language === 'zh' ? '输出变量名' : 'Output Variable'}
+              {t('wf.outputvariable', language as Language)}
             </label>
             <input
               type="text"
               value={(step.config as any).outputVar || ''}
               onChange={e => onUpdateConfig(step.id, { outputVar: e.target.value })}
-              placeholder={language === 'zh' ? '如：analysis（后续步骤用 {{analysis}} 引用）' : 'e.g. analysis (reference with {{analysis}} later)'}
+              placeholder={t('wf.eganalysisreferencewithlater', language as Language)}
               className="w-full px-3 py-2 text-[12px] bg-surface/50 border border-border/40 rounded-lg text-text-primary placeholder:text-text-muted/30 focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-all font-mono"
             />
           </div>
@@ -661,19 +662,19 @@ function StepEditor({ step, allSteps, workflow, onUpdate, onUpdateConfig, langua
         <>
           <div>
             <label className="text-[11px] font-medium text-text-secondary mb-1.5 block">
-              {language === 'zh' ? '提示文字' : 'Prompt'}
+              {t('wf.prompt', language as Language)}
             </label>
             <textarea
               value={(step.config as any).prompt || ''}
               onChange={e => onUpdateConfig(step.id, { prompt: e.target.value })}
-              placeholder={language === 'zh' ? '输入给用户看的提示文字' : 'Enter prompt text for the user'}
+              placeholder={t('wf.enterprompttextforthe', language as Language)}
               rows={3}
               className="w-full px-3 py-2 text-[12px] bg-surface/50 border border-border/40 rounded-lg text-text-primary placeholder:text-text-muted/30 focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-all resize-none"
             />
           </div>
           <div>
             <label className="text-[11px] font-medium text-text-secondary mb-1.5 block">
-              {language === 'zh' ? '输出变量名' : 'Output Variable'}
+              {t('wf.outputvariable2', language as Language)}
             </label>
             <input
               type="text"
@@ -691,7 +692,7 @@ function StepEditor({ step, allSteps, workflow, onUpdate, onUpdateConfig, langua
               className="rounded border-border/40"
             />
             <label className="text-[11px] text-text-secondary">
-              {language === 'zh' ? '审批模式（批准/拒绝按钮）' : 'Approval mode (approve/reject buttons)'}
+              {t('wf.approvalmodeapproverejectbuttons', language as Language)}
             </label>
           </div>
         </>
@@ -702,19 +703,19 @@ function StepEditor({ step, allSteps, workflow, onUpdate, onUpdateConfig, langua
         <>
           <div>
             <label className="text-[11px] font-medium text-text-secondary mb-1.5 block">
-              {language === 'zh' ? '条件表达式' : 'Condition Expression'}
+              {t('wf.conditionexpression', language as Language)}
             </label>
             <input
               type="text"
               value={(step.config as any).expression || ''}
               onChange={e => onUpdateConfig(step.id, { expression: e.target.value })}
-              placeholder={language === 'zh' ? '如：approval === "approved"' : 'e.g. approval === "approved"'}
+              placeholder={t('wf.egapprovalapproved', language as Language)}
               className="w-full px-3 py-2 text-[12px] bg-surface/50 border border-border/40 rounded-lg text-text-primary placeholder:text-text-muted/30 focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-all font-mono"
             />
           </div>
           <div>
             <label className="text-[11px] font-medium text-text-secondary mb-1.5 block">
-              {language === 'zh' ? '条件为真 → 跳转到' : 'If true → Go to'}
+              {t('wf.iftruegoto', language as Language)}
             </label>
             <select
               value={(step.config as any).thenStep || ''}
@@ -729,7 +730,7 @@ function StepEditor({ step, allSteps, workflow, onUpdate, onUpdateConfig, langua
           </div>
           <div>
             <label className="text-[11px] font-medium text-text-secondary mb-1.5 block">
-              {language === 'zh' ? '条件为假 → 跳转到' : 'If false → Go to'}
+              {t('wf.iffalsegoto', language as Language)}
             </label>
             <select
               value={(step.config as any).elseStep || ''}
@@ -749,7 +750,7 @@ function StepEditor({ step, allSteps, workflow, onUpdate, onUpdateConfig, langua
       {step.type === 'delay' && (
         <div>
           <label className="text-[11px] font-medium text-text-secondary mb-1.5 block">
-            {language === 'zh' ? '等待时长（毫秒）' : 'Duration (ms)'}
+            {t('wf.durationms', language as Language)}
           </label>
           <input
             type="number"
@@ -764,14 +765,14 @@ function StepEditor({ step, allSteps, workflow, onUpdate, onUpdateConfig, langua
       {step.type !== 'condition' && step.type !== 'parallel' && (
         <div>
           <label className="text-[11px] font-medium text-text-secondary mb-1.5 block">
-            {language === 'zh' ? '下一步' : 'Next Step'}
+            {t('wf.nextstep', language as Language)}
           </label>
           <select
             value={step.next || ''}
             onChange={e => onUpdate(step.id, { next: e.target.value || undefined })}
             className="w-full px-3 py-2 text-[12px] bg-surface/50 border border-border/40 rounded-lg text-text-primary focus:outline-none focus:border-accent/50 transition-all"
           >
-            <option value="">{language === 'zh' ? '（结束）' : '(End)'}</option>
+            <option value="">{t('wf.end', language as Language)}</option>
             {otherSteps.map(s => (
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}
@@ -789,7 +790,7 @@ function StepEditor({ step, allSteps, workflow, onUpdate, onUpdateConfig, langua
           }}
           className="text-[10px] text-accent/60 hover:text-accent transition-colors"
         >
-          {language === 'zh' ? '设为起始步骤' : 'Set as start step'}
+          {t('wf.setasstartstep', language as Language)}
         </button>
       )}
     </div>

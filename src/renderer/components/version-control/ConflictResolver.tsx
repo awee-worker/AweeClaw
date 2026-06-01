@@ -7,7 +7,7 @@ import { api } from '../../adapters/electronBridge'
 import { useState, useEffect, useCallback } from 'react'
 import { GitMerge, Check, X, ArrowLeft, ArrowRight, RefreshCw } from 'lucide-react'
 import { useStore } from '@store'
-import { t, type TranslationKey } from '@renderer/i18n'
+import { t } from '@renderer/i18n'
 import { gitService } from '@services/gitAdapter'
 import { toast } from '@components/foundation/NotificationProvider'
 import { ActionButton } from '@components/ui'
@@ -117,7 +117,7 @@ export function ConflictResolver({ filePath, onResolved, onCancel }: ConflictRes
   const [resolvedContent, setResolvedContent] = useState<string>('')
   const [isLoading, setIsLoading] = useState(true)
 
-  const tt = useCallback((key: string) => t(key as TranslationKey, language), [language])
+  const tt = useCallback((key: string) => t(key, language), [language])
 
   // 加载文件内容
   useEffect(() => {

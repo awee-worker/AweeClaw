@@ -5,6 +5,7 @@ import type { OpenFile } from '@store'
 import { ActionButton } from '../ui'
 import { previewSessionService } from '@/renderer/preview/previewSessionManager'
 import { devServerDiscoveryService } from '@/renderer/preview/devServerLocator'
+import { t, type Language } from '@renderer/i18n'
 
 interface BrowserPreviewTabProps {
   file: OpenFile
@@ -108,7 +109,7 @@ export default function BrowserPreviewTab({ file }: BrowserPreviewTabProps) {
           size="icon"
           className="h-8 w-8"
           onClick={() => preview?.sessionId && previewSessionService.reload(preview.sessionId)}
-          title={language === 'zh' ? '刷新预览' : 'Reload preview'}
+          title={t('editor.reloadpreview', language as Language)}
           disabled={!preview?.sessionId}
         >
           <RefreshCw className={`w-4 h-4 ${activeSession?.status === 'loading' ? 'animate-spin' : ''}`} />
@@ -130,10 +131,10 @@ export default function BrowserPreviewTab({ file }: BrowserPreviewTabProps) {
         </div>
 
         <ActionButton variant="secondary" size="sm" onClick={handleNavigate}>
-          {language === 'zh' ? '打开' : 'Open'}
+          {t('editor.open', language as Language)}
         </ActionButton>
 
-        <ActionButton variant="ghost" size="icon" className="h-8 w-8" onClick={handleOpenPreferred} title={language === 'zh' ? '自动发现本地服务' : 'Discover local dev server'}>
+        <ActionButton variant="ghost" size="icon" className="h-8 w-8" onClick={handleOpenPreferred} title={t('editor.discoverlocaldevserver', language as Language)}>
           <Search className="w-4 h-4" />
         </ActionButton>
       </div>
@@ -161,12 +162,10 @@ export default function BrowserPreviewTab({ file }: BrowserPreviewTabProps) {
           <div className="h-full flex flex-col items-center justify-center text-center px-6 text-text-muted">
             <Globe className="w-10 h-10 mb-4 opacity-60" />
             <p className="text-sm font-medium text-text-primary">
-              {language === 'zh' ? '还没有可用的预览会话' : 'No preview session yet'}
+              {t('editor.nopreviewsessionyet', language as Language)}
             </p>
             <p className="text-xs mt-2 max-w-md leading-relaxed">
-              {language === 'zh'
-                ? '打开本地 dev server 后，点击右上角的搜索按钮自动发现，或直接在地址栏输入 localhost 地址。'
-                : 'Start your local dev server, click discover, or enter a localhost address directly.'}
+              {t('editor.startyourlocaldevserver', language as Language)}
             </p>
           </div>
         ) : (
@@ -189,7 +188,7 @@ export default function BrowserPreviewTab({ file }: BrowserPreviewTabProps) {
               <div className="absolute inset-0 pointer-events-none bg-background/35 backdrop-blur-[1px] flex items-center justify-center">
                 <div className="px-3 py-2 rounded-lg bg-background/90 border border-border/50 text-xs text-text-secondary flex items-center gap-2 shadow-lg">
                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  {language === 'zh' ? '正在加载预览...' : 'ProgressIndicator preview...'}
+                  {t('editor.progressindicatorpreview', language as Language)}
                 </div>
               </div>
             )}
@@ -202,7 +201,7 @@ export default function BrowserPreviewTab({ file }: BrowserPreviewTabProps) {
                   </div>
                   <div>
                     <p className="text-sm font-medium text-text-primary">
-                      {language === 'zh' ? '预览加载失败' : 'Preview failed to load'}
+                      {t('editor.previewfailedtoload', language as Language)}
                     </p>
                     <p className="text-xs text-text-secondary mt-1">
                       {activeSession.lastError || activeSession.url}

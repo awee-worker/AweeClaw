@@ -4,6 +4,7 @@ import type { WorkflowDefinitionV2 } from '@shared/protocols/workflowV2'
 import { RUN_STATUS_CONFIG, type WorkflowRunV2, type NodeExecutionRecord } from './runnerTypes'
 import { NodeExecutionCard } from './NodeExecutionCard'
 import { useWorkflowExecution } from './useWorkflowExecution'
+import { t, type Language } from '@renderer/i18n'
 
 interface WorkflowRunnerV2Props {
   workflow: WorkflowDefinitionV2
@@ -130,28 +131,28 @@ function RunnerHeader({ statusInfo, StatusIcon, run, language, isRunning, isIdle
             ? (language === 'zh'
                 ? { pending: '等待中', running: '执行中', paused: '已暂停', completed: '已完成', failed: '失败', cancelled: '已取消' }[run.status] || run.status
                 : run.status.charAt(0).toUpperCase() + run.status.slice(1))
-            : (language === 'zh' ? '就绪' : 'Ready')}
+            : (t('wf.ready', language as Language))}
         </span>
       </div>
       <div className="flex items-center gap-2">
         {isIdle && (
           <>
             <button onClick={onStartTest} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 rounded-lg transition-all">
-              <FlaskConical className="w-3 h-3" />{language === 'zh' ? '测试' : 'Test'}
+              <FlaskConical className="w-3 h-3" />{t('wf.test', language as Language)}
             </button>
             <button onClick={onStart} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-500/10 text-green-500 hover:bg-green-500/20 rounded-lg transition-all">
-              <Play className="w-3 h-3" />{language === 'zh' ? '运行' : 'Run'}
+              <Play className="w-3 h-3" />{t('wf.run', language as Language)}
             </button>
           </>
         )}
         {isRunning && (
           <button onClick={onCancel} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded-lg transition-all">
-            <XCircle className="w-3 h-3" />{language === 'zh' ? '取消' : 'Cancel'}
+            <XCircle className="w-3 h-3" />{t('wf.cancel', language as Language)}
           </button>
         )}
         {isDone && (
           <button onClick={onRerun} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20 rounded-lg transition-all">
-            <RotateCcw className="w-3 h-3" />{language === 'zh' ? '重新运行' : 'Re-run'}
+            <RotateCcw className="w-3 h-3" />{t('wf.rerun', language as Language)}
           </button>
         )}
       </div>
@@ -168,7 +169,7 @@ function InputSchemaPanel({ workflow, inputValues, onInputChange, language }: {
   return (
     <div className="px-4 py-3 border-b border-[var(--border)] bg-[var(--background)]/50">
       <h4 className="text-xs font-semibold text-[var(--text-secondary)] mb-2">
-        {language === 'zh' ? '输入参数' : 'Input Parameters'}
+        {t('wf.inputparameters', language as Language)}
       </h4>
       <div className="space-y-2">
         {Object.entries(workflow.inputSchema!).map(([key, param]) => (

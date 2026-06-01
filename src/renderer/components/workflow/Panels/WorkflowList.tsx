@@ -9,6 +9,7 @@ import {
   importWorkflowDefinition,
 } from '@shared/configuration/workflows/workflowPersistenceV2'
 import WorkflowHistoryV2 from './WorkflowHistoryV2'
+import { t, type Language } from '@renderer/i18n'
 
 interface WorkflowListProps {
   onSelect: (workflow: WorkflowDefinitionV2) => void
@@ -108,7 +109,7 @@ export default function WorkflowList({ onSelect, onCreateNew, onOpenWorkflow, on
     (timestamp?: number) => {
       if (!timestamp) return '-'
       const d = new Date(timestamp)
-      return d.toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US', {
+      return d.toLocaleDateString(t('wf.enus', language as Language), {
         month: 'short',
         day: 'numeric',
         hour: '2-digit',
@@ -125,7 +126,7 @@ export default function WorkflowList({ onSelect, onCreateNew, onOpenWorkflow, on
           <div className="flex items-center gap-2">
             <Workflow className="w-4 h-4 text-[var(--accent)]" />
             <h2 className="text-sm font-semibold text-[var(--text-primary)]">
-              {language === 'zh' ? '工作流' : 'Workflows'}
+              {t('wf.workflows', language as Language)}
             </h2>
           </div>
           <div className="flex items-center bg-[var(--border)]/30 rounded-md p-0.5">
@@ -137,7 +138,7 @@ export default function WorkflowList({ onSelect, onCreateNew, onOpenWorkflow, on
                   : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
               }`}
             >
-              {language === 'zh' ? '工作流' : 'Workflows'}
+              {t('wf.workflows2', language as Language)}
             </button>
             <button
               onClick={() => setActiveTab('history')}
@@ -147,7 +148,7 @@ export default function WorkflowList({ onSelect, onCreateNew, onOpenWorkflow, on
                   : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
               }`}
             >
-              {language === 'zh' ? '历史' : 'History'}
+              {t('wf.history', language as Language)}
             </button>
           </div>
         </div>
@@ -164,7 +165,7 @@ export default function WorkflowList({ onSelect, onCreateNew, onOpenWorkflow, on
               <button
                 onClick={onOpenMarket}
                 className="p-1.5 rounded text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
-                title={language === 'zh' ? '模板市场' : 'Template Market'}
+                title={t('wf.templatemarket', language as Language)}
               >
                 <Store className="w-3.5 h-3.5" />
               </button>
@@ -172,7 +173,7 @@ export default function WorkflowList({ onSelect, onCreateNew, onOpenWorkflow, on
             <button
               onClick={() => fileInputRef.current?.click()}
               className="p-1.5 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--border)]/50 transition-colors"
-              title={language === 'zh' ? '导入工作流' : 'Import Workflow'}
+              title={t('wf.importworkflow', language as Language)}
             >
               <Upload className="w-3.5 h-3.5" />
             </button>
@@ -181,7 +182,7 @@ export default function WorkflowList({ onSelect, onCreateNew, onOpenWorkflow, on
               className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20 transition-colors"
             >
               <Plus className="w-3 h-3" />
-              {language === 'zh' ? '新建' : 'New'}
+              {t('wf.new', language as Language)}
             </button>
           </div>
         )}
@@ -194,14 +195,14 @@ export default function WorkflowList({ onSelect, onCreateNew, onOpenWorkflow, on
               <div className="flex flex-col items-center justify-center py-16 text-[var(--text-muted)]">
                 <Workflow className="w-10 h-10 mb-3 opacity-30" />
                 <p className="text-xs mb-3">
-                  {language === 'zh' ? '暂无工作流，创建一个开始吧' : 'No workflows yet. Create one to get started'}
+                  {t('wf.noworkflowsyetcreateone', language as Language)}
                 </p>
                 <button
                   onClick={onCreateNew}
                   className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-md bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20 transition-colors"
                 >
                   <Plus className="w-3 h-3" />
-                  {language === 'zh' ? '新建工作流' : 'New Workflow'}
+                  {t('wf.newworkflow', language as Language)}
                 </button>
               </div>
             ) : (
@@ -223,21 +224,21 @@ export default function WorkflowList({ onSelect, onCreateNew, onOpenWorkflow, on
                         <button
                           onClick={(e) => handleDuplicate(wf.id, e)}
                           className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--border)]/50"
-                          title={language === 'zh' ? '复制' : 'Duplicate'}
+                          title={t('wf.duplicate', language as Language)}
                         >
                           <Copy className="w-3 h-3" />
                         </button>
                         <button
                           onClick={(e) => handleExport(wf, e)}
                           className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--border)]/50"
-                          title={language === 'zh' ? '导出' : 'Export'}
+                          title={t('wf.export', language as Language)}
                         >
                           <Download className="w-3 h-3" />
                         </button>
                         <button
                           onClick={(e) => handleDelete(wf.id, e)}
                           className="p-1 rounded text-[var(--text-muted)] hover:text-red-400 hover:bg-red-500/10"
-                          title={language === 'zh' ? '删除' : 'Delete'}
+                          title={t('wf.delete', language as Language)}
                         >
                           <Trash2 className="w-3 h-3" />
                         </button>
@@ -249,8 +250,8 @@ export default function WorkflowList({ onSelect, onCreateNew, onOpenWorkflow, on
                       </p>
                     )}
                     <div className="flex items-center gap-3 text-[10px] text-[var(--text-muted)]">
-                      <span>{wf.nodes.length} {language === 'zh' ? '节点' : 'nodes'}</span>
-                      <span>{wf.edges.length} {language === 'zh' ? '连线' : 'edges'}</span>
+                      <span>{wf.nodes.length} {t('wf.nodes', language as Language)}</span>
+                      <span>{wf.edges.length} {t('wf.edges', language as Language)}</span>
                       <span>{formatDate(wf.updatedAt || wf.createdAt)}</span>
                     </div>
                   </div>

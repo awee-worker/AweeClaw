@@ -3,7 +3,7 @@ import {
   Receipt,
   Loader2,
 } from 'lucide-react'
-import { type Language } from '@renderer/i18n'
+import { t, type Language } from '@renderer/i18n'
 import { backendApi } from '@services/backendApi'
 import { toast } from '@components/foundation/NotificationProvider'
 import { type PaymentRecordItem, channelLabels } from './shared'
@@ -26,7 +26,7 @@ export function PaymentsPanel({ language }: PaymentsPanelProps) {
       setRecords(result?.records || [])
       setTotal(result?.total || 0)
     } catch {
-      toast.error(language === 'zh' ? '获取消费记录失败' : 'Failed to load payment records', '')
+      toast.error(t('user.failedtoloadpaymentrecords', language as Language), '')
     } finally {
       setLoading(false)
     }
@@ -47,7 +47,7 @@ export function PaymentsPanel({ language }: PaymentsPanelProps) {
       ) : records.length === 0 ? (
         <div className="text-center py-12">
           <Receipt className="w-10 h-10 text-text-muted/30 mx-auto mb-3" />
-          <p className="text-sm text-text-muted">{language === 'zh' ? '暂无消费记录' : 'No payment records'}</p>
+          <p className="text-sm text-text-muted">{t('user.nopaymentrecords', language as Language)}</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -62,9 +62,9 @@ export function PaymentsPanel({ language }: PaymentsPanelProps) {
               </div>
               <div className="flex items-center justify-between text-xs text-text-muted">
                 <div className="space-y-0.5">
-                  <p>{language === 'zh' ? '订单号' : 'Order'}: {record.order?.orderNo}</p>
-                  <p>{language === 'zh' ? '交易号' : 'Transaction'}: {record.transactionId}</p>
-                  <p>{language === 'zh' ? '支付方式' : 'Channel'}: {channelLabels[record.channel]?.[language === 'zh' ? 'zh' : 'en'] || record.channel}</p>
+                  <p>{t('user.order', language as Language)}: {record.order?.orderNo}</p>
+                  <p>{t('user.transaction', language as Language)}: {record.transactionId}</p>
+                  <p>{t('user.channel', language as Language)}: {channelLabels[record.channel]?.[language === 'zh' ? 'zh' : 'en'] || record.channel}</p>
                 </div>
                 <p className="text-lg font-bold text-text-primary">¥{Number(record.paidAmount).toFixed(2)}</p>
               </div>
@@ -78,7 +78,7 @@ export function PaymentsPanel({ language }: PaymentsPanelProps) {
                 disabled={page <= 1}
                 className="px-3 py-1.5 rounded-lg text-xs font-medium bg-surface/50 text-text-secondary hover:bg-surface-hover transition-colors disabled:opacity-50"
               >
-                {language === 'zh' ? '上一页' : 'Prev'}
+                {t('user.prev', language as Language)}
               </button>
               <span className="text-xs text-text-muted">{page} / {totalPages}</span>
               <button
@@ -86,7 +86,7 @@ export function PaymentsPanel({ language }: PaymentsPanelProps) {
                 disabled={page >= totalPages}
                 className="px-3 py-1.5 rounded-lg text-xs font-medium bg-surface/50 text-text-secondary hover:bg-surface-hover transition-colors disabled:opacity-50"
               >
-                {language === 'zh' ? '下一页' : 'Next'}
+                {t('user.next', language as Language)}
               </button>
             </div>
           )}

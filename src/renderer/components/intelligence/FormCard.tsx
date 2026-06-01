@@ -16,6 +16,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion'
 import type { FormContent, FormField } from '@intelligence/providerTypes'
 import { useStore } from '@store'
+import { t, type Language } from '@renderer/i18n'
 
 interface FormCardProps {
     content: FormContent
@@ -34,7 +35,7 @@ function FieldRenderer({
     value: string | number | boolean
     onChange: (val: string | number | boolean) => void
     error?: string
-    language: string
+    language: Language
 }) {
     const [showPassword, setShowPassword] = useState(false)
     const isInvalid = !!error
@@ -90,7 +91,7 @@ function FieldRenderer({
                         className={`${inputClass} appearance-none cursor-pointer`}
                     >
                         <option value="">
-                            {field.placeholder || (language === 'zh' ? '请选择...' : 'DropdownSelector...')}
+                            {field.placeholder || (t('ai.dropdownselector', language as Language))}
                         </option>
                         {field.options?.map(opt => (
                             <option key={opt.value} value={opt.value}>
@@ -284,30 +285,30 @@ export function FormCard({ content, onSubmit, disabled }: FormCardProps) {
             if (field.required) {
                 if (field.type === 'checkbox') {
                     if (val !== true) {
-                        newErrors[field.id] = language === 'zh' ? '请勾选此项' : 'This must be checked'
+                        newErrors[field.id] = t('ai.thismustbechecked', language as Language)
                     }
                 } else if (val === '' || val === undefined || val === null) {
-                    newErrors[field.id] = language === 'zh' ? '此字段为必填项' : 'This field is required'
+                    newErrors[field.id] = t('ai.thisfieldisrequired', language as Language)
                 }
             }
 
             if (field.type === 'email' && val && typeof val === 'string') {
                 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
                 if (!emailRegex.test(val)) {
-                    newErrors[field.id] = language === 'zh' ? '请输入有效的邮箱地址' : 'Please enter a valid email'
+                    newErrors[field.id] = t('ai.pleaseenteravalidemail', language as Language)
                 }
             }
 
             if (field.type === 'number' && val !== '' && val !== undefined) {
                 const num = Number(val)
                 if (isNaN(num)) {
-                    newErrors[field.id] = language === 'zh' ? '请输入有效的数字' : 'Please enter a valid number'
+                    newErrors[field.id] = t('ai.pleaseenteravalidnumber', language as Language)
                 } else {
                     if (field.min !== undefined && num < field.min) {
-                        newErrors[field.id] = language === 'zh' ? `最小值为 ${field.min}` : `Minimum value is ${field.min}`
+                        newErrors[field.id] = t('ai.minimumvalueis', language as Language, { min: field.min })
                     }
                     if (field.max !== undefined && num > field.max) {
-                        newErrors[field.id] = language === 'zh' ? `最大值为 ${field.max}` : `Maximum value is ${field.max}`
+                        newErrors[field.id] = t('ai.maximumvalueis', language as Language, { max: field.max })
                     }
                 }
             }
@@ -316,7 +317,7 @@ export function FormCard({ content, onSubmit, disabled }: FormCardProps) {
                 try {
                     const regex = new RegExp(field.pattern)
                     if (!regex.test(val)) {
-                        newErrors[field.id] = language === 'zh' ? '格式不正确' : 'Invalid format'
+                        newErrors[field.id] = t('ai.invalidformat', language as Language)
                     }
                 } catch {}
             }
@@ -442,7 +443,7 @@ export function FormCard({ content, onSubmit, disabled }: FormCardProps) {
                             {!submitted && (
                                 <div className="flex items-center justify-between pt-2 border-t border-border/30">
                                     <span className="text-[11px] text-text-muted">
-                                        {filledCount}/{content.fields.length} {language === 'zh' ? '已填写' : 'filled'}
+                                        {filledCount}/{content.fields.length} {t('ai.filled', language as Language)}
                                     </span>
                                     <button
                                         onClick={handleSubmit}
@@ -454,7 +455,7 @@ export function FormCard({ content, onSubmit, disabled }: FormCardProps) {
                                         }`}
                                     >
                                         <Send className="w-3 h-3" />
-                                        {content.submitLabel || (language === 'zh' ? '提交' : 'Submit')}
+                                        {content.submitLabel || (t('ai.submit', language as Language))}
                                     </button>
                                 </div>
                             )}

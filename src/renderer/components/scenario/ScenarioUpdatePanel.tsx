@@ -12,6 +12,7 @@ import {
   updateScenarioFromMarketplace,
 } from '@services/marketplaceService'
 import type { MarketplaceUpdateInfo } from '@scenario-system/marketplace'
+import { t, type Language } from '@renderer/i18n'
 
 interface UpdateItem extends MarketplaceUpdateInfo {
   isUpdating: boolean
@@ -26,8 +27,6 @@ export function ScenarioUpdatePanel() {
   const [isChecking, setIsChecking] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [lastCheckedAt, setLastCheckedAt] = useState<Date | null>(null)
-
-  const t = useCallback((zh: string, en: string) => language === 'zh' ? zh : en, [language])
 
   const doCheckUpdates = useCallback(async () => {
     if (!isAuthenticated) return
@@ -60,7 +59,7 @@ export function ScenarioUpdatePanel() {
     } catch (err) {
       console.error('[ScenarioUpdatePanel] Check updates failed:', err)
       toast.error(
-        t('检查更新失败', 'Failed to check updates'),
+        t('app.failedtocheckupdates', language as Language),
         err instanceof Error ? err.message : ''
       )
       setUpdates([])
@@ -93,7 +92,7 @@ export function ScenarioUpdatePanel() {
         )
 
         toast.success(
-          t(`场景已更新至 v${result.version}`, `Scenario updated to v${result.version}`)
+          t('app.scenarioupdatedtov', language as Language, { version: result.version })
         )
 
         setTimeout(() => {
@@ -103,7 +102,7 @@ export function ScenarioUpdatePanel() {
         setUpdates(prev =>
           prev.map(u =>
             u.scenarioId === item.scenarioId
-              ? { ...u, isUpdating: false, error: result.error || t('更新失败', 'Update failed') }
+              ? { ...u, isUpdating: false, error: result.error || t('app.updatefailed', language as Language) }
               : u
           )
         )
@@ -133,7 +132,7 @@ export function ScenarioUpdatePanel() {
         <div className="flex items-center gap-2">
           <ArrowUpCircle className={`w-4 h-4 ${hasUpdates ? 'text-blue-400' : 'text-text-muted'}`} strokeWidth={1.5} />
           <span className="text-[12px] font-medium text-text-secondary">
-            {t('场景更新', 'Scenario Updates')}
+            {t('app.scenarioupdates', language as Language)}
             {hasUpdates && (
               <span className="ml-1 text-[11px] font-semibold text-blue-400">
                 ({updates.filter(u => !u.isUpdated).length})
@@ -142,7 +141,7 @@ export function ScenarioUpdatePanel() {
           </span>
           {lastCheckedAt && (
             <span className="text-[10px] text-text-muted/60">
-              {lastCheckedAt.toLocaleTimeString(language === 'zh' ? 'zh-CN' : 'en-US', {
+              {lastCheckedAt.toLocaleTimeString(t('scenario.enus', language as Language), {
                 hour: '2-digit',
                 minute: '2-digit',
               })}
@@ -205,7 +204,7 @@ export function ScenarioUpdatePanel() {
                           onClick={(e) => { e.stopPropagation(); handleUpdate(item) }}
                         >
                           <ArrowUpCircle className="w-3 h-3" />
-                          {t('更新', 'Update')}
+                          {t('app.update', language as Language)}
                         </ActionButton>
                         <button
                           onClick={(e) => { e.stopPropagation(); handleDismiss(item.scenarioId) }}
@@ -218,13 +217,13 @@ export function ScenarioUpdatePanel() {
                     {item.isUpdating && (
                       <div className="flex items-center gap-1.5 text-blue-400">
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span className="text-[11px]">{t('更新中...', 'Updating...')}</span>
+                        <span className="text-[11px]">{t('app.updating', language as Language)}</span>
                       </div>
                     )}
                     {item.isUpdated && (
                       <div className="flex items-center gap-1 text-green-400">
                         <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span className="text-[11px]">{t('已完成', 'Done')}</span>
+                        <span className="text-[11px]">{t('app.done', language as Language)}</span>
                       </div>
                     )}
                   </div>
@@ -248,7 +247,7 @@ export function ScenarioUpdatePanel() {
                     {item.changelog && (
                       <div className="mt-2">
                         <p className="text-[11px] font-medium text-text-muted mb-1">
-                          {t('更新内容', "What's New")}
+                          {t('scenario.whatsnew', language as Language)}
                         </p>
                         <p className="text-[11px] text-text-secondary leading-relaxed whitespace-pre-wrap">
                           {item.changelog}
@@ -258,12 +257,12 @@ export function ScenarioUpdatePanel() {
                     {item.minAppVersion && (
                       <div className="mt-1.5 flex items-center gap-1 text-[11px] text-amber-400/80">
                         <AlertTriangle className="w-3 h-3" />
-                        {t(`需要应用版本 ≥ ${item.minAppVersion}`, `Requires app version ≥ ${item.minAppVersion}`)}
+                        {t('app.requiresappversion', language as Language, { minAppVersion: item.minAppVersion })}
                       </div>
                     )}
                     {item.fileSize > 0 && (
                       <p className="text-[10px] text-text-muted mt-1">
-                        {t(`包大小: ${(item.fileSize / 1024 / 1024).toFixed(1)} MB`, `Size: ${(item.fileSize / 1024 / 1024).toFixed(1)} MB`)}
+                        {t('app.sizemb', language as Language, { fileSize: (item.fileSize / 1024 / 1024).toFixed(1) })}
                       </p>
                     )}
                   </div>
@@ -276,7 +275,7 @@ export function ScenarioUpdatePanel() {
             <div className="py-3 text-center">
               <CheckCircle2 className="w-6 h-6 text-green-400 mx-auto mb-1.5" />
               <p className="text-[12px] text-text-muted">
-                {t('所有场景已是最新版本', 'All scenarios are up to date')}
+                {t('app.allscenariosareup', language as Language)}
               </p>
             </div>
           )}

@@ -1,24 +1,25 @@
 import type { TabProps } from '../types'
 import { Section } from '../Section'
 import { INPUT_CLASS, SELECT_CLASS, TEXTAREA_CLASS } from '../shared'
+import { t, type Language } from '@renderer/i18n'
 
 export function UserInputSection({ data, onChange, language }: Omit<TabProps, 'nodeType'>) {
   return (
     <>
-      <Section title={language === 'zh' ? '输入类型' : 'Input Type'}>
+      <Section title={t('wf.inputtype', language as Language)}>
         <select
           value={data.inputType || 'text'}
           onChange={(e) => onChange('inputType', e.target.value)}
           className={SELECT_CLASS}
         >
-          <option value="text">{language === 'zh' ? '文本' : 'Text'}</option>
-          <option value="number">{language === 'zh' ? '数字' : 'Number'}</option>
-          <option value="select">{language === 'zh' ? '选择' : 'Select'}</option>
-          <option value="multiline">{language === 'zh' ? '多行文本' : 'Multiline'}</option>
+          <option value="text">{t('wf.text', language as Language)}</option>
+          <option value="number">{t('wf.number', language as Language)}</option>
+          <option value="select">{t('wf.select', language as Language)}</option>
+          <option value="multiline">{t('wf.multiline', language as Language)}</option>
         </select>
       </Section>
       {data.inputType === 'select' && (
-        <Section title={language === 'zh' ? '选项' : 'Options'}>
+        <Section title={t('wf.options', language as Language)}>
           <textarea
             value={(data.inputOptions || []).map(o => `${o.label}:${o.value}`).join('\n')}
             onChange={(e) => {
@@ -28,7 +29,7 @@ export function UserInputSection({ data, onChange, language }: Omit<TabProps, 'n
               })
               onChange('inputOptions', options)
             }}
-            placeholder={language === 'zh' ? '标签:值（每行一个）' : 'Label:Value (one per line)'}
+            placeholder={t('wf.labelvalueoneperline', language as Language)}
             rows={3}
             className={TEXTAREA_CLASS}
           />
@@ -41,7 +42,7 @@ export function UserInputSection({ data, onChange, language }: Omit<TabProps, 'n
 export function UserApprovalSection({ data, onChange, language }: Omit<TabProps, 'nodeType'>) {
   return (
     <>
-      <Section title={language === 'zh' ? '超时时间' : 'Approval Timeout'}>
+      <Section title={t('wf.approvaltimeout', language as Language)}>
         <div className="flex items-center gap-2">
           <input
             type="number"
@@ -53,15 +54,15 @@ export function UserApprovalSection({ data, onChange, language }: Omit<TabProps,
           <span className="text-[10px] text-[var(--text-muted)]">ms</span>
         </div>
       </Section>
-      <Section title={language === 'zh' ? '超时动作' : 'Auto Action'}>
+      <Section title={t('wf.autoaction', language as Language)}>
         <select
           value={data.approvalAutoAction || 'pause'}
           onChange={(e) => onChange('approvalAutoAction', e.target.value)}
           className={SELECT_CLASS}
         >
-          <option value="pause">{language === 'zh' ? '暂停等待' : 'Pause'}</option>
-          <option value="approve">{language === 'zh' ? '自动批准' : 'Auto Approve'}</option>
-          <option value="reject">{language === 'zh' ? '自动拒绝' : 'Auto Reject'}</option>
+          <option value="pause">{t('wf.pause', language as Language)}</option>
+          <option value="approve">{t('wf.autoapprove', language as Language)}</option>
+          <option value="reject">{t('wf.autoreject', language as Language)}</option>
         </select>
       </Section>
     </>

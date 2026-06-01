@@ -2,6 +2,7 @@ import type { WorkflowNodeData, ConditionRule } from '@shared/protocols/workflow
 import type { ConditionOperator } from '@shared/protocols/workflow'
 import { Section } from '../Section'
 import { CONDITION_OPERATORS } from '../shared'
+import { t, type Language } from '@renderer/i18n'
 
 interface ConditionBuilderProps {
   data: WorkflowNodeData
@@ -33,7 +34,7 @@ export function ConditionBuilder({ data, onChange, language }: ConditionBuilderP
   }
 
   return (
-    <Section title={language === 'zh' ? '条件规则' : 'Condition Rules'}>
+    <Section title={t('wf.conditionrules', language as Language)}>
       <div className="space-y-2">
         {conditions.map((cond, index) => (
           <div key={cond.id} className="p-2 rounded-md border border-[var(--border)] bg-[var(--background)]/50 space-y-1.5">
@@ -44,8 +45,8 @@ export function ConditionBuilder({ data, onChange, language }: ConditionBuilderP
                   : 'bg-red-500/10 text-red-500'
               }`}>
                 {cond.targetHandle === 'then'
-                  ? (language === 'zh' ? '真分支' : 'True')
-                  : (language === 'zh' ? '假分支' : 'False')}
+                  ? (t('wf.true', language as Language))
+                  : (t('wf.false', language as Language))}
               </span>
               <button
                 onClick={() => removeCondition(index)}
@@ -58,7 +59,7 @@ export function ConditionBuilder({ data, onChange, language }: ConditionBuilderP
               type="text"
               value={cond.variable}
               onChange={(e) => updateCondition(index, { variable: e.target.value })}
-              placeholder={language === 'zh' ? '变量名' : 'Variable'}
+              placeholder={t('wf.variable', language as Language)}
               className="w-full px-2 py-1 text-[11px] rounded border border-[var(--border)] bg-[var(--background)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
             />
             <select
@@ -77,7 +78,7 @@ export function ConditionBuilder({ data, onChange, language }: ConditionBuilderP
                 type="text"
                 value={String(cond.value ?? '')}
                 onChange={(e) => updateCondition(index, { value: e.target.value })}
-                placeholder={language === 'zh' ? '比较值' : 'Value'}
+                placeholder={t('wf.value', language as Language)}
                 className="w-full px-2 py-1 text-[11px] rounded border border-[var(--border)] bg-[var(--background)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
               />
             )}
@@ -87,7 +88,7 @@ export function ConditionBuilder({ data, onChange, language }: ConditionBuilderP
           onClick={addCondition}
           className="w-full py-1.5 text-[11px] text-[var(--accent)] border border-dashed border-[var(--accent)]/30 rounded-md hover:bg-[var(--accent)]/5 transition-colors"
         >
-          + {language === 'zh' ? '添加条件' : 'Add Condition'}
+          + {t('wf.addcondition', language as Language)}
         </button>
       </div>
     </Section>

@@ -9,6 +9,7 @@ import {
 } from '@intelligence/runtime/knowledgeService/providerTypes'
 import { highlightText } from './searchUtils'
 import { TipButton } from './TipButton'
+import { t, type Language } from '@renderer/i18n'
 
 export const SOURCE_CONFIG: Record<
   KnowledgeSource,
@@ -37,7 +38,7 @@ export const SOURCE_CONFIG: Record<
   },
 }
 
-export function formatDate(ts: number, language: string): string {
+export function formatDate(ts: number, language: Language): string {
   const d = new Date(ts)
   const now = new Date()
   const diffMs = now.getTime() - d.getTime()
@@ -70,7 +71,7 @@ interface EntryCardProps {
   onToggleEnabled: () => void
   onToggleStar: () => void
   onDelete: () => void
-  language: string
+  language: Language
 }
 
 export function EntryCard({
@@ -89,8 +90,6 @@ export function EntryCard({
   const srcConfig = SOURCE_CONFIG[entry.source]
   const SrcIcon = srcConfig?.icon || BookOpen
   const catConfig = KNOWLEDGE_CATEGORIES.find((c) => c.id === entry.category)
-  const t = (zh: string, en: string) => (language === 'zh' ? zh : en)
-
   return (
     <div
       onClick={batchMode ? onToggleBatchSelect : onSelect}
@@ -134,7 +133,7 @@ export function EntryCard({
             <span
               className={`text-[10px] px-1.5 py-0.5 rounded-full ${catConfig.color} bg-current/10 flex-shrink-0`}
             >
-              {t(catConfig.labelZh, catConfig.labelEn)}
+              {language === 'zh' ? catConfig.labelZh : catConfig.labelEn}
             </span>
           )}
         </div>
@@ -162,7 +161,7 @@ export function EntryCard({
             onToggleEnabled()
           }}
           active={entry.enabled}
-          tip={entry.enabled ? t('禁用', 'Disable') : t('启用', 'Enable')}
+          tip={entry.enabled ? t('app.disable', language as Language) : t('app.enable', language as Language)}
           className="p-1 rounded hover:bg-surface-hover"
         >
           {entry.enabled ? (
@@ -177,7 +176,7 @@ export function EntryCard({
             onToggleStar()
           }}
           active={entry.starred}
-          tip={t('收藏', 'Star')}
+          tip={t('app.star', language as Language)}
           className={`p-1 rounded hover:bg-surface-hover ${entry.starred ? '' : 'hover:text-amber-500'}`}
         >
           <Star className="w-3.5 h-3.5" />
@@ -187,7 +186,7 @@ export function EntryCard({
             e.stopPropagation()
             onDelete()
           }}
-          tip={t('删除', 'Delete')}
+          tip={t('app.delete', language as Language)}
           className="p-1 rounded hover:text-red-500 hover:bg-surface-hover"
         >
           <Trash2 className="w-3.5 h-3.5" />

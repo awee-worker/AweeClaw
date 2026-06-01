@@ -26,6 +26,7 @@ import { useAgentActions, useAllThreads } from '@hooks/useAgent'
 import { getThreadDisplayTitle, getMessageText } from '@intelligence/providerTypes'
 import type { ChatThread } from '@intelligence/providerTypes'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
+import { t, type Language } from '@renderer/i18n'
 
 interface SessionHistoryPageProps {
   onClose?: () => void
@@ -33,21 +34,17 @@ interface SessionHistoryPageProps {
 
 const PAGE_SIZE = 20
 
-function formatDate(timestamp: number, language: string): string {
+function formatDate(timestamp: number, language: Language): string {
   const date = new Date(timestamp)
   const now = new Date()
   const isToday = date.toDateString() === now.toDateString()
   const isYesterday = new Date(now.getTime() - 86400000).toDateString() === date.toDateString()
 
   if (isToday) {
-    return language === 'zh'
-      ? `今天 ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`
-      : `Today ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`
+    return t('user.today', language as Language, { hours: date.getHours().toString().padStart(2, '0'), minutes: date.getMinutes().toString().padStart(2, '0') })
   }
   if (isYesterday) {
-    return language === 'zh'
-      ? `昨天 ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`
-      : `Yesterday ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`
+    return t('user.yesterday', language as Language, { hours: date.getHours().toString().padStart(2, '0'), minutes: date.getMinutes().toString().padStart(2, '0') })
   }
 
   const y = date.getFullYear()
@@ -55,7 +52,7 @@ function formatDate(timestamp: number, language: string): string {
   const d = date.getDate().toString().padStart(2, '0')
   const h = date.getHours().toString().padStart(2, '0')
   const min = date.getMinutes().toString().padStart(2, '0')
-  return language === 'zh' ? `${y}-${m}-${d} ${h}:${min}` : `${m}/${d}/${y} ${h}:${min}`
+  return t('user.text0', language as Language, { m: m, d: d, y: y, h: h, min: min })
 }
 
 function getMessageCount(thread: ChatThread): number {
@@ -148,12 +145,10 @@ export default function SessionHistoryPage({ onClose }: SessionHistoryPageProps)
   const handleDeleteSelected = useCallback(async () => {
     if (selectedIds.size === 0) return
     const confirmed = await globalConfirm({
-      title: language === 'zh' ? '确认删除' : 'Confirm Delete',
-      message: language === 'zh'
-        ? `确定要删除选中的 ${selectedIds.size} 个会话吗？此操作不可恢复。`
-        : `Are you sure you want to delete ${selectedIds.size} selected session(s)? This action cannot be undone.`,
-      confirmText: language === 'zh' ? '删除' : 'Delete',
-      cancelText: language === 'zh' ? '取消' : 'Cancel',
+      title: t('user.confirmdelete', language as Language),
+      message: t('user.areyousureyouwant', language as Language, { size: selectedIds.size }),
+      confirmText: t('user.delete', language as Language),
+      cancelText: t('user.cancel', language as Language),
       variant: 'danger',
     })
     if (!confirmed) return
@@ -170,12 +165,10 @@ export default function SessionHistoryPage({ onClose }: SessionHistoryPageProps)
   const handleClearAll = useCallback(async () => {
     if (filteredThreads.length === 0) return
     const confirmed = await globalConfirm({
-      title: language === 'zh' ? '确认清空全部' : 'Confirm Clear All',
-      message: language === 'zh'
-        ? `确定要清空所有 ${filteredThreads.length} 个会话吗？此操作不可恢复。`
-        : `Are you sure you want to clear all ${filteredThreads.length} session(s)? This action cannot be undone.`,
-      confirmText: language === 'zh' ? '全部清空' : 'Clear All',
-      cancelText: language === 'zh' ? '取消' : 'Cancel',
+      title: t('user.confirmclearall', language as Language),
+      message: t('user.areyousureyouwant2', language as Language, { length: filteredThreads.length }),
+      confirmText: t('user.clearall', language as Language),
+      cancelText: t('user.cancel2', language as Language),
       variant: 'danger',
     })
     if (!confirmed) return
@@ -208,16 +201,16 @@ export default function SessionHistoryPage({ onClose }: SessionHistoryPageProps)
             <div className="p-1.5 rounded-lg bg-accent/10 border border-accent/20">
               <History className="w-5 h-5 text-accent" />
             </div>
-            {language === 'zh' ? '历史会话' : 'Session History'}
+            {t('user.sessionhistory', language as Language)}
           </h2>
         </div>
         <nav className="flex-1 p-4">
           <div className="px-3 py-2 rounded-lg bg-accent/10 text-text-primary text-sm font-medium border border-accent/20 flex items-center gap-2">
             <MessageSquare className="w-4 h-4 text-accent" />
-            {language === 'zh' ? '全部会话' : 'All Sessions'}
+            {t('user.allsessions', language as Language)}
           </div>
           <div className="mt-3 px-3 text-[11px] text-text-muted">
-            {language === 'zh' ? `共 ${filteredThreads.length} 个会话` : `${filteredThreads.length} sessions total`}
+            {t('user.sessionstotal', language as Language, { length: filteredThreads.length })}
           </div>
         </nav>
       </div>
@@ -228,10 +221,10 @@ export default function SessionHistoryPage({ onClose }: SessionHistoryPageProps)
         <div className="shrink-0 px-6 pt-6 pb-4 border-b border-border/40 flex items-center justify-between">
           <div>
             <h3 className="text-2xl font-semibold text-text-primary tracking-tight">
-              {language === 'zh' ? '历史会话记录' : 'Session History'}
+              {t('user.sessionhistory2', language as Language)}
             </h3>
             <p className="text-sm text-text-muted mt-1.5 opacity-80">
-              {language === 'zh' ? '查看和管理您的所有会话记录' : 'View and manage all your session records'}
+              {t('user.viewandmanageallyour', language as Language)}
             </p>
           </div>
           <button
@@ -250,7 +243,7 @@ export default function SessionHistoryPage({ onClose }: SessionHistoryPageProps)
               type="text"
               value={searchQuery}
               onChange={e => { setSearchQuery(e.target.value); setCurrentPage(1) }}
-              placeholder={language === 'zh' ? '搜索会话标题或内容...' : 'Search session title or content...'}
+              placeholder={t('user.searchsessiontitleorcontent', language as Language)}
               className="w-full h-9 pl-9 pr-3 rounded-lg bg-surface/50 border border-border/50 text-sm text-text-primary placeholder:text-text-muted/60 outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-all"
             />
           </div>
@@ -265,7 +258,7 @@ export default function SessionHistoryPage({ onClose }: SessionHistoryPageProps)
                 className="h-9 px-3 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 text-sm font-medium transition-colors flex items-center gap-1.5 disabled:opacity-50"
               >
                 {isDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                {language === 'zh' ? `删除 (${selectedIds.size})` : `Delete (${selectedIds.size})`}
+                {t('user.delete2', language as Language, { size: selectedIds.size })}
               </motion.button>
             )}
             {filteredThreads.length > 0 && (
@@ -275,7 +268,7 @@ export default function SessionHistoryPage({ onClose }: SessionHistoryPageProps)
                 className="h-9 px-3 rounded-lg border border-border/50 text-text-secondary hover:bg-surface-hover hover:text-text-primary text-sm font-medium transition-colors flex items-center gap-1.5 disabled:opacity-50"
               >
                 <AlertTriangle className="w-3.5 h-3.5" />
-                {language === 'zh' ? '全部清空' : 'Clear All'}
+                {t('user.clearall2', language as Language)}
               </button>
             )}
           </div>
@@ -288,8 +281,8 @@ export default function SessionHistoryPage({ onClose }: SessionHistoryPageProps)
               <History className="w-12 h-12 opacity-20 mb-3" />
               <p className="text-sm">
                 {searchQuery.trim()
-                  ? (language === 'zh' ? '未找到匹配的会话' : 'No matching sessions found')
-                  : (language === 'zh' ? '暂无会话记录' : 'No session records yet')
+                  ? (t('user.nomatchingsessionsfound', language as Language))
+                  : (t('user.nosessionrecordsyet', language as Language))
                 }
               </p>
             </div>
@@ -309,10 +302,10 @@ export default function SessionHistoryPage({ onClose }: SessionHistoryPageProps)
                     <Square className="w-4 h-4" />
                   )}
                 </button>
-                <span className="flex-1">{language === 'zh' ? '会话' : 'Session'}</span>
-                <span className="w-24 text-center">{language === 'zh' ? '消息数' : 'Messages'}</span>
-                <span className="w-32 text-right">{language === 'zh' ? '时间' : 'Time'}</span>
-                <span className="w-16 text-right">{language === 'zh' ? '操作' : 'Action'}</span>
+                <span className="flex-1">{t('user.session', language as Language)}</span>
+                <span className="w-24 text-center">{t('user.messages', language as Language)}</span>
+                <span className="w-32 text-right">{t('user.time', language as Language)}</span>
+                <span className="w-16 text-right">{t('user.action', language as Language)}</span>
               </div>
 
               <AnimatePresence mode="popLayout">
@@ -359,7 +352,7 @@ export default function SessionHistoryPage({ onClose }: SessionHistoryPageProps)
                           </span>
                           {isCurrent && (
                             <span className="shrink-0 px-1.5 py-0.5 rounded-full bg-accent/10 text-accent text-[10px] font-medium">
-                              {language === 'zh' ? '当前' : 'Current'}
+                              {t('user.current', language as Language)}
                             </span>
                           )}
                         </div>
@@ -380,14 +373,14 @@ export default function SessionHistoryPage({ onClose }: SessionHistoryPageProps)
                         <button
                           onClick={(e) => { e.stopPropagation(); handleOpenThread(thread.id) }}
                           className="p-1.5 rounded-lg hover:bg-accent/10 text-text-muted hover:text-accent transition-colors"
-                          title={language === 'zh' ? '打开会话' : 'Open session'}
+                          title={t('user.opensession', language as Language)}
                         >
                           <MessageSquare className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); handleSelect(thread.id); handleDeleteSelected() }}
                           className="p-1.5 rounded-lg hover:bg-red-500/10 text-text-muted hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
-                          title={language === 'zh' ? '删除' : 'Delete'}
+                          title={t('user.delete3', language as Language)}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -404,9 +397,7 @@ export default function SessionHistoryPage({ onClose }: SessionHistoryPageProps)
         {totalPages > 1 && (
           <div className="shrink-0 px-6 py-3 border-t border-border/30 flex items-center justify-between">
             <span className="text-[11px] text-text-muted">
-              {language === 'zh'
-                ? `共 ${filteredThreads.length} 条，第 ${currentPageSafe}/${totalPages} 页`
-                : `${filteredThreads.length} total, page ${currentPageSafe}/${totalPages}`
+              {t('user.totalpage', language as Language, { length: filteredThreads.length, currentPageSafe: currentPageSafe, totalPages: totalPages })
               }
             </span>
             <div className="flex items-center gap-1">

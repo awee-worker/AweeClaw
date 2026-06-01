@@ -9,11 +9,12 @@ import {
 } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
-import { type BillingTab, type Language } from './tabs'
+import { type BillingTab } from './tabs'
 import { OrdersPanel } from './tabs/OrdersPanel'
 import { InvoicesPanel } from './tabs/InvoicesPanel'
 import { PaymentsPanel } from './tabs/PaymentsPanel'
 import { UsagePanel } from './tabs/UsagePanel'
+import { t, type Language } from '@renderer/i18n'
 
 const billingTabs: { id: BillingTab; icon: React.ReactNode; labelZh: string; labelEn: string }[] = [
   { id: 'orders', icon: <CreditCard className="w-4 h-4" />, labelZh: '订单管理', labelEn: 'Orders' },
@@ -42,7 +43,7 @@ export default function BillingCenterPage() {
             <div className="p-1.5 rounded-lg bg-accent/10 border border-accent/20">
               <Wallet className="w-5 h-5 text-accent" />
             </div>
-            {language === 'zh' ? '费用中心' : 'Billing'}
+            {t('user.billing', language as Language)}
           </h2>
         </div>
 
@@ -71,16 +72,16 @@ export default function BillingCenterPage() {
           <div className="shrink-0 px-8 pt-6 pb-4 border-b border-border/40 flex items-center justify-between">
             <div>
               <h3 className="text-2xl font-semibold text-text-primary tracking-tight">
-                {billingTabs.find(t => t.id === activeTab)?.[language === 'zh' ? 'labelZh' : 'labelEn']}
+                {billingTabs.find(tab => tab.id === activeTab)?.[language === 'zh' ? 'labelZh' : 'labelEn']}
               </h3>
               <p className="text-sm text-text-muted mt-1.5 opacity-80">
-                {language === 'zh' ? '管理您的费用和用量' : 'Manage your billing and usage'}
+                {t('user.manageyourbillingandusage', language as Language)}
               </p>
             </div>
             <button
               onClick={handleClose}
               className="p-2 rounded-xl hover:bg-text-primary/[0.05] text-text-muted hover:text-text-primary transition-all duration-200 group"
-              title={language === 'zh' ? '关闭' : 'Close'}
+              title={t('user.close', language as Language)}
             >
               <X className="w-5 h-5 group-hover:rotate-90 transition-transform duration-300" />
             </button>

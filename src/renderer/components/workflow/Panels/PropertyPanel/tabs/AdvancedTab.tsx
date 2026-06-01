@@ -2,13 +2,14 @@ import type { TabProps } from '../types'
 import type { HttpAuthConfig } from '@shared/protocols/workflowV2'
 import { Section } from '../Section'
 import { INPUT_CLASS, SELECT_CLASS } from '../shared'
+import { t, type Language } from '@renderer/i18n'
 
 export function AdvancedTab({ nodeType, data, onChange, language }: TabProps) {
   return (
     <>
       <Section
-        title={language === 'zh' ? '超时设置' : 'Timeout'}
-        tip={language === 'zh' ? '执行超时后自动终止' : 'Auto-terminate after timeout'}
+        title={t('wf.timeout', language as Language)}
+        tip={t('wf.autoterminateaftertimeout', language as Language)}
       >
         <div className="flex items-center gap-2">
           <input
@@ -19,20 +20,20 @@ export function AdvancedTab({ nodeType, data, onChange, language }: TabProps) {
             step={1000}
             className={INPUT_CLASS}
           />
-          <span className="text-[10px] text-gray-400 whitespace-nowrap">ms (0 = {language === 'zh' ? '不限' : 'unlimited'})</span>
+          <span className="text-[10px] text-gray-400 whitespace-nowrap">ms (0 = {t('wf.unlimited', language as Language)})</span>
         </div>
       </Section>
 
       <Section
-        title={language === 'zh' ? '失败重试' : 'Retry on Failure'}
-        tip={language === 'zh' ? '节点执行失败后的重试策略' : 'Retry strategy on node failure'}
+        title={t('wf.retryonfailure', language as Language)}
+        tip={t('wf.retrystrategyonnodefailure', language as Language)}
       >
         <RetryPolicyEditor data={data} onChange={onChange} language={language} />
       </Section>
 
       <Section
-        title={language === 'zh' ? '异常处理' : 'Error Handling'}
-        tip={language === 'zh' ? '执行出错时的处理方式' : 'How to handle execution errors'}
+        title={t('wf.errorhandling', language as Language)}
+        tip={t('wf.howtohandleexecutionerrors', language as Language)}
       >
         <ErrorHandlerEditor data={data} onChange={onChange} language={language} />
       </Section>
@@ -52,7 +53,7 @@ function RetryPolicyEditor({ data, onChange, language }: Omit<TabProps, 'nodeTyp
       <div className="grid grid-cols-2 gap-2">
         <div>
           <label className="text-[9px] text-gray-400 mb-0.5 block">
-            {language === 'zh' ? '最大重试' : 'Max Retries'}
+            {t('wf.maxretries', language as Language)}
           </label>
           <input
             type="number"
@@ -65,7 +66,7 @@ function RetryPolicyEditor({ data, onChange, language }: Omit<TabProps, 'nodeTyp
         </div>
         <div>
           <label className="text-[9px] text-gray-400 mb-0.5 block">
-            {language === 'zh' ? '延迟(ms)' : 'Delay (ms)'}
+            {t('wf.delayms', language as Language)}
           </label>
           <input
             type="number"
@@ -79,7 +80,7 @@ function RetryPolicyEditor({ data, onChange, language }: Omit<TabProps, 'nodeTyp
       </div>
       <div>
         <label className="text-[9px] text-gray-400 mb-0.5 block">
-          {language === 'zh' ? '退避策略' : 'Backoff'}
+          {t('wf.backoff', language as Language)}
         </label>
         <div className="flex gap-1.5">
           {(['fixed', 'exponential'] as const).map(b => (
@@ -92,7 +93,7 @@ function RetryPolicyEditor({ data, onChange, language }: Omit<TabProps, 'nodeTyp
                   : 'bg-white border-gray-150 text-gray-500'
               }`}
             >
-              {b === 'fixed' ? (language === 'zh' ? '固定' : 'Fixed') : (language === 'zh' ? '指数' : 'Exp')}
+              {b === 'fixed' ? (t('wf.fixed', language as Language)) : (t('wf.exp', language as Language))}
             </button>
           ))}
         </div>
@@ -134,7 +135,7 @@ function ErrorHandlerEditor({ data, onChange, language }: Omit<TabProps, 'nodeTy
       {eh.action === 'goto' && (
         <div>
           <label className="text-[9px] text-gray-400 mb-0.5 block">
-            {language === 'zh' ? '跳转目标节点 ID' : 'Target Node ID'}
+            {t('wf.targetnodeid', language as Language)}
           </label>
           <input
             type="text"
@@ -150,7 +151,7 @@ function ErrorHandlerEditor({ data, onChange, language }: Omit<TabProps, 'nodeTy
         <div className="grid grid-cols-2 gap-2">
           <div>
             <label className="text-[9px] text-gray-400 mb-0.5 block">
-              {language === 'zh' ? '重试次数' : 'Retry Count'}
+              {t('wf.retrycount', language as Language)}
             </label>
             <input
               type="number"
@@ -163,7 +164,7 @@ function ErrorHandlerEditor({ data, onChange, language }: Omit<TabProps, 'nodeTy
           </div>
           <div>
             <label className="text-[9px] text-gray-400 mb-0.5 block">
-              {language === 'zh' ? '延迟(ms)' : 'Delay (ms)'}
+              {t('wf.delayms2', language as Language)}
             </label>
             <input
               type="number"
@@ -187,15 +188,15 @@ function HttpAuthSection({ data, onChange, language }: Omit<TabProps, 'nodeType'
 
   return (
     <Section
-      title={language === 'zh' ? '认证方式' : 'Authentication'}
-      tip={language === 'zh' ? 'API请求的认证方式' : 'API request authentication'}
+      title={t('wf.authentication', language as Language)}
+      tip={t('wf.apirequestauthentication', language as Language)}
     >
       <select
         value={auth.type}
         onChange={(e) => onChange('httpAuth', { ...auth, type: e.target.value })}
         className={SELECT_CLASS}
       >
-        <option value="none">{language === 'zh' ? '无需认证' : 'No Auth'}</option>
+        <option value="none">{t('wf.noauth', language as Language)}</option>
         <option value="bearer">Bearer Token</option>
         <option value="basic">Basic Auth</option>
         <option value="api-key">API Key</option>
@@ -217,14 +218,14 @@ function HttpAuthSection({ data, onChange, language }: Omit<TabProps, 'nodeType'
             type="text"
             value={auth.user || ''}
             onChange={(e) => onChange('httpAuth', { ...auth, user: e.target.value })}
-            placeholder={language === 'zh' ? '用户名' : 'Username'}
+            placeholder={t('wf.username', language as Language)}
             className={INPUT_CLASS}
           />
           <input
             type="password"
             value={auth.pass || ''}
             onChange={(e) => onChange('httpAuth', { ...auth, pass: e.target.value })}
-            placeholder={language === 'zh' ? '密码' : 'Password'}
+            placeholder={t('wf.password', language as Language)}
             className={INPUT_CLASS}
           />
         </div>
@@ -236,14 +237,14 @@ function HttpAuthSection({ data, onChange, language }: Omit<TabProps, 'nodeType'
             type="text"
             value={auth.headerName || ''}
             onChange={(e) => onChange('httpAuth', { ...auth, headerName: e.target.value })}
-            placeholder={language === 'zh' ? 'Header 名 (如 X-API-Key)' : 'Header name (e.g. X-API-Key)'}
+            placeholder={t('wf.headernameegxapikey', language as Language)}
             className={INPUT_CLASS}
           />
           <input
             type="password"
             value={auth.headerValue || ''}
             onChange={(e) => onChange('httpAuth', { ...auth, headerValue: e.target.value })}
-            placeholder={language === 'zh' ? 'Header 值' : 'Header value'}
+            placeholder={t('wf.headervalue', language as Language)}
             className={INPUT_CLASS}
           />
         </div>

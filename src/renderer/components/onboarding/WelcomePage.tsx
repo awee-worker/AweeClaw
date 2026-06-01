@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import {
   FolderOpen,
   Plus,
@@ -36,73 +36,6 @@ const CATEGORY_COLORS: Record<string, { bg: string; accent: string; border: stri
   health: { bg: 'from-rose-500/15 to-red-500/8', accent: 'text-rose-400', border: 'hover:border-rose-400/40' },
   education: { bg: 'from-sky-500/15 to-indigo-500/8', accent: 'text-sky-400', border: 'hover:border-sky-400/40' },
   business: { bg: 'from-orange-500/15 to-yellow-500/8', accent: 'text-orange-400', border: 'hover:border-orange-400/40' },
-}
-
-function AmbientOrbs() {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const animRef = useRef<number>(0)
-
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    const resize = () => {
-      canvas.width = canvas.offsetWidth * devicePixelRatio
-      canvas.height = canvas.offsetHeight * devicePixelRatio
-      ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0)
-    }
-    resize()
-    window.addEventListener('resize', resize)
-
-    const orbs: Array<{ x: number; y: number; r: number; vx: number; vy: number; hue: number; phase: number }> = []
-    const count = 4
-    for (let i = 0; i < count; i++) {
-      orbs.push({
-        x: Math.random() * canvas.offsetWidth,
-        y: Math.random() * canvas.offsetHeight,
-        r: 120 + Math.random() * 160,
-        vx: (Math.random() - 0.5) * 0.4,
-        vy: (Math.random() - 0.5) * 0.4,
-        hue: 220 + Math.random() * 80,
-        phase: Math.random() * Math.PI * 2,
-      })
-    }
-
-    const draw = (time: number) => {
-      ctx.clearRect(0, 0, canvas.offsetWidth, canvas.offsetHeight)
-      const w = canvas.offsetWidth
-      const h = canvas.offsetHeight
-
-      for (const orb of orbs) {
-        orb.x += orb.vx
-        orb.y += orb.vy
-        if (orb.x < -orb.r) orb.x = w + orb.r
-        if (orb.x > w + orb.r) orb.x = -orb.r
-        if (orb.y < -orb.r) orb.y = h + orb.r
-        if (orb.y > h + orb.r) orb.y = -orb.r
-
-        const pulse = 0.08 + 0.04 * Math.sin(time * 0.0008 + orb.phase)
-        const gradient = ctx.createRadialGradient(orb.x, orb.y, 0, orb.x, orb.y, orb.r)
-        gradient.addColorStop(0, `hsla(${orb.hue}, 70%, 60%, ${pulse})`)
-        gradient.addColorStop(0.5, `hsla(${orb.hue}, 60%, 55%, ${pulse * 0.4})`)
-        gradient.addColorStop(1, `hsla(${orb.hue}, 50%, 50%, 0)`)
-        ctx.fillStyle = gradient
-        ctx.fillRect(orb.x - orb.r, orb.y - orb.r, orb.r * 2, orb.r * 2)
-      }
-
-      animRef.current = requestAnimationFrame(draw)
-    }
-    animRef.current = requestAnimationFrame(draw)
-
-    return () => {
-      window.removeEventListener('resize', resize)
-      cancelAnimationFrame(animRef.current)
-    }
-  }, [])
-
-  return <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />
 }
 
 export default function WelcomePage() {

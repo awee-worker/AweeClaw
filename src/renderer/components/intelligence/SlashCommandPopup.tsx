@@ -8,6 +8,7 @@ import { Command, Sparkles, FileCode, Wrench, Bug, Zap, MessageSquare, Code } fr
 import { slashCommandService, SlashCommand } from '@services/slashCommandAdapter'
 import { InputPopup, InputPopupItem } from '@components/foundation/QuickInputDialog'
 import { useStore } from '@store'
+import { t, type Language } from '@renderer/i18n'
 
 interface SlashCommandPopupProps {
     query: string // 包含 / 的输入
@@ -58,8 +59,8 @@ export default function SlashCommandPopup({ query, position, onSelect, onClose }
             items={items}
             onSelect={handleSelect}
             onClose={onClose}
-            header={<span>{language === 'zh' ? '快捷命令' : 'Quick Commands'}</span>}
-            emptyText={language === 'zh' ? '没有匹配的命令' : 'No matching commands'}
+            header={<span>{t('ai.quickcommands', language as Language)}</span>}
+            emptyText={t('ai.nomatchingcommands', language as Language)}
         />
     )
 }

@@ -13,6 +13,7 @@ import { useStore } from '@store'
 import type { ScenarioPlugin } from '@shared/protocols/scenario'
 import { activateScenarioPanels, switchToFirstPanel } from './panelUtils'
 import type { LucideIcon } from 'lucide-react'
+import { t, type Language } from '@renderer/i18n'
 
 const ICON_MAP: Record<string, LucideIcon> = {
   Code2, BarChart3, PenTool, Sparkles,
@@ -149,7 +150,7 @@ export function ScenarioSelector() {
               <>
                 <div className="px-2.5 py-1.5 text-[11px] font-medium text-text-muted uppercase tracking-wider flex items-center gap-1">
                   <Shield className="w-2.5 h-2.5" strokeWidth={1.5} />
-                  {language === 'zh' ? '内置场景' : 'Built-in'}
+                  {t('scenario.builtin', language as Language)}
                 </div>
                 {builtinScenarios.map(renderScenarioItem)}
               </>
@@ -159,7 +160,7 @@ export function ScenarioSelector() {
               <>
                 <div className="px-2.5 py-1.5 mt-1 text-[11px] font-medium text-text-muted uppercase tracking-wider flex items-center gap-1">
                   <Package className="w-2.5 h-2.5" strokeWidth={1.5} />
-                  {language === 'zh' ? '已安装场景' : 'Installed'}
+                  {t('scenario.installed', language as Language)}
                 </div>
                 {installedScenarios.map(renderScenarioItem)}
               </>

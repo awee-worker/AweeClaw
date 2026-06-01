@@ -9,6 +9,7 @@ import { terminalManager } from '@services/TerminalAdapter'
 import { ActionButton } from '../../ui'
 import { toast } from '@components/foundation/NotificationProvider'
 import { TerminalManagerDialog } from '@/renderer/shell'
+import { t, type Language } from '@renderer/i18n'
 
 type CollapsedState = Record<string, boolean>
 
@@ -50,7 +51,7 @@ export function ShellView() {
     const targetCwd = customCwd || cwd
 
     if (!targetCwd) {
-      toast.error(language === 'zh' ? '请先打开工作区后再创建 Shell 终端' : 'Open a workspace before creating a shell terminal')
+      toast.error(t('explorer.openaworkspacebeforecreating', language as Language))
       return
     }
 
@@ -75,7 +76,7 @@ export function ShellView() {
   const presetGroups = useMemo(() => {
     const groups = new Map<string, ShellPreset[]>()
     visiblePresets.filter((item) => !item.favorite).forEach((item) => {
-      const group = item.group?.trim() || (language === 'zh' ? '未分组 Preset' : 'Ungrouped Presets')
+      const group = item.group?.trim() || (t('explorer.ungroupedpresets', language as Language))
       groups.set(group, [...(groups.get(group) || []), item])
     })
     return Array.from(groups.entries()).map(([group, items]) => ({ group, items }))
@@ -85,10 +86,10 @@ export function ShellView() {
     const groups = new Map<string, ShellLink[]>()
     visibleLinks.filter((item) => !item.favorite).forEach((item) => {
       const fallback = item.type === 'remote'
-        ? (language === 'zh' ? '服务器' : 'Servers')
+        ? (t('explorer.servers', language as Language))
         : item.type === 'command'
-          ? (language === 'zh' ? '常用命令' : 'Commands')
-          : (language === 'zh' ? '快捷链接' : 'Quick Links')
+          ? (t('explorer.commands', language as Language))
+          : (t('explorer.quicklinks', language as Language))
       const group = item.group?.trim() || fallback
       groups.set(group, [...(groups.get(group) || []), item])
     })
@@ -144,7 +145,7 @@ export function ShellView() {
     })
 
     if (!launch) {
-      toast.error(language === 'zh' ? '当前链接配置不完整，无法打开' : 'Link configuration is incomplete')
+      toast.error(t('explorer.linkconfigurationisincomplete', language as Language))
       return
     }
 
@@ -215,7 +216,7 @@ export function ShellView() {
             size="icon"
             className="h-8 w-8 rounded-lg"
             onClick={() => createTerminal()}
-            title={language === 'zh' ? '新建终端' : 'New Terminal'}
+            title={t('explorer.newterminal', language as Language)}
           >
             <Plus className="w-4 h-4" />
           </ActionButton>
@@ -224,7 +225,7 @@ export function ShellView() {
             size="icon"
             className="h-8 w-8 rounded-lg"
             onClick={() => setShowManager(true)}
-            title={language === 'zh' ? 'Shell 管理' : 'Shell Manager'}
+            title={t('explorer.shellmanager', language as Language)}
           >
             <Settings2 className="w-4 h-4" />
           </ActionButton>
@@ -235,7 +236,7 @@ export function ShellView() {
         <section>
           <div className="flex items-center gap-2 px-2 pb-2 text-[12px] uppercase tracking-wide text-text-muted">
             <TerminalSquare className="w-3.5 h-3.5" />
-            {language === 'zh' ? '可用 Shell' : 'Available Shells'}
+            {t('explorer.availableshells', language as Language)}
           </div>
           <div className="space-y-1">
             {availableShells.length > 0 ? availableShells.map((shell) => (
@@ -248,23 +249,23 @@ export function ShellView() {
                 {shellState.defaultShell === shell.path && <ChevronRight className="w-3.5 h-3.5 text-accent flex-shrink-0" />}
               </button>
             )) : (
-              <div className="px-3 py-2 text-xs text-text-muted">{language === 'zh' ? '未检测到可用 Shell' : 'No shells detected'}</div>
+              <div className="px-3 py-2 text-xs text-text-muted">{t('explorer.noshellsdetected', language as Language)}</div>
             )}
           </div>
         </section>
 
         {favorites.length > 0 && renderSection(
           'favorites',
-          language === 'zh' ? '收藏' : 'Favorites',
+          t('explorer.favorites', language as Language),
           favorites.map(({ kind, id, item }) => (
             <div key={`${kind}-${id}`} onContextMenu={(event) => handleItemContextMenu(event, kind, item)} className="group w-full px-3 py-2 rounded-lg hover:bg-surface-hover transition-colors flex items-center gap-2">
               <button className="flex-1 min-w-0 text-left text-sm text-text-primary" onClick={() => kind === 'preset' ? handleOpenPreset(item as ShellPreset) : handleOpenLink(item as ShellLink)}>
                 <span className="truncate block">{item.name}</span>
               </button>
-              <ActionButton variant="ghost" size="icon" className="h-7 w-7 opacity-70 group-hover:opacity-100" onClick={() => kind === 'preset' ? toggleFavoritePreset(item as ShellPreset) : toggleFavoriteLink(item as ShellLink)} title={language === 'zh' ? '取消收藏' : 'Unfavorite'}>
+              <ActionButton variant="ghost" size="icon" className="h-7 w-7 opacity-70 group-hover:opacity-100" onClick={() => kind === 'preset' ? toggleFavoritePreset(item as ShellPreset) : toggleFavoriteLink(item as ShellLink)} title={t('explorer.unfavorite', language as Language)}>
                 <Star className="w-3.5 h-3.5 fill-current text-yellow-400" />
               </ActionButton>
-              <ActionButton variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100" onClick={() => openManagerEdit(kind, item.id)} title={language === 'zh' ? '编辑' : 'Edit'}>
+              <ActionButton variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100" onClick={() => openManagerEdit(kind, item.id)} title={t('explorer.edit', language as Language)}>
                 <MoreHorizontal className="w-3.5 h-3.5" />
               </ActionButton>
             </div>
@@ -278,10 +279,10 @@ export function ShellView() {
               <button className="flex-1 min-w-0 text-left text-sm text-text-primary" onClick={() => handleOpenPreset(preset)}>
                 <span className="truncate block">{preset.name}</span>
               </button>
-              <ActionButton variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100" onClick={() => toggleFavoritePreset(preset)} title={language === 'zh' ? '收藏' : 'Favorite'}>
+              <ActionButton variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100" onClick={() => toggleFavoritePreset(preset)} title={t('explorer.favorite', language as Language)}>
                 <Star className={`w-3.5 h-3.5 ${preset.favorite ? 'fill-current text-yellow-400' : ''}`} />
               </ActionButton>
-              <ActionButton variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100" onClick={() => openManagerEdit('preset', preset.id)} title={language === 'zh' ? '编辑' : 'Edit'}>
+              <ActionButton variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100" onClick={() => openManagerEdit('preset', preset.id)} title={t('explorer.edit2', language as Language)}>
                 <MoreHorizontal className="w-3.5 h-3.5" />
               </ActionButton>
             </div>
@@ -297,10 +298,10 @@ export function ShellView() {
                 {link.type === 'remote' ? <Server className="w-3.5 h-3.5 text-accent flex-shrink-0" /> : <FolderOpen className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />}
                 <span className="truncate block">{link.name}</span>
               </button>
-              <ActionButton variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100" onClick={() => toggleFavoriteLink(link)} title={language === 'zh' ? '收藏' : 'Favorite'}>
+              <ActionButton variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100" onClick={() => toggleFavoriteLink(link)} title={t('explorer.favorite2', language as Language)}>
                 <Star className={`w-3.5 h-3.5 ${link.favorite ? 'fill-current text-yellow-400' : ''}`} />
               </ActionButton>
-              <ActionButton variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100" onClick={() => openManagerEdit('link', link.id)} title={language === 'zh' ? '编辑' : 'Edit'}>
+              <ActionButton variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100" onClick={() => openManagerEdit('link', link.id)} title={t('explorer.edit3', language as Language)}>
                 <MoreHorizontal className="w-3.5 h-3.5" />
               </ActionButton>
             </div>
@@ -308,16 +309,16 @@ export function ShellView() {
         ))}
 
         <section>
-          <div className="px-2 pb-2 text-[12px] uppercase tracking-wide text-text-muted">{language === 'zh' ? '快速新增' : 'Quick Add'}</div>
+          <div className="px-2 pb-2 text-[12px] uppercase tracking-wide text-text-muted">{t('explorer.quickadd', language as Language)}</div>
           <div className="grid grid-cols-2 gap-2">
             <ActionButton variant="ghost" className="justify-start" onClick={() => openManagerCreate('preset')}>
               <Star className="w-4 h-4 mr-2" />Preset
             </ActionButton>
             <ActionButton variant="ghost" className="justify-start" onClick={() => openManagerCreate('directory')}>
-              <FolderOpen className="w-4 h-4 mr-2" />{language === 'zh' ? '链接' : 'Link'}
+              <FolderOpen className="w-4 h-4 mr-2" />{t('explorer.link', language as Language)}
             </ActionButton>
             <ActionButton variant="ghost" className="justify-start col-span-2" onClick={() => openManagerCreate('remote')}>
-              <Server className="w-4 h-4 mr-2" />{language === 'zh' ? '服务器' : 'Server'}
+              <Server className="w-4 h-4 mr-2" />{t('explorer.server', language as Language)}
             </ActionButton>
           </div>
         </section>

@@ -6,6 +6,7 @@ import {
   clearWorkflowHistoryV2,
 } from '@shared/configuration/workflows/runHistoryV2'
 import type { WorkflowRunV2, WorkflowRunStatusV2 } from '@shared/protocols/workflowV2'
+import { t, type Language } from '@renderer/i18n'
 
 interface WorkflowHistoryV2Props {
   onRerun: (workflowId: string) => void
@@ -60,10 +61,10 @@ export default function WorkflowHistoryV2({ onRerun, onOpenWorkflow, language }:
       const diffHours = Math.floor(diffMs / 3600000)
       const diffDays = Math.floor(diffMs / 86400000)
 
-      if (diffMins < 1) return language === 'zh' ? '刚刚' : 'just now'
-      if (diffMins < 60) return language === 'zh' ? `${diffMins}分钟前` : `${diffMins}m ago`
-      if (diffHours < 24) return language === 'zh' ? `${diffHours}小时前` : `${diffHours}h ago`
-      if (diffDays < 7) return language === 'zh' ? `${diffDays}天前` : `${diffDays}d ago`
+      if (diffMins < 1) return t('wf.justnow', language as Language)
+      if (diffMins < 60) return t('wf.mago', language as Language, { diffMins: diffMins })
+      if (diffHours < 24) return t('wf.hago', language as Language, { diffHours: diffHours })
+      if (diffDays < 7) return t('wf.dago', language as Language, { diffDays: diffDays })
       return new Date(timestamp).toLocaleDateString()
     },
     [language],
@@ -84,7 +85,7 @@ export default function WorkflowHistoryV2({ onRerun, onOpenWorkflow, language }:
       <div className="flex flex-col items-center justify-center py-16 text-[var(--text-muted)]">
         <Clock className="w-10 h-10 mb-3 opacity-30" />
         <p className="text-xs">
-          {language === 'zh' ? '暂无执行历史' : 'No execution history'}
+          {t('wf.noexecutionhistory', language as Language)}
         </p>
       </div>
     )
@@ -94,13 +95,13 @@ export default function WorkflowHistoryV2({ onRerun, onOpenWorkflow, language }:
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
         <h3 className="text-xs font-semibold text-[var(--text-primary)]">
-          {language === 'zh' ? '执行历史' : 'Execution History'}
+          {t('wf.executionhistory', language as Language)}
         </h3>
         <button
           onClick={handleClearAll}
           className="text-[10px] text-[var(--text-muted)] hover:text-red-400 transition-colors"
         >
-          {language === 'zh' ? '清空' : 'Clear All'}
+          {t('wf.clearall', language as Language)}
         </button>
       </div>
 
@@ -135,7 +136,7 @@ export default function WorkflowHistoryV2({ onRerun, onOpenWorkflow, language }:
                       {formatTime(run.startedAt)}
                     </span>
                     <span className="text-[10px] text-[var(--text-muted)]">
-                      {run.nodeResults.length} {language === 'zh' ? '节点' : 'nodes'}
+                      {run.nodeResults.length} {t('wf.nodes', language as Language)}
                     </span>
                     {run.completedAt && (
                       <span className="text-[10px] text-[var(--text-muted)]">
@@ -171,21 +172,21 @@ export default function WorkflowHistoryV2({ onRerun, onOpenWorkflow, language }:
                   <button
                     onClick={() => onOpenWorkflow(run.workflowId)}
                     className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
-                    title={language === 'zh' ? '打开工作流' : 'Open Workflow'}
+                    title={t('wf.openworkflow', language as Language)}
                   >
                     <Workflow className="w-3 h-3" />
                   </button>
                   <button
                     onClick={() => onRerun(run.workflowId)}
                     className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
-                    title={language === 'zh' ? '重新运行' : 'Re-run'}
+                    title={t('wf.rerun', language as Language)}
                   >
                     <RotateCcw className="w-3 h-3" />
                   </button>
                   <button
                     onClick={() => handleDelete(run.id)}
                     className="p-1 rounded text-[var(--text-muted)] hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                    title={language === 'zh' ? '删除' : 'Delete'}
+                    title={t('wf.delete', language as Language)}
                   >
                     <Trash2 className="w-3 h-3" />
                   </button>

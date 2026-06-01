@@ -15,7 +15,7 @@ import {
   LegendComponent,
 } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
-import { type Language } from '@renderer/i18n'
+import { t, type Language } from '@renderer/i18n'
 import { backendApi } from '@services/backendApi'
 
 echarts.use([EBarChart, ELineChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
@@ -152,9 +152,9 @@ export function UsagePanel({ language }: UsagePanelProps) {
       },
       legend: {
         data: [
-          language === 'zh' ? '总Token' : 'Total',
-          language === 'zh' ? '输入Token' : 'Prompt',
-          language === 'zh' ? '输出Token' : 'Completion',
+          t('user.total', language as Language),
+          t('user.prompt', language as Language),
+          t('user.completion', language as Language),
         ],
         textStyle: { fontSize: 12, color: '#999' },
         top: 4, right: 4, itemWidth: 12, itemHeight: 8,
@@ -162,9 +162,9 @@ export function UsagePanel({ language }: UsagePanelProps) {
       xAxis: { type: 'category', data: dates, axisLabel: { fontSize: 11, color: '#888' }, axisLine: { lineStyle: { color: '#333' } } },
       yAxis: { type: 'value', axisLabel: { fontSize: 11, color: '#888', formatter: (v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v) }, splitLine: { lineStyle: { color: '#222' } } },
       series: [
-        { name: language === 'zh' ? '总Token' : 'Total', type: 'bar', data: totalTokens, itemStyle: { color: '#6366f1', borderRadius: [3, 3, 0, 0] }, barMaxWidth: 16 },
-        { name: language === 'zh' ? '输入Token' : 'Prompt', type: 'line', data: promptTokens, smooth: true, lineStyle: { width: 1.5, color: '#22d3ee' }, itemStyle: { color: '#22d3ee' }, symbol: 'none' },
-        { name: language === 'zh' ? '输出Token' : 'Completion', type: 'line', data: completionTokens, smooth: true, lineStyle: { width: 1.5, color: '#f472b6' }, itemStyle: { color: '#f472b6' }, symbol: 'none' },
+        { name: t('user.total2', language as Language), type: 'bar', data: totalTokens, itemStyle: { color: '#6366f1', borderRadius: [3, 3, 0, 0] }, barMaxWidth: 16 },
+        { name: t('user.prompt2', language as Language), type: 'line', data: promptTokens, smooth: true, lineStyle: { width: 1.5, color: '#22d3ee' }, itemStyle: { color: '#22d3ee' }, symbol: 'none' },
+        { name: t('user.completion2', language as Language), type: 'line', data: completionTokens, smooth: true, lineStyle: { width: 1.5, color: '#f472b6' }, itemStyle: { color: '#f472b6' }, symbol: 'none' },
       ],
     })
     const onResize = () => chart.resize()
@@ -182,7 +182,7 @@ export function UsagePanel({ language }: UsagePanelProps) {
       <div className="flex items-center justify-between">
         <h4 className="text-sm font-medium text-text-primary flex items-center gap-1.5">
           <BarChart3 className="w-4 h-4 text-accent" />
-          {language === 'zh' ? '使用统计' : 'Usage Statistics'}
+          {t('user.usagestatistics', language as Language)}
         </h4>
         <div className="flex gap-1">
           {[7, 30].map(d => (
@@ -195,7 +195,7 @@ export function UsagePanel({ language }: UsagePanelProps) {
                   : 'text-text-muted hover:bg-surface-hover'
               }`}
             >
-              {language === 'zh' ? `近${d}天` : `${d}D`}
+              {t('user.d', language as Language, { d: d })}
             </button>
           ))}
         </div>
@@ -207,25 +207,25 @@ export function UsagePanel({ language }: UsagePanelProps) {
         </div>
       ) : !usageStats ? (
         <div className="text-center py-6 text-sm text-text-muted">
-          {language === 'zh' ? '暂无使用数据' : 'No usage data'}
+          {t('user.nousagedata', language as Language)}
         </div>
       ) : (
         <>
           <div className="grid grid-cols-2 gap-2">
             <div className="p-3 rounded-lg bg-surface/50 border border-border/30">
-              <p className="text-sm text-text-muted mb-1">{language === 'zh' ? '总Token' : 'Total Tokens'}</p>
+              <p className="text-sm text-text-muted mb-1">{t('user.totaltokens', language as Language)}</p>
               <p className="text-lg font-bold text-text-primary font-mono">{formatTokenCount(usageStats.summary.totalTokens)}</p>
             </div>
             <div className="p-3 rounded-lg bg-surface/50 border border-border/30">
-              <p className="text-sm text-text-muted mb-1">{language === 'zh' ? '请求次数' : 'Requests'}</p>
+              <p className="text-sm text-text-muted mb-1">{t('user.requests', language as Language)}</p>
               <p className="text-lg font-bold text-text-primary font-mono">{usageStats.summary.totalRequests.toLocaleString()}</p>
             </div>
             <div className="p-3 rounded-lg bg-surface/50 border border-border/30">
-              <p className="text-sm text-text-muted mb-1">{language === 'zh' ? '输入Token' : 'Prompt'}</p>
+              <p className="text-sm text-text-muted mb-1">{t('user.prompt3', language as Language)}</p>
               <p className="text-base font-bold text-cyan-400 font-mono">{formatTokenCount(usageStats.summary.promptTokens)}</p>
             </div>
             <div className="p-3 rounded-lg bg-surface/50 border border-border/30">
-              <p className="text-sm text-text-muted mb-1">{language === 'zh' ? '输出Token' : 'Completion'}</p>
+              <p className="text-sm text-text-muted mb-1">{t('user.completion3', language as Language)}</p>
               <p className="text-base font-bold text-pink-400 font-mono">{formatTokenCount(usageStats.summary.completionTokens)}</p>
             </div>
           </div>
@@ -234,7 +234,7 @@ export function UsagePanel({ language }: UsagePanelProps) {
             <div className="rounded-lg bg-surface/30 border border-border/30 p-3">
               <p className="text-[11px] text-text-muted mb-2 flex items-center gap-1">
                 <TrendingUp className="w-3 h-3" />
-                {language === 'zh' ? '每日使用趋势' : 'Daily Usage Trend'}
+                {t('user.dailyusagetrend', language as Language)}
               </p>
               <div ref={dailyChartRef} className="w-full h-48" />
             </div>
@@ -246,11 +246,11 @@ export function UsagePanel({ language }: UsagePanelProps) {
         <div className="flex items-center justify-between">
           <h5 className="text-sm font-medium text-text-primary flex items-center gap-1.5">
             <Cpu className="w-4 h-4 text-accent/70" />
-            {language === 'zh' ? '使用明细' : 'Usage Details'}
+            {t('user.usagedetails', language as Language)}
           </h5>
           {recordsTotal > 0 && (
             <span className="text-xs text-text-muted">
-              {language === 'zh' ? `共 ${recordsTotal} 条` : `${recordsTotal} records`}
+              {t('user.records', language as Language, { recordsTotal: recordsTotal })}
             </span>
           )}
         </div>
@@ -261,7 +261,7 @@ export function UsagePanel({ language }: UsagePanelProps) {
           </div>
         ) : records.length === 0 ? (
           <div className="text-center py-8 text-sm text-text-muted">
-            {language === 'zh' ? '暂无使用明细' : 'No usage details'}
+            {t('user.nousagedetails', language as Language)}
           </div>
         ) : (
           <>
@@ -270,22 +270,22 @@ export function UsagePanel({ language }: UsagePanelProps) {
                 <thead>
                   <tr className="border-b border-border/40">
                     <th className="text-left py-2.5 px-3 text-xs font-medium text-text-muted whitespace-nowrap">
-                      {language === 'zh' ? '时间' : 'Time'}
+                      {t('user.time', language as Language)}
                     </th>
                     <th className="text-left py-2.5 px-3 text-xs font-medium text-text-muted whitespace-nowrap">
-                      {language === 'zh' ? '服务商' : 'Provider'}
+                      {t('user.provider', language as Language)}
                     </th>
                     <th className="text-left py-2.5 px-3 text-xs font-medium text-text-muted whitespace-nowrap">
-                      {language === 'zh' ? '模型' : 'Model'}
+                      {t('user.model', language as Language)}
                     </th>
                     <th className="text-right py-2.5 px-3 text-xs font-medium text-text-muted whitespace-nowrap">
-                      {language === 'zh' ? '输入Token' : 'Prompt'}
+                      {t('user.prompt4', language as Language)}
                     </th>
                     <th className="text-right py-2.5 px-3 text-xs font-medium text-text-muted whitespace-nowrap">
-                      {language === 'zh' ? '输出Token' : 'Completion'}
+                      {t('user.completion4', language as Language)}
                     </th>
                     <th className="text-right py-2.5 px-3 text-xs font-medium text-text-muted whitespace-nowrap">
-                      {language === 'zh' ? '总Token' : 'Total'}
+                      {t('user.total3', language as Language)}
                     </th>
                   </tr>
                 </thead>
@@ -293,7 +293,7 @@ export function UsagePanel({ language }: UsagePanelProps) {
                   {records.map(record => (
                     <tr key={record.id} className="border-b border-border/20 hover:bg-surface/30 transition-colors">
                       <td className="py-2.5 px-3 text-text-secondary whitespace-nowrap text-xs">
-                        {new Date(record.createdAt).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US', {
+                        {new Date(record.createdAt).toLocaleString(t('user.enus', language as Language), {
                           month: '2-digit',
                           day: '2-digit',
                           hour: '2-digit',
@@ -326,9 +326,7 @@ export function UsagePanel({ language }: UsagePanelProps) {
             {recordsTotalPages > 1 && (
               <div className="flex items-center justify-between pt-2">
                 <span className="text-xs text-text-muted">
-                  {language === 'zh'
-                    ? `第 ${recordsPage} / ${recordsTotalPages} 页`
-                    : `Page ${recordsPage} / ${recordsTotalPages}`}
+                  {t('user.page', language as Language, { recordsPage: recordsPage, recordsTotalPages: recordsTotalPages })}
                 </span>
                 <div className="flex items-center gap-1">
                   <button

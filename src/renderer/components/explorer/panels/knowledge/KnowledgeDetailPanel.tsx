@@ -10,6 +10,7 @@ import {
 } from '@intelligence/runtime/knowledgeService/providerTypes'
 import { SOURCE_CONFIG, formatDate } from './KnowledgeEntryCard'
 import { TipButton } from './TipButton'
+import { t, type Language } from '@renderer/i18n'
 
 type ViewMode = 'preview' | 'source' | 'edit'
 
@@ -18,7 +19,7 @@ interface DetailPanelProps {
   editingId: string | null
   editContent: string
   copiedId: string | null
-  language: string
+  language: Language
   onStartEdit: () => void
   onSaveEdit: () => void
   onCancelEdit: () => void
@@ -48,7 +49,6 @@ export function DetailPanel({
   const srcConfig = SOURCE_CONFIG[entry.source]
   const SrcIcon = srcConfig?.icon || Star
   const catConfig = KNOWLEDGE_CATEGORIES.find((c) => c.id === entry.category)
-  const t = (zh: string, en: string) => (language === 'zh' ? zh : en)
   const isEditing = editingId === entry.id
 
   return (
@@ -70,11 +70,11 @@ export function DetailPanel({
                   <span
                     className={`text-[11px] px-2 py-0.5 rounded-full ${catConfig.color} bg-current/10`}
                   >
-                    {t(catConfig.labelZh, catConfig.labelEn)}
+                    {language === 'zh' ? catConfig.labelZh : catConfig.labelEn}
                   </span>
                 )}
                 <span className="text-[11px] text-text-muted">
-                  {srcConfig ? t(srcConfig.zh, srcConfig.en) : entry.source}
+                  {srcConfig ? language === 'zh' ? srcConfig.zh : srcConfig.en : entry.source}
                 </span>
                 {entry.sourceDetail && (
                   <span className="text-[11px] text-text-muted truncate max-w-[160px]">
@@ -87,7 +87,7 @@ export function DetailPanel({
           <div className="flex items-center gap-1 flex-shrink-0">
             <TipButton
               onClick={onCopy}
-              tip={t('复制内容', 'Copy content')}
+              tip={t('app.copycontent', language as Language)}
               className="p-2 rounded-lg hover:bg-surface-hover"
             >
               {copiedId === entry.id ? (
@@ -100,14 +100,14 @@ export function DetailPanel({
               <>
                 <TipButton
                   onClick={onSaveEdit}
-                  tip={t('保存', 'Save')}
+                  tip={t('app.save2', language as Language)}
                   className="p-2 text-green-500 hover:bg-green-500/10 rounded-lg"
                 >
                   <Check className="w-4 h-4" />
                 </TipButton>
                 <TipButton
                   onClick={onCancelEdit}
-                  tip={t('取消', 'Cancel')}
+                  tip={t('app.cancel', language as Language)}
                   className="p-2 text-text-muted hover:text-red-500 hover:bg-red-500/10 rounded-lg"
                 >
                   <X className="w-4 h-4" />
@@ -119,7 +119,7 @@ export function DetailPanel({
                   <TipButton
                     onClick={() => setViewMode('preview')}
                     active={viewMode === 'preview'}
-                    tip={t('Markdown预览', 'Markdown Preview')}
+                    tip={t('app.markdownpreview', language as Language)}
                     className="p-1 rounded"
                   >
                     <Eye className="w-3.5 h-3.5" />
@@ -127,7 +127,7 @@ export function DetailPanel({
                   <TipButton
                     onClick={() => setViewMode('source')}
                     active={viewMode === 'source'}
-                    tip={t('源码视图', 'Source View')}
+                    tip={t('app.sourceview', language as Language)}
                     className="p-1 rounded"
                   >
                     <FileText className="w-3.5 h-3.5" />
@@ -138,7 +138,7 @@ export function DetailPanel({
                     setViewMode('edit')
                     onStartEdit()
                   }}
-                  tip={t('编辑', 'Edit')}
+                  tip={t('app.edit', language as Language)}
                   className="p-2 rounded-lg hover:bg-surface-hover"
                 >
                   <Edit2 className="w-4 h-4" />
@@ -162,7 +162,7 @@ export function DetailPanel({
             ) : (
               <ToggleLeft className="w-3.5 h-3.5" />
             )}
-            {entry.enabled ? t('已启用', 'Enabled') : t('已禁用', 'Disabled')}
+            {entry.enabled ? t('app.enabled', language as Language) : t('app.disabled', language as Language)}
           </button>
           <button
             onClick={onToggleStar}
@@ -175,14 +175,14 @@ export function DetailPanel({
             <Star
               className={`w-3.5 h-3.5 ${entry.starred ? 'fill-current' : ''}`}
             />
-            {entry.starred ? t('已收藏', 'Starred') : t('收藏', 'Star')}
+            {entry.starred ? t('app.starred', language as Language) : t('app.star', language as Language)}
           </button>
           <button
             onClick={onDelete}
             className="text-[12px] px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1.5 text-text-muted bg-surface/30 border border-border/20 hover:text-red-500 hover:border-red-300"
           >
             <Trash2 className="w-3.5 h-3.5" />
-            {t('删除', 'Delete')}
+            {t('app.delete', language as Language)}
           </button>
         </div>
       </div>
@@ -223,10 +223,10 @@ export function DetailPanel({
           <div className="flex items-center gap-3 ml-auto text-[11px] text-text-muted">
             <span className="flex items-center gap-1">
               <Clock className="w-3 h-3" />
-              {t('创建', 'Created')} {formatDate(entry.createdAt, language)}
+              {t('app.created', language as Language)} {formatDate(entry.createdAt, language)}
             </span>
             <span className="flex items-center gap-1">
-              {t('更新', 'Updated')} {formatDate(entry.updatedAt, language)}
+              {t('app.updated', language as Language)} {formatDate(entry.updatedAt, language)}
             </span>
           </div>
         </div>
@@ -235,16 +235,16 @@ export function DetailPanel({
   )
 }
 
-export function EmptyDetail({ language }: { language: string }) {
+export function EmptyDetail({ language }: { language: Language }) {
   const t = (zh: string, en: string) => (language === 'zh' ? zh : en)
   return (
     <div className="flex flex-col items-center justify-center h-full text-text-muted">
       <Star className="w-16 h-16 mb-4 opacity-30" />
       <p className="text-[14px] font-medium">
-        {t('选择一条知识查看详情', 'Select an entry to view details')}
+        {t('app.selectanentryto', language as Language)}
       </p>
       <p className="text-[12px] mt-1 text-text-muted">
-        {t('或点击 + 添加新知识', 'Or click + to add new knowledge')}
+        {t('app.orclicktoadd', language as Language)}
       </p>
     </div>
   )

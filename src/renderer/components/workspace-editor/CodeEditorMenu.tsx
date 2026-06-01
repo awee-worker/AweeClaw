@@ -6,7 +6,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { api } from '../../adapters/electronBridge'
-import { t, TranslationKey } from '@renderer/i18n'
+import { t } from '@renderer/i18n'
 import { getIncomingCalls, getOutgoingCalls } from '@services/languageServerAdapter'
 import { lspUriToPath } from '@shared/toolkit/uriHelper'
 import { getFileName } from '@shared/toolkit/pathHelper'
@@ -23,7 +23,7 @@ const CALL_HIERARCHY_SUPPORTED_LANGUAGES = [
 
 interface MenuItem {
   id: string
-  labelKey: TranslationKey
+  labelKey: string
   shortcut?: string
   action: () => void
   divider?: boolean
@@ -347,8 +347,8 @@ export default function EditorContextMenu({ x, y, editor, onClose }: EditorConte
   // 渲染 Call Hierarchy 结果
   if (callHierarchyResult) {
     const title = callHierarchyResult.type === 'callers' 
-      ? t('ctxFindCallers', language) 
-      : t('ctxFindCallees', language)
+      ? t('editor.ctxFindCallers', language) 
+      : t('editor.ctxFindCallees', language)
     
     return (
       <div

@@ -12,6 +12,7 @@ import { OverlayDialog } from '../ui'
 import { motion } from 'framer-motion'
 import { BRAND } from '@shared/brand'
 import { api } from '../../adapters/electronBridge'
+import { t, type Language } from '@renderer/i18n'
 
 interface AboutDialogProps {
     onClose: () => void
@@ -92,9 +93,7 @@ export default function AboutDialog({ onClose }: AboutDialogProps) {
                             AweeClaw
                         </h1>
                         <p className="text-sm text-text-secondary leading-relaxed font-medium opacity-80">
-                            {language === 'zh'
-                                ? '为下一代开发者打造的 AI 原生编辑器。'
-                                : 'AI-Native Editor built for the next generation of developers.'}
+                            {t('modals.ainativeeditorbuiltforthe', language as Language)}
                         </p>
                     </motion.div>
 
@@ -105,9 +104,9 @@ export default function AboutDialog({ onClose }: AboutDialogProps) {
                         transition={{ delay: 0.3, duration: 0.5 }}
                         className="flex gap-3 mt-10"
                     >
-                        <FeaturePill icon={Code2} label={language === 'zh' ? '智能补全' : 'Intelligent'} />
-                        <FeaturePill icon={Cpu} label={language === 'zh' ? '深度理解' : 'Deep Context'} />
-                        <FeaturePill icon={Zap} label={language === 'zh' ? '极速响应' : 'Blazing Fast'} />
+                        <FeaturePill icon={Code2} label={t('modals.intelligent', language as Language)} />
+                        <FeaturePill icon={Cpu} label={t('modals.deepcontext', language as Language)} />
+                        <FeaturePill icon={Zap} label={t('modals.blazingfast', language as Language)} />
                     </motion.div>
 
                     {/* Contributors */}
@@ -118,7 +117,7 @@ export default function AboutDialog({ onClose }: AboutDialogProps) {
                         className="mt-8 flex flex-col items-center gap-3"
                     >
                         <h3 className="text-[11px] font-bold text-text-muted uppercase tracking-wider opacity-60">
-                            {language === 'zh' ? '贡献者' : 'Contributors'}
+                            {t('modals.contributors', language as Language)}
                         </h3>
                         <div className="flex items-center -space-x-2 hover:space-x-1 transition-all duration-300">
                             {CONTRIBUTORS.map((c) => (
