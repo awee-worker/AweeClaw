@@ -438,7 +438,7 @@ const ChatInput = memo(function ChatInput({
             onPaste={onPaste}
             onFocus={() => setIsFocused(true)}
             onBlur={() => setIsFocused(false)}
-            placeholder={hasApiKey ? t('pasteImagesHint', language) : t('configureApiKey', language)}
+            placeholder={hasApiKey ? t('chatInputPlaceholder', language) : t('configureApiKey', language)}
             disabled={!hasApiKey}
             className="w-full bg-transparent border-none p-0 py-2.5
                        text-[15px] text-text-primary placeholder-text-muted/40 resize-none

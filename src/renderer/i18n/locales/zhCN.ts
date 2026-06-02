@@ -2342,6 +2342,7 @@ export const zh = {
   'openFolder': '打开文件夹',
   'paste': '粘贴',
   'pasteImagesHint': '粘贴图片以上传',
+  'chatInputPlaceholder': '发消息或者发个文档给我吧，输入@选择技能，支持Shift+Enter换行',
   'pathCopied': '路径已复制',
   'recentSearches': '最近搜索',
   'refresh': '刷新',

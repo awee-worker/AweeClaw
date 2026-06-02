@@ -1478,6 +1478,11 @@ export default function ChatPanel() {
             </AnimatePresence>
           </div>
 
+          </>
+          )}
+          </>
+          )}
+
           {/* File Mention Popup */}
           {
             showFileMention && (
@@ -1503,11 +1508,6 @@ export default function ChatPanel() {
               />
             )
           }
-
-          </>
-          )}
-          </>
-          )}
 
           {/* Bottom TextField Area - Unified Tray */}
           {!deleteSelectionMode && messages.length > 0 && (

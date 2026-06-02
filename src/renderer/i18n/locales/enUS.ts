@@ -2343,6 +2343,7 @@ export const en = {
   'openFolder': 'Open Folder',
   'paste': 'Paste',
   'pasteImagesHint': 'Paste images to upload',
+  'chatInputPlaceholder': 'Send a message or share a document, type @ for skills, Shift+Enter for new line',
   'pathCopied': 'Path copied',
   'recentSearches': 'Recent Searches',
   'refresh': 'Refresh',
