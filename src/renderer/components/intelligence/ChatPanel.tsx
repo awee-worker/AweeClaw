@@ -17,7 +17,7 @@ import { useStore, useModeStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { BRAND } from '@shared/brand'
 import { useAgentActions, useAgentCommands, useAgentViewState } from '@hooks/useAgent'
-import { useChatScrollController } from '@hooks'
+import { useChatScrollController, useAutoSpeak } from '@hooks'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { EventBus } from '@intelligence/engine/EventDispatcher'
 import { knowledgeExtractor } from '@intelligence/runtime/knowledgeService/extractor'
@@ -223,6 +223,8 @@ export default function ChatPanel() {
     }
     prevStreamingRef.current = isStreaming
   }, [isStreaming])
+
+  useAutoSpeak({ isStreaming, messages })
 
   // 缓存过滤后的消息列表，避免每次渲染都创建新数组
   const filteredMessages = useMemo(
