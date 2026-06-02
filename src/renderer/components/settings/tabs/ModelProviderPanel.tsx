@@ -22,8 +22,10 @@ import { LLM_DEFAULTS } from '@configuration/defaultProfile'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
 import { toast } from '@components/foundation/NotificationProvider'
 import { ActionButton, TextField, DropdownSelector, ToggleSwitch } from '@components/ui'
+import { ProviderIcon } from '@components/ui/ProviderIcon'
 import { ProviderSettingsProps } from '../preferencesTypes'
-import { isCustomProvider } from '@renderer/types/modelProvider'
+import { isCustomProvider, type ModelConfig, type ModelGenerationParams } from '@renderer/types/modelProvider'
+import { ModelCardGrid } from './ModelCardGrid'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import type { CloudProviderModel } from '@store/slices/authSlice'
@@ -731,7 +733,6 @@ export function ModelProviderPanel({
   selectedProvider,
   providers,
   language,
-  setProvider,
 }: ProviderSettingsProps) {
   const [newModelName, setNewModelName] = useState('')
   const [isAddingCustom, setIsAddingCustom] = useState(false)
@@ -982,13 +983,18 @@ export function ModelProviderPanel({
     }
 
     setLocalProviderConfigs(updatedConfigs)
-    setProvider(localConfig.provider, updatedConfigs[localConfig.provider])
 
     toast.success(t('provider.addedModels', language as Language, { count: newModels.length }))
-  }, [language, localConfig.provider, localProviderConfigs, setLocalProviderConfigs, setProvider])
+  }, [language, localConfig.provider, localProviderConfigs, setLocalProviderConfigs])
 
   // 删除模型从本地配置
-  const handleRemoveModel = (model: string) => {
+  const handleRemoveModel = async (model: string) => {
+    const confirmed = await globalConfirm({
+      title: t('provider.removedModel', language as Language, { name: model }),
+      message: t('provider.deleteProviderMessage', language as Language, { name: model }),
+      variant: 'danger',
+    })
+    if (!confirmed) return
     handleBatchRemoveModels([model])
   }
 
@@ -997,23 +1003,74 @@ export function ModelProviderPanel({
     const currentConfig = localProviderConfigs[localConfig.provider]
     if (!currentConfig) return
 
+    const updatedModelConfigs = { ...(currentConfig.modelConfigs || {}) }
+    for (const m of models) {
+      delete updatedModelConfigs[m]
+    }
+
     const updatedConfigs = {
       ...localProviderConfigs,
       [localConfig.provider]: {
         ...currentConfig,
-        customModels: (currentConfig.customModels || []).filter(m => !models.includes(m))
+        customModels: (currentConfig.customModels || []).filter(m => !models.includes(m)),
+        modelConfigs: updatedModelConfigs,
       }
     }
 
     setLocalProviderConfigs(updatedConfigs)
-    setProvider(localConfig.provider, updatedConfigs[localConfig.provider])
+
+    if (models.includes(localConfig.model || '')) {
+      const remaining = (currentConfig.customModels || []).filter(m => !models.includes(m))
+      setLocalConfig(prev => ({
+        ...prev,
+        model: remaining.length > 0 ? remaining[0] : '',
+      }))
+    }
 
     if (models.length === 1) {
       toast.success(t('provider.removedModel', language as Language, { name: models[0] }))
     } else {
       toast.success(t('provider.clearedModels', language as Language, { count: models.length }))
     }
-  }, [language, localConfig.provider, localProviderConfigs, setLocalProviderConfigs, setProvider])
+  }, [language, localConfig.model, localConfig.provider, localProviderConfigs, setLocalConfig, setLocalProviderConfigs])
+
+  const handleUpdateModelConfig = useCallback((model: string, config: ModelConfig) => {
+    const currentConfig = localProviderConfigs[localConfig.provider]
+    if (!currentConfig) return
+
+    const updatedConfigs = {
+      ...localProviderConfigs,
+      [localConfig.provider]: {
+        ...currentConfig,
+        modelConfigs: {
+          ...(currentConfig.modelConfigs || {}),
+          [model]: config,
+        },
+      },
+    }
+
+    setLocalProviderConfigs(updatedConfigs)
+  }, [localConfig.provider, localProviderConfigs, setLocalProviderConfigs])
+
+  const providerGenerationParams = useMemo((): Partial<ModelGenerationParams> => {
+    return {
+      maxTokens: localConfig.maxTokens ?? LLM_DEFAULTS.maxTokens,
+      temperature: localConfig.temperature ?? LLM_DEFAULTS.temperature,
+      topP: localConfig.topP ?? LLM_DEFAULTS.topP,
+      topK: localConfig.topK,
+      frequencyPenalty: localConfig.frequencyPenalty,
+      presencePenalty: localConfig.presencePenalty,
+      stopSequences: localConfig.stopSequences,
+      seed: localConfig.seed,
+      logitBias: localConfig.logitBias,
+      enableThinking: localConfig.enableThinking,
+      thinkingBudget: localConfig.thinkingBudget,
+      reasoningEffort: localConfig.reasoningEffort,
+      maxRetries: localConfig.maxRetries,
+      toolChoice: (typeof localConfig.toolChoice === 'string' ? localConfig.toolChoice : undefined) as 'auto' | 'none' | 'required' | undefined,
+      parallelToolCalls: localConfig.parallelToolCalls,
+    }
+  }, [localConfig])
 
   // 选择内置 Provider
   const handleSelectBuiltinProvider = (providerId: string, skipSaveCurrent = false) => {
@@ -1171,12 +1228,6 @@ export function ModelProviderPanel({
   const availableModels = useMemo(() => {
     const modelsSet = new Set<string>()
 
-    if (isCustomSelected && selectedCustomConfig) {
-      ;(selectedCustomConfig.customModels || []).forEach((model: string) => modelsSet.add(model))
-    } else if (selectedProvider) {
-      selectedProvider.models.forEach((model: string) => modelsSet.add(model))
-    }
-
     const localCustomModels = localProviderConfigs[localConfig.provider]?.customModels || []
     localCustomModels.forEach((model: string) => modelsSet.add(model))
 
@@ -1185,16 +1236,12 @@ export function ModelProviderPanel({
     }
 
     return Array.from(modelsSet)
-  }, [isCustomSelected, localConfig.model, localConfig.provider, localProviderConfigs, selectedCustomConfig, selectedProvider])
-  const availableModelOptions = useMemo(
-    () => availableModels.map((model) => ({ value: model, label: model })),
-    [availableModels],
-  )
+  }, [localConfig.model, localConfig.provider, localProviderConfigs])
 
   return (
-    <div className="flex gap-5 animate-fade-in pb-10">
+    <div className="flex gap-5 animate-fade-in h-[calc(100vh-180px)]">
       {/* 左侧边栏：运行模式 + 服务商 */}
-      <div className="w-52 flex-shrink-0 space-y-3 pr-4 border-r border-border/30">
+      <div className="w-52 flex-shrink-0 space-y-3 pr-4 border-r border-border/30 overflow-y-auto custom-scrollbar">
         {/* 运行模式 */}
         <div className="space-y-2">
           <h4 className="text-[11px] font-semibold text-text-muted uppercase tracking-wider">
@@ -1279,9 +1326,15 @@ export function ModelProviderPanel({
                     localConfig.provider === p.id
                       ? 'bg-accent/10 text-accent border border-accent/20'
                       : 'hover:bg-surface/30 text-text-secondary border border-transparent'
-                  }`}
+                  } ${localProviderConfigs[p.id]?.enabled !== true ? 'opacity-50' : ''}`}
                 >
+                  <ProviderIcon providerId={p.id} size={16} className="flex-shrink-0" />
                   <span className="font-medium truncate flex-1">{p.name}</span>
+                  {localProviderConfigs[p.id]?.enabled !== true && (
+                    <span className="text-[9px] text-text-muted bg-surface-active/50 px-1.5 py-0.5 rounded">
+                      {t('provider.providerDisabled', language as Language)}
+                    </span>
+                  )}
                   {localConfig.provider === p.id && (
                     <Check className="w-3 h-3 flex-shrink-0" strokeWidth={3} />
                   )}
@@ -1299,10 +1352,11 @@ export function ModelProviderPanel({
                       localConfig.provider === id
                         ? 'bg-accent/10 text-accent border border-accent/20'
                         : 'hover:bg-surface/30 text-text-secondary border border-transparent'
-                    }`}
+                    } ${config.enabled !== true ? 'opacity-50' : ''}`}
                   >
                     {isEditing ? (
                       <>
+                        <ProviderIcon providerId={id} size={16} className="flex-shrink-0" />
                         <input
                           value={editingProviderName}
                           onChange={(e) => setEditingProviderName(e.target.value)}
@@ -1332,7 +1386,13 @@ export function ModelProviderPanel({
                       </>
                     ) : (
                       <>
+                        <ProviderIcon providerId={id} size={16} className="flex-shrink-0" />
                         <span className="font-medium truncate flex-1">{displayName}</span>
+                        {config.enabled !== true && (
+                          <span className="text-[9px] text-text-muted bg-surface-active/50 px-1.5 py-0.5 rounded">
+                            {t('provider.providerDisabled', language as Language)}
+                          </span>
+                        )}
                         {localConfig.provider === id && (
                           <Check className="w-3 h-3 flex-shrink-0" strokeWidth={3} />
                         )}
@@ -1373,8 +1433,48 @@ export function ModelProviderPanel({
       </div>
 
       {/* 右侧内容：配置详情 */}
-      <div className="flex-1 min-w-0 space-y-4">
+      <div className="flex-1 min-w-0 space-y-4 overflow-y-auto custom-scrollbar pr-1">
           <>
+          {/* 服务商启用开关 */}
+          {!isCloudMode && (() => {
+            const currentProviderConfig = localProviderConfigs[localConfig.provider]
+            const providerEnabled = currentProviderConfig?.enabled === true
+            return (
+              <div className="flex items-center justify-between rounded-xl border border-border/50 bg-surface/20 px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <div className={`p-1.5 rounded-md ${providerEnabled ? 'bg-green-500/10 text-green-500' : 'bg-surface-active/50 text-text-muted'}`}>
+                    <Server className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-semibold text-text-primary">
+                      {providerEnabled
+                        ? t('provider.enableProvider', language as Language)
+                        : t('provider.disableProvider', language as Language)}
+                    </span>
+                    {!providerEnabled && (
+                      <p className="text-[10px] text-text-muted mt-0.5">
+                        {t('provider.providerDisabled', language as Language)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <ToggleSwitch
+                  checked={providerEnabled}
+                  switchSize="sm"
+                  onChange={() => {
+                    setLocalProviderConfigs({
+                      ...localProviderConfigs,
+                      [localConfig.provider]: {
+                        ...(currentProviderConfig || {}),
+                        enabled: !providerEnabled,
+                      },
+                    })
+                  }}
+                />
+              </div>
+            )
+          })()}
+
           {/* 认证 & 网络配置 - 仅本地模式 */}
           {!isCloudMode && (
           <section className="rounded-2xl border border-border/50 bg-surface/20 p-5 backdrop-blur-xl shadow-sm relative overflow-hidden group">
@@ -1531,52 +1631,44 @@ export function ModelProviderPanel({
               </div>
 
               <div className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-text-secondary">
-                    {t('provider.selectModel', language as Language)}
-                  </label>
-                  <DropdownSelector
-                    value={localConfig.model}
-                    onChange={(value) => setLocalConfig({ ...localConfig, model: value })}
-                    options={isCloudMode ? cloudModelOptions : availableModelOptions}
-                    className="w-full bg-background/50 border-border"
-                  />
-                </div>
-
                 {!isCloudMode && (
-                <div className="pt-2">
-                  <div className="flex gap-2">
-                    <TextField
-                      value={newModelName}
-                      onChange={(e) => setNewModelName(e.target.value)}
-                      placeholder={t('provider.enterModelName', language as Language)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleAddModel()}
-                      className="flex-1 h-9 text-xs bg-background/50 border-border"
-                    />
-                    <ActionButton variant="secondary" size="sm" onClick={() => handleAddModel()} disabled={!newModelName.trim()} className="h-9 px-3">
-                      <Plus className="w-4 h-4" />
-                    </ActionButton>
-                  </div>
-
-                  {(localProviderConfigs[localConfig.provider]?.customModels?.length ?? 0) > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-3">
-                      {localProviderConfigs[localConfig.provider]?.customModels?.map((model: string) => (
-                        <div
-                          key={model}
-                          className="group flex items-center gap-1.5 px-2 py-1 bg-surface/50 rounded-md border border-border text-xs text-text-secondary hover:border-border"
-                        >
-                          <span>{model}</span>
-                          <button
-                            onClick={() => handleRemoveModel(model)}
-                            className="text-text-muted hover:text-red-400 opacity-50 group-hover:opacity-100 transition-opacity"
-                          >
-                            <Trash className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                <div className="flex gap-2">
+                  <TextField
+                    value={newModelName}
+                    onChange={(e) => setNewModelName(e.target.value)}
+                    placeholder={t('provider.enterModelName', language as Language)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddModel()}
+                    className="flex-1 h-9 text-xs bg-background/50 border-border"
+                  />
+                  <ActionButton variant="secondary" size="sm" onClick={() => handleAddModel()} disabled={!newModelName.trim()} className="h-9 px-3">
+                    <Plus className="w-4 h-4" />
+                  </ActionButton>
                 </div>
+                )}
+
+                {isCloudMode ? (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-text-secondary">
+                      {t('provider.selectModel', language as Language)}
+                    </label>
+                    <DropdownSelector
+                      value={localConfig.model}
+                      onChange={(value) => setLocalConfig({ ...localConfig, model: value })}
+                      options={cloudModelOptions}
+                      className="w-full bg-background/50 border-border"
+                    />
+                  </div>
+                ) : (
+                  <ModelCardGrid
+                    models={availableModels}
+                    selectedModel={localConfig.model ?? ''}
+                    onSelectModel={(model) => setLocalConfig({ ...localConfig, model })}
+                    onRemoveModel={handleRemoveModel}
+                    modelConfigs={localProviderConfigs[localConfig.provider]?.modelConfigs || {}}
+                    onUpdateModelConfig={handleUpdateModelConfig}
+                    language={language as Language}
+                    providerGenerationParams={providerGenerationParams}
+                  />
                 )}
               </div>
             </div>
@@ -1598,7 +1690,7 @@ export function ModelProviderPanel({
                     {t('provider.generation', language as Language)}
                   </h5>
                   <p className="text-[11px] text-text-muted mt-0.5">
-                    {t('provider.generationDesc', language as Language)}
+                    {t('provider.generationDefaultDesc', language as Language)}
                   </p>
                 </div>
               </div>

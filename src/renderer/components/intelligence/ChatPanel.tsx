@@ -1295,7 +1295,7 @@ export default function ChatPanel() {
         }}
       />
     )),
-    Footer: () => <div className="h-4" />,
+    Footer: () => <div className="h-28" />,
     EmptyPlaceholder: () => <div />
   }), [attachScrollerNode])
 

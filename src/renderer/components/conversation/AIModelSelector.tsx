@@ -4,16 +4,7 @@ import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { BUILTIN_PROVIDERS, getBuiltinProvider } from '@shared/configuration/aiProviders'
 import { backendApi, getServerUrl } from '@services/backendApi'
-
-const PROVIDER_ICONS: Record<string, string> = {
-  openai: '🤖',
-  anthropic: '🧠',
-  gemini: '✨',
-  deepseek: '🔍',
-  groq: '⚡',
-  mistral: '🌀',
-  ollama: '🦙',
-}
+import { ProviderIcon } from '@components/ui/ProviderIcon'
 
 interface FlatModel {
   id: string
@@ -69,12 +60,6 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
     }
   }, [isOpen])
 
-  const hasApiKey = useCallback((providerId: string) => {
-    const config = providerConfigs[providerId]
-    if (config?.apiKey) return true
-    return llmConfig.provider === providerId && !!llmConfig.apiKey
-  }, [llmConfig, providerConfigs])
-
   const fetchCloudModels = useCallback(() => {
     if (cloudMode !== 'cloud' || !isAuthenticated) {
       setCloudModels([])
@@ -124,13 +109,16 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
     const seen = new Set<string>()
 
     for (const [providerId, provider] of Object.entries(BUILTIN_PROVIDERS)) {
-      if (!hasApiKey(providerId)) continue
-
       const providerConfig = providerConfigs[providerId]
+      if (providerConfig?.enabled !== true) continue
+      if (!providerConfig?.apiKey && !llmConfig.apiKey && providerId !== 'ollama') continue
+
       const customModels = providerConfig?.customModels || []
       const builtinModelIds = new Set(provider.models)
+      const modelConfigs = providerConfig?.modelConfigs || {}
 
       for (const id of provider.models) {
+        if (modelConfigs[id]?.enabled !== true) continue
         const key = `${providerId}::${id}`
         if (!seen.has(key)) {
           seen.add(key)
@@ -139,6 +127,7 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
       }
 
       for (const id of customModels) {
+        if (modelConfigs[id]?.enabled !== true) continue
         if (builtinModelIds.has(id)) continue
         const key = `${providerId}::${id}`
         if (!seen.has(key)) {
@@ -150,12 +139,15 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
 
     for (const [providerId, config] of Object.entries(providerConfigs)) {
       if (!providerId.startsWith('custom-')) continue
+      if (config?.enabled !== true) continue
       if (!config?.apiKey) continue
 
       const modelIds = config.customModels || []
       const providerName = config.displayName || providerId
+      const modelConfigs = config?.modelConfigs || {}
 
       for (const id of modelIds) {
+        if (modelConfigs[id]?.enabled !== true) continue
         const key = `${providerId}::${id}`
         if (!seen.has(key)) {
           seen.add(key)
@@ -165,11 +157,7 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
     }
 
     return models
-  }, [providerConfigs, hasApiKey, cloudMode, isAuthenticated, cloudModels])
-
-  const getIcon = useCallback((providerId: string) => {
-    return PROVIDER_ICONS[providerId] || '🔮'
-  }, [])
+  }, [providerConfigs, llmConfig.apiKey, cloudMode, isAuthenticated, cloudModels])
 
   const currentModel = useMemo(() => {
     return allModels.find(m => m.providerId === llmConfig.provider && m.id === llmConfig.model) || allModels[0] || null
@@ -232,7 +220,7 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
         {cloudMode === 'cloud' && isAuthenticated ? (
           <Cloud className="w-3 h-3 text-accent flex-shrink-0" />
         ) : (
-          <span className="text-[11px] grayscale opacity-80 flex-shrink-0">{getIcon(currentModel.providerId)}</span>
+          <ProviderIcon providerId={currentModel.providerId} size={14} className="opacity-80 flex-shrink-0" />
         )}
         <span className="truncate max-w-[200px]" title={currentModel.name}>
           {currentModel.name}
@@ -275,17 +263,12 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
                     `}
                   >
                     <span className="flex items-center gap-2 min-w-0">
-                      <span className="text-[11px] grayscale opacity-60 flex-shrink-0">
+                      <span className="flex-shrink-0 opacity-60">
                         {cloudMode === 'cloud' && isAuthenticated
                           ? <Cloud className="w-3 h-3 text-accent" />
-                          : getIcon(model.providerId)}
+                          : <ProviderIcon providerId={model.providerId} size={14} />}
                       </span>
                       <span className="truncate" title={model.name}>{model.name}</span>
-                      {model.isCustom && (
-                        <span className="flex-shrink-0 px-1.5 py-0.5 text-[10px] bg-purple-500/10 text-purple-500 rounded border border-purple-500/20">
-                          Custom
-                        </span>
-                      )}
                     </span>
                     {isSelected && <Check className="w-3.5 h-3.5 flex-shrink-0 ml-2" />}
                   </button>

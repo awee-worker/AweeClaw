@@ -52,6 +52,8 @@ import { generateDefaultSearchEngineConfigs } from '@shared/configuration/search
 export interface ProviderModelConfig extends Omit<ProviderConfig, 'protocol'> {
   customModels?: string[]
   protocol?: ApiProtocol
+  modelConfigs?: Record<string, import('@renderer/types/modelProvider').ModelConfig>
+  enabled?: boolean
 }
 
 export interface ScenarioPreferences {

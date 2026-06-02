@@ -252,6 +252,13 @@ function createGroupedAPI() {
       getUserDataPath: () => raw.getUserDataPath(),
       getRecentLogs: () => raw.getRecentLogs(),
       onChanged: (callback: Parameters<typeof raw.onSettingsChanged>[0]) => raw.onSettingsChanged(callback),
+      // SQLite 设置数据库
+      dbInitialize: () => raw.settingsDbInitialize(),
+      dbLoadAll: () => raw.settingsDbLoadAll(),
+      dbSaveAll: (params: any) => raw.settingsDbSaveAll(params),
+      dbGetProvider: (providerId: string) => raw.settingsDbGetProvider(providerId),
+      dbDeleteProvider: (providerId: string) => raw.settingsDbDeleteProvider(providerId),
+      dbGetPath: () => raw.settingsDbGetPath(),
     },
 
     // LLM

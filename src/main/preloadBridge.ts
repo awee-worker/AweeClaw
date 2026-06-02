@@ -238,6 +238,14 @@ export interface ElectronAPI {
   getWhitelist: () => Promise<{ shell: string[]; git: string[] }>
   resetWhitelist: () => Promise<{ shell: string[]; git: string[] }>
 
+  // Settings DB (SQLite)
+  settingsDbInitialize: () => Promise<{ success: boolean; dbPath?: string; error?: string }>
+  settingsDbLoadAll: () => Promise<{ providerConfigs: Record<string, any>; llmBehavior: Record<string, any>; appSettings: Record<string, any>; currentProviderId: string | null }>
+  settingsDbSaveAll: (params: any) => Promise<{ success: boolean; error?: string }>
+  settingsDbGetProvider: (providerId: string) => Promise<any>
+  settingsDbDeleteProvider: (providerId: string) => Promise<{ success: boolean; error?: string }>
+  settingsDbGetPath: () => Promise<string>
+
   // LLM
   sendMessage: (params: LLMSendMessageParams) => Promise<void>
   compactContext: (params: LLMSendMessageParams) => Promise<{ content?: string; usage?: any; metadata?: any; error?: string; code?: string }>
@@ -680,6 +688,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   resetWhitelist: () => ipcRenderer.invoke('settings:resetWhitelist'),
   getUserDataPath: () => ipcRenderer.invoke('settings:getUserDataPath'),
   getRecentLogs: () => ipcRenderer.invoke('settings:getRecentLogs'),
+
+  // Settings DB (SQLite)
+  settingsDbInitialize: () => ipcRenderer.invoke('settings-db:initialize'),
+  settingsDbLoadAll: () => ipcRenderer.invoke('settings-db:loadAll'),
+  settingsDbSaveAll: (params: any) => ipcRenderer.invoke('settings-db:saveAll', params),
+  settingsDbGetProvider: (providerId: string) => ipcRenderer.invoke('settings-db:getProvider', providerId),
+  settingsDbDeleteProvider: (providerId: string) => ipcRenderer.invoke('settings-db:deleteProvider', providerId),
+  settingsDbGetPath: () => ipcRenderer.invoke('settings-db:getPath'),
 
   sendMessage: (params: LLMSendMessageParams) => ipcRenderer.invoke('llm:sendMessage', params),
   compactContext: (params: LLMSendMessageParams) => ipcRenderer.invoke('llm:compactContext', params),

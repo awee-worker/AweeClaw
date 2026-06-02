@@ -408,6 +408,13 @@ export interface ElectronAPI {
   resetWhitelist: () => Promise<{ shell: string[]; git: string[] }>
   getUserDataPath: () => Promise<string>
   getRecentLogs: () => Promise<string>
+  // Settings DB (SQLite)
+  settingsDbInitialize: () => Promise<{ success: boolean; dbPath?: string; error?: string }>
+  settingsDbLoadAll: () => Promise<{ providerConfigs: Record<string, any>; llmBehavior: Record<string, any>; appSettings: Record<string, any>; currentProviderId: string | null }>
+  settingsDbSaveAll: (params: any) => Promise<{ success: boolean; error?: string }>
+  settingsDbGetProvider: (providerId: string) => Promise<any>
+  settingsDbDeleteProvider: (providerId: string) => Promise<{ success: boolean; error?: string }>
+  settingsDbGetPath: () => Promise<string>
   // LLM
   sendMessage: (params: LLMSendMessageParams) => Promise<void>
   compactContext: (params: LLMSendMessageParams) => Promise<{

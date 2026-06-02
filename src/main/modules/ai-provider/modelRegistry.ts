@@ -204,8 +204,60 @@ function createBuiltinModel(route: ResolvedModelRoute): LanguageModel {
             return google(route.model)
         }
 
-        default:
-            throw new Error(`Unsupported builtin provider: ${route.providerId}`)
+        default: {
+            if (!route.baseUrl) {
+                throw new Error(`Builtin provider ${route.providerId} requires baseUrl`)
+            }
+
+            switch (route.protocol) {
+                case 'openai': {
+                    const provider = createOpenAICompatible({
+                        name: route.providerId,
+                        apiKey: route.apiKey,
+                        baseURL: route.baseUrl,
+                        supportsStructuredOutputs: supportsFullOpenAIStyleFeatures(
+                            route.providerId,
+                            route.protocol,
+                            route.openAICompatibilityProfile,
+                        ),
+                    })
+                    return provider(route.model)
+                }
+
+                case 'openai-responses': {
+                    const openai = createOpenAI({
+                        apiKey: route.apiKey,
+                        baseURL: route.baseUrl,
+                    })
+                    return openai.responses(route.model)
+                }
+
+                case 'anthropic': {
+                    const anthropic = createAnthropic({
+                        apiKey: route.apiKey,
+                        baseURL: route.baseUrl,
+                    })
+                    return anthropic(route.model)
+                }
+
+                case 'google': {
+                    const google = createGoogleGenerativeAI({
+                        apiKey: route.apiKey,
+                        baseURL: route.baseUrl,
+                    })
+                    return google(route.model)
+                }
+
+                default: {
+                    const fallback = createOpenAICompatible({
+                        name: route.providerId,
+                        apiKey: route.apiKey,
+                        baseURL: route.baseUrl,
+                    })
+                    return fallback(route.model)
+                }
+            }
+        }
     }
 }
 

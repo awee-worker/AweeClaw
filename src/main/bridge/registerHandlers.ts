@@ -28,6 +28,7 @@ import { registerDataIpcHandlers } from './data' // 数据服务
 import { registerScenarioDbIpcHandlers } from './scenarioDb' // 场景数据库
 import { registerScenarioInstallIpcHandlers, registerScenarioMarketplaceHandlers } from './scenarioInstall' // 场景安装
 import { registerAuditHandlers, cleanupAuditHandlers } from './audit' // 审计日志
+import { registerSettingsDbIpcHandlers } from './settingsDb' // 设置数据库
 
 // 安全模块
 import {
@@ -186,6 +187,9 @@ export function registerAllHandlers(context: IPCContext) {
 
   // 审计日志
   registerOnce('audit', () => registerAuditHandlers())
+
+  // 设置数据库
+  registerOnce('settings-db', () => registerSettingsDbIpcHandlers(preferencesStore))
 
   logger.ipc.info(`[Security] 所有安全IPC处理器已注册 (${registeredHandlers.size} 个)`)
 }
