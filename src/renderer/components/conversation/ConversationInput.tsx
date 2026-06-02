@@ -472,35 +472,39 @@ const ChatInput = memo(function ChatInput({
                   e.target.value = ''
                 }}
               />
-              <ActionButton
-                variant="ghost"
-                size="icon"
-                onClick={() => fileInputRef.current?.click()}
-                title={t('app.uploadattachment', language as Language)}
-                className="rounded-xl w-8 h-8 hover:bg-surface-active text-text-muted hover:text-text-primary transition-all active:scale-95"
-              >
-                <Paperclip className="w-4 h-4 opacity-70 group-hover:opacity-100" />
-              </ActionButton>
+              {voiceInput.state === 'idle' && (
+                <>
+                  <ActionButton
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => fileInputRef.current?.click()}
+                    title={t('app.uploadattachment', language as Language)}
+                    className="rounded-xl w-8 h-8 hover:bg-surface-active text-text-muted hover:text-text-primary transition-all active:scale-95"
+                  >
+                    <Paperclip className="w-4 h-4 opacity-70 group-hover:opacity-100" />
+                  </ActionButton>
 
-              <button
-                onClick={handleOptimize}
-                disabled={!input.trim() || isOptimizing || isStreaming || !hasApiKey}
-                title={t('app.optimizeinput', language as Language)}
-                className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300
-                  ${isOptimizing
-                    ? 'bg-accent/10 text-accent border border-accent/20'
-                    : input.trim() && hasApiKey && !isStreaming
-                      ? 'bg-surface/50 text-text-muted hover:text-accent hover:bg-accent/10 border border-border/30 hover:border-accent/20 active:scale-95'
-                      : 'bg-transparent text-text-muted/30 cursor-not-allowed border border-transparent'
-                  }
-                  `}
-              >
-                {isOptimizing ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Sparkles className="w-4 h-4" />
-                )}
-              </button>
+                  <button
+                    onClick={handleOptimize}
+                    disabled={!input.trim() || isOptimizing || isStreaming || !hasApiKey}
+                    title={t('app.optimizeinput', language as Language)}
+                    className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300
+                      ${isOptimizing
+                        ? 'bg-accent/10 text-accent border border-accent/20'
+                        : input.trim() && hasApiKey && !isStreaming
+                          ? 'bg-surface/50 text-text-muted hover:text-accent hover:bg-accent/10 border border-border/30 hover:border-accent/20 active:scale-95'
+                          : 'bg-transparent text-text-muted/30 cursor-not-allowed border border-transparent'
+                      }
+                      `}
+                  >
+                    {isOptimizing ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Sparkles className="w-4 h-4" />
+                    )}
+                  </button>
+                </>
+              )}
 
               {isStreaming ? (
                 <button
