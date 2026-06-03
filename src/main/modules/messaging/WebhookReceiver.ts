@@ -1,7 +1,7 @@
 import * as http from 'http'
 import { logger } from '@shared/toolkit/LogEngine'
-import { wechatChannelPlugin } from './adapters/WechatChannelPlugin'
-import { whatsappChannelPlugin } from './adapters/WhatsAppChannelPlugin'
+import { wechatChannelPlugin } from './adapters/wechat'
+import { whatsappChannelPlugin } from './adapters/whatsapp'
 import { channelConfigStore } from './ChannelConfigRepository'
 
 const DEFAULT_WEBHOOK_PORT = 3456

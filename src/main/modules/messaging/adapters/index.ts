@@ -1,4 +1,4 @@
-export { FeishuChannelPlugin, feishuChannelPlugin } from './FeishuChannelPlugin'
-export { WechatChannelPlugin, wechatChannelPlugin } from './WechatChannelPlugin'
-export { WeixinChannelPlugin, weixinChannelPlugin } from './WeixinChannelPlugin'
-export { WhatsAppChannelPlugin, whatsappChannelPlugin } from './WhatsAppChannelPlugin'
+export { FeishuChannelPlugin, feishuChannelPlugin } from './feishu'
+export { WechatChannelPlugin, wechatChannelPlugin } from './wechat'
+export { WeixinChannelPlugin, weixinChannelPlugin } from './weixin'
+export { WhatsAppChannelPlugin, whatsappChannelPlugin } from './whatsapp'

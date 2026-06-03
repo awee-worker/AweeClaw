@@ -1,7 +1,7 @@
 import { safeIpcHandle } from './ipcGuard'
 import { channelService } from '../modules/messaging'
 import { channelBridge } from '../modules/messaging/MessageBridge'
-import { weixinChannelPlugin } from '../modules/messaging/adapters/WeixinChannelPlugin'
+import { weixinChannelPlugin } from '../modules/messaging/adapters/weixin'
 import type { ChannelAccountConfig, OutboundMessage } from '@shared/protocols/channel'
 import type { BrowserWindow } from 'electron'
 import type Store from 'electron-store'

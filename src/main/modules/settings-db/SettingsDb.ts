@@ -83,6 +83,12 @@ export class SettingsDb {
 
   /** 初始化数据库：创建目录、打开连接、建表 */
   async initialize(): Promise<void> {
+    // 防止重复初始化
+    if (this.db) {
+      logger.settings.info('[SettingsDb] Already initialized, skipping')
+      return
+    }
+
     this.dbPath = getDbPath()
     const dbDir = getDbDir()
 
@@ -170,6 +176,40 @@ export class SettingsDb {
         key         TEXT PRIMARY KEY NOT NULL,
         value       TEXT NOT NULL DEFAULT ''
       )
+    `)
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS channel_config (
+        channel_id       TEXT PRIMARY KEY NOT NULL,
+        enabled          INTEGER NOT NULL DEFAULT 1,
+        default_account  TEXT NOT NULL DEFAULT '',
+        created_at       INTEGER NOT NULL DEFAULT 0,
+        updated_at       INTEGER NOT NULL DEFAULT 0
+      )
+    `)
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS channel_account (
+        account_id       TEXT PRIMARY KEY NOT NULL,
+        channel_id       TEXT NOT NULL,
+        name             TEXT NOT NULL DEFAULT '',
+        enabled          INTEGER NOT NULL DEFAULT 1,
+        credentials      TEXT NOT NULL DEFAULT '{}',
+        connection_mode  TEXT NOT NULL DEFAULT '',
+        dm_policy        TEXT NOT NULL DEFAULT '',
+        allow_from       TEXT NOT NULL DEFAULT '[]',
+        group_policy     TEXT NOT NULL DEFAULT '',
+        group_allow_from TEXT NOT NULL DEFAULT '[]',
+        groups           TEXT NOT NULL DEFAULT '{}',
+        llm_config       TEXT NOT NULL DEFAULT '{}',
+        created_at       INTEGER NOT NULL DEFAULT 0,
+        updated_at       INTEGER NOT NULL DEFAULT 0
+      )
+    `)
+
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_channel_account_channel_id
+      ON channel_account (channel_id)
     `)
 
     // 标记 schema 版本
@@ -457,5 +497,145 @@ export class SettingsDb {
       createdAt: row.created_at || undefined,
       updatedAt: row.updated_at || undefined,
     }
+  }
+
+  // ============================================
+  // 渠道配置 CRUD
+  // ============================================
+
+  /** 获取所有渠道配置（含账户列表） */
+  getAllChannelConfigs(): Array<{ id: string; enabled: boolean; defaultAccount?: string; accounts: any[] }> {
+    const channelRows = this.db.prepare('SELECT * FROM channel_config').all() as any[]
+    const result: Array<{ id: string; enabled: boolean; defaultAccount?: string; accounts: any[] }> = []
+
+    for (const ch of channelRows) {
+      const accounts = this.getChannelAccounts(ch.channel_id)
+      result.push({
+        id: ch.channel_id,
+        enabled: ch.enabled === 1,
+        defaultAccount: ch.default_account || undefined,
+        accounts,
+      })
+    }
+
+    return result
+  }
+
+  /** 获取单个渠道配置 */
+  getChannelConfig(channelId: string): { id: string; enabled: boolean; defaultAccount?: string; accounts: any[] } | null {
+    const row = this.db.prepare('SELECT * FROM channel_config WHERE channel_id = ?').get(channelId) as any
+    if (!row) return null
+
+    const accounts = this.getChannelAccounts(channelId)
+    return {
+      id: row.channel_id,
+      enabled: row.enabled === 1,
+      defaultAccount: row.default_account || undefined,
+      accounts,
+    }
+  }
+
+  /** 获取渠道下的所有账户 */
+  private getChannelAccounts(channelId: string): any[] {
+    const rows = this.db.prepare('SELECT * FROM channel_account WHERE channel_id = ?').all(channelId) as any[]
+    return rows.map(row => this.rowToChannelAccount(row))
+  }
+
+  /** 保存/更新渠道配置（含账户列表） */
+  upsertChannelConfig(config: { id: string; enabled: boolean; defaultAccount?: string; accounts: any[] }): void {
+    const now = Date.now()
+    const existing = this.db.prepare('SELECT channel_id FROM channel_config WHERE channel_id = ?').get(config.id) as any
+
+    if (existing) {
+      this.db.prepare(`
+        UPDATE channel_config
+        SET enabled = ?, default_account = ?, updated_at = ?
+        WHERE channel_id = ?
+      `).run(config.enabled !== false ? 1 : 0, config.defaultAccount || '', now, config.id)
+    } else {
+      this.db.prepare(`
+        INSERT INTO channel_config (channel_id, enabled, default_account, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(config.id, config.enabled !== false ? 1 : 0, config.defaultAccount || '', now, now)
+    }
+
+    // 同步账户：先删除旧的，再插入新的
+    this.db.prepare('DELETE FROM channel_account WHERE channel_id = ?').run(config.id)
+    for (const account of (config.accounts || [])) {
+      this.insertChannelAccount(config.id, account, now)
+    }
+  }
+
+  /** 插入单个账户 */
+  private insertChannelAccount(channelId: string, account: any, now?: number): void {
+    const ts = now || Date.now()
+    this.db.prepare(`
+      INSERT INTO channel_account (
+        account_id, channel_id, name, enabled, credentials,
+        connection_mode, dm_policy, allow_from, group_policy,
+        group_allow_from, groups, llm_config, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      account.id,
+      channelId,
+      account.name || '',
+      account.enabled !== false ? 1 : 0,
+      JSON.stringify(account.credentials ?? {}),
+      account.connectionMode || '',
+      account.dmPolicy || '',
+      JSON.stringify(account.allowFrom ?? []),
+      account.groupPolicy || '',
+      JSON.stringify(account.groupAllowFrom ?? []),
+      JSON.stringify(account.groups ?? {}),
+      JSON.stringify(account.llmConfig ?? {}),
+      ts,
+      ts,
+    )
+  }
+
+  /** 删除渠道配置（含账户） */
+  deleteChannelConfig(channelId: string): void {
+    this.db.prepare('DELETE FROM channel_account WHERE channel_id = ?').run(channelId)
+    this.db.prepare('DELETE FROM channel_config WHERE channel_id = ?').run(channelId)
+  }
+
+  /** 删除单个账户 */
+  deleteChannelAccount(accountId: string): void {
+    this.db.prepare('DELETE FROM channel_account WHERE account_id = ?').run(accountId)
+  }
+
+  /** 行转账户对象 */
+  private rowToChannelAccount(row: any): any {
+    let credentials: Record<string, string> = {}
+    try { credentials = JSON.parse(row.credentials) } catch { /* ignore */ }
+
+    let allowFrom: string[] = []
+    try { allowFrom = JSON.parse(row.allow_from) } catch { /* ignore */ }
+
+    let groupAllowFrom: string[] = []
+    try { groupAllowFrom = JSON.parse(row.group_allow_from) } catch { /* ignore */ }
+
+    let groups: Record<string, any> = {}
+    try { groups = JSON.parse(row.groups) } catch { /* ignore */ }
+
+    let llmConfig: Record<string, any> = {}
+    try { llmConfig = JSON.parse(row.llm_config) } catch { /* ignore */ }
+
+    const account: any = {
+      id: row.account_id,
+      name: row.name,
+      enabled: row.enabled === 1,
+      credentials,
+    }
+
+    if (row.connection_mode) account.connectionMode = row.connection_mode
+    if (row.dm_policy) account.dmPolicy = row.dm_policy
+    if (allowFrom.length > 0) account.allowFrom = allowFrom
+    if (row.group_policy) account.groupPolicy = row.group_policy
+    if (groupAllowFrom.length > 0) account.groupAllowFrom = groupAllowFrom
+    if (Object.keys(groups).length > 0) account.groups = groups
+    if (Object.keys(llmConfig).length > 0) account.llmConfig = llmConfig
+
+    return account
   }
 }

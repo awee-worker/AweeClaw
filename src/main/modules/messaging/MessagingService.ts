@@ -4,10 +4,10 @@ import { channelConfigStore } from './ChannelConfigRepository'
 import { channelSecurityManager } from './MessageSecurityGuard'
 import { channelErrorHandler } from './MessageErrorHandler'
 import { webhookServer } from './WebhookReceiver'
-import { feishuChannelPlugin } from './adapters/FeishuChannelPlugin'
-import { wechatChannelPlugin } from './adapters/WechatChannelPlugin'
-import { weixinChannelPlugin } from './adapters/WeixinChannelPlugin'
-import { whatsappChannelPlugin } from './adapters/WhatsAppChannelPlugin'
+import { feishuChannelPlugin } from './adapters/feishu'
+import { wechatChannelPlugin } from './adapters/wechat'
+import { weixinChannelPlugin } from './adapters/weixin'
+import { whatsappChannelPlugin } from './adapters/whatsapp'
 import type {
   ChannelId,
   ChannelPlugin,

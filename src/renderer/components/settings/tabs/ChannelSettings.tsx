@@ -19,7 +19,6 @@ import {
   Pencil,
   X,
   Check,
-  ScanLine,
 } from 'lucide-react'
 import { ActionButton, TextField } from '@components/ui'
 import { toast } from '@components/foundation/NotificationProvider'
@@ -31,14 +30,33 @@ import { WeixinQRLogin } from './WeixinQRLogin'
 import type { ChannelId, ChannelAccountConfig, ChannelAccountSnapshot, ChannelConfig, ChannelSecretSchema } from '@shared/protocols/channel'
 import { t, type Language } from '@renderer/i18n'
 
-const CHANNEL_ICONS: Record<ChannelId, React.ReactNode> = {
-  feishu: <MessageCircle className="w-4 h-4" />,
-  wechat: <MessageSquare className="w-4 h-4" />,
-  weixin: <ScanLine className="w-4 h-4" />,
-  whatsapp: <Smartphone className="w-4 h-4" />,
-  telegram: <MessageCircle className="w-4 h-4" />,
-  dingtalk: <MessageCircle className="w-4 h-4" />,
-  slack: <MessageCircle className="w-4 h-4" />,
+// 渠道 logo
+import feishuLogo from '@renderer/assets/channel/feishu.svg'
+import wechatLogo from '@renderer/assets/channel/wechat.svg'
+import weixinLogo from '@renderer/assets/channel/weixin.svg'
+import dingdingLogo from '@renderer/assets/channel/dingding.svg'
+import whatsappLogo from '@renderer/assets/channel/whatsapp.svg'
+
+/** 渠道 logo 组件 */
+function ChannelLogo({ channelId, className }: { channelId: ChannelId; className?: string }) {
+  const logoMap: Partial<Record<ChannelId, string>> = {
+    feishu: feishuLogo,
+    wechat: wechatLogo,
+    weixin: weixinLogo,
+    dingtalk: dingdingLogo,
+    whatsapp: whatsappLogo,
+  }
+  const src = logoMap[channelId]
+  if (src) {
+    return <img src={src} alt={channelId} className={className || 'w-5 h-5'} />
+  }
+  // 无 logo 的渠道使用 lucide 图标兜底
+  const fallbackIcons: Partial<Record<ChannelId, React.ReactNode>> = {
+    whatsapp: <Smartphone className={className || 'w-4 h-4'} />,
+    telegram: <MessageCircle className={className || 'w-4 h-4'} />,
+    slack: <MessageSquare className={className || 'w-4 h-4'} />,
+  }
+  return <>{fallbackIcons[channelId] || <MessageCircle className={className || 'w-4 h-4'} />}</>
 }
 
 interface ChannelSettingsProps {
@@ -364,7 +382,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                 className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-active/30 transition-colors"
                 onClick={() => setExpandedChannel(isExpanded ? null : channel.id)}
               >
-                {CHANNEL_ICONS[channel.id]}
+                <ChannelLogo channelId={channel.id} />
                 <div className="flex-1 text-left">
                   <div className="text-sm font-medium text-text-primary">
                     {language === 'zh' ? channel.meta.labelZh : channel.meta.label}
@@ -398,11 +416,30 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                   {channel.id === 'weixin' && (
                     <WeixinQRLogin
                       language={language}
-                      onLoginSuccess={(token, baseUrl) => {
-                        setNewAccountForm(prev => ({
-                          ...prev,
-                          credentials: { ...prev.credentials, token, baseUrl },
-                        }))
+                      onLoginSuccess={async (token, baseUrl) => {
+                        // 扫码登录成功后，自动添加账户
+                        const accountId = `weixin-bot-${Date.now().toString(36)}`
+                        const account: ChannelAccountConfig = {
+                          id: accountId,
+                          name: language === 'zh' ? '我的微信机器人' : 'My WeChat Bot',
+                          enabled: true,
+                          credentials: { token, baseUrl },
+                        }
+                        try {
+                          await api.channel.addAccount('weixin', account)
+                          toast.success(language === 'zh' ? '微信登录成功，账户已自动添加' : 'WeChat login successful, account auto-added')
+                          await loadData()
+                        } catch (err: any) {
+                          // 自动添加失败时，回退到手动填写
+                          toast.error(err?.message || (language === 'zh' ? '自动添加失败，请手动添加' : 'Auto-add failed, please add manually'))
+                          setShowAddAccount('weixin')
+                          setNewAccountForm({
+                            id: accountId,
+                            name: language === 'zh' ? '我的微信机器人' : 'My WeChat Bot',
+                            enabled: true,
+                            credentials: { token, baseUrl },
+                          })
+                        }
                       }}
                     />
                   )}

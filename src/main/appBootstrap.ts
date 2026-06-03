@@ -650,6 +650,16 @@ async function initializeModules(firstWin: BrowserWindow) {
     logger.system.warn('[Main] powerMonitor setup skipped:', err instanceof Error ? err.message : String(err))
   }
 
+  // 初始化设置数据库（渠道配置等依赖此数据库）
+  try {
+    const { SettingsDb } = await import('./modules/settings-db/SettingsDb')
+    const db = SettingsDb.getInstance()
+    await db.initialize()
+    logger.system.info('[Main] Settings DB initialized')
+  } catch (err) {
+    logger.system.warn('[Main] Settings DB init skipped:', err instanceof Error ? err.message : String(err))
+  }
+
   // 自动初始化渠道服务（飞书等 WebSocket 长连接）
   try {
     const { channelService } = await import('./modules/messaging')
