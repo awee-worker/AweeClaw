@@ -100,12 +100,29 @@ class ChannelRegistry {
 
   getAllAccountStatuses(): ChannelAccountSnapshot[] {
     const snapshots: ChannelAccountSnapshot[] = []
-    for (const plugin of this.plugins.values()) {
-      for (const [accountId] of this.accountStatuses) {
-        const status = plugin.getStatus(accountId)
-        if (status) snapshots.push(status)
+    const seen = new Set<string>()
+
+    // 优先使用 handleStatusChange 实时更新的缓存（状态最新）
+    for (const snapshot of this.accountStatuses.values()) {
+      if (!seen.has(snapshot.accountId)) {
+        snapshots.push(snapshot)
+        seen.add(snapshot.accountId)
       }
     }
+
+    // 补充：从各插件获取活跃连接的状态，确保不遗漏
+    for (const plugin of this.plugins.values()) {
+      // 尝试从插件获取所有已知账户的状态
+      for (const accountId of this.accountStatuses.keys()) {
+        if (seen.has(accountId)) continue
+        const status = plugin.getStatus(accountId)
+        if (status && status.configured) {
+          snapshots.push(status)
+          seen.add(accountId)
+        }
+      }
+    }
+
     return snapshots
   }
 

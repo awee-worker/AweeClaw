@@ -532,6 +532,8 @@ function createGroupedAPI() {
       getAllConfigs: () => raw.channelGetAllConfigs(),
       setChannelEnabled: (channelId: string, enabled: boolean) => raw.channelSetChannelEnabled(channelId, enabled),
       getWebhookInfo: () => raw.channelGetWebhookInfo(),
+      weixinFetchQRCode: () => raw.channelWeixinFetchQRCode(),
+      weixinPollQRStatus: (qrcode: string) => raw.channelWeixinPollQRStatus(qrcode),
       sendReply: (conversationKey: string, text: string, replyToId?: string) => raw.channelSendReply(conversationKey, text, replyToId),
       sendFile: (conversationKey: string, filePath: string, fileName?: string, mediaType?: 'file' | 'image' | 'audio' | 'video', replyToId?: string) => raw.channelSendFile(conversationKey, filePath, fileName, mediaType, replyToId),
       updateReaction: (accountId: string, messageId: string, status: string) => raw.channelUpdateReaction(accountId, messageId, status),

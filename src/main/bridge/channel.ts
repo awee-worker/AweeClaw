@@ -1,6 +1,7 @@
 import { safeIpcHandle } from './ipcGuard'
 import { channelService } from '../modules/messaging'
 import { channelBridge } from '../modules/messaging/MessageBridge'
+import { weixinChannelPlugin } from '../modules/messaging/adapters/WeixinChannelPlugin'
 import type { ChannelAccountConfig, OutboundMessage } from '@shared/protocols/channel'
 import type { BrowserWindow } from 'electron'
 import type Store from 'electron-store'
@@ -125,5 +126,24 @@ export function registerChannelHandlers(getMainWindow?: () => BrowserWindow | nu
   safeIpcHandle('channel:getWebhookInfo', async () => {
     const info = channelService.getWebhookInfo()
     return { success: true, ...info }
+  })
+
+  // 微信个人号 QR 码登录
+  safeIpcHandle('channel:weixin:fetchQRCode', async () => {
+    try {
+      const result = await weixinChannelPlugin.fetchQRCode()
+      return { success: true, ...result }
+    } catch (err: any) {
+      return { success: false, error: err?.message || String(err) }
+    }
+  })
+
+  safeIpcHandle('channel:weixin:pollQRStatus', async (_, qrcode: string) => {
+    try {
+      const result = await weixinChannelPlugin.pollQRStatus(qrcode)
+      return { success: true, ...result }
+    } catch (err: any) {
+      return { success: false, error: err?.message || String(err) }
+    }
   })
 }

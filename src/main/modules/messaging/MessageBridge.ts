@@ -11,7 +11,8 @@ import type Store from 'electron-store'
 
 const CHANNEL_LABELS: Record<string, string> = {
   feishu: '飞书',
-  wechat: '微信',
+  wechat: '企业微信',
+  weixin: '微信',
   whatsapp: 'WhatsApp',
   telegram: 'Telegram',
   dingtalk: '钉钉',
@@ -113,6 +114,9 @@ class ChannelBridge {
           resolvedName = await feishuChannelPlugin.resolveSenderName(message.accountId, message.from)
         } else if (message.channelId === 'wechat') {
           resolvedName = await wechatChannelPlugin.resolveSenderName(message.accountId, message.from)
+        } else if (message.channelId === 'weixin') {
+          // 微信个人号：from_user_id 即为用户标识，暂无额外解析
+          resolvedName = null
         }
         if (resolvedName) {
           senderLabel = resolvedName
@@ -347,6 +351,8 @@ class ChannelBridge {
           phase: 'done',
           timestamp: Date.now(),
         })
+      } else {
+        logger.channel.error(`[ChannelBridge] Fallback sendReply failed: ${sendResult.error}`)
       }
     } catch (err) {
       if (message.channelId === 'feishu') {
@@ -379,6 +385,8 @@ class ChannelBridge {
       replyToId,
       chatType: conversation.chatType as any,
     }
+
+    logger.channel.info(`[ChannelBridge] sendReply: channelId=${outbound.channelId}, accountId=${outbound.accountId}, to=${outbound.to}, textLen=${text.length}`)
 
     try {
       return await channelService.sendMessage(outbound)

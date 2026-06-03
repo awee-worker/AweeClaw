@@ -1,4 +1,4 @@
-export type ChannelId = 'feishu' | 'wechat' | 'whatsapp' | 'telegram' | 'dingtalk' | 'slack'
+export type ChannelId = 'feishu' | 'wechat' | 'weixin' | 'whatsapp' | 'telegram' | 'dingtalk' | 'slack'
 
 export type ChatType = 'direct' | 'group' | 'channel'
 

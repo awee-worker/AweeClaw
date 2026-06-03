@@ -971,6 +971,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   channelGetAllConfigs: () => ipcRenderer.invoke('channel:getAllConfigs'),
   channelSetChannelEnabled: (channelId: string, enabled: boolean) => ipcRenderer.invoke('channel:setChannelEnabled', channelId, enabled),
   channelGetWebhookInfo: () => ipcRenderer.invoke('channel:getWebhookInfo'),
+  channelWeixinFetchQRCode: () => ipcRenderer.invoke('channel:weixin:fetchQRCode'),
+  channelWeixinPollQRStatus: (qrcode: string) => ipcRenderer.invoke('channel:weixin:pollQRStatus', qrcode),
   channelSendReply: (conversationKey: string, text: string, replyToId?: string) => ipcRenderer.invoke('channel:sendReply', conversationKey, text, replyToId),
   channelSendFile: (conversationKey: string, filePath: string, fileName?: string, mediaType?: 'file' | 'image' | 'audio' | 'video', replyToId?: string) => ipcRenderer.invoke('channel:sendFile', conversationKey, filePath, fileName, mediaType, replyToId),
   channelUpdateReaction: (accountId: string, messageId: string, status: string) => ipcRenderer.invoke('channel:updateReaction', accountId, messageId, status),

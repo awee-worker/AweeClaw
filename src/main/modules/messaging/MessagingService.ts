@@ -6,6 +6,7 @@ import { channelErrorHandler } from './MessageErrorHandler'
 import { webhookServer } from './WebhookReceiver'
 import { feishuChannelPlugin } from './adapters/FeishuChannelPlugin'
 import { wechatChannelPlugin } from './adapters/WechatChannelPlugin'
+import { weixinChannelPlugin } from './adapters/WeixinChannelPlugin'
 import { whatsappChannelPlugin } from './adapters/WhatsAppChannelPlugin'
 import type {
   ChannelId,
@@ -153,7 +154,28 @@ class ChannelService {
   }
 
   getAllAccountStatuses(): ChannelAccountSnapshot[] {
-    return channelRegistry.getAllAccountStatuses()
+    const snapshots = channelRegistry.getAllAccountStatuses()
+    const seen = new Set(snapshots.map(s => s.accountId))
+
+    // 补充配置中存在但尚未连接的账户（显示为 disconnected）
+    for (const config of channelConfigStore.getAll()) {
+      for (const account of config.accounts) {
+        if (seen.has(account.id)) continue
+        snapshots.push({
+          accountId: account.id,
+          name: account.name,
+          enabled: account.enabled,
+          configured: true,
+          status: 'disconnected',
+          connected: false,
+          lastConnectedAt: null,
+          lastError: null,
+        })
+        seen.add(account.id)
+      }
+    }
+
+    return snapshots
   }
 
   getConfig(channelId: ChannelId): ChannelConfig | undefined {
@@ -179,8 +201,9 @@ class ChannelService {
   private registerBuiltInPlugins(): void {
     channelRegistry.register(feishuChannelPlugin)
     channelRegistry.register(wechatChannelPlugin)
+    channelRegistry.register(weixinChannelPlugin)
     channelRegistry.register(whatsappChannelPlugin)
-    logger.channel.info('Registered built-in channel plugins: feishu, wechat, whatsapp')
+    logger.channel.info('Registered built-in channel plugins: feishu, wechat, weixin, whatsapp')
   }
 
   private handleInboundMessage(message: InboundMessage): void {

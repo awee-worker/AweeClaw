@@ -195,10 +195,16 @@ export function useChannelBridge() {
                     message.id
                   )
                 } catch {
-                  await api.channel.sendReply(message.conversationKey, replyText, message.id)
+                  const result = await api.channel.sendReply(message.conversationKey, replyText, message.id)
+                  if (!result?.success) {
+                    logger.channel.error(`[ChannelBridge] sendReply failed: ${result?.error}`)
+                  }
                 }
               } else {
-                await api.channel.sendReply(message.conversationKey, replyText, message.id)
+                const result = await api.channel.sendReply(message.conversationKey, replyText, message.id)
+                if (!result?.success) {
+                  logger.channel.error(`[ChannelBridge] sendReply failed for ${message.channelId}: ${result?.error}`)
+                }
               }
             }
           }

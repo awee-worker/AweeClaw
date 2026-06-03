@@ -16,10 +16,10 @@ import {
   ChevronDown,
   ChevronRight,
   Shield,
-  Globe,
   Pencil,
   X,
   Check,
+  ScanLine,
 } from 'lucide-react'
 import { ActionButton, TextField } from '@components/ui'
 import { toast } from '@components/foundation/NotificationProvider'
@@ -27,12 +27,14 @@ import { getAPI } from '../../../adapters/electronBridge'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { BUILTIN_PROVIDERS } from '@shared/configuration/aiProviders'
+import { WeixinQRLogin } from './WeixinQRLogin'
 import type { ChannelId, ChannelAccountConfig, ChannelAccountSnapshot, ChannelConfig, ChannelSecretSchema } from '@shared/protocols/channel'
 import { t, type Language } from '@renderer/i18n'
 
 const CHANNEL_ICONS: Record<ChannelId, React.ReactNode> = {
   feishu: <MessageCircle className="w-4 h-4" />,
   wechat: <MessageSquare className="w-4 h-4" />,
+  weixin: <ScanLine className="w-4 h-4" />,
   whatsapp: <Smartphone className="w-4 h-4" />,
   telegram: <MessageCircle className="w-4 h-4" />,
   dingtalk: <MessageCircle className="w-4 h-4" />,
@@ -96,6 +98,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
   const [expandedAccount, setExpandedAccount] = useState<string | null>(null)
   const [showAddAccount, setShowAddAccount] = useState<ChannelId | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [addingAccount, setAddingAccount] = useState(false)
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({})
   const [newAccountForm, setNewAccountForm] = useState<Partial<ChannelAccountConfig>>({
     id: '',
@@ -197,7 +200,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
   }
 
   const handleAddAccount = async () => {
-    if (!showAddAccount) return
+    if (!showAddAccount || addingAccount) return
     const schema = secretSchemas[showAddAccount] || []
     const missingRequired = schema.filter(s => s.required && !newAccountForm.credentials?.[s.key])
     if (missingRequired.length > 0) {
@@ -208,6 +211,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
       toast.error(t('settings.pleaseenteraccountid', language as Language))
       return
     }
+    setAddingAccount(true)
     const account: ChannelAccountConfig = {
       id: newAccountForm.id,
       name: newAccountForm.name || newAccountForm.id,
@@ -223,6 +227,8 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
       await loadData()
     } catch (err: any) {
       toast.error(err?.message || (t('settings.addfailed', language as Language)))
+    } finally {
+      setAddingAccount(false)
     }
   }
 
@@ -389,6 +395,18 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                     <WebhookUrlDisplay channelId={channel.id} language={language} />
                   )}
 
+                  {channel.id === 'weixin' && (
+                    <WeixinQRLogin
+                      language={language}
+                      onLoginSuccess={(token, baseUrl) => {
+                        setNewAccountForm(prev => ({
+                          ...prev,
+                          credentials: { ...prev.credentials, token, baseUrl },
+                        }))
+                      }}
+                    />
+                  )}
+
                   {accounts.map(account => {
                     const status = getAccountStatus(channel.id, account.id)
                     const isAccountExpanded = expandedAccount === account.id
@@ -540,7 +558,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                           <TextField
                             value={newAccountForm.id || ''}
                             onChange={e => setNewAccountForm(prev => ({ ...prev, id: e.target.value }))}
-                            placeholder={t('settings.egmyfeishubot', language as Language)}
+                            placeholder={language === 'zh' ? `例如: my-${showAddAccount}-bot` : `e.g. my-${showAddAccount}-bot`}
                             className="text-xs"
                           />
                         </div>
@@ -551,7 +569,18 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                           <TextField
                             value={newAccountForm.name || ''}
                             onChange={e => setNewAccountForm(prev => ({ ...prev, name: e.target.value }))}
-                            placeholder={t('settings.egmyfeishubot2', language as Language)}
+                            placeholder={(() => {
+                              const nameMap: Record<string, string> = {
+                                feishu: language === 'zh' ? '例如: 我的飞书机器人' : 'e.g. My Feishu Bot',
+                                wechat: language === 'zh' ? '例如: 我的企业微信机器人' : 'e.g. My WeChat Work Bot',
+                                weixin: language === 'zh' ? '例如: 我的微信机器人' : 'e.g. My WeChat Bot',
+                                whatsapp: language === 'zh' ? '例如: 我的WhatsApp机器人' : 'e.g. My WhatsApp Bot',
+                                telegram: language === 'zh' ? '例如: 我的Telegram机器人' : 'e.g. My Telegram Bot',
+                                dingtalk: language === 'zh' ? '例如: 我的钉钉机器人' : 'e.g. My DingTalk Bot',
+                                slack: language === 'zh' ? '例如: 我的Slack机器人' : 'e.g. My Slack Bot',
+                              }
+                              return nameMap[showAddAccount || ''] || (language === 'zh' ? '例如: 我的机器人' : 'e.g. My Bot')
+                            })()}
                             className="text-xs"
                           />
                         </div>
@@ -596,8 +625,8 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                         <ActionButton variant="ghost" size="sm" onClick={() => { setShowAddAccount(null); setNewAccountForm({ id: '', name: '', enabled: true, credentials: {} }) }}>
                           {t('settings.cancel2', language as Language)}
                         </ActionButton>
-                        <ActionButton variant="primary" size="sm" onClick={handleAddAccount}>
-                          {t('settings.add', language as Language)}
+                        <ActionButton variant="primary" size="sm" onClick={handleAddAccount} disabled={addingAccount}>
+                          {addingAccount ? <Loader2 className="w-3 h-3 animate-spin" /> : t('settings.add', language as Language)}
                         </ActionButton>
                       </div>
                     </div>
