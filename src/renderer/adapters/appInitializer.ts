@@ -250,6 +250,15 @@ function scheduleBackgroundInit(): void {
       }
     })
 
+    // 自动初始化渠道服务，确保飞书等渠道在应用启动时建立连接
+    scheduleIdleTask(() => {
+      api.channel.initialize().then(() => {
+        logger.system.info('[Init] Channel service initialized')
+      }).catch((e) => {
+        logger.system.warn('[Init] Channel service init failed:', e)
+      })
+    })
+
     scheduleIdleTask(() => {
       try {
         const { dreamingScheduler } = require('@intelligence/runtime/longTermMemoryService/dreamingScheduler')

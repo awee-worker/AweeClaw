@@ -228,22 +228,7 @@ class SettingsService {
 
   /** 从 SQLite 加载全部设置 */
   async load(): Promise<SettingsState> {
-    // 1. 先尝试 localStorage 缓存（快速启动）
-    try {
-      const cached = localStorage.getItem(LOCAL_CACHE_KEY)
-      if (cached) {
-        const parsed = JSON.parse(cached) as Record<string, unknown>
-        const merged = this.mergeFromJson(parsed)
-        this.cache = merged
-        // 后台从 SQLite 同步最新数据
-        this.syncFromDb()
-        return merged
-      }
-    } catch {
-      // ignore local cache corruption
-    }
-
-    // 2. 初始化 SQLite 并加载数据
+    // 1. 优先从 SQLite 数据库加载（唯一真相来源）
     await this.ensureDbInitialized()
 
     if (this.dbInitialized) {
@@ -259,8 +244,21 @@ class SettingsService {
           return merged
         }
       } catch (err) {
-        logger.settings.error('[SettingsService] SQLite load failed, falling back to JSON:', err)
+        logger.settings.error('[SettingsService] SQLite load failed, falling back to cache:', err)
       }
+    }
+
+    // 2. 回退到 localStorage 缓存（快速启动兜底）
+    try {
+      const cached = localStorage.getItem(LOCAL_CACHE_KEY)
+      if (cached) {
+        const parsed = JSON.parse(cached) as Record<string, unknown>
+        const merged = this.mergeFromJson(parsed)
+        this.cache = merged
+        return merged
+      }
+    } catch {
+      // ignore local cache corruption
     }
 
     // 3. 回退到 JSON (electron-store)
@@ -310,6 +308,36 @@ class SettingsService {
   async saveSingle<K extends SettingKey>(key: K, value: SettingValue<K>): Promise<void> {
     const current = this.cache || await this.load()
     await this.save({ ...current, [key]: value })
+  }
+
+  /**
+   * 从 SQLite 数据库直接加载 providerConfigs（绕过 localStorage 缓存）。
+   * 用于设置界面打开时确保数据来源是数据库而非可能过期的缓存/store。
+   */
+  async loadProviderConfigsFromDb(): Promise<{
+    providerConfigs: Record<string, ProviderModelConfig>
+    currentProviderId: string | null
+    llmBehavior: Record<string, any>
+  } | null> {
+    try {
+      await this.ensureDbInitialized()
+      if (!this.dbInitialized) return null
+
+      const dbData = await api.settings.dbLoadAll()
+      const hasDbData = Object.keys(dbData.providerConfigs).length > 0
+
+      if (!hasDbData) return null
+
+      const providerConfigs = mergeDbProviderConfigs(dbData.providerConfigs)
+      return {
+        providerConfigs: providerConfigs as Record<string, ProviderModelConfig>,
+        currentProviderId: dbData.currentProviderId,
+        llmBehavior: dbData.llmBehavior,
+      }
+    } catch (err) {
+      logger.settings.error('[SettingsService] loadProviderConfigsFromDb failed:', err)
+      return null
+    }
   }
 
   getCache(): SettingsState | null {
@@ -379,26 +407,6 @@ class SettingsService {
       llmBehavior,
       appSettings,
     })
-  }
-
-  private async syncFromDb(): Promise<void> {
-    try {
-      await this.ensureDbInitialized()
-      if (!this.dbInitialized) return
-
-      const dbData = await api.settings.dbLoadAll()
-      const hasDbData = Object.keys(dbData.providerConfigs).length > 0 ||
-        Object.keys(dbData.appSettings).length > 0
-
-      if (hasDbData) {
-        const merged = rebuildSettingsFromDb(dbData)
-        this.cache = merged
-        this.saveToLocalStorage(merged)
-        logger.settings.info('[SettingsService] Synced from SQLite')
-      }
-    } catch (err) {
-      logger.settings.error('[SettingsService] Sync from SQLite failed:', err)
-    }
   }
 
   // ============================================

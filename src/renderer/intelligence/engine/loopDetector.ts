@@ -622,32 +622,177 @@ export async function runLoop(
       }
 
       const { language, cloudMode, isAuthenticated } = useStore.getState()
-      logger.agent.error('[Loop] LLM error:', result.error)
+      logger.agent.error('[Loop] LLM error:', result.error, {
+        configCloudMode: config.cloudMode,
+        storeCloudMode: cloudMode,
+        isAuthenticated,
+        hasAccessToken: !!config.accessToken,
+        accessTokenLength: config.accessToken?.length || 0,
+        hasRefreshToken: !!config.refreshToken,
+        isChannel: context.isChannel,
+      })
 
-      const isCloudAuthError = config.cloudMode && cloudMode === 'cloud' && isAuthenticated && (
-        result.error.includes('API_KEY_INVALID') ||
-        result.error.includes('Invalid API key') ||
-        result.error.includes('API Key 无效') ||
-        result.error.includes('401') ||
-        result.error.includes('Unauthorized')
+      // 错误类型分类
+      const errText = result.error || ''
+
+      // 类型1: 客户端 accessToken 失效（错误不含 "LLM API returned"，说明不是后端上游 LLM 报错）
+      // 这类错误可以通过刷新 accessToken 解决
+      const isClientTokenAuthError = config.cloudMode && cloudMode === 'cloud' && !errText.includes('LLM API returned') && (
+        errText.includes('API_KEY_INVALID') ||
+        errText.includes('Invalid API key') ||
+        errText.includes('API Key 无效') ||
+        errText.includes('认证') ||
+        /(?:^|\s|:|\-|_)401(?:\s|$|:)/.test(errText) ||
+        /(?:^|\s)unauthorized(?:\s|$)/i.test(errText) ||
+        /(?:^|\s)forbidden(?:\s|$)/i.test(errText) ||
+        /status[:\s]+(?:401|403)/i.test(errText) ||
+        /http[:\s]+(?:401|403)/i.test(errText)
       )
 
-      if (isCloudAuthError) {
-        threadStore.addSystemAlertPart(assistantId, {
-          alertType: 'error',
-          title: getLocalizedText(language, '登录已过期', 'Session Expired'),
-          message: getLocalizedText(language, '您的云端登录已过期，请重新登录后继续。点击左下角头像进行登录。', 'Your cloud session has expired. Please sign in again to continue. Click the avatar in the bottom left to sign in.'),
-        })
-      } else {
-        threadStore.addSystemAlertPart(assistantId, {
-          alertType: 'error',
-          title: getLocalizedText(language, '模型错误', 'Model Error'),
-          message: result.error,
-        })
+      // 类型2: 后端上游 LLM API key 失效（错误含 "LLM API returned 401" 或 "Invalid API Key"）
+      // 这类错误客户端无法修复——后端管理员需要更新 provider 的 API key
+      const isUpstreamApiKeyError = errText.includes('LLM API returned') && (
+        /LLM API returned 401/.test(errText) ||
+        /LLM API returned 403/.test(errText) ||
+        /Invalid API Key/.test(errText) ||
+        /invalid_key/.test(errText)
+      )
+
+      // 类型3: 可重试的网络/服务器错误
+      const isRetryableNetworkError = config.cloudMode && cloudMode === 'cloud' && (
+        /timeout|timed?\s*out|etimedout|econnreset|econnrefused|fetch failed|network|503|502|500/i.test(errText)
+      )
+
+      // 类型4: 云端认证错误（兼容旧判断）
+      const isCloudAuthError = isClientTokenAuthError || isUpstreamApiKeyError
+
+      logger.agent.info('[Loop] Error classification:', {
+        isClientTokenAuthError,
+        isUpstreamApiKeyError,
+        isRetryableNetworkError,
+        isCloudAuthError,
+        errPreview: errText.substring(0, 200),
+      })
+
+      // 只对客户端 token 错误和可重试网络错误触发重试
+      // 后端上游 API key 失效是后端配置问题，重试不会成功
+      let cloudAuthRecovered = false
+      if (isClientTokenAuthError || (isRetryableNetworkError && !isUpstreamApiKeyError)) {
+        try {
+          const { getEffectiveLLMConfigAsync } = await import('@services/modelConfigHelper')
+          logger.agent.info(`[Loop] Cloud error (tokenAuth=${isClientTokenAuthError}, network=${isRetryableNetworkError}), refreshing config and retrying`)
+          const refreshedConfig = await getEffectiveLLMConfigAsync(config)
+          logger.agent.info('[Loop] Cloud refresh result:', {
+            refreshedCloudMode: refreshedConfig.cloudMode,
+            hasAccessToken: !!refreshedConfig.accessToken,
+            accessTokenLength: refreshedConfig.accessToken?.length || 0,
+            tokenChanged: refreshedConfig.accessToken !== config.accessToken,
+            hasRefreshToken: !!refreshedConfig.refreshToken,
+          })
+          if (refreshedConfig.cloudMode) {
+            // 用刷新后的 config 重试（即使 token 没变，重试可能成功，因为可能是临时网络问题）
+            const newConfig = {
+              ...config,
+              accessToken: refreshedConfig.accessToken || config.accessToken,
+              refreshToken: refreshedConfig.refreshToken || config.refreshToken,
+              serverUrl: refreshedConfig.serverUrl || config.serverUrl,
+            }
+            if (refreshedConfig.accessToken !== config.accessToken) {
+              logger.agent.info('[Loop] Cloud error, token refreshed, retrying with new token')
+            } else {
+              logger.agent.info('[Loop] Cloud error, retrying with refreshed config (token unchanged)')
+            }
+            const retryResult = await callLLMWithRetry(
+              newConfig, llmMessages, assistantId, threadStore, context.abortSignal, requestId, agentTools
+            )
+            if (!retryResult.error) {
+              // 重试成功，用重试结果替换原始错误结果，继续正常循环
+              result.content = retryResult.content
+              result.reasoning = retryResult.reasoning
+              result.toolCalls = retryResult.toolCalls
+              result.sources = retryResult.sources
+              result.usage = retryResult.usage
+              result.error = undefined
+              result.retryable = undefined
+              cloudAuthRecovered = true
+            } else {
+              logger.agent.warn('[Loop] Cloud retry still failed:', retryResult.error)
+            }
+          } else {
+            logger.agent.warn('[Loop] Refreshed config is not in cloud mode, cannot retry')
+          }
+        } catch (retryErr) {
+          logger.agent.warn('[Loop] Cloud token refresh failed:', retryErr)
+        }
+      } else if (isUpstreamApiKeyError) {
+        logger.agent.error('[Loop] Upstream LLM API key invalid - backend admin needs to update the provider API key. Client-side token refresh cannot fix this.')
       }
-      threadStore.updateExecutionMeta({ loopState: 'failed' })
-      EventBus.emit({ type: 'loop:end', reason: 'error', threadId, assistantId, requestId, planTaskId: context.planTaskId })
-      break
+
+      // 未恢复时，显示错误提示并终止循环
+      if (!cloudAuthRecovered) {
+        if (isCloudAuthError) {
+          if (isUpstreamApiKeyError) {
+            // 后端上游 LLM API key 失效 - 客户端无法修复
+            if (context.isChannel) {
+              threadStore.addSystemAlertPart(assistantId, {
+                alertType: 'error',
+                title: getLocalizedText(language, '服务暂不可用', 'Service Unavailable'),
+                message: getLocalizedText(language, '服务暂时不可用，请稍后重试。', 'The service is temporarily unavailable. Please try again later.'),
+              })
+            } else {
+              threadStore.addSystemAlertPart(assistantId, {
+                alertType: 'error',
+                title: getLocalizedText(language, '云端 LLM 配置异常', 'Cloud LLM Configuration Error'),
+                message: getLocalizedText(
+                  language,
+                  '云端 LLM 服务的 API Key 已失效或配置错误，请联系管理员检查后端 Provider 配置。\n\n原始错误：' + (result.error || 'Unknown'),
+                  'The cloud LLM service API key is invalid or misconfigured. Please contact the administrator to check the backend provider configuration.\n\nOriginal error: ' + (result.error || 'Unknown')
+                ),
+              })
+            }
+          } else if (isClientTokenAuthError) {
+            // 客户端 accessToken 失效 - 渠道消息用通用提示，桌面端引导重新登录
+            if (context.isChannel) {
+              threadStore.addSystemAlertPart(assistantId, {
+                alertType: 'error',
+                title: getLocalizedText(language, '服务暂不可用', 'Service Unavailable'),
+                message: getLocalizedText(language, '服务暂时不可用，请稍后重试。', 'The service is temporarily unavailable. Please try again later.'),
+              })
+            } else {
+              threadStore.addSystemAlertPart(assistantId, {
+                alertType: 'error',
+                title: getLocalizedText(language, '登录已过期', 'Session Expired'),
+                message: getLocalizedText(language, '您的云端登录已过期，请重新登录后继续。点击左下角头像进行登录。', 'Your cloud session has expired. Please sign in again to continue. Click the avatar in the bottom left to sign in.'),
+              })
+            }
+          } else {
+            // 其他云端认证错误
+            if (context.isChannel) {
+              threadStore.addSystemAlertPart(assistantId, {
+                alertType: 'error',
+                title: getLocalizedText(language, '服务暂不可用', 'Service Unavailable'),
+                message: getLocalizedText(language, '服务暂时不可用，请稍后重试。', 'The service is temporarily unavailable. Please try again later.'),
+              })
+            } else {
+              threadStore.addSystemAlertPart(assistantId, {
+                alertType: 'error',
+                title: getLocalizedText(language, '登录已过期', 'Session Expired'),
+                message: getLocalizedText(language, '您的云端登录已过期，请重新登录后继续。点击左下角头像进行登录。', 'Your cloud session has expired. Please sign in again to continue. Click the avatar in the bottom left to sign in.'),
+              })
+            }
+          }
+        } else {
+          threadStore.addSystemAlertPart(assistantId, {
+            alertType: 'error',
+            title: getLocalizedText(language, '模型错误', 'Model Error'),
+            message: result.error || 'Unknown error',
+          })
+        }
+        threadStore.updateExecutionMeta({ loopState: 'failed' })
+        EventBus.emit({ type: 'loop:end', reason: 'error', threadId, assistantId, requestId, planTaskId: context.planTaskId })
+        break
+      }
+      // cloudAuthRecovered === true: result 已更新为成功结果，继续正常处理
     }
 
     const usageData = Array.isArray(result.usage) ? result.usage[0] : result.usage

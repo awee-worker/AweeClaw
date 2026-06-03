@@ -1969,6 +1969,8 @@ export const zh = {
   'ai.anerroroccurredduringsearch': '搜索过程中发生错误。',
 
   'app.cloudsessionhasexpiredplease': '云端登录已过期，请联系管理员重新登录后继续。',
+  'app.serviceunavailable': '抱歉，服务暂时不可用，请稍后重试。',
+  'app.anerroroccurred': '发生错误，请稍后重试。',
   'app.filesaved': '文件已保存',
   'app.savefailed': '保存失败',
   'app.couldnotwritetofile': '无法写入文件',

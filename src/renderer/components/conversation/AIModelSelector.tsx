@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { ChevronDown, Check, Search, Cloud } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -31,8 +32,23 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
   const [isOpen, setIsOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [cloudModels, setCloudModels] = useState<FlatModel[]>([])
+  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({})
   const containerRef = useRef<HTMLDivElement>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
+
+  // 动态计算弹出层位置（Portal 渲染到 body）
+  const updateDropdownPosition = useCallback(() => {
+    if (!containerRef.current) return
+    const rect = containerRef.current.getBoundingClientRect()
+    setDropdownStyle({
+      position: 'fixed',
+      bottom: window.innerHeight - rect.top + 8,
+      left: rect.left,
+      width: Math.min(320, rect.width + 60),
+      maxHeight: 360,
+    })
+  }, [])
 
   useEffect(() => {
     if (!isOpen) {
@@ -40,13 +56,20 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
       return
     }
 
+    updateDropdownPosition()
+
     const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node
+      const insideTrigger = containerRef.current?.contains(target)
+      const insideDropdown = dropdownRef.current?.contains(target)
+      if (!insideTrigger && !insideDropdown) {
         setIsOpen(false)
       }
     }
 
     document.addEventListener('mousedown', handleClickOutside)
+    window.addEventListener('resize', updateDropdownPosition)
+    window.addEventListener('scroll', updateDropdownPosition, true)
 
     const focusTimer = setTimeout(() => {
       if (searchInputRef.current) {
@@ -56,9 +79,11 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
+      window.removeEventListener('resize', updateDropdownPosition)
+      window.removeEventListener('scroll', updateDropdownPosition, true)
       clearTimeout(focusTimer)
     }
-  }, [isOpen])
+  }, [isOpen, updateDropdownPosition])
 
   const fetchCloudModels = useCallback(() => {
     if (cloudMode !== 'cloud' || !isAuthenticated) {
@@ -202,6 +227,8 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
     )
   }, [allModels, searchQuery])
 
+  const isCloud = cloudMode === 'cloud' && isAuthenticated
+
   if (!currentModel) return null
 
   return (
@@ -217,19 +244,20 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
           }
         `}
       >
-        {cloudMode === 'cloud' && isAuthenticated ? (
-          <Cloud className="w-3 h-3 text-accent flex-shrink-0" />
-        ) : (
-          <ProviderIcon providerId={currentModel.providerId} size={14} className="opacity-80 flex-shrink-0" />
-        )}
+        <ProviderIcon providerId={currentModel.providerId} size={14} className="opacity-80 flex-shrink-0" />
         <span className="truncate max-w-[200px]" title={currentModel.name}>
           {currentModel.name}
         </span>
+        {isCloud && <Cloud className="w-3 h-3 text-accent flex-shrink-0" />}
         <ChevronDown className={`w-3 h-3 text-text-muted transition-transform flex-shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
-      {isOpen && (
-        <div className="absolute bottom-full left-0 mb-2 max-w-[320px] w-[calc(100%-30px)] max-h-[360px] flex flex-col bg-surface border border-border rounded-xl shadow-2xl z-50 animate-scale-in overflow-hidden">
+      {isOpen && createPortal(
+        <div
+          ref={dropdownRef}
+          style={dropdownStyle}
+          className="flex flex-col bg-surface border border-border rounded-xl shadow-2xl z-[9999] animate-scale-in overflow-hidden"
+        >
           <div className="p-2 border-b border-border/50 sticky top-0 bg-surface/95 backdrop-blur-sm z-10 rounded-t-xl shrink-0">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted" />
@@ -263,12 +291,9 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
                     `}
                   >
                     <span className="flex items-center gap-2 min-w-0">
-                      <span className="flex-shrink-0 opacity-60">
-                        {cloudMode === 'cloud' && isAuthenticated
-                          ? <Cloud className="w-3 h-3 text-accent" />
-                          : <ProviderIcon providerId={model.providerId} size={14} />}
-                      </span>
+                      <ProviderIcon providerId={model.providerId} size={14} className="flex-shrink-0 opacity-60" />
                       <span className="truncate" title={model.name}>{model.name}</span>
+                      {isCloud && <Cloud className="w-3 h-3 text-accent flex-shrink-0" />}
                     </span>
                     {isSelected && <Check className="w-3.5 h-3.5 flex-shrink-0 ml-2" />}
                   </button>
@@ -276,7 +301,8 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
               })
             )}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )

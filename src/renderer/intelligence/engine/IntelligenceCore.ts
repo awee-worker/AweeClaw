@@ -93,6 +93,8 @@ export class AgentClass {
       threadId?: string
       requestId?: string
       planTaskId?: string
+      /** 是否来自外部渠道消息（飞书/微信/WhatsApp等） */
+      isChannel?: boolean
     }
   ): Promise<{ threadId: string; assistantId: string; requestId: string }> {
     const store = useAgentStore.getState()
@@ -270,6 +272,7 @@ export class AgentClass {
         requestId,
         planTaskId: executionOptions?.planTaskId,
         checkpointId,
+        isChannel: executionOptions?.isChannel,
       }
 
       if (agentHarness.isInitialized && threadId) {

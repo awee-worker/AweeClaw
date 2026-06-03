@@ -453,7 +453,17 @@ export class StreamingService {
 
     try {
       // 创建模型
-      const model = createModel(config)
+      const model = createModel(config, {
+        onTokenRefreshed: (newAccessToken: string, newRefreshToken?: string) => {
+          // 云端 token 刷新成功后，同步到渲染进程，避免后续请求因 refreshToken 被撤销而失败
+          if (!this.window.isDestroyed()) {
+            this.window.webContents.send('cloud:tokenRefreshed', {
+              accessToken: newAccessToken,
+              refreshToken: newRefreshToken,
+            })
+          }
+        },
+      })
 
       logger.llm.info('[StreamingService] Model created', {
         provider: config.provider,

@@ -39,7 +39,7 @@ export default function EmptyChatSuggestions() {
     : (language === 'zh' ? titleConfig.titleZh : titleConfig.title)
 
   return (
-    <div className="flex flex-col items-center w-full select-none z-10">
+    <div className="flex flex-col items-center w-full select-none">
       <div className="flex flex-col items-center w-full max-w-[640px] gap-6">
         <h1 className="text-3xl font-bold text-text-primary tracking-tight text-center">
           {displayTitle}

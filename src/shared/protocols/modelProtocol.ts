@@ -131,6 +131,7 @@ export interface LLMConfig {
     cloudMode?: boolean
     serverUrl?: string
     accessToken?: string
+    refreshToken?: string
     /** Maximum context window tokens for the model. */
     contextLimit?: number
 }

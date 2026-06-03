@@ -1970,6 +1970,8 @@ export const en = {
   'ai.anerroroccurredduringsearch': 'An error occurred during search.',
 
   'app.cloudsessionhasexpiredplease': 'Cloud session has expired. Please contact the admin to sign in again.',
+  'app.serviceunavailable': 'Sorry, the service is temporarily unavailable. Please try again later.',
+  'app.anerroroccurred': 'An error occurred. Please try again later.',
   'app.filesaved': 'File Saved',
   'app.savefailed': 'Save Failed',
   'app.couldnotwritetofile': 'Could not write to file',

@@ -288,6 +288,8 @@ function createGroupedAPI() {
         raw.onLLMError(requestId, callback),
       onDone: (requestId: string, callback: (data: { reasoning?: string; usage?: unknown }) => void) =>
         raw.onLLMDone(requestId, callback),
+      onCloudTokenRefreshed: (callback: (data: { accessToken: string; refreshToken?: string }) => void) =>
+        raw.onCloudTokenRefreshed(callback),
       // Structured Output
       analyzeCode: (params: Parameters<typeof raw.analyzeCode>[0]) => raw.analyzeCode(params),
       analyzeCodeStream: (params: Parameters<typeof raw.analyzeCodeStream>[0]) => raw.analyzeCodeStream(params),

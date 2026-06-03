@@ -8,6 +8,7 @@ import {
   setOnTokenRefresh,
   setOnAuthFailed,
   tryRefreshToken,
+  syncRefreshedTokens,
   backendApi,
 } from '@services/backendApi'
 import { toast } from '@components/foundation/NotificationProvider'
@@ -44,6 +45,14 @@ export interface CloudProviderModel {
   provider: string
   models: string[]
   baseUrl?: string
+  displayName?: string
+  logo?: string
+  protocol?: string
+  defaultModel?: string
+  defaultMaxTokens?: number
+  defaultTemperature?: number
+  defaultTopP?: number
+  defaultTimeout?: number
 }
 
 export interface AuthSlice {
@@ -106,8 +115,11 @@ function clearPersistedAuth() {
 let authFailedHandler: (() => void) | null = null
 
 export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set, get) => {
+  // onAuthFailed 仅在 refresh token 确认失效（401/403）时由 backendApi 触发
+  // 临时网络错误和服务器 5xx 不会触发此回调
   authFailedHandler = () => {
     clearPersistedAuth();
+
     const state = get();
     if (state.isAuthenticated) {
       set({ isAuthenticated: false, cloudUser: null, quota: null, cloudMode: 'local' });
@@ -364,7 +376,21 @@ setOnAuthFailed(() => {
   }
 });
 
+// 监听主进程云端 token 刷新事件，同步到渲染进程
+// 避免 cloudFetch 刷新 token 后，渲染进程仍使用已撤销的 refreshToken 导致认证失效
+api.llm.onCloudTokenRefreshed((data) => {
+  logger.system.info('[Auth] Cloud token refreshed from main process, syncing to renderer')
+  syncRefreshedTokens(data.accessToken, data.refreshToken)
+})
+
 api.system.onResume(() => {
   logger.system.info('[Auth] System resumed from sleep, attempting token refresh')
   tryRefreshToken().catch(() => {})
+})
+
+// 页面从后台恢复到前台时，检查并刷新 token
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    tryRefreshToken().catch(() => {})
+  }
 })

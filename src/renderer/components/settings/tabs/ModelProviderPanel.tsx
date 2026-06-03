@@ -794,9 +794,10 @@ export function ModelProviderPanel({
     if (!cloudModels || cloudModels.length === 0) return []
     return cloudModels.map((cp) => ({
       id: cp.provider.toLowerCase(),
-      name: cp.provider.charAt(0) + cp.provider.slice(1).toLowerCase(),
+      name: cp.displayName || cp.provider.charAt(0) + cp.provider.slice(1).toLowerCase(),
       models: cp.models,
       baseUrl: cp.baseUrl,
+      logo: cp.logo,
     }))
   }, [cloudModels])
 
@@ -1302,12 +1303,13 @@ export function ModelProviderPanel({
                 <button
                   key={cp.id}
                   onClick={() => handleSelectCloudProvider({ provider: cp.id.toUpperCase(), models: cp.models, baseUrl: cp.baseUrl })}
-                  className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left text-xs transition-all ${
+                  className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left text-xs transition-all ${
                     localConfig.provider === cp.id || localConfig.provider === cp.id.toUpperCase()
                       ? 'bg-accent/10 text-accent border border-accent/20'
                       : 'hover:bg-surface/30 text-text-secondary border border-transparent'
                   }`}
                 >
+                  <ProviderIcon providerId={cp.id} size={18} className="flex-shrink-0" />
                   <span className="font-medium truncate flex-1">{cp.name}</span>
                   <span className="text-[10px] text-text-muted">{cp.models.length}</span>
                   {(localConfig.provider === cp.id || localConfig.provider === cp.id.toUpperCase()) && (
@@ -1647,16 +1649,37 @@ export function ModelProviderPanel({
                 )}
 
                 {isCloudMode ? (
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-text-secondary">
-                      {t('provider.selectModel', language as Language)}
-                    </label>
-                    <DropdownSelector
-                      value={localConfig.model}
-                      onChange={(value) => setLocalConfig({ ...localConfig, model: value })}
-                      options={cloudModelOptions}
-                      className="w-full bg-background/50 border-border"
-                    />
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {cloudModelOptions.map((opt) => {
+                      const isSelected = localConfig.model === opt.value
+                      return (
+                        <button
+                          key={opt.value}
+                          onClick={() => setLocalConfig({ ...localConfig, model: opt.value })}
+                          className={`relative rounded-xl border p-3 text-left transition-all duration-200 ${
+                            isSelected
+                              ? 'bg-accent/10 border-accent/30 shadow-md shadow-accent/10'
+                              : 'bg-surface/30 border-border/50 hover:border-border hover:bg-surface/50'
+                          }`}
+                        >
+                          {isSelected && (
+                            <div className="absolute top-2 right-2">
+                              <Check className="w-3 h-3 text-accent" strokeWidth={3} />
+                            </div>
+                          )}
+                          <span className={`text-xs font-medium font-mono truncate block ${
+                            isSelected ? 'text-accent' : 'text-text-primary'
+                          }`}>
+                            {opt.label}
+                          </span>
+                        </button>
+                      )
+                    })}
+                    {cloudModelOptions.length === 0 && (
+                      <div className="col-span-full text-center py-6 text-text-muted text-xs">
+                        {t('provider.noModels', language as Language)}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <ModelCardGrid

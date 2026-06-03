@@ -26,6 +26,8 @@ export interface ExecutionContext {
   requestId?: string
   planTaskId?: string
   checkpointId?: string
+  /** 是否来自外部渠道消息（飞书/微信/WhatsApp等），渠道消息不应暴露客户端内部状态 */
+  isChannel?: boolean
 }
 
 // ===== 工具执行上下文（重新导出 shared 定义） =====

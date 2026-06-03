@@ -1,5 +1,7 @@
 type RequestMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
 
+import { BRAND } from '@shared/brand'
+
 interface RequestOptions {
   headers?: Record<string, string>;
   body?: unknown;
@@ -83,6 +85,22 @@ export function setTokens(newTokens: AuthTokens | null) {
   }
 }
 
+/**
+ * 从主进程同步刷新后的 token（由 cloudFetch 的 onTokenRefreshed 回调触发）
+ * 避免渲染进程后续使用已撤销的 refreshToken 刷新导致认证状态失效
+ */
+export function syncRefreshedTokens(newAccessToken: string, newRefreshToken?: string) {
+  if (!newAccessToken) return
+
+  const currentRefreshToken = tokens?.refreshToken
+  tokens = {
+    accessToken: newAccessToken,
+    refreshToken: newRefreshToken || currentRefreshToken || '',
+  }
+  scheduleProactiveRefresh()
+  onTokenRefresh?.(tokens)
+}
+
 export function getTokens(): AuthTokens | null {
   return tokens;
 }
@@ -108,8 +126,25 @@ export async function tryRefreshToken(): Promise<boolean> {
   return !!newTokens;
 }
 
+/**
+ * 从 localStorage 读取持久化的 refreshToken（降级恢复用）
+ */
+function loadPersistedRefreshToken(): string | null {
+  try {
+    const raw = localStorage.getItem(BRAND.storageKeys.cloudAuth);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    return data?.refreshToken || null;
+  } catch {
+    return null;
+  }
+}
+
 async function refreshAccessToken(): Promise<AuthTokens | null> {
-  if (!tokens?.refreshToken || !serverUrl) return null;
+  // 优先使用内存中的 refreshToken，降级从 localStorage 读取
+  const refreshToken = tokens?.refreshToken || loadPersistedRefreshToken() || undefined;
+
+  if (!refreshToken || !serverUrl) return null;
 
   if (refreshPromise) return refreshPromise;
 
@@ -118,23 +153,30 @@ async function refreshAccessToken(): Promise<AuthTokens | null> {
       const res = await fetch(`${serverUrl}/api/v1/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken: tokens!.refreshToken }),
+        body: JSON.stringify({ refreshToken }),
       });
 
       if (!res.ok) {
-        tokens = null;
-        if (proactiveRefreshTimer) {
-          clearTimeout(proactiveRefreshTimer);
-          proactiveRefreshTimer = null;
+        // 区分 refresh token 无效（401）和服务器临时错误（5xx）
+        // 只有 refresh token 确认无效时才触发 onAuthFailed
+        if (res.status === 401 || res.status === 403) {
+          // refresh token 已失效，用户必须重新登录
+          tokens = null;
+          if (proactiveRefreshTimer) {
+            clearTimeout(proactiveRefreshTimer);
+            proactiveRefreshTimer = null;
+          }
+          onAuthFailed?.();
         }
-        onAuthFailed?.();
+        // 5xx 等临时错误：保留 tokens，不清除认证状态
+        // accessToken 虽然可能过期，但 refreshToken 仍有效，下次请求时可重试
         return null;
       }
 
       const data = await res.json();
       const newTokens: AuthTokens = {
         accessToken: data.accessToken,
-        refreshToken: data.refreshToken ?? tokens!.refreshToken,
+        refreshToken: data.refreshToken ?? refreshToken,
       };
 
       tokens = newTokens;
@@ -142,6 +184,7 @@ async function refreshAccessToken(): Promise<AuthTokens | null> {
       scheduleProactiveRefresh();
       return newTokens;
     } catch {
+      // 网络错误：保留 tokens，不清除认证状态
       return null;
     } finally {
       refreshPromise = null;
@@ -178,7 +221,7 @@ async function request<T>(
 
   let res = await fetch(url, fetchOptions);
 
-  if (res.status === 401 && tokens?.refreshToken) {
+  if (res.status === 401 && (tokens?.refreshToken || loadPersistedRefreshToken())) {
     const newTokens = await refreshAccessToken();
     if (newTokens) {
       headers['Authorization'] = `Bearer ${newTokens.accessToken}`;

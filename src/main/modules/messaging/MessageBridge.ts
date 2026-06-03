@@ -3,7 +3,6 @@ import { logger } from '@shared/toolkit/LogEngine'
 import { channelService } from './MessagingService'
 import { SyncService } from '../ai-provider/services/ModelSyncCoordinator'
 import { resolveRuntimeLLMConfig } from '@shared/configuration/modelConfigResolver'
-import { getBuiltinProvider } from '@shared/configuration/aiProviders'
 import { feishuChannelPlugin } from './adapters/FeishuChannelPlugin'
 import { wechatChannelPlugin } from './adapters/WechatChannelPlugin'
 import type { InboundMessage, OutboundMessage, OutboundMedia, OutboundResult, ImProcessingStatus } from '@shared/protocols/channel'
@@ -66,7 +65,9 @@ class ChannelBridge {
       const appSettings = this.configStore.get('app-settings') as any
       if (!appSettings) return null
       const llmConfig = resolveRuntimeLLMConfig(appSettings.llmConfig, appSettings.providerConfigs || {})
-      if (!llmConfig.apiKey) return null
+      // 云端模式：apiKey 为空是正常的，由 createCloudModel 通过 accessToken 鉴权
+      // 但主进程 fallback 路径无法获取渲染进程的 accessToken，因此云端模式下 fallback 不可用
+      if (!llmConfig.apiKey && !appSettings.cloudMode) return null
       return llmConfig
     } catch (err) {
       logger.channel.error(`[ChannelBridge] Failed to resolve LLM config: ${err}`)
@@ -74,33 +75,20 @@ class ChannelBridge {
     }
   }
 
-  private resolveAccountLLMConfig(channelId: string, accountId: string): LLMConfig | null {
-    const globalConfig = this.getLLMConfig()
-    if (!globalConfig) return null
+  /** 检测当前是否为云端模式（用于判断是否需要渲染进程处理） */
+  private isCloudMode(): boolean {
+    if (!this.configStore) return false
     try {
-      const configs = channelService.getAllConfigs()
-      const channelConfig = configs.find(c => c.id === channelId)
-      const account = channelConfig?.accounts.find(a => a.id === accountId)
-      if (account?.llmConfig?.useGlobal === false && account.llmConfig.provider && account.llmConfig.model) {
-        const providerId = account.llmConfig.provider
-        const builtin = getBuiltinProvider(providerId)
-        let providerConfig: any = null
-        if (this.configStore) {
-          const appSettings = this.configStore.get('app-settings') as any
-          providerConfig = appSettings?.providerConfigs?.[providerId]
-        }
-        return {
-          ...globalConfig,
-          provider: providerId,
-          model: account.llmConfig.model,
-          apiKey: providerConfig?.apiKey || (globalConfig.provider === providerId ? globalConfig.apiKey : ''),
-          baseUrl: providerConfig?.baseUrl || builtin?.baseUrl || globalConfig.baseUrl,
-          protocol: builtin?.protocol || providerConfig?.protocol || globalConfig.protocol,
-          headers: providerConfig?.headers || globalConfig.headers,
-        }
-      }
-    } catch {}
-    return globalConfig
+      const appSettings = this.configStore.get('app-settings') as any
+      return appSettings?.cloudMode === 'cloud'
+    } catch {
+      return false
+    }
+  }
+
+  private getLLMConfigForChannel(): LLMConfig | null {
+    // 渠道消息直接使用客户端当前的 LLM 配置（和桌面端聊天一致）
+    return this.getLLMConfig()
   }
 
   private async handleInboundMessage(message: InboundMessage): Promise<void> {
@@ -115,6 +103,8 @@ class ChannelBridge {
 
     const channelLabel = CHANNEL_LABELS[message.channelId] || message.channelId
     let senderLabel = message.fromName || message.from
+
+    logger.channel.info(`[ChannelBridge] Handling inbound message: channelId=${message.channelId}, accountId=${message.accountId}, from=${message.from}, chatType=${message.chatType}`)
 
     if (!message.fromName && message.from) {
       try {
@@ -141,12 +131,9 @@ class ChannelBridge {
       timestamp: Date.now(),
     })
 
-    if (message.channelId === 'feishu') {
-      await this.updateReaction(message.accountId, message.id, 'received')
-    }
-
     const win = this.getMainWindow?.()
     if (win && !win.isDestroyed()) {
+      logger.channel.info(`[ChannelBridge] Sending inbound message to renderer: messageId=${message.id}, channelId=${message.channelId}`)
       this.sendImStatus({
         messageId: message.id,
         channelId: message.channelId,
@@ -172,6 +159,14 @@ class ChannelBridge {
         timestamp: message.timestamp,
         conversationKey,
       })
+
+      // 异步更新飞书 reaction（不阻塞消息处理，避免 API 超时导致延迟）
+      if (message.channelId === 'feishu') {
+        this.updateReaction(message.accountId, message.id, 'received').catch(err => {
+          logger.channel.warn(`[ChannelBridge] updateReaction 'received' failed: ${err instanceof Error ? err.message : String(err)}`)
+        })
+      }
+
       return
     }
 
@@ -179,7 +174,25 @@ class ChannelBridge {
   }
 
   private async fallbackToMainProcess(message: InboundMessage, conversationKey: string): Promise<void> {
-    const llmConfig = this.resolveAccountLLMConfig(message.channelId, message.accountId)
+    // 云端模式需要渲染进程的 accessToken，主进程 fallback 无法处理
+    // 记录日志并跳过，避免向外部渠道暴露客户端内部状态
+    if (this.isCloudMode()) {
+      logger.channel.warn('[ChannelBridge] Cloud mode requires renderer process (window not available), skipping message')
+      const channelLabel = CHANNEL_LABELS[message.channelId] || message.channelId
+      const senderLabel = message.fromName || message.from
+      this.sendImStatus({
+        messageId: message.id,
+        channelId: message.channelId,
+        accountId: message.accountId,
+        channelLabel,
+        senderName: senderLabel,
+        phase: 'error',
+        timestamp: Date.now(),
+      })
+      return
+    }
+
+    const llmConfig = this.getLLMConfigForChannel()
     if (!llmConfig) {
       logger.channel.warn('[ChannelBridge] No LLM config, cannot process message')
       const channelLabel = CHANNEL_LABELS[message.channelId] || message.channelId

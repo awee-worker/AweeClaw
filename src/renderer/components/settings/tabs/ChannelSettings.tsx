@@ -17,7 +17,6 @@ import {
   ChevronRight,
   Shield,
   Globe,
-  Settings2,
   Pencil,
   X,
   Check,
@@ -214,9 +213,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
       name: newAccountForm.name || newAccountForm.id,
       enabled: newAccountForm.enabled ?? true,
       credentials: newAccountForm.credentials || {},
-      llmConfig: newAccountForm.llmConfig?.useGlobal === false
-        ? newAccountForm.llmConfig
-        : undefined,
+      llmConfig: undefined,
     }
     try {
       await api.channel.addAccount(showAddAccount, account)
@@ -249,7 +246,6 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
       name: account.name,
       enabled: account.enabled,
       credentials: { ...account.credentials },
-      llmConfig: account.llmConfig ? { ...account.llmConfig } : { useGlobal: true },
     })
   }
 
@@ -264,7 +260,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
       ...original,
       name: editForm.name || editForm.id,
       credentials: { ...original.credentials, ...editForm.credentials },
-      llmConfig: editForm.llmConfig?.useGlobal === false ? editForm.llmConfig : undefined,
+      llmConfig: undefined,
     }
 
     try {
@@ -411,11 +407,6 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                           <div className="flex-1 min-w-0">
                             <div className="text-sm text-text-primary truncate">{account.name || account.id}</div>
                           </div>
-                          <span className="text-xs text-text-muted">
-                            {account.llmConfig?.useGlobal === false
-                              ? `${account.llmConfig.provider}/${account.llmConfig.model}`
-                              : `${llmConfig.provider}/${llmConfig.model}`}
-                          </span>
                           {renderStatusBadge(status)}
                           <div className="flex items-center gap-1">
                             {status?.connected ? (
@@ -486,101 +477,6 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                                   </div>
                                 ))}
 
-                                <div className="border-t border-border/30 pt-2 mt-2">
-                                  <div className="flex items-center gap-2 mb-2">
-                                    <Settings2 className="w-3.5 h-3.5 text-text-muted" />
-                                    <label className="text-xs font-medium text-text-muted">
-                                      {t('settings.modelconfiguration', language as Language)}
-                                    </label>
-                                  </div>
-                                  <div className="flex items-center gap-2 mb-2">
-                                    <button
-                                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${
-                                        (editForm.llmConfig?.useGlobal !== false)
-                                          ? 'bg-accent/10 text-accent border border-accent/30'
-                                          : 'text-text-muted hover:text-text-primary border border-border/30'
-                                      }`}
-                                      onClick={() => setEditForm(prev => ({
-                                        ...prev,
-                                        llmConfig: { ...prev.llmConfig, useGlobal: true },
-                                      }))}
-                                    >
-                                      <Globe className="w-3 h-3" />
-                                      {t('settings.useglobal', language as Language)}
-                                    </button>
-                                    <button
-                                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${
-                                        (editForm.llmConfig?.useGlobal === false)
-                                          ? 'bg-accent/10 text-accent border border-accent/30'
-                                          : 'text-text-muted hover:text-text-primary border border-border/30'
-                                      }`}
-                                      onClick={() => setEditForm(prev => ({
-                                        ...prev,
-                                        llmConfig: {
-                                          useGlobal: false,
-                                          provider: prev.llmConfig?.provider || llmConfig.provider,
-                                          model: prev.llmConfig?.model || llmConfig.model,
-                                        },
-                                      }))}
-                                    >
-                                      <Settings2 className="w-3 h-3" />
-                                      {t('settings.custom', language as Language)}
-                                    </button>
-                                  </div>
-                                  {editForm.llmConfig?.useGlobal === false && (
-                                    <div className="space-y-2 pl-1">
-                                      <div>
-                                        <label className="text-xs text-text-muted">
-                                          {t('settings.provider2', language as Language)}
-                                        </label>
-                                        <select
-                                          value={editForm.llmConfig?.provider || ''}
-                                          onChange={e => {
-                                            const providerId = e.target.value
-                                            const provider = availableProviders.find(p => p.id === providerId)
-                                            const defaultModel = provider?.models[0] || ''
-                                            setEditForm(prev => ({
-                                              ...prev,
-                                              llmConfig: { useGlobal: false, provider: providerId, model: defaultModel },
-                                            }))
-                                          }}
-                                          className="w-full mt-1 px-2 py-1.5 rounded-md border border-border/50 bg-surface text-xs text-text-primary focus:outline-none focus:border-accent/40"
-                                        >
-                                          <option value="">{t('settings.dropdownselectorprovider', language as Language)}</option>
-                                          {availableProviders.map(p => (
-                                            <option key={p.id} value={p.id}>{p.name}</option>
-                                          ))}
-                                        </select>
-                                      </div>
-                                      {editForm.llmConfig?.provider && (
-                                        <div>
-                                          <label className="text-xs text-text-muted">
-                                            {t('settings.model', language as Language)}
-                                          </label>
-                                          <select
-                                            value={editForm.llmConfig?.model || ''}
-                                            onChange={e => setEditForm(prev => ({
-                                              ...prev,
-                                              llmConfig: { useGlobal: false, provider: prev.llmConfig?.provider, model: e.target.value },
-                                            }))}
-                                            className="w-full mt-1 px-2 py-1.5 rounded-md border border-border/50 bg-surface text-xs text-text-primary focus:outline-none focus:border-accent/40"
-                                          >
-                                            <option value="">{t('settings.dropdownselectormodel', language as Language)}</option>
-                                            {availableProviders.find(p => p.id === editForm.llmConfig?.provider)?.models.map(m => (
-                                              <option key={m} value={m}>{m}</option>
-                                            ))}
-                                          </select>
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-                                  {(editForm.llmConfig?.useGlobal !== false) && (
-                                    <p className="text-xs text-text-muted">
-                                      {t('settings.willuseglobalconfig', language as Language, { provider: llmConfig.provider, model: llmConfig.model })}
-                                    </p>
-                                  )}
-                                </div>
-
                                 <div className="flex items-center gap-2 pt-2 border-t border-border/20">
                                   <div className="flex-1" />
                                   <ActionButton variant="ghost" size="sm" onClick={() => { setEditingAccountId(null); setEditForm({}) }}>
@@ -618,23 +514,6 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                                     </div>
                                   </div>
                                 ))}
-                                <div className="border-t border-border/20 pt-2 mt-1">
-                                  <div className="flex items-center gap-1.5 mb-1">
-                                    <Settings2 className="w-3 h-3 text-text-muted" />
-                                    <span className="text-xs text-text-muted">
-                                      {t('settings.model2', language as Language)}
-                                    </span>
-                                  </div>
-                                  {account.llmConfig?.useGlobal === false ? (
-                                    <span className="text-xs text-text-primary">
-                                      {account.llmConfig.provider}/{account.llmConfig.model}
-                                    </span>
-                                  ) : (
-                                    <span className="text-xs text-text-muted">
-                                      {t('settings.global', language as Language, { provider: llmConfig.provider, model: llmConfig.model })}
-                                    </span>
-                                  )}
-                                </div>
                               </>
                             )}
                             {status?.lastError && (
@@ -707,101 +586,6 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                             </p>
                           </div>
                         ))}
-
-                        <div className="border-t border-border/30 pt-2 mt-2">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Settings2 className="w-3.5 h-3.5 text-text-muted" />
-                            <label className="text-xs font-medium text-text-muted">
-                              {t('settings.modelconfiguration2', language as Language)}
-                            </label>
-                          </div>
-                          <div className="flex items-center gap-2 mb-2">
-                            <button
-                              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${
-                                (newAccountForm.llmConfig?.useGlobal !== false)
-                                  ? 'bg-accent/10 text-accent border border-accent/30'
-                                  : 'text-text-muted hover:text-text-primary border border-border/30'
-                              }`}
-                              onClick={() => setNewAccountForm(prev => ({
-                                ...prev,
-                                llmConfig: { ...prev.llmConfig, useGlobal: true },
-                              }))}
-                            >
-                              <Globe className="w-3 h-3" />
-                              {t('settings.useglobal2', language as Language)}
-                            </button>
-                            <button
-                              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${
-                                (newAccountForm.llmConfig?.useGlobal === false)
-                                  ? 'bg-accent/10 text-accent border border-accent/30'
-                                  : 'text-text-muted hover:text-text-primary border border-border/30'
-                              }`}
-                              onClick={() => setNewAccountForm(prev => ({
-                                ...prev,
-                                llmConfig: {
-                                  useGlobal: false,
-                                  provider: prev.llmConfig?.provider || llmConfig.provider,
-                                  model: prev.llmConfig?.model || llmConfig.model,
-                                },
-                              }))}
-                            >
-                              <Settings2 className="w-3 h-3" />
-                              {t('settings.custom2', language as Language)}
-                            </button>
-                          </div>
-                          {newAccountForm.llmConfig?.useGlobal === false && (
-                            <div className="space-y-2 pl-1">
-                              <div>
-                                <label className="text-xs text-text-muted">
-                                  {t('settings.provider3', language as Language)}
-                                </label>
-                                <select
-                                  value={newAccountForm.llmConfig?.provider || ''}
-                                  onChange={e => {
-                                    const providerId = e.target.value
-                                    const provider = availableProviders.find(p => p.id === providerId)
-                                    const defaultModel = provider?.models[0] || ''
-                                    setNewAccountForm(prev => ({
-                                      ...prev,
-                                      llmConfig: { useGlobal: false, provider: providerId, model: defaultModel },
-                                    }))
-                                  }}
-                                  className="w-full mt-1 px-2 py-1.5 rounded-md border border-border/50 bg-surface text-xs text-text-primary focus:outline-none focus:border-accent/40"
-                                >
-                                  <option value="">{t('settings.dropdownselectorprovider2', language as Language)}</option>
-                                  {availableProviders.map(p => (
-                                    <option key={p.id} value={p.id}>{p.name}</option>
-                                  ))}
-                                </select>
-                              </div>
-                              {newAccountForm.llmConfig?.provider && (
-                                <div>
-                                  <label className="text-xs text-text-muted">
-                                    {t('settings.model3', language as Language)}
-                                  </label>
-                                  <select
-                                    value={newAccountForm.llmConfig?.model || ''}
-                                    onChange={e => setNewAccountForm(prev => ({
-                                      ...prev,
-                                      llmConfig: { useGlobal: false, provider: prev.llmConfig?.provider, model: e.target.value },
-                                    }))}
-                                    className="w-full mt-1 px-2 py-1.5 rounded-md border border-border/50 bg-surface text-xs text-text-primary focus:outline-none focus:border-accent/40"
-                                  >
-                                    <option value="">{t('settings.dropdownselectormodel2', language as Language)}</option>
-                                    {availableProviders.find(p => p.id === newAccountForm.llmConfig?.provider)?.models.map(m => (
-                                      <option key={m} value={m}>{m}</option>
-                                    ))}
-                                  </select>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                          {(newAccountForm.llmConfig?.useGlobal !== false) && (
-                            <p className="text-xs text-text-muted">
-                              {t('settings.willuseglobalconfig2', language as Language, { provider: llmConfig.provider, model: llmConfig.model })}
-                            </p>
-                          )}
-                        </div>
                       </div>
                       <div className="flex items-center gap-2">
                         <ActionButton variant="ghost" size="sm" onClick={() => handleValidateCredentials(channel.id)}>

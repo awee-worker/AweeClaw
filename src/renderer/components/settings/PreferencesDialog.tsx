@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useEffect, useMemo, useCallback } from 'react'
+import { lazy, Suspense, useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Cpu, Settings2, Code, Keyboard, Database, Shield, Monitor, Plug, Braces, Brain, FileCode, FileText, Zap, Check, X, Palette, Radio, Cloud, Eye, Search, Mail, Mic } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -7,6 +7,8 @@ import { BRAND } from '@shared/brand'
 import stableStringify from 'fast-json-stable-stringify'
 import { getEditorConfig } from '@shared/configuration/preferenceSync'
 import { invalidateAgentConfigCache } from '@intelligence/utils/intelligenceConfig'
+import { settingsService } from '@renderer/settings/preferencesService'
+import { resolveRuntimeLLMConfig } from '@shared/configuration/modelConfigResolver'
 import { t, type Language } from '@renderer/i18n'
 import { toast } from '@components/foundation/NotificationProvider'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
@@ -208,7 +210,45 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
     const [advancedEditorConfig, setAdvancedEditorConfig] = useState(editorConfig)
     const [isClosing, setIsClosing] = useState(false)
 
+    // 标记是否已从数据库加载过 providerConfigs，防止 useEffect 同步覆盖
+    const dbLoadedRef = useRef(false)
+
+    // 组件挂载时从数据库加载 providerConfigs，确保数据来源是数据库而非可能过期的 store 缓存
     useEffect(() => {
+        let cancelled = false
+        settingsService.loadProviderConfigsFromDb().then((dbResult) => {
+            if (cancelled || !dbResult) return
+            dbLoadedRef.current = true
+            setLocalProviderConfigs(dbResult.providerConfigs)
+
+            // 同步重建 llmConfig，确保当前 provider 的 apiKey/baseUrl 等来自数据库
+            const currentProviderId = dbResult.currentProviderId || llmConfig.provider
+            const dbProviderConfig = dbResult.providerConfigs[currentProviderId]
+            const builtinDef = PROVIDERS[currentProviderId]
+
+            if (dbProviderConfig) {
+                const resolvedConfig = resolveRuntimeLLMConfig(
+                    {
+                        provider: currentProviderId,
+                        model: dbProviderConfig.model || builtinDef?.models?.[0],
+                        ...dbResult.llmBehavior,
+                    } as any,
+                    dbResult.providerConfigs,
+                )
+                setLocalConfig(resolvedConfig)
+            }
+        }).catch(() => {
+            // 数据库加载失败时回退到 store 数据，不影响使用
+        })
+        return () => { cancelled = true }
+    }, []) // 仅挂载时执行一次
+
+    useEffect(() => {
+        // 如果已从数据库加载过 providerConfigs，跳过 store 同步，避免数据库数据被覆盖
+        if (dbLoadedRef.current) {
+            dbLoadedRef.current = false // 重置，后续 store 变化正常同步
+            return
+        }
         setLocalConfig(llmConfig)
         setLocalLanguage(language)
         setLocalAutoApprove(autoApprove)

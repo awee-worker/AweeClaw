@@ -185,9 +185,15 @@ class ChannelService {
 
   private handleInboundMessage(message: InboundMessage): void {
     const config = channelConfigStore.get(message.channelId)
-    if (!config) return
+    if (!config) {
+      logger.channel.warn(`[ChannelService] Inbound message discarded: no config for channelId=${message.channelId}, accountId=${message.accountId}`)
+      return
+    }
     const account = config.accounts.find(a => a.id === message.accountId)
-    if (!account) return
+    if (!account) {
+      logger.channel.warn(`[ChannelService] Inbound message discarded: no account ${message.accountId} in channelId=${message.channelId}, available accounts: [${config.accounts.map(a => a.id).join(', ')}]`)
+      return
+    }
     const validation = channelSecurityManager.validateInboundMessage(message, account)
     if (!validation.allowed) {
       logger.channel.warn(`Inbound message blocked: ${validation.reason}`)
@@ -202,6 +208,7 @@ class ChannelService {
       logger.channel.warn(`Rate limit exceeded for ${message.from} on ${message.channelId}`)
       return
     }
+    logger.channel.info(`[ChannelService] Dispatching inbound message to ${this.inboundHandlers.length} handler(s): channelId=${message.channelId}, from=${message.from}`)
     for (const handler of this.inboundHandlers) {
       try {
         handler(message)

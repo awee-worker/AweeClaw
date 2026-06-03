@@ -10,6 +10,7 @@ import type { LanguageModel } from 'ai'
 import type { LLMConfig } from '@shared/protocols/modelGateway'
 import { BRAND } from '@shared/brand'
 import { BUILTIN_PROVIDERS, isBuiltinProvider } from '@shared/configuration/aiProviders'
+import { logger } from '@shared/toolkit/LogEngine'
 import type { ApiProtocol } from '@shared/configuration/aiProviders'
 import { supportsFullOpenAIStyleFeatures } from '@shared/configuration/aiProviders'
 
@@ -18,6 +19,9 @@ export interface ModelOptions {
     cloudMode?: boolean
     serverUrl?: string
     accessToken?: string
+    refreshToken?: string
+    /** 云端 token 刷新成功后的回调，用于同步新 token 到渲染进程 */
+    onTokenRefreshed?: (newAccessToken: string, newRefreshToken?: string) => void
 }
 
 interface ResolvedModelRoute {
@@ -68,8 +72,9 @@ export function createModel(config: LLMConfig, options: ModelOptions = {}): Lang
     const cloudMode = options.cloudMode ?? config.cloudMode
     const serverUrl = options.serverUrl ?? config.serverUrl
     const accessToken = options.accessToken ?? config.accessToken
+    const refreshToken = options.refreshToken ?? config.refreshToken
 
-    if (cloudMode && serverUrl && accessToken) {
+    if (cloudMode && serverUrl && (accessToken || refreshToken)) {
         console.log('[modelFactory] Creating cloud model:', {
             provider: config.provider,
             model: config.model,
@@ -77,7 +82,7 @@ export function createModel(config: LLMConfig, options: ModelOptions = {}): Lang
             hasAccessToken: !!accessToken,
             accessTokenLength: accessToken?.length,
         })
-        return createCloudModel(config, { cloudMode, serverUrl, accessToken })
+        return createCloudModel(config, { cloudMode, serverUrl, accessToken, refreshToken })
     }
 
     console.log('[modelFactory] Creating local model:', {
@@ -126,7 +131,7 @@ function createCloudModel(config: LLMConfig, options: ModelOptions): LanguageMod
     const serverUrl = options.serverUrl!.replace(/\/+$/, '')
     const baseURL = `${serverUrl}/api/v1/llm`
 
-    const cloudFetch = (() => {
+    const baseFetch = (() => {
         try {
             const undici = require('undici')
             return undici.fetch as typeof globalThis.fetch
@@ -134,6 +139,81 @@ function createCloudModel(config: LLMConfig, options: ModelOptions): LanguageMod
             return globalThis.fetch.bind(globalThis)
         }
     })()
+
+    // 当前有效的 access token（可能被刷新更新）
+    let currentAccessToken = options.accessToken || ''
+    let currentRefreshToken = options.refreshToken
+    const onTokenRefreshed = options.onTokenRefreshed
+
+    // 带 401 自动刷新的自定义 fetch
+    const cloudFetch: typeof globalThis.fetch = async (input, init) => {
+        const makeRequest = (token: string) => {
+            const headers = new Headers(init?.headers as Record<string, string> | undefined)
+            headers.set('Authorization', `Bearer ${token}`)
+            return baseFetch(input, { ...init, headers })
+        }
+
+        // 同步更新 token 的辅助函数
+        const updateTokens = (newAccessToken: string, newRefreshToken?: string) => {
+            currentAccessToken = newAccessToken
+            // 必须同步更新 refreshToken，否则后续刷新会用已撤销的旧 token 失败
+            if (newRefreshToken) {
+                currentRefreshToken = newRefreshToken
+            }
+        }
+
+        // 如果没有 accessToken，先尝试用 refreshToken 刷新
+        if (!currentAccessToken && currentRefreshToken) {
+            try {
+                const refreshRes = await baseFetch(`${serverUrl}/api/v1/auth/refresh`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ refreshToken: currentRefreshToken }),
+                })
+
+                if (refreshRes.ok) {
+                    const data = await refreshRes.json() as { accessToken: string; refreshToken?: string }
+                    updateTokens(data.accessToken, data.refreshToken)
+                    onTokenRefreshed?.(data.accessToken, data.refreshToken)
+                }
+            } catch {
+                // refresh 失败，继续用空 token 请求（会得到 401）
+            }
+        }
+
+        let response = await makeRequest(currentAccessToken)
+
+        // 401 时尝试刷新 token 并重试一次
+        if (response.status === 401 && currentRefreshToken) {
+            try {
+                const refreshRes = await baseFetch(`${serverUrl}/api/v1/auth/refresh`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ refreshToken: currentRefreshToken }),
+                })
+
+                if (refreshRes.ok) {
+                    const data = await refreshRes.json() as { accessToken: string; refreshToken?: string }
+                    // 同步更新主进程闭包中的 token（包括 refreshToken，因为后端会撤销旧 refreshToken）
+                    updateTokens(data.accessToken, data.refreshToken)
+                    // 同步新 token 到渲染进程，避免后续请求因 refreshToken 被撤销而失败
+                    onTokenRefreshed?.(data.accessToken, data.refreshToken)
+                    // 用新 token 重试原始请求
+                    response = await makeRequest(currentAccessToken)
+                } else {
+                    logger.llm.warn('[ModelRegistry] Token refresh failed on 401:', {
+                        status: refreshRes.status,
+                        url: serverUrl,
+                    })
+                }
+            } catch (err) {
+                logger.llm.error('[ModelRegistry] Token refresh exception on 401:', err)
+                // refresh 失败，返回原始 401 响应
+            }
+        }
+
+        return response
+    }
 
     const isCustomProvider = config.provider.startsWith('custom-')
     const providerHeader = isCustomProvider ? 'CUSTOM' : config.provider
@@ -154,7 +234,7 @@ function createCloudModel(config: LLMConfig, options: ModelOptions): LanguageMod
 
     const provider = createOpenAICompatible({
         name: BRAND.cloud.providerId,
-        apiKey: options.accessToken!,
+        apiKey: currentAccessToken,
         baseURL,
         headers,
         fetch: cloudFetch,
