@@ -45,6 +45,9 @@
   /* Chat Panel Background */
   --chat-bg: 25 25 28;
 
+  /* Editor Background (light theme: white, dark theme: same as background) */
+  --editor-bg: 10 10 12;
+
   /* Level 3: Surfaces (Inputs, Dropdowns) */
   --surface: 18 18 21;
   --surface-hover: 24 24 27;

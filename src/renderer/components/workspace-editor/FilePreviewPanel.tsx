@@ -133,7 +133,7 @@ export function MarkdownPreview({ content, fontSize = 14, isStreaming }: Markdow
     return (
         <div
             ref={containerRef}
-            className="absolute inset-0 overflow-y-auto p-6 bg-background custom-scrollbar"
+            className="absolute inset-0 overflow-y-auto p-6 bg-background-editor-editor custom-scrollbar"
             style={{ fontSize: `${fontSize}px` }}
             onScroll={handleScroll}
         >
@@ -321,7 +321,7 @@ export function ImagePreview({ path }: ImagePreviewProps) {
 
     if (error) {
         return (
-            <div className="h-full flex items-center justify-center bg-background">
+            <div className="h-full flex items-center justify-center bg-background-editor">
                 <div className="text-center p-8">
                     <AlertTriangle className="w-12 h-12 text-warning mx-auto mb-4" />
                     <h3 className="text-lg font-medium text-text-primary mb-2">{t('filePreview.cannotLoadImage', language)}</h3>
@@ -333,14 +333,14 @@ export function ImagePreview({ path }: ImagePreviewProps) {
 
     if (loading) {
         return (
-            <div className="h-full flex items-center justify-center bg-background">
+            <div className="h-full flex items-center justify-center bg-background-editor">
                 <div className="text-text-muted">{t('settings.loadingSettings', language)}</div>
             </div>
         )
     }
 
     return (
-        <div className="h-full flex flex-col bg-background">
+        <div className="h-full flex flex-col bg-background-editor">
             {/* 工具栏 */}
             <div className="flex-shrink-0 flex items-center justify-center gap-2 p-2 border-b border-border bg-surface/50">
                 <ActionButton
@@ -435,7 +435,7 @@ export function UnsupportedFile({ path, fileType }: UnsupportedFileProps) {
     }, [path])
 
     return (
-        <div className="h-full flex items-center justify-center bg-background">
+        <div className="h-full flex items-center justify-center bg-background-editor">
             <div className="text-center p-8 max-w-md">
                 <div className="w-16 h-16 rounded-2xl bg-surface/50 border border-border flex items-center justify-center mx-auto mb-6">
                     {fileType === 'binary' ? (

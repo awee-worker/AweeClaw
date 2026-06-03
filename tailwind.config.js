@@ -12,6 +12,7 @@ export default {
           secondary: 'rgb(var(--background-secondary) / <alpha-value>)',
           tertiary: 'rgb(var(--background-tertiary) / <alpha-value>)',
           chat: 'rgb(var(--chat-bg) / <alpha-value>)',
+          editor: 'rgb(var(--editor-bg) / <alpha-value>)',
         },
         surface: {
           DEFAULT: 'rgb(var(--surface) / <alpha-value>)',

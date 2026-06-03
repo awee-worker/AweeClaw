@@ -540,6 +540,8 @@ class ThemeManager {
     root.style.setProperty('--background-secondary', colors.backgroundSecondary)
     root.style.setProperty('--background-tertiary', colors.backgroundTertiary)
     root.style.setProperty('--chat-bg', colors.chatBg)
+    // 编辑器背景：亮色主题使用纯白，暗色主题使用主题背景色
+    root.style.setProperty('--editor-bg', theme.type === 'light' ? '255 255 255' : colors.background)
 
     root.style.setProperty('--surface', colors.surface)
     root.style.setProperty('--surface-hover', colors.surfaceHover)

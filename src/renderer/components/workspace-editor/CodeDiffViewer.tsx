@@ -47,7 +47,7 @@ export default function DiffViewer({
   }, [modifiedContent])
 
   const MonacoWrapper = (
-    <div style={{ height: minimal ? '400px' : undefined }} className={`w-full border-t border-border-subtle bg-background ${!minimal ? 'flex-1 overflow-hidden' : ''}`}>
+    <div style={{ height: minimal ? '400px' : undefined }} className={`w-full border-t border-border-subtle bg-background-editor ${!minimal ? 'flex-1 overflow-hidden' : ''}`}>
       <SafeDiffEditor
         language={getLanguage(filePath)}
         original={originalContent}
@@ -72,7 +72,7 @@ export default function DiffViewer({
 
   if (minimal) {
     return (
-      <div className="bg-background border border-border rounded-lg overflow-hidden flex flex-col">
+      <div className="bg-background-editor border border-border rounded-lg overflow-hidden flex flex-col">
         {/* Minimal Top Bar */}
         <div className="flex justify-between items-center px-3 py-2 bg-surface-active/30 border-b border-border-subtle">
           <span className="text-[12px] font-bold text-text-muted">{t('diff.reviewChanges', language)}</span>
@@ -102,7 +102,7 @@ export default function DiffViewer({
   return (
     <div className="bg-editor-sidebar border border-border rounded-xl shadow-xl flex flex-col h-full w-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-background/50 flex-shrink-0">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-background-editor/50 flex-shrink-0">
         <div className="flex items-center gap-3">
           <FileEdit className="w-5 h-5 text-editor-accent" />
           <span className="font-medium text-text-primary">{fileName}</span>
@@ -147,7 +147,7 @@ export default function DiffViewer({
       <div className={`flex flex-col flex-1 overflow-hidden transition-all duration-300 ${collapsed ? 'hidden' : 'block'}`}>
         {MonacoWrapper}
         {/* Actions */}
-        <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-background/50 flex-shrink-0">
+        <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-background-editor/50 flex-shrink-0">
           <div className="flex items-center gap-2 ml-auto">
             <button
               onClick={onReject}

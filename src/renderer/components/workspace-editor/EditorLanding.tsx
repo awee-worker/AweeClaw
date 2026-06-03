@@ -16,7 +16,7 @@ export function EditorWelcome() {
   ]
 
   return (
-    <div className="h-full flex items-center justify-center bg-background">
+    <div className="h-full flex items-center justify-center bg-background-editor">
       <div className="flex flex-col items-center gap-8 max-w-md w-full px-8">
         <div className="flex flex-col items-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-accent/10 border border-accent/20 flex items-center justify-center">

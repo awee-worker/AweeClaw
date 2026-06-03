@@ -111,7 +111,7 @@ export function PdfPreview({ path }: PdfPreviewProps) {
 
   if (loading) {
     return (
-      <div className="h-full flex items-center justify-center bg-background">
+      <div className="h-full flex items-center justify-center bg-background-editor">
         <Loader2 className="w-8 h-8 text-accent animate-spin" />
       </div>
     )
@@ -119,7 +119,7 @@ export function PdfPreview({ path }: PdfPreviewProps) {
 
   if (error) {
     return (
-      <div className="h-full flex items-center justify-center bg-background">
+      <div className="h-full flex items-center justify-center bg-background-editor">
         <div className="text-center p-8">
           <p className="text-text-muted">{t('filePreview.cannotOpenFile', language)}</p>
         </div>
@@ -128,7 +128,7 @@ export function PdfPreview({ path }: PdfPreviewProps) {
   }
 
   return (
-    <div className="h-full flex flex-col bg-background">
+    <div className="h-full flex flex-col bg-background-editor">
       <div className="flex-shrink-0 flex items-center justify-center gap-2 p-2 border-b border-border bg-surface/50">
         <ActionButton variant="ghost" size="sm" onClick={() => goToPage(currentPage - 1)} disabled={currentPage <= 1} className="h-7 px-2">
           <ChevronLeft className="w-4 h-4" />
@@ -222,7 +222,7 @@ export function DocxPreview({ path }: DocxPreviewProps) {
 
   if (loading) {
     return (
-      <div className="h-full flex items-center justify-center bg-background">
+      <div className="h-full flex items-center justify-center bg-background-editor">
         <Loader2 className="w-8 h-8 text-accent animate-spin" />
       </div>
     )
@@ -230,7 +230,7 @@ export function DocxPreview({ path }: DocxPreviewProps) {
 
   if (error) {
     return (
-      <div className="h-full flex items-center justify-center bg-background">
+      <div className="h-full flex items-center justify-center bg-background-editor">
         <div className="text-center p-8">
           <p className="text-text-muted">{t('filePreview.cannotOpenFile', language)}</p>
         </div>
@@ -239,7 +239,7 @@ export function DocxPreview({ path }: DocxPreviewProps) {
   }
 
   return (
-    <div className="h-full overflow-auto bg-background p-6">
+    <div className="h-full overflow-auto bg-background-editor p-6">
       <style>{DOCX_STYLES}</style>
       <div
         className="docx-preview max-w-3xl mx-auto"
@@ -290,7 +290,7 @@ export function DocPreview({ path }: DocPreviewProps) {
 
   if (loading) {
     return (
-      <div className="h-full flex items-center justify-center bg-background">
+      <div className="h-full flex items-center justify-center bg-background-editor">
         <Loader2 className="w-8 h-8 text-accent animate-spin" />
       </div>
     )
@@ -298,7 +298,7 @@ export function DocPreview({ path }: DocPreviewProps) {
 
   if (error || !text) {
     return (
-      <div className="h-full flex items-center justify-center bg-background">
+      <div className="h-full flex items-center justify-center bg-background-editor">
         <div className="text-center p-8 max-w-md">
           <div className="w-16 h-16 rounded-2xl bg-surface/50 border border-border flex items-center justify-center mx-auto mb-6">
             <FileSpreadsheet className="w-8 h-8 text-text-muted" />
@@ -320,7 +320,7 @@ export function DocPreview({ path }: DocPreviewProps) {
   const paragraphs = text.split(/\n/).filter(p => p.trim())
 
   return (
-    <div className="h-full overflow-auto bg-background p-6">
+    <div className="h-full overflow-auto bg-background-editor p-6">
       <style>{DOCX_STYLES}</style>
       <div className="docx-preview max-w-3xl mx-auto">
         {paragraphs.map((p, i) => (
@@ -386,7 +386,7 @@ export function XlsxPreview({ path }: XlsxPreviewProps) {
 
   if (loading) {
     return (
-      <div className="h-full flex items-center justify-center bg-background">
+      <div className="h-full flex items-center justify-center bg-background-editor">
         <Loader2 className="w-8 h-8 text-accent animate-spin" />
       </div>
     )
@@ -394,7 +394,7 @@ export function XlsxPreview({ path }: XlsxPreviewProps) {
 
   if (error) {
     return (
-      <div className="h-full flex items-center justify-center bg-background">
+      <div className="h-full flex items-center justify-center bg-background-editor">
         <div className="text-center p-8">
           <p className="text-text-muted">{t('filePreview.cannotOpenFile', language)}</p>
         </div>
@@ -403,7 +403,7 @@ export function XlsxPreview({ path }: XlsxPreviewProps) {
   }
 
   return (
-    <div className="h-full flex flex-col bg-background">
+    <div className="h-full flex flex-col bg-background-editor">
       {sheets.length > 1 && (
         <div className="flex-shrink-0 flex items-center gap-1 px-3 py-2 border-b border-border bg-surface/50 overflow-x-auto">
           <FileSpreadsheet className="w-4 h-4 text-accent mr-1 flex-shrink-0" />
@@ -594,7 +594,7 @@ export function CsvPreview({ path, content }: CsvPreviewProps) {
 
   if (viewMode === 'text') {
     return (
-      <div className="h-full flex flex-col bg-background">
+      <div className="h-full flex flex-col bg-background-editor">
         <div className="flex-shrink-0 flex items-center gap-2 px-3 py-2 border-b border-border bg-surface/50">
           <FileSpreadsheet className="w-4 h-4 text-accent mr-1 flex-shrink-0" />
           <span className="text-xs text-text-muted">
@@ -616,7 +616,7 @@ export function CsvPreview({ path, content }: CsvPreviewProps) {
   }
 
   return (
-    <div className="h-full flex flex-col bg-background">
+    <div className="h-full flex flex-col bg-background-editor">
       <div className="flex-shrink-0 flex items-center gap-2 px-3 py-2 border-b border-border bg-surface/50">
         <FileSpreadsheet className="w-4 h-4 text-accent mr-1 flex-shrink-0" />
         <span className="text-xs text-text-muted">
@@ -780,7 +780,7 @@ export function PptxPreview({ path }: PptxPreviewProps) {
 
   if (loading) {
     return (
-      <div className="h-full flex items-center justify-center bg-background">
+      <div className="h-full flex items-center justify-center bg-background-editor">
         <Loader2 className="w-8 h-8 text-accent animate-spin" />
       </div>
     )
@@ -788,7 +788,7 @@ export function PptxPreview({ path }: PptxPreviewProps) {
 
   if (error || slides.length === 0) {
     return (
-      <div className="h-full flex items-center justify-center bg-background">
+      <div className="h-full flex items-center justify-center bg-background-editor">
         <div className="text-center p-8">
           <p className="text-text-muted">
             {t('editor.cannotpreviewthispptfile', language as Language)}
@@ -801,7 +801,7 @@ export function PptxPreview({ path }: PptxPreviewProps) {
   const currentSlide = slides[activeSlide]
 
   return (
-    <div className="h-full flex flex-col bg-background">
+    <div className="h-full flex flex-col bg-background-editor">
       <div className="flex items-center gap-2 px-4 py-2 border-b border-border/30 shrink-0">
         <Presentation className="w-4 h-4 text-accent" />
         <span className="text-sm text-text-secondary">
@@ -883,7 +883,7 @@ export function PptPreview({ path }: PptPreviewProps) {
 
   if (loading) {
     return (
-      <div className="h-full flex items-center justify-center bg-background">
+      <div className="h-full flex items-center justify-center bg-background-editor">
         <Loader2 className="w-8 h-8 text-accent animate-spin" />
       </div>
     )
@@ -891,7 +891,7 @@ export function PptPreview({ path }: PptPreviewProps) {
 
   if (error || !text) {
     return (
-      <div className="h-full flex items-center justify-center bg-background">
+      <div className="h-full flex items-center justify-center bg-background-editor">
         <div className="text-center p-8 max-w-md">
           <div className="w-16 h-16 rounded-2xl bg-surface/50 border border-border flex items-center justify-center mx-auto mb-6">
             <Presentation className="w-8 h-8 text-text-muted" />
@@ -913,7 +913,7 @@ export function PptPreview({ path }: PptPreviewProps) {
   const paragraphs = text.split(/\n/).filter(p => p.trim())
 
   return (
-    <div className="h-full overflow-auto bg-background p-6">
+    <div className="h-full overflow-auto bg-background-editor p-6">
       <style>{DOCX_STYLES}</style>
       <div className="docx-preview max-w-3xl mx-auto">
         {paragraphs.map((p, i) => (

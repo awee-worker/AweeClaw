@@ -102,7 +102,7 @@ export default function BrowserPreviewTab({ file }: BrowserPreviewTabProps) {
   }
 
   return (
-    <div className="h-full flex flex-col bg-background">
+    <div className="h-full flex flex-col bg-background-editor">
       <div className="h-11 border-b border-border/50 px-3 flex items-center gap-2">
         <ActionButton
           variant="ghost"
@@ -185,8 +185,8 @@ export default function BrowserPreviewTab({ file }: BrowserPreviewTabProps) {
             />
 
             {activeSession.status === 'loading' && (
-              <div className="absolute inset-0 pointer-events-none bg-background/35 backdrop-blur-[1px] flex items-center justify-center">
-                <div className="px-3 py-2 rounded-lg bg-background/90 border border-border/50 text-xs text-text-secondary flex items-center gap-2 shadow-lg">
+              <div className="absolute inset-0 pointer-events-none bg-background-editor/35 backdrop-blur-[1px] flex items-center justify-center">
+                <div className="px-3 py-2 rounded-lg bg-background-editor/90 border border-border/50 text-xs text-text-secondary flex items-center gap-2 shadow-lg">
                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                   {t('editor.progressindicatorpreview', language as Language)}
                 </div>
@@ -194,7 +194,7 @@ export default function BrowserPreviewTab({ file }: BrowserPreviewTabProps) {
             )}
 
             {activeSession.status === 'error' && (
-              <div className="absolute inset-x-4 bottom-4 rounded-xl border border-status-error/30 bg-background/90 px-4 py-3 shadow-xl">
+              <div className="absolute inset-x-4 bottom-4 rounded-xl border border-status-error/30 bg-background-editor/90 px-4 py-3 shadow-xl">
                 <div className="flex items-start gap-3">
                   <div className="w-8 h-8 rounded-full bg-status-error/10 text-status-error flex items-center justify-center shrink-0">
                     <ArrowUpRight className="w-4 h-4" />

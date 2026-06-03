@@ -99,7 +99,7 @@ export const DiffPreview = memo(function DiffPreview({
   }
 
   return (
-    <div className="flex-1 flex flex-col w-full h-full bg-background animate-in fade-in duration-200">
+    <div className="flex-1 flex flex-col w-full h-full bg-background-editor animate-in fade-in duration-200">
       {/* 现代化的 Toolbar */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-surface/30">
         <div className="flex items-center gap-3">
@@ -120,14 +120,14 @@ export const DiffPreview = memo(function DiffPreview({
           <div className="flex items-center bg-surface-hover rounded-md p-0.5">
             <button
               onClick={() => setViewMode('unified')}
-              className={`p-1.5 rounded transition-all ${viewMode === 'unified' ? 'bg-background shadow-sm text-accent' : 'text-text-muted hover:text-text-primary'}`}
+              className={`p-1.5 rounded transition-all ${viewMode === 'unified' ? 'bg-background-editor shadow-sm text-accent' : 'text-text-muted hover:text-text-primary'}`}
               title={t('diff.unifiedView', language)}
             >
               <AlignJustify className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => setViewMode('split')}
-              className={`p-1.5 rounded transition-all ${viewMode === 'split' ? 'bg-background shadow-sm text-accent' : 'text-text-muted hover:text-text-primary'}`}
+              className={`p-1.5 rounded transition-all ${viewMode === 'split' ? 'bg-background-editor shadow-sm text-accent' : 'text-text-muted hover:text-text-primary'}`}
               title={t('diff.splitView', language)}
             >
               <Columns className="w-3.5 h-3.5" />

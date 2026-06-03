@@ -29,6 +29,8 @@ export function defineMonacoTheme(
   const isLight = theme.type === 'light'
 
   const bg = rgbToHex(colors.background)
+  // 亮色主题编辑器背景强制白色，暗色主题使用主题背景色
+  const editorBg = isLight ? '#ffffff' : bg
   const surface = rgbToHex(colors.surface)
   const text = rgbToHex(colors.textPrimary)
   const textMuted = rgbToHex(colors.textMuted)
@@ -80,7 +82,7 @@ export function defineMonacoTheme(
       { token: 'meta', foreground: textMuted.slice(1) },
     ],
     colors: {
-      'editor.background': bg,
+      'editor.background': editorBg,
       'editor.foreground': text,
       'editor.lineHighlightBackground': surface,
       'editorCursor.foreground': accent,
