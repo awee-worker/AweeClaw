@@ -331,7 +331,7 @@ export default function InlineDiffPreview({
     const language = useMemo(() => getLanguageFromPath(filePath), [filePath])
     const currentTheme = useStore(s => s.currentTheme)
     const appLanguage = useStore(s => s.language)
-    const isLight = currentTheme === 'dawn'
+    const isLight = currentTheme.endsWith('-light')
     const codeStyle = useMemo(() => getCustomStyle(isLight), [isLight])
 
     const { diffLines, isLoading, error } = useAsyncDiff(

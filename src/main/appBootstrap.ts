@@ -182,10 +182,14 @@ function getThemeBackgroundColor(): string {
     // Fallback dictionary for older configurations before migration
     const themeId = configStore?.get('themeId') as string || BRAND.defaultTheme;
     const themes: Record<string, string> = {
-      [BRAND.defaultTheme]: '#121215',
-      'midnight': '#161b22',
-      'cyberpunk': '#030305',
-      'dawn': '#ffffff'
+      'aweeclaw-light': '#f5faff',
+      'purple-light': '#f8f5ff',
+      'lobster-red-light': '#fffcf9',
+      'forest-green-light': '#f5fcfc',
+      'aweeclaw-dark': '#161b22',
+      'purple-dark': '#121215',
+      'lobster-red-dark': '#140e0c',
+      'forest-green-dark': '#0e1614',
     };
     return themes[themeId] || WINDOW_CONFIG.BG_COLOR;
   } catch {
@@ -247,7 +251,7 @@ function registerWindowDiagnostics(win: BrowserWindow): void {
 
 function getShutdownFallbackPresentation(): ShutdownWindowPresentation {
   const themeBg = normalizeRgbColor(configStore?.get('themeBg'), '18 18 21')
-  const themeType = configStore?.get('themeId') === 'dawn' ? 'light' : 'dark'
+  const themeType = (configStore?.get('themeId') as string || '').endsWith('-light') ? 'light' : 'dark'
 
   return {
     language: configStore?.get('language') === 'en' ? 'en' : 'zh',

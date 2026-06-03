@@ -62,10 +62,86 @@ function hexToRgb(hex: string): string {
 }
 
 // 内置主题 (使用 RGB 格式)
+// 命名规范：亮色 *-light / 暗色 *-dark，按色系配对排列
 export const builtinThemes: Theme[] = [
+  // ========== 亮色主题 ==========
   {
-    id: BRAND.lightTheme,
-    name: `${BRAND.name} Light`,
+    id: 'aweeclaw-light',
+    name: 'AweeClaw Light',
+    type: 'light',
+    monacoTheme: 'vs',
+    colors: {
+      background: '245 250 255',          // #f5faff 冰蓝白
+      backgroundSecondary: '238 246 253', // #eef6fd 淡蓝白
+      backgroundTertiary: '228 240 250',  // #e4f0fa 浅蓝灰
+      chatBg: '248 251 255',              // #f8fbff 纯净蓝白
+
+      surface: '255 255 255',
+      surfaceHover: '228 240 250',
+      surfaceActive: '215 232 245',
+      surfaceMuted: '200 222 240',
+
+      textPrimary: '15 30 50',
+      textSecondary: '50 70 95',
+      textMuted: '100 120 145',
+      textInverted: '245 250 255',
+
+      border: '200 222 240',
+      borderSubtle: '222 238 250',
+      borderActive: '57 190 248',
+
+      accent: '57 190 248',            // #39bef8 天空蓝
+      accentHover: '30 165 230',       // #1ea5e6 深天空蓝
+      accentActive: '15 140 210',      // #0f8cd2 更深蓝
+      accentForeground: '255 255 255',
+      accentSubtle: '100 210 255',     // #64d2ff 亮天蓝
+
+      statusSuccess: '22 140 70',
+      statusWarning: '195 120 15',
+      statusError: '195 45 35',
+      statusInfo: '30 130 200',
+    },
+  },
+  {
+    id: 'purple-light',
+    name: 'Purple Light',
+    type: 'light',
+    monacoTheme: 'vs',
+    colors: {
+      background: '248 245 255',          // #f8f5ff 淡紫白
+      backgroundSecondary: '242 238 252', // #f2eefc 浅紫灰
+      backgroundTertiary: '232 225 245',  // #e8e1f5 紫灰
+      chatBg: '250 248 255',              // #faf8ff 纯净紫白
+
+      surface: '255 255 255',
+      surfaceHover: '232 225 245',
+      surfaceActive: '220 210 238',
+      surfaceMuted: '205 195 225',
+
+      textPrimary: '30 20 50',
+      textSecondary: '60 45 85',
+      textMuted: '110 90 135',
+      textInverted: '248 245 255',
+
+      border: '205 195 225',
+      borderSubtle: '228 222 242',
+      borderActive: '139 92 246',
+
+      accent: '139 92 246',            // Violet 500
+      accentHover: '124 58 237',       // Violet 600
+      accentActive: '109 40 217',      // Violet 700
+      accentForeground: '255 255 255',
+      accentSubtle: '167 139 250',     // Violet 400
+
+      statusSuccess: '22 140 70',
+      statusWarning: '195 120 15',
+      statusError: '195 45 35',
+      statusInfo: '80 100 200',
+    },
+  },
+  {
+    id: 'lobster-red-light',
+    name: 'Lobster Red Light',
     type: 'light',
     monacoTheme: 'vs',
     colors: {
@@ -74,7 +150,7 @@ export const builtinThemes: Theme[] = [
       backgroundTertiary: '243 236 229',  // #f3ece5 暖灰
       chatBg: '253 249 245',              // #fdf9f5 暖白
 
-      surface: '255 252 249',
+      surface: '255 255 255',
       surfaceHover: '243 236 229',
       surfaceActive: '235 226 218',
       surfaceMuted: '222 212 202',
@@ -101,8 +177,121 @@ export const builtinThemes: Theme[] = [
     },
   },
   {
-    id: 'aweeClaw-dark',
+    id: 'forest-green-light',
+    name: 'Forest Green Light',
+    type: 'light',
+    monacoTheme: 'vs',
+    colors: {
+      background: '245 252 252',          // #f5fcfc 薄荷白
+      backgroundSecondary: '238 248 248', // #eef8f8 淡绿白
+      backgroundTertiary: '228 242 242',  // #e4f2f2 浅绿灰
+      chatBg: '248 253 253',              // #f8fdfd 纯净绿白
+
+      surface: '255 255 255',
+      surfaceHover: '228 242 242',
+      surfaceActive: '215 234 234',
+      surfaceMuted: '200 225 225',
+
+      textPrimary: '20 50 50',
+      textSecondary: '50 80 80',
+      textMuted: '90 120 120',
+      textInverted: '245 252 252',
+
+      border: '200 225 225',
+      borderSubtle: '218 240 240',
+      borderActive: '0 140 140',
+
+      accent: '0 140 140',            // 森林青绿
+      accentHover: '0 120 120',       // 深青绿
+      accentActive: '0 100 100',      // 更深青绿
+      accentForeground: '255 255 255',
+      accentSubtle: '0 170 170',      // 亮青绿
+
+      statusSuccess: '22 140 70',
+      statusWarning: '195 120 15',
+      statusError: '195 45 35',
+      statusInfo: '0 120 160',
+    },
+  },
+
+  // ========== 暗色主题 ==========
+  {
+    id: 'aweeclaw-dark',
     name: 'AweeClaw Dark',
+    type: 'dark',
+    monacoTheme: 'vs-dark',
+    colors: {
+      background: '22 27 34',         // #161b22 深蓝灰
+      backgroundSecondary: '28 33 42', // #1c212a 侧边栏
+      backgroundTertiary: '37 43 54',  // #252b36 输入框
+      chatBg: '28 33 42',
+
+      surface: '28 33 42',
+      surfaceHover: '45 51 65',
+      surfaceActive: '55 61 75',
+      surfaceMuted: '70 78 94',
+
+      textPrimary: '220 225 235',
+      textSecondary: '155 165 185',
+      textMuted: '110 120 140',
+      textInverted: '22 27 34',
+
+      border: '45 51 65',
+      borderSubtle: '30 36 48',
+      borderActive: '80 90 110',
+
+      accent: '56 189 248',          // Sky 400 冰川蓝
+      accentHover: '14 165 233',     // Sky 500
+      accentActive: '2 132 199',     // Sky 600
+      accentForeground: '15 23 42',
+      accentSubtle: '125 211 252',   // Sky 300
+
+      statusSuccess: '46 160 90',
+      statusWarning: '210 160 30',
+      statusError: '240 80 80',
+      statusInfo: '60 160 240',
+    },
+  },
+  {
+    id: 'purple-dark',
+    name: 'Purple Dark',
+    type: 'dark',
+    monacoTheme: 'vs-dark',
+    colors: {
+      background: '18 18 21',         // #121215 极深紫灰
+      backgroundSecondary: '25 25 29', // #19191D 侧边栏
+      backgroundTertiary: '32 32 37',  // #202025 输入框
+      chatBg: '25 25 29',
+
+      surface: '25 25 29',
+      surfaceHover: '38 38 44',
+      surfaceActive: '45 45 52',
+      surfaceMuted: '63 63 70',
+
+      textPrimary: '242 242 247',
+      textSecondary: '175 175 192',
+      textMuted: '130 130 148',
+      textInverted: '18 18 21',
+
+      border: '40 40 48',
+      borderSubtle: '32 32 37',
+      borderActive: '82 82 100',
+
+      accent: '139 92 246',          // Violet 500
+      accentHover: '124 58 237',     // Violet 600
+      accentActive: '109 40 217',    // Violet 700
+      accentForeground: '255 255 255',
+      accentSubtle: '167 139 250',   // Violet 400
+
+      statusSuccess: '52 211 153',
+      statusWarning: '251 191 36',
+      statusError: '248 113 113',
+      statusInfo: '96 165 250',
+    },
+  },
+  {
+    id: 'lobster-red-dark',
+    name: 'Lobster Red Dark',
     type: 'dark',
     monacoTheme: 'vs-dark',
     colors: {
@@ -138,237 +327,40 @@ export const builtinThemes: Theme[] = [
     },
   },
   {
-    id: 'noble',
-    name: 'Noble',
+    id: 'forest-green-dark',
+    name: 'Forest Green Dark',
     type: 'dark',
     monacoTheme: 'vs-dark',
     colors: {
-      // 背景：极深灰带微弱紫调，更有质感
-      background: '18 18 21',         // #121215
-      backgroundSecondary: '25 25 29', // #19191D (侧边栏/面板)
-      backgroundTertiary: '32 32 37',  // #202025 (输入框/卡片背景)
-      chatBg: '25 25 29',
+      background: '14 22 20',         // #0e1614 极深森林黑
+      backgroundSecondary: '20 30 28', // #141e1c 深绿黑
+      backgroundTertiary: '28 40 36',  // #1c2824 暗绿灰
+      chatBg: '20 30 28',
 
-      // 表面：提升层次感
-      surface: '25 25 29',
-      surfaceHover: '38 38 44',
-      surfaceActive: '45 45 52',
-      surfaceMuted: '63 63 70',
+      surface: '20 30 28',
+      surfaceHover: '38 52 48',
+      surfaceActive: '48 65 58',
+      surfaceMuted: '65 85 75',
 
-      // 文字：非纯白，更柔和
-      textPrimary: '242 242 247',
-      textSecondary: '175 175 192',
-      textMuted: '130 130 148',
-      textInverted: '18 18 21',
+      textPrimary: '230 245 238',
+      textSecondary: '170 195 180',
+      textMuted: '120 145 130',
+      textInverted: '14 22 20',
 
-      // 边框：极其细腻的微弱分割
-      border: '40 40 48',             // 融合度更高的边框
-      borderSubtle: '32 32 37',
-      borderActive: '82 82 100',
+      border: '40 55 48',
+      borderSubtle: '28 40 36',
+      borderActive: '80 110 90',
 
-      // 强调色：高级灰紫 (Desaturated Lavender)
-      accent: '139 92 246',          // Violet 500 (作为基准，看起来更舒服)
-      accentHover: '124 58 237',     // Violet 600
-      accentActive: '109 40 217',    // Violet 700
-      accentForeground: '255 255 255',
-      accentSubtle: '167 139 250',   // Violet 400 (用于微光效果)
+      accent: '52 211 153',          // Emerald 400 翡翠绿
+      accentHover: '16 185 129',     // Emerald 500
+      accentActive: '5 150 105',     // Emerald 600
+      accentForeground: '10 30 20',
+      accentSubtle: '110 231 183',   // Emerald 300
 
-      statusSuccess: '52 211 153',    // Emerald 400 (更清新的绿)
-      statusWarning: '251 191 36',    // Amber 400
-      statusError: '248 113 113',     // Red 400 (不刺眼的红)
-      statusInfo: '96 165 250',       // Blue 400
-    },
-  },
-  {
-    id: 'midnight',
-    name: 'Midnight',
-    type: 'dark',
-    monacoTheme: 'vs-dark',
-    colors: {
-      // 经典深蓝灰 (Inspired by GitHub Dark Dimmed / Nord)
-      background: '22 27 34',         // 主背景：深沉的蓝灰
-      backgroundSecondary: '28 33 42', // 侧边栏：稍亮
-      backgroundTertiary: '37 43 54',  // 输入框：明显区分
-      chatBg: '28 33 42',
-
-      surface: '28 33 42',
-      surfaceHover: '45 51 65',
-      surfaceActive: '55 61 75',
-      surfaceMuted: '70 78 94',
-
-      textPrimary: '220 225 235',
-      textSecondary: '155 165 185',
-      textMuted: '110 120 140',
-      textInverted: '22 27 34',
-
-      border: '45 51 65',             // 融合度高的边框
-      borderSubtle: '30 36 48',
-      borderActive: '80 90 110',
-
-      // 强调色：冰川蓝 (Ice Blue)
-      accent: '56 189 248',          // Sky 400
-      accentHover: '14 165 233',     // Sky 500
-      accentActive: '2 132 199',     // Sky 600
-      accentForeground: '15 23 42',
-      accentSubtle: '125 211 252',   // Sky 300
-
-      statusSuccess: '46 160 90',     // 稳重的绿
-      statusWarning: '210 160 30',    // 柔和黄
-      statusError: '240 80 80',       // 柔和红
-      statusInfo: '60 160 240',       // 柔和蓝
-    },
-  },
-  {
-    id: 'cyberpunk',
-    name: 'Cyberpunk',
-    type: 'dark',
-    monacoTheme: 'vs-dark',
-    colors: {
-      // 极致深黑 (High Contrast Neon)
-      background: '3 3 5',            // 几乎纯黑
-      backgroundSecondary: '10 10 15', // 极深蓝黑
-      backgroundTertiary: '20 20 30',
-      chatBg: '10 10 15',
-
-      surface: '10 10 15',
-      surfaceHover: '30 30 45',
-      surfaceActive: '50 50 70',
-      surfaceMuted: '80 80 100',
-
-      textPrimary: '255 255 255',
-      textSecondary: '175 175 195',
-      textMuted: '120 120 140',
-      textInverted: '0 0 0',
-
-      border: '40 40 60',
-      borderSubtle: '20 20 30',
-      borderActive: '255 0 128',      // 激活时发光边框
-
-      // 强调色：赛博粉 (Cyber Pink)
-      accent: '255 0 128',
-      accentHover: '255 50 150',
-      accentActive: '200 0 100',
-      accentForeground: '255 255 255',
-      accentSubtle: '255 100 200',
-
-      statusSuccess: '0 255 150',     // Neon Green
-      statusWarning: '255 240 0',     // Neon Yellow
-      statusError: '255 50 50',       // Neon Red
-      statusInfo: '0 240 255',        // Cyan
-    },
-  },
-  {
-    id: 'dawn',
-    name: 'Dawn',
-    type: 'light',
-    monacoTheme: 'vs',
-    colors: {
-      // 纯净白 (Clean & Crisp)
-      background: '255 255 255',      // 纯白背景
-      backgroundSecondary: '248 249 250', // 极淡的灰 (侧边栏)
-      backgroundTertiary: '241 243 245',  // 输入框背景
-      chatBg: '253 251 248',              // #fdfbf8 暖白
-
-      surface: '255 255 255',
-      surfaceHover: '241 243 245',    // Hover 显现
-      surfaceActive: '233 236 239',
-      surfaceMuted: '222 226 230',
-
-      // 文字：高对比度，拒绝模糊
-      textPrimary: '33 37 41',
-      textSecondary: '85 92 100',
-      textMuted: '115 122 130',
-      textInverted: '255 255 255',
-
-      border: '222 226 230',          // 清晰的分割线
-      borderSubtle: '241 243 245',
-      borderActive: '173 181 189',
-
-      // 强调色：国际奇连蓝 (Inter Klein Blue) - 专业感强
-      accent: '37 99 235',           // Blue 600
-      accentHover: '29 78 216',      // Blue 700
-      accentActive: '30 70 190',     // Blue 800
-      accentForeground: '255 255 255',
-      accentSubtle: '96 165 250',    // Blue 400
-
-      statusSuccess: '22 163 74',     // Green 600
-      statusWarning: '217 119 6',     // Amber 600
-      statusError: '220 38 38',       // Red 600
-      statusInfo: '37 99 235',        // Blue 600
-    },
-  },
-  {
-    id: 'mars-green',
-    name: 'Mars Green',
-    type: 'light',
-    monacoTheme: 'vs',
-    colors: {
-      background: '245 252 252',
-      backgroundSecondary: '238 248 248',
-      backgroundTertiary: '228 242 242',
-      chatBg: '248 253 253',
-
-      surface: '245 252 252',
-      surfaceHover: '228 242 242',
-      surfaceActive: '215 234 234',
-      surfaceMuted: '200 225 225',
-
-      textPrimary: '20 50 50',
-      textSecondary: '50 80 80',
-      textMuted: '90 120 120',
-      textInverted: '245 252 252',
-
-      border: '200 225 225',
-      borderSubtle: '218 240 240',
-      borderActive: '0 140 140',
-
-      accent: '0 140 140',
-      accentHover: '0 120 120',
-      accentActive: '0 100 100',
-      accentForeground: '255 255 255',
-      accentSubtle: '0 170 170',
-
-      statusSuccess: '22 140 70',
-      statusWarning: '195 120 15',
-      statusError: '195 45 35',
-      statusInfo: '0 120 160',
-    },
-  },
-  {
-    id: 'prussian-blue',
-    name: 'Prussian Blue',
-    type: 'light',
-    monacoTheme: 'vs',
-    colors: {
-      background: '242 245 250',
-      backgroundSecondary: '235 239 246',
-      backgroundTertiary: '225 230 240',
-      chatBg: '246 248 252',
-
-      surface: '242 245 250',
-      surfaceHover: '225 230 240',
-      surfaceActive: '212 218 232',
-      surfaceMuted: '198 206 224',
-
-      textPrimary: '15 25 45',
-      textSecondary: '40 55 80',
-      textMuted: '80 95 120',
-      textInverted: '242 245 250',
-
-      border: '198 206 224',
-      borderSubtle: '218 224 238',
-      borderActive: '0 49 83',
-
-      accent: '0 49 83',
-      accentHover: '0 38 65',
-      accentActive: '0 28 48',
-      accentForeground: '255 255 255',
-      accentSubtle: '0 70 115',
-
-      statusSuccess: '22 140 70',
-      statusWarning: '195 120 15',
-      statusError: '195 45 35',
-      statusInfo: '0 80 140',
+      statusSuccess: '52 211 153',
+      statusWarning: '237 160 50',
+      statusError: '230 80 65',
+      statusInfo: '90 155 210',
     },
   },
 ]

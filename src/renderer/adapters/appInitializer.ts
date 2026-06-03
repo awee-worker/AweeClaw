@@ -13,7 +13,6 @@ import { logger } from '@toolkit/LogEngine'
 import { startupMetrics } from '@shared/toolkit/bootMetrics'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
 import { useStore } from '@store'
-import { BRAND } from '@shared/brand'
 import { initializeAgentStore } from '@intelligence/state/IntelligenceStore'
 import { themeManager } from '../config/themeDefinition'
 import { keybindingService } from './keybindingAdapter'
@@ -403,7 +402,7 @@ function isAutoApproveSettings(value: unknown): value is Partial<import('@store'
 }
 
 function isThemeName(value: unknown): value is import('@store').ThemeName {
-  const validThemes = [BRAND.defaultTheme, 'midnight', 'cyberpunk', 'dawn']
+  const validThemes = ['aweeclaw-light', 'purple-light', 'lobster-red-light', 'forest-green-light', 'aweeclaw-dark', 'purple-dark', 'lobster-red-dark', 'forest-green-dark']
   return typeof value === 'string' && validThemes.includes(value)
 }
 

@@ -11,7 +11,7 @@ export const BRAND = {
   cssPrefix: 'aweeclaw',
   themePrefix: 'aweeclaw',
   workspaceExt: 'aweeclaw-workspace',
-  defaultTheme: 'aweeclaw-dark',
+  defaultTheme: 'aweeclaw-light',
   lightTheme: 'aweeclaw-light',
 
   author: {

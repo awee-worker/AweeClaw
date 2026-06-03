@@ -2,7 +2,7 @@ import { StateCreator } from 'zustand'
 import { builtinThemes } from '@/renderer/config/themeDefinition'
 import { BRAND } from '@shared/brand'
 
-export type BuiltinThemeName = typeof BRAND.lightTheme | typeof BRAND.defaultTheme | 'midnight' | 'dawn' | 'cyberpunk' | 'lobster' | 'mars-green' | 'prussian-blue'
+export type BuiltinThemeName = 'aweeclaw-light' | 'purple-light' | 'lobster-red-light' | 'forest-green-light' | 'aweeclaw-dark' | 'purple-dark' | 'lobster-red-dark' | 'forest-green-dark'
 
 export type ThemeName = string
 
