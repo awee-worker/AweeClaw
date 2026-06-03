@@ -46,7 +46,7 @@ export class WhatsAppChannelPlugin implements ChannelPlugin {
       voice: true,
       files: true,
     },
-    order: 3,
+    order: 5,
   }
 
   secretSchema: ChannelSecretSchema[] = [

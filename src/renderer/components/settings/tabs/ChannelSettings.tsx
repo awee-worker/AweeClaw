@@ -35,7 +35,14 @@ import feishuLogo from '@renderer/assets/channel/feishu.svg'
 import wechatLogo from '@renderer/assets/channel/wechat.svg'
 import weixinLogo from '@renderer/assets/channel/weixin.svg'
 import dingdingLogo from '@renderer/assets/channel/dingding.svg'
+import mpLogo from '@renderer/assets/channel/mp.svg'
+import slackLogo from '@renderer/assets/channel/slack.svg'
+import discordLogo from '@renderer/assets/channel/discord.svg'
+import telegramLogo from '@renderer/assets/channel/telegram.svg'
+import misskeyLogo from '@renderer/assets/channel/misskey.svg'
+import matrixLogo from '@renderer/assets/channel/matrix.svg'
 import whatsappLogo from '@renderer/assets/channel/whatsapp.svg'
+import qqLogo from '@renderer/assets/channel/qq.svg'
 
 /** 渠道 logo 组件 */
 function ChannelLogo({ channelId, className }: { channelId: ChannelId; className?: string }) {
@@ -43,8 +50,15 @@ function ChannelLogo({ channelId, className }: { channelId: ChannelId; className
     feishu: feishuLogo,
     wechat: wechatLogo,
     weixin: weixinLogo,
+    wechatmp: mpLogo,
     dingtalk: dingdingLogo,
+    slack: slackLogo,
+    discord: discordLogo,
+    telegram: telegramLogo,
+    misskey: misskeyLogo,
+    matrix: matrixLogo,
     whatsapp: whatsappLogo,
+    qq: qqLogo,
   }
   const src = logoMap[channelId]
   if (src) {

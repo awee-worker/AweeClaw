@@ -7,7 +7,15 @@ import { webhookServer } from './WebhookReceiver'
 import { feishuChannelPlugin } from './adapters/feishu'
 import { wechatChannelPlugin } from './adapters/wechat'
 import { weixinChannelPlugin } from './adapters/weixin'
+import { wechatmpChannelPlugin } from './adapters/wechatmp'
 import { whatsappChannelPlugin } from './adapters/whatsapp'
+import { qqChannelPlugin } from './adapters/qq'
+import { dingtalkChannelPlugin } from './adapters/dingtalk'
+import { slackChannelPlugin } from './adapters/slack'
+import { discordChannelPlugin } from './adapters/discord'
+import { telegramChannelPlugin } from './adapters/telegram'
+import { misskeyChannelPlugin } from './adapters/misskey'
+import { matrixChannelPlugin } from './adapters/matrix'
 import type {
   ChannelId,
   ChannelPlugin,
@@ -29,7 +37,15 @@ class ChannelService {
     channelConfigStore.load()
     this.registerBuiltInPlugins()
     channelRegistry.onMessage(msg => this.handleInboundMessage(msg))
-    await channelRegistry.startFromConfig(channelConfigStore.getEnabledConfigs())
+
+    // 非阻塞启动：注册插件后立即返回，各渠道连接在后台异步进行
+    // 避免网络超时（如飞书 ETIMEDOUT）阻塞应用启动
+    channelRegistry.startFromConfig(channelConfigStore.getEnabledConfigs()).then(() => {
+      logger.channel.info('All channel auto-connections completed')
+    }).catch(err => {
+      logger.channel.error(`[ChannelService] Auto-connect error: ${err instanceof Error ? err.message : String(err)}`)
+    })
+
     const hasWebhookChannels = channelConfigStore.getEnabledConfigs().some(
       c => c.id === 'wechat' || c.id === 'whatsapp'
     )
@@ -41,7 +57,7 @@ class ChannelService {
       }
     }
     this.initialized = true
-    logger.channel.info('Channel service initialized')
+    logger.channel.info('Channel service initialized (connections running in background)')
   }
 
   async shutdown(): Promise<void> {
@@ -202,8 +218,16 @@ class ChannelService {
     channelRegistry.register(feishuChannelPlugin)
     channelRegistry.register(wechatChannelPlugin)
     channelRegistry.register(weixinChannelPlugin)
+    channelRegistry.register(wechatmpChannelPlugin)
     channelRegistry.register(whatsappChannelPlugin)
-    logger.channel.info('Registered built-in channel plugins: feishu, wechat, weixin, whatsapp')
+    channelRegistry.register(qqChannelPlugin)
+    channelRegistry.register(dingtalkChannelPlugin)
+    channelRegistry.register(slackChannelPlugin)
+    channelRegistry.register(discordChannelPlugin)
+    channelRegistry.register(telegramChannelPlugin)
+    channelRegistry.register(misskeyChannelPlugin)
+    channelRegistry.register(matrixChannelPlugin)
+    logger.channel.info('Registered built-in channel plugins: feishu, wechat, weixin, wechatmp, whatsapp, qq, dingtalk, slack, discord, telegram, misskey, matrix')
   }
 
   private handleInboundMessage(message: InboundMessage): void {

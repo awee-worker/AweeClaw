@@ -151,6 +151,8 @@ class ChannelRegistry {
   }
 
   async startFromConfig(configs: ChannelConfig[]): Promise<void> {
+    // 并行连接所有已启用的渠道账户，互不阻塞
+    const connectTasks: Promise<void>[] = []
     for (const config of configs) {
       if (!config.enabled) continue
       const plugin = this.plugins.get(config.id)
@@ -160,14 +162,15 @@ class ChannelRegistry {
       }
       for (const account of config.accounts) {
         if (!account.enabled) continue
-        try {
-          await this.connectAccount(config.id, account)
-        } catch (err) {
-          const errorMsg = err instanceof Error ? err.message : String(err)
-          logger.channel.error(`Auto-connect failed for ${config.id}/${account.id}: ${errorMsg}`)
-        }
+        connectTasks.push(
+          this.connectAccount(config.id, account).catch(err => {
+            const errorMsg = err instanceof Error ? err.message : String(err)
+            logger.channel.error(`Auto-connect failed for ${config.id}/${account.id}: ${errorMsg}`)
+          })
+        )
       }
     }
+    await Promise.allSettled(connectTasks)
   }
 
   async stopAll(): Promise<void> {

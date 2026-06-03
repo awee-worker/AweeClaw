@@ -1,6 +1,7 @@
 import * as http from 'http'
 import { logger } from '@shared/toolkit/LogEngine'
 import { wechatChannelPlugin } from './adapters/wechat'
+import { wechatmpChannelPlugin } from './adapters/wechatmp'
 import { whatsappChannelPlugin } from './adapters/whatsapp'
 import { channelConfigStore } from './ChannelConfigRepository'
 
@@ -216,6 +217,17 @@ class WebhookServer {
         this.handleWechatVerification(req, url, res)
       } else if (req.method === 'POST') {
         this.handleWechatMessage(req, url, res)
+      } else {
+        this.respondMethodNotAllowed(res, ['GET', 'POST'])
+      }
+      return
+    }
+
+    if (path === '/webhook/wechatmp') {
+      if (req.method === 'GET') {
+        this.handleWechatMpVerification(req, url, res)
+      } else if (req.method === 'POST') {
+        this.handleWechatMpMessage(req, url, res)
       } else {
         this.respondMethodNotAllowed(res, ['GET', 'POST'])
       }
@@ -466,6 +478,146 @@ class WebhookServer {
       })
       .catch(() => {
         this.recordAnomaly(req, '/webhook/whatsapp', 500)
+        res.writeHead(500)
+        res.end('Error')
+      })
+      .finally(() => {
+        this.inFlightLimiter.release(inFlightKey)
+      })
+  }
+
+  // ─── 微信公众号（服务号）Webhook ──────────────────────────────
+
+  private handleWechatMpVerification(
+    req: http.IncomingMessage,
+    url: URL,
+    res: http.ServerResponse
+  ): void {
+    if (this.checkRateLimit(req, '/webhook/wechatmp')) {
+      this.recordAnomaly(req, '/webhook/wechatmp', 429)
+      res.writeHead(429)
+      res.end('Too Many Requests')
+      return
+    }
+
+    const signature = url.searchParams.get('signature') || ''
+    const timestamp = url.searchParams.get('timestamp') || ''
+    const nonce = url.searchParams.get('nonce') || ''
+    const echostr = url.searchParams.get('echostr') || ''
+    const msgSignature = url.searchParams.get('msg_signature') || ''
+
+    const wechatmpConfig = channelConfigStore.get('wechatmp')
+    if (!wechatmpConfig) {
+      this.recordAnomaly(req, '/webhook/wechatmp', 401)
+      res.writeHead(403)
+      res.end('No wechatmp config')
+      return
+    }
+
+    // 通过签名查找匹配的账户
+    const account = wechatmpChannelPlugin.findAccountBySignature(
+      wechatmpConfig.accounts,
+      timestamp,
+      nonce,
+      signature
+    )
+
+    if (!account) {
+      this.recordAnomaly(req, '/webhook/wechatmp', 401)
+      res.writeHead(403)
+      res.end('Verification failed')
+      return
+    }
+
+    const result = wechatmpChannelPlugin.handleVerification(account.id, {
+      signature,
+      timestamp,
+      nonce,
+      echostr,
+      msg_signature: msgSignature,
+    })
+
+    if (result === null) {
+      this.recordAnomaly(req, '/webhook/wechatmp', 401)
+      res.writeHead(403)
+      res.end('Verification failed')
+      return
+    }
+
+    res.writeHead(200)
+    res.end(result)
+  }
+
+  private handleWechatMpMessage(
+    req: http.IncomingMessage,
+    url: URL,
+    res: http.ServerResponse
+  ): void {
+    if (this.checkRateLimit(req, '/webhook/wechatmp')) {
+      this.recordAnomaly(req, '/webhook/wechatmp', 429)
+      res.writeHead(429)
+      res.end('Too Many Requests')
+      return
+    }
+
+    const clientIp = req.socket.remoteAddress || 'unknown'
+    const inFlightKey = `/webhook/wechatmp:${clientIp}`
+    if (!this.inFlightLimiter.tryAcquire(inFlightKey)) {
+      this.recordAnomaly(req, '/webhook/wechatmp', 429)
+      res.writeHead(429)
+      res.end('Too Many Requests')
+      return
+    }
+
+    const signature = url.searchParams.get('signature') || ''
+    const timestamp = url.searchParams.get('timestamp') || ''
+    const nonce = url.searchParams.get('nonce') || ''
+    const msgSignature = url.searchParams.get('msg_signature') || ''
+
+    this.readBodyWithLimit(req, WEBHOOK_PREAUTH_MAX_BODY_BYTES, WEBHOOK_BODY_TIMEOUT_MS)
+      .then(async body => {
+        if (body === null) {
+          this.recordAnomaly(req, '/webhook/wechatmp', 413)
+          res.writeHead(413)
+          res.end('Payload Too Large')
+          return
+        }
+
+        const wechatmpConfig = channelConfigStore.get('wechatmp')
+        if (!wechatmpConfig) {
+          res.writeHead(200)
+          res.end('success')
+          return
+        }
+
+        // 通过签名查找匹配的账户
+        const account = wechatmpChannelPlugin.findAccountBySignature(
+          wechatmpConfig.accounts.filter(a => a.enabled),
+          timestamp,
+          nonce,
+          signature
+        )
+
+        if (!account) {
+          this.recordAnomaly(req, '/webhook/wechatmp', 401)
+          res.writeHead(200)
+          res.end('success')
+          return
+        }
+
+        await wechatmpChannelPlugin.handleWebhookEvent(account.id, body, {
+          signature,
+          timestamp,
+          nonce,
+          msg_signature: msgSignature,
+        })
+
+        // 微信公众号要求回复 success 表示接收成功
+        res.writeHead(200)
+        res.end('success')
+      })
+      .catch(() => {
+        this.recordAnomaly(req, '/webhook/wechatmp', 500)
         res.writeHead(500)
         res.end('Error')
       })

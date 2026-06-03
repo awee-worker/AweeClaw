@@ -14,12 +14,14 @@ interface DecisionOverlayProps {
   message: string
   confirmText?: string
   cancelText?: string
+  saveText?: string
   severity?: DecisionSeverity
   countdownSeconds?: number
   riskTag?: string
   auditAction?: string
   onConfirm: () => void
   onCancel: () => void
+  onSave?: () => void
 }
 
 interface DecisionOptions {
@@ -27,6 +29,7 @@ interface DecisionOptions {
   message: string
   confirmText?: string
   cancelText?: string
+  saveText?: string
   severity?: DecisionSeverity
   variant?: 'danger' | 'warning' | 'info'
   countdownSeconds?: number
@@ -80,12 +83,14 @@ export default function DecisionOverlay({
   message,
   confirmText,
   cancelText,
+  saveText,
   severity = 'warning',
   countdownSeconds = 0,
   riskTag,
   auditAction,
   onConfirm,
   onCancel,
+  onSave,
 }: DecisionOverlayProps) {
   const language = useStore((state) => state.language)
   const config = SEVERITY_CONFIG[severity]
@@ -155,6 +160,11 @@ export default function DecisionOverlay({
         <ActionButton variant="ghost" size="sm" onClick={handleCancel}>
           {cancelText || t('cancel', language)}
         </ActionButton>
+        {saveText && onSave && (
+          <ActionButton variant="primary" size="sm" onClick={onSave}>
+            {saveText}
+          </ActionButton>
+        )}
         <ActionButton
           variant={config.buttonVariant}
           size="sm"
@@ -238,7 +248,7 @@ export function useDecision() {
   return context.decide
 }
 
-let globalResolve: ((value: boolean) => void) | null = null
+let globalResolve: ((value: boolean | 'save') => void) | null = null
 let globalSetState: ((state: { isOpen: boolean; options: DecisionOptions | null }) => void) | null = null
 
 export function GlobalDecisionOverlay() {
@@ -269,6 +279,13 @@ export function GlobalDecisionOverlay() {
     setState({ isOpen: false, options: null })
   }, [state.options])
 
+  const handleSave = useCallback(() => {
+    if (state.options?.auditAction) logAudit(state.options.auditAction, true, state.options.riskTag)
+    globalResolve?.('save')
+    globalResolve = null
+    setState({ isOpen: false, options: null })
+  }, [state.options])
+
   if (!state.options) return null
 
   return (
@@ -277,11 +294,12 @@ export function GlobalDecisionOverlay() {
       {...state.options}
       onConfirm={handleConfirm}
       onCancel={handleCancel}
+      onSave={state.options.saveText ? handleSave : undefined}
     />
   )
 }
 
-export function globalDecide(options: DecisionOptions): Promise<boolean> {
+export function globalDecide(options: DecisionOptions): Promise<boolean | 'save'> {
   return new Promise((resolve) => {
     if (!globalSetState) {
       logger.ui.warn('GlobalDecisionOverlay not mounted, canceling decision request')

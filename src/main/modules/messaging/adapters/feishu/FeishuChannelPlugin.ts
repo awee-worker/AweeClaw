@@ -50,7 +50,7 @@ export class FeishuChannelPlugin implements ChannelPlugin {
       voice: false,
       files: true,
     },
-    order: 1,
+    order: 6,
   }
 
   secretSchema: ChannelSecretSchema[] = [

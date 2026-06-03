@@ -452,14 +452,18 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
         setIsClosing(true)
 
         if (isDirty) {
-            const confirmed = await globalConfirm({
+            const result = await globalConfirm({
                 title: t('settings.managePreferences', language as Language),
                 message: t('settings.unsavedChangesConfirm', language as Language),
                 confirmText: t('statusBar.discard', language as Language),
                 cancelText: t('statusBar.cancel', language as Language),
+                saveText: t('settings.saveChanges', language as Language),
                 variant: 'warning',
             })
-            if (!confirmed) {
+            if (result === 'save') {
+                await handleSave()
+                // 保存成功后关闭
+            } else if (!result) {
                 setIsClosing(false)
                 return
             }
@@ -471,7 +475,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
             setShowSettings(false)
         }
         setIsClosing(false)
-    }, [isClosing, isDirty, language, setShowSettings, setShowSettingsPage, embedded])
+    }, [isClosing, isDirty, language, setShowSettings, setShowSettingsPage, embedded, handleSave])
 
     const handleClose = useCallback(() => {
         void requestClose()
@@ -692,7 +696,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                     </div>
                 </div>
 
-                {(isDirty || saved) && (
+                {(isDirty || saved) && activeTab !== 'channel' && (
                     <div className="absolute bottom-6 right-8 left-8 p-4 rounded-xl bg-surface/95 border border-border/60 shadow-lg flex items-center justify-between z-10 transition-all duration-300">
                         <span className="text-xs text-text-muted ml-2 font-medium">
                             {saved && !isDirty

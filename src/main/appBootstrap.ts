@@ -660,13 +660,16 @@ async function initializeModules(firstWin: BrowserWindow) {
     logger.system.warn('[Main] Settings DB init skipped:', err instanceof Error ? err.message : String(err))
   }
 
-  // 自动初始化渠道服务（飞书等 WebSocket 长连接）
+  // 非阻塞初始化渠道服务（连接在后台异步进行，不阻塞应用启动）
   try {
     const { channelService } = await import('./modules/messaging')
-    await channelService.init()
-    logger.system.info('[Main] Channel service auto-initialized')
+    channelService.init().then(() => {
+      logger.system.info('[Main] Channel service initialized (background)')
+    }).catch(err => {
+      logger.system.warn('[Main] Channel service init failed:', err instanceof Error ? err.message : String(err))
+    })
   } catch (err) {
-    logger.system.warn('[Main] Channel service auto-init skipped:', err instanceof Error ? err.message : String(err))
+    logger.system.warn('[Main] Channel service import skipped:', err instanceof Error ? err.message : String(err))
   }
 
   // 异步初始化 Python 环境（不阻塞启动）
