@@ -296,7 +296,7 @@ function ThreadListItem({
     >
       <MessageSquare className="w-3.5 h-3.5 shrink-0 opacity-50" strokeWidth={1.5} />
       <div className="flex-1 min-w-0 group-hover:pr-5 transition-all">
-        <div className="text-[13px] font-medium truncate leading-snug">{title}</div>
+        <div className="text-[13px] font-medium truncate leading-snug" title={title}>{title}</div>
       </div>
       <div className="absolute right-1.5 top-1/2 -translate-y-1/2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" ref={menuRef}>
         <button
