@@ -16,6 +16,7 @@ export const zh = {
 
   // Settings
   'settings.managePreferences': '管理你的应用偏好与配置',
+  'settings.confirmTitle': '提示',
   'settings.unsavedChanges': '有未保存的更改',
   'settings.allChangesSaved': '所有更改已保存',
   'settings.saveChanges': '保存更改',
@@ -597,7 +598,7 @@ export const zh = {
   'settings.voiceSettings': '语音设置',
   'settings.loadingSettings': '正在加载设置项...',
   'settings.closeSettings': '关闭设置',
-  'settings.unsavedChangesConfirm': '您有未保存的更改，确定要放弃吗？',
+  'settings.unsavedChangesConfirm': '您有未保存的更改，请保存更改或丢弃？',
 
   // Model Provider
   'provider.mode': '运行模式',

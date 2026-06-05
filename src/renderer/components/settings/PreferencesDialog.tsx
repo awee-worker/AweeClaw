@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState, useEffect, useMemo, useCallback, useRef } from 'react'
-import { Cpu, Settings2, Code, Keyboard, Database, Shield, Monitor, Plug, Braces, Brain, FileCode, FileText, Zap, Check, X, Palette, Radio, Cloud, Eye, Search, Mail, Mic } from 'lucide-react'
+import { Cpu, Settings2, Code, Keyboard, Database, Shield, Monitor, Plug, Braces, Brain, FileCode, FileText, Zap, X, Palette, Radio, Cloud, Eye, Search, Mail, Mic } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { PROVIDERS } from '@configuration/aiProviders'
@@ -178,7 +178,6 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
 
     const [activeTab, setActiveTab] = useState<SettingsTab>('provider')
     const [showApiKey, setShowApiKey] = useState(false)
-    const [saved, setSaved] = useState(false)
 
     useEffect(() => {
         if (settingsInitialTab) {
@@ -236,7 +235,11 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                     dbResult.providerConfigs,
                 )
                 setLocalConfig(resolvedConfig)
+                // 同步更新 store，使 sourceSnapshots 与 localSnapshots 保持一致，避免 isDirty 误判
+                set('llmConfig', resolvedConfig)
             }
+            // 同步更新 store 的 providerConfigs，避免 isDirty 因 DB 与 store 不一致而始终为 true
+            set('providerConfigs', dbResult.providerConfigs)
         }).catch(() => {
             // 数据库加载失败时回退到 store 数据，不影响使用
         })
@@ -333,8 +336,9 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
         emailConfig: serializeComparable(emailConfig),
         providerConfigs: serializeComparable(providerConfigs),
         securitySettings: serializeComparable(securitySettings),
+        privacySettings: serializeComparable(privacySettings),
         editorConfig: serializeComparable(editorConfig),
-    }), [agentConfig, editorConfig, llmConfig, mcpConfig, providerConfigs, securitySettings, webSearchConfig])
+    }), [agentConfig, editorConfig, llmConfig, mcpConfig, privacySettings, providerConfigs, securitySettings, webSearchConfig])
 
     const localSnapshots = useMemo(() => ({
         llmConfig: serializeComparable(localConfig),
@@ -344,8 +348,9 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
         emailConfig: serializeComparable(localEmailConfig),
         providerConfigs: serializeComparable(localProviderConfigs),
         securitySettings: serializeComparable(localSecuritySettings),
+        privacySettings: serializeComparable(localPrivacySettings),
         editorConfig: serializeComparable(finalEditorConfig),
-    }), [finalEditorConfig, localAgentConfig, localConfig, localEmailConfig, localMcpConfig, localProviderConfigs, localSecuritySettings, localWebSearchConfig])
+    }), [finalEditorConfig, localAgentConfig, localConfig, localEmailConfig, localMcpConfig, localPrivacySettings, localProviderConfigs, localSecuritySettings, localWebSearchConfig])
 
     const isDirty = useMemo(() => {
         return localSnapshots.llmConfig !== sourceSnapshots.llmConfig ||
@@ -360,6 +365,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
             localEnableFileLogging !== enableFileLogging ||
             localSnapshots.providerConfigs !== sourceSnapshots.providerConfigs ||
             localSnapshots.securitySettings !== sourceSnapshots.securitySettings ||
+            localSnapshots.privacySettings !== sourceSnapshots.privacySettings ||
             localSnapshots.editorConfig !== sourceSnapshots.editorConfig
     }, [aiInstructions, autoApprove, enableFileLogging, language, localAiInstructions, localAutoApprove, localEnableFileLogging, localLanguage, localPromptTemplateId, localSnapshots, promptTemplateId, sourceSnapshots])
 
@@ -419,8 +425,6 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
 
             window.electronAPI?.mcpSetAutoConnect?.(localMcpConfig.autoConnect ?? true)
 
-            setSaved(true)
-            window.setTimeout(() => setSaved(false), 2000)
             toast.success(t('success.settingsSaved', localLanguage as Language))
         } catch (error) {
             toast.error(error instanceof Error ? error.message : String(error))
@@ -453,7 +457,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
 
         if (isDirty) {
             const result = await globalConfirm({
-                title: t('settings.managePreferences', language as Language),
+                title: t('settings.confirmTitle', language as Language),
                 message: t('settings.unsavedChangesConfirm', language as Language),
                 confirmText: t('statusBar.discard', language as Language),
                 cancelText: t('statusBar.cancel', language as Language),
@@ -696,31 +700,21 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                     </div>
                 </div>
 
-                {(isDirty || saved) && activeTab !== 'channel' && (
+                {isDirty && activeTab !== 'channel' && (
                     <div className="absolute bottom-6 right-8 left-8 p-4 rounded-xl bg-surface/95 border border-border/60 shadow-lg flex items-center justify-between z-10 transition-all duration-300">
                         <span className="text-xs text-text-muted ml-2 font-medium">
-                            {saved && !isDirty
-                                ? t('settings.allChangesSaved', language as Language)
-                                : t('settings.unsavedChanges', language as Language)}
+                            {t('settings.unsavedChanges', language as Language)}
                         </span>
                         <div className="flex items-center gap-3">
                             <ActionButton variant="ghost" onClick={handleClose} className="hover:bg-text-inverted/[0.05] hover:bg-text-primary/[0.05] text-text-secondary rounded-lg">
                                 {t('statusBar.cancel', language as Language)}
                             </ActionButton>
                             <ActionButton
-                                variant={saved ? 'success' : 'primary'}
+                                variant="primary"
                                 onClick={handleSave}
-                                disabled={!isDirty}
-                                className={`min-w-[140px] shadow-lg transition-all duration-300 rounded-xl ${saved ? 'bg-status-success hover:bg-status-success/90 text-white' : 'bg-accent hover:bg-accent-hover text-white shadow-accent/20 disabled:opacity-50 disabled:cursor-not-allowed'}`}
+                                className="min-w-[140px] shadow-lg transition-all duration-300 rounded-xl bg-accent hover:bg-accent-hover text-white shadow-accent/20"
                             >
-                                {saved ? (
-                                    <span className="flex items-center gap-2 justify-center font-bold">
-                                        <Check className="w-4 h-4" />
-                                        {t('settings.saved', language as Language)}
-                                    </span>
-                                ) : (
-                                    <span className="font-bold">{t('settings.saveChanges', language as Language)}</span>
-                                )}
+                                <span className="font-bold">{t('settings.saveChanges', language as Language)}</span>
                             </ActionButton>
                         </div>
                     </div>

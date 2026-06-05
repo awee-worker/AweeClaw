@@ -16,6 +16,7 @@ export const en = {
 
   // Settings
   'settings.managePreferences': 'Manage your application preferences and configurations',
+  'settings.confirmTitle': 'Confirm',
   'settings.unsavedChanges': 'Unsaved changes',
   'settings.allChangesSaved': 'All changes saved',
   'settings.saveChanges': 'Save Changes',
@@ -596,7 +597,7 @@ export const en = {
   'settings.voiceSettings': 'Voice Settings',
   'settings.loadingSettings': 'Loading settings...',
   'settings.closeSettings': 'Close settings',
-  'settings.unsavedChangesConfirm': 'You have unsaved changes. Discard them?',
+  'settings.unsavedChangesConfirm': 'You have unsaved changes. Please save or discard them?',
 
   // Model Provider
   'provider.mode': 'Mode',
