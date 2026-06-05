@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useEffect } from 'react'
+import { logger } from '@shared/toolkit/LogEngine'
 import {
   type Node,
   type Edge,
@@ -424,7 +425,7 @@ export function useWorkflowEditor(initialWorkflow?: WorkflowDefinition | Workflo
     if (!workflow) return
     const result = validateWorkflow(workflow.nodes, workflow.edges)
     if (!result.valid) {
-      console.warn('Workflow validation errors:', result.errors)
+      logger.ui.warn('Workflow validation errors:', result.errors)
     }
     saveWorkflowDefinition(workflow)
     setIsModified(false)

@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
+import { logger } from '@shared/toolkit/LogEngine'
 import { Stethoscope, RefreshCw, ChevronRight, ChevronDown, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react'
 import { useStore } from '@store'
 import { ActionButton } from '@/renderer/components/ui'
@@ -70,7 +71,7 @@ export function DiagnosisRecordsPanel() {
         workspacePath,
         'agent',
       )
-    } catch {}
+    } catch (e) { logger.scenario.warn('Diagnosis agent failed:', e) }
   }, [llmConfig, workspacePath])
 
   const loadData = useCallback(async () => {

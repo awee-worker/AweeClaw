@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { logger } from '@shared/toolkit/LogEngine'
 import {
   ArrowUpCircle, CheckCircle2, Loader2, RefreshCw,
   X, AlertTriangle, ChevronDown, ChevronUp,
@@ -57,7 +58,7 @@ export function ScenarioUpdatePanel() {
       setUpdates(items)
       setLastCheckedAt(new Date())
     } catch (err) {
-      console.error('[ScenarioUpdatePanel] Check updates failed:', err)
+      logger.scenario.error('[ScenarioUpdatePanel] Check updates failed:', err)
       toast.error(
         t('app.failedtocheckupdates', language as Language),
         err instanceof Error ? err.message : ''

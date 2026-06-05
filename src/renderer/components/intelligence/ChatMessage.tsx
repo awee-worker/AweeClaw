@@ -13,6 +13,7 @@ import { vscDarkPlus, vs } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { themeManager } from '../../config/themeDefinition'
 import { motion, AnimatePresence } from 'framer-motion'
 import { BRAND } from '@shared/brand'
+import { logger } from '@shared/toolkit/LogEngine'
 import {
   ChatMessage as ChatMessageType,
   isUserMessage,
@@ -649,7 +650,7 @@ const MarkdownContent = React.memo(({ content: rawContent, fontSize, isStreaming
         setActiveFile(resolvedPath)
       }
     } catch (err) {
-      console.warn('Failed to open file from markdown:', err)
+      logger.ui.warn('Failed to open file from markdown:', err)
     }
   }, [workspacePath, openFile, setActiveFile])
 

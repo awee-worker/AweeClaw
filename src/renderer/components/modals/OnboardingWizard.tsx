@@ -5,6 +5,7 @@
 
 import { api } from '../../adapters/electronBridge'
 import React, { useState, useEffect } from 'react'
+import { logger } from '@shared/toolkit/LogEngine'
 import {
   ChevronRight, ChevronLeft, Check, Sparkles, Palette,
   Globe, Cpu, FolderOpen, Rocket, Eye, EyeOff, Settings
@@ -111,7 +112,7 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
       setIsExiting(true)
       setTimeout(onComplete, 500)
     } catch (error) {
-      console.error('Failed to save onboarding settings:', error)
+      logger.settings.error('Failed to save onboarding settings:', error)
       // Fallback: try to set store at least so UI updates
       useStore.getState().set('onboardingCompleted', true)
       onComplete()

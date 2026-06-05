@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { logger } from '@shared/toolkit/LogEngine'
 import {
   MessageCircle,
   MessageSquare,
@@ -189,7 +190,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
       }
       setSecretSchemas(schemas)
     } catch (err) {
-      console.error('Failed to load channel data:', err)
+      logger.channel.error('Failed to load channel data:', err)
     } finally {
       setLoading(false)
     }

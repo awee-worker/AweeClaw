@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import DOMPurify from 'dompurify'
+import { logger } from '@shared/toolkit/LogEngine'
 
 export interface PurifyConfig {
   ALLOWED_TAGS?: string[]
@@ -60,9 +61,9 @@ export function SanitizedHTML({
     const original = String(html)
     const result = purify(original, options)
     if (debug && import.meta.env.DEV) {
-      console.log('[SanitizedHTML] before:', original.slice(0, 200))
-      console.log('[SanitizedHTML] after:', result.slice(0, 200))
-      if (detectRisk(original)) console.warn('[SanitizedHTML] risky content removed')
+      logger.security.debug('[SanitizedHTML] before:', original.slice(0, 200))
+      logger.security.debug('[SanitizedHTML] after:', result.slice(0, 200))
+      if (detectRisk(original)) logger.security.warn('[SanitizedHTML] risky content removed')
     }
     return result
   }, [html, options, debug])

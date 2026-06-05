@@ -75,7 +75,7 @@ export function createModel(config: LLMConfig, options: ModelOptions = {}): Lang
     const refreshToken = options.refreshToken ?? config.refreshToken
 
     if (cloudMode && serverUrl && (accessToken || refreshToken)) {
-        console.log('[modelFactory] Creating cloud model:', {
+        logger.llm.info('[modelFactory] Creating cloud model:', {
             provider: config.provider,
             model: config.model,
             serverUrl,
@@ -85,7 +85,7 @@ export function createModel(config: LLMConfig, options: ModelOptions = {}): Lang
         return createCloudModel(config, { cloudMode, serverUrl, accessToken, refreshToken })
     }
 
-    console.log('[modelFactory] Creating local model:', {
+    logger.llm.info('[modelFactory] Creating local model:', {
         provider: config.provider,
         model: config.model,
         cloudMode,

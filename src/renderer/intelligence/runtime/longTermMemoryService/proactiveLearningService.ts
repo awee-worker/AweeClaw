@@ -262,7 +262,7 @@ class ProactiveLearningService {
     this.records = []
     try {
       localStorage.removeItem(STORAGE_KEY)
-    } catch {}
+    } catch (e) { logger.store.warn('Failed to clear learning data:', e) }
   }
 }
 

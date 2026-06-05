@@ -4,6 +4,7 @@
  */
 
 import { memo, useState, useMemo, useCallback, useEffect } from 'react'
+import { logger } from '@shared/toolkit/LogEngine'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
     Play,
@@ -425,7 +426,7 @@ export const ExecutionBoard = memo(function ExecutionBoard({ planId }: TaskBoard
                     setRequirementsContent(content)
                 }
             } catch (err) {
-                console.error('Failed to load requirements doc:', err)
+                logger.plan.error('Failed to load requirements doc:', err)
             }
         }
         loadRequirements()

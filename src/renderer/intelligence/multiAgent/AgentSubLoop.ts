@@ -293,7 +293,7 @@ async function executeToolCall(
 
       try {
         playNotificationSound('attention')
-      } catch {}
+      } catch (e) { logger.ui.warn('Failed to play notification sound:', e) }
 
       const approved = await approvalService.waitForApproval(`${requestId}_${toolCall.id}`)
 

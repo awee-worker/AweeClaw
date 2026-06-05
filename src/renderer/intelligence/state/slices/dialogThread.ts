@@ -13,6 +13,7 @@ import { agentSessionRepository } from '@services/sessionRepository'
 import { createIdleHandoffState, createRuntimeThreadState } from '@intelligence/providerTypes'
 import { EventBus } from '../../engine/EventDispatcher'
 import { useStore } from '@store'
+import { logger } from '@shared/toolkit/LogEngine'
 
 export interface ThreadStoreState {
     threads: Record<string, ChatThread>
@@ -228,7 +229,7 @@ export const createThreadSlice: StateCreator<
                     },
                 }))
             }).catch(err => {
-                console.error('[ThreadSlice] Failed to load messages:', err)
+                logger.agent.error('[ThreadSlice] Failed to load messages:', err)
                 // 加载失败时也强制触发 set，让骨架屏能正常退出
                 set(state => ({
                     threads: {

@@ -728,7 +728,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                                         graphContent += `- func ${def.name}() [Line ${def.startLine}-${def.endLine}]${callStr}\n`
                                     }
                                 }
-                            } catch (e) { }
+                            } catch (e) { logger.tool.warn('Failed to parse call graph for file:', e) }
                             return `\n--- File: ${p} ---\n${content}\n${graphContent}\n`
                         }
                         return `\n--- File: ${p} ---\n[File not found]\n`
@@ -771,9 +771,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                     graphContent += `- func ${def.name}() [Line ${def.startLine}-${def.endLine}]${callStr}\n`
                 }
             }
-        } catch (e) { }
-
-        const lines = content.split('\n')
+        } catch (e) { logger.tool.warn('Failed to build call graph:', e) }
         const startLine = resolution.mode === 'single' && typeof resolution.args.start_line === 'number'
             ? Math.max(1, resolution.args.start_line)
             : 1
@@ -1675,7 +1673,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             let filePath = loc.uri
             if (filePath.startsWith('file:///')) filePath = filePath.slice(8)
             else if (filePath.startsWith('file://')) filePath = filePath.slice(7)
-            try { filePath = decodeURIComponent(filePath) } catch { }
+            try { filePath = decodeURIComponent(filePath) } catch { /* already decoded */ }
             // 转为相对路径
             if (ctx.workspacePath && filePath.toLowerCase().startsWith(ctx.workspacePath.toLowerCase().replace(/\\/g, '/'))) {
                 filePath = filePath.slice(ctx.workspacePath.length).replace(/^[/\\]+/, '')
@@ -1697,7 +1695,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             let filePath = loc.uri
             if (filePath.startsWith('file:///')) filePath = filePath.slice(8)
             else if (filePath.startsWith('file://')) filePath = filePath.slice(7)
-            try { filePath = decodeURIComponent(filePath) } catch { }
+            try { filePath = decodeURIComponent(filePath) } catch { /* already decoded */ }
             // 转为相对路径
             if (ctx.workspacePath && filePath.toLowerCase().startsWith(ctx.workspacePath.toLowerCase().replace(/\\/g, '/'))) {
                 filePath = filePath.slice(ctx.workspacePath.length).replace(/^[/\\]+/, '')

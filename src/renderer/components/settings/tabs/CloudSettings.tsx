@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { logger } from '@shared/toolkit/LogEngine'
 import { LogOut, CheckCircle2, CreditCard, Zap, Crown, X, ExternalLink } from 'lucide-react'
 import QRCode from 'qrcode'
 import { useStore } from '@store'
@@ -106,7 +107,7 @@ export function CloudSettings({ language }: { language: Language }) {
     try {
       const data = await backendApi.get<PlanItem[]>('/api/v1/payment/plans')
       setPlans((data || []).filter((p) => p.isActive && p.price > 0))
-    } catch {}
+    } catch (e) { logger.settings.warn('Failed to load plans:', e) }
   }, [])
 
   const fetchChannels = useCallback(async () => {
@@ -141,7 +142,7 @@ export function CloudSettings({ language }: { language: Language }) {
   const handleRefreshQuota = useCallback(async () => {
     try {
       await fetchQuota()
-    } catch {}
+    } catch (e) { logger.settings.warn('Failed to refresh quota:', e) }
   }, [fetchQuota])
 
   const handleUpgrade = useCallback(async () => {
@@ -206,8 +207,7 @@ export function CloudSettings({ language }: { language: Language }) {
           )
           return
         }
-      } catch {}
-
+      } catch (e) { logger.settings.warn('Failed to check payment status:', e) }
       setTimeout(poll, 5000)
     }
 
@@ -219,7 +219,7 @@ export function CloudSettings({ language }: { language: Language }) {
     try {
       const url = paymentResult.qrCodeUrl.replace('mock://qr', `${serverUrl}/api/v1/payment/mock-pay`)
       await fetch(url)
-    } catch {}
+    } catch (e) { logger.settings.warn('Mock pay failed:', e) }
   }, [paymentResult, serverUrl])
 
   const handleOpenUpgrade = useCallback(() => {

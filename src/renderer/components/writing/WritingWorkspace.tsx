@@ -1,4 +1,5 @@
 import { PenTool, BookOpen, Users, FileText, Sparkles, Lightbulb } from 'lucide-react'
+import { logger } from '@shared/toolkit/LogEngine'
 import { useStore } from '@store'
 import { Agent } from '@intelligence/engine'
 import { getAgentConfig } from '@intelligence/utils/intelligenceConfig'
@@ -19,7 +20,7 @@ export default function WritingWorkspace() {
                 workspacePath,
                 'agent',
             )
-        } catch {}
+        } catch (e) { logger.agent.warn('Writing agent failed:', e) }
     }
 
     const quickActions = [

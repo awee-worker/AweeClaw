@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
+import { logger } from '@shared/toolkit/LogEngine'
 import { DollarSign, Users, Plus, RefreshCw, ChevronDown, Calendar } from 'lucide-react'
 import { useStore } from '@store'
 import { ActionButton, OverlayDialog } from '@/renderer/components/ui'
@@ -96,7 +97,7 @@ export function StoreDataEntryPanel() {
           setSelectedStoreId(list[0].id)
         }
       }
-    } catch {}
+    } catch (e) { logger.scenario.warn('Failed to load financials:', e) }
   }, [getDb, selectedStoreId])
 
   const loadFinancials = useCallback(async () => {
@@ -139,7 +140,7 @@ export function StoreDataEntryPanel() {
       setShowAddFinancial(false)
       setFinancialForm({ ...EMPTY_FINANCIAL })
       await loadFinancials()
-    } catch {}
+    } catch (e) { logger.scenario.warn('Failed to save financial:', e) }
     setSaving(false)
   }, [selectedStoreId, financialForm, getDb, esc, loadFinancials])
 
@@ -158,7 +159,7 @@ export function StoreDataEntryPanel() {
       await db.executeSql('store-diagnosis', sql)
       setShowAddTraffic(false)
       setTrafficForm({ ...EMPTY_TRAFFIC })
-    } catch {}
+    } catch (e) { logger.scenario.warn('Failed to save traffic:', e) }
     setSaving(false)
   }, [selectedStoreId, trafficForm, getDb, esc])
 

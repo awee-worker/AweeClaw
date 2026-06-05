@@ -1,4 +1,5 @@
 import React, { useEffect, ReactNode } from 'react';
+import { logger } from '@shared/toolkit/LogEngine';
 import { useStore } from '@store';
 import { ThemeName } from '@store/slices/themeSlice';
 import { themeManager } from '@/renderer/config/themeDefinition';
@@ -30,7 +31,7 @@ export const ThemeManager: React.FC<ThemeManagerProps> = ({ children }) => {
 
         // SYNC OS LEVEL THEME SO CHROME INVERTS CARET/CURSOR COLOR
         api.window.setTheme(isLight ? 'light' : 'dark', hexColor).catch(err => {
-            console.error('Failed to sync OS native theme:', err)
+            logger.ui.error('Failed to sync OS native theme:', err)
         });
 
     }, [currentTheme]);

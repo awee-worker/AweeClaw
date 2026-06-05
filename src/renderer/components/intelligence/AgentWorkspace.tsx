@@ -1,4 +1,4 @@
-import { memo, useState, useMemo, useRef, useEffect, useCallback } from 'react'
+import { memo, useState, useMemo, useRef, useEffect, useCallback, lazy, Suspense } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   FolderOpen,
@@ -28,7 +28,7 @@ import { api } from '@renderer/adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
 import { AgentAvatar } from './AgentAvatar'
 import { CatAvatar } from './CatAvatar'
-import { TeamOffice } from './TeamOffice'
+const TeamOffice = lazy(() => import('./TeamOffice').then(m => ({ default: m.TeamOffice })))
 import { TeamChatPanel } from './TeamChatPanel'
 import type { WorkspaceAgent, AgentToolCall, AgentWorkspaceSession } from '@store'
 import type { CollaborationPhase } from '@intelligence/multiAgent/TeamCollaborationProtocol'
@@ -922,6 +922,7 @@ export const AgentWorkspace = memo(function AgentWorkspace() {
           <div className="flex-1 flex min-h-0">
             <div className="flex-1 min-w-0 flex flex-col">
               <div className="flex-[3] min-h-0 p-3 pb-1.5">
+                <Suspense fallback={<div className="flex-1 flex items-center justify-center text-muted-foreground">Loading 3D scene...</div>}>
                 <TeamOffice
                   agents={session.agents}
                   onAgentClick={(agent) => setSelectedAgentId(selectedAgentId === agent.id ? null : agent.id)}
@@ -929,6 +930,7 @@ export const AgentWorkspace = memo(function AgentWorkspace() {
                   handoffTo={session.agents.find(a => a.isMoving)?.moveTarget}
                   collaborationPhase={(session.collaborationPhase || 'meeting') as CollaborationPhase}
                 />
+                </Suspense>
               </div>
               <div className="flex-[2] min-h-0 border-t border-border/40">
                 <TeamChatPanel

@@ -447,7 +447,7 @@ export class WeixinChannelPlugin implements ChannelPlugin {
     }
 
     for (const cb of this.messageCallbacks) {
-      try { cb(inbound) } catch {}
+      try { cb(inbound) } catch (e) { logger.channel.warn('Message callback error:', e) }
     }
   }
 
@@ -665,7 +665,7 @@ export class WeixinChannelPlugin implements ChannelPlugin {
   private emitStatusChange(accountId: string): void {
     const snapshot = this.getStatus(accountId)
     for (const cb of this.statusCallbacks) {
-      try { cb(snapshot) } catch {}
+      try { cb(snapshot) } catch (e) { logger.channel.warn('Status callback error:', e) }
     }
   }
 }

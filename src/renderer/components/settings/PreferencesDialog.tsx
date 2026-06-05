@@ -1,19 +1,13 @@
-import { lazy, Suspense, useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { lazy, Suspense, useMemo, useCallback } from 'react'
 import { Cpu, Settings2, Code, Keyboard, Database, Shield, Monitor, Plug, Braces, Brain, FileCode, FileText, Zap, X, Palette, Radio, Cloud, Eye, Search, Mail, Mic } from 'lucide-react'
-import { useStore } from '@store'
-import { useShallow } from 'zustand/react/shallow'
 import { PROVIDERS } from '@configuration/aiProviders'
 import { BRAND } from '@shared/brand'
-import stableStringify from 'fast-json-stable-stringify'
 import { getEditorConfig } from '@shared/configuration/preferenceSync'
-import { invalidateAgentConfigCache } from '@intelligence/utils/intelligenceConfig'
-import { settingsService } from '@renderer/settings/preferencesService'
-import { resolveRuntimeLLMConfig } from '@shared/configuration/modelConfigResolver'
 import { t, type Language } from '@renderer/i18n'
-import { toast } from '@components/foundation/NotificationProvider'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
 import { ActionButton, OverlayDialog } from '@components/ui'
 import { SettingsTab, EditorSettingsState } from './preferencesTypes'
+import { useSettingsLocalState } from './useSettingsLocalState'
 
 const ModelProviderPanel = lazy(() =>
     import('./tabs/ModelProviderPanel').then(module => ({ default: module.ModelProviderPanel })),
@@ -76,44 +70,6 @@ const VoiceSettingsPanel = lazy(() =>
     import('./tabs/VoiceSettingsPanel').then(module => ({ default: module.default })),
 )
 
-function serializeComparable(value: unknown): string {
-    return stableStringify(value) ?? ''
-}
-
-function toEditorSettingsState(config: ReturnType<typeof getEditorConfig>): EditorSettingsState {
-    return {
-        fontSize: config.fontSize,
-        chatFontSize: config.chatFontSize ?? config.fontSize,
-        tabSize: config.tabSize,
-        wordWrap: config.wordWrap,
-        lineNumbers: config.lineNumbers,
-        minimap: config.minimap,
-        bracketPairColorization: config.bracketPairColorization,
-        formatOnSave: config.formatOnSave,
-        autoSave: config.autoSave,
-        autoSaveDelay: config.autoSaveDelay,
-        theme: BRAND.defaultTheme,
-        completionEnabled: config.ai.completionEnabled,
-        completionDebounceMs: config.performance.completionDebounceMs,
-        completionMaxTokens: config.ai.completionMaxTokens,
-        completionTriggerChars: config.ai.completionTriggerChars,
-        terminalScrollback: config.terminal.scrollback,
-        terminalMaxOutputLines: config.terminal.maxOutputLines,
-        lspTimeoutMs: config.lsp.timeoutMs,
-        lspCompletionTimeoutMs: config.lsp.completionTimeoutMs,
-        largeFileWarningThresholdMB: config.performance.largeFileWarningThresholdMB,
-        largeFileLineCount: config.performance.largeFileLineCount,
-        commandTimeoutMs: config.performance.commandTimeoutMs,
-        workerTimeoutMs: config.performance.workerTimeoutMs,
-        healthCheckTimeoutMs: config.performance.healthCheckTimeoutMs,
-        maxProjectFiles: config.performance.maxProjectFiles,
-        maxFileTreeDepth: config.performance.maxFileTreeDepth,
-        maxSearchResults: config.performance.maxSearchResults,
-        saveDebounceMs: config.performance.saveDebounceMs,
-        flushIntervalMs: config.performance.flushIntervalMs,
-    }
-}
-
 function SettingsTabFallback({ language }: { language: Language }) {
     return (
         <div className="min-h-[320px] flex items-center justify-center rounded-2xl border border-border/40 bg-surface/70">
@@ -131,329 +87,15 @@ interface PreferencesDialogProps {
 
 export default function PreferencesDialog({ embedded = false }: PreferencesDialogProps) {
     const {
-        llmConfig,
-        language,
-        autoApprove,
-        providerConfigs,
-        promptTemplateId,
-        agentConfig,
-        aiInstructions,
-        webSearchConfig,
-        mcpConfig,
-        emailConfig,
-        enableFileLogging,
-        editorConfig,
-        securitySettings,
-        privacySettings,
-        set,
-        setProvider,
-        setShowSettings,
-        setShowSettingsPage,
-        settingsInitialTab,
-        save,
-        activeScenarioId,
-    } = useStore(useShallow(s => ({
-        llmConfig: s.llmConfig,
-        language: s.language,
-        autoApprove: s.autoApprove,
-        providerConfigs: s.providerConfigs,
-        promptTemplateId: s.promptTemplateId,
-        agentConfig: s.agentConfig,
-        aiInstructions: s.aiInstructions,
-        webSearchConfig: s.webSearchConfig,
-        mcpConfig: s.mcpConfig,
-        emailConfig: s.emailConfig,
-        enableFileLogging: s.enableFileLogging,
-        editorConfig: s.editorConfig,
-        securitySettings: s.securitySettings,
-        privacySettings: s.privacySettings,
-        set: s.set,
-        setProvider: s.setProvider,
-        setShowSettings: s.setShowSettings,
-        setShowSettingsPage: s.setShowSettingsPage,
-        settingsInitialTab: s.settingsInitialTab,
-        save: s.save,
-        activeScenarioId: s.activeScenarioId,
-    })))
-
-    const [activeTab, setActiveTab] = useState<SettingsTab>('provider')
-    const [showApiKey, setShowApiKey] = useState(false)
-
-    useEffect(() => {
-        if (settingsInitialTab) {
-            setActiveTab(settingsInitialTab as SettingsTab)
-        }
-    }, [settingsInitialTab])
-
-    useEffect(() => {
-        const codeEditorOnlyTabs = new Set(['editor', 'snippets', 'indexing', 'lsp', 'keybindings'])
-        if (activeScenarioId !== 'workspace-editor' && codeEditorOnlyTabs.has(activeTab)) {
-            setActiveTab('provider')
-        }
-    }, [activeScenarioId, activeTab])
-
-    const [localConfig, setLocalConfig] = useState(llmConfig)
-    const [localLanguage, setLocalLanguage] = useState(language)
-    const [localAutoApprove, setLocalAutoApprove] = useState(autoApprove)
-    const [localPromptTemplateId, setLocalPromptTemplateId] = useState(promptTemplateId)
-    const [localAgentConfig, setLocalAgentConfig] = useState(agentConfig)
-    const [localProviderConfigs, setLocalProviderConfigs] = useState(providerConfigs)
-    const [localAiInstructions, setLocalAiInstructions] = useState(aiInstructions)
-    const [localWebSearchConfig, setLocalWebSearchConfig] = useState(webSearchConfig)
-    const [localMcpConfig, setLocalMcpConfig] = useState(mcpConfig)
-    const [localEmailConfig, setLocalEmailConfig] = useState(emailConfig)
-    const [localEnableFileLogging, setLocalEnableFileLogging] = useState(enableFileLogging)
-    const [localSecuritySettings, setLocalSecuritySettings] = useState(securitySettings)
-    const [localPrivacySettings, setLocalPrivacySettings] = useState(privacySettings)
-    const [editorSettings, setEditorSettings] = useState<EditorSettingsState>(() => toEditorSettingsState(editorConfig))
-    const [advancedEditorConfig, setAdvancedEditorConfig] = useState(editorConfig)
-    const [isClosing, setIsClosing] = useState(false)
-
-    // 标记是否已从数据库加载过 providerConfigs，防止 useEffect 同步覆盖
-    const dbLoadedRef = useRef(false)
-
-    // 组件挂载时从数据库加载 providerConfigs，确保数据来源是数据库而非可能过期的 store 缓存
-    useEffect(() => {
-        let cancelled = false
-        settingsService.loadProviderConfigsFromDb().then((dbResult) => {
-            if (cancelled || !dbResult) return
-            dbLoadedRef.current = true
-            setLocalProviderConfigs(dbResult.providerConfigs)
-
-            // 同步重建 llmConfig，确保当前 provider 的 apiKey/baseUrl 等来自数据库
-            const currentProviderId = dbResult.currentProviderId || llmConfig.provider
-            const dbProviderConfig = dbResult.providerConfigs[currentProviderId]
-            const builtinDef = PROVIDERS[currentProviderId]
-
-            if (dbProviderConfig) {
-                const resolvedConfig = resolveRuntimeLLMConfig(
-                    {
-                        provider: currentProviderId,
-                        model: dbProviderConfig.model || builtinDef?.models?.[0],
-                        ...dbResult.llmBehavior,
-                    } as any,
-                    dbResult.providerConfigs,
-                )
-                setLocalConfig(resolvedConfig)
-                // 同步更新 store，使 sourceSnapshots 与 localSnapshots 保持一致，避免 isDirty 误判
-                set('llmConfig', resolvedConfig)
-            }
-            // 同步更新 store 的 providerConfigs，避免 isDirty 因 DB 与 store 不一致而始终为 true
-            set('providerConfigs', dbResult.providerConfigs)
-        }).catch(() => {
-            // 数据库加载失败时回退到 store 数据，不影响使用
-        })
-        return () => { cancelled = true }
-    }, []) // 仅挂载时执行一次
-
-    useEffect(() => {
-        // 如果已从数据库加载过 providerConfigs，跳过 store 同步，避免数据库数据被覆盖
-        if (dbLoadedRef.current) {
-            dbLoadedRef.current = false // 重置，后续 store 变化正常同步
-            return
-        }
-        setLocalConfig(llmConfig)
-        setLocalLanguage(language)
-        setLocalAutoApprove(autoApprove)
-        setLocalPromptTemplateId(promptTemplateId)
-        setLocalAgentConfig(agentConfig)
-        setLocalProviderConfigs(providerConfigs)
-        setLocalAiInstructions(aiInstructions)
-        setLocalWebSearchConfig(webSearchConfig)
-        setLocalMcpConfig(mcpConfig)
-        setLocalEmailConfig(emailConfig)
-        setLocalEnableFileLogging(enableFileLogging)
-        setLocalSecuritySettings(securitySettings)
-        setLocalPrivacySettings(privacySettings)
-        setEditorSettings(toEditorSettingsState(editorConfig))
-        setAdvancedEditorConfig(editorConfig)
-    }, [
-        agentConfig,
-        aiInstructions,
-        autoApprove,
-        editorConfig,
-        emailConfig,
-        enableFileLogging,
-        language,
-        llmConfig,
-        mcpConfig,
-        promptTemplateId,
-        providerConfigs,
-        securitySettings,
-        privacySettings,
-        webSearchConfig,
-    ])
-
-    const finalEditorConfig = useMemo(() => ({
-        ...advancedEditorConfig,
-        fontSize: editorSettings.fontSize,
-        chatFontSize: editorSettings.chatFontSize,
-        tabSize: editorSettings.tabSize,
-        wordWrap: editorSettings.wordWrap,
-        lineNumbers: editorSettings.lineNumbers,
-        minimap: editorSettings.minimap,
-        bracketPairColorization: editorSettings.bracketPairColorization,
-        formatOnSave: editorSettings.formatOnSave,
-        autoSave: editorSettings.autoSave,
-        autoSaveDelay: editorSettings.autoSaveDelay,
-        ai: {
-            ...advancedEditorConfig.ai,
-            completionEnabled: editorSettings.completionEnabled,
-            completionMaxTokens: editorSettings.completionMaxTokens,
-            completionTriggerChars: editorSettings.completionTriggerChars,
-        },
-        terminal: {
-            ...advancedEditorConfig.terminal,
-            scrollback: editorSettings.terminalScrollback,
-            maxOutputLines: editorSettings.terminalMaxOutputLines,
-        },
-        lsp: {
-            ...advancedEditorConfig.lsp,
-            timeoutMs: editorSettings.lspTimeoutMs,
-            completionTimeoutMs: editorSettings.lspCompletionTimeoutMs,
-        },
-        performance: {
-            ...advancedEditorConfig.performance,
-            completionDebounceMs: editorSettings.completionDebounceMs,
-            largeFileWarningThresholdMB: editorSettings.largeFileWarningThresholdMB,
-            largeFileLineCount: editorSettings.largeFileLineCount,
-            commandTimeoutMs: editorSettings.commandTimeoutMs,
-            workerTimeoutMs: editorSettings.workerTimeoutMs,
-            healthCheckTimeoutMs: editorSettings.healthCheckTimeoutMs,
-            maxProjectFiles: editorSettings.maxProjectFiles,
-            maxFileTreeDepth: editorSettings.maxFileTreeDepth,
-            maxSearchResults: editorSettings.maxSearchResults,
-            saveDebounceMs: editorSettings.saveDebounceMs,
-            flushIntervalMs: editorSettings.flushIntervalMs,
-        },
-    }), [advancedEditorConfig, editorSettings])
-
-    const sourceSnapshots = useMemo(() => ({
-        llmConfig: serializeComparable(llmConfig),
-        agentConfig: serializeComparable(agentConfig),
-        webSearchConfig: serializeComparable(webSearchConfig),
-        mcpConfig: serializeComparable(mcpConfig),
-        emailConfig: serializeComparable(emailConfig),
-        providerConfigs: serializeComparable(providerConfigs),
-        securitySettings: serializeComparable(securitySettings),
-        privacySettings: serializeComparable(privacySettings),
-        editorConfig: serializeComparable(editorConfig),
-    }), [agentConfig, editorConfig, llmConfig, mcpConfig, privacySettings, providerConfigs, securitySettings, webSearchConfig])
-
-    const localSnapshots = useMemo(() => ({
-        llmConfig: serializeComparable(localConfig),
-        agentConfig: serializeComparable(localAgentConfig),
-        webSearchConfig: serializeComparable(localWebSearchConfig),
-        mcpConfig: serializeComparable(localMcpConfig),
-        emailConfig: serializeComparable(localEmailConfig),
-        providerConfigs: serializeComparable(localProviderConfigs),
-        securitySettings: serializeComparable(localSecuritySettings),
-        privacySettings: serializeComparable(localPrivacySettings),
-        editorConfig: serializeComparable(finalEditorConfig),
-    }), [finalEditorConfig, localAgentConfig, localConfig, localEmailConfig, localMcpConfig, localPrivacySettings, localProviderConfigs, localSecuritySettings, localWebSearchConfig])
-
-    const isDirty = useMemo(() => {
-        return localSnapshots.llmConfig !== sourceSnapshots.llmConfig ||
-            localLanguage !== language ||
-            localAutoApprove !== autoApprove ||
-            localPromptTemplateId !== promptTemplateId ||
-            localSnapshots.agentConfig !== sourceSnapshots.agentConfig ||
-            localAiInstructions !== aiInstructions ||
-            localSnapshots.webSearchConfig !== sourceSnapshots.webSearchConfig ||
-            localSnapshots.mcpConfig !== sourceSnapshots.mcpConfig ||
-            localSnapshots.emailConfig !== sourceSnapshots.emailConfig ||
-            localEnableFileLogging !== enableFileLogging ||
-            localSnapshots.providerConfigs !== sourceSnapshots.providerConfigs ||
-            localSnapshots.securitySettings !== sourceSnapshots.securitySettings ||
-            localSnapshots.privacySettings !== sourceSnapshots.privacySettings ||
-            localSnapshots.editorConfig !== sourceSnapshots.editorConfig
-    }, [aiInstructions, autoApprove, enableFileLogging, language, localAiInstructions, localAutoApprove, localEnableFileLogging, localLanguage, localPromptTemplateId, localSnapshots, promptTemplateId, sourceSnapshots])
-
-    const handleSave = useCallback(async () => {
-        if (!isDirty) {
-            return
-        }
-
-        const currentProvider = localConfig.provider
-        const providerExists = localProviderConfigs[currentProvider] !== undefined || !!PROVIDERS[currentProvider]
-
-        const finalProviderConfigs = providerExists
-            ? {
-                ...localProviderConfigs,
-                [currentProvider]: {
-                    ...localProviderConfigs[currentProvider],
-                    apiKey: localConfig.apiKey,
-                    baseUrl: localConfig.baseUrl,
-                    timeout: localConfig.timeout,
-                    model: localConfig.model,
-                    headers: localConfig.headers,
-                    openAICompatibilityProfile: localConfig.openAICompatibilityProfile,
-                    protocol: localConfig.protocol,
-                }
-            }
-            : { ...localProviderConfigs }
-
-        try {
-            set('llmConfig', localConfig)
-            set('language', localLanguage)
-            set('autoApprove', localAutoApprove)
-            set('promptTemplateId', localPromptTemplateId)
-            set('agentConfig', localAgentConfig)
-            invalidateAgentConfigCache()
-            set('aiInstructions', localAiInstructions)
-            set('webSearchConfig', localWebSearchConfig)
-            set('mcpConfig', localMcpConfig)
-            set('emailConfig', localEmailConfig)
-            set('enableFileLogging', localEnableFileLogging)
-            set('securitySettings', localSecuritySettings)
-            set('privacySettings', localPrivacySettings)
-            set('providerConfigs', finalProviderConfigs)
-            set('editorConfig', finalEditorConfig)
-
-            await save()
-
-            try {
-                window.electronAPI?.setLanguage?.(localLanguage);
-            } catch (e) {
-                console.error('语言同步失败:', e)
-            }
-
-            window.electronAPI?.httpSetSearchEngineState?.({
-                searchEngines: localWebSearchConfig.searchEngines || {},
-                activeSearchEngine: localWebSearchConfig.activeSearchEngine || 'duckduckgo',
-            })
-
-            window.electronAPI?.mcpSetAutoConnect?.(localMcpConfig.autoConnect ?? true)
-
-            toast.success(t('success.settingsSaved', localLanguage as Language))
-        } catch (error) {
-            toast.error(error instanceof Error ? error.message : String(error))
-        }
-    }, [
-        finalEditorConfig,
-        isDirty,
-        localAgentConfig,
-        localAiInstructions,
-        localAutoApprove,
-        localConfig,
-        localEmailConfig,
-        localEnableFileLogging,
-        localLanguage,
-        localMcpConfig,
-        localPromptTemplateId,
-        localProviderConfigs,
-        localSecuritySettings,
-        localWebSearchConfig,
-        save,
-        set,
-    ])
+        state, dispatch, finalEditorConfig, isDirty, handleSave,
+        language, activeScenarioId, setProvider,
+        setShowSettings, setShowSettingsPage,
+    } = useSettingsLocalState(embedded)
 
     const requestClose = useCallback(async () => {
-        if (isClosing) {
-            return
-        }
+        if (state.isClosing) return
 
-        setIsClosing(true)
+        dispatch({ type: 'SET_CLOSING', closing: true })
 
         if (isDirty) {
             const result = await globalConfirm({
@@ -466,9 +108,8 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
             })
             if (result === 'save') {
                 await handleSave()
-                // 保存成功后关闭
             } else if (!result) {
-                setIsClosing(false)
+                dispatch({ type: 'SET_CLOSING', closing: false })
                 return
             }
         }
@@ -478,8 +119,8 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
         } else {
             setShowSettings(false)
         }
-        setIsClosing(false)
-    }, [isClosing, isDirty, language, setShowSettings, setShowSettingsPage, embedded, handleSave])
+        dispatch({ type: 'SET_CLOSING', closing: false })
+    }, [state.isClosing, isDirty, language, setShowSettings, setShowSettingsPage, embedded, handleSave, dispatch])
 
     const handleClose = useCallback(() => {
         void requestClose()
@@ -489,13 +130,13 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
         Object.entries(PROVIDERS).map(([id, provider]) => ({
             id,
             name: provider.displayName,
-            models: [...(provider.models || []), ...(localProviderConfigs[id]?.customModels || [])]
+            models: [...(provider.models || []), ...(state.localProviderConfigs[id]?.customModels || [])]
         })),
-        [localProviderConfigs])
+        [state.localProviderConfigs])
 
     const selectedProvider = useMemo(() =>
-        providers.find(provider => provider.id === localConfig.provider),
-        [localConfig.provider, providers])
+        providers.find(provider => provider.id === state.localConfig.provider),
+        [state.localConfig.provider, providers])
 
     const isWorkspaceEditor = activeScenarioId === 'workspace-editor'
     const codeEditorOnlyTabs = new Set(['editor', 'snippets', 'indexing', 'lsp', 'keybindings'])
@@ -528,16 +169,16 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
     }, [language, isWorkspaceEditor])
 
     const renderActiveTab = () => {
-        switch (activeTab) {
+        switch (state.activeTab) {
             case 'provider':
                 return (
                     <ModelProviderPanel
-                        localConfig={localConfig}
-                        setLocalConfig={setLocalConfig}
-                        localProviderConfigs={localProviderConfigs}
-                        setLocalProviderConfigs={setLocalProviderConfigs}
-                        showApiKey={showApiKey}
-                        setShowApiKey={setShowApiKey}
+                        localConfig={state.localConfig}
+                        setLocalConfig={(config) => dispatch({ type: 'SET_LOCAL_CONFIG', config })}
+                        localProviderConfigs={state.localProviderConfigs}
+                        setLocalProviderConfigs={(configs) => dispatch({ type: 'SET_LOCAL_PROVIDER_CONFIGS', configs })}
+                        showApiKey={state.showApiKey}
+                        setShowApiKey={(show) => dispatch({ type: 'SET_SHOW_API_KEY', show })}
                         selectedProvider={selectedProvider}
                         providers={providers}
                         language={language}
@@ -547,22 +188,22 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
             case 'appearance':
                 return (
                     <AppearanceSettings
-                        settings={editorSettings}
-                        setSettings={setEditorSettings}
-                        advancedConfig={advancedEditorConfig}
-                        setAdvancedConfig={setAdvancedEditorConfig}
+                        settings={state.editorSettings}
+                        setSettings={(settings) => dispatch({ type: 'SET_EDITOR_SETTINGS', settings })}
+                        advancedConfig={state.advancedEditorConfig}
+                        setAdvancedConfig={(config) => dispatch({ type: 'SET_ADVANCED_EDITOR_CONFIG', config })}
                         language={language}
-                        localLanguage={localLanguage as Language}
-                        setLocalLanguage={(lang) => setLocalLanguage(lang)}
+                        localLanguage={state.localLanguage as Language}
+                        setLocalLanguage={(lang) => dispatch({ type: 'SET_LOCAL_LANGUAGE', language: lang })}
                     />
                 )
             case 'editor':
                 return (
                     <EditorPreferencesPanel
-                        settings={editorSettings}
-                        setSettings={setEditorSettings}
-                        advancedConfig={advancedEditorConfig}
-                        setAdvancedConfig={setAdvancedEditorConfig}
+                        settings={state.editorSettings}
+                        setSettings={(settings) => dispatch({ type: 'SET_EDITOR_SETTINGS', settings })}
+                        advancedConfig={state.advancedEditorConfig}
+                        setAdvancedConfig={(config) => dispatch({ type: 'SET_ADVANCED_EDITOR_CONFIG', config })}
                         language={language}
                     />
                 )
@@ -571,24 +212,24 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
             case 'agent':
                 return (
                     <AgentProfilePanel
-                        autoApprove={localAutoApprove}
-                        setAutoApprove={setLocalAutoApprove}
-                        aiInstructions={localAiInstructions}
-                        setAiInstructions={setLocalAiInstructions}
-                        promptTemplateId={localPromptTemplateId}
-                        setPromptTemplateId={setLocalPromptTemplateId}
-                        agentConfig={localAgentConfig}
-                        setAgentConfig={setLocalAgentConfig}
-                        webSearchConfig={localWebSearchConfig}
-                        setWebSearchConfig={setLocalWebSearchConfig}
+                        autoApprove={state.localAutoApprove}
+                        setAutoApprove={(value) => dispatch({ type: 'SET_LOCAL_AUTO_APPROVE', value })}
+                        aiInstructions={state.localAiInstructions}
+                        setAiInstructions={(value) => dispatch({ type: 'SET_LOCAL_AI_INSTRUCTIONS', value })}
+                        promptTemplateId={state.localPromptTemplateId}
+                        setPromptTemplateId={(value) => dispatch({ type: 'SET_LOCAL_PROMPT_TEMPLATE_ID', value })}
+                        agentConfig={state.localAgentConfig}
+                        setAgentConfig={(config) => dispatch({ type: 'SET_LOCAL_AGENT_CONFIG', config })}
+                        webSearchConfig={state.localWebSearchConfig}
+                        setWebSearchConfig={(config) => dispatch({ type: 'SET_LOCAL_WEB_SEARCH_CONFIG', config })}
                         language={language}
                     />
                 )
             case 'search':
                 return (
                     <SearchEnginePanel
-                        webSearchConfig={localWebSearchConfig}
-                        setWebSearchConfig={setLocalWebSearchConfig}
+                        webSearchConfig={state.localWebSearchConfig}
+                        setWebSearchConfig={(config) => dispatch({ type: 'SET_LOCAL_WEB_SEARCH_CONFIG', config })}
                         language={language}
                     />
                 )
@@ -599,9 +240,9 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
             case 'skills':
                 return <SkillRegistryPanel language={language} />
             case 'mcp':
-                return <McpServerPanel language={language} mcpConfig={localMcpConfig} setMcpConfig={setLocalMcpConfig} />
+                return <McpServerPanel language={language} mcpConfig={state.localMcpConfig} setMcpConfig={(config) => dispatch({ type: 'SET_LOCAL_MCP_CONFIG', config })} />
             case 'email':
-                return <EmailServicePanel language={language} emailConfig={localEmailConfig} setEmailConfig={setLocalEmailConfig} />
+                return <EmailServicePanel language={language} emailConfig={state.localEmailConfig} setEmailConfig={(config) => dispatch({ type: 'SET_LOCAL_EMAIL_CONFIG', config })} />
             case 'channel':
                 return <ChannelSettings language={language} />
             case 'lsp':
@@ -614,8 +255,8 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                 return (
                     <SecurityPolicyPanel
                         language={language}
-                        securitySettings={localSecuritySettings}
-                        setSecuritySettings={setLocalSecuritySettings}
+                        securitySettings={state.localSecuritySettings}
+                        setSecuritySettings={(settings) => dispatch({ type: 'SET_LOCAL_SECURITY_SETTINGS', settings })}
                         isWorkspaceEditor={isWorkspaceEditor}
                     />
                 )
@@ -623,16 +264,16 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                 return (
                     <PrivacySettingsPanel
                         language={language}
-                        privacySettings={localPrivacySettings}
-                        setPrivacySettings={setLocalPrivacySettings}
+                        privacySettings={state.localPrivacySettings}
+                        setPrivacySettings={(settings) => dispatch({ type: 'SET_LOCAL_PRIVACY_SETTINGS', settings })}
                     />
                 )
             case 'system':
                 return (
                     <SystemPreferencesPanel
                         language={language}
-                        enableFileLogging={localEnableFileLogging}
-                        setEnableFileLogging={setLocalEnableFileLogging}
+                        enableFileLogging={state.localEnableFileLogging}
+                        setEnableFileLogging={(value) => dispatch({ type: 'SET_LOCAL_ENABLE_FILE_LOGGING', value })}
                     />
                 )
             case 'cloud':
@@ -660,10 +301,10 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                     {tabs.map(tab => (
                         <button
                             key={tab.id}
-                            onClick={() => setActiveTab(tab.id as SettingsTab)}
-                            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-200 group ${activeTab === tab.id ? 'bg-accent/10 text-text-primary border border-accent/20' : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary border border-transparent'}`}
+                            onClick={() => dispatch({ type: 'SET_ACTIVE_TAB', tab: tab.id as SettingsTab })}
+                            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-200 group ${state.activeTab === tab.id ? 'bg-accent/10 text-text-primary border border-accent/20' : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary border border-transparent'}`}
                         >
-                            <span className={`transition-colors duration-200 ${activeTab === tab.id ? 'text-accent' : 'text-text-muted group-hover:text-text-primary'}`}>
+                            <span className={`transition-colors duration-200 ${state.activeTab === tab.id ? 'text-accent' : 'text-text-muted group-hover:text-text-primary'}`}>
                                 {tab.icon}
                             </span>
                             <span>{tab.label}</span>
@@ -677,7 +318,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                 <div className="shrink-0 px-8 pt-6 pb-4 border-b border-border/40 flex items-center justify-between">
                     <div>
                         <h3 className="text-2xl font-semibold text-text-primary tracking-tight">
-                            {tabs.find(tab => tab.id === activeTab)?.label}
+                            {tabs.find(tab => tab.id === state.activeTab)?.label}
                         </h3>
                         <p className="text-sm text-text-muted mt-1.5 opacity-80">
                             {t('settings.managePreferences', language as Language)}
@@ -700,7 +341,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                     </div>
                 </div>
 
-                {isDirty && activeTab !== 'channel' && (
+                {isDirty && state.activeTab !== 'channel' && (
                     <div className="absolute bottom-6 right-8 left-8 p-4 rounded-xl bg-surface/95 border border-border/60 shadow-lg flex items-center justify-between z-10 transition-all duration-300">
                         <span className="text-xs text-text-muted ml-2 font-medium">
                             {t('settings.unsavedChanges', language as Language)}

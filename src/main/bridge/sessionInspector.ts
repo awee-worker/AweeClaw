@@ -230,13 +230,13 @@ export function registerDebugHandlers() {
         if (threads && threads.length > 0) {
           callStack = await debugService.getStackTrace(sessionId, threads[0].id)
         }
-      } catch {}
+      } catch (e) { logger.system.debug('Failed to get call stack:', e) }
 
       if (callStack && callStack.length > 0 && callStack[0].id !== undefined) {
         try {
           const scopes = await debugService.getScopes(sessionId, callStack[0].id)
           variables = scopes
-        } catch {}
+        } catch (e) { logger.system.debug('Failed to get scopes:', e) }
       }
 
       const snapshot: DebugSnapshot = {

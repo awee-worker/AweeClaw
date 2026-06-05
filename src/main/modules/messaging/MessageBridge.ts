@@ -122,7 +122,7 @@ class ChannelBridge {
           senderLabel = resolvedName
           message.fromName = resolvedName
         }
-      } catch {}
+      } catch (e) { logger.channel.warn('Failed to resolve sender name:', e) }
     }
 
     this.sendImStatus({

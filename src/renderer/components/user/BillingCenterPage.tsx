@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, lazy, Suspense } from 'react'
 import {
   CreditCard,
   FileText,
@@ -13,7 +13,7 @@ import { type BillingTab } from './tabs'
 import { OrdersPanel } from './tabs/OrdersPanel'
 import { InvoicesPanel } from './tabs/InvoicesPanel'
 import { PaymentsPanel } from './tabs/PaymentsPanel'
-import { UsagePanel } from './tabs/UsagePanel'
+const UsagePanel = lazy(() => import('./tabs/UsagePanel').then(m => ({ default: m.UsagePanel })))
 import { t, type Language } from '@renderer/i18n'
 
 const billingTabs: { id: BillingTab; icon: React.ReactNode; labelZh: string; labelEn: string }[] = [
@@ -92,7 +92,7 @@ export default function BillingCenterPage() {
               {activeTab === 'orders' && <OrdersPanel key="orders" language={language as Language} />}
               {activeTab === 'invoices' && <InvoicesPanel key="invoices" language={language as Language} />}
               {activeTab === 'payments' && <PaymentsPanel key="payments" language={language as Language} />}
-              {activeTab === 'usage' && <UsagePanel key="usage" language={language as Language} />}
+              {activeTab === 'usage' && <Suspense fallback={<div className="p-4 text-muted-foreground">Loading charts...</div>}><UsagePanel key="usage" language={language as Language} /></Suspense>}
             </div>
           </div>
         </div>

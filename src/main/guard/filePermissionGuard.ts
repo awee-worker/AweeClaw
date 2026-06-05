@@ -6,10 +6,10 @@
 import { logger } from '@shared/toolkit/LogEngine'
 import { toAppError, ErrorCode } from '@shared/toolkit/errorCatalog'
 import { ipcMain, dialog, shell } from 'electron'
+import { safeOpenExternal } from './safeExternalUrl'
 import * as path from 'path'
 import { pathToFileURL } from 'url'
 import fs, { promises as fsPromises } from 'fs'
-import { exec } from 'child_process'
 import Store from 'electron-store'
 import { securityManager, OperationType } from './securityPolicyEngine'
 
@@ -977,46 +977,14 @@ export function registerSecureFileHandlers(
     try {
       await fsPromises.access(filePath)
       const fileUrl = pathToFileURL(filePath).href
-      await shell.openExternal(fileUrl)
-      return true
+      return await safeOpenExternal(fileUrl)
     } catch {
       return false
     }
   })
 
   ipcMain.handle('shell:openExternalUrl', async (_, rawUrl: string) => {
-    try {
-      const url = rawUrl
-        .replace(/[*_~`#|]+$/g, '')
-        .replace(/^[*_~`#|]+/g, '')
-        .trim()
-      if (!url.startsWith('http://') && !url.startsWith('https://')) {
-        return false
-      }
-      try {
-        await shell.openExternal(url)
-        return true
-      } catch {
-        logger.system.warn('[Shell] shell.openExternal failed, falling back to system open command:', url)
-        return await new Promise<boolean>((resolve) => {
-          const cmd = process.platform === 'darwin'
-            ? `open "${url.replace(/"/g, '\\"')}"`
-            : process.platform === 'win32'
-              ? `start "" "${url.replace(/"/g, '\\"')}"`
-              : `xdg-open "${url.replace(/"/g, '\\"')}"`
-          exec(cmd, (err) => {
-            if (err) {
-              logger.system.error('[Shell] Fallback open command also failed:', err.message)
-              resolve(false)
-            } else {
-              resolve(true)
-            }
-          })
-        })
-      }
-    } catch {
-      return false
-    }
+    return await safeOpenExternal(rawUrl)
   })
 
   // 文件监听（使用拆分的 fileWatcher）

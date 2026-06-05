@@ -353,7 +353,7 @@ const LSP_SERVERS: LspServerConfig[] = [
             if (content.includes('[workspace]')) {
               return currentDir
             }
-          } catch { }
+          } catch (e) { logger.lsp.debug('Failed to find .git directory:', e) }
         }
         const parentDir = path.dirname(currentDir)
         if (parentDir === currentDir) break
@@ -685,7 +685,7 @@ class LspManager {
 
       try {
         this.handleServerMessage(key, JSON.parse(message))
-      } catch { }
+      } catch (e) { logger.lsp.warn('Failed to parse LSP message:', e) }
     }
   }
 
@@ -799,7 +799,7 @@ class LspManager {
         if (!win.isDestroyed()) {
           try {
             win.webContents.send('lsp:diagnostics', { uri, diagnostics, serverKey: key })
-          } catch { }
+          } catch (e) { logger.lsp.debug('Failed to send diagnostics to renderer:', e) }
         }
       })
     }
@@ -889,7 +889,7 @@ class LspManager {
     const body = JSON.stringify({ jsonrpc: '2.0', method, params })
     const message = `Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`
 
-    try { instance.process.stdin.write(message) } catch { }
+    try { instance.process.stdin.write(message) } catch (e) { logger.lsp.warn('Failed to write to LSP stdin:', e) }
   }
 
   private async initializeServer(key: string, workspacePath: string): Promise<void> {
@@ -1006,7 +1006,7 @@ class LspManager {
     try {
       await this.sendRequest(key, 'shutdown', null, 3000)
       this.sendNotification(key, 'exit', null)
-    } catch { }
+    } catch (e) { logger.lsp.debug('LSP shutdown failed:', e) }
     instance.process.kill()
     this.servers.delete(key)
     this.serverLastActivity.delete(key)

@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
+import { logger } from '@shared/toolkit/LogEngine'
 import { Search, Star, Download, Loader2, Filter, X, LayoutGrid, List, Eye } from 'lucide-react'
 import {
   templateClientAPI,
@@ -47,7 +48,7 @@ export default function TemplateMarket({ onUseTemplate, language }: TemplateMark
         setTotal(result.total)
       } catch (err) {
         setError(t('wf.failedtoloadtemplates', language as Language))
-        console.error('Template load error:', err)
+        logger.ui.error('Template load error:', err)
       } finally {
         setLoading(false)
       }
@@ -122,7 +123,7 @@ export default function TemplateMarket({ onUseTemplate, language }: TemplateMark
           page,
         })
       } catch (err) {
-        console.error('Rate error:', err)
+        logger.ui.error('Rate error:', err)
       }
     },
     [search, typeFilter, categoryFilter, page, fetchTemplates],

@@ -316,7 +316,7 @@ export function SystemPreferencesPanel({ language, enableFileLogging, setEnableF
             if (wsPath) {
                 try {
                     await api.index.clear(wsPath)
-                } catch { }
+                } catch (e) { logger.index.warn('Failed to clear index:', e) }
             }
 
             // 3. 清除持久化编辑器配置

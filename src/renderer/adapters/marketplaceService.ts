@@ -12,6 +12,7 @@
  */
 
 import { backendApi, isAuthenticated } from '@services/backendApi'
+import { logger } from '@shared/toolkit/LogEngine'
 import { getAPI } from '@services/electronBridge'
 import type {
   MarketplaceScenario,
@@ -132,7 +133,7 @@ export async function installScenarioFromMarketplace(
       packageType: installResult.packageType,
     })
 
-    console.log('[marketplaceService] IPC install result:', JSON.stringify(ipcResult))
+    logger.channel.debug('[marketplaceService] IPC install result:', JSON.stringify(ipcResult))
     return ipcResult
   } catch (err) {
     return {

@@ -599,7 +599,7 @@ export default function ChatPanel() {
           return true
         }
       } catch (err) {
-        console.error('Failed to load image:', err)
+        logger.ui.error('Failed to load image:', err)
       }
       return false
     }

@@ -1,4 +1,5 @@
 import { scenarioRegistry } from '@shared/configuration/scenarios'
+import { logger } from '@shared/toolkit/LogEngine'
 import { scenarioLoader } from '@scenario-system/core/ScenarioLoader'
 import { DeclarativeScenarioModule } from '@scenario-system/core/DeclarativeScenarioModule'
 import { api } from '../../adapters/electronBridge'
@@ -92,7 +93,7 @@ export async function registerInstalledScenario(
       scenarioRegistry.registerAndPersist(plugin)
     }
   } catch (moduleErr) {
-    console.warn('[ScenarioInstall] Failed to register DeclarativeScenarioModule:', moduleErr)
+    logger.scenario.warn('[ScenarioInstall] Failed to register DeclarativeScenarioModule:', moduleErr)
 
     const fallbackPlugin: ScenarioPlugin = {
       id: scenarioId,

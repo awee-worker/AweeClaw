@@ -4,6 +4,7 @@
  */
 
 import { useState, useCallback, useMemo } from 'react'
+import { logger } from '@shared/toolkit/LogEngine'
 import {
     ChevronDown,
     CheckCircle2,
@@ -319,7 +320,7 @@ export function FormCard({ content, onSubmit, disabled }: FormCardProps) {
                     if (!regex.test(val)) {
                         newErrors[field.id] = t('ai.invalidformat', language as Language)
                     }
-                } catch {}
+                } catch (e) { logger.ui.warn('Invalid regex pattern:', e) }
             }
         }
 

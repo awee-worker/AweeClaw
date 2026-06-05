@@ -37,12 +37,12 @@ function getEchartsSource(): string {
       echartsSourceCache = fs.readFileSync(echartsPath, 'utf-8')
       return echartsSourceCache!
     }
-  } catch {}
+  } catch (e) { logger.ipc.debug('ECharts primary path not found:', e) }
   try {
     const altPath = require.resolve('echarts/dist/echarts.min.js')
     echartsSourceCache = fs.readFileSync(altPath, 'utf-8')
     return echartsSourceCache!
-  } catch {}
+  } catch (e) { logger.ipc.debug('ECharts alt path not found:', e) }
   logger.ipc.warn('[Data] ECharts local file not found, falling back to CDN')
   return ''
 }
@@ -389,7 +389,7 @@ async function executeRestApiCall(params: RestApiParams): Promise<{ success: boo
         res.on('data', (chunk) => { data += chunk })
         res.on('end', () => {
           let parsed: unknown = data
-          try { parsed = JSON.parse(data) } catch {}
+          try { parsed = JSON.parse(data) } catch (e) { logger.ipc.debug('Response is not JSON:', e) }
           resolve({ success: res.statusCode! < 400, status: res.statusCode, data: parsed })
         })
       })

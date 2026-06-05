@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
+import { logger } from '@shared/toolkit/LogEngine'
 import { Swords, Plus, RefreshCw, ChevronDown, MapPin, AlertTriangle, Shield, ShieldOff } from 'lucide-react'
 import { useStore } from '@store'
 import { ActionButton, OverlayDialog } from '@/renderer/components/ui'
@@ -68,7 +69,7 @@ export function CompetitorPanel() {
           setSelectedStoreId(list[0].id)
         }
       }
-    } catch {}
+    } catch (e) { logger.scenario.warn('Failed to load competitors:', e) }
   }, [getDb, selectedStoreId])
 
   const loadCompetitors = useCallback(async () => {
@@ -100,8 +101,7 @@ export function CompetitorPanel() {
       setShowAddModal(false)
       setAddForm({ ...EMPTY_FORM })
       await loadCompetitors()
-    } catch {}
-    setSaving(false)
+    } catch (e) { logger.scenario.warn('Failed to save competitor:', e) }
   }, [selectedStoreId, addForm, getDb, esc, loadCompetitors])
 
   const handleDelete = useCallback(async (compId: string) => {
@@ -109,7 +109,7 @@ export function CompetitorPanel() {
       const db = await getDb()
       await db.executeSql('store-diagnosis', `DELETE FROM store_competitors WHERE id = '${esc(compId)}'`)
       await loadCompetitors()
-    } catch {}
+    } catch (e) { logger.scenario.warn('Failed to delete competitor:', e) }
   }, [getDb, esc, loadCompetitors])
 
   const highCount = competitors.filter(c => c.threat_level === 'high').length

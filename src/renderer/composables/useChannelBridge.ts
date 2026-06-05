@@ -249,8 +249,7 @@ export function useChannelBridge() {
           ? t('app.serviceunavailable', language as Language)
           : (errMsg || t('app.anerroroccurred', language as Language))
         await api.channel.sendReply(message.conversationKey, replyText, message.id)
-      } catch {}
-      updateImStatus('error')
+      } catch (e) { logger.channel.warn('Failed to send IM reply:', e) }
     } finally {
       processingMessages.current.delete(message.id)
     }

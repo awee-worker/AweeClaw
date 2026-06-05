@@ -14,6 +14,7 @@ import { logger } from '@shared/toolkit/LogEngine'
 import * as fs from 'fs'
 import * as path from 'path'
 import { app } from 'electron'
+import { encryptString, decryptString } from '../../guard/safeStorageUtil'
 
 // ============================================
 // 类型定义
@@ -251,7 +252,8 @@ export class SettingsDb {
     const now = Date.now()
     const existing = this.db.prepare('SELECT provider_id FROM provider_config WHERE provider_id = ?').get(providerId) as any
 
-    const apiKey = config.apiKey ?? ''
+    // API Key 加密存储，防止 SQLite 文件被直接读取泄露密钥
+    const apiKey = config.apiKey ? encryptString(config.apiKey) : ''
     const baseUrl = config.baseUrl ?? ''
     const model = config.model ?? ''
     const timeout = config.timeout ?? 120000
@@ -481,7 +483,7 @@ export class SettingsDb {
     } catch { /* ignore */ }
 
     return {
-      apiKey: row.api_key || undefined,
+      apiKey: row.api_key ? decryptString(row.api_key) || undefined : undefined,
       baseUrl: row.base_url || undefined,
       model: row.model || undefined,
       timeout: row.timeout,
@@ -568,6 +570,8 @@ export class SettingsDb {
   /** 插入单个账户 */
   private insertChannelAccount(channelId: string, account: any, now?: number): void {
     const ts = now || Date.now()
+    // credentials 中的敏感字段加密后整体 JSON 序列化
+    const encryptedCredentials = this.encryptCredentials(account.credentials ?? {})
     this.db.prepare(`
       INSERT INTO channel_account (
         account_id, channel_id, name, enabled, credentials,
@@ -579,7 +583,7 @@ export class SettingsDb {
       channelId,
       account.name || '',
       account.enabled !== false ? 1 : 0,
-      JSON.stringify(account.credentials ?? {}),
+      encryptedCredentials,
       account.connectionMode || '',
       account.dmPolicy || '',
       JSON.stringify(account.allowFrom ?? []),
@@ -606,7 +610,9 @@ export class SettingsDb {
   /** 行转账户对象 */
   private rowToChannelAccount(row: any): any {
     let credentials: Record<string, string> = {}
-    try { credentials = JSON.parse(row.credentials) } catch { /* ignore */ }
+    try {
+      credentials = this.decryptCredentials(row.credentials)
+    } catch { /* ignore */ }
 
     let allowFrom: string[] = []
     try { allowFrom = JSON.parse(row.allow_from) } catch { /* ignore */ }
@@ -636,5 +642,36 @@ export class SettingsDb {
     if (Object.keys(llmConfig).length > 0) account.llmConfig = llmConfig
 
     return account
+  }
+
+  // ============================================
+  // 凭证加密/解密
+  // ============================================
+
+  /** credentials 中的敏感值加密后整体 JSON 序列化 */
+  private encryptCredentials(credentials: Record<string, string>): string {
+    const encrypted: Record<string, string> = {}
+    for (const [key, value] of Object.entries(credentials)) {
+      if (value && typeof value === 'string') {
+        encrypted[key] = encryptString(value)
+      } else {
+        encrypted[key] = value
+      }
+    }
+    return JSON.stringify(encrypted)
+  }
+
+  /** 从加密的 JSON 字符串中解密 credentials */
+  private decryptCredentials(raw: string): Record<string, string> {
+    const parsed = JSON.parse(raw) as Record<string, string>
+    const decrypted: Record<string, string> = {}
+    for (const [key, value] of Object.entries(parsed)) {
+      if (value && typeof value === 'string') {
+        decrypted[key] = decryptString(value)
+      } else {
+        decrypted[key] = value
+      }
+    }
+    return decrypted
   }
 }

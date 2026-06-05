@@ -440,7 +440,7 @@ export function emitSecurityEvent(event: SecurityEvent): void {
     securityEvents.splice(0, securityEvents.length - MAX_SECURITY_EVENTS)
   }
   for (const listener of eventListeners) {
-    try { listener(event) } catch {}
+    try { listener(event) } catch (e) { logger.security.warn('Security event listener error:', e) }
   }
 }
 

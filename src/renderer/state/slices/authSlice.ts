@@ -1,5 +1,6 @@
 import { StateCreator } from 'zustand'
 import { logger } from '@shared/toolkit/LogEngine'
+import { StorageService } from '@shared/toolkit/StorageService'
 import { BRAND } from '@shared/brand'
 import {
   setServerUrl,
@@ -106,9 +107,7 @@ function persistAuth(data: {
   refreshToken: string;
   cloudMode: 'local' | 'cloud';
 }) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  } catch {}
+  StorageService.set(STORAGE_KEY, data);
 }
 
 function loadPersistedAuth(): {
@@ -117,19 +116,16 @@ function loadPersistedAuth(): {
   refreshToken: string;
   cloudMode: 'local' | 'cloud';
 } | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
+  return StorageService.get<{
+    serverUrl: string;
+    accessToken: string;
+    refreshToken: string;
+    cloudMode: 'local' | 'cloud';
+  }>(STORAGE_KEY);
 }
 
 function clearPersistedAuth() {
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch {}
+  StorageService.remove(STORAGE_KEY);
 }
 
 let authFailedHandler: (() => void) | null = null

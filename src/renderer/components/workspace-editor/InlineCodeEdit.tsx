@@ -6,6 +6,7 @@
 import { api } from '../../adapters/electronBridge'
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Sparkles, Loader2, StopCircle, Check, X } from 'lucide-react'
+import { logger } from '@shared/toolkit/LogEngine'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { t } from '@renderer/i18n'
@@ -130,7 +131,7 @@ export default function InlineEdit({
 
 			const unsubError = api.llm.onError(requestId, (err) => {
 				cleanup()
-				console.error('[InlineEdit] AI Edit stream error:', err)
+				logger.ui.error('[InlineEdit] AI Edit stream error:', err)
 				toast.error(t('settings.error', language) || 'Error', err.message || 'AI request failed')
 				updateFileContent(filePath, currentFile.content)
 				composerService.rejectChange(filePath)
@@ -145,7 +146,7 @@ export default function InlineEdit({
 				requestId,
 			})
 		} catch (err: any) {
-			console.error(err)
+			logger.ui.error('[InlineEdit] Generation failed:', err)
 			toast.error(t('settings.error', language) || 'Error', err.message || 'Generation failed')
 			updateFileContent(filePath, currentFile.content)
 			composerService.rejectChange(filePath)

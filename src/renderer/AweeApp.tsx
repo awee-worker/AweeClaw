@@ -1,54 +1,32 @@
-import { lazy, Suspense, useState, useCallback, useEffect, useMemo, useRef } from 'react'
+import { lazy, Suspense, useState, useEffect, useMemo, useRef } from 'react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
-import { useWindowTitle, useAppInit, useGlobalShortcuts, useFileWatcher, useSidebarResize, useChatResize, useAppShutdownState, usePreviewDiscoveryToasts, useChannelBridge } from '@hooks'
+import { useWindowTitle, useAppInit, useGlobalShortcuts, useFileWatcher, useAppShutdownState, usePreviewDiscoveryToasts, useChannelBridge } from '@hooks'
 import AppTitleBar from './components/layout/AppTitleBar'
 import NavigationRail from './components/layout/NavigationRail'
+import SidebarSection from './components/layout/SidebarSection'
+import MainContentArea from './components/layout/MainContentArea'
+import GlobalOverlays from './components/layout/GlobalOverlays'
+import WorkspaceStatusBar from './components/layout/WorkspaceStatusBar'
 import { scenarioRegistry, initializeScenarios } from '@shared/configuration/scenarios'
 import { scenarioLoader, registerBuiltinScenarios } from '@/scenarios'
 import { loadExternalScenarios, setExternalScenarioLoadFunctions } from '@scenario-system/core/ExternalScenarioLoader'
 import { api } from './adapters/electronBridge'
 import { shellComposer, type LayoutConfig } from './shell/ShellComposer'
 import { getPanelComponent } from '@components/explorer/PanelRegistry'
-import WorkspaceStatusBar from './components/layout/WorkspaceStatusBar'
-import EditorBottomBar from './components/layout/EditorBottomBar'
 import { ToastProvider, useToast, setGlobalToast } from '@components/foundation/NotificationProvider'
 import { GlobalDecisionOverlay } from '@components/foundation/DecisionOverlay'
 import { CrashGuard as ErrorBoundary } from '@components/foundation/CrashGuard'
 import { GlobalErrorHandler } from '@components/foundation/AppErrorHandler'
 import GlobalToastContainer from '@components/foundation/AppToastContainer'
 import { ThemeManager } from '@components/workspace-editor/EditorThemeProvider'
-import { EditorSkeleton, PanelSkeleton, ChatSkeleton, FullScreenLoading, InlineSettingsSkeleton } from './components/ui/ProgressIndicator'
+import { FullScreenLoading } from './components/ui/ProgressIndicator'
 import { startupMetrics } from '@shared/toolkit/bootMetrics'
-import { t, type Language } from '@renderer/i18n'
 
 startupMetrics.mark('app-module-loaded')
 
-const Editor = lazy(() => import('@components/workspace-editor/WorkspaceEditor'))
-const Sidebar = lazy(() => import('@components/explorer/ExplorerSidebar'))
-const ChatPanel = lazy(() => import('@components/intelligence/ChatPanel'))
-const TerminalStudio = lazy(() => import('./shell/components/TerminalStudio'))
-
-const TerminalPanel = lazy(() => import('@components/dock-panels/TerminalConsolePanel'))
-const DebugPanel = lazy(() => import('@components/dock-panels/DebugConsolePanel'))
 const WorkflowWorkbench = lazy(() => import('@components/workflow/Workbench/WorkflowWorkbench'))
-const DataDashboard = lazy(() => import('@components/dashboard/InsightDashboard'))
-const StoreDiagnosisDashboard = lazy(() => import('@/scenarios/store-diagnosis/components/StoreDiagnosisDashboard'))
-const CanvasWorkspace = lazy(() => import('@components/canvas/WorkspaceCanvas'))
-const DynamicPanelView = lazy(() => import('@components/explorer/AdaptivePanelView').then(m => ({ default: m.DynamicPanelView })))
-const ScenarioManagerView = lazy(() => import('@components/scenario/ScenarioManagerView').then(m => ({ default: m.ScenarioManagerView })))
-const KnowledgeView = lazy(() => import('@components/explorer/panels/KnowledgeExplorer').then(m => ({ default: m.KnowledgeView })))
-
-const OnboardingWizard = lazy(() => import('@components/modals/OnboardingWizard'))
-const PreferencesDialog = lazy(() => import('@components/settings/PreferencesDialog'))
-const CommandHub = lazy(() => import('@components/modals/CommandHub'))
-const ShortcutReference = lazy(() => import('@components/modals/ShortcutReference'))
-const FileNavigator = lazy(() => import('@components/modals/FileNavigator'))
-const AppIdentityPanel = lazy(() => import('@components/modals/AppIdentityPanel'))
 const WelcomePage = lazy(() => import('@components/onboarding/WelcomePage'))
-const UserProfilePage = lazy(() => import('@components/user/UserProfilePage'))
-const BillingCenterPage = lazy(() => import('@components/user/BillingCenterPage'))
-const SessionHistoryPage = lazy(() => import('@components/user/SessionHistoryPage'))
 
 initializeScenarios()
 registerBuiltinScenarios()
@@ -74,42 +52,20 @@ function AppContent() {
   const {
     workspace, activeSidePanel,
     showWorkflow, setShowWorkflow,
-    sidebarWidth, setSidebarWidth,
-    chatWidth, setChatWidth,
-    showQuickOpen, setShowQuickOpen,
-    showAbout, setShowAbout,
-    showCommandPalette, setShowCommandPalette,
-    terminalVisible, debugVisible, chatVisible,
-    activeScenarioId, openFiles, activeFilePath, language,
-    showSettingsPage, showWelcomePage, showUserProfilePage, showBillingCenterPage, showSessionHistoryPage,
+    showSettingsPage, showWelcomePage, showUserProfilePage, showBillingCenterPage,
+    activeScenarioId, language,
     isAuthenticated, setShowWelcomePage,
   } = useStore(useShallow((state) => ({
     workspace: state.workspace,
     activeSidePanel: state.activeSidePanel,
     showWorkflow: state.showWorkflow,
     setShowWorkflow: state.setShowWorkflow,
-    sidebarWidth: state.sidebarWidth,
-    setSidebarWidth: state.setSidebarWidth,
-    chatWidth: state.chatWidth,
-    setChatWidth: state.setChatWidth,
-    showQuickOpen: state.showQuickOpen,
-    setShowQuickOpen: state.setShowQuickOpen,
-    showAbout: state.showAbout,
-    setShowAbout: state.setShowAbout,
-    showCommandPalette: state.showCommandPalette,
-    setShowCommandPalette: state.setShowCommandPalette,
-    terminalVisible: state.terminalVisible,
-    debugVisible: state.debugVisible,
-    chatVisible: state.chatVisible,
-    activeScenarioId: state.activeScenarioId,
-    openFiles: state.openFiles,
-    activeFilePath: state.activeFilePath,
-    language: state.language,
     showSettingsPage: state.showSettingsPage,
     showWelcomePage: state.showWelcomePage,
     showUserProfilePage: state.showUserProfilePage,
     showBillingCenterPage: state.showBillingCenterPage,
-    showSessionHistoryPage: state.showSessionHistoryPage,
+    activeScenarioId: state.activeScenarioId,
+    language: state.language,
     isAuthenticated: state.isAuthenticated,
     setShowWelcomePage: state.setShowWelcomePage,
   })))
@@ -119,10 +75,11 @@ function AppContent() {
   const [isInitialized, setIsInitialized] = useState(false)
 
   useEffect(() => {
-    if (activeFilePath) {
+    const { activeFilePath } = useStore.getState()
+    if (activeSidePanel === 'shell' || activeFilePath) {
       useStore.getState().setNavRailExpanded(false)
     }
-  }, [activeFilePath])
+  }, [activeSidePanel])
 
   useEffect(() => {
     window.__ADNIFY_STORE__ = { getState: () => useStore.getState() }
@@ -167,7 +124,7 @@ function AppContent() {
     if (!activeScenarioId) return null
     const scenario = scenarioRegistry.get(activeScenarioId)
     if (!scenario?.ui?.welcomeComponent) return null
-    return getPanelComponent(`welcome-${activeScenarioId}`)
+    return getPanelComponent(`welcome-${activeScenarioId}`) ?? null
   }, [activeScenarioId])
 
   const [layoutAnimating, setLayoutAnimating] = useState(false)
@@ -193,14 +150,14 @@ function AppContent() {
     },
   })
 
-  const sidebarRef = useRef<HTMLDivElement>(null)
-  const chatRef = useRef<HTMLDivElement>(null)
-
-  const { startResize: startSidebarResize } = useSidebarResize(setSidebarWidth, sidebarRef)
-  const { startResize: startChatResize } = useChatResize(setChatWidth, chatRef)
-
-  const handleCloseKeyboardShortcuts = useCallback(() => setShowKeyboardShortcuts(false), [])
-  const handleCloseOnboarding = useCallback(() => setShowOnboarding(false), [])
+  // 侧边栏是否隐藏
+  const sidebarHidden = useMemo(() => {
+    if (!layoutConfig.showSidebar || !activeSidePanel) return true
+    if (isWideModePanel) return true
+    if (isShellStudioActive && layoutConfig.chatPosition !== 'primary') return true
+    if (showSettingsPage || showWelcomePage || showUserProfilePage || showBillingCenterPage) return true
+    return false
+  }, [layoutConfig.showSidebar, layoutConfig.chatPosition, activeSidePanel, isWideModePanel, isShellStudioActive, showSettingsPage, showWelcomePage, showUserProfilePage, showBillingCenterPage])
 
   return (
     <div className="h-screen flex bg-background overflow-hidden text-text-primary selection:bg-accent/30 selection:text-white relative">
@@ -217,364 +174,27 @@ function AppContent() {
 
       <div className="relative z-10 flex h-full w-full">
         {hasWorkspace ? (
-          <>
-            <div className={`flex h-full w-full overflow-hidden transition-opacity duration-300 ${layoutAnimating ? 'opacity-0' : 'opacity-100'}`}>
-              {layoutConfig.chatPosition === 'primary' ? (
-                <>
-                  {layoutConfig.showActivityBar && <NavigationRail />}
+          <div className={`flex h-full w-full overflow-hidden transition-opacity duration-300 ${layoutAnimating ? 'opacity-0' : 'opacity-100'}`}>
+            {layoutConfig.showActivityBar && <NavigationRail />}
 
-                  <div className="flex-1 flex flex-col min-w-0">
-                    <AppTitleBar />
+            <div className="flex-1 flex flex-col min-w-0">
+              <AppTitleBar />
 
-                    <div className="flex-1 flex min-w-0 overflow-hidden">
-                      {layoutConfig.showSidebar && activeSidePanel && !isWideModePanel && !showSettingsPage && !showWelcomePage && !showUserProfilePage && !showBillingCenterPage && (
-                        <div ref={sidebarRef} style={{ width: sidebarWidth, minWidth: sidebarWidth }} className="flex-shrink-0 relative min-w-[220px]">
-                          <ErrorBoundary>
-                            <Suspense fallback={<PanelSkeleton />}>
-                              <Sidebar />
-                            </Suspense>
-                          </ErrorBoundary>
-                          <div
-                            className="absolute top-0 right-0 w-1 h-full cursor-col-resize active:bg-accent transition-colors z-50 translate-x-[2px]"
-                            onMouseDown={startSidebarResize}
-                          />
-                        </div>
-                      )}
+              <div className="flex-1 flex min-w-0 overflow-hidden">
+                <SidebarSection hidden={sidebarHidden} />
 
-                      <div className="flex-1 flex min-w-0 bg-background relative">
-                        {isWideModePanel && activeSidePanel ? (
-                          activeSidePanel === 'knowledge' ? (
-                            <>
-                              <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-                                <ErrorBoundary>
-                                  <Suspense fallback={<PanelSkeleton />}>
-                                    <KnowledgeView />
-                                  </Suspense>
-                                </ErrorBoundary>
-                              </div>
-                              {layoutConfig.showChat && chatVisible && (
-                                <div
-                                  ref={chatRef}
-                                  style={{ width: chatWidth }}
-                                  className="flex-shrink-0 relative border-l border-border/30 shadow-[-1px_0_15px_rgba(0,0,0,0.03)] z-20 bg-background-chat"
-                                >
-                                  <div
-                                    className="absolute top-0 left-0 w-1 h-full cursor-col-resize active:bg-accent transition-colors z-50 -translate-x-[2px]"
-                                    onMouseDown={startChatResize}
-                                  />
-                                  <ErrorBoundary>
-                                    <Suspense fallback={<ChatSkeleton />}>
-                                      <ChatPanel />
-                                    </Suspense>
-                                  </ErrorBoundary>
-                                </div>
-                              )}
-                            </>
-                          ) : (
-                            <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-                              <ErrorBoundary>
-                                <Suspense fallback={<PanelSkeleton />}>
-                                  {activeSidePanel === 'scenarios' ? (
-                                    <ScenarioManagerView />
-                                  ) : (
-                                    <DynamicPanelView panelId={activeSidePanel} />
-                                  )}
-                                </Suspense>
-                              </ErrorBoundary>
-                            </div>
-                          )
-                        ) : showWelcomePage ? (
-                          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-                            <ErrorBoundary>
-                              <Suspense fallback={<FullScreenLoading />}>
-                                <WelcomePage />
-                              </Suspense>
-                            </ErrorBoundary>
-                          </div>
-                        ) : showSettingsPage ? (
-                          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-                            <ErrorBoundary>
-                              <Suspense fallback={<InlineSettingsSkeleton />}>
-                                <PreferencesDialog embedded />
-                              </Suspense>
-                            </ErrorBoundary>
-                          </div>
-                        ) : showUserProfilePage ? (
-                          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-                            <ErrorBoundary>
-                              <Suspense fallback={<InlineSettingsSkeleton />}>
-                                <UserProfilePage />
-                              </Suspense>
-                            </ErrorBoundary>
-                          </div>
-                        ) : showBillingCenterPage ? (
-                          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-                            <ErrorBoundary>
-                              <Suspense fallback={<InlineSettingsSkeleton />}>
-                                <BillingCenterPage />
-                              </Suspense>
-                            </ErrorBoundary>
-                          </div>
-                        ) : showSessionHistoryPage ? (
-                          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-                            <ErrorBoundary>
-                              <Suspense fallback={<InlineSettingsSkeleton />}>
-                                <SessionHistoryPage />
-                              </Suspense>
-                            </ErrorBoundary>
-                          </div>
-                        ) : openFiles.length > 0 && activeFilePath ? (
-                          <>
-                            <div className="flex-1 min-h-0 flex flex-col relative overflow-hidden min-w-0">
-                              <ErrorBoundary>
-                                <Suspense fallback={<EditorSkeleton />}>
-                                  <Editor />
-                                </Suspense>
-                              </ErrorBoundary>
-                            </div>
-                            {chatVisible && (
-                              <div
-                                ref={chatRef}
-                                style={{ width: chatWidth, minWidth: chatWidth }}
-                                className="flex-shrink-0 relative min-w-[580px] border-l border-border/30 bg-background-chat"
-                              >
-                                <ErrorBoundary>
-                                  <Suspense fallback={<ChatSkeleton />}>
-                                    <ChatPanel />
-                                  </Suspense>
-                                </ErrorBoundary>
-                                <div
-                                  className="absolute top-0 left-0 w-1 h-full cursor-col-resize active:bg-accent transition-colors z-50 -translate-x-[2px]"
-                                  onMouseDown={startChatResize}
-                                />
-                              </div>
-                            )}
-                          </>
-                        ) : chatVisible ? (
-                          <div className="flex-1 min-w-0 overflow-hidden">
-                            <ErrorBoundary>
-                              <Suspense fallback={<ChatSkeleton />}>
-                                <ChatPanel />
-                              </Suspense>
-                            </ErrorBoundary>
-                          </div>
-                        ) : (
-                          <div className="flex-1 min-w-0 overflow-hidden flex items-center justify-center">
-                            <div className="text-text-muted text-sm">
-                              {t('app.aiassistanthiddenclickthe', language as Language)}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                <div className="flex-1 flex min-w-0 bg-background relative">
+                  <MainContentArea
+                    layoutConfig={layoutConfig}
+                    isWideModePanel={isWideModePanel}
+                    scenarioWelcomeComponent={scenarioWelcomeComponent}
+                  />
+                </div>
+              </div>
 
-                    {layoutConfig.showStatusBar && <WorkspaceStatusBar />}
-                  </div>
-                </>
-              ) : (
-                <>
-                  {layoutConfig.showActivityBar && <NavigationRail />}
-
-                  <div className="flex-1 flex flex-col min-w-0">
-                    <AppTitleBar />
-
-                    <div className="flex-1 flex min-w-0 overflow-hidden">
-                      {layoutConfig.showSidebar && activeSidePanel && !isShellStudioActive && !isWideModePanel && !showSettingsPage && !showWelcomePage && !showUserProfilePage && !showBillingCenterPage && (
-                        <div ref={sidebarRef} style={{ width: sidebarWidth, minWidth: sidebarWidth }} className="flex-shrink-0 relative min-w-[220px]">
-                          <ErrorBoundary>
-                            <Suspense fallback={<PanelSkeleton />}>
-                              <Sidebar />
-                            </Suspense>
-                          </ErrorBoundary>
-                          <div
-                            className="absolute top-0 right-0 w-1 h-full cursor-col-resize active:bg-accent transition-colors z-50 translate-x-[2px]"
-                            onMouseDown={startSidebarResize}
-                          />
-                        </div>
-                      )}
-
-                      <div className="flex-1 flex min-w-0 bg-background relative">
-                        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-                          {isWideModePanel && activeSidePanel ? (
-                            <ErrorBoundary>
-                              <Suspense fallback={<PanelSkeleton />}>
-                                {activeSidePanel === 'scenarios' ? (
-                                  <ScenarioManagerView />
-                                ) : activeSidePanel === 'knowledge' ? (
-                                  <KnowledgeView />
-                                ) : (
-                                  <DynamicPanelView panelId={activeSidePanel} />
-                                )}
-                              </Suspense>
-                            </ErrorBoundary>
-                          ) : showWelcomePage ? (
-                            <ErrorBoundary>
-                              <Suspense fallback={<FullScreenLoading />}>
-                                <WelcomePage />
-                              </Suspense>
-                            </ErrorBoundary>
-                          ) : showSettingsPage ? (
-                            <ErrorBoundary>
-                              <Suspense fallback={<InlineSettingsSkeleton />}>
-                                <PreferencesDialog embedded />
-                              </Suspense>
-                            </ErrorBoundary>
-                          ) : showUserProfilePage ? (
-                            <ErrorBoundary>
-                              <Suspense fallback={<InlineSettingsSkeleton />}>
-                                <UserProfilePage />
-                              </Suspense>
-                            </ErrorBoundary>
-                          ) : showBillingCenterPage ? (
-                            <ErrorBoundary>
-                              <Suspense fallback={<InlineSettingsSkeleton />}>
-                                <BillingCenterPage />
-                              </Suspense>
-                            </ErrorBoundary>
-                          ) : showSessionHistoryPage ? (
-                            <ErrorBoundary>
-                              <Suspense fallback={<InlineSettingsSkeleton />}>
-                                <SessionHistoryPage />
-                              </Suspense>
-                            </ErrorBoundary>
-                          ) : layoutConfig.showEditor ? (
-                            <>
-                              {isShellStudioActive ? (
-                                <div className="flex-1 min-h-0 flex flex-col relative overflow-hidden">
-                                  <ErrorBoundary>
-                                    <Suspense fallback={<EditorSkeleton />}>
-                                      <TerminalStudio />
-                                    </Suspense>
-                                  </ErrorBoundary>
-                                </div>
-                              ) : (
-                                <>
-                                  <div className="flex-1 min-h-0 flex flex-col relative overflow-hidden">
-                                    <ErrorBoundary>
-                                      <Suspense fallback={<EditorSkeleton />}>
-                                        <Editor />
-                                      </Suspense>
-                                    </ErrorBoundary>
-                                  </div>
-                                  {layoutConfig.showTerminal && terminalVisible && (
-                                    <ErrorBoundary>
-                                      <Suspense fallback={null}>
-                                        <TerminalPanel />
-                                      </Suspense>
-                                    </ErrorBoundary>
-                                  )}
-                                  {debugVisible && (
-                                    <ErrorBoundary>
-                                      <Suspense fallback={null}>
-                                        <DebugPanel />
-                                      </Suspense>
-                                    </ErrorBoundary>
-                                  )}
-                                  <EditorBottomBar />
-                                </>
-                              )}
-                            </>
-                          ) : layoutConfig.layout === 'dashboard-centric' ? (
-                            openFiles.length > 0 && activeFilePath ? (
-                              <div className="flex-1 min-h-0 flex flex-col relative overflow-hidden">
-                                <ErrorBoundary>
-                                  <Suspense fallback={<EditorSkeleton />}>
-                                    <Editor />
-                                  </Suspense>
-                                </ErrorBoundary>
-                              </div>
-                            ) : (
-                              <ErrorBoundary>
-                                <Suspense fallback={<PanelSkeleton />}>
-                                  <DataDashboard />
-                                </Suspense>
-                              </ErrorBoundary>
-                            )
-                          ) : layoutConfig.layout === 'canvas-centric' ? (
-                            <ErrorBoundary>
-                              <Suspense fallback={<PanelSkeleton />}>
-                                <CanvasWorkspace />
-                              </Suspense>
-                            </ErrorBoundary>
-                          ) : layoutConfig.layout === 'focus-centric' ? (
-                            openFiles.length > 0 && activeFilePath ? (
-                              <div className="flex-1 min-h-0 flex flex-col relative overflow-hidden">
-                                <ErrorBoundary>
-                                  <Suspense fallback={<EditorSkeleton />}>
-                                    <Editor />
-                                  </Suspense>
-                                </ErrorBoundary>
-                              </div>
-                            ) : (
-                              <ErrorBoundary>
-                                <Suspense fallback={<PanelSkeleton />}>
-                                  <DataDashboard />
-                                </Suspense>
-                              </ErrorBoundary>
-                            )
-                          ) : layoutConfig.layout === 'research-centric' || layoutConfig.layout === 'split-centric' ? (
-                            openFiles.length > 0 && activeFilePath ? (
-                              <div className="flex-1 min-h-0 flex flex-col relative overflow-hidden">
-                                <ErrorBoundary>
-                                  <Suspense fallback={<EditorSkeleton />}>
-                                    <Editor />
-                                  </Suspense>
-                                </ErrorBoundary>
-                              </div>
-                            ) : scenarioWelcomeComponent ? (
-                              <ErrorBoundary>
-                                <Suspense fallback={<PanelSkeleton />}>
-                                  {(() => { const W = scenarioWelcomeComponent; return <W /> })()}
-                                </Suspense>
-                              </ErrorBoundary>
-                            ) : (
-                              <ErrorBoundary>
-                                <Suspense fallback={<PanelSkeleton />}>
-                                  <DataDashboard />
-                                </Suspense>
-                              </ErrorBoundary>
-                            )
-                          ) : layoutConfig.layout === 'analytics-centric' ? (
-                            openFiles.length > 0 && activeFilePath ? (
-                              <div className="flex-1 min-h-0 flex flex-col relative overflow-hidden">
-                                <ErrorBoundary>
-                                  <Suspense fallback={<EditorSkeleton />}>
-                                    <Editor />
-                                  </Suspense>
-                                </ErrorBoundary>
-                              </div>
-                            ) : (
-                              <ErrorBoundary>
-                                <Suspense fallback={<PanelSkeleton />}>
-                                  <StoreDiagnosisDashboard />
-                                </Suspense>
-                              </ErrorBoundary>
-                            )
-                          ) : null}
-                        </div>
-
-                        {layoutConfig.showChat && chatVisible && !(isWideModePanel && activeSidePanel !== 'knowledge' && (layoutConfig.wideModeHidesChat || activeSidePanel === 'scenarios')) && !(scenarioWelcomeComponent && activeSidePanel === 'explorer' && !(openFiles.length > 0 && activeFilePath)) && (
-                          <div ref={chatRef} style={{ width: chatWidth }} className="flex-shrink-0 relative border-l border-border/30 shadow-[-1px_0_15px_rgba(0,0,0,0.03)] z-20 bg-background-chat">
-                            <div
-                              className="absolute top-0 left-0 w-1 h-full cursor-col-resize active:bg-accent transition-colors z-50 -translate-x-[2px]"
-                              onMouseDown={startChatResize}
-                            />
-                            <ErrorBoundary>
-                              <Suspense fallback={<ChatSkeleton />}>
-                                <ChatPanel />
-                              </Suspense>
-                            </ErrorBoundary>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {layoutConfig.showStatusBar && <WorkspaceStatusBar />}
-                  </div>
-                </>
-              )}
+              {layoutConfig.showStatusBar && <WorkspaceStatusBar />}
             </div>
-          </>
+          </div>
         ) : (
           <div className="flex-1 overflow-hidden">
             <Suspense fallback={<FullScreenLoading />}>
@@ -584,37 +204,13 @@ function AppContent() {
         )}
       </div>
 
-      {showCommandPalette && (
-        <Suspense fallback={null}>
-          <CommandHub
-            onClose={() => setShowCommandPalette(false)}
-            onShowKeyboardShortcuts={() => {
-              setShowCommandPalette(false)
-              setShowKeyboardShortcuts(true)
-            }}
-          />
-        </Suspense>
-      )}
-      {showKeyboardShortcuts && (
-        <Suspense fallback={null}>
-          <ShortcutReference onClose={handleCloseKeyboardShortcuts} />
-        </Suspense>
-      )}
-      {showQuickOpen && (
-        <Suspense fallback={null}>
-          <FileNavigator onClose={() => setShowQuickOpen(false)} />
-        </Suspense>
-      )}
-      {showOnboarding && isInitialized && (
-        <Suspense fallback={null}>
-          <OnboardingWizard onComplete={handleCloseOnboarding} />
-        </Suspense>
-      )}
-      {showAbout && (
-        <Suspense fallback={null}>
-          <AppIdentityPanel onClose={() => setShowAbout(false)} />
-        </Suspense>
-      )}
+      <GlobalOverlays
+        showKeyboardShortcuts={showKeyboardShortcuts}
+        setShowKeyboardShortcuts={setShowKeyboardShortcuts}
+        showOnboarding={showOnboarding}
+        setShowOnboarding={setShowOnboarding}
+        isInitialized={isInitialized}
+      />
 
       <GlobalDecisionOverlay />
       <GlobalToastContainer />

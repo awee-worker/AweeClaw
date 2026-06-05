@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { editor } from 'monaco-editor'
 import { composerService, FileChange } from '@intelligence/runtime/composerEngine'
+import { logger } from '@shared/toolkit/LogEngine'
 
 // ===== 类型定义 =====
 export interface DiffLine {
@@ -289,7 +290,7 @@ export function useComposerInlineDiff(
                     const fontInfo = editorInstance.getOption(monacoInstance.editor.EditorOption.fontInfo)
                     fontFamily = fontInfo.fontFamily
                     fontSize = fontInfo.fontSize
-                } catch (e) { }
+                } catch (e) { logger.ui.warn('Failed to get Monaco font info:', e) }
 
                 for (const block of removedBlocks) {
                     const domNode = document.createElement('div')

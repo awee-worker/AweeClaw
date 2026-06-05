@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from 'react'
 import { useStore } from '@store'
+import { logger } from '@shared/toolkit/LogEngine'
 
 const EMPTY_ROOTS: string[] = []
 
@@ -25,7 +26,7 @@ export function usePreviewDiscoveryToasts(active: boolean): void {
           previewPromptService.setWorkspaceRoots(workspaceRoots)
         })
         .catch((error) => {
-          console.error('[Preview] Failed to initialize discovery toasts', error)
+          logger.ui.error('[Preview] Failed to initialize discovery toasts', error)
         })
     }, 1200)
 

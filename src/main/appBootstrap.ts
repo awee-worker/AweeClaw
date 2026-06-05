@@ -6,10 +6,10 @@
  * - 启用 TypeScript 增量编译以提升构建速度
  */
 
-import { app, BrowserWindow, Menu, shell, ipcMain, protocol, net, screen } from 'electron'
+import { app, BrowserWindow, Menu, ipcMain, protocol, net, screen } from 'electron'
+import { safeOpenExternal } from './guard/safeExternalUrl'
 export type Language = 'zh' | 'en'
 import { randomUUID } from 'crypto'
-import { exec } from 'child_process'
 import * as path from 'path'
 import { logger } from '@shared/toolkit/LogEngine'
 import { SECURITY_DEFAULTS } from '@shared/appConstants'
@@ -368,6 +368,7 @@ function createWindow(isEmpty = false, deferLoad = false): BrowserWindow {
   })
 
   // 添加 CSP 头以提升安全性
+  // 注意：Monaco Editor 在 Electron 中硬性依赖 unsafe-eval，无法移除
   if (app.isPackaged) {
     win.webContents.session.webRequest.onHeadersReceived((details, callback) => {
       callback({
@@ -375,14 +376,17 @@ function createWindow(isEmpty = false, deferLoad = false): BrowserWindow {
           ...details.responseHeaders,
           'Content-Security-Policy': [
             "default-src 'self'",
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval' local-preview:",  // Monaco 编辑器需要
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' local-preview:",  // Monaco 编辑器硬性依赖 unsafe-eval
             "style-src 'self' 'unsafe-inline' local-preview:",
             "img-src 'self' data: https: blob: local-preview:",  // blob: 支持粘贴图片
-            "connect-src 'self' https:",  // 允许所有 HTTPS 连接，支持自定义 baseURL
-            "frame-src 'self' https: http://127.0.0.1:* http://localhost:*",
-            "child-src 'self' https: http://127.0.0.1:* http://localhost:*",
+            "connect-src 'self' https: wss: http://127.0.0.1:* http://localhost:*",  // 自定义 AI Provider baseURL + 本地开发服务器 + WebSocket
+            "frame-src 'self' http://127.0.0.1:* http://localhost:*",  // 仅允许本地开发服务器 iframe，禁止远程 iframe
+            "child-src 'self' http://127.0.0.1:* http://localhost:*",
             "font-src 'self' data: local-preview:",
             "media-src 'self' local-preview:",
+            "object-src 'none'",  // 禁止 <object>/<embed> 加载
+            "base-uri 'self'",  // 防止 <base> 标签劫持
+            "form-action 'self'",  // 防止表单提交到外部
           ].join('; ')
         }
       })
@@ -481,25 +485,9 @@ function createWindow(isEmpty = false, deferLoad = false): BrowserWindow {
     }
   })
 
-  // 外部链接处理
+  // 外部链接处理（统一走 safeOpenExternal）
   const openUrlSafely = (rawUrl: string) => {
-    const url = rawUrl
-      .replace(/[*_~`#|]+$/g, '')
-      .replace(/^[*_~`#|]+/g, '')
-      .trim()
-    if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('devtools://')) {
-      return
-    }
-    shell.openExternal(url).catch(() => {
-      const cmd = process.platform === 'darwin'
-        ? `open "${url.replace(/"/g, '\\"')}"`
-        : process.platform === 'win32'
-          ? `start "" "${url.replace(/"/g, '\\"')}"`
-          : `xdg-open "${url.replace(/"/g, '\\"')}"`
-      exec(cmd, (err) => {
-        if (err) logger.system.warn('[Window] Fallback open also failed:', url, err.message)
-      })
-    })
+    safeOpenExternal(rawUrl)
   }
 
   win.webContents.setWindowOpenHandler(({ url }) => {

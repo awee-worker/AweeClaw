@@ -1,5 +1,7 @@
 type SoundType = 'error' | 'approval' | 'attention' | 'interaction' | 'success'
 
+import { logger } from '@shared/toolkit/LogEngine'
+
 const SOUND_PRESETS: Record<SoundType, { type: OscillatorType; freq: [number, number]; gain: number; duration: number }> = {
   error: { type: 'square', freq: [330, 262], gain: 0.12, duration: 0.35 },
   approval: { type: 'sine', freq: [880, 660], gain: 0.15, duration: 0.3 },
@@ -48,5 +50,5 @@ export function playNotificationSound(type: SoundType): void {
     osc.start(now)
     osc.stop(now + preset.duration)
     setTimeout(() => ctx.close(), 1000)
-  } catch {}
+  } catch (e) { logger.ui.debug('Failed to play notification sound:', e) }
 }

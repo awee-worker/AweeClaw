@@ -85,7 +85,7 @@ export function registerWindowHandlers(createWindow: (isEmpty?: boolean) => Brow
   // 移除旧的 handler 再注册新的
   try {
     ipcMain.removeHandler('window:new')
-  } catch { }
+  } catch (e) { logger.system.debug('Failed to remove window:new handler:', e) }
   ipcMain.handle('window:new', () => {
     createWindow(true)
   })

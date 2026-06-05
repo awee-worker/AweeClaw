@@ -12,6 +12,7 @@
  */
 
 import type { ScenarioPlugin, UILayout, PanelDescriptor } from '@shared/protocols/scenario'
+import { logger } from '@shared/toolkit/LogEngine'
 
 // ============================================
 // 布局配置输出
@@ -324,7 +325,7 @@ class ShellComposerClass {
       }
     }
     if (cleaned > 0) {
-      console.debug(`[ShellComposer] Cleaned ${cleaned} expired cache entries`)
+      logger.cache.debug(`[ShellComposer] Cleaned ${cleaned} expired cache entries`)
     }
   }
 

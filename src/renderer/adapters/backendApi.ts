@@ -1,6 +1,8 @@
 type RequestMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
 
 import { BRAND } from '@shared/brand'
+import { logger } from '@shared/toolkit/LogEngine'
+import { StorageService } from '@shared/toolkit/StorageService'
 
 interface RequestOptions {
   headers?: Record<string, string>;
@@ -136,17 +138,11 @@ export async function tryRefreshToken(): Promise<boolean> {
 }
 
 /**
- * 从 localStorage 读取持久化的 refreshToken（降级恢复用）
+ * 从 StorageService 读取持久化的 refreshToken（降级恢复用）
  */
 function loadPersistedRefreshToken(): string | null {
-  try {
-    const raw = localStorage.getItem(BRAND.storageKeys.cloudAuth);
-    if (!raw) return null;
-    const data = JSON.parse(raw);
-    return data?.refreshToken || null;
-  } catch {
-    return null;
-  }
+  const data = StorageService.get<{ refreshToken?: string }>(BRAND.storageKeys.cloudAuth);
+  return data?.refreshToken || null;
 }
 
 async function refreshAccessToken(): Promise<AuthTokens | null> {
@@ -251,7 +247,7 @@ async function request<T>(
       if (errorJson?.message) {
         errorMessage = Array.isArray(errorJson.message) ? errorJson.message.join(', ') : String(errorJson.message);
       }
-    } catch {}
+    } catch (e) { logger.system.debug('Failed to parse error response body:', e) }
     throw new BackendApiError(res.status, errorMessage);
   }
 

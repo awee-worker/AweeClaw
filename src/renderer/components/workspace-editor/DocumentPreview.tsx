@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import * as pdfjsLib from 'pdfjs-dist'
 import mammoth from 'mammoth/mammoth.browser.min.js'
-import * as XLSX from 'xlsx'
 import JSZip from 'jszip'
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize2, Loader2, FileSpreadsheet, Presentation } from 'lucide-react'
 import { ActionButton } from '../ui'
 import { useStore } from '@store'
 import {t, type Language} from '@renderer/i18n'
 import { api } from '../../adapters/electronBridge'
+import { logger } from '@shared/toolkit/LogEngine'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.mjs',
@@ -50,7 +50,7 @@ export function PdfPreview({ path }: PdfPreviewProps) {
         setTotalPages(doc.numPages)
         setCurrentPage(1)
       } catch (e) {
-        console.error('Failed to load PDF:', e)
+        logger.ui.error('Failed to load PDF:', e)
         setError(true)
       } finally {
         setLoading(false)
@@ -82,7 +82,7 @@ export function PdfPreview({ path }: PdfPreviewProps) {
       renderTaskRef.current = null
     } catch (e: any) {
       if (e?.name !== 'RenderingCancelledException') {
-        console.error('Failed to render page:', e)
+        logger.ui.error('Failed to render page:', e)
       }
     }
   }, [pdfDoc, currentPage, scale])
@@ -211,7 +211,7 @@ export function DocxPreview({ path }: DocxPreviewProps) {
         const result = await mammoth.convertToHtml({ arrayBuffer: bytes.buffer as ArrayBuffer })
         setHtml(result.value)
       } catch (e) {
-        console.error('Failed to load DOCX:', e)
+        logger.ui.error('Failed to load DOCX:', e)
         setError(true)
       } finally {
         setLoading(false)
@@ -359,8 +359,9 @@ export function XlsxPreview({ path }: XlsxPreviewProps) {
         for (let i = 0; i < binaryString.length; i++) {
           bytes[i] = binaryString.charCodeAt(i)
         }
+        const XLSX = await import('xlsx')
         const workbook = XLSX.read(bytes, { type: 'array' })
-        const sheetData = workbook.SheetNames.map(name => {
+        const sheetData = workbook.SheetNames.map((name: string) => {
           const worksheet = workbook.Sheets[name]
           const json: string[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' })
           return { name, data: json }
@@ -368,7 +369,7 @@ export function XlsxPreview({ path }: XlsxPreviewProps) {
         setSheets(sheetData)
         setActiveSheet(0)
       } catch (e) {
-        console.error('Failed to load XLSX:', e)
+        logger.ui.error('Failed to load XLSX:', e)
         setError(true)
       } finally {
         setLoading(false)

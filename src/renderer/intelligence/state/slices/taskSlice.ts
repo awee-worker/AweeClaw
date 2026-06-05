@@ -15,6 +15,7 @@ import type {
     PlanStatus,
 } from '../../planner/providerTypes'
 import { useStore } from '@store'
+import { logger } from '@shared/toolkit/LogEngine'
 import { api } from '../../../adapters/electronBridge'
 import { BRAND } from '@shared/brand'
 
@@ -162,7 +163,7 @@ export const createPlanSlice: StateCreator<
                         }
                     }
                 } catch (e) {
-                    console.warn(`[PlanSlice] Failed to load plan: ${file}`, e)
+                    logger.plan.warn(`[PlanSlice] Failed to load plan: ${file}`, e)
                 }
             }
 
@@ -171,7 +172,7 @@ export const createPlanSlice: StateCreator<
                 set({ plans })
             }
         } catch (e) {
-            console.warn('[PlanSlice] Failed to load plans from disk:', e)
+            logger.plan.warn('[PlanSlice] Failed to load plans from disk:', e)
         }
     },
 
@@ -202,7 +203,7 @@ export const createPlanSlice: StateCreator<
                     const planPath = `${workspacePath}/${BRAND.dirName}/planner/${planId}.json`
                     await api.file.write(planPath, JSON.stringify(latestPlan, null, 2))
                 } catch (error) {
-                    console.error('[PlanSlice] Failed to save plan:', error)
+                    logger.plan.error('[PlanSlice] Failed to save plan:', error)
                 } finally {
                     resolve()
                 }

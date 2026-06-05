@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, Suspense } from 'react'
+import { logger } from '@shared/toolkit/LogEngine'
 import {
     Check, Sparkles, Code2, BarChart3, PenTool,
     Settings, Shield, Package,
@@ -283,7 +284,7 @@ export function ScenarioManagerView() {
                     backedUpAt: info.backedUpAt || '',
                 })
             }
-        } catch {}
+        } catch (e) { logger.scenario.warn('Failed to load scenario updates:', e) }
     }, [])
 
     const handleOpenSettings = useCallback((scenarioId: string) => {
@@ -319,15 +320,15 @@ export function ScenarioManagerView() {
 
             try {
                 await api.scenarioInstall.deleteScenarioDir(uninstallState.scenarioId)
-            } catch {}
+            } catch (e) { logger.scenario.warn('Failed to delete scenario dir:', e) }
 
             if (isBuiltin) {
                 try {
                     await api.scenarioInstall.deleteBuiltinSourceDir(uninstallState.scenarioId)
-                } catch {}
+                } catch (e) { logger.scenario.warn('Failed to delete builtin source dir:', e) }
             }
         } catch (err) {
-            console.error('[ScenarioManager] Uninstall failed:', err)
+            logger.scenario.error('[ScenarioManager] Uninstall failed:', err)
         } finally {
             setUninstallState(null)
         }

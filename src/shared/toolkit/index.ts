@@ -81,3 +81,8 @@ export {
   debounce,
   throttle
 } from './throttleDebounce'
+
+// 统一存储服务
+export {
+  StorageService,
+} from './StorageService'

@@ -6,6 +6,7 @@
 
 import { api } from '../adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
+import { StorageService } from '@shared/toolkit/StorageService'
 import { BRAND } from '@shared/brand'
 
 export interface ThemeColors {
@@ -388,16 +389,13 @@ class ThemeManager {
   private mediaQueryHandler: ((e: MediaQueryListEvent) => void) | null = null
 
   constructor() {
-    // 从 localStorage 快速恢复主题（同步，避免闪烁）
+    // 从 StorageService 快速恢复主题（同步，避免闪烁）
     try {
-      const savedThemeId = localStorage.getItem(LOCAL_STORAGE_THEME_KEY)
-      const savedCustomThemes = localStorage.getItem(LOCAL_STORAGE_CUSTOM_THEMES_KEY)
+      const savedThemeId = StorageService.get<string>(LOCAL_STORAGE_THEME_KEY)
+      const savedCustomThemes = StorageService.get<Theme[]>(LOCAL_STORAGE_CUSTOM_THEMES_KEY)
 
-      if (savedCustomThemes) {
-        const parsed = JSON.parse(savedCustomThemes)
-        if (Array.isArray(parsed)) {
-          this.customThemes = parsed.filter(isValidTheme)
-        }
+      if (savedCustomThemes && Array.isArray(savedCustomThemes)) {
+        this.customThemes = savedCustomThemes.filter(isValidTheme)
       }
 
       if (savedThemeId) {
@@ -409,7 +407,7 @@ class ThemeManager {
         }
       }
     } catch (e) {
-      // 忽略 localStorage 错误
+      // 忽略存储错误
     }
   }
 
@@ -424,18 +422,18 @@ class ThemeManager {
       if (savedCustomThemes && Array.isArray(savedCustomThemes)) {
         const validThemes = savedCustomThemes.filter(isValidTheme)
         this.customThemes = validThemes
-        localStorage.setItem(LOCAL_STORAGE_CUSTOM_THEMES_KEY, JSON.stringify(validThemes))
+        StorageService.set(LOCAL_STORAGE_CUSTOM_THEMES_KEY, validThemes)
       }
 
       if (savedThemeId && typeof savedThemeId === 'string') {
         const theme = this.getThemeById(savedThemeId)
         if (theme) {
           this.currentTheme = theme
-          localStorage.setItem(LOCAL_STORAGE_THEME_KEY, savedThemeId)
-          localStorage.setItem(BRAND.storageKeys.themeBg, theme.colors.background)
-          localStorage.setItem(BRAND.storageKeys.themeType, theme.type)
+          StorageService.set(LOCAL_STORAGE_THEME_KEY, savedThemeId)
+          StorageService.set(BRAND.storageKeys.themeBg, theme.colors.background)
+          StorageService.set(BRAND.storageKeys.themeType, theme.type)
           // Migrate old configs so main.ts can access themeBg on next startup
-          try { api.settings.set('themeBg', theme.colors.background) } catch (e) { }
+          try { api.settings.set('themeBg', theme.colors.background) } catch (e) { logger.ui.warn('Failed to sync themeBg to settings:', e) }
         }
       }
     } catch (e) {
@@ -444,14 +442,14 @@ class ThemeManager {
   }
 
   private saveToConfig() {
-    // 同步写入 localStorage
+    // 同步写入 StorageService
     try {
-      localStorage.setItem(LOCAL_STORAGE_THEME_KEY, this.currentTheme.id)
-      localStorage.setItem(BRAND.storageKeys.themeBg, this.currentTheme.colors.background)
-      localStorage.setItem(BRAND.storageKeys.themeType, this.currentTheme.type)
-      localStorage.setItem(LOCAL_STORAGE_CUSTOM_THEMES_KEY, JSON.stringify(this.customThemes))
+      StorageService.set(LOCAL_STORAGE_THEME_KEY, this.currentTheme.id)
+      StorageService.set(BRAND.storageKeys.themeBg, this.currentTheme.colors.background)
+      StorageService.set(BRAND.storageKeys.themeType, this.currentTheme.type)
+      StorageService.set(LOCAL_STORAGE_CUSTOM_THEMES_KEY, this.customThemes)
     } catch (e) {
-      // 忽略 localStorage 错误
+      // 忽略存储错误
     }
     // 异步写入文件
     try {

@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
+import { logger } from '@shared/toolkit/LogEngine'
 import {
   Crown,
   Zap,
@@ -124,8 +125,7 @@ export function PlanPanel({ language }: PlanPanelProps) {
           setPaymentError(t('user.order', language as Language, { status: order.status.toLowerCase(), status2: order.status === 'CANCELLED' ? '取消' : '过期' }))
           return
         }
-      } catch {}
-      setTimeout(poll, 5000)
+      } catch (e) { logger.ui.warn('Failed to poll order status:', e) }
     }
     poll()
   }, [language, fetchQuota, fetchProfile])
@@ -282,7 +282,7 @@ export function PlanPanel({ language }: PlanPanelProps) {
                     const serverUrl = useStore.getState().serverUrl
                     const url = paymentResult.qrCodeUrl.replace('mock://qr', `${serverUrl}/api/v1/payment/mock-pay`)
                     await fetch(url)
-                  } catch {}
+                  } catch (e) { logger.ui.warn('Mock pay failed:', e) }
                 }}>
                   {t('user.mockpaysuccess', language as Language)}
                 </ActionButton>

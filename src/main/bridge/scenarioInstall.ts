@@ -244,7 +244,7 @@ async function getSigningPublicKey(): Promise<string | null> {
       cachedPublicKey = fs.readFileSync(configPath, 'utf-8').trim()
       return cachedPublicKey
     }
-  } catch {}
+  } catch (e) { logger.security.warn('Failed to load cached public key:', e) }
 
   return null
 }
@@ -450,7 +450,7 @@ export function registerScenarioInstallIpcHandlers(
         if (fs.existsSync(fullPath)) {
           try {
             files[filePath] = fs.readFileSync(fullPath, 'utf-8')
-          } catch {}
+          } catch (e) { logger.system.warn('Failed to read scenario file:', e) }
         }
       }
 
@@ -608,11 +608,11 @@ export function registerScenarioInstallIpcHandlers(
       logger.agent.error(`[ScenarioMarketplace] Install failed for "${scenarioId}":`, err)
 
       if (fs.existsSync(archivePath)) {
-        try { fs.unlinkSync(archivePath) } catch {}
+        try { fs.unlinkSync(archivePath) } catch (e) { logger.system.warn('Failed to delete archive:', e) }
       }
 
       if (fs.existsSync(targetDir)) {
-        try { fs.rmSync(targetDir, { recursive: true, force: true }) } catch {}
+        try { fs.rmSync(targetDir, { recursive: true, force: true }) } catch (e) { logger.system.warn('Failed to remove target dir:', e) }
       }
 
       const rawError = err instanceof Error ? err.message : String(err)
@@ -759,7 +759,7 @@ export function registerScenarioInstallIpcHandlers(
       }
 
       if (fs.existsSync(archivePath)) {
-        try { fs.unlinkSync(archivePath) } catch {}
+        try { fs.unlinkSync(archivePath) } catch (e) { logger.system.warn('Failed to delete archive:', e) }
       }
 
       const rawError = err instanceof Error ? err.message : String(err)

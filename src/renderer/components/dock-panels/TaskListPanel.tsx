@@ -1,4 +1,5 @@
 import { memo, useMemo, useCallback } from 'react'
+import { logger } from '@shared/toolkit/LogEngine'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { useStore } from '@store'
 import { BRAND } from '@shared/brand'
@@ -221,7 +222,7 @@ export default memo(function PlanListContent({
                 const planPath = `${workspacePath}/${BRAND.dirName}/planner/${plan.id}.json`
                 const { api } = await import('@services/electronBridge')
                 await api.file.delete(planPath)
-            } catch {}
+            } catch (e) { logger.plan.warn('Failed to delete plan file:', e) }
         }
     }, [deletePlan, workspacePath, language])
 
