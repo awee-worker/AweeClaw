@@ -20,8 +20,8 @@ export const MemoryApprovalInline: React.FC<MemoryApprovalInlineProps> = ({
 }) => {
     const content = rawContent || ''
     const language = useStore(s => s.language)
-    const expandAgentBlocksByDefault = useStore(s => s.agentConfig.expandAgentBlocksByDefault ?? false)
-    const [isExpanded, setIsExpanded] = useState(!isSuccess && expandAgentBlocksByDefault)
+    const expandContextByDefault = useStore(s => s.agentConfig.expandContextByDefault ?? true)
+    const [isExpanded, setIsExpanded] = useState(!isSuccess && expandContextByDefault)
 
     useEffect(() => {
         if (isSuccess) {

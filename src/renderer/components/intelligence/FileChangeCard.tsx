@@ -31,17 +31,17 @@ function FileChangeCard({
     onReject,
     onOpenInEditor,
 }: FileChangeCardProps) {
-    const { openFile, setActiveFile, workspacePath, language, expandAgentBlocksByDefault } = useStore(useShallow(s => ({
+    const { openFile, setActiveFile, workspacePath, language, expandToolCallsByDefault } = useStore(useShallow(s => ({
         openFile: s.openFile,
         setActiveFile: s.setActiveFile,
         workspacePath: s.workspacePath,
         language: s.language,
-        expandAgentBlocksByDefault: s.agentConfig.expandAgentBlocksByDefault ?? false,
+        expandToolCallsByDefault: s.agentConfig.expandToolCallsByDefault ?? false,
     })))
     const { args, isSuccess, isError, isRunning, isStreaming } = useToolDisplayState(toolCall)
     const isActive = isRunning || isStreaming
     const { isExpanded, animateContent, handleToggleExpanded } = useToolCardExpansion({
-        defaultExpanded: expandAgentBlocksByDefault,
+        defaultExpanded: expandToolCallsByDefault,
         isActive,
     })
 

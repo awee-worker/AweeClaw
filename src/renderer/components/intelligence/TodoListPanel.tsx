@@ -119,10 +119,10 @@ const TodoRow = memo(({ todo, index, stopped }: { todo: TodoItem; index: number;
 TodoRow.displayName = 'TodoRow'
 
 export const TodoListPanel = memo(({ todos, isStreaming = true }: TodoListPanelProps) => {
-  const expandAgentBlocksByDefault = useStore(s => s.agentConfig.expandAgentBlocksByDefault ?? false)
+  const expandToolCallsByDefault = useStore(s => s.agentConfig.expandToolCallsByDefault ?? false)
   const language = useStore(s => s.language)
   // 当有任务时默认展开，无任务时收起
-  const [isExpanded, setIsExpanded] = useState(todos.length > 0 ? true : expandAgentBlocksByDefault)
+  const [isExpanded, setIsExpanded] = useState(todos.length > 0 ? true : expandToolCallsByDefault)
 
   const clearTodos = useAgentStore(s => s.setTodos)
   const soundPlayedRef = useRef(false)

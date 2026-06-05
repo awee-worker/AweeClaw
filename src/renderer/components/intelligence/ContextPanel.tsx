@@ -34,8 +34,8 @@ export default function ContextPanel({
     onClear,
     onAddCurrentFile
 }: ContextPanelProps) {
-    const expandAgentBlocksByDefault = useStore(s => s.agentConfig.expandAgentBlocksByDefault ?? false)
-    const [isExpanded, setIsExpanded] = useState(expandAgentBlocksByDefault)
+    const expandContextByDefault = useStore(s => s.agentConfig.expandContextByDefault ?? true)
+    const [isExpanded, setIsExpanded] = useState(expandContextByDefault)
 
     // 简单的 Token 估算 (字符数 / 4)
     const estimatedTokens = useMemo(() => {

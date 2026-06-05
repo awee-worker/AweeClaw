@@ -115,9 +115,9 @@ function AgentStatusBar({
   activeScenarioId,
   securityPolicyActive,
 }: AgentStatusBarProps) {
-  const expandAgentBlocksByDefault = useStore(s => s.agentConfig.expandAgentBlocksByDefault ?? false)
+  const expandToolCallsByDefault = useStore(s => s.agentConfig.expandToolCallsByDefault ?? false)
   const language = useStore(s => s.language)
-  const [isExpanded, setIsExpanded] = useState(expandAgentBlocksByDefault)
+  const [isExpanded, setIsExpanded] = useState(expandToolCallsByDefault)
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set())
 
   const stats = useMemo(() => {

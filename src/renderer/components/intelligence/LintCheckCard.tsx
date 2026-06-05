@@ -14,8 +14,8 @@ interface LintCheckCardProps {
 }
 
 export const LintCheckCard = memo(({ part }: LintCheckCardProps) => {
-    const expandAgentBlocksByDefault = useStore(s => s.agentConfig.expandAgentBlocksByDefault ?? false)
-    const [isExpanded, setIsExpanded] = useState(expandAgentBlocksByDefault)
+    const expandToolCallsByDefault = useStore(s => s.agentConfig.expandToolCallsByDefault ?? false)
+    const [isExpanded, setIsExpanded] = useState(expandToolCallsByDefault)
 
     const totalErrors = part.files.reduce((sum, f) => sum + f.errors.filter(e => e.severity === 'error').length, 0)
     const totalWarnings = part.files.reduce((sum, f) => sum + f.errors.filter(e => e.severity === 'warning').length, 0)

@@ -22,10 +22,9 @@ import { resolveRuntimeLLMConfig } from '@shared/configuration/modelConfigResolv
 import { t, type Language } from '@renderer/i18n'
 import { toast } from '@components/foundation/NotificationProvider'
 import type { LLMConfig } from '@shared/protocols/modelProtocol'
-import type { PersistedLLMConfig, EditorConfig, SecurityPolicyPanel } from '@shared/configuration/configTypes'
+import type { PersistedLLMConfig, EditorConfig, SecurityPolicyPanel, AutoApproveSettings, AgentConfig } from '@shared/configuration/configTypes'
 import type { ProviderModelConfig } from '@shared/configuration/preferenceSync'
 import type { WebSearchConfig, McpConfig, EmailConfig } from '@shared/configuration/configTypes'
-import type { AutoApproveSettings, AgentConfig } from '@shared/configuration/preferenceSchema'
 import type { PrivacySettings } from '@shared/configuration/defaultProfile'
 import type { EditorSettingsState, SettingsTab } from './preferencesTypes'
 

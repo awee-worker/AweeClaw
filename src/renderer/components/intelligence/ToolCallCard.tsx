@@ -845,17 +845,17 @@ const ToolCallCard = memo(function ToolCallCard({
     onReject,
     defaultExpanded,
 }: ToolCallCardProps) {
-    const { language, setTerminalVisible, currentTheme, expandAgentBlocksByDefault } = useStore(useShallow(state => ({
+    const { language, setTerminalVisible, currentTheme, expandToolCallsByDefault } = useStore(useShallow(state => ({
         language: state.language,
         setTerminalVisible: state.setTerminalVisible,
         currentTheme: state.currentTheme,
-        expandAgentBlocksByDefault: state.agentConfig.expandAgentBlocksByDefault ?? false,
+        expandToolCallsByDefault: state.agentConfig.expandToolCallsByDefault ?? false,
     })))
     const { args, effectiveName, isSuccess, isError, isRejected, isRunning, isStreaming } = useToolDisplayState(toolCall)
     const isActive = isRunning || isStreaming
     const shouldAutoExpand = effectiveName === 'todo_write'
     const { isExpanded, animateContent, handleToggleExpanded } = useToolCardExpansion({
-        defaultExpanded: defaultExpanded ?? (shouldAutoExpand || expandAgentBlocksByDefault),
+        defaultExpanded: defaultExpanded ?? (shouldAutoExpand || expandToolCallsByDefault),
         isActive,
     })
 

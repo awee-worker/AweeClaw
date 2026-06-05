@@ -94,12 +94,34 @@ export function AgentProfilePanel({
                         </div>
                         <div className="flex items-center justify-between rounded-lg border border-border/50 bg-background/30 px-3 py-2.5">
                             <div className="space-y-0.5 pr-3">
-                                <label className="text-xs text-text-secondary">{t('app.expandagentblocks', language as Language)}</label>
-                                <p className="text-[10px] text-text-muted">{t('app.expandthinktoolcontext', language as Language)}</p>
+                                <label className="text-xs text-text-secondary">{t('app.expandthinkingblocks', language as Language)}</label>
+                                <p className="text-[10px] text-text-muted">{t('app.expandthinkingdesc', language as Language)}</p>
                             </div>
                             <ToggleSwitch
-                                checked={agentConfig.expandAgentBlocksByDefault ?? false}
-                                onChange={(e) => setAgentConfig({ ...agentConfig, expandAgentBlocksByDefault: e.target.checked })}
+                                checked={agentConfig.expandThinkingByDefault ?? true}
+                                onChange={(e) => setAgentConfig({ ...agentConfig, expandThinkingByDefault: e.target.checked })}
+                                className="flex-shrink-0"
+                            />
+                        </div>
+                        <div className="flex items-center justify-between rounded-lg border border-border/50 bg-background/30 px-3 py-2.5">
+                            <div className="space-y-0.5 pr-3">
+                                <label className="text-xs text-text-secondary">{t('app.expandtoolblocks', language as Language)}</label>
+                                <p className="text-[10px] text-text-muted">{t('app.expandtooldesc', language as Language)}</p>
+                            </div>
+                            <ToggleSwitch
+                                checked={agentConfig.expandToolCallsByDefault ?? false}
+                                onChange={(e) => setAgentConfig({ ...agentConfig, expandToolCallsByDefault: e.target.checked })}
+                                className="flex-shrink-0"
+                            />
+                        </div>
+                        <div className="flex items-center justify-between rounded-lg border border-border/50 bg-background/30 px-3 py-2.5">
+                            <div className="space-y-0.5 pr-3">
+                                <label className="text-xs text-text-secondary">{t('app.expandcontextblocks', language as Language)}</label>
+                                <p className="text-[10px] text-text-muted">{t('app.expandcontextdesc', language as Language)}</p>
+                            </div>
+                            <ToggleSwitch
+                                checked={agentConfig.expandContextByDefault ?? true}
+                                onChange={(e) => setAgentConfig({ ...agentConfig, expandContextByDefault: e.target.checked })}
                                 className="flex-shrink-0"
                             />
                         </div>

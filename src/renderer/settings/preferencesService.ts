@@ -41,6 +41,7 @@ import type {
   ProviderConfig,
   PersistedLLMConfig,
 } from '@shared/configuration/providerTypes'
+import type { AgentConfig } from '@shared/configuration/configTypes'
 
 // ============================================
 // 常量
@@ -468,7 +469,7 @@ class SettingsService {
       activeScenarioId: (saved.activeScenarioId as string) || defaults.activeScenarioId,
       providerConfigs: providerConfigs as Record<string, ProviderModelConfig>,
       agentConfig: saved.agentConfig
-        ? deepMerge(defaults.agentConfig, saved.agentConfig as object)
+        ? (this.migrateAgentConfig(deepMerge(defaults.agentConfig, saved.agentConfig as object) as unknown as Record<string, unknown>) as unknown as AgentConfig)
         : defaults.agentConfig,
       editorConfig: saved.editorConfig
         ? deepMerge(defaults.editorConfig, saved.editorConfig as object)
@@ -496,6 +497,29 @@ class SettingsService {
         ? { ...defaults.privacySettings, ...(saved.privacySettings as object) }
         : defaults.privacySettings,
     }
+  }
+
+  // ============================================
+  // 数据迁移
+  // ============================================
+
+  /**
+   * 迁移 agentConfig 中的旧字段到新字段
+   * expandAgentBlocksByDefault → expandThinkingByDefault + expandToolCallsByDefault + expandContextByDefault
+   */
+  private migrateAgentConfig(config: Record<string, unknown>): Record<string, unknown> {
+    if ('expandAgentBlocksByDefault' in config
+      && !('expandThinkingByDefault' in config)
+      && !('expandToolCallsByDefault' in config)
+      && !('expandContextByDefault' in config)) {
+      const legacyValue = config.expandAgentBlocksByDefault as boolean
+      config.expandThinkingByDefault = legacyValue
+      config.expandToolCallsByDefault = legacyValue
+      config.expandContextByDefault = legacyValue
+      delete config.expandAgentBlocksByDefault
+      logger.system.info('[SettingsService] Migrated expandAgentBlocksByDefault → 3 split fields')
+    }
+    return config
   }
 
   // ============================================

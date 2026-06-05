@@ -23,6 +23,7 @@ import { skillService, type SkillItem } from '../runtime/skillRepository'
 import {
   APP_IDENTITY,
   PROFESSIONAL_OBJECTIVITY,
+  LANGUAGE_MATCHING,
   SECURITY_RULES,
   CODE_CONVENTIONS,
   WORKFLOW_GUIDELINES,
@@ -278,6 +279,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     ctx.personality,
     identity.systemPrompt,
     PROFESSIONAL_OBJECTIVITY,
+    LANGUAGE_MATCHING,
     identity.securityRules,
     buildTools(ctx.mode, ctx.templateId, ctx.planPhase),
     identity.conventions,
@@ -303,6 +305,7 @@ export function buildChatPrompt(ctx: PromptContext): string {
     ctx.personality,
     identity.systemPrompt,
     PROFESSIONAL_OBJECTIVITY,
+    LANGUAGE_MATCHING,
     identity.securityRules,
     buildTools(ctx.mode, ctx.templateId, ctx.planPhase),
     identity.conventions,
