@@ -1,7 +1,8 @@
 import { loadWorkflowDefinitions } from './workflowPersistenceV2';
 import { workflowClientAPI } from './workflowClientAPI';
+import { StorageService } from '@shared/toolkit/StorageService';
 
-const MIGRATION_FLAG_KEY = 'aweeclaw_workflow_migration_done_v1';
+const MIGRATION_FLAG_KEY = 'workflow_migration_done_v1';
 
 export async function migrateLocalWorkflowsToServer(): Promise<{
   imported: number;
@@ -9,7 +10,7 @@ export async function migrateLocalWorkflowsToServer(): Promise<{
   errors: string[];
   alreadyMigrated: boolean;
 }> {
-  const alreadyMigrated = localStorage.getItem(MIGRATION_FLAG_KEY) === 'true';
+  const alreadyMigrated = StorageService.get<string>(MIGRATION_FLAG_KEY) === 'true';
 
   if (alreadyMigrated) {
     return { imported: 0, skipped: 0, errors: [], alreadyMigrated: true };
@@ -21,7 +22,7 @@ export async function migrateLocalWorkflowsToServer(): Promise<{
 
   const localDefs = loadWorkflowDefinitions();
   if (localDefs.length === 0) {
-    localStorage.setItem(MIGRATION_FLAG_KEY, 'true');
+    StorageService.set(MIGRATION_FLAG_KEY, 'true');
     return { imported: 0, skipped: 0, errors: [], alreadyMigrated: false };
   }
 
@@ -29,7 +30,7 @@ export async function migrateLocalWorkflowsToServer(): Promise<{
     const result = await workflowClientAPI.batchSync(localDefs);
 
     if (result.errors.length === 0) {
-      localStorage.setItem(MIGRATION_FLAG_KEY, 'true');
+      StorageService.set(MIGRATION_FLAG_KEY, 'true');
     }
 
     return { ...result, alreadyMigrated: false };
@@ -44,9 +45,9 @@ export async function migrateLocalWorkflowsToServer(): Promise<{
 }
 
 export function resetMigrationFlag(): void {
-  localStorage.removeItem(MIGRATION_FLAG_KEY);
+  StorageService.remove(MIGRATION_FLAG_KEY);
 }
 
 export function isMigrationDone(): boolean {
-  return localStorage.getItem(MIGRATION_FLAG_KEY) === 'true';
+  return StorageService.get<string>(MIGRATION_FLAG_KEY) === 'true';
 }

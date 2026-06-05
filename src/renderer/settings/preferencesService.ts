@@ -18,6 +18,7 @@
 
 import { api } from '../adapters/electronBridge'
 import { logger } from '@shared/toolkit/LogEngine'
+import { StorageService } from '@shared/toolkit/StorageService'
 import { BRAND } from '@shared/brand'
 import {
   SETTINGS,
@@ -250,10 +251,9 @@ class SettingsService {
 
     // 2. 回退到 localStorage 缓存（快速启动兜底）
     try {
-      const cached = localStorage.getItem(LOCAL_CACHE_KEY)
+      const cached = StorageService.get<Record<string, unknown>>(LOCAL_CACHE_KEY)
       if (cached) {
-        const parsed = JSON.parse(cached) as Record<string, unknown>
-        const merged = this.mergeFromJson(parsed)
+        const merged = this.mergeFromJson(cached)
         this.cache = merged
         return merged
       }
@@ -347,7 +347,7 @@ class SettingsService {
   clearCache(): void {
     this.cache = null
     try {
-      localStorage.removeItem(LOCAL_CACHE_KEY)
+      StorageService.remove(LOCAL_CACHE_KEY)
     } catch {
       // ignore
     }
@@ -437,9 +437,9 @@ class SettingsService {
 
   private saveToLocalStorage(settings: SettingsState): void {
     try {
-      localStorage.setItem(
+      StorageService.set(
         LOCAL_CACHE_KEY,
-        JSON.stringify(buildPersistedSettingsPayload(settings, settings.providerConfigs)),
+        buildPersistedSettingsPayload(settings, settings.providerConfigs),
       )
     } catch {
       // ignore local cache write failures

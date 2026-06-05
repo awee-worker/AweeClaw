@@ -11,6 +11,7 @@
  */
 
 import { logger } from '@toolkit/LogEngine'
+import { StorageService } from '@shared/toolkit/StorageService'
 import { useStore } from '@store'
 
 export interface ClipboardEntry {
@@ -126,9 +127,9 @@ class ScenarioClipboardEngine {
 
     private loadHistory(): void {
         try {
-            const saved = localStorage.getItem('aweeclaw-clipboard-history')
+            const saved = StorageService.get<ClipboardEntry[]>('clipboard-history')
             if (saved) {
-                this.history = JSON.parse(saved) as ClipboardEntry[]
+                this.history = saved
             }
         } catch { /* ignore */ }
     }
@@ -137,7 +138,7 @@ class ScenarioClipboardEngine {
         try {
             const config = getActiveConfig()
             const trimmed = this.history.slice(0, config.maxHistorySize)
-            localStorage.setItem('aweeclaw-clipboard-history', JSON.stringify(trimmed))
+            StorageService.set('clipboard-history', trimmed)
         } catch { /* ignore */ }
     }
 

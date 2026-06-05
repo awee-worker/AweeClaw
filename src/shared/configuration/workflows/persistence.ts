@@ -1,15 +1,14 @@
 import type { WorkflowRun } from '@shared/protocols/workflow'
+import { StorageService } from '@shared/toolkit/StorageService'
 
-const STORAGE_KEY = 'aweeclaw_workflow_history'
+const STORAGE_KEY = 'workflow_history'
 const MAX_HISTORY = 50
 
 export function loadWorkflowHistory(): WorkflowRun[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return []
-    return parsed as WorkflowRun[]
+    const data = StorageService.get<WorkflowRun[]>(STORAGE_KEY)
+    if (!data || !Array.isArray(data)) return []
+    return data
   } catch {
     return []
   }
@@ -25,7 +24,7 @@ export function saveWorkflowRun(run: WorkflowRun): void {
       history.unshift(run)
     }
     const trimmed = history.slice(0, MAX_HISTORY)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed))
+    StorageService.set(STORAGE_KEY, trimmed)
   } catch {
     // ignore storage errors
   }
@@ -35,7 +34,7 @@ export function deleteWorkflowRun(runId: string): void {
   try {
     const history = loadWorkflowHistory()
     const filtered = history.filter(r => r.id !== runId)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered))
+    StorageService.set(STORAGE_KEY, filtered)
   } catch {
     // ignore
   }
@@ -43,7 +42,7 @@ export function deleteWorkflowRun(runId: string): void {
 
 export function clearWorkflowHistory(): void {
   try {
-    localStorage.removeItem(STORAGE_KEY)
+    StorageService.remove(STORAGE_KEY)
   } catch {
     // ignore
   }

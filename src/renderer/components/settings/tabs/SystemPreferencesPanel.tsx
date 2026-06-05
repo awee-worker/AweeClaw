@@ -4,6 +4,7 @@
 
 import { api } from '../../../adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
+import { StorageService } from '@shared/toolkit/StorageService'
 import { useState, useEffect, useRef } from 'react'
 import { HardDrive, AlertTriangle, Download, Upload, FileText, ExternalLink, Terminal, Globe } from 'lucide-react'
 import { toast } from '@components/foundation/NotificationProvider'
@@ -308,8 +309,8 @@ export function SystemPreferencesPanel({ language, enableFileLogging, setEnableF
         setIsClearing(true)
         try {
             // 1. 清除 localStorage 缓存
-            const keysToRemove = ['aweeclaw-editor-config', 'aweeclaw-workspace', 'aweeclaw-sessions', 'aweeclaw-threads']
-            keysToRemove.forEach(key => localStorage.removeItem(key))
+            const keysToRemove = ['editor-config', 'workspace', 'sessions', 'threads']
+            keysToRemove.forEach(key => StorageService.remove(key))
 
             // 2. 清除代码库索引
             const wsPath = getStore().workspacePath
@@ -349,7 +350,7 @@ export function SystemPreferencesPanel({ language, enableFileLogging, setEnableF
             await api.settings.set('editorConfig', undefined)
             await api.settings.set('securitySettings', undefined)
             await api.settings.set('themeId', undefined)
-            localStorage.clear()
+            StorageService.clearAll()
             window.location.reload()
         }
     }

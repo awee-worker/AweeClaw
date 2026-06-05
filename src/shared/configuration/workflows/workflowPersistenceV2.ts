@@ -1,15 +1,14 @@
 import type { WorkflowDefinitionV2 } from '@shared/protocols/workflowV2'
+import { StorageService } from '@shared/toolkit/StorageService'
 
-const DEFINITIONS_KEY = 'aweeclaw_workflow_definitions_v2'
+const DEFINITIONS_KEY = 'workflow_definitions_v2'
 const MAX_DEFINITIONS = 100
 
 export function loadWorkflowDefinitions(): WorkflowDefinitionV2[] {
   try {
-    const raw = localStorage.getItem(DEFINITIONS_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return []
-    return parsed as WorkflowDefinitionV2[]
+    const data = StorageService.get<WorkflowDefinitionV2[]>(DEFINITIONS_KEY)
+    if (!data || !Array.isArray(data)) return []
+    return data
   } catch {
     return []
   }
@@ -34,7 +33,7 @@ export function saveWorkflowDefinition(def: WorkflowDefinitionV2): void {
       defs.unshift(toSave)
     }
     const trimmed = defs.slice(0, MAX_DEFINITIONS)
-    localStorage.setItem(DEFINITIONS_KEY, JSON.stringify(trimmed))
+    StorageService.set(DEFINITIONS_KEY, trimmed)
   } catch {
     // ignore storage errors
   }
@@ -44,7 +43,7 @@ export function deleteWorkflowDefinition(id: string): void {
   try {
     const defs = loadWorkflowDefinitions()
     const filtered = defs.filter(d => d.id !== id)
-    localStorage.setItem(DEFINITIONS_KEY, JSON.stringify(filtered))
+    StorageService.set(DEFINITIONS_KEY, filtered)
   } catch {
     // ignore
   }

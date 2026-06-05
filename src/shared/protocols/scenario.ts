@@ -13,6 +13,7 @@
 
 import type { WorkMode } from '@protocols/workModeProtocol'
 import { BRAND } from '@shared/brand'
+import { StorageService } from '@shared/toolkit/StorageService'
 
 // ============================================
 // 场景身份定义
@@ -236,9 +237,9 @@ export class ScenarioRegistry {
 
   private loadUninstalledBuiltinList(): void {
     try {
-      const raw = localStorage.getItem(UNINSTALLED_BUILTIN_KEY)
+      const raw = StorageService.get<string[]>(UNINSTALLED_BUILTIN_KEY)
       if (raw) {
-        const ids: string[] = JSON.parse(raw)
+        const ids = raw
         for (const id of ids) {
           this.uninstalledBuiltinIds.add(id)
         }
@@ -250,7 +251,7 @@ export class ScenarioRegistry {
 
   private persistUninstalledBuiltinList(): void {
     try {
-      localStorage.setItem(UNINSTALLED_BUILTIN_KEY, JSON.stringify([...this.uninstalledBuiltinIds]))
+      StorageService.set(UNINSTALLED_BUILTIN_KEY, [...this.uninstalledBuiltinIds])
     } catch {
       // ignore
     }
@@ -420,7 +421,7 @@ export class ScenarioRegistry {
           customScenarios.push(serializable)
         }
       }
-      localStorage.setItem(CUSTOM_SCENARIOS_STORAGE_KEY, JSON.stringify(customScenarios))
+      StorageService.set(CUSTOM_SCENARIOS_STORAGE_KEY, customScenarios)
     } catch {
       // ignore storage errors
     }
@@ -428,10 +429,10 @@ export class ScenarioRegistry {
 
   loadCustomScenarios(): number {
     try {
-      const raw = localStorage.getItem(CUSTOM_SCENARIOS_STORAGE_KEY)
+      const raw = StorageService.get<SerializableScenario[]>(CUSTOM_SCENARIOS_STORAGE_KEY)
       if (!raw) return 0
 
-      const customScenarios: SerializableScenario[] = JSON.parse(raw)
+      const customScenarios = raw
       let loaded = 0
       for (const data of customScenarios) {
         if (!this.scenarios.has(data.id)) {

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Mic, Volume2, Globe, Loader2, Check, ChevronDown } from 'lucide-react';
 import { voiceApi, type VoiceInfo } from '../../../services/voiceApi';
 import { toast } from '@components/foundation/NotificationProvider';
+import { StorageService } from '@shared/toolkit/StorageService';
 import type { Language } from '@renderer/i18n';
 
 interface VoiceSettingsPanelProps {
@@ -18,17 +19,17 @@ const SUPPORTED_LANGUAGES = [
 
 export default function VoiceSettingsPanel({ language }: VoiceSettingsPanelProps) {
   const [sttLanguage, setSttLanguage] = useState(() => {
-    return localStorage.getItem('voice_stt_language') || 'auto';
+    return StorageService.get<string>('voice_stt_language') || 'auto';
   });
   const [ttsVoice, setTtsVoice] = useState(() => {
-    return localStorage.getItem('voice_tts_voice') || '';
+    return StorageService.get<string>('voice_tts_voice') || '';
   });
   const [ttsSpeed, setTtsSpeed] = useState(() => {
-    const saved = localStorage.getItem('voice_tts_speed');
+    const saved = StorageService.get<string>('voice_tts_speed');
     return saved ? parseFloat(saved) : 1.0;
   });
   const [autoSpeak, setAutoSpeak] = useState(() => {
-    return localStorage.getItem('voice_auto_speak') === 'true';
+    return StorageService.get<string>('voice_auto_speak') === 'true';
   });
   const [voices, setVoices] = useState<VoiceInfo[]>([]);
   const [loadingVoices, setLoadingVoices] = useState(false);
@@ -45,24 +46,24 @@ export default function VoiceSettingsPanel({ language }: VoiceSettingsPanelProps
 
   const handleSttLanguageChange = useCallback((value: string) => {
     setSttLanguage(value);
-    localStorage.setItem('voice_stt_language', value);
+    StorageService.set('voice_stt_language', value);
     toast.success(language === 'zh' ? '语音识别语言已更新' : 'STT language updated');
   }, [language]);
 
   const handleTtsVoiceChange = useCallback((value: string) => {
     setTtsVoice(value);
-    localStorage.setItem('voice_tts_voice', value);
+    StorageService.set('voice_tts_voice', value);
     toast.success(language === 'zh' ? '语音合成音色已更新' : 'TTS voice updated');
   }, [language]);
 
   const handleTtsSpeedChange = useCallback((value: number) => {
     setTtsSpeed(value);
-    localStorage.setItem('voice_tts_speed', String(value));
+    StorageService.set('voice_tts_speed', String(value));
   }, []);
 
   const handleAutoSpeakChange = useCallback((value: boolean) => {
     setAutoSpeak(value);
-    localStorage.setItem('voice_auto_speak', String(value));
+    StorageService.set('voice_auto_speak', String(value));
   }, []);
 
   const handleTestTts = useCallback(async () => {

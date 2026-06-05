@@ -1,8 +1,9 @@
 import { api } from '../../adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
+import { StorageService } from '@shared/toolkit/StorageService'
 import type { ShellLink, ShellPreset, ShellState } from '../types/terminalTypes'
 
-const STORAGE_KEY = 'aweeclaw-shell-registry'
+const STORAGE_KEY = 'shell-registry'
 const SETTINGS_KEY = 'shellRegistry'
 
 const DEFAULT_STATE: ShellState = {
@@ -79,7 +80,7 @@ class ShellRegistryService {
 
   private saveToLocalStorage(state: ShellState) {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+      StorageService.set(STORAGE_KEY, state)
     } catch (error) {
       logger.system.warn('[ShellRegistry] Failed to save local cache:', error)
     }
@@ -87,9 +88,9 @@ class ShellRegistryService {
 
   private loadFromLocalStorage(): ShellState | null {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY)
+      const raw = StorageService.get<ShellState>(STORAGE_KEY)
       if (!raw) return null
-      return this.normalizeState(JSON.parse(raw))
+      return this.normalizeState(raw)
     } catch (error) {
       logger.system.warn('[ShellRegistry] Failed to load local cache:', error)
       return null

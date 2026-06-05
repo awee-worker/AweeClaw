@@ -12,10 +12,11 @@
 
 import { api } from './electronBridge'
 import { logger } from '@toolkit/LogEngine'
+import { StorageService } from '@shared/toolkit/StorageService'
 import { platform } from '@shared/toolkit/pathHelper'
 import { useStore } from '@store'
 
-const LOCAL_STORAGE_KEY = 'aweeclaw-keybindings'
+const LOCAL_STORAGE_KEY = 'keybindings'
 const isMac = platform.isMac
 
 export interface Command {
@@ -267,22 +268,22 @@ class ScenarioKeybindingEngine {
 
     private async loadOverrides() {
         try {
-            const localData = localStorage.getItem(LOCAL_STORAGE_KEY)
+            const localData = StorageService.get<Record<string, string>>(LOCAL_STORAGE_KEY)
             if (localData) {
-                const parsed = JSON.parse(localData)
+                const parsed = localData
                 this.overrides = new Map(Object.entries(parsed))
                 api.settings.set('keybindings', parsed).catch(() => { })
                 return
             }
         } catch (e) {
-            // localStorage 读取失败
+            // StorageService 读取失败
         }
 
         try {
             const saved = await api.settings.get('keybindings') as Record<string, string>
             if (saved) {
                 this.overrides = new Map(Object.entries(saved))
-                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(saved))
+                StorageService.set(LOCAL_STORAGE_KEY, saved)
             }
         } catch (e) {
             logger.system.error('[ScenarioKeybindingEngine] Failed to load keybindings:', e)
@@ -292,7 +293,7 @@ class ScenarioKeybindingEngine {
     private async saveOverrides() {
         const obj = Object.fromEntries(this.overrides)
         try {
-            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(obj))
+            StorageService.set(LOCAL_STORAGE_KEY, obj)
         } catch (e) {
             logger.system.error('[ScenarioKeybindingEngine] Failed to save keybindings to localStorage:', e)
         }

@@ -9,6 +9,7 @@ import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import {t, type Language} from '@renderer/i18n'
 import { getFileName, joinPath } from '@shared/toolkit/pathHelper'
+import { StorageService } from '@shared/toolkit/StorageService'
 import { scheduleSavedVersionSync } from '@services/fileVersionSync'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
 import { TextField } from '../../ui'
@@ -32,12 +33,7 @@ export function SearchView() {
   const [replaceInSelection, setReplaceInSelection] = useState(false)
 
   const [searchHistory, setSearchHistory] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('aweeclaw-search-history')
-      return saved ? JSON.parse(saved) : []
-    } catch {
-      return []
-    }
+    return StorageService.get<string[]>('search-history') || []
   })
   const [showHistory, setShowHistory] = useState(false)
   /** 搜索结果分页加载：每次渲染的最大条目数 */
@@ -69,7 +65,7 @@ export function SearchView() {
     setSearchHistory((prev) => {
       const filtered = prev.filter((h) => h !== searchQuery)
       const newHistory = [searchQuery, ...filtered].slice(0, 20)
-      localStorage.setItem('aweeclaw-search-history', JSON.stringify(newHistory))
+      StorageService.set('search-history', newHistory)
       return newHistory
     })
   }, [])

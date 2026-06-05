@@ -10,6 +10,7 @@
 
 import { api } from './electronBridge'
 import { logger } from '@toolkit/LogEngine'
+import { StorageService } from '@shared/toolkit/StorageService'
 import * as monaco from 'monaco-editor'
 import { useStore } from '@store'
 
@@ -312,7 +313,7 @@ const SCENARIO_SNIPPETS: Record<string, CodeSnippet[]> = {
     'education': EDUCATION_SNIPPETS,
 }
 
-const STORAGE_KEY = 'aweeclaw-snippets'
+const STORAGE_KEY = 'snippets'
 
 class ScenarioSnippetEngine {
     private snippets: CodeSnippet[] = []
@@ -334,9 +335,9 @@ class ScenarioSnippetEngine {
 
     private async loadSnippets(): Promise<void> {
         try {
-            const saved = localStorage.getItem(STORAGE_KEY)
+            const saved = StorageService.get<CodeSnippet[]>(STORAGE_KEY)
             if (saved) {
-                const parsed = JSON.parse(saved) as CodeSnippet[]
+                const parsed = saved
                 this.snippets = [...DEFAULT_SNIPPETS, ...parsed.filter(s => !s.id.startsWith('default-'))]
             } else {
                 this.snippets = [...DEFAULT_SNIPPETS]
@@ -362,7 +363,7 @@ class ScenarioSnippetEngine {
     private saveToLocalStorage(): void {
         try {
             const userSnippets = this.snippets.filter(s => !DEFAULT_SNIPPETS.some(d => d.id === s.id))
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(userSnippets))
+            StorageService.set(STORAGE_KEY, userSnippets)
         } catch { /* ignore */ }
     }
 

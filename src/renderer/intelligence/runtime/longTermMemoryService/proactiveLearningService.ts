@@ -1,10 +1,11 @@
 import { longTermMemoryService } from './registerHandlers'
 import { logger } from '@toolkit/LogEngine'
+import { StorageService } from '@shared/toolkit/StorageService'
 import type { SelfLearningRecord, BehavioralPattern, LearningResult, LearningEventType } from '@intelligence/providerTypes'
 
 const MAX_RECORDS = 1000
 const PATTERN_MIN_FREQUENCY = 3
-const STORAGE_KEY = 'aweeclaw-proactive-learning-records'
+const STORAGE_KEY = 'proactive-learning-records'
 const PERSIST_DEBOUNCE_MS = 5000
 
 class ProactiveLearningService {
@@ -16,13 +17,10 @@ class ProactiveLearningService {
     if (this.loaded) return
     this.loaded = true
     try {
-      const stored = localStorage.getItem(STORAGE_KEY)
-      if (stored) {
-        const parsed = JSON.parse(stored)
-        if (Array.isArray(parsed)) {
-          this.records = parsed.slice(-MAX_RECORDS)
-          logger.agent.info(`[ProactiveLearning] Loaded ${this.records.length} records from storage`)
-        }
+      const stored = StorageService.get<SelfLearningRecord[]>(STORAGE_KEY)
+      if (stored && Array.isArray(stored)) {
+        this.records = stored.slice(-MAX_RECORDS)
+        logger.agent.info(`[ProactiveLearning] Loaded ${this.records.length} records from storage`)
       }
     } catch (err) {
       logger.agent.warn('[ProactiveLearning] Failed to load records from storage:', err)
@@ -40,7 +38,7 @@ class ProactiveLearningService {
     this.persistTimer = null
     try {
       const toStore = this.records.slice(-MAX_RECORDS)
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(toStore))
+      StorageService.set(STORAGE_KEY, toStore)
     } catch (err) {
       logger.agent.warn('[ProactiveLearning] Failed to persist records:', err)
     }
@@ -261,7 +259,7 @@ class ProactiveLearningService {
   async clearRecords(): Promise<void> {
     this.records = []
     try {
-      localStorage.removeItem(STORAGE_KEY)
+      StorageService.remove(STORAGE_KEY)
     } catch (e) { logger.store.warn('Failed to clear learning data:', e) }
   }
 }

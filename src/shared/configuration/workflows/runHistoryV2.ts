@@ -1,15 +1,14 @@
 import type { WorkflowRunV2 } from '@shared/protocols/workflowV2'
+import { StorageService } from '@shared/toolkit/StorageService'
 
-const HISTORY_KEY = 'aweeclaw_workflow_history_v2'
+const HISTORY_KEY = 'workflow_history_v2'
 const MAX_HISTORY = 50
 
 export function loadWorkflowHistoryV2(): WorkflowRunV2[] {
   try {
-    const raw = localStorage.getItem(HISTORY_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return []
-    return parsed as WorkflowRunV2[]
+    const data = StorageService.get<WorkflowRunV2[]>(HISTORY_KEY)
+    if (!data || !Array.isArray(data)) return []
+    return data
   } catch {
     return []
   }
@@ -25,7 +24,7 @@ export function saveWorkflowRunV2(run: WorkflowRunV2): void {
       history.unshift(run)
     }
     const trimmed = history.slice(0, MAX_HISTORY)
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(trimmed))
+    StorageService.set(HISTORY_KEY, trimmed)
   } catch {
     // ignore storage errors
   }
@@ -37,7 +36,7 @@ export function updateWorkflowRunStatusV2(runId: string, updates: Partial<Workfl
     const idx = history.findIndex(r => r.id === runId)
     if (idx >= 0) {
       history[idx] = { ...history[idx], ...updates }
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(history))
+      StorageService.set(HISTORY_KEY, history)
     }
   } catch {
     // ignore
@@ -48,7 +47,7 @@ export function deleteWorkflowRunV2(runId: string): void {
   try {
     const history = loadWorkflowHistoryV2()
     const filtered = history.filter(r => r.id !== runId)
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(filtered))
+    StorageService.set(HISTORY_KEY, filtered)
   } catch {
     // ignore
   }
@@ -56,7 +55,7 @@ export function deleteWorkflowRunV2(runId: string): void {
 
 export function clearWorkflowHistoryV2(): void {
   try {
-    localStorage.removeItem(HISTORY_KEY)
+    StorageService.remove(HISTORY_KEY)
   } catch {
     // ignore
   }

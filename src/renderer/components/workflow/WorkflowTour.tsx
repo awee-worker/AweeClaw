@@ -1,8 +1,9 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { X, ChevronRight, ChevronLeft } from 'lucide-react'
 import { t, type Language } from '@renderer/i18n'
+import { StorageService } from '@shared/toolkit/StorageService'
 
-const STORAGE_KEY = 'aweeclaw-workflow-tour-completed'
+const STORAGE_KEY = 'workflow-tour-completed'
 
 interface TourStep {
   targetSelector: string
@@ -50,7 +51,7 @@ const TOUR_STEPS: TourStep[] = [
 
 export function isTourCompleted(): boolean {
   try {
-    return localStorage.getItem(STORAGE_KEY) === 'true'
+    return StorageService.get<string>(STORAGE_KEY) === 'true'
   } catch {
     return false
   }
@@ -58,7 +59,7 @@ export function isTourCompleted(): boolean {
 
 function setTourCompleted(): void {
   try {
-    localStorage.setItem(STORAGE_KEY, 'true')
+    StorageService.set(STORAGE_KEY, 'true')
   } catch {
     // Ignore
   }

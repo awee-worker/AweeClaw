@@ -13,6 +13,7 @@ import { useAgentHistoryActions } from '@hooks/useAgent'
 import {t, type Language} from '@renderer/i18n'
 import { keybindingService, formatShortcut, isMac } from '@services/keybindingAdapter'
 import { aweeclawDir } from '@services/appDirService'
+import { StorageService } from '@shared/toolkit/StorageService'
 import { toast } from '@components/foundation/NotificationProvider'
 import { useElevatedToastLayer } from '@components/foundation/toastLayerStore'
 
@@ -33,18 +34,16 @@ interface CommandHubProps {
   onShowKeyboardShortcuts: () => void
 }
 
-const RECENT_KEY = 'aweeclaw_command_hub_recent'
+const RECENT_KEY = 'command_hub_recent'
 
 function loadRecentCommands(): string[] {
-  try {
-    return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]')
-  } catch { return [] }
+  return StorageService.get<string[]>(RECENT_KEY) || []
 }
 
 function saveRecentCommand(id: string) {
   const recent = loadRecentCommands().filter(r => r !== id)
   recent.unshift(id)
-  localStorage.setItem(RECENT_KEY, JSON.stringify(recent.slice(0, 10)))
+  StorageService.set(RECENT_KEY, recent.slice(0, 10))
 }
 
 const HubCommandRow = memo(function HubCommandRow({

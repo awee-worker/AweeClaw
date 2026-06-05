@@ -1,5 +1,6 @@
 import { backendApi, isAuthenticated } from '../../../adapters/backendApi'
 import { logger } from '@toolkit/LogEngine'
+import { StorageService } from '@shared/toolkit/StorageService'
 import { knowledgeService } from './index'
 import { globalEventBus } from '@intelligence/engine/EventBus'
 import type { KnowledgeEntry, KnowledgeEntryInput } from '@intelligence/providerTypes'
@@ -473,8 +474,8 @@ class KnowledgeSyncService {
 
   private loadSyncMeta(): LocalSyncMeta {
     try {
-      const raw = localStorage.getItem(SYNC_META_KEY)
-      if (raw) return JSON.parse(raw)
+      const raw = StorageService.get<LocalSyncMeta>(SYNC_META_KEY)
+      if (raw) return raw
     } catch {
       // parse error, start fresh
     }
@@ -483,7 +484,7 @@ class KnowledgeSyncService {
 
   private saveSyncMeta(meta: LocalSyncMeta): void {
     try {
-      localStorage.setItem(SYNC_META_KEY, JSON.stringify(meta))
+      StorageService.set(SYNC_META_KEY, meta)
     } catch (err) {
       logger.agent.warn('[KnowledgeSync] Failed to save sync meta:', err)
     }

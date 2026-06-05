@@ -1,5 +1,6 @@
 import { backendApi, isAuthenticated } from '../../../adapters/backendApi'
 import { logger } from '@toolkit/LogEngine'
+import { StorageService } from '@shared/toolkit/StorageService'
 import {
   projectKnowledgeGraph,
   type KnowledgeEntity,
@@ -517,16 +518,16 @@ class KnowledgeGraphSyncService {
     }
 
     try {
-      const raw = localStorage.getItem(GRAPH_SYNC_KEY)
+      const raw = StorageService.get<any>(GRAPH_SYNC_KEY)
       if (raw) {
-        const parsed = JSON.parse(raw)
+        const parsed = raw
         const meta: GraphSyncMeta = {
           lastSyncAt: parsed.lastSyncAt ?? null,
           serverEntityIdMap: parsed.serverEntityIdMap ?? {},
           serverRelationIdMap: parsed.serverRelationIdMap ?? {},
         }
         await this.storage.set(GRAPH_SYNC_KEY, JSON.stringify(meta))
-        localStorage.removeItem(GRAPH_SYNC_KEY)
+        StorageService.remove(GRAPH_SYNC_KEY)
         return meta
       }
     } catch {

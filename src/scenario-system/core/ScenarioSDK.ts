@@ -30,6 +30,7 @@ import { scenarioStyleManager } from './ScenarioStyleManager'
 import { scenarioDataBus } from './ScenarioDataBus'
 import { scenarioMonitor } from './ScenarioMonitor'
 import { logger } from '@shared/toolkit/LogEngine'
+import { StorageService } from '@shared/toolkit/StorageService'
 
 export interface ScenarioStorageAPI {
   getState: (key: string) => unknown
@@ -107,28 +108,29 @@ export function createScenarioSDK(
   const storageApi: ScenarioStorageAPI = {
     getState: (key: string) => {
       try {
-        const raw = localStorage.getItem(`${storagePrefix}${key}`)
-        return raw ? JSON.parse(raw) : undefined
+        return StorageService.get(`${storagePrefix}${key}`) ?? undefined
       } catch {
         return undefined
       }
     },
     setState: (key: string, value: unknown) => {
       try {
-        localStorage.setItem(`${storagePrefix}${key}`, JSON.stringify(value))
+        StorageService.set(`${storagePrefix}${key}`, value)
       } catch (err) {
         logger.agent.warn(`[SDK:Storage] Failed to set state for key "${key}":`, err)
       }
     },
     removeState: (key: string) => {
-      localStorage.removeItem(`${storagePrefix}${key}`)
+      StorageService.remove(`${storagePrefix}${key}`)
     },
     getAllKeys: () => {
       const keys: string[] = []
+      // StorageService 使用 aweeclaw: 前缀，需要匹配完整前缀
+      const fullPrefix = `aweeclaw:${storagePrefix}`
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i)
-        if (k?.startsWith(storagePrefix)) {
-          keys.push(k.slice(storagePrefix.length))
+        if (k?.startsWith(fullPrefix)) {
+          keys.push(k.slice(fullPrefix.length))
         }
       }
       return keys

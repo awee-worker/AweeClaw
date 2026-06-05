@@ -15,6 +15,7 @@ import type { DeclarativeScripts, DeclarativeScriptTool } from '@shared/protocol
 import type { ScenarioModuleContext, ScenarioHealthCheck, ScenarioToolDefinition } from '@shared/protocols/scenario-arch'
 import type { ToolDefinition, ToolExecutionResult, ToolExecutionContext, ToolExecutor, ToolPropertySchema } from '../providerTypes'
 import { logger } from '@shared/toolkit/LogEngine'
+import { StorageService } from '@shared/toolkit/StorageService'
 
 export class ScenarioScriptExecutor {
   private scenarioId: string
@@ -57,15 +58,14 @@ export class ScenarioScriptExecutor {
       workspacePath: null,
       getState: (key: string) => {
         try {
-          const raw = localStorage.getItem(`scenario-state:${this.scenarioId}:${key}`)
-          return raw ? JSON.parse(raw) : undefined
+          return StorageService.get(`scenario-state:${this.scenarioId}:${key}`) ?? undefined
         } catch {
           return undefined
         }
       },
       setState: (key: string, value: unknown) => {
         try {
-          localStorage.setItem(`scenario-state:${this.scenarioId}:${key}`, JSON.stringify(value))
+          StorageService.set(`scenario-state:${this.scenarioId}:${key}`, value)
         } catch {}
       },
       querySql: async (query: string, _connectionId?: string) => {
@@ -233,15 +233,14 @@ export class ScenarioScriptExecutor {
         workspacePath: null,
         getState: (key: string) => {
           try {
-            const raw = localStorage.getItem(`scenario-state:${this.scenarioId}:${key}`)
-            return raw ? JSON.parse(raw) : undefined
+            return StorageService.get(`scenario-state:${this.scenarioId}:${key}`) ?? undefined
           } catch {
             return undefined
           }
         },
         setState: (key: string, value: unknown) => {
           try {
-            localStorage.setItem(`scenario-state:${this.scenarioId}:${key}`, JSON.stringify(value))
+            StorageService.set(`scenario-state:${this.scenarioId}:${key}`, value)
           } catch {}
         },
         querySql: async () => ({ pending: true }),

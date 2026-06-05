@@ -28,6 +28,7 @@ import {
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { useResizePanel } from '@hooks/useResizePanel'
+import { StorageService } from '@shared/toolkit/StorageService'
 import { ActionButton, TextField } from '@/renderer/components/ui'
 import { useAgentStore } from '../../intelligence'
 import { terminalManager, type TerminalManagerState } from '@services/TerminalAdapter'
@@ -47,10 +48,10 @@ type Selection =
 
 type NavSectionKey = 'favorites' | 'roots' | 'presets' | 'links'
 
-const INSPECTOR_WIDTH_KEY = 'aweeclaw.shellStudio.inspectorWidth'
-const SHELL_STUDIO_FOCUS_KEY = 'aweeclaw.shellStudio.focusMode'
-const SHELL_STUDIO_NAV_KEY = 'aweeclaw.shellStudio.navCollapsed'
-const SHELL_STUDIO_NAV_WIDTH_KEY = 'aweeclaw.shellStudio.navWidth'
+const INSPECTOR_WIDTH_KEY = 'shellStudio.inspectorWidth'
+const SHELL_STUDIO_FOCUS_KEY = 'shellStudio.focusMode'
+const SHELL_STUDIO_NAV_KEY = 'shellStudio.navCollapsed'
+const SHELL_STUDIO_NAV_WIDTH_KEY = 'shellStudio.navWidth'
 const DEFAULT_INSPECTOR_WIDTH = 320
 const DEFAULT_NAV_WIDTH = 280
 
@@ -177,17 +178,17 @@ export default function TerminalStudio() {
   const [managerInitialCreate, setManagerInitialCreate] = useState<'preset' | 'directory' | 'remote' | 'command' | undefined>(undefined)
   const [managerInitialEdit, setManagerInitialEdit] = useState<{ kind: 'preset' | 'link'; id: string } | null>(null)
   const [inspectorWidth, setInspectorWidth] = useState<number>(() => {
-    const raw = localStorage.getItem(INSPECTOR_WIDTH_KEY)
+    const raw = StorageService.get<string>(INSPECTOR_WIDTH_KEY)
     const parsed = raw ? Number(raw) : NaN
     return Number.isFinite(parsed) ? parsed : DEFAULT_INSPECTOR_WIDTH
   })
   const [navWidth, setNavWidth] = useState<number>(() => {
-    const raw = localStorage.getItem(SHELL_STUDIO_NAV_WIDTH_KEY)
+    const raw = StorageService.get<string>(SHELL_STUDIO_NAV_WIDTH_KEY)
     const parsed = raw ? Number(raw) : NaN
     return Number.isFinite(parsed) ? parsed : DEFAULT_NAV_WIDTH
   })
-  const [focusMode, setFocusMode] = useState<boolean>(() => localStorage.getItem(SHELL_STUDIO_FOCUS_KEY) === '1')
-  const [navCollapsed, setNavCollapsed] = useState<boolean>(() => localStorage.getItem(SHELL_STUDIO_NAV_KEY) === '1')
+  const [focusMode, setFocusMode] = useState<boolean>(() => StorageService.get<string>(SHELL_STUDIO_FOCUS_KEY) === '1')
+  const [navCollapsed, setNavCollapsed] = useState<boolean>(() => StorageService.get<string>(SHELL_STUDIO_NAV_KEY) === '1')
   const [showSftpPanel, setShowSftpPanel] = useState(false)
   const [sftpPanelServer, setSftpPanelServer] = useState<RemoteServerConfig | null>(null)
   const [sftpPanelLabel, setSftpPanelLabel] = useState('')
@@ -223,19 +224,19 @@ export default function TerminalStudio() {
   }, [currentTheme])
 
   useEffect(() => {
-    localStorage.setItem(INSPECTOR_WIDTH_KEY, String(inspectorWidth))
+    StorageService.set(INSPECTOR_WIDTH_KEY, String(inspectorWidth))
   }, [inspectorWidth])
 
   useEffect(() => {
-    localStorage.setItem(SHELL_STUDIO_NAV_WIDTH_KEY, String(navWidth))
+    StorageService.set(SHELL_STUDIO_NAV_WIDTH_KEY, String(navWidth))
   }, [navWidth])
 
   useEffect(() => {
-    localStorage.setItem(SHELL_STUDIO_FOCUS_KEY, focusMode ? '1' : '0')
+    StorageService.set(SHELL_STUDIO_FOCUS_KEY, focusMode ? '1' : '0')
   }, [focusMode])
 
   useEffect(() => {
-    localStorage.setItem(SHELL_STUDIO_NAV_KEY, navCollapsed ? '1' : '0')
+    StorageService.set(SHELL_STUDIO_NAV_KEY, navCollapsed ? '1' : '0')
   }, [navCollapsed])
 
   useEffect(() => {

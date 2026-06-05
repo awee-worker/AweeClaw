@@ -4,6 +4,7 @@ import { Search, X, Clock, Star, MessageSquare, FileText } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { getFileName } from '@shared/toolkit/pathHelper'
+import { StorageService } from '@shared/toolkit/StorageService'
 import { keybindingService } from '@services/keybindingAdapter'
 import {t, type Language} from '@renderer/i18n'
 import { ActionButton } from '../ui'
@@ -37,21 +38,21 @@ interface SessionCandidate {
 
 type TabType = 'files' | 'sessions'
 
-const RECENT_FILES_KEY = 'aweeclaw_recent_files'
-const FAVORITES_KEY = 'aweeclaw_file_favorites'
+const RECENT_FILES_KEY = 'recent_files'
+const FAVORITES_KEY = 'file_favorites'
 
 function loadRecentFiles(): string[] {
-  try { return JSON.parse(localStorage.getItem(RECENT_FILES_KEY) || '[]') } catch { return [] }
+  return StorageService.get<string[]>(RECENT_FILES_KEY) || []
 }
 
 function saveRecentFile(path: string) {
   const recent = loadRecentFiles().filter(r => r !== path)
   recent.unshift(path)
-  localStorage.setItem(RECENT_FILES_KEY, JSON.stringify(recent.slice(0, 30)))
+  StorageService.set(RECENT_FILES_KEY, recent.slice(0, 30))
 }
 
 function loadFavorites(): string[] {
-  try { return JSON.parse(localStorage.getItem(FAVORITES_KEY) || '[]') } catch { return [] }
+  return StorageService.get<string[]>(FAVORITES_KEY) || []
 }
 
 function computeRelevanceScore(query: string, text: string): { score: number; indices: number[] } | null {

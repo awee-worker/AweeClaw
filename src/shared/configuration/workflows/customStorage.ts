@@ -1,14 +1,13 @@
 import type { WorkflowDefinition } from '@shared/protocols/workflow'
+import { StorageService } from '@shared/toolkit/StorageService'
 
-const STORAGE_KEY = 'aweeclaw_custom_workflows'
+const STORAGE_KEY = 'custom_workflows'
 
 export function loadCustomWorkflows(): WorkflowDefinition[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return []
-    return parsed as WorkflowDefinition[]
+    const data = StorageService.get<WorkflowDefinition[]>(STORAGE_KEY)
+    if (!data || !Array.isArray(data)) return []
+    return data
   } catch {
     return []
   }
@@ -23,7 +22,7 @@ export function saveCustomWorkflow(wf: WorkflowDefinition): void {
     } else {
       existing.push(wf)
     }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(existing))
+    StorageService.set(STORAGE_KEY, existing)
   } catch {
     // ignore
   }
@@ -33,7 +32,7 @@ export function deleteCustomWorkflow(workflowId: string): void {
   try {
     const existing = loadCustomWorkflows()
     const filtered = existing.filter(w => w.id !== workflowId)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered))
+    StorageService.set(STORAGE_KEY, filtered)
   } catch {
     // ignore
   }

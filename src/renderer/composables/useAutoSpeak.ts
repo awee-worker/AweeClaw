@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { voiceApi } from '../services/voiceApi';
 import { isAssistantMessage, getMessageText } from '@intelligence/providerTypes';
+import { StorageService } from '@shared/toolkit/StorageService';
 import type { ChatMessage } from '@intelligence/providerTypes';
 
 interface UseAutoSpeakOptions {
@@ -29,7 +30,7 @@ export function useAutoSpeak({ isStreaming, messages }: UseAutoSpeakOptions): vo
 
   useEffect(() => {
     if (prevStreamingRef.current && !isStreaming) {
-      const autoSpeak = localStorage.getItem('voice_auto_speak') === 'true';
+      const autoSpeak = StorageService.get<string>('voice_auto_speak') === 'true';
       if (!autoSpeak) {
         prevStreamingRef.current = isStreaming;
         return;
@@ -52,8 +53,8 @@ export function useAutoSpeak({ isStreaming, messages }: UseAutoSpeakOptions): vo
 
       const speakText = text.length > 500 ? text.slice(0, 500) + '...' : text;
 
-      const ttsVoice = localStorage.getItem('voice_tts_voice') || undefined;
-      const ttsSpeed = localStorage.getItem('voice_tts_speed');
+      const ttsVoice = StorageService.get<string>('voice_tts_voice') || undefined;
+      const ttsSpeed = StorageService.get<string>('voice_tts_speed');
       const speed = ttsSpeed ? parseFloat(ttsSpeed) : undefined;
 
       if (currentAudioRef.current) {
