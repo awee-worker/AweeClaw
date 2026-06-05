@@ -230,6 +230,41 @@ function getStatusText(name: string, args: ToolArgs, status: ToolCall['status'],
         return t('tool.status.updatingTasks', language as any)
     }
 
+    if (name === 'remember') {
+        const content = asString(args.content) || asString(args.text) || asString(args.key)
+        const preview = content ? `"${content.slice(0, 30)}${content.length > 30 ? '...' : ''}"` : ''
+        if (isRunning) return preview ? t('tool.status.remembering', language as any, { content: preview }) : t('tool.status.rememberingEllipsis', language as any)
+        if (isSuccess) return preview ? t('tool.status.remembered', language as any, { content: preview }) : t('tool.status.rememberedEllipsis', language as any)
+        if (isError) return t('tool.status.rememberFailed', language as any)
+        return t('tool.status.rememberingEllipsis', language as any)
+    }
+
+    if (name === 'ask_user') {
+        const question = asString(args.question) || asString(args.message)
+        const preview = question ? `"${question.slice(0, 30)}${question.length > 30 ? '...' : ''}"` : ''
+        if (isRunning) return preview ? t('tool.status.askingUser', language as any, { question: preview }) : t('tool.status.askingEllipsis', language as any)
+        if (isSuccess) return t('tool.status.askedUser', language as any)
+        if (isError) return t('tool.status.askFailed', language as any)
+        return t('tool.status.askingEllipsis', language as any)
+    }
+
+    if (name === 'knowledge_search') {
+        const query = asString(args.query) || asString(args.question)
+        const value = query ? `"${query}"` : ''
+        if (!value) return isRunning ? t('tool.status.searchingKnowledgeEllipsis', language as any) : ''
+        if (isRunning) return t('tool.status.searchingKnowledge', language as any, { query: value })
+        if (isSuccess) return t('tool.status.searchedKnowledge', language as any, { query: value })
+        if (isError) return t('tool.status.searchKnowledgeFailed', language as any)
+        return t('tool.status.searchingKnowledge', language as any, { query: value })
+    }
+
+    if (name === 'uiux_recommend') {
+        if (isRunning) return t('tool.status.generatingRecommendation', language as any)
+        if (isSuccess) return t('tool.status.recommendationGenerated', language as any)
+        if (isError) return t('tool.status.recommendationFailed', language as any)
+        return t('tool.status.generatingRecommendation', language as any)
+    }
+
     if (isMcpToolName(name)) {
         const mcpStatus = getMcpToolStatusText(name, status, isStreaming, language)
         if (mcpStatus) return mcpStatus
