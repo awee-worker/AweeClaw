@@ -1,25 +1,23 @@
 /**
  * [AweeClaw] 场景感知目录管理引擎
  *
- * 与 Adnify 的 AweeClawDirService 差异化：
- * - 类名重命名：AweeClawDirService → ScenarioDirectoryManager
- * - 新增场景感知的子目录结构（法律审计目录、医疗合规目录、教育素材目录）
- * - 新增场景感知的初始化策略（合规场景创建额外目录）
- * - 新增场景感知的默认项目设置
+ * 会话数据使用 SQLite 数据库存储（替代原有的 JSONL 文件方案）：
+ * - 会话元数据、线程元数据、线程消息均存储在 sessions.db 中
+ * - 首次启动时自动从 JSONL 文件迁移历史数据
+ * - 工作区状态、项目设置等仍使用 JSON 文件存储
  *
- * 所有项目级数据都存储在 BRAND.dirName 目录下：
  * 目录结构：
  *   ├── index/               # 代码库向量索引
- *   ├── sessions/            # Agent 会话（按线程拆分）
- *   │   ├── _meta.json       # 线程索引元数据（currentThreadId, threadIds, version）
- *   │   ├── _extra.json      # 非线程状态（branches 等）
- *   │   └── {threadId}.jsonl # 单个线程消息数据
+ *   ├── sessions/            # [遗留] 旧版 JSONL 会话文件（迁移后可清理）
  *   ├── audit/               # [法律/医疗] 审计日志目录
  *   ├── compliance/          # [医疗] 合规记录目录
  *   ├── assets/              # [教育] 素材资源目录
  *   ├── settings.json        # 项目级设置
  *   ├── workspace-state.json # 工作区状态（打开的文件等）
  *   └── rules.md             # 项目 AI 规则
+ *
+ * SQLite 数据库位置：
+ *   {userDataPath}/.aweeclaw/db/sessions.db
  */
 
 import { api } from './electronBridge'
@@ -51,82 +49,139 @@ import {
   type PersistedThreadSummary,
 } from './sessionStorageAdapter'
 
-interface SessionFileStorePaths {
-  getSessionsDirPath: () => string
-  getSessionFilePath: (fileName: string) => string
-  getThreadMetaPath: (threadId: string) => string
-  getThreadMessagesPath: (threadId: string) => string
-}
+/**
+ * 基于 SQLite 的会话数据存储
+ *
+ * 通过 IPC 调用主进程的 SessionDb 模块，替代原有的 JSONL 文件读写。
+ * 保留与 SessionFileStore 相同的接口签名，确保 ScenarioDirectoryManager 无缝切换。
+ */
+class SessionDbStore {
+  private dbInitialized = false
 
-class SessionFileStore {
-  private paths: SessionFileStorePaths
-
-  constructor(paths: SessionFileStorePaths) {
-    this.paths = paths
-  }
-
-  async writeSessionFile(fileName: string, data: unknown): Promise<void> {
-    const filePath = this.paths.getSessionFilePath(fileName)
-    await api.file.write(filePath, JSON.stringify(data, null, 2))
-  }
-
-  async readSessionFile<T>(fileName: string): Promise<T | null> {
-    const filePath = this.paths.getSessionFilePath(fileName)
+  /** 初始化数据库（含自动迁移） */
+  async initialize(sessionsDir?: string): Promise<void> {
+    if (this.dbInitialized) return
     try {
-      const content = await api.file.read(filePath)
-      if (!content) return null
-      return JSON.parse(content) as T
-    } catch {
-      return null
-    }
-  }
-
-  async deleteSessionFile(fileName: string): Promise<void> {
-    const filePath = this.paths.getSessionFilePath(fileName)
-    try {
-      await api.file.delete(filePath)
-    } catch {
-      // ignore
-    }
-  }
-
-  async listPersistedThreadSummaries(): Promise<PersistedThreadSummary[]> {
-    const sessionsDir = this.paths.getSessionsDirPath()
-    try {
-      const entries = await api.file.readDir(sessionsDir)
-      const summaries: PersistedThreadSummary[] = []
-
-      for (const entry of entries) {
-        if (entry.name.endsWith('.json') && entry.name !== '_meta.json' && entry.name !== '_extra.json') {
-          const id = entry.name.replace('.json', '')
-          const data = await this.readSessionFile<PersistedChatThread>(entry.name)
-          if (data) {
-            summaries.push({
-              id,
-              title: (data as unknown as Record<string, unknown>).title as string | undefined,
-              lastModified: (data as unknown as Record<string, unknown>).updatedAt as number || 0,
-              messageCount: (data as unknown as Record<string, unknown>).messageCount as number || 0,
-            })
-          }
-        }
+      const result = await api.sessionDb.initialize(sessionsDir ? { sessionsDir } : undefined)
+      if (result.success) {
+        this.dbInitialized = true
+        logger.system.info('[SessionDbStore] Database initialized at', result.dbPath)
+      } else {
+        logger.system.error('[SessionDbStore] Database initialization failed:', result.error)
       }
-
-      return summaries
-    } catch {
-      return []
+    } catch (err) {
+      logger.system.error('[SessionDbStore] Database initialization error:', err)
     }
   }
 
-  async loadThreadMessages(threadId: string): Promise<any[]> {
-    const messagesPath = this.paths.getThreadMessagesPath(threadId)
-    try {
-      const content = await api.file.read(messagesPath)
-      if (!content) return []
-      const { parseMessagesFromJsonl } = await import('./sessionStorageAdapter')
-      return parseMessagesFromJsonl(content)
-    } catch {
-      return []
+  /** 写入会话元数据（替代 writeSessionFile('_meta.json', ...)） */
+  async writeSessionMeta(meta: SessionIndexMeta): Promise<void> {
+    await api.sessionDb.batchUpsertSessionMeta({
+      currentThreadId: meta.currentThreadId,
+      threadIds: meta.threadIds,
+      version: meta.version,
+    })
+  }
+
+  /** 写入扩展状态（替代 writeSessionFile('_extra.json', ...)） */
+  async writeSessionExtra(extra: Record<string, unknown>): Promise<void> {
+    await api.sessionDb.upsertSessionMeta('extra', extra)
+  }
+
+  /** 删除扩展状态（替代 deleteSessionFile('_extra.json')） */
+  async deleteSessionExtra(): Promise<void> {
+    await api.sessionDb.deleteSessionMeta('extra')
+  }
+
+  /** 读取会话元数据和扩展状态（一次 IPC 调用） */
+  async readSessionCatalog(): Promise<{ indexMeta: SessionIndexMeta | null; extra: Record<string, unknown> | null }> {
+    const allMeta = await api.sessionDb.getAllSessionMeta()
+    if (!allMeta || Object.keys(allMeta).length === 0) {
+      return { indexMeta: null, extra: null }
     }
+    const { extra, ...indexFields } = allMeta
+    const indexMeta: SessionIndexMeta = {
+      currentThreadId: indexFields.currentThreadId ?? null,
+      threadIds: indexFields.threadIds ?? [],
+      version: indexFields.version ?? 0,
+    }
+    return { indexMeta, extra: (extra as Record<string, unknown> | undefined) ?? null }
+  }
+
+  /** 写入线程元数据（替代 writeSessionFile(`${threadId}.json`, data)） */
+  async writeThreadMeta(threadId: string, data: PersistedChatThread): Promise<void> {
+    // 分离消息和元数据：元数据存 thread_meta 表，消息存 thread_message 表
+    const messages = data.messages ?? []
+    const metaToSave = { ...data, messages: [] } // 元数据不包含消息
+    const metaResult = await api.sessionDb.upsertThreadMeta(threadId, metaToSave)
+    if (metaResult && typeof metaResult === 'object' && 'success' in metaResult && !metaResult.success) {
+      logger.system.error('[SessionDbStore] upsertThreadMeta failed:', metaResult.error)
+    }
+    // 同步保存消息（仅在线程有消息时写入）
+    if (messages.length > 0) {
+      const msgResult = await api.sessionDb.batchUpsertThreadMessages(threadId, messages)
+      if (msgResult && typeof msgResult === 'object' && 'success' in msgResult && !msgResult.success) {
+        logger.system.error('[SessionDbStore] batchUpsertThreadMessages failed:', msgResult.error)
+      }
+    }
+  }
+
+  /** 写入线程元数据（替代 writeSessionFile(`${threadId}.json`, data)）
+   *  @param includeMessages 是否包含消息数据，默认 false（消息通过 loadThreadMessages 按需加载）
+   */
+  async readThreadMeta(threadId: string, includeMessages = false): Promise<PersistedChatThread | null> {
+    const meta = await api.sessionDb.getThreadMeta(threadId)
+    if (!meta) return null
+    if (includeMessages) {
+      const messages = await api.sessionDb.getThreadMessages(threadId)
+      return { ...meta, messages }
+    }
+    return { ...meta, messages: [] }
+  }
+
+  /** 删除线程元数据（替代 deleteSessionFile(`${threadId}.json`)） */
+  async deleteThreadMeta(threadId: string): Promise<void> {
+    await api.sessionDb.deleteThreadMeta(threadId)
+  }
+
+  /** 将未关联用户的线程归属到指定用户（登录后调用） */
+  async claimOrphanThreads(userId: string): Promise<number> {
+    const result = await api.sessionDb.claimOrphanThreads(userId)
+    return result.count ?? 0
+  }
+
+  /** 获取所有线程摘要（替代 listPersistedThreadSummaries）
+   *  @param userId 用户 ID。字符串=按用户过滤；null=未登录用户；undefined=所有线程
+   */
+  async listPersistedThreadSummaries(userId?: string | null): Promise<PersistedThreadSummary[]> {
+    const summaries = await api.sessionDb.getAllThreadSummaries(userId)
+    return summaries.map(s => ({
+      id: s.id,
+      title: s.title ?? undefined,
+      lastModified: s.lastModified,
+      messageCount: s.messageCount,
+      userId: s.userId ?? undefined,
+    }))
+  }
+
+  /** 加载线程消息（替代 loadThreadMessages） */
+  async loadThreadMessages(threadId: string): Promise<any[]> {
+    return await api.sessionDb.getThreadMessages(threadId)
+  }
+
+  /** 批量保存线程消息 */
+  async batchUpsertThreadMessages(threadId: string, messages: any[]): Promise<void> {
+    await api.sessionDb.batchUpsertThreadMessages(threadId, messages)
+  }
+
+  /** 删除线程（含消息） */
+  async deleteThread(threadId: string): Promise<void> {
+    await api.sessionDb.deleteThread(threadId)
+  }
+
+  /** 清空所有会话数据 */
+  async clearAll(): Promise<void> {
+    await api.sessionDb.clearAll()
   }
 }
 
@@ -204,7 +259,7 @@ class ScenarioDirectoryManager {
   private primaryRoot: string | null = null
   private initializedRoots: Set<string> = new Set()
   private initialized = false
-  private readonly sessionFiles: SessionFileStore
+  private readonly sessionDb: SessionDbStore
 
   private cache: {
     sessionMeta: SessionMeta | null
@@ -236,12 +291,7 @@ class ScenarioDirectoryManager {
   private metaWriteRevision = 0
 
   constructor() {
-    this.sessionFiles = new SessionFileStore({
-      getSessionsDirPath: () => this.getSessionsDirPath(),
-      getSessionFilePath: fileName => this.getSessionFilePath(fileName),
-      getThreadMetaPath: threadId => this.getThreadMetaPath(threadId),
-      getThreadMessagesPath: threadId => this.getThreadMessagesPath(threadId),
-    })
+    this.sessionDb = new SessionDbStore()
   }
 
   async initialize(rootPath: string): Promise<boolean> {
@@ -314,6 +364,8 @@ class ScenarioDirectoryManager {
     this.dirty = { sessionMeta: false, dirtyThreads: new Set(), workspaceState: false, settings: false }
     this.threadHashes.clear()
     this.metaHash = null
+    // 初始化 SQLite 数据库（含自动迁移 JSONL 数据）
+    await this.sessionDb.initialize(this.getSessionsDirPath())
     await this.migrateLegacySessionsIfNeeded()
     await this.loadAllData()
     this.initialized = true
@@ -351,11 +403,11 @@ class ScenarioDirectoryManager {
     const promises: Promise<void>[] = []
 
     if (metaToWrite) {
-      promises.push(this.sessionFiles.writeSessionFile('_meta.json', metaToWrite.index))
+      promises.push(this.sessionDb.writeSessionMeta(metaToWrite.index))
       if (Object.keys(metaToWrite.extra).length > 0) {
-        promises.push(this.sessionFiles.writeSessionFile('_extra.json', metaToWrite.extra))
+        promises.push(this.sessionDb.writeSessionExtra(metaToWrite.extra))
       } else {
-        promises.push(this.sessionFiles.deleteSessionFile('_extra.json'))
+        promises.push(this.sessionDb.deleteSessionExtra())
       }
     }
 
@@ -363,7 +415,7 @@ class ScenarioDirectoryManager {
     for (const threadId of flushedThreadIds) {
       const data = this.cache.threads.get(threadId)
       if (data !== undefined) {
-        promises.push(this.sessionFiles.writeSessionFile(`${threadId}.json`, data))
+        promises.push(this.sessionDb.writeThreadMeta(threadId, data))
         this.threadHashes.set(threadId, stableStringify(data))
       }
     }
@@ -431,23 +483,16 @@ class ScenarioDirectoryManager {
     return this.getFilePath('sessions.json')
   }
 
-  private getSessionFilePath(fileName: string): string {
-    return `${this.getSessionsDirPath()}/${fileName}`
-  }
-
-  private getThreadMetaPath(threadId: string): string {
-    return this.getSessionFilePath(`${threadId}.json`)
-  }
-
-  private getThreadMessagesPath(threadId: string): string {
-    return this.getSessionFilePath(`${threadId}.jsonl`)
+  /** 获取当前登录用户的 ID（未登录返回 undefined） */
+  private getCurrentUserId(): string | undefined {
+    return useStore.getState().cloudUser?.id
   }
 
   private async buildSessionCatalog(): Promise<SessionCatalog> {
-    const [indexMeta, extra, summaries] = await Promise.all([
-      this.sessionFiles.readSessionFile<SessionIndexMeta>('_meta.json'),
-      this.sessionFiles.readSessionFile<Record<string, unknown>>('_extra.json'),
-      this.sessionFiles.listPersistedThreadSummaries(),
+    const userId = this.getCurrentUserId() ?? null  // 未登录时传 null，只查 user_id IS NULL 的线程
+    const [{ indexMeta, extra }, summaries] = await Promise.all([
+      this.sessionDb.readSessionCatalog(),
+      this.sessionDb.listPersistedThreadSummaries(userId),
     ])
 
     const hydratedMeta: SessionMeta = {
@@ -464,7 +509,8 @@ class ScenarioDirectoryManager {
   }
 
   private async reconcileSessionMeta(meta: SessionMeta): Promise<SessionMeta> {
-    const summaries = await this.sessionFiles.listPersistedThreadSummaries()
+    const userId = this.getCurrentUserId() ?? null
+    const summaries = await this.sessionDb.listPersistedThreadSummaries(userId)
     const reconciledMeta = buildEffectiveSessionMeta(meta, summaries)
     const indexedThreadIds = [...meta.threadIds].sort()
     const actualThreadIds = [...reconciledMeta.threadIds].sort()
@@ -477,7 +523,7 @@ class ScenarioDirectoryManager {
       return meta
     }
 
-    await this.sessionFiles.writeSessionFile('_meta.json', toSessionIndexMeta(reconciledMeta))
+    await this.sessionDb.writeSessionMeta(toSessionIndexMeta(reconciledMeta))
     this.cache.sessionMeta = reconciledMeta
     this.metaHash = stableStringify(reconciledMeta)
     this.dirty.sessionMeta = false
@@ -549,21 +595,21 @@ class ScenarioDirectoryManager {
     })
     const threadIds = Object.keys(snapshot.threads)
 
-    await this.sessionFiles.writeSessionFile('_meta.json', {
+    await this.sessionDb.writeSessionMeta({
       currentThreadId: snapshot.currentThreadId,
       threadIds,
       version: snapshot.version,
     })
 
     if (Object.keys(serializeSessionExtraState(normalizedExtra)).length > 0) {
-      await this.sessionFiles.writeSessionFile('_extra.json', serializeSessionExtraState(normalizedExtra))
+      await this.sessionDb.writeSessionExtra(serializeSessionExtraState(normalizedExtra))
     } else {
-      await this.sessionFiles.deleteSessionFile('_extra.json')
+      await this.sessionDb.deleteSessionExtra()
     }
 
     await Promise.all(
       threadIds.map(async threadId => {
-        await this.sessionFiles.writeSessionFile(`${threadId}.json`, toPersistedChatThread(snapshot.threads[threadId]))
+        await this.sessionDb.writeThreadMeta(threadId, toPersistedChatThread(snapshot.threads[threadId]))
       })
     )
   }
@@ -572,14 +618,12 @@ class ScenarioDirectoryManager {
     if (!this.primaryRoot) return
 
     const legacySessionsPath = this.getLegacySessionsFilePath()
-    const [legacyExists, metaExists] = await Promise.all([
-      api.file.exists(legacySessionsPath),
-      api.file.exists(this.getSessionFilePath('_meta.json')),
-    ])
+    const legacyExists = await api.file.exists(legacySessionsPath)
+    if (!legacyExists) return
 
-    if (!legacyExists || metaExists) {
-      return
-    }
+    // 检查数据库中是否已有数据（迁移时不过滤 userId）
+    const existingSummaries = await this.sessionDb.listPersistedThreadSummaries(undefined)
+    if (existingSummaries.length > 0) return
 
     const legacyContent = await api.file.read(legacySessionsPath)
     if (!legacyContent) {
@@ -600,7 +644,7 @@ class ScenarioDirectoryManager {
   async getThreadData(threadId: string): Promise<PersistedChatThread | null> {
     if (this.cache.threads.has(threadId)) return this.cache.threads.get(threadId)!
     if (!this.isInitialized()) return null
-    const data = await this.sessionFiles.readSessionFile<PersistedChatThread>(`${threadId}.json`)
+    const data = await this.sessionDb.readThreadMeta(threadId)
     if (data !== null) {
       this.cache.threads.set(threadId, data)
       this.threadHashes.set(threadId, stableStringify(data))
@@ -614,7 +658,7 @@ class ScenarioDirectoryManager {
    */
   async loadThreadMessages(threadId: string): Promise<any[]> {
     if (!this.isInitialized()) return []
-    return this.sessionFiles.loadThreadMessages(threadId)
+    return this.sessionDb.loadThreadMessages(threadId)
   }
 
   setThreadDirty(threadId: string, data: PersistedChatThread): void {
@@ -651,10 +695,7 @@ class ScenarioDirectoryManager {
 
     if (this.isInitialized()) {
       try {
-        await Promise.all([
-          api.file.delete(this.getThreadMetaPath(threadId)).catch(() => { }),
-          api.file.delete(this.getThreadMessagesPath(threadId)).catch(() => { }),
-        ])
+        await this.sessionDb.deleteThread(threadId)
       } catch {
         // ignore
       }
@@ -663,26 +704,15 @@ class ScenarioDirectoryManager {
 
   async clearAllSessions(): Promise<void> {
     const meta = await this.getSessionMeta()
-    await Promise.all(meta.threadIds.map(async threadId => {
+    for (const threadId of meta.threadIds) {
       this.cache.threads.delete(threadId)
       this.threadHashes.delete(threadId)
-      try {
-        await Promise.all([
-          api.file.delete(this.getThreadMetaPath(threadId)).catch(() => { }),
-          api.file.delete(this.getThreadMessagesPath(threadId)).catch(() => { }),
-        ])
-      } catch {
-        // ignore
-      }
-    }))
+    }
     this.cache.sessionMeta = { ...DEFAULT_SESSION_META }
     this.metaHash = stableStringify(this.cache.sessionMeta)
     this.dirty.sessionMeta = false
     this.dirty.dirtyThreads.clear()
-    await Promise.all([
-      this.sessionFiles.writeSessionFile('_meta.json', toSessionIndexMeta(this.cache.sessionMeta)),
-      this.sessionFiles.deleteSessionFile('_extra.json'),
-    ])
+    await this.sessionDb.clearAll()
   }
 
   async getHydratedAgentSessionSnapshot(): Promise<AgentSessionSnapshot | null> {
@@ -720,6 +750,7 @@ class ScenarioDirectoryManager {
         const messages = await this.loadThreadMessages(currentThreadId)
         threadData.messages = messages
         threadData.messageCount = messages.length
+        threadData.messagesHydrated = true
       }
     }
 
@@ -792,18 +823,8 @@ class ScenarioDirectoryManager {
       this.setThreadDirty(threadId, threadData)
     }
 
-    for (const cachedId of [...this.cache.threads.keys()]) {
-      if (!Object.prototype.hasOwnProperty.call(threads, cachedId)) {
-        this.cache.threads.delete(cachedId)
-        this.dirty.dirtyThreads.delete(cachedId)
-        this.threadHashes.delete(cachedId)
-        if (this.isInitialized()) {
-          // Bug 5 fix: 同时删除 .json 和 .jsonl，防止孤儿文件泄漏
-          api.file.delete(this.getThreadMetaPath(cachedId)).catch(() => { /* ignore */ })
-          api.file.delete(this.getThreadMessagesPath(cachedId)).catch(() => { /* ignore */ })
-        }
-      }
-    }
+    // 注意：不删除不在 snapshot 中的线程，因为数据库是全局的（多项目共享），
+    // snapshot 只包含当前项目的线程。线程删除由 deleteThreadData 单独处理。
   }
 
   async getWorkspaceState(): Promise<WorkspaceStateData> {

@@ -8,7 +8,6 @@
  * - 每个 provider 配置独立一行，彻底隔离，杜绝串数据
  * - 通用设置使用键值表存储
  * - 事务保证原子写入
- * - 自动从旧版 JSON 格式迁移
  */
 
 import { logger } from '@shared/toolkit/LogEngine'

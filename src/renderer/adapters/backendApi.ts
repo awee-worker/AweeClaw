@@ -20,7 +20,8 @@ let onAuthFailed: (() => void) | null = null;
 let refreshPromise: Promise<AuthTokens | null> | null = null;
 let proactiveRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
-const ACCESS_TOKEN_REFRESH_MARGIN_MS = 2 * 60 * 1000;
+// accessToken 7天过期，提前1天刷新，确保不会因定时器延迟导致过期
+const ACCESS_TOKEN_REFRESH_MARGIN_MS = 24 * 60 * 60 * 1000;
 
 function decodeJwtExp(token: string): number | null {
   try {
@@ -48,7 +49,15 @@ function scheduleProactiveRefresh() {
   if (!tokens?.accessToken) return;
 
   const expiresAt = decodeJwtExp(tokens.accessToken);
-  if (!expiresAt) return;
+
+  if (!expiresAt) {
+    // 无法解析 JWT 过期时间，按固定间隔刷新（6天，对应7天过期提前1天）
+    proactiveRefreshTimer = setTimeout(() => {
+      proactiveRefreshTimer = null;
+      refreshAccessToken().catch(() => {});
+    }, 6 * 24 * 60 * 60 * 1000);
+    return;
+  }
 
   const now = Date.now();
   const refreshAt = expiresAt - ACCESS_TOKEN_REFRESH_MARGIN_MS;
@@ -158,18 +167,23 @@ async function refreshAccessToken(): Promise<AuthTokens | null> {
 
       if (!res.ok) {
         // 区分 refresh token 无效（401）和服务器临时错误（5xx）
-        // 只有 refresh token 确认无效时才触发 onAuthFailed
         if (res.status === 401 || res.status === 403) {
-          // refresh token 已失效，用户必须重新登录
-          tokens = null;
-          if (proactiveRefreshTimer) {
-            clearTimeout(proactiveRefreshTimer);
-            proactiveRefreshTimer = null;
+          // refresh token 已失效，但 accessToken 可能仍在有效期内
+          // 只有 accessToken 也过期时才触发 onAuthFailed
+          const currentExpiresAt = tokens?.accessToken ? decodeJwtExp(tokens.accessToken) : null;
+          const now = Date.now();
+          if (!currentExpiresAt || currentExpiresAt <= now) {
+            // accessToken 也已过期，用户必须重新登录
+            tokens = null;
+            if (proactiveRefreshTimer) {
+              clearTimeout(proactiveRefreshTimer);
+              proactiveRefreshTimer = null;
+            }
+            onAuthFailed?.();
           }
-          onAuthFailed?.();
+          // accessToken 仍有效，保留认证状态，等下次请求时再判断
         }
         // 5xx 等临时错误：保留 tokens，不清除认证状态
-        // accessToken 虽然可能过期，但 refreshToken 仍有效，下次请求时可重试
         return null;
       }
 

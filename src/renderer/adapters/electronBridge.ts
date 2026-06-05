@@ -156,6 +156,26 @@ type ElectronAPIWithRemoteShell = ElectronAPI & {
   scenarioRollbackScenario: (scenarioId: string) => Promise<{ success: boolean; scenarioId?: string; version?: string; targetDir?: string; config?: Record<string, unknown>; error?: string }>
   scenarioClearRollbackData: (scenarioId?: string) => Promise<{ success: boolean; error?: string }>
   onScenarioInstallProgress: (callback: (data: { scenarioId: string; phase: string; bytesDownloaded: number; bytesTotal: number; percent: number }) => void) => () => void
+
+  // Session DB
+  sessionDbInitialize: (params?: { sessionsDir?: string }) => Promise<{ success: boolean; dbPath?: string; error?: string }>
+  sessionDbGetAllSessionMeta: () => Promise<Record<string, any>>
+  sessionDbUpsertSessionMeta: (key: string, value: any) => Promise<{ success: boolean; error?: string }>
+  sessionDbBatchUpsertSessionMeta: (meta: Record<string, any>) => Promise<{ success: boolean; error?: string }>
+  sessionDbDeleteSessionMeta: (key: string) => Promise<{ success: boolean; error?: string }>
+  sessionDbGetAllThreadSummaries: (userId?: string | null) => Promise<Array<{ id: string; title: string | null; lastModified: number; messageCount: number; userId: string | null }>>
+  sessionDbGetThreadMeta: (threadId: string) => Promise<any | null>
+  sessionDbUpsertThreadMeta: (threadId: string, data: any) => Promise<{ success: boolean; error?: string }>
+  sessionDbDeleteThreadMeta: (threadId: string) => Promise<{ success: boolean; error?: string }>
+  sessionDbClaimOrphanThreads: (userId: string) => Promise<{ success: boolean; count?: number; error?: string }>
+  sessionDbGetThreadMessages: (threadId: string) => Promise<any[]>
+  sessionDbBatchUpsertThreadMessages: (threadId: string, messages: any[]) => Promise<{ success: boolean; error?: string }>
+  sessionDbAppendThreadMessage: (threadId: string, message: any) => Promise<{ success: boolean; error?: string }>
+  sessionDbDeleteThreadMessages: (threadId: string) => Promise<{ success: boolean; error?: string }>
+  sessionDbGetThreadMessageCount: (threadId: string) => Promise<number>
+  sessionDbDeleteThread: (threadId: string) => Promise<{ success: boolean; error?: string }>
+  sessionDbClearAll: () => Promise<{ success: boolean; error?: string }>
+  sessionDbGetPath: () => Promise<string>
 }
 
 // 创建分组 API 适配器
@@ -259,6 +279,28 @@ function createGroupedAPI() {
       dbGetProvider: (providerId: string) => raw.settingsDbGetProvider(providerId),
       dbDeleteProvider: (providerId: string) => raw.settingsDbDeleteProvider(providerId),
       dbGetPath: () => raw.settingsDbGetPath(),
+    },
+
+    // 会话数据库 (SQLite)
+    sessionDb: {
+      initialize: (params?: { sessionsDir?: string }) => raw.sessionDbInitialize(params),
+      getAllSessionMeta: () => raw.sessionDbGetAllSessionMeta(),
+      upsertSessionMeta: (key: string, value: any) => raw.sessionDbUpsertSessionMeta(key, value),
+      batchUpsertSessionMeta: (meta: Record<string, any>) => raw.sessionDbBatchUpsertSessionMeta(meta),
+      deleteSessionMeta: (key: string) => raw.sessionDbDeleteSessionMeta(key),
+      getAllThreadSummaries: (userId?: string | null) => raw.sessionDbGetAllThreadSummaries(userId),
+      getThreadMeta: (threadId: string) => raw.sessionDbGetThreadMeta(threadId),
+      upsertThreadMeta: (threadId: string, data: any) => raw.sessionDbUpsertThreadMeta(threadId, data),
+      deleteThreadMeta: (threadId: string) => raw.sessionDbDeleteThreadMeta(threadId),
+      claimOrphanThreads: (userId: string) => raw.sessionDbClaimOrphanThreads(userId),
+      getThreadMessages: (threadId: string) => raw.sessionDbGetThreadMessages(threadId),
+      batchUpsertThreadMessages: (threadId: string, messages: any[]) => raw.sessionDbBatchUpsertThreadMessages(threadId, messages),
+      appendThreadMessage: (threadId: string, message: any) => raw.sessionDbAppendThreadMessage(threadId, message),
+      deleteThreadMessages: (threadId: string) => raw.sessionDbDeleteThreadMessages(threadId),
+      getThreadMessageCount: (threadId: string) => raw.sessionDbGetThreadMessageCount(threadId),
+      deleteThread: (threadId: string) => raw.sessionDbDeleteThread(threadId),
+      clearAll: () => raw.sessionDbClearAll(),
+      getPath: () => raw.sessionDbGetPath(),
     },
 
     // LLM

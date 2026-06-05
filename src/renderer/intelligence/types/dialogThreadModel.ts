@@ -178,7 +178,7 @@ export function toPersistedChatThread(thread: ChatThread): PersistedChatThread {
     messages: thread.messages,
     contextItems: thread.contextItems,
     messageCheckpoints: thread.messageCheckpoints ?? [],
-    messageCount: thread.messageCount,
+    messageCount: thread.messages.length,
     contextSummary: thread.contextSummary,
     todos: thread.todos,
     handoffContext: thread.handoffContext,
@@ -197,7 +197,11 @@ export function fromPersistedChatThread(thread: PersistedChatThread): ChatThread
   return {
     ...thread,
     messages: thread.messages || [],
-    messagesHydrated: (thread.messages?.length || 0) > 0,
+    // 如果 messageCount > 0 但 messages 为空，说明消息还没加载（懒加载）
+    // 如果 messageCount === 0，说明线程真的没有消息，hydrated = true
+    messagesHydrated: thread.messageCount !== undefined
+      ? (thread.messageCount === 0 || (thread.messages?.length ?? 0) > 0)
+      : (thread.messages?.length ?? 0) > 0,
     contextItems: thread.contextItems || [],
     messageCheckpoints: thread.messageCheckpoints || [],
     ...createRuntimeThreadState(),

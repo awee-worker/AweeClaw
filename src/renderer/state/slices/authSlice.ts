@@ -16,6 +16,26 @@ import { api } from '../../adapters/electronBridge'
 import { knowledgeSyncService } from '@intelligence/runtime/knowledgeService/syncService'
 import { knowledgeGraphSyncService } from '@intelligence/runtime/knowledgeService/graphSyncService'
 import { t, type Language } from '@renderer/i18n'
+import { restoreWorkspaceAgentStore } from '@services/workspaceLoader'
+
+/** 认证成功后：归属孤儿线程 + 重新加载会话数据 */
+async function onAuthSuccess(userId: string | undefined): Promise<void> {
+  if (userId) {
+    try {
+      await api.sessionDb.claimOrphanThreads(userId)
+      logger.system.info('[Auth] Orphan threads claimed for user:', userId)
+    } catch (e) {
+      logger.system.warn('[Auth] claimOrphanThreads failed:', e)
+    }
+  }
+  // 重新加载会话数据（此时 cloudUser 已设置，buildSessionCatalog 会按 userId 过滤）
+  try {
+    await restoreWorkspaceAgentStore()
+    logger.system.info('[Auth] Agent store rehydrated after auth')
+  } catch (e) {
+    logger.system.warn('[Auth] Rehydrate after auth failed:', e)
+  }
+}
 
 export interface CloudUser {
   id: string
@@ -159,6 +179,8 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
       cloudMode: 'cloud',
     });
     await get().fetchProfile();
+    // 登录成功后：归属孤儿线程 + 重新加载会话
+    onAuthSuccess(get().cloudUser?.id).catch(() => {})
     get().fetchQuota().catch(() => {});
     get().selectCloudModel().catch(() => {});
     knowledgeSyncService.startAutoSync();
@@ -181,6 +203,7 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
       cloudMode: 'cloud',
     });
     await get().fetchProfile();
+    onAuthSuccess(get().cloudUser?.id).catch(() => {})
     get().fetchQuota().catch(() => {});
     get().selectCloudModel().catch(() => {});
     knowledgeSyncService.startAutoSync();
@@ -203,6 +226,7 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
       cloudMode: 'cloud',
     });
     await get().fetchProfile();
+    onAuthSuccess(get().cloudUser?.id).catch(() => {})
     get().fetchQuota().catch(() => {});
     get().selectCloudModel().catch(() => {});
     knowledgeSyncService.startAutoSync();
@@ -232,6 +256,8 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
     setTokens(null);
     clearPersistedAuth();
     set({ isAuthenticated: false, cloudUser: null, quota: null, cloudMode: 'local' });
+    // 登出后重新加载未关联用户的线程
+    restoreWorkspaceAgentStore().catch(() => {})
     import('@store').then(({ useStore }) => {
       useStore.getState().setShowWelcomePage(true);
     }).catch(() => {});
@@ -310,50 +336,62 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
     setTokens({ accessToken: persisted.accessToken, refreshToken: persisted.refreshToken });
     set({ serverUrl: persisted.serverUrl, cloudMode: persisted.cloudMode });
 
-    try {
-      const profile = await backendApi.get<CloudUser>('/api/v1/user/profile');
-      set({ isAuthenticated: true, cloudUser: profile });
+    // 先尝试用 refreshToken 刷新获取新的 accessToken，避免旧 accessToken 过期导致 401
+    let sessionRestored = false;
+
+    if (persisted.refreshToken) {
+      try {
+        const data = await backendApi.post<{ accessToken: string; refreshToken: string }>(
+          '/api/v1/auth/refresh',
+          { refreshToken: persisted.refreshToken },
+        );
+        setTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken });
+        persistAuth({
+          serverUrl: persisted.serverUrl,
+          accessToken: data.accessToken,
+          refreshToken: data.refreshToken,
+          cloudMode: persisted.cloudMode,
+        });
+        sessionRestored = true;
+      } catch {
+        // refreshToken 也失效了，尝试用旧 accessToken 请求 profile 作为最后手段
+        logger.system.warn('[Auth] Refresh token failed, trying existing access token');
+      }
+    }
+
+    if (!sessionRestored) {
+      // 降级：尝试用旧 accessToken 直接请求 profile
+      try {
+        const profile = await backendApi.get<CloudUser>('/api/v1/user/profile');
+        set({ isAuthenticated: true, cloudUser: profile });
+        sessionRestored = true;
+      } catch {
+        // accessToken 也过期了，清除认证状态
+        setTokens(null);
+        clearPersistedAuth();
+        set({ isAuthenticated: false, cloudUser: null, cloudMode: 'local' });
+        return;
+      }
+    }
+
+    if (sessionRestored) {
+      try {
+        const profile = await backendApi.get<CloudUser>('/api/v1/user/profile');
+        set({ isAuthenticated: true, cloudUser: profile });
+      } catch (e) {
+        logger.system.error('[Auth] Fetch profile after restore failed:', e);
+        // profile 获取失败不影响登录状态
+        set({ isAuthenticated: true });
+      }
       get().fetchQuota().catch(() => {});
       if (persisted.cloudMode === 'cloud') {
         get().selectCloudModel().catch(() => {});
       }
+      // 会话恢复成功后：归属孤儿线程 + 重新加载会话数据
+      onAuthSuccess(get().cloudUser?.id).catch(() => {})
       knowledgeSyncService.startAutoSync();
       knowledgeSyncService.syncToServer().catch(() => {});
       knowledgeGraphSyncService.startAutoSync();
-    } catch {
-      const currentTokens = getTokens();
-      if (currentTokens?.refreshToken) {
-        try {
-          const data = await backendApi.post<{ accessToken: string; refreshToken: string }>(
-            '/api/v1/auth/refresh',
-            { refreshToken: currentTokens.refreshToken },
-          );
-          setTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken });
-          persistAuth({
-            serverUrl: persisted.serverUrl,
-            accessToken: data.accessToken,
-            refreshToken: data.refreshToken,
-            cloudMode: persisted.cloudMode,
-          });
-          const profile = await backendApi.get<CloudUser>('/api/v1/user/profile');
-          set({ isAuthenticated: true, cloudUser: profile });
-          get().fetchQuota().catch(() => {});
-          if (persisted.cloudMode === 'cloud') {
-            get().selectCloudModel().catch(() => {});
-          }
-          knowledgeSyncService.startAutoSync();
-          knowledgeSyncService.syncToServer().catch(() => {});
-          knowledgeGraphSyncService.startAutoSync();
-        } catch {
-          setTokens(null);
-          clearPersistedAuth();
-          set({ isAuthenticated: false, cloudUser: null, cloudMode: 'local' });
-        }
-      } else {
-        setTokens(null);
-        clearPersistedAuth();
-        set({ isAuthenticated: false, cloudUser: null, cloudMode: 'local' });
-      }
     }
   },
   }
