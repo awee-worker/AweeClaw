@@ -50,7 +50,7 @@ function AppContent() {
   useAppShutdownState()
 
   const {
-    workspace, activeSidePanel,
+    workspace, activeSidePanel, activeFilePath,
     showWorkflow, setShowWorkflow,
     showSettingsPage, showWelcomePage, showUserProfilePage, showBillingCenterPage,
     activeScenarioId, language,
@@ -58,6 +58,7 @@ function AppContent() {
   } = useStore(useShallow((state) => ({
     workspace: state.workspace,
     activeSidePanel: state.activeSidePanel,
+    activeFilePath: state.activeFilePath,
     showWorkflow: state.showWorkflow,
     setShowWorkflow: state.setShowWorkflow,
     showSettingsPage: state.showSettingsPage,
@@ -75,11 +76,10 @@ function AppContent() {
   const [isInitialized, setIsInitialized] = useState(false)
 
   useEffect(() => {
-    const { activeFilePath } = useStore.getState()
     if (activeSidePanel === 'shell' || activeFilePath) {
       useStore.getState().setNavRailExpanded(false)
     }
-  }, [activeSidePanel])
+  }, [activeSidePanel, activeFilePath])
 
   useEffect(() => {
     window.__ADNIFY_STORE__ = { getState: () => useStore.getState() }
