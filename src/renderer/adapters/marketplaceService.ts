@@ -8,7 +8,9 @@
  *   1. browse/search/detail → backendApi → 后端 /marketplace/*
  *   2. install → backendApi(/marketplace/install/:id) → 获取下载URL
  *      → IPC(scenario:marketplaceInstall) → 主进程下载+校验+解压
- *   3. checkUpdates → backendApi(/marketplace/check-updates) → 后端返回更新信息
+ *   3. 付费场景 → backendApi(/payment/scenario-order) → 创建支付订单
+ *      → 支付完成后重新调用 install 接口
+ *   4. checkUpdates → backendApi(/marketplace/check-updates) → 后端返回更新信息
  */
 
 import { backendApi, isAuthenticated } from '@services/backendApi'
@@ -21,6 +23,46 @@ import type {
   MarketplaceInstallResult,
   MarketplaceUpdateInfo,
 } from '@scenario-system/marketplace'
+
+/** 场景支付订单创建结果 */
+export interface ScenarioOrderResult {
+  success: boolean
+  orderNo?: string
+  paymentUrl?: string
+  qrCodeUrl?: string
+  mockMode?: boolean
+  error?: string
+}
+
+/** 场景安装结果（含支付流程） */
+export interface ScenarioInstallResult {
+  success: boolean
+  scenarioId?: string
+  version?: string
+  targetDir?: string
+  packageType?: string
+  config?: Record<string, unknown>
+  error?: string
+  requiresPayment?: boolean
+  price?: number
+  orderNo?: string
+  paymentUrl?: string
+  qrCodeUrl?: string
+  mockMode?: boolean
+}
+
+/** 场景依赖检查结果 */
+export interface DependencyCheckResult {
+  canInstall: boolean
+  missingDependencies: Array<{
+    id: string
+    versionRange?: string
+    required: boolean
+    available: boolean
+  }>
+  installedDependencies: string[]
+  totalDependencies: number
+}
 
 export async function browseScenarios(params: {
   category?: string
@@ -85,20 +127,23 @@ export async function getMarketplaceCategories(): Promise<MarketplaceCategory[]>
   }
 }
 
+/** 检查场景依赖是否满足 */
+export async function checkScenarioDependencies(scenarioId: string): Promise<DependencyCheckResult> {
+  if (!isAuthenticated()) {
+    return { canInstall: false, missingDependencies: [], installedDependencies: [], totalDependencies: 0 }
+  }
+
+  try {
+    return await backendApi.get<DependencyCheckResult>(`/api/v1/marketplace/dependencies/${scenarioId}`)
+  } catch {
+    return { canInstall: true, missingDependencies: [], installedDependencies: [], totalDependencies: 0 }
+  }
+}
+
 export async function installScenarioFromMarketplace(
   scenarioId: string,
   targetVersion?: string,
-): Promise<{
-  success: boolean
-  scenarioId?: string
-  version?: string
-  targetDir?: string
-  packageType?: string
-  config?: Record<string, unknown>
-  error?: string
-  requiresPayment?: boolean
-  price?: number
-}> {
+): Promise<ScenarioInstallResult> {
   if (!isAuthenticated()) {
     return { success: false, error: 'Not authenticated. Please log in first.' }
   }
@@ -109,6 +154,7 @@ export async function installScenarioFromMarketplace(
       `/api/v1/marketplace/install/${scenarioId}${versionParam}`,
     )
 
+    // 付费场景：返回支付信息，由 UI 层引导用户完成支付
     if (installResult.requiresPayment && !installResult.installed) {
       return {
         success: false,
@@ -141,6 +187,139 @@ export async function installScenarioFromMarketplace(
       error: err instanceof Error ? err.message : String(err),
     }
   }
+}
+
+/** 创建场景购买支付订单 */
+export async function createScenarioOrder(
+  scenarioId: string,
+  channel: string = 'ALIPAY',
+): Promise<ScenarioOrderResult> {
+  if (!isAuthenticated()) {
+    return { success: false, error: 'Not authenticated. Please log in first.' }
+  }
+
+  try {
+    const result = await backendApi.post<{
+      order: { orderNo: string; amount: number }
+      payment: { paymentUrl?: string; qrCodeUrl?: string; mockMode?: boolean }
+    }>('/api/v1/payment/scenario-order', { scenarioId, channel })
+
+    return {
+      success: true,
+      orderNo: result.order.orderNo,
+      paymentUrl: result.payment.paymentUrl,
+      qrCodeUrl: result.payment.qrCodeUrl,
+      mockMode: result.payment.mockMode,
+    }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    }
+  }
+}
+
+/** 模拟支付（仅 Mock 模式可用） */
+export async function mockPayScenarioOrder(orderNo: string): Promise<{
+  success: boolean
+  error?: string
+}> {
+  try {
+    await backendApi.post(`/api/v1/payment/scenario-mock-pay/${orderNo}`)
+    return { success: true }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    }
+  }
+}
+
+/** 查询订单支付状态 */
+export async function checkOrderStatus(orderNo: string): Promise<{
+  status: string
+  paidAt?: string
+}> {
+  try {
+    const result = await backendApi.get<{
+      status: string
+      paidAt?: string
+    }>(`/api/v1/payment/order/${orderNo}`)
+    return result
+  } catch {
+    return { status: 'UNKNOWN' }
+  }
+}
+
+/** 付费场景完整安装流程：创建订单 → 支付 → 轮询支付结果 → 安装 */
+export async function purchaseAndInstallScenario(
+  scenarioId: string,
+  channel: string = 'ALIPAY',
+  targetVersion?: string,
+  onPaymentCreated?: (result: ScenarioOrderResult) => void,
+  onPaymentPolling?: (orderNo: string) => void,
+): Promise<ScenarioInstallResult> {
+  // 1. 创建支付订单
+  const orderResult = await createScenarioOrder(scenarioId, channel)
+  if (!orderResult.success) {
+    return {
+      success: false,
+      error: orderResult.error || 'Failed to create order',
+    }
+  }
+
+  onPaymentCreated?.(orderResult)
+
+  // 2. Mock 模式：直接模拟支付
+  if (orderResult.mockMode && orderResult.orderNo) {
+    const mockResult = await mockPayScenarioOrder(orderResult.orderNo)
+    if (!mockResult.success) {
+      return { success: false, error: mockResult.error || 'Mock payment failed' }
+    }
+  } else {
+    // 3. 正式模式：轮询订单状态，等待用户完成支付
+    if (!orderResult.orderNo) {
+      return { success: false, error: 'No order number returned' }
+    }
+
+    const paid = await pollOrderStatus(orderResult.orderNo, onPaymentPolling)
+    if (!paid) {
+      return {
+        success: false,
+        error: 'Payment timeout or cancelled',
+        orderNo: orderResult.orderNo,
+      }
+    }
+  }
+
+  // 4. 支付成功，重新调用安装接口
+  return installScenarioFromMarketplace(scenarioId, targetVersion)
+}
+
+/** 轮询订单支付状态（最多等待 5 分钟） */
+async function pollOrderStatus(
+  orderNo: string,
+  onPolling?: (orderNo: string) => void,
+  maxWaitMs = 5 * 60 * 1000,
+  intervalMs = 3000,
+): Promise<boolean> {
+  const startTime = Date.now()
+
+  while (Date.now() - startTime < maxWaitMs) {
+    onPolling?.(orderNo)
+    const result = await checkOrderStatus(orderNo)
+
+    if (result.status === 'PAID') {
+      return true
+    }
+    if (result.status === 'CANCELLED' || result.status === 'EXPIRED') {
+      return false
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, intervalMs))
+  }
+
+  return false
 }
 
 export async function checkScenarioUpdates(
@@ -190,17 +369,7 @@ export async function uninstallScenarioFromMarketplace(scenarioId: string): Prom
 export async function updateScenarioFromMarketplace(
   scenarioId: string,
   targetVersion: string,
-): Promise<{
-  success: boolean
-  scenarioId?: string
-  version?: string
-  targetDir?: string
-  packageType?: string
-  config?: Record<string, unknown>
-  error?: string
-  requiresPayment?: boolean
-  price?: number
-}> {
+): Promise<ScenarioInstallResult> {
   if (!isAuthenticated()) {
     return { success: false, error: 'Not authenticated. Please log in first.' }
   }

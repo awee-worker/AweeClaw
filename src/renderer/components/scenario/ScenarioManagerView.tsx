@@ -16,6 +16,7 @@ import {
 import { useStore } from '@store'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { scenarioLoader } from '@scenario-system/core/ScenarioLoader'
+import { scenarioDatabaseManager } from '@scenario-system/core/ScenarioDatabaseManager'
 import { api } from '../../adapters/electronBridge'
 import { ActionButton, OverlayDialog } from '../ui'
 import DecisionOverlay from '@components/foundation/DecisionOverlay'
@@ -317,6 +318,20 @@ export function ScenarioManagerView() {
             }
 
             await scenarioRegistry.uninstallScenario(uninstallState.scenarioId)
+
+            // 清理场景专属数据库
+            try {
+                let uninstallScripts: Array<{ id: string; description?: string; sql: string }> = []
+                // 尝试从场景文件中读取卸载脚本
+                try {
+                    const filesResult = await api.scenarioInstall.loadScenarioFiles(uninstallState.scenarioId)
+                    if (filesResult.success && filesResult.config) {
+                        const cfg = filesResult.config as Record<string, unknown>
+                        uninstallScripts = (cfg.uninstallScripts || []) as Array<{ id: string; description?: string; sql: string }>
+                    }
+                } catch { /* 场景文件可能已不存在 */ }
+                await scenarioDatabaseManager.drop(uninstallState.scenarioId, uninstallScripts)
+            } catch (e) { logger.scenario.warn('Failed to drop scenario database:', e) }
 
             try {
                 await api.scenarioInstall.deleteScenarioDir(uninstallState.scenarioId)

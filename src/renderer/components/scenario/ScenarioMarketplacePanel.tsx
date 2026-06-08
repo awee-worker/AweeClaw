@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Search, Download, Star, Tag, ChevronRight, Shield, Clock, ArrowLeft, Package, Heart, Stethoscope, Scale, GraduationCap, Code2, BarChart3, PenTool, Sparkles, TrendingUp, BookOpen, Globe, Zap, RefreshCw, CheckCircle2 } from 'lucide-react'
+import { Search, Download, Star, Tag, Shield, Clock, ArrowLeft, Package, Heart, Stethoscope, Scale, GraduationCap, Code2, BarChart3, PenTool, Sparkles, TrendingUp, BookOpen, Globe, Zap, RefreshCw, CheckCircle2, User } from 'lucide-react'
 import { useStore } from '@store'
 import { ActionButton } from '../ui'
 import { toast } from '../foundation/NotificationProvider'
@@ -335,9 +335,10 @@ export function ScenarioMarketplacePanel() {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="px-4 py-3 border-b border-border/20 bg-background/80 backdrop-blur-sm">
-        <div className="flex items-center gap-2 mb-2">
+    <div className="flex flex-col h-full bg-surface/10">
+      {/* 顶部搜索栏 - 加深背景提升对比度 */}
+      <div className="px-4 py-3 border-b border-border/20 bg-surface/30 backdrop-blur-sm">
+        <div className="flex items-center gap-2 mb-2.5">
           <Globe className="w-4 h-4 text-accent" />
           <span className="text-sm font-semibold text-text-primary">{t('app.scenariomarketplace', language as Language)}</span>
           <button
@@ -355,12 +356,13 @@ export function ScenarioMarketplacePanel() {
             value={searchQuery}
             onChange={e => { setSearchQuery(e.target.value); setPage(1) }}
             placeholder={t('app.searchscenarios', language as Language)}
-            className="w-full h-8 pl-8 pr-3 rounded-lg bg-surface/30 border border-border/15 text-xs text-text-primary placeholder:text-text-muted/50 outline-none focus:border-accent/30 transition-colors"
+            className="w-full h-9 pl-8 pr-3 rounded-lg bg-background/80 border border-border/25 text-xs text-text-primary placeholder:text-text-muted/50 outline-none focus:border-accent/40 focus:bg-background transition-colors shadow-sm"
           />
         </div>
       </div>
 
-      <div className="px-4 py-2 border-b border-border/10">
+      {/* 分类标签栏 */}
+      <div className="px-4 py-2 border-b border-border/15 bg-surface/15">
         <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
           <button
             onClick={() => { setSelectedCategory(null); setPage(1) }}
@@ -390,35 +392,43 @@ export function ScenarioMarketplacePanel() {
         </div>
       </div>
 
+      {/* 内容区域 */}
       <div className="flex-1 overflow-auto">
+        {/* 推荐场景 */}
         {featured.length > 0 && !searchQuery && !selectedCategory && (
           <div className="px-4 pt-4 pb-2">
             <h3 className="text-sm font-semibold text-text-primary mb-3">{t('app.featured', language as Language)}</h3>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-3">
               {featured.slice(0, 4).map(item => (
                 <button
                   key={item.id}
                   onClick={() => setSelectedItem(item)}
-                  className="p-3 rounded-xl border border-border/20 bg-surface/20 hover:bg-surface/40 hover:border-border/40 shadow-sm shadow-black/5 text-left transition-all group"
+                  className="p-3.5 rounded-xl border border-border/25 bg-background/60 hover:bg-background/90 hover:border-border/50 shadow-sm shadow-black/5 text-left transition-all group"
                 >
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center text-accent">
+                  <div className="flex items-center gap-2.5 mb-2">
+                    <div className="w-9 h-9 rounded-lg bg-accent/10 flex items-center justify-center text-accent">
                       {CATEGORY_ICONS_SM[item.category] || <Package className="w-4 h-4" />}
                     </div>
-                    <span className="text-[12px] font-medium text-text-primary truncate">
-                      {language === 'zh' ? item.nameZh : item.name}
-                    </span>
+                    <div className="flex-1 min-w-0">
+                      <span className="text-[12px] font-semibold text-text-primary truncate block">
+                        {language === 'zh' ? item.nameZh : item.name}
+                      </span>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        {renderStars(item.rating)}
+                        <span className="text-[10px] text-text-muted">({item.downloads})</span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {renderStars(item.rating)}
-                    <span className="text-[10px] text-text-muted">({item.downloads} {t('app.dl', language as Language)})</span>
-                  </div>
+                  <p className="text-[11px] text-text-muted/70 line-clamp-2 leading-relaxed">
+                    {language === 'zh' ? item.descriptionZh : item.description}
+                  </p>
                 </button>
               ))}
             </div>
           </div>
         )}
 
+        {/* 场景列表 */}
         <div className="px-4 py-3">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-text-primary">
@@ -437,29 +447,31 @@ export function ScenarioMarketplacePanel() {
             </div>
           )}
 
-          <div className="space-y-2">
+          {/* 大卡片网格 */}
+          <div className="grid grid-cols-2 gap-3">
             {items.map(item => (
               <button
                 key={item.id}
                 onClick={() => setSelectedItem(item)}
-                className="w-full rounded-xl border border-border/20 bg-surface/20 hover:bg-surface/40 hover:border-border/40 text-left transition-all duration-200 shadow-sm shadow-black/5 group overflow-hidden"
+                className="rounded-xl border border-border/25 bg-background/60 hover:bg-background/90 hover:border-border/50 text-left transition-all duration-200 shadow-sm shadow-black/5 group overflow-hidden"
               >
-                <div className="px-4 py-3.5">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-surface/60 flex items-center justify-center text-text-muted flex-shrink-0">
+                <div className="p-4">
+                  {/* 头部：图标 + 名称 + 标签 */}
+                  <div className="flex items-start gap-3">
+                    <div className="w-11 h-11 rounded-xl bg-surface/80 flex items-center justify-center text-text-muted flex-shrink-0 group-hover:bg-accent/10 group-hover:text-accent transition-colors">
                       {CATEGORY_ICONS[item.category] || <Package className="w-5 h-5" strokeWidth={1.5} />}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-text-primary truncate">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[13px] font-semibold text-text-primary truncate">
                           {language === 'zh' ? item.nameZh : item.name}
                         </span>
                         {item.isFree ? (
-                          <span className="flex items-center gap-0.5 text-[10px] font-medium text-green-400 bg-green-400/10 px-1.5 py-0.5 rounded-full flex-shrink-0">
+                          <span className="text-[10px] font-medium text-green-400 bg-green-400/10 px-1.5 py-0.5 rounded-full flex-shrink-0">
                             {t('app.free', language as Language)}
                           </span>
                         ) : (
-                          <span className="flex items-center gap-0.5 text-[10px] font-medium text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded-full flex-shrink-0">
+                          <span className="text-[10px] font-medium text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded-full flex-shrink-0">
                             ¥{item.price}
                           </span>
                         )}
@@ -470,26 +482,66 @@ export function ScenarioMarketplacePanel() {
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-2 mt-0.5 text-[11px] text-text-muted">
+                      {/* 评分 + 下载 + 版本 */}
+                      <div className="flex items-center gap-2 mt-1 text-[11px] text-text-muted">
                         {renderStars(item.rating)}
                         <span>{item.downloads} {t('app.dl2', language as Language)}</span>
                         <span>·</span>
                         <span>v{item.version}</span>
                       </div>
                     </div>
-                    <ChevronRight className="w-4 h-4 text-text-muted/30 group-hover:text-text-muted/60 flex-shrink-0" />
+                  </div>
+
+                  {/* 描述 */}
+                  <p className="text-[12px] text-text-muted/80 mt-2.5 line-clamp-2 leading-relaxed">
+                    {language === 'zh' ? item.descriptionZh : item.description}
+                  </p>
+
+                  {/* 标签 */}
+                  {item.tags && item.tags.length > 0 && (
+                    <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
+                      {item.tags.slice(0, 3).map(tag => (
+                        <span key={tag} className="text-[10px] px-1.5 py-0.5 rounded-md bg-surface/50 text-text-muted/70 border border-border/15 flex items-center gap-0.5">
+                          <Tag className="w-2.5 h-2.5" />
+                          {tag}
+                        </span>
+                      ))}
+                      {item.tags.length > 3 && (
+                        <span className="text-[10px] text-text-muted/50">+{item.tags.length - 3}</span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 底部：作者 + 安装按钮 */}
+                  <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-border/10">
+                    <div className="flex items-center gap-1.5 text-[11px] text-text-muted/60">
+                      <User className="w-3 h-3" />
+                      <span>{item.author || 'AweeClaw'}</span>
+                    </div>
+                    {scenarioRegistry.has(item.id) ? (
+                      <span className="flex items-center gap-1 text-[11px] text-accent/70">
+                        <CheckCircle2 className="w-3 h-3" />
+                        {t('app.installed', language as Language)}
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-[11px] text-accent opacity-0 group-hover:opacity-100 transition-opacity font-medium">
+                        <Download className="w-3 h-3" />
+                        {t('app.installscenario', language as Language)}
+                      </span>
+                    )}
                   </div>
                 </div>
               </button>
             ))}
           </div>
 
+          {/* 分页 */}
           {total > 20 && (
             <div className="flex items-center justify-center gap-2 mt-4">
               <button
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page <= 1}
-                className="px-3 py-1.5 text-[11px] rounded-lg bg-surface/30 border border-border/15 text-text-muted disabled:opacity-40 hover:bg-surface/50 transition-colors"
+                className="px-3 py-1.5 text-[11px] rounded-lg bg-background/60 border border-border/20 text-text-muted disabled:opacity-40 hover:bg-background/90 transition-colors"
               >
                 {t('app.prev', language as Language)}
               </button>
@@ -497,7 +549,7 @@ export function ScenarioMarketplacePanel() {
               <button
                 onClick={() => setPage(p => p + 1)}
                 disabled={page * 20 >= total}
-                className="px-3 py-1.5 text-[11px] rounded-lg bg-surface/30 border border-border/15 text-text-muted disabled:opacity-40 hover:bg-surface/50 transition-colors"
+                className="px-3 py-1.5 text-[11px] rounded-lg bg-background/60 border border-border/20 text-text-muted disabled:opacity-40 hover:bg-background/90 transition-colors"
               >
                 {t('app.next', language as Language)}
               </button>
