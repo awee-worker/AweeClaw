@@ -2409,6 +2409,8 @@ export const zh = {
   'selectItem': '选择项目',
   'setupRequired': '需要配置',
   'setupRequiredDesc': '请配置您的 API Key 以开始使用 AI 功能。',
+  'cloudLoginRequired': '需要登录',
+  'cloudLoginRequiredDesc': '请登录您的账号以使用云端 AI 功能。',
   'splitTerminal': '拆分终端',
   'terminal': '终端',
   'toolApprove': '批准',

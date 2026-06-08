@@ -28,7 +28,7 @@ export const WINDOW_DEFAULTS = {
   HEIGHT: 1000,
   MIN_WIDTH: 1200,
   MIN_HEIGHT: 700,
-  BACKGROUND_COLOR: '#09090b',
+  BACKGROUND_COLOR: '#f5faff',
 } as const
 
 // ==========================================

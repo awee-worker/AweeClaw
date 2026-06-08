@@ -31,15 +31,15 @@ const WINDOW_HEIGHT = 214
 
 const DEFAULT_PRESENTATION: ShutdownWindowPresentation = {
   language: 'zh',
-  themeType: 'dark',
-  background: '18 18 21',
-  surface: '25 25 29',
-  border: '40 40 48',
-  text: '242 242 247',
-  muted: '161 161 180',
-  accent: '139 92 246',
-  success: '52 211 153',
-  warning: '251 191 36',
+  themeType: 'light',
+  background: '245 252 255',
+  surface: '248 249 250',
+  border: '222 226 230',
+  text: '33 37 41',
+  muted: '134 142 150',
+  accent: '37 99 235',
+  success: '22 163 74',
+  warning: '217 119 6',
 }
 
 const COPY = {

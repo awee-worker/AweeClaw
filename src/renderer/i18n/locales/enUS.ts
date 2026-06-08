@@ -2410,6 +2410,8 @@ export const en = {
   'selectItem': 'Select item',
   'setupRequired': 'Setup Required',
   'setupRequiredDesc': 'Please configure your API key to start using AI features.',
+  'cloudLoginRequired': 'Login Required',
+  'cloudLoginRequiredDesc': 'Please log in to your account to use cloud AI features.',
   'splitTerminal': 'Split Terminal',
   'terminal': 'Terminal',
   'toolApprove': 'Approve',

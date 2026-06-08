@@ -337,20 +337,22 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
 
     if (persisted.refreshToken) {
       try {
-        const data = await backendApi.post<{ accessToken: string; refreshToken: string }>(
-          '/api/v1/auth/refresh',
-          { refreshToken: persisted.refreshToken },
-        );
-        setTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken });
-        persistAuth({
-          serverUrl: persisted.serverUrl,
-          accessToken: data.accessToken,
-          refreshToken: data.refreshToken,
-          cloudMode: persisted.cloudMode,
-        });
-        sessionRestored = true;
+        const refreshed = await tryRefreshToken();
+        if (refreshed) {
+          // tryRefreshToken 成功，tokens 已在 backendApi 内部更新
+          // 同步持久化存储
+          const currentTokens = getTokens();
+          if (currentTokens) {
+            persistAuth({
+              serverUrl: persisted.serverUrl,
+              accessToken: currentTokens.accessToken,
+              refreshToken: currentTokens.refreshToken,
+              cloudMode: persisted.cloudMode,
+            });
+          }
+          sessionRestored = true;
+        }
       } catch {
-        // refreshToken 也失效了，尝试用旧 accessToken 请求 profile 作为最后手段
         logger.system.warn('[Auth] Refresh token failed, trying existing access token');
       }
     }

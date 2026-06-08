@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" style="background:#09090b">
+<html lang="en" style="background:#f5faff">
 
 <head>
   <meta charset="UTF-8" />
@@ -9,12 +9,24 @@
 
   <script>
     (function () {
-      var bg = '#121215';
-      var loaderBg = '#121215';
-      var isLight = false;
+      // StorageService 使用 "aweeclaw:" 前缀和 JSON 包装格式 { v: value }
+      function readStorageValue(key) {
+        try {
+          var raw = localStorage.getItem('aweeclaw:' + key);
+          if (raw === null) return null;
+          var entry = JSON.parse(raw);
+          return entry.v !== undefined ? entry.v : null;
+        } catch (e) {
+          return null;
+        }
+      }
+
+      var bg = '#f5faff';
+      var loaderBg = '#f5faff';
+      var isLight = true;
       try {
-        var themeBg = localStorage.getItem('aweeclaw-theme-bg');
-        var themeType = localStorage.getItem('aweeclaw-theme-type');
+        var themeBg = readStorageValue('aweeclaw-theme-bg');
+        var themeType = readStorageValue('aweeclaw-theme-type');
 
         if (themeBg) {
           if (themeBg.indexOf(' ') !== -1) {
@@ -26,17 +38,21 @@
           loaderBg = bg;
         } else {
           var themes = {
-            'aweeclaw-dark': { bg: '#121215', twBg: '18 18 21' },
-            'midnight': { bg: '#161B22', twBg: '22 27 34' },
-            'cyberpunk': { bg: '#030305', twBg: '3 3 5' },
-            'dawn': { bg: '#FFFFFF', twBg: '255 255 255' }
+            'aweeclaw-dark': { bg: '#161b22', twBg: '22 27 34', light: false },
+            'aweeclaw-light': { bg: '#f5faff', twBg: '245 252 255', light: true },
+            'purple-dark': { bg: '#121215', twBg: '18 18 21', light: false },
+            'purple-light': { bg: '#f8f5ff', twBg: '248 245 255', light: true },
+            'lobster-red-dark': { bg: '#140e0c', twBg: '20 14 12', light: false },
+            'lobster-red-light': { bg: '#fffcf9', twBg: '255 252 249', light: true },
+            'forest-green-dark': { bg: '#0e1614', twBg: '14 22 20', light: false },
+            'forest-green-light': { bg: '#f5fcfc', twBg: '245 252 252', light: true },
           };
-          var themeId = localStorage.getItem('aweeclaw-theme-id');
+          var themeId = readStorageValue('aweeclaw-theme-id');
           if (themeId && themes[themeId]) {
             bg = themes[themeId].bg;
             loaderBg = themes[themeId].bg;
             document.documentElement.style.setProperty('--background', themes[themeId].twBg);
-            isLight = themeId === 'dawn';
+            isLight = themes[themeId].light;
           }
         }
 
@@ -72,15 +88,15 @@
 
   <style>
     :root {
-      --loader-bg: #121215;
+      --loader-bg: #f5faff;
       --loader-accent: #39bef8;
       --loader-accent-rgb: 139, 92, 246;
       --loader-accent2-rgb: 59, 130, 246;
-      --loader-text: #fafafa;
-      --loader-text-dim: #71717a;
-      --loader-surface: #18181b;
-      --loader-logo-url: url('%BASE_URL%brand/logos/app.png');
-      --loader-glow-opacity: 0.12;
+      --loader-text: #1a1a2e;
+      --loader-text-dim: #6b7280;
+      --loader-surface: #f3f4f6;
+      --loader-logo-url: url('%BASE_URL%brand/logos/app-light.png');
+      --loader-glow-opacity: 0.08;
     }
 
     * {

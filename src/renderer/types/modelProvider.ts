@@ -53,8 +53,8 @@ export interface ModelProviderPanel {
   configs: Record<string, ProviderModelConfig>
 }
 
-export function isCustomProvider(providerId: string): boolean {
-  return providerId.startsWith('custom-')
+export function isCustomProvider(providerId: string | undefined): boolean {
+  return !!providerId && providerId.startsWith('custom-')
 }
 
 export function generateCustomProviderId(): string {

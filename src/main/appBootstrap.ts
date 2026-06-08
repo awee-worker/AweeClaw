@@ -39,7 +39,7 @@ const WINDOW_CONFIG = {
   EMPTY_HEIGHT: 680,
   EMPTY_MIN_WIDTH: 800,
   EMPTY_MIN_HEIGHT: 500,
-  BG_COLOR: '#09090b',
+  BG_COLOR: '#f5faff',
 } as const
 
 // ==========================================
@@ -250,7 +250,7 @@ function registerWindowDiagnostics(win: BrowserWindow): void {
 }
 
 function getShutdownFallbackPresentation(): ShutdownWindowPresentation {
-  const themeBg = normalizeRgbColor(configStore?.get('themeBg'), '18 18 21')
+  const themeBg = normalizeRgbColor(configStore?.get('themeBg'), '245 252 255')
   const themeType = (configStore?.get('themeId') as string || '').endsWith('-light') ? 'light' : 'dark'
 
   return {

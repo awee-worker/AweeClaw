@@ -89,6 +89,8 @@ function buildRenderableMessageItems(
 export default function ChatPanel() {
   const {
     llmConfig,
+    cloudMode,
+    isAuthenticated,
     workspacePath,
     openFile,
     setActiveFile,
@@ -103,6 +105,8 @@ export default function ChatPanel() {
     setTeamModeEnabled,
   } = useStore(useShallow(s => ({
     llmConfig: s.llmConfig,
+    cloudMode: s.cloudMode,
+    isAuthenticated: s.isAuthenticated,
     workspacePath: s.workspacePath,
     openFile: s.openFile,
     setActiveFile: s.setActiveFile,
@@ -1098,7 +1102,8 @@ export default function ChatPanel() {
     }
   }, [showFileMention, handleSubmit])
 
-  const hasApiKey = !!llmConfig.apiKey
+  const hasApiKey = cloudMode === 'cloud' && isAuthenticated ? true : !!llmConfig.apiKey
+  const needsCloudLogin = cloudMode === 'cloud' && !isAuthenticated
 
   // 处理回退到检查点
   const handleRestore = useCallback(async (messageId: string) => {
@@ -1374,13 +1379,17 @@ export default function ChatPanel() {
             </div>
           ) : (
           <>
-          {/* API Key Warning */}
+          {/* API Key / Cloud Login Warning */}
           {!hasApiKey && (
             <div className={`m-4 p-4 border border-warning/20 bg-warning/5 rounded-xl flex gap-3 backdrop-blur-sm relative z-10 ${isChatPrimary ? 'max-w-[800px] mx-auto' : ''}`}>
               <AlertTriangle className="w-5 h-5 text-warning flex-shrink-0" />
               <div>
-                <span className="font-medium text-sm text-warning block mb-1">{t('setupRequired', language)}</span>
-                <p className="text-xs text-text-muted">{t('setupRequiredDesc', language)}</p>
+                <span className="font-medium text-sm text-warning block mb-1">
+                  {needsCloudLogin ? t('cloudLoginRequired', language) : t('setupRequired', language)}
+                </span>
+                <p className="text-xs text-text-muted">
+                  {needsCloudLogin ? t('cloudLoginRequiredDesc', language) : t('setupRequiredDesc', language)}
+                </p>
               </div>
             </div>
           )}
@@ -1397,6 +1406,7 @@ export default function ChatPanel() {
                   setImages={setImages}
                   isStreaming={isStreaming}
                   hasApiKey={hasApiKey}
+                  needsCloudLogin={needsCloudLogin}
                   hasPendingToolCall={!!pendingToolCall}
                   chatMode={chatMode}
                   setChatMode={setChatMode}

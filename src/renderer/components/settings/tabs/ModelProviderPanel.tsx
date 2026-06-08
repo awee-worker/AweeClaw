@@ -780,14 +780,14 @@ export function ModelProviderPanel({
     (cloudProvider: CloudProviderModel) => {
       const providerName = cloudProvider.provider.toLowerCase()
       const firstModel = cloudProvider.models[0] || ''
-      setLocalConfig((prev) => ({
-        ...prev,
+      setLocalConfig({
+        ...localConfig,
         provider: providerName,
         model: firstModel,
-        baseUrl: cloudProvider.baseUrl || prev.baseUrl,
-      }))
+        baseUrl: cloudProvider.baseUrl || localConfig.baseUrl,
+      })
     },
-    [setLocalConfig],
+    [localConfig, setLocalConfig],
   )
 
   const cloudProviderOptions = useMemo(() => {
@@ -802,8 +802,8 @@ export function ModelProviderPanel({
   }, [cloudModels])
 
   const cloudModelOptions = useMemo(() => {
-    const currentProvider = localConfig.provider.toUpperCase()
-    const found = cloudModels?.find((cp) => cp.provider === currentProvider || cp.provider.toLowerCase() === localConfig.provider)
+    const currentProvider = (localConfig.provider || '').toUpperCase()
+    const found = cloudModels?.find((cp) => cp.provider === currentProvider || (localConfig.provider && cp.provider.toLowerCase() === localConfig.provider))
     if (!found) return []
     return found.models.map((m) => ({ value: m, label: m }))
   }, [cloudModels, localConfig.provider])
@@ -924,11 +924,11 @@ export function ModelProviderPanel({
 
   const syncCustomHeaders = useCallback((nextHeaders: EditableHeader[]) => {
     setCustomHeaders(nextHeaders)
-    setLocalConfig(prev => ({
-      ...prev,
+    setLocalConfig({
+      ...localConfig,
       headers: mergeHeaders(defaultHeaders, nextHeaders),
-    }))
-  }, [defaultHeaders, setLocalConfig])
+    })
+  }, [defaultHeaders, localConfig, setLocalConfig])
 
   // Sync logitBiasString with localConfig
   useEffect(() => {
@@ -1022,10 +1022,10 @@ export function ModelProviderPanel({
 
     if (models.includes(localConfig.model || '')) {
       const remaining = (currentConfig.customModels || []).filter(m => !models.includes(m))
-      setLocalConfig(prev => ({
-        ...prev,
+      setLocalConfig({
+        ...localConfig,
         model: remaining.length > 0 ? remaining[0] : '',
-      }))
+      })
     }
 
     if (models.length === 1) {
@@ -1105,13 +1105,13 @@ export function ModelProviderPanel({
       baseUrl: nextConfig.baseUrl || providerInfo?.baseUrl || '',
       timeout: nextConfig.timeout || providerInfo?.defaults.timeout || 120000,
       model: nextConfig.model || providerInfo?.models[0] || '',
-      headers: nextConfig.headers,
+      headers: nextConfig.headers || {},
       openAICompatibilityProfile: resolveOpenAICompatibilityProfile(
         providerId,
         nextConfig.protocol || providerInfo?.protocol,
         nextConfig.openAICompatibilityProfile,
       ),
-      protocol: nextConfig.protocol || providerInfo?.protocol,
+      protocol: nextConfig.protocol || providerInfo?.protocol || 'openai',
     })
     setIsAddingCustom(false)
   }
@@ -1146,13 +1146,13 @@ export function ModelProviderPanel({
       baseUrl: customConfig.baseUrl || '',
       timeout: customConfig.timeout || 120000,
       model: customConfig.model || models[0] || '',
-      headers: customConfig.headers,
+      headers: customConfig.headers || {},
       openAICompatibilityProfile: resolveOpenAICompatibilityProfile(
         id,
         customConfig.protocol,
         customConfig.openAICompatibilityProfile,
       ),
-      protocol: customConfig.protocol,
+      protocol: customConfig.protocol || 'openai',
     })
     setIsAddingCustom(false)
   }
@@ -1507,7 +1507,7 @@ export function ModelProviderPanel({
                 </label>
                 <TextField
                   type={showApiKey ? 'text' : 'password'}
-                  value={localConfig.apiKey}
+                  value={localConfig.apiKey ?? ''}
                   onChange={(e) => setLocalConfig({ ...localConfig, apiKey: e.target.value })}
                   placeholder={PROVIDERS[localConfig.provider]?.auth.placeholder || 'sk-...'}
                   className="bg-background/40 border-border/60 focus:border-accent/50 focus:ring-accent/20 font-mono text-xs h-10 transition-all"
@@ -1844,7 +1844,7 @@ export function ModelProviderPanel({
                         </p>
                       </div>
                       <ToggleSwitch
-                        checked={localConfig.enableThinking}
+                        checked={localConfig.enableThinking ?? false}
                         onChange={(e) => setLocalConfig({ ...localConfig, enableThinking: e.target.checked })}
                         className="flex-shrink-0"
                       />

@@ -23,7 +23,7 @@ export const ThemeManager: React.FC<ThemeManagerProps> = ({ children }) => {
         const bgColors = (typeof theme.colors.background === 'string' ? theme.colors.background : '').split(' ').map(Number);
 
         // Convert Tailwind RGB string (e.g. "255 255 255") to Hex for Electron
-        let hexColor = isLight ? '#ffffff' : '#09090b';
+        let hexColor = isLight ? '#ffffff' : '#161b22';
         if (bgColors.length === 3 && !bgColors.some(isNaN)) {
             const [r, g, b] = bgColors;
             hexColor = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;

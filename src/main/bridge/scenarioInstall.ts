@@ -883,26 +883,6 @@ export function registerScenarioInstallIpcHandlers(
     }
   })
 
-  /** 获取场景回滚信息 */
-  safeIpcHandle('scenario:getRollbackInfo', async (_event, scenarioId: string) => {
-    const backupDir = path.join(getScenariosDir(), '.backups', scenarioId)
-    const hasBackup = fs.existsSync(backupDir)
-
-    let backupVersion: string | null = null
-    let backupDate: string | null = null
-
-    if (hasBackup) {
-      const config = readScenarioConfig(backupDir)
-      backupVersion = config?.version || null
-      try {
-        const stat = fs.statSync(backupDir)
-        backupDate = stat.mtime.toISOString()
-      } catch { /* ignore */ }
-    }
-
-    return { hasBackup, backupVersion, backupDate }
-  })
-
   logger.ipc.info('[ScenarioInstall] IPC handlers registered')
 }
 
