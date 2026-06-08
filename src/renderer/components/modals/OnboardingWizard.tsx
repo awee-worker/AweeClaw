@@ -1,6 +1,7 @@
 /**
  * 首次使用引导向导
- * 简化版 - 只包含基础设置
+ * 核心步骤：语言 → 主题 → 工作区 → 完成
+ * AI 模型配置为可选项，可在完成页或稍后设置中配置
  */
 
 import { api } from '../../adapters/electronBridge'
@@ -8,7 +9,8 @@ import React, { useState, useEffect } from 'react'
 import { logger } from '@shared/toolkit/LogEngine'
 import {
   ChevronRight, ChevronLeft, Check, Sparkles, Palette,
-  Globe, Cpu, FolderOpen, Rocket, Eye, EyeOff, Settings
+  Globe, Cpu, FolderOpen, Rocket, Eye, EyeOff, Settings,
+  Monitor
 } from 'lucide-react'
 import { useStore, LLMConfig } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -26,9 +28,9 @@ interface OnboardingWizardProps {
   onComplete: () => void
 }
 
-type Step = 'welcome' | 'language' | 'theme' | 'provider' | 'workspace' | 'complete'
+type Step = 'welcome' | 'language' | 'theme' | 'workspace' | 'complete'
 
-const STEPS: Step[] = ['welcome', 'language', 'theme', 'provider', 'workspace', 'complete']
+const STEPS: Step[] = ['welcome', 'language', 'theme', 'workspace', 'complete']
 
 const LANGUAGES: { id: Language; name: string; native: string }[] = [
   { id: 'en', name: 'English', native: 'English' },
@@ -50,12 +52,23 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
     maxTokens: LLM_DEFAULTS.maxTokens,
   })
   const [showApiKey, setShowApiKey] = useState(false)
+  const [showProviderSetup, setShowProviderSetup] = useState(false)
   const [direction, setDirection] = useState(0)
   const [isExiting, setIsExiting] = useState(false)
+  const [defaultWorkspacePath, setDefaultWorkspacePath] = useState<string | null>(null)
 
   const allThemes = themeManager.getAllThemes()
   const currentStepIndex = STEPS.indexOf(currentStep)
   const isZh = selectedLanguage === 'zh'
+
+  // 预计算默认工作区路径
+  useEffect(() => {
+    api.settings.getUserDataPath().then((userDataPath: string) => {
+      // 默认工作区在用户数据目录下的 projects 文件夹
+      const path = require('path') as typeof import('path')
+      setDefaultWorkspacePath(path.join(userDataPath, 'projects'))
+    }).catch(() => {})
+  }, [])
 
   useEffect(() => {
     themeManager.setTheme(selectedTheme)
@@ -238,19 +251,28 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
                   {currentStep === 'theme' && (
                     <ThemeStep isZh={isZh} themes={allThemes} selectedTheme={selectedTheme} onSelect={setSelectedTheme} />
                   )}
-                  {currentStep === 'provider' && (
-                    <ProviderStep
+                  {currentStep === 'workspace' && (
+                    <WorkspaceStep
                       isZh={isZh}
-                      config={providerConfig}
-                      setConfig={setProviderConfig}
+                      workspacePath={workspacePath}
+                      onOpenFolder={handleOpenFolder}
+                      defaultWorkspacePath={defaultWorkspacePath}
+                    />
+                  )}
+                  {currentStep === 'complete' && (
+                    <CompleteStep
+                      isZh={isZh}
+                      selectedLanguage={selectedLanguage}
+                      selectedTheme={selectedTheme}
+                      workspacePath={workspacePath}
+                      providerConfig={providerConfig}
+                      showProviderSetup={showProviderSetup}
+                      setShowProviderSetup={setShowProviderSetup}
+                      setProviderConfig={setProviderConfig}
                       showApiKey={showApiKey}
                       setShowApiKey={setShowApiKey}
                     />
                   )}
-                  {currentStep === 'workspace' && (
-                    <WorkspaceStep isZh={isZh} workspacePath={workspacePath} onOpenFolder={handleOpenFolder} />
-                  )}
-                  {currentStep === 'complete' && <CompleteStep isZh={isZh} />}
                 </motion.div>
               </AnimatePresence>
             </div>
@@ -538,140 +560,16 @@ function ThemeStep({
 }
 
 
-function ProviderStep({
-  isZh,
-  config,
-  setConfig,
-  showApiKey,
-  setShowApiKey
-}: {
-  isZh: boolean
-  config: LLMConfig
-  setConfig: (config: LLMConfig) => void
-  showApiKey: boolean
-  setShowApiKey: (show: boolean) => void
-}) {
-  const providers = Object.values(PROVIDERS).filter(p => p.id !== 'custom')
-  const selectedProvider = PROVIDERS[config.provider]
-
-  return (
-    <div className="px-10 py-10 h-full overflow-y-auto">
-      <div className="flex items-center gap-4 mb-8">
-        <div className="w-12 h-12 rounded-2xl bg-accent/10 border border-accent/20 flex items-center justify-center">
-          <Cpu className="w-6 h-6 text-accent" />
-        </div>
-        <div>
-          <h2 className="text-2xl font-bold text-text-primary">
-            {isZh ? '配置 AI 模型' : 'Configure AI Model'}
-          </h2>
-          <p className="text-text-muted mt-1">
-            {isZh ? '连接你的 AI 服务' : 'Connect your AI service'}
-          </p>
-        </div>
-      </div>
-
-      <div className="space-y-8">
-        <div className="space-y-3">
-          <label className="text-xs font-bold text-text-muted uppercase tracking-wider ml-1">
-            {isZh ? '服务提供商' : 'Provider'}
-          </label>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {providers.map(p => (
-              <motion.button
-                key={p.id}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => setConfig({
-                  ...config,
-                  provider: p.id,
-                  model: p.models[0],
-                  baseUrl: undefined
-                })}
-                className={`px-3 py-4 rounded-xl border text-sm font-medium transition-all flex flex-col items-center gap-2 ${config.provider === p.id
-                  ? 'border-accent bg-accent/10 text-accent shadow-lg shadow-accent/5 ring-1 ring-accent/50'
-                  : 'border-border hover:border-white/20 text-text-muted bg-white/5'
-                  }`}
-              >
-                {/* 这里的 Icon 可以在 providers 配置中增加，暂时用文字首字母代替图形 */}
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-lg font-bold ${config.provider === p.id ? 'bg-accent text-white' : 'bg-white/10'}`}>
-                  {p.displayName[0]}
-                </div>
-                <span>{p.displayName}</span>
-              </motion.button>
-            ))}
-          </div>
-        </div>
-
-        {selectedProvider && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            className="space-y-3"
-          >
-            <label className="text-xs font-bold text-text-muted uppercase tracking-wider ml-1">
-              {isZh ? '默认模型' : 'Default Model'}
-            </label>
-            <DropdownSelector
-              value={config.model}
-              onChange={(value) => setConfig({ ...config, model: value })}
-              options={selectedProvider.models.map(m => ({ value: m, label: m }))}
-              className="w-full bg-white/5 border-border hover:border-accent/50 transition-colors py-2"
-            />
-          </motion.div>
-        )}
-
-        <div className="space-y-3">
-          <label className="text-xs font-bold text-text-muted uppercase tracking-wider ml-1 flex items-center justify-between">
-            <span>API Key</span>
-            <span className="text-[11px] font-normal normal-case opacity-50 bg-white/5 px-2 py-0.5 rounded-full">
-              {isZh ? '可稍后配置' : 'Optional for now'}
-            </span>
-          </label>
-          <div className="relative group">
-            <TextField
-              type={showApiKey ? 'text' : 'password'}
-              value={config.apiKey}
-              onChange={(e) => setConfig({ ...config, apiKey: e.target.value })}
-              placeholder={selectedProvider?.auth.placeholder || 'sk-...'}
-              className="w-full pr-10 bg-white/5 border-border focus:border-accent focus:ring-1 focus:ring-accent/50 transition-all py-2.5"
-            />
-            <button
-              type="button"
-              onClick={() => setShowApiKey(!showApiKey)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary transition-colors p-1"
-            >
-              {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            </button>
-          </div>
-          {selectedProvider?.auth.helpUrl && (
-            <div className="flex justify-end">
-              <a
-                href={selectedProvider.auth.helpUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs text-accent hover:text-accent-hover hover:underline inline-flex items-center gap-1 transition-colors"
-                onClick={(e) => { e.preventDefault(); api.file.openExternalUrl(selectedProvider.auth.helpUrl!) }}
-              >
-                <span>{isZh ? '获取 API Key' : 'Get API Key'}</span>
-                <ChevronRight className="w-3 h-3" />
-              </a>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-
 function WorkspaceStep({
   isZh,
   workspacePath,
-  onOpenFolder
+  onOpenFolder,
+  defaultWorkspacePath,
 }: {
   isZh: boolean
   workspacePath: string | null
   onOpenFolder: () => void
+  defaultWorkspacePath: string | null
 }) {
   return (
     <div className="px-10 py-10 h-full flex flex-col">
@@ -681,15 +579,15 @@ function WorkspaceStep({
         </div>
         <div>
           <h2 className="text-2xl font-bold text-text-primary">
-            {isZh ? '打开项目' : 'Open Project'}
+            {isZh ? '工作区目录' : 'Workspace Directory'}
           </h2>
           <p className="text-text-muted mt-1">
-            {isZh ? '选择一个文件夹开始编程' : 'DropdownSelector a folder to start coding'}
+            {isZh ? '选择项目文件的存放位置' : 'Choose where to store your project files'}
           </p>
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col items-center justify-center">
+      <div className="flex-1 flex flex-col items-center justify-center gap-6">
         {workspacePath ? (
           <motion.div
             initial={{ scale: 0.8, opacity: 0 }}
@@ -700,37 +598,70 @@ function WorkspaceStep({
               <div className="absolute inset-0 rounded-[2rem] blur-xl bg-status-success/20 -z-10" />
               <Check className="w-12 h-12 text-status-success" />
             </div>
-            <h3 className="text-text-primary font-bold text-xl mb-3">{isZh ? '项目已就绪' : 'Project Ready'}</h3>
+            <h3 className="text-text-primary font-bold text-xl mb-3">{isZh ? '工作区已就绪' : 'Workspace Ready'}</h3>
             <div className="text-sm text-text-muted font-mono bg-white/5 px-6 py-4 rounded-2xl border border-border break-all shadow-inner">
               {workspacePath}
             </div>
             <button
               onClick={onOpenFolder}
-              className="mt-8 text-sm text-accent hover:text-accent-hover font-medium transition-colors flex items-center gap-1 mx-auto hover:underline"
+              className="mt-6 text-sm text-accent hover:text-accent-hover font-medium transition-colors flex items-center gap-1 mx-auto hover:underline"
             >
-              <span>{isZh ? '更换项目' : 'Change project'}</span>
+              <span>{isZh ? '更换目录' : 'Change directory'}</span>
               <ChevronRight className="w-3 h-3" />
             </button>
           </motion.div>
         ) : (
-          <div className="text-center w-full max-w-sm">
+          <>
+            {/* 默认目录选项 */}
+            {defaultWorkspacePath && (
+              <motion.button
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 }}
+                whileHover={{ scale: 1.01, borderColor: 'rgba(var(--accent), 0.4)' }}
+                whileTap={{ scale: 0.99 }}
+                onClick={() => workspaceManager.openFolder(defaultWorkspacePath)}
+                className="w-full max-w-md p-5 rounded-2xl border-2 border-border bg-white/5 hover:bg-white/8 transition-all text-left group"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-accent/10 flex items-center justify-center group-hover:bg-accent/20 transition-colors">
+                    <Monitor className="w-6 h-6 text-accent" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-text-primary text-sm mb-1">
+                      {isZh ? '使用默认目录' : 'Use Default Directory'}
+                    </div>
+                    <div className="text-xs text-text-muted font-mono truncate">
+                      {defaultWorkspacePath}
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-text-muted group-hover:text-accent transition-colors shrink-0" />
+                </div>
+              </motion.button>
+            )}
+
+            {/* 自定义目录选项 */}
             <motion.button
-              whileHover={{ scale: 1.02, backgroundColor: 'rgba(255,255,255,0.08)' }}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              whileHover={{ scale: 1.01, backgroundColor: 'rgba(255,255,255,0.08)' }}
               whileTap={{ scale: 0.98 }}
               onClick={onOpenFolder}
-              className="w-full aspect-[4/3] rounded-3xl border-2 border-dashed border-border bg-white/5 hover:border-accent/50 transition-all duration-300 flex flex-col items-center justify-center gap-5 group"
+              className="w-full max-w-md aspect-[5/2] rounded-2xl border-2 border-dashed border-border bg-white/5 hover:border-accent/50 transition-all duration-300 flex flex-col items-center justify-center gap-3 group"
             >
-              <div className="w-20 h-20 rounded-2xl bg-white/5 flex items-center justify-center group-hover:scale-110 transition-transform duration-300 group-hover:bg-accent/10 group-hover:text-accent">
-                <FolderOpen className="w-10 h-10 text-text-muted group-hover:text-accent transition-colors" />
+              <div className="w-14 h-14 rounded-xl bg-white/5 flex items-center justify-center group-hover:scale-110 transition-transform duration-300 group-hover:bg-accent/10">
+                <FolderOpen className="w-7 h-7 text-text-muted group-hover:text-accent transition-colors" />
               </div>
-              <span className="text-lg font-bold text-text-muted group-hover:text-text-primary transition-colors">
-                {isZh ? '点击选择文件夹' : 'Click to DropdownSelector Folder'}
+              <span className="text-base font-bold text-text-muted group-hover:text-text-primary transition-colors">
+                {isZh ? '选择自定义目录' : 'Choose Custom Directory'}
               </span>
             </motion.button>
-            <p className="text-xs text-text-muted mt-6 opacity-60">
-              {isZh ? '或者跳过，稍后在菜单中打开' : 'Or skip and open later via menu'}
+
+            <p className="text-xs text-text-muted opacity-60">
+              {isZh ? '也可以跳过，稍后在菜单中打开' : 'Or skip and open later via menu'}
             </p>
-          </div>
+          </>
         )}
       </div>
     </div>
@@ -738,77 +669,248 @@ function WorkspaceStep({
 }
 
 
-function CompleteStep({ isZh }: { isZh: boolean }) {
+function CompleteStep({
+  isZh,
+  selectedLanguage,
+  selectedTheme,
+  workspacePath,
+  providerConfig,
+  showProviderSetup,
+  setShowProviderSetup,
+  setProviderConfig,
+  showApiKey,
+  setShowApiKey,
+}: {
+  isZh: boolean
+  selectedLanguage: Language
+  selectedTheme: string
+  workspacePath: string | null
+  providerConfig: LLMConfig
+  showProviderSetup: boolean
+  setShowProviderSetup: (v: boolean) => void
+  setProviderConfig: (c: LLMConfig) => void
+  showApiKey: boolean
+  setShowApiKey: (v: boolean) => void
+}) {
+  const currentTheme = themeManager.getAllThemes().find(t => t.id === selectedTheme)
+  const langName = LANGUAGES.find(l => l.id === selectedLanguage)?.native || selectedLanguage
+
   return (
-    <div className="px-10 py-12 text-center h-full flex flex-col items-center justify-center">
-      <motion.div
-        initial={{ scale: 0 }}
-        animate={{ scale: 1 }}
-        transition={{ type: "spring", stiffness: 200, damping: 15 }}
-        className="mb-8 relative"
-      >
-        <div className="w-28 h-28 rounded-full bg-gradient-to-br from-status-success to-emerald-600 flex items-center justify-center shadow-2xl shadow-status-success/30">
-          <Check className="w-14 h-14 text-white" />
-        </div>
+    <div className="px-10 py-10 h-full flex flex-col overflow-y-auto">
+      {/* 成功标记 */}
+      <div className="text-center mb-6">
         <motion.div
-          animate={{ scale: [1, 1.5], opacity: [0.5, 0] }}
-          transition={{ duration: 1.5, repeat: Infinity }}
-          className="absolute inset-0 bg-status-success rounded-full -z-10"
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          transition={{ type: "spring", stiffness: 200, damping: 15 }}
+          className="mb-4 inline-block relative"
+        >
+          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-status-success to-emerald-600 flex items-center justify-center shadow-2xl shadow-status-success/30">
+            <Check className="w-10 h-10 text-white" />
+          </div>
+          <motion.div
+            animate={{ scale: [1, 1.5], opacity: [0.5, 0] }}
+            transition={{ duration: 1.5, repeat: Infinity }}
+            className="absolute inset-0 bg-status-success rounded-full -z-10"
+          />
+        </motion.div>
+        <h2 className="text-2xl font-bold text-text-primary mb-2">
+          {isZh ? '设置完成！' : 'Setup Complete!'}
+        </h2>
+        <p className="text-text-muted text-sm">
+          {isZh ? '基础设置已完成，AweeClaw 已准备就绪。' : 'Basic setup is done. AweeClaw is ready for you.'}
+        </p>
+      </div>
+
+      {/* 配置摘要 */}
+      <div className="bg-white/5 rounded-2xl p-4 border border-border mb-4">
+        <div className="text-xs font-bold text-text-muted uppercase tracking-wider mb-3">
+          {isZh ? '配置摘要' : 'Configuration Summary'}
+        </div>
+        <div className="space-y-2.5">
+          <SummaryRow
+            icon={<Globe className="w-4 h-4" />}
+            label={isZh ? '界面语言' : 'Language'}
+            value={langName}
+          />
+          <SummaryRow
+            icon={<Palette className="w-4 h-4" />}
+            label={isZh ? '主题' : 'Theme'}
+            value={currentTheme?.name || selectedTheme}
+          />
+          <SummaryRow
+            icon={<FolderOpen className="w-4 h-4" />}
+            label={isZh ? '工作区' : 'Workspace'}
+            value={workspacePath || (isZh ? '稍后选择' : 'Select later')}
+          />
+          <SummaryRow
+            icon={<Cpu className="w-4 h-4" />}
+            label={isZh ? 'AI 模型' : 'AI Model'}
+            value={providerConfig.apiKey
+              ? `${providerConfig.provider} / ${providerConfig.model}`
+              : (isZh ? '未配置' : 'Not configured')}
+            accent={!providerConfig.apiKey}
+          />
+        </div>
+      </div>
+
+      {/* 可选：AI 模型配置 */}
+      <motion.div
+        initial={false}
+        animate={{ height: showProviderSetup ? 'auto' : 0, opacity: showProviderSetup ? 1 : 0 }}
+        className="overflow-hidden"
+      >
+        <ProviderSetupPanel
+          isZh={isZh}
+          config={providerConfig}
+          setConfig={setProviderConfig}
+          showApiKey={showApiKey}
+          setShowApiKey={setShowApiKey}
         />
       </motion.div>
 
-      <motion.div
-        initial={{ y: 20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.2 }}
-      >
-        <h2 className="text-3xl font-bold text-text-primary mb-3">
-          {isZh ? '设置完成！' : 'Setup Complete!'}
-        </h2>
-        <p className="text-text-muted max-w-md mx-auto text-base mb-10">
-          {isZh
-            ? '基础设置已完成，AweeClaw 已准备就绪。'
-            : 'Basic setup is done. AweeClaw is ready for you.'}
-        </p>
-      </motion.div>
+      {!showProviderSetup && !providerConfig.apiKey && (
+        <motion.button
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.3 }}
+          onClick={() => setShowProviderSetup(true)}
+          className="w-full p-3 rounded-xl border border-dashed border-accent/30 bg-accent/5 hover:bg-accent/10 text-sm text-accent font-medium flex items-center justify-center gap-2 transition-colors mb-4"
+        >
+          <Cpu className="w-4 h-4" />
+          {isZh ? '配置 AI 模型（可选）' : 'Configure AI Model (Optional)'}
+        </motion.button>
+      )}
 
-      {/* 高级配置提示 */}
-      <motion.div
-        initial={{ y: 20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.4 }}
-        className="bg-white/5 backdrop-blur-md rounded-2xl p-6 max-w-md w-full text-left border border-border hover:border-border transition-colors"
-      >
-        <div className="flex items-center gap-2 mb-4">
-          <Settings className="w-4 h-4 text-accent" />
+      {/* 提示 */}
+      <div className="mt-auto pt-4 border-t border-border flex items-center justify-between text-xs text-text-muted">
+        <span>{isZh ? '其他设置可在设置中探索' : 'Explore more in Settings'}</span>
+        <div className="flex items-center gap-1">
+          <kbd className="px-1.5 py-0.5 bg-black/20 rounded border border-border font-mono text-text-muted text-[10px]">Ctrl</kbd>
+          <span>+</span>
+          <kbd className="px-1.5 py-0.5 bg-black/20 rounded border border-border font-mono text-text-muted text-[10px]">,</kbd>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SummaryRow({ icon, label, value, accent }: {
+  icon: React.ReactNode
+  label: string
+  value: string
+  accent?: boolean
+}) {
+  return (
+    <div className="flex items-center gap-3 text-sm">
+      <div className="text-text-muted shrink-0">{icon}</div>
+      <span className="text-text-muted shrink-0 w-16">{label}</span>
+      <span className={`truncate ${accent ? 'text-amber-400' : 'text-text-primary'}`}>{value}</span>
+    </div>
+  )
+}
+
+function ProviderSetupPanel({
+  isZh,
+  config,
+  setConfig,
+  showApiKey,
+  setShowApiKey,
+}: {
+  isZh: boolean
+  config: LLMConfig
+  setConfig: (c: LLMConfig) => void
+  showApiKey: boolean
+  setShowApiKey: (v: boolean) => void
+}) {
+  const providers = Object.values(PROVIDERS).filter(p => p.id !== 'custom')
+  const selectedProvider = PROVIDERS[config.provider]
+
+  return (
+    <div className="bg-white/5 rounded-2xl p-4 border border-border mb-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Cpu className="w-4 h-4 text-accent" />
           <span className="text-xs font-bold text-text-muted uppercase tracking-wider">
-            {isZh ? '提示：高级功能' : 'Tip: Advanced Features'}
+            {isZh ? 'AI 模型配置' : 'AI Model Configuration'}
           </span>
         </div>
+      </div>
 
-        <div className="grid grid-cols-2 gap-y-3 gap-x-4 text-xs mb-4">
-          {[
-            isZh ? 'Agent 自动化' : 'Agent Automation',
-            isZh ? '工作区安全' : 'Workspace Security',
-            isZh ? '向量索引' : 'Vector Indexing',
-            isZh ? '性能调优' : 'Performance Tuning'
-          ].map((item, i) => (
-            <div key={i} className="flex items-center gap-2 text-text-secondary">
-              <div className="w-1.5 h-1.5 rounded-full bg-accent/50" />
-              <span>{item}</span>
-            </div>
+      <div className="space-y-3">
+        <div className="grid grid-cols-4 gap-2">
+          {providers.map(p => (
+            <button
+              key={p.id}
+              onClick={() => setConfig({
+                ...config,
+                provider: p.id,
+                model: p.models[0],
+                baseUrl: undefined,
+              })}
+              className={`px-2 py-2.5 rounded-lg border text-xs font-medium transition-all flex flex-col items-center gap-1.5 ${config.provider === p.id
+                ? 'border-accent bg-accent/10 text-accent ring-1 ring-accent/50'
+                : 'border-border hover:border-white/20 text-text-muted bg-white/5'
+              }`}
+            >
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold ${config.provider === p.id ? 'bg-accent text-white' : 'bg-white/10'}`}>
+                {p.displayName[0]}
+              </div>
+              <span className="truncate w-full text-center">{p.displayName}</span>
+            </button>
           ))}
         </div>
 
-        <div className="pt-4 border-t border-border flex items-center justify-between text-xs">
-          <span className="text-text-muted">{isZh ? '稍后在设置中探索' : 'Explore in Settings later'}</span>
-          <div className="flex items-center gap-1">
-            <kbd className="px-2 py-1 bg-black/20 rounded-md border border-border font-mono text-text-muted">Ctrl</kbd>
-            <span className="text-text-muted/85">+</span>
-            <kbd className="px-2 py-1 bg-black/20 rounded-md border border-border font-mono text-text-muted">,</kbd>
+        {selectedProvider && (
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider ml-1">
+              {isZh ? '模型' : 'Model'}
+            </label>
+            <DropdownSelector
+              value={config.model}
+              onChange={(value) => setConfig({ ...config, model: value })}
+              options={selectedProvider.models.map(m => ({ value: m, label: m }))}
+              className="w-full bg-white/5 border-border hover:border-accent/50 transition-colors py-1.5 text-sm"
+            />
           </div>
+        )}
+
+        <div className="space-y-1.5">
+          <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider ml-1">
+            API Key
+          </label>
+          <div className="relative">
+            <TextField
+              type={showApiKey ? 'text' : 'password'}
+              value={config.apiKey}
+              onChange={(e) => setConfig({ ...config, apiKey: e.target.value })}
+              placeholder={selectedProvider?.auth.placeholder || 'sk-...'}
+              className="w-full pr-10 bg-white/5 border-border focus:border-accent focus:ring-1 focus:ring-accent/50 transition-all py-2 text-sm"
+            />
+            <button
+              type="button"
+              onClick={() => setShowApiKey(!showApiKey)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary transition-colors p-1"
+            >
+              {showApiKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+          {selectedProvider?.auth.helpUrl && (
+            <div className="flex justify-end">
+              <a
+                href={selectedProvider.auth.helpUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[11px] text-accent hover:text-accent-hover hover:underline inline-flex items-center gap-1 transition-colors"
+                onClick={(e) => { e.preventDefault(); api.file.openExternalUrl(selectedProvider.auth.helpUrl!) }}
+              >
+                <span>{isZh ? '获取 API Key' : 'Get API Key'}</span>
+                <ChevronRight className="w-3 h-3" />
+              </a>
+            </div>
+          )}
         </div>
-      </motion.div>
+      </div>
     </div>
   )
 }

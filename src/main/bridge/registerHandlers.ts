@@ -70,8 +70,12 @@ function registerOnce(name: string, registerFn: () => void): void {
     logger.ipc.warn(`[IPC] Handler "${name}" already registered, skipping`)
     return
   }
-  registerFn()
-  registeredHandlers.add(name)
+  try {
+    registerFn()
+    registeredHandlers.add(name)
+  } catch (err) {
+    logger.ipc.error(`[IPC] Failed to register handler "${name}":`, err)
+  }
 }
 
 export function isHandlerRegistered(name: string): boolean {

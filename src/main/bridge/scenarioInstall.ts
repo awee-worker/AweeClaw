@@ -883,33 +883,6 @@ export function registerScenarioInstallIpcHandlers(
     }
   })
 
-  /** 回滚场景到上一个版本 */
-  safeIpcHandle('scenario:rollbackScenario', async (_event, scenarioId: string) => {
-    try {
-      const backupDir = path.join(getScenariosDir(), '.backups', scenarioId)
-      const targetDir = getScenarioDir(scenarioId)
-
-      if (!fs.existsSync(backupDir)) {
-        return { success: false, error: 'No backup found for rollback' }
-      }
-
-      // 删除当前版本
-      if (fs.existsSync(targetDir)) {
-        fs.rmSync(targetDir, { recursive: true, force: true })
-      }
-
-      // 恢复备份
-      fs.renameSync(backupDir, targetDir)
-      logger.agent.info(`[ScenarioInstall] Rolled back scenario "${scenarioId}" from backup`)
-
-      const config = readScenarioConfig(targetDir)
-      return { success: true, scenarioId, targetDir, config }
-    } catch (err) {
-      logger.agent.error(`[ScenarioInstall] Rollback failed for "${scenarioId}":`, err)
-      return { success: false, error: err instanceof Error ? err.message : String(err) }
-    }
-  })
-
   /** 获取场景回滚信息 */
   safeIpcHandle('scenario:getRollbackInfo', async (_event, scenarioId: string) => {
     const backupDir = path.join(getScenariosDir(), '.backups', scenarioId)

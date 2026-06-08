@@ -733,7 +733,18 @@ export class SessionDb {
           if (needFullMigration) {
             // 首次迁移：导入线程元数据
             const threadContent = await fsExtra.readFile(threadFilePath, 'utf-8')
-            const threadData = JSON.parse(threadContent)
+            let threadData: any
+            try {
+              threadData = JSON.parse(threadContent)
+            } catch (parseErr) {
+              // JSON 文件可能因写入中断而截断，尝试修复
+              logger.session.warn(`[SessionDb] Thread ${threadId} JSON is corrupted, attempting repair`)
+              threadData = this.tryRepairTruncatedJson(threadContent)
+              if (!threadData) {
+                logger.session.warn(`[SessionDb] Thread ${threadId} JSON repair failed, skipping`)
+                continue
+              }
+            }
 
             // 读取 .jsonl 消息文件
             const jsonlPath = path.join(sessionsDir, `${threadId}.jsonl`)
@@ -803,5 +814,40 @@ export class SessionDb {
       }
     }
     return messages
+  }
+
+  /**
+   * 尝试修复截断的 JSON 字符串
+   * 常见场景：写入过程中断导致 JSON 不完整
+   * 策略：逐步移除末尾字符直到能成功解析
+   */
+  private tryRepairTruncatedJson(content: string): any | null {
+    const trimmed = content.trim()
+    if (!trimmed) return null
+
+    // 策略1：直接尝试（可能只是尾部空白问题）
+    try { return JSON.parse(trimmed) } catch { /* continue */ }
+
+    // 策略2：逐步截断末尾字符，找到最后一个完整的 JSON 对象
+    for (let i = trimmed.length - 1; i > 0; i--) {
+      const ch = trimmed[i]
+      // 跳过可能的不完整键值对，尝试在对象边界闭合
+      if (ch === ',' || ch === '"' || ch === ':' || ch === '{' || ch === '[') {
+        const candidate = trimmed.substring(0, i)
+        // 尝试补全闭合括号
+        const openBraces = (candidate.match(/{/g) || []).length
+        const closeBraces = (candidate.match(/}/g) || []).length
+        const openBrackets = (candidate.match(/\[/g) || []).length
+        const closeBrackets = (candidate.match(/]/g) || []).length
+
+        const repaired = candidate
+          + '}'.repeat(openBraces - closeBraces)
+          + ']'.repeat(openBrackets - closeBrackets)
+
+        try { return JSON.parse(repaired) } catch { /* continue */ }
+      }
+    }
+
+    return null
   }
 }
