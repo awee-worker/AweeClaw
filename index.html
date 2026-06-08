@@ -73,8 +73,9 @@
   <style>
     :root {
       --loader-bg: #121215;
-      --loader-accent: #8b5cf6;
+      --loader-accent: #39bef8;
       --loader-accent-rgb: 139, 92, 246;
+      --loader-accent2-rgb: 59, 130, 246;
       --loader-text: #fafafa;
       --loader-text-dim: #71717a;
       --loader-surface: #18181b;
@@ -123,33 +124,34 @@
     #initial-loader.fade-out {
       opacity: 0;
       pointer-events: none;
-      transition: opacity 0.4s ease-out;
+      transition: opacity 0.5s ease-out;
     }
 
     .loader-content {
       display: flex;
       flex-direction: column;
       align-items: center;
-      animation: reveal 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+      animation: reveal 0.7s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
+    /* Logo 容器 */
     .loader-logo-container {
       position: relative;
-      width: 96px;
-      height: 96px;
-      margin-bottom: 36px;
+      width: 88px;
+      height: 88px;
+      margin-bottom: 40px;
     }
 
     .loader-logo-bg {
       position: absolute;
       inset: 0;
-      border-radius: 26px;
+      border-radius: 24px;
       display: flex;
       align-items: center;
       justify-content: center;
       box-shadow:
-        0 0 0 1px rgba(255, 255, 255, 0.04),
-        0 24px 48px rgba(0, 0, 0, 0.5);
+        0 0 0 1px rgba(255, 255, 255, 0.05),
+        0 20px 40px rgba(0, 0, 0, 0.5);
       z-index: 2;
       overflow: hidden;
     }
@@ -163,93 +165,142 @@
       background-size: cover;
     }
 
+    /* 底层光晕 - 柔和呼吸 */
     .loader-glow {
       position: absolute;
-      inset: -30px;
-      background: radial-gradient(circle, rgba(var(--loader-accent-rgb), 0.35) 0%, transparent 65%);
-      filter: blur(24px);
-      animation: breathe 3s ease-in-out infinite;
+      inset: -40px;
+      background: radial-gradient(circle, rgba(var(--loader-accent-rgb), 0.3) 0%, transparent 60%);
+      filter: blur(28px);
+      animation: breathe 3.5s ease-in-out infinite;
       z-index: 1;
     }
 
+    /* 外层轨道环 - 双层旋转 */
     .loader-orbit {
       position: absolute;
-      inset: -12px;
-      border-radius: 38px;
+      inset: -16px;
+      border-radius: 36px;
       z-index: 3;
     }
 
-    .loader-orbit-ring {
+    .loader-orbit-ring-outer {
       position: absolute;
       inset: 0;
-      border-radius: 38px;
-      border: 1.5px solid transparent;
-      background: conic-gradient(from 0deg, transparent 0%, rgba(var(--loader-accent-rgb), 0.6) 25%, transparent 50%) border-box;
+      border-radius: 36px;
+      border: 1px solid transparent;
+      background: conic-gradient(from 0deg, transparent 0%, rgba(var(--loader-accent-rgb), 0.4) 20%, transparent 40%) border-box;
       -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
       mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
       -webkit-mask-composite: xor;
       mask-composite: exclude;
-      animation: orbit 2.4s linear infinite;
+      animation: orbit 3s linear infinite;
     }
 
+    .loader-orbit-ring-inner {
+      position: absolute;
+      inset: 8px;
+      border-radius: 30px;
+      border: 1px solid transparent;
+      background: conic-gradient(from 180deg, transparent 0%, rgba(var(--loader-accent2-rgb), 0.3) 20%, transparent 40%) border-box;
+      -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+      mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      animation: orbit 2.2s linear infinite reverse;
+    }
+
+    /* 轨道上的发光粒子 */
     .loader-orbit-dot {
       position: absolute;
-      width: 5px;
-      height: 5px;
+      width: 4px;
+      height: 4px;
       border-radius: 50%;
       background: var(--loader-accent);
-      box-shadow: 0 0 8px rgba(var(--loader-accent-rgb), 0.8), 0 0 20px rgba(var(--loader-accent-rgb), 0.4);
-      animation: orbitDot 2.4s linear infinite;
-      top: -2.5px;
+      box-shadow: 0 0 6px rgba(var(--loader-accent-rgb), 0.9), 0 0 16px rgba(var(--loader-accent-rgb), 0.4);
+      animation: orbitDot 3s linear infinite;
+      top: -2px;
       left: 50%;
-      margin-left: -2.5px;
+      margin-left: -2px;
+      z-index: 4;
     }
 
+    .loader-orbit-dot-2 {
+      position: absolute;
+      width: 3px;
+      height: 3px;
+      border-radius: 50%;
+      background: rgba(var(--loader-accent2-rgb), 1);
+      box-shadow: 0 0 5px rgba(var(--loader-accent2-rgb), 0.8), 0 0 12px rgba(var(--loader-accent2-rgb), 0.3);
+      animation: orbitDot2 2.2s linear infinite reverse;
+      bottom: 6px;
+      right: -1.5px;
+      z-index: 4;
+    }
+
+    /* 标题区域 */
     .loader-title {
-      font-size: 26px;
+      font-size: 24px;
       font-weight: 700;
       color: var(--loader-text);
-      margin-bottom: 6px;
+      margin-bottom: 4px;
       letter-spacing: -0.02em;
     }
 
     .loader-subtitle {
-      font-size: 12px;
-      color: var(--loader-text-dim);
-      margin-bottom: 44px;
-      letter-spacing: 2.5px;
-      text-transform: uppercase;
-      font-weight: 500;
-    }
-
-    .loader-progress {
-      width: 120px;
-      height: 1.5px;
-      background: rgba(255, 255, 255, 0.04);
-      border-radius: 1px;
-      overflow: hidden;
-    }
-
-    .loader-bar {
-      height: 100%;
-      width: 40%;
-      background: linear-gradient(90deg, transparent, var(--loader-accent), transparent);
-      border-radius: 1px;
-      animation: shimmer 1.8s ease-in-out infinite;
-    }
-
-    .loader-status {
-      margin-top: 16px;
       font-size: 11px;
       color: var(--loader-text-dim);
-      opacity: 0.6;
+      margin-bottom: 48px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      font-weight: 500;
+      opacity: 0.7;
+    }
+
+    /* 进度指示器 - 三点脉冲 */
+    .loader-dots {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      height: 20px;
+    }
+
+    .loader-dot {
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: var(--loader-accent);
+      opacity: 0.3;
+      animation: dotPulse 1.4s ease-in-out infinite;
+    }
+
+    .loader-dot:nth-child(1) { animation-delay: 0s; }
+    .loader-dot:nth-child(2) { animation-delay: 0.2s; }
+    .loader-dot:nth-child(3) { animation-delay: 0.4s; }
+
+    /* 状态文字 */
+    .loader-status {
+      margin-top: 14px;
+      font-size: 11px;
+      color: var(--loader-text-dim);
+      opacity: 0.5;
       min-height: 16px;
+      transition: opacity 0.3s ease;
+    }
+
+    /* 底部装饰线 */
+    .loader-line {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(var(--loader-accent-rgb), 0.15), transparent);
     }
 
     @keyframes reveal {
       from {
         opacity: 0;
-        transform: scale(0.92) translateY(8px);
+        transform: scale(0.94) translateY(10px);
       }
       to {
         opacity: 1;
@@ -263,8 +314,8 @@
         transform: scale(1);
       }
       50% {
-        opacity: 0.22;
-        transform: scale(1.08);
+        opacity: 0.2;
+        transform: scale(1.06);
       }
     }
 
@@ -280,15 +331,20 @@
       }
     }
 
-    @keyframes shimmer {
-      0% {
-        transform: translateX(-100%);
+    @keyframes orbitDot2 {
+      to {
+        transform: rotate(360deg);
       }
-      50% {
-        transform: translateX(150%);
+    }
+
+    @keyframes dotPulse {
+      0%, 80%, 100% {
+        opacity: 0.3;
+        transform: scale(1);
       }
-      100% {
-        transform: translateX(250%);
+      40% {
+        opacity: 1;
+        transform: scale(1.5);
       }
     }
   </style>
@@ -300,8 +356,10 @@
       <div class="loader-logo-container">
         <div class="loader-glow"></div>
         <div class="loader-orbit">
-          <div class="loader-orbit-ring"></div>
+          <div class="loader-orbit-ring-outer"></div>
+          <div class="loader-orbit-ring-inner"></div>
           <div class="loader-orbit-dot"></div>
+          <div class="loader-orbit-dot-2"></div>
         </div>
         <div class="loader-logo-bg">
           <div class="loader-logo-icon" role="img" aria-label="AweeClaw"></div>
@@ -309,11 +367,14 @@
       </div>
       <div class="loader-title">AweeClaw</div>
       <div class="loader-subtitle">Connect AI to Your World</div>
-      <div class="loader-progress">
-        <div class="loader-bar"></div>
+      <div class="loader-dots">
+        <div class="loader-dot"></div>
+        <div class="loader-dot"></div>
+        <div class="loader-dot"></div>
       </div>
       <div class="loader-status"></div>
     </div>
+    <div class="loader-line"></div>
   </div>
   <div id="root"></div>
   <script type="module" src="/src/renderer/bootstrap.tsx"></script>

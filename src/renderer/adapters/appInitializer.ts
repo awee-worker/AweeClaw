@@ -18,6 +18,11 @@ import { themeManager } from '../config/themeDefinition'
 import { keybindingService } from './keybindingAdapter'
 import { registerCoreCommands } from '../config/commandRegistry'
 import { diagnosticStore } from './diagnosticRepository'
+
+/** 检测系统语言是否为中文 */
+function isZh(): boolean {
+  return navigator.language.startsWith('zh')
+}
 import { restoreWorkspaceState } from './workspaceStateAdapter'
 import { mcpService } from './toolProtocolAdapter'
 import { snippetService } from './snippetAdapter'
@@ -281,10 +286,10 @@ export async function initializeApp(
       logger.system.info('[ScenarioInit] Starting scenario-aware initialization')
     }
 
-    updateStatus('Initializing...')
+    updateStatus(isZh() ? '正在初始化...' : 'Initializing...')
     await initCoreModules()
 
-    updateStatus('ProgressIndicator settings...')
+    updateStatus(isZh() ? '加载配置...' : 'Loading settings...')
     const params = new URLSearchParams(window.location.search)
     const isEmptyWindow = params.get('empty') === '1'
     const savedTheme = await loadUserSettings(isEmptyWindow)
@@ -313,12 +318,12 @@ export async function initializeApp(
     const { onboardingCompleted, hasExistingConfig } = useStore.getState()
 
     if (!isEmptyWindow) {
-      updateStatus('Restoring workspace...')
+      updateStatus(isZh() ? '恢复工作区...' : 'Restoring workspace...')
       await restoreWorkspace()
     }
 
     // 初始化 AgentRuntime（解耦循环依赖）
-    updateStatus('Initializing agent runtime...')
+    updateStatus(isZh() ? '启动智能引擎...' : 'Initializing agent runtime...')
     try {
       setupAgentRuntime()
       logger.system.info('[Init] AgentRuntime initialized')
@@ -328,7 +333,7 @@ export async function initializeApp(
 
     scheduleBackgroundInit()
 
-    updateStatus('Ready!')
+    updateStatus(isZh() ? '准备就绪' : 'Ready!')
     startupMetrics.end('init-total')
 
     if (import.meta.env.DEV) {
