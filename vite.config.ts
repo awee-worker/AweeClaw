@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import electron from 'vite-plugin-electron'
 import path from 'path'
+import fs from 'fs'
 
 // 外部依赖（不打包到 bundle）
 const EXTERNAL_DEPS = [
@@ -65,6 +66,16 @@ const aliases = {
 
 export default defineConfig({
   plugins: [
+    // 构建前清理 dist 目录（跨平台，替代 rimraf dist）
+    {
+      name: 'clean-dist',
+      buildStart() {
+        const distDir = path.resolve(__dirname, 'dist')
+        if (fs.existsSync(distDir)) {
+          fs.rmSync(distDir, { recursive: true, force: true })
+        }
+      },
+    },
     react(),
     electron([
       {
