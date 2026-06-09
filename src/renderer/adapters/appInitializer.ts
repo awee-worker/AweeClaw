@@ -198,23 +198,39 @@ async function restoreWorkspace(): Promise<boolean> {
 
   await workspaceStorageRuntime.initializeRoots(workspaceConfig.roots)
   const shellState = await prepareWorkspaceShell(workspaceConfig)
-    await runWithAgentStorageWritesSuspended(async () => {
-      await bindWorkspaceRoot(shellState)
 
-      await Promise.all([
-        restoreWorkspaceState(),
-        restoreWorkspaceAgentStore(),
-      ])
-    })
+  // 关键路径：绑定根目录（初始化 SQLite + 加载数据）
+  await runWithAgentStorageWritesSuspended(async () => {
+    await bindWorkspaceRoot(shellState)
+  })
 
+  // 立即提交 shell 状态，让 UI 先渲染
   commitWorkspaceShell(shellState)
 
-  if (shellState.primaryRoot) {
+  // 非关键路径：延迟恢复工作区状态和会话数据
+  // 这两个操作较耗时，延迟到首屏渲染后执行
+  schedulePostPaintTask(async () => {
     try {
-      await initializeHarness(shellState.primaryRoot)
+      await runWithAgentStorageWritesSuspended(async () => {
+        await Promise.all([
+          restoreWorkspaceState(),
+          restoreWorkspaceAgentStore(),
+        ])
+      })
     } catch (e) {
-      logger.system.warn('[Init] Harness initialization failed:', e)
+      logger.system.warn('[Init] Deferred workspace state restore failed:', e)
     }
+  }, 0)
+
+  // Harness 初始化也可以延迟
+  if (shellState.primaryRoot) {
+    scheduleIdleTask(async () => {
+      try {
+        await initializeHarness(shellState.primaryRoot!)
+      } catch (e) {
+        logger.system.warn('[Init] Harness initialization failed:', e)
+      }
+    }, 500)
   }
 
   schedulePostPaintTask(() => {

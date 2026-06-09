@@ -168,6 +168,10 @@ export const createThreadSlice: StateCreator<
 
         if (activate) {
             const storeState = useStore.getState()
+            // 新建会话时关闭欢迎页面等全屏页面
+            if (storeState.showWelcomePage || storeState.showSettingsPage || storeState.showUserProfilePage || storeState.showBillingCenterPage || storeState.showSessionHistoryPage) {
+                storeState.closeAllFullPages()
+            }
             if (storeState.activeWorkspaceSession) {
                 useStore.getState().clearWorkspaceSession()
             }
@@ -205,8 +209,13 @@ export const createThreadSlice: StateCreator<
         if (state.currentThreadId === threadId) return
         set({ currentThreadId: threadId })
 
-        // 切换会话时，清理不属于新会话的工作台会话
+        // 切换会话时关闭欢迎页面等全屏页面
         const storeState = useStore.getState()
+        if (storeState.showWelcomePage || storeState.showSettingsPage || storeState.showUserProfilePage || storeState.showBillingCenterPage || storeState.showSessionHistoryPage) {
+            useStore.getState().closeAllFullPages()
+        }
+
+        // 切换会话时，清理不属于新会话的工作台会话
         if (storeState.activeWorkspaceSession && storeState.activeWorkspaceSession.threadId !== threadId) {
             useStore.getState().clearWorkspaceSession()
         }

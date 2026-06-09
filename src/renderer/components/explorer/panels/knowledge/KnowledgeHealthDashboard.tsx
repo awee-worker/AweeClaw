@@ -152,7 +152,7 @@ export function HealthDashboard({ entries, language, onClose }: HealthDashboardP
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
               <span className={`text-2xl font-bold ${scoreColor(overallStatus)}`}>{totalScore}</span>
-              <span className="text-[10px] text-text-muted">{t('app.score', language as Language)}</span>
+              <span className="text-[12px] text-text-muted">{t('app.score', language as Language)}</span>
             </div>
           </div>
           <div className="space-y-1">
@@ -162,7 +162,7 @@ export function HealthDashboard({ entries, language, onClose }: HealthDashboardP
             <p className={`text-[12px] ${scoreColor(overallStatus)}`}>
               {overallStatus === 'good' ? t('app.good', language as Language) : overallStatus === 'warning' ? t('app.needsattention', language as Language) : t('app.needsimprovement', language as Language)}
             </p>
-            <p className="text-[11px] text-text-muted">
+            <p className="text-[12px] text-text-muted">
               {t('app.entries', language as Language, { length: entries.length })}
             </p>
           </div>
@@ -186,7 +186,7 @@ export function HealthDashboard({ entries, language, onClose }: HealthDashboardP
                   style={{ width: `${(s.score / s.maxScore) * 100}%` }}
                 />
               </div>
-              <p className="text-[10px] text-text-muted">{language === 'zh' ? s.detail : s.detailEn}</p>
+              <p className="text-[12px] text-text-muted">{language === 'zh' ? s.detail : s.detailEn}</p>
             </div>
           ))}
         </div>
@@ -195,17 +195,17 @@ export function HealthDashboard({ entries, language, onClose }: HealthDashboardP
           <div className="bg-surface/30 rounded-lg p-3 border border-border/20">
             <div className="flex items-center gap-1.5 mb-2">
               <Database className="w-3.5 h-3.5 text-accent" />
-              <span className="text-[11px] font-medium text-text-primary">{t('app.categories', language as Language)}</span>
+              <span className="text-[12px] font-medium text-text-primary">{t('app.categories', language as Language)}</span>
             </div>
             <div className="space-y-1.5">
               {categoryStats.slice(0, 5).map((c) => (
                 <div key={c.id} className="flex items-center justify-between">
-                  <span className="text-[10px] text-text-muted truncate max-w-[80px]">{c.name}</span>
-                  <span className="text-[10px] text-text-secondary font-medium">{c.count}</span>
+                  <span className="text-[12px] text-text-muted truncate max-w-[80px]">{c.name}</span>
+                  <span className="text-[12px] text-text-secondary font-medium">{c.count}</span>
                 </div>
               ))}
               {categoryStats.length === 0 && (
-                <p className="text-[10px] text-text-muted">{t('app.nodata', language as Language)}</p>
+                <p className="text-[12px] text-text-muted">{t('app.nodata', language as Language)}</p>
               )}
             </div>
           </div>
@@ -213,17 +213,17 @@ export function HealthDashboard({ entries, language, onClose }: HealthDashboardP
           <div className="bg-surface/30 rounded-lg p-3 border border-border/20">
             <div className="flex items-center gap-1.5 mb-2">
               <Zap className="w-3.5 h-3.5 text-accent" />
-              <span className="text-[11px] font-medium text-text-primary">{t('app.sources', language as Language)}</span>
+              <span className="text-[12px] font-medium text-text-primary">{t('app.sources', language as Language)}</span>
             </div>
             <div className="space-y-1.5">
               {sourceStats.slice(0, 5).map((s) => (
                 <div key={s.source} className="flex items-center justify-between">
-                  <span className="text-[10px] text-text-muted truncate max-w-[80px]">{s.source}</span>
-                  <span className="text-[10px] text-text-secondary font-medium">{s.count}</span>
+                  <span className="text-[12px] text-text-muted truncate max-w-[80px]">{s.source}</span>
+                  <span className="text-[12px] text-text-secondary font-medium">{s.count}</span>
                 </div>
               ))}
               {sourceStats.length === 0 && (
-                <p className="text-[10px] text-text-muted">{t('app.nodata2', language as Language)}</p>
+                <p className="text-[12px] text-text-muted">{t('app.nodata2', language as Language)}</p>
               )}
             </div>
           </div>
@@ -232,19 +232,19 @@ export function HealthDashboard({ entries, language, onClose }: HealthDashboardP
         <div className="bg-surface/30 rounded-lg p-3 border border-border/20">
           <div className="flex items-center gap-1.5 mb-2">
             <TrendingUp className="w-3.5 h-3.5 text-accent" />
-            <span className="text-[11px] font-medium text-text-primary">{t('app.recentupdates', language as Language)}</span>
+            <span className="text-[12px] font-medium text-text-primary">{t('app.recentupdates', language as Language)}</span>
           </div>
           <div className="space-y-1.5">
             {recentEntries.map((e) => (
               <div key={e.id} className="flex items-center justify-between">
-                <span className="text-[10px] text-text-muted truncate max-w-[160px]">{e.title || e.content.slice(0, 30)}</span>
-                <span className="text-[10px] text-text-muted">
+                <span className="text-[12px] text-text-muted truncate max-w-[160px]">{e.title || e.content.slice(0, 30)}</span>
+                <span className="text-[12px] text-text-muted">
                   {new Date(e.updatedAt).toLocaleDateString()}
                 </span>
               </div>
             ))}
             {recentEntries.length === 0 && (
-              <p className="text-[10px] text-text-muted">{t('app.nodata3', language as Language)}</p>
+              <p className="text-[12px] text-text-muted">{t('app.nodata3', language as Language)}</p>
             )}
           </div>
         </div>

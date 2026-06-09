@@ -19,7 +19,7 @@ let tokens: AuthTokens | null = null;
 let serverUrl = '';
 let onTokenRefresh: ((newTokens: AuthTokens) => void) | null = null;
 let onAuthFailed: (() => void) | null = null;
-let refreshPromise: Promise<AuthTokens | null> | null = null;
+let refreshPromise: Promise<RefreshResult> | null = null;
 let proactiveRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
 // accessToken 7天过期，提前1天刷新，确保不会因定时器延迟导致过期
@@ -133,8 +133,8 @@ export function isAuthenticated(): boolean {
 }
 
 export async function tryRefreshToken(): Promise<boolean> {
-  const newTokens = await refreshAccessToken();
-  return !!newTokens;
+  const result = await refreshAccessToken();
+  return !!result.tokens;
 }
 
 /**
@@ -145,11 +145,19 @@ function loadPersistedRefreshToken(): string | null {
   return data?.refreshToken || null;
 }
 
-async function refreshAccessToken(): Promise<AuthTokens | null> {
+type RefreshResult = {
+  tokens: AuthTokens;
+  refreshTokenInvalid?: false;
+} | {
+  tokens: null;
+  refreshTokenInvalid: boolean; // true = refresh token 确认无效（401/403），false = 网络/服务器临时错误
+}
+
+async function refreshAccessToken(): Promise<RefreshResult> {
   // 优先使用内存中的 refreshToken，降级从 localStorage 读取
   const refreshToken = tokens?.refreshToken || loadPersistedRefreshToken() || undefined;
 
-  if (!refreshToken || !serverUrl) return null;
+  if (!refreshToken || !serverUrl) return { tokens: null, refreshTokenInvalid: false };
 
   if (refreshPromise) return refreshPromise;
 
@@ -162,10 +170,12 @@ async function refreshAccessToken(): Promise<AuthTokens | null> {
       });
 
       if (!res.ok) {
-        // 区分 refresh token 无效（401/403）和服务器临时错误（5xx）
-        // refresh token 失效时，由 request() 统一触发 onAuthFailed
+        if (res.status === 401 || res.status === 403) {
+          // refresh token 确认无效
+          return { tokens: null, refreshTokenInvalid: true } as RefreshResult;
+        }
         // 5xx 等临时错误：保留 tokens，不清除认证状态
-        return null;
+        return { tokens: null, refreshTokenInvalid: false } as RefreshResult;
       }
 
       const data = await res.json();
@@ -177,10 +187,10 @@ async function refreshAccessToken(): Promise<AuthTokens | null> {
       tokens = newTokens;
       onTokenRefresh?.(newTokens);
       scheduleProactiveRefresh();
-      return newTokens;
+      return { tokens: newTokens, refreshTokenInvalid: false } as RefreshResult;
     } catch {
       // 网络错误：保留 tokens，不清除认证状态
-      return null;
+      return { tokens: null, refreshTokenInvalid: false } as RefreshResult;
     } finally {
       refreshPromise = null;
     }
@@ -217,13 +227,12 @@ async function request<T>(
   let res = await fetch(url, fetchOptions);
 
   if (res.status === 401 && (tokens?.refreshToken || loadPersistedRefreshToken())) {
-    const newTokens = await refreshAccessToken();
-    if (newTokens) {
-      headers['Authorization'] = `Bearer ${newTokens.accessToken}`;
+    const result = await refreshAccessToken();
+    if (result.tokens) {
+      headers['Authorization'] = `Bearer ${result.tokens.accessToken}`;
       res = await fetch(url, { ...fetchOptions, headers });
-    } else {
-      // refresh 失败：refresh token 已失效，但 accessToken JWT 可能还没过期
-      // 此时服务端已不再认可该 accessToken，应触发认证失效
+    } else if (result.refreshTokenInvalid) {
+      // refresh token 确认无效（401/403），触发认证失效
       tokens = null;
       if (proactiveRefreshTimer) {
         clearTimeout(proactiveRefreshTimer);
@@ -231,6 +240,7 @@ async function request<T>(
       }
       onAuthFailed?.();
     }
+    // else: 网络/服务器临时错误，保留认证状态，等下次请求重试
   }
 
   if (!res.ok) {

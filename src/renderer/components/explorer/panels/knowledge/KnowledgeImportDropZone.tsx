@@ -152,7 +152,7 @@ export function ImportDropZone({
           <p className="text-[12px] text-text-muted mt-1">
             {t('app.orclicktoselect', language as Language)}
           </p>
-          <p className="text-[11px] text-text-muted mt-2">
+          <p className="text-[12px] text-text-muted mt-2">
             {t('app.supportstxtmdjson', language as Language)}
           </p>
           <input
@@ -195,7 +195,7 @@ export function ImportDropZone({
                 {file.status === 'error' && (
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <AlertCircle className="w-4 h-4 text-red-500" />
-                    <span className="text-[11px] text-red-500">{file.error}</span>
+                    <span className="text-[12px] text-red-500">{file.error}</span>
                   </div>
                 )}
                 {file.status === 'pending' && !importing && (

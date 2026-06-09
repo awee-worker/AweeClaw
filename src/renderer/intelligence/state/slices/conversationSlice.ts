@@ -23,7 +23,7 @@ import type {
     FormContent,
 } from '@intelligence/providerTypes'
 import type { LLMStreamSource } from '@shared/protocols/modelGateway'
-import { createIdleHandoffState } from '@intelligence/providerTypes'
+import { createIdleHandoffState, getMessageText } from '@intelligence/providerTypes'
 import { streamingBuffer } from '../StreamBuffer'
 import type { ThreadSlice } from './dialogThread'
 import { useStore } from '@store'
@@ -181,6 +181,13 @@ export const createMessageSlice: StateCreator<
             const thread = state.threads[threadId!]
             if (!thread) return state
 
+            // 自动从第一条用户消息提取标题
+            const hasExistingTitle = !!thread.title?.trim()
+            const hasExistingUserMsg = thread.messages.some(m => m.role === 'user')
+            const autoTitle = (!hasExistingTitle && !hasExistingUserMsg)
+                ? getMessageText(content).trim().slice(0, 60) || undefined
+                : undefined
+
             return {
                 threadMessageVersions: bumpThreadMessageVersion(state.threadMessageVersions, threadId!),
                 threads: {
@@ -189,6 +196,7 @@ export const createMessageSlice: StateCreator<
                         ...thread,
                         messages: [...thread.messages, message],
                         lastModified: Date.now(),
+                        ...(autoTitle ? { title: autoTitle } : {}),
                     },
                 },
             }
@@ -228,6 +236,13 @@ export const createMessageSlice: StateCreator<
             const thread = state.threads[threadId!]
             if (!thread) return state
 
+            // 自动从第一条用户消息提取标题
+            const hasExistingTitle = !!thread.title?.trim()
+            const hasExistingUserMsg = thread.messages.some(m => m.role === 'user')
+            const autoTitle = (!hasExistingTitle && !hasExistingUserMsg)
+                ? getMessageText(content).trim().slice(0, 60) || undefined
+                : undefined
+
             return {
                 threadMessageVersions: bumpThreadMessageVersion(state.threadMessageVersions, threadId!),
                 threads: {
@@ -238,6 +253,7 @@ export const createMessageSlice: StateCreator<
                         lastModified: Date.now(),
                         streamState: { ...thread.streamState, phase: 'streaming' },
                         contextItems: [], // 同时清理上下文
+                        ...(autoTitle ? { title: autoTitle } : {}),
                     },
                 },
             }

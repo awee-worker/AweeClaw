@@ -26,6 +26,7 @@ import { getEditorConfig } from '@shared/configuration/preferenceSync'
 import type { OpenPreviewMetadata } from '@shared/protocols/previewProtocol'
 import { BRAND } from '@shared/brand'
 import { useStore } from '@store'
+import { getMessageText } from '@intelligence/types/conversationModel'
 import {
   fromPersistedChatThread,
   toPersistedChatThread,
@@ -66,6 +67,15 @@ class SessionDbStore {
       if (result.success) {
         this.dbInitialized = true
         logger.system.info('[SessionDbStore] Database initialized at', result.dbPath)
+        // 修复历史数据中缺少标题的线程
+        try {
+          const repaired = await api.sessionDb.repairMissingTitles()
+          if (repaired.count && repaired.count > 0) {
+            logger.system.info('[SessionDbStore] Repaired missing titles:', repaired.count)
+          }
+        } catch (e) {
+          logger.system.warn('[SessionDbStore] repairMissingTitles failed:', e)
+        }
       } else {
         logger.system.error('[SessionDbStore] Database initialization failed:', result.error)
       }
@@ -147,6 +157,12 @@ class SessionDbStore {
   /** 将未关联用户的线程归属到指定用户（登录后调用） */
   async claimOrphanThreads(userId: string): Promise<number> {
     const result = await api.sessionDb.claimOrphanThreads(userId)
+    return result.count ?? 0
+  }
+
+  /** 修复缺少标题的线程（从第一条用户消息提取标题） */
+  async repairMissingTitles(): Promise<number> {
+    const result = await api.sessionDb.repairMissingTitles()
     return result.count ?? 0
   }
 
@@ -702,6 +718,16 @@ class ScenarioDirectoryManager {
     }
   }
 
+  /** 修复缺少标题的线程（从第一条用户消息提取标题），修复后自动清除缓存 */
+  async repairMissingTitles(): Promise<number> {
+    const count = await this.sessionDb.repairMissingTitles()
+    if (count > 0) {
+      this.cache.threads.clear()
+      this.threadHashes.clear()
+    }
+    return count
+  }
+
   async clearAllSessions(): Promise<void> {
     const meta = await this.getSessionMeta()
     for (const threadId of meta.threadIds) {
@@ -751,6 +777,13 @@ class ScenarioDirectoryManager {
         threadData.messages = messages
         threadData.messageCount = messages.length
         threadData.messagesHydrated = true
+        // 从第一条用户消息提取标题（仅当线程缺少标题时）
+        if (!threadData.title?.trim()) {
+          const firstUserMsg = messages.find(m => m.role === 'user')
+          if (firstUserMsg) {
+            threadData.title = getMessageText(firstUserMsg.content).trim().slice(0, 60) || undefined
+          }
+        }
       }
     }
 

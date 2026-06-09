@@ -123,13 +123,13 @@ export function BatchActionBar({
             <div className="flex items-center gap-1 mb-2">
               <button
                 onClick={() => setTagMode('add')}
-                className={`text-[11px] px-2 py-0.5 rounded ${tagMode === 'add' ? 'bg-accent/20 text-accent' : 'text-text-muted'}`}
+                className={`text-[12px] px-2 py-0.5 rounded ${tagMode === 'add' ? 'bg-accent/20 text-accent' : 'text-text-muted'}`}
               >
                 {t('app.add', language as Language)}
               </button>
               <button
                 onClick={() => setTagMode('remove')}
-                className={`text-[11px] px-2 py-0.5 rounded ${tagMode === 'remove' ? 'bg-red-500/20 text-red-500' : 'text-text-muted'}`}
+                className={`text-[12px] px-2 py-0.5 rounded ${tagMode === 'remove' ? 'bg-red-500/20 text-red-500' : 'text-text-muted'}`}
               >
                 {t('app.remove', language as Language)}
               </button>
@@ -159,7 +159,7 @@ export function BatchActionBar({
 
       {confirmDelete ? (
         <div className="flex items-center gap-1">
-          <span className="text-[11px] text-red-500">
+          <span className="text-[12px] text-red-500">
             {t('app.confirmdelete', language as Language)}
           </span>
           <button

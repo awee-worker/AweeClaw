@@ -12,6 +12,7 @@ import { agentSessionRepository } from './sessionRepository'
 import { mcpService } from './toolProtocolAdapter'
 import { gitService } from './gitAdapter'
 import { toAppError } from '@shared/toolkit/errorCatalog'
+import { getMessageText } from '@intelligence/types/conversationModel'
 import { workspaceStorageRuntime } from './workspaceStorageAdapter'
 import type { FileItem } from '@protocols'
 import type { WorkspaceConfig } from '@store'
@@ -113,6 +114,16 @@ export async function hydrateThreadMessages(threadId: string): Promise<void> {
   }
 
   const messages = await agentSessionRepository.loadThreadMessages(threadId)
+
+  // 从第一条用户消息提取标题（仅当线程缺少标题时）
+  let autoTitle: string | undefined
+  if (!thread.title?.trim()) {
+    const firstUserMsg = messages.find(m => m.role === 'user')
+    if (firstUserMsg) {
+      autoTitle = getMessageText(firstUserMsg.content).trim().slice(0, 60) || undefined
+    }
+  }
+
   suspendAgentStorageWrites()
   try {
     useAgentStore.setState(currentState => {
@@ -129,6 +140,7 @@ export async function hydrateThreadMessages(threadId: string): Promise<void> {
             messages,
             messagesHydrated: true,
             messageCount: messages.length,
+            ...(autoTitle ? { title: autoTitle } : {}),
           },
         },
         threadMessageVersions: buildThreadMessageVersions({

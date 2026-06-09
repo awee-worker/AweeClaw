@@ -143,6 +143,17 @@ export function registerSessionDbIpcHandlers(): void {
     }
   })
 
+  // 修复缺少标题的线程
+  safeIpcHandle('session-db:repairMissingTitles', async () => {
+    try {
+      const count = db.repairMissingTitles()
+      return { success: true, count }
+    } catch (err) {
+      logger.session.error('[SessionDb] RepairMissingTitles failed:', err)
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
   // 获取线程消息
   safeIpcHandle('session-db:getThreadMessages', async (_event, threadId: string) => {
     try {

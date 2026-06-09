@@ -37,6 +37,8 @@ export interface LayoutSlice {
   setShowUserProfilePage: (show: boolean) => void
   setShowBillingCenterPage: (show: boolean) => void
   setShowSessionHistoryPage: (show: boolean) => void
+  /** 关闭所有全屏页面（欢迎页、设置页、用户中心、账单中心、会话历史），返回聊天界面 */
+  closeAllFullPages: () => void
 }
 
 export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> = (set) => ({
@@ -78,4 +80,11 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
   setShowUserProfilePage: (show) => set({ showUserProfilePage: show }),
   setShowBillingCenterPage: (show) => set({ showBillingCenterPage: show }),
   setShowSessionHistoryPage: (show) => set({ showSessionHistoryPage: show }),
+  closeAllFullPages: () => set({
+    showWelcomePage: false,
+    showSettingsPage: false,
+    showUserProfilePage: false,
+    showBillingCenterPage: false,
+    showSessionHistoryPage: false,
+  }),
 })

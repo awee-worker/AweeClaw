@@ -1,9 +1,11 @@
 /**
  * SessionHistoryPage - 历史会话记录页面
  * 展示所有会话记录，支持分页、搜索、批量删除和全部清空
+ *
+ * 数据加载策略：优先从数据库查询，数据库连接失败时降级读内存缓存
  */
 
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   History,
@@ -23,10 +25,22 @@ import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { useAgentActions, useAllThreads } from '@hooks/useAgent'
-import { getThreadDisplayTitle, getMessageText } from '@intelligence/providerTypes'
+import { getThreadDisplayTitle } from '@intelligence/providerTypes'
 import type { ChatThread } from '@intelligence/providerTypes'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
+import { api } from '@renderer/adapters/electronBridge'
+import { logger } from '@toolkit/LogEngine'
 import { t, type Language } from '@renderer/i18n'
+
+/** 统一的线程摘要结构（用于页面展示） */
+interface ThreadSummaryItem {
+  id: string
+  title: string
+  lastModified: number
+  messageCount: number
+  /** 来源标记：db=数据库查询，cache=内存缓存降级 */
+  source: 'db' | 'cache'
+}
 
 interface SessionHistoryPageProps {
   onClose?: () => void
@@ -55,17 +69,27 @@ function formatDate(timestamp: number, language: Language): string {
   return t('user.text0', language as Language, { m: m, d: d, y: y, h: h, min: min })
 }
 
-function getMessageCount(thread: ChatThread): number {
-  return thread.messageCount ?? thread.messages.length ?? 0
+/** 从数据库查询线程摘要列表 */
+async function fetchThreadSummariesFromDb(userId?: string | null): Promise<ThreadSummaryItem[]> {
+  const summaries = await api.sessionDb.getAllThreadSummaries(userId)
+  return summaries.map(s => ({
+    id: s.id,
+    title: s.title || '',
+    lastModified: s.lastModified,
+    messageCount: s.messageCount,
+    source: 'db' as const,
+  }))
 }
 
-function getSessionPreview(thread: ChatThread): string {
-  const firstUserMsg = thread.messages.find(m => m.role === 'user')
-  if (firstUserMsg) {
-    const text = getMessageText(firstUserMsg.content).slice(0, 80)
-    return text || '-'
-  }
-  return '-'
+/** 从内存缓存降级获取线程摘要 */
+function getThreadSummariesFromCache(allThreads: ChatThread[]): ThreadSummaryItem[] {
+  return allThreads.map(t => ({
+    id: t.id,
+    title: getThreadDisplayTitle(t),
+    lastModified: t.lastModified,
+    messageCount: t.messageCount ?? t.messages.length ?? 0,
+    source: 'cache' as const,
+  }))
 }
 
 export default function SessionHistoryPage({ onClose }: SessionHistoryPageProps) {
@@ -74,6 +98,7 @@ export default function SessionHistoryPage({ onClose }: SessionHistoryPageProps)
     setShowSessionHistoryPage: (s.setShowSessionHistoryPage as (show: boolean) => void),
   })))
 
+  const currentUserId = useStore(s => s.cloudUser?.id)
   const allThreads = useAllThreads()
   const { deleteThread, switchThread } = useAgentActions()
   const currentThreadId = useAgentStore(state => state.currentThreadId)
@@ -82,20 +107,49 @@ export default function SessionHistoryPage({ onClose }: SessionHistoryPageProps)
   const [currentPage, setCurrentPage] = useState(1)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+
+  // 从数据库查询线程摘要，失败时降级到内存缓存
+  const [threadSummaries, setThreadSummaries] = useState<ThreadSummaryItem[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadSummaries() {
+      setIsLoading(true)
+      try {
+        // 优先从数据库查询
+        const summaries = await fetchThreadSummariesFromDb(currentUserId ?? null)
+        if (!cancelled) {
+          setThreadSummaries(summaries)
+        }
+      } catch (err) {
+        logger.system.warn('[SessionHistory] DB query failed, falling back to cache:', err)
+        // 数据库查询失败，降级到内存缓存
+        if (!cancelled) {
+          setThreadSummaries(getThreadSummariesFromCache(allThreads))
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    loadSummaries()
+
+    return () => { cancelled = true }
+  }, [currentUserId, allThreads])
 
   const filteredThreads = useMemo(() => {
-    let result = [...allThreads]
+    let result = [...threadSummaries]
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase()
-      result = result.filter(t => {
-        const title = getThreadDisplayTitle(t).toLowerCase()
-        const preview = getSessionPreview(t).toLowerCase()
-        return title.includes(q) || preview.includes(q)
-      })
+      result = result.filter(t => t.title.toLowerCase().includes(q))
     }
     result.sort((a, b) => b.lastModified - a.lastModified)
     return result
-  }, [allThreads, searchQuery])
+  }, [threadSummaries, searchQuery])
 
   const totalPages = Math.max(1, Math.ceil(filteredThreads.length / PAGE_SIZE))
   const currentPageSafe = Math.min(currentPage, totalPages)
@@ -156,6 +210,8 @@ export default function SessionHistoryPage({ onClose }: SessionHistoryPageProps)
     setIsDeleting(true)
     try {
       selectedIds.forEach(id => deleteThread(id))
+      // 从本地列表中也移除
+      setThreadSummaries(prev => prev.filter(t => !selectedIds.has(t.id)))
       setSelectedIds(new Set())
     } finally {
       setIsDeleting(false)
@@ -176,6 +232,7 @@ export default function SessionHistoryPage({ onClose }: SessionHistoryPageProps)
     setIsDeleting(true)
     try {
       filteredThreads.forEach(t => deleteThread(t.id))
+      setThreadSummaries([])
       setSelectedIds(new Set())
       setCurrentPage(1)
     } finally {
@@ -276,7 +333,12 @@ export default function SessionHistoryPage({ onClose }: SessionHistoryPageProps)
 
         {/* 列表 */}
         <div className="flex-1 overflow-y-auto px-6 py-4 custom-scrollbar">
-          {filteredThreads.length === 0 ? (
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center h-full text-text-muted">
+              <Loader2 className="w-8 h-8 animate-spin mb-3 opacity-40" />
+              <p className="text-sm">{t('common.loading', language as Language)}</p>
+            </div>
+          ) : filteredThreads.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-text-muted">
               <History className="w-12 h-12 opacity-20 mb-3" />
               <p className="text-sm">
@@ -312,10 +374,6 @@ export default function SessionHistoryPage({ onClose }: SessionHistoryPageProps)
                 {paginatedThreads.map(thread => {
                   const isSelected = selectedIds.has(thread.id)
                   const isCurrent = currentThreadId === thread.id
-                  const title = getThreadDisplayTitle(thread)
-                  const preview = getSessionPreview(thread)
-                  const msgCount = getMessageCount(thread)
-                  const dateStr = formatDate(thread.lastModified, language)
 
                   return (
                     <motion.div
@@ -348,7 +406,7 @@ export default function SessionHistoryPage({ onClose }: SessionHistoryPageProps)
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-medium text-text-primary truncate">
-                            {title}
+                            {thread.title || t('user.untitled', language as Language)}
                           </span>
                           {isCurrent && (
                             <span className="shrink-0 px-1.5 py-0.5 rounded-full bg-accent/10 text-accent text-[10px] font-medium">
@@ -356,17 +414,16 @@ export default function SessionHistoryPage({ onClose }: SessionHistoryPageProps)
                             </span>
                           )}
                         </div>
-                        <p className="text-[11px] text-text-muted truncate mt-0.5">{preview}</p>
                       </div>
 
                       <div className="w-24 flex items-center justify-center gap-1 text-[11px] text-text-muted">
                         <MessageSquare className="w-3 h-3" />
-                        {msgCount}
+                        {thread.messageCount}
                       </div>
 
                       <div className="w-32 text-right text-[11px] text-text-muted flex items-center justify-end gap-1">
                         <Clock className="w-3 h-3" />
-                        {dateStr}
+                        {formatDate(thread.lastModified, language)}
                       </div>
 
                       <div className="w-16 flex items-center justify-end gap-1">

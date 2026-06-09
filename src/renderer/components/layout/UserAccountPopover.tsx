@@ -69,13 +69,13 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
   }, [isAuthenticated])
 
   useEffect(() => {
-    if (forceLoginOpen && !isAuthenticated) {
+    if (forceLoginOpen && !(isAuthenticated && cloudUser)) {
       setShowLoginModal(true)
     }
     if (!forceLoginOpen && onLoginClose) {
       setShowLoginModal(false)
     }
-  }, [forceLoginOpen, isAuthenticated, onLoginClose])
+  }, [forceLoginOpen, isAuthenticated, cloudUser, onLoginClose])
 
   const resetAuthForm = useCallback(() => {
     setAuthStep('login')
@@ -94,12 +94,12 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
   }, [])
 
   const handleClick = useCallback(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && cloudUser) {
       useStore.getState().setShowUserProfilePage(true)
     } else {
       setShowLoginModal(true)
     }
-  }, [isAuthenticated])
+  }, [isAuthenticated, cloudUser])
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -260,7 +260,7 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
 
   const displayName = cloudUser?.username || cloudUser?.email || ''
 
-  const tooltipText = isAuthenticated
+  const tooltipText = (isAuthenticated && cloudUser)
     ? displayName
     : t('layout.notsignedin', language as Language)
 

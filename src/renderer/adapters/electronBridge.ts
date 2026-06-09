@@ -168,6 +168,7 @@ type ElectronAPIWithRemoteShell = ElectronAPI & {
   sessionDbUpsertThreadMeta: (threadId: string, data: any) => Promise<{ success: boolean; error?: string }>
   sessionDbDeleteThreadMeta: (threadId: string) => Promise<{ success: boolean; error?: string }>
   sessionDbClaimOrphanThreads: (userId: string) => Promise<{ success: boolean; count?: number; error?: string }>
+  sessionDbRepairMissingTitles: () => Promise<{ success: boolean; count?: number; error?: string }>
   sessionDbGetThreadMessages: (threadId: string) => Promise<any[]>
   sessionDbBatchUpsertThreadMessages: (threadId: string, messages: any[]) => Promise<{ success: boolean; error?: string }>
   sessionDbAppendThreadMessage: (threadId: string, message: any) => Promise<{ success: boolean; error?: string }>
@@ -293,6 +294,7 @@ function createGroupedAPI() {
       upsertThreadMeta: (threadId: string, data: any) => raw.sessionDbUpsertThreadMeta(threadId, data),
       deleteThreadMeta: (threadId: string) => raw.sessionDbDeleteThreadMeta(threadId),
       claimOrphanThreads: (userId: string) => raw.sessionDbClaimOrphanThreads(userId),
+      repairMissingTitles: () => raw.sessionDbRepairMissingTitles(),
       getThreadMessages: (threadId: string) => raw.sessionDbGetThreadMessages(threadId),
       batchUpsertThreadMessages: (threadId: string, messages: any[]) => raw.sessionDbBatchUpsertThreadMessages(threadId, messages),
       appendThreadMessage: (threadId: string, message: any) => raw.sessionDbAppendThreadMessage(threadId, message),

@@ -14,12 +14,13 @@ import {
 } from '@services/backendApi'
 import { toast } from '@components/foundation/NotificationProvider'
 import { api } from '../../adapters/electronBridge'
+import { aweeclawDir } from '../../adapters/appDirService'
 import { knowledgeSyncService } from '@intelligence/runtime/knowledgeService/syncService'
 import { knowledgeGraphSyncService } from '@intelligence/runtime/knowledgeService/graphSyncService'
 import { t, type Language } from '@renderer/i18n'
 import { restoreWorkspaceAgentStore } from '@services/workspaceLoader'
 
-/** 认证成功后：归属孤儿线程 + 重新加载会话数据 */
+/** 认证成功后：归属孤儿线程 + 修复缺失标题 + 重新加载会话数据 */
 async function onAuthSuccess(userId: string | undefined): Promise<void> {
   if (userId) {
     try {
@@ -28,6 +29,15 @@ async function onAuthSuccess(userId: string | undefined): Promise<void> {
     } catch (e) {
       logger.system.warn('[Auth] claimOrphanThreads failed:', e)
     }
+  }
+  // 修复历史数据中缺少标题的线程（通过 aweeclawDir 调用，修复后自动清除缓存）
+  try {
+    const count = await aweeclawDir.repairMissingTitles()
+    if (count > 0) {
+      logger.system.info('[Auth] Repaired missing titles:', count)
+    }
+  } catch (e) {
+    logger.system.warn('[Auth] repairMissingTitles failed:', e)
   }
   // 重新加载会话数据（此时 cloudUser 已设置，buildSessionCatalog 会按 userId 过滤）
   try {
@@ -379,15 +389,14 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
       } catch (e) {
         logger.system.error('[Auth] Fetch profile after restore failed:', e);
         // profile 获取失败：token 可能仍然有效（临时网络问题），保留认证状态
-        // 但需要确保 cloudUser 不为 null，避免 UI 显示异常
-        if (!get().cloudUser) {
-          // 没有任何用户信息，认证状态不可靠，清除
-          setTokens(null);
-          clearPersistedAuth();
-          set({ isAuthenticated: false, cloudUser: null, cloudMode: 'local' });
-          return;
-        }
+        // 等待后续请求成功获取 profile 后再更新 cloudUser
         set({ isAuthenticated: true });
+        // 延迟重试获取 profile，避免 UI 一直缺少用户信息
+        setTimeout(() => {
+          backendApi.get<CloudUser>('/api/v1/user/profile')
+            .then(profile => set({ cloudUser: profile }))
+            .catch(() => logger.system.warn('[Auth] Profile retry failed'));
+        }, 5000);
       }
       get().fetchQuota().catch(() => {});
       if (persisted.cloudMode === 'cloud') {

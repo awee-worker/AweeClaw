@@ -89,14 +89,14 @@ export function AdvancedSearchPanel({
       {suggestions.length > 0 && searchQuery.length >= 2 && !showAdvanced && (
         <div className="px-3 py-1.5 bg-surface/20 rounded-lg border border-border/10">
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[11px] text-text-muted mr-1">
+            <span className="text-[12px] text-text-muted mr-1">
               {t('app.suggest', language as Language)}:
             </span>
             {suggestions.map((s) => (
               <button
                 key={s}
                 onClick={() => onSearchChange(s)}
-                className="text-[11px] px-2 py-0.5 text-accent/80 hover:text-accent bg-accent/5 hover:bg-accent/10 rounded-full transition-colors"
+                className="text-[12px] px-2 py-0.5 text-accent/80 hover:text-accent bg-accent/5 hover:bg-accent/10 rounded-full transition-colors"
               >
                 {s}
               </button>
@@ -108,7 +108,7 @@ export function AdvancedSearchPanel({
       {showAdvanced && (
         <div className="px-3 py-2.5 bg-surface/20 rounded-lg border border-border/10 space-y-2.5">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[11px] text-text-muted min-w-[32px]">
+            <span className="text-[12px] text-text-muted min-w-[32px]">
               {t('app.source', language as Language)}:
             </span>
             {Object.entries(SOURCE_CONFIG).map(([key, cfg]) => {
@@ -121,7 +121,7 @@ export function AdvancedSearchPanel({
                       filterSource === key ? null : (key as KnowledgeSource),
                     )
                   }
-                  className={`text-[11px] px-2 py-0.5 rounded-full transition-colors flex items-center gap-1 ${
+                  className={`text-[12px] px-2 py-0.5 rounded-full transition-colors flex items-center gap-1 ${
                     filterSource === key
                       ? 'text-accent bg-accent/10 border border-accent/30'
                       : 'text-text-muted hover:text-text-primary border border-transparent'
@@ -135,7 +135,7 @@ export function AdvancedSearchPanel({
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[11px] text-text-muted min-w-[32px]">
+            <span className="text-[12px] text-text-muted min-w-[32px]">
               {t('app.cat', language as Language)}:
             </span>
             {KNOWLEDGE_CATEGORIES.map((cat) => (
@@ -146,7 +146,7 @@ export function AdvancedSearchPanel({
                     filterCategory === cat.id ? null : cat.id,
                   )
                 }
-                className={`text-[11px] px-2 py-0.5 rounded-full transition-colors ${
+                className={`text-[12px] px-2 py-0.5 rounded-full transition-colors ${
                   filterCategory === cat.id
                     ? `${cat.color} bg-surface-active border border-current/20`
                     : 'text-text-muted hover:text-text-primary border border-transparent'
@@ -158,7 +158,7 @@ export function AdvancedSearchPanel({
           </div>
 
           <div className="flex items-center gap-3">
-            <label className="flex items-center gap-1.5 text-[11px] text-text-muted cursor-pointer">
+            <label className="flex items-center gap-1.5 text-[12px] text-text-muted cursor-pointer">
               <input
                 type="checkbox"
                 checked={starredOnly}
@@ -167,7 +167,7 @@ export function AdvancedSearchPanel({
               />
               {t('app.starredonly', language as Language)}
             </label>
-            <label className="flex items-center gap-1.5 text-[11px] text-text-muted cursor-pointer">
+            <label className="flex items-center gap-1.5 text-[12px] text-text-muted cursor-pointer">
               <input
                 type="checkbox"
                 checked={enabledOnly}
@@ -179,7 +179,7 @@ export function AdvancedSearchPanel({
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-text-muted min-w-[32px]">
+            <span className="text-[12px] text-text-muted min-w-[32px]">
               {t('app.date', language as Language)}:
             </span>
             <input
@@ -195,9 +195,9 @@ export function AdvancedSearchPanel({
                   from: e.target.value ? new Date(e.target.value) : null,
                 })
               }
-              className="text-[11px] bg-surface/30 border border-border/20 rounded px-2 py-0.5 text-text-primary outline-none"
+              className="text-[12px] bg-surface/30 border border-border/20 rounded px-2 py-0.5 text-text-primary outline-none"
             />
-            <span className="text-[11px] text-text-muted">-</span>
+            <span className="text-[12px] text-text-muted">-</span>
             <input
               type="date"
               value={
@@ -209,7 +209,7 @@ export function AdvancedSearchPanel({
                   to: e.target.value ? new Date(e.target.value) : null,
                 })
               }
-              className="text-[11px] bg-surface/30 border border-border/20 rounded px-2 py-0.5 text-text-primary outline-none"
+              className="text-[12px] bg-surface/30 border border-border/20 rounded px-2 py-0.5 text-text-primary outline-none"
             />
           </div>
 
@@ -222,7 +222,7 @@ export function AdvancedSearchPanel({
                 onEnabledOnlyChange(false)
                 onDateRangeChange({ from: null, to: null })
               }}
-              className="text-[11px] text-accent hover:text-accent/80 transition-colors"
+              className="text-[12px] text-accent hover:text-accent/80 transition-colors"
             >
               {t('app.clearallfilters', language as Language)}
             </button>

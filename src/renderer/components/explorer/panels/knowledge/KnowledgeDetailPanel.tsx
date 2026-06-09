@@ -68,16 +68,16 @@ export function DetailPanel({
               <div className="flex items-center gap-2 mt-1">
                 {catConfig && (
                   <span
-                    className={`text-[11px] px-2 py-0.5 rounded-full ${catConfig.color} bg-current/10`}
+                    className={`text-[12px] px-2 py-0.5 rounded-full ${catConfig.color} bg-current/10`}
                   >
                     {language === 'zh' ? catConfig.labelZh : catConfig.labelEn}
                   </span>
                 )}
-                <span className="text-[11px] text-text-muted">
+                <span className="text-[12px] text-text-muted">
                   {srcConfig ? language === 'zh' ? srcConfig.zh : srcConfig.en : entry.source}
                 </span>
                 {entry.sourceDetail && (
-                  <span className="text-[11px] text-text-muted truncate max-w-[160px]">
+                  <span className="text-[12px] text-text-muted truncate max-w-[160px]">
                     · {entry.sourceDetail}
                   </span>
                 )}
@@ -214,13 +214,13 @@ export function DetailPanel({
             entry.tags.map((tag) => (
               <span
                 key={tag}
-                className="text-[11px] px-2 py-0.5 bg-accent/10 text-accent rounded-full inline-flex items-center gap-1"
+                className="text-[12px] px-2 py-0.5 bg-accent/10 text-accent rounded-full inline-flex items-center gap-1"
               >
                 <Tag className="w-3 h-3" />
                 {tag}
               </span>
             ))}
-          <div className="flex items-center gap-3 ml-auto text-[11px] text-text-muted">
+          <div className="flex items-center gap-3 ml-auto text-[12px] text-text-muted">
             <span className="flex items-center gap-1">
               <Clock className="w-3 h-3" />
               {t('app.created', language as Language)} {formatDate(entry.createdAt, language)}
@@ -236,15 +236,14 @@ export function DetailPanel({
 }
 
 export function EmptyDetail({ language }: { language: Language }) {
-  const t = (zh: string, en: string) => (language === 'zh' ? zh : en)
   return (
     <div className="flex flex-col items-center justify-center h-full text-text-muted">
       <Star className="w-16 h-16 mb-4 opacity-30" />
       <p className="text-[14px] font-medium">
-        {t('app.selectanentryto', language as Language)}
+        {t('app.selectanentryto', language)}
       </p>
       <p className="text-[12px] mt-1 text-text-muted">
-        {t('app.orclicktoadd', language as Language)}
+        {t('app.orclicktoadd', language)}
       </p>
     </div>
   )

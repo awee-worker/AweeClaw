@@ -19,6 +19,7 @@ import { smartReplace, normalizeLineEndings, checkLineReplaceWarnings } from '@u
 import { getAgentConfig } from '@intelligence/utils/intelligenceConfig'
 import { BRAND } from '@shared/brand'
 import { fileCacheService } from '../runtime/fileCacheManager'
+import { getReadStrategy, buildReadTruncationMessage } from './fileReadPolicies'
 import { lintService } from '../runtime/codeAnalysisService'
 import { memoryService } from '../runtime/recallService'
 import { knowledgeService } from '../runtime/knowledgeService'
@@ -772,25 +773,47 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 }
             }
         } catch (e) { logger.tool.warn('Failed to build call graph:', e) }
+
+        // 将文件内容拆分为行数组
+        const lines = content.split('\n')
+
+        // 根据文件类型获取读取策略
+        const hasExplicitLineRange = resolution.mode === 'single' && (
+            typeof resolution.args.start_line === 'number' || typeof resolution.args.end_line === 'number'
+        )
+        const config = getAgentConfig()
+        const strategy = getReadStrategy({
+            path,
+            baseMaxChars: config.maxSingleFileChars,
+            hasExplicitLineRange: !!hasExplicitLineRange,
+        })
+
         const startLine = resolution.mode === 'single' && typeof resolution.args.start_line === 'number'
             ? Math.max(1, resolution.args.start_line)
             : 1
         const endLine = resolution.mode === 'single' && typeof resolution.args.end_line === 'number'
             ? Math.min(lines.length, resolution.args.end_line)
             : lines.length
-        let numberedContent = lines.slice(startLine - 1, endLine).map((line, i) => `${startLine + i}: ${line}`).join('\n')
 
-        // 使用 maxSingleFileChars 限制单个文件的输出大小
-        const config = getAgentConfig()
-        if (numberedContent.length > config.maxSingleFileChars) {
-            const totalLines = lines.length
-            const readLines = endLine - startLine + 1
-            numberedContent = numberedContent.slice(0, config.maxSingleFileChars) +
-                `\n\n⚠️ FILE TRUNCATED (showing ${readLines} of ${totalLines} lines, ~${config.maxSingleFileChars} chars)\n` +
-                `To read more: use search_files to find target location, then read_file with start_line/end_line`
+        // 根据策略决定是否添加行号
+        let displayContent: string
+        if (strategy.includeLineNumbers) {
+            displayContent = lines.slice(startLine - 1, endLine).map((line: string, i: number) => `${startLine + i}: ${line}`).join('\n')
+        } else {
+            displayContent = lines.slice(startLine - 1, endLine).join('\n')
         }
 
-        return { success: true, result: numberedContent + graphContent, meta: { filePath: path } }
+        // 使用策略中的 maxChars 限制输出大小
+        if (displayContent.length > strategy.maxChars) {
+            const visibleLines = endLine - startLine + 1
+            displayContent = displayContent.slice(0, strategy.maxChars) +
+                buildReadTruncationMessage(strategy, visibleLines, lines.length)
+        }
+
+        // 根据策略决定是否附加 AST 摘要
+        const finalGraphContent = strategy.includeAstSummary ? graphContent : ''
+
+        return { success: true, result: displayContent + finalGraphContent, meta: { filePath: path } }
     },
 
     async list_directory(args, ctx) {

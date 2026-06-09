@@ -131,7 +131,7 @@ export function EntryCard({
           )}
           {catConfig && (
             <span
-              className={`text-[10px] px-1.5 py-0.5 rounded-full ${catConfig.color} bg-current/10 flex-shrink-0`}
+              className={`text-[12px] px-1.5 py-0.5 rounded-full ${catConfig.color} bg-current/10 flex-shrink-0`}
             >
               {language === 'zh' ? catConfig.labelZh : catConfig.labelEn}
             </span>
@@ -141,12 +141,12 @@ export function EntryCard({
           {searchQuery ? highlightText(entry.content, searchQuery) : entry.content}
         </p>
         <div className="flex items-center gap-2 mt-1.5">
-          <span className="text-[11px] text-text-muted flex items-center gap-1">
+          <span className="text-[12px] text-text-muted flex items-center gap-1">
             <Clock className="w-3 h-3" />
             {formatDate(entry.updatedAt, language)}
           </span>
           {entry.tags.length > 0 && (
-            <span className="text-[11px] text-text-muted flex items-center gap-0.5">
+            <span className="text-[12px] text-text-muted flex items-center gap-0.5">
               <Hash className="w-3 h-3" />
               {entry.tags.slice(0, 2).join(', ')}
               {entry.tags.length > 2 && ` +${entry.tags.length - 2}`}

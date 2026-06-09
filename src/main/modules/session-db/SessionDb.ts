@@ -355,6 +355,19 @@ export class SessionDb {
         'SELECT thread_id, title, last_modified, message_count, user_id FROM thread_meta WHERE user_id = ? ORDER BY last_modified DESC'
       ).all(userId) as any[]
     }
+
+    // 批量修复缺少标题的线程
+    const repairStmt = this.db.prepare('UPDATE thread_meta SET title = ?, updated_at_db = ? WHERE thread_id = ?')
+    for (const row of rows) {
+      if (!row.title && row.message_count > 0) {
+        const extractedTitle = this.extractTitleFromFirstUserMessage(row.thread_id)
+        if (extractedTitle) {
+          repairStmt.run(extractedTitle, Date.now(), row.thread_id)
+          row.title = extractedTitle
+        }
+      }
+    }
+
     return rows.map(row => ({
       id: row.thread_id,
       title: row.title,
@@ -368,16 +381,71 @@ export class SessionDb {
   getThreadMeta(threadId: string): any | null {
     const row = this.db.prepare('SELECT * FROM thread_meta WHERE thread_id = ?').get(threadId) as ThreadMetaRow | undefined
     if (!row) return null
+
+    // 自动修复：title 为 NULL 但有消息时，从第一条用户消息提取标题并回填
+    if (!row.title && row.message_count > 0) {
+      const extractedTitle = this.extractTitleFromFirstUserMessage(threadId)
+      if (extractedTitle) {
+        this.db.prepare('UPDATE thread_meta SET title = ?, updated_at_db = ? WHERE thread_id = ?')
+          .run(extractedTitle, Date.now(), threadId)
+        row.title = extractedTitle
+        logger.session.info(`[SessionDb] Auto-repaired title for thread ${threadId}: "${extractedTitle}"`)
+      }
+    }
+
     return this.rowToThreadMeta(row)
+  }
+
+  /** 从第一条用户消息中提取标题文本 */
+  private extractTitleFromFirstUserMessage(threadId: string): string | null {
+    const msgRow = this.db.prepare(
+      `SELECT content FROM thread_message
+       WHERE thread_id = ? AND role = 'user'
+       ORDER BY seq ASC LIMIT 1`
+    ).get(threadId) as { content: string } | undefined
+
+    if (!msgRow) return null
+
+    try {
+      return this.extractTextFromMessageContent(msgRow.content)
+    } catch {
+      return null
+    }
+  }
+
+  /** 从数据库存储的消息 JSON 中提取文本内容
+   *  数据库中 content 列存储的是 JSON.stringify(完整消息对象)，如：
+   *  {"id":"...","role":"user","content":"你好" 或 [{"type":"text","text":"你好"}],...}
+   */
+  private extractTextFromMessageContent(rawContent: string): string | null {
+    const msgObj = JSON.parse(rawContent)
+    // 取消息对象的 content 字段
+    const content = msgObj?.content
+    if (!content) return null
+
+    if (typeof content === 'string') {
+      return content.trim().slice(0, 60) || null
+    }
+    if (Array.isArray(content)) {
+      const text = content
+        .filter((p: any) => p.type === 'text' && typeof p.text === 'string')
+        .map((p: any) => p.text)
+        .join(' ')
+      return text.trim().slice(0, 60) || null
+    }
+    return null
   }
 
   /** 保存/更新线程元数据 */
   upsertThreadMeta(threadId: string, data: any): void {
     const now = Date.now()
-    const existing = this.db.prepare('SELECT thread_id FROM thread_meta WHERE thread_id = ?').get(threadId) as any
+    const existing = this.db.prepare('SELECT thread_id, title FROM thread_meta WHERE thread_id = ?').get(threadId) as any
+
+    // 保护已有标题：如果新数据没有标题但数据库中已有标题，保留数据库中的标题
+    const effectiveTitle = data.title?.trim() || (existing?.title ?? null)
 
     const fields = {
-      title: data.title ?? null,
+      title: effectiveTitle,
       created_at: data.createdAt ?? now,
       last_modified: data.lastModified ?? now,
       message_count: data.messageCount ?? 0,
@@ -451,6 +519,40 @@ export class SessionDb {
       'UPDATE thread_meta SET user_id = ?, updated_at_db = ? WHERE user_id IS NULL'
     ).run(userId, Date.now())
     return result.changes
+  }
+
+  /** 修复缺少标题的线程：从第一条用户消息中提取标题
+   *  用于一次性修复历史数据中 title 为 NULL 但有消息的线程
+   */
+  repairMissingTitles(): number {
+    const rows = this.db.prepare(
+      `SELECT tm.thread_id FROM thread_meta tm
+       WHERE tm.title IS NULL AND tm.message_count > 0`
+    ).all() as { thread_id: string }[]
+
+    if (rows.length === 0) return 0
+
+    const updateStmt = this.db.prepare(
+      'UPDATE thread_meta SET title = ?, updated_at_db = ? WHERE thread_id = ?'
+    )
+    let repaired = 0
+
+    for (const { thread_id } of rows) {
+      try {
+        const title = this.extractTitleFromFirstUserMessage(thread_id)
+        if (title) {
+          updateStmt.run(title, Date.now(), thread_id)
+          repaired++
+        }
+      } catch (err) {
+        logger.session.warn(`[SessionDb] repairMissingTitles: failed for thread ${thread_id}:`, err)
+      }
+    }
+
+    if (repaired > 0) {
+      logger.session.info(`[SessionDb] repairMissingTitles: ${repaired} threads repaired`)
+    }
+    return repaired
   }
 
   /** 行转线程元数据对象 */

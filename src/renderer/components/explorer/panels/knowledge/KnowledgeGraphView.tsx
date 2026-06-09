@@ -354,7 +354,7 @@ export function KnowledgeGraphView({
       const midX = (source.x + target.x) / 2
       const midY = (source.y + target.y) / 2
       if (isHighlighted) {
-        ctx.font = '9px sans-serif'
+        ctx.font = '12px sans-serif'
         ctx.fillStyle = 'rgba(148, 163, 184, 0.8)'
         ctx.textAlign = 'center'
         ctx.fillText(edge.type.replace(/_/g, ' '), midX, midY - 4)
@@ -391,7 +391,7 @@ export function KnowledgeGraphView({
       ctx.globalAlpha = 1
 
       if (!isDimmed) {
-        ctx.font = `${isHovered || isSelected ? 'bold ' : ''}10px sans-serif`
+        ctx.font = `${isHovered || isSelected ? 'bold ' : ''}12px sans-serif`
         ctx.fillStyle = isDimmed ? 'rgba(148, 163, 184, 0.3)' : 'rgba(226, 232, 240, 0.9)'
         ctx.textAlign = 'center'
         ctx.fillText(
@@ -561,7 +561,7 @@ export function KnowledgeGraphView({
           </svg>
         </div>
         <p className="text-[13px] text-text-muted">{isZh ? '暂无图谱数据' : 'No graph data yet'}</p>
-        <p className="text-[11px] text-text-muted/60 max-w-[240px] text-center">
+        <p className="text-[12px] text-text-muted/60 max-w-[240px] text-center">
           {isZh ? '添加知识条目后，系统会自动提取实体和关系构建知识图谱' : 'After adding knowledge entries, the system will automatically extract entities and relationships to build the knowledge graph'}
         </p>
       </div>
@@ -586,7 +586,7 @@ export function KnowledgeGraphView({
           <p className="text-[12px] font-medium text-text-primary">
             {entities.find((e: LocalEntity) => e.id === hoveredNode)?.name}
           </p>
-          <p className="text-[11px] text-text-muted">
+          <p className="text-[12px] text-text-muted">
             {entities.find((e: LocalEntity) => e.id === hoveredNode)?.type}
           </p>
         </div>
@@ -599,7 +599,7 @@ export function KnowledgeGraphView({
           return (
             <div
               key={type}
-              className="flex items-center gap-1 text-[10px] text-text-muted"
+              className="flex items-center gap-1 text-[12px] text-text-muted"
             >
               <div
                 className="w-2 h-2 rounded-full"
@@ -621,7 +621,7 @@ export function KnowledgeGraphView({
         </h3>
         <div className="flex items-center gap-1.5">
           {loadState === 'success' && (
-            <span className="text-[11px] text-text-muted mr-2">
+            <span className="text-[12px] text-text-muted mr-2">
               {isZh ? `${entities.length} 实体 · ${relations.length} 关系` : `${entities.length} entities · ${relations.length} relations`}
               <span className="ml-1.5 inline-flex items-center gap-0.5">
                 {dataSource === 'local' && <Database className="w-3 h-3 text-emerald-400" />}
@@ -678,7 +678,7 @@ export function KnowledgeGraphView({
             <span className="text-[13px] font-medium text-text-primary">
               {selectedEntity.name}
             </span>
-            <span className="text-[11px] text-text-muted">
+            <span className="text-[12px] text-text-muted">
               {selectedEntity.type}
             </span>
           </div>
