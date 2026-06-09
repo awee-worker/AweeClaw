@@ -232,7 +232,7 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
             <ErrorBoundary><Suspense fallback={<EditorSkeleton />}><TerminalStudio /></Suspense></ErrorBoundary>
           </div>
         ) : (
-          <>
+          <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
             <EditorSlot />
             {layoutConfig.showTerminal && terminalVisible && (
               <ErrorBoundary><Suspense fallback={null}><TerminalPanel /></Suspense></ErrorBoundary>
@@ -241,7 +241,7 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
               <ErrorBoundary><Suspense fallback={null}><DebugPanel /></Suspense></ErrorBoundary>
             )}
             <EditorBottomBar />
-          </>
+          </div>
         )}
         {layoutConfig.showChat && <ChatSection visible={!shouldHideChat} mode="secondary" />}
       </>
