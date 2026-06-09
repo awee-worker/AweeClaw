@@ -378,7 +378,15 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
         set({ isAuthenticated: true, cloudUser: profile });
       } catch (e) {
         logger.system.error('[Auth] Fetch profile after restore failed:', e);
-        // profile 获取失败不影响登录状态
+        // profile 获取失败：token 可能仍然有效（临时网络问题），保留认证状态
+        // 但需要确保 cloudUser 不为 null，避免 UI 显示异常
+        if (!get().cloudUser) {
+          // 没有任何用户信息，认证状态不可靠，清除
+          setTokens(null);
+          clearPersistedAuth();
+          set({ isAuthenticated: false, cloudUser: null, cloudMode: 'local' });
+          return;
+        }
         set({ isAuthenticated: true });
       }
       get().fetchQuota().catch(() => {});

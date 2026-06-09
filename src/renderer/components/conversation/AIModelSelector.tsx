@@ -111,6 +111,7 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
         setCloudModels(flat)
       })
       .catch(() => {
+        // 401 等错误：backendApi 已统一处理 onAuthFailed，此处仅清空模型列表
         setCloudModels([])
       })
   }, [cloudMode, isAuthenticated])

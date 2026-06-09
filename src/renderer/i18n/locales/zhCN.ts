@@ -3008,4 +3008,19 @@ export const zh = {
   'app.rating2': '评分',
   'app.tags2': '标签',
   'app.cancel2': '取消',
+
+  // 文件/文件夹右键菜单
+  'contextMenu.copy': '复制',
+  'contextMenu.rename': '重命名',
+  'contextMenu.delete': '删除',
+  'contextMenu.copyPath': '复制路径',
+  'contextMenu.copyRelativePath': '复制相对路径',
+  'contextMenu.revealInExplorer': '在系统资源管理器中显示',
+  'contextMenu.revealInWorkspace': '在工作区中显示',
+  'contextMenu.openIntegratedTerminalHere': '在此处打开集成终端',
+  'contextMenu.confirmDelete': '确定要删除 {name} 吗？',
+  'contextMenu.openInBrowser': '在浏览器中打开',
+  'contextMenu.importFiles': '导入...',
+  'contextMenu.exportFiles': '导出...',
+  'contextMenu.shareItem': '分享...',
 } as const

@@ -348,8 +348,8 @@ export function ExplorerView() {
   const isWorkspaceEditor = activeScenarioId === 'workspace-editor'
 
   const rootMenuItems: ContextMenuItem[] = [
-    { id: 'newFile', label: t('newFile', 'zh'), icon: FilePlus, onClick: () => handleRootCreate('file') },
-    { id: 'newFolder', label: t('newFolder', 'zh'), icon: FolderPlus, onClick: () => handleRootCreate('folder') },
+    { id: 'newFile', label: t('newFile', language as Language), icon: FilePlus, onClick: () => handleRootCreate('file') },
+    { id: 'newFolder', label: t('newFolder', language as Language), icon: FolderPlus, onClick: () => handleRootCreate('folder') },
     { id: 'sep1', label: '', separator: true },
     {
       id: 'import',
@@ -362,7 +362,7 @@ export function ExplorerView() {
           { id: 'sep2', label: '', separator: true } as ContextMenuItem,
           {
             id: 'openTerminal',
-            label: t('openIntegratedTerminalHere', 'zh') || '在此处打开集成终端',
+            label: t('contextMenu.openIntegratedTerminalHere', language as Language),
             icon: Terminal,
             onClick: () => workspacePath && openTerminalAtPath(workspacePath),
           } as ContextMenuItem,
@@ -371,17 +371,17 @@ export function ExplorerView() {
     { id: 'sepTerminal', label: '', separator: true },
     {
       id: 'paste',
-      label: t('paste', 'zh') || '粘贴',
+      label: t('paste', language as Language),
       icon: Clipboard,
       shortcut: formatShortcut('Ctrl+V'),
       disabled: !clipboardItem,
       onClick: handlePasteToWorkspaceRoot,
     },
     { id: 'sepPaste', label: '', separator: true },
-    { id: 'refresh', label: t('refresh', 'zh'), icon: RefreshCw, onClick: () => refreshFiles({ refreshRoot: true }) },
+    { id: 'refresh', label: t('refresh', language as Language), icon: RefreshCw, onClick: () => refreshFiles({ refreshRoot: true }) },
     {
       id: 'reveal',
-      label: '在工作区中显示',
+      label: t('contextMenu.revealInWorkspace', language as Language),
       icon: ExternalLink,
       onClick: () => workspacePath && api.file.showInFolder(workspacePath),
     },

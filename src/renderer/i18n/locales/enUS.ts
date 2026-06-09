@@ -3009,4 +3009,19 @@ export const en = {
   'app.rating2': 'Rating',
   'app.tags2': 'Tags',
   'app.cancel2': 'Cancel',
+
+  // File/Folder context menu
+  'contextMenu.copy': 'Copy',
+  'contextMenu.rename': 'Rename',
+  'contextMenu.delete': 'Delete',
+  'contextMenu.copyPath': 'Copy Path',
+  'contextMenu.copyRelativePath': 'Copy Relative Path',
+  'contextMenu.revealInExplorer': 'Reveal in Explorer',
+  'contextMenu.revealInWorkspace': 'Reveal in Workspace',
+  'contextMenu.openIntegratedTerminalHere': 'Open Integrated Terminal Here',
+  'contextMenu.confirmDelete': 'Are you sure you want to delete {name}?',
+  'contextMenu.openInBrowser': 'Open in Browser',
+  'contextMenu.importFiles': 'Import...',
+  'contextMenu.exportFiles': 'Export...',
+  'contextMenu.shareItem': 'Share...',
 } as const

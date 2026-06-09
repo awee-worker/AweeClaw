@@ -483,10 +483,10 @@ export const VirtualFileTree = memo(function VirtualFileTree({
   // 菜单操作
   const handleDelete = useCallback(async (node: FlattenedNode) => {
     const confirmed = await globalConfirm({
-      title: '删除',
-      message: t('confirmDelete', 'zh', { name: node.item.name }) || `确定要删除 ${node.item.name} 吗？`,
-      confirmText: '确定',
-      cancelText: '取消',
+      title: t('contextMenu.delete', language as Language),
+      message: t('contextMenu.confirmDelete', language as Language, { name: node.item.name }),
+      confirmText: t('contextMenu.delete', language as Language),
+      cancelText: t('cancel', language as Language),
       variant: 'danger',
     })
     if (confirmed) {
@@ -812,7 +812,7 @@ export const VirtualFileTree = memo(function VirtualFileTree({
 
   // 构建右键菜单项
   const getContextMenuItems = useCallback((node: FlattenedNode): ContextMenuItem[] => {
-    const contextMenuLanguage = 'zh'
+    const contextMenuLanguage = language as Language
     const isWorkspaceEditor = activeScenarioId === 'workspace-editor'
 
     if (node.item.isDirectory) {
@@ -820,54 +820,54 @@ export const VirtualFileTree = memo(function VirtualFileTree({
         { id: 'newFile', label: t('newFile', contextMenuLanguage), icon: FilePlus, onClick: () => handleNewFile(node) },
         { id: 'newFolder', label: t('newFolder', contextMenuLanguage), icon: FolderPlus, onClick: () => handleNewFolder(node) },
         { id: 'sep1', label: '', separator: true },
-        { id: 'import', label: contextMenuLanguage === 'zh' ? '导入...' : 'Import...', icon: Download, onClick: () => handleImportIntoFolder(node) },
-        { id: 'export', label: contextMenuLanguage === 'zh' ? '导出...' : 'Export...', icon: Upload, onClick: () => handleExportFromNode(node) },
-        { id: 'share', label: contextMenuLanguage === 'zh' ? '分享...' : 'Share...', icon: Share2, onClick: () => handleShareItem(node) },
+        { id: 'import', label: t('contextMenu.importFiles', contextMenuLanguage), icon: Download, onClick: () => handleImportIntoFolder(node) },
+        { id: 'export', label: t('contextMenu.exportFiles', contextMenuLanguage), icon: Upload, onClick: () => handleExportFromNode(node) },
+        { id: 'share', label: t('contextMenu.shareItem', contextMenuLanguage), icon: Share2, onClick: () => handleShareItem(node) },
         ...(isWorkspaceEditor
           ? [
               { id: 'sep2', label: '', separator: true } as ContextMenuItem,
-              { id: 'openTerminal', label: t('openIntegratedTerminalHere', contextMenuLanguage) || '在此处打开集成终端', icon: Terminal, onClick: () => handleOpenTerminalHere(node) } as ContextMenuItem,
+              { id: 'openTerminal', label: t('contextMenu.openIntegratedTerminalHere', contextMenuLanguage), icon: Terminal, onClick: () => handleOpenTerminalHere(node) } as ContextMenuItem,
             ]
           : []),
         { id: 'sepTerminal', label: '', separator: true },
-        { id: 'copy', label: t('copy', contextMenuLanguage) || '复制', icon: Copy, shortcut: formatShortcut('Ctrl+C'), onClick: () => handleCopyItem(node) },
-        { id: 'paste', label: t('paste', contextMenuLanguage) || '粘贴', icon: Clipboard, shortcut: formatShortcut('Ctrl+V'), disabled: !clipboardItem, onClick: () => handlePasteForNode(node) },
+        { id: 'copy', label: t('contextMenu.copy', contextMenuLanguage), icon: Copy, shortcut: formatShortcut('Ctrl+C'), onClick: () => handleCopyItem(node) },
+        { id: 'paste', label: t('paste', contextMenuLanguage), icon: Clipboard, shortcut: formatShortcut('Ctrl+V'), disabled: !clipboardItem, onClick: () => handlePasteForNode(node) },
         { id: 'sepClipboard', label: '', separator: true },
-        { id: 'rename', label: t('rename', contextMenuLanguage), icon: Edit2, onClick: () => handleRenameStart(node) },
-        { id: 'delete', label: t('delete', contextMenuLanguage), icon: Trash2, danger: true, onClick: () => handleDelete(node) },
+        { id: 'rename', label: t('contextMenu.rename', contextMenuLanguage), icon: Edit2, onClick: () => handleRenameStart(node) },
+        { id: 'delete', label: t('contextMenu.delete', contextMenuLanguage), icon: Trash2, danger: true, onClick: () => handleDelete(node) },
         { id: 'sep3', label: '', separator: true },
-        { id: 'copyPath', label: t('copyPath', contextMenuLanguage) || '复制路径', icon: Copy, onClick: () => handleCopyPath(node) },
-        { id: 'copyRelPath', label: t('copyRelativePath', contextMenuLanguage) || '复制相对路径', icon: Clipboard, onClick: () => handleCopyRelativePath(node) },
-        { id: 'reveal', label: t('revealInExplorer', contextMenuLanguage) || '在工作区中显示', icon: ExternalLink, onClick: () => handleRevealInExplorer(node) },
+        { id: 'copyPath', label: t('contextMenu.copyPath', contextMenuLanguage), icon: Copy, onClick: () => handleCopyPath(node) },
+        { id: 'copyRelPath', label: t('contextMenu.copyRelativePath', contextMenuLanguage), icon: Clipboard, onClick: () => handleCopyRelativePath(node) },
+        { id: 'reveal', label: t('contextMenu.revealInExplorer', contextMenuLanguage), icon: ExternalLink, onClick: () => handleRevealInExplorer(node) },
       ]
     }
     const isHtmlFile = node.item.name.toLowerCase().endsWith('.html') ||
       node.item.name.toLowerCase().endsWith('.htm')
 
     const items: ContextMenuItem[] = [
-      { id: 'export', label: contextMenuLanguage === 'zh' ? '导出...' : 'Export...', icon: Upload, onClick: () => handleExportFromNode(node) },
-      { id: 'share', label: contextMenuLanguage === 'zh' ? '分享...' : 'Share...', icon: Share2, onClick: () => handleShareItem(node) },
+      { id: 'export', label: t('contextMenu.exportFiles', contextMenuLanguage), icon: Upload, onClick: () => handleExportFromNode(node) },
+      { id: 'share', label: t('contextMenu.shareItem', contextMenuLanguage), icon: Share2, onClick: () => handleShareItem(node) },
       ...(isWorkspaceEditor
         ? [
             { id: 'sep1', label: '', separator: true } as ContextMenuItem,
-            { id: 'openTerminal', label: t('openIntegratedTerminalHere', contextMenuLanguage) || '在此处打开集成终端', icon: Terminal, onClick: () => handleOpenTerminalHere(node) } as ContextMenuItem,
+            { id: 'openTerminal', label: t('contextMenu.openIntegratedTerminalHere', contextMenuLanguage), icon: Terminal, onClick: () => handleOpenTerminalHere(node) } as ContextMenuItem,
           ]
         : []),
       { id: 'sepTerminal', label: '', separator: true },
-      { id: 'copy', label: t('copy', contextMenuLanguage) || '复制', icon: Copy, shortcut: formatShortcut('Ctrl+C'), onClick: () => handleCopyItem(node) },
-      { id: 'paste', label: t('paste', contextMenuLanguage) || '粘贴', icon: Clipboard, shortcut: formatShortcut('Ctrl+V'), disabled: !clipboardItem, onClick: () => handlePasteForNode(node) },
+      { id: 'copy', label: t('contextMenu.copy', contextMenuLanguage), icon: Copy, shortcut: formatShortcut('Ctrl+C'), onClick: () => handleCopyItem(node) },
+      { id: 'paste', label: t('paste', contextMenuLanguage), icon: Clipboard, shortcut: formatShortcut('Ctrl+V'), disabled: !clipboardItem, onClick: () => handlePasteForNode(node) },
       { id: 'sepClipboard', label: '', separator: true },
-      { id: 'rename', label: t('rename', contextMenuLanguage), icon: Edit2, onClick: () => handleRenameStart(node) },
-      { id: 'delete', label: t('delete', contextMenuLanguage), icon: Trash2, danger: true, onClick: () => handleDelete(node) },
+      { id: 'rename', label: t('contextMenu.rename', contextMenuLanguage), icon: Edit2, onClick: () => handleRenameStart(node) },
+      { id: 'delete', label: t('contextMenu.delete', contextMenuLanguage), icon: Trash2, danger: true, onClick: () => handleDelete(node) },
       { id: 'sep2', label: '', separator: true },
-      { id: 'copyPath', label: t('copyPath', contextMenuLanguage) || '复制路径', icon: Copy, onClick: () => handleCopyPath(node) },
-      { id: 'copyRelPath', label: t('copyRelativePath', contextMenuLanguage) || '复制相对路径', icon: Clipboard, onClick: () => handleCopyRelativePath(node) },
-      { id: 'reveal', label: t('revealInExplorer', contextMenuLanguage) || '在工作区中显示', icon: ExternalLink, onClick: () => handleRevealInExplorer(node) },
+      { id: 'copyPath', label: t('contextMenu.copyPath', contextMenuLanguage), icon: Copy, onClick: () => handleCopyPath(node) },
+      { id: 'copyRelPath', label: t('contextMenu.copyRelativePath', contextMenuLanguage), icon: Clipboard, onClick: () => handleCopyRelativePath(node) },
+      { id: 'reveal', label: t('contextMenu.revealInExplorer', contextMenuLanguage), icon: ExternalLink, onClick: () => handleRevealInExplorer(node) },
     ]
 
     if (isHtmlFile) {
       items.push({ id: 'sepHtml', label: '', separator: true })
-      items.push({ id: 'openInBrowser', label: t('openInBrowser', contextMenuLanguage) || '在浏览器中打开', icon: Globe, onClick: () => handleOpenInBrowser(node) })
+      items.push({ id: 'openInBrowser', label: t('contextMenu.openInBrowser', contextMenuLanguage), icon: Globe, onClick: () => handleOpenInBrowser(node) })
     }
 
     return items

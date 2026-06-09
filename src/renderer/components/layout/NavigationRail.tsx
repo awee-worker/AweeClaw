@@ -497,6 +497,7 @@ export default function NavigationRail() {
 
   const userInitial = cloudUser?.username?.[0]?.toUpperCase() || cloudUser?.email?.[0]?.toUpperCase() || '?'
   const userDisplayName = cloudUser?.username || cloudUser?.email || ''
+  const showUserInfo = isAuthenticated && !!cloudUser
 
   return (
     <div className={`${p}-nav-rail`} data-expanded={navRailExpanded} data-mac={isMac}>
@@ -911,12 +912,12 @@ export default function NavigationRail() {
           onCheckUpdate={handleCheckUpdate}
           onAbout={handleAbout}
           onLogout={handleLogout}
-          isAuthenticated={isAuthenticated}
+          isAuthenticated={showUserInfo}
           cloudUser={cloudUser}
           anchorRef={userAreaRef}
         />
 
-        {isAuthenticated ? (
+        {showUserInfo ? (
           navRailExpanded ? (
             <button
               className={`${p}-nav-rail-user-btn`}

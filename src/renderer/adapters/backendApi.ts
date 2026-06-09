@@ -162,23 +162,8 @@ async function refreshAccessToken(): Promise<AuthTokens | null> {
       });
 
       if (!res.ok) {
-        // 区分 refresh token 无效（401）和服务器临时错误（5xx）
-        if (res.status === 401 || res.status === 403) {
-          // refresh token 已失效，但 accessToken 可能仍在有效期内
-          // 只有 accessToken 也过期时才触发 onAuthFailed
-          const currentExpiresAt = tokens?.accessToken ? decodeJwtExp(tokens.accessToken) : null;
-          const now = Date.now();
-          if (!currentExpiresAt || currentExpiresAt <= now) {
-            // accessToken 也已过期，用户必须重新登录
-            tokens = null;
-            if (proactiveRefreshTimer) {
-              clearTimeout(proactiveRefreshTimer);
-              proactiveRefreshTimer = null;
-            }
-            onAuthFailed?.();
-          }
-          // accessToken 仍有效，保留认证状态，等下次请求时再判断
-        }
+        // 区分 refresh token 无效（401/403）和服务器临时错误（5xx）
+        // refresh token 失效时，由 request() 统一触发 onAuthFailed
         // 5xx 等临时错误：保留 tokens，不清除认证状态
         return null;
       }
@@ -236,6 +221,15 @@ async function request<T>(
     if (newTokens) {
       headers['Authorization'] = `Bearer ${newTokens.accessToken}`;
       res = await fetch(url, { ...fetchOptions, headers });
+    } else {
+      // refresh 失败：refresh token 已失效，但 accessToken JWT 可能还没过期
+      // 此时服务端已不再认可该 accessToken，应触发认证失效
+      tokens = null;
+      if (proactiveRefreshTimer) {
+        clearTimeout(proactiveRefreshTimer);
+        proactiveRefreshTimer = null;
+      }
+      onAuthFailed?.();
     }
   }
 
