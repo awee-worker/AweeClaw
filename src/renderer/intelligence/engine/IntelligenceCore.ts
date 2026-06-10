@@ -399,13 +399,26 @@ export class AgentClass {
       || currentThread?.executionMeta?.requestId
     const pendingToolCalls = currentThread?.streamState?.pendingApprovalToolCalls
 
-    if (effectiveRequestId && pendingToolCalls && pendingToolCalls.length > 0) {
+    logger.agent.info(`[Agent.approve] requestId=${requestId}, streamState.requestId=${currentThread?.streamState?.requestId}, executionMeta.requestId=${currentThread?.executionMeta?.requestId}, effectiveRequestId=${effectiveRequestId}, pendingToolCalls=${pendingToolCalls?.length}, approvalQueueSize=${approvalService.pendingCount}`)
+
+    if (pendingToolCalls && pendingToolCalls.length > 0) {
+      // 优先使用每个待审批工具自带的 requestId，支持多智能体并行审批
       for (const tc of pendingToolCalls) {
-        approvalService.approve(`${effectiveRequestId}_${tc.id}`)
+        const reqId = tc.requestId || effectiveRequestId
+        const approvalId = reqId ? `${reqId}_${tc.id}` : tc.id
+        logger.agent.info(`[Agent.approve] Approving tool: ${approvalId} (tc.requestId=${tc.requestId})`)
+        approvalService.approve(approvalId)
       }
     } else if (effectiveRequestId) {
+      logger.agent.info(`[Agent.approve] No pendingToolCalls, approving by requestId: ${effectiveRequestId}`)
       approvalService.approve(effectiveRequestId)
+    } else {
+      logger.agent.warn(`[Agent.approve] No pendingToolCalls and no requestId, falling back to queue`)
+      approvalService.approve()
     }
+
+    // 注意：不清除 pendingApprovalToolCalls，由子循环在 waitForApproval 返回后自行处理
+    // 这样可以支持多个并行工具调用时的逐个批准
   }
 
   /**
@@ -419,13 +432,26 @@ export class AgentClass {
       || currentThread?.executionMeta?.requestId
     const pendingToolCalls = currentThread?.streamState?.pendingApprovalToolCalls
 
-    if (effectiveRequestId && pendingToolCalls && pendingToolCalls.length > 0) {
+    logger.agent.info(`[Agent.reject] requestId=${requestId}, streamState.requestId=${currentThread?.streamState?.requestId}, executionMeta.requestId=${currentThread?.executionMeta?.requestId}, effectiveRequestId=${effectiveRequestId}, pendingToolCalls=${pendingToolCalls?.length}, approvalQueueSize=${approvalService.pendingCount}`)
+
+    if (pendingToolCalls && pendingToolCalls.length > 0) {
+      // 优先使用每个待审批工具自带的 requestId，支持多智能体并行审批
       for (const tc of pendingToolCalls) {
-        approvalService.reject(`${effectiveRequestId}_${tc.id}`)
+        const reqId = tc.requestId || effectiveRequestId
+        const approvalId = reqId ? `${reqId}_${tc.id}` : tc.id
+        logger.agent.info(`[Agent.reject] Rejecting tool: ${approvalId} (tc.requestId=${tc.requestId})`)
+        approvalService.reject(approvalId)
       }
     } else if (effectiveRequestId) {
+      logger.agent.info(`[Agent.reject] No pendingToolCalls, rejecting by requestId: ${effectiveRequestId}`)
       approvalService.reject(effectiveRequestId)
+    } else {
+      logger.agent.warn(`[Agent.reject] No pendingToolCalls and no requestId, falling back to queue`)
+      approvalService.reject()
     }
+
+    // 注意：不清除 pendingApprovalToolCalls，由子循环在 waitForApproval 返回后自行处理
+    // 这样可以支持多个并行工具调用时的逐个拒绝
   }
 
   approveAll(): void {
@@ -434,13 +460,14 @@ export class AgentClass {
     const requestId = currentThread?.streamState?.requestId || currentThread?.executionMeta?.requestId
     const pendingToolCalls = currentThread?.streamState?.pendingApprovalToolCalls
 
-    if (!requestId || !pendingToolCalls || pendingToolCalls.length === 0) {
+    if (!pendingToolCalls || pendingToolCalls.length === 0) {
       approvalService.approveAll()
       return
     }
 
     for (const tc of pendingToolCalls) {
-      approvalService.approve(`${requestId}_${tc.id}`)
+      const reqId = tc.requestId || requestId
+      approvalService.approve(reqId ? `${reqId}_${tc.id}` : tc.id)
     }
   }
 
@@ -450,13 +477,14 @@ export class AgentClass {
     const requestId = currentThread?.streamState?.requestId || currentThread?.executionMeta?.requestId
     const pendingToolCalls = currentThread?.streamState?.pendingApprovalToolCalls
 
-    if (!requestId || !pendingToolCalls || pendingToolCalls.length === 0) {
+    if (!pendingToolCalls || pendingToolCalls.length === 0) {
       approvalService.rejectAll()
       return
     }
 
     for (const tc of pendingToolCalls) {
-      approvalService.reject(`${requestId}_${tc.id}`)
+      const reqId = tc.requestId || requestId
+      approvalService.reject(reqId ? `${reqId}_${tc.id}` : tc.id)
     }
   }
 

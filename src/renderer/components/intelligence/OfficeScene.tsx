@@ -58,7 +58,7 @@ function OfficeFloor({ isDaytime }: { isDaytime: boolean }) {
   )
 }
 
-function OfficeWalls({ isDaytime }: { isDaytime: boolean }) {
+function OfficeWalls({ isDaytime, accentColor }: { isDaytime: boolean; accentColor: string }) {
   const wallColor = isDaytime ? '#e8e4de' : '#243052'
   return (
     <group>
@@ -85,14 +85,14 @@ function OfficeWalls({ isDaytime }: { isDaytime: boolean }) {
       {[-2, 2].map((x, i) => (
         <mesh key={i} position={[x, 2.95, 0]}>
           <boxGeometry args={[2, 0.05, 0.3]} />
-          <meshStandardMaterial color="#ffffff" emissive="#4FC3F7" emissiveIntensity={0.3} roughness={0.2} />
+          <meshStandardMaterial color="#ffffff" emissive={accentColor} emissiveIntensity={0.3} roughness={0.2} />
         </mesh>
       ))}
     </group>
   )
 }
 
-function Monitor({ screenContent, isWorking }: { screenContent: string; isWorking: boolean }) {
+function Monitor({ screenContent, isWorking, accentColor }: { screenContent: string; isWorking: boolean; accentColor: string }) {
   const glowRef = useRef<THREE.Mesh>(null)
 
   useFrame((state) => {
@@ -120,7 +120,7 @@ function Monitor({ screenContent, isWorking }: { screenContent: string; isWorkin
         <planeGeometry args={[0.5, 0.3]} />
         <meshStandardMaterial
           color="#0d1117"
-          emissive={isWorking ? '#4FC3F7' : '#1a1a2e'}
+          emissive={isWorking ? accentColor : '#1a1a2e'}
           emissiveIntensity={isWorking ? 0.3 : 0.05}
           roughness={0.2}
         />
@@ -129,7 +129,7 @@ function Monitor({ screenContent, isWorking }: { screenContent: string; isWorkin
         <Text
           position={[0, 0, 0.02]}
           fontSize={0.04}
-          color={isWorking ? '#4FC3F7' : '#666'}
+          color={isWorking ? accentColor : '#666'}
           anchorX="center"
           anchorY="middle"
           maxWidth={0.45}
@@ -201,9 +201,10 @@ function CoffeeMachine({ position }: { position: [number, number, number] }) {
   )
 }
 
-function OfficeDesk({ agent, onAgentClick }: {
+function OfficeDesk({ agent, onAgentClick, accentColor }: {
   agent: WorkspaceAgent
   onAgentClick: (agent: WorkspaceAgent) => void
+  accentColor: string
 }) {
   const screenContent = useMemo(() => {
     if (agent.status === 'working') {
@@ -234,7 +235,7 @@ function OfficeDesk({ agent, onAgentClick }: {
         <meshStandardMaterial color="#7A5F3A" roughness={0.7} />
       </mesh>
 
-      <Monitor screenContent={screenContent} isWorking={isWorking} />
+      <Monitor screenContent={screenContent} isWorking={isWorking} accentColor={accentColor} />
       <Keyboard />
       <DeskPlant />
 
@@ -268,6 +269,7 @@ function OfficeDesk({ agent, onAgentClick }: {
             status={agent.status}
             scale={1.4}
             onClick={() => onAgentClick(agent)}
+            themeAccentColor={accentColor}
           />
         </group>
       )}
@@ -292,7 +294,7 @@ function OfficeDesk({ agent, onAgentClick }: {
           </mesh>
           <mesh position={[-0.3 + (0.6 * agent.progress / 100) / 2, 0, 0.001]} rotation={[-Math.PI / 2, 0, 0]}>
             <planeGeometry args={[0.6 * agent.progress / 100, 0.04]} />
-            <meshStandardMaterial color="#4FC3F7" emissive="#4FC3F7" emissiveIntensity={0.3} transparent opacity={0.8} />
+            <meshStandardMaterial color={accentColor} emissive={accentColor} emissiveIntensity={0.3} transparent opacity={0.8} />
           </mesh>
         </group>
       )}
@@ -339,7 +341,7 @@ function HandoffBeam({ from, to }: { from: [number, number, number]; to: [number
   )
 }
 
-function WanderingCat({ agent, deskPosition, bounds, idleAction, obstacles, ownDeskX, ownDeskZ }: {
+function WanderingCat({ agent, deskPosition, bounds, idleAction, obstacles, ownDeskX, ownDeskZ, accentColor }: {
   agent: WorkspaceAgent
   deskPosition: [number, number, number]
   bounds: { minX: number; maxX: number; minZ: number; maxZ: number }
@@ -347,6 +349,7 @@ function WanderingCat({ agent, deskPosition, bounds, idleAction, obstacles, ownD
   obstacles: ObstacleRect[]
   ownDeskX: number
   ownDeskZ: number
+  accentColor: string
 }) {
   const groupRef = useRef<THREE.Group>(null)
   const [catState, setCatState] = useState({
@@ -525,6 +528,7 @@ function WanderingCat({ agent, deskPosition, bounds, idleAction, obstacles, ownD
         status={catState.isMoving ? 'moving' : 'waiting'}
         idleAction={catState.currentAction}
         scale={1.3}
+        themeAccentColor={accentColor}
       />
       <Text
         position={[0, 0.55, 0]}
@@ -670,11 +674,12 @@ function SmokingArea() {
   )
 }
 
-function ReturningCat({ agent, from, to, onArrived }: {
+function ReturningCat({ agent, from, to, onArrived, accentColor }: {
   agent: WorkspaceAgent
   from: [number, number, number]
   to: [number, number, number]
   onArrived: () => void
+  accentColor: string
 }) {
   const groupRef = useRef<THREE.Group>(null)
   const arrivedRef = useRef(false)
@@ -707,6 +712,7 @@ function ReturningCat({ agent, from, to, onArrived }: {
         role={agent.role || 'custom'}
         status="moving"
         scale={1.3}
+        themeAccentColor={accentColor}
       />
       <Text
         position={[0, 0.55, 0]}
@@ -739,12 +745,13 @@ function getAgentIdleAction(agentId: string): IdleAction {
   return IDLE_ACTIONS[Math.abs(hash) % IDLE_ACTIONS.length]
 }
 
-export function OfficeScene({ agents, onAgentClick, handoffFrom, handoffTo, collaborationPhase }: {
+export function OfficeScene({ agents, onAgentClick, handoffFrom, handoffTo, collaborationPhase, accentColor = '#39bef8' }: {
   agents: WorkspaceAgent[]
   onAgentClick: (agent: WorkspaceAgent) => void
   handoffFrom?: string
   handoffTo?: string
   collaborationPhase?: CollaborationPhase
+  accentColor?: string
 }) {
   const count = Math.min(Math.max(agents.length, 2), 6)
   const positions = DESK_LAYOUTS[count] || DESK_LAYOUTS[4]
@@ -823,7 +830,7 @@ export function OfficeScene({ agents, onAgentClick, handoffFrom, handoffTo, coll
         shadow-mapSize-height={1024}
         color={isDaytime ? '#fff5e6' : '#e8eeff'}
       />
-      <pointLight position={[0, 2.8, 0]} intensity={isDaytime ? 0.2 : 0.8} color={isDaytime ? '#FFE0B2' : '#4FC3F7'} />
+      <pointLight position={[0, 2.8, 0]} intensity={isDaytime ? 0.2 : 0.8} color={isDaytime ? '#FFE0B2' : accentColor} />
       {!isDaytime && (
         <>
           <pointLight position={[-3, 2.5, -2]} intensity={0.6} color="#FFD54F" />
@@ -833,14 +840,14 @@ export function OfficeScene({ agents, onAgentClick, handoffFrom, handoffTo, coll
       )}
 
       <OfficeFloor isDaytime={isDaytime} />
-      <OfficeWalls isDaytime={isDaytime} />
+      <OfficeWalls isDaytime={isDaytime} accentColor={accentColor} />
 
       {agents.map((agent, i) => {
         if (i >= positions.length) return null
         const isReturning = returningAgentIds.has(agent.id)
         return (
           <group key={agent.id} position={positions[i]}>
-            <OfficeDesk agent={{ ...agent, status: (isMeetingPhase || isReturning) ? 'waiting' : agent.status }} onAgentClick={onAgentClick} />
+            <OfficeDesk agent={{ ...agent, status: (isMeetingPhase || isReturning) ? 'waiting' : agent.status }} onAgentClick={onAgentClick} accentColor={accentColor} />
           </group>
         )
       })}
@@ -866,6 +873,7 @@ export function OfficeScene({ agents, onAgentClick, handoffFrom, handoffTo, coll
                 idleAction="chat"
                 scale={1.3}
                 onClick={() => onAgentClick(agent)}
+                themeAccentColor={accentColor}
               />
               <Text
                 position={[0, 0.55, 0]}
@@ -898,6 +906,7 @@ export function OfficeScene({ agents, onAgentClick, handoffFrom, handoffTo, coll
                   return next
                 })
               }}
+              accentColor={accentColor}
             />
           )
         })
@@ -915,6 +924,7 @@ export function OfficeScene({ agents, onAgentClick, handoffFrom, handoffTo, coll
               obstacles={obstacles}
               ownDeskX={deskPos[0]}
               ownDeskZ={deskPos[2]}
+              accentColor={accentColor}
             />
           )
         })

@@ -143,9 +143,12 @@ export function useChannelBridge() {
         if (thread?.streamState?.phase === 'tool_pending') {
           const requestId = thread.streamState.requestId || thread.executionMeta?.requestId
           const pendingToolCalls = thread.streamState.pendingApprovalToolCalls
-          if (requestId && pendingToolCalls && pendingToolCalls.length > 0) {
+          if (pendingToolCalls && pendingToolCalls.length > 0) {
             for (const tc of pendingToolCalls) {
-              approvalService.approve(`${requestId}_${tc.id}`)
+              const reqId = tc.requestId || requestId
+              if (reqId) {
+                approvalService.approve(`${reqId}_${tc.id}`)
+              }
             }
           } else if (requestId) {
             approvalService.approve(requestId)

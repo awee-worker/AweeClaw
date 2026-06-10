@@ -7,6 +7,7 @@ interface ModeSelectorProps {
   mode: WorkMode
   onModeChange: (mode: WorkMode) => void
   className?: string
+  disabled?: boolean
 }
 
 const MODES: Array<{
@@ -47,7 +48,7 @@ const MODES: Array<{
   },
 ]
 
-export default function ModeSelector({ mode, onModeChange, className = '' }: ModeSelectorProps) {
+export default function ModeSelector({ mode, onModeChange, className = '', disabled = false }: ModeSelectorProps) {
   const language = useStore(s => s.language)
   const [isOpen, setIsOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -72,13 +73,15 @@ export default function ModeSelector({ mode, onModeChange, className = '' }: Mod
     <div ref={dropdownRef} className={`relative ${className}`}>
       <div className="flex items-center">
         <button
-          onClick={() => setIsOpen(!isOpen)}
+          onClick={() => !disabled && setIsOpen(!isOpen)}
           className={`
             flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold
             transition-all duration-200
-            ${isOpen
-              ? 'bg-surface-active text-text-primary shadow-[0_0_0_1px_rgba(var(--accent)/0.15)]'
-              : 'text-text-muted hover:text-text-secondary'
+            ${disabled
+              ? 'opacity-40 cursor-not-allowed'
+              : isOpen
+                ? 'bg-surface-active text-text-primary shadow-[0_0_0_1px_rgba(var(--accent)/0.15)]'
+                : 'text-text-muted hover:text-text-secondary'
             }
           `}
         >

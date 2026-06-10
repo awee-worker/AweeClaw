@@ -183,7 +183,7 @@ function TypingArms({ bodyColor }: { bodyColor: THREE.Color }) {
   )
 }
 
-function WalkingArms({ bodyColor, idleAction }: { bodyColor: THREE.Color; idleAction: string }) {
+function WalkingArms({ bodyColor, idleAction, themeAccentColor = '#39bef8' }: { bodyColor: THREE.Color; idleAction: string; themeAccentColor?: string }) {
   const leftArmRef = useRef<THREE.Group>(null)
   const rightArmRef = useRef<THREE.Group>(null)
   const rightItemRef = useRef<THREE.Group>(null)
@@ -294,7 +294,7 @@ function WalkingArms({ bodyColor, idleAction }: { bodyColor: THREE.Color; idleAc
           </group>
           <mesh position={[0, -0.16, 0.023]} rotation={[0.3, 0, 0]}>
             <planeGeometry args={[0.035, 0.05]} />
-            <meshStandardMaterial color="#4FC3F7" emissive="#4FC3F7" emissiveIntensity={0.3} roughness={0.2} />
+            <meshStandardMaterial color={themeAccentColor} emissive={themeAccentColor} emissiveIntensity={0.3} roughness={0.2} />
           </mesh>
         </group>
       </group>
@@ -342,7 +342,7 @@ function WalkingArms({ bodyColor, idleAction }: { bodyColor: THREE.Color; idleAc
   )
 }
 
-function IdleArms({ bodyColor, idleAction }: { bodyColor: THREE.Color; idleAction: string }) {
+function IdleArms({ bodyColor, idleAction, themeAccentColor = '#39bef8' }: { bodyColor: THREE.Color; idleAction: string; themeAccentColor?: string }) {
   const leftArmRef = useRef<THREE.Group>(null)
   const rightArmRef = useRef<THREE.Group>(null)
   const rightItemRef = useRef<THREE.Group>(null)
@@ -471,7 +471,7 @@ function IdleArms({ bodyColor, idleAction }: { bodyColor: THREE.Color; idleActio
           </group>
           <mesh position={[0, -0.16, 0.023]} rotation={[0.3, 0, 0]}>
             <planeGeometry args={[0.035, 0.05]} />
-            <meshStandardMaterial color="#4FC3F7" emissive="#4FC3F7" emissiveIntensity={0.3} roughness={0.2} />
+            <meshStandardMaterial color={themeAccentColor} emissive={themeAccentColor} emissiveIntensity={0.3} roughness={0.2} />
           </mesh>
         </group>
       </group>
@@ -660,6 +660,7 @@ interface CatModel3DProps {
   idleAction?: string
   scale?: number
   onClick?: () => void
+  themeAccentColor?: string
 }
 
 export function CatModel3D({
@@ -669,6 +670,7 @@ export function CatModel3D({
   idleAction,
   scale = 1,
   onClick,
+  themeAccentColor = '#39bef8',
 }: CatModel3DProps) {
   const groupRef = useRef<THREE.Group>(null)
   const catVariant = variant || ROLE_VARIANT[role] || 'orange'
@@ -808,9 +810,9 @@ export function CatModel3D({
       {status === 'working' ? (
         <TypingArms bodyColor={bodyColor} />
       ) : isMoving ? (
-        <WalkingArms bodyColor={bodyColor} idleAction={action} />
+        <WalkingArms bodyColor={bodyColor} idleAction={action} themeAccentColor={themeAccentColor} />
       ) : (
-        <IdleArms bodyColor={bodyColor} idleAction={action} />
+        <IdleArms bodyColor={bodyColor} idleAction={action} themeAccentColor={themeAccentColor} />
       )}
 
       <CatAccessory type={accessoryType} color="#FFD700" />
@@ -821,8 +823,8 @@ export function CatModel3D({
             <mesh key={i} position={pos as [number, number, number]}>
               <sphereGeometry args={[0.01, 6, 6]} />
               <meshStandardMaterial
-                color="#4FC3F7"
-                emissive="#4FC3F7"
+                color={themeAccentColor}
+                emissive={themeAccentColor}
                 emissiveIntensity={1.5}
                 transparent
                 opacity={0.8}

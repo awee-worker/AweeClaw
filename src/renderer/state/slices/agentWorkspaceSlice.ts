@@ -94,6 +94,7 @@ export interface AgentWorkspaceSlice {
   setWorkspaceViewVisible: (visible: boolean) => void
   setTeamModeEnabled: (enabled: boolean) => void
   clearWorkspaceSession: () => void
+  replanWorkspace: () => void
 }
 
 export const createAgentWorkspaceSlice: StateCreator<AgentWorkspaceSlice, [], [], AgentWorkspaceSlice> = (set) => ({
@@ -172,4 +173,20 @@ export const createAgentWorkspaceSlice: StateCreator<AgentWorkspaceSlice, [], []
   setTeamModeEnabled: (enabled) => set({ teamModeEnabled: enabled }),
 
   clearWorkspaceSession: () => set({ activeWorkspaceSession: null, workspaceViewVisible: false }),
+
+  replanWorkspace: () => set((state) => {
+    if (!state.activeWorkspaceSession) return state
+    return {
+      activeWorkspaceSession: {
+        ...state.activeWorkspaceSession,
+        status: 'planning',
+        agents: [],
+        plan: undefined,
+        summary: '',
+        teamChat: [],
+        collaborationPhase: undefined,
+        totalDuration: undefined,
+      },
+    }
+  }),
 })

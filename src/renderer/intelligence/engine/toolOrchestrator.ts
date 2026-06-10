@@ -44,11 +44,33 @@ class ApprovalServiceClass {
 
   approve(requestId?: string): void {
     if (requestId) {
-      this.pendingResolves.get(requestId)?.(true)
-      this.pendingResolves.delete(requestId)
-      this.queue = this.queue.filter(item => item.id !== requestId)
+      const resolve = this.pendingResolves.get(requestId)
+      logger.agent.info(`[ApprovalService] approve(${requestId}): found=${!!resolve}, queueSize=${this.queue.length}, pendingIds=[${Array.from(this.pendingResolves.keys()).join(',')}]`)
+      if (resolve) {
+        resolve(true)
+        this.pendingResolves.delete(requestId)
+        this.queue = this.queue.filter(item => item.id !== requestId)
+      } else {
+        // 精确匹配失败，尝试前缀匹配（处理 requestId 可能不完整的情况）
+        const matchedKey = Array.from(this.pendingResolves.keys()).find(key => key.startsWith(requestId) || requestId.startsWith(key))
+        if (matchedKey) {
+          logger.agent.info(`[ApprovalService] approve: prefix matched ${requestId} -> ${matchedKey}`)
+          this.pendingResolves.get(matchedKey)?.(true)
+          this.pendingResolves.delete(matchedKey)
+          this.queue = this.queue.filter(item => item.id !== matchedKey)
+        } else if (this.queue.length > 0) {
+          // 前缀匹配也失败，处理队列中的第一个
+          const first = this.queue.shift()!
+          logger.agent.info(`[ApprovalService] approve: no match for ${requestId}, resolving first in queue: ${first.id}`)
+          this.pendingResolves.get(first.id)?.(true)
+          this.pendingResolves.delete(first.id)
+        } else {
+          logger.agent.warn(`[ApprovalService] approve(${requestId}): no match found and queue is empty`)
+        }
+      }
     } else if (this.queue.length > 0) {
       const first = this.queue.shift()!
+      logger.agent.info(`[ApprovalService] approve() (no id): resolving first in queue: ${first.id}`)
       this.pendingResolves.get(first.id)?.(true)
       this.pendingResolves.delete(first.id)
     } else {
@@ -58,11 +80,32 @@ class ApprovalServiceClass {
 
   reject(requestId?: string): void {
     if (requestId) {
-      this.pendingResolves.get(requestId)?.(false)
-      this.pendingResolves.delete(requestId)
-      this.queue = this.queue.filter(item => item.id !== requestId)
+      const resolve = this.pendingResolves.get(requestId)
+      logger.agent.info(`[ApprovalService] reject(${requestId}): found=${!!resolve}, queueSize=${this.queue.length}, pendingIds=[${Array.from(this.pendingResolves.keys()).join(',')}]`)
+      if (resolve) {
+        resolve(false)
+        this.pendingResolves.delete(requestId)
+        this.queue = this.queue.filter(item => item.id !== requestId)
+      } else {
+        // 精确匹配失败，尝试前缀匹配
+        const matchedKey = Array.from(this.pendingResolves.keys()).find(key => key.startsWith(requestId) || requestId.startsWith(key))
+        if (matchedKey) {
+          logger.agent.info(`[ApprovalService] reject: prefix matched ${requestId} -> ${matchedKey}`)
+          this.pendingResolves.get(matchedKey)?.(false)
+          this.pendingResolves.delete(matchedKey)
+          this.queue = this.queue.filter(item => item.id !== matchedKey)
+        } else if (this.queue.length > 0) {
+          const first = this.queue.shift()!
+          logger.agent.info(`[ApprovalService] reject: no match for ${requestId}, resolving first in queue: ${first.id}`)
+          this.pendingResolves.get(first.id)?.(false)
+          this.pendingResolves.delete(first.id)
+        } else {
+          logger.agent.warn(`[ApprovalService] reject(${requestId}): no match found and queue is empty`)
+        }
+      }
     } else if (this.queue.length > 0) {
       const first = this.queue.shift()!
+      logger.agent.info(`[ApprovalService] reject() (no id): resolving first in queue: ${first.id}`)
       this.pendingResolves.get(first.id)?.(false)
       this.pendingResolves.delete(first.id)
     } else {
@@ -749,11 +792,18 @@ export async function executeTools(
       })
     }
 
+    const effectiveRequestId = context.requestId || ''
     store.setStreamState({
       phase: 'tool_pending',
       streamDetail: 'tool_awaiting',
       currentToolCall: groupToolCalls[0],
-      pendingApprovalToolCalls: groupToolCalls,
+      pendingApprovalToolCalls: groupToolCalls.map(tc => ({
+        id: tc.id,
+        name: tc.name,
+        arguments: tc.arguments,
+        status: tc.status,
+        requestId: effectiveRequestId,
+      })),
       statusText: undefined,
       requestId: context.requestId,
       assistantId: context.assistantId ?? context.currentAssistantId ?? undefined,

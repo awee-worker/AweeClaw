@@ -185,10 +185,12 @@ export function useAgentCommands() {
   }, [streamState.phase, streamState.requestId])
 
   const approveCurrentTool = useCallback(() => {
+    console.log('[useAgent] approveCurrentTool called, pendingApprovalRequestId:', pendingApprovalRequestId)
     Agent.approve(pendingApprovalRequestId)
   }, [pendingApprovalRequestId])
 
   const rejectCurrentTool = useCallback(() => {
+    console.log('[useAgent] rejectCurrentTool called, pendingApprovalRequestId:', pendingApprovalRequestId)
     Agent.reject(pendingApprovalRequestId)
   }, [pendingApprovalRequestId])
 

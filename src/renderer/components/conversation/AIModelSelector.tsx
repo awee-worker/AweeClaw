@@ -18,9 +18,10 @@ interface FlatModel {
 interface ModelSelectorProps {
   className?: string
   alignLeft?: boolean
+  disabled?: boolean
 }
 
-export default function ModelSelector({ className = '', alignLeft = false }: ModelSelectorProps) {
+export default function ModelSelector({ className = '', alignLeft = false, disabled = false }: ModelSelectorProps) {
   const { llmConfig, update, providerConfigs, save, cloudMode, isAuthenticated } = useStore(useShallow(s => ({
     llmConfig: s.llmConfig,
     update: s.update,
@@ -235,13 +236,15 @@ export default function ModelSelector({ className = '', alignLeft = false }: Mod
   return (
     <div ref={containerRef} className={`${alignLeft ? '' : 'relative'} flex items-center ${className}`}>
       <button
-        onClick={() => setIsOpen((prev) => !prev)}
+        onClick={() => !disabled && setIsOpen((prev) => !prev)}
         className={`
           inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-medium border border-transparent
           transition-all duration-200
-          ${isOpen
-            ? 'bg-surface-active text-text-primary shadow-[0_0_0_2px_rgba(var(--accent)/0.15)]'
-            : 'bg-white/[0.03] text-text-secondary hover:text-text-primary hover:bg-white/[0.08]'
+          ${disabled
+            ? 'opacity-40 cursor-not-allowed'
+            : isOpen
+              ? 'bg-surface-active text-text-primary shadow-[0_0_0_2px_rgba(var(--accent)/0.15)]'
+              : 'bg-white/[0.03] text-text-secondary hover:text-text-primary hover:bg-white/[0.08]'
           }
         `}
       >

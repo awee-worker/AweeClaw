@@ -458,8 +458,8 @@ const ChatInput = memo(function ChatInput({
           {/* Bottom Actions */}
           <div className="relative flex items-center justify-between pt-1 gap-2">
             <div className="flex items-center gap-2 opacity-80 hover:opacity-100 transition-opacity">
-              <ModeSelector mode={chatMode} onModeChange={setChatMode} />
-              <ModelSelector alignLeft />
+              <ModeSelector mode={chatMode} onModeChange={setChatMode} disabled={isStreaming} />
+              <ModelSelector alignLeft disabled={isStreaming} />
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
               <input
@@ -468,6 +468,7 @@ const ChatInput = memo(function ChatInput({
                 className="hidden"
                 multiple
                 onChange={(e) => {
+                  if (isStreaming) return
                   if (e.target.files) {
                     Array.from(e.target.files).forEach(addAttachment)
                   }
@@ -479,9 +480,14 @@ const ChatInput = memo(function ChatInput({
                   <ActionButton
                     variant="ghost"
                     size="icon"
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={() => !isStreaming && fileInputRef.current?.click()}
+                    disabled={isStreaming}
                     title={t('app.uploadattachment', language as Language)}
-                    className="rounded-xl w-8 h-8 hover:bg-surface-active text-text-muted hover:text-text-primary transition-all active:scale-95"
+                    className={`rounded-xl w-8 h-8 transition-all active:scale-95 ${
+                      isStreaming
+                        ? 'opacity-40 cursor-not-allowed text-text-muted'
+                        : 'hover:bg-surface-active text-text-muted hover:text-text-primary'
+                    }`}
                   >
                     <Paperclip className="w-4 h-4 opacity-70 group-hover:opacity-100" />
                   </ActionButton>

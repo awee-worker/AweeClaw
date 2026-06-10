@@ -51,13 +51,23 @@ export interface ThreadExecutionMeta {
   loopState?: 'idle' | 'running' | 'waiting_for_tools' | 'waiting_for_user' | 'completed' | 'failed' | 'aborted'
 }
 
+/** 待审批工具调用，包含关联的 requestId 用于构建 approval ID */
+export interface PendingToolApproval {
+  id: string
+  name: string
+  arguments: Record<string, unknown>
+  status: import('@intelligence/providerTypes').ToolStatus
+  /** 关联的 requestId，用于构建 approvalId: `${requestId}_${toolCallId}` */
+  requestId: string
+}
+
 /** Thread-local streaming state for the current agent run. */
 export interface StreamState {
   phase: StreamPhase
   streamDetail?: StreamDetail
   waitPhase?: WaitPhase
   currentToolCall?: ToolCall
-  pendingApprovalToolCalls?: ToolCall[]
+  pendingApprovalToolCalls?: PendingToolApproval[]
   error?: string
   statusText?: string
   requestId?: string

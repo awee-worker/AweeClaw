@@ -1,9 +1,20 @@
-import { Suspense, memo } from 'react'
+import { Suspense, memo, useMemo } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, PerspectiveCamera } from '@react-three/drei'
 import { OfficeScene } from './OfficeScene'
 import type { WorkspaceAgent } from '@store'
 import type { CollaborationPhase } from '@intelligence/multiAgent/TeamCollaborationProtocol'
+
+function getAccentHexColor(): string {
+  if (typeof document === 'undefined') return '#39bef8'
+  const rgbStr = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()
+  if (!rgbStr) return '#39bef8'
+  const parts = rgbStr.split(/\s+/).map(Number)
+  if (parts.length === 3 && parts.every(n => !isNaN(n))) {
+    return `#${parts.map(n => Math.max(0, Math.min(255, n)).toString(16).padStart(2, '0')).join('')}`
+  }
+  return '#39bef8'
+}
 
 function LoadingFallback() {
   return (
@@ -25,6 +36,7 @@ function DaytimeAwareScene({ agents, onAgentClick, handoffFrom, handoffTo, colla
   const isDaytime = hour >= 6 && hour < 18
   const bgColor = isDaytime ? '#e8e4de' : '#1e1e36'
   const fogColor = isDaytime ? '#e8e4de' : '#1e1e36'
+  const accentColor = useMemo(() => getAccentHexColor(), [])
 
   return (
     <div className="w-full h-full rounded-xl overflow-hidden" style={{ backgroundColor: bgColor }}>
@@ -49,6 +61,7 @@ function DaytimeAwareScene({ agents, onAgentClick, handoffFrom, handoffTo, colla
             handoffFrom={handoffFrom}
             handoffTo={handoffTo}
             collaborationPhase={collaborationPhase}
+            accentColor={accentColor}
           />
         </Suspense>
         <fog attach="fog" args={[fogColor, 10, 22]} />

@@ -188,6 +188,7 @@ export type {
   ThreadHandoffStatus,
   ThreadHandoffState,
   ThreadExecutionMeta,
+  PendingToolApproval,
   StreamState,
   HandoffResumeMeta,
   ChatThread,

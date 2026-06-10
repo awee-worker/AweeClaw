@@ -275,19 +275,30 @@ async function executeToolCall(
 
       const agentStore = useAgentStore.getState()
       const activeThreadId = agentStore.currentThreadId
+      logger.agent.info(`[AgentSubLoop] Tool needs approval: ${toolCall.name} (id=${toolCall.id}), requestId=${requestId}, activeThreadId=${activeThreadId}, approvalQueueSize=${approvalService.pendingCount}`)
+
       if (activeThreadId) {
         const pendingToolCall = {
           id: toolCall.id,
           name: toolCall.name,
           arguments: toolCall.arguments,
           status: 'awaiting' as const,
+          requestId,
         }
-        agentStore.setStreamState({
+        // 追加到现有的 pendingApprovalToolCalls，避免并行工具调用时覆盖
+        // 需要重新获取最新状态，因为并行工具调用可能已更新了 pendingApprovalToolCalls
+        const freshStore = useAgentStore.getState()
+        const existingPending = freshStore.threads[activeThreadId]?.streamState?.pendingApprovalToolCalls || []
+        const updatedPending = [...existingPending, pendingToolCall]
+        freshStore.setStreamState({
           phase: 'tool_pending',
           streamDetail: 'tool_awaiting',
+          requestId,
           currentToolCall: pendingToolCall,
-          pendingApprovalToolCalls: [pendingToolCall],
-          statusText: `Agent 请求执行: ${toolDisplayName}`,
+          pendingApprovalToolCalls: updatedPending,
+          statusText: updatedPending.length > 1
+            ? `Agent 请求执行 ${updatedPending.length} 个操作`
+            : `Agent 请求执行: ${toolDisplayName}`,
         }, activeThreadId)
       }
 
@@ -295,7 +306,32 @@ async function executeToolCall(
         playNotificationSound('attention')
       } catch (e) { logger.ui.warn('Failed to play notification sound:', e) }
 
+      logger.agent.info(`[AgentSubLoop] Waiting for approval: ${requestId}_${toolCall.id} (tool: ${toolCall.name})`)
+
       const approved = await approvalService.waitForApproval(`${requestId}_${toolCall.id}`)
+
+      // 从 pendingApprovalToolCalls 中移除当前工具调用
+      // 注意：需要重新获取最新状态，因为等待期间状态可能已被其他并行工具调用更新
+      const latestStore = useAgentStore.getState()
+      const latestThreadId = latestStore.currentThreadId
+      if (latestThreadId) {
+        const currentPending = latestStore.threads[latestThreadId]?.streamState?.pendingApprovalToolCalls || []
+        const remainingPending = currentPending.filter(tc => tc.id !== toolCall.id)
+        if (remainingPending.length > 0) {
+          latestStore.setStreamState({
+            pendingApprovalToolCalls: remainingPending,
+            currentToolCall: remainingPending[0],
+          }, latestThreadId)
+        } else {
+          // 所有待审批工具都已处理，恢复 streaming 状态
+          latestStore.setStreamState({
+            phase: 'streaming',
+            streamDetail: 'tool_executing',
+            currentToolCall: undefined,
+            pendingApprovalToolCalls: undefined,
+          }, latestThreadId)
+        }
+      }
 
       if (!approved) {
         logger.agent.info(`[AgentSubLoop] Tool ${toolCall.name} rejected by user`)

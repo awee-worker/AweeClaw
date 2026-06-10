@@ -21,6 +21,8 @@ import {
   Activity,
   Package,
   Building2,
+  Pencil,
+  RefreshCw,
 } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -273,7 +275,7 @@ function AgentGridItem({
       {agent.status === 'working' && agent.progress > 0 && (
         <div className="w-full h-0.5 bg-gray-800 rounded-full overflow-hidden">
           <div
-            className="h-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-full transition-all duration-500"
+            className="h-full bg-gradient-to-r from-blue-500 to-accent rounded-full transition-all duration-500"
             style={{ width: `${agent.progress}%` }}
           />
         </div>
@@ -297,9 +299,10 @@ function AgentGridItem({
   )
 }
 
-function CompletionBanner({ session, onOpenFile }: {
+function CompletionBanner({ session, onOpenFile, onReplan }: {
   session: { status: string; projectPath?: string; agents: WorkspaceAgent[]; totalDuration?: number }
   onOpenFile: (filePath: string) => void
+  onReplan: () => void
 }) {
   if (session.status !== 'completed' && session.status !== 'failed') return null
 
@@ -451,16 +454,28 @@ function CompletionBanner({ session, onOpenFile }: {
               💡 点击文件名可预览内容，点击上方路径可打开项目文件夹
             </p>
           )}
+
+          <div className="flex items-center gap-2 mt-3 pt-2 border-t border-border/20">
+            <button
+              onClick={onReplan}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface/60 hover:bg-surface/80 text-text-secondary text-xs font-medium transition-colors"
+            >
+              <RefreshCw className="w-3 h-3" />
+              重新规划团队
+            </button>
+          </div>
         </div>
       </div>
     </motion.div>
   )
 }
 
-function PlanReviewPanel({ session, onApprove, onReject }: {
+function PlanReviewPanel({ session, onApprove, onReject, onReplan, onCustomEdit }: {
   session: { plan?: AgentWorkspaceSession['plan']; summary: string; projectName?: string }
   onApprove: () => void
   onReject: () => void
+  onReplan: () => void
+  onCustomEdit: () => void
 }) {
   const plan = session.plan
   if (!plan) return null
@@ -469,11 +484,11 @@ function PlanReviewPanel({ session, onApprove, onReject }: {
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="mx-5 mt-4 p-4 rounded-xl border border-purple-500/20 bg-purple-500/5"
+      className="mx-5 mt-4 p-4 rounded-xl border border-accent/20 bg-accent/5"
     >
       <div className="flex items-center gap-2 mb-3">
-        <BrainCircuit className="w-4 h-4 text-purple-400" />
-        <span className="text-sm font-semibold text-purple-400">协作计划已生成</span>
+        <BrainCircuit className="w-4 h-4 text-accent" />
+        <span className="text-sm font-semibold text-accent">协作计划已生成</span>
       </div>
 
       <p className="text-xs text-text-secondary mb-3">{session.summary}</p>
@@ -507,18 +522,110 @@ function PlanReviewPanel({ session, onApprove, onReject }: {
         ))}
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <button
           onClick={onApprove}
-          className="px-4 py-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 text-xs font-medium transition-colors"
+          className="px-4 py-2 rounded-lg bg-accent/20 hover:bg-accent/30 text-accent text-xs font-medium transition-colors"
         >
           ✅ 确认执行
+        </button>
+        <button
+          onClick={onCustomEdit}
+          className="px-4 py-2 rounded-lg bg-surface/60 hover:bg-surface/80 text-text-secondary text-xs font-medium transition-colors"
+        >
+          ✏️ 自定义编辑
+        </button>
+        <button
+          onClick={onReplan}
+          className="px-4 py-2 rounded-lg bg-surface/60 hover:bg-surface/80 text-text-secondary text-xs font-medium transition-colors"
+        >
+          🔄 重新规划
         </button>
         <button
           onClick={onReject}
           className="px-4 py-2 rounded-lg bg-surface/60 hover:bg-surface/80 text-text-muted text-xs font-medium transition-colors"
         >
           ❌ 取消
+        </button>
+      </div>
+    </motion.div>
+  )
+}
+
+function PlanEditorPanel({ session, onSave, onCancel }: {
+  session: AgentWorkspaceSession
+  onSave: (updatedPlan: NonNullable<AgentWorkspaceSession['plan']>) => void
+  onCancel: () => void
+}) {
+  const plan = session.plan
+  const [editedAgents, setEditedAgents] = useState(() =>
+    plan?.agents.map(a => ({ ...a })) || []
+  )
+
+  const handleAgentChange = useCallback((id: string, field: string, value: string) => {
+    setEditedAgents(prev => prev.map(a => a.id === id ? { ...a, [field]: value } : a))
+  }, [])
+
+  const handleSave = useCallback(() => {
+    onSave({
+      ...plan!,
+      agents: editedAgents,
+    })
+  }, [plan, editedAgents, onSave])
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="mx-5 mt-4 p-4 rounded-xl border border-accent/20 bg-accent/5"
+    >
+      <div className="flex items-center gap-2 mb-3">
+        <Pencil className="w-4 h-4 text-accent" />
+        <span className="text-sm font-semibold text-accent">自定义编辑团队计划</span>
+      </div>
+
+      <div className="space-y-3 mb-4 max-h-[300px] overflow-y-auto pr-1">
+        {editedAgents.map((agent) => (
+          <div key={agent.id} className="p-3 rounded-lg bg-surface/60 border border-border/30 space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-sm">{agent.icon}</span>
+              <input
+                type="text"
+                value={agent.name}
+                onChange={(e) => handleAgentChange(agent.id, 'name', e.target.value)}
+                className="flex-1 bg-transparent text-xs text-text-primary border-b border-border/50 focus:border-accent outline-none px-1 py-0.5"
+              />
+            </div>
+            <textarea
+              value={agent.taskDescription}
+              onChange={(e) => handleAgentChange(agent.id, 'taskDescription', e.target.value)}
+              className="w-full bg-transparent text-[11px] text-text-secondary border border-border/30 rounded p-1.5 focus:border-accent outline-none resize-none"
+              rows={2}
+              placeholder="任务描述"
+            />
+            <textarea
+              value={agent.scope}
+              onChange={(e) => handleAgentChange(agent.id, 'scope', e.target.value)}
+              className="w-full bg-transparent text-[11px] text-text-secondary border border-border/30 rounded p-1.5 focus:border-accent outline-none resize-none"
+              rows={2}
+              placeholder="职责范围"
+            />
+          </div>
+        ))}
+      </div>
+
+      <div className="flex items-center gap-2">
+        <button
+          onClick={handleSave}
+          className="px-4 py-2 rounded-lg bg-accent/20 hover:bg-accent/30 text-accent text-xs font-medium transition-colors"
+        >
+          ✅ 保存并执行
+        </button>
+        <button
+          onClick={onCancel}
+          className="px-4 py-2 rounded-lg bg-surface/60 hover:bg-surface/80 text-text-muted text-xs font-medium transition-colors"
+        >
+          返回
         </button>
       </div>
     </motion.div>
@@ -546,7 +653,7 @@ function ActivityTab({ agents, selectedAgentId, onSelectAgent }: {
   }, [allEvents.length])
 
   const EVENT_STYLE: Record<string, { color: string; bg: string; label: string; icon: typeof BrainCircuit }> = {
-    thinking: { color: 'text-purple-400', bg: 'bg-purple-500/10', label: '思考', icon: BrainCircuit },
+    thinking: { color: 'text-accent', bg: 'bg-accent/10', label: '思考', icon: BrainCircuit },
     tool_call: { color: 'text-blue-400', bg: 'bg-blue-500/10', label: '调用工具', icon: Wrench },
     tool_result: { color: 'text-cyan-400', bg: 'bg-cyan-500/10', label: '工具结果', icon: Wrench },
     text_output: { color: 'text-gray-400', bg: 'bg-gray-500/10', label: '输出', icon: FileText },
@@ -748,6 +855,7 @@ function OutputTab({ agents, projectPath, onOpenFile }: {
 export const AgentWorkspace = memo(function AgentWorkspace() {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('office')
+  const [editingPlan, setEditingPlan] = useState(false)
   const { session, language, openFile, setActiveFile } = useStore(useShallow(s => ({
     session: s.activeWorkspaceSession,
     language: s.language,
@@ -807,7 +915,7 @@ export const AgentWorkspace = memo(function AgentWorkspace() {
               session.status === 'executing' ? 'text-blue-400' :
               session.status === 'completed' ? 'text-emerald-400' :
               session.status === 'failed' ? 'text-red-400' :
-              session.status === 'plan_review' ? 'text-purple-400' : 'text-purple-400'
+              session.status === 'plan_review' ? 'text-accent' : 'text-accent'
             }`} />
             <span className="text-sm font-semibold text-text-primary">
               {t('ai.agentworkspace', language as Language)}
@@ -825,7 +933,7 @@ export const AgentWorkspace = memo(function AgentWorkspace() {
               session.status === 'executing' ? 'bg-blue-500/10 text-blue-400' :
               session.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400' :
               session.status === 'failed' ? 'bg-red-500/10 text-red-400' :
-              session.status === 'plan_review' ? 'bg-purple-500/10 text-purple-400' : 'bg-purple-500/10 text-purple-400'
+              session.status === 'plan_review' ? 'bg-accent/10 text-accent' : 'bg-accent/10 text-accent'
             }`}>
               {SESSION_LABEL[session.status]}
             </span>
@@ -844,7 +952,7 @@ export const AgentWorkspace = memo(function AgentWorkspace() {
             </div>
             <div className="h-1 bg-gray-800 rounded-full overflow-hidden">
               <motion.div
-                className="h-full rounded-full bg-gradient-to-r from-blue-500 via-purple-500 to-emerald-500"
+                className="h-full rounded-full bg-gradient-to-r from-blue-500 via-accent to-emerald-500"
                 initial={{ width: '0%' }}
                 animate={{ width: `${progressPct}%` }}
                 transition={{ duration: 0.6, ease: 'easeOut' }}
@@ -859,7 +967,7 @@ export const AgentWorkspace = memo(function AgentWorkspace() {
       </div>
 
       {/* Plan Review */}
-      {session.status === 'plan_review' && (
+      {session.status === 'plan_review' && !editingPlan && (
         <PlanReviewPanel
           session={session}
           onApprove={() => {
@@ -867,6 +975,35 @@ export const AgentWorkspace = memo(function AgentWorkspace() {
           }}
           onReject={() => {
             useStore.getState().clearWorkspaceSession()
+          }}
+          onReplan={() => {
+            useStore.getState().replanWorkspace()
+          }}
+          onCustomEdit={() => {
+            setEditingPlan(true)
+          }}
+        />
+      )}
+
+      {/* Plan Editor */}
+      {session.status === 'plan_review' && editingPlan && (
+        <PlanEditorPanel
+          session={session}
+          onSave={(updatedPlan) => {
+            const store = useStore.getState()
+            const updatedAgents = session.agents.map(a => {
+              const editedAgent = updatedPlan.agents.find(ea => ea.id === a.id)
+              return editedAgent ? { ...a, name: editedAgent.name, taskDescription: editedAgent.taskDescription, scope: editedAgent.scope } : a
+            })
+            store.updateWorkspaceSession({
+              status: 'executing',
+              plan: updatedPlan,
+              agents: updatedAgents,
+            })
+            setEditingPlan(false)
+          }}
+          onCancel={() => {
+            setEditingPlan(false)
           }}
         />
       )}
@@ -912,7 +1049,7 @@ export const AgentWorkspace = memo(function AgentWorkspace() {
               animate={{ opacity: [0.5, 1, 0.5] }}
               transition={{ duration: 2, repeat: Infinity }}
             >
-              <Loader2 className="w-8 h-8 text-purple-400 animate-spin" />
+              <Loader2 className="w-8 h-8 text-accent animate-spin" />
               <p className="text-sm text-text-muted">AI 正在分析任务，规划最佳团队...</p>
             </motion.div>
           </div>
@@ -1035,7 +1172,7 @@ export const AgentWorkspace = memo(function AgentWorkspace() {
       </div>
 
       {/* Completion Banner */}
-      <CompletionBanner session={session} onOpenFile={handleOpenFile} />
+      <CompletionBanner session={session} onOpenFile={handleOpenFile} onReplan={() => useStore.getState().replanWorkspace()} />
     </div>
   )
 })
