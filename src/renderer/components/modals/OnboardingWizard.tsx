@@ -211,7 +211,7 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
                 <motion.div
                   initial={false}
                   animate={{
-                    backgroundColor: index <= currentStepIndex ? 'rgb(var(--accent))' : 'rgba(var(--text-muted), 0.2)',
+                    backgroundColor: index <= currentStepIndex ? 'rgb(var(--accent))' : 'rgba(var(--text-muted), 0.5)',
                     scale: index === currentStepIndex ? 1.2 : 1,
                   }}
                   className={`w-2.5 h-2.5 rounded-full`}
@@ -220,7 +220,7 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
                   <motion.div
                     initial={false}
                     animate={{
-                      backgroundColor: index < currentStepIndex ? 'rgba(var(--accent), 0.5)' : 'rgba(var(--text-muted), 0.1)',
+                      backgroundColor: index < currentStepIndex ? 'rgba(var(--accent), 0.5)' : 'rgba(var(--text-muted), 0.3)',
                     }}
                     className="w-4 h-0.5"
                   />
@@ -231,9 +231,9 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
         </div>
 
         {/* 内容卡片 */}
-        <div className="bg-background-secondary/90 backdrop-blur-2xl border border-border rounded-3xl shadow-2xl overflow-hidden relative ring-1 ring-white/5">
-          <div className="min-h-[460px] flex flex-col">
-            <div className="flex-1 relative p-1 overflow-hidden">
+        <div className="bg-background-secondary/90 backdrop-blur-2xl border border-border rounded-3xl shadow-2xl overflow-hidden relative ring-1 ring-white/5 max-h-[85vh] flex flex-col">
+          <div className="min-h-[460px] flex flex-col flex-1 overflow-hidden">
+            <div className="flex-1 relative p-1 overflow-y-auto overflow-x-hidden">
               <AnimatePresence initial={false} custom={direction} mode="wait">
                 <motion.div
                   key={currentStep}
@@ -242,7 +242,7 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
                   initial="enter"
                   animate="center"
                   exit="exit"
-                  className="w-full h-full"
+                  className="w-full min-h-full"
                 >
                   {currentStep === 'welcome' && <WelcomeStep isZh={isZh} />}
                   {currentStep === 'language' && (
@@ -305,7 +305,7 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
                 <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
                   <ActionButton
                     onClick={goNext}
-                    className="flex items-center gap-2 px-8 py-3 bg-white/10 hover:bg-white/15 text-text-primary border border-border hover:border-border rounded-xl text-sm font-medium backdrop-blur-sm transition-all shadow-lg"
+                    className="flex items-center gap-2 px-8 py-3 bg-accent hover:bg-accent-hover text-white rounded-xl text-sm font-bold shadow-lg shadow-accent/20 transition-all"
                   >
                     {isZh ? '下一步' : 'Next'}
                     <ChevronRight className="w-4 h-4" />
@@ -696,7 +696,7 @@ function CompleteStep({
   const langName = LANGUAGES.find(l => l.id === selectedLanguage)?.native || selectedLanguage
 
   return (
-    <div className="px-10 py-10 h-full flex flex-col overflow-y-auto">
+    <div className="px-10 py-10 min-h-full flex flex-col overflow-y-auto">
       {/* 成功标记 */}
       <div className="text-center mb-6">
         <motion.div
@@ -755,11 +755,7 @@ function CompleteStep({
       </div>
 
       {/* 可选：AI 模型配置 */}
-      <motion.div
-        initial={false}
-        animate={{ height: showProviderSetup ? 'auto' : 0, opacity: showProviderSetup ? 1 : 0 }}
-        className="overflow-hidden"
-      >
+      {showProviderSetup && (
         <ProviderSetupPanel
           isZh={isZh}
           config={providerConfig}
@@ -767,7 +763,7 @@ function CompleteStep({
           showApiKey={showApiKey}
           setShowApiKey={setShowApiKey}
         />
-      </motion.div>
+      )}
 
       {!showProviderSetup && !providerConfig.apiKey && (
         <motion.button
