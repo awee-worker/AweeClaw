@@ -489,7 +489,7 @@ const ThinkingBlock = React.memo(({ content, startTime, isStreaming, fontSize }:
               {isStreaming && (
                 <div className="absolute left-0 top-0 bottom-0 w-[2px] rounded-full thinking-sweep-line" />
               )}
-              <div className={`relative rounded-xl ${isStreaming ? 'bg-accent/[0.03]' : 'bg-surface/30'} border ${isStreaming ? 'border-accent/[0.08]' : 'border-border/30'} overflow-hidden`}>
+              <div className={`relative rounded-xl rounded-tl-none rounded-bl-none ${isStreaming ? 'bg-accent/[0.03]' : 'bg-surface/30'} border ${isStreaming ? 'border-accent/[0.08]' : 'border-border/30'} overflow-hidden`}>
                 <div className={`scroll-shadow-container ${shadowClass}`}>
                   <div
                     ref={scrollRef}
