@@ -265,6 +265,7 @@ export interface ElectronAPI {
   onLLMError: (requestId: string, callback: (error: LLMError) => void) => () => void
   onLLMDone: (requestId: string, callback: (data: LLMResult) => void) => () => void
   onCloudTokenRefreshed: (callback: (data: { accessToken: string; refreshToken?: string }) => void) => () => void
+  onCloudAuthFailed: (callback: () => void) => () => void
 
   // Interactive Terminal
   createTerminal: (options: { id: string; cwd?: string; shell?: string; backend?: 'pty' | 'pipe'; remote?: RemoteShellServer }) => Promise<{ success: boolean; error?: string }>
@@ -762,6 +763,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onCloudTokenRefreshed: (callback: (data: { accessToken: string; refreshToken?: string }) => void) => {
     const channel = 'cloud:tokenRefreshed'
     const handler = (_: IpcRendererEvent, data: { accessToken: string; refreshToken?: string }) => callback(data)
+    ipcRenderer.on(channel, handler)
+    return () => ipcRenderer.removeListener(channel, handler)
+  },
+  onCloudAuthFailed: (callback: () => void) => {
+    const channel = 'cloud:authFailed'
+    const handler = () => callback()
     ipcRenderer.on(channel, handler)
     return () => ipcRenderer.removeListener(channel, handler)
   },

@@ -30,7 +30,6 @@ async function onAuthSuccess(userId: string | undefined): Promise<void> {
       logger.system.warn('[Auth] claimOrphanThreads failed:', e)
     }
   }
-  // 修复历史数据中缺少标题的线程（通过 aweeclawDir 调用，修复后自动清除缓存）
   try {
     const count = await aweeclawDir.repairMissingTitles()
     if (count > 0) {
@@ -39,7 +38,6 @@ async function onAuthSuccess(userId: string | undefined): Promise<void> {
   } catch (e) {
     logger.system.warn('[Auth] repairMissingTitles failed:', e)
   }
-  // 重新加载会话数据（此时 cloudUser 已设置，buildSessionCatalog 会按 userId 过滤）
   try {
     await restoreWorkspaceAgentStore()
     logger.system.info('[Auth] Agent store rehydrated after auth')
@@ -141,25 +139,45 @@ function clearPersistedAuth() {
 let authFailedHandler: (() => void) | null = null
 
 export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set, get) => {
-  // onAuthFailed 仅在 refresh token 确认失效（401/403）时由 backendApi 触发
-  // 临时网络错误和服务器 5xx 不会触发此回调
   authFailedHandler = () => {
+    logger.system.warn('[Auth] authFailedHandler called, clearing all auth state')
     clearPersistedAuth();
 
-    const state = get();
-    if (state.isAuthenticated) {
-      set({ isAuthenticated: false, cloudUser: null, quota: null, cloudMode: 'local' });
-      import('@store').then(({ useStore }) => {
+    const wasAuthenticated = get().isAuthenticated;
+
+    set({
+      isAuthenticated: false,
+      cloudUser: null,
+      quota: null,
+      cloudMode: 'local',
+      cloudModels: [],
+    });
+
+    import('@store').then(({ useStore }) => {
+      const storeState = useStore.getState()
+      useStore.setState({
+        llmConfig: {
+          ...storeState.llmConfig,
+          cloudMode: false,
+          accessToken: undefined,
+          serverUrl: undefined,
+          refreshToken: undefined,
+        },
+      })
+
+      if (wasAuthenticated) {
         const language = useStore.getState().language as 'en' | 'zh';
         toast.error(
           t('app.sessionexpired', language as Language),
           t('app.yoursessionhasexpiredplease', language as Language),
         );
         useStore.getState().setShowWelcomePage(true);
-      }).catch(() => {
+      }
+    }).catch(() => {
+      if (wasAuthenticated) {
         toast.error('登录已过期', '您的登录已过期，请重新登录');
-      });
-    }
+      }
+    });
   }
 
   return {
@@ -176,19 +194,16 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
       '/api/v1/auth/login',
       { email, password },
     );
+    // 设置 token + 持久化 + 更新 UI 状态
     setTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken });
+    persistAuth({ serverUrl: url, accessToken: data.accessToken, refreshToken: data.refreshToken, cloudMode: 'cloud' });
     set({ serverUrl: url, isAuthenticated: true, cloudMode: 'cloud' });
-    persistAuth({
-      serverUrl: url,
-      accessToken: data.accessToken,
-      refreshToken: data.refreshToken,
-      cloudMode: 'cloud',
-    });
+
+    // 顺序：先获取 profile，再并发获取其他数据
     await get().fetchProfile();
-    // 登录成功后：归属孤儿线程 + 重新加载会话
-    onAuthSuccess(get().cloudUser?.id).catch(() => {})
     get().fetchQuota().catch(() => {});
     get().selectCloudModel().catch(() => {});
+    onAuthSuccess(get().cloudUser?.id).catch(() => {});
     knowledgeSyncService.startAutoSync();
     knowledgeSyncService.syncToServer().catch(() => {});
     knowledgeGraphSyncService.startAutoSync();
@@ -201,17 +216,13 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
       { phone, code },
     );
     setTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken });
+    persistAuth({ serverUrl: url, accessToken: data.accessToken, refreshToken: data.refreshToken, cloudMode: 'cloud' });
     set({ serverUrl: url, isAuthenticated: true, cloudMode: 'cloud' });
-    persistAuth({
-      serverUrl: url,
-      accessToken: data.accessToken,
-      refreshToken: data.refreshToken,
-      cloudMode: 'cloud',
-    });
+
     await get().fetchProfile();
-    onAuthSuccess(get().cloudUser?.id).catch(() => {})
     get().fetchQuota().catch(() => {});
     get().selectCloudModel().catch(() => {});
+    onAuthSuccess(get().cloudUser?.id).catch(() => {});
     knowledgeSyncService.startAutoSync();
     knowledgeSyncService.syncToServer().catch(() => {});
     knowledgeGraphSyncService.startAutoSync();
@@ -224,17 +235,13 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
       { email, password, username },
     );
     setTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken });
+    persistAuth({ serverUrl: url, accessToken: data.accessToken, refreshToken: data.refreshToken, cloudMode: 'cloud' });
     set({ serverUrl: url, isAuthenticated: true, cloudMode: 'cloud' });
-    persistAuth({
-      serverUrl: url,
-      accessToken: data.accessToken,
-      refreshToken: data.refreshToken,
-      cloudMode: 'cloud',
-    });
+
     await get().fetchProfile();
-    onAuthSuccess(get().cloudUser?.id).catch(() => {})
     get().fetchQuota().catch(() => {});
     get().selectCloudModel().catch(() => {});
+    onAuthSuccess(get().cloudUser?.id).catch(() => {});
     knowledgeSyncService.startAutoSync();
     knowledgeSyncService.syncToServer().catch(() => {});
     knowledgeGraphSyncService.startAutoSync();
@@ -262,8 +269,7 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
     setTokens(null);
     clearPersistedAuth();
     set({ isAuthenticated: false, cloudUser: null, quota: null, cloudMode: 'local' });
-    // 登出后重新加载未关联用户的线程
-    restoreWorkspaceAgentStore().catch(() => {})
+    restoreWorkspaceAgentStore().catch(() => {});
     import('@store').then(({ useStore }) => {
       useStore.getState().setShowWelcomePage(true);
     }).catch(() => {});
@@ -336,90 +342,47 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
 
   restoreSession: async () => {
     const persisted = loadPersistedAuth();
-    if (!persisted) return;
+    if (!persisted || !persisted.accessToken) return;
 
     setServerUrl(persisted.serverUrl);
     setTokens({ accessToken: persisted.accessToken, refreshToken: persisted.refreshToken });
     set({ serverUrl: persisted.serverUrl, cloudMode: persisted.cloudMode });
 
-    // 先尝试用 refreshToken 刷新获取新的 accessToken，避免旧 accessToken 过期导致 401
-    let sessionRestored = false;
-
-    if (persisted.refreshToken) {
-      try {
-        const refreshed = await tryRefreshToken();
-        if (refreshed) {
-          // tryRefreshToken 成功，tokens 已在 backendApi 内部更新
-          // 同步持久化存储
-          const currentTokens = getTokens();
-          if (currentTokens) {
-            persistAuth({
-              serverUrl: persisted.serverUrl,
-              accessToken: currentTokens.accessToken,
-              refreshToken: currentTokens.refreshToken,
-              cloudMode: persisted.cloudMode,
-            });
-          }
-          sessionRestored = true;
-        }
-      } catch {
-        logger.system.warn('[Auth] Refresh token failed, trying existing access token');
-      }
-    }
-
-    if (!sessionRestored) {
-      // 降级：尝试用旧 accessToken 直接请求 profile
-      try {
-        const profile = await backendApi.get<CloudUser>('/api/v1/user/profile');
-        set({ isAuthenticated: true, cloudUser: profile });
-        sessionRestored = true;
-      } catch {
-        // accessToken 也过期了，清除认证状态
-        setTokens(null);
-        clearPersistedAuth();
-        set({ isAuthenticated: false, cloudUser: null, cloudMode: 'local' });
+    // 用当前 accessToken 请求 profile
+    // backendApi.request 内部自动处理 401 和 token refresh
+    try {
+      const profile = await backendApi.get<CloudUser>('/api/v1/user/profile');
+      set({ isAuthenticated: true, cloudUser: profile });
+    } catch (e) {
+      // 检查 token 是否已被 backendApi 的 401 处理器清除
+      if (!getTokens()) {
+        logger.system.warn('[Auth] restoreSession: token cleared, session expired');
         return;
       }
+      // token 有效但 profile 请求失败（网络问题等），保留认证状态
+      logger.system.error('[Auth] Fetch profile after restore failed:', e);
+      set({ isAuthenticated: true });
     }
 
-    if (sessionRestored) {
-      try {
-        const profile = await backendApi.get<CloudUser>('/api/v1/user/profile');
-        set({ isAuthenticated: true, cloudUser: profile });
-      } catch (e) {
-        logger.system.error('[Auth] Fetch profile after restore failed:', e);
-        // profile 获取失败：token 可能仍然有效（临时网络问题），保留认证状态
-        // 等待后续请求成功获取 profile 后再更新 cloudUser
-        set({ isAuthenticated: true });
-        // 延迟重试获取 profile，避免 UI 一直缺少用户信息
-        setTimeout(() => {
-          backendApi.get<CloudUser>('/api/v1/user/profile')
-            .then(profile => set({ cloudUser: profile }))
-            .catch(() => logger.system.warn('[Auth] Profile retry failed'));
-        }, 5000);
-      }
-      get().fetchQuota().catch(() => {});
-      if (persisted.cloudMode === 'cloud') {
-        get().selectCloudModel().catch(() => {});
-      }
-      // 会话恢复成功后：归属孤儿线程 + 重新加载会话数据
-      onAuthSuccess(get().cloudUser?.id).catch(() => {})
-      knowledgeSyncService.startAutoSync();
-      knowledgeSyncService.syncToServer().catch(() => {});
-      knowledgeGraphSyncService.startAutoSync();
+    // 会话恢复成功后
+    get().fetchQuota().catch(() => {});
+    if (persisted.cloudMode === 'cloud') {
+      get().selectCloudModel().catch(() => {});
     }
+    onAuthSuccess(get().cloudUser?.id).catch(() => {});
+    knowledgeSyncService.startAutoSync();
+    knowledgeSyncService.syncToServer().catch(() => {});
+    knowledgeGraphSyncService.startAutoSync();
   },
   }
 }
 
+// ─── 全局回调注册 ───────────────────────────────────────
+
 setOnTokenRefresh((newTokens) => {
   const persisted = loadPersistedAuth();
   if (persisted) {
-    persistAuth({
-      ...persisted,
-      accessToken: newTokens.accessToken,
-      refreshToken: newTokens.refreshToken,
-    });
+    persistAuth({ ...persisted, accessToken: newTokens.accessToken, refreshToken: newTokens.refreshToken });
   }
 });
 
@@ -429,19 +392,27 @@ setOnAuthFailed(() => {
   }
 });
 
-// 监听主进程云端 token 刷新事件，同步到渲染进程
-// 避免 cloudFetch 刷新 token 后，渲染进程仍使用已撤销的 refreshToken 导致认证失效
+// 监听主进程云端 token 刷新事件
 api.llm.onCloudTokenRefreshed((data) => {
-  logger.system.info('[Auth] Cloud token refreshed from main process, syncing to renderer')
+  logger.system.info('[Auth] Cloud token refreshed from main process')
   syncRefreshedTokens(data.accessToken, data.refreshToken)
 })
 
+// 监听主进程云端认证失效事件
+api.llm.onCloudAuthFailed(() => {
+  logger.system.warn('[Auth] Cloud auth failed from main process')
+  if (authFailedHandler) {
+    authFailedHandler()
+  }
+})
+
+// 系统从睡眠恢复时，检查 token 是否需要刷新
 api.system.onResume(() => {
-  logger.system.info('[Auth] System resumed from sleep, attempting token refresh')
+  logger.system.info('[Auth] System resumed from sleep, checking token')
   tryRefreshToken().catch(() => {})
 })
 
-// 页面从后台恢复到前台时，检查并刷新 token
+// 页面从后台恢复到前台时，检查 token
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
     tryRefreshToken().catch(() => {})

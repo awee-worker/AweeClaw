@@ -207,12 +207,21 @@ class ToolRegistry {
   /**
    * 安全预检查（审批 + 沙箱）
    * 通过 IPC 调用主进程的 SecureToolExecutor
+   *
+   * 优化：如果工具的 approvalType 为 'none'，直接放行，
+   * 避免主进程审批系统（缺少渲染进程审批 UI）导致工具卡住。
    */
   private async securityPreCheck(
     toolName: string,
     args: Record<string, unknown>,
     context: ToolExecutionContext
   ): Promise<{ allowed: boolean; reason?: string }> {
+    // 如果工具的 approvalType 为 'none'，直接放行
+    const tool = this.tools.get(toolName)
+    if (tool && tool.approvalType === 'none') {
+      return { allowed: true }
+    }
+
     try {
       // 判断是否为命令类工具
       const commandTools = new Set([

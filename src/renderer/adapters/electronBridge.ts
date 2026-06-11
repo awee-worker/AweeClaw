@@ -355,6 +355,8 @@ function createGroupedAPI() {
         raw.onLLMDone(requestId, callback),
       onCloudTokenRefreshed: (callback: (data: { accessToken: string; refreshToken?: string }) => void) =>
         raw.onCloudTokenRefreshed(callback),
+      onCloudAuthFailed: (callback: () => void) =>
+        raw.onCloudAuthFailed(callback),
       // Structured Output
       analyzeCode: (params: Parameters<typeof raw.analyzeCode>[0]) => raw.analyzeCode(params),
       analyzeCodeStream: (params: Parameters<typeof raw.analyzeCodeStream>[0]) => raw.analyzeCodeStream(params),

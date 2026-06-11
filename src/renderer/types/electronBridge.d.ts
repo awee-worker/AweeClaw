@@ -430,6 +430,7 @@ export interface ElectronAPI {
   onLLMError: (requestId: string, callback: (error: LLMError) => void) => () => void
   onLLMDone: (requestId: string, callback: (result: LLMResult) => void) => () => void
   onCloudTokenRefreshed: (callback: (data: { accessToken: string; refreshToken?: string }) => void) => () => void
+  onCloudAuthFailed: (callback: () => void) => () => void
   // LLM - Structured Output
   analyzeCode: (params: {
     config: LLMConfig

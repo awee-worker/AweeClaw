@@ -463,6 +463,12 @@ export class StreamingService {
             })
           }
         },
+        onAuthFailed: () => {
+          // 云端认证彻底失效（refresh token 也无效），通知渲染进程清除认证状态
+          if (!this.window.isDestroyed()) {
+            this.window.webContents.send('cloud:authFailed', {})
+          }
+        },
       })
 
       logger.llm.info('[StreamingService] Model created', {

@@ -22,6 +22,8 @@ export interface ModelOptions {
     refreshToken?: string
     /** 云端 token 刷新成功后的回调，用于同步新 token 到渲染进程 */
     onTokenRefreshed?: (newAccessToken: string, newRefreshToken?: string) => void
+    /** 云端认证彻底失效（refresh token 也无效）时的回调，用于通知渲染进程清除认证状态 */
+    onAuthFailed?: () => void
 }
 
 interface ResolvedModelRoute {
@@ -144,6 +146,7 @@ function createCloudModel(config: LLMConfig, options: ModelOptions): LanguageMod
     let currentAccessToken = options.accessToken || ''
     let currentRefreshToken = options.refreshToken
     const onTokenRefreshed = options.onTokenRefreshed
+    const onAuthFailedCallback = options.onAuthFailed
 
     // 带 401 自动刷新的自定义 fetch
     const cloudFetch: typeof globalThis.fetch = async (input, init) => {
@@ -175,6 +178,11 @@ function createCloudModel(config: LLMConfig, options: ModelOptions): LanguageMod
                     const data = await refreshRes.json() as { accessToken: string; refreshToken?: string }
                     updateTokens(data.accessToken, data.refreshToken)
                     onTokenRefreshed?.(data.accessToken, data.refreshToken)
+                } else if (refreshRes.status === 401 || refreshRes.status === 403) {
+                    // refreshToken 也无效，通知渲染进程认证失效
+                    logger.llm.warn('[ModelRegistry] Refresh token invalid, notifying renderer of auth failure')
+                    onAuthFailedCallback?.()
+                    currentRefreshToken = undefined
                 }
             } catch {
                 // refresh 失败，继续用空 token 请求（会得到 401）
@@ -200,6 +208,11 @@ function createCloudModel(config: LLMConfig, options: ModelOptions): LanguageMod
                     onTokenRefreshed?.(data.accessToken, data.refreshToken)
                     // 用新 token 重试原始请求
                     response = await makeRequest(currentAccessToken)
+                } else if (refreshRes.status === 401 || refreshRes.status === 403) {
+                    // refreshToken 也无效，通知渲染进程认证失效
+                    logger.llm.warn('[ModelRegistry] Token refresh failed on 401 (refresh token invalid), notifying renderer')
+                    onAuthFailedCallback?.()
+                    currentRefreshToken = undefined
                 } else {
                     logger.llm.warn('[ModelRegistry] Token refresh failed on 401:', {
                         status: refreshRes.status,
