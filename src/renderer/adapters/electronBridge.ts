@@ -177,6 +177,27 @@ type ElectronAPIWithRemoteShell = ElectronAPI & {
   sessionDbDeleteThread: (threadId: string) => Promise<{ success: boolean; error?: string }>
   sessionDbClearAll: () => Promise<{ success: boolean; error?: string }>
   sessionDbGetPath: () => Promise<string>
+
+  // Security (SecureToolExecutor + ToolApproval + Sandbox)
+  securityPreCheckTool: (request: {
+    toolName: string
+    toolArgs: Record<string, unknown>
+    agentId: string
+    isCommandTool?: boolean
+    command?: string
+  }) => Promise<{ success: boolean; allowed: boolean; reason?: string }>
+  securityValidateFilePath: (filePath: string, agentId?: string) => Promise<{ success: boolean; allowed: boolean; reason?: string }>
+  securityRequestApproval: (agentId: string, toolName: string, toolArgs: Record<string, unknown>) => Promise<{ success: boolean; decision: string; reason?: string }>
+  securityRespondApproval: (requestId: string, approved: boolean, reason?: string) => Promise<{ success: boolean }>
+  securityGetPendingRequests: () => Promise<{ success: boolean; requests: unknown[] }>
+  securitySandboxExecute: (command: string, cwd: string, agentId?: string) => Promise<{
+    success: boolean
+    stdout: string
+    stderr: string
+    exitCode: number
+    timedOut: boolean
+    duration: number
+  }>
 }
 
 // 创建分组 API 适配器
@@ -388,6 +409,12 @@ function createGroupedAPI() {
     security: {
       getPermissions: () => raw.getPermissions(),
       resetPermissions: () => raw.resetPermissions(),
+      preCheckTool: (request: any) => raw.securityPreCheckTool(request),
+      validateFilePath: (filePath: string, agentId?: string) => raw.securityValidateFilePath(filePath, agentId),
+      requestApproval: (agentId: string, toolName: string, toolArgs: Record<string, unknown>) => raw.securityRequestApproval(agentId, toolName, toolArgs),
+      respondApproval: (requestId: string, approved: boolean, reason?: string) => raw.securityRespondApproval(requestId, approved, reason),
+      getPendingApprovals: () => raw.securityGetPendingRequests(),
+      sandboxExecute: (command: string, cwd: string, agentId?: string) => raw.securitySandboxExecute(command, cwd, agentId),
     },
 
     // 索引

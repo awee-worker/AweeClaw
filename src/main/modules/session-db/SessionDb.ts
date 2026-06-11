@@ -822,6 +822,9 @@ export class SessionDb {
       }
 
       // 遍历线程文件（首次迁移 + 增量修复）
+      const corruptedThreads: string[] = []
+      const repairedThreads: string[] = []
+
       for (const entry of entries) {
         if (!entry.endsWith('.json') || entry === '_meta.json' || entry === '_extra.json') continue
 
@@ -840,12 +843,12 @@ export class SessionDb {
               threadData = JSON.parse(threadContent)
             } catch (parseErr) {
               // JSON 文件可能因写入中断而截断，尝试修复
-              logger.session.warn(`[SessionDb] Thread ${threadId} JSON is corrupted, attempting repair`)
+              corruptedThreads.push(threadId)
               threadData = this.tryRepairTruncatedJson(threadContent)
               if (!threadData) {
-                logger.session.warn(`[SessionDb] Thread ${threadId} JSON repair failed, skipping`)
                 continue
               }
+              repairedThreads.push(threadId)
             }
 
             // 读取 .jsonl 消息文件
@@ -887,11 +890,22 @@ export class SessionDb {
       // 标记迁移完成
       this.upsertSessionMeta('_migrated_from_jsonl', true)
 
+      // 汇总输出损坏线程信息（避免逐条刷屏）
+      if (corruptedThreads.length > 0) {
+        const failedCount = corruptedThreads.length - repairedThreads.length
+        if (repairedThreads.length > 0) {
+          logger.session.info(`[SessionDb] Corrupted JSON repair: ${repairedThreads.length}/${corruptedThreads.length} threads repaired successfully`)
+        }
+        if (failedCount > 0) {
+          logger.session.warn(`[SessionDb] Corrupted JSON repair: ${failedCount} threads could not be repaired and were skipped`)
+        }
+      }
+
       if (needFullMigration) {
         logger.session.info(`[SessionDb] Migration completed: ${migratedThreadCount} threads migrated`)
       } else if (repairedCount > 0) {
         logger.session.info(`[SessionDb] Incremental repair: ${repairedCount} threads had missing messages restored`)
-      } else {
+      } else if (corruptedThreads.length === 0) {
         logger.session.info('[SessionDb] All thread messages are intact, no repair needed')
       }
 
@@ -936,15 +950,20 @@ export class SessionDb {
       // 跳过可能的不完整键值对，尝试在对象边界闭合
       if (ch === ',' || ch === '"' || ch === ':' || ch === '{' || ch === '[') {
         const candidate = trimmed.substring(0, i)
-        // 尝试补全闭合括号
+        // 尝试补全闭合括号（仅补全缺失的，忽略多余的）
         const openBraces = (candidate.match(/{/g) || []).length
         const closeBraces = (candidate.match(/}/g) || []).length
         const openBrackets = (candidate.match(/\[/g) || []).length
         const closeBrackets = (candidate.match(/]/g) || []).length
 
+        const braceCount = Math.max(0, openBraces - closeBraces)
+        const bracketCount = Math.max(0, openBrackets - closeBrackets)
+
+        if (braceCount === 0 && bracketCount === 0) continue
+
         const repaired = candidate
-          + '}'.repeat(openBraces - closeBraces)
-          + ']'.repeat(openBrackets - closeBrackets)
+          + '}'.repeat(braceCount)
+          + ']'.repeat(bracketCount)
 
         try { return JSON.parse(repaired) } catch { /* continue */ }
       }

@@ -1020,6 +1020,76 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('channel:imProcessingStatus', handler)
   },
 
+  // Agent 路由与隔离
+  agentAddBinding: (binding: any) => ipcRenderer.invoke('agent:addBinding', binding),
+  agentRemoveBinding: (bindingId: string) => ipcRenderer.invoke('agent:removeBinding', bindingId),
+  agentGetBindings: (agentId?: string) => ipcRenderer.invoke('agent:getBindings', agentId),
+  agentGetBindingsForChannel: (channelId: string, accountId: string) => ipcRenderer.invoke('agent:getBindingsForChannel', channelId, accountId),
+  agentSetDmPairing: (channelId: string, accountId: string, userId: string, agentId: string) => ipcRenderer.invoke('agent:setDmPairing', channelId, accountId, userId, agentId),
+  agentRemoveDmPairing: (channelId: string, accountId: string, userId: string) => ipcRenderer.invoke('agent:removeDmPairing', channelId, accountId, userId),
+  agentGetInstances: () => ipcRenderer.invoke('agent:getInstances'),
+  agentGetInstance: (agentId: string) => ipcRenderer.invoke('agent:getInstance', agentId),
+  agentGetWorkspace: (agentId: string) => ipcRenderer.invoke('agent:getWorkspace', agentId),
+  agentGetAuthContext: (agentId: string) => ipcRenderer.invoke('agent:getAuthContext', agentId),
+
+  // 安全模型（Tool Approval + Sandbox）
+  securityRequestApproval: (agentId: string, toolName: string, toolArgs: Record<string, unknown>) => ipcRenderer.invoke('security:requestApproval', agentId, toolName, toolArgs),
+  securityRespondApproval: (requestId: string, approved: boolean, reason?: string) => ipcRenderer.invoke('security:respondApproval', requestId, approved, reason),
+  securityGetPendingRequests: () => ipcRenderer.invoke('security:getPendingRequests'),
+  securityUpdateApprovalConfig: (config: any) => ipcRenderer.invoke('security:updateApprovalConfig', config),
+  securitySetAgentApprovalOverride: (agentId: string, override: any) => ipcRenderer.invoke('security:setAgentApprovalOverride', agentId, override),
+  securityRemoveAgentApprovalOverride: (agentId: string) => ipcRenderer.invoke('security:removeAgentApprovalOverride', agentId),
+  securityClearApprovalCache: () => ipcRenderer.invoke('security:clearApprovalCache'),
+  securityValidatePath: (filePath: string, agentId?: string) => ipcRenderer.invoke('security:validatePath', filePath, agentId),
+  securityValidateCommand: (command: string, agentId?: string) => ipcRenderer.invoke('security:validateCommand', command, agentId),
+  securitySandboxExecute: (command: string, cwd: string, agentId?: string) => ipcRenderer.invoke('security:sandboxExecute', command, cwd, agentId),
+  securityUpdateSandboxConfig: (config: any) => ipcRenderer.invoke('security:updateSandboxConfig', config),
+  securitySetAgentSandboxOverride: (agentId: string, override: any) => ipcRenderer.invoke('security:setAgentSandboxOverride', agentId, override),
+  securityRemoveAgentSandboxOverride: (agentId: string) => ipcRenderer.invoke('security:removeAgentSandboxOverride', agentId),
+
+  // Secure Tool Executor
+  securityPreCheckTool: (request: any) => ipcRenderer.invoke('security:preCheckTool', request),
+  securityValidateFilePath: (filePath: string, agentId?: string) => ipcRenderer.invoke('security:validateFilePath', filePath, agentId),
+
+  // 自动化引擎（Cron 调度器）
+  cronRegister: (config: any) => ipcRenderer.invoke('cron:register', config),
+  cronUnregister: (taskId: string) => ipcRenderer.invoke('cron:unregister', taskId),
+  cronPause: (taskId: string) => ipcRenderer.invoke('cron:pause', taskId),
+  cronResume: (taskId: string) => ipcRenderer.invoke('cron:resume', taskId),
+  cronGetAllTasks: () => ipcRenderer.invoke('cron:getAllTasks'),
+  cronGetTasksForAgent: (agentId: string) => ipcRenderer.invoke('cron:getTasksForAgent', agentId),
+  cronStart: () => ipcRenderer.invoke('cron:start'),
+  cronStop: () => ipcRenderer.invoke('cron:stop'),
+
+  // 诊断工具
+  doctorRunFullDiagnosis: () => ipcRenderer.invoke('doctor:runFullDiagnosis'),
+  doctorRunCategoryDiagnosis: (category: string) => ipcRenderer.invoke('doctor:runCategoryDiagnosis', category),
+
+  // Session 生命周期
+  sessionGetAllSessions: () => ipcRenderer.invoke('session:getAllSessions'),
+  sessionGetSessionsForAgent: (agentId: string) => ipcRenderer.invoke('session:getSessionsForAgent', agentId),
+  sessionGetSession: (sessionId: string) => ipcRenderer.invoke('session:getSession', sessionId),
+  sessionActivateSession: (sessionId: string) => ipcRenderer.invoke('session:activateSession', sessionId),
+  sessionResetSession: (sessionId: string) => ipcRenderer.invoke('session:resetSession', sessionId),
+  sessionArchiveSession: (sessionId: string) => ipcRenderer.invoke('session:archiveSession', sessionId),
+  sessionGetOrCreateSession: (agentId: string, channelId?: string, dmUserId?: string) => ipcRenderer.invoke('session:getOrCreateSession', agentId, channelId, dmUserId),
+  sessionUpdateConfig: (config: any) => ipcRenderer.invoke('session:updateConfig', config),
+  sessionGetConfig: () => ipcRenderer.invoke('session:getConfig'),
+
+  // Gateway 守护进程
+  gatewayStart: () => ipcRenderer.invoke('gateway:start'),
+  gatewayStop: () => ipcRenderer.invoke('gateway:stop'),
+  gatewayRestart: () => ipcRenderer.invoke('gateway:restart'),
+  gatewayGetStatus: () => ipcRenderer.invoke('gateway:getStatus'),
+  gatewayPing: () => ipcRenderer.invoke('gateway:ping'),
+
+  // 安全审批事件
+  onSecurityApprovalRequested: (callback: (request: any) => void) => {
+    const handler = (_: IpcRendererEvent, request: any) => callback(request)
+    ipcRenderer.on('security:approvalRequested', handler)
+    return () => ipcRenderer.removeListener('security:approvalRequested', handler)
+  },
+
   // Python 环境
   pythonGetStatus: () => ipcRenderer.invoke('python:getStatus'),
   pythonGetPath: () => ipcRenderer.invoke('python:getPath'),

@@ -561,6 +561,26 @@ async function performGlobalCleanup() {
     try {
       destroyIndexService()
     } catch { /* ignore */ }
+    // 5. 停止 Cron 调度器
+    try {
+      const { cronScheduler } = await import('./modules/automation/CronScheduler')
+      cronScheduler.stop()
+    } catch { /* ignore */ }
+    // 6. 停止 Session 生命周期管理器
+    try {
+      const { sessionLifecycleManager } = await import('./modules/session/SessionLifecycleManager')
+      sessionLifecycleManager.stop()
+    } catch { /* ignore */ }
+    // 7. 停止 Gateway 客户端
+    try {
+      const { gatewayClient } = await import('./modules/gateway/GatewayClient')
+      await gatewayClient.stop()
+    } catch { /* ignore */ }
+    // 8. 刷新模块数据持久化存储
+    try {
+      const { moduleDataStore } = await import('./modules/persistence/ModuleDataStore')
+      moduleDataStore.flush()
+    } catch { /* ignore */ }
     logger.system.info('[Main] Global cleanup completed successfully')
   } catch (err) {
     logger.system.error('[Main] Global cleanup error:', err)
@@ -648,8 +668,50 @@ async function initializeModules(firstWin: BrowserWindow) {
     logger.system.warn('[Main] Settings DB init skipped:', err instanceof Error ? err.message : String(err))
   }
 
+  // 初始化模块数据持久化存储（Agent bindings / Cron tasks / Session contexts）
+  try {
+    const { moduleDataStore } = await import('./modules/persistence/ModuleDataStore')
+    moduleDataStore.load()
+    logger.system.info('[Main] Module data store loaded')
+  } catch (err) {
+    logger.system.warn('[Main] Module data store load skipped:', err instanceof Error ? err.message : String(err))
+  }
+
+  // 恢复 Agent 路由器的持久化数据
+  try {
+    const { agentRouter } = await import('./modules/agent/AgentRouter')
+    agentRouter.restoreFromStore()
+    logger.system.info('[Main] Agent router restored from store')
+  } catch (err) {
+    logger.system.warn('[Main] Agent router restore skipped:', err instanceof Error ? err.message : String(err))
+  }
+
+  // 启动 Session 生命周期管理器
+  try {
+    const { sessionLifecycleManager } = await import('./modules/session/SessionLifecycleManager')
+    sessionLifecycleManager.start()
+    logger.system.info('[Main] Session lifecycle manager started')
+  } catch (err) {
+    logger.system.warn('[Main] Session lifecycle manager start skipped:', err instanceof Error ? err.message : String(err))
+  }
+
+  // 启动 Cron 调度器（恢复持久化任务后启动）
+  try {
+    const { cronScheduler } = await import('./modules/automation/CronScheduler')
+    cronScheduler.restoreFromStore()
+    cronScheduler.start()
+    logger.system.info('[Main] Cron scheduler started')
+  } catch (err) {
+    logger.system.warn('[Main] Cron scheduler start skipped:', err instanceof Error ? err.message : String(err))
+  }
+
   // 非阻塞初始化渠道服务（连接在后台异步进行，不阻塞应用启动）
   try {
+    // 先初始化 Plugin Registry（ChannelPluginRegistrar 依赖它）
+    const { getPluginRegistry } = await import('./modules/plugin-sdk/PluginRegistry')
+    const userDataPath = app.getPath('userData')
+    getPluginRegistry(path.join(userDataPath, 'plugins'))
+
     const { channelService } = await import('./modules/messaging')
     channelService.init().then(() => {
       logger.system.info('[Main] Channel service initialized (background)')

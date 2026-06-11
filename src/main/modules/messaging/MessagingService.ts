@@ -4,6 +4,8 @@ import { channelConfigStore } from './ChannelConfigRepository'
 import { channelSecurityManager } from './MessageSecurityGuard'
 import { channelErrorHandler } from './MessageErrorHandler'
 import { webhookServer } from './WebhookReceiver'
+import { channelPluginRegistrar } from './ChannelPluginRegistrar'
+import { agentRouter } from '../agent/AgentRouter'
 import { feishuChannelPlugin } from './adapters/feishu'
 import { wechatChannelPlugin } from './adapters/wechat'
 import { weixinChannelPlugin } from './adapters/weixin'
@@ -96,7 +98,10 @@ class ChannelService {
   async addAccount(channelId: ChannelId, account: ChannelAccountConfig): Promise<void> {
     const plugin = channelRegistry.getPlugin(channelId)
     if (!plugin) throw new Error(`Channel not found: ${channelId}`)
-    if (channelId === 'feishu') feishuChannelPlugin.registerAccount(account)
+    if (channelId === 'feishu') {
+      const feishuPlugin = channelPluginRegistrar.getChannelPlugin('feishu') as any
+      feishuPlugin?.registerAccount?.(account)
+    }
     let config = channelConfigStore.get(channelId)
     if (!config) {
       config = { id: channelId, enabled: true, accounts: [] }
@@ -127,7 +132,10 @@ class ChannelService {
     } catch {
       // ignore
     }
-    if (channelId === 'feishu') feishuChannelPlugin.unregisterAccount(accountId)
+    if (channelId === 'feishu') {
+      const feishuPlugin = channelPluginRegistrar.getChannelPlugin('feishu') as any
+      feishuPlugin?.unregisterAccount?.(accountId)
+    }
     logger.channel.info(`Removed account ${accountId} from channel ${channelId}`)
   }
 
@@ -214,20 +222,35 @@ class ChannelService {
     }
   }
 
+  /**
+   * 注册内置渠道插件
+   * 通过 ChannelPluginRegistrar 统一注册到 Plugin SDK 体系
+   */
   private registerBuiltInPlugins(): void {
-    channelRegistry.register(feishuChannelPlugin)
-    channelRegistry.register(wechatChannelPlugin)
-    channelRegistry.register(weixinChannelPlugin)
-    channelRegistry.register(wechatmpChannelPlugin)
-    channelRegistry.register(whatsappChannelPlugin)
-    channelRegistry.register(qqChannelPlugin)
-    channelRegistry.register(dingtalkChannelPlugin)
-    channelRegistry.register(slackChannelPlugin)
-    channelRegistry.register(discordChannelPlugin)
-    channelRegistry.register(telegramChannelPlugin)
-    channelRegistry.register(misskeyChannelPlugin)
-    channelRegistry.register(matrixChannelPlugin)
-    logger.channel.info('Registered built-in channel plugins: feishu, wechat, weixin, wechatmp, whatsapp, qq, dingtalk, slack, discord, telegram, misskey, matrix')
+    const plugins = [
+      feishuChannelPlugin,
+      wechatChannelPlugin,
+      weixinChannelPlugin,
+      wechatmpChannelPlugin,
+      whatsappChannelPlugin,
+      qqChannelPlugin,
+      dingtalkChannelPlugin,
+      slackChannelPlugin,
+      discordChannelPlugin,
+      telegramChannelPlugin,
+      misskeyChannelPlugin,
+      matrixChannelPlugin,
+    ]
+
+    // 通过 ChannelPluginRegistrar 注册到 Plugin SDK
+    channelPluginRegistrar.registerAll(plugins)
+
+    // 同时注册到 ChannelRegistry（保持向后兼容）
+    for (const plugin of plugins) {
+      channelRegistry.register(plugin)
+    }
+
+    logger.channel.info('Registered built-in channel plugins via Plugin SDK: feishu, wechat, weixin, wechatmp, whatsapp, qq, dingtalk, slack, discord, telegram, misskey, matrix')
   }
 
   private handleInboundMessage(message: InboundMessage): void {
@@ -256,6 +279,31 @@ class ChannelService {
       return
     }
     logger.channel.info(`[ChannelService] Dispatching inbound message to ${this.inboundHandlers.length} handler(s): channelId=${message.channelId}, from=${message.from}`)
+
+    // 尝试通过 AgentRouter 路由到特定 Agent
+    const routingResult = agentRouter.route(message)
+    if (routingResult) {
+      logger.channel.info(`[ChannelService] AgentRouter matched: agent=${routingResult.agentId}, reason=${routingResult.reason}`)
+      // 将路由信息附加到消息上，供下游 handler 使用
+      const enrichedMessage = Object.assign({}, message, {
+        _routing: {
+          agentId: routingResult.agentId,
+          bindingId: routingResult.bindingId,
+          reason: routingResult.reason,
+          needsSpawn: routingResult.needsSpawn,
+        },
+      })
+      for (const handler of this.inboundHandlers) {
+        try {
+          handler(enrichedMessage)
+        } catch (err) {
+          logger.channel.error(`Inbound handler error: ${err}`)
+        }
+      }
+      return
+    }
+
+    // 无 Agent 路由匹配，按原有逻辑分发
     for (const handler of this.inboundHandlers) {
       try {
         handler(message)

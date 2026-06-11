@@ -34,6 +34,7 @@ export type LogCategory =
   | 'MCP'
   | 'Plan'
   | 'Channel'
+  | 'Gateway'
   | 'Scenario'
   | 'Session'
 
@@ -87,6 +88,7 @@ const CATEGORY_COLORS: Record<LogCategory, string> = {
   MCP: '#00acc1',
   Plan: '#ab47bc',
   Channel: '#26a69a',
+  Gateway: '#ff6f00',
   Scenario: '#e040fb',
   Session: '#5c6bc0',
 }
@@ -637,6 +639,7 @@ class LoggerClass {
   mcp = this.createCategoryLogger('MCP')
   plan = this.createCategoryLogger('Plan')
   channel = this.createCategoryLogger('Channel')
+  gateway = this.createCategoryLogger('Gateway')
   scenario = this.createCategoryLogger('Scenario')
   session = this.createCategoryLogger('Session')
 

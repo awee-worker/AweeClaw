@@ -23,6 +23,12 @@ import { registerHealthCheckHandlers } from './providerMonitor' // 健康检查
 import { registerRemoteExecutionHandlers } from './remoteExecution' // 远程 Shell / SFTP
 import { registerSkillsHandlers } from './skillRegistry' // Skills
 import { registerChannelHandlers } from './channel' // Channel 多渠道
+import { registerAgentHandlers } from './agent' // Agent 路由与隔离
+import { registerSecurityHandlers } from './security' // 安全模型
+import { registerAutomationHandlers } from './automation' // 自动化引擎
+import { registerDoctorHandlers } from './doctor' // 诊断工具
+import { registerSessionLifecycleHandlers } from './sessionLifecycle' // Session 生命周期
+import { registerGatewayHandlers } from './gateway' // Gateway 守护进程
 import { registerPythonHandlers } from './python' // Python 环境
 import { registerDataIpcHandlers } from './data' // 数据服务
 import { registerScenarioDbIpcHandlers } from './scenarioDb' // 场景数据库
@@ -174,6 +180,24 @@ export function registerAllHandlers(context: IPCContext) {
 
   // Channel 多渠道
   registerOnce('channel', () => registerChannelHandlers(getMainWindow, resolveStore('config')))
+
+  // Agent 路由与隔离
+  registerOnce('agent', () => registerAgentHandlers())
+
+  // 安全模型（Tool Approval + Sandbox）
+  registerOnce('security', () => registerSecurityHandlers(getMainWindow))
+
+  // 自动化引擎（Cron 调度器）
+  registerOnce('automation', () => registerAutomationHandlers())
+
+  // 诊断工具
+  registerOnce('doctor', () => registerDoctorHandlers())
+
+  // Session 生命周期
+  registerOnce('session-lifecycle', () => registerSessionLifecycleHandlers())
+
+  // Gateway 守护进程
+  registerOnce('gateway', () => registerGatewayHandlers())
 
   // Python 环境
   registerOnce('python', () => registerPythonHandlers())

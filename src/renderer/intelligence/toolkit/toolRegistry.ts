@@ -12,6 +12,7 @@
 import { z } from 'zod'
 import { toAppError } from '@shared/toolkit/errorCatalog'
 import { logger } from '@toolkit/LogEngine'
+import { api } from '../../adapters/electronBridge'
 import { TOOL_SCHEMAS, TOOL_DEFINITIONS, TOOL_CONFIGS, type ToolCategory } from '@configuration/toolDefinitions'
 import type {
   ToolDefinition,
@@ -182,6 +183,13 @@ class ToolRegistry {
       return { success: false, result: '', error: `Validation failed: ${validation.error}` }
     }
 
+    // 安全预检查：审批 + 沙箱验证
+    const securityResult = await this.securityPreCheck(name, validation.data as Record<string, unknown>, context)
+    if (!securityResult.allowed) {
+      logger.agent.warn(`[ToolRegistry] Security pre-check blocked ${name}: ${securityResult.reason}`)
+      return { success: false, result: '', error: securityResult.reason || 'Tool execution blocked by security policy' }
+    }
+
     // 通过 getter 获取最新的执行器（支持热重载）
     const executor = tool.getExecutor()
     if (!executor) {
@@ -193,6 +201,42 @@ class ToolRegistry {
     } catch (err) {
       logger.agent.error(`[ToolRegistry] Execution error for ${name}:`, err)
       return { success: false, result: '', error: `Execution error: ${toAppError(err).message}` }
+    }
+  }
+
+  /**
+   * 安全预检查（审批 + 沙箱）
+   * 通过 IPC 调用主进程的 SecureToolExecutor
+   */
+  private async securityPreCheck(
+    toolName: string,
+    args: Record<string, unknown>,
+    context: ToolExecutionContext
+  ): Promise<{ allowed: boolean; reason?: string }> {
+    try {
+      // 判断是否为命令类工具
+      const commandTools = new Set([
+        'execute_command', 'shell', 'terminal', 'run_command',
+        'bash', 'sh', 'powershell', 'cmd',
+      ])
+      const isCommandTool = commandTools.has(toolName)
+
+      const result = await api.security.preCheckTool({
+        toolName,
+        toolArgs: args,
+        agentId: context.assistantId || context.currentAssistantId || 'default',
+        isCommandTool,
+        command: isCommandTool ? (args.command as string || args.cmd as string) : undefined,
+      })
+
+      return {
+        allowed: result.allowed !== false,
+        reason: result.reason,
+      }
+    } catch (err) {
+      // 安全检查失败时默认放行，避免安全模块不可用导致工具全部不可用
+      logger.agent.warn(`[ToolRegistry] Security pre-check error for ${toolName}:`, err)
+      return { allowed: true }
     }
   }
 
