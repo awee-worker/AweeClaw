@@ -1070,6 +1070,102 @@ Available skills are listed in the system prompt under "Available Skills". Each 
         },
     },
 
+    schedule: {
+        name: 'schedule',
+        displayName: 'Schedule Task',
+        description: 'Create, update, delete, or list scheduled tasks that run automatically on a cron schedule. Use this when the user wants to automate recurring actions.',
+        detailedDescription: `Manage scheduled tasks (cron jobs) that execute automatically at specified times.
+
+## When to use:
+- User wants to set up recurring automated tasks (daily reports, periodic checks, scheduled cleanup)
+- User asks to "schedule", "automate", "run periodically", or "set up a cron job"
+- User wants to list, modify, or delete existing scheduled tasks
+
+## Actions:
+- **create**: Create a new scheduled task with a name, cron pattern, and command
+- **list**: List all scheduled tasks
+- **update**: Update an existing task's name, pattern, command, or enabled status
+- **delete**: Delete a scheduled task
+- **toggle**: Enable or disable a task
+
+## Cron Pattern Format (5 fields):
+\`\`\`
+┌ minute (0-59)
+│ ┌ hour (0-23)
+│ │ ┌ day of month (1-31)
+│ │ │ ┌ month (1-12)
+│ │ │ │ ┌ day of week (0-6, 0=Sunday)
+* * * * *
+\`\`\`
+
+## Examples:
+- \`0 9 * * *\` — Every day at 9:00
+- \`*/30 * * * *\` — Every 30 minutes
+- \`0 0 * * 1\` — Every Monday at midnight
+- \`0 8,20 * * *\` — Every day at 8:00 and 20:00
+- \`0 0 1 * *\` — First day of every month
+
+## Important:
+- The \`command\` is a natural language instruction that will be sent to the AI agent when the schedule triggers
+- The agent will execute the command using its available tools
+- Set \`max_calls\` to limit total executions (0 = unlimited)
+- Tasks persist across app restarts`,
+        examples: [
+            'schedule action="create" name="Daily Summary" pattern="0 9 * * *" command="Summarize today\'s git commits and create a brief report"',
+            'schedule action="list"',
+            'schedule action="delete" task_id="cron-xxx"',
+            'schedule action="toggle" task_id="cron-xxx" enabled=false',
+        ],
+        category: 'interaction',
+        approvalType: 'none',
+        parallel: false,
+        requiresWorkspace: false,
+        enabled: true,
+        parameters: {
+            action: {
+                type: 'string',
+                description: 'Action to perform: create, list, update, delete, toggle',
+                required: true,
+                enum: ['create', 'list', 'update', 'delete', 'toggle'],
+            },
+            name: {
+                type: 'string',
+                description: 'Task name (for create/update). A short display name like "Daily Summary"',
+                required: false,
+            },
+            description: {
+                type: 'string',
+                description: 'Task description (for create/update)',
+                required: false,
+            },
+            pattern: {
+                type: 'string',
+                description: 'Cron expression with 5 fields: minute hour day month weekday (for create/update). Example: "0 9 * * *" for daily at 9:00',
+                required: false,
+            },
+            command: {
+                type: 'string',
+                description: 'Natural language instruction to execute when the schedule triggers (for create/update). Example: "Summarize today\'s news and send to the user"',
+                required: false,
+            },
+            task_id: {
+                type: 'string',
+                description: 'Task ID (for update/delete/toggle)',
+                required: false,
+            },
+            enabled: {
+                type: 'boolean',
+                description: 'Enable or disable the task (for toggle action)',
+                required: false,
+            },
+            max_calls: {
+                type: 'number',
+                description: 'Maximum number of executions (0 = unlimited, for create/update)',
+                required: false,
+            },
+        },
+    },
+
     todo_write: {
         name: 'todo_write',
         displayName: 'Task List',

@@ -1060,6 +1060,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // 自动化引擎（Cron 调度器）
   cronRegister: (config: any) => ipcRenderer.invoke('cron:register', config),
+  cronUpdate: (taskId: string, updates: any) => ipcRenderer.invoke('cron:update', taskId, updates),
   cronUnregister: (taskId: string) => ipcRenderer.invoke('cron:unregister', taskId),
   cronPause: (taskId: string) => ipcRenderer.invoke('cron:pause', taskId),
   cronResume: (taskId: string) => ipcRenderer.invoke('cron:resume', taskId),
@@ -1067,6 +1068,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   cronGetTasksForAgent: (agentId: string) => ipcRenderer.invoke('cron:getTasksForAgent', agentId),
   cronStart: () => ipcRenderer.invoke('cron:start'),
   cronStop: () => ipcRenderer.invoke('cron:stop'),
+  onCronTaskStateChanged: (callback: (taskData: any) => void) => {
+    const handler = (_: IpcRendererEvent, taskData: any) => callback(taskData)
+    ipcRenderer.on('cron:task-state-changed', handler)
+    return () => ipcRenderer.removeListener('cron:task-state-changed', handler)
+  },
+  onCronTaskExecute: (callback: (event: any) => void) => {
+    const handler = (_: IpcRendererEvent, event: any) => callback(event)
+    ipcRenderer.on('cron:task-execute', handler)
+    return () => ipcRenderer.removeListener('cron:task-execute', handler)
+  },
 
   // 诊断工具
   doctorRunFullDiagnosis: () => ipcRenderer.invoke('doctor:runFullDiagnosis'),

@@ -12,6 +12,7 @@ import { KnowledgeView } from './panels/KnowledgeExplorer'
 import { PromptsView } from './panels/PromptLibrary'
 import { TasksView } from './panels/TaskExplorer'
 import { BookmarksView } from './panels/BookmarkExplorer'
+import { ScheduleExplorer } from './panels/ScheduleExplorer'
 import { DynamicPanelView } from './AdaptivePanelView'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { useMemo } from 'react'
@@ -30,6 +31,7 @@ const BUILTIN_PANELS: Record<string, React.ComponentType> = {
   prompts: PromptsView,
   tasks: TasksView,
   bookmarks: BookmarksView,
+  schedule: ScheduleExplorer,
 }
 
 function useWideModePanelIds(): string[] {

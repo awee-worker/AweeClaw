@@ -83,6 +83,8 @@ const CORE_TOOLS: string[] = [
   // 交互与记忆
   'remember',
   'knowledge_search',
+  // 定时任务
+  'schedule',
   // Skill 按需加载
   'apply_skill',
   // 任务列表

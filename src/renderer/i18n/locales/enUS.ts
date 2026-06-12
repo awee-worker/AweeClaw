@@ -2150,6 +2150,7 @@ export const en = {
   'layout.pro': 'Pro',
   'layout.workscenes': 'Work Scenes',
   'layout.workflow': 'Workflow',
+  'layout.schedule': 'Schedule',
   'layout.settings': 'Settings',
   'layout.checkforupdates': 'Check for Updates',
   'layout.aboutaweeclaw': 'About AweeClaw',

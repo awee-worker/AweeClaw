@@ -744,6 +744,19 @@ export interface ElectronAPI {
   auditQuery: (filter?: AuditQueryFilter) => Promise<{ success: boolean; entries: AuditEntry[] }>
   auditFlush: () => Promise<{ success: boolean }>
 
+  // Cron 调度器
+  cronRegister: (config: any) => Promise<any>
+  cronUpdate: (taskId: string, updates: any) => Promise<any>
+  cronUnregister: (taskId: string) => Promise<{ success: boolean }>
+  cronPause: (taskId: string) => Promise<{ success: boolean }>
+  cronResume: (taskId: string) => Promise<{ success: boolean }>
+  cronGetAllTasks: () => Promise<{ success: boolean; tasks: any[] }>
+  cronGetTasksForAgent: (agentId: string) => Promise<{ success: boolean; tasks: any[] }>
+  cronStart: () => Promise<{ success: boolean }>
+  cronStop: () => Promise<{ success: boolean }>
+  onCronTaskStateChanged: (callback: (taskData: any) => void) => () => void
+  onCronTaskExecute: (callback: (event: any) => void) => () => void
+
   // System
   onSystemResume: (callback: () => void) => () => void
 }

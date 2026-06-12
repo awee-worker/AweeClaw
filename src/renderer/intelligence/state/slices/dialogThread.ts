@@ -205,8 +205,41 @@ export const createThreadSlice: StateCreator<
 
     switchThread: (threadId) => {
         const state = get()
-        if (!state.threads[threadId]) return
-        if (state.currentThreadId === threadId) return
+        if (state.currentThreadId === threadId && state.threads[threadId]) return
+
+        // 线程不在 store 中时，从数据库加载并注入 store
+        if (!state.threads[threadId]) {
+            agentSessionRepository.loadThreadById(threadId).then(threadData => {
+                if (!threadData) {
+                    logger.agent.warn(`[ThreadSlice] Thread ${threadId} not found in repository`)
+                    return
+                }
+                set(state => ({
+                    threads: {
+                        ...state.threads,
+                        [threadId]: threadData,
+                    },
+                    currentThreadId: threadId,
+                    threadMessageVersions: {
+                        ...state.threadMessageVersions,
+                        [threadId]: (state.threadMessageVersions[threadId] || 0) + 1,
+                    },
+                }))
+
+                // 关闭全屏页面
+                const storeState = useStore.getState()
+                if (storeState.showWelcomePage || storeState.showSettingsPage || storeState.showUserProfilePage || storeState.showBillingCenterPage || storeState.showSessionHistoryPage) {
+                    useStore.getState().closeAllFullPages()
+                }
+                if (storeState.activeWorkspaceSession && storeState.activeWorkspaceSession.threadId !== threadId) {
+                    useStore.getState().clearWorkspaceSession()
+                }
+            }).catch(err => {
+                logger.agent.error('[ThreadSlice] Failed to load missing thread:', err)
+            })
+            return
+        }
+
         set({ currentThreadId: threadId })
 
         // 切换会话时关闭欢迎页面等全屏页面

@@ -660,6 +660,20 @@ function createGroupedAPI() {
       getPath: (scenarioId: string) => raw.scenarioDbGetPath(scenarioId),
     },
 
+    cron: {
+      register: (config: any) => raw.cronRegister(config),
+      update: (taskId: string, updates: any) => raw.cronUpdate(taskId, updates),
+      unregister: (taskId: string) => raw.cronUnregister(taskId),
+      pause: (taskId: string) => raw.cronPause(taskId),
+      resume: (taskId: string) => raw.cronResume(taskId),
+      getAllTasks: () => raw.cronGetAllTasks(),
+      getTasksForAgent: (agentId: string) => raw.cronGetTasksForAgent(agentId),
+      start: () => raw.cronStart(),
+      stop: () => raw.cronStop(),
+      onTaskStateChanged: (callback: (taskData: any) => void) => raw.onCronTaskStateChanged(callback),
+      onTaskExecute: (callback: (event: any) => void) => raw.onCronTaskExecute(callback),
+    },
+
     scenarioInstall: {
       getScenariosDir: () => raw.scenarioGetScenariosDir(),
       selectScenarioDir: () => raw.scenarioSelectScenarioDir(),

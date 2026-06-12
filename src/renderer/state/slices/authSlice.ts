@@ -383,6 +383,14 @@ setOnTokenRefresh((newTokens) => {
   const persisted = loadPersistedAuth();
   if (persisted) {
     persistAuth({ ...persisted, accessToken: newTokens.accessToken, refreshToken: newTokens.refreshToken });
+  } else {
+    // localStorage 被清空但内存中仍有 token，重新持久化
+    import('@store').then(({ useStore }) => {
+      const { serverUrl, cloudMode } = useStore.getState();
+      if (serverUrl) {
+        persistAuth({ serverUrl, accessToken: newTokens.accessToken, refreshToken: newTokens.refreshToken, cloudMode: cloudMode || 'cloud' });
+      }
+    }).catch(() => {});
   }
 });
 

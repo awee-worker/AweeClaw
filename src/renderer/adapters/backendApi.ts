@@ -46,15 +46,6 @@ let isHandling401 = false;
 
 const STORAGE_KEY = BRAND.storageKeys.cloudAuth;
 
-function persistTokens(newTokens: AuthTokens) {
-  const existing = StorageService.get<Record<string, unknown>>(STORAGE_KEY) || {};
-  StorageService.set(STORAGE_KEY, {
-    ...existing,
-    accessToken: newTokens.accessToken,
-    refreshToken: newTokens.refreshToken,
-  });
-}
-
 function loadPersistedRefreshToken(): string | null {
   const data = StorageService.get<{ refreshToken?: string }>(STORAGE_KEY);
   return data?.refreshToken || null;
@@ -156,7 +147,13 @@ async function refreshAccessToken(): Promise<RefreshResult> {
         return { ok: false, tokenInvalid: false };
       }
 
-      const data = await res.json();
+      const raw = await res.json();
+      // 后端 TransformInterceptor 包装格式：{ success, data: { accessToken, refreshToken }, timestamp }
+      const data = raw?.data ?? raw;
+      if (!data.accessToken) {
+        logger.system.error('[BackendApi] Refresh response missing accessToken:', JSON.stringify(raw));
+        return { ok: false, tokenInvalid: false };
+      }
       const newTokens: AuthTokens = {
         accessToken: data.accessToken,
         refreshToken: data.refreshToken || refreshToken,
@@ -181,10 +178,31 @@ async function refreshAccessToken(): Promise<RefreshResult> {
 }
 
 /**
+ * 检查 accessToken 是否即将过期（5 分钟内）或已过期
+ */
+function isAccessTokenExpiringSoon(): boolean {
+  if (!tokens?.accessToken) return true;
+  try {
+    const payload = JSON.parse(atob(tokens.accessToken.split('.')[1]));
+    const exp = payload.exp * 1000; // 转为毫秒
+    const now = Date.now();
+    const buffer = 5 * 60 * 1000; // 5 分钟缓冲
+    return now >= exp - buffer;
+  } catch {
+    // 解析失败，假设即将过期
+    return true;
+  }
+}
+
+/**
  * 主动刷新 token（供 visibilitychange / system resume 等场景使用）
+ * 只在 accessToken 即将过期时才刷新，避免不必要的 refresh 请求
  * 只在 token 确认无效时才触发退出登录
  */
 export async function tryRefreshToken(): Promise<boolean> {
+  // accessToken 仍然有效，无需刷新
+  if (!isAccessTokenExpiringSoon()) return true;
+
   const result = await refreshAccessToken();
   if (result.ok) return true;
   if (result.tokenInvalid) {

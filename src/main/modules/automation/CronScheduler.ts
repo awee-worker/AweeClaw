@@ -1,11 +1,12 @@
 /**
  * Cron 调度器
  *
- * 借鉴 OpenClaw 的自动化引擎，实现定时任务调度：
+ * 基于 command 指令驱动的定时任务调度：
  * 1. Cron 表达式解析与调度
  * 2. 任务注册、暂停、恢复、删除
  * 3. 任务执行日志
  * 4. 与 Hook 系统集成（Cron 触发 Hook 事件）
+ * 5. 触发时通过 command 指令发送给 Agent 执行
  *
  * @module automation/CronScheduler
  */
@@ -31,10 +32,10 @@ export interface CronFields {
 /**
  * 解析简化的 Cron 表达式
  * 支持格式：分 时 日 月 周
- * - "*\/5 * * * *"    - 每 5 分钟
- * - "0 * * * *"       - 每小时整点
- * - "0 4 * * *"       - 每天凌晨 4 点
- * - "30 9 * * 1-5"    - 工作日 9:30
+ * - 每 5 分钟:   星/5 * * * *
+ * - 每小时整点:  0 * * * *
+ * - 每天凌晨 4 点: 0 4 * * *
+ * - 工作日 9:30: 30 9 * * 1-5
  */
 export function parseCronExpression(expression: string): CronFields {
   const parts = expression.trim().split(/\s+/)
@@ -94,18 +95,19 @@ export function matchesCron(date: Date, fields: CronFields): boolean {
 // Cron 任务定义
 // ============================================
 
-export type CronTaskStatus = 'active' | 'paused' | 'running' | 'error'
+export type CronTaskStatus = 'active' | 'paused' | 'running' | 'completed' | 'error'
 
 export interface CronTask {
   id: string
   name: string
+  description: string
   /** Cron 表达式 */
   expression: string
   /** 解析后的字段 */
   fields: CronFields
-  /** 任务处理函数 */
-  handler: () => Promise<void>
-  /** 关联的 Agent ID */
+  /** 触发时发送给 Agent 的自然语言指令 */
+  command: string
+  /** 关联的 Agent ID（会话 ID） */
   agentId?: string
   /** 状态 */
   status: CronTaskStatus
@@ -115,6 +117,8 @@ export interface CronTask {
   nextRunAt: number | null
   /** 执行次数 */
   runCount: number
+  /** 最大执行次数（0 = 不限） */
+  maxCalls: number
   /** 上次错误 */
   lastError: string | null
   /** 创建时间 */
@@ -125,23 +129,42 @@ export interface CronTask {
 
 export interface CronTaskConfig {
   name: string
+  description?: string
+  /** Cron 表达式 */
   expression: string
-  handler: () => Promise<void>
+  /** 触发时发送给 Agent 的自然语言指令 */
+  command: string
+  /** 关联的 Agent ID */
   agentId?: string
+  /** 触发的 Hook 事件名 */
   hookEvent?: string
   /** 是否立即激活（默认 true） */
   active?: boolean
+  /** 最大执行次数（0 = 不限） */
+  maxCalls?: number
 }
 
-/** 可持久化的任务配置（不含 handler 函数） */
+/** 可持久化的任务配置 */
 export interface PersistedCronTask {
   id: string
   name: string
+  description: string
   expression: string
+  command: string
   agentId?: string
   hookEvent?: string
   active: boolean
+  maxCalls: number
   createdAt: number
+}
+
+/** 任务执行事件 */
+export interface CronTaskExecutionEvent {
+  taskId: string
+  taskName: string
+  command: string
+  agentId?: string
+  timestamp: number
 }
 
 // ============================================
@@ -152,8 +175,6 @@ class CronScheduler extends EventEmitter {
   private tasks = new Map<string, CronTask>()
   private timer: ReturnType<typeof setInterval> | null = null
   private running = false
-  /** 已注册的 handler 工厂（用于恢复持久化任务时重建 handler） */
-  private handlerFactories = new Map<string, () => Promise<void>>()
 
   /**
    * 启动调度器
@@ -162,8 +183,14 @@ class CronScheduler extends EventEmitter {
     if (this.running) return
     this.running = true
 
-    // 每分钟检查一次
-    this.timer = setInterval(() => this.tick(), 60000)
+    // 每分钟检查一次（对齐到整分钟）
+    const now = Date.now()
+    const delay = 60000 - (now % 60000)
+    setTimeout(() => {
+      this.tick()
+      this.timer = setInterval(() => this.tick(), 60000)
+    }, delay)
+
     logger.system.info('[CronScheduler] Started')
   }
 
@@ -187,16 +214,7 @@ class CronScheduler extends EventEmitter {
   // ============================================
 
   /**
-   * 注册 handler 工厂（用于恢复持久化任务时重建 handler）
-   * 应在应用初始化时调用，注册各场景的 handler 工厂
-   */
-  registerHandlerFactory(taskName: string, factory: () => Promise<void>): void {
-    this.handlerFactories.set(taskName, factory)
-  }
-
-  /**
    * 从持久化存储恢复任务
-   * 恢复的任务 handler 通过 handlerFactory 重建，若无对应工厂则跳过
    */
   restoreFromStore(): void {
     const persisted = moduleDataStore.get<PersistedCronTask[]>(STORE_KEYS.CRON_TASKS)
@@ -204,21 +222,21 @@ class CronScheduler extends EventEmitter {
 
     let restored = 0
     for (const p of persisted) {
-      const factory = this.handlerFactories.get(p.name)
-      if (!factory) {
-        logger.system.warn(`[CronScheduler] No handler factory for task "${p.name}", skipping restore`)
-        continue
+      try {
+        this.register({
+          name: p.name,
+          description: p.description,
+          expression: p.expression,
+          command: p.command,
+          agentId: p.agentId,
+          hookEvent: p.hookEvent,
+          active: p.active,
+          maxCalls: p.maxCalls,
+        })
+        restored++
+      } catch (err) {
+        logger.system.error(`[CronScheduler] Failed to restore task "${p.name}": ${err instanceof Error ? err.message : String(err)}`)
       }
-
-      this.register({
-        name: p.name,
-        expression: p.expression,
-        handler: factory,
-        agentId: p.agentId,
-        hookEvent: p.hookEvent,
-        active: p.active,
-      })
-      restored++
     }
 
     logger.system.info(`[CronScheduler] Restored ${restored}/${persisted.length} tasks from store`)
@@ -229,10 +247,13 @@ class CronScheduler extends EventEmitter {
     const persisted: PersistedCronTask[] = Array.from(this.tasks.values()).map(t => ({
       id: t.id,
       name: t.name,
+      description: t.description,
       expression: t.expression,
+      command: t.command,
       agentId: t.agentId,
       hookEvent: t.hookEvent,
       active: t.status === 'active',
+      maxCalls: t.maxCalls,
       createdAt: t.createdAt,
     }))
     moduleDataStore.set(STORE_KEYS.CRON_TASKS, persisted)
@@ -252,14 +273,16 @@ class CronScheduler extends EventEmitter {
     const task: CronTask = {
       id,
       name: config.name,
+      description: config.description || '',
       expression: config.expression,
       fields,
-      handler: config.handler,
+      command: config.command,
       agentId: config.agentId,
       status: config.active !== false ? 'active' : 'paused',
       lastRunAt: null,
       nextRunAt: this.calculateNextRun(fields),
       runCount: 0,
+      maxCalls: config.maxCalls || 0,
       lastError: null,
       createdAt: Date.now(),
       hookEvent: config.hookEvent,
@@ -270,6 +293,28 @@ class CronScheduler extends EventEmitter {
     logger.system.info(`[CronScheduler] Registered task: ${config.name} (${config.expression})`)
     this.emit('task-registered', task)
 
+    return task
+  }
+
+  /**
+   * 更新 Cron 任务
+   */
+  update(taskId: string, updates: Partial<Pick<CronTaskConfig, 'name' | 'description' | 'expression' | 'command' | 'maxCalls'>>): CronTask | null {
+    const task = this.tasks.get(taskId)
+    if (!task) return null
+
+    if (updates.name !== undefined) task.name = updates.name
+    if (updates.description !== undefined) task.description = updates.description
+    if (updates.command !== undefined) task.command = updates.command
+    if (updates.maxCalls !== undefined) task.maxCalls = updates.maxCalls
+    if (updates.expression !== undefined) {
+      task.expression = updates.expression
+      task.fields = parseCronExpression(updates.expression)
+      task.nextRunAt = this.calculateNextRun(task.fields)
+    }
+
+    this.persistTasks()
+    this.emit('task-updated', task)
     return task
   }
 
@@ -294,6 +339,7 @@ class CronScheduler extends EventEmitter {
     const task = this.tasks.get(taskId)
     if (!task || task.status !== 'active') return false
     task.status = 'paused'
+    this.persistTasks()
     this.emit('task-paused', task)
     return true
   }
@@ -306,6 +352,7 @@ class CronScheduler extends EventEmitter {
     if (!task || task.status !== 'paused') return false
     task.status = 'active'
     task.nextRunAt = this.calculateNextRun(task.fields)
+    this.persistTasks()
     this.emit('task-resumed', task)
     return true
   }
@@ -324,6 +371,13 @@ class CronScheduler extends EventEmitter {
     return Array.from(this.tasks.values()).filter(t => t.agentId === agentId)
   }
 
+  /**
+   * 获取指定任务
+   */
+  getTask(taskId: string): CronTask | undefined {
+    return this.tasks.get(taskId)
+  }
+
   // ============================================
   // 调度逻辑（私有）
   // ============================================
@@ -334,6 +388,15 @@ class CronScheduler extends EventEmitter {
     for (const task of this.tasks.values()) {
       if (task.status !== 'active') continue
       if (!matchesCron(now, task.fields)) continue
+
+      // 检查最大执行次数
+      if (task.maxCalls > 0 && task.runCount >= task.maxCalls) {
+        task.status = 'paused'
+        this.persistTasks()
+        logger.system.info(`[CronScheduler] Task ${task.name} reached max calls (${task.maxCalls}), auto-paused`)
+        this.emit('task-max-calls-reached', task)
+        continue
+      }
 
       // 异步执行，不阻塞其他任务
       this.executeTask(task).catch(err => {
@@ -346,11 +409,9 @@ class CronScheduler extends EventEmitter {
     task.status = 'running'
     task.lastRunAt = Date.now()
     this.emit('task-started', task)
+    this.emit('task-state-changed', this.serializeTask(task))
 
     try {
-      // 执行任务处理函数
-      await task.handler()
-
       // 触发关联的 Hook 事件
       if (task.hookEvent) {
         await hookEngine.trigger(task.hookEvent as any, {
@@ -361,29 +422,69 @@ class CronScheduler extends EventEmitter {
         })
       }
 
-      task.status = 'active'
+      // 发送 command 执行事件，由上层（automation bridge）监听并转发给渲染进程
+      const executionEvent: CronTaskExecutionEvent = {
+        taskId: task.id,
+        taskName: task.name,
+        command: task.command,
+        agentId: task.agentId,
+        timestamp: Date.now(),
+      }
+      this.emit('task-execute', executionEvent)
+
       task.runCount++
       task.nextRunAt = this.calculateNextRun(task.fields)
       task.lastError = null
 
-      logger.system.info(`[CronScheduler] Task completed: ${task.name} (run #${task.runCount})`)
+      // 判断是否为一次性任务（maxCalls 达到上限或下次执行时间为 -1）
+      if (task.maxCalls > 0 && task.runCount >= task.maxCalls) {
+        task.status = 'completed'
+      } else {
+        task.status = 'active'
+      }
+
+      logger.system.info(`[CronScheduler] Task triggered: ${task.name} (run #${task.runCount})`)
       this.emit('task-completed', task)
+      this.emit('task-state-changed', this.serializeTask(task))
+      this.persistTasks()
 
     } catch (err) {
-      task.status = 'active'
+      task.status = 'error'
       task.lastError = err instanceof Error ? err.message : String(err)
 
       logger.system.error(`[CronScheduler] Task failed: ${task.name} - ${task.lastError}`)
       this.emit('task-error', task, err)
+      this.emit('task-state-changed', this.serializeTask(task))
+      this.persistTasks()
     }
   }
 
   /**
-   * 计算下次执行时间（简化版，只检查未来 24 小时）
+   * 计算下次执行时间（检查未来 7 天）
    */
+  /** 序列化任务为可传输的纯对象 */
+  private serializeTask(task: CronTask): Record<string, unknown> {
+    return {
+      id: task.id,
+      name: task.name,
+      description: task.description,
+      expression: task.expression,
+      command: task.command,
+      agentId: task.agentId,
+      status: task.status,
+      lastRunAt: task.lastRunAt,
+      nextRunAt: task.nextRunAt,
+      runCount: task.runCount,
+      maxCalls: task.maxCalls,
+      lastError: task.lastError,
+      createdAt: task.createdAt,
+      hookEvent: task.hookEvent,
+    }
+  }
+
   private calculateNextRun(fields: CronFields): number {
     const now = new Date()
-    const future = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+    const future = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
 
     for (let t = new Date(now.getTime() + 60000); t <= future; t = new Date(t.getTime() + 60000)) {
       if (matchesCron(t, fields)) {
@@ -391,7 +492,7 @@ class CronScheduler extends EventEmitter {
       }
     }
 
-    return -1 // 24 小时内无匹配
+    return -1 // 7 天内无匹配
   }
 }
 

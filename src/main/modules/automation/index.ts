@@ -12,5 +12,6 @@ export type {
   CronTaskConfig,
   CronTaskStatus,
   PersistedCronTask,
+  CronTaskExecutionEvent,
 } from './CronScheduler'
 export { parseCronExpression, matchesCron } from './CronScheduler'

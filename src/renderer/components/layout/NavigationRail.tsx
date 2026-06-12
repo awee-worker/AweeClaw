@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { Settings, Workflow, Compass, LogIn, ChevronUp, CloudSync, Info, MessageSquare, Plus, MoreHorizontal, Edit2, Trash2, LogOut, UserCircle, Wallet, History } from 'lucide-react'
+import { Settings, Workflow, Compass, LogIn, ChevronUp, CloudSync, Info, MessageSquare, Plus, MoreHorizontal, Edit2, Trash2, LogOut, UserCircle, Wallet, History, Clock } from 'lucide-react'
 import { HintOverlay } from '../ui/HintOverlay'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -49,6 +49,7 @@ function UserMenuDropdown({
   onSettingsClick,
   onExploreClick,
   onWorkflowClick,
+  onScheduleClick,
   onUserInfoClick,
   onBillingCenterClick,
   onSessionHistoryClick,
@@ -65,6 +66,7 @@ function UserMenuDropdown({
   onSettingsClick: () => void
   onExploreClick: () => void
   onWorkflowClick: () => void
+  onScheduleClick: () => void
   onUserInfoClick: () => void
   onBillingCenterClick: () => void
   onSessionHistoryClick: () => void
@@ -116,6 +118,7 @@ function UserMenuDropdown({
   const featureItems = [
     { icon: Compass, label: t('layout.workscenes', language as Language), onClick: onExploreClick },
     { icon: Workflow, label: t('layout.workflow', language as Language), onClick: onWorkflowClick },
+    { icon: Clock, label: t('layout.schedule', language as Language), onClick: onScheduleClick },
   ]
 
   const systemItems = [
@@ -433,6 +436,15 @@ export default function NavigationRail() {
     setShowBillingCenterPage(false)
     setShowWorkflow(true)
   }, [setActiveSidePanel, setShowSettingsPage, setShowWelcomePage, setShowUserProfilePage, setShowBillingCenterPage, setShowWorkflow])
+
+  const handleScheduleClick = useCallback(() => {
+    setShowSettingsPage(false)
+    setShowWelcomePage(false)
+    setShowUserProfilePage(false)
+    setShowBillingCenterPage(false)
+    setShowWorkflow(false)
+    setActiveSidePanel(activeSidePanel === 'schedule' ? null : 'schedule')
+  }, [activeSidePanel, setActiveSidePanel, setShowSettingsPage, setShowWelcomePage, setShowUserProfilePage, setShowBillingCenterPage, setShowWorkflow])
 
   const handleUserInfoClick = useCallback(() => {
     setActiveSidePanel(null)
@@ -906,6 +918,7 @@ export default function NavigationRail() {
           onSettingsClick={handleSettingsClick}
           onExploreClick={handleExploreClick}
           onWorkflowClick={handleWorkflowClick}
+          onScheduleClick={handleScheduleClick}
           onUserInfoClick={handleUserInfoClick}
           onBillingCenterClick={handleBillingCenterClick}
           onSessionHistoryClick={handleSessionHistoryClick}

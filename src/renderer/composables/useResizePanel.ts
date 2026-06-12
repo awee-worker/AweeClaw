@@ -1,5 +1,8 @@
 /**
  * 面板拖拽调整大小 Hook
+ *
+ * 基于起始位置 + 增量计算新宽度，避免绝对定位导致的跳动问题。
+ * 拖拽期间通过 ref 直接操作 DOM，松手后才同步状态，减少重渲染。
  */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { LAYOUT } from '@shared/appConstants'
@@ -10,7 +13,6 @@ interface ResizeConfig {
   direction: ResizeDirection
   minSize: number
   maxSize: number
-  onResize?: (size: number) => void
   onResizeEnd?: (size: number) => void
   panelRef?: React.RefObject<HTMLDivElement | null>
 }
@@ -22,49 +24,53 @@ interface ResizeState {
 
 export function useResizePanel(config: ResizeConfig): ResizeState {
   const [isResizing, setIsResizing] = useState(false)
-  const lastSizeRef = useRef<number | null>(null)
+  // 拖拽起始状态（用 ref 避免闭包引用过期值）
+  const dragStateRef = useRef<{ startX: number; startWidth: number } | null>(null)
+
+  const { direction, minSize, maxSize, onResizeEnd, panelRef } = config
 
   const startResize = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
+    const currentWidth = panelRef?.current?.offsetWidth ?? 0
+    dragStateRef.current = { startX: e.clientX, startWidth: currentWidth }
     setIsResizing(true)
     document.body.style.cursor = 'col-resize'
-  }, [])
-
-  // 稳定化 config 引用
-  const { direction, minSize, maxSize, onResize, onResizeEnd, panelRef } = config
+  }, [panelRef])
 
   useEffect(() => {
     if (!isResizing) return
 
     const handleMouseMove = (e: MouseEvent) => {
-      // left: 从左边计算宽度，right: 从右边计算宽度
-      const newSize = direction === 'left'
-        ? e.clientX - LAYOUT.ACTIVITY_BAR_WIDTH
-        : window.innerWidth - e.clientX
+      const drag = dragStateRef.current
+      if (!drag) return
 
-      if (newSize > minSize && newSize < maxSize) {
-        lastSizeRef.current = newSize
-        if (panelRef?.current) {
-          panelRef.current.style.width = `${newSize}px`
-        }
-        if (onResize) {
-          onResize(newSize)
-        }
+      // 增量计算：left 方向向右拖增大，right 方向向左拖增大
+      const delta = direction === 'left'
+        ? e.clientX - drag.startX
+        : drag.startX - e.clientX
+
+      const newSize = Math.min(maxSize, Math.max(minSize, drag.startWidth + delta))
+
+      if (panelRef?.current) {
+        panelRef.current.style.width = `${newSize}px`
       }
     }
 
     const handleMouseUp = () => {
+      const finalWidth = panelRef?.current?.offsetWidth ?? null
       setIsResizing(false)
       document.body.style.cursor = 'default'
-      if (onResizeEnd && lastSizeRef.current !== null) {
-        onResizeEnd(lastSizeRef.current)
+      dragStateRef.current = null
+
+      if (onResizeEnd && finalWidth !== null) {
+        onResizeEnd(finalWidth)
       }
     }
 
     window.addEventListener('mousemove', handleMouseMove)
     window.addEventListener('mouseup', handleMouseUp)
 
-    // 遮罩层防止选中文本
+    // 遮罩层防止选中文本和 iframe 拦截事件
     const overlay = document.createElement('div')
     overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;cursor:col-resize'
     document.body.appendChild(overlay)
@@ -74,7 +80,7 @@ export function useResizePanel(config: ResizeConfig): ResizeState {
       window.removeEventListener('mouseup', handleMouseUp)
       document.body.removeChild(overlay)
     }
-  }, [isResizing, direction, minSize, maxSize, onResize, onResizeEnd, panelRef])
+  }, [isResizing, direction, minSize, maxSize, onResizeEnd, panelRef])
 
   return { isResizing, startResize }
 }

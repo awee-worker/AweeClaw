@@ -2403,6 +2403,94 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         }
     },
 
+    async schedule(args, _ctx) {
+        const action = args.action as string
+        if (!action) return { success: false, result: '', error: 'Missing action parameter' }
+
+        try {
+            switch (action) {
+                case 'create': {
+                    const name = args.name as string
+                    const pattern = args.pattern as string
+                    const command = args.command as string
+                    if (!name || !pattern || !command) {
+                        return { success: false, result: '', error: 'create requires: name, pattern, command' }
+                    }
+                    const result = await api.cron.register({
+                        name,
+                        description: (args.description as string) || '',
+                        expression: pattern,
+                        command,
+                        maxCalls: (args.max_calls as number) || 0,
+                        active: true,
+                    })
+                    if (!result.success) return { success: false, result: '', error: 'Failed to create task' }
+                    const task = result.task
+                    return {
+                        success: true,
+                        result: `Created scheduled task "${task.name}" (ID: ${task.id})\nPattern: ${task.expression}\nCommand: ${task.command}\nNext run: ${task.nextRunAt > 0 ? new Date(task.nextRunAt).toLocaleString() : 'N/A'}${task.maxCalls > 0 ? `\nMax calls: ${task.maxCalls}` : ''}`,
+                    }
+                }
+
+                case 'list': {
+                    const result = await api.cron.getAllTasks()
+                    if (!result.success || !result.tasks || result.tasks.length === 0) {
+                        return { success: true, result: 'No scheduled tasks found.' }
+                    }
+                    const lines = result.tasks.map((t: any) => {
+                        const status = t.status === 'active' ? '●' : t.status === 'paused' ? '○' : '◉'
+                        const nextRun = t.nextRunAt > 0 ? new Date(t.nextRunAt).toLocaleString() : 'N/A'
+                        const maxInfo = t.maxCalls > 0 ? ` | ${t.runCount}/${t.maxCalls}` : ` | ${t.runCount} runs`
+                        return `${status} ${t.name} (${t.id})\n  Pattern: ${t.expression} | Status: ${t.status}${maxInfo}\n  Command: ${t.command.substring(0, 80)}${t.command.length > 80 ? '...' : ''}\n  Next: ${nextRun}`
+                    })
+                    return { success: true, result: `Scheduled Tasks:\n\n${lines.join('\n\n')}` }
+                }
+
+                case 'update': {
+                    const taskId = args.task_id as string
+                    if (!taskId) return { success: false, result: '', error: 'update requires: task_id' }
+                    const updates: Record<string, any> = {}
+                    if (args.name !== undefined) updates.name = args.name
+                    if (args.description !== undefined) updates.description = args.description
+                    if (args.pattern !== undefined) updates.expression = args.pattern
+                    if (args.command !== undefined) updates.command = args.command
+                    if (args.max_calls !== undefined) updates.maxCalls = args.max_calls
+                    const result = await api.cron.update(taskId, updates)
+                    if (!result.success) return { success: false, result: '', error: result.error || 'Failed to update task' }
+                    return { success: true, result: `Updated task "${result.task.name}" (${taskId})` }
+                }
+
+                case 'delete': {
+                    const taskId = args.task_id as string
+                    if (!taskId) return { success: false, result: '', error: 'delete requires: task_id' }
+                    const result = await api.cron.unregister(taskId)
+                    if (!result.success) return { success: false, result: '', error: 'Task not found or already deleted' }
+                    return { success: true, result: `Deleted scheduled task (${taskId})` }
+                }
+
+                case 'toggle': {
+                    const taskId = args.task_id as string
+                    const enabled = args.enabled as boolean
+                    if (!taskId || enabled === undefined) return { success: false, result: '', error: 'toggle requires: task_id, enabled' }
+                    const result = enabled
+                        ? await api.cron.resume(taskId)
+                        : await api.cron.pause(taskId)
+                    if (!result.success) return { success: false, result: '', error: `Failed to ${enabled ? 'enable' : 'disable'} task` }
+                    return { success: true, result: `Task ${taskId} ${enabled ? 'enabled' : 'disabled'}` }
+                }
+
+                default:
+                    return { success: false, result: '', error: `Unknown action: ${action}. Use: create, list, update, delete, toggle` }
+            }
+        } catch (err) {
+            return {
+                success: false,
+                result: '',
+                error: `Schedule operation failed: ${toAppError(err).message}`,
+            }
+        }
+    },
+
     async todo_write(args) {
         if (useStore.getState().teamModeEnabled) {
             return { success: true, result: 'Task list skipped in team mode' }

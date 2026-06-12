@@ -698,8 +698,10 @@ async function initializeModules(firstWin: BrowserWindow) {
   // 启动 Cron 调度器（恢复持久化任务后启动）
   try {
     const { cronScheduler } = await import('./modules/automation/CronScheduler')
+    const { registerAutomationEventListeners } = await import('./bridge/automation')
     cronScheduler.restoreFromStore()
     cronScheduler.start()
+    registerAutomationEventListeners()
     logger.system.info('[Main] Cron scheduler started')
   } catch (err) {
     logger.system.warn('[Main] Cron scheduler start skipped:', err instanceof Error ? err.message : String(err))

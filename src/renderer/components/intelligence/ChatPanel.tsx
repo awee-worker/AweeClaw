@@ -280,13 +280,17 @@ export default function ChatPanel() {
   const prevThreadIdRef = useRef(currentThreadId)
   const pendingRevealAnchorKeyRef = useRef<string | null>(null)
   const visibleRangeRef = useRef<{ startIndex: number; endIndex: number } | null>(null)
+  // 用 ref 追踪 timelineItems 长度，避免将其加入 effect 依赖数组
+  // 防止懒加载消息到达时触发 effect cleanup → clearTimeout → isSwitchingThread 永远不归 false
+  const timelineLengthRef = useRef(timelineItems.length)
+  timelineLengthRef.current = timelineItems.length
   // Virtuoso 初始滚动位置：只在线程切换时重新指向底部，普通追加消息不重算
   // 避免每次消息列表变化都重新传入新的 initialTopMostItemIndex
   // 导致 Virtuoso 强制跳回该位置（即滚动条回顶的根因）
   const initialIndexRef = useRef(Math.max(0, timelineItems.length - 1))
 
   // Effect 1：只监听 currentThreadId 变化，控制骨架屏的显示/隐藏
-  // 与 filteredMessages 解耦，防止懒加载消息在 350ms 内到达时
+  // 与 filteredMessages 解耦，防止懒加载消息到达时
   // 触发 effect cleanup → clearTimeout → isSwitchingThread 永远不归 false
   useEffect(() => {
     const threadChanged = currentThreadId !== prevThreadIdRef.current
@@ -295,7 +299,7 @@ export default function ChatPanel() {
     if (!threadChanged) return
 
     // 线程切换时同步更新初始位置索引，指向新线程的底部
-    initialIndexRef.current = Math.max(0, timelineItems.length - 1)
+    initialIndexRef.current = Math.max(0, timelineLengthRef.current - 1)
 
     // 线程切换：已加载线程只保留一帧过渡，未加载线程继续由 hydration 骨架接管
     setIsSwitchingThread(true)
@@ -305,7 +309,7 @@ export default function ChatPanel() {
       })
     }, 16)
     return () => window.clearTimeout(timer)
-  }, [currentThreadId, timelineItems.length])
+  }, [currentThreadId])
 
   // Unified Sidebar State
   const [showFileMention, setShowFileMention] = useState(false)
@@ -316,6 +320,18 @@ export default function ChatPanel() {
   const [mentionRange, setMentionRange] = useState<{ start: number; end: number } | null>(null)
   const suggestionRequestId = useRef(0) // 防止 getSuggestions 竞态
   const [isDragging, setIsDragging] = useState(false)
+
+  // 定时任务触发时自动发送 AI 指令
+  useEffect(() => {
+    const unsub = api.cron.onTaskExecute(async (event: { taskId: string; taskName: string; command: string }) => {
+      try {
+        await sendMessage(event.command)
+      } catch (err) {
+        logger.agent.error('[ChatPanel] Failed to send cron command:', err)
+      }
+    })
+    return unsub
+  }, [sendMessage])
   // 斜杠命令状态
   const [showSlashCommand, setShowSlashCommand] = useState(false)
   const [slashCommandQuery, setSlashCommandQuery] = useState('')
