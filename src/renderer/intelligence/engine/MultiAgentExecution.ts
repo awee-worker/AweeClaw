@@ -182,9 +182,9 @@ export function createExecuteAgent(
  * 保存提取的文件到磁盘
  */
 async function saveExtractedFiles(
-  agentId: string,
-  agentName: string,
-  content: string,
+  _agentId: string,
+  _agentName: string,
+  _content: string,
   extractedFiles: ExtractedFile[],
   projectDir: string | null
 ): Promise<string[]> {
@@ -207,28 +207,10 @@ async function saveExtractedFiles(
         logger.agent.warn(`[SmartOrchestrator] Failed to save file ${file.path}:`, err)
       }
     }
-  } else {
-    const ROLE_FILE_NAMES: Record<string, string> = {
-      pm: 'pm_project-plan',
-      architect: 'architect_design',
-      frontend: 'frontend_ui',
-      backend: 'backend_api',
-      designer: 'designer_visual',
-      tester: 'tester_test-plan',
-      devops: 'devops_deploy',
-      analyst: 'analyst_report',
-    }
-    const safeId = agentId.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase()
-    const roleKey = Object.keys(ROLE_FILE_NAMES).find(k => safeId.includes(k))
-    const fileBaseName = roleKey ? ROLE_FILE_NAMES[roleKey] : `agent_${safeId}`
-    const outputPath = `${projectDir}/${fileBaseName}.md`
-    try {
-      await api.file.write(outputPath, content)
-      savedPaths.push(outputPath)
-    } catch (err) {
-      logger.agent.warn(`[SmartOrchestrator] Failed to save output for ${agentName}:`, err)
-    }
   }
+  // 当智能体没有通过 write_file 工具创建任何文件时，
+  // 不再自动创建角色工作记录 .md 文件，避免产出无关文件。
+  // 智能体的输出内容会保留在 outputPreview 中供查看。
 
   return savedPaths
 }
@@ -237,13 +219,70 @@ async function saveExtractedFiles(
 
 const ROLE_MAP: Record<string, WorkspaceAgent['role']> = {
   'architect': 'architect',
+  'solution-architect': 'architect',
   'developer': 'backend',
+  'backend-dev': 'backend',
+  'backend-developer': 'backend',
+  'server-dev': 'backend',
+  'api-dev': 'backend',
   'reviewer': 'analyst',
+  'code-reviewer': 'analyst',
+  'analyst': 'analyst',
+  'qa': 'tester',
   'tester': 'tester',
+  'test-engineer': 'tester',
+  'qa-engineer': 'tester',
   'coordinator': 'pm',
+  'pm': 'pm',
+  'project-manager': 'pm',
+  'manager': 'pm',
   'frontend': 'frontend',
+  'frontend-dev': 'frontend',
+  'frontend-developer': 'frontend',
+  'ui-dev': 'frontend',
+  'web-dev': 'frontend',
   'designer': 'designer',
+  'ui-designer': 'designer',
+  'ux-designer': 'designer',
+  'ui-ux': 'designer',
   'devops': 'devops',
+  'deploy': 'devops',
+  'sre': 'devops',
+  'database': 'architect',
+  'db-engineer': 'architect',
+  'dba': 'architect',
+}
+
+/** 角色去重：确保同一角色不会出现多次，重复角色尝试映射到其他可用角色 */
+const ROLE_ALTERNATIVES: Record<string, WorkspaceAgent['role'][]> = {
+  frontend: ['designer', 'architect'],
+  backend: ['architect', 'devops'],
+  architect: ['backend', 'analyst'],
+  designer: ['frontend', 'pm'],
+  tester: ['analyst', 'devops'],
+  analyst: ['tester', 'backend'],
+  devops: ['backend', 'architect'],
+  pm: ['architect', 'analyst'],
+  custom: [],
+}
+
+function deduplicateRoles(agents: WorkspaceAgent[]): WorkspaceAgent[] {
+  const seenRoles = new Set<WorkspaceAgent['role']>()
+  return agents.map(agent => {
+    if (seenRoles.has(agent.role)) {
+      // 尝试从候选角色中找一个未使用的
+      const alternatives = ROLE_ALTERNATIVES[agent.role] || []
+      const altRole = alternatives.find(r => !seenRoles.has(r))
+      if (altRole) {
+        seenRoles.add(altRole)
+        return { ...agent, role: altRole }
+      }
+      // 无可用候选，降级为 custom
+      return { ...agent, role: 'custom' as const }
+    }
+    seenRoles.add(agent.role)
+    return agent
+  })
 }
 
 // ===== 核心执行函数 =====
@@ -351,14 +390,17 @@ export async function executeMultiAgent(
       }
     })
 
+    // 角色去重：同一角色只保留第一个，重复的降级为 custom
+    const dedupedAgents = deduplicateRoles(workspaceAgents)
+
     const agentStatusMap = new Map<string, 'waiting' | 'working' | 'completed' | 'failed'>()
-    for (const a of workspaceAgents) {
+    for (const a of dedupedAgents) {
       agentStatusMap.set(a.id, 'waiting')
     }
 
     globalStore.updateWorkspaceSession({
       status: 'plan_review',
-      agents: workspaceAgents,
+      agents: dedupedAgents,
       summary: plan.summary,
       collaborationPhase: 'meeting',
       plan: {
@@ -375,7 +417,7 @@ export async function executeMultiAgent(
       },
     })
 
-    const agentInfoList = workspaceAgents.map(a => ({
+    const agentInfoList = dedupedAgents.map(a => ({
       id: a.id,
       name: a.name,
       role: a.role,
@@ -426,7 +468,7 @@ export async function executeMultiAgent(
     )
 
     collaborationProtocol.delegateTasks(
-      workspaceAgents.map(a => ({
+      dedupedAgents.map(a => ({
         agentId: a.id,
         agentName: a.name,
         task: a.taskDescription,
@@ -612,18 +654,41 @@ export async function executeMultiAgent(
 
         const failedCount = [...agentStatusMap.values()].filter(s => s === 'failed').length
         const completedCount = [...agentStatusMap.values()].filter(s => s === 'completed').length
-        const allCompleted = failedCount === 0 && completedCount === workspaceAgents.length
+        const allCompleted = failedCount === 0 && completedCount === dedupedAgents.length
         const finalStatus = allCompleted ? 'completed' : (completedCount > 0 ? 'completed' : 'failed')
 
         const session = useStore.getState().activeWorkspaceSession
         const totalDuration = session ? Date.now() - session.createdAt : undefined
 
         const allOutputFiles = session?.agents.flatMap(a => a.outputFiles) || []
+
+        // 产出物分类：区分用户真正需要的文件和辅助文档
+        // 规则：代码文件、配置文件、样式文件、脚本文件等都是用户需要的产出物
+        //       纯文档类 .md 文件（README 除外）归为辅助文档
+        const CODE_EXTENSIONS = new Set([
+          '.html', '.css', '.js', '.ts', '.tsx', '.jsx', '.vue', '.svelte',
+          '.py', '.java', '.go', '.rs', '.rb', '.php', '.swift', '.kt',
+          '.c', '.cpp', '.h', '.hpp', '.cs', '.m', '.mm',
+          '.sql', '.graphql', '.prisma',
+          '.json', '.yaml', '.yml', '.toml', '.xml', '.ini', '.env', '.conf',
+          '.sh', '.bash', '.zsh', '.bat', '.ps1',
+          '.dockerfile', '.dockerignore', '.gitignore', '.editorconfig',
+          '.scss', '.less', '.sass', '.styl',
+          '.svg', '.ico', '.png', '.jpg', '.jpeg', '.gif', '.webp',
+        ])
         const deliverableFiles = allOutputFiles.filter(f => {
           const name = f.split('/').pop() || ''
-          return !name.startsWith('pm_') && !name.startsWith('architect_') && !name.startsWith('frontend_') && !name.startsWith('backend_') && !name.startsWith('designer_') && !name.startsWith('tester_') && !name.startsWith('devops_') && !name.startsWith('analyst_') && !name.startsWith('agent_')
+          const ext = name.includes('.') ? '.' + name.split('.').pop()?.toLowerCase() : ''
+          // README.md 是项目必要文件，算作产出物
+          if (name.toLowerCase() === 'readme.md') return true
+          // 代码和配置文件都是产出物
+          if (CODE_EXTENSIONS.has(ext)) return true
+          // 无扩展名的文件（如 Dockerfile, Makefile）也是产出物
+          if (!name.includes('.')) return true
+          // 其他 .md 文件归为辅助文档
+          return false
         })
-        const roleRecordFiles = allOutputFiles.filter(f => !deliverableFiles.includes(f))
+        const auxiliaryFiles = allOutputFiles.filter(f => !deliverableFiles.includes(f))
 
         let projectFilesList: string[] = []
         if (projectDir) {
@@ -675,8 +740,8 @@ export async function executeMultiAgent(
           }
         }
 
-        if (roleRecordFiles.length > 0) {
-          resultSummary += `\n\n📝 *角色工作记录*: ${roleRecordFiles.map(f => f.split('/').pop()).join(', ')}`
+        if (auxiliaryFiles.length > 0) {
+          resultSummary += `\n\n📝 *辅助文档*: ${auxiliaryFiles.map((f: string) => f.split('/').pop()).join(', ')}`
         }
 
         if (projectDir) {

@@ -165,6 +165,7 @@ type ElectronAPIWithRemoteShell = ElectronAPI & {
   sessionDbDeleteSessionMeta: (key: string) => Promise<{ success: boolean; error?: string }>
   sessionDbGetAllThreadSummaries: (userId?: string | null) => Promise<Array<{ id: string; title: string | null; lastModified: number; messageCount: number; userId: string | null }>>
   sessionDbGetThreadMeta: (threadId: string) => Promise<any | null>
+  sessionDbBatchGetThreadMeta: (threadIds: string[]) => Promise<Record<string, any>>
   sessionDbUpsertThreadMeta: (threadId: string, data: any) => Promise<{ success: boolean; error?: string }>
   sessionDbDeleteThreadMeta: (threadId: string) => Promise<{ success: boolean; error?: string }>
   sessionDbClaimOrphanThreads: (userId: string) => Promise<{ success: boolean; count?: number; error?: string }>
@@ -312,6 +313,7 @@ function createGroupedAPI() {
       deleteSessionMeta: (key: string) => raw.sessionDbDeleteSessionMeta(key),
       getAllThreadSummaries: (userId?: string | null) => raw.sessionDbGetAllThreadSummaries(userId),
       getThreadMeta: (threadId: string) => raw.sessionDbGetThreadMeta(threadId),
+      batchGetThreadMeta: (threadIds: string[]) => raw.sessionDbBatchGetThreadMeta(threadIds),
       upsertThreadMeta: (threadId: string, data: any) => raw.sessionDbUpsertThreadMeta(threadId, data),
       deleteThreadMeta: (threadId: string) => raw.sessionDbDeleteThreadMeta(threadId),
       claimOrphanThreads: (userId: string) => raw.sessionDbClaimOrphanThreads(userId),

@@ -50,6 +50,17 @@ export interface SmartOrchestratorOptions {
 
 const FILE_BLOCK_REGEX = /```file:([^\n]+)\n([\s\S]*?)```/g
 
+// 不应作为产出物的文件名模式（角色工作记录、计划文档等无关文件）
+const IRRELEVANT_FILE_PATTERNS = [
+  /^(pm_|architect_|frontend_|backend_|designer_|tester_|devops_|analyst_|agent_)(project-plan|design|ui|api|visual|test-plan|deploy|report|work-log|summary|analysis|plan|roadmap)\.md$/i,
+  /^(project-plan|design-document|analysis-report|work-log|progress-report|roadmap|task-breakdown)\.md$/i,
+]
+
+function isIrrelevantFile(filePath: string): boolean {
+  const name = filePath.split('/').pop() || ''
+  return IRRELEVANT_FILE_PATTERNS.some(pattern => pattern.test(name))
+}
+
 export function extractFilesFromOutput(output: string): ExtractedFile[] {
   const files: ExtractedFile[] = []
   let match: RegExpExecArray | null
@@ -59,7 +70,7 @@ export function extractFilesFromOutput(output: string): ExtractedFile[] {
   while ((match = FILE_BLOCK_REGEX.exec(output)) !== null) {
     const filePath = match[1].trim()
     const content = match[2]
-    if (!seen.has(filePath)) {
+    if (!seen.has(filePath) && !isIrrelevantFile(filePath)) {
       seen.add(filePath)
       files.push({ path: filePath, content })
     }
@@ -69,6 +80,22 @@ export function extractFilesFromOutput(output: string): ExtractedFile[] {
 }
 
 const TOOL_FIRST_INSTRUCTION = 'You MUST use tools to do your job. Use write_file tool to create actual files — never put code inside markdown code blocks. Always create real files using the available tools. If you need to write code, use write_file. If you need to read files, use read_file. If you need to search, use search_files. Complete your tasks using tools, not by writing content in chat.'
+
+const OUTPUT_QUALITY_INSTRUCTION = [
+  '## Output Quality Rules (CRITICAL)',
+  '',
+  '1. **Only create files the user actually wants** — Before creating any file, ask yourself: "Did the user ask for this?" If the user asked for a website, create HTML/CSS/JS files. If the user asked for a Python script, create .py files. Do NOT create extra documentation, planning files, or analysis files that the user did not request.',
+  '',
+  '2. **No filler files** — Do NOT create files like "project-plan.md", "design-document.md", "analysis-report.md", "work-log.md", "summary.md" or any meta-documentation unless the user EXPLICITLY asked for documentation. These are NOT deliverables — they are overhead that clutters the output.',
+  '',
+  '3. **PM agent creates project structure ONLY** — The Project Manager should create the directory structure and configuration files (package.json, tsconfig.json, etc.) that are NECESSARY for the project to work. The PM should NOT create planning documents, analysis documents, or work logs.',
+  '',
+  '4. **Every file must serve the user\'s goal** — Each file created must directly contribute to what the user asked for. If the user wants a landing page, every file should be part of that landing page. If the user wants an API, every file should be part of that API.',
+  '',
+  '5. **Minimize file count** — Create the minimum number of files needed to fulfill the user\'s request. Do not split content into multiple files when one file suffices. Do not create separate files for things that can be combined.',
+  '',
+  '6. **systemPrompt must include output quality rules** — Every agent\'s systemPrompt MUST include this instruction: "Only create files that directly fulfill the user\'s request. Do NOT create planning documents, analysis reports, work logs, or any meta-files. Create only the actual deliverable files the user asked for."',
+].join('\n')
 
 const PLANNING_SYSTEM_PROMPT = [
   'You are a senior project manager who excels at assembling expert teams for complex tasks.',
@@ -107,17 +134,19 @@ const PLANNING_SYSTEM_PROMPT = [
   '   - QA Engineer — scope: test files, test scripts, running tests, reporting bugs. forbidden: writing production code',
   '   - DevOps Engineer — scope: Dockerfile, CI/CD, deployment. forbidden: application code',
   '',
-  '7. **Only create agents that are truly needed** — A simple task may only need 2-3 agents. A complex project may need 4-6. Never exceed 6 agents.',
+  '7. **STRICT role uniqueness rule (MANDATORY)** — Each role type can appear ONLY ONCE in the team. Do NOT create two "Frontend Developer" agents or two "Backend Developer" agents. NO EXCEPTIONS. If the task is large, give one developer a broader scope rather than duplicating roles. The agent IDs must be unique and must NOT contain the same role keyword (e.g., do NOT use both "frontend-dev" and "frontend-ui" — they are the same role). Use distinct role IDs like "frontend-dev", "backend-dev", "qa-engineer", "designer".',
   '',
-  '8. **projectName** — Choose a concise, professional English project folder name (lowercase, hyphens, no spaces) that reflects the task.',
+  '8. **Only create agents that are truly needed** — A simple task may only need 2-3 agents. A complex project may need 4-6. Never exceed 6 agents. Do NOT invent roles that don\'t exist in the list above unless the task specifically requires it (e.g., don\'t create a "Security Expert" unless the user asked for security features).',
   '',
-  '9. **QA/Test Agent is MANDATORY for development tasks** — If the task involves writing code (websites, apps, APIs, scripts, etc.), you MUST include a QA/Test Engineer as one of the last agents in the execution order. The QA Engineer will:',
+  '9. **projectName** — Choose a concise, professional English project folder name (lowercase, hyphens, no spaces) that reflects the task.',
+  '',
+  '10. **QA/Test Agent is MANDATORY for development tasks** — If the task involves writing code (websites, apps, APIs, scripts, etc.), you MUST include a QA/Test Engineer as one of the last agents in the execution order. The QA Engineer will:',
   '   - Write test files or test scripts for the project',
   '   - Run the tests using run_command tool',
   '   - If tests fail, report the specific failures and which developer should fix them',
   '   - The relevant developer agent should then be scheduled to run AFTER the QA agent to fix any issues found',
   '',
-  '10. **Test-Fix cycle for development tasks** — For development tasks, the executionOrder should follow this pattern:',
+  '11. **Test-Fix cycle for development tasks** — For development tasks, the executionOrder should follow this pattern:',
   '   - Layer 1: [Project Manager]',
   '   - Layer 2: [Architect] (if needed)',
   '   - Layer 3: [Developers - can be parallel]',
@@ -125,6 +154,8 @@ const PLANNING_SYSTEM_PROMPT = [
   '   - Layer 5: [Developers again - to fix any issues found by QA] (only if QA is likely to find issues)',
   '',
   '   The QA agent\'s systemPrompt should include: "After running tests, if any tests fail, clearly list each failure with: 1) What failed, 2) Which file/line, 3) Which developer role should fix it. Do NOT fix the code yourself."',
+  '',
+  OUTPUT_QUALITY_INSTRUCTION,
   '',
   '## Output Format',
   '',
@@ -136,16 +167,16 @@ const PLANNING_SYSTEM_PROMPT = [
   '      "id": "pm",',
   '      "name": "项目经理",',
   '      "icon": "📋",',
-  '      "systemPrompt": "You are the Project Manager. Analyze the task, create the project structure using write_file, and provide clear instructions for the team. ' + TOOL_FIRST_INSTRUCTION + '",',
+  '      "systemPrompt": "You are the Project Manager. Analyze the task, create the project structure using write_file, and provide clear instructions for the team. Only create files that directly fulfill the user\'s request — do NOT create planning documents, analysis reports, work logs, or any meta-files. Create only the actual deliverable files the user asked for. ' + TOOL_FIRST_INSTRUCTION + '",',
   '      "taskDescription": "Analyze the task and set up the project structure. Create initial files and provide guidance for the team.",',
   '      "scope": "Creating project directory structure, README.md, configuration files, and providing work guidance for team members.",',
-  '      "forbidden": "Writing any implementation code (HTML, CSS, JS, Python, Java, etc.). Writing database schemas. Writing deployment scripts. You are a manager, not a developer."',
+  '      "forbidden": "Writing any implementation code (HTML, CSS, JS, Python, Java, etc.). Writing database schemas. Writing deployment scripts. Creating planning documents, analysis reports, or work logs. You are a manager, not a developer."',
   '    },',
   '    {',
   '      "id": "frontend-dev",',
   '      "name": "前端开发工程师",',
   '      "icon": "💻",',
-  '      "systemPrompt": "You are a senior frontend developer. Use write_file tool to create actual source code files. ' + TOOL_FIRST_INSTRUCTION + '",',
+  '      "systemPrompt": "You are a senior frontend developer. Use write_file tool to create actual source code files. Only create files that directly fulfill the user\'s request — do NOT create planning documents, analysis reports, work logs, or any meta-files. Create only the actual deliverable files the user asked for. ' + TOOL_FIRST_INSTRUCTION + '",',
   '      "taskDescription": "Implement the frontend for this project. Use write_file to create all necessary HTML, CSS, and JavaScript files.",',
   '      "scope": "Creating frontend source code files: HTML, CSS, JavaScript, UI components, page templates, styles.",',
   '      "forbidden": "Writing backend/server code (Node.js, Python, Java, PHP, etc.). Writing database schemas or SQL. Writing Docker/deployment configs. Writing API route implementations."',
@@ -174,6 +205,16 @@ function buildBoundaryWrapper(agent: SmartAgentDef): string {
   parts.push('VIOLATION WARNING: If you create files or write code that falls into the FORBIDDEN ZONE above, the entire project will fail because another team member is already responsible for that work. Your teammates are counting on you to stay in your lane. ONLY do what is in your SCOPE.')
   parts.push('')
   parts.push('Before creating any file, ask yourself: "Is this file within my SCOPE?" If the answer is NO, do NOT create it.')
+  parts.push('')
+  parts.push('=== OUTPUT QUALITY ===')
+  parts.push('')
+  parts.push('Only create files that directly fulfill the user\'s request. Do NOT create:')
+  parts.push('- Planning documents (project-plan.md, roadmap.md, etc.)')
+  parts.push('- Analysis reports (analysis-report.md, design-doc.md, etc.)')
+  parts.push('- Work logs (work-log.md, progress.md, etc.)')
+  parts.push('- Any meta-documentation the user did not explicitly ask for')
+  parts.push('')
+  parts.push('Create ONLY the actual deliverable files the user wants. If the user asked for a website, create HTML/CSS/JS files. If the user asked for a script, create the script file. Every file you create must directly serve the user\'s goal.')
   parts.push('')
   parts.push('=== END ROLE BOUNDARY ===')
   parts.push('')
@@ -362,6 +403,8 @@ export class SmartOrchestrator {
       lines.push('')
       lines.push('You are ' + agent.name + '. Continue from where the previous team members left off.')
       lines.push('REMEMBER: Only do work within YOUR scope. The previous team members handled THEIR parts. You handle YOUR part only.')
+      lines.push('')
+      lines.push('OUTPUT QUALITY: Only create files that directly fulfill the user\'s request. Do NOT create planning documents, analysis reports, work logs, or any meta-files that the user did not ask for. Create only the actual deliverable files.')
     }
 
     return lines.join('\n')

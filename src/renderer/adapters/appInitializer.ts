@@ -204,18 +204,19 @@ async function restoreWorkspace(): Promise<boolean> {
     await bindWorkspaceRoot(shellState)
   })
 
-  // 立即提交 shell 状态，让 UI 先渲染
+  // 立即提交 shell 状态，让 UI 框架先构建
   commitWorkspaceShell(shellState)
 
-  // 非关键路径：延迟恢复工作区状态和会话数据
-  // 这两个操作较耗时，延迟到首屏渲染后执行
+  // 关键路径：恢复会话数据（用户进入应用时必须看到历史会话）
+  await runWithAgentStorageWritesSuspended(async () => {
+    await restoreWorkspaceAgentStore()
+  })
+
+  // 非关键路径：延迟恢复工作区状态（打开的文件、布局等）
   schedulePostPaintTask(async () => {
     try {
       await runWithAgentStorageWritesSuspended(async () => {
-        await Promise.all([
-          restoreWorkspaceState(),
-          restoreWorkspaceAgentStore(),
-        ])
+        await restoreWorkspaceState()
       })
     } catch (e) {
       logger.system.warn('[Init] Deferred workspace state restore failed:', e)

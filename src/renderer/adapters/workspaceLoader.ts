@@ -196,6 +196,17 @@ export async function bindWorkspaceRoot(shellState: WorkspaceShellState): Promis
   gitService.setWorkspace(shellState.primaryRoot)
 }
 
+/** 轻量级绑定 — 仅创建目录 + 设置 git 工作区，不初始化 SQLite */
+export async function bindWorkspaceRootLite(shellState: WorkspaceShellState): Promise<void> {
+  if (!shellState.primaryRoot) {
+    gitService.setWorkspace(null)
+    return
+  }
+
+  await workspaceStorageRuntime.bindPrimaryRootLite(shellState.primaryRoot)
+  gitService.setWorkspace(shellState.primaryRoot)
+}
+
 export function commitWorkspaceShell(shellState: WorkspaceShellState): void {
   const { setWorkspace, setFiles } = useStore.getState()
   setWorkspace(shellState.workspace)

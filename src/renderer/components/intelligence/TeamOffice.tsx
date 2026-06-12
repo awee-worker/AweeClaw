@@ -2,7 +2,7 @@ import { Suspense, memo, useMemo } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, PerspectiveCamera } from '@react-three/drei'
 import { OfficeScene } from './OfficeScene'
-import type { WorkspaceAgent } from '@store'
+import type { WorkspaceAgent, TeamChatMessage } from '@store'
 import type { CollaborationPhase } from '@intelligence/multiAgent/TeamCollaborationProtocol'
 
 function getAccentHexColor(): string {
@@ -25,17 +25,19 @@ function LoadingFallback() {
   )
 }
 
-function DaytimeAwareScene({ agents, onAgentClick, handoffFrom, handoffTo, collaborationPhase }: {
+function DaytimeAwareScene({ agents, onAgentClick, handoffFrom, handoffTo, collaborationPhase, teamChat }: {
   agents: WorkspaceAgent[]
   onAgentClick: (agent: WorkspaceAgent) => void
   handoffFrom?: string
   handoffTo?: string
   collaborationPhase?: CollaborationPhase
+  teamChat?: TeamChatMessage[]
 }) {
   const hour = new Date().getHours()
   const isDaytime = hour >= 6 && hour < 18
-  const bgColor = isDaytime ? '#e8e4de' : '#1e1e36'
-  const fogColor = isDaytime ? '#e8e4de' : '#1e1e36'
+  // 统一使用白天色调，夜间靠室内灯光照明
+  const bgColor = '#e8e4de'
+  const fogColor = '#e8e4de'
   const accentColor = useMemo(() => getAccentHexColor(), [])
 
   return (
@@ -62,6 +64,8 @@ function DaytimeAwareScene({ agents, onAgentClick, handoffFrom, handoffTo, colla
             handoffTo={handoffTo}
             collaborationPhase={collaborationPhase}
             accentColor={accentColor}
+            teamChat={teamChat}
+            isDaytime={isDaytime}
           />
         </Suspense>
         <fog attach="fog" args={[fogColor, 10, 22]} />
@@ -76,12 +80,14 @@ export const TeamOffice = memo(function TeamOffice({
   handoffFrom,
   handoffTo,
   collaborationPhase,
+  teamChat,
 }: {
   agents: WorkspaceAgent[]
   onAgentClick: (agent: WorkspaceAgent) => void
   handoffFrom?: string
   handoffTo?: string
   collaborationPhase?: CollaborationPhase
+  teamChat?: TeamChatMessage[]
 }) {
   return (
     <DaytimeAwareScene
@@ -90,6 +96,7 @@ export const TeamOffice = memo(function TeamOffice({
       handoffFrom={handoffFrom}
       handoffTo={handoffTo}
       collaborationPhase={collaborationPhase}
+      teamChat={teamChat}
     />
   )
 })

@@ -759,20 +759,37 @@ function OutputTab({ agents, projectPath, onOpenFile }: {
 }) {
   const allOutputFiles = agents.flatMap(a => a.outputFiles)
 
-  const { deliverableFiles, roleRecordFiles } = useMemo(() => {
-    const ROLE_PREFIXES = ['pm_', 'architect_', 'frontend_', 'backend_', 'designer_', 'tester_', 'devops_', 'analyst_', 'agent_']
+  const { deliverableFiles, auxiliaryFiles } = useMemo(() => {
+    // 产出物分类：代码/配置文件为用户需要的产出物，纯文档为辅助文件
+    const CODE_EXTENSIONS = new Set([
+      '.html', '.css', '.js', '.ts', '.tsx', '.jsx', '.vue', '.svelte',
+      '.py', '.java', '.go', '.rs', '.rb', '.php', '.swift', '.kt',
+      '.c', '.cpp', '.h', '.hpp', '.cs', '.m', '.mm',
+      '.sql', '.graphql', '.prisma',
+      '.json', '.yaml', '.yml', '.toml', '.xml', '.ini', '.env', '.conf',
+      '.sh', '.bash', '.zsh', '.bat', '.ps1',
+      '.dockerfile', '.dockerignore', '.gitignore', '.editorconfig',
+      '.scss', '.less', '.sass', '.styl',
+      '.svg', '.ico', '.png', '.jpg', '.jpeg', '.gif', '.webp',
+    ])
     const deliverable: string[] = []
-    const roleRecord: string[] = []
+    const auxiliary: string[] = []
     for (const file of allOutputFiles) {
       const name = file.split('/').pop() || ''
-      const isRoleRecord = name.endsWith('.md') && ROLE_PREFIXES.some(p => name.startsWith(p))
-      if (isRoleRecord) {
-        roleRecord.push(file)
-      } else {
+      const ext = name.includes('.') ? '.' + name.split('.').pop()?.toLowerCase() : ''
+      // README.md 是项目必要文件
+      if (name.toLowerCase() === 'readme.md') {
         deliverable.push(file)
+      } else if (CODE_EXTENSIONS.has(ext)) {
+        deliverable.push(file)
+      } else if (!name.includes('.')) {
+        // 无扩展名的文件（如 Dockerfile, Makefile）
+        deliverable.push(file)
+      } else {
+        auxiliary.push(file)
       }
     }
-    return { deliverableFiles: deliverable, roleRecordFiles: roleRecord }
+    return { deliverableFiles: deliverable, auxiliaryFiles: auxiliary }
   }, [allOutputFiles])
 
   if (allOutputFiles.length === 0) {
@@ -813,15 +830,15 @@ function OutputTab({ agents, projectPath, onOpenFile }: {
         </div>
       )}
 
-      {roleRecordFiles.length > 0 && (
+      {auxiliaryFiles.length > 0 && (
         <div>
           <div className="flex items-center gap-2 mb-2">
             <FileText className="w-3.5 h-3.5 text-text-muted" />
-            <h3 className="text-xs font-semibold text-text-muted">角色工作记录</h3>
-            <span className="text-[10px] text-text-muted">{roleRecordFiles.length} 个</span>
+            <h3 className="text-xs font-semibold text-text-muted">辅助文档</h3>
+            <span className="text-[10px] text-text-muted">{auxiliaryFiles.length} 个</span>
           </div>
           <div className="space-y-1">
-            {roleRecordFiles.map((file, i) => {
+            {auxiliaryFiles.map((file: string, i: number) => {
               const displayName = projectPath ? file.replace(projectPath + '/', '') : file.split('/').pop() || file
               return (
                 <div
@@ -841,10 +858,10 @@ function OutputTab({ agents, projectPath, onOpenFile }: {
         </div>
       )}
 
-      {deliverableFiles.length === 0 && roleRecordFiles.length > 0 && (
+      {deliverableFiles.length === 0 && auxiliaryFiles.length > 0 && (
         <div className="p-3 rounded-lg bg-amber-500/8 border border-amber-500/15">
           <p className="text-[10px] text-amber-400/80">
-            当前仅有角色工作记录文件。项目结果文件将由各 Agent 使用工具（如 write_file）创建，请确保 Agent 配置中启用了文件写入工具。
+            当前仅有辅助文档文件。项目结果文件将由各 Agent 使用工具（如 write_file）创建，请确保 Agent 配置中启用了文件写入工具。
           </p>
         </div>
       )}
@@ -1057,37 +1074,48 @@ export const AgentWorkspace = memo(function AgentWorkspace() {
           <div className="flex-1" />
         ) : activeTab === 'office' ? (
           <div className="flex-1 flex min-h-0">
-            <div className="flex-1 min-w-0 flex flex-col">
-              <div className="flex-[3] min-h-0 p-3 pb-1.5">
-                <Suspense fallback={<div className="flex-1 flex items-center justify-center text-muted-foreground">Loading 3D scene...</div>}>
-                <TeamOffice
-                  agents={session.agents}
-                  onAgentClick={(agent) => setSelectedAgentId(selectedAgentId === agent.id ? null : agent.id)}
-                  handoffFrom={session.agents.find(a => a.isMoving)?.id}
-                  handoffTo={session.agents.find(a => a.isMoving)?.moveTarget}
-                  collaborationPhase={(session.collaborationPhase || 'meeting') as CollaborationPhase}
-                />
-                </Suspense>
-              </div>
-              <div className="flex-[2] min-h-0 border-t border-border/40">
+            {/* 3D场景 — 占70% */}
+            <div className="flex-[7] min-w-0 p-2">
+              <Suspense fallback={<div className="flex-1 flex items-center justify-center text-muted-foreground">Loading 3D scene...</div>}>
+              <TeamOffice
+                agents={session.agents}
+                onAgentClick={(agent) => setSelectedAgentId(selectedAgentId === agent.id ? null : agent.id)}
+                handoffFrom={session.agents.find(a => a.isMoving)?.id}
+                handoffTo={session.agents.find(a => a.isMoving)?.moveTarget}
+                collaborationPhase={(session.collaborationPhase || 'meeting') as CollaborationPhase}
+                teamChat={session.teamChat || []}
+              />
+              </Suspense>
+            </div>
+
+            {/* 右侧面板 — 占30%，聊天+智能体详情 */}
+            <div className="flex-[3] min-w-[240px] max-w-[360px] flex flex-col border-l border-border/40 bg-surface/20">
+              {/* 聊天面板 */}
+              <div className="flex-1 min-h-0">
                 <TeamChatPanel
                   messages={session.teamChat || []}
                   currentPhase={(session.collaborationPhase || 'meeting') as CollaborationPhase}
                 />
               </div>
-            </div>
 
-            <AnimatePresence>
-              {selectedAgent && (
-                <div className="w-64 flex-shrink-0 border-l border-border/40 bg-surface/20 overflow-y-auto">
-                  <AgentDetailPanel
-                    agent={selectedAgent}
-                    projectPath={session.projectPath}
-                    onOpenFile={handleOpenFile}
-                  />
-                </div>
-              )}
-            </AnimatePresence>
+              {/* 智能体详情 — 可折叠 */}
+              <AnimatePresence>
+                {selectedAgent && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="border-t border-border/40 overflow-y-auto max-h-[40%]"
+                  >
+                    <AgentDetailPanel
+                      agent={selectedAgent}
+                      projectPath={session.projectPath}
+                      onOpenFile={handleOpenFile}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
         ) : activeTab === 'overview' ? (
           <>

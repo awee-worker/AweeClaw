@@ -396,6 +396,22 @@ export class SessionDb {
     return this.rowToThreadMeta(row)
   }
 
+  /** 批量获取线程元数据 — 一次查询替代 N 次单条查询，显著减少 IPC 开销 */
+  batchGetThreadMeta(threadIds: string[]): Record<string, any> {
+    if (threadIds.length === 0) return {}
+
+    const placeholders = threadIds.map(() => '?').join(',')
+    const rows = this.db.prepare(
+      `SELECT * FROM thread_meta WHERE thread_id IN (${placeholders})`
+    ).all(...threadIds) as ThreadMetaRow[]
+
+    const result: Record<string, any> = {}
+    for (const row of rows) {
+      result[row.thread_id] = this.rowToThreadMeta(row)
+    }
+    return result
+  }
+
   /** 从第一条用户消息中提取标题文本 */
   private extractTitleFromFirstUserMessage(threadId: string): string | null {
     const msgRow = this.db.prepare(

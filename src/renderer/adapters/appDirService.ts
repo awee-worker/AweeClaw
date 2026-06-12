@@ -149,6 +149,19 @@ class SessionDbStore {
     return { ...meta, messages: [] }
   }
 
+  /** 批量读取线程元数据 — 一次 IPC 调用替代 N 次，显著减少启动耗时 */
+  async batchReadThreadMeta(threadIds: string[]): Promise<Record<string, PersistedChatThread>> {
+    if (threadIds.length === 0) return {}
+    const batchData = await api.sessionDb.batchGetThreadMeta(threadIds)
+    const result: Record<string, PersistedChatThread> = {}
+    for (const [threadId, meta] of Object.entries(batchData)) {
+      if (meta) {
+        result[threadId] = { ...meta, messages: [] }
+      }
+    }
+    return result
+  }
+
   /** 删除线程元数据（替代 deleteSessionFile(`${threadId}.json`)） */
   async deleteThreadMeta(threadId: string): Promise<void> {
     await api.sessionDb.deleteThreadMeta(threadId)
@@ -386,6 +399,54 @@ class ScenarioDirectoryManager {
     await this.loadAllData()
     this.initialized = true
     logger.system.info('[AweeClawDir] Primary root set:', rootPath)
+  }
+
+  /**
+   * 轻量级根目录绑定 — 仅创建目录和重置缓存，不初始化 SQLite
+   * 用于启动关键路径，让 UI 先渲染，后续再调用 initializeStorage 完成数据加载
+   */
+  async setPrimaryRootLite(rootPath: string): Promise<void> {
+    logger.system.info('[AweeClawDir] setPrimaryRootLite called with:', rootPath)
+
+    if (this.primaryRoot === rootPath && this.initialized) {
+      logger.system.info('[AweeClawDir] Primary root already initialized, skipping')
+      return
+    }
+
+    if (this.primaryRoot && this.initialized) {
+      await this.flush()
+    }
+
+    this.primaryRoot = rootPath
+    await this.initialize(rootPath)
+    this.cache = { sessionMeta: null, threads: new Map(), workspaceState: null, settings: null }
+    this.dirty = { sessionMeta: false, dirtyThreads: new Set(), workspaceState: false, settings: false }
+    this.threadHashes.clear()
+    this.metaHash = null
+    logger.system.info('[AweeClawDir] Primary root lite set:', rootPath)
+  }
+
+  /**
+   * 初始化存储引擎 — SQLite 数据库初始化 + 数据迁移 + 全量加载
+   * 在首屏渲染后调用，避免阻塞 UI
+   */
+  async initializeStorage(): Promise<void> {
+    if (!this.primaryRoot) {
+      logger.system.warn('[AweeClawDir] initializeStorage called without primary root')
+      return
+    }
+
+    if (this.initialized) {
+      logger.system.info('[AweeClawDir] Storage already initialized, skipping')
+      return
+    }
+
+    logger.system.info('[AweeClawDir] Initializing storage for:', this.primaryRoot)
+    await this.sessionDb.initialize(this.getSessionsDirPath())
+    await this.migrateLegacySessionsIfNeeded()
+    await this.loadAllData()
+    this.initialized = true
+    logger.system.info('[AweeClawDir] Storage initialized for:', this.primaryRoot)
   }
 
   reset(): void {
@@ -756,13 +817,20 @@ class ScenarioDirectoryManager {
 
     const effectiveMeta = buildEffectiveSessionMeta(reconciledMeta, summaries)
 
-    const threadEntries = await Promise.all(
-      effectiveMeta.threadIds.map(async threadId => [threadId, await this.getThreadData(threadId)] as const)
-    )
+    // 批量读取线程元数据 — 一次 IPC 调用替代 N 次
+    const uncachedThreadIds = effectiveMeta.threadIds.filter(id => !this.cache.threads.has(id))
+    if (uncachedThreadIds.length > 0) {
+      const batchData = await this.sessionDb.batchReadThreadMeta(uncachedThreadIds)
+      for (const [threadId, data] of Object.entries(batchData)) {
+        this.cache.threads.set(threadId, data)
+        this.threadHashes.set(threadId, stableStringify(data))
+      }
+    }
 
     const threads: Record<string, ChatThread> = {}
-    for (const [threadId, data] of threadEntries) {
-      if (data !== null) {
+    for (const threadId of effectiveMeta.threadIds) {
+      const data = this.cache.threads.get(threadId)
+      if (data) {
         threads[threadId] = fromPersistedChatThread(data)
       }
     }
@@ -810,13 +878,21 @@ class ScenarioDirectoryManager {
     this.metaHash = stableStringify(reconciledMeta)
 
     const effectiveMeta = buildEffectiveSessionMeta(reconciledMeta, summaries)
-    const threadEntries = await Promise.all(
-      effectiveMeta.threadIds.map(async threadId => [threadId, await this.getThreadData(threadId)] as const)
-    )
+
+    // 批量读取线程元数据 — 一次 IPC 调用替代 N 次，显著减少启动耗时
+    const uncachedThreadIds = effectiveMeta.threadIds.filter(id => !this.cache.threads.has(id))
+    if (uncachedThreadIds.length > 0) {
+      const batchData = await this.sessionDb.batchReadThreadMeta(uncachedThreadIds)
+      for (const [threadId, data] of Object.entries(batchData)) {
+        this.cache.threads.set(threadId, data)
+        this.threadHashes.set(threadId, stableStringify(data))
+      }
+    }
 
     const threads: Record<string, ChatThread> = {}
-    for (const [threadId, data] of threadEntries) {
-      if (data !== null) {
+    for (const threadId of effectiveMeta.threadIds) {
+      const data = this.cache.threads.get(threadId)
+      if (data) {
         threads[threadId] = fromPersistedChatThread(data)
       }
     }

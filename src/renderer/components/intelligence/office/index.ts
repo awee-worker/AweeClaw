@@ -1,0 +1,7 @@
+export { OfficeScene, default } from './OfficeScene'
+export { OfficeFloor } from './OfficeFloor'
+export { OfficeDesk } from './OfficeDesk'
+export { OfficeFurniture } from './OfficeFurniture'
+export { WanderingCat } from './WanderingCat'
+export { HandoffCat } from './HandoffCat'
+export * from './officeConfig'

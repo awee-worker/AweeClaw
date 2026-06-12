@@ -110,6 +110,16 @@ export function registerSessionDbIpcHandlers(): void {
     }
   })
 
+  // 批量获取线程元数据 — 一次 IPC 调用替代 N 次
+  safeIpcHandle('session-db:batchGetThreadMeta', async (_event, threadIds: string[]) => {
+    try {
+      return db.batchGetThreadMeta(threadIds)
+    } catch (err) {
+      logger.session.error('[SessionDb] BatchGetThreadMeta failed:', err)
+      return {}
+    }
+  })
+
   // 保存线程元数据
   safeIpcHandle('session-db:upsertThreadMeta', async (_event, threadId: string, data: any) => {
     try {

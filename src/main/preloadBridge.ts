@@ -707,6 +707,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   sessionDbDeleteSessionMeta: (key: string) => ipcRenderer.invoke('session-db:deleteSessionMeta', key),
   sessionDbGetAllThreadSummaries: (userId?: string | null) => ipcRenderer.invoke('session-db:getAllThreadSummaries', userId),
   sessionDbGetThreadMeta: (threadId: string) => ipcRenderer.invoke('session-db:getThreadMeta', threadId),
+  sessionDbBatchGetThreadMeta: (threadIds: string[]) => ipcRenderer.invoke('session-db:batchGetThreadMeta', threadIds),
   sessionDbUpsertThreadMeta: (threadId: string, data: any) => ipcRenderer.invoke('session-db:upsertThreadMeta', threadId, data),
   sessionDbDeleteThreadMeta: (threadId: string) => ipcRenderer.invoke('session-db:deleteThreadMeta', threadId),
   sessionDbClaimOrphanThreads: (userId: string) => ipcRenderer.invoke('session-db:claimOrphanThreads', userId),
