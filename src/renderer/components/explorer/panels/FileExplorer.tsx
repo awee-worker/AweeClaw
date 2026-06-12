@@ -4,7 +4,7 @@
 
 import { api } from '../../../adapters/electronBridge'
 import { useState, useEffect, useCallback } from 'react'
-import { FolderOpen, Plus, RefreshCw, FolderPlus, GitBranch, FilePlus, ExternalLink, Crosshair, Terminal, Clipboard, Download } from 'lucide-react'
+import { FolderOpen, Plus, RefreshCw, FolderPlus, GitBranch, FilePlus, ExternalLink, Crosshair, Terminal, Clipboard, Download, Eye, EyeOff } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import {t, type Language} from '@renderer/i18n'
@@ -48,12 +48,15 @@ export function ExplorerView() {
     expandFolder,
     activeFilePath,
     activeScenarioId,
+    showWorkspaceSystemDir,
+    setShowWorkspaceSystemDir,
   } = useStore(useShallow(s => ({
     workspacePath: s.workspacePath, workspace: s.workspace, files: s.files, setFiles: s.setFiles,
     language: s.language, gitStatus: s.gitStatus,
     setGitStatus: s.setGitStatus, isGitRepo: s.isGitRepo, setIsGitRepo: s.setIsGitRepo,
     expandFolder: s.expandFolder, activeFilePath: s.activeFilePath,
     activeScenarioId: s.activeScenarioId,
+    showWorkspaceSystemDir: s.showWorkspaceSystemDir, setShowWorkspaceSystemDir: s.setShowWorkspaceSystemDir,
   })))
   const setTerminalVisible = useStore(state => state.setTerminalVisible)
 
@@ -384,6 +387,13 @@ export function ExplorerView() {
       label: t('contextMenu.revealInWorkspace', language as Language),
       icon: ExternalLink,
       onClick: () => workspacePath && api.file.showInFolder(workspacePath),
+    },
+    { id: 'sepHidden', label: '', separator: true },
+    {
+      id: 'toggleHidden',
+      label: showWorkspaceSystemDir ? t('contextMenu.hideWorkspaceSystemDir', language as Language) : t('contextMenu.showWorkspaceSystemDir', language as Language),
+      icon: showWorkspaceSystemDir ? EyeOff : Eye,
+      onClick: () => setShowWorkspaceSystemDir(!showWorkspaceSystemDir),
     },
   ]
 

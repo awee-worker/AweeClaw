@@ -18,7 +18,9 @@ import {
   Terminal,
   Download,
   Upload,
-  Share2
+  Share2,
+  Eye,
+  EyeOff
 } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -89,7 +91,9 @@ export const VirtualFileTree = memo(function VirtualFileTree({
     activeFilePath,
     language,
     workspacePath,
-    activeScenarioId
+    activeScenarioId,
+    showWorkspaceSystemDir,
+    setShowWorkspaceSystemDir
   } = useStore(useShallow(s => ({
     expandedFolders: s.expandedFolders,
     toggleFolder: s.toggleFolder,
@@ -99,7 +103,9 @@ export const VirtualFileTree = memo(function VirtualFileTree({
     activeFilePath: s.activeFilePath,
     language: s.language,
     workspacePath: s.workspacePath,
-    activeScenarioId: s.activeScenarioId
+    activeScenarioId: s.activeScenarioId,
+    showWorkspaceSystemDir: s.showWorkspaceSystemDir,
+    setShowWorkspaceSystemDir: s.setShowWorkspaceSystemDir
   })))
 
   // 焦点状态
@@ -337,10 +343,12 @@ export const VirtualFileTree = memo(function VirtualFileTree({
     const result: FlattenedNode[] = []
 
     const sortItems = (items: FileItem[]) => {
-      return [...items].sort((a, b) => {
-        if (a.isDirectory === b.isDirectory) return a.name.localeCompare(b.name)
-        return a.isDirectory ? -1 : 1
-      })
+      return [...items]
+        .filter(item => showWorkspaceSystemDir || !(item.isDirectory && item.name === '.aweeclaw'))
+        .sort((a, b) => {
+          if (a.isDirectory === b.isDirectory) return a.name.localeCompare(b.name)
+          return a.isDirectory ? -1 : 1
+        })
     }
 
     const traverse = (items: FileItem[], depth: number) => {
@@ -393,7 +401,7 @@ export const VirtualFileTree = memo(function VirtualFileTree({
 
     traverse(items, 0)
     return result
-  }, [items, expandedFolders, childrenCache, creatingIn, workspacePath])
+  }, [items, expandedFolders, childrenCache, creatingIn, workspacePath, showWorkspaceSystemDir])
 
   // 处理滚动到目标文件（必须在 flattenedNodes 定义之后）
   useEffect(() => {
@@ -839,6 +847,8 @@ export const VirtualFileTree = memo(function VirtualFileTree({
         { id: 'copyPath', label: t('contextMenu.copyPath', contextMenuLanguage), icon: Copy, onClick: () => handleCopyPath(node) },
         { id: 'copyRelPath', label: t('contextMenu.copyRelativePath', contextMenuLanguage), icon: Clipboard, onClick: () => handleCopyRelativePath(node) },
         { id: 'reveal', label: t('contextMenu.revealInExplorer', contextMenuLanguage), icon: ExternalLink, onClick: () => handleRevealInExplorer(node) },
+        { id: 'sepHidden', label: '', separator: true },
+        { id: 'toggleHidden', label: showWorkspaceSystemDir ? t('contextMenu.hideWorkspaceSystemDir', contextMenuLanguage) : t('contextMenu.showWorkspaceSystemDir', contextMenuLanguage), icon: showWorkspaceSystemDir ? EyeOff : Eye, onClick: () => setShowWorkspaceSystemDir(!showWorkspaceSystemDir) },
       ]
     }
     const isHtmlFile = node.item.name.toLowerCase().endsWith('.html') ||
@@ -870,8 +880,11 @@ export const VirtualFileTree = memo(function VirtualFileTree({
       items.push({ id: 'openInBrowser', label: t('contextMenu.openInBrowser', contextMenuLanguage), icon: Globe, onClick: () => handleOpenInBrowser(node) })
     }
 
+    items.push({ id: 'sepHidden', label: '', separator: true })
+    items.push({ id: 'toggleHidden', label: showWorkspaceSystemDir ? t('contextMenu.hideWorkspaceSystemDir', contextMenuLanguage) : t('contextMenu.showWorkspaceSystemDir', contextMenuLanguage), icon: showWorkspaceSystemDir ? EyeOff : Eye, onClick: () => setShowWorkspaceSystemDir(!showWorkspaceSystemDir) })
+
     return items
-  }, [activeScenarioId, clipboardItem, handleNewFile, handleNewFolder, handleOpenTerminalHere, handleCopyItem, handlePasteForNode, handleRenameStart, handleDelete, handleCopyPath, handleCopyRelativePath, handleRevealInExplorer, handleOpenInBrowser, handleImportIntoFolder, handleExportFromNode, handleShareItem])
+  }, [activeScenarioId, clipboardItem, handleNewFile, handleNewFolder, handleOpenTerminalHere, handleCopyItem, handlePasteForNode, handleRenameStart, handleDelete, handleCopyPath, handleCopyRelativePath, handleRevealInExplorer, handleOpenInBrowser, handleImportIntoFolder, handleExportFromNode, handleShareItem, showWorkspaceSystemDir, setShowWorkspaceSystemDir, language])
 
   // 渲染单个节点
   const renderNode = (node: FlattenedNode, index: number) => {

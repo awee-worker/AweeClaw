@@ -59,6 +59,8 @@ export interface FileSlice {
   activeFilePath: string | null
   /** 当前选中的文件夹路径（用于在指定位置创建文件） */
   selectedFolderPath: string | null
+  /** 是否显示工作区系统目录（.aweeclaw） */
+  showWorkspaceSystemDir: boolean
 
   setWorkspace: (workspace: WorkspaceConfig | null) => void
   addRoot: (path: string) => void
@@ -67,6 +69,7 @@ export interface FileSlice {
   toggleFolder: (path: string) => void
   setSelectedFolder: (path: string | null) => void
   expandFolder: (path: string) => void
+  setShowWorkspaceSystemDir: (show: boolean) => void
   openFile: (path: string, content: string, originalContent?: string, options?: {
     largeFileInfo?: LargeFileInfo
     encoding?: string
@@ -128,6 +131,7 @@ export const createFileSlice: StateCreator<FileSlice, [], [], FileSlice> = (set)
   openFiles: [],
   activeFilePath: null,
   selectedFolderPath: null,
+  showWorkspaceSystemDir: false,
 
   setWorkspace: (workspace) => set((state) => {
     // 自动展开所有根文件夹
@@ -162,6 +166,7 @@ export const createFileSlice: StateCreator<FileSlice, [], [], FileSlice> = (set)
   }),
   setFiles: (files) => set({ files }),
   setSelectedFolder: (path) => set({ selectedFolderPath: path }),
+  setShowWorkspaceSystemDir: (show) => set({ showWorkspaceSystemDir: show }),
   expandFolder: (path) =>
     set((state) => {
       const newExpanded = new Set(state.expandedFolders)

@@ -834,6 +834,22 @@ export function registerSecureFileHandlers(
       }
     }
 
+    // 工作区系统目录保护（.aweeclaw 及其子文件/子目录）
+    const normalizedPath = path.normalize(filePath).replace(/\\/g, '/')
+    const pathSegments = normalizedPath.split('/')
+    const aweeclawIndex = pathSegments.findIndex(seg => seg === '.aweeclaw')
+    if (aweeclawIndex !== -1) {
+      securityManager.logOperation(OperationType.FILE_DELETE, filePath, false, {
+        reason: '安全底线：工作区系统目录 (.aweeclaw)',
+      })
+      showSecurityError(
+        getMainWindowFn(),
+        '安全警告',
+        '不允许删除工作区系统目录 (.aweeclaw) 及其内容，该目录存储了项目配置、记忆和索引数据。',
+      )
+      return false
+    }
+
     // 大目录保护
     try {
       const stat = await fsPromises.stat(filePath)
