@@ -11,6 +11,7 @@
  */
 
 export { scenarioLoader } from './ScenarioLoader'
+export { ScenarioLifecycleManager } from './ScenarioLifecycleManager'
 export { scenarioDataBus } from './ScenarioDataBus'
 export { scenarioVersionManager, compareVersions } from './ScenarioVersionManager'
 export { scenarioMonitor } from './ScenarioMonitor'
@@ -24,6 +25,8 @@ export type { SandboxOptions, SandboxResult, SandboxAPIProvider } from './Sandbo
 export { ScenarioScriptExecutor } from './ScenarioScriptExecutor'
 export { createContextAPI, createCoreAPI } from './SandboxAPI'
 export type { ScenarioSandboxContext } from './SandboxAPI'
+export { PermissionGuard } from './PermissionGuard'
+export type { PermissionCheckResult } from './PermissionGuard'
 export { sharedDependencyProvider, injectSharedDependencies } from './SharedDependencyProvider'
 export type { SharedDependencyRegistry, SharedDependencyMap, SharedDependencyMeta } from './SharedDependencyProvider'
 export { ProgrammaticScenarioModule } from './ProgrammaticScenarioModule'
@@ -38,7 +41,16 @@ export {
   downloadAndInstallFromUrl,
   installFromMarketplace,
   setDynamicLoadFunction,
+  setMarketplaceInstallFunction,
+  setUrlDownloadFunction,
 } from './DynamicModuleLoader'
-export type { DynamicLoadSource, DynamicLoadResult } from './DynamicModuleLoader'
+export type {
+  DynamicLoadSource,
+  DynamicLoadResult,
+  MarketplaceInstallParams,
+  MarketplaceInstallFn,
+  UrlDownloadInstallFn,
+  LoadScenarioFilesFn,
+} from './DynamicModuleLoader'
 
 export type { ScenarioLoaderEvent } from '@shared/protocols/scenario-arch'

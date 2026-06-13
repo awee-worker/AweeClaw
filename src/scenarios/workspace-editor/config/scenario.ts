@@ -185,7 +185,7 @@ const CODE_EDITOR_UI: ScenarioUI = {
   layout: 'editor-centric',
   panels: [
     { id: 'editor', component: 'Editor', region: 'primary', defaultVisible: true, resizable: true },
-    { id: 'sidebar', component: 'Sidebar', region: 'secondary', defaultVisible: true, resizable: true, minWidth: 220, maxWidth: 600 },
+    { id: 'sidebar', component: 'Sidebar', region: 'secondary', defaultVisible: true, resizable: true, minWidth: 170, maxWidth: 600 },
     { id: 'chat', component: 'ChatPanel', region: 'auxiliary', defaultVisible: true, resizable: true, minWidth: 300, maxWidth: 800 },
     { id: 'terminal', component: 'TerminalPanel', region: 'floating', defaultVisible: false },
     { id: 'debug', component: 'DebugPanel', region: 'floating', defaultVisible: false },

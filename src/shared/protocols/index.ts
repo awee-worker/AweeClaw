@@ -24,6 +24,9 @@ export * from './scenario'
 // Scenario Architecture 场景架构类型
 export * from './scenario-arch'
 
+// Scenario 统一协议入口（推荐使用）
+export * from './scenario-protocol'
+
 // ==========================================
 // 基础类型
 // ==========================================

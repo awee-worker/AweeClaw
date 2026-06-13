@@ -34,7 +34,7 @@ export default function SidebarSection({ hidden }: SidebarSectionProps) {
     <div
       ref={sidebarRef}
       style={{ width: sidebarWidth, minWidth: sidebarWidth }}
-      className="flex-shrink-0 relative min-w-[220px]"
+      className="flex-shrink-0 relative min-w-[170px]"
     >
       <ErrorBoundary>
         <Suspense fallback={<PanelSkeleton />}>

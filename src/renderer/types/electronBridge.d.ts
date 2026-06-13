@@ -407,6 +407,7 @@ export interface ElectronAPI {
   getWhitelist: () => Promise<{ shell: string[]; git: string[] }>
   resetWhitelist: () => Promise<{ shell: string[]; git: string[] }>
   getUserDataPath: () => Promise<string>
+  getAppConfig: () => Promise<{ serverUrl: string } | null>
   getRecentLogs: () => Promise<string>
   // Settings DB (SQLite)
   settingsDbInitialize: () => Promise<{ success: boolean; dbPath?: string; error?: string }>

@@ -181,6 +181,22 @@ export function registerSettingsHandlers(
     return getUserConfigDir()
   })
 
+  ipcMain.handle('settings:getAppConfig', async () => {
+    try {
+      const path = require('path')
+      const configPath = path.join(getUserConfigDir(), '.aweeclaw', 'aweeclaw-config.json')
+      if (!fs.existsSync(configPath)) {
+        return null
+      }
+      const raw = fs.readFileSync(configPath, 'utf-8')
+      const config = JSON.parse(raw)
+      return { serverUrl: config.serverUrl || null }
+    } catch (err) {
+      logger.ipc.warn('[Settings] Failed to read app config:', err)
+      return null
+    }
+  })
+
   ipcMain.handle('settings:getRecentLogs', async () => {
     try {
       const path = require('path')

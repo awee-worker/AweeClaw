@@ -36,6 +36,7 @@ import type {
 } from '@shared/protocols/scenario-declarative'
 import { builtinToolRegistry } from './BuiltinToolRegistry'
 import { ScenarioScriptExecutor } from './ScenarioScriptExecutor'
+import { PermissionGuard } from './PermissionGuard'
 import type { ToolDefinition, ToolExecutionResult, ToolExecutionContext, ToolExecutor, ToolPropertySchema } from '../providerTypes'
 
 function resolveFileContent(files: Record<string, string>, filePath: string, inlineContent?: string): string {
@@ -147,10 +148,12 @@ export class DeclarativeScenarioModule implements ScenarioModule {
   private config: DeclarativeScenarioConfig
   private files: Record<string, string>
   private scriptExecutor: ScenarioScriptExecutor | null = null
+  private permissionGuard: PermissionGuard
 
   constructor(config: DeclarativeScenarioConfig, files: Record<string, string>) {
     this.config = config
     this.files = files
+    this.permissionGuard = new PermissionGuard(config.id, (config.permissions || []) as import('@shared/protocols/scenario-arch').ScenarioPermission[])
 
     if (config.scripts) {
       this.scriptExecutor = new ScenarioScriptExecutor(
@@ -285,25 +288,52 @@ export class DeclarativeScenarioModule implements ScenarioModule {
 
     if (this.config.capabilities?.builtinTools) {
       const builtinDefs = builtinToolRegistry.getToolDefinitions(this.config.capabilities.builtinTools)
-      tools.push(...builtinDefs)
+      // 为每个内置工具包装权限检查
+      const checkedDefs = builtinDefs.map(def => ({
+        ...def,
+        executor: this.wrapWithPermissionCheck(def.name, def.executor),
+      }))
+      tools.push(...checkedDefs)
     }
 
     if (this.config.capabilities?.customTools) {
       for (const customTool of this.config.capabilities.customTools) {
+        const executor = buildCustomToolExecutor(customTool)
         tools.push({
           name: customTool.name,
           definition: buildCustomToolDefinition(customTool),
-          executor: buildCustomToolExecutor(customTool),
+          executor: this.wrapWithPermissionCheck(customTool.name, executor),
         })
       }
     }
 
     if (this.scriptExecutor) {
       const scriptTools = this.scriptExecutor.getScriptToolDefinitions()
-      tools.push(...scriptTools)
+      const checkedScriptTools = scriptTools.map(def => ({
+        ...def,
+        executor: this.wrapWithPermissionCheck(def.name, def.executor),
+      }))
+      tools.push(...checkedScriptTools)
     }
 
     return tools
+  }
+
+  /**
+   * 用权限检查包装工具执行器
+   */
+  private wrapWithPermissionCheck(toolName: string, executor: ToolExecutor): ToolExecutor {
+    return async (args: Record<string, unknown>, context: ToolExecutionContext): Promise<ToolExecutionResult> => {
+      const checkResult = this.permissionGuard.checkTool(toolName)
+      if (!checkResult.allowed) {
+        return {
+          success: false,
+          result: '',
+          error: checkResult.reason || 'Permission denied',
+        }
+      }
+      return executor(args, context)
+    }
   }
 
   getComponents(): ScenarioComponentRegistry {

@@ -47,7 +47,7 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
   terminalVisible: false,
   debugVisible: false,
   chatVisible: true,
-  sidebarWidth: 260,
+  sidebarWidth: 175,
   chatWidth: 600,
   terminalLayout: 'tabs',
   navRailExpanded: true,

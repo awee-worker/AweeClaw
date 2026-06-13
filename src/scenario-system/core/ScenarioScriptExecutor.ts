@@ -16,6 +16,7 @@ import type { ScenarioModuleContext, ScenarioHealthCheck, ScenarioToolDefinition
 import type { ToolDefinition, ToolExecutionResult, ToolExecutionContext, ToolExecutor, ToolPropertySchema } from '../providerTypes'
 import { logger } from '@shared/toolkit/LogEngine'
 import { StorageService } from '@shared/toolkit/StorageService'
+import { scenarioDatabaseManager } from './ScenarioDatabaseManager'
 
 export class ScenarioScriptExecutor {
   private scenarioId: string
@@ -69,8 +70,33 @@ export class ScenarioScriptExecutor {
         } catch {}
       },
       querySql: async (query: string, _connectionId?: string) => {
-        logger.agent.info(`[ScriptExecutor] SQL query from script: ${query.substring(0, 100)}`)
-        return { pending: true }
+        logger.agent.info(`[ScriptExecutor] SQL query from script "${this.scenarioId}": ${query.substring(0, 200)}`)
+        try {
+          // 安全检查：禁止 DDL 操作（CREATE/ALTER/DROP/TRUNCATE）
+          const upperQuery = query.trim().toUpperCase()
+          const forbiddenPatterns = [
+            /^\s*CREATE\s+(TABLE|INDEX|VIEW|TRIGGER|DATABASE|SCHEMA)/i,
+            /^\s*ALTER\s+(TABLE|INDEX|VIEW)/i,
+            /^\s*DROP\s+(TABLE|INDEX|VIEW|TRIGGER|DATABASE|SCHEMA)/i,
+            /^\s*TRUNCATE\s/i,
+            /^\s*ATTACH\s/i,
+            /^\s*DETACH\s/i,
+            /^\s*REINDEX\s/i,
+            /^\s*VACUUM\s/i,
+            /^\s*PRAGMA\s/i,
+          ]
+          for (const pattern of forbiddenPatterns) {
+            if (pattern.test(upperQuery)) {
+              return { success: false, error: 'DDL operations are not allowed in sandbox scripts' }
+            }
+          }
+
+          const result = await scenarioDatabaseManager.executeSql(this.scenarioId, query)
+          return result
+        } catch (err) {
+          logger.agent.error(`[ScriptExecutor] SQL execution failed for "${this.scenarioId}":`, err)
+          return { success: false, error: err instanceof Error ? err.message : String(err) }
+        }
       },
       log: (level: string, message: string) => {
         logger.agent.info(`[Script:${this.scenarioId}] [${level}] ${message}`)

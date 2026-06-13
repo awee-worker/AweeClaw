@@ -31,6 +31,7 @@ export interface LayoutConfig {
   editorPosition: 'primary' | 'hidden'
   chatExpanded: boolean
   sidebarDefaultWidth: number
+  sidebarMinWidth: number
   chatDefaultWidth: number
   wideModePanelIds: string[]
   wideModeHidesChat: boolean
@@ -65,7 +66,8 @@ function buildEditorCentricConfig(scenario: ScenarioPlugin): LayoutConfig {
     chatPosition: 'right',
     editorPosition: 'primary',
     chatExpanded: false,
-    sidebarDefaultWidth: 260,
+    sidebarDefaultWidth: 175,
+    sidebarMinWidth: 170,
     chatDefaultWidth: 450,
     wideModePanelIds: extractWideModePanelIds(scenario),
     wideModeHidesChat: getWideModeHidesChat(scenario),
@@ -89,7 +91,8 @@ function buildChatCentricConfig(scenario: ScenarioPlugin): LayoutConfig {
     chatPosition: 'primary',
     editorPosition: 'hidden',
     chatExpanded: true,
-    sidebarDefaultWidth: hasSidebarItems ? 260 : 0,
+    sidebarDefaultWidth: hasSidebarItems ? 175 : 0,
+    sidebarMinWidth: hasSidebarItems ? 170 : 0,
     chatDefaultWidth: 0,
     wideModePanelIds: extractWideModePanelIds(scenario),
     wideModeHidesChat: getWideModeHidesChat(scenario),
@@ -113,6 +116,7 @@ function buildDashboardCentricConfig(scenario: ScenarioPlugin): LayoutConfig {
     editorPosition: 'hidden',
     chatExpanded: false,
     sidebarDefaultWidth: 280,
+    sidebarMinWidth: 170,
     chatDefaultWidth: 450,
     wideModePanelIds: extractWideModePanelIds(scenario),
     wideModeHidesChat: getWideModeHidesChat(scenario),
@@ -136,6 +140,7 @@ function buildAnalyticsCentricConfig(scenario: ScenarioPlugin): LayoutConfig {
     editorPosition: 'hidden',
     chatExpanded: false,
     sidebarDefaultWidth: 280,
+    sidebarMinWidth: 170,
     chatDefaultWidth: 500,
     wideModePanelIds: extractWideModePanelIds(scenario),
     wideModeHidesChat: getWideModeHidesChat(scenario),
@@ -159,6 +164,7 @@ function buildCanvasCentricConfig(scenario: ScenarioPlugin): LayoutConfig {
     editorPosition: 'hidden',
     chatExpanded: false,
     sidebarDefaultWidth: 300,
+    sidebarMinWidth: 220,
     chatDefaultWidth: 400,
     wideModePanelIds: extractWideModePanelIds(scenario),
     wideModeHidesChat: getWideModeHidesChat(scenario),
@@ -182,6 +188,7 @@ function buildFullscreenChatConfig(scenario: ScenarioPlugin): LayoutConfig {
     editorPosition: 'hidden',
     chatExpanded: true,
     sidebarDefaultWidth: 0,
+    sidebarMinWidth: 0,
     chatDefaultWidth: 0,
     wideModePanelIds: extractWideModePanelIds(scenario),
     wideModeHidesChat: getWideModeHidesChat(scenario),
@@ -205,6 +212,7 @@ function buildMinimalConfig(scenario: ScenarioPlugin): LayoutConfig {
     editorPosition: 'hidden',
     chatExpanded: true,
     sidebarDefaultWidth: 0,
+    sidebarMinWidth: 0,
     chatDefaultWidth: 0,
     wideModePanelIds: extractWideModePanelIds(scenario),
     wideModeHidesChat: getWideModeHidesChat(scenario),
@@ -229,6 +237,7 @@ function buildResearchCentricConfig(scenario: ScenarioPlugin): LayoutConfig {
     editorPosition: 'primary',
     chatExpanded: false,
     sidebarDefaultWidth: hasSidebarItems ? 300 : 0,
+    sidebarMinWidth: hasSidebarItems ? 220 : 0,
     chatDefaultWidth: 420,
     wideModePanelIds: extractWideModePanelIds(scenario),
     wideModeHidesChat: getWideModeHidesChat(scenario),
@@ -252,6 +261,7 @@ function buildFocusCentricConfig(scenario: ScenarioPlugin): LayoutConfig {
     editorPosition: 'primary',
     chatExpanded: false,
     sidebarDefaultWidth: 0,
+    sidebarMinWidth: 0,
     chatDefaultWidth: 380,
     wideModePanelIds: extractWideModePanelIds(scenario),
     wideModeHidesChat: getWideModeHidesChat(scenario),
@@ -275,6 +285,7 @@ function buildSplitCentricConfig(scenario: ScenarioPlugin): LayoutConfig {
     editorPosition: 'primary',
     chatExpanded: false,
     sidebarDefaultWidth: 240,
+    sidebarMinWidth: 170,
     chatDefaultWidth: 400,
     wideModePanelIds: extractWideModePanelIds(scenario),
     wideModeHidesChat: getWideModeHidesChat(scenario),

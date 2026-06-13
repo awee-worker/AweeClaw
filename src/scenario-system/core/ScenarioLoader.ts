@@ -1,29 +1,23 @@
 /**
- * ScenarioLoader (增强版) - 场景注册管理中心与动态加载器
+ * ScenarioLoader (增强版) - 场景注册管理中心
  *
  * 统一管理场景的注册、发现、激活、停用、卸载全生命周期。
  * 集成数据总线、版本管理、监控日志等核心能力。
  *
  * 核心职责：
  * - 场景注册与发现：register/unregister/getAll/getById
- * - 生命周期管理：activate/deactivate，状态机驱动
+ * - 生命周期管理：委托给 ScenarioLifecycleManager
  * - 工具动态注册：场景激活时注册工具到 ToolRegistry
- * - IPC 动态注册：场景激活时注册 IPC handler
  * - 依赖检查：激活前检查场景依赖是否满足
  * - 版本管理：集成 ScenarioVersionManager
- * - 数据总线：集成 ScenarioDataBus
- * - 监控日志：集成 ScenarioMonitor
  * - 事件通知：场景状态变更事件
  */
 
 import type {
   ScenarioModule,
-  ScenarioModuleContext,
   ScenarioRegistryEntry,
   ScenarioLoaderEvent,
   ScenarioLifecycleState,
-  ScenarioToolDefinition,
-  ScenarioIpcHandler,
   ScenarioManifest,
   ScenarioHealthReport,
   ScenarioDependency,
@@ -33,16 +27,24 @@ import { toolRegistry } from '@intelligence/toolkit/toolRegistry'
 import { scenarioDataBus } from './ScenarioDataBus'
 import { scenarioVersionManager, compareVersions } from './ScenarioVersionManager'
 import { scenarioMonitor } from './ScenarioMonitor'
-import { scenarioDatabaseManager } from './ScenarioDatabaseManager'
 import { logger } from '@shared/toolkit/LogEngine'
+import { ScenarioLifecycleManager } from './ScenarioLifecycleManager'
 
 const APP_VERSION = '1.7.41'
 
 class ScenarioLoaderClass {
   private entries = new Map<string, ScenarioRegistryEntry>()
   private listeners = new Set<(event: ScenarioLoaderEvent) => void>()
+  private lifecycle: ScenarioLifecycleManager
+  private lazyScenarios = new Set<string>()
 
-  register(module: ScenarioModule): void {
+  constructor() {
+    this.lifecycle = new ScenarioLifecycleManager((event) => {
+      this.notify(event as ScenarioLoaderEvent)
+    })
+  }
+
+  register(module: ScenarioModule, lazy = false): void {
     const manifest = module.getManifest()
 
     if (!this.checkCompatibility(manifest)) {
@@ -74,6 +76,9 @@ class ScenarioLoaderClass {
     }
 
     this.entries.set(manifest.id, entry)
+    if (lazy) {
+      this.lazyScenarios.add(manifest.id)
+    }
 
     scenarioVersionManager.registerVersion(manifest.id, {
       version: manifest.version,
@@ -85,44 +90,16 @@ class ScenarioLoaderClass {
 
     if (module.getTools) {
       const tools = module.getTools()
-      this.registerScenarioTools(manifest.id, tools)
+      this.lifecycle.registerTools(manifest.id, entry, tools)
     }
 
     this.notify({ type: 'registered', scenarioId: manifest.id, version: manifest.version })
     scenarioMonitor.recordStateChange(manifest.id, 'registered')
-    logger.agent.info(
-      `[ScenarioLoader] Registered scenario: ${manifest.id} v${manifest.version}`
-    )
+    logger.agent.info(`[ScenarioLoader] Registered scenario: ${manifest.id} v${manifest.version}`)
 
-    this.runInstall(module).catch(err => {
+    this.lifecycle.runInstall(entry).catch(err => {
       logger.agent.error(`[ScenarioLoader] Install failed for "${manifest.id}":`, err)
     })
-  }
-
-  private async runInstall(module: ScenarioModule): Promise<void> {
-    const scenarioId = module.id
-
-    if (module.getInstallScripts) {
-      const scripts = module.getInstallScripts()
-      if (scripts.length > 0) {
-        const result = await scenarioDatabaseManager.initialize(scenarioId, scripts)
-        if (result.success) {
-          logger.agent.info(`[ScenarioLoader] Database initialized for scenario "${scenarioId}"`)
-        } else {
-          logger.agent.error(`[ScenarioLoader] Database initialization failed for "${scenarioId}": ${result.error}`)
-        }
-      }
-    }
-
-    if (module.onInstall) {
-      try {
-        const ctx = this.createContext(scenarioId, null, module.version)
-        await module.onInstall(ctx)
-        logger.agent.info(`[ScenarioLoader] onInstall completed for scenario "${scenarioId}"`)
-      } catch (err) {
-        logger.agent.error(`[ScenarioLoader] onInstall failed for "${scenarioId}":`, err)
-      }
-    }
   }
 
   async activate(scenarioId: string, workspacePath: string | null): Promise<boolean> {
@@ -150,57 +127,13 @@ class ScenarioLoaderClass {
       return false
     }
 
-    entry.state = 'activating'
-    this.notify({ type: 'activating', scenarioId })
-    scenarioMonitor.recordStateChange(scenarioId, 'activating')
-
-    const ctx = this.createContext(scenarioId, workspacePath, entry.manifest.version)
-
-    if (entry.module.onActivate) {
-      try {
-        await entry.module.onActivate(ctx)
-      } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err)
-        logger.agent.error(`[ScenarioLoader] onActivate failed for "${scenarioId}":`, err)
-        entry.state = 'error'
-        entry.lastError = errorMsg
-        scenarioMonitor.recordStateChange(scenarioId, 'error')
-        scenarioMonitor.recordError(scenarioId, errorMsg)
-        this.notify({ type: 'error', scenarioId, error: errorMsg })
-        return false
-      }
-    }
-
-    entry.state = 'activated'
-    entry.activatedAt = Date.now()
-    this.notify({ type: 'activated', scenarioId })
-    scenarioMonitor.recordStateChange(scenarioId, 'activated')
-    logger.agent.info(`[ScenarioLoader] Activated scenario: ${scenarioId}`)
-    return true
+    return this.lifecycle.activate(entry, workspacePath)
   }
 
   async deactivate(scenarioId: string): Promise<void> {
     const entry = this.entries.get(scenarioId)
     if (!entry || (entry.state !== 'activated' && entry.state !== 'error')) return
-
-    entry.state = 'deactivating'
-    this.notify({ type: 'deactivating', scenarioId })
-    scenarioMonitor.recordStateChange(scenarioId, 'deactivating')
-
-    if (entry.module.onDeactivate) {
-      try {
-        await entry.module.onDeactivate(
-          this.createContext(scenarioId, null, entry.manifest.version)
-        )
-      } catch (err) {
-        logger.agent.error(`[ScenarioLoader] onDeactivate failed for "${scenarioId}":`, err)
-      }
-    }
-
-    entry.state = 'deactivated'
-    this.notify({ type: 'deactivated', scenarioId })
-    scenarioMonitor.recordStateChange(scenarioId, 'deactivated')
-    logger.agent.info(`[ScenarioLoader] Deactivated scenario: ${scenarioId}`)
+    await this.lifecycle.deactivate(entry)
   }
 
   unregister(scenarioId: string): boolean {
@@ -224,58 +157,14 @@ class ScenarioLoaderClass {
       return false
     }
 
-    const module = entry.module
-
-    if (module.onUninstall) {
-      try {
-        const ctx = this.createContext(scenarioId, null, module.version)
-        await module.onUninstall(ctx)
-        logger.agent.info(`[ScenarioLoader] onUninstall completed for scenario "${scenarioId}"`)
-      } catch (err) {
-        logger.agent.error(`[ScenarioLoader] onUninstall failed for "${scenarioId}":`, err)
-      }
-    }
-
-    if (module.getUninstallScripts) {
-      const scripts = module.getUninstallScripts()
-      if (scripts.length > 0) {
-        const result = await scenarioDatabaseManager.drop(scenarioId, scripts)
-        if (result.success) {
-          logger.agent.info(`[ScenarioLoader] Database dropped for scenario "${scenarioId}"`)
-        } else {
-          logger.agent.error(`[ScenarioLoader] Database drop failed for "${scenarioId}": ${result.error}`)
-        }
-      }
-    }
-
+    await this.lifecycle.runUninstall(entry)
     return this.doUnregister(scenarioId)
   }
 
   async healthCheck(scenarioId: string): Promise<ScenarioHealthReport | null> {
     const entry = this.entries.get(scenarioId)
     if (!entry) return null
-
-    let customChecks: ScenarioHealthReport['checks'] = []
-    if (entry.module.onHealthCheck) {
-      try {
-        customChecks = await entry.module.onHealthCheck()
-      } catch (err) {
-        customChecks = [{
-          name: 'health-check',
-          status: 'unhealthy',
-          message: err instanceof Error ? err.message : String(err),
-        }]
-      }
-    }
-
-    return scenarioMonitor.getHealthReport(
-      scenarioId,
-      entry.state,
-      entry.registeredToolNames.length,
-      entry.registeredIpcChannels.length,
-      entry.module.getComponents ? Object.keys(entry.module.getComponents()).length : 0,
-      customChecks
-    )
+    return this.lifecycle.healthCheck(entry)
   }
 
   getPlugin(scenarioId: string): ScenarioPlugin | undefined {
@@ -314,6 +203,28 @@ class ScenarioLoaderClass {
     return this.entries.has(scenarioId)
   }
 
+  /** 是否为懒加载场景（注册但未激活） */
+  isLazy(scenarioId: string): boolean {
+    return this.lazyScenarios.has(scenarioId)
+  }
+
+  /**
+   * 确保场景已激活（懒加载自动触发）
+   * 如果场景是懒加载的且未激活，自动激活
+   */
+  async ensureActive(scenarioId: string, workspacePath: string | null = null): Promise<boolean> {
+    const entry = this.entries.get(scenarioId)
+    if (!entry) return false
+    if (entry.state === 'activated') return true
+
+    if (this.lazyScenarios.has(scenarioId)) {
+      this.lazyScenarios.delete(scenarioId)
+      return this.activate(scenarioId, workspacePath)
+    }
+
+    return false
+  }
+
   onEvent(listener: (event: ScenarioLoaderEvent) => void): () => void {
     this.listeners.add(listener)
     return () => this.listeners.delete(listener)
@@ -335,23 +246,6 @@ class ScenarioLoaderClass {
     this.notify({ type: 'unregistered', scenarioId })
     logger.agent.info(`[ScenarioLoader] Unregistered scenario: ${scenarioId}`)
     return true
-  }
-
-  private registerScenarioTools(scenarioId: string, tools: ScenarioToolDefinition[]): void {
-    const entry = this.entries.get(scenarioId)
-    if (!entry) return
-
-    for (const tool of tools) {
-      try {
-        toolRegistry.registerScenarioTool(tool.name, tool.definition, tool.executor, { override: true })
-        entry.registeredToolNames.push(tool.name)
-        logger.agent.info(
-          `[ScenarioLoader] Registered tool "${tool.name}" for scenario "${scenarioId}"`
-        )
-      } catch (err) {
-        logger.agent.error(`[ScenarioLoader] Failed to register tool "${tool.name}":`, err)
-      }
-    }
   }
 
   private checkCompatibility(manifest: ScenarioManifest): boolean {
@@ -399,53 +293,6 @@ class ScenarioLoaderClass {
       return compareVersions(version, range.slice(1)) < 0
     }
     return compareVersions(version, range) === 0
-  }
-
-  private createContext(
-    scenarioId: string,
-    workspacePath: string | null,
-    version: string
-  ): ScenarioModuleContext {
-    return {
-      scenarioId,
-      workspacePath,
-      version,
-      registerTools: (tools: ScenarioToolDefinition[]) => {
-        this.registerScenarioTools(scenarioId, tools)
-      },
-      unregisterTools: (toolNames: string[]) => {
-        const entry = this.entries.get(scenarioId)
-        if (!entry) return
-        for (const name of toolNames) {
-          toolRegistry.unregisterScenarioTool(name)
-          const idx = entry.registeredToolNames.indexOf(name)
-          if (idx >= 0) entry.registeredToolNames.splice(idx, 1)
-        }
-      },
-      registerIpcHandlers: (_handlers: ScenarioIpcHandler[]) => {
-        // IPC handlers are registered in main process; this is a placeholder
-        // for renderer-side scenario context compatibility
-      },
-      unregisterIpcHandlers: (_channels: string[]) => {
-        // Same as above
-      },
-      publishData: (type: string, payload: unknown, targetScenarioId?: string) => {
-        scenarioDataBus.publish(scenarioId, type, payload, targetScenarioId)
-      },
-      subscribeData: (messageType: string, handler) => {
-        return scenarioDataBus.subscribe(scenarioId, messageType, handler)
-      },
-      setSharedData: (key: string, value: unknown, readOnly?: boolean) => {
-        scenarioDataBus.setSharedData(scenarioId, key, value, readOnly)
-      },
-      getSharedData: (key: string) => {
-        return scenarioDataBus.getSharedData(key)
-      },
-      getLogger: () => scenarioMonitor.createLogger(scenarioId),
-      getHealthReporter: () => scenarioMonitor.createHealthReporter(scenarioId),
-      executeSql: (sql: string) => scenarioDatabaseManager.executeSql(scenarioId, sql),
-      getDatabasePath: () => scenarioDatabaseManager.getPath(scenarioId),
-    }
   }
 
   private notify(event: ScenarioLoaderEvent): void {

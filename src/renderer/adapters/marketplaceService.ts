@@ -10,10 +10,10 @@
  *      → IPC(scenario:marketplaceInstall) → 主进程下载+校验+解压
  *   3. 付费场景 → backendApi(/payment/scenario-order) → 创建支付订单
  *      → 支付完成后重新调用 install 接口
- *   4. checkUpdates → backendApi(/marketplace/check-updates) → 后端返回更新信息
+ *   4. checkUpdates → IPC(scenario:marketplaceCheckUpdates) → 主进程调用后端API
  */
 
-import { backendApi, isAuthenticated } from '@services/backendApi'
+import { backendApi, isAuthenticated, getServerUrl } from '@services/backendApi'
 import { logger } from '@shared/toolkit/LogEngine'
 import { getAPI } from '@services/electronBridge'
 import type {
@@ -328,10 +328,23 @@ export async function checkScenarioUpdates(
   if (!isAuthenticated() || scenarios.length === 0) return []
 
   try {
-    return await backendApi.post<MarketplaceUpdateInfo[]>(
-      '/api/v1/marketplace/check-updates',
-      { scenarios },
-    )
+    const api = getAPI()
+    const serverUrl = getServerUrl()
+    const results = await api.scenarioMarketplace.checkUpdates(scenarios, serverUrl)
+    // 过滤掉不需要更新的，映射为 MarketplaceUpdateInfo
+    return results
+      .filter(r => r.needsUpdate)
+      .map(r => ({
+        scenarioId: r.scenarioId,
+        scenarioName: (r as any).scenarioName,
+        scenarioNameZh: (r as any).scenarioNameZh,
+        scenarioIcon: (r as any).scenarioIcon,
+        currentVersion: r.currentVersion,
+        latestVersion: r.latestVersion || '',
+        changelog: (r as any).changelog,
+        minAppVersion: (r as any).minAppVersion,
+        fileSize: (r as any).fileSize,
+      }))
   } catch {
     return []
   }

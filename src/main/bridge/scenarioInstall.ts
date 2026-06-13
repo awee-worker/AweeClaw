@@ -214,6 +214,51 @@ async function downloadFile(
   })
 }
 
+/**
+ * 主进程 HTTP 请求辅助函数
+ * 使用 Electron 的 net 模块发起请求，避免引入额外依赖
+ */
+async function makeHttpRequest(
+  url: string,
+  method: 'GET' | 'POST' = 'GET',
+  body?: unknown,
+  headers?: Record<string, string>,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const request = net.request({ url, method })
+    const requestHeaders = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      ...headers,
+    }
+
+    for (const [key, value] of Object.entries(requestHeaders)) {
+      request.setHeader(key, value)
+    }
+
+    let data = ''
+    request.on('response', (response) => {
+      response.on('data', (chunk) => {
+        data += chunk.toString()
+      })
+      response.on('end', () => {
+        if (response.statusCode && response.statusCode >= 200 && response.statusCode < 300) {
+          resolve(data)
+        } else {
+          reject(new Error(`HTTP ${response.statusCode}: ${data.slice(0, 200)}`))
+        }
+      })
+      response.on('error', reject)
+    })
+    request.on('error', reject)
+
+    if (body && method === 'POST') {
+      request.write(JSON.stringify(body))
+    }
+    request.end()
+  })
+}
+
 function verifyChecksum(filePath: string, expectedChecksum: string): boolean {
   const fileBuffer = fs.readFileSync(filePath)
   const hash = crypto.createHash('sha256').update(fileBuffer).digest('hex')
@@ -656,12 +701,55 @@ export function registerScenarioInstallIpcHandlers(
   safeIpcHandle('scenario:marketplaceCheckUpdates', async (
     _event,
     installedScenarios: Array<{ id: string; version: string }>,
+    backendUrl?: string,
   ) => {
-    return installedScenarios.map(s => ({
-      scenarioId: s.id,
-      currentVersion: s.version,
-      needsUpdate: false,
-    }))
+    if (!backendUrl || installedScenarios.length === 0) {
+      return installedScenarios.map(s => ({
+        scenarioId: s.id,
+        currentVersion: s.version,
+        needsUpdate: false,
+      }))
+    }
+
+    try {
+      const response = await makeHttpRequest(
+        `${backendUrl}/api/v1/marketplace/check-updates`,
+        'POST',
+        { scenarios: installedScenarios },
+      )
+
+      const updates = JSON.parse(response) as Array<{
+        scenarioId: string
+        scenarioName?: string
+        scenarioNameZh?: string
+        scenarioIcon?: string
+        currentVersion: string
+        latestVersion: string
+        changelog?: string
+        minAppVersion?: string
+        fileSize?: number
+      }>
+
+      return updates.map(u => ({
+        scenarioId: u.scenarioId,
+        scenarioName: u.scenarioName,
+        scenarioNameZh: u.scenarioNameZh,
+        scenarioIcon: u.scenarioIcon,
+        currentVersion: u.currentVersion,
+        latestVersion: u.latestVersion,
+        changelog: u.changelog,
+        minAppVersion: u.minAppVersion,
+        fileSize: u.fileSize,
+        needsUpdate: true,
+      }))
+    } catch (err) {
+      logger.agent.warn(`[ScenarioMarketplace] Check updates failed: ${err instanceof Error ? err.message : String(err)}`)
+      return installedScenarios.map(s => ({
+        scenarioId: s.id,
+        currentVersion: s.version,
+        needsUpdate: false,
+      }))
+    }
   })
 
   safeIpcHandle('scenario:marketplaceUpdate', async (

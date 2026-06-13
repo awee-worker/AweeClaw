@@ -342,6 +342,19 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
 
   restoreSession: async () => {
     const persisted = loadPersistedAuth();
+
+    // 即使没有持久化的登录信息，也尝试从配置文件读取服务器地址
+    if (!persisted?.serverUrl) {
+      try {
+        const { api } = await import('../../adapters/electronBridge')
+        const config = await api.settings.getAppConfig()
+        if (config?.serverUrl) {
+          setServerUrl(config.serverUrl)
+          set({ serverUrl: config.serverUrl })
+        }
+      } catch { /* 配置文件不存在或读取失败，忽略 */ }
+    }
+
     if (!persisted || !persisted.accessToken) return;
 
     setServerUrl(persisted.serverUrl);

@@ -237,6 +237,7 @@ export interface ElectronAPI {
   onSettingsChanged: (callback: (event: { key: string; value: unknown }) => void) => () => void
   getWhitelist: () => Promise<{ shell: string[]; git: string[] }>
   resetWhitelist: () => Promise<{ shell: string[]; git: string[] }>
+  getAppConfig: () => Promise<{ serverUrl: string } | null>
 
   // Settings DB (SQLite)
   settingsDbInitialize: () => Promise<{ success: boolean; dbPath?: string; error?: string }>
@@ -689,6 +690,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getWhitelist: () => ipcRenderer.invoke('settings:getWhitelist'),
   resetWhitelist: () => ipcRenderer.invoke('settings:resetWhitelist'),
   getUserDataPath: () => ipcRenderer.invoke('settings:getUserDataPath'),
+  getAppConfig: () => ipcRenderer.invoke('settings:getAppConfig'),
   getRecentLogs: () => ipcRenderer.invoke('settings:getRecentLogs'),
 
   // Settings DB (SQLite)
@@ -1161,7 +1163,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   scenarioMarketplaceCategories: () => ipcRenderer.invoke('scenario:marketplaceCategories'),
   scenarioMarketplaceDownload: (scenarioId: string) => ipcRenderer.invoke('scenario:marketplaceDownload', scenarioId),
   scenarioMarketplaceInstall: (params: { scenarioId: string; downloadUrl: string; checksum: string; signature?: string; version: string; fileSize: number; packageType: string }) => ipcRenderer.invoke('scenario:marketplaceInstall', params),
-  scenarioMarketplaceCheckUpdates: (installedScenarios: Array<{ id: string; version: string }>) => ipcRenderer.invoke('scenario:marketplaceCheckUpdates', installedScenarios),
+  scenarioMarketplaceCheckUpdates: (installedScenarios: Array<{ id: string; version: string }>, backendUrl?: string) => ipcRenderer.invoke('scenario:marketplaceCheckUpdates', installedScenarios, backendUrl),
   scenarioMarketplaceUpdate: (params: { scenarioId: string; downloadUrl: string; checksum: string; signature?: string; version: string; fileSize: number; packageType: string }) => ipcRenderer.invoke('scenario:marketplaceUpdate', params),
   scenarioGetRollbackInfo: (scenarioId: string) => ipcRenderer.invoke('scenario:getRollbackInfo', scenarioId),
   scenarioRollbackScenario: (scenarioId: string) => ipcRenderer.invoke('scenario:rollbackScenario', scenarioId),

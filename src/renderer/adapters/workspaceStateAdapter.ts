@@ -158,7 +158,10 @@ export async function restoreWorkspaceState(): Promise<void> {
   }
 
   if (state.layout) {
-    setSidebarWidth(state.layout.sidebarWidth)
+    // 仅当用户显式调整过侧边栏宽度时才恢复（跳过旧默认值 260 以使用新默认值）
+    if (state.layout.sidebarWidth !== 260) {
+      setSidebarWidth(state.layout.sidebarWidth)
+    }
     setChatWidth(state.layout.chatWidth)
     setTerminalVisible(state.layout.terminalVisible)
     setTerminalLayout(state.layout.terminalLayout)

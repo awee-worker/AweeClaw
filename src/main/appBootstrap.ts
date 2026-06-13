@@ -11,6 +11,7 @@ import { safeOpenExternal } from './guard/safeExternalUrl'
 export type Language = 'zh' | 'en'
 import { randomUUID } from 'crypto'
 import * as path from 'path'
+import * as fs from 'fs'
 import { logger } from '@shared/toolkit/LogEngine'
 import { SECURITY_DEFAULTS } from '@shared/appConstants'
 import { BRAND } from '@shared/brand'
@@ -58,6 +59,28 @@ function resolveStore(_key: string): Store<Record<string, unknown>> {
 async function initStores() {
   bootstrapStore = getBootstrapStore()
   configStore = createScopedStore('config', bootstrapStore)
+}
+
+/**
+ * 确保应用配置文件存在，首次启动时自动创建
+ * 配置文件路径: {userData}/.aweeclaw/aweeclaw-config.json
+ */
+function ensureAppConfig() {
+  try {
+    const configDir = path.join(getUserConfigDir(), '.aweeclaw')
+    const configPath = path.join(configDir, 'aweeclaw-config.json')
+
+    if (fs.existsSync(configPath)) return
+
+    fs.mkdirSync(configDir, { recursive: true })
+    const defaultConfig = {
+      serverUrl: 'https://gateway.aweeclaw.com',
+    }
+    fs.writeFileSync(configPath, JSON.stringify(defaultConfig, null, 2), 'utf-8')
+    logger.system.info('[Main] App config created:', configPath)
+  } catch (err) {
+    logger.system.warn('[Main] Failed to create app config:', err)
+  }
 }
 
 // ==========================================
@@ -891,6 +914,9 @@ app.whenReady().then(async () => {
   })
   // 1. 初始化 Store（必须在模块加载前完成）
   await initStores()
+
+  // 1.1 确保应用配置文件存在（首次启动自动创建）
+  ensureAppConfig()
 
   // 2. 检查是否启用文件日志
   const appSettings = configStore.get('app-settings') as any

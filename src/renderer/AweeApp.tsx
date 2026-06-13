@@ -114,6 +114,13 @@ function AppContent() {
     return shellComposer.getLayoutConfig(defaultScenario)
   }, [activeScenarioId])
 
+  // 当场景切换时应用布局配置中的 sidebar 默认宽度
+  useEffect(() => {
+    if (layoutConfig.sidebarDefaultWidth > 0) {
+      useStore.getState().setSidebarWidth(layoutConfig.sidebarDefaultWidth)
+    }
+  }, [layoutConfig.sidebarDefaultWidth])
+
   const isWideModePanel = useMemo(() => {
     if (!activeSidePanel) return false
     if (activeSidePanel === 'scenarios') return true

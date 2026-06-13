@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
-import { LogIn, UserPlus, Eye, EyeOff, Server, AlertCircle, Loader2, Cloud, User, Mail, Lock, Smartphone, ShieldCheck, ArrowLeft, KeyRound } from 'lucide-react'
+import { LogIn, UserPlus, Eye, EyeOff, AlertCircle, Loader2, Cloud, User, Mail, Lock, Smartphone, ShieldCheck, ArrowLeft, KeyRound } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { ActionButton, TextField } from '@components/ui'
@@ -50,9 +50,6 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
   const [codeCooldown, setCodeCooldown] = useState(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [serverUrl, setServerUrl] = useState(
-    useStore.getState().serverUrl || 'http://localhost:3000',
-  )
 
   const [forgotEmail, setForgotEmail] = useState('')
   const [resetCode, setResetCode] = useState('')
@@ -108,12 +105,13 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
       setLoading(true)
 
       try {
+        const url = useStore.getState().serverUrl
         if (isRegister) {
-          await register(serverUrl, email, password, username || undefined)
+          await register(url, email, password, username || undefined)
         } else if (loginMode === 'phone') {
-          await phoneLogin(serverUrl, phone, smsCode)
+          await phoneLogin(url, phone, smsCode)
         } else {
-          await login(serverUrl, email, password)
+          await login(url, email, password)
         }
         setShowLoginModal(false)
         resetAuthForm()
@@ -134,7 +132,7 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
         setLoading(false)
       }
     },
-    [isRegister, loginMode, serverUrl, email, password, username, phone, smsCode, login, phoneLogin, register, language, resetAuthForm],
+    [isRegister, loginMode, email, password, username, phone, smsCode, login, phoneLogin, register, language, resetAuthForm],
   )
 
   const handleSendCode = useCallback(async () => {
@@ -163,7 +161,7 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
       setLoading(true)
 
       try {
-        await forgotPassword(serverUrl, forgotEmail)
+        await forgotPassword(useStore.getState().serverUrl, forgotEmail)
         setForgotSuccess(true)
         setForgotCodeCooldown(60)
         const timer = setInterval(() => {
@@ -185,7 +183,7 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
         setLoading(false)
       }
     },
-    [serverUrl, forgotEmail, forgotPassword, language],
+    [forgotEmail, forgotPassword, language],
   )
 
   const handleResetPassword = useCallback(
@@ -204,7 +202,7 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
 
       setLoading(true)
       try {
-        await resetPassword(serverUrl, forgotEmail, resetCode, newPassword)
+        await resetPassword(useStore.getState().serverUrl, forgotEmail, resetCode, newPassword)
         setAuthStep('login')
         setIsRegister(false)
         setEmail(forgotEmail)
@@ -229,14 +227,14 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
         setLoading(false)
       }
     },
-    [serverUrl, forgotEmail, resetCode, newPassword, confirmPassword, resetPassword, language],
+    [forgotEmail, resetCode, newPassword, confirmPassword, resetPassword, language],
   )
 
   const handleResendForgotCode = useCallback(async () => {
     if (forgotCodeCooldown > 0) return
     setError('')
     try {
-      await forgotPassword(serverUrl, forgotEmail)
+      await forgotPassword(useStore.getState().serverUrl, forgotEmail)
       setForgotCodeCooldown(60)
       const timer = setInterval(() => {
         setForgotCodeCooldown((prev) => {
@@ -254,7 +252,7 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
         setError(t('layout.cannotconnecttoserver4', language as Language))
       }
     }
-  }, [forgotCodeCooldown, serverUrl, forgotEmail, forgotPassword, language])
+  }, [forgotCodeCooldown, forgotEmail, forgotPassword, language])
 
   const initial = cloudUser?.username?.[0]?.toUpperCase() || cloudUser?.email?.[0]?.toUpperCase() || '?'
 
@@ -336,18 +334,6 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
 
           {authStep === 'forgot' && (
             <form onSubmit={handleForgotPassword} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-text-secondary">
-                  {t('layout.serverurl', language as Language)}
-                </label>
-                <TextField
-                  value={serverUrl}
-                  onChange={(e) => setServerUrl(e.target.value)}
-                  placeholder="http://localhost:3000"
-                  leftIcon={<Server className="w-4 h-4" />}
-                />
-              </div>
-
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-text-secondary">
                   {t('layout.email', language as Language)}
@@ -513,18 +499,6 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
 
           {authStep === 'login' && (
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-text-secondary">
-                {t('layout.serverurl2', language as Language)}
-              </label>
-              <TextField
-                value={serverUrl}
-                onChange={(e) => setServerUrl(e.target.value)}
-                placeholder="http://localhost:3000"
-                leftIcon={<Server className="w-4 h-4" />}
-              />
-            </div>
-
             {!isRegister && (
               <div className="flex bg-bg-secondary rounded-lg p-0.5">
                 <button

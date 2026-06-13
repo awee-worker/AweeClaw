@@ -30,6 +30,7 @@ import type {
 } from '@shared/protocols/scenario-arch'
 import type { ScenarioPlugin } from '@shared/protocols/scenario'
 import { sharedDependencyProvider } from './SharedDependencyProvider'
+import { PermissionGuard } from './PermissionGuard'
 import { logger } from '@shared/toolkit/LogEngine'
 
 export interface ProgrammaticScenarioConfig {
@@ -73,9 +74,14 @@ export class ProgrammaticScenarioModule implements ScenarioModule {
   private config: ProgrammaticScenarioConfig
   private moduleExports: ProgrammaticScenarioExports['default'] | null = null
   private styleElement: HTMLStyleElement | null = null
+  private permissionGuard: PermissionGuard
 
   constructor(config: ProgrammaticScenarioConfig) {
     this.config = config
+    this.permissionGuard = new PermissionGuard(
+      config.id,
+      (config.permissions || []) as import('@shared/protocols/scenario-arch').ScenarioPermission[],
+    )
   }
 
   async loadModule(bundleUrl: string): Promise<void> {
@@ -226,7 +232,25 @@ export class ProgrammaticScenarioModule implements ScenarioModule {
   }
 
   getTools(): ScenarioToolDefinition[] {
-    return this.moduleExports?.getTools?.() || []
+    const tools = this.moduleExports?.getTools?.() || []
+    return tools.map(def => ({
+      ...def,
+      executor: this.wrapWithPermissionCheck(def.name, def.executor),
+    }))
+  }
+
+  private wrapWithPermissionCheck(toolName: string, executor: any): any {
+    return async (args: Record<string, unknown>, context: any): Promise<any> => {
+      const checkResult = this.permissionGuard.checkTool(toolName)
+      if (!checkResult.allowed) {
+        return {
+          success: false,
+          result: '',
+          error: checkResult.reason || 'Permission denied',
+        }
+      }
+      return executor(args, context)
+    }
   }
 
   getIpcHandlers(): ScenarioIpcHandler[] {
