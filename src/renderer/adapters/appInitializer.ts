@@ -30,7 +30,7 @@ import { workerService } from './workerAdapter'
 import { workspaceStorageRuntime } from './workspaceStorageAdapter'
 import { runWithAgentStorageWritesSuspended } from '@intelligence/state/intelligenceStorage'
 import {
-  bindWorkspaceRoot,
+  bindWorkspaceRootLite,
   commitWorkspaceShell,
   prepareWorkspaceShell,
   restoreWorkspaceAgentStore,
@@ -199,9 +199,9 @@ async function restoreWorkspace(): Promise<boolean> {
   await workspaceStorageRuntime.initializeRoots(workspaceConfig.roots)
   const shellState = await prepareWorkspaceShell(workspaceConfig)
 
-  // 关键路径：绑定根目录（初始化 SQLite + 加载数据）
+  // 关键路径：绑定根目录（轻量模式 — 仅创建目录，跳过 SQLite 初始化，交给后续 restoreWorkspaceAgentStore 统一处理）
   await runWithAgentStorageWritesSuspended(async () => {
-    await bindWorkspaceRoot(shellState)
+    await bindWorkspaceRootLite(shellState)
   })
 
   // 立即提交 shell 状态，让 UI 框架先构建

@@ -65,6 +65,9 @@ export async function rehydrateWorkspaceAgentStore(): Promise<void> {
 }
 
 export async function restoreWorkspaceAgentStore(): Promise<void> {
+  // 初始化存储引擎（SQLite + 迁移 + 全量加载），统一在此完成，避免与 bindWorkspaceRootLite 重复加载
+  await workspaceStorageRuntime.initializeStorage()
+
   await rehydrateWorkspaceAgentStore()
 
   const state = useAgentStore.getState()

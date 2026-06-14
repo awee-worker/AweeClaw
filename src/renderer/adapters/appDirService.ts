@@ -396,8 +396,10 @@ class ScenarioDirectoryManager {
     // 初始化 SQLite 数据库（含自动迁移 JSONL 数据）
     await this.sessionDb.initialize(this.getSessionsDirPath())
     await this.migrateLegacySessionsIfNeeded()
-    await this.loadAllData()
+    // 必须在 loadAllData 之前设置 initialized=true，
+    // 否则 getSessionMeta() 的 isInitialized() 检查会返回 false，直接返回空 DEFAULT_SESSION_META
     this.initialized = true
+    await this.loadAllData()
     logger.system.info('[AweeClawDir] Primary root set:', rootPath)
   }
 
@@ -444,9 +446,17 @@ class ScenarioDirectoryManager {
     logger.system.info('[AweeClawDir] Initializing storage for:', this.primaryRoot)
     await this.sessionDb.initialize(this.getSessionsDirPath())
     await this.migrateLegacySessionsIfNeeded()
-    await this.loadAllData()
+    // 必须在 loadAllData 之前设置 initialized=true，
+    // 否则 getSessionMeta() 的 isInitialized() 检查会返回 false，直接返回空 DEFAULT_SESSION_META
     this.initialized = true
-    logger.system.info('[AweeClawDir] Storage initialized for:', this.primaryRoot)
+    await this.loadAllData()
+    logger.system.info('[AweeClawDir] Storage initialized:', {
+      primaryRoot: this.primaryRoot,
+      sessionMetaThreadCount: this.cache.sessionMeta?.threadIds?.length ?? 0,
+      sessionMetaCurrentThreadId: this.cache.sessionMeta?.currentThreadId ?? null,
+      threadCacheSize: this.cache.threads?.size ?? 0,
+      isInitialized: this.initialized,
+    })
   }
 
   reset(): void {
@@ -868,6 +878,15 @@ class ScenarioDirectoryManager {
     const { meta, summaries } = await this.buildSessionCatalog()
     const reconciledMeta = await this.reconcileSessionMeta(meta)
 
+    logger.system.info('[AweeClawDir] getAgentSessionSnapshot:', {
+      metaThreadCount: meta.threadIds.length,
+      summaryCount: summaries.length,
+      reconciledThreadCount: reconciledMeta.threadIds.length,
+      reconciledCurrentThreadId: reconciledMeta.currentThreadId,
+      isInitialized: this.isInitialized(),
+      cacheMetaExists: !!this.cache.sessionMeta,
+    })
+
     if (reconciledMeta.threadIds.length === 0 && !reconciledMeta.currentThreadId) {
       this.cache.sessionMeta = reconciledMeta
       this.metaHash = stableStringify(reconciledMeta)
@@ -878,6 +897,10 @@ class ScenarioDirectoryManager {
     this.metaHash = stableStringify(reconciledMeta)
 
     const effectiveMeta = buildEffectiveSessionMeta(reconciledMeta, summaries)
+
+    if (effectiveMeta.threadIds.length === 0 && !effectiveMeta.currentThreadId) {
+      return null
+    }
 
     // 批量读取线程元数据 — 一次 IPC 调用替代 N 次，显著减少启动耗时
     const uncachedThreadIds = effectiveMeta.threadIds.filter(id => !this.cache.threads.has(id))
@@ -896,6 +919,12 @@ class ScenarioDirectoryManager {
         threads[threadId] = fromPersistedChatThread(data)
       }
     }
+
+    logger.system.info('[AweeClawDir] getAgentSessionSnapshot result:', {
+      threadCount: Object.keys(threads).length,
+      threadIds: Object.keys(threads),
+      currentThreadId: effectiveMeta.currentThreadId,
+    })
 
     return {
       threads,

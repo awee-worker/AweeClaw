@@ -751,7 +751,8 @@ export class SessionDb {
     const alreadyMigrated = this.getSessionMeta('_migrated_from_jsonl') === true
 
     // 检测之前有 bug 的迁移结果（message_count=0 且 title 为空的线程）
-    // 这些是无效数据，需要清理后重新迁移
+    // 这些空壳线程不重置迁移标记，只做定向清理，避免死循环：
+    //   清理 → 重置标记 → 重新迁移 → 又生成空壳 → 下次启动再清理 → 无限循环
     if (alreadyMigrated) {
       const invalidThreads = this.db.prepare(`
         SELECT thread_id FROM thread_meta
@@ -759,26 +760,53 @@ export class SessionDb {
       `).all() as Array<{ thread_id: string }>
 
       if (invalidThreads.length > 0) {
-        logger.session.warn(`[SessionDb] Found ${invalidThreads.length} threads with empty data (buggy migration), resetting migration flag`)
-        // 清理无效线程
+        logger.session.warn(`[SessionDb] Found ${invalidThreads.length} empty threads (buggy migration), performing targeted cleanup`)
+        const fsExtra = await import('fs/promises')
         const tx = this.db.prepare('BEGIN TRANSACTION')
+        let cleanedCount = 0
+        let recoveredCount = 0
         try {
           tx.run()
-          const deletedIds = new Set(invalidThreads.map(t => t.thread_id))
           for (const { thread_id } of invalidThreads) {
-            this.db.prepare('DELETE FROM thread_message WHERE thread_id = ?').run(thread_id)
-            this.db.prepare('DELETE FROM thread_meta WHERE thread_id = ?').run(thread_id)
+            // 尝试从 JSONL 文件定向恢复该线程（而非全部重新迁移）
+            const jsonlPath = path.join(sessionsDir, `${thread_id}.jsonl`)
+            let recovered = false
+            try {
+              const jsonlContent = await fsExtra.readFile(jsonlPath, 'utf-8')
+              const messages = this.parseJsonlContent(jsonlContent)
+              if (messages.length > 0) {
+                // 有消息数据，恢复线程
+                const jsonPath = path.join(sessionsDir, `${thread_id}.json`)
+                let threadData: any = {}
+                try {
+                  const jsonContent = await fsExtra.readFile(jsonPath, 'utf-8')
+                  threadData = JSON.parse(jsonContent)
+                } catch { /* JSON 可能不存在 */ }
+                threadData.messageCount = messages.length
+                this.upsertThreadMeta(thread_id, threadData)
+                this.batchUpsertThreadMessages(thread_id, messages)
+                recovered = true
+                recoveredCount++
+              }
+            } catch { /* JSONL 不存在 */ }
+
+            if (!recovered) {
+              this.db.prepare('DELETE FROM thread_message WHERE thread_id = ?').run(thread_id)
+              this.db.prepare('DELETE FROM thread_meta WHERE thread_id = ?').run(thread_id)
+              cleanedCount++
+            }
           }
-          // 更新 threadIds 列表，移除已删除的线程
-          const currentThreadIds = this.getSessionMeta('threadIds')
-          if (Array.isArray(currentThreadIds)) {
-            const filtered = currentThreadIds.filter((id: string) => !deletedIds.has(id))
-            this.upsertSessionMeta('threadIds', filtered)
+          // 更新 threadIds 列表，移除已清理的线程
+          if (cleanedCount > 0) {
+            const deletedIds = new Set(invalidThreads.map(t => t.thread_id))
+            const currentThreadIds = this.getSessionMeta('threadIds')
+            if (Array.isArray(currentThreadIds)) {
+              const filtered = currentThreadIds.filter((id: string) => !deletedIds.has(id))
+              this.upsertSessionMeta('threadIds', filtered)
+            }
           }
           this.db.prepare('COMMIT').run()
-          // 重置迁移标记，让完整迁移重新执行
-          this.deleteSessionMeta('_migrated_from_jsonl')
-          logger.session.info('[SessionDb] Cleaned up invalid threads, will re-migrate from JSONL')
+          logger.session.info(`[SessionDb] Invalid threads: ${cleanedCount} cleaned, ${recoveredCount} recovered from JSONL`)
         } catch (err) {
           this.db.prepare('ROLLBACK').run()
           logger.session.error('[SessionDb] Failed to clean up invalid threads:', err)
