@@ -33,6 +33,8 @@ export interface SecureToolExecutionRequest {
   isCommandTool: boolean
   /** 要执行的命令（isCommandTool=true 时） */
   command?: string
+  /** 是否跳过主进程审批（渲染进程已处理审批时设为 true） */
+  skipApproval?: boolean
 }
 
 export interface SecureToolExecutionResponse {
@@ -79,23 +81,25 @@ class SecureToolExecutor {
    * - allowed=false + reason: 直接拒绝
    */
   async preCheck(request: SecureToolExecutionRequest): Promise<SecureToolExecutionResponse> {
-    const { toolName, toolArgs, agentId, isCommandTool, command } = request
+    const { toolName, toolArgs, agentId, isCommandTool, command, skipApproval } = request
 
-    // 1. 请求审批
-    const approvalResult = await toolApprovalManager.requestApproval(agentId, toolName, toolArgs)
+    // 1. 请求审批（如果渲染进程已审批通过，跳过主进程审批）
+    if (!skipApproval) {
+      const approvalResult = await toolApprovalManager.requestApproval(agentId, toolName, toolArgs)
 
-    if (approvalResult.decision === 'denied') {
-      return {
-        allowed: false,
-        reason: approvalResult.reason,
+      if (approvalResult.decision === 'denied') {
+        return {
+          allowed: false,
+          reason: approvalResult.reason,
+        }
       }
-    }
 
-    if (approvalResult.decision === 'timeout') {
-      return {
-        allowed: false,
-        reason: 'Approval request timed out',
-        approvalRequestId: approvalResult.requestId,
+      if (approvalResult.decision === 'timeout') {
+        return {
+          allowed: false,
+          reason: 'Approval request timed out',
+          approvalRequestId: approvalResult.requestId,
+        }
       }
     }
 

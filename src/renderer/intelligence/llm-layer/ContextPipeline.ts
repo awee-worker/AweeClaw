@@ -254,7 +254,7 @@ const GitProvider: ContextProvider = {
         command: 'git status --short && git log --oneline -5',
         cwd: ctx.workspacePath,
         timeout: 10
-      }, { workspacePath: ctx.workspacePath })
+      }, { workspacePath: ctx.workspacePath, skipMainApproval: true })
       if (gitStatus.success) {
         return `\n### Git Status:\n\`\`\`\n${gitStatus.result}\n\`\`\`\n`
       }

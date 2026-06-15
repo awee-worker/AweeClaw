@@ -592,7 +592,7 @@ export const selectContextItems = (state: AgentStore) => {
 
 export const selectIsStreaming = (state: AgentStore) => {
     const streamState = selectStreamState(state)
-    return streamState.phase === 'streaming' || streamState.phase === 'tool_running'
+    return streamState.phase === 'streaming' || streamState.phase === 'tool_running' || streamState.phase === 'tool_pending'
 }
 
 export const selectIsAwaitingApproval = (state: AgentStore) => {

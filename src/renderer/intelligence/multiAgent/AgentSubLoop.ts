@@ -262,6 +262,7 @@ async function executeToolCall(
     workspacePath,
     chatMode: 'agent',
     requestId,
+    skipMainApproval: true,
   }
 
   const approvalType = getToolApprovalType(toolCall.name)

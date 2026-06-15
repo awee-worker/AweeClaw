@@ -364,6 +364,8 @@ export interface ToolExecutionContext {
     requestId?: string
     assistantId?: string | null
     checkpointId?: string
+    /** 跳过主进程审批（渲染进程已处理审批时设为 true） */
+    skipMainApproval?: boolean
 }
 
 export type ToolExecutor = (

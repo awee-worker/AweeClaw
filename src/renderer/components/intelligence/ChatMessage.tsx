@@ -1330,7 +1330,8 @@ const ChatMessage = React.memo(({
 
     const persistedIds = new Set((message.toolCalls || []).map(tc => tc.id))
 
-    return Object.entries(previewMap)
+    // Streaming tool calls not yet committed to the message
+    const streamingPreviews = Object.entries(previewMap)
       .filter(([id, preview]) => preview?.isStreaming && !persistedIds.has(id))
       .sort(([, left], [, right]) => (left.lastUpdateTime || 0) - (right.lastUpdateTime || 0))
       .map(([id, preview]) => ({
@@ -1339,6 +1340,8 @@ const ChatMessage = React.memo(({
         arguments: preview.partialArgs || {},
         status: 'pending' as const,
       }))
+
+    return streamingPreviews
   }, [message, previewMap])
 
   return (

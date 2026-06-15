@@ -234,8 +234,10 @@ class ToolRegistry {
         toolName,
         toolArgs: args,
         agentId: context.assistantId || context.currentAssistantId || 'default',
+        cwd: context.workspacePath || '',
         isCommandTool,
         command: isCommandTool ? (args.command as string || args.cmd as string) : undefined,
+        skipApproval: context.skipMainApproval ?? false,
       })
 
       return {

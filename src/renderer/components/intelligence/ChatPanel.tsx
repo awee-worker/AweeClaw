@@ -6,9 +6,6 @@ import {
   AlertTriangle,
   Upload,
   ChevronDown,
-  ShieldAlert,
-  Check,
-  X,
   MessageSquare,
   BrainCircuit,
 } from 'lucide-react'
@@ -47,7 +44,6 @@ import { globalDecide as globalConfirm } from '@components/foundation/DecisionOv
 import { useToast } from '@components/foundation/NotificationProvider'
 import { composerService } from '@intelligence/runtime/composerEngine'
 import { playNotificationSound } from '@utils/notificationSound'
-import { getFriendlyToolName } from '@intelligence/display/toolFriendlyName'
 import { compressImage } from '@intelligence/utils/imageCompressor'
 import { needsVisualAnalysis } from '@intelligence/utils/imageIntentDetector'
 import { TodoListPanel } from './TodoListPanel'
@@ -154,7 +150,6 @@ export default function ChatPanel() {
     contextItems,
     currentThreadId,
     messageListVersion,
-    pendingApprovalToolCalls,
   } = useAgentViewState()
 
   const isChannelThread = useMemo(() => {
@@ -1539,49 +1534,6 @@ export default function ChatPanel() {
           {!deleteSelectionMode && messages.length > 0 && (
           <div className={`shrink-0 z-20 flex flex-col pt-2 ${isChatPrimary ? 'max-w-[840px] mx-auto w-full' : ''}`}>
             <div className="mx-4 mb-4 flex flex-col">
-              {/* Tool Approval Banner */}
-              <AnimatePresence>
-                {isAwaitingApproval && pendingApprovalToolCalls && pendingApprovalToolCalls.length > 0 && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0, marginBottom: 0 }}
-                    animate={{ opacity: 1, height: 'auto', marginBottom: 12 }}
-                    exit={{ opacity: 0, height: 0, marginBottom: 0 }}
-                    transition={{ duration: 0.25, ease: 'easeOut' }}
-                    className="overflow-hidden"
-                  >
-                    <div className="flex items-center gap-3 px-4 py-3 rounded-xl border border-amber-500/30 bg-amber-500/8 backdrop-blur-sm">
-                      <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-amber-500/15 shrink-0">
-                        <ShieldAlert className="w-4 h-4 text-amber-500 animate-pulse" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[13px] font-medium text-text-primary">
-                          {t('toolAwaitingApproval', language as any)}
-                        </div>
-                        <div className="text-[11px] text-text-muted mt-0.5 truncate">
-                          {pendingApprovalToolCalls.map(tc => getFriendlyToolName(tc.name, language).label).join('、')}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          onClick={rejectCurrentTool}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-text-muted hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                          {t('toolReject', language as any)}
-                        </button>
-                        <button
-                          onClick={approveCurrentTool}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium bg-accent text-white hover:bg-accent-hover rounded-lg transition-all"
-                        >
-                          <Check className="w-3.5 h-3.5" />
-                          {t('toolApprove', language as any)}
-                        </button>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
               {/* Todo List */}
               {todos.length > 0 && !isChannelThread && (
                 <div className="mb-3">

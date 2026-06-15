@@ -432,6 +432,7 @@ async function executeSingle(
           requestId: context.requestId,
           toolCallId: toolCall.id,
           chatMode: context.chatMode,
+          skipMainApproval: true,
         }
       )
 
@@ -781,6 +782,11 @@ export async function executeTools(
 
     for (const tc of groupToolCalls) {
       if (context.currentAssistantId) {
+        store.addToolCallPart(context.currentAssistantId, {
+          id: tc.id,
+          name: tc.name,
+          arguments: tc.arguments,
+        })
         store.updateToolCall(context.currentAssistantId, tc.id, { status: 'awaiting' })
       }
       emitToolEvent({

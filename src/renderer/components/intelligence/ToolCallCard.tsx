@@ -1,4 +1,4 @@
-import { memo, useLayoutEffect, useMemo, useRef, useState, useEffect } from 'react'
+import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState, useEffect } from 'react'
 import { AlertTriangle, Check, ChevronDown, Copy, FileCode, Search, Terminal, X, Zap } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useShallow } from 'zustand/react/shallow'
@@ -123,12 +123,10 @@ function getStatusText(name: string, args: ToolArgs, status: ToolCall['status'],
     const pathSummary = getPathSummary(paths)
 
     if (name === 'run_command') {
-        const cmd = asString(args.command)
-        if (!cmd) return isRunning ? t('tool.status.preparingCmd', language as any) : ''
-        if (isRunning) return t('tool.status.executing', language as any, { cmd })
-        if (isSuccess) return t('tool.status.executed', language as any, { cmd })
-        if (isError) return t('tool.status.cmdFailed', language as any, { cmd })
-        return cmd
+        if (isRunning) return t('tool.label.run_command', language as any)
+        if (isSuccess) return t('tool.label.run_command', language as any)
+        if (isError) return t('tool.label.run_command', language as any)
+        return t('tool.label.run_command', language as any)
     }
 
     if (name === 'read_multiple_files') {
@@ -394,7 +392,6 @@ function ToolPreview({
     language,
     currentTheme,
     onCopyResult,
-    setTerminalVisible,
 }: {
     toolCall: ToolCall
     args: ToolArgs
@@ -404,7 +401,6 @@ function ToolPreview({
     language: Language
     currentTheme: string
     onCopyResult: () => void
-    setTerminalVisible: (visible: boolean) => void
 }) {
     const stringResult = typeof toolCall.result === 'string' ? toolCall.result : ''
     const pendingPreview = (label?: string) => (
@@ -418,57 +414,12 @@ function ToolPreview({
 
     if (effectiveName === 'run_command') {
         const cmd = asString(args.command)
-        const meta = (args as { _meta?: { terminalId?: string; executionMode?: string } })._meta
-        const terminalId = meta?.terminalId
-        const hasLiveTerminal = !!terminalId
-        const wasDirectExecution = !!meta?.executionMode && meta.executionMode !== 'terminal'
 
         return (
             <div className="font-mono text-[12px] space-y-1">
-                <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5 text-text-muted min-w-0">
-                        <span className="text-accent/60 select-none flex-shrink-0">$</span>
-                        <span className="text-text-primary break-all">{cmd}</span>
-                    </div>
-                    <button
-                        onClick={async event => {
-                            event.stopPropagation()
-                            if (!terminalId) {
-                                toast.info(
-                                    wasDirectExecution
-                                        ? t('tool.directExecutionNoTerminal', language as any)
-                                        : t('tool.noTerminalSession', language as any)
-                                )
-                                return
-                            }
-
-                            const { terminalManager } = await import('@services/TerminalAdapter')
-                            if (!terminalManager.hasTerminal(terminalId)) {
-                                toast.info(t('tool.terminalClosed', language as any))
-                                return
-                            }
-                            setTerminalVisible(true)
-                            terminalManager.setActiveTerminal(terminalId)
-                            window.setTimeout(() => terminalManager.setActiveTerminal(terminalId), 0)
-                        }}
-                        className={`flex items-center gap-1 flex-shrink-0 ml-2 text-[11px] px-1.5 py-0.5 rounded transition-colors ${
-                            isRunning
-                                ? 'text-accent bg-accent/10'
-                                : hasLiveTerminal
-                                    ? 'text-text-muted hover:text-text-primary hover:bg-surface-hover'
-                                    : 'text-text-muted/90 bg-surface-elevated/60 cursor-not-allowed'
-                        }`}
-                        title={t('tool.viewInTerminal', language as any)}
-                    >
-                        <Terminal className={`w-3 h-3 ${isRunning ? 'animate-pulse' : ''}`} />
-                        <span>
-                            {isRunning
-                                ? t('tool.running', language as any)
-                                : hasLiveTerminal
-                                    ? t('tool.terminal', language as any)
-                                    : t('tool.direct', language as any)}
-                        </span>
-                    </button>
+                <div className="flex items-start gap-1.5">
+                    <span className="text-accent/60 select-none flex-shrink-0 mt-px">$</span>
+                    <span className="text-text-primary break-all flex-1 min-w-0">{cmd}</span>
                 </div>
                 {stringResult ? (
                     <ExpandablePreviewContainer language={language}>
@@ -906,6 +857,37 @@ const ToolCallCard = memo(function ToolCallCard({
         return 'hover:bg-text-primary/[0.02] transition-colors rounded-lg overflow-hidden'
     }, [isAwaitingApproval, isError, isStreaming, isRunning])
 
+    const runCommandMeta = useMemo(() => {
+        if (effectiveName !== 'run_command') return null
+        const meta = (args as { _meta?: { terminalId?: string; executionMode?: string } })._meta
+        return {
+            terminalId: meta?.terminalId,
+            hasLiveTerminal: !!meta?.terminalId,
+            wasDirectExecution: !!meta?.executionMode && meta.executionMode !== 'terminal',
+        }
+    }, [effectiveName, args])
+
+    const handleOpenTerminal = useCallback(async (event: React.MouseEvent) => {
+        event.stopPropagation()
+        const meta = runCommandMeta
+        if (!meta?.terminalId) {
+            toast.info(
+                meta?.wasDirectExecution
+                    ? t('tool.directExecutionNoTerminal', language as any)
+                    : t('tool.noTerminalSession', language as any)
+            )
+            return
+        }
+        const { terminalManager } = await import('@services/TerminalAdapter')
+        if (!terminalManager.hasTerminal(meta.terminalId)) {
+            toast.info(t('tool.terminalClosed', language as any))
+            return
+        }
+        setTerminalVisible(true)
+        terminalManager.setActiveTerminal(meta.terminalId!)
+        window.setTimeout(() => terminalManager.setActiveTerminal(meta.terminalId!), 0)
+    }, [runCommandMeta, language, setTerminalVisible])
+
     const contentBody = (
         <div className="pl-[26px] pr-3 pb-3 pt-0 relative border-t-0">
             <div className="absolute left-[13.5px] top-0 bottom-4 w-[1.5px] bg-border/40 rounded-full" />
@@ -924,7 +906,6 @@ const ToolCallCard = memo(function ToolCallCard({
                             navigator.clipboard.writeText(toolCall.result)
                         }
                     }}
-                    setTerminalVisible={setTerminalVisible}
                 />
                 {toolCall.error && (
                     <div className="px-3 py-2 bg-red-500/10 rounded-md">
@@ -974,7 +955,7 @@ const ToolCallCard = memo(function ToolCallCard({
                     )}
                 </div>
 
-                <div className="flex-1 min-w-0 flex items-center gap-2 overflow-hidden relative z-10">
+                <div className="flex-1 min-w-0 flex items-center justify-between gap-2 overflow-hidden relative z-10">
                     <span className={`text-[12px] truncate ${isStreaming || isRunning ? 'text-text-primary tool-text-shimmer' : 'text-text-secondary group-hover:text-text-primary transition-colors'}`}>
                         {statusText || (
                             <span className="opacity-50 inline-flex items-center gap-1.5">
@@ -982,7 +963,27 @@ const ToolCallCard = memo(function ToolCallCard({
                             </span>
                         )}
                     </span>
-                    <ToolElapsedTime startTime={toolCall.startTime} endTime={toolCall.endTime} isRunning={isRunning || isStreaming} />
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                        {runCommandMeta && (isRunning || runCommandMeta.hasLiveTerminal) && (
+                            <span
+                                className={`flex items-center gap-1 text-[10px] rounded px-1.5 py-0.5 select-none ${
+                                    isRunning
+                                        ? 'text-accent bg-accent/10'
+                                        : 'text-text-muted cursor-pointer hover:text-text-primary hover:bg-surface-hover'
+                                }`}
+                                onClick={runCommandMeta.hasLiveTerminal ? handleOpenTerminal : undefined}
+                                title={runCommandMeta.hasLiveTerminal ? t('tool.viewInTerminal', language as any) : undefined}
+                            >
+                                <Terminal className={`w-3 h-3 ${isRunning ? 'animate-pulse' : ''}`} />
+                                <span>
+                                    {isRunning
+                                        ? t('tool.running', language as any)
+                                        : t('tool.terminal', language as any)}
+                                </span>
+                            </span>
+                        )}
+                        <ToolElapsedTime startTime={toolCall.startTime} endTime={toolCall.endTime} isRunning={isRunning || isStreaming} />
+                    </div>
                 </div>
             </div>
 

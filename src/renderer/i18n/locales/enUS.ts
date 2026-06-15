@@ -276,7 +276,7 @@ export const en = {
   'tool.viewInTerminal': 'View execution in terminal panel',
   'tool.running': 'Running…',
   'tool.terminal': 'Terminal',
-  'tool.direct': 'Direct',
+  'tool.direct': 'Direct Exec',
   'tool.noTerminalSession': 'No terminal session is available for this command.',
   'tool.directExecutionNoTerminal': 'This command was executed directly for reliability, so no live terminal session was created.',
 
