@@ -77,6 +77,36 @@ export default defineConfig({
       },
     },
     react(),
+    // 场景模块安全解析：场景目录可能被卸载/删除，动态 import 失败时返回空模块
+    {
+      name: 'scenario-safe-resolve',
+      resolveId(source, importer) {
+        // 仅处理 @scenarios 开头的模块，且仅在有 importer 的动态调用中
+        if (source.startsWith('@scenarios/') && importer) {
+          // 检查源文件是否来自 scenarios 目录
+          const scenarioMatch = source.match(/^@scenarios\/([^/]+)/)
+          if (scenarioMatch) {
+            const scenarioDir = path.resolve(__dirname, `src/scenarios/${scenarioMatch[1]}`)
+            if (!fs.existsSync(scenarioDir)) {
+              // 场景目录不存在 → 返回空模块代理
+              return `\0scenario-stub:${source}`
+            }
+          }
+        }
+        return null
+      },
+      load(id) {
+        if (id.startsWith('\0scenario-stub:')) {
+          const source = id.slice('\0scenario-stub:'.length)
+          const namedMatch = source.match(/@scenarios\/[^/]+\/(.+)/)
+          const info = namedMatch ? ` (${namedMatch[1]})` : ''
+          console.warn(`[scenario-safe-resolve] Missing scenario module: ${source}${info} → using stub`)
+          // 返回一个导出空对象的模块（兼容 default + named exports）
+          return 'const stub = () => null; export default stub; export { stub };'
+        }
+        return null
+      }
+    },
     electron([
       {
         entry: 'src/main/appBootstrap.ts',
