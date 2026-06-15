@@ -2,7 +2,7 @@
  * 索引设置组件
  */
 
-import { api } from '../../../adapters/electronBridge'
+import { api } from '@renderer/adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
 import { useState, useEffect, useCallback } from 'react'
 import { Eye, EyeOff, AlertTriangle, Database, Settings2, Zap, Brain } from 'lucide-react'

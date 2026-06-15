@@ -1,40 +1,32 @@
 import { lazy, Suspense, useMemo, useCallback } from 'react'
-import { Cpu, Settings2, Code, Keyboard, Database, Shield, Monitor, Plug, Braces, Brain, FileCode, FileText, Zap, X, Palette, Radio, Cloud, Eye, Search, Mail, Mic } from 'lucide-react'
+import { Cpu, Settings2, Shield, Monitor, Plug, Brain, FileText, Zap, X, Palette, Radio, Cloud, Eye, Search, Mail, Mic } from 'lucide-react'
 import { PROVIDERS } from '@configuration/aiProviders'
-import { BRAND } from '@shared/brand'
-import { getEditorConfig } from '@shared/configuration/preferenceSync'
 import { t, type Language } from '@renderer/i18n'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
 import { ActionButton, OverlayDialog } from '@components/ui'
-import { SettingsTab, EditorSettingsState } from './preferencesTypes'
+import { SettingsTab } from './preferencesTypes'
 import { useSettingsLocalState } from './useSettingsLocalState'
 
 const ModelProviderPanel = lazy(() =>
-    import('./tabs/ModelProviderPanel').then(module => ({ default: module.ModelProviderPanel })),
-)
-const EditorPreferencesPanel = lazy(() =>
-    import('./tabs/EditorPreferencesPanel').then(module => ({ default: module.EditorPreferencesPanel })),
+    import('./tabs/ModelProviderPanel').then(m => ({ default: m.ModelProviderPanel })),
 )
 const AppearanceSettings = lazy(() =>
-    import('./tabs/AppearanceSettings').then(module => ({ default: module.AppearanceSettings })),
-)
-const SnippetLibraryPanel = lazy(() =>
-    import('./tabs/SnippetLibraryPanel').then(module => ({ default: module.SnippetLibraryPanel })),
+    import('./tabs/AppearanceSettings').then(m => ({ default: m.AppearanceSettings })),
 )
 const AgentProfilePanel = lazy(() =>
-    import('./tabs/AgentProfilePanel').then(module => ({ default: module.AgentProfilePanel })),
+    import('./tabs/AgentProfilePanel').then(m => ({ default: m.AgentProfilePanel })),
 )
 const SearchEnginePanel = lazy(() =>
-    import('./tabs/SearchEnginePanel').then(module => ({ default: module.SearchEnginePanel })),
+    import('./tabs/SearchEnginePanel').then(m => ({ default: m.SearchEnginePanel })),
 )
 const RulesSettings = lazy(() =>
-    import('./tabs/RulesSettings').then(module => ({ default: module.RulesSettings })),
+    import('./tabs/RulesSettings').then(m => ({ default: m.RulesSettings })),
 )
 const MemorySettings = lazy(() =>
-    import('./tabs/MemorySettings').then(module => ({ default: module.MemorySettings })),
+    import('./tabs/MemorySettings').then(m => ({ default: m.MemorySettings })),
 )
 const SkillRegistryPanel = lazy(() =>
-    import('./tabs/SkillRegistryPanel').then(module => ({ default: module.SkillRegistryPanel })),
+    import('./tabs/SkillRegistryPanel').then(m => ({ default: m.SkillRegistryPanel })),
 )
 const McpServerPanel = lazy(() =>
     import('./tabs/McpServerPanel'),
@@ -42,32 +34,23 @@ const McpServerPanel = lazy(() =>
 const EmailServicePanel = lazy(() =>
     import('./tabs/EmailServicePanel'),
 )
-const LanguageServicePanel = lazy(() =>
-    import('./tabs/LanguageServicePanel').then(module => ({ default: module.LanguageServicePanel })),
-)
-const KeybindingPanel = lazy(() =>
-    import('@components/dock-panels/ShortcutPanel'),
-)
-const IndexingPreferencesPanel = lazy(() =>
-    import('./tabs/IndexingPreferencesPanel').then(module => ({ default: module.IndexingPreferencesPanel })),
-)
 const SecurityPolicyPanel = lazy(() =>
-    import('./tabs/SecurityPolicyPanel').then(module => ({ default: module.SecurityPolicyPanel })),
+    import('./tabs/SecurityPolicyPanel').then(m => ({ default: m.SecurityPolicyPanel })),
 )
 const SystemPreferencesPanel = lazy(() =>
-    import('./tabs/SystemPreferencesPanel').then(module => ({ default: module.SystemPreferencesPanel })),
+    import('./tabs/SystemPreferencesPanel').then(m => ({ default: m.SystemPreferencesPanel })),
 )
 const ChannelSettings = lazy(() =>
-    import('./tabs/ChannelSettings').then(module => ({ default: module.ChannelSettings })),
+    import('./tabs/ChannelSettings').then(m => ({ default: m.ChannelSettings })),
 )
 const CloudSettings = lazy(() =>
-    import('./tabs/CloudSettings').then(module => ({ default: module.CloudSettings })),
+    import('./tabs/CloudSettings').then(m => ({ default: m.CloudSettings })),
 )
 const PrivacySettingsPanel = lazy(() =>
-    import('./tabs/PrivacySettingsPanel').then(module => ({ default: module.PrivacySettingsPanel })),
+    import('./tabs/PrivacySettingsPanel').then(m => ({ default: m.PrivacySettingsPanel })),
 )
 const VoiceSettingsPanel = lazy(() =>
-    import('./tabs/VoiceSettingsPanel').then(module => ({ default: module.default })),
+    import('./tabs/VoiceSettingsPanel').then(m => ({ default: m.default })),
 )
 
 function SettingsTabFallback({ language }: { language: Language }) {
@@ -88,7 +71,7 @@ interface PreferencesDialogProps {
 export default function PreferencesDialog({ embedded = false }: PreferencesDialogProps) {
     const {
         state, dispatch, finalEditorConfig, isDirty, handleSave,
-        language, activeScenarioId, setProvider,
+        language, setProvider,
         setShowSettings, setShowSettingsPage,
     } = useSettingsLocalState(embedded)
 
@@ -138,35 +121,23 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
         providers.find(provider => provider.id === state.localConfig.provider),
         [state.localConfig.provider, providers])
 
-    const isWorkspaceEditor = activeScenarioId === 'dev-assistant'
-    const codeEditorOnlyTabs = new Set(['editor', 'snippets', 'indexing', 'lsp', 'keybindings'])
-
-    const tabs = useMemo(() => {
-        const allTabs = [
-            { id: 'provider', label: t('settings.provider', language as Language), icon: <Cpu className="w-4 h-4" /> },
-            { id: 'appearance', label: t('settings.appearance', language as Language), icon: <Palette className="w-4 h-4" /> },
-            { id: 'agent', label: t('settings.agent', language as Language), icon: <Settings2 className="w-4 h-4" /> },
-            { id: 'search', label: t('settings.searchEngine', language as Language), icon: <Search className="w-4 h-4" /> },
-            { id: 'voice', label: t('settings.voiceSettings', language as Language), icon: <Mic className="w-4 h-4" /> },
-            { id: 'rules', label: t('settings.rules', language as Language), icon: <FileText className="w-4 h-4" /> },
-            { id: 'memory', label: t('settings.memory', language as Language), icon: <Brain className="w-4 h-4" /> },
-            { id: 'skills', label: t('settings.skills', language as Language), icon: <Zap className="w-4 h-4" /> },
-            { id: 'mcp', label: t('settings.mcp', language as Language), icon: <Plug className="w-4 h-4" /> },
-            { id: 'email', label: t('settings.email', language as Language), icon: <Mail className="w-4 h-4" /> },
-            { id: 'channel', label: t('settings.channels', language as Language), icon: <Radio className="w-4 h-4" /> },
-            { id: 'editor', label: t('settings.editor', language as Language), icon: <Code className="w-4 h-4" /> },
-            { id: 'snippets', label: t('settings.snippets', language as Language), icon: <FileCode className="w-4 h-4" /> },
-            { id: 'indexing', label: t('settings.indexing', language as Language), icon: <Database className="w-4 h-4" /> },
-            { id: 'lsp', label: t('settings.lsp', language as Language), icon: <Braces className="w-4 h-4" /> },
-            { id: 'keybindings', label: t('settings.keybindings', language as Language), icon: <Keyboard className="w-4 h-4" /> },
-            { id: 'security', label: t('settings.security', language as Language), icon: <Shield className="w-4 h-4" /> },
-            { id: 'privacy', label: t('settings.privacy', language as Language), icon: <Eye className="w-4 h-4" /> },
-            { id: 'system', label: t('settings.system', language as Language), icon: <Monitor className="w-4 h-4" /> },
-            { id: 'cloud', label: t('settings.cloud', language as Language), icon: <Cloud className="w-4 h-4" /> },
-        ]
-        if (isWorkspaceEditor) return allTabs
-        return allTabs.filter(tab => !codeEditorOnlyTabs.has(tab.id))
-    }, [language, isWorkspaceEditor])
+    const tabs = useMemo(() => [
+        { id: 'provider', label: t('settings.provider', language as Language), icon: <Cpu className="w-4 h-4" /> },
+        { id: 'appearance', label: t('settings.appearance', language as Language), icon: <Palette className="w-4 h-4" /> },
+        { id: 'agent', label: t('settings.agent', language as Language), icon: <Settings2 className="w-4 h-4" /> },
+        { id: 'search', label: t('settings.searchEngine', language as Language), icon: <Search className="w-4 h-4" /> },
+        { id: 'voice', label: t('settings.voiceSettings', language as Language), icon: <Mic className="w-4 h-4" /> },
+        { id: 'rules', label: t('settings.rules', language as Language), icon: <FileText className="w-4 h-4" /> },
+        { id: 'memory', label: t('settings.memory', language as Language), icon: <Brain className="w-4 h-4" /> },
+        { id: 'skills', label: t('settings.skills', language as Language), icon: <Zap className="w-4 h-4" /> },
+        { id: 'mcp', label: t('settings.mcp', language as Language), icon: <Plug className="w-4 h-4" /> },
+        { id: 'email', label: t('settings.email', language as Language), icon: <Mail className="w-4 h-4" /> },
+        { id: 'channel', label: t('settings.channels', language as Language), icon: <Radio className="w-4 h-4" /> },
+        { id: 'security', label: t('settings.security', language as Language), icon: <Shield className="w-4 h-4" /> },
+        { id: 'privacy', label: t('settings.privacy', language as Language), icon: <Eye className="w-4 h-4" /> },
+        { id: 'system', label: t('settings.system', language as Language), icon: <Monitor className="w-4 h-4" /> },
+        { id: 'cloud', label: t('settings.cloud', language as Language), icon: <Cloud className="w-4 h-4" /> },
+    ], [language])
 
     const renderActiveTab = () => {
         switch (state.activeTab) {
@@ -197,18 +168,6 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                         setLocalLanguage={(lang) => dispatch({ type: 'SET_LOCAL_LANGUAGE', language: lang })}
                     />
                 )
-            case 'editor':
-                return (
-                    <EditorPreferencesPanel
-                        settings={state.editorSettings}
-                        setSettings={(settings) => dispatch({ type: 'SET_EDITOR_SETTINGS', settings })}
-                        advancedConfig={state.advancedEditorConfig}
-                        setAdvancedConfig={(config) => dispatch({ type: 'SET_ADVANCED_EDITOR_CONFIG', config })}
-                        language={language}
-                    />
-                )
-            case 'snippets':
-                return <SnippetLibraryPanel language={language} />
             case 'agent':
                 return (
                     <AgentProfilePanel
@@ -245,19 +204,13 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                 return <EmailServicePanel language={language} emailConfig={state.localEmailConfig} setEmailConfig={(config) => dispatch({ type: 'SET_LOCAL_EMAIL_CONFIG', config })} />
             case 'channel':
                 return <ChannelSettings language={language} />
-            case 'lsp':
-                return <LanguageServicePanel language={language} />
-            case 'keybindings':
-                return <KeybindingPanel />
-            case 'indexing':
-                return <IndexingPreferencesPanel language={language} />
             case 'security':
                 return (
                     <SecurityPolicyPanel
                         language={language}
                         securitySettings={state.localSecuritySettings}
                         setSecuritySettings={(settings) => dispatch({ type: 'SET_LOCAL_SECURITY_SETTINGS', settings })}
-                        isWorkspaceEditor={isWorkspaceEditor}
+                        isWorkspaceEditor={false}
                     />
                 )
             case 'privacy':
@@ -315,51 +268,51 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
 
             <div className="flex-1 flex justify-center overflow-hidden">
                 <div className="w-full max-w-[1000px] flex flex-col min-w-0 bg-transparent relative">
-                <div className="shrink-0 px-8 pt-6 pb-4 border-b border-border/40 flex items-center justify-between">
-                    <div>
-                        <h3 className="text-2xl font-semibold text-text-primary tracking-tight">
-                            {tabs.find(tab => tab.id === state.activeTab)?.label}
-                        </h3>
-                        <p className="text-sm text-text-muted mt-1.5 opacity-80">
-                            {t('settings.managePreferences', language as Language)}
-                        </p>
+                    <div className="shrink-0 px-8 pt-6 pb-4 border-b border-border/40 flex items-center justify-between">
+                        <div>
+                            <h3 className="text-2xl font-semibold text-text-primary tracking-tight">
+                                {tabs.find(tab => tab.id === state.activeTab)?.label}
+                            </h3>
+                            <p className="text-sm text-text-muted mt-1.5 opacity-80">
+                                {t('settings.managePreferences', language as Language)}
+                            </p>
+                        </div>
+                        <button
+                            onClick={handleClose}
+                            className="p-2 rounded-xl hover:bg-text-primary/[0.05] text-text-muted hover:text-text-primary transition-all duration-200 group"
+                            title={t('settings.closeSettings', language as Language)}
+                        >
+                            <X className="w-5 h-5 group-hover:rotate-90 transition-transform duration-300" />
+                        </button>
                     </div>
-                    <button
-                        onClick={handleClose}
-                        className="p-2 rounded-xl hover:bg-text-primary/[0.05] text-text-muted hover:text-text-primary transition-all duration-200 group"
-                        title={t('settings.closeSettings', language as Language)}
-                    >
-                        <X className="w-5 h-5 group-hover:rotate-90 transition-transform duration-300" />
-                    </button>
-                </div>
 
-                <div className="settings-scroll-region flex-1 overflow-y-auto px-8 py-6 custom-scrollbar pb-28">
-                    <div className="settings-tab-panel space-y-6">
-                        <Suspense fallback={<SettingsTabFallback language={language as Language} />}>
-                            {renderActiveTab()}
-                        </Suspense>
-                    </div>
-                </div>
-
-                {isDirty && state.activeTab !== 'channel' && (
-                    <div className="absolute bottom-6 right-8 left-8 p-4 rounded-xl bg-surface/95 border border-border/60 shadow-lg flex items-center justify-between z-10 transition-all duration-300">
-                        <span className="text-xs text-text-muted ml-2 font-medium">
-                            {t('settings.unsavedChanges', language as Language)}
-                        </span>
-                        <div className="flex items-center gap-3">
-                            <ActionButton variant="ghost" onClick={handleClose} className="hover:bg-text-inverted/[0.05] hover:bg-text-primary/[0.05] text-text-secondary rounded-lg">
-                                {t('statusBar.cancel', language as Language)}
-                            </ActionButton>
-                            <ActionButton
-                                variant="primary"
-                                onClick={handleSave}
-                                className="min-w-[140px] shadow-lg transition-all duration-300 rounded-xl bg-accent hover:bg-accent-hover text-white shadow-accent/20"
-                            >
-                                <span className="font-bold">{t('settings.saveChanges', language as Language)}</span>
-                            </ActionButton>
+                    <div className="settings-scroll-region flex-1 overflow-y-auto px-8 py-6 custom-scrollbar pb-28">
+                        <div className="settings-tab-panel space-y-6">
+                            <Suspense fallback={<SettingsTabFallback language={language as Language} />}>
+                                {renderActiveTab()}
+                            </Suspense>
                         </div>
                     </div>
-                )}
+
+                    {isDirty && state.activeTab !== 'channel' && (
+                        <div className="absolute bottom-6 right-8 left-8 p-4 rounded-xl bg-surface/95 border border-border/60 shadow-lg flex items-center justify-between z-10 transition-all duration-300">
+                            <span className="text-xs text-text-muted ml-2 font-medium">
+                                {t('settings.unsavedChanges', language as Language)}
+                            </span>
+                            <div className="flex items-center gap-3">
+                                <ActionButton variant="ghost" onClick={handleClose} className="hover:bg-text-primary/[0.05] text-text-secondary rounded-lg">
+                                    {t('statusBar.cancel', language as Language)}
+                                </ActionButton>
+                                <ActionButton
+                                    variant="primary"
+                                    onClick={handleSave}
+                                    className="min-w-[140px] shadow-lg transition-all duration-300 rounded-xl bg-accent hover:bg-accent-hover text-white shadow-accent/20"
+                                >
+                                    <span className="font-bold">{t('settings.saveChanges', language as Language)}</span>
+                                </ActionButton>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

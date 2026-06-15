@@ -5,6 +5,7 @@ import { OutlineView } from './SymbolOutline'
 import { ProblemsView } from './DiagnosticsView'
 import { ShellView } from './ShellExplorer'
 import { HistoryView } from './HistoryExplorer'
+import DevAssistantSettingsView from './settings/DevAssistantSettingsView'
 
 export const devAssistantComponents: ScenarioComponentRegistry = {
   SearchView,
@@ -13,4 +14,5 @@ export const devAssistantComponents: ScenarioComponentRegistry = {
   ProblemsView,
   ShellView,
   HistoryView,
+  DevAssistantSettingsView,
 }

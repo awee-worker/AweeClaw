@@ -4,7 +4,7 @@
 
 import { Sparkles, Terminal, Settings2, Zap } from 'lucide-react'
 import { TextField, DropdownSelector, ToggleSwitch } from '@components/ui'
-import { EditorSettingsProps } from '../preferencesTypes'
+import { EditorSettingsProps } from '@components/settings/preferencesTypes'
 import { t, type Language } from '@renderer/i18n'
 
 // 预定义的触发字符选项

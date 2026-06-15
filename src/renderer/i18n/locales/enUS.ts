@@ -620,6 +620,7 @@ export const en = {
   'settings.indexing': 'Indexing',
   'settings.lsp': 'LSP',
   'settings.keybindings': 'Keybindings',
+  'settings.devAssistantSettings': 'Dev Assistant Settings',
   'settings.security': 'Security',
   'settings.privacy': 'Privacy',
   'settings.system': 'System',

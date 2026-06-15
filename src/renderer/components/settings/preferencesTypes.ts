@@ -6,7 +6,7 @@ import { Language } from '@renderer/i18n'
 import type { LLMConfig, AutoApproveSettings, AgentConfig, WebSearchConfig } from '@shared/configuration/providerTypes'
 import type { ProviderModelConfig } from '@shared/configuration/preferenceSync'
 
-export type SettingsTab = 'provider' | 'appearance' | 'editor' | 'snippets' | 'agent' | 'search' | 'rules' | 'memory' | 'skills' | 'mcp' | 'email' | 'channel' | 'lsp' | 'keybindings' | 'indexing' | 'security' | 'privacy' | 'system' | 'cloud' | 'voice'
+export type SettingsTab = 'provider' | 'appearance' | 'agent' | 'search' | 'rules' | 'memory' | 'skills' | 'mcp' | 'email' | 'channel' | 'security' | 'privacy' | 'system' | 'cloud' | 'voice'
 
 export interface ProviderSettingsProps {
     localConfig: LLMConfig

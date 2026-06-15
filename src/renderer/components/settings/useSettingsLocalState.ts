@@ -186,7 +186,6 @@ export function useSettingsLocalState(embedded: boolean) {
     editorConfig: s.editorConfig,
     save: s.save,
     settingsInitialTab: s.settingsInitialTab,
-    activeScenarioId: s.activeScenarioId,
     set: s.set,
     setProvider: s.setProvider,
     setShowSettings: s.setShowSettings,
@@ -197,7 +196,7 @@ export function useSettingsLocalState(embedded: boolean) {
     llmConfig, language, autoApprove, promptTemplateId, agentConfig,
     providerConfigs, aiInstructions, webSearchConfig, mcpConfig, emailConfig,
     enableFileLogging, securitySettings, privacySettings, editorConfig,
-    save, settingsInitialTab, activeScenarioId, set, setProvider,
+    save, settingsInitialTab, set, setProvider,
     setShowSettings, setShowSettingsPage,
   } = storeValues
 
@@ -294,14 +293,6 @@ export function useSettingsLocalState(embedded: boolean) {
       dispatch({ type: 'SET_ACTIVE_TAB', tab: settingsInitialTab as SettingsTab })
     }
   }, [settingsInitialTab])
-
-  // 场景限制 tab
-  useEffect(() => {
-    const codeEditorOnlyTabs = new Set(['editor', 'snippets', 'indexing', 'lsp', 'keybindings'])
-    if (activeScenarioId !== 'dev-assistant' && codeEditorOnlyTabs.has(state.activeTab)) {
-      dispatch({ type: 'SET_ACTIVE_TAB', tab: 'provider' })
-    }
-  }, [activeScenarioId, state.activeTab])
 
   // 合并编辑器配置
   const finalEditorConfig = useMemo(() => ({
@@ -444,7 +435,6 @@ export function useSettingsLocalState(embedded: boolean) {
     handleSave,
     // store 相关
     language,
-    activeScenarioId,
     setProvider,
     setShowSettings,
     setShowSettingsPage,

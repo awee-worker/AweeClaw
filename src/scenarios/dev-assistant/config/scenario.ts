@@ -199,6 +199,7 @@ const CODE_EDITOR_UI: ScenarioUI = {
     { id: 'shell', icon: 'Terminal', label: 'Shell', labelZh: 'Shell', component: 'ShellView', position: 5 },
     { id: 'knowledge', icon: 'BookOpen', label: 'Knowledge', labelZh: '知识库', component: 'KnowledgeView', position: 6, wideMode: true },
     { id: 'checkpoint', icon: 'History', label: 'Checkpoint', labelZh: '检查点', component: 'HistoryView', position: 7 },
+    { id: 'settings', icon: 'Settings', label: 'Settings', labelZh: '编辑器设置', component: 'DevAssistantSettingsView', position: 8, wideMode: true },
   ],
   statusBarItems: [
     { id: 'lsp-status', component: 'LanguageServiceIndicator', position: 'left', order: 0 },

@@ -5,7 +5,7 @@ import { keybindingService, Command, formatShortcut, isMac } from '@services/key
 import { registerCoreCommands } from '@renderer/config/commandRegistry'
 import { useStore } from '@store'
 import { t } from '@renderer/i18n'
-import { TextField, ActionButton, OverlayDialog } from '../ui'
+import { TextField, ActionButton, OverlayDialog } from '@components/ui'
 
 export default function KeybindingPanel() {
     const language = useStore(s => s.language)

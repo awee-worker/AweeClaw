@@ -18,7 +18,7 @@ import {
   ExternalLink,
 } from 'lucide-react'
 import {Language, t} from '@renderer/i18n'
-import { api } from '../../../adapters/electronBridge'
+import { api } from '@renderer/adapters/electronBridge'
 import { ActionButton, TextField } from '@components/ui'
 import { LSP_SERVER_DEFINITIONS } from '@shared/languageRegistry'
 

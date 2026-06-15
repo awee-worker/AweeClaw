@@ -621,6 +621,7 @@ export const zh = {
   'settings.indexing': '代码索引',
   'settings.lsp': '语言服务',
   'settings.keybindings': '快捷键',
+  'settings.devAssistantSettings': '开发助手设置',
   'settings.security': '安全设置',
   'settings.privacy': '隐私设置',
   'settings.system': '系统设置',
