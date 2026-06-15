@@ -14,9 +14,42 @@ export type Language = 'en' | 'zh'
 type EnType = typeof en
 type BaseTranslationKeys = keyof EnType
 
+/** 场景独立翻译注册表，key 为场景 ID */
+const scenarioI18nRegistry = new Map<string, { en: Record<string, string>; zh: Record<string, string> }>()
+
 let extraEn: Record<string, string> = {}
 let extraZh: Record<string, string> = {}
 
+/** 重建 extraEn/extraZh 合并所有已注册场景翻译 */
+function rebuildExtraTranslations() {
+  extraEn = {}
+  extraZh = {}
+  for (const translations of scenarioI18nRegistry.values()) {
+    extraEn = { ...extraEn, ...translations.en }
+    extraZh = { ...extraZh, ...translations.zh }
+  }
+}
+
+/**
+ * 注册场景独立翻译
+ * @param scenarioId 场景唯一 ID，如 'dev-assistant'
+ * @param translations 场景的 { en, zh } 翻译对象
+ */
+export function registerScenarioI18n(scenarioId: string, translations: { en: Record<string, string>; zh: Record<string, string> }) {
+  scenarioI18nRegistry.set(scenarioId, translations)
+  rebuildExtraTranslations()
+}
+
+/**
+ * 反注册场景翻译（场景卸载时调用）
+ * @param scenarioId 场景唯一 ID
+ */
+export function unregisterScenarioI18n(scenarioId: string) {
+  scenarioI18nRegistry.delete(scenarioId)
+  rebuildExtraTranslations()
+}
+
+/** @deprecated 使用 registerScenarioI18n 替代 */
 export function registerTranslations(translations: { en: Record<string, string>; zh: Record<string, string> }) {
   extraEn = { ...extraEn, ...translations.en }
   extraZh = { ...extraZh, ...translations.zh }

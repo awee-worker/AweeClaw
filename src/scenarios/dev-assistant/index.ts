@@ -17,6 +17,7 @@ import type {
 } from '@shared/protocols/scenario-arch'
 import { codeEditorScenario } from './config/scenario'
 import { devAssistantComponents } from './components'
+import { registerDevAssistantI18n, unregisterDevAssistantI18n } from './i18n'
 
 const CODE_EDITOR_MANIFEST: ScenarioManifest = {
   id: 'dev-assistant',
@@ -59,6 +60,8 @@ const codeEditorModule: ScenarioModule = {
     const log = context.getLogger()
     log.info(`Activating dev-assistant scenario v${context.version}`)
 
+    registerDevAssistantI18n()
+
     context.publishData('scenario:activated', {
       scenarioId: 'dev-assistant',
       capabilities: ['code_edit', 'file_management', 'terminal', 'git', 'search'],
@@ -68,6 +71,8 @@ const codeEditorModule: ScenarioModule = {
   onDeactivate: async (context: ScenarioModuleContext) => {
     const log = context.getLogger()
     log.info('Deactivating dev-assistant scenario')
+
+    unregisterDevAssistantI18n()
 
     context.publishData('scenario:deactivated', { scenarioId: 'dev-assistant' })
   },
