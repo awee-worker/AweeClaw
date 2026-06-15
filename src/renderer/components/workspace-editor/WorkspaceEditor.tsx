@@ -30,21 +30,21 @@ import { useEditorBreakpoints } from '@hooks/useEditorBreakpoints'
 import { consumePendingNavigation } from '@services/editorNavigator'
 
 // 子组件
-import { EditorTabs } from './EditorTabBar'
-import { EditorBreadcrumbs } from './EditorPathNav'
+import { EditorTabs } from '@scenarios/dev-assistant/components/editor/EditorTabBar'
+import { EditorBreadcrumbs } from '@scenarios/dev-assistant/components/editor/EditorPathNav'
 import { DiffPreview } from './DiffViewerPanel'
 import DiffViewer from './CodeDiffViewer'
-import InlineEdit from './InlineCodeEdit'
-import EditorContextMenu from './CodeEditorMenu'
-import { TabContextMenu } from './TabActionMenu'
-import { EditorWelcome } from './EditorLanding'
+import InlineEdit from '@scenarios/dev-assistant/components/editor/InlineCodeEdit'
+import EditorContextMenu from '@scenarios/dev-assistant/components/editor/CodeEditorMenu'
+import { TabContextMenu } from '@scenarios/dev-assistant/components/editor/TabActionMenu'
+import { EditorWelcome } from '@scenarios/dev-assistant/components/editor/EditorLanding'
 import { SafeDiffEditor } from './SecureDiffEditor'
 import { getFileType, MarkdownPreview, ImagePreview, HtmlPreview, UnsupportedFile } from './FilePreviewPanel'
-import { PdfPreview, DocxPreview, DocPreview, PptxPreview, PptPreview, XlsxPreview, CsvPreview } from './DocumentPreview'
+import { PdfPreview, DocxPreview, DocPreview, PptxPreview, PptPreview, XlsxPreview, CsvPreview } from '@scenarios/dev-assistant/components/editor/DocumentPreview'
 import { CodeSkeleton } from '../ui/ProgressIndicator'
 import { ExecutionBoard } from '../plan/ExecutionBoard'
 import WritingWorkspace from '../writing/WritingWorkspace'
-const BrowserPreviewTab = lazy(() => import('./WebPreviewTab'))
+const BrowserPreviewTab = lazy(() => import('@scenarios/dev-assistant/components/editor/WebPreviewTab'))
 
 function isPlanJsonFile(filePath: string): boolean {
   const normalizedPath = normalizePath(filePath)
@@ -56,7 +56,7 @@ function getPlanIdFromPlanFilePath(filePath: string): string {
 }
 
 // Hooks
-import { useEditorActions, useAICompletion, useEditorEvents, useComposerInlineDiff } from './hooks'
+import { useEditorActions, useAICompletion, useEditorEvents, useComposerInlineDiff } from '@scenarios/dev-assistant/components/editor/hooks'
 import { getLanguage } from './utils/langIdMapper'
 import { defineMonacoTheme } from './utils/editorTheme'
 import { isPreviewDocumentPath } from '@shared/protocols/previewProtocol'

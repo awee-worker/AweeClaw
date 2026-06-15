@@ -3,10 +3,10 @@ import * as pdfjsLib from 'pdfjs-dist'
 import mammoth from 'mammoth/mammoth.browser.min.js'
 import JSZip from 'jszip'
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize2, Loader2, FileSpreadsheet, Presentation } from 'lucide-react'
-import { ActionButton } from '../ui'
+import { ActionButton } from '@components/ui'
 import { useStore } from '@store'
 import {t, type Language} from '@renderer/i18n'
-import { api } from '../../adapters/electronBridge'
+import { api } from '@renderer/adapters/electronBridge'
 import { logger } from '@shared/toolkit/LogEngine'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(

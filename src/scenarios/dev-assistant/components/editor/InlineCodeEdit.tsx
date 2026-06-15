@@ -3,7 +3,7 @@
  * 极简的交互形态，接入 Composer Service 实现原生 Monaco 流式 Diff。
  */
 
-import { api } from '../../adapters/electronBridge'
+import { api } from '@renderer/adapters/electronBridge'
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Sparkles, Loader2, StopCircle, Check, X } from 'lucide-react'
 import { logger } from '@shared/toolkit/LogEngine'

@@ -5,7 +5,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
-import { api } from '../../adapters/electronBridge'
+import { api } from '@renderer/adapters/electronBridge'
 import { t } from '@renderer/i18n'
 import { getIncomingCalls, getOutgoingCalls } from '@services/languageServerAdapter'
 import { lspUriToPath } from '@shared/toolkit/uriHelper'

@@ -2,7 +2,7 @@
  * Tab context menu component.
  */
 
-import { api } from '../../adapters/electronBridge'
+import { api } from '@renderer/adapters/electronBridge'
 import { useEffect, useRef } from 'react'
 import { toast } from '@components/foundation/NotificationProvider'
 import { keybindingService, formatShortcut } from '@services/keybindingAdapter'
