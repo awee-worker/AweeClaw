@@ -26,7 +26,7 @@ interface ScenarioTaskConfig {
 }
 
 const SCENARIO_TASK_CONFIGS: Record<string, ScenarioTaskConfig> = {
-    'workspace-editor': {
+    'dev-assistant': {
         priority: 'normal',
         maxConcurrent: POOL_SIZE,
         timeoutMs: 30000,
@@ -123,8 +123,8 @@ class ScenarioTaskScheduler {
             return this.executeFallback<T>(type, payload)
         }
 
-        const scenarioId = useStore.getState().activeScenarioId ?? 'workspace-editor'
-        const taskConfig = SCENARIO_TASK_CONFIGS[scenarioId] ?? SCENARIO_TASK_CONFIGS['workspace-editor']
+        const scenarioId = useStore.getState().activeScenarioId ?? 'dev-assistant'
+        const taskConfig = SCENARIO_TASK_CONFIGS[scenarioId] ?? SCENARIO_TASK_CONFIGS['dev-assistant']
 
         const id = `task-${++this.taskIdCounter}`
         const request: WorkerRequest = { id, type, payload }
@@ -172,13 +172,13 @@ class ScenarioTaskScheduler {
     }
 
     getActiveScenarioConfig(): ScenarioTaskConfig {
-        const scenarioId = useStore.getState().activeScenarioId ?? 'workspace-editor'
-        return SCENARIO_TASK_CONFIGS[scenarioId] ?? SCENARIO_TASK_CONFIGS['workspace-editor']
+        const scenarioId = useStore.getState().activeScenarioId ?? 'dev-assistant'
+        return SCENARIO_TASK_CONFIGS[scenarioId] ?? SCENARIO_TASK_CONFIGS['dev-assistant']
     }
 
     private processQueueByPriority(): void {
-        const scenarioId = useStore.getState().activeScenarioId ?? 'workspace-editor'
-        const taskConfig = SCENARIO_TASK_CONFIGS[scenarioId] ?? SCENARIO_TASK_CONFIGS['workspace-editor']
+        const scenarioId = useStore.getState().activeScenarioId ?? 'dev-assistant'
+        const taskConfig = SCENARIO_TASK_CONFIGS[scenarioId] ?? SCENARIO_TASK_CONFIGS['dev-assistant']
 
         const activeCount = this.busyWorkers.size
         if (activeCount >= taskConfig.maxConcurrent) return

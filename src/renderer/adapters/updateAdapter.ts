@@ -34,7 +34,7 @@ interface ScenarioUpdateConfig {
 }
 
 const SCENARIO_UPDATE_CONFIGS: Record<string, ScenarioUpdateConfig> = {
-  'workspace-editor': {
+  'dev-assistant': {
     channel: 'stable',
     autoCheckIntervalMs: 3600_000,
     requireApproval: false,
@@ -69,8 +69,8 @@ const SCENARIO_UPDATE_CONFIGS: Record<string, ScenarioUpdateConfig> = {
 }
 
 function getScenarioUpdateConfig(): ScenarioUpdateConfig {
-  const scenarioId = useStore.getState().activeScenarioId ?? 'workspace-editor'
-  return SCENARIO_UPDATE_CONFIGS[scenarioId] ?? SCENARIO_UPDATE_CONFIGS['workspace-editor']
+  const scenarioId = useStore.getState().activeScenarioId ?? 'dev-assistant'
+  return SCENARIO_UPDATE_CONFIGS[scenarioId] ?? SCENARIO_UPDATE_CONFIGS['dev-assistant']
 }
 
 class ScenarioUpdateManager {
@@ -171,7 +171,7 @@ class ScenarioUpdateManager {
   }
 
   applyScenarioUpdatePolicy(scenarioId: string): void {
-    const config = SCENARIO_UPDATE_CONFIGS[scenarioId] ?? SCENARIO_UPDATE_CONFIGS['workspace-editor']
+    const config = SCENARIO_UPDATE_CONFIGS[scenarioId] ?? SCENARIO_UPDATE_CONFIGS['dev-assistant']
     logger.system.info('[ScenarioUpdateManager] Applied update policy for:', scenarioId, 'channel:', config.channel)
     this.scheduleAutoCheck()
   }

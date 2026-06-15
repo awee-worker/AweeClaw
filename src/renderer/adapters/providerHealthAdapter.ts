@@ -35,7 +35,7 @@ interface ScenarioHealthConfig {
 }
 
 const SCENARIO_HEALTH_CONFIGS: Record<string, ScenarioHealthConfig> = {
-    'workspace-editor': {
+    'dev-assistant': {
         timeoutMultiplier: 1.0,
         cacheTtlMultiplier: 1.0,
         retryCount: 1,
@@ -70,8 +70,8 @@ const SCENARIO_HEALTH_CONFIGS: Record<string, ScenarioHealthConfig> = {
 }
 
 function getScenarioHealthConfig(): ScenarioHealthConfig {
-    const scenarioId = useStore.getState().activeScenarioId ?? 'workspace-editor'
-    return SCENARIO_HEALTH_CONFIGS[scenarioId] ?? SCENARIO_HEALTH_CONFIGS['workspace-editor']
+    const scenarioId = useStore.getState().activeScenarioId ?? 'dev-assistant'
+    return SCENARIO_HEALTH_CONFIGS[scenarioId] ?? SCENARIO_HEALTH_CONFIGS['dev-assistant']
 }
 
 const cacheConfig = getCacheConfig('healthCheck')

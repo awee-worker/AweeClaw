@@ -18,7 +18,7 @@ interface ScenarioTrackerConfig {
 }
 
 const SCENARIO_TRACKER_CONFIGS: Record<string, ScenarioTrackerConfig> = {
-    'workspace-editor': {
+    'dev-assistant': {
         autoExpireMs: 5_000,
         trackByExtension: false,
         trackedExtensions: [],
@@ -45,8 +45,8 @@ const SCENARIO_TRACKER_CONFIGS: Record<string, ScenarioTrackerConfig> = {
 }
 
 function getScenarioTrackerConfig(): ScenarioTrackerConfig {
-    const scenarioId = useStore.getState().activeScenarioId ?? 'workspace-editor'
-    return SCENARIO_TRACKER_CONFIGS[scenarioId] ?? SCENARIO_TRACKER_CONFIGS['workspace-editor']
+    const scenarioId = useStore.getState().activeScenarioId ?? 'dev-assistant'
+    return SCENARIO_TRACKER_CONFIGS[scenarioId] ?? SCENARIO_TRACKER_CONFIGS['dev-assistant']
 }
 
 const trackedPaths = new Map<string, ReturnType<typeof setTimeout>>()

@@ -121,7 +121,7 @@ export default function ChatPanel() {
     setTeamModeEnabled: s.setTeamModeEnabled,
   })))
 
-  const isChatPrimary = activeScenarioId !== 'workspace-editor'
+  const isChatPrimary = activeScenarioId !== 'dev-assistant'
 
   // 从 AgentStore 获取 inputPrompt
   const inputPrompt = useAgentStore(state => state.inputPrompt)
@@ -1286,7 +1286,7 @@ export default function ChatPanel() {
           onOpenDiff={handleShowDiff}
           pendingToolId={pendingToolCall?.id}
           hasCheckpoint={item.item.hasCheckpoint}
-          isWorkspaceEditor={activeScenarioId === 'workspace-editor'}
+          isWorkspaceEditor={activeScenarioId === 'dev-assistant'}
           onDeleteRound={handleDeleteRound}
           selectionMode={deleteSelectionMode}
           isSelected={selectedMessageIds.has(msg.id)}

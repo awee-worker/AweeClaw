@@ -11,7 +11,7 @@ interface ProviderPreset {
 }
 
 const SCENARIO_PRESETS: Record<string, Record<string, ProviderPreset>> = {
-  'workspace-editor': {
+  'dev-assistant': {
     openai: { payload: { model: '{{model}}', max_tokens: 8192, stream: true, temperature: 0.3, top_p: 0.95 }, tokenBudget: 8192, supportsStreaming: true, supportsTools: true, maxTemperature: 1.0 },
     anthropic: { payload: { model: '{{model}}', max_tokens: 8192, stream: true, temperature: 0.3 }, tokenBudget: 8192, supportsStreaming: true, supportsTools: true, maxTemperature: 1.0 },
     deepseek: { payload: { model: '{{model}}', max_tokens: 8192, stream: true, temperature: 0.3, top_p: 0.95 }, tokenBudget: 8192, supportsStreaming: true, supportsTools: true, maxTemperature: 1.0 },
@@ -50,7 +50,7 @@ const FALLBACK_PRESET: ProviderPreset = {
 }
 
 const SCENARIO_LABELS: Record<string, { en: string; zh: string; icon: string }> = {
-  'workspace-editor': { en: 'Code Editor', zh: '代码编辑', icon: '💻' },
+  'dev-assistant': { en: 'Dev Assistant', zh: '开发助手', icon: '💻' },
   'legal-review': { en: 'Legal Review', zh: '法律审查', icon: '⚖️' },
   'education-tutor': { en: 'Education Tutor', zh: '教育辅导', icon: '📚' },
   'medical-assistant': { en: 'Medical Assistant', zh: '医疗助手', icon: '🏥' },
@@ -107,7 +107,7 @@ export default function ApiPayloadConfigurator({ providerId, scenarioId, request
   const [text, setText] = useState('')
   const [parseError, setParseError] = useState<string | null>(null)
   const [confirmed, setConfirmed] = useState(false)
-  const [activeScenario, setActiveScenario] = useState(scenarioId || 'workspace-editor')
+  const [activeScenario, setActiveScenario] = useState(scenarioId || 'dev-assistant')
 
   const currentPreset = useMemo(() => {
     const scenarioPresets = SCENARIO_PRESETS[activeScenario]

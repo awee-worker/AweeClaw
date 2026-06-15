@@ -27,7 +27,7 @@ interface ScenarioFilePolicy {
 }
 
 const SCENARIO_FILE_POLICIES: Record<string, ScenarioFilePolicy> = {
-    'workspace-editor': {
+    'dev-assistant': {
         sizeMultiplier: 1.0,
         lineMultiplier: 1.0,
         chunkSizeKB: 64,
@@ -78,8 +78,8 @@ const SCENARIO_FILE_POLICIES: Record<string, ScenarioFilePolicy> = {
 }
 
 function resolveActivePolicy(): ScenarioFilePolicy {
-    const scenarioId = useStore.getState().activeScenarioId ?? 'workspace-editor'
-    return SCENARIO_FILE_POLICIES[scenarioId] ?? SCENARIO_FILE_POLICIES['workspace-editor']
+    const scenarioId = useStore.getState().activeScenarioId ?? 'dev-assistant'
+    return SCENARIO_FILE_POLICIES[scenarioId] ?? SCENARIO_FILE_POLICIES['dev-assistant']
 }
 
 function detectFileCategory(filePath: string, policy: ScenarioFilePolicy): { category: string; sizeMultiplier: number } {
@@ -171,7 +171,7 @@ export function farExceedsSizeBudget(content: string, filePath?: string): boolea
 
 export function analyzeDocumentProfile(path: string, content: string): LargeFileInfo {
     const policy = resolveActivePolicy()
-    const scenarioId = useStore.getState().activeScenarioId ?? 'workspace-editor'
+    const scenarioId = useStore.getState().activeScenarioId ?? 'dev-assistant'
     const { category, sizeMultiplier } = detectFileCategory(path, policy)
 
     const baseThreshold = (getEditorConfig().performance.largeFileWarningThresholdMB || 5) * 1024 * 1024

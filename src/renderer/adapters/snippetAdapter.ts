@@ -54,7 +54,7 @@ export const \${1:Component}: FC<\${1:Component}Props> = ({ \${3} }) => {
         languages: ['typescript', 'typescriptreact', 'javascript', 'javascriptreact'],
         createdAt: Date.now(),
         updatedAt: Date.now(),
-        scenarioScope: ['workspace-editor'],
+        scenarioScope: ['dev-assistant'],
         tags: ['react', 'component'],
     },
     {
@@ -76,7 +76,7 @@ export function use\${1:Hook}(\${2:params}) {
         languages: ['typescript', 'typescriptreact', 'javascript', 'javascriptreact'],
         createdAt: Date.now(),
         updatedAt: Date.now(),
-        scenarioScope: ['workspace-editor'],
+        scenarioScope: ['dev-assistant'],
         tags: ['react', 'hook'],
     },
     {
@@ -307,7 +307,7 @@ Summary and next steps`,
 ]
 
 const SCENARIO_SNIPPETS: Record<string, CodeSnippet[]> = {
-    'workspace-editor': [],
+    'dev-assistant': [],
     'legal': LEGAL_SNIPPETS,
     'medical': MEDICAL_SNIPPETS,
     'education': EDUCATION_SNIPPETS,

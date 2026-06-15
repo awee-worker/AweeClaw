@@ -8,7 +8,7 @@
  * - 场景驱动布局：每个场景声明自己的 UI 配置
  * - 声明式输出：输出纯数据描述，不含 React 组件
  * - 细粒度控制：面板可见性、尺寸、顺序都可由场景定义
- * - 向后兼容：默认代码编辑器场景保持现有布局
+ * - 向后兼容：默认开发助手场景保持现有布局
  */
 
 import type { ScenarioPlugin, UILayout, PanelDescriptor } from '@shared/protocols/scenario'

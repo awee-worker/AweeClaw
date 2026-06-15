@@ -1,5 +1,5 @@
 /**
- * 代码编辑器场景模块入口
+ * 开发助手场景模块入口
  *
  * 实现增强版 ScenarioModule 接口，集成：
  * - ScenarioManifest: 场景清单
@@ -18,12 +18,12 @@ import type {
 import { codeEditorScenario } from './config/scenario'
 
 const CODE_EDITOR_MANIFEST: ScenarioManifest = {
-  id: 'workspace-editor',
+  id: 'dev-assistant',
   version: '1.0.0',
-  name: 'Code Editor',
-  nameZh: '代码编辑器',
-  description: 'AI agent platform with professional code editing and deep Agent integration',
-  descriptionZh: 'AI 智能体平台，专业代码编辑与深度智能体集成',
+  name: 'Dev Assistant',
+  nameZh: '开发助手',
+  description: 'Full-stack AI dev assistant — code, debug, build, and deploy with deep Agent integration',
+  descriptionZh: '全栈 AI 开发助手，覆盖编码、调试、构建、部署全流程，深度 Agent 协同',
   author: 'awee',
   icon: 'Code2',
   category: 'development',
@@ -43,7 +43,7 @@ const CODE_EDITOR_MANIFEST: ScenarioManifest = {
 }
 
 const codeEditorModule: ScenarioModule = {
-  id: 'workspace-editor',
+  id: 'dev-assistant',
   version: '1.0.0',
 
   getManifest: () => CODE_EDITOR_MANIFEST,
@@ -56,19 +56,19 @@ const codeEditorModule: ScenarioModule = {
 
   onActivate: async (context: ScenarioModuleContext) => {
     const log = context.getLogger()
-    log.info(`Activating workspace-editor scenario v${context.version}`)
+    log.info(`Activating dev-assistant scenario v${context.version}`)
 
     context.publishData('scenario:activated', {
-      scenarioId: 'workspace-editor',
+      scenarioId: 'dev-assistant',
       capabilities: ['code_edit', 'file_management', 'terminal', 'git', 'search'],
     })
   },
 
   onDeactivate: async (context: ScenarioModuleContext) => {
     const log = context.getLogger()
-    log.info('Deactivating workspace-editor scenario')
+    log.info('Deactivating dev-assistant scenario')
 
-    context.publishData('scenario:deactivated', { scenarioId: 'workspace-editor' })
+    context.publishData('scenario:deactivated', { scenarioId: 'dev-assistant' })
   },
 
   onHealthCheck: async (): Promise<ScenarioHealthCheck[]> => {

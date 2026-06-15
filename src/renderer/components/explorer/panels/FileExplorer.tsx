@@ -348,7 +348,7 @@ export function ExplorerView() {
     }
   }, [language, refreshFiles, workspacePath])
 
-  const isWorkspaceEditor = activeScenarioId === 'workspace-editor'
+  const isWorkspaceEditor = activeScenarioId === 'dev-assistant'
 
   const rootMenuItems: ContextMenuItem[] = [
     { id: 'newFile', label: t('newFile', language as Language), icon: FilePlus, onClick: () => handleRootCreate('file') },

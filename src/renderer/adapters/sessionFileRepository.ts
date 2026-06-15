@@ -37,7 +37,7 @@ interface ScenarioSessionConfig {
 }
 
 const SCENARIO_SESSION_CONFIGS: Record<string, ScenarioSessionConfig> = {
-    'workspace-editor': {
+    'dev-assistant': {
         maxSessions: 50,
         autoSaveIntervalMs: 30000,
         maxOpenFiles: 30,
@@ -68,8 +68,8 @@ const SCENARIO_SESSION_CONFIGS: Record<string, ScenarioSessionConfig> = {
 }
 
 function getActiveConfig(): ScenarioSessionConfig {
-    const scenarioId = useStore.getState().activeScenarioId ?? 'workspace-editor'
-    return SCENARIO_SESSION_CONFIGS[scenarioId] ?? SCENARIO_SESSION_CONFIGS['workspace-editor']
+    const scenarioId = useStore.getState().activeScenarioId ?? 'dev-assistant'
+    return SCENARIO_SESSION_CONFIGS[scenarioId] ?? SCENARIO_SESSION_CONFIGS['dev-assistant']
 }
 
 class ScenarioSessionStore {
@@ -150,7 +150,7 @@ class ScenarioSessionStore {
     }
 
     restoreLatestSession(scenarioId?: string): SessionData | null {
-        const targetScenario = scenarioId ?? useStore.getState().activeScenarioId ?? 'workspace-editor'
+        const targetScenario = scenarioId ?? useStore.getState().activeScenarioId ?? 'dev-assistant'
         const scenarioSessions = this.enumerateSessions(targetScenario)
 
         if (scenarioSessions.length === 0) return null

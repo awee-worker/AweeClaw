@@ -821,7 +821,7 @@ export const VirtualFileTree = memo(function VirtualFileTree({
   // 构建右键菜单项
   const getContextMenuItems = useCallback((node: FlattenedNode): ContextMenuItem[] => {
     const contextMenuLanguage = language as Language
-    const isWorkspaceEditor = activeScenarioId === 'workspace-editor'
+    const isWorkspaceEditor = activeScenarioId === 'dev-assistant'
 
     if (node.item.isDirectory) {
       return [

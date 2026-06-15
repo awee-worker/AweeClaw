@@ -95,7 +95,7 @@ interface ScenarioPathConfig {
 }
 
 const SCENARIO_PATH_CONFIGS: Record<string, ScenarioPathConfig> = {
-    'workspace-editor': {
+    'dev-assistant': {
         preferredDirs: ['src', 'lib', 'packages'],
         indexDirs: ['src', 'lib'],
         importAliases: { '@': 'src', '~': 'src', '#': 'src' },
@@ -122,8 +122,8 @@ const SCENARIO_PATH_CONFIGS: Record<string, ScenarioPathConfig> = {
 }
 
 function getActiveConfig(): ScenarioPathConfig {
-    const scenarioId = useStore.getState().activeScenarioId ?? 'workspace-editor'
-    return SCENARIO_PATH_CONFIGS[scenarioId] ?? SCENARIO_PATH_CONFIGS['workspace-editor']
+    const scenarioId = useStore.getState().activeScenarioId ?? 'dev-assistant'
+    return SCENARIO_PATH_CONFIGS[scenarioId] ?? SCENARIO_PATH_CONFIGS['dev-assistant']
 }
 
 export function canonicalizePath(path: string): string {

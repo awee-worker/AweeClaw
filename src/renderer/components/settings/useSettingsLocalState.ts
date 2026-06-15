@@ -298,7 +298,7 @@ export function useSettingsLocalState(embedded: boolean) {
   // 场景限制 tab
   useEffect(() => {
     const codeEditorOnlyTabs = new Set(['editor', 'snippets', 'indexing', 'lsp', 'keybindings'])
-    if (activeScenarioId !== 'workspace-editor' && codeEditorOnlyTabs.has(state.activeTab)) {
+    if (activeScenarioId !== 'dev-assistant' && codeEditorOnlyTabs.has(state.activeTab)) {
       dispatch({ type: 'SET_ACTIVE_TAB', tab: 'provider' })
     }
   }, [activeScenarioId, state.activeTab])

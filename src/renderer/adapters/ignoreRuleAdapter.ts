@@ -27,7 +27,7 @@ interface ScenarioIgnoreConfig {
 }
 
 const SCENARIO_IGNORE_CONFIGS: Record<string, ScenarioIgnoreConfig> = {
-    'workspace-editor': {
+    'dev-assistant': {
         defaultRules: [
             { id: 'ce-node-modules', pattern: 'node_modules', type: 'prefix', description: 'Node modules', enabled: true },
             { id: 'ce-dist', pattern: 'dist', type: 'prefix', description: 'Build output', enabled: true },
@@ -79,8 +79,8 @@ class ScenarioIgnoreEngine {
     }
 
     private loadScenarioRules(): void {
-        const scenarioId = useStore.getState().activeScenarioId ?? 'workspace-editor'
-        const config = SCENARIO_IGNORE_CONFIGS[scenarioId] ?? SCENARIO_IGNORE_CONFIGS['workspace-editor']
+        const scenarioId = useStore.getState().activeScenarioId ?? 'dev-assistant'
+        const config = SCENARIO_IGNORE_CONFIGS[scenarioId] ?? SCENARIO_IGNORE_CONFIGS['dev-assistant']
 
         this.rules = [...config.defaultRules]
 
@@ -98,7 +98,7 @@ class ScenarioIgnoreEngine {
     }
 
     applyScenarioRules(scenarioId: string): void {
-        const config = SCENARIO_IGNORE_CONFIGS[scenarioId] ?? SCENARIO_IGNORE_CONFIGS['workspace-editor']
+        const config = SCENARIO_IGNORE_CONFIGS[scenarioId] ?? SCENARIO_IGNORE_CONFIGS['dev-assistant']
 
         this.rules = this.rules.filter(r => {
             if (r.scenarioScope && r.scenarioScope.length > 0) {
@@ -117,8 +117,8 @@ class ScenarioIgnoreEngine {
     }
 
     evaluateExclusion(filePath: string): boolean {
-        const scenarioId = useStore.getState().activeScenarioId ?? 'workspace-editor'
-        const config = SCENARIO_IGNORE_CONFIGS[scenarioId] ?? SCENARIO_IGNORE_CONFIGS['workspace-editor']
+        const scenarioId = useStore.getState().activeScenarioId ?? 'dev-assistant'
+        const config = SCENARIO_IGNORE_CONFIGS[scenarioId] ?? SCENARIO_IGNORE_CONFIGS['dev-assistant']
 
         const normalizedPath = filePath.replace(/\\/g, '/')
 
@@ -185,8 +185,8 @@ class ScenarioIgnoreEngine {
     }
 
     getAlwaysIgnored(): string[] {
-        const scenarioId = useStore.getState().activeScenarioId ?? 'workspace-editor'
-        const config = SCENARIO_IGNORE_CONFIGS[scenarioId] ?? SCENARIO_IGNORE_CONFIGS['workspace-editor']
+        const scenarioId = useStore.getState().activeScenarioId ?? 'dev-assistant'
+        const config = SCENARIO_IGNORE_CONFIGS[scenarioId] ?? SCENARIO_IGNORE_CONFIGS['dev-assistant']
         return [...config.alwaysIgnore]
     }
 

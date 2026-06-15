@@ -113,7 +113,7 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
         webSearchConfig: defaultWebSearchConfig,
         mcpConfig: defaultMcpConfig,
         promptTemplateId: 'default',
-        activeScenarioId: 'workspace-editor',
+        activeScenarioId: 'dev-assistant',
         enableFileLogging: false,
         scenarioPreferences: DEFAULT_SCENARIO_PREFERENCES,
         browserMode: 'normal',

@@ -25,7 +25,7 @@ interface ScenarioShutdownConfig {
 }
 
 const SCENARIO_SHUTDOWN_CONFIGS: Record<string, ScenarioShutdownConfig> = {
-    'workspace-editor': {
+    'dev-assistant': {
         forceFullPersistence: false,
         flushAuditLog: false,
         timeoutMs: 5000,
@@ -52,8 +52,8 @@ const SCENARIO_SHUTDOWN_CONFIGS: Record<string, ScenarioShutdownConfig> = {
 }
 
 function getScenarioShutdownConfig(): ScenarioShutdownConfig {
-    const scenarioId = useStore.getState().activeScenarioId ?? 'workspace-editor'
-    return SCENARIO_SHUTDOWN_CONFIGS[scenarioId] ?? SCENARIO_SHUTDOWN_CONFIGS['workspace-editor']
+    const scenarioId = useStore.getState().activeScenarioId ?? 'dev-assistant'
+    return SCENARIO_SHUTDOWN_CONFIGS[scenarioId] ?? SCENARIO_SHUTDOWN_CONFIGS['dev-assistant']
 }
 
 async function persistWorkspaceBinding(): Promise<void> {

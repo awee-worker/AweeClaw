@@ -40,7 +40,7 @@ interface ScenarioIndexConfig {
 }
 
 const SCENARIO_INDEX_CONFIGS: Record<string, ScenarioIndexConfig> = {
-  'workspace-editor': {
+  'dev-assistant': {
     fileExtensions: [],
     excludePatterns: ['node_modules', '.git', 'dist', 'build'],
     maxConcurrency: 4,
@@ -75,8 +75,8 @@ const SCENARIO_INDEX_CONFIGS: Record<string, ScenarioIndexConfig> = {
 }
 
 function getScenarioIndexConfig(): ScenarioIndexConfig {
-  const scenarioId = useStore.getState().activeScenarioId ?? 'workspace-editor'
-  return SCENARIO_INDEX_CONFIGS[scenarioId] ?? SCENARIO_INDEX_CONFIGS['workspace-editor']
+  const scenarioId = useStore.getState().activeScenarioId ?? 'dev-assistant'
+  return SCENARIO_INDEX_CONFIGS[scenarioId] ?? SCENARIO_INDEX_CONFIGS['dev-assistant']
 }
 
 type ProgressCallback = (progress: IndexProgress) => void

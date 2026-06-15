@@ -50,7 +50,7 @@ interface ScenarioDiagnosticConfig {
 }
 
 const SCENARIO_DIAGNOSTIC_CONFIGS: Record<string, ScenarioDiagnosticConfig> = {
-    'workspace-editor': {
+    'dev-assistant': {
         severityOverrides: {},
         suppressedCodes: [],
         maxDiagnosticsPerFile: 500,
@@ -88,8 +88,8 @@ const SCENARIO_DIAGNOSTIC_CONFIGS: Record<string, ScenarioDiagnosticConfig> = {
 }
 
 function getActiveConfig(): ScenarioDiagnosticConfig {
-    const scenarioId = useStore.getState().activeScenarioId ?? 'workspace-editor'
-    return SCENARIO_DIAGNOSTIC_CONFIGS[scenarioId] ?? SCENARIO_DIAGNOSTIC_CONFIGS['workspace-editor']
+    const scenarioId = useStore.getState().activeScenarioId ?? 'dev-assistant'
+    return SCENARIO_DIAGNOSTIC_CONFIGS[scenarioId] ?? SCENARIO_DIAGNOSTIC_CONFIGS['dev-assistant']
 }
 
 class ScenarioDiagnosticStore {
@@ -104,7 +104,7 @@ class ScenarioDiagnosticStore {
 
     ingestDiagnostics(uri: string, items: Omit<DiagnosticItem, 'timestamp' | 'scenarioId'>[]): void {
         const config = getActiveConfig()
-        const scenarioId = useStore.getState().activeScenarioId ?? 'workspace-editor'
+        const scenarioId = useStore.getState().activeScenarioId ?? 'dev-assistant'
 
         const filtered = items
             .filter(item => {

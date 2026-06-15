@@ -1,8 +1,8 @@
 /**
- * 代码编辑器场景配置
+ * 开发助手场景配置
  *
  * 从 src/shared/config/scenarios/codeEditorScenario.ts 迁移，
- * 并扩展代码编辑器场景的完整定义。
+ * 并扩展开发助手场景的完整定义。
  */
 
 import type {
@@ -16,9 +16,9 @@ import { CODE_EDITOR_WELCOME_SUGGESTIONS, CODE_EDITOR_WELCOME_TITLE } from './we
 import { buildScenarioIdentity } from '../../scenarioBrandIdentity'
 
 const CODE_EDITOR_IDENTITY: ScenarioIdentity = {
-  systemPrompt: buildScenarioIdentity('Code Editor', 'focused on software development') + `
+  systemPrompt: buildScenarioIdentity('Dev Assistant', 'focused on software development') + `
 
-**Example for Code Editor scenario:**
+**Example for Dev Assistant scenario:**
 - **Coding**: Write, edit, refactor, debug code in any language
 - **File Management**: Read, write, search files and directories
 - **Terminal**: Run commands, install packages, build projects
@@ -216,12 +216,12 @@ const CODE_EDITOR_DATA_SOURCES: ScenarioDataSources = {
 }
 
 export const codeEditorScenario: ScenarioPlugin = {
-  id: 'workspace-editor',
-  name: 'Code Editor',
-  nameZh: '代码编辑器',
+  id: 'dev-assistant',
+  name: 'Dev Assistant',
+  nameZh: '开发助手',
   icon: 'Code2',
-  description: 'AI agent platform with professional code editing and deep Agent integration',
-  descriptionZh: 'AI 智能体平台，专业代码编辑与深度智能体集成',
+  description: 'Full-stack AI dev assistant — code, debug, build, and deploy with deep Agent integration',
+  descriptionZh: '全栈 AI 开发助手，覆盖编码、调试、构建、部署全流程，深度 Agent 协同',
   version: '1.0.0',
   author: 'awee',
   category: 'development',

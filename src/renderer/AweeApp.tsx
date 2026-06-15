@@ -102,7 +102,7 @@ function AppContent() {
   useWindowTitle()
   useFileWatcher()
   useGlobalShortcuts()
-  usePreviewDiscoveryToasts(hasWorkspace && isInitialized && activeScenarioId === 'workspace-editor')
+  usePreviewDiscoveryToasts(hasWorkspace && isInitialized && activeScenarioId === 'dev-assistant')
   useChannelBridge()
 
   const layoutConfig = useMemo<LayoutConfig>(() => {

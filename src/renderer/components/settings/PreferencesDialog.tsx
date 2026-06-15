@@ -138,7 +138,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
         providers.find(provider => provider.id === state.localConfig.provider),
         [state.localConfig.provider, providers])
 
-    const isWorkspaceEditor = activeScenarioId === 'workspace-editor'
+    const isWorkspaceEditor = activeScenarioId === 'dev-assistant'
     const codeEditorOnlyTabs = new Set(['editor', 'snippets', 'indexing', 'lsp', 'keybindings'])
 
     const tabs = useMemo(() => {
