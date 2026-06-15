@@ -8,11 +8,12 @@
 import { Suspense, lazy, useCallback } from 'react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
+import { safeLazy } from '@renderer/utils/safeImport'
 
 const CommandHub = lazy(() => import('@components/modals/CommandHub'))
 const ShortcutReference = lazy(() => import('@components/modals/ShortcutReference'))
 const FileNavigator = lazy(() => import('@components/modals/FileNavigator'))
-const OnboardingWizard = lazy(() => import('@scenarios/dev-assistant/components/OnboardingWizard'))
+const OnboardingWizard = safeLazy(() => import(/* @vite-ignore */ '@scenarios/dev-assistant/components/OnboardingWizard'), { label: 'OnboardingWizard' })
 const AppIdentityPanel = lazy(() => import('@components/modals/AppIdentityPanel'))
 
 interface GlobalOverlaysProps {

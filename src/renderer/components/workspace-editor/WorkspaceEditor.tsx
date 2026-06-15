@@ -1,7 +1,7 @@
 /**
  * 编辑器主组件
  */
-import { useRef, useCallback, useEffect, useState, lazy, Suspense } from 'react'
+import { useRef, useCallback, useEffect, useState, Suspense } from 'react'
 import MonacoEditor, { OnMount, BeforeMount, loader } from '@monaco-editor/react'
 import type { editor } from 'monaco-editor'
 import { Eye, Edit, Columns } from 'lucide-react'
@@ -28,23 +28,32 @@ import type { StreamingEditState } from '@intelligence/providerTypes'
 import type { ThemeName } from '@store/slices/themeSlice'
 import { useEditorBreakpoints } from '@hooks/useEditorBreakpoints'
 import { consumePendingNavigation } from '@services/editorNavigator'
+import { safeLazy, safeNamedLazy } from '@renderer/utils/safeImport'
 
-// 子组件
-import { EditorTabs } from '@scenarios/dev-assistant/components/editor/EditorTabBar'
-import { EditorBreadcrumbs } from '@scenarios/dev-assistant/components/editor/EditorPathNav'
+// 子组件（通过 safeLazy 加载，场景卸载时不会崩溃）
+const EditorTabs = safeNamedLazy(() => import(/* @vite-ignore */ '@scenarios/dev-assistant/components/editor/EditorTabBar'), 'EditorTabs', { label: 'EditorTabs', silent: true })
+const EditorBreadcrumbs = safeNamedLazy(() => import(/* @vite-ignore */ '@scenarios/dev-assistant/components/editor/EditorPathNav'), 'EditorBreadcrumbs', { label: 'EditorBreadcrumbs', silent: true })
+const InlineEdit = safeLazy(() => import(/* @vite-ignore */ '@scenarios/dev-assistant/components/editor/InlineCodeEdit'), { label: 'InlineCodeEdit', silent: true })
+const EditorContextMenu = safeLazy(() => import(/* @vite-ignore */ '@scenarios/dev-assistant/components/editor/CodeEditorMenu'), { label: 'EditorContextMenu', silent: true })
+const TabContextMenu = safeNamedLazy(() => import(/* @vite-ignore */ '@scenarios/dev-assistant/components/editor/TabActionMenu'), 'TabContextMenu', { label: 'TabContextMenu', silent: true })
+const EditorWelcome = safeNamedLazy(() => import(/* @vite-ignore */ '@scenarios/dev-assistant/components/editor/EditorLanding'), 'EditorWelcome', { label: 'EditorWelcome', silent: true })
+const BrowserPreviewTab = safeLazy(() => import(/* @vite-ignore */ '@scenarios/dev-assistant/components/editor/WebPreviewTab'), { label: 'BrowserPreviewTab', silent: true })
+
+const PdfPreview = safeNamedLazy(() => import(/* @vite-ignore */ '@scenarios/dev-assistant/components/editor/DocumentPreview'), 'PdfPreview', { label: 'PdfPreview', silent: true })
+const DocxPreview = safeNamedLazy(() => import(/* @vite-ignore */ '@scenarios/dev-assistant/components/editor/DocumentPreview'), 'DocxPreview', { label: 'DocxPreview', silent: true })
+const DocPreview = safeNamedLazy(() => import(/* @vite-ignore */ '@scenarios/dev-assistant/components/editor/DocumentPreview'), 'DocPreview', { label: 'DocPreview', silent: true })
+const PptxPreview = safeNamedLazy(() => import(/* @vite-ignore */ '@scenarios/dev-assistant/components/editor/DocumentPreview'), 'PptxPreview', { label: 'PptxPreview', silent: true })
+const PptPreview = safeNamedLazy(() => import(/* @vite-ignore */ '@scenarios/dev-assistant/components/editor/DocumentPreview'), 'PptPreview', { label: 'PptPreview', silent: true })
+const XlsxPreview = safeNamedLazy(() => import(/* @vite-ignore */ '@scenarios/dev-assistant/components/editor/DocumentPreview'), 'XlsxPreview', { label: 'XlsxPreview', silent: true })
+const CsvPreview = safeNamedLazy(() => import(/* @vite-ignore */ '@scenarios/dev-assistant/components/editor/DocumentPreview'), 'CsvPreview', { label: 'CsvPreview', silent: true })
+
 import { DiffPreview } from './DiffViewerPanel'
 import DiffViewer from './CodeDiffViewer'
-import InlineEdit from '@scenarios/dev-assistant/components/editor/InlineCodeEdit'
-import EditorContextMenu from '@scenarios/dev-assistant/components/editor/CodeEditorMenu'
-import { TabContextMenu } from '@scenarios/dev-assistant/components/editor/TabActionMenu'
-import { EditorWelcome } from '@scenarios/dev-assistant/components/editor/EditorLanding'
 import { SafeDiffEditor } from './SecureDiffEditor'
 import { getFileType, MarkdownPreview, ImagePreview, HtmlPreview, UnsupportedFile } from './FilePreviewPanel'
-import { PdfPreview, DocxPreview, DocPreview, PptxPreview, PptPreview, XlsxPreview, CsvPreview } from '@scenarios/dev-assistant/components/editor/DocumentPreview'
 import { CodeSkeleton } from '../ui/ProgressIndicator'
 import { ExecutionBoard } from '../plan/ExecutionBoard'
 import WritingWorkspace from '../writing/WritingWorkspace'
-const BrowserPreviewTab = lazy(() => import('@scenarios/dev-assistant/components/editor/WebPreviewTab'))
 
 function isPlanJsonFile(filePath: string): boolean {
   const normalizedPath = normalizePath(filePath)
@@ -56,7 +65,7 @@ function getPlanIdFromPlanFilePath(filePath: string): string {
 }
 
 // Hooks
-import { useEditorActions, useAICompletion, useEditorEvents, useComposerInlineDiff } from '@scenarios/dev-assistant/components/editor/hooks'
+import { useEditorActions, useAICompletion, useEditorEvents, useComposerInlineDiff } from './DevAssistantBridge'
 import { getLanguage } from './utils/langIdMapper'
 import { defineMonacoTheme } from './utils/editorTheme'
 import { isPreviewDocumentPath } from '@shared/protocols/previewProtocol'
