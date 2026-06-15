@@ -63,6 +63,10 @@ function hexToRgb(hex: string): string {
 }
 
 // 内置主题 (使用 RGB 格式)
+// 设计原则:
+//   - 暗色主题: 深蓝灰基调而非纯黑，层间有6-8点亮度差，文字高对比度
+//   - 亮色主题: 暖白基调，层间清晰可辨，代码块与聊天背景区分明显
+//   - 配色: Accent 使用饱和度适中的色相，status 色明确直观
 // 命名规范：亮色 *-light / 暗色 *-dark，按色系配对排列
 export const builtinThemes: Theme[] = [
   // ========== 亮色主题 ==========
@@ -72,36 +76,36 @@ export const builtinThemes: Theme[] = [
     type: 'light',
     monacoTheme: 'vs',
     colors: {
-      background: '245 250 255',          // #f5faff 冰蓝白
-      backgroundSecondary: '238 246 253', // #eef6fd 淡蓝白
-      backgroundTertiary: '228 240 250',  // #e4f0fa 浅蓝灰
-      chatBg: '248 251 255',              // #f8fbff 纯净蓝白
+      background: '248 250 252',          // #f8fafc  - 冷白基调
+      backgroundSecondary: '241 245 249', // #f1f5f9
+      backgroundTertiary: '233 238 245',  // #e9eef5
+      chatBg: '244 247 250',              // #f4f7fa  - 聊天区微暖
 
-      surface: '255 255 255',
-      surfaceHover: '228 240 250',
-      surfaceActive: '215 232 245',
-      surfaceMuted: '200 222 240',
+      surface: '255 255 255',             // #ffffff  - 纯白卡片
+      surfaceHover: '241 245 250',        // #f1f5fa
+      surfaceActive: '230 237 247',       // #e6edf7
+      surfaceMuted: '218 228 240',        // #dae4f0
 
-      textPrimary: '15 30 50',
-      textSecondary: '50 70 95',
-      textMuted: '100 120 145',
-      textInverted: '245 250 255',
+      textPrimary: '15 23 42',            // #0f172a  - 深色文字高对比
+      textSecondary: '51 65 85',          // #334155
+      textMuted: '100 116 139',           // #64748b
+      textInverted: '255 255 255',        // #ffffff
 
-      border: '200 222 240',
-      borderSubtle: '222 238 250',
-      borderActive: '57 190 248',
+      border: '203 213 225',              // #cbd5e1
+      borderSubtle: '226 232 240',        // #e2e8f0
+      borderActive: '14 165 233',         // #0ea5e9
 
-      accent: '57 190 248',            // #39bef8 天空蓝
-      accentHover: '30 165 230',       // #1ea5e6 深天空蓝
-      accentActive: '15 140 210',      // #0f8cd2 更深蓝
-      accentForeground: '255 255 255',
-      accentSubtle: '100 210 255',     // #64d2ff 亮天蓝
+      accent: '14 165 233',               // #0ea5e9  - 天蓝色
+      accentHover: '2 132 199',           // #0284c7
+      accentActive: '3 105 161',          // #0369a1
+      accentForeground: '255 255 255',    // #ffffff
+      accentSubtle: '125 211 252',        // #7dd3fc
 
-      statusSuccess: '22 140 70',
-      statusWarning: '195 120 15',
-      statusError: '195 45 35',
-      statusInfo: '30 130 200',
-    },
+      statusSuccess: '22 163 74',         // #16a34a
+      statusWarning: '217 119 6',         // #d97706
+      statusError: '220 38 38',           // #dc2626
+      statusInfo: '37 99 235',            // #2563eb
+    }
   },
   {
     id: 'purple-light',
@@ -109,36 +113,36 @@ export const builtinThemes: Theme[] = [
     type: 'light',
     monacoTheme: 'vs',
     colors: {
-      background: '248 245 255',          // #f8f5ff 淡紫白
-      backgroundSecondary: '242 238 252', // #f2eefc 浅紫灰
-      backgroundTertiary: '232 225 245',  // #e8e1f5 紫灰
-      chatBg: '250 248 255',              // #faf8ff 纯净紫白
+      background: '250 248 254',           // #faf8fe
+      backgroundSecondary: '243 240 251',  // #f3f0fb
+      backgroundTertiary: '235 230 248',   // #ebe6f8
+      chatBg: '247 245 252',               // #f7f5fc
 
-      surface: '255 255 255',
-      surfaceHover: '232 225 245',
-      surfaceActive: '220 210 238',
-      surfaceMuted: '205 195 225',
+      surface: '255 255 255',              // #ffffff
+      surfaceHover: '243 240 252',         // #f3f0fc
+      surfaceActive: '233 228 248',        // #e9e4f8
+      surfaceMuted: '221 214 242',         // #ddd6f2
 
-      textPrimary: '30 20 50',
-      textSecondary: '60 45 85',
-      textMuted: '110 90 135',
-      textInverted: '248 245 255',
+      textPrimary: '25 14 55',             // #190e37
+      textSecondary: '64 42 100',          // #402a64
+      textMuted: '110 82 150',             // #6e5296
+      textInverted: '255 255 255',         // #ffffff
 
-      border: '205 195 225',
-      borderSubtle: '228 222 242',
-      borderActive: '139 92 246',
+      border: '215 206 238',               // #d7ceee
+      borderSubtle: '233 227 246',         // #e9e3f6
+      borderActive: '139 92 246',          // #8b5cf6
 
-      accent: '139 92 246',            // Violet 500
-      accentHover: '124 58 237',       // Violet 600
-      accentActive: '109 40 217',      // Violet 700
-      accentForeground: '255 255 255',
-      accentSubtle: '167 139 250',     // Violet 400
+      accent: '139 92 246',                // #8b5cf6
+      accentHover: '124 58 237',           // #7c3aed
+      accentActive: '109 40 217',          // #6d28d9
+      accentForeground: '255 255 255',     // #ffffff
+      accentSubtle: '196 181 253',         // #c4b5fd
 
-      statusSuccess: '22 140 70',
-      statusWarning: '195 120 15',
-      statusError: '195 45 35',
-      statusInfo: '80 100 200',
-    },
+      statusSuccess: '22 163 74',          // #16a34a
+      statusWarning: '217 119 6',          // #d97706
+      statusError: '220 38 38',            // #dc2626
+      statusInfo: '124 58 237'             // #7c3aed
+    }
   },
   {
     id: 'lobster-red-light',
@@ -146,36 +150,36 @@ export const builtinThemes: Theme[] = [
     type: 'light',
     monacoTheme: 'vs',
     colors: {
-      background: '255 252 249',         // #fffcf9 暖白
-      backgroundSecondary: '250 245 240', // #faf5f0 淡暖灰
-      backgroundTertiary: '243 236 229',  // #f3ece5 暖灰
-      chatBg: '253 249 245',              // #fdf9f5 暖白
+      background: '255 252 250',          // #fffcfa
+      backgroundSecondary: '252 247 243', // #fcf7f3
+      backgroundTertiary: '246 238 232',  // #f6eee8
+      chatBg: '253 250 246',              // #fdfaf6
 
-      surface: '255 255 255',
-      surfaceHover: '243 236 229',
-      surfaceActive: '235 226 218',
-      surfaceMuted: '222 212 202',
+      surface: '255 255 255',             // #ffffff
+      surfaceHover: '250 244 238',        // #faf4ee
+      surfaceActive: '243 234 226',       // #f3eae2
+      surfaceMuted: '234 222 212',        // #eaded4
 
-      textPrimary: '45 30 25',
-      textSecondary: '95 75 65',
-      textMuted: '140 120 108',
-      textInverted: '255 252 249',
+      textPrimary: '40 22 14',            // #28160e
+      textSecondary: '92 60 42',          // #5c3c2a
+      textMuted: '140 98 76',             // #8c624c
+      textInverted: '255 255 255',        // #ffffff
 
-      border: '225 215 205',
-      borderSubtle: '240 233 225',
-      borderActive: '190 165 150',
+      border: '232 220 208',              // #e8dcd0
+      borderSubtle: '244 236 227',        // #f4ece3
+      borderActive: '234 88 12',          // #ea580c
 
-      accent: '210 60 42',           // 小龙虾红
-      accentHover: '190 48 35',      // 深龙虾红
-      accentActive: '165 38 28',     // 更深红
-      accentForeground: '255 255 255',
-      accentSubtle: '230 100 80',    // 亮珊瑚
+      accent: '234 88 12',                // #ea580c  - 暖橙色
+      accentHover: '194 65 12',           // #c2410c
+      accentActive: '154 52 18',          // #9a3412
+      accentForeground: '255 255 255',    // #ffffff
+      accentSubtle: '253 186 116',        // #fdba74
 
-      statusSuccess: '22 140 70',
-      statusWarning: '195 120 15',
-      statusError: '195 45 35',
-      statusInfo: '40 100 180',
-    },
+      statusSuccess: '22 163 74',         // #16a34a
+      statusWarning: '217 119 6',         // #d97706
+      statusError: '220 38 38',           // #dc2626
+      statusInfo: '37 99 235'             // #2563eb
+    }
   },
   {
     id: 'forest-green-light',
@@ -183,75 +187,76 @@ export const builtinThemes: Theme[] = [
     type: 'light',
     monacoTheme: 'vs',
     colors: {
-      background: '245 252 252',          // #f5fcfc 薄荷白
-      backgroundSecondary: '238 248 248', // #eef8f8 淡绿白
-      backgroundTertiary: '228 242 242',  // #e4f2f2 浅绿灰
-      chatBg: '248 253 253',              // #f8fdfd 纯净绿白
+      background: '246 252 248',          // #f6fcf8
+      backgroundSecondary: '236 247 240', // #ecf7f0
+      backgroundTertiary: '224 238 230',  // #e0eee6
+      chatBg: '249 253 250',              // #f9fdfa
 
-      surface: '255 255 255',
-      surfaceHover: '228 242 242',
-      surfaceActive: '215 234 234',
-      surfaceMuted: '200 225 225',
+      surface: '255 255 255',             // #ffffff
+      surfaceHover: '237 248 242',        // #edf8f2
+      surfaceActive: '224 240 231',       // #e0f0e7
+      surfaceMuted: '210 230 218',        // #d2e6da
 
-      textPrimary: '20 50 50',
-      textSecondary: '50 80 80',
-      textMuted: '90 120 120',
-      textInverted: '245 252 252',
+      textPrimary: '15 42 30',            // #0f2a1e
+      textSecondary: '44 80 58',          // #2c503a
+      textMuted: '82 122 94',             // #527a5e
+      textInverted: '255 255 255',        // #ffffff
 
-      border: '200 225 225',
-      borderSubtle: '218 240 240',
-      borderActive: '0 140 140',
+      border: '204 222 210',              // #ccded2
+      borderSubtle: '224 236 227',        // #e0ece3
+      borderActive: '5 150 105',          // #059669
 
-      accent: '0 140 140',            // 森林青绿
-      accentHover: '0 120 120',       // 深青绿
-      accentActive: '0 100 100',      // 更深青绿
-      accentForeground: '255 255 255',
-      accentSubtle: '0 170 170',      // 亮青绿
+      accent: '5 150 105',                // #059669  - 翠绿色
+      accentHover: '4 120 87',            // #047857
+      accentActive: '6 95 70',            // #065f46
+      accentForeground: '255 255 255',    // #ffffff
+      accentSubtle: '110 231 183',        // #6ee7b7
 
-      statusSuccess: '22 140 70',
-      statusWarning: '195 120 15',
-      statusError: '195 45 35',
-      statusInfo: '0 120 160',
-    },
+      statusSuccess: '22 163 74',         // #16a34a
+      statusWarning: '217 119 6',         // #d97706
+      statusError: '220 38 38',           // #dc2626
+      statusInfo: '37 99 235'             // #2563eb
+    }
   },
 
   // ========== 暗色主题 ==========
+  // 设计要点: 非纯黑底色，每层有6-8点亮度递进，文字高对比度
   {
     id: 'aweeclaw-dark',
     name: 'AweeClaw Dark',
     type: 'dark',
     monacoTheme: 'vs-dark',
     colors: {
-      background: '22 27 34',         // #161b22 深蓝灰
-      backgroundSecondary: '28 33 42', // #1c212a 侧边栏
-      backgroundTertiary: '37 43 54',  // #252b36 输入框
-      chatBg: '28 33 42',
+      background: '15 23 42',            // #0f172a  - 深蓝灰底（非纯黑）
+      backgroundSecondary: '22 33 55',   // #162137
+      backgroundTertiary: '30 42 66',    // #1e2a42
+      chatBg: '18 28 48',                // #121c30  - 聊天区微亮
 
-      surface: '28 33 42',
-      surfaceHover: '45 51 65',
-      surfaceActive: '55 61 75',
-      surfaceMuted: '70 78 94',
+      surface: '22 33 55',               // #162137
+      surfaceHover: '35 50 78',          // #23324e
+      surfaceActive: '45 62 92',         // #2d3e5c
+      surfaceMuted: '58 76 110',         // #3a4c6e
 
-      textPrimary: '220 225 235',
-      textSecondary: '155 165 185',
-      textMuted: '110 120 140',
-      textInverted: '22 27 34',
+      textPrimary: '232 238 246',        // #e8eef6  - 高亮白
+      textSecondary: '176 188 204',      // #b0bccc
+      textMuted: '136 152 176',          // #8898b0
+      textInverted: '15 23 42',          // #0f172a
 
-      border: '45 51 65',
-      borderSubtle: '30 36 48',
-      borderActive: '80 90 110',
+      border: '45 62 92',                // #2d3e5c
+      borderSubtle: '30 42 66',          // #1e2a42
+      borderActive: '56 189 248',        // #38bdf8
 
-      accent: '56 189 248',          // Sky 400 冰川蓝
-      accentHover: '14 165 233',     // Sky 500
-      accentActive: '2 132 199',     // Sky 600
-      accentForeground: '15 23 42',
-      accentSubtle: '125 211 252',   // Sky 300
+      accent: '56 189 248',              // #38bdf8  - 亮天蓝
+      accentHover: '14 165 233',         // #0ea5e9
+      accentActive: '2 132 199',         // #0284c7
+      accentForeground: '8 15 28',       // #080f1c
+      accentSubtle: '125 211 252',       // #7dd3fc
 
-      statusSuccess: '46 160 90',
-      statusWarning: '210 160 30',
-      statusError: '240 80 80',
-      statusInfo: '60 160 240',
-    },
+      statusSuccess: '52 211 153',       // #34d399
+      statusWarning: '251 191 36',       // #fbbf24
+      statusError: '248 113 113',        // #f87171
+      statusInfo: '96 165 250'           // #60a5fa
+    }
   },
   {
     id: 'purple-dark',
@@ -259,36 +264,36 @@ export const builtinThemes: Theme[] = [
     type: 'dark',
     monacoTheme: 'vs-dark',
     colors: {
-      background: '18 18 21',         // #121215 极深紫灰
-      backgroundSecondary: '25 25 29', // #19191D 侧边栏
-      backgroundTertiary: '32 32 37',  // #202025 输入框
-      chatBg: '25 25 29',
+      background: '18 15 32',            // #120f20  - 深紫底
+      backgroundSecondary: '26 22 45',   // #1a162d
+      backgroundTertiary: '34 29 56',    // #221d38
+      chatBg: '20 17 38',                // #141126
 
-      surface: '25 25 29',
-      surfaceHover: '38 38 44',
-      surfaceActive: '45 45 52',
-      surfaceMuted: '63 63 70',
+      surface: '26 22 45',               // #1a162d
+      surfaceHover: '38 33 60',          // #26213c
+      surfaceActive: '48 42 73',         // #302a49
+      surfaceMuted: '60 54 88',          // #3c3658
 
-      textPrimary: '242 242 247',
-      textSecondary: '175 175 192',
-      textMuted: '130 130 148',
-      textInverted: '18 18 21',
+      textPrimary: '240 238 248',        // #f0eef8  - 微紫白
+      textSecondary: '190 182 216',      // #beb6d8
+      textMuted: '148 138 182',          // #948ab6
+      textInverted: '18 15 32',          // #120f20
 
-      border: '40 40 48',
-      borderSubtle: '32 32 37',
-      borderActive: '82 82 100',
+      border: '38 33 60',                // #26213c
+      borderSubtle: '30 25 50',          // #1e1932
+      borderActive: '167 139 250',       // #a78bfa
 
-      accent: '139 92 246',          // Violet 500
-      accentHover: '124 58 237',     // Violet 600
-      accentActive: '109 40 217',    // Violet 700
-      accentForeground: '255 255 255',
-      accentSubtle: '167 139 250',   // Violet 400
+      accent: '167 139 250',             // #a78bfa  - 亮紫
+      accentHover: '139 92 246',         // #8b5cf6
+      accentActive: '124 58 237',        // #7c3aed
+      accentForeground: '255 255 255',   // #ffffff
+      accentSubtle: '196 181 253',       // #c4b5fd
 
-      statusSuccess: '52 211 153',
-      statusWarning: '251 191 36',
-      statusError: '248 113 113',
-      statusInfo: '96 165 250',
-    },
+      statusSuccess: '52 211 153',       // #34d399
+      statusWarning: '251 191 36',       // #fbbf24
+      statusError: '248 113 113',        // #f87171
+      statusInfo: '129 140 248'          // #818cf8
+    }
   },
   {
     id: 'lobster-red-dark',
@@ -296,36 +301,36 @@ export const builtinThemes: Theme[] = [
     type: 'dark',
     monacoTheme: 'vs-dark',
     colors: {
-      background: '20 14 12',         // #140e0c 极深暖棕黑
-      backgroundSecondary: '28 20 18', // #1c1412 深棕
-      backgroundTertiary: '38 28 24',  // #261c18 暖棕
-      chatBg: '28 20 18',
+      background: '26 14 10',            // #1a0e0a  - 深棕底
+      backgroundSecondary: '36 20 15',   // #24140f
+      backgroundTertiary: '48 28 22',    // #301c16
+      chatBg: '30 17 13',                // #1e110d
 
-      surface: '28 20 18',
-      surfaceHover: '45 32 28',
-      surfaceActive: '58 42 36',
-      surfaceMuted: '78 58 50',
+      surface: '36 20 15',               // #24140f
+      surfaceHover: '52 33 26',          // #34211a
+      surfaceActive: '66 44 35',         // #422c23
+      surfaceMuted: '82 58 47',          // #523a2f
 
-      textPrimary: '245 235 228',
-      textSecondary: '195 175 165',
-      textMuted: '145 125 115',
-      textInverted: '20 14 12',
+      textPrimary: '248 237 232',        // #f8ede8  - 暖白
+      textSecondary: '212 180 172',      // #d4b4ac
+      textMuted: '176 128 116',          // #b08074
+      textInverted: '26 14 10',          // #1a0e0a
 
-      border: '50 36 30',
-      borderSubtle: '35 26 22',
-      borderActive: '120 70 55',
+      border: '52 33 26',                // #34211a
+      borderSubtle: '40 24 19',          // #281813
+      borderActive: '251 113 86',        // #fb7156
 
-      accent: '220 70 50',           // 小龙虾红
-      accentHover: '200 55 40',      // 深龙虾红
-      accentActive: '175 42 32',     // 更深红
-      accentForeground: '255 255 255',
-      accentSubtle: '240 110 85',    // 亮珊瑚
+      accent: '251 113 86',              // #fb7156  - 暖珊瑚
+      accentHover: '240 90 58',          // #f05a3a
+      accentActive: '220 65 38',         // #dc4126
+      accentForeground: '255 255 255',   // #ffffff
+      accentSubtle: '253 166 134',       // #fda686
 
-      statusSuccess: '72 187 120',
-      statusWarning: '237 160 50',
-      statusError: '230 80 65',
-      statusInfo: '90 155 210',
-    },
+      statusSuccess: '52 211 153',       // #34d399
+      statusWarning: '251 191 36',       // #fbbf24
+      statusError: '252 85 72',          // #fc5548
+      statusInfo: '96 165 250'           // #60a5fa
+    }
   },
   {
     id: 'forest-green-dark',
@@ -333,36 +338,36 @@ export const builtinThemes: Theme[] = [
     type: 'dark',
     monacoTheme: 'vs-dark',
     colors: {
-      background: '14 22 20',         // #0e1614 极深森林黑
-      backgroundSecondary: '20 30 28', // #141e1c 深绿黑
-      backgroundTertiary: '28 40 36',  // #1c2824 暗绿灰
-      chatBg: '20 30 28',
+      background: '10 21 16',            // #0a1510  - 深绿底
+      backgroundSecondary: '15 30 22',   // #0f1e16
+      backgroundTertiary: '21 42 30',    // #152a1e
+      chatBg: '13 25 19',                // #0d1913
 
-      surface: '20 30 28',
-      surfaceHover: '38 52 48',
-      surfaceActive: '48 65 58',
-      surfaceMuted: '65 85 75',
+      surface: '15 30 22',               // #0f1e16
+      surfaceHover: '27 46 36',          // #1b2e24
+      surfaceActive: '37 60 46',         // #253c2e
+      surfaceMuted: '50 78 60',          // #324e3c
 
-      textPrimary: '230 245 238',
-      textSecondary: '170 195 180',
-      textMuted: '120 145 130',
-      textInverted: '14 22 20',
+      textPrimary: '232 245 236',        // #e8f5ec  - 微绿白
+      textSecondary: '184 212 194',      // #b8d4c2
+      textMuted: '138 176 152',          // #8ab098
+      textInverted: '10 21 16',          // #0a1510
 
-      border: '40 55 48',
-      borderSubtle: '28 40 36',
-      borderActive: '80 110 90',
+      border: '27 46 36',                // #1b2e24
+      borderSubtle: '20 34 26',          // #14221a
+      borderActive: '16 185 129',        // #10b981
 
-      accent: '52 211 153',          // Emerald 400 翡翠绿
-      accentHover: '16 185 129',     // Emerald 500
-      accentActive: '5 150 105',     // Emerald 600
-      accentForeground: '10 30 20',
-      accentSubtle: '110 231 183',   // Emerald 300
+      accent: '16 185 129',              // #10b981  - 亮翠绿
+      accentHover: '5 150 105',          // #059669
+      accentActive: '4 120 87',          // #047857
+      accentForeground: '5 18 10',       // #05120a
+      accentSubtle: '110 231 183',       // #6ee7b7
 
-      statusSuccess: '52 211 153',
-      statusWarning: '237 160 50',
-      statusError: '230 80 65',
-      statusInfo: '90 155 210',
-    },
+      statusSuccess: '52 211 153',       // #34d399
+      statusWarning: '251 191 36',       // #fbbf24
+      statusError: '248 113 113',        // #f87171
+      statusInfo: '96 165 250'           // #60a5fa
+    }
   },
 ]
 

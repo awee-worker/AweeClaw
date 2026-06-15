@@ -5,7 +5,7 @@
  * 数据加载策略：优先从数据库查询，数据库连接失败时降级读内存缓存
  */
 
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   History,
@@ -111,6 +111,8 @@ export default function SessionHistoryPage({ onClose }: SessionHistoryPageProps)
 
   // 从数据库查询线程摘要，失败时降级到内存缓存
   const [threadSummaries, setThreadSummaries] = useState<ThreadSummaryItem[]>([])
+  const allThreadsRef = useRef(allThreads)
+  allThreadsRef.current = allThreads
 
   useEffect(() => {
     let cancelled = false
@@ -127,7 +129,7 @@ export default function SessionHistoryPage({ onClose }: SessionHistoryPageProps)
         logger.system.warn('[SessionHistory] DB query failed, falling back to cache:', err)
         // 数据库查询失败，降级到内存缓存
         if (!cancelled) {
-          setThreadSummaries(getThreadSummariesFromCache(allThreads))
+          setThreadSummaries(getThreadSummariesFromCache(allThreadsRef.current))
         }
       } finally {
         if (!cancelled) {
@@ -139,7 +141,7 @@ export default function SessionHistoryPage({ onClose }: SessionHistoryPageProps)
     loadSummaries()
 
     return () => { cancelled = true }
-  }, [currentUserId, allThreads])
+  }, [currentUserId])
 
   const filteredThreads = useMemo(() => {
     let result = [...threadSummaries]

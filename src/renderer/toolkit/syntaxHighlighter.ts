@@ -39,9 +39,25 @@ SyntaxHighlighter.registerLanguage('cpp', cpp)
 SyntaxHighlighter.registerLanguage('sql', sql)
 
 /**
- * 替换语法高亮样式中的灰色为 #333333
+ * 将 RGB 空格分隔字符串转为 hex 颜色
+ * 例: "222 227 237" → "#dee3ed"
+ */
+function rgbToHex(rgb: string): string {
+  const parts = rgb.trim().split(/\s+/)
+  if (parts.length !== 3) return rgb
+  const r = parseInt(parts[0], 10)
+  const g = parseInt(parts[1], 10)
+  const b = parseInt(parts[2], 10)
+  if (isNaN(r) || isNaN(g) || isNaN(b)) return rgb
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
+}
+
+/**
+ * 替换语法高亮样式中的灰色为指定颜色
  * 遍历样式对象，将纯灰色 hex 颜色（RGB 通道相等，范围 #666~#E0）统一替换
  * 解决高亮主题下灰色文字太浅看不清的问题
+ * @param style 原始语法高亮样式对象
+ * @param targetColor 替换目标颜色（hex格式），暗色主题应传入 textPrimary 颜色
  */
 function isGrayHex(val: unknown): val is string {
   if (typeof val !== 'string') return false
@@ -53,13 +69,14 @@ function isGrayHex(val: unknown): val is string {
   return r === g && g === b && r >= 0x66 && r <= 0xe0
 }
 
-export function patchSyntaxStyle<T extends Record<string, unknown>>(style: T): T {
+export function patchSyntaxStyle<T extends Record<string, unknown>>(style: T, targetColor?: string): T {
+  const color = targetColor || '#333333'
   const cloned = JSON.parse(JSON.stringify(style)) as T
   const walk = (obj: Record<string, unknown>) => {
     for (const key of Object.keys(obj)) {
       const val = obj[key]
       if (isGrayHex(val)) {
-        obj[key] = '#333333'
+        obj[key] = color
       } else if (val && typeof val === 'object' && !Array.isArray(val)) {
         walk(val as Record<string, unknown>)
       }
@@ -69,4 +86,4 @@ export function patchSyntaxStyle<T extends Record<string, unknown>>(style: T): T
   return cloned
 }
 
-export { SyntaxHighlighter }
+export { SyntaxHighlighter, rgbToHex }

@@ -5,9 +5,9 @@
  */
 
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react'
-import { Copy, Check, Edit2, RotateCcw, ChevronDown, X, Wrench, FileText, Code, Folder, Link2, Clock, MoreHorizontal, Trash2 } from 'lucide-react'
+import { Copy, Check, Edit2, RotateCcw, ChevronDown, ChevronRight, X, Wrench, FileText, Code, Folder, Link2, Clock, MoreHorizontal, Trash2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
-import { SyntaxHighlighter, patchSyntaxStyle } from '@utils/syntaxHighlighter'
+import { SyntaxHighlighter, patchSyntaxStyle, rgbToHex } from '@utils/syntaxHighlighter'
 import { playNotificationSound } from '@utils/notificationSound'
 import { vscDarkPlus, vs } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { themeManager } from '../../config/themeDefinition'
@@ -97,15 +97,20 @@ const MARKDOWN_REHYPE_PLUGINS = [rehypeKatex]
 const ACTIVE_STREAM_PHASES = new Set(['streaming', 'tool_running', 'tool_pending'])
 const STREAMING_TAIL_LENGTH = 40
 
-// 代码块组件 - 更加精致的玻璃质感
+// 代码块组件 - 支持收起/展开
 const CodeBlock = React.memo(({ language, children, fontSize }: { language: string | undefined; children: React.ReactNode; fontSize: number }) => {
   const [copied, setCopied] = useState(false)
+  const [collapsed, setCollapsed] = useState(false)
   const currentTheme = useStore(s => s.currentTheme)
   const theme = themeManager.getThemeById(currentTheme)
-  const syntaxStyle = useMemo(
-    () => patchSyntaxStyle(theme?.type === 'light' ? vs : vscDarkPlus),
-    [theme?.type]
-  )
+  const syntaxStyle = useMemo(() => {
+    const isDark = theme?.type === 'dark'
+    const baseStyle = isDark ? vscDarkPlus : vs
+    const targetColor = isDark && theme?.colors?.textPrimary
+      ? rgbToHex(theme.colors.textPrimary)
+      : undefined
+    return patchSyntaxStyle(baseStyle, targetColor)
+  }, [theme?.type, theme?.colors?.textPrimary])
 
   // Flatten text from children
   const codeText = React.useMemo(() => {
@@ -132,34 +137,51 @@ const CodeBlock = React.memo(({ language, children, fontSize }: { language: stri
     setTimeout(() => setCopied(false), 2000)
   }, [codeText])
 
+  const handleToggle = useCallback(() => {
+    setCollapsed(prev => !prev)
+  }, [])
+
   return (
-    <div className="relative group/code my-4 rounded-xl overflow-hidden border border-border bg-background-tertiary shadow-sm">
-      <div className="flex items-center justify-between px-4 py-2 bg-surface/50 border-b border-border/50">
-        <span className="text-[11px] text-text-muted font-bold font-mono uppercase tracking-widest opacity-70">
-          {language || 'text'}
-        </span>
-        <HintOverlay content="Copy Code">
-          <button
-            onClick={handleCopy}
-            className="p-1.5 rounded-lg hover:bg-surface-hover text-text-muted hover:text-text-primary transition-colors"
+    <div className="relative group/code my-4 rounded-xl overflow-hidden border border-subtle bg-surface/50 shadow-sm">
+      <div
+        className="flex items-center justify-between px-4 py-2 bg-background-tertiary/50 border-b border-subtle/60 cursor-pointer select-none"
+        onClick={handleToggle}
+        title={collapsed ? '展开代码' : '收起代码'}
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-text-muted">
+            {collapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          </span>
+          <span className="text-[11px] text-text-muted font-medium font-mono lowercase">
+            {language || 'text'}
+          </span>
+        </div>
+        <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+          <HintOverlay content="Copy Code">
+            <button
+              onClick={handleCopy}
+              className="p-1.5 rounded-lg hover:bg-surface-hover text-text-muted hover:text-text-primary transition-colors"
+            >
+              {copied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+            </button>
+          </HintOverlay>
+        </div>
+      </div>
+      {!collapsed && (
+        <div className="relative">
+          <SyntaxHighlighter
+            style={syntaxStyle}
+            language={language}
+            PreTag="div"
+            className="!bg-transparent !p-4 !m-0 custom-scrollbar leading-relaxed font-mono"
+            customStyle={{ backgroundColor: 'transparent', margin: 0, padding: 0, border: 'none', borderRadius: 0, fontSize: `${fontSize}px` }}
+            wrapLines
+            wrapLongLines
           >
-            {copied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
-          </button>
-        </HintOverlay>
-      </div>
-      <div className="relative">
-        <SyntaxHighlighter
-          style={syntaxStyle}
-          language={language}
-          PreTag="div"
-          className="!bg-transparent !p-4 !m-0 custom-scrollbar leading-relaxed font-mono"
-          customStyle={{ backgroundColor: 'transparent', margin: 0, fontSize: `${fontSize}px` }}
-          wrapLines
-          wrapLongLines
-        >
-          {codeText}
-        </SyntaxHighlighter>
-      </div>
+            {codeText}
+          </SyntaxHighlighter>
+        </div>
+      )}
     </div>
   )
 })
