@@ -43,7 +43,7 @@ import {
 } from '@intelligence/state/IntelligenceStore'
 import { isAssistantMessage, type TokenUsage } from '@intelligence/providerTypes'
 import { useDiagnosticsStore, getFileStats } from '@services/diagnosticRepository'
-import LanguageServiceIndicator from './LanguageServiceIndicator'
+import LanguageServiceIndicator from '@scenarios/dev-assistant/components/LanguageServiceIndicator'
 import { motion, AnimatePresence } from 'framer-motion'
 import { shellComposer } from '@/renderer/shell/ShellComposer'
 import { scenarioRegistry } from '@shared/configuration/scenarios'

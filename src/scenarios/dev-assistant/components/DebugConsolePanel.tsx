@@ -3,7 +3,7 @@
  * 类似 VSCode 的调试体验
  */
 
-import { api } from '../../adapters/electronBridge'
+import { api } from '@renderer/adapters/electronBridge'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Play, Square, SkipForward, ArrowDownToLine, ArrowUpFromLine, Pause,
@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
-import { ActionButton } from '../ui'
+import { ActionButton } from '@components/ui'
 import { BRAND } from '@shared/brand'
 import { toast } from '@components/foundation/NotificationProvider'
 import type { DebugConfig, DebugEvent } from '@renderer/types/electronBridge'

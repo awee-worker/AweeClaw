@@ -7,7 +7,7 @@ import { AlertCircle, ArrowUpCircle, CheckCircle, CloudSync, Download, ExternalL
 import { AnimatePresence, motion } from 'framer-motion'
 import { updaterService, type UpdateStatus } from '@services/updateAdapter'
 import { useStore } from '@store'
-import { api } from '../../adapters/electronBridge'
+import { api } from '@renderer/adapters/electronBridge'
 import { t, type Language } from '@renderer/i18n'
 
 export default function VersionNotifier() {

@@ -26,7 +26,7 @@ import { startupMetrics } from '@shared/toolkit/bootMetrics'
 startupMetrics.mark('app-module-loaded')
 
 const WorkflowWorkbench = lazy(() => import('@components/workflow/Workbench/WorkflowWorkbench'))
-const WelcomePage = lazy(() => import('@components/onboarding/WelcomePage'))
+const WelcomePage = lazy(() => import('@scenarios/dev-assistant/components/WelcomePage'))
 
 initializeScenarios()
 registerBuiltinScenarios()

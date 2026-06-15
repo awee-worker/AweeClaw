@@ -12,7 +12,7 @@ import { useShallow } from 'zustand/react/shallow'
 const CommandHub = lazy(() => import('@components/modals/CommandHub'))
 const ShortcutReference = lazy(() => import('@components/modals/ShortcutReference'))
 const FileNavigator = lazy(() => import('@components/modals/FileNavigator'))
-const OnboardingWizard = lazy(() => import('@components/modals/OnboardingWizard'))
+const OnboardingWizard = lazy(() => import('@scenarios/dev-assistant/components/OnboardingWizard'))
 const AppIdentityPanel = lazy(() => import('@components/modals/AppIdentityPanel'))
 
 interface GlobalOverlaysProps {

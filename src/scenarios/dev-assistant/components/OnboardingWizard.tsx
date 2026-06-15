@@ -4,7 +4,7 @@
  * AI 模型配置为可选项，可在完成页或稍后设置中配置
  */
 
-import { api } from '../../adapters/electronBridge'
+import { api } from '@renderer/adapters/electronBridge'
 import React, { useState, useEffect } from 'react'
 import { logger } from '@shared/toolkit/LogEngine'
 import {
@@ -19,9 +19,9 @@ import { themeManager, Theme } from '@renderer/config/themeDefinition'
 import { PROVIDERS } from '@configuration/aiProviders'
 import { LLM_DEFAULTS } from '@shared/configuration/defaultProfile'
 import { DEFAULT_SCENARIO_PREFERENCES } from '@shared/configuration/preferenceSchema'
-import { Logo } from '../foundation/BrandMark'
+import { Logo } from '@components/foundation/BrandMark'
 import { workspaceManager } from '@services/WorkspaceAdapter'
-import { ActionButton, TextField, DropdownSelector } from '../ui'
+import { ActionButton, TextField, DropdownSelector } from '@components/ui'
 import { motion, AnimatePresence, Variants } from 'framer-motion'
 
 interface OnboardingWizardProps {
@@ -90,7 +90,7 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
 
   const handleComplete = async () => {
     const { defaultAgentConfig, defaultAutoApprove, defaultEditorConfig, defaultSecuritySettings, defaultWebSearchConfig, defaultMcpConfig } = await import('@shared/configuration/preferenceSchema')
-    const { settingsService } = await import('../../settings/preferencesService')
+    const { settingsService } = await import('@renderer/settings/preferencesService')
 
     set('language', selectedLanguage)
     set('llmConfig', providerConfig)

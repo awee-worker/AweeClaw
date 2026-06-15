@@ -10,12 +10,12 @@ import {
   ArrowRight,
   FolderSearch,
 } from 'lucide-react'
-import { api } from '../../adapters/electronBridge'
+import { api } from '@renderer/adapters/electronBridge'
 import { BRAND } from '@shared/brand'
 import { workspaceManager, WorkspaceOpenError } from '@services/WorkspaceAdapter'
-import { useStore } from '@/renderer/state'
+import { useStore } from '@store'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
-import { getLucideIcon } from '../foundation/IconMap'
+import { getLucideIcon } from '@components/foundation/IconMap'
 import { logger } from '@toolkit/LogEngine'
 import { toast } from '@components/foundation/NotificationProvider'
 import { getFileName } from '@shared/toolkit/pathHelper'
