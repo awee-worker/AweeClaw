@@ -1,6 +1,6 @@
 import { api } from '../../adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
-import { Suspense, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { BRAND } from '@shared/brand'
 import { getQuotaBarColor, getQuotaTextColor, getQuotaGlowColor } from '@utils/quotaColors'
 import {
@@ -43,8 +43,6 @@ import {
 } from '@intelligence/state/IntelligenceStore'
 import { isAssistantMessage, type TokenUsage } from '@intelligence/providerTypes'
 import { useDiagnosticsStore, getFileStats } from '@services/diagnosticRepository'
-import { safeLazy } from '@renderer/utils/safeImport'
-const LanguageServiceIndicator = safeLazy(() => import(/* @vite-ignore */ '@scenarios/dev-assistant/components/LanguageServiceIndicator'), { label: 'LanguageServiceIndicator', silent: true })
 import { motion, AnimatePresence } from 'framer-motion'
 import { shellComposer } from '@/renderer/shell/ShellComposer'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
@@ -464,7 +462,7 @@ export default function WorkspaceStatusBar() {
             <div className="flex items-center gap-2 cursor-pointer hover:bg-white/5 hover:text-text-primary px-2 py-1 rounded-md transition-colors text-[10px] hidden md:flex">
               <span>Ln {cursorPosition?.line || 1}, Col {cursorPosition?.column || 1}</span>
             </div>
-            <Suspense fallback={null}><LanguageServiceIndicator /></Suspense>
+            
           </div>
         )}
 

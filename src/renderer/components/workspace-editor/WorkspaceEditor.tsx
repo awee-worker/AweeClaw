@@ -31,21 +31,21 @@ import { consumePendingNavigation } from '@services/editorNavigator'
 import { safeLazy, safeNamedLazy } from '@renderer/utils/safeImport'
 
 // 子组件（通过 safeLazy 加载，场景卸载时不会崩溃）
-const EditorTabs = safeNamedLazy(() => import(/* @vite-ignore */ '@scenarios/dev-assistant/components/editor/EditorTabBar'), 'EditorTabs', { label: 'EditorTabs', silent: true })
-const EditorBreadcrumbs = safeNamedLazy(() => import(/* @vite-ignore */ '@scenarios/dev-assistant/components/editor/EditorPathNav'), 'EditorBreadcrumbs', { label: 'EditorBreadcrumbs', silent: true })
-const InlineEdit = safeLazy(() => import(/* @vite-ignore */ '@scenarios/dev-assistant/components/editor/InlineCodeEdit'), { label: 'InlineCodeEdit', silent: true })
-const EditorContextMenu = safeLazy(() => import(/* @vite-ignore */ '@scenarios/dev-assistant/components/editor/CodeEditorMenu'), { label: 'EditorContextMenu', silent: true })
-const TabContextMenu = safeNamedLazy(() => import(/* @vite-ignore */ '@scenarios/dev-assistant/components/editor/TabActionMenu'), 'TabContextMenu', { label: 'TabContextMenu', silent: true })
-const EditorWelcome = safeNamedLazy(() => import(/* @vite-ignore */ '@scenarios/dev-assistant/components/editor/EditorLanding'), 'EditorWelcome', { label: 'EditorWelcome', silent: true })
-const BrowserPreviewTab = safeLazy(() => import(/* @vite-ignore */ '@scenarios/dev-assistant/components/editor/WebPreviewTab'), { label: 'BrowserPreviewTab', silent: true })
+const EditorTabs = safeNamedLazy(() => import('./EditorTabBar'), 'EditorTabs', { label: 'EditorTabs', silent: true })
+const EditorBreadcrumbs = safeNamedLazy(() => import('./EditorPathNav'), 'EditorBreadcrumbs', { label: 'EditorBreadcrumbs', silent: true })
+const InlineEdit = safeLazy(() => import('./InlineCodeEdit'), { label: 'InlineCodeEdit', silent: true })
+const EditorContextMenu = safeLazy(() => import('./CodeEditorMenu'), { label: 'EditorContextMenu', silent: true })
+const TabContextMenu = safeNamedLazy(() => import('./TabActionMenu'), 'TabContextMenu', { label: 'TabContextMenu', silent: true })
+const EditorWelcome = safeNamedLazy(() => import('./EditorLanding'), 'EditorWelcome', { label: 'EditorWelcome', silent: true })
+const BrowserPreviewTab = safeLazy(() => import('./WebPreviewTab'), { label: 'BrowserPreviewTab', silent: true })
 
-const PdfPreview = safeNamedLazy(() => import(/* @vite-ignore */ '@scenarios/dev-assistant/components/editor/DocumentPreview'), 'PdfPreview', { label: 'PdfPreview', silent: true })
-const DocxPreview = safeNamedLazy(() => import(/* @vite-ignore */ '@scenarios/dev-assistant/components/editor/DocumentPreview'), 'DocxPreview', { label: 'DocxPreview', silent: true })
-const DocPreview = safeNamedLazy(() => import(/* @vite-ignore */ '@scenarios/dev-assistant/components/editor/DocumentPreview'), 'DocPreview', { label: 'DocPreview', silent: true })
-const PptxPreview = safeNamedLazy(() => import(/* @vite-ignore */ '@scenarios/dev-assistant/components/editor/DocumentPreview'), 'PptxPreview', { label: 'PptxPreview', silent: true })
-const PptPreview = safeNamedLazy(() => import(/* @vite-ignore */ '@scenarios/dev-assistant/components/editor/DocumentPreview'), 'PptPreview', { label: 'PptPreview', silent: true })
-const XlsxPreview = safeNamedLazy(() => import(/* @vite-ignore */ '@scenarios/dev-assistant/components/editor/DocumentPreview'), 'XlsxPreview', { label: 'XlsxPreview', silent: true })
-const CsvPreview = safeNamedLazy(() => import(/* @vite-ignore */ '@scenarios/dev-assistant/components/editor/DocumentPreview'), 'CsvPreview', { label: 'CsvPreview', silent: true })
+const PdfPreview = safeNamedLazy(() => import('./DocumentPreview'), 'PdfPreview', { label: 'PdfPreview', silent: true })
+const DocxPreview = safeNamedLazy(() => import('./DocumentPreview'), 'DocxPreview', { label: 'DocxPreview', silent: true })
+const DocPreview = safeNamedLazy(() => import('./DocumentPreview'), 'DocPreview', { label: 'DocPreview', silent: true })
+const PptxPreview = safeNamedLazy(() => import('./DocumentPreview'), 'PptxPreview', { label: 'PptxPreview', silent: true })
+const PptPreview = safeNamedLazy(() => import('./DocumentPreview'), 'PptPreview', { label: 'PptPreview', silent: true })
+const XlsxPreview = safeNamedLazy(() => import('./DocumentPreview'), 'XlsxPreview', { label: 'XlsxPreview', silent: true })
+const CsvPreview = safeNamedLazy(() => import('./DocumentPreview'), 'CsvPreview', { label: 'CsvPreview', silent: true })
 
 import { DiffPreview } from './DiffViewerPanel'
 import DiffViewer from './CodeDiffViewer'

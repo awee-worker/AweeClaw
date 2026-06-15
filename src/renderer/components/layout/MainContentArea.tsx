@@ -16,14 +16,12 @@ import { CrashGuard as ErrorBoundary } from '@components/foundation/CrashGuard'
 import { EditorSkeleton, PanelSkeleton, FullScreenLoading, InlineSettingsSkeleton } from '@components/ui/ProgressIndicator'
 import { t, type Language } from '@renderer/i18n'
 import type { LayoutConfig } from '@renderer/shell/ShellComposer'
-import { safeLazy } from '@renderer/utils/safeImport'
 import ChatSection from './ChatSection'
 
 const ChatPanel = lazy(() => import('@components/intelligence/ChatPanel'))
 const Editor = lazy(() => import('@components/workspace-editor/WorkspaceEditor'))
 const TerminalStudio = lazy(() => import('@renderer/shell/components/TerminalStudio'))
 const TerminalPanel = lazy(() => import('@components/dock-panels/TerminalConsolePanel'))
-const DebugPanel = safeLazy(() => import(/* @vite-ignore */ '@scenarios/dev-assistant/components/DebugConsolePanel'), { label: 'DebugConsolePanel', silent: true })
 const DataDashboard = lazy(() => import('@components/dashboard/InsightDashboard'))
 const StoreDiagnosisDashboard = lazy(() => import('@/scenarios/store-diagnosis/components/StoreDiagnosisDashboard'))
 const CanvasWorkspace = lazy(() => import('@components/canvas/WorkspaceCanvas'))
@@ -164,12 +162,11 @@ function PrimaryMainContent({ layoutConfig, isWideModePanel }: MainContentAreaPr
 // ====== Secondary 布局（chatPosition !== primary）======
 
 function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeComponent }: MainContentAreaProps) {
-  const { chatVisible, terminalVisible, debugVisible, openFiles, activeFilePath, language,
+  const { chatVisible, terminalVisible, openFiles, activeFilePath, language,
     showSettingsPage, showWelcomePage, showUserProfilePage, showBillingCenterPage, showSessionHistoryPage,
     activeSidePanel } = useStore(useShallow((s) => ({
     chatVisible: s.chatVisible,
     terminalVisible: s.terminalVisible,
-    debugVisible: s.debugVisible,
     openFiles: s.openFiles,
     activeFilePath: s.activeFilePath,
     language: s.language,
@@ -237,9 +234,6 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
             <EditorSlot />
             {layoutConfig.showTerminal && terminalVisible && (
               <ErrorBoundary><Suspense fallback={null}><TerminalPanel /></Suspense></ErrorBoundary>
-            )}
-            {debugVisible && (
-              <ErrorBoundary><Suspense fallback={null}><DebugPanel /></Suspense></ErrorBoundary>
             )}
             <EditorBottomBar />
           </div>

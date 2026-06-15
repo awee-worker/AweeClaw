@@ -37,7 +37,7 @@ async function initHooks(): Promise<void> {
   if (_hooksInitialized) return
   _hooksInitialized = true
   try {
-    const mod = await import(/* @vite-ignore */ '@scenarios/dev-assistant/components/editor/hooks')
+    const mod = await import('./hooks')
     _useEditorActions = mod.useEditorActions
     _useAICompletion = mod.useAICompletion
     _useEditorEvents = mod.useEditorEvents

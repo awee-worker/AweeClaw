@@ -29,7 +29,7 @@ type SafeLazyOptions = {
  *
  * @example
  * const OnboardingWizard = safeLazy(
- *   () => import(/* @vite-ignore *​/ '@scenarios/dev-assistant/components/OnboardingWizard'),
+ *   () => import('./components/OnboardingWizard'),
  *   { label: 'OnboardingWizard' }
  * )
  */
@@ -58,7 +58,7 @@ export function safeLazy<T extends ComponentType<any>>(
  *
  * @example
  * const PdfPreview = safeNamedLazy(
- *   () => import(/* @vite-ignore *​/ '@scenarios/dev-assistant/components/editor/DocumentPreview'),
+ *   () => import('./components/DocumentPreview'),
  *   'PdfPreview',
  *   { label: 'PdfPreview' }
  * )

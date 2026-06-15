@@ -5,15 +5,13 @@
  * 集中到一个组件中管理，降低 AweeApp 的复杂度。
  */
 
-import { Suspense, lazy, useCallback } from 'react'
+import { Suspense, lazy } from 'react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
-import { safeLazy } from '@renderer/utils/safeImport'
 
 const CommandHub = lazy(() => import('@components/modals/CommandHub'))
 const ShortcutReference = lazy(() => import('@components/modals/ShortcutReference'))
 const FileNavigator = lazy(() => import('@components/modals/FileNavigator'))
-const OnboardingWizard = safeLazy(() => import(/* @vite-ignore */ '@scenarios/dev-assistant/components/OnboardingWizard'), { label: 'OnboardingWizard' })
 const AppIdentityPanel = lazy(() => import('@components/modals/AppIdentityPanel'))
 
 interface GlobalOverlaysProps {
@@ -27,9 +25,9 @@ interface GlobalOverlaysProps {
 export default function GlobalOverlays({
   showKeyboardShortcuts,
   setShowKeyboardShortcuts,
-  showOnboarding,
-  setShowOnboarding,
-  isInitialized,
+  showOnboarding: _showOnboarding,
+  setShowOnboarding: _setShowOnboarding,
+  isInitialized: _isInitialized,
 }: GlobalOverlaysProps) {
   const { showCommandPalette, setShowCommandPalette, showQuickOpen, setShowQuickOpen, showAbout, setShowAbout } =
     useStore(useShallow((s) => ({
@@ -40,10 +38,6 @@ export default function GlobalOverlays({
       showAbout: s.showAbout,
       setShowAbout: s.setShowAbout,
     })))
-
-  const handleCloseOnboarding = useCallback(() => {
-    setShowOnboarding(false)
-  }, [setShowOnboarding])
 
   return (
     <>
@@ -68,11 +62,7 @@ export default function GlobalOverlays({
           <FileNavigator onClose={() => setShowQuickOpen(false)} />
         </Suspense>
       )}
-      {showOnboarding && isInitialized && (
-        <Suspense fallback={null}>
-          <OnboardingWizard onComplete={handleCloseOnboarding} />
-        </Suspense>
-      )}
+      
       {showAbout && (
         <Suspense fallback={null}>
           <AppIdentityPanel onClose={() => setShowAbout(false)} />
