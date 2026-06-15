@@ -1,11 +1,5 @@
 import { useStore } from '@store'
 import { ExplorerView } from './panels/FileExplorer'
-import { SearchView } from './panels/SearchExplorer'
-import { GitView } from './panels/SourceControlView'
-import { ProblemsView } from './panels/DiagnosticsView'
-import { OutlineView } from './panels/SymbolOutline'
-import { HistoryView } from './panels/HistoryExplorer'
-import { ShellView } from './panels/ShellExplorer'
 import { ScenarioManagerView } from '../scenario/ScenarioManagerView'
 import { NotesView } from './panels/NotesExplorer'
 import { KnowledgeView } from './panels/KnowledgeExplorer'
@@ -19,12 +13,6 @@ import { useMemo } from 'react'
 
 const BUILTIN_PANELS: Record<string, React.ComponentType> = {
   explorer: ExplorerView,
-  search: SearchView,
-  git: GitView,
-  problems: ProblemsView,
-  outline: OutlineView,
-  history: HistoryView,
-  shell: ShellView,
   scenarios: ScenarioManagerView,
   notes: NotesView,
   knowledge: KnowledgeView,

@@ -2,7 +2,7 @@
  * 问题面板 - 显示所有诊断错误
  */
 
-import { api } from '../../../adapters/electronBridge'
+import { api } from '@renderer/adapters/electronBridge'
 import { useState, useMemo } from 'react'
 import { ChevronRight, FileText, AlertCircle, AlertTriangle, Info, CheckCircle2 } from 'lucide-react'
 import { useStore } from '@store'

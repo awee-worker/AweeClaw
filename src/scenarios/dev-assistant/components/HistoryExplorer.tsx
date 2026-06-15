@@ -2,7 +2,7 @@
  * 历史记录视图 - 包装 CheckpointPanel
  */
 
-import CheckpointPanel from '../../dock-panels/SessionCheckpointPanel'
+import CheckpointPanel from '@components/dock-panels/SessionCheckpointPanel'
 
 export function HistoryView() {
   return <CheckpointPanel />

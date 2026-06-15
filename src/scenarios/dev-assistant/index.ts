@@ -16,6 +16,7 @@ import type {
   ScenarioDependency,
 } from '@shared/protocols/scenario-arch'
 import { codeEditorScenario } from './config/scenario'
+import { devAssistantComponents } from './components'
 
 const CODE_EDITOR_MANIFEST: ScenarioManifest = {
   id: 'dev-assistant',
@@ -52,7 +53,7 @@ const codeEditorModule: ScenarioModule = {
 
   getTools: () => [],
 
-  getComponents: () => ({}),
+  getComponents: () => devAssistantComponents,
 
   onActivate: async (context: ScenarioModuleContext) => {
     const log = context.getLogger()

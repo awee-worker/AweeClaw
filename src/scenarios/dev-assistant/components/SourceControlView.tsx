@@ -2,7 +2,7 @@
  * Git 源代码管理面板
  * 功能: 状态查看、暂存/提交、分支管理、Stash、Rebase、Cherry-pick 等
  */
-import { api } from '../../../adapters/electronBridge'
+import { api } from '@renderer/adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
 import { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react'
 import {

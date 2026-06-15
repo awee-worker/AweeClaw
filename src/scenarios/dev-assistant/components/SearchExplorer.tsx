@@ -2,7 +2,7 @@
  * 搜索视图
  */
 
-import { api } from '../../../adapters/electronBridge'
+import { api } from '@renderer/adapters/electronBridge'
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { ChevronRight, ChevronDown, FileText, Edit2, Box, MoreHorizontal, Loader2, Search, Crosshair } from 'lucide-react'
 import { useStore } from '@store'
@@ -12,7 +12,7 @@ import { getFileName, joinPath } from '@shared/toolkit/pathHelper'
 import { StorageService } from '@shared/toolkit/StorageService'
 import { scheduleSavedVersionSync } from '@services/fileVersionSync'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
-import { TextField } from '../../ui'
+import { TextField } from '@components/ui'
 import { toast } from '@components/foundation/NotificationProvider'
 
 export function SearchView() {
