@@ -4,8 +4,7 @@
  */
 
 import React, { useMemo, useState, useEffect, useRef } from 'react'
-import { SyntaxHighlighter, patchSyntaxStyle } from '@utils/syntaxHighlighter'
-import { oneDark, vs } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { CodeHighlight } from './CodeHighlight'
 import { useStore } from '@store'
 import { t } from '@renderer/i18n'
 import * as Diff from 'diff'
@@ -230,37 +229,7 @@ function useAsyncDiff(
     return { diffLines, isLoading, error }
 }
 
-const getCustomStyle = (isLight: boolean) => {
-    const baseStyle = patchSyntaxStyle(isLight ? vs : oneDark)
-    return {
-        ...baseStyle,
-        'pre[class*="language-"]': {
-            ...baseStyle['pre[class*="language-"]'],
-            margin: 0,
-            padding: 0,
-            background: 'transparent',
-            backgroundColor: 'transparent',
-            border: 'none',
-            boxShadow: 'none',
-            fontSize: 'inherit',
-            fontFamily: 'inherit',
-            lineHeight: '1.4',
-            textShadow: 'none',
-        },
-        'code[class*="language-"]': {
-            ...baseStyle['code[class*="language-"]'],
-            background: 'transparent',
-            backgroundColor: 'transparent',
-            border: 'none',
-            boxShadow: 'none',
-            fontSize: 'inherit',
-            fontFamily: 'inherit',
-            textShadow: 'none',
-        },
-    }
-}
-
-const DiffLineItem = React.memo(({ line, language, style }: { line: DiffLine, language: string, style: any }) => {
+const DiffLineItem = React.memo(({ line, language, isDark }: { line: DiffLine; language: string; isDark: boolean }) => {
     const bgClass = line.type === 'add'
         ? 'bg-green-500/15 border-l-2 border-green-500/50'
         : line.type === 'remove'
@@ -292,25 +261,13 @@ const DiffLineItem = React.memo(({ line, language, style }: { line: DiffLine, la
                         {line.content.slice(0, 500)}... (line too long)
                     </div>
                 ) : (
-                    <SyntaxHighlighter
+                    <CodeHighlight
+                        code={line.content || ' '}
                         language={language}
-                        style={style}
-                        customStyle={{
-                            margin: 0,
-                            padding: 0,
-                            background: 'transparent',
-                            border: 'none',
-                            boxShadow: 'none',
-                            whiteSpace: 'pre',
-                            overflow: 'visible',
-                        }}
-                        className="!m-0 !p-0 !text-[12px] !font-mono leading-relaxed"
-                        wrapLines={false}
-                        PreTag="span"
-                        CodeTag="span"
-                    >
-                        {line.content || ' '}
-                    </SyntaxHighlighter>
+                        isDark={isDark}
+                        fontSize={12}
+                        inline
+                    />
                 )}
             </div>
         </div>
@@ -332,7 +289,7 @@ export default function InlineDiffPreview({
     const currentTheme = useStore(s => s.currentTheme)
     const appLanguage = useStore(s => s.language)
     const isLight = currentTheme.endsWith('-light')
-    const codeStyle = useMemo(() => getCustomStyle(isLight), [isLight])
+    const isDark = !isLight
 
     const { diffLines, isLoading, error } = useAsyncDiff(
         oldContent,
@@ -442,7 +399,7 @@ export default function InlineDiffPreview({
                         key={`${line.type}-${idx}-${line.oldLineNumber || line.newLineNumber}`}
                         line={line}
                         language={language}
-                        style={codeStyle}
+                        isDark={isDark}
                     />
                 )
             })}

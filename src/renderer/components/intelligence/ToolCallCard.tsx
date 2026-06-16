@@ -2,7 +2,6 @@ import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState, useEffec
 import { AlertTriangle, Check, ChevronDown, Copy, FileCode, Search, Terminal, X, Zap } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useShallow } from 'zustand/react/shallow'
-import { vscDarkPlus, vs } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { useStore } from '@store'
 import { t, type Language } from '@renderer/i18n'
 import type { ToolCall } from '@intelligence/providerTypes'
@@ -16,7 +15,7 @@ import { RichContentRenderer } from './RichContentRenderer'
 import InlineDiffPreview from './InlineDiffPreview'
 import { getExtension, getFileName } from '@shared/toolkit/pathHelper'
 import { FilePathAnchor as TextWithFileLinks } from '../foundation/FilePathAnchor'
-import { SyntaxHighlighter, patchSyntaxStyle } from '@utils/syntaxHighlighter'
+import { CodeHighlight } from './CodeHighlight'
 import { themeManager } from '../../config/themeDefinition'
 
 interface ToolCallCardProps {
@@ -628,10 +627,7 @@ function ToolPreview({
         }
         const displayName = paths.length > 1 ? getPathSummary(paths) : (filePath ? getPathDisplayName(filePath) : '<no path>')
         const theme = themeManager.getThemeById(currentTheme)
-        const syntaxStyle = useMemo(
-            () => patchSyntaxStyle(theme?.type === 'light' ? vs : vscDarkPlus),
-            [theme?.type]
-        )
+        const isDark = theme?.type === 'dark'
         const safeResult = stringResult || ''
 
         return (
@@ -644,17 +640,13 @@ function ToolPreview({
                 </div>
                 {safeResult ? (
                     <ExpandablePreviewContainer language={language}>
-                        <SyntaxHighlighter
-                            style={syntaxStyle}
+                        <CodeHighlight
+                            code={safeResult.slice(0, 5000)}
                             language={filePath ? guessLanguage(filePath) : 'typescript'}
-                            PreTag="div"
-                            className="!bg-transparent !p-2 !m-0 !text-[12px] leading-relaxed font-mono"
-                            customStyle={{ background: 'transparent', margin: 0, padding: 0, border: 'none', boxShadow: 'none', fontFamily: 'inherit' }}
-                            wrapLines
-                            wrapLongLines
-                        >
-                            {safeResult.slice(0, 5000)}
-                        </SyntaxHighlighter>
+                            isDark={isDark}
+                            isStreaming={isRunning || isStreaming}
+                            fontSize={12}
+                        />
                     </ExpandablePreviewContainer>
                 ) : (isRunning || isStreaming) && (
                     pendingPreview('Reading file...')

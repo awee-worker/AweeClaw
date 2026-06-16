@@ -10,8 +10,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
-import { SyntaxHighlighter, patchSyntaxStyle } from '@utils/syntaxHighlighter'
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { CodeHighlight } from '../intelligence/CodeHighlight'
 import { Eye, Edit, FileQuestion, Image as ImageIcon, AlertTriangle, Columns } from 'lucide-react'
 import { ActionButton } from '../ui'
 import { getFileName } from '@shared/toolkit/pathHelper'
@@ -152,15 +151,12 @@ export function MarkdownPreview({ content, fontSize = 14, isStreaming }: Markdow
                                     {children}
                                 </code>
                             ) : (
-                                <SyntaxHighlighter
-                                    style={patchSyntaxStyle(vscDarkPlus)}
+                                <CodeHighlight
+                                    code={String(children).replace(/\n$/, '')}
                                     language={match?.[1] || 'text'}
-                                    PreTag="div"
-                                    className="!bg-surface/50 !rounded-lg !border !border-border !my-4"
-                                    customStyle={{ fontSize: `${fontSize}px` }}
-                                >
-                                    {String(children).replace(/\n$/, '')}
-                                </SyntaxHighlighter>
+                                    isDark={!isLight}
+                                    fontSize={fontSize}
+                                />
                             )
                         },
                         h1: ({ children }) => <h1 className="text-2xl font-bold mt-8 mb-4 text-text-primary border-b border-border pb-2">{children}</h1>,

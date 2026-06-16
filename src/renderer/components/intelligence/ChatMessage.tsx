@@ -7,9 +7,8 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { Copy, Check, Edit2, RotateCcw, ChevronDown, ChevronRight, X, Wrench, FileText, Code, Folder, Link2, Clock, MoreHorizontal, Trash2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
-import { SyntaxHighlighter, patchSyntaxStyle, rgbToHex } from '@utils/syntaxHighlighter'
+import { CodeHighlight } from './CodeHighlight'
 import { playNotificationSound } from '@utils/notificationSound'
-import { vscDarkPlus, vs } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { themeManager } from '../../config/themeDefinition'
 import { motion, AnimatePresence } from 'framer-motion'
 import { BRAND } from '@shared/brand'
@@ -97,20 +96,13 @@ const MARKDOWN_REHYPE_PLUGINS = [rehypeKatex]
 const ACTIVE_STREAM_PHASES = new Set(['streaming', 'tool_running', 'tool_pending'])
 const STREAMING_TAIL_LENGTH = 40
 
-// 代码块组件 - 支持收起/展开
-const CodeBlock = React.memo(({ language, children, fontSize }: { language: string | undefined; children: React.ReactNode; fontSize: number }) => {
+// 代码块组件 - 基于 Shiki 高亮，支持收起/展开
+const CodeBlock = React.memo(({ language, children, fontSize, isStreaming }: { language: string | undefined; children: React.ReactNode; fontSize: number; isStreaming?: boolean }) => {
   const [copied, setCopied] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   const currentTheme = useStore(s => s.currentTheme)
   const theme = themeManager.getThemeById(currentTheme)
-  const syntaxStyle = useMemo(() => {
-    const isDark = theme?.type === 'dark'
-    const baseStyle = isDark ? vscDarkPlus : vs
-    const targetColor = isDark && theme?.colors?.textPrimary
-      ? rgbToHex(theme.colors.textPrimary)
-      : undefined
-    return patchSyntaxStyle(baseStyle, targetColor)
-  }, [theme?.type, theme?.colors?.textPrimary])
+  const isDark = theme?.type === 'dark'
 
   // Flatten text from children
   const codeText = React.useMemo(() => {
@@ -142,9 +134,9 @@ const CodeBlock = React.memo(({ language, children, fontSize }: { language: stri
   }, [])
 
   return (
-    <div className="relative group/code my-4 rounded-xl overflow-hidden border border-subtle bg-surface/50 shadow-sm">
+    <div className="relative group/code my-4 rounded-xl overflow-hidden border border-border/80 bg-surface/50">
       <div
-        className="flex items-center justify-between px-4 py-2 bg-background-tertiary/50 border-b border-subtle/60 cursor-pointer select-none"
+        className="flex items-center justify-between px-4 py-2 bg-background-tertiary/50 border-b border-border/80 cursor-pointer select-none"
         onClick={handleToggle}
         title={collapsed ? '展开代码' : '收起代码'}
       >
@@ -169,17 +161,13 @@ const CodeBlock = React.memo(({ language, children, fontSize }: { language: stri
       </div>
       {!collapsed && (
         <div className="relative">
-          <SyntaxHighlighter
-            style={syntaxStyle}
+          <CodeHighlight
+            code={codeText}
             language={language}
-            PreTag="div"
-            className="!bg-transparent !p-4 !m-0 custom-scrollbar leading-relaxed font-mono"
-            customStyle={{ backgroundColor: 'transparent', margin: 0, padding: 0, border: 'none', borderRadius: 0, fontSize: `${fontSize}px` }}
-            wrapLines
-            wrapLongLines
-          >
-            {codeText}
-          </SyntaxHighlighter>
+            isDark={isDark}
+            isStreaming={isStreaming}
+            fontSize={fontSize}
+          />
         </div>
       )}
     </div>
@@ -717,7 +705,7 @@ const MarkdownContent = React.memo(({ content: rawContent, fontSize, isStreaming
         </code>
       ) : (
         <div className="w-full relative">
-          <CodeBlock language={match?.[1]} fontSize={fontSize}>{children}</CodeBlock>
+          <CodeBlock language={match?.[1]} fontSize={fontSize} isStreaming={isStreaming}>{children}</CodeBlock>
         </div>
       )
     },
