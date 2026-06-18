@@ -80,7 +80,7 @@ export interface MessageActions {
             message: string
             suggestion?: string
             compact?: boolean
-            action?: { label: string; actionType: 'continue' | 'retry' | 'dismiss' }
+            action?: { label: string; actionType: 'continue' | 'retry' | 'dismiss' | 'open-settings' | 'switch-model' }
         },
         targetThreadId?: string
     ) => void

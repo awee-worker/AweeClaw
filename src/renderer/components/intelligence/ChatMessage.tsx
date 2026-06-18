@@ -901,6 +901,20 @@ const RenderPart = React.memo(({
             window.dispatchEvent(new CustomEvent('chat-send-message', {
               detail: { content: '继续执行未完成的任务', messageId }
             }))
+          } else if (action.actionType === 'retry') {
+            window.dispatchEvent(new CustomEvent('chat-retry-message', {
+              detail: { messageId }
+            }))
+          } else if (action.actionType === 'open-settings') {
+            window.dispatchEvent(new CustomEvent('chat-open-settings', {
+              detail: { messageId }
+            }))
+          } else if (action.actionType === 'switch-model') {
+            window.dispatchEvent(new CustomEvent('chat-switch-model', {
+              detail: { messageId }
+            }))
+          } else if (action.actionType === 'dismiss') {
+            // 关闭提示，直接忽略
           }
         }}
       />

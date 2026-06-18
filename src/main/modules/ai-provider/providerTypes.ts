@@ -52,7 +52,8 @@ export class LLMError extends Error {
     public readonly code: ErrorCode,
     public readonly retryable: boolean = false,
     public readonly status?: number,
-    public readonly cause?: Error
+    public readonly cause?: Error,
+    public readonly suggestion?: string,
   ) {
     super(message)
     this.name = 'LLMError'
@@ -65,7 +66,7 @@ export class LLMError extends Error {
    */
   static fromAISDKError(error: Error, status?: number): LLMError {
     const mapped = mapAISDKError(error)
-    return new LLMError(mapped.originalMessage, mapped.code, mapped.retryable, status, error)
+    return new LLMError(mapped.originalMessage, mapped.code, mapped.retryable, status, error, mapped.suggestion)
   }
 
   /**
@@ -94,6 +95,7 @@ export class LLMError extends Error {
       code: this.code,
       retryable: this.retryable,
       status: this.status,
+      suggestion: this.suggestion,
     }
   }
 }

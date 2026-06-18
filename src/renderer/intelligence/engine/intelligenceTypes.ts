@@ -44,6 +44,8 @@ export interface LLMCallResult {
   usage?: TokenUsage
   error?: string
   retryable?: boolean
+  errorCode?: string
+  errorSuggestion?: string
 }
 
 // ===== 循环检测结果 =====

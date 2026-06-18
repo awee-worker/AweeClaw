@@ -57,6 +57,15 @@ export enum ErrorCode {
   LLM_VALIDATION_FAILED = 'LLM_VALIDATION_FAILED',
   LLM_UNSUPPORTED = 'LLM_UNSUPPORTED',
   LLM_QUOTA_EXCEEDED = 'LLM_QUOTA_EXCEEDED',
+
+  // 后端 LLM 代理错误（来自后端 LlmProxyController）
+  MODEL_NO_VISION = 'MODEL_NO_VISION',
+  INVALID_API_KEY = 'INVALID_API_KEY',
+  PROVIDER_UNAVAILABLE = 'PROVIDER_UNAVAILABLE',
+  CONTEXT_TOO_LONG = 'CONTEXT_TOO_LONG',
+  MODEL_NOT_FOUND = 'MODEL_NOT_FOUND',
+  RATE_LIMITED = 'RATE_LIMITED',
+  VISION_MODEL_FAILED = 'VISION_MODEL_FAILED',
 }
 
 /**
@@ -189,6 +198,34 @@ const ERROR_MESSAGES: Record<ErrorCode, { en: string; zh: string }> = {
     en: 'Token quota exceeded. Please upgrade your plan or wait for the next billing cycle.',
     zh: 'Token 配额已用完，请升级套餐或等待下个计费周期'
   },
+  [ErrorCode.MODEL_NO_VISION]: {
+    en: 'The current model does not support image recognition. The system will automatically route the image to a vision model for analysis.',
+    zh: '当前模型不支持图片识别，系统将自动使用视觉模型分析图片'
+  },
+  [ErrorCode.INVALID_API_KEY]: {
+    en: 'API Key is invalid or expired. Please update the provider API Key in the admin panel.',
+    zh: 'API Key 无效或已过期，请前往后台管理更新模型服务商的 API Key'
+  },
+  [ErrorCode.PROVIDER_UNAVAILABLE]: {
+    en: 'AI service provider is temporarily unavailable. Please try again later or switch to another provider.',
+    zh: 'AI 服务商暂时不可用，请稍后重试或切换其他服务商'
+  },
+  [ErrorCode.CONTEXT_TOO_LONG]: {
+    en: 'Conversation is too long. Try reducing images, shortening history, or starting a new chat.',
+    zh: '对话内容过长，请尝试减少图片数量、缩短对话历史或开启新对话'
+  },
+  [ErrorCode.MODEL_NOT_FOUND]: {
+    en: 'The requested model was not found or has been discontinued.',
+    zh: '模型不存在或已下线，请前往后台管理更换其他可用模型'
+  },
+  [ErrorCode.RATE_LIMITED]: {
+    en: 'Request rate limit exceeded. Please wait a moment and try again.',
+    zh: '请求频率过高，请稍后重试'
+  },
+  [ErrorCode.VISION_MODEL_FAILED]: {
+    en: 'Vision model failed to process the image. Please check the vision model configuration.',
+    zh: '视觉模型分析图片失败，请检查视觉模型配置'
+  },
 }
 
 /**
@@ -232,7 +269,12 @@ export function mapNodeError(error: NodeJS.ErrnoException): { code: ErrorCode; o
  * 映射 AI SDK 错误（使用类型安全的 isInstance 方法）
  * 返回 ErrorCode 和原始错误消息（用于日志），不返回友好消息
  */
-export function mapAISDKError(error: unknown): { code: ErrorCode; originalMessage: string; retryable: boolean } {
+export function mapAISDKError(error: unknown): {
+  code: ErrorCode;
+  originalMessage: string;
+  retryable: boolean;
+  suggestion?: string;
+} {
   // 确保是 Error 对象
   if (!(error instanceof Error)) {
     return {
@@ -286,16 +328,52 @@ export function mapAISDKError(error: unknown): { code: ErrorCode; originalMessag
 
     // 尝试从 responseBody 提取详细信息
     let detailMessage = originalMessage
+    let backendCode: string | undefined
+    let backendSuggestion: string | undefined
+
     if (responseBody && typeof responseBody === 'string') {
       try {
         const body = JSON.parse(responseBody)
-        if (body.detail) {
+        // 后端 LlmProxyController 返回格式: { error: { message, code, suggestion } }
+        if (body.error && typeof body.error === 'object') {
+          if (body.error.message) {
+            detailMessage = body.error.message
+          }
+          if (body.error.code) {
+            backendCode = body.error.code
+          }
+          if (body.error.suggestion) {
+            backendSuggestion = body.error.suggestion
+          }
+        } else if (body.detail) {
           detailMessage = `${originalMessage}: ${body.detail}`
         } else if (body.message) {
           detailMessage = `${originalMessage}: ${body.message}`
         }
       } catch {
         // JSON 解析失败，使用原始消息
+      }
+    }
+
+    // 后端错误码映射
+    if (backendCode) {
+      const codeMap: Record<string, ErrorCode> = {
+        'MODEL_NO_VISION': ErrorCode.MODEL_NO_VISION,
+        'INVALID_API_KEY': ErrorCode.INVALID_API_KEY,
+        'QUOTA_EXCEEDED': ErrorCode.LLM_QUOTA_EXCEEDED,
+        'RATE_LIMITED': ErrorCode.RATE_LIMITED,
+        'CONTEXT_TOO_LONG': ErrorCode.CONTEXT_TOO_LONG,
+        'MODEL_NOT_FOUND': ErrorCode.MODEL_NOT_FOUND,
+        'PROVIDER_UNAVAILABLE': ErrorCode.PROVIDER_UNAVAILABLE,
+        'VISION_MODEL_FAILED': ErrorCode.VISION_MODEL_FAILED,
+        'LLM_API_ERROR': ErrorCode.API_CALL_FAILED,
+      }
+      const mappedCode = codeMap[backendCode] || ErrorCode.API_CALL_FAILED
+      return {
+        code: mappedCode,
+        originalMessage: detailMessage,
+        retryable: backendCode === 'RATE_LIMITED' || backendCode === 'PROVIDER_UNAVAILABLE',
+        suggestion: backendSuggestion,
       }
     }
 

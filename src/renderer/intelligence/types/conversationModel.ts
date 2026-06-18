@@ -45,7 +45,7 @@ export interface SearchPart {
 
 export interface SystemAlertAction {
   label: string
-  actionType: 'continue' | 'retry' | 'dismiss'
+  actionType: 'continue' | 'retry' | 'dismiss' | 'open-settings' | 'switch-model'
 }
 
 export interface SystemAlertPart {

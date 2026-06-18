@@ -782,11 +782,90 @@ export async function runLoop(
             }
           }
         } else {
-          threadStore.addSystemAlertPart(assistantId, {
-            alertType: 'error',
-            title: getLocalizedText(language, '模型错误', 'Model Error'),
-            message: result.error || 'Unknown error',
-          })
+          // 基于后端错误码做差异化 UI 提示
+          const errorCode = result.errorCode
+          const errorSuggestion = result.errorSuggestion
+
+          if (errorCode === 'MODEL_NO_VISION') {
+            // 模型不支持图片 → 静默等待（后端已自动路由到视觉模型）
+            threadStore.addSystemAlertPart(assistantId, {
+              alertType: 'info',
+              title: getLocalizedText(language, '图片处理中', 'Processing Image'),
+              message: getLocalizedText(language, '当前模型不支持图片识别，系统已自动使用视觉模型分析图片内容，请稍等...', 'The current model does not support image recognition. The system is automatically analyzing the image with a vision model. Please wait...'),
+              suggestion: errorSuggestion,
+              compact: true,
+            })
+          } else if (errorCode === 'VISION_MODEL_FAILED') {
+            // 视觉模型处理失败 → 提示配置问题
+            threadStore.addSystemAlertPart(assistantId, {
+              alertType: 'error',
+              title: getLocalizedText(language, '视觉模型异常', 'Vision Model Error'),
+              message: result.error || getLocalizedText(language, '视觉模型分析图片失败', 'Vision model failed to process the image'),
+              suggestion: errorSuggestion || getLocalizedText(language, '请前往后台管理 → 系统配置，检查视觉模型配置是否正确', 'Please go to Admin Panel → System Config to check the vision model configuration'),
+              action: { label: getLocalizedText(language, '前往设置', 'Go to Settings'), actionType: 'open-settings' },
+            })
+          } else if (errorCode === 'INVALID_API_KEY') {
+            // API Key 无效 → 弹窗引导用户去设置
+            threadStore.addSystemAlertPart(assistantId, {
+              alertType: 'error',
+              title: getLocalizedText(language, 'API Key 配置异常', 'API Key Configuration Error'),
+              message: result.error || getLocalizedText(language, 'API Key 无效或已过期', 'API Key is invalid or expired'),
+              suggestion: errorSuggestion || getLocalizedText(language, '请前往后台管理 → AI 服务商，更新对应的 API Key', 'Please go to Admin Panel → AI Providers to update the API Key'),
+              action: { label: getLocalizedText(language, '前往设置', 'Go to Settings'), actionType: 'open-settings' },
+            })
+          } else if (errorCode === 'QUOTA_EXCEEDED') {
+            // 额度不足 → 提示充值
+            threadStore.addSystemAlertPart(assistantId, {
+              alertType: 'error',
+              title: getLocalizedText(language, 'API 额度不足', 'Quota Exceeded'),
+              message: result.error || getLocalizedText(language, 'API 额度已用完', 'API quota has been exhausted'),
+              suggestion: errorSuggestion || getLocalizedText(language, '请前往模型服务商平台查看账户余额和用量', 'Please check your account balance and usage on the provider platform'),
+            })
+          } else if (errorCode === 'RATE_LIMITED') {
+            // 频率限制 → 提示稍后重试
+            threadStore.addSystemAlertPart(assistantId, {
+              alertType: 'warning',
+              title: getLocalizedText(language, '请求频率过高', 'Rate Limited'),
+              message: result.error || getLocalizedText(language, '请求频率过高，请稍后重试', 'Request rate limit exceeded. Please try again later.'),
+              suggestion: errorSuggestion || getLocalizedText(language, '建议等待 30 秒后再试', 'Please wait 30 seconds and try again'),
+              action: { label: getLocalizedText(language, '重试', 'Retry'), actionType: 'retry' },
+            })
+          } else if (errorCode === 'CONTEXT_TOO_LONG') {
+            // 上下文过长 → 提示缩短内容
+            threadStore.addSystemAlertPart(assistantId, {
+              alertType: 'warning',
+              title: getLocalizedText(language, '对话内容过长', 'Context Too Long'),
+              message: result.error || getLocalizedText(language, '对话内容超出模型上下文限制', 'Conversation exceeds model context limit'),
+              suggestion: errorSuggestion || getLocalizedText(language, '请尝试：1) 减少图片数量 2) 缩短对话历史 3) 开启新对话', 'Try: 1) Reduce images 2) Shorten history 3) Start a new chat'),
+            })
+          } else if (errorCode === 'MODEL_NOT_FOUND') {
+            // 模型不存在 → 提示更换模型
+            threadStore.addSystemAlertPart(assistantId, {
+              alertType: 'error',
+              title: getLocalizedText(language, '模型不存在', 'Model Not Found'),
+              message: result.error || getLocalizedText(language, '模型不存在或已下线', 'Model not found or discontinued'),
+              suggestion: errorSuggestion || getLocalizedText(language, '请前往后台管理 → 系统配置，更换其他可用模型', 'Please go to Admin Panel → System Config to switch models'),
+              action: { label: getLocalizedText(language, '切换模型', 'Switch Model'), actionType: 'switch-model' },
+            })
+          } else if (errorCode === 'PROVIDER_UNAVAILABLE') {
+            // 服务商不可用 → 提示稍后重试
+            threadStore.addSystemAlertPart(assistantId, {
+              alertType: 'error',
+              title: getLocalizedText(language, '服务商不可用', 'Provider Unavailable'),
+              message: result.error || getLocalizedText(language, 'AI 服务商暂时不可用', 'AI provider is temporarily unavailable'),
+              suggestion: errorSuggestion || getLocalizedText(language, '服务商可能正在维护，请稍后重试或切换其他服务商', 'The provider may be under maintenance. Please try again later or switch to another provider.'),
+              action: { label: getLocalizedText(language, '重试', 'Retry'), actionType: 'retry' },
+            })
+          } else {
+            // 通用错误 → 重试按钮
+            threadStore.addSystemAlertPart(assistantId, {
+              alertType: 'error',
+              title: getLocalizedText(language, '模型错误', 'Model Error'),
+              message: result.error || 'Unknown error',
+              suggestion: errorSuggestion,
+              action: { label: getLocalizedText(language, '重试', 'Retry'), actionType: 'retry' },
+            })
+          }
         }
         threadStore.updateExecutionMeta({ loopState: 'failed' })
         EventBus.emit({ type: 'loop:end', reason: 'error', threadId, assistantId, requestId, planTaskId: context.planTaskId })

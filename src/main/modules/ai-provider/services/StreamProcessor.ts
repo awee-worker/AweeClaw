@@ -999,6 +999,7 @@ export class StreamingService {
             message: event.error.message,
             code: event.error.code,
             retryable: event.error.retryable,
+            suggestion: event.error.suggestion,
           })
           break
 

@@ -594,12 +594,16 @@ export function createStreamProcessor(
   }
 
   // Handle request error.
-  const handleError = (err: { message?: string; code?: string } | string) => {
+  const handleError = (err: { message?: string; code?: string; suggestion?: string } | string) => {
     let errorMsg: string
+    let errorCode: string | undefined
+    let errorSuggestion: string | undefined
 
     if (typeof err === 'string') {
       errorMsg = err
     } else {
+      errorCode = err.code
+      errorSuggestion = err.suggestion
       if (err.code && err.code in ErrorCode) {
         const language = useStore.getState().language
         const baseMsg = getErrorMessage(err.code as ErrorCode, language)
@@ -614,7 +618,7 @@ export function createStreamProcessor(
     error = errorMsg
     retryable = typeof err === 'object' && err !== null && 'retryable' in err ? (err as { retryable?: boolean }).retryable : undefined
     finalizeReasoning()
-    doResolve({ content, toolCalls, sources, usage, error: errorMsg, retryable })
+    doResolve({ content, toolCalls, sources, usage, error: errorMsg, retryable, errorCode, errorSuggestion })
   }
 
   const handleDone = (result: { reasoning?: string; usage?: unknown }) => {
