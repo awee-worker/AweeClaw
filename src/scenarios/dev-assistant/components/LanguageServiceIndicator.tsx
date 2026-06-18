@@ -1,0 +1,262 @@
+/**
+ * LSP 状态指示器
+ * 显示在状态栏右下角，点击可安装 LSP 服务器
+ */
+
+import { useState, useEffect, useCallback } from 'react'
+import { ZapOff, Download, Loader2, CheckCircle2 } from 'lucide-react'
+import { useStore } from '@store'
+import { useShallow } from 'zustand/react/shallow'
+import { api } from '@renderer/adapters/electronBridge'
+import { getLanguageId, isLanguageSupported } from '@services/languageServerAdapter'
+import DockPopover from '@components/ui/DockPopover'
+import { logger } from '@shared/toolkit/LogEngine'
+import { t, type Language } from '@renderer/i18n'
+
+interface LspServerStatus {
+  installed: boolean
+  path?: string
+}
+
+// 语言到服务器类型的映射
+const LANGUAGE_TO_SERVER: Record<string, string> = {
+  typescript: 'typescript',
+  typescriptreact: 'typescript',
+  javascript: 'typescript',
+  javascriptreact: 'typescript',
+  html: 'html',
+  css: 'css',
+  scss: 'css',
+  less: 'css',
+  json: 'json',
+  jsonc: 'json',
+  python: 'python',
+  go: 'go',
+  rust: 'rust',
+  c: 'clangd',
+  cpp: 'clangd',
+  vue: 'vue',
+  php: 'php',
+}
+
+// 服务器显示名称
+const SERVER_NAMES: Record<string, string> = {
+  typescript: 'TypeScript Language Server',
+  html: 'HTML Language Server',
+  css: 'CSS Language Server',
+  json: 'JSON Language Server',
+  python: 'Pyright (Python)',
+  go: 'gopls (Go)',
+  rust: 'rust-analyzer',
+  clangd: 'clangd (C/C++)',
+  vue: 'Vue Language Server',
+  php: 'Intelephense (PHP)',
+}
+
+// 安装说明
+const INSTALL_HINTS: Record<string, { auto: boolean; hint: string; builtin?: boolean }> = {
+  typescript: { auto: true, hint: '可自动安装', builtin: true },
+  html: { auto: true, hint: '可自动安装', builtin: true },
+  css: { auto: true, hint: '可自动安装', builtin: true },
+  json: { auto: true, hint: '可自动安装', builtin: true },
+  python: { auto: true, hint: '可自动安装 Pyright' },
+  go: { auto: true, hint: '需要系统已安装 Go' },
+  rust: { auto: false, hint: '请运行: rustup component add rust-analyzer' },
+  clangd: { auto: false, hint: '请安装 LLVM/Clang' },
+  vue: { auto: true, hint: '可自动安装' },
+  php: { auto: true, hint: '可自动安装 Intelephense' },
+}
+
+export default function LanguageServiceIndicator() {
+  const { activeFilePath, language } = useStore(useShallow(s => ({ activeFilePath: s.activeFilePath, language: s.language })))
+  const [serverStatus, setServerStatus] = useState<Record<string, LspServerStatus>>({})
+  const [installing, setInstalling] = useState<string | null>(null)
+  const [currentLanguageId, setCurrentLanguageId] = useState<string | null>(null)
+
+  // 获取当前文件的语言 ID
+  useEffect(() => {
+    if (activeFilePath) {
+      const langId = getLanguageId(activeFilePath)
+      setCurrentLanguageId(langId)
+    } else {
+      setCurrentLanguageId(null)
+    }
+  }, [activeFilePath])
+
+  // 获取服务器状态
+  useEffect(() => {
+    api.lsp.getServerStatus().then(setServerStatus).catch((e) => logger.lsp.warn('Failed to get LSP server status:', e))
+  }, [])
+
+  // 安装服务器
+  const handleInstall = useCallback(async (serverType: string) => {
+    setInstalling(serverType)
+    try {
+      const result = await api.lsp.installServer(serverType)
+      if (result.success) {
+        // 刷新状态
+        const newStatus = await api.lsp.getServerStatus()
+        setServerStatus(newStatus)
+      } else {
+        logger.lsp.error('Install failed:', result.error)
+      }
+    } catch (error) {
+      logger.lsp.error('Install error:', error)
+    } finally {
+      setInstalling(null)
+    }
+  }, [])
+
+  // 当前语言对应的服务器类型
+  const currentServerType = currentLanguageId ? LANGUAGE_TO_SERVER[currentLanguageId] : null
+  const isSupported = currentLanguageId ? isLanguageSupported(currentLanguageId) : false
+  const currentStatus = currentServerType ? serverStatus[currentServerType] : null
+  const isInstalled = currentStatus?.installed ?? false
+  const installInfo = currentServerType ? INSTALL_HINTS[currentServerType] : null
+
+  // 如果没有打开文件，完全不显示
+  if (!activeFilePath) {
+    return null
+  }
+
+  const fileExtension = activeFilePath.split('.').pop()?.toUpperCase() || 'TXT'
+
+  const getDisplayName = (id: string | null, ext: string) => {
+    switch (id) {
+      case 'typescriptreact': return 'TSX'
+      case 'javascriptreact': return 'JSX'
+      case 'typescript': return 'TypeScript'
+      case 'javascript': return 'JavaScript'
+      case 'python': return 'Python'
+      case 'rust': return 'Rust'
+      case 'go': return 'Go'
+      case 'vue': return 'Vue'
+      case 'cpp': return 'C++'
+      case 'c': return 'C'
+      case 'json': return 'JSON'
+      case 'html': return 'HTML'
+      case 'css': return 'CSS'
+      default: return ext
+    }
+  }
+
+  const displayName = getDisplayName(currentLanguageId, fileExtension)
+
+  // 如果语言不支持 LSP，只显示带透明圆点的文件后缀
+  if (!isSupported || !currentServerType) {
+    return (
+      <div className="flex items-center gap-1.5 px-2 py-1 h-6 rounded-md transition-colors cursor-default hidden sm:flex opacity-60">
+        <div className="flex items-center justify-center w-4 h-4 text-text-muted font-mono text-[11px] font-bold">
+          {'{}'}
+        </div>
+        <span className="text-[11px] uppercase font-medium tracking-widest text-text-muted transition-colors">
+          {displayName}
+        </span>
+      </div>
+    )
+  }
+
+  return (
+    <DockPopover
+      icon={
+        <div className="flex items-center gap-1.5 px-2 py-1 h-6 rounded-md hover:bg-white/5 transition-colors cursor-pointer group hidden sm:flex">
+          <div className="relative flex items-center justify-center w-4 h-4 transition-colors">
+            <span className="text-text-muted group-hover:text-text-primary font-mono text-[11px] font-bold transition-colors">
+              {'{}'}
+            </span>
+            {isInstalled ? (
+              <span className="absolute -top-[1px] -right-[2px] w-1.5 h-1.5 bg-emerald-400 rounded-full shadow-[0_0_8px_rgba(52,211,153,0.6)]" />
+            ) : (
+              <span className="absolute -top-[1px] -right-[2px] w-1.5 h-1.5 bg-amber-400 rounded-full shadow-[0_0_8px_rgba(251,191,36,0.6)]" />
+            )}
+          </div>
+          <span className="text-[11px] uppercase font-medium tracking-widest text-text-muted group-hover:text-text-primary transition-colors">
+            {displayName}
+          </span>
+        </div>
+      }
+      tooltip={
+        isInstalled
+          ? (t('layout.lspenabled', language as Language))
+          : (t('layout.lspnotinstalledclickto', language as Language))
+      }
+      title={t('layout.lsplanguageserver', language as Language)}
+      width={320}
+      height={200}
+      language={language as 'en' | 'zh'}
+    >
+      <div className="p-3 space-y-3">
+        {/* 当前语言服务器状态 */}
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-sm font-medium text-text-primary">
+              {SERVER_NAMES[currentServerType] || currentServerType}
+            </div>
+            <div className="text-xs text-text-muted mt-0.5">
+              {t('layout.currentfilelanguage', language as Language)}: {currentLanguageId}
+            </div>
+          </div>
+          <div className={`flex items-center gap-1.5 ${isInstalled ? 'text-green-400' : 'text-yellow-400'}`}>
+            {isInstalled ? (
+              <>
+                <CheckCircle2 className="w-4 h-4" />
+                <span className="text-xs">{t('layout.installed', language as Language)}</span>
+              </>
+            ) : (
+              <>
+                <ZapOff className="w-4 h-4" />
+                <span className="text-xs">{t('layout.notinstalled', language as Language)}</span>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* 安装按钮或提示 */}
+        {!isInstalled && installInfo && (
+          <div className="space-y-2">
+            <div className="text-xs text-text-muted">
+              {installInfo.hint}
+            </div>
+            {installInfo.auto ? (
+              <button
+                onClick={() => handleInstall(currentServerType)}
+                disabled={installing !== null}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-accent/20 hover:bg-accent/30 text-accent rounded-md transition-colors disabled:opacity-50"
+              >
+                {installing === currentServerType ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>{t('layout.installing', language as Language)}</span>
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4" />
+                    <span>{t('layout.installlanguageserver', language as Language)}</span>
+                  </>
+                )}
+              </button>
+            ) : (
+              <div className="text-xs text-orange-400 bg-orange-400/10 px-3 py-2 rounded-md">
+                {t('layout.manualinstallationrequired', language as Language)}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 已安装时显示路径 */}
+        {isInstalled && currentStatus?.path && (
+          <div className="space-y-1">
+            {installInfo?.builtin && (
+              <div className="text-xs text-blue-400">
+                {t('layout.builtinlanguageserver', language as Language)}
+              </div>
+            )}
+            <div className="text-xs text-text-muted bg-background-tertiary px-2 py-1.5 rounded font-mono truncate">
+              {currentStatus.path}
+            </div>
+          </div>
+        )}
+      </div>
+    </DockPopover>
+  )
+}
