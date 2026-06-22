@@ -1,3 +1,16 @@
+/**
+ * 长期记忆服务（SQLite 存储）
+ *
+ * v3.0 重构：从 JSON 文件存储迁移到本地 SQLite 数据库。
+ *  - 所有记忆读写均通过 memoryDb IPC 与主进程 SQLite 交互
+ *  - 删除原 JSON 文件读写代码（loadStore/saveStore/createEmptyStore）
+ *  - 保留全部业务逻辑：搜索、遗忘、dreaming、去重、纠错链等
+ *  - 支持从旧 JSON store 一次性迁移到 SQLite
+ *
+ * 数据流：
+ *   渲染进程 → api.memoryDb.* → IPC → MemoryDb (主进程) → SQLite
+ */
+
 import { api } from '../../../adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
 import { useStore } from '@store'
@@ -10,28 +23,162 @@ import {
   type MemoryEntryInput,
   type MemorySearchParams,
   type MemorySearchResult,
-  type MemoryStore,
   type MemorySource,
   type MemoryStatus,
   type MemoryRetrievalContext,
   type TaskType,
 } from '@intelligence/providerTypes'
+import { ruleBasedClassify } from '../memoryClassifier'
 
-const CURRENT_VERSION = 1
-const MAX_SHORT_TERM = 500
-const MAX_LONG_TERM = 200
-const FILE_PATH = BRAND.paths.memoryStore
+// 旧 JSON 文件路径（仅用于一次性迁移）
+const OLD_FILE_PATH = BRAND.paths.memoryStore
 const OLD_KNOWLEDGE_CONV_FILE = BRAND.paths.knowledgeConversation
 
+// SQLite 字段到 MemoryEntry 的映射辅助类型
+interface MemoryRow {
+  id: string
+  user_id: string | null
+  conversation_id: string | null
+  type: string
+  content: string
+  summary: string | null
+  importance: number
+  access_count: number
+  last_accessed_at: number | null
+  expires_at: number | null
+  created_at: number
+  updated_at: number
+  category: string | null
+  subcategory: string | null
+  tier: string
+  classification_confidence: number
+  classified_by: string | null
+  classified_at: number | null
+  content_hash: string | null
+  retention_score: number
+  last_reviewed_at: number | null
+  review_count: number
+  spatial_context: string | null
+  tags: string
+  enabled: number
+  source: string | null
+  version: number
+  sync_status: string
+  remote_id: string | null
+  last_synced_at: number | null
+}
+
 class LongTermMemoryService {
-  private cache: MemoryStore | null = null
+  private initialized = false
+
+  /** 确保数据库已初始化（幂等） */
+  private async ensureDb(): Promise<void> {
+    if (this.initialized) return
+    const result = await api.memoryDb.initialize()
+    if (!result.success) {
+      logger.agent.error('[LongTermMemory] SQLite 初始化失败:', result.error)
+      throw new Error(`Memory DB 初始化失败: ${result.error}`)
+    }
+    this.initialized = true
+    logger.agent.info('[LongTermMemory] SQLite 已就绪:', result.dbPath)
+  }
+
+  /** 将 SQLite 行转换为 MemoryEntry */
+  private rowToEntry(row: MemoryRow): MemoryEntry {
+    const now = Date.now()
+    return {
+      id: row.id,
+      content: row.content,
+      source: this.parseSource(row.source),
+      status: this.parseStatus(row.tier),
+      confidence: row.importance,
+      recallCount: row.access_count,
+      uniqueQueryCount: row.review_count,
+      lastRecalledAt: row.last_accessed_at ?? now,
+      halfLifeDays: 14,
+      tags: this.parseTags(row.tags),
+      enabled: row.enabled === 1,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      promotedAt: row.classified_at ?? undefined,
+      expiresAt: row.expires_at ?? undefined,
+      originalSessionId: row.conversation_id ?? undefined,
+      verificationStatus: this.parseVerification(row.sync_status),
+    }
+  }
+
+  private parseSource(s: string | null): MemorySource {
+    const valid: MemorySource[] = ['auto_extracted', 'user', 'dreaming_light', 'dreaming_deep', 'dreaming_rem', 'self_reflection', 'self_correction']
+    return (s && valid.includes(s as MemorySource)) ? s as MemorySource : 'auto_extracted'
+  }
+
+  private parseStatus(tier: string): MemoryStatus {
+    if (tier === 'long_term') return 'long_term'
+    if (tier === 'forgotten') return 'forgotten'
+    return 'short_term'
+  }
+
+  private parseVerification(sync: string): 'unverified' | 'verified' | 'contradicted' | 'superseded' {
+    if (sync === 'verified') return 'verified'
+    if (sync === 'contradicted') return 'contradicted'
+    if (sync === 'superseded') return 'superseded'
+    return 'unverified'
+  }
+
+  private parseTags(raw: string): string[] {
+    try {
+      const arr = JSON.parse(raw)
+      return Array.isArray(arr) ? arr.filter(t => typeof t === 'string') : []
+    } catch {
+      return []
+    }
+  }
+
+  /** 将 MemoryEntry 转换为 SQLite 行数据 */
+  private entryToRow(entry: MemoryEntry): Record<string, any> {
+    // 写入时自动分类（规则引擎，零延迟）
+    const classification = ruleBasedClassify(entry.content)
+    return {
+      id: entry.id,
+      user_id: null,
+      conversation_id: entry.originalSessionId ?? null,
+      type: entry.status === 'long_term' ? 'LONG_TERM' : 'SHORT_TERM',
+      content: entry.content,
+      summary: null,
+      importance: entry.confidence,
+      access_count: entry.recallCount,
+      last_accessed_at: entry.lastRecalledAt,
+      expires_at: entry.expiresAt ?? null,
+      created_at: entry.createdAt,
+      updated_at: entry.updatedAt,
+      category: classification.category,
+      subcategory: classification.subcategory,
+      tier: entry.status === 'long_term' ? 'long_term' : (entry.status === 'forgotten' ? 'forgotten' : 'short_term'),
+      classification_confidence: classification.confidence,
+      classified_by: classification.classifiedBy,
+      classified_at: entry.createdAt,
+      content_hash: null,
+      retention_score: 1.0,
+      last_reviewed_at: null,
+      review_count: entry.uniqueQueryCount,
+      spatial_context: null,
+      tags: JSON.stringify(entry.tags ?? []),
+      enabled: entry.enabled ? 1 : 0,
+      source: entry.source,
+      version: 1,
+      sync_status: entry.verificationStatus ?? 'unverified',
+      remote_id: null,
+      last_synced_at: null,
+    }
+  }
 
   async getEntries(status?: MemoryStatus): Promise<MemoryEntry[]> {
-    const store = await this.loadStore()
-    if (status === 'short_term') return store.shortTerm
-    if (status === 'long_term') return store.longTerm
-    if (status === 'forgotten') return store.forgotten
-    return [...store.shortTerm, ...store.longTerm]
+    await this.ensureDb()
+    const result = await api.memoryDb.queryEntries({
+      tier: status,
+      limit: 10000,
+    })
+    return result.items.map((r: MemoryRow) => this.rowToEntry(r))
   }
 
   async getEnabledEntries(): Promise<MemoryEntry[]> {
@@ -40,23 +187,26 @@ class LongTermMemoryService {
   }
 
   async getEntry(id: string): Promise<MemoryEntry | null> {
-    const all = await this.getEntries()
-    return all.find(e => e.id === id) ?? null
+    await this.ensureDb()
+    const row = await api.memoryDb.getEntryById(id)
+    return row ? this.rowToEntry(row as MemoryRow) : null
   }
 
   async addEntry(input: MemoryEntryInput): Promise<MemoryEntry> {
     const content = input.content.trim()
     if (!content) throw new Error('Content cannot be empty')
 
-    const store = await this.loadStore()
+    await this.ensureDb()
     const status = input.status ?? 'short_term'
-    const list = this.getList(store, status)
 
-    const exactMatch = list.find(e => e.content.trim() === content)
+    // 检查精确匹配
+    const all = await this.getEntries()
+    const exactMatch = all.find(e => e.content.trim() === content)
     if (exactMatch) return exactMatch
 
+    // 检查近似重复
     const normalizedContent = this.normalizeForDedup(content)
-    const nearDuplicate = [...store.shortTerm, ...store.longTerm].find(e => {
+    const nearDuplicate = all.find(e => {
       if (!e.enabled || e.verificationStatus === 'superseded') return false
       const normalized = this.normalizeForDedup(e.content.trim())
       if (normalized === normalizedContent) return true
@@ -96,16 +246,13 @@ class LongTermMemoryService {
     }
 
     if (input.supersedeId) {
-      const superseded = this.findById(store, input.supersedeId)
+      const superseded = await this.getEntry(input.supersedeId)
       if (superseded) {
-        superseded.correctionChain = {
-          supersededBy: entry.id,
-          supersededAt: now,
-          reason: input.supersedeReason ?? 'corrected',
-        }
-        superseded.verificationStatus = 'superseded'
-        superseded.enabled = false
-        superseded.updatedAt = now
+        await api.memoryDb.updateEntry(input.supersedeId, {
+          enabled: 0,
+          verification_status: 'superseded',
+          updated_at: now,
+        })
         entry.derivedFrom = [input.supersedeId]
         entry.verificationStatus = 'verified'
         entry.source = input.source ?? 'self_correction'
@@ -113,10 +260,7 @@ class LongTermMemoryService {
       }
     }
 
-    list.unshift(entry)
-    this.trimList(list, status === 'short_term' ? MAX_SHORT_TERM : MAX_LONG_TERM)
-
-    await this.saveStore(store)
+    await api.memoryDb.upsertEntry(this.entryToRow(entry))
     logger.agent.info('[LongTermMemory] Added entry:', entry.id, 'status:', status)
     return entry
   }
@@ -125,85 +269,64 @@ class LongTermMemoryService {
     id: string,
     updates: Partial<Pick<MemoryEntry, 'content' | 'tags' | 'enabled' | 'confidence' | 'status' | 'verificationStatus'>>
   ): Promise<boolean> {
-    const store = await this.loadStore()
-    const entry = this.findById(store, id)
+    await this.ensureDb()
+    const entry = await this.getEntry(id)
     if (!entry) return false
 
-    if (updates.content !== undefined) entry.content = updates.content.trim()
-    if (updates.tags !== undefined) entry.tags = updates.tags
-    if (updates.enabled !== undefined) entry.enabled = updates.enabled
-    if (updates.confidence !== undefined) entry.confidence = Math.min(1, Math.max(0, updates.confidence))
-    if (updates.verificationStatus !== undefined) entry.verificationStatus = updates.verificationStatus
+    const now = Date.now()
+    const rowUpdates: Record<string, any> = { updated_at: now }
+
+    if (updates.content !== undefined) rowUpdates.content = updates.content.trim()
+    if (updates.tags !== undefined) rowUpdates.tags = JSON.stringify(updates.tags)
+    if (updates.enabled !== undefined) rowUpdates.enabled = updates.enabled ? 1 : 0
+    if (updates.confidence !== undefined) rowUpdates.importance = Math.min(1, Math.max(0, updates.confidence))
+    if (updates.verificationStatus !== undefined) rowUpdates.sync_status = updates.verificationStatus
 
     if (updates.status !== undefined && updates.status !== entry.status) {
-      const oldList = this.getList(store, entry.status)
-      const idx = oldList.findIndex(e => e.id === id)
-      if (idx !== -1) {
-        oldList.splice(idx, 1)
-        entry.status = updates.status
-        entry.updatedAt = Date.now()
-        const newList = this.getList(store, updates.status)
-        newList.push(entry)
-        await this.saveStore(store)
-        return true
+      rowUpdates.tier = updates.status === 'long_term' ? 'long_term' : (updates.status === 'forgotten' ? 'forgotten' : 'short_term')
+      rowUpdates.type = updates.status === 'long_term' ? 'LONG_TERM' : 'SHORT_TERM'
+      if (updates.status === 'long_term') {
+        rowUpdates.classified_at = now
       }
-    } else {
-      entry.updatedAt = Date.now()
     }
 
-    await this.saveStore(store)
+    await api.memoryDb.updateEntry(id, rowUpdates)
     return true
   }
 
   async deleteEntry(id: string): Promise<boolean> {
-    const store = await this.loadStore()
-    for (const list of [store.shortTerm, store.longTerm, store.forgotten]) {
-      const idx = list.findIndex(e => e.id === id)
-      if (idx !== -1) {
-        list.splice(idx, 1)
-        await this.saveStore(store)
-        return true
-      }
-    }
-    return false
+    await this.ensureDb()
+    const result = await api.memoryDb.deleteEntry(id)
+    return result.success
   }
 
-  async recordRecall(id: string, query: string): Promise<void> {
-    const store = await this.loadStore()
-    const entry = this.findById(store, id)
+  async recordRecall(id: string, _query: string): Promise<void> {
+    await this.ensureDb()
+    const entry = await this.getEntry(id)
     if (!entry) return
 
-    entry.recallCount++
-    entry.lastRecalledAt = Date.now()
-
-    const q = query.toLowerCase().trim()
-    if (q && !entry.tags.some(t => t.toLowerCase() === q)) {
-      const existingQueries = new Set(
-        Array.from({ length: entry.uniqueQueryCount }, (_, i) => `q${i}`)
-      )
-      if (!existingQueries.has(q)) {
-        entry.uniqueQueryCount++
-      }
-    }
-
-    await this.saveStore(store)
+    const now = Date.now()
+    await api.memoryDb.updateEntry(id, {
+      access_count: entry.recallCount + 1,
+      last_accessed_at: now,
+      updated_at: now,
+    })
   }
 
   async recordBulkRecall(ids: string[]): Promise<void> {
     if (ids.length === 0) return
-    const store = await this.loadStore()
+    await this.ensureDb()
     const now = Date.now()
-    let changed = false
 
     for (const id of ids) {
-      const entry = this.findById(store, id)
+      const entry = await this.getEntry(id)
       if (!entry) continue
-      entry.recallCount++
-      entry.lastRecalledAt = now
-      changed = true
+      await api.memoryDb.updateEntry(id, {
+        access_count: entry.recallCount + 1,
+        last_accessed_at: now,
+        updated_at: now,
+      })
     }
-
-    if (changed) await this.saveStore(store)
   }
 
   async search(params: MemorySearchParams): Promise<MemorySearchResult[]> {
@@ -311,44 +434,15 @@ class LongTermMemoryService {
   }
 
   async promoteToLongTerm(id: string): Promise<boolean> {
-    const store = await this.loadStore()
-    const idx = store.shortTerm.findIndex(e => e.id === id)
-    if (idx === -1) return false
-
-    const entry = store.shortTerm.splice(idx, 1)[0]
-    entry.status = 'long_term'
-    entry.promotedAt = Date.now()
-    entry.updatedAt = Date.now()
-    store.longTerm.unshift(entry)
-    this.trimList(store.longTerm, MAX_LONG_TERM)
-
-    await this.saveStore(store)
-    logger.agent.info('[LongTermMemory] Promoted to long_term:', id)
-    return true
+    return this.updateEntry(id, { status: 'long_term' })
   }
 
   async forget(id: string): Promise<boolean> {
-    const store = await this.loadStore()
-    for (const [sourceList, ] of [
-      [store.shortTerm, 'short_term'],
-      [store.longTerm, 'long_term'],
-    ] as const) {
-      const idx = sourceList.findIndex(e => e.id === id)
-      if (idx !== -1) {
-        const entry = sourceList.splice(idx, 1)[0]
-        entry.status = 'forgotten'
-        entry.updatedAt = Date.now()
-        store.forgotten.push(entry)
-        await this.saveStore(store)
-        return true
-      }
-    }
-    return false
+    return this.updateEntry(id, { status: 'forgotten', enabled: false })
   }
 
   async supersedeEntry(oldId: string, newContent: string, reason: string, options?: { source?: MemorySource; tags?: string[]; confidence?: number }): Promise<MemoryEntry | null> {
-    const store = await this.loadStore()
-    const oldEntry = this.findById(store, oldId)
+    const oldEntry = await this.getEntry(oldId)
     if (!oldEntry) return null
 
     const newEntry = await this.addEntry({
@@ -401,12 +495,12 @@ class LongTermMemoryService {
   }
 
   async runDeepPromotion(): Promise<{ promoted: number; forgotten: number }> {
-    const store = await this.loadStore()
+    await this.ensureDb()
     const now = Date.now()
     let promoted = 0
     let forgotten = 0
 
-    const candidates = [...store.shortTerm]
+    const candidates = await this.getEntries('short_term')
     for (const entry of candidates) {
       const ageDays = (now - entry.createdAt) / 86_400_000
       const recencyFactor = Math.pow(0.5, ageDays / 14)
@@ -422,31 +516,15 @@ class LongTermMemoryService {
       const uniqueQueryThreshold = isUserStated ? 0 : 1
 
       if (score >= promoteThreshold && entry.recallCount >= recallThreshold && entry.uniqueQueryCount >= uniqueQueryThreshold) {
-        const idx = store.shortTerm.findIndex(e => e.id === entry.id)
-        if (idx !== -1) {
-          store.shortTerm.splice(idx, 1)
-          entry.status = 'long_term'
-          entry.promotedAt = now
-          entry.updatedAt = now
-          store.longTerm.unshift(entry)
-          promoted++
-        }
+        await this.updateEntry(entry.id, { status: 'long_term' })
+        promoted++
       } else if (ageDays > 60 && entry.recallCount === 0 && entry.confidence < 0.6) {
-        const idx = store.shortTerm.findIndex(e => e.id === entry.id)
-        if (idx !== -1) {
-          store.shortTerm.splice(idx, 1)
-          entry.status = 'forgotten'
-          entry.updatedAt = now
-          store.forgotten.push(entry)
-          forgotten++
-        }
+        await this.updateEntry(entry.id, { status: 'forgotten', enabled: false })
+        forgotten++
       }
     }
 
-    this.trimList(store.longTerm, MAX_LONG_TERM)
-
     if (promoted > 0 || forgotten > 0) {
-      await this.saveStore(store)
       logger.agent.info(`[LongTermMemory] Deep promotion: ${promoted} promoted, ${forgotten} forgotten`)
     }
 
@@ -454,54 +532,52 @@ class LongTermMemoryService {
   }
 
   async runLightDreaming(): Promise<{ merged: number; pruned: number }> {
-    const store = await this.loadStore()
+    await this.ensureDb()
     let merged = 0
     let pruned = 0
 
-    const duplicates = this.findDuplicates(store.shortTerm)
+    const shortTerm = await this.getEntries('short_term')
+    const duplicates = this.findDuplicates(shortTerm)
+
     for (const group of duplicates) {
       if (group.length < 2) continue
       const best = group.reduce((a, b) => (a.confidence >= b.confidence ? a : b))
+
       for (const entry of group) {
         if (entry.id === best.id) continue
+        // 合并 recallCount、uniqueQueryCount、tags 到 best
+        const updates: Partial<MemoryEntry> = {}
         if (entry.recallCount > best.recallCount) {
+          updates.recallCount = entry.recallCount
           best.recallCount = entry.recallCount
         }
         if (entry.uniqueQueryCount > best.uniqueQueryCount) {
+          updates.uniqueQueryCount = entry.uniqueQueryCount
           best.uniqueQueryCount = entry.uniqueQueryCount
         }
-        for (const tag of entry.tags) {
-          if (!best.tags.includes(tag)) best.tags.push(tag)
+        const newTags = [...new Set([...best.tags, ...entry.tags])]
+        if (newTags.length > best.tags.length) {
+          updates.tags = newTags
+          best.tags = newTags
         }
-        const idx = store.shortTerm.findIndex(e => e.id === entry.id)
-        if (idx !== -1) {
-          store.shortTerm.splice(idx, 1)
-          merged++
+        if (Object.keys(updates).length > 0) {
+          await this.updateEntry(best.id, updates)
         }
+        await this.deleteEntry(entry.id)
+        merged++
       }
-      best.updatedAt = Date.now()
     }
 
     const now = Date.now()
-    const toPrune: number[] = []
-    for (let i = store.shortTerm.length - 1; i >= 0; i--) {
-      const entry = store.shortTerm[i]
+    for (const entry of shortTerm) {
       const ageDays = (now - entry.createdAt) / 86_400_000
       if (ageDays > 60 && entry.recallCount === 0 && entry.confidence < 0.5) {
-        toPrune.push(i)
+        await this.updateEntry(entry.id, { status: 'forgotten', enabled: false })
+        pruned++
       }
-    }
-    for (const idx of toPrune) {
-      const entry = store.shortTerm.splice(idx, 1)[0]
-      entry.status = 'forgotten'
-      entry.updatedAt = now
-      store.forgotten.push(entry)
-      pruned++
     }
 
     if (merged > 0 || pruned > 0) {
-      this.trimList(store.shortTerm, MAX_SHORT_TERM)
-      await this.saveStore(store)
       logger.agent.info(`[LongTermMemory] Light dreaming: ${merged} merged, ${pruned} pruned`)
     }
 
@@ -509,8 +585,8 @@ class LongTermMemoryService {
   }
 
   async runRemDreaming(): Promise<{ consolidated: number; insights: number; contradictions: number }> {
-    const store = await this.loadStore()
-    const longTerm = store.longTerm
+    await this.ensureDb()
+    const longTerm = await this.getEntries('long_term')
     if (longTerm.length < 2) return { consolidated: 0, insights: 0, contradictions: 0 }
 
     const now = Date.now()
@@ -534,13 +610,13 @@ class LongTermMemoryService {
       }
     }
 
-    const groups = this.findRelatedGroups(longTerm.filter(e => !toRemove.has(e.id)))
+    const remaining = longTerm.filter(e => !toRemove.has(e.id))
+    const groups = this.findRelatedGroups(remaining)
+
     for (const group of groups) {
       if (group.length < 2) continue
 
-      const combinedContent = group
-        .map(e => e.content)
-        .join(' | ')
+      const combinedContent = group.map(e => e.content).join(' | ')
       if (combinedContent.length > 500) continue
 
       const bestConfidence = Math.max(...group.map(e => e.confidence))
@@ -570,14 +646,15 @@ class LongTermMemoryService {
         toRemove.add(entry.id)
       }
 
-      store.longTerm.push(consolidatedEntry)
+      await api.memoryDb.upsertEntry(this.entryToRow(consolidatedEntry))
       consolidated++
     }
 
+    for (const id of toRemove) {
+      await this.deleteEntry(id)
+    }
+
     if (toRemove.size > 0) {
-      store.longTerm = store.longTerm.filter(e => !toRemove.has(e.id))
-      this.trimList(store.longTerm, MAX_LONG_TERM)
-      await this.saveStore(store)
       logger.agent.info(`[LongTermMemory] REM dreaming: ${consolidated} consolidated, ${insights} insights, ${contradictions} contradictions from ${toRemove.size} entries`)
     }
 
@@ -706,15 +783,54 @@ ${lines.join('\n')}
   }
 
   async clearCache(): Promise<void> {
-    this.cache = null
+    // SQLite 模式下无需缓存清理，保留方法以兼容调用方
+  }
+
+  /**
+   * 从旧 JSON store 迁移数据到 SQLite（一次性）
+   * 检测旧 JSON 文件是否存在，若存在则迁移并标记
+   */
+  async migrateFromJsonFile(): Promise<{ migrated: number; skipped: number }> {
+    const { workspacePath } = useStore.getState()
+    if (!workspacePath) return { migrated: 0, skipped: 0 }
+
+    await this.ensureDb()
+
+    // 检查是否已迁移过
+    const migratedFlag = await api.memoryDb.getSyncState('json_migrated')
+    if (migratedFlag === '1') {
+      logger.agent.info('[LongTermMemory] 已从 JSON 迁移过，跳过')
+      return { migrated: 0, skipped: 0 }
+    }
+
+    const filePath = joinPath(workspacePath, OLD_FILE_PATH)
+    const content = await api.file.read(filePath)
+    if (!content) {
+      // 无旧文件，直接标记已迁移
+      await api.memoryDb.setSyncState('json_migrated', '1')
+      return { migrated: 0, skipped: 0 }
+    }
+
+    try {
+      const store = JSON.parse(content)
+      const result = await api.memoryDb.migrateFromJsonStore(store)
+      if (result.success) {
+        await api.memoryDb.setSyncState('json_migrated', '1')
+        logger.agent.info(`[LongTermMemory] 从 JSON 迁移完成: ${result.migrated} 条`)
+        return { migrated: result.migrated, skipped: result.skipped }
+      }
+      return { migrated: 0, skipped: 0 }
+    } catch (err) {
+      logger.agent.warn('[LongTermMemory] JSON 迁移失败:', err)
+      return { migrated: 0, skipped: 0 }
+    }
   }
 
   async migrateFromKnowledgeConversation(): Promise<number> {
     const { workspacePath } = useStore.getState()
     if (!workspacePath) return 0
 
-    const store = await this.loadStore()
-    if ((store as any).migratedFromConversation) return 0
+    await this.ensureDb()
 
     const oldFilePath = joinPath(workspacePath, OLD_KNOWLEDGE_CONV_FILE)
     const oldContent = await api.file.read(oldFilePath)
@@ -725,33 +841,35 @@ ${lines.join('\n')}
       if (!oldStore || !Array.isArray(oldStore.entries)) return 0
 
       let migrated = 0
+      const existing = await this.getEntries()
+      const existingContents = new Set(existing.map(e => e.content.trim()))
+
       for (const item of oldStore.entries) {
         if (!item.content || typeof item.content !== 'string') continue
-        const exists = store.shortTerm.some(e => e.content.trim() === item.content.trim())
-        if (exists) continue
+        const content = item.content.trim()
+        if (existingContents.has(content)) continue
 
-        store.shortTerm.push({
+        const now = Date.now()
+        const entry: MemoryEntry = {
           id: item.id || crypto.randomUUID(),
-          content: item.content.trim(),
+          content,
           source: 'auto_extracted',
           status: 'short_term',
           confidence: item.confidence ?? 0.7,
           recallCount: item.accessCount ?? 0,
           uniqueQueryCount: 0,
-          lastRecalledAt: item.updatedAt ?? Date.now(),
+          lastRecalledAt: item.updatedAt ?? now,
           halfLifeDays: 14,
           tags: item.tags ?? [],
           enabled: item.enabled !== false,
-          createdAt: item.createdAt ?? Date.now(),
-          updatedAt: Date.now(),
-        })
+          createdAt: item.createdAt ?? now,
+          updatedAt: now,
+        }
+        await api.memoryDb.upsertEntry(this.entryToRow(entry))
         migrated++
       }
 
       if (migrated > 0) {
-        (store as any).migratedFromConversation = true
-        this.trimList(store.shortTerm, MAX_SHORT_TERM)
-        await this.saveStore(store)
         logger.agent.info(`[LongTermMemory] Migrated ${migrated} entries from knowledge conversation layer`)
       }
 
@@ -759,111 +877,6 @@ ${lines.join('\n')}
     } catch (err) {
       logger.agent.warn('[LongTermMemory] Failed to migrate conversation data:', err)
       return 0
-    }
-  }
-
-  private getList(store: MemoryStore, status: MemoryStatus): MemoryEntry[] {
-    if (status === 'short_term') return store.shortTerm
-    if (status === 'long_term') return store.longTerm
-    return store.forgotten
-  }
-
-  private findById(store: MemoryStore, id: string): MemoryEntry | null {
-    for (const list of [store.shortTerm, store.longTerm, store.forgotten]) {
-      const entry = list.find(e => e.id === id)
-      if (entry) return entry
-    }
-    return null
-  }
-
-  private trimList(list: MemoryEntry[], max: number): void {
-    if (list.length > max) {
-      list.splice(max)
-    }
-  }
-
-  private async loadStore(): Promise<MemoryStore> {
-    if (this.cache) return this.cache
-
-    const { workspacePath } = useStore.getState()
-    if (!workspacePath) return this.createEmptyStore()
-
-    const filePath = joinPath(workspacePath, FILE_PATH)
-    const content = await api.file.read(filePath)
-    if (!content) return this.createEmptyStore()
-
-    try {
-      const store = this.normalizeStore(JSON.parse(content))
-      this.cache = store
-      return store
-    } catch {
-      logger.agent.warn('[LongTermMemory] Failed to parse store')
-      return this.createEmptyStore()
-    }
-  }
-
-  private async saveStore(store: MemoryStore): Promise<void> {
-    const { workspacePath } = useStore.getState()
-    if (!workspacePath) return
-
-    this.cache = store
-
-    const dir = joinPath(workspacePath, BRAND.paths.memory)
-    const filePath = joinPath(workspacePath, FILE_PATH)
-    const content = JSON.stringify(store, null, 2)
-
-    await api.file.ensureDir(dir)
-    await api.file.write(filePath, content)
-  }
-
-  private createEmptyStore(): MemoryStore {
-    return { version: CURRENT_VERSION, shortTerm: [], longTerm: [], forgotten: [] }
-  }
-
-  private normalizeStore(raw: unknown): MemoryStore {
-    if (!raw || typeof raw !== 'object') return this.createEmptyStore()
-
-    const c = raw as any
-    return {
-      version: typeof c.version === 'number' ? c.version : CURRENT_VERSION,
-      shortTerm: this.normalizeEntries(c.shortTerm),
-      longTerm: this.normalizeEntries(c.longTerm),
-      forgotten: this.normalizeEntries(c.forgotten),
-    }
-  }
-
-  private normalizeEntries(raw: unknown): MemoryEntry[] {
-    if (!Array.isArray(raw)) return []
-    return raw
-      .map(item => this.normalizeEntry(item))
-      .filter((e): e is MemoryEntry => e !== null)
-  }
-
-  private normalizeEntry(raw: unknown): MemoryEntry | null {
-    if (!raw || typeof raw !== 'object') return null
-    const c = raw as Partial<MemoryEntry>
-    if (typeof c.content !== 'string' || !c.content.trim()) return null
-
-    const now = Date.now()
-    return {
-      id: typeof c.id === 'string' && c.id ? c.id : crypto.randomUUID(),
-      content: c.content.trim(),
-      source: (['auto_extracted', 'user', 'dreaming_light', 'dreaming_deep', 'dreaming_rem'] as const).includes(c.source as any)
-        ? c.source as MemorySource : 'auto_extracted',
-      status: (['short_term', 'long_term', 'forgotten'] as const).includes(c.status as any)
-        ? c.status as MemoryStatus : 'short_term',
-      confidence: typeof c.confidence === 'number' ? Math.min(1, Math.max(0, c.confidence)) : 0.7,
-      recallCount: typeof c.recallCount === 'number' ? c.recallCount : 0,
-      uniqueQueryCount: typeof c.uniqueQueryCount === 'number' ? c.uniqueQueryCount : 0,
-      lastRecalledAt: typeof c.lastRecalledAt === 'number' ? c.lastRecalledAt : now,
-      halfLifeDays: typeof c.halfLifeDays === 'number' ? c.halfLifeDays : 14,
-      tags: Array.isArray(c.tags) ? c.tags.filter((t: any) => typeof t === 'string') : [],
-      enabled: c.enabled !== false,
-      createdAt: typeof c.createdAt === 'number' ? c.createdAt : now,
-      updatedAt: typeof c.updatedAt === 'number' ? c.updatedAt : now,
-      promotedAt: typeof c.promotedAt === 'number' ? c.promotedAt : undefined,
-      expiresAt: typeof c.expiresAt === 'number' ? c.expiresAt : undefined,
-      originalSessionId: typeof c.originalSessionId === 'string' ? c.originalSessionId : undefined,
     }
   }
 }

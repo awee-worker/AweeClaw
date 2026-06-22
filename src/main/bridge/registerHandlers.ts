@@ -36,6 +36,7 @@ import { registerScenarioInstallIpcHandlers, registerScenarioMarketplaceHandlers
 import { registerAuditHandlers, cleanupAuditHandlers } from './audit' // 审计日志
 import { registerSettingsDbIpcHandlers } from './settingsDb' // 设置数据库
 import { registerSessionDbIpcHandlers } from './sessionDb' // 会话数据库
+import { registerMemoryDbIpcHandlers } from './memoryDb' // 记忆数据库
 
 // 安全模块
 import {
@@ -222,6 +223,9 @@ export function registerAllHandlers(context: IPCContext) {
 
   // 会话数据库
   registerOnce('session-db', () => registerSessionDbIpcHandlers())
+
+  // 记忆数据库
+  registerOnce('memory-db', () => registerMemoryDbIpcHandlers())
 
   logger.ipc.info(`[Security] 所有安全IPC处理器已注册 (${registeredHandlers.size} 个)`)
 }

@@ -179,6 +179,32 @@ type ElectronAPIWithRemoteShell = ElectronAPI & {
   sessionDbClearAll: () => Promise<{ success: boolean; error?: string }>
   sessionDbGetPath: () => Promise<string>
 
+  // Memory DB (SQLite) - 客户端本地记忆数据库
+  memoryDbInitialize: () => Promise<{ success: boolean; dbPath?: string; error?: string }>
+  memoryDbUpsertEntry: (entry: any) => Promise<{ success: boolean; error?: string }>
+  memoryDbBatchUpsertEntries: (entries: any[]) => Promise<{ success: boolean; error?: string }>
+  memoryDbGetEntryById: (id: string) => Promise<any | null>
+  memoryDbQueryEntries: (options?: any) => Promise<{ items: any[]; total: number }>
+  memoryDbUpdateEntry: (id: string, updates: any) => Promise<{ success: boolean; error?: string }>
+  memoryDbDeleteEntry: (id: string) => Promise<{ success: boolean; error?: string }>
+  memoryDbSoftDeleteEntry: (id: string) => Promise<{ success: boolean; error?: string }>
+  memoryDbClearAll: (userId?: string | null) => Promise<{ success: boolean; count?: number; error?: string }>
+  memoryDbGetStats: (userId?: string | null) => Promise<{ total: number; enabled: number; byTier: Record<string, number>; byCategory: Record<string, number> }>
+  memoryDbGetOverview: (userId?: string | null) => Promise<any>
+  memoryDbGetVisualizationData: (options?: any) => Promise<any>
+  memoryDbGetTimeline: (options?: any) => Promise<any[]>
+  memoryDbGetTimelineByMonth: (options?: any) => Promise<any>
+  memoryDbGetTimelineMonths: (options?: any) => Promise<Array<{ year: number; month: number; count: number }>>
+  memoryDbUpsertRelation: (rel: any) => Promise<{ success: boolean; error?: string }>
+  memoryDbGetRelations: (memoryId: string) => Promise<any[]>
+  memoryDbDeleteRelation: (id: string) => Promise<{ success: boolean; error?: string }>
+  memoryDbGetSyncState: (key: string) => Promise<string | null>
+  memoryDbSetSyncState: (key: string, value: string) => Promise<{ success: boolean; error?: string }>
+  memoryDbGetPendingPush: (limit?: number) => Promise<any[]>
+  memoryDbMarkAsSynced: (id: string, remoteId: string) => Promise<{ success: boolean; error?: string }>
+  memoryDbMigrateFromJsonStore: (store: any) => Promise<{ success: boolean; migrated: number; skipped: number; error?: string }>
+  memoryDbGetPath: () => Promise<string>
+
   // Security (SecureToolExecutor + ToolApproval + Sandbox)
   securityPreCheckTool: (request: {
     toolName: string
@@ -327,6 +353,34 @@ function createGroupedAPI() {
       deleteThread: (threadId: string) => raw.sessionDbDeleteThread(threadId),
       clearAll: () => raw.sessionDbClearAll(),
       getPath: () => raw.sessionDbGetPath(),
+    },
+
+    // 记忆数据库 (SQLite) - 客户端本地记忆存储
+    memoryDb: {
+      initialize: () => raw.memoryDbInitialize(),
+      upsertEntry: (entry: any) => raw.memoryDbUpsertEntry(entry),
+      batchUpsertEntries: (entries: any[]) => raw.memoryDbBatchUpsertEntries(entries),
+      getEntryById: (id: string) => raw.memoryDbGetEntryById(id),
+      queryEntries: (options?: any) => raw.memoryDbQueryEntries(options),
+      updateEntry: (id: string, updates: any) => raw.memoryDbUpdateEntry(id, updates),
+      deleteEntry: (id: string) => raw.memoryDbDeleteEntry(id),
+      softDeleteEntry: (id: string) => raw.memoryDbSoftDeleteEntry(id),
+      clearAll: (userId?: string | null) => raw.memoryDbClearAll(userId),
+      getStats: (userId?: string | null) => raw.memoryDbGetStats(userId),
+      getOverview: (userId?: string | null) => raw.memoryDbGetOverview(userId),
+      getVisualizationData: (options?: any) => raw.memoryDbGetVisualizationData(options),
+      getTimeline: (options?: any) => raw.memoryDbGetTimeline(options),
+      getTimelineByMonth: (options?: any) => raw.memoryDbGetTimelineByMonth(options),
+      getTimelineMonths: (options?: any) => raw.memoryDbGetTimelineMonths(options),
+      upsertRelation: (rel: any) => raw.memoryDbUpsertRelation(rel),
+      getRelations: (memoryId: string) => raw.memoryDbGetRelations(memoryId),
+      deleteRelation: (id: string) => raw.memoryDbDeleteRelation(id),
+      getSyncState: (key: string) => raw.memoryDbGetSyncState(key),
+      setSyncState: (key: string, value: string) => raw.memoryDbSetSyncState(key, value),
+      getPendingPush: (limit?: number) => raw.memoryDbGetPendingPush(limit),
+      markAsSynced: (id: string, remoteId: string) => raw.memoryDbMarkAsSynced(id, remoteId),
+      migrateFromJsonStore: (store: any) => raw.memoryDbMigrateFromJsonStore(store),
+      getPath: () => raw.memoryDbGetPath(),
     },
 
     // LLM
