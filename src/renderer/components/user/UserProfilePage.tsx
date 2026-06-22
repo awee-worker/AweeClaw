@@ -5,6 +5,7 @@ import {
   ShieldCheck,
   X,
   UserCircle,
+  Monitor,
 } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -12,12 +13,14 @@ import { type ProfileTab } from './tabs'
 import { PlanPanel } from './tabs/PlanPanel'
 import { ProfilePanel } from './tabs/ProfilePanel'
 import { SecurityPanel } from './tabs/SecurityPanel'
+import DesktopControlPanel from '../desktop-control/DesktopControlPanel'
 import { t, type Language } from '@renderer/i18n'
 
 const tabs: { id: ProfileTab; icon: React.ReactNode; labelZh: string; labelEn: string }[] = [
   { id: 'plan', icon: <Crown className="w-4 h-4" />, labelZh: '套餐管理', labelEn: 'Plan' },
   { id: 'profile', icon: <User className="w-4 h-4" />, labelZh: '个人信息', labelEn: 'Profile' },
   { id: 'security', icon: <ShieldCheck className="w-4 h-4" />, labelZh: '账号安全', labelEn: 'Security' },
+  { id: 'desktop', icon: <Monitor className="w-4 h-4" />, labelZh: '桌面控制', labelEn: 'Desktop' },
 ]
 
 export default function UserProfilePage() {
@@ -90,6 +93,7 @@ export default function UserProfilePage() {
               {activeTab === 'plan' && <PlanPanel key="plan" language={language as Language} />}
               {activeTab === 'profile' && <ProfilePanel key="profile" language={language as Language} onSwitchToSecurity={(section) => { setActiveTab('security'); setSecurityInitialSection(section) }} />}
               {activeTab === 'security' && <SecurityPanel key="security" language={language as Language} initialSection={securityInitialSection} onSectionConsumed={() => setSecurityInitialSection(null)} />}
+              {activeTab === 'desktop' && <DesktopControlPanel key="desktop" />}
             </div>
           </div>
         </div>

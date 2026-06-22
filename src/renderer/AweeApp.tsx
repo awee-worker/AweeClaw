@@ -20,6 +20,7 @@ import { CrashGuard as ErrorBoundary } from '@components/foundation/CrashGuard'
 import { GlobalErrorHandler } from '@components/foundation/AppErrorHandler'
 import GlobalToastContainer from '@components/foundation/AppToastContainer'
 import { ThemeManager } from '@components/workspace-editor/EditorThemeProvider'
+import { useDesktopConfirmation } from '@components/settings/tabs/desktop/useDesktopConfirmation'
 import { FullScreenLoading } from './components/ui/ProgressIndicator'
 import { startupMetrics } from '@shared/toolkit/bootMetrics'
 
@@ -70,6 +71,9 @@ function AppContent() {
     isAuthenticated: state.isAuthenticated,
     setShowWelcomePage: state.setShowWelcomePage,
   })))
+
+  // 全局监听桌面控制权限确认请求（确保 AI 调用工具时无论在哪个页面都能弹出确认框）
+  useDesktopConfirmation(language)
 
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)

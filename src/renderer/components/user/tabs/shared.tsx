@@ -1,7 +1,7 @@
 import { Feather, Crown, Rocket } from 'lucide-react'
 import type { Language } from '@renderer/i18n'
 
-export type ProfileTab = 'plan' | 'profile' | 'security'
+export type ProfileTab = 'plan' | 'profile' | 'security' | 'desktop'
 
 export type BillingTab = 'orders' | 'invoices' | 'payments' | 'usage'
 

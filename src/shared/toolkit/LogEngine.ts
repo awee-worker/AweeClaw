@@ -37,6 +37,7 @@ export type LogCategory =
   | 'Gateway'
   | 'Scenario'
   | 'Session'
+  | 'Desktop'
 
 // 日志条目
 export interface LogEntry {
@@ -91,6 +92,7 @@ const CATEGORY_COLORS: Record<LogCategory, string> = {
   Gateway: '#ff6f00',
   Scenario: '#e040fb',
   Session: '#5c6bc0',
+  Desktop: '#26c6da',
 }
 
 // 日志配置
@@ -642,6 +644,7 @@ class LoggerClass {
   gateway = this.createCategoryLogger('Gateway')
   scenario = this.createCategoryLogger('Scenario')
   session = this.createCategoryLogger('Session')
+  desktop = this.createCategoryLogger('Desktop')
 
   logScenario(level: LogLevel, scenarioId: string, message: string, data?: unknown): void {
     this.log(level, 'Scenario', `[${scenarioId}] ${message}`, data)

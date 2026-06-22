@@ -1,5 +1,5 @@
 import { lazy, Suspense, useMemo, useCallback } from 'react'
-import { Cpu, Settings2, Shield, Monitor, Plug, Brain, FileText, Zap, X, Palette, Radio, Cloud, Eye, Search, Mail, Mic } from 'lucide-react'
+import { Cpu, Settings2, Shield, Monitor, Plug, Brain, FileText, Zap, X, Palette, Radio, Cloud, Eye, Search, Mail, Mic, MonitorSmartphone } from 'lucide-react'
 import { PROVIDERS } from '@configuration/aiProviders'
 import { t, type Language } from '@renderer/i18n'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
@@ -51,6 +51,9 @@ const PrivacySettingsPanel = lazy(() =>
 )
 const VoiceSettingsPanel = lazy(() =>
     import('./tabs/VoiceSettingsPanel').then(m => ({ default: m.default })),
+)
+const DesktopControlPanel = lazy(() =>
+    import('./tabs/desktop/DesktopControlPanel').then(m => ({ default: m.DesktopControlPanel })),
 )
 
 function SettingsTabFallback({ language }: { language: Language }) {
@@ -137,6 +140,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
         { id: 'privacy', label: t('settings.privacy', language as Language), icon: <Eye className="w-4 h-4" /> },
         { id: 'system', label: t('settings.system', language as Language), icon: <Monitor className="w-4 h-4" /> },
         { id: 'cloud', label: t('settings.cloud', language as Language), icon: <Cloud className="w-4 h-4" /> },
+        { id: 'desktop', label: t('settings.desktop', language as Language) || '桌面控制', icon: <MonitorSmartphone className="w-4 h-4" /> },
     ], [language])
 
     const renderActiveTab = () => {
@@ -233,6 +237,8 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                 return <CloudSettings language={language} />
             case 'voice':
                 return <VoiceSettingsPanel language={language} />
+            case 'desktop':
+                return <DesktopControlPanel language={language} />
             default:
                 return null
         }

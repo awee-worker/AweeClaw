@@ -735,7 +735,21 @@ async function initializeModules(firstWin: BrowserWindow) {
     // 先初始化 Plugin Registry（ChannelPluginRegistrar 依赖它）
     const { getPluginRegistry } = await import('./modules/plugin-sdk/PluginRegistry')
     const userDataPath = app.getPath('userData')
-    getPluginRegistry(path.join(userDataPath, 'plugins'))
+    const pluginRegistry = getPluginRegistry(path.join(userDataPath, 'plugins'))
+
+    // Phase 5: 注册内置桌面控制插件
+    try {
+      const { builtinDesktopPluginFactory } = await import('./modules/plugin-sdk/builtin/DesktopControlPlugin')
+      pluginRegistry.registerBuiltin(
+        builtinDesktopPluginFactory.getManifest(),
+        (ctx) => builtinDesktopPluginFactory.create(ctx),
+      )
+      await pluginRegistry.load('desktop-builtin')
+      await pluginRegistry.initialize('desktop-builtin')
+      logger.system.info('[Main] Built-in desktop control plugin registered')
+    } catch (err) {
+      logger.system.warn('[Main] Desktop control plugin registration failed:', err instanceof Error ? err.message : String(err))
+    }
 
     const { channelService } = await import('./modules/messaging')
     channelService.init().then(() => {

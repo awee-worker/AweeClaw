@@ -1276,4 +1276,208 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('scenario:installProgress', handler)
     return () => ipcRenderer.removeListener('scenario:installProgress', handler)
   },
+
+  // ============ Desktop Control API ============
+  desktopLaunchApp: (name: string, args?: string[]) => ipcRenderer.invoke('desktop:launchApp', name, args),
+  desktopQuitApp: (name: string) => ipcRenderer.invoke('desktop:quitApp', name),
+  desktopListInstalledApps: () => ipcRenderer.invoke('desktop:listInstalledApps'),
+  desktopFindApp: (name: string) => ipcRenderer.invoke('desktop:findApp', name),
+  desktopOpenUrl: (url: string) => ipcRenderer.invoke('desktop:openUrl', url),
+  desktopOpenFile: (filePath: string) => ipcRenderer.invoke('desktop:openFile', filePath),
+  desktopGetSystemInfo: () => ipcRenderer.invoke('desktop:getSystemInfo'),
+  desktopSetVolume: (volume: number) => ipcRenderer.invoke('desktop:setVolume', volume),
+  desktopSetBrightness: (level: number) => ipcRenderer.invoke('desktop:setBrightness', level),
+  desktopListProcesses: () => ipcRenderer.invoke('desktop:listProcesses'),
+  desktopFindProcess: (query: string | number) => ipcRenderer.invoke('desktop:findProcess', query),
+  desktopKillProcess: (pid: number, force?: boolean) => ipcRenderer.invoke('desktop:killProcess', pid, force),
+  desktopIsProcessRunning: (name: string) => ipcRenderer.invoke('desktop:isProcessRunning', name),
+  desktopResolveConfirmation: (id: string, response: { approved: boolean; remember: boolean }) =>
+    ipcRenderer.invoke('desktop:resolveConfirmation', id, response),
+  onDesktopConfirmationRequest: (callback: (request: any) => void) => {
+    const handler = (_: IpcRendererEvent, request: any) => callback(request)
+    ipcRenderer.on('desktop:confirmation-request', handler)
+    return () => ipcRenderer.removeListener('desktop:confirmation-request', handler)
+  },
+
+  // ============ Desktop Control Phase 2: 窗口控制 ============
+  desktopListWindows: () => ipcRenderer.invoke('desktop:listWindows'),
+  desktopFindWindow: (query: string) => ipcRenderer.invoke('desktop:findWindow', query),
+  desktopFocusWindow: (windowId: string) => ipcRenderer.invoke('desktop:focusWindow', windowId),
+  desktopMinimizeWindow: (windowId: string) => ipcRenderer.invoke('desktop:minimizeWindow', windowId),
+  desktopMaximizeWindow: (windowId: string) => ipcRenderer.invoke('desktop:maximizeWindow', windowId),
+  desktopRestoreWindow: (windowId: string) => ipcRenderer.invoke('desktop:restoreWindow', windowId),
+  desktopCloseWindow: (windowId: string) => ipcRenderer.invoke('desktop:closeWindow', windowId),
+  desktopBringWindowToFront: (windowId: string) => ipcRenderer.invoke('desktop:bringWindowToFront', windowId),
+  desktopSetWindowBounds: (windowId: string, bounds: { x: number; y: number; width: number; height: number }) =>
+    ipcRenderer.invoke('desktop:setWindowBounds', windowId, bounds),
+
+  // ============ Desktop Control Phase 2: 屏幕截图 ============
+  desktopCaptureScreen: (displayId?: number) => ipcRenderer.invoke('desktop:captureScreen', displayId),
+  desktopCaptureRegion: (region: { x: number; y: number; width: number; height: number }, displayId?: number) =>
+    ipcRenderer.invoke('desktop:captureRegion', region, displayId),
+  desktopCaptureAllScreens: () => ipcRenderer.invoke('desktop:captureAllScreens'),
+
+  // ============ Desktop Control Phase 2: 输入模拟 ============
+  desktopMouseClick: (params: { x: number; y: number; button: 'left' | 'right' | 'middle'; clickType: 'single' | 'double' }) =>
+    ipcRenderer.invoke('desktop:mouseClick', params),
+  desktopMouseMove: (params: { x: number; y: number; smooth?: boolean; duration?: number }) =>
+    ipcRenderer.invoke('desktop:mouseMove', params),
+  desktopMouseScroll: (params: { x: number; y: number; amount: number }) =>
+    ipcRenderer.invoke('desktop:mouseScroll', params),
+  desktopMouseDrag: (params: { fromX: number; fromY: number; toX: number; toY: number; button: 'left' | 'right' | 'middle'; duration?: number }) =>
+    ipcRenderer.invoke('desktop:mouseDrag', params),
+  desktopTypeText: (text: string, delayMs?: number) => ipcRenderer.invoke('desktop:typeText', text, delayMs),
+  desktopPressKey: (key: string) => ipcRenderer.invoke('desktop:pressKey', key),
+  desktopKeyCombo: (keys: string[]) => ipcRenderer.invoke('desktop:keyCombo', keys),
+
+  // ============ Desktop Control Phase 2: 文件操作 ============
+  desktopCopyFile: (sourcePath: string, targetPath: string) => ipcRenderer.invoke('desktop:copyFile', sourcePath, targetPath),
+  desktopMoveFile: (sourcePath: string, targetPath: string) => ipcRenderer.invoke('desktop:moveFile', sourcePath, targetPath),
+  desktopDeleteFile: (targetPath: string) => ipcRenderer.invoke('desktop:deleteFile', targetPath),
+  desktopRenameFile: (sourcePath: string, newName: string) => ipcRenderer.invoke('desktop:renameFile', sourcePath, newName),
+  desktopGetFileInfo: (targetPath: string) => ipcRenderer.invoke('desktop:getFileInfo', targetPath),
+  desktopFileExists: (targetPath: string) => ipcRenderer.invoke('desktop:fileExists', targetPath),
+  desktopCreateDirectory: (targetPath: string) => ipcRenderer.invoke('desktop:createDirectory', targetPath),
+  desktopListDirectory: (targetPath: string) => ipcRenderer.invoke('desktop:listDirectory', targetPath),
+
+  // ============ Desktop Control Phase 3: 紧急停止 ============
+  desktopEmergencyStopGetState: () => ipcRenderer.invoke('desktop:emergencyStopGetState'),
+  desktopEmergencyStopTrigger: (params: { source: string; reason?: string }) =>
+    ipcRenderer.invoke('desktop:emergencyStopTrigger', params),
+  desktopEmergencyStopReset: () => ipcRenderer.invoke('desktop:emergencyStopReset'),
+  onDesktopEmergencyStopStateChange: (callback: (state: any) => void) => {
+    const handler = (_event: unknown, state: any) => callback(state)
+    ipcRenderer.on('desktop:emergencyStopStateChanged', handler)
+    return () => ipcRenderer.removeListener('desktop:emergencyStopStateChanged', handler)
+  },
+
+  // ============ Desktop Control Phase 3: 辅助功能权限 ============
+  desktopAccessibilityCheck: (type?: string, forceRefresh?: boolean) =>
+    ipcRenderer.invoke('desktop:accessibilityCheck', type, forceRefresh),
+  desktopAccessibilityCheckAll: (forceRefresh?: boolean) =>
+    ipcRenderer.invoke('desktop:accessibilityCheckAll', forceRefresh),
+  desktopAccessibilityOpenPreferences: (type?: string) =>
+    ipcRenderer.invoke('desktop:accessibilityOpenPreferences', type),
+  desktopAccessibilityRequestPermission: (type?: string) =>
+    ipcRenderer.invoke('desktop:accessibilityRequestPermission', type),
+  onDesktopAccessibilityPermissionChange: (callback: (type: string, status: string) => void) => {
+    const handler = (_event: unknown, data: { type: string; status: string }) => callback(data.type, data.status)
+    ipcRenderer.on('desktop:accessibilityPermissionChanged', handler)
+    return () => ipcRenderer.removeListener('desktop:accessibilityPermissionChanged', handler)
+  },
+
+  // ============ Phase 4: 操作录制 ============
+  desktopRecordingStart: (params: { name: string; description?: string }) =>
+    ipcRenderer.invoke('desktop:recordingStart', params),
+  desktopRecordingStop: (params: { discard?: boolean }) =>
+    ipcRenderer.invoke('desktop:recordingStop', params),
+  desktopRecordAction: (params: { actionType: string; params: Record<string, unknown> }) =>
+    ipcRenderer.invoke('desktop:recordAction', params),
+  desktopReplayRecording: (params: { recordingId: string; config?: Record<string, unknown> }) =>
+    ipcRenderer.invoke('desktop:replayRecording', params),
+  desktopListRecordings: () =>
+    ipcRenderer.invoke('desktop:listRecordings'),
+  desktopDeleteRecording: (recordingId: string) =>
+    ipcRenderer.invoke('desktop:deleteRecording', recordingId),
+  desktopRecordingGetState: () =>
+    ipcRenderer.invoke('desktop:recordingGetState'),
+  onDesktopRecordingStateChange: (callback: (state: any) => void) => {
+    const handler = (_event: unknown, state: any) => callback(state)
+    ipcRenderer.on('desktop:recordingStateChanged', handler)
+    return () => ipcRenderer.removeListener('desktop:recordingStateChanged', handler)
+  },
+  onDesktopRecordingProgress: (callback: (progress: any) => void) => {
+    const handler = (_event: unknown, progress: any) => callback(progress)
+    ipcRenderer.on('desktop:recordingProgress', handler)
+    return () => ipcRenderer.removeListener('desktop:recordingProgress', handler)
+  },
+
+  // ============ Phase 4: 视觉闭环 ============
+  desktopVisualAgentRun: (params: { task: string; maxSteps?: number }) =>
+    ipcRenderer.invoke('desktop:visualAgentRun', params),
+  desktopVisualAgentAbort: () =>
+    ipcRenderer.invoke('desktop:visualAgentAbort'),
+  desktopVisualAgentIsRunning: () =>
+    ipcRenderer.invoke('desktop:visualAgentIsRunning'),
+  onDesktopVisualAgentStepStart: (callback: (data: any) => void) => {
+    const handler = (_event: unknown, data: any) => callback(data)
+    ipcRenderer.on('desktop:visualAgentStepStart', handler)
+    return () => ipcRenderer.removeListener('desktop:visualAgentStepStart', handler)
+  },
+  onDesktopVisualAgentStepComplete: (callback: (step: any) => void) => {
+    const handler = (_event: unknown, step: any) => callback(step)
+    ipcRenderer.on('desktop:visualAgentStepComplete', handler)
+    return () => ipcRenderer.removeListener('desktop:visualAgentStepComplete', handler)
+  },
+  onDesktopVisualAgentStepError: (callback: (data: any) => void) => {
+    const handler = (_event: unknown, data: any) => callback(data)
+    ipcRenderer.on('desktop:visualAgentStepError', handler)
+    return () => ipcRenderer.removeListener('desktop:visualAgentStepError', handler)
+  },
+  onDesktopVisualAgentCompleted: (callback: (result: any) => void) => {
+    const handler = (_event: unknown, result: any) => callback(result)
+    ipcRenderer.on('desktop:visualAgentCompleted', handler)
+    return () => ipcRenderer.removeListener('desktop:visualAgentCompleted', handler)
+  },
+  onDesktopVisualAgentAborted: (callback: (result: any) => void) => {
+    const handler = (_event: unknown, result: any) => callback(result)
+    ipcRenderer.on('desktop:visualAgentAborted', handler)
+    return () => ipcRenderer.removeListener('desktop:visualAgentAborted', handler)
+  },
+
+  // ============ Phase 4: 工作流引擎 ============
+  desktopWorkflowRegister: (workflow: any) =>
+    ipcRenderer.invoke('desktop:workflowRegister', workflow),
+  desktopWorkflowUpdate: (workflowId: string, updates: any) =>
+    ipcRenderer.invoke('desktop:workflowUpdate', workflowId, updates),
+  desktopWorkflowUnregister: (workflowId: string) =>
+    ipcRenderer.invoke('desktop:workflowUnregister', workflowId),
+  desktopWorkflowGet: (workflowId: string) =>
+    ipcRenderer.invoke('desktop:workflowGet', workflowId),
+  desktopWorkflowList: () =>
+    ipcRenderer.invoke('desktop:workflowList'),
+  desktopWorkflowRun: (params: { workflowId: string; variables?: Record<string, unknown> }) =>
+    ipcRenderer.invoke('desktop:workflowRun', params),
+  desktopWorkflowAbort: (runId: string) =>
+    ipcRenderer.invoke('desktop:workflowAbort', runId),
+  desktopWorkflowGetRunning: () =>
+    ipcRenderer.invoke('desktop:workflowGetRunning'),
+  desktopWorkflowSaveRecording: (script: any) =>
+    ipcRenderer.invoke('desktop:workflowSaveRecording', script),
+  desktopWorkflowGetRecording: (recordingId: string) =>
+    ipcRenderer.invoke('desktop:workflowGetRecording', recordingId),
+  desktopWorkflowListRecordings: () =>
+    ipcRenderer.invoke('desktop:workflowListRecordings'),
+  desktopWorkflowDeleteRecording: (recordingId: string) =>
+    ipcRenderer.invoke('desktop:workflowDeleteRecording', recordingId),
+  onDesktopWorkflowStateChange: (callback: (data: any) => void) => {
+    const handler = (_event: unknown, data: any) => callback(data)
+    ipcRenderer.on('desktop:workflowStateChanged', handler)
+    return () => ipcRenderer.removeListener('desktop:workflowStateChanged', handler)
+  },
+  onDesktopWorkflowStepStart: (callback: (data: any) => void) => {
+    const handler = (_event: unknown, data: any) => callback(data)
+    ipcRenderer.on('desktop:workflowStepStart', handler)
+    return () => ipcRenderer.removeListener('desktop:workflowStepStart', handler)
+  },
+  onDesktopWorkflowStepComplete: (callback: (data: any) => void) => {
+    const handler = (_event: unknown, data: any) => callback(data)
+    ipcRenderer.on('desktop:workflowStepComplete', handler)
+    return () => ipcRenderer.removeListener('desktop:workflowStepComplete', handler)
+  },
+  onDesktopWorkflowStepError: (callback: (data: any) => void) => {
+    const handler = (_event: unknown, data: any) => callback(data)
+    ipcRenderer.on('desktop:workflowStepError', handler)
+    return () => ipcRenderer.removeListener('desktop:workflowStepError', handler)
+  },
+  onDesktopWorkflowLog: (callback: (data: any) => void) => {
+    const handler = (_event: unknown, data: any) => callback(data)
+    ipcRenderer.on('desktop:workflowLog', handler)
+    return () => ipcRenderer.removeListener('desktop:workflowLog', handler)
+  },
+  onDesktopWorkflowCompleted: (callback: (result: any) => void) => {
+    const handler = (_event: unknown, result: any) => callback(result)
+    ipcRenderer.on('desktop:workflowCompleted', handler)
+    return () => ipcRenderer.removeListener('desktop:workflowCompleted', handler)
+  },
 })

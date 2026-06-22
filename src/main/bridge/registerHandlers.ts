@@ -37,6 +37,7 @@ import { registerAuditHandlers, cleanupAuditHandlers } from './audit' // 审计�
 import { registerSettingsDbIpcHandlers } from './settingsDb' // 设置数据库
 import { registerSessionDbIpcHandlers } from './sessionDb' // 会话数据库
 import { registerMemoryDbIpcHandlers } from './memoryDb' // 记忆数据库
+import { registerDesktopControlHandlers } from './desktopControl' // 桌面控制
 
 // 安全模块
 import {
@@ -226,6 +227,9 @@ export function registerAllHandlers(context: IPCContext) {
 
   // 记忆数据库
   registerOnce('memory-db', () => registerMemoryDbIpcHandlers())
+
+  // 桌面控制
+  registerOnce('desktop-control', () => registerDesktopControlHandlers(getMainWindow))
 
   logger.ipc.info(`[Security] 所有安全IPC处理器已注册 (${registeredHandlers.size} 个)`)
 }

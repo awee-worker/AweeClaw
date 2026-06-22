@@ -429,4 +429,269 @@ export function registerRemoteExecutionHandlers(): void {
     }
     return { connected: false }
   })
+
+  // ============ Phase 5: 远程桌面控制 ============
+
+  /** 远程桌面操作类型 */
+  type RemoteDesktopAction =
+    | 'screenshot'
+    | 'mouse_click'
+    | 'mouse_move'
+    | 'key_type'
+    | 'key_press'
+    | 'app_launch'
+    | 'app_quit'
+    | 'window_list'
+    | 'window_focus'
+
+  /** 远程桌面操作参数 */
+  interface RemoteDesktopParams {
+    action: RemoteDesktopAction
+    x?: number
+    y?: number
+    button?: 'left' | 'right' | 'middle'
+    text?: string
+    keys?: string
+    appName?: string
+    windowId?: string
+  }
+
+  /** 远程桌面操作结果 */
+  interface RemoteDesktopResult {
+    success: boolean
+    output?: string
+    error?: string
+    data?: unknown
+  }
+
+  /** 在远程主机上执行命令并返回输出 */
+  async function executeRemoteCommand(endpoint: SshEndpoint, command: string): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+    const Client = loadSshClient()
+    const connection = new Client()
+
+    return await new Promise((resolve, reject) => {
+      let settled = false
+      const finalize = (error: unknown, result?: { stdout: string; stderr: string; exitCode: number }) => {
+        if (settled) return
+        settled = true
+        connection.end()
+        if (error) reject(error)
+        else resolve(result as { stdout: string; stderr: string; exitCode: number })
+      }
+
+      connection
+        .on('ready', () => {
+          connection.exec(command, (err, stream) => {
+            if (err || !stream) {
+              finalize(err || new Error('Failed to execute command'))
+              return
+            }
+
+            let stdout = ''
+            let stderr = ''
+
+            stream
+              .on('close', (code: number) => {
+                finalize(null, { stdout, stderr, exitCode: code ?? 0 })
+              })
+              .on('data', (data: Buffer) => {
+                stdout += data.toString()
+              })
+              .stderr.on('data', (data: Buffer) => {
+                stderr += data.toString()
+              })
+          })
+        })
+        .on('error', (err: Error) => finalize(err))
+        .connect(buildSshConfig(endpoint))
+    })
+  }
+
+  /** 检测远程主机操作系统 */
+  async function detectRemoteOS(endpoint: SshEndpoint): Promise<'darwin' | 'linux' | 'unknown'> {
+    try {
+      const result = await executeRemoteCommand(endpoint, 'uname -s')
+      if (result.stdout.trim() === 'Darwin') return 'darwin'
+      if (result.stdout.trim() === 'Linux') return 'linux'
+      return 'unknown'
+    } catch {
+      return 'unknown'
+    }
+  }
+
+  ipcMain.handle('remote:desktopAction', async (_, endpoint: SshEndpoint, params: RemoteDesktopParams): Promise<RemoteDesktopResult> => {
+    try {
+      const remoteOS = await detectRemoteOS(endpoint)
+
+      if (remoteOS === 'unknown') {
+        return { success: false, error: 'Unable to detect remote OS or unsupported platform' }
+      }
+
+      switch (params.action) {
+        case 'screenshot': {
+          // macOS: screencapture, Linux: import/scrot
+          const cmd = remoteOS === 'darwin'
+            ? 'screencapture -x /tmp/aweeclaw_screenshot.png && base64 -i /tmp/aweeclaw_screenshot.png && rm /tmp/aweeclaw_screenshot.png'
+            : 'import -window root /tmp/aweeclaw_screenshot.png && base64 /tmp/aweeclaw_screenshot.png && rm /tmp/aweeclaw_screenshot.png'
+
+          const result = await executeRemoteCommand(endpoint, cmd)
+          if (result.exitCode !== 0) {
+            return { success: false, error: result.stderr || 'Screenshot failed' }
+          }
+          return { success: true, output: result.stdout.trim(), data: { base64: result.stdout.trim() } }
+        }
+
+        case 'mouse_click': {
+          if (params.x === undefined || params.y === undefined) {
+            return { success: false, error: 'x and y coordinates required' }
+          }
+          const button = params.button || 'left'
+          const cmd = remoteOS === 'darwin'
+            ? `osascript -e 'tell application "System Events" to click at {${params.x}, ${params.y}}'`
+            : `xdotool mousemove ${params.x} ${params.y} && xdotool click ${button === 'left' ? 1 : button === 'right' ? 3 : 2}`
+
+          const result = await executeRemoteCommand(endpoint, cmd)
+          return { success: result.exitCode === 0, output: result.stdout, error: result.exitCode !== 0 ? result.stderr : undefined }
+        }
+
+        case 'mouse_move': {
+          if (params.x === undefined || params.y === undefined) {
+            return { success: false, error: 'x and y coordinates required' }
+          }
+          const cmd = remoteOS === 'darwin'
+            ? `osascript -e 'tell application "System Events" to set position of the mouse to {${params.x}, ${params.y}}'`
+            : `xdotool mousemove ${params.x} ${params.y}`
+
+          const result = await executeRemoteCommand(endpoint, cmd)
+          return { success: result.exitCode === 0, output: result.stdout, error: result.exitCode !== 0 ? result.stderr : undefined }
+        }
+
+        case 'key_type': {
+          if (!params.text) {
+            return { success: false, error: 'text required' }
+          }
+          const escapedText = params.text.replace(/'/g, "'\\''")
+          const cmd = remoteOS === 'darwin'
+            ? `osascript -e 'tell application "System Events" to keystroke "${escapedText}"'`
+            : `xdotool type -- "${escapedText}"`
+
+          const result = await executeRemoteCommand(endpoint, cmd)
+          return { success: result.exitCode === 0, output: result.stdout, error: result.exitCode !== 0 ? result.stderr : undefined }
+        }
+
+        case 'key_press': {
+          if (!params.keys) {
+            return { success: false, error: 'keys required' }
+          }
+          const cmd = remoteOS === 'darwin'
+            ? `osascript -e 'tell application "System Events" to key code "${params.keys}"'`
+            : `xdotool key ${params.keys}`
+
+          const result = await executeRemoteCommand(endpoint, cmd)
+          return { success: result.exitCode === 0, output: result.stdout, error: result.exitCode !== 0 ? result.stderr : undefined }
+        }
+
+        case 'app_launch': {
+          if (!params.appName) {
+            return { success: false, error: 'appName required' }
+          }
+          const cmd = remoteOS === 'darwin'
+            ? `open -a "${params.appName}"`
+            : `${params.appName} &`
+
+          const result = await executeRemoteCommand(endpoint, cmd)
+          return { success: result.exitCode === 0, output: result.stdout, error: result.exitCode !== 0 ? result.stderr : undefined }
+        }
+
+        case 'app_quit': {
+          if (!params.appName) {
+            return { success: false, error: 'appName required' }
+          }
+          const cmd = remoteOS === 'darwin'
+            ? `osascript -e 'quit app "${params.appName}"'`
+            : `pkill -f "${params.appName}"`
+
+          const result = await executeRemoteCommand(endpoint, cmd)
+          return { success: result.exitCode === 0, output: result.stdout, error: result.exitCode !== 0 ? result.stderr : undefined }
+        }
+
+        case 'window_list': {
+          const cmd = remoteOS === 'darwin'
+            ? `osascript -e 'tell application "System Events" to get name of every window of every process whose background only is false'`
+            : 'wmctrl -l 2>/dev/null || xdotool search "" 2>/dev/null'
+
+          const result = await executeRemoteCommand(endpoint, cmd)
+          return { success: result.exitCode === 0, output: result.stdout, data: { windows: result.stdout.trim().split('\n').filter(Boolean) } }
+        }
+
+        case 'window_focus': {
+          if (!params.windowId && !params.appName) {
+            return { success: false, error: 'windowId or appName required' }
+          }
+          const cmd = remoteOS === 'darwin'
+            ? `osascript -e 'tell application "${params.appName}" to activate'`
+            : `wmctrl -a "${params.windowId}" 2>/dev/null || xdotool windowactivate ${params.windowId}`
+
+          const result = await executeRemoteCommand(endpoint, cmd)
+          return { success: result.exitCode === 0, output: result.stdout, error: result.exitCode !== 0 ? result.stderr : undefined }
+        }
+
+        default:
+          return { success: false, error: `Unknown action: ${params.action}` }
+      }
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
+  /** 远程执行工作流（将工作流 JSON 传输到远程主机并执行） */
+  ipcMain.handle('remote:executeWorkflow', async (_, endpoint: SshEndpoint, workflowJson: string): Promise<RemoteDesktopResult> => {
+    try {
+      // 将工作流 JSON 写入远程临时文件
+      const remotePath = '/tmp/aweeclaw_workflow.json'
+      await withSftpSession(endpoint, async (sftp) => {
+        await persistRemoteTextFile(sftp, remotePath, workflowJson)
+      })
+
+      // 在远程主机上执行（假设远程主机安装了 aweeclaw CLI）
+      const cmd = `aweeclaw workflow run --file ${remotePath} 2>&1 || echo "aweeclaw CLI not found on remote host"`
+      const result = await executeRemoteCommand(endpoint, cmd)
+
+      // 清理临时文件
+      await executeRemoteCommand(endpoint, `rm -f ${remotePath}`)
+
+      return {
+        success: result.exitCode === 0,
+        output: result.stdout,
+        error: result.exitCode !== 0 ? result.stderr : undefined,
+      }
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
+  /** 检测远程主机桌面控制能力 */
+  ipcMain.handle('remote:detectCapabilities', async (_, endpoint: SshEndpoint): Promise<{ os: string; hasXdtool: boolean; hasWmctrl: boolean; hasScrot: boolean; hasAweeclaw: boolean }> => {
+    try {
+      const osResult = await executeRemoteCommand(endpoint, 'uname -s')
+      const remoteOS = osResult.stdout.trim()
+
+      const [xdotoolResult, wmctrlResult, scrotResult, aweeclawResult] = await Promise.all([
+        executeRemoteCommand(endpoint, 'which xdotool 2>/dev/null'),
+        executeRemoteCommand(endpoint, 'which wmctrl 2>/dev/null'),
+        executeRemoteCommand(endpoint, 'which scrot 2>/dev/null || which import 2>/dev/null'),
+        executeRemoteCommand(endpoint, 'which aweeclaw 2>/dev/null'),
+      ])
+
+      return {
+        os: remoteOS,
+        hasXdtool: xdotoolResult.exitCode === 0,
+        hasWmctrl: wmctrlResult.exitCode === 0,
+        hasScrot: scrotResult.exitCode === 0,
+        hasAweeclaw: aweeclawResult.exitCode === 0,
+      }
+    } catch (err) {
+      return { os: 'unknown', hasXdtool: false, hasWmctrl: false, hasScrot: false, hasAweeclaw: false }
+    }
+  })
 }

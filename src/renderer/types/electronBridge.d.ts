@@ -760,6 +760,112 @@ export interface ElectronAPI {
 
   // System
   onSystemResume: (callback: () => void) => () => void
+
+  // ============ Desktop Control ============
+  desktopLaunchApp: (name: string, args?: string[]) => Promise<{ success: boolean; data: any }>
+  desktopQuitApp: (name: string) => Promise<{ success: boolean; data: any }>
+  desktopListInstalledApps: () => Promise<{ success: boolean; data: any[] }>
+  desktopFindApp: (name: string) => Promise<{ success: boolean; data: any | null }>
+  desktopOpenUrl: (url: string) => Promise<{ success: boolean; data: any }>
+  desktopOpenFile: (filePath: string) => Promise<{ success: boolean; data: any }>
+  desktopGetSystemInfo: () => Promise<{ success: boolean; data: any }>
+  desktopSetVolume: (volume: number) => Promise<{ success: boolean; data: any }>
+  desktopSetBrightness: (level: number) => Promise<{ success: boolean; data: any }>
+  desktopListProcesses: () => Promise<{ success: boolean; data: any[] }>
+  desktopFindProcess: (query: string | number) => Promise<{ success: boolean; data: any[] }>
+  desktopKillProcess: (pid: number, force?: boolean) => Promise<{ success: boolean; data: any }>
+  desktopIsProcessRunning: (name: string) => Promise<{ success: boolean; data: boolean }>
+  desktopResolveConfirmation: (id: string, response: { approved: boolean; remember: boolean }) => Promise<{ success: boolean }>
+  onDesktopConfirmationRequest: (callback: (request: any) => void) => () => void
+
+  // ============ Desktop Control Phase 2: 窗口控制 ============
+  desktopListWindows: () => Promise<{ success: boolean; data: any[] }>
+  desktopFindWindow: (query: string) => Promise<{ success: boolean; data: any[] }>
+  desktopFocusWindow: (windowId: string) => Promise<{ success: boolean; data: any }>
+  desktopMinimizeWindow: (windowId: string) => Promise<{ success: boolean; data: any }>
+  desktopMaximizeWindow: (windowId: string) => Promise<{ success: boolean; data: any }>
+  desktopRestoreWindow: (windowId: string) => Promise<{ success: boolean; data: any }>
+  desktopCloseWindow: (windowId: string) => Promise<{ success: boolean; data: any }>
+  desktopBringWindowToFront: (windowId: string) => Promise<{ success: boolean; data: any }>
+  desktopSetWindowBounds: (windowId: string, bounds: { x: number; y: number; width: number; height: number }) => Promise<{ success: boolean; data: any }>
+
+  // ============ Desktop Control Phase 2: 屏幕截图 ============
+  desktopCaptureScreen: (displayId?: number) => Promise<{ success: boolean; data: any }>
+  desktopCaptureRegion: (region: { x: number; y: number; width: number; height: number }, displayId?: number) => Promise<{ success: boolean; data: any }>
+  desktopCaptureAllScreens: () => Promise<{ success: boolean; data: any[] }>
+
+  // ============ Desktop Control Phase 2: 输入模拟 ============
+  desktopMouseClick: (params: { x: number; y: number; button: 'left' | 'right' | 'middle'; clickType: 'single' | 'double' }) => Promise<{ success: boolean; data: any }>
+  desktopMouseMove: (params: { x: number; y: number; smooth?: boolean; duration?: number }) => Promise<{ success: boolean; data: any }>
+  desktopMouseScroll: (params: { x: number; y: number; amount: number }) => Promise<{ success: boolean; data: any }>
+  desktopMouseDrag: (params: { fromX: number; fromY: number; toX: number; toY: number; button: 'left' | 'right' | 'middle'; duration?: number }) => Promise<{ success: boolean; data: any }>
+  desktopTypeText: (text: string, delayMs?: number) => Promise<{ success: boolean; data: any }>
+  desktopPressKey: (key: string) => Promise<{ success: boolean; data: any }>
+  desktopKeyCombo: (keys: string[]) => Promise<{ success: boolean; data: any }>
+
+  // ============ Desktop Control Phase 2: 文件操作 ============
+  desktopCopyFile: (sourcePath: string, targetPath: string) => Promise<{ success: boolean; data: any }>
+  desktopMoveFile: (sourcePath: string, targetPath: string) => Promise<{ success: boolean; data: any }>
+  desktopDeleteFile: (targetPath: string) => Promise<{ success: boolean; data: any }>
+  desktopRenameFile: (sourcePath: string, newName: string) => Promise<{ success: boolean; data: any }>
+  desktopGetFileInfo: (targetPath: string) => Promise<{ success: boolean; data: any }>
+  desktopFileExists: (targetPath: string) => Promise<{ success: boolean; data: boolean }>
+  desktopCreateDirectory: (targetPath: string) => Promise<{ success: boolean; data: any }>
+  desktopListDirectory: (targetPath: string) => Promise<{ success: boolean; data: any[] }>
+
+  // Phase 3: 紧急停止
+  desktopEmergencyStopGetState: () => Promise<{ success: boolean; data: any }>
+  desktopEmergencyStopTrigger: (params: { source: string; reason?: string }) => Promise<{ success: boolean }>
+  desktopEmergencyStopReset: () => Promise<{ success: boolean }>
+  onDesktopEmergencyStopStateChange: (callback: (state: any) => void) => () => void
+
+  // Phase 3: 辅助功能权限
+  desktopAccessibilityCheck: (type?: string, forceRefresh?: boolean) => Promise<{ success: boolean; data: any }>
+  desktopAccessibilityCheckAll: (forceRefresh?: boolean) => Promise<{ success: boolean; data: any[] }>
+  desktopAccessibilityOpenPreferences: (type?: string) => Promise<{ success: boolean; data: boolean }>
+  desktopAccessibilityRequestPermission: (type?: string) => Promise<{ success: boolean; data: any }>
+  onDesktopAccessibilityPermissionChange: (callback: (type: string, status: string) => void) => () => void
+
+  // Phase 4: 操作录制
+  desktopRecordingStart: (params: { name: string; description?: string }) => Promise<{ success: boolean }>
+  desktopRecordingStop: (params: { discard?: boolean }) => Promise<{ success: boolean; data: any }>
+  desktopRecordAction: (params: { actionType: string; params: Record<string, unknown> }) => Promise<{ success: boolean }>
+  desktopReplayRecording: (params: { recordingId: string; config?: Record<string, unknown> }) => Promise<{ success: boolean; data: any }>
+  desktopListRecordings: () => Promise<{ success: boolean; data: any[] }>
+  desktopDeleteRecording: (recordingId: string) => Promise<{ success: boolean }>
+  desktopRecordingGetState: () => Promise<{ success: boolean; data: any }>
+  onDesktopRecordingStateChange: (callback: (state: any) => void) => () => void
+  onDesktopRecordingProgress: (callback: (progress: any) => void) => () => void
+
+  // Phase 4: 视觉闭环
+  desktopVisualAgentRun: (params: { task: string; maxSteps?: number }) => Promise<{ success: boolean; data: any }>
+  desktopVisualAgentAbort: () => Promise<{ success: boolean }>
+  desktopVisualAgentIsRunning: () => Promise<{ success: boolean; data: boolean }>
+  onDesktopVisualAgentStepStart: (callback: (data: any) => void) => () => void
+  onDesktopVisualAgentStepComplete: (callback: (step: any) => void) => () => void
+  onDesktopVisualAgentStepError: (callback: (data: any) => void) => () => void
+  onDesktopVisualAgentCompleted: (callback: (result: any) => void) => () => void
+  onDesktopVisualAgentAborted: (callback: (result: any) => void) => () => void
+
+  // Phase 4: 工作流引擎
+  desktopWorkflowRegister: (workflow: any) => Promise<{ success: boolean }>
+  desktopWorkflowUpdate: (workflowId: string, updates: any) => Promise<{ success: boolean; data: any }>
+  desktopWorkflowUnregister: (workflowId: string) => Promise<{ success: boolean }>
+  desktopWorkflowGet: (workflowId: string) => Promise<{ success: boolean; data: any }>
+  desktopWorkflowList: () => Promise<{ success: boolean; data: any[] }>
+  desktopWorkflowRun: (params: { workflowId: string; variables?: Record<string, unknown> }) => Promise<{ success: boolean; data: any }>
+  desktopWorkflowAbort: (runId: string) => Promise<{ success: boolean }>
+  desktopWorkflowGetRunning: () => Promise<{ success: boolean; data: any[] }>
+  desktopWorkflowSaveRecording: (script: any) => Promise<{ success: boolean }>
+  desktopWorkflowGetRecording: (recordingId: string) => Promise<{ success: boolean; data: any }>
+  desktopWorkflowListRecordings: () => Promise<{ success: boolean; data: any[] }>
+  desktopWorkflowDeleteRecording: (recordingId: string) => Promise<{ success: boolean }>
+  onDesktopWorkflowStateChange: (callback: (data: any) => void) => () => void
+  onDesktopWorkflowStepStart: (callback: (data: any) => void) => () => void
+  onDesktopWorkflowStepComplete: (callback: (data: any) => void) => () => void
+  onDesktopWorkflowStepError: (callback: (data: any) => void) => () => void
+  onDesktopWorkflowLog: (callback: (data: any) => void) => () => void
+  onDesktopWorkflowCompleted: (callback: (result: any) => void) => () => void
 }
 
 declare global {

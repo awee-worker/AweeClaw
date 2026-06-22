@@ -29,6 +29,19 @@ export enum OperationType {
 
   // 系统
   SYSTEM_SHELL = 'system:shell',
+
+  // 桌面控制（Phase 1+）
+  APP_LAUNCH = 'app:launch',              // 启动应用
+  APP_QUIT = 'app:quit',                  // 退出应用
+  WINDOW_CONTROL = 'window:control',      // 窗口管理（聚焦、最小化、关闭）
+  WINDOW_MOVE = 'window:move',            // 窗口移动/调整大小
+  SCREEN_CAPTURE = 'screen:capture',      // 截图
+  MOUSE_INPUT = 'mouse:input',            // 鼠标模拟
+  KEYBOARD_INPUT = 'keyboard:input',      // 键盘模拟
+  PROCESS_KILL = 'process:kill',          // 终止进程
+  SYSTEM_SETTING = 'system:setting',      // 修改系统设置（音量、亮度等）
+  WORKFLOW_EXECUTE = 'workflow:execute',  // 执行工作流
+  VISUAL_AGENT_LOOP = 'agent:visual-loop', // 视觉反馈闭环
 }
 
 // 安全配置接口
@@ -93,6 +106,19 @@ const DEFAULT_PERMISSIONS: PermissionConfig = {
   [OperationType.TERMINAL_INTERACTIVE]: PermissionLevel.ALLOWED,
   [OperationType.GIT_EXEC]: PermissionLevel.ALLOWED,
   [OperationType.SYSTEM_SHELL]: PermissionLevel.DENIED,
+
+  // 桌面控制默认权限
+  [OperationType.APP_LAUNCH]: PermissionLevel.ASK,
+  [OperationType.APP_QUIT]: PermissionLevel.ASK,
+  [OperationType.WINDOW_CONTROL]: PermissionLevel.ALLOWED,
+  [OperationType.WINDOW_MOVE]: PermissionLevel.ASK,
+  [OperationType.SCREEN_CAPTURE]: PermissionLevel.ALLOWED,
+  [OperationType.MOUSE_INPUT]: PermissionLevel.ASK,
+  [OperationType.KEYBOARD_INPUT]: PermissionLevel.ASK,
+  [OperationType.PROCESS_KILL]: PermissionLevel.DENIED,
+  [OperationType.SYSTEM_SETTING]: PermissionLevel.ASK,
+  [OperationType.WORKFLOW_EXECUTE]: PermissionLevel.ASK,
+  [OperationType.VISUAL_AGENT_LOOP]: PermissionLevel.ASK,
 }
 
 // 命令白名单（已统一到 constants.ts）
@@ -206,8 +232,9 @@ class SecurityManager implements SecurityModule {
 
   /**
    * 获取权限配置
+   * 公开方法，供 DesktopGuard 等模块同步查询权限级别
    */
-  private getPermissionConfig(operation: OperationType): PermissionLevel {
+  getPermissionConfig(operation: OperationType): PermissionLevel {
     const permissions = securityStore.get('permissions', {}) as PermissionConfig
     if (permissions[operation]) {
       return permissions[operation]

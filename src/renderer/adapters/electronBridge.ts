@@ -762,6 +762,136 @@ function createGroupedAPI() {
       onResume: (callback: () => void) => raw.onSystemResume(callback),
     },
 
+    // ============ 桌面控制（Phase 3） ============
+    desktop: {
+      // 应用启动
+      launchApp: (name: string, args?: string[]) => raw.desktopLaunchApp(name, args),
+      quitApp: (name: string) => raw.desktopQuitApp(name),
+      listInstalledApps: () => raw.desktopListInstalledApps(),
+      findApp: (name: string) => raw.desktopFindApp(name),
+      openUrl: (url: string) => raw.desktopOpenUrl(url),
+      openFile: (filePath: string) => raw.desktopOpenFile(filePath),
+
+      // 系统信息
+      getSystemInfo: () => raw.desktopGetSystemInfo(),
+      setVolume: (volume: number) => raw.desktopSetVolume(volume),
+      setBrightness: (level: number) => raw.desktopSetBrightness(level),
+
+      // 进程管理
+      listProcesses: () => raw.desktopListProcesses(),
+      findProcess: (query: string | number) => raw.desktopFindProcess(query),
+      killProcess: (pid: number, force?: boolean) => raw.desktopKillProcess(pid, force),
+      isProcessRunning: (name: string) => raw.desktopIsProcessRunning(name),
+
+      // 权限确认
+      resolveConfirmation: (id: string, response: { approved: boolean; remember: boolean }) =>
+        raw.desktopResolveConfirmation(id, response),
+      onConfirmationRequest: (callback: (request: any) => void) => raw.onDesktopConfirmationRequest(callback),
+
+      // 窗口控制
+      listWindows: () => raw.desktopListWindows(),
+      findWindow: (query: string) => raw.desktopFindWindow(query),
+      focusWindow: (windowId: string) => raw.desktopFocusWindow(windowId),
+      minimizeWindow: (windowId: string) => raw.desktopMinimizeWindow(windowId),
+      maximizeWindow: (windowId: string) => raw.desktopMaximizeWindow(windowId),
+      restoreWindow: (windowId: string) => raw.desktopRestoreWindow(windowId),
+      closeWindow: (windowId: string) => raw.desktopCloseWindow(windowId),
+      bringWindowToFront: (windowId: string) => raw.desktopBringWindowToFront(windowId),
+      setWindowBounds: (windowId: string, bounds: { x: number; y: number; width: number; height: number }) =>
+        raw.desktopSetWindowBounds(windowId, bounds),
+
+      // 屏幕截图
+      captureScreen: (displayId?: number) => raw.desktopCaptureScreen(displayId),
+      captureRegion: (region: { x: number; y: number; width: number; height: number }, displayId?: number) =>
+        raw.desktopCaptureRegion(region, displayId),
+      captureAllScreens: () => raw.desktopCaptureAllScreens(),
+
+      // 输入模拟
+      mouseClick: (params: { x: number; y: number; button: 'left' | 'right' | 'middle'; clickType: 'single' | 'double' }) =>
+        raw.desktopMouseClick(params),
+      mouseMove: (params: { x: number; y: number; smooth?: boolean; duration?: number }) => raw.desktopMouseMove(params),
+      mouseScroll: (params: { x: number; y: number; amount: number }) => raw.desktopMouseScroll(params),
+      mouseDrag: (params: { fromX: number; fromY: number; toX: number; toY: number; button: 'left' | 'right' | 'middle'; duration?: number }) =>
+        raw.desktopMouseDrag(params),
+      typeText: (text: string, delayMs?: number) => raw.desktopTypeText(text, delayMs),
+      pressKey: (key: string) => raw.desktopPressKey(key),
+      keyCombo: (keys: string[]) => raw.desktopKeyCombo(keys),
+
+      // 文件操作
+      copyFile: (sourcePath: string, targetPath: string) => raw.desktopCopyFile(sourcePath, targetPath),
+      moveFile: (sourcePath: string, targetPath: string) => raw.desktopMoveFile(sourcePath, targetPath),
+      deleteFile: (targetPath: string) => raw.desktopDeleteFile(targetPath),
+      renameFile: (sourcePath: string, newName: string) => raw.desktopRenameFile(sourcePath, newName),
+      getFileInfo: (targetPath: string) => raw.desktopGetFileInfo(targetPath),
+      fileExists: (targetPath: string) => raw.desktopFileExists(targetPath),
+      createDirectory: (targetPath: string) => raw.desktopCreateDirectory(targetPath),
+      listDirectory: (targetPath: string) => raw.desktopListDirectory(targetPath),
+
+      // 紧急停止（Phase 3）
+      emergencyStop: {
+        getState: () => raw.desktopEmergencyStopGetState(),
+        trigger: (params: { source: string; reason?: string }) => raw.desktopEmergencyStopTrigger(params),
+        reset: () => raw.desktopEmergencyStopReset(),
+        onStateChange: (callback: (state: any) => void) => raw.onDesktopEmergencyStopStateChange(callback),
+      },
+
+      // 辅助功能权限（Phase 3）
+      accessibility: {
+        check: (type?: string, forceRefresh?: boolean) => raw.desktopAccessibilityCheck(type, forceRefresh),
+        checkAll: (forceRefresh?: boolean) => raw.desktopAccessibilityCheckAll(forceRefresh),
+        openPreferences: (type?: string) => raw.desktopAccessibilityOpenPreferences(type),
+        requestPermission: (type?: string) => raw.desktopAccessibilityRequestPermission(type),
+        onPermissionChange: (callback: (type: string, status: string) => void) => raw.onDesktopAccessibilityPermissionChange(callback),
+      },
+
+      // 操作录制（Phase 4）
+      recording: {
+        start: (params: { name: string; description?: string }) => raw.desktopRecordingStart(params),
+        stop: (params: { discard?: boolean }) => raw.desktopRecordingStop(params),
+        recordAction: (params: { actionType: string; params: Record<string, unknown> }) => raw.desktopRecordAction(params),
+        replay: (params: { recordingId: string; config?: Record<string, unknown> }) => raw.desktopReplayRecording(params),
+        list: () => raw.desktopListRecordings(),
+        delete: (recordingId: string) => raw.desktopDeleteRecording(recordingId),
+        getState: () => raw.desktopRecordingGetState(),
+        onStateChange: (callback: (state: any) => void) => raw.onDesktopRecordingStateChange(callback),
+        onProgress: (callback: (progress: any) => void) => raw.onDesktopRecordingProgress(callback),
+      },
+
+      // 视觉闭环（Phase 4）
+      visualAgent: {
+        run: (params: { task: string; maxSteps?: number }) => raw.desktopVisualAgentRun(params),
+        abort: () => raw.desktopVisualAgentAbort(),
+        isRunning: () => raw.desktopVisualAgentIsRunning(),
+        onStepStart: (callback: (data: any) => void) => raw.onDesktopVisualAgentStepStart(callback),
+        onStepComplete: (callback: (step: any) => void) => raw.onDesktopVisualAgentStepComplete(callback),
+        onStepError: (callback: (data: any) => void) => raw.onDesktopVisualAgentStepError(callback),
+        onCompleted: (callback: (result: any) => void) => raw.onDesktopVisualAgentCompleted(callback),
+        onAborted: (callback: (result: any) => void) => raw.onDesktopVisualAgentAborted(callback),
+      },
+
+      // 工作流引擎（Phase 4）
+      workflow: {
+        register: (workflow: any) => raw.desktopWorkflowRegister(workflow),
+        update: (workflowId: string, updates: any) => raw.desktopWorkflowUpdate(workflowId, updates),
+        unregister: (workflowId: string) => raw.desktopWorkflowUnregister(workflowId),
+        get: (workflowId: string) => raw.desktopWorkflowGet(workflowId),
+        list: () => raw.desktopWorkflowList(),
+        run: (params: { workflowId: string; variables?: Record<string, unknown> }) => raw.desktopWorkflowRun(params),
+        abort: (runId: string) => raw.desktopWorkflowAbort(runId),
+        getRunning: () => raw.desktopWorkflowGetRunning(),
+        saveRecording: (script: any) => raw.desktopWorkflowSaveRecording(script),
+        getRecording: (recordingId: string) => raw.desktopWorkflowGetRecording(recordingId),
+        listRecordings: () => raw.desktopWorkflowListRecordings(),
+        deleteRecording: (recordingId: string) => raw.desktopWorkflowDeleteRecording(recordingId),
+        onStateChange: (callback: (data: any) => void) => raw.onDesktopWorkflowStateChange(callback),
+        onStepStart: (callback: (data: any) => void) => raw.onDesktopWorkflowStepStart(callback),
+        onStepComplete: (callback: (data: any) => void) => raw.onDesktopWorkflowStepComplete(callback),
+        onStepError: (callback: (data: any) => void) => raw.onDesktopWorkflowStepError(callback),
+        onLog: (callback: (data: any) => void) => raw.onDesktopWorkflowLog(callback),
+        onCompleted: (callback: (result: any) => void) => raw.onDesktopWorkflowCompleted(callback),
+      },
+    },
+
     onScenarioInstallProgress: (callback: (data: { scenarioId: string; phase: string; bytesDownloaded: number; bytesTotal: number; percent: number }) => void) => {
       return raw.onScenarioInstallProgress(callback)
     },

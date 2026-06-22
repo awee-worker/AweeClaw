@@ -15,7 +15,7 @@
 // ============================================
 
 /** 插件类型 */
-export type PluginType = 'channel' | 'provider' | 'tool' | 'hook' | 'memory' | 'composite'
+export type PluginType = 'channel' | 'provider' | 'tool' | 'hook' | 'memory' | 'desktop' | 'composite'
 
 /** 插件生命周期 */
 export type PluginLifecycle = 'singleton' | 'per-account' | 'per-session'
@@ -112,7 +112,42 @@ export interface PluginCapabilities {
     /** 支持的钩子事件 */
     events: HookEventName[]
   }
+  /** Desktop 插件能力（Phase 5） */
+  desktop?: {
+    /** 支持的桌面操作类型 */
+    operations: DesktopOperationType[]
+    /** 是否需要辅助功能权限 */
+    requiresAccessibility: boolean
+    /** 是否需要屏幕录制权限 */
+    requiresScreenCapture: boolean
+    /** 是否支持工作流步骤注册 */
+    workflowSteps: boolean
+    /** 是否支持录制事件类型扩展 */
+    recordingEvents: boolean
+  }
 }
+
+/** 桌面操作类型（Phase 5） */
+export type DesktopOperationType =
+  | 'app_launch'
+  | 'app_quit'
+  | 'window_focus'
+  | 'window_close'
+  | 'window_minimize'
+  | 'window_maximize'
+  | 'mouse_click'
+  | 'mouse_move'
+  | 'mouse_scroll'
+  | 'mouse_drag'
+  | 'keyboard_type'
+  | 'keyboard_press'
+  | 'keyboard_combo'
+  | 'screen_capture'
+  | 'screen_analyze'
+  | 'file_operation'
+  | 'clipboard_read'
+  | 'clipboard_write'
+  | 'custom'
 
 /** 配置 Schema 字段定义 */
 export interface PluginConfigSchema {
@@ -162,6 +197,14 @@ export type PluginPermission =
   | 'clipboard.write'
   | 'notification'
   | 'system.info'
+  // Phase 5: 桌面控制权限
+  | 'desktop.input'        // 模拟鼠标/键盘输入
+  | 'desktop.screen'       // 屏幕截图
+  | 'desktop.windows'      // 窗口管理
+  | 'desktop.apps'         // 应用启动/退出
+  | 'desktop.recording'    // 操作录制
+  | 'desktop.workflow'     // 工作流执行
+  | 'desktop.visual-agent' // 视觉智能体
 
 // ============================================
 // 插件运行时接口
@@ -233,6 +276,16 @@ export type HookEventName =
   | 'on-channel-error'
   | 'on-config-change'
   | 'on-cron-trigger'
+  // Phase 5: 桌面控制钩子
+  | 'before-desktop-action'    // 桌面操作执行前（可拦截/修改）
+  | 'after-desktop-action'     // 桌面操作执行后
+  | 'before-recording-start'   // 录制开始前
+  | 'after-recording-stop'     // 录制停止后
+  | 'before-workflow-run'      // 工作流执行前（可拦截）
+  | 'after-workflow-complete'  // 工作流完成后
+  | 'before-replay'            // 回放开始前
+  | 'after-replay'             // 回放结束后
+  | 'on-visual-agent-step'     // 视觉智能体每步执行
 
 /** 钩子处理器 */
 export type HookHandler<TPayload = unknown> = (payload: TPayload) => HookResult | Promise<HookResult>

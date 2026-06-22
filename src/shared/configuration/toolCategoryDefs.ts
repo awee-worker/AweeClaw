@@ -104,6 +104,34 @@ const CHANNEL_TOOLS: string[] = [
   'send_file_to_channel',
 ]
 
+/** 桌面控制工具 - Phase 3 GUI 自动化 + Phase 4 智能工作流 */
+const DESKTOP_CONTROL_TOOLS: string[] = [
+  // Phase 3: 基础桌面控制
+  'desktop_list_apps',
+  'desktop_launch_app',
+  'desktop_quit_app',
+  'desktop_list_windows',
+  'desktop_focus_window',
+  'desktop_close_window',
+  'desktop_capture_screen',
+  'desktop_mouse_click',
+  'desktop_mouse_move',
+  'desktop_mouse_scroll',
+  'desktop_type_text',
+  'desktop_press_key',
+  'desktop_key_combo',
+  'desktop_emergency_stop',
+  // Phase 4: 智能工作流
+  'desktop_record_action',
+  'desktop_recording_start',
+  'desktop_recording_stop',
+  'desktop_replay_recording',
+  'desktop_list_recordings',
+  'desktop_visual_agent_step',
+  'desktop_workflow_run',
+  'desktop_workflow_list',
+]
+
 /** Plan 规划工具 - 仅用于需求收集、计划创建与计划修订 */
 const PLAN_PLANNING_TOOLS: string[] = [
   'ask_user',
@@ -135,6 +163,7 @@ const TOOL_GROUPS: Record<string, string[]> = {
   core: CORE_TOOLS,
   uiux: UIUX_TOOLS,
   channel: CHANNEL_TOOLS,
+  desktop: DESKTOP_CONTROL_TOOLS,
   plan: PLAN_PLANNING_TOOLS,
 }
 
@@ -241,7 +270,12 @@ export function getToolsForContext(context: ToolLoadingContext): string[] {
     }
   }
 
-  // 2. 添加角色专属工具
+  // 2. 添加桌面控制工具（Phase 3，agent 模式默认可用）
+  for (const tool of DESKTOP_CONTROL_TOOLS) {
+    tools.add(tool)
+  }
+
+  // 3. 添加角色专属工具
   if (context.templateId) {
     const templateConfig = TEMPLATE_TOOLS[context.templateId]
     if (templateConfig) {

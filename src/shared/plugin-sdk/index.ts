@@ -93,3 +93,22 @@ export type {
   MemoryPluginRuntime,
   MemoryPluginFactory,
 } from './memory'
+
+// Desktop 插件类型（Phase 5）
+export type {
+  DesktopActionParamSchema,
+  DesktopActionDefinition,
+  DesktopActionContext,
+  DesktopActionResult,
+  CustomWorkflowStepDef,
+  WorkflowStepContext,
+  WorkflowStepResult,
+  CustomRecordingEventDef,
+  VisualAnalyzerConfig,
+  VisualAnalysisRequest,
+  VisualAnalysisResponse,
+  DesktopPluginManifest,
+  DesktopPluginRuntime,
+  DesktopPluginFactory,
+  IDesktopPluginRegistry,
+} from './desktop'

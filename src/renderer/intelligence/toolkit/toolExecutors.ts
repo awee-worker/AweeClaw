@@ -8,7 +8,7 @@ import { toAppError } from '@shared/toolkit/errorCatalog'
 import { resolveEditFileRequest } from '@toolkit/fileEditor'
 import { resolveReadFileRequest } from '@toolkit/fileReader'
 import { logger } from '@toolkit/LogEngine'
-import type { ToolExecutionResult, ToolExecutionContext } from '@intelligence/providerTypes'
+import type { ToolExecutionResult, ToolExecutionContext, ToolRichContent } from '@intelligence/providerTypes'
 import { validatePath, isSensitivePath, platform, getDirname } from '@shared/toolkit/pathHelper'
 import { pathToLspUri } from '@shared/toolkit/uriHelper'
 import { waitForDiagnostics, isLanguageSupported, getLanguageId, didOpenDocument } from '@services/languageServerAdapter'
@@ -2570,6 +2570,442 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             return { success: false, result: '', error: result.error || 'Failed to send file' }
         } catch (err) {
             return { success: false, result: '', error: `Failed to send file: ${toAppError(err).message}` }
+        }
+    },
+
+    // ============ 桌面控制工具（Phase 3） ============
+
+    async desktop_list_apps(args) {
+        try {
+            const filter = args.filter as string | undefined
+            const result = await api.desktop.listInstalledApps()
+            if (!result.success) {
+                return { success: false, result: '', error: 'Failed to list installed apps' }
+            }
+            const apps = (result.data || []) as Array<{ name: string; bundleId?: string; executablePath: string; version?: string; publisher?: string }>
+            // 客户端过滤（避免主进程全量传输后再过滤的开销）
+            const filtered = filter
+                ? apps.filter(app => app.name.toLowerCase().includes(filter.toLowerCase()))
+                : apps
+            // 精简返回字段，避免传输过多数据（图标等大字段不返回给 LLM）
+            const summary = filtered.map(app => ({
+                name: app.name,
+                bundleId: app.bundleId,
+                version: app.version,
+                publisher: app.publisher,
+            }))
+            const header = filter
+                ? `Found ${summary.length} installed app(s) matching "${filter}":`
+                : `Found ${summary.length} installed app(s):`
+            return {
+                success: true,
+                result: JSON.stringify({ header, apps: summary }, null, 2),
+            }
+        } catch (err) {
+            return { success: false, result: '', error: toAppError(err).message }
+        }
+    },
+
+    async desktop_launch_app(args) {
+        const name = args.name as string
+        if (!name) {
+            return { success: false, result: '', error: 'name is required' }
+        }
+        try {
+            const result = await api.desktop.launchApp(name, args.args as string[] | undefined)
+            if (result.success) {
+                return { success: true, result: `App launched: ${name}` }
+            }
+            // 启动失败：查询相似应用作为提示，帮助 AI 自我纠正
+            const errorMsg = result.data?.error || 'Failed to launch app'
+            try {
+                const findResult = await api.desktop.findApp(name)
+                if (findResult.success && findResult.data) {
+                    const matched = findResult.data as { name: string; bundleId?: string }
+                    return {
+                        success: false,
+                        result: '',
+                        error: `${errorMsg}. However, a similar app was found: "${matched.name}"${matched.bundleId ? ` (bundleId: ${matched.bundleId})` : ''}. Try launching with this exact name.`,
+                    }
+                }
+                // 未精确匹配，查询包含关键词的应用列表
+                const listResult = await api.desktop.listInstalledApps()
+                if (listResult.success) {
+                    const allApps = (listResult.data || []) as Array<{ name: string }>
+                    const keyword = name.toLowerCase()
+                    const similar = allApps
+                        .filter(app => app.name.toLowerCase().includes(keyword) || keyword.includes(app.name.toLowerCase()))
+                        .slice(0, 10)
+                        .map(app => app.name)
+                    if (similar.length > 0) {
+                        return {
+                            success: false,
+                            result: '',
+                            error: `${errorMsg}. App "${name}" not found. Did you mean one of these installed apps: ${similar.join(', ')}? Call desktop_list_apps for the full list.`,
+                        }
+                    }
+                }
+            } catch {
+                // 查询相似应用失败不影响主错误返回
+            }
+            return { success: false, result: '', error: `${errorMsg}. Tip: call desktop_list_apps to get the list of installed apps.` }
+        } catch (err) {
+            return { success: false, result: '', error: toAppError(err).message }
+        }
+    },
+
+    async desktop_quit_app(args) {
+        const name = args.name as string
+        if (!name) {
+            return { success: false, result: '', error: 'name is required' }
+        }
+        try {
+            const result = await api.desktop.quitApp(name)
+            if (result.success) {
+                return { success: true, result: `App quit: ${name}` }
+            }
+            const errorMsg = result.data?.error || 'Failed to quit app'
+            return {
+                success: false,
+                result: '',
+                error: `${errorMsg}. Tip: call desktop_list_apps to verify the exact app name.`,
+            }
+        } catch (err) {
+            return { success: false, result: '', error: toAppError(err).message }
+        }
+    },
+
+    async desktop_list_windows() {
+        try {
+            const result = await api.desktop.listWindows()
+            if (result.success) {
+                const windows = result.data || []
+                const lines = windows.map((w: any, i: number) =>
+                    `${i + 1}. [${w.id}] ${w.title || '(untitled)'} - ${w.owner || 'unknown'} (${w.bounds?.width}x${w.bounds?.height})`
+                )
+                return { success: true, result: `Found ${windows.length} window(s):\n${lines.join('\n')}` }
+            }
+            return { success: false, result: '', error: 'Failed to list windows' }
+        } catch (err) {
+            return { success: false, result: '', error: toAppError(err).message }
+        }
+    },
+
+    async desktop_focus_window(args) {
+        const windowId = args.window_id as string
+        if (!windowId) {
+            return { success: false, result: '', error: 'window_id is required' }
+        }
+        try {
+            const result = await api.desktop.focusWindow(windowId)
+            if (result.success) {
+                return { success: true, result: `Window focused: ${windowId}` }
+            }
+            return { success: false, result: '', error: result.data?.error || 'Failed to focus window' }
+        } catch (err) {
+            return { success: false, result: '', error: toAppError(err).message }
+        }
+    },
+
+    async desktop_close_window(args) {
+        const windowId = args.window_id as string
+        if (!windowId) {
+            return { success: false, result: '', error: 'window_id is required' }
+        }
+        try {
+            const result = await api.desktop.closeWindow(windowId)
+            if (result.success) {
+                return { success: true, result: `Window closed: ${windowId}` }
+            }
+            return { success: false, result: '', error: result.data?.error || 'Failed to close window' }
+        } catch (err) {
+            return { success: false, result: '', error: toAppError(err).message }
+        }
+    },
+
+    async desktop_capture_screen(args) {
+        try {
+            const result = await api.desktop.captureScreen(args.display_id as number | undefined)
+            if (result.success) {
+                const data = result.data
+                return {
+                    success: true,
+                    result: `Screenshot captured (${data.width}x${data.height}). Image data available for visual analysis.`,
+                    richContent: [{
+                        type: 'image',
+                        data: data.dataUrl || data.base64,
+                        mimeType: 'image/png',
+                    } as ToolRichContent],
+                }
+            }
+            return { success: false, result: '', error: 'Failed to capture screen' }
+        } catch (err) {
+            return { success: false, result: '', error: toAppError(err).message }
+        }
+    },
+
+    async desktop_mouse_click(args) {
+        const x = args.x as number
+        const y = args.y as number
+        if (typeof x !== 'number' || typeof y !== 'number') {
+            return { success: false, result: '', error: 'x and y coordinates are required' }
+        }
+        try {
+            const params = {
+                x,
+                y,
+                button: (args.button as 'left' | 'right' | 'middle') || 'left',
+                clickType: (args.click_type as 'single' | 'double') || 'single',
+            }
+            const result = await api.desktop.mouseClick(params)
+            if (result.success) {
+                return { success: true, result: `Clicked at (${x}, ${y}) with ${params.button} button` }
+            }
+            return { success: false, result: '', error: result.data?.error || 'Failed to click' }
+        } catch (err) {
+            return { success: false, result: '', error: toAppError(err).message }
+        }
+    },
+
+    async desktop_mouse_move(args) {
+        const x = args.x as number
+        const y = args.y as number
+        if (typeof x !== 'number' || typeof y !== 'number') {
+            return { success: false, result: '', error: 'x and y coordinates are required' }
+        }
+        try {
+            const params = {
+                x,
+                y,
+                smooth: args.smooth as boolean | undefined,
+                duration: args.duration as number | undefined,
+            }
+            const result = await api.desktop.mouseMove(params)
+            if (result.success) {
+                return { success: true, result: `Mouse moved to (${x}, ${y})` }
+            }
+            return { success: false, result: '', error: result.data?.error || 'Failed to move mouse' }
+        } catch (err) {
+            return { success: false, result: '', error: toAppError(err).message }
+        }
+    },
+
+    async desktop_mouse_scroll(args) {
+        const x = args.x as number
+        const y = args.y as number
+        const amount = args.amount as number
+        if (typeof x !== 'number' || typeof y !== 'number' || typeof amount !== 'number') {
+            return { success: false, result: '', error: 'x, y, and amount are required' }
+        }
+        try {
+            const result = await api.desktop.mouseScroll({ x, y, amount })
+            if (result.success) {
+                return { success: true, result: `Scrolled ${amount} at (${x}, ${y})` }
+            }
+            return { success: false, result: '', error: result.data?.error || 'Failed to scroll' }
+        } catch (err) {
+            return { success: false, result: '', error: toAppError(err).message }
+        }
+    },
+
+    async desktop_type_text(args) {
+        const text = args.text as string
+        if (!text) {
+            return { success: false, result: '', error: 'text is required' }
+        }
+        try {
+            const result = await api.desktop.typeText(text, args.delay_ms as number | undefined)
+            if (result.success) {
+                return { success: true, result: `Typed ${text.length} characters` }
+            }
+            return { success: false, result: '', error: result.data?.error || 'Failed to type text' }
+        } catch (err) {
+            return { success: false, result: '', error: toAppError(err).message }
+        }
+    },
+
+    async desktop_press_key(args) {
+        const key = args.key as string
+        if (!key) {
+            return { success: false, result: '', error: 'key is required' }
+        }
+        try {
+            const result = await api.desktop.pressKey(key)
+            if (result.success) {
+                return { success: true, result: `Pressed key: ${key}` }
+            }
+            return { success: false, result: '', error: result.data?.error || 'Failed to press key' }
+        } catch (err) {
+            return { success: false, result: '', error: toAppError(err).message }
+        }
+    },
+
+    async desktop_key_combo(args) {
+        const keys = args.keys as string[]
+        if (!Array.isArray(keys) || keys.length === 0) {
+            return { success: false, result: '', error: 'keys array is required' }
+        }
+        try {
+            const result = await api.desktop.keyCombo(keys)
+            if (result.success) {
+                return { success: true, result: `Pressed key combo: ${keys.join('+')}` }
+            }
+            return { success: false, result: '', error: result.data?.error || 'Failed to press key combo' }
+        } catch (err) {
+            return { success: false, result: '', error: toAppError(err).message }
+        }
+    },
+
+    async desktop_emergency_stop(args) {
+        try {
+            const reason = (args.reason as string) || 'Triggered by agent'
+            await api.desktop.emergencyStop.trigger({ source: 'agent', reason })
+            return {
+                success: true,
+                result: `Emergency stop triggered. All desktop operations are now halted. Reason: ${reason}`,
+            }
+        } catch (err) {
+            return { success: false, result: '', error: toAppError(err).message }
+        }
+    },
+
+    // ============ Phase 4: 智能工作流工具 ============
+
+    async desktop_recording_start(args) {
+        try {
+            const name = (args.name as string) || `Recording ${new Date().toISOString()}`
+            const description = (args.description as string) || ''
+            await api.desktop.recording.start({ name, description })
+            return {
+                success: true,
+                result: `Recording started: ${name}`,
+            }
+        } catch (err) {
+            return { success: false, result: '', error: toAppError(err).message }
+        }
+    },
+
+    async desktop_recording_stop(args) {
+        try {
+            const discard = (args.discard as boolean) || false
+            const res = await api.desktop.recording.stop({ discard })
+            const script = res.data
+            if (!script) {
+                return {
+                    success: true,
+                    result: 'Recording stopped (no events captured or discarded)',
+                }
+            }
+            return {
+                success: true,
+                result: `Recording saved: ${script.metadata.name} (${script.metadata.eventCount} events, ${script.metadata.duration}ms)`,
+            }
+        } catch (err) {
+            return { success: false, result: '', error: toAppError(err).message }
+        }
+    },
+
+    async desktop_record_action(args) {
+        try {
+            const actionType = args.actionType as string
+            const params = (args.params as Record<string, unknown>) || {}
+            await api.desktop.recording.recordAction({ actionType, params })
+            return {
+                success: true,
+                result: `Action recorded: ${actionType}`,
+            }
+        } catch (err) {
+            return { success: false, result: '', error: toAppError(err).message }
+        }
+    },
+
+    async desktop_replay_recording(args) {
+        try {
+            const recordingId = args.recordingId as string
+            const speed = (args.speed as 'realtime' | 'fast' | 'instant' | 'custom') || 'realtime'
+            const speedMultiplier = args.speedMultiplier as number | undefined
+            const stopOnError = (args.stopOnError as boolean) ?? true
+            const res = await api.desktop.recording.replay({
+                recordingId,
+                config: { speed, speedMultiplier, stopOnError },
+            })
+            const result = res.data
+            return {
+                success: result.success,
+                result: `Replay completed: ${result.successCount}/${result.executedCount} succeeded, ${result.errorCount} failed, ${result.duration}ms${result.aborted ? ' (aborted)' : ''}`,
+            }
+        } catch (err) {
+            return { success: false, result: '', error: toAppError(err).message }
+        }
+    },
+
+    async desktop_list_recordings() {
+        try {
+            const res = await api.desktop.recording.list()
+            const recordings = res.data
+            if (recordings.length === 0) {
+                return { success: true, result: 'No recordings found' }
+            }
+            const lines = recordings.map((r: any) =>
+                `- ${r.id}: ${r.metadata.name} (${r.metadata.eventCount} events, ${r.metadata.duration}ms)`,
+            )
+            return {
+                success: true,
+                result: `Found ${recordings.length} recording(s):\n${lines.join('\n')}`,
+            }
+        } catch (err) {
+            return { success: false, result: '', error: toAppError(err).message }
+        }
+    },
+
+    async desktop_visual_agent_step(args) {
+        try {
+            const task = args.task as string
+            const maxSteps = (args.maxSteps as number) || 10
+            const res = await api.desktop.visualAgent.run({ task, maxSteps })
+            const result = res.data
+            const status = result.aborted ? 'aborted' : result.completed ? 'completed' : 'incomplete'
+            return {
+                success: result.completed,
+                result: `Visual loop ${status}: ${result.totalSteps} steps, ${result.duration}ms. Result: ${result.result}`,
+            }
+        } catch (err) {
+            return { success: false, result: '', error: toAppError(err).message }
+        }
+    },
+
+    async desktop_workflow_run(args) {
+        try {
+            const workflowId = args.workflowId as string
+            const variables = (args.variables as Record<string, unknown>) || {}
+            const res = await api.desktop.workflow.run({ workflowId, variables })
+            const result = res.data
+            const status = result.state
+            return {
+                success: result.state === 'completed',
+                result: `Workflow ${status}: ${result.stepRecords.length} steps, ${result.duration}ms${result.error ? `. Error: ${result.error}` : ''}`,
+            }
+        } catch (err) {
+            return { success: false, result: '', error: toAppError(err).message }
+        }
+    },
+
+    async desktop_workflow_list() {
+        try {
+            const res = await api.desktop.workflow.list()
+            const workflows = res.data
+            if (workflows.length === 0) {
+                return { success: true, result: 'No workflows found' }
+            }
+            const lines = workflows.map((w: any) =>
+                `- ${w.id}: ${w.name} (${w.steps.length} steps, ${w.enabled ? 'enabled' : 'disabled'})`,
+            )
+            return {
+                success: true,
+                result: `Found ${workflows.length} workflow(s):\n${lines.join('\n')}`,
+            }
+        } catch (err) {
+            return { success: false, result: '', error: toAppError(err).message }
         }
     },
 }
