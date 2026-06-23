@@ -24,10 +24,14 @@ export const BRAND = {
     gitee: 'https://gitee.com/jweelee/aweeclaw.git',
     github: 'https://github.com/jweelee/aweeclaw',
     releases: 'https://github.com/jweelee/aweeclaw/releases/latest',
+    website: 'https://aweeclaw.com',
+    docs: 'https://aweeclaw.com/docs',
+    developer: 'https://aweeclaw.com/developer',
+    scenarios: 'https://aweeclaw.com/scenarios',
   },
 
   tagline: 'Connect AI to Your World',
-  description: 'A next-generation AI agent platform with stunning visual experience and deeply integrated AI Agent',
+  description: 'Scene-Driven AI-Native Agent Application Construction Platform',
 
   storageKeys: {
     themeId: 'aweeclaw-theme-id',

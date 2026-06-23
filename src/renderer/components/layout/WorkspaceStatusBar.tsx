@@ -3,6 +3,7 @@ import { logger } from '@toolkit/LogEngine'
 import { useEffect, useMemo, useState } from 'react'
 import { BRAND } from '@shared/brand'
 import { getQuotaBarColor, getQuotaTextColor, getQuotaGlowColor } from '@utils/quotaColors'
+import { formatTokenCount } from '@utils/formatter'
 import {
   GitBranch,
   AlertCircle,
@@ -90,7 +91,7 @@ function CloudQuotaIndicator({ language }: { language: Language }) {
       icon={
         <div
           className="flex items-center gap-1.5 px-2 py-1 h-6 rounded-md cursor-pointer group hover:bg-white/5 transition-colors"
-          title={quota ? `Token: ${quota.used.toLocaleString()} / ${quota.limit.toLocaleString()}${isQuotaExceeded ? (t('layout.exceeded', language as Language)) : isQuotaLow ? (t('layout.low', language as Language)) : ''}` : ''}
+          title={quota ? `Token: ${formatTokenCount(quota.used)} / ${quota.limit === -1 ? '∞' : formatTokenCount(quota.limit)}${isQuotaExceeded ? (t('layout.exceeded', language as Language)) : isQuotaLow ? (t('layout.low', language as Language)) : ''}` : ''}
         >
           <Cloud className={`w-3 h-3 ${cloudColorClass} ${getQuotaGlowColor(usedPercent)}`} />
           <span className="text-[10px] font-medium text-text-muted group-hover:text-text-primary transition-colors max-w-[80px] truncate">
@@ -114,14 +115,14 @@ function CloudQuotaIndicator({ language }: { language: Language }) {
             <div className="grid grid-cols-3 gap-2">
               <div className="flex flex-col items-center p-2.5 rounded-xl bg-surface/80">
                 <span className="text-[10px] text-text-muted mb-1">{t('layout.used', language as Language)}</span>
-                <span className="text-sm font-bold text-text-primary">{quota.used.toLocaleString()}</span>
+                <span className="text-sm font-bold text-text-primary">{formatTokenCount(quota.used)}</span>
               </div>
               <div className="flex flex-col items-center p-2.5 rounded-xl bg-surface/80">
                 <span className="text-[10px] text-text-muted mb-1">{t('layout.remaining', language as Language)}</span>
                 <span className="text-sm font-bold text-text-primary">
                   {quota.remaining === -1
                     ? (t('layout.text3', language as Language))
-                    : quota.remaining.toLocaleString()}
+                    : formatTokenCount(quota.remaining)}
                 </span>
               </div>
               <div className="flex flex-col items-center p-2.5 rounded-xl bg-surface/80">
@@ -129,7 +130,7 @@ function CloudQuotaIndicator({ language }: { language: Language }) {
                 <span className="text-sm font-bold text-text-primary">
                   {quota.limit === -1
                     ? (t('layout.text4', language as Language))
-                    : quota.limit.toLocaleString()}
+                    : formatTokenCount(quota.limit)}
                 </span>
               </div>
             </div>

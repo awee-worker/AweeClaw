@@ -8,6 +8,7 @@ import { ActionButton } from '@components/ui'
 import { backendApi } from '@services/backendApi'
 import { t, type Language } from '@renderer/i18n'
 import { getQuotaBarColor, getQuotaTextColor } from '@utils/quotaColors'
+import { formatTokenCount } from '@utils/formatter'
 
 interface PlanItem {
   id: string
@@ -308,12 +309,12 @@ export function CloudSettings({ language }: { language: Language }) {
           <div className="space-y-2">
             <div className="flex items-center justify-between text-xs">
               <span className={getQuotaTextColor(quota.limit === -1 || quota.remaining === -1 ? 0 : (quota.used / quota.limit) * 100)}>
-                {t('settings.used', language as Language)}: {quota.used.toLocaleString()} tokens
+                {t('settings.used', language as Language)}: {formatTokenCount(quota.used)} tokens
               </span>
               <span className={getQuotaTextColor(quota.limit === -1 || quota.remaining === -1 ? 0 : (quota.used / quota.limit) * 100)}>
                 {quota.remaining === -1
                   ? t('settings.unlimited', language as Language)
-                  : `${quota.remaining.toLocaleString()} tokens`}
+                  : `${formatTokenCount(quota.remaining)} tokens`}
               </span>
             </div>
             <div className="h-2 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">

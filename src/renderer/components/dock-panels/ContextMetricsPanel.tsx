@@ -10,6 +10,7 @@ import { createManualHandoffSession } from '@intelligence/runtime/handoffSession
 import type { CompressionLevel } from '@intelligence/providerTypes'
 import type { TokenUsage } from '@intelligence/providerTypes'
 import { toast } from '@components/foundation/NotificationProvider'
+import { formatTokenCount } from '@utils/formatter'
 import { t, type Language } from '@renderer/i18n'
 
 interface ContextStatsContentProps {
@@ -58,15 +59,9 @@ export default function ContextStatsContent({
     4: t('dock-panels.handoff', language as Language),
   }
 
-  const formatK = (n: number | undefined) => {
-    if (n === undefined || n === null || isNaN(n)) return '0'
-    return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toString()
-  }
+  const formatK = (n: number | undefined) => formatTokenCount(n ?? 0)
 
-  const formatNumber = (n: number | undefined) => {
-    if (n === undefined || n === null || isNaN(n)) return '0'
-    return n.toLocaleString()
-  }
+  const formatNumber = (n: number | undefined) => formatTokenCount(n ?? 0)
 
   const progressColor = useMemo(() => {
     if (ratio >= 0.95) return 'bg-red-500'

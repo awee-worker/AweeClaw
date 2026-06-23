@@ -1,6 +1,11 @@
+/**
+ * App Identity Panel
+ * 显示应用信息、版本、生态链接等
+ */
+
 import { logger } from '@toolkit/LogEngine'
 import { useState, useEffect } from 'react'
-import { X, Github, ExternalLink, Shield, Cpu, Layers, Activity, Globe, BookOpen } from 'lucide-react'
+import { X, Shield, Cpu, Layers, Activity, Globe, BookOpen, Compass, Code2, Blocks, Zap } from 'lucide-react'
 import { Logo } from '../foundation/BrandMark'
 import { useStore } from '@store'
 import { OverlayDialog } from '../ui'
@@ -12,22 +17,17 @@ interface AppIdentityPanelProps {
   onClose: () => void
 }
 
-const TEAM_MEMBERS = [
-  { name: 'awee', avatar: 'https://github.com/awee-worker.png', url: 'https://github.com/awee-worker', role: 'Creator' },
-  { name: 'kerwin', avatar: 'https://github.com/kerwin2046.png', url: 'https://github.com/kerwin2046', role: 'Architect' },
-  { name: 'cniu6', avatar: 'https://github.com/cniu6.png', url: 'https://github.com/cniu6', role: 'Engineer' },
-  { name: '晨曦', avatar: 'https://github.com/tss-tss.png', url: 'https://github.com/tss-tss', role: 'Engineer' },
-  { name: 'joanboss', avatar: 'https://github.com/joanboss.png', url: 'https://github.com/joanboss', role: 'Designer' },
-  { name: '玉衡', avatar: 'https://github.com/yuheng-888.png', url: 'https://github.com/yuheng-888', role: 'Engineer' },
-]
-
+/** 核心能力卡片配置 */
 const CAPABILITIES = [
-  { icon: Shield, labelEn: 'Scenario Guard', labelZh: '场景守卫', descEn: 'Context-aware security policies', descZh: '上下文感知安全策略' },
-  { icon: Cpu, labelEn: 'Multi-Model', labelZh: '多模型引擎', descEn: 'Unified LLM orchestration', descZh: '统一大模型编排' },
-  { icon: Layers, labelEn: 'Scenario Engine', labelZh: '场景引擎', descEn: 'Domain-specific AI workflows', descZh: '领域定制AI工作流' },
-  { icon: Activity, labelEn: 'Live Profiling', labelZh: '实时剖析', descEn: 'Token budget & performance', descZh: 'Token预算与性能监控' },
+  { icon: Blocks, labelEn: 'Scenario-Driven', labelZh: '场景驱动', descEn: 'Domain-specific agent workflows', descZh: '领域定制智能体工作流' },
+  { icon: Cpu, labelEn: 'Multi-Model Engine', labelZh: '多模型引擎', descEn: 'Unified LLM orchestration', descZh: '统一大模型编排调度' },
+  { icon: Layers, labelEn: 'Scenario Engine', labelZh: '场景引擎', descEn: 'Pluggable scenario framework', descZh: '可插拔场景框架' },
+  { icon: Shield, labelEn: 'Context Guard', labelZh: '上下文守卫', descEn: 'Context-aware security policies', descZh: '上下文感知安全策略' },
+  { icon: Activity, labelEn: 'Live Profiling', labelZh: '实时剖析', descEn: 'Token budget & performance', descZh: 'Token 预算与性能监控' },
+  { icon: Zap, labelEn: 'Blazing Fast', labelZh: '极速响应', descEn: 'Native-grade performance', descZh: '原生级性能体验' },
 ]
 
+/** 技术栈 */
 const TECH_STACK = [
   { name: 'Electron', category: 'Runtime' },
   { name: 'React 19', category: 'UI' },
@@ -37,11 +37,53 @@ const TECH_STACK = [
   { name: 'MCP Protocol', category: 'Tools' },
 ]
 
+/** 生态入口配置 */
+const ECOSYSTEM_LINKS: { key: string; icon: typeof Blocks; href: string; labelZh: string; labelEn: string; descZh: string; descEn: string }[] = [
+  {
+    key: 'scenarios',
+    icon: Compass,
+    href: BRAND.links.scenarios,
+    labelZh: '场景开发',
+    labelEn: 'Scenarios',
+    descZh: '场景驱动的智能体开发框架',
+    descEn: 'Scenario-driven agent development',
+  },
+  {
+    key: 'developer',
+    icon: Code2,
+    href: BRAND.links.developer,
+    labelZh: '开发者中心',
+    labelEn: 'Developer',
+    descZh: 'API、SDK 与集成文档',
+    descEn: 'API, SDK & integration docs',
+  },
+  {
+    key: 'docs',
+    icon: BookOpen,
+    href: BRAND.links.docs,
+    labelZh: '使用文档',
+    labelEn: 'Docs',
+    descZh: '快速上手与进阶指南',
+    descEn: 'Quick start & advanced guides',
+  },
+  {
+    key: 'website',
+    icon: Globe,
+    href: BRAND.links.website,
+    labelZh: '官方网站',
+    labelEn: 'Website',
+    descZh: '了解产品动态与愿景',
+    descEn: 'Product updates & vision',
+  },
+]
+
 export default function AppIdentityPanel({ onClose }: AppIdentityPanelProps) {
   const language = useStore(s => s.language)
   const [version, setVersion] = useState('1.0.0')
-  const [activeTab, setActiveTab] = useState<'about' | 'system' | 'team'>('about')
+  const [activeTab, setActiveTab] = useState<'about' | 'system' | 'ecosystem'>('about')
   const isZh = language === 'zh'
+  // 年份动态显示当前年
+  const currentYear = new Date().getFullYear()
 
   useEffect(() => {
     const loadAppVersion = async () => {
@@ -56,7 +98,7 @@ export default function AppIdentityPanel({ onClose }: AppIdentityPanelProps) {
   }, [])
 
   return (
-    <OverlayDialog isOpen={true} onClose={onClose} noPadding size="2xl" className="overflow-hidden bg-transparent shadow-2xl">
+    <OverlayDialog isOpen={true} onClose={onClose} noPadding size="2xl" showCloseButton={false} className="overflow-hidden bg-transparent shadow-2xl">
       <div className="relative overflow-hidden bg-surface/80 backdrop-blur-3xl border border-border/50 flex flex-col h-[620px] w-full">
         <div className="absolute inset-0 pointer-events-none opacity-[0.03]"
           style={{ backgroundImage: 'radial-gradient(currentColor 1px, transparent 1px)', backgroundSize: '20px 20px' }}
@@ -64,6 +106,7 @@ export default function AppIdentityPanel({ onClose }: AppIdentityPanelProps) {
         <div className="absolute top-[-30%] left-[20%] w-[500px] h-[400px] bg-accent/8 rounded-full blur-[120px] pointer-events-none" />
         <div className="absolute bottom-[-20%] right-[-5%] w-[400px] h-[400px] bg-violet-500/5 rounded-full blur-[140px] pointer-events-none" />
 
+        {/* 关闭按钮（仅保留这一个） */}
         <button
           onClick={onClose}
           className="absolute top-5 right-5 z-50 p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-text-muted hover:text-text-primary transition-all duration-300"
@@ -96,7 +139,7 @@ export default function AppIdentityPanel({ onClose }: AppIdentityPanelProps) {
             >
               <h1 className="text-3xl font-black text-text-primary tracking-tight">AweeClaw</h1>
               <p className="text-[13px] text-text-secondary leading-relaxed font-medium opacity-80">
-                {isZh ? '场景驱动的 AI 原生智能体平台' : 'Scenario-Driven AI-Native Agent Platform'}
+                {isZh ? '场景驱动的 AI 原生智能体构建平台' : 'Scenario-Driven AI-Native Agent Building Platform'}
               </p>
             </motion.div>
 
@@ -106,13 +149,13 @@ export default function AppIdentityPanel({ onClose }: AppIdentityPanelProps) {
               transition={{ delay: 0.25, duration: 0.4 }}
               className="flex gap-1.5 mt-5 bg-surface/50 rounded-full p-1 border border-border/30"
             >
-              {(['about', 'system', 'team'] as const).map(tab => (
+              {(['about', 'system', 'ecosystem'] as const).map(tab => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
                   className={`px-4 py-1.5 rounded-full text-[11px] font-bold transition-all ${activeTab === tab ? 'bg-accent/15 text-accent shadow-sm' : 'text-text-muted hover:text-text-secondary'}`}
                 >
-                  {tab === 'about' ? (isZh ? '概览' : 'Overview') : tab === 'system' ? (isZh ? '系统' : 'System') : (isZh ? '团队' : 'Team')}
+                  {tab === 'about' ? (isZh ? '概览' : 'Overview') : tab === 'system' ? (isZh ? '系统' : 'System') : (isZh ? '生态' : 'Ecosystem')}
                 </button>
               ))}
             </motion.div>
@@ -121,6 +164,7 @@ export default function AppIdentityPanel({ onClose }: AppIdentityPanelProps) {
           <div className="flex-1 overflow-y-auto px-8 pb-6 custom-scrollbar">
             {activeTab === 'about' && (
               <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
+                {/* 核心能力 */}
                 <div className="grid grid-cols-2 gap-3">
                   {CAPABILITIES.map((cap, i) => (
                     <motion.div
@@ -141,6 +185,7 @@ export default function AppIdentityPanel({ onClose }: AppIdentityPanelProps) {
                   ))}
                 </div>
 
+                {/* 技术栈 */}
                 <div className="p-4 rounded-xl bg-white/[0.02] border border-border/40">
                   <div className="text-[11px] font-black text-text-muted uppercase tracking-widest opacity-40 mb-3">{isZh ? '技术栈' : 'Tech Stack'}</div>
                   <div className="flex flex-wrap gap-2">
@@ -171,33 +216,34 @@ export default function AppIdentityPanel({ onClose }: AppIdentityPanelProps) {
               </motion.div>
             )}
 
-            {activeTab === 'team' && (
+            {activeTab === 'ecosystem' && (
               <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
-                <div className="grid grid-cols-3 gap-3">
-                  {TEAM_MEMBERS.map((member, i) => (
-                    <motion.a
-                      key={member.name}
-                      href={member.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ delay: i * 0.05 }}
-                      className="flex flex-col items-center gap-2 p-4 rounded-xl bg-white/[0.02] border border-border/40 hover:border-accent/20 transition-all group"
-                      onClick={(e) => { e.preventDefault(); api.file.openExternalUrl(member.url) }}
-                    >
-                      <img src={member.avatar} alt={member.name} className="w-10 h-10 rounded-full border-2 border-border group-hover:border-accent/40 transition-colors shadow-sm" />
-                      <div className="text-[12px] font-bold text-text-primary">{member.name}</div>
-                      <div className="text-[10px] text-text-muted">{member.role}</div>
-                    </motion.a>
-                  ))}
-                </div>
-
-                <div className="flex items-center justify-center gap-4 pt-2">
-                  <SocialLink href={BRAND.links.github} icon={Github} label="GitHub" />
-                  <SocialLink href={BRAND.links.gitee} icon={ExternalLink} label="Gitee" />
-                  <SocialLink href="#" icon={Globe} label={isZh ? '官网' : 'Website'} />
-                  <SocialLink href="#" icon={BookOpen} label={isZh ? '文档' : 'Docs'} />
+                {/* 生态入口网格 */}
+                <div className="grid grid-cols-2 gap-3">
+                  {ECOSYSTEM_LINKS.map((item, i) => {
+                    const Icon = item.icon
+                    const label = isZh ? item.labelZh : item.labelEn
+                    const desc = isZh ? item.descZh : item.descEn
+                    return (
+                      <motion.a
+                        key={item.key}
+                        href={item.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ delay: i * 0.05 }}
+                        className="group flex flex-col items-center gap-2 p-4 rounded-xl bg-white/[0.02] border border-border/40 hover:border-accent/30 hover:bg-accent/[0.03] transition-all"
+                        onClick={(e) => { e.preventDefault(); api.file.openExternalUrl(item.href) }}
+                      >
+                        <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center group-hover:bg-accent/20 transition-colors">
+                          <Icon className="w-4 h-4 text-accent" strokeWidth={1.5} />
+                        </div>
+                        <div className="text-[12px] font-bold text-text-primary">{label}</div>
+                        <div className="text-[10px] text-text-muted text-center leading-tight">{desc}</div>
+                      </motion.a>
+                    )
+                  })}
                 </div>
               </motion.div>
             )}
@@ -209,10 +255,10 @@ export default function AppIdentityPanel({ onClose }: AppIdentityPanelProps) {
                 <img src="https://github.com/awee-worker.png" alt="awee" className="w-8 h-8 rounded-full shadow ring-1 ring-white/10 group-hover:scale-105 transition-transform" />
                 <div>
                   <p className="text-[12px] font-bold text-text-primary group-hover:text-accent transition-colors">awee</p>
-                  <p className="text-[10px] text-text-muted">Creator & Maintainer</p>
+                  <p className="text-[10px] text-text-muted">{isZh ? '创建者 & 维护者' : 'Creator & Maintainer'}</p>
                 </div>
               </div>
-              <p className="text-[10px] text-text-muted/70 font-medium">© 2025-present awee. All rights reserved.</p>
+              <p className="text-[10px] text-text-muted/70 font-medium">© {currentYear} aweeclaw.com. All rights reserved.</p>
             </div>
           </div>
         </div>
@@ -273,17 +319,5 @@ function EnvItem({ label, value }: { label: string; value: string }) {
       <span className="text-[11px] text-text-muted">{label}</span>
       <span className="text-[11px] font-mono font-medium text-text-secondary">{value}</span>
     </div>
-  )
-}
-
-function SocialLink({ href, icon: Icon, label }: { href: string; icon: any; label: string }) {
-  return (
-    <a href={href} target="_blank" rel="noopener noreferrer"
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-white/5 text-text-muted hover:text-text-primary transition-all text-[11px] font-medium"
-      onClick={(e) => { e.preventDefault(); api.file.openExternalUrl(href) }}
-    >
-      <Icon className="w-3.5 h-3.5" />
-      {label}
-    </a>
   )
 }

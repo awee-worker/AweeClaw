@@ -38,6 +38,7 @@ import { Volume2 } from 'lucide-react'
 import DockPopover from '../ui/DockPopover'
 import NotificationCenterContent, { NotificationClearButton } from '../dock-panels/NotificationPanel'
 import { getQuotaBarColor, getQuotaTextColor, getQuotaGlowColor } from '@utils/quotaColors'
+import { formatTokenCount } from '@utils/formatter'
 import { useEffect } from 'react'
 import { t, type Language } from '@renderer/i18n'
 
@@ -89,7 +90,7 @@ function CloudQuotaIndicator({ language }: { language: Language }) {
       icon={
         <div
           className="flex items-center gap-1.5 px-1.5 py-0.5 h-6 rounded-md cursor-pointer group hover:bg-white/5 transition-colors"
-          title={quota ? `Token: ${quota.used.toLocaleString()} / ${quota.limit.toLocaleString()}${isQuotaExceeded ? (t('layout.exceeded', language as Language)) : isQuotaLow ? (t('layout.low', language as Language)) : ''}` : ''}
+          title={quota ? `Token: ${formatTokenCount(quota.used)} / ${quota.limit === -1 ? '∞' : formatTokenCount(quota.limit)}${isQuotaExceeded ? (t('layout.exceeded', language as Language)) : isQuotaLow ? (t('layout.low', language as Language)) : ''}` : ''}
         >
           <Cloud className={`w-3 h-3 ${cloudColorClass} ${getQuotaGlowColor(usedPercent)}`} />
           {quotaLabel && (
@@ -110,14 +111,14 @@ function CloudQuotaIndicator({ language }: { language: Language }) {
             <div className="grid grid-cols-3 gap-2">
               <div className="flex flex-col items-center p-2.5 rounded-xl bg-surface/80">
                 <span className="text-[10px] text-text-muted mb-1">{t('layout.used', language as Language)}</span>
-                <span className="text-sm font-bold text-text-primary">{quota.used.toLocaleString()}</span>
+                <span className="text-sm font-bold text-text-primary">{formatTokenCount(quota.used)}</span>
               </div>
               <div className="flex flex-col items-center p-2.5 rounded-xl bg-surface/80">
                 <span className="text-[10px] text-text-muted mb-1">{t('layout.remaining', language as Language)}</span>
                 <span className="text-sm font-bold text-text-primary">
                   {quota.remaining === -1
                     ? (t('layout.text0', language as Language))
-                    : quota.remaining.toLocaleString()}
+                    : formatTokenCount(quota.remaining)}
                 </span>
               </div>
               <div className="flex flex-col items-center p-2.5 rounded-xl bg-surface/80">
@@ -125,7 +126,7 @@ function CloudQuotaIndicator({ language }: { language: Language }) {
                 <span className="text-sm font-bold text-text-primary">
                   {quota.limit === -1
                     ? (t('layout.text1', language as Language))
-                    : quota.limit.toLocaleString()}
+                    : formatTokenCount(quota.limit)}
                 </span>
               </div>
             </div>

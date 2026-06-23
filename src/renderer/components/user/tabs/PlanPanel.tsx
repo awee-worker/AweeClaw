@@ -17,6 +17,7 @@ import { ActionButton } from '@components/ui'
 import { t, type Language } from '@renderer/i18n'
 import { backendApi } from '@services/backendApi'
 import { getQuotaBarColor, getQuotaTextColor } from '@utils/quotaColors'
+import { formatTokenCount } from '@utils/formatter'
 import {
   type PlanItem,
   type PaymentResult,
@@ -165,7 +166,7 @@ export function PlanPanel({ language }: PlanPanelProps) {
               {t('user.tokenusage', language as Language)}
             </span>
             <span className={`${getQuotaTextColor(quotaPercent)} font-mono`}>
-              {quota.used.toLocaleString()} / {quota.remaining === -1 ? (t('user.text1', language as Language)) : quota.limit.toLocaleString()}
+              {formatTokenCount(quota.used)} / {quota.remaining === -1 ? (t('user.text1', language as Language)) : formatTokenCount(quota.limit)}
             </span>
           </div>
           <div className="h-1.5 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
