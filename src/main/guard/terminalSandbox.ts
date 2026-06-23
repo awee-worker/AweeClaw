@@ -13,7 +13,7 @@ import { EventEmitter } from 'events'
 import { StringDecoder } from 'node:string_decoder'
 import { securityManager, OperationType } from './securityPolicyEngine'
 import { SECURITY_DEFAULTS } from '@shared/appConstants'
-import { safeIpcHandle } from '../bridge/ipcGuard'
+import { safeIpcHandle } from '../bridge/core/ipcGuard'
 import { normalizePipeTerminalInput } from './terminalInputFilter'
 import { pythonManager } from '../modules/python-runtime'
 

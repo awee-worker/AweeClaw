@@ -96,7 +96,7 @@ let appQuitInProgress = false
 
 
 // 延迟加载的模块
-let ipcModule: typeof import('./bridge') | null = null
+let ipcModule: typeof import('./bridge/core') | null = null
 let lspManager = mainLspManager
 let securityManager: typeof import('./guard').securityManager | null = null
 
@@ -618,9 +618,9 @@ async function performGlobalCleanup() {
 async function initializeModules(firstWin: BrowserWindow) {
   // 并行加载所有模块
   const [ipc, security, windowIpc, updaterService] = await Promise.all([
-    import('./bridge'),
+    import('./bridge/core'),
     import('./guard'),
-    import('./bridge/windowLifecycle'),
+    import('./bridge/window/windowLifecycle'),
     import('./modules/auto-update'),
   ])
 
@@ -721,7 +721,7 @@ async function initializeModules(firstWin: BrowserWindow) {
   // 启动 Cron 调度器（恢复持久化任务后启动）
   try {
     const { cronScheduler } = await import('./modules/automation/CronScheduler')
-    const { registerAutomationEventListeners } = await import('./bridge/automation')
+    const { registerAutomationEventListeners } = await import('./bridge/system/automation')
     cronScheduler.restoreFromStore()
     cronScheduler.start()
     registerAutomationEventListeners()
@@ -952,9 +952,9 @@ app.whenReady().then(async () => {
   }
 
   // 3. 先注册窗口与更新 IPC，避免渲染进程加载时 handler 未就绪（setTheme / updater 等）
-  const { registerWindowHandlers } = await import('./bridge/windowLifecycle')
+  const { registerWindowHandlers } = await import('./bridge/window/windowLifecycle')
   registerWindowHandlers(createWindow)
-  const { registerUpdaterHandlers } = await import('./bridge/updateManager')
+  const { registerUpdaterHandlers } = await import('./bridge/window/updateManager')
   registerUpdaterHandlers()
 
   // 4. 创建窗口（此时不加载页面内容，等模块初始化完成后再加载）
