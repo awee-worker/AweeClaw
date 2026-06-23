@@ -53,6 +53,39 @@ const TOOL_LABEL_KEYS: Record<string, string> = {
     uiux_recommend: 'tool.label.uiux_recommend',
     apply_skill: 'tool.label.apply_skill',
     todo_write: 'tool.label.todo_write',
+    // 桌面控制工具
+    desktop_list_apps: 'tool.label.desktop_list_apps',
+    desktop_launch_app: 'tool.label.desktop_launch_app',
+    desktop_quit_app: 'tool.label.desktop_quit_app',
+    desktop_list_windows: 'tool.label.desktop_list_windows',
+    desktop_focus_window: 'tool.label.desktop_focus_window',
+    desktop_close_window: 'tool.label.desktop_close_window',
+    desktop_minimize_window: 'tool.label.desktop_minimize_window',
+    desktop_maximize_window: 'tool.label.desktop_maximize_window',
+    desktop_restore_window: 'tool.label.desktop_restore_window',
+    desktop_get_window_bounds: 'tool.label.desktop_get_window_bounds',
+    desktop_set_window_bounds: 'tool.label.desktop_set_window_bounds',
+    desktop_screenshot: 'tool.label.desktop_screenshot',
+    desktop_screenshot_region: 'tool.label.desktop_screenshot_region',
+    desktop_mouse_click: 'tool.label.desktop_mouse_click',
+    desktop_mouse_double_click: 'tool.label.desktop_mouse_double_click',
+    desktop_mouse_right_click: 'tool.label.desktop_mouse_right_click',
+    desktop_mouse_move: 'tool.label.desktop_mouse_move',
+    desktop_mouse_drag: 'tool.label.desktop_mouse_drag',
+    desktop_mouse_scroll: 'tool.label.desktop_mouse_scroll',
+    desktop_key_type: 'tool.label.desktop_key_type',
+    desktop_key_press: 'tool.label.desktop_key_press',
+    desktop_key_combo: 'tool.label.desktop_key_combo',
+    desktop_get_clipboard: 'tool.label.desktop_get_clipboard',
+    desktop_set_clipboard: 'tool.label.desktop_set_clipboard',
+    desktop_open_url: 'tool.label.desktop_open_url',
+    desktop_open_file: 'tool.label.desktop_open_file',
+    desktop_get_system_info: 'tool.label.desktop_get_system_info',
+    desktop_set_volume: 'tool.label.desktop_set_volume',
+    desktop_set_brightness: 'tool.label.desktop_set_brightness',
+    desktop_list_processes: 'tool.label.desktop_list_processes',
+    desktop_kill_process: 'tool.label.desktop_kill_process',
+    desktop_is_process_running: 'tool.label.desktop_is_process_running',
 }
 
 const guessLanguage = (filename: string) => {
@@ -113,13 +146,29 @@ const getPathSummary = (paths: string[], maxItems = 3): string => {
     return `${paths.length} files (${preview}${paths.length > maxItems ? ', ...' : ''})`
 }
 
-function getStatusText(name: string, args: ToolArgs, status: ToolCall['status'], isStreaming: boolean, language: Language): string {
+function getStatusText(name: string, args: ToolArgs, status: ToolCall['status'], isStreaming: boolean, language: Language, result?: string): string {
     const isRunning = status === 'running' || status === 'pending' || isStreaming
     const isSuccess = status === 'success'
     const isError = status === 'error'
     const paths = getToolPathList(args)
     const path = getPrimaryToolPath(args)
     const pathSummary = getPathSummary(paths)
+
+    /** 从工具返回结果中解析数量（支持 JSON 数组长度和 "Found N ..." 文本格式） */
+    const parseResultCount = (key: string): string => {
+        if (!result) return ''
+        // 优先尝试 JSON 解析
+        try {
+            const parsed = JSON.parse(result)
+            const arr = parsed?.[key]
+            if (Array.isArray(arr)) return String(arr.length)
+        } catch {
+            // 非 JSON，尝试从文本中提取 "Found N xxx" 格式的数字
+            const match = result.match(/Found\s+(\d+)\s+/i)
+            if (match) return match[1]
+        }
+        return ''
+    }
 
     if (name === 'run_command') {
         if (isRunning) return t('tool.label.run_command', language as any)
@@ -260,6 +309,172 @@ function getStatusText(name: string, args: ToolArgs, status: ToolCall['status'],
         if (isSuccess) return t('tool.status.recommendationGenerated', language as any)
         if (isError) return t('tool.status.recommendationFailed', language as any)
         return t('tool.status.generatingRecommendation', language as any)
+    }
+
+    // ============ 桌面控制工具状态文字 ============
+    if (name === 'desktop_list_apps') {
+        if (isRunning) return t('tool.status.listingApps', language as any)
+        if (isSuccess) return t('tool.status.listedApps', language as any, { count: parseResultCount('apps') })
+        if (isError) return t('tool.status.listAppsFailed', language as any)
+        return t('tool.status.listingApps', language as any)
+    }
+
+    if (name === 'desktop_launch_app') {
+        const appName = asString(args.name)
+        if (isRunning) return t('tool.status.launchingApp', language as any, { name: appName })
+        if (isSuccess) return t('tool.status.launchedApp', language as any, { name: appName })
+        if (isError) return t('tool.status.launchAppFailed', language as any, { name: appName })
+        return t('tool.status.launchingApp', language as any, { name: appName })
+    }
+
+    if (name === 'desktop_quit_app') {
+        const appName = asString(args.name)
+        if (isRunning) return t('tool.status.quittingApp', language as any, { name: appName })
+        if (isSuccess) return t('tool.status.quitApp', language as any, { name: appName })
+        if (isError) return t('tool.status.quitAppFailed', language as any, { name: appName })
+        return t('tool.status.quittingApp', language as any, { name: appName })
+    }
+
+    if (name === 'desktop_list_windows') {
+        if (isRunning) return t('tool.status.listingWindows', language as any)
+        if (isSuccess) return t('tool.status.listedWindows', language as any, { count: parseResultCount('windows') })
+        if (isError) return t('tool.status.listWindowsFailed', language as any)
+        return t('tool.status.listingWindows', language as any)
+    }
+
+    if (name === 'desktop_focus_window') {
+        if (isRunning) return t('tool.status.focusingWindow', language as any)
+        if (isSuccess) return t('tool.status.focusedWindow', language as any)
+        if (isError) return t('tool.status.focusWindowFailed', language as any)
+        return t('tool.status.focusingWindow', language as any)
+    }
+
+    if (name === 'desktop_close_window') {
+        if (isRunning) return t('tool.status.closingWindow', language as any)
+        if (isSuccess) return t('tool.status.closedWindow', language as any)
+        if (isError) return t('tool.status.closeWindowFailed', language as any)
+        return t('tool.status.closingWindow', language as any)
+    }
+
+    if (name === 'desktop_minimize_window') {
+        if (isRunning) return t('tool.status.minimizingWindow', language as any)
+        if (isSuccess) return t('tool.status.minimizedWindow', language as any)
+        return t('tool.status.minimizingWindow', language as any)
+    }
+
+    if (name === 'desktop_maximize_window') {
+        if (isRunning) return t('tool.status.maximizingWindow', language as any)
+        if (isSuccess) return t('tool.status.maximizedWindow', language as any)
+        return t('tool.status.maximizingWindow', language as any)
+    }
+
+    if (name === 'desktop_restore_window') {
+        if (isRunning) return t('tool.status.restoringWindow', language as any)
+        if (isSuccess) return t('tool.status.restoredWindow', language as any)
+        return t('tool.status.restoringWindow', language as any)
+    }
+
+    if (['desktop_screenshot', 'desktop_screenshot_region'].includes(name)) {
+        if (isRunning) return t('tool.status.takingScreenshot', language as any)
+        if (isSuccess) return t('tool.status.tookScreenshot', language as any)
+        if (isError) return t('tool.status.screenshotFailed', language as any)
+        return t('tool.status.takingScreenshot', language as any)
+    }
+
+    if (['desktop_mouse_click', 'desktop_mouse_double_click', 'desktop_mouse_right_click'].includes(name)) {
+        if (isRunning) return t('tool.status.clickingMouse', language as any)
+        if (isSuccess) return t('tool.status.clickedMouse', language as any)
+        return t('tool.status.clickingMouse', language as any)
+    }
+
+    if (name === 'desktop_mouse_move') {
+        if (isRunning) return t('tool.status.movingMouse', language as any)
+        if (isSuccess) return t('tool.status.movedMouse', language as any)
+        return t('tool.status.movingMouse', language as any)
+    }
+
+    if (name === 'desktop_mouse_drag') {
+        if (isRunning) return t('tool.status.draggingMouse', language as any)
+        if (isSuccess) return t('tool.status.draggedMouse', language as any)
+        return t('tool.status.draggingMouse', language as any)
+    }
+
+    if (name === 'desktop_mouse_scroll') {
+        if (isRunning) return t('tool.status.scrollingMouse', language as any)
+        if (isSuccess) return t('tool.status.scrolledMouse', language as any)
+        return t('tool.status.scrollingMouse', language as any)
+    }
+
+    if (name === 'desktop_key_type') {
+        if (isRunning) return t('tool.status.typingText', language as any)
+        if (isSuccess) return t('tool.status.typedText', language as any)
+        return t('tool.status.typingText', language as any)
+    }
+
+    if (['desktop_key_press', 'desktop_key_combo'].includes(name)) {
+        if (isRunning) return t('tool.status.pressingKey', language as any)
+        if (isSuccess) return t('tool.status.pressedKey', language as any)
+        return t('tool.status.pressingKey', language as any)
+    }
+
+    if (name === 'desktop_get_clipboard') {
+        if (isRunning) return t('tool.status.readingClipboard', language as any)
+        if (isSuccess) return t('tool.status.readClipboard', language as any)
+        return t('tool.status.readingClipboard', language as any)
+    }
+
+    if (name === 'desktop_set_clipboard') {
+        if (isRunning) return t('tool.status.writingClipboard', language as any)
+        if (isSuccess) return t('tool.status.wroteClipboard', language as any)
+        return t('tool.status.writingClipboard', language as any)
+    }
+
+    if (name === 'desktop_open_url') {
+        if (isRunning) return t('tool.status.openingUrl', language as any)
+        if (isSuccess) return t('tool.status.openedUrl', language as any)
+        return t('tool.status.openingUrl', language as any)
+    }
+
+    if (name === 'desktop_open_file') {
+        if (isRunning) return t('tool.status.openingFile', language as any)
+        if (isSuccess) return t('tool.status.openedFile', language as any)
+        return t('tool.status.openingFile', language as any)
+    }
+
+    if (name === 'desktop_get_system_info') {
+        if (isRunning) return t('tool.status.gettingSystemInfo', language as any)
+        if (isSuccess) return t('tool.status.gotSystemInfo', language as any)
+        return t('tool.status.gettingSystemInfo', language as any)
+    }
+
+    if (name === 'desktop_set_volume') {
+        if (isRunning) return t('tool.status.settingVolume', language as any)
+        if (isSuccess) return t('tool.status.setVolume', language as any)
+        return t('tool.status.settingVolume', language as any)
+    }
+
+    if (name === 'desktop_set_brightness') {
+        if (isRunning) return t('tool.status.settingBrightness', language as any)
+        if (isSuccess) return t('tool.status.setBrightness', language as any)
+        return t('tool.status.settingBrightness', language as any)
+    }
+
+    if (name === 'desktop_list_processes') {
+        if (isRunning) return t('tool.status.listingProcesses', language as any)
+        if (isSuccess) return t('tool.status.listedProcesses', language as any, { count: parseResultCount('processes') })
+        return t('tool.status.listingProcesses', language as any)
+    }
+
+    if (name === 'desktop_kill_process') {
+        if (isRunning) return t('tool.status.killingProcess', language as any)
+        if (isSuccess) return t('tool.status.killedProcess', language as any)
+        return t('tool.status.killingProcess', language as any)
+    }
+
+    if (name === 'desktop_is_process_running') {
+        if (isRunning) return t('tool.status.checkingProcess', language as any)
+        if (isSuccess) return t('tool.status.checkedProcess', language as any)
+        return t('tool.status.checkingProcess', language as any)
     }
 
     if (isMcpToolName(name)) {
@@ -838,8 +1053,8 @@ const ToolCallCard = memo(function ToolCallCard({
     })
 
     const statusText = useMemo(
-        () => getStatusText(effectiveName, args, toolCall.status, isStreaming, language),
-        [effectiveName, args, toolCall.status, isStreaming, language]
+        () => getStatusText(effectiveName, args, toolCall.status, isStreaming, language, toolCall.result),
+        [effectiveName, args, toolCall.status, isStreaming, language, toolCall.result]
     )
 
     const cardStyle = useMemo(() => {
