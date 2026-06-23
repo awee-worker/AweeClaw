@@ -50,6 +50,21 @@ export interface LlmBehaviorRow {
   updated_at: number
 }
 
+/** 视觉模型配置行（单行表，id 固定为 1） */
+export interface VisionModelConfigRow {
+  id: number
+  provider: string
+  model: string
+  api_key: string             // 加密存储
+  base_url: string
+  timeout: number
+  protocol: string
+  openai_compatibility_profile: string
+  headers: string             // JSON 对象字符串
+  enabled: number             // 0 | 1
+  updated_at: number
+}
+
 // ============================================
 // 数据库路径
 // ============================================
@@ -210,6 +225,24 @@ export class SettingsDb {
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_channel_account_channel_id
       ON channel_account (channel_id)
+    `)
+
+    // 视觉模型独立配置表（自定义模式下使用）
+    // 与 provider_config 分离，避免视觉模型与聊天模型配置互相干扰
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS vision_model_config (
+        id                          INTEGER PRIMARY KEY CHECK (id = 1),
+        provider                    TEXT NOT NULL DEFAULT '',
+        model                       TEXT NOT NULL DEFAULT '',
+        api_key                     TEXT NOT NULL DEFAULT '',
+        base_url                    TEXT NOT NULL DEFAULT '',
+        timeout                     INTEGER NOT NULL DEFAULT 120000,
+        protocol                    TEXT NOT NULL DEFAULT 'openai',
+        openai_compatibility_profile TEXT NOT NULL DEFAULT 'full',
+        headers                     TEXT NOT NULL DEFAULT '{}',
+        enabled                     INTEGER NOT NULL DEFAULT 0,
+        updated_at                  INTEGER NOT NULL DEFAULT 0
+      )
     `)
 
     // 标记 schema 版本
@@ -439,6 +472,67 @@ export class SettingsDb {
   }
 
   // ============================================
+  // 视觉模型配置 CRUD（自定义模式下使用）
+  // 单行表（id=1），保证全局唯一配置
+  // ============================================
+
+  /** 获取视觉模型配置（已解密 apiKey、解析 headers） */
+  getVisionModelConfig(): any | null {
+    const row = this.db.prepare('SELECT * FROM vision_model_config WHERE id = 1').get() as VisionModelConfigRow | undefined
+    return row ? this.rowToVisionModelConfig(row) : null
+  }
+
+  /** 保存视觉模型配置（upsert） */
+  upsertVisionModelConfig(config: {
+    provider: string
+    model: string
+    apiKey: string
+    baseUrl?: string
+    timeout?: number
+    protocol?: string
+    openaiCompatibilityProfile?: string
+    headers?: Record<string, string>
+    enabled?: boolean
+  }): void {
+    const now = Date.now()
+    const headersJson = JSON.stringify(config.headers ?? {})
+    const encryptedApiKey = config.apiKey ? encryptString(config.apiKey) : ''
+    this.db.prepare(`
+      INSERT INTO vision_model_config (
+        id, provider, model, api_key, base_url, timeout,
+        protocol, openai_compatibility_profile, headers, enabled, updated_at
+      ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        provider = excluded.provider,
+        model = excluded.model,
+        api_key = excluded.api_key,
+        base_url = excluded.base_url,
+        timeout = excluded.timeout,
+        protocol = excluded.protocol,
+        openai_compatibility_profile = excluded.openai_compatibility_profile,
+        headers = excluded.headers,
+        enabled = excluded.enabled,
+        updated_at = excluded.updated_at
+    `).run(
+      config.provider,
+      config.model,
+      encryptedApiKey,
+      config.baseUrl ?? '',
+      config.timeout ?? 120000,
+      config.protocol ?? 'openai',
+      config.openaiCompatibilityProfile ?? 'full',
+      headersJson,
+      config.enabled ? 1 : 0,
+      now,
+    )
+  }
+
+  /** 仅更新启用状态 */
+  setVisionModelEnabled(enabled: boolean): void {
+    this.db.prepare('UPDATE vision_model_config SET enabled = ?, updated_at = ? WHERE id = 1').run(enabled ? 1 : 0, Date.now())
+  }
+
+  // ============================================
   // 全量导出/导入（用于数据迁移和备份）
   // ============================================
 
@@ -497,6 +591,27 @@ export class SettingsDb {
       isCurrent: row.is_current === 1,
       createdAt: row.created_at || undefined,
       updatedAt: row.updated_at || undefined,
+    }
+  }
+
+  /** 将视觉模型配置行转换为业务对象 */
+  private rowToVisionModelConfig(row: VisionModelConfigRow): any {
+    let headers: Record<string, string> = {}
+    try {
+      headers = JSON.parse(row.headers)
+    } catch { /* ignore */ }
+
+    return {
+      provider: row.provider,
+      model: row.model,
+      apiKey: row.api_key ? decryptString(row.api_key) || '' : '',
+      baseUrl: row.base_url || '',
+      timeout: row.timeout,
+      protocol: row.protocol || 'openai',
+      openAICompatibilityProfile: row.openai_compatibility_profile || 'full',
+      headers: Object.keys(headers).length > 0 ? headers : {},
+      enabled: row.enabled === 1,
+      updatedAt: row.updated_at,
     }
   }
 

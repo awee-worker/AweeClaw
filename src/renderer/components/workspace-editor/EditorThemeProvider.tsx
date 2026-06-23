@@ -1,7 +1,7 @@
 import React, { useEffect, ReactNode } from 'react';
 import { logger } from '@shared/toolkit/LogEngine';
 import { useStore } from '@store';
-import { ThemeName } from '@store/slices/themeSlice';
+import { ThemeName, ThemeMode } from '@store/slices/themeSlice';
 import { themeManager } from '@/renderer/config/themeDefinition';
 import { api } from '../../adapters/electronBridge';
 import { BRAND } from '@shared/brand';
@@ -12,6 +12,7 @@ interface ThemeManagerProps {
 
 export const ThemeManager: React.FC<ThemeManagerProps> = ({ children }) => {
     const currentTheme = useStore((state) => state.currentTheme) as ThemeName;
+    const themeMode = useStore((state) => state.themeMode) as ThemeMode;
 
     useEffect(() => {
         const theme = themeManager.getThemeById(currentTheme) || themeManager.getThemeById(BRAND.defaultTheme)!;
@@ -30,11 +31,14 @@ export const ThemeManager: React.FC<ThemeManagerProps> = ({ children }) => {
         }
 
         // SYNC OS LEVEL THEME SO CHROME INVERTS CARET/CURSOR COLOR
-        api.window.setTheme(isLight ? 'light' : 'dark', hexColor).catch(err => {
+        // system 模式下让 nativeTheme 跟随系统，否则按主题类型设置
+        const nativeThemeSource: 'light' | 'dark' | 'system' =
+            themeMode === 'system' ? 'system' : (isLight ? 'light' : 'dark');
+        api.window.setTheme(nativeThemeSource, hexColor).catch(err => {
             logger.ui.error('Failed to sync OS native theme:', err)
         });
 
-    }, [currentTheme]);
+    }, [currentTheme, themeMode]);
 
     return <>{children}</>;
 };

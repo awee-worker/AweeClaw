@@ -1,7 +1,7 @@
 import { Layout, Type, Check, Sun, Moon, Monitor, Globe } from 'lucide-react'
-import { useStore, type ThemeName, type ThemeMode } from '@store'
+import { useStore, type ThemeName, type ThemeMode, type ThemeColor } from '@store'
 import { useShallow } from 'zustand/react/shallow'
-import { themeManager } from '@/renderer/config/themeDefinition'
+import { themeManager, THEME_COLOR_OPTIONS } from '@/renderer/config/themeDefinition'
 import { api } from '../../../adapters/electronBridge'
 import { TextField, DropdownSelector } from '@components/ui'
 import { EditorSettingsProps } from '../preferencesTypes'
@@ -34,18 +34,20 @@ const THEME_MODE_OPTIONS: { value: ThemeMode; labelZh: string; labelEn: string; 
 ]
 
 export function AppearanceSettings({ settings, setSettings, language, localLanguage, setLocalLanguage }: EditorSettingsProps) {
-    const { currentTheme, setTheme, themeMode, setThemeMode, systemPrefersDark, setSystemPrefersDark } = useStore(useShallow(s => ({
+    const { currentTheme, setTheme, themeMode, setThemeMode, themeColor, setThemeColor, systemPrefersDark, setSystemPrefersDark } = useStore(useShallow(s => ({
         currentTheme: s.currentTheme,
         setTheme: s.setTheme,
         themeMode: s.themeMode,
         setThemeMode: s.setThemeMode,
+        themeColor: s.themeColor,
+        setThemeColor: s.setThemeColor,
         systemPrefersDark: s.systemPrefersDark,
         setSystemPrefersDark: s.setSystemPrefersDark,
     })))
-    const allThemes = themeManager.getAllThemes()
 
-    const applyThemeForMode = useCallback((mode: ThemeMode) => {
-        const resolvedTheme = themeManager.resolveThemeForMode(mode)
+    // 根据模式 + 颜色应用主题
+    const applyThemeForModeAndColor = useCallback((mode: ThemeMode, color: ThemeColor) => {
+        const resolvedTheme = themeManager.resolveThemeByModeAndColor(mode, color)
         setTheme(resolvedTheme.id as ThemeName)
         themeManager.setTheme(resolvedTheme.id)
         api.settings.set('themeId', resolvedTheme.id)
@@ -53,19 +55,13 @@ export function AppearanceSettings({ settings, setSettings, language, localLangu
 
     const handleThemeModeChange = useCallback((mode: ThemeMode) => {
         setThemeMode(mode)
-        applyThemeForMode(mode)
-    }, [setThemeMode, applyThemeForMode])
+        applyThemeForModeAndColor(mode, themeColor)
+    }, [setThemeMode, applyThemeForModeAndColor, themeColor])
 
-    const handleThemeChange = (themeId: string) => {
-        const theme = themeManager.getThemeById(themeId)
-        if (theme) {
-            const mode: ThemeMode = theme.type === 'dark' ? 'dark' : 'light'
-            setThemeMode(mode)
-            setTheme(themeId as ThemeName)
-            themeManager.setTheme(themeId)
-            api.settings.set('themeId', themeId)
-        }
-    }
+    const handleThemeColorChange = useCallback((color: ThemeColor) => {
+        setThemeColor(color)
+        applyThemeForModeAndColor(themeMode, color)
+    }, [setThemeColor, applyThemeForModeAndColor, themeMode])
 
     useEffect(() => {
         if (themeMode !== 'system') {
@@ -75,25 +71,24 @@ export function AppearanceSettings({ settings, setSettings, language, localLangu
 
         themeManager.startSystemThemeListener((isDark) => {
             setSystemPrefersDark(isDark)
-            applyThemeForMode('system')
+            applyThemeForModeAndColor('system', themeColor)
         })
 
         return () => {
             themeManager.stopSystemThemeListener()
         }
-    }, [themeMode, applyThemeForMode, setSystemPrefersDark])
+    }, [themeMode, themeColor, applyThemeForModeAndColor, setSystemPrefersDark])
 
     useEffect(() => {
         if (themeMode === 'system') {
-            applyThemeForMode('system')
+            applyThemeForModeAndColor('system', themeColor)
         }
     }, [])
 
-    const filteredThemes = allThemes.filter(t => {
-        if (themeMode === 'system') return true
-        const targetType = themeMode === 'dark' ? 'dark' : 'light'
-        return t.type === targetType
-    })
+    // 当前生效的类型（system 模式下取系统偏好）
+    const effectiveType: 'light' | 'dark' = themeMode === 'system'
+        ? (systemPrefersDark ? 'dark' : 'light')
+        : themeMode
 
     const sectionClass = "p-6 bg-surface/30 backdrop-blur-sm rounded-xl border border-border/50 space-y-5 shadow-sm hover:border-border transition-colors duration-300"
     const labelClass = "text-xs font-semibold text-text-secondary uppercase tracking-wider ml-1 mb-2 block"
@@ -163,7 +158,8 @@ export function AppearanceSettings({ settings, setSettings, language, localLangu
                     </h4>
                 </div>
 
-                <div className="mb-5">
+                {/* 主题模式：亮色 / 暗色 / 跟随系统 */}
+                <div className="mb-6">
                     <label className={labelClass}>
                         {t('settings.thememode', language as Language)}
                     </label>
@@ -194,32 +190,41 @@ export function AppearanceSettings({ settings, setSettings, language, localLangu
                     )}
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                    {filteredThemes.map(theme => {
-                        const themeVars = theme.colors
-                        return (
-                            <button
-                                key={theme.id}
-                                onClick={() => handleThemeChange(theme.id)}
-                                className={`group relative p-3 rounded-xl border text-left transition-all duration-300 overflow-hidden ${currentTheme === theme.id
-                                    ? 'border-accent bg-accent/5 shadow-lg shadow-accent/5 ring-1 ring-accent/20'
-                                    : 'border-border/50 bg-surface/30 hover:border-accent/30 hover:bg-surface/50'
+                {/* 主题颜色：4种颜色，根据当前生效类型显示对应预览 */}
+                <div>
+                    <label className={labelClass}>
+                        {t('settings.themecolor', language as Language)}
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        {THEME_COLOR_OPTIONS.map(colorOpt => {
+                            const theme = themeManager.resolveThemeByModeAndColor(effectiveType, colorOpt.value)
+                            const isActive = themeColor === colorOpt.value
+                            const themeVars = theme.colors
+                            return (
+                                <button
+                                    key={colorOpt.value}
+                                    onClick={() => handleThemeColorChange(colorOpt.value)}
+                                    className={`group relative p-3 rounded-xl border text-left transition-all duration-300 overflow-hidden ${
+                                        isActive
+                                            ? 'border-accent bg-accent/5 shadow-lg shadow-accent/5 ring-1 ring-accent/20'
+                                            : 'border-border/50 bg-surface/30 hover:border-accent/30 hover:bg-surface/50'
                                     }`}
-                            >
-                                <div className="flex items-center justify-between">
-                                    <div className="flex gap-2.5">
-                                        <div className="w-8 h-8 rounded-full shadow-md ring-2 ring-white/10" style={{ backgroundColor: `rgb(${themeVars.background})` }} title="Background" />
-                                        <div className="w-8 h-8 rounded-full shadow-md ring-2 ring-white/10" style={{ backgroundColor: `rgb(${themeVars.accent})` }} title="Accent" />
-                                    </div>
-                                    {currentTheme === theme.id && (
-                                        <div className="bg-accent rounded-full p-0.5 shadow-lg shadow-accent/20">
-                                            <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />
+                                >
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className="flex gap-2">
+                                            <div className="w-7 h-7 rounded-full shadow-md ring-2 ring-white/10" style={{ backgroundColor: `rgb(${themeVars.background})` }} title="Background" />
+                                            <div className="w-7 h-7 rounded-full shadow-md ring-2 ring-white/10" style={{ backgroundColor: `rgb(${themeVars.accent})` }} title="Accent" />
                                         </div>
-                                    )}
-                                </div>
-                            </button>
-                        )
-                    })}
+                                        {isActive && (
+                                            <div className="bg-accent rounded-full p-0.5 shadow-lg shadow-accent/20">
+                                                <Check className="w-3 h-3 text-white" strokeWidth={3} />
+                                            </div>
+                                        )}
+                                    </div>
+                                </button>
+                            )
+                        })}
+                    </div>
                 </div>
             </section>
 

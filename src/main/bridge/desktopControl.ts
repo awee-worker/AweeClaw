@@ -23,10 +23,61 @@ import { SettingsDb } from '../modules/settings-db'
 import type { LLMConfig } from '@shared/protocols/modelProtocol'
 
 /**
- * 解析当前活跃的 LLM 配置（用于视觉闭环默认模型）
- * 如未配置则返回一个占位配置，调用方需处理可能的鉴权失败
+ * 云端模式配置（由渲染进程在调用 visualAgentRun 时传入）
+ * 主进程无法直接访问渲染进程内存中的 token，因此通过参数传递
  */
-function resolveActiveLLMConfig(): LLMConfig {
+export interface CloudModeConfig {
+  cloudMode: boolean
+  serverUrl?: string
+  accessToken?: string
+  refreshToken?: string
+}
+
+/**
+ * 解析视觉智能体使用的 LLM 配置
+ *
+ * 优先级：
+ * 1. 若传入 cloudModeConfig 且为云端模式 → 使用云端配置（转发到后端 /api/v1/llm/vision/chat）
+ * 2. 否则读取本地 vision_model_config 表（自定义模式下的独立视觉模型配置）
+ * 3. 若视觉模型未配置，回退到当前活跃的聊天模型配置
+ * 4. 全部失败则返回占位配置，调用方需处理鉴权失败
+ */
+function resolveActiveLLMConfig(cloudConfig?: CloudModeConfig): LLMConfig {
+  // 1. 云端模式：使用后端配置的视觉模型，客户端只需转发 token
+  if (cloudConfig?.cloudMode && cloudConfig.serverUrl && (cloudConfig.accessToken || cloudConfig.refreshToken)) {
+    return {
+      provider: 'openai',
+      model: 'gpt-4o',
+      apiKey: '',
+      cloudMode: true,
+      cloudVisionMode: true,
+      serverUrl: cloudConfig.serverUrl,
+      accessToken: cloudConfig.accessToken || '',
+      refreshToken: cloudConfig.refreshToken,
+    }
+  }
+
+  // 2. 自定义模式：优先读取独立的视觉模型配置
+  try {
+    const db = SettingsDb.getInstance()
+    const visionConfig = db.getVisionModelConfig()
+    if (visionConfig?.enabled && visionConfig.provider && visionConfig.model && visionConfig.apiKey) {
+      return {
+        provider: visionConfig.provider,
+        model: visionConfig.model,
+        apiKey: visionConfig.apiKey,
+        baseUrl: visionConfig.baseUrl || undefined,
+        timeout: visionConfig.timeout,
+        protocol: visionConfig.protocol,
+        openAICompatibilityProfile: visionConfig.openAICompatibilityProfile,
+        headers: Object.keys(visionConfig.headers || {}).length > 0 ? visionConfig.headers : undefined,
+      }
+    }
+  } catch (err) {
+    // 视觉模型配置读取失败，继续回退
+  }
+
+  // 3. 回退到当前活跃的聊天模型配置
   try {
     const db = SettingsDb.getInstance()
     const providerId = db.getCurrentProviderId()
@@ -45,7 +96,7 @@ function resolveActiveLLMConfig(): LLMConfig {
       timeout: config.timeout,
     }
   } catch (err) {
-    // 返回最小可用配置，视觉闭环运行时会因鉴权失败而中止
+    // 4. 返回最小可用配置，视觉闭环运行时会因鉴权失败而中止
     return {
       provider: 'openai',
       model: 'gpt-4o',
@@ -523,9 +574,9 @@ export function registerDesktopControlHandlers(getMainWindow: (windowId?: number
   // ============ 视觉闭环（Phase 4） ============
 
   /** 启动视觉闭环 */
-  safeIpcHandle('desktop:visualAgentRun', async (_event, params: { task: string; maxSteps?: number }) => {
+  safeIpcHandle('desktop:visualAgentRun', async (_event, params: { task: string; maxSteps?: number; cloudConfig?: CloudModeConfig }) => {
     const loop = getVisualAgentLoop()
-    const visionModel = resolveActiveLLMConfig()
+    const visionModel = resolveActiveLLMConfig(params.cloudConfig)
     const result = await loop.run({
       task: params.task,
       maxSteps: params.maxSteps ?? 10,

@@ -416,6 +416,10 @@ export interface ElectronAPI {
   settingsDbGetProvider: (providerId: string) => Promise<any>
   settingsDbDeleteProvider: (providerId: string) => Promise<{ success: boolean; error?: string }>
   settingsDbGetPath: () => Promise<string>
+  // 视觉模型配置（自定义模式）
+  settingsDbGetVisionModelConfig: () => Promise<any | null>
+  settingsDbSaveVisionModelConfig: (config: any) => Promise<{ success: boolean; error?: string }>
+  settingsDbSetVisionModelEnabled: (enabled: boolean) => Promise<{ success: boolean; error?: string }>
   // LLM
   sendMessage: (params: LLMSendMessageParams) => Promise<void>
   compactContext: (params: LLMSendMessageParams) => Promise<{
@@ -838,7 +842,7 @@ export interface ElectronAPI {
   onDesktopRecordingProgress: (callback: (progress: any) => void) => () => void
 
   // Phase 4: 视觉闭环
-  desktopVisualAgentRun: (params: { task: string; maxSteps?: number }) => Promise<{ success: boolean; data: any }>
+  desktopVisualAgentRun: (params: { task: string; maxSteps?: number; cloudConfig?: { cloudMode: boolean; serverUrl?: string; accessToken?: string; refreshToken?: string } }) => Promise<{ success: boolean; data: any }>
   desktopVisualAgentAbort: () => Promise<{ success: boolean }>
   desktopVisualAgentIsRunning: () => Promise<{ success: boolean; data: boolean }>
   onDesktopVisualAgentStepStart: (callback: (data: any) => void) => () => void

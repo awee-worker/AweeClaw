@@ -701,6 +701,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   settingsDbDeleteProvider: (providerId: string) => ipcRenderer.invoke('settings-db:deleteProvider', providerId),
   settingsDbGetPath: () => ipcRenderer.invoke('settings-db:getPath'),
 
+  // 视觉模型配置（自定义模式）
+  settingsDbGetVisionModelConfig: () => ipcRenderer.invoke('settings-db:getVisionModelConfig'),
+  settingsDbSaveVisionModelConfig: (config: any) => ipcRenderer.invoke('settings-db:saveVisionModelConfig', config),
+  settingsDbSetVisionModelEnabled: (enabled: boolean) => ipcRenderer.invoke('settings-db:setVisionModelEnabled', enabled),
+
   // Session DB (SQLite)
   sessionDbInitialize: (params?: { sessionsDir?: string }) => ipcRenderer.invoke('session-db:initialize', params),
   sessionDbGetAllSessionMeta: () => ipcRenderer.invoke('session-db:getAllSessionMeta'),
@@ -1393,7 +1398,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   // ============ Phase 4: 视觉闭环 ============
-  desktopVisualAgentRun: (params: { task: string; maxSteps?: number }) =>
+  desktopVisualAgentRun: (params: { task: string; maxSteps?: number; cloudConfig?: { cloudMode: boolean; serverUrl?: string; accessToken?: string; refreshToken?: string } }) =>
     ipcRenderer.invoke('desktop:visualAgentRun', params),
   desktopVisualAgentAbort: () =>
     ipcRenderer.invoke('desktop:visualAgentAbort'),

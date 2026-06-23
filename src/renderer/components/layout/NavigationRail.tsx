@@ -9,6 +9,7 @@ import { getLucideIcon } from '../foundation/IconMap'
 import { Logo } from '../foundation/BrandMark'
 import { UserAccountPopover } from './UserAccountPopover'
 import { UpdateModal } from './UpdateModal'
+import { QuickSettingsMenu } from './QuickSettingsMenu'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { useAgentActions, useAllThreads } from '@hooks/useAgent'
 import { getThreadDisplayTitle, getMessageText } from '@intelligence/providerTypes'
@@ -153,6 +154,11 @@ function UserMenuDropdown({
       )}
 
       {isAuthenticated && <div className="h-px bg-border/50 my-1 mx-2" />}
+
+      {/* 快速设置：界面语言 / 界面主题（hover 显示二级菜单） */}
+      <QuickSettingsMenu language={language as Language} onClose={onClose} />
+
+      <div className="h-px bg-border/50 my-1 mx-2" />
 
       {isAuthenticated && (
         <>

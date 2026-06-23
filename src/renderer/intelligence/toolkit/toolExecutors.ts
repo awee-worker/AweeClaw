@@ -25,6 +25,7 @@ import { memoryService } from '../runtime/recallService'
 import { knowledgeService } from '../runtime/knowledgeService'
 import type { KnowledgeCategory, KnowledgeEntry } from '@intelligence/providerTypes'
 import { useStore } from '@store'
+import { getAccessToken, getServerUrl, getTokens } from '@services/backendApi'
 import { composerService } from '../runtime/composerEngine'
 import { agentStorePlanBridge, agentStoreTodoBridge } from '../state/intelligenceBridge'
 import { useAgentStore } from '../state/IntelligenceStore'
@@ -2962,7 +2963,27 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         try {
             const task = args.task as string
             const maxSteps = (args.maxSteps as number) || 10
-            const res = await api.desktop.visualAgent.run({ task, maxSteps })
+
+            // 根据当前运行模式构建云端配置
+            // 云端模式：转发到后端 /api/v1/llm/vision/chat，使用后端配置的视觉模型
+            // 自定义模式：cloudConfig 为 undefined，主进程读取本地 vision_model_config
+            const store = useStore.getState()
+            let cloudConfig: { cloudMode: boolean; serverUrl?: string; accessToken?: string; refreshToken?: string } | undefined
+            if (store.cloudMode === 'cloud' && store.isAuthenticated) {
+                const accessToken = getAccessToken()
+                const refreshToken = getTokens()?.refreshToken
+                const serverUrl = getServerUrl()
+                if ((accessToken || refreshToken) && serverUrl) {
+                    cloudConfig = {
+                        cloudMode: true,
+                        serverUrl,
+                        accessToken: accessToken || '',
+                        refreshToken,
+                    }
+                }
+            }
+
+            const res = await api.desktop.visualAgent.run({ task, maxSteps, cloudConfig })
             const result = res.data
             const status = result.aborted ? 'aborted' : result.completed ? 'completed' : 'incomplete'
             return {

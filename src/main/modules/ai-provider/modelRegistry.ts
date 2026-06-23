@@ -131,7 +131,10 @@ function resolveModelRoute(config: LLMConfig): ResolvedModelRoute {
 
 function createCloudModel(config: LLMConfig, options: ModelOptions): LanguageModel {
     const serverUrl = options.serverUrl!.replace(/\/+$/, '')
-    const baseURL = `${serverUrl}/api/v1/llm`
+    // 视觉模式走 /api/v1/llm/vision/chat/completions，普通模式走 /api/v1/llm/chat/completions
+    const baseURL = config.cloudVisionMode
+        ? `${serverUrl}/api/v1/llm/vision`
+        : `${serverUrl}/api/v1/llm`
 
     const baseFetch = (() => {
         try {

@@ -2,12 +2,34 @@
  * 主题系统配置
  * 支持内置主题和自定义主题
  * 使用 RGB 格式以支持 Tailwind 透明度修饰符
+ *
+ * 架构说明：
+ *   - ColorTheme：颜色主题，一个颜色包含 lightColors 和 darkColors 两套配色
+ *   - Theme：运行时主题，由 ColorTheme + type 派生（向后兼容）
+ *   - 用户选择颜色后，切换模式时自动应用对应配色的亮/暗色版本
  */
 
 import { api } from '../adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
 import { StorageService } from '@shared/toolkit/StorageService'
 import { BRAND } from '@shared/brand'
+import type { ThemeColor } from '@/renderer/state/slices/themeSlice'
+
+/** 颜色 → ColorTheme.id 映射 */
+export const THEME_COLOR_MAP: Record<ThemeColor, string> = {
+  blue:   'aweeclaw',
+  purple: 'purple',
+  red:    'lobster-red',
+  green:  'forest-green',
+}
+
+/** 颜色选项元数据（用于UI展示） */
+export const THEME_COLOR_OPTIONS: { value: ThemeColor; labelZh: string; labelEn: string }[] = [
+  { value: 'blue',   labelZh: '天蓝', labelEn: 'Blue' },
+  { value: 'purple', labelZh: '紫色', labelEn: 'Purple' },
+  { value: 'red',    labelZh: '暖橙', labelEn: 'Red' },
+  { value: 'green',  labelZh: '翠绿', labelEn: 'Green' },
+]
 
 export interface ThemeColors {
   // 背景色 (RGB 格式: "r g b")
@@ -53,6 +75,27 @@ export interface Theme {
   type: 'dark' | 'light'
   colors: ThemeColors
   monacoTheme: string
+  /** 关联的颜色主题ID（运行时主题由 ColorTheme + type 派生） */
+  colorThemeId?: string
+}
+
+/**
+ * 颜色主题：一个颜色包含亮色和暗色两套配色
+ * 用户选择颜色后，切换模式时自动应用对应配色的亮/暗色版本
+ */
+export interface ColorTheme {
+  /** 颜色主题ID（如 'aweeclaw', 'purple'） */
+  id: string
+  /** 颜色名称（如 'AweeClaw', 'Purple'） */
+  name: string
+  /** 对应的 ThemeColor 枚举值 */
+  color: ThemeColor
+  /** Monaco 编辑器主题 */
+  monacoTheme: { light: string; dark: string }
+  /** 亮色配色 */
+  lightColors: ThemeColors
+  /** 暗色配色 */
+  darkColors: ThemeColors
 }
 
 // 辅助函数：将 HEX 转换为 RGB 格式 "r g b"
@@ -62,20 +105,36 @@ function hexToRgb(hex: string): string {
   return `${parseInt(result[1], 16)} ${parseInt(result[2], 16)} ${parseInt(result[3], 16)}`
 }
 
-// 内置主题 (使用 RGB 格式)
+/**
+ * 从 ColorTheme 派生运行时 Theme
+ * @param colorTheme 颜色主题
+ * @param type 亮色/暗色
+ */
+function deriveTheme(colorTheme: ColorTheme, type: 'light' | 'dark'): Theme {
+  return {
+    id: `${colorTheme.id}-${type}`,
+    name: `${colorTheme.name} ${type === 'light' ? 'Light' : 'Dark'}`,
+    type,
+    colors: type === 'light' ? colorTheme.lightColors : colorTheme.darkColors,
+    monacoTheme: type === 'light' ? colorTheme.monacoTheme.light : colorTheme.monacoTheme.dark,
+    colorThemeId: colorTheme.id,
+  }
+}
+
+// 内置颜色主题 (使用 RGB 格式)
 // 设计原则:
 //   - 暗色主题: 深蓝灰基调而非纯黑，层间有6-8点亮度差，文字高对比度
 //   - 亮色主题: 暖白基调，层间清晰可辨，代码块与聊天背景区分明显
 //   - 配色: Accent 使用饱和度适中的色相，status 色明确直观
-// 命名规范：亮色 *-light / 暗色 *-dark，按色系配对排列
-export const builtinThemes: Theme[] = [
-  // ========== 亮色主题 ==========
+// 每个颜色主题包含 lightColors 和 darkColors 两套配色
+export const builtinColorThemes: ColorTheme[] = [
+  // ========== 天蓝色 (AweeClaw) ==========
   {
-    id: 'aweeclaw-light',
-    name: 'AweeClaw Light',
-    type: 'light',
-    monacoTheme: 'vs',
-    colors: {
+    id: 'aweeclaw',
+    name: 'AweeClaw',
+    color: 'blue',
+    monacoTheme: { light: 'vs', dark: 'vs-dark' },
+    lightColors: {
       background: '248 250 252',          // #f8fafc  - 冷白基调
       backgroundSecondary: '241 245 249', // #f1f5f9
       backgroundTertiary: '233 238 245',  // #e9eef5
@@ -105,128 +164,8 @@ export const builtinThemes: Theme[] = [
       statusWarning: '217 119 6',         // #d97706
       statusError: '220 38 38',           // #dc2626
       statusInfo: '37 99 235',            // #2563eb
-    }
-  },
-  {
-    id: 'purple-light',
-    name: 'Purple Light',
-    type: 'light',
-    monacoTheme: 'vs',
-    colors: {
-      background: '250 248 254',           // #faf8fe
-      backgroundSecondary: '243 240 251',  // #f3f0fb
-      backgroundTertiary: '235 230 248',   // #ebe6f8
-      chatBg: '247 245 252',               // #f7f5fc
-
-      surface: '255 255 255',              // #ffffff
-      surfaceHover: '243 240 252',         // #f3f0fc
-      surfaceActive: '233 228 248',        // #e9e4f8
-      surfaceMuted: '221 214 242',         // #ddd6f2
-
-      textPrimary: '25 14 55',             // #190e37
-      textSecondary: '64 42 100',          // #402a64
-      textMuted: '110 82 150',             // #6e5296
-      textInverted: '255 255 255',         // #ffffff
-
-      border: '215 206 238',               // #d7ceee
-      borderSubtle: '233 227 246',         // #e9e3f6
-      borderActive: '139 92 246',          // #8b5cf6
-
-      accent: '139 92 246',                // #8b5cf6
-      accentHover: '124 58 237',           // #7c3aed
-      accentActive: '109 40 217',          // #6d28d9
-      accentForeground: '255 255 255',     // #ffffff
-      accentSubtle: '196 181 253',         // #c4b5fd
-
-      statusSuccess: '22 163 74',          // #16a34a
-      statusWarning: '217 119 6',          // #d97706
-      statusError: '220 38 38',            // #dc2626
-      statusInfo: '124 58 237'             // #7c3aed
-    }
-  },
-  {
-    id: 'lobster-red-light',
-    name: 'Lobster Red Light',
-    type: 'light',
-    monacoTheme: 'vs',
-    colors: {
-      background: '255 252 250',          // #fffcfa
-      backgroundSecondary: '252 247 243', // #fcf7f3
-      backgroundTertiary: '246 238 232',  // #f6eee8
-      chatBg: '253 250 246',              // #fdfaf6
-
-      surface: '255 255 255',             // #ffffff
-      surfaceHover: '250 244 238',        // #faf4ee
-      surfaceActive: '243 234 226',       // #f3eae2
-      surfaceMuted: '234 222 212',        // #eaded4
-
-      textPrimary: '40 22 14',            // #28160e
-      textSecondary: '92 60 42',          // #5c3c2a
-      textMuted: '140 98 76',             // #8c624c
-      textInverted: '255 255 255',        // #ffffff
-
-      border: '232 220 208',              // #e8dcd0
-      borderSubtle: '244 236 227',        // #f4ece3
-      borderActive: '234 88 12',          // #ea580c
-
-      accent: '234 88 12',                // #ea580c  - 暖橙色
-      accentHover: '194 65 12',           // #c2410c
-      accentActive: '154 52 18',          // #9a3412
-      accentForeground: '255 255 255',    // #ffffff
-      accentSubtle: '253 186 116',        // #fdba74
-
-      statusSuccess: '22 163 74',         // #16a34a
-      statusWarning: '217 119 6',         // #d97706
-      statusError: '220 38 38',           // #dc2626
-      statusInfo: '37 99 235'             // #2563eb
-    }
-  },
-  {
-    id: 'forest-green-light',
-    name: 'Forest Green Light',
-    type: 'light',
-    monacoTheme: 'vs',
-    colors: {
-      background: '246 252 248',          // #f6fcf8
-      backgroundSecondary: '236 247 240', // #ecf7f0
-      backgroundTertiary: '224 238 230',  // #e0eee6
-      chatBg: '249 253 250',              // #f9fdfa
-
-      surface: '255 255 255',             // #ffffff
-      surfaceHover: '237 248 242',        // #edf8f2
-      surfaceActive: '224 240 231',       // #e0f0e7
-      surfaceMuted: '210 230 218',        // #d2e6da
-
-      textPrimary: '15 42 30',            // #0f2a1e
-      textSecondary: '44 80 58',          // #2c503a
-      textMuted: '82 122 94',             // #527a5e
-      textInverted: '255 255 255',        // #ffffff
-
-      border: '204 222 210',              // #ccded2
-      borderSubtle: '224 236 227',        // #e0ece3
-      borderActive: '5 150 105',          // #059669
-
-      accent: '5 150 105',                // #059669  - 翠绿色
-      accentHover: '4 120 87',            // #047857
-      accentActive: '6 95 70',            // #065f46
-      accentForeground: '255 255 255',    // #ffffff
-      accentSubtle: '110 231 183',        // #6ee7b7
-
-      statusSuccess: '22 163 74',         // #16a34a
-      statusWarning: '217 119 6',         // #d97706
-      statusError: '220 38 38',           // #dc2626
-      statusInfo: '37 99 235'             // #2563eb
-    }
-  },
-
-  // ========== 暗色主题 ==========
-  // 设计要点: 非纯黑底色，每层有6-8点亮度递进，文字高对比度
-  {
-    id: 'aweeclaw-dark',
-    name: 'AweeClaw Dark',
-    type: 'dark',
-    monacoTheme: 'vs-dark',
-    colors: {
+    },
+    darkColors: {
       background: '15 23 42',            // #0f172a  - 深蓝灰底（非纯黑）
       backgroundSecondary: '22 33 55',   // #162137
       backgroundTertiary: '30 42 66',    // #1e2a42
@@ -258,12 +197,45 @@ export const builtinThemes: Theme[] = [
       statusInfo: '96 165 250'           // #60a5fa
     }
   },
+
+  // ========== 紫色 (Purple) ==========
   {
-    id: 'purple-dark',
-    name: 'Purple Dark',
-    type: 'dark',
-    monacoTheme: 'vs-dark',
-    colors: {
+    id: 'purple',
+    name: 'Purple',
+    color: 'purple',
+    monacoTheme: { light: 'vs', dark: 'vs-dark' },
+    lightColors: {
+      background: '250 248 254',           // #faf8fe
+      backgroundSecondary: '243 240 251', // #f3f0fb
+      backgroundTertiary: '235 230 248',  // #ebe6f8
+      chatBg: '247 245 252',              // #f7f5fc
+
+      surface: '255 255 255',             // #ffffff
+      surfaceHover: '243 240 252',        // #f3f0fc
+      surfaceActive: '233 228 248',       // #e9e4f8
+      surfaceMuted: '221 214 242',        // #ddd6f2
+
+      textPrimary: '25 14 55',            // #190e37
+      textSecondary: '64 42 100',         // #402a64
+      textMuted: '110 82 150',             // #6e5296
+      textInverted: '255 255 255',        // #ffffff
+
+      border: '215 206 238',               // #d7ceee
+      borderSubtle: '233 227 246',        // #e9e3f6
+      borderActive: '139 92 246',         // #8b5cf6
+
+      accent: '139 92 246',                // #8b5cf6
+      accentHover: '124 58 237',          // #7c3aed
+      accentActive: '109 40 217',          // #6d28d9
+      accentForeground: '255 255 255',     // #ffffff
+      accentSubtle: '196 181 253',        // #c4b5fd
+
+      statusSuccess: '22 163 74',         // #16a34a
+      statusWarning: '217 119 6',         // #d97706
+      statusError: '220 38 38',           // #dc2626
+      statusInfo: '124 58 237'             // #7c3aed
+    },
+    darkColors: {
       background: '18 15 32',            // #120f20  - 深紫底
       backgroundSecondary: '26 22 45',   // #1a162d
       backgroundTertiary: '34 29 56',    // #221d38
@@ -295,12 +267,45 @@ export const builtinThemes: Theme[] = [
       statusInfo: '129 140 248'          // #818cf8
     }
   },
+
+  // ========== 暖橙色 (Lobster Red) ==========
   {
-    id: 'lobster-red-dark',
-    name: 'Lobster Red Dark',
-    type: 'dark',
-    monacoTheme: 'vs-dark',
-    colors: {
+    id: 'lobster-red',
+    name: 'Lobster Red',
+    color: 'red',
+    monacoTheme: { light: 'vs', dark: 'vs-dark' },
+    lightColors: {
+      background: '255 252 250',          // #fffcfa
+      backgroundSecondary: '252 247 243', // #fcf7f3
+      backgroundTertiary: '246 238 232',  // #f6eee8
+      chatBg: '253 250 246',              // #fdfaf6
+
+      surface: '255 255 255',             // #ffffff
+      surfaceHover: '250 244 238',        // #faf4ee
+      surfaceActive: '243 234 226',       // #f3eae2
+      surfaceMuted: '234 222 212',        // #eaded4
+
+      textPrimary: '40 22 14',            // #28160e
+      textSecondary: '92 60 42',          // #5c3c2a
+      textMuted: '140 98 76',             // #8c624c
+      textInverted: '255 255 255',        // #ffffff
+
+      border: '232 220 208',              // #e8dcd0
+      borderSubtle: '244 236 227',        // #f4ece3
+      borderActive: '234 88 12',          // #ea580c
+
+      accent: '234 88 12',                // #ea580c  - 暖橙色
+      accentHover: '194 65 12',           // #c2410c
+      accentActive: '154 52 18',          // #9a3412
+      accentForeground: '255 255 255',    // #ffffff
+      accentSubtle: '253 186 116',        // #fdba74
+
+      statusSuccess: '22 163 74',         // #16a34a
+      statusWarning: '217 119 6',         // #d97706
+      statusError: '220 38 38',           // #dc2626
+      statusInfo: '37 99 235'             // #2563eb
+    },
+    darkColors: {
       background: '26 14 10',            // #1a0e0a  - 深棕底
       backgroundSecondary: '36 20 15',   // #24140f
       backgroundTertiary: '48 28 22',    // #301c16
@@ -332,12 +337,45 @@ export const builtinThemes: Theme[] = [
       statusInfo: '96 165 250'           // #60a5fa
     }
   },
+
+  // ========== 翠绿色 (Forest Green) ==========
   {
-    id: 'forest-green-dark',
-    name: 'Forest Green Dark',
-    type: 'dark',
-    monacoTheme: 'vs-dark',
-    colors: {
+    id: 'forest-green',
+    name: 'Forest Green',
+    color: 'green',
+    monacoTheme: { light: 'vs', dark: 'vs-dark' },
+    lightColors: {
+      background: '246 252 248',          // #f6fcf8
+      backgroundSecondary: '236 247 240', // #ecf7f0
+      backgroundTertiary: '224 238 230',  // #e0eee6
+      chatBg: '249 253 250',              // #f9fdfa
+
+      surface: '255 255 255',             // #ffffff
+      surfaceHover: '237 248 242',        // #edf8f2
+      surfaceActive: '224 240 231',       // #e0f0e7
+      surfaceMuted: '210 230 218',        // #d2e6da
+
+      textPrimary: '15 42 30',            // #0f2a1e
+      textSecondary: '44 80 58',          // #2c503a
+      textMuted: '82 122 94',             // #527a5e
+      textInverted: '255 255 255',        // #ffffff
+
+      border: '204 222 210',              // #ccded2
+      borderSubtle: '224 236 227',        // #e0ece3
+      borderActive: '5 150 105',          // #059669
+
+      accent: '5 150 105',                // #059669  - 翠绿色
+      accentHover: '4 120 87',            // #047857
+      accentActive: '6 95 70',            // #065f46
+      accentForeground: '255 255 255',    // #ffffff
+      accentSubtle: '110 231 183',        // #6ee7b7
+
+      statusSuccess: '22 163 74',         // #16a34a
+      statusWarning: '217 119 6',         // #d97706
+      statusError: '220 38 38',           // #dc2626
+      statusInfo: '37 99 235'             // #2563eb
+    },
+    darkColors: {
       background: '10 21 16',            // #0a1510  - 深绿底
       backgroundSecondary: '15 30 22',   // #0f1e16
       backgroundTertiary: '21 42 30',    // #152a1e
@@ -370,6 +408,15 @@ export const builtinThemes: Theme[] = [
     }
   },
 ]
+
+/**
+ * 内置主题（从 builtinColorThemes 派生，向后兼容）
+ * 展开4个 ColorTheme 为8个 Theme（4亮+4暗）
+ */
+export const builtinThemes: Theme[] = builtinColorThemes.flatMap(ct => [
+  deriveTheme(ct, 'light'),
+  deriveTheme(ct, 'dark'),
+])
 
 // 主题管理器
 const LOCAL_STORAGE_THEME_KEY = BRAND.storageKeys.themeId
@@ -466,12 +513,44 @@ class ThemeManager {
     }
   }
 
+  /** 获取所有颜色主题 */
+  getAllColorThemes(): ColorTheme[] {
+    return builtinColorThemes
+  }
+
+  /** 根据 ID 获取颜色主题 */
+  getColorThemeById(id: string): ColorTheme | undefined {
+    return builtinColorThemes.find(ct => ct.id === id)
+  }
+
+  /** 根据颜色获取颜色主题 */
+  getColorThemeByColor(color: ThemeColor): ColorTheme | undefined {
+    return builtinColorThemes.find(ct => ct.color === color)
+  }
+
   getAllThemes(): Theme[] {
     return [...builtinThemes, ...this.customThemes]
   }
 
   getThemeById(id: string): Theme | undefined {
-    return this.getAllThemes().find(t => t.id === id)
+    // 1. 先从派生的 builtinThemes + customThemes 中查找
+    const matched = this.getAllThemes().find(t => t.id === id)
+    if (matched) return matched
+
+    // 2. 兼容旧格式：尝试解析 'colorThemeId-type' 格式
+    const lastDash = id.lastIndexOf('-')
+    if (lastDash > 0) {
+      const typeSuffix = id.substring(lastDash + 1)
+      if (typeSuffix === 'light' || typeSuffix === 'dark') {
+        const colorThemeId = id.substring(0, lastDash)
+        const colorTheme = this.getColorThemeById(colorThemeId)
+        if (colorTheme) {
+          return deriveTheme(colorTheme, typeSuffix)
+        }
+      }
+    }
+
+    return undefined
   }
 
   getCurrentTheme(): Theme {
@@ -497,6 +576,44 @@ class ThemeManager {
     }
     const matched = this.getAllThemes().find(t => t.type === mode)
     return matched || this.currentTheme
+  }
+
+  /**
+   * 根据模式 + 颜色解析主题
+   * 亮色和暗色均支持 4 种颜色：blue / purple / red / green
+   * 直接从 ColorTheme 取对应配色的亮/暗色版本
+   */
+  resolveThemeByModeAndColor(mode: 'light' | 'dark' | 'system', color: ThemeColor): Theme {
+    const targetType: 'light' | 'dark' = mode === 'system'
+      ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+      : mode
+
+    const colorTheme = this.getColorThemeByColor(color)
+    if (colorTheme) {
+      return deriveTheme(colorTheme, targetType)
+    }
+
+    // 回退：按模式解析
+    return this.resolveThemeForMode(mode)
+  }
+
+  /**
+   * 从主题 ID 反推颜色
+   */
+  resolveColorFromThemeId(themeId: string): ThemeColor {
+    // 解析 'colorThemeId-type' 格式
+    const lastDash = themeId.lastIndexOf('-')
+    if (lastDash > 0) {
+      const colorThemeId = themeId.substring(0, lastDash)
+      const colorTheme = this.getColorThemeById(colorThemeId)
+      if (colorTheme) return colorTheme.color
+    }
+
+    // 兼容旧格式：遍历 THEME_COLOR_MAP
+    for (const [color, ctId] of Object.entries(THEME_COLOR_MAP) as [ThemeColor, string][]) {
+      if (themeId.startsWith(ctId)) return color
+    }
+    return 'blue'
   }
 
   startSystemThemeListener(onSystemChange: (isDark: boolean) => void) {

@@ -26,6 +26,7 @@ import { ProviderIcon } from '@components/ui/ProviderIcon'
 import { ProviderSettingsProps } from '../preferencesTypes'
 import { isCustomProvider, type ModelConfig, type ModelGenerationParams } from '@renderer/types/modelProvider'
 import { ModelCardGrid } from './ModelCardGrid'
+import { VisionModelPanel } from './VisionModelPanel'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import type { CloudProviderModel } from '@store/slices/authSlice'
@@ -2276,6 +2277,9 @@ export function ModelProviderPanel({
             </div>
           </div>
           </section>
+
+          {/* 视觉模型独立配置（用于桌面视觉智能体） */}
+          <VisionModelPanel language={language} />
           </>
       </div>
       {isAddingCustom && !isCloudMode && (

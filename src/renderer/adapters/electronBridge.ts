@@ -329,6 +329,10 @@ function createGroupedAPI() {
       dbGetProvider: (providerId: string) => raw.settingsDbGetProvider(providerId),
       dbDeleteProvider: (providerId: string) => raw.settingsDbDeleteProvider(providerId),
       dbGetPath: () => raw.settingsDbGetPath(),
+      // 视觉模型配置（自定义模式）
+      dbGetVisionModelConfig: () => raw.settingsDbGetVisionModelConfig(),
+      dbSaveVisionModelConfig: (config: any) => raw.settingsDbSaveVisionModelConfig(config),
+      dbSetVisionModelEnabled: (enabled: boolean) => raw.settingsDbSetVisionModelEnabled(enabled),
     },
 
     // 会话数据库 (SQLite)
@@ -859,7 +863,7 @@ function createGroupedAPI() {
 
       // 视觉闭环（Phase 4）
       visualAgent: {
-        run: (params: { task: string; maxSteps?: number }) => raw.desktopVisualAgentRun(params),
+        run: (params: { task: string; maxSteps?: number; cloudConfig?: { cloudMode: boolean; serverUrl?: string; accessToken?: string; refreshToken?: string } }) => raw.desktopVisualAgentRun(params),
         abort: () => raw.desktopVisualAgentAbort(),
         isRunning: () => raw.desktopVisualAgentIsRunning(),
         onStepStart: (callback: (data: any) => void) => raw.onDesktopVisualAgentStepStart(callback),

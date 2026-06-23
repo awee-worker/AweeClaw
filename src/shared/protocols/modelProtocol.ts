@@ -132,6 +132,8 @@ export interface LLMConfig {
     serverUrl?: string
     accessToken?: string
     refreshToken?: string
+    /** 云端视觉模式：走后端 /api/v1/llm/vision/chat/completions 接口 */
+    cloudVisionMode?: boolean
     /** Maximum context window tokens for the model. */
     contextLimit?: number
 }

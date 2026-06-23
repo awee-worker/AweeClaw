@@ -215,5 +215,39 @@ export function registerSettingsDbIpcHandlers(preferencesStore: Store): void {
     return db.getDbPath()
   })
 
+  // ============ 视觉模型配置（自定义模式） ============
+
+  // 获取视觉模型配置
+  safeIpcHandle('settings-db:getVisionModelConfig', async () => {
+    try {
+      return db.getVisionModelConfig()
+    } catch (err) {
+      logger.settings.error('[SettingsDb] GetVisionModelConfig failed:', err)
+      return null
+    }
+  })
+
+  // 保存视觉模型配置
+  safeIpcHandle('settings-db:saveVisionModelConfig', async (_event, config: any) => {
+    try {
+      db.upsertVisionModelConfig(config)
+      return { success: true }
+    } catch (err) {
+      logger.settings.error('[SettingsDb] SaveVisionModelConfig failed:', err)
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
+  // 更新视觉模型启用状态
+  safeIpcHandle('settings-db:setVisionModelEnabled', async (_event, enabled: boolean) => {
+    try {
+      db.setVisionModelEnabled(enabled)
+      return { success: true }
+    } catch (err) {
+      logger.settings.error('[SettingsDb] SetVisionModelEnabled failed:', err)
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
   logger.ipc.info('[SettingsDb] IPC handlers registered')
 }
