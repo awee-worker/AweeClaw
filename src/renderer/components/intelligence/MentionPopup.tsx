@@ -19,7 +19,7 @@ interface MentionPopupProps {
     onClose: () => void
 }
 
-// 将 MentionCandidate 转换为 InputPopupItem
+// 提及候选项与弹窗条目的映射接口
 interface MentionItem extends InputPopupItem {
     candidate: MentionCandidate
 }
@@ -34,7 +34,7 @@ export default function MentionPopup({
 }: MentionPopupProps) {
     const language = useStore(s => s.language)
 
-    // 转换为 InputPopup 需要的格式
+    // 候选项转换为弹窗可用的条目列表
     const items: MentionItem[] = useMemo(() => {
         return candidates.map(candidate => ({
             id: candidate.id,
@@ -49,7 +49,7 @@ export default function MentionPopup({
         onSelect(item.candidate)
     }
 
-    // 自定义渲染项（需要特殊处理 codebase 类型的图标）
+    // 条目渲染逻辑：为 codebase 类型添加特殊图标标识
     const renderItem = (item: MentionItem, _index: number, isSelected: boolean) => {
         const Icon = item.icon
         const candidate = item.candidate

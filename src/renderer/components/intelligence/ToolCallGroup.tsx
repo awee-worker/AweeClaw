@@ -62,7 +62,7 @@ export function renderToolCallCard(
 ): ReactNode {
   const isPending = tc.id === opts.pendingToolId
 
-  // 需要 Diff 预览的工具使用 FileChangeCard
+  // 涉及文件变更的工具渲染为差异预览卡片
   if (needsDiffPreview(tc.name)) {
     return (
       <FileChangeCard
@@ -77,7 +77,7 @@ export function renderToolCallCard(
     )
   }
 
-  // AI 记忆提议使用极简内联渲染
+  // 记忆类工具采用紧凑的内联展示
   if (tc.name === 'remember') {
     return (
       <MemoryApprovalInline
@@ -99,7 +99,7 @@ export function renderToolCallCard(
     return null
   }
 
-  // 其他工具使用 ToolCallCard
+  // 通用工具调用展示为标准卡片
   return (
     <ToolCallCard
       key={tc.id}

@@ -4,7 +4,7 @@
  * 统一导出设置相关功能
  */
 
-// 服务
+// 偏好服务接口
 export {
   settingsService,
   getEditorConfig,
@@ -12,7 +12,7 @@ export {
   resetEditorConfig,
 } from './preferencesService'
 
-// Schema 和类型（从 shared 重新导出）
+// 设置 Schema 与类型定义
 export {
   SETTINGS,
   type SettingsState,
@@ -21,7 +21,7 @@ export {
   type ProviderModelConfig,
   getAllDefaults,
   getDefault,
-  // 默认值
+  // 各模块默认配置
   defaultLLMConfig,
   defaultAgentConfig,
   defaultEditorConfig,
@@ -31,7 +31,7 @@ export {
   defaultMcpConfig,
 } from '@shared/configuration/preferenceSync'
 
-// 类型重新导出
+// 类型声明导出
 export type {
   LLMConfig,
   AgentConfig,
@@ -43,5 +43,5 @@ export type {
   ProviderConfig,
 } from '@shared/configuration/providerTypes'
 
-// 配置导出/导入工具
+// 配置备份与恢复工具
 export { exportSettings, importSettings, downloadSettings } from './configMigration'

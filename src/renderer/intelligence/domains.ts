@@ -4,7 +4,7 @@
  * 统一导出各个领域模块
  */
 
-// Mode Domain
+// 工作模式领域
 export * from './capabilities/mode/WorkModeDescriptor'
 export * from './capabilities/mode/WorkModeRegistry'
 
@@ -14,6 +14,6 @@ export * from './contextModel'
 
 export * from './capabilities/message'
 
-// Application Layer
+// 应用执行层
 export * from './application'
 

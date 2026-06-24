@@ -13,12 +13,12 @@ interface ShortcutItem {
 }
 
 const shortcuts: ShortcutItem[] = [
-  // 文件操作
+  // 文件管理类
   { keys: ['Ctrl', 'S'], description: 'Save file', category: 'File' },
   { keys: ['Ctrl', 'W'], description: 'Close file', category: 'File' },
   { keys: ['Ctrl', 'O'], description: 'Open folder', category: 'File' },
 
-  // 编辑
+  // 文本编辑类
   { keys: ['Ctrl', 'Z'], description: 'Undo', category: 'Edit' },
   { keys: ['Ctrl', 'Shift', 'Z'], description: 'Redo', category: 'Edit' },
   { keys: ['Ctrl', 'C'], description: 'Copy', category: 'Edit' },
@@ -28,18 +28,18 @@ const shortcuts: ShortcutItem[] = [
   { keys: ['Ctrl', 'F'], description: 'Find', category: 'Edit' },
   { keys: ['Ctrl', 'H'], description: 'Replace', category: 'Edit' },
 
-  // 导航
+  // 跳转与定位类
   { keys: ['Ctrl', 'G'], description: 'Go to line', category: 'Navigation' },
   { keys: ['Ctrl', 'P'], description: 'Quick open file', category: 'Navigation' },
   { keys: ['Ctrl', 'Tab'], description: 'ToggleSwitch tab', category: 'Navigation' },
 
-  // AI 助手
+  // 智能助手交互类
   { keys: ['Ctrl', 'K'], description: 'Inline edit with AI', category: 'AI Assistant' },
   { keys: ['Ctrl', 'Enter'], description: 'Send message', category: 'AI Assistant' },
   { keys: ['Escape'], description: 'Stop generation', category: 'AI Assistant' },
   { keys: ['@'], description: 'Reference file in chat', category: 'AI Assistant' },
 
-  // 视图
+  // 界面切换类
   { keys: ['Ctrl', '`'], description: 'Toggle terminal', category: 'View' },
   { keys: ['Ctrl', 'B'], description: 'Toggle sidebar', category: 'View' },
   { keys: ['Ctrl', ','], description: 'Open settings', category: 'View' },
@@ -59,7 +59,7 @@ const ShortcutKey = memo(function ShortcutKey({ keyName }: { keyName: string }) 
 
 export default function KeyboardShortcuts({ onClose }: KeyboardShortcutsProps) {
 
-  // 按类别分组
+  // 依据分类聚合快捷键列表
   const categories = shortcuts.reduce((acc, shortcut) => {
     if (!acc[shortcut.category]) {
       acc[shortcut.category] = []

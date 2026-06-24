@@ -119,14 +119,14 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
         browserMode: 'normal',
       } as any)
 
-      // Double check store update
+      // 二次确认状态已写入
       useStore.getState().set('onboardingCompleted', true)
 
       setIsExiting(true)
       setTimeout(onComplete, 500)
     } catch (error) {
       logger.settings.error('Failed to save onboarding settings:', error)
-      // Fallback: try to set store at least so UI updates
+      // 异常路径下仍标记完成，避免界面卡住
       useStore.getState().set('onboardingCompleted', true)
       onComplete()
     }
@@ -335,7 +335,7 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
 }
 
 
-// ============ Step Components ============
+// ---------- 各步骤子组件 ----------
 
 function WelcomeStep({ isZh }: { isZh: boolean }) {
   return (

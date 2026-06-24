@@ -260,19 +260,19 @@ export default function CommandPalette({
     [allCommands, query],
   )
 
-  // 按类别分组
+  // 依据命令分类聚合展示
   const groupedCommands = useMemo(
     () => groupCommandsByCategory(filteredCommands),
     [filteredCommands],
   )
 
-  // 扁平化用于键盘导航
+  // 将分组结果展开为一维数组以便上下键遍历
   const flatCommands = useMemo(
     () => Array.from(groupedCommands.values()).flat(),
     [groupedCommands],
   )
 
-  // 键盘导航
+  // 上下键、确认与取消的快捷键处理
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (keybindingService.matches(e, 'list.focusDown')) {
@@ -297,17 +297,17 @@ export default function CommandPalette({
     [flatCommands, selectedIndex, onClose],
   )
 
-  // 自动聚焦输入框
+  // 挂载后聚焦搜索输入
   useEffect(() => {
     inputRef.current?.focus()
   }, [])
 
-  // 重置选中索引
+  // 查询条件变化时回到首项
   useEffect(() => {
     setSelectedIndex(0)
   }, [query])
 
-  // 滚动到选中项
+  // 选中项变化时滚动至可视区域
   useEffect(() => {
     if (listRef.current) {
       const selectedEl = listRef.current.querySelector(

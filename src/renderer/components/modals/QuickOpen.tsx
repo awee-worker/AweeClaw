@@ -26,7 +26,7 @@ interface FileMatch {
   matches: number[]
 }
 
-// 模糊匹配算法
+// 文件路径模糊匹配：基于字符序列匹配并加权评分
 function fuzzyMatch(query: string, text: string): { score: number; matches: number[] } | null {
   const queryLower = query.toLowerCase()
   const textLower = text.toLowerCase()
@@ -40,17 +40,17 @@ function fuzzyMatch(query: string, text: string): { score: number; matches: numb
     if (textLower[i] === queryLower[queryIdx]) {
       matches.push(i)
 
-      // 连续匹配加分
+      // 相邻字符连续命中时累加奖励
       if (matches.length > 1 && matches[matches.length - 1] === matches[matches.length - 2] + 1) {
         consecutiveBonus += 5
       }
 
-      // 单词开头加分
+      // 命中位置为路径分隔符后的首字符时给予较高权重
       if (i === 0 || text[i - 1] === '/' || text[i - 1] === '\\' || text[i - 1] === '.' || text[i - 1] === '-' || text[i - 1] === '_') {
         score += 10
       }
 
-      // 大写字母加分（驼峰匹配）
+      // 命中大写字母（驼峰边界）时给予额外权重
       if (text[i] === text[i].toUpperCase() && text[i] !== text[i].toLowerCase()) {
         score += 5
       }
@@ -66,13 +66,13 @@ function fuzzyMatch(query: string, text: string): { score: number; matches: numb
 
   score += consecutiveBonus
 
-  // 短文件名加分
+  // 路径越短优先级越高
   score -= text.length * 0.1
 
   return { score, matches }
 }
 
-// 高亮匹配字符
+// 匹配字符高亮组件
 const HighlightedText = memo(function HighlightedText({
   text,
   matches,
@@ -122,7 +122,7 @@ const FileMatchItem = memo(function FileMatchItem({
   const fileName = getFileName(file.path) || file.path
   const dirPath = file.path.slice(0, file.path.length - fileName.length - 1)
 
-  // 计算文件名中的匹配位置
+  // 定位文件名在完整路径中的起始偏移
   const fileNameStart = file.path.length - fileName.length
   const fileNameMatches = file.matches
     .filter(m => m >= fileNameStart)
@@ -173,7 +173,7 @@ export default function QuickOpen({ onClose }: QuickOpenProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
-  // 递归获取所有文件
+  // 深度优先遍历工作区目录树
   const getAllFiles = useCallback(async (dirPath: string, prefix: string = ''): Promise<string[]> => {
     const items = await api.file.readDir(dirPath)
     if (!items) return []
@@ -181,7 +181,7 @@ export default function QuickOpen({ onClose }: QuickOpenProps) {
     const files: string[] = []
 
     for (const item of items) {
-      // 跳过隐藏文件和 node_modules
+      // 排除隐藏文件及依赖目录
       if (item.name.startsWith('.') || item.name === 'node_modules') continue
 
       const relativePath = prefix ? `${prefix}/${item.name}` : item.name
@@ -197,7 +197,7 @@ export default function QuickOpen({ onClose }: QuickOpenProps) {
     return files
   }, [])
 
-  // 加载文件列表
+  // 初始化时拉取工作区全部文件
   useEffect(() => {
     if (!workspacePath) {
       setIsLoading(false)
@@ -211,10 +211,10 @@ export default function QuickOpen({ onClose }: QuickOpenProps) {
     })
   }, [workspacePath, getAllFiles])
 
-  // 搜索文件
+  // 根据输入实时筛选匹配结果
   useEffect(() => {
     if (!query.trim()) {
-      // 显示最近的文件或全部文件（限制数量）
+      // 无查询时展示前 20 个文件作为快捷入口
       setMatches(
         allFiles.slice(0, 20).map(path => ({
           path,
@@ -240,14 +240,14 @@ export default function QuickOpen({ onClose }: QuickOpenProps) {
       }
     }
 
-    // 按分数排序
+    // 按权重降序排列并截取前 50 条
     results.sort((a, b) => b.score - a.score)
 
     setMatches(results.slice(0, 50))
     setSelectedIndex(0)
   }, [query, allFiles])
 
-  // 打开文件
+  // 读取并打开指定文件
   const handleOpenFile = useCallback(async (filePath: string) => {
     if (!workspacePath) return
 
@@ -260,7 +260,7 @@ export default function QuickOpen({ onClose }: QuickOpenProps) {
     }
   }, [workspacePath, openFile, onClose])
 
-  // 键盘导航
+  // 列表上下键、确认与取消的快捷键处理
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (keybindingService.matches(e, 'list.focusDown')) {
       e.preventDefault()
@@ -279,12 +279,12 @@ export default function QuickOpen({ onClose }: QuickOpenProps) {
     }
   }, [matches, selectedIndex, handleOpenFile, onClose])
 
-  // 自动聚焦
+  // 挂载后自动聚焦搜索框
   useEffect(() => {
     inputRef.current?.focus()
   }, [])
 
-  // 滚动到选中项
+  // 选中项变化时滚动至可视区域
   useEffect(() => {
     if (listRef.current) {
       const selectedEl = listRef.current.querySelector(`[data-index="${selectedIndex}"]`)
