@@ -90,7 +90,7 @@ function buildDecorations(
 }
 
 /** 从鼠标事件中提取行号 */
-function extractLineFromTarget(target: { type: number; position?: { lineNumber?: number } }): number | undefined {
+function extractLineFromTarget(target: import('monaco-editor').editor.IMouseTarget): number | undefined {
   if (target.type !== TARGET_GLYPH_MARGIN && target.type !== TARGET_LINE_NUMBERS) return undefined
   return target.position?.lineNumber
 }

@@ -14,7 +14,7 @@
  * @module plugin-sdk/memory
  */
 
-import type { PluginManifest, PluginRuntime, PluginContext, PluginHealthResult } from './types'
+import type { PluginManifest, PluginRuntime, PluginHealthResult } from './types'
 
 // ============================================
 // 记忆类型

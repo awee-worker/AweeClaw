@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Mic, MicOff, PhoneOff, Volume2, Command } from 'lucide-react';
 import { useVoiceRealtime, type RealtimeVoiceState } from '../../composables/useVoiceRealtime';
 import VoiceVisualizer from '../voice/VoiceVisualizer';
@@ -53,8 +53,7 @@ export function VoiceRealtimePanel({
     onSttResult,
   });
 
-  const [lastCommand, setLastCommand] = useState<VoiceCommand | null>(null);
-  const commandTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [lastCommand] = useState<VoiceCommand | null>(null);
 
   const isConnected = state !== 'disconnected' && state !== 'error';
   const isListening = state === 'listening';

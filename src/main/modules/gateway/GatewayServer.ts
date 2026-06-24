@@ -23,7 +23,6 @@ import { logger } from '@shared/toolkit/LogEngine'
 import type {
   JsonRpcRequest,
   JsonRpcResponse,
-  JsonRpcNotification,
   GatewayMethodName,
 } from '@shared/gateway/protocol'
 import { GatewayMethod } from '@shared/gateway/protocol'
@@ -342,26 +341,6 @@ class GatewayServer {
   // ============================================
   // 通知推送（私有）
   // ============================================
-
-  /**
-   * 向所有已连接的客户端推送通知
-   */
-  private broadcastNotification(method: string, params: unknown): void {
-    const notification: JsonRpcNotification = {
-      jsonrpc: '2.0',
-      method,
-      params,
-    }
-
-    const data = JSON.stringify(notification) + '\n'
-    for (const client of this.clients) {
-      try {
-        client.write(data)
-      } catch (err) {
-        logger.gateway.error(`[GatewayServer] Failed to send notification: ${err}`)
-      }
-    }
-  }
 
   private sendResponse(socket: net.Socket, response: JsonRpcResponse): void {
     try {

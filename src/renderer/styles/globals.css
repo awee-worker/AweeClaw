@@ -597,3 +597,46 @@ textarea,
 .app-no-drag {
   -webkit-app-region: no-drag;
 }
+
+/* ============================================ */
+/* 骨架屏专用动画                                */
+/* ============================================ */
+
+/* 流光扫过效果：模拟内容正在加载 */
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* 骨架块基础样式：线性渐变 + 流光动画 */
+.skeleton-block {
+  background: linear-gradient(
+    90deg,
+    rgb(var(--surface-active) / 0.3) 25%,
+    rgb(var(--surface-active) / 0.5) 37%,
+    rgb(var(--surface-active) / 0.3) 63%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.8s ease-in-out infinite;
+  border-radius: 0.25rem;
+}
+
+/* 骨架块逐个渐入动画 */
+@keyframes skeleton-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.skeleton-fade-in {
+  animation: skeleton-fade-in 0.4s ease-out both;
+}

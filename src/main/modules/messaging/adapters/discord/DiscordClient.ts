@@ -260,7 +260,7 @@ export class DiscordClient {
     // 3. 建立 WebSocket
     this.ws = new WebSocket(connectUrl)
 
-    return new Promise((resolve, reject) => {
+    return new Promise((_resolve, reject) => {
       let settled = false
 
       this.ws!.onopen = () => {

@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   AppError,
-  ErrorCode,
+  ErrorCodes as ErrorCode,
   formatErrorMessage,
   isRetryableError,
 } from '@shared/exceptions'

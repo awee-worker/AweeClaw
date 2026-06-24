@@ -5,7 +5,6 @@
  */
 
 /** 协议常量 */
-const FILE_SCHEME = 'file:'
 const FILE_PROTOCOL = 'file://'
 const FILE_PROTOCOL_SLASHED = 'file:///'
 /** Windows 盘符正则（如 C:） */

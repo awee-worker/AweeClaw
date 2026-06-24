@@ -24,7 +24,6 @@ const VoiceVisualizer = memo(function VoiceVisualizer({
   const audioCtxRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const rafRef = useRef<number>(0);
-  const dataArrayRef = useRef<Uint8Array>(new Uint8Array(0));
 
   const cleanup = useCallback(() => {
     if (rafRef.current) {

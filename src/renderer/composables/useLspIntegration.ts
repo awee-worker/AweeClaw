@@ -26,9 +26,7 @@ const PATH_LINK_LANGUAGES: string[] = [...LSP_SUPPORTED_LANGUAGES, 'markdown']
 const MARKER_SYNC_DEBOUNCE_MS = 500
 
 /** Monaco 命名空间类型别名 */
-type MonacoNS =
-  | typeof import('monaco-editor')
-  | typeof import('monaco-editor/esm/vs/editor/editor.api')
+type MonacoNS = typeof import('monaco-editor')
 
 /** 可释放资源句柄 */
 type Disposable = import('monaco-editor').IDisposable
@@ -165,16 +163,7 @@ export function useLspIntegration() {
         const uri = model.uri.toString()
         const markers = monaco.editor.getModelMarkers({ resource: model.uri })
 
-        const diagnostics = markers.map((marker: {
-          startLineNumber: number
-          startColumn: number
-          endLineNumber: number
-          endColumn: number
-          severity: import('monaco-editor').MarkerSeverity
-          message: string
-          source: string
-          code: unknown
-        }) => ({
+        const diagnostics = markers.map((marker: import('monaco-editor').editor.IMarker) => ({
           range: {
             start: { line: marker.startLineNumber - 1, character: marker.startColumn - 1 },
             end: { line: marker.endLineNumber - 1, character: marker.endColumn - 1 },

@@ -1,5 +1,14 @@
 /**
- * 统一的错误处理工具
+ * 统一错误处理工具集
+ *
+ * 架构分层：
+ * 1. 错误码定义 — 按领域分组的错误码枚举
+ * 2. 错误类 — 标准化错误对象，支持序列化
+ * 3. 错误描述表 — 多语言错误消息映射
+ * 4. 系统错误分类器 — 将 Node.js 系统错误映射到错误码
+ * 5. AI 提供商错误分类器 — 将 AI SDK 错误映射到错误码
+ * 6. 错误包装器 — 将任意错误转换为标准化错误对象
+ *
  * 提供类型安全的错误处理和用户友好的错误消息
  */
 
@@ -19,6 +28,10 @@ import {
   NoOutputGeneratedError,
   RetryError,
 } from 'ai'
+
+/* ================================================================== */
+/* 第一层：错误码定义                                                  */
+/* ================================================================== */
 
 export enum ErrorCode {
   // 通用错误
@@ -68,10 +81,16 @@ export enum ErrorCode {
   VISION_MODEL_FAILED = 'VISION_MODEL_FAILED',
 }
 
+/* ================================================================== */
+/* 第二层：标准化错误类                                                */
+/* ================================================================== */
+
 /**
- * 标准错误类
+ * 标准化操作错误
+ *
+ * 封装错误码、可重试标记和原始详情，支持 JSON 序列化
  */
-export class AppError extends Error {
+export class OperationError extends Error {
   constructor(
     message: string,
     public readonly code: ErrorCode,
@@ -79,8 +98,8 @@ export class AppError extends Error {
     public readonly details?: unknown
   ) {
     super(message)
-    this.name = 'AppError'
-    Error.captureStackTrace?.(this, AppError)
+    this.name = 'OperationError'
+    Error.captureStackTrace?.(this, OperationError)
   }
 
   toJSON() {
@@ -94,10 +113,13 @@ export class AppError extends Error {
   }
 }
 
-/**
- * 错误消息映射表（支持国际化）
- */
-const ERROR_MESSAGES: Record<ErrorCode, { en: string; zh: string }> = {
+/* ================================================================== */
+/* 第三层：错误描述表                                                  */
+/* ================================================================== */
+
+type LocalizedDescription = { en: string; zh: string }
+
+const ERROR_DESCRIPTIONS: Record<ErrorCode, LocalizedDescription> = {
   [ErrorCode.UNKNOWN]: {
     en: 'An unexpected error occurred',
     zh: '发生了未知错误'
@@ -229,52 +251,271 @@ const ERROR_MESSAGES: Record<ErrorCode, { en: string; zh: string }> = {
 }
 
 /**
- * 获取错误消息
+ * 根据错误码解析本地化描述
  */
-export function getErrorMessage(code: ErrorCode, language: 'en' | 'zh' = 'en'): string {
-  return ERROR_MESSAGES[code]?.[language] || ERROR_MESSAGES[ErrorCode.UNKNOWN][language]
+export function resolveErrorDescription(code: ErrorCode, language: 'en' | 'zh' = 'en'): string {
+  return ERROR_DESCRIPTIONS[code]?.[language] || ERROR_DESCRIPTIONS[ErrorCode.UNKNOWN][language]
+}
+
+/* ================================================================== */
+/* 第四层：系统错误分类器                                              */
+/* ================================================================== */
+
+interface ErrorClassification {
+  code: ErrorCode
+  originalMessage: string
+  retryable: boolean
+}
+
+/** Node.js errno 到错误码的映射 */
+const SYSTEM_ERROR_MAP: Record<string, ErrorClassification> = {
+  ENOENT: { code: ErrorCode.FILE_NOT_FOUND, originalMessage: '', retryable: false },
+  EACCES: { code: ErrorCode.FILE_ACCESS_DENIED, originalMessage: '', retryable: false },
+  EPERM: { code: ErrorCode.FILE_ACCESS_DENIED, originalMessage: '', retryable: false },
+  ETIMEDOUT: { code: ErrorCode.TIMEOUT, originalMessage: '', retryable: true },
+  ESOCKETTIMEDOUT: { code: ErrorCode.TIMEOUT, originalMessage: '', retryable: true },
+  ECONNREFUSED: { code: ErrorCode.NETWORK, originalMessage: '', retryable: true },
+  ENOTFOUND: { code: ErrorCode.NETWORK, originalMessage: '', retryable: true },
+  ENETUNREACH: { code: ErrorCode.NETWORK, originalMessage: '', retryable: true },
 }
 
 /**
- * 映射 Node.js 系统错误
- * 返回错误码和原始消息，不返回友好消息
+ * 将 Node.js 系统错误分类为标准错误码
+ *
+ * 返回错误码和原始消息（用于日志），不返回友好消息
  */
-export function mapNodeError(error: NodeJS.ErrnoException): { code: ErrorCode; originalMessage: string; retryable: boolean } {
-  const code = error.code || ''
+export function classifySystemError(error: NodeJS.ErrnoException): ErrorClassification {
+  const errno = error.code || ''
   const originalMessage = error.message
 
-  switch (code) {
-    case 'ENOENT':
-      return { code: ErrorCode.FILE_NOT_FOUND, originalMessage, retryable: false }
+  const mapped = SYSTEM_ERROR_MAP[errno]
+  if (mapped) {
+    return { ...mapped, originalMessage }
+  }
 
-    case 'EACCES':
-    case 'EPERM':
-      return { code: ErrorCode.FILE_ACCESS_DENIED, originalMessage, retryable: false }
-
-    case 'ETIMEDOUT':
-    case 'ESOCKETTIMEDOUT':
-      return { code: ErrorCode.TIMEOUT, originalMessage, retryable: true }
-
-    case 'ECONNREFUSED':
-    case 'ENOTFOUND':
-    case 'ENETUNREACH':
-      return { code: ErrorCode.NETWORK, originalMessage, retryable: true }
-
-    default:
-      return { code: ErrorCode.UNKNOWN, originalMessage: originalMessage || 'System error', retryable: false }
+  return {
+    code: ErrorCode.UNKNOWN,
+    originalMessage: originalMessage || 'System error',
+    retryable: false,
   }
 }
 
+/* ================================================================== */
+/* 第五层：AI 提供商错误分类器                                         */
+/* ================================================================== */
+
+interface AIErrorClassification extends ErrorClassification {
+  suggestion?: string
+}
+
+/** 后端错误码到标准错误码的映射 */
+const BACKEND_CODE_MAP: Record<string, ErrorCode> = {
+  'MODEL_NO_VISION': ErrorCode.MODEL_NO_VISION,
+  'INVALID_API_KEY': ErrorCode.INVALID_API_KEY,
+  'QUOTA_EXCEEDED': ErrorCode.LLM_QUOTA_EXCEEDED,
+  'RATE_LIMITED': ErrorCode.RATE_LIMITED,
+  'CONTEXT_TOO_LONG': ErrorCode.CONTEXT_TOO_LONG,
+  'MODEL_NOT_FOUND': ErrorCode.MODEL_NOT_FOUND,
+  'PROVIDER_UNAVAILABLE': ErrorCode.PROVIDER_UNAVAILABLE,
+  'VISION_MODEL_FAILED': ErrorCode.VISION_MODEL_FAILED,
+  'LLM_API_ERROR': ErrorCode.API_CALL_FAILED,
+}
+
+/** 可重试的后端错误码 */
+const RETRYABLE_BACKEND_CODES = new Set(['RATE_LIMITED', 'PROVIDER_UNAVAILABLE'])
+
 /**
- * 映射 AI SDK 错误（使用类型安全的 isInstance 方法）
- * 返回 ErrorCode 和原始错误消息（用于日志），不返回友好消息
+ * 从 HTTP 响应体中提取后端错误信息
  */
-export function mapAISDKError(error: unknown): {
-  code: ErrorCode;
-  originalMessage: string;
-  retryable: boolean;
-  suggestion?: string;
-} {
+function extractBackendErrorInfo(
+  responseBody: string | undefined,
+  fallbackMessage: string
+): { detailMessage: string; backendCode?: string; backendSuggestion?: string } {
+  if (!responseBody || typeof responseBody !== 'string') {
+    return { detailMessage: fallbackMessage }
+  }
+
+  try {
+    const body = JSON.parse(responseBody)
+    // 后端 LlmProxyController 返回格式: { error: { message, code, suggestion } }
+    if (body.error && typeof body.error === 'object') {
+      return {
+        detailMessage: body.error.message || fallbackMessage,
+        backendCode: body.error.code,
+        backendSuggestion: body.error.suggestion,
+      }
+    }
+    if (body.detail) {
+      return { detailMessage: `${fallbackMessage}: ${body.detail}` }
+    }
+    if (body.message) {
+      return { detailMessage: `${fallbackMessage}: ${body.message}` }
+    }
+  } catch {
+    // JSON 解析失败，使用原始消息
+  }
+  return { detailMessage: fallbackMessage }
+}
+
+/**
+ * 根据 HTTP 状态码分类 API 调用错误
+ */
+function classifyByStatusCode(
+  statusCode: number,
+  detailMessage: string,
+  responseBody: string | undefined,
+  isRetryable: boolean
+): AIErrorClassification {
+  if (statusCode === 429) {
+    const isQuotaExceeded =
+      detailMessage.toLowerCase().includes('quota') ||
+      (typeof responseBody === 'string' && responseBody.includes('QUOTA_EXCEEDED'))
+    if (isQuotaExceeded) {
+      return {
+        code: ErrorCode.LLM_QUOTA_EXCEEDED,
+        originalMessage: detailMessage,
+        retryable: false,
+      }
+    }
+    return {
+      code: ErrorCode.API_RATE_LIMIT,
+      originalMessage: detailMessage,
+      retryable: true,
+    }
+  }
+  if (statusCode === 401 || statusCode === 403) {
+    return {
+      code: ErrorCode.API_KEY_INVALID,
+      originalMessage: detailMessage,
+      retryable: false,
+    }
+  }
+  return {
+    code: ErrorCode.API_CALL_FAILED,
+    originalMessage: detailMessage,
+    retryable: isRetryable,
+  }
+}
+
+/** AI SDK 错误类型到错误码的映射（使用 isInstance 检测） */
+interface SDKErrorMatcher {
+  detect: (error: Error) => boolean
+  classify: (error: Error, message: string) => AIErrorClassification
+}
+
+const SDK_ERROR_MATCHERS: SDKErrorMatcher[] = [
+  {
+    detect: (e) => NoOutputGeneratedError.isInstance(e),
+    classify: (_e, message) => {
+      const cause = (_e as NoOutputGeneratedError & { cause?: unknown }).cause
+      if (cause && cause instanceof Error) {
+        return classifyAIProviderError(cause)
+      }
+      return { code: ErrorCode.LLM_NO_OUTPUT, originalMessage: message, retryable: true }
+    },
+  },
+  {
+    detect: (e) => RetryError.isInstance(e),
+    classify: (e, message) => {
+      const lastError = (e as RetryError).lastError
+      if (lastError) {
+        return classifyAIProviderError(lastError)
+      }
+      return { code: ErrorCode.UNKNOWN, originalMessage: message, retryable: false }
+    },
+  },
+  {
+    detect: (e) => NoContentGeneratedError.isInstance(e),
+    classify: (_e, message) => ({ code: ErrorCode.LLM_NO_CONTENT, originalMessage: message, retryable: true }),
+  },
+  {
+    detect: (e) => APICallError.isInstance(e),
+    classify: (e, message) => {
+      const apiError = e as APICallError
+      const { detailMessage, backendCode, backendSuggestion } = extractBackendErrorInfo(
+        apiError.responseBody,
+        message
+      )
+
+      if (backendCode) {
+        const mappedCode = BACKEND_CODE_MAP[backendCode] || ErrorCode.API_CALL_FAILED
+        return {
+          code: mappedCode,
+          originalMessage: detailMessage,
+          retryable: RETRYABLE_BACKEND_CODES.has(backendCode),
+          suggestion: backendSuggestion,
+        }
+      }
+
+      const statusCode = apiError.statusCode
+      if (typeof statusCode !== 'number') {
+        return {
+          code: ErrorCode.API_CALL_FAILED,
+          originalMessage: detailMessage,
+          retryable: apiError.isRetryable ?? true,
+        }
+      }
+
+      return classifyByStatusCode(
+        statusCode,
+        detailMessage,
+        apiError.responseBody,
+        apiError.isRetryable ?? true
+      )
+    },
+  },
+  {
+    detect: (e) => InvalidPromptError.isInstance(e),
+    classify: (_e, message) => ({ code: ErrorCode.LLM_INVALID_PROMPT, originalMessage: message, retryable: false }),
+  },
+  {
+    detect: (e) => InvalidResponseDataError.isInstance(e),
+    classify: (_e, message) => ({ code: ErrorCode.LLM_INVALID_RESPONSE, originalMessage: message, retryable: true }),
+  },
+  {
+    detect: (e) => EmptyResponseBodyError.isInstance(e),
+    classify: (_e, message) => ({ code: ErrorCode.LLM_EMPTY_RESPONSE, originalMessage: message, retryable: true }),
+  },
+  {
+    detect: (e) => LoadAPIKeyError.isInstance(e),
+    classify: (_e, message) => ({ code: ErrorCode.API_KEY_INVALID, originalMessage: message, retryable: false }),
+  },
+  {
+    detect: (e) => NoSuchModelError.isInstance(e),
+    classify: (_e, message) => ({ code: ErrorCode.LLM_NO_SUCH_MODEL, originalMessage: message, retryable: false }),
+  },
+  {
+    detect: (e) => TypeValidationError.isInstance(e),
+    classify: (_e, message) => ({ code: ErrorCode.LLM_VALIDATION_FAILED, originalMessage: message, retryable: false }),
+  },
+  {
+    detect: (e) => UnsupportedFunctionalityError.isInstance(e),
+    classify: (_e, message) => ({ code: ErrorCode.LLM_UNSUPPORTED, originalMessage: message, retryable: false }),
+  },
+]
+
+/** 消息关键词到错误码的启发式映射 */
+const MESSAGE_KEYWORD_MAP: Array<{ keywords: string[]; classification: ErrorClassification }> = [
+  {
+    keywords: ['network', 'fetch', 'econnrefused'],
+    classification: { code: ErrorCode.NETWORK, originalMessage: '', retryable: true },
+  },
+  {
+    keywords: ['terminated', 'socket hang up', 'other side closed', 'connection closed'],
+    classification: { code: ErrorCode.NETWORK, originalMessage: '', retryable: true },
+  },
+  {
+    keywords: ['timeout'],
+    classification: { code: ErrorCode.TIMEOUT, originalMessage: '', retryable: true },
+  },
+]
+
+/**
+ * 将 AI SDK 错误分类为标准错误码
+ *
+ * 使用类型安全的 isInstance 方法，返回错误码和原始错误消息（用于日志）
+ */
+export function classifyAIProviderError(error: unknown): AIErrorClassification {
   // 确保是 Error 对象
   if (!(error instanceof Error)) {
     return {
@@ -286,191 +527,6 @@ export function mapAISDKError(error: unknown): {
 
   const originalMessage = error.message
 
-  // NoOutputGeneratedError - 通常包装了其他错误，优先提取 cause
-  if (NoOutputGeneratedError.isInstance(error)) {
-    const cause = (error as NoOutputGeneratedError & { cause?: unknown }).cause
-    if (cause) {
-      return mapAISDKError(cause)
-    }
-    return {
-      code: ErrorCode.LLM_NO_OUTPUT,
-      originalMessage,
-      retryable: true,
-    }
-  }
-
-  // RetryError - 提取 lastError
-  if (RetryError.isInstance(error)) {
-    const lastError = (error as RetryError).lastError
-    if (lastError) {
-      return mapAISDKError(lastError)
-    }
-    return {
-      code: ErrorCode.UNKNOWN,
-      originalMessage,
-      retryable: false,
-    }
-  }
-
-  // NoContentGeneratedError
-  if (NoContentGeneratedError.isInstance(error)) {
-    return {
-      code: ErrorCode.LLM_NO_CONTENT,
-      originalMessage,
-      retryable: true,
-    }
-  }
-
-  // APICallError - 根据状态码细分
-  if (APICallError.isInstance(error)) {
-    const statusCode = error.statusCode
-    const responseBody = error.responseBody
-
-    // 尝试从 responseBody 提取详细信息
-    let detailMessage = originalMessage
-    let backendCode: string | undefined
-    let backendSuggestion: string | undefined
-
-    if (responseBody && typeof responseBody === 'string') {
-      try {
-        const body = JSON.parse(responseBody)
-        // 后端 LlmProxyController 返回格式: { error: { message, code, suggestion } }
-        if (body.error && typeof body.error === 'object') {
-          if (body.error.message) {
-            detailMessage = body.error.message
-          }
-          if (body.error.code) {
-            backendCode = body.error.code
-          }
-          if (body.error.suggestion) {
-            backendSuggestion = body.error.suggestion
-          }
-        } else if (body.detail) {
-          detailMessage = `${originalMessage}: ${body.detail}`
-        } else if (body.message) {
-          detailMessage = `${originalMessage}: ${body.message}`
-        }
-      } catch {
-        // JSON 解析失败，使用原始消息
-      }
-    }
-
-    // 后端错误码映射
-    if (backendCode) {
-      const codeMap: Record<string, ErrorCode> = {
-        'MODEL_NO_VISION': ErrorCode.MODEL_NO_VISION,
-        'INVALID_API_KEY': ErrorCode.INVALID_API_KEY,
-        'QUOTA_EXCEEDED': ErrorCode.LLM_QUOTA_EXCEEDED,
-        'RATE_LIMITED': ErrorCode.RATE_LIMITED,
-        'CONTEXT_TOO_LONG': ErrorCode.CONTEXT_TOO_LONG,
-        'MODEL_NOT_FOUND': ErrorCode.MODEL_NOT_FOUND,
-        'PROVIDER_UNAVAILABLE': ErrorCode.PROVIDER_UNAVAILABLE,
-        'VISION_MODEL_FAILED': ErrorCode.VISION_MODEL_FAILED,
-        'LLM_API_ERROR': ErrorCode.API_CALL_FAILED,
-      }
-      const mappedCode = codeMap[backendCode] || ErrorCode.API_CALL_FAILED
-      return {
-        code: mappedCode,
-        originalMessage: detailMessage,
-        retryable: backendCode === 'RATE_LIMITED' || backendCode === 'PROVIDER_UNAVAILABLE',
-        suggestion: backendSuggestion,
-      }
-    }
-
-    if (statusCode === 429) {
-      const isQuotaExceeded =
-        detailMessage.toLowerCase().includes('quota') ||
-        (typeof responseBody === 'string' && responseBody.includes('QUOTA_EXCEEDED'))
-      if (isQuotaExceeded) {
-        return {
-          code: ErrorCode.LLM_QUOTA_EXCEEDED,
-          originalMessage: detailMessage,
-          retryable: false,
-        }
-      }
-      return {
-        code: ErrorCode.API_RATE_LIMIT,
-        originalMessage: detailMessage,
-        retryable: true,
-      }
-    }
-    if (statusCode === 401 || statusCode === 403) {
-      return {
-        code: ErrorCode.API_KEY_INVALID,
-        originalMessage: detailMessage,
-        retryable: false,
-      }
-    }
-    return {
-      code: ErrorCode.API_CALL_FAILED,
-      originalMessage: detailMessage,
-      retryable: error.isRetryable ?? true,
-    }
-  }
-
-  // InvalidPromptError
-  if (InvalidPromptError.isInstance(error)) {
-    return {
-      code: ErrorCode.LLM_INVALID_PROMPT,
-      originalMessage,
-      retryable: false,
-    }
-  }
-
-  // InvalidResponseDataError
-  if (InvalidResponseDataError.isInstance(error)) {
-    return {
-      code: ErrorCode.LLM_INVALID_RESPONSE,
-      originalMessage,
-      retryable: true,
-    }
-  }
-
-  // EmptyResponseBodyError
-  if (EmptyResponseBodyError.isInstance(error)) {
-    return {
-      code: ErrorCode.LLM_EMPTY_RESPONSE,
-      originalMessage,
-      retryable: true,
-    }
-  }
-
-  // LoadAPIKeyError
-  if (LoadAPIKeyError.isInstance(error)) {
-    return {
-      code: ErrorCode.API_KEY_INVALID,
-      originalMessage,
-      retryable: false,
-    }
-  }
-
-  // NoSuchModelError
-  if (NoSuchModelError.isInstance(error)) {
-    return {
-      code: ErrorCode.LLM_NO_SUCH_MODEL,
-      originalMessage,
-      retryable: false,
-    }
-  }
-
-  // TypeValidationError
-  if (TypeValidationError.isInstance(error)) {
-    return {
-      code: ErrorCode.LLM_VALIDATION_FAILED,
-      originalMessage,
-      retryable: false,
-    }
-  }
-
-  // UnsupportedFunctionalityError
-  if (UnsupportedFunctionalityError.isInstance(error)) {
-    return {
-      code: ErrorCode.LLM_UNSUPPORTED,
-      originalMessage,
-      retryable: false,
-    }
-  }
-
   // AbortError (标准 DOM 错误)
   if (error.name === 'AbortError') {
     return {
@@ -480,59 +536,27 @@ export function mapAISDKError(error: unknown): {
     }
   }
 
-  // 兜底：按 error.name 识别（兼容非 SDK 实例，如测试或 RPC 序列化后的错误）
-  if (error.name === 'NoContentGeneratedError') {
-    return {
-      code: ErrorCode.LLM_NO_CONTENT,
-      originalMessage,
-      retryable: true,
-    }
-  }
-  const statusCode = (error as Error & { statusCode?: number }).statusCode
-  if (error.name === 'APICallError' && typeof statusCode === 'number') {
-    if (statusCode === 429) {
-      if (originalMessage.toLowerCase().includes('quota')) {
-        return { code: ErrorCode.LLM_QUOTA_EXCEEDED, originalMessage, retryable: false }
-      }
-      return { code: ErrorCode.API_RATE_LIMIT, originalMessage, retryable: true }
-    }
-    if (statusCode === 401 || statusCode === 403) {
-      return { code: ErrorCode.API_KEY_INVALID, originalMessage, retryable: false }
-    }
-    return {
-      code: ErrorCode.API_CALL_FAILED,
-      originalMessage,
-      retryable: (error as Error & { isRetryable?: boolean }).isRetryable ?? true,
+  // 使用策略匹配器检测 AI SDK 错误类型
+  for (const matcher of SDK_ERROR_MATCHERS) {
+    if (matcher.detect(error)) {
+      return matcher.classify(error, originalMessage)
     }
   }
 
-  // 检查错误消息中的关键词（兜底）
+  // 兜底：按 error.name 识别（兼容非 SDK 实例，如测试或 RPC 序列化后的错误）
+  if (error.name === 'NoContentGeneratedError') {
+    return { code: ErrorCode.LLM_NO_CONTENT, originalMessage, retryable: true }
+  }
+  const statusCode = (error as Error & { statusCode?: number }).statusCode
+  if (error.name === 'APICallError' && typeof statusCode === 'number') {
+    return classifyByStatusCode(statusCode, originalMessage, undefined, (error as Error & { isRetryable?: boolean }).isRetryable ?? true)
+  }
+
+  // 消息关键词启发式分析
   const msg = originalMessage.toLowerCase()
-  if (msg.includes('network') || msg.includes('fetch') || msg.includes('econnrefused')) {
-    return {
-      code: ErrorCode.NETWORK,
-      originalMessage,
-      retryable: true,
-    }
-  }
-  if (
-    msg === 'terminated' ||
-    msg.includes('terminated') ||
-    msg.includes('socket hang up') ||
-    msg.includes('other side closed') ||
-    msg.includes('connection closed')
-  ) {
-    return {
-      code: ErrorCode.NETWORK,
-      originalMessage,
-      retryable: true,
-    }
-  }
-  if (msg.includes('timeout')) {
-    return {
-      code: ErrorCode.TIMEOUT,
-      originalMessage,
-      retryable: true,
+  for (const entry of MESSAGE_KEYWORD_MAP) {
+    if (entry.keywords.some(kw => msg === kw || msg.includes(kw))) {
+      return { ...entry.classification, originalMessage } as ErrorClassification
     }
   }
 
@@ -544,39 +568,54 @@ export function mapAISDKError(error: unknown): {
   }
 }
 
+/* ================================================================== */
+/* 第六层：错误包装器                                                  */
+/* ================================================================== */
+
 /**
- * 将任意错误转换为 AppError
- * 使用英文友好消息（前端可根据用户语言转换）
+ * 将任意错误包装为标准化操作错误
+ *
+ * 使用友好消息（前端可根据用户语言转换）
  */
-export function toAppError(error: unknown, language: 'en' | 'zh' = 'en'): AppError {
-  if (error instanceof AppError) {
+export function wrapAsOperationError(error: unknown, language: 'en' | 'zh' = 'en'): OperationError {
+  if (error instanceof OperationError) {
     return error
   }
 
   if (error instanceof Error) {
     // 尝试进行启发式分析 (包含对 fetch, network, timeout 等关键词的识别)
-    const mapped = mapAISDKError(error)
-    if (mapped.code !== ErrorCode.UNKNOWN) {
-      const friendlyMessage = getErrorMessage(mapped.code, language)
-      return new AppError(friendlyMessage, mapped.code, mapped.retryable, error)
+    const classified = classifyAIProviderError(error)
+    if (classified.code !== ErrorCode.UNKNOWN) {
+      const friendlyMessage = resolveErrorDescription(classified.code, language)
+      return new OperationError(friendlyMessage, classified.code, classified.retryable, error)
     }
 
     // Node.js 系统错误 (如果有 code 且启发式分析未捕获)
     const nodeError = error as NodeJS.ErrnoException
     if (nodeError.code) {
-      const nodeMapped = mapNodeError(nodeError)
-      const friendlyMessage = getErrorMessage(nodeMapped.code, language)
-      return new AppError(friendlyMessage, nodeMapped.code, nodeMapped.retryable, error)
+      const nodeClassified = classifySystemError(nodeError)
+      const friendlyMessage = resolveErrorDescription(nodeClassified.code, language)
+      return new OperationError(friendlyMessage, nodeClassified.code, nodeClassified.retryable, error)
     }
 
     // 普通 Error：保留原始消息便于排查
-    return new AppError(error.message, ErrorCode.UNKNOWN, false, error)
+    return new OperationError(error.message, ErrorCode.UNKNOWN, false, error)
   }
 
   if (typeof error === 'string') {
-    return new AppError(error, ErrorCode.UNKNOWN, false)
+    return new OperationError(error, ErrorCode.UNKNOWN, false)
   }
 
-  const friendlyMessage = getErrorMessage(ErrorCode.UNKNOWN, language)
-  return new AppError(friendlyMessage, ErrorCode.UNKNOWN, false, error)
+  const friendlyMessage = resolveErrorDescription(ErrorCode.UNKNOWN, language)
+  return new OperationError(friendlyMessage, ErrorCode.UNKNOWN, false, error)
 }
+
+/* ================================================================== */
+/* 向后兼容别名（供逐步迁移使用）                                      */
+/* ================================================================== */
+
+export const AppError = OperationError
+export const getErrorMessage = resolveErrorDescription
+export const mapNodeError = classifySystemError
+export const mapAISDKError = classifyAIProviderError
+export const toAppError = wrapAsOperationError

@@ -143,7 +143,7 @@ function toEditorSettingsState(config: EditorConfig): EditorSettingsState {
     formatOnSave: config.formatOnSave ?? false,
     autoSave: config.autoSave ?? 'off',
     autoSaveDelay: config.autoSaveDelay ?? 1000,
-    theme: config.theme ?? 'light',
+    theme: 'light',
     completionEnabled: config.ai?.completionEnabled ?? true,
     completionDebounceMs: config.performance?.completionDebounceMs ?? 150,
     completionMaxTokens: config.ai?.completionMaxTokens ?? 256,

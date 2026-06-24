@@ -60,7 +60,7 @@ describe('LongTermMemory', () => {
   })
 
   it('adds and retrieves memories', async () => {
-    const entry = memory.add({
+    const entry = await memory.add({
       content: 'This project uses React with TypeScript',
       type: 'fact',
       source: 'user_explicit',
@@ -77,16 +77,16 @@ describe('LongTermMemory', () => {
   })
 
   it('deduplicates similar entries', async () => {
-    memory.add({ content: 'Uses PostgreSQL', type: 'fact', source: 'user_explicit', confidence: 0.8, relevanceTags: [] })
-    memory.add({ content: 'Uses PostgreSQL', type: 'fact', source: 'user_explicit', confidence: 0.8, relevanceTags: [] })
+    await memory.add({ content: 'Uses PostgreSQL', type: 'fact', source: 'user_explicit', confidence: 0.8, relevanceTags: [] })
+    await memory.add({ content: 'Uses PostgreSQL', type: 'fact', source: 'user_explicit', confidence: 0.8, relevanceTags: [] })
 
     const stats = await memory.getStats()
     expect(stats.total).toBe(2)
   })
 
   it('searches by type', async () => {
-    memory.add({ content: 'Prefers dark mode', type: 'preference', source: 'user_explicit', confidence: 0.9, relevanceTags: [] })
-    memory.add({ content: 'Uses React', type: 'fact', source: 'user_explicit', confidence: 0.9, relevanceTags: [] })
+    await memory.add({ content: 'Prefers dark mode', type: 'preference', source: 'user_explicit', confidence: 0.9, relevanceTags: [] })
+    await memory.add({ content: 'Uses React', type: 'fact', source: 'user_explicit', confidence: 0.9, relevanceTags: [] })
 
     const prefs = await memory.getByType('preference')
     expect(prefs.length).toBe(1)

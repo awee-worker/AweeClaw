@@ -14,7 +14,6 @@
 
 import { toolApprovalManager } from './ToolApprovalManager'
 import { sandboxExecutor } from './SandboxExecutor'
-import { logger } from '@shared/toolkit/LogEngine'
 
 // ============================================
 // 安全工具执行请求

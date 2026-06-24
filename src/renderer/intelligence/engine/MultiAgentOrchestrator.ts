@@ -10,7 +10,7 @@
  */
 
 import { logger } from '@toolkit/LogEngine'
-import { EventBus as OldEventBus } from './EventBus'
+import { FlexibleEventBus } from './EventBus'
 import type { LLMConfig } from '@intelligence/providerTypes'
 import type { WorkMode } from '@protocols/workModeProtocol'
 
@@ -117,7 +117,7 @@ export const agentRegistry = new AgentRegistry()
 
 // ===== 消息总线 =====
 
-class AgentMessageBus extends OldEventBus {
+class AgentMessageBus extends FlexibleEventBus {
   private messageHistory: CollaborationMessage[] = []
 
   send(message: CollaborationMessage): void {

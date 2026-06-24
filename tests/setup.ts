@@ -427,7 +427,6 @@ global.mainWindow = {
 
 // Mock monaco-editor module
 vi.mock('monaco-editor', () => {
-  const mockEmitter = { event: vi.fn(), fire: vi.fn(), dispose: vi.fn() }
   return {
     editor: {
       create: vi.fn(),

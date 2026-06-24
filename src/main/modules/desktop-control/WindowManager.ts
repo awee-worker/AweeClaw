@@ -10,7 +10,6 @@ import type {
   WindowActionType,
   WindowOperationResult,
   Rect,
-  ActionResult,
 } from './types/actions'
 
 export class WindowManager {

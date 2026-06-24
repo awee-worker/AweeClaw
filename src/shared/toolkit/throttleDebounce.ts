@@ -47,7 +47,6 @@ export function debounce<T extends (...args: any[]) => any>(
   }
 
   const wrapped = function (...args: Parameters<T>) {
-    const now = Date.now()
     const isLeadingCall = leading && lastInvokeTime === 0 && timer === null
 
     pendingArgs = args

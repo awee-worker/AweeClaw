@@ -10,7 +10,7 @@ interface DiffViewerProps {
   modified: string | undefined
   language: string
   options?: editor.IDiffEditorConstructionOptions
-  onMount?: (ed: editor.IStandaloneDiffEditor, monaco: typeof import('monaco-editor') | typeof import('monaco-editor/esm/vs/editor/editor.api')) => void
+  onMount?: (ed: editor.IStandaloneDiffEditor, monaco: typeof import('monaco-editor')) => void
 }
 
 export function SafeDiffEditor({ original, modified, language, options, onMount }: DiffViewerProps) {
@@ -33,7 +33,7 @@ export function SafeDiffEditor({ original, modified, language, options, onMount 
   }, [])
 
   const onEditorMount = useCallback(
-    (ed: editor.IStandaloneDiffEditor, monacoApi: typeof import('monaco-editor') | typeof import('monaco-editor/esm/vs/editor/editor.api')) => {
+    (ed: editor.IStandaloneDiffEditor, monacoApi: typeof import('monaco-editor')) => {
       if (!aliveRef.current) return
       instanceRef.current = ed
       const { currentTheme } = useStore.getState() as { currentTheme: ThemeName }

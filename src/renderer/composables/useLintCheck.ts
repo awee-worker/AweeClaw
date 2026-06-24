@@ -12,9 +12,7 @@ import type { editor } from 'monaco-editor'
 import type { ScenarioDomain } from '@configuration/defaultProfile'
 
 /** Monaco 实例类型别名 */
-type MonacoInstance =
-  | typeof import('monaco-editor')
-  | typeof import('monaco-editor/esm/vs/editor/editor.api')
+type MonacoInstance = typeof import('monaco-editor')
 
 /** 场景 Lint 检查策略 */
 export interface ScenarioLintPolicy {
@@ -130,7 +128,7 @@ function applyScenarioPolicy(
   // 忽略指定规则
   if (policy.ignoredRules.length > 0) {
     const ignoredSet = new Set(policy.ignoredRules)
-    filtered = filtered.filter((err) => !ignoredSet.has(err.code))
+    filtered = filtered.filter((err) => !ignoredSet.has(err.code || ''))
   }
 
   // 限制最大错误数

@@ -492,7 +492,6 @@ export class Win32PlatformAdapter implements PlatformAdapter {
   // ========== L4 屏幕截图 ==========
 
   async captureScreen(displayId = 0): Promise<ScreenshotResult> {
-    const start = Date.now()
     try {
       const sources = await desktopCapturer.getSources({
         types: ['screen'],
@@ -541,7 +540,6 @@ export class Win32PlatformAdapter implements PlatformAdapter {
   async mouseClick(params: MouseClickParams): Promise<InputOperationResult> {
     const start = Date.now()
     try {
-      const buttonFlag = params.button === 'right' ? 'right' : 'left'
       const clickCount = params.clickType === 'double' ? 2 : 1
       const downCode = params.button === 'right' ? '0x0008' : '0x0002'
       const upCode = params.button === 'right' ? '0x0010' : '0x0004'

@@ -117,8 +117,8 @@ function createMockState(overrides?: Partial<SettingsLocalState>): SettingsLocal
 describe('settingsReducer', () => {
   it('SET_ACTIVE_TAB 应更新 activeTab', () => {
     const state = createMockState()
-    const next = settingsReducer(state, { type: 'SET_ACTIVE_TAB', tab: 'editor' })
-    expect(next.activeTab).toBe('editor')
+    const next = settingsReducer(state, { type: 'SET_ACTIVE_TAB', tab: 'appearance' })
+    expect(next.activeTab).toBe('appearance')
     expect(next.localConfig).toEqual(state.localConfig) // 其他字段不变
   })
 

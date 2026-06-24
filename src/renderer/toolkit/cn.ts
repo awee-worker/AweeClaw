@@ -19,9 +19,6 @@ type ClassEntry =
   | Record<string, boolean | null | undefined>
   | ClassEntry[]
 
-/** Thunk 类型：延迟求值的类名 */
-type ClassThunk = () => ClassEntry
-
 /** Tailwind 工具类分组规则：同组内后者覆盖前者 */
 const TAILWIND_GROUPS: ReadonlyArray<readonly [RegExp, string]> = [
   // display

@@ -1,5 +1,4 @@
 import * as crypto from 'crypto'
-import { logger } from '@shared/toolkit/LogEngine'
 
 /** 微信公众号 API 基础地址 */
 const WECHAT_MP_API_BASE = 'https://api.weixin.qq.com/cgi-bin'

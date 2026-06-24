@@ -1,4 +1,3 @@
-import { type Dispatch, type SetStateAction } from 'react'
 import { Shield, Database, Cloud, Lock, HardDriveDownload } from 'lucide-react'
 import { ToggleSwitch } from '@components/ui'
 import { type Language } from '@renderer/i18n'
@@ -7,7 +6,7 @@ import type { PrivacySettings } from '@shared/configuration/defaultProfile'
 interface PrivacySettingsPanelProps {
   language: Language
   privacySettings: PrivacySettings
-  setPrivacySettings: Dispatch<SetStateAction<PrivacySettings>>
+  setPrivacySettings: (settings: PrivacySettings) => void
 }
 
 const SYNC_MODE_OPTIONS: Array<{ value: PrivacySettings['knowledgeSyncMode']; labelZh: string; labelEn: string; descZh: string; descEn: string; icon: React.ReactNode }> = [
@@ -41,7 +40,7 @@ export function PrivacySettingsPanel({ language, privacySettings, setPrivacySett
   const isZh = language === 'zh'
 
   const update = (updates: Partial<PrivacySettings>) => {
-    setPrivacySettings(prev => ({ ...prev, ...updates }))
+    setPrivacySettings({ ...privacySettings, ...updates })
   }
 
   return (

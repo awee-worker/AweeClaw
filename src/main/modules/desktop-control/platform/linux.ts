@@ -503,7 +503,6 @@ export class LinuxPlatformAdapter implements PlatformAdapter {
   // ========== L4 屏幕截图 ==========
 
   async captureScreen(displayId = 0): Promise<ScreenshotResult> {
-    const start = Date.now()
     try {
       const sources = await desktopCapturer.getSources({
         types: ['screen'],

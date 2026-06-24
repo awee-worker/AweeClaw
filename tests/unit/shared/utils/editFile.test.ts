@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeEditFileArgs, resolveEditFileRequest } from '@toolkit/editFile'
+import { normalizeEditFileArgs, resolveEditFileRequest } from '@shared/toolkit/fileEditor'
 
 describe('editFile utils', () => {
   it('normalizes placeholder line fields for string mode payloads', () => {

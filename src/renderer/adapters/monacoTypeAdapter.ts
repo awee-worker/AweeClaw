@@ -27,7 +27,7 @@ import {
   JsxEmit,
 } from 'monaco-editor/esm/vs/language/typescript/monaco.contribution'
 
-let monacoInstance: typeof Monaco | typeof import('monaco-editor/esm/vs/editor/editor.api') | null = null
+let monacoInstance: typeof Monaco | null = null
 let isInitialized = false
 
 const typeCache = new Map<string, { disposable: Monaco.IDisposable; lastAccessed: number }>()
@@ -112,7 +112,7 @@ function evictStaleTypeEntry(): void {
 }
 
 export function bootstrapLanguageHost(
-    monaco: typeof Monaco | typeof import('monaco-editor/esm/vs/editor/editor.api')
+    monaco: typeof Monaco
 ): void {
     if (isInitialized) return
 

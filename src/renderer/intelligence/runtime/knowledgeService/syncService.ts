@@ -391,11 +391,12 @@ class KnowledgeSyncService {
       (c) => !(c.localId === conflict.localId && c.serverId === conflict.serverId),
     )
 
-    globalEventBus.emit('knowledge:conflict_resolved', {
+    globalEventBus.emit({
+      type: 'knowledge:sync_conflicts',
       localId: conflict.localId,
       serverId: conflict.serverId,
       resolution,
-    })
+    } as any)
   }
 
   async resolveAllConflicts(resolution: ConflictResolution): Promise<void> {
@@ -425,10 +426,11 @@ class KnowledgeSyncService {
       ...enrichedConflicts,
     ].slice(-MAX_PENDING_CONFLICTS)
 
-    globalEventBus.emit('knowledge:sync_conflicts', {
+    globalEventBus.emit({
+      type: 'knowledge:sync_conflicts',
       count: enrichedConflicts.length,
       conflicts: enrichedConflicts,
-    })
+    } as any)
 
     logger.agent.warn(
       `[KnowledgeSync] ${enrichedConflicts.length} conflicts detected, pending user resolution`,

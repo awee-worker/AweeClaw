@@ -9,19 +9,30 @@ import { LSP_SUPPORTED_LANGUAGES } from '@shared/languageRegistry'
 // AI 补全支持的语言（使用 LSP 支持的语言列表）
 const AI_COMPLETION_LANGUAGES = LSP_SUPPORTED_LANGUAGES as string[]
 
-export function useAICompletion(activeFilePath: string | null) {
-  const providerRef = useRef<import('monaco-editor').IDisposable | null>(null)
+// Monaco 类型别名（避免直接导入 monaco-editor 子路径）
+type MonacoEditor = typeof import('monaco-editor')
+type MonacoModel = import('monaco-editor').editor.ITextModel
+type MonacoPosition = import('monaco-editor').Position
+type MonacoContext = import('monaco-editor').languages.InlineCompletionContext
+type MonacoToken = import('monaco-editor').CancellationToken
+type MonacoDisposable = import('monaco-editor').IDisposable
 
-  const registerProvider = useCallback((
-    monaco: typeof import('monaco-editor') | typeof import('monaco-editor/esm/vs/editor/editor.api')
-  ) => {
+export function useAICompletion(activeFilePath: string | null) {
+  const providerRef = useRef<MonacoDisposable | null>(null)
+
+  const registerProvider = useCallback((monaco: MonacoEditor) => {
     // 清理旧的 provider
     providerRef.current?.dispose()
 
     providerRef.current = monaco.languages.registerInlineCompletionsProvider(
       AI_COMPLETION_LANGUAGES,
       {
-        provideInlineCompletions: async (model, position, _context, token) => {
+        provideInlineCompletions: async (
+          model: MonacoModel,
+          position: MonacoPosition,
+          _context: MonacoContext,
+          token: MonacoToken,
+        ) => {
           if (!getEditorConfig().ai?.completionEnabled) return { items: [] }
 
           // Debounce

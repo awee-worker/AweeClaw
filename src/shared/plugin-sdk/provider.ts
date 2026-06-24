@@ -7,7 +7,7 @@
  */
 
 import type { PluginManifest, PluginRuntime, PluginContext } from './types'
-import type { LLMConfig, LLMMessage, LLMResult, LLMStreamChunk, ToolDefinition } from '@shared/protocols/modelProtocol'
+import type { LLMConfig, LLMMessage, ToolDefinition } from '@shared/protocols/modelProtocol'
 
 // ============================================
 // Provider 插件 Manifest 扩展

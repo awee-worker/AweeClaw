@@ -10,9 +10,9 @@ export type SettingsTab = 'provider' | 'appearance' | 'agent' | 'search' | 'rule
 
 export interface ProviderSettingsProps {
     localConfig: LLMConfig
-    setLocalConfig: React.Dispatch<React.SetStateAction<LLMConfig>>
+    setLocalConfig: (config: LLMConfig) => void
     localProviderConfigs: Record<string, ProviderModelConfig>
-    setLocalProviderConfigs: React.Dispatch<React.SetStateAction<Record<string, ProviderModelConfig>>>
+    setLocalProviderConfigs: (configs: Record<string, ProviderModelConfig>) => void
     showApiKey: boolean
     setShowApiKey: (show: boolean) => void
     selectedProvider: { id: string; name: string; models: string[] } | undefined
@@ -80,9 +80,9 @@ export interface AgentSettingsProps {
     promptTemplateId: string
     setPromptTemplateId: (value: string) => void
     agentConfig: AgentConfig
-    setAgentConfig: React.Dispatch<React.SetStateAction<AgentConfig>>
+    setAgentConfig: (config: AgentConfig) => void
     webSearchConfig: WebSearchConfig
-    setWebSearchConfig: React.Dispatch<React.SetStateAction<WebSearchConfig>>
+    setWebSearchConfig: (config: WebSearchConfig) => void
     language: Language
 }
 

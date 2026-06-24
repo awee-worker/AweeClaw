@@ -144,7 +144,8 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
 
   const [loading, setLoading] = useState(true)
 
-  const availableProviders = useMemo(() => {
+  // @ts-expect-error 保留计算结果供未来扩展使用
+  const _availableProviders = useMemo(() => {
     const providers: Array<{ id: string; name: string; models: string[] }> = []
     for (const [id, def] of Object.entries(BUILTIN_PROVIDERS)) {
       const config = providerConfigs[id]

@@ -15,22 +15,15 @@
 
 import { memo, useState, useEffect, useCallback } from 'react'
 import { Eye, EyeOff, Eye as EyeIcon, Server, Cloud, Check } from 'lucide-react'
-import { ActionButton, TextField, ToggleSwitch } from '@components/ui'
+import { ActionButton, ToggleSwitch } from '@components/ui'
 import { api } from '@renderer/adapters/electronBridge'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
-import { PROVIDERS, getBuiltinProviderIds, type ApiProtocol, type OpenAICompatibilityProfile, resolveOpenAICompatibilityProfile } from '@configuration/aiProviders'
+import { PROVIDERS, getBuiltinProviderIds, type ApiProtocol, resolveOpenAICompatibilityProfile } from '@configuration/aiProviders'
 import { toast } from '@components/foundation/NotificationProvider'
 import { t, type Language } from '@renderer/i18n'
 
 const BUILTIN_PROVIDER_IDS = getBuiltinProviderIds()
-
-const PROTOCOL_OPTIONS = [
-  { value: 'openai', label: 'OpenAI Compatible' },
-  { value: 'openai-responses', label: 'OpenAI Responses API' },
-  { value: 'anthropic', label: 'Anthropic' },
-  { value: 'google', label: 'Google' },
-]
 
 interface VisionModelConfig {
   provider: string

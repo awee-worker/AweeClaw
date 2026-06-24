@@ -21,7 +21,7 @@ const rgbToHex = (rgbStr: string) => {
  * 定义 Monaco 主题
  */
 export function defineMonacoTheme(
-  monacoInstance: typeof import('monaco-editor') | typeof import('monaco-editor/esm/vs/editor/editor.api'),
+  monacoInstance: typeof import('monaco-editor'),
   themeName: ThemeName
 ) {
   const theme = themeManager.getThemeById(themeName) || themeManager.getThemeById(BRAND.defaultTheme)!

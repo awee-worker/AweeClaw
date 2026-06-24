@@ -100,7 +100,7 @@ export default function Editor() {
   const { pendingChanges, acceptChange, undoChange } = useAgentChangeState()
 
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
-  const monacoRef = useRef<typeof import('monaco-editor') | typeof import('monaco-editor/esm/vs/editor/editor.api') | null>(null)
+  const monacoRef = useRef<typeof import('monaco-editor') | null>(null)
   const cursorDebounceRef = useRef<NodeJS.Timeout | null>(null)
   const setFileScrollPosition = useStore((state) => state.setFileScrollPosition)
 
@@ -164,7 +164,7 @@ export default function Editor() {
       })
     )
 
-    models.forEach(model => {
+    models.forEach((model: editor.ITextModel) => {
       const uri = model.uri.toString()
       if (uri.startsWith('inmemory://') || uri.startsWith('internal://')) return
 
@@ -400,7 +400,7 @@ export default function Editor() {
         activeFilePath={activeFilePath}
         onSelectFile={setActiveFile}
         onCloseFile={closeFileWithConfirm}
-        onContextMenu={(e, path) => setTabContextMenu({ x: e.clientX, y: e.clientY, filePath: path })}
+        onContextMenu={(e: React.MouseEvent, path: string) => setTabContextMenu({ x: e.clientX, y: e.clientY, filePath: path })}
         lintErrorCount={errorCount}
         lintWarningCount={warningCount}
         isLinting={isLinting}

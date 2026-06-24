@@ -13,7 +13,7 @@ import { Suspense, lazy, useMemo } from 'react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { CrashGuard as ErrorBoundary } from '@components/foundation/CrashGuard'
-import { EditorSkeleton, PanelSkeleton, FullScreenLoading, InlineSettingsSkeleton } from '@components/ui/ProgressIndicator'
+import { EditorSkeleton, PanelSkeleton, FullScreenLoading, InlineSettingsSkeleton, ChatSkeleton } from '@components/ui/ProgressIndicator'
 import { t, type Language } from '@renderer/i18n'
 import type { LayoutConfig } from '@renderer/shell/ShellComposer'
 import ChatSection from './ChatSection'
@@ -144,7 +144,7 @@ function PrimaryMainContent({ layoutConfig, isWideModePanel }: MainContentAreaPr
   if (chatVisible) {
     return (
       <div className="flex-1 min-w-0 overflow-hidden">
-        <ErrorBoundary><Suspense fallback={<PanelSkeleton />}><ChatPanel /></Suspense></ErrorBoundary>
+        <ErrorBoundary><Suspense fallback={<ChatSkeleton />}><ChatPanel /></Suspense></ErrorBoundary>
       </div>
     )
   }
@@ -162,14 +162,13 @@ function PrimaryMainContent({ layoutConfig, isWideModePanel }: MainContentAreaPr
 // ====== Secondary 布局（chatPosition !== primary）======
 
 function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeComponent }: MainContentAreaProps) {
-  const { chatVisible, terminalVisible, openFiles, activeFilePath, language,
+  const { chatVisible, terminalVisible, openFiles, activeFilePath,
     showSettingsPage, showWelcomePage, showUserProfilePage, showBillingCenterPage, showSessionHistoryPage,
     activeSidePanel } = useStore(useShallow((s) => ({
     chatVisible: s.chatVisible,
     terminalVisible: s.terminalVisible,
     openFiles: s.openFiles,
     activeFilePath: s.activeFilePath,
-    language: s.language,
     showSettingsPage: s.showSettingsPage,
     showWelcomePage: s.showWelcomePage,
     showUserProfilePage: s.showUserProfilePage,

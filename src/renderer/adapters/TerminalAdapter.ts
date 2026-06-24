@@ -258,7 +258,7 @@ function cloneCommandSession(session: TerminalCommandSession | null): TerminalCo
   return { ...session }
 }
 
-class TerminalManagerClass {
+export class TerminalManagerClass {
   private static readonly MAX_IDLE_AGENT_TERMINALS = 2
   private state = {
     terminals: [] as TerminalInstance[],

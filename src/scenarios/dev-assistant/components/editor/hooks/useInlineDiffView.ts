@@ -138,7 +138,7 @@ export function computeDiff(original: string, modified: string): DiffLine[] {
 export function useComposerInlineDiff(
     activeFilePath: string | null,
     editorInstance: editor.IStandaloneCodeEditor | null,
-    monacoInstance: typeof import('monaco-editor') | typeof import('monaco-editor/esm/vs/editor/editor.api') | null
+    monacoInstance: typeof import('monaco-editor') | null
 ) {
     const [pendingChange, setPendingChange] = useState<FileChange | null>(null)
     const [debouncedChange, setDebouncedChange] = useState<FileChange | null>(null)

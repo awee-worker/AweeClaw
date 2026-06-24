@@ -1,6 +1,13 @@
 import { Loader2 } from 'lucide-react'
 import { memo } from 'react'
 
+// 聊天骨架屏已迁移至独立模块，此处重新导出以保持向后兼容
+export {
+  ChatSkeleton,
+  ChatMessagesSkeleton,
+  ConversationSkeleton,
+} from './ChatSkeleton'
+
 type SpinnerScale = 'xs' | 'sm' | 'md' | 'lg'
 
 interface SpinnerProps {
@@ -74,51 +81,6 @@ export const CodeAreaSkeleton = memo(() => (
 CodeAreaSkeleton.displayName = 'CodeAreaSkeleton'
 
 export const EditorSkeleton = CodeAreaSkeleton
-
-export const ConversationSkeleton = memo(() => (
-  <div className="h-full w-full overflow-hidden bg-background-chat">
-    <div className="max-w-[800px] mx-auto w-full px-4 py-4 space-y-4">
-      {Array.from({ length: 4 }, (_, idx) => {
-        const isUser = idx % 2 === 0
-        return (
-          <div key={idx} className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} animate-pulse`}>
-            {isUser ? (
-              <div className="bg-surface/80 border border-border/50 rounded-2xl rounded-tr-sm px-4 py-3 max-w-[75%] space-y-2">
-                <div className="h-3 bg-surface-active/30 rounded w-32" />
-                <div className="h-3 bg-surface-active/25 rounded w-24" />
-              </div>
-            ) : (
-              <div className="w-full max-w-[90%] space-y-2 pl-1">
-                <div className="h-3 bg-surface-active/30 rounded w-[85%]" />
-                <div className="h-3 bg-surface-active/25 rounded w-[70%]" />
-                <div className="h-3 bg-surface-active/20 rounded w-[45%]" />
-              </div>
-            )}
-          </div>
-        )
-      })}
-    </div>
-  </div>
-))
-ConversationSkeleton.displayName = 'ConversationSkeleton'
-
-export const ChatMessagesSkeleton = ConversationSkeleton
-
-export const ChatSkeleton = memo(() => (
-  <div className="h-full flex flex-col bg-background-chat">
-    <div className="h-10 flex items-center justify-between px-4">
-      <div className="h-4 w-12 bg-surface-active/50 rounded animate-pulse" />
-      <div className="flex gap-2">
-        {Array.from({ length: 3 }, (_, i) => (<div key={i} className="w-5 h-5 bg-surface-active/30 rounded animate-pulse" />))}
-      </div>
-    </div>
-    <ConversationSkeleton />
-    <div className="p-3 max-w-[840px] mx-auto w-full">
-      <div className="h-16 bg-surface-active/30 rounded-xl animate-pulse" />
-    </div>
-  </div>
-))
-ChatSkeleton.displayName = 'ChatSkeleton'
 
 interface RowSkeletonProps { rows?: number; showIcon?: boolean }
 

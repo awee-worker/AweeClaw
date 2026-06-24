@@ -34,8 +34,7 @@ const THEME_MODE_OPTIONS: { value: ThemeMode; labelZh: string; labelEn: string; 
 ]
 
 export function AppearanceSettings({ settings, setSettings, language, localLanguage, setLocalLanguage }: EditorSettingsProps) {
-    const { currentTheme, setTheme, themeMode, setThemeMode, themeColor, setThemeColor, systemPrefersDark, setSystemPrefersDark } = useStore(useShallow(s => ({
-        currentTheme: s.currentTheme,
+    const { setTheme, themeMode, setThemeMode, themeColor, setThemeColor, systemPrefersDark, setSystemPrefersDark } = useStore(useShallow(s => ({
         setTheme: s.setTheme,
         themeMode: s.themeMode,
         setThemeMode: s.setThemeMode,

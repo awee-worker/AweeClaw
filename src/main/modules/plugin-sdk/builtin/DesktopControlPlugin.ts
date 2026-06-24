@@ -12,9 +12,8 @@
  * @module plugin-sdk/builtin/desktop-control
  */
 
-import { logger } from '@shared/toolkit/LogEngine'
 import { getDesktopControlManager } from '@main/modules/desktop-control/DesktopControlManager'
-import type { Rect, WindowInfo, ScreenshotResult } from '@main/modules/desktop-control/types/actions'
+import type { WindowInfo, ScreenshotResult } from '@main/modules/desktop-control/types/actions'
 import { screen } from 'electron'
 import type {
   DesktopPluginFactory,
@@ -489,8 +488,8 @@ class BuiltinDesktopPluginRuntime implements DesktopPluginRuntime {
 
   async replayRecordingEvent(
     typeId: string,
-    data: Record<string, unknown>,
-    context: DesktopActionContext,
+    _data: Record<string, unknown>,
+    _context: DesktopActionContext,
   ): Promise<DesktopActionResult> {
     const startTime = Date.now()
 

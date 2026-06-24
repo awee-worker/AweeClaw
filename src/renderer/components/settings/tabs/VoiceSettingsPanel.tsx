@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Mic, Volume2, Globe, Loader2, Check, ChevronDown } from 'lucide-react';
+import { Mic, Volume2, Loader2, ChevronDown } from 'lucide-react';
 import { voiceApi, type VoiceInfo } from '../../../services/voiceApi';
 import { toast } from '@components/foundation/NotificationProvider';
 import { StorageService } from '@shared/toolkit/StorageService';

@@ -911,14 +911,14 @@ export function ModelProviderPanel({
     const nextName = editingProviderName.trim()
     if (!editingProviderId || !nextName) return
 
-    setLocalProviderConfigs(prev => ({
-      ...prev,
+    setLocalProviderConfigs({
+      ...localProviderConfigs,
       [editingProviderId]: {
-        ...prev[editingProviderId],
+        ...localProviderConfigs[editingProviderId],
         displayName: nextName,
         updatedAt: Date.now(),
       },
-    }))
+    })
 
     cancelEditingCustomProvider()
   }
@@ -1216,10 +1216,9 @@ export function ModelProviderPanel({
       }
 
       // 从本地配置中删除（放在切换之后，确保不会被重新创建）
-      setLocalProviderConfigs(prev => {
-        const { [id]: _, ...rest } = prev
-        return rest
-      })
+      const { [id]: _removed, ...rest } = localProviderConfigs
+      void _removed
+      setLocalProviderConfigs(rest)
     }
   }
 

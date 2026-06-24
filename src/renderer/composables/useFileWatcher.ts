@@ -21,8 +21,16 @@ interface FileChangeEvent {
   path: string
 }
 
+/** 已打开文件的最小结构（用于文件监听） */
+interface OpenFileSnapshot {
+  path: string
+  content?: string
+  isDirty?: boolean
+  isDeleted?: boolean
+}
+
 /** 从已打开文件中查找匹配路径的文件 */
-function findOpenFile(openFiles: Array<{ path: string }>, target: string) {
+function findOpenFile(openFiles: OpenFileSnapshot[], target: string) {
   return openFiles.find((file) => pathEquals(file.path, target))
 }
 

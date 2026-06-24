@@ -57,7 +57,7 @@ export function useEditorActions(
 ) {
   const registerActions = useCallback((
     editorInstance: editor.IStandaloneCodeEditor,
-    monaco: typeof import('monaco-editor') | typeof import('monaco-editor/esm/vs/editor/editor.api')
+    monaco: typeof import('monaco-editor')
   ) => {
     const teardownFns: Array<() => void> = []
     let definitionDecorationIds: string[] = []

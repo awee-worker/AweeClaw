@@ -501,7 +501,7 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
   ): Promise<ActionResult> {
     const start = Date.now()
     try {
-      const [appName, windowIdPart] = windowId.split(':')
+      const [appName] = windowId.split(':')
       let script = ''
 
       switch (action) {
@@ -552,7 +552,6 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
   // ========== L4 屏幕截图 ==========
 
   async captureScreen(displayId = 0): Promise<ScreenshotResult> {
-    const start = Date.now()
     try {
       const sources = await desktopCapturer.getSources({
         types: ['screen'],
@@ -593,7 +592,6 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
   }
 
   async captureRegion(region: Rect, displayId = 0): Promise<ScreenshotResult> {
-    const start = Date.now()
     try {
       // 先截取整个屏幕，再裁剪区域
       const fullShot = await this.captureScreen(displayId)
@@ -628,8 +626,6 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
     try {
       // 使用 cliclick（需用户安装）或 AppleScript
       // AppleScript 方式：通过 System Events
-      const button = params.button === 'right' ? 'right click' : 'click'
-      const clickCount = params.clickType === 'double' ? '2' : '1'
       const script = `
         tell application "System Events"
           ${params.button === 'right' ? 'right click' : 'click'} at {${params.x}, ${params.y}}
@@ -787,7 +783,6 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
     const start = Date.now()
     try {
       // 使用 keystroke 组合键
-      const keyCodes = keys.map(k => this.keyToKeyCode(k))
       const modifiers = keys.filter(k => this.isModifier(k)).map(k => this.modifierName(k))
       const normalKeys = keys.filter(k => !this.isModifier(k))
 

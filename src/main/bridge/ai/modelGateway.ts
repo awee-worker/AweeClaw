@@ -197,7 +197,7 @@ export function registerLLMHandlers(
   /* -------- 流式对话 -------- */
 
   ipcMain.handle('llm:sendMessage', async (event, params) => {
-    const { window, service } = resolveWindowService(event)
+    const { service } = resolveWindowService(event)
 
     try {
       await service.sendMessage(params)

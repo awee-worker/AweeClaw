@@ -1,4 +1,4 @@
-import { useState, type Dispatch, type SetStateAction } from 'react'
+import { useState } from 'react'
 import { AlertTriangle, Plus, X, RotateCcw } from 'lucide-react'
 import { ToggleSwitch } from '@components/ui'
 import { toast } from '@components/foundation/NotificationProvider'
@@ -9,7 +9,7 @@ import type { SecurityPolicyPanel as SecuritySettingsState } from '@shared/confi
 interface SecuritySettingsProps {
     language: Language
     securitySettings: SecuritySettingsState
-    setSecuritySettings: Dispatch<SetStateAction<SecuritySettingsState>>
+    setSecuritySettings: (settings: SecuritySettingsState) => void
     isWorkspaceEditor?: boolean
 }
 
@@ -18,7 +18,7 @@ export function SecurityPolicyPanel({ language, securitySettings, setSecuritySet
     const [newGitCmd, setNewGitCmd] = useState('')
 
     const updateSecuritySettings = (updates: Partial<SecuritySettingsState>) => {
-        setSecuritySettings((current) => ({ ...current, ...updates }))
+        setSecuritySettings({ ...securitySettings, ...updates })
     }
 
     const handleAddShellCommand = () => {

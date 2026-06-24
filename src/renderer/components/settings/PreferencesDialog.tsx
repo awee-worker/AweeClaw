@@ -73,7 +73,7 @@ interface PreferencesDialogProps {
 
 export default function PreferencesDialog({ embedded = false }: PreferencesDialogProps) {
     const {
-        state, dispatch, finalEditorConfig, isDirty, handleSave,
+        state, dispatch, isDirty, handleSave,
         language, setProvider,
         setShowSettings, setShowSettingsPage,
     } = useSettingsLocalState(embedded)

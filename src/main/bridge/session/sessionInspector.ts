@@ -40,35 +40,12 @@ interface ErrorResponse {
   error: string
 }
 
-type DebugResponse<T = unknown> = SuccessResponse<T> | ErrorResponse
-
 /* ------------------------------------------------------------------ */
 /* Handler 注册器 — 消除重复的 try-catch 模板                         */
 /* ------------------------------------------------------------------ */
 
 /**
- * 包装异步 handler：统一捕获异常并转换为 DebugResponse
- *
- * @param fn 原始异步函数
- * @returns 包装后的 IPC handler
- */
-function wrapAsync<T>(
-  fn: (...args: any[]) => Promise<T>,
-) {
-  return async (_event: Electron.IpcMainInvokeEvent, ...args: any[]) => {
-    try {
-      const data = await fn(...args)
-      return { success: true, data } as SuccessResponse<T>
-    } catch (err) {
-      const error = toAppError(err)
-      logger.system.debug('[sessionInspector] handler 执行失败', { error: error.message })
-      return { success: false, error: error.message } as ErrorResponse
-    }
-  }
-}
-
-/**
- * 包装同步 handler：统一捕获异常并转换为 DebugResponse
+ * 包装同步 handler：统一捕获异常并转换为响应对象
  *
  * @param fn 原始同步函数
  * @returns 包装后的 IPC handler

@@ -1,5 +1,3 @@
-import React from 'react'
-
 import openaiIcon from '@renderer/assets/ai-provider/openai.svg'
 import anthropicIcon from '@renderer/assets/ai-provider/Anthropic.svg'
 import googleIcon from '@renderer/assets/ai-provider/google.svg'

@@ -1,7 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import {
   VoiceRealtimeService,
-  VoiceWsResponse,
   type VoiceMode,
   type VoiceRealtimeCallbacks,
   type VoiceCommand,
@@ -53,13 +52,11 @@ export function useVoiceRealtime(
   const [sessionId, setSessionId] = useState<string | null>(null);
 
   const serviceRef = useRef<VoiceRealtimeService | null>(null);
-  const audioQueueRef = useRef<string[]>([]);
-  const isPlayingRef = useRef(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const currentSourceRef = useRef<AudioBufferSourceNode | null>(null);
 
   const playAudioChunk = useCallback(
-    async (base64Data: string, contentType: string) => {
+    async (base64Data: string, _contentType: string) => {
       try {
         if (!audioContextRef.current) {
           audioContextRef.current = new AudioContext({ sampleRate: 24000 });
