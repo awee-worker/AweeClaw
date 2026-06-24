@@ -2,7 +2,7 @@ import { logger } from '@toolkit/LogEngine'
 import { useStore } from '@store'
 import { useModeStore } from '@/renderer/modes/workModeStore'
 import { Agent } from '../engine/IntelligenceCore'
-import { getAgentConfig } from '@intelligence/utils/intelligenceConfig'
+import { resolveAgentConfig } from '@intelligence/utils/intelligenceConfig'
 import { useAgentStore, type HandoffSessionResult } from '../state/IntelligenceStore'
 
 let completedAutoHandoffKey: string | null = null
@@ -76,7 +76,7 @@ function buildAutoResumeMessage(result: HandoffSessionResult, language: 'zh' | '
 async function continueAutoHandoff(result: HandoffSessionResult): Promise<void> {
   const appState = useStore.getState()
   const modeState = useModeStore.getState()
-  const agentConfig = getAgentConfig()
+  const agentConfig = resolveAgentConfig()
   const language = (appState.language || 'zh') as 'zh' | 'en'
 
   await Agent.send(

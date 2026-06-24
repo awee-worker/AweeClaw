@@ -9,12 +9,12 @@ import { LoopDetector } from '@intelligence/utils/CycleDetector'
 import { getReadOnlyTools, isFileEditTool } from '@configuration/toolDefinitions'
 import { pathStartsWith, joinPath } from '@shared/toolkit/pathHelper'
 import { createStreamProcessor } from './streamProcessor'
-import { executeTools } from './toolOrchestrator'
+import { orchestrateToolBatch as executeTools } from './toolOrchestrator'
 import { EventBus } from './EventDispatcher'
 import { estimateMessagesTokens } from '../capabilities/context/ContextCompressor'
 import { lintService } from '../runtime/codeAnalysisService'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
-import { getRelativeChangePath, isFileWriteToolResult } from '@intelligence/utils/fileMutationHelper'
+import { resolveRelativeChangePath, isFileWriteToolResult } from '@intelligence/utils/fileMutationHelper'
 import { agentHarness } from '../harness'
 import type { Span } from '../harness/observability/Trace'
 import type { TokenBudgetController } from '../capabilities/budget/TokenQuotaManager'
@@ -35,10 +35,10 @@ function translate(language: Language, key: Parameters<typeof translateAgentText
   return translateAgentText(key, params, language as 'en' | 'zh')
 }
 
-function getLoopCheckMessage(language: Language, loopCheck: LoopCheckResult): string {
-  const details = loopCheck.details
+function formatCycleAlertMessage(language: Language, cycleCheck: LoopCheckResult): string {
+  const details = cycleCheck.details
   if (!details) {
-    return loopCheck.reason || loopCheck.warning || translate(language, 'agent.loop.generic')
+    return cycleCheck.reason || cycleCheck.warning || translate(language, 'agent.loop.generic')
   }
 
   switch (details.category) {
@@ -53,7 +53,7 @@ function getLoopCheckMessage(language: Language, loopCheck: LoopCheckResult): st
         count: details.count || 0,
       })
     case 'same_target_warning':
-      return loopCheck.warning || loopCheck.reason || translate(language, 'agent.loop.generic')
+      return cycleCheck.warning || cycleCheck.reason || translate(language, 'agent.loop.generic')
     case 'content_cycle':
       return translate(language, 'agent.loop.contentCycle', {
         target: details.target || '',
@@ -65,14 +65,14 @@ function getLoopCheckMessage(language: Language, loopCheck: LoopCheckResult): st
         pattern: details.pattern || '',
       })
     case 'semantic_loop':
-      return loopCheck.warning || loopCheck.reason || translate(language, 'agent.loop.generic')
+      return cycleCheck.warning || cycleCheck.reason || translate(language, 'agent.loop.generic')
     default:
-      return loopCheck.reason || loopCheck.warning || translate(language, 'agent.loop.generic')
+      return cycleCheck.reason || cycleCheck.warning || translate(language, 'agent.loop.generic')
   }
 }
 
-function getLoopCheckSuggestion(language: Language, loopCheck: LoopCheckResult): string | undefined {
-  const details = loopCheck.details
+function formatCycleMitigationAdvice(language: Language, cycleCheck: LoopCheckResult): string | undefined {
+  const details = cycleCheck.details
   switch (details?.category) {
     case 'exact_repeat':
       return translate(language, 'agent.loop.suggestion.exactRepeat')
@@ -93,13 +93,13 @@ function getLoopCheckSuggestion(language: Language, loopCheck: LoopCheckResult):
       }
       return 'You are repeatedly performing similar operations on few targets. Review what you already know and consider combining operations or trying a different approach.'
     default:
-      return loopCheck.suggestion
+      return cycleCheck.suggestion
   }
 }
 
-function buildSoftLimitFeedback(language: Language, title: string, detail: string, suggestion?: string, loopCheck?: LoopCheckResult): string {
-  const severity = loopCheck?.details?.severity || 'high'
-  const isWarning = !loopCheck?.isLoop
+function buildThresholdInterventionMessage(language: Language, title: string, detail: string, suggestion?: string, cycleCheck?: LoopCheckResult): string {
+  const severity = cycleCheck?.details?.severity || 'high'
+  const isWarning = !cycleCheck?.isLoop
 
   if (language === 'zh') {
     const lines: string[] = [
@@ -160,8 +160,8 @@ function buildSoftLimitFeedback(language: Language, title: string, detail: strin
   return lines.filter(Boolean).join('\n')
 }
 
-function formatLoopDiagnostic(language: Language, loopCheck?: LoopCheckResult): string {
-  const details = loopCheck?.details
+function formatCycleDiagnosticReport(language: Language, cycleCheck?: LoopCheckResult): string {
+  const details = cycleCheck?.details
   if (!details) return ''
 
   const lines: string[] = []
@@ -188,7 +188,7 @@ function formatLoopDiagnostic(language: Language, loopCheck?: LoopCheckResult): 
   return lines.join('\n')
 }
 
-function executeModePostProcessHook(
+function invokeModePostProcessor(
   mode: WorkMode,
   context: Parameters<import('@configuration/agentProfile').ModePostProcessHook>[0]
 ): ReturnType<import('@configuration/agentProfile').ModePostProcessHook> {
@@ -207,7 +207,7 @@ function executeModePostProcessHook(
   }
 }
 
-async function callLLM(
+async function invokeModelCall(
   config: LLMConfig,
   messages: LLMMessage[],
   assistantId: string | null,
@@ -267,7 +267,7 @@ async function callLLM(
         agentHarness.observability.endSpan(span, 'error')
       }
       processor.cleanup()
-      logger.agent.error('[Loop] Error in callLLM:', error)
+      logger.agent.error('[Loop] Error in invokeModelCall:', error)
       return { error: error instanceof Error ? error.message : String(error) }
     }
   }
@@ -306,7 +306,7 @@ async function callLLM(
   return llmHandler()
 }
 
-async function callLLMWithRetry(
+async function invokeModelCallWithRetry(
   config: LLMConfig,
   messages: LLMMessage[],
   assistantId: string | null,
@@ -338,7 +338,7 @@ async function callLLMWithRetry(
         }
 
         try {
-          const result = await callLLM(config, messages, assistantId, threadStore, reqId, tools, options)
+          const result = await invokeModelCall(config, messages, assistantId, threadStore, reqId, tools, options)
           if (result.error) {
             const errorMsg = result.error.toLowerCase()
             const isToolParseError = errorMsg.includes('tool call parse')
@@ -392,7 +392,7 @@ interface AutoFixResult {
   files: LintCheckFile[]
 }
 
-async function autoFix(toolCalls: ToolCall[], workspacePath: string): Promise<AutoFixResult | null> {
+async function detectLintIssues(toolCalls: ToolCall[], workspacePath: string): Promise<AutoFixResult | null> {
   const writeToolCalls = toolCalls.filter(tc => !READ_TOOLS.includes(tc.name))
   if (writeToolCalls.length === 0) return null
 
@@ -437,7 +437,7 @@ async function autoFix(toolCalls: ToolCall[], workspacePath: string): Promise<Au
   }
 }
 
-export async function runLoop(
+export async function executeAgentCycle(
   config: LLMConfig,
   llmMessages: LLMMessage[],
   context: ExecutionContext,
@@ -491,23 +491,23 @@ export async function runLoop(
   let shouldContinue = true
   threadStore.setStreamState({ waitPhase: 'waiting_model' })
 
-  const completeWithSoftLimitFeedback = async (
+  const concludeWithThresholdIntervention = async (
     title: string,
     detail: string,
     suggestion?: string,
     loopCheck?: LoopCheckResult
   ): Promise<void> => {
     const { language } = useStore.getState()
-    const diagnosticText = formatLoopDiagnostic(language, loopCheck)
+    const diagnosticText = formatCycleDiagnosticReport(language, loopCheck)
 
     llmMessages.push({
       role: 'user',
-      content: [buildSoftLimitFeedback(language, title, detail, suggestion, loopCheck), diagnosticText]
+      content: [buildThresholdInterventionMessage(language, title, detail, suggestion, loopCheck), diagnosticText]
         .filter(Boolean)
         .join('\n\n'),
     })
 
-    const finalResult = await callLLMWithRetry(
+    const finalResult = await invokeModelCallWithRetry(
       config,
       llmMessages,
       assistantId,
@@ -534,7 +534,7 @@ export async function runLoop(
     EventBus.emit({ type: 'loop:end', reason: 'complete', threadId, assistantId, requestId, planTaskId: context.planTaskId })
   }
 
-  const clearUnexecutedToolCards = (toolCallsToClear?: Array<{ id: string }>) => {
+  const prunePendingToolInvocations = (toolCallsToClear?: Array<{ id: string }>) => {
     if (!assistantId) return
 
     const assistantMessage = threadStore.getMessages().find(m => m.id === assistantId)
@@ -587,7 +587,7 @@ export async function runLoop(
 
     threadStore.setStreamState({ waitPhase: 'waiting_model', iterationIndex: iteration })
 
-    const result = await callLLMWithRetry(
+    const result = await invokeModelCallWithRetry(
       config,
       llmMessages,
       assistantId,
@@ -702,7 +702,7 @@ export async function runLoop(
             } else {
               logger.agent.info('[Loop] Cloud error, retrying with refreshed config (token unchanged)')
             }
-            const retryResult = await callLLMWithRetry(
+            const retryResult = await invokeModelCallWithRetry(
               newConfig, llmMessages, assistantId, threadStore, context.abortSignal, requestId, agentTools
             )
             if (!retryResult.error) {
@@ -938,7 +938,7 @@ export async function runLoop(
     }
 
     if (!result.toolCalls || result.toolCalls.length === 0) {
-      const hookResult = executeModePostProcessHook(context.chatMode, {
+      const hookResult = invokeModePostProcessor(context.chatMode, {
         mode: context.chatMode,
         messages: llmMessages,
         hasWriteOps: llmMessages.some(m => {
@@ -978,31 +978,31 @@ export async function runLoop(
       if (loopCheck.isLoop) {
         const { language } = useStore.getState()
         const loopTitle = getLocalizedText(language, '检测到循环执行', 'Loop Detected')
-        const loopMessage = getLoopCheckMessage(language, loopCheck)
-        const loopSuggestion = getLoopCheckSuggestion(language, loopCheck)
+        const cycleMessage = formatCycleAlertMessage(language, loopCheck)
+        const cycleAdvice = formatCycleMitigationAdvice(language, loopCheck)
 
         logger.agent.warn(`[Loop] Loop detected: ${loopCheck.reason}`)
-        clearUnexecutedToolCards(result.toolCalls)
+        prunePendingToolInvocations(result.toolCalls)
         threadStore.addSystemAlertPart(assistantId, {
           alertType: 'warning',
           title: loopTitle,
-          message: loopMessage,
-          suggestion: loopSuggestion,
+          message: cycleMessage,
+          suggestion: cycleAdvice,
           compact: true,
         })
-        EventBus.emit({ type: 'loop:warning', message: loopMessage, threadId, assistantId, requestId, planTaskId: context.planTaskId })
-        await completeWithSoftLimitFeedback(loopTitle, loopMessage, loopSuggestion, loopCheck)
+        EventBus.emit({ type: 'loop:warning', message: cycleMessage, threadId, assistantId, requestId, planTaskId: context.planTaskId })
+        await concludeWithThresholdIntervention(loopTitle, cycleMessage, cycleAdvice, loopCheck)
         break
       }
 
       if (loopCheck.warning) {
         const { language } = useStore.getState()
         const warningTitle = getLocalizedText(language, '循环预警', 'Loop Warning')
-        const warningMessage = getLoopCheckMessage(language, loopCheck)
-        const warningSuggestion = getLoopCheckSuggestion(language, loopCheck)
+        const warningMessage = formatCycleAlertMessage(language, loopCheck)
+        const warningSuggestion = formatCycleMitigationAdvice(language, loopCheck)
 
         logger.agent.warn(`[Loop] Non-blocking loop warning: ${loopCheck.warning}`)
-        clearUnexecutedToolCards(result.toolCalls)
+        prunePendingToolInvocations(result.toolCalls)
         threadStore.addSystemAlertPart(assistantId, {
           alertType: 'warning',
           title: warningTitle,
@@ -1015,8 +1015,8 @@ export async function runLoop(
         llmMessages.push({
           role: 'user',
           content: [
-            buildSoftLimitFeedback(language, warningTitle, warningMessage, warningSuggestion, loopCheck),
-            formatLoopDiagnostic(language, loopCheck),
+            buildThresholdInterventionMessage(language, warningTitle, warningMessage, warningSuggestion, loopCheck),
+            formatCycleDiagnosticReport(language, loopCheck),
           ].filter(Boolean).join('\n\n'),
         })
 
@@ -1110,7 +1110,7 @@ export async function runLoop(
           loopDetector.updateContentHash(meta.filePath, meta.newContent)
         }
 
-        const relativePath = getRelativeChangePath(meta.filePath, context.workspacePath ?? null, meta.relativePath)
+        const relativePath = resolveRelativeChangePath(meta.filePath, context.workspacePath ?? null, meta.relativePath)
 
         store.addPendingChange({
           filePath: meta.filePath,
@@ -1131,14 +1131,14 @@ export async function runLoop(
     }
 
     if (enableAutoFix && !userRejected && context.workspacePath) {
-      const autoFixResult = await autoFix(result.toolCalls, context.workspacePath)
-      if (autoFixResult) {
+      const lintIssueReport = await detectLintIssues(result.toolCalls, context.workspacePath)
+      if (lintIssueReport) {
         threadStore.addLintCheckPart(assistantId)
         threadStore.updateLintCheckPart(assistantId, {
-          files: autoFixResult.files,
+          files: lintIssueReport.files,
           status: 'failed',
         })
-        llmMessages.push({ role: 'user', content: autoFixResult.content })
+        llmMessages.push({ role: 'user', content: lintIssueReport.content })
         shouldContinue = true
         threadStore.setStreamPhase('streaming')
         threadStore.setStreamState({ streamDetail: 'reasoning' })
@@ -1196,7 +1196,7 @@ export async function runLoopAdapter(params: {
   assistantId: string
   budgetController?: TokenBudgetController
 }): Promise<void> {
-  return runLoop(
+  return executeAgentCycle(
     params.config,
     params.llmMessages,
     params.context,

@@ -21,16 +21,16 @@ function getLocalizedText(language: string, zh: string, en: string): string {
   return pickLocalizedText(zh, en, language as 'en' | 'zh')
 }
 
-function shouldRefreshSummary(summary: StructuredSummary | null | undefined, userTurns: number, minDelta = 2): boolean {
+function isSummaryStale(summary: StructuredSummary | null | undefined, userTurns: number, minDelta = 2): boolean {
   if (!summary) return true
   return userTurns >= (summary.turnRange?.[1] ?? 0) + minDelta
 }
 
-function getLiveThread(threadId: string): ChatThread | null {
+function fetchLiveThread(threadId: string): ChatThread | null {
   return useAgentStore.getState().threads[threadId] || null
 }
 
-function getRecentUserRequests(messages: ChatMessage[], limit = 5): string[] {
+function collectRecentUserRequests(messages: ChatMessage[], limit = 5): string[] {
   return messages
     .filter((message): message is UserMessage => message.role === 'user')
     .map(message => getMessageText(message.content).trim())
@@ -38,7 +38,7 @@ function getRecentUserRequests(messages: ChatMessage[], limit = 5): string[] {
     .slice(-limit)
 }
 
-function buildStructuredSummary(
+function assembleStructuredSummary(
   summaryResult: Awaited<ReturnType<typeof generateSummary>>,
   userTurns: number,
   userInstructions: string[] = []
@@ -57,7 +57,7 @@ function buildStructuredSummary(
   }
 }
 
-async function executeAutoHandoffIfNeeded(
+async function performAutoHandoffIfEligible(
   threadId: string,
   handoffResult: PreparedHandoffResult | null,
   autoHandoff: boolean
@@ -69,7 +69,7 @@ async function executeAutoHandoffIfNeeded(
   return executeAutoHandoff(threadId, handoffResult.handoff.createdAt)
 }
 
-function emitCompressionWarning(
+function publishCompressionWarning(
   usage: { input: number; output: number },
   contextLimit: number,
   ratio: number,
@@ -86,7 +86,7 @@ function emitCompressionWarning(
   })
 }
 
-function emitContextLimitAlert(threadStore: ThreadBoundStore, assistantId: string) {
+function notifyContextLimitReached(threadStore: ThreadBoundStore, assistantId: string) {
   const { language } = useStore.getState()
   threadStore.addSystemAlertPart(assistantId, {
     alertType: 'warning',
@@ -95,28 +95,28 @@ function emitContextLimitAlert(threadStore: ThreadBoundStore, assistantId: strin
   })
 }
 
-async function ensureSummarySnapshot(threadId: string, threadStore: ThreadBoundStore): Promise<void> {
-  const thread = getLiveThread(threadId)
+async function refreshSummarySnapshot(threadId: string, threadStore: ThreadBoundStore): Promise<void> {
+  const thread = fetchLiveThread(threadId)
   if (!thread) return
 
   const userTurns = thread.messages.filter(message => message.role === 'user').length
 
-  if (shouldRefreshSummary(thread.contextSummary, userTurns)) {
-    const recentUserRequests = getRecentUserRequests(thread.messages)
+  if (isSummaryStale(thread.contextSummary, userTurns)) {
+    const recentUserRequests = collectRecentUserRequests(thread.messages)
     const summaryResult = await generateSummary(thread.messages, { type: 'detailed', todos: thread.todos })
-    const structuredSummary = buildStructuredSummary(summaryResult, userTurns, recentUserRequests)
+    const structuredSummary = assembleStructuredSummary(summaryResult, userTurns, recentUserRequests)
     threadStore.setContextSummary(structuredSummary)
     EventBus.emit({ type: 'context:summary', summary: summaryResult.summary })
   }
 }
 
-async function ensureHandoffSnapshot(
+async function refreshHandoffSnapshot(
   threadId: string,
   threadStore: ThreadBoundStore,
   context: ExecutionContext,
   autoHandoff: boolean
 ): Promise<boolean> {
-  const thread = getLiveThread(threadId)
+  const thread = fetchLiveThread(threadId)
   if (!thread) return false
 
   const handoffWorkspace = context.workspacePath || useStore.getState().workspacePath || ''
@@ -124,7 +124,7 @@ async function ensureHandoffSnapshot(
     threadStore,
     workspacePath: handoffWorkspace,
   })
-  const didAutoHandoff = await executeAutoHandoffIfNeeded(thread.id, handoffResult, autoHandoff)
+  const didAutoHandoff = await performAutoHandoffIfEligible(thread.id, handoffResult, autoHandoff)
 
   if (handoffResult) {
     EventBus.emit({ type: 'context:handoff', document: handoffResult.handoff })
@@ -133,7 +133,7 @@ async function ensureHandoffSnapshot(
   return didAutoHandoff
 }
 
-async function applyCompressionActions(
+async function executeCompressionStrategy(
   calculatedLevel: CompressionCheckResult['level'],
   ratio: number,
   totalTokens: number,
@@ -150,13 +150,13 @@ async function applyCompressionActions(
   budgetController?: TokenBudgetController
 ): Promise<CompressionCheckResult> {
   if (calculatedLevel === 3 && (!previousStats || previousStats.level < 3)) {
-    emitCompressionWarning(usage, contextLimit, ratio, budgetController)
+    publishCompressionWarning(usage, contextLimit, ratio, budgetController)
   }
 
   if (calculatedLevel >= 3 && enableLLMSummary && thread) {
     threadStore.setCompressionPhase('summarizing')
     try {
-      await ensureSummarySnapshot(threadId, threadStore)
+      await refreshSummarySnapshot(threadId, threadStore)
     } catch {
       // Summary generation failed, not critical
     } finally {
@@ -169,14 +169,14 @@ async function applyCompressionActions(
     if (thread) {
       threadStore.setCompressionPhase('summarizing')
       try {
-        didAutoHandoff = await ensureHandoffSnapshot(threadId, threadStore, context, autoHandoff)
+        didAutoHandoff = await refreshHandoffSnapshot(threadId, threadStore, context, autoHandoff)
       } finally {
         threadStore.setCompressionPhase('idle')
       }
     }
 
     if (!didAutoHandoff) {
-      emitContextLimitAlert(threadStore, assistantId)
+      notifyContextLimitReached(threadStore, assistantId)
     }
   }
 
@@ -196,7 +196,7 @@ export async function checkAndHandleCompression(
   autoHandoff: boolean,
   budgetController?: TokenBudgetController
 ): Promise<CompressionCheckResult> {
-  const thread = getLiveThread(threadId)
+  const thread = fetchLiveThread(threadId)
   const messageCount = thread?.messages.length || 0
   const previousStats = thread?.compressionStats || null
   const newStats = updateStats(
@@ -225,7 +225,7 @@ export async function checkAndHandleCompression(
   threadStore.setCompressionStats(newStats)
   threadStore.setCompressionPhase('idle')
 
-  return applyCompressionActions(
+  return executeCompressionStrategy(
     calculatedLevel,
     ratio,
     totalTokens,

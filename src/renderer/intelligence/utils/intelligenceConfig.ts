@@ -29,7 +29,7 @@ export function invalidateAgentConfigCache(): void {
     _cachedResult = null
 }
 
-export function getAgentConfig(): AgentRuntimeConfig {
+export function resolveAgentConfig(): AgentRuntimeConfig {
     const agentConfig = useStore.getState().agentConfig || {}
     const cacheKey = buildCacheKey(agentConfig)
     if (cacheKey === _cachedKey && _cachedResult) return _cachedResult
@@ -101,6 +101,9 @@ export function getAgentConfig(): AgentRuntimeConfig {
     _cachedResult = result
     return result
 }
+
+/** @deprecated 请使用 resolveAgentConfig */
+export const getAgentConfig = resolveAgentConfig
 
 /**
  * 只读工具列表（可并行执行）

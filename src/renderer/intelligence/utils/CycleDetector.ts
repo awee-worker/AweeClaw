@@ -156,7 +156,7 @@ function getToolCategory(name: string): 'read' | 'write' | 'search' | 'other' {
   return 'other'
 }
 
-export class LoopDetector {
+export class CycleDetector {
   private history: ToolCallRecord[] = []
   private contentHashes: Map<string, string[]> = new Map()
   private warningEmitted: Set<string> = new Set()
@@ -727,3 +727,6 @@ export class LoopDetector {
     return hash.toString(36)
   }
 }
+
+/** @deprecated 请使用 CycleDetector */
+export const LoopDetector = CycleDetector

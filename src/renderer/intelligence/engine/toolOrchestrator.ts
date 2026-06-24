@@ -30,7 +30,7 @@ import { resolveStreamingEditFilePath } from '../runtime/editPreviewStreamer'
 
 // ===== 审批服务 =====
 
-class ApprovalServiceClass {
+class ToolApprovalCoordinator {
   private pendingResolves = new Map<string, (approved: boolean) => void>()
   private queue: Array<{ id: string; resolve: (approved: boolean) => void }> = []
 
@@ -148,7 +148,7 @@ class ApprovalServiceClass {
   }
 }
 
-export const approvalService = new ApprovalServiceClass()
+export const approvalService = new ToolApprovalCoordinator()
 
 // ===== 文件快照 =====
 
@@ -156,7 +156,7 @@ export const approvalService = new ApprovalServiceClass()
  * 在工具执行前保存文件快照到检查点
  * 用于支持撤销功能
  */
-async function saveFileSnapshots(
+async function captureFileSnapshots(
   toolCalls: ToolCall[],
   context: ToolExecutionContext
 ): Promise<void> {
@@ -198,17 +198,17 @@ async function saveFileSnapshots(
   }
 }
 
-interface ToolExecutionIdentity {
+interface ToolInvocationIdentity {
   threadId?: string
   assistantId?: string
   requestId?: string
   toolCallId?: string
 }
 
-function buildToolExecutionIdentity(
+function composeToolInvocationIdentity(
   toolCall: ToolCall,
   context: ToolExecutionContext
-): ToolExecutionIdentity {
+): ToolInvocationIdentity {
   return {
     threadId: context.threadId ?? undefined,
     assistantId: context.assistantId ?? context.currentAssistantId ?? undefined,
@@ -217,18 +217,18 @@ function buildToolExecutionIdentity(
   }
 }
 
-function emitToolEvent(
+function publishToolLifecycleEvent(
   event:
-    | ({ type: 'tool:pending'; id: string; name: string; args: Record<string, unknown> } & ToolExecutionIdentity)
-    | ({ type: 'tool:running'; id: string } & ToolExecutionIdentity)
-    | ({ type: 'tool:completed'; id: string; result: string; meta?: Record<string, unknown> } & ToolExecutionIdentity)
-    | ({ type: 'tool:error'; id: string; error: string } & ToolExecutionIdentity)
-    | ({ type: 'tool:rejected'; id: string } & ToolExecutionIdentity)
+    | ({ type: 'tool:pending'; id: string; name: string; args: Record<string, unknown> } & ToolInvocationIdentity)
+    | ({ type: 'tool:running'; id: string } & ToolInvocationIdentity)
+    | ({ type: 'tool:completed'; id: string; result: string; meta?: Record<string, unknown> } & ToolInvocationIdentity)
+    | ({ type: 'tool:error'; id: string; error: string } & ToolInvocationIdentity)
+    | ({ type: 'tool:rejected'; id: string } & ToolInvocationIdentity)
 ): void {
   EventBus.emit(event)
 }
 
-function buildDependencyErrorResult(
+function buildDependencyFailureResult(
   toolCall: ToolCall,
   reason: string
 ): AgentToolExecutionResult {
@@ -244,7 +244,7 @@ function buildDependencyErrorResult(
   }
 }
 
-function hasDependencyFailure(content: string): boolean {
+function indicatesDependencyFailure(content: string): boolean {
   return content.startsWith('Skipped: dependency') || content.startsWith('Error: dependency')
 }
 
@@ -253,7 +253,7 @@ function hasDependencyFailure(content: string): boolean {
  * 检查工具是否需要审批
  * 基于 TOOL_CONFIGS 中的 approvalType 配置和用户的 autoApprove 设置
  */
-function needsApproval(toolName: string, chatMode?: string): boolean {
+function requiresApprovalGate(toolName: string, chatMode?: string): boolean {
   if (chatMode === 'chat') return false
 
   const approvalType = getToolApprovalType(toolName)
@@ -274,12 +274,12 @@ function needsApproval(toolName: string, chatMode?: string): boolean {
   return true
 }
 
-interface ApprovalGroup {
+interface ApprovalCohort {
   key: string
   toolCalls: ToolCall[]
 }
 
-function groupApprovalTools(toolCalls: ToolCall[]): ApprovalGroup[] {
+function clusterApprovalCohorts(toolCalls: ToolCall[]): ApprovalCohort[] {
   if (toolCalls.length <= 1) {
     return [{ key: 'single', toolCalls }]
   }
@@ -301,7 +301,7 @@ function groupApprovalTools(toolCalls: ToolCall[]): ApprovalGroup[] {
 /**
  * 获取动态并发限制
  */
-function getDynamicConcurrency(): number {
+function resolveDynamicConcurrency(): number {
   const agentConfig = getAgentConfig()
   const { enabled, minConcurrency, maxConcurrency, cpuMultiplier } = agentConfig.dynamicConcurrency
 
@@ -328,7 +328,7 @@ function getDynamicConcurrency(): number {
 /**
  * 分析工具依赖关系（支持显式声明）
  */
-function analyzeToolDependencies(toolCalls: ToolCall[]): Map<string, Set<string>> {
+function resolveToolDependencyGraph(toolCalls: ToolCall[]): Map<string, Set<string>> {
   const deps = new Map<string, Set<string>>()
   const fileWriters = new Map<string, string>() // path -> toolCallId
   const agentConfig = getAgentConfig()
@@ -370,14 +370,14 @@ function analyzeToolDependencies(toolCalls: ToolCall[]): Map<string, Set<string>
 /**
  * 执行单个工具
  */
-async function executeSingle(
+async function invokeToolInvocation(
   toolCall: ToolCall,
   context: ToolExecutionContext,
   store: import('../state/IntelligenceStore').ThreadBoundStore
 ): Promise<AgentToolExecutionResult> {
   const mainStore = useStore.getState()
   const { currentAssistantId, workspacePath } = context
-  const identity = buildToolExecutionIdentity(toolCall, context)
+  const identity = composeToolInvocationIdentity(toolCall, context)
   const startTime = Date.now()
 
   let toolSpan: Span | null = null
@@ -410,7 +410,7 @@ async function executeSingle(
       assistantId: currentAssistantId,
     })
   }
-  emitToolEvent({ type: 'tool:running', id: toolCall.id, ...identity })
+  publishToolLifecycleEvent({ type: 'tool:running', id: toolCall.id, ...identity })
 
   mainStore.addToolCallLog({
     threadId: context.threadId ?? undefined,
@@ -491,7 +491,7 @@ async function executeSingle(
         store.addToolResult(toolCall.id, toolCall.name, content, result.success ? 'success' : 'tool_error')
       }
       if (result.success) {
-        emitToolEvent({
+        publishToolLifecycleEvent({
           type: 'tool:completed',
           id: toolCall.id,
           result: content,
@@ -499,7 +499,7 @@ async function executeSingle(
           ...identity,
         })
       } else {
-        emitToolEvent({
+        publishToolLifecycleEvent({
           type: 'tool:error',
           id: toolCall.id,
           error: content,
@@ -545,7 +545,7 @@ async function executeSingle(
         })
         store.addToolResult(toolCall.id, toolCall.name, `Error: ${errorMsg}`, 'tool_error')
       }
-      emitToolEvent({ type: 'tool:error', id: toolCall.id, error: errorMsg, ...identity })
+      publishToolLifecycleEvent({ type: 'tool:error', id: toolCall.id, error: errorMsg, ...identity })
 
       return { toolCall, result: { content: `Error: ${errorMsg}` } }
     }
@@ -597,7 +597,7 @@ async function executeSingle(
  * - 需要审批的工具：逐个审批，用户可以选择批准或拒绝每个工具
  * - 如果用户拒绝某个工具，该工具被跳过，继续执行其他工具
  */
-export async function executeTools(
+export async function orchestrateToolBatch(
   toolCalls: ToolCall[],
   context: ToolExecutionContext,
   store: import('../state/IntelligenceStore').ThreadBoundStore,
@@ -611,18 +611,18 @@ export async function executeTools(
   }
 
   // 分析依赖
-  const deps = analyzeToolDependencies(toolCalls)
+  const deps = resolveToolDependencyGraph(toolCalls)
   const completed = new Set<string>()
   const rejected = new Set<string>()
   const failed = new Set<string>()
   const pending = new Set(toolCalls.map(tc => tc.id))
 
   // 分离需要审批和不需要审批的工具
-  const approvalRequired = toolCalls.filter(tc => needsApproval(tc.name, context.chatMode))
-  const noApprovalRequired = toolCalls.filter(tc => !needsApproval(tc.name, context.chatMode))
+  const approvalRequired = toolCalls.filter(tc => requiresApprovalGate(tc.name, context.chatMode))
+  const noApprovalRequired = toolCalls.filter(tc => !requiresApprovalGate(tc.name, context.chatMode))
 
   // 在执行前保存文件快照
-  await saveFileSnapshots(toolCalls, context)
+  await captureFileSnapshots(toolCalls, context)
 
   // 1. 先执行不需要审批的工具。
   //    注意：即使无需审批，也必须尊重工具的 parallel 配置。
@@ -635,7 +635,7 @@ export async function executeTools(
       assistantId: context.assistantId ?? context.currentAssistantId ?? undefined,
     })
 
-    const concurrency = getDynamicConcurrency()
+    const concurrency = resolveDynamicConcurrency()
     const limit = pLimit(concurrency)
 
     // 记录当前并行批次；遇到非并行工具时会先 flush。
@@ -660,9 +660,9 @@ export async function executeTools(
 
         if (depPromises.length > 0) {
           const depResults = await Promise.all(depPromises)
-          const blocked = depResults.some(depResult => hasDependencyFailure(depResult.result.content) || rejected.has(depResult.toolCall.id) || failed.has(depResult.toolCall.id))
+          const blocked = depResults.some(depResult => indicatesDependencyFailure(depResult.result.content) || rejected.has(depResult.toolCall.id) || failed.has(depResult.toolCall.id))
           if (blocked) {
-            const skipped = buildDependencyErrorResult(tc, 'Skipped: dependency failed')
+            const skipped = buildDependencyFailureResult(tc, 'Skipped: dependency failed')
             if (context.currentAssistantId) {
               store.updateToolCall(context.currentAssistantId, tc.id, {
                 status: 'error',
@@ -674,11 +674,11 @@ export async function executeTools(
             failed.add(tc.id)
             pending.delete(tc.id)
             results.push(skipped)
-            emitToolEvent({
+            publishToolLifecycleEvent({
               type: 'tool:error',
               id: tc.id,
               error: skipped.result.content,
-              ...buildToolExecutionIdentity(tc, context),
+              ...composeToolInvocationIdentity(tc, context),
             })
             return skipped
           }
@@ -686,7 +686,7 @@ export async function executeTools(
 
         const run = async () => {
           try {
-            const result = await executeSingle(tc, context, store)
+            const result = await invokeToolInvocation(tc, context, store)
             results.push(result)
             pending.delete(result.toolCall.id)
             if (result.result.content.startsWith('Error:')) {
@@ -712,11 +712,11 @@ export async function executeTools(
             pending.delete(tc.id)
             const errorResult = { toolCall: tc, result: { content: `Error: ${errorMsg}` } }
             results.push(errorResult)
-            emitToolEvent({
+            publishToolLifecycleEvent({
               type: 'tool:error',
               id: tc.id,
               error: errorMsg,
-              ...buildToolExecutionIdentity(tc, context),
+              ...composeToolInvocationIdentity(tc, context),
             })
             return errorResult
           }
@@ -746,7 +746,7 @@ export async function executeTools(
 
   // 2. 分组批量处理需要审批的工具
   //    将同类型的工具合并为一组，一次性提交审批
-  const approvalGroups = groupApprovalTools(approvalRequired)
+  const approvalGroups = clusterApprovalCohorts(approvalRequired)
 
   for (const group of approvalGroups) {
     if (abortSignal?.aborted) break
@@ -758,7 +758,7 @@ export async function executeTools(
 
     const depFailedTools = group.toolCalls.filter(tc => !groupToolCalls.some(g => g.id === tc.id))
     for (const tc of depFailedTools) {
-      const skipped = buildDependencyErrorResult(tc, 'Skipped: dependency not met')
+      const skipped = buildDependencyFailureResult(tc, 'Skipped: dependency not met')
       if (context.currentAssistantId) {
         store.updateToolCall(context.currentAssistantId, tc.id, {
           status: 'error',
@@ -770,11 +770,11 @@ export async function executeTools(
       failed.add(tc.id)
       results.push(skipped)
       pending.delete(tc.id)
-      emitToolEvent({
+      publishToolLifecycleEvent({
         type: 'tool:error',
         id: tc.id,
         error: skipped.result.content,
-        ...buildToolExecutionIdentity(tc, context),
+        ...composeToolInvocationIdentity(tc, context),
       })
     }
 
@@ -789,12 +789,12 @@ export async function executeTools(
         })
         store.updateToolCall(context.currentAssistantId, tc.id, { status: 'awaiting' })
       }
-      emitToolEvent({
+      publishToolLifecycleEvent({
         type: 'tool:pending',
         id: tc.id,
         name: tc.name,
         args: tc.arguments,
-        ...buildToolExecutionIdentity(tc, context),
+        ...composeToolInvocationIdentity(tc, context),
       })
     }
 
@@ -833,7 +833,7 @@ export async function executeTools(
           endTime: Date.now(),
         })
       }
-      emitToolEvent({ type: 'tool:rejected', id: tc.id, ...buildToolExecutionIdentity(tc, context) })
+      publishToolLifecycleEvent({ type: 'tool:rejected', id: tc.id, ...composeToolInvocationIdentity(tc, context) })
       results.push({ toolCall: tc, result: { content: 'Rejected by user' } })
       pending.delete(tc.id)
     }
@@ -851,7 +851,7 @@ export async function executeTools(
 
       for (const tc of approvedTools) {
         if (abortSignal?.aborted) break
-        const result = await executeSingle(tc, context, store)
+        const result = await invokeToolInvocation(tc, context, store)
         results.push(result)
         pending.delete(tc.id)
         if (result.result.content.startsWith('Error:')) {
@@ -878,3 +878,6 @@ export async function executeTools(
 
   return { results, userRejected }
 }
+
+/** @deprecated 请使用 orchestrateToolBatch */
+export const executeTools = orchestrateToolBatch

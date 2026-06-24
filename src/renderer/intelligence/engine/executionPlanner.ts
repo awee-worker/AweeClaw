@@ -25,28 +25,28 @@ export interface ToolExecutionBatch {
  */
 export function buildExecutionBatches(toolCalls: ToolCall[]): ToolExecutionBatch[] {
   const batches: ToolExecutionBatch[] = []
-  let currentParallelBatch: ToolCall[] = []
+  let pendingParallelBatch: ToolCall[] = []
 
   // 把当前累计的并行工具批次落盘，作为一个独立执行单元。
-  const flushParallelBatch = () => {
-    if (currentParallelBatch.length === 0) return
-    batches.push({ toolCalls: currentParallelBatch, parallel: true })
-    currentParallelBatch = []
+  const flushPendingParallel = () => {
+    if (pendingParallelBatch.length === 0) return
+    batches.push({ toolCalls: pendingParallelBatch, parallel: true })
+    pendingParallelBatch = []
   }
 
   for (const toolCall of toolCalls) {
     // 可并行工具：继续累积到当前并行批次里。
     if (isParallelTool(toolCall.name)) {
-      currentParallelBatch.push(toolCall)
+      pendingParallelBatch.push(toolCall)
       continue
     }
 
     // 串行工具：先结束前面的并行批次，再给自己单独建一个串行批次。
-    flushParallelBatch()
+    flushPendingParallel()
     batches.push({ toolCalls: [toolCall], parallel: false })
   }
 
   // 处理循环结束后残留的并行批次。
-  flushParallelBatch()
+  flushPendingParallel()
   return batches
 }

@@ -94,7 +94,7 @@ export function createStreamProcessor(
   // Cleanup callbacks for request-scoped listeners.
   const cleanups: (() => void)[] = []
 
-  const flushToolPreviewUpdates = () => {
+  const drainToolPreviewQueue = () => {
     if (toolUpdateRafId !== null) {
       clearTimeout(toolUpdateRafId)
       toolUpdateRafId = null
@@ -114,17 +114,17 @@ export function createStreamProcessor(
     pendingToolPreviewUpdates.clear()
   }
 
-  const scheduleToolPreviewUpdates = () => {
+  const scheduleToolPreviewFlush = () => {
     if (toolUpdateRafId !== null) return
 
     // 降低工具预览更新频率，避免频繁触发状态更新
     toolUpdateRafId = window.setTimeout(() => {
       toolUpdateRafId = null
-      flushToolPreviewUpdates()
+      drainToolPreviewQueue()
     }, 150) as unknown as number
   }
 
-  const queueToolPreviewUpdate = (
+  const enqueueToolPreviewUpdate = (
     toolId: string,
     update: {
       partialArgs?: Record<string, unknown>
@@ -138,10 +138,10 @@ export function createStreamProcessor(
       ...update,
       timestamp: update.timestamp,
     })
-    scheduleToolPreviewUpdates()
+    scheduleToolPreviewFlush()
   }
 
-  const syncStreamingEditPreview = async (toolId: string, toolName: string, partialArgs?: Record<string, unknown>) => {
+  const synchronizeEditPreviewStream = async (toolId: string, toolName: string, partialArgs?: Record<string, unknown>) => {
     await streamingEditPreviewCoordinator.sync(
       toolId,
       toolName,
@@ -163,7 +163,7 @@ export function createStreamProcessor(
     'env', 'properties', 'toml',
   ])
 
-  const isDocumentFile = (filePath: string): boolean => {
+  const isPreviewableDocument = (filePath: string): boolean => {
     const lowerPath = filePath.toLowerCase()
     // 无扩展名的文件（如 Dockerfile、Makefile）
     const baseName = lowerPath.split(/[/\\]/).pop() || ''
@@ -173,13 +173,13 @@ export function createStreamProcessor(
     return DOCUMENT_EXTENSIONS.has(ext)
   }
 
-  const resolveFilePath = (path: string, workspacePath: string | null): string => {
+  const normalizeFilePath = (path: string, workspacePath: string | null): string => {
     if (!workspacePath) return path
     const isAbsolute = /^([a-zA-Z]:[\\/]|[/])/.test(path)
     return isAbsolute ? path : joinPath(workspacePath, path)
   }
 
-  const extractPartialContent = (argsString: string): string | null => {
+  const extractContentFragment = (argsString: string): string | null => {
     const contentMatch = argsString.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)/)
     if (!contentMatch) return null
     return contentMatch[1]
@@ -188,7 +188,7 @@ export function createStreamProcessor(
       .replace(/\\\\/g, '\\')
   }
 
-  const flushFilePreviewUpdates = () => {
+  const drainFilePreviewQueue = () => {
     if (filePreviewRafId !== null) {
       clearTimeout(filePreviewRafId)
       filePreviewRafId = null
@@ -207,27 +207,27 @@ export function createStreamProcessor(
     pendingFilePreviewUpdates.clear()
   }
 
-  const scheduleFilePreviewUpdate = () => {
+  const scheduleFilePreviewFlush = () => {
     if (filePreviewRafId !== null) return
     filePreviewRafId = window.setTimeout(() => {
       filePreviewRafId = null
-      flushFilePreviewUpdates()
+      drainFilePreviewQueue()
     }, FILE_PREVIEW_THROTTLE_MS) as unknown as number
   }
 
-  const syncStreamingFilePreview = (toolId: string, toolName: string, argsString: string) => {
+  const synchronizeFilePreviewStream = (toolId: string, toolName: string, argsString: string) => {
     if (!STREAMABLE_FILE_TOOLS.has(toolName)) return
 
     const workspacePath = useStore.getState().workspacePath
     const partialArgs = parsePartialJsonArgs(argsString)
     if (!partialArgs || typeof partialArgs.path !== 'string') return
 
-    const filePath = resolveFilePath(partialArgs.path, workspacePath)
+    const filePath = normalizeFilePath(partialArgs.path, workspacePath)
 
     // 仅文档类型文件启用实时预览
-    if (!isDocumentFile(filePath)) return
+    if (!isPreviewableDocument(filePath)) return
 
-    const partialContent = extractPartialContent(argsString)
+    const partialContent = extractContentFragment(argsString)
     if (partialContent === null) return
 
     const previewState = streamingFilePreview.get(toolId)
@@ -257,20 +257,20 @@ export function createStreamProcessor(
       workspacePath: workspacePath || '',
       isComplete: false,
     })
-    scheduleFilePreviewUpdate()
+    scheduleFilePreviewFlush()
   }
 
-  const finalizeStreamingFilePreview = (toolId: string, toolName: string, finalArgs: Record<string, unknown>) => {
+  const completeFilePreviewStream = (toolId: string, toolName: string, finalArgs: Record<string, unknown>) => {
     if (!STREAMABLE_FILE_TOOLS.has(toolName)) return
 
     const workspacePath = useStore.getState().workspacePath
     const path = typeof finalArgs.path === 'string' ? finalArgs.path : ''
     if (!path) return
 
-    const filePath = resolveFilePath(path, workspacePath)
+    const filePath = normalizeFilePath(path, workspacePath)
 
     // 仅文档类型文件启用实时预览
-    if (!isDocumentFile(filePath)) return
+    if (!isPreviewableDocument(filePath)) return
 
     const content = typeof finalArgs.content === 'string' ? finalArgs.content : ''
 
@@ -282,7 +282,7 @@ export function createStreamProcessor(
       workspacePath: workspacePath || '',
       isComplete: true,
     })
-    flushFilePreviewUpdates()
+    drainFilePreviewQueue()
   }
 
   const cleanup = () => {
@@ -314,7 +314,7 @@ export function createStreamProcessor(
     logger.agent.info('[StreamProcessor] Active listeners remaining:', activeListenerCount)
   }
 
-  const handleStream = (data: {
+  const processStreamEvent = (data: {
     type: string
     content?: string
     id?: string
@@ -429,25 +429,25 @@ export function createStreamProcessor(
                 if (partialArgs && Object.keys(partialArgs).length > 0) {
                   if (!arePartialArgsEqual(tc.lastPreviewArgs, partialArgs)) {
                     tc.lastPreviewArgs = partialArgs
-                    queueToolPreviewUpdate(tc.id, {
+                    enqueueToolPreviewUpdate(tc.id, {
                       partialArgs,
                       timestamp: Date.now(),
                     })
-                    void syncStreamingEditPreview(tc.id, tc.name, partialArgs)
+                    void synchronizeEditPreviewStream(tc.id, tc.name, partialArgs)
                   }
                 }
               }
 
               // 流式文件内容预览（打字机效果）
-              syncStreamingFilePreview(tc.id, tc.name, tc.argsString)
+              synchronizeFilePreviewStream(tc.id, tc.name, tc.argsString)
             }
             if (data.name && data.name !== tc.name) {
               tc.name = data.name
               if (assistantId) {
-                queueToolPreviewUpdate(tc.id, {
-                  name: data.name,
-                  timestamp: Date.now(),
-                })
+                enqueueToolPreviewUpdate(tc.id, {
+                      name: data.name,
+                      timestamp: Date.now(),
+                    })
               }
             }
             EventBus.emit({ type: 'stream:tool_delta', id: tc.id, args: tc.argsString })
@@ -465,11 +465,11 @@ export function createStreamProcessor(
         if (tcId && assistantId) {
           const tc = streamingToolCalls.get(tcId)
           if (tc) {
-            flushToolPreviewUpdates()
+            drainToolPreviewQueue()
             const finalArgs = parseFinalJsonArgs(tc.argsString)
             const resolvedArgs = finalArgs || tc.lastPreviewArgs || {}
             if (finalArgs) {
-              void syncStreamingEditPreview(tc.id, tc.name, finalArgs)
+              void synchronizeEditPreviewStream(tc.id, tc.name, finalArgs)
               store.updateToolCall(assistantId, tc.id, {
                 arguments: finalArgs,
                 streamingState: undefined,
@@ -492,7 +492,7 @@ export function createStreamProcessor(
 
             // 最终化流式文件内容预览
             if (finalArgs) {
-              finalizeStreamingFilePreview(tc.id, tc.name, finalArgs)
+              completeFilePreviewStream(tc.id, tc.name, finalArgs)
             }
           }
         }
@@ -509,7 +509,7 @@ export function createStreamProcessor(
         const args = data.arguments as Record<string, unknown>
 
         if (tcId) {
-          flushToolPreviewUpdates()
+          drainToolPreviewQueue()
           streamingToolCalls.delete(tcId)
           pendingToolCallAvailableCount = Math.max(0, pendingToolCallAvailableCount - 1)
         }
@@ -541,10 +541,10 @@ export function createStreamProcessor(
           })
         }
 
-        void syncStreamingEditPreview(tcId, toolName, args)
+        void synchronizeEditPreviewStream(tcId, toolName, args)
 
         // 最终化流式文件内容预览（兜底处理）
-        finalizeStreamingFilePreview(tcId, toolName, args)
+        completeFilePreviewStream(tcId, toolName, args)
 
         EventBus.emit({ type: 'stream:tool_available', id: tcId, name: toolName, args })
         break
@@ -567,7 +567,7 @@ export function createStreamProcessor(
     }
   }
 
-  const finalizeReasoning = () => {
+  const completeReasoningPhase = () => {
     if (isInReasoning) {
       if (assistantId && reasoningPartId) {
         store.finalizeReasoningPart(assistantId, reasoningPartId)
@@ -597,7 +597,7 @@ export function createStreamProcessor(
   }
 
   // Handle request error.
-  const handleError = (err: { message?: string; code?: string; suggestion?: string } | string) => {
+  const resolveWithError = (err: { message?: string; code?: string; suggestion?: string } | string) => {
     let errorMsg: string
     let errorCode: string | undefined
     let errorSuggestion: string | undefined
@@ -620,11 +620,11 @@ export function createStreamProcessor(
     logger.agent.error('[StreamProcessor] Error:', errorMsg)
     error = errorMsg
     retryable = typeof err === 'object' && err !== null && 'retryable' in err ? (err as { retryable?: boolean }).retryable : undefined
-    finalizeReasoning()
+    completeReasoningPhase()
     doResolve({ content, toolCalls, sources, usage, error: errorMsg, retryable, errorCode, errorSuggestion })
   }
 
-  const handleDone = (result: { reasoning?: string; usage?: unknown }) => {
+  const resolveWithSuccess = (result: { reasoning?: string; usage?: unknown }) => {
     if (result?.usage) {
       usage = result.usage as TokenUsage
     }
@@ -642,10 +642,10 @@ export function createStreamProcessor(
         } as Partial<import('../providerTypes').AssistantMessage>)
       }
     }
-    flushToolPreviewUpdates()
+    drainToolPreviewQueue()
 
     const resolveWhenReady = () => {
-      finalizeReasoning()
+      completeReasoningPhase()
       doResolve({ content, reasoning, toolCalls, sources, usage, error })
     }
 
@@ -667,9 +667,9 @@ export function createStreamProcessor(
   }
 
   // Subscribe only to this request's IPC channel.
-  const unsubStream = api.llm.onStream(requestId, handleStream)
-  const unsubError = api.llm.onError(requestId, handleError)
-  const unsubDone = api.llm.onDone(requestId, handleDone)
+  const unsubStream = api.llm.onStream(requestId, processStreamEvent)
+  const unsubError = api.llm.onError(requestId, resolveWithError)
+  const unsubDone = api.llm.onDone(requestId, resolveWithSuccess)
 
   cleanups.push(unsubStream, unsubError, unsubDone)
   activeListenerCount += 3

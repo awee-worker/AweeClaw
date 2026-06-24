@@ -1,31 +1,31 @@
-const TOOL_LEAK_TAGS = [
+const LEAK_MARKUP_TAGS = [
   'tool_call',
   'tool_calls',
   'function_call',
   'function_calls',
 ] as const
 
-interface ToolLeakTagSpec {
+interface LeakTagPattern {
   name: string
   openPattern: RegExp
   closePattern: RegExp
 }
 
-const TOOL_LEAK_SPECS: ToolLeakTagSpec[] = TOOL_LEAK_TAGS.map(name => ({
+const LEAK_TAG_PATTERNS: LeakTagPattern[] = LEAK_MARKUP_TAGS.map(name => ({
   name,
   openPattern: new RegExp(`<${name}(?:\\s[^>]*)?>`, 'i'),
   closePattern: new RegExp(`</${name}>`, 'i'),
 }))
 
-export interface ToolCallLeakFilterResult {
+export interface ToolLeakSanitizationResult {
   visibleText: string
   buffer: string
 }
 
-function findNextOpenTagIndex(text: string, startIndex: number): number {
+function locateNextOpeningTag(text: string, startIndex: number): number {
   let nextIndex = -1
 
-  for (const spec of TOOL_LEAK_SPECS) {
+  for (const spec of LEAK_TAG_PATTERNS) {
     const slice = text.slice(startIndex)
     const match = spec.openPattern.exec(slice)
     if (!match || typeof match.index !== 'number') continue
@@ -39,10 +39,10 @@ function findNextOpenTagIndex(text: string, startIndex: number): number {
   return nextIndex
 }
 
-function resolveOpenTag(text: string, startIndex: number): { spec: ToolLeakTagSpec; openTagEnd: number } | null {
+function matchOpeningTag(text: string, startIndex: number): { spec: LeakTagPattern; openTagEnd: number } | null {
   const slice = text.slice(startIndex)
 
-  for (const spec of TOOL_LEAK_SPECS) {
+  for (const spec of LEAK_TAG_PATTERNS) {
     const match = spec.openPattern.exec(slice)
     if (match && match.index === 0) {
       return {
@@ -55,13 +55,13 @@ function resolveOpenTag(text: string, startIndex: number): { spec: ToolLeakTagSp
   return null
 }
 
-export function filterToolCallLeakChunk(chunk: string, buffered = ''): ToolCallLeakFilterResult {
+export function filterToolCallLeakChunk(chunk: string, buffered = ''): ToolLeakSanitizationResult {
   const combined = buffered + chunk
   let visibleText = ''
   let cursor = 0
 
   while (cursor < combined.length) {
-    const nextOpenIndex = findNextOpenTagIndex(combined, cursor)
+    const nextOpenIndex = locateNextOpeningTag(combined, cursor)
     if (nextOpenIndex === -1) {
       visibleText += combined.slice(cursor)
       return { visibleText, buffer: '' }
@@ -69,7 +69,7 @@ export function filterToolCallLeakChunk(chunk: string, buffered = ''): ToolCallL
 
     visibleText += combined.slice(cursor, nextOpenIndex)
 
-    const openTag = resolveOpenTag(combined, nextOpenIndex)
+    const openTag = matchOpeningTag(combined, nextOpenIndex)
     if (!openTag) {
       visibleText += combined.slice(nextOpenIndex, nextOpenIndex + 1)
       cursor = nextOpenIndex + 1
@@ -93,7 +93,7 @@ export function stripToolCallLeaks(text: string): string {
 
   let sanitized = text
 
-  for (const spec of TOOL_LEAK_SPECS) {
+  for (const spec of LEAK_TAG_PATTERNS) {
     sanitized = sanitized
       .replace(new RegExp(`<${spec.name}(?:\\s[^>]*)?>[\\s\\S]*?</${spec.name}>`, 'gi'), '')
       .replace(new RegExp(`<${spec.name}(?:\\s[^>]*)?>[\\s\\S]*$`, 'gi'), '')

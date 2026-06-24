@@ -1,4 +1,4 @@
-const STREAMABLE_TOOL_ARG_KEYS = new Set([
+const STREAMABLE_ARGUMENT_KEYS = new Set([
   'path',
   'command',
   'query',
@@ -23,7 +23,7 @@ const STREAMABLE_TOOL_ARG_KEYS = new Set([
   'source',
 ])
 
-const PARTIAL_ARGS_SCAN_LIMIT = 16384
+const PARTIAL_SCAN_WINDOW_LIMIT = 16384
 
 function decodeJsonStringFragment(value: string): string {
   return value
@@ -289,8 +289,8 @@ function tryRepairTruncatedJson(argsString: string): Record<string, unknown> | n
 export function parsePartialJsonArgs(argsString: string): Record<string, unknown> | null {
   if (!argsString) return null
 
-  const scanTarget = argsString.length > PARTIAL_ARGS_SCAN_LIMIT
-    ? argsString.slice(0, PARTIAL_ARGS_SCAN_LIMIT)
+  const scanTarget = argsString.length > PARTIAL_SCAN_WINDOW_LIMIT
+    ? argsString.slice(0, PARTIAL_SCAN_WINDOW_LIMIT)
     : argsString
 
   try {
@@ -300,7 +300,7 @@ export function parsePartialJsonArgs(argsString: string): Record<string, unknown
     const parsedRecord = parsed as Record<string, unknown>
     const filtered = Object.fromEntries(
       Object.entries(parsedRecord).filter(([key, value]) =>
-        STREAMABLE_TOOL_ARG_KEYS.has(key) && typeof value !== 'object'
+        STREAMABLE_ARGUMENT_KEYS.has(key) && typeof value !== 'object'
       )
     )
 
@@ -315,7 +315,7 @@ export function parsePartialJsonArgs(argsString: string): Record<string, unknown
     const stringFieldRegex = /"(\w+)":\s*"((?:[^"\\]|\\.)*)"/g
     let match
     while ((match = stringFieldRegex.exec(scanTarget)) !== null) {
-      if (!STREAMABLE_TOOL_ARG_KEYS.has(match[1])) continue
+      if (!STREAMABLE_ARGUMENT_KEYS.has(match[1])) continue
       try {
         result[match[1]] = JSON.parse(`"${match[2]}"`)
       } catch {
@@ -323,7 +323,7 @@ export function parsePartialJsonArgs(argsString: string): Record<string, unknown
       }
     }
 
-    for (const key of STREAMABLE_TOOL_ARG_KEYS) {
+    for (const key of STREAMABLE_ARGUMENT_KEYS) {
       if (Object.prototype.hasOwnProperty.call(result, key)) continue
 
       const partialValue = extractPartialStringField(scanTarget, key)
@@ -334,13 +334,13 @@ export function parsePartialJsonArgs(argsString: string): Record<string, unknown
 
     const boolFieldRegex = /"(\w+)":\s*(true|false)/g
     while ((match = boolFieldRegex.exec(scanTarget)) !== null) {
-      if (!STREAMABLE_TOOL_ARG_KEYS.has(match[1])) continue
+      if (!STREAMABLE_ARGUMENT_KEYS.has(match[1])) continue
       result[match[1]] = match[2] === 'true'
     }
 
     const numFieldRegex = /"(\w+)":\s*(-?\d+(?:\.\d+)?)/g
     while ((match = numFieldRegex.exec(scanTarget)) !== null) {
-      if (!STREAMABLE_TOOL_ARG_KEYS.has(match[1])) continue
+      if (!STREAMABLE_ARGUMENT_KEYS.has(match[1])) continue
       result[match[1]] = parseFloat(match[2])
     }
 

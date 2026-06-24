@@ -21,7 +21,7 @@ export function isFileWriteToolResult(toolName: string, meta: unknown): meta is 
   return typeof (meta as { filePath?: unknown }).filePath === 'string'
 }
 
-export function getRelativeChangePath(
+export function resolveRelativeChangePath(
   filePath: string,
   workspacePath: string | null,
   explicitRelativePath?: unknown
@@ -50,7 +50,7 @@ export function buildFileChangeDescriptor(input: {
 }): FileChangeDescriptor {
   return {
     filePath: input.filePath,
-    relativePath: getRelativeChangePath(input.filePath, input.workspacePath ?? null, input.relativePath),
+    relativePath: resolveRelativeChangePath(input.filePath, input.workspacePath ?? null, input.relativePath),
     oldContent: input.oldContent,
     newContent: input.newContent,
     changeType: input.changeType,

@@ -7,8 +7,8 @@
 
 type FlushCallback = (messageId: string, content: string, threadId?: string) => void
 
-class StreamingBuffer {
-    private buffer: Map<string, { content: string; threadId?: string }> = new Map()
+class StreamThrottleBuffer {
+    private pendingChunks: Map<string, { content: string; threadId?: string }> = new Map()
     private timerId: ReturnType<typeof setTimeout> | null = null
     private flushCallback: FlushCallback | null = null
     private readonly flushIntervalMs = 80
@@ -20,15 +20,15 @@ class StreamingBuffer {
     append(messageId: string, content: string, threadId?: string): void {
         if (!content) return
 
-        const existing = this.buffer.get(messageId)
+        const existing = this.pendingChunks.get(messageId)
 
         if (existing) {
-            this.buffer.set(messageId, {
+            this.pendingChunks.set(messageId, {
                 content: existing.content + content,
                 threadId: threadId || existing.threadId
             })
         } else {
-            this.buffer.set(messageId, { content, threadId })
+            this.pendingChunks.set(messageId, { content, threadId })
         }
 
         // 优化：第一次数据立即刷新，后续数据节流
@@ -47,10 +47,10 @@ class StreamingBuffer {
     }
 
     private flush(): void {
-        if (!this.flushCallback || this.buffer.size === 0) return
+        if (!this.flushCallback || this.pendingChunks.size === 0) return
 
-        const updates = new Map(this.buffer)
-        this.buffer.clear()
+        const updates = new Map(this.pendingChunks)
+        this.pendingChunks.clear()
 
         updates.forEach(({ content, threadId }, messageId) => {
             if (content) {
@@ -72,12 +72,12 @@ class StreamingBuffer {
             clearTimeout(this.timerId)
             this.timerId = null
         }
-        this.buffer.clear()
+        this.pendingChunks.clear()
     }
 }
 
 // 单例实例
-export const streamingBuffer = new StreamingBuffer()
+export const streamingBuffer = new StreamThrottleBuffer()
 
 // 导出刷新函数，供外部在关键时刻调用
 export function flushStreamingBuffer(): void {

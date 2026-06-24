@@ -9,7 +9,7 @@ export {
   BackpressureEventBusInstance,
 } from './BackpressureEventBus'
 export { createStreamProcessor, type StreamProcessor } from './streamProcessor'
-export { executeTools, approvalService } from './toolOrchestrator'
+export { orchestrateToolBatch, executeTools, approvalService } from './toolOrchestrator'
 export {
   agentRuntime,
   useAgentRuntime,

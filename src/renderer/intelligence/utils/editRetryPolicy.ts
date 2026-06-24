@@ -114,7 +114,7 @@ export function findSimilarContent(
       const line = contentLines[i].trim()
       if (line.length === 0) continue
 
-      const similarity = calculateLineSimilarity(searchLine, line)
+      const similarity = computeLineSimilarity(searchLine, line)
       if (similarity > bestMatch.similarity) {
         bestMatch = { similarity, line: contentLines[i], lineNumber: i + 1 }
       }
@@ -136,7 +136,7 @@ export function findSimilarContent(
 
   for (let i = 0; i <= contentLines.length - windowSize; i++) {
     const block = contentLines.slice(i, i + windowSize).join('\n')
-    const similarity = calculateBlockSimilarity(normalizedOld, block)
+    const similarity = computeBlockSimilarity(normalizedOld, block)
 
     if (similarity > bestMatch.similarity) {
       bestMatch = { similarity, text: block, lineNumber: i + 1 }
@@ -158,7 +158,7 @@ export function findSimilarContent(
 /**
  * 计算两行的相似度（基于 Levenshtein 距离）
  */
-function calculateLineSimilarity(a: string, b: string): number {
+function computeLineSimilarity(a: string, b: string): number {
   if (a === b) return 1
   if (a.length === 0 || b.length === 0) return 0
 
@@ -170,7 +170,7 @@ function calculateLineSimilarity(a: string, b: string): number {
 /**
  * 计算两个代码块的相似度
  */
-function calculateBlockSimilarity(a: string, b: string): number {
+function computeBlockSimilarity(a: string, b: string): number {
   const aLines = a.split('\n').map(l => l.trim()).filter(l => l.length > 0)
   const bLines = b.split('\n').map(l => l.trim()).filter(l => l.length > 0)
 
@@ -178,7 +178,7 @@ function calculateBlockSimilarity(a: string, b: string): number {
 
   let matchingLines = 0
   for (let i = 0; i < Math.min(aLines.length, bLines.length); i++) {
-    if (calculateLineSimilarity(aLines[i], bLines[i]) > 0.8) {
+    if (computeLineSimilarity(aLines[i], bLines[i]) > 0.8) {
       matchingLines++
     }
   }
@@ -379,6 +379,6 @@ export function generateFixSuggestion(
 // ============================================
 
 export {
-  calculateLineSimilarity,
-  calculateBlockSimilarity,
+  computeLineSimilarity as calculateLineSimilarity,
+  computeBlockSimilarity as calculateBlockSimilarity,
 }

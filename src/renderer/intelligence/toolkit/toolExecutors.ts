@@ -16,7 +16,7 @@ import {
     calculateLineChanges,
 } from '@utils/searchReplace'
 import { smartReplace, normalizeLineEndings, checkLineReplaceWarnings } from '@utils/smartReplace'
-import { getAgentConfig } from '@intelligence/utils/intelligenceConfig'
+import { resolveAgentConfig } from '@intelligence/utils/intelligenceConfig'
 import { BRAND } from '@shared/brand'
 import { fileCacheService } from '../runtime/fileCacheManager'
 import { getReadStrategy, buildReadTruncationMessage } from './fileReadPolicies'
@@ -39,7 +39,7 @@ import pLimit from 'p-limit'
 import { skillService } from '../runtime/skillRepository'
 import type { Language } from '@renderer/i18n'
 import type { ReplaceErrorCode } from '@utils/smartReplace'
-import { getAgentLanguage, pickLocalizedText, translateAgentText } from '@intelligence/utils/intelligenceTextUtils'
+import { resolveAgentLanguage, pickLocalizedText, translateAgentText } from '@intelligence/utils/intelligenceTextUtils'
 import { guardWriteFile } from './fileWritePolicy'
 
 // ===== 辅助函数 =====
@@ -49,7 +49,7 @@ function getLocalizedText(language: Language, zh: string, en: string): string {
 }
 
 function getCurrentLanguage(): Language {
-    return getAgentLanguage() as Language
+    return resolveAgentLanguage() as Language
 }
 
 function translate(key: string, params?: Record<string, string | number>): string {
@@ -227,7 +227,7 @@ async function buildDirTree(dirPath: string, maxDepth: number, currentDepth = 0)
     const items = await api.file.readDir(dirPath)
     if (!items) return []
 
-    const ignoreDirs = getAgentConfig().ignoredDirectories
+    const ignoreDirs = resolveAgentConfig().ignoredDirectories
 
     const nodes: DirTreeNode[] = []
     for (const item of items) {
@@ -782,7 +782,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         const hasExplicitLineRange = resolution.mode === 'single' && (
             typeof resolution.args.start_line === 'number' || typeof resolution.args.end_line === 'number'
         )
-        const config = getAgentConfig()
+        const config = resolveAgentConfig()
         const strategy = getReadStrategy({
             path,
             baseMaxChars: config.maxSingleFileChars,
@@ -1457,7 +1457,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         // cwd 解析：若 AI 传了 cwd 参数，解析为绝对路径；否则用工作区根目录
         const resolvedCwd = args.cwd ? resolvePath(args.cwd, ctx.workspacePath, true) : null
         const isBackground = args.is_background as boolean
-        const config = getAgentConfig()
+        const config = resolveAgentConfig()
         const timeout = args.timeout
             ? (args.timeout as number) * 1000
             : config.toolTimeoutMs
