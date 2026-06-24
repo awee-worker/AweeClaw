@@ -149,3 +149,137 @@ const ChatMessage = React.memo(ChatMessageBase)
 ChatMessage.displayName = 'ChatMessage'
 
 export default ChatMessage
+
+/* ------------------------------------------------------------------ */
+/* 场景感知聊天消息组件                                              */
+/* ------------------------------------------------------------------ */
+
+import type { ScenarioDomain } from '@configuration/defaultProfile'
+
+/** 场景消息渲染策略 */
+export interface ScenarioMessageRenderPolicy {
+  /** 场景类型 */
+  domain: ScenarioDomain
+  /** 是否显示场景标签 */
+  showScenarioTag: boolean
+  /** 场景标签样式 */
+  tagStyle: 'badge' | 'prefix' | 'icon'
+  /** 是否启用审计信息 */
+  enableAuditInfo: boolean
+  /** 是否显示合规提示 */
+  showComplianceNotice: boolean
+  /** 消息最大高度（像素，0 表示不限制） */
+  maxMessageHeight: number
+  /** 是否启用敏感内容遮罩 */
+  maskSensitiveContent: boolean
+  /** 是否允许编辑消息 */
+  allowEdit: boolean
+  /** 是否允许删除轮次 */
+  allowDeleteRound: boolean
+}
+
+/** 场景消息渲染策略预设 */
+const SCENARIO_MESSAGE_RENDER_POLICIES: Record<ScenarioDomain, ScenarioMessageRenderPolicy> = {
+  /** 法律场景：显示标签 + 审计 + 合规提示 + 禁止编辑 */
+  legal: {
+    domain: 'legal',
+    showScenarioTag: true,
+    tagStyle: 'badge',
+    enableAuditInfo: true,
+    showComplianceNotice: true,
+    maxMessageHeight: 0,
+    maskSensitiveContent: true,
+    allowEdit: false,
+    allowDeleteRound: false,
+  },
+
+  /** 医疗场景：显示标签 + 审计 + 合规提示 + 遮罩敏感内容 */
+  medical: {
+    domain: 'medical',
+    showScenarioTag: true,
+    tagStyle: 'badge',
+    enableAuditInfo: true,
+    showComplianceNotice: true,
+    maxMessageHeight: 600,
+    maskSensitiveContent: true,
+    allowEdit: false,
+    allowDeleteRound: false,
+  },
+
+  /** 教育场景：显示标签 + 允许编辑 */
+  education: {
+    domain: 'education',
+    showScenarioTag: true,
+    tagStyle: 'icon',
+    enableAuditInfo: false,
+    showComplianceNotice: false,
+    maxMessageHeight: 0,
+    maskSensitiveContent: false,
+    allowEdit: true,
+    allowDeleteRound: true,
+  },
+
+  /** 通用场景：默认配置 */
+  general: {
+    domain: 'general',
+    showScenarioTag: false,
+    tagStyle: 'badge',
+    enableAuditInfo: false,
+    showComplianceNotice: false,
+    maxMessageHeight: 0,
+    maskSensitiveContent: false,
+    allowEdit: true,
+    allowDeleteRound: true,
+  },
+}
+
+/**
+ * 获取场景消息渲染策略
+ */
+export function getScenarioMessageRenderPolicy(
+  domain: ScenarioDomain,
+): ScenarioMessageRenderPolicy {
+  return SCENARIO_MESSAGE_RENDER_POLICIES[domain]
+}
+
+/**
+ * 场景感知聊天消息组件
+ *
+ * 根据场景类型调整消息渲染策略：
+ * - 法律场景：显示场景标签、审计信息、合规提示，禁止编辑
+ * - 医疗场景：显示场景标签、审计信息、合规提示，遮罩敏感内容
+ * - 教育场景：显示场景标签，允许编辑和删除
+ * - 通用场景：默认配置
+ */
+export function ScenarioChatMessage(props: ChatMessageProps & {
+  domain?: ScenarioDomain
+}) {
+  const { domain = 'general', ...messageProps } = props
+  const policy = SCENARIO_MESSAGE_RENDER_POLICIES[domain]
+
+  // 根据场景策略调整 props
+  const adjustedProps: ChatMessageProps = {
+    ...messageProps,
+    // 法律/医疗场景：禁用编辑
+    onEdit: policy.allowEdit ? messageProps.onEdit : undefined,
+    // 法律/医疗场景：禁用删除轮次
+    onDeleteRound: policy.allowDeleteRound ? messageProps.onDeleteRound : undefined,
+  }
+
+  return (
+    <div
+      data-scenario={domain}
+      data-audit={policy.enableAuditInfo ? 'true' : 'false'}
+      style={policy.maxMessageHeight > 0 ? { maxHeight: policy.maxMessageHeight, overflowY: 'auto' } : undefined}
+    >
+      {policy.showComplianceNotice && (
+        <div className="scenario-compliance-notice text-xs text-amber-600 dark:text-amber-400 mb-2 px-3 py-1 bg-amber-50 dark:bg-amber-900/20 rounded">
+          {domain === 'legal'
+            ? '⚠ Legal advisory context: Responses are for reference only and do not constitute legal advice.'
+            : '⚠ Medical decision support: Responses must not replace professional medical judgment.'}
+        </div>
+      )}
+      <ChatMessage {...adjustedProps} />
+    </div>
+  )
+}

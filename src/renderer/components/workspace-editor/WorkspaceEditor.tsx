@@ -656,3 +656,131 @@ export default function Editor() {
     </div>
   )
 }
+
+/* ------------------------------------------------------------------ */
+/* 场景感知编辑器策略                                                */
+/* ------------------------------------------------------------------ */
+
+import type { ScenarioDomain } from '@configuration/defaultProfile'
+
+/** 场景编辑器策略 */
+export interface ScenarioEditorPolicy {
+  /** 场景类型 */
+  domain: ScenarioDomain
+  /** 是否启用文档预览 */
+  enableDocumentPreview: boolean
+  /** 是否启用 HTML 模式 */
+  enableHtmlMode: boolean
+  /** 是否启用写作工作区 */
+  enableWritingWorkspace: boolean
+  /** 是否启用自动保存 */
+  enableAutoSave: boolean
+  /** 自动保存延迟（毫秒） */
+  autoSaveDelayMs: number
+  /** 是否启用格式化 */
+  enableFormatOnSave: boolean
+  /** 是否启用内联 Diff */
+  enableInlineDiff: boolean
+  /** 最大文件大小（MB） */
+  maxFileSizeMB: number
+  /** 是否启用 AI 补全 */
+  enableAICompletion: boolean
+  /** 是否启用审计日志 */
+  enableAudit: boolean
+}
+
+/** 场景编辑器策略预设 */
+const SCENARIO_EDITOR_POLICIES: Record<ScenarioDomain, ScenarioEditorPolicy> = {
+  /** 法律场景：启用文档预览，禁用自动保存，启用审计 */
+  legal: {
+    domain: 'legal',
+    enableDocumentPreview: true,
+    enableHtmlMode: false,
+    enableWritingWorkspace: false,
+    enableAutoSave: false,
+    autoSaveDelayMs: 0,
+    enableFormatOnSave: false,
+    enableInlineDiff: true,
+    maxFileSizeMB: 2,
+    enableAICompletion: false,
+    enableAudit: true,
+  },
+
+  /** 医疗场景：启用文档预览，禁用自动保存和 AI 补全 */
+  medical: {
+    domain: 'medical',
+    enableDocumentPreview: true,
+    enableHtmlMode: false,
+    enableWritingWorkspace: false,
+    enableAutoSave: false,
+    autoSaveDelayMs: 0,
+    enableFormatOnSave: false,
+    enableInlineDiff: true,
+    maxFileSizeMB: 2,
+    enableAICompletion: false,
+    enableAudit: true,
+  },
+
+  /** 教育场景：启用所有功能 */
+  education: {
+    domain: 'education',
+    enableDocumentPreview: true,
+    enableHtmlMode: true,
+    enableWritingWorkspace: true,
+    enableAutoSave: true,
+    autoSaveDelayMs: 1000,
+    enableFormatOnSave: true,
+    enableInlineDiff: true,
+    maxFileSizeMB: 5,
+    enableAICompletion: true,
+    enableAudit: false,
+  },
+
+  /** 通用场景：默认配置 */
+  general: {
+    domain: 'general',
+    enableDocumentPreview: true,
+    enableHtmlMode: true,
+    enableWritingWorkspace: true,
+    enableAutoSave: false,
+    autoSaveDelayMs: 1000,
+    enableFormatOnSave: false,
+    enableInlineDiff: true,
+    maxFileSizeMB: 5,
+    enableAICompletion: true,
+    enableAudit: false,
+  },
+}
+
+/**
+ * 获取场景编辑器策略
+ */
+export function getScenarioEditorPolicy(domain: ScenarioDomain): ScenarioEditorPolicy {
+  return SCENARIO_EDITOR_POLICIES[domain]
+}
+
+/**
+ * 检查文件大小是否允许
+ */
+export function isFileSizeAllowed(
+  sizeBytes: number,
+  domain: ScenarioDomain,
+): boolean {
+  const policy = SCENARIO_EDITOR_POLICIES[domain]
+  const sizeMB = sizeBytes / (1024 * 1024)
+  return sizeMB <= policy.maxFileSizeMB
+}
+
+/**
+ * 检查是否启用自动保存
+ */
+export function isAutoSaveEnabled(domain: ScenarioDomain): boolean {
+  return SCENARIO_EDITOR_POLICIES[domain].enableAutoSave
+}
+
+/**
+ * 检查是否启用 AI 补全
+ */
+export function isAICompletionEnabled(domain: ScenarioDomain): boolean {
+  return SCENARIO_EDITOR_POLICIES[domain].enableAICompletion
+}

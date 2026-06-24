@@ -562,3 +562,220 @@ export class StreamingService {
     return streamingResult
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* 场景感知流式处理器                                                 */
+/* ------------------------------------------------------------------ */
+
+import type { ScenarioDomain } from '@configuration/defaultProfile'
+
+/** 场景流式处理策略 */
+export interface ScenarioStreamPolicy {
+  /** 场景类型 */
+  domain: ScenarioDomain
+  /** 空闲超时（毫秒） */
+  idleTimeoutMs: number
+  /** 总超时（毫秒） */
+  totalTimeoutMs: number
+  /** 是否缓冲完整响应后再发送（合规要求） */
+  bufferEntireResponse: boolean
+  /** 批量发送间隔（毫秒） */
+  batchIntervalMs: number
+  /** 是否记录流式审计日志 */
+  enableAudit: boolean
+  /** 是否允许中断 */
+  allowAbort: boolean
+  /** 最大 token 数（0 表示不限制） */
+  maxTokens: number
+}
+
+/** 场景流式策略预设 */
+const SCENARIO_STREAM_POLICIES: Record<ScenarioDomain, ScenarioStreamPolicy> = {
+  /** 法律场景：长超时 + 审计 + 允许中断 */
+  legal: {
+    domain: 'legal',
+    idleTimeoutMs: 30_000,
+    totalTimeoutMs: 180_000,
+    bufferEntireResponse: false,
+    batchIntervalMs: 100,
+    enableAudit: true,
+    allowAbort: true,
+    maxTokens: 16384,
+  },
+
+  /** 医疗场景：长超时 + 缓冲完整响应 + 审计 */
+  medical: {
+    domain: 'medical',
+    idleTimeoutMs: 30_000,
+    totalTimeoutMs: 180_000,
+    bufferEntireResponse: true,
+    batchIntervalMs: 200,
+    enableAudit: true,
+    allowAbort: false,
+    maxTokens: 12288,
+  },
+
+  /** 教育场景：标准超时 + 流式 */
+  education: {
+    domain: 'education',
+    idleTimeoutMs: 15_000,
+    totalTimeoutMs: 120_000,
+    bufferEntireResponse: false,
+    batchIntervalMs: 50,
+    enableAudit: false,
+    allowAbort: true,
+    maxTokens: 8192,
+  },
+
+  /** 通用场景：默认配置 */
+  general: {
+    domain: 'general',
+    idleTimeoutMs: 15_000,
+    totalTimeoutMs: 120_000,
+    bufferEntireResponse: false,
+    batchIntervalMs: 50,
+    enableAudit: false,
+    allowAbort: true,
+    maxTokens: 0,
+  },
+}
+
+/**
+ * 场景感知流式处理器
+ *
+ * 在标准 StreamingService 基础上，增加场景策略：
+ * - 场景感知的超时控制
+ * - 响应缓冲策略（医疗场景要求完整响应）
+ * - 批量发送优化
+ * - 审计日志记录
+ * - 中断权限控制
+ */
+export class ScenarioStreamProcessor {
+  private readonly baseService: StreamingService
+  private currentDomain: ScenarioDomain = 'general'
+
+  constructor(baseService: StreamingService) {
+    this.baseService = baseService
+  }
+
+  /**
+   * 设置当前场景
+   */
+  setScenario(domain: ScenarioDomain): void {
+    this.currentDomain = domain
+  }
+
+  /**
+   * 获取当前场景策略
+   */
+  getPolicy(): ScenarioStreamPolicy {
+    return SCENARIO_STREAM_POLICIES[this.currentDomain]
+  }
+
+  /**
+   * 场景感知的流式生成
+   */
+  async generate(
+    params: StreamingParams,
+    onProgress?: (chunk: string) => void,
+  ): Promise<StreamingResult> {
+    const policy = SCENARIO_STREAM_POLICIES[this.currentDomain]
+
+    // 审计日志
+    if (policy.enableAudit) {
+      this.logAudit('stream_start', params.requestId, {
+        domain: policy.domain,
+        messageCount: params.messages.length,
+        hasTools: !!params.tools?.length,
+      })
+    }
+
+    // 场景感知的参数调整
+    const adjustedParams = this.adjustParams(params, policy)
+
+    // 中断权限检查
+    if (!policy.allowAbort && adjustedParams.abortSignal) {
+      delete adjustedParams.abortSignal
+    }
+
+    try {
+      const result = await this.baseService.generate(adjustedParams)
+
+      if (policy.enableAudit) {
+        this.logAudit('stream_success', params.requestId, {
+          domain: policy.domain,
+          contentLength: result.content.length,
+          hasReasoning: !!result.reasoning,
+        })
+      }
+
+      // 缓冲模式：完整返回后才通知
+      if (policy.bufferEntireResponse && onProgress) {
+        onProgress(result.content)
+      }
+
+      return result
+    } catch (error) {
+      if (policy.enableAudit) {
+        this.logAudit('stream_error', params.requestId, {
+          domain: policy.domain,
+          error: String(error),
+        })
+      }
+      throw error
+    }
+  }
+
+  /**
+   * 调整参数以符合场景策略
+   */
+  private adjustParams(
+    params: StreamingParams,
+    policy: ScenarioStreamPolicy,
+  ): StreamingParams {
+    return {
+      ...params,
+      config: {
+        ...params.config,
+        maxTokens:
+          policy.maxTokens > 0
+            ? Math.min(
+                policy.maxTokens,
+                params.config.maxTokens ?? policy.maxTokens,
+              )
+            : params.config.maxTokens,
+        timeout: Math.max(
+          params.config.timeout ?? policy.totalTimeoutMs,
+          policy.totalTimeoutMs,
+        ),
+      },
+    }
+  }
+
+  /**
+   * 审计日志
+   */
+  private logAudit(
+    action: string,
+    requestId: string,
+    details: Record<string, unknown>,
+  ): void {
+    logger.security.info(`[STREAM-AUDIT] [${action}] [${requestId}]`, { details })
+  }
+
+  /**
+   * 获取基础服务
+   */
+  getBaseService(): StreamingService {
+    return this.baseService
+  }
+}
+
+/**
+ * 创建场景感知流式处理器
+ */
+export function createScenarioStreamProcessor(
+  baseService: StreamingService,
+): ScenarioStreamProcessor {
+  return new ScenarioStreamProcessor(baseService)
+}

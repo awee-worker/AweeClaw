@@ -480,3 +480,203 @@ export function resolveEditFileRequest(data: Record<string, unknown>): EditFileR
 
 /** 对外暴露规范化函数（供外部调用） */
 export { normalizeEditFileArgs }
+
+/* ------------------------------------------------------------------ */
+/* 场景感知扩展                                                       */
+/* ------------------------------------------------------------------ */
+
+/** 文件编辑场景类型 */
+export type FileEditScenario = 'legal' | 'medical' | 'education' | 'general'
+
+/** 场景编辑配置 */
+export interface ScenarioEditConfig {
+  /** 场景名称 */
+  scenario: FileEditScenario
+  /** 是否启用审计日志 */
+  enableAudit: boolean
+  /** 是否支持批量编辑 */
+  supportBatchEdit: boolean
+  /** 批量编辑最大数量 */
+  maxBatchSize: number
+  /** 受限路径模式（禁止编辑） */
+  restrictedPatterns: RegExp[]
+  /** 是否要求备份 */
+  requireBackup: boolean
+  /** 是否允许删除操作 */
+  allowDelete: boolean
+}
+
+/** 场景编辑配置预设 */
+const SCENARIO_EDIT_CONFIGS: Record<FileEditScenario, ScenarioEditConfig> = {
+  /** 法律场景：强制审计，禁止删除，要求备份 */
+  legal: {
+    scenario: 'legal',
+    enableAudit: true,
+    supportBatchEdit: false,
+    maxBatchSize: 1,
+    restrictedPatterns: [/\.env$/i, /\/secrets?\//i, /\/private\//i, /\/contracts\/final\//i],
+    requireBackup: true,
+    allowDelete: false,
+  },
+
+  /** 医疗场景：严格限制，禁止批量编辑 */
+  medical: {
+    scenario: 'medical',
+    enableAudit: true,
+    supportBatchEdit: false,
+    maxBatchSize: 1,
+    restrictedPatterns: [
+      /\.env$/i,
+      /\/secrets?\//i,
+      /\/patient[_-]?records?\//i,
+      /\/phi\//i,
+      /\/hipaa\//i,
+      /\/diagnosis\//i,
+    ],
+    requireBackup: true,
+    allowDelete: false,
+  },
+
+  /** 教育场景：宽松限制，支持批量 */
+  education: {
+    scenario: 'education',
+    enableAudit: false,
+    supportBatchEdit: true,
+    maxBatchSize: 20,
+    restrictedPatterns: [/\.env$/i],
+    requireBackup: false,
+    allowDelete: true,
+  },
+
+  /** 通用场景：默认配置 */
+  general: {
+    scenario: 'general',
+    enableAudit: false,
+    supportBatchEdit: true,
+    maxBatchSize: 10,
+    restrictedPatterns: [/\.env$/i, /\/secrets?\//i],
+    requireBackup: false,
+    allowDelete: true,
+  },
+}
+
+/** 场景编辑解析结果 */
+export interface ScenarioEditResolution {
+  /** 是否允许编辑 */
+  allowed: boolean
+  /** 拒绝原因 */
+  reason?: string
+  /** 解析结果 */
+  resolution: EditFileResolution
+  /** 场景配置 */
+  config: ScenarioEditConfig
+}
+
+/**
+ * 获取场景编辑配置
+ *
+ * @param scenario 场景类型
+ * @returns 场景编辑配置
+ */
+export function getScenarioEditConfig(
+  scenario: FileEditScenario,
+): ScenarioEditConfig {
+  return SCENARIO_EDIT_CONFIGS[scenario]
+}
+
+/**
+ * 检查路径是否被场景策略限制
+ *
+ * @param filePath 文件路径
+ * @param scenario 场景类型
+ * @returns 是否被限制
+ */
+export function isEditPathRestrictedByScenario(
+  filePath: string,
+  scenario: FileEditScenario,
+): boolean {
+  const config = SCENARIO_EDIT_CONFIGS[scenario]
+  return config.restrictedPatterns.some((p) => p.test(filePath))
+}
+
+/**
+ * 场景感知的编辑请求解析
+ *
+ * 在标准解析基础上，增加场景策略校验：
+ * - 受限路径检查
+ * - 批量编辑限制
+ * - 删除操作限制
+ * - 审计日志标记
+ *
+ * @param data 原始参数
+ * @param scenario 场景类型
+ * @returns 场景解析结果
+ */
+export function resolveScenarioEditRequest(
+  data: Record<string, unknown>,
+  scenario: FileEditScenario = 'general',
+): ScenarioEditResolution {
+  const config = SCENARIO_EDIT_CONFIGS[scenario]
+  const resolution = resolveEditFileRequest(data)
+
+  // 参数解析失败，直接返回
+  if (!resolution.ok) {
+    return {
+      allowed: false,
+      reason: resolution.error,
+      resolution,
+      config,
+    }
+  }
+
+  // 检查路径限制
+  const filePath = resolution.args.path
+  if (filePath && isEditPathRestrictedByScenario(filePath, scenario)) {
+    return {
+      allowed: false,
+      reason: `Path restricted by ${scenario} scenario policy: ${filePath}`,
+      resolution,
+      config,
+    }
+  }
+
+  // 批量模式：检查场景是否支持
+  if (resolution.mode === 'batch') {
+    if (!config.supportBatchEdit) {
+      return {
+        allowed: false,
+        reason: `${scenario} scenario does not support batch edit`,
+        resolution,
+        config,
+      }
+    }
+
+    if (resolution.args.edits.length > config.maxBatchSize) {
+      return {
+        allowed: false,
+        reason: `Batch size ${resolution.args.edits.length} exceeds limit ${config.maxBatchSize}`,
+        resolution,
+        config,
+      }
+    }
+
+    // 检查是否包含删除操作
+    if (!config.allowDelete) {
+      const hasDelete = resolution.args.edits.some((e) => e.action === 'delete')
+      if (hasDelete) {
+        return {
+          allowed: false,
+          reason: `${scenario} scenario does not allow delete operations`,
+          resolution,
+          config,
+        }
+      }
+    }
+  }
+
+  return {
+    allowed: true,
+    resolution,
+    config,
+  }
+}

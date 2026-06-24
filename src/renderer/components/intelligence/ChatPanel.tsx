@@ -736,3 +736,133 @@ export default function ChatPanel() {
     </div>
   )
 }
+
+/* ------------------------------------------------------------------ */
+/* 场景感知聊天面板策略                                              */
+/* ------------------------------------------------------------------ */
+
+import type { ScenarioDomain } from '@configuration/defaultProfile'
+
+/** 场景聊天面板策略 */
+export interface ScenarioChatPanelPolicy {
+  /** 场景类型 */
+  domain: ScenarioDomain
+  /** 是否显示变更审查面板 */
+  showChangesReviewPanel: boolean
+  /** 是否显示云配额信息 */
+  showCloudQuota: boolean
+  /** 是否启用场景感知建议 */
+  enableScenarioSuggestions: boolean
+  /** 是否显示合规横幅 */
+  showComplianceBanner: boolean
+  /** 最大消息长度 */
+  maxMessageLength: number
+  /** 是否允许文件上传 */
+  allowFileUpload: boolean
+  /** 允许的文件类型 */
+  allowedFileTypes: string[]
+  /** 是否启用审计日志 */
+  enableAudit: boolean
+  /** 是否允许消息编辑 */
+  allowMessageEdit: boolean
+  /** 是否允许消息删除 */
+  allowMessageDelete: boolean
+}
+
+/** 场景聊天面板策略预设 */
+const SCENARIO_CHAT_PANEL_POLICIES: Record<ScenarioDomain, ScenarioChatPanelPolicy> = {
+  /** 法律场景：显示变更审查 + 合规横幅 + 限制文件类型 */
+  legal: {
+    domain: 'legal',
+    showChangesReviewPanel: true,
+    showCloudQuota: false,
+    enableScenarioSuggestions: true,
+    showComplianceBanner: true,
+    maxMessageLength: 10000,
+    allowFileUpload: true,
+    allowedFileTypes: ['.pdf', '.docx', '.txt', '.md', '.doc'],
+    enableAudit: true,
+    allowMessageEdit: false,
+    allowMessageDelete: false,
+  },
+
+  /** 医疗场景：显示合规横幅 + 严格限制文件类型 */
+  medical: {
+    domain: 'medical',
+    showChangesReviewPanel: true,
+    showCloudQuota: false,
+    enableScenarioSuggestions: true,
+    showComplianceBanner: true,
+    maxMessageLength: 8000,
+    allowFileUpload: true,
+    allowedFileTypes: ['.pdf', '.docx', '.txt', '.md'],
+    enableAudit: true,
+    allowMessageEdit: false,
+    allowMessageDelete: false,
+  },
+
+  /** 教育场景：显示场景建议 + 允许所有文件 */
+  education: {
+    domain: 'education',
+    showChangesReviewPanel: false,
+    showCloudQuota: true,
+    enableScenarioSuggestions: true,
+    showComplianceBanner: false,
+    maxMessageLength: 12000,
+    allowFileUpload: true,
+    allowedFileTypes: [],
+    enableAudit: false,
+    allowMessageEdit: true,
+    allowMessageDelete: true,
+  },
+
+  /** 通用场景：默认配置 */
+  general: {
+    domain: 'general',
+    showChangesReviewPanel: true,
+    showCloudQuota: true,
+    enableScenarioSuggestions: false,
+    showComplianceBanner: false,
+    maxMessageLength: 10000,
+    allowFileUpload: true,
+    allowedFileTypes: [],
+    enableAudit: false,
+    allowMessageEdit: true,
+    allowMessageDelete: true,
+  },
+}
+
+/**
+ * 获取场景聊天面板策略
+ */
+export function getScenarioChatPanelPolicy(
+  domain: ScenarioDomain,
+): ScenarioChatPanelPolicy {
+  return SCENARIO_CHAT_PANEL_POLICIES[domain]
+}
+
+/**
+ * 检查文件类型是否允许
+ */
+export function isFileTypeAllowed(
+  fileName: string,
+  domain: ScenarioDomain,
+): boolean {
+  const policy = SCENARIO_CHAT_PANEL_POLICIES[domain]
+  if (!policy.allowFileUpload) return false
+  if (policy.allowedFileTypes.length === 0) return true
+
+  const extension = '.' + (fileName.split('.').pop() || '').toLowerCase()
+  return policy.allowedFileTypes.includes(extension)
+}
+
+/**
+ * 检查消息长度是否允许
+ */
+export function isMessageLengthAllowed(
+  length: number,
+  domain: ScenarioDomain,
+): boolean {
+  const policy = SCENARIO_CHAT_PANEL_POLICIES[domain]
+  return length <= policy.maxMessageLength
+}

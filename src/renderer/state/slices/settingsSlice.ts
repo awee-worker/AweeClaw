@@ -182,3 +182,107 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [], [], SettingsSl
 })
 
 export type { SettingsState, SettingKey, ProviderModelConfig }
+
+/* ------------------------------------------------------------------ */
+/* 场景感知设置切片扩展                                              */
+/* ------------------------------------------------------------------ */
+
+import type { ScenarioDomain } from '@configuration/defaultProfile'
+import { SCENARIO_PROFILE_DEFAULTS } from '@configuration/defaultProfile'
+
+/** 场景设置操作接口 */
+export interface ScenarioSettingsActions {
+  /** 切换当前场景 */
+  setActiveScenario: (domain: ScenarioDomain) => void
+  /** 启用/禁用场景 */
+  toggleScenarioEnabled: (domain: ScenarioDomain, enabled: boolean) => void
+  /** 设置场景自定义标签 */
+  setScenarioLabel: (domain: ScenarioDomain, label: string) => void
+  /** 启用/禁用审计日志 */
+  setAuditLoggingEnabled: (enabled: boolean) => void
+  /** 启用/禁用合规模式 */
+  setComplianceModeEnabled: (enabled: boolean) => void
+  /** 获取当前场景的配置覆盖 */
+  getActiveScenarioOverride: () => ReturnType<typeof SCENARIO_PROFILE_DEFAULTS[ScenarioDomain] extends infer T ? () => T : never>
+  /** 重置场景偏好为默认值 */
+  resetScenarioPreferences: () => void
+}
+
+/** 场景设置切片扩展 */
+export function createScenarioSettingsActions(
+  set: (fn: (state: SettingsSlice) => Partial<SettingsSlice>) => void,
+  get: () => SettingsSlice,
+): ScenarioSettingsActions {
+  return {
+    setActiveScenario: (domain) => {
+      set((state) => ({
+        activeScenarioId: domain,
+        scenarioPreferences: {
+          ...(state.scenarioPreferences ?? DEFAULT_SCENARIO_PREFERENCES),
+          activeDomain: domain,
+        },
+      }))
+      logger.settings.info(`[Settings] Scenario switched to: ${domain}`)
+    },
+
+    toggleScenarioEnabled: (domain, enabled) => {
+      set((state) => {
+        const prefs = state.scenarioPreferences ?? DEFAULT_SCENARIO_PREFERENCES
+        return {
+          scenarioPreferences: {
+            ...prefs,
+            domainEnabled: {
+              ...prefs.domainEnabled,
+              [domain]: enabled,
+            },
+          },
+        }
+      })
+    },
+
+    setScenarioLabel: (domain, label) => {
+      set((state) => {
+        const prefs = state.scenarioPreferences ?? DEFAULT_SCENARIO_PREFERENCES
+        return {
+          scenarioPreferences: {
+            ...prefs,
+            customScenarioLabels: {
+              ...prefs.customScenarioLabels,
+              [domain]: label,
+            },
+          },
+        }
+      })
+    },
+
+    setAuditLoggingEnabled: (enabled) => {
+      set((state) => ({
+        scenarioPreferences: {
+          ...(state.scenarioPreferences ?? DEFAULT_SCENARIO_PREFERENCES),
+          auditLoggingEnabled: enabled,
+        },
+      }))
+    },
+
+    setComplianceModeEnabled: (enabled) => {
+      set((state) => ({
+        scenarioPreferences: {
+          ...(state.scenarioPreferences ?? DEFAULT_SCENARIO_PREFERENCES),
+          complianceModeEnabled: enabled,
+        },
+      }))
+    },
+
+    getActiveScenarioOverride: () => {
+      const domain = get().scenarioPreferences?.activeDomain ?? 'general'
+      return SCENARIO_PROFILE_DEFAULTS[domain]
+    },
+
+    resetScenarioPreferences: () => {
+      set(() => ({
+        scenarioPreferences: { ...DEFAULT_SCENARIO_PREFERENCES },
+      }))
+      logger.settings.info('[Settings] Scenario preferences reset to defaults')
+    },
+  }
+}

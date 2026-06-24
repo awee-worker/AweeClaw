@@ -1,15 +1,18 @@
 /**
- * 命令面板
- * 类似 Cursor/VS Code 的中央控制枢纽
+ * 命令面板组件
+ *
+ * 设计理念：
+ * - 关注点分离：命令定义在 commandRegistry.ts，组件仅负责 UI
+ * - 模糊搜索：支持多 token 搜索
+ * - 键盘导航：上下箭头、Enter、Esc
+ * - 历史记录：记录最近使用的命令（localStorage）
+ * - 可访问性：ARIA 标签、焦点管理
+ * - 性能优化：useMemo 缓存、memo 组件
  */
 
 import { api } from '../../adapters/electronBridge'
-import { useState, useEffect, useCallback, useRef, memo } from 'react'
-import {
-  Search, FolderOpen, Settings, Terminal,
-  MessageSquare, History, Trash2, RefreshCw, Save,
-  X, Zap, Keyboard, Sparkles, Plus, FolderPlus, PanelRight
-} from 'lucide-react'
+import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react'
+import { Search, X, Sparkles } from 'lucide-react'
 import { useStore, useModeStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
@@ -19,22 +22,52 @@ import { keybindingService, formatShortcut, isMac } from '@services/keybindingAd
 import { aweeclawDir } from '@services/appDirService'
 import { toast } from '@components/foundation/NotificationProvider'
 import { useElevatedToastLayer } from '@components/foundation/toastLayerStore'
-
-interface Command {
-  id: string
-  label: string
-  description?: string
-  icon: typeof Search
-  category: string
-  action: () => void
-  shortcut?: string
-}
+import {
+  buildCommands,
+  fuzzySearchCommands,
+  groupCommandsByCategory,
+  type Command,
+  type CommandContext,
+} from './commandRegistry'
 
 interface CommandPaletteProps {
   onClose: () => void
   onShowKeyboardShortcuts: () => void
 }
 
+/** 历史记录存储键 */
+const HISTORY_STORAGE_KEY = 'aweeclaw:command-history'
+/** 最大历史记录数 */
+const MAX_HISTORY = 5
+
+/**
+ * 加载命令历史
+ *
+ * @returns 历史命令 ID 列表
+ */
+function loadHistory(): string[] {
+  try {
+    const raw = localStorage.getItem(HISTORY_STORAGE_KEY)
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * 保存命令历史
+ *
+ * @param ids 历史 ID 列表
+ */
+function saveHistory(ids: string[]): void {
+  try {
+    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(ids))
+  } catch {
+    // 忽略存储失败
+  }
+}
+
+/** 命令项组件 */
 const CommandItem = memo(function CommandItem({
   command,
   isSelected,
@@ -55,26 +88,49 @@ const CommandItem = memo(function CommandItem({
           ? 'bg-surface-active text-text-primary'
           : 'text-text-secondary hover:bg-surface-hover'}
       `}
+      role="option"
+      aria-selected={isSelected}
     >
-
-      <div className={`p-1.5 rounded-md transition-colors flex-shrink-0 ${isSelected ? 'bg-accent/20 text-accent' : 'bg-surface/50 text-text-muted group-hover:text-text-primary'}`}>
-        <Icon className="w-4 h-4" />
+      <div
+        className={`p-1.5 rounded-md transition-colors flex-shrink-0 ${
+          isSelected
+            ? 'bg-accent/20 text-accent'
+            : 'bg-surface/50 text-text-muted group-hover:text-text-primary'
+        }`}
+      >
+        <Icon className="w-4 h-4" aria-hidden />
       </div>
 
       <div className="flex-1 min-w-0 flex flex-col justify-center">
-        <div className={`text-sm font-medium transition-colors leading-none mb-1 ${isSelected ? 'text-text-primary' : ''}`}>{command.label}</div>
+        <div
+          className={`text-sm font-medium transition-colors leading-none mb-1 ${
+            isSelected ? 'text-text-primary' : ''
+          }`}
+        >
+          {command.label}
+        </div>
         {command.description && (
-          <div className={`text-[11px] truncate transition-opacity leading-none ${isSelected ? 'text-text-secondary opacity-90' : 'text-text-muted opacity-60'}`}>{command.description}</div>
+          <div
+            className={`text-[11px] truncate transition-opacity leading-none ${
+              isSelected
+                ? 'text-text-secondary opacity-90'
+                : 'text-text-muted opacity-60'
+            }`}
+          >
+            {command.description}
+          </div>
         )}
       </div>
 
       {command.shortcut && (
-        <kbd className={`
-          px-2 py-0.5 text-[11px] font-mono rounded border relative z-10 transition-colors flex-shrink-0
-          ${isSelected
-            ? 'bg-background/50 border-accent/30 text-accent'
-            : 'bg-surface border-border text-text-muted'}
-        `}>
+        <kbd
+          className={`
+            px-2 py-0.5 text-[11px] font-mono rounded border relative z-10 transition-colors flex-shrink-0
+            ${isSelected
+              ? 'bg-background/50 border-accent/30 text-accent'
+              : 'bg-surface border-border text-text-muted'}
+          `}
+        >
           {command.shortcut}
         </kbd>
       )}
@@ -88,9 +144,12 @@ const CommandItem = memo(function CommandItem({
   )
 })
 
-export default function CommandPalette({ onClose, onShowKeyboardShortcuts }: CommandPaletteProps) {
+export default function CommandPalette({
+  onClose,
+  onShowKeyboardShortcuts,
+}: CommandPaletteProps) {
   useElevatedToastLayer(true)
-  // ... (hooks and state logic remains the same)
+
   const {
     setShowSettingsPage,
     setTerminalVisible,
@@ -103,25 +162,24 @@ export default function CommandPalette({ onClose, onShowKeyboardShortcuts }: Com
     setShowAbout,
     chatVisible,
     setChatVisible,
-  } = useStore(useShallow(s => ({
-    setShowSettingsPage: s.setShowSettingsPage,
-    setTerminalVisible: s.setTerminalVisible,
-    terminalVisible: s.terminalVisible,
-    workspacePath: s.workspacePath,
-    activeFilePath: s.activeFilePath,
-    language: s.language,
-    setShowQuickOpen: s.setShowQuickOpen,
-    setShowWorkflow: s.setShowWorkflow,
-    setShowAbout: s.setShowAbout,
-    chatVisible: s.chatVisible,
-    setChatVisible: s.setChatVisible,
-  })))
+  } = useStore(
+    useShallow((s) => ({
+      setShowSettingsPage: s.setShowSettingsPage,
+      setTerminalVisible: s.setTerminalVisible,
+      terminalVisible: s.terminalVisible,
+      workspacePath: s.workspacePath,
+      activeFilePath: s.activeFilePath,
+      language: s.language,
+      setShowQuickOpen: s.setShowQuickOpen,
+      setShowWorkflow: s.setShowWorkflow,
+      setShowAbout: s.setShowAbout,
+      chatVisible: s.chatVisible,
+      setChatVisible: s.setChatVisible,
+    })),
+  )
 
-  // 从 AgentStore 获取 setInputPrompt
-  const setInputPrompt = useAgentStore(state => state.setInputPrompt)
-
-  const setMode = useModeStore(s => s.setMode)
-
+  const setInputPrompt = useAgentStore((state) => state.setInputPrompt)
+  const setMode = useModeStore((s) => s.setMode)
   const { clearMessages, clearCheckpoints } = useAgentHistoryActions()
 
   const [query, setQuery] = useState('')
@@ -129,266 +187,115 @@ export default function CommandPalette({ onClose, onShowKeyboardShortcuts }: Com
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
-  // 定义所有命令
-  const commands: Command[] = [
-    // AI Actions (Priority)
-    {
-      id: 'ai-chat',
-      label: 'Ask AI...',
-      description: 'Start a new chat conversation',
-      icon: Sparkles,
-      category: 'AI',
-      action: () => {
-        setChatVisible(true)
-        setMode('chat')
-        if (query) setInputPrompt(query)
-      }
-    },
-    {
-      id: 'ai-explain',
-      label: 'Explain Current File',
-      description: 'Ask AI to explain the active file',
-      icon: MessageSquare,
-      category: 'AI Helper',
-      action: () => {
-        if (activeFilePath) {
-          setChatVisible(true)
-          setMode('chat')
-          setInputPrompt(`Explain the file ${activeFilePath} in detail.`)
-        }
-      }
-    },
-    {
-      id: 'ai-refactor',
-      label: 'Refactor File',
-      description: 'Ask AI to suggest refactoring improvements',
-      icon: Zap,
-      category: 'AI Helper',
-      action: () => {
-        if (activeFilePath) {
-          setChatVisible(true)
-          setMode('chat')
-          setInputPrompt(`Analyze ${activeFilePath} and suggest refactoring improvements for readability and performance.`)
-        }
-      }
-    },
-    {
-      id: 'ai-fix',
-      label: 'Fix Bugs',
-      description: 'Ask AI to find and fix bugs in current file',
-      icon: Zap,
-      category: 'AI Helper',
-      action: () => {
-        if (activeFilePath) {
-          setChatVisible(true)
-          setMode('chat')
-          setInputPrompt(`Find potential bugs in ${activeFilePath} and provide fixes.`)
-        }
-      }
-    },
+  // 快捷键映射
+  const shortcuts = useMemo(
+    () => ({
+      'open-folder': formatShortcut('Ctrl+O'),
+      'new-window': formatShortcut('Ctrl+Shift+N'),
+      'save-file': formatShortcut('Ctrl+S'),
+      'quick-open': formatShortcut('Ctrl+P'),
+      'toggle-terminal': formatShortcut('Ctrl+`'),
+      'toggle-ai-panel': formatShortcut('Ctrl+L'),
+      'open-workflow': formatShortcut('Ctrl+Shift+I'),
+      settings: formatShortcut('Ctrl+,'),
+      'keyboard-shortcuts': '?',
+    }),
+    [],
+  )
 
-    // File Operations
-    {
-      id: 'open-folder',
-      label: 'Open Folder',
-      description: 'Open a workspace folder',
-      icon: FolderOpen,
-      category: 'File',
-      action: () => api.file.openFolder(),
-      shortcut: formatShortcut('Ctrl+O'),
-    },
-    {
-      id: 'new-window',
-      label: 'New Window',
-      description: 'Open a new application window',
-      icon: Plus,
-      category: 'Window',
-      action: () => api.window.new(),
-      shortcut: formatShortcut('Ctrl+Shift+N'),
-    },
-    {
-      id: 'add-folder',
-      label: 'Add Folder to Workspace...',
-      description: 'Add a new root folder to the current workspace',
-      icon: FolderPlus,
-      category: 'Workspace',
-      action: async () => {
-        const path = await api.workspace.addFolder()
-        if (path) {
-          const { addRoot } = useStore.getState()
-          addRoot(path)
-          // 初始化新根目录的项目数据目录
-          await aweeclawDir.initialize(path)
-          toast.success(`Added ${path} to workspace`)
-        }
-      },
-    },
-    {
-      id: 'save-workspace',
-      label: 'Save Workspace As...',
-      description: 'Save the current multi-root workspace configuration',
-      icon: Save,
-      category: 'Workspace',
-      action: async () => {
-        const { workspace } = useStore.getState()
-        if (workspace) {
-          const success = await api.workspace.save(workspace.configPath || '', workspace.roots)
-          if (success) toast.success('Workspace saved')
-        }
-      },
-    },
-    {
-      id: 'save-file',
-      label: 'Save File',
-      description: 'Save the current file',
-      icon: Save,
-      category: 'File',
-      action: () => {
-        document.dispatchEvent(new KeyboardEvent('keydown', {
-          key: 's',
-          ctrlKey: !isMac,
-          metaKey: isMac,
-        }))
-      },
-      shortcut: formatShortcut('Ctrl+S'),
-    },
-    {
-      id: 'refresh-files',
-      label: 'Refresh File Explorer',
-      description: 'Reload the file tree',
-      icon: RefreshCw,
-      category: 'File',
-      action: async () => {
-        if (workspacePath) {
-          const files = await api.file.readDir(workspacePath)
-          if (files) {
-            useStore.getState().setFiles(files)
-          }
-        }
-      },
-    },
+  // 构建命令上下文
+  const commandContext: CommandContext = useMemo(
+    () => ({
+      workspacePath,
+      activeFilePath,
+      terminalVisible,
+      chatVisible,
+      setInputPrompt,
+      setMode,
+      setShowSettingsPage,
+      setTerminalVisible,
+      setShowQuickOpen,
+      setShowWorkflow,
+      setShowAbout,
+      setChatVisible,
+      clearMessages,
+      clearCheckpoints,
+      onShowKeyboardShortcuts,
+      onClose,
+    }),
+    [
+      workspacePath,
+      activeFilePath,
+      terminalVisible,
+      chatVisible,
+      setInputPrompt,
+      setMode,
+      setShowSettingsPage,
+      setTerminalVisible,
+      setShowQuickOpen,
+      setShowWorkflow,
+      setShowAbout,
+      setChatVisible,
+      clearMessages,
+      clearCheckpoints,
+      onShowKeyboardShortcuts,
+      onClose,
+    ],
+  )
 
-    // View & Settings
-    {
-      id: 'quick-open',
-      label: 'Go to File...',
-      description: 'Search and open files by name',
-      icon: Search,
-      category: 'File',
-      action: () => setShowQuickOpen(true),
-      shortcut: formatShortcut('Ctrl+P'),
-    },
-    {
-      id: 'toggle-terminal',
-      label: terminalVisible ? 'Hide Terminal' : 'Show Terminal',
-      description: 'Toggle the terminal panel',
-      icon: Terminal,
-      category: 'View',
-      action: () => setTerminalVisible(!terminalVisible),
-      shortcut: formatShortcut('Ctrl+`'),
-    },
-    {
-      id: 'toggle-ai-panel',
-      label: chatVisible ? 'Hide AI Panel' : 'Show AI Panel',
-      description: 'Toggle the AI assistant panel',
-      icon: PanelRight,
-      category: 'View',
-      action: () => setChatVisible(!chatVisible),
-      shortcut: formatShortcut('Ctrl+L'),
-    },
-    {
-      id: 'open-workflow',
-      label: 'Open Workflow',
-      description: 'Multi-agent collaboration workflow',
-      icon: Sparkles,
-      category: 'AI Tools',
-      action: () => setShowWorkflow(true),
-      shortcut: formatShortcut('Ctrl+Shift+I'),
-    },
-    {
-      id: 'settings',
-      label: 'Open Settings',
-      description: 'Configure API keys and preferences',
-      icon: Settings,
-      category: 'Preferences',
-      action: () => setShowSettingsPage(true),
-      shortcut: formatShortcut('Ctrl+,'),
-    },
-    {
-      id: 'keyboard-shortcuts',
-      label: 'Keyboard Shortcuts',
-      description: 'View all keyboard shortcuts',
-      icon: Keyboard,
-      category: 'Help',
-      action: () => onShowKeyboardShortcuts(),
-      shortcut: '?',
-    },
-    {
-      id: 'about',
-      label: 'About AweeClaw',
-      description: 'View application information',
-      icon: MessageSquare,
-      category: 'Help',
-      action: () => setShowAbout(true),
-    },
+  // 构建所有命令
+  const allCommands = useMemo(() => {
+    const commands = buildCommands(commandContext, shortcuts)
 
-    // AI Tools
-    {
-      id: 'clear-chat',
-      label: 'Clear Chat History',
-      description: 'Remove all messages from the chat',
-      icon: Trash2,
-      category: 'AI Tools',
-      action: () => clearMessages(),
-    },
-    {
-      id: 'clear-checkpoints',
-      label: 'Clear All Checkpoints',
-      description: 'Remove all saved checkpoints',
-      icon: History,
-      category: 'AI Tools',
-      action: () => clearCheckpoints(),
-    },
-  ]
+    // 注入需要外部 API 的命令 action
+    return commands.map((cmd) => {
+      const action = wrapCommandAction(cmd.id, cmd.action, commandContext)
+      return { ...cmd, action }
+    })
+  }, [commandContext, shortcuts])
 
-  // 过滤命令
-  const filteredCommands = commands.filter(cmd => {
-    if (!query) return true
-    const searchStr = `${cmd.label} ${cmd.description || ''} ${cmd.category}`.toLowerCase()
-    return searchStr.includes(query.toLowerCase())
-  })
+  // 模糊搜索过滤
+  const filteredCommands = useMemo(
+    () => fuzzySearchCommands(allCommands, query),
+    [allCommands, query],
+  )
 
   // 按类别分组
-  const groupedCommands = filteredCommands.reduce((acc, cmd) => {
-    if (!acc[cmd.category]) {
-      acc[cmd.category] = []
-    }
-    acc[cmd.category].push(cmd)
-    return acc
-  }, {} as Record<string, Command[]>)
+  const groupedCommands = useMemo(
+    () => groupCommandsByCategory(filteredCommands),
+    [filteredCommands],
+  )
 
   // 扁平化用于键盘导航
-  const flatCommands = Object.values(groupedCommands).flat()
+  const flatCommands = useMemo(
+    () => Array.from(groupedCommands.values()).flat(),
+    [groupedCommands],
+  )
 
   // 键盘导航
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (keybindingService.matches(e, 'list.focusDown')) {
-      e.preventDefault()
-      setSelectedIndex(prev => Math.min(prev + 1, flatCommands.length - 1))
-    } else if (keybindingService.matches(e, 'list.focusUp')) {
-      e.preventDefault()
-      setSelectedIndex(prev => Math.max(prev - 1, 0))
-    } else if (keybindingService.matches(e, 'list.select')) {
-      e.preventDefault()
-      if (flatCommands[selectedIndex]) {
-        flatCommands[selectedIndex].action()
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (keybindingService.matches(e, 'list.focusDown')) {
+        e.preventDefault()
+        setSelectedIndex((prev) => Math.min(prev + 1, flatCommands.length - 1))
+      } else if (keybindingService.matches(e, 'list.focusUp')) {
+        e.preventDefault()
+        setSelectedIndex((prev) => Math.max(prev - 1, 0))
+      } else if (keybindingService.matches(e, 'list.select')) {
+        e.preventDefault()
+        const cmd = flatCommands[selectedIndex]
+        if (cmd) {
+          cmd.action()
+          recordCommandHistory(cmd.id)
+          onClose()
+        }
+      } else if (keybindingService.matches(e, 'list.cancel')) {
+        e.preventDefault()
         onClose()
       }
-    } else if (keybindingService.matches(e, 'list.cancel')) {
-      e.preventDefault()
-      onClose()
-    }
-  }, [flatCommands, selectedIndex, onClose])
+    },
+    [flatCommands, selectedIndex, onClose],
+  )
 
   // 自动聚焦输入框
   useEffect(() => {
@@ -403,7 +310,9 @@ export default function CommandPalette({ onClose, onShowKeyboardShortcuts }: Com
   // 滚动到选中项
   useEffect(() => {
     if (listRef.current) {
-      const selectedEl = listRef.current.querySelector(`[data-index="${selectedIndex}"]`)
+      const selectedEl = listRef.current.querySelector(
+        `[data-index="${selectedIndex}"]`,
+      )
       selectedEl?.scrollIntoView({ block: 'nearest' })
     }
   }, [selectedIndex])
@@ -414,44 +323,53 @@ export default function CommandPalette({ onClose, onShowKeyboardShortcuts }: Com
     <div
       className="fixed inset-0 z-[9999] flex items-start justify-center pt-[15vh] animate-fade-in"
       onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="命令面板"
     >
       <div className="fixed inset-0 bg-background/20 backdrop-blur-sm transition-opacity" />
 
       <div
         className="
-            relative w-[640px] max-h-[60vh] flex flex-col
-            bg-background/80 backdrop-blur-2xl 
-            border border-border/50 rounded-2xl shadow-2xl shadow-black/40
-            overflow-hidden animate-scale-in ring-1 ring-text-primary/5 origin-top
+          relative w-[640px] max-h-[60vh] flex flex-col
+          bg-background/80 backdrop-blur-2xl
+          border border-border/50 rounded-2xl shadow-2xl shadow-black/40
+          overflow-hidden animate-scale-in ring-1 ring-text-primary/5 origin-top
         "
-        onClick={e => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
       >
-        {/* Search TextField */}
+        {/* 搜索框 */}
         <div className="flex items-center gap-4 px-6 py-5 border-b border-border/40 shrink-0">
-          <Search className="w-6 h-6 text-text-muted" strokeWidth={2} />
+          <Search className="w-6 h-6 text-text-muted" strokeWidth={2} aria-hidden />
           <input
             ref={inputRef}
             type="text"
             value={query}
-            onChange={e => setQuery(e.target.value)}
+            onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={t('typeCommandOrSearch', language)}
             className="flex-1 bg-transparent text-xl font-medium text-text-primary placeholder:text-text-muted/85 focus:outline-none"
             spellCheck={false}
+            aria-label="搜索命令"
           />
           {query && (
             <button
               onClick={() => setQuery('')}
               className="p-1 rounded-full hover:bg-surface-hover transition-colors"
+              aria-label="清除搜索"
             >
-              <X className="w-4 h-4 text-text-muted" />
+              <X className="w-4 h-4 text-text-muted" aria-hidden />
             </button>
           )}
         </div>
 
-        {/* Command List */}
-        <div ref={listRef} className="flex-1 overflow-y-auto py-3 custom-scrollbar scroll-p-2">
-          {Object.entries(groupedCommands).map(([category, cmds]) => (
+        {/* 命令列表 */}
+        <div
+          ref={listRef}
+          className="flex-1 overflow-y-auto py-3 custom-scrollbar scroll-p-2"
+          role="listbox"
+        >
+          {Array.from(groupedCommands.entries()).map(([category, cmds]) => (
             <div key={category} className="mb-2">
               <div className="px-6 py-1.5 text-[11px] font-bold uppercase tracking-widest text-text-muted/85 sticky top-0 bg-background/95 backdrop-blur-md z-10 mb-1">
                 {category}
@@ -466,6 +384,7 @@ export default function CommandPalette({ onClose, onShowKeyboardShortcuts }: Com
                         isSelected={idx === selectedIndex}
                         onSelect={() => {
                           cmd.action()
+                          recordCommandHistory(cmd.id)
                           onClose()
                         }}
                       />
@@ -479,34 +398,118 @@ export default function CommandPalette({ onClose, onShowKeyboardShortcuts }: Com
           {flatCommands.length === 0 && (
             <div className="px-4 py-16 text-center text-text-muted flex flex-col items-center gap-4 opacity-60">
               <div className="w-16 h-16 rounded-full bg-surface/50 flex items-center justify-center border border-border shadow-inner">
-                <Sparkles className="w-8 h-8 opacity-50 text-accent" />
+                <Sparkles className="w-8 h-8 opacity-50 text-accent" aria-hidden />
               </div>
               <p className="text-sm font-medium">{t('noCommandsFound', language)}</p>
             </div>
           )}
         </div>
 
-        {/* Footer Hint */}
+        {/* 底部提示 */}
         <div className="px-6 py-2.5 bg-surface/30 border-t border-border/40 text-[11px] font-medium text-text-muted/90 flex justify-between items-center backdrop-blur-md shrink-0">
           <div className="flex gap-4">
             <span className="flex items-center gap-1.5">
               <div className="flex gap-0.5">
-                <kbd className="font-sans bg-surface/80 border border-border/50 px-1 py-0.5 rounded min-w-[16px] text-center shadow-sm">↑</kbd>
-                <kbd className="font-sans bg-surface/80 border border-border/50 px-1 py-0.5 rounded min-w-[16px] text-center shadow-sm">↓</kbd>
+                <kbd className="font-sans bg-surface/80 border border-border/50 px-1 py-0.5 rounded min-w-[16px] text-center shadow-sm">
+                  ↑
+                </kbd>
+                <kbd className="font-sans bg-surface/80 border border-border/50 px-1 py-0.5 rounded min-w-[16px] text-center shadow-sm">
+                  ↓
+                </kbd>
               </div>
               <span>to navigate</span>
             </span>
             <span className="flex items-center gap-1.5">
-              <kbd className="font-sans bg-surface/80 border border-border/50 px-1.5 py-0.5 rounded shadow-sm">↵</kbd>
+              <kbd className="font-sans bg-surface/80 border border-border/50 px-1.5 py-0.5 rounded shadow-sm">
+                ↵
+              </kbd>
               <span>to select</span>
             </span>
           </div>
           <div className="flex items-center gap-2 opacity-50">
-            <Sparkles className="w-3 h-3 text-accent" />
+            <Sparkles className="w-3 h-3 text-accent" aria-hidden />
             <span className="font-medium tracking-wide">AweeClaw AI</span>
           </div>
         </div>
       </div>
     </div>
   )
+}
+
+/**
+ * 包装命令 action，处理需要外部 API 的命令
+ *
+ * @param id 命令 ID
+ * @param originalAction 原始 action
+ * @param ctx 命令上下文
+ * @returns 包装后的 action
+ */
+function wrapCommandAction(
+  id: string,
+  originalAction: () => void,
+  ctx: CommandContext,
+): () => void {
+  return async () => {
+    switch (id) {
+      case 'open-folder':
+        await api.file.openFolder()
+        return
+      case 'new-window':
+        await api.window.new()
+        return
+      case 'add-folder': {
+        const folderPath = await api.workspace.addFolder()
+        if (folderPath) {
+          const { addRoot } = useStore.getState()
+          addRoot(folderPath)
+          await aweeclawDir.initialize(folderPath)
+          toast.success(`Added ${folderPath} to workspace`)
+        }
+        return
+      }
+      case 'save-workspace': {
+        const { workspace } = useStore.getState()
+        if (workspace) {
+          const success = await api.workspace.save(
+            workspace.configPath || '',
+            workspace.roots,
+          )
+          if (success) toast.success('Workspace saved')
+        }
+        return
+      }
+      case 'save-file':
+        document.dispatchEvent(
+          new KeyboardEvent('keydown', {
+            key: 's',
+            ctrlKey: !isMac,
+            metaKey: isMac,
+          }),
+        )
+        return
+      case 'refresh-files':
+        if (ctx.workspacePath) {
+          const files = await api.file.readDir(ctx.workspacePath)
+          if (files) {
+            useStore.getState().setFiles(files)
+          }
+        }
+        return
+      default:
+        originalAction()
+        return
+    }
+  }
+}
+
+/**
+ * 记录命令使用历史
+ *
+ * @param commandId 命令 ID
+ */
+function recordCommandHistory(commandId: string): void {
+  const history = loadHistory()
+  const filtered = history.filter((id) => id !== commandId)
+  filtered.unshift(commandId)
+  saveHistory(filtered.slice(0, MAX_HISTORY))
 }

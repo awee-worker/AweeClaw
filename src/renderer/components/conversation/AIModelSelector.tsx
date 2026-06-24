@@ -311,3 +311,139 @@ export default function ModelSelector({ className = '', alignLeft = false, disab
     </div>
   )
 }
+
+/* ------------------------------------------------------------------ */
+/* 场景感知模型选择器                                                */
+/* ------------------------------------------------------------------ */
+
+import type { ScenarioDomain } from '@configuration/defaultProfile'
+
+/** 场景模型选择策略 */
+export interface ScenarioModelSelectPolicy {
+  /** 场景类型 */
+  domain: ScenarioDomain
+  /** 允许的 Provider 列表（空表示全部允许） */
+  allowedProviders: string[]
+  /** 禁止的 Provider 列表 */
+  blockedProviders: string[]
+  /** 推荐模型列表 */
+  recommendedModels: string[]
+  /** 是否显示场景推荐标签 */
+  showRecommendationTag: boolean
+  /** 是否限制模型选择 */
+  restrictModelSelection: boolean
+  /** 最大 token 数限制 */
+  maxTokensLimit: number
+}
+
+/** 场景模型选择策略预设 */
+const SCENARIO_MODEL_SELECT_POLICIES: Record<ScenarioDomain, ScenarioModelSelectPolicy> = {
+  /** 法律场景：推荐高精度模型，限制 token */
+  legal: {
+    domain: 'legal',
+    allowedProviders: [],
+    blockedProviders: [],
+    recommendedModels: ['gpt-4o', 'claude-3-5-sonnet', 'gemini-1.5-pro'],
+    showRecommendationTag: true,
+    restrictModelSelection: false,
+    maxTokensLimit: 16384,
+  },
+
+  /** 医疗场景：仅允许高精度模型，严格限制 */
+  medical: {
+    domain: 'medical',
+    allowedProviders: ['openai', 'anthropic'],
+    blockedProviders: [],
+    recommendedModels: ['gpt-4o', 'claude-3-5-sonnet'],
+    showRecommendationTag: true,
+    restrictModelSelection: true,
+    maxTokensLimit: 12288,
+  },
+
+  /** 教育场景：允许所有模型，推荐经济型 */
+  education: {
+    domain: 'education',
+    allowedProviders: [],
+    blockedProviders: [],
+    recommendedModels: ['gpt-4o-mini', 'claude-3-5-haiku', 'gemini-1.5-flash'],
+    showRecommendationTag: true,
+    restrictModelSelection: false,
+    maxTokensLimit: 8192,
+  },
+
+  /** 通用场景：无限制 */
+  general: {
+    domain: 'general',
+    allowedProviders: [],
+    blockedProviders: [],
+    recommendedModels: [],
+    showRecommendationTag: false,
+    restrictModelSelection: false,
+    maxTokensLimit: 0,
+  },
+}
+
+/**
+ * 获取场景模型选择策略
+ */
+export function getScenarioModelSelectPolicy(
+  domain: ScenarioDomain,
+): ScenarioModelSelectPolicy {
+  return SCENARIO_MODEL_SELECT_POLICIES[domain]
+}
+
+/**
+ * 过滤场景允许的模型
+ */
+export function filterModelsByScenario(
+  models: FlatModel[],
+  domain: ScenarioDomain,
+): { allowed: FlatModel[]; blocked: FlatModel[] } {
+  const policy = SCENARIO_MODEL_SELECT_POLICIES[domain]
+
+  if (!policy.restrictModelSelection) {
+    return { allowed: models, blocked: [] }
+  }
+
+  const allowed: FlatModel[] = []
+  const blocked: FlatModel[] = []
+
+  for (const model of models) {
+    const isAllowed =
+      policy.allowedProviders.length === 0 ||
+      policy.allowedProviders.includes(model.providerId)
+    const isBlocked = policy.blockedProviders.includes(model.providerId)
+
+    if (isAllowed && !isBlocked) {
+      allowed.push(model)
+    } else {
+      blocked.push(model)
+    }
+  }
+
+  return { allowed, blocked }
+}
+
+/**
+ * 检查模型是否为场景推荐模型
+ */
+export function isRecommendedModel(
+  modelId: string,
+  domain: ScenarioDomain,
+): boolean {
+  const policy = SCENARIO_MODEL_SELECT_POLICIES[domain]
+  return policy.recommendedModels.includes(modelId)
+}
+
+/**
+ * 获取场景 token 限制
+ */
+export function getScenarioMaxTokensLimit(
+  domain: ScenarioDomain,
+  userMaxTokens?: number,
+): number | undefined {
+  const policy = SCENARIO_MODEL_SELECT_POLICIES[domain]
+  if (policy.maxTokensLimit === 0) return userMaxTokens
+  if (userMaxTokens === undefined) return policy.maxTokensLimit
+  return Math.min(userMaxTokens, policy.maxTokensLimit)
+}

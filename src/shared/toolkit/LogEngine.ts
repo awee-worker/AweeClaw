@@ -850,3 +850,283 @@ class LogEngineCore {
 
 export const logger = new LogEngineCore()
 export default logger
+
+/* ------------------------------------------------------------------ */
+/* 场景感知日志扩展                                                   */
+/* ------------------------------------------------------------------ */
+
+/** 日志场景类型 */
+export type LogScenarioDomain = 'legal' | 'medical' | 'education' | 'general'
+
+/** 场景日志策略 */
+export interface ScenarioLogPolicy {
+  /** 场景名称 */
+  domain: LogScenarioDomain
+  /** 最低日志级别（覆盖全局配置） */
+  minLevel: LogLevel
+  /** 是否强制启用文件日志（审计） */
+  forceFileLogging: boolean
+  /** 是否记录完整审计轨迹 */
+  auditTrail: boolean
+  /** 日志保留天数 */
+  retentionDays: number
+  /** 敏感数据脱敏模式 */
+  sanitizeMode: 'none' | 'basic' | 'strict'
+  /** 是否包含调用栈 */
+  includeStackTrace: boolean
+  /** 日志输出格式 */
+  outputFormat: 'standard' | 'audit' | 'compliance'
+}
+
+/** 场景日志策略预设 */
+const SCENARIO_LOG_POLICIES: Record<LogScenarioDomain, ScenarioLogPolicy> = {
+  /** 法律场景：完整审计，严格脱敏，长期保留 */
+  legal: {
+    domain: 'legal',
+    minLevel: 'info',
+    forceFileLogging: true,
+    auditTrail: true,
+    retentionDays: 365 * 7, // 7年保留（法律合规）
+    sanitizeMode: 'strict',
+    includeStackTrace: true,
+    outputFormat: 'compliance',
+  },
+
+  /** 医疗场景：HIPAA 合规，严格脱敏 */
+  medical: {
+    domain: 'medical',
+    minLevel: 'info',
+    forceFileLogging: true,
+    auditTrail: true,
+    retentionDays: 365 * 6, // 6年保留（HIPAA）
+    sanitizeMode: 'strict',
+    includeStackTrace: true,
+    outputFormat: 'audit',
+  },
+
+  /** 教育场景：标准日志，基本脱敏 */
+  education: {
+    domain: 'education',
+    minLevel: 'info',
+    forceFileLogging: false,
+    auditTrail: false,
+    retentionDays: 90,
+    sanitizeMode: 'basic',
+    includeStackTrace: false,
+    outputFormat: 'standard',
+  },
+
+  /** 通用场景：默认配置 */
+  general: {
+    domain: 'general',
+    minLevel: 'debug',
+    forceFileLogging: false,
+    auditTrail: false,
+    retentionDays: 30,
+    sanitizeMode: 'none',
+    includeStackTrace: false,
+    outputFormat: 'standard',
+  },
+}
+
+/** 敏感数据脱敏模式 */
+const SENSITIVE_PATTERNS: Array<{ pattern: RegExp; replacement: string }> = [
+  { pattern: /\b\d{3}-\d{2}-\d{4}\b/g, replacement: '[SSN]' },
+  { pattern: /\b[\w.+-]+@[\w-]+\.[\w.-]+\b/g, replacement: '[EMAIL]' },
+  { pattern: /\b\d{16,19}\b/g, replacement: '[CARD]' },
+  { pattern: /\b\d{3}\s?\d{3}\s?\d{4}\b/g, replacement: '[PHONE]' },
+  { pattern: /password\s*[:=]\s*\S+/gi, replacement: 'password=[REDACTED]' },
+  { pattern: /token\s*[:=]\s*\S+/gi, replacement: 'token=[REDACTED]' },
+  { pattern: /api[_-]?key\s*[:=]\s*\S+/gi, replacement: 'api_key=[REDACTED]' },
+]
+
+/**
+ * 场景感知日志引擎
+ *
+ * 在标准 LogEngine 基础上，增加场景策略：
+ * - 场景感知的日志级别
+ * - 敏感数据脱敏
+ * - 审计日志强制启用
+ * - 合规输出格式
+ */
+export class ScenarioLogEngine {
+  private policy: ScenarioLogPolicy
+  private readonly engine: LogEngineCore
+
+  constructor(
+    domain: LogScenarioDomain = 'general',
+    engine: LogEngineCore = logger,
+  ) {
+    this.policy = SCENARIO_LOG_POLICIES[domain]
+    this.engine = engine
+
+    // 应用场景策略
+    this.applyPolicy()
+  }
+
+  /**
+   * 应用场景策略到日志引擎
+   */
+  private applyPolicy(): void {
+    this.engine.setMinLevel(this.policy.minLevel)
+
+    if (this.policy.forceFileLogging && this.engine.isProductionMode()) {
+      const logPath = this.getDefaultLogPath()
+      this.engine.enableFileLogging(logPath)
+    }
+  }
+
+  /**
+   * 获取默认日志路径
+   */
+  private getDefaultLogPath(): string {
+    const domain = this.policy.domain
+    const date = new Date().toISOString().slice(0, 10)
+    return `logs/${domain}-${date}.log`
+  }
+
+  /**
+   * 切换场景策略
+   */
+  switchScenario(domain: LogScenarioDomain): void {
+    this.policy = SCENARIO_LOG_POLICIES[domain]
+    this.applyPolicy()
+  }
+
+  /**
+   * 获取当前策略
+   */
+  getPolicy(): ScenarioLogPolicy {
+    return this.policy
+  }
+
+  /**
+   * 脱敏处理
+   */
+  private sanitize(data: unknown): unknown {
+    if (this.policy.sanitizeMode === 'none' || data === undefined) {
+      return data
+    }
+
+    if (typeof data === 'string') {
+      return this.sanitizeString(data)
+    }
+
+    if (typeof data === 'object' && data !== null) {
+      try {
+        const json = JSON.stringify(data)
+        const sanitized = this.sanitizeString(json)
+        return JSON.parse(sanitized)
+      } catch {
+        return data
+      }
+    }
+
+    return data
+  }
+
+  /**
+   * 字符串脱敏
+   */
+  private sanitizeString(text: string): string {
+    let result = text
+    for (const { pattern, replacement } of SENSITIVE_PATTERNS) {
+      result = result.replace(pattern, replacement)
+    }
+    return result
+  }
+
+  /**
+   * 格式化审计日志消息
+   */
+  private formatAuditMessage(
+    level: LogLevel,
+    category: LogCategory,
+    message: string,
+  ): string {
+    if (this.policy.outputFormat === 'standard') {
+      return message
+    }
+
+    const timestamp = new Date().toISOString()
+    const user = typeof process !== 'undefined' ? process.env?.USER ?? 'unknown' : 'unknown'
+    const format = this.policy.outputFormat === 'compliance' ? 'COMPLIANCE' : 'AUDIT'
+
+    return `[${format}] [${timestamp}] [user=${user}] [${category}] [${level}] ${message}`
+  }
+
+  /**
+   * 场景感知日志写入
+   */
+  log(
+    level: LogLevel,
+    category: LogCategory,
+    message: string,
+    data?: unknown,
+  ): void {
+    const formattedMessage = this.formatAuditMessage(level, category, message)
+    const sanitizedData = this.sanitize(data)
+    this.engine.logWithCategory(level, category, formattedMessage, sanitizedData)
+  }
+
+  /**
+   * 审计日志（仅法律/医疗场景）
+   */
+  audit(action: string, resource: string, details?: unknown): void {
+    if (!this.policy.auditTrail) {
+      return
+    }
+
+    const message = `AUDIT: action=${action} resource=${resource}`
+    this.log('info', 'Security', message, details)
+  }
+
+  /**
+   * 便捷方法：info
+   */
+  info(category: LogCategory, message: string, data?: unknown): void {
+    this.log('info', category, message, data)
+  }
+
+  /**
+   * 便捷方法：warn
+   */
+  warn(category: LogCategory, message: string, data?: unknown): void {
+    this.log('warn', category, message, data)
+  }
+
+  /**
+   * 便捷方法：error
+   */
+  error(category: LogCategory, message: string, data?: unknown): void {
+    this.log('error', category, message, data)
+    if (this.policy.includeStackTrace && data instanceof Error) {
+      this.log('error', category, `Stack: ${data.stack}`)
+    }
+  }
+
+  /**
+   * 便捷方法：debug
+   */
+  debug(category: LogCategory, message: string, data?: unknown): void {
+    this.log('debug', category, message, data)
+  }
+}
+
+/**
+ * 获取场景日志策略
+ */
+export function getScenarioLogPolicy(
+  domain: LogScenarioDomain,
+): ScenarioLogPolicy {
+  return SCENARIO_LOG_POLICIES[domain]
+}
+
+/**
+ * 创建场景日志引擎实例
+ */
+export function createScenarioLogger(
+  domain: LogScenarioDomain = 'general',
+): ScenarioLogEngine {
+  return new ScenarioLogEngine(domain)
+}

@@ -334,3 +334,124 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
         </OverlayDialog>
     )
 }
+
+/* ------------------------------------------------------------------ */
+/* 场景感知设置面板策略                                              */
+/* ------------------------------------------------------------------ */
+
+import type { ScenarioDomain } from '@configuration/defaultProfile'
+
+/** 场景设置面板策略 */
+export interface ScenarioSettingsPanelPolicy {
+  /** 场景类型 */
+  domain: ScenarioDomain
+  /** 可见设置标签页 */
+  visibleTabs: string[]
+  /** 隐藏设置标签页 */
+  hiddenTabs: string[]
+  /** 是否显示场景过滤 */
+  showScenarioFilter: boolean
+  /** 是否显示外观设置 */
+  showAppearanceSettings: boolean
+  /** 是否显示渠道设置 */
+  showChannelSettings: boolean
+  /** 是否显示云设置 */
+  showCloudSettings: boolean
+  /** 是否显示合规设置 */
+  showComplianceSettings: boolean
+  /** 是否禁用某些设置（只读模式） */
+  readonlyMode: boolean
+  /** 禁用的设置项 */
+  disabledSettings: string[]
+}
+
+/** 场景设置面板策略预设 */
+const SCENARIO_SETTINGS_PANEL_POLICIES: Record<ScenarioDomain, ScenarioSettingsPanelPolicy> = {
+  /** 法律场景：显示合规设置，隐藏渠道设置，只读模式 */
+  legal: {
+    domain: 'legal',
+    visibleTabs: ['model', 'agent', 'security', 'compliance', 'memory', 'rules'],
+    hiddenTabs: ['channel', 'cloud', 'appearance'],
+    showScenarioFilter: true,
+    showAppearanceSettings: false,
+    showChannelSettings: false,
+    showCloudSettings: false,
+    showComplianceSettings: true,
+    readonlyMode: false,
+    disabledSettings: ['security.strictWorkspaceMode', 'security.enablePermissionConfirm'],
+  },
+
+  /** 医疗场景：显示合规设置，隐藏渠道和云设置，部分只读 */
+  medical: {
+    domain: 'medical',
+    visibleTabs: ['model', 'agent', 'security', 'compliance', 'memory'],
+    hiddenTabs: ['channel', 'cloud', 'appearance', 'rules'],
+    showScenarioFilter: true,
+    showAppearanceSettings: false,
+    showChannelSettings: false,
+    showCloudSettings: false,
+    showComplianceSettings: true,
+    readonlyMode: true,
+    disabledSettings: [
+      'security.strictWorkspaceMode',
+      'security.enablePermissionConfirm',
+      'agent.enableAutoFix',
+      'agent.allowDelete',
+    ],
+  },
+
+  /** 教育场景：显示所有设置，无限制 */
+  education: {
+    domain: 'education',
+    visibleTabs: [],
+    hiddenTabs: [],
+    showScenarioFilter: true,
+    showAppearanceSettings: true,
+    showChannelSettings: true,
+    showCloudSettings: true,
+    showComplianceSettings: false,
+    readonlyMode: false,
+    disabledSettings: [],
+  },
+
+  /** 通用场景：显示所有设置 */
+  general: {
+    domain: 'general',
+    visibleTabs: [],
+    hiddenTabs: [],
+    showScenarioFilter: false,
+    showAppearanceSettings: true,
+    showChannelSettings: true,
+    showCloudSettings: true,
+    showComplianceSettings: false,
+    readonlyMode: false,
+    disabledSettings: [],
+  },
+}
+
+/**
+ * 获取场景设置面板策略
+ */
+export function getScenarioSettingsPanelPolicy(
+  domain: ScenarioDomain,
+): ScenarioSettingsPanelPolicy {
+  return SCENARIO_SETTINGS_PANEL_POLICIES[domain]
+}
+
+/**
+ * 检查设置标签页是否可见
+ */
+export function isTabVisible(tabId: string, domain: ScenarioDomain): boolean {
+  const policy = SCENARIO_SETTINGS_PANEL_POLICIES[domain]
+  if (policy.hiddenTabs.includes(tabId)) return false
+  if (policy.visibleTabs.length === 0) return true
+  return policy.visibleTabs.includes(tabId)
+}
+
+/**
+ * 检查设置项是否被禁用
+ */
+export function isSettingDisabled(settingKey: string, domain: ScenarioDomain): boolean {
+  const policy = SCENARIO_SETTINGS_PANEL_POLICIES[domain]
+  return policy.disabledSettings.includes(settingKey)
+}

@@ -1,23 +1,44 @@
 /**
  * 调试适配器注册表
- * 定义各种语言的调试适配器配置
+ *
+ * 设计理念：
+ * - 注册器模式：统一注册、查询适配器
+ * - 工厂函数：每个适配器独立工厂，便于维护
+ * - 懒加载：适配器描述符按需生成
+ * - 类型安全：完整 TypeScript 类型
+ * - 可扩展：新增适配器只需注册，无需修改核心代码
  */
 
-import type { DebugAdapterInfo, DebugAdapterDescriptor, DebugConfig } from '../providerTypes'
+import type {
+  DebugAdapterInfo,
+  DebugAdapterDescriptor,
+  DebugConfig,
+} from '../providerTypes'
 import { pythonManager } from '../../python-runtime'
 
-/**
- * 内置调试适配器
- */
-export const builtinAdapters: DebugAdapterInfo[] = [
-  // Node.js 调试器（使用内置的 node inspect）
-  {
+/** 适配器工厂函数 */
+type AdapterDescriptorFactory = (
+  config: DebugConfig,
+) => Promise<DebugAdapterDescriptor>
+
+/** 适配器构建器入参 */
+interface AdapterBuilder {
+  type: string
+  label: string
+  languages: string[]
+  getDescriptor: AdapterDescriptorFactory
+  configurationSnippets: DebugAdapterInfo['configurationSnippets']
+}
+
+// =================== 适配器工厂 ===================
+
+/** Node.js 适配器工厂 */
+function createNodeAdapter(): AdapterBuilder {
+  return {
     type: 'node',
     label: 'Node.js',
     languages: ['javascript', 'typescript'],
     async getDescriptor(config: DebugConfig): Promise<DebugAdapterDescriptor> {
-      // Node.js 使用内置的 inspector，我们通过 js-debug 适配器连接
-      // 如果没有安装 js-debug，回退到直接连接 inspector
       return {
         type: 'server',
         port: config.port || 9229,
@@ -61,14 +82,18 @@ export const builtinAdapters: DebugAdapterInfo[] = [
         },
       },
     ],
-  },
+  }
+}
 
-  // Python 调试器（使用 debugpy）
-  {
+/** Python 适配器工厂 */
+function createPythonAdapter(): AdapterBuilder {
+  return {
     type: 'python',
     label: 'Python',
     languages: ['python'],
-    async getDescriptor(_config: DebugConfig): Promise<DebugAdapterDescriptor> {
+    async getDescriptor(
+      _config: DebugConfig,
+    ): Promise<DebugAdapterDescriptor> {
       return {
         type: 'executable',
         command: pythonManager.getPythonPath() || 'python',
@@ -100,15 +125,18 @@ export const builtinAdapters: DebugAdapterInfo[] = [
         },
       },
     ],
-  },
+  }
+}
 
-  // Go 调试器（使用 delve）
-  {
+/** Go 适配器工厂 */
+function createGoAdapter(): AdapterBuilder {
+  return {
     type: 'go',
     label: 'Go',
     languages: ['go'],
-    async getDescriptor(_config: DebugConfig): Promise<DebugAdapterDescriptor> {
-      // dlv 可以通过 go install 安装: go install github.com/go-delve/delve/cmd/dlv@latest
+    async getDescriptor(
+      _config: DebugConfig,
+    ): Promise<DebugAdapterDescriptor> {
       return {
         type: 'executable',
         command: 'dlv',
@@ -150,15 +178,18 @@ export const builtinAdapters: DebugAdapterInfo[] = [
         },
       },
     ],
-  },
+  }
+}
 
-  // Rust 调试器（使用 codelldb 或 lldb-vscode）
-  {
+/** LLDB 适配器工厂（Rust/C/C++） */
+function createLldbAdapter(): AdapterBuilder {
+  return {
     type: 'lldb',
     label: 'LLDB (Rust/C/C++)',
     languages: ['rust', 'c', 'cpp'],
-    async getDescriptor(_config: DebugConfig): Promise<DebugAdapterDescriptor> {
-      // codelldb 需要单独安装
+    async getDescriptor(
+      _config: DebugConfig,
+    ): Promise<DebugAdapterDescriptor> {
       return {
         type: 'executable',
         command: 'codelldb',
@@ -173,34 +204,153 @@ export const builtinAdapters: DebugAdapterInfo[] = [
           type: 'lldb',
           name: 'LLDB: Launch',
           request: 'launch',
-          program: '${workspaceFolder}/target/debug/${workspaceFolderBasename}',
+          program:
+            '${workspaceFolder}/target/debug/${workspaceFolderBasename}',
           cwd: '${workspaceFolder}',
         },
       },
     ],
-  },
-]
+  }
+}
+
+// =================== 适配器注册表 ===================
+
+/**
+ * 调试适配器注册表
+ *
+ * 使用注册器模式管理所有调试适配器：
+ * - 支持动态注册
+ * - 支持按类型查询
+ * - 支持按语言查询
+ */
+class DebugAdapterRegistry {
+  private readonly adapters = new Map<string, DebugAdapterInfo>()
+  private readonly languageToType = new Map<string, string>()
+
+  /**
+   * 注册适配器
+   *
+   * @param builder 适配器构建器
+   */
+  register(builder: AdapterBuilder): void {
+    if (this.adapters.has(builder.type)) {
+      throw new Error(`调试适配器类型 "${builder.type}" 已注册`)
+    }
+
+    const info: DebugAdapterInfo = {
+      type: builder.type,
+      label: builder.label,
+      languages: builder.languages,
+      getDescriptor: builder.getDescriptor,
+      configurationSnippets: builder.configurationSnippets,
+    }
+
+    this.adapters.set(builder.type, info)
+
+    // 建立语言到类型的映射
+    for (const lang of builder.languages) {
+      if (this.languageToType.has(lang)) {
+        throw new Error(
+          `语言 "${lang}" 已绑定到适配器 "${this.languageToType.get(lang)}"`,
+        )
+      }
+      this.languageToType.set(lang, builder.type)
+    }
+  }
+
+  /**
+   * 获取适配器信息
+   *
+   * @param type 适配器类型
+   * @returns 适配器信息
+   */
+  getAdapterInfo(type: string): DebugAdapterInfo | undefined {
+    return this.adapters.get(type)
+  }
+
+  /**
+   * 获取语言对应的适配器
+   *
+   * @param languageId 语言 ID
+   * @returns 适配器信息
+   */
+  getAdapterForLanguage(languageId: string): DebugAdapterInfo | undefined {
+    const type = this.languageToType.get(languageId)
+    if (!type) return undefined
+    return this.adapters.get(type)
+  }
+
+  /**
+   * 获取所有适配器
+   *
+   * @returns 适配器列表
+   */
+  getAllAdapters(): DebugAdapterInfo[] {
+    return Array.from(this.adapters.values())
+  }
+
+  /**
+   * 获取所有配置代码片段
+   *
+   * @returns 配置片段列表
+   */
+  getAllConfigSnippets(): Array<{
+    type: string
+    snippets: DebugAdapterInfo['configurationSnippets']
+  }> {
+    return this.getAllAdapters().map((a) => ({
+      type: a.type,
+      snippets: a.configurationSnippets,
+    }))
+  }
+}
+
+// =================== 导出单例 ===================
+
+/** 调试适配器注册表单例 */
+export const adapterRegistry = new DebugAdapterRegistry()
+
+// 注册内置适配器
+adapterRegistry.register(createNodeAdapter())
+adapterRegistry.register(createPythonAdapter())
+adapterRegistry.register(createGoAdapter())
+adapterRegistry.register(createLldbAdapter())
+
+// =================== 兼容性导出 ===================
+
+/** 内置调试适配器（兼容旧代码） */
+export const builtinAdapters: DebugAdapterInfo[] = adapterRegistry.getAllAdapters()
 
 /**
  * 获取调试适配器信息
+ *
+ * @param type 适配器类型
+ * @returns 适配器信息
  */
 export function getAdapterInfo(type: string): DebugAdapterInfo | undefined {
-  return builtinAdapters.find(a => a.type === type)
+  return adapterRegistry.getAdapterInfo(type)
 }
 
 /**
  * 获取语言对应的调试适配器
+ *
+ * @param languageId 语言 ID
+ * @returns 适配器信息
  */
-export function getAdapterForLanguage(languageId: string): DebugAdapterInfo | undefined {
-  return builtinAdapters.find(a => a.languages.includes(languageId))
+export function getAdapterForLanguage(
+  languageId: string,
+): DebugAdapterInfo | undefined {
+  return adapterRegistry.getAdapterForLanguage(languageId)
 }
 
 /**
  * 获取所有配置代码片段
+ *
+ * @returns 配置片段列表
  */
-export function getAllConfigSnippets(): Array<{ type: string; snippets: DebugAdapterInfo['configurationSnippets'] }> {
-  return builtinAdapters.map(a => ({
-    type: a.type,
-    snippets: a.configurationSnippets,
-  }))
+export function getAllConfigSnippets(): Array<{
+  type: string
+  snippets: DebugAdapterInfo['configurationSnippets']
+}> {
+  return adapterRegistry.getAllConfigSnippets()
 }

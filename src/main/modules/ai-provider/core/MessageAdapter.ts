@@ -5,6 +5,7 @@
 
 import type { ModelMessage, UserModelMessage, AssistantModelMessage, ToolModelMessage } from '@ai-sdk/provider-utils'
 import type { LLMMessage, MessageContentPart } from '@protocols'
+import type { ScenarioDomain } from '@configuration/defaultProfile'
 
 export class MessageConverter {
   /**
@@ -262,4 +263,269 @@ export class MessageConverter {
       ],
     }
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* 场景感知消息适配器                                                 */
+/* ------------------------------------------------------------------ */
+
+/** 场景消息处理策略 */
+export interface ScenarioMessagePolicy {
+  /** 场景类型 */
+  domain: ScenarioDomain
+  /** 是否对用户消息进行脱敏 */
+  sanitizeUserInput: boolean
+  /** 是否对工具结果进行截断 */
+  truncateToolResults: boolean
+  /** 工具结果最大字符数 */
+  maxToolResultChars: number
+  /** 是否在 system prompt 中注入合规提示 */
+  injectCompliancePrompt: boolean
+  /** 合规提示内容 */
+  compliancePrompt: string
+  /** 是否保留 reasoning_content */
+  preserveReasoning: boolean
+  /** 是否记录消息审计日志 */
+  enableAudit: boolean
+}
+
+/** 场景消息策略预设 */
+const SCENARIO_MESSAGE_POLICIES: Record<ScenarioDomain, ScenarioMessagePolicy> = {
+  /** 法律场景：脱敏 + 截断 + 合规提示 + 审计 */
+  legal: {
+    domain: 'legal',
+    sanitizeUserInput: true,
+    truncateToolResults: true,
+    maxToolResultChars: 12000,
+    injectCompliancePrompt: true,
+    compliancePrompt:
+      'IMPORTANT: This is a legal advisory context. ' +
+      'Provide precise, well-cited responses. ' +
+      'Avoid speculation. Clearly distinguish between established law and interpretation. ' +
+      'Confidential client information must not be exposed.',
+    preserveReasoning: true,
+    enableAudit: true,
+  },
+
+  /** 医疗场景：严格脱敏 + 强制截断 + 合规提示 + 审计 */
+  medical: {
+    domain: 'medical',
+    sanitizeUserInput: true,
+    truncateToolResults: true,
+    maxToolResultChars: 10000,
+    injectCompliancePrompt: true,
+    compliancePrompt:
+      'IMPORTANT: This is a medical decision support context. ' +
+      'All responses must include appropriate disclaimers. ' +
+      'Patient data must be de-identified. ' +
+      'Recommendations must not replace professional medical judgment. ' +
+      'Follow HIPAA compliance guidelines.',
+    preserveReasoning: false,
+    enableAudit: true,
+  },
+
+  /** 教育场景：轻量截断，无脱敏 */
+  education: {
+    domain: 'education',
+    sanitizeUserInput: false,
+    truncateToolResults: true,
+    maxToolResultChars: 15000,
+    injectCompliancePrompt: false,
+    compliancePrompt: '',
+    preserveReasoning: true,
+    enableAudit: false,
+  },
+
+  /** 通用场景：无特殊处理 */
+  general: {
+    domain: 'general',
+    sanitizeUserInput: false,
+    truncateToolResults: false,
+    maxToolResultChars: 10000,
+    injectCompliancePrompt: false,
+    compliancePrompt: '',
+    preserveReasoning: true,
+    enableAudit: false,
+  },
+}
+
+/** 敏感信息正则模式 */
+const SENSITIVE_DATA_PATTERNS: Array<{ pattern: RegExp; replacement: string }> = [
+  // 社会保障号
+  { pattern: /\b\d{3}-\d{2}-\d{4}\b/g, replacement: '[SSN]' },
+  // 信用卡号
+  { pattern: /\b(?:\d[ -]*?){13,16}\b/g, replacement: '[CARD]' },
+  // 邮箱
+  { pattern: /\b[\w.+-]+@[\w-]+\.[\w.-]+\b/g, replacement: '[EMAIL]' },
+  // 电话号码
+  { pattern: /\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g, replacement: '[PHONE]' },
+  // 病历号
+  { pattern: /\b(?:MRN|patient)[\s#:]*\d+\b/gi, replacement: '[MRN]' },
+  // 案件号
+  { pattern: /\b(?:case|docket)[\s#:]*[\w-]+\b/gi, replacement: '[CASE]' },
+]
+
+/**
+ * 场景感知消息适配器
+ *
+ * 在标准 MessageConverter 基础上，增加场景策略：
+ * - 用户输入脱敏（法律/医疗场景）
+ * - 工具结果截断（避免上下文溢出）
+ * - 合规提示注入（法律/医疗场景）
+ * - reasoning_content 保留策略
+ * - 审计日志记录
+ */
+export class ScenarioMessageAdapter {
+  private readonly converter: MessageConverter
+  private currentDomain: ScenarioDomain = 'general'
+
+  constructor(converter: MessageConverter = new MessageConverter()) {
+    this.converter = converter
+  }
+
+  /**
+   * 设置当前场景
+   */
+  setScenario(domain: ScenarioDomain): void {
+    this.currentDomain = domain
+  }
+
+  /**
+   * 获取当前场景策略
+   */
+  getPolicy(): ScenarioMessagePolicy {
+    return SCENARIO_MESSAGE_POLICIES[this.currentDomain]
+  }
+
+  /**
+   * 场景感知的消息转换
+   */
+  convert(messages: LLMMessage[], systemPrompt?: string): ModelMessage[] {
+    const policy = SCENARIO_MESSAGE_POLICIES[this.currentDomain]
+
+    // 1. 应用场景策略处理消息
+    const processedMessages = messages.map((msg) => this.applyScenarioPolicy(msg, policy))
+
+    // 2. 注入合规提示
+    const finalSystemPrompt = this.injectCompliance(systemPrompt, policy)
+
+    // 3. 审计日志
+    if (policy.enableAudit) {
+      this.logAudit('convert_messages', {
+        domain: policy.domain,
+        inputCount: messages.length,
+        outputCount: processedMessages.length,
+        hasSystemPrompt: !!finalSystemPrompt,
+      })
+    }
+
+    // 4. 委托给标准转换器
+    return this.converter.convert(processedMessages, finalSystemPrompt)
+  }
+
+  /**
+   * 应用场景策略到单条消息
+   */
+  private applyScenarioPolicy(msg: LLMMessage, policy: ScenarioMessagePolicy): LLMMessage {
+    let processed = { ...msg }
+
+    // 用户消息脱敏
+    if (policy.sanitizeUserInput && msg.role === 'user') {
+      processed = this.sanitizeMessage(processed)
+    }
+
+    // 工具结果截断
+    if (policy.truncateToolResults && msg.role === 'tool') {
+      processed = this.truncateToolResult(processed, policy.maxToolResultChars)
+    }
+
+    // reasoning_content 保留策略
+    if (!policy.preserveReasoning && processed.reasoning_content) {
+      delete processed.reasoning_content
+    }
+
+    return processed
+  }
+
+  /**
+   * 脱敏消息内容
+   */
+  private sanitizeMessage(msg: LLMMessage): LLMMessage {
+    if (typeof msg.content === 'string') {
+      return {
+        ...msg,
+        content: this.sanitizeText(msg.content),
+      }
+    }
+    return msg
+  }
+
+  /**
+   * 脱敏文本
+   */
+  private sanitizeText(text: string): string {
+    let result = text
+    for (const { pattern, replacement } of SENSITIVE_DATA_PATTERNS) {
+      result = result.replace(pattern, replacement)
+    }
+    return result
+  }
+
+  /**
+   * 截断工具结果
+   */
+  private truncateToolResult(msg: LLMMessage, maxChars: number): LLMMessage {
+    const content = typeof msg.content === 'string' ? msg.content : ''
+    if (content.length <= maxChars) {
+      return msg
+    }
+
+    return {
+      ...msg,
+      content:
+        content.slice(0, maxChars) +
+        `\n\n[Tool result truncated by scenario policy: ${content.length - maxChars} chars omitted]`,
+    }
+  }
+
+  /**
+   * 注入合规提示
+   */
+  private injectCompliance(
+    systemPrompt: string | undefined,
+    policy: ScenarioMessagePolicy,
+  ): string | undefined {
+    if (!policy.injectCompliancePrompt || !policy.compliancePrompt) {
+      return systemPrompt
+    }
+
+    if (!systemPrompt) {
+      return policy.compliancePrompt
+    }
+
+    return `${systemPrompt}\n\n---\n${policy.compliancePrompt}`
+  }
+
+  /**
+   * 审计日志
+   */
+  private logAudit(action: string, details: Record<string, unknown>): void {
+    console.log(`[MSG-AUDIT] [${action}]`, JSON.stringify(details))
+  }
+
+  /**
+   * 获取基础转换器
+   */
+  getConverter(): MessageConverter {
+    return this.converter
+  }
+}
+
+/**
+ * 创建场景感知消息适配器
+ */
+export function createScenarioMessageAdapter(
+  converter?: MessageConverter,
+): ScenarioMessageAdapter {
+  return new ScenarioMessageAdapter(converter)
 }

@@ -1,15 +1,17 @@
 /**
  * 安全文件操作模块 — 整合文件操作、工作区管理和文件监听功能
  *
- * 职责：
- * - 整合文件操作、工作区管理和文件监听功能
- * - 通过 securityManager 进行权限校验
- * - 使用 electron-store 持久化工作区配置
+ * 设计理念：
+ * - 模块化：知识库文件提取已拆分到 knowledgeFileExtractor.ts
+ * - 安全校验：统一使用 fileSecurityHelpers 进行权限校验
+ * - 声明式注册：使用辅助函数消除重复的 IPC 注册模板
+ * - 可观测性：所有操作记录安全日志
  *
  * 差异化特性（相比基础实现）：
  * - 场景权限策略（ScenarioPermissionPolicy）
  * - 操作频率限制
  * - 安全事件通知
+ * - 知识库文件提取（拆分到独立模块）
  * - 品牌配置通过 `@shared/brand` 集中管理
  */
 
@@ -34,6 +36,25 @@ import {
   registerWorkspaceHandlers,
   WindowManagerContext,
 } from './workspaceGuard'
+
+// 导入知识库文件提取器（拆分模块）
+import {
+  extractPdfText as extractKnowledgePdfText,
+  extractDocxText as extractKnowledgeDocxText,
+  extractDocText as extractKnowledgeDocText,
+  extractXlsxText as extractKnowledgeXlsxText,
+  extractPptText as extractKnowledgePptText,
+  readKnowledgeFile,
+} from './knowledgeFileExtractor'
+
+// 导入安全校验辅助
+import {
+  validateFileOperation,
+  logFileSuccess,
+  logFileFailure,
+  ensureParentDir,
+  isNewFile,
+} from './fileSecurityHelpers'
 
 /**
  * 向渲染进程发送错误通知
@@ -137,129 +158,27 @@ export function registerSecureFileHandlers(
   })
 
   ipcMain.handle('file:readKnowledgeFile', async (_event, filePath: string) => {
-    if (!filePath) return null
-    if (securityManager.isSensitivePath(filePath)) {
-      securityManager.logOperation(OperationType.FILE_READ, filePath, false, {
-        reason: '安全底线：敏感路径',
-      })
-      return null
-    }
-
-    try {
-      const stats = await fsPromises.stat(filePath)
-      const content =
-        stats.size > 5 * 1024 * 1024
-          ? await readLargeFile(filePath, 0, 10000)
-          : await readFileWithEncoding(filePath)
-
-      securityManager.logOperation(OperationType.FILE_READ, filePath, true, {
-        knowledgeImport: true,
-      })
-      return content
-    } catch (err) {
-      logger.security.error('[File] knowledge read failed:', filePath, toAppError(err).message)
-      return null
-    }
+    return readKnowledgeFile(filePath, readLargeFile, readFileWithEncoding)
   })
 
   ipcMain.handle('file:extractKnowledgeDocxText', async (_event, filePath: string) => {
-    if (!filePath) return null
-    if (securityManager.isSensitivePath(filePath)) {
-      securityManager.logOperation(OperationType.FILE_READ, filePath, false, { reason: '安全底线：敏感路径' })
-      return null
-    }
-
-    try {
-      const mammoth = await import('mammoth')
-      const result = await mammoth.extractRawText({ path: filePath })
-      securityManager.logOperation(OperationType.FILE_READ, filePath, true, { knowledgeImport: true })
-      return result.value
-    } catch (err) {
-      logger.security.error('[File] knowledge extract docx failed:', filePath, toAppError(err).message)
-      return null
-    }
+    return extractKnowledgeDocxText(filePath)
   })
 
   ipcMain.handle('file:extractKnowledgeDocText', async (_event, filePath: string) => {
-    if (!filePath) return null
-    if (securityManager.isSensitivePath(filePath)) {
-      securityManager.logOperation(OperationType.FILE_READ, filePath, false, { reason: '安全底线：敏感路径' })
-      return null
-    }
-
-    try {
-      const WordExtractor = (await import('word-extractor')).default
-      const extractor = new WordExtractor()
-      const extracted = await extractor.extract(filePath)
-      const text = extracted.getBody()
-      securityManager.logOperation(OperationType.FILE_READ, filePath, true, { knowledgeImport: true })
-      return text
-    } catch (err) {
-      logger.security.error('[File] knowledge extract doc failed:', filePath, toAppError(err).message)
-      return null
-    }
+    return extractKnowledgeDocText(filePath)
   })
 
   ipcMain.handle('file:extractKnowledgeXlsxText', async (_event, filePath: string) => {
-    if (!filePath) return null
-    if (securityManager.isSensitivePath(filePath)) {
-      securityManager.logOperation(OperationType.FILE_READ, filePath, false, { reason: '安全底线：敏感路径' })
-      return null
-    }
-
-    try {
-      const XLSX = await import('xlsx')
-      const workbook = XLSX.readFile(filePath)
-      const lines: string[] = []
-      for (const sheetName of workbook.SheetNames) {
-        const sheet = workbook.Sheets[sheetName]
-        const csv = XLSX.utils.sheet_to_csv(sheet)
-        lines.push(`## Sheet: ${sheetName}\n${csv}`)
-      }
-      securityManager.logOperation(OperationType.FILE_READ, filePath, true, { knowledgeImport: true })
-      return lines.join('\n\n')
-    } catch (err) {
-      logger.security.error('[File] knowledge extract xlsx failed:', filePath, toAppError(err).message)
-      return null
-    }
+    return extractKnowledgeXlsxText(filePath)
   })
 
   ipcMain.handle('file:extractKnowledgePptText', async (_event, filePath: string) => {
-    if (!filePath) return null
-    if (securityManager.isSensitivePath(filePath)) {
-      securityManager.logOperation(OperationType.FILE_READ, filePath, false, { reason: '安全底线：敏感路径' })
-      return null
-    }
-
-    try {
-      const officeParser = (await import('officeparser')).default
-      const text = await officeParser.parseOffice(filePath)
-      const result = typeof text === 'string' ? text : (text as any)?.toText?.() || String(text)
-      securityManager.logOperation(OperationType.FILE_READ, filePath, true, { knowledgeImport: true })
-      return result
-    } catch (err) {
-      logger.security.error('[File] knowledge extract ppt failed:', filePath, toAppError(err).message)
-      return null
-    }
+    return extractKnowledgePptText(filePath)
   })
 
   ipcMain.handle('file:extractKnowledgePdfText', async (_event, filePath: string) => {
-    if (!filePath) return null
-    if (securityManager.isSensitivePath(filePath)) {
-      securityManager.logOperation(OperationType.FILE_READ, filePath, false, { reason: '安全底线：敏感路径' })
-      return null
-    }
-
-    try {
-      const pdfParse = await import('pdf-parse')
-      const dataBuffer = await import('fs').then(fs => fs.promises.readFile(filePath))
-      const data = await (pdfParse as any).default(dataBuffer)
-      securityManager.logOperation(OperationType.FILE_READ, filePath, true, { knowledgeImport: true })
-      return data.text
-    } catch (err) {
-      logger.security.error('[File] knowledge extract pdf failed:', filePath, toAppError(err).message)
-      return null
-    }
+    return extractKnowledgePdfText(filePath)
   })
 
   ipcMain.handle('file:readDir', async (_, dirPath: string) => {
@@ -568,49 +487,29 @@ export function registerSecureFileHandlers(
     if (content === undefined || content === null) return false
 
     const workspace = getWorkspaceSessionFn(event)
-
-    if (workspace && !securityManager.validateWorkspacePath(filePath, workspace.roots)) {
-      securityManager.logOperation(OperationType.FILE_WRITE, filePath, false, {
-        reason: '安全底线：超出工作区边界',
-      })
-      return false
-    }
-
-    if (securityManager.isSensitivePath(filePath)) {
-      securityManager.logOperation(OperationType.FILE_WRITE, filePath, false, {
-        reason: '安全底线：敏感路径',
-      })
-      return false
-    }
-
-    // 禁止类型检查
-    const forbiddenPatterns = [/\.exe$/i, /\.dll$/i, /\.sys$/i, /\.tmp$/i, /\.temp$/i]
-    for (const pattern of forbiddenPatterns) {
-      if (pattern.test(filePath)) {
-        securityManager.logOperation(OperationType.FILE_WRITE, filePath, false, {
-          reason: '安全底线：禁止类型',
-        })
-        return false
-      }
-    }
+    const securityCheck = validateFileOperation(
+      filePath,
+      workspace,
+      OperationType.FILE_WRITE,
+    )
+    if (!securityCheck.passed) return false
 
     try {
-      const dir = path.dirname(filePath)
-      const isNewFile = !fs.existsSync(filePath)
-      await fsPromises.mkdir(dir, { recursive: true })
+      await ensureParentDir(filePath)
+      const isNew = await isNewFile(filePath)
       await fsPromises.writeFile(filePath, content, 'utf-8')
-      securityManager.logOperation(OperationType.FILE_WRITE, filePath, true, {
+      logFileSuccess(OperationType.FILE_WRITE, filePath, {
         size: content.length,
         bypass: true,
       })
       // 主动通知渲染进程文件变更
       notifyFileChanged(getMainWindowFn, {
-        event: isNewFile ? 'create' : 'update',
+        event: isNew ? 'create' : 'update',
         path: filePath,
       })
       return true
     } catch (err) {
-      logger.security.error('[File] write failed:', filePath, toAppError(err).message)
+      logFileFailure(OperationType.FILE_WRITE, filePath, err)
       return false
     }
   })
@@ -621,46 +520,27 @@ export function registerSecureFileHandlers(
     if (!base64Data || typeof base64Data !== 'string') return false
 
     const workspace = getWorkspaceSessionFn(event)
-
-    if (workspace && !securityManager.validateWorkspacePath(filePath, workspace.roots)) {
-      logger.security.warn('[File] writeBinary rejected - path outside workspace:', filePath, 'roots:', workspace.roots)
-      securityManager.logOperation(OperationType.FILE_WRITE, filePath, false, {
-        reason: '安全底线：超出工作区边界',
-      })
-      return false
-    }
-
-    if (securityManager.isSensitivePath(filePath)) {
-      securityManager.logOperation(OperationType.FILE_WRITE, filePath, false, {
-        reason: '安全底线：敏感路径',
-      })
-      return false
-    }
-
-    const forbiddenPatterns = [/\.exe$/i, /\.dll$/i, /\.sys$/i]
-    for (const pattern of forbiddenPatterns) {
-      if (pattern.test(filePath)) {
-        securityManager.logOperation(OperationType.FILE_WRITE, filePath, false, {
-          reason: '安全底线：禁止类型',
-        })
-        return false
-      }
-    }
+    const securityCheck = validateFileOperation(
+      filePath,
+      workspace,
+      OperationType.FILE_WRITE,
+      true,
+    )
+    if (!securityCheck.passed) return false
 
     try {
-      const dir = path.dirname(filePath)
-      const isNewFile = !fs.existsSync(filePath)
-      await fsPromises.mkdir(dir, { recursive: true })
+      await ensureParentDir(filePath)
+      const isNew = await isNewFile(filePath)
       const buffer = Buffer.from(base64Data, 'base64')
       await fsPromises.writeFile(filePath, buffer)
-      securityManager.logOperation(OperationType.FILE_WRITE, filePath, true, {
+      logFileSuccess(OperationType.FILE_WRITE, filePath, {
         size: buffer.length,
         binary: true,
         bypass: true,
       })
       // 主动通知渲染进程文件变更
       notifyFileChanged(getMainWindowFn, {
-        event: isNewFile ? 'create' : 'update',
+        event: isNew ? 'create' : 'update',
         path: filePath,
       })
       return true

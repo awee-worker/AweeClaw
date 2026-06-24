@@ -365,3 +365,229 @@ export const createFileSlice: StateCreator<FileSlice, [], [], FileSlice> = (set)
   setFileScrollPosition: (path, scrollPosition) =>
     set((state) => ({ openFiles: patchFile(state.openFiles, path, { scrollPosition }) })),
 })
+
+/* ------------------------------------------------------------------ */
+/* 场景感知文件切片扩展                                              */
+/* ------------------------------------------------------------------ */
+
+import type { ScenarioDomain } from '@configuration/defaultProfile'
+
+/** 场景文件管理策略 */
+export interface ScenarioFilePolicy {
+  /** 场景类型 */
+  domain: ScenarioDomain
+  /** 最大打开文件数 */
+  maxOpenFiles: number
+  /** 大文件阈值（MB） */
+  largeFileThresholdMB: number
+  /** 超大文件阈值（行数） */
+  veryLargeFileLines: number
+  /** 是否启用 LRU 淘汰 */
+  enableLruEviction: boolean
+  /** 是否允许删除文件 */
+  allowDelete: boolean
+  /** 是否允许远程文件 */
+  allowRemote: boolean
+  /** 受限路径模式 */
+  restrictedPatterns: RegExp[]
+  /** 是否启用审计 */
+  enableAudit: boolean
+}
+
+/** 场景文件策略预设 */
+const SCENARIO_FILE_POLICIES: Record<ScenarioDomain, ScenarioFilePolicy> = {
+  /** 法律场景：严格限制 + 审计 + 禁止删除 */
+  legal: {
+    domain: 'legal',
+    maxOpenFiles: 15,
+    largeFileThresholdMB: 2,
+    veryLargeFileLines: 5000,
+    enableLruEviction: true,
+    allowDelete: false,
+    allowRemote: false,
+    restrictedPatterns: [
+      /\.env/i,
+      /\.secret/i,
+      /credentials/i,
+      /\.key$/i,
+      /private/i,
+    ],
+    enableAudit: true,
+  },
+
+  /** 医疗场景：更严格限制 + 审计 + 禁止删除和远程 */
+  medical: {
+    domain: 'medical',
+    maxOpenFiles: 10,
+    largeFileThresholdMB: 2,
+    veryLargeFileLines: 3000,
+    enableLruEviction: true,
+    allowDelete: false,
+    allowRemote: false,
+    restrictedPatterns: [
+      /\.env/i,
+      /\.secret/i,
+      /patient/i,
+      /hipaa/i,
+      /medical-record/i,
+      /\.key$/i,
+    ],
+    enableAudit: true,
+  },
+
+  /** 教育场景：标准限制 */
+  education: {
+    domain: 'education',
+    maxOpenFiles: 30,
+    largeFileThresholdMB: 5,
+    veryLargeFileLines: 10000,
+    enableLruEviction: true,
+    allowDelete: true,
+    allowRemote: true,
+    restrictedPatterns: [/\.env/i],
+    enableAudit: false,
+  },
+
+  /** 通用场景：默认配置 */
+  general: {
+    domain: 'general',
+    maxOpenFiles: 30,
+    largeFileThresholdMB: 5,
+    veryLargeFileLines: 50000,
+    enableLruEviction: true,
+    allowDelete: true,
+    allowRemote: true,
+    restrictedPatterns: [/\.env/i],
+    enableAudit: false,
+  },
+}
+
+/**
+ * 场景感知文件管理器
+ *
+ * 在标准 FileSlice 基础上，增加场景策略：
+ * - 场景感知的文件打开限制
+ * - 路径安全校验（法律/医疗场景）
+ * - 删除权限控制
+ * - 远程文件控制
+ * - 审计日志记录
+ */
+export class ScenarioFileManager {
+  private currentDomain: ScenarioDomain = 'general'
+
+  /**
+   * 设置当前场景
+   */
+  setScenario(domain: ScenarioDomain): void {
+    this.currentDomain = domain
+  }
+
+  /**
+   * 获取当前场景策略
+   */
+  getPolicy(): ScenarioFilePolicy {
+    return SCENARIO_FILE_POLICIES[this.currentDomain]
+  }
+
+  /**
+   * 检查路径是否受限
+   */
+  isPathRestricted(path: string): boolean {
+    const policy = SCENARIO_FILE_POLICIES[this.currentDomain]
+    return policy.restrictedPatterns.some((pattern) => pattern.test(path))
+  }
+
+  /**
+   * 检查是否允许打开文件
+   */
+  canOpenFile(path: string, openFilesCount: number): {
+    allowed: boolean
+    reason?: string
+  } {
+    const policy = SCENARIO_FILE_POLICIES[this.currentDomain]
+
+    // 路径限制检查
+    if (this.isPathRestricted(path)) {
+      return {
+        allowed: false,
+        reason: `Path restricted by ${policy.domain} scenario policy`,
+      }
+    }
+
+    // 文件数量限制检查
+    if (openFilesCount >= policy.maxOpenFiles) {
+      return {
+        allowed: false,
+        reason: `Maximum open files (${policy.maxOpenFiles}) reached for ${policy.domain} scenario`,
+      }
+    }
+
+    return { allowed: true }
+  }
+
+  /**
+   * 检查是否允许删除文件
+   */
+  canDeleteFile(): boolean {
+    return SCENARIO_FILE_POLICIES[this.currentDomain].allowDelete
+  }
+
+  /**
+   * 检查是否允许远程文件
+   */
+  canOpenRemote(): boolean {
+    return SCENARIO_FILE_POLICIES[this.currentDomain].allowRemote
+  }
+
+  /**
+   * 评估文件大小
+   */
+  evaluateFileSize(sizeBytes: number, lineCount: number): LargeFileInfo {
+    const policy = SCENARIO_FILE_POLICIES[this.currentDomain]
+    const sizeMB = sizeBytes / (1024 * 1024)
+
+    const isLargeBySize = sizeMB >= policy.largeFileThresholdMB
+    const isLargeByLines = lineCount >= policy.veryLargeFileLines
+    const isLarge = isLargeBySize || isLargeByLines
+    const isVeryLarge = isLargeBySize && isLargeByLines
+
+    let reason: LargeFileInfo['reason']
+    if (isLargeBySize && isLargeByLines) reason = 'both'
+    else if (isLargeBySize) reason = 'size'
+    else reason = 'lines'
+
+    const warning = isLarge
+      ? `File exceeds ${policy.domain} scenario limits (${sizeMB.toFixed(2)}MB, ${lineCount} lines)`
+      : undefined
+
+    return {
+      isLarge,
+      isVeryLarge,
+      size: sizeBytes,
+      lineCount,
+      reason,
+      warning,
+    }
+  }
+
+  /**
+   * 获取 LRU 淘汰后的最大文件数
+   */
+  getMaxOpenFiles(): number {
+    return SCENARIO_FILE_POLICIES[this.currentDomain].maxOpenFiles
+  }
+
+  /**
+   * 检查是否启用审计
+   */
+  isAuditEnabled(): boolean {
+    return SCENARIO_FILE_POLICIES[this.currentDomain].enableAudit
+  }
+}
+
+/**
+ * 创建场景感知文件管理器
+ */
+export function createScenarioFileManager(): ScenarioFileManager {
+  return new ScenarioFileManager()
+}

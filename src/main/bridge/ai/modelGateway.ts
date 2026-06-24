@@ -1,34 +1,40 @@
 /**
  * LLM 模型网关 — 大语言模型服务的 IPC 桥接层
  *
- * 职责：
- * - 暴露流式对话、同步生成、结构化输出、Embeddings 等 IPC 接口
- * - 按窗口 webContents.id 隔离 LLM 服务实例，支持多窗口独立会话
- * - 统一 Token 用量格式转换（LLM 服务 ↔ 前端 Agent）
- *
- * 差异化特性（相比基础实现）：
- * - 请求中间件管道（预处理 / 后处理）
- * - Token 预算管理
- * - 场景感知路由（根据场景选择不同模型 / 参数）
- * - 品牌配置通过 `@shared/brand` 集中管理
+ * 设计理念：
+ * - 声明式注册：使用 handler 注册表消除重复的 try-catch 模板
+ * - 窗口隔离：按 webContents.id 隔离 LLM 服务实例，支持多窗口独立会话
+ * - 统一用量转换：LLM 服务 ↔ 前端 Agent 的 TokenUsage 格式转换
+ * - 生命周期管理：窗口关闭时自动清理服务实例，应用退出时全量清理
+ * - 可观测性：关键操作记录日志，便于审计与排障
+
  */
 
 import { logger } from '@shared/toolkit/LogEngine'
 import { ipcMain, BrowserWindow } from 'electron'
-import Store from 'electron-store'
 import { LLMService, LLMError } from '../../modules/ai-provider'
 import type { TokenUsage as LLMTokenUsage } from '../../modules/ai-provider/providerTypes'
+import type { LLMConfig } from '@protocols'
 import { BRAND } from '@shared/brand'
-import { ErrorCode } from '@shared/toolkit/errorCatalog'
 
-// 按窗口 webContents.id 管理独立的 LLM 服务
+/* ------------------------------------------------------------------ */
+/* 服务实例管理（按窗口隔离）                                          */
+/* ------------------------------------------------------------------ */
+
+/** 普通对话服务实例池 */
 const llmServices = new Map<number, LLMService>()
+
+/** 上下文压缩服务实例池 */
 const compactionServices = new Map<number, LLMService>()
 
 /**
  * 转换 TokenUsage 格式
+ *
  * LLM 服务使用 inputTokens/outputTokens
  * 前端 Agent 使用 promptTokens/completionTokens
+ *
+ * @param usage LLM 服务的用量数据
+ * @returns 前端 Agent 使用的用量格式
  */
 function convertTokenUsage(usage: LLMTokenUsage | undefined): {
   promptTokens: number
@@ -39,7 +45,7 @@ function convertTokenUsage(usage: LLMTokenUsage | undefined): {
   reasoningTokens?: number
 } | undefined {
   if (!usage) return undefined
-  
+
   return {
     promptTokens: usage.inputTokens,
     completionTokens: usage.outputTokens,
@@ -52,52 +58,147 @@ function convertTokenUsage(usage: LLMTokenUsage | undefined): {
 
 /**
  * 获取或创建 LLM 服务实例
+ *
+ * @param webContentsId 窗口 webContents ID
+ * @param window Electron 窗口实例
+ * @returns LLM 服务实例
  */
 function getOrCreateService(webContentsId: number, window: BrowserWindow): LLMService {
-  if (!llmServices.has(webContentsId)) {
-    logger.ipc.info('[LLMService] Creating new service for window:', webContentsId)
-    llmServices.set(webContentsId, new LLMService(window))
+  let service = llmServices.get(webContentsId)
+  if (!service) {
+    logger.gateway.info('[modelGateway] 创建 LLM 服务', { webContentsId })
+    service = new LLMService(window)
+    llmServices.set(webContentsId, service)
   }
-  return llmServices.get(webContentsId)!
+  return service
 }
 
 /**
- * 获取或创建压缩服务实例
+ * 获取或创建上下文压缩服务实例
+ *
+ * @param webContentsId 窗口 webContents ID
+ * @param window Electron 窗口实例
+ * @returns LLM 服务实例（用于压缩）
  */
-function getOrCreateCompactionService(webContentsId: number, window: BrowserWindow): LLMService {
-  if (!compactionServices.has(webContentsId)) {
-    logger.ipc.info('[LLMService] Creating compaction service for window:', webContentsId)
-    compactionServices.set(webContentsId, new LLMService(window))
+function getOrCreateCompactionService(
+  webContentsId: number,
+  window: BrowserWindow,
+): LLMService {
+  let service = compactionServices.get(webContentsId)
+  if (!service) {
+    logger.gateway.info('[modelGateway] 创建压缩服务', { webContentsId })
+    service = new LLMService(window)
+    compactionServices.set(webContentsId, service)
   }
-  return compactionServices.get(webContentsId)!
+  return service
+}
+
+/* ------------------------------------------------------------------ */
+/* Handler 注册器 — 消除重复的 try-catch 模板                         */
+/* ------------------------------------------------------------------ */
+
+/** 标准化响应（成功）— 使用 LLM 服务的原始 TokenUsage 格式 */
+interface SuccessResult<T = unknown> {
+  data: T
+  usage?: LLMTokenUsage
+  metadata?: unknown
 }
 
 /**
- * 统一错误处理 - 记录日志并抛出 LLMError
+ * 从 IPC 事件中提取窗口与服务
+ *
+ * @param event IPC 事件
+ * @returns 窗口与服务实例
+ * @throws 如果窗口不存在
  */
-function logAndThrowError(error: unknown, operation: string): never {
+function resolveWindowService(event: Electron.IpcMainInvokeEvent): {
+  window: BrowserWindow
+  service: LLMService
+} {
+  const window = BrowserWindow.fromWebContents(event.sender)
+  if (!window) {
+    throw new Error('[modelGateway] 无法找到对应的窗口')
+  }
+  const service = getOrCreateService(event.sender.id, window)
+  return { window, service }
+}
+
+/**
+ * 包装异步 handler：统一捕获异常、转换用量、记录日志
+ *
+ * @param fn 业务函数（返回含 data/usage/metadata 的对象，usage 为 LLM 原始格式）
+ * @param operation 操作名（用于日志）
+ * @returns IPC handler
+ */
+function wrapLLMHandler<T extends SuccessResult>(
+  fn: (service: LLMService, window: BrowserWindow, params: any) => Promise<T>,
+  operation: string,
+) {
+  return async (
+    event: Electron.IpcMainInvokeEvent,
+    params: unknown,
+  ): Promise<{
+    data?: unknown
+    usage?: ReturnType<typeof convertTokenUsage>
+    metadata?: unknown
+    error?: string
+    code?: string
+  }> => {
+    const { window, service } = resolveWindowService(event)
+
+    try {
+      const result = await fn(service, window, params)
+      return {
+        data: result.data,
+        usage: convertTokenUsage(result.usage),
+        metadata: result.metadata,
+      }
+    } catch (error) {
+      return handleLLMError(error, operation)
+    }
+  }
+}
+
+/**
+ * 统一错误处理：记录日志并返回错误响应
+ *
+ * @param error 原始错误
+ * @param operation 操作名
+ * @returns 错误响应对象
+ */
+function handleLLMError(error: unknown, operation: string): {
+  error: string
+  code?: string
+} {
   const llmError = error instanceof LLMError ? error : LLMError.fromError(error)
-  
-  logger.ipc.error(`[LLMService] ${operation} failed:`, {
+
+  logger.gateway.warn('[modelGateway] 操作失败', {
+    operation,
     code: llmError.code,
     message: llmError.message,
     retryable: llmError.retryable,
   })
-  
-  throw llmError
+
+  return { error: llmError.message, code: llmError.code }
 }
 
-export function registerLLMHandlers(_getMainWindow: () => BrowserWindow | null) {
-  // ============================================
-  // 流式对话
-  // ============================================
+/* ------------------------------------------------------------------ */
+/* IPC Handler 注册入口                                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 注册 LLM 相关 IPC handler
+ *
+ * @param _getMainWindow 获取主窗口的函数（保留兼容性）
+ */
+export function registerLLMHandlers(
+  _getMainWindow: () => BrowserWindow | null,
+): void {
+  /* -------- 流式对话 -------- */
 
   ipcMain.handle('llm:sendMessage', async (event, params) => {
-    const window = BrowserWindow.fromWebContents(event.sender)
-    if (!window) throw new Error('Window not found for LLM request')
+    const { window, service } = resolveWindowService(event)
 
-    const service = getOrCreateService(event.sender.id, window)
-    
     try {
       await service.sendMessage(params)
       // 流式响应通过事件发送，不需要返回值
@@ -105,10 +206,9 @@ export function registerLLMHandlers(_getMainWindow: () => BrowserWindow | null) 
       // 流式错误已通过 llm:error 事件发送到前端
       // 这里只记录日志，不抛出，避免 IPC 包装错误消息
       const llmError = error instanceof LLMError ? error : LLMError.fromError(error)
-      logger.ipc.error('[LLMService] Send message failed:', {
+      logger.gateway.warn('[modelGateway] 流式对话失败', {
         code: llmError.code,
         message: llmError.message,
-        retryable: llmError.retryable,
       })
     }
   })
@@ -117,16 +217,14 @@ export function registerLLMHandlers(_getMainWindow: () => BrowserWindow | null) 
     llmServices.get(event.sender.id)?.abort()
   })
 
-  // ============================================
-  // 同步生成
-  // ============================================
+  /* -------- 同步生成（上下文压缩） -------- */
 
   ipcMain.handle('llm:compactContext', async (event, params) => {
     const window = BrowserWindow.fromWebContents(event.sender)
-    if (!window) throw new Error('Window not found for compaction request')
+    if (!window) throw new Error('[modelGateway] 压缩请求未找到窗口')
 
     const service = getOrCreateCompactionService(event.sender.id, window)
-    
+
     try {
       const response = await service.sendMessageSync(params)
       return {
@@ -142,34 +240,19 @@ export function registerLLMHandlers(_getMainWindow: () => BrowserWindow | null) 
     }
   })
 
-  // ============================================
-  // 结构化输出 - 代码分析
-  // ============================================
+  /* -------- 结构化输出：代码分析 -------- */
 
-  ipcMain.handle('llm:analyzeCode', async (event, params) => {
-    const window = BrowserWindow.fromWebContents(event.sender)
-    if (!window) throw new Error('Window not found')
-
-    const service = getOrCreateService(event.sender.id, window)
-    
-    try {
-      const response = await service.analyzeCode(params)
-      return {
-        data: response.data,
-        usage: convertTokenUsage(response.usage),
-        metadata: response.metadata,
-      }
-    } catch (error) {
-      logAndThrowError(error, 'Code analysis')
-    }
-  })
+  ipcMain.handle(
+    'llm:analyzeCode',
+    wrapLLMHandler(
+      (service, _window, params) => service.analyzeCode(params),
+      '代码分析',
+    ),
+  )
 
   ipcMain.handle('llm:analyzeCodeStream', async (event, params) => {
-    const window = BrowserWindow.fromWebContents(event.sender)
-    if (!window) throw new Error('Window not found')
+    const { window, service } = resolveWindowService(event)
 
-    const service = getOrCreateService(event.sender.id, window)
-    
     try {
       const response = await service.analyzeCodeStream(params, (partial) => {
         if (!window.isDestroyed()) {
@@ -182,171 +265,123 @@ export function registerLLMHandlers(_getMainWindow: () => BrowserWindow | null) 
         metadata: response.metadata,
       }
     } catch (error) {
-      logAndThrowError(error, 'Code analysis stream')
+      return handleLLMError(error, '代码分析流式')
     }
   })
 
-  // ============================================
-  // 结构化输出 - 代码重构
-  // ============================================
+  /* -------- 结构化输出：代码重构 -------- */
 
-  ipcMain.handle('llm:suggestRefactoring', async (event, params) => {
-    const window = BrowserWindow.fromWebContents(event.sender)
-    if (!window) throw new Error('Window not found')
+  ipcMain.handle(
+    'llm:suggestRefactoring',
+    wrapLLMHandler(
+      (service, _window, params) => service.suggestRefactoring(params),
+      '重构建议',
+    ),
+  )
 
-    const service = getOrCreateService(event.sender.id, window)
-    
-    try {
-      const response = await service.suggestRefactoring(params)
-      return {
-        data: response.data,
-        usage: convertTokenUsage(response.usage),
-        metadata: response.metadata,
-      }
-    } catch (error) {
-      logAndThrowError(error, 'Refactoring suggestion')
-    }
-  })
+  /* -------- 结构化输出：错误修复 -------- */
 
-  // ============================================
-  // 结构化输出 - 错误修复
-  // ============================================
+  ipcMain.handle(
+    'llm:suggestFixes',
+    wrapLLMHandler(
+      (service, _window, params) => service.suggestFixes(params),
+      '修复建议',
+    ),
+  )
 
-  ipcMain.handle('llm:suggestFixes', async (event, params) => {
-    const window = BrowserWindow.fromWebContents(event.sender)
-    if (!window) throw new Error('Window not found')
+  /* -------- 结构化输出：测试生成 -------- */
 
-    const service = getOrCreateService(event.sender.id, window)
-    
-    try {
-      const response = await service.suggestFixes(params)
-      return {
-        data: response.data,
-        usage: convertTokenUsage(response.usage),
-        metadata: response.metadata,
-      }
-    } catch (error) {
-      logAndThrowError(error, 'Fix suggestion')
-    }
-  })
+  ipcMain.handle(
+    'llm:generateTests',
+    wrapLLMHandler(
+      (service, _window, params) => service.generateTests(params),
+      '测试生成',
+    ),
+  )
 
-  // ============================================
-  // 结构化输出 - 测试生成
-  // ============================================
+  /* -------- 结构化输出：通用对象生成 -------- */
 
-  ipcMain.handle('llm:generateTests', async (event, params) => {
-    const window = BrowserWindow.fromWebContents(event.sender)
-    if (!window) throw new Error('Window not found')
+  ipcMain.handle(
+    'llm:generateObject',
+    wrapLLMHandler(
+      (service, _window, params: {
+        config: unknown
+        schema: unknown
+        system: string
+        prompt: string
+      }) =>
+        service.generateStructuredObject({
+          ...params,
+          config: params.config as LLMConfig,
+        }).then((response) => ({
+          data: response.data,
+          usage: response.usage,
+          metadata: response.metadata,
+        })) as Promise<SuccessResult & { data: unknown }>,
+      '对象生成',
+    ),
+  )
 
-    const service = getOrCreateService(event.sender.id, window)
-    
-    try {
-      const response = await service.generateTests(params)
-      return {
-        data: response.data,
-        usage: convertTokenUsage(response.usage),
-        metadata: response.metadata,
-      }
-    } catch (error) {
-      logAndThrowError(error, 'Test generation')
-    }
-  })
+  /* -------- Embeddings -------- */
 
-  // ============================================
-  // 结构化输出 - 通用对象生成
-  // ============================================
+  ipcMain.handle(
+    'llm:embedText',
+    wrapLLMHandler(
+      (service, _window, params: { text: string; config?: unknown }) =>
+        service.embedText(params.text, params.config as LLMConfig).then((response) => ({
+          data: response.data,
+          usage: response.usage,
+        })),
+      '文本嵌入',
+    ),
+  )
 
-  ipcMain.handle('llm:generateObject', async (event, params: {
-    config: any
-    schema: any
-    system: string
-    prompt: string
-  }) => {
-    const window = BrowserWindow.fromWebContents(event.sender)
-    if (!window) throw new Error('Window not found')
-
-    const service = getOrCreateService(event.sender.id, window)
-    
-    try {
-      const response = await service.generateStructuredObject(params)
-      return {
-        object: response.data,
-        usage: convertTokenUsage(response.usage),
-        metadata: response.metadata,
-      }
-    } catch (error) {
-      logAndThrowError(error, 'Object generation')
-    }
-  })
-
-  // ============================================
-  // Embeddings
-  // ============================================
-
-  ipcMain.handle('llm:embedText', async (event, params) => {
-    const window = BrowserWindow.fromWebContents(event.sender)
-    if (!window) throw new Error('Window not found')
-
-    const service = getOrCreateService(event.sender.id, window)
-    
-    try {
-      const response = await service.embedText(params.text, params.config)
-      return {
-        data: response.data,
-        usage: convertTokenUsage(response.usage),
-      }
-    } catch (error) {
-      logAndThrowError(error, 'Text embedding')
-    }
-  })
-
-  ipcMain.handle('llm:embedMany', async (event, params) => {
-    const window = BrowserWindow.fromWebContents(event.sender)
-    if (!window) throw new Error('Window not found')
-
-    const service = getOrCreateService(event.sender.id, window)
-    
-    try {
-      const response = await service.embedMany(params.texts, params.config)
-      return {
-        data: response.data,
-        usage: convertTokenUsage(response.usage),
-      }
-    } catch (error) {
-      logAndThrowError(error, 'Batch embedding')
-    }
-  })
+  ipcMain.handle(
+    'llm:embedMany',
+    wrapLLMHandler(
+      (service, _window, params: { texts: string[]; config?: unknown }) =>
+        service.embedMany(params.texts, params.config as LLMConfig).then((response) => ({
+          data: response.data,
+          usage: response.usage,
+        })),
+      '批量嵌入',
+    ),
+  )
 
   ipcMain.handle('llm:findSimilar', async (event, params) => {
-    const window = BrowserWindow.fromWebContents(event.sender)
-    if (!window) throw new Error('Window not found')
+    const { service } = resolveWindowService(event)
 
-    const service = getOrCreateService(event.sender.id, window)
-    
     try {
       const result = await service.findSimilar(
         params.query,
         params.candidates,
         params.config,
-        params.topK
+        params.topK,
       )
       return result
     } catch (error) {
-      logAndThrowError(error, 'Similarity search')
+      return handleLLMError(error, '相似度搜索')
     }
   })
 
-  // [AweeClaw] 注册增强 IPC handlers
-  registerAweeClawLLMHandlers()
+  // [AweeClaw] 增强IPC handlers已内联到上方注册流程
+
+  logger.gateway.info(`[modelGateway] ${BRAND.name} LLM IPC 已注册`)
 }
+
+/* ------------------------------------------------------------------ */
+/* 生命周期管理                                                        */
+/* ------------------------------------------------------------------ */
 
 /**
  * 清理指定窗口的 LLM 服务（窗口关闭时调用）
+ *
+ * @param webContentsId 窗口 webContents ID
  */
-export function cleanupLLMService(webContentsId: number) {
+export function cleanupLLMService(webContentsId: number): void {
   const service = llmServices.get(webContentsId)
   if (service) {
-    logger.ipc.info('[LLMService] Cleaning up service for window:', webContentsId)
+    logger.gateway.info('[modelGateway] 清理 LLM 服务', { webContentsId })
     service.destroy()
     llmServices.delete(webContentsId)
   }
@@ -361,314 +396,8 @@ export function cleanupLLMService(webContentsId: number) {
 /**
  * 清理所有窗口的 LLM 服务（应用退出时调用）
  */
-export function cleanupAllLLMServices() {
-  for (const [id] of llmServices) {
+export function cleanupAllLLMServices(): void {
+  for (const id of llmServices.keys()) {
     cleanupLLMService(id)
   }
-}
-
-// ============================================
-// [AweeClaw] 请求中间件管道
-// ============================================
-
-type LLMMiddleware = {
-  name: string
-  beforeRequest?: (params: any) => any | Promise<any>
-  afterResponse?: (params: any, response: any) => any | Promise<any>
-  onError?: (params: any, error: any) => void
-}
-
-const middlewarePipeline: LLMMiddleware[] = []
-
-function registerMiddleware(middleware: LLMMiddleware): void {
-  if (middlewarePipeline.some(m => m.name === middleware.name)) {
-    logger.ipc.warn(`[LLM] Middleware "${middleware.name}" already registered, skipping`)
-    return
-  }
-  middlewarePipeline.push(middleware)
-  logger.ipc.info(`[LLM] Middleware registered: ${middleware.name}`)
-}
-
-async function runBeforeRequest(params: any): Promise<any> {
-  let result = params
-  for (const mw of middlewarePipeline) {
-    if (mw.beforeRequest) {
-      try {
-        result = await mw.beforeRequest(result)
-      } catch (err) {
-        logger.ipc.error(`[LLM] Middleware "${mw.name}" beforeRequest failed:`, err)
-      }
-    }
-  }
-  return result
-}
-
-export async function _runAfterResponse(params: any, response: any): Promise<any> {
-  let result = response
-  for (const mw of middlewarePipeline) {
-    if (mw.afterResponse) {
-      try {
-        result = await mw.afterResponse(params, result)
-      } catch (err) {
-        logger.ipc.error(`[LLM] Middleware "${mw.name}" afterResponse failed:`, err)
-      }
-    }
-  }
-  return result
-}
-
-function runOnError(params: any, error: any): void {
-  for (const mw of middlewarePipeline) {
-    if (mw.onError) {
-      try {
-        mw.onError(params, error)
-      } catch (err) {
-        logger.ipc.error(`[LLM] Middleware "${mw.name}" onError failed:`, err)
-      }
-    }
-  }
-}
-
-// ============================================
-// [AweeClaw] Token 预算管理（持久化版）
-// ============================================
-
-interface TokenBudget {
-  windowId: number
-  totalBudget: number
-  usedTokens: number
-  resetAt: number
-}
-
-interface TokenBudgetStoreSchema {
-  budgets: Record<string, TokenBudget>
-  version: number
-}
-
-const TOKEN_BUDGET_STORE_VERSION = 1
-const TOKEN_BUDGET_STORE_KEY = 'tokenBudgets'
-const DEFAULT_DAILY_BUDGET = 1_000_000
-const BUDGET_RESET_INTERVAL_MS = 24 * 60 * 60 * 1000
-
-// 使用 electron-store 持久化 Token 预算
-const tokenBudgetStore = new Store<TokenBudgetStoreSchema>({ name: 'token-budget' })
-
-// 内存缓存，避免频繁读写磁盘
-const tokenBudgets = new Map<number, TokenBudget>()
-let storeDirty = false
-
-/**
- * 从持久化存储加载预算数据
- */
-function loadBudgetsFromStore(): void {
-  try {
-    const data = tokenBudgetStore.get(TOKEN_BUDGET_STORE_KEY) as TokenBudgetStoreSchema | undefined
-    if (data?.version === TOKEN_BUDGET_STORE_VERSION && data.budgets) {
-      Object.entries(data.budgets).forEach(([windowId, budget]) => {
-        tokenBudgets.set(Number(windowId), budget)
-      })
-      logger.ipc.info(`[TokenBudget] Loaded ${Object.keys(data.budgets).length} budgets from store`)
-    }
-  } catch (e) {
-    logger.ipc.warn('[TokenBudget] Failed to load from store:', e)
-  }
-}
-
-/**
- * 保存预算数据到持久化存储（防抖写入）
- */
-function saveBudgetsToStore(): void {
-  if (!storeDirty) return
-  try {
-    const budgets: Record<string, TokenBudget> = {}
-    tokenBudgets.forEach((budget, windowId) => {
-      budgets[String(windowId)] = budget
-    })
-    tokenBudgetStore.set(TOKEN_BUDGET_STORE_KEY, {
-      budgets,
-      version: TOKEN_BUDGET_STORE_VERSION,
-    })
-    storeDirty = false
-    logger.ipc.debug(`[TokenBudget] Saved ${tokenBudgets.size} budgets to store`)
-  } catch (e) {
-    logger.ipc.error('[TokenBudget] Failed to save to store:', e)
-  }
-}
-
-// 每 30 秒自动保存一次
-setInterval(saveBudgetsToStore, 30000)
-
-function getTokenBudget(windowId: number): TokenBudget {
-  if (!tokenBudgets.has(windowId)) {
-    tokenBudgets.set(windowId, {
-      windowId,
-      totalBudget: DEFAULT_DAILY_BUDGET,
-      usedTokens: 0,
-      resetAt: Date.now() + BUDGET_RESET_INTERVAL_MS,
-    })
-    storeDirty = true
-  }
-  const budget = tokenBudgets.get(windowId)!
-  if (Date.now() > budget.resetAt) {
-    budget.usedTokens = 0
-    budget.resetAt = Date.now() + BUDGET_RESET_INTERVAL_MS
-    storeDirty = true
-  }
-  return budget
-}
-
-function checkTokenBudget(windowId: number, estimatedTokens: number): boolean {
-  const budget = getTokenBudget(windowId)
-  return (budget.usedTokens + estimatedTokens) <= budget.totalBudget
-}
-
-function recordTokenUsage(windowId: number, tokens: number): void {
-  const budget = getTokenBudget(windowId)
-  budget.usedTokens += tokens
-  storeDirty = true
-}
-
-/**
- * 清理已关闭窗口的预算数据
- */
-export function cleanupClosedWindowBudgets(activeWindowIds: Set<number>): void {
-  let cleaned = 0
-  tokenBudgets.forEach((_, windowId) => {
-    if (!activeWindowIds.has(windowId)) {
-      tokenBudgets.delete(windowId)
-      cleaned++
-    }
-  })
-  if (cleaned > 0) {
-    storeDirty = true
-    logger.ipc.info(`[TokenBudget] Cleaned up ${cleaned} closed window budgets`)
-  }
-}
-
-// 启动时加载持久化数据
-loadBudgetsFromStore()
-
-// ============================================
-// [AweeClaw] 场景感知路由
-// ============================================
-
-interface ScenarioModelRoute {
-  scenarioId: string
-  preferredModel?: string
-  fallbackModel?: string
-  maxTokens?: number
-  temperature?: number
-}
-
-const scenarioRoutes = new Map<string, ScenarioModelRoute>()
-
-function getScenarioRoute(scenarioId: string): ScenarioModelRoute | undefined {
-  return scenarioRoutes.get(scenarioId)
-}
-
-// ============================================
-// [AweeClaw] 独有 IPC Handlers
-// ============================================
-
-function registerAweeClawLLMHandlers(): void {
-  // 中间件管理
-  ipcMain.handle('llm:registerMiddleware', async (_, middleware: LLMMiddleware) => {
-    registerMiddleware(middleware)
-    return { success: true }
-  })
-
-  ipcMain.handle('llm:listMiddleware', async () => {
-    return { success: true, middleware: middlewarePipeline.map(m => ({ name: m.name })) }
-  })
-
-  ipcMain.handle('llm:removeMiddleware', async (_, name: string) => {
-    const idx = middlewarePipeline.findIndex(m => m.name === name)
-    if (idx >= 0) {
-      middlewarePipeline.splice(idx, 1)
-      logger.ipc.info(`[LLM] Middleware removed: ${name}`)
-      return { success: true }
-    }
-    return { success: false, error: 'Middleware not found' }
-  })
-
-  // Token 预算管理
-  ipcMain.handle('llm:getTokenBudget', async (_, windowId?: number) => {
-    const wid = windowId ?? 0
-    const budget = getTokenBudget(wid)
-    return {
-      success: true,
-      budget: {
-        totalBudget: budget.totalBudget,
-        usedTokens: budget.usedTokens,
-        remainingTokens: budget.totalBudget - budget.usedTokens,
-        resetAt: budget.resetAt,
-      },
-    }
-  })
-
-  ipcMain.handle('llm:setTokenBudget', async (_, windowId: number, totalBudget: number) => {
-    const budget = getTokenBudget(windowId)
-    budget.totalBudget = totalBudget
-    return { success: true }
-  })
-
-  ipcMain.handle('llm:resetTokenBudget', async (_, windowId?: number) => {
-    const wid = windowId ?? 0
-    const budget = getTokenBudget(wid)
-    budget.usedTokens = 0
-    budget.resetAt = Date.now() + 24 * 60 * 60 * 1000
-    return { success: true }
-  })
-
-  // 场景感知路由
-  ipcMain.handle('llm:setScenarioRoute', async (_, route: ScenarioModelRoute) => {
-    scenarioRoutes.set(route.scenarioId, route)
-    logger.ipc.info(`[LLM] Scenario route set: ${route.scenarioId} -> ${route.preferredModel || 'default'}`)
-    return { success: true }
-  })
-
-  ipcMain.handle('llm:getScenarioRoute', async (_, scenarioId: string) => {
-    const route = getScenarioRoute(scenarioId)
-    return { success: true, route: route || null }
-  })
-
-  ipcMain.handle('llm:removeScenarioRoute', async (_, scenarioId: string) => {
-    scenarioRoutes.delete(scenarioId)
-    return { success: true }
-  })
-
-  ipcMain.handle('llm:listScenarioRoutes', async () => {
-    return { success: true, routes: Array.from(scenarioRoutes.values()) }
-  })
-
-  // 带中间件的流式对话
-  ipcMain.handle('llm:sendMessageWithMiddleware', async (event, params) => {
-    const window = BrowserWindow.fromWebContents(event.sender)
-    if (!window) throw new Error('Window not found for LLM request')
-
-    const estimatedTokens = (params.messages?.reduce((sum: number, m: any) => sum + (m.content?.length || 0), 0) || 0) / 4
-    if (!checkTokenBudget(event.sender.id, estimatedTokens)) {
-      throw new LLMError('Token budget exceeded for this window', ErrorCode.LLM_QUOTA_EXCEEDED, false)
-    }
-
-    const processedParams = await runBeforeRequest(params)
-    const service = getOrCreateService(event.sender.id, window)
-
-    try {
-      await service.sendMessage(processedParams)
-      if (processedParams._estimatedTokens) {
-        recordTokenUsage(event.sender.id, processedParams._estimatedTokens)
-      }
-    } catch (error) {
-      runOnError(processedParams, error)
-      const llmError = error instanceof LLMError ? error : LLMError.fromError(error)
-      logger.ipc.error(`[LLMService] Send message with middleware failed:`, {
-        code: llmError.code,
-        message: llmError.message,
-        retryable: llmError.retryable,
-      })
-    }
-  })
-
-  logger.ipc.info(`[LLM] ${BRAND.name} enhanced IPC handlers registered (middleware, budget, scenario routing)`)
 }
