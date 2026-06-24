@@ -20,6 +20,7 @@ import { smartOrchestrator, extractFilesFromOutput, type ExtractedFile, type Age
 import { runAgentSubLoop } from '../multiAgent/AgentSubLoop'
 import { TeamCollaborationProtocol } from '../multiAgent/TeamCollaborationProtocol'
 import { playNotificationSound } from '@utils/notificationSound'
+import { agentHarness } from '../harness'
 
 // ===== 类型定义 =====
 
@@ -45,6 +46,9 @@ export interface RunningTask {
  *
  * 封装 LLM 调用逻辑，支持流式响应、中止检测和超时控制。
  * 被 executeMultiAgent 和 continueMultiAgent 共享。
+ *
+ * 通过 harness llmPipeline 执行（自动应用错误边界、审计、日志、熔断中间件），
+ * 在 harness 未初始化时回退到直接调用。
  */
 export function createCallLLM(config: LLMConfig, abortController: AbortController | undefined): (systemPrompt: string, userMessage: string) => Promise<string> {
   return async (systemPrompt: string, userMessage: string): Promise<string> => {
@@ -58,90 +62,112 @@ export function createCallLLM(config: LLMConfig, abortController: AbortControlle
     ]
 
     const subRequestId = crypto.randomUUID()
-    let fullContent = ''
-    let fullReasoning = ''
-    let settled = false
 
-    return new Promise<string>((resolve, reject) => {
-      let checkInterval: ReturnType<typeof setInterval> | null = null
+    // 实际 LLM 调用逻辑（流式响应 + 中止检测 + 超时控制）
+    const llmHandler = async (): Promise<string> => {
+      let fullContent = ''
+      let fullReasoning = ''
+      let settled = false
 
-      const cleanup = () => {
-        if (checkInterval) clearInterval(checkInterval)
-        unsubStream()
-        unsubError()
-        unsubDone()
-      }
+      return new Promise<string>((resolve, reject) => {
+        let checkInterval: ReturnType<typeof setInterval> | null = null
 
-      const onAbort = () => {
-        if (settled) return
-        settled = true
-        cleanup()
-        api.llm.abort()
-        reject(new Error('Aborted by user'))
-      }
-
-      abortController?.signal.addEventListener('abort', onAbort, { once: true })
-
-      const unsubStream = api.llm.onStream(subRequestId, (data) => {
-        if (data.type === 'text' && data.content) {
-          fullContent += data.content
+        const cleanup = () => {
+          if (checkInterval) clearInterval(checkInterval)
+          unsubStream()
+          unsubError()
+          unsubDone()
         }
-        if (data.type === 'reasoning' && data.content) {
-          fullReasoning += data.content
-        }
-      })
 
-      const unsubError = api.llm.onError(subRequestId, (err) => {
-        if (settled) return
-        settled = true
-        abortController?.signal.removeEventListener('abort', onAbort)
-        cleanup()
-        reject(new Error(err.message))
-      })
-
-      const unsubDone = api.llm.onDone(subRequestId, (data) => {
-        if (settled) return
-        settled = true
-        abortController?.signal.removeEventListener('abort', onAbort)
-        if (typeof data?.reasoning === 'string' && data.reasoning.length >= fullReasoning.length) {
-          fullReasoning = data.reasoning
-        }
-        cleanup()
-        resolve(fullContent || '无响应')
-      })
-
-      api.llm.send({
-        config,
-        messages,
-        requestId: subRequestId,
-      }).catch((err) => {
-        if (settled) return
-        settled = true
-        abortController?.signal.removeEventListener('abort', onAbort)
-        cleanup()
-        reject(err)
-      })
-
-      checkInterval = setInterval(() => {
-        if (settled && checkInterval) {
-          clearInterval(checkInterval)
-        }
-        if (abortController?.signal.aborted && !settled) {
+        const onAbort = () => {
+          if (settled) return
           settled = true
           cleanup()
           api.llm.abort()
           reject(new Error('Aborted by user'))
         }
-      }, 200)
 
-      setTimeout(() => {
-        if (settled) return
-        settled = true
-        abortController?.signal.removeEventListener('abort', onAbort)
-        cleanup()
-        reject(new Error('Sub-task timeout (120s)'))
-      }, 120000)
-    })
+        abortController?.signal.addEventListener('abort', onAbort, { once: true })
+
+        const unsubStream = api.llm.onStream(subRequestId, (data) => {
+          if (data.type === 'text' && data.content) {
+            fullContent += data.content
+          }
+          if (data.type === 'reasoning' && data.content) {
+            fullReasoning += data.content
+          }
+        })
+
+        const unsubError = api.llm.onError(subRequestId, (err) => {
+          if (settled) return
+          settled = true
+          abortController?.signal.removeEventListener('abort', onAbort)
+          cleanup()
+          reject(new Error(err.message))
+        })
+
+        const unsubDone = api.llm.onDone(subRequestId, (data) => {
+          if (settled) return
+          settled = true
+          abortController?.signal.removeEventListener('abort', onAbort)
+          if (typeof data?.reasoning === 'string' && data.reasoning.length >= fullReasoning.length) {
+            fullReasoning = data.reasoning
+          }
+          cleanup()
+          resolve(fullContent || '无响应')
+        })
+
+        api.llm.send({
+          config,
+          messages,
+          requestId: subRequestId,
+        }).catch((err) => {
+          if (settled) return
+          settled = true
+          abortController?.signal.removeEventListener('abort', onAbort)
+          cleanup()
+          reject(err)
+        })
+
+        checkInterval = setInterval(() => {
+          if (settled && checkInterval) {
+            clearInterval(checkInterval)
+          }
+          if (abortController?.signal.aborted && !settled) {
+            settled = true
+            cleanup()
+            api.llm.abort()
+            reject(new Error('Aborted by user'))
+          }
+        }, 200)
+
+        setTimeout(() => {
+          if (settled) return
+          settled = true
+          abortController?.signal.removeEventListener('abort', onAbort)
+          cleanup()
+          reject(new Error('Sub-task timeout (120s)'))
+        }, 120000)
+      })
+    }
+
+    // 通过 harness 管道执行（已初始化时），否则直接调用
+    if (agentHarness.isInitialized) {
+      const output = await agentHarness.llmPipeline.execute(
+        {
+          messages,
+          config,
+        },
+        async () => {
+          const content = await llmHandler()
+          return { content }
+        },
+        { provider: config.provider, model: config.model, requestId: subRequestId, source: 'multi-agent' }
+      )
+      return output.content ?? '无响应'
+    }
+
+    return llmHandler()
   }
 }
 

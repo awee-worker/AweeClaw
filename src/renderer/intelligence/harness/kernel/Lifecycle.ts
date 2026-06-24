@@ -1,4 +1,20 @@
-export type LifecyclePhase = 'init' | 'ready' | 'running' | 'stopping' | 'stopped'
+/**
+ * 生命周期参与者
+ *
+ * AbstractLifecycleParticipant 复用 @aweeclaw/harness-core，
+ * 客户端 HealthStatus 与 kernel/observability 保持兼容。
+ */
+
+import { AbstractLifecycleParticipant as CoreAbstractLifecycleParticipant } from '@aweeclaw/harness-core'
+import type { LifecyclePhase } from '@aweeclaw/harness-core'
+
+export type { LifecyclePhase }
+
+export interface HealthStatus {
+  healthy: boolean
+  message?: string
+  details?: Record<string, unknown>
+}
 
 export interface LifecycleParticipant {
   readonly id: string
@@ -9,32 +25,4 @@ export interface LifecycleParticipant {
   onHealthCheck?(): Promise<HealthStatus>
 }
 
-export interface HealthStatus {
-  healthy: boolean
-  message?: string
-  details?: Record<string, unknown>
-}
-
-export abstract class AbstractLifecycleParticipant implements LifecycleParticipant {
-  readonly abstract id: string
-  readonly abstract priority: number
-  private _phase: LifecyclePhase = 'init'
-
-  get phase(): LifecyclePhase {
-    return this._phase
-  }
-
-  protected setPhase(phase: LifecyclePhase): void {
-    this._phase = phase
-  }
-
-  async onStart(): Promise<void> {
-    this._phase = 'ready'
-  }
-
-  async onStop(): Promise<void> {
-    this._phase = 'stopped'
-  }
-
-  async onHealthCheck?(): Promise<HealthStatus>
-}
+export const AbstractLifecycleParticipant = CoreAbstractLifecycleParticipant

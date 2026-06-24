@@ -275,22 +275,39 @@ function registerWindowDiagnostics(win: BrowserWindow): void {
     'ResizeObserver loop completed with undelivered notifications',
     'ResizeObserver loop limit exceeded',
   ]
-  win.webContents.on('console-message', (...args: unknown[]) => {
-    // Electron 39 签名：(details: Event, level, message, line, sourceId)
-    const level = args[1] as number
-    const rawMessage = String(args[2] ?? '')
-    const line = args[3] as number
-    const sourceId = args[4] as string
+
+  // Electron 35+ 签名：(event: { level, message, lineNumber, sourceId, frame })
+  // level 为字符串：'debug' | 'info' | 'warning' | 'error'
+  win.webContents.on('console-message', (event: unknown) => {
+    const details = event as {
+      level?: string
+      message?: string
+      lineNumber?: number
+      sourceId?: string
+    }
+
+    const rawMessage = String(details.message ?? '')
+    const line = details.lineNumber ?? 0
+    const sourceId = details.sourceId ?? ''
 
     // 过滤良性警告
     if (BENIGN_RENDERER_ERRORS.some((e) => rawMessage.includes(e))) return
 
     // 清理 console.log 携带的 CSS 样式前缀（如 %c 时间戳）
-    const message = rawMessage.replace(/%c[^]*?(?=\s\[|$)/, '').replace(/%c/g, '').trim()
+    const message = rawMessage
+      .replace(/%c[^]*?(?=\s\[|$)/g, '')
+      .replace(/%c/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
 
-    const logLevel = level === 0 ? 'debug' :
-                     level === 1 ? 'info' :
-                     level === 2 ? 'warn' : 'error'
+    if (!message) return
+
+    const levelStr = details.level ?? 'info'
+    const logLevel: 'debug' | 'info' | 'warn' | 'error' =
+      levelStr === 'error' ? 'error' :
+      levelStr === 'warning' ? 'warn' :
+      levelStr === 'debug' ? 'debug' : 'info'
+
     logger.system[logLevel](`[Renderer] ${message}`, { sourceId, line })
   })
 
@@ -324,7 +341,7 @@ async function getShutdownPresentation(win?: BrowserWindow | null): Promise<Shut
     const snapshot = await win.webContents.executeJavaScript(`(() => {
       const root = document.documentElement
       const styles = getComputedStyle(root)
-      const store = window.__ADNIFY_STORE__?.getState?.()
+      const store = window.__AWEECLAW_STORE__?.getState?.()
       const asRgb = (value, fallback) => {
         if (typeof value !== 'string') return fallback
         const normalized = value.trim().replace(/\\s+/g, ' ')

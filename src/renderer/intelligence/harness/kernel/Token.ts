@@ -1,17 +1,13 @@
-// @ts-expect-error T is used for type inference at call sites
-export class InjectToken<T = unknown> {
-  readonly id: string
-  readonly description: string
+/**
+ * 依赖注入令牌与客户端服务接口
+ *
+ * InjectToken / createToken 复用 @aweeclaw/harness-core，
+ * TOKENS 及其接口定义保留在客户端（与 Electron / Store / Provider 紧耦合）。
+ */
 
-  constructor(id: string, description: string) {
-    this.id = id
-    this.description = description
-  }
+import { InjectToken } from '@aweeclaw/harness-core'
 
-  toString(): string {
-    return `InjectToken(${this.id})`
-  }
-}
+export { InjectToken }
 
 export const TOKENS = {
   FileService: new InjectToken<IFileService>('file.service', '文件操作服务'),

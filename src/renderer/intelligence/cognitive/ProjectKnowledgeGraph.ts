@@ -1,6 +1,7 @@
 import { logger } from '@toolkit/LogEngine'
 import { api } from '../../adapters/electronBridge'
 import { useStore } from '@store'
+import { agentHarness } from '../harness'
 
 export interface KnowledgeEntity {
   id: string
@@ -386,73 +387,99 @@ Rules:
 
     const requestId = `kg-extract-${Date.now()}`
 
-    return new Promise((resolve) => {
+    // 实际 LLM 调用逻辑（流式响应 + 超时控制）
+    const llmHandler = async (): Promise<string> => {
       let fullContent = ''
       let settled = false
 
-      const doResolve = (result: any) => {
-        if (settled) return
-        settled = true
-        resolve(result)
-      }
-
-      const unsubStream = api.llm.onStream(requestId, (data: any) => {
-        if (data.type === 'text' && data.content) {
-          fullContent += data.content
+      return new Promise<string>((resolve) => {
+        const doResolve = (result: string) => {
+          if (settled) return
+          settled = true
+          resolve(result)
         }
-      })
 
-      const unsubError = api.llm.onError(requestId, (err: any) => {
-        if (settled) return
-        cleanup()
-        logger.agent.warn('[KnowledgeGraph] LLM extraction stream error:', err?.message)
-        doResolve(null)
-      })
-
-      const unsubDone = api.llm.onDone(requestId, () => {
-        if (settled) return
-        cleanup()
-
-        try {
-          const cleaned = fullContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-          const parsed = JSON.parse(cleaned)
-
-          if (parsed.entities && Array.isArray(parsed.entities)) {
-            doResolve(parsed)
-          } else {
-            doResolve(null)
+        const unsubStream = api.llm.onStream(requestId, (data: any) => {
+          if (data.type === 'text' && data.content) {
+            fullContent += data.content
           }
-        } catch {
-          doResolve(null)
+        })
+
+        const unsubError = api.llm.onError(requestId, (err: any) => {
+          if (settled) return
+          cleanup()
+          logger.agent.warn('[KnowledgeGraph] LLM extraction stream error:', err?.message)
+          doResolve('')
+        })
+
+        const unsubDone = api.llm.onDone(requestId, () => {
+          if (settled) return
+          cleanup()
+          doResolve(fullContent)
+        })
+
+        const cleanup = () => {
+          unsubStream()
+          unsubError()
+          unsubDone()
         }
-      })
 
-      const cleanup = () => {
-        unsubStream()
-        unsubError()
-        unsubDone()
+        api.llm.send({
+          config: llmConfig,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: truncatedContent },
+          ],
+          requestId,
+        }).catch((err: Error) => {
+          if (settled) return
+          cleanup()
+          logger.agent.warn('[KnowledgeGraph] LLM extraction send failed:', err.message)
+          doResolve('')
+        })
+
+        setTimeout(() => {
+          if (settled) return
+          cleanup()
+          doResolve('')
+        }, 30000)
+      })
+    }
+
+    // 通过 harness 管道执行（已初始化时），否则直接调用
+    let fullContent = ''
+    if (agentHarness.isInitialized) {
+      const output = await agentHarness.llmPipeline.execute(
+        {
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: truncatedContent },
+          ],
+          config: llmConfig,
+        },
+        async () => {
+          const content = await llmHandler()
+          return { content }
+        },
+        { provider: llmConfig.provider, model: llmConfig.model, requestId, source: 'knowledge-graph' }
+      )
+      fullContent = output.content ?? ''
+    } else {
+      fullContent = await llmHandler()
+    }
+
+    // 解析 LLM 返回的 JSON
+    try {
+      const cleaned = fullContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+      const parsed = JSON.parse(cleaned)
+
+      if (parsed.entities && Array.isArray(parsed.entities)) {
+        return parsed
       }
-
-      api.llm.send({
-        config: llmConfig,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: truncatedContent },
-        ],
-        requestId,
-      }).catch((err: Error) => {
-        if (settled) return
-        cleanup()
-        logger.agent.warn('[KnowledgeGraph] LLM extraction send failed:', err.message)
-        doResolve(null)
-      })
-
-      setTimeout(() => {
-        if (settled) return
-        cleanup()
-        doResolve(null)
-      }, 30000)
-    })
+      return null
+    } catch {
+      return null
+    }
   }
 
   private findEntityByNameAny(name: string): KnowledgeEntity | undefined {

@@ -1,7 +1,18 @@
-import { Span, createSpan, endSpan, addSpanEvent, getSpanDuration, formatSpanTree } from './Trace'
-import { MetricCollector } from './Metric'
-import { AuditLog, AuditRecord } from './AuditLog'
-import { HealthCheckRegistry } from './HealthCheck'
+/**
+ * 可观测性总线
+ *
+ * 客户端特有的聚合层，组合 Trace / Metric / Audit / Health 能力，
+ * 并提供事件总线（span_start / span_end / metric / audit / health）。
+ *
+ * 底层 Trace / Metric / Audit / Health 模块复用 @aweeclaw/harness-core。
+ */
+
+import type { Span } from '@aweeclaw/harness-core'
+import { createSpan, endSpan, addSpanEvent, getSpanDuration, formatSpanTree } from '@aweeclaw/harness-core'
+import { MetricCollector } from '@aweeclaw/harness-core'
+import { AuditLog } from '@aweeclaw/harness-core'
+import type { AuditRecord } from '@aweeclaw/harness-core'
+import { HealthCheckRegistry } from '@aweeclaw/harness-core'
 
 export type ObservabilityListener = (event: ObservabilityEvent) => void
 

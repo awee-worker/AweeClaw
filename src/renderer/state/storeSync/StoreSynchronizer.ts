@@ -17,32 +17,26 @@ export interface SyncConfig {
   debounceMs: number
   /** 是否启用调试日志 */
   debug: boolean
-  /** 最大同步队列长度 */
-  maxQueueSize: number
 }
 
 const DEFAULT_SYNC_CONFIG: SyncConfig = {
   debounceMs: 16,
   debug: false,
-  maxQueueSize: 100,
-}
-
-interface SyncTask {
-  id: string
-  source: string
-  payload: unknown
-  timestamp: number
 }
 
 /**
  * Store 同步器
  * 负责在两个 Zustand Store 之间建立安全、高效的状态同步通道
+ *
+ * 采用 latest-wins 策略：高频更新时只保留最新状态，防抖后统一同步，
+ * 避免队列堆积和无意义的溢出丢弃。
  */
 export class StoreSynchronizer<SourceState extends object, TargetState extends object> {
   private sourceStore: StoreApi<SourceState>
   private targetStore: StoreApi<TargetState>
   private config: SyncConfig
-  private syncQueue: SyncTask[] = []
+  /** 最新待同步状态（latest-wins，覆盖式更新） */
+  private pendingState: SourceState | null = null
   private debounceTimer: ReturnType<typeof setTimeout> | null = null
   private unsubscribers: Array<() => void> = []
   private isProcessing = false
@@ -108,26 +102,12 @@ export class StoreSynchronizer<SourceState extends object, TargetState extends o
    * 立即执行一次同步（绕过防抖）
    */
   syncNow(): void {
-    this.processSyncQueue()
+    this.processPending()
   }
 
   private enqueueSync(state: SourceState): void {
-    const task: SyncTask = {
-      id: crypto.randomUUID(),
-      source: 'source-store',
-      payload: state,
-      timestamp: Date.now(),
-    }
-
-    this.syncQueue.push(task)
-
-    if (this.syncQueue.length > this.config.maxQueueSize) {
-      this.syncQueue = this.syncQueue.slice(-this.config.maxQueueSize)
-      if (this.config.debug) {
-        logger.store.warn('[StoreSync] Queue overflow, dropped oldest tasks')
-      }
-    }
-
+    // latest-wins：只保留最新状态，高频更新时直接覆盖
+    this.pendingState = state
     this.scheduleProcess()
   }
 
@@ -137,20 +117,19 @@ export class StoreSynchronizer<SourceState extends object, TargetState extends o
     }
 
     this.debounceTimer = setTimeout(() => {
-      this.processSyncQueue()
+      this.processPending()
     }, this.config.debounceMs)
   }
 
-  private processSyncQueue(): void {
-    if (this.isProcessing || this.syncQueue.length === 0) return
+  private processPending(): void {
+    if (this.isProcessing || this.pendingState === null) return
 
     this.isProcessing = true
 
     try {
-      const latestTask = this.syncQueue[this.syncQueue.length - 1]
-      this.syncQueue = []
+      const sourceState = this.pendingState
+      this.pendingState = null
 
-      const sourceState = latestTask.payload as SourceState
       const targetState = this.targetStore.getState()
 
       const updates: Partial<TargetState> = {}

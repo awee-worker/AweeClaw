@@ -1,3 +1,15 @@
+/**
+ * 客户端生命周期管理器
+ *
+ * 与 @aweeclaw/harness-core 的 LifecycleManager 不同，客户端版本提供：
+ * - start() / shutdown() 显式阶段控制
+ * - addShutdownHook() 注册停机钩子
+ * - addListener() 监听阶段转换事件
+ * - 超时保护
+ *
+ * 阶段类型与共享包保持一致。
+ */
+
 import { logger } from '@toolkit/LogEngine'
 import type { LifecycleParticipant, HealthStatus } from '../kernel/Lifecycle'
 import type { LifecyclePhase, LifecyclePhaseTransition } from './Phase'

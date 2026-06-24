@@ -293,7 +293,13 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
       const user = await backendApi.get<CloudUser>('/api/v1/user/profile');
       set({ cloudUser: user });
     } catch (e) {
-      logger.system?.error('[Auth] Fetch profile failed:', e);
+      // 网络不可达（后端未启动）降级为 warn，避免 error 刷屏
+      const isNetworkError = e instanceof TypeError && e.message.includes('Failed to fetch');
+      if (isNetworkError) {
+        logger.system?.warn('[Auth] Fetch profile failed: backend unreachable');
+      } else {
+        logger.system?.error('[Auth] Fetch profile failed:', e);
+      }
     }
   },
 
@@ -302,7 +308,13 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
       const quota = await backendApi.get<CloudQuota>('/api/v1/user/quota');
       set({ quota });
     } catch (e) {
-      logger.system?.error('[Auth] Fetch quota failed:', e);
+      // 网络不可达（后端未启动）降级为 warn，避免 error 刷屏
+      const isNetworkError = e instanceof TypeError && e.message.includes('Failed to fetch');
+      if (isNetworkError) {
+        logger.system?.warn('[Auth] Fetch quota failed: backend unreachable');
+      } else {
+        logger.system?.error('[Auth] Fetch quota failed:', e);
+      }
     }
   },
 
@@ -312,7 +324,13 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
       set({ cloudModels: models || [] });
       return models || [];
     } catch (e) {
-      logger.system?.error('[Auth] Fetch cloud models failed:', e);
+      // 网络不可达（后端未启动）降级为 warn，避免 error 刷屏
+      const isNetworkError = e instanceof TypeError && e.message.includes('Failed to fetch');
+      if (isNetworkError) {
+        logger.system?.warn('[Auth] Fetch cloud models failed: backend unreachable');
+      } else {
+        logger.system?.error('[Auth] Fetch cloud models failed:', e);
+      }
       return [];
     }
   },

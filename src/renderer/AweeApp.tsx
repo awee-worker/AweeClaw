@@ -86,7 +86,7 @@ function AppContent() {
   }, [activeSidePanel, activeFilePath])
 
   useEffect(() => {
-    window.__ADNIFY_STORE__ = { getState: () => useStore.getState() }
+    window.__AWEECLAW_STORE__ = { getState: () => useStore.getState() }
   }, [])
 
   useEffect(() => {

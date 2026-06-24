@@ -1,3 +1,9 @@
+/**
+ * Kernel 模块入口
+ *
+ * Container / InjectToken 复用共享包；
+ * TOKENS 与服务接口保留在客户端。
+ */
 export { HarnessContainer } from './Container'
 export { InjectToken, TOKENS } from './Token'
 export type {
