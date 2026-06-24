@@ -393,6 +393,58 @@
     <div class="loader-line"></div>
   </div>
   <div id="root"></div>
+  <script>
+    // 全局错误捕获：在 React 加载前捕获模块加载错误
+    // 过滤良性警告，仅显示真正的启动错误
+    var BENIGN_ERRORS = [
+      'ResizeObserver loop completed with undelivered notifications',
+      'ResizeObserver loop limit exceeded',
+    ];
+    function isBenignError(msg) {
+      if (!msg) return false;
+      var m = String(msg);
+      return BENIGN_ERRORS.some(function (b) { return m.indexOf(b) !== -1; });
+    }
+    window.addEventListener('error', function (e) {
+      if (isBenignError(e.message)) return;
+      var statusEl = document.querySelector('#initial-loader .loader-status');
+      if (statusEl) {
+        statusEl.textContent = 'Error: ' + (e.message || 'Unknown error');
+        statusEl.style.color = '#ff6b6b';
+        statusEl.style.opacity = '1';
+        statusEl.style.maxWidth = '400px';
+        statusEl.style.wordBreak = 'break-all';
+        statusEl.style.textAlign = 'center';
+        statusEl.style.padding = '0 20px';
+      }
+      console.error('[Global Error Handler]', e.error || e.message);
+    });
+    window.addEventListener('unhandledrejection', function (e) {
+      var reason = e.reason;
+      var msg = reason && reason.message ? reason.message : reason;
+      if (isBenignError(msg)) return;
+      var statusEl = document.querySelector('#initial-loader .loader-status');
+      if (statusEl) {
+        statusEl.textContent = 'Promise Error: ' + (msg || 'Unknown');
+        statusEl.style.color = '#ff6b6b';
+        statusEl.style.opacity = '1';
+      }
+      console.error('[Global Unhandled Rejection]', reason);
+    });
+  </script>
+  <script>
+    // 超时兜底：30 秒后强制移除加载动画，防止初始化异常导致界面永久卡死
+    // 正常情况下由 useAppInit 在初始化完成后移除
+    window.setTimeout(function () {
+      var loader = document.getElementById('initial-loader')
+      var root = document.getElementById('root')
+      if (root) root.classList.add('ready')
+      if (loader) {
+        loader.classList.add('fade-out')
+        setTimeout(function () { loader.remove() }, 300)
+      }
+    }, 30000)
+  </script>
   <script type="module" src="/src/renderer/bootstrap.tsx"></script>
 </body>
 

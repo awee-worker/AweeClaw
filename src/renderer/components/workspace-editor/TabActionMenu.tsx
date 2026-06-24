@@ -1,5 +1,5 @@
 /**
- * Tab context menu component.
+ * 标签页右键菜单组件
  */
 
 import { api } from '@renderer/adapters/electronBridge'

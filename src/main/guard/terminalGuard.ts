@@ -1,4 +1,4 @@
 /**
- * Terminal guard - re-export from terminalSandbox
+ * 终端守卫入口 — 从 terminalSandbox 导出
  */
 export * from './terminalSandbox'

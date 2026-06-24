@@ -1,7 +1,6 @@
 
 /**
- * useComposerInlineDiff
- * Renders inline diffs in the Monaco editor for pending composer changes.
+ * useComposerInlineDiff — 在 Monaco 编辑器中渲染待处理 Composer 变更的内联差异
  */
 
 import { useEffect, useRef, useState } from 'react'

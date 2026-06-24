@@ -250,7 +250,7 @@ export async function tryEditWithRetry(
     return {
       success: true,
       newContent: result.newContent,
-      strategy: result.strategy,
+      strategy: result.stage,
     }
   }
 

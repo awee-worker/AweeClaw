@@ -3,14 +3,14 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { 
-  toAppError, 
-  AppError, 
+import {
+  toAppError,
+  AppError,
   ErrorCode,
   getErrorMessage,
   mapAISDKError,
   mapNodeError,
-} from '@toolkit/errorHandler'
+} from '@shared/toolkit/errorCatalog'
 
 describe('errorHandler', () => {
   describe('toAppError', () => {

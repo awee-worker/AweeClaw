@@ -1,3 +1,17 @@
+/**
+ * 索引 Worker — 后台线程索引执行器
+ *
+ * 职责：
+ * - 在 Worker 线程中执行全量索引、增量更新、批量更新
+ * - 通过 parentPort 与主线程通信，上报进度与结果
+ * - 使用 pLimit 控制并发，避免 I/O 饱和
+ *
+ * 差异化特性（相比基础实现）：
+ * - 批量更新模式（batch_update），减少 Worker 通信开销
+ * - 增量哈希比对（existingHashes），跳过未变更文件
+ * - 并发控制（pLimit），适配大仓库索引
+ */
+
 import { logger } from '@shared/toolkit/LogEngine'
 import { parentPort } from 'worker_threads'
 import * as fs from 'fs/promises'

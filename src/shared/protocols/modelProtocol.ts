@@ -1,6 +1,7 @@
 /**
- * Shared LLM-related types.
- * This file is the single export point for LLM payloads, tool schemas, and tool UI state.
+ * LLM 相关共享类型
+ *
+ * LLM 载荷、工具 Schema 和工具 UI 状态的统一导出入口。
  */
 
 // ============================================
@@ -294,8 +295,8 @@ export interface ToolExecutionEnvelope {
 }
 
 /**
- * Ephemeral tool preview state used while a tool call is still streaming.
- * The canonical live source now lives on the thread store.
+ * 工具调用流式传输期间的临时预览状态
+ * 规范的实时数据源位于线程存储中
  */
 export interface ToolStreamingPreview {
     isStreaming: boolean

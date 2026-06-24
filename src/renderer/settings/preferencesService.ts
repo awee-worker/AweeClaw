@@ -1,5 +1,5 @@
 /**
- * Settings persistence service.
+ * 设置持久化服务 — 基于 SQLite 的设置存储
  *
  * 数据存储架构（v2 - SQLite）:
  * - 主存储: SQLite 数据库（{userData}/.aweeclaw/db/settings.db）

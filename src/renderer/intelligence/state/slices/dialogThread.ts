@@ -1,6 +1,5 @@
 /**
- * Thread slice.
- * Owns thread lifecycle plus thread-scoped ephemeral streaming preview state.
+ * 对话线程切片 — 线程生命周期与线程级临时流式预览状态
  */
 
 import type { StateCreator } from 'zustand'

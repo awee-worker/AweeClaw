@@ -1,6 +1,16 @@
 /**
- * 工作区相关的 IPC 处理器
- * 从 secureFile.ts 拆分出来
+ * 工作区守卫 — 工作区相关的 IPC 处理器
+ *
+ * 职责：
+ * - 从 secureFile.ts 拆分出来
+ * - 处理工作区打开、切换、文件操作等 IPC 请求
+ * - 通过 securityManager 进行权限校验
+ * - 集成文件监听服务
+ *
+ * 差异化特性（相比基础实现）：
+ * - ShareMenu 支持（macOS 分享菜单）
+ * - 递归目录复制（copyDirRecursive）
+ * - 品牌配置通过 `@shared/brand` 集中管理
  */
 
 import { logger } from '@shared/toolkit/LogEngine'

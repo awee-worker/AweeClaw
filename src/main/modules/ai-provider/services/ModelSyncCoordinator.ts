@@ -1,3 +1,18 @@
+/**
+ * 同步生成服务 — 基于 AI SDK generateText 的非流式生成
+ *
+ * 职责：
+ * - 调用 AI SDK 的 generateText 进行同步生成
+ * - 支持工具调用与系统提示
+ * - 为需要完整结果再处理的场景提供支持
+ *
+ * 差异化特性（相比基础实现）：
+ * - 请求预处理管道（executePreparedRequest）
+ * - 消息适配器（MessageConverter）
+ * - 工具 Schema 适配器（ToolConverter）
+ * - 统一的 Usage 转换（convertUsage）
+ */
+
 import { generateText } from 'ai'
 import { logger } from '@shared/toolkit/LogEngine'
 import { createModel } from '../modelRegistry'

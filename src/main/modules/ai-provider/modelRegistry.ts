@@ -1,5 +1,17 @@
 /**
- * Model Factory - create LLM model instances for different protocols.
+ * 模型工厂 — 为不同协议创建 LLM 模型实例
+ *
+ * 职责：
+ * - 根据 Provider 协议（OpenAI / Anthropic / Google / OpenAI-Compatible）创建模型
+ * - 处理 Base URL 归一化，适配不同 SDK 的路径要求
+ * - 支持内置 Provider 与自定义 Provider
+ * - 支持云端模式（cloudMode）与 Token 刷新
+ *
+ * 差异化特性（相比基础实现）：
+ * - 内置 Provider 白名单（BUILTIN_PROVIDERS）
+ * - OpenAI 兼容性配置文件（openAICompatibilityProfile）
+ * - 云端认证回调（onTokenRefreshed / onAuthFailed）
+ * - 品牌配置通过 `@shared/brand` 集中管理
  */
 
 import { createOpenAI } from '@ai-sdk/openai'
@@ -37,13 +49,12 @@ interface ResolvedModelRoute {
 }
 
 /**
- * Normalize base URLs for the provider SDK we are about to use.
+ * 归一化 Base URL，适配不同 Provider SDK 的路径要求
  *
- * Notes:
- * - `createOpenAICompatible` expects the full user-provided base URL.
- * - `createAnthropic` works reliably with Anthropic-compatible gateways only
- *   when the versioned `/v1` prefix is present.
- * - Other official SDKs can derive their own versioned paths.
+ * 说明：
+ * - `createOpenAICompatible` 需要用户提供的完整 Base URL
+ * - `createAnthropic` 在 Anthropic 兼容网关下需要带 `/v1` 版本前缀
+ * - 其他官方 SDK 会自动推导版本路径
  */
 function normalizeBaseUrl(baseUrl: string | undefined, protocol: string): string | undefined {
     if (!baseUrl) return undefined

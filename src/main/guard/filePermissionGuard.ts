@@ -1,6 +1,16 @@
 /**
- * 安全文件操作模块
- * 整合文件操作、工作区管理和文件监听功能
+ * 安全文件操作模块 — 整合文件操作、工作区管理和文件监听功能
+ *
+ * 职责：
+ * - 整合文件操作、工作区管理和文件监听功能
+ * - 通过 securityManager 进行权限校验
+ * - 使用 electron-store 持久化工作区配置
+ *
+ * 差异化特性（相比基础实现）：
+ * - 场景权限策略（ScenarioPermissionPolicy）
+ * - 操作频率限制
+ * - 安全事件通知
+ * - 品牌配置通过 `@shared/brand` 集中管理
  */
 
 import { logger } from '@shared/toolkit/LogEngine'

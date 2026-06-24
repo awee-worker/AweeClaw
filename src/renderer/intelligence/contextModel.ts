@@ -1,5 +1,5 @@
 /**
- * Context model re-export hub
+ * 上下文模型入口 — 统一导出上下文相关类型与工具
  */
 export * from './capabilities/context/compressionUtils'
 export * from './capabilities/context/contextTypes'

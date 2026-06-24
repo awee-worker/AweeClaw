@@ -1,5 +1,10 @@
 /**
- * Cache Compatibility layer
+ * 缓存兼容层 — 统一不同缓存实现的接口
+ *
+ * 职责：
+ * - 提供统一的缓存读写接口
+ * - 支持 TTL 过期策略
+ * - 为 PromptCacheLayer 和 ResponseCacheStore 提供兼容适配
  */
 export interface CacheEntry {
   key: string

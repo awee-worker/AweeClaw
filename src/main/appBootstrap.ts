@@ -270,6 +270,30 @@ function registerWindowDiagnostics(win: BrowserWindow): void {
     })
   })
 
+  // 转发渲染进程 console 日志到主进程日志，便于调试渲染进程错误
+  const BENIGN_RENDERER_ERRORS = [
+    'ResizeObserver loop completed with undelivered notifications',
+    'ResizeObserver loop limit exceeded',
+  ]
+  win.webContents.on('console-message', (...args: unknown[]) => {
+    // Electron 39 签名：(details: Event, level, message, line, sourceId)
+    const level = args[1] as number
+    const rawMessage = String(args[2] ?? '')
+    const line = args[3] as number
+    const sourceId = args[4] as string
+
+    // 过滤良性警告
+    if (BENIGN_RENDERER_ERRORS.some((e) => rawMessage.includes(e))) return
+
+    // 清理 console.log 携带的 CSS 样式前缀（如 %c 时间戳）
+    const message = rawMessage.replace(/%c[^]*?(?=\s\[|$)/, '').replace(/%c/g, '').trim()
+
+    const logLevel = level === 0 ? 'debug' :
+                     level === 1 ? 'info' :
+                     level === 2 ? 'warn' : 'error'
+    logger.system[logLevel](`[Renderer] ${message}`, { sourceId, line })
+  })
+
 }
 
 function getShutdownFallbackPresentation(): ShutdownWindowPresentation {
@@ -542,8 +566,14 @@ function loadWindowContent(win: BrowserWindow, isEmpty: boolean) {
     win.loadFile(path.join(__dirname, '../renderer/index.html'), {
       query: isEmpty ? { empty: '1' } : undefined
     })
+  } else if (process.env.VITE_DEV_SERVER_URL) {
+    // 开发模式：加载 Vite 开发服务器
+    win.loadURL(`${process.env.VITE_DEV_SERVER_URL}${isEmpty ? '?empty=1' : ''}`)
   } else {
-    win.loadURL(`http://localhost:5173${isEmpty ? '?empty=1' : ''}`)
+    // 非打包模式但无开发服务器：回退到构建产物
+    win.loadFile(path.join(__dirname, '../renderer/index.html'), {
+      query: isEmpty ? { empty: '1' } : undefined
+    })
   }
 }
 

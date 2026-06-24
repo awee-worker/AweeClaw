@@ -1,6 +1,16 @@
 /**
- * 文件监听服务
- * 使用 @parcel/watcher 监听文件变化
+ * 文件监听服务 — 基于 @parcel/watcher 的文件变更监听
+ *
+ * 职责：
+ * - 使用 @parcel/watcher 监听文件变化
+ * - 通过 FileChangeBuffer 批量处理变更事件
+ * - 触发索引更新和 LSP 通知
+ *
+ * 差异化特性（相比基础实现）：
+ * - 与搜索引擎集成（FileChangeBuffer + indexOrchestrator）
+ * - 与 LSP 语言服务集成（lspManager）
+ * - picomatch 模式匹配（忽略 node_modules 等）
+ * - 品牌配置通过 `@shared/brand` 集中管理
  */
 
 import { logger } from '@shared/toolkit/LogEngine'

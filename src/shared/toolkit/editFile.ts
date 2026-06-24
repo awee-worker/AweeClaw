@@ -1,5 +1,5 @@
 /**
- * File editing utilities
+ * 文件编辑工具 — 文件编辑操作与结果类型
  */
 export interface FileEdit {
   filePath: string

@@ -1,5 +1,5 @@
 /**
- * Error handling utilities
+ * 错误处理工具 — 应用错误类型与错误转换
  */
 export interface AppError {
   code: string

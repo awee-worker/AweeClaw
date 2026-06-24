@@ -1,6 +1,11 @@
 /**
- * 流式服务 - 使用 AI SDK 6.0 streamText
- * 工具调用只接受原生 tool-call 事件；特殊处理仅用于部分模型的 thinking 标签解析。
+ * 流式处理器 — 基于 AI SDK 6.0 streamText 的流式对话核心
+ *
+ * 通过组合多个专职组件实现流式文本生成：
+ * - 伪工具调用检测器：从文本流中识别并提取工具调用
+ * - 流式事件分发器：IPC 事件的批量与即时发送
+ * - 流式超时守卫：防止流式响应长时间无数据
+ * - 思考策略工厂：为不同模型创建思考标签解析策略
  */
 
 import { streamText } from 'ai'
@@ -17,7 +22,10 @@ import { LLMError, convertUsage } from '../providerTypes'
 import type { StreamEvent, TokenUsage, ResponseMetadata } from '../providerTypes'
 import type { LLMConfig, LLMMessage, ToolDefinition } from '@protocols'
 import { ThinkingStrategyFactory, type ThinkingStrategy } from '../strategies/ReasoningStrategy'
+import { PseudoToolDetector, normalizeToolCallArguments, repairToolCallInput } from './PseudoToolDetector'
+import { StreamEventDispatcher } from './StreamEventDispatcher'
 
+/** 流式生成参数 */
 export interface StreamingParams {
   config: LLMConfig
   messages: LLMMessage[]
@@ -25,9 +33,10 @@ export interface StreamingParams {
   systemPrompt?: string
   abortSignal?: AbortSignal
   activeTools?: string[]
-  requestId: string  // 必传，用于 IPC 频道隔离
+  requestId: string
 }
 
+/** 流式生成结果 */
 export interface StreamingResult {
   content: string
   reasoning?: string
@@ -35,386 +44,77 @@ export interface StreamingResult {
   metadata?: ResponseMetadata
 }
 
-const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 15_000
+/** 默认流式空闲超时时间（毫秒） */
+const DEFAULT_IDLE_TIMEOUT_MS = 15_000
 
-interface PseudoToolCallPayload {
-  name: string
-  arguments: Record<string, unknown>
-}
+/* ------------------------------------------------------------------ */
+/* 流式超时守卫                                                       */
+/* ------------------------------------------------------------------ */
 
-type PseudoToolCaptureMode = 'json-array' | 'xml-tag'
+/** 防止流式响应长时间无数据的超时守卫 */
+class StreamTimeoutGuard {
+  /**
+   * 从迭代器读取下一个元素，超时则拒绝
+   *
+   * @param iterator 流式迭代器
+   * @param requestId 请求 ID（用于日志）
+   * @param timeoutMs 空闲超时时间
+   * @returns 迭代结果
+   */
+  async next(
+    iterator: AsyncIterator<any>,
+    requestId: string,
+    timeoutMs: number,
+  ): Promise<IteratorResult<any>> {
+    let timeoutId: NodeJS.Timeout | null = null
 
-function createCompatToolCallId(): string {
-  return globalThis.crypto?.randomUUID?.() ?? `compat-tool-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-}
-
-function repairTruncatedJsonString(json: string): string {
-  let result = json
-
-  // 扫描字符串，追踪是否在 JSON 字符串值内部
-  let inString = false
-  let escape = false
-  let lastUnescapedQuoteIdx = -1
-
-  for (let i = 0; i < result.length; i++) {
-    const ch = result[i]
-    if (escape) {
-      escape = false
-      continue
+    try {
+      return await Promise.race([
+        iterator.next().finally(() => {
+          if (timeoutId) { clearTimeout(timeoutId); timeoutId = null }
+        }),
+        new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => {
+            logger.llm.warn('[StreamProcessor] 流式空闲超时', { requestId, timeoutMs })
+            void iterator.return?.()
+            reject(new LLMError(
+              '模型流式响应停滞超过 ' + Math.floor(timeoutMs / 1000) + ' 秒',
+              ErrorCode.TIMEOUT,
+              true,
+            ))
+          }, timeoutMs)
+        }),
+      ])
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId)
     }
-    if (ch === '\\' && inString) {
-      escape = true
-      continue
-    }
-    if (ch === '"') {
-      if (inString) {
-        inString = false
-      } else {
-        inString = true
-        lastUnescapedQuoteIdx = i
-      }
-    }
-  }
-
-  // 如果扫描结束后仍在字符串内部，说明字符串被截断
-  if (inString && lastUnescapedQuoteIdx >= 0) {
-    // 处理末尾可能残留的不完整转义序列（如末尾是 \ 但后面没有字符）
-    if (escape) {
-      result = result.slice(0, -1)
-    }
-
-    // 闭合当前字符串值
-    result += '"'
-  }
-
-  return result
-}
-
-function looksLikePseudoToolPayloadStart(text: string): PseudoToolCaptureMode | null {
-  const trimmed = text.trimStart()
-  if (!trimmed) return null
-  if (trimmed.startsWith('<tool_call>')) {
-    return 'xml-tag'
-  }
-
-  if (!trimmed.startsWith('[') && !trimmed.startsWith('{')) {
-    return null
-  }
-
-  const probe = trimmed.slice(0, 256)
-  if (/"name"\s*:/.test(probe) && /"parameters"\s*:/.test(probe)) {
-    return 'json-array'
-  }
-
-  return null
-}
-
-function extractFirstJsonObject(text: string): string | null {
-  const startIdx = text.indexOf('{')
-  if (startIdx === -1) return null
-
-  let depth = 0
-  let inString = false
-  let escape = false
-
-  for (let i = startIdx; i < text.length; i++) {
-    const ch = text[i]
-    if (escape) {
-      escape = false
-      continue
-    }
-    if (ch === '\\' && inString) {
-      escape = true
-      continue
-    }
-    if (ch === '"') {
-      inString = !inString
-      continue
-    }
-    if (inString) continue
-
-    if (ch === '{') depth++
-    else if (ch === '}') {
-      depth--
-      if (depth === 0) {
-        return text.slice(startIdx, i + 1)
-      }
-    }
-  }
-
-  return null
-}
-
-function tryParsePseudoToolPayload(text: string): PseudoToolCallPayload | null {
-  const trimmed = text.trim()
-  if (!trimmed) return null
-
-  const payloadText = trimmed.startsWith('<tool_call>') && trimmed.endsWith('</tool_call>')
-    ? trimmed.slice('<tool_call>'.length, trimmed.length - '</tool_call>'.length).trim()
-    : trimmed
-
-  try {
-    const parsed = JSON.parse(payloadText) as unknown
-    const candidate = Array.isArray(parsed) ? parsed[0] : parsed
-    if (!candidate || typeof candidate !== 'object') {
-      return null
-    }
-
-    const name = (candidate as Record<string, unknown>).name
-    const parameters = (candidate as Record<string, unknown>).parameters
-    if (typeof name !== 'string' || !parameters || typeof parameters !== 'object' || Array.isArray(parameters)) {
-      return null
-    }
-
-    return {
-      name,
-      arguments: parameters as Record<string, unknown>,
-    }
-  } catch {
-    return null
   }
 }
 
-function extractPseudoToolName(text: string): string | null {
-  const match = text.match(/"name"\s*:\s*"([^"]+)"/)
-  return match?.[1] ?? null
-}
-
-function findParametersObjectStart(text: string): number {
-  const keyMatch = /"parameters"\s*:/.exec(text)
-  if (!keyMatch) return -1
-  return text.indexOf('{', keyMatch.index + keyMatch[0].length)
-}
-
-function findJsonObjectEnd(text: string, startIndex: number): number {
-  if (startIndex < 0 || text[startIndex] !== '{') {
-    return -1
-  }
-
-  let depth = 0
-  let inString = false
-  let escaped = false
-
-  for (let i = startIndex; i < text.length; i++) {
-    const ch = text[i]
-
-    if (inString) {
-      if (escaped) {
-        escaped = false
-        continue
-      }
-      if (ch === '\\') {
-        escaped = true
-        continue
-      }
-      if (ch === '"') {
-        inString = false
-      }
-      continue
-    }
-
-    if (ch === '"') {
-      inString = true
-      continue
-    }
-
-    if (ch === '{') {
-      depth++
-      continue
-    }
-
-    if (ch === '}') {
-      depth--
-      if (depth === 0) {
-        return i
-      }
-    }
-  }
-
-  return -1
-}
-
-function normalizeToolCallArguments(input: unknown): Record<string, unknown> {
-  if (input && typeof input === 'object' && !Array.isArray(input)) {
-    return input as Record<string, unknown>
-  }
-
-  if (typeof input !== 'string' || !input.trim()) {
-    return {}
-  }
-
-  try {
-    const parsed = JSON.parse(input) as unknown
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>
-    }
-  } catch {
-    // Ignore malformed provider payloads and fall back to an empty object.
-  }
-
-  return {}
-}
-
-class PseudoToolCallStreamAdapter {
-  private mode: 'idle' | 'probing' | 'capturing' | 'disabled' = 'idle'
-  private probeBuffer = ''
-  private captureBuffer = ''
-  private toolCallId: string | null = null
-  private toolName: string | null = null
-  private emittedArgumentChars = 0
-  private started = false
-  private completed = false
-
-  constructor(private readonly enabled: boolean) {}
-
-  consume(chunk: string): { visibleText: string; events: StreamEvent[] } {
-    if (!this.enabled || !chunk) {
-      return { visibleText: chunk, events: [] }
-    }
-
-    if (this.mode === 'disabled') {
-      return { visibleText: chunk, events: [] }
-    }
-
-    if (this.mode === 'capturing') {
-      return this.consumeCapturedChunk(chunk)
-    }
-
-    this.probeBuffer += chunk
-    const trimmed = this.probeBuffer.trimStart()
-    if (trimmed) {
-      const firstChar = trimmed[0]
-      if (firstChar !== '[' && firstChar !== '{' && firstChar !== '<') {
-        const visibleText = this.probeBuffer
-        this.probeBuffer = ''
-        this.mode = 'disabled'
-        return { visibleText, events: [] }
-      }
-    }
-
-    const detectedMode = looksLikePseudoToolPayloadStart(this.probeBuffer)
-    if (!detectedMode) {
-      if (trimmed.startsWith('<') && !'<tool_call>'.startsWith(trimmed.slice(0, Math.min(trimmed.length, '<tool_call>'.length)))) {
-        const visibleText = this.probeBuffer
-        this.probeBuffer = ''
-        this.mode = 'disabled'
-        return { visibleText, events: [] }
-      }
-
-      if (trimmed && this.probeBuffer.length >= 256) {
-        const visibleText = this.probeBuffer
-        this.probeBuffer = ''
-        this.mode = 'disabled'
-        return { visibleText, events: [] }
-      }
-      return { visibleText: '', events: [] }
-    }
-
-    this.mode = 'capturing'
-    this.captureBuffer = this.probeBuffer
-    this.probeBuffer = ''
-    return this.consumeCapturedChunk('')
-  }
-
-  hasCapturedToolCall(): boolean {
-    return this.started
-  }
-
-  finalize(): { visibleText: string; events: StreamEvent[] } {
-    if (this.mode === 'probing' || this.mode === 'idle') {
-      const visibleText = this.probeBuffer
-      this.probeBuffer = ''
-      return { visibleText, events: [] }
-    }
-
-    return { visibleText: '', events: [] }
-  }
-
-  private consumeCapturedChunk(chunk: string): { visibleText: string; events: StreamEvent[] } {
-    if (chunk) {
-      this.captureBuffer += chunk
-    }
-
-    const events: StreamEvent[] = []
-    const name = extractPseudoToolName(this.captureBuffer)
-
-    if (!this.started && name) {
-      this.toolCallId = createCompatToolCallId()
-      this.toolName = name
-      this.started = true
-      events.push({
-        type: 'tool-call-start',
-        id: this.toolCallId,
-        name,
-      })
-    }
-
-    if (this.started && this.toolCallId) {
-      const paramStart = findParametersObjectStart(this.captureBuffer)
-      if (paramStart >= 0) {
-        const paramEnd = findJsonObjectEnd(this.captureBuffer, paramStart)
-        const availableEnd = paramEnd >= 0 ? paramEnd + 1 : this.captureBuffer.length
-        if (availableEnd > paramStart + this.emittedArgumentChars) {
-          const delta = this.captureBuffer.slice(paramStart + this.emittedArgumentChars, availableEnd)
-          this.emittedArgumentChars += delta.length
-          if (delta) {
-            events.push({
-              type: 'tool-call-delta',
-              id: this.toolCallId,
-              name: this.toolName ?? undefined,
-              argumentsDelta: delta,
-            })
-          }
-        }
-      }
-    }
-
-    if (!this.completed) {
-      const parsed = tryParsePseudoToolPayload(this.captureBuffer)
-      if (parsed && this.toolCallId) {
-        this.completed = true
-        events.push({
-          type: 'tool-call-delta-end',
-          id: this.toolCallId,
-        })
-        events.push({
-          type: 'tool-call-available',
-          id: this.toolCallId,
-          name: parsed.name,
-          arguments: parsed.arguments,
-        })
-      }
-    }
-
-    return { visibleText: '', events }
-  }
-}
-
-function resolveStreamIdleTimeoutMs(timeoutMs?: number): number {
+/** 解析空闲超时时间 */
+function resolveIdleTimeout(timeoutMs?: number): number {
   if (typeof timeoutMs === 'number' && Number.isFinite(timeoutMs) && timeoutMs > 0) {
     return timeoutMs
   }
-
-  return DEFAULT_STREAM_IDLE_TIMEOUT_MS
+  return DEFAULT_IDLE_TIMEOUT_MS
 }
 
-export class StreamingService {
-  private window: BrowserWindow
-  private messageConverter: MessageConverter
-  private toolConverter: ToolConverter
-  // IPC 批量发送缓冲区
-  private eventBuffer = new Map<string, StreamEvent[]>()
-  private flushTimers = new Map<string, NodeJS.Timeout>()
+/* ------------------------------------------------------------------ */
+/* 流式处理器（外观）                                                 */
+/* ------------------------------------------------------------------ */
 
-  constructor(window: BrowserWindow) {
-    this.window = window
-    this.messageConverter = new MessageConverter()
-    this.toolConverter = new ToolConverter()
+/** 流式处理器 — 协调模型创建、流式生成、事件分发与超时控制 */
+export class StreamingService {
+  private readonly messageConverter = new MessageConverter()
+  private readonly toolConverter = new ToolConverter()
+  private readonly timeoutGuard = new StreamTimeoutGuard()
+  private readonly dispatcher: StreamEventDispatcher
+
+  constructor(private readonly window: BrowserWindow) {
+    this.dispatcher = new StreamEventDispatcher(window)
   }
 
-  /**
-   * 流式生成文本
-   */
+  /** 流式生成文本 */
   async generate(params: StreamingParams): Promise<StreamingResult> {
     const { config, requestId, abortSignal } = params
     try {
@@ -423,25 +123,23 @@ export class StreamingService {
         operation: 'stream-text',
         requestId,
         abortSignal,
-        execute: async (useCache) => {
-          return this.generateOnce(params, useCache)
-        },
+        execute: async (useCache) => this.generateOnce(params, useCache),
       })
     } catch (error) {
       const llmError = error instanceof LLMError ? error : LLMError.fromError(error)
-      this.sendEvent(requestId, { type: 'error', error: llmError })
+      this.dispatcher.dispatch(requestId, { type: 'error', error: llmError })
       throw llmError
     }
   }
 
+  /** 单次流式生成 */
   private async generateOnce(params: StreamingParams, useCache: boolean): Promise<StreamingResult> {
     const { config, messages, tools, systemPrompt, abortSignal, activeTools, requestId } = params
 
-    // 创建 thinking 策略（只为需要特殊处理的模型）
     const strategy = ThinkingStrategyFactory.create(config.model)
     strategy.reset?.()
 
-    logger.system.info('[StreamingService] Starting generation', {
+    logger.system.info('[StreamProcessor] 开始流式生成', {
       provider: config.provider,
       model: config.model,
       messageCount: messages.length,
@@ -452,140 +150,58 @@ export class StreamingService {
     })
 
     try {
-      // 创建模型
-      const model = createModel(config, {
-        onTokenRefreshed: (newAccessToken: string, newRefreshToken?: string) => {
-          // 云端 token 刷新成功后，同步到渲染进程，避免后续请求因 refreshToken 被撤销而失败
-          if (!this.window.isDestroyed()) {
-            this.window.webContents.send('cloud:tokenRefreshed', {
-              accessToken: newAccessToken,
-              refreshToken: newRefreshToken,
-            })
-          }
-        },
-        onAuthFailed: () => {
-          // 云端认证彻底失效（refresh token 也无效），通知渲染进程清除认证状态
-          if (!this.window.isDestroyed()) {
-            this.window.webContents.send('cloud:authFailed', {})
-          }
-        },
-      })
+      const model = createModel(config, this.buildModelCallbacks())
 
-      logger.llm.info('[StreamingService] Model created', {
+      logger.llm.info('[StreamProcessor] 模型已创建', {
         provider: config.provider,
         model: config.model,
         cloudMode: config.cloudMode,
       })
 
-      // 转换消息
       let coreMessages = this.messageConverter.convert(messages, systemPrompt)
-
-      const preparedRequest = await prepareExecutionRequest({
+      const prepared = await prepareExecutionRequest({
         config,
         baseMessages: coreMessages,
         originalMessages: messages,
         useCache,
       })
-      coreMessages = preparedRequest.messages
+      coreMessages = prepared.messages
 
-      // 转换工具
       const coreTools = tools ? this.toolConverter.convert(tools) : undefined
 
-      // 构建 streamText 参数
       const streamParams: Parameters<typeof streamText>[0] = {
         model,
         messages: coreMessages,
         tools: coreTools,
-        activeTools,  // 动态限制可用工具
-        ...preparedRequest.settings,
-        ...preparedRequest.callOptions,
+        activeTools,
+        ...prepared.settings,
+        ...prepared.callOptions,
         abortSignal,
-        providerOptions: preparedRequest.providerOptions,
+        providerOptions: prepared.providerOptions,
       }
 
-      // 流式生成 - AI SDK 6.0 自动处理所有 reasoning
       const result = streamText({
         ...streamParams,
-        // 自动修复工具调用 JSON 格式错误
-        experimental_repairToolCall: async ({ toolCall, error }) => {
-          logger.llm.warn('[StreamingService] Tool call parse error, attempting repair:', {
-            toolName: toolCall.toolName,
-            error: error.message,
-          })
-
-          try {
-            const inputText = typeof toolCall.input === 'string'
-              ? toolCall.input
-              : JSON.stringify(toolCall.input)
-
-            let fixed = inputText.trim()
-
-            // 1. 修复截断的 JSON 字符串值（最常见：超长内容被流式截断）
-            fixed = repairTruncatedJsonString(fixed)
-
-            // 2. 修复未闭合的大括号
-            const openBraces = (fixed.match(/\{/g) || []).length
-            const closeBraces = (fixed.match(/\}/g) || []).length
-            if (openBraces > closeBraces) {
-              fixed += '}'.repeat(openBraces - closeBraces)
-            }
-
-            // 3. 修复未闭合的方括号
-            const openBrackets = (fixed.match(/\[/g) || []).length
-            const closeBrackets = (fixed.match(/\]/g) || []).length
-            if (openBrackets > closeBrackets) {
-              fixed += ']'.repeat(openBrackets - closeBrackets)
-            }
-
-            // 4. 处理 JSON 后有多余内容的情况（如多个 JSON 对象拼接）
-            //    尝试找到第一个完整 JSON 对象的结束位置
-            try {
-              JSON.parse(fixed)
-            } catch {
-              const extracted = extractFirstJsonObject(fixed)
-              if (extracted) {
-                fixed = extracted
-              }
-            }
-
-            // 5. 最终验证
-            JSON.parse(fixed)
-
-            logger.llm.info('[StreamingService] Tool call repaired successfully')
-            return {
-              ...toolCall,
-              input: fixed,
-            }
-          } catch (repairError) {
-            logger.llm.error('[StreamingService] Tool call repair failed:', repairError)
-            return null
-          }
-        },
+        experimental_repairToolCall: this.createToolCallRepairer(),
       })
 
-      // 处理流式响应
       return await this.processStream(
         result,
         strategy,
         requestId,
-        resolveStreamIdleTimeoutMs(preparedRequest.callOptions.timeout),
+        resolveIdleTimeout(prepared.callOptions.timeout),
         (tools?.length ?? 0) > 0,
-        preparedRequest.cacheWriteTokens,
+        prepared.cacheWriteTokens,
       )
     } catch (error) {
       if (abortSignal?.aborted) {
-        const abortedError = new LLMError(
-          'Request was cancelled',
-          ErrorCode.ABORTED,
-          false,
-        )
-        this.sendEvent(requestId, { type: 'error', error: abortedError })
+        const abortedError = new LLMError('请求已取消', ErrorCode.ABORTED, false)
+        this.dispatcher.dispatch(requestId, { type: 'error', error: abortedError })
         throw abortedError
       }
 
-      // LLMError.fromError 会自动使用 mapAISDKError 获取友好消息
       const llmError = LLMError.fromError(error)
-      logger.llm.error('[StreamingService] Stream error', {
+      logger.llm.error('[StreamProcessor] 流式错误', {
         errorType: error?.constructor?.name,
         errorMessage: (error as Error)?.message?.substring(0, 500),
         errorCode: llmError.code,
@@ -598,236 +214,300 @@ export class StreamingService {
     }
   }
 
-  /**
-   * 处理流式响应
-   * AI SDK 6.0 自动处理 reasoning-delta；额外解析仅用于部分模型的 thinking 标签。
-   */
+  /** 构建模型回调（token 刷新与认证失败） */
+  private buildModelCallbacks() {
+    return {
+      onTokenRefreshed: (newAccessToken: string, newRefreshToken?: string) => {
+        if (!this.window.isDestroyed()) {
+          this.window.webContents.send('cloud:tokenRefreshed', {
+            accessToken: newAccessToken,
+            refreshToken: newRefreshToken,
+          })
+        }
+      },
+      onAuthFailed: () => {
+        if (!this.window.isDestroyed()) {
+          this.window.webContents.send('cloud:authFailed', {})
+        }
+      },
+    }
+  }
+
+  /** 创建工具调用修复器 */
+  private createToolCallRepairer() {
+    return async ({ toolCall, error }: { toolCall: any; error: Error }) => {
+      logger.llm.warn('[StreamProcessor] 工具调用解析错误，尝试修复:', {
+        toolName: toolCall.toolName,
+        error: error.message,
+      })
+
+      const repaired = repairToolCallInput(toolCall.input)
+      if (repaired !== null) {
+        logger.llm.info('[StreamProcessor] 工具调用修复成功')
+        return { ...toolCall, input: repaired }
+      }
+
+      logger.llm.error('[StreamProcessor] 工具调用修复失败')
+      return null
+    }
+  }
+
+  /** 处理流式响应 */
   private async processStream(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     result: StreamTextResult<any, any>,
     strategy: ThinkingStrategy,
     requestId: string,
-    streamIdleTimeoutMs: number,
-    enablePseudoToolAdapter: boolean,
+    idleTimeoutMs: number,
+    enablePseudoTool: boolean,
     cacheWriteTokens?: number,
   ): Promise<StreamingResult> {
     let reasoning = ''
     let streamedText = ''
-    let streamedResponseMetadata: ResponseMetadata | undefined
+    let responseMeta: ResponseMetadata | undefined
     let sawNonTextOutput = false
-    const hasCustomParser = !!strategy.parseStreamText
     let streamError: Error | null = null
     let sawToolActivity = false
     let sawExecutableToolCall = false
+
+    const hasCustomParser = !!strategy.parseStreamText
     const iterator = result.fullStream[Symbol.asyncIterator]()
-    const pseudoToolAdapter = new PseudoToolCallStreamAdapter(enablePseudoToolAdapter)
+    const detector = new PseudoToolDetector(enablePseudoTool)
 
     while (true) {
-      const next = await this.nextStreamPart(iterator, requestId, streamIdleTimeoutMs)
+      const next = await this.timeoutGuard.next(iterator, requestId, idleTimeoutMs)
       if (next.done) break
       const part = next.value
       if (this.window.isDestroyed()) break
 
       try {
-        switch (part.type) {
-          case 'text-start':
-          case 'text-end':
-          case 'reasoning-start':
-          case 'reasoning-end':
-          case 'start':
-          case 'finish':
-          case 'raw':
-          case 'abort':
-            break
-
-          case 'start-step':
-            if (part.warnings.length > 0) {
-              logger.llm.warn('[StreamingService] Provider warnings', {
-                requestId,
-                warnings: part.warnings,
-              })
-            }
-            break
-
-          case 'text-delta':
-            if (hasCustomParser && strategy.parseStreamText) {
-              const parsed = strategy.parseStreamText(part.text)
-              if (parsed.thinking) {
-                reasoning += parsed.thinking
-                this.sendEvent(requestId, { type: 'reasoning', content: parsed.thinking })
-              }
-              if (parsed.content) {
-                const adapted = pseudoToolAdapter.consume(parsed.content)
-                for (const event of adapted.events) {
-                  if (event.type === 'tool-call-start' || event.type === 'tool-call-delta' || event.type === 'tool-call-delta-end') {
-                    sawToolActivity = true
-                  }
-                  if (event.type === 'tool-call-available') {
-                    sawToolActivity = true
-                    sawExecutableToolCall = true
-                  }
-                  this.sendEvent(requestId, event)
-                }
-                if (adapted.visibleText) {
-                  streamedText += adapted.visibleText
-                  this.sendEvent(requestId, { type: 'text', content: adapted.visibleText })
-                }
-              }
-            } else {
-              const adapted = pseudoToolAdapter.consume(part.text)
-              for (const event of adapted.events) {
-                if (event.type === 'tool-call-start' || event.type === 'tool-call-delta' || event.type === 'tool-call-delta-end') {
-                  sawToolActivity = true
-                }
-                if (event.type === 'tool-call-available') {
-                  sawToolActivity = true
-                  sawExecutableToolCall = true
-                }
-                this.sendEvent(requestId, event)
-              }
-              if (adapted.visibleText) {
-                streamedText += adapted.visibleText
-                this.sendEvent(requestId, { type: 'text', content: adapted.visibleText })
-              }
-            }
-            break
-
-          case 'reasoning-delta':
-            if (part.text) {
-              reasoning += part.text
-              this.sendEvent(requestId, { type: 'reasoning', content: part.text })
-            }
-            break
-
-          case 'tool-input-start':
-            sawToolActivity = true
-            this.sendEvent(requestId, {
-              type: 'tool-call-start',
-              id: part.id,
-              name: part.toolName,
-            })
-            break
-
-          case 'tool-input-delta':
-            sawToolActivity = true
-            this.sendEvent(requestId, {
-              type: 'tool-call-delta',
-              id: part.id,
-              argumentsDelta: part.delta,
-            })
-            break
-
-          case 'tool-input-end':
-            sawToolActivity = true
-            this.sendEvent(requestId, {
-              type: 'tool-call-delta-end',
-              id: part.id,
-            })
-            break
-
-          case 'tool-call':
-            sawToolActivity = true
-            sawExecutableToolCall = true
-            this.sendEvent(requestId, {
-              type: 'tool-call-available',
-              id: part.toolCallId,
-              name: part.toolName,
-              arguments: normalizeToolCallArguments(part.input),
-            })
-            break
-
-          case 'tool-result':
-          case 'tool-error':
-          case 'tool-output-denied':
-          case 'tool-approval-request':
-          case 'file':
-            sawNonTextOutput = true
-            break
-
-          case 'source':
-            sawNonTextOutput = true
-            this.sendEvent(requestId, {
-              type: 'source',
-              source: {
-                id: part.id,
-                sourceType: part.sourceType,
-                ...(part.sourceType === 'url'
-                  ? {
-                      url: part.url,
-                      title: part.title,
-                    }
-                  : {
-                      mediaType: part.mediaType,
-                      title: part.title,
-                      filename: part.filename,
-                    }),
-              },
-            })
-            break
-
-          case 'response-metadata':
-            streamedResponseMetadata = {
-              id: part.id,
-              modelId: part.modelId,
-              timestamp: part.timestamp,
-            }
-            break
-
-          case 'finish-step':
-            if (!streamedResponseMetadata) {
-              streamedResponseMetadata = {
-                id: part.response.id,
-                modelId: part.response.modelId,
-                timestamp: part.response.timestamp,
-              }
-            }
-            break
-
-          case 'error':
-            // 捕获流中的错误，稍后抛出
-            if (!streamError) {
-              streamError = part.error instanceof Error
-                ? part.error
-                : new Error(String(part.error ?? 'Unknown stream error'))
-            }
-            break
-        }
+        this.handleStreamPart(part, {
+          strategy,
+          detector,
+          requestId,
+          hasCustomParser,
+          onReasoning: (text) => { reasoning += text },
+          onText: (text) => { streamedText += text },
+          onToolActivity: () => { sawToolActivity = true },
+          onExecutableToolCall: () => { sawExecutableToolCall = true },
+          onNonTextOutput: () => { sawNonTextOutput = true },
+          onMetadata: (meta) => { responseMeta = meta },
+          onError: (err) => { if (!streamError) streamError = err },
+        })
       } catch (error) {
         if (!this.window.isDestroyed()) {
-          logger.llm.warn('[StreamingService] Error processing stream part:', error)
+          logger.llm.warn('[StreamProcessor] 处理流式分片出错:', error)
         }
       }
     }
 
-    const finalAdapterState = pseudoToolAdapter.finalize()
-    if (finalAdapterState.visibleText) {
-      streamedText += finalAdapterState.visibleText
-      this.sendEvent(requestId, { type: 'text', content: finalAdapterState.visibleText })
+    const finalState = detector.finalize()
+    if (finalState.visibleText) {
+      streamedText += finalState.visibleText
+      this.dispatcher.dispatch(requestId, { type: 'text', content: finalState.visibleText })
     }
 
-    // 如果流中有错误，优先抛出真实错误而不是 NoOutputGeneratedError
-    if (streamError) {
-      throw streamError
+    if (streamError) throw streamError
+
+    return await this.finalizeStream(
+      result,
+      strategy,
+      detector,
+      requestId,
+      streamedText,
+      reasoning,
+      responseMeta,
+      sawToolActivity,
+      sawExecutableToolCall,
+      sawNonTextOutput,
+      cacheWriteTokens,
+    )
+  }
+
+  /** 处理单个流式分片 */
+  private handleStreamPart(
+    part: any,
+    ctx: {
+      strategy: ThinkingStrategy
+      detector: PseudoToolDetector
+      requestId: string
+      hasCustomParser: boolean
+      onReasoning: (text: string) => void
+      onText: (text: string) => void
+      onToolActivity: () => void
+      onExecutableToolCall: () => void
+      onNonTextOutput: () => void
+      onMetadata: (meta: ResponseMetadata) => void
+      onError: (err: Error) => void
+    },
+  ): void {
+    const { strategy, detector, requestId, hasCustomParser } = ctx
+
+    switch (part.type) {
+      case 'text-start':
+      case 'text-end':
+      case 'reasoning-start':
+      case 'reasoning-end':
+      case 'start':
+      case 'finish':
+      case 'raw':
+      case 'abort':
+        break
+
+      case 'start-step':
+        if (part.warnings?.length > 0) {
+          logger.llm.warn('[StreamProcessor] Provider 警告', { requestId, warnings: part.warnings })
+        }
+        break
+
+      case 'text-delta':
+        this.handleTextDelta(part.text, strategy, detector, hasCustomParser, ctx)
+        break
+
+      case 'reasoning-delta':
+        if (part.text) {
+          ctx.onReasoning(part.text)
+          this.dispatcher.dispatch(requestId, { type: 'reasoning', content: part.text })
+        }
+        break
+
+      case 'tool-input-start':
+        ctx.onToolActivity()
+        this.dispatcher.dispatch(requestId, { type: 'tool-call-start', id: part.id, name: part.toolName })
+        break
+
+      case 'tool-input-delta':
+        ctx.onToolActivity()
+        this.dispatcher.dispatch(requestId, { type: 'tool-call-delta', id: part.id, argumentsDelta: part.delta })
+        break
+
+      case 'tool-input-end':
+        ctx.onToolActivity()
+        this.dispatcher.dispatch(requestId, { type: 'tool-call-delta-end', id: part.id })
+        break
+
+      case 'tool-call':
+        ctx.onToolActivity()
+        ctx.onExecutableToolCall()
+        this.dispatcher.dispatch(requestId, {
+          type: 'tool-call-available',
+          id: part.toolCallId,
+          name: part.toolName,
+          arguments: normalizeToolCallArguments(part.input),
+        })
+        break
+
+      case 'tool-result':
+      case 'tool-error':
+      case 'tool-output-denied':
+      case 'tool-approval-request':
+      case 'file':
+        ctx.onNonTextOutput()
+        break
+
+      case 'source':
+        ctx.onNonTextOutput()
+        this.dispatcher.dispatch(requestId, { type: 'source', source: this.extractSource(part) })
+        break
+
+      case 'response-metadata':
+        ctx.onMetadata({ id: part.id, modelId: part.modelId, timestamp: part.timestamp })
+        break
+
+      case 'finish-step':
+        if (!ctx['onMetadata' as keyof typeof ctx]) {
+          ctx.onMetadata({ id: part.response.id, modelId: part.response.modelId, timestamp: part.response.timestamp })
+        }
+        break
+
+      case 'error':
+        ctx.onError(part.error instanceof Error ? part.error : new Error(String(part.error ?? 'Unknown stream error')))
+        break
+    }
+  }
+
+  /** 处理文本增量 */
+  private handleTextDelta(
+    text: string,
+    strategy: ThinkingStrategy,
+    detector: PseudoToolDetector,
+    hasCustomParser: boolean,
+    ctx: {
+      requestId: string
+      onReasoning: (text: string) => void
+      onText: (text: string) => void
+      onToolActivity: () => void
+      onExecutableToolCall: () => void
+    },
+  ): void {
+    let content = text
+
+    if (hasCustomParser && strategy.parseStreamText) {
+      const parsed = strategy.parseStreamText(text)
+      if (parsed.thinking) {
+        ctx.onReasoning(parsed.thinking)
+        this.dispatcher.dispatch(ctx.requestId, { type: 'reasoning', content: parsed.thinking })
+      }
+      content = parsed.content || ''
     }
 
-    // 获取最终结果
+    if (content) {
+      const adapted = detector.consume(content)
+      for (const event of adapted.events) {
+        if (event.type === 'tool-call-available') {
+          ctx.onToolActivity()
+          ctx.onExecutableToolCall()
+        } else if (event.type.startsWith('tool-call')) {
+          ctx.onToolActivity()
+        }
+        this.dispatcher.dispatch(ctx.requestId, event)
+      }
+      if (adapted.visibleText) {
+        ctx.onText(adapted.visibleText)
+        this.dispatcher.dispatch(ctx.requestId, { type: 'text', content: adapted.visibleText })
+      }
+    }
+  }
+
+  /** 提取来源信息 */
+  private extractSource(part: any): NonNullable<Extract<StreamEvent, { type: 'source' }>['source']> {
+    return {
+      id: part.id,
+      sourceType: part.sourceType,
+      ...(part.sourceType === 'url'
+        ? { url: part.url, title: part.title }
+        : { mediaType: part.mediaType, title: part.title, filename: part.filename }),
+    }
+  }
+
+  /** 完成流式处理，提取最终结果 */
+  private async finalizeStream(
+    result: StreamTextResult<any, any>,
+    strategy: ThinkingStrategy,
+    detector: PseudoToolDetector,
+    requestId: string,
+    streamedText: string,
+    reasoning: string,
+    responseMeta: ResponseMetadata | undefined,
+    sawToolActivity: boolean,
+    sawExecutableToolCall: boolean,
+    sawNonTextOutput: boolean,
+    cacheWriteTokens?: number,
+  ): Promise<StreamingResult> {
     const text = await result.text
     const usage = await result.usage
     const providerMetadata = await result.providerMetadata
     const response = await result.response
 
-    // 使用策略提取最终 thinking
     let finalText = text
     let finalReasoning = reasoning
+
     if (strategy.extractThinking) {
       const parsed = strategy.extractThinking(text)
       finalText = parsed.content
-      if (parsed.thinking) {
-        finalReasoning = parsed.thinking
-      }
+      if (parsed.thinking) finalReasoning = parsed.thinking
     }
 
-    if (pseudoToolAdapter.hasCapturedToolCall()) {
+    if (detector.hasCaptured()) {
       finalText = streamedText
     }
 
@@ -835,7 +515,7 @@ export class StreamingService {
 
     if (finishReason === 'tool-calls' && !sawExecutableToolCall) {
       throw new LLMError(
-        'Model stopped with tool-calls finish reason but did not produce any executable tool call',
+        '模型以工具调用结束但未产生可执行的工具调用',
         ErrorCode.LLM_NO_OUTPUT,
         true,
       )
@@ -843,13 +523,13 @@ export class StreamingService {
 
     if (!finalText.trim() && !finalReasoning.trim() && !sawToolActivity && !sawNonTextOutput) {
       throw new LLMError(
-        'Model returned an empty response after the API call completed',
+        '模型在 API 调用完成后返回了空响应',
         ErrorCode.LLM_EMPTY_RESPONSE,
         true,
       )
     }
 
-    logger.llm.info('[StreamingService] Stream completed', {
+    logger.llm.info('[StreamProcessor] 流式完成', {
       requestId,
       contentLength: finalText.length,
       reasoningLength: finalReasoning.length,
@@ -864,200 +544,21 @@ export class StreamingService {
       reasoning: finalReasoning || undefined,
       usage: usage ? convertUsage(usage, providerMetadata, { cacheWriteTokens }) : undefined,
       metadata: {
-        id: streamedResponseMetadata?.id ?? response.id,
-        modelId: streamedResponseMetadata?.modelId ?? response.modelId,
-        timestamp: streamedResponseMetadata?.timestamp ?? response.timestamp,
+        id: responseMeta?.id ?? response.id,
+        modelId: responseMeta?.modelId ?? response.modelId,
+        timestamp: responseMeta?.timestamp ?? response.timestamp,
         finishReason: finishReason || undefined,
       },
     }
 
-    this.sendEvent(requestId, {
+    this.dispatcher.dispatch(requestId, {
       type: 'done',
       reasoning: streamingResult.reasoning,
       usage: streamingResult.usage,
       metadata: streamingResult.metadata,
     })
 
+    this.dispatcher.cleanup(requestId)
     return streamingResult
-  }
-
-  /**
-   * 发送事件到渲染进程（批量发送优化）
-   */
-  private sendEvent(requestId: string, event: StreamEvent): void {
-    if (this.window.isDestroyed()) return
-
-    // 立即发送的事件类型（不批量）
-    const immediateEvents = ['error', 'done', 'tool-call-start', 'tool-call-available']
-
-    if (immediateEvents.includes(event.type)) {
-      this.flushEvents(requestId) // 先刷新缓冲区
-      this.sendEventImmediate(requestId, event)
-      return
-    }
-
-    // 批量发送的事件类型（text, reasoning, tool-call-delta）
-    if (!this.eventBuffer.has(requestId)) {
-      this.eventBuffer.set(requestId, [])
-    }
-
-    this.eventBuffer.get(requestId)!.push(event)
-
-    // 清除旧的定时器
-    const existingTimer = this.flushTimers.get(requestId)
-    if (existingTimer) {
-      clearTimeout(existingTimer)
-    }
-
-    // 设置新的定时器（30ms 批量发送，更细粒度喂给 renderer 的插值动画）
-    const timer = setTimeout(() => {
-      this.flushEvents(requestId)
-    }, 30)
-
-    this.flushTimers.set(requestId, timer)
-  }
-
-  /**
-   * 刷新事件缓冲区
-   */
-  private flushEvents(requestId: string): void {
-    const events = this.eventBuffer.get(requestId)
-    if (!events || events.length === 0) return
-
-    if (this.window.isDestroyed()) {
-      this.eventBuffer.delete(requestId)
-      this.flushTimers.delete(requestId)
-      return
-    }
-
-    try {
-      // 批量发送所有事件
-      this.window.webContents.send(`llm:stream:${requestId}`, {
-        type: 'batch',
-        events: events.map(e => this.serializeEvent(e))
-      })
-    } catch (error) {
-      logger.llm.error('[StreamingService] Failed to flush events:', error)
-    }
-
-    this.eventBuffer.delete(requestId)
-    this.flushTimers.delete(requestId)
-  }
-
-  /**
-   * 序列化事件
-   */
-  private serializeEvent(event: StreamEvent): any {
-    switch (event.type) {
-      case 'text':
-        return { type: 'text', content: event.content }
-      case 'reasoning':
-        return { type: 'reasoning', content: event.content }
-      case 'tool-call-delta':
-        return {
-          type: 'tool_call_delta',
-          id: event.id,
-          name: event.name,
-          argumentsDelta: event.argumentsDelta,
-        }
-      case 'tool-call-delta-end':
-        return { type: 'tool_call_delta_end', id: event.id }
-      case 'source':
-        return { type: 'source', source: event.source }
-      default:
-        return event
-    }
-  }
-
-  /**
-   * 立即发送事件（不批量）
-   */
-  private sendEventImmediate(requestId: string, event: StreamEvent): void {
-    if (this.window.isDestroyed()) return
-
-    try {
-      switch (event.type) {
-        case 'tool-call-start':
-          this.window.webContents.send(`llm:stream:${requestId}`, {
-            type: 'tool_call_start',
-            id: event.id,
-            name: event.name,
-          })
-          break
-
-        case 'tool-call-available':
-          this.window.webContents.send(`llm:stream:${requestId}`, {
-            type: 'tool_call_available',
-            id: event.id,
-            name: event.name,
-            arguments: event.arguments,
-          })
-          break
-
-        case 'error':
-          this.window.webContents.send(`llm:error:${requestId}`, {
-            message: event.error.message,
-            code: event.error.code,
-            retryable: event.error.retryable,
-            suggestion: event.error.suggestion,
-          })
-          break
-
-        case 'done':
-          logger.llm.info('[StreamingService] Sending done event', { requestId, channel: `llm:done:${requestId}` })
-          this.window.webContents.send(`llm:done:${requestId}`, {
-            reasoning: event.reasoning,
-            usage: event.usage ? {
-              promptTokens: event.usage.inputTokens,
-              completionTokens: event.usage.outputTokens,
-              totalTokens: event.usage.totalTokens,
-              cachedInputTokens: event.usage.cachedInputTokens,
-              cacheWriteTokens: event.usage.cacheWriteTokens,
-              reasoningTokens: event.usage.reasoningTokens,
-            } : undefined,
-            metadata: event.metadata,
-          })
-          break
-      }
-    } catch (error) {
-      logger.llm.error('[StreamingService] Failed to send event:', error)
-    }
-  }
-
-  private async nextStreamPart(
-    iterator: AsyncIterator<any>,
-    requestId: string,
-    idleTimeoutMs: number
-  ): Promise<IteratorResult<any>> {
-    let timeoutId: NodeJS.Timeout | null = null
-
-    try {
-      return await Promise.race([
-        iterator.next().finally(() => {
-          if (timeoutId) {
-            clearTimeout(timeoutId)
-            timeoutId = null
-          }
-        }),
-        new Promise<never>((_, reject) => {
-          timeoutId = setTimeout(() => {
-            logger.llm.warn('[StreamingService] Stream idle timeout waiting for next chunk', {
-              requestId,
-              idleTimeoutMs,
-            })
-            void iterator.return?.()
-            reject(new LLMError(
-              `Model stream stalled for more than ${Math.floor(idleTimeoutMs / 1000)}s`,
-              ErrorCode.TIMEOUT,
-              true,
-            ))
-          }, idleTimeoutMs)
-        }),
-      ])
-    } finally {
-      if (timeoutId) {
-        clearTimeout(timeoutId)
-      }
-    }
   }
 }

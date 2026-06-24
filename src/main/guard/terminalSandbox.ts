@@ -1,5 +1,18 @@
 /**
- * 安全的终端执行模块（替代原有 terminal.ts 中的高危功能）
+ * 安全终端执行模块 — 受控的终端命令执行
+ *
+ * 职责：
+ * - 替代原有 terminal.ts 中的高危功能
+ * - 通过 securityManager 进行命令权限校验
+ * - 支持 spawn / execFile / execSync 三种执行模式
+ * - 支持交互式终端（pty 模式）
+ *
+ * 差异化特性（相比基础实现）：
+ * - 命令白名单校验
+ * - 场景权限策略集成
+ * - Python 运行时集成（pythonManager）
+ * - IPC 安全包装器集成（safeIpcHandle）
+ * - 终端输入规范化（normalizePipeTerminalInput）
  */
 
 import { logger } from '@shared/toolkit/LogEngine'
@@ -15,6 +28,7 @@ import { securityManager, OperationType } from './securityPolicyEngine'
 import { SECURITY_DEFAULTS } from '@shared/appConstants'
 import { safeIpcHandle } from '../bridge/core/ipcGuard'
 import { normalizePipeTerminalInput } from './terminalInputFilter'
+export { normalizePipeTerminalInput }
 import { pythonManager } from '../modules/python-runtime'
 
 

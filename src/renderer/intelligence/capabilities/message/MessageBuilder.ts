@@ -1,5 +1,5 @@
 /**
- * Message assembly for LLM requests.
+ * 消息构建器 — LLM 请求消息组装
  */
 
 import { logger } from '@toolkit/LogEngine'

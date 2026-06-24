@@ -1,0 +1,119 @@
+/**
+ * 流式阶段指示器
+ * 在等待响应或流式输出时显示当前状态（连接中、思考中、工具执行中等）
+ */
+import React, { useState, useEffect, useMemo, useRef } from 'react'
+import { useStore } from '@store'
+import { playNotificationSound } from '@utils/notificationSound'
+import { t } from '@renderer/i18n'
+import type { StreamingPhaseProps } from '../types'
+
+function StreamingPhaseIndicatorBase({
+  mode,
+  waitPhase,
+  streamStartTime,
+  streamDetail,
+  retryAttempt,
+  retryDelay,
+  hasReasoningBlock,
+}: StreamingPhaseProps) {
+  const language = useStore(s => s.language)
+  const [elapsed, setElapsed] = useState(0)
+  const [retryCountdown, setRetryCountdown] = useState(0)
+
+  /** 流式计时 */
+  useEffect(() => {
+    if (!streamStartTime) return
+    const update = () => setElapsed(Math.floor((Date.now() - streamStartTime) / 1000))
+    update()
+    const id = setInterval(update, 1000)
+    return () => clearInterval(id)
+  }, [streamStartTime])
+
+  /** 重试倒计时 */
+  useEffect(() => {
+    if (!retryDelay || !retryAttempt || retryAttempt <= 0) {
+      setRetryCountdown(0)
+      return
+    }
+    const endTime = Date.now() + retryDelay
+    const update = () => {
+      const remaining = Math.max(0, Math.ceil((endTime - Date.now()) / 1000))
+      setRetryCountdown(remaining)
+    }
+    update()
+    const id = setInterval(update, 1000)
+    return () => clearInterval(id)
+  }, [retryDelay, retryAttempt])
+
+  const isRetrying = retryAttempt && retryAttempt > 0
+  const prevRetryAttemptRef = useRef(0)
+
+  /** 重试时播放提示音 */
+  useEffect(() => {
+    if (retryAttempt && retryAttempt > prevRetryAttemptRef.current) {
+      playNotificationSound('attention')
+    }
+    prevRetryAttemptRef.current = retryAttempt ?? 0
+  }, [retryAttempt])
+
+  /** 生成状态文案 */
+  const label = useMemo(() => {
+    if (isRetrying) {
+      const base = t('waitPhase.retrying', language as any, { attempt: retryAttempt })
+      return retryCountdown > 0 ? `${base} ${retryCountdown}s` : base
+    }
+    if (mode === 'waiting') {
+      switch (waitPhase) {
+        case 'connecting': return t('waitPhase.connecting', language as any)
+        case 'building_context': return t('waitPhase.building_context', language as any)
+        case 'compressing': return t('waitPhase.compressing', language as any)
+        case 'waiting_model': return t('waitPhase.waiting_model', language as any)
+        default: return t('statusBar.thinking', language as any)
+      }
+    }
+    switch (streamDetail) {
+      case 'reasoning': return hasReasoningBlock ? null : t('statusBar.thinking', language as any)
+      case 'tool_executing': return t('statusBar.processing', language as any)
+      case 'tool_awaiting': return t('statusBar.processing', language as any)
+      default: return null
+    }
+  }, [mode, waitPhase, streamDetail, language, retryAttempt, isRetrying, hasReasoningBlock, retryCountdown])
+
+  if (!label) return null
+
+  const elapsedText = elapsed > 0
+    ? ` ${t('waitPhase.elapsed', language as any, { sec: elapsed })}`
+    : ''
+
+  if (mode === 'waiting') {
+    return (
+      <div className="flex items-center gap-2.5 py-2 px-1">
+        <div className="relative flex items-center justify-center w-5 h-5">
+          <span className={`absolute w-3 h-3 rounded-full ${isRetrying ? 'bg-amber-500/20 animate-breathe' : 'bg-accent/20 animate-breathe'}`} />
+          <span className={`w-1.5 h-1.5 rounded-full ${isRetrying ? 'bg-amber-500/80' : 'bg-accent/80'}`} />
+        </div>
+        <span className={`text-[12px] font-medium ${isRetrying ? 'text-amber-400/90' : 'text-text-muted/80'}`}>
+          {label}{elapsedText}
+        </span>
+        <div className="flex items-center gap-0.5 ml-0.5">
+          <span className={`wait-dot w-0.5 h-0.5 rounded-full ${isRetrying ? 'bg-amber-500/60' : 'bg-accent/60'}`} />
+          <span className={`wait-dot w-0.5 h-0.5 rounded-full ${isRetrying ? 'bg-amber-500/60' : 'bg-accent/60'}`} />
+          <span className={`wait-dot w-0.5 h-0.5 rounded-full ${isRetrying ? 'bg-amber-500/60' : 'bg-accent/60'}`} />
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-full bg-surface/60 border border-border/50">
+      <span className={`w-1.5 h-1.5 rounded-full ${isRetrying ? 'bg-amber-400' : 'bg-accent/70'} animate-breathe`} />
+      <span className={`text-[11px] font-medium ${isRetrying ? 'text-amber-400/80' : 'text-text-muted/70'}`}>
+        {label}
+      </span>
+    </div>
+  )
+}
+
+export const StreamingPhaseIndicator = React.memo(StreamingPhaseIndicatorBase)
+StreamingPhaseIndicator.displayName = 'StreamingPhaseIndicator'

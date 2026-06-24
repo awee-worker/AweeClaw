@@ -1,5 +1,5 @@
 /**
- * File reading utilities
+ * 文件读取工具 — 文件读取选项与结果类型
  */
 export interface FileReadOptions {
   encoding?: string

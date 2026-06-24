@@ -1,9 +1,11 @@
 /**
- * Prompt builder for agent and chat modes.
+ * 提示词构建器 — Agent 与 Chat 模式的提示词组装
  *
- * 支持场景插件系统：从当前活跃的 ScenarioPlugin 获取身份、安全规则、
- * 代码规范和工作流指南，而非硬编码在 promptTemplates.ts 中。
- * 向后兼容：如果没有活跃场景，回退到 promptTemplates 中的常量。
+ * 职责：
+ * - 为 Agent 和 Chat 模式构建系统提示词
+ * - 支持场景插件系统：从当前活跃的 ScenarioPlugin 获取身份、安全规则、
+ *   代码规范和工作流指南，而非硬编码在 promptTemplates.ts 中
+ * - 向后兼容：如果没有活跃场景，回退到 promptTemplates 中的常量
  */
 
 import { WorkMode } from '@/renderer/modes/workModeTypes'

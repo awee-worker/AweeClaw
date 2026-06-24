@@ -1,5 +1,15 @@
 /**
- * Structured-output service built on AI SDK generateObject.
+ * 结构化输出引擎 — 基于 AI SDK generateObject 的结构化生成
+ *
+ * 职责：
+ * - 使用 Zod Schema 定义输出结构
+ * - 调用 AI SDK 的 generateObject 生成结构化数据
+ * - 支持代码分析、重构建议、代码修复、测试用例等场景
+ *
+ * 差异化特性（相比基础实现）：
+ * - 请求预处理管道（executePreparedRequest）
+ * - 统一的 Usage 转换（convertUsage）
+ * - 完善的 Schema 定义（CodeIssueSchema 等）
  */
 
 import { generateObject } from 'ai'

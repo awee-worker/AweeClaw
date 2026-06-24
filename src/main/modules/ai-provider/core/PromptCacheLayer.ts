@@ -1,3 +1,15 @@
+/**
+ * Prompt 缓存层 — 为不同 Provider 添加提示词缓存标记
+ *
+ * 职责：
+ * - 为 Anthropic 添加显式的缓存断点
+ * - 为 OpenAI 兼容 / Google 兼容 Provider 处理缓存
+ *
+ * 说明：
+ * - Anthropic 需要显式的缓存断点
+ * - OpenAI 兼容 / Google 兼容的缓存由 Provider 控制，不通过请求级开关暴露
+ */
+
 import type { ModelMessage } from '@ai-sdk/provider-utils'
 import type { ApiProtocol } from '@shared/configuration/aiProviders'
 
@@ -19,14 +31,6 @@ function withAnthropicCache(message: ModelMessage): ModelMessage {
   }
 }
 
-/**
- * Add provider-specific prompt cache hints.
- *
- * Notes:
- * - Anthropic requires explicit cache breakpoints.
- * - OpenAI-compatible / Google-compatible caching is provider-specific and is
- *   not exposed through a universal request-level switch in this project.
- */
 export function applyCaching(
   messages: ModelMessage[],
   config: CacheConfig

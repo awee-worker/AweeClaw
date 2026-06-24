@@ -1,5 +1,5 @@
 /**
- * Handoff helpers for L4 session continuation.
+ * 会话交接助手 — L4 会话续接的交接文档构建
  */
 
 import type { HandoffDocument, StructuredSummary } from '@intelligence/providerTypes'

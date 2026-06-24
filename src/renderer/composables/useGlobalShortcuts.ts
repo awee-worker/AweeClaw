@@ -1,56 +1,209 @@
 /**
- * 全局快捷键 Hook
+ * 全局快捷键监听
  *
- * 所有快捷键定义统一在 src/renderer/config/commands.ts 中管理。
- * 本文件只负责"事件监听 + 派发"，不硬编码任何按键字符串。
- * 用户可通过 keybindingService.updateBinding() 覆盖任意快捷键，本文件无需改动。
- *
- * 注意：
- *   - F1 作为 showCommands 的备用键单独处理（主进程也需要它）
- *   - DevTools 由 Electron 菜单 role:toggleDevTools 负责（主进程 before-input-event 也捕获了 Ctrl+Shift+P/F1）
+ * 通过命令表派发按键事件，不硬编码按键字符串。
+ * 命令定义集中在 src/renderer/config/commands.ts。
  */
-import { useEffect, useCallback, useRef } from 'react'
+
+import { useCallback, useEffect, useRef } from 'react'
 import { useStore } from '@store'
 import { api } from '../adapters/electronBridge'
 import { keybindingService } from '@services/keybindingAdapter'
 
 const kb = keybindingService
 
+/** 快捷键处理器返回是否已处理 */
+type KeyHandler = (e: KeyboardEvent, ctx: ShortcutContext) => boolean
+
+/** 快捷键上下文，避免闭包依赖导致重建 */
+interface ShortcutContext {
+  terminalVisible: boolean
+  debugVisible: boolean
+  chatVisible: boolean
+  showCommandPalette: boolean
+  showWorkflow: boolean
+  showQuickOpen: boolean
+  showAbout: boolean
+  activeFilePath: string | null
+  setShowSettingsPage: (v: boolean) => void
+  setShowCommandPalette: (v: boolean) => void
+  setShowWorkflow: (v: boolean) => void
+  setShowQuickOpen: (v: boolean) => void
+  setShowAbout: (v: boolean) => void
+  setTerminalVisible: (v: boolean) => void
+  setDebugVisible: (v: boolean) => void
+  setChatVisible: (v: boolean) => void
+  closeFile: (path: string) => void
+}
+
+/** 判断当前焦点是否在 Monaco 编辑器内 */
+function isEditorFocused(): boolean {
+  const active = document.activeElement
+  if (!active) return false
+  return active.classList.contains('inputarea') || !!active.closest('.monaco-editor')
+}
+
+/** 命令表：按优先级顺序匹配 */
+const HANDLERS: KeyHandler[] = [
+  // DevTools：F12 在编辑器外触发，编辑器内放行给 Monaco
+  (e, _ctx) => {
+    const isBareF12 = e.key === 'F12' && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey
+    const isCustom = !isBareF12 && kb.matches(e, 'workbench.action.toggleDevTools')
+    if (!isBareF12 && !isCustom) return false
+
+    if (!isEditorFocused()) {
+      e.preventDefault()
+      api.window.toggleDevTools()
+    }
+    return true
+  },
+
+  // 命令面板：F1 或 Ctrl+Shift+P
+  (e, ctx) => {
+    if (e.key === 'F1' || kb.matches(e, 'workbench.action.showCommands')) {
+      e.preventDefault()
+      ctx.setShowCommandPalette(true)
+      return true
+    }
+    return false
+  },
+
+  // Quick Open
+  (e, ctx) => {
+    if (kb.matches(e, 'workbench.action.quickOpen')) {
+      e.preventDefault()
+      ctx.setShowQuickOpen(true)
+      return true
+    }
+    return false
+  },
+
+  // 设置
+  (e, ctx) => {
+    if (kb.matches(e, 'workbench.action.openSettings')) {
+      e.preventDefault()
+      ctx.setShowSettingsPage(true)
+      return true
+    }
+    return false
+  },
+
+  // 终端
+  (e, ctx) => {
+    if (kb.matches(e, 'view.toggleTerminal')) {
+      e.preventDefault()
+      ctx.setTerminalVisible(!ctx.terminalVisible)
+      return true
+    }
+    return false
+  },
+
+  // 调试面板
+  (e, ctx) => {
+    if (kb.matches(e, 'view.toggleDebug')) {
+      e.preventDefault()
+      ctx.setDebugVisible(!ctx.debugVisible)
+      return true
+    }
+    return false
+  },
+
+  // AI 面板
+  (e, ctx) => {
+    if (kb.matches(e, 'view.toggleAiPanel')) {
+      e.preventDefault()
+      ctx.setChatVisible(!ctx.chatVisible)
+      return true
+    }
+    return false
+  },
+
+  // 开始调试
+  (e, ctx) => {
+    if (kb.matches(e, 'debug.start')) {
+      e.preventDefault()
+      if (!ctx.debugVisible) ctx.setDebugVisible(true)
+      window.dispatchEvent(new CustomEvent('debug:start'))
+      return true
+    }
+    return false
+  },
+
+  // 切换断点
+  (e) => {
+    if (kb.matches(e, 'debug.toggleBreakpoint')) {
+      e.preventDefault()
+      window.dispatchEvent(new CustomEvent('debug:toggleBreakpoint'))
+      return true
+    }
+    return false
+  },
+
+  // 工作流
+  (e, ctx) => {
+    if (kb.matches(e, 'workbench.action.toggleComposer')) {
+      e.preventDefault()
+      ctx.setShowWorkflow(true)
+      return true
+    }
+    return false
+  },
+
+  // 在资源管理器中显示
+  (e) => {
+    if (kb.matches(e, 'explorer.revealActiveFile') || kb.matches(e, 'explorer.revealInSidebar')) {
+      e.preventDefault()
+      window.dispatchEvent(new CustomEvent('explorer:reveal-active-file'))
+      return true
+    }
+    return false
+  },
+
+  // 关闭当前文件
+  (e, ctx) => {
+    if (kb.matches(e, 'editor.closeFile')) {
+      e.preventDefault()
+      if (ctx.activeFilePath) ctx.closeFile(ctx.activeFilePath)
+      return true
+    }
+    return false
+  },
+
+  // Escape：关闭浮层
+  (e, ctx) => {
+    if (e.key !== 'Escape') return false
+    if (ctx.showCommandPalette) ctx.setShowCommandPalette(false)
+    if (ctx.showWorkflow) ctx.setShowWorkflow(false)
+    if (ctx.showQuickOpen) ctx.setShowQuickOpen(false)
+    if (ctx.showAbout) ctx.setShowAbout(false)
+    return true
+  },
+]
+
 export function useGlobalShortcuts() {
-  // setter 函数引用稳定，直接从 store 获取
-  const setShowSettingsPage = useStore((state) => state.setShowSettingsPage)
-  const setShowCommandPalette = useStore((state) => state.setShowCommandPalette)
-  const setShowWorkflow = useStore((state) => state.setShowWorkflow)
-  const setShowQuickOpen = useStore((state) => state.setShowQuickOpen)
-  const setShowAbout = useStore((state) => state.setShowAbout)
-  const setTerminalVisible = useStore((state) => state.setTerminalVisible)
-  const setDebugVisible = useStore((state) => state.setDebugVisible)
-  const setChatVisible = useStore((state) => state.setChatVisible)
-  const closeFile = useStore((state) => state.closeFile)
+  const setShowSettingsPage = useStore((s) => s.setShowSettingsPage)
+  const setShowCommandPalette = useStore((s) => s.setShowCommandPalette)
+  const setShowWorkflow = useStore((s) => s.setShowWorkflow)
+  const setShowQuickOpen = useStore((s) => s.setShowQuickOpen)
+  const setShowAbout = useStore((s) => s.setShowAbout)
+  const setTerminalVisible = useStore((s) => s.setTerminalVisible)
+  const setDebugVisible = useStore((s) => s.setDebugVisible)
+  const setChatVisible = useStore((s) => s.setChatVisible)
+  const closeFile = useStore((s) => s.closeFile)
 
-  // 动态值通过 ref 访问，避免回调依赖
-  const stateRef = useRef({
-    terminalVisible: false,
-    debugVisible: false,
-    chatVisible: true,
-    showCommandPalette: false,
-    showWorkflow: false,
-    showQuickOpen: false,
-    showAbout: false,
-    activeFilePath: null as string | null,
-  })
+  // 动态状态通过 ref 访问，避免 handleKeyDown 重建
+  const ctxRef = useRef<ShortcutContext>({} as ShortcutContext)
 
-  // 订阅动态值但不触发 handleKeyDown 重建
-  const terminalVisible = useStore((state) => state.terminalVisible)
-  const debugVisible = useStore((state) => state.debugVisible)
-  const chatVisible = useStore((state) => state.chatVisible)
-  const showCommandPalette = useStore((state) => state.showCommandPalette)
-  const showWorkflow = useStore((state) => state.showWorkflow)
-  const showQuickOpen = useStore((state) => state.showQuickOpen)
-  const showAbout = useStore((state) => state.showAbout)
-  const activeFilePath = useStore((state) => state.activeFilePath)
+  const terminalVisible = useStore((s) => s.terminalVisible)
+  const debugVisible = useStore((s) => s.debugVisible)
+  const chatVisible = useStore((s) => s.chatVisible)
+  const showCommandPalette = useStore((s) => s.showCommandPalette)
+  const showWorkflow = useStore((s) => s.showWorkflow)
+  const showQuickOpen = useStore((s) => s.showQuickOpen)
+  const showAbout = useStore((s) => s.showAbout)
+  const activeFilePath = useStore((s) => s.activeFilePath)
 
-  stateRef.current = {
+  ctxRef.current = {
     terminalVisible,
     debugVisible,
     chatVisible,
@@ -59,133 +212,30 @@ export function useGlobalShortcuts() {
     showQuickOpen,
     showAbout,
     activeFilePath,
+    setShowSettingsPage,
+    setShowCommandPalette,
+    setShowWorkflow,
+    setShowQuickOpen,
+    setShowAbout,
+    setTerminalVisible,
+    setDebugVisible,
+    setChatVisible,
+    closeFile,
   }
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    const s = stateRef.current
-
-    // ── DevTools: F12（焦点感知）──────────────────────────────────────────────
-    // 直接判断 e.key，不依赖 keybindingService（HMR 后命令表可能为空）
-    // Windows/Linux 默认 F12，macOS 默认 Cmd+Option+I（Ctrl+Alt+I）
-    // 用户可在设置中覆盖 workbench.action.toggleDevTools 来自定义按键
-    const isBareF12 = e.key === 'F12' && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey
-    const isCustomDevToolsTrigger = !isBareF12 && kb.matches(e, 'workbench.action.toggleDevTools')
-    if (isBareF12 || isCustomDevToolsTrigger) {
-      const active = document.activeElement
-      const isEditorFocused = !!(active?.classList.contains('inputarea') || active?.closest('.monaco-editor'))
-      if (!isEditorFocused) {
-        // 编辑器外：打开 DevTools
-        e.preventDefault()
-        api.window.toggleDevTools()
-      }
-      // 编辑器内：放行，Monaco 内部 F12 → 跳转定义（经 DefinitionProvider）
-      return
+    const ctx = ctxRef.current
+    for (const handler of HANDLERS) {
+      if (handler(e, ctx)) break
     }
-
-    // Command Palette: commands.ts → workbench.action.showCommands (Ctrl+Shift+P)
-    // F1 作为始终有效的备用键单独保留
-    if (e.key === 'F1' || kb.matches(e, 'workbench.action.showCommands')) {
-      e.preventDefault()
-      setShowCommandPalette(true)
-      return
-    }
-
-    // Quick Open: workbench.action.quickOpen (Ctrl+P)
-    if (kb.matches(e, 'workbench.action.quickOpen')) {
-      e.preventDefault()
-      setShowQuickOpen(true)
-      return
-    }
-
-    // Settings: workbench.action.openSettings (Ctrl+,)
-    if (kb.matches(e, 'workbench.action.openSettings')) {
-      e.preventDefault()
-      setShowSettingsPage(true)
-      return
-    }
-
-    // Terminal: view.toggleTerminal (Ctrl+`)
-    if (kb.matches(e, 'view.toggleTerminal')) {
-      e.preventDefault()
-      setTerminalVisible(!s.terminalVisible)
-      return
-    }
-
-    // Debug Panel: view.toggleDebug (Ctrl+Shift+D)
-    if (kb.matches(e, 'view.toggleDebug')) {
-      e.preventDefault()
-      setDebugVisible(!s.debugVisible)
-      return
-    }
-
-    // AI Panel: view.toggleAiPanel (Ctrl+L)
-    if (kb.matches(e, 'view.toggleAiPanel')) {
-      e.preventDefault()
-      setChatVisible(!s.chatVisible)
-      return
-    }
-
-    // Start Debug: debug.start (F5)
-    if (kb.matches(e, 'debug.start')) {
-      e.preventDefault()
-      if (!s.debugVisible) setDebugVisible(true)
-      window.dispatchEvent(new CustomEvent('debug:start'))
-      return
-    }
-
-    // Toggle Breakpoint: debug.toggleBreakpoint (F9)
-    if (kb.matches(e, 'debug.toggleBreakpoint')) {
-      e.preventDefault()
-      window.dispatchEvent(new CustomEvent('debug:toggleBreakpoint'))
-      return
-    }
-
-    // Workflow: workbench.action.toggleWorkflow (Ctrl+Shift+I)
-    if (kb.matches(e, 'workbench.action.toggleComposer')) {
-      e.preventDefault()
-      setShowWorkflow(true)
-      return
-    }
-
-    // Close panels: Escape
-    if (e.key === 'Escape') {
-      if (s.showCommandPalette) setShowCommandPalette(false)
-      if (s.showWorkflow) setShowWorkflow(false)
-      if (s.showQuickOpen) setShowQuickOpen(false)
-      if (s.showAbout) setShowAbout(false)
-      return
-    }
-
-    // Reveal in Explorer: explorer.revealActiveFile (Ctrl+Shift+E)
-    if (kb.matches(e, 'explorer.revealActiveFile')) {
-      e.preventDefault()
-      window.dispatchEvent(new CustomEvent('explorer:reveal-active-file'))
-      return
-    }
-
-    // Reveal in Sidebar: explorer.revealInSidebar (Alt+Shift+L)
-    if (kb.matches(e, 'explorer.revealInSidebar')) {
-      e.preventDefault()
-      window.dispatchEvent(new CustomEvent('explorer:reveal-active-file'))
-      return
-    }
-
-    // Close Active File: editor.closeFile (Ctrl+W)
-    if (kb.matches(e, 'editor.closeFile')) {
-      e.preventDefault()
-      if (s.activeFilePath) {
-        closeFile(s.activeFilePath)
-      }
-      return
-    }
-  }, []) // 空依赖 — setter 和 stateRef 都是稳定的
+  }, [])
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleKeyDown])
 
-  // 监听主进程菜单命令
+  // 主进程菜单命令
   useEffect(() => {
     const removeListener = api.onExecuteCommand((commandId: string) => {
       if (commandId === 'workbench.action.showCommands') {
@@ -195,6 +245,8 @@ export function useGlobalShortcuts() {
         api.window.toggleDevTools()
       }
     })
-    return () => { removeListener?.() }
+    return () => {
+      removeListener?.()
+    }
   }, [setShowCommandPalette])
 }

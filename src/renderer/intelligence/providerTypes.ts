@@ -1,9 +1,8 @@
 /**
- * Intelligence Layer Provider Types
+ * 智能层类型入口 — 统一导出智能层使用的所有类型
  *
- * Unified re-export hub for all types used across the intelligence layer.
- * This file aggregates types from multiple sources so that consumers
- * can import from a single "@intelligence/providerTypes" entry point.
+ * 聚合来自多个来源的类型，使消费者可以从单一的
+ * "@intelligence/providerTypes" 入口导入。
  */
 
 // ============================================

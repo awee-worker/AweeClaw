@@ -1,7 +1,7 @@
 /**
  * 设置状态切片
- * 
- * 统一的设置管理，使用 set/update API
+ *
+ * 统一管理应用偏好、Provider 配置与场景设置，提供加载/保存生命周期。
  */
 
 import { StateCreator } from 'zustand'
@@ -16,18 +16,16 @@ import {
 import { DEFAULT_SCENARIO_PREFERENCES } from '@shared/configuration/preferenceSchema'
 import type { ApiProtocol } from '@shared/configuration/aiProviders'
 
-// ============================================
-// Slice 接口
-// ============================================
+/** 自定义 Provider 标识前缀 */
+const CUSTOM_PROVIDER_PREFIX = 'custom-'
 
+/** 切片接口 */
 export interface SettingsSlice extends SettingsState {
   hasExistingConfig: boolean
 
-  // 统一设置 API
   set: <K extends SettingKey>(key: K, value: SettingsState[K]) => void
   update: <K extends SettingKey>(key: K, partial: Partial<SettingsState[K]>) => void
 
-  // Provider 方法
   setProvider: (id: string, config: ProviderModelConfig) => void
   updateProvider: (id: string, updates: Partial<ProviderModelConfig>) => void
   removeProvider: (id: string) => void
@@ -35,28 +33,69 @@ export interface SettingsSlice extends SettingsState {
   removeModel: (providerId: string, model: string) => void
   getCustomProviders: () => Array<{ id: string; config: ProviderModelConfig }>
 
-  // 生命周期
   load: () => Promise<void>
   save: () => Promise<void>
 }
 
-// ============================================
-// Slice 实现
-// ============================================
+/* ------------------------------------------------------------------ */
+/* 辅助函数                                                          */
+/* ------------------------------------------------------------------ */
+
+/** 规范化 Provider 配置，确保 customModels 与 protocol 字段存在 */
+function normalizeProviderConfig(config: ProviderModelConfig): ProviderModelConfig {
+  return {
+    ...config,
+    customModels: config.customModels || [],
+    protocol: config.protocol as ApiProtocol | undefined,
+  }
+}
+
+/** 在 Provider 配置上应用变更并刷新更新时间 */
+function applyProviderPatch(
+  current: ProviderModelConfig | undefined,
+  patch: Partial<ProviderModelConfig>,
+): ProviderModelConfig {
+  return { ...(current || {}), ...patch, updatedAt: Date.now() }
+}
+
+/** 构造保存时所需的设置快照 */
+function buildSavePayload(state: SettingsSlice): SettingsState {
+  return {
+    llmConfig: state.llmConfig,
+    language: state.language,
+    autoApprove: state.autoApprove,
+    promptTemplateId: state.promptTemplateId,
+    activeScenarioId: state.activeScenarioId,
+    providerConfigs: state.providerConfigs,
+    agentConfig: state.agentConfig,
+    editorConfig: state.editorConfig,
+    securitySettings: state.securitySettings,
+    webSearchConfig: state.webSearchConfig,
+    mcpConfig: state.mcpConfig,
+    emailConfig: state.emailConfig,
+    aiInstructions: state.aiInstructions,
+    onboardingCompleted: state.onboardingCompleted,
+    enableFileLogging: state.enableFileLogging,
+    browserMode: state.browserMode,
+    scenarioPreferences: state.scenarioPreferences ?? DEFAULT_SCENARIO_PREFERENCES,
+    privacySettings: state.privacySettings,
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* 切片实现                                                          */
+/* ------------------------------------------------------------------ */
 
 export const createSettingsSlice: StateCreator<SettingsSlice, [], [], SettingsSlice> = (set, get) => ({
   ...getAllDefaults(),
   hasExistingConfig: false,
 
-  set: (key, value) => {
-    set({ [key]: value } as Partial<SettingsState>)
-  },
+  set: (key, value) => set({ [key]: value } as Partial<SettingsState>),
 
-  update: (key, partial) => {
+  update: (key, partial) =>
     set((state) => ({
       [key]: { ...(state[key] as object), ...partial },
-    } as Partial<SettingsState>))
-  },
+    }) as Partial<SettingsState>),
 
   setProvider: (id, config) =>
     set((state) => ({
@@ -64,19 +103,16 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [], [], SettingsSl
     })),
 
   updateProvider: (id, updates) =>
-    set((state) => {
-      const current = state.providerConfigs[id] || {}
-      return {
-        providerConfigs: {
-          ...state.providerConfigs,
-          [id]: { ...current, ...updates, updatedAt: Date.now() },
-        },
-      }
-    }),
+    set((state) => ({
+      providerConfigs: {
+        ...state.providerConfigs,
+        [id]: applyProviderPatch(state.providerConfigs[id], updates),
+      },
+    })),
 
   removeProvider: (id) =>
     set((state) => {
-      const { [id]: _, ...rest } = state.providerConfigs
+      const { [id]: _removed, ...rest } = state.providerConfigs
       return { providerConfigs: rest }
     }),
 
@@ -86,7 +122,10 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [], [], SettingsSl
       return {
         providerConfigs: {
           ...state.providerConfigs,
-          [providerId]: { ...current, customModels: [...(current.customModels || []), model] },
+          [providerId]: {
+            ...current,
+            customModels: [...(current.customModels || []), model],
+          },
         },
       }
     }),
@@ -98,17 +137,18 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [], [], SettingsSl
       return {
         providerConfigs: {
           ...state.providerConfigs,
-          [providerId]: { ...current, customModels: (current.customModels || []).filter((m) => m !== model) },
+          [providerId]: {
+            ...current,
+            customModels: (current.customModels || []).filter((m) => m !== model),
+          },
         },
       }
     }),
 
-  getCustomProviders: () => {
-    const { providerConfigs } = get()
-    return Object.entries(providerConfigs)
-      .filter(([id]) => id.startsWith('custom-'))
-      .map(([id, config]) => ({ id, config }))
-  },
+  getCustomProviders: () =>
+    Object.entries(get().providerConfigs)
+      .filter(([id]) => id.startsWith(CUSTOM_PROVIDER_PREFIX))
+      .map(([id, config]) => ({ id, config })),
 
   load: async () => {
     try {
@@ -117,11 +157,7 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [], [], SettingsSl
 
       const providerConfigs: Record<string, ProviderModelConfig> = {}
       for (const [id, config] of Object.entries(settings.providerConfigs)) {
-        providerConfigs[id] = {
-          ...config,
-          customModels: config.customModels || [],
-          protocol: config.protocol as ApiProtocol | undefined,
-        }
+        providerConfigs[id] = normalizeProviderConfig(config)
       }
 
       set({
@@ -136,27 +172,7 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [], [], SettingsSl
 
   save: async () => {
     try {
-      const state = get()
-      await settingsService.save({
-        llmConfig: state.llmConfig,
-        language: state.language,
-        autoApprove: state.autoApprove,
-        promptTemplateId: state.promptTemplateId,
-        activeScenarioId: state.activeScenarioId,
-        providerConfigs: state.providerConfigs,
-        agentConfig: state.agentConfig,
-        editorConfig: state.editorConfig,
-        securitySettings: state.securitySettings,
-        webSearchConfig: state.webSearchConfig,
-        mcpConfig: state.mcpConfig,
-        emailConfig: state.emailConfig,
-        aiInstructions: state.aiInstructions,
-        onboardingCompleted: state.onboardingCompleted,
-        enableFileLogging: state.enableFileLogging,
-        browserMode: state.browserMode,
-        scenarioPreferences: state.scenarioPreferences ?? DEFAULT_SCENARIO_PREFERENCES,
-        privacySettings: state.privacySettings,
-      })
+      await settingsService.save(buildSavePayload(get()))
       logger.settings.info('[Settings] Saved')
     } catch (e) {
       logger.settings.error('[Settings] Save failed:', e)
@@ -164,9 +180,5 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [], [], SettingsSl
     }
   },
 })
-
-// ============================================
-// 类型导出
-// ============================================
 
 export type { SettingsState, SettingKey, ProviderModelConfig }

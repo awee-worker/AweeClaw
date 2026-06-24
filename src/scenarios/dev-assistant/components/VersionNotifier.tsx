@@ -1,5 +1,5 @@
 /**
- * Update indicator shown in the top bar.
+ * 版本更新通知器 — 顶部栏的更新指示器
  */
 
 import { useEffect, useRef, useState } from 'react'

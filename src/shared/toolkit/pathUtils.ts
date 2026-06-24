@@ -1,5 +1,5 @@
 /**
- * Path utility functions
+ * 路径工具函数 — 路径规范化与拼接
  */
 export function normalizePath(path: string): string {
   return path.replace(/\\/g, "/")

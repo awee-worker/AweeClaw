@@ -1,6 +1,5 @@
 /**
- * File access control for renderer process
- * Delegates to main process via IPC
+ * 渲染进程文件访问控制 — 通过 IPC 委托主进程执行
  */
 export interface FileAccessPolicy {
   allowedPaths: string[]

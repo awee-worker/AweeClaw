@@ -1,6 +1,5 @@
 /**
- * Terminal Manager adapter for renderer process
- * Communicates with main process via IPC
+ * 渲染进程终端管理适配器 — 通过 IPC 与主进程通信
  */
 export interface TerminalInstance {
   id: string

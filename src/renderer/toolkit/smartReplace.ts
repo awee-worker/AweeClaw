@@ -1,651 +1,582 @@
 /**
- * 智能字符串替换模块
- * 
- * 多策略 Replacer 设计
- * 提供多种容错匹配策略，提高 AI 编辑成功率
+ * 文本片段定位与替换工具
+ *
+ * 通过多级匹配管道逐步放宽匹配条件，提升编辑操作的容错能力。
+ * 管道由若干 MatchStage 组成，每个阶段尝试以更宽松的方式定位目标片段。
  */
 
-// ============================================
-// 类型定义
-// ============================================
+/* ------------------------------------------------------------------ */
+/* 对外类型                                                          */
+/* ------------------------------------------------------------------ */
 
-export type Replacer = (content: string, find: string) => Generator<string, void, unknown>
-
-export interface ReplaceResult {
-    success: boolean
-    newContent?: string
-    matchedText?: string
-    strategy?: string
-    error?: string
-    errorCode?: ReplaceErrorCode
+/** 匹配阶段产物：在原文中定位到的片段 */
+export interface LocatedSpan {
+  /** 片段在原文中的起始偏移 */
+  start: number
+  /** 片段在原文中的结束偏移（不含） */
+  end: number
+  /** 实际命中的文本 */
+  text: string
+  /** 命中阶段名称 */
+  stage: string
 }
 
+/** 替换操作结果 */
+export interface ReplaceOutcome {
+  success: boolean
+  newContent?: string
+  matchedText?: string
+  stage?: string
+  error?: string
+  errorCode?: ReplaceErrorCode
+}
+
+/** 错误码 */
 export type ReplaceErrorCode =
-    | 'IDENTICAL_STRINGS'
-    | 'MISSING_OLD_STRING'
-    | 'MULTIPLE_MATCHES'
-    | 'OLD_STRING_NOT_FOUND'
-
-// ============================================
-// Levenshtein 距离算法（用于相似度计算）
-// ============================================
-
-function levenshtein(a: string, b: string): number {
-    if (a === '' || b === '') {
-        return Math.max(a.length, b.length)
-    }
-    
-    const matrix = Array.from({ length: a.length + 1 }, (_, i) =>
-        Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
-    )
-
-    for (let i = 1; i <= a.length; i++) {
-        for (let j = 1; j <= b.length; j++) {
-            const cost = a[i - 1] === b[j - 1] ? 0 : 1
-            matrix[i][j] = Math.min(
-                matrix[i - 1][j] + 1,
-                matrix[i][j - 1] + 1,
-                matrix[i - 1][j - 1] + cost
-            )
-        }
-    }
-    return matrix[a.length][b.length]
-}
-
-// ============================================
-// 替换策略实现
-// ============================================
-
-/**
- * 策略1: 精确匹配
- */
-export const SimpleReplacer: Replacer = function* (_content, find) {
-    yield find
-}
-
-/**
- * 策略2: 行首尾空白忽略匹配
- * 忽略每行的首尾空白进行匹配
- */
-export const LineTrimmedReplacer: Replacer = function* (content, find) {
-    const originalLines = content.split('\n')
-    const searchLines = find.split('\n')
-
-    // 移除末尾空行
-    if (searchLines[searchLines.length - 1] === '') {
-        searchLines.pop()
-    }
-
-    for (let i = 0; i <= originalLines.length - searchLines.length; i++) {
-        let matches = true
-
-        for (let j = 0; j < searchLines.length; j++) {
-            const originalTrimmed = originalLines[i + j].trim()
-            const searchTrimmed = searchLines[j].trim()
-
-            if (originalTrimmed !== searchTrimmed) {
-                matches = false
-                break
-            }
-        }
-
-        if (matches) {
-            let matchStartIndex = 0
-            for (let k = 0; k < i; k++) {
-                matchStartIndex += originalLines[k].length + 1
-            }
-
-            let matchEndIndex = matchStartIndex
-            for (let k = 0; k < searchLines.length; k++) {
-                matchEndIndex += originalLines[i + k].length
-                if (k < searchLines.length - 1) {
-                    matchEndIndex += 1
-                }
-            }
-
-            yield content.substring(matchStartIndex, matchEndIndex)
-        }
-    }
-}
-
-
-/**
- * 策略3: 块锚点匹配（基于首尾行 + 相似度）
- * 使用首尾行作为锚点，中间内容用相似度匹配
- */
-export const BlockAnchorReplacer: Replacer = function* (content, find) {
-    const SINGLE_CANDIDATE_THRESHOLD = 0.0
-    const MULTIPLE_CANDIDATES_THRESHOLD = 0.3
-
-    const originalLines = content.split('\n')
-    const searchLines = find.split('\n')
-
-    if (searchLines.length < 3) return
-
-    if (searchLines[searchLines.length - 1] === '') {
-        searchLines.pop()
-    }
-
-    const firstLineSearch = searchLines[0].trim()
-    const lastLineSearch = searchLines[searchLines.length - 1].trim()
-    const searchBlockSize = searchLines.length
-
-    // 收集所有候选位置
-    const candidates: Array<{ startLine: number; endLine: number }> = []
-    for (let i = 0; i < originalLines.length; i++) {
-        if (originalLines[i].trim() !== firstLineSearch) continue
-
-        for (let j = i + 2; j < originalLines.length; j++) {
-            if (originalLines[j].trim() === lastLineSearch) {
-                candidates.push({ startLine: i, endLine: j })
-                break
-            }
-        }
-    }
-
-    if (candidates.length === 0) return
-
-    // 计算相似度并选择最佳匹配
-    const calculateSimilarity = (startLine: number, endLine: number): number => {
-        const actualBlockSize = endLine - startLine + 1
-        let similarity = 0
-        const linesToCheck = Math.min(searchBlockSize - 2, actualBlockSize - 2)
-
-        if (linesToCheck > 0) {
-            for (let j = 1; j < searchBlockSize - 1 && j < actualBlockSize - 1; j++) {
-                const originalLine = originalLines[startLine + j].trim()
-                const searchLine = searchLines[j].trim()
-                const maxLen = Math.max(originalLine.length, searchLine.length)
-                if (maxLen === 0) continue
-                const distance = levenshtein(originalLine, searchLine)
-                similarity += (1 - distance / maxLen) / linesToCheck
-            }
-        } else {
-            similarity = 1.0
-        }
-        return similarity
-    }
-
-    const extractBlock = (startLine: number, endLine: number): string => {
-        let matchStartIndex = 0
-        for (let k = 0; k < startLine; k++) {
-            matchStartIndex += originalLines[k].length + 1
-        }
-        let matchEndIndex = matchStartIndex
-        for (let k = startLine; k <= endLine; k++) {
-            matchEndIndex += originalLines[k].length
-            if (k < endLine) matchEndIndex += 1
-        }
-        return content.substring(matchStartIndex, matchEndIndex)
-    }
-
-    if (candidates.length === 1) {
-        const { startLine, endLine } = candidates[0]
-        const similarity = calculateSimilarity(startLine, endLine)
-        if (similarity >= SINGLE_CANDIDATE_THRESHOLD) {
-            yield extractBlock(startLine, endLine)
-        }
-        return
-    }
-
-    // 多个候选，选择相似度最高的
-    let bestMatch: { startLine: number; endLine: number } | null = null
-    let maxSimilarity = -1
-
-    for (const candidate of candidates) {
-        const similarity = calculateSimilarity(candidate.startLine, candidate.endLine)
-        if (similarity > maxSimilarity) {
-            maxSimilarity = similarity
-            bestMatch = candidate
-        }
-    }
-
-    if (maxSimilarity >= MULTIPLE_CANDIDATES_THRESHOLD && bestMatch) {
-        yield extractBlock(bestMatch.startLine, bestMatch.endLine)
-    }
-}
-
-/**
- * 策略4: 空白归一化匹配
- * 将连续空白归一化为单个空格后匹配
- */
-export const WhitespaceNormalizedReplacer: Replacer = function* (content, find) {
-    const normalizeWhitespace = (text: string) => text.replace(/\s+/g, ' ').trim()
-    const normalizedFind = normalizeWhitespace(find)
-
-    const lines = content.split('\n')
-    
-    // 单行匹配
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i]
-        if (normalizeWhitespace(line) === normalizedFind) {
-            yield line
-        }
-    }
-
-    // 多行匹配
-    const findLines = find.split('\n')
-    if (findLines.length > 1) {
-        for (let i = 0; i <= lines.length - findLines.length; i++) {
-            const block = lines.slice(i, i + findLines.length)
-            if (normalizeWhitespace(block.join('\n')) === normalizedFind) {
-                yield block.join('\n')
-            }
-        }
-    }
-}
-
-/**
- * 策略5: 缩进灵活匹配
- * 移除最小公共缩进后匹配
- */
-export const IndentationFlexibleReplacer: Replacer = function* (content, find) {
-    const removeIndentation = (text: string) => {
-        const lines = text.split('\n')
-        const nonEmptyLines = lines.filter((line) => line.trim().length > 0)
-        if (nonEmptyLines.length === 0) return text
-
-        const minIndent = Math.min(
-            ...nonEmptyLines.map((line) => {
-                const match = line.match(/^(\s*)/)
-                return match ? match[1].length : 0
-            })
-        )
-
-        return lines.map((line) => (line.trim().length === 0 ? line : line.slice(minIndent))).join('\n')
-    }
-
-    const normalizedFind = removeIndentation(find)
-    const contentLines = content.split('\n')
-    const findLines = find.split('\n')
-
-    for (let i = 0; i <= contentLines.length - findLines.length; i++) {
-        const block = contentLines.slice(i, i + findLines.length).join('\n')
-        if (removeIndentation(block) === normalizedFind) {
-            yield block
-        }
-    }
-}
-
-
-/**
- * 策略6: 转义字符归一化匹配
- * 处理转义字符差异
- */
-export const EscapeNormalizedReplacer: Replacer = function* (content, find) {
-    const unescapeString = (str: string): string => {
-        return str.replace(/\\(n|t|r|'|"|`|\\|\n|\$)/g, (match, capturedChar) => {
-            switch (capturedChar) {
-                case 'n': return '\n'
-                case 't': return '\t'
-                case 'r': return '\r'
-                case "'": return "'"
-                case '"': return '"'
-                case '`': return '`'
-                case '\\': return '\\'
-                case '\n': return '\n'
-                case '$': return '$'
-                default: return match
-            }
-        })
-    }
-
-    const unescapedFind = unescapeString(find)
-
-    if (content.includes(unescapedFind)) {
-        yield unescapedFind
-    }
-
-    const lines = content.split('\n')
-    const findLines = unescapedFind.split('\n')
-
-    for (let i = 0; i <= lines.length - findLines.length; i++) {
-        const block = lines.slice(i, i + findLines.length).join('\n')
-        const unescapedBlock = unescapeString(block)
-
-        if (unescapedBlock === unescapedFind) {
-            yield block
-        }
-    }
-}
-
-/**
- * 策略7: 首尾空白修剪匹配
- */
-export const TrimmedBoundaryReplacer: Replacer = function* (content, find) {
-    const trimmedFind = find.trim()
-
-    if (trimmedFind === find) return
-
-    if (content.includes(trimmedFind)) {
-        yield trimmedFind
-    }
-
-    const lines = content.split('\n')
-    const findLines = find.split('\n')
-
-    for (let i = 0; i <= lines.length - findLines.length; i++) {
-        const block = lines.slice(i, i + findLines.length).join('\n')
-        if (block.trim() === trimmedFind) {
-            yield block
-        }
-    }
-}
-
-/**
- * 策略8: 上下文感知匹配
- * 使用首尾行作为上下文锚点，中间内容允许部分差异
- */
-export const ContextAwareReplacer: Replacer = function* (content, find) {
-    const findLines = find.split('\n')
-    if (findLines.length < 3) return
-
-    if (findLines[findLines.length - 1] === '') {
-        findLines.pop()
-    }
-
-    const contentLines = content.split('\n')
-    const firstLine = findLines[0].trim()
-    const lastLine = findLines[findLines.length - 1].trim()
-
-    for (let i = 0; i < contentLines.length; i++) {
-        if (contentLines[i].trim() !== firstLine) continue
-
-        for (let j = i + 2; j < contentLines.length; j++) {
-            if (contentLines[j].trim() === lastLine) {
-                const blockLines = contentLines.slice(i, j + 1)
-                const block = blockLines.join('\n')
-
-                if (blockLines.length === findLines.length) {
-                    let matchingLines = 0
-                    let totalNonEmptyLines = 0
-
-                    for (let k = 1; k < blockLines.length - 1; k++) {
-                        const blockLine = blockLines[k].trim()
-                        const findLine = findLines[k].trim()
-
-                        if (blockLine.length > 0 || findLine.length > 0) {
-                            totalNonEmptyLines++
-                            if (blockLine === findLine) {
-                                matchingLines++
-                            }
-                        }
-                    }
-
-                    if (totalNonEmptyLines === 0 || matchingLines / totalNonEmptyLines >= 0.5) {
-                        yield block
-                        break
-                    }
-                }
-                break
-            }
-        }
-    }
-}
-
-/**
- * 策略9: 多次出现匹配（用于 replaceAll）
- */
-export const MultiOccurrenceReplacer: Replacer = function* (content, find) {
-    let startIndex = 0
-
-    while (true) {
-        const index = content.indexOf(find, startIndex)
-        if (index === -1) break
-
-        yield find
-        startIndex = index + find.length
-    }
-}
-
-// ============================================
-// 主替换函数
-// ============================================
-
-/**
- * 所有替换策略（按优先级排序）
- */
-const REPLACER_STRATEGIES: Array<{ name: string; replacer: Replacer }> = [
-    { name: 'exact', replacer: SimpleReplacer },
-    { name: 'line-trimmed', replacer: LineTrimmedReplacer },
-    { name: 'block-anchor', replacer: BlockAnchorReplacer },
-    { name: 'whitespace-normalized', replacer: WhitespaceNormalizedReplacer },
-    { name: 'indentation-flexible', replacer: IndentationFlexibleReplacer },
-    { name: 'escape-normalized', replacer: EscapeNormalizedReplacer },
-    { name: 'trimmed-boundary', replacer: TrimmedBoundaryReplacer },
-    { name: 'context-aware', replacer: ContextAwareReplacer },
-    { name: 'multi-occurrence', replacer: MultiOccurrenceReplacer },
-]
-
-/**
- * 智能替换函数
- * 尝试多种策略找到匹配，提高容错性
- */
-export function smartReplace(
-    content: string,
-    oldString: string,
-    newString: string,
-    replaceAll = false
-): ReplaceResult {
-    if (oldString === newString) {
-        return {
-            success: false,
-            errorCode: 'IDENTICAL_STRINGS',
-            error: 'old_string and new_string must be different',
-        }
-    }
-
-    if (!oldString) {
-        return {
-            success: false,
-            errorCode: 'MISSING_OLD_STRING',
-            error: 'old_string is required',
-        }
-    }
-
-    let foundMatch = false
-
-    for (const { name, replacer } of REPLACER_STRATEGIES) {
-        for (const search of replacer(content, oldString)) {
-            const index = content.indexOf(search)
-            if (index === -1) continue
-
-            foundMatch = true
-
-            if (replaceAll) {
-                return {
-                    success: true,
-                    newContent: content.replaceAll(search, newString),
-                    matchedText: search,
-                    strategy: name,
-                }
-            }
-
-            // 检查是否唯一
-            const lastIndex = content.lastIndexOf(search)
-            if (index !== lastIndex) {
-                continue // 不唯一，尝试下一个策略
-            }
-
-            return {
-                success: true,
-                newContent: content.substring(0, index) + newString + content.substring(index + search.length),
-                matchedText: search,
-                strategy: name,
-            }
-        }
-    }
-
-    if (foundMatch) {
-        return {
-            success: false,
-            errorCode: 'MULTIPLE_MATCHES',
-            error: 'Found multiple matches for old_string. Include more surrounding context to make it unique.',
-        }
-    }
-
-    return {
-        success: false,
-        errorCode: 'OLD_STRING_NOT_FOUND',
-        error: 'old_string not found in file. Use read_file to get exact content including whitespace.',
-    }
-}
-
-/**
- * 规范化行尾
- */
-export function normalizeLineEndings(text: string): string {
-    return text.replaceAll('\r\n', '\n')
-}
-
-/**
- * 生成简化的 diff（用于显示）
- */
-export function trimDiff(diff: string): string {
-    const lines = diff.split('\n')
-    const contentLines = lines.filter(
-        (line) =>
-            (line.startsWith('+') || line.startsWith('-') || line.startsWith(' ')) &&
-            !line.startsWith('---') &&
-            !line.startsWith('+++')
-    )
-
-    if (contentLines.length === 0) return diff
-
-    let min = Infinity
-    for (const line of contentLines) {
-        const content = line.slice(1)
-        if (content.trim().length > 0) {
-            const match = content.match(/^(\s*)/)
-            if (match) min = Math.min(min, match[1].length)
-        }
-    }
-
-    if (min === Infinity || min === 0) return diff
-
-    const trimmedLines = lines.map((line) => {
-        if (
-            (line.startsWith('+') || line.startsWith('-') || line.startsWith(' ')) &&
-            !line.startsWith('---') &&
-            !line.startsWith('+++')
-        ) {
-            const prefix = line[0]
-            const content = line.slice(1)
-            return prefix + content.slice(min)
-        }
-        return line
-    })
-
-    return trimmedLines.join('\n')
-}
-
-// ============================================
-// Fast-Edit 精华：智能警告系统
-// ============================================
-
+  | 'IDENTICAL_STRINGS'
+  | 'MISSING_OLD_STRING'
+  | 'MULTIPLE_MATCHES'
+  | 'OLD_STRING_NOT_FOUND'
+
+/** 编辑告警类型 */
+export type EditWarningType = 'DUPLICATE_LINE' | 'BRACKET_BALANCE' | 'INDENTATION_MISMATCH'
+
+/** 编辑告警 */
 export interface EditWarning {
-    type: 'DUPLICATE_LINE' | 'BRACKET_BALANCE' | 'INDENTATION_MISMATCH'
-    message: string
-    line?: number
+  type: EditWarningType
+  message: string
+  line?: number
 }
 
-/**
- * 括号平衡检测（借鉴 fast-edit）
- * 检测替换操作是否改变了括号平衡
- */
-function checkBracketBalance(text: string): Record<string, number> {
-    const brackets: Record<string, string> = { '(': ')', '[': ']', '{': '}' }
-    const opens = new Set(Object.keys(brackets))
-    const closes = new Set(Object.values(brackets))
-    
-    const counts: Record<string, number> = {}
-    let inString: string | null = null
-    let escape = false
-    
-    for (const ch of text) {
-        if (escape) {
-            escape = false
-            continue
-        }
-        if (ch === '\\') {
-            escape = true
-            continue
-        }
-        if (ch === '"' || ch === "'" || ch === '`') {
-            if (inString === ch) {
-                inString = null
-            } else if (inString === null) {
-                inString = ch
-            }
-            continue
-        }
-        if (inString) continue
-        
-        if (opens.has(ch) || closes.has(ch)) {
-            counts[ch] = (counts[ch] || 0) + 1
-        }
+/* ------------------------------------------------------------------ */
+/* 基础工具                                                          */
+/* ------------------------------------------------------------------ */
+
+/** 将文本按行切分，返回行数组与每行起始偏移 */
+function splitLinesWithOffsets(text: string): { lines: string[]; offsets: number[] } {
+  const lines: string[] = []
+  const offsets: number[] = []
+  let pos = 0
+  const remaining = text
+
+  for (let i = 0; i < remaining.length; i++) {
+    if (remaining[i] === '\n') {
+      lines.push(remaining.slice(pos, i))
+      offsets.push(pos)
+      pos = i + 1
     }
-    
-    // 计算净平衡
-    const balance: Record<string, number> = {}
-    for (const [open, close] of Object.entries(brackets)) {
-        balance[`${open}${close}`] = (counts[open] || 0) - (counts[close] || 0)
-    }
-    
-    return balance
+  }
+
+  lines.push(remaining.slice(pos))
+  offsets.push(pos)
+  return { lines, offsets }
 }
 
-/**
- * 检测行替换操作的常见 AI 错误（借鉴 fast-edit）
- * 
- * 检测项：
- * 1. 重复行：替换后的最后一行与下一行相同（off-by-one 错误）
- * 2. 括号不平衡：替换改变了括号的平衡状态
- */
+/** 计算两个等长行块之间的相似度（基于字符级编辑距离） */
+function blockSimilarity(sourceLines: string[], targetLines: string[]): number {
+  const len = Math.min(sourceLines.length, targetLines.length)
+  if (len === 0) return 1
+
+  let total = 0
+  for (let i = 0; i < len; i++) {
+    const a = sourceLines[i].trim()
+    const b = targetLines[i].trim()
+    const maxLen = Math.max(a.length, b.length)
+    if (maxLen === 0) {
+      total += 1
+      continue
+    }
+    total += 1 - editDistance(a, b) / maxLen
+  }
+  return total / len
+}
+
+/** 字符级编辑距离（带长度剪枝） */
+function editDistance(a: string, b: string): number {
+  if (a === b) return 0
+  if (a.length === 0) return b.length
+  if (b.length === 0) return a.length
+
+  const prev = new Array<number>(b.length + 1)
+  const curr = new Array<number>(b.length + 1)
+
+  for (let j = 0; j <= b.length; j++) prev[j] = j
+
+  for (let i = 1; i <= a.length; i++) {
+    curr[0] = i
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost)
+    }
+    for (let j = 0; j <= b.length; j++) prev[j] = curr[j]
+  }
+  return prev[b.length]
+}
+
+/** 计算非空行的最小公共缩进 */
+function minIndent(text: string): number {
+  let min = Infinity
+  for (const line of text.split('\n')) {
+    if (line.trim().length === 0) continue
+    const match = line.match(/^(\s*)/)
+    const indent = match ? match[1].length : 0
+    if (indent < min) min = indent
+  }
+  return min === Infinity ? 0 : min
+}
+
+/** 按最小缩进剥离每行前导空白 */
+function dedent(text: string): string {
+  const indent = minIndent(text)
+  if (indent === 0) return text
+  return text
+    .split('\n')
+    .map((line) => (line.trim().length === 0 ? line : line.slice(indent)))
+    .join('\n')
+}
+
+/** 将连续空白折叠为单个空格 */
+function collapseWhitespace(text: string): string {
+  return text.replace(/\s+/g, ' ').trim()
+}
+
+/** 反转义常见转义序列 */
+function unescape(text: string): string {
+  return text.replace(/\\(n|t|r|'|"|`|\\|\$)/g, (_, ch: string) => {
+    switch (ch) {
+      case 'n': return '\n'
+      case 't': return '\t'
+      case 'r': return '\r'
+      case "'": return "'"
+      case '"': return '"'
+      case '`': return '`'
+      case '\\': return '\\'
+      case '$': return '$'
+      default: return _
+    }
+  })
+}
+
+/* ------------------------------------------------------------------ */
+/* 匹配阶段                                                          */
+/* ------------------------------------------------------------------ */
+
+/** 匹配阶段接口：在原文中尝试定位目标片段 */
+interface MatchStage {
+  /** 阶段名称 */
+  name: string
+  /** 尝试定位，返回所有命中片段 */
+  locate(content: string, target: string): LocatedSpan[]
+}
+
+/** 从行号区间还原字符偏移 */
+function spanFromLines(content: string, lines: string[], offsets: number[], startLine: number, endLine: number): LocatedSpan {
+  const start = offsets[startLine]
+  const endLineLast = endLine
+  const end = endLineLast + 1 < offsets.length ? offsets[endLineLast + 1] - 1 : content.length
+  const text = lines.slice(startLine, endLine + 1).join('\n')
+  return { start, end, text, stage: '' }
+}
+
+/* ---------- 阶段 1：精确子串 ---------- */
+const ExactStage: MatchStage = {
+  name: 'exact',
+  locate(content, target) {
+    const spans: LocatedSpan[] = []
+    let from = 0
+    while (true) {
+      const idx = content.indexOf(target, from)
+      if (idx === -1) break
+      spans.push({ start: idx, end: idx + target.length, text: target, stage: this.name })
+      from = idx + target.length
+    }
+    return spans
+  },
+}
+
+/* ---------- 阶段 2：逐行修剪比较 ---------- */
+const LineTrimStage: MatchStage = {
+  name: 'line-trimmed',
+  locate(content, target) {
+    const { lines, offsets } = splitLinesWithOffsets(content)
+    const targetLines = target.split('\n').filter((l, i, arr) => !(i === arr.length - 1 && l === ''))
+    const spans: LocatedSpan[] = []
+
+    for (let i = 0; i <= lines.length - targetLines.length; i++) {
+      let ok = true
+      for (let j = 0; j < targetLines.length; j++) {
+        if (lines[i + j].trim() !== targetLines[j].trim()) { ok = false; break }
+      }
+      if (ok) {
+        const span = spanFromLines(content, lines, offsets, i, i + targetLines.length - 1)
+        span.stage = this.name
+        spans.push(span)
+      }
+    }
+    return spans
+  },
+}
+
+/* ---------- 阶段 3：首尾锚点 + 相似度 ---------- */
+const AnchorStage: MatchStage = {
+  name: 'block-anchor',
+  locate(content, target) {
+    const { lines, offsets } = splitLinesWithOffsets(content)
+    const targetLines = target.split('\n').filter((l, i, arr) => !(i === arr.length - 1 && l === ''))
+    if (targetLines.length < 3) return []
+
+    const first = targetLines[0].trim()
+    const last = targetLines[targetLines.length - 1].trim()
+    const spans: LocatedSpan[] = []
+
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].trim() !== first) continue
+      for (let j = i + 2; j < lines.length; j++) {
+        if (lines[j].trim() !== last) continue
+        const blockLines = lines.slice(i, j + 1)
+        const sim = blockSimilarity(blockLines.slice(1, -1), targetLines.slice(1, -1))
+        if (sim >= 0.3 || (j - i + 1) === targetLines.length) {
+          const span = spanFromLines(content, lines, offsets, i, j)
+          span.stage = this.name
+          spans.push(span)
+        }
+        break
+      }
+    }
+    return spans
+  },
+}
+
+/* ---------- 阶段 4：空白归一化 ---------- */
+const WhitespaceStage: MatchStage = {
+  name: 'whitespace-normalized',
+  locate(content, target) {
+    const normalizedTarget = collapseWhitespace(target)
+    const { lines, offsets } = splitLinesWithOffsets(content)
+    const spans: LocatedSpan[] = []
+    const targetLines = target.split('\n')
+
+    for (let i = 0; i <= lines.length - targetLines.length; i++) {
+      const block = lines.slice(i, i + targetLines.length).join('\n')
+      if (collapseWhitespace(block) === normalizedTarget) {
+        const span = spanFromLines(content, lines, offsets, i, i + targetLines.length - 1)
+        span.stage = this.name
+        spans.push(span)
+      }
+    }
+    return spans
+  },
+}
+
+/* ---------- 阶段 5：缩进剥离 ---------- */
+const IndentStage: MatchStage = {
+  name: 'indentation-flexible',
+  locate(content, target) {
+    const dedentedTarget = dedent(target)
+    const { lines, offsets } = splitLinesWithOffsets(content)
+    const targetLines = target.split('\n')
+    const spans: LocatedSpan[] = []
+
+    for (let i = 0; i <= lines.length - targetLines.length; i++) {
+      const block = lines.slice(i, i + targetLines.length).join('\n')
+      if (dedent(block) === dedentedTarget) {
+        const span = spanFromLines(content, lines, offsets, i, i + targetLines.length - 1)
+        span.stage = this.name
+        spans.push(span)
+      }
+    }
+    return spans
+  },
+}
+
+/* ---------- 阶段 6：转义归一化 ---------- */
+const EscapeStage: MatchStage = {
+  name: 'escape-normalized',
+  locate(content, target) {
+    const unescapedTarget = unescape(target)
+    const { lines, offsets } = splitLinesWithOffsets(content)
+    const targetLines = unescapedTarget.split('\n')
+    const spans: LocatedSpan[] = []
+
+    for (let i = 0; i <= lines.length - targetLines.length; i++) {
+      const block = lines.slice(i, i + targetLines.length).join('\n')
+      if (unescape(block) === unescapedTarget) {
+        const span = spanFromLines(content, lines, offsets, i, i + targetLines.length - 1)
+        span.stage = this.name
+        spans.push(span)
+      }
+    }
+    return spans
+  },
+}
+
+/* ---------- 阶段 7：首尾修剪 ---------- */
+const TrimBoundaryStage: MatchStage = {
+  name: 'trimmed-boundary',
+  locate(content, target) {
+    const trimmed = target.trim()
+    if (trimmed === target) return []
+    const spans: LocatedSpan[] = []
+    const targetLines = target.split('\n')
+    const { lines, offsets } = splitLinesWithOffsets(content)
+
+    for (let i = 0; i <= lines.length - targetLines.length; i++) {
+      const block = lines.slice(i, i + targetLines.length).join('\n')
+      if (block.trim() === trimmed) {
+        const span = spanFromLines(content, lines, offsets, i, i + targetLines.length - 1)
+        span.stage = this.name
+        spans.push(span)
+      }
+    }
+    return spans
+  },
+}
+
+/* ---------- 阶段 8：上下文感知（首尾锚点 + 中段容忍） ---------- */
+const ContextStage: MatchStage = {
+  name: 'context-aware',
+  locate(content, target) {
+    const targetLines = target.split('\n').filter((l, i, arr) => !(i === arr.length - 1 && l === ''))
+    if (targetLines.length < 3) return []
+
+    const { lines, offsets } = splitLinesWithOffsets(content)
+    const first = targetLines[0].trim()
+    const last = targetLines[targetLines.length - 1].trim()
+    const spans: LocatedSpan[] = []
+
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].trim() !== first) continue
+      for (let j = i + 2; j < lines.length; j++) {
+        if (lines[j].trim() !== last) continue
+        if (j - i + 1 !== targetLines.length) break
+
+        let matched = 0
+        let total = 0
+        for (let k = 1; k < targetLines.length - 1; k++) {
+          const a = lines[i + k].trim()
+          const b = targetLines[k].trim()
+          if (a.length || b.length) {
+            total++
+            if (a === b) matched++
+          }
+        }
+        if (total === 0 || matched / total >= 0.5) {
+          const span = spanFromLines(content, lines, offsets, i, j)
+          span.stage = this.name
+          spans.push(span)
+        }
+        break
+      }
+    }
+    return spans
+  },
+}
+
+/* ------------------------------------------------------------------ */
+/* 匹配管道                                                          */
+/* ------------------------------------------------------------------ */
+
+/** 匹配管道：按顺序执行各阶段，返回首个有结果的阶段产物 */
+class MatchPipeline {
+  private readonly stages: MatchStage[]
+
+  constructor(stages: MatchStage[]) {
+    this.stages = stages
+  }
+
+  /** 执行管道，返回所有命中（仅保留首个有命中的阶段的结果） */
+  run(content: string, target: string): LocatedSpan[] {
+    for (const stage of this.stages) {
+      const spans = stage.locate(content, target)
+      if (spans.length > 0) return spans
+    }
+    return []
+  }
+}
+
+/** 默认匹配管道（按从严到宽排序） */
+const defaultPipeline = new MatchPipeline([
+  ExactStage,
+  LineTrimStage,
+  AnchorStage,
+  WhitespaceStage,
+  IndentStage,
+  EscapeStage,
+  TrimBoundaryStage,
+  ContextStage,
+])
+
+/* ------------------------------------------------------------------ */
+/* 对外 API                                                          */
+/* ------------------------------------------------------------------ */
+
+/** 智能替换：在 content 中定位 oldString 并替换为 newString */
+export function smartReplace(
+  content: string,
+  oldString: string,
+  newString: string,
+  replaceAll = false,
+): ReplaceOutcome {
+  if (oldString === newString) {
+    return {
+      success: false,
+      errorCode: 'IDENTICAL_STRINGS',
+      error: 'old_string and new_string must be different',
+    }
+  }
+
+  if (!oldString) {
+    return {
+      success: false,
+      errorCode: 'MISSING_OLD_STRING',
+      error: 'old_string is required',
+    }
+  }
+
+  const spans = defaultPipeline.run(content, oldString)
+  if (spans.length === 0) {
+    return {
+      success: false,
+      errorCode: 'OLD_STRING_NOT_FOUND',
+      error: 'old_string not found in file. Use read_file to get exact content including whitespace.',
+    }
+  }
+
+  if (!replaceAll && spans.length > 1) {
+    return {
+      success: false,
+      errorCode: 'MULTIPLE_MATCHES',
+      error: 'Found multiple matches for old_string. Include more surrounding context to make it unique.',
+    }
+  }
+
+  if (replaceAll) {
+    let result = ''
+    let cursor = 0
+    for (const span of spans) {
+      result += content.slice(cursor, span.start) + newString
+      cursor = span.end
+    }
+    result += content.slice(cursor)
+    return {
+      success: true,
+      newContent: result,
+      matchedText: spans[0].text,
+      stage: spans[0].stage,
+    }
+  }
+
+  const span = spans[0]
+  return {
+    success: true,
+    newContent: content.slice(0, span.start) + newString + content.slice(span.end),
+    matchedText: span.text,
+    stage: span.stage,
+  }
+}
+
+/** 规范化行尾为 LF */
+export function normalizeLineEndings(text: string): string {
+  return text.replaceAll('\r\n', '\n')
+}
+
+/** 裁剪 diff 的公共缩进，便于阅读 */
+export function trimDiff(diff: string): string {
+  const lines = diff.split('\n')
+  const contentLines = lines.filter(
+    (l) => (l.startsWith('+') || l.startsWith('-') || l.startsWith(' ')) && !l.startsWith('---') && !l.startsWith('+++'),
+  )
+  if (contentLines.length === 0) return diff
+
+  let min = Infinity
+  for (const line of contentLines) {
+    const body = line.slice(1)
+    if (body.trim().length === 0) continue
+    const match = body.match(/^(\s*)/)
+    if (match) min = Math.min(min, match[1].length)
+  }
+  if (min === Infinity || min === 0) return diff
+
+  return lines
+    .map((line) => {
+      if ((line.startsWith('+') || line.startsWith('-') || line.startsWith(' ')) && !line.startsWith('---') && !line.startsWith('+++')) {
+        return line[0] + line.slice(1 + min)
+      }
+      return line
+    })
+    .join('\n')
+}
+
+/* ------------------------------------------------------------------ */
+/* 编辑告警                                                          */
+/* ------------------------------------------------------------------ */
+
+/** 统计括号净平衡 */
+function bracketBalance(text: string): Record<string, number> {
+  const pairs: Record<string, string> = { '(': ')', '[': ']', '{': '}' }
+  const opens = new Set(Object.keys(pairs))
+  const closes = new Set(Object.values(pairs))
+  const counts: Record<string, number> = {}
+  let inString: string | null = null
+  let escaped = false
+
+  for (const ch of text) {
+    if (escaped) { escaped = false; continue }
+    if (ch === '\\') { escaped = true; continue }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      if (inString === ch) inString = null
+      else if (inString === null) inString = ch
+      continue
+    }
+    if (inString) continue
+    if (opens.has(ch) || closes.has(ch)) counts[ch] = (counts[ch] || 0) + 1
+  }
+
+  const balance: Record<string, number> = {}
+  for (const [open, close] of Object.entries(pairs)) {
+    balance[`${open}${close}`] = (counts[open] || 0) - (counts[close] || 0)
+  }
+  return balance
+}
+
+/** 检测行替换操作的常见错误 */
 export function checkLineReplaceWarnings(
-    oldLines: string[],
-    newLines: string[],
-    resultLines: string[],
-    startLine: number,
-    endLine: number
+  oldLines: string[],
+  newLines: string[],
+  resultLines: string[],
+  startLine: number,
+  endLine: number,
 ): EditWarning[] {
-    const warnings: EditWarning[] = []
-    
-    // 1. 检测重复行（AI 常犯的 off-by-one 错误）
-    if (newLines.length > 0 && endLine <= resultLines.length) {
-        const lastNew = newLines[newLines.length - 1].trim()
-        const survivingIdx = (startLine - 1) + newLines.length
-        
-        if (survivingIdx < resultLines.length) {
-            const firstSurviving = resultLines[survivingIdx].trim()
-            if (lastNew && lastNew === firstSurviving && lastNew.length > 10) {
-                warnings.push({
-                    type: 'DUPLICATE_LINE',
-                    message: `Line ${survivingIdx + 1} is identical to the last replaced line. This may indicate an off-by-one error in end_line.`,
-                    line: survivingIdx + 1
-                })
-            }
-        }
+  const warnings: EditWarning[] = []
+
+  if (newLines.length > 0 && endLine <= resultLines.length) {
+    const lastNew = newLines[newLines.length - 1].trim()
+    const survivingIdx = startLine - 1 + newLines.length
+    if (survivingIdx < resultLines.length) {
+      const firstSurviving = resultLines[survivingIdx].trim()
+      if (lastNew && lastNew === firstSurviving && lastNew.length > 10) {
+        warnings.push({
+          type: 'DUPLICATE_LINE',
+          message: `Line ${survivingIdx + 1} is identical to the last replaced line. This may indicate an off-by-one error in end_line.`,
+          line: survivingIdx + 1,
+        })
+      }
     }
-    
-    // 2. 检测括号平衡变化
-    const oldText = oldLines.join('\n')
-    const newText = newLines.join('\n')
-    const oldBalance = checkBracketBalance(oldText)
-    const newBalance = checkBracketBalance(newText)
-    
-    for (const [pair, oldNet] of Object.entries(oldBalance)) {
-        const newNet = newBalance[pair] || 0
-        const diff = newNet - oldNet
-        if (diff !== 0) {
-            const direction = diff > 0 ? 'more opens' : 'more closes'
-            warnings.push({
-                type: 'BRACKET_BALANCE',
-                message: `Bracket balance changed: ${pair[0]}...${pair[1]} ${diff > 0 ? '+' : ''}${diff} (${Math.abs(diff)} ${direction}). Replacement may have mismatched brackets.`,
-                line: startLine
-            })
-        }
+  }
+
+  const oldBalance = bracketBalance(oldLines.join('\n'))
+  const newBalance = bracketBalance(newLines.join('\n'))
+  for (const [pair, oldNet] of Object.entries(oldBalance)) {
+    const newNet = newBalance[pair] || 0
+    const diff = newNet - oldNet
+    if (diff !== 0) {
+      warnings.push({
+        type: 'BRACKET_BALANCE',
+        message: `Bracket balance changed: ${pair[0]}...${pair[1]} ${diff > 0 ? '+' : ''}${diff}. Replacement may have mismatched brackets.`,
+        line: startLine,
+      })
     }
-    
-    return warnings
+  }
+
+  return warnings
 }

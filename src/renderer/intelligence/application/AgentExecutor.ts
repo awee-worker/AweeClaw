@@ -1,51 +1,47 @@
 /**
- * Execution Domain - 执行领域
+ * Agent 执行准备服务
  *
- * 职责：
- * - 协调整个 Agent 执行流程
- * - 集成 Mode、Budget、Context、Message 领域
- * - 管理执行生命周期
- *
- * DDD 设计：
- * - AgentExecutor: 应用服务，协调各个领域服务
- * - ExecutionContext: 值对象，执行上下文
+ * 将执行准备流程拆分为多个专职阶段，按顺序串联执行。
+ * 每个阶段只关注自身职责，阶段间通过执行上下文传递数据。
  */
 
 import { logger } from '@toolkit/LogEngine'
 import type { WorkMode } from '@protocols/workModeProtocol'
-import type { MessageContent, ContextItem, ChatMessage } from '@intelligence/providerTypes'
-import type { LLMMessage } from '@intelligence/providerTypes'
+import type {
+  MessageContent,
+  ContextItem,
+  ChatMessage,
+  LLMMessage,
+} from '@intelligence/providerTypes'
 import { modeRegistry } from '../capabilities/mode/WorkModeRegistry'
 import { createBudgetController } from '../capabilities/budget/TokenQuotaManager'
-import type { TokenBudgetController, BudgetReconciliation } from '../capabilities/budget/TokenQuotaManager'
+import type {
+  TokenBudgetController,
+  BudgetReconciliation,
+} from '../capabilities/budget/TokenQuotaManager'
 import { ContextAssembler } from '../capabilities/context/ContextBuilder'
 import type { ContextAssemblyConfig } from '../capabilities/context/ContextBuilder'
-import { MessageAssembler, type RuntimeStateContext } from '../capabilities/message/MessageBuilder'
+import {
+  MessageAssembler,
+  type RuntimeStateContext,
+} from '../capabilities/message/MessageBuilder'
 import type { CompressionLevel } from '../capabilities/context/compressionUtils'
 import { countTokens } from '@shared/toolkit/tokenEstimator'
 import { useAgentStore } from '../state/IntelligenceStore'
 
-// ===== Value Objects =====
+/* ------------------------------------------------------------------ */
+/* 值对象                                                            */
+/* ------------------------------------------------------------------ */
 
-/**
- * 执行配置（值对象）
- */
+/** 执行配置 */
 export interface ExecutionConfig {
-  /** 工作模式 */
   mode: WorkMode
-  /** 工作区路径 */
   workspacePath: string | null
-  /** 线程 ID */
   threadId?: string
-  /** 助手消息 ID */
   assistantId?: string
-  /** 请求 ID */
   requestId?: string
-  /** Plan 任务 ID */
   planTaskId?: string
-  /** 上下文限制 */
   contextLimit?: number
-  /** Plan 特定上下文 */
   planContext?: {
     planId?: string
     taskId?: string
@@ -60,19 +56,12 @@ export interface ExecutionConfig {
   }
 }
 
-/**
- * 执行准备结果（值对象）
- */
+/** 执行准备结果 */
 export interface ExecutionPreparation {
-  /** LLM 消息列表 */
   messages: LLMMessage[]
-  /** 应用的压缩等级 */
   compressionLevel: CompressionLevel
-  /** 估算的总 token 数 */
   estimatedTokens: number
-  /** 预算控制器（用于后续 reconciliation） */
   budgetController: TokenBudgetController
-  /** 压缩统计 */
   compressionStats: {
     truncatedToolCalls: number
     clearedToolResults: number
@@ -80,190 +69,259 @@ export interface ExecutionPreparation {
   }
 }
 
-// ===== Agent Executor (应用服务) =====
+/** 阶段间传递的执行上下文 */
+interface PipelineContext {
+  config: ExecutionConfig
+  systemPrompt: string
+  userMessage: MessageContent
+  contextItems: ContextItem[]
+  messageHistory: ChatMessage[]
+  modeDescriptor: ReturnType<typeof modeRegistry.getOrDefault>
+  budgetController: TokenBudgetController
+  contextLimit: number
+  contextResult?: Awaited<ReturnType<ContextAssembler['assemble']>>
+  userMessageContent?: ReturnType<MessageAssembler['assembleUserMessage']>
+  runtimeState?: RuntimeStateContext
+  systemPromptTokens?: number
+  contextTokens?: number
+  userMessageTokens?: number
+  compressionLevel?: CompressionLevel
+  messageResult?: ReturnType<MessageAssembler['assemble']>
+}
+
+/** 执行阶段接口 */
+interface ExecutionStage {
+  name: string
+  run(ctx: PipelineContext): Promise<void> | void
+}
+
+/* ------------------------------------------------------------------ */
+/* 阶段实现                                                          */
+/* ------------------------------------------------------------------ */
+
+/** 解析工作模式与预算控制器 */
+class ModeResolutionStage implements ExecutionStage {
+  name = 'ModeResolution'
+
+  run(ctx: PipelineContext) {
+    ctx.modeDescriptor = modeRegistry.getOrDefault(ctx.config.mode)
+    ctx.contextLimit = ctx.config.contextLimit ?? 128_000
+    ctx.budgetController = createBudgetController(
+      ctx.config.mode,
+      ctx.modeDescriptor,
+      ctx.contextLimit,
+    )
+    logger.agent.info(`[AgentExecutor] mode=${ctx.modeDescriptor.displayName}`)
+  }
+}
+
+/** 组装上下文 */
+class ContextAssemblyStage implements ExecutionStage {
+  name = 'ContextAssembly'
+
+  constructor(private readonly assembler: ContextAssembler) {}
+
+  async run(ctx: PipelineContext) {
+    const cfg: ContextAssemblyConfig = {
+      mode: ctx.config.mode,
+      modeDescriptor: ctx.modeDescriptor,
+      contextItems: ctx.contextItems,
+      userQuery: extractUserQuery(ctx.userMessage),
+      assistantId: ctx.config.assistantId,
+      threadId: ctx.config.threadId,
+      workspacePath: ctx.config.workspacePath,
+      planContext: ctx.config.planContext,
+    }
+    ctx.contextResult = await this.assembler.assemble(cfg)
+  }
+}
+
+/** 组装用户消息并注入运行时状态 */
+class UserMessageStage implements ExecutionStage {
+  name = 'UserMessageAssembly'
+
+  constructor(private readonly assembler: MessageAssembler) {}
+
+  run(ctx: PipelineContext) {
+    ctx.userMessageContent = this.assembler.assembleUserMessage(
+      ctx.userMessage,
+      ctx.contextResult!.content,
+    )
+
+    ctx.runtimeState = resolveRuntimeState(ctx.config.threadId)
+    if (hasRuntimeState(ctx.runtimeState)) {
+      logger.agent.info('[AgentExecutor] runtime state injected')
+    }
+
+    ctx.systemPromptTokens = countTokens(ctx.systemPrompt)
+    ctx.contextTokens = ctx.contextResult!.totalTokens
+    ctx.userMessageTokens = ctx.userMessageContent.estimatedTokens
+  }
+}
+
+/** 预算驱动的压缩迭代 */
+class CompressionIterationStage implements ExecutionStage {
+  name = 'CompressionIteration'
+
+  constructor(private readonly assembler: MessageAssembler) {}
+
+  run(ctx: PipelineContext) {
+    const descriptor = ctx.modeDescriptor
+    let level = descriptor.budgetProfile.initialCompressionLevel
+    let result = this.assembler.assemble(
+      ctx.messageHistory,
+      ctx.userMessageContent!,
+      ctx.systemPrompt,
+      level,
+      ctx.runtimeState,
+    )
+
+    const maxLevel = 4 as CompressionLevel
+    while (level <= maxLevel) {
+      const historyTokens = result.estimatedTokens - ctx.systemPromptTokens! - ctx.userMessageTokens!
+      const estimate = ctx.budgetController.estimate(
+        ctx.systemPromptTokens!,
+        historyTokens,
+        ctx.contextTokens!,
+        ctx.userMessageTokens!,
+      )
+
+      if (!estimate.isExceeded || level >= maxLevel) {
+        if (estimate.warning) logger.agent.warn(`[AgentExecutor] ${estimate.warning}`)
+        break
+      }
+
+      const next = (level + 1) as CompressionLevel
+      logger.agent.info(
+        `[AgentExecutor] compression L${level} → L${next} ` +
+          `(${(estimate.usageRatio * 100).toFixed(1)}% > ${(descriptor.budgetProfile.targetRatio * 100).toFixed(1)}% target)`,
+      )
+      level = next
+      result = this.assembler.assemble(
+        ctx.messageHistory,
+        ctx.userMessageContent!,
+        ctx.systemPrompt,
+        level,
+        ctx.runtimeState,
+      )
+    }
+
+    ctx.compressionLevel = level
+    ctx.messageResult = result
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* 辅助函数                                                          */
+/* ------------------------------------------------------------------ */
+
+/** 从用户消息中提取纯文本查询 */
+function extractUserQuery(message: MessageContent): string {
+  if (typeof message === 'string') return message
+  return message
+    .filter((p) => p.type === 'text')
+    .map((p) => (p as { text: string }).text)
+    .join('')
+}
+
+/** 从线程状态中解析运行时上下文 */
+function resolveRuntimeState(threadId?: string): RuntimeStateContext | undefined {
+  if (!threadId) return undefined
+  const thread = useAgentStore.getState().threads[threadId]
+  if (!thread) return undefined
+  return {
+    handoffContext: thread.handoffContext,
+    todos: thread.todos,
+    pendingObjective: thread.pendingObjective,
+    pendingSteps: thread.pendingSteps,
+  }
+}
+
+/** 判断运行时上下文是否包含有效数据 */
+function hasRuntimeState(state?: RuntimeStateContext): boolean {
+  if (!state) return false
+  return Boolean(
+    state.handoffContext ||
+      (state.todos && state.todos.length > 0) ||
+      state.pendingObjective ||
+      (state.pendingSteps && state.pendingSteps.length > 0),
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* 执行器                                                            */
+/* ------------------------------------------------------------------ */
 
 /**
  * Agent 执行器
  *
- * 职责：
- * - 协调 Mode、Budget、Context、Message 领域
- * - 准备 LLM 请求
- * - 处理 LLM 响应
- * - 管理执行生命周期
+ * 通过阶段管道协调整个准备流程，并对外暴露预算对账能力。
  */
 export class AgentExecutor {
-  private contextAssembler: ContextAssembler
-  private messageAssembler: MessageAssembler
+  private readonly stages: ExecutionStage[]
 
   constructor() {
-    this.contextAssembler = new ContextAssembler()
-    this.messageAssembler = new MessageAssembler()
+    const contextAssembler = new ContextAssembler()
+    const messageAssembler = new MessageAssembler()
+
+    this.stages = [
+      new ModeResolutionStage(),
+      new ContextAssemblyStage(contextAssembler),
+      new UserMessageStage(messageAssembler),
+      new CompressionIterationStage(messageAssembler),
+    ]
   }
 
-  /**
-   * 准备执行
-   *
-   * 这是发送到 LLM 之前的核心流程：
-   * 1. 获取模式描述符
-   * 2. 创建预算控制器
-   * 3. 组装上下文
-   * 4. 组装用户消息
-   * 5. 根据预算动态压缩
-   * 6. 组装最终消息
-   */
+  /** 准备 LLM 请求 */
   async prepare(
     userMessage: MessageContent,
     contextItems: ContextItem[],
     messageHistory: ChatMessage[],
     systemPrompt: string,
-    config: ExecutionConfig
+    config: ExecutionConfig,
   ): Promise<ExecutionPreparation> {
-    const startTime = Date.now()
+    const startedAt = Date.now()
 
-    // 1. 获取模式描述符
-    const modeDescriptor = modeRegistry.getOrDefault(config.mode)
-    logger.agent.info(`[AgentExecutor] Preparing execution for mode: ${modeDescriptor.displayName}`)
-
-    // 2. 创建预算控制器
-    const contextLimit = config.contextLimit || 128_000
-    const budgetController = createBudgetController(config.mode, modeDescriptor, contextLimit)
-
-    // 3. 组装上下文
-    const contextConfig: ContextAssemblyConfig = {
-      mode: config.mode,
-      modeDescriptor,
-      contextItems,
-      userQuery: this.extractUserQuery(userMessage),
-      assistantId: config.assistantId,
-      threadId: config.threadId,
-      workspacePath: config.workspacePath,
-      planContext: config.planContext,
-    }
-
-    const contextResult = await this.contextAssembler.assemble(contextConfig)
-
-    // 4. 组装用户消息
-    const userMessageContent = this.messageAssembler.assembleUserMessage(
-      userMessage,
-      contextResult.content
-    )
-
-    // 5. 检查是否需要注入 handoff 上下文
-    let runtimeState: RuntimeStateContext | undefined
-    if (config.threadId) {
-      const thread = useAgentStore.getState().threads[config.threadId]
-      if (thread) {
-        runtimeState = {
-          handoffContext: thread.handoffContext,
-          todos: thread.todos,
-          pendingObjective: thread.pendingObjective,
-          pendingSteps: thread.pendingSteps,
-        }
-        if (thread.handoffContext || (thread.todos && thread.todos.length > 0) || thread.pendingObjective || (thread.pendingSteps && thread.pendingSteps.length > 0)) {
-          logger.agent.info('[AgentExecutor] Injected runtime state context')
-        }
-      }
-    }
-
-    // 6. 计算各部分的 token
-    const systemPromptTokens = countTokens(systemPrompt)
-    const contextTokens = contextResult.totalTokens
-    const userMessageTokens = userMessageContent.estimatedTokens
-
-    // 7. 动态压缩：根据预算控制器决定压缩等级
-    let compressionLevel: CompressionLevel = modeDescriptor.budgetProfile.initialCompressionLevel
-    let messageResult = this.messageAssembler.assemble(
-      messageHistory,
-      userMessageContent,
+    const ctx: PipelineContext = {
+      config,
       systemPrompt,
-      compressionLevel,
-      runtimeState
-    )
-
-    // 迭代压缩直到满足预算
-    while (compressionLevel <= 4) {
-      // 估算历史消息 token
-      const historyTokens = messageResult.estimatedTokens - systemPromptTokens - userMessageTokens
-
-      // 使用预算控制器评估
-      const budgetEstimate = budgetController.estimate(
-        systemPromptTokens,
-        historyTokens,
-        contextTokens,
-        userMessageTokens
-      )
-
-      // 如果满足预算或已达最高压缩等级，退出
-      if (!budgetEstimate.isExceeded || compressionLevel >= 4) {
-        if (budgetEstimate.warning) {
-          logger.agent.warn(`[AgentExecutor] ${budgetEstimate.warning}`)
-        }
-        break
-      }
-
-      // 升级压缩等级
-      compressionLevel = (compressionLevel + 1) as CompressionLevel
-      logger.agent.info(
-        `[AgentExecutor] Upgrading compression: L${compressionLevel - 1} → L${compressionLevel} ` +
-        `(${(budgetEstimate.usageRatio * 100).toFixed(1)}% > ${(modeDescriptor.budgetProfile.targetRatio * 100).toFixed(1)}% target)`
-      )
-
-      // 重新组装消息
-      messageResult = this.messageAssembler.assemble(
-        messageHistory,
-        userMessageContent,
-        systemPrompt,
-        compressionLevel,
-        runtimeState
-      )
+      userMessage,
+      contextItems,
+      messageHistory,
+      modeDescriptor: undefined as unknown as PipelineContext['modeDescriptor'],
+      budgetController: undefined as unknown as TokenBudgetController,
+      contextLimit: 0,
     }
 
-    const duration = Date.now() - startTime
+    for (const stage of this.stages) {
+      await stage.run(ctx)
+    }
+
+    const elapsed = Date.now() - startedAt
     logger.agent.info(
-      `[AgentExecutor] Preparation complete in ${duration}ms: ` +
-      `${messageResult.messages.length} messages, L${compressionLevel}, ~${messageResult.estimatedTokens} tokens`
+      `[AgentExecutor] prepared in ${elapsed}ms: ${ctx.messageResult!.messages.length} msgs, ` +
+        `L${ctx.compressionLevel}, ~${ctx.messageResult!.estimatedTokens} tokens`,
     )
 
     return {
-      messages: messageResult.messages,
-      compressionLevel: messageResult.compressionLevel,
-      estimatedTokens: messageResult.estimatedTokens,
-      budgetController,
-      compressionStats: messageResult.compressionStats,
+      messages: ctx.messageResult!.messages,
+      compressionLevel: ctx.messageResult!.compressionLevel,
+      estimatedTokens: ctx.messageResult!.estimatedTokens,
+      budgetController: ctx.budgetController,
+      compressionStats: ctx.messageResult!.compressionStats,
     }
   }
 
-  /**
-   * 处理 LLM 响应后的预算 reconciliation
-   */
+  /** LLM 响应后的预算对账 */
   reconcile(
     budgetController: TokenBudgetController,
     actualInputTokens: number,
     actualOutputTokens: number,
-    estimatedInputTokens: number
+    estimatedInputTokens: number,
   ): BudgetReconciliation {
-    return budgetController.reconcile(
-      actualInputTokens,
-      actualOutputTokens,
-      estimatedInputTokens
-    )
-  }
-
-  /**
-   * 提取用户查询文本
-   */
-  private extractUserQuery(message: MessageContent): string {
-    if (typeof message === 'string') {
-      return message
-    }
-
-    return message
-      .filter(p => p.type === 'text')
-      .map(p => (p as any).text)
-      .join('')
+    return budgetController.reconcile(actualInputTokens, actualOutputTokens, estimatedInputTokens)
   }
 }
 
-// ===== Singleton =====
-
+/** 单例 */
 export const agentExecutor = new AgentExecutor()

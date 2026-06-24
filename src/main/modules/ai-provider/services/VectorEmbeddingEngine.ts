@@ -1,6 +1,15 @@
 /**
- * Embeddings 服务 - 使用 AI SDK 6.0 embed/embedMany
- * 用于代码语义搜索、相似度匹配、RAG
+ * 向量嵌入引擎 — 基于 AI SDK 6.0 embed/embedMany 的嵌入服务
+ *
+ * 职责：
+ * - 调用 AI SDK 的 embed / embedMany 生成向量
+ * - 用于代码语义搜索、相似度匹配、RAG
+ * - 支持余弦相似度计算
+ *
+ * 差异化特性（相比基础实现）：
+ * - 批量嵌入支持（embedMany）
+ * - 多 Provider 支持（基于 createOpenAI）
+ * - 统一的 LLMError 错误处理
  */
 
 import { embed, embedMany, cosineSimilarity as aiCosineSimilarity } from 'ai'

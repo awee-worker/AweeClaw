@@ -361,6 +361,7 @@ export default function NavigationRail() {
     setShowUserProfilePage,
     setShowBillingCenterPage,
     setShowSessionHistoryPage,
+    closeAllFullPages,
     logout,
   } = useStore(useShallow(s => ({
     activeSidePanel: s.activeSidePanel,
@@ -379,6 +380,7 @@ export default function NavigationRail() {
     setShowUserProfilePage: s.setShowUserProfilePage,
     setShowBillingCenterPage: s.setShowBillingCenterPage,
     setShowSessionHistoryPage: s.setShowSessionHistoryPage,
+    closeAllFullPages: s.closeAllFullPages,
     logout: s.logout,
   })))
 
@@ -406,80 +408,56 @@ export default function NavigationRail() {
 
   const handleMenuItemClick = (itemId: string, isActive: boolean) => {
     setActiveSidePanel(isActive ? null : (itemId as SidePanel))
-    setShowSettingsPage(false)
-    setShowWelcomePage(false)
+    closeAllFullPages()
   }
 
   const handleBrandClick = useCallback(() => {
     setActiveSidePanel(null)
-    setShowSettingsPage(false)
     setShowWelcomePage(true)
     setShowWorkflow(false)
-  }, [setActiveSidePanel, setShowSettingsPage, setShowWelcomePage, setShowWorkflow])
+  }, [setActiveSidePanel, setShowWelcomePage, setShowWorkflow])
 
   const handleSettingsClick = useCallback(() => {
     setActiveSidePanel(null)
     setShowSettingsPage(true)
-    setShowWelcomePage(false)
-    setShowUserProfilePage(false)
-    setShowBillingCenterPage(false)
     setShowWorkflow(false)
-  }, [setActiveSidePanel, setShowSettingsPage, setShowWelcomePage, setShowUserProfilePage, setShowBillingCenterPage, setShowWorkflow])
+  }, [setActiveSidePanel, setShowSettingsPage, setShowWorkflow])
 
   const handleExploreClick = useCallback(() => {
     setActiveSidePanel(activeSidePanel === 'scenarios' ? null : 'scenarios')
-    setShowSettingsPage(false)
-    setShowUserProfilePage(false)
-    setShowBillingCenterPage(false)
+    closeAllFullPages()
     setShowWorkflow(false)
-  }, [activeSidePanel, setActiveSidePanel, setShowSettingsPage, setShowUserProfilePage, setShowBillingCenterPage, setShowWorkflow])
+  }, [activeSidePanel, setActiveSidePanel, closeAllFullPages, setShowWorkflow])
 
   const handleWorkflowClick = useCallback(() => {
     setActiveSidePanel(null)
-    setShowSettingsPage(false)
-    setShowWelcomePage(false)
-    setShowUserProfilePage(false)
-    setShowBillingCenterPage(false)
+    closeAllFullPages()
     setShowWorkflow(true)
-  }, [setActiveSidePanel, setShowSettingsPage, setShowWelcomePage, setShowUserProfilePage, setShowBillingCenterPage, setShowWorkflow])
+  }, [setActiveSidePanel, closeAllFullPages, setShowWorkflow])
 
   const handleScheduleClick = useCallback(() => {
-    setShowSettingsPage(false)
-    setShowWelcomePage(false)
-    setShowUserProfilePage(false)
-    setShowBillingCenterPage(false)
+    closeAllFullPages()
     setShowWorkflow(false)
     setActiveSidePanel(activeSidePanel === 'schedule' ? null : 'schedule')
-  }, [activeSidePanel, setActiveSidePanel, setShowSettingsPage, setShowWelcomePage, setShowUserProfilePage, setShowBillingCenterPage, setShowWorkflow])
+  }, [activeSidePanel, setActiveSidePanel, closeAllFullPages, setShowWorkflow])
 
   const handleUserInfoClick = useCallback(() => {
     setActiveSidePanel(null)
-    setShowSettingsPage(false)
-    setShowWelcomePage(false)
     setShowUserProfilePage(true)
-    setShowBillingCenterPage(false)
     setShowWorkflow(false)
-  }, [setActiveSidePanel, setShowSettingsPage, setShowWelcomePage, setShowUserProfilePage, setShowBillingCenterPage, setShowWorkflow])
+  }, [setActiveSidePanel, setShowUserProfilePage, setShowWorkflow])
 
   const handleBillingCenterClick = useCallback(() => {
     setActiveSidePanel(null)
-    setShowSettingsPage(false)
-    setShowWelcomePage(false)
-    setShowUserProfilePage(false)
     setShowBillingCenterPage(true)
-    setShowSessionHistoryPage(false)
     setShowWorkflow(false)
-  }, [setActiveSidePanel, setShowSettingsPage, setShowWelcomePage, setShowUserProfilePage, setShowBillingCenterPage, setShowSessionHistoryPage, setShowWorkflow])
+  }, [setActiveSidePanel, setShowBillingCenterPage, setShowWorkflow])
 
   const handleSessionHistoryClick = useCallback(() => {
     setActiveSidePanel(null)
-    setShowSettingsPage(false)
-    setShowWelcomePage(false)
-    setShowUserProfilePage(false)
-    setShowBillingCenterPage(false)
     setShowSessionHistoryPage(true)
     setShowWorkflow(false)
-  }, [setActiveSidePanel, setShowSettingsPage, setShowWelcomePage, setShowUserProfilePage, setShowBillingCenterPage, setShowSessionHistoryPage, setShowWorkflow])
+  }, [setActiveSidePanel, setShowSessionHistoryPage, setShowWorkflow])
 
   const handleLogout = useCallback(() => {
     logout()

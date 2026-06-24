@@ -1,5 +1,5 @@
 /**
- * Store diagnosis scenario provider types
+ * 门店诊断场景类型入口
  */
 export * from '@intelligence/providerTypes'
 export type {

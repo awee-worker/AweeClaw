@@ -22,8 +22,55 @@ const initMonaco = () => import('./monacoWorkerEntry')
 const App = React.lazy(() => import('./AweeApp'))
 
 // 轻量级骨架屏组件（在 App 加载期间显示）
+// HTML 中已有加载动画，这里返回 null 避免闪烁
 function AppSkeleton() {
-  return null // HTML 中已有骨架屏，这里返回 null 避免闪烁
+  return null
+}
+
+/** 顶层错误边界：捕获渲染异常，移除加载动画并展示错误信息 */
+class TopLevelErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props)
+    this.state = { error: null }
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { error }
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    logger.system.error('[Bootstrap] Render crashed:', error, info.componentStack)
+    // 移除加载动画，让错误信息可见
+    const loader = document.getElementById('initial-loader')
+    if (loader) loader.remove()
+    const rootEl = document.getElementById('root')
+    if (rootEl) rootEl.classList.add('ready')
+  }
+
+  render() {
+    if (this.state.error) {
+      return React.createElement(
+        'div',
+        {
+          style: {
+            padding: '32px',
+            fontFamily: 'monospace',
+            fontSize: '13px',
+            color: '#ff6b6b',
+            background: '#1a1a1a',
+            minHeight: '100vh',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-all',
+          },
+        },
+        `Application failed to start:\n\n${this.state.error.message}\n\n${this.state.error.stack ?? ''}`,
+      )
+    }
+    return this.props.children
+  }
 }
 
 // 启动应用
@@ -31,9 +78,11 @@ const root = ReactDOM.createRoot(document.getElementById('root')!)
 
 root.render(
   <React.StrictMode>
-    <React.Suspense fallback={<AppSkeleton />}>
-      <App />
-    </React.Suspense>
+    <TopLevelErrorBoundary>
+      <React.Suspense fallback={<AppSkeleton />}>
+        <App />
+      </React.Suspense>
+    </TopLevelErrorBoundary>
   </React.StrictMode>
 )
 

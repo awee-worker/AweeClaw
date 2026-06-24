@@ -6,7 +6,7 @@
 import { useEffect } from 'react'
 import { logger } from '@toolkit/LogEngine'
 import { toast } from './NotificationProvider'
-import { AppError, ErrorCode, formatErrorMessage } from '@shared/exceptions'
+import { AppError, ErrorCodes, formatErrorMessage } from '@shared/exceptions'
 
 interface GlobalErrorHandlerProps {
   children: React.ReactNode
@@ -110,12 +110,12 @@ export function GlobalErrorHandler({ children }: GlobalErrorHandlerProps) {
  */
 function shouldShowToast(error: AppError): boolean {
   // 网络错误在离线时不显示
-  if (error.code === ErrorCode.NETWORK_ERROR && !navigator.onLine) {
+  if (error.code === ErrorCodes.NETWORK_ERROR && !navigator.onLine) {
     return false
   }
 
   // 用户主动取消的操作不显示
-  if (error.code === ErrorCode.ABORTED || error.message?.includes('aborted')) {
+  if (error.code === ErrorCodes.ABORTED || error.message?.includes('aborted')) {
     return false
   }
 

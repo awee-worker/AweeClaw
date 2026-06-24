@@ -1,5 +1,5 @@
 /**
- * Token counting utilities
+ * Token 计数工具 — Token 估算与截断
  */
 export function estimateTokens(text: string): number {
   if (!text) return 0

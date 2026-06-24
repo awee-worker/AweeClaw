@@ -1,6 +1,9 @@
 /**
- * Stream processing for assistant responses.
- * Collects text, reasoning, and tool-call events and resolves a final result.
+ * 流式处理器 — 助手响应的流式处理
+ *
+ * 职责：
+ * - 收集文本、推理、工具调用事件
+ * - 解析并组装最终结果
  */
 
 import { api } from '../../adapters/electronBridge'

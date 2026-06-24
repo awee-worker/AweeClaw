@@ -1,5 +1,5 @@
 /**
- * Thread and thread-scoped runtime state.
+ * 对话线程模型 — 线程与线程级运行时状态
  */
 
 import type { ToolCall, ToolStreamingPreview } from '@intelligence/providerTypes'

@@ -1,14 +1,14 @@
 /**
- * Smarter loop detection for agent tool calls.
+ * 循环检测器 — Agent 工具调用的智能循环检测
  *
- * Core principle: only block when the agent is genuinely stuck.
- * If the agent is producing text output between tool calls, it is making progress.
- * Read/search operations with different arguments are normal exploration, not loops.
+ * 核心原则：仅在 Agent 真正卡住时才阻止。
+ * 如果 Agent 在工具调用之间产生文本输出，说明它在取得进展。
+ * 使用不同参数的读取/搜索操作是正常的探索行为，不是循环。
  *
- * Detection levels:
- * - low severity  → gentle reminder, agent continues freely
- * - medium severity → warning, agent should consider changing approach
- * - high severity  → hard stop, agent must stop calling tools
+ * 检测级别：
+ * - 低严重度 → 温和提醒，Agent 自由继续
+ * - 中严重度 → 警告，Agent 应考虑改变策略
+ * - 高严重度 → 强制停止，Agent 必须停止调用工具
  */
 
 import { logger } from '@toolkit/LogEngine'

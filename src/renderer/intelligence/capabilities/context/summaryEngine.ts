@@ -1,9 +1,9 @@
 /**
- * Summary generation service.
+ * 摘要生成服务 — 会话摘要与交接文档生成
  *
- * Used for:
- * - L3 detailed summary generation
- * - L4 handoff document generation
+ * 职责：
+ * - L3 详细摘要生成
+ * - L4 交接文档生成
  */
 
 import { api } from '../../../adapters/electronBridge'

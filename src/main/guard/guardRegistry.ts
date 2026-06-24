@@ -1,5 +1,11 @@
 /**
- * 安全模块统一导出
+ * 安全模块统一导出 — 集中暴露安全相关 API
+ *
+ * 导出内容：
+ * - securityManager：安全策略引擎
+ * - OperationType / PermissionLevel：操作类型与权限级别
+ * - 场景权限策略管理（setScenarioPermissionPolicy 等）
+ * - 安全事件管理（onSecurityEvent / getSecurityEvents 等）
  */
 
 export {

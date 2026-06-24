@@ -1,17 +1,17 @@
 /**
- * Token Budget Controller - Unified token budget management
+ * Token 预算控制器 — 统一的 Token 预算管理
  *
- * Centralizes all budget-related decisions:
- * - Pre-send budget estimation and validation
- * - Post-send usage reconciliation
- * - Mode-specific budget policies
- * - Warning/summary/handoff threshold management
+ * 职责：
+ * - 发送前预算估算与校验
+ * - 发送后用量对账
+ * - 模式感知的预算策略
+ * - 预警 / 摘要 / 交接阈值管理
  *
- * Design principles:
- * - Single source of truth for budget decisions
- * - Mode-aware budget policies
- * - Clear separation between estimation and reconciliation
- * - Support for reserved budgets (output, safety margin)
+ * 设计原则：
+ * - 预算决策的单一数据源
+ * - 模式感知的预算策略
+ * - 估算与对账的清晰分离
+ * - 支持预留预算（输出、安全余量）
  */
 
 import { logger } from '@toolkit/LogEngine'
@@ -344,7 +344,7 @@ export class TokenBudgetController {
 // ===== Factory =====
 
 /**
- * Create a budget controller for a specific mode
+ * 为指定模式创建预算控制器
  */
 export function createBudgetController(
   _mode: WorkMode,

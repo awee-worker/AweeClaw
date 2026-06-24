@@ -1,9 +1,3 @@
-/**
- * 面板拖拽调整大小 Hook
- *
- * 基于起始位置 + 增量计算新宽度，避免绝对定位导致的跳动问题。
- * 拖拽期间通过 ref 直接操作 DOM，松手后才同步状态，减少重渲染。
- */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { LAYOUT } from '@shared/appConstants'
 
@@ -22,45 +16,71 @@ interface ResizeState {
   startResize: (e: React.MouseEvent) => void
 }
 
+/** 拖拽会话上下文，保存起始坐标与初始宽度 */
+interface DragSession {
+  originX: number
+  baseWidth: number
+}
+
+/** 根据方向将鼠标位移转换为宽度增量 */
+function deltaToWidth(direction: ResizeDirection, delta: number): number {
+  return direction === 'left' ? delta : -delta
+}
+
+/** 将宽度限制在允许范围内 */
+function clampWidth(width: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, width))
+}
+
+/** 创建拖拽期间覆盖全屏的遮罩，阻止文本选中和 iframe 拦截事件 */
+function createOverlay(): HTMLDivElement {
+  const overlay = document.createElement('div')
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;cursor:col-resize'
+  document.body.appendChild(overlay)
+  return overlay
+}
+
+/**
+ * 面板拖拽调整大小 Hook
+ *
+ * 以拖拽会话为单位管理状态：按下时记录起始坐标与初始宽度，
+ * 移动时基于增量计算新宽度并直接写入 DOM，松手时同步最终宽度到外部状态。
+ */
 export function useResizePanel(config: ResizeConfig): ResizeState {
   const [isResizing, setIsResizing] = useState(false)
-  // 拖拽起始状态（用 ref 避免闭包引用过期值）
-  const dragStateRef = useRef<{ startX: number; startWidth: number } | null>(null)
-
+  const sessionRef = useRef<DragSession | null>(null)
   const { direction, minSize, maxSize, onResizeEnd, panelRef } = config
 
-  const startResize = useCallback((e: React.MouseEvent) => {
-    e.preventDefault()
-    const currentWidth = panelRef?.current?.offsetWidth ?? 0
-    dragStateRef.current = { startX: e.clientX, startWidth: currentWidth }
-    setIsResizing(true)
-    document.body.style.cursor = 'col-resize'
-  }, [panelRef])
+  const startResize = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault()
+      const baseWidth = panelRef?.current?.offsetWidth ?? 0
+      sessionRef.current = { originX: e.clientX, baseWidth }
+      setIsResizing(true)
+      document.body.style.cursor = 'col-resize'
+    },
+    [panelRef],
+  )
 
   useEffect(() => {
     if (!isResizing) return
 
     const handleMouseMove = (e: MouseEvent) => {
-      const drag = dragStateRef.current
-      if (!drag) return
+      const session = sessionRef.current
+      if (!session) return
 
-      // 增量计算：left 方向向右拖增大，right 方向向左拖增大
-      const delta = direction === 'left'
-        ? e.clientX - drag.startX
-        : drag.startX - e.clientX
+      const delta = e.clientX - session.originX
+      const next = clampWidth(session.baseWidth + deltaToWidth(direction, delta), minSize, maxSize)
 
-      const newSize = Math.min(maxSize, Math.max(minSize, drag.startWidth + delta))
-
-      if (panelRef?.current) {
-        panelRef.current.style.width = `${newSize}px`
-      }
+      const el = panelRef?.current
+      if (el) el.style.width = `${next}px`
     }
 
     const handleMouseUp = () => {
       const finalWidth = panelRef?.current?.offsetWidth ?? null
+      sessionRef.current = null
       setIsResizing(false)
       document.body.style.cursor = 'default'
-      dragStateRef.current = null
 
       if (onResizeEnd && finalWidth !== null) {
         onResizeEnd(finalWidth)
@@ -69,44 +89,50 @@ export function useResizePanel(config: ResizeConfig): ResizeState {
 
     window.addEventListener('mousemove', handleMouseMove)
     window.addEventListener('mouseup', handleMouseUp)
-
-    // 遮罩层防止选中文本和 iframe 拦截事件
-    const overlay = document.createElement('div')
-    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;cursor:col-resize'
-    document.body.appendChild(overlay)
+    const overlay = createOverlay()
 
     return () => {
       window.removeEventListener('mousemove', handleMouseMove)
       window.removeEventListener('mouseup', handleMouseUp)
-      document.body.removeChild(overlay)
+      overlay.remove()
     }
   }, [isResizing, direction, minSize, maxSize, onResizeEnd, panelRef])
 
   return { isResizing, startResize }
 }
 
-// 侧边栏 resize（从左边拖拽）
-export function useSidebarResize(onResizeEnd: (width: number) => void, panelRef: React.RefObject<HTMLDivElement | null>) {
-  const config = useMemo(() => ({
-    direction: 'left' as const,
-    minSize: LAYOUT.SIDEBAR_MIN_WIDTH,
-    maxSize: LAYOUT.SIDEBAR_MAX_WIDTH,
-    onResizeEnd,
-    panelRef,
-  }), [onResizeEnd, panelRef])
-
+/** 侧边栏拖拽（从左侧拖拽） */
+export function useSidebarResize(
+  onResizeEnd: (width: number) => void,
+  panelRef: React.RefObject<HTMLDivElement | null>,
+) {
+  const config = useMemo(
+    () => ({
+      direction: 'left' as const,
+      minSize: LAYOUT.SIDEBAR_MIN_WIDTH,
+      maxSize: LAYOUT.SIDEBAR_MAX_WIDTH,
+      onResizeEnd,
+      panelRef,
+    }),
+    [onResizeEnd, panelRef],
+  )
   return useResizePanel(config)
 }
 
-// 聊天面板 resize（从右边拖拽）
-export function useChatResize(onResizeEnd: (width: number) => void, panelRef: React.RefObject<HTMLDivElement | null>) {
-  const config = useMemo(() => ({
-    direction: 'right' as const,
-    minSize: LAYOUT.CHAT_MIN_WIDTH,
-    maxSize: LAYOUT.CHAT_MAX_WIDTH,
-    onResizeEnd,
-    panelRef,
-  }), [onResizeEnd, panelRef])
-
+/** 聊天面板拖拽（从右侧拖拽） */
+export function useChatResize(
+  onResizeEnd: (width: number) => void,
+  panelRef: React.RefObject<HTMLDivElement | null>,
+) {
+  const config = useMemo(
+    () => ({
+      direction: 'right' as const,
+      minSize: LAYOUT.CHAT_MIN_WIDTH,
+      maxSize: LAYOUT.CHAT_MAX_WIDTH,
+      onResizeEnd,
+      panelRef,
+    }),
+    [onResizeEnd, panelRef],
+  )
   return useResizePanel(config)
 }

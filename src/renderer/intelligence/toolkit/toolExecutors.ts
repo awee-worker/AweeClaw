@@ -1269,7 +1269,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
 
             await notifyLspAfterWrite(path, newContent)
 
-            const strategyInfo = result.strategy !== 'exact' ? ` (matched via ${result.strategy} strategy)` : ''
+            const strategyInfo = result.stage !== 'exact' ? ` (matched via ${result.stage} strategy)` : ''
 
             const meta = buildWriteMeta(
                 path,
@@ -1278,7 +1278,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 lineChanges,
                 guardedWrite.meta,
                 {
-                    matchStrategy: result.strategy,
+                    matchStrategy: result.stage,
                 }
             )
 

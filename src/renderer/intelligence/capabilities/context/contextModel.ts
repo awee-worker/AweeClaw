@@ -1,5 +1,5 @@
 /**
- * Context model types
+ * 上下文模型类型定义
  */
 export interface ContextEntry {
   id: string

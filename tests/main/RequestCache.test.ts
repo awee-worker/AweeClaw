@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { LLMConfig } from '@protocols'
-import { prepareRequestCache } from '@modules/ai-provider/core/RequestCache'
+import { prepareRequestCache } from '@modules/ai-provider/core/ResponseCacheStore'
 import {
   clearCacheCompatibilityState,
   isCacheFeatureUnsupported,
   markCacheFeatureUnsupported,
-} from '@modules/ai-provider/core/CacheCompatibility'
+} from '@modules/ai-provider/core/ProviderCacheAdapter'
 
 const longPrompt = 'cacheable prefix '.repeat(2000)
 

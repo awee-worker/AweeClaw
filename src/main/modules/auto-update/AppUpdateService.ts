@@ -1,13 +1,14 @@
 /**
- * Automatic update service.
+ * 应用自动更新服务 — 基于 electron-updater 的版本更新
  *
- * Release strategy:
- * - Windows: NSIS installer
- * - macOS: DMG / ZIP
- * - Linux: AppImage
+ * 发布策略：
+ * - Windows：NSIS 安装包
+ * - macOS：DMG / ZIP
+ * - Linux：AppImage
  *
- * Some local package layouts still cannot auto-update reliably. In that case
- * we fall back to GitHub release checks and expose a manual download link.
+ * 说明：
+ * 部分本地打包布局仍无法可靠地自动更新，此时回退到
+ * GitHub Release 检查并暴露手动下载链接。
  */
 
 import { app, BrowserWindow } from 'electron'

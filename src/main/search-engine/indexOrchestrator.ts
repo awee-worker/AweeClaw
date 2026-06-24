@@ -1,8 +1,19 @@
 /**
- * 代码库索引服务
- * 支持两种模式：
- * - structural: 结构化索引（默认），基于 Tree-sitter + BM25，零配置
- * - semantic: 语义索引，基于 Embedding + 向量搜索，需要 API
+ * 代码库索引编排器 — 索引服务的统一调度入口
+ *
+ * 职责：
+ * - 支持两种索引模式：
+ *   - structural：结构化索引（默认），基于 Tree-sitter + BM25，零配置
+ *   - semantic：语义索引，基于 Embedding + 向量搜索，需要 API
+ * - 管理 Worker 线程，支持全量索引、增量更新、批量更新
+ * - 整合 BM25 关键词搜索与向量语义搜索
+ *
+ * 差异化特性（相比基础实现）：
+ * - 双模式索引（structural / semantic）灵活切换
+ * - Worker 线程并发索引（pLimit 控制并发度）
+ * - 增量哈希比对，跳过未变更文件
+ * - 批量更新模式，减少 Worker 通信开销
+ * - 品牌配置通过 `@shared/brand` 集中管理
  */
 
 import * as fs from 'fs'

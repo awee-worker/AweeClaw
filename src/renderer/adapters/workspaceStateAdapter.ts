@@ -1,6 +1,5 @@
 /**
- * Workspace state persistence service.
- * Saves and restores open files, active file, layout, and expanded folders.
+ * 工作区状态持久化服务 — 保存与恢复打开的文件、活动文件、布局和展开的文件夹
  */
 
 import { api } from './electronBridge'

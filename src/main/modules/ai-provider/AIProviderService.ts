@@ -1,5 +1,10 @@
 /**
- * LLM service entry point.
+ * LLM 服务入口 — 大语言模型服务的统一调度器
+ *
+ * 通过组合多个专职组件实现 LLM 服务的统一调度：
+ * - 请求生命周期管理器：管理 AbortController 的创建、存储与取消
+ * - 服务装配器：按窗口隔离各子服务实例
+ * - 方法分发器：将调用转发到对应的子服务
  */
 
 import { BrowserWindow } from 'electron'
@@ -16,20 +21,87 @@ import type {
   TestCase,
 } from './providerTypes'
 
-export class LLMService {
-  private streamingService: StreamingService
-  private syncService: SyncService
-  private structuredService: StructuredService
-  private embeddingService: EmbeddingService
-  private abortControllers = new Map<string, AbortController>()
+/* ------------------------------------------------------------------ */
+/* 请求生命周期管理器                                                 */
+/* ------------------------------------------------------------------ */
 
-  constructor(window: BrowserWindow) {
-    this.streamingService = new StreamingService(window)
-    this.syncService = new SyncService()
-    this.structuredService = new StructuredService()
-    this.embeddingService = new EmbeddingService()
+/** 管理 AbortController 的创建、存储与取消 */
+class RequestLifecycleManager {
+  private readonly controllers = new Map<string, AbortController>()
+
+  /**
+   * 为指定请求创建 AbortController
+   *
+   * @param requestId 请求 ID
+   * @returns 创建的 AbortController
+   */
+  create(requestId: string): AbortController {
+    const controller = new AbortController()
+    this.controllers.set(requestId, controller)
+    return controller
   }
 
+  /** 取消指定请求 */
+  abort(requestId: string): void {
+    const controller = this.controllers.get(requestId)
+    if (controller) {
+      controller.abort()
+      this.controllers.delete(requestId)
+    }
+  }
+
+  /** 取消所有进行中的请求 */
+  abortAll(): void {
+    for (const controller of this.controllers.values()) {
+      controller.abort()
+    }
+    this.controllers.clear()
+  }
+
+  /** 请求完成后清理 */
+  release(requestId: string): void {
+    this.controllers.delete(requestId)
+  }
+
+  /** 获取当前进行中的请求数 */
+  get pendingCount(): number {
+    return this.controllers.size
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* 服务装配器                                                         */
+/* ------------------------------------------------------------------ */
+
+/** 按窗口隔离各子服务实例 */
+class ServiceAssembler {
+  readonly streaming: StreamingService
+  readonly sync: SyncService
+  readonly structured: StructuredService
+  readonly embedding: EmbeddingService
+
+  constructor(window: BrowserWindow) {
+    this.streaming = new StreamingService(window)
+    this.sync = new SyncService()
+    this.structured = new StructuredService()
+    this.embedding = new EmbeddingService()
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* LLM 服务（外观）                                                   */
+/* ------------------------------------------------------------------ */
+
+/** LLM 服务 — 协调流式对话、同步生成、结构化输出与向量嵌入 */
+export class LLMService {
+  private readonly services: ServiceAssembler
+  private readonly lifecycle = new RequestLifecycleManager()
+
+  constructor(window: BrowserWindow) {
+    this.services = new ServiceAssembler(window)
+  }
+
+  /** 发送流式消息 */
   async sendMessage(params: {
     config: LLMConfig
     messages: LLMMessage[]
@@ -39,63 +111,59 @@ export class LLMService {
     requestId?: string
   }) {
     const requestId = params.requestId || crypto.randomUUID()
-    const abortController = new AbortController()
-    this.abortControllers.set(requestId, abortController)
+    const abortController = this.lifecycle.create(requestId)
 
     try {
-      return await this.streamingService.generate({
+      return await this.services.streaming.generate({
         ...params,
         requestId,
         abortSignal: abortController.signal,
       })
     } finally {
-      this.abortControllers.delete(requestId)
+      this.lifecycle.release(requestId)
     }
   }
 
-  abort(requestId?: string) {
+  /** 取消请求 */
+  abort(requestId?: string): void {
     if (requestId) {
-      const controller = this.abortControllers.get(requestId)
-      if (controller) {
-        controller.abort()
-        this.abortControllers.delete(requestId)
-      }
+      this.lifecycle.abort(requestId)
       return
     }
-
-    for (const controller of this.abortControllers.values()) {
-      controller.abort()
-    }
-    this.abortControllers.clear()
+    this.lifecycle.abortAll()
   }
 
+  /** 同步发送消息 */
   async sendMessageSync(params: {
     config: LLMConfig
     messages: LLMMessage[]
     tools?: ToolDefinition[]
     systemPrompt?: string
   }): Promise<LLMResponse<string>> {
-    return await this.syncService.generate(params)
+    return await this.services.sync.generate(params)
   }
 
+  /** 分析代码 */
   async analyzeCode(params: {
     config: LLMConfig
     code: string
     language: string
     filePath: string
   }): Promise<LLMResponse<CodeAnalysis>> {
-    return await this.structuredService.analyzeCode(params)
+    return await this.services.structured.analyzeCode(params)
   }
 
+  /** 建议重构方案 */
   async suggestRefactoring(params: {
     config: LLMConfig
     code: string
     language: string
     intent: string
   }): Promise<LLMResponse<Refactoring>> {
-    return await this.structuredService.suggestRefactoring(params)
+    return await this.services.structured.suggestRefactoring(params)
   }
 
+  /** 建议修复方案 */
   async suggestFixes(params: {
     config: LLMConfig
     code: string
@@ -107,18 +175,20 @@ export class LLMService {
       severity: number
     }>
   }): Promise<LLMResponse<CodeFix>> {
-    return await this.structuredService.suggestFixes(params)
+    return await this.services.structured.suggestFixes(params)
   }
 
+  /** 生成测试用例 */
   async generateTests(params: {
     config: LLMConfig
     code: string
     language: string
     framework?: string
   }): Promise<LLMResponse<TestCase>> {
-    return await this.structuredService.generateTests(params)
+    return await this.services.structured.generateTests(params)
   }
 
+  /** 流式分析代码 */
   async analyzeCodeStream(
     params: {
       config: LLMConfig
@@ -126,39 +196,44 @@ export class LLMService {
       language: string
       filePath: string
     },
-    onPartial: (partial: Partial<CodeAnalysis>) => void
+    onPartial: (partial: Partial<CodeAnalysis>) => void,
   ): Promise<LLMResponse<CodeAnalysis>> {
-    return await this.structuredService.analyzeCodeStream(params, onPartial)
+    return await this.services.structured.analyzeCodeStream(params, onPartial)
   }
 
+  /** 生成结构化对象 */
   async generateStructuredObject<T>(params: {
     config: LLMConfig
     schema: any
     system: string
     prompt: string
   }): Promise<LLMResponse<T>> {
-    return await this.structuredService.generateStructuredObject(params)
+    return await this.services.structured.generateStructuredObject(params)
   }
 
+  /** 生成单文本嵌入向量 */
   async embedText(text: string, config: LLMConfig): Promise<LLMResponse<number[]>> {
-    return await this.embeddingService.embedText(text, config)
+    return await this.services.embedding.embedText(text, config)
   }
 
+  /** 批量生成嵌入向量 */
   async embedMany(texts: string[], config: LLMConfig): Promise<LLMResponse<number[][]>> {
-    return await this.embeddingService.embedMany(texts, config)
+    return await this.services.embedding.embedMany(texts, config)
   }
 
+  /** 查找最相似的文本 */
   async findSimilar(
     query: string,
     candidates: string[],
     config: LLMConfig,
-    topK?: number
+    topK?: number,
   ) {
-    return await this.embeddingService.findMostSimilar(query, candidates, config, topK)
+    return await this.services.embedding.findMostSimilar(query, candidates, config, topK)
   }
 
-  destroy() {
-    this.abort()
+  /** 销毁服务 */
+  destroy(): void {
+    this.lifecycle.abortAll()
   }
 }
 

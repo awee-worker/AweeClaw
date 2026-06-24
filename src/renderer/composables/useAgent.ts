@@ -1,8 +1,8 @@
 /**
- * Focused Agent hooks.
+ * Agent 相关 Hook 集合
  *
- * Keep view subscriptions, command wiring, and maintenance actions separate so
- * renderer components only subscribe to the state they actually render.
+ * 将 Agent 的视图状态、命令、动作和历史操作拆分为独立 Hook，
+ * 渲染组件按需订阅，避免不必要的重渲染。
  */
 
 import { api } from '../adapters/electronBridge'
@@ -22,45 +22,58 @@ import {
 } from '@intelligence/state/IntelligenceStore'
 import { Agent } from '@intelligence/engine'
 import { getAgentConfig } from '@intelligence/utils/intelligenceConfig'
-import { MessageContent, ChatThread, ToolCall, type LLMConfig } from '@intelligence/providerTypes'
+import {
+  MessageContent,
+  ChatThread,
+  ToolCall,
+  type LLMConfig,
+} from '@intelligence/providerTypes'
 import type { WorkMode } from '@/renderer/modes/workModeTypes'
+import type { PlanStatus } from '@intelligence/planner/planTypes'
 
-function getModeReasoningOverrides(
+/* ------------------------------------------------------------------ */
+/* 模式推理覆盖                                                       */
+/* ------------------------------------------------------------------ */
+
+/** 各模式默认推理强度 */
+const MODE_DEFAULT_EFFORT: Record<WorkMode, LLMConfig['reasoningEffort']> = {
+  chat: 'low',
+  agent: 'high',
+  plan: 'xhigh',
+}
+
+/** 各模式默认是否启用思考 */
+const MODE_DEFAULT_THINKING: Record<WorkMode, boolean> = {
+  chat: false,
+  agent: true,
+  plan: true,
+}
+
+/** 根据工作模式生成推理参数覆盖 */
+function buildModeOverrides(
   mode: WorkMode,
-  baseConfig: LLMConfig,
+  base: LLMConfig,
 ): Partial<LLMConfig> {
-  const userEffort = baseConfig.reasoningEffort
-  const userThinking = baseConfig.enableThinking
-
-  switch (mode) {
-    case 'chat':
-      return {
-        reasoningEffort: userEffort ?? 'low',
-        enableThinking: userThinking ?? false,
-      }
-    case 'agent':
-      return {
-        reasoningEffort: userEffort ?? 'high',
-        enableThinking: userThinking ?? true,
-      }
-    case 'plan':
-      return {
-        reasoningEffort: userEffort ?? 'xhigh',
-        enableThinking: userThinking ?? true,
-      }
-    default:
-      return {}
+  if (!(mode in MODE_DEFAULT_EFFORT)) return {}
+  return {
+    reasoningEffort: base.reasoningEffort ?? MODE_DEFAULT_EFFORT[mode],
+    enableThinking: base.enableThinking ?? MODE_DEFAULT_THINKING[mode],
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* 会话列表缓存                                                      */
+/* ------------------------------------------------------------------ */
 
 let cachedThreadsRef: Record<string, ChatThread> | null = null
 let cachedSortedThreads: ChatThread[] = []
 let cachedUserId: string | undefined = undefined
 
+/** 获取当前用户可见的会话列表（按最近修改排序） */
 export function useAllThreads(): ChatThread[] {
-  const currentUserId = useStore(s => s.cloudUser?.id)
+  const currentUserId = useStore((s) => s.cloudUser?.id)
 
-  return useAgentStore(state => {
+  return useAgentStore((state) => {
     if (state.threads === cachedThreadsRef && currentUserId === cachedUserId) {
       return cachedSortedThreads
     }
@@ -68,51 +81,69 @@ export function useAllThreads(): ChatThread[] {
     cachedThreadsRef = state.threads
     cachedUserId = currentUserId
     cachedSortedThreads = Object.values(state.threads)
-      .filter(thread => {
-        if (currentUserId) {
-          return thread.userId === currentUserId
-        }
-        return !thread.userId
-      })
+      .filter((thread) => (currentUserId ? thread.userId === currentUserId : !thread.userId))
       .sort((a, b) => b.lastModified - a.lastModified)
     return cachedSortedThreads
   })
 }
 
+/* ------------------------------------------------------------------ */
+/* 状态清理                                                           */
+/* ------------------------------------------------------------------ */
+
+/** 读取 Agent store 的动作 */
 const getAgentActions = () => useAgentStore.getState()
 
+/** 清空当前会话消息与工具调用日志 */
 function clearAgentConversationState(): void {
   getAgentActions().clearMessages()
   useStore.getState().clearToolCallLogs()
 }
 
+/* ------------------------------------------------------------------ */
+/* 命令 Hook                                                          */
+/* ------------------------------------------------------------------ */
+
+/** 发送消息所需的运行时参数 */
+interface SendParams {
+  llmConfig: LLMConfig
+  workspacePath: string | null
+  chatMode: WorkMode
+  promptTemplateId: string
+  aiInstructions: string
+  openFiles: Array<{ path: string }>
+  activeFilePath: string | null
+  planPhase: 'planning' | 'executing'
+}
+
 export function useAgentCommands() {
-  const llmConfig = useStore(state => state.llmConfig)
-  const workspacePath = useStore(state => state.workspacePath)
-  const promptTemplateId = useStore(state => state.promptTemplateId)
-  const openFiles = useStore(state => state.openFiles)
-  const activeFilePath = useStore(state => state.activeFilePath)
-  const chatMode = useModeStore(state => state.currentMode)
+  const llmConfig = useStore((state) => state.llmConfig)
+  const workspacePath = useStore((state) => state.workspacePath)
+  const promptTemplateId = useStore((state) => state.promptTemplateId)
+  const openFiles = useStore((state) => state.openFiles)
+  const activeFilePath = useStore((state) => state.activeFilePath)
+  const chatMode = useModeStore((state) => state.currentMode)
 
   const [aiInstructions, setAiInstructions] = useState('')
 
   useEffect(() => {
-    api.settings.get('app-settings').then((settings: any) => {
-      if (settings?.aiInstructions) {
-        setAiInstructions(settings.aiInstructions)
-      }
+    void api.settings.get('app-settings').then((settings: unknown) => {
+      const typed = settings as { aiInstructions?: string } | undefined
+      if (typed?.aiInstructions) setAiInstructions(typed.aiInstructions)
     })
   }, [])
 
-  const planPhase = useAgentStore<'planning' | 'executing'>(state => {
-    const activePlan = state.plans.find(plan => plan.id === state.activePlanId)
-    return activePlan?.status === 'executing' || activePlan?.status === 'pausing' || activePlan?.status === 'stopping'
-      ? 'executing'
-      : 'planning'
+  const planPhase = useAgentStore<'planning' | 'executing'>((state) => {
+    const activePlan = state.plans.find((plan) => plan.id === state.activePlanId)
+    const status = activePlan?.status
+    const executingStatuses: PlanStatus[] = ['executing', 'pausing', 'stopping']
+    return status && executingStatuses.includes(status) ? 'executing' : 'planning'
   })
+
   const streamState = useAgentStore(selectStreamState)
 
-  const sendParamsRef = useRef({
+  // 使用 ref 保存最新参数，避免 sendMessage 依赖频繁变化
+  const sendParamsRef = useRef<SendParams>({
     llmConfig,
     workspacePath,
     chatMode,
@@ -122,7 +153,6 @@ export function useAgentCommands() {
     activeFilePath,
     planPhase,
   })
-
   sendParamsRef.current = {
     llmConfig,
     workspacePath,
@@ -135,72 +165,42 @@ export function useAgentCommands() {
   }
 
   const sendMessage = useCallback(async (content: MessageContent) => {
-    const {
-      llmConfig: config,
-      workspacePath: currentWorkspacePath,
-      chatMode: currentChatMode,
-      promptTemplateId: currentPromptTemplateId,
-      aiInstructions: currentAiInstructions,
-      openFiles: currentOpenFiles,
-      activeFilePath: currentActiveFilePath,
-      planPhase: currentPlanPhase,
-    } = sendParamsRef.current
-
+    const params = sendParamsRef.current
     const agentConfig = getAgentConfig()
-    const effectiveConfig = await getEffectiveLLMConfigAsync(config)
+    const effectiveConfig = await getEffectiveLLMConfigAsync(params.llmConfig)
+    const overrides = buildModeOverrides(params.chatMode, effectiveConfig)
 
-    const modeReasoningOverrides = getModeReasoningOverrides(currentChatMode, effectiveConfig)
-
-    const enhancedConfig = {
+    const enhancedConfig: LLMConfig = {
       ...effectiveConfig,
-      ...modeReasoningOverrides,
+      ...overrides,
       contextLimit: agentConfig.maxContextTokens,
     }
 
-    await Agent.send(
-      content,
-      enhancedConfig,
-      currentWorkspacePath,
-      currentChatMode,
-      {
-        openFiles: currentOpenFiles.map(file => file.path),
-        activeFile: currentActiveFilePath || undefined,
-        customInstructions: currentAiInstructions,
-        promptTemplateId: currentPromptTemplateId,
-        planPhase: currentChatMode === 'plan' ? currentPlanPhase : undefined,
-      }
-    )
+    await Agent.send(content, enhancedConfig, params.workspacePath, params.chatMode, {
+      openFiles: params.openFiles.map((file) => file.path),
+      activeFile: params.activeFilePath || undefined,
+      customInstructions: params.aiInstructions,
+      promptTemplateId: params.promptTemplateId,
+      planPhase: params.chatMode === 'plan' ? params.planPhase : undefined,
+    })
   }, [])
 
-  const abort = useCallback(() => {
-    Agent.abort()
-  }, [])
+  const abort = useCallback(() => Agent.abort(), [])
 
   const pendingApprovalRequestId = useMemo(() => {
-    if (streamState.phase !== 'tool_pending') {
-      return undefined
-    }
-
-    return streamState.requestId
+    return streamState.phase === 'tool_pending' ? streamState.requestId : undefined
   }, [streamState.phase, streamState.requestId])
 
   const approveCurrentTool = useCallback(() => {
-    console.log('[useAgent] approveCurrentTool called, pendingApprovalRequestId:', pendingApprovalRequestId)
     Agent.approve(pendingApprovalRequestId)
   }, [pendingApprovalRequestId])
 
   const rejectCurrentTool = useCallback(() => {
-    console.log('[useAgent] rejectCurrentTool called, pendingApprovalRequestId:', pendingApprovalRequestId)
     Agent.reject(pendingApprovalRequestId)
   }, [pendingApprovalRequestId])
 
-  const approveAllTools = useCallback(() => {
-    Agent.approveAll()
-  }, [])
-
-  const rejectAllTools = useCallback(() => {
-    Agent.rejectAll()
-  }, [])
+  const approveAllTools = useCallback(() => Agent.approveAll(), [])
+  const rejectAllTools = useCallback(() => Agent.rejectAll(), [])
 
   return {
     sendMessage,
@@ -212,46 +212,63 @@ export function useAgentCommands() {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* 动作 Hook                                                          */
+/* ------------------------------------------------------------------ */
+
 export function useAgentActions() {
-  return useMemo(() => ({
-    createThread: getAgentActions().createThread,
-    renameThread: getAgentActions().renameThread,
-    switchThread: getAgentActions().switchThread,
-    deleteThread: getAgentActions().deleteThread,
-    deleteMessagesAfter: getAgentActions().deleteMessagesAfter,
-    deleteMessagesByIds: getAgentActions().deleteMessagesByIds,
-    acceptAllChanges: getAgentActions().acceptAllChanges,
-    undoAllChanges: getAgentActions().undoAllChanges,
-    acceptChange: getAgentActions().acceptChange,
-    undoChange: getAgentActions().undoChange,
-    restoreToCheckpoint: getAgentActions().restoreToCheckpoint,
-    getCheckpointForMessage: getAgentActions().getCheckpointForMessage,
-    addContextItem: getAgentActions().addContextItem,
-    removeContextItem: getAgentActions().removeContextItem,
-    clearContextItems: getAgentActions().clearContextItems,
-    createBranch: getAgentActions().createBranch,
-    switchBranch: getAgentActions().switchBranch,
-    regenerateFromMessage: getAgentActions().regenerateFromMessage,
-    clearMessages: clearAgentConversationState,
-  }), [])
+  return useMemo(() => {
+    const actions = getAgentActions()
+    return {
+      createThread: actions.createThread,
+      renameThread: actions.renameThread,
+      switchThread: actions.switchThread,
+      deleteThread: actions.deleteThread,
+      deleteMessagesAfter: actions.deleteMessagesAfter,
+      deleteMessagesByIds: actions.deleteMessagesByIds,
+      acceptAllChanges: actions.acceptAllChanges,
+      undoAllChanges: actions.undoAllChanges,
+      acceptChange: actions.acceptChange,
+      undoChange: actions.undoChange,
+      restoreToCheckpoint: actions.restoreToCheckpoint,
+      getCheckpointForMessage: actions.getCheckpointForMessage,
+      addContextItem: actions.addContextItem,
+      removeContextItem: actions.removeContextItem,
+      clearContextItems: actions.clearContextItems,
+      createBranch: actions.createBranch,
+      switchBranch: actions.switchBranch,
+      regenerateFromMessage: actions.regenerateFromMessage,
+      clearMessages: clearAgentConversationState,
+    }
+  }, [])
 }
 
 export function useAgentHistoryActions() {
-  return useMemo(() => ({
-    clearMessages: clearAgentConversationState,
-    clearCheckpoints: getAgentActions().clearMessageCheckpoints,
-  }), [])
+  return useMemo(
+    () => ({
+      clearMessages: clearAgentConversationState,
+      clearCheckpoints: getAgentActions().clearMessageCheckpoints,
+    }),
+    [],
+  )
 }
 
 export function useAgentChangeState() {
   const pendingChanges = useAgentStore(selectPendingChanges)
 
-  return useMemo(() => ({
-    pendingChanges,
-    acceptChange: getAgentActions().acceptChange,
-    undoChange: getAgentActions().undoChange,
-  }), [pendingChanges])
+  return useMemo(
+    () => ({
+      pendingChanges,
+      acceptChange: getAgentActions().acceptChange,
+      undoChange: getAgentActions().undoChange,
+    }),
+    [pendingChanges],
+  )
 }
+
+/* ------------------------------------------------------------------ */
+/* 视图状态 Hook                                                      */
+/* ------------------------------------------------------------------ */
 
 export function useAgentViewState() {
   const {
@@ -264,31 +281,31 @@ export function useAgentViewState() {
     pendingChanges,
     messageCheckpoints,
     currentThreadId,
-  } = useAgentStore(useShallow(state => ({
-    messages: selectMessageListState(state).messages,
-    messageListVersion: selectMessageListState(state).version,
-    streamState: selectStreamState(state),
-    contextItems: selectContextItems(state),
-    isStreaming: selectIsStreaming(state),
-    isAwaitingApproval: selectIsAwaitingApproval(state),
-    pendingChanges: selectPendingChanges(state),
-    messageCheckpoints: selectMessageCheckpoints(state),
-    currentThreadId: state.currentThreadId,
-  })))
+  } = useAgentStore(
+    useShallow((state) => ({
+      messages: selectMessageListState(state).messages,
+      messageListVersion: selectMessageListState(state).version,
+      streamState: selectStreamState(state),
+      contextItems: selectContextItems(state),
+      isStreaming: selectIsStreaming(state),
+      isAwaitingApproval: selectIsAwaitingApproval(state),
+      pendingChanges: selectPendingChanges(state),
+      messageCheckpoints: selectMessageCheckpoints(state),
+      currentThreadId: state.currentThreadId,
+    })),
+  )
 
-  const pendingToolCall = useMemo((): ToolCall | undefined => {
+  const pendingToolCall = useMemo<ToolCall | undefined>(() => {
     if (streamState.phase === 'tool_pending' && streamState.currentToolCall) {
       return streamState.currentToolCall
     }
-
     return undefined
   }, [streamState])
 
-  const pendingApprovalToolCalls = useMemo((): ToolCall[] => {
+  const pendingApprovalToolCalls = useMemo<ToolCall[]>(() => {
     if (streamState.phase === 'tool_pending' && streamState.pendingApprovalToolCalls) {
       return streamState.pendingApprovalToolCalls
     }
-
     return []
   }, [streamState])
 
@@ -306,6 +323,10 @@ export function useAgentViewState() {
     currentThreadId,
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* 聚合 Hook                                                          */
+/* ------------------------------------------------------------------ */
 
 export function useAgent() {
   const viewState = useAgentViewState()

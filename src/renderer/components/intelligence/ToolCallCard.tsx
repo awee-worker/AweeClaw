@@ -1,1201 +1,265 @@
-import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState, useEffect } from 'react'
-import { AlertTriangle, Check, ChevronDown, Copy, FileCode, Search, Terminal, X, Zap } from 'lucide-react'
+/**
+ * 工具调用卡片组件
+ * 采用「状态指示器 + 标题栏 + 内容区 + 审批栏」组合架构：
+ *  - 状态指示器：根据运行/成功/错误/拒绝状态显示不同图标
+ *  - 标题栏：展示工具状态文案、耗时、终端入口
+ *  - 内容区：委托预览注册表渲染对应工具的预览
+ *  - 审批栏：待审批时展示批准/拒绝按钮
+ */
+import { memo, useCallback, useMemo } from 'react'
+import { AlertTriangle, Check, ChevronDown, Terminal, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useShallow } from 'zustand/react/shallow'
 import { useStore } from '@store'
-import { t, type Language } from '@renderer/i18n'
+import { t } from '@renderer/i18n'
 import type { ToolCall } from '@intelligence/providerTypes'
 import { useToolDisplayState } from '@intelligence/display/toolResultRenderer'
-import { getMcpToolStatusText, getFriendlyToolName, isMcpToolName } from '@intelligence/display/toolFriendlyName'
+import { getFriendlyToolName } from '@intelligence/display/toolFriendlyName'
 import { useToolCardExpansion } from '@hooks'
-import { openUrlInBrowser } from '@utils/browserLauncher'
-import { JsonHighlight } from '@utils/jsonHighlight'
 import { toast } from '@components/foundation/NotificationProvider'
-import { RichContentRenderer } from './RichContentRenderer'
-import InlineDiffPreview from './InlineDiffPreview'
-import { getExtension, getFileName } from '@shared/toolkit/pathHelper'
-import { FilePathAnchor as TextWithFileLinks } from '../foundation/FilePathAnchor'
-import { CodeHighlight } from './CodeHighlight'
-import { themeManager } from '../../config/themeDefinition'
+import { TOOL_LABEL_KEYS } from './toolCallCard/helpers'
+import { getStatusText } from './toolCallCard/statusTextRegistry'
+import { renderToolPreview } from './toolCallCard/previewRegistry'
+import { ToolElapsedTime } from './toolCallCard/ToolElapsedTime'
 
 interface ToolCallCardProps {
-    toolCall: ToolCall
-    isAwaitingApproval?: boolean
-    onApprove?: () => void
-    onReject?: () => void
-    defaultExpanded?: boolean
+  toolCall: ToolCall
+  isAwaitingApproval?: boolean
+  onApprove?: () => void
+  onReject?: () => void
+  defaultExpanded?: boolean
 }
 
-type ToolArgs = Record<string, unknown>
-
-const TOOL_LABEL_KEYS: Record<string, string> = {
-    read_file: 'tool.label.read_file',
-    read_multiple_files: 'tool.label.read_multiple_files',
-    list_directory: 'tool.label.list_directory',
-    search_files: 'tool.label.search_files',
-    codebase_search: 'tool.label.codebase_search',
-    edit_file: 'tool.label.edit_file',
-    write_file: 'tool.label.write_file',
-    create_file: 'tool.label.create_file',
-    create_file_or_folder: 'tool.label.create_file_or_folder',
-    delete_file_or_folder: 'tool.label.delete_file_or_folder',
-    run_command: 'tool.label.run_command',
-    get_lint_errors: 'tool.label.get_lint_errors',
-    find_references: 'tool.label.find_references',
-    go_to_definition: 'tool.label.go_to_definition',
-    get_hover_info: 'tool.label.get_hover_info',
-    get_document_symbols: 'tool.label.get_document_symbols',
-    web_search: 'tool.label.web_search',
-    read_url: 'tool.label.read_url',
-    ask_user: 'tool.label.ask_user',
-    remember: 'tool.label.remember',
-    uiux_search: 'tool.label.uiux_search',
-    uiux_recommend: 'tool.label.uiux_recommend',
-    apply_skill: 'tool.label.apply_skill',
-    todo_write: 'tool.label.todo_write',
-    // 桌面控制工具（与 toolDefinitions.ts 中的实际定义一一对应）
-    desktop_list_apps: 'tool.label.desktop_list_apps',
-    desktop_launch_app: 'tool.label.desktop_launch_app',
-    desktop_quit_app: 'tool.label.desktop_quit_app',
-    desktop_list_windows: 'tool.label.desktop_list_windows',
-    desktop_focus_window: 'tool.label.desktop_focus_window',
-    desktop_close_window: 'tool.label.desktop_close_window',
-    desktop_capture_screen: 'tool.label.desktop_capture_screen',
-    desktop_mouse_click: 'tool.label.desktop_mouse_click',
-    desktop_mouse_move: 'tool.label.desktop_mouse_move',
-    desktop_mouse_scroll: 'tool.label.desktop_mouse_scroll',
-    desktop_type_text: 'tool.label.desktop_type_text',
-    desktop_press_key: 'tool.label.desktop_press_key',
-    desktop_key_combo: 'tool.label.desktop_key_combo',
-    desktop_emergency_stop: 'tool.label.desktop_emergency_stop',
-    desktop_record_action: 'tool.label.desktop_record_action',
-    desktop_recording_start: 'tool.label.desktop_recording_start',
-    desktop_recording_stop: 'tool.label.desktop_recording_stop',
-    desktop_replay_recording: 'tool.label.desktop_replay_recording',
-    desktop_list_recordings: 'tool.label.desktop_list_recordings',
-    desktop_visual_agent_step: 'tool.label.desktop_visual_agent_step',
-    desktop_workflow_run: 'tool.label.desktop_workflow_run',
-    desktop_workflow_list: 'tool.label.desktop_workflow_list',
-}
-
-const guessLanguage = (filename: string) => {
-    const ext = getExtension(filename)
-    const map: Record<string, string> = {
-        js: 'javascript',
-        jsx: 'javascript',
-        ts: 'typescript',
-        tsx: 'typescript',
-        json: 'json',
-        css: 'css',
-        html: 'html',
-        md: 'markdown',
-        py: 'python',
-        rs: 'rust',
-        go: 'go',
-        sh: 'bash',
-        yml: 'yaml',
-        yaml: 'yaml',
-        xml: 'xml',
-    }
-    return map[ext] || 'typescript'
-}
-
-const asString = (value: unknown): string => typeof value === 'string' ? value : ''
-
-const asStringArray = (value: unknown): string[] =>
-    Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
-
-const getPathList = (value: unknown): string[] => {
-    if (typeof value === 'string') return value ? [value] : []
-    return asStringArray(value).filter(Boolean)
-}
-
-const getToolPathList = (args: ToolArgs): string[] => {
-    const directPaths = getPathList(args.path)
-    if (directPaths.length > 0) return directPaths
-
-    const pluralPaths = getPathList(args.paths)
-    if (pluralPaths.length > 0) return pluralPaths
-
-    return []
-}
-
-const getPrimaryToolPath = (args: ToolArgs): string => getToolPathList(args)[0] || ''
-
-const getPathDisplayName = (path: string): string => getFileName(path) || path
-
-const getPathSummary = (paths: string[], maxItems = 3): string => {
-    if (paths.length === 0) return ''
-    if (paths.length === 1) return getPathDisplayName(paths[0])
-
-    const preview = paths
-        .slice(0, maxItems)
-        .map(path => `"${getPathDisplayName(path)}"`)
-        .join(', ')
-
-    return `${paths.length} files (${preview}${paths.length > maxItems ? ', ...' : ''})`
-}
-
-function getStatusText(name: string, args: ToolArgs, status: ToolCall['status'], isStreaming: boolean, language: Language, result?: string): string {
-    const isRunning = status === 'running' || status === 'pending' || isStreaming
-    const isSuccess = status === 'success'
-    const isError = status === 'error'
-    const paths = getToolPathList(args)
-    const path = getPrimaryToolPath(args)
-    const pathSummary = getPathSummary(paths)
-
-    /** 从工具返回结果中解析数量（支持 JSON 数组长度和 "Found N ..." 文本格式） */
-    const parseResultCount = (key: string): string => {
-        if (!result) return ''
-        // 优先尝试 JSON 解析
-        try {
-            const parsed = JSON.parse(result)
-            const arr = parsed?.[key]
-            if (Array.isArray(arr)) return String(arr.length)
-        } catch {
-            // 非 JSON，尝试从文本中提取 "Found N xxx" 格式的数字
-            const match = result.match(/Found\s+(\d+)\s+/i)
-            if (match) return match[1]
-        }
-        return ''
-    }
-
-    if (name === 'run_command') {
-        if (isRunning) return t('tool.label.run_command', language as any)
-        if (isSuccess) return t('tool.label.run_command', language as any)
-        if (isError) return t('tool.label.run_command', language as any)
-        return t('tool.label.run_command', language as any)
-    }
-
-    if (name === 'read_multiple_files') {
-        if (paths.length > 0) {
-            if (isRunning) return t('tool.status.reading', language as any, { target: pathSummary })
-            if (isSuccess) return t('tool.status.read', language as any, { target: pathSummary })
-            if (isError) return t('tool.status.readFailed', language as any, { target: '' })
-            return t('tool.status.reading', language as any, { target: pathSummary })
-        }
-        return t('tool.status.readingFiles', language as any)
-    }
-
-    if (['read_file', 'list_directory'].includes(name)) {
-        if (paths.length > 1) {
-            if (isRunning) return t('tool.status.reading', language as any, { target: pathSummary })
-            if (isSuccess) return t('tool.status.read', language as any, { target: pathSummary })
-            if (isError) return t('tool.status.readFailed', language as any, { target: '' })
-            return t('tool.status.reading', language as any, { target: pathSummary })
-        }
-        if (!path) return isRunning ? t('tool.status.readingEllipsis', language as any) : ''
-        if (isRunning) return t('tool.status.reading', language as any, { target: path })
-        if (isSuccess) return t('tool.status.read', language as any, { target: path })
-        if (isError) return t('tool.status.readFailed', language as any, { target: path })
-        return t('tool.status.reading', language as any, { target: path })
-    }
-
-    if (['write_file', 'create_file', 'create_file_or_folder'].includes(name)) {
-        if (!path) return isRunning ? t('tool.status.creatingEllipsis', language as any) : ''
-        if (isRunning) return t('tool.status.creating', language as any, { target: path })
-        if (isSuccess) return t('tool.status.created', language as any, { target: path })
-        if (isError) return t('tool.status.createFailed', language as any, { target: path })
-        return t('tool.status.creating', language as any, { target: path })
-    }
-
-    if (name === 'edit_file') {
-        if (!path) return isRunning ? t('tool.status.editingEllipsis', language as any) : ''
-        if (isRunning) return t('tool.status.editing', language as any, { target: path })
-        if (isSuccess) return t('tool.status.updated', language as any, { target: path })
-        if (isError) return t('tool.status.editFailed', language as any, { target: path })
-        return t('tool.status.editing', language as any, { target: path })
-    }
-
-    if (name === 'delete_file_or_folder') {
-        if (!path) return isRunning ? t('tool.status.deletingEllipsis', language as any) : ''
-        if (isRunning) return t('tool.status.deleting', language as any, { target: path })
-        if (isSuccess) return t('tool.status.deleted', language as any, { target: path })
-        if (isError) return t('tool.status.deleteFailed', language as any, { target: path })
-        return t('tool.status.deleting', language as any, { target: path })
-    }
-
-    if (['search_files', 'codebase_search', 'web_search', 'uiux_search'].includes(name)) {
-        const query = asString(args.pattern) || asString(args.query)
-        const value = query ? `"${query}"` : ''
-        if (!value) return isRunning ? t('tool.status.searchingEllipsis', language as any) : ''
-        if (isRunning) return t('tool.status.searching', language as any, { query: value })
-        if (isSuccess) return t('tool.status.searched', language as any, { query: value })
-        if (isError) return t('tool.status.searchFailed', language as any)
-        return t('tool.status.searching', language as any, { query: value })
-    }
-
-    if (name === 'read_url') {
-        const url = asString(args.url)
-        let hostname = ''
-        if (url) {
-            try {
-                hostname = new URL(url).hostname
-            } catch {
-                hostname = url
-            }
-        }
-        if (!hostname) return isRunning ? t('tool.status.readingUrlEllipsis', language as any) : ''
-        if (isRunning) return t('tool.status.readingUrl', language as any, { host: hostname })
-        if (isSuccess) return t('tool.status.readUrl', language as any, { host: hostname })
-        if (isError) return t('tool.status.readUrlFailed', language as any, { host: hostname })
-        return t('tool.status.readingUrl', language as any, { host: hostname })
-    }
-
-    if (['get_lint_errors', 'find_references', 'go_to_definition', 'get_hover_info', 'get_document_symbols'].includes(name)) {
-        if (!path) return isRunning ? t('tool.status.analyzingEllipsis', language as any) : ''
-        if (isRunning) return t('tool.status.analyzing', language as any, { target: path })
-        if (isSuccess) return t('tool.status.analyzed', language as any, { target: path })
-        if (isError) return t('tool.status.analysisFailed', language as any)
-        return t('tool.status.analyzing', language as any, { target: path })
-    }
-
-    if (name === 'apply_skill') {
-        const skillName = asString(args.skill_name)
-        if (!skillName) return isRunning ? t('tool.status.applyingEllipsis', language as any) : ''
-        if (isRunning) return t('tool.status.applying', language as any, { name: skillName })
-        if (isSuccess) return t('tool.status.applied', language as any, { name: skillName })
-        if (isError) return t('tool.status.applyFailed', language as any, { name: skillName })
-        return t('tool.status.applying', language as any, { name: skillName })
-    }
-
-    if (name === 'todo_write') {
-        if (isRunning) return t('tool.status.updatingTasks', language as any)
-        if (isSuccess) return t('tool.status.tasksUpdated', language as any)
-        if (isError) return t('tool.status.tasksUpdateFailed', language as any)
-        return t('tool.status.updatingTasks', language as any)
-    }
-
-    if (name === 'remember') {
-        const content = asString(args.content) || asString(args.text) || asString(args.key)
-        const preview = content ? `"${content.slice(0, 30)}${content.length > 30 ? '...' : ''}"` : ''
-        if (isRunning) return preview ? t('tool.status.remembering', language as any, { content: preview }) : t('tool.status.rememberingEllipsis', language as any)
-        if (isSuccess) return preview ? t('tool.status.remembered', language as any, { content: preview }) : t('tool.status.rememberedEllipsis', language as any)
-        if (isError) return t('tool.status.rememberFailed', language as any)
-        return t('tool.status.rememberingEllipsis', language as any)
-    }
-
-    if (name === 'ask_user') {
-        const question = asString(args.question) || asString(args.message)
-        const preview = question ? `"${question.slice(0, 30)}${question.length > 30 ? '...' : ''}"` : ''
-        if (isRunning) return preview ? t('tool.status.askingUser', language as any, { question: preview }) : t('tool.status.askingEllipsis', language as any)
-        if (isSuccess) return t('tool.status.askedUser', language as any)
-        if (isError) return t('tool.status.askFailed', language as any)
-        return t('tool.status.askingEllipsis', language as any)
-    }
-
-    if (name === 'knowledge_search') {
-        const query = asString(args.query) || asString(args.question)
-        const value = query ? `"${query}"` : ''
-        if (!value) return isRunning ? t('tool.status.searchingKnowledgeEllipsis', language as any) : ''
-        if (isRunning) return t('tool.status.searchingKnowledge', language as any, { query: value })
-        if (isSuccess) return t('tool.status.searchedKnowledge', language as any, { query: value })
-        if (isError) return t('tool.status.searchKnowledgeFailed', language as any)
-        return t('tool.status.searchingKnowledge', language as any, { query: value })
-    }
-
-    if (name === 'uiux_recommend') {
-        if (isRunning) return t('tool.status.generatingRecommendation', language as any)
-        if (isSuccess) return t('tool.status.recommendationGenerated', language as any)
-        if (isError) return t('tool.status.recommendationFailed', language as any)
-        return t('tool.status.generatingRecommendation', language as any)
-    }
-
-    // ============ 桌面控制工具状态文字（与 toolDefinitions.ts 实际定义一一对应） ============
-    if (name === 'desktop_list_apps') {
-        if (isRunning) return t('tool.status.listingApps', language as any)
-        if (isSuccess) return t('tool.status.listedApps', language as any, { count: parseResultCount('apps') })
-        if (isError) return t('tool.status.listAppsFailed', language as any)
-        return t('tool.status.listingApps', language as any)
-    }
-
-    if (name === 'desktop_launch_app') {
-        const appName = asString(args.name)
-        if (isRunning) return t('tool.status.launchingApp', language as any, { name: appName })
-        if (isSuccess) return t('tool.status.launchedApp', language as any, { name: appName })
-        if (isError) return t('tool.status.launchAppFailed', language as any, { name: appName })
-        return t('tool.status.launchingApp', language as any, { name: appName })
-    }
-
-    if (name === 'desktop_quit_app') {
-        const appName = asString(args.name)
-        if (isRunning) return t('tool.status.quittingApp', language as any, { name: appName })
-        if (isSuccess) return t('tool.status.quitApp', language as any, { name: appName })
-        if (isError) return t('tool.status.quitAppFailed', language as any, { name: appName })
-        return t('tool.status.quittingApp', language as any, { name: appName })
-    }
-
-    if (name === 'desktop_list_windows') {
-        if (isRunning) return t('tool.status.listingWindows', language as any)
-        if (isSuccess) return t('tool.status.listedWindows', language as any, { count: parseResultCount('windows') })
-        if (isError) return t('tool.status.listWindowsFailed', language as any)
-        return t('tool.status.listingWindows', language as any)
-    }
-
-    if (name === 'desktop_focus_window') {
-        if (isRunning) return t('tool.status.focusingWindow', language as any)
-        if (isSuccess) return t('tool.status.focusedWindow', language as any)
-        if (isError) return t('tool.status.focusWindowFailed', language as any)
-        return t('tool.status.focusingWindow', language as any)
-    }
-
-    if (name === 'desktop_close_window') {
-        if (isRunning) return t('tool.status.closingWindow', language as any)
-        if (isSuccess) return t('tool.status.closedWindow', language as any)
-        if (isError) return t('tool.status.closeWindowFailed', language as any)
-        return t('tool.status.closingWindow', language as any)
-    }
-
-    if (name === 'desktop_capture_screen') {
-        if (isRunning) return t('tool.status.takingScreenshot', language as any)
-        if (isSuccess) return t('tool.status.tookScreenshot', language as any)
-        if (isError) return t('tool.status.screenshotFailed', language as any)
-        return t('tool.status.takingScreenshot', language as any)
-    }
-
-    if (name === 'desktop_mouse_click') {
-        if (isRunning) return t('tool.status.clickingMouse', language as any)
-        if (isSuccess) return t('tool.status.clickedMouse', language as any)
-        return t('tool.status.clickingMouse', language as any)
-    }
-
-    if (name === 'desktop_mouse_move') {
-        if (isRunning) return t('tool.status.movingMouse', language as any)
-        if (isSuccess) return t('tool.status.movedMouse', language as any)
-        return t('tool.status.movingMouse', language as any)
-    }
-
-    if (name === 'desktop_mouse_scroll') {
-        if (isRunning) return t('tool.status.scrollingMouse', language as any)
-        if (isSuccess) return t('tool.status.scrolledMouse', language as any)
-        return t('tool.status.scrollingMouse', language as any)
-    }
-
-    if (name === 'desktop_type_text') {
-        if (isRunning) return t('tool.status.typingText', language as any)
-        if (isSuccess) return t('tool.status.typedText', language as any)
-        return t('tool.status.typingText', language as any)
-    }
-
-    if (['desktop_press_key', 'desktop_key_combo'].includes(name)) {
-        if (isRunning) return t('tool.status.pressingKey', language as any)
-        if (isSuccess) return t('tool.status.pressedKey', language as any)
-        return t('tool.status.pressingKey', language as any)
-    }
-
-    if (name === 'desktop_emergency_stop') {
-        if (isRunning) return t('tool.status.emergencyStopping', language as any)
-        if (isSuccess) return t('tool.status.emergencyStopped', language as any)
-        if (isError) return t('tool.status.emergencyStopFailed', language as any)
-        return t('tool.status.emergencyStopping', language as any)
-    }
-
-    if (name === 'desktop_record_action') {
-        if (isRunning) return t('tool.status.recordingAction', language as any)
-        if (isSuccess) return t('tool.status.recordedAction', language as any)
-        return t('tool.status.recordingAction', language as any)
-    }
-
-    if (name === 'desktop_recording_start') {
-        if (isRunning) return t('tool.status.startingRecording', language as any)
-        if (isSuccess) return t('tool.status.startedRecording', language as any)
-        if (isError) return t('tool.status.startRecordingFailed', language as any)
-        return t('tool.status.startingRecording', language as any)
-    }
-
-    if (name === 'desktop_recording_stop') {
-        if (isRunning) return t('tool.status.stoppingRecording', language as any)
-        if (isSuccess) return t('tool.status.stoppedRecording', language as any)
-        if (isError) return t('tool.status.stopRecordingFailed', language as any)
-        return t('tool.status.stoppingRecording', language as any)
-    }
-
-    if (name === 'desktop_replay_recording') {
-        if (isRunning) return t('tool.status.replayingRecording', language as any)
-        if (isSuccess) return t('tool.status.replayedRecording', language as any)
-        if (isError) return t('tool.status.replayRecordingFailed', language as any)
-        return t('tool.status.replayingRecording', language as any)
-    }
-
-    if (name === 'desktop_list_recordings') {
-        if (isRunning) return t('tool.status.listingRecordings', language as any)
-        if (isSuccess) return t('tool.status.listedRecordings', language as any, { count: parseResultCount('recordings') })
-        if (isError) return t('tool.status.listRecordingsFailed', language as any)
-        return t('tool.status.listingRecordings', language as any)
-    }
-
-    if (name === 'desktop_visual_agent_step') {
-        if (isRunning) return t('tool.status.runningVisualAgent', language as any)
-        if (isSuccess) return t('tool.status.visualAgentCompleted', language as any)
-        if (isError) return t('tool.status.visualAgentFailed', language as any)
-        return t('tool.status.runningVisualAgent', language as any)
-    }
-
-    if (name === 'desktop_workflow_run') {
-        if (isRunning) return t('tool.status.runningWorkflow', language as any)
-        if (isSuccess) return t('tool.status.workflowCompleted', language as any)
-        if (isError) return t('tool.status.workflowFailed', language as any)
-        return t('tool.status.runningWorkflow', language as any)
-    }
-
-    if (name === 'desktop_workflow_list') {
-        if (isRunning) return t('tool.status.listingWorkflows', language as any)
-        if (isSuccess) return t('tool.status.listedWorkflows', language as any, { count: parseResultCount('workflows') })
-        if (isError) return t('tool.status.listWorkflowsFailed', language as any)
-        return t('tool.status.listingWorkflows', language as any)
-    }
-
-    if (isMcpToolName(name)) {
-        const mcpStatus = getMcpToolStatusText(name, status, isStreaming, language)
-        if (mcpStatus) return mcpStatus
-    }
-
-    if (isRunning) {
-        const friendly = getFriendlyToolName(name, language)
-        return friendly.label
-    }
-
-    return ''
-}
-
-const getHeightPx = (heightClass: string): number => {
-    const bracketMatch = heightClass.match(/\[(\d+)px\]/)
-    if (bracketMatch) return Number(bracketMatch[1])
-
-    const remMatch = heightClass.match(/max-h-(\d+)/)
-    if (remMatch) return Number(remMatch[1]) * 4
-
-    return 200
-}
-
-function PendingPreviewSkeleton() {
+/** 状态指示器视觉配置 */
+function resolveStatusVisual(isStreaming: boolean, isRunning: boolean, isSuccess: boolean, isError: boolean, isRejected: boolean) {
+  if (isStreaming || isRunning) {
     return (
-        <div className="p-2 space-y-1.5 opacity-70" aria-hidden="true">
-            <div className="h-2 rounded-full bg-text-primary/[0.06] animate-pulse w-[72%]" />
-            <div className="h-2 rounded-full bg-text-primary/[0.06] animate-pulse w-[48%]" />
-            <div className="mt-2 h-[2px] rounded-full bg-accent/10 overflow-hidden">
-                <div className="h-full w-1/3 bg-accent/30 rounded-full animate-[skeleton-progress_2s_ease-in-out_infinite]" />
-            </div>
-        </div>
+      <div className="w-3.5 h-3.5 rounded-full bg-accent/20 flex items-center justify-center border border-accent/30">
+        <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+      </div>
     )
+  }
+  if (isSuccess) {
+    return (
+      <div className="w-3.5 h-3.5 rounded-full bg-green-500/10 flex items-center justify-center">
+        <Check className="w-2.5 h-2.5 text-green-500" />
+      </div>
+    )
+  }
+  if (isError || isRejected) {
+    return (
+      <div className="w-3.5 h-3.5 rounded-full bg-red-500/10 flex items-center justify-center">
+        <X className="w-2.5 h-2.5 text-red-500" />
+      </div>
+    )
+  }
+  return <div className="w-3.5 h-3.5 rounded-full border border-text-muted/30" />
 }
 
-export function ExpandablePreviewContainer({
-    children,
-    maxHeight = 'max-h-[200px]',
-    expandedHeight = 'max-h-[350px]',
-    language = 'en',
-}: {
-    children: React.ReactNode
-    maxHeight?: string
-    expandedHeight?: string
-    language?: Language
-}) {
-    const [expanded, setExpanded] = useState(false);
-    const contentRef = useRef<HTMLDivElement>(null);
-    const innerRef = useRef<HTMLDivElement>(null);
-    const [isOverflowing, setIsOverflowing] = useState(false);
-    const [measuredHeight, setMeasuredHeight] = useState(0);
-
-    const collapsedMaxHeight = useMemo(() => getHeightPx(maxHeight), [maxHeight])
-    const expandedMaxHeight = useMemo(() => getHeightPx(expandedHeight), [expandedHeight])
-    const activeMaxHeight = expanded ? expandedMaxHeight : collapsedMaxHeight
-
-    useLayoutEffect(() => {
-        const content = contentRef.current
-        const inner = innerRef.current
-        if (!content || !inner) return
-
-        const measure = () => {
-            const contentHeight = inner.scrollHeight
-            const totalHeight = contentHeight
-            const nextHeight = Math.max(1, Math.min(totalHeight, activeMaxHeight))
-            const nextOverflowing = totalHeight > activeMaxHeight + 10
-
-            setIsOverflowing(nextOverflowing)
-            setMeasuredHeight(nextHeight)
-        }
-
-        measure()
-        const resizeObserver = new ResizeObserver(measure)
-        resizeObserver.observe(content)
-        resizeObserver.observe(inner)
-        return () => resizeObserver.disconnect()
-    }, [children, expanded, activeMaxHeight]);
-
-    const heightValue = useMemo(() => {
-        const match = expandedHeight.match(/\[(.*?)\]/);
-        return match ? match[1] : expandedHeight.replace('max-h-', '');
-    }, [expandedHeight]);
-
-    return (
-        <div className="mt-1 relative overflow-hidden">
-            <div
-                ref={contentRef}
-                className="overflow-y-auto custom-scrollbar transition-[height,background-color] duration-300 ease-out relative"
-                style={{ height: measuredHeight || undefined, maxHeight: activeMaxHeight }}
-            >
-                <div ref={innerRef}>
-                    {children}
-                </div>
-            </div>
-            {isOverflowing && !expanded && (
-                <div
-                    onClick={(e) => { e.stopPropagation(); setExpanded(true); }}
-                    className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-surface/80 via-surface/40 to-transparent flex items-end justify-center pb-2 cursor-pointer transition-all opacity-90 hover:opacity-100"
-                >
-                    <div className="flex items-center gap-1 font-medium pb-0.5 pointer-events-none bg-surface-elevated text-text-muted hover:text-accent px-3 py-1 rounded-full shadow-sm border border-border/40 text-[11px] transition-colors">
-                        <ChevronDown className="w-3 h-3" />
-                        {t('toolExpand', language as any, { height: heightValue })}
-                    </div>
-                </div>
-            )}
-            {isOverflowing && expanded && (
-                <div
-                    onClick={(e) => { e.stopPropagation(); setExpanded(false); }}
-                    className="w-full text-center py-2 mt-1 cursor-pointer flex items-center justify-center"
-                >
-                    <div className="flex items-center gap-1 font-medium pointer-events-none bg-surface-elevated text-text-muted hover:text-accent px-4 py-1 rounded-full shadow-sm border border-border/40 text-[11px] transition-colors">
-                        <ChevronDown className="w-3 h-3 rotate-180 pointer-events-none" />
-                        {t('toolCollapse', language as any)}
-                    </div>
-                </div>
-            )}
-        </div>
-    )
-}
-
-function ToolPreview({
-    toolCall,
-    args,
-    effectiveName,
-    isRunning,
-    isStreaming,
-    language,
-    currentTheme,
-    onCopyResult,
-}: {
-    toolCall: ToolCall
-    args: ToolArgs
-    effectiveName: string
-    isRunning: boolean
-    isStreaming: boolean
-    language: Language
-    currentTheme: string
-    onCopyResult: () => void
-}) {
-    const stringResult = typeof toolCall.result === 'string' ? toolCall.result : ''
-    const pendingPreview = (label?: string) => (
-        <ExpandablePreviewContainer language={language}>
-            <div className="p-2 text-[12px] text-text-muted italic">
-                {label || t('tool.status.waitingOutput', language as any)}
-            </div>
-            <PendingPreviewSkeleton />
-        </ExpandablePreviewContainer>
-    )
-
-    if (effectiveName === 'run_command') {
-        const cmd = asString(args.command)
-
-        return (
-            <div className="font-mono text-[12px] space-y-1">
-                <div className="flex items-start gap-1.5">
-                    <span className="text-accent/60 select-none flex-shrink-0 mt-px">$</span>
-                    <span className="text-text-primary break-all flex-1 min-w-0">{cmd}</span>
-                </div>
-                {stringResult ? (
-                    <ExpandablePreviewContainer language={language}>
-                        <div className="text-text-muted/90 whitespace-pre-wrap break-all p-2 font-mono text-[12px]">
-                            {stringResult.slice(0, 5000)}
-                            {stringResult.length > 5000 && <span className="opacity-50 inline-block ml-1">{t('tool.truncated', language as any)}</span>}
-                        </div>
-                    </ExpandablePreviewContainer>
-                ) : (isRunning || isStreaming) && (
-                    pendingPreview(t('tool.status.waitingTerminalOutput', language as any))
-                )}
-            </div>
-        )
-    }
-
-    if (effectiveName === 'send_terminal_input') {
-        const input = asString(args.input)
-        const display = args.is_ctrl ? `Ctrl+${input.toUpperCase()}` : input.replace(/\n|\r/g, '\\n')
-        const badgeClass = args.is_ctrl ? 'bg-orange-500/10 text-orange-400' : 'bg-surface-elevated text-text-secondary'
-
-        return (
-            <div className="font-mono text-[12px] space-y-1">
-                <div className="flex items-center gap-2">
-                    <Terminal className="w-3.5 h-3.5 text-text-muted" />
-                    <span className="text-text-muted">{t('tool.sentInput', language as any)}</span>
-                    <span className={`px-1.5 py-0.5 rounded text-[11px] font-medium ${badgeClass}`}>{display}</span>
-                    <span className="text-text-muted/85 text-[11px] ml-1">{t('tool.to', language as any)} {asString(args.terminal_id)}</span>
-                </div>
-            </div>
-        )
-    }
-
-    if (effectiveName === 'stop_terminal') {
-        return (
-            <div className="font-mono text-[12px] space-y-1 text-red-400">
-                <div className="flex items-center gap-2">
-                    <Terminal className="w-3.5 h-3.5 opacity-80" />
-                    <span className="font-medium">{t('tool.forceTerminated', language as any)}</span>
-                    <span className="opacity-50 text-[11px]">{asString(args.terminal_id)}</span>
-                </div>
-            </div>
-        )
-    }
-
-    if (effectiveName === 'read_terminal_output') {
-        return (
-            <div className="font-mono text-[12px] space-y-1">
-                <div className="flex items-center gap-2 text-text-muted">
-                    <Terminal className="w-3.5 h-3.5 text-accent/70" />
-                    <span>{t('tool.readTerminalLogs', language as any)}</span>
-                    <span className="opacity-50 text-[11px]">{asString(args.terminal_id)}</span>
-                </div>
-                {stringResult.length > 0 ? (
-                    <ExpandablePreviewContainer language={language}>
-                        <div className="text-text-muted/90 whitespace-pre-wrap break-all p-2 bg-surface/50">
-                            {stringResult}
-                        </div>
-                    </ExpandablePreviewContainer>
-                ) : (isRunning || isStreaming) && (
-                    pendingPreview(t('tool.status.waitingTerminalOutput', language as any))
-                )}
-            </div>
-        )
-    }
-
-    if (['search_files', 'codebase_search', 'web_search', 'uiux_search'].includes(effectiveName)) {
-        const query = asString(args.pattern) || asString(args.query)
-        const searchTypeKey = effectiveName === 'codebase_search' ? 'tool.searchType.semantic' : effectiveName === 'web_search' ? 'tool.searchType.web' : effectiveName === 'uiux_search' ? 'tool.searchType.uiux' : 'tool.searchType.files'
-        const searchType = t(searchTypeKey as any, language as any)
-
-        return (
-            <div className="space-y-1 text-[12px]">
-                <div className="flex items-center gap-1.5 text-text-muted">
-                    <Search className="w-3 h-3" />
-                    <span>{searchType}:</span>
-                    <span className="text-text-primary font-medium truncate">"{query}"</span>
-                </div>
-                {toolCall.result ? (
-                    <ExpandablePreviewContainer language={language}>
-                        <JsonHighlight data={toolCall.result} className="p-2 bg-transparent m-0" maxHeight="max-h-full" maxLength={3000} />
-                    </ExpandablePreviewContainer>
-                ) : (isRunning || isStreaming) && (
-                    pendingPreview('Searching...')
-                )}
-            </div>
-        )
-    }
-
-    if (effectiveName === 'list_directory') {
-        const paths = getToolPathList(args)
-        const path = paths[0] || ''
-        const displayName = paths.length > 1 ? getPathSummary(paths) : getPathDisplayName(path) || '.'
-
-        return (
-            <div className="space-y-1 text-[12px]">
-                <div className="flex items-center gap-1.5 text-text-muted">
-                    <FileCode className="w-3 h-3" />
-                    <span className="text-text-primary font-medium" title={path || undefined}>{displayName}</span>
-                </div>
-                {stringResult ? (
-                    <ExpandablePreviewContainer language={language}>
-                        <div className="p-2 font-mono text-text-secondary whitespace-pre">
-                            {stringResult.slice(0, 5000)}
-                            {stringResult.length > 5000 && <span className="opacity-50 mt-1 block">{t('tool.truncated', language as any)}</span>}
-                        </div>
-                    </ExpandablePreviewContainer>
-                ) : (isRunning || isStreaming) && (
-                    pendingPreview('Reading directory...')
-                )}
-            </div>
-        )
-    }
-
-    if (['edit_file', 'write_file'].includes(effectiveName)) {
-        const filePath = getPrimaryToolPath(args)
-        const oldString = asString(args.old_string)
-        const nextContent = asString(args.content) || asString(args.new_string)
-        const oldContent = oldString.slice(0, 5000)
-        const newContent = nextContent.slice(0, 5000)
-        const meta = args._meta as Record<string, unknown> | undefined
-        const isLargeWrite = meta?.isLargeWrite === true || meta?.contentTruncated === true
-        const isTruncated = isLargeWrite || nextContent.length > 5000 || oldString.length > 5000
-
-        if (newContent || isStreaming) {
-            return (
-                <div className="space-y-1">
-                    <div className="flex items-center flex-wrap gap-2 text-[12px] text-text-muted">
-                        <FileCode className="w-3 h-3 flex-shrink-0" />
-                        {filePath ? (
-                            <span className="font-medium text-text-primary transition-colors break-all" title={filePath}>
-                                <TextWithFileLinks text={getFileName(filePath)} />
-                            </span>
-                        ) : (isStreaming || isRunning) ? (
-                            <span className="font-medium tool-text-shimmer italic">editing...</span>
-                        ) : (
-                            <span className="font-medium text-text-primary opacity-50">&lt;empty path&gt;</span>
-                        )}
-                        {isStreaming && (
-                            <span className="text-accent flex items-center gap-1">
-                                <span className="w-1 h-1 rounded-full bg-accent animate-pulse" />
-                                Writing...
-                            </span>
-                        )}
-                        {isTruncated && !isStreaming && <span className="text-amber-500">({t('tool.truncated', language as any).replace('... ', '')})</span>}
-                    </div>
-                    {isLargeWrite && !isStreaming ? (
-                        <div className="ml-1 rounded-md border border-amber-500/20 bg-amber-500/5 px-2 py-2 text-[12px] text-text-muted">
-                            Large file preview deferred. Open the file to inspect the full content safely.
-                        </div>
-                    ) : (
-                        <div className="max-h-64 overflow-auto custom-scrollbar pl-2 ml-1">
-                            <InlineDiffPreview
-                                oldContent={oldContent}
-                                newContent={newContent}
-                                filePath={filePath}
-                                isStreaming={isStreaming}
-                                maxLines={30}
-                            />
-                        </div>
-                    )}
-                    {stringResult && !isStreaming && (
-                        <ExpandablePreviewContainer language={language} maxHeight="max-h-[100px]">
-                            <div className="p-2 text-[12px] text-text-muted">
-                                {stringResult.slice(0, 1000)}
-                            </div>
-                        </ExpandablePreviewContainer>
-                    )}
-                </div>
-            )
-        }
-    }
-
-    if (['create_file_or_folder', 'delete_file_or_folder'].includes(effectiveName)) {
-        const paths = getToolPathList(args)
-        const path = paths[0] || ''
-        const isDelete = effectiveName === 'delete_file_or_folder'
-        const isFolder = path.endsWith('/')
-        const displayName = paths.length > 1 ? getPathSummary(paths) : (path ? getPathDisplayName(path) : '<no path>')
-
-        return (
-            <div className="space-y-1">
-                <div className="flex items-center gap-1.5 text-[12px]">
-                    <FileCode className={`w-3 h-3 ${isDelete ? 'text-status-error' : 'text-status-success'}`} />
-                    <span className={`font-medium ${isDelete ? 'text-status-error' : 'text-status-success'}`}>
-                        {isDelete ? 'Delete' : 'Create'} {isFolder ? 'folder' : 'file'}:
-                    </span>
-                    <span className="text-text-primary break-all" title={path || undefined}>{displayName}</span>
-                </div>
-                {stringResult && (
-                    <ExpandablePreviewContainer language={language} maxHeight="max-h-[100px]">
-                        <div className="p-2 text-[12px] text-text-muted">
-                            <TextWithFileLinks text={stringResult.slice(0, 1000)} />
-                        </div>
-                    </ExpandablePreviewContainer>
-                )}
-            </div>
-        )
-    }
-
-    if (['read_file', 'read_multiple_files'].includes(effectiveName)) {
-        const paths = getToolPathList(args)
-        const filePath = paths[0] || ''
-        const hasResolvedReadTarget = paths.length > 0
-        if (!hasResolvedReadTarget && !toolCall.result && !toolCall.richContent?.length && !isRunning && !isStreaming) {
-            return null
-        }
-        const displayName = paths.length > 1 ? getPathSummary(paths) : (filePath ? getPathDisplayName(filePath) : '<no path>')
-        const theme = themeManager.getThemeById(currentTheme)
-        const isDark = theme?.type === 'dark'
-        const safeResult = stringResult || ''
-
-        return (
-            <div className="space-y-1 mt-1">
-                <div className="flex items-center gap-1.5 text-[12px] text-text-muted">
-                    <FileCode className="w-3 h-3" />
-                    <span className="font-medium text-text-primary transition-colors hover:underline cursor-pointer" title={paths.join('\n') || undefined}>
-                        <TextWithFileLinks text={displayName} />
-                    </span>
-                </div>
-                {safeResult ? (
-                    <ExpandablePreviewContainer language={language}>
-                        <CodeHighlight
-                            code={safeResult.slice(0, 5000)}
-                            language={filePath ? guessLanguage(filePath) : 'typescript'}
-                            isDark={isDark}
-                            isStreaming={isRunning || isStreaming}
-                            fontSize={12}
-                        />
-                    </ExpandablePreviewContainer>
-                ) : (isRunning || isStreaming) && (
-                    pendingPreview('Reading file...')
-                )}
-            </div>
-        )
-    }
-
-    if (effectiveName === 'read_url') {
-        const url = asString(args.url)
-        let hostname = '<no url>'
-        if (url) {
-            try {
-                hostname = new URL(url).hostname
-            } catch {
-                hostname = url
-            }
-        }
-
-        return (
-            <div className="space-y-1">
-                <div className="flex items-center gap-1.5 text-[12px] text-text-muted">
-                    <Search className="w-3 h-3" />
-                    <a href={url} target="_blank" rel="noreferrer" className="text-text-primary font-medium hover:underline truncate hover:text-accent transition-colors"
-                        onClick={(e) => { e.preventDefault(); openUrlInBrowser(url) }}
-                    >
-                        {hostname}
-                    </a>
-                </div>
-                {stringResult ? (
-                    <ExpandablePreviewContainer language={language}>
-                        <div className="p-2 text-[12px] text-text-secondary whitespace-pre-wrap break-all">
-                            {stringResult.slice(0, 5000)}
-                            {stringResult.length > 5000 && <span className="opacity-50 mt-1 block">{t('tool.truncated', language as any)}</span>}
-                        </div>
-                    </ExpandablePreviewContainer>
-                ) : (isRunning || isStreaming) && (
-                    pendingPreview('Reading URL...')
-                )}
-            </div>
-        )
-    }
-
-    if (effectiveName === 'apply_skill') {
-        const skillName = asString(args.skill_name)
-        const isDone = toolCall.status === 'success'
-        const isFailed = toolCall.status === 'error'
-
-        return (
-            <div className="space-y-1">
-                <div className="flex items-center gap-1.5 text-[12px]">
-                    <Zap className={`w-3 h-3 ${isRunning ? 'text-accent animate-pulse' : isDone ? 'text-green-400' : isFailed ? 'text-red-400' : 'text-text-muted'}`} />
-                    <span className="text-text-muted">{isDone ? t('tool.status.applied', language as any, { name: skillName || 'Skill' }) : isRunning ? t('tool.status.applying', language as any, { name: skillName || 'Skill' }) : skillName || 'Skill'}</span>
-                </div>
-                {stringResult ? (
-                    <ExpandablePreviewContainer language={language} maxHeight="max-h-[150px]">
-                        <div className="p-2 text-[12px] text-text-muted whitespace-pre-wrap break-all">
-                            {stringResult.slice(0, 3000)}
-                            {stringResult.length > 3000 && <span className="opacity-50 mt-1 block">{t('tool.truncated', language as any)}</span>}
-                        </div>
-                    </ExpandablePreviewContainer>
-                ) : (isRunning || isStreaming) && (
-                    pendingPreview(t('tool.status.applyingEllipsis', language as any))
-                )}
-            </div>
-        )
-    }
-
-    if (['get_lint_errors', 'find_references', 'go_to_definition', 'get_hover_info', 'get_document_symbols'].includes(effectiveName)) {
-        const path = getPrimaryToolPath(args)
-        const line = typeof args.line === 'number' ? args.line : undefined
-
-        return (
-            <div className="space-y-1">
-                <div className="flex items-center gap-1.5 text-[12px] text-text-muted">
-                    <FileCode className="w-3 h-3" />
-                    <span className="font-medium text-text-primary transition-colors hover:underline cursor-pointer" title={path || undefined}>
-                        <TextWithFileLinks text={getFileName(path) || '<unknown path>'} />
-                    </span>
-                    {line && <span className="text-text-muted/90">:{line}</span>}
-                </div>
-                {toolCall.result ? (
-                    <ExpandablePreviewContainer language={language}>
-                        <JsonHighlight data={toolCall.result} className="p-2 bg-transparent m-0" maxHeight="max-h-full" maxLength={3000} />
-                    </ExpandablePreviewContainer>
-                ) : (isRunning || isStreaming) && (
-                    pendingPreview(t('tool.status.analyzingEllipsis', language as any))
-                )}
-            </div>
-        )
-    }
-
-    const hasArgs = Object.keys(args).some(key => !key.startsWith('_'))
-    const filteredArgs = Object.fromEntries(Object.entries(args).filter(([key]) => !key.startsWith('_')))
-
-    return (
-        <div className="space-y-1 mt-1 text-[12px]">
-            {hasArgs && (
-                <>
-                    <div className="flex items-center gap-1.5 text-text-muted">
-                        <FileCode className="w-3 h-3" />
-                        <span>{t('tool.arguments', language as any)}</span>
-                    </div>
-                    <ExpandablePreviewContainer language={language} maxHeight="max-h-[150px]">
-                        <JsonHighlight data={filteredArgs} className="p-2 bg-transparent m-0" maxHeight="max-h-full" maxLength={1500} />
-                    </ExpandablePreviewContainer>
-                </>
-            )}
-            {toolCall.richContent && toolCall.richContent.length > 0 && (
-                <ExpandablePreviewContainer language={language}>
-                    <div className="p-2">
-                        <RichContentRenderer content={toolCall.richContent} maxHeight="max-h-full" />
-                    </div>
-                </ExpandablePreviewContainer>
-            )}
-            {toolCall.result && (!toolCall.richContent || toolCall.richContent.length === 0) && (
-                <>
-                    <div className="flex items-center justify-between gap-1.5 text-text-muted mt-2 group/title">
-                        <div className="flex items-center gap-1.5">
-                            <Terminal className="w-3 h-3" />
-                            <span>{t('tool.result', language as any)}</span>
-                        </div>
-                        <button
-                            onClick={event => {
-                                event.stopPropagation()
-                                onCopyResult()
-                            }}
-                            className="opacity-0 group-hover/title:opacity-100 transition-opacity p-0.5 hover:bg-surface-elevated rounded text-text-muted hover:text-text-primary"
-                            title={t('tool.copyResult', language as any)}
-                        >
-                            <Copy className="w-3 h-3" />
-                        </button>
-                    </div>
-                    <ExpandablePreviewContainer language={language}>
-                        <JsonHighlight data={toolCall.result} className="p-2 bg-transparent m-0" maxHeight="max-h-full" maxLength={3000} />
-                    </ExpandablePreviewContainer>
-                </>
-            )}
-            {!toolCall.result && (!toolCall.richContent || toolCall.richContent.length === 0) && (isRunning || isStreaming) && pendingPreview()}
-        </div>
-    )
-}
-
-function ToolElapsedTime({ startTime, endTime, isRunning }: { startTime?: number; endTime?: number; isRunning: boolean }) {
-    const [now, setNow] = useState(Date.now())
-
-    useEffect(() => {
-        if (!isRunning || !startTime) return
-        const id = setInterval(() => setNow(Date.now()), 1000)
-        return () => clearInterval(id)
-    }, [isRunning, startTime])
-
-    if (!startTime) return null
-
-    const elapsed = isRunning ? now - startTime : (endTime ? endTime - startTime : 0)
-    if (elapsed <= 0) return null
-
-    const seconds = elapsed / 1000
-    const display = seconds < 10
-        ? seconds.toFixed(1)
-        : Math.round(seconds).toString()
-
-    return (
-        <span className="text-[11px] text-text-muted/60 tabular-nums flex-shrink-0">
-            {display}s
-        </span>
-    )
+/** 卡片样式配置 */
+function resolveCardStyle(isAwaitingApproval: boolean, isError: boolean, isStreaming: boolean, isRunning: boolean): string {
+  if (isAwaitingApproval) return 'border border-red-500/20 bg-red-500/5 rounded-lg shadow-sm shadow-red-500/5 overflow-hidden'
+  if (isError) return 'bg-red-500/5 rounded-lg overflow-hidden'
+  if (isStreaming || isRunning) return 'bg-accent/5 rounded-lg overflow-hidden'
+  return 'hover:bg-text-primary/[0.02] transition-colors rounded-lg overflow-hidden'
 }
 
 const ToolCallCard = memo(function ToolCallCard({
-    toolCall,
-    isAwaitingApproval,
-    onApprove,
-    onReject,
-    defaultExpanded,
+  toolCall,
+  isAwaitingApproval,
+  onApprove,
+  onReject,
+  defaultExpanded,
 }: ToolCallCardProps) {
-    const { language, setTerminalVisible, currentTheme, expandToolCallsByDefault } = useStore(useShallow(state => ({
-        language: state.language,
-        setTerminalVisible: state.setTerminalVisible,
-        currentTheme: state.currentTheme,
-        expandToolCallsByDefault: state.agentConfig.expandToolCallsByDefault ?? false,
-    })))
-    const { args, effectiveName, isSuccess, isError, isRejected, isRunning, isStreaming } = useToolDisplayState(toolCall)
-    const isActive = isRunning || isStreaming
-    const shouldAutoExpand = effectiveName === 'todo_write'
-    const { isExpanded, animateContent, handleToggleExpanded } = useToolCardExpansion({
-        defaultExpanded: defaultExpanded ?? (shouldAutoExpand || expandToolCallsByDefault),
-        isActive,
-    })
+  const { language, setTerminalVisible, currentTheme, expandToolCallsByDefault } = useStore(
+    useShallow((state) => ({
+      language: state.language,
+      setTerminalVisible: state.setTerminalVisible,
+      currentTheme: state.currentTheme,
+      expandToolCallsByDefault: state.agentConfig.expandToolCallsByDefault ?? false,
+    })),
+  )
+  const { args, effectiveName, isSuccess, isError, isRejected, isRunning, isStreaming } = useToolDisplayState(toolCall)
+  const isActive = isRunning || isStreaming
+  const shouldAutoExpand = effectiveName === 'todo_write'
+  const { isExpanded, animateContent, handleToggleExpanded } = useToolCardExpansion({
+    defaultExpanded: defaultExpanded ?? (shouldAutoExpand || expandToolCallsByDefault),
+    isActive,
+  })
 
-    const statusText = useMemo(
-        () => getStatusText(effectiveName, args, toolCall.status, isStreaming, language, toolCall.result),
-        [effectiveName, args, toolCall.status, isStreaming, language, toolCall.result]
-    )
+  const statusText = useMemo(
+    () => getStatusText(effectiveName, args, toolCall.status, isStreaming, language, toolCall.result),
+    [effectiveName, args, toolCall.status, isStreaming, language, toolCall.result],
+  )
 
-    const cardStyle = useMemo(() => {
-        if (isAwaitingApproval) return 'border border-red-500/20 bg-red-500/5 rounded-lg shadow-sm shadow-red-500/5 overflow-hidden'
-        if (isError) return 'bg-red-500/5 rounded-lg overflow-hidden'
-        if (isStreaming || isRunning) return 'bg-accent/5 rounded-lg overflow-hidden'
-        return 'hover:bg-text-primary/[0.02] transition-colors rounded-lg overflow-hidden'
-    }, [isAwaitingApproval, isError, isStreaming, isRunning])
+  const cardStyle = useMemo(
+    () => resolveCardStyle(!!isAwaitingApproval, isError, isStreaming, isRunning),
+    [isAwaitingApproval, isError, isStreaming, isRunning],
+  )
 
-    const runCommandMeta = useMemo(() => {
-        if (effectiveName !== 'run_command') return null
-        const meta = (args as { _meta?: { terminalId?: string; executionMode?: string } })._meta
-        return {
-            terminalId: meta?.terminalId,
-            hasLiveTerminal: !!meta?.terminalId,
-            wasDirectExecution: !!meta?.executionMode && meta.executionMode !== 'terminal',
-        }
-    }, [effectiveName, args])
+  const runCommandMeta = useMemo(() => {
+    if (effectiveName !== 'run_command') return null
+    const meta = (args as { _meta?: { terminalId?: string; executionMode?: string } })._meta
+    return {
+      terminalId: meta?.terminalId,
+      hasLiveTerminal: !!meta?.terminalId,
+      wasDirectExecution: !!meta?.executionMode && meta.executionMode !== 'terminal',
+    }
+  }, [effectiveName, args])
 
-    const handleOpenTerminal = useCallback(async (event: React.MouseEvent) => {
-        event.stopPropagation()
-        const meta = runCommandMeta
-        if (!meta?.terminalId) {
-            toast.info(
-                meta?.wasDirectExecution
-                    ? t('tool.directExecutionNoTerminal', language as any)
-                    : t('tool.noTerminalSession', language as any)
-            )
-            return
-        }
-        const { terminalManager } = await import('@services/TerminalAdapter')
-        if (!terminalManager.hasTerminal(meta.terminalId)) {
-            toast.info(t('tool.terminalClosed', language as any))
-            return
-        }
-        setTerminalVisible(true)
-        terminalManager.setActiveTerminal(meta.terminalId!)
-        window.setTimeout(() => terminalManager.setActiveTerminal(meta.terminalId!), 0)
-    }, [runCommandMeta, language, setTerminalVisible])
+  const handleOpenTerminal = useCallback(
+    async (event: React.MouseEvent) => {
+      event.stopPropagation()
+      const meta = runCommandMeta
+      if (!meta?.terminalId) {
+        toast.info(
+          meta?.wasDirectExecution
+            ? t('tool.directExecutionNoTerminal', language as any)
+            : t('tool.noTerminalSession', language as any),
+        )
+        return
+      }
+      const { terminalManager } = await import('@services/TerminalAdapter')
+      if (!terminalManager.hasTerminal(meta.terminalId)) {
+        toast.info(t('tool.terminalClosed', language as any))
+        return
+      }
+      setTerminalVisible(true)
+      terminalManager.setActiveTerminal(meta.terminalId!)
+      window.setTimeout(() => terminalManager.setActiveTerminal(meta.terminalId!), 0)
+    },
+    [runCommandMeta, language, setTerminalVisible],
+  )
 
-    const contentBody = (
-        <div className="pl-[26px] pr-3 pb-3 pt-0 relative border-t-0">
-            <div className="absolute left-[13.5px] top-0 bottom-4 w-[1.5px] bg-border/40 rounded-full" />
+  const handleCopyResult = useCallback(() => {
+    if (toolCall.result) {
+      navigator.clipboard.writeText(toolCall.result)
+    }
+  }, [toolCall.result])
 
-            <div className="relative z-10 space-y-2 mt-1">
-                <ToolPreview
-                    toolCall={toolCall}
-                    args={args}
-                    effectiveName={effectiveName}
-                    isRunning={isRunning}
-                    isStreaming={isStreaming}
-                    language={language}
-                    currentTheme={currentTheme}
-                    onCopyResult={() => {
-                        if (toolCall.result) {
-                            navigator.clipboard.writeText(toolCall.result)
-                        }
-                    }}
-                />
-                {toolCall.error && (
-                    <div className="px-3 py-2 bg-red-500/10 rounded-md">
-                        <div className="flex items-center gap-2 text-red-400 text-xs font-medium mb-1">
-                            <AlertTriangle className="w-3 h-3" />
-                            {t('tool.error', language as any)}
-                        </div>
-                        <p className="text-[12px] text-red-300 font-mono break-all">{toolCall.error}</p>
-                    </div>
-                )}
+  const contentBody = (
+    <div className="pl-[26px] pr-3 pb-3 pt-0 relative border-t-0">
+      <div className="absolute left-[13.5px] top-0 bottom-4 w-[1.5px] bg-border/40 rounded-full" />
+      <div className="relative z-10 space-y-2 mt-1">
+        {renderToolPreview({
+          toolCall,
+          args,
+          effectiveName,
+          isRunning,
+          isStreaming,
+          language,
+          currentTheme,
+          onCopyResult: handleCopyResult,
+        })}
+        {toolCall.error && (
+          <div className="px-3 py-2 bg-red-500/10 rounded-md">
+            <div className="flex items-center gap-2 text-red-400 text-xs font-medium mb-1">
+              <AlertTriangle className="w-3 h-3" />
+              {t('tool.error', language as any)}
             </div>
+            <p className="text-[12px] text-red-300 font-mono break-all">{toolCall.error}</p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+
+  return (
+    <div className={`group my-0.5 relative ${cardStyle}`}>
+      {(isStreaming || isRunning) && (
+        <div className="absolute inset-0 pointer-events-none rounded-lg overflow-hidden">
+          <div className="absolute inset-0 w-[200%] h-full bg-gradient-to-r from-transparent via-accent/10 to-transparent tool-card-sweep" />
         </div>
-    )
+      )}
 
-    return (
-        <div className={`group my-0.5 relative ${cardStyle}`}>
-            {(isStreaming || isRunning) && (
-                <div className="absolute inset-0 pointer-events-none rounded-lg overflow-hidden">
-                    <div className="absolute inset-0 w-[200%] h-full bg-gradient-to-r from-transparent via-accent/10 to-transparent tool-card-sweep" />
-                </div>
-            )}
+      <div
+        className="flex min-h-[32px] items-center gap-2 py-1.5 cursor-pointer select-none"
+        onClick={handleToggleExpanded}
+      >
+        <motion.div
+          animate={{ rotate: isExpanded ? 90 : 0 }}
+          transition={{ duration: 0.15 }}
+          className="shrink-0 text-text-muted/85 hover:text-text-muted"
+        >
+          <ChevronDown className="w-3.5 h-3.5 -rotate-90" />
+        </motion.div>
 
-            <div className="flex min-h-[32px] items-center gap-2 py-1.5 cursor-pointer select-none" onClick={handleToggleExpanded}>
-                <motion.div animate={{ rotate: isExpanded ? 90 : 0 }} transition={{ duration: 0.15 }} className="shrink-0 text-text-muted/85 hover:text-text-muted">
-                    <ChevronDown className="w-3.5 h-3.5 -rotate-90" />
-                </motion.div>
-
-                <div className="shrink-0 relative z-10 w-4 h-4 flex items-center justify-center">
-                    {isStreaming || isRunning ? (
-                        <div className="w-3.5 h-3.5 rounded-full bg-accent/20 flex items-center justify-center border border-accent/30">
-                            <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-                        </div>
-                    ) : isSuccess ? (
-                        <div className="w-3.5 h-3.5 rounded-full bg-green-500/10 flex items-center justify-center">
-                            <Check className="w-2.5 h-2.5 text-green-500" />
-                        </div>
-                    ) : isError ? (
-                        <div className="w-3.5 h-3.5 rounded-full bg-red-500/10 flex items-center justify-center">
-                            <X className="w-2.5 h-2.5 text-red-500" />
-                        </div>
-                    ) : isRejected ? (
-                        <div className="w-3.5 h-3.5 rounded-full bg-red-500/10 flex items-center justify-center">
-                            <X className="w-2.5 h-2.5 text-red-500" />
-                        </div>
-                    ) : (
-                        <div className="w-3.5 h-3.5 rounded-full border border-text-muted/30" />
-                    )}
-                </div>
-
-                <div className="flex-1 min-w-0 flex items-center justify-between gap-2 overflow-hidden relative z-10">
-                    <span className={`text-[12px] truncate ${isStreaming || isRunning ? 'text-text-primary tool-text-shimmer' : 'text-text-secondary group-hover:text-text-primary transition-colors'}`}>
-                        {statusText || (
-                            <span className="opacity-50 inline-flex items-center gap-1.5">
-                                <span>{TOOL_LABEL_KEYS[effectiveName] ? t(TOOL_LABEL_KEYS[effectiveName] as any, language as any) : getFriendlyToolName(effectiveName, language).label}</span>
-                            </span>
-                        )}
-                    </span>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                        {runCommandMeta && (isRunning || runCommandMeta.hasLiveTerminal) && (
-                            <span
-                                className={`flex items-center gap-1 text-[10px] rounded px-1.5 py-0.5 select-none ${
-                                    isRunning
-                                        ? 'text-accent bg-accent/10'
-                                        : 'text-text-muted cursor-pointer hover:text-text-primary hover:bg-surface-hover'
-                                }`}
-                                onClick={runCommandMeta.hasLiveTerminal ? handleOpenTerminal : undefined}
-                                title={runCommandMeta.hasLiveTerminal ? t('tool.viewInTerminal', language as any) : undefined}
-                            >
-                                <Terminal className={`w-3 h-3 ${isRunning ? 'animate-pulse' : ''}`} />
-                                <span>
-                                    {isRunning
-                                        ? t('tool.running', language as any)
-                                        : t('tool.terminal', language as any)}
-                                </span>
-                            </span>
-                        )}
-                        <ToolElapsedTime startTime={toolCall.startTime} endTime={toolCall.endTime} isRunning={isRunning || isStreaming} />
-                    </div>
-                </div>
-            </div>
-
-            {isExpanded && (
-                animateContent ? (
-                    <AnimatePresence initial={false}>
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            transition={{ duration: 0.16, ease: 'easeOut' }}
-                        >
-                            {contentBody}
-                        </motion.div>
-                    </AnimatePresence>
-                ) : (
-                    contentBody
-                )
-            )}
-
-            {isAwaitingApproval && (
-                <div className="flex items-center justify-between gap-2 px-3 py-2 border-t border-red-500/10 bg-red-500/5">
-                    <span className="text-xs text-red-400/70 truncate">
-                        {t('toolAwaitingApproval', language as any)}
-                    </span>
-                    <div className="flex items-center gap-2 shrink-0">
-                        <button onClick={onReject} className="px-3 py-1.5 text-xs font-medium text-text-muted hover:text-red-400 hover:bg-red-500/10 rounded-md transition-all">
-                            {t('toolReject', language as any)}
-                        </button>
-                        <button onClick={onApprove} className="px-3 py-1.5 text-xs font-medium bg-accent text-white hover:bg-accent-hover rounded-md transition-all">
-                            {t('toolApprove', language as any)}
-                        </button>
-                    </div>
-                </div>
-            )}
+        <div className="shrink-0 relative z-10 w-4 h-4 flex items-center justify-center">
+          {resolveStatusVisual(isStreaming, isRunning, isSuccess, isError, isRejected)}
         </div>
-    )
+
+        <div className="flex-1 min-w-0 flex items-center justify-between gap-2 overflow-hidden relative z-10">
+          <span
+            className={`text-[12px] truncate ${isStreaming || isRunning ? 'text-text-primary tool-text-shimmer' : 'text-text-secondary group-hover:text-text-primary transition-colors'}`}
+          >
+            {statusText || (
+              <span className="opacity-50 inline-flex items-center gap-1.5">
+                <span>
+                  {TOOL_LABEL_KEYS[effectiveName]
+                    ? t(TOOL_LABEL_KEYS[effectiveName] as any, language as any)
+                    : getFriendlyToolName(effectiveName, language).label}
+                </span>
+              </span>
+            )}
+          </span>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {runCommandMeta && (isRunning || runCommandMeta.hasLiveTerminal) && (
+              <span
+                className={`flex items-center gap-1 text-[10px] rounded px-1.5 py-0.5 select-none ${
+                  isRunning
+                    ? 'text-accent bg-accent/10'
+                    : 'text-text-muted cursor-pointer hover:text-text-primary hover:bg-surface-hover'
+                }`}
+                onClick={runCommandMeta.hasLiveTerminal ? handleOpenTerminal : undefined}
+                title={runCommandMeta.hasLiveTerminal ? t('tool.viewInTerminal', language as any) : undefined}
+              >
+                <Terminal className={`w-3 h-3 ${isRunning ? 'animate-pulse' : ''}`} />
+                <span>{isRunning ? t('tool.running', language as any) : t('tool.terminal', language as any)}</span>
+              </span>
+            )}
+            <ToolElapsedTime startTime={toolCall.startTime} endTime={toolCall.endTime} isRunning={isRunning || isStreaming} />
+          </div>
+        </div>
+      </div>
+
+      {isExpanded &&
+        (animateContent ? (
+          <AnimatePresence initial={false}>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.16, ease: 'easeOut' }}
+            >
+              {contentBody}
+            </motion.div>
+          </AnimatePresence>
+        ) : (
+          contentBody
+        ))}
+
+      {isAwaitingApproval && (
+        <div className="flex items-center justify-between gap-2 px-3 py-2 border-t border-red-500/10 bg-red-500/5">
+          <span className="text-xs text-red-400/70 truncate">{t('toolAwaitingApproval', language as any)}</span>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={onReject}
+              className="px-3 py-1.5 text-xs font-medium text-text-muted hover:text-red-400 hover:bg-red-500/10 rounded-md transition-all"
+            >
+              {t('toolReject', language as any)}
+            </button>
+            <button
+              onClick={onApprove}
+              className="px-3 py-1.5 text-xs font-medium bg-accent text-white hover:bg-accent-hover rounded-md transition-all"
+            >
+              {t('toolApprove', language as any)}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 })
 
 export default ToolCallCard
+export { ExpandablePreviewContainer } from './toolCallCard/ExpandablePreviewContainer'

@@ -1,5 +1,5 @@
 /**
- * Checkpoint and file snapshot types.
+ * 检查点与文件快照类型定义
  */
 
 import type { ContextItem } from './contextModel'

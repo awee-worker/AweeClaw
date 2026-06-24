@@ -1,5 +1,5 @@
 /**
- * Central provider definitions and protocol helpers.
+ * Provider 定义与协议助手 — 集中管理 AI Provider 配置
  */
 
 export type AuthType = 'bearer' | 'api-key' | 'header' | 'query' | 'none'

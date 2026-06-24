@@ -1,6 +1,5 @@
 /**
- * Shared configuration types.
- * This is the single source of truth for persisted settings-related shapes.
+ * 共享配置类型 — 持久化设置相关类型的唯一数据源
  */
 
 import type { ApiProtocol, OpenAICompatibilityProfile } from '@shared/configuration/aiProviders'

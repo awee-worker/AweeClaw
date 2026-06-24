@@ -1,6 +1,8 @@
 /**
- * Streaming edit service.
- * Keeps live file-edit previews in sync with the UI.
+ * 流式编辑服务 — 实时文件编辑预览同步
+ *
+ * 职责：
+ * - 保持实时文件编辑预览与 UI 的同步
  */
 
 import { logger } from '@toolkit/LogEngine'

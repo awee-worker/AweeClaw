@@ -1,21 +1,34 @@
 /**
- * Git 相关状态切片
- * 包含缓存层，避免频繁重复请求 Git 数据
+ * Git 状态切片
+ *
+ * 缓存 Git 状态、分支、Stash 与提交历史，支持批量刷新以减少渲染。
  */
-import { StateCreator } from 'zustand'
-import type { GitStatus, GitBranch, GitStashEntry, GitCommit } from '@services/gitAdapter'
 
+import { StateCreator } from 'zustand'
+import type {
+  GitStatus,
+  GitBranch,
+  GitStashEntry,
+  GitCommit,
+} from '@services/gitAdapter'
+
+/** Git 操作进行中的状态 */
+export type GitOperationState = 'normal' | 'merge' | 'rebase' | 'cherry-pick' | 'revert'
+
+/** 可批量更新的 Git 缓存字段 */
+export type GitCacheFields = Pick<
+  GitSlice,
+  'gitStatus' | 'gitBranches' | 'gitStashList' | 'gitRecentCommits' | 'gitOperationState'
+>
+
+/** 切片接口 */
 export interface GitSlice {
   gitStatus: GitStatus | null
   isGitRepo: boolean
-  /** 分支列表缓存 */
   gitBranches: GitBranch[]
-  /** Stash 列表缓存 */
   gitStashList: GitStashEntry[]
-  /** 最近提交历史缓存 */
   gitRecentCommits: GitCommit[]
-  /** 当前进行中的 Git 操作 */
-  gitOperationState: 'normal' | 'merge' | 'rebase' | 'cherry-pick' | 'revert'
+  gitOperationState: GitOperationState
   /** 缓存上次刷新时间，用于节流 */
   _gitCacheTimestamp: number
 
@@ -24,11 +37,9 @@ export interface GitSlice {
   setGitBranches: (branches: GitBranch[]) => void
   setGitStashList: (list: GitStashEntry[]) => void
   setGitRecentCommits: (commits: GitCommit[]) => void
-  setGitOperationState: (state: GitSlice['gitOperationState']) => void
-  /** 批量更新 Git 缓存（减少渲染次数） */
-  updateGitCache: (data: Partial<Pick<GitSlice,
-    'gitStatus' | 'gitBranches' | 'gitStashList' | 'gitRecentCommits' | 'gitOperationState'
-  >>) => void
+  setGitOperationState: (state: GitOperationState) => void
+  /** 批量更新 Git 缓存 */
+  updateGitCache: (data: Partial<GitCacheFields>) => void
 }
 
 export const createGitSlice: StateCreator<GitSlice, [], [], GitSlice> = (set) => ({
@@ -46,5 +57,10 @@ export const createGitSlice: StateCreator<GitSlice, [], [], GitSlice> = (set) =>
   setGitStashList: (list) => set({ gitStashList: list }),
   setGitRecentCommits: (commits) => set({ gitRecentCommits: commits }),
   setGitOperationState: (state) => set({ gitOperationState: state }),
-  updateGitCache: (data) => set({ ...data, _gitCacheTimestamp: Date.now() }),
+
+  updateGitCache: (data) =>
+    set({
+      ...data,
+      _gitCacheTimestamp: Date.now(),
+    }),
 })

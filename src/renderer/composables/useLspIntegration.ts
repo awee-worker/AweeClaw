@@ -1,7 +1,10 @@
 /**
- * LSP 集成 Hook
+ * LSP 与 Monaco 编辑器集成 Hook
+ *
+ * 负责 LSP 服务启动、Provider 注册、诊断同步与链接跳转。
  */
-import { useEffect, useCallback, useRef } from 'react'
+
+import { useCallback, useEffect, useRef } from 'react'
 import { useStore } from '@store'
 import { logger } from '@toolkit/LogEngine'
 import {
@@ -16,38 +19,111 @@ import { normalizeLspUri } from '@shared/toolkit/uriHelper'
 import type { editor } from 'monaco-editor'
 import { LSP_SUPPORTED_LANGUAGES } from '@shared/languageRegistry'
 
-// 路径链接支持的语言（包括 LSP 支持的语言 + markdown）
-const PATH_LINK_LANGUAGES = [...LSP_SUPPORTED_LANGUAGES, 'markdown'] as string[]
+/** 路径链接支持的语言（LSP 语言 + markdown） */
+const PATH_LINK_LANGUAGES: string[] = [...LSP_SUPPORTED_LANGUAGES, 'markdown']
+
+/** Monaco 诊断同步防抖时长 */
+const MARKER_SYNC_DEBOUNCE_MS = 500
+
+/** Monaco 命名空间类型别名 */
+type MonacoNS =
+  | typeof import('monaco-editor')
+  | typeof import('monaco-editor/esm/vs/editor/editor.api')
+
+/** 可释放资源句柄 */
+type Disposable = import('monaco-editor').IDisposable
+
+/* ------------------------------------------------------------------ */
+/* 诊断转换                                                          */
+/* ------------------------------------------------------------------ */
+
+/** LSP 严重级别到 Monaco MarkerSeverity 的映射 */
+function lspSeverityToMonaco(
+  monaco: MonacoNS,
+  severity: number,
+): import('monaco-editor').MarkerSeverity {
+  switch (severity) {
+    case 1:
+      return monaco.MarkerSeverity.Error
+    case 2:
+      return monaco.MarkerSeverity.Warning
+    case 3:
+      return monaco.MarkerSeverity.Info
+    default:
+      return monaco.MarkerSeverity.Hint
+  }
+}
+
+/** Monaco MarkerSeverity 到 LSP 严重级别的映射 */
+function monacoSeverityToLsp(
+  monaco: MonacoNS,
+  severity: import('monaco-editor').MarkerSeverity,
+): number {
+  switch (severity) {
+    case monaco.MarkerSeverity.Error:
+      return 1
+    case monaco.MarkerSeverity.Warning:
+      return 2
+    case monaco.MarkerSeverity.Info:
+      return 3
+    default:
+      return 4
+  }
+}
+
+/** 将 Monaco marker code 转为字符串 */
+function stringifyCode(code: unknown): string | undefined {
+  if (code == null) return undefined
+  if (typeof code === 'object' && code !== null && 'value' in code) {
+    return String((code as { value: unknown }).value)
+  }
+  return String(code)
+}
+
+/* ------------------------------------------------------------------ */
+/* Hook                                                              */
+/* ------------------------------------------------------------------ */
 
 export function useLspIntegration() {
   const workspacePath = useStore((state) => state.workspacePath)
   const isLspReady = useStore((state) => state.isLspReady)
   const setIsLspReady = useStore((state) => state.setIsLspReady)
 
-  // 启动 LSP 服务器
+  const disposablesRef = useRef<Disposable[]>([])
+
+  /* ---------------- 启动 LSP 服务 ---------------- */
   useEffect(() => {
-    if (workspacePath && !isLspReady) {
-      logger.ui.info('[LSP] Starting server for workspace:', workspacePath)
-      startLspServer(workspacePath).then((success) => {
-        if (success) {
-          logger.ui.info('[LSP] Server started successfully')
-          setIsLspReady(true)
-        } else {
-          logger.ui.warn('[LSP] Server failed to start')
-        }
-      })
+    if (!workspacePath || isLspReady) return
+
+    let cancelled = false
+    logger.ui.info('[LSP] Starting server for workspace:', workspacePath)
+
+    startLspServer(workspacePath).then((success) => {
+      if (cancelled) return
+      if (success) {
+        logger.ui.info('[LSP] Server started successfully')
+        setIsLspReady(true)
+      } else {
+        logger.ui.warn('[LSP] Server failed to start')
+      }
+    })
+
+    return () => {
+      cancelled = true
     }
   }, [workspacePath, isLspReady, setIsLspReady])
 
-  // 存储 provider disposables 用于清理
-  const disposablesRef = useRef<import('monaco-editor').IDisposable[]>([])
+  /* ---------------- 卸载时清理 ---------------- */
+  useEffect(() => {
+    return () => {
+      disposablesRef.current.forEach((d) => d.dispose())
+      disposablesRef.current = []
+    }
+  }, [])
 
-  // 注册 LSP 提供者到 Monaco
-  const registerProviders = useCallback((
-    monaco: typeof import('monaco-editor') | typeof import('monaco-editor/esm/vs/editor/editor.api')
-  ) => {
-    // 清理旧的 providers
-    disposablesRef.current.forEach(d => d.dispose())
+  /* ---------------- 注册 Provider ---------------- */
+  const registerProviders = useCallback((monaco: MonacoNS) => {
+    disposablesRef.current.forEach((d) => d.dispose())
     disposablesRef.current = []
 
     const lspDisposables = registerLspProviders(monaco as typeof import('monaco-editor'))
@@ -55,145 +131,115 @@ export function useLspIntegration() {
       disposablesRef.current.push(...lspDisposables)
     }
 
-    // 注册路径链接提供者
-    const linkDisposable = monaco.languages.registerLinkProvider(PATH_LINK_LANGUAGES, pathLinkService.createLinkProvider())
+    const linkDisposable = monaco.languages.registerLinkProvider(
+      PATH_LINK_LANGUAGES,
+      pathLinkService.createLinkProvider(),
+    )
     disposablesRef.current.push(linkDisposable)
   }, [])
 
-  // 组件卸载时清理 provider disposables
-  useEffect(() => {
-    return () => {
-      disposablesRef.current.forEach(d => d.dispose())
-      disposablesRef.current = []
-    }
-  }, [])
-
-  // 设置诊断监听
-  const setupDiagnostics = useCallback((
-    monaco: typeof import('monaco-editor') | typeof import('monaco-editor/esm/vs/editor/editor.api')
-  ) => {
-    // 监听 LSP 诊断
+  /* ---------------- 诊断同步 ---------------- */
+  const setupDiagnostics = useCallback((monaco: MonacoNS) => {
+    // LSP 诊断 -> Monaco markers
     const unsubscribeLsp = onDiagnostics((uri, diagnostics) => {
-      // 规范化接收到的 URI
       const normalizedUri = normalizeLspUri(uri)
+      const model = monaco.editor.getModels().find((m: { uri: { toString: () => string } }) => normalizeLspUri(m.uri.toString()) === normalizedUri)
+      if (!model) return
 
-      const models = monaco.editor.getModels()
-
-      // 查找匹配的 model，使用规范化后的 URI 进行比较
-      const model = models.find(m => {
-        const modelUri = normalizeLspUri(m.uri.toString())
-        return modelUri === normalizedUri
-      })
-
-      if (model) {
-        const markers = diagnostics.map(d => ({
-          severity: d.severity === 1 ? monaco.MarkerSeverity.Error
-            : d.severity === 2 ? monaco.MarkerSeverity.Warning
-              : d.severity === 3 ? monaco.MarkerSeverity.Info
-                : monaco.MarkerSeverity.Hint,
-          message: d.message,
-          startLineNumber: d.range.start.line + 1,
-          startColumn: d.range.start.character + 1,
-          endLineNumber: d.range.end.line + 1,
-          endColumn: d.range.end.character + 1,
-          source: d.source,
-          code: d.code?.toString(),
-        }))
-        monaco.editor.setModelMarkers(model, 'lsp', markers)
-      }
+      const markers = diagnostics.map((d) => ({
+        severity: lspSeverityToMonaco(monaco, d.severity),
+        message: d.message,
+        startLineNumber: d.range.start.line + 1,
+        startColumn: d.range.start.character + 1,
+        endLineNumber: d.range.end.line + 1,
+        endColumn: d.range.end.character + 1,
+        source: d.source,
+        code: d.code?.toString(),
+      }))
+      monaco.editor.setModelMarkers(model, 'lsp', markers)
     })
 
-    // 监听 Monaco 自己的诊断（TypeScript/JavaScript 等）
-    // 同步 Monaco markers 到 diagnosticsStore
-    const syncMonacoMarkers = () => {
-      const models = monaco.editor.getModels()
-      models.forEach(model => {
+    // Monaco markers -> diagnosticsStore
+    const collectMonacoMarkers = () => {
+      for (const model of monaco.editor.getModels()) {
         const uri = model.uri.toString()
         const markers = monaco.editor.getModelMarkers({ resource: model.uri })
-        
-        // 转换 Monaco markers 为 LSP 诊断格式
-        const diagnostics = markers.map(marker => ({
+
+        const diagnostics = markers.map((marker: {
+          startLineNumber: number
+          startColumn: number
+          endLineNumber: number
+          endColumn: number
+          severity: import('monaco-editor').MarkerSeverity
+          message: string
+          source: string
+          code: unknown
+        }) => ({
           range: {
-            start: {
-              line: marker.startLineNumber - 1,
-              character: marker.startColumn - 1
-            },
-            end: {
-              line: marker.endLineNumber - 1,
-              character: marker.endColumn - 1
-            }
+            start: { line: marker.startLineNumber - 1, character: marker.startColumn - 1 },
+            end: { line: marker.endLineNumber - 1, character: marker.endColumn - 1 },
           },
-          severity: marker.severity === monaco.MarkerSeverity.Error ? 1
-            : marker.severity === monaco.MarkerSeverity.Warning ? 2
-              : marker.severity === monaco.MarkerSeverity.Info ? 3
-                : 4,
+          severity: monacoSeverityToLsp(monaco, marker.severity),
           message: marker.message,
           source: marker.source || 'monaco',
-          code: typeof marker.code === 'object' && marker.code !== null 
-            ? marker.code.value 
-            : marker.code
+          code: stringifyCode(marker.code),
         }))
 
         useDiagnosticsStore.getState().setDiagnostics(uri, diagnostics)
-      })
+      }
     }
 
-    // 初始同步
-    syncMonacoMarkers()
+    collectMonacoMarkers()
 
-    // 使用防抖的同步函数
-    let syncTimeout: NodeJS.Timeout | null = null
+    let syncTimer: ReturnType<typeof setTimeout> | null = null
     const debouncedSync = () => {
-      if (syncTimeout) clearTimeout(syncTimeout)
-      syncTimeout = setTimeout(syncMonacoMarkers, 500) // 500ms 防抖
+      if (syncTimer) clearTimeout(syncTimer)
+      syncTimer = setTimeout(collectMonacoMarkers, MARKER_SYNC_DEBOUNCE_MS)
     }
 
-    // 监听 marker 变化事件（更高效）
-    const markerDisposable = monaco.editor.onDidChangeMarkers(() => {
-      debouncedSync()
-    })
+    const markerDisposable = monaco.editor.onDidChangeMarkers(debouncedSync)
 
     return () => {
       unsubscribeLsp()
       markerDisposable.dispose()
-      if (syncTimeout) clearTimeout(syncTimeout)
+      if (syncTimer) clearTimeout(syncTimer)
     }
   }, [])
 
-  // 设置 Ctrl+Click 链接跳转
-  const setupLinkNavigation = useCallback((editor: editor.IStandaloneCodeEditor) => {
-    editor.onMouseDown((e) => {
+  /* ---------------- Ctrl+Click 跳转 ---------------- */
+  const setupLinkNavigation = useCallback((editorInstance: editor.IStandaloneCodeEditor) => {
+    editorInstance.onMouseDown((e) => {
       if (!e.event.ctrlKey && !e.event.metaKey) return
 
-      const model = editor.getModel()
-      if (!model) return
-
+      const model = editorInstance.getModel()
       const position = e.target.position
-      if (!position) return
+      if (!model || !position) return
 
       const language = model.getLanguageId()
       const content = model.getValue()
-
       const linkPath = pathLinkService.getLinkAtPosition(content, language, position.lineNumber, position.column)
-      if (linkPath) {
-        const { activeFilePath } = useStore.getState()
-        if (activeFilePath) {
-          e.event.preventDefault()
-          e.event.stopPropagation()
-          pathLinkService.handlePathClick(linkPath, activeFilePath)
-        }
-      }
+      if (!linkPath) return
+
+      const { activeFilePath } = useStore.getState()
+      if (!activeFilePath) return
+
+      e.event.preventDefault()
+      e.event.stopPropagation()
+      pathLinkService.handlePathClick(linkPath, activeFilePath)
     })
   }, [])
 
-  // 通知 LSP 文件已打开
-  const notifyFileOpened = useCallback((filePath: string, content: string) => {
-    void didOpenDocument(filePath, content).then((success) => {
-      if (success && !useStore.getState().isLspReady) {
-        setIsLspReady(true)
-      }
-    })
-  }, [setIsLspReady])
+  /* ---------------- 通知文件打开 ---------------- */
+  const notifyFileOpened = useCallback(
+    (filePath: string, content: string) => {
+      void didOpenDocument(filePath, content).then((success) => {
+        if (success && !useStore.getState().isLspReady) {
+          setIsLspReady(true)
+        }
+      })
+    },
+    [setIsLspReady],
+  )
 
   return {
     isLspReady,
