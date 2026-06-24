@@ -7,6 +7,7 @@ import {
   GraduationCap, Heart, Lightbulb, MessageSquare,
   Music, Palette, Rocket, Scale, Search,
   ShieldCheck, Stethoscope, TrendingUp, Users, Zap,
+  Wrench,
 } from 'lucide-react'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { useStore } from '@store'
@@ -22,7 +23,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   GraduationCap, Heart, Lightbulb, MessageSquare,
   Music, Palette, Rocket, Scale, Search,
   ShieldCheck, Stethoscope, TrendingUp, Users, Zap,
-  Package, HardDrive,
+  Package, HardDrive, Wrench,
 }
 
 export function ScenarioSelector() {

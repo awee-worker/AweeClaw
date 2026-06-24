@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react'
 import { useStore } from '@store'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import type { WelcomeTitleConfig } from '@shared/protocols/scenario'
-import { Users, Sparkles } from 'lucide-react'
+import { Users, Sparkles, Rocket } from 'lucide-react'
 import { t, type Language } from '@renderer/i18n'
 
 const DEFAULT_TITLE: WelcomeTitleConfig = {
@@ -17,30 +17,48 @@ const TEAM_TITLE = {
   en: 'Multi-agent collaboration — AI team works together on complex tasks',
 }
 
+const FREE_TITLE = {
+  zh: '自主决策，连续执行，全程无需人工操作，权限高，需谨慎',
+  en: 'Autonomous decisions, continuous execution, no manual operation required (high privileges, use with caution)',
+}
+
+type WorkTab = 'daily' | 'team' | 'free'
+
 export default function EmptyChatSuggestions() {
   const language = useStore(s => s.language)
   const activeScenarioId = useStore(s => s.activeScenarioId)
   const teamModeEnabled = useStore(s => s.teamModeEnabled)
+  const freeModeEnabled = useStore(s => s.freeModeEnabled)
   const setTeamModeEnabled = useStore(s => s.setTeamModeEnabled)
+  const setFreeModeEnabled = useStore(s => s.setFreeModeEnabled)
 
-  const [activeWorkTab, setActiveWorkTab] = useState<'daily' | 'team'>(teamModeEnabled ? 'team' : 'daily')
+  const [activeWorkTab, setActiveWorkTab] = useState<WorkTab>(
+    freeModeEnabled ? 'free' : teamModeEnabled ? 'team' : 'daily'
+  )
 
   const scenario = scenarioRegistry.get(activeScenarioId)
   const ui = scenario?.ui
   const titleConfig = ui?.welcomeTitle || DEFAULT_TITLE
 
-  const handleWorkTabChange = useCallback((tab: 'daily' | 'team') => {
+  const handleWorkTabChange = useCallback((tab: WorkTab) => {
     setActiveWorkTab(tab)
+    // 自由模式与团队模式互斥；日常模式关闭两者
     setTeamModeEnabled(tab === 'team')
-  }, [setTeamModeEnabled])
+    setFreeModeEnabled(tab === 'free')
+  }, [setTeamModeEnabled, setFreeModeEnabled])
 
   const displayTitle = activeWorkTab === 'team'
     ? (language === 'zh' ? TEAM_TITLE.zh : TEAM_TITLE.en)
-    : (language === 'zh' ? titleConfig.titleZh : titleConfig.title)
+    : activeWorkTab === 'free'
+      ? (language === 'zh' ? FREE_TITLE.zh : FREE_TITLE.en)
+      : (language === 'zh' ? titleConfig.titleZh : titleConfig.title)
+
+  // 三等分指示器宽度计算
+  const indicatorLeft = activeWorkTab === 'daily' ? '4px' : activeWorkTab === 'team' ? 'calc(33.333% + 0px)' : 'calc(66.666% - 4px)'
 
   return (
     <div className="flex flex-col items-center w-full select-none">
-      <div className="flex flex-col items-center w-full max-w-[640px] gap-6">
+      <div className="flex flex-col items-center w-full max-w-[800px] gap-[66px]">
         <h1 className="text-3xl font-bold text-text-primary tracking-tight text-center">
           {displayTitle}
         </h1>
@@ -49,14 +67,14 @@ export default function EmptyChatSuggestions() {
           <div
             className="absolute top-1 bottom-1 rounded-full bg-surface-active/80 shadow-sm transition-all duration-300 ease-out"
             style={{
-              left: activeWorkTab === 'daily' ? '4px' : '50%',
-              width: 'calc(50% - 4px)',
+              left: indicatorLeft,
+              width: 'calc(33.333% - 4px)',
             }}
           />
           <button
             onClick={() => handleWorkTabChange('daily')}
             className={`
-              relative z-10 flex items-center gap-2 px-6 py-2 rounded-full text-sm font-semibold
+              relative z-10 flex items-center gap-2 px-5 py-2 rounded-full text-sm font-semibold
               transition-colors duration-300
               ${activeWorkTab === 'daily'
                 ? 'text-text-primary'
@@ -71,7 +89,7 @@ export default function EmptyChatSuggestions() {
           <button
             onClick={() => handleWorkTabChange('team')}
             className={`
-              relative z-10 flex items-center gap-2 px-6 py-2 rounded-full text-sm font-semibold
+              relative z-10 flex items-center gap-2 px-5 py-2 rounded-full text-sm font-semibold
               transition-colors duration-300
               ${activeWorkTab === 'team'
                 ? 'text-accent'
@@ -81,6 +99,21 @@ export default function EmptyChatSuggestions() {
           >
             <Users className="w-4 h-4" />
             <span>{t('app.team', language as Language)}</span>
+          </button>
+
+          <button
+            onClick={() => handleWorkTabChange('free')}
+            className={`
+              relative z-10 flex items-center gap-2 px-5 py-2 rounded-full text-sm font-semibold
+              transition-colors duration-300
+              ${activeWorkTab === 'free'
+                ? 'text-emerald-500'
+                : 'text-text-muted hover:text-emerald-500/70'
+              }
+            `}
+          >
+            <Rocket className="w-4 h-4" />
+            <span>{t('app.freeMode', language as Language)}</span>
           </button>
         </div>
       </div>

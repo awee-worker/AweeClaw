@@ -261,6 +261,12 @@ function requiresApprovalGate(toolName: string, chatMode?: string): boolean {
   if (approvalType === 'none') return false
 
   const mainStore = useStore.getState()
+
+  // 自由模式：自动批准所有工具调用，无需用户确认
+  if (mainStore.freeModeEnabled) {
+    return false
+  }
+
   const autoApprove = mainStore.autoApprove
 
   if (approvalType === 'terminal' && autoApprove?.terminal) {

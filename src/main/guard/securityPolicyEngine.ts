@@ -547,6 +547,15 @@ export const BUILTIN_SCENARIO_POLICIES: Record<string, Partial<ScenarioPermissio
     maxFileOperationsPerMinute: 40,
     maxShellOperationsPerMinute: 20,
   },
+  'scenario-builder': {
+    allowedOperations: [
+      OperationType.FILE_READ, OperationType.FILE_WRITE, OperationType.FILE_RENAME,
+      OperationType.SHELL_EXECUTE, OperationType.TERMINAL_INTERACTIVE, OperationType.GIT_EXEC,
+    ],
+    deniedOperations: [OperationType.SYSTEM_SHELL],
+    maxFileOperationsPerMinute: 150,
+    maxShellOperationsPerMinute: 80,
+  },
 }
 
 function initBuiltinPolicies(): void {

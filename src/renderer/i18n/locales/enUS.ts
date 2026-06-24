@@ -3294,6 +3294,7 @@ export const en = {
   'app.semanticresults2': 'Semantic results',
   'app.daily': 'Daily',
   'app.team': 'Team',
+  'app.freeMode': 'Free',
   'app.enus': 'en-US',
 
   'app.templatemarket': 'Template Market',

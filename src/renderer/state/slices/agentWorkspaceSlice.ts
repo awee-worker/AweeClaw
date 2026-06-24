@@ -83,6 +83,8 @@ export interface AgentWorkspaceSlice {
   activeWorkspaceSession: AgentWorkspaceSession | null
   workspaceViewVisible: boolean
   teamModeEnabled: boolean
+  /** 自由模式：自动批准所有工具调用，达到最大思考次数自动继续，全流程无人工干预 */
+  freeModeEnabled: boolean
 
   setActiveWorkspaceSession: (session: AgentWorkspaceSession | null) => void
   updateWorkspaceSession: (updates: Partial<AgentWorkspaceSession>) => void
@@ -93,6 +95,7 @@ export interface AgentWorkspaceSlice {
   addTeamChatMessage: (message: TeamChatMessage) => void
   setWorkspaceViewVisible: (visible: boolean) => void
   setTeamModeEnabled: (enabled: boolean) => void
+  setFreeModeEnabled: (enabled: boolean) => void
   clearWorkspaceSession: () => void
   replanWorkspace: () => void
 }
@@ -101,6 +104,7 @@ export const createAgentWorkspaceSlice: StateCreator<AgentWorkspaceSlice, [], []
   activeWorkspaceSession: null,
   workspaceViewVisible: false,
   teamModeEnabled: false,
+  freeModeEnabled: false,
 
   setActiveWorkspaceSession: (session) => set({ activeWorkspaceSession: session }),
 
@@ -171,6 +175,8 @@ export const createAgentWorkspaceSlice: StateCreator<AgentWorkspaceSlice, [], []
   setWorkspaceViewVisible: (visible) => set({ workspaceViewVisible: visible }),
 
   setTeamModeEnabled: (enabled) => set({ teamModeEnabled: enabled }),
+
+  setFreeModeEnabled: (enabled) => set({ freeModeEnabled: enabled }),
 
   clearWorkspaceSession: () => set({ activeWorkspaceSession: null, workspaceViewVisible: false }),
 

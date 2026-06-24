@@ -3293,6 +3293,7 @@ export const zh = {
   'app.semanticresults2': '语义搜索结果',
   'app.daily': '日常模式',
   'app.team': '团队模式',
+  'app.freeMode': '自由模式',
   'app.enus': 'zh-CN',
 
   'app.templatemarket': '模板市场',

@@ -267,9 +267,11 @@ async function executeToolCall(
 
   const approvalType = getToolApprovalType(toolCall.name)
   if (approvalType === 'terminal' || approvalType === 'dangerous') {
-    const autoApprove = useStore.getState().autoApprove
-    const isAutoApproved = (approvalType === 'terminal' && autoApprove?.terminal)
-      || (approvalType === 'dangerous' && autoApprove?.dangerous)
+    const mainStoreState = useStore.getState()
+    // 自由模式：自动批准所有工具调用，无需用户确认
+    const isAutoApproved = mainStoreState.freeModeEnabled
+      || (approvalType === 'terminal' && mainStoreState.autoApprove?.terminal)
+      || (approvalType === 'dangerous' && mainStoreState.autoApprove?.dangerous)
 
     if (!isAutoApproved) {
       const toolDisplayName = getToolDisplayName(toolCall.name)

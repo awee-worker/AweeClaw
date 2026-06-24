@@ -1162,25 +1162,41 @@ export async function executeAgentCycle(
   }
 
   if (iteration >= maxIterations) {
-    const { language } = useStore.getState()
-    const limitTitle = getLocalizedText(language, '达到工具调用上限', 'Tool Call Limit Reached')
-    const limitMessage = getLocalizedText(language, '当前轮次已达到最大工具调用次数。', 'The agent reached the maximum tool call limit for this turn.')
+    // 自由模式：自动继续，无需用户点击"继续"按钮
+    const freeModeEnabled = useStore.getState().freeModeEnabled
+    if (freeModeEnabled) {
+      logger.agent.info('[Loop] Free mode: auto-continue after max iterations')
+      threadStore.updateExecutionMeta({ loopState: 'completed' })
+      EventBus.emit({ type: 'loop:end', reason: 'max_iterations', threadId, assistantId, requestId, planTaskId: context.planTaskId })
+      // 延迟派发事件，等待 IntelligenceCore.finalizeExecution 清理 runningTasks 执行锁后再触发新一轮
+      if (typeof window !== 'undefined') {
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('chat-send-message', {
+            detail: { content: '继续执行未完成的任务', messageId: '' }
+          }))
+        }, 100)
+      }
+    } else {
+      const { language } = useStore.getState()
+      const limitTitle = getLocalizedText(language, '达到工具调用上限', 'Tool Call Limit Reached')
+      const limitMessage = getLocalizedText(language, '当前轮次已达到最大工具调用次数。', 'The agent reached the maximum tool call limit for this turn.')
 
-    logger.agent.warn('[Loop] Reached maximum iterations')
-    threadStore.addSystemAlertPart(assistantId, {
-      alertType: 'warning',
-      title: limitTitle,
-      message: limitMessage,
-      compact: true,
-      action: {
-        label: getLocalizedText(language, '继续', 'Continue'),
-        actionType: 'continue',
-      },
-    })
-    EventBus.emit({ type: 'loop:warning', message: 'Max iterations reached', threadId, assistantId, requestId, planTaskId: context.planTaskId })
+      logger.agent.warn('[Loop] Reached maximum iterations')
+      threadStore.addSystemAlertPart(assistantId, {
+        alertType: 'warning',
+        title: limitTitle,
+        message: limitMessage,
+        compact: true,
+        action: {
+          label: getLocalizedText(language, '继续', 'Continue'),
+          actionType: 'continue',
+        },
+      })
+      EventBus.emit({ type: 'loop:warning', message: 'Max iterations reached', threadId, assistantId, requestId, planTaskId: context.planTaskId })
 
-    threadStore.updateExecutionMeta({ loopState: 'completed' })
-    EventBus.emit({ type: 'loop:end', reason: 'max_iterations', threadId, assistantId, requestId, planTaskId: context.planTaskId })
+      threadStore.updateExecutionMeta({ loopState: 'completed' })
+      EventBus.emit({ type: 'loop:end', reason: 'max_iterations', threadId, assistantId, requestId, planTaskId: context.planTaskId })
+    }
   }
 
   if (loopSpan) {
