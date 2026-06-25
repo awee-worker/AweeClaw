@@ -320,7 +320,12 @@ export class WeixinClient {
       const raw = await this.apiPost(cfg.baseUrl, 'ilink/bot/getupdates', body, cfg.token, timeout + 5000)
       return raw as GetUpdatesResponse
     } catch (err) {
+      // 外部中断（连接销毁/切换账号）：静默返回
       if (abortSignal?.aborted) {
+        return { ret: 0, msgs: [], get_updates_buf: getUpdatesBuf }
+      }
+      // 内部超时 abort（long polling 正常行为）：静默返回，不抛出
+      if (err instanceof Error && err.name === 'AbortError') {
         return { ret: 0, msgs: [], get_updates_buf: getUpdatesBuf }
       }
       throw err

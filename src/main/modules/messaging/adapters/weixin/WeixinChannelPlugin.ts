@@ -50,6 +50,7 @@ interface WeixinConnection {
   abortController: AbortController | null
   contextCache: WeixinContextCache
   typingTickets: Map<string, string> // userId -> typingTicket
+  errorCount: number // 连续错误计数（用于日志降级和退避）
 }
 
 // ============================================
@@ -192,6 +193,7 @@ export class WeixinChannelPlugin implements ChannelPlugin {
       abortController,
       contextCache: new WeixinContextCache(),
       typingTickets: new Map(),
+      errorCount: 0,
     }
     this.connections.set(account.id, connection)
     this.emitStatusChange(account.id)
@@ -324,6 +326,9 @@ export class WeixinChannelPlugin implements ChannelPlugin {
         try {
           const result = await this.client.getUpdates(conn.config, getUpdatesBuf, conn.abortController.signal)
 
+          // 成功获取数据，重置错误计数
+          conn.errorCount = 0
+
           // 会话过期
           if (result.ret !== 0 && result.errcode === -14) {
             logger.channel.warn(`[Weixin] Session expired for account ${accountId}`)
@@ -346,10 +351,17 @@ export class WeixinChannelPlugin implements ChannelPlugin {
           if (conn.abortController.signal.aborted || this.destroyed) break
 
           const msg = err instanceof Error ? err.message : String(err)
-          logger.channel.warn(`[Weixin] Poll error for ${accountId}: ${msg}`)
+          // 连续网络错误降级为 debug，避免日志噪音；首次错误保留 warn
+          conn.errorCount = (conn.errorCount || 0) + 1
+          if (conn.errorCount <= 1) {
+            logger.channel.warn(`[Weixin] Poll error for ${accountId}: ${msg}`)
+          } else {
+            logger.channel.debug(`[Weixin] Poll retry #${conn.errorCount} for ${accountId}: ${msg}`)
+          }
 
-          // 退避等待后重试
-          await new Promise(resolve => setTimeout(resolve, 3000))
+          // 指数退避：3s → 6s → 12s → 24s，上限 30s
+          const backoff = Math.min(3000 * Math.pow(2, conn.errorCount - 1), 30000)
+          await new Promise(resolve => setTimeout(resolve, backoff))
         }
       }
 

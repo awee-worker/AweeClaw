@@ -180,23 +180,37 @@ class PerformanceMonitorClass {
 
   /**
    * 检测内存泄漏趋势
+   * 判定条件（同时满足才报警，减少误报）：
+   * 1. 最近 10 次快照内存增长超过 100%（翻倍）
+   * 2. 增长趋势单调（至少 8/10 次快照比前一次增长）
    */
   private detectMemoryLeak(): void {
     if (this.memorySnapshots.length < 10) return
-    
+
     const recent = this.memorySnapshots.slice(-10)
     const first = recent[0]
     const last = recent[recent.length - 1]
-    
-    // 如果最近 10 次快照内存持续增长超过 50%，发出警告
+
     const growthRate = (last.heapUsed - first.heapUsed) / first.heapUsed
-    if (growthRate > 0.5) {
-      logger.perf.warn('Potential memory leak detected', {
-        growthRate: `${(growthRate * 100).toFixed(1)}%`,
-        heapUsed: `${(last.heapUsed / 1024 / 1024).toFixed(1)}MB`,
-        duration: `${((last.timestamp - first.timestamp) / 1000).toFixed(0)}s`,
-      })
+
+    // 条件1：增长率超过 100%（翻倍）
+    if (growthRate <= 1.0) return
+
+    // 条件2：单调增长检测（至少 8/10 次快照比前一次增长）
+    let increasingCount = 0
+    for (let i = 1; i < recent.length; i++) {
+      if (recent[i].heapUsed > recent[i - 1].heapUsed) {
+        increasingCount++
+      }
     }
+    if (increasingCount < 8) return
+
+    logger.perf.warn('Potential memory leak detected', {
+      growthRate: `${(growthRate * 100).toFixed(1)}%`,
+      heapUsed: `${(last.heapUsed / 1024 / 1024).toFixed(1)}MB`,
+      duration: `${((last.timestamp - first.timestamp) / 1000).toFixed(0)}s`,
+      increasingSnapshots: `${increasingCount}/10`,
+    })
   }
 
   /**
