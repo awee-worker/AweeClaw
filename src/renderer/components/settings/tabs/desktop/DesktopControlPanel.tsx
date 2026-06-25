@@ -5,7 +5,7 @@
  */
 
 import { useState } from 'react'
-import { Monitor, AppWindow, Activity, Layers, Camera, MousePointerClick, FolderTree } from 'lucide-react'
+import { Monitor, AppWindow, Activity, Layers, Camera, MousePointerClick, FolderTree, ShieldCheck } from 'lucide-react'
 import { t, type Language } from '@renderer/i18n'
 import { AppLauncherPanel } from './AppLauncherPanel'
 import { SystemInfoPanel } from './SystemInfoPanel'
@@ -14,8 +14,10 @@ import { WindowManagerPanel } from './WindowManagerPanel'
 import { ScreenCapturePanel } from './ScreenCapturePanel'
 import { InputSimulatorPanel } from './InputSimulatorPanel'
 import { FileManagerPanel } from './FileManagerPanel'
+import { PermissionStatusPanel } from './PermissionStatusPanel'
 
 type DesktopSubTab =
+  | 'permission'
   | 'apps'
   | 'system'
   | 'processes'
@@ -29,11 +31,12 @@ interface DesktopControlPanelProps {
 }
 
 export function DesktopControlPanel({ language }: DesktopControlPanelProps) {
-  const [activeTab, setActiveTab] = useState<DesktopSubTab>('apps')
+  const [activeTab, setActiveTab] = useState<DesktopSubTab>('permission')
 
   // 注：权限确认监听已提升到全局 AppContent，此处不再重复挂载
 
   const tabs = [
+    { id: 'permission' as const, label: t('desktop.permission.title', language) || '权限状态', icon: <ShieldCheck className="w-4 h-4" /> },
     { id: 'apps' as const, label: t('desktop.apps', language) || '应用启动', icon: <AppWindow className="w-4 h-4" /> },
     { id: 'system' as const, label: t('desktop.system', language) || '系统信息', icon: <Monitor className="w-4 h-4" /> },
     { id: 'processes' as const, label: t('desktop.processes', language) || '进程管理', icon: <Activity className="w-4 h-4" /> },
@@ -44,27 +47,30 @@ export function DesktopControlPanel({ language }: DesktopControlPanelProps) {
   ]
 
   return (
-    <div className="flex flex-col h-full">
-      {/* 子 Tab 切换 */}
-      <div className="flex items-center gap-1 px-6 pt-4 pb-3 border-b border-border/40 flex-wrap">
+    <div className="flex h-full">
+      {/* 左侧导航菜单 */}
+      <nav className="w-44 shrink-0 border-r border-border/40 bg-surface/20 backdrop-blur-sm p-3 space-y-1 overflow-y-auto no-scrollbar">
         {tabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors group ${
               activeTab === tab.id
                 ? 'bg-accent/10 text-accent border border-accent/20'
-                : 'text-text-secondary hover:bg-surface-hover border border-transparent'
+                : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary border border-transparent'
             }`}
           >
-            {tab.icon}
+            <span className={`transition-colors ${activeTab === tab.id ? 'text-accent' : 'text-text-muted group-hover:text-text-primary'}`}>
+              {tab.icon}
+            </span>
             <span>{tab.label}</span>
           </button>
         ))}
-      </div>
+      </nav>
 
-      {/* 内容区 */}
-      <div className="flex-1 overflow-y-auto p-6">
+      {/* 右侧内容区 */}
+      <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+        {activeTab === 'permission' && <PermissionStatusPanel />}
         {activeTab === 'apps' && <AppLauncherPanel language={language} />}
         {activeTab === 'system' && <SystemInfoPanel language={language} />}
         {activeTab === 'processes' && <ProcessManagerPanel language={language} />}

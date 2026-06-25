@@ -9,6 +9,7 @@
 
 import { BrowserWindow } from 'electron'
 import { safeIpcHandle } from '../core/ipcGuard'
+import { logger } from '@shared/toolkit/LogEngine'
 import { getDesktopControlManager } from '../../modules/desktop-control/DesktopControlManager'
 import { getAccessibilityPermissionService } from '../../modules/desktop-control/AccessibilityPermission'
 import { getEmergencyStopController, EMERGENCY_STOP_EVENT, EMERGENCY_RESET_EVENT } from '../../modules/desktop-control/EmergencyStop'
@@ -216,8 +217,18 @@ export function registerDesktopControlHandlers(getMainWindow: (windowId?: number
 
   /** 列出所有窗口 */
   safeIpcHandle('desktop:listWindows', async () => {
-    const windows = await manager.listWindows()
-    return { success: true, data: windows }
+    try {
+      const windows = await manager.listWindows()
+      return { success: true, data: windows }
+    } catch (err) {
+      const e = err as Error & { code?: string }
+      logger.desktop?.error?.('[desktopControl] listWindows failed:', e.message)
+      return {
+        success: false,
+        error: e.message || 'Failed to list windows',
+        code: e.code,
+      }
+    }
   })
 
   /** 查找窗口 */

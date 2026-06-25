@@ -1,5 +1,5 @@
 /**
- * 桌面控制中心面板（Phase 3）
+ * 桌面控制 - 权限状态子面板
  *
  * 职责：
  * - 展示系统权限状态（辅助功能 / 屏幕录制）
@@ -90,12 +90,12 @@ function PermissionCard({ result, onOpenPreferences, onRequestAgain }: Permissio
 
   return (
     <div className="rounded-xl border border-border/40 bg-surface/20 p-4 space-y-3">
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-accent/10 border border-accent/20">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <div className="p-2 rounded-lg bg-accent/10 border border-accent/20 shrink-0">
             <PermIcon className="w-5 h-5 text-accent" />
           </div>
-          <div>
+          <div className="min-w-0">
             <h4 className="text-sm font-semibold text-text-primary">
               {t(`desktop.permission.${result.type}`)}
             </h4>
@@ -104,8 +104,8 @@ function PermissionCard({ result, onOpenPreferences, onRequestAgain }: Permissio
             </p>
           </div>
         </div>
-        <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs font-medium ${STATUS_COLORS[result.status]}`}>
-          <StatusIcon className="w-3.5 h-3.5" />
+        <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs font-medium shrink-0 whitespace-nowrap ${STATUS_COLORS[result.status]}`}>
+          <StatusIcon className="w-3.5 h-3.5 shrink-0" />
           {t(`desktop.permission.${statusKey}`)}
         </div>
       </div>
@@ -239,7 +239,7 @@ function EmergencyStopCard({ state, onTrigger, onReset }: EmergencyStopCardProps
 
 // ============ 主组件 ============
 
-export default function DesktopControlPanel() {
+export function PermissionStatusPanel() {
   const { t } = useI18n()
 
   const [permissions, setPermissions] = useState<PermissionResult[]>([])
@@ -261,7 +261,7 @@ export default function DesktopControlPanel() {
         setPermissions(result.data as PermissionResult[])
       }
     } catch (err) {
-      console.error('[DesktopControlPanel] Failed to load permissions:', err)
+      console.error('[PermissionStatusPanel] Failed to load permissions:', err)
     } finally {
       setLoading(false)
     }
@@ -275,7 +275,7 @@ export default function DesktopControlPanel() {
         setStopState(result.data as EmergencyStopState)
       }
     } catch (err) {
-      console.error('[DesktopControlPanel] Failed to load emergency stop state:', err)
+      console.error('[PermissionStatusPanel] Failed to load emergency stop state:', err)
     }
   }, [])
 
@@ -306,7 +306,7 @@ export default function DesktopControlPanel() {
     try {
       await api.desktop.accessibility.openPreferences(type)
     } catch (err) {
-      console.error('[DesktopControlPanel] Failed to open preferences:', err)
+      console.error('[PermissionStatusPanel] Failed to open preferences:', err)
     }
   }, [])
 
@@ -316,7 +316,7 @@ export default function DesktopControlPanel() {
       await api.desktop.accessibility.requestPermission(type)
       await loadPermissions(true)
     } catch (err) {
-      console.error('[DesktopControlPanel] Failed to request permission:', err)
+      console.error('[PermissionStatusPanel] Failed to request permission:', err)
     }
   }, [loadPermissions])
 
@@ -329,7 +329,7 @@ export default function DesktopControlPanel() {
       await api.desktop.emergencyStop.trigger({ source: 'user', reason: 'Triggered from control panel' })
       await loadStopState()
     } catch (err) {
-      console.error('[DesktopControlPanel] Failed to trigger emergency stop:', err)
+      console.error('[PermissionStatusPanel] Failed to trigger emergency stop:', err)
     }
   }, [t, loadStopState])
 
@@ -342,22 +342,12 @@ export default function DesktopControlPanel() {
       await api.desktop.emergencyStop.reset()
       await loadStopState()
     } catch (err) {
-      console.error('[DesktopControlPanel] Failed to reset emergency stop:', err)
+      console.error('[PermissionStatusPanel] Failed to reset emergency stop:', err)
     }
   }, [t, loadStopState])
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
-      {/* 标题区 */}
-      <div className="space-y-1">
-        <h2 className="text-xl font-semibold text-text-primary tracking-tight">
-          {t('desktop.title')}
-        </h2>
-        <p className="text-sm text-text-muted">
-          {t('desktop.subtitle')}
-        </p>
-      </div>
-
       {/* 紧急停止卡片（优先展示） */}
       <EmergencyStopCard
         state={stopState}
@@ -401,3 +391,5 @@ export default function DesktopControlPanel() {
     </div>
   )
 }
+
+export default PermissionStatusPanel

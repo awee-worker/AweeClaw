@@ -41,6 +41,39 @@ function execCmd(command: string, options?: cp.ExecOptions): Promise<{ stdout: s
   })
 }
 
+/**
+ * 通过 -e 参数逐行执行 AppleScript（最可靠方式）
+ *
+ * 优势：
+ * - 每个 -e 是一行，osascript 自动组合成完整脚本，保留多行结构
+ * - 不需要临时文件，不需要 stdin
+ * - execFile 直接调用，不经过 shell，无需转义引号
+ * - 实测简单脚本 2 秒内完成，不会超时
+ *
+ * 使用方式：
+ *   execAppleScriptLines([
+ *     'tell application "System Events"',
+ *     'set x to ...',
+ *     'end tell',
+ *   ])
+ */
+function execAppleScriptLines(lines: string[], timeout = 10000): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const args: string[] = []
+    for (const line of lines) {
+      args.push('-e', line)
+    }
+    cp.execFile('/usr/bin/osascript', args, { timeout, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
+      if (err) {
+        const stderrText = stderr ? stderr.toString().trim() : ''
+        reject(new Error(stderrText || err.message))
+      } else {
+        resolve(stdout.toString().trim())
+      }
+    })
+  })
+}
+
 /** 提取应用图标为 base64（简化版，仅返回路径） */
 function extractAppIcon(appPath: string): string | undefined {
   try {
@@ -437,51 +470,41 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
   async listWindows(): Promise<WindowInfo[]> {
     const start = Date.now()
     try {
-      // 使用 osascript 获取所有可见窗口
-      // 优化：直接获取窗口属性，避免嵌套 repeat 循环导致的性能问题
-      const script = `
-        tell application "System Events"
-          set windowList to {}
-          repeat with proc in (every process whose background only is false)
-            try
-              set procName to name of proc
-              set procWindows to windows of proc
-              repeat with w in procWindows
-                try
-                  set end of windowList to (procName & "|" & (name of w) & "|" & (id of w))
-                end try
-              end repeat
-            end try
-          end repeat
-          return windowList as text
-        end tell
-      `
-      const { stdout } = await execCmd(`osascript -e '${script.replace(/'/g, "'\\''")}'`, {
-        timeout: 15000,
+      // 使用 Electron 内置 desktopCapturer API 获取窗口列表
+      // 优势：
+      // 1. 无需辅助功能/自动化权限，不会触发 SIGTERM 超时
+      // 2. 不依赖 osascript，避免 AppleScript 在 Electron 中的各种不稳定问题
+      // 3. 内置 API，性能稳定
+      // 劣势：拿不到 appName 和 bounds，需要用 osascript 仅获取应用名做补充
+      const sources = await desktopCapturer.getSources({
+        types: ['window'],
+        fetchWindowIcons: false,
       })
-      const lines = stdout.toString().split(',').map(l => l.trim()).filter(Boolean)
 
-      const windows: WindowInfo[] = []
-      for (const line of lines) {
-        const parts = line.split('|')
-        if (parts.length >= 3) {
-          windows.push({
-            id: `${parts[0]}:${parts[2]}`,
-            title: parts[1] || parts[0],
-            appName: parts[0],
-            bounds: { x: 0, y: 0, width: 0, height: 0 },
-            isFocused: false,
-            isMinimized: false,
-            isMaximized: false,
-            pid: 0,
-          })
+      // desktopCapturer 在 macOS 上不提供 appName（ownerName）和 bounds
+      // 如需这些信息，可后续用 osascript 补充（但实测 osascript 在 Electron 中易超时）
+      const windows: WindowInfo[] = sources.map((source, idx) => {
+        // source.id 格式: "window:xxxxx" 或 "window:xxxxx:0"
+        // source.name 是窗口标题
+        const title = source.name || `Window ${idx}`
+        return {
+          id: source.id,
+          title,
+          appName: '',
+          bounds: { x: 0, y: 0, width: 0, height: 0 },
+          isFocused: false,
+          isMinimized: false,
+          isMaximized: false,
+          pid: 0,
         }
-      }
+      })
+
       logger.desktop.info(`[Darwin] listWindows count=${windows.length} duration=${Date.now() - start}ms`)
       return windows
     } catch (err) {
-      logger.desktop.error('[Darwin] listWindows failed:', err)
-      return []
+      const errMsg = (err as Error).message || String(err)
+      logger.desktop.error('[Darwin] listWindows failed:', errMsg)
+      throw err
     }
   }
 
@@ -501,36 +524,81 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
   ): Promise<ActionResult> {
     const start = Date.now()
     try {
-      const [appName] = windowId.split(':')
-      let script = ''
+      // 先通过 windowId 查找窗口信息，拿到 title
+      // （desktopCapturer 的 source.id 格式是 "window:xxx:0"，无法直接提取 appName）
+      const allWindows = await this.listWindows()
+      const target = allWindows.find(w => w.id === windowId)
+      if (!target) {
+        throw new Error(`Window not found: ${windowId}`)
+      }
+      const { title, appName } = target
+
+      // 空标题检查（desktopCapturer 可能返回空标题）
+      if (!title) {
+        throw new Error('Window has no title, cannot perform action')
+      }
+
+      // 转义 AppleScript 字符串中的双引号和反斜杠
+      const escTitle = title.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+      const escAppName = appName.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+
+      // 用 -e 参数逐行执行 AppleScript（避免单行语法错误 + 避免超时）
+      // 脚本结构：遍历所有前台进程，查找标题匹配的窗口，执行操作
+      const lines: string[] = [
+        'tell application "System Events"',
+        '  set targetWin to missing value',
+        '  repeat with p in (every process whose background only is false)',
+        '    try',
+        `      set targetWin to first window of p whose title is "${escTitle}"`,
+        '      exit repeat',
+        '    on error',
+        '    end try',
+        '  end repeat',
+        '  if targetWin is not missing value then',
+      ]
 
       switch (action) {
         case 'focus':
         case 'bringToFront':
-          script = `tell application "${appName}" to activate`
+          lines.push('    perform action "AXRaise" of targetWin')
           break
         case 'minimize':
-          script = `tell application "System Events" to set miniaturized of every window of process "${appName}" to true`
+          lines.push('    set miniaturized of targetWin to true')
           break
         case 'maximize':
-          // macOS 没有真正的最大化，使用全屏
-          script = `tell application "${appName}" to activate`
+          // macOS 没有真正的最大化，先激活窗口
+          lines.push('    perform action "AXRaise" of targetWin')
           break
         case 'restore':
-          script = `tell application "System Events" to set miniaturized of every window of process "${appName}" to false`
+          lines.push('    set miniaturized of targetWin to false')
           break
         case 'close':
-          script = `tell application "${appName}" to close every window`
+          // 点击关闭按钮（红色圆点）
+          lines.push('    click button 1 of targetWin')
           break
         case 'setBounds':
           if (!bounds) throw new Error('bounds required for setBounds')
-          script = `tell application "${appName}" to set bounds of front window to {${bounds.x}, ${bounds.y}, ${bounds.x + bounds.width}, ${bounds.y + bounds.height}}`
+          if (appName) {
+            lines.push(`    tell application "${escAppName}" to set bounds of front window to {${bounds.x}, ${bounds.y}, ${bounds.x + bounds.width}, ${bounds.y + bounds.height}}`)
+          } else {
+            throw new Error('setBounds requires appName, but desktopCapturer does not provide it')
+          }
           break
         default:
           throw new Error(`Unsupported window action: ${action}`)
       }
 
-      await execCmd(`osascript -e '${script.replace(/'/g, "'\\''")}'`, { timeout: 5000 })
+      lines.push('    return "OK"')
+      lines.push('  else')
+      lines.push('    return "NOT_FOUND"')
+      lines.push('  end if')
+      lines.push('end tell')
+
+      const result = await execAppleScriptLines(lines, 10000)
+
+      if (result === 'NOT_FOUND') {
+        throw new Error(`Window with title "${title}" not found in any process`)
+      }
 
       return {
         success: true,
