@@ -28,6 +28,7 @@ import { mcpService } from './toolProtocolAdapter'
 import { snippetService } from './snippetAdapter'
 import { workerService } from './workerAdapter'
 import { workspaceStorageRuntime } from './workspaceStorageAdapter'
+import { dreamingScheduler } from '@intelligence/runtime/longTermMemoryService/dreamingScheduler'
 import { runWithAgentStorageWritesSuspended } from '@intelligence/state/intelligenceStorage'
 import {
   bindWorkspaceRootLite,
@@ -282,7 +283,6 @@ function scheduleBackgroundInit(): void {
 
     scheduleIdleTask(() => {
       try {
-        const { dreamingScheduler } = require('@intelligence/runtime/longTermMemoryService/dreamingScheduler')
         dreamingScheduler.start()
       } catch (e) {
         logger.system.warn('[Init] Dreaming scheduler init failed:', e)
