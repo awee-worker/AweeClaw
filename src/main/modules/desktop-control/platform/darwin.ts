@@ -544,13 +544,22 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
 
       // 用 -e 参数逐行执行 AppleScript（避免单行语法错误 + 避免超时）
       // 脚本结构：遍历所有前台进程，查找标题匹配的窗口，执行操作
+      // 关键：保存 targetProc 引用，聚焦/置顶时激活进程为 frontmost
+      //
+      // 匹配策略：用 contains 模糊匹配（desktopCapturer 和 AppleScript 返回的标题可能不完全一致）
+      // 例如 desktopCapturer 可能返回 "宝塔Linux面板"，而 AppleScript 返回 "宝塔Linux面板 - Google Chrome"
       const lines: string[] = [
         'tell application "System Events"',
         '  set targetWin to missing value',
+        '  set targetProc to missing value',
         '  repeat with p in (every process whose background only is false)',
         '    try',
-        `      set targetWin to first window of p whose title is "${escTitle}"`,
-        '      exit repeat',
+        `      set winList to every window of p whose title contains "${escTitle}"`,
+        '      if (count of winList) > 0 then',
+        '        set targetWin to item 1 of winList',
+        '        set targetProc to p',
+        '        exit repeat',
+        '      end if',
         '    on error',
         '    end try',
         '  end repeat',
@@ -560,17 +569,21 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
       switch (action) {
         case 'focus':
         case 'bringToFront':
+          // 先激活进程为 frontmost，再提升窗口 Z 顺序
+          lines.push('    set frontmost of targetProc to true')
           lines.push('    perform action "AXRaise" of targetWin')
           break
         case 'minimize':
           lines.push('    set miniaturized of targetWin to true')
           break
         case 'maximize':
-          // macOS 没有真正的最大化，先激活窗口
+          // macOS 没有真正的最大化，激活并提升窗口
+          lines.push('    set frontmost of targetProc to true')
           lines.push('    perform action "AXRaise" of targetWin')
           break
         case 'restore':
           lines.push('    set miniaturized of targetWin to false')
+          lines.push('    set frontmost of targetProc to true')
           break
         case 'close':
           // 点击关闭按钮（红色圆点）
