@@ -7,6 +7,7 @@ import type { ToolStreamingPreview } from '@protocols'
 /** 消息渲染上下文，传递给各 Part 渲染器 */
 export interface PartRenderContext {
   pendingToolId?: string
+  pendingToolIds?: string[]
   onApproveTool?: () => void
   onRejectTool?: () => void
   onOpenDiff?: (path: string, oldContent: string, newContent: string) => void

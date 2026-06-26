@@ -27,6 +27,7 @@ interface ChatMessageProps {
   onOpenDiff?: (path: string, oldContent: string, newContent: string) => void
   onSelectOption?: (messageId: string, selectedIds: string[]) => void
   pendingToolId?: string
+  pendingToolIds?: string[]
   hasCheckpoint?: boolean
   isWorkspaceEditor?: boolean
   onDeleteRound?: (messageId: string) => void
@@ -43,6 +44,7 @@ function ChatMessageBase({
   onRejectTool,
   onOpenDiff,
   pendingToolId,
+  pendingToolIds,
   hasCheckpoint,
   isWorkspaceEditor,
   onDeleteRound,
@@ -130,6 +132,7 @@ function ChatMessageBase({
           <AssistantMessageView
             message={message}
             pendingToolId={pendingToolId}
+            pendingToolIds={pendingToolIds}
             onApproveTool={onApproveTool}
             onRejectTool={onRejectTool}
             onOpenDiff={onOpenDiff}

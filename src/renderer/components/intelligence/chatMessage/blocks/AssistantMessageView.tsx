@@ -27,6 +27,7 @@ const ACTIVE_STREAM_PHASES = new Set(['streaming', 'tool_running', 'tool_pending
 interface AssistantMessageViewProps {
   message: ChatMessageType
   pendingToolId?: string
+  pendingToolIds?: string[]
   onApproveTool?: () => void
   onRejectTool?: () => void
   onOpenDiff?: (path: string, oldContent: string, newContent: string) => void
@@ -40,6 +41,7 @@ interface AssistantMessageViewProps {
 function AssistantMessageViewBase({
   message,
   pendingToolId,
+  pendingToolIds,
   onApproveTool,
   onRejectTool,
   onOpenDiff,
@@ -140,6 +142,7 @@ function AssistantMessageViewBase({
             <AssistantMessageContentView
               parts={assistantParts}
               pendingToolId={pendingToolId}
+              pendingToolIds={pendingToolIds}
               onApproveTool={onApproveTool}
               onRejectTool={onRejectTool}
               onOpenDiff={onOpenDiff}
@@ -171,6 +174,7 @@ function AssistantMessageViewBase({
             <ToolCallGroup
               toolCalls={previewToolCalls}
               pendingToolId={pendingToolId}
+              pendingToolIds={pendingToolIds}
               onApproveTool={onApproveTool}
               onRejectTool={onRejectTool}
               onOpenDiff={onOpenDiff}

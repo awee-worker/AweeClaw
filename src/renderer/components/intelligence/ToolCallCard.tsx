@@ -41,15 +41,15 @@ function resolveStatusVisual(isStreaming: boolean, isRunning: boolean, isSuccess
   }
   if (isSuccess) {
     return (
-      <div className="w-3.5 h-3.5 rounded-full bg-green-500/10 flex items-center justify-center">
-        <Check className="w-2.5 h-2.5 text-green-500" />
+      <div className="w-3.5 h-3.5 rounded-full bg-status-success/10 flex items-center justify-center">
+        <Check className="w-2.5 h-2.5 text-status-success" />
       </div>
     )
   }
   if (isError || isRejected) {
     return (
-      <div className="w-3.5 h-3.5 rounded-full bg-red-500/10 flex items-center justify-center">
-        <X className="w-2.5 h-2.5 text-red-500" />
+      <div className="w-3.5 h-3.5 rounded-full bg-status-error/10 flex items-center justify-center">
+        <X className="w-2.5 h-2.5 text-status-error" />
       </div>
     )
   }
@@ -58,8 +58,8 @@ function resolveStatusVisual(isStreaming: boolean, isRunning: boolean, isSuccess
 
 /** 卡片样式配置 */
 function resolveCardStyle(isAwaitingApproval: boolean, isError: boolean, isStreaming: boolean, isRunning: boolean): string {
-  if (isAwaitingApproval) return 'border border-red-500/20 bg-red-500/5 rounded-lg shadow-sm shadow-red-500/5 overflow-hidden'
-  if (isError) return 'bg-red-500/5 rounded-lg overflow-hidden'
+  if (isAwaitingApproval) return 'border border-status-warning/20 bg-status-warning/5 rounded-lg shadow-sm shadow-status-warning/5 overflow-hidden'
+  if (isError) return 'bg-status-error/5 rounded-lg overflow-hidden'
   if (isStreaming || isRunning) return 'bg-accent/5 rounded-lg overflow-hidden'
   return 'hover:bg-text-primary/[0.02] transition-colors rounded-lg overflow-hidden'
 }
@@ -152,12 +152,12 @@ const ToolCallCard = memo(function ToolCallCard({
           onCopyResult: handleCopyResult,
         })}
         {toolCall.error && (
-          <div className="px-3 py-2 bg-red-500/10 rounded-md">
-            <div className="flex items-center gap-2 text-red-400 text-xs font-medium mb-1">
+          <div className="px-3 py-2 bg-status-error/10 rounded-md">
+            <div className="flex items-center gap-2 text-status-error text-xs font-medium mb-1">
               <AlertTriangle className="w-3 h-3" />
               {t('tool.error', language as any)}
             </div>
-            <p className="text-[12px] text-red-300 font-mono break-all">{toolCall.error}</p>
+            <p className="text-[12px] text-status-error/80 font-mono break-all">{toolCall.error}</p>
           </div>
         )}
       </div>
@@ -239,18 +239,18 @@ const ToolCallCard = memo(function ToolCallCard({
         ))}
 
       {isAwaitingApproval && (
-        <div className="flex items-center justify-between gap-2 px-3 py-2 border-t border-red-500/10 bg-red-500/5">
-          <span className="text-xs text-red-400/70 truncate">{t('toolAwaitingApproval', language as any)}</span>
+        <div className="flex items-center justify-between gap-2 px-3 py-2 border-t border-status-warning/10 bg-status-warning/5">
+          <span className="text-xs text-status-warning/70 truncate">{t('toolAwaitingApproval', language as any)}</span>
           <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={onReject}
-              className="px-3 py-1.5 text-xs font-medium text-text-muted hover:text-red-400 hover:bg-red-500/10 rounded-md transition-all"
+              className="px-3 py-1.5 text-xs font-medium text-text-muted hover:text-status-error hover:bg-status-error/10 rounded-md transition-all"
             >
               {t('toolReject', language as any)}
             </button>
             <button
               onClick={onApprove}
-              className="px-3 py-1.5 text-xs font-medium bg-accent text-white hover:bg-accent-hover rounded-md transition-all"
+              className="px-3 py-1.5 text-xs font-medium bg-accent text-accent-foreground hover:bg-accent-hover rounded-md transition-all"
             >
               {t('toolApprove', language as any)}
             </button>

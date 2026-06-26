@@ -66,6 +66,7 @@ function AssistantMessageContentViewBase({ parts, ...ctx }: AssistantMessageCont
             <ToolCallGroup
               toolCalls={group.toolCalls}
               pendingToolId={ctx.pendingToolId}
+              pendingToolIds={ctx.pendingToolIds}
               onApproveTool={ctx.onApproveTool}
               onRejectTool={ctx.onRejectTool}
               onOpenDiff={ctx.onOpenDiff}

@@ -58,7 +58,7 @@ function CardHeader({ isSuccess, isAwaiting }: { isSuccess?: boolean; isAwaiting
                             transition={{ repeat: Infinity, duration: 2 }}
                             className="inline-block"
                         >
-                            <Sparkles className="w-3 h-3 text-amber-400" />
+                            <Sparkles className="w-3 h-3 text-status-warning" />
                         </motion.span>
                     )}
                 </h4>
@@ -109,7 +109,7 @@ function EditPanel({
                 </button>
                 <button
                     onClick={onSave}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-bold bg-accent text-white rounded-lg shadow-lg shadow-accent/20 hover:bg-accent-hover transition-all"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-bold bg-accent text-accent-foreground rounded-lg shadow-lg shadow-accent/20 hover:bg-accent-hover transition-all"
                 >
                     <Check className="w-3 h-3" />
                     {t('memory.confirmChange', language as any)}
@@ -191,7 +191,7 @@ export const MemoryApprovalCard: React.FC<MemoryApprovalCardProps> = ({
 
             <div
                 className={`h-1 w-full bg-gradient-to-r ${
-                    isSuccess ? 'from-green-500/50 to-green-500/10' : 'from-accent/50 to-accent/10'
+                    isSuccess ? 'from-status-success/50 to-status-success/10' : 'from-accent/50 to-accent/10'
                 } opacity-30`}
             />
         </div>

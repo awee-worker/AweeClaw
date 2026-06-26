@@ -179,14 +179,14 @@ function useInteractionState(content: InteractiveContent, disabled?: boolean) {
 function StatusIndicator({ submitted }: { submitted: boolean }) {
   if (submitted) {
     return (
-      <div className="w-3.5 h-3.5 rounded-full bg-green-500/10 flex items-center justify-center">
-        <CheckCircle2 className="w-2.5 h-2.5 text-green-500" />
+      <div className="w-3.5 h-3.5 rounded-full bg-status-success/10 flex items-center justify-center">
+        <CheckCircle2 className="w-2.5 h-2.5 text-status-success" />
       </div>
     )
   }
   return (
-    <div className="w-3.5 h-3.5 rounded-full bg-amber-500/20 flex items-center justify-center border border-amber-500/30">
-      <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+    <div className="w-3.5 h-3.5 rounded-full bg-status-warning/20 flex items-center justify-center border border-status-warning/30">
+      <div className="w-1.5 h-1.5 rounded-full bg-status-warning animate-pulse" />
     </div>
   )
 }
@@ -360,7 +360,7 @@ function SubmitButton({
         disabled={count === 0}
         className={`
           flex items-center gap-1.5 px-3 py-1 text-[12px] font-medium rounded-md transition-all
-          ${count > 0 ? 'bg-accent text-white hover:bg-accent-hover active:scale-95' : 'bg-surface/50 text-text-muted cursor-not-allowed'}
+          ${count > 0 ? 'bg-accent text-accent-foreground hover:bg-accent-hover active:scale-95' : 'bg-surface/50 text-text-muted cursor-not-allowed'}
         `}
       >
         <span>{t(labelKey, language, { size: count })}</span>
@@ -415,7 +415,7 @@ export function InteractiveCard({ content, onSelect, disabled }: InteractiveCard
   return (
     <div
       className={`group my-0.5 relative rounded-lg overflow-hidden transition-colors ${
-        isSubmitted ? 'hover:bg-text-primary/[0.02]' : 'bg-amber-500/5 border border-amber-500/15'
+        isSubmitted ? 'hover:bg-text-primary/[0.02]' : 'bg-status-warning/5 border border-status-warning/15'
       }`}
     >
       <CardHeader

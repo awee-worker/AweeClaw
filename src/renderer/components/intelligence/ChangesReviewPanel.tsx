@@ -111,8 +111,8 @@ function ChangesReviewPanel({
                 {t('ai.fileschanged', language as Language)}
               </span>
               <div className="flex items-center gap-1.5 text-[11px] font-mono">
-                <span className="text-green-400">+{stats.linesAdded}</span>
-                <span className="text-red-400">-{stats.linesRemoved}</span>
+                <span className="text-status-success">+{stats.linesAdded}</span>
+                <span className="text-status-error">-{stats.linesRemoved}</span>
               </div>
             </div>
             <div className="text-[11px] text-text-muted/70 mt-1">
@@ -129,8 +129,8 @@ function ChangesReviewPanel({
               const TypeIcon = change.changeType === 'create' ? FilePlus
                 : change.changeType === 'delete' ? FileX
                 : FileCode
-              const typeColor = change.changeType === 'create' ? 'text-green-400/60'
-                : change.changeType === 'delete' ? 'text-red-400/60'
+              const typeColor = change.changeType === 'create' ? 'text-status-success/60'
+                : change.changeType === 'delete' ? 'text-status-error/60'
                 : 'text-text-muted/70'
 
               return (
@@ -151,8 +151,8 @@ function ChangesReviewPanel({
                     )}
                   </div>
                   <div className="flex items-center gap-1 text-[10px] font-mono shrink-0">
-                    {change.linesAdded > 0 && <span className="text-green-400/70">+{change.linesAdded}</span>}
-                    {change.linesRemoved > 0 && <span className="text-red-400/70">-{change.linesRemoved}</span>}
+                    {change.linesAdded > 0 && <span className="text-status-success/70">+{change.linesAdded}</span>}
+                    {change.linesRemoved > 0 && <span className="text-status-error/70">-{change.linesRemoved}</span>}
                   </div>
                 </div>
               )
@@ -163,14 +163,14 @@ function ChangesReviewPanel({
           <div className="px-4 py-3 border-t border-border/50 flex items-center gap-2">
             <button
               onClick={onRejectAll}
-              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-medium text-text-muted hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all border border-border/50"
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-medium text-text-muted hover:text-status-error hover:bg-status-error/10 rounded-lg transition-all border border-border/50"
             >
               <XCircle className="w-3 h-3" />
               {t('ai.rejectall', language as Language)}
             </button>
             <button
               onClick={onAcceptAll}
-              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-medium text-green-400 bg-green-500/10 hover:bg-green-500/20 rounded-lg transition-all border border-green-500/20"
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-medium text-status-success bg-status-success/10 hover:bg-status-success/20 rounded-lg transition-all border border-status-success/20"
             >
               <CheckCheck className="w-3 h-3" />
               {t('ai.acceptall', language as Language)}

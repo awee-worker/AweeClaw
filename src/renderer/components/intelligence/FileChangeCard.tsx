@@ -129,10 +129,10 @@ function buildCardVisual(
   isRunning: boolean,
 ): CardVisual {
   if (isAwaitingApproval) {
-    return { containerClass: 'border-l-2 border-red-500 bg-red-500/5', showSweep: false }
+    return { containerClass: 'border-l-2 border-status-warning bg-status-warning/5', showSweep: false }
   }
   if (isError) {
-    return { containerClass: 'bg-red-500/5', showSweep: false }
+    return { containerClass: 'bg-status-error/5', showSweep: false }
   }
   if (isStreaming || isRunning) {
     return { containerClass: 'bg-accent/5', showSweep: true }
@@ -156,15 +156,15 @@ function StatusIcon({ isStreaming, isRunning, isSuccess, isError }: {
   }
   if (isSuccess) {
     return (
-      <div className="w-3.5 h-3.5 rounded-full bg-green-500/10 flex items-center justify-center">
-        <Check className="w-2.5 h-2.5 text-green-500" />
+      <div className="w-3.5 h-3.5 rounded-full bg-status-success/10 flex items-center justify-center">
+        <Check className="w-2.5 h-2.5 text-status-success" />
       </div>
     )
   }
   if (isError) {
     return (
-      <div className="w-3.5 h-3.5 rounded-full bg-red-500/10 flex items-center justify-center">
-        <X className="w-2.5 h-2.5 text-red-500" />
+      <div className="w-3.5 h-3.5 rounded-full bg-status-error/10 flex items-center justify-center">
+        <X className="w-2.5 h-2.5 text-status-error" />
       </div>
     )
   }
@@ -175,9 +175,9 @@ function StatusIcon({ isStreaming, isRunning, isSuccess, isError }: {
 function DiffStatsBadge({ stats, isNewFile }: { stats: DiffStats; isNewFile: boolean }) {
   return (
     <span className="text-[11px] font-mono opacity-60 flex items-center gap-1.5 px-1.5 py-0.5 bg-text-primary/[0.05] rounded border border-border">
-      {stats.added > 0 && <span className="text-green-400">+{stats.added}</span>}
-      {stats.removed > 0 && <span className="text-red-400">-{stats.removed}</span>}
-      {isNewFile && stats.added === 0 && <span className="text-blue-400">new</span>}
+      {stats.added > 0 && <span className="text-status-success">+{stats.added}</span>}
+      {stats.removed > 0 && <span className="text-status-error">-{stats.removed}</span>}
+      {isNewFile && stats.added === 0 && <span className="text-accent">new</span>}
     </span>
   )
 }
@@ -188,8 +188,8 @@ function LargeFileDeferred({ meta, onOpen }: {
   onOpen: () => void
 }) {
   return (
-    <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-[12px] text-text-secondary">
-      <div className="font-medium text-amber-400">
+    <div className="rounded-lg border border-status-warning/20 bg-status-warning/5 p-3 text-[12px] text-text-secondary">
+      <div className="font-medium text-status-warning">
         Large file preview is deferred to keep the UI responsive.
       </div>
       <div className="mt-1 opacity-80">
@@ -262,20 +262,20 @@ function ApprovalBar({
   onReject?: () => void
 }) {
   return (
-    <div className="flex items-center justify-between gap-2 px-3 py-2 border-t border-red-500/10 bg-red-500/5">
-      <span className="text-xs text-red-400/70 truncate">
+    <div className="flex items-center justify-between gap-2 px-3 py-2 border-t border-status-warning/10 bg-status-warning/5">
+      <span className="text-xs text-status-warning/70 truncate">
         {t('toolAwaitingApproval', language as any)}
       </span>
       <div className="flex items-center gap-2 shrink-0">
         <button
           onClick={onReject}
-          className="px-3 py-1.5 text-xs font-medium text-text-muted hover:text-red-400 hover:bg-red-500/10 rounded-md transition-all active:scale-95"
+          className="px-3 py-1.5 text-xs font-medium text-text-muted hover:text-status-error hover:bg-status-error/10 rounded-md transition-all active:scale-95"
         >
           {t('toolReject', language as any)}
         </button>
         <button
           onClick={onApprove}
-          className="px-3 py-1.5 text-xs font-medium bg-accent text-white hover:bg-accent-hover rounded-md transition-all shadow-sm shadow-accent/20 active:scale-95 hover:shadow-accent/40"
+          className="px-3 py-1.5 text-xs font-medium bg-accent text-accent-foreground hover:bg-accent-hover rounded-md transition-all shadow-sm shadow-accent/20 active:scale-95 hover:shadow-accent/40"
         >
           {t('toolApprove', language as any)}
         </button>
@@ -288,8 +288,8 @@ function ApprovalBar({
 function ErrorBlock({ error }: { error: string }) {
   return (
     <div className="px-3 pb-3 pl-9">
-      <div className="px-3 py-2 bg-red-500/10 border border-red-500/20 rounded-md">
-        <p className="text-[12px] text-red-300 font-mono break-all">{error}</p>
+      <div className="px-3 py-2 bg-status-error/10 border border-status-error/20 rounded-md">
+        <p className="text-[12px] text-status-error/80 font-mono break-all">{error}</p>
       </div>
     </div>
   )

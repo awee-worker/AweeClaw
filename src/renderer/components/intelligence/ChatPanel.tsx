@@ -127,6 +127,7 @@ export default function ChatPanel() {
     isStreaming,
     isAwaitingApproval,
     pendingToolCall,
+    pendingApprovalToolCalls,
     pendingChanges,
     messageCheckpoints,
     contextItems,
@@ -134,12 +135,18 @@ export default function ChatPanel() {
     messageListVersion,
   } = useAgentViewState()
 
+  /** 所有待批准工具 id 集合，用于批量批准面板 */
+  const pendingToolIds = useMemo(
+    () => pendingApprovalToolCalls.map((tc) => tc.id),
+    [pendingApprovalToolCalls],
+  )
+
   const isChannelThread = useMemo(() => {
     if (!currentThreadId) return false
     return !!channelConversationService.getConversationKey(currentThreadId)
   }, [currentThreadId])
 
-  const { sendMessage, abort, approveCurrentTool, rejectCurrentTool } = useAgentCommands()
+  const { sendMessage, abort, approveCurrentTool, rejectCurrentTool, approveAllTools, rejectAllTools } = useAgentCommands()
   const {
     clearMessages,
     deleteMessagesAfter,
@@ -439,10 +446,11 @@ export default function ChatPanel() {
             onEdit={messageOps.handleEditMessage}
             onRegenerate={messageOps.handleRegenerate}
             onRestore={messageOps.handleRestore}
-            onApproveTool={approveCurrentTool}
-            onRejectTool={rejectCurrentTool}
+            onApproveTool={pendingToolIds.length > 1 ? approveAllTools : approveCurrentTool}
+            onRejectTool={pendingToolIds.length > 1 ? rejectAllTools : rejectCurrentTool}
             onOpenDiff={handleShowDiff}
             pendingToolId={pendingToolCall?.id}
+            pendingToolIds={pendingToolIds}
             hasCheckpoint={item.item.hasCheckpoint}
             isWorkspaceEditor={activeScenarioId === 'dev-assistant'}
             onDeleteRound={(messageId: string) =>
@@ -467,13 +475,16 @@ export default function ChatPanel() {
     },
     [
       approveCurrentTool,
+      approveAllTools,
       deleteSelectionMode,
       handleShowDiff,
       isChatPrimary,
       language,
       messageOps,
       pendingToolCall?.id,
+      pendingToolIds,
       rejectCurrentTool,
+      rejectAllTools,
       selectedMessageIds,
       timelineProjection.revealArchivedMessages,
       activeScenarioId,
