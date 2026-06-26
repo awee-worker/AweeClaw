@@ -22,6 +22,7 @@ import {
   type EmergencyStopParams,
   type EmergencyStopState,
 } from './EmergencyStop'
+import { getAutomationModeController } from './AutomationModeController'
 import type {
   AppInfo,
   LaunchResult,
@@ -101,12 +102,24 @@ export class DesktopControlManager {
       if (!window) {
         throw new Error('No window available for permission confirmation')
       }
-      const result = await this.guard.requestConfirmation(window, operation, target, args)
-      if (result.outcome !== 'approved') {
-        if (result.outcome === 'timeout') {
-          throw new Error(`User confirmation timed out for operation ${operation} on ${target}. The confirmation dialog may not have been displayed. Please retry.`)
+      // 确认弹窗期间临时提升主窗口层级为最高（pop-up-menu），确保不被其他窗口遮挡
+      // 同时在自动化模式运行时，覆盖层为 screen-saver 级别仍高于此，但覆盖层在确认期间
+      // 已切换为穿透模式，不会阻挡弹窗交互。完成后恢复原 alwaysOnTop 状态。
+      const automationCtrl = getAutomationModeController()
+      const prevAlwaysOnTop = automationCtrl.pushMainWindowAlwaysOnTop()
+      // 确认弹窗期间允许用户操作（覆盖层切穿透），否则用户无法点击弹窗
+      automationCtrl.setInputElementActive(true)
+      try {
+        const result = await this.guard.requestConfirmation(window, operation, target, args)
+        if (result.outcome !== 'approved') {
+          if (result.outcome === 'timeout') {
+            throw new Error(`User confirmation timed out for operation ${operation} on ${target}. The confirmation dialog may not have been displayed. Please retry.`)
+          }
+          throw new Error(`User denied operation ${operation} on ${target}`)
         }
-        throw new Error(`User denied operation ${operation} on ${target}`)
+      } finally {
+        automationCtrl.setInputElementActive(false)
+        automationCtrl.popMainWindowAlwaysOnTop(prevAlwaysOnTop)
       }
     }
 

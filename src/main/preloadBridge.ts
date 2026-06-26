@@ -1485,4 +1485,29 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('desktop:workflowCompleted', handler)
     return () => ipcRenderer.removeListener('desktop:workflowCompleted', handler)
   },
+
+  // ============ 自动化模式 ============
+  desktopAutomationEnter: (params: { task: string; maxSteps?: number }) =>
+    ipcRenderer.invoke('desktop:automationEnter', params),
+  desktopAutomationExit: (reason?: string) =>
+    ipcRenderer.invoke('desktop:automationExit', reason),
+  desktopAutomationUserExit: () =>
+    ipcRenderer.invoke('desktop:automationUserExit'),
+  desktopAutomationGetState: () =>
+    ipcRenderer.invoke('desktop:automationGetState'),
+  onDesktopAutomationStateChanged: (callback: (state: any) => void) => {
+    const handler = (_event: unknown, state: any) => callback(state)
+    ipcRenderer.on('desktop:automationStateChanged', handler)
+    return () => ipcRenderer.removeListener('desktop:automationStateChanged', handler)
+  },
+  onDesktopAutomationStep: (callback: (step: any) => void) => {
+    const handler = (_event: unknown, step: any) => callback(step)
+    ipcRenderer.on('desktop:automationStep', handler)
+    return () => ipcRenderer.removeListener('desktop:automationStep', handler)
+  },
+  onDesktopAutomationLog: (callback: (log: any) => void) => {
+    const handler = (_event: unknown, log: any) => callback(log)
+    ipcRenderer.on('desktop:automationLog', handler)
+    return () => ipcRenderer.removeListener('desktop:automationLog', handler)
+  },
 })

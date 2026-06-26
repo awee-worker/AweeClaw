@@ -1962,33 +1962,64 @@ export const SEARCH_DECISION_GUIDE = `
 export const DESKTOP_TOOLS_GUIDE = `
 ## Desktop Control Tools Guide
 
-**Safety Rules:**
+### 🔴 MANDATORY: When to Use Desktop Automation
+
+**凡是涉及到需要"启用应用"、"操作应用"、"在屏幕上点击/输入"、"打开系统设置"、"打开浏览器并操作页面"、"操作文件管理器/GUI 软件"等 GUI 交互任务，必须优先调用 \`desktop_visual_agent_step\` 工具，由视觉智能体自主完成屏幕观看、分析、决策、操作的完整闭环。**
+
+**判定规则（命中任意一条即必须调用 \`desktop_visual_agent_step\`）：**
+1. 用户指令包含"打开"、"启动"、"启用"某应用（如浏览器、访达、计算器、系统设置、微信、IDE 等）
+2. 用户指令包含"点击"、"输入"、"选择"、"拖拽"、"滚动"等 GUI 动作
+3. 用户指令包含"搜索"、"查找"某 GUI 元素（如按钮、菜单项、输入框）
+4. 用户指令要求"看一下屏幕"、"截图看看"、"查看当前界面"
+5. 用户指令涉及操作系统的 GUI 设置（如更换壁纸、调整音量、修改网络配置）
+6. 用户指令要求操作第三方 GUI 应用（如 Office、设计软件、聊天工具）
+
+**禁止行为：**
+- ❌ 不要用文字描述"我会打开浏览器..."而不实际调用工具
+- ❌ 不要用 \`desktop_mouse_click\`、\`desktop_type_text\` 等单步工具拼接 GUI 操作流程（这些工具需要精确坐标，AI 无法预知）
+- ✅ 应该直接调用 \`desktop_visual_agent_step\`，让视觉智能体自主截图分析并操作
+
+### Safety Rules
+
 - ALWAYS use \`desktop_emergency_stop\` immediately if anything goes wrong
 - Mouse coordinates use screen pixels with origin at top-left
 - macOS requires Accessibility permission for input simulation
 - Screen capture returns base64-encoded PNG images
 
-**Common Patterns:**
+### Visual Agent Loop（核心工具）
+
+\`desktop_visual_agent_step\` 是桌面自动化的核心入口，AI 调用此工具后会：
+1. 进入沉浸式自动化模式（屏幕边缘出现光晕，右下角出现退出按钮）
+2. 截图当前屏幕 → LLM 视觉分析 → 决策下一步操作 → 执行 → 验证
+3. 循环直到任务完成、达到最大步数、或用户点击退出
+
+**参数说明：**
+- \`task\`：自然语言任务描述，需清晰具体（如"打开浏览器，搜索今天北京的天气"）
+- \`maxSteps\`：最大循环步数（默认 10，最大 50）
+
+**调用示例：**
+- 用户："帮我打开浏览器搜索今天的新闻" → 调用 \`desktop_visual_agent_step\` task="打开浏览器，搜索今天的新闻"
+- 用户："打开访达，进入下载文件夹" → 调用 \`desktop_visual_agent_step\` task="打开访达，进入下载文件夹"
+- 用户："打开系统设置，把暗黑模式关掉" → 调用 \`desktop_visual_agent_step\` task="打开系统设置，关闭暗黑模式"
+
+### Common Patterns (低层工具，仅供视觉智能体内部使用)
+
 - Click a button: \`desktop_mouse_click\` with x/y coordinates
 - Type text into focused field: \`desktop_type_text\`
 - Keyboard shortcut: \`desktop_key_combo\` with key array
 - Screenshot for visual analysis: \`desktop_capture_screen\`
 - Find a window: \`desktop_list_windows\` then \`desktop_focus_window\`
 
-**Recording & Replay (Phase 4):**
+### Recording & Replay (Phase 4)
+
 - Start recording: \`desktop_recording_start\` with name/description
 - Record actions: \`desktop_record_action\` for each user operation
 - Stop recording: \`desktop_recording_stop\` to finalize and save
 - List recordings: \`desktop_list_recordings\` to see saved scripts
 - Replay recording: \`desktop_replay_recording\` with recordingId and speed
 
-**Visual Agent Loop (Phase 4):**
-- Use \`desktop_visual_agent_step\` for GUI tasks requiring visual understanding
-- Provide a clear task description in natural language
-- Set maxSteps to limit iterations (default 10, max 50)
-- The loop auto-stops on completion, max steps, or emergency stop
+### Workflow Engine (Phase 4)
 
-**Workflow Engine (Phase 4):**
 - List workflows: \`desktop_workflow_list\` to see available workflows
 - Run workflow: \`desktop_workflow_run\` with workflowId and optional variables
 - Workflows support conditions, loops, variables, and error handling

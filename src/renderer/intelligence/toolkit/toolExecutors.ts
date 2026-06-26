@@ -23,6 +23,9 @@ import { getReadStrategy, buildReadTruncationMessage } from './fileReadPolicies'
 import { lintService } from '../runtime/codeAnalysisService'
 import { memoryService } from '../runtime/recallService'
 import { knowledgeService } from '../runtime/knowledgeService'
+import { playNotificationSound } from '@utils/notificationSound'
+import { toast } from '@components/foundation/InlineNotification'
+import { globalDecide } from '@components/foundation/DecisionOverlay'
 import type { KnowledgeCategory, KnowledgeEntry } from '@intelligence/providerTypes'
 import { useStore } from '@store'
 import { getAccessToken, getServerUrl, getTokens } from '@services/backendApi'
@@ -2960,38 +2963,96 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
     },
 
     async desktop_visual_agent_step(args) {
-        try {
-            const task = args.task as string
-            const maxSteps = (args.maxSteps as number) || 10
+        const task = args.task as string
+        const maxSteps = (args.maxSteps as number) || 10
 
-            // 根据当前运行模式构建云端配置
-            // 云端模式：转发到后端 /api/v1/llm/vision/chat，使用后端配置的视觉模型
-            // 自定义模式：cloudConfig 为 undefined，主进程读取本地 vision_model_config
-            const store = useStore.getState()
-            let cloudConfig: { cloudMode: boolean; serverUrl?: string; accessToken?: string; refreshToken?: string } | undefined
-            if (store.cloudMode === 'cloud' && store.isAuthenticated) {
-                const accessToken = getAccessToken()
-                const refreshToken = getTokens()?.refreshToken
-                const serverUrl = getServerUrl()
-                if ((accessToken || refreshToken) && serverUrl) {
-                    cloudConfig = {
-                        cloudMode: true,
-                        serverUrl,
-                        accessToken: accessToken || '',
-                        refreshToken,
-                    }
+        // 播放启动提示音，告知用户即将进入桌面自动化
+        // 注意：工具执行授权确认由 AgentSubLoop.executeToolCall 统一通过 globalDecide 弹窗处理，
+        // 此处不再重复弹窗，避免双重确认
+        playNotificationSound('attention')
+
+        // 构建云端配置
+        // 云端模式：转发到后端 /api/v1/llm/vision/chat，使用后端配置的视觉模型
+        // 自定义模式：cloudConfig 为 undefined，主进程读取本地 vision_model_config
+        const store = useStore.getState()
+        let cloudConfig: { cloudMode: boolean; serverUrl?: string; accessToken?: string; refreshToken?: string } | undefined
+        if (store.cloudMode === 'cloud' && store.isAuthenticated) {
+            const accessToken = getAccessToken()
+            const refreshToken = getTokens()?.refreshToken
+            const serverUrl = getServerUrl()
+            if ((accessToken || refreshToken) && serverUrl) {
+                cloudConfig = {
+                    cloudMode: true,
+                    serverUrl,
+                    accessToken: accessToken || '',
+                    refreshToken,
                 }
             }
+        }
 
+        // 4. 执行视觉智能体循环
+        try {
             const res = await api.desktop.visualAgent.run({ task, maxSteps, cloudConfig })
             const result = res.data
             const status = result.aborted ? 'aborted' : result.completed ? 'completed' : 'incomplete'
+
+            // 5. 根据结果播放提示音 + 弹窗反馈
+            if (result.completed) {
+                playNotificationSound('success')
+                toast.success(`桌面自动化完成：${result.result}`)
+            } else if (result.aborted) {
+                playNotificationSound('error')
+                // 用户主动退出，无需弹窗（覆盖层已提示）
+                toast.info('桌面自动化已中止')
+            } else {
+                playNotificationSound('error')
+                // 未完成但未中止，弹窗让用户选择后续操作
+                try {
+                    const retry = await globalDecide({
+                        title: '桌面自动化未完成',
+                        message: `任务"${task}"执行 ${result.totalSteps} 步后未完成。\n结果：${result.result}\n\n是否重试？`,
+                        confirmText: '重试',
+                        cancelText: '取消',
+                        saveText: '查看详情',
+                        severity: 'warning',
+                        riskTag: 'AUTOMATION_INCOMPLETE',
+                        auditAction: 'desktop_visual_agent_step_retry',
+                    })
+                    if (retry === true) {
+                        // 用户选择重试，返回提示让 AI 重新调用工具
+                        return {
+                            success: false,
+                            result: `任务未完成，用户选择重试。请重新调用 desktop_visual_agent_step 工具执行任务：${task}`,
+                        }
+                    }
+                } catch {
+                    // 用户关闭弹窗，忽略
+                }
+            }
+
             return {
                 success: result.completed,
                 result: `Visual loop ${status}: ${result.totalSteps} steps, ${result.duration}ms. Result: ${result.result}`,
             }
         } catch (err) {
-            return { success: false, result: '', error: toAppError(err).message }
+            // 6. 错误弹窗提示
+            const errMsg = toAppError(err).message
+            playNotificationSound('error')
+            try {
+                await globalDecide({
+                    title: '桌面自动化出错',
+                    message: `任务"${task}"执行失败：\n\n${errMsg}\n\n请检查：\n1. macOS 辅助功能权限是否已授予\n2. 视觉模型配置是否正确\n3. 网络连接是否正常`,
+                    confirmText: '知道了',
+                    cancelText: '关闭',
+                    severity: 'danger',
+                    riskTag: 'AUTOMATION_ERROR',
+                    auditAction: 'desktop_visual_agent_step_error',
+                })
+            } catch {
+                // 弹窗失败时仅 toast
+                toast.error(`桌面自动化出错：${errMsg}`)
+            }
+            return { success: false, result: '', error: errMsg }
         }
     },
 
@@ -3150,7 +3211,17 @@ export const toolExecutors = Object.fromEntries(
     Object.entries(rawToolExecutors).map(([name, executor]) => [
         name,
         async (args: Record<string, unknown>, ctx: ToolExecutionContext): Promise<ToolExecutionResult> => {
-            const timeoutMs = ['generate_tests', 'run_command', 'edit_file', 'replace_file_content', 'web_search'].includes(name) ? 120000 : 60000
+            // desktop_visual_agent_step 是长时循环任务（截图→LLM分析→执行→验证，多步循环），
+            // 根据最大步数动态计算超时：每步 30s + 基础 30s
+            let timeoutMs: number
+            if (name === 'desktop_visual_agent_step') {
+                const maxSteps = (args.maxSteps as number) || 10
+                timeoutMs = 30_000 + maxSteps * 30_000  // 默认 10 步 = 330s，15 步 = 480s
+            } else if (['generate_tests', 'run_command', 'edit_file', 'replace_file_content', 'web_search'].includes(name)) {
+                timeoutMs = 120000
+            } else {
+                timeoutMs = 60000
+            }
             let timer: ReturnType<typeof setTimeout>
 
             try {

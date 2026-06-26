@@ -96,6 +96,23 @@ export type {
   VisualLoopResult,
 } from './VisualAgentLoop'
 
+// Phase 5 增量: 自动化模式控制器（沉浸式桌面自动化体验）
+export {
+  AutomationModeController,
+  getAutomationModeController,
+  AUTOMATION_EVENT_STATE_CHANGE,
+  AUTOMATION_EVENT_STEP,
+  AUTOMATION_EVENT_LOG,
+  AUTOMATION_OVERLAY_ROUTE,
+} from './AutomationModeController'
+export type {
+  AutomationModeState,
+  AutomationStepInfo,
+  AutomationEnterParams,
+  AutomationStatePayload,
+  AutomationStepPayload,
+} from './AutomationModeController'
+
 export { getPlatformAdapter } from './platform'
 export type { PlatformAdapter } from './platform/types'
 

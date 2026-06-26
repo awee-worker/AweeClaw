@@ -894,6 +894,17 @@ function createGroupedAPI() {
         onLog: (callback: (data: any) => void) => raw.onDesktopWorkflowLog(callback),
         onCompleted: (callback: (result: any) => void) => raw.onDesktopWorkflowCompleted(callback),
       },
+
+      // 自动化模式：沉浸式桌面自动化体验（边缘光晕 + 退出按钮 + 输入锁定）
+      automation: {
+        enter: (params: { task: string; maxSteps?: number }) => raw.desktopAutomationEnter(params),
+        exit: (reason?: string) => raw.desktopAutomationExit(reason),
+        userExit: () => raw.desktopAutomationUserExit(),
+        getState: () => raw.desktopAutomationGetState(),
+        onStateChange: (callback: (state: any) => void) => raw.onDesktopAutomationStateChanged(callback),
+        onStep: (callback: (step: any) => void) => raw.onDesktopAutomationStep(callback),
+        onLog: (callback: (log: any) => void) => raw.onDesktopAutomationLog(callback),
+      },
     },
 
     onScenarioInstallProgress: (callback: (data: { scenarioId: string; phase: string; bytesDownloaded: number; bytesTotal: number; percent: number }) => void) => {

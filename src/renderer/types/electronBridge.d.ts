@@ -870,6 +870,15 @@ export interface ElectronAPI {
   onDesktopWorkflowStepError: (callback: (data: any) => void) => () => void
   onDesktopWorkflowLog: (callback: (data: any) => void) => () => void
   onDesktopWorkflowCompleted: (callback: (result: any) => void) => () => void
+
+  // 自动化模式
+  desktopAutomationEnter: (params: { task: string; maxSteps?: number }) => Promise<{ success: boolean; data: any }>
+  desktopAutomationExit: (reason?: string) => Promise<{ success: boolean; data: any }>
+  desktopAutomationUserExit: () => Promise<{ success: boolean }>
+  desktopAutomationGetState: () => Promise<{ success: boolean; data: any }>
+  onDesktopAutomationStateChanged: (callback: (state: any) => void) => () => void
+  onDesktopAutomationStep: (callback: (step: any) => void) => () => void
+  onDesktopAutomationLog: (callback: (log: any) => void) => () => void
 }
 
 declare global {

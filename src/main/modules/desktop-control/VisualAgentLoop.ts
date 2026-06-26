@@ -25,6 +25,10 @@ import {
   EmergencyStopError,
 } from './EmergencyStop'
 import { getDesktopControlManager } from './DesktopControlManager'
+import {
+  getAutomationModeController,
+  type AutomationStepInfo,
+} from './AutomationModeController'
 import type { LLMConfig, LLMMessage, ImageContent, TextContent } from '@shared/protocols/modelProtocol'
 import { createModel } from '@main/modules/ai-provider/modelRegistry'
 import { generateText } from 'ai'
@@ -155,7 +159,13 @@ Rules:
 7. For key_combo, params must include keys array.
 8. Set completed=true when task is done.
 9. Set action.type="abort" if the task cannot be completed.
-10. Confidence is 0.0-1.0, where 1.0 means very certain.`
+10. Confidence is 0.0-1.0, where 1.0 means very certain.
+
+IMPORTANT - Overlay artifacts to ignore:
+While automation mode is active, the screen has visual overlays that are NOT part of the real UI:
+- A subtle animated glow around the screen edges.
+- A small circular exit button at the bottom-right corner.
+These are control UI of the automation system. NEVER click them, NEVER reference them in coordinates, and NEVER treat them as application elements. Always analyze the actual application windows in the center of the screen.`
 
 // ============================================
 // 视觉闭环引擎实现
@@ -214,6 +224,18 @@ export class VisualAgentLoop extends EventEmitter {
       this.abortController?.abort()
     }
     stopController.on('emergency-stop', onEmergencyStop)
+
+    // 进入自动化模式：显示覆盖层（边缘光晕 + 退出按钮 + 输入锁定）
+    const automationCtrl = getAutomationModeController()
+    try {
+      await automationCtrl.enter({
+        task: mergedConfig.task,
+        maxSteps: mergedConfig.maxSteps,
+      })
+      automationCtrl.reportLog(`Visual agent loop started: ${mergedConfig.task}`)
+    } catch (err) {
+      logger.desktop.warn('[VisualAgentLoop] Enter automation mode failed, continue without overlay:', err)
+    }
 
     const startTime = Date.now()
     const steps: VisualLoopStep[] = []
@@ -286,8 +308,28 @@ export class VisualAgentLoop extends EventEmitter {
               throw new Error(`Dangerous action rejected: ${analysis.action.type}`)
             }
 
-            const execResult = await this.executeAction(analysis.action, mergedConfig.stepTimeout)
-            step.executionResult = execResult
+            // 上报步骤进度到覆盖窗口
+            const stepInfo: AutomationStepInfo = {
+              index: i,
+              actionType: analysis.action.type,
+              description: analysis.action.reasoning || analysis.action.type,
+              status: 'running',
+              timestamp: Date.now(),
+            }
+            automationCtrl.reportStep(stepInfo)
+
+            // 输入类动作执行前切换为穿透模式，让模拟事件作用于目标应用
+            const isInput = this.isInputAction(analysis.action.type)
+            if (isInput) automationCtrl.setInputElementActive(true)
+            try {
+              const execResult = await this.executeAction(analysis.action, mergedConfig.stepTimeout)
+              step.executionResult = execResult
+              stepInfo.status = 'completed'
+              automationCtrl.reportStep(stepInfo)
+            } finally {
+              // 动作完成后恢复阻塞模式，用户无法点击屏幕其他内容
+              if (isInput) automationCtrl.setInputElementActive(false)
+            }
           }
 
           step.duration = Date.now() - stepStart
@@ -323,6 +365,18 @@ export class VisualAgentLoop extends EventEmitter {
       stopController.off('emergency-stop', onEmergencyStop)
       this.isRunning = false
       this.abortController = null
+
+      // 退出自动化模式：销毁覆盖层、解除输入锁定
+      try {
+        const exitReason = aborted
+          ? (abortReason ?? 'aborted')
+          : completed
+            ? 'task completed'
+            : 'reached max steps'
+        await automationCtrl.exit(exitReason)
+      } catch (err) {
+        logger.desktop.warn('[VisualAgentLoop] Exit automation mode failed:', err)
+      }
     }
 
     const result: VisualLoopResult = {
@@ -561,6 +615,28 @@ Analyze the current screenshot and decide the next action.`
 
       default:
         throw new Error(`Unknown action type: ${action.type}`)
+    }
+  }
+
+  /** 判断动作类型是否为输入类（需要穿透覆盖层作用于目标应用） */
+  private isInputAction(type: VisualActionType): boolean {
+    switch (type) {
+      case 'click':
+      case 'double_click':
+      case 'right_click':
+      case 'move':
+      case 'scroll':
+      case 'type_text':
+      case 'press_key':
+      case 'key_combo':
+        return true
+      case 'wait':
+      case 'screenshot':
+      case 'complete':
+      case 'abort':
+        return false
+      default:
+        return false
     }
   }
 

@@ -19,6 +19,12 @@ import { getActionRecorder } from '../../modules/desktop-control/ActionRecorder'
 import { getActionReplayer } from '../../modules/desktop-control/ActionReplayer'
 import { getWorkflowEngine } from '../../modules/desktop-control/WorkflowEngine'
 import { getVisualAgentLoop } from '../../modules/desktop-control/VisualAgentLoop'
+import {
+  getAutomationModeController,
+  AUTOMATION_EVENT_STATE_CHANGE,
+  AUTOMATION_EVENT_STEP,
+  AUTOMATION_EVENT_LOG,
+} from '../../modules/desktop-control/AutomationModeController'
 import type { MouseButton, ClickType } from '../../modules/desktop-control/types/actions'
 import type { RecordingScript, ReplayConfig } from '../../modules/desktop-control/types/recording'
 import type { WorkflowDefinition } from '../../modules/desktop-control/types/workflow'
@@ -965,5 +971,60 @@ export function registerDesktopControlHandlers(getMainWindow: (windowId?: number
       validatePlatform: false,
     })
     return { success: result.success, data: result }
+  })
+
+  // ============ 自动化模式（Phase 5 增量） ============
+  // 桌面自动化沉浸式体验：边缘光晕 + 右下角悬浮退出按钮 + 输入锁定
+  // 由 VisualAgentLoop 自动进入/退出，也可由用户手动触发
+
+  const automationCtrl = getAutomationModeController()
+  // 绑定主窗口（用于确认弹窗期间 alwaysOnTop 切换）
+  const mainWinForAutomation = getMainWindow()
+  if (mainWinForAutomation) {
+    automationCtrl.bindMainWindow(mainWinForAutomation)
+  }
+
+  /** 进入自动化模式 */
+  safeIpcHandle('desktop:automationEnter', async (_event, params: { task: string; maxSteps?: number }) => {
+    await automationCtrl.enter({ task: params.task, maxSteps: params.maxSteps })
+    return { success: true, data: automationCtrl.getState() }
+  })
+
+  /** 退出自动化模式 */
+  safeIpcHandle('desktop:automationExit', async (_event, reason?: string) => {
+    await automationCtrl.exit(reason ?? 'manual-exit')
+    return { success: true, data: automationCtrl.getState() }
+  })
+
+  /** 用户点击覆盖层退出按钮（触发紧急停止 + 退出自动化模式） */
+  safeIpcHandle('desktop:automationUserExit', async () => {
+    await automationCtrl.requestUserExit()
+    return { success: true }
+  })
+
+  /** 查询自动化模式状态 */
+  safeIpcHandle('desktop:automationGetState', async () => {
+    return { success: true, data: automationCtrl.getState() }
+  })
+
+  // 自动化模式状态变更推送到覆盖窗口（控制器内部已直接向覆盖窗口发送）
+  // 这里同时推送到主窗口，供主窗口 UI 同步显示状态徽标
+  automationCtrl.on(AUTOMATION_EVENT_STATE_CHANGE, (state) => {
+    const window = getMainWindow()
+    if (window && !window.isDestroyed()) {
+      window.webContents.send('desktop:automationStateChanged', state)
+    }
+  })
+  automationCtrl.on(AUTOMATION_EVENT_STEP, (step) => {
+    const window = getMainWindow()
+    if (window && !window.isDestroyed()) {
+      window.webContents.send('desktop:automationStep', step)
+    }
+  })
+  automationCtrl.on(AUTOMATION_EVENT_LOG, (log) => {
+    const window = getMainWindow()
+    if (window && !window.isDestroyed()) {
+      window.webContents.send('desktop:automationLog', log)
+    }
   })
 }

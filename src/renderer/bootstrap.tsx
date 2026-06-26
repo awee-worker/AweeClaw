@@ -14,6 +14,22 @@ logger.refreshProductionMode()
 
 injectSharedDependencies()
 
+// ============================================
+// 路由分发：根据 ?window= 参数决定加载哪个 UI
+// - automation-overlay: 自动化模式覆盖窗口（轻量加载，仅渲染光晕+退出按钮）
+// - 默认: 主应用
+// ============================================
+const windowType = new URLSearchParams(window.location.search).get('window')
+
+if (windowType === 'automation-overlay') {
+  // 自动化模式覆盖窗口：轻量加载，跳过主应用的重量级依赖（Monaco、状态管理等）
+  import('./AutomationModeOverlay').then(({ mountAutomationModeOverlay }) => {
+    mountAutomationModeOverlay()
+  }).catch((err) => {
+    logger.system.error('[Bootstrap] Failed to load AutomationModeOverlay:', err)
+  })
+} else {
+
 // 性能优化：延迟加载 Monaco worker 配置
 // Monaco 是最大的依赖，延迟到实际需要时再初始化
 const initMonaco = () => import('./monacoWorkerEntry')
@@ -93,3 +109,5 @@ if ('requestIdleCallback' in window) {
 } else {
   setTimeout(initMonaco, 100)
 }
+
+} // 结束 else（主应用分支）
