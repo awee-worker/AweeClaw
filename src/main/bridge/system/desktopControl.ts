@@ -598,7 +598,7 @@ export function registerDesktopControlHandlers(getMainWindow: (windowId?: number
     const visionModel = resolveActiveLLMConfig(params.cloudConfig)
     const result = await loop.run({
       task: params.task,
-      maxSteps: params.maxSteps ?? 10,
+      maxSteps: params.maxSteps ?? 0, // 0 = 无限制，由任务完成/中止/用户停止控制结束
       visionModel,
       verifyBeforeAction: true,
       stepInterval: 500,
@@ -610,6 +610,7 @@ export function registerDesktopControlHandlers(getMainWindow: (windowId?: number
 
   /** 中止视觉闭环 */
   safeIpcHandle('desktop:visualAgentAbort', async () => {
+    logger.desktop.warn('[desktopControl] visualAgentAbort IPC received, stack:', new Error().stack?.slice(0, 600))
     const loop = getVisualAgentLoop()
     loop.abort()
     return { success: true }

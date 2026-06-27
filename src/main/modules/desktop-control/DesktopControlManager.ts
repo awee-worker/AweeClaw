@@ -9,6 +9,7 @@ import { BrowserWindow } from 'electron'
 import { OperationType } from '@main/guard/securityPolicyEngine'
 import { logger } from '@shared/toolkit/LogEngine'
 import { getPlatformAdapter } from './platform'
+import type { PlatformAdapter } from './platform/types'
 import { AppLauncher } from './AppLauncher'
 import { SystemInfoService } from './SystemInfo'
 import { ProcessManager } from './ProcessManager'
@@ -53,15 +54,16 @@ export class DesktopControlManager {
   readonly emergencyStop = getEmergencyStopController()
 
   private mainWindow: BrowserWindow | null = null
+  private adapter: PlatformAdapter
 
   constructor() {
-    const adapter = getPlatformAdapter()
-    this.launcher = new AppLauncher(adapter)
-    this.systemInfo = new SystemInfoService(adapter)
-    this.processManager = new ProcessManager(adapter)
-    this.windowManager = new WindowManager(adapter)
-    this.screenCapture = new ScreenCaptureService(adapter)
-    this.inputSimulator = new InputSimulator(adapter)
+    this.adapter = getPlatformAdapter()
+    this.launcher = new AppLauncher(this.adapter)
+    this.systemInfo = new SystemInfoService(this.adapter)
+    this.processManager = new ProcessManager(this.adapter)
+    this.windowManager = new WindowManager(this.adapter)
+    this.screenCapture = new ScreenCaptureService(this.adapter)
+    this.inputSimulator = new InputSimulator(this.adapter)
     this.fileManager = new FileManager()
     this.guard = new DesktopGuard()
   }
@@ -80,6 +82,11 @@ export class DesktopControlManager {
   /**
    * 执行需要鉴权的操作
    * 内部统一处理权限校验 + 用户确认流程
+   *
+   * 自动化模式优化：
+   * 当视觉智能体（VisualAgentLoop）处于运行状态时，用户已通过启动任务整体授权
+   * 桌面操作。此时对输入类操作（鼠标/键盘/应用启动/窗口控制）自动放行，避免
+   * 每步都弹窗打断自动化流程。紧急停止检查与 DENIED 级别拒绝仍然生效。
    */
   private async executeWithPermission<T>(
     operation: OperationType,
@@ -97,7 +104,11 @@ export class DesktopControlManager {
       throw new Error(`Operation ${operation} is denied by security policy`)
     }
 
-    if (check.needConfirm) {
+    // 自动化模式下，输入类操作自动放行（用户启动视觉任务时已整体授权）
+    const automationCtrl = getAutomationModeController()
+    const isAutoApproved = automationCtrl.isActive() && isAutomationAutoApprovedOperation(operation)
+
+    if (check.needConfirm && !isAutoApproved) {
       const window = this.getWindow()
       if (!window) {
         throw new Error('No window available for permission confirmation')
@@ -105,7 +116,6 @@ export class DesktopControlManager {
       // 确认弹窗期间临时提升主窗口层级为最高（pop-up-menu），确保不被其他窗口遮挡
       // 同时在自动化模式运行时，覆盖层为 screen-saver 级别仍高于此，但覆盖层在确认期间
       // 已切换为穿透模式，不会阻挡弹窗交互。完成后恢复原 alwaysOnTop 状态。
-      const automationCtrl = getAutomationModeController()
       const prevAlwaysOnTop = automationCtrl.pushMainWindowAlwaysOnTop()
       // 确认弹窗期间允许用户操作（覆盖层切穿透），否则用户无法点击弹窗
       automationCtrl.setInputElementActive(true)
@@ -135,6 +145,11 @@ export class DesktopControlManager {
       () => this.launcher.launch(name, args),
       args,
     )
+  }
+
+  /** 激活已运行的应用，将窗口置于最前面 */
+  async activateApp(name: string): Promise<ActionResult> {
+    return this.launcher.activate(name)
   }
 
   async quitApp(name: string): Promise<ActionResult> {
@@ -219,6 +234,11 @@ export class DesktopControlManager {
 
   async findWindow(query: string): Promise<WindowInfo[]> {
     return this.windowManager.find(query)
+  }
+
+  /** 获取指定应用前台窗口的真实边界（用于 OCR 裁剪） */
+  async getActiveWindowBounds(appName: string): Promise<import('./types/actions').Rect | null> {
+    return this.windowManager.getActiveWindowBounds(appName)
   }
 
   async focusWindow(windowId: string): Promise<ActionResult> {
@@ -451,6 +471,25 @@ export class DesktopControlManager {
   /** 复位紧急停止（需用户确认） */
   resetEmergencyStop(): void {
     this.emergencyStop.reset()
+  }
+}
+
+/**
+ * 判断操作类型是否在自动化模式下自动放行（无需弹窗确认）
+ *
+ * 这些操作属于视觉智能体执行任务的必要输入手段，用户启动视觉任务时
+ * 已整体授权。危险操作（PROCESS_KILL、SYSTEM_SETTING 中的音量/亮度等）
+ * 不在自动放行范围内，仍需用户确认。
+ */
+function isAutomationAutoApprovedOperation(operation: OperationType): boolean {
+  switch (operation) {
+    case OperationType.MOUSE_INPUT:
+    case OperationType.KEYBOARD_INPUT:
+    case OperationType.APP_LAUNCH:
+    case OperationType.WINDOW_CONTROL:
+      return true
+    default:
+      return false
   }
 }
 

@@ -74,6 +74,48 @@ function execAppleScriptLines(lines: string[], timeout = 10000): Promise<string>
   })
 }
 
+/**
+ * 通过 JXA (JavaScript for Automation) 执行脚本
+ *
+ * 用途：调用 CoreGraphics 等 Objective-C 框架发送底层鼠标/键盘事件，
+ * 不依赖 cliclick，且比 AppleScript "click at {x,y}" 更可靠（后者对
+ * 普通窗口无效）。
+ *
+ * 使用 execFile 直接调用 osascript，不经过 shell，无需转义。
+ */
+function execJxa(script: string, timeout = 5000): Promise<string> {
+  return new Promise((resolve, reject) => {
+    cp.execFile(
+      '/usr/bin/osascript',
+      ['-l', 'JavaScript', '-e', script],
+      { timeout, maxBuffer: 10 * 1024 * 1024 },
+      (err, stdout, stderr) => {
+        if (err) {
+          const stderrText = stderr ? stderr.toString().trim() : ''
+          reject(new Error(stderrText || err.message))
+        } else {
+          resolve(stdout.toString().trim())
+        }
+      },
+    )
+  })
+}
+
+/**
+ * 检查 cliclick 是否已安装（缓存结果避免重复 which 调用）
+ */
+let cliclickAvailable: boolean | null = null
+async function hasCliclick(): Promise<boolean> {
+  if (cliclickAvailable !== null) return cliclickAvailable
+  try {
+    await execCmd('which cliclick', { timeout: 2000 })
+    cliclickAvailable = true
+  } catch {
+    cliclickAvailable = false
+  }
+  return cliclickAvailable
+}
+
 /** 提取应用图标为 base64（简化版，仅返回路径） */
 function extractAppIcon(appPath: string): string | undefined {
   try {
@@ -133,6 +175,14 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
 
       await execCmd(cmd)
 
+      // 1.5. 用 AppleScript 激活应用，确保窗口置于最前面
+      // open -a 仅启动/切换，多窗口场景下不一定把目标窗口提到最前
+      try {
+        await execCmd(`osascript -e 'tell application "${name}" to activate'`)
+      } catch {
+        // 某些应用名与 AppleScript bundle 名不一致，忽略错误
+      }
+
       // 2. 获取启动后的 PID（通过 app 名查找进程）
       let pid: number | undefined
       try {
@@ -153,6 +203,40 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
         success: false,
         error: (err as Error).message,
         duration: Date.now() - start,
+      }
+    }
+  }
+
+  async activateApp(name: string): Promise<ActionResult> {
+    const start = Date.now()
+    try {
+      // 用 AppleScript activate 将已运行的应用置于最前面
+      // 比 open -a 更可靠：不会启动新实例，直接激活现有窗口
+      await execCmd(`osascript -e 'tell application "${name}" to activate'`)
+      return {
+        success: true,
+        operation: 'activateApp',
+        target: name,
+        duration: Date.now() - start,
+      }
+    } catch (err) {
+      // 某些应用名与 AppleScript bundle 名不一致，尝试用 open -a 激活
+      try {
+        await execCmd(`open -a "${name}"`)
+        return {
+          success: true,
+          operation: 'activateApp',
+          target: name,
+          duration: Date.now() - start,
+        }
+      } catch (err2) {
+        return {
+          success: false,
+          operation: 'activateApp',
+          target: name,
+          error: (err2 as Error).message,
+          duration: Date.now() - start,
+        }
       }
     }
   }
@@ -517,6 +601,49 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
     )
   }
 
+  /**
+   * 获取指定应用前台窗口的真实边界（像素坐标）
+   *
+   * desktopCapturer 不提供窗口 bounds，listWindows 返回 0x0。
+   * 此方法用 AppleScript 直接查询 System Events，获取目标应用前台窗口的 position 和 size。
+   * 返回的是逻辑坐标（与 Electron screen 一致），非 Retina 物理像素。
+   *
+   * @param appName 应用名（如 "微信", "WeChat", "Google Chrome"）
+   * @returns 窗口边界，失败返回 null
+   */
+  async getActiveWindowBounds(appName: string): Promise<Rect | null> {
+    try {
+      const escApp = appName.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+      const result = await execAppleScriptLines([
+        'tell application "System Events"',
+        `  set targetProc to first process whose name contains "${escApp}"`,
+        '  set frontWin to missing value',
+        '  try',
+        '    set frontWin to front window of targetProc',
+        '  on error',
+        '    return "0,0,0,0"',
+        '  end try',
+        '  set {posX, posY} to position of frontWin',
+        '  set {sizeW, sizeH} to size of frontWin',
+        `  return (posX as text) & "," & (posY as text) & "," & (sizeW as text) & "," & (sizeH as text)`,
+        'end tell',
+      ], 5000)
+
+      const parts = result.split(',').map(s => parseInt(s.trim(), 10))
+      if (parts.length !== 4 || parts.some(isNaN) || parts[2] === 0 || parts[3] === 0) {
+        logger.desktop.warn(`[Darwin] getActiveWindowBounds("${appName}"): invalid result "${result}"`)
+        return null
+      }
+
+      const rect: Rect = { x: parts[0], y: parts[1], width: parts[2], height: parts[3] }
+      logger.desktop.info(`[Darwin] getActiveWindowBounds("${appName}"): ${JSON.stringify(rect)}`)
+      return rect
+    } catch (err) {
+      logger.desktop.warn(`[Darwin] getActiveWindowBounds("${appName}") failed: ${(err as Error).message}`)
+      return null
+    }
+  }
+
   async performWindowAction(
     windowId: string,
     action: WindowActionType,
@@ -634,9 +761,16 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
 
   async captureScreen(displayId = 0): Promise<ScreenshotResult> {
     try {
+      const display = screen.getAllDisplays()[displayId] || screen.getPrimaryDisplay()
+      // 关键：thumbnailSize 必须使用屏幕逻辑分辨率（非物理分辨率），
+      // 这样截图像素坐标 == 屏幕逻辑坐标 == cliclick/CoreGraphics 点击坐标
+      // 之前固定 1920x1080 会导致 Retina 屏坐标严重错位
+      const logicalWidth = display.bounds.width
+      const logicalHeight = display.bounds.height
+
       const sources = await desktopCapturer.getSources({
         types: ['screen'],
-        thumbnailSize: { width: 1920, height: 1080 },
+        thumbnailSize: { width: logicalWidth, height: logicalHeight },
       })
 
       const source = sources[displayId] || sources[0]
@@ -644,17 +778,40 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
         throw new Error('No screen source available')
       }
 
-      const dataUrl = source.thumbnail.toDataURL()
-      const display = screen.getAllDisplays()[displayId] || screen.getPrimaryDisplay()
+      // 确保截图尺寸精确匹配逻辑分辨率
+      // desktopCapturer 可能返回略有偏差的尺寸，导致坐标偏移
+      const thumbSize = source.thumbnail.getSize()
+      let finalImage = source.thumbnail
+      if (thumbSize.width !== logicalWidth || thumbSize.height !== logicalHeight) {
+        logger.desktop.warn(
+          `[Darwin] Thumbnail size mismatch: got ${thumbSize.width}x${thumbSize.height}, ` +
+          `expected ${logicalWidth}x${logicalHeight}, resizing...`,
+        )
+        finalImage = source.thumbnail.resize({ width: logicalWidth, height: logicalHeight })
+      }
+
+      // 压缩为 JPEG 以加速云端 LLM 传输
+      // PNG 截图通常 1-3MB，JPEG 85 约 200-500KB，传输快 5-10 倍
+      // 坐标精度不受压缩影响（分辨率不变）
+      const jpegBuffer = finalImage.toJPEG(85)
+      const jpegBase64 = jpegBuffer.toString('base64')
+      const jpegDataUrl = `data:image/jpeg;base64,${jpegBase64}`
+      const pngSize = finalImage.toPNG().length
+      logger.desktop.info(
+        `[Darwin] captureScreen bounds=${JSON.stringify(display.bounds)} ` +
+        `logical=${logicalWidth}x${logicalHeight} scaleFactor=${display.scaleFactor} ` +
+        `thumb=${thumbSize.width}x${thumbSize.height} ` +
+        `png=${(pngSize / 1024).toFixed(0)}KB jpeg=${(jpegBuffer.length / 1024).toFixed(0)}KB`,
+      )
 
       return {
         success: true,
-        dataUrl,
+        dataUrl: jpegDataUrl,
         region: {
           x: display.bounds.x,
           y: display.bounds.y,
-          width: display.bounds.width,
-          height: display.bounds.height,
+          width: logicalWidth,
+          height: logicalHeight,
         },
         displayId,
         timestamp: Date.now(),
@@ -704,38 +861,48 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
 
   async mouseClick(params: MouseClickParams): Promise<InputOperationResult> {
     const start = Date.now()
-    try {
-      // 使用 cliclick（需用户安装）或 AppleScript
-      // AppleScript 方式：通过 System Events
-      const script = `
-        tell application "System Events"
-          ${params.button === 'right' ? 'right click' : 'click'} at {${params.x}, ${params.y}}
-        end tell
-      `
-      try {
-        await execCmd(`osascript -e '${script.replace(/'/g, "'\\''")}'`, { timeout: 5000 })
-      } catch {
-        // 回退到 cliclick
-        const cmd = params.button === 'right'
-          ? `cliclick -r c:${params.x},${params.y}`
-          : `cliclick -c ${params.x},${params.y}`
-        if (params.clickType === 'double') {
-          await execCmd(`${cmd} ${cmd}`, { timeout: 5000 })
-        } else {
-          await execCmd(cmd, { timeout: 5000 })
-        }
-      }
+    const { x, y, button, clickType } = params
 
-      return {
-        success: true,
-        operation: 'mouseClick',
-        duration: Date.now() - start,
+    // 用 cliclick 一步完成移动+点击（c:x,y），避免分两步时鼠标位置被其他事件篡改
+    if (await hasCliclick()) {
+      try {
+        const action = clickType === 'double'
+          ? `dc:${x},${y}`
+          : button === 'right'
+            ? `rc:${x},${y}`
+            : `c:${x},${y}`
+        await execCmd(`cliclick ${action}`, { timeout: 5000 })
+        logger.desktop.info(`[Darwin] mouseClick: cliclick ${action}`)
+        return { success: true, operation: 'mouseClick', duration: Date.now() - start }
+      } catch (err) {
+        logger.desktop.warn(`[Darwin] cliclick click failed, falling back to CoreGraphics: ${(err as Error).message}`)
       }
+    }
+
+    // 方案2：通过 JXA + CoreGraphics 直接发送鼠标事件（不依赖 cliclick）
+    // 比 AppleScript "click at {x,y}" 可靠（后者只对 UI 元素引用有效）
+    try {
+      const isRight = button === 'right'
+      const eventDown = isRight ? 'kCGEventRightMouseDown' : 'kCGEventLeftMouseDown'
+      const eventUp = isRight ? 'kCGEventRightMouseUp' : 'kCGEventLeftMouseUp'
+      const mouseBtn = isRight ? 'kCGMouseButtonRight' : 'kCGMouseButtonLeft'
+
+      const clickOnce = `
+        var pt = $.CGPointMake(${x}, ${y});
+        var down = $.CGEventCreateMouseEvent(null, $.${eventDown}, pt, $.${mouseBtn});
+        $.CGEventPost($.kCGHIDEventTap, down);
+        var up = $.CGEventCreateMouseEvent(null, $.${eventUp}, pt, $.${mouseBtn});
+        $.CGEventPost($.kCGHIDEventTap, up);`
+      // 双击：连续发送两次 down+up
+      const fullBody = clickType === 'double' ? clickOnce + clickOnce : clickOnce
+
+      await execJxa(`ObjC.import('CoreGraphics');${fullBody}`, 5000)
+      return { success: true, operation: 'mouseClick', duration: Date.now() - start }
     } catch (err) {
       return {
         success: false,
         operation: 'mouseClick',
-        error: (err as Error).message,
+        error: `cliclick/CoreGraphics click failed: ${(err as Error).message}`,
         duration: Date.now() - start,
       }
     }
@@ -743,24 +910,33 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
 
   async mouseMove(params: MouseMoveParams): Promise<InputOperationResult> {
     const start = Date.now()
-    try {
-      const script = `tell application "System Events" to set position of the mouse to {${params.x}, ${params.y}}`
-      try {
-        await execCmd(`osascript -e '${script.replace(/'/g, "'\\''")}'`, { timeout: 5000 })
-      } catch {
-        await execCmd(`cliclick m:${params.x},${params.y}`, { timeout: 5000 })
-      }
+    const { x, y } = params
 
-      return {
-        success: true,
-        operation: 'mouseMove',
-        duration: Date.now() - start,
+    // 方案1：cliclick m:x,y
+    if (await hasCliclick()) {
+      try {
+        await execCmd(`cliclick m:${x},${y}`, { timeout: 5000 })
+        return { success: true, operation: 'mouseMove', duration: Date.now() - start }
+      } catch (err) {
+        logger.desktop.warn(`[Darwin] cliclick move failed, falling back to CoreGraphics: ${(err as Error).message}`)
       }
+    }
+
+    // 方案2：CoreGraphics 鼠标移动事件
+    try {
+      await execJxa(
+        `ObjC.import('CoreGraphics');
+         var pt = $.CGPointMake(${x}, ${y});
+         var ev = $.CGEventCreateMouseEvent(null, $.kCGEventMouseMoved, pt, 0);
+         $.CGEventPost($.kCGHIDEventTap, ev);`,
+        5000,
+      )
+      return { success: true, operation: 'mouseMove', duration: Date.now() - start }
     } catch (err) {
       return {
         success: false,
         operation: 'mouseMove',
-        error: (err as Error).message,
+        error: `cliclick/CoreGraphics move failed: ${(err as Error).message}`,
         duration: Date.now() - start,
       }
     }
@@ -768,20 +944,38 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
 
   async mouseScroll(params: MouseScrollParams): Promise<InputOperationResult> {
     const start = Date.now()
-    try {
-      // cliclick 支持滚动
-      await execCmd(`cliclick "scroll:${params.amount},${params.amount}"`, { timeout: 5000 })
+    const { x, y, amount } = params
+    // amount 正值向下滚动，负值向上；cliclick scroll:dy,dx
+    const dy = amount
 
-      return {
-        success: true,
-        operation: 'mouseScroll',
-        duration: Date.now() - start,
+    // 方案1：cliclick（需先移动到目标位置）
+    if (await hasCliclick()) {
+      try {
+        await execCmd(`cliclick m:${x},${y} "scroll:${dy},${dy}"`, { timeout: 5000 })
+        return { success: true, operation: 'mouseScroll', duration: Date.now() - start }
+      } catch (err) {
+        logger.desktop.warn(`[Darwin] cliclick scroll failed, falling back to CoreGraphics: ${(err as Error).message}`)
       }
+    }
+
+    // 方案2：CoreGraphics CGEventCreateScrollWheelEvent
+    try {
+      // 先移动鼠标到目标位置
+      await execJxa(
+        `ObjC.import('CoreGraphics');
+         var pt = $.CGPointMake(${x}, ${y});
+         var moveEv = $.CGEventCreateMouseEvent(null, $.kCGEventMouseMoved, pt, 0);
+         $.CGEventPost($.kCGHIDEventTap, moveEv);
+         var scrollEv = $.CGEventCreateScrollWheelEvent(null, $.kCGScrollEventUnitLine, 1, ${dy});
+         $.CGEventPost($.kCGHIDEventTap, scrollEv);`,
+        5000,
+      )
+      return { success: true, operation: 'mouseScroll', duration: Date.now() - start }
     } catch (err) {
       return {
         success: false,
         operation: 'mouseScroll',
-        error: (err as Error).message,
+        error: `cliclick/CoreGraphics scroll failed: ${(err as Error).message}`,
         duration: Date.now() - start,
       }
     }
@@ -789,24 +983,46 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
 
   async mouseDrag(params: MouseDragParams): Promise<InputOperationResult> {
     const start = Date.now()
-    try {
-      // 使用 cliclick 拖拽
-      const buttonFlag = params.button === 'right' ? 'r' : 'l'
-      await execCmd(
-        `cliclick -${buttonFlag} dd:${params.fromX},${params.fromY} du:${params.toX},${params.toY}`,
-        { timeout: 10000 },
-      )
+    const { fromX, fromY, toX, toY, button } = params
 
-      return {
-        success: true,
-        operation: 'mouseDrag',
-        duration: Date.now() - start,
+    // 方案1：cliclick dd: 按下 + du: 抬起（语法：cliclick dd:x1,y1 du:x2,y2）
+    if (await hasCliclick()) {
+      try {
+        const dragCmd = button === 'right'
+          ? `cliclick rdd:${fromX},${fromY} rdu:${toX},${toY}`
+          : `cliclick dd:${fromX},${fromY} du:${toX},${toY}`
+        await execCmd(dragCmd, { timeout: 10000 })
+        return { success: true, operation: 'mouseDrag', duration: Date.now() - start }
+      } catch (err) {
+        logger.desktop.warn(`[Darwin] cliclick drag failed, falling back to CoreGraphics: ${(err as Error).message}`)
       }
+    }
+
+    // 方案2：CoreGraphics mouseDown + mouseMoved + mouseUp
+    try {
+      const isRight = button === 'right'
+      const eventDown = isRight ? 'kCGEventRightMouseDown' : 'kCGEventLeftMouseDown'
+      const eventUp = isRight ? 'kCGEventRightMouseUp' : 'kCGEventLeftMouseUp'
+      const mouseBtn = isRight ? 'kCGMouseButtonRight' : 'kCGMouseButtonLeft'
+
+      await execJxa(
+        `ObjC.import('CoreGraphics');
+         var p1 = $.CGPointMake(${fromX}, ${fromY});
+         var p2 = $.CGPointMake(${toX}, ${toY});
+         var down = $.CGEventCreateMouseEvent(null, $.${eventDown}, p1, $.${mouseBtn});
+         $.CGEventPost($.kCGHIDEventTap, down);
+         var move = $.CGEventCreateMouseEvent(null, $.kCGEventMouseMoved, p2, 0);
+         $.CGEventPost($.kCGHIDEventTap, move);
+         var up = $.CGEventCreateMouseEvent(null, $.${eventUp}, p2, $.${mouseBtn});
+         $.CGEventPost($.kCGHIDEventTap, up);`,
+        10000,
+      )
+      return { success: true, operation: 'mouseDrag', duration: Date.now() - start }
     } catch (err) {
       return {
         success: false,
         operation: 'mouseDrag',
-        error: (err as Error).message,
+        error: `cliclick/CoreGraphics drag failed: ${(err as Error).message}`,
         duration: Date.now() - start,
       }
     }
@@ -815,10 +1031,12 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
   async typeText(text: string, delayMs = 0): Promise<InputOperationResult> {
     const start = Date.now()
     try {
-      // 转义文本中的特殊字符
-      const escaped = text.replace(/"/g, '\\"').replace(/\\/g, '\\\\')
-      const script = `tell application "System Events" to keystroke "${escaped}"`
-      await execCmd(`osascript -e '${script.replace(/'/g, "'\\''")}'`, { timeout: 10000 })
+      // 使用 execAppleScriptLines（execFile 直接调用 osascript，不经过 shell，避免转义问题）
+      // AppleScript 中双引号需要转义为 \"
+      const escaped = text.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+      await execAppleScriptLines([
+        'tell application "System Events" to keystroke "' + escaped + '"',
+      ], 10000)
 
       if (delayMs > 0) {
         await new Promise(resolve => setTimeout(resolve, delayMs))
@@ -842,8 +1060,9 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
   async pressKey(key: string): Promise<InputOperationResult> {
     const start = Date.now()
     try {
-      const script = `tell application "System Events" to key code ${this.keyToKeyCode(key)}`
-      await execCmd(`osascript -e '${script.replace(/'/g, "'\\''")}'`, { timeout: 5000 })
+      await execAppleScriptLines([
+        'tell application "System Events" to key code ' + this.keyToKeyCode(key),
+      ], 5000)
 
       return {
         success: true,
@@ -871,14 +1090,14 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
         throw new Error('Key combo requires at least one non-modifier key')
       }
 
-      let script: string
+      let line: string
       if (modifiers.length > 0) {
-        script = `tell application "System Events" to keystroke "${normalKeys[0]}" using {${modifiers.join(', ')}}`
+        line = 'tell application "System Events" to keystroke "' + normalKeys[0] + '" using {' + modifiers.join(', ') + '}'
       } else {
-        script = `tell application "System Events" to keystroke "${normalKeys[0]}"`
+        line = 'tell application "System Events" to keystroke "' + normalKeys[0] + '"'
       }
 
-      await execCmd(`osascript -e '${script.replace(/'/g, "'\\''")}'`, { timeout: 5000 })
+      await execAppleScriptLines([line], 5000)
 
       return {
         success: true,

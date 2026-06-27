@@ -30,6 +30,8 @@ interface AutomationState {
   maxSteps: number
   startedAt: number | null
   lastExitReason: string | null
+  /** 输入穿透模式（true=AI 正在输入，根容器 pointer-events:none 放行；false=阻塞用户点击） */
+  inputPassthrough: boolean
 }
 
 interface AutomationStepInfo {
@@ -220,7 +222,15 @@ export function AutomationModeOverlay(): React.ReactElement {
   const recentLogs = logs.slice(-3).reverse()
 
   return (
-    <div style={overlayRootStyle}>
+    <div
+      style={{
+        ...overlayRootStyle,
+        // transparent 窗口的点击穿透由 CSS pointer-events 决定，主进程 setIgnoreMouseEvents 无法阻挡。
+        // - blocking 模式（inputPassthrough=false）：根容器 pointer-events:auto，阻挡用户点击穿透到下层窗口
+        // - passthrough 模式（inputPassthrough=true）：根容器 pointer-events:none，让 AI 模拟事件穿透到目标应用
+        pointerEvents: state?.inputPassthrough ? 'none' : 'auto',
+      }}
+    >
       {/* 1. 边缘光晕动画 */}
       <div style={haloStyle} aria-hidden="true" />
 

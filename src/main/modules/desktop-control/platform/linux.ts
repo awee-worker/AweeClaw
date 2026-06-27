@@ -134,6 +134,28 @@ export class LinuxPlatformAdapter implements PlatformAdapter {
     }
   }
 
+  async activateApp(name: string): Promise<ActionResult> {
+    const start = Date.now()
+    try {
+      // Linux 下用 wmctrl 激活窗口（需安装 wmctrl）
+      await execCmd(`wmctrl -a "${name}"`)
+      return {
+        success: true,
+        operation: 'activateApp',
+        target: name,
+        duration: Date.now() - start,
+      }
+    } catch (err) {
+      return {
+        success: false,
+        operation: 'activateApp',
+        target: name,
+        error: (err as Error).message,
+        duration: Date.now() - start,
+      }
+    }
+  }
+
   async quitApp(name: string): Promise<ActionResult> {
     const start = Date.now()
     try {
@@ -446,6 +468,11 @@ export class LinuxPlatformAdapter implements PlatformAdapter {
     return all.filter(
       w => w.title.toLowerCase().includes(q) || w.appName.toLowerCase().includes(q),
     )
+  }
+
+  async getActiveWindowBounds(_appName: string): Promise<Rect | null> {
+    // TODO: Linux 实现可使用 xdotool getactivewindow getwindowgeometry
+    return null
   }
 
   async performWindowAction(

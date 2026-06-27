@@ -30,6 +30,9 @@ export interface PlatformAdapter {
   /** 启动应用 */
   launchApp(name: string, args?: string[]): Promise<LaunchResult>
 
+  /** 激活应用（将已运行的应用窗口置于最前面，不启动新实例） */
+  activateApp(name: string): Promise<ActionResult>
+
   /** 退出应用 */
   quitApp(name: string): Promise<ActionResult>
 
@@ -72,6 +75,9 @@ export interface PlatformAdapter {
 
   /** 查找窗口（按标题或应用名） */
   findWindow(query: string): Promise<WindowInfo[]>
+
+  /** 获取指定应用前台的窗口边界（用于 OCR 裁剪） */
+  getActiveWindowBounds(appName: string): Promise<Rect | null>
 
   /** 窗口操作（聚焦/最小化/最大化/还原/关闭/置顶） */
   performWindowAction(windowId: string, action: WindowActionType, bounds?: Rect): Promise<ActionResult>

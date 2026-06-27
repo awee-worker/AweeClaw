@@ -94,6 +94,34 @@ export class Win32PlatformAdapter implements PlatformAdapter {
     }
   }
 
+  async activateApp(name: string): Promise<ActionResult> {
+    const start = Date.now()
+    try {
+      // Windows 下用 PowerShell 激活窗口
+      await execPowerShell(
+        `$proc = Get-Process -Name "*${name}*" -ErrorAction SilentlyContinue | Select-Object -First 1; ` +
+        `if ($proc) { ` +
+        `Add-Type -AssemblyName Microsoft.VisualBasic; ` +
+        `[Microsoft.VisualBasic.Interaction]::AppActivate($proc.Id) ` +
+        `}`,
+      )
+      return {
+        success: true,
+        operation: 'activateApp',
+        target: name,
+        duration: Date.now() - start,
+      }
+    } catch (err) {
+      return {
+        success: false,
+        operation: 'activateApp',
+        target: name,
+        error: (err as Error).message,
+        duration: Date.now() - start,
+      }
+    }
+  }
+
   async quitApp(name: string): Promise<ActionResult> {
     const start = Date.now()
     try {
@@ -431,6 +459,11 @@ export class Win32PlatformAdapter implements PlatformAdapter {
     return all.filter(
       w => w.title.toLowerCase().includes(q) || w.appName.toLowerCase().includes(q),
     )
+  }
+
+  async getActiveWindowBounds(_appName: string): Promise<Rect | null> {
+    // TODO: Windows 实现可使用 GetForegroundWindow + GetWindowRect
+    return null
   }
 
   async performWindowAction(

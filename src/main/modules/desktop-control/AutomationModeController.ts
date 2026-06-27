@@ -72,6 +72,8 @@ export interface AutomationModeState {
   readonly startedAt: number | null
   /** 退出原因（仅 inactive 时有效） */
   readonly lastExitReason: string | null
+  /** 输入穿透模式（true=AI 正在输入，覆盖层 click-through；false=阻塞用户点击） */
+  readonly inputPassthrough: boolean
 }
 
 /** 步骤进度信息（推送至覆盖窗口展示） */
@@ -124,6 +126,9 @@ export class AutomationModeController extends EventEmitter {
   private overlayWindow: BrowserWindow | null = null
   private mainWindow: BrowserWindow | null = null
 
+  /** 主窗口进入自动化前是否置顶，用于退出时恢复 */
+  private mainWindowWasAlwaysOnTop = false
+
   private active = false
   private task = ''
   private currentStep = 0
@@ -152,6 +157,7 @@ export class AutomationModeController extends EventEmitter {
       maxSteps: this.maxSteps,
       startedAt: this.startedAt,
       lastExitReason: this.lastExitReason,
+      inputPassthrough: this.inputPassthrough,
     }
   }
 
@@ -197,6 +203,10 @@ export class AutomationModeController extends EventEmitter {
     // 4. 默认进入阻塞模式（覆盖窗口捕获鼠标，仅退出按钮可点击）
     this.applyBlockingMode()
 
+    // 5. 降低主窗口 Z 顺序（不隐藏），让目标应用在前台
+    //    用户仍能看到主窗口（在目标应用后面），可随时切换回来停止 AI
+    this.lowerMainWindow()
+
     this.active = true
     this.emitStateChange()
 
@@ -227,6 +237,9 @@ export class AutomationModeController extends EventEmitter {
     this.unsubscribeEmergencyStop?.()
     this.unsubscribeEmergencyStop = null
 
+    // 先恢复主窗口再销毁覆盖层，确保即使销毁失败主窗口也能恢复
+    this.restoreMainWindow()
+
     await this.destroyOverlayWindow()
 
     this.currentStep = 0
@@ -238,6 +251,10 @@ export class AutomationModeController extends EventEmitter {
    * 切换输入穿透模式
    * - true：AI 即将执行输入动作，覆盖窗口设为 click-through，模拟事件穿透到目标应用
    * - false：输入动作完成，恢复阻塞模式，用户无法点击屏幕其他内容
+   *
+   * 状态变更会同步推送到覆盖窗口渲染端，渲染端据此切换根容器 pointer-events：
+   * - transparent 窗口的 CSS pointer-events: none 区域会让点击穿透到下层窗口，
+   *   仅靠主进程 setIgnoreMouseEvents 无法阻挡。必须渲染端配合切换 pointer-events。
    */
   setInputElementActive(active: boolean): void {
     if (!this.active) return
@@ -249,6 +266,8 @@ export class AutomationModeController extends EventEmitter {
     } else {
       this.applyBlockingMode()
     }
+    // 推送状态到渲染端，让其切换 pointer-events（transparent 窗口必须渲染端配合）
+    this.emitStateChange()
     logger.desktop?.info?.(`[AutomationMode] Input passthrough = ${active}`)
   }
 
@@ -326,7 +345,7 @@ export class AutomationModeController extends EventEmitter {
       maximizable: false,
       fullscreenable: false,
       skipTaskbar: true,
-      focusable: false, // 不抢焦点，保证 AI 输入作用于目标应用
+      focusable: true, // 需要接收鼠标事件（退出按钮），通过 setIgnoreMouseEvents 控制穿透
       hasShadow: false,
       backgroundColor: '#00000000',
       alwaysOnTop: true,
@@ -417,6 +436,44 @@ export class AutomationModeController extends EventEmitter {
   }
 
   // ============================================
+  // 内部：主窗口管理
+  // ============================================
+
+  /**
+   * 降低主窗口 Z 顺序，防止 AI 模拟的点击穿透 overlay 后命中主窗口 UI。
+   *
+   * 策略：取消主窗口置顶 + 移到 Z 顺序底部。
+   * 目标应用（微信等）每次操作前都会被 activateApp 前置，自然在主窗口上方。
+   * overlay（透明置顶）在最上层显示自动化状态。
+   *
+   * 用户感知：主窗口可见（在目标应用后面），能看到聊天界面和停止按钮。
+   */
+  private lowerMainWindow(): void {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+      logger.desktop?.warn?.('[AutomationMode] Cannot lower main window: not bound or destroyed')
+      return
+    }
+    // 记录并取消置顶状态，让目标应用窗口自然在前
+    this.mainWindowWasAlwaysOnTop = this.mainWindow.isAlwaysOnTop()
+    if (this.mainWindowWasAlwaysOnTop) {
+      this.mainWindow.setAlwaysOnTop(false)
+    }
+    logger.desktop?.info?.('[AutomationMode] Main window alwaysOnTop disabled (still visible behind target app)')
+  }
+
+  /** 恢复主窗口 Z 顺序 */
+  private restoreMainWindow(): void {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) return
+    if (this.mainWindowWasAlwaysOnTop) {
+      this.mainWindow.setAlwaysOnTop(true)
+    }
+    this.mainWindow.show()
+    this.mainWindow.focus()
+    logger.desktop?.info?.('[AutomationMode] Main window restored')
+    this.mainWindowWasAlwaysOnTop = false
+  }
+
+  // ============================================
   // 内部：快捷键 & 紧急停止
   // ============================================
 
@@ -500,6 +557,8 @@ export class AutomationModeController extends EventEmitter {
     this.unregisterEmergencyExitShortcut()
     this.unsubscribeEmergencyStop?.()
     this.unsubscribeEmergencyStop = null
+    // 恢复主窗口，防止退出时窗口仍处于隐藏状态
+    this.restoreMainWindow()
     void this.destroyOverlayWindow()
     this.removeAllListeners()
   }

@@ -65,6 +65,16 @@ export class WindowManager {
     return this.performAction(windowId, 'bringToFront')
   }
 
+  /** 获取指定应用前台窗口的真实边界（用于 OCR 裁剪） */
+  async getActiveWindowBounds(appName: string): Promise<Rect | null> {
+    try {
+      return await this.adapter.getActiveWindowBounds(appName)
+    } catch (err) {
+      logger.desktop.warn(`[WindowManager] getActiveWindowBounds("${appName}") failed:`, err)
+      return null
+    }
+  }
+
   /** 设置窗口位置和大小 */
   async setBounds(windowId: string, bounds: Rect): Promise<WindowOperationResult> {
     const start = Date.now()

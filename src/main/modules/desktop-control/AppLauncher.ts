@@ -17,6 +17,12 @@ export class AppLauncher {
     return this.adapter.launchApp(name, args)
   }
 
+  /** 激活已运行的应用，将窗口置于最前面 */
+  async activate(name: string): Promise<ActionResult> {
+    logger.desktop.info(`[AppLauncher] activate: ${name}`)
+    return this.adapter.activateApp(name)
+  }
+
   /** 退出应用 */
   async quit(name: string): Promise<ActionResult> {
     logger.desktop.info(`[AppLauncher] quit: ${name}`)
