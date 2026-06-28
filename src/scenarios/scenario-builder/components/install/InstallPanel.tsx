@@ -5,43 +5,89 @@
  */
 import { useState, useEffect, useCallback } from 'react'
 import type React from 'react'
-import { installService } from '../../services'
+import { installService, buildService } from '../../services'
 import type { InstallRecord } from '../../types'
 import { useI18n } from '@renderer/i18n'
+import { useSelectedProject } from '../../hooks/useSelectedProject'
 
 const InstallPanel: React.FC = () => {
   const { t } = useI18n()
+  const { project: selectedProject, refresh: refreshProject } = useSelectedProject()
+  const selectedProjectId = selectedProject?.id ?? null
   const [records, setRecords] = useState<InstallRecord[]>([])
   const [installing, setInstalling] = useState(false)
   const [packagePath, setPackagePath] = useState('')
 
+  // 自动从最近成功的 pack 记录中解析出 packagePath
+  useEffect(() => {
+    if (!selectedProjectId) {
+      setPackagePath('')
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const path = await buildService.getPackagePath(selectedProjectId)
+        if (!cancelled && path) setPackagePath(path)
+      } catch (err) {
+        console.warn('[InstallPanel] getPackagePath failed:', err)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [selectedProjectId])
+
   const loadHistory = useCallback(async () => {
+    if (!selectedProjectId) {
+      setRecords([])
+      return
+    }
     try {
-      // 获取所有项目的安装记录（简化版：显示最近记录）
-      const list = await installService.getInstallHistory('')
+      const list = await installService.getInstallHistory(selectedProjectId)
       setRecords(list)
     } catch (err) {
       console.error('Failed to load install history:', err)
     }
-  }, [])
+  }, [selectedProjectId])
 
   useEffect(() => {
     loadHistory()
   }, [loadHistory])
 
   const handleInstall = useCallback(async () => {
-    if (!packagePath.trim()) return
+    if (!selectedProjectId || !selectedProject || !packagePath.trim()) return
     setInstalling(true)
     try {
-      // 实际需要 projectId 和 version，这里简化
-      await installService.installScenario('', '1.0.0', packagePath)
+      await installService.installScenario(
+        selectedProjectId,
+        selectedProject.version,
+        packagePath,
+      )
       await loadHistory()
+      await refreshProject()
     } catch (err) {
       console.error('Install failed:', err)
     } finally {
       setInstalling(false)
     }
-  }, [packagePath, loadHistory])
+  }, [selectedProjectId, selectedProject, packagePath, loadHistory, refreshProject])
+
+  const handleUninstall = useCallback(
+    async (scenarioId: string) => {
+      setInstalling(true)
+      try {
+        await installService.uninstallScenario(scenarioId)
+        await loadHistory()
+        await refreshProject()
+      } catch (err) {
+        console.error('Uninstall failed:', err)
+      } finally {
+        setInstalling(false)
+      }
+    },
+    [loadHistory, refreshProject],
+  )
 
   const statusColors: Record<string, string> = {
     installed: 'text-emerald-500',
@@ -70,12 +116,15 @@ const InstallPanel: React.FC = () => {
           />
           <button
             onClick={handleInstall}
-            disabled={installing || !packagePath.trim()}
+            disabled={installing || !packagePath.trim() || !selectedProjectId}
             className="rounded bg-accent px-3 py-1 text-xs text-accent-foreground hover:bg-accent/90 disabled:opacity-50"
           >
             {installing ? t('builder.install.installing') : t('builder.install.install')}
           </button>
         </div>
+        {!selectedProjectId && (
+          <div className="mt-2 text-[10px] text-muted-foreground">请先在项目列表中选择一个项目</div>
+        )}
       </div>
 
       {/* 安装历史 */}
@@ -88,9 +137,20 @@ const InstallPanel: React.FC = () => {
               <li key={record.id} className="p-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-medium">v{record.version}</span>
-                  <span className={`text-xs ${statusColors[record.status]}`}>
-                    {t(`builder.install.${record.status === 'installed' ? 'installed' : record.status === 'failed' ? 'failed' : 'installing'}`)}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs ${statusColors[record.status]}`}>
+                      {t(`builder.install.${record.status === 'installed' ? 'installed' : record.status === 'failed' ? 'failed' : 'installing'}`)}
+                    </span>
+                    {record.status === 'installed' && record.scenarioId && (
+                      <button
+                        onClick={() => handleUninstall(record.scenarioId!)}
+                        disabled={installing}
+                        className="text-[10px] text-destructive hover:underline disabled:opacity-50"
+                      >
+                        卸载
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="mt-1 truncate text-[10px] text-muted-foreground">{record.packagePath}</div>
                 {record.error && <div className="mt-1 text-[10px] text-destructive">{record.error}</div>}

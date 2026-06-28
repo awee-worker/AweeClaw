@@ -94,7 +94,14 @@ export interface SidebarItemDescriptor {
   labelZh: string
   component: string
   position?: number
+  /** 宽模式：面板在主内容区全屏展示，隐藏侧边栏 */
   wideMode?: boolean
+  /**
+   * 激活该侧边栏面板时隐藏主内容区的编辑器（含编辑器欢迎页）。
+   * 适用于纯列表型面板（如项目列表、模板列表），
+   * 避免无文件的编辑器欢迎页占据主区域空间，让 Chat 占满主区。
+   */
+  hideEditor?: boolean
 }
 
 export interface StatusBarItemDescriptor {
@@ -184,6 +191,17 @@ export interface ScenarioPlugin {
 
   onActivate?: (context: ScenarioContext) => Promise<void>
   onDeactivate?: () => Promise<void>
+
+  /**
+   * 动态上下文提供器：构建系统提示词时调用，返回场景专属的实时上下文（Markdown 片段）。
+   *
+   * 适用场景：场景在运行时持有需要 AI 感知的实时状态（如当前选中项目、当前打开的资源等），
+   * 通过此回调注入到系统提示词，避免 AI 每次都要先调用工具才能获取上下文。
+   *
+   * 返回 null 表示无动态上下文（不注入任何内容）。
+   * 抛错时由调用方捕获并降级为不注入，不影响主流程。
+   */
+  getDynamicContext?: () => Promise<string | null>
 }
 
 export type ScenarioCategory =
@@ -219,7 +237,7 @@ export interface ScenarioContext {
 // 场景注册表
 // ============================================
 
-export type SerializableScenario = Omit<ScenarioPlugin, 'onActivate' | 'onDeactivate'>
+export type SerializableScenario = Omit<ScenarioPlugin, 'onActivate' | 'onDeactivate' | 'getDynamicContext'>
 
 const CUSTOM_SCENARIOS_STORAGE_KEY = BRAND.storageKeys.customScenarios
 const UNINSTALLED_BUILTIN_KEY = BRAND.storageKeys.uninstalledBuiltin

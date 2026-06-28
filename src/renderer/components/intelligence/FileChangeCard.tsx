@@ -251,7 +251,7 @@ function CardHeader({
   )
 }
 
-/** 审批操作栏 */
+/** 审批操作栏（事前审批） */
 function ApprovalBar({
   language,
   onApprove,
@@ -373,6 +373,7 @@ function FileChangeCard({
 
   const meta = args._meta as Record<string, unknown> | undefined
   const filePath = extractFilePath(args, meta)
+
   const resolvedStreamingFilePath = useMemo(
     () => resolveStreamingEditFilePath(filePath, workspacePath) || '',
     [filePath, workspacePath],

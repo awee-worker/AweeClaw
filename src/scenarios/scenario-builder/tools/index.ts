@@ -13,6 +13,8 @@ import {
   getScenarioProjectExecutor,
   updateScenarioProjectExecutor,
   deleteScenarioProjectExecutor,
+  getCurrentProjectExecutor,
+  setCurrentProjectExecutor,
   // 开发辅助
   getScenarioTemplatesExecutor,
   readScenarioFileExecutor,
@@ -37,6 +39,8 @@ const EXECUTOR_MAP: Record<string, ToolExecutor> = {
   get_scenario_project: getScenarioProjectExecutor,
   update_scenario_project: updateScenarioProjectExecutor,
   delete_scenario_project: deleteScenarioProjectExecutor,
+  get_current_project: getCurrentProjectExecutor,
+  set_current_project: setCurrentProjectExecutor,
   get_scenario_templates: getScenarioTemplatesExecutor,
   read_scenario_file: readScenarioFileExecutor,
   write_scenario_file: writeScenarioFileExecutor,

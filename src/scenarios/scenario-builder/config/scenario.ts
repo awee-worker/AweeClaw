@@ -14,6 +14,7 @@ import type {
 import { buildScenarioIdentity } from '../../scenarioBrandIdentity'
 import { SCENARIO_DEV_KNOWLEDGE } from './prompts-knowledge'
 import { SCENARIO_BUILDER_WELCOME_SUGGESTIONS, SCENARIO_BUILDER_WELCOME_TITLE } from './welcome'
+import { buildScenarioBuilderDynamicContext } from './dynamicContext'
 
 const SCENARIO_BUILDER_DESCRIPTION = 'focused on developing AweeClaw scenarios — project scaffolding, configuration editing, debugging, local installation, and marketplace publishing'
 
@@ -36,6 +37,15 @@ const SCENARIO_BUILDER_IDENTITY: ScenarioIdentity = {
 3. 生成的提示词必须包含角色、能力、行为准则
 4. 生成的工具必须符合 ScenarioToolDefinition 结构
 5. 优先使用内置工具（create_scenario_project、validate_scenario、build_scenario 等）
+
+**文件写入规则（必须严格遵守）**：
+- **禁止使用内置 edit_file / write_file / replace_file_content 编辑场景项目文件**
+  原因：内置文件工具受工作区限制，无法访问场景项目目录，且不会触发用户审批
+- **必须使用 write_scenario_file 写入场景项目文件**
+  原因：write_scenario_file 是场景专用工具，通过 IPC 直接写入场景项目目录，
+  且会触发用户审批（接受/拒绝）流程，确保用户对文件变更有完全控制权
+- **读取场景项目文件**：使用 read_scenario_file 读取场景项目内的文件
+- **流程**：read_scenario_file 读取 → 生成新内容 → write_scenario_file 写入（用户审批后生效）
 
 ---
 
@@ -197,8 +207,8 @@ const SCENARIO_BUILDER_UI: ScenarioUI = {
   ],
   sidebarItems: [
     { id: 'explorer', icon: 'FolderTree', label: 'Workspace', labelZh: '工作区', component: 'ExplorerView', position: 0 },
-    { id: 'projects', icon: 'FolderTree', label: 'Projects', labelZh: '项目', component: 'ProjectListPanel', position: 1 },
-    { id: 'templates', icon: 'LayoutTemplate', label: 'Templates', labelZh: '模板', component: 'TemplateListPanel', position: 2 },
+    { id: 'projects', icon: 'FolderTree', label: 'Projects', labelZh: '项目', component: 'ProjectListPanel', position: 1, wideMode: true },
+    { id: 'templates', icon: 'LayoutTemplate', label: 'Templates', labelZh: '模板', component: 'TemplateListPanel', position: 2, wideMode: true },
     { id: 'build', icon: 'Hammer', label: 'Build', labelZh: '构建', component: 'BuildPanel', position: 3, wideMode: true },
     { id: 'install', icon: 'Package', label: 'Install', labelZh: '安装', component: 'InstallPanel', position: 4, wideMode: true },
     { id: 'publish', icon: 'Cloud', label: 'Publish', labelZh: '发布', component: 'PublishPanel', position: 5, wideMode: true },
@@ -247,6 +257,13 @@ export const scenarioBuilderScenario: ScenarioPlugin = {
   capabilities: SCENARIO_BUILDER_CAPABILITIES,
   ui: SCENARIO_BUILDER_UI,
   dataSources: SCENARIO_BUILDER_DATA_SOURCES,
+
+  /**
+   * 动态上下文提供器：每次构建系统提示词时调用，
+   * 将"当前选中项目"的关键信息（id / localPath / type / version / status）注入 AI 上下文。
+   * 让 AI 无需先调用 list_scenario_projects 即可开展后续工作。
+   */
+  getDynamicContext: buildScenarioBuilderDynamicContext,
 }
 
 export default scenarioBuilderScenario

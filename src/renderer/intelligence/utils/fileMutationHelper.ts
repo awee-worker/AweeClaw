@@ -15,11 +15,30 @@ export interface FileChangeMetaLike {
 export function isFileWriteToolResult(toolName: string, meta: unknown): meta is FileChangeMetaLike {
   if (!meta || typeof meta !== 'object') return false
 
+  // 内置工具通过 resultSemantics === 'file-write' 判定
   const tool = getToolMetadata(toolName)
-  if (tool?.resultSemantics !== 'file-write') return false
+  if (tool?.resultSemantics === 'file-write') {
+    return typeof (meta as { filePath?: unknown }).filePath === 'string'
+  }
 
-  return typeof (meta as { filePath?: unknown }).filePath === 'string'
+  // 场景开发助手的文件写入工具不在 TOOL_CONFIGS 中，
+  // 通过工具名硬编码识别，确保 addPendingChange 被调用（变更面板有条目）
+  if (FILE_WRITE_SCENARIO_TOOLS.includes(toolName)) {
+    return typeof (meta as { filePath?: unknown }).filePath === 'string'
+  }
+
+  return false
 }
+
+/**
+ * 场景模块中产生文件变更的工具名列表
+ *
+ * 这些工具不通过 TOOL_CONFIGS 注册，无法用 resultSemantics 判定，
+ * 需在此显式列出以触发 addPendingChange 流程。
+ */
+const FILE_WRITE_SCENARIO_TOOLS = [
+  'write_scenario_file',
+]
 
 export function resolveRelativeChangePath(
   filePath: string,

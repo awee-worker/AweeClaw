@@ -5,32 +5,65 @@
  */
 import { useState, useEffect, useCallback } from 'react'
 import type React from 'react'
-import { publishService } from '../../services'
+import { publishService, buildService } from '../../services'
 import type { PublishRecord } from '../../types'
 import { useI18n } from '@renderer/i18n'
+import { useSelectedProject } from '../../hooks/useSelectedProject'
 
 const PublishPanel: React.FC = () => {
   const { t } = useI18n()
+  const { project: selectedProject, refresh: refreshProject } = useSelectedProject()
+  const selectedProjectId = selectedProject?.id ?? null
   const [records, setRecords] = useState<PublishRecord[]>([])
   const [publishing, setPublishing] = useState(false)
   const [loggedIn, setLoggedIn] = useState(false)
+  const [developerName, setDeveloperName] = useState<string | undefined>()
   const [packageName, setPackageName] = useState('')
   const [packagePath, setPackagePath] = useState('')
   const [version, setVersion] = useState('1.0.0')
 
+  // 当切换项目时自动填充 packageName / packagePath / version
+  useEffect(() => {
+    if (!selectedProject) {
+      setPackageName('')
+      setPackagePath('')
+      setVersion('1.0.0')
+      return
+    }
+    setPackageName(selectedProject.scenarioId)
+    setVersion(selectedProject.version)
+    let cancelled = false
+    ;(async () => {
+      try {
+        const path = await buildService.getPackagePath(selectedProject.id)
+        if (!cancelled && path) setPackagePath(path)
+      } catch (err) {
+        console.warn('[PublishPanel] getPackagePath failed:', err)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [selectedProject])
+
   const checkStatus = useCallback(async () => {
     const status = await publishService.checkPublishStatus()
     setLoggedIn(status.loggedIn)
+    setDeveloperName(status.developerName)
   }, [])
 
   const loadHistory = useCallback(async () => {
+    if (!selectedProjectId) {
+      setRecords([])
+      return
+    }
     try {
-      const list = await publishService.getPublishHistory('')
+      const list = await publishService.getPublishHistory(selectedProjectId)
       setRecords(list)
     } catch (err) {
       console.error('Failed to load publish history:', err)
     }
-  }, [])
+  }, [selectedProjectId])
 
   useEffect(() => {
     checkStatus()
@@ -39,18 +72,19 @@ const PublishPanel: React.FC = () => {
 
   const handlePublish = useCallback(async () => {
     if (!loggedIn) return
-    if (!packageName.trim() || !packagePath.trim()) return
+    if (!selectedProjectId || !packageName.trim() || !packagePath.trim()) return
 
     setPublishing(true)
     try {
-      await publishService.publishScenario('', version, packageName, packagePath)
+      await publishService.publishScenario(selectedProjectId, version, packageName, packagePath)
       await loadHistory()
+      await refreshProject()
     } catch (err) {
       console.error('Publish failed:', err)
     } finally {
       setPublishing(false)
     }
-  }, [loggedIn, packageName, packagePath, version, loadHistory])
+  }, [loggedIn, selectedProjectId, packageName, packagePath, version, loadHistory, refreshProject])
 
   const statusColors: Record<string, string> = {
     published: 'text-emerald-500',
@@ -71,7 +105,9 @@ const PublishPanel: React.FC = () => {
         <div className="flex items-center justify-between">
           <span className="text-xs">
             {loggedIn ? (
-              <span className="text-emerald-500">✓ {t('builder.publish.checkStatus')}</span>
+              <span className="text-emerald-500">
+                ✓ {developerName ? `${t('builder.publish.checkStatus')} (${developerName})` : t('builder.publish.checkStatus')}
+              </span>
             ) : (
               <span className="text-destructive">{t('builder.publish.notLoggedIn')}</span>
             )}
@@ -113,13 +149,16 @@ const PublishPanel: React.FC = () => {
         </div>
         <button
           onClick={handlePublish}
-          disabled={!loggedIn || publishing || !packageName.trim() || !packagePath.trim()}
+          disabled={!loggedIn || publishing || !packageName.trim() || !packagePath.trim() || !selectedProjectId}
           className="w-full rounded bg-accent px-3 py-1.5 text-xs text-accent-foreground hover:bg-accent/90 disabled:opacity-50"
         >
           {publishing ? t('builder.publish.uploading') : t('builder.publish.publish')}
         </button>
         {!loggedIn && (
           <p className="text-[10px] text-destructive">{t('builder.publish.loginFirst')}</p>
+        )}
+        {!selectedProjectId && (
+          <p className="text-[10px] text-muted-foreground">请先在项目列表中选择一个项目</p>
         )}
       </div>
 

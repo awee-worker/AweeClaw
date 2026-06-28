@@ -102,6 +102,8 @@ export interface PromptContext {
   projectSummary?: string | null
   planPhase?: 'planning' | 'executing'
   userInfo?: UserInfo | null
+  /** 场景动态上下文：由 active scenario 的 getDynamicContext 提供（如当前选中项目） */
+  scenarioDynamicContext?: string | null
 }
 
 function getActiveScenarioIdentity() {
@@ -242,6 +244,30 @@ function buildSkillsSections(autoSkills: SkillItem[], mentionedSkills: SkillItem
   return [index, fullContent]
 }
 
+/**
+ * 渲染场景动态上下文段落。
+ * 由 active scenario 的 getDynamicContext() 提供，例如场景开发助手的"当前选中项目"信息。
+ */
+function buildScenarioDynamicContext(content: string | null | undefined): string | null {
+  if (!content?.trim()) return null
+  return content.trim()
+}
+
+/**
+ * 调用 active scenario 的 getDynamicContext 获取实时上下文。
+ * 异常时降级为 null，不影响主流程。
+ */
+async function loadScenarioDynamicContext(): Promise<string | null> {
+  const scenario = scenarioRegistry.getActive()
+  if (!scenario?.getDynamicContext) return null
+  try {
+    return await scenario.getDynamicContext()
+  } catch (err) {
+    logger.agent.warn('[PromptBuilder] getDynamicContext failed:', err)
+    return null
+  }
+}
+
 function buildUserContext(userInfo: UserInfo | null | undefined): string | null {
   if (!userInfo) return null
   const lines: string[] = []
@@ -295,6 +321,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     buildLongTermMemory(ctx.longTermMemories),
     buildKnowledge(ctx.knowledgeEntries),
     ...buildSkillsSections(ctx.autoSkills, ctx.mentionedSkills),
+    buildScenarioDynamicContext(ctx.scenarioDynamicContext),
     buildCustomInstructions(ctx.customInstructions),
   ]
 
@@ -318,6 +345,7 @@ export function buildChatPrompt(ctx: PromptContext): string {
     buildProjectRules(ctx.projectRules),
     buildLongTermMemory(ctx.longTermMemories),
     ...buildSkillsSections(ctx.autoSkills, ctx.mentionedSkills),
+    buildScenarioDynamicContext(ctx.scenarioDynamicContext),
     buildCustomInstructions(ctx.customInstructions),
   ]
 
@@ -356,13 +384,14 @@ export async function buildAgentSystemPrompt(
     template = getDefaultPromptTemplate()
   }
 
-  const [projectRules, memories, knowledgeEntries, longTermMemories, allSkills, projectSummary] = await Promise.all([
+  const [projectRules, memories, knowledgeEntries, longTermMemories, allSkills, projectSummary, scenarioDynamicContext] = await Promise.all([
     rulesService.getRules(),
     memoryService.getMemories(),
     knowledgeService.getEnabledEntries(),
     longTermMemoryService.getEnabledEntries(),
     skillService.getSkills(),
     workspacePath ? loadProjectSummary(workspacePath) : Promise.resolve(null),
+    loadScenarioDynamicContext(),
   ])
 
   const autoSkills = allSkills.filter(skill => skill.type === 'auto' && skill.enabled)
@@ -433,6 +462,7 @@ export async function buildAgentSystemPrompt(
     projectSummary,
     planPhase,
     userInfo,
+    scenarioDynamicContext,
   }
 
   const prompt = mode === 'chat' ? buildChatPrompt(ctx) : buildSystemPrompt(ctx)

@@ -155,6 +155,15 @@ export function ExplorerView() {
     updateGitStatus()
   }, [workspacePath])
 
+  // 挂载时（即用户切换到工作区面板时）自动刷新一次目录
+  // ExplorerView 在切换侧边栏面板时会卸载/重新挂载，因此此 effect 会在每次激活工作区时触发
+  useEffect(() => {
+    if (!workspacePath) return
+    void refreshFiles({ refreshRoot: true })
+    // 仅在挂载时执行一次，不依赖 refreshFiles（避免重复刷新）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspacePath])
+
   useEffect(() => {
     return explorerClipboardService.subscribe(state => {
       setClipboardItem(state.entry)

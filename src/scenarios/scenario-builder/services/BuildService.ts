@@ -1,11 +1,17 @@
 /**
- * 构建服务
+ * 构建服务（重构版）
  *
- * 负责场景项目的校验、构建、打包。
- * 通过子进程调用 aweeclaw-scenario-cli 执行命令。
+ * 内嵌构建、校验、打包，**不再依赖 aweeclaw-scenario-cli 外部 CLI**。
+ * 全部能力通过主进程 IPC 调用 scenario-system/cli 中的现成函数实现。
+ *
+ * 修复要点：
+ * - 修复 cwd bug：原来传 projectId（DB 主键）作为 cwd，改为传 project.localPath
+ * - 移除 aweeclaw-scenario CLI 依赖，改为调用 scenario-builder:validate/build/pack IPC
+ * - 统一通过 electronAPI 命名方法调用 IPC，而非不存在的 .invoke()
  */
 import type { ScenarioModuleContext } from '@shared/protocols/scenario-arch'
 import type { BuildRecord, BuildType, BuildStatus, ValidationResult } from '../types'
+import { projectService } from './ProjectService'
 
 function generateId(): string {
   return `bld-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
@@ -151,13 +157,12 @@ export class BuildService {
   }
 
   /**
-   * 校验场景配置（基础校验，不调用 CLI）
+   * 本地基础校验（不调用 IPC，作为快速预检）
    */
   validateConfig(config: Record<string, unknown>): ValidationResult {
     const errors: ValidationResult['errors'] = []
     const warnings: ValidationResult['warnings'] = []
 
-    // 必填字段校验
     if (!config.id) {
       errors.push({ field: 'id', message: '场景 ID 不能为空', code: 'REQUIRED' })
     } else if (!/^[a-z][a-z0-9-]*$/.test(config.id as string)) {
@@ -176,27 +181,19 @@ export class BuildService {
     if (!config.nameZh) {
       warnings.push({ field: 'nameZh', message: '建议提供中文名称', code: 'RECOMMENDED' })
     }
-    if (!config.type || !['declarative', 'programmatic'].includes(config.type as string)) {
-      errors.push({ field: 'type', message: '类型必须为 declarative 或 programmatic', code: 'REQUIRED' })
-    }
 
-    // identity 校验
     const identity = config.identity as Record<string, unknown> | undefined
     if (!identity) {
       errors.push({ field: 'identity', message: 'identity 配置不能为空', code: 'REQUIRED' })
-    } else {
-      if (!identity.systemPrompt && !identity.systemPromptFile) {
-        errors.push({ field: 'identity.systemPrompt', message: '系统提示词不能为空', code: 'REQUIRED' })
-      }
+    } else if (!identity.systemPrompt && !identity.systemPromptFile) {
+      errors.push({ field: 'identity.systemPrompt', message: '系统提示词不能为空', code: 'REQUIRED' })
     }
 
-    // capabilities 校验
     const capabilities = config.capabilities as Record<string, unknown> | undefined
     if (!capabilities) {
       warnings.push({ field: 'capabilities', message: '建议配置 capabilities', code: 'RECOMMENDED' })
     }
 
-    // ui 校验
     const ui = config.ui as Record<string, unknown> | undefined
     if (!ui) {
       warnings.push({ field: 'ui', message: '建议配置 ui 布局', code: 'RECOMMENDED' })
@@ -208,131 +205,70 @@ export class BuildService {
   }
 
   /**
-   * 执行 CLI 命令（通过 IPC 调用主进程）
-   * 实际实现由 IPC handler 桥接到主进程的 child_process
+   * 校验场景项目（调用主进程内嵌校验器）
    */
-  async executeCliCommand(projectPath: string, command: string, args: string[] = []): Promise<{
-    success: boolean
-    exitCode: number
-    output: string
-    durationMs: number
-  }> {
+  async validateProject(projectId: string): Promise<BuildRecord> {
+    const record = await this.createBuildRecord(projectId, 'validate', 'scenario-builder:validate')
     const startTime = Date.now()
 
     try {
-      // 通过 IPC 调用主进程执行命令
-      const result = await this.invokeIpc('scenario-builder:executeCli', {
-        cwd: projectPath,
-        command,
-        args,
+      const projectPath = await this.resolveProjectPath(projectId)
+      if (!projectPath) {
+        throw new Error(`Project not found: ${projectId}`)
+      }
+
+      const result = await this.invokeValidate({ projectPath })
+      const finishedAt = new Date().toISOString()
+      const output = this.formatValidateOutput(result)
+      const status: BuildStatus = result.success && result.valid ? 'success' : 'failed'
+
+      await this.updateBuildRecord(record.id, {
+        status,
+        exitCode: status === 'success' ? 0 : 1,
+        output,
+        durationMs: Date.now() - startTime,
+        finishedAt,
       })
 
-      const durationMs = Date.now() - startTime
-      return {
-        success: result.success,
-        exitCode: result.exitCode ?? (result.success ? 0 : 1),
-        output: result.output ?? '',
-        durationMs,
-      }
+      return { ...record, status, exitCode: status === 'success' ? 0 : 1, output, durationMs: Date.now() - startTime, finishedAt }
     } catch (err) {
-      return {
-        success: false,
-        exitCode: 1,
-        output: `Command execution failed: ${(err as Error).message}`,
-        durationMs: Date.now() - startTime,
-      }
+      return await this.handleBuildError(record, err, startTime)
     }
   }
 
   /**
-   * 构建场景项目
+   * 构建场景项目（修复 cwd bug：使用 localPath 而非 projectId）
    */
   async buildProject(projectId: string): Promise<BuildRecord> {
-    const record = await this.createBuildRecord(projectId, 'build', 'aweeclaw-scenario build')
+    const record = await this.createBuildRecord(projectId, 'build', 'scenario-builder:build')
+    const startTime = Date.now()
 
     try {
-      const result = await this.executeCliCommand(record.projectId, 'aweeclaw-scenario', ['build'])
+      const projectPath = await this.resolveProjectPath(projectId)
+      if (!projectPath) {
+        throw new Error(`Project not found: ${projectId}`)
+      }
+
+      const result = await this.invokeBuild({ projectPath })
       const finishedAt = new Date().toISOString()
+      const status: BuildStatus = result.success ? 'success' : 'failed'
 
       await this.updateBuildRecord(record.id, {
-        status: result.success ? 'success' : 'failed',
-        exitCode: result.exitCode,
+        status,
+        exitCode: status === 'success' ? 0 : 1,
         output: result.output,
-        durationMs: result.durationMs,
+        durationMs: Date.now() - startTime,
         finishedAt,
       })
 
-      return {
-        ...record,
-        status: result.success ? 'success' : 'failed',
-        exitCode: result.exitCode,
-        output: result.output,
-        durationMs: result.durationMs,
-        finishedAt,
+      // 更新项目状态
+      if (result.success) {
+        await projectService.updateProject(projectId, { status: 'building', lastBuiltAt: finishedAt })
       }
+
+      return { ...record, status, exitCode: status === 'success' ? 0 : 1, output: result.output, durationMs: Date.now() - startTime, finishedAt }
     } catch (err) {
-      const finishedAt = new Date().toISOString()
-      await this.updateBuildRecord(record.id, {
-        status: 'failed',
-        exitCode: 1,
-        output: (err as Error).message,
-        durationMs: 0,
-        finishedAt,
-      })
-      return {
-        ...record,
-        status: 'failed',
-        exitCode: 1,
-        output: (err as Error).message,
-        durationMs: 0,
-        finishedAt,
-      }
-    }
-  }
-
-  /**
-   * 校验场景项目
-   */
-  async validateProject(projectId: string): Promise<BuildRecord> {
-    const record = await this.createBuildRecord(projectId, 'validate', 'aweeclaw-scenario validate')
-
-    try {
-      const result = await this.executeCliCommand(record.projectId, 'aweeclaw-scenario', ['validate'])
-      const finishedAt = new Date().toISOString()
-
-      await this.updateBuildRecord(record.id, {
-        status: result.success ? 'success' : 'failed',
-        exitCode: result.exitCode,
-        output: result.output,
-        durationMs: result.durationMs,
-        finishedAt,
-      })
-
-      return {
-        ...record,
-        status: result.success ? 'success' : 'failed',
-        exitCode: result.exitCode,
-        output: result.output,
-        durationMs: result.durationMs,
-        finishedAt,
-      }
-    } catch (err) {
-      const finishedAt = new Date().toISOString()
-      await this.updateBuildRecord(record.id, {
-        status: 'failed',
-        exitCode: 1,
-        output: (err as Error).message,
-        durationMs: 0,
-        finishedAt,
-      })
-      return {
-        ...record,
-        status: 'failed',
-        exitCode: 1,
-        output: (err as Error).message,
-        durationMs: 0,
-        finishedAt,
-      }
+      return await this.handleBuildError(record, err, startTime)
     }
   }
 
@@ -340,69 +276,159 @@ export class BuildService {
    * 打包场景项目
    */
   async packProject(projectId: string): Promise<BuildRecord> {
-    const record = await this.createBuildRecord(projectId, 'pack', 'aweeclaw-scenario pack')
+    const record = await this.createBuildRecord(projectId, 'pack', 'scenario-builder:pack')
+    const startTime = Date.now()
 
     try {
-      const result = await this.executeCliCommand(record.projectId, 'aweeclaw-scenario', ['pack'])
-      const finishedAt = new Date().toISOString()
-
-      await this.updateBuildRecord(record.id, {
-        status: result.success ? 'success' : 'failed',
-        exitCode: result.exitCode,
-        output: result.output,
-        durationMs: result.durationMs,
-        finishedAt,
-      })
-
-      return {
-        ...record,
-        status: result.success ? 'success' : 'failed',
-        exitCode: result.exitCode,
-        output: result.output,
-        durationMs: result.durationMs,
-        finishedAt,
+      const projectPath = await this.resolveProjectPath(projectId)
+      if (!projectPath) {
+        throw new Error(`Project not found: ${projectId}`)
       }
-    } catch (err) {
+
+      const result = await this.invokePack({ projectPath })
       const finishedAt = new Date().toISOString()
+      const status: BuildStatus = result.success ? 'success' : 'failed'
+      const output = result.success
+        ? `Pack succeeded.\n  Package: ${result.packagePath}\n  Size: ${result.size} bytes\n  Hash: ${result.hash}`
+        : `Pack failed: ${result.error}`
+
       await this.updateBuildRecord(record.id, {
-        status: 'failed',
-        exitCode: 1,
-        output: (err as Error).message,
-        durationMs: 0,
+        status,
+        exitCode: status === 'success' ? 0 : 1,
+        output,
+        durationMs: Date.now() - startTime,
         finishedAt,
       })
-      return {
-        ...record,
-        status: 'failed',
-        exitCode: 1,
-        output: (err as Error).message,
-        durationMs: 0,
-        finishedAt,
+
+      // 更新项目状态为 ready
+      if (result.success) {
+        await projectService.updateProject(projectId, { status: 'ready' })
+      }
+
+      return { ...record, status, exitCode: status === 'success' ? 0 : 1, output, durationMs: Date.now() - startTime, finishedAt }
+    } catch (err) {
+      return await this.handleBuildError(record, err, startTime)
+    }
+  }
+
+  /**
+   * 获取打包产物路径（供 InstallService 调用）
+   */
+  async getPackagePath(projectId: string): Promise<string | null> {
+    const project = await projectService.getProject(projectId)
+    if (!project) return null
+
+    // 优先使用最近一次成功的 pack 记录中的输出
+    const history = await this.getBuildHistory(projectId, 10)
+    const lastPack = history.find(r => r.buildType === 'pack' && r.status === 'success')
+    if (lastPack) {
+      // 从 output 中解析 packagePath
+      const match = lastPack.output.match(/Package: (.+)/)
+      if (match) return match[1].trim()
+    }
+
+    // 兜底：返回 dist/ 目录下的预期路径
+    return `${project.localPath}/dist/${project.scenarioId}-${project.version}.aweeclawpkg`
+  }
+
+  // ==========================================
+  // IPC 桥接（统一通过 electronAPI 命名方法调用）
+  // ==========================================
+
+  private async resolveProjectPath(projectId: string): Promise<string | null> {
+    const project = await projectService.getProject(projectId)
+    return project?.localPath || null
+  }
+
+  private async invokeValidate(params: { projectPath: string }): Promise<{
+    success: boolean
+    valid?: boolean
+    errors?: Array<{ path: string; message: string }>
+    warnings?: Array<{ path: string; message: string }>
+    error?: string
+  }> {
+    if (typeof window !== 'undefined' && (window as any).electronAPI?.scenarioBuilderValidate) {
+      try {
+        return await (window as any).electronAPI.scenarioBuilderValidate(params)
+      } catch (err) {
+        return { success: false, error: (err as Error).message }
       }
     }
+    return { success: false, error: 'Electron API not available' }
+  }
+
+  private async invokeBuild(params: { projectPath: string }): Promise<{
+    success: boolean
+    output: string
+    error?: string
+  }> {
+    if (typeof window !== 'undefined' && (window as any).electronAPI?.scenarioBuilderBuild) {
+      try {
+        return await (window as any).electronAPI.scenarioBuilderBuild(params)
+      } catch (err) {
+        return { success: false, output: '', error: (err as Error).message }
+      }
+    }
+    return { success: false, output: '', error: 'Electron API not available' }
+  }
+
+  private async invokePack(params: { projectPath: string; outputPath?: string }): Promise<{
+    success: boolean
+    packagePath?: string
+    size?: number
+    hash?: string
+    error?: string
+  }> {
+    if (typeof window !== 'undefined' && (window as any).electronAPI?.scenarioBuilderPack) {
+      try {
+        return await (window as any).electronAPI.scenarioBuilderPack(params)
+      } catch (err) {
+        return { success: false, error: (err as Error).message }
+      }
+    }
+    return { success: false, error: 'Electron API not available' }
   }
 
   // ==========================================
   // 辅助方法
   // ==========================================
 
-  private async invokeIpc(channel: string, ...args: unknown[]): Promise<any> {
-    // 通过场景上下文注册的 IPC handler 调用
-    // 实际由主进程的 IPC handler 处理
-    const ctx = this.getContext()
-    ctx.getLogger().debug(`Invoking IPC: ${channel}`, args)
-
-    // 使用 window.electronAPI 调用主进程
-    if (typeof window !== 'undefined' && (window as any).scenarioBuilderIpc) {
-      return await (window as any).scenarioBuilderIpc.executeCli(...args)
+  private formatValidateOutput(result: {
+    success: boolean
+    valid?: boolean
+    errors?: Array<{ path: string; message: string }>
+    warnings?: Array<{ path: string; message: string }>
+    error?: string
+  }): string {
+    if (!result.success) return `Validation failed: ${result.error || 'Unknown error'}`
+    const lines: string[] = [`[validate] ${result.valid ? 'PASSED' : 'FAILED'}`]
+    if (result.errors) {
+      result.errors.forEach(e => lines.push(`  ERROR: ${e.path}: ${e.message}`))
     }
-
-    // 降级：返回模拟结果（开发环境）
-    return {
-      success: false,
-      exitCode: 127,
-      output: 'CLI not available in current environment',
+    if (result.warnings) {
+      result.warnings.forEach(w => lines.push(`  WARN:  ${w.path}: ${w.message}`))
     }
+    return lines.join('\n')
+  }
+
+  private async handleBuildError(
+    record: BuildRecord,
+    err: unknown,
+    startTime: number,
+  ): Promise<BuildRecord> {
+    const finishedAt = new Date().toISOString()
+    const errorMsg = err instanceof Error ? err.message : String(err)
+    const durationMs = Date.now() - startTime
+
+    await this.updateBuildRecord(record.id, {
+      status: 'failed',
+      exitCode: 1,
+      output: errorMsg,
+      durationMs,
+      finishedAt,
+    })
+
+    return { ...record, status: 'failed', exitCode: 1, output: errorMsg, durationMs, finishedAt }
   }
 
   private mapRowToBuildRecord(row: Record<string, unknown>): BuildRecord {

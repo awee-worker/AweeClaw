@@ -76,6 +76,8 @@ export function ScenarioSelector() {
   function handleSelect(scenario: ScenarioPlugin) {
     scenarioRegistry.setActive(scenario.id)
     useStore.getState().set('activeScenarioId', scenario.id)
+    // 持久化场景选择，确保应用重启后自动进入上次使用的场景
+    void useStore.getState().save()
     activateScenarioPanels(scenario)
     switchToFirstPanel(scenario)
     setIsOpen(false)

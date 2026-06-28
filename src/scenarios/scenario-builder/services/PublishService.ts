@@ -146,11 +146,11 @@ export class PublishService {
     developerName?: string
     error?: string
   }> {
-    if (typeof window !== 'undefined' && (window as any).electronAPI) {
+    if (typeof window !== 'undefined' && (window as any).electronAPI?.developerCheckAuth) {
       try {
-        const result = await (window as any).electronAPI.invoke('developer:checkAuth')
+        const result = await (window as any).electronAPI.developerCheckAuth()
         return {
-          loggedIn: result.loggedIn ?? false,
+          loggedIn: result.loggedIn === true,
           developerName: result.developerName,
         }
       } catch (err) {
@@ -174,15 +174,15 @@ export class PublishService {
     downloadUrl?: string
     error?: string
   }> {
-    if (typeof window !== 'undefined' && (window as any).electronAPI) {
+    if (typeof window !== 'undefined' && (window as any).electronAPI?.developerPublishScenario) {
       try {
-        const result = await (window as any).electronAPI.invoke('developer:publishScenario', {
+        const result = await (window as any).electronAPI.developerPublishScenario({
           packageName,
           packagePath,
           version,
         })
         return {
-          success: result.success ?? false,
+          success: result.success === true,
           marketplaceId: result.marketplaceId,
           downloadUrl: result.downloadUrl,
           error: result.error,

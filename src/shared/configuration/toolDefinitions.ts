@@ -2382,9 +2382,55 @@ export const TOOL_DISPLAY_NAMES = Object.fromEntries(
 // 辅助函数
 // ============================================
 
+/**
+ * 场景工具审批类型注册表
+ *
+ * 场景工具不通过 TOOL_CONFIGS 注册，无法被 getToolApprovalType 识别。
+ * 此映射表由 registerScenarioToolApprovalType 维护，
+ * 供 getToolApprovalType / requiresApprovalGate 查询场景工具的审批类型。
+ */
+const scenarioToolApprovalMap = new Map<string, ToolApprovalType>()
+
+/**
+ * 注册场景工具的审批类型
+ *
+ * 由 ToolRegistry.registerScenarioTool 在注册场景工具时调用，
+ * 确保引擎层（toolOrchestrator / AgentSubLoop）能通过 getToolApprovalType
+ * 识别场景工具的审批类型，从而触发审批门禁。
+ *
+ * @param toolName 工具名
+ * @param approvalType 审批类型
+ */
+export function registerScenarioToolApprovalType(toolName: string, approvalType: ToolApprovalType): void {
+    scenarioToolApprovalMap.set(toolName, approvalType)
+}
+
+/**
+ * 注销场景工具的审批类型
+ *
+ * 由 ToolRegistry.unregisterScenarioTool 在注销场景工具时调用，
+ * 避免已卸载场景的工具仍被识别为需要审批。
+ *
+ * @param toolName 工具名
+ */
+export function unregisterScenarioToolApprovalType(toolName: string): void {
+    scenarioToolApprovalMap.delete(toolName)
+}
+
 /** 获取工具审批类型 */
 export function getToolApprovalType(toolName: string): ToolApprovalType {
-    return TOOL_CONFIGS[toolName]?.approvalType || 'none'
+    // 1. 优先从内置工具配置（TOOL_CONFIGS）读取
+    const builtinConfig = TOOL_CONFIGS[toolName]
+    if (builtinConfig?.approvalType) {
+        return builtinConfig.approvalType
+    }
+    // 2. 回退到场景工具审批类型注册表
+    const scenarioApprovalType = scenarioToolApprovalMap.get(toolName)
+    if (scenarioApprovalType) {
+        return scenarioApprovalType
+    }
+    // 3. 默认不审批
+    return 'none'
 }
 
 /** 获取工具显示名称 */
@@ -2442,7 +2488,14 @@ export function needsFileSnapshot(toolName: string): boolean {
 
 /** 检查工具是否需要 Diff 预览（使用 FileChangeCard） */
 export function needsDiffPreview(toolName: string): boolean {
-    return ['edit_file', 'write_file', 'replace_file_content'].includes(toolName)
+    // 内置文件编辑工具 + 场景开发助手的文件写入工具
+    // 场景工具需走 FileChangeCard 才能渲染接受/拒绝按钮与 diff 预览
+    return [
+        'edit_file',
+        'write_file',
+        'replace_file_content',
+        'write_scenario_file',
+    ].includes(toolName)
 }
 
 /** 获取工具元数据 */

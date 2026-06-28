@@ -20,6 +20,10 @@ export const en: Record<string, string> = {
   'builder.project.empty': 'No projects yet. Click "New" to create one.',
   'builder.project.create': 'New Project',
   'builder.project.open': 'Open Project',
+  'builder.project.openInWorkspace': 'Open in Workspace',
+  'builder.project.openInWorkspaceDesc': 'Add project directory to file explorer',
+  'builder.project.dirNotFound': 'Project directory does not exist, please build the project first',
+  'builder.project.openInWorkspaceDone': 'Project directory opened in workspace',
   'builder.project.delete': 'Delete Project',
   'builder.project.search': 'Search projects...',
   'builder.project.name': 'Name',
@@ -155,6 +159,11 @@ export const en: Record<string, string> = {
   'builder.statusBar.ready': 'Ready',
   'builder.statusBar.building': 'Building',
   'builder.statusBar.error': 'Error',
+  'builder.statusBar.lastBuilt': 'Last built',
+
+  // Debug panel
+  'builder.debug.title': 'Debug',
+  'builder.debug.description': 'Temporarily load the current project into the client for preview without formal installation.',
 
   // Common
   'builder.common.confirm': 'Confirm',
@@ -172,4 +181,18 @@ export const en: Record<string, string> = {
   'builder.common.retry': 'Retry',
   'builder.common.yes': 'Yes',
   'builder.common.no': 'No',
+
+  // Edit project dialog
+  'builder.edit.title': 'Edit Project',
+  'builder.edit.subtitle': 'Edit project metadata (type / scenarioId / path are immutable after creation)',
+  'builder.edit.namePlaceholder': 'Project name',
+  'builder.edit.versionPlaceholder': 'Semantic version (e.g. 1.0.0)',
+  'builder.edit.authorPlaceholder': 'Author name',
+  'builder.edit.tagsPlaceholder': 'Tags (comma-separated)',
+  'builder.edit.descriptionPlaceholder': 'Briefly describe the scenario...',
+  'builder.edit.confirm': 'Save',
+  'builder.edit.saving': 'Saving...',
+  'builder.edit.failed': 'Save failed',
+  'builder.edit.noChanges': 'No fields changed',
+  'builder.edit.tagsHint': 'Separate multiple tags with commas',
 }

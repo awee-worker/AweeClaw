@@ -103,6 +103,8 @@ export type PublishStatus = 'pending' | 'uploading' | 'published' | 'failed' | '
 export interface InstallRecord {
   id: string
   projectId: string
+  /** 已安装场景的 scenarioId（用于卸载） */
+  scenarioId?: string
   version: string
   packagePath: string
   status: InstallStatus

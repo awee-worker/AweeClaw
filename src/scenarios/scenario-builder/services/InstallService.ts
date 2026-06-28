@@ -146,29 +146,28 @@ export class InstallService {
   // ==========================================
 
   private async invokeInstallIpc(packagePath: string): Promise<{ success: boolean; error?: string }> {
-    // 复用客户端现有的 scenario:installFromLocal IPC
-    if (typeof window !== 'undefined' && (window as any).electronAPI) {
+    // 复用客户端现有的 scenario:installFromLocal IPC（命名方法）
+    if (typeof window !== 'undefined' && (window as any).electronAPI?.scenarioInstallFromLocal) {
       try {
-        const result = await (window as any).electronAPI.invoke('scenario:installFromLocal', packagePath)
-        return { success: result.success ?? true, error: result.error }
+        // installFromLocal 接收 sourceDir 参数，应当指向项目的 dist/ 目录
+        const result = await (window as any).electronAPI.scenarioInstallFromLocal(packagePath)
+        return { success: result.success === true, error: result.error }
       } catch (err) {
         return { success: false, error: (err as Error).message }
       }
     }
-
     return { success: false, error: 'Electron API not available' }
   }
 
   private async invokeUninstallIpc(scenarioId: string): Promise<{ success: boolean; error?: string }> {
-    if (typeof window !== 'undefined' && (window as any).electronAPI) {
+    if (typeof window !== 'undefined' && (window as any).electronAPI?.scenarioUninstall) {
       try {
-        const result = await (window as any).electronAPI.invoke('scenario:uninstall', scenarioId)
-        return { success: result.success ?? true, error: result.error }
+        const result = await (window as any).electronAPI.scenarioUninstall(scenarioId)
+        return { success: result.success === true, error: result.error }
       } catch (err) {
         return { success: false, error: (err as Error).message }
       }
     }
-
     return { success: false, error: 'Electron API not available' }
   }
 
@@ -176,6 +175,7 @@ export class InstallService {
     return {
       id: row.id as string,
       projectId: row.project_id as string,
+      scenarioId: (row.scenario_id as string) || undefined,
       version: row.version as string,
       packagePath: row.package_path as string,
       status: row.status as InstallStatus,

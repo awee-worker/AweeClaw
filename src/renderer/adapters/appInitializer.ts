@@ -162,6 +162,23 @@ async function loadUserSettings(_isEmptyWindow: boolean): Promise<string | null>
     api.settings.get('themeId'),
   ])
 
+  // 校验持久化的 activeScenarioId 是否仍存在（场景可能已被卸载），
+  // 不存在则回退到默认场景，避免重启后进入已失效的场景
+  try {
+    const { scenarioRegistry } = await import('@shared/configuration/scenarios')
+    const { activeScenarioId } = useStore.getState()
+    if (activeScenarioId && !scenarioRegistry.has(activeScenarioId)) {
+      const defaultScenario = scenarioRegistry.getDefault()
+      logger.system.warn(
+        `[Init] Persisted scenario "${activeScenarioId}" no longer exists, falling back to "${defaultScenario.id}"`,
+      )
+      useStore.getState().set('activeScenarioId', defaultScenario.id)
+      await useStore.getState().save()
+    }
+  } catch (e) {
+    logger.system.warn('[Init] Scenario validation failed:', e)
+  }
+
   const { webSearchConfig, mcpConfig } = useStore.getState()
   if (webSearchConfig?.searchEngines) {
     api.http.setSearchEngineState({

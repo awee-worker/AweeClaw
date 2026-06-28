@@ -73,10 +73,16 @@ export const updateScenarioProjectExecutor: ToolExecutor = async (args, _context
   const projectId = args.project_id as string
   const updates: Record<string, unknown> = {}
 
-  if (args.name) updates.name = args.name
-  if (args.version) updates.version = args.version
-  if (args.description) updates.description = args.description
-  if (args.status) updates.status = args.status
+  if (args.name !== undefined) updates.name = args.name
+  if (args.version !== undefined) updates.version = args.version
+  if (args.description !== undefined) updates.description = args.description
+  if (args.status !== undefined) updates.status = args.status
+  if (args.author !== undefined) updates.author = args.author
+  if (args.tags !== undefined) updates.tags = args.tags
+
+  if (Object.keys(updates).length === 0) {
+    return { success: false, result: '', error: 'No fields to update. Provide at least one of: name, version, description, status, author, tags.' }
+  }
 
   await projectService.updateProject(projectId, updates)
   const project = await projectService.getProject(projectId)
@@ -84,6 +90,46 @@ export const updateScenarioProjectExecutor: ToolExecutor = async (args, _context
   return {
     success: true,
     result: JSON.stringify({ project, message: '项目已更新' }),
+  }
+}
+
+export const getCurrentProjectExecutor: ToolExecutor = async (_args, _context) => {
+  // 动态导入避免循环依赖（selectedProjectStore → projectService → ...）
+  const { selectedProjectStore } = await import('../hooks/useSelectedProject')
+  const project = selectedProjectStore.getCurrent()
+  if (!project) {
+    return {
+      success: true,
+      result: JSON.stringify({ project: null, message: '当前未选中任何项目。请使用 set_current_project 或 create_scenario_project。' }),
+    }
+  }
+  return {
+    success: true,
+    result: JSON.stringify({ project, message: '当前选中项目' }),
+  }
+}
+
+export const setCurrentProjectExecutor: ToolExecutor = async (args, _context) => {
+  const projectId = args.project_id as string
+  if (!projectId) {
+    return { success: false, result: '', error: 'project_id is required' }
+  }
+
+  const project = await projectService.getProject(projectId)
+  if (!project) {
+    return { success: false, result: '', error: `Project not found: ${projectId}` }
+  }
+
+  // 动态导入避免循环依赖
+  const { selectedProjectStore } = await import('../hooks/useSelectedProject')
+  selectedProjectStore.setCurrent(project)
+
+  return {
+    success: true,
+    result: JSON.stringify({
+      project,
+      message: `当前项目已切换为：${project.name}（${project.scenarioId}）`,
+    }),
   }
 }
 
@@ -147,7 +193,7 @@ export const readScenarioFileExecutor: ToolExecutor = async (args, _context) => 
   }
 }
 
-export const writeScenarioFileExecutor: ToolExecutor = async (args, _context) => {
+export const writeScenarioFileExecutor: ToolExecutor = async (args, context) => {
   const projectId = args.project_id as string
   const filePath = args.file_path as string
   const content = args.content as string
@@ -157,12 +203,27 @@ export const writeScenarioFileExecutor: ToolExecutor = async (args, _context) =>
     return { success: false, result: '', error: `Project not found: ${projectId}` }
   }
 
+  // 写入前读取旧内容，用于 diff 预览与变更面板的撤销快照
+  const oldContent = await readFileViaIpc(project.localPath, filePath)
+
   // 通过 IPC 写入文件
   const success = await writeFileViaIpc(project.localPath, filePath, content)
   if (!success) {
     return { success: false, result: '', error: `Failed to write file: ${filePath}` }
   }
 
+  // 计算行变更统计（用于 FileChangeCard 显示与 addPendingChange 记录）
+  const { added, removed } = computeLineChanges(oldContent, content)
+
+  // 构造绝对路径，供 addPendingChange 与撤销操作使用
+  const fullPath = `${project.localPath}/${filePath}`
+
+  // 返回完整 meta，触发 FileChangeCard 的 diff 预览与 loopDetector 的 addPendingChange
+  // - filePath: 绝对路径，变更面板的"撤销"操作依赖此路径
+  // - relativePath: 项目内相对路径，FileChangeCard 优先显示此值
+  // - oldContent: 旧内容（null 表示新建文件），用于 diff 与撤销快照
+  // - newContent: 新内容，用于 diff 与 hash 更新
+  // - linesAdded/linesRemoved: 行变更统计
   return {
     success: true,
     result: JSON.stringify({
@@ -170,6 +231,15 @@ export const writeScenarioFileExecutor: ToolExecutor = async (args, _context) =>
       size: content.length,
       message: `文件已写入：${filePath}`,
     }),
+    meta: {
+      filePath: fullPath,
+      relativePath: filePath,
+      oldContent: oldContent ?? null,
+      newContent: content,
+      linesAdded: added,
+      linesRemoved: removed,
+      toolCallId: context.toolCallId,
+    },
   }
 }
 
@@ -362,7 +432,7 @@ export const publishScenarioExecutor: ToolExecutor = async (args, _context) => {
     return {
       success: false,
       result: '',
-      error: '未登录开发者中心，请先登录（aweeclaw-scenario login 或在开发者中心登录）',
+      error: '未登录开发者中心，请在客户端"发布面板 → 检查登录"完成登录',
     }
   }
 
@@ -515,6 +585,42 @@ async function readFileViaIpc(basePath: string, relativePath: string): Promise<s
     }
   }
   return null
+}
+
+/**
+ * 计算行变更统计（新增/删除行数）
+ *
+ * 采用基于行数差的近似算法，避免引入 diff 库依赖。
+ * FileChangeCard 在渲染时会基于 oldContent/newContent 自行计算精确 diff 用于显示，
+ * 此处仅提供变更面板（addPendingChange）所需的统计字段。
+ *
+ * @param oldContent 旧内容（null 表示新建文件）
+ * @param newContent 新内容
+ * @returns { added, removed } 行变更统计
+ */
+function computeLineChanges(
+  oldContent: string | null,
+  newContent: string,
+): { added: number; removed: number } {
+  if (!oldContent) {
+    // 新建文件：所有行都算新增
+    const lineCount = newContent.split('\n').length
+    return { added: lineCount, removed: 0 }
+  }
+
+  if (oldContent === newContent) {
+    return { added: 0, removed: 0 }
+  }
+
+  const oldLines = oldContent.split('\n').length
+  const newLines = newContent.split('\n').length
+  const delta = newLines - oldLines
+
+  // 行数增加 → 全部算新增；行数减少 → 全部算删除
+  if (delta >= 0) {
+    return { added: delta, removed: 0 }
+  }
+  return { added: 0, removed: -delta }
 }
 
 /** 调用文件写入 IPC */

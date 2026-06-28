@@ -6,29 +6,7 @@ import { useStore } from '@store'
 import { t } from '@renderer/i18n'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { EventBus } from '@intelligence/engine/EventDispatcher'
-
-function playCompletionSound() {
-  try {
-    const ctx = new AudioContext()
-    const now = ctx.currentTime
-    const playTone = (freq: number, startTime: number, duration: number, gain: number) => {
-      const osc = ctx.createOscillator()
-      const gainNode = ctx.createGain()
-      osc.type = 'sine'
-      osc.frequency.setValueAtTime(freq, startTime)
-      gainNode.gain.setValueAtTime(gain, startTime)
-      gainNode.gain.exponentialRampToValueAtTime(0.001, startTime + duration)
-      osc.connect(gainNode)
-      gainNode.connect(ctx.destination)
-      osc.start(startTime)
-      osc.stop(startTime + duration)
-    }
-    playTone(880, now, 0.15, 0.15)
-    playTone(1108.73, now + 0.12, 0.15, 0.15)
-    playTone(1318.51, now + 0.24, 0.3, 0.12)
-    setTimeout(() => ctx.close(), 1000)
-  } catch {}
-}
+import { playCompletionSound } from '@renderer/utils/sound'
 
 interface TodoListPanelProps {
   todos: TodoItem[]
@@ -126,6 +104,8 @@ export const TodoListPanel = memo(({ todos, isStreaming = true }: TodoListPanelP
 
   const clearTodos = useAgentStore(s => s.setTodos)
   const soundPlayedRef = useRef(false)
+  // 记录是否已自动收起，避免重复触发或与用户手动展开冲突
+  const autoCollapsedRef = useRef(false)
 
   useEffect(() => {
     const unsub = EventBus.on('todos:all_completed', () => {
@@ -141,8 +121,19 @@ export const TodoListPanel = memo(({ todos, isStreaming = true }: TodoListPanelP
     const allCompleted = todos.length > 0 && todos.every(t => t.status === 'completed')
     if (!allCompleted) {
       soundPlayedRef.current = false
+      autoCollapsedRef.current = false
     }
   }, [todos])
+
+  // 任务全部完成后延迟自动收起（让用户看到完成状态），用户可重新点击展开
+  useEffect(() => {
+    const allCompleted = todos.length > 0 && todos.every(t => t.status === 'completed')
+    if (allCompleted && isExpanded && !autoCollapsedRef.current) {
+      autoCollapsedRef.current = true
+      const timer = setTimeout(() => setIsExpanded(false), 2000)
+      return () => clearTimeout(timer)
+    }
+  }, [todos, isExpanded])
 
   if (todos.length === 0) return null
 

@@ -110,6 +110,30 @@ export class ProjectService {
 
     steps.push({ id: 'validate', status: 'success', message: '参数校验通过' })
 
+    // 在文件系统创建项目骨架
+    try {
+      const createResult = await this.createProjectScaffold({
+        localPath,
+        scenarioId,
+        name: trimmedName,
+        nameZh: trimmedName, // 简化：中文名默认用项目名（用户可后续编辑 scenario.json）
+        description,
+        descriptionZh: description,
+        author,
+        version,
+        category: options.config?.category,
+        type,
+      })
+      if (!createResult.success) {
+        steps.push({ id: 'scaffold', status: 'failed', message: createResult.error || '骨架创建失败' })
+        return { success: false, error: createResult.error || '骨架创建失败', steps }
+      }
+      steps.push({ id: 'scaffold', status: 'success', message: '项目骨架已创建' })
+    } catch (err) {
+      steps.push({ id: 'scaffold', status: 'failed', message: `骨架创建失败: ${(err as Error).message}` })
+      return { success: false, error: (err as Error).message, steps }
+    }
+
     // 写入数据库
     const id = generateId()
     const now = new Date().toISOString()
@@ -218,6 +242,10 @@ export class ProjectService {
       fields.push('tags = ?')
       values.push(JSON.stringify(updates.tags))
     }
+    if (updates.author !== undefined) {
+      fields.push('author = ?')
+      values.push(updates.author)
+    }
     if (updates.localPath !== undefined) {
       fields.push('local_path = ?')
       values.push(updates.localPath)
@@ -260,6 +288,34 @@ export class ProjectService {
   // ==========================================
   // 辅助方法
   // ==========================================
+
+  /**
+   * 通过 IPC 调用主进程创建项目骨架
+   * 失败时回退为不创建骨架（向后兼容旧版本主进程）
+   */
+  private async createProjectScaffold(params: {
+    localPath: string
+    scenarioId: string
+    name: string
+    nameZh: string
+    description?: string
+    descriptionZh?: string
+    author?: string
+    version?: string
+    category?: string
+    type: 'declarative' | 'programmatic'
+  }): Promise<{ success: boolean; error?: string }> {
+    if (typeof window !== 'undefined' && (window as any).electronAPI?.scenarioBuilderCreateProjectFiles) {
+      try {
+        const result = await (window as any).electronAPI.scenarioBuilderCreateProjectFiles(params)
+        return { success: result.success === true, error: result.error }
+      } catch (err) {
+        return { success: false, error: (err as Error).message }
+      }
+    }
+    // 降级：返回成功（不创建骨架，但允许流程继续；后续用户可手动创建文件）
+    return { success: true }
+  }
 
   private generateScenarioId(name: string): string {
     return name

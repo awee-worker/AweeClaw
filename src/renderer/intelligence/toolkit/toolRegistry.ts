@@ -13,7 +13,7 @@ import { z } from 'zod'
 import { toAppError } from '@shared/toolkit/errorCatalog'
 import { logger } from '@toolkit/LogEngine'
 import { api } from '../../adapters/electronBridge'
-import { TOOL_SCHEMAS, TOOL_DEFINITIONS, TOOL_CONFIGS, type ToolCategory } from '@configuration/toolDefinitions'
+import { TOOL_SCHEMAS, TOOL_DEFINITIONS, TOOL_CONFIGS, type ToolCategory, registerScenarioToolApprovalType, unregisterScenarioToolApprovalType } from '@configuration/toolDefinitions'
 import type {
   ToolDefinition,
   ToolExecutionResult,
@@ -98,6 +98,7 @@ class ToolRegistry {
     if (this.tools.has(name) && !options?.override) return false
 
     const schema = z.object({}).passthrough()
+    const approvalType = definition.approvalType ?? 'none'
 
     this.tools.set(name, {
       name,
@@ -105,17 +106,28 @@ class ToolRegistry {
       schema,
       getExecutor: () => executor,
       category: 'interaction' as ToolCategory,
-      approvalType: 'none',
+      // 优先使用 ToolDefinition.approvalType；未显式声明时默认 'none'
+      // 这样场景工具可以通过 definition.approvalType = 'interaction' 启用审批门禁
+      approvalType,
       parallel: false,
       enabled: true,
     })
 
-    logger.agent.info(`[ToolRegistry] Registered scenario tool: ${name}`)
+    // 同步注册到全局场景工具审批类型映射表，
+    // 让引擎层（toolOrchestrator / AgentSubLoop）的 getToolApprovalType 能识别场景工具
+    registerScenarioToolApprovalType(name, approvalType)
+
+    logger.agent.info(`[ToolRegistry] Registered scenario tool: ${name} (approvalType=${approvalType})`)
     return true
   }
 
   unregisterScenarioTool(name: string): boolean {
-    return this.tools.delete(name)
+    const deleted = this.tools.delete(name)
+    if (deleted) {
+      // 同步从全局场景工具审批类型映射表中移除
+      unregisterScenarioToolApprovalType(name)
+    }
+    return deleted
   }
 
   isInitialized(): boolean {

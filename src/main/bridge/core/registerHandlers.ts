@@ -52,6 +52,7 @@ import { registerScenarioDbIpcHandlers } from '../storage/scenarioDb'
 
 // ── scenario ────────────────────────────────────────────
 import { registerScenarioInstallIpcHandlers, registerScenarioMarketplaceHandlers } from '../scenario/scenarioInstall'
+import { registerScenarioBuilderIpcHandlers } from '../scenario/scenarioBuilder'
 
 // ── messaging ───────────────────────────────────────────
 import { registerChannelHandlers } from '../messaging/channel'
@@ -250,6 +251,9 @@ export function registerAllHandlers(context: IPCContext) {
 
   // 场景安装
   registerOnce('scenario-install', () => registerScenarioInstallIpcHandlers(getMainWindow))
+
+  // 场景开发助手（builder）
+  registerOnce('scenario-builder', () => registerScenarioBuilderIpcHandlers(getMainWindow))
 
   // 场景市场
   registerOnce('scenario-marketplace', () => registerScenarioMarketplaceHandlers())

@@ -16,6 +16,7 @@ import BuilderSettingsPanel from './settings/BuilderSettingsPanel'
 import BuilderStatusBar from './status/BuilderStatusBar'
 import BuilderStatusIndicator from './status/BuilderStatusIndicator'
 import BuilderWelcomePage from './welcome/BuilderWelcomePage'
+import DebugPanel from './debug/DebugPanel'
 
 export const scenarioBuilderComponents: ScenarioComponentRegistry = {
   ProjectListPanel: ProjectListPanel as React.ComponentType<unknown>,
@@ -29,4 +30,5 @@ export const scenarioBuilderComponents: ScenarioComponentRegistry = {
   BuilderStatusBar: BuilderStatusBar as React.ComponentType<unknown>,
   BuilderStatusIndicator: BuilderStatusIndicator as React.ComponentType<unknown>,
   BuilderWelcomePage: BuilderWelcomePage as React.ComponentType<unknown>,
+  DebugPanel: DebugPanel as React.ComponentType<unknown>,
 }

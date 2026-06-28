@@ -1200,6 +1200,69 @@ contextBridge.exposeInMainWorld('electronAPI', {
   scenarioRollbackScenario: (scenarioId: string) => ipcRenderer.invoke('scenario:rollbackScenario', scenarioId),
   scenarioClearRollbackData: (scenarioId?: string) => ipcRenderer.invoke('scenario:clearRollbackData', scenarioId),
 
+  // ── Scenario Builder API ──────────────────────────────
+  scenarioBuilderCreateProjectFiles: (params: {
+    localPath: string
+    scenarioId: string
+    name: string
+    nameZh: string
+    description?: string
+    descriptionZh?: string
+    author?: string
+    version?: string
+    category?: string
+    type: 'declarative' | 'programmatic'
+  }) => ipcRenderer.invoke('scenario-builder:createProjectFiles', params),
+
+  scenarioBuilderReadFile: (params: { projectPath: string; relativePath: string }) =>
+    ipcRenderer.invoke('scenario-builder:readFile', params),
+
+  scenarioBuilderWriteFile: (params: {
+    projectPath: string
+    relativePath: string
+    content: string
+    createDirs?: boolean
+  }) => ipcRenderer.invoke('scenario-builder:writeFile', params),
+
+  scenarioBuilderValidate: (params: { projectPath: string }) =>
+    ipcRenderer.invoke('scenario-builder:validate', params),
+
+  scenarioBuilderBuild: (params: { projectPath: string }) =>
+    ipcRenderer.invoke('scenario-builder:build', params),
+
+  scenarioBuilderPack: (params: { projectPath: string; outputPath?: string }) =>
+    ipcRenderer.invoke('scenario-builder:pack', params),
+
+  scenarioBuilderTryRunStart: (params: { projectPath: string }) =>
+    ipcRenderer.invoke('scenario-builder:tryRunStart', params),
+
+  scenarioBuilderTryRunStop: (params: { scenarioId: string }) =>
+    ipcRenderer.invoke('scenario-builder:tryRunStop', params),
+
+  scenarioBuilderTryRunStatus: (params: { scenarioId: string }) =>
+    ipcRenderer.invoke('scenario-builder:tryRunStatus', params),
+
+  scenarioUninstall: (scenarioId: string) =>
+    ipcRenderer.invoke('scenario:uninstall', scenarioId),
+
+  // ── Developer Center API ──────────────────────────────
+  developerCheckAuth: () => ipcRenderer.invoke('developer:checkAuth'),
+  developerSaveAuth: (auth: { loggedIn: boolean; developerName?: string; token?: string }) =>
+    ipcRenderer.invoke('developer:saveAuth', auth),
+  developerLogout: () => ipcRenderer.invoke('developer:logout'),
+  developerPublishScenario: (params: {
+    scenarioId: string
+    version: string
+    name: string
+    nameZh: string
+    type: string
+    category: string
+    permissions?: string[]
+    changelog?: string
+    packagePath: string
+    backendUrl?: string
+  }) => ipcRenderer.invoke('developer:publishScenario', params),
+
   // Command Execution
   onExecuteCommand: (callback: (commandId: string) => void) => {
     const handler = (_: IpcRendererEvent, commandId: string) => callback(commandId)

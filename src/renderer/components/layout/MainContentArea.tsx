@@ -179,13 +179,25 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
 
   const isShellStudioActive = activeSidePanel === 'shell'
 
+  // 当前激活的侧边栏面板是否要求隐藏编辑器（含编辑器欢迎页）
+  // 适用于纯列表型面板（项目列表/模板列表），避免无文件时编辑器欢迎页占据主区域
+  const shouldHideEditor = useMemo(() => {
+    if (!activeSidePanel) return false
+    const items = layoutConfig.sidebarItems
+    if (!items || items.length === 0) return false
+    const item = items.find(it => it.id === activeSidePanel)
+    return item?.hideEditor === true
+  }, [activeSidePanel, layoutConfig.sidebarItems])
+
   // 是否隐藏 Chat（宽模式面板 + 特定条件）
   const shouldHideChat = useMemo(() => {
     if (!chatVisible) return true
     if (isWideModePanel && activeSidePanel !== 'knowledge' && (layoutConfig.wideModeHidesChat || activeSidePanel === 'scenarios')) return true
-    if (scenarioWelcomeComponent && activeSidePanel === 'explorer' && !(openFiles.length > 0 && activeFilePath)) return true
+    // 仅在非编辑器布局下隐藏 chat：编辑器布局由 EditorSlot 处理空状态（EditorWelcome），
+    // 不渲染 scenarioWelcomeComponent，此时隐藏 chat 会导致用户无法与 AI 交互
+    if (scenarioWelcomeComponent && !layoutConfig.showEditor && activeSidePanel === 'explorer' && !(openFiles.length > 0 && activeFilePath)) return true
     return false
-  }, [chatVisible, isWideModePanel, activeSidePanel, layoutConfig.wideModeHidesChat, scenarioWelcomeComponent, openFiles, activeFilePath])
+  }, [chatVisible, isWideModePanel, activeSidePanel, layoutConfig.wideModeHidesChat, layoutConfig.showEditor, scenarioWelcomeComponent, openFiles, activeFilePath])
 
   // 宽模式面板
   if (isWideModePanel && activeSidePanel) {
@@ -222,6 +234,15 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
 
   // 编辑器模式
   if (layoutConfig.showEditor) {
+    // 当侧边栏面板要求隐藏编辑器（如项目列表/模板列表）时，主区域仅显示 Chat
+    // 避免无文件时编辑器欢迎页（EditorWelcome）占据主区域空间
+    if (shouldHideEditor) {
+      return (
+        <>
+          {layoutConfig.showChat && <ChatSection visible={!shouldHideChat} mode="secondary" />}
+        </>
+      )
+    }
     return (
       <>
         {isShellStudioActive ? (

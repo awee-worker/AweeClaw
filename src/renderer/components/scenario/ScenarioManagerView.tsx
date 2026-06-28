@@ -262,6 +262,8 @@ export function ScenarioManagerView() {
     const handleSwitch = useCallback((scenario: ScenarioPlugin) => {
         scenarioRegistry.setActive(scenario.id)
         useStore.getState().set('activeScenarioId', scenario.id)
+        // 持久化场景选择，确保应用重启后自动进入上次使用的场景
+        void useStore.getState().save()
         activateScenarioPanels(scenario)
         switchToFirstPanel(scenario)
     }, [])
@@ -326,6 +328,13 @@ export function ScenarioManagerView() {
             }
 
             await scenarioRegistry.uninstallScenario(uninstallState.scenarioId)
+
+            // 卸载后同步当前 activeScenarioId（若卸载的是当前场景，registry 已回退到默认）
+            const activeId = scenarioRegistry.getActiveId()
+            if (activeId && activeId !== useStore.getState().activeScenarioId) {
+                useStore.getState().set('activeScenarioId', activeId)
+                void useStore.getState().save()
+            }
 
             // 清理场景专属数据库
             try {

@@ -8,16 +8,22 @@ import type React from 'react'
 import { buildService } from '../../services'
 import type { BuildRecord } from '../../types'
 import { useI18n } from '@renderer/i18n'
+import { useSelectedProject } from '../../hooks/useSelectedProject'
 
 const BuildPanel: React.FC = () => {
   const { t } = useI18n()
+  const { project: selectedProject, refresh: refreshProject } = useSelectedProject()
+  const selectedProjectId = selectedProject?.id ?? null
   const [records, setRecords] = useState<BuildRecord[]>([])
-  const [selectedProjectId] = useState<string | null>(null)
   const [building, setBuilding] = useState(false)
   const [selectedRecord, setSelectedRecord] = useState<BuildRecord | null>(null)
 
   const loadHistory = useCallback(async () => {
-    if (!selectedProjectId) return
+    if (!selectedProjectId) {
+      setRecords([])
+      setSelectedRecord(null)
+      return
+    }
     try {
       const history = await buildService.getBuildHistory(selectedProjectId)
       setRecords(history)
@@ -48,13 +54,15 @@ const BuildPanel: React.FC = () => {
         }
         setSelectedRecord(record)
         await loadHistory()
+        // 刷新项目状态（status/lastBuiltAt 可能变更）
+        await refreshProject()
       } catch (err) {
         console.error('Build failed:', err)
       } finally {
         setBuilding(false)
       }
     },
-    [selectedProjectId, loadHistory],
+    [selectedProjectId, loadHistory, refreshProject],
   )
 
   const statusColors: Record<string, string> = {

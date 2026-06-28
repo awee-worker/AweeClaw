@@ -268,6 +268,9 @@ async function executeToolCall(
   }
 
   const approvalType = getToolApprovalType(toolCall.name)
+  // 仅 terminal / dangerous 类型需要事前审批；
+  // interaction 类型采用事后确认模式（像 VSCode/Trae），工具直接执行，
+  // 执行成功后由 FileChangeCard 显示"接受/拒绝"按钮
   if (approvalType === 'terminal' || approvalType === 'dangerous') {
     const mainStoreState = useStore.getState()
     // 自由模式：自动批准所有工具调用，无需用户确认

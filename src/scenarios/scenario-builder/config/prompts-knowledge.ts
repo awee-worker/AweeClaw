@@ -404,29 +404,21 @@ sidebarItems: [
 
 ## 十一、构建与发布
 
-### CLI 命令
-\`\`\`bash
-# 初始化项目
-aweeclaw-scenario init my-scenario --type declarative
+### 内嵌工具链（无需外部 CLI）
 
-# 开发模式（热重载）
-aweeclaw-scenario dev
+场景开发助手已内置完整工具链，所有操作通过客户端 UI 或 IPC 完成，**不再依赖 aweeclaw-scenario-cli 命令行**：
 
-# 校验配置
-aweeclaw-scenario validate
-
-# 构建
-aweeclaw-scenario build
-
-# 打包
-aweeclaw-scenario pack
-
-# 登录开发者中心
-aweeclaw-scenario login
-
-# 发布到市场
-aweeclaw-scenario publish
-\`\`\`
+| 操作 | 触发方式 | 说明 |
+| --- | --- | --- |
+| 新建项目 | 项目面板 → 新建项目 | 自动生成项目骨架（scenario.json/prompts/database） |
+| 校验 | 构建面板 → 校验 | 主进程内嵌校验器检查配置完整性 |
+| 构建 | 构建面板 → 构建 | 编程式场景用 esbuild 打包；声明式直接复制 |
+| 打包 | 构建面板 → 打包 | 生成 .aweeclawpkg 分发包 |
+| 试运行 | 调试面板 → 试运行 | 临时加载到客户端，无需正式安装 |
+| 安装 | 安装面板 → 安装 | 将打包产物安装到本地场景目录 |
+| 卸载 | 安装面板 → 卸载 | 删除场景目录并执行 uninstall.sql |
+| 登录 | 发布面板 → 检查登录 | 通过开发者中心账号体系登录 |
+| 发布 | 发布面板 → 发布 | 上传 .aweeclawpkg 到开发者中心市场 |
 
 ### 构建产物
 构建后生成 dist/ 目录，包含：
@@ -461,16 +453,16 @@ aweeclaw-scenario publish
 
 1. **需求分析**：明确场景目标、用户群体、核心功能
 2. **选择类型**：简单场景用声明式，复杂场景用编程式
-3. **初始化项目**：使用 CLI 或手动创建目录结构
+3. **新建项目**：在场景开发助手中"新建项目"，自动生成骨架
 4. **编写配置**：scenario.json + 提示词文件
 5. **开发工具**：自定义工具（如需要）
 6. **开发 UI**：自定义组件（编程式）
 7. **数据库设计**：install.sql + uninstall.sql
-8. **本地调试**：dev 模式热重载
-9. **校验配置**：validate 确保配置正确
-10. **构建打包**：build + pack
-11. **本地安装**：安装到客户端测试
-12. **发布市场**：login + publish
+8. **试运行**：使用调试面板的"试运行"临时加载
+9. **校验配置**：构建面板 → 校验，确保配置正确
+10. **构建打包**：构建面板 → 构建 → 打包
+11. **本地安装**：安装面板安装到客户端测试
+12. **发布市场**：发布面板登录后上传
 
 ## 十四、常见问题
 
@@ -478,7 +470,7 @@ aweeclaw-scenario publish
 A: 简单对话场景用声明式；需要自定义 UI、复杂数据库操作、IPC 通信的场景用编程式。
 
 ### Q: 如何调试场景？
-A: 使用 \`aweeclaw-scenario dev\` 启动热重载，或在客户端添加本地场景路径。
+A: 使用调试面板的"试运行"功能临时加载场景，或安装到客户端本地场景目录后直接使用。
 
 ### Q: 场景如何访问文件系统？
 A: 声明 permissions 中的 filesystem:read/filesystem:write 权限，使用内置工具 read_file/write_file。
@@ -501,6 +493,6 @@ export const SCENARIO_DEV_QUICK_REF = `AweeClaw 场景开发快速参考：
 - 提示词四要素：systemPrompt, securityRules, conventions, workflow
 - 工具结构：name + definition(JSON Schema) + executor(async function)
 - 数据库：独立 SQLite，通过 install.sql 初始化
-- CLI：init / dev / validate / build / pack / login / publish
+- 工具链（内嵌，无需 CLI）：新建项目 / 校验 / 构建 / 打包 / 试运行 / 安装 / 卸载 / 登录 / 发布
 - UI 布局：chat-centric / editor-centric / dashboard-centric
 - 图标：lucide-react 图标名`

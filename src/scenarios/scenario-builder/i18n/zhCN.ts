@@ -20,6 +20,10 @@ export const zh: Record<string, string> = {
   'builder.project.empty': '暂无项目，点击「新建」创建',
   'builder.project.create': '新建项目',
   'builder.project.open': '打开项目',
+  'builder.project.openInWorkspace': '在工作区打开',
+  'builder.project.openInWorkspaceDesc': '将项目目录加入文件资源管理器',
+  'builder.project.dirNotFound': '项目目录不存在，请先构建项目',
+  'builder.project.openInWorkspaceDone': '已在工作区打开项目目录',
   'builder.project.delete': '删除项目',
   'builder.project.search': '搜索项目...',
   'builder.project.name': '项目名称',
@@ -155,6 +159,11 @@ export const zh: Record<string, string> = {
   'builder.statusBar.ready': '就绪',
   'builder.statusBar.building': '构建中',
   'builder.statusBar.error': '错误',
+  'builder.statusBar.lastBuilt': '最近构建',
+
+  // 调试面板
+  'builder.debug.title': '调试',
+  'builder.debug.description': '将当前项目临时加载到客户端，无需正式安装即可预览效果。',
 
   // 通用
   'builder.common.confirm': '确认',
@@ -172,4 +181,18 @@ export const zh: Record<string, string> = {
   'builder.common.retry': '重试',
   'builder.common.yes': '是',
   'builder.common.no': '否',
+
+  // 编辑项目对话框
+  'builder.edit.title': '编辑项目',
+  'builder.edit.subtitle': '修改项目元数据（type / scenarioId / 路径创建后不可修改）',
+  'builder.edit.namePlaceholder': '项目名称',
+  'builder.edit.versionPlaceholder': '语义化版本（如 1.0.0）',
+  'builder.edit.authorPlaceholder': '作者名称',
+  'builder.edit.tagsPlaceholder': '标签（逗号分隔）',
+  'builder.edit.descriptionPlaceholder': '简要描述场景功能...',
+  'builder.edit.confirm': '保存',
+  'builder.edit.saving': '保存中...',
+  'builder.edit.failed': '保存失败',
+  'builder.edit.noChanges': '没有修改任何字段',
+  'builder.edit.tagsHint': '多个标签用英文逗号分隔',
 }

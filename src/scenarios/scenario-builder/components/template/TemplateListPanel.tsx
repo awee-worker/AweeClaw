@@ -69,30 +69,30 @@ const TemplateListPanel: React.FC = () => {
         <h2 className="text-sm font-medium">{t('builder.template.title')}</h2>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2">
-        <ul className="space-y-2">
+      <div className="flex-1 overflow-y-auto p-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {TEMPLATES.map((template) => (
-            <li
+            <div
               key={template.id}
-              className="rounded border border-border p-2 hover:bg-muted"
+              className="flex flex-col rounded-lg border border-border p-3 transition-all hover:scale-[1.02] hover:border-accent/40 hover:bg-muted/30"
             >
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">
+              <div className="flex items-center justify-between gap-2">
+                <span className="truncate text-sm font-medium">
                   {language === 'zh' ? template.nameZh : template.name}
                 </span>
-                <span className={`rounded px-1.5 py-0.5 text-[10px] ${typeColors[template.type]}`}>
+                <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${typeColors[template.type]}`}>
                   {t(`builder.type.${template.type}`)}
                 </span>
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">
+              <p className="mt-2 flex-1 text-xs leading-relaxed text-muted-foreground">
                 {language === 'zh' ? template.descriptionZh : template.description}
               </p>
-              <button className="mt-2 w-full rounded border border-border py-1 text-xs hover:bg-accent hover:text-accent-foreground">
+              <button className="mt-3 w-full rounded border border-border py-1.5 text-xs hover:bg-accent hover:text-accent-foreground transition-colors">
                 {t('builder.template.use')}
               </button>
-            </li>
+            </div>
           ))}
-        </ul>
+        </div>
       </div>
     </div>
   )

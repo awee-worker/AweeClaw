@@ -73,9 +73,9 @@ const ProjectCreateDialog: React.FC<ProjectCreateDialogProps> = ({ onClose, onCr
   }, [name, scenarioId, type, version, description, author, localPath, t, onCreated])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-text-inverted/50 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-lg"
+        className="w-full max-w-md mx-4 rounded-2xl border border-border/50 bg-background/95 backdrop-blur-xl p-6 shadow-2xl shadow-black/20"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="mb-4 text-lg font-semibold">{t('builder.create.title')}</h2>

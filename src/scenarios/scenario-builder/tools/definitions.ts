@@ -55,15 +55,36 @@ export const SCENARIO_BUILDER_TOOLS: ToolDefinition[] = [
   },
   {
     name: 'update_scenario_project',
-    description: 'Update a scenario project (name, version, description, status, config)',
+    description: 'Update a scenario project (name, version, description, status, author, tags). Type, scenarioId, localPath are immutable after creation.',
     parameters: {
       type: 'object',
       properties: {
         project_id: { type: 'string', description: 'The project ID' },
         name: { type: 'string', description: 'New project name' },
-        version: { type: 'string', description: 'New version' },
+        version: { type: 'string', description: 'New version (semantic version, e.g. 1.0.0)' },
         description: { type: 'string', description: 'New description' },
         status: { type: 'string', description: 'New status', enum: ['draft', 'developing', 'building', 'ready', 'published', 'archived'] },
+        author: { type: 'string', description: 'New author name' },
+        tags: { type: 'array', items: { type: 'string' }, description: 'New tags list (replaces existing tags)' },
+      },
+      required: ['project_id'],
+    },
+  },
+  {
+    name: 'get_current_project',
+    description: 'Get the currently selected scenario project in the Scenario Builder UI. The project is also injected into the system prompt as "Current Scenario Project" — call this tool only when you suspect the injected context may be stale (e.g. user may have switched projects mid-conversation).',
+    parameters: {
+      type: 'object',
+      properties: {},
+    },
+  },
+  {
+    name: 'set_current_project',
+    description: 'Set the currently selected scenario project in the Scenario Builder UI. Use this when the user asks to switch to / work on a different project. Subsequent tool calls (read_scenario_file, build_scenario, etc.) will default to this project.',
+    parameters: {
+      type: 'object',
+      properties: {
+        project_id: { type: 'string', description: 'The project ID to select as current' },
       },
       required: ['project_id'],
     },
@@ -108,6 +129,11 @@ export const SCENARIO_BUILDER_TOOLS: ToolDefinition[] = [
   {
     name: 'write_scenario_file',
     description: 'Write content to a file in a scenario project directory. Creates parent directories if needed.',
+    // 文件写入采用事后确认模式（像 VSCode/Trae）：
+    // 工具直接执行写入，执行成功后聊天界面显示"接受/拒绝"按钮，
+    // 用户点"拒绝"会撤销变更（恢复旧内容）。
+    // 因此 approvalType 设为 'none'（不事前审批），由 pendingChanges 机制驱动事后确认。
+    approvalType: 'none',
     parameters: {
       type: 'object',
       properties: {
@@ -149,7 +175,7 @@ export const SCENARIO_BUILDER_TOOLS: ToolDefinition[] = [
   },
   {
     name: 'build_scenario',
-    description: 'Build a scenario project for production. Runs the aweeclaw-scenario build command.',
+    description: 'Build a scenario project for production. Uses the built-in esbuild bundler (no external CLI required).',
     parameters: {
       type: 'object',
       properties: {
@@ -160,7 +186,7 @@ export const SCENARIO_BUILDER_TOOLS: ToolDefinition[] = [
   },
   {
     name: 'pack_scenario',
-    description: 'Pack a scenario project into a distributable package. Runs the aweeclaw-scenario pack command.',
+    description: 'Pack a scenario project into a distributable .aweeclawpkg package. Uses the built-in packer (no external CLI required).',
     parameters: {
       type: 'object',
       properties: {

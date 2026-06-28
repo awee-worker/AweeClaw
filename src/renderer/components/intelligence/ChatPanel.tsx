@@ -59,6 +59,8 @@ import { ScrollToBottomButton } from './chatPanel/components/ScrollToBottomButto
 import { DeleteSelectionBar } from './chatPanel/components/DeleteSelectionBar'
 import { ArchiveTimelineItemView } from './chatPanel/components/ArchiveTimelineItemView'
 import { ChatInputWrapper } from './chatPanel/components/ChatInputWrapper'
+import PendingChangesBar from './PendingChangesBar'
+import { playPendingReviewSound } from '@renderer/utils/sound'
 
 const EMPTY_TODOS: import('@intelligence/providerTypes').TodoItem[] = []
 
@@ -141,6 +143,35 @@ export default function ChatPanel() {
     [pendingApprovalToolCalls],
   )
 
+  // AI 回复完成（isStreaming 从 true→false）统一处理：
+  // 1. 有待接受文件变更时播放提示音
+  // 2. 云端模式下刷新配额
+  // prevStreamingRef 在此统一声明，下方"流式完成后刷新配额"复用
+  const prevStreamingRef = useRef(isStreaming)
+  const pendingReviewSoundPlayedRef = useRef(false)
+  useEffect(() => {
+    const wasStreaming = prevStreamingRef.current
+    prevStreamingRef.current = isStreaming
+
+    if (wasStreaming && !isStreaming) {
+      // 流式结束：有待确认变更则播放提示音
+      if (pendingChanges.length > 0 && !pendingReviewSoundPlayedRef.current) {
+        pendingReviewSoundPlayedRef.current = true
+        playPendingReviewSound()
+      }
+      // 流式结束：云端模式刷新配额
+      const { isAuthenticated, cloudMode, fetchQuota } = useStore.getState()
+      if (isAuthenticated && cloudMode === 'cloud') {
+        fetchQuota().catch(() => {})
+      }
+    }
+
+    // 重新开始流式时重置提示音标记
+    if (isStreaming) {
+      pendingReviewSoundPlayedRef.current = false
+    }
+  }, [isStreaming, pendingChanges.length])
+
   const isChannelThread = useMemo(() => {
     if (!currentThreadId) return false
     return !!channelConversationService.getConversationKey(currentThreadId)
@@ -192,18 +223,6 @@ export default function ChatPanel() {
     () => new Set(messageCheckpoints.map(checkpoint => checkpoint.messageId)),
     [messageCheckpoints],
   )
-
-  // ===== 流式完成后刷新配额 =====
-  const prevStreamingRef = useRef(isStreaming)
-  useEffect(() => {
-    if (prevStreamingRef.current && !isStreaming) {
-      const { isAuthenticated, cloudMode, fetchQuota } = useStore.getState()
-      if (isAuthenticated && cloudMode === 'cloud') {
-        fetchQuota().catch(() => {})
-      }
-    }
-    prevStreamingRef.current = isStreaming
-  }, [isStreaming])
 
   useAutoSpeak({ isStreaming, messages })
 
@@ -683,6 +702,7 @@ export default function ChatPanel() {
                     <TodoListPanel todos={todos} isStreaming={isStreaming} />
                   </div>
                 )}
+                <PendingChangesBar pendingChanges={pendingChanges} />
                 <ChatInputWrapper
                   input={input}
                   setInput={setInput}
