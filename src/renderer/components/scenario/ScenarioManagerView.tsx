@@ -22,6 +22,7 @@ import { ActionButton, OverlayDialog } from '../ui'
 import DecisionOverlay from '@components/foundation/DecisionOverlay'
 import { PermissionConfirmDialog } from './PermissionConfirmDialog'
 import { ScenarioReviewPanel } from './ScenarioReviewPanel'
+import { ScenePromptConfigDialog } from './ScenePromptConfigDialog'
 import type { ScenarioPlugin, UILayout } from '@shared/protocols/scenario'
 import { activateScenarioPanels, switchToFirstPanel } from './panelUtils'
 import { registerInstalledScenario } from './scenarioInstallUtils'
@@ -161,6 +162,8 @@ export function ScenarioManagerView() {
 
     const [detailScenarioId, setDetailScenarioId] = useState<string | null>(null)
     const [settingsScenarioId, setSettingsScenarioId] = useState<string | null>(null)
+    /** 场景级 Prompt 配置弹窗目标场景 ID */
+    const [promptConfigScenarioId, setPromptConfigScenarioId] = useState<string | null>(null)
     const [uninstallState, setUninstallState] = useState<{
         scenarioId: string
         scenarioName: string
@@ -290,6 +293,11 @@ export function ScenarioManagerView() {
 
     const handleOpenSettings = useCallback((scenarioId: string) => {
         setSettingsScenarioId(scenarioId)
+    }, [])
+
+    /** 打开场景级 Prompt 配置弹窗 */
+    const handleOpenPromptConfig = useCallback((scenarioId: string) => {
+        setPromptConfigScenarioId(scenarioId)
     }, [])
 
     const handleRequestUninstall = useCallback((scenario: ScenarioPlugin) => {
@@ -585,6 +593,16 @@ export function ScenarioManagerView() {
                                 {t('scenario.settings', language as Language)}
                             </ActionButton>
                         )}
+                        <ActionButton
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-[12px] gap-1.5 px-3 rounded-lg"
+                            onClick={(e) => { e.stopPropagation(); handleOpenPromptConfig(scenario.id) }}
+                            title={language === 'zh' ? '配置此场景的 Prompt' : 'Configure Prompt for this scene'}
+                        >
+                            <FileText className="w-3 h-3" />
+                            {language === 'zh' ? 'Prompt' : 'Prompt'}
+                        </ActionButton>
                         <ActionButton
                             variant="ghost"
                             size="sm"
@@ -1090,6 +1108,20 @@ export function ScenarioManagerView() {
                     </div>
                 ) : null}
             </OverlayDialog>
+
+            {/* 场景级 Prompt 配置弹窗 */}
+            {promptConfigScenarioId && (() => {
+                const scenario = scenarioRegistry.get(promptConfigScenarioId)
+                if (!scenario) return null
+                return (
+                    <ScenePromptConfigDialog
+                        scenarioId={promptConfigScenarioId}
+                        scenarioName={language === 'zh' ? scenario.nameZh : scenario.name}
+                        language={language as Language}
+                        onClose={() => setPromptConfigScenarioId(null)}
+                    />
+                )
+            })()}
         </div>
     )
 }

@@ -1,10 +1,12 @@
-import { Layout, Check, Sun, Moon, Monitor, Globe, Type } from 'lucide-react'
+import { Layout, Check, Sun, Moon, Monitor, Globe, Type, MessageSquare } from 'lucide-react'
 import { useStore, type ThemeName, type ThemeMode, type ThemeColor } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { themeManager, THEME_COLOR_OPTIONS } from '@/renderer/config/themeDefinition'
 import { api } from '../../../adapters/electronBridge'
 import { EditorSettingsProps } from '../preferencesTypes'
 import { LANGUAGES } from '../preferencesTypes'
+import { ToggleSwitch } from '@components/ui'
+import type { AgentConfig } from '@shared/configuration/configTypes'
 
 import { useEffect, useCallback, useMemo } from 'react'
 import { t, type Language } from '@renderer/i18n'
@@ -32,7 +34,11 @@ const THEME_MODE_OPTIONS: { value: ThemeMode; labelZh: string; labelEn: string; 
     { value: 'system', labelZh: '跟随系统', labelEn: 'System', icon: Monitor },
 ]
 
-export function AppearanceSettings({ settings, setSettings, language, localLanguage, setLocalLanguage }: EditorSettingsProps) {
+export function AppearanceSettings({ settings, setSettings, language, localLanguage, setLocalLanguage, agentConfig, setAgentConfig }: EditorSettingsProps & {
+    /** Agent 配置（用于对话展示偏好 expand*ByDefault，从 AgentProfilePanel 迁入） */
+    agentConfig?: AgentConfig
+    setAgentConfig?: (config: AgentConfig) => void
+}) {
     const { setTheme, themeMode, setThemeMode, themeColor, setThemeColor, systemPrefersDark, setSystemPrefersDark } = useStore(useShallow(s => ({
         setTheme: s.setTheme,
         themeMode: s.themeMode,
@@ -172,8 +178,8 @@ export function AppearanceSettings({ settings, setSettings, language, localLangu
     return (
         <div className="space-y-8 animate-fade-in pb-10">
             {localLanguage && setLocalLanguage && (
-                <section>
-                    <div className="flex items-center gap-2 mb-5 ml-1">
+                <section className="p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border shadow-sm">
+                    <div className="flex items-center gap-2 mb-4">
                         <div className="p-1.5 rounded-md bg-accent/10">
                             <Globe className="w-4 h-4 text-accent" />
                         </div>
@@ -182,7 +188,7 @@ export function AppearanceSettings({ settings, setSettings, language, localLangu
                         </h4>
                     </div>
 
-                    <p className="text-sm text-text-muted mb-4 ml-1">
+                    <p className="text-sm text-text-muted mb-4">
                         {t('settings.chooseyourpreferredinterfacelanguage', language as Language)}
                     </p>
 
@@ -223,8 +229,8 @@ export function AppearanceSettings({ settings, setSettings, language, localLangu
                 </section>
             )}
 
-            <section>
-                <div className="flex items-center gap-2 mb-5 ml-1">
+            <section className="p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border shadow-sm">
+                <div className="flex items-center gap-2 mb-4">
                     <div className="p-1.5 rounded-md bg-accent/10">
                         <Layout className="w-4 h-4 text-accent" />
                     </div>
@@ -303,8 +309,8 @@ export function AppearanceSettings({ settings, setSettings, language, localLangu
                 </div>
             </section>
 
-            <section>
-                <div className="flex items-center gap-2 mb-5 ml-1">
+            <section className="p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border shadow-sm">
+                <div className="flex items-center gap-2 mb-4">
                     <div className="p-1.5 rounded-md bg-accent/10">
                         <Type className="w-4 h-4 text-accent" />
                     </div>
@@ -313,7 +319,7 @@ export function AppearanceSettings({ settings, setSettings, language, localLangu
                     </h4>
                 </div>
 
-                <p className="text-sm text-text-muted mb-4 ml-1">
+                <p className="text-sm text-text-muted mb-4">
                     {language === 'zh'
                         ? '选择界面与对话内容的字体大小，编辑器与聊天区域将同步调整。'
                         : 'Choose the font size for the UI and conversations. Editor and chat area will both adapt.'}
@@ -368,6 +374,44 @@ export function AppearanceSettings({ settings, setSettings, language, localLangu
                     })}
                 </div>
             </section>
+
+            {/* 对话展示（从 AgentProfilePanel 迁入） */}
+            {agentConfig && setAgentConfig && (
+                <section className="p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border shadow-sm">
+                    <div className="flex items-center gap-2 mb-4">
+                        <div className="p-1.5 rounded-md bg-accent/10">
+                            <MessageSquare className="w-4 h-4 text-accent" />
+                        </div>
+                        <h4 className="text-sm font-bold text-text-primary tracking-tight">
+                            {language === 'zh' ? '对话展示' : 'Conversation Display'}
+                        </h4>
+                    </div>
+
+                    <p className="text-sm text-text-muted mb-4">
+                        {language === 'zh'
+                            ? '控制对话消息中思考、工具调用、上下文等区块的默认展开状态。'
+                            : 'Control the default expand state of thinking, tool calls, and context blocks in conversation messages.'}
+                    </p>
+
+                    <div className="flex flex-wrap gap-x-8 gap-y-4">
+                        <ToggleSwitch
+                            label={language === 'zh' ? '默认展开思考块' : 'Expand thinking by default'}
+                            checked={agentConfig.expandThinkingByDefault}
+                            onChange={(e) => setAgentConfig({ ...agentConfig, expandThinkingByDefault: e.target.checked })}
+                        />
+                        <ToggleSwitch
+                            label={language === 'zh' ? '默认展开工具调用' : 'Expand tool calls by default'}
+                            checked={agentConfig.expandToolCallsByDefault}
+                            onChange={(e) => setAgentConfig({ ...agentConfig, expandToolCallsByDefault: e.target.checked })}
+                        />
+                        <ToggleSwitch
+                            label={language === 'zh' ? '默认展开上下文块' : 'Expand context by default'}
+                            checked={agentConfig.expandContextByDefault}
+                            onChange={(e) => setAgentConfig({ ...agentConfig, expandContextByDefault: e.target.checked })}
+                        />
+                    </div>
+                </section>
+            )}
         </div>
     )
 }

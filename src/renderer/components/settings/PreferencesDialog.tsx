@@ -170,6 +170,8 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                         language={language}
                         localLanguage={state.localLanguage as Language}
                         setLocalLanguage={(lang) => dispatch({ type: 'SET_LOCAL_LANGUAGE', language: lang })}
+                        agentConfig={state.localAgentConfig}
+                        setAgentConfig={(config) => dispatch({ type: 'SET_LOCAL_AGENT_CONFIG', config })}
                     />
                 )
             case 'agent':
@@ -215,6 +217,10 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                         securitySettings={state.localSecuritySettings}
                         setSecuritySettings={(settings) => dispatch({ type: 'SET_LOCAL_SECURITY_SETTINGS', settings })}
                         isWorkspaceEditor={false}
+                        autoApprove={state.localAutoApprove}
+                        setAutoApprove={(value) => dispatch({ type: 'SET_LOCAL_AUTO_APPROVE', value })}
+                        agentConfig={state.localAgentConfig}
+                        setAgentConfig={(config) => dispatch({ type: 'SET_LOCAL_AGENT_CONFIG', config })}
                     />
                 )
             case 'privacy':
