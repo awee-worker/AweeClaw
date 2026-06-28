@@ -475,10 +475,12 @@ Add your skill instructions here.
     /**
      * 根据用户消息智能匹配相关 Skills
      *
-     * 匹配规则：
+     * 匹配规则（任一命中即视为相关，触发完整内容注入）：
      * 1. Skill 的 keywords 中的词出现在用户消息中（不区分大小写）
-     * 2. Skill 的 name 或 description 中的核心词出现在用户消息中
-     * 3. 仅匹配 type=auto 且 enabled 的 Skills
+     * 2. Skill 的 name 中的核心词（长度 > 2 的分词）出现在用户消息中
+     * 3. Skill 的 description 中的核心名词（长度 >= 3 的英文词 / 中文词）出现在用户消息中
+     * 4. 用户消息中的核心词出现在 Skill 的 keywords / name / description 中（反向匹配）
+     * 5. 仅匹配 type=auto 且 enabled 的 Skills
      */
     matchSkillsByKeywords(skills: SkillItem[], userMessage: string): SkillItem[] {
         if (!userMessage?.trim()) return []
@@ -486,12 +488,18 @@ Add your skill instructions here.
         const msgLower = userMessage.toLowerCase()
         const matched: SkillItem[] = []
 
+        // 提取用户消息中的核心词（英文词 + 中文 2-4 字片段）
+        const enWords: string[] = msgLower.match(/[a-z]{3,}/g) || []
+        const zhWords: string[] = msgLower.match(/[\u4e00-\u9fa5]{2,4}/g) || []
+        const msgWords = new Set<string>([...enWords, ...zhWords])
+
         const autoEnabled = skills.filter(s => s.type === 'auto' && s.enabled)
 
         for (const skill of autoEnabled) {
             let isMatched = false
 
-            if (skill.keywords && skill.keywords.length > 0) {
+            // 规则1：keywords 命中用户消息
+            if (!isMatched && skill.keywords && skill.keywords.length > 0) {
                 for (const kw of skill.keywords) {
                     if (msgLower.includes(kw.toLowerCase())) {
                         isMatched = true
@@ -500,10 +508,33 @@ Add your skill instructions here.
                 }
             }
 
+            // 规则2：name 分词命中用户消息
             if (!isMatched) {
                 const nameWords = skill.name.split(/[-_]/).filter(w => w.length > 2)
                 for (const w of nameWords) {
                     if (msgLower.includes(w.toLowerCase())) {
+                        isMatched = true
+                        break
+                    }
+                }
+            }
+
+            // 规则3：description 核心词命中用户消息
+            if (!isMatched && skill.description) {
+                const descLower = skill.description.toLowerCase()
+                for (const w of msgWords) {
+                    if (w.length >= 3 && descLower.includes(w)) {
+                        isMatched = true
+                        break
+                    }
+                }
+            }
+
+            // 规则4：用户消息核心词命中 skill 的 keywords / name / description（反向匹配）
+            if (!isMatched) {
+                const skillText = `${(skill.keywords || []).join(' ')} ${skill.name} ${skill.description || ''}`.toLowerCase()
+                for (const w of msgWords) {
+                    if (w.length >= 3 && skillText.includes(w)) {
                         isMatched = true
                         break
                     }
@@ -538,7 +569,10 @@ Add your skill instructions here.
 
 The following project-specific skills can be loaded using the \`apply_skill\` tool.
 
-**Usage**: Use \`apply_skill\` when a skill is relevant to the current task. Skills with matching keywords are automatically loaded above — use \`apply_skill\` for any remaining skills that seem useful.
+**IMPORTANT — Proactive Application**:
+Before starting any non-trivial task, review the skill list below. If a skill's description suggests it covers the task's domain (e.g. website building, UI design, testing, code review), you MUST call \`apply_skill\` to load its full instructions BEFORE writing code. Following skill instructions ensures consistency with project conventions and avoids rework.
+
+Skills whose keywords match the user's message are already loaded in full above — use \`apply_skill\` to load any additional skills that seem relevant.
 
 ${index}`
     }

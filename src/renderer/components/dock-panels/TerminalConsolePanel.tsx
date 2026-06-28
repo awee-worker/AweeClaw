@@ -32,7 +32,8 @@ const TerminalPanel = memo(function TerminalPanel() {
     const [isResizing, setIsResizing] = useState(false)
     const [availableShells, setAvailableShells] = useState<{ label: string; path: string }[]>([])
     const [showShellMenu, setShowShellMenu] = useState(false)
-    const [selectedRoot, setSelectedRoot] = useState<string>('')
+    // 初始化为当前工作区根目录，避免组件重新 mount 时 selectedRoot='' 误触发工作区切换清理逻辑
+    const [selectedRoot, setSelectedRoot] = useState<string>(() => workspace?.roots?.[0] || '')
     const [scripts, setScripts] = useState<Record<string, string>>({})
     const [showScriptMenu, setShowScriptMenu] = useState(false)
     const [contextMenu, setContextMenu] = useState<{
@@ -151,13 +152,21 @@ const TerminalPanel = memo(function TerminalPanel() {
     }, [])
 
     // 工作区切换时更新 selectedRoot 并清理旧终端
+    // 使用 ref 记录上次处理过的 root，避免组件重新 mount 时 selectedRoot='' 误触发清理
+    const lastProcessedRootRef = useRef<string | null>(null)
     useEffect(() => {
         const newRoot = workspace?.roots?.[0]
-        if (newRoot && newRoot !== selectedRoot) {
-            // 工作区变化，更新 selectedRoot
+        if (!newRoot) return
+        // 首次初始化：只记录，不清理（终端可能属于当前工作区）
+        if (lastProcessedRootRef.current === null) {
+            lastProcessedRootRef.current = newRoot
+            if (newRoot !== selectedRoot) setSelectedRoot(newRoot)
+            return
+        }
+        // 真正的工作区切换：清理旧终端
+        if (newRoot !== lastProcessedRootRef.current) {
+            lastProcessedRootRef.current = newRoot
             setSelectedRoot(newRoot)
-
-            // 清理旧工作区的终端（它们的 cwd 已经不在新工作区内了）
             const oldTerminals = managerState.terminals.filter(t => !workspace?.roots?.includes(t.cwd))
             oldTerminals.forEach(t => terminalManager.closeTerminal(t.id))
         }

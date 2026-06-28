@@ -3,7 +3,7 @@
  * 折叠式展示 Skill 引用和文件搜索上下文
  */
 import React, { useState } from 'react'
-import { ChevronDown, Wrench } from 'lucide-react'
+import { ChevronDown, Wrench, Zap } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -51,6 +51,11 @@ function MessageMetaGroupViewBase({ autoSkills, manualSkills, searchContent, isS
   const allSkills = [...(autoSkills || []), ...(manualSkills || [])]
   const skillNames = allSkills.map((s: any) => s.skillId).join(', ')
 
+  // 区分自动应用 vs 手动引用的技能
+  const hasAutoApplied = autoSkills && autoSkills.length > 0
+  const skillIconColor = hasAutoApplied ? 'text-green-400' : 'text-text-muted/85'
+  const skillTitleKey = hasAutoApplied ? 'ai.appliedSkill' : 'ai.skillreferenced'
+
   return (
     <div className="overflow-hidden w-full my-0.5 animate-fade-in relative z-10">
       <div
@@ -62,7 +67,9 @@ function MessageMetaGroupViewBase({ autoSkills, manualSkills, searchContent, isS
         </motion.div>
 
         <div className="shrink-0 w-4 h-4 flex items-center justify-center">
-          {isStreaming ? (
+          {hasAutoApplied ? (
+            <Zap className={`w-3 h-3 ${skillIconColor}`} />
+          ) : isStreaming ? (
             <div className="w-3.5 h-3.5 rounded-full bg-accent/20 flex items-center justify-center border border-accent/30">
               <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
             </div>
@@ -71,12 +78,12 @@ function MessageMetaGroupViewBase({ autoSkills, manualSkills, searchContent, isS
           )}
         </div>
 
-        <span className={`text-[12px] ${isStreaming ? 'text-text-primary' : 'text-text-secondary group-hover:text-text-primary transition-colors'}`}>
-          {t('ai.context', language as Language)}
+        <span className={`text-[12px] ${hasAutoApplied ? 'text-green-400 font-medium' : isStreaming ? 'text-text-primary' : 'text-text-secondary group-hover:text-text-primary transition-colors'}`}>
+          {hasSkills ? t(skillTitleKey, language as Language) : t('ai.context', language as Language)}
         </span>
 
         {!isExpanded && skillNames && (
-          <span className="text-[12px] text-text-muted/85 truncate ml-0.5">
+          <span className={`text-[12px] truncate ml-0.5 ${hasAutoApplied ? 'text-green-400/85' : 'text-text-muted/85'}`}>
             — {skillNames}
           </span>
         )}
@@ -94,13 +101,13 @@ function MessageMetaGroupViewBase({ autoSkills, manualSkills, searchContent, isS
             <div className="pb-1.5 pl-[38px] pr-3 space-y-0.5">
               {hasSkills && (
                 <div className="flex items-center gap-1.5 text-[12px]">
-                  <span className="text-text-muted/75 shrink-0">{t('ai.skillreferenced', language as Language)}</span>
+                  <span className={`shrink-0 ${hasAutoApplied ? 'text-green-400/85' : 'text-text-muted/75'}`}>{t(skillTitleKey, language as Language)}</span>
                   {allSkills.map((item: any, i: number) => (
                     <React.Fragment key={item.skillId || i}>
                       {i > 0 && <span className="text-text-muted/85">,</span>}
                       <button
                         onClick={(e) => handleOpenSkill(e, item.skillId)}
-                        className="font-mono text-text-muted/75 hover:text-accent transition-colors focus:outline-none"
+                        className={`font-mono hover:text-accent transition-colors focus:outline-none ${hasAutoApplied ? 'text-green-400/85' : 'text-text-muted/75'}`}
                       >
                         {item.skillId}
                       </button>

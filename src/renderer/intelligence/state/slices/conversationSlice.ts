@@ -657,6 +657,7 @@ export const createMessageSlice: StateCreator<
                 },
                 // 同时清理检查点和待确认更改
                 pendingChanges: [],
+                fileChangeHistory: [],
             }
         })
 

@@ -153,7 +153,7 @@ export class AgentClass {
 
       // 4. 构建系统提示词（异步执行）
       const userMsgText = typeof userMessage === 'string' ? userMessage : ''
-      const { prompt: systemPrompt, activeSkills } = await buildAgentSystemPrompt(chatMode, workspacePath, {
+      const { prompt: systemPrompt, appliedSkills } = await buildAgentSystemPrompt(chatMode, workspacePath, {
         ...promptOptions,
         mentionedSkills: mentionedSkills.length > 0 ? mentionedSkills : undefined,
         userMessage: userMsgText,
@@ -162,9 +162,10 @@ export class AgentClass {
       // 提前提取，避免后续重复声明
       const userQueryText = userMsgText
 
-      // 将 auto 选中的 skills 追加到 assistant message（排除已 @mention 的）
+      // 仅将"关键词匹配触发完整注入"的技能追加到 assistant message（排除已 @mention 的）
+      // 注意：所有 auto 技能的 name+description 索引都会注入系统提示词，但只有匹配的才显示"已应用"
       const mentionedSet = new Set(mentionedSkills)
-      const autoSelectedSkills = activeSkills.filter(s => !mentionedSet.has(s.name))
+      const autoSelectedSkills = appliedSkills.filter(s => !mentionedSet.has(s.name))
       if (autoSelectedSkills.length > 0) {
         store.addSkillsToMessage(assistantId, autoSelectedSkills, threadId)
       }

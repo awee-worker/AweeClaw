@@ -364,7 +364,7 @@ export async function buildAgentSystemPrompt(
     mentionedSkills?: string[]
     userMessage?: string
   }
-): Promise<{ prompt: string; activeSkills: { name: string; description: string }[] }> {
+): Promise<{ prompt: string; activeSkills: { name: string; description: string }[]; appliedSkills: { name: string; description: string }[] }> {
   const {
     openFiles = [],
     activeFile,
@@ -470,6 +470,11 @@ export async function buildAgentSystemPrompt(
   return {
     prompt,
     activeSkills: activeSkillsList.map(skill => ({
+      name: skill.name,
+      description: skill.description,
+    })),
+    // 仅关键词匹配触发完整注入的技能（用于 UI "已应用技能" 提示）
+    appliedSkills: fullInjectionSkills.map(skill => ({
       name: skill.name,
       description: skill.description,
     })),

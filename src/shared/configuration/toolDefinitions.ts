@@ -1053,13 +1053,22 @@ The search combines keyword matching (40%) and semantic vector similarity (60%) 
     apply_skill: {
         name: 'apply_skill',
         displayName: 'Apply Skill',
-        description: 'Load a project skill by name when it is directly relevant to the current task.',
+        description: 'Load a project skill by name to apply its domain-specific instructions, guidelines, and templates to the current task.',
         detailedDescription: `Load a project-specific skill's full content (instructions, guidelines, templates) by name.
 
 Available skills are listed in the system prompt under "Available Skills". Each skill has a name and description.
-- Do NOT eagerly apply skills — only when the user's task DIRECTLY requires the skill's domain knowledge
-- General coding, bug fixes, or simple questions do NOT need skills, even if tangentially related
-- The tool returns the full skill content which you should follow as project-specific instructions`,
+
+## When to use
+You SHOULD proactively call \`apply_skill\` when:
+- The user's task falls within a skill's described domain (e.g. building a website, designing UI, writing tests, reviewing code)
+- A skill's description suggests it provides instructions, conventions, or templates relevant to the task
+- You are starting a non-trivial task and a listed skill plausibly covers its domain
+
+## When NOT to use
+- Pure Q&A / explanations that don't produce code or files
+- Tasks clearly outside every listed skill's domain
+
+The tool returns the full skill content which you MUST follow as project-specific instructions for the duration of the task.`,
         category: 'interaction',
         approvalType: 'none',
         parallel: true,

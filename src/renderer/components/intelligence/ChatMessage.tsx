@@ -39,6 +39,7 @@ interface ChatMessageProps {
 function ChatMessageBase({
   message,
   onEdit,
+  onRegenerate,
   onRestore,
   onApproveTool,
   onRejectTool,
@@ -96,6 +97,7 @@ function ChatMessageBase({
                   onApproveTool={onApproveTool}
                   onRejectTool={onRejectTool}
                   onOpenDiff={onOpenDiff}
+                  onRegenerate={onRegenerate ? () => onRegenerate(message.id) : undefined}
                   hasCheckpoint={hasCheckpoint}
                   isWorkspaceEditor={isWorkspaceEditor}
                   onDeleteRound={onDeleteRound}
@@ -136,6 +138,7 @@ function ChatMessageBase({
             onApproveTool={onApproveTool}
             onRejectTool={onRejectTool}
             onOpenDiff={onOpenDiff}
+            onRegenerate={onRegenerate ? () => onRegenerate(message.id) : undefined}
             hasCheckpoint={hasCheckpoint}
             isWorkspaceEditor={isWorkspaceEditor}
             onDeleteRound={onDeleteRound}

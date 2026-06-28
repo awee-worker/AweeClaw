@@ -102,10 +102,21 @@ export const TodoListPanel = memo(({ todos, isStreaming = true }: TodoListPanelP
   // 当有任务时默认展开，无任务时收起
   const [isExpanded, setIsExpanded] = useState(todos.length > 0 ? true : expandToolCallsByDefault)
 
+  /**
+   * 任务列表隐藏状态（local state）。
+   * - 初始值：挂载时若任务已全部完成且非流式，直接隐藏（覆盖应用重启 / 编辑器开关导致的重新挂载场景）
+   * - 运行时：任务从未完成 → 全部完成 + 流式结束时，延迟 2s 隐藏（让用户先看到完成动画）
+   * - 重置：出现未完成任务或流式重新开始时恢复可见
+   */
+  const [hidden, setHidden] = useState(() => {
+    const allCompleted = todos.length > 0 && todos.every(t => t.status === 'completed')
+    return allCompleted && !isStreaming
+  })
+
   const clearTodos = useAgentStore(s => s.setTodos)
   const soundPlayedRef = useRef(false)
-  // 记录是否已自动收起，避免重复触发或与用户手动展开冲突
-  const autoCollapsedRef = useRef(false)
+  // 标记是否已完成"首次挂载"，用于区分初始挂载与后续 todos 变化
+  const isFirstMountRef = useRef(true)
 
   useEffect(() => {
     const unsub = EventBus.on('todos:all_completed', () => {
@@ -121,21 +132,52 @@ export const TodoListPanel = memo(({ todos, isStreaming = true }: TodoListPanelP
     const allCompleted = todos.length > 0 && todos.every(t => t.status === 'completed')
     if (!allCompleted) {
       soundPlayedRef.current = false
-      autoCollapsedRef.current = false
     }
   }, [todos])
 
-  // 任务全部完成后延迟自动收起（让用户看到完成状态），用户可重新点击展开
+  // 任务全部完成 + AI 流式结束后，延迟 2s 完全隐藏面板
+  // 首次挂载时若已处于完成状态，hidden 初始值已为 true，无需再次触发延迟
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     const allCompleted = todos.length > 0 && todos.every(t => t.status === 'completed')
-    if (allCompleted && isExpanded && !autoCollapsedRef.current) {
-      autoCollapsedRef.current = true
-      const timer = setTimeout(() => setIsExpanded(false), 2000)
-      return () => clearTimeout(timer)
-    }
-  }, [todos, isExpanded])
+    const shouldHide = allCompleted && !isStreaming
 
-  if (todos.length === 0) return null
+    // 首次挂载：hidden 初始值已正确，跳过延迟逻辑
+    if (isFirstMountRef.current) {
+      isFirstMountRef.current = false
+      // 但如果初始状态需要显示且有未完成任务，确保 hidden 为 false
+      if (!shouldHide && hidden) setHidden(false)
+      return
+    }
+
+    // 流式重新开始或有未完成任务时，取消隐藏计划并确保面板可见
+    if (!shouldHide) {
+      if (hideTimerRef.current) {
+        clearTimeout(hideTimerRef.current)
+        hideTimerRef.current = null
+      }
+      if (hidden) setHidden(false)
+      return
+    }
+
+    // 已隐藏则无需重复调度
+    if (hidden) return
+
+    // 延迟 2s 完全隐藏（让用户先看到完成状态）
+    hideTimerRef.current = setTimeout(() => {
+      setHidden(true)
+    }, 2000)
+
+    return () => {
+      if (hideTimerRef.current) {
+        clearTimeout(hideTimerRef.current)
+        hideTimerRef.current = null
+      }
+    }
+  }, [todos, isStreaming, hidden])
+
+  // 完全隐藏后不再渲染（任务列表数据保留在 store，可通过助手消息底部"任务完成"chip 查看）
+  if (hidden || todos.length === 0) return null
 
   const stopped = !isStreaming
   const completed = todos.filter(t => t.status === 'completed').length

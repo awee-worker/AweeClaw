@@ -71,11 +71,16 @@ export const DEFAULT_SANDBOX_CONFIG: SandboxConfig = {
     'ssh', 'scp', 'sftp', 'telnet',
   ],
   deniedArgPatterns: [
-    '&&', '||', ';', '|', '`', '$(',
-    '>', '>>', '<',
+    // 命令替换注入风险（保留禁止）
+    '`', '$(',
+    // 自动确认参数（用正则匹配单词边界，避免误判文件名）
     '--no-confirm', '-y', '--yes',
+    // 隐藏错误输出
     '/dev/null', '2>&1',
+    // 危险删除
     'rm -rf /', 'rm -rf ~',
+    // NOTE: &&, ||, ;, |, >, >>, < 是合法 shell 操作符，已从禁止列表移除
+    // 命令安全性由 deniedCommands（rm/sudo/curl 等）和 allowedCommands 白名单保障
   ],
   allowNetwork: false,
   commandTimeoutMs: 30000,
@@ -179,8 +184,20 @@ class SandboxExecutor extends EventEmitter {
 
     // 检查危险参数模式
     for (const pattern of config.deniedArgPatterns) {
-      if (command.includes(pattern)) {
-        return { allowed: false, reason: `Command contains denied pattern: ${pattern}` }
+      // 参数模式（以 - 开头，如 -y, --yes, --no-confirm）：
+      // 必须作为独立参数出现（前面是空格/命令开头，后面是空格/行尾）
+      // 避免 golden-years 等文件名中的 -y 被误判为自动确认参数
+      if (pattern.startsWith('-')) {
+        const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        const argRegex = new RegExp(`(?:^|\\s)${escaped}(?:\\s|$)`)
+        if (argRegex.test(command)) {
+          return { allowed: false, reason: `Command contains denied pattern: ${pattern}` }
+        }
+      } else {
+        // shell 元字符、路径等：保持子串匹配
+        if (command.includes(pattern)) {
+          return { allowed: false, reason: `Command contains denied pattern: ${pattern}` }
+        }
       }
     }
 

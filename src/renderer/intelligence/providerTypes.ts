@@ -241,6 +241,7 @@ export type {
   FileSnapshot,
   CheckpointImage,
   PendingChange,
+  FileChangeHistoryEntry,
   MessageCheckpoint,
   Checkpoint,
 } from './types/sessionSnapshot'

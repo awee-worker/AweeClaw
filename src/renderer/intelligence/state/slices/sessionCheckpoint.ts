@@ -7,6 +7,7 @@ import type {
   ChatThread,
   CheckpointImage,
   ContextItem,
+  FileChangeHistoryEntry,
   FileSnapshot,
   MessageCheckpoint,
   PendingChange,
@@ -16,6 +17,8 @@ import type { ThreadSlice } from './dialogThread'
 
 export interface CheckpointState {
   pendingChanges: PendingChange[]
+  /** 文件变更历史（接受/拒绝后保留，用于在助手消息底部持续展示"文件变更"chip） */
+  fileChangeHistory: FileChangeHistoryEntry[]
 }
 
 export interface CheckpointActions {
@@ -26,6 +29,8 @@ export interface CheckpointActions {
   undoChange: (filePath: string) => Promise<boolean>
   clearPendingChanges: () => void
   getPendingChanges: () => PendingChange[]
+  /** 清空文件变更历史（切换线程或开始新一轮对话时调用） */
+  clearFileChangeHistory: () => void
 
   createMessageCheckpoint: (
     messageId: string,
@@ -96,9 +101,16 @@ export const createCheckpointSlice: StateCreator<
   CheckpointSlice
 > = (set, get) => ({
   pendingChanges: [],
+  fileChangeHistory: [],
 
   addPendingChange: (change) => {
     set(state => {
+      // 获取当前流式助手消息 ID，用于关联文件变更历史
+      const threadId = state.currentThreadId
+      const assistantMessageId = threadId
+        ? state.threads[threadId]?.streamState?.assistantId
+        : undefined
+
       const existingIdx = state.pendingChanges.findIndex(c => c.filePath === change.filePath)
       if (existingIdx !== -1) {
         const existing = state.pendingChanges[existingIdx]
@@ -113,21 +125,83 @@ export const createCheckpointSlice: StateCreator<
           linesAdded: existing.linesAdded + change.linesAdded,
           linesRemoved: existing.linesRemoved + change.linesRemoved,
         }
-        return { pendingChanges: updated }
+
+        // 同步更新历史记录（同文件累加）
+        const historyUpdated = state.fileChangeHistory.map(h =>
+          h.filePath === change.filePath && h.assistantMessageId === assistantMessageId
+            ? {
+                ...h,
+                relativePath: change.relativePath,
+                toolCallId: change.toolCallId,
+                toolName: change.toolName,
+                changeType: change.changeType,
+                linesAdded: h.linesAdded + change.linesAdded,
+                linesRemoved: h.linesRemoved + change.linesRemoved,
+              }
+            : h,
+        )
+
+        return { pendingChanges: updated, fileChangeHistory: historyUpdated }
       }
 
+      const newId = crypto.randomUUID()
+      const now = Date.now()
       const newChange: PendingChange = {
         ...change,
-        id: crypto.randomUUID(),
+        id: newId,
         status: 'pending',
-        timestamp: Date.now(),
+        timestamp: now,
       }
-      return { pendingChanges: [...state.pendingChanges, newChange] }
+
+      // 新增历史记录条目（仅当有关联的 assistantMessageId 时）
+      const newHistoryEntry: FileChangeHistoryEntry | null = assistantMessageId
+        ? {
+            filePath: change.filePath,
+            relativePath: change.relativePath,
+            newContent: change.newContent,
+            changeType: change.changeType,
+            linesAdded: change.linesAdded,
+            linesRemoved: change.linesRemoved,
+            isLargeWrite: change.isLargeWrite,
+            contentTruncated: change.contentTruncated,
+            oldContentLength: change.oldContentLength,
+            newContentLength: change.newContentLength,
+            toolCallId: change.toolCallId,
+            toolName: change.toolName,
+            id: newId,
+            status: 'pending',
+            assistantMessageId,
+            timestamp: now,
+          }
+        : null
+
+      // 如果 assistantMessageId 变化了，清除上一轮的历史（只保留当前轮次）
+      let fileChangeHistory = state.fileChangeHistory
+      if (newHistoryEntry) {
+        const lastEntry = state.fileChangeHistory[state.fileChangeHistory.length - 1]
+        if (lastEntry && lastEntry.assistantMessageId !== assistantMessageId) {
+          // 新一轮对话，清空旧历史
+          fileChangeHistory = []
+        }
+      }
+
+      return {
+        pendingChanges: [...state.pendingChanges, newChange],
+        fileChangeHistory: newHistoryEntry
+          ? [...fileChangeHistory, newHistoryEntry]
+          : fileChangeHistory,
+      }
     })
   },
 
   acceptAllChanges: () => {
-    set({ pendingChanges: [] })
+    set(state => ({
+      pendingChanges: [],
+      // 历史记录中所有 pending 标记为 accepted
+      fileChangeHistory: state.fileChangeHistory.map(h =>
+        h.status === 'pending' ? { ...h, status: 'accepted' as const } : h,
+      ),
+    }))
   },
 
   undoAllChanges: async () => {
@@ -158,7 +232,13 @@ export const createCheckpointSlice: StateCreator<
       }
     }
 
-    set({ pendingChanges: [] })
+    set(state => ({
+      pendingChanges: [],
+      // 历史记录中所有 pending 标记为 rejected
+      fileChangeHistory: state.fileChangeHistory.map(h =>
+        h.status === 'pending' ? { ...h, status: 'rejected' as const } : h,
+      ),
+    }))
 
     return { success: errors.length === 0, restoredFiles, errors }
   },
@@ -166,6 +246,12 @@ export const createCheckpointSlice: StateCreator<
   acceptChange: (filePath) => {
     set(state => ({
       pendingChanges: state.pendingChanges.filter(change => change.filePath !== filePath),
+      // 历史记录中标记为 accepted（不删除）
+      fileChangeHistory: state.fileChangeHistory.map(h =>
+        h.filePath === filePath && h.status === 'pending'
+          ? { ...h, status: 'accepted' as const }
+          : h,
+      ),
     }))
   },
 
@@ -185,6 +271,12 @@ export const createCheckpointSlice: StateCreator<
 
       set(state => ({
         pendingChanges: state.pendingChanges.filter(item => item.filePath !== filePath),
+        // 历史记录中标记为 rejected（不删除）
+        fileChangeHistory: state.fileChangeHistory.map(h =>
+          h.filePath === filePath && h.status === 'pending'
+            ? { ...h, status: 'rejected' as const }
+            : h,
+        ),
       }))
       return true
     } catch {
@@ -194,6 +286,10 @@ export const createCheckpointSlice: StateCreator<
 
   clearPendingChanges: () => {
     set({ pendingChanges: [] })
+  },
+
+  clearFileChangeHistory: () => {
+    set({ fileChangeHistory: [] })
   },
 
   getPendingChanges: () => get().pendingChanges,
