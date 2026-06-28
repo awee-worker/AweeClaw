@@ -1,13 +1,12 @@
-import { Layout, Type, Check, Sun, Moon, Monitor, Globe } from 'lucide-react'
+import { Layout, Check, Sun, Moon, Monitor, Globe, Type } from 'lucide-react'
 import { useStore, type ThemeName, type ThemeMode, type ThemeColor } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { themeManager, THEME_COLOR_OPTIONS } from '@/renderer/config/themeDefinition'
 import { api } from '../../../adapters/electronBridge'
-import { TextField, DropdownSelector } from '@components/ui'
 import { EditorSettingsProps } from '../preferencesTypes'
 import { LANGUAGES } from '../preferencesTypes'
 
-import { useEffect, useCallback } from 'react'
+import { useEffect, useCallback, useMemo } from 'react'
 import { t, type Language } from '@renderer/i18n'
 
 const LANGUAGE_META: Record<Language, { labelZh: string; labelEn: string; descriptionZh: string; descriptionEn: string; flag: string }> = {
@@ -89,9 +88,86 @@ export function AppearanceSettings({ settings, setSettings, language, localLangu
         ? (systemPrefersDark ? 'dark' : 'light')
         : themeMode
 
-    const sectionClass = "p-6 bg-surface/30 backdrop-blur-sm rounded-xl border border-border/50 space-y-5 shadow-sm hover:border-border transition-colors duration-300"
     const labelClass = "text-xs font-semibold text-text-secondary uppercase tracking-wider ml-1 mb-2 block"
-    const inputClass = "bg-background/50 border-border/50 text-xs rounded-lg focus:border-accent/50 focus:ring-1 focus:ring-accent/50 transition-all"
+
+    // ============================================
+    // 字体大小档位定义
+    // ============================================
+    // 同时控制编辑器（fontSize）和聊天区域（chatFontSize）。
+    // 偏小：紧凑，单屏可见更多内容
+    // 适中：默认舒适阅读
+    // 偏大：长时间阅读更舒适
+    // 超大：视力友好或演示场景
+    type FontScaleKey = 'small' | 'medium' | 'large' | 'xlarge'
+    const FONT_SCALE_OPTIONS: {
+        key: FontScaleKey
+        editorSize: number
+        chatSize: number
+        labelZh: string
+        labelEn: string
+        descZh: string
+        descEn: string
+        // 卡片预览字符的渲染字号
+        previewSize: number
+    }[] = [
+        {
+            key: 'small',
+            editorSize: 12,
+            chatSize: 13,
+            labelZh: '偏小',
+            labelEn: 'Small',
+            descZh: '紧凑布局，单屏显示更多内容',
+            descEn: 'Compact layout, more content per screen',
+            previewSize: 13,
+        },
+        {
+            key: 'medium',
+            editorSize: 14,
+            chatSize: 15,
+            labelZh: '适中',
+            labelEn: 'Medium',
+            descZh: '默认阅读体验，平衡舒适与效率',
+            descEn: 'Default experience, balanced comfort',
+            previewSize: 16,
+        },
+        {
+            key: 'large',
+            editorSize: 16,
+            chatSize: 17,
+            labelZh: '偏大',
+            labelEn: 'Large',
+            descZh: '长时间阅读更轻松',
+            descEn: 'Easier for extended reading',
+            previewSize: 19,
+        },
+        {
+            key: 'xlarge',
+            editorSize: 18,
+            chatSize: 20,
+            labelZh: '超大',
+            labelEn: 'Extra Large',
+            descZh: '视力友好，适合演示场景',
+            descEn: 'Vision-friendly, great for demos',
+            previewSize: 23,
+        },
+    ]
+
+    // 根据当前 chatFontSize 反推激活档位
+    const activeFontScale: FontScaleKey = useMemo(() => {
+        const chat = settings.chatFontSize
+        if (chat <= 13) return 'small'
+        if (chat >= 20) return 'xlarge'
+        if (chat >= 17) return 'large'
+        return 'medium'
+    }, [settings.chatFontSize])
+
+    const handleFontScaleChange = useCallback((opt: typeof FONT_SCALE_OPTIONS[number]) => {
+        setSettings({
+            ...settings,
+            fontSize: opt.editorSize,
+            chatFontSize: opt.chatSize,
+        })
+    }, [settings, setSettings])
 
     return (
         <div className="space-y-8 animate-fade-in pb-10">
@@ -227,73 +303,71 @@ export function AppearanceSettings({ settings, setSettings, language, localLangu
                 </div>
             </section>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <section className={sectionClass}>
-                    <div className="flex items-center gap-2 mb-1">
+            <section>
+                <div className="flex items-center gap-2 mb-5 ml-1">
+                    <div className="p-1.5 rounded-md bg-accent/10">
                         <Type className="w-4 h-4 text-accent" />
-                        <h5 className="text-sm font-bold text-text-primary">{t('settings.typographylayout', language as Language)}</h5>
                     </div>
+                    <h4 className="text-sm font-bold text-text-primary tracking-tight">
+                        {language === 'zh' ? '字体大小' : 'Font Size'}
+                    </h4>
+                </div>
 
-                    <div className="grid grid-cols-2 gap-5">
-                        <div>
-                            <label className={labelClass}>{t('settings.fontsize', language as Language)}</label>
-                            <TextField
-                                type="number"
-                                value={settings.fontSize}
-                                onChange={(e) => setSettings({ ...settings, fontSize: parseInt(e.target.value) || 14 })}
-                                min={10}
-                                max={32}
-                                className={inputClass}
-                            />
-                        </div>
-                        <div>
-                            <label className={labelClass}>{t('settings.tabsize', language as Language)}</label>
-                            <DropdownSelector
-                                value={settings.tabSize.toString()}
-                                onChange={(value) => setSettings({ ...settings, tabSize: parseInt(value) })}
-                                options={[{ value: '2', label: '2 Spaces' }, { value: '4', label: '4 Spaces' }, { value: '8', label: '8 Spaces' }]}
-                                className={`w-full ${inputClass}`}
-                            />
-                        </div>
-                        <div>
-                            <label className={labelClass}>{t('settings.wordwrap', language as Language)}</label>
-                            <DropdownSelector
-                                value={settings.wordWrap}
-                                onChange={(value) => setSettings({ ...settings, wordWrap: value as 'on' | 'off' | 'wordWrapColumn' })}
-                                options={[{ value: 'on', label: 'On' }, { value: 'off', label: 'Off' }, { value: 'wordWrapColumn', label: 'Column' }]}
-                                className={`w-full ${inputClass}`}
-                            />
-                        </div>
-                        <div>
-                            <label className={labelClass}>{t('settings.linenumbers', language as Language)}</label>
-                            <DropdownSelector
-                                value={settings.lineNumbers}
-                                onChange={(value) => setSettings({ ...settings, lineNumbers: value as 'on' | 'off' | 'relative' })}
-                                options={[{ value: 'on', label: 'On' }, { value: 'off', label: 'Off' }, { value: 'relative', label: 'Relative' }]}
-                                className={`w-full ${inputClass}`}
-                            />
-                        </div>
-                    </div>
-                </section>
+                <p className="text-sm text-text-muted mb-4 ml-1">
+                    {language === 'zh'
+                        ? '选择界面与对话内容的字体大小，编辑器与聊天区域将同步调整。'
+                        : 'Choose the font size for the UI and conversations. Editor and chat area will both adapt.'}
+                </p>
 
-                <section className={sectionClass}>
-                    <div className="flex items-center gap-2 mb-1">
-                        <Type className="w-4 h-4 text-accent" />
-                        <h5 className="text-sm font-bold text-text-primary">{t('settings.agentchatarea', language as Language)}</h5>
-                    </div>
-                    <div>
-                        <label className={labelClass}>{t('settings.fontsize2', language as Language)}</label>
-                        <TextField
-                            type="number"
-                            value={settings.chatFontSize}
-                            onChange={(e) => setSettings({ ...settings, chatFontSize: parseInt(e.target.value) || 14 })}
-                            min={10}
-                            max={32}
-                            className={inputClass}
-                        />
-                    </div>
-                </section>
-            </div>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    {FONT_SCALE_OPTIONS.map(opt => {
+                        const isActive = activeFontScale === opt.key
+                        return (
+                            <button
+                                key={opt.key}
+                                type="button"
+                                onClick={() => handleFontScaleChange(opt)}
+                                className={`group relative p-5 rounded-xl border text-left transition-all duration-300 cursor-pointer overflow-hidden ${
+                                    isActive
+                                        ? 'border-accent bg-accent/5 shadow-lg shadow-accent/5 ring-1 ring-accent/20'
+                                        : 'border-border/50 bg-surface/30 hover:border-accent/30 hover:bg-surface/50'
+                                }`}
+                            >
+                                {/* 角标勾选 */}
+                                {isActive && (
+                                    <div className="absolute top-3 right-3 bg-accent rounded-full p-0.5 shadow-lg shadow-accent/20">
+                                        <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />
+                                    </div>
+                                )}
+
+                                {/* 可视化预览：用对应档位字号渲染字符，直观感知大小差异 */}
+                                <div
+                                    className="flex items-baseline gap-1 mb-3 leading-none"
+                                    style={{ fontSize: `${opt.previewSize}px` }}
+                                >
+                                    <span className="font-bold text-text-primary">字</span>
+                                    <span className="font-semibold text-text-secondary" style={{ fontSize: `${opt.previewSize * 0.7}px` }}>Aa</span>
+                                </div>
+
+                                {/* 档位名称 */}
+                                <div className={`text-sm font-semibold transition-colors ${isActive ? 'text-text-primary' : 'text-text-secondary group-hover:text-text-primary'}`}>
+                                    {language === 'zh' ? opt.labelZh : opt.labelEn}
+                                </div>
+
+                                {/* 像素副标题 */}
+                                <div className="text-[11px] text-text-muted mt-0.5 font-mono">
+                                    {opt.editorSize}/{opt.chatSize}px
+                                </div>
+
+                                {/* 描述 */}
+                                <div className="text-[11px] text-text-muted mt-2 leading-relaxed line-clamp-2">
+                                    {language === 'zh' ? opt.descZh : opt.descEn}
+                                </div>
+                            </button>
+                        )
+                    })}
+                </div>
+            </section>
         </div>
     )
 }

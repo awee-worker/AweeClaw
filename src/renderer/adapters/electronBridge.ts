@@ -900,6 +900,7 @@ function createGroupedAPI() {
         enter: (params: { task: string; maxSteps?: number }) => raw.desktopAutomationEnter(params),
         exit: (reason?: string) => raw.desktopAutomationExit(reason),
         userExit: () => raw.desktopAutomationUserExit(),
+        setExitHover: (hovering: boolean) => raw.desktopAutomationSetExitHover(hovering),
         getState: () => raw.desktopAutomationGetState(),
         onStateChange: (callback: (state: any) => void) => raw.onDesktopAutomationStateChanged(callback),
         onStep: (callback: (step: any) => void) => raw.onDesktopAutomationStep(callback),

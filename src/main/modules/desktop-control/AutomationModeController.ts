@@ -139,6 +139,15 @@ export class AutomationModeController extends EventEmitter {
   /** 输入穿透模式标志（true=AI 正在输入，覆盖窗口 click-through） */
   private inputPassthrough = false
 
+  /**
+   * 鼠标是否悬停在退出按钮上
+   *
+   * passthrough 模式下，overlay 的 setIgnoreMouseEvents(true) 会阻挡所有点击，
+   * 包括退出按钮。通过渲染端 mousemove 检测，当鼠标进入按钮区域时
+   * 临时恢复 setIgnoreMouseEvents(false)，让用户能点击退出。
+   */
+  private exitButtonHovered = false
+
   /** 紧急停止事件解绑函数 */
   private unsubscribeEmergencyStop: (() => void) | null = null
 
@@ -201,7 +210,7 @@ export class AutomationModeController extends EventEmitter {
     this.subscribeEmergencyStop()
 
     // 4. 默认进入阻塞模式（覆盖窗口捕获鼠标，仅退出按钮可点击）
-    this.applyBlockingMode()
+    this.applyMouseEvents()
 
     // 5. 降低主窗口 Z 顺序（不隐藏），让目标应用在前台
     //    用户仍能看到主窗口（在目标应用后面），可随时切换回来停止 AI
@@ -232,6 +241,7 @@ export class AutomationModeController extends EventEmitter {
     this.active = false
     this.lastExitReason = reason
     this.inputPassthrough = false
+    this.exitButtonHovered = false
 
     this.unregisterEmergencyExitShortcut()
     this.unsubscribeEmergencyStop?.()
@@ -261,14 +271,47 @@ export class AutomationModeController extends EventEmitter {
     if (this.inputPassthrough === active) return
 
     this.inputPassthrough = active
-    if (active) {
-      this.applyPassthroughMode()
-    } else {
-      this.applyBlockingMode()
-    }
+    this.applyMouseEvents()
     // 推送状态到渲染端，让其切换 pointer-events（transparent 窗口必须渲染端配合）
     this.emitStateChange()
     logger.desktop?.info?.(`[AutomationMode] Input passthrough = ${active}`)
+  }
+
+  /**
+   * 设置退出按钮悬停状态
+   *
+   * 由渲染端 mousemove 事件检测后通过 IPC 调用。
+   * passthrough 模式下，鼠标进入按钮区域时临时恢复 overlay 接收点击，
+   * 离开时恢复穿透。blocking 模式下无需处理（本来就能接收）。
+   */
+  setExitButtonHover(hovering: boolean): void {
+    if (!this.active || this.exitButtonHovered === hovering) return
+    this.exitButtonHovered = hovering
+    // 仅 passthrough 模式需要动态切换；blocking 模式始终接收
+    if (this.inputPassthrough) {
+      this.applyMouseEvents()
+      logger.desktop?.info?.(`[AutomationMode] Exit button hover = ${hovering} (passthrough mode)`)
+    }
+  }
+
+  /**
+   * 根据 inputPassthrough + exitButtonHovered 状态应用鼠标事件接收策略
+   *
+   * 状态矩阵：
+   * - blocking 模式（inputPassthrough=false）：setIgnoreMouseEvents(false) — 全量接收
+   * - passthrough + 鼠标在按钮上：setIgnoreMouseEvents(false) — 临时接收，让用户点击退出
+   * - passthrough + 鼠标不在按钮上：setIgnoreMouseEvents(true, {forward:true}) — 穿透 + 转发 mousemove
+   */
+  private applyMouseEvents(): void {
+    if (!this.overlayWindow || this.overlayWindow.isDestroyed()) return
+
+    if (!this.inputPassthrough || this.exitButtonHovered) {
+      // 接收模式：blocking 或 passthrough 下鼠标在退出按钮上
+      this.overlayWindow.setIgnoreMouseEvents(false, { forward: false })
+    } else {
+      // 穿透模式：passthrough 且鼠标不在退出按钮上
+      this.overlayWindow.setIgnoreMouseEvents(true, { forward: true })
+    }
   }
 
   /**
@@ -418,22 +461,8 @@ export class AutomationModeController extends EventEmitter {
   }
 
   // ============================================
-  // 内部：输入锁定模式切换
+  // 内部：输入锁定模式切换（统一由 applyMouseEvents 处理）
   // ============================================
-
-  /** 阻塞模式：覆盖窗口捕获所有鼠标事件，用户仅能点击退出按钮 */
-  private applyBlockingMode(): void {
-    if (!this.overlayWindow || this.overlayWindow.isDestroyed()) return
-    // forward=false：不转发鼠标事件到底层，覆盖窗口全量接收
-    this.overlayWindow.setIgnoreMouseEvents(false, { forward: false })
-  }
-
-  /** 穿透模式：覆盖窗口 click-through，AI 模拟事件可作用于目标应用 */
-  private applyPassthroughMode(): void {
-    if (!this.overlayWindow || this.overlayWindow.isDestroyed()) return
-    // forward=true：鼠标移动事件仍转发，点击事件穿透到底层窗口
-    this.overlayWindow.setIgnoreMouseEvents(true, { forward: true })
-  }
 
   // ============================================
   // 内部：主窗口管理

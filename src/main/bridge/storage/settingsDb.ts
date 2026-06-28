@@ -249,5 +249,31 @@ export function registerSettingsDbIpcHandlers(preferencesStore: Store): void {
     }
   })
 
+  // 获取视觉 OCR 配置（macOS Vision OCR + OCR 路由策略）
+  // 配置存储在 app_settings.visualOcrConfig，无配置时返回 null（使用默认值）
+  safeIpcHandle('settings-db:getVisualOcrConfig', async () => {
+    try {
+      return db.getAppSetting('visualOcrConfig')
+    } catch (err) {
+      logger.settings.error('[SettingsDb] GetVisualOcrConfig failed:', err)
+      return null
+    }
+  })
+
+  // 保存视觉 OCR 配置
+  // config 结构：{ pythonBin?, timeoutMs?, prefer?, enabled? }
+  // 所有字段可选，未提供字段保留原值
+  safeIpcHandle('settings-db:saveVisualOcrConfig', async (_event, config: any) => {
+    try {
+      const existing = (db.getAppSetting('visualOcrConfig') as Record<string, any> | null) || {}
+      const merged = { ...existing, ...config }
+      db.upsertAppSetting('visualOcrConfig', merged)
+      return { success: true, config: merged }
+    } catch (err) {
+      logger.settings.error('[SettingsDb] SaveVisualOcrConfig failed:', err)
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
   logger.ipc.info('[SettingsDb] IPC handlers registered')
 }

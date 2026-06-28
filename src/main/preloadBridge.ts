@@ -1493,6 +1493,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('desktop:automationExit', reason),
   desktopAutomationUserExit: () =>
     ipcRenderer.invoke('desktop:automationUserExit'),
+  desktopAutomationSetExitHover: (hovering: boolean) =>
+    ipcRenderer.invoke('desktop:automationSetExitHover', hovering),
   desktopAutomationGetState: () =>
     ipcRenderer.invoke('desktop:automationGetState'),
   onDesktopAutomationStateChanged: (callback: (state: any) => void) => {

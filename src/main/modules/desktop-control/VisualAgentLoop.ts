@@ -129,6 +129,8 @@ export type VisualActionType =
   | 'double_click'
   | 'right_click'
   | 'click_text'
+  | 'click_by_ax'
+  | 'inspect_ax'
   | 'move'
   | 'scroll'
   | 'type_text'
@@ -174,7 +176,7 @@ const DEFAULT_SYSTEM_PROMPT = `You are a desktop automation assistant. Analyze t
 Rules:
 1. Respond in JSON format only.
 2. Each response must contain: { "analysis": string, "action": { "type": string, "params": object, "reasoning": string, "confidence": number }, "completed": boolean, "completionReason": string }
-3. Action types: click, double_click, right_click, click_text, move, scroll, type_text, press_key, key_combo, open_app, focus_window, wait, screenshot, complete, abort
+3. Action types: click, double_click, right_click, click_text, click_by_ax, inspect_ax, move, scroll, type_text, press_key, key_combo, open_app, focus_window, wait, screenshot, complete, abort
 4. For click/move/scroll, params must include x, y coordinates.
 5. For type_text, params must include text.
 6. For press_key, params must include key.
@@ -182,9 +184,11 @@ Rules:
 8. For click_text, params must include text (the visible text label of the UI element to click). The system will use OCR to find the EXACT pixel coordinates of that text on screen and click it. This is your PRIMARY click method - use it for ALL UI elements that have visible text. Do NOT use click with guessed coordinates when click_text is available.
 9. For open_app, params must include app (application name, e.g. "WeChat", "Chrome", "Finder"). Use this when the target application is NOT already open or visible on screen. After launching, wait for it to appear before interacting.
 10. For focus_window, params must include window_title (substring to match the window title). Use this to bring an existing window to the front when the app is open but its window is minimized, behind other windows, or not focused.
-11. Set completed=true when task is done.
-12. Set action.type="abort" if the task cannot be completed.
-13. Confidence is 0.0-1.0, where 1.0 means very certain.
+11. For inspect_ax, params must include app_name. Returns AX tree of native macOS app (Finder/Safari/System Settings). Use ONLY for native apps where OCR fails or for textless icons. Does NOT work for Electron apps (WeChat/VSCode/Slack return only window decorations).
+12. For click_by_ax, params must include path (array of indices from inspect_ax). Use AFTER inspect_ax to click a specific AX element. Fails for Electron apps.
+13. Set completed=true when task is done.
+14. Set action.type="abort" if the task cannot be completed.
+15. Confidence is 0.0-1.0, where 1.0 means very certain.
 
 IMPORTANT - Task execution strategy:
 - If the target application is NOT visible on the current screenshot, DO NOT just search the screen. Use open_app to launch it first, then take a new screenshot to verify it opened.
@@ -231,6 +235,7 @@ IMPORTANT - How click_text works (READ THIS):
 - click_text does EXACT match first, then substring match. If you search "代码江湖" and both "代码江湖" and "代码江湖行路人" exist, the exact match "代码江湖" wins.
 - To distinguish between similar names, use the full unique name: "代码江湖" will NOT match "代码江湖行路人" unless no exact match exists.
 - OCR may merge adjacent text. If "代码江湖" is not found, try a shorter substring like "代码" or "江湖".
+- click_text returns candidateCount (number of matching items found) and matchLevel (1=exact, 2=substring contains, 3=target contains text, 4=fuzzy). If candidateCount > 1, multiple similar items were found; the top match (highest level, highest confidence) was clicked. Check the next screenshot to verify the correct item was clicked, and if wrong, adjust by using a more specific text label.
 
 IF click_text FAILS (OCR can't find the text):
 - DO NOT fall back to click with guessed coordinates. That WILL fail.
@@ -292,6 +297,35 @@ export class VisualAgentLoop extends EventEmitter {
   private lastTargetBounds: Rect | null = null
   /** 当前任务的云端配置（用于调用后端 OCR 接口做精准文字定位） */
   private cloudOcrConfig: { serverUrl: string; accessToken: string } | null = null
+  /**
+   * 本地 OCR 优先策略：优先使用本地 Vision OCR，失败再降级到后端
+   *
+   * 配置优先级：环境变量 VISUAL_OCR_PREFER > SettingsDb.visualOcrConfig.prefer > 默认 'local'
+   */
+  private get preferLocalOcr(): boolean {
+    // 1. 环境变量优先（开发调试方便）
+    if (process.env.VISUAL_OCR_PREFER === 'backend') return false
+    if (process.env.VISUAL_OCR_PREFER === 'local') return true
+
+    // 2. 从 SettingsDb 读取用户配置
+    try {
+      const { SettingsDb } = require('../settings-db/SettingsDb')
+      const db = SettingsDb.getInstance()
+      const cfg = db.getAppSetting('visualOcrConfig') as
+        | { prefer?: 'local' | 'backend'; enabled?: boolean }
+        | null
+      if (cfg) {
+        if (cfg.enabled === false) return false
+        if (cfg.prefer === 'backend') return false
+        if (cfg.prefer === 'local') return true
+      }
+    } catch {
+      // SettingsDb 未就绪 → 用默认
+    }
+
+    // 3. 默认值：优先本地（macOS 上 Vision OCR 延迟低、离线可用）
+    return true
+  }
 
   /** 当前是否运行中 */
   get running(): boolean {
@@ -944,21 +978,42 @@ Remember: Do NOT mark completed=true until the ENTIRE task is fully done. If you
           // 5. 智能匹配文字：精确匹配优先于子串匹配，高置信度优先
           //    典型场景：微信联系人 "代码江湖" 和 "代码江湖行路人" 同时存在，
           //    精确匹配 "代码江湖" 应优先于子串匹配 "代码江湖行路人"
-          const target = searchText.toLowerCase()
+          const target = searchText.toLowerCase().trim()
           const sortedByConf = [...ocrItems].sort((a, b) => b.confidence - a.confidence)
 
-          // 第一轮：精确匹配（text 与 searchText 完全相等，忽略大小写）
-          let match = sortedByConf.find(item =>
-            item.text.toLowerCase().trim() === target.trim(),
-          )
-          // 第二轮：子串匹配（text 包含 searchText 或 searchText 包含 text）
-          if (!match) {
-            match = sortedByConf.find(item => {
-              const itemText = item.text.toLowerCase().trim()
-              return itemText.includes(target) || target.includes(itemText)
-            })
+          // 收集所有匹配候选，按匹配质量分级
+          // matchLevel: 1=精确匹配（完全相等），2=包含匹配（text 包含 target），
+          //             3=被包含匹配（target 包含 text），4=模糊匹配（去除空格后相等）
+          type Candidate = {
+            item: OcrTextItem
+            matchLevel: number
+            screenX: number
+            screenY: number
           }
-          if (!match) {
+          const candidates: Candidate[] = []
+          for (const item of sortedByConf) {
+            const itemText = item.text.toLowerCase().trim()
+            const targetNoSpace = target.replace(/\s+/g, '')
+            const itemTextNoSpace = itemText.replace(/\s+/g, '')
+            let matchLevel = 0
+            if (itemText === target) matchLevel = 1
+            else if (itemText.includes(target)) matchLevel = 2
+            else if (target.includes(itemText) && itemText.length >= 2) matchLevel = 3
+            else if (itemTextNoSpace === targetNoSpace && targetNoSpace.length >= 2) matchLevel = 4
+            if (matchLevel > 0) {
+              const screenX = Math.round(item.x * scaleX) + cropX
+              const screenY = Math.round(item.y * scaleY) + cropY
+              candidates.push({ item, matchLevel, screenX, screenY })
+            }
+          }
+
+          // 按 matchLevel 升序（精确优先），同级别按置信度降序
+          candidates.sort((a, b) => {
+            if (a.matchLevel !== b.matchLevel) return a.matchLevel - b.matchLevel
+            return b.item.confidence - a.item.confidence
+          })
+
+          if (candidates.length === 0) {
             // 列出置信度最高的前 10 个结果，帮助 LLM 理解 OCR 识别到了什么
             const topItems = sortedByConf.slice(0, 10)
               .map(i => `"${i.text}"(conf=${i.confidence.toFixed(2)})`)
@@ -969,13 +1024,28 @@ Remember: Do NOT mark completed=true until the ENTIRE task is fully done. If you
             )
           }
 
-          // 6. 坐标缩放还原：OCR 坐标 → 裁剪区域坐标 → 原始屏幕坐标
-          const origX = Math.round(match.x * scaleX) + cropX
-          const origY = Math.round(match.y * scaleY) + cropY
-          logger.desktop.info(
-            `[VisualAgentLoop] click_text: "${searchText}" matched "${match.text}" ` +
-            `OCR(${match.x},${match.y}) → Screen(${origX},${origY}) confidence=${match.confidence.toFixed(2)}`,
-          )
+          // 唯一匹配或所有候选 matchLevel 相同且为子串匹配（多个相似项）
+          // → 取第一个候选点击
+          const match = candidates[0].item
+          const matchLevel = candidates[0].matchLevel
+          const origX = candidates[0].screenX
+          const origY = candidates[0].screenY
+
+          // 若有多个候选且 matchLevel 不同，记录所有候选供 LLM 参考
+          if (candidates.length > 1) {
+            const candidateSummary = candidates.slice(0, 5)
+              .map(c => `"${c.item.text}"(level=${c.matchLevel},conf=${c.item.confidence.toFixed(2)},x=${c.screenX},y=${c.screenY})`)
+              .join(', ')
+            logger.desktop.info(
+              `[VisualAgentLoop] click_text: "${searchText}" has ${candidates.length} candidates, ` +
+              `using top: "${match.text}" (level=${matchLevel}). All: ${candidateSummary}`,
+            )
+          } else {
+            logger.desktop.info(
+              `[VisualAgentLoop] click_text: "${searchText}" matched "${match.text}" ` +
+              `OCR(${match.x},${match.y}) → Screen(${origX},${origY}) confidence=${match.confidence.toFixed(2)} level=${matchLevel}`,
+            )
+          }
 
           // 6. 用精确坐标点击
           const clickResult = await manager.mouseClick({
@@ -990,7 +1060,65 @@ Remember: Do NOT mark completed=true until the ENTIRE task is fully done. If you
             ocrX: origX,
             ocrY: origY,
             confidence: match.confidence,
+            matchLevel,
+            candidateCount: candidates.length,
           }
+        })
+      }
+
+      case 'inspect_ax': {
+        // AX API 辅助通道：查询目标应用的 AX 树，返回可交互元素列表
+        // 用于原生 macOS 应用（Finder/Safari 等）的精准点击，
+        // 不适用于 Electron 应用（微信/VSCode 等不暴露 AX 内容）
+        const appName = params.app_name as string
+        if (!appName) {
+          throw new Error('inspect_ax requires "app_name" param')
+        }
+        return executeWithTimeout(async () => {
+          const { macAxApiHelper } = await import('./MacAxApiHelper')
+          if (!this.lastTargetApp && appName) {
+            this.lastTargetApp = appName
+          }
+          const targetApp = appName || this.lastTargetApp || ''
+          if (!targetApp) {
+            throw new Error('inspect_ax requires a target app (use open_app or focus_window first)')
+          }
+          const tree = await macAxApiHelper.getAxTree({
+            appName: targetApp,
+            maxDepth: 3,
+          })
+          const items = macAxApiHelper.flattenTreeForLlm(tree)
+          logger.desktop.info(
+            `[VisualAgentLoop] inspect_ax: "${targetApp}" → ${items.length} interactive items`,
+          )
+          return {
+            axItems: items.slice(0, 50), // 限制返回数量避免上下文过长
+            totalItems: items.length,
+            appName: targetApp,
+          }
+        })
+      }
+
+      case 'click_by_ax': {
+        // AX API 辅助通道：通过 AX 路径精准点击原生应用元素
+        // path 是 inspect_ax 返回的元素路径索引序列
+        const axPath = params.path as number[]
+        if (!Array.isArray(axPath) || axPath.length === 0) {
+          throw new Error('click_by_ax requires "path" array param')
+        }
+        return executeWithTimeout(async () => {
+          const { macAxApiHelper } = await import('./MacAxApiHelper')
+          if (!this.lastTargetApp) {
+            throw new Error('click_by_ax requires a target app (use open_app or focus_window first)')
+          }
+          const result = await macAxApiHelper.clickByAx({
+            appName: this.lastTargetApp,
+            path: axPath,
+          })
+          if (!result.success) {
+            throw new Error(`AX click failed: ${result.message}`)
+          }
+          return result
         })
       }
 
@@ -1086,13 +1214,46 @@ Remember: Do NOT mark completed=true until the ENTIRE task is fully done. If you
   }
 
   /**
-   * 调用后端 OCR 接口识别屏幕文字，返回带像素坐标的文字列表
+   * 调用 OCR 识别屏幕文字，返回带像素坐标的文字列表
    *
-   * 接口：POST {serverUrl}/api/v1/multimodal/ocr/screen
-   * 后端使用 Tesseract 引擎做像素级识别，返回每个文字行的中心点坐标。
-   * 这比 LLM 猜坐标精准得多，是 click_text 动作可靠性的关键。
+   * 路由策略（由 VISUAL_OCR_PREFER 环境变量控制，默认 local）：
+   * - local（默认）：优先使用本地 macOS Vision OCR（低延迟、离线可用），失败降级到后端
+   * - backend：直接使用后端 OCR 接口（PaddleOCR/Tesseract）
+   *
+   * 后端接口：POST {serverUrl}/api/v1/multimodal/ocr/screen
+   * 返回每个文字行的中心点坐标，比 LLM 猜坐标精准得多，
+   * 是 click_text 动作可靠性的关键。
    */
   private async callBackendOcr(imageBase64: string): Promise<Array<OcrTextItem>> {
+    // 1. 优先尝试本地 Vision OCR（macOS 原生，延迟低）
+    if (this.preferLocalOcr) {
+      try {
+        const { macVisionOcrRouter } = await import('./MacVisionOcrRouter')
+        if (await macVisionOcrRouter.isAvailable()) {
+          const items = await macVisionOcrRouter.recognize(imageBase64)
+          if (items.length > 0) {
+            logger.desktop.info(
+              `[VisualAgentLoop] Local Vision OCR returned ${items.length} items`,
+            )
+            return items
+          }
+          logger.desktop.warn('[VisualAgentLoop] Local Vision OCR returned 0 items, fallback to backend')
+        }
+      } catch (err) {
+        logger.desktop.warn(
+          `[VisualAgentLoop] Local Vision OCR failed: ${(err as Error).message}, fallback to backend`,
+        )
+      }
+    }
+
+    // 2. 降级到后端 OCR
+    return this.callRemoteBackendOcr(imageBase64)
+  }
+
+  /**
+   * 调用后端 OCR 接口识别屏幕文字
+   */
+  private async callRemoteBackendOcr(imageBase64: string): Promise<Array<OcrTextItem>> {
     if (!this.cloudOcrConfig) {
       throw new Error('Cloud OCR config not available (cloudMode or serverUrl/accessToken missing)')
     }
@@ -1147,11 +1308,13 @@ Remember: Do NOT mark completed=true until the ENTIRE task is fully done. If you
       case 'type_text':
       case 'press_key':
       case 'key_combo':
+      case 'click_by_ax':
         return true
       case 'open_app':
       case 'focus_window':
       case 'wait':
       case 'screenshot':
+      case 'inspect_ax':
       case 'complete':
       case 'abort':
         return false
@@ -1176,6 +1339,8 @@ Remember: Do NOT mark completed=true until the ENTIRE task is fully done. If you
         type === 'click' ||
         type === 'double_click' ||
         type === 'right_click' ||
+        type === 'click_text' ||
+        type === 'click_by_ax' ||
         type === 'type_text' ||
         type === 'press_key' ||
         type === 'key_combo' ||

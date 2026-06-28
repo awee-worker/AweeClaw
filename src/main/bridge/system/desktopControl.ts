@@ -1003,6 +1003,21 @@ export function registerDesktopControlHandlers(getMainWindow: (windowId?: number
     return { success: true }
   })
 
+  /**
+   * 鼠标悬停在退出按钮区域时，动态切换 overlay 的鼠标穿透状态
+   *
+   * 场景：AI 执行输入动作时 overlay 处于 passthrough 模式（setIgnoreMouseEvents=true），
+   * 此时用户点击退出按钮会穿透到底层窗口，导致无法退出。
+   *
+   * 方案：利用 forward:true 转发的 mousemove 事件，渲染端检测鼠标是否在按钮区域：
+   * - hovering=true：临时恢复 setIgnoreMouseEvents(false)，让 overlay 接收点击
+   * - hovering=false：恢复 passthrough 模式
+   */
+  safeIpcHandle('desktop:automationSetExitHover', async (_event, hovering: boolean) => {
+    automationCtrl.setExitButtonHover(hovering)
+    return { success: true }
+  })
+
   /** 查询自动化模式状态 */
   safeIpcHandle('desktop:automationGetState', async () => {
     return { success: true, data: automationCtrl.getState() }

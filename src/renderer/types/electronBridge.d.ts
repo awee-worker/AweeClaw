@@ -875,6 +875,7 @@ export interface ElectronAPI {
   desktopAutomationEnter: (params: { task: string; maxSteps?: number }) => Promise<{ success: boolean; data: any }>
   desktopAutomationExit: (reason?: string) => Promise<{ success: boolean; data: any }>
   desktopAutomationUserExit: () => Promise<{ success: boolean }>
+  desktopAutomationSetExitHover: (hovering: boolean) => Promise<{ success: boolean }>
   desktopAutomationGetState: () => Promise<{ success: boolean; data: any }>
   onDesktopAutomationStateChanged: (callback: (state: any) => void) => () => void
   onDesktopAutomationStep: (callback: (step: any) => void) => () => void

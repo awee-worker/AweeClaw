@@ -57,6 +57,8 @@ interface AutomationElectronAPI {
   desktop?: {
     automation?: {
       userExit: () => Promise<{ success: boolean }>
+      /** 通知主进程鼠标是否悬停在退出按钮上（passthrough 模式下动态切换穿透） */
+      setExitHover: (hovering: boolean) => Promise<{ success: boolean }>
       getState: () => Promise<{ success: boolean; data: AutomationState }>
       onStateChange: (cb: (state: AutomationState) => void) => () => void
       onStep: (cb: (step: AutomationStepInfo) => void) => () => void
@@ -211,6 +213,49 @@ export function AutomationModeOverlay(): React.ReactElement {
 
   // 注意：覆盖窗口 focusable=false，无法接收键盘焦点，window.addEventListener('keydown') 不会触发。
   // 键盘退出通过主进程全局快捷键 CommandOrControl+Alt+Q 实现，此处不再注册 Esc 监听。
+
+  /**
+   * 鼠标移动检测：passthrough 模式下，检测鼠标是否在退出按钮区域
+   *
+   * 原理：overlay 在 passthrough 模式下 setIgnoreMouseEvents(true, {forward:true})，
+   * 点击事件穿透到底层，但 mousemove 事件会转发给 overlay。
+   * 渲染端据此检测鼠标位置，进入按钮区域时通知主进程恢复接收点击。
+   *
+   * blocking 模式下 overlay 本就接收所有事件，无需此机制。
+   */
+  const lastHoverRef = useRef(false)
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      // 仅 passthrough 模式需要动态切换
+      if (!state?.inputPassthrough) {
+        if (lastHoverRef.current) {
+          lastHoverRef.current = false
+          getAutomationAPI().setExitHover(false).catch(() => {})
+        }
+        return
+      }
+
+      const btn = exitBtnRef.current
+      if (!btn) return
+
+      const rect = btn.getBoundingClientRect()
+      // 扩大命中区域 8px，避免边缘抖动
+      const padding = 8
+      const inside =
+        e.clientX >= rect.left - padding &&
+        e.clientX <= rect.right + padding &&
+        e.clientY >= rect.top - padding &&
+        e.clientY <= rect.bottom + padding
+
+      if (inside !== lastHoverRef.current) {
+        lastHoverRef.current = inside
+        getAutomationAPI().setExitHover(inside).catch(() => {})
+      }
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    return () => window.removeEventListener('mousemove', handleMouseMove)
+  }, [state?.inputPassthrough])
 
   // 进度百分比
   const progress = state && state.maxSteps > 0
