@@ -11,7 +11,7 @@ import { useI18n } from '@renderer/i18n'
 
 interface ProjectCreateDialogProps {
   onClose: () => void
-  onCreated: () => void
+  onCreated: (result: { localPath?: string }) => void
 }
 
 const ProjectCreateDialog: React.FC<ProjectCreateDialogProps> = ({ onClose, onCreated }) => {
@@ -63,7 +63,7 @@ const ProjectCreateDialog: React.FC<ProjectCreateDialogProps> = ({ onClose, onCr
       if (!result.success) {
         setError(result.error || t('builder.createFailed'))
       } else {
-        onCreated()
+        onCreated({ localPath: result.localPath })
       }
     } catch (err) {
       setError((err as Error).message)

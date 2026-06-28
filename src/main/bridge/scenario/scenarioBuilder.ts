@@ -99,7 +99,11 @@ interface CreateProjectFilesParams {
   type: 'declarative' | 'programmatic'
 }
 
-function buildScenarioConfig(p: CreateProjectFilesParams): DeclarativeScenarioConfig {
+/**
+ * 构建声明式场景配置（DeclarativeScenarioConfig）
+ * 包含完整的 identity（多提示词文件）、capabilities、ui、database、scripts 配置
+ */
+function buildDeclarativeScenarioConfig(p: CreateProjectFilesParams): DeclarativeScenarioConfig {
   return {
     id: p.scenarioId,
     name: p.name,
@@ -110,8 +114,12 @@ function buildScenarioConfig(p: CreateProjectFilesParams): DeclarativeScenarioCo
     icon: 'Package',
     description: p.description || `Custom scenario: ${p.name}`,
     descriptionZh: p.descriptionZh || `自定义场景：${p.nameZh}`,
+    packageType: 'declarative',
     identity: {
       systemPromptFile: 'prompts/system.md',
+      securityRulesFile: 'prompts/security.md',
+      conventionsFile: 'prompts/conventions.md',
+      workflowFile: 'prompts/workflow.md',
     },
     capabilities: {
       builtinTools: ['read_file', 'write_file', 'run_command', 'web_search'],
@@ -145,107 +153,805 @@ function buildScenarioConfig(p: CreateProjectFilesParams): DeclarativeScenarioCo
       layout: 'chat-centric',
       panels: ['chat'],
     },
+    database: {
+      installScriptFiles: ['db/install.sql'],
+      uninstallScriptFiles: ['db/uninstall.sql'],
+    },
+    scripts: {
+      onActivateFile: 'scripts/onActivate.js',
+      onDeactivateFile: 'scripts/onDeactivate.js',
+      onHealthCheckFile: 'scripts/onHealthCheck.js',
+    },
   } as DeclarativeScenarioConfig
 }
 
 /**
- * 在文件系统创建项目骨架（含 config/scenario.json、prompts/system.md、db 脚本占位）
+ * 构建编程式场景配置（ProgrammaticScenarioConfig）
+ * 编程式场景的 manifest/plugin/tools 由 src/index.ts 在运行时导出，
+ * scenario.json 仅承载元数据 + entryPoint + sharedDeps
+ */
+function buildProgrammaticScenarioConfig(p: CreateProjectFilesParams): Record<string, unknown> {
+  return {
+    id: p.scenarioId,
+    name: p.name,
+    nameZh: p.nameZh,
+    version: p.version || '1.0.0',
+    author: p.author || 'developer',
+    category: p.category || 'custom',
+    icon: 'Package',
+    description: p.description || `Programmatic scenario: ${p.name}`,
+    descriptionZh: p.descriptionZh || `编程式场景：${p.nameZh}`,
+    packageType: 'programmatic',
+    // 编译产物入口（build 命令将 src/index.ts 编译为 dist/index.js）
+    entryPoint: 'dist/index.js',
+    // 共享依赖由客户端注入，不打包进场景
+    sharedDeps: {
+      react: '^18.3.0',
+      'react-dom': '^18.3.0',
+      'react/jsx-runtime': '^18.3.0',
+      zustand: '^5.0.0',
+      'lucide-react': '^0.562.0',
+    },
+    permissions: ['workspace:read', 'workspace:write', 'web:search'],
+    minAppVersion: '1.0.0',
+  }
+}
+
+/**
+ * 在文件系统创建项目骨架，按类型分发到不同的脚手架实现
  */
 function createProjectScaffold(params: CreateProjectFilesParams): void {
   const { localPath } = params
   ensureDir(localPath)
 
+  if (params.type === 'programmatic') {
+    createProgrammaticScaffold(params)
+  } else {
+    createDeclarativeScaffold(params)
+  }
+}
+
+/**
+ * 声明式场景脚手架
+ *
+ * 目录结构（参照 aweeclaw-docs/guide/declarative.md）：
+ * my-scenario/
+ * ├── config/scenario.json     场景配置清单（identity/capabilities/ui/database/scripts）
+ * ├── prompts/                 提示词文件（system/security/conventions/workflow）
+ * ├── scripts/                 生命周期脚本（.js，沙箱执行）
+ * │   ├── onActivate.js
+ * │   ├── onDeactivate.js
+ * │   └── onHealthCheck.js
+ * ├── db/                      数据库脚本
+ * │   ├── install.sql
+ * │   └── uninstall.sql
+ * ├── assets/                  静态资源
+ * ├── README.md
+ * └── .gitignore
+ */
+function createDeclarativeScaffold(params: CreateProjectFilesParams): void {
+  const { localPath } = params
+  const displayName = params.nameZh || params.name
+
   // 1. config/scenario.json
   const configDir = path.join(localPath, 'config')
   ensureDir(configDir)
-  const config = buildScenarioConfig(params)
+  const config = buildDeclarativeScenarioConfig(params)
   writeJsonFile(path.join(configDir, 'scenario.json'), config)
 
-  // 2. prompts/system.md
+  // 2. prompts/ — 完整四件套（system/security/conventions/workflow）
   const promptsDir = path.join(localPath, 'prompts')
   ensureDir(promptsDir)
-  const systemPrompt = [
-    `# ${params.nameZh || params.name} 系统提示词`,
-    '',
-    `你是 **${params.nameZh || params.name}** 场景的 AI 助手。`,
-    '',
-    '## 核心职责',
-    `- ${params.descriptionZh || params.description || '帮助用户完成任务'}`,
-    '- 提供专业、准确、高效的服务',
-    '',
-    '## 行为准则',
-    '- 遵循场景配置的工作流程',
-    '- 主动澄清不明确的需求',
-    '- 遵守安全规则，不执行危险操作',
-    '',
-    '## 输出规范',
-    '- 使用结构化格式（标题、列表）',
-    '- 复杂内容使用表格或代码块',
-    '- 保持简洁，避免冗余',
-    '',
-  ].join('\n')
-  fs.writeFileSync(path.join(promptsDir, 'system.md'), systemPrompt, 'utf-8')
 
-  // 3. db/install.sql + uninstall.sql 占位
+  fs.writeFileSync(
+    path.join(promptsDir, 'system.md'),
+    [
+      `# ${displayName} 系统提示词`,
+      '',
+      `你是 **${displayName}** 场景的 AI 助手。`,
+      '',
+      '## 核心职责',
+      `- ${params.descriptionZh || params.description || '帮助用户完成任务'}`,
+      '- 提供专业、准确、高效的服务',
+      '',
+      '## 行为准则',
+      '- 遵循场景配置的工作流程',
+      '- 主动澄清不明确的需求',
+      '- 遵守安全规则，不执行危险操作',
+      '',
+      '## 输出规范',
+      '- 使用结构化格式（标题、列表）',
+      '- 复杂内容使用表格或代码块',
+      '- 保持简洁，避免冗余',
+      '',
+    ].join('\n'),
+    'utf-8',
+  )
+
+  fs.writeFileSync(
+    path.join(promptsDir, 'security.md'),
+    [
+      `# ${displayName} 安全规则`,
+      '',
+      '## 禁止行为',
+      '- 不得执行任何破坏性操作（删除文件、修改系统配置等）',
+      '- 不得访问或泄露用户隐私数据',
+      '- 不得绕过权限校验或越权操作',
+      '- 不得执行未经用户确认的高风险命令',
+      '',
+      '## 数据保护',
+      '- 敏感信息（密码、token、密钥）不得明文输出',
+      '- 用户数据仅用于当前会话，不得持久化到日志',
+      '',
+      '## 操作边界',
+      '- 仅操作当前工作区范围内的文件',
+      '- 网络请求仅限于场景配置允许的域名',
+      '',
+    ].join('\n'),
+    'utf-8',
+  )
+
+  fs.writeFileSync(
+    path.join(promptsDir, 'conventions.md'),
+    [
+      `# ${displayName} 编码规范`,
+      '',
+      '## 回复格式',
+      '- 使用 Markdown 格式输出',
+      '- 代码块标注语言类型',
+      '- 长内容使用分节标题',
+      '',
+      '## 语言风格',
+      '- 中文场景使用简体中文',
+      '- 技术术语保留英文原文',
+      '- 避免口语化，保持专业',
+      '',
+      '## 错误处理',
+      '- 操作失败时明确说明原因',
+      '- 提供可操作的修复建议',
+      '',
+    ].join('\n'),
+    'utf-8',
+  )
+
+  fs.writeFileSync(
+    path.join(promptsDir, 'workflow.md'),
+    [
+      `# ${displayName} 工作流`,
+      '',
+      '## 标准处理流程',
+      '1. **理解需求**：分析用户输入，明确任务目标',
+      '2. **制定方案**：拆解任务步骤，预估所需工具',
+      '3. **执行操作**：按步骤调用工具，逐步完成',
+      '4. **验证结果**：检查执行结果，确保符合预期',
+      '5. **反馈总结**：汇报执行情况，提供后续建议',
+      '',
+      '## 异常处理',
+      '- 工具调用失败时，先分析错误再重试或调整方案',
+      '- 遇到不确定的需求时，主动向用户确认',
+      '- 复杂任务分阶段执行，每阶段确认后再继续',
+      '',
+    ].join('\n'),
+    'utf-8',
+  )
+
+  // 3. scripts/ — 生命周期脚本（.js，沙箱执行）
+  const scriptsDir = path.join(localPath, 'scripts')
+  ensureDir(scriptsDir)
+
+  fs.writeFileSync(
+    path.join(scriptsDir, 'onActivate.js'),
+    [
+      `// ${params.scenarioId} 场景激活脚本`,
+      '// 运行时机：场景被用户启用时执行一次',
+      '// 可访问沙箱 API：context, db, logger',
+      '',
+      "function onActivate(context) {",
+      "  context.logger.info('场景已激活');",
+      '',
+      '  // 初始化数据库（如需）',
+      "  const result = context.db.querySql('SELECT count(*) as cnt FROM sqlite_master WHERE type=\"table\"');",
+      "  context.logger.info('当前表数量: ' + result.data[0].cnt);",
+      '',
+      "  // 发布就绪事件",
+      "  context.publishData('scenario:ready', { scenarioId: '" + params.scenarioId + "' });",
+      "  return { status: 'ok' };",
+      '}',
+      '',
+      'onActivate(context);',
+      '',
+    ].join('\n'),
+    'utf-8',
+  )
+
+  fs.writeFileSync(
+    path.join(scriptsDir, 'onDeactivate.js'),
+    [
+      `// ${params.scenarioId} 场景停用脚本`,
+      '// 运行时机：场景被用户禁用时执行一次',
+      '// 用于清理运行时状态、关闭连接等',
+      '',
+      "function onDeactivate(context) {",
+      "  context.logger.info('场景已停用');",
+      "  return { status: 'ok' };",
+      '}',
+      '',
+      'onDeactivate(context);',
+      '',
+    ].join('\n'),
+    'utf-8',
+  )
+
+  fs.writeFileSync(
+    path.join(scriptsDir, 'onHealthCheck.js'),
+    [
+      `// ${params.scenarioId} 场景健康检查脚本`,
+      '// 运行时机：客户端定期调用，返回健康状态',
+      '// 返回值：[{ name, status, message }]，status: healthy|degraded|unhealthy',
+      '',
+      "function onHealthCheck(context) {",
+      '  return [',
+      "    { name: 'database', status: 'healthy', message: 'OK' },",
+      "    { name: 'module', status: 'healthy', message: 'OK' },",
+      '  ];',
+      '}',
+      '',
+      'onHealthCheck(context);',
+      '',
+    ].join('\n'),
+    'utf-8',
+  )
+
+  // 4. db/ — 安装/卸载 SQL 脚本
   const dbDir = path.join(localPath, 'db')
   ensureDir(dbDir)
-  const installSql = [
-    `-- ${params.scenarioId} 场景安装脚本`,
-    `-- 在场景首次激活时执行，创建所需的表结构`,
-    '',
-    `CREATE TABLE IF NOT EXISTS ${params.scenarioId.replace(/-/g, '_')}_data (`,
-    "  id TEXT PRIMARY KEY,",
-    "  data TEXT NOT NULL,",
-    "  created_at TEXT NOT NULL DEFAULT (datetime('now'))",
-    ');',
-    '',
-  ].join('\n')
-  fs.writeFileSync(path.join(dbDir, 'install.sql'), installSql, 'utf-8')
+  const tableId = params.scenarioId.replace(/-/g, '_')
 
-  const uninstallSql = [
-    `-- ${params.scenarioId} 场景卸载脚本`,
-    `-- 在场景卸载时执行，清理表结构`,
-    '',
-    `DROP TABLE IF EXISTS ${params.scenarioId.replace(/-/g, '_')}_data;`,
-    '',
-  ].join('\n')
-  fs.writeFileSync(path.join(dbDir, 'uninstall.sql'), uninstallSql, 'utf-8')
+  fs.writeFileSync(
+    path.join(dbDir, 'install.sql'),
+    [
+      `-- ${params.scenarioId} 场景安装脚本`,
+      '-- 执行时机：场景首次激活时',
+      '-- 注意：使用 IF NOT EXISTS 保证可重复执行',
+      '',
+      `CREATE TABLE IF NOT EXISTS ${tableId}_data (`,
+      "  id TEXT PRIMARY KEY,",
+      "  data TEXT NOT NULL,",
+      "  created_at TEXT NOT NULL DEFAULT (datetime('now')),",
+      "  updated_at TEXT NOT NULL DEFAULT (datetime('now'))",
+      ');',
+      '',
+      `CREATE INDEX IF NOT EXISTS idx_${tableId}_data_created ON ${tableId}_data(created_at);`,
+      '',
+    ].join('\n'),
+    'utf-8',
+  )
 
-  // 4. README.md
-  const readme = [
-    `# ${params.nameZh || params.name}`,
-    '',
-    `> ${params.descriptionZh || params.description || ''}`,
-    '',
-    '## 场景信息',
-    `- 场景 ID: \`${params.scenarioId}\``,
-    `- 版本: \`${params.version || '1.0.0'}\``,
-    `- 作者: \`${params.author || 'developer'}\``,
-    `- 类型: \`${params.type}\``,
-    '',
-    '## 目录结构',
-    '```',
-    'config/scenario.json   场景配置清单',
-    'prompts/system.md      系统提示词',
-    'db/install.sql         安装脚本',
-    'db/uninstall.sql       卸载脚本',
-    '```',
-    '',
-    '## 开发流程',
-    '1. 编辑 `config/scenario.json` 配置场景元数据',
-    '2. 编辑 `prompts/system.md` 编写系统提示词',
-    '3. 编辑 `db/install.sql` 设计数据库表',
-    '4. 使用场景开发助手的构建/校验功能测试',
-    '5. 通过安装功能部署到本地客户端测试',
-    '6. 通过发布功能上传到开发者中心',
-    '',
-  ].join('\n')
-  fs.writeFileSync(path.join(localPath, 'README.md'), readme, 'utf-8')
+  fs.writeFileSync(
+    path.join(dbDir, 'uninstall.sql'),
+    [
+      `-- ${params.scenarioId} 场景卸载脚本`,
+      '-- 执行时机：场景卸载时',
+      '-- 注意：仅在确认不再需要数据时才卸载场景',
+      '',
+      `DROP TABLE IF EXISTS ${tableId}_data;`,
+      '',
+    ].join('\n'),
+    'utf-8',
+  )
 
-  // 5. .gitignore（如果项目目录在工作区下，避免误提交构建产物）
+  // 5. assets/ — 静态资源目录
+  const assetsDir = path.join(localPath, 'assets')
+  ensureDir(assetsDir)
+  fs.writeFileSync(path.join(assetsDir, '.gitkeep'), '', 'utf-8')
+
+  // 6. README.md
+  writeDeclarativeReadme(params, localPath)
+
+  // 7. .gitignore
   fs.writeFileSync(
     path.join(localPath, '.gitignore'),
-    ['dist/', '*.log', '.DS_Store', ''].join('\n'),
+    ['dist/', 'node_modules/', '*.log', '.DS_Store', ''].join('\n'),
+    'utf-8',
+  )
+}
+
+/**
+ * 编程式场景脚手架
+ *
+ * 目录结构（参照 aweeclaw-docs/guide/programmatic.md）：
+ * my-scenario/
+ * ├── config/scenario.json     场景元数据 + entryPoint + sharedDeps
+ * ├── package.json             依赖管理（@aweeclaw/scenario-sdk）
+ * ├── tsconfig.json            TypeScript 配置
+ * ├── src/
+ * │   ├── index.ts             入口文件（默认导出 ScenarioModule）
+ * │   ├── tools/               工具定义
+ * │   │   ├── index.ts
+ * │   │   └── example-tool.ts
+ * │   ├── components/          React 组件（自定义 UI 面板）
+ * │   ├── hooks/               自定义 Hooks
+ * │   └── utils/               工具函数
+ * ├── prompts/
+ * │   └── system.md            系统提示词（编程式场景通常仅此一个）
+ * ├── assets/                  静态资源
+ * ├── README.md
+ * └── .gitignore
+ */
+function createProgrammaticScaffold(params: CreateProjectFilesParams): void {
+  const { localPath } = params
+  const displayName = params.nameZh || params.name
+  const scenarioId = params.scenarioId
+
+  // 1. config/scenario.json（编程式配置：元数据 + entryPoint + sharedDeps）
+  const configDir = path.join(localPath, 'config')
+  ensureDir(configDir)
+  const config = buildProgrammaticScenarioConfig(params)
+  writeJsonFile(path.join(configDir, 'scenario.json'), config)
+
+  // 2. package.json — 依赖管理
+  writeJsonFile(path.join(localPath, 'package.json'), {
+    name: scenarioId,
+    version: params.version || '1.0.0',
+    description: params.description || `Programmatic scenario: ${params.name}`,
+    main: 'dist/index.js',
+    scripts: {
+      build: 'tsc && esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.js',
+      dev: 'tsc --watch',
+      clean: 'rm -rf dist',
+    },
+    dependencies: {
+      '@aweeclaw/scenario-sdk': '^1.0.0',
+    },
+    devDependencies: {
+      typescript: '^5.4.0',
+      esbuild: '^0.21.0',
+      '@types/node': '^20.0.0',
+      '@types/react': '^18.3.0',
+      '@types/react-dom': '^18.3.0',
+    },
+    aweeclaw: {
+      type: 'programmatic',
+      sharedDeps: config.sharedDeps,
+    },
+  })
+
+  // 3. tsconfig.json — TypeScript 配置
+  writeJsonFile(path.join(localPath, 'tsconfig.json'), {
+    compilerOptions: {
+      target: 'ES2022',
+      module: 'ESNext',
+      moduleResolution: 'Bundler',
+      lib: ['ES2022', 'DOM', 'DOM.Iterable'],
+      jsx: 'react-jsx',
+      strict: true,
+      esModuleInterop: true,
+      skipLibCheck: true,
+      forceConsistentCasingInFileNames: true,
+      resolveJsonModule: true,
+      declaration: false,
+      outDir: './dist',
+      rootDir: './src',
+      types: ['node'],
+    },
+    include: ['src/**/*'],
+    exclude: ['node_modules', 'dist'],
+  })
+
+  // 4. src/ — TypeScript 源码
+  const srcDir = path.join(localPath, 'src')
+  ensureDir(srcDir)
+
+  // 4.1 src/index.ts — 入口文件，导出 ScenarioModule
+  fs.writeFileSync(
+    path.join(srcDir, 'index.ts'),
+    [
+      `/**`,
+      ` * ${displayName} 场景入口`,
+      ` *`,
+      ` * 编程式场景通过默认导出 ScenarioModule 对象定义：`,
+      ` * - getManifest(): 返回场景元数据`,
+      ` * - getPlugin(): 返回插件配置（identity/capabilities/ui）`,
+      ` * - getTools(): 返回自定义工具定义`,
+      ` * - getComponents(): 返回 React 组件注册表`,
+      ` * - onActivate/onDeactivate/onHealthCheck: 生命周期钩子`,
+      ` */`,
+      `import type {`,
+      `  ScenarioModule,`,
+      `  ScenarioModuleContext,`,
+      `  ScenarioToolDefinition,`,
+      `  ScenarioHealthCheck,`,
+      `} from '@aweeclaw/scenario-sdk'`,
+      `import { exampleTool } from './tools/example-tool'`,
+      '',
+      `export default {`,
+      `  id: '${scenarioId}',`,
+      `  version: '${params.version || '1.0.0'}',`,
+      '',
+      `  // ========== 清单 ==========`,
+      `  getManifest() {`,
+      `    return {`,
+      `      id: '${scenarioId}',`,
+      `      version: '${params.version || '1.0.0'}',`,
+      `      name: '${params.name}',`,
+      `      nameZh: '${params.nameZh}',`,
+      `      description: ${JSON.stringify(params.description || `Programmatic scenario: ${params.name}`)},`,
+      `      descriptionZh: ${JSON.stringify(params.descriptionZh || `编程式场景：${params.nameZh}`)},`,
+      `      author: ${JSON.stringify(params.author || 'developer')},`,
+      `      icon: 'Package',`,
+      `      category: ${JSON.stringify(params.category || 'custom')},`,
+      `      tags: [],`,
+      `      minAppVersion: '1.0.0',`,
+      `      permissions: ['workspace:read', 'workspace:write', 'web:search'],`,
+      `      dependencies: [],`,
+      `    }`,
+      `  },`,
+      '',
+      `  // ========== 插件定义 ==========`,
+      `  getPlugin() {`,
+      `    return {`,
+      `      id: '${scenarioId}',`,
+      `      name: '${params.name}',`,
+      `      nameZh: '${params.nameZh}',`,
+      `      icon: 'Package',`,
+      `      description: ${JSON.stringify(params.description || `Programmatic scenario: ${params.name}`)},`,
+      `      descriptionZh: ${JSON.stringify(params.descriptionZh || `编程式场景：${params.nameZh}`)},`,
+      `      version: '${params.version || '1.0.0'}',`,
+      `      author: ${JSON.stringify(params.author || 'developer')},`,
+      `      category: ${JSON.stringify(params.category || 'custom')},`,
+      `      tags: [],`,
+      '',
+      `      identity: {`,
+      `        systemPromptFile: 'prompts/system.md',`,
+      `      },`,
+      '',
+      `      capabilities: {`,
+      `        toolPacks: [],`,
+      `        modes: [`,
+      `          {`,
+      `            id: 'chat',`,
+      `            name: 'Chat',`,
+      `            nameZh: '对话',`,
+      `            description: 'Standard chat mode',`,
+      `            descriptionZh: '标准对话模式',`,
+      `          },`,
+      `          {`,
+      `            id: 'agent',`,
+      `            name: 'Agent',`,
+      `            nameZh: '代理',`,
+      `            description: 'Autonomous agent mode',`,
+      `            descriptionZh: '自主代理模式',`,
+      `          },`,
+      `        ],`,
+      `        contextTypes: [`,
+      `          { type: 'file', name: 'File', nameZh: '文件', description: 'File context' },`,
+      `        ],`,
+      `        outputFormats: ['text', 'markdown', 'code'],`,
+      `      },`,
+      '',
+      `      ui: {`,
+      `        layout: 'chat-centric',`,
+      `        panels: [],`,
+      `        sidebarItems: [],`,
+      `        statusBarItems: [],`,
+      `      },`,
+      '',
+      `      dataSources: {`,
+      `        workspace: true,`,
+      `        knowledgeBase: false,`,
+      `        externalApi: false,`,
+      `      },`,
+      `    }`,
+      `  },`,
+      '',
+      `  // ========== 工具定义 ==========`,
+      `  getTools(): ScenarioToolDefinition[] {`,
+      `    return [exampleTool]`,
+      `  },`,
+      '',
+      `  // ========== 组件注册（可选） ==========`,
+      `  // getComponents() {`,
+      `  //   return { DashboardPanel, SettingsPanel }`,
+      `  // },`,
+      '',
+      `  // ========== 生命周期 ==========`,
+      `  async onActivate(context: ScenarioModuleContext) {`,
+      `    context.logger.info('[${scenarioId}] 场景已激活')`,
+      `  },`,
+      '',
+      `  async onDeactivate(context: ScenarioModuleContext) {`,
+      `    context.logger.info('[${scenarioId}] 场景已停用')`,
+      `  },`,
+      '',
+      `  async onHealthCheck(): Promise<ScenarioHealthCheck[]> {`,
+      `    return [{ name: 'module', status: 'healthy', message: 'OK' }]`,
+      `  },`,
+      `} satisfies ScenarioModule`,
+      '',
+    ].join('\n'),
+    'utf-8',
+  )
+
+  // 4.2 src/tools/ — 工具定义
+  const toolsDir = path.join(srcDir, 'tools')
+  ensureDir(toolsDir)
+
+  fs.writeFileSync(
+    path.join(toolsDir, 'index.ts'),
+    [
+      `export { exampleTool } from './example-tool'`,
+      '',
+    ].join('\n'),
+    'utf-8',
+  )
+
+  fs.writeFileSync(
+    path.join(toolsDir, 'example-tool.ts'),
+    [
+      `import type { ScenarioToolDefinition } from '@aweeclaw/scenario-sdk'`,
+      '',
+      `/**`,
+      ` * 示例工具：${displayName} 场景的自定义工具`,
+      ` * 可作为开发新工具的模板`,
+      ` */`,
+      `export const exampleTool: ScenarioToolDefinition = {`,
+      `  name: 'example_tool',`,
+      `  definition: {`,
+      `    name: 'example_tool',`,
+      `    description: 'An example tool that echoes the input',`,
+      `    descriptionZh: '示例工具：回显输入内容',`,
+      `    parameters: {`,
+      `      type: 'object',`,
+      `      properties: {`,
+      `        message: {`,
+      `          type: 'string',`,
+      `          description: 'Message to echo',`,
+      `          descriptionZh: '要回显的消息',`,
+      `        },`,
+      `      },`,
+      `      required: ['message'],`,
+      `    },`,
+      `  },`,
+      `  executor: async (args) => {`,
+      `    const { message } = args as { message: string }`,
+      `    return {`,
+      `      success: true,`,
+      `      data: { echoed: message, timestamp: Date.now() },`,
+      `    }`,
+      `  },`,
+      `}`,
+      '',
+    ].join('\n'),
+    'utf-8',
+  )
+
+  // 4.3 src/components/ — React 组件目录（占位）
+  const componentsDir = path.join(srcDir, 'components')
+  ensureDir(componentsDir)
+  fs.writeFileSync(
+    path.join(componentsDir, '.gitkeep'),
+    '# 在此目录放置自定义 React 组件\n# 在 src/index.ts 的 getComponents() 中注册后可被 UI 系统加载\n',
+    'utf-8',
+  )
+
+  // 4.4 src/hooks/ — 自定义 Hooks 目录（占位）
+  const hooksDir = path.join(srcDir, 'hooks')
+  ensureDir(hooksDir)
+  fs.writeFileSync(path.join(hooksDir, '.gitkeep'), '', 'utf-8')
+
+  // 4.5 src/utils/ — 工具函数
+  const utilsDir = path.join(srcDir, 'utils')
+  ensureDir(utilsDir)
+  fs.writeFileSync(
+    path.join(utilsDir, 'helpers.ts'),
+    [
+      `/**`,
+      ` * ${displayName} 场景通用工具函数`,
+      ` */`,
+      '',
+      `/**`,
+      ` * 生成唯一 ID`,
+      ` */`,
+      `export function generateId(prefix = ''): string {`,
+      `  return \`\${prefix}\${Date.now().toString(36)}\${Math.random().toString(36).slice(2, 8)}\``,
+      `}`,
+      '',
+      `/**`,
+      ` * 延时`,
+      ` */`,
+      `export function delay(ms: number): Promise<void> {`,
+      `  return new Promise(resolve => setTimeout(resolve, ms))`,
+      `}`,
+      '',
+    ].join('\n'),
+    'utf-8',
+  )
+
+  // 5. prompts/system.md — 编程式场景通常仅需一个系统提示词
+  const promptsDir = path.join(localPath, 'prompts')
+  ensureDir(promptsDir)
+  fs.writeFileSync(
+    path.join(promptsDir, 'system.md'),
+    [
+      `# ${displayName} 系统提示词`,
+      '',
+      `你是 **${displayName}** 场景的 AI 助手（编程式场景）。`,
+      '',
+      '## 核心职责',
+      `- ${params.descriptionZh || params.description || '通过自定义工具和组件帮助用户完成任务'}`,
+      '- 调用场景注册的自定义工具执行业务逻辑',
+      '- 与场景 UI 组件协作，提供丰富的交互体验',
+      '',
+      '## 工具使用',
+      '- 优先调用场景提供的自定义工具（如 example_tool）',
+      '- 工具调用失败时分析错误原因并提供修复建议',
+      '- 复杂任务拆解为多个工具调用逐步完成',
+      '',
+      '## 行为准则',
+      '- 遵循场景配置的工作流程',
+      '- 主动澄清不明确的需求',
+      '- 遵守安全规则，不执行危险操作',
+      '',
+    ].join('\n'),
+    'utf-8',
+  )
+
+  // 6. assets/ — 静态资源目录
+  const assetsDir = path.join(localPath, 'assets')
+  ensureDir(assetsDir)
+  fs.writeFileSync(path.join(assetsDir, '.gitkeep'), '', 'utf-8')
+
+  // 7. README.md
+  writeProgrammaticReadme(params, localPath)
+
+  // 8. .gitignore
+  fs.writeFileSync(
+    path.join(localPath, '.gitignore'),
+    [
+      'dist/',
+      'node_modules/',
+      '*.log',
+      '.DS_Store',
+      '*.tsbuildinfo',
+      '',
+    ].join('\n'),
+    'utf-8',
+  )
+}
+
+/**
+ * 写入声明式场景的 README
+ */
+function writeDeclarativeReadme(params: CreateProjectFilesParams, localPath: string): void {
+  const displayName = params.nameZh || params.name
+  fs.writeFileSync(
+    path.join(localPath, 'README.md'),
+    [
+      `# ${displayName}`,
+      '',
+      `> ${params.descriptionZh || params.description || ''}`,
+      '',
+      '## 场景信息',
+      `- 场景 ID: \`${params.scenarioId}\``,
+      `- 版本: \`${params.version || '1.0.0'}\``,
+      `- 作者: \`${params.author || 'developer'}\``,
+      `- 类型: \`declarative\` (声明式)`,
+      '',
+      '## 目录结构',
+      '```',
+      `${params.scenarioId}/`,
+      '├── config/',
+      '│   └── scenario.json     # 场景配置清单（identity/capabilities/ui/database/scripts）',
+      '├── prompts/              # 提示词文件',
+      '│   ├── system.md         # 系统提示词',
+      '│   ├── security.md       # 安全规则',
+      '│   ├── conventions.md    # 编码规范',
+      '│   └── workflow.md       # 工作流',
+      '├── scripts/              # 生命周期脚本（.js，沙箱执行）',
+      '│   ├── onActivate.js     # 激活时执行',
+      '│   ├── onDeactivate.js   # 停用时执行',
+      '│   └── onHealthCheck.js  # 健康检查',
+      '├── db/                   # 数据库脚本',
+      '│   ├── install.sql       # 安装时执行',
+      '│   └── uninstall.sql     # 卸载时执行',
+      '├── assets/               # 静态资源',
+      '├── README.md',
+      '└── .gitignore',
+      '```',
+      '',
+      '## 开发流程',
+      '1. 编辑 `config/scenario.json` 配置场景元数据和能力',
+      '2. 编写 `prompts/*.md` 定义 AI 角色、安全规则、规范、工作流',
+      '3. 编写 `scripts/*.js` 实现生命周期钩子（可选）',
+      '4. 编写 `db/install.sql` 设计数据库表（可选）',
+      '5. 使用场景开发助手的 **构建/校验** 功能测试',
+      '6. 通过 **安装** 功能部署到本地客户端测试',
+      '7. 通过 **发布** 功能上传到开发者中心',
+      '',
+      '## 文档参考',
+      '- [声明式场景详解](https://docs.aweeclaw.com/guide/declarative)',
+      '- [清单配置参考](https://docs.aweeclaw.com/guide/manifest)',
+      '- [提示词配置](https://docs.aweeclaw.com/guide/prompts)',
+      '',
+    ].join('\n'),
+    'utf-8',
+  )
+}
+
+/**
+ * 写入编程式场景的 README
+ */
+function writeProgrammaticReadme(params: CreateProjectFilesParams, localPath: string): void {
+  const displayName = params.nameZh || params.name
+  fs.writeFileSync(
+    path.join(localPath, 'README.md'),
+    [
+      `# ${displayName}`,
+      '',
+      `> ${params.descriptionZh || params.description || ''}`,
+      '',
+      '## 场景信息',
+      `- 场景 ID: \`${params.scenarioId}\``,
+      `- 版本: \`${params.version || '1.0.0'}\``,
+      `- 作者: \`${params.author || 'developer'}\``,
+      `- 类型: \`programmatic\` (编程式)`,
+      '',
+      '## 目录结构',
+      '```',
+      `${params.scenarioId}/`,
+      '├── config/',
+      '│   └── scenario.json     # 场景元数据 + entryPoint + sharedDeps',
+      '├── package.json          # 依赖管理（@aweeclaw/scenario-sdk）',
+      '├── tsconfig.json         # TypeScript 配置',
+      '├── src/                  # TypeScript 源码',
+      '│   ├── index.ts          # 入口文件（默认导出 ScenarioModule）',
+      '│   ├── tools/            # 自定义工具',
+      '│   │   ├── index.ts',
+      '│   │   └── example-tool.ts',
+      '│   ├── components/       # React 组件（自定义 UI 面板）',
+      '│   ├── hooks/            # 自定义 Hooks',
+      '│   └── utils/            # 工具函数',
+      '├── prompts/',
+      '│   └── system.md         # 系统提示词',
+      '├── assets/               # 静态资源',
+      '├── README.md',
+      '└── .gitignore',
+      '```',
+      '',
+      '## 开发流程',
+      '1. 执行 `npm install` 安装依赖',
+      '2. 编辑 `src/index.ts` 实现 ScenarioModule 接口',
+      '3. 在 `src/tools/` 添加自定义工具',
+      '4. 在 `src/components/` 编写 React 组件并在 `getComponents()` 注册',
+      '5. 编辑 `prompts/system.md` 定义 AI 角色',
+      '6. 使用场景开发助手的 **构建** 功能编译 TypeScript',
+      '7. 使用 **校验** 功能检查场景包结构',
+      '8. 通过 **安装** 功能部署到本地客户端测试',
+      '9. 通过 **发布** 功能上传到开发者中心',
+      '',
+      '## 构建命令',
+      '```bash',
+      '# 编译 TypeScript + esbuild bundle',
+      'npm run build',
+      '',
+      '# 监听模式',
+      'npm run dev',
+      '```',
+      '',
+      '## 共享依赖',
+      '以下依赖由客户端注入，无需打包进场景：',
+      '- react ^18.3.0',
+      '- react-dom ^18.3.0',
+      '- zustand ^5.0.0',
+      '- lucide-react ^0.562.0',
+      '',
+      '## 文档参考',
+      '- [编程式场景详解](https://docs.aweeclaw.com/guide/programmatic)',
+      '- [模块接口](https://docs.aweeclaw.com/guide/module-interface)',
+      '- [UI 组件开发](https://docs.aweeclaw.com/guide/ui-components)',
+      '- [共享依赖机制](https://docs.aweeclaw.com/guide/shared-deps)',
+      '',
+    ].join('\n'),
     'utf-8',
   )
 }
@@ -372,8 +1078,9 @@ function doPack(projectPath: string, outputPath?: string): {
 }
 
 /**
- * 内嵌构建：声明式场景只需校验 + 生成 dist/；
- * 编程式场景额外执行 esbuild bundle（如项目存在 scripts/ 入口）
+ * 内嵌构建：
+ * - 声明式场景：校验 + 生成 dist/（拷贝全部源文件 + 编译 scripts/*.ts）
+ * - 编程式场景：校验 + 生成 dist/（仅拷贝运行时所需文件 + esbuild bundle src/index.ts）
  */
 async function doBuild(projectPath: string): Promise<{
   success: boolean
@@ -402,46 +1109,94 @@ async function doBuild(projectPath: string): Promise<{
     }
     ensureDir(distDir)
 
-    // 3. 拷贝所有源文件到 dist/（保留目录结构）
-    for (const [relPath, content] of Object.entries(files)) {
-      const destPath = path.join(distDir, relPath)
-      ensureDir(path.dirname(destPath))
-      fs.writeFileSync(destPath, content, 'utf-8')
-    }
-    output.push(`[build] Copied ${Object.keys(files).length} files to dist/`)
+    // 3. 判断场景类型（programmatic 通过 packageType 或 entryPoint 识别）
+    const configAny = config as unknown as Record<string, unknown>
+    const isProgrammatic =
+      configAny.packageType === 'programmatic' || typeof configAny.entryPoint === 'string'
 
-    // 4. 编程式场景：尝试 esbuild bundle（如可加载 esbuild）
-    if (config.scripts?.onActivateFile || config.scripts?.onDeactivateFile || config.scripts?.tools?.length) {
+    if (isProgrammatic) {
+      // 编程式场景：仅拷贝运行时所需文件（不含 src/、tsconfig.json、package.json 等）
+      const runtimePrefixes = ['config/', 'prompts/', 'assets/', 'db/']
+      let copiedCount = 0
+      for (const [relPath, content] of Object.entries(files)) {
+        if (!runtimePrefixes.some(p => relPath.startsWith(p))) continue
+        const destPath = path.join(distDir, relPath)
+        ensureDir(path.dirname(destPath))
+        fs.writeFileSync(destPath, content, 'utf-8')
+        copiedCount++
+      }
+      output.push(`[build] Copied ${copiedCount} runtime files to dist/`)
+
+      // 4. 编程式场景：esbuild bundle src/index.ts → dist/index.js
+      const entrySource = path.join(projectPath, 'src', 'index.ts')
+      const entryOutput = path.join(distDir, 'index.js')
+      if (!fs.existsSync(entrySource)) {
+        output.push('  ERROR: src/index.ts not found (programmatic scenario requires entry file)')
+        return { success: false, output: output.join('\n'), error: 'Entry file src/index.ts not found' }
+      }
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const esbuild = require('esbuild')
-        const scriptFiles = new Set<string>()
-        if (config.scripts?.onActivateFile) scriptFiles.add(config.scripts.onActivateFile)
-        if (config.scripts?.onDeactivateFile) scriptFiles.add(config.scripts.onDeactivateFile)
-        config.scripts?.tools?.forEach(t => scriptFiles.add(t.scriptFile))
-
-        for (const scriptFile of scriptFiles) {
-          const srcPath = path.join(projectPath, scriptFile)
-          if (!fs.existsSync(srcPath)) {
-            output.push(`  WARN: script not found: ${scriptFile}`)
-            continue
-          }
-          const destPath = path.join(distDir, scriptFile.replace(/\.ts$/, '.js'))
-          ensureDir(path.dirname(destPath))
-          await esbuild.build({
-            entryPoints: [srcPath],
-            outfile: destPath,
-            bundle: true,
-            platform: 'node',
-            format: 'cjs',
-            target: 'node16',
-            sourcemap: false,
-            logLevel: 'silent',
-          })
-          output.push(`  [esbuild] bundled ${scriptFile} → ${scriptFile.replace(/\.ts$/, '.js')}`)
-        }
+        await esbuild.build({
+          entryPoints: [entrySource],
+          outfile: entryOutput,
+          bundle: true,
+          platform: 'node',
+          format: 'esm',
+          target: 'node16',
+          sourcemap: false,
+          logLevel: 'silent',
+          // 共享依赖由客户端运行时注入，构建时标记为 external
+          external: ['react', 'react-dom', 'react/jsx-runtime', 'zustand', 'lucide-react'],
+        })
+        output.push('  [esbuild] bundled src/index.ts → index.js')
       } catch (e) {
-        output.push(`  WARN: esbuild not available, scripts copied as-is: ${e instanceof Error ? e.message : ''}`)
+        const msg = e instanceof Error ? e.message : String(e)
+        output.push(`  ERROR: esbuild bundle failed: ${msg}`)
+        return { success: false, output: output.join('\n'), error: `esbuild bundle failed: ${msg}` }
+      }
+    } else {
+      // 声明式场景：拷贝全部源文件到 dist/（保留目录结构）
+      for (const [relPath, content] of Object.entries(files)) {
+        const destPath = path.join(distDir, relPath)
+        ensureDir(path.dirname(destPath))
+        fs.writeFileSync(destPath, content, 'utf-8')
+      }
+      output.push(`[build] Copied ${Object.keys(files).length} files to dist/`)
+
+      // 4. 声明式场景：如存在 scripts/*.ts 生命周期脚本，尝试 esbuild 编译
+      if (config.scripts?.onActivateFile || config.scripts?.onDeactivateFile || config.scripts?.tools?.length) {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const esbuild = require('esbuild')
+          const scriptFiles = new Set<string>()
+          if (config.scripts?.onActivateFile) scriptFiles.add(config.scripts.onActivateFile)
+          if (config.scripts?.onDeactivateFile) scriptFiles.add(config.scripts.onDeactivateFile)
+          config.scripts?.tools?.forEach(t => scriptFiles.add(t.scriptFile))
+
+          for (const scriptFile of scriptFiles) {
+            const srcPath = path.join(projectPath, scriptFile)
+            if (!fs.existsSync(srcPath)) {
+              output.push(`  WARN: script not found: ${scriptFile}`)
+              continue
+            }
+            const destPath = path.join(distDir, scriptFile.replace(/\.ts$/, '.js'))
+            ensureDir(path.dirname(destPath))
+            await esbuild.build({
+              entryPoints: [srcPath],
+              outfile: destPath,
+              bundle: true,
+              platform: 'node',
+              format: 'cjs',
+              target: 'node16',
+              sourcemap: false,
+              logLevel: 'silent',
+            })
+            output.push(`  [esbuild] bundled ${scriptFile} → ${scriptFile.replace(/\.ts$/, '.js')}`)
+          }
+        } catch (e) {
+          output.push(`  WARN: esbuild not available, scripts copied as-is: ${e instanceof Error ? e.message : ''}`)
+        }
       }
     }
 

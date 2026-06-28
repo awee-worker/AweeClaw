@@ -9,6 +9,7 @@
  * - createContext: 创建场景模块上下文
  */
 
+import { useStore } from '@store'
 import type {
   ScenarioRegistryEntry,
   ScenarioModuleContext,
@@ -201,8 +202,10 @@ export class ScenarioLifecycleManager {
     version: string,
     entry: ScenarioRegistryEntry,
   ): ScenarioModuleContext {
-    return {
+    const ctx: ScenarioModuleContext = {
       scenarioId,
+      // workspacePath 作为初始快照保留，但实际访问时通过 getter 动态读取最新值，
+      // 避免场景激活后用户切换工作区时 context 仍持有旧路径。
       workspacePath,
       version,
       registerTools: (tools: ScenarioToolDefinition[]) => {
@@ -238,5 +241,15 @@ export class ScenarioLifecycleManager {
       executeSql: (sql: string) => scenarioDatabaseManager.executeSql(scenarioId, sql),
       getDatabasePath: () => scenarioDatabaseManager.getPath(scenarioId),
     }
+
+    // 将 workspacePath 改为动态 getter：每次访问都从 store 读取最新工作区路径。
+    // 修复场景激活后用户切换/打开工作区时，context 仍持有旧路径（或 null）的问题。
+    Object.defineProperty(ctx, 'workspacePath', {
+      get: () => useStore.getState().workspacePath,
+      enumerable: true,
+      configurable: true,
+    })
+
+    return ctx
   }
 }

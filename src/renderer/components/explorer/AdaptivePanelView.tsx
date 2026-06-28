@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { getPanelComponent, registerScenarioPanelComponents } from './PanelRegistry'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { useStore } from '@store'
@@ -11,10 +11,15 @@ interface DynamicPanelViewProps {
 export function DynamicPanelView({ panelId }: DynamicPanelViewProps) {
   const activeScenarioId = useStore(s => s.activeScenarioId)
   const language = useStore(s => s.language)
+  // 注册是同步副作用，但不会触发 re-render。
+  // 用一个递增的 version 作为 re-render 触发器，确保注册完成后立即重新渲染面板。
+  const [, setRegisterVersion] = useState(0)
 
   useEffect(() => {
     if (activeScenarioId) {
       registerScenarioPanelComponents(activeScenarioId)
+      // 强制 re-render，使本次注册的组件立即可用（修复首次进入场景面板需点击两次的问题）
+      setRegisterVersion(v => v + 1)
     }
   }, [activeScenarioId])
 

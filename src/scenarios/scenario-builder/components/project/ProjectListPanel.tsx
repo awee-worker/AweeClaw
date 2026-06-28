@@ -11,6 +11,7 @@ import { useI18n } from '@renderer/i18n'
 import { api } from '@services/electronBridge'
 import { useStore } from '@store'
 import { toast } from '@components/foundation/NotificationProvider'
+import { directoryCacheService } from '@services/dirCacheAdapter'
 import ProjectCreateDialog from './ProjectCreateDialog'
 import ProjectEditDialog from './ProjectEditDialog'
 import { useSelectedProject } from '../../hooks/useSelectedProject'
@@ -18,8 +19,8 @@ import { useSelectedProject } from '../../hooks/useSelectedProject'
 const ProjectListPanel: React.FC = () => {
   const { t } = useI18n()
   const { project: selectedProject, select, refresh: refreshSelected } = useSelectedProject()
-  const setWorkspace = useStore((s) => s.setWorkspace)
   const setActiveSidePanel = useStore((s) => s.setActiveSidePanel)
+  const setSelectedFolder = useStore((s) => s.setSelectedFolder)
   const [projects, setProjects] = useState<ScenarioProject[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreate, setShowCreate] = useState(false)
@@ -53,16 +54,42 @@ const ProjectListPanel: React.FC = () => {
   )
 
   const handleDelete = useCallback(
-    async (projectId: string, e: React.MouseEvent) => {
+    async (project: ScenarioProject, e: React.MouseEvent) => {
       e.stopPropagation()
       if (!confirm(t('builder.project.delete') + '?')) return
       try {
-        await projectService.deleteProject(projectId)
+        // 1. 删除磁盘上的项目目录（场景目录）
+        if (project.localPath) {
+          try {
+            await api.file.delete(project.localPath)
+          } catch (err) {
+            // 目录删除失败不阻断 DB 删除流程，仅记录日志
+            console.error('Failed to delete project directory:', err)
+          }
+        }
+        // 2. 归档 DB 记录
+        await projectService.deleteProject(project.id)
         // 如果删除的是当前选中项目，清空选中
-        if (selectedProject?.id === projectId) {
+        if (selectedProject?.id === project.id) {
           select(null)
         }
         await loadProjects()
+        // 3. 通知文件资源管理器刷新（项目目录已从磁盘删除）
+        if (project.localPath) {
+          const parentDir = project.localPath.substring(0, project.localPath.lastIndexOf('/'))
+          // 直接失效全局目录缓存（不依赖 FileExplorer 是否挂载）
+          directoryCacheService.invalidate(parentDir)
+          directoryCacheService.invalidateTree(project.localPath)
+          // 派发事件触发已挂载的 FileExplorer 重新加载
+          window.dispatchEvent(
+            new CustomEvent('workspace:files-changed', {
+              detail: {
+                affectedPaths: [parentDir],
+                deletedPaths: [project.localPath],
+              },
+            }),
+          )
+        }
       } catch (err) {
         console.error('Failed to delete project:', err)
       }
@@ -91,15 +118,17 @@ const ProjectListPanel: React.FC = () => {
   )
 
   /**
-   * 在工作区打开项目目录：将 localPath 设为工作区根并切换到资源管理器面板。
+   * 在工作区定位项目目录：展开父级目录链并滚动定位到项目目录节点。
    *
-   * 使用 setWorkspace 而非 addRoot 的原因：
-   * - FileExplorer 的文件树仅基于 workspacePath（= roots[0]）加载，addRoot 不会更新 workspacePath，
-   *   导致新加的根不会显示在文件树中。
-   * - setWorkspace 会更新 workspacePath、自动将根加入 expandedFolders（展开根节点）、
-   *   并触发 FileExplorer 的 useEffect([workspacePath]) 重新加载目录子项。
+   * 不再使用 setWorkspace 替换工作区根目录，原因：
+   * - 替换工作区根会导致原工作区的 .aweeclaw 配置目录丢失（项目目录中不存在该配置）。
+   * - 仅需"展开 + 定位"即可满足用户在文件树中查看项目的需求。
    *
-   * 若目录不存在则提示用户先构建项目。
+   * 实现步骤：
+   * 1. 校验项目目录存在且位于当前工作区内（文件树仅基于 workspacePath 渲染）。
+   * 2. 切换到资源管理器面板。
+   * 3. 触发 explorer:reveal-file 事件，由 VirtualTreeRenderer 逐级加载并展开父级链、滚动到目标节点。
+   * 4. setSelectedFolder 高亮选中项目目录。
    */
   const handleOpenInWorkspace = useCallback(
     async (project: ScenarioProject, e: React.MouseEvent) => {
@@ -112,9 +141,38 @@ const ProjectListPanel: React.FC = () => {
           toast.error(t('builder.project.dirNotFound'), project.localPath)
           return
         }
-        // 将项目目录设为工作区根：更新 workspacePath、展开根节点、触发文件树刷新
-        setWorkspace({ configPath: null, roots: [project.localPath] })
+
+        const currentWorkspacePath = useStore.getState().workspacePath
+        if (!currentWorkspacePath) {
+          toast.error(t('builder.project.noWorkspace'))
+          return
+        }
+
+        // 规范化路径比较：判断项目目录是否在当前工作区内
+        const norm = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '')
+        const workspaceNorm = norm(currentWorkspacePath)
+        const projectNorm = norm(project.localPath)
+        const inWorkspace =
+          projectNorm === workspaceNorm || projectNorm.startsWith(workspaceNorm + '/')
+
+        if (!inWorkspace) {
+          toast.error(t('builder.project.notInWorkspace'), project.localPath)
+          return
+        }
+
+        // 仅展开并定位到项目目录，不改变工作区根目录（保留 .aweeclaw 等工作区配置）
         setActiveSidePanel('explorer')
+        setSelectedFolder(project.localPath)
+
+        // 定位策略：优先 reveal 到项目内的 scenario.json（场景配置文件），
+        // 这样会自动展开项目目录并定位到配置文件，与编辑器 tab 右键"在侧边栏中定位"行为一致。
+        // 若 scenario.json 不存在，则回退到 reveal 项目目录本身。
+        const scenarioJsonPath = `${project.localPath}/scenario.json`
+        const scenarioJsonExists = await api.file.exists(scenarioJsonPath)
+        const revealTarget = scenarioJsonExists ? scenarioJsonPath : project.localPath
+        window.dispatchEvent(
+          new CustomEvent('explorer:reveal-file', { detail: { filePath: revealTarget } }),
+        )
         toast.success(t('builder.project.openInWorkspaceDone'), project.name)
       } catch (err) {
         console.error('Failed to open project in workspace:', err)
@@ -123,7 +181,7 @@ const ProjectListPanel: React.FC = () => {
         setOpeningWorkspaceId(null)
       }
     },
-    [openingWorkspaceId, setWorkspace, setActiveSidePanel, t],
+    [openingWorkspaceId, setActiveSidePanel, setSelectedFolder, t],
   )
 
   const filteredProjects = searchQuery
@@ -213,7 +271,7 @@ const ProjectListPanel: React.FC = () => {
                       </svg>
                     </button>
                     <button
-                      onClick={(e) => handleDelete(project.id, e)}
+                      onClick={(e) => handleDelete(project, e)}
                       className="rounded px-1.5 py-0.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                       title={t('builder.project.delete')}
                       aria-label={t('builder.project.delete')}
@@ -247,9 +305,21 @@ const ProjectListPanel: React.FC = () => {
       {showCreate && (
         <ProjectCreateDialog
           onClose={() => setShowCreate(false)}
-          onCreated={() => {
+          onCreated={(result) => {
             setShowCreate(false)
             loadProjects()
+            // 通知文件资源管理器刷新：项目目录已在磁盘创建，但文件树缓存未感知。
+            if (result.localPath) {
+              const parentDir = result.localPath.substring(0, result.localPath.lastIndexOf('/'))
+              // 1. 直接失效全局目录缓存（不依赖 FileExplorer 是否挂载）
+              directoryCacheService.invalidate(parentDir)
+              // 2. 派发事件触发已挂载的 FileExplorer 重新加载
+              window.dispatchEvent(
+                new CustomEvent('workspace:files-changed', {
+                  detail: { affectedPaths: [parentDir] },
+                }),
+              )
+            }
           }}
         />
       )}
