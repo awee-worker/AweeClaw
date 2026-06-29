@@ -274,7 +274,7 @@ function OptionRow({
           ${isSelected ? 'bg-accent border-accent' : 'border-text-muted/30 group-hover:border-accent/50'}
         `}
       >
-        {isSelected && <Check className="w-2 h-2 text-white" strokeWidth={3} />}
+        {isSelected && <Check className="w-2 h-2 text-accent-foreground" strokeWidth={3} />}
       </div>
 
       <div className="flex-1 min-w-0">

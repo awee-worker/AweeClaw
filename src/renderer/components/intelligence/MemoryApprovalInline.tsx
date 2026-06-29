@@ -62,8 +62,8 @@ export const MemoryApprovalInline: React.FC<MemoryApprovalInlineProps> = ({
                             <CheckCircle2 className="w-2.5 h-2.5 text-status-success" />
                         </div>
                     ) : (
-                        <div className="w-3.5 h-3.5 rounded-full bg-purple-500/10 flex items-center justify-center">
-                            <Brain className="w-2.5 h-2.5 text-purple-400" />
+                        <div className="w-3.5 h-3.5 rounded-full bg-status-warning/10 flex items-center justify-center border border-status-warning/30">
+                            <Brain className="w-2.5 h-2.5 text-status-warning" />
                         </div>
                     )}
                 </div>

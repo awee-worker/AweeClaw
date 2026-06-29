@@ -133,7 +133,7 @@ function BatchApprovalPanelImpl({
         </button>
         <button
           onClick={onApproveAll}
-          className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium bg-accent text-white hover:bg-accent-hover rounded-md transition-all shadow-sm shadow-accent/20 active:scale-95"
+          className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium bg-accent text-accent-foreground hover:bg-accent-hover rounded-md transition-all shadow-sm shadow-accent/20 active:scale-95"
         >
           <Check className="w-3.5 h-3.5" />
           全部批准

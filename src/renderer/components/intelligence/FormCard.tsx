@@ -43,14 +43,14 @@ function FieldRenderer({
 
     const inputClass = `w-full px-3 py-2 text-xs bg-surface/60 border rounded-lg resize-none focus:outline-none focus:ring-1 transition-all custom-scrollbar placeholder:text-text-muted/60 ${
         isInvalid
-            ? 'border-red-500/50 focus:border-red-500/50 focus:ring-red-500/20'
+            ? 'border-status-error/50 focus:border-status-error/50 focus:ring-status-error/20'
             : 'border-border/50 focus:border-accent/50 focus:ring-accent/20'
     }`
 
     const labelEl = (
         <label className="text-xs font-medium text-text-secondary flex items-center gap-1">
             {field.label}
-            {field.required && <span className="text-red-400">*</span>}
+            {field.required && <span className="text-status-error">*</span>}
         </label>
     )
 
@@ -59,7 +59,7 @@ function FieldRenderer({
     )
 
     const errorEl = isInvalid && (
-        <p className="text-[11px] text-red-400 flex items-center gap-1">
+        <p className="text-[11px] text-status-error flex items-center gap-1">
             <AlertCircle className="w-3 h-3" />
             {error}
         </p>
@@ -374,8 +374,8 @@ export function FormCard({ content, onSubmit, disabled }: FormCardProps) {
 
                 <div className="shrink-0 relative z-10 w-4 h-4 flex items-center justify-center">
                     {submitted ? (
-                        <div className="w-3.5 h-3.5 rounded-full bg-green-500/10 flex items-center justify-center">
-                            <CheckCircle2 className="w-2.5 h-2.5 text-green-500" />
+                        <div className="w-3.5 h-3.5 rounded-full bg-status-success/10 flex items-center justify-center">
+                            <CheckCircle2 className="w-2.5 h-2.5 text-status-success" />
                         </div>
                     ) : (
                         <div className="w-3.5 h-3.5 rounded-full bg-accent/20 flex items-center justify-center border border-accent/30">
@@ -452,7 +452,7 @@ export function FormCard({ content, onSubmit, disabled }: FormCardProps) {
                                         className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium rounded-lg transition-all ${
                                             disabled
                                                 ? 'bg-surface/50 text-text-muted cursor-not-allowed'
-                                                : 'bg-accent text-white hover:bg-accent-hover active:scale-95'
+                                                : 'bg-accent text-accent-foreground hover:bg-accent-hover active:scale-95'
                                         }`}
                                     >
                                         <Send className="w-3 h-3" />

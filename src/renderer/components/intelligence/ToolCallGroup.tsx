@@ -167,7 +167,7 @@ function groupToolsByStatus(tools: ToolCall[]): ToolGroup[] {
       status: 'awaiting',
       label: '待批准',
       icon: AlertTriangle,
-      color: 'text-amber-400',
+      color: 'text-status-warning',
       tools: groups.awaiting,
     })
   }
@@ -177,7 +177,7 @@ function groupToolsByStatus(tools: ToolCall[]): ToolGroup[] {
       status: 'error',
       label: '失败',
       icon: XCircle,
-      color: 'text-red-400',
+      color: 'text-status-error',
       tools: groups.error,
     })
   }
@@ -187,7 +187,7 @@ function groupToolsByStatus(tools: ToolCall[]): ToolGroup[] {
       status: 'success',
       label: '已完成',
       icon: CheckCircle2,
-      color: 'text-green-400',
+      color: 'text-status-success',
       tools: groups.success,
     })
   }
@@ -327,7 +327,7 @@ function ToolCallGroup({
                 </span>
                 {/* 仅在非 awaiting 组显示“待批准”徽标，避免与 awaiting 组标题重复 */}
                 {hasApproval && !isAwaitingGroup && (
-                  <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400">
+                  <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-status-warning/15 text-status-warning">
                     待批准
                   </span>
                 )}
