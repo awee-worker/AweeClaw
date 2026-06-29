@@ -34,13 +34,13 @@ const VoiceOutputButton = memo(function VoiceOutputButton({
   const getIcon = () => {
     switch (playbackState) {
       case 'loading':
-        return <Loader2 className="w-3.5 h-3.5 animate-spin" />;
+        return <Loader2 className="w-4 h-4 animate-spin" />;
       case 'playing':
-        return <Pause className="w-3.5 h-3.5" />;
+        return <Pause className="w-4 h-4" />;
       case 'paused':
-        return <Volume2 className="w-3.5 h-3.5" />;
+        return <Volume2 className="w-4 h-4" />;
       default:
-        return <Volume2 className="w-3.5 h-3.5" />;
+        return <Volume2 className="w-4 h-4" />;
     }
   };
 
@@ -61,7 +61,7 @@ const VoiceOutputButton = memo(function VoiceOutputButton({
     <div className="relative inline-flex items-center">
       <button
         type="button"
-        className={`flex items-center justify-center rounded p-1 transition-colors duration-150 ${
+        className={`flex items-center justify-center rounded p-1.5 transition-colors duration-150 ${
           playbackState === 'playing'
             ? 'text-blue-400 bg-blue-500/10 hover:bg-blue-500/20'
             : playbackState === 'loading'

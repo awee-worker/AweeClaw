@@ -13,9 +13,11 @@ import {
   isAssistantMessage,
   isReasoningPart,
   type ChatMessage as ChatMessageType,
+  type AssistantMessage,
   type AssistantPart,
   type TodoItem,
   type FileChangeHistoryEntry,
+  type MessageFeedback,
 } from '@intelligence/providerTypes'
 import type { ToolStreamingPreview } from '@protocols'
 import type { Language } from '@renderer/i18n'
@@ -23,7 +25,7 @@ import { getFileName } from '@shared/toolkit/pathHelper'
 
 import { AssistantMessageContentView } from './AssistantMessageContentView'
 import { StreamingPhaseIndicator } from './StreamingPhaseIndicator'
-import { MessageActionsBar, type MessageFeedback } from '../components/MessageActionsBar'
+import { MessageActionsBar } from '../components/MessageActionsBar'
 import { InteractiveCard } from '../../InteractiveCard'
 import ToolCallGroup from '../../ToolCallGroup'
 import { MessageMetaGroupView } from './MessageMetaGroupView'
@@ -200,9 +202,12 @@ function AssistantMessageViewBase({
   fontSize,
 }: AssistantMessageViewProps) {
   const [copied, setCopied] = React.useState(false)
-  const [feedback, setFeedback] = React.useState<MessageFeedback>(null)
   const { language } = useStore(useShallow(s => ({ language: s.language })))
+  const updateMessage = useAgentStore(s => s.updateMessage)
   const messageIsStreaming = !!(message as any).isStreaming
+
+  /** 从消息对象读取持久化的反馈状态（重载后保留） */
+  const feedback: MessageFeedback | undefined = isAssistantMessage(message) ? message.feedback : undefined
 
   /** 从全局状态订阅流式状态 */
   const {
@@ -330,9 +335,41 @@ function AssistantMessageViewBase({
     setTimeout(() => setCopied(false), 2000)
   }, [textContent])
 
-  const handleFeedback = React.useCallback((fb: 'like' | 'dislike') => {
-    setFeedback(prev => prev === fb ? null : fb)
-  }, [])
+  /** 提交赞反馈：持久化到消息对象，自动同步到会话数据库 */
+  const handleLike = React.useCallback(() => {
+    const likeFeedback: MessageFeedback = { rating: 'like', timestamp: Date.now() }
+    updateMessage(message.id, { feedback: likeFeedback } as Partial<AssistantMessage>)
+    toast.success(language === 'zh' ? '感谢你的反馈' : 'Thanks for your feedback')
+  }, [message.id, updateMessage, language])
+
+  /** 提交踩反馈（含可选评论）：持久化到消息对象 */
+  const handleDislikeSubmit = React.useCallback((comment: string) => {
+    const dislikeFeedback: MessageFeedback = {
+      rating: 'dislike',
+      timestamp: Date.now(),
+      ...(comment ? { comment } : {}),
+    }
+    updateMessage(message.id, { feedback: dislikeFeedback } as Partial<AssistantMessage>)
+    toast.success(language === 'zh' ? '反馈已提交，感谢你的建议' : 'Feedback submitted, thanks for the suggestion')
+  }, [message.id, updateMessage, language])
+
+  /** 提交踩反馈并触发重新生成 */
+  const handleDislikeRegenerate = React.useCallback((comment: string) => {
+    const dislikeFeedback: MessageFeedback = {
+      rating: 'dislike',
+      timestamp: Date.now(),
+      ...(comment ? { comment } : {}),
+    }
+    updateMessage(message.id, { feedback: dislikeFeedback } as Partial<AssistantMessage>)
+    toast.success(language === 'zh' ? '反馈已提交，正在重新生成…' : 'Feedback submitted, regenerating…')
+    onRegenerate?.()
+  }, [message.id, updateMessage, language, onRegenerate])
+
+  /** 取消反馈：清除消息上的反馈状态 */
+  const handleCancelFeedback = React.useCallback(() => {
+    updateMessage(message.id, { feedback: undefined } as Partial<AssistantMessage>)
+    toast.info(language === 'zh' ? '已取消反馈' : 'Feedback removed')
+  }, [message.id, updateMessage, language])
 
   /** 任务列表弹层内容（仅在需要时构造） */
   const taskPopoverContent = useMemo(
@@ -447,7 +484,10 @@ function AssistantMessageViewBase({
           fileChangesCount={messageFileChanges.length}
           fileChangesPopoverContent={fileChangesPopoverContent}
           feedback={feedback}
-          onFeedback={handleFeedback}
+          onLike={handleLike}
+          onDislikeSubmit={handleDislikeSubmit}
+          onDislikeRegenerate={handleDislikeRegenerate}
+          onCancelFeedback={handleCancelFeedback}
         />
       )}
     </div>

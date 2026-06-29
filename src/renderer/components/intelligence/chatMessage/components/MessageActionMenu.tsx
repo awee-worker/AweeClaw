@@ -61,14 +61,14 @@ function MessageActionMenuBase({ messageId, onDeleteRound, labelKey, language }:
 
   return (
     <>
-      <div data-msg-menu={messageId}>
+      <div data-msg-menu={messageId} className="inline-flex items-center">
         <HintOverlay content={t(`ai.${labelKey}`, language)}>
           <button
             ref={btnRef}
             onClick={handleToggle}
-            className="p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-hover transition-all"
+            className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-hover transition-all"
           >
-            <MoreHorizontal className="w-3.5 h-3.5" />
+            <MoreHorizontal className="w-4 h-4" />
           </button>
         </HintOverlay>
       </div>

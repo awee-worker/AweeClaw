@@ -104,6 +104,7 @@ export type {
   MultiAgentWorkflowPart,
   AgentWorkflowNode,
   TokenUsage,
+  MessageFeedback,
   UserMessage,
   AssistantMessage,
   ToolResultMessage,

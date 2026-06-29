@@ -158,6 +158,16 @@ export interface UserMessage {
   contextItems?: ContextItem[]
 }
 
+/** 用户对助手消息的反馈（赞/踩 + 可选评论），持久化到会话数据库 */
+export interface MessageFeedback {
+  /** 反馈类型：like=赞，dislike=踩 */
+  rating: 'like' | 'dislike'
+  /** 用户补充的反馈说明（踩时可选填写，用于指导模型改进） */
+  comment?: string
+  /** 反馈提交时间戳 */
+  timestamp: number
+}
+
 /** 助手消息 */
 export interface AssistantMessage {
   id: string
@@ -173,6 +183,8 @@ export interface AssistantMessage {
   usage?: TokenUsage
   interactive?: InteractiveContent
   contextItems?: ContextItem[]
+  /** 用户对该消息的反馈（赞/踩），持久化存储，重载后保留 */
+  feedback?: MessageFeedback
   /** 内部标记：文本是否已结束（用于工具调用显示时机） */
   _textFinalized?: boolean
 }
