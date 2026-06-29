@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { AlertCircle, ArrowUpCircle, CheckCircle, Download, ExternalLink, Loader2, RefreshCw, X } from 'lucide-react'
+import { AlertCircle, AlertTriangle, ArrowUpCircle, CheckCircle, Download, ExternalLink, Loader2, RefreshCw } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { updaterService, type UpdateStatus } from '@services/updateAdapter'
 import { useStore } from '@store'
@@ -64,21 +64,15 @@ export function UpdateModal({
     manualHint:
       t('layout.thisinstalltypecannotupdate', language as Language),
     current: t('layout.current', language as Language),
+    critical: t('layout.criticalUpdate', language as Language),
+    forceUpdateHint: t('layout.forceUpdateHint', language as Language),
+    releaseNotes: t('layout.releaseNotes', language as Language),
+    mustUpdate: t('layout.mustUpdate', language as Language),
   }
 
   return (
-    <OverlayDialog isOpen={isOpen} onClose={onClose} size="sm">
-      <div className="p-6">
-        <div className="flex items-center justify-between mb-6">
-          <span className="text-[11px] font-black text-text-muted uppercase tracking-[0.2em]">{labels.title}</span>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-full hover:bg-white/10 text-text-muted transition-colors"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
+    <OverlayDialog isOpen={isOpen} onClose={onClose} size="sm" title={labels.title}>
+      <div>
         <div className="flex flex-col items-center text-center mb-6">
           <div className="relative mb-4">
             <div
@@ -129,6 +123,12 @@ export function UpdateModal({
                 <span className="text-text-muted opacity-60">v{currentVersion}</span>
                 <div className="w-1 h-1 rounded-full bg-text-muted opacity-30" />
                 <span className="text-accent font-bold">v{status.version}</span>
+                {status.isCritical && (
+                  <span className="ml-1 flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 text-[10px] font-bold uppercase tracking-wide">
+                    <AlertTriangle className="w-2.5 h-2.5" />
+                    {labels.critical}
+                  </span>
+                )}
               </>
             ) : (
               <span className="text-text-muted">
@@ -137,6 +137,32 @@ export function UpdateModal({
             )}
           </div>
         </div>
+
+        {/* 强制更新提示（来自后端版本管理） */}
+        {hasUpdate && status?.forceUpdate && (
+          <div className="mb-4 px-4 py-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-[12px] text-red-200/90 leading-relaxed text-center flex items-center justify-center gap-2">
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+            {labels.forceUpdateHint}
+          </div>
+        )}
+
+        {/* 更新日志（来自后端版本管理 / electron-updater） */}
+        {hasUpdate && status?.releaseNotes && (
+          <div className="mb-6">
+            {/* 标题：图标 + 文字 + 渐变下划线 */}
+            <div className="flex items-center gap-1.5 mb-2">
+              <div className="w-1 h-3 rounded-full bg-gradient-to-b from-accent to-accent/40" />
+              <span className="text-[13px] font-bold text-text-primary uppercase tracking-[0.15em]">
+                {labels.releaseNotes}
+              </span>
+            </div>
+            {/* 内容卡片：左侧色条 + 深色背景 + 可滚动 */}
+            <div className="relative max-h-40 overflow-y-auto custom-scrollbar rounded-xl bg-gradient-to-br from-white/[0.04] to-white/[0.02] border border-white/10 px-4 py-3 pl-5 text-[13px] text-text-secondary leading-relaxed whitespace-pre-wrap">
+              <div className="absolute left-0 top-3 bottom-3 w-0.5 rounded-full bg-accent/40" />
+              {status.releaseNotes}
+            </div>
+          </div>
+        )}
 
         {isDownloading && status?.progress !== undefined && (
           <div className="mb-6 space-y-2">
@@ -156,7 +182,7 @@ export function UpdateModal({
         )}
 
         {hasUpdate && status?.requiresManualDownload && (
-          <div className="mb-6 px-4 py-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-[12px] text-amber-200/80 leading-relaxed text-center">
+          <div className="mb-6 px-4 py-3 rounded-2xl bg-orange-500/10 border border-orange-500/30 text-[12px] text-orange-600 leading-relaxed">
             {labels.manualHint}
           </div>
         )}

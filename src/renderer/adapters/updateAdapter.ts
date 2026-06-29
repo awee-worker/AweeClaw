@@ -22,6 +22,14 @@ export interface UpdateStatus {
   error?: string
   requiresManualDownload: boolean
   isPortable: boolean
+  /** 关键更新（来自后端版本管理） */
+  isCritical?: boolean
+  /** 强制更新（当前版本低于后端声明的最低要求版本） */
+  forceUpdate?: boolean
+  /** 后端声明的最低要求版本 */
+  minRequiredVersion?: string
+  /** 更新来源：backend 后端版本管理 / github GitHub Release / electron electron-updater */
+  source?: 'backend' | 'github' | 'electron'
 }
 
 interface ScenarioUpdateConfig {

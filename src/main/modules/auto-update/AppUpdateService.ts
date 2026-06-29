@@ -18,6 +18,7 @@ import { ErrorCode, toAppError } from '@shared/toolkit/errorCatalog'
 import { BRAND } from '@shared/brand'
 import * as fs from 'fs'
 import * as path from 'path'
+import { getUserConfigDir } from '../../modules/configPath'
 
 export interface UpdateStatus {
   status: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error'
@@ -29,6 +30,31 @@ export interface UpdateStatus {
   error?: string
   requiresManualDownload: boolean
   isPortable: boolean
+  /** 关键更新（来自后端版本管理） */
+  isCritical?: boolean
+  /** 强制更新（当前版本低于后端声明的最低要求版本） */
+  forceUpdate?: boolean
+  /** 后端声明的最低要求版本 */
+  minRequiredVersion?: string
+  /** 更新来源：backend 后端版本管理 / github GitHub Release / electron electron-updater */
+  source?: 'backend' | 'github' | 'electron'
+}
+
+/** 后端 /api/v1/app-version/check 返回结构 */
+interface BackendUpdateCheckResult {
+  hasUpdate: boolean
+  version?: string
+  channel?: string
+  downloadUrl?: string
+  releaseNotes?: string
+  releaseNotesHtml?: string
+  releaseDate?: string
+  isCritical: boolean
+  forceUpdate: boolean
+  minRequiredVersion?: string
+  signature?: string
+  hash?: string
+  fileSize?: number
 }
 
 class UpdateService {
@@ -163,6 +189,16 @@ class UpdateService {
   }
 
   async checkForUpdates(): Promise<UpdateStatus> {
+    // 优先走后端版本管理；失败或无更新时回退到 electron-updater / GitHub
+    const backendResult = await this.checkForUpdatesViaBackend().catch(err => {
+      logger.system.warn('[Updater] Backend version check failed, will fall back:', err)
+      return null
+    })
+
+    if (backendResult) {
+      return backendResult
+    }
+
     if (this.status.requiresManualDownload) {
       return this.checkForUpdatesViaGitHub()
     }
@@ -243,7 +279,127 @@ class UpdateService {
     return this.status
   }
 
+  /**
+   * 后端版本管理检查（优先通道）
+   *
+   * 调用后端 GET /api/v1/app-version/check 接口，返回是否需要更新及最新版本元数据。
+   * - hasUpdate=true 时直接进入 available 状态，使用后端提供的下载地址与更新日志。
+   * - 手动下载模式：使用后端返回的 downloadUrl。
+   * - 自动下载模式：仍由 electron-updater 负责下载安装，但展示后端的 releaseNotes/critical。
+   * - 接口不可用或返回无更新时返回 null，由调用方回退到原逻辑。
+   */
+  async checkForUpdatesViaBackend(setCheckingStatus = true): Promise<UpdateStatus | null> {
+    const serverUrl = this.readServerUrl()
+    if (!serverUrl) {
+      // 未配置后端地址，跳过后端检查
+      return null
+    }
+
+    const currentVersion = app.getVersion()
+    const platform = this.mapPlatform()
+    const arch = this.mapArch()
+
+    if (!platform || !arch) {
+      logger.system.warn(`[Updater] Unsupported platform/arch for backend check: ${process.platform}/${process.arch}`)
+      return null
+    }
+
+    if (setCheckingStatus) {
+      this.updateStatus({ status: 'checking' })
+    }
+
+    const url = `${serverUrl.replace(/\/+$/, '')}/api/v1/app-version/check?currentVersion=${encodeURIComponent(currentVersion)}&platform=${platform}&arch=${arch}`
+
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 15 * 1000)
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      })
+
+      clearTimeout(timeoutId)
+
+      if (!response.ok) {
+        logger.system.warn(`[Updater] Backend version check HTTP ${response.status}`)
+        return null
+      }
+
+      const payload = (await response.json()) as {
+        success?: boolean
+        data?: BackendUpdateCheckResult
+      }
+
+      const result = payload?.data ?? (payload as unknown as BackendUpdateCheckResult)
+      if (!result || typeof result.hasUpdate !== 'boolean') {
+        return null
+      }
+
+      if (!result.hasUpdate) {
+        this.updateStatus({ status: 'not-available', source: 'backend' })
+        return this.status
+      }
+
+      // 后端确认有更新
+      const isCritical = result.isCritical === true
+      const forceUpdate = result.forceUpdate === true
+
+      // 自动下载模式：仍由 electron-updater 下载（保证签名校验），但展示后端元数据
+      // 手动下载模式：直接使用后端 downloadUrl
+      if (this.status.requiresManualDownload) {
+        this.updateStatus({
+          status: 'available',
+          version: result.version,
+          releaseNotes: result.releaseNotes ?? undefined,
+          releaseDate: result.releaseDate,
+          downloadUrl: result.downloadUrl,
+          isCritical,
+          forceUpdate,
+          minRequiredVersion: result.minRequiredVersion,
+          source: 'backend',
+        })
+      } else {
+        // 让 electron-updater 仍然负责下载/安装，但用后端元数据展示
+        // 若后端返回的 version 与 electron-updater 一致则复用；否则仅展示后端信息
+        this.updateStatus({
+          status: 'available',
+          version: result.version,
+          releaseNotes: result.releaseNotes ?? undefined,
+          releaseDate: result.releaseDate,
+          downloadUrl: result.downloadUrl,
+          isCritical,
+          forceUpdate,
+          minRequiredVersion: result.minRequiredVersion,
+          source: 'backend',
+        })
+      }
+
+      logger.system.info(
+        `[Updater] Backend reports update available: v${result.version}, critical=${isCritical}, force=${forceUpdate}`,
+      )
+      return this.status
+    } catch (err) {
+      clearTimeout(timeoutId)
+      const error = toAppError(err)
+      logger.system.warn(`[Updater] Backend version check error: ${error.code} (${error.message})`)
+      // 后端检查失败不抛出，交由调用方回退
+      return null
+    }
+  }
+
   async checkForUpdatesViaGitHub(setCheckingStatus = true): Promise<UpdateStatus> {
+    // 优先走后端版本管理（手动下载模式下同样适用，可拿到 critical/forceUpdate 元数据）
+    const backendResult = await this.checkForUpdatesViaBackend(setCheckingStatus).catch(err => {
+      logger.system.warn('[Updater] Backend version check failed (manual-download path):', err)
+      return null
+    })
+
+    if (backendResult) {
+      return backendResult
+    }
+
     try {
       if (setCheckingStatus) {
         this.updateStatus({ status: 'checking' })
@@ -366,6 +522,13 @@ class UpdateService {
   }
 
   private updateStatus(partial: Partial<UpdateStatus>): void {
+    // 切换更新来源时，重置后端专属字段，避免上一来源的元数据残留
+    if (partial.source && partial.source !== this.status.source) {
+      if (partial.isCritical === undefined) partial.isCritical = false
+      if (partial.forceUpdate === undefined) partial.forceUpdate = false
+      if (partial.minRequiredVersion === undefined) partial.minRequiredVersion = undefined
+    }
+
     this.status = {
       ...this.status,
       ...partial,
@@ -382,6 +545,45 @@ class UpdateService {
   private notifyRenderer(): void {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       this.mainWindow.webContents.send('updater:status', this.status)
+    }
+  }
+
+  /**
+   * 读取后端服务地址（aweeclaw-config.json 中的 serverUrl）
+   */
+  private readServerUrl(): string | null {
+    try {
+      const configPath = path.join(getUserConfigDir(), '.aweeclaw', 'aweeclaw-config.json')
+      if (!fs.existsSync(configPath)) return null
+      const raw = fs.readFileSync(configPath, 'utf-8')
+      const config = JSON.parse(raw)
+      return config?.serverUrl || null
+    } catch (err) {
+      logger.system.warn('[Updater] Failed to read serverUrl from app config:', err)
+      return null
+    }
+  }
+
+  /**
+   * 将 process.platform 映射为后端枚举值
+   */
+  private mapPlatform(): 'WIN32' | 'DARWIN' | 'LINUX' | null {
+    switch (process.platform) {
+      case 'win32': return 'WIN32'
+      case 'darwin': return 'DARWIN'
+      case 'linux': return 'LINUX'
+      default: return null
+    }
+  }
+
+  /**
+   * 将 process.arch 映射为后端枚举值
+   */
+  private mapArch(): 'X64' | 'ARM64' | null {
+    switch (process.arch) {
+      case 'x64': return 'X64'
+      case 'arm64': return 'ARM64'
+      default: return null
     }
   }
 
