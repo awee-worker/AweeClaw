@@ -3632,4 +3632,14 @@ export const zh = {
   'desktop.remote.confirmWorkflow': '确定要在远程主机上执行此工作流吗？',
   'desktop.remote.noConnection': '请先连接远程主机',
   'desktop.remote.unsupportedOS': '不支持的远程操作系统',
+
+  // 菜单系统（与主进程 menuI18n 配合使用，此处仅为 renderer 端 UI 反馈文案）
+  'menu.scenario.switched': '已切换到场景：{{name}}',
+  'menu.scenario.switchFailed': '场景切换失败：场景不存在',
+  'menu.ai.explainStarted': '正在解释当前文件...',
+  'menu.ai.refactorStarted': '正在重构当前文件...',
+  'menu.ai.fixStarted': '正在修复当前文件问题...',
+  'menu.ai.historyCleared': 'AI 对话历史已清空',
+  'menu.ai.checkpointsCleared': '检查点已清空',
+  'menu.ai.noActiveFile': '请先打开一个文件再执行此操作',
 } as const

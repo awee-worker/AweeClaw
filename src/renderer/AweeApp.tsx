@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState, useEffect, useMemo, useRef } from 'react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
-import { useWindowTitle, useAppInit, useGlobalShortcuts, useFileWatcher, useAppShutdownState, usePreviewDiscoveryToasts, useChannelBridge } from '@hooks'
+import { useWindowTitle, useAppInit, useGlobalShortcuts, useMenuBridge, useFileWatcher, useAppShutdownState, usePreviewDiscoveryToasts, useChannelBridge } from '@hooks'
 import AppTitleBar from './components/layout/AppTitleBar'
 import NavigationRail from './components/layout/NavigationRail'
 import SidebarSection from './components/layout/SidebarSection'
@@ -90,6 +90,13 @@ function AppContent() {
     window.__AWEECLAW_STORE__ = { getState: () => useStore.getState() }
   }, [])
 
+  // 监听菜单"键盘快捷键"命令派发的全局事件
+  useEffect(() => {
+    const handleShowShortcuts = () => setShowKeyboardShortcuts(true)
+    window.addEventListener('app:show-keyboard-shortcuts', handleShowShortcuts as EventListener)
+    return () => window.removeEventListener('app:show-keyboard-shortcuts', handleShowShortcuts as EventListener)
+  }, [])
+
   useEffect(() => {
     if (!activeScenarioId) return
     const previousId = scenarioLoader.getAllPlugins().find(p => scenarioLoader.isActive(p.id))?.id
@@ -107,6 +114,7 @@ function AppContent() {
   useWindowTitle()
   useFileWatcher()
   useGlobalShortcuts()
+  useMenuBridge()
   usePreviewDiscoveryToasts(hasWorkspace && isInitialized && activeScenarioId === 'dev-assistant')
   useChannelBridge()
 

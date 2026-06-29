@@ -6,7 +6,7 @@
  * - 启用 TypeScript 增量编译以提升构建速度
  */
 
-import { app, BrowserWindow, Menu, ipcMain, protocol, net, screen } from 'electron'
+import { app, BrowserWindow, ipcMain, protocol, net, screen } from 'electron'
 import { safeOpenExternal } from './guard/safeExternalUrl'
 export type Language = 'zh' | 'en'
 import { randomUUID } from 'crypto'
@@ -25,6 +25,7 @@ import {
   shutdownWindowController,
   type ShutdownWindowPresentation,
 } from './modules/lifecycle/GracefulShutdownController'
+import { createMenuBuilder, type MenuBuilder as MenuBuilderType } from './menu/menuBuilder'
 
 // ==========================================
 // 常量定义
@@ -835,70 +836,47 @@ async function initializeModules(firstWin: BrowserWindow) {
     return 'zh'
   }
 
-  /** 设置应用菜单（多语言自动适配） */
-  function setApplicationMenu(lang?: Language) {
-    if (lang) currentAppLanguage = lang;
-    const isEn = currentAppLanguage.toLowerCase().includes("en");
+  /** 菜单构建器实例 */
+  let menuBuilder: MenuBuilderType | null = null
 
-    const menuTemplate: Electron.MenuItemConstructorOptions[] = [
-      {
-        label: isEn ? "File" : "文件",
-        submenu: [{ role: "quit", label: isEn ? "Quit" : "退出" }],
-      },
-      {
-        label: isEn ? "Edit" : "编辑",
-        submenu: [
-          { role: "undo", label: isEn ? "Undo" : "撤销" },
-          { role: "redo", label: isEn ? "Redo" : "重做" },
-          { type: "separator" },
-          { role: "cut", label: isEn ? "Cut" : "剪切" },
-          { role: "copy", label: isEn ? "Copy" : "复制" },
-          { role: "paste", label: isEn ? "Paste" : "粘贴" },
-          { role: "selectAll", label: isEn ? "DropdownSelector All" : "全选" },
-        ],
-      },
-      {
-        label: isEn ? "View" : "视图",
-        submenu: [
-          { role: "reload", label: isEn ? "Reload" : "刷新" },
-          { role: "forceReload", label: isEn ? "Force Reload" : "强制刷新" },
-          { role: "toggleDevTools", label: isEn ? "DevTools" : "开发者工具" },
-          { type: "separator" },
-          { role: "resetZoom", label: isEn ? "Reset Zoom" : "重置缩放" },
-          { role: "zoomIn", label: isEn ? "Zoom In" : "放大" },
-          { role: "zoomOut", label: isEn ? "Zoom Out" : "缩小" },
-          { type: "separator" },
-          { role: "togglefullscreen", label: isEn ? "Full Screen" : "全屏" },
-          {
-            label: isEn ? "Command Palette" : "命令面板",
-            accelerator: "CmdOrCtrl+Shift+P",
-            click: () => {
-              const win = getMainWindow();
-              win?.webContents.send(
-                "workbench:execute-command",
-                "workbench.action.showCommands",
-              );
-            },
-          },
-        ],
-      },
-    ];
+  /** 初始化应用菜单系统 */
+  async function initApplicationMenu() {
+    currentAppLanguage = getCurrentLanguage()
 
-    Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate));
+    menuBuilder = createMenuBuilder({
+      getWin: () => getMainWindow(),
+      getRecentWorkspaces: async () => {
+        // 从 configStore 读取最近工作区路径列表，转换为菜单项
+        const paths = (configStore.get('recentWorkspaces', []) as string[]) || []
+        return paths.map((p) => ({
+          path: p,
+          name: p.split(/[\\/]/).pop() || p,
+        }))
+      },
+      onClearRecentWorkspaces: async () => {
+        configStore.set('recentWorkspaces', [])
+      },
+    })
+
+    await menuBuilder.init(currentAppLanguage)
   }
+
   /** 初始化语言：读取配置 + 设置菜单 + 监听切换 */
   function initLanguageSync() {
-    // 1. 启动时从配置读取语言
-    currentAppLanguage = getCurrentLanguage()
-    setApplicationMenu(currentAppLanguage)
+    // 1. 启动时初始化菜单（异步，不阻塞启动）
+    initApplicationMenu().catch((err) => {
+      logger.system.warn('[Main] Menu init failed:', err)
+    })
 
     // 2. 监听渲染进程：语言切换
     ipcMain.on('i18n:changed', (_event, lang: Language) => {
       // 保存到配置
       configStore.set('language', lang)
       // 更新主进程语言
-      setApplicationMenu(lang)
-      // 可选：通知所有窗口语言已更新
+      currentAppLanguage = lang
+      // 重建菜单
+      menuBuilder?.rebuild(lang)
+      // 通知所有窗口语言已更新
       BrowserWindow.getAllWindows().forEach(win => {
         win.webContents.send('i18n:sync', lang)
       })

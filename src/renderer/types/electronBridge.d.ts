@@ -742,7 +742,11 @@ export interface ElectronAPI {
   onChannelImProcessingStatus: (callback: (status: any) => void) => () => void
 
   // Command
-  onExecuteCommand: (callback: (commandId: string) => void) => () => void
+  onExecuteCommand: (callback: (commandId: string, payload?: unknown) => void) => () => void
+
+  // Menu Scenario Sync
+  syncScenarios: (data: { scenarios: Array<{ id: string; name: string; description?: string; category?: string }>; activeId: string | null }) => void
+  onScenarioRequest: (callback: () => void) => () => void
 
   // Audit
   auditAppend: (entries: AuditEntry | AuditEntry[]) => Promise<{ success: boolean }>

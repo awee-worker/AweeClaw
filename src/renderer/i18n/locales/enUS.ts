@@ -3633,4 +3633,14 @@ export const en = {
   'desktop.remote.confirmWorkflow': 'Are you sure you want to execute this workflow on the remote host?',
   'desktop.remote.noConnection': 'Please connect to a remote host first',
   'desktop.remote.unsupportedOS': 'Unsupported remote operating system',
+
+  // Menu system (works with main process menuI18n, these are renderer UI feedback)
+  'menu.scenario.switched': 'Switched to scenario: {{name}}',
+  'menu.scenario.switchFailed': 'Scenario switch failed: scenario not found',
+  'menu.ai.explainStarted': 'Explaining current file...',
+  'menu.ai.refactorStarted': 'Refactoring current file...',
+  'menu.ai.fixStarted': 'Fixing issues in current file...',
+  'menu.ai.historyCleared': 'AI chat history cleared',
+  'menu.ai.checkpointsCleared': 'Checkpoints cleared',
+  'menu.ai.noActiveFile': 'Please open a file before performing this action',
 } as const

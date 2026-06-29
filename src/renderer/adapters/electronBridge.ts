@@ -682,6 +682,10 @@ function createGroupedAPI() {
     // 命令执行
     onExecuteCommand: (callback: Parameters<typeof raw.onExecuteCommand>[0]) => raw.onExecuteCommand(callback),
 
+    // 菜单场景同步
+    syncScenarios: (data: Parameters<typeof raw.syncScenarios>[0]) => raw.syncScenarios(data),
+    onScenarioRequest: (callback: Parameters<typeof raw.onScenarioRequest>[0]) => raw.onScenarioRequest(callback),
+
     // Python 环境
     python: {
       getStatus: () => raw.pythonGetStatus(),

@@ -1264,10 +1264,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
   }) => ipcRenderer.invoke('developer:publishScenario', params),
 
   // Command Execution
-  onExecuteCommand: (callback: (commandId: string) => void) => {
-    const handler = (_: IpcRendererEvent, commandId: string) => callback(commandId)
+  onExecuteCommand: (callback: (commandId: string, payload?: unknown) => void) => {
+    const handler = (_: IpcRendererEvent, commandId: string, payload?: unknown) => callback(commandId, payload)
     ipcRenderer.on('workbench:execute-command', handler)
     return () => ipcRenderer.removeListener('workbench:execute-command', handler)
+  },
+
+  // Menu Scenario Sync: renderer → main 推送场景列表
+  syncScenarios: (data: { scenarios: Array<{ id: string; name: string; description?: string; category?: string }>; activeId: string | null }) =>
+    ipcRenderer.send('menu:syncScenarios', data),
+
+  // Menu Scenario Sync: main → renderer 请求场景列表
+  onScenarioRequest: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on('menu:requestScenarios', handler)
+    return () => ipcRenderer.removeListener('menu:requestScenarios', handler)
   },
 
   // Resources API (静态资源读取)

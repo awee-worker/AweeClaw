@@ -380,6 +380,13 @@ export default function Editor() {
     }
   }, [handleSave])
 
+  // 监听菜单"保存文件"命令派发的全局事件
+  useEffect(() => {
+    const handleMenuSave = () => handleSave()
+    window.addEventListener('editor:save-active-file', handleMenuSave as EventListener)
+    return () => window.removeEventListener('editor:save-active-file', handleMenuSave as EventListener)
+  }, [handleSave])
+
   const handleRunLint = useCallback(() => {
     if (activeFilePath && !isPreviewDocument) {
       runLintCheck(activeFilePath, editorRef.current, monacoRef.current)
