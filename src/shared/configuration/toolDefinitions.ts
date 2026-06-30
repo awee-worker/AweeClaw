@@ -68,13 +68,18 @@ export const TOOL_CONFIGS: Record<string, ToolConfig> = {
     read_file: {
         name: 'read_file',
         displayName: 'Read File',
-        description: 'Read one or more files. Code/structured files include line numbers; markdown/plain-text documents are returned in readable text form unless start_line/end_line is requested. MUST read before editing.',
+        description: 'Read one or more text/code files. Code/structured files include line numbers; markdown/plain-text documents are returned in readable text form unless start_line/end_line is requested. MUST read before editing. For binary documents (PDF/Word/Excel/PPT) use extract_document instead.',
         detailedDescription: `Read file contents from the filesystem.
 - Single file: path="src/main.ts"
 - Multiple files: path=["src/a.ts", "src/b.ts"]
 - Code files default to line-numbered output for precise edits
 - Markdown/plain-text documents default to readable full-text output
-- Large files will be truncated, use search_files to locate target first`,
+- Large files will be truncated, use search_files to locate target first
+- ⚠️ CANNOT read binary document formats (pdf/docx/xlsx/ppt etc.) — use extract_document for those`,
+        criticalRules: [
+            'For PDF/Word/Excel/PowerPoint files, use extract_document instead — this tool cannot parse binary formats',
+            'Do NOT use run_command with pdftotext/python to extract document text — always use extract_document',
+        ],
         customSchema: z.object({
             path: z.union([
                 z.string().min(1, 'path is required'),
@@ -133,6 +138,51 @@ export const TOOL_CONFIGS: Record<string, ToolConfig> = {
             path: { type: 'string', description: 'Directory path relative to workspace root. Use "." for workspace root', required: true },
             recursive: { type: 'boolean', description: 'Show subdirectories recursively (default: false)', default: false },
             max_depth: { type: 'number', description: 'Maximum depth for recursive listing (default: 3)', default: 3 },
+        },
+    },
+
+    // ===== 文档提取工具 =====
+    extract_document: {
+        name: 'extract_document',
+        displayName: 'Extract Document',
+        description: 'Extract text content from documents (PDF/Word/Excel/PPT/TXT). Returns lightweight Markdown with metadata. MUST be used for all binary document formats instead of run_command/read_file. Supports scanned PDF OCR fallback.',
+        detailedDescription: `Extract text from binary document formats.
+- PDF (.pdf): text extraction, falls back to server OCR for scanned docs
+- Word (.docx/.doc): full text with paragraph structure
+- Excel (.xlsx/.xls/.csv): each sheet as a Markdown table section
+- PowerPoint (.ppt/.pptx): slide text content
+- Plain text (.txt/.md): direct read
+
+Returns lightweight Markdown:
+- Tables preserved as Markdown tables
+- Excel sheets separated by "## Sheet: <name>"
+- Headings preserved as # / ## / ###
+- Large docs (>100KB) truncated with marker
+
+Use this instead of read_file for binary document formats.
+Client-first: local extraction; falls back to server if local fails.`,
+        criticalRules: [
+            'This is the ONLY correct way to read PDF/Word/Excel/PowerPoint files',
+            'NEVER use run_command with pdftotext, python-docx, antiword, libreoffice to extract document text',
+            'NEVER use read_file for .pdf/.docx/.doc/.xlsx/.xls/.ppt/.pptx — it cannot parse binary formats',
+            'For scanned PDFs, this tool auto-triggers server OCR fallback — no manual handling needed',
+        ],
+        category: 'read',
+        approvalType: 'none',
+        parallel: true,
+        concurrencyMode: 'parallel-safe',
+        resourceScope: ['filesystem:read'],
+        resultSemantics: 'file-read',
+        retryPolicy: { maxAttempts: 1 },
+        validationLevel: 'schema',
+        requiresWorkspace: true,
+        enabled: true,
+        parameters: {
+            file_path: {
+                type: 'string',
+                description: 'Document file path (relative to workspace root, or absolute path). Supports: pdf, docx, doc, xlsx, xls, csv, ppt, pptx, txt, md.',
+                required: true,
+            },
         },
     },
 
@@ -1197,12 +1247,17 @@ The tool returns the full skill content which you MUST follow as project-specifi
 - MANDATORY: Call \`todo_write\` the INSTANT you finish a task, BEFORE starting the next one. Never let the list go stale — if task #2 is done and you are about to start task #3, the call marking #2 \`completed\` and #3 \`in_progress\` MUST already have happened. Updating the list only after finishing 2-3 tasks is FORBIDDEN.
 - Call with \`[]\` to clear after all tasks are done
 
+## Verification Gate (Loop Engineering):
+- BEFORE marking a task \`completed\`, you MUST first mark it \`verifying\` and run an objective verification step (lint / typecheck / build / test / dry-run — whatever validates the work).
+- Transition flow: \`in_progress\` → \`verifying\` (run verification) → \`completed\` (passed). If verification fails, fix and re-verify.
+- NEVER skip straight to \`completed\` based on self-assessment. The gate requires an objective signal.
+
 ## Format:
 - Each call replaces the ENTIRE list
-- Exactly ONE task \`in_progress\` at a time
-- Mark \`completed\` IMMEDIATELY after finishing — never batch
+- Exactly ONE task \`in_progress\` (or \`verifying\`) at a time
+- Mark \`completed\` IMMEDIATELY after verification passes — never batch
 - \`content\`: imperative ("Fix the bug"), \`activeForm\`: continuous ("Fixing the bug")
-- ONLY mark completed when FULLY done — not when partial or blocked`,
+- ONLY mark completed when FULLY done AND verified — not when partial or blocked`,
         category: 'interaction',
         approvalType: 'none',
         parallel: false,
@@ -1218,7 +1273,7 @@ The tool returns the full skill content which you MUST follow as project-specifi
                     description: 'A single todo item',
                     properties: {
                         content: { type: 'string', description: 'Imperative form of the task (e.g., "Fix the bug")', required: true },
-                        status: { type: 'string', description: 'Task status: "pending", "in_progress", or "completed"', required: true, enum: ['pending', 'in_progress', 'completed'] },
+                        status: { type: 'string', description: 'Task status: "pending", "in_progress", "verifying", or "completed". Use "verifying" as the verification gate BEFORE marking "completed" — run lint/test/dry-run first, then transition to "completed" only after verification passes.', required: true, enum: ['pending', 'in_progress', 'verifying', 'completed'] },
                         activeForm: { type: 'string', description: 'Present continuous form (e.g., "Fixing the bug")', required: true },
                     },
                 },

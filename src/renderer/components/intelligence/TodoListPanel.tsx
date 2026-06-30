@@ -1,5 +1,5 @@
 import { useState, memo, useEffect, useRef, useCallback } from 'react'
-import { Check, Circle, ChevronDown, X, Pause, Loader2 } from 'lucide-react'
+import { Check, Circle, ChevronDown, X, Pause, Loader2, ShieldCheck } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { TodoItem } from '@intelligence/providerTypes'
 import { useStore } from '@store'
@@ -49,7 +49,7 @@ const MiniProgress = memo(({ percent, stopped, allCompleted }: { percent: number
 MiniProgress.displayName = 'MiniProgress'
 
 const StatusDot = memo(({ status, stopped }: { status: TodoItem['status']; stopped?: boolean }) => {
-  if (stopped && status === 'in_progress') {
+  if (stopped && (status === 'in_progress' || status === 'verifying')) {
     return <Pause className="w-3 h-3 text-orange-400 flex-shrink-0" />
   }
   switch (status) {
@@ -57,6 +57,13 @@ const StatusDot = memo(({ status, stopped }: { status: TodoItem['status']; stopp
       return (
         <div className="w-4 h-4 rounded-full bg-green-500/15 flex items-center justify-center flex-shrink-0">
           <Check className="w-2.5 h-2.5 text-green-400" strokeWidth={3} />
+        </div>
+      )
+    case 'verifying':
+      // 验证门状态：盾牌+检查图标，脉冲动画表示正在验证
+      return (
+        <div className="w-4 h-4 rounded-full bg-status-warning/15 flex items-center justify-center flex-shrink-0">
+          <ShieldCheck className="w-2.5 h-2.5 text-status-warning animate-pulse" />
         </div>
       )
     case 'in_progress':
@@ -78,6 +85,7 @@ StatusDot.displayName = 'StatusDot'
 const TodoRow = memo(({ todo, index, stopped }: { todo: TodoItem; index: number; stopped?: boolean }) => {
   const isCompleted = todo.status === 'completed'
   const isActive = todo.status === 'in_progress'
+  const isVerifying = todo.status === 'verifying'
 
   return (
     <motion.div
@@ -87,16 +95,20 @@ const TodoRow = memo(({ todo, index, stopped }: { todo: TodoItem; index: number;
       transition={{ duration: 0.2, delay: index * 0.03 }}
       className={`flex items-center gap-2.5 py-1.5 px-2 rounded-lg transition-colors
         ${isActive && !stopped ? 'bg-accent/[0.06]' : ''}
-        ${isActive && stopped ? 'bg-orange-500/[0.06]' : ''}`}
+        ${isActive && stopped ? 'bg-orange-500/[0.06]' : ''}
+        ${isVerifying && !stopped ? 'bg-status-warning/[0.06]' : ''}
+        ${isVerifying && stopped ? 'bg-orange-500/[0.06]' : ''}`}
     >
       <StatusDot status={todo.status} stopped={stopped} />
       <span className={`text-[12px] leading-[1.6] flex-1
         ${isCompleted ? 'text-text-muted/70 line-through decoration-text-muted/30' : ''}
         ${isActive && !stopped ? 'text-text-primary font-medium' : ''}
         ${isActive && stopped ? 'text-orange-400 font-medium' : ''}
+        ${isVerifying && !stopped ? 'text-status-warning font-medium' : ''}
+        ${isVerifying && stopped ? 'text-orange-400 font-medium' : ''}
         ${todo.status === 'pending' ? 'text-text-muted/80' : ''}
       `}>
-        {isActive ? todo.activeForm : todo.content}
+        {isActive || isVerifying ? todo.activeForm : todo.content}
       </span>
     </motion.div>
   )
@@ -113,22 +125,23 @@ export const TodoListPanel = memo(({ todos, isStreaming = true, embedded = false
   const listScrollRef = useRef<HTMLDivElement>(null)
 
   /**
-   * 自动滚动到 in_progress 任务：当任务数超过可视区域时，
-   * 确保 in_progress 任务始终可见，而不是停留在列表顶部。
+   * 自动滚动到当前活动任务（in_progress / verifying）：当任务数超过可视区域时，
+   * 确保活动任务始终可见，而不是停留在列表顶部。
    */
   const scrollIntoView = useCallback(() => {
     const container = listScrollRef.current
     if (!container) return
+    // 优先滚动到 in_progress，其次 verifying
     const activeEl = container.querySelector('[data-todo-status="in_progress"]') as HTMLElement | null
+      || container.querySelector('[data-todo-status="verifying"]') as HTMLElement | null
     if (activeEl) {
-      // 平滑滚动，让 in_progress 项落在容器顶部偏下位置
       activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     }
   }, [])
 
   useEffect(() => {
     if (!isExpanded) return
-    // todos 变化时（如任务推进）滚动到当前 in_progress 任务
+    // todos 变化时（如任务推进）滚动到当前活动任务
     const timer = setTimeout(scrollIntoView, 50)
     return () => clearTimeout(timer)
   }, [todos, isExpanded, scrollIntoView])
@@ -215,10 +228,11 @@ export const TodoListPanel = memo(({ todos, isStreaming = true, embedded = false
   if (hidden || todos.length === 0) return null
 
   // stopped 表示"任务未完成但会话已结束"（用户中止 / 历史消息 / 重启应用）。
-  // 仅当前正在流式的消息（isStreaming=true）才显示"进行中"，否则有 in_progress 任务即为"已停止"。
+  // 仅当前正在流式的消息（isStreaming=true）才显示"进行中"，否则有 in_progress/verifying 任务即为"已停止"。
   const stopped = !isStreaming
   const completed = todos.filter(t => t.status === 'completed').length
-  const hasInProgress = todos.some(t => t.status === 'in_progress')
+  // in_progress 和 verifying 都属于"未完成的进行中"状态
+  const hasInProgress = todos.some(t => t.status === 'in_progress' || t.status === 'verifying')
   const total = todos.length
   const progress = total > 0 ? Math.round((completed / total) * 100) : 0
   const allCompleted = completed === total && total > 0
@@ -277,7 +291,7 @@ export const TodoListPanel = memo(({ todos, isStreaming = true, embedded = false
           >
             <div ref={listScrollRef} className="px-1.5 pb-2 pt-0.5 max-h-[140px] overflow-y-auto custom-scrollbar">
               {todos.map((todo, i) => (
-                <TodoRow key={i} todo={todo} index={i} stopped={stopped && todo.status === 'in_progress'} />
+                <TodoRow key={i} todo={todo} index={i} stopped={stopped && (todo.status === 'in_progress' || todo.status === 'verifying')} />
               ))}
             </div>
           </motion.div>

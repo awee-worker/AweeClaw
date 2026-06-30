@@ -60,6 +60,8 @@ const CORE_TOOLS: string[] = [
   'get_dir_tree',
   'search_files',
   'read_multiple_files',
+  // 文档提取（PDF/Word/Excel/PPT 等二进制格式）
+  'extract_document',
   // 文件编辑
   'edit_file',
   'write_file',
@@ -147,6 +149,7 @@ const PLAN_EXECUTION_CONTROL_TOOLS: string[] = [
 const PLAN_EXPLORATION_TOOLS: string[] = [
   'read_file',
   'read_multiple_files',
+  'extract_document',
   'list_directory',
   'get_dir_tree',
   'search_files',
@@ -221,6 +224,10 @@ export function getToolsForContext(context: ToolLoadingContext): string[] {
       tools.add(tool)
     }
   }
+
+  // 文档提取工具在所有模式、所有场景下都无条件可用
+  // （用户上传 PDF/Word/Excel 等二进制文档时必须能用 extract_document 提取）
+  tools.add('extract_document')
 
   if (context.mode === 'chat') {
     if (!scenarioPacks || scenarioPacks.length === 0) {

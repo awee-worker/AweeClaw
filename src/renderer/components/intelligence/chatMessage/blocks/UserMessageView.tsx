@@ -67,9 +67,12 @@ function UserMessageViewBase({
   const saveLabel = t('ai.saveresend', language as Language)
   const cancelLabel = t('ai.cancel', language as Language)
 
+  const hasAttachments = images.length > 0 || files.length > 0
+  const hasText = textContent.trim().length > 0
+
   return (
     <div className="w-full flex flex-col items-end gap-1.5">
-      <div className="flex flex-col items-end max-w-[85%] sm:max-w-[75%] min-w-0 w-full">
+      <div className="flex flex-col items-end max-w-[85%] sm:max-w-[75%] min-w-0 w-fit">
         {isEditing ? (
           <UserMessageEditor
             editContent={editContent}
@@ -81,14 +84,31 @@ function UserMessageViewBase({
             cancelLabel={cancelLabel}
           />
         ) : (
-          <div className="relative bg-surface text-text-primary/95 px-4 py-3 rounded-[20px] rounded-tr-[4px] shadow-sm w-fit max-w-full border border-border/50">
-            <ContextItemsView items={(message as any).contextItems || []} />
-            <ImageAttachmentsView images={images} />
-            <FileAttachmentsView files={files} />
+          <div className="flex flex-col items-end gap-1.5 w-full">
+            {/* ── 附件区域：独立卡片，位于文本气泡上方 ── */}
+            {hasAttachments && (
+              <div className="flex flex-col items-end gap-1.5 max-w-full">
+                {images.length > 0 && <ImageAttachmentsView images={images} />}
+                {files.length > 0 && <FileAttachmentsView files={files} />}
+              </div>
+            )}
 
-            <div className="text-[14px] leading-relaxed">
-              <MarkdownContentView content={textContent} fontSize={fontSize} preserveLineBreaks />
-            </div>
+            {/* ── 文本气泡（仅有文本时显示；无文本但有附件时不显示空气泡） ── */}
+            {hasText && (
+              <div className="relative bg-surface text-text-primary/95 px-4 py-2.5 rounded-[18px] rounded-tr-[4px] shadow-sm w-fit max-w-full border border-border/50">
+                <ContextItemsView items={(message as any).contextItems || []} />
+                <div className="text-[14px] leading-relaxed">
+                  <MarkdownContentView content={textContent} fontSize={fontSize} preserveLineBreaks />
+                </div>
+              </div>
+            )}
+
+            {/* ── 兜底：既无文本也无附件，但有 contextItems（如 @文件 引用） ── */}
+            {!hasText && !hasAttachments && (message as any).contextItems?.length > 0 && (
+              <div className="relative bg-surface text-text-primary/95 px-4 py-2.5 rounded-[18px] rounded-tr-[4px] shadow-sm w-fit max-w-full border border-border/50">
+                <ContextItemsView items={(message as any).contextItems || []} />
+              </div>
+            )}
           </div>
         )}
 

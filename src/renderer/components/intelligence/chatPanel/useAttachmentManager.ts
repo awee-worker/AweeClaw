@@ -254,7 +254,7 @@ export function useAttachmentManager({ workspacePath, addContextItem }: UseAttac
           try {
             const saved = await api.file.writeBinary(filePath, fileImg.base64!)
             if (saved) {
-              addContextItem({ type: 'File', uri: filePath })
+              addContextItem({ type: 'File', uri: filePath, silent: true })
               savedFilePaths.push(filePath)
             } else {
               logger.agent.error('[AttachmentManager] Failed to save uploaded file:', filePath)

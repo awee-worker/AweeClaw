@@ -18,6 +18,11 @@ export type ContextItemType =
 export interface FileContext {
   type: 'File'
   uri: string
+  /**
+   * 静默标记：上传附件自动添加的 File context 设为 true，
+   * UI 渲染时跳过（不在消息顶部显示文件名标签），但仍注入给 AI 以提供文件路径。
+   */
+  silent?: boolean
 }
 
 export interface CodeSelectionContext {

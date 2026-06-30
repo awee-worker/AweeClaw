@@ -23,7 +23,14 @@ export interface ContextStats {
 
 export interface TodoItem {
   content: string
-  status: 'pending' | 'in_progress' | 'completed'
+  /**
+   * 任务状态：
+   * - pending：待执行
+   * - in_progress：执行中
+   * - verifying：验证中（Loop Engineering 验证门，标记 completed 前需先验证）
+   * - completed：已完成
+   */
+  status: 'pending' | 'in_progress' | 'verifying' | 'completed'
   /** Present-tense copy used by the UI for the active task label. */
   activeForm: string
 }

@@ -11,6 +11,8 @@ interface ContextItemTag {
   uri?: string
   range?: [number, number]
   skillId?: string
+  /** 静默项（上传附件自动添加），UI 不显示 */
+  silent?: boolean
 }
 
 interface ContextItemsViewProps {
@@ -57,9 +59,13 @@ function getContextLabel(item: ContextItemTag): string {
 function ContextItemsViewBase({ items }: ContextItemsViewProps) {
   if (!items || items.length === 0) return null
 
+  // 过滤掉静默项（上传附件自动添加的 File context，不在 UI 显示文件名）
+  const visibleItems = items.filter(item => !item.silent)
+  if (visibleItems.length === 0) return null
+
   return (
     <div className="flex flex-wrap gap-1.5 mb-2 -mt-1 pt-1 justify-end">
-      {items.map((item, i) => {
+      {visibleItems.map((item, i) => {
         const style = getContextStyle(item.type)
         const label = getContextLabel(item)
         const IconComponent = style.Icon

@@ -140,7 +140,7 @@ const FileProvider: ContextProvider = {
       const ext = filePath.split('.').pop()?.toLowerCase() || ''
 
       if (BINARY_EXTENSIONS.has(ext)) {
-        return `\n### File: ${filePath}\n[Binary file: ${ext.toUpperCase()} format. This file has been uploaded by the user and saved to this path.]\n`
+        return `\n### File: ${filePath}\n[Binary file: ${ext.toUpperCase()} format. This file has been uploaded by the user and saved to this path. To extract its text content, you MUST use the extract_document tool with file_path="${filePath}". Do NOT use run_command (pdftotext/python) or read_file for this binary format.]\n`
       }
 
       const content = await fileContentCache.getOrSet(

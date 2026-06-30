@@ -11,7 +11,7 @@ export interface AgentStorePlanBridge {
 }
 
 export interface AgentStoreTodoBridge {
-  setTodos: (todos: Array<{ content: string; status: 'pending' | 'in_progress' | 'completed'; activeForm: string }>) => void
+  setTodos: (todos: Array<{ content: string; status: 'pending' | 'in_progress' | 'verifying' | 'completed'; activeForm: string }>) => void
 }
 
 function getStoreState() {

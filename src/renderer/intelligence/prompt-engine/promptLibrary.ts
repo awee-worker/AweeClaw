@@ -281,6 +281,7 @@ export const TOOL_GUIDELINES = `## Tool Usage Guidelines
 1. **Fragmented Operations** - Making multiple similar calls instead of batching
 2. **Redundant Operations** - Reading/searching what you already have  
 3. **Using bash for file ops** - cat/grep/sed instead of dedicated tools
+4. **Using shell to extract documents** - pdftotext/python-docx/antiword etc. instead of extract_document
 
 ### ⚠️ CRITICAL RULES
 
@@ -300,6 +301,13 @@ export const TOOL_GUIDELINES = `## Tool Usage Guidelines
    - NEVER output tool calls as plain text, XML, pseudo-JSON, markdown, or handcrafted tags
    - NEVER emit strings such as \`<tool_call>...</tool_call>\`, \`<function_call>...</function_call>\`, \`read_file(...)\`, or raw tool payloads in the assistant text
    - If a tool cannot be called through the native protocol, continue with a normal text response instead of inventing a fallback format
+
+5. **BINARY DOCUMENTS → extract_document (MANDATORY)**
+   - For PDF/Word/Excel/PowerPoint files (.pdf .docx .doc .xlsx .xls .csv .ppt .pptx), you MUST use the \`extract_document\` tool
+   - NEVER use run_command with pdftotext, python-docx, antiword, libreoffice, or any external CLI to extract document text
+   - \`read_file\` CANNOT parse these binary formats — it will return binary garbage or fail
+   - \`extract_document\` handles local extraction + server OCR fallback for scanned PDFs automatically
+   - Only for plain .txt/.md files, you may use \`read_file\`
 
 ### Parallel Tool Calls
 
@@ -352,15 +360,16 @@ mcp_server__get_data items=["a", "b", "c"]  // If batch supported
 
 **Lifecycle:**
 1. **Create**: Call \`todo_write\` with the full task list BEFORE you start coding — not halfway through
-2. **Update — MANDATORY & IMMEDIATE**: The moment you finish a task, call \`todo_write\` BEFORE moving on to the next task. You MUST update the list every time a task transitions from \`in_progress\` to \`completed\` — never let the list go stale. If you have finished task #2 and are about to start task #3, the \`todo_write\` call marking task #2 \`completed\` and task #3 \`in_progress\` MUST already have happened. Batch-updating the list after completing 2-3 tasks is FORBIDDEN — the user sees a live progress panel, and stale states are misleading.
-3. **Resume**: If the runtime context shows an active task list with incomplete items and the user's message relates to them, continue from the \`in_progress\` task. Do NOT recreate the list.
-4. **New request**: If the user's new message is UNRELATED to existing todos, call \`todo_write\` with a completely fresh list. Never mix old and new tasks.
-5. **Archive**: When all tasks are done, call \`todo_write\` with an empty array \`[]\` to clear the list.
+2. **Update — MANDATORY & IMMEDIATE**: The moment you finish a task, call \`todo_write\` BEFORE moving on to the next task. You MUST update the list every time a task transitions — never let the list go stale. If you have finished task #2 and are about to start task #3, the \`todo_write\` call marking task #2 \`completed\` and task #3 \`in_progress\` MUST already have happened. Batch-updating the list after completing 2-3 tasks is FORBIDDEN — the user sees a live progress panel, and stale states are misleading.
+3. **Verification Gate — MANDATORY**: Before marking a task \`completed\`, you MUST first mark it \`verifying\` and run a verification step (lint / typecheck / build / test / dry-run / schema check — whatever objectively validates the work). Only after the verification passes may you transition the task to \`completed\`. Transition flow: \`in_progress\` → \`verifying\` (run verification) → \`completed\` (verification passed). If verification fails, fix the issue and re-verify — never skip straight to \`completed\` based on self-assessment alone. This is the Loop Engineering verification gate: objective signal, not opinion.
+4. **Resume**: If the runtime context shows an active task list with incomplete items and the user's message relates to them, continue from the \`in_progress\` task. Do NOT recreate the list.
+5. **New request**: If the user's new message is UNRELATED to existing todos, call \`todo_write\` with a completely fresh list. Never mix old and new tasks.
+6. **Archive**: When all tasks are done, call \`todo_write\` with an empty array \`[]\` to clear the list.
 
 **Format:**
 - Each call replaces the ENTIRE list — always include all tasks
-- Exactly ONE task \`in_progress\` at any time
-- Mark tasks \`completed\` IMMEDIATELY after finishing, not in batches
+- Exactly ONE task \`in_progress\` (or \`verifying\`) at any time
+- Mark tasks \`completed\` IMMEDIATELY after verification passes, not in batches
 - \`content\`: imperative ("Fix the login bug"), \`activeForm\`: continuous ("Fixing the login bug")`;
 
 // BASE_SYSTEM_INFO 不再需要，由 PromptBuilder 动态构建
