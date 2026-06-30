@@ -3,7 +3,7 @@
  * 左对齐布局，支持流式输出、工具调用预览、交互卡片
  */
 import React, { useMemo } from 'react'
-import { Check, Circle, Loader2, FileCode, FilePlus, X } from 'lucide-react'
+import { Check, FileCode, FilePlus, X } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
@@ -49,49 +49,6 @@ interface AssistantMessageViewProps {
   textContent: string
   fontSize: number
 }
-
-/** 任务列表弹层内容（只读模式） */
-const TaskListPopoverContent = React.memo(function TaskListPopoverContent({
-  todos,
-}: {
-  todos: TodoItem[]
-}) {
-  return (
-    <div className="py-1">
-      {todos.map((todo, i) => {
-        const isCompleted = todo.status === 'completed'
-        const isActive = todo.status === 'in_progress'
-        return (
-          <div
-            key={i}
-            className={`flex items-center gap-2.5 py-1.5 px-3 ${
-              isActive ? 'bg-accent/[0.06]' : ''
-            }`}
-          >
-            {isCompleted ? (
-              <div className="w-4 h-4 rounded-full bg-green-500/15 flex items-center justify-center flex-shrink-0">
-                <Check className="w-2.5 h-2.5 text-green-400" strokeWidth={3} />
-              </div>
-            ) : isActive ? (
-              <div className="w-4 h-4 rounded-full bg-accent/15 flex items-center justify-center flex-shrink-0">
-                <Loader2 className="w-2.5 h-2.5 text-accent animate-spin" />
-              </div>
-            ) : (
-              <Circle className="w-3 h-3 text-text-muted/40 flex-shrink-0" strokeWidth={1.5} />
-            )}
-            <span
-              className={`text-[12px] flex-1 ${
-                isCompleted ? 'text-text-muted/70 line-through' : 'text-text-primary'
-              }`}
-            >
-              {isActive ? todo.activeForm : todo.content}
-            </span>
-          </div>
-        )
-      })}
-    </div>
-  )
-})
 
 /** 文件变更弹层内容（基于历史记录，支持单个接受/拒绝，接受/拒绝后显示状态） */
 const FileChangesPopoverContent = React.memo(function FileChangesPopoverContent({
@@ -261,12 +218,12 @@ function AssistantMessageViewBase({
     }
   }))
 
-  /** 订阅当前线程的 todos、fileChangeHistory，用于决定是否显示 chip */
-  const { todos, fileChangeHistory, isLastAssistantMessage, threadIsStreaming } = useAgentStore(useShallow(state => {
+  /** 订阅当前线程的 fileChangeHistory、todos、最后一条助手消息标记、流式状态，用于决定是否显示 chip */
+  const { fileChangeHistory, threadTodos, isLastAssistantMessage, threadIsStreaming } = useAgentStore(useShallow(state => {
     const threadId = state.currentThreadId
     const thread = threadId ? state.threads[threadId] : undefined
-    const threadTodos = thread?.todos || EMPTY_TODOS
     const history = state.fileChangeHistory || EMPTY_HISTORY
+    const todos = thread?.todos || EMPTY_TODOS
 
     // 判断当前消息是否为线程中最后一条助手消息
     let lastAssistant = false
@@ -282,18 +239,12 @@ function AssistantMessageViewBase({
     const streaming = threadStreamStateActive(state, threadId)
 
     return {
-      todos: threadTodos,
       fileChangeHistory: history,
+      threadTodos: todos,
       isLastAssistantMessage: lastAssistant,
       threadIsStreaming: streaming,
     }
   }))
-
-  /** 所有任务是否已完成 */
-  const allTodosCompleted = useMemo(
-    () => todos.length > 0 && todos.every(t => t.status === 'completed'),
-    [todos],
-  )
 
   /** 当前消息关联的文件变更历史 */
   const messageFileChanges = useMemo(
@@ -301,15 +252,27 @@ function AssistantMessageViewBase({
     [fileChangeHistory, message.id],
   )
 
-  /** 是否显示"任务完成"chip：最后一条助手消息 + 任务全部完成 + 非流式 */
-  const showTaskCompleteChip = isLastAssistantMessage && allTodosCompleted && !threadIsStreaming && !messageIsStreaming
-
   /** 是否显示"文件变更"chip：最后一条助手消息 + 有关联的文件变更历史 + 非流式 */
   const showFileChangesChip = isLastAssistantMessage && messageFileChanges.length > 0 && !threadIsStreaming && !messageIsStreaming
 
   const assistantMessage = message as any
   const assistantParts: AssistantPart[] | undefined = isAssistantMessage(message) ? (liveParts ?? (message as any).parts) : undefined
   const assistantInteractive = isAssistantMessage(message) ? (liveInteractive ?? (message as any).interactive) : undefined
+
+  /**
+   * 是否显示"任务完成"chip：最后一条助手消息 + 该消息包含任务列表（todo_write 调用）
+   * + 线程 todos 全部完成 + 非流式。
+   * 通过 chip 让用户在 AI 回复底部直观看到本轮任务已全部完成。
+   */
+  const showTaskDoneChip = useMemo(() => {
+    if (!isLastAssistantMessage || threadIsStreaming || messageIsStreaming) return false
+    if (!assistantParts || assistantParts.length === 0) return false
+    const hasTodoWrite = assistantParts.some(
+      p => p.type === 'tool_call' && p.toolCall?.name === 'todo_write'
+    )
+    if (!hasTodoWrite) return false
+    return threadTodos.length > 0 && threadTodos.every(t => t.status === 'completed')
+  }, [isLastAssistantMessage, threadIsStreaming, messageIsStreaming, assistantParts, threadTodos])
 
   /** 计算流式工具调用预览 */
   const previewToolCalls = useMemo(() => {
@@ -371,12 +334,6 @@ function AssistantMessageViewBase({
     toast.info(language === 'zh' ? '已取消反馈' : 'Feedback removed')
   }, [message.id, updateMessage, language])
 
-  /** 任务列表弹层内容（仅在需要时构造） */
-  const taskPopoverContent = useMemo(
-    () => (showTaskCompleteChip ? <TaskListPopoverContent todos={todos} /> : null),
-    [showTaskCompleteChip, todos],
-  )
-
   /** 文件变更弹层内容（仅在需要时构造） */
   const fileChangesPopoverContent = useMemo(
     () => (showFileChangesChip ? <FileChangesPopoverContent changes={messageFileChanges} language={language as Language} /> : null),
@@ -385,20 +342,18 @@ function AssistantMessageViewBase({
 
   return (
     <div className="w-full min-w-0 flex flex-col gap-2">
-      {/* 自动应用 / 手动引用的技能提示 */}
+      {/* 手动引用的技能提示（关键词自动应用的技能不再在头部展示，避免噪音） */}
       {(() => {
         const items = (message as any).contextItems || []
-        const skillItems = items.filter((i: any) => i.type === 'Skill')
-        if (skillItems.length === 0) return null
-        const auto = skillItems.filter((i: any) => i.auto)
-        const manual = skillItems.filter((i: any) => !i.auto)
+        const manual = items.filter((i: any) => i.type === 'Skill' && !i.auto)
+        if (manual.length === 0) return null
         return (
           <MessageMetaGroupView
-            autoSkills={auto.length > 0 ? auto : undefined}
-            manualSkills={manual.length > 0 ? manual : undefined}
+            manualSkills={manual}
           />
         )
       })()}
+
       <div className="w-full text-[15px] leading-relaxed text-text-primary/90 pl-1">
         <div className="prose-custom w-full max-w-none">
           {assistantParts && assistantParts.length > 0 && (
@@ -478,11 +433,10 @@ function AssistantMessageViewBase({
           menuLabelKey="more2"
           showVoiceOutput
           alwaysVisible={isLastAssistantMessage}
-          showTaskCompleteChip={showTaskCompleteChip}
-          taskPopoverContent={taskPopoverContent}
           showFileChangesChip={showFileChangesChip}
           fileChangesCount={messageFileChanges.length}
           fileChangesPopoverContent={fileChangesPopoverContent}
+          showTaskDoneChip={showTaskDoneChip}
           feedback={feedback}
           onLike={handleLike}
           onDislikeSubmit={handleDislikeSubmit}

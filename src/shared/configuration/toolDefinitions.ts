@@ -1194,6 +1194,7 @@ The tool returns the full skill content which you MUST follow as project-specifi
 
 ## Timing:
 - Call BEFORE you start coding, not halfway through
+- MANDATORY: Call \`todo_write\` the INSTANT you finish a task, BEFORE starting the next one. Never let the list go stale — if task #2 is done and you are about to start task #3, the call marking #2 \`completed\` and #3 \`in_progress\` MUST already have happened. Updating the list only after finishing 2-3 tasks is FORBIDDEN.
 - Call with \`[]\` to clear after all tasks are done
 
 ## Format:

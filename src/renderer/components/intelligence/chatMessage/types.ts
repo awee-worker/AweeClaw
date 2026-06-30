@@ -1,7 +1,7 @@
 /**
  * 聊天消息组件类型定义
  */
-import type { AssistantPart, ToolCall } from '@intelligence/providerTypes'
+import type { AssistantPart, ToolCall, TodoItem } from '@intelligence/providerTypes'
 import type { ToolStreamingPreview } from '@protocols'
 
 /** 消息渲染上下文，传递给各 Part 渲染器 */
@@ -23,6 +23,7 @@ export type PartRenderer = (part: AssistantPart, ctx: PartRenderContext) => Reac
 export type AssistantGroupItem =
   | { type: 'part'; part: AssistantPart; index: number }
   | { type: 'tool_group'; toolCalls: ToolCall[]; startIndex: number }
+  | { type: 'todo_list'; todos: TodoItem[]; index: number }
 
 /** 流式阶段指示器属性 */
 export interface StreamingPhaseProps {

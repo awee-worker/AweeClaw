@@ -39,9 +39,7 @@ import SlashCommandPopup from './SlashCommandPopup'
 import EmptyChatSuggestions from '../conversation/WelcomeSuggestions'
 import { ChatMessagesSkeleton } from '../ui/ProgressIndicator'
 import { playNotificationSound } from '@utils/notificationSound'
-import { TodoListPanel } from './TodoListPanel'
 import { AgentWorkspace } from './AgentWorkspace'
-import { channelConversationService } from '@intelligence/runtime/channelConversationService'
 import type { ChatTimelineItem } from './chatTimelineProjection'
 
 import { useAttachmentManager } from './chatPanel/useAttachmentManager'
@@ -61,8 +59,6 @@ import { ArchiveTimelineItemView } from './chatPanel/components/ArchiveTimelineI
 import { ChatInputWrapper } from './chatPanel/components/ChatInputWrapper'
 import PendingChangesBar from './PendingChangesBar'
 import { playPendingReviewSound } from '@renderer/utils/sound'
-
-const EMPTY_TODOS: import('@intelligence/providerTypes').TodoItem[] = []
 
 export default function ChatPanel() {
   // ===== Store 状态订阅 =====
@@ -107,10 +103,6 @@ export default function ChatPanel() {
   // ===== AgentStore 状态订阅 =====
   const inputPrompt = useAgentStore(state => state.inputPrompt)
   const setInputPrompt = useAgentStore(state => state.setInputPrompt)
-  const todos = useAgentStore(state => {
-    if (!state.currentThreadId) return EMPTY_TODOS
-    return state.threads[state.currentThreadId]?.todos || EMPTY_TODOS
-  })
   const hasActiveThread = useAgentStore(state => {
     if (!state.currentThreadId) return false
     return !!state.threads[state.currentThreadId]
@@ -171,11 +163,6 @@ export default function ChatPanel() {
       pendingReviewSoundPlayedRef.current = false
     }
   }, [isStreaming, pendingChanges.length])
-
-  const isChannelThread = useMemo(() => {
-    if (!currentThreadId) return false
-    return !!channelConversationService.getConversationKey(currentThreadId)
-  }, [currentThreadId])
 
   const { sendMessage, abort, approveCurrentTool, rejectCurrentTool, approveAllTools, rejectAllTools } = useAgentCommands()
   const {
@@ -697,11 +684,6 @@ export default function ChatPanel() {
               }`}
             >
               <div className="mx-4 mb-4 flex flex-col">
-                {todos.length > 0 && !isChannelThread && (
-                  <div className="mb-3">
-                    <TodoListPanel todos={todos} isStreaming={isStreaming} />
-                  </div>
-                )}
                 <PendingChangesBar pendingChanges={pendingChanges} />
                 <ChatInputWrapper
                   input={input}

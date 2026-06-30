@@ -576,6 +576,10 @@ export const en = {
   'tool.status.listingWorkflows': 'Listing workflows...',
   'tool.status.listedWorkflows': 'Found {count} workflows',
   'tool.status.listWorkflowsFailed': 'Failed to list workflows',
+  'tool.status.executedEllipsis': 'Command executed',
+  'tool.status.completedAction': 'Completed {action}',
+  'tool.status.actionFailed': '{action} failed',
+  'tool.groupSummaryMore': '{shown} and {rest} more',
 
   'tool.error': 'Error',
   'tool.arguments': 'Arguments:',

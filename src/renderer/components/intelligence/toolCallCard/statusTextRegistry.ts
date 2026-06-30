@@ -386,8 +386,22 @@ function buildKnowledgeSearchStatus(ctx: StatusContext): string {
 
 /** 命令执行工具的专用构建器 */
 function buildRunCommandStatus(ctx: StatusContext): string {
-  const { language } = ctx
-  return t('tool.label.run_command', language as any)
+  const { args, phase, language } = ctx
+  const cmd = asString(args.command) || asString(args.cmd) || ''
+  switch (phase) {
+    case 'running':
+      return cmd
+        ? t('tool.status.executing', language as any, { cmd: previewSlice(cmd, 40) })
+        : t('tool.status.preparingCmd', language as any)
+    case 'success':
+      return cmd
+        ? t('tool.status.executed', language as any, { cmd: previewSlice(cmd, 40) })
+        : t('tool.status.executedEllipsis', language as any)
+    case 'error':
+      return t('tool.status.cmdFailed', language as any, { cmd: cmd || '' })
+    default:
+      return t('tool.label.run_command', language as any)
+  }
 }
 
 /** 注册专用构建器 */
@@ -419,6 +433,14 @@ export function getStatusText(
 
   if (phase === 'running') {
     return getFriendlyToolName(name, language).label
+  }
+  if (phase === 'success') {
+    const friendlyLabel = getFriendlyToolName(name, language).label
+    return t('tool.status.completedAction', language as any, { action: friendlyLabel })
+  }
+  if (phase === 'error') {
+    const friendlyLabel = getFriendlyToolName(name, language).label
+    return t('tool.status.actionFailed', language as any, { action: friendlyLabel })
   }
   return ''
 }

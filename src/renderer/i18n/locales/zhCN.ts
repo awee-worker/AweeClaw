@@ -577,6 +577,10 @@ export const zh = {
   'tool.status.listingWorkflows': '正在查询工作流列表...',
   'tool.status.listedWorkflows': '已查询到 {count} 个工作流',
   'tool.status.listWorkflowsFailed': '查询工作流列表失败',
+  'tool.status.executedEllipsis': '已执行命令',
+  'tool.status.completedAction': '已完成 {action}',
+  'tool.status.actionFailed': '{action} 失败',
+  'tool.groupSummaryMore': '{shown} 等 {rest} 项',
 
   'tool.error': '错误',
   'tool.arguments': '参数：',

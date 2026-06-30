@@ -8,7 +8,7 @@
  * 赞/踩反馈通过 onLike / onDislikeSubmit / onDislikeRegenerate / onCancelFeedback 回调持久化到会话数据库。
  */
 import React from 'react'
-import { Copy, Check, Edit2, RotateCcw, ThumbsUp, ThumbsDown, RefreshCw, CheckCircle2, FileEdit } from 'lucide-react'
+import { Copy, Check, Edit2, RotateCcw, ThumbsUp, ThumbsDown, RefreshCw, FileEdit, CheckCircle2 } from 'lucide-react'
 import { HintOverlay } from '../../../ui/HintOverlay'
 import VoiceOutputButton from '../../../conversation/VoiceOutputButton'
 import { useVoiceOutput } from '../../../../composables/useVoiceOutput'
@@ -35,16 +35,14 @@ interface MessageActionsBarProps {
   menuLabelKey: 'more' | 'more2'
   /** 是否显示语音输出按钮 */
   showVoiceOutput?: boolean
-  /** 是否显示"任务完成"chip（助手消息且任务已全部完成） */
-  showTaskCompleteChip?: boolean
-  /** 任务列表弹层内容（提供则 chip 可点击展开） */
-  taskPopoverContent?: React.ReactNode
   /** 是否显示"文件变更"chip（助手消息且有待确认文件变更） */
   showFileChangesChip?: boolean
   /** 待确认文件变更数量 */
   fileChangesCount?: number
   /** 文件变更弹层内容（提供则 chip 可点击展开） */
   fileChangesPopoverContent?: React.ReactNode
+  /** 是否显示"任务完成"chip（助手消息且本轮任务列表全部完成） */
+  showTaskDoneChip?: boolean
   /** 当前消息的持久化反馈状态（从消息对象读取） */
   feedback?: MessageFeedback
   /** 点击赞：未赞时提交赞，已赞时取消反馈。不传则不显示赞/踩按钮（如用户消息） */
@@ -94,11 +92,10 @@ function MessageActionsBarBase({
   language,
   menuLabelKey,
   showVoiceOutput,
-  showTaskCompleteChip,
-  taskPopoverContent,
   showFileChangesChip,
   fileChangesCount,
   fileChangesPopoverContent,
+  showTaskDoneChip,
   feedback,
   onLike,
   onDislikeSubmit,
@@ -111,8 +108,8 @@ function MessageActionsBarBase({
   const restoreLabel = t('ai.restorecheckpoint', language)
   const retryLabel = t('ai.retry', language)
   const likeLabel = t('ai.like', language)
-  const taskCompleteLabel = t('ai.taskcomplete', language)
   const fileChangesLabel = t('ai.filechanges', language)
+  const taskDoneLabel = t('ai.taskcomplete', language)
 
   const isLiked = feedback?.rating === 'like'
   const isDisliked = feedback?.rating === 'dislike'
@@ -125,21 +122,6 @@ function MessageActionsBarBase({
       onLike?.()
     }
   }
-
-  /** 任务完成 chip（带弹层） */
-  const taskChip = showTaskCompleteChip && taskPopoverContent ? (
-    <MessagePopover
-      title={taskCompleteLabel}
-      trigger={
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium text-green-400 bg-green-500/10 hover:bg-green-500/20 transition-all cursor-pointer">
-          <CheckCircle2 className="w-3.5 h-3.5" />
-          {taskCompleteLabel}
-        </span>
-      }
-    >
-      {taskPopoverContent}
-    </MessagePopover>
-  ) : null
 
   /** 文件变更 chip（带弹层） */
   const fileChip = showFileChangesChip && fileChangesPopoverContent ? (
@@ -157,6 +139,14 @@ function MessageActionsBarBase({
     </MessagePopover>
   ) : null
 
+  /** 任务完成 chip（纯展示，表明本轮任务已全部完成） */
+  const taskDoneChip = showTaskDoneChip ? (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium text-status-success bg-status-success/10">
+      <CheckCircle2 className="w-3.5 h-3.5" />
+      {taskDoneLabel}
+    </span>
+  ) : null
+
   return (
     <div
       className={`flex items-center gap-1.5 mt-1.5 mr-1 transition-opacity duration-200 ${
@@ -164,7 +154,7 @@ function MessageActionsBarBase({
       }`}
     >
       {/* 任务完成 chip（条件显示） */}
-      {taskChip}
+      {taskDoneChip}
 
       {/* 文件变更 chip（条件显示） */}
       {fileChip}

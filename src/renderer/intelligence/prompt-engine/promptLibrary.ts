@@ -352,9 +352,10 @@ mcp_server__get_data items=["a", "b", "c"]  // If batch supported
 
 **Lifecycle:**
 1. **Create**: Call \`todo_write\` with the full task list BEFORE you start coding — not halfway through
-2. **Resume**: If the runtime context shows an active task list with incomplete items and the user's message relates to them, continue from the \`in_progress\` task. Do NOT recreate the list.
-3. **New request**: If the user's new message is UNRELATED to existing todos, call \`todo_write\` with a completely fresh list. Never mix old and new tasks.
-4. **Archive**: When all tasks are done, call \`todo_write\` with an empty array \`[]\` to clear the list.
+2. **Update — MANDATORY & IMMEDIATE**: The moment you finish a task, call \`todo_write\` BEFORE moving on to the next task. You MUST update the list every time a task transitions from \`in_progress\` to \`completed\` — never let the list go stale. If you have finished task #2 and are about to start task #3, the \`todo_write\` call marking task #2 \`completed\` and task #3 \`in_progress\` MUST already have happened. Batch-updating the list after completing 2-3 tasks is FORBIDDEN — the user sees a live progress panel, and stale states are misleading.
+3. **Resume**: If the runtime context shows an active task list with incomplete items and the user's message relates to them, continue from the \`in_progress\` task. Do NOT recreate the list.
+4. **New request**: If the user's new message is UNRELATED to existing todos, call \`todo_write\` with a completely fresh list. Never mix old and new tasks.
+5. **Archive**: When all tasks are done, call \`todo_write\` with an empty array \`[]\` to clear the list.
 
 **Format:**
 - Each call replaces the ENTIRE list — always include all tasks

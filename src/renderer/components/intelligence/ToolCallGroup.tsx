@@ -26,6 +26,9 @@ import FileChangeCard from './FileChangeCard'
 import { MemoryApprovalInline } from './MemoryApprovalInline'
 import { needsDiffPreview } from '@configuration/toolDefinitions'
 import BatchApprovalPanel from './toolCallCard/BatchApprovalPanel'
+import { useStore } from '@store'
+import { t } from '@renderer/i18n'
+import { getFriendlyToolName } from '@intelligence/display/toolFriendlyName'
 
 /** 工具状态分组 */
 type ToolGroupStatus = 'pending' | 'awaiting' | 'success' | 'error'
@@ -195,6 +198,37 @@ function groupToolsByStatus(tools: ToolCall[]): ToolGroup[] {
   return result
 }
 
+/**
+ * 生成工具分组的操作摘要
+ *
+ * 收集分组内所有工具的友好名称（去重），最多展示 3 项，
+ * 超出则以「等 N 项」收尾，让用户无需展开即可了解完成了哪些操作。
+ *
+ * @param tools 分组内的工具调用列表
+ * @param language 当前界面语言
+ * @returns 摘要文本，如 "读取文件、创建文件、执行命令" 或 "读取文件、创建文件 等 2 项"
+ */
+function buildGroupSummary(tools: ToolCall[], language: ReturnType<typeof useStore.getState>['language']): string {
+  const seen = new Set<string>()
+  const names: string[] = []
+  for (const tc of tools) {
+    const label = getFriendlyToolName(tc.name, language).label
+    if (!seen.has(label)) {
+      seen.add(label)
+      names.push(label)
+    }
+  }
+  const max = 3
+  if (names.length <= max) {
+    return names.join('、')
+  }
+  const rest = names.length - max
+  return t('tool.groupSummaryMore', language as any, {
+    shown: names.slice(0, max).join('、'),
+    rest,
+  })
+}
+
 interface ToolCallGroupProps {
   toolCalls: ToolCall[]
   /** 单个待批准工具 id（向后兼容） */
@@ -216,6 +250,11 @@ function ToolCallGroup({
   onOpenDiff,
   messageId,
 }: ToolCallGroupProps) {
+  // 注意：选择器必须返回原始值（字符串），不能返回对象字面量。
+  // 否则每次渲染都会产生新对象引用，Zustand 用 Object.is 比较会判定为变化，
+  // 触发 forceStoreRerender → 重渲染 → 再次调用选择器 → 无限循环（Maximum update depth exceeded）。
+  const language = useStore((state) => state.language)
+
   /**
    * 统一的待批准 id 集合
    *
@@ -324,6 +363,11 @@ function ToolCallGroup({
                 />
                 <span>
                   {group.label} ({group.tools.length})
+                  {(group.status === 'success' || group.status === 'error') && (
+                    <span className="text-text-muted/70 font-normal ml-1">
+                      · {buildGroupSummary(group.tools, language)}
+                    </span>
+                  )}
                 </span>
                 {/* 仅在非 awaiting 组显示“待批准”徽标，避免与 awaiting 组标题重复 */}
                 {hasApproval && !isAwaitingGroup && (

@@ -1,4 +1,4 @@
-import { useState, memo, useEffect, useRef } from 'react'
+import { useState, memo, useEffect, useRef, useCallback } from 'react'
 import { Check, Circle, ChevronDown, X, Pause, Loader2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { TodoItem } from '@intelligence/providerTypes'
@@ -11,6 +11,12 @@ import { playCompletionSound } from '@renderer/utils/sound'
 interface TodoListPanelProps {
   todos: TodoItem[]
   isStreaming?: boolean
+  /**
+   * 嵌入式模式：嵌入到助手消息内容流中。
+   * - 禁用"全部完成后自动隐藏"逻辑（历史任务列表需保持可见）
+   * - 隐藏"清除"按钮（嵌入模式不操作线程级 todos）
+   */
+  embedded?: boolean
 }
 
 const MiniProgress = memo(({ percent, stopped, allCompleted }: { percent: number; stopped?: boolean; allCompleted?: boolean }) => {
@@ -75,6 +81,7 @@ const TodoRow = memo(({ todo, index, stopped }: { todo: TodoItem; index: number;
 
   return (
     <motion.div
+      data-todo-status={todo.status}
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2, delay: index * 0.03 }}
@@ -96,19 +103,45 @@ const TodoRow = memo(({ todo, index, stopped }: { todo: TodoItem; index: number;
 })
 TodoRow.displayName = 'TodoRow'
 
-export const TodoListPanel = memo(({ todos, isStreaming = true }: TodoListPanelProps) => {
+export const TodoListPanel = memo(({ todos, isStreaming = true, embedded = false }: TodoListPanelProps) => {
   const expandToolCallsByDefault = useStore(s => s.agentConfig.expandToolCallsByDefault ?? false)
   const language = useStore(s => s.language)
   // 当有任务时默认展开，无任务时收起
   const [isExpanded, setIsExpanded] = useState(todos.length > 0 ? true : expandToolCallsByDefault)
+
+  /** 任务列表滚动容器引用，用于自动滚动到 in_progress 任务 */
+  const listScrollRef = useRef<HTMLDivElement>(null)
+
+  /**
+   * 自动滚动到 in_progress 任务：当任务数超过可视区域时，
+   * 确保 in_progress 任务始终可见，而不是停留在列表顶部。
+   */
+  const scrollIntoView = useCallback(() => {
+    const container = listScrollRef.current
+    if (!container) return
+    const activeEl = container.querySelector('[data-todo-status="in_progress"]') as HTMLElement | null
+    if (activeEl) {
+      // 平滑滚动，让 in_progress 项落在容器顶部偏下位置
+      activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isExpanded) return
+    // todos 变化时（如任务推进）滚动到当前 in_progress 任务
+    const timer = setTimeout(scrollIntoView, 50)
+    return () => clearTimeout(timer)
+  }, [todos, isExpanded, scrollIntoView])
 
   /**
    * 任务列表隐藏状态（local state）。
    * - 初始值：挂载时若任务已全部完成且非流式，直接隐藏（覆盖应用重启 / 编辑器开关导致的重新挂载场景）
    * - 运行时：任务从未完成 → 全部完成 + 流式结束时，延迟 2s 隐藏（让用户先看到完成动画）
    * - 重置：出现未完成任务或流式重新开始时恢复可见
+   * - 嵌入式模式：不自动隐藏，历史任务列表需保持可见
    */
   const [hidden, setHidden] = useState(() => {
+    if (embedded) return false
     const allCompleted = todos.length > 0 && todos.every(t => t.status === 'completed')
     return allCompleted && !isStreaming
   })
@@ -137,8 +170,10 @@ export const TodoListPanel = memo(({ todos, isStreaming = true }: TodoListPanelP
 
   // 任务全部完成 + AI 流式结束后，延迟 2s 完全隐藏面板
   // 首次挂载时若已处于完成状态，hidden 初始值已为 true，无需再次触发延迟
+  // 嵌入式模式不自动隐藏
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
+    if (embedded) return
     const allCompleted = todos.length > 0 && todos.every(t => t.status === 'completed')
     const shouldHide = allCompleted && !isStreaming
 
@@ -179,6 +214,8 @@ export const TodoListPanel = memo(({ todos, isStreaming = true }: TodoListPanelP
   // 完全隐藏后不再渲染（任务列表数据保留在 store，可通过助手消息底部"任务完成"chip 查看）
   if (hidden || todos.length === 0) return null
 
+  // stopped 表示"任务未完成但会话已结束"（用户中止 / 历史消息 / 重启应用）。
+  // 仅当前正在流式的消息（isStreaming=true）才显示"进行中"，否则有 in_progress 任务即为"已停止"。
   const stopped = !isStreaming
   const completed = todos.filter(t => t.status === 'completed').length
   const hasInProgress = todos.some(t => t.status === 'in_progress')
@@ -215,7 +252,7 @@ export const TodoListPanel = memo(({ todos, isStreaming = true }: TodoListPanelP
           }
         </span>
 
-        {(stopped || allCompleted) && (
+        {(stopped || allCompleted) && !embedded && (
           <button
             onClick={(e) => { e.stopPropagation(); handleClearTodos() }}
             className="p-1 rounded-md text-text-muted/50 hover:text-text-primary hover:bg-white/5 transition-colors"
@@ -238,7 +275,7 @@ export const TodoListPanel = memo(({ todos, isStreaming = true }: TodoListPanelP
             transition={{ duration: 0.15 }}
             className="overflow-hidden"
           >
-            <div className="px-1.5 pb-2 pt-0.5 max-h-[140px] overflow-y-auto custom-scrollbar">
+            <div ref={listScrollRef} className="px-1.5 pb-2 pt-0.5 max-h-[140px] overflow-y-auto custom-scrollbar">
               {todos.map((todo, i) => (
                 <TodoRow key={i} todo={todo} index={i} stopped={stopped && todo.status === 'in_progress'} />
               ))}

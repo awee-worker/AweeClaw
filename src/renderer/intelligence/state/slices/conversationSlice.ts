@@ -421,7 +421,12 @@ export const createMessageSlice: StateCreator<
                         return part
                     })
 
-                    return { ...assistantMsg, isStreaming: false, toolCalls: newToolCalls, parts: newParts }
+                    return {
+                        ...assistantMsg,
+                        isStreaming: false,
+                        toolCalls: newToolCalls,
+                        parts: newParts,
+                    }
                 }
                 return msg
             })
