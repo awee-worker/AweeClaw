@@ -152,6 +152,10 @@ function buildDeclarativeScenarioConfig(p: CreateProjectFilesParams): Declarativ
     ui: {
       layout: 'chat-centric',
       panels: ['chat'],
+      sidebarItems: [
+        { id: 'explorer', icon: 'Files', label: 'Workspace', labelZh: '工作区', component: 'ExplorerView', position: 0 },
+        { id: 'knowledge', icon: 'BookOpen', label: 'Knowledge', labelZh: '知识库', component: 'KnowledgeView', position: 1 },
+      ],
     },
     database: {
       installScriptFiles: ['db/install.sql'],

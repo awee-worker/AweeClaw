@@ -2,6 +2,7 @@
  * 项目列表面板
  *
  * 显示所有场景项目，支持创建、打开、编辑、删除、在工作区打开目录。
+ * 卡片集成校验 / 构建 / 打包 / 安装 / 发布 五大快捷操作，无需切换面板即可完成全流程。
  */
 import { useState, useEffect, useCallback } from 'react'
 import type React from 'react'
@@ -14,7 +15,11 @@ import { toast } from '@components/foundation/NotificationProvider'
 import { directoryCacheService } from '@services/dirCacheAdapter'
 import ProjectCreateDialog from './ProjectCreateDialog'
 import ProjectEditDialog from './ProjectEditDialog'
+import ProjectActionButtons from './ProjectActionButtons'
+import OperationErrorDialog from './OperationErrorDialog'
 import { useSelectedProject } from '../../hooks/useSelectedProject'
+import { useProjectOperations } from '../../hooks/useProjectOperations'
+import type { OpErrorInfo } from '../../hooks/useProjectOperations'
 
 const ProjectListPanel: React.FC = () => {
   const { t } = useI18n()
@@ -27,6 +32,8 @@ const ProjectListPanel: React.FC = () => {
   const [editingProject, setEditingProject] = useState<ScenarioProject | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [openingWorkspaceId, setOpeningWorkspaceId] = useState<string | null>(null)
+  // 本地操作（如"在工作区定位"）的失败详情，与 operations.lastError 互补
+  const [localError, setLocalError] = useState<OpErrorInfo | null>(null)
 
   const selectedId = selectedProject?.id ?? null
 
@@ -45,6 +52,9 @@ const ProjectListPanel: React.FC = () => {
   useEffect(() => {
     loadProjects()
   }, [loadProjects])
+
+  // 快捷操作 Hook：操作完成后刷新项目列表与选中态
+  const operations = useProjectOperations(loadProjects)
 
   const handleSelectProject = useCallback(
     (project: ScenarioProject) => {
@@ -123,12 +133,6 @@ const ProjectListPanel: React.FC = () => {
    * 不再使用 setWorkspace 替换工作区根目录，原因：
    * - 替换工作区根会导致原工作区的 .aweeclaw 配置目录丢失（项目目录中不存在该配置）。
    * - 仅需"展开 + 定位"即可满足用户在文件树中查看项目的需求。
-   *
-   * 实现步骤：
-   * 1. 校验项目目录存在且位于当前工作区内（文件树仅基于 workspacePath 渲染）。
-   * 2. 切换到资源管理器面板。
-   * 3. 触发 explorer:reveal-file 事件，由 VirtualTreeRenderer 逐级加载并展开父级链、滚动到目标节点。
-   * 4. setSelectedFolder 高亮选中项目目录。
    */
   const handleOpenInWorkspace = useCallback(
     async (project: ScenarioProject, e: React.MouseEvent) => {
@@ -139,12 +143,25 @@ const ProjectListPanel: React.FC = () => {
         const exists = await api.file.exists(project.localPath)
         if (!exists) {
           toast.error(t('builder.project.dirNotFound'), project.localPath)
+          setLocalError({
+            operationLabel: t('builder.project.openInWorkspace'),
+            projectName: project.name,
+            message: t('builder.project.dirNotFound'),
+            detail: project.localPath,
+            timestamp: Date.now(),
+          })
           return
         }
 
         const currentWorkspacePath = useStore.getState().workspacePath
         if (!currentWorkspacePath) {
           toast.error(t('builder.project.noWorkspace'))
+          setLocalError({
+            operationLabel: t('builder.project.openInWorkspace'),
+            projectName: project.name,
+            message: t('builder.project.noWorkspace'),
+            timestamp: Date.now(),
+          })
           return
         }
 
@@ -157,6 +174,13 @@ const ProjectListPanel: React.FC = () => {
 
         if (!inWorkspace) {
           toast.error(t('builder.project.notInWorkspace'), project.localPath)
+          setLocalError({
+            operationLabel: t('builder.project.openInWorkspace'),
+            projectName: project.name,
+            message: t('builder.project.notInWorkspace'),
+            detail: project.localPath,
+            timestamp: Date.now(),
+          })
           return
         }
 
@@ -176,7 +200,15 @@ const ProjectListPanel: React.FC = () => {
         toast.success(t('builder.project.openInWorkspaceDone'), project.name)
       } catch (err) {
         console.error('Failed to open project in workspace:', err)
-        toast.error((err as Error).message || t('builder.project.dirNotFound'), project.localPath)
+        const msg = err instanceof Error ? err.message : String(err)
+        toast.error(msg || t('builder.project.dirNotFound'), project.localPath)
+        setLocalError({
+          operationLabel: t('builder.project.openInWorkspace'),
+          projectName: project.name,
+          message: msg || t('builder.project.dirNotFound'),
+          detail: project.localPath,
+          timestamp: Date.now(),
+        })
       } finally {
         setOpeningWorkspaceId(null)
       }
@@ -199,6 +231,26 @@ const ProjectListPanel: React.FC = () => {
     ready: 'bg-emerald-500/10 text-emerald-500',
     published: 'bg-purple-500/10 text-purple-500',
     archived: 'bg-gray-500/10 text-gray-400',
+  }
+
+  /** 格式化相对时间，便于卡片展示 */
+  const formatTime = (iso?: string): string => {
+    if (!iso) return '-'
+    try {
+      const d = new Date(iso)
+      const now = Date.now()
+      const diff = now - d.getTime()
+      const min = Math.floor(diff / 60000)
+      const hour = Math.floor(min / 60)
+      const day = Math.floor(hour / 24)
+      if (min < 1) return '刚刚'
+      if (min < 60) return `${min} 分钟前`
+      if (hour < 24) return `${hour} 小时前`
+      if (day < 30) return `${day} 天前`
+      return d.toLocaleDateString()
+    } catch {
+      return '-'
+    }
   }
 
   return (
@@ -225,78 +277,119 @@ const ProjectListPanel: React.FC = () => {
         />
       </div>
 
-      {/* 项目列表 - 宽屏自适应网格布局 */}
+      {/* 项目列表 - 大卡片自适应网格布局 */}
       <div className="flex-1 overflow-y-auto">
         {loading ? (
           <div className="p-4 text-center text-xs text-muted-foreground">{t('builder.common.loading')}</div>
         ) : filteredProjects.length === 0 ? (
           <div className="p-4 text-center text-xs text-muted-foreground">{t('builder.project.empty')}</div>
         ) : (
-          <div className="grid grid-cols-1 gap-2 p-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {filteredProjects.map((project) => (
-              <div
-                key={project.id}
-                onClick={() => handleSelectProject(project)}
-                className={`cursor-pointer rounded-lg border p-3 transition-all hover:scale-[1.02] ${
-                  selectedId === project.id
-                    ? 'border-accent bg-accent/5 ring-1 ring-accent/20'
-                    : 'border-border hover:border-accent/40 hover:bg-muted/50'
-                }`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate text-sm font-medium">{project.name}</span>
-                      <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${statusColors[project.status]}`}>
-                        {t(`builder.status.${project.status}`)}
-                      </span>
-                    </div>
-                    <div className="mt-1 truncate text-xs text-muted-foreground">{project.scenarioId}</div>
-                    <div className="mt-2 flex items-center gap-2 text-[10px] text-muted-foreground">
-                      <span>v{project.version}</span>
-                      <span>·</span>
-                      <span>{t(`builder.type.${project.type}`)}</span>
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    <button
-                      onClick={(e) => handleEdit(project, e)}
-                      className="rounded px-1.5 py-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                      title={t('builder.common.edit')}
-                      aria-label={t('builder.common.edit')}
-                    >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                      </svg>
-                    </button>
-                    <button
-                      onClick={(e) => handleDelete(project, e)}
-                      className="rounded px-1.5 py-0.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                      title={t('builder.project.delete')}
-                      aria-label={t('builder.project.delete')}
-                    >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="3 6 5 6 21 6" />
-                        <path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-                {/* 在工作区打开项目目录 */}
-                <button
-                  onClick={(e) => handleOpenInWorkspace(project, e)}
-                  disabled={openingWorkspaceId === project.id}
-                  className="mt-2 flex w-full items-center justify-center gap-1 rounded border border-border px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:border-accent/40 hover:bg-accent/5 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
-                  title={t('builder.project.openInWorkspaceDesc')}
+          <div className="grid grid-cols-1 gap-3 p-3 xl:grid-cols-2">
+            {filteredProjects.map((project) => {
+              const opStates = operations.getStates(project.id)
+              const anyRunning =
+                opStates.validate === 'running' ||
+                opStates.build === 'running' ||
+                opStates.pack === 'running' ||
+                opStates.install === 'running' ||
+                opStates.publish === 'running'
+              return (
+                <div
+                  key={project.id}
+                  onClick={() => handleSelectProject(project)}
+                  className={`group cursor-pointer rounded-lg border p-3 transition-all hover:shadow-md ${
+                    selectedId === project.id
+                      ? 'border-accent bg-accent/5 ring-1 ring-accent/20'
+                      : 'border-border hover:border-accent/40 hover:bg-muted/30'
+                  }`}
                 >
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                  </svg>
-                  <span>{openingWorkspaceId === project.id ? t('builder.common.loading') : t('builder.project.openInWorkspace')}</span>
-                </button>
-              </div>
-            ))}
+                  {/* 第一行：项目名 + 状态 + 编辑/删除 */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate text-sm font-semibold">{project.name}</span>
+                        <span className={`shrink-0 rounded px-1.5 py-0.5 text-xs font-medium ${statusColors[project.status]}`}>
+                          {t(`builder.status.${project.status}`)}
+                        </span>
+                      </div>
+                      <div className="mt-1 truncate text-xs text-muted-foreground">{project.scenarioId}</div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1 opacity-60 transition-opacity group-hover:opacity-100">
+                      <button
+                        onClick={(e) => handleEdit(project, e)}
+                        className="rounded px-1.5 py-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                        title={t('builder.common.edit')}
+                        aria-label={t('builder.common.edit')}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={(e) => handleDelete(project, e)}
+                        className="rounded px-1.5 py-0.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                        title={t('builder.project.delete')}
+                        aria-label={t('builder.project.delete')}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="3 6 5 6 21 6" />
+                          <path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 第二行：描述（若有） */}
+                  {project.description && (
+                    <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+                      {project.description}
+                    </p>
+                  )}
+
+                  {/* 第三行：元信息 - 版本 / 类型 / 最后构建 / 最后发布 */}
+                  <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                    <span className="font-medium">v{project.version}</span>
+                    <span className="text-border">·</span>
+                    <span>{t(`builder.type.${project.type}`)}</span>
+                    <span className="text-border">·</span>
+                    <span title={t('builder.project.lastBuiltAt')}>
+                      {t('builder.buildOverview.lastBuild')}: {formatTime(project.lastBuiltAt)}
+                    </span>
+                    {project.lastPublishedAt && (
+                      <>
+                        <span className="text-border">·</span>
+                        <span title={t('builder.project.lastPublishedAt')}>
+                          {t('builder.project.lastPublishedAt')}: {formatTime(project.lastPublishedAt)}
+                        </span>
+                      </>
+                    )}
+                  </div>
+
+                  {/* 第四行：快捷操作按钮 - 校验 / 构建 / 打包 / 安装 / 发布 */}
+                  <div className="mt-2.5 border-t border-border/60 pt-2.5">
+                    <ProjectActionButtons
+                      project={project}
+                      operations={operations}
+                      size="compact"
+                    />
+                  </div>
+
+                  {/* 第五行：在工作区定位（次要操作，置于底部） */}
+                  <button
+                    onClick={(e) => handleOpenInWorkspace(project, e)}
+                    disabled={openingWorkspaceId === project.id || anyRunning}
+                    className="mt-2 flex w-full items-center justify-center gap-1 rounded border border-border px-2 py-1 text-xs text-muted-foreground transition-colors hover:border-accent/40 hover:bg-accent/5 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+                    title={t('builder.project.openInWorkspaceDesc')}
+                  >
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                    </svg>
+                    <span>{openingWorkspaceId === project.id ? t('builder.common.loading') : t('builder.project.openInWorkspace')}</span>
+                  </button>
+                </div>
+              )
+            })}
           </div>
         )}
       </div>
@@ -332,6 +425,18 @@ const ProjectListPanel: React.FC = () => {
           onSaved={handleEditSaved}
         />
       )}
+
+      {/* 操作失败弹窗：强制提醒用户并展示错误详情（优先展示五大操作的失败，其次为本地操作如"在工作区定位"） */}
+      <OperationErrorDialog
+        error={operations.lastError ?? localError}
+        onClose={() => {
+          if (operations.lastError) {
+            operations.dismissError()
+          } else if (localError) {
+            setLocalError(null)
+          }
+        }}
+      />
     </div>
   )
 }

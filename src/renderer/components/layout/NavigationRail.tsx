@@ -27,7 +27,6 @@ const isMac = typeof navigator !== 'undefined' && (
 const DEFAULT_ITEMS: SidebarItemDescriptor[] = [
   { id: 'explorer', icon: 'Files', label: 'Workspace', labelZh: '工作区', component: 'ExplorerView', position: 0 },
   { id: 'knowledge', icon: 'BookOpen', label: 'Knowledge', labelZh: '知识库', component: 'KnowledgeView', position: 1 },
-  { id: 'history', icon: 'History', label: 'History', labelZh: '历史', component: 'HistoryView', position: 2 },
 ]
 
 function NavPill({ active }: { active: boolean }) {

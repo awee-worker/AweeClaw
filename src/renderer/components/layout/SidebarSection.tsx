@@ -5,14 +5,27 @@
  * 从 AweeApp.tsx 中提取，消除两种布局模式下的重复代码。
  */
 
-import { Suspense, useRef, lazy } from 'react'
+import { Suspense, useRef, lazy, useEffect, useState } from 'react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
-import { useSidebarResize } from '@hooks'
+import { useSidebarResize, computeSidebarMinWidth } from '@hooks'
 import { CrashGuard as ErrorBoundary } from '@components/foundation/CrashGuard'
 import { PanelSkeleton } from '@components/ui/ProgressIndicator'
 
 const Sidebar = lazy(() => import('@components/explorer/ExplorerSidebar'))
+
+/** 订阅窗口宽度，侧边栏最小宽度按窗口动态计算（与拖拽下限一致） */
+function useDynamicSidebarMinWidth(): number {
+  const [minWidth, setMinWidth] = useState(() =>
+    typeof window === 'undefined' ? 280 : computeSidebarMinWidth(window.innerWidth),
+  )
+  useEffect(() => {
+    const update = () => setMinWidth(computeSidebarMinWidth(window.innerWidth))
+    window.addEventListener('resize', update)
+    return () => window.removeEventListener('resize', update)
+  }, [])
+  return minWidth
+}
 
 interface SidebarSectionProps {
   /** 是否隐藏侧边栏（某些面板/页面状态下需要隐藏） */
@@ -24,6 +37,7 @@ export default function SidebarSection({ hidden }: SidebarSectionProps) {
     sidebarWidth: s.sidebarWidth,
     setSidebarWidth: s.setSidebarWidth,
   })))
+  const minWidth = useDynamicSidebarMinWidth()
 
   const sidebarRef = useRef<HTMLDivElement>(null)
   const { startResize } = useSidebarResize(setSidebarWidth, sidebarRef)
@@ -33,8 +47,8 @@ export default function SidebarSection({ hidden }: SidebarSectionProps) {
   return (
     <div
       ref={sidebarRef}
-      style={{ width: sidebarWidth, minWidth: sidebarWidth }}
-      className="flex-shrink-0 relative min-w-[170px]"
+      style={{ width: sidebarWidth, minWidth }}
+      className="flex-shrink-0 relative"
     >
       <ErrorBoundary>
         <Suspense fallback={<PanelSkeleton />}>

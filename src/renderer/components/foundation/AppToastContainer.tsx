@@ -1,7 +1,7 @@
 import { useStore } from '@store'
 import { useInlineToast } from './InlineNotification'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowUpRight, Terminal, Volume2, X } from 'lucide-react'
+import { ArrowUpRight, Terminal, X, CheckCircle2, XCircle, AlertTriangle, Info } from 'lucide-react'
 import { useHasElevatedToastLayer } from './toastLayerStore'
 import { ActionButton } from '../ui'
 import { BRAND } from '@shared/brand'
@@ -19,6 +19,26 @@ export default function GlobalToastContainer() {
   const activeInlineToast = [...visibleToasts].reverse().find((toast) => toast.variant === 'inline') || null
   const activeCardToast = [...visibleToasts].reverse().find((toast) => toast.variant === 'card') || null
 
+  // 右上角卡片图标按类型着色，便于一眼区分成功/失败/警告/提示
+  const cardIconColor =
+    activeCardToast?.type === 'success'
+      ? 'text-emerald-400'
+      : activeCardToast?.type === 'error'
+      ? 'text-red-400'
+      : activeCardToast?.type === 'warning'
+      ? 'text-amber-400'
+      : 'text-blue-400'
+  /** 按 Toast 类型选择对应语义图标 */
+  const renderTypeIcon = (type: 'success' | 'error' | 'warning' | 'info', className: string) => {
+    const map = {
+      success: <CheckCircle2 className={className} />,
+      error: <XCircle className={className} />,
+      warning: <AlertTriangle className={className} />,
+      info: <Info className={className} />,
+    }
+    return map[type]
+  }
+
   return (
     <>
       <div className="fixed top-12 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none flex flex-col items-center justify-start">
@@ -33,7 +53,7 @@ export default function GlobalToastContainer() {
               transition={{ type: 'spring', stiffness: 500, damping: 30 }}
               className="flex items-center gap-2 px-3 py-1.5 bg-background-secondary/80 backdrop-blur-md border border-border/50 rounded-full shadow-lg pointer-events-auto cursor-pointer max-w-[400px]"
             >
-              <Volume2
+              <span
                 className={`w-3.5 h-3.5 animate-pulse shrink-0 ${
                   activeInlineToast.type === 'success'
                     ? 'text-emerald-400 drop-shadow-[0_0_6px_rgba(52,211,153,0.6)]'
@@ -43,7 +63,9 @@ export default function GlobalToastContainer() {
                     ? 'text-amber-400 drop-shadow-[0_0_6px_rgba(251,191,36,0.6)]'
                     : 'text-blue-400 drop-shadow-[0_0_6px_rgba(96,165,250,0.6)]'
                 }`}
-              />
+              >
+                {renderTypeIcon(activeInlineToast.type, 'w-3.5 h-3.5')}
+              </span>
               <span className="text-xs text-text-primary font-medium truncate">
                 {activeInlineToast.message}
               </span>
@@ -72,8 +94,8 @@ export default function GlobalToastContainer() {
                 </button>
 
                 <div className="flex items-start gap-2.5">
-                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-surface text-text-muted">
-                    <Volume2 className="h-3.5 w-3.5" />
+                  <div className={`shrink-0 ${cardIconColor}`}>
+                    {renderTypeIcon(activeCardToast.type, 'h-7 w-7')}
                   </div>
 
                   <div className="min-w-0 flex-1">

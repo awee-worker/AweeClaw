@@ -12,7 +12,7 @@ export {
 export { useEditorBreakpoints } from './useEditorBreakpoints'
 export { useWindowTitle } from './useWindowTitle'
 export { useFileWatcher } from './useFileWatcher'
-export { useResizePanel, useSidebarResize, useChatResize } from './useResizePanel'
+export { useResizePanel, useSidebarResize, useChatResize, computeSidebarMinWidth } from './useResizePanel'
 export { useAppInit } from './useAppInit'
 export { useAppShutdownState } from './useAppShutdownState'
 export { useGlobalShortcuts } from './useGlobalShortcuts'

@@ -101,21 +101,65 @@ export function useResizePanel(config: ResizeConfig): ResizeState {
   return { isResizing, startResize }
 }
 
-/** 侧边栏拖拽（从左侧拖拽） */
+/** 订阅窗口宽度变化，返回当前 window.innerWidth */
+function useWindowWidth(): number {
+  const [width, setWidth] = useState(() =>
+    typeof window === 'undefined' ? 1440 : window.innerWidth,
+  )
+  useEffect(() => {
+    const onResize = () => setWidth(window.innerWidth)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  return width
+}
+
+/**
+ * 按窗口宽度动态计算侧边栏最小宽度（线性插值 + 上下限钳制）。
+ *
+ * 参考点：
+ *   800px  → 266px
+ *   1440px → 280px
+ *   1920px → 320px
+ *
+ * 采用两段线性：800~1440 缓增，1440~1920 稍快，整体受 [266, 320] 钳制。
+ */
+export function computeSidebarMinWidth(windowWidth: number): number {
+  let min: number
+  if (windowWidth <= 800) {
+    min = 266
+  } else if (windowWidth <= 1440) {
+    // 800→266, 1440→280
+    min = 266 + Math.round(((windowWidth - 800) / (1440 - 800)) * (280 - 266))
+  } else if (windowWidth <= 1920) {
+    // 1440→280, 1920→320
+    min = 280 + Math.round(((windowWidth - 1440) / (1920 - 1440)) * (320 - 280))
+  } else {
+    min = 320
+  }
+  return Math.max(LAYOUT.SIDEBAR_MIN_WIDTH, min)
+}
+
+/**
+ * 侧边栏拖拽（从左侧拖拽）
+ *
+ * 最小宽度按窗口宽度动态计算（见 computeSidebarMinWidth），并受 SIDEBAR_MAX_WIDTH 约束。
+ */
 export function useSidebarResize(
   onResizeEnd: (width: number) => void,
   panelRef: React.RefObject<HTMLDivElement | null>,
 ) {
-  const config = useMemo(
-    () => ({
+  const windowWidth = useWindowWidth()
+  const config = useMemo(() => {
+    const minSize = computeSidebarMinWidth(windowWidth)
+    return {
       direction: 'left' as const,
-      minSize: LAYOUT.SIDEBAR_MIN_WIDTH,
+      minSize,
       maxSize: LAYOUT.SIDEBAR_MAX_WIDTH,
       onResizeEnd,
       panelRef,
-    }),
-    [onResizeEnd, panelRef],
-  )
+    }
+  }, [onResizeEnd, panelRef, windowWidth])
   return useResizePanel(config)
 }
 

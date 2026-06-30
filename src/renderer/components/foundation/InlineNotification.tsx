@@ -56,7 +56,8 @@ function uid(tag: string): string {
 
 const MAX_QUEUE = 50
 const MAX_VISIBLE = 5
-const DEFAULT_LIFE_MS = 5000
+// 默认右上角弹窗自动消失时长：4s
+const DEFAULT_LIFE_MS = 4000
 
 export function InlineNotificationProvider({ children }: { children: ReactNode }) {
   const [entries, setEntries] = useState<NotificationEntry[]>([])
@@ -67,14 +68,32 @@ export function InlineNotificationProvider({ children }: { children: ReactNode }
     setTimeout(() => setVisibleIds(prev => prev.filter(v => v !== id)), lifeMs)
   }, [])
 
+  /**
+   * 默认以「右上角卡片弹窗」展示，4s 自动消失。
+   *
+   * 调用方传参语义：
+   *   - message：主标题
+   *   - durationOrDetail：
+   *       string => 作为消息详情（正文）展示，时长用默认 4s
+   *       number => 覆盖自动消失时长（ms），无详情正文
+   */
   const addToast = useCallback((type: ToastType, message: string, durationOrDetail?: number | string) => {
     const id = uid('ntf')
-    let text = message
+    const title = message
+    let body = ''
     let lifeMs = DEFAULT_LIFE_MS
-    if (typeof durationOrDetail === 'string' && durationOrDetail) text = `${message}: ${durationOrDetail}`
+    if (typeof durationOrDetail === 'string' && durationOrDetail) body = durationOrDetail
     else if (typeof durationOrDetail === 'number') lifeMs = durationOrDetail
 
-    const entry: NotificationEntry = { id, type, variant: 'inline', message: text, duration: lifeMs, timestamp: Date.now() }
+    const entry: NotificationEntry = {
+      id,
+      type,
+      variant: 'card',
+      title,
+      message: body,
+      duration: lifeMs,
+      timestamp: Date.now(),
+    }
     setEntries(prev => (prev.length >= MAX_QUEUE ? prev.slice(1) : prev).concat(entry))
     setVisibleIds(prev => (prev.length >= MAX_VISIBLE ? prev.slice(-MAX_VISIBLE + 1) : prev).concat(id))
     autoHide(id, lifeMs)
