@@ -48,14 +48,6 @@ export const TOOL_LABEL_KEYS: Record<string, string> = {
   desktop_press_key: 'tool.label.desktop_press_key',
   desktop_key_combo: 'tool.label.desktop_key_combo',
   desktop_emergency_stop: 'tool.label.desktop_emergency_stop',
-  desktop_record_action: 'tool.label.desktop_record_action',
-  desktop_recording_start: 'tool.label.desktop_recording_start',
-  desktop_recording_stop: 'tool.label.desktop_recording_stop',
-  desktop_replay_recording: 'tool.label.desktop_replay_recording',
-  desktop_list_recordings: 'tool.label.desktop_list_recordings',
-  desktop_visual_agent_step: 'tool.label.desktop_visual_agent_step',
-  desktop_workflow_run: 'tool.label.desktop_workflow_run',
-  desktop_workflow_list: 'tool.label.desktop_workflow_list',
 }
 
 /** 扩展名到语言标识的映射表 */

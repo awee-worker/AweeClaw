@@ -771,6 +771,34 @@ export const MCP_PRESETS: McpPreset[] = [
     usageExamples: ['List files in the project directory', 'Read the content of config.json', 'Search for all .ts files'],
     usageExamplesZh: ['列出项目目录中的文件', '读取 config.json 的内容', '搜索所有 .ts 文件'],
   },
+
+  // ===== 内置进程内 MCP（无外部依赖） =====
+  {
+    type: 'builtin',
+    id: 'computer-use',
+    name: 'Computer Use',
+    description: 'Built-in desktop automation: screenshot, OCR text click, mouse/keyboard control, window/process management, file I/O. Runs in-process (no external dependency).',
+    descriptionZh: '内置桌面自动化：截图、OCR 按文字点击、鼠标键盘控制、窗口/进程管理、文件读写。进程内运行，无外部依赖。',
+    category: 'productivity',
+    icon: 'Monitor',
+    builtin: 'computer-use',
+    defaultAutoApprove: ['screen_capture', 'ocr_recognize', 'list_windows', 'list_processes', 'read_file', 'list_directory', 'get_file_info'],
+    requiresConfig: false,
+    official: true,
+    tags: ['desktop', 'automation', 'ocr', 'screenshot', 'builtin'],
+    usageExamples: [
+      'Take a screenshot and tell me what you see',
+      'Click the "Send" button in WeChat (use click_text)',
+      'Open Safari and navigate to github.com',
+      'Read the content of /etc/hosts',
+    ],
+    usageExamplesZh: [
+      '截个屏，告诉我你看到了什么',
+      '点击微信里的"发送"按钮（用 click_text）',
+      '打开 Safari 并访问 github.com',
+      '读取 /etc/hosts 的内容',
+    ],
+  },
 ]
 
 /** 根据分类获取预设 */

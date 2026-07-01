@@ -11,7 +11,7 @@
  * @module scenario-system/workflow-marketplace
  */
 
-import type { WorkflowDefinition } from '@main/modules/desktop-control/types/workflow'
+import type { WorkflowDefinition } from '@shared/protocols/workflow'
 
 // ============================================
 // 工作流模板类型定义

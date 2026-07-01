@@ -38,7 +38,7 @@ export function createMcpApi() {
     mcpReloadConfig: invoke('mcp:reloadConfig'),
     mcpAddServer: (
       config: {
-        type?: 'local' | 'remote'
+        type?: 'local' | 'remote' | 'builtin'
         id: string
         name: string
         command?: string
@@ -47,6 +47,7 @@ export function createMcpApi() {
         url?: string
         headers?: Record<string, string>
         oauth?: { clientId?: string; clientSecret?: string; scope?: string } | false
+        builtin?: string
         autoApprove?: string[]
         disabled?: boolean
       },

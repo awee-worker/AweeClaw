@@ -201,10 +201,18 @@ export class McpToolProvider implements ToolProvider {
       })
 
       if (!result.success) {
+        // 双保险：若主进程未设置 error 字段，则从 content 中提取文本作为 fallback
+        let errorMsg = result.error
+        if (!errorMsg && Array.isArray(result.content)) {
+          errorMsg = result.content
+            .filter((c) => c.type === 'text' && c.text)
+            .map((c) => c.text!)
+            .join('\n') || undefined
+        }
         return {
           success: false,
           result: '',
-          error: result.error || 'MCP tool execution failed',
+          error: errorMsg || 'MCP tool execution failed',
         }
       }
 

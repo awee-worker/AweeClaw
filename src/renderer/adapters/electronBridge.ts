@@ -791,11 +791,6 @@ function createGroupedAPI() {
       killProcess: (pid: number, force?: boolean) => raw.desktopKillProcess(pid, force),
       isProcessRunning: (name: string) => raw.desktopIsProcessRunning(name),
 
-      // 权限确认
-      resolveConfirmation: (id: string, response: { approved: boolean; remember: boolean }) =>
-        raw.desktopResolveConfirmation(id, response),
-      onConfirmationRequest: (callback: (request: any) => void) => raw.onDesktopConfirmationRequest(callback),
-
       // 窗口控制
       listWindows: () => raw.desktopListWindows(),
       findWindow: (query: string) => raw.desktopFindWindow(query),
@@ -850,65 +845,6 @@ function createGroupedAPI() {
         openPreferences: (type?: string) => raw.desktopAccessibilityOpenPreferences(type),
         requestPermission: (type?: string) => raw.desktopAccessibilityRequestPermission(type),
         onPermissionChange: (callback: (type: string, status: string) => void) => raw.onDesktopAccessibilityPermissionChange(callback),
-      },
-
-      // 操作录制（Phase 4）
-      recording: {
-        start: (params: { name: string; description?: string }) => raw.desktopRecordingStart(params),
-        stop: (params: { discard?: boolean }) => raw.desktopRecordingStop(params),
-        recordAction: (params: { actionType: string; params: Record<string, unknown> }) => raw.desktopRecordAction(params),
-        replay: (params: { recordingId: string; config?: Record<string, unknown> }) => raw.desktopReplayRecording(params),
-        list: () => raw.desktopListRecordings(),
-        delete: (recordingId: string) => raw.desktopDeleteRecording(recordingId),
-        getState: () => raw.desktopRecordingGetState(),
-        onStateChange: (callback: (state: any) => void) => raw.onDesktopRecordingStateChange(callback),
-        onProgress: (callback: (progress: any) => void) => raw.onDesktopRecordingProgress(callback),
-      },
-
-      // 视觉闭环（Phase 4）
-      visualAgent: {
-        run: (params: { task: string; maxSteps?: number; cloudConfig?: { cloudMode: boolean; serverUrl?: string; accessToken?: string; refreshToken?: string } }) => raw.desktopVisualAgentRun(params),
-        abort: () => raw.desktopVisualAgentAbort(),
-        isRunning: () => raw.desktopVisualAgentIsRunning(),
-        onStepStart: (callback: (data: any) => void) => raw.onDesktopVisualAgentStepStart(callback),
-        onStepComplete: (callback: (step: any) => void) => raw.onDesktopVisualAgentStepComplete(callback),
-        onStepError: (callback: (data: any) => void) => raw.onDesktopVisualAgentStepError(callback),
-        onCompleted: (callback: (result: any) => void) => raw.onDesktopVisualAgentCompleted(callback),
-        onAborted: (callback: (result: any) => void) => raw.onDesktopVisualAgentAborted(callback),
-      },
-
-      // 工作流引擎（Phase 4）
-      workflow: {
-        register: (workflow: any) => raw.desktopWorkflowRegister(workflow),
-        update: (workflowId: string, updates: any) => raw.desktopWorkflowUpdate(workflowId, updates),
-        unregister: (workflowId: string) => raw.desktopWorkflowUnregister(workflowId),
-        get: (workflowId: string) => raw.desktopWorkflowGet(workflowId),
-        list: () => raw.desktopWorkflowList(),
-        run: (params: { workflowId: string; variables?: Record<string, unknown> }) => raw.desktopWorkflowRun(params),
-        abort: (runId: string) => raw.desktopWorkflowAbort(runId),
-        getRunning: () => raw.desktopWorkflowGetRunning(),
-        saveRecording: (script: any) => raw.desktopWorkflowSaveRecording(script),
-        getRecording: (recordingId: string) => raw.desktopWorkflowGetRecording(recordingId),
-        listRecordings: () => raw.desktopWorkflowListRecordings(),
-        deleteRecording: (recordingId: string) => raw.desktopWorkflowDeleteRecording(recordingId),
-        onStateChange: (callback: (data: any) => void) => raw.onDesktopWorkflowStateChange(callback),
-        onStepStart: (callback: (data: any) => void) => raw.onDesktopWorkflowStepStart(callback),
-        onStepComplete: (callback: (data: any) => void) => raw.onDesktopWorkflowStepComplete(callback),
-        onStepError: (callback: (data: any) => void) => raw.onDesktopWorkflowStepError(callback),
-        onLog: (callback: (data: any) => void) => raw.onDesktopWorkflowLog(callback),
-        onCompleted: (callback: (result: any) => void) => raw.onDesktopWorkflowCompleted(callback),
-      },
-
-      // 自动化模式：沉浸式桌面自动化体验（边缘光晕 + 退出按钮 + 输入锁定）
-      automation: {
-        enter: (params: { task: string; maxSteps?: number }) => raw.desktopAutomationEnter(params),
-        exit: (reason?: string) => raw.desktopAutomationExit(reason),
-        userExit: () => raw.desktopAutomationUserExit(),
-        setExitHover: (hovering: boolean) => raw.desktopAutomationSetExitHover(hovering),
-        getState: () => raw.desktopAutomationGetState(),
-        onStateChange: (callback: (state: any) => void) => raw.onDesktopAutomationStateChanged(callback),
-        onStep: (callback: (step: any) => void) => raw.onDesktopAutomationStep(callback),
-        onLog: (callback: (log: any) => void) => raw.onDesktopAutomationLog(callback),
       },
     },
 

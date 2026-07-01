@@ -9,7 +9,34 @@ import * as path from 'path'
 import { logger } from '@shared/toolkit/LogEngine'
 import { toAppError } from '@shared/toolkit/errorCatalog'
 import { getConfigFilePath, getWorkspaceConfigFilePath, CONFIG_FILES } from '../configPath'
-import type { McpConfig, McpServerConfig } from '@shared/protocols/toolProtocolBridge'
+import type { McpConfig, McpServerConfig, McpBuiltinServerConfig, McpBuiltinId } from '@shared/protocols/toolProtocolBridge'
+
+/**
+ * 内置进程内 MCP 服务器的默认配置清单。
+ * 这些配置默认 disabled=true，需用户显式启用（在设置界面或配置文件中 toggle）。
+ *
+ * 新增内置服务时在此处追加即可，无需改动 loadConfig 逻辑。
+ */
+const BUILTIN_SERVER_DEFAULTS: McpBuiltinServerConfig[] = [
+  {
+    type: 'builtin',
+    id: 'computer-use',
+    name: 'Computer Use',
+    builtin: 'computer-use',
+    disabled: true,
+    autoApprove: [],
+  },
+]
+
+/** 返回内置进程内 MCP 服务器的默认配置列表（副本，避免外部修改） */
+export function getBuiltinServerConfigs(): McpBuiltinServerConfig[] {
+  return BUILTIN_SERVER_DEFAULTS.map((c) => ({ ...c }))
+}
+
+/** 内置服务标识是否合法 */
+export function isKnownBuiltinId(id: string): id is McpBuiltinId {
+  return BUILTIN_SERVER_DEFAULTS.some((c) => c.builtin === id || c.id === id)
+}
 
 export class McpConfigLoader {
   private workspaceRoots: string[] = []
@@ -38,11 +65,23 @@ export class McpConfigLoader {
     const configs: McpServerConfig[] = []
     const seenIds = new Set<string>()
 
-    // 1. 加载用户级配置（最低优先级）
+    // 0. 注入内置进程内 MCP 服务器（最低优先级，默认禁用）
+    //    用户可在配置文件中覆盖 disabled / autoApprove 等字段来启用
+    for (const builtin of getBuiltinServerConfigs()) {
+      configs.push(builtin)
+      seenIds.add(builtin.id)
+    }
+
+    // 1. 加载用户级配置（覆盖内置配置）
     const userConfig = await this.loadConfigFile(this.userConfigPath)
     if (userConfig) {
       for (const [id, serverConfig] of Object.entries(userConfig.mcpServers)) {
-        if (!seenIds.has(id)) {
+        const existingIndex = configs.findIndex(c => c.id === id)
+        if (existingIndex !== -1) {
+          // 合并用户配置到内置配置（保留 builtin 字段，应用 disabled/autoApprove 等）
+          const merged = this.mergeBuiltinConfig(configs[existingIndex], serverConfig as Record<string, any>)
+          configs[existingIndex] = merged
+        } else {
           configs.push(this.normalizeConfig(id, serverConfig as Record<string, any>, 'user'))
           seenIds.add(id)
         }
@@ -56,14 +95,21 @@ export class McpConfigLoader {
 
       if (workspaceConfig) {
         for (const [id, serverConfig] of Object.entries(workspaceConfig.mcpServers)) {
-          // 移除旧配置
           const existingIndex = configs.findIndex(c => c.id === id)
           if (existingIndex !== -1) {
-            configs.splice(existingIndex, 1)
+            // 若已存在内置配置，则合并（保留 builtin 字段）；否则替换
+            if (configs[existingIndex].type === 'builtin') {
+              const merged = this.mergeBuiltinConfig(configs[existingIndex], serverConfig as Record<string, any>)
+              merged.source = 'workspace'
+              configs[existingIndex] = merged
+            } else {
+              configs.splice(existingIndex, 1)
+              configs.push(this.normalizeConfig(id, serverConfig as Record<string, any>, 'workspace'))
+            }
+          } else {
+            configs.push(this.normalizeConfig(id, serverConfig as Record<string, any>, 'workspace'))
+            seenIds.add(id)
           }
-          // 添加新配置
-          configs.push(this.normalizeConfig(id, serverConfig as Record<string, any>, 'workspace'))
-          seenIds.add(id)
         }
       }
     }
@@ -83,6 +129,34 @@ export class McpConfigLoader {
       }
     }
     return { ...serverConfig, id, type, source } as McpServerConfig
+  }
+
+  /**
+   * 将用户/工作区配置合并到内置配置上。
+   *
+   * 内置配置的 type/builtin/id/name 字段固定不可覆盖（防止用户写错导致连接失败），
+   * 仅允许覆盖 disabled / autoApprove / presetId 等运行时字段。
+   */
+  private mergeBuiltinConfig(
+    builtin: McpServerConfig,
+    override: Record<string, any>,
+  ): McpBuiltinServerConfig {
+    if (builtin.type !== 'builtin') {
+      // 非 builtin 类型不该走到这里，防御性处理
+      return { ...override, type: 'builtin', builtin: 'computer-use' } as McpBuiltinServerConfig
+    }
+    return {
+      type: 'builtin',
+      id: builtin.id,
+      name: builtin.name,
+      builtin: builtin.builtin,
+      // 用户可覆盖的字段
+      disabled: override.disabled ?? builtin.disabled,
+      autoApprove: override.autoApprove ?? builtin.autoApprove,
+      presetId: override.presetId ?? builtin.presetId,
+      // 来源标记（默认 user，由调用方按需覆盖）
+      source: 'user',
+    }
   }
 
   /** 保存用户级配置 */
@@ -120,24 +194,52 @@ export class McpConfigLoader {
     await this.saveConfigFile(configPath, config)
   }
 
-  /** 从配置删除服务器 */
+  /**
+   * 从配置删除服务器。
+   *
+   * 对于内置进程内服务器（computer-use 等），由于 loadConfig 总会注入默认配置，
+   * "删除"语义等价于"禁用"——即写入 disabled=true 覆盖记录，
+   * 否则用户删除后下一次 reload 又会出现。
+   */
   async removeServer(serverId: string, level: 'user' | 'workspace' = 'user'): Promise<void> {
     const configPath = this.resolveConfigPath(level)
-    const config = await this.loadConfigFile(configPath)
-    if (config && config.mcpServers[serverId]) {
-      delete config.mcpServers[serverId]
-      await this.saveConfigFile(configPath, config)
+    const config = (await this.loadConfigFile(configPath)) || { mcpServers: {} }
+
+    const isBuiltin = getBuiltinServerConfigs().some((c) => c.id === serverId)
+    if (isBuiltin) {
+      // 写入/更新一条 disabled=true 记录
+      if (config.mcpServers[serverId]) {
+        config.mcpServers[serverId].disabled = true
+      } else {
+        const builtin = getBuiltinServerConfigs().find((c) => c.id === serverId)!
+        const { id: _id, source: _src, ...rest } = builtin
+        config.mcpServers[serverId] = { ...rest, disabled: true }
+      }
+    } else {
+      if (config.mcpServers[serverId]) {
+        delete config.mcpServers[serverId]
+      }
     }
+    await this.saveConfigFile(configPath, config)
   }
 
   /** 切换服务器启用/禁用状态 */
   async toggleServer(serverId: string, disabled: boolean, level: 'user' | 'workspace' = 'user'): Promise<void> {
     const configPath = this.resolveConfigPath(level)
-    const config = await this.loadConfigFile(configPath)
-    if (config && config.mcpServers[serverId]) {
+    const config = (await this.loadConfigFile(configPath)) || { mcpServers: {} }
+    if (config.mcpServers[serverId]) {
       config.mcpServers[serverId].disabled = disabled
-      await this.saveConfigFile(configPath, config)
+    } else {
+      // 内置服务器首次未在用户配置中显式记录：若 id 命中内置清单，则写入一条覆盖记录
+      const builtin = getBuiltinServerConfigs().find((c) => c.id === serverId)
+      if (!builtin) {
+        logger.mcp?.warn(`[McpConfigLoader] toggleServer: unknown server ${serverId}, skipped`)
+        return
+      }
+      const { id: _id, source: _src, ...rest } = builtin
+      config.mcpServers[serverId] = { ...rest, disabled }
     }
+    await this.saveConfigFile(configPath, config)
   }
 
   /** 解析配置文件路径 */

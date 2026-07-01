@@ -20,8 +20,6 @@ import { CrashGuard as ErrorBoundary } from '@components/foundation/CrashGuard'
 import { GlobalErrorHandler } from '@components/foundation/AppErrorHandler'
 import GlobalToastContainer from '@components/foundation/AppToastContainer'
 import { ThemeManager } from '@components/workspace-editor/EditorThemeProvider'
-import { useDesktopConfirmation } from '@components/settings/tabs/desktop/useDesktopConfirmation'
-import { subscribeAutomationModeState, unsubscribeAutomationModeState } from '@utils/automationModeState'
 import { FullScreenLoading } from './components/ui/ProgressIndicator'
 import { startupMetrics } from '@shared/toolkit/bootMetrics'
 
@@ -73,9 +71,6 @@ function AppContent() {
     setShowWelcomePage: state.setShowWelcomePage,
   })))
 
-  // 全局监听桌面控制权限确认请求（确保 AI 调用工具时无论在哪个页面都能弹出确认框）
-  useDesktopConfirmation(language)
-
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [isInitialized, setIsInitialized] = useState(false)
@@ -117,12 +112,6 @@ function AppContent() {
   useMenuBridge()
   usePreviewDiscoveryToasts(hasWorkspace && isInitialized && activeScenarioId === 'dev-assistant')
   useChannelBridge()
-
-  // 订阅桌面自动化模式状态变更（供 AgentSubLoop 同步读取，决定工具批准走弹窗还是聊天卡片）
-  useEffect(() => {
-    void subscribeAutomationModeState()
-    return () => unsubscribeAutomationModeState()
-  }, [])
 
   const layoutConfig = useMemo<LayoutConfig>(() => {
     const scenario = scenarioRegistry.get(activeScenarioId)

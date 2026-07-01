@@ -7,7 +7,10 @@
 // ============================================
 
 /** MCP 服务器类型 */
-export type McpServerType = 'local' | 'remote'
+export type McpServerType = 'local' | 'remote' | 'builtin'
+
+/** 内置进程内 MCP 服务器标识（目前仅 computer-use） */
+export type McpBuiltinId = 'computer-use'
 
 /** OAuth 配置 */
 export interface McpOAuthConfig {
@@ -73,8 +76,28 @@ export interface McpRemoteServerConfig {
   source?: 'user' | 'workspace'
 }
 
+/** 内置进程内 MCP 服务器配置（无需 command/url，在主进程内通过 InMemoryTransport 连接） */
+export interface McpBuiltinServerConfig {
+  /** 服务器类型 */
+  type: 'builtin'
+  /** 服务器唯一标识 */
+  id: string
+  /** 显示名称 */
+  name: string
+  /** 内置服务标识，决定走哪个进程内实现 */
+  builtin: McpBuiltinId
+  /** 是否禁用 */
+  disabled?: boolean
+  /** 自动批准的工具列表 */
+  autoApprove?: string[]
+  /** 来源预设 ID（用于匹配预设获取使用示例等信息） */
+  presetId?: string
+  /** 配置来源层级（运行时填充，不持久化） */
+  source?: 'user' | 'workspace'
+}
+
 /** MCP 服务器配置（联合类型） */
-export type McpServerConfig = McpLocalServerConfig | McpRemoteServerConfig
+export type McpServerConfig = McpLocalServerConfig | McpRemoteServerConfig | McpBuiltinServerConfig
 
 /** 判断是否为远程配置 */
 export function isRemoteConfig(config: McpServerConfig): config is McpRemoteServerConfig {
@@ -84,6 +107,11 @@ export function isRemoteConfig(config: McpServerConfig): config is McpRemoteServ
 /** 判断是否为本地配置 */
 export function isLocalConfig(config: McpServerConfig): config is McpLocalServerConfig {
   return config.type === 'local'
+}
+
+/** 判断是否为内置进程内配置 */
+export function isBuiltinConfig(config: McpServerConfig): config is McpBuiltinServerConfig {
+  return config.type === 'builtin'
 }
 
 /** MCP 配置文件结构 */
@@ -424,5 +452,13 @@ export interface McpRemotePreset extends McpBasePreset {
   oauth?: McpOAuthConfig | false
 }
 
+/** 内置进程内 MCP 预设（无需 command/url，在主进程内运行） */
+export interface McpBuiltinPreset extends McpBasePreset {
+  /** 预设类型 */
+  type: 'builtin'
+  /** 内置服务标识 */
+  builtin: McpBuiltinId
+}
+
 /** MCP 服务器预设（辨别联合类型） */
-export type McpPreset = McpLocalPreset | McpRemotePreset
+export type McpPreset = McpLocalPreset | McpRemotePreset | McpBuiltinPreset

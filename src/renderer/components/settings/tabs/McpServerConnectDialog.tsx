@@ -55,7 +55,7 @@ interface McpAddServerModalProps {
 }
 
 export interface McpServerFormData {
-  type: 'local' | 'remote'
+  type: 'local' | 'remote' | 'builtin'
   id: string
   name: string
   // 本地服务器字段
@@ -66,6 +66,8 @@ export interface McpServerFormData {
   url?: string
   headers?: Record<string, string>
   oauth?: { clientId?: string; clientSecret?: string; scope?: string } | false
+  // 内置进程内服务器字段
+  builtin?: string
   // 通用字段
   autoApprove?: string[]
   disabled?: boolean
@@ -289,7 +291,18 @@ export default function McpServerConnectDialog({
           }
         }
 
-        if (presetType === 'remote') {
+        if (presetType === 'builtin') {
+          // 内置进程内服务器：不需要 command/env，仅需 id/name/builtin
+          config = {
+            type: 'builtin',
+            id: selectedPreset.id,
+            name: selectedPreset.name,
+            builtin: (selectedPreset as any).builtin || selectedPreset.id,
+            autoApprove: selectedPreset.defaultAutoApprove || [],
+            disabled: false,
+            presetId: selectedPreset.id,
+          }
+        } else if (presetType === 'remote') {
           const remotePreset = selectedPreset as any
 
           // 处理 headers 模板：替换 ${ENV_VAR} 为用户填入的值
@@ -690,9 +703,11 @@ export default function McpServerConnectDialog({
             <div className="space-y-2">
               <h4 className="text-sm font-medium text-text-secondary">{t('mcp.command', language as Language)}</h4>
               <div className="p-3 bg-black/30 rounded font-mono text-xs text-text-muted">
-                {selectedPreset.type === 'local'
-                  ? `${(selectedPreset as any).command} ${((selectedPreset as any).args || []).join(' ')}`
-                  : `URL: ${(selectedPreset as any).url}`}
+                {selectedPreset.type === 'builtin'
+                  ? (language === 'zh' ? '内置进程内服务（无需外部命令）' : 'Built-in in-process server (no external command)')
+                  : selectedPreset.type === 'local'
+                    ? `${(selectedPreset as any).command} ${((selectedPreset as any).args || []).join(' ')}`
+                    : `URL: ${(selectedPreset as any).url}`}
               </div>
             </div>
           </>

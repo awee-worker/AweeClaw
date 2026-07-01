@@ -55,12 +55,6 @@ function getOperationSummary(tc: ToolCall, language: Language): string {
     return `${label} ${cmd}`
   }
 
-  // 桌面自动化：显示任务描述
-  if (tc.name === 'desktop_visual_agent_step' && typeof args.task === 'string') {
-    const task = args.task.length > 60 ? args.task.slice(0, 60) + '...' : args.task
-    return `${label} ${task}`
-  }
-
   // 其他：仅显示工具友好名
   return label
 }

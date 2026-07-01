@@ -637,7 +637,7 @@ export interface ElectronAPI {
   mcpGetConfigPaths: () => Promise<{ success: boolean; paths?: { user: string; workspace: string[] }; error?: string }>
   mcpReloadConfig: () => Promise<{ success: boolean; error?: string }>
   mcpAddServer: (config: {
-    type: 'local' | 'remote'
+    type: 'local' | 'remote' | 'builtin'
     id: string
     name: string
     command?: string
@@ -646,6 +646,7 @@ export interface ElectronAPI {
     url?: string
     headers?: Record<string, string>
     oauth?: { clientId?: string; clientSecret?: string; scope?: string } | false
+    builtin?: string
     autoApprove?: string[]
     disabled?: boolean
   }, level?: 'user' | 'workspace') => Promise<{ success: boolean; error?: string }>
@@ -783,8 +784,6 @@ export interface ElectronAPI {
   desktopFindProcess: (query: string | number) => Promise<{ success: boolean; data: any[] }>
   desktopKillProcess: (pid: number, force?: boolean) => Promise<{ success: boolean; data: any }>
   desktopIsProcessRunning: (name: string) => Promise<{ success: boolean; data: boolean }>
-  desktopResolveConfirmation: (id: string, response: { approved: boolean; remember: boolean }) => Promise<{ success: boolean }>
-  onDesktopConfirmationRequest: (callback: (request: any) => void) => () => void
 
   // ============ Desktop Control Phase 2: 窗口控制 ============
   desktopListWindows: () => Promise<{ success: boolean; data: any[] }>
@@ -833,57 +832,6 @@ export interface ElectronAPI {
   desktopAccessibilityOpenPreferences: (type?: string) => Promise<{ success: boolean; data: boolean }>
   desktopAccessibilityRequestPermission: (type?: string) => Promise<{ success: boolean; data: any }>
   onDesktopAccessibilityPermissionChange: (callback: (type: string, status: string) => void) => () => void
-
-  // Phase 4: 操作录制
-  desktopRecordingStart: (params: { name: string; description?: string }) => Promise<{ success: boolean }>
-  desktopRecordingStop: (params: { discard?: boolean }) => Promise<{ success: boolean; data: any }>
-  desktopRecordAction: (params: { actionType: string; params: Record<string, unknown> }) => Promise<{ success: boolean }>
-  desktopReplayRecording: (params: { recordingId: string; config?: Record<string, unknown> }) => Promise<{ success: boolean; data: any }>
-  desktopListRecordings: () => Promise<{ success: boolean; data: any[] }>
-  desktopDeleteRecording: (recordingId: string) => Promise<{ success: boolean }>
-  desktopRecordingGetState: () => Promise<{ success: boolean; data: any }>
-  onDesktopRecordingStateChange: (callback: (state: any) => void) => () => void
-  onDesktopRecordingProgress: (callback: (progress: any) => void) => () => void
-
-  // Phase 4: 视觉闭环
-  desktopVisualAgentRun: (params: { task: string; maxSteps?: number; cloudConfig?: { cloudMode: boolean; serverUrl?: string; accessToken?: string; refreshToken?: string } }) => Promise<{ success: boolean; data: any }>
-  desktopVisualAgentAbort: () => Promise<{ success: boolean }>
-  desktopVisualAgentIsRunning: () => Promise<{ success: boolean; data: boolean }>
-  onDesktopVisualAgentStepStart: (callback: (data: any) => void) => () => void
-  onDesktopVisualAgentStepComplete: (callback: (step: any) => void) => () => void
-  onDesktopVisualAgentStepError: (callback: (data: any) => void) => () => void
-  onDesktopVisualAgentCompleted: (callback: (result: any) => void) => () => void
-  onDesktopVisualAgentAborted: (callback: (result: any) => void) => () => void
-
-  // Phase 4: 工作流引擎
-  desktopWorkflowRegister: (workflow: any) => Promise<{ success: boolean }>
-  desktopWorkflowUpdate: (workflowId: string, updates: any) => Promise<{ success: boolean; data: any }>
-  desktopWorkflowUnregister: (workflowId: string) => Promise<{ success: boolean }>
-  desktopWorkflowGet: (workflowId: string) => Promise<{ success: boolean; data: any }>
-  desktopWorkflowList: () => Promise<{ success: boolean; data: any[] }>
-  desktopWorkflowRun: (params: { workflowId: string; variables?: Record<string, unknown> }) => Promise<{ success: boolean; data: any }>
-  desktopWorkflowAbort: (runId: string) => Promise<{ success: boolean }>
-  desktopWorkflowGetRunning: () => Promise<{ success: boolean; data: any[] }>
-  desktopWorkflowSaveRecording: (script: any) => Promise<{ success: boolean }>
-  desktopWorkflowGetRecording: (recordingId: string) => Promise<{ success: boolean; data: any }>
-  desktopWorkflowListRecordings: () => Promise<{ success: boolean; data: any[] }>
-  desktopWorkflowDeleteRecording: (recordingId: string) => Promise<{ success: boolean }>
-  onDesktopWorkflowStateChange: (callback: (data: any) => void) => () => void
-  onDesktopWorkflowStepStart: (callback: (data: any) => void) => () => void
-  onDesktopWorkflowStepComplete: (callback: (data: any) => void) => () => void
-  onDesktopWorkflowStepError: (callback: (data: any) => void) => () => void
-  onDesktopWorkflowLog: (callback: (data: any) => void) => () => void
-  onDesktopWorkflowCompleted: (callback: (result: any) => void) => () => void
-
-  // 自动化模式
-  desktopAutomationEnter: (params: { task: string; maxSteps?: number }) => Promise<{ success: boolean; data: any }>
-  desktopAutomationExit: (reason?: string) => Promise<{ success: boolean; data: any }>
-  desktopAutomationUserExit: () => Promise<{ success: boolean }>
-  desktopAutomationSetExitHover: (hovering: boolean) => Promise<{ success: boolean }>
-  desktopAutomationGetState: () => Promise<{ success: boolean; data: any }>
-  onDesktopAutomationStateChanged: (callback: (state: any) => void) => () => void
-  onDesktopAutomationStep: (callback: (step: any) => void) => () => void
-  onDesktopAutomationLog: (callback: (log: any) => void) => () => void
 }
 
 declare global {

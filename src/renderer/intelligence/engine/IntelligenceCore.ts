@@ -317,9 +317,6 @@ export class AgentClass {
     // 记录调用栈，诊断非用户主动停止时的意外 abort
     logger.agent.warn('[Agent.abort] Called. Stack:', new Error().stack?.slice(0, 800))
 
-    // 优先中止视觉智能体：它在主进程独立运行，LLM abort 无法触及
-    // 必须先调用 visualAgent.abort + emergencyStop.trigger，否则视觉闭环会继续执行
-    this.abortVisualAgentIfRunning()
     const store = useAgentStore.getState()
     const targetThreadId = threadId || store.currentThreadId
 
@@ -497,30 +494,8 @@ export class AgentClass {
   }
 
   /**
-   * 中止视觉智能体（若运行中）
-   *
-   * 视觉智能体在主进程独立运行，渲染进程的 LLM abort 无法触及。
-   * 通过 IPC 调用 visualAgent.abort()，触发主进程的 abortController.abort()：
-   * - 若当前在 generateText 中，abort 信号立即中断 LLM 调用，catch 块检测 signal.aborted 后 break
-   * - 若当前在 executeAction 中，action 完成后下一次循环顶部检测 signal.aborted 后 break
-   * - sleep/wait 动作监听了 abort 信号，会立即 resolve
-   *
-   * 不调用 emergencyStop.trigger()，因为紧急停止状态会持久化（需手动 reset），
-   * 普通停止不应影响用户后续使用桌面操作。
-   * overlay 退出按钮的场景已由 AutomationModeController.requestUserExit 处理。
-   */
-  private abortVisualAgentIfRunning(): void {
-    try {
-      api.desktop.visualAgent.abort()
-      logger.agent.info('[Agent.abort] Visual agent abort requested via IPC')
-    } catch (err) {
-      logger.agent.warn(`[Agent.abort] Failed to abort visual agent: ${err instanceof Error ? err.message : err}`)
-    }
-  }
-
-  /**
    * 清除会话缓存
-   * 
+   *
    * 用于：
    * - 切换工作区时清除缓存
    * - 手动刷新时清除缓存

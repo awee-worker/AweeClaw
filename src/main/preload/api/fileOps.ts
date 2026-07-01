@@ -9,7 +9,7 @@
  * - file:changed 文件变更监听
  * - shell:openExternalUrl / file:openInBrowser
  */
-import { invoke, send, on, onArgs } from '../ipcHelpers'
+import { invoke, on, onArgs } from '../ipcHelpers'
 import type { SearchFilesOptions, SearchFileResult } from '../types'
 
 export function createFileOpsApi() {

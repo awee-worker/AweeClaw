@@ -5,8 +5,6 @@ import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { useStore } from '@store'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { playNotificationSound } from '@utils/notificationSound'
-import { isAutomationModeActive } from '@utils/automationModeState'
-import { globalDecide } from '@components/foundation/DecisionOverlay'
 import { getToolApprovalType, getToolDisplayName } from '@configuration/toolDefinitions'
 import { approvalService } from '@intelligence/engine/toolOrchestrator'
 import type { LLMConfig, LLMMessage, ToolDefinition, ToolExecutionContext, ToolExecutionResult } from '@intelligence/providerTypes'
@@ -281,137 +279,70 @@ async function executeToolCall(
     if (!isAutoApproved) {
       const toolDisplayName = getToolDisplayName(toolCall.name)
 
-      // 桌面自动化模式激活时，或工具本身会触发自动化模式（如 desktop_visual_agent_step），
-      // 用户将无法操作聊天界面，改用 globalDecide 弹窗（层级最高，不会被覆盖窗口遮挡）进行工具批准
-      // 关键：desktop_visual_agent_step 的批准发生在自动化模式激活之前，
-      //       因此不能用 isAutomationModeActive() 判断，需用工具名预判
-      const willEnterAutomationMode = toolCall.name === 'desktop_visual_agent_step'
-      if (isAutomationModeActive() || willEnterAutomationMode) {
-        logger.agent.info(`[AgentSubLoop] Automation mode active, using dialog for approval: ${toolCall.name} (id=${toolCall.id})`)
+      // 非自动化模式：走原有聊天卡片批准流程
+      const agentStore = useAgentStore.getState()
+      const activeThreadId = agentStore.currentThreadId
+      logger.agent.info(`[AgentSubLoop] Tool needs approval: ${toolCall.name} (id=${toolCall.id}), requestId=${requestId}, activeThreadId=${activeThreadId}, approvalQueueSize=${approvalService.pendingCount}`)
 
-        try {
-          playNotificationSound('attention')
-        } catch (e) { logger.ui.warn('Failed to play notification sound:', e) }
-
-        // 构建参数摘要（避免过长）
-        let argsSummary = ''
-        try {
-          const args = typeof toolCall.arguments === 'string' ? JSON.parse(toolCall.arguments) : toolCall.arguments
-          argsSummary = JSON.stringify(args, null, 2)
-          if (argsSummary.length > 500) argsSummary = argsSummary.slice(0, 500) + '\n...(参数过长已截断)'
-        } catch {
-          argsSummary = String(toolCall.arguments)
+      if (activeThreadId) {
+        const pendingToolCall = {
+          id: toolCall.id,
+          name: toolCall.name,
+          arguments: toolCall.arguments,
+          status: 'awaiting' as const,
+          requestId,
         }
+        // 追加到现有的 pendingApprovalToolCalls，避免并行工具调用时覆盖
+        // 需要重新获取最新状态，因为并行工具调用可能已更新了 pendingApprovalToolCalls
+        const freshStore = useAgentStore.getState()
+        const existingPending = freshStore.threads[activeThreadId]?.streamState?.pendingApprovalToolCalls || []
+        const updatedPending = [...existingPending, pendingToolCall]
+        freshStore.setStreamState({
+          phase: 'tool_pending',
+          streamDetail: 'tool_awaiting',
+          requestId,
+          currentToolCall: pendingToolCall,
+          pendingApprovalToolCalls: updatedPending,
+          statusText: updatedPending.length > 1
+            ? `Agent 请求执行 ${updatedPending.length} 个操作`
+            : `Agent 请求执行: ${toolDisplayName}`,
+        }, activeThreadId)
+      }
 
-        const severity = approvalType === 'dangerous' ? 'warning' : 'info'
-        const riskTag = approvalType === 'dangerous' ? 'DANGEROUS_TOOL' : 'TERMINAL_TOOL'
+      try {
+        playNotificationSound('attention')
+      } catch (e) { logger.ui.warn('Failed to play notification sound:', e) }
 
-        // 弹窗文案：区分"即将进入自动化模式"和"自动化模式运行中"
-        let dialogMessage: string
-        if (willEnterAutomationMode) {
-          // 从参数中提取任务描述
-          let taskDesc = ''
-          try {
-            const args = typeof toolCall.arguments === 'string' ? JSON.parse(toolCall.arguments) : toolCall.arguments
-            taskDesc = args?.task || argsSummary
-          } catch {
-            taskDesc = argsSummary
-          }
-          dialogMessage = `AI 即将接管桌面执行以下任务：\n\n${taskDesc}\n\n执行期间将进入沉浸式模式，鼠标键盘将被锁定。点击右下角红色按钮或按 Cmd+Option+Q 可随时退出。\n是否允许执行？`
+      logger.agent.info(`[AgentSubLoop] Waiting for approval: ${requestId}_${toolCall.id} (tool: ${toolCall.name})`)
+
+      const approved = await approvalService.waitForApproval(`${requestId}_${toolCall.id}`)
+
+      // 从 pendingApprovalToolCalls 中移除当前工具调用
+      // 注意：需要重新获取最新状态，因为等待期间状态可能已被其他并行工具调用更新
+      const latestStore = useAgentStore.getState()
+      const latestThreadId = latestStore.currentThreadId
+      if (latestThreadId) {
+        const currentPending = latestStore.threads[latestThreadId]?.streamState?.pendingApprovalToolCalls || []
+        const remainingPending = currentPending.filter(tc => tc.id !== toolCall.id)
+        if (remainingPending.length > 0) {
+          latestStore.setStreamState({
+            pendingApprovalToolCalls: remainingPending,
+            currentToolCall: remainingPending[0],
+          }, latestThreadId)
         } else {
-          dialogMessage = `AI 请求执行以下操作（桌面自动化模式运行中）：\n\n工具：${toolCall.name}\n参数：\n${argsSummary}\n\n是否允许执行？`
+          // 所有待审批工具都已处理，恢复 streaming 状态
+          latestStore.setStreamState({
+            phase: 'streaming',
+            streamDetail: 'tool_executing',
+            currentToolCall: undefined,
+            pendingApprovalToolCalls: undefined,
+          }, latestThreadId)
         }
+      }
 
-        let approved = false
-        try {
-          const result = await globalDecide({
-            title: willEnterAutomationMode ? '桌面自动化授权' : `工具执行授权 - ${toolDisplayName}`,
-            message: dialogMessage,
-            confirmText: '允许执行',
-            cancelText: '拒绝',
-            severity,
-            riskTag,
-            auditAction: `tool_approval_${toolCall.name}`,
-          })
-          approved = result === true || result === 'save'
-        } catch (err) {
-          logger.agent.warn(`[AgentSubLoop] Dialog approval failed for ${toolCall.name}:`, err)
-          // 弹窗失败时降级为拒绝（安全优先）
-          approved = false
-        }
-
-        if (!approved) {
-          logger.agent.info(`[AgentSubLoop] Tool ${toolCall.name} rejected via dialog`)
-          return { role: 'tool', content: '用户拒绝了此操作（通过弹窗）', name: toolCall.name }
-        }
-
-        logger.agent.info(`[AgentSubLoop] Tool ${toolCall.name} approved via dialog`)
-      } else {
-        // 非自动化模式：走原有聊天卡片批准流程
-        const agentStore = useAgentStore.getState()
-        const activeThreadId = agentStore.currentThreadId
-        logger.agent.info(`[AgentSubLoop] Tool needs approval: ${toolCall.name} (id=${toolCall.id}), requestId=${requestId}, activeThreadId=${activeThreadId}, approvalQueueSize=${approvalService.pendingCount}`)
-
-        if (activeThreadId) {
-          const pendingToolCall = {
-            id: toolCall.id,
-            name: toolCall.name,
-            arguments: toolCall.arguments,
-            status: 'awaiting' as const,
-            requestId,
-          }
-          // 追加到现有的 pendingApprovalToolCalls，避免并行工具调用时覆盖
-          // 需要重新获取最新状态，因为并行工具调用可能已更新了 pendingApprovalToolCalls
-          const freshStore = useAgentStore.getState()
-          const existingPending = freshStore.threads[activeThreadId]?.streamState?.pendingApprovalToolCalls || []
-          const updatedPending = [...existingPending, pendingToolCall]
-          freshStore.setStreamState({
-            phase: 'tool_pending',
-            streamDetail: 'tool_awaiting',
-            requestId,
-            currentToolCall: pendingToolCall,
-            pendingApprovalToolCalls: updatedPending,
-            statusText: updatedPending.length > 1
-              ? `Agent 请求执行 ${updatedPending.length} 个操作`
-              : `Agent 请求执行: ${toolDisplayName}`,
-          }, activeThreadId)
-        }
-
-        try {
-          playNotificationSound('attention')
-        } catch (e) { logger.ui.warn('Failed to play notification sound:', e) }
-
-        logger.agent.info(`[AgentSubLoop] Waiting for approval: ${requestId}_${toolCall.id} (tool: ${toolCall.name})`)
-
-        const approved = await approvalService.waitForApproval(`${requestId}_${toolCall.id}`)
-
-        // 从 pendingApprovalToolCalls 中移除当前工具调用
-        // 注意：需要重新获取最新状态，因为等待期间状态可能已被其他并行工具调用更新
-        const latestStore = useAgentStore.getState()
-        const latestThreadId = latestStore.currentThreadId
-        if (latestThreadId) {
-          const currentPending = latestStore.threads[latestThreadId]?.streamState?.pendingApprovalToolCalls || []
-          const remainingPending = currentPending.filter(tc => tc.id !== toolCall.id)
-          if (remainingPending.length > 0) {
-            latestStore.setStreamState({
-              pendingApprovalToolCalls: remainingPending,
-              currentToolCall: remainingPending[0],
-            }, latestThreadId)
-          } else {
-            // 所有待审批工具都已处理，恢复 streaming 状态
-            latestStore.setStreamState({
-              phase: 'streaming',
-              streamDetail: 'tool_executing',
-              currentToolCall: undefined,
-              pendingApprovalToolCalls: undefined,
-            }, latestThreadId)
-          }
-        }
-
-        if (!approved) {
-          logger.agent.info(`[AgentSubLoop] Tool ${toolCall.name} rejected by user`)
-          return { role: 'tool', content: '用户拒绝了此操作', name: toolCall.name }
-        }
+      if (!approved) {
+        logger.agent.info(`[AgentSubLoop] Tool ${toolCall.name} rejected by user`)
+        return { role: 'tool', content: '用户拒绝了此操作', name: toolCall.name }
       }
     }
   }

@@ -275,30 +275,6 @@ const STATUS_BUILDERS: Record<string, StatusTextBuilder> = {
   desktop_emergency_stop: createSimpleStatusBuilder(
     'tool.status.emergencyStopping', 'tool.status.emergencyStopped', 'tool.status.emergencyStopFailed',
   ),
-  desktop_record_action: createSimpleStatusBuilder(
-    'tool.status.recordingAction', 'tool.status.recordedAction', 'tool.status.recordingAction',
-  ),
-  desktop_recording_start: createSimpleStatusBuilder(
-    'tool.status.startingRecording', 'tool.status.startedRecording', 'tool.status.startRecordingFailed',
-  ),
-  desktop_recording_stop: createSimpleStatusBuilder(
-    'tool.status.stoppingRecording', 'tool.status.stoppedRecording', 'tool.status.stopRecordingFailed',
-  ),
-  desktop_replay_recording: createSimpleStatusBuilder(
-    'tool.status.replayingRecording', 'tool.status.replayedRecording', 'tool.status.replayRecordingFailed',
-  ),
-  desktop_list_recordings: createCountedStatusBuilder(
-    'tool.status.listedRecordings', 'tool.status.listingRecordings', 'tool.status.listRecordingsFailed',
-  ),
-  desktop_visual_agent_step: createSimpleStatusBuilder(
-    'tool.status.runningVisualAgent', 'tool.status.visualAgentCompleted', 'tool.status.visualAgentFailed',
-  ),
-  desktop_workflow_run: createSimpleStatusBuilder(
-    'tool.status.runningWorkflow', 'tool.status.workflowCompleted', 'tool.status.workflowFailed',
-  ),
-  desktop_workflow_list: createCountedStatusBuilder(
-    'tool.status.listedWorkflows', 'tool.status.listingWorkflows', 'tool.status.listWorkflowsFailed',
-  ),
 }
 
 /** URL 读取工具的专用构建器 */

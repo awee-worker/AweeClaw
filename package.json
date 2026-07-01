@@ -368,6 +368,10 @@
       {
         "from": "resources/uiux",
         "to": "uiux"
+      },
+      {
+        "from": "src/main/modules/desktop-control/bin",
+        "to": "ocr-scripts"
       }
     ]
   },

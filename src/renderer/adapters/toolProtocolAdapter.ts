@@ -254,9 +254,9 @@ class McpService {
     }
   }
 
-  /** 添加服务器（支持本地和远程） */
+  /** 添加服务器（支持本地、远程和内置进程内） */
   async addServer(config: {
-    type: 'local' | 'remote'
+    type: 'local' | 'remote' | 'builtin'
     id: string
     name: string
     command?: string
@@ -265,6 +265,7 @@ class McpService {
     url?: string
     headers?: Record<string, string>
     oauth?: { clientId?: string; clientSecret?: string; scope?: string } | false
+    builtin?: string
     autoApprove?: string[]
     disabled?: boolean
   }, level?: 'user' | 'workspace'): Promise<boolean> {

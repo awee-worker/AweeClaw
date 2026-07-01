@@ -8,6 +8,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { BRAND } from '@shared/brand'
 import { UnauthorizedError } from '@modelcontextprotocol/sdk/client/auth.js'
 import * as cp from 'child_process'
@@ -21,10 +22,12 @@ import { logger } from '@shared/toolkit/LogEngine'
 import { toAppError } from '@shared/toolkit/errorCatalog'
 import { McpOAuthProvider } from './ToolOAuthProvider'
 import { pythonManager } from '../python-runtime'
+import { createComputerUseMcpServer } from './builtin/ComputerUseMcpServer'
 import type {
   McpServerConfig,
   McpLocalServerConfig,
   McpRemoteServerConfig,
+  McpBuiltinServerConfig,
   McpTool,
   McpResource,
   McpPrompt,
@@ -32,12 +35,12 @@ import type {
   McpContent,
   McpOAuthTokens,
 } from '@shared/protocols/toolProtocolBridge'
-import { isRemoteConfig } from '@shared/protocols/toolProtocolBridge'
+import { isRemoteConfig, isBuiltinConfig } from '@shared/protocols/toolProtocolBridge'
 
 const DEFAULT_TIMEOUT = 30000
 const NPX_TIMEOUT = 60000  // npx 首次需要下载包，给更长超时
 
-type Transport = StdioClientTransport | StreamableHTTPClientTransport | SSEClientTransport
+type Transport = StdioClientTransport | StreamableHTTPClientTransport | SSEClientTransport | InMemoryTransport
 
 interface ClientState {
   config: McpServerConfig
@@ -114,6 +117,8 @@ export class McpClient extends EventEmitter {
     try {
       if (isRemoteConfig(config)) {
         await this.connectRemote(config)
+      } else if (isBuiltinConfig(config)) {
+        await this.connectBuiltin(config)
       } else {
         await this.connectLocal(config)
       }
@@ -180,6 +185,45 @@ export class McpClient extends EventEmitter {
     this.reconnectAttempts = 0
     this.updateStatus('connected')
     logger.mcp?.info(`[MCP:${config.id}] Connected (local)`)
+  }
+
+  /**
+   * 连接内置进程内 MCP 服务器
+   * 不拉起子进程，直接通过 InMemoryTransport 与主进程内的服务器通信
+   */
+  private async connectBuiltin(config: McpBuiltinServerConfig): Promise<void> {
+    if (config.builtin !== 'computer-use') {
+      throw new Error(`Unsupported builtin MCP server: ${config.builtin}`)
+    }
+
+    // 创建进程内服务器，返回已配对的 InMemoryTransport
+    const { server, clientTransport } = createComputerUseMcpServer()
+
+    const client = new Client({
+      name: BRAND.mcp.clientId,
+      version: process.env.npm_package_version || '1.0.0',
+    })
+
+    this.registerNotificationHandlers(client)
+
+    try {
+      await this.withTimeout(client.connect(clientTransport), DEFAULT_TIMEOUT)
+    } catch (err) {
+      // 关闭服务器，避免泄漏
+      await server.close().catch(() => {})
+      throw err
+    }
+
+    // 保存 server 实例以便断开时清理
+    ;(this as unknown as { _builtinServer?: typeof server })._builtinServer = server
+
+    this.state.client = client
+    this.state.transport = clientTransport
+
+    await this.refreshCapabilities()
+    this.reconnectAttempts = 0
+    this.updateStatus('connected')
+    logger.mcp?.info(`[MCP:${config.id}] Connected (builtin: ${config.builtin})`)
   }
 
   /** 连接远程服务器 */
@@ -369,6 +413,15 @@ export class McpClient extends EventEmitter {
       this.state.transport = null
     }
 
+    // 关闭内置进程内服务器（仅 builtin 类型有）
+    const builtinServer = (this as unknown as { _builtinServer?: { close: () => Promise<void> } })._builtinServer
+    if (builtinServer) {
+      await builtinServer.close().catch(() => {
+        // ignore close errors
+      })
+      ;(this as unknown as { _builtinServer?: unknown })._builtinServer = undefined
+    }
+
     this.state.tools = []
     this.state.resources = []
     this.state.prompts = []
@@ -386,7 +439,7 @@ export class McpClient extends EventEmitter {
     const result = await this.state.client!.callTool(
       { name: toolName, arguments: args },
       CallToolResultSchema,
-      { timeout: this.state.config.timeout || DEFAULT_TIMEOUT }
+      { timeout: (this.state.config as { timeout?: number }).timeout || DEFAULT_TIMEOUT }
     )
 
     return {
@@ -426,7 +479,7 @@ export class McpClient extends EventEmitter {
       throw new Error(`MCP server ${this.id} is not connected`)
     }
 
-    const timeout = this.state.config.timeout || DEFAULT_TIMEOUT
+    const timeout = (this.state.config as { timeout?: number }).timeout || DEFAULT_TIMEOUT
 
     try {
       // 获取工具

@@ -435,9 +435,11 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
                             )}
                           </div>
                           <p className="text-[11px] text-text-muted/60 mt-0.5 truncate font-mono">
-                            {isRemote
-                              ? ('url' in server.config ? server.config.url : '')
-                              : `${'command' in server.config ? server.config.command : ''}${isLocalConfig(server.config) && server.config.args?.length ? ' ' + server.config.args.join(' ') : ''}`
+                            {server.config.type === 'builtin'
+                              ? (language === 'zh' ? '内置进程内服务' : 'Built-in in-process')
+                              : isRemote
+                                ? ('url' in server.config ? server.config.url : '')
+                                : `${'command' in server.config ? server.config.command : ''}${isLocalConfig(server.config) && server.config.args?.length ? ' ' + server.config.args.join(' ') : ''}`
                             }
                           </p>
                         </div>

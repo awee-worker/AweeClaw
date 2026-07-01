@@ -289,7 +289,21 @@ export class McpManager extends EventEmitter {
 
     try {
       const result = await client.callTool(toolName, args)
-      return { success: !result.isError, content: result.content, isError: result.isError }
+      // 工具内部返回 isError 时，从 content 提取错误文本到 error 字段，
+      // 避免渲染进程丢失具体错误原因（ComputerUseMcpServer 工具错误信息存放在 content[0].text）
+      let errorMessage: string | undefined
+      if (result.isError && result.content) {
+        errorMessage = result.content
+          .filter((c) => c.type === 'text' && c.text)
+          .map((c) => c.text!)
+          .join('\n') || undefined
+      }
+      return {
+        success: !result.isError,
+        content: result.content,
+        isError: result.isError,
+        error: errorMessage,
+      }
     } catch (err) {
       const error = toAppError(err)
       return { success: false, error: error.message }

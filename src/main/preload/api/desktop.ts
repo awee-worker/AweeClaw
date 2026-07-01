@@ -1,13 +1,15 @@
 /**
- * 桌面控制 API（Phase 1-4）
+ * 桌面控制 API
  *
  * 覆盖 IPC 频道：desktop:*
  *
- * 分阶段能力：
+ * 能力范围：
  * - Phase 1: 应用启动 / 系统信息 / 音量亮度 / 进程管理
  * - Phase 2: 窗口控制 / 屏幕截图 / 输入模拟 / 文件操作
  * - Phase 3: 紧急停止 / 辅助功能权限
- * - Phase 4: 操作录制 / 视觉闭环 / 工作流引擎 / 自动化模式
+ *
+ * 注：Phase 4（操作录制 / 视觉闭环 / 工作流引擎 / 自动化模式）已迁移至
+ * 内置 computer-use MCP 服务，不再通过 IPC 暴露。
  */
 import { ipcRenderer, IpcRendererEvent } from 'electron'
 import { invoke, on } from '../ipcHelpers'
@@ -30,11 +32,6 @@ export function createDesktopApi() {
     desktopKillProcess: (pid: number, force?: boolean) =>
       invoke('desktop:killProcess')(pid, force),
     desktopIsProcessRunning: (name: string) => invoke('desktop:isProcessRunning')(name),
-    desktopResolveConfirmation: (
-      id: string,
-      response: { approved: boolean; remember: boolean },
-    ) => invoke('desktop:resolveConfirmation')(id, response),
-    onDesktopConfirmationRequest: on<unknown>('desktop:confirmation-request'),
 
     // ============ Phase 2: 窗口控制 ============
     desktopListWindows: invoke('desktop:listWindows'),
@@ -130,85 +127,5 @@ export function createDesktopApi() {
       return () =>
         ipcRenderer.removeListener('desktop:accessibilityPermissionChanged', handler)
     },
-
-    // ============ Phase 4: 操作录制 ============
-    desktopRecordingStart: (params: { name: string; description?: string }) =>
-      invoke('desktop:recordingStart')(params),
-    desktopRecordingStop: (params: { discard?: boolean }) =>
-      invoke('desktop:recordingStop')(params),
-    desktopRecordAction: (params: {
-      actionType: string
-      params: Record<string, unknown>
-    }) => invoke('desktop:recordAction')(params),
-    desktopReplayRecording: (params: {
-      recordingId: string
-      config?: Record<string, unknown>
-    }) => invoke('desktop:replayRecording')(params),
-    desktopListRecordings: invoke('desktop:listRecordings'),
-    desktopDeleteRecording: (recordingId: string) =>
-      invoke('desktop:deleteRecording')(recordingId),
-    desktopRecordingGetState: invoke('desktop:recordingGetState'),
-    onDesktopRecordingStateChange: on<unknown>('desktop:recordingStateChanged'),
-    onDesktopRecordingProgress: on<unknown>('desktop:recordingProgress'),
-
-    // ============ Phase 4: 视觉闭环 ============
-    desktopVisualAgentRun: (params: {
-      task: string
-      maxSteps?: number
-      cloudConfig?: {
-        cloudMode: boolean
-        serverUrl?: string
-        accessToken?: string
-        refreshToken?: string
-      }
-    }) => invoke('desktop:visualAgentRun')(params),
-    desktopVisualAgentAbort: invoke('desktop:visualAgentAbort'),
-    desktopVisualAgentIsRunning: invoke('desktop:visualAgentIsRunning'),
-    onDesktopVisualAgentStepStart: on<unknown>('desktop:visualAgentStepStart'),
-    onDesktopVisualAgentStepComplete: on<unknown>('desktop:visualAgentStepComplete'),
-    onDesktopVisualAgentStepError: on<unknown>('desktop:visualAgentStepError'),
-    onDesktopVisualAgentCompleted: on<unknown>('desktop:visualAgentCompleted'),
-    onDesktopVisualAgentAborted: on<unknown>('desktop:visualAgentAborted'),
-
-    // ============ Phase 4: 工作流引擎 ============
-    desktopWorkflowRegister: (workflow: unknown) =>
-      invoke('desktop:workflowRegister')(workflow),
-    desktopWorkflowUpdate: (workflowId: string, updates: unknown) =>
-      invoke('desktop:workflowUpdate')(workflowId, updates),
-    desktopWorkflowUnregister: (workflowId: string) =>
-      invoke('desktop:workflowUnregister')(workflowId),
-    desktopWorkflowGet: (workflowId: string) => invoke('desktop:workflowGet')(workflowId),
-    desktopWorkflowList: invoke('desktop:workflowList'),
-    desktopWorkflowRun: (params: {
-      workflowId: string
-      variables?: Record<string, unknown>
-    }) => invoke('desktop:workflowRun')(params),
-    desktopWorkflowAbort: (runId: string) => invoke('desktop:workflowAbort')(runId),
-    desktopWorkflowGetRunning: invoke('desktop:workflowGetRunning'),
-    desktopWorkflowSaveRecording: (script: unknown) =>
-      invoke('desktop:workflowSaveRecording')(script),
-    desktopWorkflowGetRecording: (recordingId: string) =>
-      invoke('desktop:workflowGetRecording')(recordingId),
-    desktopWorkflowListRecordings: invoke('desktop:workflowListRecordings'),
-    desktopWorkflowDeleteRecording: (recordingId: string) =>
-      invoke('desktop:workflowDeleteRecording')(recordingId),
-    onDesktopWorkflowStateChange: on<unknown>('desktop:workflowStateChanged'),
-    onDesktopWorkflowStepStart: on<unknown>('desktop:workflowStepStart'),
-    onDesktopWorkflowStepComplete: on<unknown>('desktop:workflowStepComplete'),
-    onDesktopWorkflowStepError: on<unknown>('desktop:workflowStepError'),
-    onDesktopWorkflowLog: on<unknown>('desktop:workflowLog'),
-    onDesktopWorkflowCompleted: on<unknown>('desktop:workflowCompleted'),
-
-    // ============ Phase 4: 自动化模式 ============
-    desktopAutomationEnter: (params: { task: string; maxSteps?: number }) =>
-      invoke('desktop:automationEnter')(params),
-    desktopAutomationExit: (reason?: string) => invoke('desktop:automationExit')(reason),
-    desktopAutomationUserExit: invoke('desktop:automationUserExit'),
-    desktopAutomationSetExitHover: (hovering: boolean) =>
-      invoke('desktop:automationSetExitHover')(hovering),
-    desktopAutomationGetState: invoke('desktop:automationGetState'),
-    onDesktopAutomationStateChanged: on<unknown>('desktop:automationStateChanged'),
-    onDesktopAutomationStep: on<unknown>('desktop:automationStep'),
-    onDesktopAutomationLog: on<unknown>('desktop:automationLog'),
   }
 }

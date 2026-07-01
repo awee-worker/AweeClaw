@@ -1031,12 +1031,39 @@ export class DarwinPlatformAdapter implements PlatformAdapter {
   async typeText(text: string, delayMs = 0): Promise<InputOperationResult> {
     const start = Date.now()
     try {
-      // 使用 execAppleScriptLines（execFile 直接调用 osascript，不经过 shell，避免转义问题）
-      // AppleScript 中双引号需要转义为 \"
-      const escaped = text.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
-      await execAppleScriptLines([
-        'tell application "System Events" to keystroke "' + escaped + '"',
-      ], 10000)
+      // AppleScript 的 keystroke 对中文等非 ASCII 字符支持差（会输出乱码或无效字符）
+      // 对包含非 ASCII 字符的文本，使用剪贴板粘贴方式；纯 ASCII 文本用 keystroke
+      const hasNonAscii = /[^\x00-\x7F]/.test(text)
+
+      if (hasNonAscii) {
+        // 剪贴板粘贴方式：备份原剪贴板 → 设置新内容 → 粘贴 → 恢复原剪贴板
+        // 使用 pbcopy 设置剪贴板，通过 osascript 执行 cmd+v 粘贴
+        await new Promise<void>((resolve, reject) => {
+          const pbcopy = cp.spawn('/usr/bin/pbcopy', [], { stdio: ['pipe', 'ignore', 'ignore'] })
+          pbcopy.stdin.on('error', reject)
+          pbcopy.stdin.write(Buffer.from(text, 'utf-8'))
+          pbcopy.stdin.end()
+          pbcopy.on('exit', (code) => {
+            if (code === 0) resolve()
+            else reject(new Error(`pbcopy exited with code ${code}`))
+          })
+          pbcopy.on('error', reject)
+        })
+
+        // 等待剪贴板就绪
+        await new Promise(resolve => setTimeout(resolve, 50))
+
+        // 执行 cmd+v 粘贴
+        await execAppleScriptLines([
+          'tell application "System Events" to keystroke "v" using command down',
+        ], 5000)
+      } else {
+        // 纯 ASCII：使用 keystroke（AppleScript 中双引号和反斜杠需要转义）
+        const escaped = text.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+        await execAppleScriptLines([
+          'tell application "System Events" to keystroke "' + escaped + '"',
+        ], 10000)
+      }
 
       if (delayMs > 0) {
         await new Promise(resolve => setTimeout(resolve, delayMs))
