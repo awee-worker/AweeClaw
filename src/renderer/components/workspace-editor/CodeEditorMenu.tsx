@@ -346,10 +346,10 @@ export default function EditorContextMenu({ x, y, editor, onClose }: EditorConte
 
   // 渲染 Call Hierarchy 结果
   if (callHierarchyResult) {
-    const title = callHierarchyResult.type === 'callers' 
-      ? t('editor.ctxFindCallers', language) 
-      : t('editor.ctxFindCallees', language)
-    
+    const title = callHierarchyResult.type === 'callers'
+      ? t('ctxFindCallers', language)
+      : t('ctxFindCallees', language)
+
     return (
       <div
         ref={menuRef}
@@ -358,16 +358,16 @@ export default function EditorContextMenu({ x, y, editor, onClose }: EditorConte
       >
         <div className="px-3 py-2 text-sm font-medium text-text-primary border-b border-border-subtle flex items-center justify-between">
           <span>{title}</span>
-          <button 
+          <button
             className="text-text-muted hover:text-text-primary text-xs"
             onClick={() => setCallHierarchyResult(null)}
           >
-            ← Back
+            ← {t('ctxBack', language)}
           </button>
         </div>
         {callHierarchyResult.items.length === 0 ? (
           <div className="px-3 py-2 text-sm text-text-muted">
-            No results found
+            {t('ctxNoResults', language)}
           </div>
         ) : (
           <div className="max-h-[300px] overflow-y-auto">
