@@ -2469,6 +2469,7 @@ export const zh = {
   'layout.workscenes': '工作场景',
   'layout.workflow': '工作流',
   'layout.schedule': '定时任务',
+  'layout.plugins': '插件',
   'layout.settings': '设置',
   'layout.checkforupdates': '检查更新',
   'layout.aboutaweeclaw': '关于 AweeClaw',

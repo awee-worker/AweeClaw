@@ -15,7 +15,7 @@
 // ============================================
 
 /** 插件类型 */
-export type PluginType = 'channel' | 'provider' | 'tool' | 'hook' | 'memory' | 'desktop' | 'composite'
+export type PluginType = 'channel' | 'provider' | 'tool' | 'hook' | 'memory' | 'desktop' | 'composite' | 'mcp'
 
 /** 插件生命周期 */
 export type PluginLifecycle = 'singleton' | 'per-account' | 'per-session'
@@ -124,6 +124,29 @@ export interface PluginCapabilities {
     workflowSteps: boolean
     /** 是否支持录制事件类型扩展 */
     recordingEvents: boolean
+  }
+  /** MCP 插件能力（插件市场 Phase 1） */
+  mcp?: {
+    /** 传输模式：in-process（进程内 import）| stdio（子进程）| sse（HTTP SSE） */
+    transport: 'in-process' | 'stdio' | 'sse'
+    /**
+     * in-process 模式：入口模块导出的 MCP Server 工厂函数名（default 或命名导出）
+     * 模块路径相对于插件根目录（manifest.main 字段）
+     */
+    inProcessExport?: string
+    /**
+     * stdio 模式：启动命令，如 "node" 或 "python3"
+     * args 中支持变量替换：{{pluginDir}}、{{dataDir}}
+     */
+    command?: string
+    /** stdio 模式：命令参数 */
+    args?: string[]
+    /** stdio 模式：环境变量 */
+    env?: Record<string, string>
+    /** sse 模式：服务 URL */
+    url?: string
+    /** 是否在应用启动时自动连接 */
+    autoConnect?: boolean
   }
 }
 

@@ -33,6 +33,7 @@ const PreferencesDialog = lazy(() => import('@components/settings/PreferencesDia
 const UserProfilePage = lazy(() => import('@components/user/UserProfilePage'))
 const BillingCenterPage = lazy(() => import('@components/user/BillingCenterPage'))
 const SessionHistoryPage = lazy(() => import('@components/user/SessionHistoryPage'))
+const PluginCenterPage = lazy(() => import('@components/plugin/PluginCenterPage'))
 const EditorBottomBar = lazy(() => import('@components/layout/EditorBottomBar'))
 
 interface MainContentAreaProps {
@@ -78,7 +79,7 @@ function PanelSlot({ children }: { children: React.ReactNode }) {
 
 function PrimaryMainContent({ layoutConfig, isWideModePanel }: MainContentAreaProps) {
   const { chatVisible, openFiles, activeFilePath, language,
-    showSettingsPage, showWelcomePage, showUserProfilePage, showBillingCenterPage, showSessionHistoryPage,
+    showSettingsPage, showWelcomePage, showUserProfilePage, showBillingCenterPage, showSessionHistoryPage, showPluginCenterPage,
     activeSidePanel } = useStore(useShallow((s) => ({
     chatVisible: s.chatVisible,
     openFiles: s.openFiles,
@@ -89,6 +90,7 @@ function PrimaryMainContent({ layoutConfig, isWideModePanel }: MainContentAreaPr
     showUserProfilePage: s.showUserProfilePage,
     showBillingCenterPage: s.showBillingCenterPage,
     showSessionHistoryPage: s.showSessionHistoryPage,
+    showPluginCenterPage: s.showPluginCenterPage,
     activeSidePanel: s.activeSidePanel,
   })))
 
@@ -129,6 +131,9 @@ function PrimaryMainContent({ layoutConfig, isWideModePanel }: MainContentAreaPr
   if (showSessionHistoryPage) {
     return <FullPageSlot><ErrorBoundary><Suspense fallback={<InlineSettingsSkeleton />}><SessionHistoryPage /></Suspense></ErrorBoundary></FullPageSlot>
   }
+  if (showPluginCenterPage) {
+    return <FullPageSlot><ErrorBoundary><Suspense fallback={<InlineSettingsSkeleton />}><PluginCenterPage /></Suspense></ErrorBoundary></FullPageSlot>
+  }
 
   // 编辑器 + Chat
   if (openFiles.length > 0 && activeFilePath) {
@@ -163,7 +168,7 @@ function PrimaryMainContent({ layoutConfig, isWideModePanel }: MainContentAreaPr
 
 function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeComponent }: MainContentAreaProps) {
   const { chatVisible, terminalVisible, openFiles, activeFilePath,
-    showSettingsPage, showWelcomePage, showUserProfilePage, showBillingCenterPage, showSessionHistoryPage,
+    showSettingsPage, showWelcomePage, showUserProfilePage, showBillingCenterPage, showSessionHistoryPage, showPluginCenterPage,
     activeSidePanel } = useStore(useShallow((s) => ({
     chatVisible: s.chatVisible,
     terminalVisible: s.terminalVisible,
@@ -174,6 +179,7 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
     showUserProfilePage: s.showUserProfilePage,
     showBillingCenterPage: s.showBillingCenterPage,
     showSessionHistoryPage: s.showSessionHistoryPage,
+    showPluginCenterPage: s.showPluginCenterPage,
     activeSidePanel: s.activeSidePanel,
   })))
 
@@ -230,6 +236,9 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
   }
   if (showSessionHistoryPage) {
     return <FullPageSlot><ErrorBoundary><Suspense fallback={<InlineSettingsSkeleton />}><SessionHistoryPage /></Suspense></ErrorBoundary></FullPageSlot>
+  }
+  if (showPluginCenterPage) {
+    return <FullPageSlot><ErrorBoundary><Suspense fallback={<InlineSettingsSkeleton />}><PluginCenterPage /></Suspense></ErrorBoundary></FullPageSlot>
   }
 
   // 编辑器模式

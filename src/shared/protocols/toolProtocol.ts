@@ -7,7 +7,7 @@
 // ============================================
 
 /** MCP 服务器类型 */
-export type McpServerType = 'local' | 'remote' | 'builtin'
+export type McpServerType = 'local' | 'remote' | 'builtin' | 'plugin'
 
 /** 内置进程内 MCP 服务器标识（目前仅 computer-use） */
 export type McpBuiltinId = 'computer-use'
@@ -96,8 +96,49 @@ export interface McpBuiltinServerConfig {
   source?: 'user' | 'workspace'
 }
 
+/** 插件 MCP 服务器配置（来自插件市场安装的 MCP 型插件） */
+export interface McpPluginServerConfig {
+  /** 服务器类型 */
+  type: 'plugin'
+  /** 服务器唯一标识（一般为 plugin:<pluginKey>） */
+  id: string
+  /** 显示名称 */
+  name: string
+  /** 插件唯一标识（与 manifest.id 一致） */
+  pluginKey: string
+  /** 插件版本 */
+  pluginVersion: string
+  /** 传输模式 */
+  transport: 'in-process' | 'stdio' | 'sse'
+  /**
+   * in-process 模式：入口模块路径（相对于插件根目录，或绝对路径）
+   * 模块应导出工厂函数：default 或命名导出，返回 { server, clientTransport }
+   */
+  inProcessEntry?: string
+  /** stdio 模式：启动命令 */
+  command?: string
+  /** stdio 模式：命令参数（支持 {{pluginDir}} 变量） */
+  args?: string[]
+  /** stdio 模式：环境变量 */
+  env?: Record<string, string>
+  /** sse 模式：服务 URL */
+  url?: string
+  /** 是否禁用 */
+  disabled?: boolean
+  /** 自动批准的工具列表 */
+  autoApprove?: string[]
+  /** 来源预设 ID */
+  presetId?: string
+  /** 配置来源层级（运行时填充，不持久化） */
+  source?: 'user' | 'workspace' | 'plugin'
+}
+
 /** MCP 服务器配置（联合类型） */
-export type McpServerConfig = McpLocalServerConfig | McpRemoteServerConfig | McpBuiltinServerConfig
+export type McpServerConfig =
+  | McpLocalServerConfig
+  | McpRemoteServerConfig
+  | McpBuiltinServerConfig
+  | McpPluginServerConfig
 
 /** 判断是否为远程配置 */
 export function isRemoteConfig(config: McpServerConfig): config is McpRemoteServerConfig {
@@ -112,6 +153,11 @@ export function isLocalConfig(config: McpServerConfig): config is McpLocalServer
 /** 判断是否为内置进程内配置 */
 export function isBuiltinConfig(config: McpServerConfig): config is McpBuiltinServerConfig {
   return config.type === 'builtin'
+}
+
+/** 判断是否为插件配置 */
+export function isPluginConfig(config: McpServerConfig): config is McpPluginServerConfig {
+  return config.type === 'plugin'
 }
 
 /** MCP 配置文件结构 */

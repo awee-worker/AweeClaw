@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { Settings, Workflow, Compass, LogIn, ChevronUp, CloudSync, Info, MessageSquare, Plus, MoreHorizontal, Edit2, Trash2, LogOut, UserCircle, Wallet, History, Clock } from 'lucide-react'
+import { Settings, Workflow, Compass, LogIn, ChevronUp, CloudSync, Info, MessageSquare, Plus, MoreHorizontal, Edit2, Trash2, LogOut, UserCircle, Wallet, History, Clock, Puzzle } from 'lucide-react'
 import { HintOverlay } from '../ui/HintOverlay'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -50,6 +50,7 @@ function UserMenuDropdown({
   onExploreClick,
   onWorkflowClick,
   onScheduleClick,
+  onPluginCenterClick,
   onUserInfoClick,
   onBillingCenterClick,
   onSessionHistoryClick,
@@ -67,6 +68,7 @@ function UserMenuDropdown({
   onExploreClick: () => void
   onWorkflowClick: () => void
   onScheduleClick: () => void
+  onPluginCenterClick: () => void
   onUserInfoClick: () => void
   onBillingCenterClick: () => void
   onSessionHistoryClick: () => void
@@ -119,6 +121,7 @@ function UserMenuDropdown({
     { icon: Compass, label: t('layout.workscenes', language as Language), onClick: onExploreClick },
     { icon: Workflow, label: t('layout.workflow', language as Language), onClick: onWorkflowClick },
     { icon: Clock, label: t('layout.schedule', language as Language), onClick: onScheduleClick },
+    { icon: Puzzle, label: t('layout.plugins', language as Language), onClick: onPluginCenterClick },
   ]
 
   const systemItems = [
@@ -360,6 +363,7 @@ export default function NavigationRail() {
     setShowUserProfilePage,
     setShowBillingCenterPage,
     setShowSessionHistoryPage,
+    setShowPluginCenterPage,
     closeAllFullPages,
     logout,
   } = useStore(useShallow(s => ({
@@ -379,6 +383,7 @@ export default function NavigationRail() {
     setShowUserProfilePage: s.setShowUserProfilePage,
     setShowBillingCenterPage: s.setShowBillingCenterPage,
     setShowSessionHistoryPage: s.setShowSessionHistoryPage,
+    setShowPluginCenterPage: s.setShowPluginCenterPage,
     closeAllFullPages: s.closeAllFullPages,
     logout: s.logout,
   })))
@@ -439,6 +444,12 @@ export default function NavigationRail() {
     setShowWorkflow(false)
     setActiveSidePanel(activeSidePanel === 'schedule' ? null : 'schedule')
   }, [activeSidePanel, setActiveSidePanel, closeAllFullPages, setShowWorkflow])
+
+  const handlePluginCenterClick = useCallback(() => {
+    setActiveSidePanel(null)
+    setShowPluginCenterPage(true)
+    setShowWorkflow(false)
+  }, [setActiveSidePanel, setShowPluginCenterPage, setShowWorkflow])
 
   const handleUserInfoClick = useCallback(() => {
     setActiveSidePanel(null)
@@ -902,6 +913,7 @@ export default function NavigationRail() {
           onExploreClick={handleExploreClick}
           onWorkflowClick={handleWorkflowClick}
           onScheduleClick={handleScheduleClick}
+          onPluginCenterClick={handlePluginCenterClick}
           onUserInfoClick={handleUserInfoClick}
           onBillingCenterClick={handleBillingCenterClick}
           onSessionHistoryClick={handleSessionHistoryClick}

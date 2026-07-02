@@ -78,6 +78,9 @@ import { registerMcpEnhancedHandlers } from '../mcp/mcpEnhancedBridge'
 import { registerDebugHandlers } from '../session/sessionInspector'
 import { registerSessionLifecycleHandlers } from '../session/sessionLifecycle'
 
+// ── plugin ──────────────────────────────────────────────
+import { registerPluginHandlers } from '../plugin/pluginBridge'
+
 // 安全模块（guard 目录）
 import {
   securityManager,
@@ -272,6 +275,9 @@ export function registerAllHandlers(context: IPCContext) {
 
   // 桌面控制
   registerOnce('desktop-control', () => registerDesktopControlHandlers(getMainWindow))
+
+  // 插件系统
+  registerOnce('plugin', () => registerPluginHandlers({ getMainWindow }))
 
   logger.ipc.info(`[Security] 所有安全IPC处理器已注册 (${registeredHandlers.size} 个)`)
 }

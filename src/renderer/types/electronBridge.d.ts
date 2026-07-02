@@ -832,6 +832,99 @@ export interface ElectronAPI {
   desktopAccessibilityOpenPreferences: (type?: string) => Promise<{ success: boolean; data: boolean }>
   desktopAccessibilityRequestPermission: (type?: string) => Promise<{ success: boolean; data: any }>
   onDesktopAccessibilityPermissionChange: (callback: (type: string, status: string) => void) => () => void
+
+  // ============ Plugin System ============
+  /** 安装插件（下载 + 校验 + 解压 + 注册 + MCP 连接） */
+  pluginInstall: (params: {
+    pluginId: string
+    version: string
+    backendUrl: string
+    authToken?: string
+    /** 预取的下载信息（渲染进程已通过 backendApi 获取时传入，主进程跳过网络请求） */
+    preloadedDownloadInfo?: {
+      downloadUrl: string
+      checksum: string
+      packageSize: number
+      manifest?: unknown
+      configOnly?: boolean
+    }
+    /** 预取的插件详情（渲染进程已通过市场列表项构建时传入，主进程跳过网络请求） */
+    preloadedPluginDetail?: {
+      pluginId: string
+      pluginKey: string
+      name: string
+      nameZh: string
+      description: string
+      descriptionZh: string
+      type: string
+      icon?: string
+      category: string
+      tags: string[]
+      developerId?: string
+      source: string
+      isFree: boolean
+      price: number
+      latestVersion?: string
+      totalDownloads: number
+      rating: number
+      ratingCount: number
+      featured: boolean
+      minAppVersion?: string
+      platforms: string[]
+      screenshotUrls: string[]
+      homepage?: string
+      repository?: string
+      license: string
+      enabled: boolean
+    }
+  }) => Promise<{
+    success: boolean
+    pluginId: string
+    pluginKey: string
+    version: string
+    pluginDir: string
+    manifest?: unknown
+    mcpServerId?: string
+    error?: string
+  }>
+  /** 卸载插件 */
+  pluginUninstall: (pluginKey: string) => Promise<{ success: boolean; error?: string }>
+  /** 启用插件 */
+  pluginEnable: (pluginKey: string) => Promise<{ success: boolean; error?: string }>
+  /** 禁用插件 */
+  pluginDisable: (pluginKey: string) => Promise<{ success: boolean; error?: string }>
+  /** 获取已安装插件列表 */
+  pluginGetInstalled: () => Promise<Array<{
+    pluginId: string
+    pluginKey: string
+    version: string
+    installedAt: string
+    enabled: boolean
+    types: string[]
+    manifest: unknown
+    mcpServerId?: string
+  }>>
+  /** 检查是否已安装 */
+  pluginIsInstalled: (pluginKey: string) => Promise<boolean>
+  /** 检查插件更新 */
+  pluginCheckUpdate: (
+    pluginKey: string,
+    backendUrl: string,
+    authToken?: string,
+  ) => Promise<{
+    hasUpdate: boolean
+    currentVersion?: string
+    latestVersion?: string
+  }>
+  /** 订阅插件安装进度事件 */
+  onPluginInstallProgress: (callback: (progress: {
+    pluginId: string
+    phase: 'pending' | 'downloading' | 'verifying' | 'extracting' | 'registering' | 'mcp_connecting' | 'done' | 'error'
+    bytesDownloaded: number
+    bytesTotal: number
+    percent: number
+    message?: string
+  }) => void) => () => void
 }
 
 declare global {

@@ -44,6 +44,7 @@ const FULLSCREEN_PAGE_KEYS = [
   'showUserProfilePage',
   'showBillingCenterPage',
   'showSessionHistoryPage',
+  'showPluginCenterPage',
 ] as const
 
 /** 全屏页面状态片段类型 */
@@ -104,6 +105,7 @@ export interface LayoutSlice {
   showUserProfilePage: boolean
   showBillingCenterPage: boolean
   showSessionHistoryPage: boolean
+  showPluginCenterPage: boolean
 
   /* ===== 面板可见性操作 ===== */
   setActiveSidePanel: (panel: SidePanel) => void
@@ -128,6 +130,7 @@ export interface LayoutSlice {
   setShowUserProfilePage: (show: boolean) => void
   setShowBillingCenterPage: (show: boolean) => void
   setShowSessionHistoryPage: (show: boolean) => void
+  setShowPluginCenterPage: (show: boolean) => void
   /** 关闭所有全屏页面，返回聊天界面 */
   closeAllFullPages: () => void
 }
@@ -175,5 +178,6 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
   setShowUserProfilePage: (show) => set(buildFullscreenToggle('showUserProfilePage', show)),
   setShowBillingCenterPage: (show) => set(buildFullscreenToggle('showBillingCenterPage', show)),
   setShowSessionHistoryPage: (show) => set(buildFullscreenToggle('showSessionHistoryPage', show)),
+  setShowPluginCenterPage: (show) => set(buildFullscreenToggle('showPluginCenterPage', show)),
   closeAllFullPages: () => set(buildFullscreenReset()),
 })

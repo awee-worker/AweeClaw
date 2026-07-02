@@ -225,6 +225,54 @@ type ElectronAPIWithRemoteShell = ElectronAPI & {
     timedOut: boolean
     duration: number
   }>
+
+  // ============ 插件系统 ============
+  pluginInstall: (params: {
+    pluginId: string
+    version: string
+    backendUrl: string
+    authToken?: string
+  }) => Promise<{
+    success: boolean
+    pluginId: string
+    pluginKey: string
+    version: string
+    pluginDir: string
+    manifest?: unknown
+    mcpServerId?: string
+    error?: string
+  }>
+  pluginUninstall: (pluginKey: string) => Promise<{ success: boolean; error?: string }>
+  pluginEnable: (pluginKey: string) => Promise<{ success: boolean; error?: string }>
+  pluginDisable: (pluginKey: string) => Promise<{ success: boolean; error?: string }>
+  pluginGetInstalled: () => Promise<Array<{
+    pluginId: string
+    pluginKey: string
+    version: string
+    installedAt: string
+    enabled: boolean
+    types: string[]
+    manifest: unknown
+    mcpServerId?: string
+  }>>
+  pluginIsInstalled: (pluginKey: string) => Promise<boolean>
+  pluginCheckUpdate: (
+    pluginKey: string,
+    backendUrl: string,
+    authToken?: string,
+  ) => Promise<{
+    hasUpdate: boolean
+    currentVersion?: string
+    latestVersion?: string
+  }>
+  onPluginInstallProgress: (callback: (progress: {
+    pluginId: string
+    phase: 'pending' | 'downloading' | 'verifying' | 'extracting' | 'registering' | 'mcp_connecting' | 'done' | 'error'
+    bytesDownloaded: number
+    bytesTotal: number
+    percent: number
+    message?: string
+  }) => void) => () => void
 }
 
 // 创建分组 API 适配器
@@ -850,6 +898,66 @@ function createGroupedAPI() {
 
     onScenarioInstallProgress: (callback: (data: { scenarioId: string; phase: string; bytesDownloaded: number; bytesTotal: number; percent: number }) => void) => {
       return raw.onScenarioInstallProgress(callback)
+    },
+
+    // ============ 插件系统 ============
+    plugin: {
+      install: (params: {
+        pluginId: string
+        version: string
+        backendUrl: string
+        authToken?: string
+        preloadedDownloadInfo?: {
+          downloadUrl: string
+          checksum: string
+          packageSize: number
+          manifest?: unknown
+          configOnly?: boolean
+        }
+        preloadedPluginDetail?: {
+          pluginId: string
+          pluginKey: string
+          name: string
+          nameZh: string
+          description: string
+          descriptionZh: string
+          type: string
+          icon?: string
+          category: string
+          tags: string[]
+          developerId?: string
+          source: string
+          isFree: boolean
+          price: number
+          latestVersion?: string
+          totalDownloads: number
+          rating: number
+          ratingCount: number
+          featured: boolean
+          minAppVersion?: string
+          platforms: string[]
+          screenshotUrls: string[]
+          homepage?: string
+          repository?: string
+          license: string
+          enabled: boolean
+        }
+      }) => raw.pluginInstall(params),
+      uninstall: (pluginKey: string) => raw.pluginUninstall(pluginKey),
+      enable: (pluginKey: string) => raw.pluginEnable(pluginKey),
+      disable: (pluginKey: string) => raw.pluginDisable(pluginKey),
+      getInstalled: () => raw.pluginGetInstalled(),
+      isInstalled: (pluginKey: string) => raw.pluginIsInstalled(pluginKey),
+      checkUpdate: (pluginKey: string, backendUrl: string, authToken?: string) =>
+        raw.pluginCheckUpdate(pluginKey, backendUrl, authToken),
+      onInstallProgress: (callback: (progress: {
+        pluginId: string
+        phase: 'pending' | 'downloading' | 'verifying' | 'extracting' | 'registering' | 'mcp_connecting' | 'done' | 'error'
+        bytesDownloaded: number
+        bytesTotal: number
+        percent: number
+        message?: string
+      }) => void) => raw.onPluginInstallProgress(callback),
     },
   }
 }

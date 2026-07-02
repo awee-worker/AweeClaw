@@ -4,6 +4,8 @@
  */
 
 import { EventEmitter } from 'events'
+import path from 'path'
+import fs from 'fs'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
@@ -28,6 +30,7 @@ import type {
   McpLocalServerConfig,
   McpRemoteServerConfig,
   McpBuiltinServerConfig,
+  McpPluginServerConfig,
   McpTool,
   McpResource,
   McpPrompt,
@@ -35,7 +38,7 @@ import type {
   McpContent,
   McpOAuthTokens,
 } from '@shared/protocols/toolProtocolBridge'
-import { isRemoteConfig, isBuiltinConfig } from '@shared/protocols/toolProtocolBridge'
+import { isRemoteConfig, isBuiltinConfig, isPluginConfig } from '@shared/protocols/toolProtocolBridge'
 
 const DEFAULT_TIMEOUT = 30000
 const NPX_TIMEOUT = 60000  // npx 首次需要下载包，给更长超时
@@ -60,6 +63,36 @@ export class McpClient extends EventEmitter {
   private reconnectAttempts = 0
   private readonly maxReconnectAttempts = 5
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+
+  /** 插件目录映射表（pluginKey -> 绝对路径），由 PluginInstaller 维护 */
+  static pluginDirs = new Map<string, string>()
+
+  /** 注册/更新插件目录映射 */
+  static registerPluginDir(pluginKey: string, dir: string): void {
+    McpClient.pluginDirs.set(pluginKey, dir)
+  }
+
+  /** 移除插件目录映射 */
+  static unregisterPluginDir(pluginKey: string): void {
+    McpClient.pluginDirs.delete(pluginKey)
+  }
+
+  /**
+   * 内置插件 MCP 工厂映射表（pluginKey -> 工厂函数）。
+   * 用于随应用打包的内置插件（如 computer-use），避免依赖磁盘文件 import。
+   * 工厂函数返回 { server, clientTransport }，与 in-process 插件入口签名一致。
+   */
+  static builtinPluginFactories = new Map<string, () => { server: { close(): Promise<void> }; clientTransport: InMemoryTransport }>()
+
+  /** 注册内置插件 MCP 工厂（应用启动时由各内置插件调用） */
+  static registerBuiltinPluginFactory(pluginKey: string, factory: () => { server: { close(): Promise<void> }; clientTransport: InMemoryTransport }): void {
+    McpClient.builtinPluginFactories.set(pluginKey, factory)
+  }
+
+  /** 注销内置插件 MCP 工厂 */
+  static unregisterBuiltinPluginFactory(pluginKey: string): void {
+    McpClient.builtinPluginFactories.delete(pluginKey)
+  }
 
   constructor(config: McpServerConfig) {
     super()
@@ -119,6 +152,8 @@ export class McpClient extends EventEmitter {
         await this.connectRemote(config)
       } else if (isBuiltinConfig(config)) {
         await this.connectBuiltin(config)
+      } else if (isPluginConfig(config)) {
+        await this.connectPlugin(config)
       } else {
         await this.connectLocal(config)
       }
@@ -224,6 +259,200 @@ export class McpClient extends EventEmitter {
     this.reconnectAttempts = 0
     this.updateStatus('connected')
     logger.mcp?.info(`[MCP:${config.id}] Connected (builtin: ${config.builtin})`)
+  }
+
+  /**
+   * 连接插件型 MCP 服务器
+   * 支持三种传输模式：
+   * - in-process：动态 import 插件入口模块，调用工厂函数创建 McpServer + InMemoryTransport
+   * - stdio：以子进程方式启动插件提供的命令
+   * - sse：连接插件提供的 HTTP/SSE 服务
+   */
+  private async connectPlugin(config: McpPluginServerConfig): Promise<void> {
+    if (config.transport === 'in-process') {
+      await this.connectPluginInProcess(config)
+    } else if (config.transport === 'stdio') {
+      await this.connectPluginStdio(config)
+    } else if (config.transport === 'sse') {
+      await this.connectPluginSse(config)
+    } else {
+      throw new Error(`Unsupported plugin transport: ${config.transport}`)
+    }
+  }
+
+  /** 插件 in-process 模式：动态加载插件入口模块 */
+  private async connectPluginInProcess(config: McpPluginServerConfig): Promise<void> {
+    // 优先使用内置插件工厂（随应用打包的插件，如 computer-use）
+    const builtinFactory = McpClient.builtinPluginFactories.get(config.pluginKey)
+    let server: { close(): Promise<void> }
+    let clientTransport: InMemoryTransport
+
+    if (builtinFactory) {
+      const result = builtinFactory()
+      server = result.server
+      clientTransport = result.clientTransport
+    } else {
+      // 外部插件：从磁盘动态 import 入口模块
+      if (!config.inProcessEntry) {
+        throw new Error(`Plugin ${config.pluginKey} in-process mode requires inProcessEntry`)
+      }
+
+      const entryPath = path.isAbsolute(config.inProcessEntry)
+        ? config.inProcessEntry
+        : path.join(this.resolvePluginDir(config), config.inProcessEntry)
+
+      if (!fs.existsSync(entryPath)) {
+        throw new Error(`Plugin entry not found: ${entryPath}`)
+      }
+
+      // 动态加载入口模块
+      const factoryModule = await import(entryPath)
+      const factory = factoryModule.default || factoryModule.createMcpServer || factoryModule.create
+      if (typeof factory !== 'function') {
+        throw new Error(
+          `Plugin ${config.pluginKey} entry must export default function or createMcpServer() returning { server, clientTransport }`,
+        )
+      }
+
+      const result = factory() as {
+        server: { close(): Promise<void> }
+        clientTransport: InMemoryTransport
+      }
+      server = result.server
+      clientTransport = result.clientTransport
+    }
+
+    const client = new Client({
+      name: BRAND.mcp.clientId,
+      version: process.env.npm_package_version || '1.0.0',
+    })
+
+    this.registerNotificationHandlers(client)
+
+    try {
+      await this.withTimeout(client.connect(clientTransport), DEFAULT_TIMEOUT)
+    } catch (err) {
+      await server.close().catch(() => {})
+      throw err
+    }
+
+    ;(this as unknown as { _builtinServer?: typeof server })._builtinServer = server
+
+    this.state.client = client
+    this.state.transport = clientTransport
+
+    await this.refreshCapabilities()
+    this.reconnectAttempts = 0
+    this.updateStatus('connected')
+    logger.mcp?.info(`[MCP:${config.id}] Connected (plugin in-process: ${config.pluginKey})`)
+  }
+
+  /** 插件 stdio 模式：启动子进程 */
+  private async connectPluginStdio(config: McpPluginServerConfig): Promise<void> {
+    if (!config.command) {
+      throw new Error(`Plugin ${config.pluginKey} stdio mode requires command`)
+    }
+
+    const pluginDir = this.resolvePluginDir(config)
+    const args = (config.args || []).map((a) => a.replace('{{pluginDir}}', pluginDir))
+    const env = { ...process.env, ...config.env, PLUGIN_DIR: pluginDir } as Record<string, string>
+
+    const transport = new StdioClientTransport({
+      command: config.command,
+      args,
+      env,
+      cwd: pluginDir,
+      stderr: 'pipe',
+    })
+
+    let stderrOutput = ''
+    transport.stderr?.on('data', (data: Buffer) => {
+      const text = data.toString().trim()
+      if (text) {
+        stderrOutput += text + '\n'
+        logger.mcp?.warn(`[MCP:${config.id}] stderr: ${text}`)
+      }
+    })
+
+    const client = new Client({
+      name: BRAND.mcp.clientId,
+      version: process.env.npm_package_version || '1.0.0',
+    })
+
+    this.registerNotificationHandlers(client)
+
+    try {
+      await this.withTimeout(client.connect(transport), DEFAULT_TIMEOUT)
+    } catch (err) {
+      if (stderrOutput) {
+        logger.mcp?.error(`[MCP:${config.id}] Process stderr output:\n${stderrOutput}`)
+      }
+      throw err
+    }
+
+    this.state.client = client
+    this.state.transport = transport
+
+    await this.refreshCapabilities()
+    this.reconnectAttempts = 0
+    this.updateStatus('connected')
+    logger.mcp?.info(`[MCP:${config.id}] Connected (plugin stdio: ${config.pluginKey})`)
+  }
+
+  /** 插件 sse 模式：连接 HTTP/SSE 服务 */
+  private async connectPluginSse(config: McpPluginServerConfig): Promise<void> {
+    if (!config.url) {
+      throw new Error(`Plugin ${config.pluginKey} sse mode requires url`)
+    }
+
+    const transports: Array<{ name: string; create: () => Transport }> = [
+      {
+        name: 'StreamableHTTP',
+        create: () => new StreamableHTTPClientTransport(new URL(config.url!)),
+      },
+      {
+        name: 'SSE',
+        create: () => new SSEClientTransport(new URL(config.url!)),
+      },
+    ]
+
+    let lastError: Error | undefined
+    for (const { name, create } of transports) {
+      const transport = create()
+      const client = new Client({
+        name: BRAND.mcp.clientId,
+        version: process.env.npm_package_version || '1.0.0',
+      })
+
+      this.registerNotificationHandlers(client)
+
+      try {
+        await this.withTimeout(client.connect(transport), DEFAULT_TIMEOUT)
+        this.state.client = client
+        this.state.transport = transport
+        await this.refreshCapabilities()
+        this.reconnectAttempts = 0
+        this.updateStatus('connected')
+        logger.mcp?.info(`[MCP:${config.id}] Connected (plugin sse via ${name}: ${config.pluginKey})`)
+        return
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err))
+        logger.mcp?.warn(`[MCP:${config.id}] Plugin SSE ${name} failed: ${lastError.message}`)
+      }
+    }
+
+    throw lastError || new Error(`Failed to connect plugin SSE: ${config.pluginKey}`)
+  }
+
+  /** 解析插件根目录 */
+  private resolvePluginDir(config: McpPluginServerConfig): string {
+    // 通过 PluginInstaller 注入的目录映射获取
+    const dir = McpClient.pluginDirs.get(config.pluginKey)
+    if (dir) return dir
+
+    // fallback：默认路径 userData/plugins/<pluginKey>
+    const { app } = require('electron') as { app: Electron.App }
+    return path.join(app.getPath('userData'), 'plugins', config.pluginKey)
   }
 
   /** 连接远程服务器 */

@@ -21,6 +21,7 @@ import {
   type McpToolCallResult,
   type McpResourceReadResult,
   type McpPromptGetResult,
+  type McpPluginServerConfig,
   isLocalConfig,
 } from '@shared/protocols/toolProtocolBridge'
 
@@ -355,6 +356,29 @@ export class McpManager extends EventEmitter {
   async addServer(config: McpServerConfig, level: 'user' | 'workspace' = 'user'): Promise<void> {
     await this.configLoader.addServer(config, level)
     logger.mcp?.info(`[McpManager] Added server: ${config.id} (${level})`)
+  }
+
+  /**
+   * 注册内置插件 MCP 配置（供随应用打包的插件调用，如 computer-use）。
+   * 注册后 loadConfig 会自动注入该配置，无需写入用户配置文件。
+   * 若 autoConnect 为 true，注册后立即连接。
+   */
+  async registerBuiltinPluginConfig(config: McpPluginServerConfig, autoConnect = true): Promise<void> {
+    this.configLoader.registerBuiltinPluginConfig(config)
+    if (autoConnect && !config.disabled) {
+      await this.connectServer(config).catch((err) => {
+        logger.mcp?.warn(`[McpManager] Builtin plugin auto-connect failed for ${config.id}: ${err}`)
+      })
+    }
+  }
+
+  /** 注销内置插件 MCP 配置并断开连接 */
+  async unregisterBuiltinPluginConfig(serverId: string): Promise<void> {
+    if (this.clients.has(serverId)) {
+      await this.disconnectServer(serverId)
+    }
+    this.configLoader.unregisterBuiltinPluginConfig(serverId)
+    logger.mcp?.info(`[McpManager] Unregistered builtin plugin: ${serverId}`)
   }
 
   /** 删除服务器 */

@@ -123,19 +123,43 @@ class PluginRegistry implements IPluginRegistry {
     }
 
     // 注册发现的插件（仅 manifest，不加载运行时）
+    // 同一插件 id 可能有多个版本目录（如 1.2.0、1.2.1），仅保留最新版本
     for (const manifest of manifests) {
-      if (!this.registrations.has(manifest.id)) {
+      const existing = this.registrations.get(manifest.id)
+      if (!existing) {
         this.registrations.set(manifest.id, {
           manifest,
           runtime: null,
           status: 'discovered',
         })
         this.emitEvent({ type: 'plugin:discovered', pluginId: manifest.id })
+      } else if (this.compareVersions(manifest.version, existing.manifest.version) > 0) {
+        // 新发现的版本更高，替换旧记录
+        existing.manifest = manifest
+        existing.runtime = null
+        existing.status = 'discovered'
       }
     }
 
     logger.system.info(`[PluginRegistry] Discovered ${manifests.length} plugins`)
     return manifests
+  }
+
+  /**
+   * 比较两个语义化版本号。
+   * @returns 正数表示 a 更新，负数表示 b 更新，0 表示相同
+   */
+  private compareVersions(a: string, b: string): number {
+    const parse = (v: string) => v.split('.').map((n) => parseInt(n, 10) || 0)
+    const pa = parse(a)
+    const pb = parse(b)
+    const len = Math.max(pa.length, pb.length)
+    for (let i = 0; i < len; i++) {
+      const na = pa[i] || 0
+      const nb = pb[i] || 0
+      if (na !== nb) return na - nb
+    }
+    return 0
   }
 
   /**

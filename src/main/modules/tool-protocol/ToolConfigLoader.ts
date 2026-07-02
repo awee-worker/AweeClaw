@@ -9,24 +9,18 @@ import * as path from 'path'
 import { logger } from '@shared/toolkit/LogEngine'
 import { toAppError } from '@shared/toolkit/errorCatalog'
 import { getConfigFilePath, getWorkspaceConfigFilePath, CONFIG_FILES } from '../configPath'
-import type { McpConfig, McpServerConfig, McpBuiltinServerConfig, McpBuiltinId } from '@shared/protocols/toolProtocolBridge'
+import type { McpConfig, McpServerConfig, McpBuiltinServerConfig, McpBuiltinId, McpPluginServerConfig } from '@shared/protocols/toolProtocolBridge'
 
 /**
  * 内置进程内 MCP 服务器的默认配置清单。
- * 这些配置默认 disabled=true，需用户显式启用（在设置界面或配置文件中 toggle）。
  *
- * 新增内置服务时在此处追加即可，无需改动 loadConfig 逻辑。
+ * 注意：computer-use 已迁移为内置插件（type: 'plugin'），不再在此声明。
+ * 历史遗留的 type='builtin' 配置项由 loadConfig 中的迁移逻辑跳过，
+ * 避免与插件化后的 computer-use 产生重复服务器。
+ *
+ * 新增纯内置进程内服务时仍可在此处追加。
  */
-const BUILTIN_SERVER_DEFAULTS: McpBuiltinServerConfig[] = [
-  {
-    type: 'builtin',
-    id: 'computer-use',
-    name: 'Computer Use',
-    builtin: 'computer-use',
-    disabled: true,
-    autoApprove: [],
-  },
-]
+const BUILTIN_SERVER_DEFAULTS: McpBuiltinServerConfig[] = []
 
 /** 返回内置进程内 MCP 服务器的默认配置列表（副本，避免外部修改） */
 export function getBuiltinServerConfigs(): McpBuiltinServerConfig[] {
@@ -44,6 +38,13 @@ export class McpConfigLoader {
   private onConfigChange?: () => void
   private debounceTimer: ReturnType<typeof setTimeout> | null = null
 
+  /**
+   * 内置插件 MCP 配置注册表（serverId -> config）。
+   * 由随应用打包的内置插件（如 computer-use）在启动时注册，
+   * loadConfig 会将这些配置注入到结果列表中（优先级低于用户配置，可被禁用）。
+   */
+  private builtinPluginConfigs = new Map<string, McpPluginServerConfig>()
+
   /** 获取用户配置路径 */
   private get userConfigPath(): string {
     return getConfigFilePath(CONFIG_FILES.MCP, CONFIG_FILES.SETTINGS_DIR)
@@ -53,6 +54,20 @@ export class McpConfigLoader {
   setWorkspaceRoots(roots: string[]): void {
     this.workspaceRoots = roots
     this.setupWatchers()
+  }
+
+  /**
+   * 注册内置插件 MCP 配置（供随应用打包的插件调用，如 computer-use）。
+   * 注册后 loadConfig 会自动注入该配置，用户可在配置中覆盖 disabled 字段。
+   */
+  registerBuiltinPluginConfig(config: McpPluginServerConfig): void {
+    this.builtinPluginConfigs.set(config.id, config)
+    logger.mcp?.info(`[McpConfigLoader] Registered builtin plugin MCP config: ${config.id}`)
+  }
+
+  /** 注销内置插件 MCP 配置 */
+  unregisterBuiltinPluginConfig(serverId: string): void {
+    this.builtinPluginConfigs.delete(serverId)
   }
 
   /** 设置配置变更回调 */
@@ -72,15 +87,36 @@ export class McpConfigLoader {
       seenIds.add(builtin.id)
     }
 
+    // 0b. 注入内置插件 MCP 配置（如 computer-use 插件，优先级高于纯内置、低于用户配置）
+    //     用户可在配置文件中覆盖 disabled 字段来禁用
+    for (const pluginConfig of this.builtinPluginConfigs.values()) {
+      configs.push({ ...pluginConfig })
+      seenIds.add(pluginConfig.id)
+    }
+
     // 1. 加载用户级配置（覆盖内置配置）
     const userConfig = await this.loadConfigFile(this.userConfigPath)
     if (userConfig) {
       for (const [id, serverConfig] of Object.entries(userConfig.mcpServers)) {
+        // 迁移：跳过历史遗留的 computer-use builtin 条目（已迁移为插件，由 0b 注入）
+        if (id === 'computer-use' && (serverConfig as Record<string, any>).type === 'builtin') {
+          logger.mcp?.info('[McpConfigLoader] Skipping legacy builtin computer-use config (migrated to plugin)')
+          continue
+        }
         const existingIndex = configs.findIndex(c => c.id === id)
         if (existingIndex !== -1) {
-          // 合并用户配置到内置配置（保留 builtin 字段，应用 disabled/autoApprove 等）
-          const merged = this.mergeBuiltinConfig(configs[existingIndex], serverConfig as Record<string, any>)
-          configs[existingIndex] = merged
+          if (configs[existingIndex].type === 'builtin') {
+            // 合并用户配置到内置配置（保留 builtin 字段，应用 disabled/autoApprove 等）
+            const merged = this.mergeBuiltinConfig(configs[existingIndex], serverConfig as Record<string, any>)
+            configs[existingIndex] = merged
+          } else if (configs[existingIndex].type === 'plugin') {
+            // 内置插件配置：仅允许覆盖 disabled / autoApprove / presetId
+            const merged = this.mergeBuiltinPluginConfig(configs[existingIndex] as McpPluginServerConfig, serverConfig as Record<string, any>)
+            configs[existingIndex] = merged
+          } else {
+            configs.splice(existingIndex, 1)
+            configs.push(this.normalizeConfig(id, serverConfig as Record<string, any>, 'user'))
+          }
         } else {
           configs.push(this.normalizeConfig(id, serverConfig as Record<string, any>, 'user'))
           seenIds.add(id)
@@ -95,11 +131,18 @@ export class McpConfigLoader {
 
       if (workspaceConfig) {
         for (const [id, serverConfig] of Object.entries(workspaceConfig.mcpServers)) {
+          // 迁移：跳过历史遗留的 computer-use builtin 条目
+          if (id === 'computer-use' && (serverConfig as Record<string, any>).type === 'builtin') {
+            continue
+          }
           const existingIndex = configs.findIndex(c => c.id === id)
           if (existingIndex !== -1) {
-            // 若已存在内置配置，则合并（保留 builtin 字段）；否则替换
             if (configs[existingIndex].type === 'builtin') {
               const merged = this.mergeBuiltinConfig(configs[existingIndex], serverConfig as Record<string, any>)
+              merged.source = 'workspace'
+              configs[existingIndex] = merged
+            } else if (configs[existingIndex].type === 'plugin') {
+              const merged = this.mergeBuiltinPluginConfig(configs[existingIndex] as McpPluginServerConfig, serverConfig as Record<string, any>)
               merged.source = 'workspace'
               configs[existingIndex] = merged
             } else {
@@ -116,6 +159,24 @@ export class McpConfigLoader {
 
     logger.mcp?.info(`[McpConfigLoader] Loaded ${configs.length} MCP server configs`)
     return configs
+  }
+
+  /**
+   * 将用户/工作区配置合并到内置插件配置上。
+   * 内置插件（如 computer-use）的 type/pluginKey/pluginVersion 等字段固定不可覆盖，
+   * 仅允许覆盖 disabled / autoApprove / presetId 等运行时字段。
+   */
+  private mergeBuiltinPluginConfig(
+    builtin: McpPluginServerConfig,
+    override: Record<string, any>,
+  ): McpPluginServerConfig {
+    return {
+      ...builtin,
+      disabled: override.disabled ?? builtin.disabled,
+      autoApprove: override.autoApprove ?? builtin.autoApprove,
+      presetId: override.presetId ?? builtin.presetId,
+      source: 'user',
+    }
   }
 
   /** 自动推断配置的 type 字段，标记来源层级 */

@@ -30,6 +30,7 @@ import {
 } from './windowManager'
 import { setIpcModuleForWindow } from './windowManager'
 import { setIpcModule as setIpcModuleForCleanup } from './globalCleanup'
+import { initHostServices } from '../modules/plugin-sdk/hostServices'
 
 export type Language = 'zh' | 'en'
 
@@ -130,6 +131,8 @@ export async function initializeModules(firstWin: BrowserWindow): Promise<void> 
   initChannelService()
   initPythonRuntime()
   initDesktopControlPlugin()
+  // 初始化 Host 服务桥（供外部插件访问 native 能力 + MCP SDK）
+  initHostServicesBridge()
 
   // ==========================================
   // 7. 应用菜单与语言同步
@@ -232,12 +235,17 @@ function initChannelService(): void {
     })
 }
 
-/** 初始化 Plugin Registry */
+/** 初始化 Plugin Registry 与 PluginInstaller */
 async function initPluginRegistry(): Promise<void> {
   try {
     const { getPluginRegistry } = await import('../modules/plugin-sdk/PluginRegistry')
     const userDataPath = app.getPath('userData')
     getPluginRegistry(path.join(userDataPath, 'plugins'))
+
+    // 初始化 PluginInstaller（用于插件市场的安装/卸载）
+    const { getPluginInstaller } = await import('../modules/plugin-sdk/PluginInstaller')
+    getPluginInstaller(getMainWindow)
+    logger.system.info('[Main] PluginInstaller initialized')
   } catch (err) {
     logger.system.warn('[Main] Plugin registry init skipped:', errMsg(err))
   }
@@ -263,6 +271,22 @@ function initDesktopControlPlugin(): void {
     .catch((err) => {
       logger.system.warn('[Main] Desktop control plugin registration failed:', errMsg(err))
     })
+}
+
+/**
+ * 初始化 Host 服务桥接（直接调用 hostServices 模块）。
+ *
+ * 将客户端主进程的 native 能力（DesktopControlManager、MacVisionOcrRouter、nativeImage、
+ * McpServer、InMemoryTransport、zod）通过 globalThis.__AWEECLAW_HOST__ 暴露给外部插件代码。
+ *
+ * 静态 import 确保被 vite 打包进主 chunk，避免运行时 require 路径失效。
+ */
+function initHostServicesBridge(): void {
+  try {
+    initHostServices()
+  } catch (err) {
+    logger.system.warn('[Main] Host services bridge initialization failed:', errMsg(err))
+  }
 }
 
 /** 异步初始化 Python 环境（不阻塞启动） */

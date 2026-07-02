@@ -25,8 +25,8 @@ export default function NotificationCenterContent({ language = 'zh' }: Notificat
     const diff = Date.now() - ts
     const mins = Math.floor(diff / 60000)
     if (mins < 1) return t('app.justnow', language as Language)
-    if (mins < 60) return `${mins}${t('app.mago', language as Language)}`
-    return `${Math.floor(mins / 60)}${t('app.hago', language as Language)}`
+    if (mins < 60) return t('app.mago', language as Language, { diffMins: mins })
+    return t('app.hago', language as Language, { diffHours: Math.floor(mins / 60) })
   }
 
   const handleCopy = useCallback((id: string, message: string) => {
@@ -57,20 +57,21 @@ export default function NotificationCenterContent({ language = 'zh' }: Notificat
                       <div className="text-[12px] font-semibold text-text-primary">
                         {toast.title}
                       </div>
-                      <span className="rounded-full border border-white/8 bg-white/[0.04] px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-text-muted">
+                      <span className="rounded-full border border-white/8 bg-white/[0.04] px-1.5 py-0.5 text-[12px] uppercase tracking-wide text-text-muted">
                         {toast.variant}
                       </span>
                     </div>
                   )}
-                  <div className="text-[11.5px] font-medium text-text-primary/95 leading-relaxed whitespace-pre-wrap break-words">
+                  <div className="text-[12px] font-medium text-text-primary/95 leading-relaxed whitespace-pre-wrap break-words">
                     {toast.message}
+                  </div>
+                  {/* 时间常显在列表项底部 */}
+                  <div className="mt-1.5 text-[12px] text-text-muted/70 font-mono tracking-wide">
+                    {formatTime(toast.timestamp || Date.now())}
                   </div>
                 </div>
 
                 <div className="absolute right-2 top-1.5 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <span className="text-[10px] text-text-muted/85 font-mono tracking-wide px-1">
-                    {formatTime(toast.timestamp || Date.now())}
-                  </span>
                   <button
                     onClick={() => handleCopy(toast.id, toast.message)}
                     className="p-1.5 rounded-md text-text-muted/85 hover:text-text-primary hover:bg-white/5 transition-all"
