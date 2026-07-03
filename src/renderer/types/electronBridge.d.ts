@@ -877,6 +877,8 @@ export interface ElectronAPI {
       license: string
       enabled: boolean
     }
+    /** 用户填写的插件配置值（覆盖 defaultValue，用于 {{config.KEY}} 模板替换） */
+    userConfig?: Record<string, string>
   }) => Promise<{
     success: boolean
     pluginId: string
@@ -916,6 +918,13 @@ export interface ElectronAPI {
     currentVersion?: string
     latestVersion?: string
   }>
+  /** 读取插件用户配置（用于 {{config.KEY}} 模板替换） */
+  pluginGetConfig: (pluginKey: string) => Promise<Record<string, string>>
+  /** 保存插件用户配置（并触发 MCP 重连，若该插件是 MCP 型且已注册） */
+  pluginSaveConfig: (
+    pluginKey: string,
+    values: Record<string, string>,
+  ) => Promise<{ success: boolean; reconnected: boolean; error?: string }>
   /** 订阅插件安装进度事件 */
   onPluginInstallProgress: (callback: (progress: {
     pluginId: string

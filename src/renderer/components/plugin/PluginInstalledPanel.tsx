@@ -32,6 +32,7 @@ import {
   Heart,
   TrendingUp,
   ExternalLink,
+  Settings,
 } from 'lucide-react'
 import { useStore } from '@store'
 import { ActionButton } from '../ui'
@@ -45,6 +46,8 @@ import {
 } from '@services/pluginService'
 import type { InstalledPlugin } from '@services/pluginService'
 import { type Language } from '@renderer/i18n'
+import { PluginConfigEditDialog } from './PluginConfigEditDialog'
+import type { PluginConfigField } from './PluginConfigForm'
 
 // ─── 分类图标映射 ──────────────────────────────────────
 
@@ -81,6 +84,8 @@ export function PluginInstalledPanel() {
   const [isLoading, setIsLoading] = useState(false)
   const [operating, setOperating] = useState<string | null>(null)
   const [updates, setUpdates] = useState<Record<string, { hasUpdate: boolean; latestVersion?: string }>>({})
+  // 配置编辑对话框
+  const [configTarget, setConfigTarget] = useState<{ pluginKey: string; name: string; fields: PluginConfigField[] } | null>(null)
 
   const loadPlugins = useCallback(async () => {
     setIsLoading(true)
@@ -213,6 +218,20 @@ export function PluginInstalledPanel() {
     )
   }
 
+  /** 从 manifest 提取 configSchema.fields（类型安全） */
+  function extractConfigFields(manifest: Record<string, unknown>): PluginConfigField[] {
+    const schema = manifest.configSchema as { fields?: PluginConfigField[] } | undefined
+    return schema?.fields || []
+  }
+
+  /** 打开配置编辑对话框 */
+  function handleOpenConfig(plugin: InstalledPlugin) {
+    const manifest = plugin.manifest as Record<string, unknown>
+    const fields = extractConfigFields(manifest)
+    const name = (manifest.nameZh as string) || (manifest.name as string) || plugin.pluginKey
+    setConfigTarget({ pluginKey: plugin.pluginKey, name, fields })
+  }
+
   return (
     <div className="flex flex-col h-full">
       {/* 顶部操作栏 */}
@@ -257,11 +276,21 @@ export function PluginInstalledPanel() {
                 onEnable={() => handleEnable(plugin)}
                 onDisable={() => handleDisable(plugin)}
                 onUninstall={() => handleUninstall(plugin)}
+                onOpenConfig={() => handleOpenConfig(plugin)}
               />
             ))}
           </div>
         )}
       </div>
+
+      {/* 配置编辑对话框 */}
+      <PluginConfigEditDialog
+        open={configTarget !== null}
+        pluginKey={configTarget?.pluginKey || ''}
+        pluginName={configTarget?.name || ''}
+        fields={configTarget?.fields || []}
+        onClose={() => setConfigTarget(null)}
+      />
     </div>
   )
 }
@@ -276,6 +305,7 @@ function PluginRow({
   onEnable,
   onDisable,
   onUninstall,
+  onOpenConfig,
 }: {
   plugin: InstalledPlugin
   language: Language
@@ -284,6 +314,7 @@ function PluginRow({
   onEnable: () => void
   onDisable: () => void
   onUninstall: () => void
+  onOpenConfig: () => void
 }) {
   const manifest = plugin.manifest as {
     name?: string
@@ -293,6 +324,7 @@ function PluginRow({
     category?: string
     icon?: string
     homepage?: string
+    configSchema?: { fields?: PluginConfigField[] }
   }
 
   const displayName =
@@ -390,6 +422,18 @@ function PluginRow({
 
         {/* 操作按钮 */}
         <div className="shrink-0 flex items-center gap-1">
+          {/* 配置按钮：仅当插件声明了 configSchema.fields 时展示 */}
+          {manifest.configSchema?.fields && manifest.configSchema.fields.length > 0 && (
+            <ActionButton
+              onClick={onOpenConfig}
+              variant="ghost"
+              size="sm"
+              disabled={operating}
+              title={language === 'zh' ? '配置' : 'Settings'}
+            >
+              <Settings className="w-3.5 h-3.5" />
+            </ActionButton>
+          )}
           {plugin.enabled ? (
             <ActionButton
               onClick={onDisable}

@@ -200,9 +200,13 @@ export class McpManager extends EventEmitter {
     } catch (err) {
       const error = toAppError(err)
       logger.mcp?.error(`[McpManager] Failed to connect ${config.id}: ${error.code}`, error)
+      // 如果原始错误包含 [stderr] 诊断信息，优先展示原始消息以便用户看到真正的失败原因
+      // 否则使用 toAppError 分类后的友好消息
+      const originalMsg = err instanceof Error ? err.message : String(err)
+      const displayMsg = originalMsg.includes('[stderr]') ? originalMsg : error.message
       // 连接失败时清理子进程，但保留 error 状态供 UI 展示
       // 不能调用 disconnect()，因为它会把状态覆盖为 disconnected，丢失错误信息
-      await client.forceCleanupAndSetError(error.message).catch(() => { })
+      await client.forceCleanupAndSetError(displayMsg).catch(() => { })
     }
 
     this.notifyStateChange()

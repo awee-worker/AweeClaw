@@ -942,6 +942,8 @@ function createGroupedAPI() {
           license: string
           enabled: boolean
         }
+        /** 用户填写的插件配置值（覆盖 defaultValue，用于 {{config.KEY}} 模板替换） */
+        userConfig?: Record<string, string>
       }) => raw.pluginInstall(params),
       uninstall: (pluginKey: string) => raw.pluginUninstall(pluginKey),
       enable: (pluginKey: string) => raw.pluginEnable(pluginKey),
@@ -950,6 +952,11 @@ function createGroupedAPI() {
       isInstalled: (pluginKey: string) => raw.pluginIsInstalled(pluginKey),
       checkUpdate: (pluginKey: string, backendUrl: string, authToken?: string) =>
         raw.pluginCheckUpdate(pluginKey, backendUrl, authToken),
+      /** 读取插件用户配置 */
+      getConfig: (pluginKey: string) => raw.pluginGetConfig(pluginKey) as Promise<Record<string, string>>,
+      /** 保存插件用户配置（并触发 MCP 重连） */
+      saveConfig: (pluginKey: string, values: Record<string, string>) =>
+        raw.pluginSaveConfig(pluginKey, values) as Promise<{ success: boolean; reconnected: boolean; error?: string }>,
       onInstallProgress: (callback: (progress: {
         pluginId: string
         phase: 'pending' | 'downloading' | 'verifying' | 'extracting' | 'registering' | 'mcp_connecting' | 'done' | 'error'

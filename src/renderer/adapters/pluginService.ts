@@ -239,6 +239,43 @@ export async function getPluginVersions(pluginId: string): Promise<PluginVersion
 // ─── 安装 / 卸载（IPC） ────────────────────────────────
 
 /**
+ * 预取插件 manifest（含 configSchema）。
+ *
+ * 用于安装前展示配置表单：用户点击"安装"时，先调用此函数获取 manifest，
+ * 检查 configSchema.fields 中是否有 required 字段。若有，则弹出配置对话框。
+ *
+ * 此函数仅触发 /download 接口（不递增下载量，不创建购买记录），
+ * 真正的安装上报在 installPluginFromMarketplace 中完成。
+ *
+ * @param pluginId 插件 ID
+ * @param version 目标版本（可选，默认最新）
+ * @returns manifest 对象（含 configSchema）；失败返回 null
+ */
+export async function fetchPluginManifest(
+  pluginId: string,
+  version?: string,
+): Promise<Record<string, unknown> | null> {
+  if (!isAuthenticated()) return null
+  try {
+    // 优先使用传入版本；未传则先查询最新版本
+    let resolvedVersion = version
+    if (!resolvedVersion) {
+      const detail = await getPluginDetail(pluginId)
+      resolvedVersion = detail?.latestVersion || undefined
+    }
+    if (!resolvedVersion) return null
+
+    const info = await backendApi.get<PluginDownloadInfo>(
+      `/api/v1/plugins/download/${pluginId}/${encodeURIComponent(resolvedVersion)}`,
+    )
+    return info.manifest || null
+  } catch (err) {
+    logger.ipc.warn(`[pluginService] fetchPluginManifest failed: ${err}`)
+    return null
+  }
+}
+
+/**
  * 从市场安装插件
  *
  * 流程：
@@ -249,11 +286,13 @@ export async function getPluginVersions(pluginId: string): Promise<PluginVersion
  * @param pluginId 插件 ID
  * @param version 目标版本（可选，默认最新）
  * @param marketItem 市场列表项（可选，用于预取插件详情避免主进程请求后端）
+ * @param userConfig 用户填写的插件配置值（覆盖 defaultValue，用于 {{config.KEY}} 模板替换）
  */
 export async function installPluginFromMarketplace(
   pluginId: string,
   version?: string,
   marketItem?: PluginMarketItem,
+  userConfig?: Record<string, string>,
 ): Promise<PluginInstallResult> {
   if (!isAuthenticated()) {
     return { success: false, error: 'Not authenticated. Please log in first.' }
@@ -342,6 +381,7 @@ export async function installPluginFromMarketplace(
         configOnly: downloadInfo.configOnly,
       },
       preloadedPluginDetail,
+      userConfig,
     })
 
     logger.ipc.debug('[pluginService] IPC install result:', JSON.stringify(ipcResult))
@@ -519,5 +559,43 @@ export async function mockPayPluginOrder(
 export async function refreshPurchasedPlugins(): Promise<void> {
   // 触发后端 PluginPurchase 列表刷新，客户端可通过 getInstalledPlugins 重新拉取
   await getInstalledPlugins().catch(() => {})
+}
+
+// ─── 插件用户配置（{{config.KEY}} 模板变量） ──
+
+/**
+ * 读取插件用户配置。
+ * @returns 该插件的所有用户配置键值对（可能为空对象）
+ */
+export async function getPluginConfig(pluginKey: string): Promise<Record<string, string>> {
+  try {
+    const api = getAPI()
+    return await api.plugin.getConfig(pluginKey)
+  } catch (err) {
+    logger.ipc.warn(`[pluginService] getPluginConfig failed for ${pluginKey}: ${err}`)
+    return {}
+  }
+}
+
+/**
+ * 保存插件用户配置并触发 MCP 重连（若该插件是 MCP 型且已注册）。
+ * @param pluginKey 插件 key
+ * @param values 配置键值对（会整体覆盖该插件的原有配置）
+ * @returns 保存结果（含是否触发了 MCP 重连）
+ */
+export async function savePluginConfig(
+  pluginKey: string,
+  values: Record<string, string>,
+): Promise<{ success: boolean; reconnected: boolean; error?: string }> {
+  try {
+    const api = getAPI()
+    return await api.plugin.saveConfig(pluginKey, values)
+  } catch (err) {
+    return {
+      success: false,
+      reconnected: false,
+      error: err instanceof Error ? err.message : String(err),
+    }
+  }
 }
 

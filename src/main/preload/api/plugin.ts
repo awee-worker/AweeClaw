@@ -69,6 +69,12 @@ export interface PluginInstallParams {
   preloadedDownloadInfo?: PluginPreloadedDownloadInfo
   /** 预取的插件详情（渲染进程已获取时传入，主进程跳过 fetchPluginDetail） */
   preloadedPluginDetail?: PluginPreloadedDetail
+  /**
+   * 用户填写的插件配置值（覆盖 defaultValue）。
+   * 用于 {{config.KEY}} 模板替换，如 API Key 等用户专属配置。
+   * 安装完成后会持久化到 plugin-configs.json。
+   */
+  userConfig?: Record<string, string>
 }
 
 export interface PluginInstallResult {
@@ -139,6 +145,12 @@ export function createPluginApi() {
       backendUrl: string,
       authToken?: string,
     ) => invoke<PluginUpdateInfo>('plugin:checkUpdate')(pluginKey, backendUrl, authToken),
+
+    // ── 插件用户配置 ──
+    pluginGetConfig: (pluginKey: string) =>
+      invoke<Record<string, string>>('plugin:getConfig')(pluginKey),
+    pluginSaveConfig: (pluginKey: string, values: Record<string, string>) =>
+      invoke<{ success: boolean; reconnected: boolean; error?: string }>('plugin:saveConfig')(pluginKey, values),
 
     // ── 事件订阅 ──
     onPluginInstallProgress: on<PluginInstallProgress>('plugin:installProgress'),

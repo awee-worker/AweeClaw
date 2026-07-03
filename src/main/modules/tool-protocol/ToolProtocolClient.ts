@@ -209,6 +209,14 @@ export class McpClient extends EventEmitter {
       // 连接失败时，附带 stderr 信息以便诊断
       if (stderrOutput) {
         logger.mcp?.error(`[MCP:${config.id}] Process stderr output:\n${stderrOutput}`)
+        // 将 stderr 尾部附加到错误消息，让用户在 UI 上看到真正的失败原因
+        const stderrTail = stderrOutput.split('\n').slice(-5).join('\n').trim()
+        if (stderrTail) {
+          const baseMsg = err instanceof Error ? err.message : String(err)
+          const enhanced = new Error(`${baseMsg}\n[stderr] ${stderrTail}`)
+          ;(enhanced as Error & { cause?: unknown }).cause = err
+          throw enhanced
+        }
       }
       throw err
     }
@@ -386,6 +394,14 @@ export class McpClient extends EventEmitter {
     } catch (err) {
       if (stderrOutput) {
         logger.mcp?.error(`[MCP:${config.id}] Process stderr output:\n${stderrOutput}`)
+        // 将 stderr 尾部附加到错误消息，让用户在 UI 上看到真正的失败原因
+        const stderrTail = stderrOutput.split('\n').slice(-5).join('\n').trim()
+        if (stderrTail) {
+          const baseMsg = err instanceof Error ? err.message : String(err)
+          const enhanced = new Error(`${baseMsg}\n[stderr] ${stderrTail}`)
+          ;(enhanced as Error & { cause?: unknown }).cause = err
+          throw enhanced
+        }
       }
       throw err
     }
@@ -450,9 +466,30 @@ export class McpClient extends EventEmitter {
     const dir = McpClient.pluginDirs.get(config.pluginKey)
     if (dir) return dir
 
-    // fallback：默认路径 userData/plugins/<pluginKey>
+    // fallback：扫描 userData/plugins/<pluginKey>/ 下的版本号子目录
+    // 应用重启后 pluginDirs Map 可能在 MCP 自动连接时尚未注册，
+    // 此时自动查找最新的版本子目录，避免路径缺少版本号导致 "Plugin entry not found"
     const { app } = require('electron') as { app: Electron.App }
-    return path.join(app.getPath('userData'), 'plugins', config.pluginKey)
+    const baseDir = path.join(app.getPath('userData'), 'plugins', config.pluginKey)
+
+    if (fs.existsSync(baseDir)) {
+      try {
+        const subdirs = fs
+          .readdirSync(baseDir)
+          .filter((d) => fs.statSync(path.join(baseDir, d)).isDirectory())
+          .sort()
+        if (subdirs.length > 0) {
+          const resolved = path.join(baseDir, subdirs[subdirs.length - 1])
+          // 顺带补登记到 pluginDirs，后续连接直接命中缓存
+          McpClient.registerPluginDir(config.pluginKey, resolved)
+          return resolved
+        }
+      } catch {
+        // 目录读取失败时回退到 baseDir
+      }
+    }
+
+    return baseDir
   }
 
   /** 连接远程服务器 */

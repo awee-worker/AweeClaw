@@ -244,8 +244,13 @@ async function initPluginRegistry(): Promise<void> {
 
     // 初始化 PluginInstaller（用于插件市场的安装/卸载）
     const { getPluginInstaller } = await import('../modules/plugin-sdk/PluginInstaller')
-    getPluginInstaller(getMainWindow)
+    const installer = getPluginInstaller(getMainWindow)
     logger.system.info('[Main] PluginInstaller initialized')
+
+    // 恢复已安装插件：注册插件目录映射（pluginDirs）、重新加载插件运行时
+    // 必须在 MCP 自动连接之前完成，否则插件型 MCP 服务器会因 pluginDirs 为空而走 fallback 路径
+    await installer.restoreInstalled()
+    logger.system.info('[Main] Installed plugins restored')
   } catch (err) {
     logger.system.warn('[Main] Plugin registry init skipped:', errMsg(err))
   }

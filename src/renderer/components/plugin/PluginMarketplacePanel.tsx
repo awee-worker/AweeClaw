@@ -48,6 +48,7 @@ import {
   onPluginInstallProgress,
   createPluginOrder,
   mockPayPluginOrder,
+  fetchPluginManifest,
 } from '@services/pluginService'
 import type {
   PluginMarketItem,
@@ -55,6 +56,8 @@ import type {
   PluginInstallProgress,
 } from '@services/pluginService'
 import { t, type Language } from '@renderer/i18n'
+import { PluginInstallConfigDialog } from './PluginInstallConfigDialog'
+import type { PluginConfigField, PluginConfigValues } from './PluginConfigForm'
 
 // ─── 分类图标映射 ──────────────────────────────────────
 
@@ -100,6 +103,15 @@ export function PluginMarketplacePanel() {
   const [installedKeys, setInstalledKeys] = useState<Set<string>>(new Set())
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
+
+  // 安装时配置对话框状态
+  const [configDialog, setConfigDialog] = useState<{
+    open: boolean
+    item: PluginMarketItem | null
+    fields: PluginConfigField[]
+    loading: boolean
+    error?: string
+  }>({ open: false, item: null, fields: [], loading: false })
 
   // 加载精选 / 分类
   useEffect(() => {
@@ -191,11 +203,48 @@ export function PluginMarketplacePanel() {
         return
       }
 
-      // 免费插件：直接安装（传 marketItem 以便主进程跳过网络请求）
+      // 免费插件：先获取 manifest 检查是否有必填配置项
+      const manifest = await fetchPluginManifest(item.id, item.latestVersion || undefined)
+      const fields = extractConfigFields(manifest)
+      const hasRequired = fields.some((f) => f.required)
+
+      if (hasRequired) {
+        // 弹出配置对话框，等待用户填写后再安装
+        setConfigDialog({ open: true, item, fields, loading: false })
+        return
+      }
+
+      // 无必填配置：直接安装（可选配置后续在详情中补充）
+      await doInstall(item, undefined)
+    } catch (err) {
+      toast.card({
+        type: 'error',
+        title: language === 'zh' ? '安装失败' : 'Install Failed',
+        message: err instanceof Error ? err.message : String(err),
+        duration: 5000,
+        source: 'PluginMarketplace',
+      })
+    } finally {
+      setInstalling(null)
+    }
+  }
+
+  /** 从 manifest 提取 configSchema.fields（类型安全） */
+  function extractConfigFields(manifest: Record<string, unknown> | null): PluginConfigField[] {
+    if (!manifest) return []
+    const schema = manifest.configSchema as { fields?: PluginConfigField[] } | undefined
+    return schema?.fields || []
+  }
+
+  /** 真正执行安装（带可选的用户配置） */
+  async function doInstall(item: PluginMarketItem, userConfig?: PluginConfigValues) {
+    setInstalling(item.id)
+    try {
       const result = await installPluginFromMarketplace(
         item.id,
         item.latestVersion || undefined,
         item,
+        userConfig,
       )
 
       if (result.success) {
@@ -226,6 +275,50 @@ export function PluginMarketplacePanel() {
         duration: 5000,
         source: 'PluginMarketplace',
       })
+    } finally {
+      setInstalling(null)
+    }
+  }
+
+  /** 安装配置对话框：用户点击"安装"按钮 */
+  async function handleConfigDialogConfirm(values: PluginConfigValues) {
+    const item = configDialog.item
+    if (!item) return
+    setConfigDialog((s) => ({ ...s, loading: true, error: undefined }))
+    // 先关闭对话框再执行安装（避免遮挡 toast）
+    // 但保留 loading 状态以禁用按钮 - 这里改为安装期间保持对话框显示
+    try {
+      const result = await installPluginFromMarketplace(
+        item.id,
+        item.latestVersion || undefined,
+        item,
+        values,
+      )
+      if (result.success) {
+        toast.success(
+          language === 'zh'
+            ? `插件「${item.nameZh}」安装成功`
+            : `Plugin "${item.name}" installed successfully`,
+        )
+        setInstalledKeys((prev) => new Set(prev).add(item.pluginKey))
+        setSelectedItem(null)
+        setConfigDialog({ open: false, item: null, fields: [], loading: false })
+      } else if (result.requiresPayment) {
+        setConfigDialog({ open: false, item: null, fields: [], loading: false })
+        await handlePaidPluginPurchase(item)
+      } else {
+        setConfigDialog((s) => ({
+          ...s,
+          loading: false,
+          error: result.error || (language === 'zh' ? '安装失败，请检查配置' : 'Install failed'),
+        }))
+      }
+    } catch (err) {
+      setConfigDialog((s) => ({
+        ...s,
+        loading: false,
+        error: err instanceof Error ? err.message : String(err),
+      }))
     } finally {
       setInstalling(null)
     }
@@ -511,6 +604,20 @@ export function PluginMarketplacePanel() {
       {installProgress && (
         <InstallProgressBar progress={installProgress} language={language} />
       )}
+
+      {/* 安装时配置对话框 */}
+      <PluginInstallConfigDialog
+        open={configDialog.open}
+        pluginName={configDialog.item?.nameZh || configDialog.item?.name || ''}
+        fields={configDialog.fields}
+        loading={configDialog.loading}
+        error={configDialog.error}
+        onConfirm={handleConfigDialogConfirm}
+        onCancel={() =>
+          !configDialog.loading &&
+          setConfigDialog({ open: false, item: null, fields: [], loading: false })
+        }
+      />
     </div>
   )
 }
@@ -882,7 +989,7 @@ function InstallProgressBar({
   return (
     <div
       className={`${
-        embedded ? 'mt-2' : 'fixed bottom-4 left-4 right-4 z-50'
+        embedded ? 'mt-2' : 'fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-[360px] max-w-[calc(100vw-2rem)]'
       } p-2.5 rounded-lg border ${
         isError
           ? 'bg-red-500/10 border-red-500/30'

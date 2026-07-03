@@ -4,7 +4,6 @@
  * 单列流式布局，列表式展示服务器
  */
 
-import { api } from '../../../adapters/electronBridge'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { logger } from '@shared/toolkit/LogEngine'
 import {
@@ -17,26 +16,20 @@ import {
   Wrench,
   FileText,
   MessageSquare,
-  ExternalLink,
-  FolderOpen,
   Plus,
   Trash2,
-  Settings,
-  ChevronDown,
   Globe,
   Key,
-  Lightbulb,
   Search,
   MoreHorizontal,
   Info,
-  Zap,
   ToggleLeft,
   ToggleRight,
 } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { mcpService } from '@services/toolProtocolAdapter'
-import { ActionButton, ToggleSwitch } from '@components/ui'
+import { ActionButton } from '@components/ui'
 import type { McpServerStatus } from '@shared/protocols/toolProtocolBridge'
 import { isRemoteConfig, isLocalConfig } from '@shared/protocols/toolProtocolBridge'
 import { MCP_PRESETS } from '@shared/configuration/toolProtocolPresets'
@@ -58,7 +51,7 @@ const STATUS_STYLES: Record<McpServerStatus, { dot: string; text: string }> = {
   needs_registration: { dot: 'bg-orange-500', text: 'text-orange-400' },
 }
 
-export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: McpSettingsProps) {
+export default function McpServerPanel({ language }: McpSettingsProps) {
   const { mcpServers, mcpLoading, mcpError } = useStore(useShallow(s => ({
     mcpServers: s.mcpServers,
     mcpLoading: s.mcpLoading,
@@ -66,7 +59,6 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
   })))
 
   const [expandedServer, setExpandedServer] = useState<string | null>(null)
-  const [configPaths, setConfigPaths] = useState<{ user: string; workspace: string[] } | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [showAddModal, setShowAddModal] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
@@ -77,10 +69,6 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
   const [activeMenu, setActiveMenu] = useState<string | null>(null)
   const [menuPosition, setMenuPosition] = useState<{ top: number; right: number } | null>(null)
   const menuButtonRefs = useRef<Map<string, HTMLButtonElement>>(new Map())
-
-  useEffect(() => {
-    loadConfigPaths()
-  }, [])
 
   useEffect(() => {
     setOauthPendingServers(prev => {
@@ -115,11 +103,6 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
       document.removeEventListener('click', handleClickOutside)
     }
   }, [activeMenu])
-
-  const loadConfigPaths = async () => {
-    const paths = await mcpService.getConfigPaths()
-    setConfigPaths(paths)
-  }
 
   const handleReloadConfig = async () => {
     setActionLoading('reload')
@@ -183,14 +166,6 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
       logger.settings.error('Failed to toggle server:', err)
     }
     setActionLoading(null)
-  }
-
-  const openConfigFile = async (path: string) => {
-    try {
-      await api.file.showInFolder(path)
-    } catch (err) {
-      logger.settings.error('Failed to open config file:', err)
-    }
   }
 
   const handleStartOAuth = async (serverId: string) => {
@@ -335,20 +310,6 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
             <p className="text-[11px] text-text-muted/70">
               {t('app.mcpserversextendai', language as Language)}
             </p>
-          </div>
-
-          {/* 自动连接开关 */}
-          <div className="px-5 pb-3">
-            <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-background/20 border border-border/30">
-              <div className="flex items-center gap-2">
-                <Zap className="w-3.5 h-3.5 text-accent/60" />
-                <span className="text-[11px] text-text-secondary">{t('mcp.autoConnect', language as Language)}</span>
-              </div>
-              <ToggleSwitch
-                checked={mcpConfig.autoConnect ?? true}
-                onChange={(e) => setMcpConfig({ autoConnect: e.target.checked })}
-              />
-            </div>
           </div>
 
           {/* 服务器列表 */}
@@ -700,8 +661,7 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
                               if (!usageExamples || usageExamples.length === 0) return null
                               return (
                                 <div>
-                                  <span className="text-[10px] text-text-muted/60 uppercase tracking-wider flex items-center gap-1">
-                                    <Lightbulb className="w-3 h-3" />
+                                  <span className="text-[10px] text-text-muted/60 uppercase tracking-wider">
                                     {t('mcp.examples', language as Language)}
                                   </span>
                                   <div className="space-y-1 mt-1">
@@ -726,93 +686,6 @@ export default function McpServerPanel({ language, mcpConfig, setMcpConfig }: Mc
         </div>
       </section>
 
-      {/* 配置文件位置 */}
-      {configPaths && (
-        <section className="rounded-2xl border border-border/50 bg-surface/20 backdrop-blur-xl shadow-sm relative overflow-hidden group">
-          <div className="absolute inset-0 bg-gradient-to-br from-accent/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-          <button
-            onClick={() => setExpandedServer(expandedServer === '__config__' ? null : '__config__')}
-            className="w-full flex items-center justify-between p-5 cursor-pointer focus:outline-none relative z-10"
-          >
-            <div className="flex items-center gap-2.5">
-              <div className="p-1.5 bg-accent/10 rounded-md text-accent">
-                <Settings className="w-4 h-4" />
-              </div>
-              <div className="text-left">
-                <h5 className="text-sm font-semibold text-text-primary">{t('mcp.configFiles', language as Language)}</h5>
-                <p className="text-[11px] text-text-muted mt-0.5">{t('mcp.configFilesDesc', language as Language)}</p>
-              </div>
-            </div>
-            <div className={`p-1.5 rounded-full bg-surface-hover transition-transform duration-300 ${expandedServer === '__config__' ? 'rotate-180' : ''}`}>
-              <ChevronDown className="w-3.5 h-3.5 text-text-muted" />
-            </div>
-          </button>
-
-          <div className={`grid transition-all duration-300 ease-in-out ${expandedServer === '__config__' ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
-            <div className="overflow-hidden">
-              <div className="px-5 pb-5 space-y-2 relative z-10">
-                <div
-                  className="flex items-center justify-between p-3 bg-background/30 rounded-lg border border-border/40 cursor-pointer hover:border-accent/30 transition-colors"
-                  onClick={() => openConfigFile(configPaths.user)}
-                >
-                  <div className="flex items-center gap-2">
-                    <FolderOpen className="w-3.5 h-3.5 text-text-muted" />
-                    <span className="text-xs text-text-secondary">{t('mcp.userConfig', language as Language)}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-text-muted/60 font-mono truncate max-w-[250px]">{configPaths.user}</span>
-                    <ExternalLink className="w-3 h-3 text-text-muted/50" />
-                  </div>
-                </div>
-                {configPaths.workspace.map((path, index) => (
-                  <div
-                    key={path}
-                    className="flex items-center justify-between p-3 bg-background/30 rounded-lg border border-border/40 cursor-pointer hover:border-accent/30 transition-colors"
-                    onClick={() => openConfigFile(path)}
-                  >
-                    <div className="flex items-center gap-2">
-                      <FolderOpen className="w-3.5 h-3.5 text-text-muted" />
-                      <span className="text-xs text-text-secondary">{t('app.workspaceconfig', language as Language, { p0: index + 1 })}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-text-muted/60 font-mono truncate max-w-[250px]">{path}</span>
-                      <ExternalLink className="w-3 h-3 text-text-muted/50" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* 使用提示 */}
-      <div className="p-4 rounded-xl bg-accent/5 border border-accent/10 text-xs text-text-muted">
-        <p className="font-medium text-accent/80 mb-2">{t('mcp.tips', language as Language)}</p>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div className="flex items-start gap-2">
-            <Server className="w-3.5 h-3.5 text-accent/60 mt-0.5 flex-shrink-0" />
-            <div>
-              <span className="text-text-secondary font-medium">{t('mcp.localServer', language as Language)}</span>
-              <p className="text-[11px] text-text-muted/70 mt-0.5">{t('mcp.localServerDesc', language as Language)}</p>
-            </div>
-          </div>
-          <div className="flex items-start gap-2">
-            <Globe className="w-3.5 h-3.5 text-accent/60 mt-0.5 flex-shrink-0" />
-            <div>
-              <span className="text-text-secondary font-medium">{t('mcp.remoteServer', language as Language)}</span>
-              <p className="text-[11px] text-text-muted/70 mt-0.5">{t('mcp.remoteServerDesc', language as Language)}</p>
-            </div>
-          </div>
-          <div className="flex items-start gap-2">
-            <Wrench className="w-3.5 h-3.5 text-accent/60 mt-0.5 flex-shrink-0" />
-            <div>
-              <span className="text-text-secondary font-medium">{t('mcp.toolExtension', language as Language)}</span>
-              <p className="text-[11px] text-text-muted/70 mt-0.5">{t('mcp.toolExtensionDesc', language as Language)}</p>
-            </div>
-          </div>
-        </div>
-      </div>
 
       {/* 浮动菜单 */}
       {activeMenu && menuPosition && activeMenuServer && (() => {

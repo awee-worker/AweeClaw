@@ -114,6 +114,12 @@ export interface InstallParams {
   preloadedDownloadInfo?: PluginDownloadInfo
   /** 预取的插件详情（渲染进程已获取时传入，主进程跳过网络请求） */
   preloadedPluginDetail?: MarketplacePluginDetail
+  /**
+   * 用户填写的插件配置值（覆盖 defaultValue）。
+   * 用于 {{config.KEY}} 模板替换，如 API Key 等用户专属配置。
+   * 安装完成后会持久化到 plugin-configs.json。
+   */
+  userConfig?: Record<string, string>
 }
 
 /** 安装结果 */
@@ -153,6 +159,7 @@ export type ProgressCallback = (progress: InstallProgress) => void
 // ============================================
 
 const INSTALLED_RECORD_FILE = 'installed.json'
+const PLUGIN_CONFIG_FILE = 'plugin-configs.json'
 const BACKUP_DIR = '.backups'
 
 // ============================================
@@ -162,7 +169,10 @@ const BACKUP_DIR = '.backups'
 export class PluginInstaller {
   private pluginsRoot: string
   private recordPath: string
+  private pluginConfigPath: string
   private installedRecords = new Map<string, InstalledPluginRecord>()
+  /** 插件用户配置：pluginKey -> { KEY: value }（用于 {{config.KEY}} 模板替换） */
+  private pluginConfigs = new Map<string, Record<string, string>>()
   /**
    * 内置插件记录表（pluginKey -> record）。
    * 由随应用打包的内置插件（如 computer-use）调用 registerBuiltin 注册，
@@ -176,8 +186,10 @@ export class PluginInstaller {
     this.getMainWindow = getMainWindow
     this.pluginsRoot = path.join(app.getPath('userData'), 'plugins')
     this.recordPath = path.join(this.pluginsRoot, INSTALLED_RECORD_FILE)
+    this.pluginConfigPath = path.join(this.pluginsRoot, PLUGIN_CONFIG_FILE)
     this.ensureDirs()
     this.loadInstalledRecords()
+    this.loadPluginConfigs()
   }
 
   /**
@@ -207,7 +219,7 @@ export class PluginInstaller {
    *             适用于通过 npx/uvx 调用外部包的 MCP 插件
    */
   async install(params: InstallParams): Promise<InstallResult> {
-    const { pluginId, version, backendUrl, authToken, preloadedDownloadInfo, preloadedPluginDetail } = params
+    const { pluginId, version, backendUrl, authToken, preloadedDownloadInfo, preloadedPluginDetail, userConfig } = params
 
     logger.system.info(`[PluginInstaller] Installing plugin ${pluginId} v${version}`)
 
@@ -226,6 +238,7 @@ export class PluginInstaller {
           downloadInfo,
           backendUrl,
           authToken,
+          userConfig,
         )
       }
 
@@ -277,6 +290,7 @@ export class PluginInstaller {
         backendUrl,
         authToken,
         downloadInfo.packageSize,
+        userConfig,
       )
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -302,6 +316,7 @@ export class PluginInstaller {
     downloadInfo: PluginDownloadInfo,
     backendUrl: string,
     authToken?: string,
+    userConfig?: Record<string, string>,
   ): Promise<InstallResult> {
     const manifest = downloadInfo.manifest!
 
@@ -356,6 +371,7 @@ export class PluginInstaller {
       backendUrl,
       authToken,
       0,
+      userConfig,
     )
   }
 
@@ -373,6 +389,7 @@ export class PluginInstaller {
     backendUrl: string,
     authToken: string | undefined,
     packageSize: number,
+    userConfig?: Record<string, string>,
   ): Promise<InstallResult> {
     // 注册到 PluginRegistry
     this.emitProgress(pluginId, 'registering', packageSize, packageSize, 'Registering...')
@@ -416,7 +433,7 @@ export class PluginInstaller {
     // 若为 MCP 型插件，注册并连接 MCP 服务
     let mcpServerId: string | undefined
     if (isMcpPlugin && manifest.capabilities?.mcp) {
-      mcpServerId = await this.registerMcpServer(pluginDetail, version, manifest)
+      mcpServerId = await this.registerMcpServer(pluginDetail, version, manifest, userConfig)
     }
 
     // 持久化安装记录
@@ -435,6 +452,12 @@ export class PluginInstaller {
     }
     this.installedRecords.set(pluginDetail.pluginKey, record)
     this.saveInstalledRecords()
+
+    // 持久化用户配置（若有），便于后续重连或升级时复用
+    if (userConfig && Object.keys(userConfig).length > 0) {
+      this.pluginConfigs.set(pluginDetail.pluginKey, { ...userConfig })
+      this.savePluginConfigs()
+    }
 
     // 上报安装到后端
     this.reportInstall(backendUrl, pluginId, version, authToken).catch((err) => {
@@ -504,9 +527,10 @@ export class PluginInstaller {
         fs.rmSync(pluginDir, { recursive: true, force: true })
       }
 
-      // 5. 移除安装记录
+      // 5. 移除安装记录 + 用户配置
       this.installedRecords.delete(pluginKey)
       this.saveInstalledRecords()
+      this.deletePluginConfig(pluginKey)
 
       logger.system.info(`[PluginInstaller] Plugin ${pluginKey} uninstalled`)
       return { success: true, pluginKey }
@@ -747,6 +771,96 @@ export class PluginInstaller {
       fs.writeFileSync(this.recordPath, JSON.stringify(records, null, 2), 'utf-8')
     } catch (err) {
       logger.system.error(`[PluginInstaller] Failed to save installed records: ${err}`)
+    }
+  }
+
+  // ============================================
+  // 插件用户配置（{{config.KEY}} 模板变量持久化）
+  // ============================================
+
+  /** 加载插件用户配置 */
+  private loadPluginConfigs(): void {
+    if (!fs.existsSync(this.pluginConfigPath)) return
+    try {
+      const raw = fs.readFileSync(this.pluginConfigPath, 'utf-8')
+      const data = JSON.parse(raw) as Record<string, Record<string, string>>
+      for (const [key, value] of Object.entries(data)) {
+        this.pluginConfigs.set(key, value)
+      }
+      logger.system.info(`[PluginInstaller] Loaded ${this.pluginConfigs.size} plugin config(s)`)
+    } catch (err) {
+      logger.system.warn(`[PluginInstaller] Failed to load plugin configs: ${err}`)
+    }
+  }
+
+  /** 保存所有插件用户配置 */
+  private savePluginConfigs(): void {
+    try {
+      const data: Record<string, Record<string, string>> = {}
+      for (const [key, value] of this.pluginConfigs.entries()) {
+        data[key] = value
+      }
+      fs.writeFileSync(this.pluginConfigPath, JSON.stringify(data, null, 2), 'utf-8')
+    } catch (err) {
+      logger.system.error(`[PluginInstaller] Failed to save plugin configs: ${err}`)
+    }
+  }
+
+  /**
+   * 读取插件用户配置。
+   * @returns 该插件的所有用户配置键值对（可能为空对象）
+   */
+  getPluginConfig(pluginKey: string): Record<string, string> {
+    return { ...(this.pluginConfigs.get(pluginKey) || {}) }
+  }
+
+  /**
+   * 保存插件用户配置并触发 MCP 服务器重连（若该插件是 MCP 型且已注册）。
+   * @param pluginKey 插件 key
+   * @param values 配置键值对（会整体覆盖该插件的原有配置）
+   * @returns 是否触发了 MCP 重连
+   */
+  async savePluginConfig(pluginKey: string, values: Record<string, string>): Promise<boolean> {
+    this.pluginConfigs.set(pluginKey, { ...values })
+    this.savePluginConfigs()
+    logger.system.info(`[PluginInstaller] Saved plugin config for ${pluginKey}: ${Object.keys(values).join(', ')}`)
+
+    // 若该插件已安装且为 MCP 型，重新注册并重连
+    const record = this.installedRecords.get(pluginKey)
+    if (!record || !record.mcpServerId) return false
+
+    const types = Array.isArray(record.manifest.type) ? record.manifest.type : [record.manifest.type]
+    if (!types.includes('mcp' as PluginType)) return false
+    if (!record.manifest.capabilities?.mcp) return false
+
+    try {
+      // 重新注册（用新配置生成 McpPluginServerConfig 并覆盖到配置文件）
+      await this.registerMcpServer(
+        {
+          pluginId: record.pluginId,
+          pluginKey: record.pluginKey,
+          name: record.name,
+          nameZh: record.nameZh,
+          type: record.type,
+        },
+        record.version,
+        record.manifest,
+      )
+      // 重连 MCP 服务器
+      const { mcpManager } = await import('../tool-protocol/ToolProtocolManager')
+      await mcpManager.reconnectServer(record.mcpServerId)
+      logger.system.info(`[PluginInstaller] Reconnected MCP server after config update: ${record.mcpServerId}`)
+      return true
+    } catch (err) {
+      logger.system.error(`[PluginInstaller] Failed to reconnect MCP after config update: ${err}`)
+      return false
+    }
+  }
+
+  /** 删除插件用户配置（卸载时调用） */
+  private deletePluginConfig(pluginKey: string): void {
+    if (this.pluginConfigs.delete(pluginKey)) {
+      this.savePluginConfigs()
     }
   }
 
@@ -1040,11 +1154,24 @@ export class PluginInstaller {
     plugin: Pick<MarketplacePluginDetail, 'pluginId' | 'pluginKey' | 'name' | 'nameZh' | 'type'>,
     version: string,
     manifest: PluginManifest,
+    userConfig?: Record<string, string>,
   ): Promise<string> {
     const mcpConfig = manifest.capabilities?.mcp
     if (!mcpConfig) {
       throw new Error(`Plugin ${plugin.pluginKey} has no mcp capabilities`)
     }
+
+    // 解析 configSchema 中的 {{config.KEY}} 模板变量
+    // 优先级：传入的 userConfig > 已保存的用户配置 > defaultValue
+    const configValues = this.resolveConfigDefaults(manifest, userConfig)
+    const command = mcpConfig.command ? this.resolveTemplateString(mcpConfig.command, configValues) : undefined
+    const args = mcpConfig.args?.map(a => this.resolveTemplateString(a, configValues) ?? a)
+    const env = mcpConfig.env
+      ? Object.fromEntries(
+          Object.entries(mcpConfig.env).map(([k, v]) => [k, this.resolveTemplateString(v, configValues) ?? v])
+        )
+      : undefined
+    const url = mcpConfig.url ? this.resolveTemplateString(mcpConfig.url, configValues) : undefined
 
     const serverId = `plugin:${plugin.pluginKey}`
     const config: McpPluginServerConfig = {
@@ -1055,10 +1182,10 @@ export class PluginInstaller {
       pluginVersion: version,
       transport: mcpConfig.transport,
       inProcessEntry: mcpConfig.transport === 'in-process' ? manifest.main : undefined,
-      command: mcpConfig.command,
-      args: mcpConfig.args,
-      env: mcpConfig.env,
-      url: mcpConfig.url,
+      command,
+      args,
+      env,
+      url,
       autoApprove: [],
       source: 'plugin',
     }
@@ -1075,6 +1202,45 @@ export class PluginInstaller {
     }
 
     return serverId
+  }
+
+  /**
+   * 根据 manifest.configSchema 构建配置值映射。
+   * 优先级：用户配置 > defaultValue。
+   * 用户配置由前端安装时填写并通过 install.userConfig 传入，或通过 savePluginConfig 更新。
+   */
+  private resolveConfigDefaults(manifest: PluginManifest, userConfig?: Record<string, string>): Record<string, string> {
+    const values: Record<string, string> = {}
+    const fields = manifest.configSchema?.fields ?? []
+    const userValues = userConfig ?? this.pluginConfigs.get(manifest.id) ?? {}
+    for (const field of fields) {
+      // 1. 优先使用用户配置
+      const userVal = userValues[field.key]
+      if (userVal !== undefined && userVal !== null && userVal !== '') {
+        values[field.key] = String(userVal)
+        continue
+      }
+      // 2. 其次使用 defaultValue
+      if (field.defaultValue !== undefined && field.defaultValue !== null && field.defaultValue !== '') {
+        values[field.key] = String(field.defaultValue)
+      }
+      // 3. 无值字段不放入映射（保留占位符，运行时会替换为空字符串）
+    }
+    return values
+  }
+
+  /**
+   * 将字符串中的 {{config.KEY}} 模板变量替换为实际值。
+   * 若引用的 KEY 不存在（用户尚未配置），替换为空字符串避免字面量被当作真实值传给外部程序，
+   * 同时记录警告提示用户去配置。
+   */
+  private resolveTemplateString(template: string | undefined, values: Record<string, string>): string | undefined {
+    if (!template) return template
+    return template.replace(/\{\{config\.([A-Za-z0-9_]+)\}\}/g, (_match, key: string) => {
+      if (key in values) return values[key]
+      logger.system.warn(`[PluginInstaller] Unresolved config template: {{config.${key}}}, replaced with empty string`)
+      return ''
+    })
   }
 
   /** 发送进度事件 */

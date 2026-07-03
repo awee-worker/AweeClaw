@@ -112,6 +112,31 @@ export function registerPluginHandlers(context: PluginIpcContext): void {
     'plugin',
   )
 
+  // ── 读取插件用户配置 ──
+  safeIpcHandle<Record<string, string>>(
+    'plugin:getConfig',
+    async (_event, pluginKey: string) => {
+      return installer.getPluginConfig(pluginKey)
+    },
+    'plugin',
+  )
+
+  // ── 保存插件用户配置（并触发 MCP 重连） ──
+  safeIpcHandle<{ success: boolean; reconnected: boolean; error?: string }>(
+    'plugin:saveConfig',
+    async (_event, pluginKey: string, values: Record<string, string>) => {
+      logger.ipc.info(`[PluginBridge] Save config request: ${pluginKey}`)
+      try {
+        const reconnected = await installer.savePluginConfig(pluginKey, values)
+        return { success: true, reconnected }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        return { success: false, reconnected: false, error: msg }
+      }
+    },
+    'plugin',
+  )
+
   logger.ipc.info('[PluginBridge] IPC handlers registered')
 }
 
