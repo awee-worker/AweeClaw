@@ -119,9 +119,9 @@ function UserMenuDropdown({
 
   const featureItems = [
     { icon: Compass, label: t('layout.workscenes', language as Language), onClick: onExploreClick },
-    { icon: Workflow, label: t('layout.workflow', language as Language), onClick: onWorkflowClick },
-    { icon: Clock, label: t('layout.schedule', language as Language), onClick: onScheduleClick },
     { icon: Puzzle, label: t('layout.plugins', language as Language), onClick: onPluginCenterClick },
+    { icon: Clock, label: t('layout.schedule', language as Language), onClick: onScheduleClick },
+    { icon: Workflow, label: t('layout.workflow', language as Language), onClick: onWorkflowClick },
   ]
 
   const systemItems = [

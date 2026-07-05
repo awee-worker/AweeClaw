@@ -1583,24 +1583,28 @@ function MarketplaceTab({ language, isAuthenticated }: { language: Language; isA
                 {featured.length > 0 && !searchQuery && !selectedCategory && (
                     <div className="mb-8">
                         <h3 className="text-sm font-semibold text-text-primary mb-3">{t('app.featured', language as Language)}</h3>
-                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
                             {featured.slice(0, 8).map(item => (
                                 <button
                                     key={item.id}
                                     onClick={() => setSelectedItem(item)}
-                                    className="p-3 rounded-xl border border-border/20 bg-surface/20 hover:bg-surface/40 hover:border-border/40 shadow-sm shadow-black/5 text-left transition-all group"
+                                    className="w-full rounded-xl border border-border/20 bg-surface/20 hover:bg-surface/40 hover:border-border/40 shadow-sm shadow-black/5 text-left transition-all group overflow-hidden"
                                 >
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center text-accent">
-                                            {CATEGORY_ICONS[item.category] || <Package className="w-4 h-4" />}
+                                    <div className="px-4 py-3.5">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-xl bg-surface/60 flex items-center justify-center text-text-muted flex-shrink-0 group-hover:bg-accent/10 group-hover:text-accent transition-colors">
+                                                {CATEGORY_ICONS[item.category] || <Package className="w-5 h-5" strokeWidth={1.5} />}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <span className="text-sm font-semibold text-text-primary truncate block">
+                                                    {language === 'zh' ? item.nameZh : item.name}
+                                                </span>
+                                                <div className="flex items-center gap-2 mt-0.5">
+                                                    {renderStars(item.rating)}
+                                                    <span className="text-[12px] text-text-muted">({item.downloads} {t('app.dl', language as Language)})</span>
+                                                </div>
+                                            </div>
                                         </div>
-                                        <span className="text-[12px] font-medium text-text-primary truncate">
-                                            {language === 'zh' ? item.nameZh : item.name}
-                                        </span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        {renderStars(item.rating)}
-                                        <span className="text-[10px] text-text-muted">({item.downloads} {t('app.dl', language as Language)})</span>
                                     </div>
                                 </button>
                             ))}
@@ -1631,39 +1635,41 @@ function MarketplaceTab({ language, isAuthenticated }: { language: Language; isA
                             <button
                                 key={item.id}
                                 onClick={() => setSelectedItem(item)}
-                                className="w-full p-4 rounded-xl border border-border/20 bg-surface/20 hover:bg-surface/40 hover:border-border/40 shadow-sm shadow-black/5 text-left transition-all group"
+                                className="w-full rounded-xl border border-border/20 bg-surface/20 hover:bg-surface/40 hover:border-border/40 shadow-sm shadow-black/5 text-left transition-all group overflow-hidden"
                             >
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-accent/8 flex items-center justify-center text-accent flex-shrink-0">
-                                        {CATEGORY_ICONS[item.category] || <Package className="w-5 h-5" />}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-1.5">
-                                            <span className="text-[13px] font-medium text-text-primary truncate">
-                                                {language === 'zh' ? item.nameZh : item.name}
-                                            </span>
-                                            {item.isFree && (
-                                                <span className="px-1.5 py-0.5 text-[9px] rounded-md bg-green-500/10 text-green-400 font-semibold flex-shrink-0">
-                                                    {t('app.free', language as Language)}
-                                                </span>
-                                            )}
-                                            {scenarioRegistry.has(item.id) && (
-                                                <span className="px-1.5 py-0.5 text-[9px] rounded-md bg-accent/10 text-accent font-semibold flex-shrink-0 flex items-center gap-0.5">
-                                                    <CheckCircle2 className="w-2.5 h-2.5" />
-                                                    {t('app.installed2', language as Language)}
-                                                </span>
-                                            )}
+                                <div className="px-4 py-3.5">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-xl bg-surface/60 flex items-center justify-center text-text-muted flex-shrink-0 group-hover:bg-accent/10 group-hover:text-accent transition-colors">
+                                            {CATEGORY_ICONS[item.category] || <Package className="w-5 h-5" strokeWidth={1.5} />}
                                         </div>
-                                        <div className="flex items-center gap-2 mt-1">
-                                            {renderStars(item.rating)}
-                                            <span className="text-[10px] text-text-muted">{item.downloads} {t('app.dl2', language as Language)}</span>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-sm font-semibold text-text-primary truncate">
+                                                    {language === 'zh' ? item.nameZh : item.name}
+                                                </span>
+                                                {item.isFree && (
+                                                    <span className="px-1.5 py-0.5 text-[12px] rounded-md bg-green-500/10 text-green-400 font-semibold flex-shrink-0">
+                                                        {t('app.free', language as Language)}
+                                                    </span>
+                                                )}
+                                                {scenarioRegistry.has(item.id) && (
+                                                    <span className="px-1.5 py-0.5 text-[12px] rounded-md bg-accent/10 text-accent font-semibold flex-shrink-0 flex items-center gap-0.5">
+                                                        <CheckCircle2 className="w-3 h-3" />
+                                                        {t('app.installed2', language as Language)}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className="flex items-center gap-2 mt-0.5">
+                                                {renderStars(item.rating)}
+                                                <span className="text-[12px] text-text-muted">{item.downloads} {t('app.dl2', language as Language)}</span>
+                                            </div>
                                         </div>
+                                        <ChevronRight className="w-4 h-4 text-text-muted/30 group-hover:text-text-muted/60 flex-shrink-0" />
                                     </div>
-                                    <ChevronRight className="w-4 h-4 text-text-muted/30 group-hover:text-text-muted/60 flex-shrink-0" />
+                                    <p className="text-[12px] text-text-muted/80 mt-2 line-clamp-2 leading-relaxed">
+                                        {language === 'zh' ? item.descriptionZh : item.description}
+                                    </p>
                                 </div>
-                                <p className="text-[11px] text-text-muted/70 mt-2 line-clamp-2 leading-relaxed">
-                                    {language === 'zh' ? item.descriptionZh : item.description}
-                                </p>
                             </button>
                         ))}
                     </div>

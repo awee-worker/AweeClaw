@@ -2468,7 +2468,7 @@ export const en = {
   'layout.builtinlanguageserver': 'Built-in Language Server',
   'layout.enterprise': 'Enterprise',
   'layout.pro': 'Pro',
-  'layout.workscenes': 'Work Scenes',
+  'layout.workscenes': 'Scenarios',
   'layout.workflow': 'Workflow',
   'layout.schedule': 'Schedule',
   'layout.plugins': 'Plugins',

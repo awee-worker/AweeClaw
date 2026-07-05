@@ -2467,7 +2467,7 @@ export const zh = {
   'layout.builtinlanguageserver': '内置语言服务器',
   'layout.enterprise': '企业版',
   'layout.pro': '专业版',
-  'layout.workscenes': '工作场景',
+  'layout.workscenes': '场景应用',
   'layout.workflow': '工作流',
   'layout.schedule': '定时任务',
   'layout.plugins': '插件',
