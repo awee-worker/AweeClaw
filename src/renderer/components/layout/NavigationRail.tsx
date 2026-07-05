@@ -836,7 +836,7 @@ export default function NavigationRail() {
               </div>
             ) : (
               <div className="flex flex-col gap-0.5">
-                {allThreads.map(thread => (
+                {allThreads.slice(0, 34).map(thread => (
                   renamingThreadId === thread.id ? (
                     <div key={thread.id} className="flex items-center gap-1 px-2 py-1.5">
                       <input
@@ -864,6 +864,14 @@ export default function NavigationRail() {
                     />
                   )
                 ))}
+                {allThreads.length > 34 && (
+                  <button
+                    onClick={() => setShowSessionHistoryPage(true)}
+                    className="mt-1 px-2 py-2 text-[11px] text-text-muted hover:text-accent hover:bg-accent/8 rounded-md transition-colors flex items-center justify-center gap-1.5 border border-border/30 border-dashed"
+                  >
+                    <span>{language === 'zh' ? `查看更多（共 ${allThreads.length} 条）` : `View more (${allThreads.length} total)`}</span>
+                  </button>
+                )}
               </div>
             )}
           </div>

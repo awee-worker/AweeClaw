@@ -297,6 +297,16 @@ export function PluginInstalledPanel() {
 
 // ─── 子组件：插件行 ────────────────────────────────────
 
+/**
+ * 判断 icon 是否为图片（URL 或 data URL）
+ * - http/https URL：远程图片
+ * - data: URL：base64 编码的图片（用户上传的图标）
+ */
+function isImageIcon(icon: string | null | undefined): icon is string {
+  if (!icon) return false
+  return icon.startsWith('http://') || icon.startsWith('https://') || icon.startsWith('data:')
+}
+
 function PluginRow({
   plugin,
   language,
@@ -344,13 +354,34 @@ function PluginRow({
   return (
     <div className="px-4 py-3 hover:bg-bg-hover/30 transition-colors">
       <div className="flex items-start gap-3">
-        {/* 图标 */}
+        {/* 图标：优先显示自定义上传的图片，否则回退到分类图标 / Package 默认图标 */}
         <div
-          className={`shrink-0 w-10 h-10 rounded-lg flex items-center justify-center ${
+          className={`shrink-0 w-10 h-10 rounded-lg flex items-center justify-center overflow-hidden ${
             plugin.enabled ? 'bg-accent/10' : 'bg-bg-hover'
           }`}
         >
-          {CATEGORY_ICONS[category] || <Package className={`w-5 h-5 ${plugin.enabled ? 'text-accent' : 'text-text-muted'}`} />}
+          {isImageIcon(manifest.icon) ? (
+            <img
+              src={manifest.icon}
+              alt={displayName}
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                // 图片加载失败时回退到分类图标 / Package 图标
+                const target = e.currentTarget
+                target.style.display = 'none'
+                const fallback = target.nextElementSibling as HTMLElement | null
+                if (fallback) fallback.style.display = 'flex'
+              }}
+            />
+          ) : null}
+          <div
+            className={`w-full h-full flex items-center justify-center ${
+              plugin.enabled ? 'text-accent' : 'text-text-muted'
+            }`}
+            style={isImageIcon(manifest.icon) ? { display: 'none' } : undefined}
+          >
+            {CATEGORY_ICONS[category] || <Package className="w-5 h-5" />}
+          </div>
         </div>
 
         {/* 主体 */}
