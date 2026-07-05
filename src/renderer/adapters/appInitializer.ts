@@ -199,7 +199,7 @@ async function loadUserSettings(_isEmptyWindow: boolean): Promise<string | null>
   return savedTheme as string | null
 }
 
-async function restoreWorkspace(): Promise<boolean> {
+async function restoreWorkspace(onWorkspaceReady?: () => void): Promise<boolean> {
   startupMetrics.start('restore-workspace')
 
   const workspaceConfig = await api.workspace.restore()
@@ -224,6 +224,10 @@ async function restoreWorkspace(): Promise<boolean> {
 
   // 立即提交 shell 状态，让 UI 框架先构建
   commitWorkspaceShell(shellState)
+
+  // workspace 已就绪，通知调用方可以移除加载动画
+  // 后续的 restoreWorkspaceAgentStore 等耗时操作在后台继续，不阻塞 UI 显示
+  onWorkspaceReady?.()
 
   // 关键路径：恢复会话数据（用户进入应用时必须看到历史会话）
   await runWithAgentStorageWritesSuspended(async () => {
@@ -309,7 +313,8 @@ function scheduleBackgroundInit(): void {
 }
 
 export async function initializeApp(
-  updateStatus: (status: string) => void
+  updateStatus: (status: string) => void,
+  onWorkspaceReady?: () => void
 ): Promise<InitResult> {
   const config = getScenarioInitConfig()
 
@@ -353,7 +358,7 @@ export async function initializeApp(
 
     if (!isEmptyWindow) {
       updateStatus(isZh() ? '恢复工作区...' : 'Restoring workspace...')
-      await restoreWorkspace()
+      await restoreWorkspace(onWorkspaceReady)
     }
 
     // 初始化 AgentRuntime（解耦循环依赖）

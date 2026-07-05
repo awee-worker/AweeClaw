@@ -67,17 +67,24 @@ export function useAppInit(options: UseAppInitOptions = {}): void {
     initRef.current = true
 
     let cancelled = false
+    let loaderRemoved = false
 
-    // 立即移除加载动画：React 已渲染，让用户先看到界面
-    // initializeApp 在后台继续完成初始化
-    handleRemoveLoader()
+    /** 移除加载动画（仅一次） */
+    const removeLoaderOnce = () => {
+      if (loaderRemoved) return
+      loaderRemoved = true
+      handleRemoveLoader()
+    }
+
     api.appReady()
 
     const runInit = async () => {
       let result: { success: boolean; shouldShowOnboarding: boolean; error?: string }
 
       try {
-        result = await initializeApp(handleLoaderStatus)
+        // onWorkspaceReady 回调：workspace 绑定后立即移除 loader，
+        // 让用户尽快看到主界面，后续 restoreWorkspaceAgentStore 在后台继续
+        result = await initializeApp(handleLoaderStatus, removeLoaderOnce)
       } catch (initError) {
         logger.system.error('[useAppInit] initializeApp threw:', initError)
         result = { success: false, shouldShowOnboarding: false, error: String(initError) }
@@ -99,6 +106,10 @@ export function useAppInit(options: UseAppInitOptions = {}): void {
       } catch (listenerError) {
         logger.system.error('[useAppInit] registerAppErrorListener failed:', listenerError)
       }
+
+      // 兜底：无 workspace（首次使用）或 onWorkspaceReady 未触发时，
+      // initializeApp 完成后移除 loader
+      removeLoaderOnce()
 
       optionsRef.current.onInitialized?.(result)
     }
