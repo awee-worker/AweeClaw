@@ -1,5 +1,5 @@
 import { lazy, Suspense, useMemo, useCallback } from 'react'
-import { Cpu, Settings2, Shield, Monitor, Plug, Brain, FileText, Zap, X, Palette, Radio, Cloud, Eye, Search, Mail, Mic, MonitorSmartphone } from 'lucide-react'
+import { Cpu, Settings2, Shield, Monitor, Plug, Brain, FileText, Zap, X, Palette, Radio, Cloud, Eye, Search, Mail, Mic, MonitorSmartphone, ArrowLeft } from 'lucide-react'
 import { PROVIDERS } from '@configuration/aiProviders'
 import { t, type Language } from '@renderer/i18n'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
@@ -251,16 +251,21 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
     }
 
     const dialogContent = (
-        <div className={`flex h-full ${embedded ? '' : 'max-h-[800px]'}`}>
-            <div className={`bg-surface/30 backdrop-blur-xl flex flex-col pt-8 pb-6 ${embedded ? 'w-56' : 'w-64'}`}>
-                <div className="px-6 mb-6">
-                    <h2 className="text-lg font-semibold text-text-primary tracking-tight flex items-center gap-2.5">
-                        <div className="p-1.5 rounded-lg bg-accent/10 border border-accent/20">
-                            <Settings2 className="w-5 h-5 text-accent" />
-                        </div>
-                        {t('welcome.settings', language as Language)}
-                    </h2>
-                </div>
+        <div className={`flex h-full w-full relative ${embedded ? '' : 'max-h-[800px]'}`}>
+            <div className={`bg-surface/30 backdrop-blur-xl flex flex-col pb-6 border-r border-border/40 shadow-xl shadow-black/10 ${embedded ? 'w-56 pt-10' : 'w-64 pt-8'}`}>
+                {/* 嵌入式全屏模式：顶部返回按钮 */}
+                {embedded && (
+                    <div className="px-4 mb-4">
+                        <button
+                            onClick={handleClose}
+                            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-surface-hover border border-transparent hover:border-border/40 transition-all duration-200 group"
+                            title={t('settings.backToApp', language as Language) || t('settings.closeSettings', language as Language)}
+                        >
+                            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform duration-200" />
+                            <span>{t('settings.backToApp', language as Language) || '返回'}</span>
+                        </button>
+                    </div>
+                )}
 
                 <nav className="flex-1 p-4 space-y-1 overflow-y-auto no-scrollbar">
                     {tabs.map(tab => (
@@ -280,8 +285,8 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
 
             <div className="flex-1 flex justify-center overflow-hidden">
                 <div className="w-full max-w-[1000px] flex flex-col min-w-0 bg-transparent relative">
-                    <div className="shrink-0 px-8 pt-6 pb-4 border-b border-border/40 flex items-center justify-between">
-                        <div>
+                    <div className={`shrink-0 px-8 pb-4 border-b border-border/40 flex items-center ${embedded ? 'pt-10 drag-region' : 'pt-6 justify-between'}`}>
+                        <div className="no-drag">
                             <h3 className="text-2xl font-semibold text-text-primary tracking-tight">
                                 {tabs.find(tab => tab.id === state.activeTab)?.label}
                             </h3>
@@ -289,13 +294,16 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                                 {t('settings.managePreferences', language as Language)}
                             </p>
                         </div>
-                        <button
-                            onClick={handleClose}
-                            className="p-2 rounded-xl hover:bg-text-primary/[0.05] text-text-muted hover:text-text-primary transition-all duration-200 group"
-                            title={t('settings.closeSettings', language as Language)}
-                        >
-                            <X className="w-5 h-5 group-hover:rotate-90 transition-transform duration-300" />
-                        </button>
+                        {/* 非嵌入式模式：保留原右侧关闭按钮；嵌入式模式关闭按钮已移至顶部右侧绝对定位 */}
+                        {!embedded && (
+                            <button
+                                onClick={handleClose}
+                                className="no-drag p-2.5 rounded-xl hover:bg-red-500/10 text-text-muted hover:text-red-500 border border-transparent hover:border-red-500/30 transition-all duration-200 group"
+                                title={t('settings.closeSettings', language as Language)}
+                            >
+                                <X className="w-5 h-5 group-hover:rotate-90 transition-transform duration-300" />
+                            </button>
+                        )}
                     </div>
 
                     <div className="settings-scroll-region flex-1 overflow-y-auto px-8 py-6 custom-scrollbar pb-28">
@@ -346,7 +354,6 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
 /* ------------------------------------------------------------------ */
 
 import type { ScenarioDomain } from '@configuration/defaultProfile'
-
 /** 场景设置面板策略 */
 export interface ScenarioSettingsPanelPolicy {
   /** 场景类型 */

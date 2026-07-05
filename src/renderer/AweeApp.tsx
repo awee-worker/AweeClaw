@@ -27,6 +27,12 @@ startupMetrics.mark('app-module-loaded')
 
 const WorkflowWorkbench = lazy(() => import('@components/workflow/Workbench/WorkflowWorkbench'))
 const WelcomePage = lazy(() => import('@components/welcome/WelcomePage'))
+const PreferencesDialog = lazy(() => import('@components/settings/PreferencesDialog'))
+const UserProfilePage = lazy(() => import('@components/user/UserProfilePage'))
+const BillingCenterPage = lazy(() => import('@components/user/BillingCenterPage'))
+const SessionHistoryPage = lazy(() => import('@components/user/SessionHistoryPage'))
+const PluginCenterPage = lazy(() => import('@components/plugin/PluginCenterPage'))
+const ScenarioManagerView = lazy(() => import('@components/scenario/ScenarioManagerView').then(m => ({ default: m.ScenarioManagerView })))
 
 initializeScenarios()
 registerBuiltinScenarios()
@@ -53,6 +59,7 @@ function AppContent() {
     workspace, activeSidePanel, activeFilePath,
     showWorkflow, setShowWorkflow,
     showSettingsPage, showWelcomePage, showUserProfilePage, showBillingCenterPage,
+    showSessionHistoryPage, showPluginCenterPage, showScenarioPage,
     activeScenarioId, language,
     isAuthenticated, setShowWelcomePage,
   } = useStore(useShallow((state) => ({
@@ -65,6 +72,9 @@ function AppContent() {
     showWelcomePage: state.showWelcomePage,
     showUserProfilePage: state.showUserProfilePage,
     showBillingCenterPage: state.showBillingCenterPage,
+    showSessionHistoryPage: state.showSessionHistoryPage,
+    showPluginCenterPage: state.showPluginCenterPage,
+    showScenarioPage: state.showScenarioPage,
     activeScenarioId: state.activeScenarioId,
     language: state.language,
     isAuthenticated: state.isAuthenticated,
@@ -170,9 +180,8 @@ function AppContent() {
     if (!layoutConfig.showSidebar || !activeSidePanel) return true
     if (isWideModePanel) return true
     if (isShellStudioActive && layoutConfig.chatPosition !== 'primary') return true
-    if (showSettingsPage || showWelcomePage || showUserProfilePage || showBillingCenterPage) return true
-    return false
-  }, [layoutConfig.showSidebar, layoutConfig.chatPosition, activeSidePanel, isWideModePanel, isShellStudioActive, showSettingsPage, showWelcomePage, showUserProfilePage, showBillingCenterPage])
+    if (showSettingsPage || showWelcomePage || showUserProfilePage || showBillingCenterPage || showSessionHistoryPage || showPluginCenterPage || showScenarioPage) return true
+  }, [layoutConfig.showSidebar, layoutConfig.chatPosition, activeSidePanel, isWideModePanel, isShellStudioActive, showSettingsPage, showWelcomePage, showUserProfilePage, showBillingCenterPage, showSessionHistoryPage, showPluginCenterPage, showScenarioPage])
 
   return (
     <div className="h-screen flex bg-background overflow-hidden text-text-primary selection:bg-accent/30 selection:text-white relative">
@@ -189,27 +198,44 @@ function AppContent() {
 
       <div className="relative z-10 flex h-full w-full">
         {hasWorkspace ? (
-          <div className={`flex h-full w-full overflow-hidden transition-opacity duration-300 ${layoutAnimating ? 'opacity-0' : 'opacity-100'}`}>
-            {layoutConfig.showActivityBar && <NavigationRail />}
-
-            <div className="flex-1 flex flex-col min-w-0">
-              <AppTitleBar />
-
-              <div className="flex-1 flex min-w-0 overflow-hidden">
-                <SidebarSection hidden={sidebarHidden} />
-
-                <div className="flex-1 flex min-w-0 bg-background relative">
-                  <MainContentArea
-                    layoutConfig={layoutConfig}
-                    isWideModePanel={isWideModePanel}
-                    scenarioWelcomeComponent={scenarioWelcomeComponent}
-                  />
-                </div>
-              </div>
-
-              {layoutConfig.showStatusBar && <WorkspaceStatusBar />}
+          (showSettingsPage || showUserProfilePage || showBillingCenterPage || showSessionHistoryPage || showPluginCenterPage || showScenarioPage) ? (
+            // 全屏页面：设置/用户中心/费用中心/历史会话/插件/工作场景
+            // 绕过 NavigationRail / AppTitleBar / SidebarSection / WorkspaceStatusBar
+            <div className="flex h-full w-full overflow-hidden">
+              <ErrorBoundary>
+                <Suspense fallback={<FullScreenLoading />}>
+                  {showSettingsPage && <PreferencesDialog embedded />}
+                  {showUserProfilePage && <UserProfilePage />}
+                  {showBillingCenterPage && <BillingCenterPage />}
+                  {showSessionHistoryPage && <SessionHistoryPage />}
+                  {showPluginCenterPage && <PluginCenterPage />}
+                  {showScenarioPage && <ScenarioManagerView />}
+                </Suspense>
+              </ErrorBoundary>
             </div>
-          </div>
+          ) : (
+            <div className={`flex h-full w-full overflow-hidden transition-opacity duration-300 ${layoutAnimating ? 'opacity-0' : 'opacity-100'}`}>
+              {layoutConfig.showActivityBar && <NavigationRail />}
+
+              <div className="flex-1 flex flex-col min-w-0">
+                <AppTitleBar />
+
+                <div className="flex-1 flex min-w-0 overflow-hidden">
+                  <SidebarSection hidden={sidebarHidden} />
+
+                  <div className="flex-1 flex min-w-0 bg-background relative">
+                    <MainContentArea
+                      layoutConfig={layoutConfig}
+                      isWideModePanel={isWideModePanel}
+                      scenarioWelcomeComponent={scenarioWelcomeComponent}
+                    />
+                  </div>
+                </div>
+
+                {layoutConfig.showStatusBar && <WorkspaceStatusBar />}
+              </div>
+            </div>
+          )
         ) : (
           <div className="flex-1 overflow-hidden">
             <Suspense fallback={<FullScreenLoading />}>

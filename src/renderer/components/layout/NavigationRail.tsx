@@ -364,6 +364,7 @@ export default function NavigationRail() {
     setShowBillingCenterPage,
     setShowSessionHistoryPage,
     setShowPluginCenterPage,
+    setShowScenarioPage,
     closeAllFullPages,
     logout,
   } = useStore(useShallow(s => ({
@@ -384,6 +385,7 @@ export default function NavigationRail() {
     setShowBillingCenterPage: s.setShowBillingCenterPage,
     setShowSessionHistoryPage: s.setShowSessionHistoryPage,
     setShowPluginCenterPage: s.setShowPluginCenterPage,
+    setShowScenarioPage: s.setShowScenarioPage,
     closeAllFullPages: s.closeAllFullPages,
     logout: s.logout,
   })))
@@ -428,10 +430,10 @@ export default function NavigationRail() {
   }, [setActiveSidePanel, setShowSettingsPage, setShowWorkflow])
 
   const handleExploreClick = useCallback(() => {
-    setActiveSidePanel(activeSidePanel === 'scenarios' ? null : 'scenarios')
-    closeAllFullPages()
+    setActiveSidePanel(null)
+    setShowScenarioPage(true)
     setShowWorkflow(false)
-  }, [activeSidePanel, setActiveSidePanel, closeAllFullPages, setShowWorkflow])
+  }, [setActiveSidePanel, setShowScenarioPage, setShowWorkflow])
 
   const handleWorkflowClick = useCallback(() => {
     setActiveSidePanel(null)

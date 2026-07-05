@@ -9,7 +9,6 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   History,
-  X,
   Search,
   Trash2,
   AlertTriangle,
@@ -20,6 +19,7 @@ import {
   CheckSquare,
   Square,
   Loader2,
+  ArrowLeft,
 } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -252,16 +252,17 @@ export default function SessionHistoryPage({ onClose }: SessionHistoryPageProps)
   const somePageSelected = [...pageIds].some(id => selectedIds.has(id))
 
   return (
-    <div className="flex h-full bg-background">
+    <div className="flex h-full w-full relative bg-background">
       {/* 侧边栏 */}
-      <div className="w-56 bg-surface/30 backdrop-blur-xl flex flex-col pt-8 pb-6 border-r border-border/30">
-        <div className="px-6 mb-6">
-          <h2 className="text-lg font-semibold text-text-primary tracking-tight flex items-center gap-2.5">
-            <div className="p-1.5 rounded-lg bg-accent/10 border border-accent/20">
-              <History className="w-5 h-5 text-accent" />
-            </div>
-            {t('user.sessionhistory', language as Language)}
-          </h2>
+      <div className="w-56 bg-surface/30 backdrop-blur-xl flex flex-col pt-10 pb-6 border-r border-border/40 shadow-xl shadow-black/10">
+        <div className="px-4 mb-4">
+          <button
+            onClick={handleClose}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-text-secondary hover:bg-surface-hover hover:text-text-primary border border-transparent transition-all duration-200 group"
+          >
+            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform duration-200" />
+            <span>{t('settings.backToApp', language as Language)}</span>
+          </button>
         </div>
         <nav className="flex-1 p-4">
           <div className="px-3 py-2 rounded-lg bg-accent/10 text-text-primary text-sm font-medium border border-accent/20 flex items-center gap-2">
@@ -277,8 +278,8 @@ export default function SessionHistoryPage({ onClose }: SessionHistoryPageProps)
       {/* 主内容区 */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* 头部 */}
-        <div className="shrink-0 px-6 pt-6 pb-4 border-b border-border/40 flex items-center justify-between">
-          <div>
+        <div className="shrink-0 px-6 pt-10 pb-4 border-b border-border/40 drag-region">
+          <div className="no-drag">
             <h3 className="text-2xl font-semibold text-text-primary tracking-tight">
               {t('user.sessionhistory2', language as Language)}
             </h3>
@@ -286,12 +287,6 @@ export default function SessionHistoryPage({ onClose }: SessionHistoryPageProps)
               {t('user.viewandmanageallyour', language as Language)}
             </p>
           </div>
-          <button
-            onClick={handleClose}
-            className="p-2 rounded-xl hover:bg-text-primary/[0.05] text-text-muted hover:text-text-primary transition-all duration-200 group"
-          >
-            <X className="w-5 h-5 group-hover:rotate-90 transition-transform duration-300" />
-          </button>
         </div>
 
         {/* 工具栏 */}

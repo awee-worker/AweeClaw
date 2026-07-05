@@ -712,6 +712,7 @@ export const zh = {
   'settings.desktop': '桌面控制',
   'settings.loadingSettings': '正在加载设置项...',
   'settings.closeSettings': '关闭设置',
+  'settings.backToApp': '返回应用',
   'settings.unsavedChangesConfirm': '您有未保存的更改，请保存更改或丢弃？',
 
   // Desktop Control

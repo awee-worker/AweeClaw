@@ -711,6 +711,7 @@ export const en = {
   'settings.desktop': 'Desktop Control',
   'settings.loadingSettings': 'Loading settings...',
   'settings.closeSettings': 'Close settings',
+  'settings.backToApp': 'Back to app',
   'settings.unsavedChangesConfirm': 'You have unsaved changes. Please save or discard them?',
 
   // Desktop Control

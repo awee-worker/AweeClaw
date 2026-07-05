@@ -11,7 +11,7 @@ import {
     PackageX, Download, Info, HardDrive, Tag,
     Layers, Activity, Loader2, FolderOpen, CheckCircle2, XCircle,
     AlertTriangle, RotateCcw, Star, RefreshCw, ArrowLeft, Clock,
-    ChevronRight, X, ArrowUpCircle,
+    ChevronRight, ArrowUpCircle,
 } from 'lucide-react'
 import { useStore } from '@store'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
@@ -135,7 +135,7 @@ export function ScenarioManagerView() {
     const language = useStore(s => s.language)
     const activeScenarioId = useStore(s => s.activeScenarioId)
     const isAuthenticated = useStore(s => s.isAuthenticated)
-    const setActiveSidePanel = useStore(s => s.setActiveSidePanel)
+    const setShowScenarioPage = useStore(s => s.setShowScenarioPage)
     const [activeTab, setActiveTab] = useState<ManagerTab>('installed')
     const [filterCategory, setFilterCategory] = useState<string | null>(null)
 
@@ -650,79 +650,97 @@ export function ScenarioManagerView() {
     }
 
     return (
-        <div className="flex flex-col h-full">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-border/20 bg-background/80 backdrop-blur-sm">
-                <div className="flex items-center gap-6">
-                    <h1 className="text-base font-bold text-text-primary">
-                        {t('scenario.scenariomanager', language as Language)}
-                    </h1>
-                    <div className="flex items-center bg-surface/40 rounded-lg p-0.5 border border-border/20">
-                        <button
-                            onClick={() => setActiveTab('installed')}
-                            className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all ${
-                                activeTab === 'installed'
-                                    ? 'bg-background text-text-primary shadow-sm border border-border/30'
-                                    : 'text-text-muted hover:text-text-primary'
-                            }`}
-                        >
-                            <span className="flex items-center gap-1.5">
-                                <Package className="w-3.5 h-3.5" />
-                                {t('scenario.installed', language as Language)}
-                                <span className="text-[10px] opacity-60">({scenarios.length})</span>
-                            </span>
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('marketplace')}
-                            className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all ${
-                                activeTab === 'marketplace'
-                                    ? 'bg-background text-text-primary shadow-sm border border-border/30'
-                                    : 'text-text-muted hover:text-text-primary'
-                            }`}
-                        >
-                            <span className="flex items-center gap-1.5">
-                                <Globe className="w-3.5 h-3.5" />
-                                {t('scenario.marketplace', language as Language)}
-                            </span>
-                        </button>
-                    </div>
+        <div className="flex h-full w-full relative">
+            {/* 左侧导航 */}
+            <div className="bg-surface/30 backdrop-blur-xl flex flex-col pt-10 pb-6 w-56 border-r border-border/40 shadow-xl shadow-black/10">
+                <div className="px-4 mb-4">
+                    <button
+                        onClick={() => setShowScenarioPage(false)}
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-text-secondary hover:bg-surface-hover hover:text-text-primary border border-transparent transition-all duration-200 group"
+                    >
+                        <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform duration-200" />
+                        <span>{t('settings.backToApp', language as Language)}</span>
+                    </button>
                 </div>
-                <div className="flex items-center gap-2">
-                    {activeTab === 'installed' && (
+
+                <nav className="flex-1 p-4 space-y-1 overflow-y-auto no-scrollbar">
+                    <button
+                        onClick={() => setActiveTab('installed')}
+                        className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-200 group ${
+                            activeTab === 'installed'
+                                ? 'bg-accent/10 text-text-primary border border-accent/20'
+                                : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary border border-transparent'
+                        }`}
+                    >
+                        <span className={`transition-colors duration-200 ${activeTab === 'installed' ? 'text-accent' : 'text-text-muted group-hover:text-text-primary'}`}>
+                            <Package className="w-4 h-4" />
+                        </span>
+                        <span>{t('scenario.installed', language as Language)}</span>
+                        <span className={`text-[10px] ml-auto ${activeTab === 'installed' ? 'text-accent/70' : 'opacity-60'}`}>({scenarios.length})</span>
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('marketplace')}
+                        className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-200 group ${
+                            activeTab === 'marketplace'
+                                ? 'bg-accent/10 text-text-primary border border-accent/20'
+                                : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary border border-transparent'
+                        }`}
+                    >
+                        <span className={`transition-colors duration-200 ${activeTab === 'marketplace' ? 'text-accent' : 'text-text-muted group-hover:text-text-primary'}`}>
+                            <Globe className="w-4 h-4" />
+                        </span>
+                        <span>{t('scenario.marketplace', language as Language)}</span>
+                    </button>
+                </nav>
+
+                {activeTab === 'installed' && (
+                    <div className="p-4 border-t border-border/30">
                         <ActionButton
                             variant="ghost"
                             size="sm"
-                            className="h-8 gap-1.5 px-3 rounded-lg border border-dashed border-border/30 hover:border-accent/30 hover:text-accent"
+                            className="w-full h-8 gap-1.5 px-3 rounded-lg border border-dashed border-border/30 hover:border-accent/30 hover:text-accent justify-center"
                             onClick={handleInstallScenario}
                         >
                             <FolderOpen className="w-3.5 h-3.5" />
                             {t('scenario.localinstall', language as Language)}
                         </ActionButton>
-                    )}
-                    <button
-                        onClick={() => setActiveSidePanel(null)}
-                        className="w-8 h-8 rounded-lg flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-surface/60 transition-colors"
-                        title={t('scenario.close', language as Language)}
-                    >
-                        <X className="w-4 h-4" />
-                    </button>
-                </div>
+                    </div>
+                )}
             </div>
 
-            <div className="flex-1 overflow-hidden">
-                {activeTab === 'installed' ? (
-                    <InstalledTab
-                        language={language}
-                        scenarios={scenarios}
-                        filteredBuiltin={filteredBuiltin}
-                        filteredInstalled={filteredInstalled}
-                        filterCategory={filterCategory}
-                        setFilterCategory={setFilterCategory}
-                        sortedCategories={sortedCategories}
-                        renderScenarioCard={renderScenarioCard}
-                    />
-                ) : (
-                    <MarketplaceTab language={language} isAuthenticated={isAuthenticated} />
-                )}
+            {/* 右侧内容 */}
+            <div className="flex-1 flex justify-center overflow-hidden">
+                <div className="w-full max-w-[1000px] flex flex-col min-w-0 bg-transparent relative">
+                    <div className="shrink-0 px-8 pt-10 pb-4 border-b border-border/40 drag-region">
+                        <div className="no-drag">
+                            <h3 className="text-2xl font-semibold text-text-primary tracking-tight">
+                                {activeTab === 'installed'
+                                    ? t('scenario.installed', language as Language)
+                                    : t('scenario.marketplace', language as Language)}
+                            </h3>
+                            <p className="text-sm text-text-muted mt-1.5 opacity-80">
+                                {t('scenario.scenariomanager', language as Language)}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="flex-1 overflow-hidden">
+                        {activeTab === 'installed' ? (
+                            <InstalledTab
+                                language={language}
+                                scenarios={scenarios}
+                                filteredBuiltin={filteredBuiltin}
+                                filteredInstalled={filteredInstalled}
+                                filterCategory={filterCategory}
+                                setFilterCategory={setFilterCategory}
+                                sortedCategories={sortedCategories}
+                                renderScenarioCard={renderScenarioCard}
+                            />
+                        ) : (
+                            <MarketplaceTab language={language} isAuthenticated={isAuthenticated} />
+                        )}
+                    </div>
+                </div>
             </div>
 
             {installState.phase !== 'idle' && (
