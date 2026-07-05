@@ -36,6 +36,23 @@ const EXTERNAL_DEPS = [
   'bufferutil',
   'utf-8-validate',
   'tar',
+  // 原生模块（sharp + 平台二进制）必须保持 external，避免 Rollup 打包破坏 require 路径
+  'sharp',
+  '@img/sharp-darwin-arm64',
+  '@img/sharp-darwin-x64',
+  '@img/sharp-linux-x64',
+  '@img/sharp-linux-arm64',
+  '@img/sharp-win32-x64',
+  '@img/sharp-win32-ia32',
+  '@img/sharp-win32-arm64',
+  '@img/sharp-wasm32',
+  '@img/sharp-libvips-darwin-arm64',
+  '@img/sharp-libvips-darwin-x64',
+  '@img/sharp-libvips-linux-x64',
+  '@img/sharp-libvips-linux-arm64',
+  '@img/sharp-libvips-win32-x64',
+  '@img/sharp-libvips-win32-ia32',
+  '@img/sharp-libvips-win32-arm64',
 ]
 
 // 路径别名配置

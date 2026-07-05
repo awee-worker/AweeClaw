@@ -418,21 +418,25 @@ export class PluginInstaller {
     // 但 MCP 型插件例外：其入口是 MCP 工厂函数（createMcpServer），
     // 真正的激活由下面的 registerMcpServer + connectPluginInProcess 完成，
     // 不需要 PluginRegistry 加载 PluginRuntime（否则会因导出形状不匹配而报错）
+    //
+    // 注意：in-process MCP 插件可能 type='tool' 但具备 capabilities.mcp，
+    // 仅凭 type 不足以识别，必须同时检查 capabilities.mcp 是否存在。
     const types = Array.isArray(manifest.type) ? manifest.type : [manifest.type]
-    const isMcpPlugin = types.includes('mcp' as PluginType)
+    const hasMcpCapability = !!manifest.capabilities?.mcp
+    const isMcpPlugin = types.includes('mcp' as PluginType) || hasMcpCapability
     const hasEntry = !!manifest.main
     if (hasEntry && !isMcpPlugin) {
       await registry.discover()
       await registry.load(pluginDetail.pluginKey)
       await registry.initialize(pluginDetail.pluginKey)
     } else {
-      // 配置型插件 或 MCP 型插件：仅 discover 以便出现在列表中，不 load/initialize
+      // 配置型插件 或 MCP 型插件（含 in-process MCP）：仅 discover 以便出现在列表中，不 load/initialize
       await registry.discover()
     }
 
     // 若为 MCP 型插件，注册并连接 MCP 服务
     let mcpServerId: string | undefined
-    if (isMcpPlugin && manifest.capabilities?.mcp) {
+    if (isMcpPlugin && hasMcpCapability) {
       mcpServerId = await this.registerMcpServer(pluginDetail, version, manifest, userConfig)
     }
 
@@ -673,8 +677,12 @@ export class PluginInstaller {
 
           // MCP 型插件跳过 load/initialize（入口是 MCP 工厂函数，不是 PluginRuntime）
           // 真正的激活由下面的 MCP 重连逻辑完成
+          // 注意：in-process MCP 插件可能 type='tool' 但具备 capabilities.mcp，
+          // 仅凭 type 不足以识别，必须同时检查 capabilities.mcp 是否存在。
           const recordTypes = Array.isArray(record.type) ? record.type : [record.type]
-          const isRecordMcp = recordTypes.includes('mcp' as PluginType)
+          const hasRecordMcpCapability = !!record.manifest?.capabilities?.mcp
+          const isRecordMcp =
+            recordTypes.includes('mcp' as PluginType) || hasRecordMcpCapability
           const hasRecordEntry = !!record.manifest?.main
           if (hasRecordEntry && !isRecordMcp) {
             try {

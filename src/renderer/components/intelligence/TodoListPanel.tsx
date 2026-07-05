@@ -127,6 +127,10 @@ export const TodoListPanel = memo(({ todos, isStreaming = true, embedded = false
   /**
    * 自动滚动到当前活动任务（in_progress / verifying）：当任务数超过可视区域时，
    * 确保活动任务始终可见，而不是停留在列表顶部。
+   *
+   * 注意：必须使用 scrollTop 手动计算，不能用 Element.scrollIntoView()。
+   * scrollIntoView 会级联影响所有可滚动祖先，包括外层聊天 Virtuoso 列表，
+   * 导致流式输出时用户滚到底部后又被拉回 TodoList 位置。
    */
   const scrollIntoView = useCallback(() => {
     const container = listScrollRef.current
@@ -134,8 +138,14 @@ export const TodoListPanel = memo(({ todos, isStreaming = true, embedded = false
     // 优先滚动到 in_progress，其次 verifying
     const activeEl = container.querySelector('[data-todo-status="in_progress"]') as HTMLElement | null
       || container.querySelector('[data-todo-status="verifying"]') as HTMLElement | null
-    if (activeEl) {
-      activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    if (!activeEl) return
+    // 仅滚动内部容器，不影响外部聊天列表滚动位置
+    const containerRect = container.getBoundingClientRect()
+    const elRect = activeEl.getBoundingClientRect()
+    if (elRect.top < containerRect.top) {
+      container.scrollTop -= containerRect.top - elRect.top
+    } else if (elRect.bottom > containerRect.bottom) {
+      container.scrollTop += elRect.bottom - containerRect.bottom
     }
   }, [])
 

@@ -22,19 +22,10 @@ import {
   Clock,
   ArrowLeft,
   Package,
-  Heart,
-  Code2,
-  BarChart3,
-  PenTool,
-  Sparkles,
-  TrendingUp,
-  BookOpen,
   Globe,
-  Zap,
   RefreshCw,
   CheckCircle2,
-  Cpu,
-  Layers,
+  Sparkles,
 } from 'lucide-react'
 import { useStore } from '@store'
 import { ActionButton } from '../ui'
@@ -43,6 +34,7 @@ import { PluginIcon } from './PluginIcon'
 import {
   browsePlugins,
   getFeaturedPlugins,
+  getPopularPlugins,
   getPluginCategories,
   installPluginFromMarketplace,
   onPluginInstallProgress,
@@ -58,21 +50,9 @@ import type {
 import { t, type Language } from '@renderer/i18n'
 import { PluginInstallConfigDialog } from './PluginInstallConfigDialog'
 import type { PluginConfigField, PluginConfigValues } from './PluginConfigForm'
-
-// ─── 分类图标映射 ──────────────────────────────────────
-
-const CATEGORY_ICONS_SM: Record<string, React.ReactNode> = {
-  productivity: <Zap className="w-4 h-4" />,
-  development: <Code2 className="w-4 h-4" />,
-  automation: <Cpu className="w-4 h-4" />,
-  data: <BarChart3 className="w-4 h-4" />,
-  creative: <PenTool className="w-4 h-4" />,
-  ai: <Sparkles className="w-4 h-4" />,
-  business: <TrendingUp className="w-4 h-4" />,
-  education: <BookOpen className="w-4 h-4" />,
-  lifestyle: <Heart className="w-4 h-4" />,
-  composite: <Layers className="w-4 h-4" />,
-}
+import { PluginCategoryFilter } from './PluginCategoryFilter'
+import { PluginFeaturedSection } from './PluginFeaturedSection'
+import { PluginPopularSection } from './PluginPopularSection'
 
 /** 插件类型徽章 */
 const TYPE_LABELS: Record<string, { zh: string; en: string; color: string }> = {
@@ -93,6 +73,7 @@ export function PluginMarketplacePanel() {
 
   const [items, setItems] = useState<PluginMarketItem[]>([])
   const [featured, setFeatured] = useState<PluginMarketItem[]>([])
+  const [popular, setPopular] = useState<PluginMarketItem[]>([])
   const [categories, setCategories] = useState<PluginCategory[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
@@ -113,10 +94,11 @@ export function PluginMarketplacePanel() {
     error?: string
   }>({ open: false, item: null, fields: [], loading: false })
 
-  // 加载精选 / 分类
+  // 加载精选 / 热门 / 分类
   useEffect(() => {
     if (authenticated) {
       loadFeatured()
+      loadPopular()
       loadCategories()
       loadInstalledKeys()
     }
@@ -165,6 +147,15 @@ export function PluginMarketplacePanel() {
       setFeatured(result)
     } catch {
       setFeatured([])
+    }
+  }
+
+  async function loadPopular() {
+    try {
+      const result = await getPopularPlugins()
+      setPopular(result)
+    } catch {
+      setPopular([])
     }
   }
 
@@ -401,27 +392,6 @@ export function PluginMarketplacePanel() {
     }
   }
 
-  /** 渲染星级 */
-  function renderStars(rating: number) {
-    return (
-      <div className="flex items-center gap-0.5">
-        {[1, 2, 3, 4, 5].map((i) => (
-          <Star
-            key={i}
-            className={`w-3 h-3 ${i <= Math.round(rating) ? 'text-yellow-400 fill-yellow-400' : 'text-border/40'}`}
-          />
-        ))}
-      </div>
-    )
-  }
-
-  /** 格式化下载量 */
-  function formatDownloads(count: number): string {
-    if (count >= 10000) return `${(count / 10000).toFixed(1)}w`
-    if (count >= 1000) return `${(count / 1000).toFixed(1)}k`
-    return String(count)
-  }
-
   // 未登录
   if (!authenticated) {
     return (
@@ -455,8 +425,8 @@ export function PluginMarketplacePanel() {
   // 列表视图
   return (
     <div className="flex flex-col h-full">
-      {/* 顶部搜索栏 */}
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-border/40">
+      {/* 顶部搜索栏（固定吸顶，不参与滚动） */}
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-border/40 flex-shrink-0">
         <div className="relative flex-1">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted/60" />
           <input
@@ -480,67 +450,50 @@ export function PluginMarketplacePanel() {
         </ActionButton>
       </div>
 
-      {/* 分类筛选（始终显示，"全部"永远第一个） */}
-      <div className="flex items-center gap-1.5 px-4 py-2 border-b border-border/30 overflow-x-auto">
-        <button
-            onClick={() => {
-              setPage(1)
-              setSelectedCategory(null)
-            }}
-            className={`shrink-0 px-2.5 py-1 text-[12px] rounded-md transition-colors ${
-              !selectedCategory
-                ? 'bg-accent/15 text-accent'
-                : 'text-text-muted hover:bg-bg-hover'
-            }`}
-          >
-            {language === 'zh' ? '全部' : 'All'}
-          </button>
-          {categories.map((cat) => (
-            <button
-              key={cat.id}
-              onClick={() => {
-                setPage(1)
-                setSelectedCategory(cat.id)
-              }}
-              className={`shrink-0 flex items-center gap-1 px-2.5 py-1 text-[12px] rounded-md transition-colors ${
-                selectedCategory === cat.id
-                  ? 'bg-accent/15 text-accent'
-                  : 'text-text-muted hover:bg-bg-hover'
-              }`}
-            >
-              {CATEGORY_ICONS_SM[cat.id] || <Package className="w-4 h-4" />}
-              <span>{language === 'zh' ? cat.nameZh : cat.name}</span>
-              <span className="text-[12px] opacity-60">({cat.count})</span>
-            </button>
-          ))}
-      </div>
+      {/* 主体滚动区：分类→推荐→热门→全部列表→分页，整体滚动 */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar">
+        {/* 分类筛选（flex-wrap 自动换行，不再横向滚动） */}
+        <PluginCategoryFilter
+          language={language}
+          categories={categories}
+          selected={selectedCategory}
+          onSelect={(catId) => {
+            setPage(1)
+            setSelectedCategory(catId)
+          }}
+        />
 
-      {/* 精选区 */}
-      {featured.length > 0 && !searchQuery && !selectedCategory && (
-        <div className="px-4 py-3 border-b border-border/30">
-          <div className="flex items-center gap-1.5 mb-2">
-            <Sparkles className="w-3.5 h-3.5 text-yellow-400" />
-            <span className="text-xs font-medium">
-              {language === 'zh' ? '精选推荐' : 'Featured'}
-            </span>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            {featured.slice(0, 4).map((item) => (
-              <FeaturedCard
-                key={item.id}
-                item={item}
-                language={language}
-                onClick={() => setSelectedItem(item)}
-                renderStars={renderStars}
-                formatDownloads={formatDownloads}
-              />
-            ))}
-          </div>
+        {/* 推荐专区 + 热门专区（仅在无搜索/无分类筛选时展示） */}
+        {!searchQuery && !selectedCategory && (
+          <>
+            <PluginFeaturedSection
+              items={featured}
+              language={language}
+              installedKeys={installedKeys}
+              onSelect={setSelectedItem}
+            />
+            <PluginPopularSection
+              items={popular}
+              language={language}
+              installedKeys={installedKeys}
+              onSelect={setSelectedItem}
+            />
+          </>
+        )}
+
+        {/* 全部插件列表标题 */}
+        <div className="px-4 py-2.5 border-b border-border/30 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-text-primary">
+            {searchQuery || selectedCategory
+              ? (language === 'zh' ? '搜索结果' : 'Search Results')
+              : (language === 'zh' ? '全部插件' : 'All Plugins')}
+          </h3>
+          <span className="text-[12px] text-text-muted/70">
+            {language === 'zh' ? `${total} 个` : `${total} total`}
+          </span>
         </div>
-      )}
 
-      {/* 列表区 */}
-      <div className="flex-1 overflow-y-auto">
+        {/* 全部插件列表 */}
         {isLoading ? (
           <div className="flex items-center justify-center h-32">
             <RefreshCw className="w-4 h-4 animate-spin text-text-muted" />
@@ -570,35 +523,35 @@ export function PluginMarketplacePanel() {
             ))}
           </div>
         )}
-      </div>
 
-      {/* 分页 */}
-      {total > 20 && (
-        <div className="flex items-center justify-between px-4 py-2 border-t border-border/30 text-[12px] text-text-muted">
-          <span>
-            {language === 'zh' ? `共 ${total} 个` : `${total} total`}
-          </span>
-          <div className="flex items-center gap-1.5">
-            <ActionButton
-              variant="ghost"
-              size="sm"
-              disabled={page <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-            >
-              {language === 'zh' ? '上一页' : 'Prev'}
-            </ActionButton>
-            <span className="px-1.5">{page}</span>
-            <ActionButton
-              variant="ghost"
-              size="sm"
-              disabled={page * 20 >= total}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              {language === 'zh' ? '下一页' : 'Next'}
-            </ActionButton>
+        {/* 分页（随内容滚动，不再浮动吸底） */}
+        {total > 20 && (
+          <div className="flex items-center justify-between px-4 py-3 text-[12px] text-text-muted">
+            <span>
+              {language === 'zh' ? `共 ${total} 个` : `${total} total`}
+            </span>
+            <div className="flex items-center gap-1.5">
+              <ActionButton
+                variant="ghost"
+                size="sm"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                {language === 'zh' ? '上一页' : 'Prev'}
+              </ActionButton>
+              <span className="px-1.5">{page}</span>
+              <ActionButton
+                variant="ghost"
+                size="sm"
+                disabled={page * 20 >= total}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                {language === 'zh' ? '下一页' : 'Next'}
+              </ActionButton>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* 安装进度浮条 */}
       {installProgress && (
@@ -699,44 +652,6 @@ function PluginCard({
             )}
           </button>
         )}
-      </div>
-    </div>
-  )
-}
-
-// ─── 子组件：精选卡片 ──────────────────────────────────
-
-function FeaturedCard({
-  item,
-  language,
-  onClick,
-  renderStars,
-  formatDownloads,
-}: {
-  item: PluginMarketItem
-  language: Language
-  onClick: () => void
-  renderStars: (rating: number) => React.ReactNode
-  formatDownloads: (count: number) => string
-}) {
-  return (
-    <div
-      onClick={onClick}
-      className="p-2.5 rounded-lg bg-bg-hover/40 hover:bg-bg-hover/70 border border-border/30 cursor-pointer transition-colors"
-    >
-      <div className="flex items-center gap-2 mb-1.5">
-        <PluginIcon icon={item.icon} category={item.category} size={28} />
-        <span className="text-xs font-medium truncate">
-          {language === 'zh' ? item.nameZh : item.name}
-        </span>
-      </div>
-      <p className="text-[12px] text-text-muted line-clamp-2 mb-1.5">
-        {language === 'zh' ? item.descriptionZh : item.description}
-      </p>
-      <div className="flex items-center gap-1.5 text-[12px] text-text-muted/70">
-        {renderStars(item.rating)}
-        <span>·</span>
-        <span>{formatDownloads(item.totalDownloads)}</span>
       </div>
     </div>
   )

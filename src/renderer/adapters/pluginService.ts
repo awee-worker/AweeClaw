@@ -205,6 +205,17 @@ export async function getFeaturedPlugins(): Promise<PluginMarketItem[]> {
   }
 }
 
+/** 获取热门插件（按下载量排序，取 10 条） */
+export async function getPopularPlugins(): Promise<PluginMarketItem[]> {
+  if (!isAuthenticated()) return []
+
+  try {
+    return await backendApi.get<PluginMarketItem[]>('/api/v1/plugins/popular')
+  } catch {
+    return []
+  }
+}
+
 /** 获取插件市场分类 */
 export async function getPluginCategories(): Promise<PluginCategory[]> {
   if (!isAuthenticated()) {

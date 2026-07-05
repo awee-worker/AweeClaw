@@ -7,8 +7,11 @@
  * 暴露的服务：
  * - getDesktopControlManager(): 获取桌面控制管理器（截图/鼠标/键盘/窗口/进程/文件）
  * - macVisionOcrRouter: macOS Vision OCR 路由器
+ * - sharp: 图像处理桥（resize/crop/rotate/filter/watermark/convert/info）
+ * - ocr: OCR 识别桥（Vision 优先 → Tesseract 降级）
  * - nativeImage: Electron 的 nativeImage 模块
  * - logger: 日志器
+ * - McpServer / InMemoryTransport / z: MCP SDK 核心组件
  *
  * 安全约束：
  * - 仅在主进程设置，渲染进程无法访问
@@ -21,6 +24,8 @@ import { nativeImage } from 'electron'
 import { logger } from '@shared/toolkit/LogEngine'
 import { getDesktopControlManager } from '../desktop-control/DesktopControlManager'
 import { macVisionOcrRouter } from '../desktop-control/MacVisionOcrRouter'
+import { sharpBridge } from './SharpBridge'
+import { ocrBridge } from './OcrBridge'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { z } from 'zod'
@@ -31,6 +36,10 @@ export interface HostServices {
   getDesktopControlManager: typeof getDesktopControlManager
   /** macOS Vision OCR 路由器实例 */
   macVisionOcrRouter: typeof macVisionOcrRouter
+  /** 图像处理桥（resize/crop/rotate/filter/watermark/convert/info） */
+  sharp: typeof sharpBridge
+  /** OCR 识别桥（Vision 优先 → Tesseract 降级） */
+  ocr: typeof ocrBridge
   /** Electron nativeImage 模块 */
   nativeImage: typeof nativeImage
   /** 日志器（按模块分区） */
@@ -65,6 +74,8 @@ export function initHostServices(): void {
   const services: HostServices = {
     getDesktopControlManager,
     macVisionOcrRouter,
+    sharp: sharpBridge,
+    ocr: ocrBridge,
     nativeImage,
     logger,
     McpServer,
