@@ -1,14 +1,14 @@
 {
   "name": "aweeclaw",
   "version": "1.0.0",
-  "description": "AweeClaw - A lightweight yet powerful AI agent platform",
+  "description": "AweeClaw - Connect AI to Your World",
   "productName": "AweeClaw",
-  "author": "awee <awee.worker@gmail.com>",
+  "author": "awee <aweelee@qq.com>",
   "license": "SEE LICENSE IN LICENSE",
-  "homepage": "https://github.com/jweelee/aweeclaw",
+  "homepage": "https://github.com/aweelee/aweeclaw",
   "repository": {
     "type": "git",
-    "url": "https://github.com/jweelee/aweeclaw.git"
+    "url": "https://github.com/aweelee/aweeclaw.git"
   },
   "main": "dist/main/appBootstrap.js",
   "scripts": {
@@ -21,15 +21,14 @@
     "start": "electron .",
     "dist": "npm run build && electron-builder",
     "dist-w": "node scripts/build-cross-platform.js --target=win",
-    "dist-w-32": "npm run build && electron-builder -w=nsis --ia32",
-    "dist-w-arm64": "npm run build && electron-builder -w=nsis --arm64",
-    "dist-we": "npm run build && electron-builder -w=portable --x64",
+    "dist-w-32": "node scripts/build-cross-platform.js --target=win --arch=ia32",
+    "dist-w-arm64": "node scripts/build-cross-platform.js --target=win --arch=arm64",
     "dist-m": "node scripts/build-cross-platform.js --target=mac",
-    "dist-m-arm64": "npm run build && electron-builder -m --arm64",
+    "dist-m-arm64": "node scripts/build-cross-platform.js --target=mac --arch=arm64",
     "dist-l": "node scripts/build-cross-platform.js --target=linux",
-    "dist-l-32": "npm run build && electron-builder -l=AppImage --ia32",
-    "dist-l-arm64": "npm run build && electron-builder -l=AppImage --arm64",
-    "dist-l-deb": "npm run build && electron-builder -l=deb --x64",
+    "dist-l-32": "node scripts/build-cross-platform.js --target=linux --arch=ia32",
+    "dist-l-arm64": "node scripts/build-cross-platform.js --target=linux --arch=arm64",
+    "dist-l-deb": "node scripts/build-cross-platform.js --target=linux --format=deb",
     "dist-all": "node scripts/build-cross-platform.js --target=all",
     "pack": "npm run build && electron-builder --dir",
     "preview": "npm run build && electron .",
@@ -157,6 +156,7 @@
     "productName": "AweeClaw",
     "npmRebuild": false,
     "buildDependenciesFromSource": false,
+    "afterPack": "scripts/afterPack.js",
     "publish": {
       "provider": "github",
       "owner": "awee-worker",
@@ -184,6 +184,11 @@
       "public/**/*",
       "LICENSE",
       "NOTICE",
+      "node_modules/@parcel/watcher/**",
+      "node_modules/@parcel/watcher-*/**",
+      "node_modules/@lancedb/lancedb*/**",
+      "node_modules/@img/sharp*/**",
+      "node_modules/sharp/**",
       "!**/*.map",
       "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
       "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
@@ -244,6 +249,7 @@
     ]
   },
   "optionalDependencies": {
-    "@lancedb/lancedb-win32-x64-msvc": "^0.22.3"
+    "@lancedb/lancedb-win32-x64-msvc": "^0.22.3",
+    "@parcel/watcher-win32-x64": "^2.5.1"
   }
 }
