@@ -10,12 +10,15 @@ import { logger } from '@shared/toolkit/LogEngine'
 import {
   ChevronRight, ChevronLeft, Check, Sparkles, Palette,
   Globe, Cpu, FolderOpen, Rocket, Eye, EyeOff, Settings,
-  Monitor
+  Monitor, Lock as LockIcon, Smartphone, ShieldCheck,
+  AlertCircle, Loader2, Sun, Moon
 } from 'lucide-react'
 import { useStore, LLMConfig } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { Language } from '@renderer/i18n'
-import { themeManager, Theme } from '@renderer/config/themeDefinition'
+import { themeManager } from '@renderer/config/themeDefinition'
+import { THEME_COLOR_OPTIONS } from '@renderer/config/themeDefinition'
+import type { ThemeColor } from '@/renderer/state/slices/themeSlice'
 import { PROVIDERS } from '@configuration/aiProviders'
 import { LLM_DEFAULTS } from '@shared/configuration/defaultProfile'
 import { DEFAULT_SCENARIO_PREFERENCES } from '@shared/configuration/preferenceSchema'
@@ -28,9 +31,18 @@ interface OnboardingWizardProps {
   onComplete: () => void
 }
 
-type Step = 'welcome' | 'language' | 'theme' | 'workspace' | 'complete'
+/**
+ * 引导步骤顺序：
+ * 1. welcome    — 欢迎页（品牌展示）
+ * 2. auth       — 登录/注册（可跳过，支持本地模式）
+ * 3. language   — 选择界面语言
+ * 4. theme      — 选择主题
+ * 5. workspace  — 选择工作区目录（必选）
+ * 6. complete   — 完成确认
+ */
+type Step = 'welcome' | 'auth' | 'language' | 'theme' | 'workspace' | 'complete'
 
-const STEPS: Step[] = ['welcome', 'language', 'theme', 'workspace', 'complete']
+const STEPS: Step[] = ['welcome', 'auth', 'language', 'theme', 'workspace', 'complete']
 
 const LANGUAGES: { id: Language; name: string; native: string }[] = [
   { id: 'en', name: 'English', native: 'English' },
@@ -41,8 +53,24 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
   const { set, language, workspacePath } = useStore(useShallow(s => ({ set: s.set, language: s.language, workspacePath: s.workspacePath })))
 
   const [currentStep, setCurrentStep] = useState<Step>('welcome')
-  const [selectedLanguage, setSelectedLanguage] = useState<Language>(language)
-  const [selectedTheme, setSelectedTheme] = useState(themeManager.getCurrentTheme().id)
+  // 默认中文：首次安装时 language 可能为 undefined 或 'en'，引导界面强制默认中文
+  const [selectedLanguage, setSelectedLanguage] = useState<Language>(language || 'zh')
+  // 主题拆分为「模式」+「颜色」两个维度，更符合用户心智
+  // 初始值从当前主题反解，确保进入引导时保持已有主题
+  const [themeMode, setThemeMode] = useState<'light' | 'dark' | 'system'>(
+    () => {
+      const currentId = themeManager.getCurrentTheme().id
+      if (currentId.endsWith('-light')) return 'light'
+      if (currentId.endsWith('-dark')) {
+        // 若系统当前偏好暗色，且主题为暗色，默认显示「跟随系统」更友好
+        return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'system' : 'dark'
+      }
+      return 'light'
+    }
+  )
+  const [themeColor, setThemeColor] = useState<ThemeColor>(
+    () => themeManager.resolveColorFromThemeId(themeManager.getCurrentTheme().id)
+  )
   const [providerConfig, setProviderConfig] = useState<LLMConfig>({
     provider: 'openai',
     model: 'gpt-4o',
@@ -57,9 +85,11 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
   const [isExiting, setIsExiting] = useState(false)
   const [defaultWorkspacePath, setDefaultWorkspacePath] = useState<string | null>(null)
 
-  const allThemes = themeManager.getAllThemes()
   const currentStepIndex = STEPS.indexOf(currentStep)
   const isZh = selectedLanguage === 'zh'
+
+  // 工作区步骤必选：未选择目录时禁用「下一步」按钮
+  const canProceed = currentStep !== 'workspace' || !!workspacePath
 
   // 预计算默认工作区路径
   useEffect(() => {
@@ -70,9 +100,11 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
     }).catch(() => {})
   }, [])
 
+  // 主题模式或颜色变化时，解析为具体 themeId 并应用
   useEffect(() => {
-    themeManager.setTheme(selectedTheme)
-  }, [selectedTheme])
+    const resolved = themeManager.resolveThemeByModeAndColor(themeMode, themeColor)
+    themeManager.setTheme(resolved.id)
+  }, [themeMode, themeColor])
 
   const goNext = () => {
     if (currentStepIndex < STEPS.length - 1) {
@@ -92,12 +124,23 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
     const { defaultAgentConfig, defaultAutoApprove, defaultEditorConfig, defaultSecuritySettings, defaultWebSearchConfig, defaultMcpConfig } = await import('@shared/configuration/preferenceSchema')
     const { settingsService } = await import('@renderer/settings/preferencesService')
 
+    // 立即应用到全局 store（包含语言、LLM 配置）
     set('language', selectedLanguage)
     set('llmConfig', providerConfig)
+    // 主题：themeManager 已通过 useEffect 应用并持久化到 config
+    // 此处同步 themeMode/themeColor 到 store，确保设置页显示与实际一致
+    useStore.getState().setThemeMode(themeMode)
+    useStore.getState().setThemeColor(themeColor)
 
-    if (providerConfig.apiKey) {
-      useStore.getState().set('onboardingCompleted', true)
+    // 同步语言到主进程（影响菜单、系统对话框等原生 UI）
+    try {
+      window.electronAPI?.setLanguage?.(selectedLanguage)
+    } catch (e) {
+      logger.settings.error('OnboardingWizard: 同步语言到主进程失败:', e)
     }
+
+    // 无论是否配置 API Key，首次引导都应标记完成，避免重复弹出
+    useStore.getState().set('onboardingCompleted', true)
 
     try {
       await settingsService.save({
@@ -211,7 +254,8 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
                 <motion.div
                   initial={false}
                   animate={{
-                    backgroundColor: index <= currentStepIndex ? 'rgb(var(--accent))' : 'rgba(var(--text-muted), 0.5)',
+                    // 已激活/当前步：accent 色；未激活：明确的灰色（rgb(107 114 128) ≈ #6b7280）
+                    backgroundColor: index <= currentStepIndex ? 'rgb(var(--accent))' : 'rgb(107 114 128)',
                     scale: index === currentStepIndex ? 1.2 : 1,
                   }}
                   className={`w-2.5 h-2.5 rounded-full`}
@@ -220,7 +264,8 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
                   <motion.div
                     initial={false}
                     animate={{
-                      backgroundColor: index < currentStepIndex ? 'rgba(var(--accent), 0.5)' : 'rgba(var(--text-muted), 0.3)',
+                      // 已完成连接线：accent 半透明；未完成：浅灰色
+                      backgroundColor: index < currentStepIndex ? 'rgba(var(--accent), 0.5)' : 'rgba(107, 114, 128, 0.4)',
                     }}
                     className="w-4 h-0.5"
                   />
@@ -245,11 +290,20 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
                   className="w-full min-h-full"
                 >
                   {currentStep === 'welcome' && <WelcomeStep isZh={isZh} />}
+                  {currentStep === 'auth' && (
+                    <AuthStep isZh={isZh} onComplete={goNext} onSkip={goNext} />
+                  )}
                   {currentStep === 'language' && (
                     <LanguageStep isZh={isZh} selectedLanguage={selectedLanguage} onSelect={setSelectedLanguage} />
                   )}
                   {currentStep === 'theme' && (
-                    <ThemeStep isZh={isZh} themes={allThemes} selectedTheme={selectedTheme} onSelect={setSelectedTheme} />
+                    <ThemeStep
+                      isZh={isZh}
+                      themeMode={themeMode}
+                      themeColor={themeColor}
+                      onModeChange={setThemeMode}
+                      onColorChange={setThemeColor}
+                    />
                   )}
                   {currentStep === 'workspace' && (
                     <WorkspaceStep
@@ -257,13 +311,19 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
                       workspacePath={workspacePath}
                       onOpenFolder={handleOpenFolder}
                       defaultWorkspacePath={defaultWorkspacePath}
+                      onUseDefault={() => {
+                        if (defaultWorkspacePath) {
+                          workspaceManager.openFolder(defaultWorkspacePath)
+                        }
+                      }}
                     />
                   )}
                   {currentStep === 'complete' && (
                     <CompleteStep
                       isZh={isZh}
                       selectedLanguage={selectedLanguage}
-                      selectedTheme={selectedTheme}
+                      themeMode={themeMode}
+                      themeColor={themeColor}
                       workspacePath={workspacePath}
                       providerConfig={providerConfig}
                       showProviderSetup={showProviderSetup}
@@ -302,10 +362,18 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
                   </ActionButton>
                 </motion.div>
               ) : (
-                <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                <motion.div
+                  whileHover={canProceed ? { scale: 1.02 } : {}}
+                  whileTap={canProceed ? { scale: 0.98 } : {}}
+                >
                   <ActionButton
                     onClick={goNext}
-                    className="flex items-center gap-2 px-8 py-3 bg-accent hover:bg-accent-hover text-white rounded-xl text-sm font-bold shadow-lg shadow-accent/20 transition-all"
+                    disabled={!canProceed}
+                    className={`flex items-center gap-2 px-8 py-3 rounded-xl text-sm font-bold shadow-lg transition-all ${
+                      canProceed
+                        ? 'bg-accent hover:bg-accent-hover text-white shadow-accent/20'
+                        : 'bg-white/5 text-text-muted cursor-not-allowed shadow-none'
+                    }`}
                   >
                     {isZh ? '下一步' : 'Next'}
                     <ChevronRight className="w-4 h-4" />
@@ -316,8 +384,8 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
           </div>
         </div>
 
-        {/* 跳过按钮 */}
-        {currentStep !== 'complete' && (
+        {/* 跳过按钮：工作区步骤不允许跳过（必选） */}
+        {currentStep !== 'complete' && currentStep !== 'workspace' && (
           <motion.button
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -363,30 +431,35 @@ function WelcomeStep({ isZh }: { isZh: boolean }) {
           {isZh ? '欢迎使用 AweeClaw' : 'Welcome to AweeClaw'}
         </h1>
         <p className="text-text-muted max-w-lg mx-auto leading-relaxed text-lg mb-2">
-          {isZh ? 'AI 驱动的下一代智能体平台' : 'Next-gen AI-powered intelligent agent platform'}
+          {isZh ? '场景驱动的 AI 应用构建平台' : 'Scenario-driven AI application platform'}
         </p>
         <p className="text-text-muted/85 max-w-sm mx-auto text-sm">
           {isZh
-            ? '让我们快速完成几个基础设置，即可开始编程。'
-            : 'Let\'s quickly set up the basics and start coding.'}
+            ? '让我们快速完成几个基础设置，即可开始体验。'
+            : 'Let\'s quickly set up the basics and start exploring.'}
         </p>
       </motion.div>
 
-      <div className="mt-12 flex justify-center gap-12">
+      <div className="mt-12 flex justify-center gap-8 flex-wrap">
         <FeatureItem
           icon={<Sparkles className="w-5 h-5 text-accent" />}
-          label={isZh ? 'AI 辅助' : 'AI-Assisted'}
+          label={isZh ? '多场景' : 'Multi-Scenario'}
           delay={0.2}
         />
         <FeatureItem
-          icon={<Cpu className="w-5 h-5 text-purple-400" />}
-          label={isZh ? '多模型' : 'Multi-Model'}
+          icon={<Globe className="w-5 h-5 text-purple-400" />}
+          label={isZh ? '多渠道' : 'Multi-Channel'}
           delay={0.3}
         />
         <FeatureItem
-          icon={<Settings className="w-5 h-5 text-blue-400" />}
-          label={isZh ? '可定制' : 'Customizable'}
+          icon={<Cpu className="w-5 h-5 text-blue-400" />}
+          label={isZh ? '插件生态' : 'Plugin Ecosystem'}
           delay={0.4}
+        />
+        <FeatureItem
+          icon={<Settings className="w-5 h-5 text-emerald-400" />}
+          label={isZh ? '灵活定制' : 'Flexible'}
+          delay={0.5}
         />
       </div>
     </div>
@@ -406,6 +479,313 @@ function FeatureItem({ icon, label, delay }: { icon: React.ReactNode, label: str
       </div>
       <span className="text-sm font-medium text-text-secondary">{label}</span>
     </motion.div>
+  )
+}
+
+
+/**
+ * 登录/注册步骤
+ * - 支持邮箱密码登录、邮箱注册、手机号验证码登录
+ * - 支持「跳过，稍后登录」直接进入本地模式
+ * - 登录成功或跳过后调用 onComplete/onSkip 进入下一步
+ */
+function AuthStep({
+  isZh,
+  onComplete,
+  onSkip,
+}: {
+  isZh: boolean
+  onComplete: () => void
+  onSkip: () => void
+}) {
+  const {
+    isAuthenticated,
+    cloudUser,
+    login,
+    phoneLogin,
+    register,
+  } = useStore(useShallow((s) => ({
+    isAuthenticated: s.isAuthenticated,
+    cloudUser: s.cloudUser,
+    login: s.login,
+    phoneLogin: s.phoneLogin,
+    register: s.register,
+  })))
+
+  const [mode, setMode] = useState<'login' | 'register'>('login')
+  const [loginMode, setLoginMode] = useState<'email' | 'phone'>('email')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [username, setUsername] = useState('')
+  const [phone, setPhone] = useState('')
+  const [smsCode, setSmsCode] = useState('')
+  const [codeCooldown, setCodeCooldown] = useState(0)
+  const [showPassword, setShowPassword] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  // 登录成功后自动进入下一步
+  useEffect(() => {
+    if (isAuthenticated && cloudUser) {
+      onComplete()
+    }
+  }, [isAuthenticated, cloudUser, onComplete])
+
+  // 验证码倒计时
+  useEffect(() => {
+    if (codeCooldown <= 0) return
+    const timer = setInterval(() => {
+      setCodeCooldown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer)
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [codeCooldown])
+
+  const handleSendCode = async () => {
+    if (codeCooldown > 0 || !/^1[3-9]\d{9}$/.test(phone)) return
+    try {
+      const { backendApi } = await import('@services/backendApi')
+      await backendApi.post('/api/v1/sms/send-code', { phone, purpose: 'login' })
+      setCodeCooldown(60)
+    } catch (e) {
+      setError(isZh ? '验证码发送失败，请稍后重试' : 'Failed to send code, please try again')
+    }
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+    setLoading(true)
+    try {
+      const url = useStore.getState().serverUrl
+      if (mode === 'register') {
+        if (!email || !password) {
+          setError(isZh ? '请填写邮箱和密码' : 'Please fill in email and password')
+          return
+        }
+        await register(url, email, password, username || undefined)
+      } else if (loginMode === 'phone') {
+        if (!phone || !smsCode) {
+          setError(isZh ? '请填写手机号和验证码' : 'Please fill in phone and code')
+          return
+        }
+        await phoneLogin(url, phone, smsCode)
+      } else {
+        if (!email || !password) {
+          setError(isZh ? '请填写邮箱和密码' : 'Please fill in email and password')
+          return
+        }
+        await login(url, email, password)
+      }
+      // 登录成功后由 useEffect 监听 isAuthenticated 触发 onComplete
+    } catch (err) {
+      const errorObj = err as { status?: number; message?: string }
+      if (errorObj?.status === 401) {
+        setError(isZh ? '邮箱或密码错误' : 'Invalid email or password')
+      } else if (errorObj?.status === 409) {
+        setError(isZh ? '该邮箱已注册' : 'Email already registered')
+      } else if (err instanceof TypeError && err.message.includes('Failed to fetch')) {
+        setError(isZh ? '无法连接到服务器，请检查网络或跳过稍后登录' : 'Cannot connect to server, check network or skip')
+      } else {
+        setError(errorObj?.message || (isZh ? '请求失败，请稍后重试' : 'Request failed, try again'))
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="px-10 py-10 h-full flex flex-col">
+      <div className="flex items-center gap-4 mb-6">
+        <div className="w-12 h-12 rounded-2xl bg-accent/10 border border-accent/20 flex items-center justify-center">
+          <Sparkles className="w-6 h-6 text-accent" />
+        </div>
+        <div>
+          <h2 className="text-2xl font-bold text-text-primary">
+            {isZh ? '登录 / 注册' : 'Sign In / Register'}
+          </h2>
+          <p className="text-text-muted mt-1">
+            {isZh ? '登录云端以同步配置和额度，或跳过使用本地模式' : 'Sign in to sync config and quota, or skip for local mode'}
+          </p>
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit} className="flex-1 flex flex-col gap-4 max-w-md mx-auto w-full">
+        {/* 模式切换：登录 / 注册 */}
+        <div className="flex gap-2 p-1 bg-white/5 rounded-xl border border-border">
+          <button
+            type="button"
+            onClick={() => { setMode('login'); setError('') }}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
+              mode === 'login' ? 'bg-accent text-white shadow' : 'text-text-muted hover:text-text-primary'
+            }`}
+          >
+            {isZh ? '登录' : 'Sign In'}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setMode('register'); setError('') }}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
+              mode === 'register' ? 'bg-accent text-white shadow' : 'text-text-muted hover:text-text-primary'
+            }`}
+          >
+            {isZh ? '注册' : 'Register'}
+          </button>
+        </div>
+
+        {/* 注册时的用户名 */}
+        {mode === 'register' && (
+          <div className="relative">
+            <Settings className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder={isZh ? '用户名（可选）' : 'Username (optional)'}
+              className="w-full pl-10 pr-4 py-3 bg-white/5 border border-border rounded-xl text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent transition-colors"
+            />
+          </div>
+        )}
+
+        {/* 登录模式切换：邮箱 / 手机号 */}
+        {mode === 'login' && (
+          <div className="flex gap-2 text-xs">
+            <button
+              type="button"
+              onClick={() => { setLoginMode('email'); setError('') }}
+              className={`px-3 py-1.5 rounded-lg transition-colors ${
+                loginMode === 'email' ? 'bg-accent/10 text-accent' : 'text-text-muted hover:text-text-primary'
+              }`}
+            >
+              {isZh ? '邮箱登录' : 'Email'}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setLoginMode('phone'); setError('') }}
+              className={`px-3 py-1.5 rounded-lg transition-colors ${
+                loginMode === 'phone' ? 'bg-accent/10 text-accent' : 'text-text-muted hover:text-text-primary'
+              }`}
+            >
+              {isZh ? '手机号登录' : 'Phone'}
+            </button>
+          </div>
+        )}
+
+        {/* 邮箱输入 */}
+        {(mode === 'register' || loginMode === 'email') && (
+          <div className="relative">
+            <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder={isZh ? '邮箱地址' : 'Email address'}
+              className="w-full pl-10 pr-4 py-3 bg-white/5 border border-border rounded-xl text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent transition-colors"
+            />
+          </div>
+        )}
+
+        {/* 密码输入 */}
+        {(mode === 'register' || loginMode === 'email') && (
+          <div className="relative">
+            <LockIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+            <input
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder={isZh ? '密码' : 'Password'}
+              className="w-full pl-10 pr-10 py-3 bg-white/5 border border-border rounded-xl text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent transition-colors"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary transition-colors"
+            >
+              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
+        )}
+
+        {/* 手机号 + 验证码 */}
+        {mode === 'login' && loginMode === 'phone' && (
+          <>
+            <div className="relative">
+              <Smartphone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+              <input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder={isZh ? '手机号' : 'Phone number'}
+                className="w-full pl-10 pr-4 py-3 bg-white/5 border border-border rounded-xl text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent transition-colors"
+              />
+            </div>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <ShieldCheck className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+                <input
+                  type="text"
+                  value={smsCode}
+                  onChange={(e) => setSmsCode(e.target.value)}
+                  placeholder={isZh ? '验证码' : 'Verification code'}
+                  className="w-full pl-10 pr-4 py-3 bg-white/5 border border-border rounded-xl text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent transition-colors"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleSendCode}
+                disabled={codeCooldown > 0 || !/^1[3-9]\d{9}$/.test(phone)}
+                className="px-4 py-3 bg-white/5 border border-border rounded-xl text-sm text-text-muted hover:text-text-primary hover:border-accent/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+              >
+                {codeCooldown > 0
+                  ? `${codeCooldown}s`
+                  : (isZh ? '获取验证码' : 'Send code')}
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* 错误提示 */}
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: -5 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex items-center gap-2 px-4 py-2.5 bg-red-500/10 border border-red-500/20 rounded-xl text-sm text-red-400"
+          >
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{error}</span>
+          </motion.div>
+        )}
+
+        {/* 提交按钮 */}
+        <motion.button
+          type="submit"
+          whileHover={{ scale: 1.01 }}
+          whileTap={{ scale: 0.99 }}
+          disabled={loading}
+          className="w-full py-3 bg-accent hover:bg-accent-hover text-white rounded-xl text-sm font-bold shadow-lg shadow-accent/20 transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        >
+          {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+          {mode === 'register'
+            ? (isZh ? '注册并登录' : 'Register & Sign In')
+            : (isZh ? '登录' : 'Sign In')}
+        </motion.button>
+
+        {/* 跳过：直接进入本地模式 */}
+        <button
+          type="button"
+          onClick={onSkip}
+          className="text-sm text-text-muted hover:text-text-primary transition-colors flex items-center justify-center gap-1.5 mt-2"
+        >
+          <span>{isZh ? '跳过，稍后登录（本地模式）' : 'Skip, sign in later (local mode)'}</span>
+          <ChevronRight className="w-3 h-3" />
+        </button>
+      </form>
+    </div>
   )
 }
 
@@ -473,15 +853,26 @@ function LanguageStep({
 
 function ThemeStep({
   isZh,
-  themes,
-  selectedTheme,
-  onSelect
+  themeMode,
+  themeColor,
+  onModeChange,
+  onColorChange,
 }: {
   isZh: boolean
-  themes: Theme[]
-  selectedTheme: string
-  onSelect: (id: string) => void
+  themeMode: 'light' | 'dark' | 'system'
+  themeColor: ThemeColor
+  onModeChange: (mode: 'light' | 'dark' | 'system') => void
+  onColorChange: (color: ThemeColor) => void
 }) {
+  const modes: { id: 'light' | 'dark' | 'system'; labelZh: string; labelEn: string; icon: React.ReactNode }[] = [
+    { id: 'light', labelZh: '亮色', labelEn: 'Light', icon: <Sun className="w-5 h-5" /> },
+    { id: 'dark', labelZh: '暗色', labelEn: 'Dark', icon: <Moon className="w-5 h-5" /> },
+    { id: 'system', labelZh: '跟随系统', labelEn: 'System', icon: <Monitor className="w-5 h-5" /> },
+  ]
+
+  // 用当前选择解析出预览主题，确保预览与实际效果一致
+  const previewTheme = themeManager.resolveThemeByModeAndColor(themeMode, themeColor)
+
   return (
     <div className="px-10 py-10 h-full flex flex-col">
       <div className="flex items-center gap-4 mb-6">
@@ -493,67 +884,133 @@ function ThemeStep({
             {isZh ? '选择主题' : 'Choose Theme'}
           </h2>
           <p className="text-text-muted mt-1">
-            {isZh ? '选择一个符合你审美的外观' : 'Pick a look that matches your style'}
+            {isZh ? '选择外观模式与配色，可随时在设置中更改' : 'Pick a mode and color, changeable in settings'}
           </p>
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-4 mt-4 overflow-y-auto pb-2 pr-2">
-        {themes.map((theme, index) => (
-          <motion.button
-            key={theme.id}
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: index * 0.05 }}
-            whileHover={{ y: -5 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => onSelect(theme.id)}
-            className={`relative p-3 rounded-2xl border-2 text-left transition-all duration-300 ${selectedTheme === theme.id
-              ? 'border-accent bg-accent/5 shadow-lg shadow-accent/10'
-              : 'border-border hover:border-accent/30 bg-white/5'
-              }`}
-          >
-            <div
-              className="h-24 rounded-xl mb-3 border border-border overflow-hidden shadow-sm flex flex-col"
-              style={{ backgroundColor: `rgb(${theme.colors.background})` }}
-            >
-              <div
-                className="h-5 w-full border-b border-border flex items-center px-2 gap-1"
-                style={{ backgroundColor: `rgb(${theme.colors.backgroundSecondary})` }}
+      {/* 上半部分：模式选择（亮色 / 暗色 / 跟随系统） */}
+      <div className="mb-6">
+        <div className="text-xs font-bold text-text-muted uppercase tracking-wider mb-3">
+          {isZh ? '外观模式' : 'Appearance Mode'}
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          {modes.map((mode, index) => {
+            const active = themeMode === mode.id
+            return (
+              <motion.button
+                key={mode.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.05 }}
+                whileHover={{ y: -3 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => onModeChange(mode.id)}
+                className={`relative p-4 rounded-2xl border-2 transition-all duration-300 flex flex-col items-center gap-2 ${
+                  active
+                    ? 'border-accent bg-accent/5 shadow-lg shadow-accent/10'
+                    : 'border-border hover:border-accent/30 bg-white/5'
+                }`}
               >
-                <div className="w-1.5 h-1.5 rounded-full bg-red-400/50" />
-                <div className="w-1.5 h-1.5 rounded-full bg-yellow-400/50" />
-                <div className="w-1.5 h-1.5 rounded-full bg-green-400/50" />
-              </div>
-              <div className="flex-1 p-2 flex gap-2">
-                <div className="w-1/4 h-full rounded bg-white/5 border border-border" />
-                <div className="flex-1 flex flex-col gap-1.5">
-                  <div className="w-1/2 h-1.5 rounded bg-white/10" />
-                  <div className="w-3/4 h-1.5 rounded bg-white/10" />
-                  <div className="w-full h-1.5 rounded bg-white/5" />
-                  <div className="flex gap-1 mt-auto">
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: `rgb(${theme.colors.accent})` }} />
-                    <span className="text-[6px] opacity-50 font-mono">print("Hello")</span>
-                  </div>
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${active ? 'bg-accent/10 text-accent' : 'bg-white/5 text-text-muted'}`}>
+                  {mode.icon}
                 </div>
-              </div>
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-bold text-sm text-text-primary">{theme.name}</div>
-                <div className="text-[11px] text-text-muted capitalize opacity-70">{theme.type}</div>
-              </div>
-            </div>
-            {selectedTheme === theme.id && (
-              <motion.div
-                layoutId="theme-check"
-                className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-accent flex items-center justify-center shadow-lg ring-4 ring-background"
+                <span className={`text-sm font-bold ${active ? 'text-accent' : 'text-text-primary'}`}>
+                  {isZh ? mode.labelZh : mode.labelEn}
+                </span>
+                {active && (
+                  <motion.div
+                    layoutId="theme-mode-check"
+                    className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-accent flex items-center justify-center shadow-lg ring-4 ring-background"
+                  >
+                    <Check className="w-3.5 h-3.5 text-white" />
+                  </motion.div>
+                )}
+              </motion.button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* 下半部分：颜色选择（蓝 / 紫 / 橙 / 绿） */}
+      <div className="mb-2">
+        <div className="text-xs font-bold text-text-muted uppercase tracking-wider mb-3">
+          {isZh ? '主题配色' : 'Accent Color'}
+        </div>
+        <div className="grid grid-cols-4 gap-3">
+          {THEME_COLOR_OPTIONS.map((opt, index) => {
+            const active = themeColor === opt.value
+            // 通过 ColorTheme 拿到当前模式下的 accent 色，用于色块预览
+            const colorTheme = themeManager.getColorThemeByColor(opt.value)
+            const resolvedColors = themeMode === 'light' ? colorTheme?.lightColors : colorTheme?.darkColors
+            const accentRgb = resolvedColors?.accent || '14 165 233'
+            return (
+              <motion.button
+                key={opt.value}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: index * 0.05 }}
+                whileHover={{ y: -3 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => onColorChange(opt.value)}
+                className={`relative p-3 rounded-2xl border-2 transition-all duration-300 flex flex-col items-center gap-2 ${
+                  active
+                    ? 'border-accent bg-accent/5 shadow-lg shadow-accent/10'
+                    : 'border-border hover:border-accent/30 bg-white/5'
+                }`}
               >
-                <Check className="w-3.5 h-3.5 text-white" />
-              </motion.div>
-            )}
-          </motion.button>
-        ))}
+                <div
+                  className="w-10 h-10 rounded-full shadow-inner"
+                  style={{ backgroundColor: `rgb(${accentRgb})` }}
+                />
+                <span className={`text-xs font-bold ${active ? 'text-accent' : 'text-text-primary'}`}>
+                  {isZh ? opt.labelZh : opt.labelEn}
+                </span>
+                {active && (
+                  <motion.div
+                    layoutId="theme-color-check"
+                    className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-accent flex items-center justify-center shadow-lg ring-4 ring-background"
+                  >
+                    <Check className="w-3.5 h-3.5 text-white" />
+                  </motion.div>
+                )}
+              </motion.button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* 实时预览缩略图 */}
+      <div className="mt-auto pt-4">
+        <div className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2">
+          {isZh ? '预览' : 'Preview'}
+        </div>
+        <div
+          className="h-20 rounded-xl border border-border overflow-hidden shadow-sm flex"
+          style={{ backgroundColor: `rgb(${previewTheme.colors.background})` }}
+        >
+          <div
+            className="w-1/4 border-r border-border flex flex-col items-center justify-center gap-1.5"
+            style={{ backgroundColor: `rgb(${previewTheme.colors.backgroundSecondary})` }}
+          >
+            <div className="w-6 h-1.5 rounded" style={{ backgroundColor: `rgb(${previewTheme.colors.textMuted})` }} />
+            <div className="w-6 h-1.5 rounded" style={{ backgroundColor: `rgb(${previewTheme.colors.accent})` }} />
+            <div className="w-6 h-1.5 rounded" style={{ backgroundColor: `rgb(${previewTheme.colors.textMuted})`, opacity: 0.5 }} />
+          </div>
+          <div className="flex-1 p-2.5 flex flex-col gap-1.5 justify-center">
+            <div className="w-1/3 h-2 rounded" style={{ backgroundColor: `rgb(${previewTheme.colors.textPrimary})`, opacity: 0.9 }} />
+            <div className="w-2/3 h-1.5 rounded" style={{ backgroundColor: `rgb(${previewTheme.colors.textMuted})`, opacity: 0.6 }} />
+            <div className="w-1/2 h-1.5 rounded" style={{ backgroundColor: `rgb(${previewTheme.colors.textMuted})`, opacity: 0.4 }} />
+            <div className="flex gap-1.5 mt-1">
+              <div className="px-2 py-0.5 rounded text-[8px] font-bold" style={{ backgroundColor: `rgb(${previewTheme.colors.accent})`, color: `rgb(${previewTheme.colors.accentForeground})` }}>
+                {isZh ? '按钮' : 'Button'}
+              </div>
+              <div className="px-2 py-0.5 rounded text-[8px] border" style={{ borderColor: `rgb(${previewTheme.colors.border})`, color: `rgb(${previewTheme.colors.textMuted})` }}>
+                {isZh ? '取消' : 'Cancel'}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -565,11 +1022,13 @@ function WorkspaceStep({
   workspacePath,
   onOpenFolder,
   defaultWorkspacePath,
+  onUseDefault,
 }: {
   isZh: boolean
   workspacePath: string | null
   onOpenFolder: () => void
   defaultWorkspacePath: string | null
+  onUseDefault: () => void
 }) {
   return (
     <div className="px-10 py-10 h-full flex flex-col">
@@ -582,7 +1041,7 @@ function WorkspaceStep({
             {isZh ? '工作区目录' : 'Workspace Directory'}
           </h2>
           <p className="text-text-muted mt-1">
-            {isZh ? '选择项目文件的存放位置' : 'Choose where to store your project files'}
+            {isZh ? '选择项目文件的存放位置（必选）' : 'Choose where to store your project files (required)'}
           </p>
         </div>
       </div>
@@ -620,7 +1079,7 @@ function WorkspaceStep({
                 transition={{ delay: 0.1 }}
                 whileHover={{ scale: 1.01, borderColor: 'rgba(var(--accent), 0.4)' }}
                 whileTap={{ scale: 0.99 }}
-                onClick={() => workspaceManager.openFolder(defaultWorkspacePath)}
+                onClick={onUseDefault}
                 className="w-full max-w-md p-5 rounded-2xl border-2 border-border bg-white/5 hover:bg-white/8 transition-all text-left group"
               >
                 <div className="flex items-center gap-4">
@@ -659,7 +1118,7 @@ function WorkspaceStep({
             </motion.button>
 
             <p className="text-xs text-text-muted opacity-60">
-              {isZh ? '也可以跳过，稍后在菜单中打开' : 'Or skip and open later via menu'}
+              {isZh ? '请选择一个工作区目录以继续' : 'Please choose a workspace directory to continue'}
             </p>
           </>
         )}
@@ -672,7 +1131,8 @@ function WorkspaceStep({
 function CompleteStep({
   isZh,
   selectedLanguage,
-  selectedTheme,
+  themeMode,
+  themeColor,
   workspacePath,
   providerConfig,
   showProviderSetup,
@@ -683,7 +1143,8 @@ function CompleteStep({
 }: {
   isZh: boolean
   selectedLanguage: Language
-  selectedTheme: string
+  themeMode: 'light' | 'dark' | 'system'
+  themeColor: ThemeColor
   workspacePath: string | null
   providerConfig: LLMConfig
   showProviderSetup: boolean
@@ -692,7 +1153,11 @@ function CompleteStep({
   showApiKey: boolean
   setShowApiKey: (v: boolean) => void
 }) {
-  const currentTheme = themeManager.getAllThemes().find(t => t.id === selectedTheme)
+  // 主题摘要：模式 + 颜色
+  const modeLabelZh = themeMode === 'light' ? '亮色' : themeMode === 'dark' ? '暗色' : '跟随系统'
+  const modeLabelEn = themeMode === 'light' ? 'Light' : themeMode === 'dark' ? 'Dark' : 'System'
+  const colorOpt = THEME_COLOR_OPTIONS.find(o => o.value === themeColor)
+  const themeSummary = `${isZh ? modeLabelZh : modeLabelEn} / ${isZh ? colorOpt?.labelZh : colorOpt?.labelEn}`
   const langName = LANGUAGES.find(l => l.id === selectedLanguage)?.native || selectedLanguage
 
   return (
@@ -736,7 +1201,7 @@ function CompleteStep({
           <SummaryRow
             icon={<Palette className="w-4 h-4" />}
             label={isZh ? '主题' : 'Theme'}
-            value={currentTheme?.name || selectedTheme}
+            value={themeSummary}
           />
           <SummaryRow
             icon={<FolderOpen className="w-4 h-4" />}

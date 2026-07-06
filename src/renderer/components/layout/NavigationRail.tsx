@@ -515,9 +515,12 @@ export default function NavigationRail() {
           width: 200px;
           background: rgb(var(--background-secondary));
           border-right: 1px solid rgba(var(--border), 0.2);
+          /* 右侧投影：增强与内容区的层次分离，使用半透明黑避免硬边 */
+          box-shadow: 4px 0 12px -4px rgba(0, 0, 0, 0.08), 1px 0 4px -2px rgba(0, 0, 0, 0.08);
           display: flex;
           flex-direction: column;
-          z-index: 30;
+          /* z-index 高于 AppTitleBar(z-50)，确保顶部阴影不被标题栏背景遮挡 */
+          z-index: 60;
           user-select: none;
           padding: 20px 8px 8px 8px;
           transition: width 200ms cubic-bezier(0.4, 0, 0.2, 1), padding 200ms cubic-bezier(0.4, 0, 0.2, 1);

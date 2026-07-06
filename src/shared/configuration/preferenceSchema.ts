@@ -236,7 +236,8 @@ export const SETTINGS = {
     // 注意：完整的 llmConfig 由 settingsService 单独处理
   },
   language: {
-    default: 'en' as const,
+    // 默认中文：国内用户为主，首次安装后界面、菜单均为中文
+    default: 'zh' as const,
   },
   autoApprove: {
     default: defaultAutoApprove,

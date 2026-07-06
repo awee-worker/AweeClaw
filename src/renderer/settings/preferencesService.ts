@@ -219,9 +219,15 @@ class SettingsService {
   private async ensureDbInitialized(): Promise<void> {
     if (this.dbInitialized) return
     try {
-      await api.settings.dbInitialize()
-      this.dbInitialized = true
-      logger.settings.info('[SettingsService] SQLite DB initialized')
+      const result = await api.settings.dbInitialize() as { success?: boolean; error?: string; dbPath?: string }
+      // 必须检查 success 字段：IPC 不会抛异常，而是返回 { success: false, error }
+      if (result?.success) {
+        this.dbInitialized = true
+        logger.settings.info('[SettingsService] SQLite DB initialized at', result.dbPath)
+      } else {
+        this.dbInitialized = false
+        logger.settings.error('[SettingsService] SQLite DB init returned failure:', result?.error)
+      }
     } catch (err) {
       logger.settings.error('[SettingsService] SQLite DB init failed, falling back to JSON:', err)
       this.dbInitialized = false
@@ -241,9 +247,11 @@ class SettingsService {
 
         if (hasDbData) {
           const merged = rebuildSettingsFromDb(dbData)
-          this.cache = merged
-          this.saveToLocalStorage(merged)
-          return merged
+          // 关键字段缺失时（如旧数据迁移不完整），从 localStorage / electron-store 补全
+          const filled = await this.fillMissingFromFallbackStores(merged, dbData.appSettings)
+          this.cache = filled
+          this.saveToLocalStorage(filled)
+          return filled
         }
       } catch (err) {
         logger.settings.error('[SettingsService] SQLite load failed, falling back to cache:', err)
@@ -285,17 +293,82 @@ class SettingsService {
     }
   }
 
+  /**
+   * 从 localStorage / electron-store 补全 SQLite 中缺失的字段
+   * 场景：SQLite 初始化成功但部分字段缺失（如旧版本数据迁移不完整）
+   *
+   * @param sqliteSettings 从 SQLite 重建的设置（缺失字段已用默认值填充）
+   * @param dbAppSettings SQLite app_settings 表原始数据（用于判断字段是否真的缺失）
+   */
+  private async fillMissingFromFallbackStores(
+    sqliteSettings: SettingsState,
+    dbAppSettings?: Record<string, any>,
+  ): Promise<SettingsState> {
+    // 通过原始数据判断字段是否真的缺失（而非用户设置为默认值）
+    const languageMissing = !dbAppSettings || dbAppSettings.language === undefined || dbAppSettings.language === null
+    const onboardingMissing = !dbAppSettings || dbAppSettings.onboardingCompleted === undefined || dbAppSettings.onboardingCompleted === null
+
+    if (!languageMissing && !onboardingMissing) {
+      return sqliteSettings
+    }
+
+    // 优先从 localStorage 补全
+    try {
+      const cached = StorageService.get<Record<string, unknown>>(LOCAL_CACHE_KEY)
+      if (cached) {
+        return {
+          ...sqliteSettings,
+          language: languageMissing ? ((cached.language as 'en' | 'zh') || sqliteSettings.language) : sqliteSettings.language,
+          onboardingCompleted: onboardingMissing
+            ? (typeof cached.onboardingCompleted === 'boolean' ? cached.onboardingCompleted : sqliteSettings.onboardingCompleted)
+            : sqliteSettings.onboardingCompleted,
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    // 其次从 electron-store 补全
+    try {
+      const appSettings = await api.settings.get(STORAGE_KEYS.APP) as Record<string, unknown> | undefined
+      if (appSettings) {
+        return {
+          ...sqliteSettings,
+          language: languageMissing ? ((appSettings.language as 'en' | 'zh') || sqliteSettings.language) : sqliteSettings.language,
+          onboardingCompleted: onboardingMissing
+            ? (typeof appSettings.onboardingCompleted === 'boolean' ? appSettings.onboardingCompleted : sqliteSettings.onboardingCompleted)
+            : sqliteSettings.onboardingCompleted,
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    return sqliteSettings
+  }
+
   /** 保存全部设置到 SQLite + electron-store（双写） */
   async save(settings: SettingsState): Promise<void> {
     try {
       this.cache = settings
       this.saveToLocalStorage(settings)
 
-      // 并行写入 SQLite 和 electron-store
-      const sqlitePromise = this.saveToDb(settings)
-      const jsonPromise = this.saveToJsonStore(settings)
+      // 并行发起 SQLite 与 electron-store 写入
+      // 使用 allSettled 确保 electron-store（语言持久化的关键）不受 SQLite 失败影响
+      const [sqliteResult, jsonResult] = await Promise.allSettled([
+        this.saveToDb(settings),
+        this.saveToJsonStore(settings),
+      ])
 
-      await Promise.all([sqlitePromise, jsonPromise])
+      // SQLite 失败仅记录日志，不阻塞流程（electron-store 仍是可靠兜底）
+      if (sqliteResult.status === 'rejected') {
+        logger.settings.warn('[SettingsService] SQLite save failed (JSON still saved):', sqliteResult.reason)
+      }
+      // electron-store 失败是严重错误（语言等关键设置可能丢失）
+      if (jsonResult.status === 'rejected') {
+        logger.settings.error('[SettingsService] JSON store save failed:', jsonResult.reason)
+        throw jsonResult.reason
+      }
 
       await this.syncToMain(settings)
 
@@ -402,12 +475,18 @@ class SettingsService {
     appSettings.securitySettings = settings.securitySettings
     appSettings.privacySettings = settings.privacySettings
 
-    await api.settings.dbSaveAll({
+    const result = await api.settings.dbSaveAll({
       providerConfigs,
       currentProviderId: settings.llmConfig.provider,
       llmBehavior,
       appSettings,
-    })
+    }) as { success?: boolean; error?: string }
+
+    // 检查保存结果：SQLite 保存失败不应阻塞流程（electron-store 仍保存成功）
+    if (!result?.success) {
+      logger.settings.warn('[SettingsService] SQLite save returned failure:', result?.error)
+      throw new Error(`SQLite save failed: ${result?.error || 'unknown'}`)
+    }
   }
 
   // ============================================

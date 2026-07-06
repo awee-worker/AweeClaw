@@ -406,13 +406,15 @@ export function useSettingsLocalState(embedded: boolean) {
       set('providerConfigs', finalProviderConfigs)
       set('editorConfig', finalEditorConfig)
 
-      await save()
-
+      // 语言同步到主进程必须在 save() 之前执行，确保即使 save 失败，
+      // 主进程的语言设置（影响菜单、系统对话框）也能持久化
       try {
         window.electronAPI?.setLanguage?.(state.localLanguage)
       } catch (e) {
         logger.settings.error('语言同步失败:', e)
       }
+
+      await save()
 
       window.electronAPI?.httpSetSearchEngineState?.({
         searchEngines: state.localWebSearchConfig.searchEngines || {},

@@ -13,6 +13,10 @@ const CommandHub = lazy(() => import('@components/modals/CommandHub'))
 const ShortcutReference = lazy(() => import('@components/modals/ShortcutReference'))
 const FileNavigator = lazy(() => import('@components/modals/FileNavigator'))
 const AppIdentityPanel = lazy(() => import('@components/modals/AppIdentityPanel'))
+// 首次使用引导向导（延迟加载，避免影响首屏性能）
+const OnboardingWizard = lazy(() =>
+  import('@scenarios/dev-assistant/components/OnboardingWizard').then(m => ({ default: m.default }))
+)
 
 interface GlobalOverlaysProps {
   showKeyboardShortcuts: boolean
@@ -25,9 +29,9 @@ interface GlobalOverlaysProps {
 export default function GlobalOverlays({
   showKeyboardShortcuts,
   setShowKeyboardShortcuts,
-  showOnboarding: _showOnboarding,
-  setShowOnboarding: _setShowOnboarding,
-  isInitialized: _isInitialized,
+  showOnboarding,
+  setShowOnboarding,
+  isInitialized,
 }: GlobalOverlaysProps) {
   const { showCommandPalette, setShowCommandPalette, showQuickOpen, setShowQuickOpen, showAbout, setShowAbout } =
     useStore(useShallow((s) => ({
@@ -66,6 +70,12 @@ export default function GlobalOverlays({
       {showAbout && (
         <Suspense fallback={null}>
           <AppIdentityPanel onClose={() => setShowAbout(false)} />
+        </Suspense>
+      )}
+      {/* 首次使用引导向导：仅在初始化完成且需要展示时渲染 */}
+      {isInitialized && showOnboarding && (
+        <Suspense fallback={null}>
+          <OnboardingWizard onComplete={() => setShowOnboarding(false)} />
         </Suspense>
       )}
     </>
