@@ -295,7 +295,7 @@ function registerCsp(win: BrowserWindow): void {
           "frame-src 'self' http://127.0.0.1:* http://localhost:*",
           "child-src 'self' http://127.0.0.1:* http://localhost:*",
           "font-src 'self' data: local-preview:",
-          "media-src 'self' local-preview:",
+          "media-src 'self' blob: local-preview:",
           "object-src 'none'",
           "base-uri 'self'",
           "form-action 'self'",

@@ -205,13 +205,6 @@ module.exports = async function afterPack(context) {
     totalRemoved += cleanSharp(unpackedDir, platform)
     totalRemoved += cleanParcelWatcher(unpackedDir, platform)
     totalRemoved += cleanXenovaModels(unpackedDir)
-
-    // 清理完全不需要的模块（主进程未使用）
-    // @img — sharp 图片处理库，主进程未使用
-    const sharpDir = path.join(unpackedDir, 'node_modules', '@img')
-    if (fs.existsSync(sharpDir)) {
-      totalRemoved += rmRecursive(sharpDir)
-    }
   }
 
   if (totalRemoved > 0) {

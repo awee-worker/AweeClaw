@@ -136,6 +136,21 @@ function clearPersistedAuth() {
   StorageService.remove(STORAGE_KEY);
 }
 
+/**
+ * 从应用配置文件（aweeclaw-config.json）读取 serverUrl
+ * 用于 login/register 等场景的兜底：当 store.serverUrl 为空（如 restoreSession 未完成）时
+ * 确保请求能发往正确的后端地址
+ */
+async function resolveServerUrlFromConfig(): Promise<string> {
+  try {
+    const { api } = await import('../../adapters/electronBridge')
+    const config = await api.settings.getAppConfig()
+    return config?.serverUrl || ''
+  } catch {
+    return ''
+  }
+}
+
 let authFailedHandler: (() => void) | null = null
 
 export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set, get) => {
@@ -189,15 +204,17 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
   cloudModels: [],
 
   login: async (url, email, password) => {
-    setServerUrl(url);
+    // 若调用方未传入有效 serverUrl（如 restoreSession 尚未完成），回退到配置文件
+    const effectiveUrl = url || (await resolveServerUrlFromConfig())
+    setServerUrl(effectiveUrl);
     const data = await backendApi.post<{ accessToken: string; refreshToken: string }>(
       '/api/v1/auth/login',
       { email, password },
     );
     // 设置 token + 持久化 + 更新 UI 状态
     setTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken });
-    persistAuth({ serverUrl: url, accessToken: data.accessToken, refreshToken: data.refreshToken, cloudMode: 'cloud' });
-    set({ serverUrl: url, isAuthenticated: true, cloudMode: 'cloud' });
+    persistAuth({ serverUrl: effectiveUrl, accessToken: data.accessToken, refreshToken: data.refreshToken, cloudMode: 'cloud' });
+    set({ serverUrl: effectiveUrl, isAuthenticated: true, cloudMode: 'cloud' });
 
     // 顺序：先获取 profile，再并发获取其他数据
     await get().fetchProfile();
@@ -210,14 +227,15 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
   },
 
   phoneLogin: async (url, phone, code) => {
-    setServerUrl(url);
+    const effectiveUrl = url || (await resolveServerUrlFromConfig())
+    setServerUrl(effectiveUrl);
     const data = await backendApi.post<{ accessToken: string; refreshToken: string }>(
       '/api/v1/auth/phone-login',
       { phone, code },
     );
     setTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken });
-    persistAuth({ serverUrl: url, accessToken: data.accessToken, refreshToken: data.refreshToken, cloudMode: 'cloud' });
-    set({ serverUrl: url, isAuthenticated: true, cloudMode: 'cloud' });
+    persistAuth({ serverUrl: effectiveUrl, accessToken: data.accessToken, refreshToken: data.refreshToken, cloudMode: 'cloud' });
+    set({ serverUrl: effectiveUrl, isAuthenticated: true, cloudMode: 'cloud' });
 
     await get().fetchProfile();
     get().fetchQuota().catch(() => {});
@@ -229,14 +247,15 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
   },
 
   register: async (url, email, password, username) => {
-    setServerUrl(url);
+    const effectiveUrl = url || (await resolveServerUrlFromConfig())
+    setServerUrl(effectiveUrl);
     const data = await backendApi.post<{ accessToken: string; refreshToken: string }>(
       '/api/v1/auth/register',
       { email, password, username },
     );
     setTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken });
-    persistAuth({ serverUrl: url, accessToken: data.accessToken, refreshToken: data.refreshToken, cloudMode: 'cloud' });
-    set({ serverUrl: url, isAuthenticated: true, cloudMode: 'cloud' });
+    persistAuth({ serverUrl: effectiveUrl, accessToken: data.accessToken, refreshToken: data.refreshToken, cloudMode: 'cloud' });
+    set({ serverUrl: effectiveUrl, isAuthenticated: true, cloudMode: 'cloud' });
 
     await get().fetchProfile();
     get().fetchQuota().catch(() => {});
@@ -248,7 +267,8 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
   },
 
   forgotPassword: async (url, email) => {
-    setServerUrl(url);
+    const effectiveUrl = url || (await resolveServerUrlFromConfig())
+    setServerUrl(effectiveUrl);
     await backendApi.post<{ message: string }>(
       '/api/v1/auth/forgot-password',
       { email },
@@ -256,7 +276,8 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
   },
 
   resetPassword: async (url, email, code, newPassword) => {
-    setServerUrl(url);
+    const effectiveUrl = url || (await resolveServerUrlFromConfig())
+    setServerUrl(effectiveUrl);
     await backendApi.post<{ message: string }>(
       '/api/v1/auth/reset-password',
       { email, code, newPassword },
@@ -361,23 +382,32 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
   restoreSession: async () => {
     const persisted = loadPersistedAuth();
 
-    // 即使没有持久化的登录信息，也尝试从配置文件读取服务器地址
-    if (!persisted?.serverUrl) {
-      try {
-        const { api } = await import('../../adapters/electronBridge')
-        const config = await api.settings.getAppConfig()
-        if (config?.serverUrl) {
-          setServerUrl(config.serverUrl)
-          set({ serverUrl: config.serverUrl })
+    // 始终优先从配置文件读取服务器地址（运维可通过 aweeclaw-config.json 统一切换环境）
+    // 否则旧版本持久化的 localhost 等地址会一直被沿用，无法更新到生产域名
+    let effectiveServerUrl = persisted?.serverUrl || ''
+    try {
+      const { api } = await import('../../adapters/electronBridge')
+      const config = await api.settings.getAppConfig()
+      if (config?.serverUrl) {
+        effectiveServerUrl = config.serverUrl
+        setServerUrl(config.serverUrl)
+        set({ serverUrl: config.serverUrl })
+        // 同步更新持久化的 serverUrl，避免下次启动仍使用旧值
+        if (persisted && persisted.serverUrl !== config.serverUrl) {
+          persistAuth({
+            ...persisted,
+            serverUrl: config.serverUrl,
+          })
         }
-      } catch { /* 配置文件不存在或读取失败，忽略 */ }
-    }
+      }
+    } catch { /* 配置文件不存在或读取失败，忽略 */ }
 
     if (!persisted || !persisted.accessToken) return;
 
-    setServerUrl(persisted.serverUrl);
+    // 使用配置文件中的 serverUrl（如有），否则回退到持久化的值
+    setServerUrl(effectiveServerUrl);
     setTokens({ accessToken: persisted.accessToken, refreshToken: persisted.refreshToken });
-    set({ serverUrl: persisted.serverUrl, cloudMode: persisted.cloudMode });
+    set({ serverUrl: effectiveServerUrl, cloudMode: persisted.cloudMode });
 
     // 用当前 accessToken 请求 profile
     // backendApi.request 内部自动处理 401 和 token refresh
