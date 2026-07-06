@@ -1,8 +1,31 @@
 /**
  * Electron API 类型定义
- * 
+ *
  * 通用类型直接从 @protocols 导入使用，这里只定义 Electron 专用类型
  */
+
+/**
+ * 语音模型配置（自定义模式，STT + TTS 合并存储但分别启用）
+ * 与本地 SQLite voice_model_config 表对应（已解密、字段已规范化）
+ */
+interface VoiceModelConfig {
+  sttEnabled: boolean
+  sttProvider: string
+  sttModel: string
+  sttApiKey: string
+  sttBaseUrl: string
+  sttLanguage: string         // 'auto' | 'zh' | 'en' | ...
+  sttTimeout: number
+  ttsEnabled: boolean
+  ttsProvider: string
+  ttsModel: string
+  ttsVoice: string
+  ttsApiKey: string
+  ttsBaseUrl: string
+  ttsSpeed: number
+  ttsTimeout: number
+  updatedAt: number
+}
 
 interface AuditEntry {
   pipelineId: string
@@ -420,6 +443,12 @@ export interface ElectronAPI {
   settingsDbGetVisionModelConfig: () => Promise<any | null>
   settingsDbSaveVisionModelConfig: (config: any) => Promise<{ success: boolean; error?: string }>
   settingsDbSetVisionModelEnabled: (enabled: boolean) => Promise<{ success: boolean; error?: string }>
+  // 语音模型配置（自定义模式，STT + TTS 合并存储但分别启用）
+  // 配置结构：{ sttEnabled, sttProvider, sttModel, sttApiKey, sttBaseUrl, sttLanguage, sttTimeout,
+  //           ttsEnabled, ttsProvider, ttsModel, ttsVoice, ttsApiKey, ttsBaseUrl, ttsSpeed, ttsTimeout }
+  settingsDbGetVoiceModelConfig: () => Promise<VoiceModelConfig | null>
+  settingsDbSaveVoiceModelConfig: (config: Partial<VoiceModelConfig>) => Promise<{ success: boolean; error?: string }>
+  settingsDbSetVoiceModelEnabled: (payload: { sttEnabled: boolean; ttsEnabled: boolean }) => Promise<{ success: boolean; error?: string }>
   // LLM
   sendMessage: (params: LLMSendMessageParams) => Promise<void>
   compactContext: (params: LLMSendMessageParams) => Promise<{

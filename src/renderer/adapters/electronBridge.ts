@@ -381,6 +381,12 @@ function createGroupedAPI() {
       dbGetVisionModelConfig: () => raw.settingsDbGetVisionModelConfig(),
       dbSaveVisionModelConfig: (config: any) => raw.settingsDbSaveVisionModelConfig(config),
       dbSetVisionModelEnabled: (enabled: boolean) => raw.settingsDbSetVisionModelEnabled(enabled),
+      // 语音模型配置（自定义模式，STT + TTS 合并存储但分别启用）
+      dbGetVoiceModelConfig: () => raw.settingsDbGetVoiceModelConfig(),
+      dbSaveVoiceModelConfig: (config: any) =>
+        raw.settingsDbSaveVoiceModelConfig(config),
+      dbSetVoiceModelEnabled: (payload: { sttEnabled: boolean; ttsEnabled: boolean }) =>
+        raw.settingsDbSetVoiceModelEnabled(payload),
     },
 
     // 会话数据库 (SQLite)

@@ -38,6 +38,12 @@ export function createStorageApi() {
       invoke('settings-db:saveVisionModelConfig')(config),
     settingsDbSetVisionModelEnabled: (enabled: boolean) =>
       invoke('settings-db:setVisionModelEnabled')(enabled),
+    // 语音模型配置（自定义模式，STT + TTS 合并存储但分别启用）
+    settingsDbGetVoiceModelConfig: invoke('settings-db:getVoiceModelConfig'),
+    settingsDbSaveVoiceModelConfig: (config: unknown) =>
+      invoke('settings-db:saveVoiceModelConfig')(config),
+    settingsDbSetVoiceModelEnabled: (payload: { sttEnabled: boolean; ttsEnabled: boolean }) =>
+      invoke('settings-db:setVoiceModelEnabled')(payload),
 
     // ── Session DB ──
     sessionDbInitialize: (params?: { sessionsDir?: string }) =>

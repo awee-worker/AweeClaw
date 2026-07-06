@@ -249,6 +249,41 @@ export function registerSettingsDbIpcHandlers(preferencesStore: Store): void {
     }
   })
 
+  // ============ 语音模型配置（自定义模式） ============
+  // STT（语音识别）和 TTS（语音合成）合并存储，但可分别启用
+
+  // 获取语音模型配置
+  safeIpcHandle('settings-db:getVoiceModelConfig', async () => {
+    try {
+      return db.getVoiceModelConfig()
+    } catch (err) {
+      logger.settings.error('[SettingsDb] GetVoiceModelConfig failed:', err)
+      return null
+    }
+  })
+
+  // 保存语音模型配置（upsert，STT 和 TTS 一并写入）
+  safeIpcHandle('settings-db:saveVoiceModelConfig', async (_event, config: any) => {
+    try {
+      db.upsertVoiceModelConfig(config)
+      return { success: true }
+    } catch (err) {
+      logger.settings.error('[SettingsDb] SaveVoiceModelConfig failed:', err)
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
+  // 更新语音模型启用状态（STT/TTS 分别控制）
+  safeIpcHandle('settings-db:setVoiceModelEnabled', async (_event, payload: { sttEnabled: boolean; ttsEnabled: boolean }) => {
+    try {
+      db.setVoiceModelEnabled(payload.sttEnabled, payload.ttsEnabled)
+      return { success: true }
+    } catch (err) {
+      logger.settings.error('[SettingsDb] SetVoiceModelEnabled failed:', err)
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
   // 获取视觉 OCR 配置（macOS Vision OCR + OCR 路由策略）
   // 配置存储在 app_settings.visualOcrConfig，无配置时返回 null（使用默认值）
   safeIpcHandle('settings-db:getVisualOcrConfig', async () => {

@@ -65,6 +65,47 @@ export interface VisionModelConfigRow {
   updated_at: number
 }
 
+/** 语音模型配置行（STT + TTS 合并一行，id=1） */
+export interface VoiceModelConfigRow {
+  id: number
+  stt_enabled: number         // 0 | 1
+  stt_provider: string
+  stt_model: string
+  stt_api_key: string         // 加密存储
+  stt_base_url: string
+  stt_language: string        // 'auto' | 'zh' | 'en' | ...
+  stt_timeout: number
+  tts_enabled: number         // 0 | 1
+  tts_provider: string
+  tts_model: string
+  tts_voice: string
+  tts_api_key: string         // 加密存储
+  tts_base_url: string
+  tts_speed: number
+  tts_timeout: number
+  updated_at: number
+}
+
+/** 语音模型配置（已解密、字段已规范化，供上层使用） */
+export interface VoiceModelConfig {
+  sttEnabled: boolean
+  sttProvider: string
+  sttModel: string
+  sttApiKey: string
+  sttBaseUrl: string
+  sttLanguage: string
+  sttTimeout: number
+  ttsEnabled: boolean
+  ttsProvider: string
+  ttsModel: string
+  ttsVoice: string
+  ttsApiKey: string
+  ttsBaseUrl: string
+  ttsSpeed: number
+  ttsTimeout: number
+  updatedAt: number
+}
+
 // ============================================
 // 数据库路径
 // ============================================
@@ -242,6 +283,31 @@ export class SettingsDb {
         headers                     TEXT NOT NULL DEFAULT '{}',
         enabled                     INTEGER NOT NULL DEFAULT 0,
         updated_at                  INTEGER NOT NULL DEFAULT 0
+      )
+    `)
+
+    // 语音模型独立配置表（自定义模式下使用）
+    // 拆分 STT（语音识别）与 TTS（语音合成）两部分，分别可启用
+    // 与视觉模型一样，与聊天模型配置隔离，避免互相干扰
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS voice_model_config (
+        id              INTEGER PRIMARY KEY CHECK (id = 1),
+        stt_enabled     INTEGER NOT NULL DEFAULT 0,
+        stt_provider    TEXT NOT NULL DEFAULT 'openai',
+        stt_model       TEXT NOT NULL DEFAULT 'whisper-1',
+        stt_api_key     TEXT NOT NULL DEFAULT '',
+        stt_base_url    TEXT NOT NULL DEFAULT '',
+        stt_language    TEXT NOT NULL DEFAULT 'auto',
+        stt_timeout     INTEGER NOT NULL DEFAULT 120000,
+        tts_enabled     INTEGER NOT NULL DEFAULT 0,
+        tts_provider    TEXT NOT NULL DEFAULT 'openai',
+        tts_model       TEXT NOT NULL DEFAULT 'tts-1',
+        tts_voice       TEXT NOT NULL DEFAULT 'alloy',
+        tts_api_key     TEXT NOT NULL DEFAULT '',
+        tts_base_url    TEXT NOT NULL DEFAULT '',
+        tts_speed       REAL NOT NULL DEFAULT 1.0,
+        tts_timeout     INTEGER NOT NULL DEFAULT 120000,
+        updated_at      INTEGER NOT NULL DEFAULT 0
       )
     `)
 
@@ -530,6 +596,109 @@ export class SettingsDb {
   /** 仅更新启用状态 */
   setVisionModelEnabled(enabled: boolean): void {
     this.db.prepare('UPDATE vision_model_config SET enabled = ?, updated_at = ? WHERE id = 1').run(enabled ? 1 : 0, Date.now())
+  }
+
+  // ============================================
+  // 语音模型配置 CRUD（自定义模式下使用）
+  // ============================================
+
+  /** 获取语音模型配置（已解密 apiKey） */
+  getVoiceModelConfig(): VoiceModelConfig | null {
+    const row = this.db.prepare('SELECT * FROM voice_model_config WHERE id = 1').get() as VoiceModelConfigRow | undefined
+    return row ? this.rowToVoiceModelConfig(row) : null
+  }
+
+  /** 行转对象（解密 api_key，规范化字段） */
+  private rowToVoiceModelConfig(row: VoiceModelConfigRow): VoiceModelConfig {
+    return {
+      sttEnabled: row.stt_enabled === 1,
+      sttProvider: row.stt_provider || 'openai',
+      sttModel: row.stt_model || 'whisper-1',
+      sttApiKey: row.stt_api_key ? decryptString(row.stt_api_key) || '' : '',
+      sttBaseUrl: row.stt_base_url || '',
+      sttLanguage: row.stt_language || 'auto',
+      sttTimeout: row.stt_timeout || 120000,
+      ttsEnabled: row.tts_enabled === 1,
+      ttsProvider: row.tts_provider || 'openai',
+      ttsModel: row.tts_model || 'tts-1',
+      ttsVoice: row.tts_voice || 'alloy',
+      ttsApiKey: row.tts_api_key ? decryptString(row.tts_api_key) || '' : '',
+      ttsBaseUrl: row.tts_base_url || '',
+      ttsSpeed: row.tts_speed ?? 1.0,
+      ttsTimeout: row.tts_timeout || 120000,
+      updatedAt: row.updated_at,
+    }
+  }
+
+  /** 保存语音模型配置（upsert，STT 和 TTS 一并写入） */
+  upsertVoiceModelConfig(config: {
+    sttEnabled?: boolean
+    sttProvider?: string
+    sttModel?: string
+    sttApiKey?: string
+    sttBaseUrl?: string
+    sttLanguage?: string
+    sttTimeout?: number
+    ttsEnabled?: boolean
+    ttsProvider?: string
+    ttsModel?: string
+    ttsVoice?: string
+    ttsApiKey?: string
+    ttsBaseUrl?: string
+    ttsSpeed?: number
+    ttsTimeout?: number
+  }): void {
+    const now = Date.now()
+    const encryptedSttKey = config.sttApiKey ? encryptString(config.sttApiKey) : ''
+    const encryptedTtsKey = config.ttsApiKey ? encryptString(config.ttsApiKey) : ''
+    this.db.prepare(`
+      INSERT INTO voice_model_config (
+        id, stt_enabled, stt_provider, stt_model, stt_api_key, stt_base_url, stt_language, stt_timeout,
+        tts_enabled, tts_provider, tts_model, tts_voice, tts_api_key, tts_base_url, tts_speed, tts_timeout,
+        updated_at
+      ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        stt_enabled  = excluded.stt_enabled,
+        stt_provider = excluded.stt_provider,
+        stt_model    = excluded.stt_model,
+        stt_api_key  = excluded.stt_api_key,
+        stt_base_url = excluded.stt_base_url,
+        stt_language = excluded.stt_language,
+        stt_timeout  = excluded.stt_timeout,
+        tts_enabled  = excluded.tts_enabled,
+        tts_provider = excluded.tts_provider,
+        tts_model    = excluded.tts_model,
+        tts_voice    = excluded.tts_voice,
+        tts_api_key  = excluded.tts_api_key,
+        tts_base_url = excluded.tts_base_url,
+        tts_speed    = excluded.tts_speed,
+        tts_timeout  = excluded.tts_timeout,
+        updated_at   = excluded.updated_at
+    `).run(
+      config.sttEnabled ? 1 : 0,
+      config.sttProvider ?? 'openai',
+      config.sttModel ?? 'whisper-1',
+      encryptedSttKey,
+      config.sttBaseUrl ?? '',
+      config.sttLanguage ?? 'auto',
+      config.sttTimeout ?? 120000,
+      config.ttsEnabled ? 1 : 0,
+      config.ttsProvider ?? 'openai',
+      config.ttsModel ?? 'tts-1',
+      config.ttsVoice ?? 'alloy',
+      encryptedTtsKey,
+      config.ttsBaseUrl ?? '',
+      config.ttsSpeed ?? 1.0,
+      config.ttsTimeout ?? 120000,
+      now,
+    )
+  }
+
+  /** 仅更新 STT/TTS 启用状态 */
+  setVoiceModelEnabled(sttEnabled: boolean, ttsEnabled: boolean): void {
+    this.db.prepare(
+      'UPDATE voice_model_config SET stt_enabled = ?, tts_enabled = ?, updated_at = ? WHERE id = 1',
+    ).run(sttEnabled ? 1 : 0, ttsEnabled ? 1 : 0, Date.now())
   }
 
   // ============================================

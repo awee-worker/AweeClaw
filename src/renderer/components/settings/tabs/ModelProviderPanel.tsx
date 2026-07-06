@@ -27,6 +27,7 @@ import { ProviderSettingsProps } from '../preferencesTypes'
 import { isCustomProvider, type ModelConfig, type ModelGenerationParams } from '@renderer/types/modelProvider'
 import { ModelCardGrid } from './ModelCardGrid'
 import { VisionModelPanel } from './VisionModelPanel'
+import { VoiceModelPanel } from './VoiceModelPanel'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import type { CloudProviderModel } from '@store/slices/authSlice'
@@ -2279,6 +2280,9 @@ export function ModelProviderPanel({
 
           {/* 视觉模型独立配置（用于桌面视觉智能体） */}
           <VisionModelPanel language={language} />
+
+          {/* 语音模型独立配置（自定义模式：语音识别 STT + 语音合成 TTS） */}
+          <VoiceModelPanel language={language} />
           </>
       </div>
       {isAddingCustom && !isCloudMode && (
