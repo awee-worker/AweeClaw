@@ -3,13 +3,15 @@
  * [AweeClaw] 增强功能：场景标签指示、文件类型图标、拖拽排序视觉反馈
  */
 import { memo } from 'react'
-import { X, AlertCircle, AlertTriangle, RefreshCw, FileX, FileDiff, Globe } from 'lucide-react'
+import { X, AlertCircle, AlertTriangle, RefreshCw, FileX, FileDiff, Globe, Eye, Edit, Columns } from 'lucide-react'
 import { getFileName, normalizePath } from '@shared/toolkit/pathHelper'
 import { useStore } from '@store'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { t } from '@renderer/i18n'
 import { isPreviewDocumentPath } from '@shared/protocols/previewProtocol'
 import { BRAND } from '@shared/brand'
+
+export type ViewMode = 'edit' | 'preview' | 'split'
 
 interface EditorTabsProps {
   activeFilePath: string | null
@@ -21,6 +23,12 @@ interface EditorTabsProps {
   isLinting: boolean
   onRunLint: () => void
   activeFileKind?: 'file' | 'diff' | 'preview'
+  /** 当前活跃文件类型（用于决定是否显示视图模式按钮） */
+  activeFileType?: string
+  /** 当前视图模式 */
+  viewMode?: ViewMode
+  /** 视图模式切换回调 */
+  onViewModeChange?: (mode: ViewMode) => void
 }
 
 /**
@@ -46,6 +54,9 @@ export const EditorTabs = memo(function EditorTabs({
   isLinting,
   onRunLint,
   activeFileKind,
+  activeFileType,
+  viewMode,
+  onViewModeChange,
 }: EditorTabsProps) {
   // 获取数据
   const openFiles = useStore(state => state.openFiles)
@@ -131,33 +142,51 @@ export const EditorTabs = memo(function EditorTabs({
         )
       })}
 
-      {/* Lint 状态 */}
+      {/* 右侧操作区：视图模式 + Lint 状态 */}
       {activeFilePath && activeFileKind !== 'preview' && (
-        <div className="ml-auto flex items-center gap-2 px-3 flex-shrink-0 h-full border-l border-border bg-transparent">
-          {(lintErrorCount > 0 || lintWarningCount > 0) && (
-            <div className="flex items-center gap-2 text-xs mr-2">
-              {lintErrorCount > 0 && (
-                <span className="flex items-center gap-1 text-status-error" title="Errors">
-                  <AlertCircle className="w-3.5 h-3.5" />
-                  {lintErrorCount}
-                </span>
-              )}
-              {lintWarningCount > 0 && (
-                <span className="flex items-center gap-1 text-status-warning" title="Warnings">
-                  <AlertTriangle className="w-3.5 h-3.5" />
-                  {lintWarningCount}
-                </span>
-              )}
+        <div className="ml-auto flex items-center flex-shrink-0 h-full">
+          {/* 视图模式按钮组（仅 markdown / html 显示） */}
+          {activeFileType && (activeFileType === 'markdown' || activeFileType === 'html') && viewMode && onViewModeChange && (
+            <div className="flex items-center gap-1 px-2 h-full border-l border-border">
+              <button onClick={() => onViewModeChange('edit')} className={`p-1.5 rounded-md transition-colors ${viewMode === 'edit' ? 'bg-accent/20 text-accent' : 'text-text-muted hover:text-text-primary hover:bg-surface-hover'}`} title={t('editor.editMode', language)}>
+                <Edit className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={() => onViewModeChange('split')} className={`p-1.5 rounded-md transition-colors ${viewMode === 'split' ? 'bg-accent/20 text-accent' : 'text-text-muted hover:text-text-primary hover:bg-surface-hover'}`} title={t('editor.splitMode', language)}>
+                <Columns className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={() => onViewModeChange('preview')} className={`p-1.5 rounded-md transition-colors ${viewMode === 'preview' ? 'bg-accent/20 text-accent' : 'text-text-muted hover:text-text-primary hover:bg-surface-hover'}`} title={t('editor.previewMode', language)}>
+                <Eye className="w-3.5 h-3.5" />
+              </button>
             </div>
           )}
-          <button
-            onClick={onRunLint}
-            disabled={isLinting}
-            className="p-1.5 rounded-lg hover:bg-surface-hover transition-colors disabled:opacity-50 group"
-            title="Run lint check"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 text-text-muted group-hover:text-text-primary ${isLinting ? 'animate-spin' : ''}`} />
-          </button>
+
+          {/* 分隔竖线 + Lint 状态 */}
+          <div className="flex items-center gap-2 px-3 h-full border-l border-border bg-transparent">
+            {(lintErrorCount > 0 || lintWarningCount > 0) && (
+              <div className="flex items-center gap-2 text-xs mr-2">
+                {lintErrorCount > 0 && (
+                  <span className="flex items-center gap-1 text-status-error" title="Errors">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    {lintErrorCount}
+                  </span>
+                )}
+                {lintWarningCount > 0 && (
+                  <span className="flex items-center gap-1 text-status-warning" title="Warnings">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    {lintWarningCount}
+                  </span>
+                )}
+              </div>
+            )}
+            <button
+              onClick={onRunLint}
+              disabled={isLinting}
+              className="p-1.5 rounded-lg hover:bg-surface-hover transition-colors disabled:opacity-50 group"
+              title="Run lint check"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-text-muted group-hover:text-text-primary ${isLinting ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
         </div>
       )}
     </div>

@@ -77,7 +77,7 @@ export const EDITOR_DEFAULTS = {
   tabSize: 2,
   wordWrap: 'on' as const,
   lineHeight: 1.5,
-  minimap: true,
+  minimap: false,
   minimapScale: 1,
   lineNumbers: 'on' as const,
   bracketPairColorization: true,

@@ -1,4 +1,4 @@
-import { Layout, Check, Sun, Moon, Monitor, Globe, Type, MessageSquare } from 'lucide-react'
+import { Layout, Check, Sun, Moon, Monitor, Globe, Type, MessageSquare, Code2 } from 'lucide-react'
 import { useStore, type ThemeName, type ThemeMode, type ThemeColor } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { themeManager, THEME_COLOR_OPTIONS } from '@/renderer/config/themeDefinition'
@@ -410,6 +410,100 @@ export function AppearanceSettings({ settings, setSettings, language, localLangu
                     </div>
                 </section>
             )}
+
+            {/* 编辑器设置 */}
+            <section className="p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border shadow-sm">
+                <div className="flex items-center gap-2 mb-4">
+                    <div className="p-1.5 rounded-md bg-accent/10">
+                        <Code2 className="w-4 h-4 text-accent" />
+                    </div>
+                    <h4 className="text-sm font-bold text-text-primary tracking-tight">
+                        {language === 'zh' ? '编辑器设置' : 'Editor Settings'}
+                    </h4>
+                </div>
+
+                <p className="text-sm text-text-muted mb-4">
+                    {language === 'zh'
+                        ? '配置代码编辑器的显示与行为选项。'
+                        : 'Configure code editor display and behavior options.'}
+                </p>
+
+                <div className="flex flex-wrap gap-x-8 gap-y-4">
+                    <ToggleSwitch
+                        label={language === 'zh' ? '显示小地图' : 'Show minimap'}
+                        checked={settings.minimap}
+                        onChange={(e) => setSettings({ ...settings, minimap: e.target.checked })}
+                    />
+                    <ToggleSwitch
+                        label={language === 'zh' ? '自动换行' : 'Word wrap'}
+                        checked={settings.wordWrap === 'on'}
+                        onChange={(e) => setSettings({ ...settings, wordWrap: e.target.checked ? 'on' : 'off' })}
+                    />
+                    <ToggleSwitch
+                        label={language === 'zh' ? '显示行号' : 'Show line numbers'}
+                        checked={settings.lineNumbers === 'on'}
+                        onChange={(e) => setSettings({ ...settings, lineNumbers: e.target.checked ? 'on' : 'off' })}
+                    />
+                    <ToggleSwitch
+                        label={language === 'zh' ? '括号着色' : 'Bracket pair colorization'}
+                        checked={settings.bracketPairColorization}
+                        onChange={(e) => setSettings({ ...settings, bracketPairColorization: e.target.checked })}
+                    />
+                    <ToggleSwitch
+                        label={language === 'zh' ? '保存时格式化' : 'Format on save'}
+                        checked={settings.formatOnSave}
+                        onChange={(e) => setSettings({ ...settings, formatOnSave: e.target.checked })}
+                    />
+                </div>
+
+                {/* Tab 大小选择 */}
+                <div className="mt-5">
+                    <label className={labelClass}>
+                        {language === 'zh' ? '缩进大小' : 'Tab Size'}
+                    </label>
+                    <div className="flex gap-2">
+                        {[2, 4, 8].map(size => (
+                            <button
+                                key={size}
+                                onClick={() => setSettings({ ...settings, tabSize: size })}
+                                className={`px-4 py-2 rounded-lg border text-sm font-medium transition-all duration-200 ${
+                                    settings.tabSize === size
+                                        ? 'border-accent bg-accent/10 text-accent shadow-sm'
+                                        : 'border-border/50 bg-surface/30 text-text-secondary hover:border-accent/30 hover:bg-surface/50'
+                                }`}
+                            >
+                                {size}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {/* 自动保存选择 */}
+                <div className="mt-5">
+                    <label className={labelClass}>
+                        {language === 'zh' ? '自动保存' : 'Auto Save'}
+                    </label>
+                    <div className="flex gap-2">
+                        {([
+                            { value: 'off', labelZh: '关闭', labelEn: 'Off' },
+                            { value: 'afterDelay', labelZh: '延迟保存', labelEn: 'After Delay' },
+                            { value: 'onFocusChange', labelZh: '焦点切换时', labelEn: 'On Focus Change' },
+                        ] as const).map(opt => (
+                            <button
+                                key={opt.value}
+                                onClick={() => setSettings({ ...settings, autoSave: opt.value })}
+                                className={`px-4 py-2 rounded-lg border text-sm font-medium transition-all duration-200 ${
+                                    settings.autoSave === opt.value
+                                        ? 'border-accent bg-accent/10 text-accent shadow-sm'
+                                        : 'border-border/50 bg-surface/30 text-text-secondary hover:border-accent/30 hover:bg-surface/50'
+                                }`}
+                            >
+                                {language === 'zh' ? opt.labelZh : opt.labelEn}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            </section>
         </div>
     )
 }

@@ -179,9 +179,19 @@ function rebuildSettingsFromDb(dbData: {
     agentConfig: appSettings.agentConfig
       ? deepMerge(defaults.agentConfig, appSettings.agentConfig as object)
       : defaults.agentConfig,
-    editorConfig: appSettings.editorConfig
-      ? deepMerge(defaults.editorConfig, appSettings.editorConfig as object)
-      : defaults.editorConfig,
+    editorConfig: (() => {
+      const merged = appSettings.editorConfig
+        ? deepMerge(defaults.editorConfig, appSettings.editorConfig as object)
+        : defaults.editorConfig
+      // 迁移：minimap 默认改为 false，旧配置中可能保存了 true
+      // 只在用户从未通过设置界面手动修改过时强制设为 false
+      // 由于无法区分"手动设置 true"和"默认 true"，统一迁移为 false
+      // 用户可在设置→外观→编辑器设置中重新开启
+      if (merged.minimap === true && (appSettings.editorConfig as any)?.minimap === true) {
+        merged.minimap = false
+      }
+      return merged
+    })(),
     securitySettings: appSettings.securitySettings
       ? deepMerge(defaults.securitySettings, appSettings.securitySettings as object)
       : defaults.securitySettings,
@@ -550,9 +560,16 @@ class SettingsService {
       agentConfig: saved.agentConfig
         ? (this.migrateAgentConfig(deepMerge(defaults.agentConfig, saved.agentConfig as object) as unknown as Record<string, unknown>) as unknown as AgentConfig)
         : defaults.agentConfig,
-      editorConfig: saved.editorConfig
-        ? deepMerge(defaults.editorConfig, saved.editorConfig as object)
-        : defaults.editorConfig,
+      editorConfig: (() => {
+        const merged = saved.editorConfig
+          ? deepMerge(defaults.editorConfig, saved.editorConfig as object)
+          : defaults.editorConfig
+        // 迁移：minimap 默认改为 false
+        if (merged.minimap === true && (saved.editorConfig as any)?.minimap === true) {
+          merged.minimap = false
+        }
+        return merged
+      })(),
       securitySettings: saved.securitySettings
         ? deepMerge(defaults.securitySettings, saved.securitySettings as object)
         : defaults.securitySettings,
