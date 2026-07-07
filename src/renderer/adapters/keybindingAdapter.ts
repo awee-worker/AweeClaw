@@ -179,10 +179,32 @@ class ScenarioKeybindingEngine {
         const shift = parts.includes('shift')
         const alt = parts.includes('alt') || parts.includes('option')
 
-        const meta = isMac ? (hasCtrl || hasMeta) : hasMeta
-        const ctrl = isMac ? false : hasCtrl
+        // Mac 上 Ctrl+X 兼容 Cmd+X：两种按法都应触发
+        // - 字面匹配：用户按 Ctrl+P，e.ctrlKey=true → 匹配 hasCtrl
+        // - 习惯匹配：用户按 Cmd+P，e.metaKey=true → 也匹配 hasCtrl（Mac 友好）
+        // 非 Mac 平台严格按字面匹配
+        const expectMeta = hasMeta
+        const expectCtrl = hasCtrl
+        const expectShift = shift
+        const expectAlt = alt
 
-        const modifiersMatch = checkModifierState(e, { meta, ctrl, shift, alt })
+        // 字面匹配（所有平台）
+        const literalMatch = checkModifierState(e, {
+            meta: expectMeta,
+            ctrl: expectCtrl,
+            shift: expectShift,
+            alt: expectAlt,
+        })
+
+        // Mac 友好匹配：Ctrl+X 也接受 Cmd+X
+        const macFriendlyMatch = isMac && hasCtrl && !hasMeta && checkModifierState(e, {
+            meta: true,
+            ctrl: false,
+            shift: expectShift,
+            alt: expectAlt,
+        })
+
+        const modifiersMatch = literalMatch || macFriendlyMatch
 
         let keyMatch = false
         if (key === 'space') {

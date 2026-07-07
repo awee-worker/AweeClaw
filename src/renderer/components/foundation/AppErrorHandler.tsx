@@ -64,6 +64,11 @@ export function GlobalErrorHandler({ children }: GlobalErrorHandlerProps) {
         return
       }
 
+      // 忽略 xterm.js FitAddon 的 dimensions 错误（终端初始化时的无害错误）
+      if (event.message?.includes('dimensions')) {
+        return
+      }
+
       // 忽略 Monaco Editor 的 inmemory model 错误（DiffEditor 卸载时的已知问题）
       if (event.message?.includes('inmemory://model')) {
         return

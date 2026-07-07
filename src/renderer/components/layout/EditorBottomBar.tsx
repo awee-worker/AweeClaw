@@ -8,27 +8,26 @@ import { BRAND } from '@shared/brand'
 export default function EditorBottomBar() {
   const {
     language,
-    terminalVisible,
-    setTerminalVisible,
-    debugVisible,
-    setDebugVisible,
     isGitRepo,
     gitStatus,
     activeFilePath,
     cursorPosition,
-    setActiveSidePanel,
+    openDockPanel,
+    dockPanelVisible,
+    activeDockTab,
   } = useStore(useShallow(s => ({
     language: s.language,
-    terminalVisible: s.terminalVisible,
-    setTerminalVisible: s.setTerminalVisible,
-    debugVisible: s.debugVisible,
-    setDebugVisible: s.setDebugVisible,
     isGitRepo: s.isGitRepo,
     gitStatus: s.gitStatus,
     activeFilePath: s.activeFilePath,
     cursorPosition: s.cursorPosition,
-    setActiveSidePanel: s.setActiveSidePanel,
+    openDockPanel: s.openDockPanel,
+    dockPanelVisible: s.dockPanelVisible,
+    activeDockTab: s.activeDockTab,
   })))
+
+  const isTerminalActive = dockPanelVisible && activeDockTab === 'terminal'
+  const isDebugActive = dockPanelVisible && activeDockTab === 'debug'
 
   const diagnostics = useDiagnosticsStore(state => state.diagnostics)
   const version = useDiagnosticsStore(state => state.version)
@@ -66,7 +65,7 @@ export default function EditorBottomBar() {
         )}
 
         <button
-          onClick={() => setActiveSidePanel('problems')}
+          onClick={() => openDockPanel('problems')}
           className="flex items-center gap-1.5 px-1.5 py-0.5 rounded-md hover:bg-white/5 transition-colors text-text-muted group hover:text-text-primary"
         >
           <XCircle className={`w-3 h-3 ${currentFileStats.errors > 0 ? 'text-red-400' : 'text-text-muted group-hover:text-text-primary transition-colors'}`} />
@@ -87,18 +86,18 @@ export default function EditorBottomBar() {
 
         <div className="flex items-center gap-0.5">
           <button
-            onClick={() => setTerminalVisible(!terminalVisible)}
+            onClick={() => openDockPanel('terminal')}
             className="group flex items-center justify-center w-6 h-6 rounded-md transition-all"
-            title={language === 'zh' ? (terminalVisible ? '隐藏终端' : '显示终端') : (terminalVisible ? 'Hide Terminal' : 'Show Terminal')}
+            title={language === 'zh' ? (isTerminalActive ? '隐藏终端' : '显示终端') : (isTerminalActive ? 'Hide Terminal' : 'Show Terminal')}
           >
-            <Terminal className={`w-3 h-3 transition-colors ${terminalVisible ? 'text-accent' : 'text-text-muted group-hover:text-text-primary'}`} />
+            <Terminal className={`w-3 h-3 transition-colors ${isTerminalActive ? 'text-accent' : 'text-text-muted group-hover:text-text-primary'}`} />
           </button>
           <button
-            onClick={() => setDebugVisible(!debugVisible)}
+            onClick={() => openDockPanel('debug')}
             className="group flex items-center justify-center w-6 h-6 rounded-md transition-all"
-            title={language === 'zh' ? (debugVisible ? '隐藏调试' : '显示调试') : (debugVisible ? 'Hide Debug' : 'Show Debug')}
+            title={language === 'zh' ? (isDebugActive ? '隐藏调试' : '显示调试') : (isDebugActive ? 'Hide Debug' : 'Show Debug')}
           >
-            <Bug className={`w-3 h-3 transition-colors ${debugVisible ? 'text-accent' : 'text-text-muted group-hover:text-text-primary'}`} />
+            <Bug className={`w-3 h-3 transition-colors ${isDebugActive ? 'text-accent' : 'text-text-muted group-hover:text-text-primary'}`} />
           </button>
         </div>
       </div>

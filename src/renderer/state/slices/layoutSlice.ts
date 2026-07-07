@@ -37,6 +37,9 @@ export type SidePanel =
 /** 终端布局模式 */
 export type TerminalLayout = 'tabs' | 'split'
 
+/** 底部 Dock 面板 Tab 类型 */
+export type DockTab = 'problems' | 'output' | 'debug' | 'terminal'
+
 /** 全屏页面状态键集合 */
 const FULLSCREEN_PAGE_KEYS = [
   'showWelcomePage',
@@ -61,6 +64,8 @@ const LAYOUT_DEFAULTS = {
   chatWidth: 600,
   terminalLayout: 'tabs' as TerminalLayout,
   navRailExpanded: true,
+  dockPanelVisible: false,
+  activeDockTab: 'terminal' as DockTab,
 } satisfies Record<string, unknown>
 
 /** 构建全屏页面初始状态 */
@@ -95,6 +100,10 @@ export interface LayoutSlice {
   chatVisible: boolean
   navRailExpanded: boolean
 
+  /* ===== 底部 Dock 面板 ===== */
+  dockPanelVisible: boolean
+  activeDockTab: DockTab
+
   /* ===== 面板尺寸 ===== */
   sidebarWidth: number
   chatWidth: number
@@ -120,6 +129,12 @@ export interface LayoutSlice {
   toggleSidebar: () => void
   toggleChat: () => void
   toggleNavRail: () => void
+
+  /* ===== 底部 Dock 面板操作 ===== */
+  setDockPanelVisible: (visible: boolean) => void
+  setActiveDockTab: (tab: DockTab) => void
+  toggleDockPanel: () => void
+  openDockPanel: (tab: DockTab) => void
 
   /* ===== 面板尺寸操作 ===== */
   setSidebarWidth: (width: number) => void
@@ -149,6 +164,8 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
   sidebarWidth: LAYOUT_DEFAULTS.sidebarWidth,
   chatWidth: LAYOUT_DEFAULTS.chatWidth,
   terminalLayout: LAYOUT_DEFAULTS.terminalLayout,
+  dockPanelVisible: LAYOUT_DEFAULTS.dockPanelVisible,
+  activeDockTab: LAYOUT_DEFAULTS.activeDockTab,
   ...buildInitialFullscreenPages(),
 
   /* ----- 面板可见性操作 ----- */
@@ -157,18 +174,48 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
       activeSidePanel: panel,
       lastActiveSidePanel: panel ?? state.lastActiveSidePanel,
     })),
-  setTerminalVisible: (visible) => set({ terminalVisible: visible }),
-  setDebugVisible: (visible) => set({ debugVisible: visible }),
+  setTerminalVisible: (visible) => set((state) => ({ 
+    terminalVisible: visible,
+    dockPanelVisible: visible ? true : (state.activeDockTab === 'terminal' ? false : state.dockPanelVisible),
+    activeDockTab: visible ? 'terminal' : state.activeDockTab,
+  })),
+  setDebugVisible: (visible) => set((state) => ({ 
+    debugVisible: visible,
+    dockPanelVisible: visible ? true : (state.activeDockTab === 'debug' ? false : state.dockPanelVisible),
+    activeDockTab: visible ? 'debug' : state.activeDockTab,
+  })),
   setChatVisible: (visible) => set({ chatVisible: visible }),
   setNavRailExpanded: (expanded) => set({ navRailExpanded: expanded }),
-  toggleTerminal: () => set((state) => ({ terminalVisible: !state.terminalVisible })),
-  toggleDebug: () => set((state) => ({ debugVisible: !state.debugVisible })),
+  toggleTerminal: () => set((state) => {
+    const newTerminalVisible = !state.terminalVisible
+    if (newTerminalVisible) {
+      return { terminalVisible: true, dockPanelVisible: true, activeDockTab: 'terminal' }
+    } else if (state.activeDockTab === 'terminal') {
+      return { terminalVisible: false, dockPanelVisible: false }
+    }
+    return { terminalVisible: false }
+  }),
+  toggleDebug: () => set((state) => {
+    const newDebugVisible = !state.debugVisible
+    if (newDebugVisible) {
+      return { debugVisible: true, dockPanelVisible: true, activeDockTab: 'debug' }
+    } else if (state.activeDockTab === 'debug') {
+      return { debugVisible: false, dockPanelVisible: false }
+    }
+    return { debugVisible: false }
+  }),
   toggleSidebar: () =>
     set((state) => ({
       activeSidePanel: state.activeSidePanel ? null : state.lastActiveSidePanel,
     })),
   toggleChat: () => set((state) => ({ chatVisible: !state.chatVisible })),
   toggleNavRail: () => set((state) => ({ navRailExpanded: !state.navRailExpanded })),
+
+  /* ----- 底部 Dock 面板操作 ----- */
+  setDockPanelVisible: (visible) => set({ dockPanelVisible: visible }),
+  setActiveDockTab: (tab) => set({ activeDockTab: tab }),
+  toggleDockPanel: () => set((state) => ({ dockPanelVisible: !state.dockPanelVisible })),
+  openDockPanel: (tab) => set({ dockPanelVisible: true, activeDockTab: tab }),
 
   /* ----- 面板尺寸操作 ----- */
   setSidebarWidth: (width) => set({ sidebarWidth: width }),

@@ -2,11 +2,21 @@ import { Search, TerminalSquare, FolderOpen, Settings, Keyboard } from 'lucide-r
 import { useStore } from '@store'
 import { t } from '@renderer/i18n'
 
+/**
+ * 编辑器无文件时的欢迎页
+ *
+ * 场景感知：当 activeScenarioId 为 scenario-builder 时，
+ * 显示场景开发专属文案，让用户立刻感知"我在场景开发工作台"。
+ */
 export function EditorWelcome() {
   const language = useStore((state) => state.language)
+  const activeScenarioId = useStore((state) => state.activeScenarioId)
   const setShowSettingsPage = useStore((state) => state.setShowSettingsPage)
   const openQuickOpen = () => useStore.getState().setShowQuickOpen(true)
   const openCommandPalette = () => useStore.getState().setShowCommandPalette(true)
+
+  // 场景感知：scenario-builder 场景显示专属文案
+  const isScenarioBuilder = activeScenarioId === 'scenario-builder'
 
   const shortcuts = [
     { icon: <Search className="w-4 h-4" />, label: t('editorWelcome.searchTitle', language), action: openQuickOpen, keys: ['Ctrl', 'P'] },
@@ -14,6 +24,14 @@ export function EditorWelcome() {
     { icon: <FolderOpen className="w-4 h-4" />, label: t('editorWelcome.openRecentFile', language), action: openQuickOpen, keys: null },
     { icon: <Settings className="w-4 h-4" />, label: t('welcome.settings', language), action: () => setShowSettingsPage(true), keys: ['Ctrl', ','] },
   ]
+
+  // 场景化标题与副标题
+  const title = isScenarioBuilder
+    ? t('builder.welcome.heroTitle', language)
+    : t('editorWelcome.title', language)
+  const subtitle = isScenarioBuilder
+    ? t('builder.welcome.heroSubtitle', language)
+    : t('editorWelcome.subtitle', language)
 
   return (
     <div className="h-full flex items-center justify-center bg-background-editor">
@@ -23,10 +41,10 @@ export function EditorWelcome() {
             <Keyboard className="w-6 h-6 text-accent" strokeWidth={1.5} />
           </div>
           <h2 className="text-xl font-semibold text-text-primary">
-            {t('editorWelcome.title', language)}
+            {title}
           </h2>
           <p className="text-sm text-text-muted text-center leading-relaxed">
-            {t('editorWelcome.subtitle', language)}
+            {subtitle}
           </p>
         </div>
 

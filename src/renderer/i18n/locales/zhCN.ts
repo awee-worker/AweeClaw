@@ -2165,6 +2165,16 @@ export const zh = {
   'wf.next': '下一步',
   'wf.skiptour': '跳过引导',
 
+  'problems.errors': '错误',
+  'problems.warnings': '警告',
+  'problems.info': '信息',
+  'problems.hints': '提示',
+  'problems.noProblems': '未检测到问题',
+  'problems.noProblemsDescription': '工作区文件没有错误或警告。代码看起来很好。',
+
+  'output.noOutput': '无输出',
+  'output.noOutputDescription': '工具调用和命令输出将显示在这里',
+
   'editor.cannotpreviewthisdocfile': '无法预览此 .doc 文件',
   'editor.unabletoextracttextfrom': '该 .doc 文件无法提取文本内容，建议将文件另存为 .docx 格式后重试，或使用系统默认程序打开。',
   'editor.openwithdefaultapp': '用默认程序打开',

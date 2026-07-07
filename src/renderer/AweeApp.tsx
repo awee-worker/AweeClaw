@@ -181,6 +181,7 @@ function AppContent() {
     if (isWideModePanel) return true
     if (isShellStudioActive && layoutConfig.chatPosition !== 'primary') return true
     if (showSettingsPage || showWelcomePage || showUserProfilePage || showBillingCenterPage || showSessionHistoryPage || showPluginCenterPage || showScenarioPage) return true
+    return false
   }, [layoutConfig.showSidebar, layoutConfig.chatPosition, activeSidePanel, isWideModePanel, isShellStudioActive, showSettingsPage, showWelcomePage, showUserProfilePage, showBillingCenterPage, showSessionHistoryPage, showPluginCenterPage, showScenarioPage])
 
   return (

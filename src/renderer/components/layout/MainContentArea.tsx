@@ -22,7 +22,6 @@ import ChatSection from './ChatSection'
 const ChatPanel = lazy(() => import('@components/intelligence/ChatPanel'))
 const Editor = lazy(() => import('@components/workspace-editor/WorkspaceEditor'))
 const TerminalStudio = lazy(() => import('@renderer/shell/components/TerminalStudio'))
-const TerminalPanel = lazy(() => import('@components/dock-panels/TerminalConsolePanel'))
 const DataDashboard = lazy(() => import('@components/dashboard/InsightDashboard'))
 const CanvasWorkspace = lazy(() => import('@components/canvas/WorkspaceCanvas'))
 const DynamicPanelView = lazy(() => import('@components/explorer/AdaptivePanelView').then(m => ({ default: m.DynamicPanelView })))
@@ -167,11 +166,10 @@ function PrimaryMainContent({ layoutConfig, isWideModePanel }: MainContentAreaPr
 // ====== Secondary 布局（chatPosition !== primary）======
 
 function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeComponent }: MainContentAreaProps) {
-  const { chatVisible, terminalVisible, openFiles, activeFilePath,
+  const { chatVisible, openFiles, activeFilePath,
     showSettingsPage, showWelcomePage, showUserProfilePage, showBillingCenterPage, showSessionHistoryPage, showPluginCenterPage,
     activeSidePanel } = useStore(useShallow((s) => ({
     chatVisible: s.chatVisible,
-    terminalVisible: s.terminalVisible,
     openFiles: s.openFiles,
     activeFilePath: s.activeFilePath,
     showSettingsPage: s.showSettingsPage,
@@ -261,9 +259,6 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
         ) : (
           <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
             <EditorSlot />
-            {layoutConfig.showTerminal && terminalVisible && (
-              <ErrorBoundary><Suspense fallback={null}><TerminalPanel /></Suspense></ErrorBoundary>
-            )}
             <EditorBottomBar />
           </div>
         )}
@@ -339,23 +334,8 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
 // ====== 导出 ======
 
 export default function MainContentArea(props: MainContentAreaProps) {
-  // 响应式订阅终端可见性（必须在所有条件 return 之前调用 hook）
-  const terminalVisible = useStore(s => s.terminalVisible)
-
   if (props.layoutConfig.chatPosition === 'primary') {
     return <PrimaryMainContent {...props} />
   }
-  const content = <SecondaryMainContent {...props} />
-  // 非 editor-centric / split-centric 布局下，终端面板作为底部 dock 统一渲染
-  // 确保点击 "终端" 按钮在任何布局下都能在编辑器底部打开终端
-  const supportsTerminal = props.layoutConfig.showTerminal
-  if (supportsTerminal || !terminalVisible) return content
-  return (
-    <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-      <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
-        {content}
-      </div>
-      <ErrorBoundary><Suspense fallback={null}><TerminalPanel /></Suspense></ErrorBoundary>
-    </div>
-  )
+  return <SecondaryMainContent {...props} />
 }

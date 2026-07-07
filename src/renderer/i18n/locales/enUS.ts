@@ -2166,6 +2166,16 @@ export const en = {
   'wf.next': 'Next',
   'wf.skiptour': 'Skip tour',
 
+  'problems.errors': 'Errors',
+  'problems.warnings': 'Warnings',
+  'problems.info': 'Info',
+  'problems.hints': 'Hints',
+  'problems.noProblems': 'No problems detected',
+  'problems.noProblemsDescription': 'Workspace files have no errors or warnings. Code looks good.',
+
+  'output.noOutput': 'No output',
+  'output.noOutputDescription': 'Tool calls and command outputs will appear here',
+
   'editor.cannotpreviewthisdocfile': 'Cannot preview this .doc file',
   'editor.unabletoextracttextfrom': 'Unable to extract text from this .doc file. Please save as .docx format and try again, or open with the system default application.',
   'editor.openwithdefaultapp': 'Open with Default App',

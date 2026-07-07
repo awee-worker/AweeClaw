@@ -47,6 +47,8 @@ const PptPreview = safeNamedLazy(() => import('./DocumentPreview'), 'PptPreview'
 const XlsxPreview = safeNamedLazy(() => import('./DocumentPreview'), 'XlsxPreview', { label: 'XlsxPreview', silent: true })
 const CsvPreview = safeNamedLazy(() => import('./DocumentPreview'), 'CsvPreview', { label: 'CsvPreview', silent: true })
 
+const DockPanel = safeLazy(() => import('@components/dock-panels/DockPanel'), { label: 'DockPanel', silent: true })
+
 import { DiffPreview } from './DiffViewerPanel'
 import DiffViewer from './CodeDiffViewer'
 import { SafeDiffEditor } from './SecureDiffEditor'
@@ -644,6 +646,10 @@ export default function Editor() {
           <EditorContextMenu x={contextMenu.x} y={contextMenu.y} editor={editorRef.current} onClose={() => setContextMenu(null)} />
         )}
       </div>
+
+      <Suspense fallback={null}>
+        <DockPanel />
+      </Suspense>
 
       {tabContextMenu && (
         <TabContextMenu

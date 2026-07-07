@@ -184,28 +184,25 @@ export default function WorkspaceStatusBar() {
     workspacePath,
     setShowSettingsPage,
     language,
-    terminalVisible,
-    setTerminalVisible,
-    debugVisible,
-    setDebugVisible,
     cursorPosition,
     isGitRepo,
     gitStatus,
-    setActiveSidePanel,
+    activeDockTab,
+    dockPanelVisible,
   } = useStore(useShallow(s => ({
     activeFilePath: s.activeFilePath,
     workspacePath: s.workspacePath,
     setShowSettingsPage: s.setShowSettingsPage,
     language: s.language,
-    terminalVisible: s.terminalVisible,
-    setTerminalVisible: s.setTerminalVisible,
-    debugVisible: s.debugVisible,
-    setDebugVisible: s.setDebugVisible,
     cursorPosition: s.cursorPosition,
     isGitRepo: s.isGitRepo,
     gitStatus: s.gitStatus,
-    setActiveSidePanel: s.setActiveSidePanel,
+    activeDockTab: s.activeDockTab,
+    dockPanelVisible: s.dockPanelVisible,
   })))
+
+  const isTerminalActive = dockPanelVisible && activeDockTab === 'terminal'
+  const isDebugActive = dockPanelVisible && activeDockTab === 'debug'
 
   const activeScenarioId = useStore(s => s.activeScenarioId)
   const showEditor = useMemo(() => {
@@ -283,7 +280,8 @@ export default function WorkspaceStatusBar() {
   }, [workspacePath])
 
   const handleIndexClick = () => setShowSettingsPage(true)
-  const handleDiagnosticsClick = () => setActiveSidePanel('problems')
+  const openDockPanel = useStore(s => s.openDockPanel)
+  const handleDiagnosticsClick = () => openDockPanel('problems')
   const toolCallLogs = useStore(state => state.toolCallLogs)
   const currentThreadToolCallCount = useMemo(
     () => currentThreadId ? toolCallLogs.filter(log => log.threadId === currentThreadId).length : 0,
@@ -623,20 +621,20 @@ export default function WorkspaceStatusBar() {
         {showEditor && (
           <div className="flex items-center gap-0.5 h-full">
             <button
-              onClick={() => setTerminalVisible(!terminalVisible)}
+              onClick={() => openDockPanel('terminal')}
               className="group flex items-center justify-center w-7 h-7 rounded-md transition-all"
               title="Toggle Terminal"
             >
-              <div className={`flex items-center justify-center w-5 h-5 rounded-md transition-colors ${terminalVisible ? 'text-accent drop-shadow-[0_0_6px_rgba(var(--accent-rgb),0.5)]' : 'text-text-muted hover:bg-white/5 hover:text-text-primary'}`}>
+              <div className={`flex items-center justify-center w-5 h-5 rounded-md transition-colors ${isTerminalActive ? 'text-accent drop-shadow-[0_0_6px_rgba(var(--accent-rgb),0.5)]' : 'text-text-muted hover:bg-white/5 hover:text-text-primary'}`}>
                 <Terminal className="w-3 h-3" />
               </div>
             </button>
             <button
-              onClick={() => setDebugVisible(!debugVisible)}
+              onClick={() => openDockPanel('debug')}
               className="group flex items-center justify-center w-7 h-7 rounded-md transition-all"
               title="Toggle Debug"
             >
-              <div className={`flex items-center justify-center w-5 h-5 rounded-md transition-colors ${debugVisible ? 'text-accent drop-shadow-[0_0_6px_rgba(var(--accent-rgb),0.5)]' : 'text-text-muted hover:bg-white/5 hover:text-text-primary'}`}>
+              <div className={`flex items-center justify-center w-5 h-5 rounded-md transition-colors ${isDebugActive ? 'text-accent drop-shadow-[0_0_6px_rgba(var(--accent-rgb),0.5)]' : 'text-text-muted hover:bg-white/5 hover:text-text-primary'}`}>
                 <Bug className="w-3 h-3" />
               </div>
             </button>
