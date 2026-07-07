@@ -59,7 +59,7 @@ export const LSP_DEFAULTS = {
 
 export const TERMINAL_DEFAULTS = {
   fontSize: 13,
-  fontFamily: "'JetBrains Mono', 'JetBrainsMono', 'Fira Code', 'FiraCode-Retina', 'Consolas', 'Monaco', 'Hannotate SC', monospace, -apple-system",
+  fontFamily: "'Menlo', 'Monaco', 'Consolas', 'Courier New', '宋体', 'SimSun', '黑体', 'Microsoft YaHei', monospace",
   lineHeight: 1.2,
   cursorBlink: true,
   scrollback: 1000,
@@ -73,7 +73,7 @@ export const TERMINAL_DEFAULTS = {
 export const EDITOR_DEFAULTS = {
   fontSize: 13,
   chatFontSize: 15,
-  fontFamily: "'JetBrains Mono', 'JetBrainsMono', 'Fira Code', 'FiraCode-Retina', 'Consolas', 'Monaco', 'Hannotate SC', monospace, -apple-system",
+  fontFamily: "'Menlo', 'Monaco', 'Consolas', 'Courier New', '宋体', 'SimSun', '黑体', 'Microsoft YaHei', monospace",
   tabSize: 2,
   wordWrap: 'on' as const,
   lineHeight: 1.5,

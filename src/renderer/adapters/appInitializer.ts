@@ -337,12 +337,26 @@ export async function initializeApp(
       useStore.getState().setTheme(savedTheme)
     }
 
-    const { themeMode } = useStore.getState()
-    if (themeMode === 'system') {
-      const resolvedTheme = themeManager.resolveThemeForMode('system')
-      useStore.getState().setTheme(resolvedTheme.id)
-      themeManager.setTheme(resolvedTheme.id)
+    // 从 electron-store 恢复 themeMode 和 themeColor（文件存储比 localStorage 更可靠）
+    try {
+      const [persistedMode, persistedColor] = await Promise.all([
+        api.settings.get('themeMode'),
+        api.settings.get('themeColor'),
+      ])
+      if (persistedMode === 'light' || persistedMode === 'dark' || persistedMode === 'system') {
+        useStore.getState().setThemeMode(persistedMode)
+      }
+      if (persistedColor === 'blue' || persistedColor === 'purple' || persistedColor === 'red' || persistedColor === 'green') {
+        useStore.getState().setThemeColor(persistedColor)
+      }
+    } catch (e) {
+      logger.system.warn('[Init] Failed to restore themeMode/themeColor from electron-store:', e)
     }
+
+    const { themeMode, themeColor } = useStore.getState()
+    const resolvedTheme = themeManager.resolveThemeByModeAndColor(themeMode, themeColor)
+    useStore.getState().setTheme(resolvedTheme.id)
+    themeManager.setTheme(resolvedTheme.id)
 
     themeManager.startSystemThemeListener((isDark) => {
       const store = useStore.getState()
@@ -426,6 +440,16 @@ export function registerSettingsSync(): () => void {
       case 'themeId':
         if (isThemeName(value)) {
           store.setTheme(value)
+        }
+        break
+      case 'themeMode':
+        if (value === 'light' || value === 'dark' || value === 'system') {
+          store.setThemeMode(value)
+        }
+        break
+      case 'themeColor':
+        if (value === 'blue' || value === 'purple' || value === 'red' || value === 'green') {
+          store.setThemeColor(value)
         }
         break
       case 'enableFileLogging':

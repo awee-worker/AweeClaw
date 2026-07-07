@@ -84,9 +84,7 @@ export function AppearanceSettings({ settings, setSettings, language, localLangu
     }, [themeMode, themeColor, applyThemeForModeAndColor, setSystemPrefersDark])
 
     useEffect(() => {
-        if (themeMode === 'system') {
-            applyThemeForModeAndColor('system', themeColor)
-        }
+        applyThemeForModeAndColor(themeMode, themeColor)
     }, [])
 
     // 当前生效的类型（system 模式下取系统偏好）

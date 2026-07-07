@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" style="background:#f5faff">
+<html lang="en">
 
 <head>
   <meta charset="UTF-8" />
@@ -26,7 +26,24 @@
       var isLight = true;
       try {
         var themeBg = readStorageValue('aweeclaw-theme-bg');
-        var themeType = readStorageValue('aweeclaw-theme-type');
+        var themeType = readStorageValue('aweeclaw-theme-mode');
+        var themeId = readStorageValue('aweeclaw-theme-id');
+
+        // 兜底：如果 theme-mode 读不到，从 theme-type 推断
+        if (!themeType) {
+          themeType = readStorageValue('aweeclaw-theme-type');
+        }
+
+        var themes = {
+          'aweeclaw-dark': { bg: '#161b22', twBg: '22 27 34', light: false },
+          'aweeclaw-light': { bg: '#f5faff', twBg: '245 252 255', light: true },
+          'purple-dark': { bg: '#121215', twBg: '18 18 21', light: false },
+          'purple-light': { bg: '#f8f5ff', twBg: '248 245 255', light: true },
+          'lobster-red-dark': { bg: '#140e0c', twBg: '20 14 12', light: false },
+          'lobster-red-light': { bg: '#fffcf9', twBg: '255 252 249', light: true },
+          'forest-green-dark': { bg: '#0e1614', twBg: '14 22 20', light: false },
+          'forest-green-light': { bg: '#f5fcfc', twBg: '245 252 252', light: true },
+        };
 
         if (themeBg) {
           if (themeBg.indexOf(' ') !== -1) {
@@ -36,37 +53,32 @@
             bg = themeBg;
           }
           loaderBg = bg;
-          // themeBg 存在时，通过 themeType 判断明暗
-          if (themeType === 'dark') {
-            isLight = false;
-          } else if (themeType === 'light') {
-            isLight = true;
-          }
-        } else {
-          var themes = {
-            'aweeclaw-dark': { bg: '#161b22', twBg: '22 27 34', light: false },
-            'aweeclaw-light': { bg: '#f5faff', twBg: '245 252 255', light: true },
-            'purple-dark': { bg: '#121215', twBg: '18 18 21', light: false },
-            'purple-light': { bg: '#f8f5ff', twBg: '248 245 255', light: true },
-            'lobster-red-dark': { bg: '#140e0c', twBg: '20 14 12', light: false },
-            'lobster-red-light': { bg: '#fffcf9', twBg: '255 252 249', light: true },
-            'forest-green-dark': { bg: '#0e1614', twBg: '14 22 20', light: false },
-            'forest-green-light': { bg: '#f5fcfc', twBg: '245 252 252', light: true },
-          };
-          var themeId = readStorageValue('aweeclaw-theme-id');
-          if (themeId && themes[themeId]) {
+        }
+
+        if (themeType === 'dark') {
+          isLight = false;
+        } else if (themeType === 'light') {
+          isLight = true;
+        } else if (themeId && themes[themeId]) {
+          isLight = themes[themeId].light;
+          if (!themeBg) {
             bg = themes[themeId].bg;
             loaderBg = themes[themeId].bg;
             document.documentElement.style.setProperty('--background', themes[themeId].twBg);
-            isLight = themes[themeId].light;
           }
-        }
-
-        // themeType 优先级最高（覆盖前面基于 themeBg/themeId 的判断）
-        if (themeType === 'light') {
-          isLight = true;
-        } else if (themeType === 'dark') {
-          isLight = false;
+        } else if (!themeBg) {
+          var themeIdFromSettings = readStorageValue('themeId');
+          if (themeIdFromSettings && themes[themeIdFromSettings]) {
+            isLight = themes[themeIdFromSettings].light;
+            bg = themes[themeIdFromSettings].bg;
+            loaderBg = themes[themeIdFromSettings].bg;
+            document.documentElement.style.setProperty('--background', themes[themeIdFromSettings].twBg);
+          } else if (themeIdFromSettings && themeIdFromSettings.endsWith('-dark')) {
+            isLight = false;
+            bg = '#161b22';
+            loaderBg = '#161b22';
+            document.documentElement.style.setProperty('--background', '22 27 34');
+          }
         }
       } catch (e) { }
 
