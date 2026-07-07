@@ -147,7 +147,8 @@ export interface ScenarioIpcHandler {
 // ============================================
 
 export interface ScenarioComponentRegistry {
-  [componentId: string]: React.ComponentType<unknown>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [componentId: string]: React.ComponentType<any>
 }
 
 // ============================================

@@ -16,6 +16,7 @@ import { CrashGuard as ErrorBoundary } from '@components/foundation/CrashGuard'
 import { EditorSkeleton, PanelSkeleton, FullScreenLoading, InlineSettingsSkeleton, ChatSkeleton } from '@components/ui/ProgressIndicator'
 import { t, type Language } from '@renderer/i18n'
 import type { LayoutConfig } from '@renderer/shell/ShellComposer'
+import { getScenarioComponent } from '@components/scenario/ScenarioComponentResolver'
 import ChatSection from './ChatSection'
 
 const ChatPanel = lazy(() => import('@components/intelligence/ChatPanel'))
@@ -23,7 +24,6 @@ const Editor = lazy(() => import('@components/workspace-editor/WorkspaceEditor')
 const TerminalStudio = lazy(() => import('@renderer/shell/components/TerminalStudio'))
 const TerminalPanel = lazy(() => import('@components/dock-panels/TerminalConsolePanel'))
 const DataDashboard = lazy(() => import('@components/dashboard/InsightDashboard'))
-const StoreDiagnosisDashboard = lazy(() => import('@/scenarios/store-diagnosis/components/StoreDiagnosisDashboard'))
 const CanvasWorkspace = lazy(() => import('@components/canvas/WorkspaceCanvas'))
 const DynamicPanelView = lazy(() => import('@components/explorer/AdaptivePanelView').then(m => ({ default: m.DynamicPanelView })))
 const ScenarioManagerView = lazy(() => import('@components/scenario/ScenarioManagerView').then(m => ({ default: m.ScenarioManagerView })))
@@ -317,13 +317,15 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
   }
 
   if (layout === 'analytics-centric') {
+    // 动态解析场景组件：store-diagnosis 场景被删除时回退到通用数据看板
+    const ScenarioDashboard = getScenarioComponent('store-diagnosis', 'StoreDiagnosisDashboard') ?? DataDashboard
     return (
       <>
         <FullPageSlot>
           {openFiles.length > 0 && activeFilePath ? (
             <PanelSlot><Editor /></PanelSlot>
           ) : (
-            <PanelSlot><StoreDiagnosisDashboard /></PanelSlot>
+            <PanelSlot><ScenarioDashboard /></PanelSlot>
           )}
         </FullPageSlot>
         {layoutConfig.showChat && <ChatSection visible={!shouldHideChat} mode="secondary" />}
