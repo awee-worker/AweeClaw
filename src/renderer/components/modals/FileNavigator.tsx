@@ -264,7 +264,7 @@ export default function FileNavigator({ onClose }: FileNavigatorProps) {
   const allThreads = useAllThreads()
 
   const [query, setQuery] = useState('')
-  const [activeTab, setActiveTab] = useState<TabType>('files')
+  const [activeTab, setActiveTab] = useState<TabType>('sessions')
   const [allFiles, setAllFiles] = useState<string[]>([])
   const [fileCandidates, setFileCandidates] = useState<FileCandidate[]>([])
   const [sessionCandidates, setSessionCandidates] = useState<SessionCandidate[]>([])
@@ -480,6 +480,14 @@ export default function FileNavigator({ onClose }: FileNavigatorProps) {
         </div>
 
         <div className="flex items-center gap-1 px-4 py-1.5 border-b border-border/25 bg-surface/15">
+          {/* 会话 tab 放在最前面 */}
+          <button
+            onClick={() => { setActiveTab('sessions'); setShowRecent(false); setQuery('') }}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all ${activeTab === 'sessions' ? 'bg-accent/10 text-accent' : 'text-text-muted hover:text-text-secondary'}`}
+          >
+            <MessageSquare className="w-3 h-3" />
+            {t('modals.sessions', language as Language)}
+          </button>
           <button
             onClick={() => { setActiveTab('files'); setShowRecent(false); setQuery('') }}
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all ${activeTab === 'files' && !showRecent ? 'bg-accent/10 text-accent' : 'text-text-muted hover:text-text-secondary'}`}
@@ -496,13 +504,6 @@ export default function FileNavigator({ onClose }: FileNavigatorProps) {
               {t('modals.recent', language as Language)}
             </button>
           )}
-          <button
-            onClick={() => { setActiveTab('sessions'); setShowRecent(false); setQuery('') }}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all ${activeTab === 'sessions' ? 'bg-accent/10 text-accent' : 'text-text-muted hover:text-text-secondary'}`}
-          >
-            <MessageSquare className="w-3 h-3" />
-            {t('modals.sessions', language as Language)}
-          </button>
           <span className="ml-auto text-[10px] text-text-muted/50 font-mono">{currentCount} {t('modals.items', language as Language)}</span>
         </div>
 

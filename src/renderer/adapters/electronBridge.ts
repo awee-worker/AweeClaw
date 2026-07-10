@@ -69,6 +69,55 @@ type ElectronAPIWithRemoteShell = ElectronAPI & {
     timeout?: number
   }) => Promise<{ success: boolean; stdout: string; stderr: string; exitCode: number | null; error?: string; tempFile?: string }>
 
+  // Node.js 运行时
+  nodeGetStatus: () => Promise<{
+    ready: boolean
+    nodePath: string | null
+    npmPath: string | null
+    npxPath: string | null
+    source: 'system' | 'managed' | 'none'
+    version: string | null
+    nodeDir: string | null
+    binDir: string | null
+    installedPackages: string[]
+    error?: string
+  }>
+  nodeGetPath: () => Promise<string | null>
+  nodeGetNpmPath: () => Promise<string | null>
+  nodeGetNpxPath: () => Promise<string | null>
+  nodeEnsureReady: () => Promise<{
+    ready: boolean
+    nodePath: string | null
+    npmPath: string | null
+    npxPath: string | null
+    source: 'system' | 'managed' | 'none'
+    version: string | null
+    nodeDir: string | null
+    binDir: string | null
+    installedPackages: string[]
+    error?: string
+  }>
+  nodeReinstall: () => Promise<{
+    ready: boolean
+    nodePath: string | null
+    npmPath: string | null
+    npxPath: string | null
+    source: 'system' | 'managed' | 'none'
+    version: string | null
+    nodeDir: string | null
+    binDir: string | null
+    installedPackages: string[]
+    error?: string
+  }>
+  nodeInstallPkg: (pkg: string) => Promise<{ success: boolean; error?: string }>
+  nodeSetCustomPath: (customPath: string | null) => Promise<{ success: boolean; error?: string }>
+  nodeExecuteScript: (params: {
+    scriptPath: string
+    args?: string[]
+    cwd?: string
+    timeout?: number
+  }) => Promise<{ success: boolean; stdout: string; stderr: string; exitCode: number | null; error?: string }>
+
   dataExecuteQuery: (params: { query: string; connectionId: string; limit: number }) => Promise<{
     success: boolean
     columns?: string[]
@@ -751,6 +800,18 @@ function createGroupedAPI() {
       setCustomPath: (customPath: string | null) => raw.pythonSetCustomPath(customPath),
       executeScript: (params: Parameters<typeof raw.pythonExecuteScript>[0]) => raw.pythonExecuteScript(params),
       executeInlineScript: (params: Parameters<typeof raw.pythonExecuteInlineScript>[0]) => raw.pythonExecuteInlineScript(params),
+    },
+
+    node: {
+      getStatus: () => raw.nodeGetStatus(),
+      getPath: () => raw.nodeGetPath(),
+      getNpmPath: () => raw.nodeGetNpmPath(),
+      getNpxPath: () => raw.nodeGetNpxPath(),
+      ensureReady: () => raw.nodeEnsureReady(),
+      reinstall: () => raw.nodeReinstall(),
+      installPkg: (pkg: string) => raw.nodeInstallPkg(pkg),
+      setCustomPath: (customPath: string | null) => raw.nodeSetCustomPath(customPath),
+      executeScript: (params: Parameters<typeof raw.nodeExecuteScript>[0]) => raw.nodeExecuteScript(params),
     },
 
     data: {

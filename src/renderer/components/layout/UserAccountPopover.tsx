@@ -8,6 +8,7 @@ import { OverlayDialog } from '../ui/OverlayDialog'
 import { t, type Language } from '@renderer/i18n'
 import { BackendApiError } from '@services/backendApi'
 import { backendApi } from '@services/backendApi'
+import { formatUserDisplayName } from '@shared/toolkit/formatHelper'
 
 type AuthStep = 'login' | 'forgot' | 'reset'
 
@@ -256,7 +257,7 @@ export function UserAccountPopover({ language, forceLoginOpen, onLoginClose, hid
 
   const initial = cloudUser?.username?.[0]?.toUpperCase() || cloudUser?.email?.[0]?.toUpperCase() || '?'
 
-  const displayName = cloudUser?.username || cloudUser?.email || ''
+  const displayName = formatUserDisplayName(cloudUser?.username || cloudUser?.email || cloudUser?.phone || '')
 
   const tooltipText = (isAuthenticated && cloudUser)
     ? displayName

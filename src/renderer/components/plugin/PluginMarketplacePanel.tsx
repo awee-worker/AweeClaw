@@ -54,15 +54,22 @@ import { PluginCategoryFilter } from './PluginCategoryFilter'
 import { PluginFeaturedSection } from './PluginFeaturedSection'
 import { PluginPopularSection } from './PluginPopularSection'
 
-/** 插件类型徽章 */
-const TYPE_LABELS: Record<string, { zh: string; en: string; color: string }> = {
-  mcp: { zh: 'MCP 工具', en: 'MCP Tool', color: 'bg-purple-500/15 text-purple-400' },
-  channel: { zh: '渠道', en: 'Channel', color: 'bg-blue-500/15 text-blue-400' },
-  tool: { zh: '工具', en: 'Tool', color: 'bg-green-500/15 text-green-400' },
-  hook: { zh: '钩子', en: 'Hook', color: 'bg-orange-500/15 text-orange-400' },
-  memory: { zh: '记忆', en: 'Memory', color: 'bg-cyan-500/15 text-cyan-400' },
-  desktop: { zh: '桌面', en: 'Desktop', color: 'bg-pink-500/15 text-pink-400' },
-  composite: { zh: '复合', en: 'Composite', color: 'bg-indigo-500/15 text-indigo-400' },
+/** 插件类型徽章颜色配置（标签文本走 i18n） */
+const TYPE_COLORS: Record<string, string> = {
+  mcp: 'bg-purple-500/15 text-purple-400',
+  channel: 'bg-blue-500/15 text-blue-400',
+  tool: 'bg-green-500/15 text-green-400',
+  hook: 'bg-orange-500/15 text-orange-400',
+  memory: 'bg-cyan-500/15 text-cyan-400',
+  desktop: 'bg-pink-500/15 text-pink-400',
+  composite: 'bg-indigo-500/15 text-indigo-400',
+}
+
+/** 获取插件类型标签（国际化） */
+function getTypeLabel(type: string, language: Language): string | null {
+  const key = `plugin.type.${type}`
+  const label = t(key, language)
+  return label !== key ? label : null
 }
 
 // ─── 组件 ──────────────────────────────────────────────
@@ -676,7 +683,8 @@ function PluginDetailView({
   onBack: () => void
   onInstall: () => void
 }) {
-  const typeLabel = TYPE_LABELS[item.type]
+  const typeLabelText = getTypeLabel(item.type, language)
+  const typeColor = TYPE_COLORS[item.type]
 
   return (
     <div className="flex flex-col h-full overflow-y-auto">
@@ -702,9 +710,9 @@ function PluginDetailView({
               {language === 'zh' ? item.descriptionZh : item.description}
             </p>
             <div className="flex items-center gap-1.5 mt-1.5">
-              {typeLabel && (
-                <span className={`px-1.5 py-0.5 text-[12px] rounded ${typeLabel.color}`}>
-                  {language === 'zh' ? typeLabel.zh : typeLabel.en}
+              {typeLabelText && (
+                <span className={`px-1.5 py-0.5 text-[12px] rounded ${typeColor || ''}`}>
+                  {typeLabelText}
                 </span>
               )}
               {item.featured && (
@@ -907,10 +915,10 @@ function InstallProgressBar({
         embedded ? 'mt-2' : 'fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-[360px] max-w-[calc(100vw-2rem)]'
       } p-2.5 rounded-lg border ${
         isError
-          ? 'bg-red-500/10 border-red-500/30'
+          ? 'bg-red-500/5 border-red-500/30'
           : isDone
-            ? 'bg-green-500/10 border-green-500/30'
-            : 'bg-bg-elevated border-border/40 shadow-lg'
+            ? 'bg-green-500/5 border-green-500/30'
+            : 'bg-bg-elevated/5 border-border/40 backdrop-blur-xl shadow-lg'
       }`}
     >
       <div className="flex items-center justify-between mb-1">

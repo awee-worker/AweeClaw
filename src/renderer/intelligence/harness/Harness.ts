@@ -135,7 +135,7 @@ export class AgentHarness {
       .use(new ErrorBoundaryMiddleware<ToolExecutionInput, ToolExecutionOutput>())
       .use(new AuditMiddleware<ToolExecutionInput, ToolExecutionOutput>())
       .use(new RateLimitMiddleware<ToolExecutionInput, ToolExecutionOutput>({
-        maxCalls: 30,
+        maxCalls: 120,
         windowMs: 60_000,
         keyExtractor: (input) => {
           if (typeof input === 'object' && input !== null) {

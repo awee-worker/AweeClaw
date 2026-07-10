@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
-import { BookOpen, Loader2, FileUp, Link, Plus, Network, Activity } from 'lucide-react'
+import { BookOpen, Loader2, FileUp, Link, Plus, Network, Activity, ArrowLeft } from 'lucide-react'
 import { useStore } from '@store'
 import { knowledgeService } from '@intelligence/runtime/knowledgeService'
 import {
@@ -237,9 +237,19 @@ export function KnowledgeView() {
 
   const enabledCount = entries.filter((e) => e.enabled).length
 
+  // 是否显示右侧详情/功能面板（覆盖列表）
+  const showDetailPanel = rightView !== 'empty' || selectedEntry !== null
+
+  /** 返回列表（关闭右侧面板） */
+  const handleBackToList = useCallback(() => {
+    setSelectedId(null)
+    setRightView('empty')
+  }, [])
+
   return (
-    <div className="h-full flex bg-transparent">
-      <div className="w-[380px] min-w-[320px] flex flex-col border-r border-border/30 bg-transparent flex-shrink-0">
+    <div className="h-full relative overflow-hidden bg-transparent">
+      {/* ── 列表面板（全宽） ── */}
+      <div className={`h-full flex flex-col bg-transparent transition-transform duration-300 ${showDetailPanel ? '-translate-x-full absolute inset-0' : ''}`}>
         <div className="h-12 px-4 flex items-center justify-between gap-2 border-b border-border/50 flex-shrink-0">
           <span className="min-w-0 flex-shrink-0 whitespace-nowrap text-[13px] font-black text-text-secondary uppercase tracking-[0.2em] font-sans">
             {t('app.knowledge', language as Language)}
@@ -421,64 +431,77 @@ export function KnowledgeView() {
         )}
       </div>
 
-      <div className="flex-1 min-w-0 bg-surface/10">
-        {rightView === 'import' ? (
-          <ImportDropZone
-            language={language}
-            onImportFiles={async (paths) => {
-              setImporting(true)
-              for (const filePath of paths) {
-                try {
-                  await knowledgeService.importFromFile(filePath)
-                } catch {
-                  // skip failed
+      {/* ── 详情/功能面板（全宽覆盖，从右侧滑入） ── */}
+      <div className={`h-full flex flex-col bg-surface/10 transition-transform duration-300 ${showDetailPanel ? 'translate-x-0' : 'translate-x-full'} absolute inset-0`}>
+        {/* 返回按钮 */}
+        <div className="h-10 px-3 flex items-center border-b border-border/30 flex-shrink-0 bg-surface/20">
+          <button
+            onClick={handleBackToList}
+            className="flex items-center gap-1.5 text-[12px] text-text-secondary hover:text-accent transition-colors"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            {t('app.backtolist', language as Language) || (language === 'zh' ? '返回列表' : 'Back to List')}
+          </button>
+        </div>
+        <div className="flex-1 min-w-0 overflow-hidden">
+          {rightView === 'import' ? (
+            <ImportDropZone
+              language={language}
+              onImportFiles={async (paths) => {
+                setImporting(true)
+                for (const filePath of paths) {
+                  try {
+                    await knowledgeService.importFromFile(filePath)
+                  } catch {
+                    // skip failed
+                  }
                 }
-              }
-              setImporting(false)
-              loadEntries()
-              setRightView('empty')
-            }}
-            onClose={() => setRightView('empty')}
-          />
-        ) : rightView === 'graph' ? (
-          <KnowledgeGraphView
-            language={language}
-            onClose={() => setRightView('empty')}
-          />
-        ) : rightView === 'health' ? (
-          <HealthDashboard
-            entries={entries}
-            language={language}
-            onClose={() => setRightView('empty')}
-          />
-        ) : rightView === 'add' ? (
-          <AddEntryForm
-            language={language}
-            onAdd={handleAdd}
-            onCancel={() => setRightView('empty')}
-          />
-        ) : selectedEntry ? (
-          <DetailPanel
-            entry={selectedEntry}
-            editingId={editingId}
-            editContent={editContent}
-            copiedId={copiedId}
-            language={language}
-            onStartEdit={() => handleStartEdit(selectedEntry)}
-            onSaveEdit={handleSaveEdit}
-            onCancelEdit={() => {
-              setEditingId(null)
-              setEditContent('')
-            }}
-            onEditContentChange={setEditContent}
-            onCopy={() => handleCopy(selectedEntry)}
-            onToggleEnabled={() => handleToggleEnabled(selectedEntry.id)}
-            onToggleStar={() => handleToggleStar(selectedEntry.id)}
-            onDelete={() => handleDelete(selectedEntry.id)}
-          />
-        ) : (
-          <EmptyDetail language={language} />
-        )}
+                setImporting(false)
+                loadEntries()
+                setRightView('empty')
+              }}
+              onClose={() => setRightView('empty')}
+            />
+          ) : rightView === 'graph' ? (
+            <KnowledgeGraphView
+              language={language}
+              onClose={() => setRightView('empty')}
+            />
+          ) : rightView === 'health' ? (
+            <HealthDashboard
+              entries={entries}
+              language={language}
+              onClose={() => setRightView('empty')}
+            />
+          ) : rightView === 'add' ? (
+            <AddEntryForm
+              language={language}
+              onAdd={handleAdd}
+              onCancel={() => setRightView('empty')}
+            />
+          ) : selectedEntry ? (
+            <DetailPanel
+              entry={selectedEntry}
+              editingId={editingId}
+              editContent={editContent}
+              copiedId={copiedId}
+              language={language}
+              onStartEdit={() => handleStartEdit(selectedEntry)}
+              onSaveEdit={handleSaveEdit}
+              onCancelEdit={() => {
+                setEditingId(null)
+                setEditContent('')
+              }}
+              onEditContentChange={setEditContent}
+              onCopy={() => handleCopy(selectedEntry)}
+              onToggleEnabled={() => handleToggleEnabled(selectedEntry.id)}
+              onToggleStar={() => handleToggleStar(selectedEntry.id)}
+              onDelete={() => handleDelete(selectedEntry.id)}
+            />
+          ) : (
+            <EmptyDetail language={language} />
+          )}
+        </div>
       </div>
     </div>
   )

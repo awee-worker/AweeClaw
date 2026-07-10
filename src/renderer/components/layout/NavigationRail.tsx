@@ -10,6 +10,7 @@ import { Logo } from '../foundation/BrandMark'
 import { UserAccountPopover } from './UserAccountPopover'
 import { UpdateModal } from './UpdateModal'
 import { QuickSettingsMenu } from './QuickSettingsMenu'
+import { updaterService, type UpdateStatus } from '@services/updateAdapter'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { useAgentActions, useAllThreads } from '@hooks/useAgent'
 import { getThreadDisplayTitle, getMessageText } from '@intelligence/providerTypes'
@@ -17,6 +18,7 @@ import type { ChatThread } from '@intelligence/providerTypes'
 import type { SidebarItemDescriptor } from '@shared/protocols/scenario'
 import type { SidePanel } from '@store/slices'
 import { BRAND } from '@shared/brand'
+import { formatUserDisplayName } from '@shared/toolkit/formatHelper'
 import { t, type Language } from '@renderer/i18n'
 
 const isMac = typeof navigator !== 'undefined' && (
@@ -60,6 +62,7 @@ function UserMenuDropdown({
   isAuthenticated,
   cloudUser,
   anchorRef,
+  hasUpdateAvailable,
 }: {
   isOpen: boolean
   onClose: () => void
@@ -78,6 +81,7 @@ function UserMenuDropdown({
   isAuthenticated: boolean
   cloudUser: { username?: string; email: string; avatarUrl?: string; planId: string; phone?: string } | null
   anchorRef: React.RefObject<HTMLDivElement | null>
+  hasUpdateAvailable: boolean
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
@@ -115,19 +119,20 @@ function UserMenuDropdown({
       : t('layout.free', language as Language)
 
   const initial = cloudUser?.username?.[0]?.toUpperCase() || cloudUser?.email?.[0]?.toUpperCase() || '?'
-  const displayName = cloudUser?.username || cloudUser?.email || ''
+  const displayName = formatUserDisplayName(cloudUser?.username || cloudUser?.email || cloudUser?.phone || '')
 
   const featureItems = [
     { icon: Compass, label: t('layout.workscenes', language as Language), onClick: onExploreClick },
     { icon: Puzzle, label: t('layout.plugins', language as Language), onClick: onPluginCenterClick },
     { icon: Clock, label: t('layout.schedule', language as Language), onClick: onScheduleClick },
-    { icon: Workflow, label: t('layout.workflow', language as Language), onClick: onWorkflowClick },
+    // 工作流菜单暂时隐藏，后续版本恢复
+    // { icon: Workflow, label: t('layout.workflow', language as Language), onClick: onWorkflowClick },
   ]
 
   const systemItems = [
-    { icon: Settings, label: t('layout.settings', language as Language), onClick: onSettingsClick },
-    { icon: CloudSync, label: t('layout.checkforupdates', language as Language), onClick: onCheckUpdate },
-    { icon: Info, label: t('layout.aboutaweeclaw', language as Language), onClick: onAbout },
+    { icon: Settings, label: t('layout.settings', language as Language), onClick: onSettingsClick, hasBadge: false },
+    { icon: CloudSync, label: t('layout.checkforupdates', language as Language), onClick: onCheckUpdate, hasBadge: hasUpdateAvailable },
+    { icon: Info, label: t('layout.aboutaweeclaw', language as Language), onClick: onAbout, hasBadge: false },
   ]
 
   return createPortal(
@@ -211,6 +216,9 @@ function UserMenuDropdown({
         >
           <item.icon className="w-[16px] h-[16px]" strokeWidth={1.5} />
           <span>{item.label}</span>
+          {item.hasBadge && (
+            <span className="ml-auto w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+          )}
         </button>
       ))}
 
@@ -400,6 +408,16 @@ export default function NavigationRail() {
   const userAreaRef = useRef<HTMLDivElement>(null)
   const [renamingThreadId, setRenamingThreadId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null)
+
+  // 订阅更新状态变化，自动检测版本更新并显示徽章提示
+  useEffect(() => {
+    const unsubscribe = updaterService.subscribe(setUpdateStatus)
+    void updaterService.getStatus().then(setUpdateStatus)
+    return () => unsubscribe()
+  }, [])
+
+  const hasUpdateAvailable = updateStatus?.status === 'available' || updateStatus?.status === 'downloaded'
 
   const scenario = scenarioRegistry.get(activeScenarioId)
   const rawSidebarItems = scenario?.ui?.sidebarItems?.length
@@ -504,7 +522,7 @@ export default function NavigationRail() {
   }, [renamingThreadId, renameValue, renameThread])
 
   const userInitial = cloudUser?.username?.[0]?.toUpperCase() || cloudUser?.email?.[0]?.toUpperCase() || '?'
-  const userDisplayName = cloudUser?.username || cloudUser?.email || ''
+  const userDisplayName = formatUserDisplayName(cloudUser?.username || cloudUser?.email || cloudUser?.phone || '')
   const showUserInfo = isAuthenticated && !!cloudUser
 
   return (
@@ -936,6 +954,7 @@ export default function NavigationRail() {
           isAuthenticated={showUserInfo}
           cloudUser={cloudUser}
           anchorRef={userAreaRef}
+          hasUpdateAvailable={hasUpdateAvailable}
         />
 
         {showUserInfo ? (
@@ -944,8 +963,13 @@ export default function NavigationRail() {
               className={`${p}-nav-rail-user-btn`}
               onClick={() => setShowUserMenu(!showUserMenu)}
             >
-              <div className="w-6 h-6 rounded-full bg-gradient-to-br from-accent/80 to-accent/40 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0 shadow-sm shadow-accent/20">
-                {userInitial}
+              <div className="relative flex-shrink-0">
+                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-accent/80 to-accent/40 flex items-center justify-center text-white text-[10px] font-bold shadow-sm shadow-accent/20">
+                  {userInitial}
+                </div>
+                {hasUpdateAvailable && (
+                  <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500 ring-2 ring-bg-secondary animate-pulse" />
+                )}
               </div>
               <span className={`${p}-nav-rail-user-name`}>{userDisplayName}</span>
               <ChevronUp className={`w-3.5 h-3.5 ${p}-nav-rail-user-chevron`} />
@@ -956,8 +980,13 @@ export default function NavigationRail() {
                 className={`${p}-nav-rail-user-btn`}
                 onClick={() => setShowUserMenu(!showUserMenu)}
               >
-                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-accent/80 to-accent/40 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0 shadow-sm shadow-accent/20">
-                  {userInitial}
+                <div className="relative flex-shrink-0">
+                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-accent/80 to-accent/40 flex items-center justify-center text-white text-[10px] font-bold shadow-sm shadow-accent/20">
+                    {userInitial}
+                  </div>
+                  {hasUpdateAvailable && (
+                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500 ring-2 ring-bg-secondary animate-pulse" />
+                  )}
                 </div>
               </button>
             </HintOverlay>
@@ -965,13 +994,23 @@ export default function NavigationRail() {
         ) : (
           navRailExpanded ? (
             <button className={`${p}-nav-rail-login-btn`} onClick={() => setShowLoginModal(true)}>
-              <LogIn className="w-3.5 h-3.5" />
+              <div className="relative">
+                <LogIn className="w-3.5 h-3.5" />
+                {hasUpdateAvailable && (
+                  <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500 ring-2 ring-bg-secondary animate-pulse" />
+                )}
+              </div>
               <span>{t('layout.signin', language as Language)}</span>
             </button>
           ) : (
             <HintOverlay content={t('layout.signin2', language as Language)} side="right" delay={400}>
               <button className={`${p}-nav-rail-login-btn`} onClick={() => setShowLoginModal(true)}>
-                <LogIn className="w-3.5 h-3.5" />
+                <div className="relative">
+                  <LogIn className="w-3.5 h-3.5" />
+                  {hasUpdateAvailable && (
+                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500 ring-2 ring-bg-secondary animate-pulse" />
+                  )}
+                </div>
               </button>
             </HintOverlay>
           )

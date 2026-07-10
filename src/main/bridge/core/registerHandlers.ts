@@ -61,6 +61,7 @@ import { registerEmailHandlers } from '../messaging/emailService'
 // ── system ──────────────────────────────────────────────
 import { registerDoctorHandlers } from '../system/doctor'
 import { registerPythonHandlers } from '../system/python'
+import { registerNodeHandlers } from '../system/node'
 import { registerDataIpcHandlers } from '../system/data'
 import { registerDesktopControlHandlers } from '../system/desktopControl'
 import { registerGatewayHandlers } from '../system/gateway'
@@ -245,6 +246,9 @@ export function registerAllHandlers(context: IPCContext) {
 
   // Python 环境
   registerOnce('python', () => registerPythonHandlers())
+
+  // Node.js 环境
+  registerOnce('node', () => registerNodeHandlers())
 
   // 数据服务
   registerOnce('data', () => registerDataIpcHandlers())

@@ -130,6 +130,7 @@ export async function initializeModules(firstWin: BrowserWindow): Promise<void> 
   // ==========================================
   initChannelService()
   initPythonRuntime()
+  initNodeRuntime()
   initDesktopControlPlugin()
   // 初始化 Host 服务桥（供外部插件访问 native 能力 + MCP SDK）
   initHostServicesBridge()
@@ -311,6 +312,40 @@ function initPythonRuntime(): void {
     })
     .catch((err) => {
       logger.system.warn('[Main] Python environment setup failed:', err)
+    })
+}
+
+/**
+ * 异步初始化 Node.js 环境（不阻塞启动）
+ *
+ * 当系统未安装 Node.js 时，自动下载官方便携版到 {userData}/node-env/。
+ * 初始化完成后，便携版的 bin 目录会注入到 process.env.PATH，
+ * 使后续 MCP 插件启动、AI 终端命令都能找到 node/npx/npm。
+ */
+function initNodeRuntime(): void {
+  import('../modules/node-runtime')
+    .then(async ({ nodeManager }) => {
+      const status = await nodeManager.ensureReady()
+      if (status.ready) {
+        logger.system.info('[Main] Node.js environment ready:', {
+          nodePath: status.nodePath,
+          source: status.source,
+          version: status.version,
+        })
+        // 将便携版 bin 目录注入到主进程 PATH，使后续 spawn 的子进程能找到 node/npx
+        if (status.binDir) {
+          const augmentedPath = nodeManager.getAugmentedPath()
+          if (augmentedPath && augmentedPath !== process.env.PATH) {
+            process.env.PATH = augmentedPath
+            logger.system.info(`[Main] Injected Node.js bin dir into PATH: ${status.binDir}`)
+          }
+        }
+      } else {
+        logger.system.warn('[Main] Node.js environment not available:', status.error)
+      }
+    })
+    .catch((err) => {
+      logger.system.warn('[Main] Node.js environment setup failed:', err)
     })
 }
 

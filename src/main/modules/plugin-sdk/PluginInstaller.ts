@@ -437,7 +437,7 @@ export class PluginInstaller {
     // 若为 MCP 型插件，注册并连接 MCP 服务
     let mcpServerId: string | undefined
     if (isMcpPlugin && hasMcpCapability) {
-      mcpServerId = await this.registerMcpServer(pluginDetail, version, manifest, userConfig)
+      mcpServerId = await this.registerMcpServer(pluginDetail, version, manifest, userConfig, pluginId, packageSize)
     }
 
     // 持久化安装记录
@@ -1163,6 +1163,8 @@ export class PluginInstaller {
     version: string,
     manifest: PluginManifest,
     userConfig?: Record<string, string>,
+    progressPluginId?: string,
+    progressPackageSize?: number,
   ): Promise<string> {
     const mcpConfig = manifest.capabilities?.mcp
     if (!mcpConfig) {
@@ -1202,10 +1204,26 @@ export class PluginInstaller {
     await mcpManager.addServer(config, 'user')
 
     if (mcpConfig.autoConnect !== false) {
-      try {
-        await mcpManager.connectServer(serverId)
-      } catch (err) {
-        logger.system.warn(`[PluginInstaller] MCP auto-connect failed for ${plugin.pluginKey}: ${err}`)
+      // 为 uvx 命令设置 PythonRuntimeManager 状态回调，将安装进度转发到 UI
+      if (progressPluginId && command === 'uvx') {
+        const { pythonManager } = await import('../python-runtime/PythonRuntimeManager')
+        pythonManager.setStatusCallback((message: string) => {
+          this.emitProgress(progressPluginId, 'registering', progressPackageSize || 0, progressPackageSize || 0, message)
+        })
+        try {
+          this.emitProgress(progressPluginId, 'registering', progressPackageSize || 0, progressPackageSize || 0, '正在连接 MCP 服务...')
+          await mcpManager.connectServer(serverId)
+        } finally {
+          // 连接完成后清除回调，避免影响后续其他操作
+          pythonManager.setStatusCallback(null)
+        }
+      } else {
+        try {
+          this.emitProgress(progressPluginId || '', 'registering', progressPackageSize || 0, progressPackageSize || 0, '正在连接 MCP 服务...')
+          await mcpManager.connectServer(serverId)
+        } catch (err) {
+          logger.system.warn(`[PluginInstaller] MCP auto-connect failed for ${plugin.pluginKey}: ${err}`)
+        }
       }
     }
 

@@ -104,8 +104,8 @@ export class McpManager extends EventEmitter {
           await this.connectServer(config)
           logger.mcp?.info(`[McpManager] Auto-connected: ${config.id}`)
         } catch (err) {
-          const error = toAppError(err)
-          logger.mcp?.warn(`[McpManager] Auto-connect failed for ${config.id}: ${error.code}`, error)
+          const originalMsg = err instanceof Error ? err.message : String(err)
+          logger.mcp?.warn(`[McpManager] Auto-connect failed for ${config.id}: ${originalMsg}`, err)
         }
       })
     ).then(() => {
@@ -198,15 +198,15 @@ export class McpManager extends EventEmitter {
     try {
       await client.connect()
     } catch (err) {
-      const error = toAppError(err)
-      logger.mcp?.error(`[McpManager] Failed to connect ${config.id}: ${error.code}`, error)
-      // 如果原始错误包含 [stderr] 诊断信息，优先展示原始消息以便用户看到真正的失败原因
-      // 否则使用 toAppError 分类后的友好消息
+      // 保留原始错误消息用于诊断和展示
+      // 不使用 toAppError 转换，因为 errorCatalog 的关键词匹配会把 stderr 中的
+      // "network"、"fetch"、"terminated" 等词误判为 NETWORK_ERROR，显示 "Network error"
+      // 而真正的错误原因（如 ENOENT、Timeout、uvx 未找到等）被掩盖
       const originalMsg = err instanceof Error ? err.message : String(err)
-      const displayMsg = originalMsg.includes('[stderr]') ? originalMsg : error.message
-      // 连接失败时清理子进程，但保留 error 状态供 UI 展示
-      // 不能调用 disconnect()，因为它会把状态覆盖为 disconnected，丢失错误信息
-      await client.forceCleanupAndSetError(displayMsg).catch(() => { })
+      const errorCode = (err as NodeJS.ErrnoException)?.code || ''
+      logger.mcp?.error(`[McpManager] Failed to connect ${config.id}: ${errorCode || 'unknown'}`, err)
+      // 直接使用原始错误消息展示给用户，保留完整的诊断信息（包括 stderr）
+      await client.forceCleanupAndSetError(originalMsg).catch(() => { })
     }
 
     this.notifyStateChange()

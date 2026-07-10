@@ -95,6 +95,16 @@ class ScenarioUpdateManager {
 
     void this.getStatus()
     this.scheduleAutoCheck()
+
+    // 启动后延迟触发一次版本检查（5秒后）
+    // 主进程在30s后也会检查，这里提前触发确保用户尽快看到更新提示
+    setTimeout(() => {
+      if (!this.currentStatus || this.currentStatus.status === 'idle') {
+        void this.checkForUpdates().catch(() => {
+          // 静默失败，不打扰用户
+        })
+      }
+    }, 5_000)
   }
 
   private scheduleAutoCheck(): void {

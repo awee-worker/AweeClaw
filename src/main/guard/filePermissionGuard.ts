@@ -20,7 +20,6 @@ import { toAppError, ErrorCode } from '@shared/toolkit/errorCatalog'
 import { ipcMain, dialog, shell } from 'electron'
 import { safeOpenExternal } from './safeExternalUrl'
 import * as path from 'path'
-import { pathToFileURL } from 'url'
 import fs, { promises as fsPromises } from 'fs'
 import Store from 'electron-store'
 import { securityManager, OperationType } from './securityPolicyEngine'
@@ -878,12 +877,13 @@ export function registerSecureFileHandlers(
     }
   })
 
-  // 在浏览器中打开文件
+  // 在浏览器中打开文件（使用 shell.openPath 直接调用系统默认程序，不经过 URL 协议白名单）
   ipcMain.handle('file:openInBrowser', async (_, filePath: string) => {
     try {
       await fsPromises.access(filePath)
-      const fileUrl = pathToFileURL(filePath).href
-      return await safeOpenExternal(fileUrl)
+      const errorMessage = await shell.openPath(filePath)
+      // openPath 成功返回空字符串，失败返回错误消息
+      return !errorMessage
     } catch {
       return false
     }

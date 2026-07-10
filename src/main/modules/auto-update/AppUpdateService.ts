@@ -11,13 +11,15 @@
  * GitHub Release 检查并暴露手动下载链接。
  */
 
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, shell } from 'electron'
 import { autoUpdater, type ProgressInfo, type UpdateInfo } from 'electron-updater'
 import { logger } from '@shared/toolkit/LogEngine'
 import { ErrorCode, toAppError } from '@shared/toolkit/errorCatalog'
 import { BRAND } from '@shared/brand'
 import * as fs from 'fs'
 import * as path from 'path'
+import * as https from 'https'
+import * as http from 'http'
 import { getUserConfigDir } from '../../modules/configPath'
 
 export interface UpdateStatus {
@@ -46,6 +48,8 @@ interface BackendUpdateCheckResult {
   version?: string
   channel?: string
   downloadUrl?: string
+  /** electron-updater generic provider 的 feed URL（指向 latest.yml 所在目录） */
+  updateFeedUrl?: string
   releaseNotes?: string
   releaseNotesHtml?: string
   releaseDate?: string
@@ -66,6 +70,14 @@ class UpdateService {
 
   private mainWindow: BrowserWindow | null = null
   private updateCheckInterval: NodeJS.Timeout | null = null
+  /** 自定义下载的安装包路径（后端来源更新，非 electron-updater 下载） */
+  private downloadedInstallerPath: string | null = null
+  /** 当前正在进行的下载请求（用于取消） */
+  private currentDownloadRequest: http.ClientRequest | null = null
+  /** 后端返回的 electron-updater feed URL（指向 latest.yml 所在目录） */
+  private backendUpdateFeedUrl: string | null = null
+  /** 抑制 electron-updater 事件更新状态（热更新下载流程中使用） */
+  private suppressStatusEvents = false
 
   initialize(mainWindow: BrowserWindow): void {
     this.mainWindow = mainWindow
@@ -129,21 +141,46 @@ class UpdateService {
 
     logger.system.info(`[Updater] Using update channel: ${channel}`)
 
+    this.setupAutoUpdaterEvents()
+
+    setTimeout(() => {
+      void this.checkForUpdates()
+    }, 30 * 1000)
+
+    this.updateCheckInterval = setInterval(() => {
+      void this.checkForUpdates()
+    }, 4 * 60 * 60 * 1000)
+  }
+
+  /**
+   * 设置 electron-updater 事件监听器
+   *
+   * suppressStatusEvents 为 true 时，抑制 checking/available/not-available/error 事件，
+   * 仅允许 download-progress 和 update-downloaded 事件更新状态。
+   * 用于热更新下载流程中避免 checkForUpdates() 覆盖后端返回的 available 状态。
+   */
+  private setupAutoUpdaterEvents(): void {
     autoUpdater.on('checking-for-update', () => {
-      this.updateStatus({ status: 'checking' })
+      if (!this.suppressStatusEvents) {
+        this.updateStatus({ status: 'checking' })
+      }
     })
 
     autoUpdater.on('update-available', (info: UpdateInfo) => {
-      this.updateStatus({
-        status: 'available',
-        version: info.version,
-        releaseNotes: this.formatReleaseNotes(info.releaseNotes),
-        releaseDate: info.releaseDate,
-      })
+      if (!this.suppressStatusEvents) {
+        this.updateStatus({
+          status: 'available',
+          version: info.version,
+          releaseNotes: this.formatReleaseNotes(info.releaseNotes),
+          releaseDate: info.releaseDate,
+        })
+      }
     })
 
     autoUpdater.on('update-not-available', () => {
-      this.updateStatus({ status: 'not-available' })
+      if (!this.suppressStatusEvents) {
+        this.updateStatus({ status: 'not-available' })
+      }
     })
 
     autoUpdater.on('download-progress', (progress: ProgressInfo) => {
@@ -163,19 +200,13 @@ class UpdateService {
 
     autoUpdater.on('error', (err: Error) => {
       logger.system.error('[Updater] Error:', err)
-      this.updateStatus({
-        status: 'error',
-        error: toAppError(err).message,
-      })
+      if (!this.suppressStatusEvents) {
+        this.updateStatus({
+          status: 'error',
+          error: toAppError(err).message,
+        })
+      }
     })
-
-    setTimeout(() => {
-      void this.checkForUpdates()
-    }, 30 * 1000)
-
-    this.updateCheckInterval = setInterval(() => {
-      void this.checkForUpdates()
-    }, 4 * 60 * 60 * 1000)
   }
 
   private setupManualDownloadUpdater(): void {
@@ -346,38 +377,23 @@ class UpdateService {
       const isCritical = result.isCritical === true
       const forceUpdate = result.forceUpdate === true
 
-      // 自动下载模式：仍由 electron-updater 下载（保证签名校验），但展示后端元数据
-      // 手动下载模式：直接使用后端 downloadUrl
-      if (this.status.requiresManualDownload) {
-        this.updateStatus({
-          status: 'available',
-          version: result.version,
-          releaseNotes: result.releaseNotes ?? undefined,
-          releaseDate: result.releaseDate,
-          downloadUrl: result.downloadUrl,
-          isCritical,
-          forceUpdate,
-          minRequiredVersion: result.minRequiredVersion,
-          source: 'backend',
-        })
-      } else {
-        // 让 electron-updater 仍然负责下载/安装，但用后端元数据展示
-        // 若后端返回的 version 与 electron-updater 一致则复用；否则仅展示后端信息
-        this.updateStatus({
-          status: 'available',
-          version: result.version,
-          releaseNotes: result.releaseNotes ?? undefined,
-          releaseDate: result.releaseDate,
-          downloadUrl: result.downloadUrl,
-          isCritical,
-          forceUpdate,
-          minRequiredVersion: result.minRequiredVersion,
-          source: 'backend',
-        })
-      }
+      // 保存后端返回的 feed URL（用于 electron-updater 热更新）
+      this.backendUpdateFeedUrl = result.updateFeedUrl || null
+
+      this.updateStatus({
+        status: 'available',
+        version: result.version,
+        releaseNotes: result.releaseNotes ?? undefined,
+        releaseDate: result.releaseDate,
+        downloadUrl: result.downloadUrl,
+        isCritical,
+        forceUpdate,
+        minRequiredVersion: result.minRequiredVersion,
+        source: 'backend',
+      })
 
       logger.system.info(
-        `[Updater] Backend reports update available: v${result.version}, critical=${isCritical}, force=${forceUpdate}`,
+        `[Updater] Backend reports update available: v${result.version}, critical=${isCritical}, force=${forceUpdate}, feedUrl=${this.backendUpdateFeedUrl || 'none'}`,
       )
       return this.status
     } catch (err) {
@@ -481,24 +497,269 @@ class UpdateService {
   }
 
   async downloadUpdate(): Promise<void> {
-    if (this.status.requiresManualDownload) {
-      throw new Error('当前安装方式不支持自动下载，请前往发布页手动下载。')
-    }
-
     if (this.status.status !== 'available') {
       throw new Error('No update available')
+    }
+
+    // 后端来源的热更新：后端返回了 updateFeedUrl（指向 latest.yml 所在目录），
+    // 使用 electron-updater 差量下载，体验与 VSCode 一样（静默安装、重启生效）
+    if (this.status.source === 'backend' && this.backendUpdateFeedUrl && !this.status.requiresManualDownload) {
+      await this.downloadViaElectronUpdater(this.backendUpdateFeedUrl)
+      return
+    }
+
+    // 后端来源但无 updateFeedUrl 或免安装版：使用自定义下载器下载完整安装包
+    if (this.status.source === 'backend' && this.status.downloadUrl) {
+      await this.downloadUpdateFromUrl(this.status.downloadUrl)
+      return
+    }
+
+    if (this.status.requiresManualDownload) {
+      throw new Error('当前安装方式不支持自动下载，请前往发布页手动下载。')
     }
 
     await autoUpdater.downloadUpdate()
   }
 
-  quitAndInstall(): void {
-    if (this.status.requiresManualDownload) {
-      throw new Error('当前安装方式不支持自动安装。')
+  /**
+   * 通过 electron-updater 热更新（差量下载 + 静默安装）
+   *
+   * 动态设置 generic provider 指向后端返回的 feed URL（latest.yml 所在目录），
+   * electron-updater 自动处理：
+   * 1. 下载 latest.yml 获取版本元数据
+   * 2. 使用 blockmap 差量下载（只下载变化的文件块）
+   * 3. 下载完成后触发 update-downloaded 事件
+   * 4. quitAndInstall() 静默安装，重启生效
+   *
+   * 前提条件：OSS 目录下需上传以下文件：
+   * - latest.yml（版本元数据，electron-builder 打包自动生成）
+   * - AweeClaw-Setup-x.x.x-x64.exe（安装包）
+   * - AweeClaw-Setup-x.x.x-x64.exe.blockmap（块映射，用于差量下载）
+   */
+  private async downloadViaElectronUpdater(feedUrl: string): Promise<void> {
+    logger.system.info(`[Updater] Using electron-updater with feed URL: ${feedUrl}`)
+
+    // 动态设置 feed URL 为后端返回的 OSS 目录
+    autoUpdater.setFeedURL({
+      provider: 'generic',
+      url: feedUrl,
+    })
+
+    // 抑制 checkForUpdates 的事件，避免覆盖后端返回的 available 状态
+    this.suppressStatusEvents = true
+
+    try {
+      this.updateStatus({ status: 'downloading', progress: 0 })
+
+      // electron-updater 需要先 checkForUpdates 获取 latest.yml，然后才能 downloadUpdate
+      const result = await autoUpdater.checkForUpdates()
+
+      if (!result?.updateInfo) {
+        // electron-updater 未找到更新（latest.yml 中版本号不匹配等），回退到自定义下载器
+        logger.system.warn('[Updater] electron-updater found no update in feed, falling back to custom downloader')
+        this.suppressStatusEvents = false
+        if (this.status.downloadUrl) {
+          await this.downloadUpdateFromUrl(this.status.downloadUrl)
+        } else {
+          throw new Error('未找到可用更新')
+        }
+        return
+      }
+
+      logger.system.info(`[Updater] electron-updater found update: v${result.updateInfo.version}, starting delta download...`)
+
+      // 差量下载（electron-updater 使用 blockmap 只下载变化的文件块）
+      await autoUpdater.downloadUpdate()
+
+      // 下载完成后 suppressStatusEvents 恢复，update-downloaded 事件已设置 status = downloaded
+    } catch (err) {
+      logger.system.error('[Updater] electron-updater hot update failed:', err)
+      this.suppressStatusEvents = false
+
+      // 热更新失败，回退到自定义下载器
+      if (this.status.downloadUrl) {
+        logger.system.info('[Updater] Falling back to custom downloader')
+        await this.downloadUpdateFromUrl(this.status.downloadUrl)
+      } else {
+        throw err
+      }
+    } finally {
+      this.suppressStatusEvents = false
+    }
+  }
+
+  /**
+   * 从自定义 URL 下载安装包（后端来源的更新）
+   *
+   * 下载到系统临时目录，下载进度通过 updateStatus 实时通知渲染进程。
+   * 下载完成后状态变为 downloaded，用户可点击"重启安装"启动安装程序。
+   */
+  private async downloadUpdateFromUrl(url: string): Promise<void> {
+    // 清理上一次的下载文件
+    if (this.downloadedInstallerPath) {
+      try {
+        fs.unlinkSync(this.downloadedInstallerPath)
+      } catch {
+        // 忽略清理失败
+      }
+      this.downloadedInstallerPath = null
     }
 
+    const tempDir = app.getPath('temp')
+    const fileName = this.extractFileName(url) || `AweeClaw-Setup-${this.status.version || 'unknown'}.${this.getInstallerExtension()}`
+    const filePath = path.join(tempDir, `aweeclaw-update-${Date.now()}-${fileName}`)
+
+    this.updateStatus({ status: 'downloading', progress: 0 })
+
+    logger.system.info(`[Updater] Downloading update from: ${url} -> ${filePath}`)
+
+    try {
+      await this.downloadFile(url, filePath)
+      this.downloadedInstallerPath = filePath
+      this.updateStatus({ status: 'downloaded', progress: 100 })
+      logger.system.info(`[Updater] Update downloaded successfully: ${filePath}`)
+    } catch (err) {
+      // 清理不完整的下载文件
+      try { fs.unlinkSync(filePath) } catch { /* ignore */ }
+      const error = toAppError(err)
+      logger.system.error(`[Updater] Download failed: ${error.code}`, error)
+      this.updateStatus({
+        status: 'error',
+        error: error.message || '下载更新失败',
+      })
+      throw error
+    }
+  }
+
+  /**
+   * 下载文件（支持 HTTPS/HTTP，自动处理重定向）
+   */
+  private downloadFile(url: string, filePath: string, maxRedirects = 5): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const protocol = url.startsWith('https:') ? https : http
+
+      const request = protocol.get(url, (response) => {
+        // 处理重定向
+        if ((response.statusCode === 301 || response.statusCode === 302 || response.statusCode === 307 || response.statusCode === 308) && response.headers.location) {
+          if (maxRedirects <= 0) {
+            reject(new Error('重定向次数过多'))
+            return
+          }
+          const redirectUrl = new URL(response.headers.location, url).href
+          logger.system.info(`[Updater] Redirecting to: ${redirectUrl}`)
+          this.downloadFile(redirectUrl, filePath, maxRedirects - 1).then(resolve, reject)
+          return
+        }
+
+        if (response.statusCode !== 200) {
+          reject(new Error(`下载失败: HTTP ${response.statusCode}`))
+          return
+        }
+
+        const totalBytes = parseInt(response.headers['content-length'] || '0', 10)
+        let downloadedBytes = 0
+        let lastProgressUpdate = 0
+
+        const fileStream = fs.createWriteStream(filePath)
+
+        response.on('data', (chunk: Buffer) => {
+          downloadedBytes += chunk.length
+          if (totalBytes > 0) {
+            const progress = Math.round((downloadedBytes / totalBytes) * 100)
+            // 限制进度更新频率，每 5% 更新一次，避免过度渲染
+            if (progress - lastProgressUpdate >= 5 || progress === 100) {
+              lastProgressUpdate = progress
+              this.updateStatus({ status: 'downloading', progress })
+            }
+          }
+        })
+
+        response.pipe(fileStream)
+
+        fileStream.on('finish', () => {
+          fileStream.close(() => resolve())
+        })
+
+        fileStream.on('error', (err) => {
+          fs.unlink(filePath, () => {})
+          reject(err)
+        })
+      })
+
+      request.on('error', (err) => {
+        reject(err)
+      })
+
+      // 设置超时（5 分钟）
+      request.setTimeout(5 * 60 * 1000, () => {
+        request.destroy()
+        reject(new Error('下载超时，请检查网络连接'))
+      })
+
+      this.currentDownloadRequest = request
+    })
+  }
+
+  /** 从 URL 中提取文件名 */
+  private extractFileName(url: string): string {
+    try {
+      const urlObj = new URL(url)
+      const pathname = urlObj.pathname
+      const fileName = pathname.split('/').pop()
+      return fileName || ''
+    } catch {
+      return ''
+    }
+  }
+
+  /** 根据平台获取安装包扩展名 */
+  private getInstallerExtension(): string {
+    switch (process.platform) {
+      case 'win32': return 'exe'
+      case 'darwin': return 'dmg'
+      case 'linux': return 'AppImage'
+      default: return 'bin'
+    }
+  }
+
+  async quitAndInstall(): Promise<void> {
     if (this.status.status !== 'downloaded') {
       throw new Error('Update not downloaded')
+    }
+
+    // 自定义下载的安装包（后端来源）：直接启动安装程序并退出应用
+    if (this.downloadedInstallerPath) {
+      const installerPath = this.downloadedInstallerPath
+      logger.system.info(`[Updater] Launching installer: ${installerPath}`)
+
+      try {
+        if (process.platform === 'linux') {
+          // Linux AppImage 需要可执行权限
+          fs.chmodSync(installerPath, 0o755)
+        }
+
+        // 打开安装包（Windows: NSIS .exe, macOS: .dmg, Linux: .AppImage）
+        // shell.openPath 返回 Promise<string>，空字符串表示成功
+        const errorMsg = await shell.openPath(installerPath)
+        if (errorMsg) {
+          logger.system.error(`[Updater] Failed to open installer: ${errorMsg}`)
+          throw new Error(`无法启动安装程序: ${errorMsg}`)
+        }
+
+        logger.system.info('[Updater] Installer launched, quitting app...')
+        // 延迟退出，确保安装程序已启动
+        setTimeout(() => {
+          app.quit()
+        }, 500)
+      } catch (err) {
+        logger.system.error('[Updater] Failed to launch installer:', err)
+        throw err
+      }
+      return
+    }
+
+    if (this.status.requiresManualDownload) {
+      throw new Error('当前安装方式不支持自动安装。')
     }
 
     autoUpdater.autoInstallOnAppQuit = true
@@ -518,6 +779,16 @@ class UpdateService {
     if (this.updateCheckInterval) {
       clearInterval(this.updateCheckInterval)
       this.updateCheckInterval = null
+    }
+    // 取消正在进行的下载
+    if (this.currentDownloadRequest) {
+      this.currentDownloadRequest.destroy()
+      this.currentDownloadRequest = null
+    }
+    // 清理下载的临时文件
+    if (this.downloadedInstallerPath) {
+      try { fs.unlinkSync(this.downloadedInstallerPath) } catch { /* ignore */ }
+      this.downloadedInstallerPath = null
     }
   }
 

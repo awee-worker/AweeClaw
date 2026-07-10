@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { AlertCircle, AlertTriangle, ArrowUpCircle, CheckCircle, Download, ExternalLink, Loader2, RefreshCw } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { updaterService, type UpdateStatus } from '@services/updateAdapter'
@@ -17,6 +17,8 @@ export function UpdateModal({
   const language = useStore(state => state.language)
   const [status, setStatus] = useState<UpdateStatus | null>(null)
   const [currentVersion, setCurrentVersion] = useState('')
+  const [restartCountdown, setRestartCountdown] = useState(0)
+  const autoInstallTriggered = useRef(false)
 
   useEffect(() => {
     updaterService.initialize()
@@ -28,17 +30,41 @@ export function UpdateModal({
 
   useEffect(() => {
     if (isOpen) {
+      autoInstallTriggered.current = false
       void updaterService.checkForUpdates()
     }
   }, [isOpen])
 
+  // 下载完成后自动重启安装（3 秒倒计时）
+  useEffect(() => {
+    if (status?.status === 'downloaded' && !autoInstallTriggered.current) {
+      autoInstallTriggered.current = true
+      setRestartCountdown(3)
+
+      const timer = setInterval(() => {
+        setRestartCountdown(prev => {
+          if (prev <= 1) {
+            clearInterval(timer)
+            void updaterService.installAndRestart()
+            return 0
+          }
+          return prev - 1
+        })
+      }, 1000)
+
+      return () => clearInterval(timer)
+    }
+  }, [status?.status])
+
   const handleCheck = async () => updaterService.checkForUpdates()
 
   const handleDownload = async () => {
-    if (status?.requiresManualDownload) {
-      updaterService.openDownloadPage()
+    // requiresManualDownload（非标准安装路径）且非后端来源：无法自动下载，打开浏览器
+    if (isManualDownload) {
+      updaterService.openDownloadPage(status?.downloadUrl)
       return
     }
+    // 后端来源或 electron-updater 来源：调用 downloadUpdate 自动下载
     await updaterService.downloadUpdate()
   }
 
@@ -48,6 +74,9 @@ export function UpdateModal({
   const isChecking = status?.status === 'checking'
   const isDownloading = status?.status === 'downloading'
   const isError = status?.status === 'error'
+  // requiresManualDownload 且非后端来源：安装方式不支持自动更新，只能打开浏览器下载
+  // 后端来源（source === 'backend'）：支持自动下载（自定义下载器），不需要打开浏览器
+  const isManualDownload = status?.requiresManualDownload && status?.source !== 'backend'
 
   const labels = {
     title: t('layout.systemupdate', language as Language),
@@ -118,7 +147,7 @@ export function UpdateModal({
           </h4>
 
           <div className="mt-2 flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/5 text-[12px] font-medium">
-            {status?.version && hasUpdate ? (
+            {status?.version && (hasUpdate || isDownloading) ? (
               <>
                 <span className="text-text-muted opacity-60">v{currentVersion}</span>
                 <div className="w-1 h-1 rounded-full bg-text-muted opacity-30" />
@@ -181,7 +210,7 @@ export function UpdateModal({
           </div>
         )}
 
-        {hasUpdate && status?.requiresManualDownload && (
+        {hasUpdate && isManualDownload && (
           <div className="mb-6 px-4 py-3 rounded-2xl bg-orange-500/10 border border-orange-500/30 text-[12px] text-orange-600 leading-relaxed">
             {labels.manualHint}
           </div>
@@ -190,20 +219,27 @@ export function UpdateModal({
         <div className="space-y-2">
           {hasUpdate ? (
             status?.status === 'downloaded' ? (
-              <button
-                onClick={handleInstall}
-                className="w-full h-11 rounded-2xl bg-green-500 hover:bg-green-600 text-white text-sm font-bold shadow-[0_10px_20px_-5px_rgba(34,197,94,0.4)] transition-all active:scale-95 flex items-center justify-center gap-2"
-              >
-                <RefreshCw className="w-4 h-4" />
-                {labels.install}
-              </button>
+              <>
+                {restartCountdown > 0 && (
+                  <p className="text-center text-[12px] text-text-muted">
+                    {restartCountdown} 秒后自动重启安装...
+                  </p>
+                )}
+                <button
+                  onClick={handleInstall}
+                  className="w-full h-11 rounded-2xl bg-green-500 hover:bg-green-600 text-white text-sm font-bold shadow-[0_10px_20px_-5px_rgba(34,197,94,0.4)] transition-all active:scale-95 flex items-center justify-center gap-2"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  {labels.install}
+                </button>
+              </>
             ) : (
               <button
                 onClick={handleDownload}
                 className="w-full h-11 rounded-2xl bg-accent hover:bg-accent-hover text-white text-sm font-bold shadow-[0_10px_20px_-5px_rgba(var(--accent)/0.4)] transition-all active:scale-95 flex items-center justify-center gap-2"
               >
-                {status?.requiresManualDownload ? <ExternalLink className="w-4 h-4" /> : <Download className="w-4 h-4" />}
-                {status?.requiresManualDownload ? labels.openPage : labels.download}
+                {isManualDownload ? <ExternalLink className="w-4 h-4" /> : <Download className="w-4 h-4" />}
+                {isManualDownload ? labels.openPage : labels.download}
               </button>
             )
           ) : (

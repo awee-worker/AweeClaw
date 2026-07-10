@@ -182,14 +182,12 @@ function notifyComposerChange(opts: {
     })
 }
 
-function notifyWorkspaceTreeChange(opts: {
+function dispatchWorkspaceFilesChanged(opts: {
     workspacePath: string
     targetPath: string
     changeType: 'create' | 'modify' | 'delete'
     isDirectory?: boolean
 }): void {
-    if (typeof window === 'undefined' || !opts.targetPath) return
-
     const parentPath = getDirname(opts.targetPath)
     const affectedPaths = new Set<string>()
 
@@ -212,6 +210,30 @@ function notifyWorkspaceTreeChange(opts: {
             refreshRoot: Boolean(opts.workspacePath && parentPath === opts.workspacePath),
         },
     }))
+}
+
+function notifyWorkspaceTreeChange(opts: {
+    workspacePath: string
+    targetPath: string
+    changeType: 'create' | 'modify' | 'delete'
+    isDirectory?: boolean
+}): void {
+    if (typeof window === 'undefined' || !opts.targetPath) return
+
+    // Windows 文件系统存在写入后延迟可见的问题：
+    // writeFileSync 返回后，readdir 可能暂时读不到新文件，
+    // 导致工作区目录刷新后仍看不到刚写入的文件。
+    // 解决方案：Windows 上延迟派发事件给文件系统 flush 时间，
+    // 并在更长延迟后二次刷新作为兜底，确保文件最终可见。
+    if (platform.isWindows) {
+        // 首次刷新：等待 150ms 让文件系统完成 flush
+        setTimeout(() => dispatchWorkspaceFilesChanged(opts), 150)
+        // 二次兜底刷新：600ms 后再刷一次，覆盖 flush 较慢的情况
+        setTimeout(() => dispatchWorkspaceFilesChanged(opts), 600)
+        return
+    }
+
+    dispatchWorkspaceFilesChanged(opts)
 }
 
 interface DirTreeNode {
@@ -1866,7 +1888,11 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
 
             // 先唤出面板，再创建/获取终端，避免竞态：
             // 若先创建终端，notify() 触发时面板还不可见 → useEffect 销毁刚创建的终端
-            useStore.getState().setTerminalVisible(true)
+            // 仅长进程（如 dev server）自动显示终端面板，短命令结果直接返回给 AI，
+            // 用户可通过命令容器处的">_终端"按钮手动打开终端查看
+            if (isLongRunningProcess) {
+                useStore.getState().setTerminalVisible(true)
+            }
 
             // 获取或复用 Agent 专属终端（初始 cwd 用工作区根目录，避免反复改变终端目录）
             const termId = await terminalManager.getOrCreateAgentTerminal(

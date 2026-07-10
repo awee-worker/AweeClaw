@@ -30,6 +30,7 @@ import { safeIpcHandle } from '../bridge/core/ipcGuard'
 import { normalizePipeTerminalInput } from './terminalInputFilter'
 export { normalizePipeTerminalInput }
 import { pythonManager } from '../modules/python-runtime'
+import { nodeManager } from '../modules/node-runtime'
 
 
 interface SecureShellRequest {
@@ -975,14 +976,24 @@ export function registerSecureTerminalHandlers(
       const venvBinDir = pythonStatus.venvDir
         ? path.join(pythonStatus.venvDir, process.platform === 'win32' ? 'Scripts' : 'bin')
         : null
+      const nodeBinDir = nodeManager.getBinDir()
       const terminalEnv: Record<string, string> = {
         ...process.env as Record<string, string>,
         TERM: 'xterm-256color',
         COLORTERM: 'truecolor',
       }
+      // 构建增强 PATH：将 venv 和 node bin 目录前置注入
+      const pathPrefix: string[] = []
       if (venvBinDir && fs.existsSync(venvBinDir)) {
-        terminalEnv.PATH = `${venvBinDir}${path.delimiter}${process.env.PATH}`
+        pathPrefix.push(venvBinDir)
         logger.security.info(`[Terminal] Injected venv bin into PATH: ${venvBinDir}`)
+      }
+      if (nodeBinDir && fs.existsSync(nodeBinDir)) {
+        pathPrefix.push(nodeBinDir)
+        logger.security.info(`[Terminal] Injected Node.js bin into PATH: ${nodeBinDir}`)
+      }
+      if (pathPrefix.length > 0) {
+        terminalEnv.PATH = `${pathPrefix.join(path.delimiter)}${path.delimiter}${process.env.PATH}`
       }
 
       if (pathModule.isAbsolute(shellPath) && !fs.existsSync(shellPath)) {

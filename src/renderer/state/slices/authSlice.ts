@@ -20,6 +20,24 @@ import { knowledgeGraphSyncService } from '@intelligence/runtime/knowledgeServic
 import { t, type Language } from '@renderer/i18n'
 import { restoreWorkspaceAgentStore } from '@services/workspaceLoader'
 
+/**
+ * 检查用户是否已配置自定义模型。
+ * 判断依据：llmConfig 中 provider 非空且 apiKey 非空，说明用户已手动配置过模型。
+ * 此时登录不应强制覆盖为云端模式。
+ */
+function hasUserCustomModelConfig(): boolean {
+  try {
+    const store = (window as any).__ZUSTAND_STORE__ || (require('@store') as any).useStore?.getState?.()
+    if (!store) return false
+    const llmConfig = store.llmConfig
+    if (!llmConfig) return false
+    // provider 非空且 apiKey 非空 = 用户已配置自定义模型
+    return Boolean(llmConfig.provider && llmConfig.apiKey)
+  } catch {
+    return false
+  }
+}
+
 /** 认证成功后：归属孤儿线程 + 修复缺失标题 + 重新加载会话数据 */
 async function onAuthSuccess(userId: string | undefined): Promise<void> {
   if (userId) {
@@ -213,13 +231,19 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
     );
     // 设置 token + 持久化 + 更新 UI 状态
     setTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken });
-    persistAuth({ serverUrl: effectiveUrl, accessToken: data.accessToken, refreshToken: data.refreshToken, cloudMode: 'cloud' });
-    set({ serverUrl: effectiveUrl, isAuthenticated: true, cloudMode: 'cloud' });
+    // 检查用户是否已配置自定义模型：若已配置则保留用户选择，不强制切到云端模式
+    const hasCustomModel = hasUserCustomModelConfig();
+    const targetMode = hasCustomModel ? 'local' : 'cloud';
+    persistAuth({ serverUrl: effectiveUrl, accessToken: data.accessToken, refreshToken: data.refreshToken, cloudMode: targetMode });
+    set({ serverUrl: effectiveUrl, isAuthenticated: true, cloudMode: targetMode });
 
     // 顺序：先获取 profile，再并发获取其他数据
     await get().fetchProfile();
     get().fetchQuota().catch(() => {});
-    get().selectCloudModel().catch(() => {});
+    // 仅在未配置自定义模型时自动选择云端模型
+    if (!hasCustomModel) {
+      get().selectCloudModel().catch(() => {});
+    }
     onAuthSuccess(get().cloudUser?.id).catch(() => {});
     knowledgeSyncService.startAutoSync();
     knowledgeSyncService.syncToServer().catch(() => {});
@@ -234,12 +258,16 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
       { phone, code },
     );
     setTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken });
-    persistAuth({ serverUrl: effectiveUrl, accessToken: data.accessToken, refreshToken: data.refreshToken, cloudMode: 'cloud' });
-    set({ serverUrl: effectiveUrl, isAuthenticated: true, cloudMode: 'cloud' });
+    const hasCustomModel = hasUserCustomModelConfig();
+    const targetMode = hasCustomModel ? 'local' : 'cloud';
+    persistAuth({ serverUrl: effectiveUrl, accessToken: data.accessToken, refreshToken: data.refreshToken, cloudMode: targetMode });
+    set({ serverUrl: effectiveUrl, isAuthenticated: true, cloudMode: targetMode });
 
     await get().fetchProfile();
     get().fetchQuota().catch(() => {});
-    get().selectCloudModel().catch(() => {});
+    if (!hasCustomModel) {
+      get().selectCloudModel().catch(() => {});
+    }
     onAuthSuccess(get().cloudUser?.id).catch(() => {});
     knowledgeSyncService.startAutoSync();
     knowledgeSyncService.syncToServer().catch(() => {});
@@ -254,12 +282,16 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
       { email, password, username },
     );
     setTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken });
-    persistAuth({ serverUrl: effectiveUrl, accessToken: data.accessToken, refreshToken: data.refreshToken, cloudMode: 'cloud' });
-    set({ serverUrl: effectiveUrl, isAuthenticated: true, cloudMode: 'cloud' });
+    const hasCustomModel = hasUserCustomModelConfig();
+    const targetMode = hasCustomModel ? 'local' : 'cloud';
+    persistAuth({ serverUrl: effectiveUrl, accessToken: data.accessToken, refreshToken: data.refreshToken, cloudMode: targetMode });
+    set({ serverUrl: effectiveUrl, isAuthenticated: true, cloudMode: targetMode });
 
     await get().fetchProfile();
     get().fetchQuota().catch(() => {});
-    get().selectCloudModel().catch(() => {});
+    if (!hasCustomModel) {
+      get().selectCloudModel().catch(() => {});
+    }
     onAuthSuccess(get().cloudUser?.id).catch(() => {});
     knowledgeSyncService.startAutoSync();
     knowledgeSyncService.syncToServer().catch(() => {});

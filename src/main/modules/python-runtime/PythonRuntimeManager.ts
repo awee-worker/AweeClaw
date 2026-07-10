@@ -23,6 +23,7 @@ const store = new Store({ name: 'python-config' })
 
 const CONFIG_KEY_PYTHON_PATH = 'pythonPath'
 const CONFIG_KEY_UV_PATH = 'uvPath'
+const CONFIG_KEY_UVX_PATH = 'uvxPath'
 const CONFIG_KEY_VENV_DIR = 'venvDir'
 const CONFIG_KEY_STATUS = 'status'
 
@@ -30,18 +31,34 @@ const DEFAULT_PYTHON_DIR = path.join(app.getPath('userData'), 'python-env')
 const PYTHON_VERSION = '3.12'
 const BASE_PACKAGES = ['debugpy', 'pylint']
 
-const UV_DOWNLOAD_URLS: Record<string, string> = {
-  'darwin-arm64': 'https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-apple-darwin.tar.gz',
-  'darwin-x64': 'https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-apple-darwin.tar.gz',
-  'win32-x64': 'https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip',
-  'linux-x64': 'https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-gnu.tar.gz',
-  'linux-arm64': 'https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-unknown-linux-gnu.tar.gz',
+const UV_DOWNLOAD_URLS: Record<string, string[]> = {
+  'darwin-arm64': [
+    'https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-apple-darwin.tar.gz',
+    'https://ghproxy.net/https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-apple-darwin.tar.gz',
+  ],
+  'darwin-x64': [
+    'https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-apple-darwin.tar.gz',
+    'https://ghproxy.net/https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-apple-darwin.tar.gz',
+  ],
+  'win32-x64': [
+    'https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip',
+    'https://ghproxy.net/https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip',
+  ],
+  'linux-x64': [
+    'https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-gnu.tar.gz',
+    'https://ghproxy.net/https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-gnu.tar.gz',
+  ],
+  'linux-arm64': [
+    'https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-unknown-linux-gnu.tar.gz',
+    'https://ghproxy.net/https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-unknown-linux-gnu.tar.gz',
+  ],
 }
 
 export interface PythonStatus {
   ready: boolean
   pythonPath: string | null
   uvPath: string | null
+  uvxPath: string | null
   source: 'system' | 'managed' | 'none'
   version: string | null
   venvDir: string | null
@@ -53,8 +70,8 @@ function getPlatformKey(): string {
   return `${process.platform}-${process.arch}`
 }
 
-function getUvDownloadUrl(): string | null {
-  return UV_DOWNLOAD_URLS[getPlatformKey()] || null
+function getUvDownloadUrls(): string[] {
+  return UV_DOWNLOAD_URLS[getPlatformKey()] || []
 }
 
 function getCommonBinaryDirs(): string[] {
@@ -183,6 +200,7 @@ class PythonManager {
     ready: false,
     pythonPath: null,
     uvPath: null,
+    uvxPath: null,
     source: 'none',
     version: null,
     venvDir: null,
@@ -190,7 +208,32 @@ class PythonManager {
   }
   private initializing = false
 
+  /**
+   * 状态回调：用于向外部（如 PluginInstaller）报告 uv/Python 安装进度。
+   * 设置后，_ensureUv / _installUv / _installUvViaPip 等方法会通过此回调发送状态消息。
+   */
+  private statusCallback: ((message: string) => void) | null = null
+
   private constructor() {}
+
+  /**
+   * 设置状态回调，用于监听 uv/Python 安装过程中的进度消息。
+   * 传入 null 清除回调。
+   */
+  setStatusCallback(callback: ((message: string) => void) | null): void {
+    this.statusCallback = callback
+  }
+
+  /** 内部方法：发送状态消息到回调 */
+  private notifyStatus(message: string): void {
+    if (this.statusCallback) {
+      try {
+        this.statusCallback(message)
+      } catch {
+        // 忽略回调错误
+      }
+    }
+  }
 
   static getInstance(): PythonManager {
     if (!PythonManager.instance) {
@@ -208,7 +251,85 @@ class PythonManager {
   }
 
   getUvPath(): string | null {
-    return this._status.uvPath
+    // 优先返回缓存的 uv 路径
+    if (this._status.uvPath && fs.existsSync(this._status.uvPath)) {
+      return this._status.uvPath
+    }
+    // 从 PATH 搜索 uv
+    const systemUv = resolveCommandPath('uv')
+    if (systemUv) {
+      this._status.uvPath = systemUv
+      store.set(CONFIG_KEY_UV_PATH, systemUv)
+      return systemUv
+    }
+    return null
+  }
+
+  getUvxPath(): string | null {
+    // 优先返回缓存的 uvx 路径
+    if (this._status.uvxPath && fs.existsSync(this._status.uvxPath)) {
+      return this._status.uvxPath
+    }
+    // 从 uv 路径推断 uvx 同级路径
+    const uvPath = this._status.uvPath
+    if (uvPath) {
+      const uvxName = process.platform === 'win32' ? 'uvx.exe' : 'uvx'
+      const uvxPath = path.join(path.dirname(uvPath), uvxName)
+      if (fs.existsSync(uvxPath)) {
+        this._status.uvxPath = uvxPath
+        store.set(CONFIG_KEY_UVX_PATH, uvxPath)
+        return uvxPath
+      }
+    }
+    // 从 PATH 搜索 uvx
+    const systemUvx = resolveCommandPath('uvx')
+    if (systemUvx) {
+      this._status.uvxPath = systemUvx
+      store.set(CONFIG_KEY_UVX_PATH, systemUvx)
+      return systemUvx
+    }
+    return null
+  }
+
+  /**
+   * 确保 uv/uvx 可用，独立于 Python 安装状态。
+   *
+   * ensureReady() 只在需要安装 Python 时才会安装 uv。
+   * 如果用户已有系统 Python 但没有 uv/uvx，ensureReady() 会跳过 uv 安装。
+   * 此方法专门用于 MCP 插件等需要 uvx 但不需要 Python 的场景。
+   *
+   * @returns uvx 命令路径（优先 uvx 二进制，其次 uv 路径用于 `uv tool run` 等价命令），或 null 表示安装失败
+   */
+  async ensureUvx(): Promise<{ uvxPath: string; uvPath: string } | null> {
+    // 先检查是否已有 uvx
+    const existingUvx = this.getUvxPath()
+    if (existingUvx) {
+      return { uvxPath: existingUvx, uvPath: this._status.uvPath || existingUvx }
+    }
+
+    // 检查是否已有 uv（可以用 uv tool run 替代）
+    const existingUv = this.getUvPath()
+    if (existingUv) {
+      return { uvxPath: existingUv, uvPath: existingUv }
+    }
+
+    // uv/uvx 都不存在，触发安装
+    logger.system.info('[PythonManager] uvx requested but uv/uvx not found, installing uv...')
+    const installedUv = await this._ensureUv()
+    if (!installedUv) {
+      logger.system.error('[PythonManager] Failed to install uv for uvx support')
+      return null
+    }
+
+    // 安装后解析 uvx
+    this._resolveUvxPath(installedUv)
+    const uvxPath = this.getUvxPath()
+    if (uvxPath) {
+      return { uvxPath, uvPath: installedUv }
+    }
+
+    // uvx 二进制不存在，但 uv 已安装，可以用 uv tool run 替代
+    return { uvxPath: installedUv, uvPath: installedUv }
   }
 
   async ensureReady(): Promise<PythonStatus> {
@@ -245,6 +366,7 @@ class PythonManager {
           ready: true,
           pythonPath: cachedPython,
           uvPath: (store.get(CONFIG_KEY_UV_PATH) as string) || null,
+          uvxPath: (store.get(CONFIG_KEY_UVX_PATH) as string) || null,
           source: path.dirname(cachedPython).includes(DEFAULT_PYTHON_DIR) ? 'managed' : 'system',
           version,
           venvDir: (store.get(CONFIG_KEY_VENV_DIR) as string) || null,
@@ -325,90 +447,316 @@ class PythonManager {
   }
 
   private async _ensureUv(): Promise<string | null> {
+    this.notifyStatus('正在检查 uv 运行环境...')
     const systemUv = resolveCommandPath('uv')
     if (systemUv) {
       logger.system.info(`[PythonManager] Found system uv: ${systemUv}`)
+      this.notifyStatus('已检测到系统 uv')
+      // 同时解析 uvx 路径（系统安装的 uv 通常在同目录有 uvx）
+      this._resolveUvxPath(systemUv)
       return systemUv
     }
 
     const cachedUv = store.get(CONFIG_KEY_UV_PATH) as string | undefined
     if (cachedUv && fs.existsSync(cachedUv)) {
       logger.system.info(`[PythonManager] Found cached uv: ${cachedUv}`)
+      this.notifyStatus('已检测到缓存的 uv')
+      // 同时解析 uvx 路径
+      this._resolveUvxPath(cachedUv)
       return cachedUv
     }
 
-    return this._installUv()
+    // 安装策略（按优先级）：
+    // 1. pip install uv + 国内镜像源（最快，依赖系统 Python）
+    // 2. GitHub 二进制下载 + 镜像加速（不依赖 Python，但下载较慢）
+    const installedUv = await this._installUv()
+    if (installedUv) {
+      // 安装完成后尝试解析 uvx
+      this._resolveUvxPath(installedUv)
+    }
+    return installedUv
+  }
+
+  /**
+   * 解析 uvx 二进制路径并缓存。
+   * uv 发布包中 uv 和 uvx 通常在同一目录下。
+   */
+  private _resolveUvxPath(uvPath: string): void {
+    const uvxName = process.platform === 'win32' ? 'uvx.exe' : 'uvx'
+    const uvxPath = path.join(path.dirname(uvPath), uvxName)
+    if (fs.existsSync(uvxPath)) {
+      this._status.uvxPath = uvxPath
+      store.set(CONFIG_KEY_UVX_PATH, uvxPath)
+      logger.system.info(`[PythonManager] Resolved uvx path: ${uvxPath}`)
+    } else {
+      // 从 PATH 搜索 uvx
+      const systemUvx = resolveCommandPath('uvx')
+      if (systemUvx) {
+        this._status.uvxPath = systemUvx
+        store.set(CONFIG_KEY_UVX_PATH, systemUvx)
+        logger.system.info(`[PythonManager] Found system uvx: ${systemUvx}`)
+      }
+    }
   }
 
   private async _installUv(): Promise<string | null> {
-    const url = getUvDownloadUrl()
-    if (!url) {
-      logger.system.error(`[PythonManager] No uv download URL for platform: ${getPlatformKey()}`)
-      return null
+    // 安装策略（按优先级，国内网络优化）：
+    // 1. pip install uv + 国内 PyPI 镜像源（清华/阿里云，最快最可靠）
+    // 2. GitHub 二进制下载 + ghproxy.net 镜像加速（不依赖 Python）
+
+    // 策略 1：优先通过 pip + 国内镜像源安装
+    this.notifyStatus('正在通过 pip 安装 uv（使用国内镜像源）...')
+    const pipResult = await this._installUvViaPip()
+    if (pipResult) {
+      return pipResult
     }
 
-    logger.system.info(`[PythonManager] Downloading uv from: ${url}`)
+    // 策略 2：pip 安装失败，回退到 GitHub 二进制下载
+    this.notifyStatus('pip 安装失败，正在通过 GitHub 下载 uv 二进制...')
+    const urls = getUvDownloadUrls()
+    if (urls.length === 0) {
+      logger.system.error(`[PythonManager] No uv download URL for platform: ${getPlatformKey()}`)
+      this.notifyStatus('uv 安装失败：当前平台不支持且 pip 安装也失败')
+      return null
+    }
 
     const tmpDir = path.join(DEFAULT_PYTHON_DIR, 'tmp')
     if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true })
 
-    const ext = url.endsWith('.zip') ? '.zip' : '.tar.gz'
-    const archivePath = path.join(tmpDir, `uv-download${ext}`)
-    const extractDir = path.join(tmpDir, 'uv-extract')
+    // 依次尝试所有下载源（GitHub + 镜像）
+    let lastError: unknown = null
+    for (let i = 0; i < urls.length; i++) {
+      const url = urls[i]
+      const sourceName = i === 0 ? 'GitHub' : '镜像源'
+      const ext = url.endsWith('.zip') ? '.zip' : '.tar.gz'
+      const archivePath = path.join(tmpDir, `uv-download${ext}`)
+      const extractDir = path.join(tmpDir, 'uv-extract')
 
+      try {
+        this.notifyStatus(`正在从${sourceName}下载 uv 工具...`)
+        logger.system.info(`[PythonManager] Downloading uv from: ${url}`)
+        await downloadFile(url, archivePath)
+        this.notifyStatus('uv 下载完成，正在解压...')
+        logger.system.info('[PythonManager] uv download complete, extracting...')
+
+        await extractArchive(archivePath, extractDir)
+        this.notifyStatus('正在安装 uv 和 uvx 二进制文件...')
+
+        const uvBinary = this._findBinary(extractDir, 'uv')
+        if (!uvBinary) {
+          logger.system.error('[PythonManager] uv binary not found in extracted archive')
+          continue
+        }
+
+        const uvDestDir = path.join(DEFAULT_PYTHON_DIR, 'bin')
+        if (!fs.existsSync(uvDestDir)) fs.mkdirSync(uvDestDir, { recursive: true })
+
+        const uvDest = path.join(uvDestDir, process.platform === 'win32' ? 'uv.exe' : 'uv')
+        fs.copyFileSync(uvBinary, uvDest)
+
+        if (process.platform !== 'win32') {
+          fs.chmodSync(uvDest, 0o755)
+        }
+
+        // 同时安装 uvx 二进制（uv 发布包中包含 uvx）
+        const uvxBinary = this._findBinary(extractDir, 'uvx')
+        if (uvxBinary) {
+          const uvxDest = path.join(uvDestDir, process.platform === 'win32' ? 'uvx.exe' : 'uvx')
+          fs.copyFileSync(uvxBinary, uvxDest)
+          if (process.platform !== 'win32') {
+            fs.chmodSync(uvxDest, 0o755)
+          }
+          this._status.uvxPath = uvxDest
+          store.set(CONFIG_KEY_UVX_PATH, uvxDest)
+          logger.system.info(`[PythonManager] uvx installed at: ${uvxDest}`)
+        } else {
+          logger.system.warn('[PythonManager] uvx binary not found in archive, will use `uv tool run` fallback')
+        }
+
+        try {
+          fs.rmSync(tmpDir, { recursive: true, force: true })
+        } catch {
+          // ignore cleanup errors
+        }
+
+        logger.system.info(`[PythonManager] uv installed at: ${uvDest}`)
+        this.notifyStatus('uv 工具安装完成')
+        return uvDest
+      } catch (err) {
+        logger.system.warn(`[PythonManager] Download failed from ${url}:`, err)
+        this.notifyStatus(`${sourceName}下载失败，尝试下一个源...`)
+        lastError = err
+        // 清理本次失败的临时文件，尝试下一个 URL
+        try { fs.rmSync(tmpDir, { recursive: true, force: true }) } catch { /* ignore */ }
+      }
+    }
+
+    this.notifyStatus('uv 安装失败，请手动安装 uv 后重试')
+    logger.system.error('[PythonManager] uv installation failed (all methods exhausted):', lastError)
+    return null
+  }
+
+  /**
+   * 国内 PyPI 镜像源列表（按优先级排序）。
+   * 依次尝试，任一成功即可。
+   */
+  private static readonly PYPI_MIRRORS = [
+    { name: '清华', url: 'https://pypi.tuna.tsinghua.edu.cn/simple' },
+    { name: '阿里云', url: 'https://mirrors.aliyun.com/pypi/simple' },
+    { name: '华为云', url: 'https://repo.huaweicloud.com/repository/pypi/simple' },
+  ]
+
+  /**
+   * 通过 pip install uv 安装 uv。
+   *
+   * 依次尝试国内 PyPI 镜像源（清华、阿里云、华为云），
+   * 如果全部失败则尝试默认 PyPI 源。
+   * 国内镜像源带宽充足，通常下载速度可达 1-10MB/s。
+   *
+   * @returns uv 二进制路径，或 null 表示安装失败
+   */
+  private async _installUvViaPip(): Promise<string | null> {
+    // 查找系统 Python
+    this.notifyStatus('正在查找系统 Python...')
+    const pythonCmd = process.platform === 'win32' ? 'python' : 'python3'
+    const resolvedPython = resolveCommandPath(pythonCmd)
+    if (!resolvedPython) {
+      logger.system.warn('[PythonManager] No system Python found for pip install uv fallback')
+      this.notifyStatus('未找到系统 Python，无法通过 pip 安装')
+      return null
+    }
+
+    // 依次尝试国内镜像源
+    for (const mirror of PythonManager.PYPI_MIRRORS) {
+      try {
+        this.notifyStatus(`正在通过 pip 安装 uv（${mirror.name}镜像源，可能需要 1-2 分钟）...`)
+        logger.system.info(`[PythonManager] Running: ${resolvedPython} -m pip install uv -i ${mirror.url}`)
+        const { code, stdout, stderr } = await execCommandAsync(
+          resolvedPython,
+          ['-m', 'pip', 'install', 'uv', '-i', mirror.url, '--trusted-host', new URL(mirror.url).hostname],
+          { timeout: 180000 } // 3 分钟超时（pip 安装可能较慢）
+        )
+
+        if (code !== 0) {
+          logger.system.warn(`[PythonManager] pip install uv failed (${mirror.name}):`, stderr)
+          this.notifyStatus(`${mirror.name}镜像源安装失败，尝试下一个源...`)
+          continue
+        }
+
+        logger.system.info(`[PythonManager] pip install uv succeeded (${mirror.name}):`, stdout)
+        this.notifyStatus(`pip 安装 uv 成功（${mirror.name}源），正在定位二进制文件...`)
+
+        // pip 安装后，uv/uvx 会被放到 Python 的 Scripts（Windows）或 bin（Unix）目录
+        const uvDest = resolveCommandPath('uv')
+        if (uvDest) {
+          this._status.uvPath = uvDest
+          store.set(CONFIG_KEY_UV_PATH, uvDest)
+          this._resolveUvxPath(uvDest)
+          logger.system.info(`[PythonManager] uv installed via pip at: ${uvDest}`)
+          this.notifyStatus('uv 安装完成')
+          return uvDest
+        }
+
+        // 如果 PATH 中找不到，尝试从 Python Scripts 目录推断
+        const pythonDir = path.dirname(resolvedPython)
+        const scriptsDir = process.platform === 'win32'
+          ? path.join(pythonDir, 'Scripts')
+          : path.join(pythonDir, '..', 'bin')
+        const uvName = process.platform === 'win32' ? 'uv.exe' : 'uv'
+        const uvPath = path.join(scriptsDir, uvName)
+
+        if (fs.existsSync(uvPath)) {
+          this._status.uvPath = uvPath
+          store.set(CONFIG_KEY_UV_PATH, uvPath)
+          this._resolveUvxPath(uvPath)
+          logger.system.info(`[PythonManager] uv installed via pip at: ${uvPath}`)
+          this.notifyStatus('uv 安装完成')
+          return uvPath
+        }
+
+        logger.system.error('[PythonManager] pip install uv succeeded but binary not found')
+        this.notifyStatus('pip 安装成功但未找到 uv 二进制文件')
+        return null
+      } catch (err) {
+        logger.system.warn(`[PythonManager] pip install uv exception (${mirror.name}):`, err)
+        this.notifyStatus(`${mirror.name}镜像源安装异常，尝试下一个源...`)
+      }
+    }
+
+    // 所有国内镜像源都失败，最后尝试默认 PyPI 源
     try {
-      await downloadFile(url, archivePath)
-      logger.system.info('[PythonManager] uv download complete, extracting...')
+      this.notifyStatus('正在通过 pip 安装 uv（默认 PyPI 源）...')
+      logger.system.info(`[PythonManager] Running: ${resolvedPython} -m pip install uv (default index)`)
+      const { code, stdout, stderr } = await execCommandAsync(
+        resolvedPython,
+        ['-m', 'pip', 'install', 'uv'],
+        { timeout: 180000 }
+      )
 
-      await extractArchive(archivePath, extractDir)
-
-      const uvBinary = this._findUvBinary(extractDir)
-      if (!uvBinary) {
-        logger.system.error('[PythonManager] uv binary not found in extracted archive')
+      if (code !== 0) {
+        logger.system.error('[PythonManager] pip install uv failed (default):', stderr)
+        this.notifyStatus('pip 安装 uv 失败（所有源均失败）')
         return null
       }
 
-      const uvDestDir = path.join(DEFAULT_PYTHON_DIR, 'bin')
-      if (!fs.existsSync(uvDestDir)) fs.mkdirSync(uvDestDir, { recursive: true })
+      logger.system.info('[PythonManager] pip install uv succeeded (default):', stdout)
+      this.notifyStatus('pip 安装 uv 成功，正在定位二进制文件...')
 
-      const uvDest = path.join(uvDestDir, process.platform === 'win32' ? 'uv.exe' : 'uv')
-      fs.copyFileSync(uvBinary, uvDest)
-
-      if (process.platform !== 'win32') {
-        fs.chmodSync(uvDest, 0o755)
+      const uvDest = resolveCommandPath('uv')
+      if (uvDest) {
+        this._status.uvPath = uvDest
+        store.set(CONFIG_KEY_UV_PATH, uvDest)
+        this._resolveUvxPath(uvDest)
+        logger.system.info(`[PythonManager] uv installed via pip at: ${uvDest}`)
+        this.notifyStatus('uv 安装完成')
+        return uvDest
       }
 
-      try {
-        fs.rmSync(tmpDir, { recursive: true, force: true })
-      } catch {
-        // ignore cleanup errors
+      const pythonDir = path.dirname(resolvedPython)
+      const scriptsDir = process.platform === 'win32'
+        ? path.join(pythonDir, 'Scripts')
+        : path.join(pythonDir, '..', 'bin')
+      const uvName = process.platform === 'win32' ? 'uv.exe' : 'uv'
+      const uvPath = path.join(scriptsDir, uvName)
+
+      if (fs.existsSync(uvPath)) {
+        this._status.uvPath = uvPath
+        store.set(CONFIG_KEY_UV_PATH, uvPath)
+        this._resolveUvxPath(uvPath)
+        logger.system.info(`[PythonManager] uv installed via pip at: ${uvPath}`)
+        this.notifyStatus('uv 安装完成')
+        return uvPath
       }
 
-      logger.system.info(`[PythonManager] uv installed at: ${uvDest}`)
-      return uvDest
+      logger.system.error('[PythonManager] pip install uv succeeded but binary not found')
+      return null
     } catch (err) {
-      logger.system.error('[PythonManager] uv installation failed:', err)
-      try { fs.rmSync(tmpDir, { recursive: true, force: true }) } catch { /* ignore */ }
+      logger.system.error('[PythonManager] pip install uv exception (default):', err)
       return null
     }
   }
 
-  private _findUvBinary(searchDir: string): string | null {
-    const uvName = process.platform === 'win32' ? 'uv.exe' : 'uv'
+  /**
+   * 在解压目录中查找指定二进制文件（uv 或 uvx）。
+   * @param searchDir 解压目录
+   * @param binaryName 二进制文件基础名（'uv' 或 'uvx'），自动追加平台后缀
+   */
+  private _findBinary(searchDir: string, binaryName: 'uv' | 'uvx'): string | null {
+    const fileName = process.platform === 'win32' ? `${binaryName}.exe` : binaryName
 
-    const directPath = path.join(searchDir, uvName)
+    const directPath = path.join(searchDir, fileName)
     if (fs.existsSync(directPath)) return directPath
 
     const entries = fs.readdirSync(searchDir, { withFileTypes: true })
     for (const entry of entries) {
       if (entry.isDirectory()) {
-        const subPath = path.join(searchDir, entry.name, uvName)
+        const subPath = path.join(searchDir, entry.name, fileName)
         if (fs.existsSync(subPath)) return subPath
 
         const subEntries = fs.readdirSync(path.join(searchDir, entry.name), { withFileTypes: true })
         for (const subEntry of subEntries) {
           if (subEntry.isDirectory()) {
-            const deepPath = path.join(searchDir, entry.name, subEntry.name, uvName)
+            const deepPath = path.join(searchDir, entry.name, subEntry.name, fileName)
             if (fs.existsSync(deepPath)) return deepPath
           }
         }
@@ -800,6 +1148,7 @@ class PythonManager {
 
     store.delete(CONFIG_KEY_PYTHON_PATH)
     store.delete(CONFIG_KEY_UV_PATH)
+    store.delete(CONFIG_KEY_UVX_PATH)
     store.delete(CONFIG_KEY_VENV_DIR)
     store.delete(CONFIG_KEY_STATUS)
 
@@ -815,6 +1164,7 @@ class PythonManager {
       ready: false,
       pythonPath: null,
       uvPath: null,
+      uvxPath: null,
       source: 'none',
       version: null,
       venvDir: null,

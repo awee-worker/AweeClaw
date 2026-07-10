@@ -13,7 +13,7 @@ import { api } from './electronBridge'
 import { logger } from '@toolkit/LogEngine'
 import { CacheService } from '@shared/toolkit/CacheManager'
 import { getCacheConfig } from '@configuration/agentProfile'
-import { pathEquals, pathStartsWith, getDirname } from '@shared/toolkit/pathHelper'
+import { pathEquals, pathStartsWith, getDirname, normalizePath } from '@shared/toolkit/pathHelper'
 import { useStore } from '@store'
 import type { FileItem } from '@protocols'
 
@@ -75,27 +75,28 @@ class ScenarioDirectoryCache {
     }
 
     async getDirectory(path: string, forceRefresh = false): Promise<FileItem[]> {
+        const normalizedKey = normalizePath(path)
         if (!forceRefresh) {
-            const cached = this.cache.get(path)
+            const cached = this.cache.get(normalizedKey)
             if (cached) {
                 return cached
             }
         }
 
-        const pending = this.pendingRequests.get(path)
+        const pending = this.pendingRequests.get(normalizedKey)
         if (pending) {
             return pending
         }
 
         const request = this.fetchDirectory(path)
-        this.pendingRequests.set(path, request)
+        this.pendingRequests.set(normalizedKey, request)
 
         try {
             const items = await request
-            this.cache.set(path, items)
+            this.cache.set(normalizedKey, items)
             return items
         } finally {
-            this.pendingRequests.delete(path)
+            this.pendingRequests.delete(normalizedKey)
         }
     }
 
@@ -110,14 +111,15 @@ class ScenarioDirectoryCache {
     }
 
     invalidate(path: string) {
-        this.cache.delete(path)
+        this.cache.delete(normalizePath(path))
     }
 
     invalidateTree(path: string) {
+        const normalizedPath = normalizePath(path)
         const keysToDelete: string[] = []
 
         for (const key of this.cache.keys()) {
-            if (pathEquals(key, path) || pathStartsWith(key, path)) {
+            if (pathEquals(key, normalizedPath) || pathStartsWith(key, normalizedPath)) {
                 keysToDelete.push(key)
             }
         }
@@ -148,7 +150,7 @@ class ScenarioDirectoryCache {
 
     async preload(paths: string[]) {
         const config = getScenarioCacheConfig()
-        const uncached = paths.filter(p => !this.cache.has(p))
+        const uncached = paths.filter(p => !this.cache.has(normalizePath(p)))
 
         const batchSize = config.preloadBatchSize
         for (let i = 0; i < uncached.length; i += batchSize) {

@@ -32,6 +32,23 @@ export function createPythonDataApi() {
       timeout?: number
     }) => invoke('python:executeInlineScript')(params),
 
+    // ── Node.js 环境 ──
+    nodeGetStatus: invoke('node:getStatus'),
+    nodeGetPath: invoke('node:getPath'),
+    nodeGetNpmPath: invoke('node:getNpmPath'),
+    nodeGetNpxPath: invoke('node:getNpxPath'),
+    nodeEnsureReady: invoke('node:ensureReady'),
+    nodeReinstall: invoke('node:reinstall'),
+    nodeInstallPkg: (pkg: string) => invoke('node:installPkg')(pkg),
+    nodeSetCustomPath: (customPath: string | null) =>
+      invoke('node:setCustomPath')(customPath),
+    nodeExecuteScript: (params: {
+      scriptPath: string
+      args?: string[]
+      cwd?: string
+      timeout?: number
+    }) => invoke('node:executeScript')(params),
+
     // ── 数据分析 ──
     dataExecuteQuery: (params: unknown) => invoke('data:executeQuery')(params),
     dataTransform: (params: unknown) => invoke('data:transform')(params),

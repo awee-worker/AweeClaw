@@ -90,6 +90,7 @@ export const SECURITY_DEFAULTS = {
     'go', 'rust', 'cargo',
     'make', 'gcc', 'clang', 'cmake',
     'pwd', 'ls', 'dir', 'cat', 'type', 'echo', 'mkdir', 'touch', 'rm', 'mv', 'cp', 'cd',
+    'open', 'find',
   ],
   GIT_SUBCOMMANDS: [
     'status', 'log', 'diff', 'show', 'ls-files', 'rev-parse', 'rev-list', 'blame',

@@ -26,8 +26,8 @@ export function registerUpdaterHandlers(): void {
     return updateService.getStatus()
   })
 
-  ipcMain.handle('updater:install', () => {
-    updateService.quitAndInstall()
+  ipcMain.handle('updater:install', async () => {
+    await updateService.quitAndInstall()
   })
 
   ipcMain.handle('updater:openDownloadPage', (_, url?: string) => {

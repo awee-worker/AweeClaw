@@ -20,14 +20,18 @@ import {
   Upload,
   Share2,
   Eye,
-  EyeOff
+  EyeOff,
+  Play,
+  FileDown,
+  FileType,
+  FileText
 } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import type { FileItem } from '@protocols'
 import { BRAND } from '@shared/brand'
 import {t, type Language} from '@renderer/i18n'
-import { getDirPath, joinPath, pathEquals, normalizePath } from '@shared/toolkit/pathHelper'
+import { getDirPath, joinPath, pathEquals, pathStartsWith, normalizePath } from '@shared/toolkit/pathHelper'
 import { formatShortcut, keybindingService } from '@services/keybindingAdapter'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
 import { toast } from '@components/foundation/NotificationProvider'
@@ -210,17 +214,23 @@ export const VirtualFileTree = memo(function VirtualFileTree({
       const next = new Map(prev)
 
       refreshSignal.affectedPaths.forEach((path) => {
-        if (!expandedFolders.has(path)) {
-          if (next.has(path)) {
-            next.delete(path)
-            changed = true
+        // 使用 pathEquals 比较展开状态（忽略大小写和分隔符差异）
+        const isExpanded = Array.from(expandedFolders).some(fp => pathEquals(fp, path))
+        if (!isExpanded) {
+          // 在 childrenCache 中查找匹配的 key（可能因分隔符差异而不匹配）
+          for (const key of next.keys()) {
+            if (pathEquals(key, path)) {
+              next.delete(key)
+              changed = true
+              break
+            }
           }
         }
       })
 
       refreshSignal.deletedPaths.forEach((deletedPath) => {
         for (const key of next.keys()) {
-          if (pathEquals(key, deletedPath) || key.startsWith(`${deletedPath}/`) || key.startsWith(`${deletedPath}\\`)) {
+          if (pathEquals(key, deletedPath) || pathStartsWith(key, deletedPath)) {
             next.delete(key)
             changed = true
           }
@@ -231,7 +241,9 @@ export const VirtualFileTree = memo(function VirtualFileTree({
     })
 
     refreshSignal.affectedPaths.forEach((path) => {
-      if (expandedFolders.has(path)) {
+      // 使用 pathEquals 检查是否已展开
+      const isExpanded = Array.from(expandedFolders).some(fp => pathEquals(fp, path))
+      if (isExpanded) {
         void loadChildren(path, { forceRefresh: true, showLoading: false })
       }
     })
@@ -751,6 +763,132 @@ export const VirtualFileTree = memo(function VirtualFileTree({
     void onOpenTerminal(cwd)
   }, [onOpenTerminal])
 
+  /**
+   * 检测目录的项目类型并返回对应的运行命令。
+   * 支持：Node.js (npm/yarn/pnpm)、Python (pyproject.toml/requirements.txt)、
+   *      Go (go.mod)、Rust (Cargo.toml)、Java (pom.xml/build.gradle)
+   */
+  const detectProjectRunCommand = useCallback(async (dirPath: string): Promise<{
+    command: string
+    label: string
+    /** 运行模式：terminal=在终端中执行命令，browser=在浏览器中打开文件 */
+    runMode: 'terminal' | 'browser'
+    /** browser 模式下要打开的文件路径 */
+    htmlPath?: string
+  } | null> => {
+    try {
+      const entries = await api.file.readDir(dirPath)
+      const fileNames = new Set(entries?.map(e => e.name) || [])
+
+      // Node.js 项目
+      if (fileNames.has('package.json')) {
+        // 优先使用 pnpm，其次 yarn，最后 npm
+        if (fileNames.has('pnpm-lock.yaml')) return { command: 'pnpm run dev', label: 'pnpm run dev', runMode: 'terminal' }
+        if (fileNames.has('yarn.lock')) return { command: 'yarn dev', label: 'yarn dev', runMode: 'terminal' }
+        return { command: 'npm run dev', label: 'npm run dev', runMode: 'terminal' }
+      }
+      // Python 项目
+      if (fileNames.has('pyproject.toml') || fileNames.has('requirements.txt')) {
+        if (fileNames.has('main.py')) return { command: 'python main.py', label: 'python main.py', runMode: 'terminal' }
+        if (fileNames.has('app.py')) return { command: 'python app.py', label: 'python app.py', runMode: 'terminal' }
+        return { command: 'python main.py', label: 'python main.py', runMode: 'terminal' }
+      }
+      // Go 项目
+      if (fileNames.has('go.mod')) {
+        return { command: 'go run .', label: 'go run .', runMode: 'terminal' }
+      }
+      // Rust 项目
+      if (fileNames.has('Cargo.toml')) {
+        return { command: 'cargo run', label: 'cargo run', runMode: 'terminal' }
+      }
+      // Java Maven 项目
+      if (fileNames.has('pom.xml')) {
+        return { command: 'mvn spring-boot:run', label: 'mvn spring-boot:run', runMode: 'terminal' }
+      }
+      // Java Gradle 项目
+      if (fileNames.has('build.gradle') || fileNames.has('build.gradle.kts')) {
+        return { command: './gradlew run', label: './gradlew run', runMode: 'terminal' }
+      }
+      // 静态 HTML 项目：目录中有 .html 文件但无项目配置文件
+      const htmlFiles = entries?.filter(e => !e.isDirectory && /\.html?$/i.test(e.name)) || []
+      if (htmlFiles.length > 0) {
+        // 优先使用 index.html
+        const indexHtml = htmlFiles.find(f => /^index\.html?$/i.test(f.name)) || htmlFiles[0]
+        return {
+          command: '',
+          label: indexHtml.name,
+          runMode: 'browser',
+          htmlPath: joinPath(dirPath, indexHtml.name),
+        }
+      }
+    } catch {
+      // 读取目录失败，忽略
+    }
+    return null
+  }, [])
+
+  /** 运行项目：根据项目类型选择最佳运行方式（终端命令 / 浏览器打开） */
+  const handleRunProject = useCallback(async (node: FlattenedNode) => {
+    const dirPath = node.item.isDirectory ? node.item.path : getDirPath(node.item.path)
+    const runInfo = await detectProjectRunCommand(dirPath)
+    if (!runInfo) {
+      toast.error(t('contextMenu.noRunScriptDetected', language as Language) || 'No run script detected')
+      return
+    }
+
+    // 静态 HTML：在浏览器中打开，无需终端
+    if (runInfo.runMode === 'browser' && runInfo.htmlPath) {
+      const success = await api.file.openInBrowser(runInfo.htmlPath)
+      if (!success) {
+        toast.error(t('failedToOpenInBrowser', language as Language) || 'Failed to open in browser')
+      }
+      return
+    }
+
+    // 终端模式：关闭全屏页面，显示编辑器区 + 终端面板
+    const { terminalManager } = await import('@services/TerminalAdapter')
+    const store = useStore.getState()
+    // 关闭设置/欢迎等全屏页面，回到编辑器主界面
+    store.closeAllFullPages()
+    // 显示底部 dock 的终端面板
+    store.setTerminalVisible(true)
+    const termId = await terminalManager.createTerminal({
+      cwd: dirPath,
+      name: runInfo.label,
+    })
+    // 发送运行命令到终端（附加换行符执行）
+    terminalManager.writeToTerminal(termId, runInfo.command + '\r')
+  }, [detectProjectRunCommand, language])
+
+  /** 将 Markdown 文件转换为指定格式 */
+  const handleConvertFile = useCallback(async (node: FlattenedNode, targetFormat: 'docx' | 'pdf') => {
+    const sourcePath = node.item.path
+    const targetPath = sourcePath.replace(/\.[^.]+$/, `.${targetFormat}`)
+
+    toast.info(t('contextMenu.converting', language as Language) || `Converting to ${targetFormat}...`)
+
+    try {
+      // 调用主进程的文件转换 IPC（如果可用）
+      const convertFn = (api.file as any).convertDocument as ((src: string, fmt: string, dst: string) => Promise<boolean>) | undefined
+      const result = convertFn ? await convertFn(sourcePath, targetFormat, targetPath) : false
+      if (result) {
+        toast.success(t('contextMenu.convertSuccess', language as Language) || `Converted to ${targetFormat}`)
+        // 刷新工作区
+        window.dispatchEvent(new CustomEvent('workspace:files-changed', {
+          detail: { affectedPaths: [getDirPath(sourcePath)], refreshRoot: false },
+        }))
+      } else {
+        // IPC 不可用时，通过 AI Agent 执行转换
+        toast.info(t('contextMenu.convertViaAgent', language as Language) || 'Launching AI agent to convert...')
+        // 通过全局事件触发 AI 聊天发送（ChatPanel 监听 'chat-send-message' 事件）
+        const prompt = `请将 Markdown 文件 "${sourcePath}" 转换为 ${targetFormat.toUpperCase()} 格式，保存到 "${targetPath}"。要求：1) 保留原文档的标题层级、列表、代码块、表格等格式；2) 如果需要安装转换工具（如 pandoc），请先安装再执行转换；3) 转换完成后告诉我输出文件的路径。`
+        window.dispatchEvent(new CustomEvent('chat-send-message', { detail: { content: prompt } }))
+      }
+    } catch (e) {
+      toast.error(t('contextMenu.convertFailed', language as Language) || `Conversion failed: ${e}`)
+    }
+  }, [language])
+
   const handleImportIntoFolder = useCallback(async (node: FlattenedNode) => {
     const targetDir = node.item.isDirectory ? node.item.path : getDirPath(node.item.path)
     const selectedPaths = await api.file.selectForImport({
@@ -810,6 +948,23 @@ export const VirtualFileTree = memo(function VirtualFileTree({
     }
   }, [language])
 
+  /** 同步检查目录是否有可运行的项目文件（基于缓存，未缓存时乐观显示） */
+  const hasRunnableProject = useCallback((dirPath: string): boolean => {
+    const children = childrenCache.get(dirPath)
+    // 未缓存时乐观显示，由 handleRunProject 兜底处理
+    if (!children) return true
+    const fileNames = new Set(children.map(c => c.name))
+    // 项目配置文件
+    if (fileNames.has('package.json') || fileNames.has('pyproject.toml') ||
+        fileNames.has('requirements.txt') || fileNames.has('go.mod') ||
+        fileNames.has('Cargo.toml') || fileNames.has('pom.xml') ||
+        fileNames.has('build.gradle') || fileNames.has('build.gradle.kts')) {
+      return true
+    }
+    // 静态 HTML 文件
+    return children.some(c => !c.isDirectory && /\.html?$/i.test(c.name))
+  }, [childrenCache])
+
   // 聚焦重命名输入框
   useEffect(() => {
     if (renamingPath && renameInputRef.current) {
@@ -824,7 +979,13 @@ export const VirtualFileTree = memo(function VirtualFileTree({
     const isWorkspaceEditor = activeScenarioId === 'dev-assistant'
 
     if (node.item.isDirectory) {
-      return [
+      const dirItems: ContextMenuItem[] = []
+      // 只在有可运行文件时显示"运行项目"
+      if (hasRunnableProject(node.item.path)) {
+        dirItems.push({ id: 'runProject', label: t('contextMenu.runProject', contextMenuLanguage), icon: Play, onClick: () => handleRunProject(node) })
+        dirItems.push({ id: 'sepRun', label: '', separator: true })
+      }
+      dirItems.push(
         { id: 'newFile', label: t('newFile', contextMenuLanguage), icon: FilePlus, onClick: () => handleNewFile(node) },
         { id: 'newFolder', label: t('newFolder', contextMenuLanguage), icon: FolderPlus, onClick: () => handleNewFolder(node) },
         { id: 'sep1', label: '', separator: true },
@@ -849,12 +1010,37 @@ export const VirtualFileTree = memo(function VirtualFileTree({
         { id: 'reveal', label: t('contextMenu.revealInExplorer', contextMenuLanguage), icon: ExternalLink, onClick: () => handleRevealInExplorer(node) },
         { id: 'sepHidden', label: '', separator: true },
         { id: 'toggleHidden', label: showWorkspaceSystemDir ? t('contextMenu.hideWorkspaceSystemDir', contextMenuLanguage) : t('contextMenu.showWorkspaceSystemDir', contextMenuLanguage), icon: showWorkspaceSystemDir ? EyeOff : Eye, onClick: () => setShowWorkspaceSystemDir(!showWorkspaceSystemDir) },
-      ]
+      )
+      return dirItems
     }
     const isHtmlFile = node.item.name.toLowerCase().endsWith('.html') ||
       node.item.name.toLowerCase().endsWith('.htm')
+    const isMdFile = node.item.name.toLowerCase().endsWith('.md') ||
+      node.item.name.toLowerCase().endsWith('.markdown')
 
-    const items: ContextMenuItem[] = [
+    const items: ContextMenuItem[] = []
+
+    // 在浏览器中打开（HTML 文件）— 放在最前面
+    if (isHtmlFile) {
+      items.push({ id: 'openInBrowser', label: t('contextMenu.openInBrowser', contextMenuLanguage), icon: Globe, onClick: () => handleOpenInBrowser(node) })
+      items.push({ id: 'sepHtml', label: '', separator: true })
+    }
+
+    // 转换为（Markdown 文件）— 二级菜单：Word / PDF
+    if (isMdFile) {
+      items.push({
+        id: 'convertTo',
+        label: t('contextMenu.convertTo', contextMenuLanguage),
+        icon: FileType,
+        children: [
+          { id: 'convertToDocx', label: 'Word', icon: FileText, onClick: () => handleConvertFile(node, 'docx') },
+          { id: 'convertToPdf', label: 'PDF', icon: FileDown, onClick: () => handleConvertFile(node, 'pdf') },
+        ],
+      })
+      items.push({ id: 'sepConvert', label: '', separator: true })
+    }
+
+    items.push(
       { id: 'export', label: t('contextMenu.exportFiles', contextMenuLanguage), icon: Upload, onClick: () => handleExportFromNode(node) },
       { id: 'share', label: t('contextMenu.shareItem', contextMenuLanguage), icon: Share2, onClick: () => handleShareItem(node) },
       ...(isWorkspaceEditor
@@ -873,18 +1059,13 @@ export const VirtualFileTree = memo(function VirtualFileTree({
       { id: 'copyPath', label: t('contextMenu.copyPath', contextMenuLanguage), icon: Copy, onClick: () => handleCopyPath(node) },
       { id: 'copyRelPath', label: t('contextMenu.copyRelativePath', contextMenuLanguage), icon: Clipboard, onClick: () => handleCopyRelativePath(node) },
       { id: 'reveal', label: t('contextMenu.revealInExplorer', contextMenuLanguage), icon: ExternalLink, onClick: () => handleRevealInExplorer(node) },
-    ]
-
-    if (isHtmlFile) {
-      items.push({ id: 'sepHtml', label: '', separator: true })
-      items.push({ id: 'openInBrowser', label: t('contextMenu.openInBrowser', contextMenuLanguage), icon: Globe, onClick: () => handleOpenInBrowser(node) })
-    }
+    )
 
     items.push({ id: 'sepHidden', label: '', separator: true })
     items.push({ id: 'toggleHidden', label: showWorkspaceSystemDir ? t('contextMenu.hideWorkspaceSystemDir', contextMenuLanguage) : t('contextMenu.showWorkspaceSystemDir', contextMenuLanguage), icon: showWorkspaceSystemDir ? EyeOff : Eye, onClick: () => setShowWorkspaceSystemDir(!showWorkspaceSystemDir) })
 
     return items
-  }, [activeScenarioId, clipboardItem, handleNewFile, handleNewFolder, handleOpenTerminalHere, handleCopyItem, handlePasteForNode, handleRenameStart, handleDelete, handleCopyPath, handleCopyRelativePath, handleRevealInExplorer, handleOpenInBrowser, handleImportIntoFolder, handleExportFromNode, handleShareItem, showWorkspaceSystemDir, setShowWorkspaceSystemDir, language])
+  }, [activeScenarioId, clipboardItem, handleNewFile, handleNewFolder, handleOpenTerminalHere, handleCopyItem, handlePasteForNode, handleRenameStart, handleDelete, handleCopyPath, handleCopyRelativePath, handleRevealInExplorer, handleOpenInBrowser, handleImportIntoFolder, handleExportFromNode, handleShareItem, handleRunProject, handleConvertFile, hasRunnableProject, showWorkspaceSystemDir, setShowWorkspaceSystemDir, language])
 
   // 渲染单个节点
   const renderNode = (node: FlattenedNode, index: number) => {

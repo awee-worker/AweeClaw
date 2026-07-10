@@ -30,7 +30,7 @@ import {
   Monitor,
 } from 'lucide-react'
 import type { PluginCategory } from '@services/pluginService'
-import type { Language } from '@renderer/i18n'
+import { t, type Language } from '@renderer/i18n'
 
 /** 分类图标映射（与后端 category id 对应） */
 const CATEGORY_ICONS: Record<string, React.ReactNode> = {
@@ -82,7 +82,7 @@ export function PluginCategoryFilter({
         }`}
       >
         <Package className="w-3.5 h-3.5" />
-        <span>{isZh ? '全部' : 'All'}</span>
+        <span>{t('plugin.category.all', language)}</span>
       </button>
 
       {/* 分类按钮（自动换行） */}

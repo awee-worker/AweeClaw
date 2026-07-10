@@ -187,9 +187,9 @@ export const AGENT_DEFAULTS = {
   loopDetection: {
     enabled: true,             // 是否启用循环检测
     maxHistory: 50,            // 历史记录保留数量
-    maxExactRepeats: 5,        // 相同参数的精确重复阈值
-    maxSameTargetRepeats: 8,   // 同一文件的连续编辑阈值
-    patternRepeatHardStop: 3,  // 模式重复硬停止阈值
+    maxExactRepeats: 10,        // 相同参数的精确重复阈值（progressive 警告在 floor(10*0.6)=6 次触发）
+    maxSameTargetRepeats: 20,   // 同一文件的连续编辑阈值
+    patternRepeatHardStop: 5,  // 模式重复硬停止阈值
     dynamicThreshold: true,    // 根据任务复杂度动态调整阈值
   },
 
@@ -226,7 +226,7 @@ export const AGENT_DEFAULTS = {
 // ============================================
 
 export const AUTO_APPROVE_DEFAULTS = {
-  terminal: false,
+  terminal: true,
   dangerous: false,
 } as const
 
@@ -236,19 +236,19 @@ export const AUTO_APPROVE_DEFAULTS = {
 // ============================================
 
 export const SECURITY_SETTINGS_DEFAULTS = {
-  enablePermissionConfirm: true,
+  enablePermissionConfirm: false,
   strictWorkspaceMode: true,
   allowedShellCommands: [
-    'npm', 'yarn', 'pnpm', 'bun',
+    'npm', 'pnpm', 'yarn', 'bun',
     'node', 'npx', 'deno',
     'powershell', 'pwsh', 'bash', 'sh',
-    'eslint', 'tsc',
-    'git',
     'python', 'python3', 'py', 'pip', 'pip3',
     'java', 'javac', 'mvn', 'gradle',
     'go', 'rust', 'cargo',
-    'make', 'gcc', 'clang', 'cmake',
     'pwd', 'ls', 'dir', 'cat', 'type', 'echo', 'mkdir', 'touch', 'rm', 'mv', 'cp', 'cd',
+    'open', 'find',
+    'make', 'gcc', 'clang', 'cmake', 'eslint', 'tsc',
+    'git',
   ],
   allowedGitSubcommands: [
     'status', 'log', 'diff', 'show', 'ls-files', 'rev-parse', 'rev-list', 'blame',

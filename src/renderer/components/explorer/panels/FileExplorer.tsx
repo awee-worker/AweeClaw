@@ -121,7 +121,7 @@ export function ExplorerView() {
     const shouldResetTree = options?.resetTree === true
     const shouldRefreshRoot = shouldResetTree
       || options?.refreshRoot === true
-      || affectedPaths.some(path => path === workspacePath)
+      || affectedPaths.some(path => pathEquals(path, workspacePath))
       || deletedPaths.some(path => pathEquals(getDirPath(path), workspacePath))
 
     if (shouldResetTree) {
@@ -177,10 +177,10 @@ export function ExplorerView() {
       const customEvent = event as CustomEvent<WorkspaceFilesChangedDetail>
       const affectedPaths = (customEvent.detail?.affectedPaths ?? [])
         .filter((path): path is string => Boolean(path))
-        .filter((path) => path === workspacePath || pathStartsWith(path, workspacePath))
+        .filter((path) => pathEquals(path, workspacePath) || pathStartsWith(path, workspacePath))
       const deletedPaths = (customEvent.detail?.deletedPaths ?? [])
         .filter((path): path is string => Boolean(path))
-        .filter((path) => path === workspacePath || pathStartsWith(path, workspacePath))
+        .filter((path) => pathEquals(path, workspacePath) || pathStartsWith(path, workspacePath))
       const refreshRoot = customEvent.detail?.refreshRoot === true
 
       if (affectedPaths.length === 0 && deletedPaths.length === 0 && !refreshRoot) {
@@ -412,7 +412,7 @@ export function ExplorerView() {
         <span className="min-w-0 flex-shrink-0 whitespace-nowrap text-[11px] font-black text-text-primary/60 uppercase tracking-[0.2em] font-sans">
           {t('explorer', language)}
         </span>
-        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all duration-300 flex-shrink-0">
+        <div className="flex items-center gap-0.5 opacity-100 transition-all duration-300 flex-shrink-0">
           <HintOverlay content={t('revealActiveFile', language) || 'Reveal Active File'}>
             <button onClick={handleRevealActiveFile} disabled={!activeFilePath} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/5 text-text-muted hover:text-text-primary transition-all active:scale-90">
               <Crosshair className="w-3.5 h-3.5" />

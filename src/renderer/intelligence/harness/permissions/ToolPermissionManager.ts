@@ -46,9 +46,9 @@ const DEFAULT_RULES: ToolPermissionRule[] = [
   { category: 'interaction', action: 'allow' },
   { category: 'media', action: 'allow' },
   { category: 'office', action: 'allow' },
-  { category: 'write', action: 'ask', rateLimit: { maxCalls: 30, windowMs: 60_000 } },
-  { category: 'terminal', action: 'ask', rateLimit: { maxCalls: 20, windowMs: 60_000 } },
-  { category: 'network', action: 'ask', rateLimit: { maxCalls: 10, windowMs: 60_000 } },
+  { category: 'write', action: 'ask', rateLimit: { maxCalls: 120, windowMs: 60_000 } },
+  { category: 'terminal', action: 'ask', rateLimit: { maxCalls: 60, windowMs: 60_000 } },
+  { category: 'network', action: 'ask', rateLimit: { maxCalls: 30, windowMs: 60_000 } },
 ]
 
 export class ToolPermissionManager {

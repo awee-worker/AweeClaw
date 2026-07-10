@@ -24,6 +24,7 @@ import { logger } from '@shared/toolkit/LogEngine'
 import { toAppError } from '@shared/toolkit/errorCatalog'
 import { McpOAuthProvider } from './ToolOAuthProvider'
 import { pythonManager } from '../python-runtime'
+import { nodeManager } from '../node-runtime'
 import { createComputerUseMcpServer } from './builtin/ComputerUseMcpServer'
 import type {
   McpServerConfig,
@@ -41,7 +42,92 @@ import type {
 import { isRemoteConfig, isBuiltinConfig, isPluginConfig } from '@shared/protocols/toolProtocolBridge'
 
 const DEFAULT_TIMEOUT = 30000
-const NPX_TIMEOUT = 60000  // npx 首次需要下载包，给更长超时
+const NPX_TIMEOUT = 60000  // npx/uvx 首次需要下载包，给更长超时
+
+/**
+ * Windows 命令解析：将裸命令名（如 npx、uvx）解析为可被 spawn 直接执行的完整路径。
+ *
+ * Windows 上 npx/uvx/pnpm 等工具是 .cmd 批处理文件，
+ * child_process.spawn 不带 shell:true 时无法找到它们（报 ENOENT）。
+ * 此函数在 PATH 中搜索对应的 .cmd/.bat/.exe 文件并返回完整路径。
+ *
+ * @param command 裸命令名（如 'npx'、'uvx'、'node'）
+ * @returns 解析后的命令路径（如 'C:\\...\\npx.cmd'）；找不到则原样返回
+ */
+function resolveWindowsCommand(command: string): string {
+  // 已经是绝对路径或包含扩展名，直接返回
+  if (path.isAbsolute(command) || /\.(cmd|bat|exe|com)$/i.test(command)) {
+    return command
+  }
+
+  const extensions = ['.cmd', '.bat', '.exe', '.com']
+  const pathEnv = process.env.PATH || ''
+  const dirs = pathEnv.split(path.delimiter).filter(Boolean)
+
+  for (const dir of dirs) {
+    for (const ext of extensions) {
+      const fullPath = path.join(dir, command + ext)
+      try {
+        if (fs.existsSync(fullPath)) {
+          return fullPath
+        }
+      } catch {
+        // 忽略访问权限错误，继续搜索
+      }
+    }
+  }
+
+  // 找不到则追加 .cmd 后缀作为 fallback（让系统去报更准确的错误）
+  return command + '.cmd'
+}
+
+/**
+ * 解析 uvx 命令为可执行的命令和参数。
+ *
+ * uvx 是 uv 工具的子命令快捷方式（等同于 `uv tool run`）。
+ * 此函数按以下优先级解析：
+ *   1. 通过 pythonManager.getUvxPath() 获取 uvx 二进制路径（含缓存 + PATH 搜索 + 同级推断）
+ *   2. 若 uvx 不存在但 uv 存在，使用 `uv tool run <原args>` 作为等价命令
+ *   3. 若 uv 也未安装，调用 pythonManager.ensureUvx() 触发 uv 安装后重试
+ *   4. 仍失败则抛出明确错误（不再回退到不存在的 uvx.cmd）
+ *
+ * 注意：此函数是异步的，因为可能需要触发 uv 安装。
+ * 此函数永远不会返回 null — 找不到时抛出包含安装提示的错误。
+ */
+async function resolveUvxCommand(originalArgs: string[]): Promise<{ command: string; args: string[] }> {
+  // 优先使用 uvx 二进制（getUvxPath 内部有缓存 + PATH 搜索 + 同级推断）
+  const uvxPath = pythonManager.getUvxPath()
+  if (uvxPath) {
+    return { command: uvxPath, args: originalArgs }
+  }
+
+  // uvx 不存在，尝试使用 uv tool run 等价命令
+  const uvPath = pythonManager.getUvPath()
+  if (uvPath) {
+    return { command: uvPath, args: ['tool', 'run', ...originalArgs] }
+  }
+
+  // uv/uvx 都未安装，触发 ensureUvx 安装 uv（独立于 Python 安装状态）
+  logger.mcp?.info('[MCP] uvx/uv not found, triggering PythonRuntimeManager.ensureUvx()...')
+  try {
+    const result = await pythonManager.ensureUvx()
+    if (result) {
+      // 如果返回的 uvxPath 和 uvPath 相同，说明 uvx 二进制不存在，需要用 uv tool run
+      if (result.uvxPath === result.uvPath) {
+        return { command: result.uvPath, args: ['tool', 'run', ...originalArgs] }
+      }
+      return { command: result.uvxPath, args: originalArgs }
+    }
+  } catch (err) {
+    logger.mcp?.warn('[MCP] ensureUvx failed:', err)
+  }
+
+  // 所有安装方式均失败，抛出明确错误，不再回退到不存在的 uvx.cmd
+  const hint = process.platform === 'win32'
+    ? 'uv/uvx installation failed. Please install uv manually: pip install uv or download from https://github.com/astral-sh/uv/releases'
+    : 'uv/uvx installation failed. Please install uv manually: curl -LsSf https://astral.sh/uv/install.sh | sh'
+  throw new Error(hint)
+}
 
 type Transport = StdioClientTransport | StreamableHTTPClientTransport | SSEClientTransport | InMemoryTransport
 
@@ -158,26 +244,51 @@ export class McpClient extends EventEmitter {
         await this.connectLocal(config)
       }
     } catch (err) {
-      const error = toAppError(err)
-      logger.mcp?.error(`[MCP:${config.id}] Connection failed: ${error.code}`, error)
+      // 保留原始错误消息，不使用 toAppError 转换（避免 stderr 中的关键词被误判为 network error）
+      const errorMsg = err instanceof Error ? err.message : String(err)
+      const errorCode = (err as NodeJS.ErrnoException)?.code || ''
+      logger.mcp?.error(`[MCP:${config.id}] Connection failed: ${errorCode || 'unknown'}`, err)
       if (this.state.status !== 'needs_auth' && this.state.status !== 'needs_registration') {
-        this.updateStatus('error', error.message)
+        this.updateStatus('error', errorMsg)
         this.scheduleReconnect()
       }
-      throw error
+      // 重新抛出原始错误，保留完整的诊断信息（包括 stderr）
+      throw err
     }
   }
 
   /** 连接本地服务器 */
   private async connectLocal(config: McpLocalServerConfig): Promise<void> {
     let command = config.command
+    let args = config.args || []
+
+    // uvx 命令解析：uvx 是独立可执行文件，但 PythonRuntimeManager 可能只安装了 uv。
+    // 优先使用 uvx 二进制，其次回退到 `uv tool run` 等价命令。
+    // 如果 uv/uvx 都未安装，resolveUvxCommand 会自动安装或抛出明确错误。
     if (command === 'uvx') {
-      const uvPath = pythonManager.getUvPath()
-      if (uvPath) command = uvPath
+      const resolved = await resolveUvxCommand(args)
+      command = resolved.command
+      args = resolved.args
+    } else {
+      // node/npx 命令优先使用内置 Node 运行时管理器解析的路径，
+      // 确保用户未安装系统 Node.js 时 MCP 服务器仍可启动
+      if (command === 'npx') {
+        const npxPath = nodeManager.getNpxPath()
+        if (npxPath) command = npxPath
+      } else if (command === 'node') {
+        const nodePath = nodeManager.getNodePath()
+        if (nodePath) command = nodePath
+      }
+      // Windows 兼容：npx/uvx/bunx 等命令实际是 .cmd 批处理文件，
+      // spawn 不带 shell:true 时无法找到，需要解析为完整路径或追加 .cmd 后缀
+      if (process.platform === 'win32') {
+        command = resolveWindowsCommand(command)
+      }
     }
+
     const transport = new StdioClientTransport({
       command,
-      args: config.args || [],
+      args,
       env: { ...process.env, ...config.env } as Record<string, string>,
       cwd: config.cwd,
       stderr: 'pipe',
@@ -362,11 +473,38 @@ export class McpClient extends EventEmitter {
     }
 
     const pluginDir = this.resolvePluginDir(config)
-    const args = (config.args || []).map((a) => a.replace('{{pluginDir}}', pluginDir))
+    const baseArgs = (config.args || []).map((a) => a.replace('{{pluginDir}}', pluginDir))
     const env = { ...process.env, ...config.env, PLUGIN_DIR: pluginDir } as Record<string, string>
 
+    // 命令解析：uvx 需要特殊处理（可能只有 uv 而没有 uvx）
+    let command = config.command
+    let args = baseArgs
+
+    if (command === 'uvx') {
+      const resolved = await resolveUvxCommand(baseArgs)
+      command = resolved.command
+      args = resolved.args
+    } else if (command === 'npx') {
+      const npxPath = nodeManager.getNpxPath()
+      if (npxPath) {
+        command = npxPath
+      } else if (process.platform === 'win32') {
+        command = resolveWindowsCommand(command)
+      }
+    } else if (command === 'node') {
+      const nodePath = nodeManager.getNodePath()
+      if (nodePath) {
+        command = nodePath
+      } else if (process.platform === 'win32') {
+        command = resolveWindowsCommand(command)
+      }
+    } else if (process.platform === 'win32') {
+      // Windows 兼容：解析 .cmd 命令
+      command = resolveWindowsCommand(command)
+    }
+
     const transport = new StdioClientTransport({
-      command: config.command,
+      command,
       args,
       env,
       cwd: pluginDir,
@@ -389,8 +527,11 @@ export class McpClient extends EventEmitter {
 
     this.registerNotificationHandlers(client)
 
+    // 智能超时：npx/uvx 命令给更长超时（首次需要下载包）
+    const isPackageRunner = ['npx', 'uvx', 'bunx'].includes(config.command)
+    const timeout = isPackageRunner ? NPX_TIMEOUT : DEFAULT_TIMEOUT
     try {
-      await this.withTimeout(client.connect(transport), DEFAULT_TIMEOUT)
+      await this.withTimeout(client.connect(transport), timeout)
     } catch (err) {
       if (stderrOutput) {
         logger.mcp?.error(`[MCP:${config.id}] Process stderr output:\n${stderrOutput}`)
