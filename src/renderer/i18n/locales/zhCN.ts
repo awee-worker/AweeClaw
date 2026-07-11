@@ -3436,6 +3436,8 @@ export const zh = {
   'contextMenu.copyPath': '复制路径',
   'contextMenu.copyRelativePath': '复制相对路径',
   'contextMenu.revealInExplorer': '在系统资源管理器中显示',
+  'contextMenu.revealFolderLocation': '打开文件夹所在位置',
+  'contextMenu.revealFileLocation': '打开文件所在位置',
   'contextMenu.showHiddenFiles': '显示隐藏文件',
   'contextMenu.hideHiddenFiles': '隐藏隐藏文件',
   'contextMenu.showWorkspaceSystemDir': '显示工作区系统目录',

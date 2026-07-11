@@ -1007,7 +1007,7 @@ export const VirtualFileTree = memo(function VirtualFileTree({
         { id: 'sep3', label: '', separator: true },
         { id: 'copyPath', label: t('contextMenu.copyPath', contextMenuLanguage), icon: Copy, onClick: () => handleCopyPath(node) },
         { id: 'copyRelPath', label: t('contextMenu.copyRelativePath', contextMenuLanguage), icon: Clipboard, onClick: () => handleCopyRelativePath(node) },
-        { id: 'reveal', label: t('contextMenu.revealInExplorer', contextMenuLanguage), icon: ExternalLink, onClick: () => handleRevealInExplorer(node) },
+        { id: 'reveal', label: t('contextMenu.revealFolderLocation', contextMenuLanguage), icon: ExternalLink, onClick: () => handleRevealInExplorer(node) },
         { id: 'sepHidden', label: '', separator: true },
         { id: 'toggleHidden', label: showWorkspaceSystemDir ? t('contextMenu.hideWorkspaceSystemDir', contextMenuLanguage) : t('contextMenu.showWorkspaceSystemDir', contextMenuLanguage), icon: showWorkspaceSystemDir ? EyeOff : Eye, onClick: () => setShowWorkspaceSystemDir(!showWorkspaceSystemDir) },
       )
@@ -1058,7 +1058,7 @@ export const VirtualFileTree = memo(function VirtualFileTree({
       { id: 'sep2', label: '', separator: true },
       { id: 'copyPath', label: t('contextMenu.copyPath', contextMenuLanguage), icon: Copy, onClick: () => handleCopyPath(node) },
       { id: 'copyRelPath', label: t('contextMenu.copyRelativePath', contextMenuLanguage), icon: Clipboard, onClick: () => handleCopyRelativePath(node) },
-      { id: 'reveal', label: t('contextMenu.revealInExplorer', contextMenuLanguage), icon: ExternalLink, onClick: () => handleRevealInExplorer(node) },
+      { id: 'reveal', label: t('contextMenu.revealFileLocation', contextMenuLanguage), icon: ExternalLink, onClick: () => handleRevealInExplorer(node) },
     )
 
     items.push({ id: 'sepHidden', label: '', separator: true })

@@ -3437,6 +3437,8 @@ export const en = {
   'contextMenu.copyPath': 'Copy Path',
   'contextMenu.copyRelativePath': 'Copy Relative Path',
   'contextMenu.revealInExplorer': 'Reveal in Explorer',
+  'contextMenu.revealFolderLocation': 'Open Folder Location',
+  'contextMenu.revealFileLocation': 'Open File Location',
   'contextMenu.showHiddenFiles': 'Show Hidden Files',
   'contextMenu.hideHiddenFiles': 'Hide Hidden Files',
   'contextMenu.showWorkspaceSystemDir': 'Show Workspace System Directory',
