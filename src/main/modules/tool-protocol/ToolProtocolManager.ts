@@ -48,6 +48,11 @@ export class McpManager extends EventEmitter {
     }
   }
 
+  /** 获取当前工作区根目录（用于 MCP 插件子进程的 cwd） */
+  getWorkspaceRoot(): string | null {
+    return this.workspaceRoots.length > 0 ? this.workspaceRoots[0] : null
+  }
+
   /** 初始化 MCP 管理器 */
   async initialize(workspaceRoots: string[] = []): Promise<void> {
     const rootsChanged = JSON.stringify(this.workspaceRoots) !== JSON.stringify(workspaceRoots)

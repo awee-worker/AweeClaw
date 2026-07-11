@@ -23,6 +23,7 @@ import {
 import { logger } from '@shared/toolkit/LogEngine'
 import { toAppError } from '@shared/toolkit/errorCatalog'
 import { McpOAuthProvider } from './ToolOAuthProvider'
+import { mcpManager } from './ToolProtocolManager'
 import { pythonManager } from '../python-runtime'
 import { nodeManager } from '../node-runtime'
 import { createComputerUseMcpServer } from './builtin/ComputerUseMcpServer'
@@ -476,6 +477,12 @@ export class McpClient extends EventEmitter {
     const baseArgs = (config.args || []).map((a) => a.replace('{{pluginDir}}', pluginDir))
     const env = { ...process.env, ...config.env, PLUGIN_DIR: pluginDir } as Record<string, string>
 
+    // 工作目录优先使用当前工作区路径，使插件生成的文件默认输出到工作区
+    // fallback 到插件目录（无工作区时）
+    const workspaceDir = mcpManager.getWorkspaceRoot()
+    const cwd = workspaceDir || pluginDir
+    logger.mcp?.info(`[MCP:${config.id}] Plugin stdio cwd: ${cwd}${workspaceDir ? ' (workspace)' : ' (pluginDir)'}`)
+
     // 命令解析：uvx 需要特殊处理（可能只有 uv 而没有 uvx）
     let command = config.command
     let args = baseArgs
@@ -507,7 +514,7 @@ export class McpClient extends EventEmitter {
       command,
       args,
       env,
-      cwd: pluginDir,
+      cwd,
       stderr: 'pipe',
     })
 
