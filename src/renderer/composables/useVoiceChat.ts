@@ -1,23 +1,35 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { io, Socket } from 'socket.io-client'
-import { getServerUrl, getAccessToken } from '../adapters/backendApi'
 import { convertBlobToWav } from '../utils/audioConverter'
-import { useAgentStore } from '@intelligence/state/IntelligenceStore'
+import { voiceApi } from '../services/voiceApi'
+import {
+  stripNonSpeakableContent,
+  buildVoiceSystemPrompt,
+} from '../utils/voiceTextUtils'
+import { runVoiceToolLoop } from '@intelligence/voice/voiceToolLoop'
+import type {
+  LLMConfig,
+  LLMMessage,
+} from '@intelligence/providerTypes'
 
 /**
- * 前端 VAD + 整段音频发送的语音对话 hook
+ * 前端 VAD + 统一语音对话 hook
  *
- * 技术路线：
- * 1. 用 Web Audio API 的 AnalyserNode 实时检测音量
- * 2. 音量超过阈值 → 标记"说话开始"
- * 3. 音量低于阈值持续 N 秒 → 标记"说话结束"
- * 4. 把完整录音转 WAV → base64 → 一次性发给后端
- * 5. 后端收到完整音频 → STT → LLM → TTS → 回传音频
+ * 核心设计：云端模式和本地模式走完全相同的 AI 能力路径
  *
- * 优点：
+ * 【统一流程】（两种模式都一样）
+ * 1. 前端 VAD 检测说话开始/结束
+ * 2. 完整录音 → voiceApi.speechToText()（自动分流：云端→后端 API，本地→用户配置）
+ * 3. runVoiceToolLoop()（走客户端主进程 api.llm.send()，支持工具调用和插件）
+ *    - 云端模式：LLM 配置含 cloudMode=true/serverUrl/accessToken，主进程路由到后端代理
+ *    - 本地模式：LLM 配置含 apiKey/baseUrl，直连用户配置的模型
+ * 4. stripNonSpeakableContent() 过滤舞台指示
+ * 5. voiceApi.textToSpeech()（自动分流：云端→后端 API，本地→用户配置）
+ * 6. 前端播放音频
+ *
+ * 关键优势：
+ * - 两种模式都支持完整的工具调用和插件能力（与普通文字对话完全对等）
  * - 前端 VAD 更可靠（直接在浏览器分析，无网络延迟）
- * - 后端逻辑极简（收到完整音频直接处理）
- * - 调试方便（前端能看到 VAD 状态和音量值）
+ * - STT/TTS 自动根据 cloudMode 分流，云端模式计 Token，本地模式用用户自己的 Key
  */
 
 export type VoiceChatState =
@@ -25,19 +37,25 @@ export type VoiceChatState =
   | 'connecting'    // 连接中
   | 'listening'     // 聆听中（等待用户说话）
   | 'recording'     // 录音中（检测到用户在说话）
-  | 'processing'    // 处理中（STT → LLM）
+  | 'processing'    // 处理中（STT → LLM → 工具调用）
   | 'speaking'      // AI 说话中（播放 TTS）
   | 'error'         // 错误
 
 export interface VoiceChatOptions {
   /** 语言 */
   language?: string
-  /** LLM provider */
-  provider?: string
-  /** LLM model */
-  model?: string
+  /** 云端/本地模式（决定 STT/TTS 走后端还是用户配置） */
+  cloudMode?: 'cloud' | 'local'
+  /** 完整 LLM 配置（云端模式含 cloudMode/serverUrl/accessToken，本地模式含 apiKey/baseUrl） */
+  llmConfig?: LLMConfig
   /** 系统提示词 */
   systemPrompt?: string
+  /** 工作区路径（让 AI 知道用户当前的工作目录） */
+  workspacePath?: string
+  /** 当前打开的文件列表 */
+  openFiles?: string[]
+  /** 当前激活的文件 */
+  activeFile?: string
   /** 用户自定义 STT/TTS 配置 */
   userVoiceConfig?: {
     sttEnabled: boolean
@@ -61,7 +79,7 @@ export interface VoiceChatOptions {
   onAiTextEnd?: (fullText: string) => void
   /**
    * 一轮对话完成回调（用户文本 + AI 完整文本）
-   * 触发时机：AI 音频播放完毕（TTS_END）
+   * 触发时机：AI 音频播放完毕
    * 用于把对话内容保存到聊天历史
    */
   onConversationComplete?: (userText: string, aiText: string) => void
@@ -75,6 +93,8 @@ const VAD_SILENCE_DELAY = 1500   // 说话结束后等待多久（ms）判定说
 const VAD_MIN_SPEECH_TIME = 300  // 最短说话时间（ms），短于此视为噪音
 const VAD_CHECK_INTERVAL = 100   // VAD 检测间隔（ms）
 const SAMPLE_RATE = 16000        // 采样率
+// 对话历史裁剪：保留 system + 最近 N 条消息
+const MAX_HISTORY_MESSAGES = 30
 
 export function useVoiceChat(options?: VoiceChatOptions) {
   const [state, setState] = useState<VoiceChatState>('idle')
@@ -82,25 +102,39 @@ export function useVoiceChat(options?: VoiceChatOptions) {
   const [sttText, setSttText] = useState('')
   const [aiText, setAiText] = useState('')
 
-  // refs
-  const socketRef = useRef<Socket | null>(null)
+  // refs - 音频采集
   const audioContextRef = useRef<AudioContext | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
   const mediaStreamRef = useRef<MediaStream | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
+
+  // refs - VAD 状态机
   const vadTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const vadStateRef = useRef<'silence' | 'speaking'>('silence')
   const speechStartTimeRef = useRef(0)
   const silenceStartTimeRef = useRef(0)
+
+  // refs - 对话状态
   const isSpeakingRef = useRef(false)  // AI 是否在说话
   const aiTextRef = useRef('')
   const sttTextRef = useRef('')
+  const cloudModeRef = useRef<'cloud' | 'local'>('cloud')
 
-  // 播放 TTS 音频
+  // refs - 对话历史（LLMMessage 格式，支持工具调用上下文）
+  const conversationHistoryRef = useRef<LLMMessage[]>([])
+
+  // refs - 中断控制
+  const abortControllerRef = useRef<AbortController | null>(null)
+
+  // refs - TTS 播放
   const ttsAudioContextRef = useRef<AudioContext | null>(null)
   const ttsQueueRef = useRef<{ data: string; contentType: string }[]>([])
   const isPlayingRef = useRef(false)
+
+  // ============================================================
+  // TTS 播放
+  // ============================================================
 
   const playTtsQueue = useCallback(async () => {
     if (isPlayingRef.current) return
@@ -131,49 +165,192 @@ export function useVoiceChat(options?: VoiceChatOptions) {
     }
   }, [])
 
-  // 停止所有 TTS 播放
   const stopTtsPlayback = useCallback(() => {
     ttsQueueRef.current = []
     isPlayingRef.current = false
     if (ttsAudioContextRef.current) {
-      // 关闭后重建
       ttsAudioContextRef.current.close()
       ttsAudioContextRef.current = null
     }
   }, [])
 
-  // 发送完整音频给后端
-  const sendAudioToBackend = useCallback(async (audioBlob: Blob) => {
-    const socket = socketRef.current
-    if (!socket?.connected) return
+  // ============================================================
+  // 核心：统一处理完整音频（STT → LLM+工具 → TTS → 播放）
+  // ============================================================
 
+  const processAudio = useCallback(async (audioBlob: Blob) => {
     try {
       const wavBlob = await convertBlobToWav(audioBlob)
+
+      // 阶段 1：STT（voiceApi 自动分流云端/本地）
+      setState('processing')
+      const sttResult = await voiceApi.speechToText(wavBlob, {
+        language: options?.language,
+      })
+
+      if (!sttResult.text.trim()) {
+        setState('listening')
+        return
+      }
+
+      sttTextRef.current = sttResult.text
+      setSttText(sttResult.text)
+      options?.onUserText?.(sttResult.text)
+
+      // 阶段 2：构建系统提示词（注入工作区上下文）
+      const systemPrompt = buildVoiceSystemPrompt({
+        basePrompt: options?.systemPrompt,
+        workspacePath: options?.workspacePath,
+        openFiles: options?.openFiles,
+        activeFile: options?.activeFile,
+      })
+
+      // 阶段 3：构建 LLM 配置
+      const llmConfig: LLMConfig = options?.llmConfig || {
+        provider: 'openai',
+        model: 'gpt-4o',
+        apiKey: '',
+        baseUrl: '',
+      }
+
+      // 阶段 4：构建消息列表
+      // 首次调用时初始化 system 消息
+      if (conversationHistoryRef.current.length === 0) {
+        conversationHistoryRef.current.push({
+          role: 'system',
+          content: systemPrompt,
+        })
+      }
+
+      // 添加用户消息
+      conversationHistoryRef.current.push({
+        role: 'user',
+        content: sttResult.text,
+      })
+
+      // 裁剪历史（保留 system + 最近 N 条消息）
+      if (conversationHistoryRef.current.length > MAX_HISTORY_MESSAGES + 1) {
+        const system = conversationHistoryRef.current[0]
+        const recent = conversationHistoryRef.current.slice(-MAX_HISTORY_MESSAGES)
+        conversationHistoryRef.current = [system, ...recent]
+      }
+
+      // 创建本次请求的 AbortController
+      const abortController = new AbortController()
+      abortControllerRef.current = abortController
+
+      // 重置 AI 文本
+      aiTextRef.current = ''
+      setAiText('')
+
+      // 阶段 5：调用 LLM 工具循环（支持工具调用和插件）
+      // runVoiceToolLoop 会 mutate messages 数组（追加 assistant/tool 消息）
+      // 内部会通过 onTextChunk 回调流式输出文本
+      const result = await runVoiceToolLoop({
+        config: llmConfig,
+        messages: conversationHistoryRef.current,
+        systemPrompt,
+        workspacePath: options?.workspacePath || null,
+        onTextChunk: (chunk) => {
+          aiTextRef.current += chunk
+          setAiText(aiTextRef.current)
+          options?.onAiText?.(chunk)
+        },
+        abortSignal: abortController.signal,
+      })
+
+      // 清理 abort controller
+      abortControllerRef.current = null
+
+      const aiFullText = result.content || aiTextRef.current
+
+      if (!aiFullText.trim()) {
+        // LLM 没有返回文本，回到聆听状态
+        // 移除刚才添加的用户消息（因为没有对应的 AI 回复）
+        conversationHistoryRef.current.pop()
+        setState('listening')
+        return
+      }
+
+      // 如果有错误但仍有文本，继续 TTS（部分结果也读出来）
+      if (result.error && !aiFullText.trim()) {
+        options?.onError?.(result.error)
+        conversationHistoryRef.current.pop()
+        setState('listening')
+        return
+      }
+
+      options?.onAiTextEnd?.(aiFullText)
+
+      // 阶段 6：过滤舞台指示 → TTS
+      const speakableText = stripNonSpeakableContent(aiFullText)
+      if (!speakableText.trim()) {
+        // 没有可朗读的内容，直接回到聆听
+        if (sttTextRef.current.trim() && aiFullText.trim()) {
+          options?.onConversationComplete?.(sttTextRef.current, aiFullText)
+        }
+        aiTextRef.current = ''
+        sttTextRef.current = ''
+        setAiText('')
+        setSttText('')
+        setState('listening')
+        return
+      }
+
+      setState('speaking')
+      isSpeakingRef.current = true
+
+      // 阶段 7：TTS（voiceApi 自动分流云端/本地）
+      const ttsBlob = await voiceApi.textToSpeech(speakableText, {
+        voice: options?.userVoiceConfig?.ttsVoice,
+        speed: options?.userVoiceConfig?.ttsSpeed,
+        format: 'mp3',
+      })
+
+      // 转为 base64 播放
       const reader = new FileReader()
       reader.onload = () => {
         const base64 = (reader.result as string).split(',')[1]
-        if (base64 && socket.connected) {
-          setState('processing')
-          // 一次性发送完整音频
-          socket.emit('voice:audio_complete', {
-            data: base64,
-            mimeType: 'audio/wav',
-            language: options?.language || 'auto',
-            provider: options?.provider,
-            model: options?.model,
-            systemPrompt: options?.systemPrompt,
-            userVoiceConfig: options?.userVoiceConfig,
-          })
+        if (base64) {
+          ttsQueueRef.current.push({ data: base64, contentType: 'audio/mp3' })
+          playTtsQueue()
         }
       }
-      reader.readAsDataURL(wavBlob)
+      reader.readAsDataURL(ttsBlob)
+
+      // 等待播放完成（轮询）
+      const checkPlaybackComplete = setInterval(() => {
+        if (!isPlayingRef.current && ttsQueueRef.current.length === 0) {
+          clearInterval(checkPlaybackComplete)
+          isSpeakingRef.current = false
+
+          // 触发对话完成回调
+          if (sttTextRef.current.trim() && aiFullText.trim()) {
+            options?.onConversationComplete?.(sttTextRef.current, aiFullText)
+          }
+
+          // 重置状态，准备下一轮对话
+          aiTextRef.current = ''
+          sttTextRef.current = ''
+          setAiText('')
+          setSttText('')
+          setState('listening')
+        }
+      }, 200)
+
     } catch (err) {
-      console.error('Failed to send audio:', err)
+      console.error('Voice processing failed:', err)
+      isSpeakingRef.current = false
+      abortControllerRef.current = null
+      options?.onError?.((err as Error).message)
       setState('listening')
     }
-  }, [options])
+  }, [options, playTtsQueue])
 
-  // 开始录音
+  // ============================================================
+  // 录音控制
+  // ============================================================
+
   const startRecording = useCallback(() => {
     if (mediaRecorderRef.current?.state === 'recording') return
     audioChunksRef.current = []
@@ -200,7 +377,6 @@ export function useVoiceChat(options?: VoiceChatOptions) {
     }
   }, [])
 
-  // 停止录音并发送
   const stopRecordingAndSend = useCallback(() => {
     const recorder = mediaRecorderRef.current
     if (!recorder || recorder.state !== 'recording') {
@@ -211,15 +387,18 @@ export function useVoiceChat(options?: VoiceChatOptions) {
       const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
       audioChunksRef.current = []
       if (audioBlob.size > 0) {
-        sendAudioToBackend(audioBlob)
+        processAudio(audioBlob)
       } else {
         setState('listening')
       }
     }
     recorder.stop()
-  }, [sendAudioToBackend])
+  }, [processAudio])
 
+  // ============================================================
   // VAD 检测循环
+  // ============================================================
+
   const startVadDetection = useCallback(() => {
     if (vadTimerRef.current) clearInterval(vadTimerRef.current)
 
@@ -250,8 +429,14 @@ export function useVoiceChat(options?: VoiceChatOptions) {
         if (rms > VAD_THRESHOLD * 2) {
           // 用户打断了 AI
           stopTtsPlayback()
+
+          // 中断当前 LLM 请求
+          if (abortControllerRef.current) {
+            abortControllerRef.current.abort()
+            abortControllerRef.current = null
+          }
+
           isSpeakingRef.current = false
-          socketRef.current?.emit('voice:interrupt', { reason: 'user_interrupt' })
           // 开始录音
           startRecording()
           vadStateRef.current = 'speaking'
@@ -307,7 +492,6 @@ export function useVoiceChat(options?: VoiceChatOptions) {
     }, VAD_CHECK_INTERVAL)
   }, [startRecording, stopRecordingAndSend, stopTtsPlayback])
 
-  // 停止 VAD
   const stopVadDetection = useCallback(() => {
     if (vadTimerRef.current) {
       clearInterval(vadTimerRef.current)
@@ -315,14 +499,13 @@ export function useVoiceChat(options?: VoiceChatOptions) {
     }
   }, [])
 
-  // 连接
+  // ============================================================
+  // 连接 / 断开
+  // ============================================================
+
   const connect = useCallback(async () => {
-    const serverUrl = getServerUrl()
-    const token = getAccessToken()
-    if (!serverUrl || !token) {
-      setState('error')
-      return
-    }
+    const mode = options?.cloudMode || 'cloud'
+    cloudModeRef.current = mode
 
     setState('connecting')
 
@@ -345,84 +528,10 @@ export function useVoiceChat(options?: VoiceChatOptions) {
       source.connect(analyser)
       analyserRef.current = analyser
 
-      // 连接 WebSocket
-      const socket = io(`${serverUrl}/voice`, {
-        transports: ['websocket'],
-        auth: { token },
-        reconnection: false,
-        timeout: 5000,
-      })
+      // 初始化对话历史
+      conversationHistoryRef.current = []
 
-      socketRef.current = socket
-
-      await new Promise<void>((resolve, reject) => {
-        socket.on('connect', () => resolve())
-        socket.on('connect_error', (err) => reject(new Error(err.message)))
-      })
-
-      // 注册事件
-      socket.on('voice:stt_final', (data: { text: string }) => {
-        sttTextRef.current = data.text
-        setSttText(data.text)
-        options?.onUserText?.(data.text)
-      })
-
-      socket.on('voice:ai_text', (data: { text: string }) => {
-        aiTextRef.current += data.text
-        setAiText(aiTextRef.current)
-        options?.onAiText?.(data.text)
-      })
-
-      socket.on('voice:ai_text_end', (data: { text: string }) => {
-        aiTextRef.current = data.text
-        setAiText(data.text)
-        options?.onAiTextEnd?.(data.text)
-      })
-
-      socket.on('voice:tts_audio', (data: { data: string; contentType: string }) => {
-        if (!isSpeakingRef.current) {
-          isSpeakingRef.current = true
-          setState('speaking')
-        }
-        ttsQueueRef.current.push({ data: data.data, contentType: data.contentType })
-        playTtsQueue()
-      })
-
-      socket.on('voice:tts_end', () => {
-        isSpeakingRef.current = false
-
-        // 触发对话完成回调，让上层把对话保存到聊天历史
-        const userText = sttTextRef.current
-        const aiFullText = aiTextRef.current
-        if (userText.trim() && aiFullText.trim()) {
-          options?.onConversationComplete?.(userText, aiFullText)
-        }
-
-        // 重置状态，准备下一轮对话
-        aiTextRef.current = ''
-        sttTextRef.current = ''
-        setAiText('')
-        setSttText('')
-        setState('listening')
-      })
-
-      socket.on('voice:error', (data: { code: string; message: string }) => {
-        console.error('Voice error:', data)
-        options?.onError?.(data.message)
-        setState('listening')
-      })
-
-      socket.on('disconnect', () => {
-        setState('idle')
-      })
-
-      // 启动会话
-      socket.emit('voice:start', {
-        mode: 'continuous',
-        language: options?.language || 'auto',
-      })
-
-      // 启动 VAD
+      // 启动 VAD（两种模式都一样，不需要 WebSocket）
       startVadDetection()
       setState('listening')
     } catch (err) {
@@ -430,12 +539,17 @@ export function useVoiceChat(options?: VoiceChatOptions) {
       setState('error')
       options?.onError?.((err as Error).message)
     }
-  }, [options, startVadDetection, playTtsQueue])
+  }, [options, startVadDetection])
 
-  // 断开
   const disconnect = useCallback(() => {
     stopVadDetection()
     stopTtsPlayback()
+
+    // 中断当前 LLM 请求
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+    }
 
     // 停止录音
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
@@ -455,12 +569,8 @@ export function useVoiceChat(options?: VoiceChatOptions) {
     }
     analyserRef.current = null
 
-    // 断开 Socket
-    if (socketRef.current) {
-      socketRef.current.emit('voice:end', {})
-      socketRef.current.disconnect()
-      socketRef.current = null
-    }
+    // 清理对话历史
+    conversationHistoryRef.current = []
 
     isSpeakingRef.current = false
     aiTextRef.current = ''
@@ -473,7 +583,13 @@ export function useVoiceChat(options?: VoiceChatOptions) {
     if (isSpeakingRef.current) {
       stopTtsPlayback()
       isSpeakingRef.current = false
-      socketRef.current?.emit('voice:interrupt', { reason: 'user_manual' })
+
+      // 中断当前 LLM 请求
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+        abortControllerRef.current = null
+      }
+
       setState('listening')
     }
   }, [stopTtsPlayback])

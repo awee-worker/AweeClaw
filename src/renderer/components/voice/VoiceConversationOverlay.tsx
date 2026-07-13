@@ -1,17 +1,20 @@
 /**
  * VoiceConversationOverlay - 语音对话覆盖层
  *
- * 使用前端 VAD 方案：
+ * 使用前端 VAD + 统一 AI 能力方案：
  * 1. 前端用 Web Audio API 实时检测音量
  * 2. 检测到说话开始 → 录音
- * 3. 检测到说话结束（静音 1.5s）→ 发送完整音频给后端
- * 4. 后端 STT → LLM → TTS → 回传音频
+ * 3. 检测到说话结束（静音 1.5s）→ 处理音频
+ * 4. STT → LLM（支持工具调用和插件）→ 过滤舞台指示 → TTS → 播放
  * 5. AI 说话时用户可打断（点击球体或空格键）
  * 6. AI 说完后自动回到聆听状态
+ *
+ * 云端模式和本地模式都走客户端 api.llm.send()，
+ * 具备与普通文字对话完全相同的 AI 能力（工具、插件等）
  */
 
 import { useCallback, useEffect, useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { X, Mic, Volume2, PhoneOff } from 'lucide-react'
 import { useVoiceChat } from '../../composables/useVoiceChat'
 import { useStore } from '@store'
@@ -76,17 +79,20 @@ interface VoiceConversationOverlayProps {
 }
 
 export function VoiceConversationOverlay({ onClose }: VoiceConversationOverlayProps) {
-  const { language, llmConfig, cloudMode } = useStore(useShallow(s => ({
+  const { language, llmConfig, cloudMode, workspacePath, openFiles, activeFilePath } = useStore(useShallow(s => ({
     language: s.language,
     llmConfig: s.llmConfig,
     cloudMode: s.cloudMode,
+    workspacePath: s.workspacePath,
+    openFiles: s.openFiles,
+    activeFilePath: s.activeFilePath,
   })))
   const isZh = language === 'zh'
   const isCloudMode = cloudMode === 'cloud'
 
   // 保存对话到聊天历史的函数
   // 直接调用 store 的 addUserMessage + addAssistantMessage + finalizeAssistant
-  // 不触发 LLM 调用（语音对话已经通过后端调过 LLM 了）
+  // 不触发 LLM 调用（语音对话已通过 voiceToolLoop 完成完整 LLM + 工具调用流程）
   const saveConversationToHistory = useCallback(
     (userText: string, aiText: string) => {
       try {
@@ -150,9 +156,18 @@ export function VoiceConversationOverlay({ onClose }: VoiceConversationOverlayPr
     interrupt,
   } = useVoiceChat({
     language: 'auto',
-    provider: llmConfig?.provider,
-    model: llmConfig?.model,
+    // 云端/本地模式：决定 STT/TTS 走后端 API 还是用户配置
+    cloudMode: isCloudMode ? 'cloud' : 'local',
+    // 完整 LLM 配置：
+    // - 云端模式含 cloudMode=true/serverUrl/accessToken，主进程路由到后端代理
+    // - 本地模式含 apiKey/baseUrl，直连用户配置的模型
+    // 两种模式都走客户端 api.llm.send()，支持完整的工具调用和插件能力
+    llmConfig: llmConfig || undefined,
     userVoiceConfig,
+    // 工作区上下文：让 AI 知道用户当前的工作目录和打开的文件
+    workspacePath: workspacePath || undefined,
+    openFiles: openFiles?.map(f => f.path).filter(Boolean),
+    activeFile: activeFilePath || undefined,
     // AI 音频播放完毕后，把这一轮对话保存到聊天历史
     onConversationComplete: (userText, aiFullText) => {
       saveConversationToHistory(userText, aiFullText)
@@ -221,9 +236,6 @@ export function VoiceConversationOverlay({ onClose }: VoiceConversationOverlayPr
           }`} />
           <span className="text-sm font-medium text-text-primary">
             {isZh ? '语音对话' : 'Voice Conversation'}
-          </span>
-          <span className="text-xs text-text-muted">
-            {isZh ? config.label : config.labelEn}
           </span>
         </div>
 
@@ -368,22 +380,6 @@ export function VoiceConversationOverlay({ onClose }: VoiceConversationOverlayPr
               )}
             </div>
           </motion.button>
-        </div>
-
-        {/* 状态文本 */}
-        <div className="text-center min-h-[1.5rem]">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={currentState}
-              initial={{ opacity: 0, y: 5 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -5 }}
-              transition={{ duration: 0.2 }}
-              className="text-base font-medium text-text-primary"
-            >
-              {isZh ? config.label : config.labelEn}
-            </motion.div>
-          </AnimatePresence>
         </div>
       </div>
 
