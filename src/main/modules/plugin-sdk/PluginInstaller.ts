@@ -132,6 +132,8 @@ export interface InstallResult {
   manifest?: PluginManifest
   mcpServerId?: string
   error?: string
+  /** MCP 服务连接错误（安装成功但 MCP 连接失败时填充） */
+  mcpConnectError?: string
 }
 
 /** 卸载结果 */
@@ -436,8 +438,11 @@ export class PluginInstaller {
 
     // 若为 MCP 型插件，注册并连接 MCP 服务
     let mcpServerId: string | undefined
+    let mcpConnectError: string | undefined
     if (isMcpPlugin && hasMcpCapability) {
-      mcpServerId = await this.registerMcpServer(pluginDetail, version, manifest, userConfig, pluginId, packageSize)
+      const mcpResult = await this.registerMcpServer(pluginDetail, version, manifest, userConfig, pluginId, packageSize)
+      mcpServerId = mcpResult.serverId
+      mcpConnectError = mcpResult.connectError
     }
 
     // 持久化安装记录
@@ -481,6 +486,7 @@ export class PluginInstaller {
       pluginDir,
       manifest,
       mcpServerId,
+      mcpConnectError,
     }
   }
 
@@ -714,7 +720,7 @@ export class PluginInstaller {
           // MCP 型插件自动连接
           if (record.mcpServerId && record.manifest.capabilities?.mcp?.autoConnect !== false) {
             try {
-              await this.registerMcpServer(
+              const mcpResult = await this.registerMcpServer(
                 {
                   pluginId: record.pluginId,
                   pluginKey: record.pluginKey,
@@ -725,6 +731,11 @@ export class PluginInstaller {
                 record.version,
                 record.manifest,
               )
+              if (mcpResult.connectError) {
+                logger.system.warn(
+                  `[PluginInstaller] MCP reconnect failed for ${pluginKey}: ${mcpResult.connectError}`,
+                )
+              }
             } catch (err) {
               logger.system.warn(`[PluginInstaller] Failed to reconnect MCP for ${pluginKey}: ${err}`)
             }
@@ -1165,7 +1176,7 @@ export class PluginInstaller {
     userConfig?: Record<string, string>,
     progressPluginId?: string,
     progressPackageSize?: number,
-  ): Promise<string> {
+  ): Promise<{ serverId: string; connectError?: string }> {
     const mcpConfig = manifest.capabilities?.mcp
     if (!mcpConfig) {
       throw new Error(`Plugin ${plugin.pluginKey} has no mcp capabilities`)
@@ -1203,6 +1214,7 @@ export class PluginInstaller {
     const { mcpManager } = await import('../tool-protocol/ToolProtocolManager')
     await mcpManager.addServer(config, 'user')
 
+    let connectError: string | undefined
     if (mcpConfig.autoConnect !== false) {
       // 为 uvx 命令设置 PythonRuntimeManager 状态回调，将安装进度转发到 UI
       if (progressPluginId && command === 'uvx') {
@@ -1213,6 +1225,10 @@ export class PluginInstaller {
         try {
           this.emitProgress(progressPluginId, 'registering', progressPackageSize || 0, progressPackageSize || 0, '正在连接 MCP 服务...')
           await mcpManager.connectServer(serverId)
+        } catch (err) {
+          const errorMsg = err instanceof Error ? err.message : String(err)
+          logger.system.warn(`[PluginInstaller] MCP auto-connect failed for ${plugin.pluginKey}: ${errorMsg}`)
+          connectError = errorMsg
         } finally {
           // 连接完成后清除回调，避免影响后续其他操作
           pythonManager.setStatusCallback(null)
@@ -1222,12 +1238,14 @@ export class PluginInstaller {
           this.emitProgress(progressPluginId || '', 'registering', progressPackageSize || 0, progressPackageSize || 0, '正在连接 MCP 服务...')
           await mcpManager.connectServer(serverId)
         } catch (err) {
-          logger.system.warn(`[PluginInstaller] MCP auto-connect failed for ${plugin.pluginKey}: ${err}`)
+          const errorMsg = err instanceof Error ? err.message : String(err)
+          logger.system.warn(`[PluginInstaller] MCP auto-connect failed for ${plugin.pluginKey}: ${errorMsg}`)
+          connectError = errorMsg
         }
       }
     }
 
-    return serverId
+    return { serverId, connectError }
   }
 
   /**

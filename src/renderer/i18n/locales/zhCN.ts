@@ -1083,6 +1083,7 @@ export const zh = {
   'mcp.connect': '连接',
   'mcp.disconnect': '断开',
   'mcp.refreshCapabilities': '刷新能力',
+  'mcp.retryConnect': '重连',
   'mcp.delete': '删除',
   'mcp.deleteConfirm': '确定要删除服务器「{name}」吗？',
   'mcp.toggle': '切换',

@@ -26,6 +26,8 @@ export interface SharedDependencyRegistry {
   jsxRuntime: typeof import('react/jsx-runtime')
   zustand: typeof import('zustand')
   lucideReact: typeof import('lucide-react')
+  xyflow: typeof import('@xyflow/react')
+  framerMotion: typeof import('framer-motion')
   [key: string]: unknown
 }
 
@@ -149,12 +151,14 @@ export async function injectSharedDependencies(): Promise<void> {
   if (sharedDependencyProvider.isInjected()) return
 
   try {
-    const [react, reactDom, jsxRuntime, zustand, lucideReact] = await Promise.all([
+    const [react, reactDom, jsxRuntime, zustand, lucideReact, xyflow, framerMotion] = await Promise.all([
       import('react'),
       import('react-dom/client'),
       import('react/jsx-runtime'),
       import('zustand'),
       import('lucide-react'),
+      import('@xyflow/react'),
+      import('framer-motion'),
     ])
 
     const modules: Partial<SharedDependencyRegistry> = {
@@ -163,6 +167,8 @@ export async function injectSharedDependencies(): Promise<void> {
       jsxRuntime: jsxRuntime,
       zustand: zustand,
       lucideReact: lucideReact,
+      xyflow: xyflow,
+      framerMotion: framerMotion,
     }
 
     const meta: Record<string, SharedDependencyMeta> = {
@@ -171,6 +177,8 @@ export async function injectSharedDependencies(): Promise<void> {
       jsxRuntime: { version: react.version || '18.0.0', moduleName: 'react/jsx-runtime' },
       zustand: { version: '5.0.0', moduleName: 'zustand' },
       lucideReact: { version: '0.400.0', moduleName: 'lucide-react' },
+      xyflow: { version: '12.10.2', moduleName: '@xyflow/react' },
+      framerMotion: { version: '12.25.0', moduleName: 'framer-motion' },
     }
 
     sharedDependencyProvider.inject(modules, meta)

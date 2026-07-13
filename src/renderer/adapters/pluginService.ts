@@ -113,6 +113,8 @@ export interface PluginInstallResult {
   manifest?: Record<string, unknown>
   mcpServerId?: string
   error?: string
+  /** MCP 服务连接错误（安装成功但 MCP 连接失败时填充） */
+  mcpConnectError?: string
   requiresPayment?: boolean
   price?: number
   orderNo?: string

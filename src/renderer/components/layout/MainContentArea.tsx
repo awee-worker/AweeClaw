@@ -34,6 +34,7 @@ const BillingCenterPage = lazy(() => import('@components/user/BillingCenterPage'
 const SessionHistoryPage = lazy(() => import('@components/user/SessionHistoryPage'))
 const PluginCenterPage = lazy(() => import('@components/plugin/PluginCenterPage'))
 const EditorBottomBar = lazy(() => import('@components/layout/EditorBottomBar'))
+const VoiceConversationOverlay = lazy(() => import('@components/voice/VoiceConversationOverlay'))
 
 interface MainContentAreaProps {
   layoutConfig: LayoutConfig
@@ -147,8 +148,11 @@ function PrimaryMainContent({ layoutConfig, isWideModePanel }: MainContentAreaPr
   // 仅 Chat
   if (chatVisible) {
     return (
-      <div className="flex-1 min-w-0 overflow-hidden">
+      <div className="flex-1 min-w-0 overflow-hidden relative">
         <ErrorBoundary><Suspense fallback={<ChatSkeleton />}><ChatPanel /></Suspense></ErrorBoundary>
+
+        {/* 语音对话覆盖层 - 仅覆盖聊天区域 */}
+        <VoiceConversationOverlaySlot />
       </div>
     )
   }
@@ -332,6 +336,29 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
 }
 
 // ====== 导出 ======
+
+/**
+ * 语音对话覆盖层插槽
+ *
+ * 仅当 voiceConversationActive 为 true 时渲染 VoiceConversationOverlay。
+ * 独立成组件避免在每个布局分支中重复订阅 store。
+ */
+function VoiceConversationOverlaySlot() {
+  const { voiceConversationActive, setVoiceConversationActive } = useStore(useShallow((s) => ({
+    voiceConversationActive: s.voiceConversationActive,
+    setVoiceConversationActive: s.setVoiceConversationActive,
+  })))
+
+  if (!voiceConversationActive) return null
+
+  return (
+    <ErrorBoundary>
+      <Suspense fallback={null}>
+        <VoiceConversationOverlay onClose={() => setVoiceConversationActive(false)} />
+      </Suspense>
+    </ErrorBoundary>
+  )
+}
 
 export default function MainContentArea(props: MainContentAreaProps) {
   if (props.layoutConfig.chatPosition === 'primary') {

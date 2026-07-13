@@ -35,6 +35,7 @@ import {
   Settings,
 } from 'lucide-react'
 import { useStore } from '@store'
+import { useShallow } from 'zustand/react/shallow'
 import { ActionButton } from '../ui'
 import { toast } from '../foundation/NotificationProvider'
 import {
@@ -45,6 +46,7 @@ import {
   checkPluginUpdate,
 } from '@services/pluginService'
 import type { InstalledPlugin } from '@services/pluginService'
+import type { McpServerStatus } from '@shared/protocols/toolProtocolBridge'
 import { type Language } from '@renderer/i18n'
 import { PluginConfigEditDialog } from './PluginConfigEditDialog'
 import type { PluginConfigField } from './PluginConfigForm'
@@ -79,6 +81,7 @@ const TYPE_LABELS: Record<string, { zh: string; en: string; color: string }> = {
 
 export function PluginInstalledPanel() {
   const language = useStore((s) => s.language) as Language
+  const mcpServers = useStore(useShallow(s => s.mcpServers))
 
   const [plugins, setPlugins] = useState<InstalledPlugin[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -266,19 +269,27 @@ export function PluginInstalledPanel() {
           </div>
         ) : (
           <div className="divide-y divide-border/20">
-            {plugins.map((plugin) => (
+            {plugins.map((plugin) => {
+              // 查找该插件对应的 MCP 服务器状态
+              const mcpServer = plugin.mcpServerId
+                ? mcpServers.find(s => s.id === plugin.mcpServerId)
+                : undefined
+              return (
               <PluginRow
                 key={plugin.pluginKey}
                 plugin={plugin}
                 language={language}
                 operating={operating === plugin.pluginKey}
                 updateInfo={updates[plugin.pluginKey]}
+                mcpStatus={mcpServer?.status}
+                mcpError={mcpServer?.error}
                 onEnable={() => handleEnable(plugin)}
                 onDisable={() => handleDisable(plugin)}
                 onUninstall={() => handleUninstall(plugin)}
                 onOpenConfig={() => handleOpenConfig(plugin)}
               />
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
@@ -312,6 +323,8 @@ function PluginRow({
   language,
   operating,
   updateInfo,
+  mcpStatus,
+  mcpError,
   onEnable,
   onDisable,
   onUninstall,
@@ -321,6 +334,8 @@ function PluginRow({
   language: Language
   operating: boolean
   updateInfo?: { hasUpdate: boolean; latestVersion?: string }
+  mcpStatus?: McpServerStatus
+  mcpError?: string
   onEnable: () => void
   onDisable: () => void
   onUninstall: () => void
@@ -419,9 +434,32 @@ function PluginRow({
             {plugin.mcpServerId && (
               <>
                 <span>·</span>
-                <span className="flex items-center gap-0.5 text-purple-400">
-                  <Sparkles className="w-2.5 h-2.5" />
-                  MCP
+                <span
+                  className={`flex items-center gap-0.5 ${
+                    mcpStatus === 'connected'
+                      ? 'text-green-400'
+                      : mcpStatus === 'error'
+                        ? 'text-red-400'
+                        : mcpStatus === 'connecting'
+                          ? 'text-yellow-400'
+                          : 'text-text-muted'
+                  }`}
+                  title={mcpStatus === 'error' && mcpError ? mcpError : undefined}
+                >
+                  {mcpStatus === 'error' ? (
+                    <AlertCircle className="w-2.5 h-2.5" />
+                  ) : mcpStatus === 'connected' ? (
+                    <CheckCircle2 className="w-2.5 h-2.5" />
+                  ) : (
+                    <Sparkles className="w-2.5 h-2.5" />
+                  )}
+                  {mcpStatus === 'connected'
+                    ? (language === 'zh' ? 'MCP 已连接' : 'MCP Connected')
+                    : mcpStatus === 'error'
+                      ? (language === 'zh' ? 'MCP 连接错误' : 'MCP Error')
+                      : mcpStatus === 'connecting'
+                        ? (language === 'zh' ? 'MCP 连接中' : 'MCP Connecting')
+                        : (language === 'zh' ? 'MCP 未连接' : 'MCP Disconnected')}
                 </span>
               </>
             )}

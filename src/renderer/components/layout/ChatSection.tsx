@@ -7,6 +7,10 @@
  * 支持两种模式：
  * - primary: Chat 在主内容区右侧，带最小宽度约束
  * - secondary: Chat 在侧边栏右侧，无最小宽度约束
+ *
+ * 语音对话模式：
+ * 当 voiceConversationActive 为 true 时，在聊天区域上方覆盖 VoiceConversationOverlay，
+ * 替代原有聊天界面（非全屏覆盖，仅覆盖聊天面板区域）。
  */
 
 import { Suspense, useRef, lazy } from 'react'
@@ -17,6 +21,7 @@ import { CrashGuard as ErrorBoundary } from '@components/foundation/CrashGuard'
 import { ChatSkeleton } from '@components/ui/ProgressIndicator'
 
 const ChatPanel = lazy(() => import('@components/intelligence/ChatPanel'))
+const VoiceConversationOverlay = lazy(() => import('@components/voice/VoiceConversationOverlay'))
 
 interface ChatSectionProps {
   /** 是否显示聊天面板 */
@@ -26,9 +31,11 @@ interface ChatSectionProps {
 }
 
 export default function ChatSection({ visible, mode = 'secondary' }: ChatSectionProps) {
-  const { chatWidth, setChatWidth } = useStore(useShallow((s) => ({
+  const { chatWidth, setChatWidth, voiceConversationActive, setVoiceConversationActive } = useStore(useShallow((s) => ({
     chatWidth: s.chatWidth,
     setChatWidth: s.setChatWidth,
+    voiceConversationActive: s.voiceConversationActive,
+    setVoiceConversationActive: s.setVoiceConversationActive,
   })))
 
   const chatRef = useRef<HTMLDivElement>(null)
@@ -53,6 +60,15 @@ export default function ChatSection({ visible, mode = 'secondary' }: ChatSection
           <ChatPanel />
         </Suspense>
       </ErrorBoundary>
+
+      {/* 语音对话覆盖层 - 仅覆盖聊天区域 */}
+      {voiceConversationActive && (
+        <ErrorBoundary>
+          <Suspense fallback={null}>
+            <VoiceConversationOverlay onClose={() => setVoiceConversationActive(false)} />
+          </Suspense>
+        </ErrorBoundary>
+      )}
     </div>
   )
 }

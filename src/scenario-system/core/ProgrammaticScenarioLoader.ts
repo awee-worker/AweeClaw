@@ -70,7 +70,19 @@ export async function loadProgrammaticScenario(scenarioId: string): Promise<{
 
     const module = new ProgrammaticScenarioModule(config)
 
-    const bundleUrl = `file://${scenarioDir}/${config.entryPoint}`
+    // 使用 scenario-bundle:// 协议加载 ESM bundle
+    // 该协议在 Electron 主进程中注册为 standard: true，支持 dynamic import()
+    // file:// 协议在 Electron 渲染进程中被 webSecurity 阻止，无法用于 import()
+    //
+    // URL 构造：
+    // - 将 Windows 反斜杠转换为正斜杠
+    // - 使用 encodeURI 编码路径中的特殊字符（如空格）
+    // - 路径以 / 开头（macOS/Linux）时 URL 为 scenario-bundle:///path...
+    // - Windows 路径如 C:/... 时 URL 为 scenario-bundle:///C:/...（handler 会剥离前导 /）
+    const normalizedDir = scenarioDir.replace(/\\/g, '/')
+    const encodedDir = encodeURI(normalizedDir)
+    const encodedEntry = encodeURI(config.entryPoint)
+    const bundleUrl = `scenario-bundle://${encodedDir}/${encodedEntry}`
 
     await module.loadModule(bundleUrl)
 

@@ -1076,6 +1076,7 @@ export const en = {
   'mcp.connect': 'Connect',
   'mcp.disconnect': 'Disconnect',
   'mcp.refreshCapabilities': 'Refresh capabilities',
+  'mcp.retryConnect': 'Retry',
   'mcp.delete': 'Delete',
   'mcp.deleteConfirm': 'Are you sure you want to delete server "{name}"?',
   'mcp.toggle': 'Toggle',

@@ -460,6 +460,16 @@ export default function McpServerPanel({ language }: McpSettingsProps) {
                                 <Power className="w-4 h-4" />
                               </button>
                             )}
+                            {server.status === 'error' && (
+                              <button
+                                onClick={() => handleConnectServer(server.id)}
+                                disabled={isLoading}
+                                className="p-1 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-md transition-colors"
+                                title={t('mcp.retryConnect', language as Language)}
+                              >
+                                <RefreshCw className="w-4 h-4" />
+                              </button>
+                            )}
                             {server.status === 'connecting' && (
                               <Loader2 className="w-4 h-4 animate-spin text-text-muted" />
                             )}
@@ -506,6 +516,23 @@ export default function McpServerPanel({ language }: McpSettingsProps) {
                           </button>
                         </div>
                       </div>
+
+                      {/* 错误信息（error 状态直接展示，无需展开） */}
+                      {server.status === 'error' && server.error && !isOAuthPending && !isExpanded && (
+                        <div className="px-4 pb-2.5">
+                          <div className="ml-11 flex items-start gap-2 p-2.5 bg-red-500/10 rounded-lg border border-red-500/20 text-red-400 text-[12px]">
+                            <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                            <span className="leading-relaxed flex-1 break-all">{server.error}</span>
+                            <button
+                              onClick={() => handleConnectServer(server.id)}
+                              disabled={isLoading}
+                              className="flex-shrink-0 text-[12px] text-red-300 hover:text-red-200 underline-offset-2 hover:underline"
+                            >
+                              {t('mcp.retryConnect', language as Language)}
+                            </button>
+                          </div>
+                        </div>
+                      )}
 
                       {/* 展开详情 */}
                       {isExpanded && (
@@ -707,6 +734,19 @@ export default function McpServerPanel({ language }: McpSettingsProps) {
               >
                 <RefreshCw className="w-3.5 h-3.5" />
                 {t('mcp.refreshCapabilities', language as Language)}
+              </button>
+            )}
+            {server.status === 'error' && (
+              <button
+                onClick={() => {
+                  setActiveMenu(null)
+                  setMenuPosition(null)
+                  handleConnectServer(server.id)
+                }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10 transition-colors"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                {t('mcp.retryConnect', language as Language)}
               </button>
             )}
             <button

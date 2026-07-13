@@ -118,6 +118,10 @@ export interface LayoutSlice {
   showPluginCenterPage: boolean
   showScenarioPage: boolean
 
+  /* ===== 语音对话模式 ===== */
+  /** 语音对话模式是否激活（覆盖整个聊天区域的实时语音对话界面） */
+  voiceConversationActive: boolean
+
   /* ===== 面板可见性操作 ===== */
   setActiveSidePanel: (panel: SidePanel) => void
   setTerminalVisible: (visible: boolean) => void
@@ -151,6 +155,12 @@ export interface LayoutSlice {
   setShowScenarioPage: (show: boolean) => void
   /** 关闭所有全屏页面，返回聊天界面 */
   closeAllFullPages: () => void
+
+  /* ===== 语音对话模式操作 ===== */
+  /** 进入/退出语音对话模式 */
+  setVoiceConversationActive: (active: boolean) => void
+  /** 切换语音对话模式 */
+  toggleVoiceConversation: () => void
 }
 
 export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> = (set) => ({
@@ -167,6 +177,9 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
   dockPanelVisible: LAYOUT_DEFAULTS.dockPanelVisible,
   activeDockTab: LAYOUT_DEFAULTS.activeDockTab,
   ...buildInitialFullscreenPages(),
+
+  /* ----- 语音对话模式初始状态 ----- */
+  voiceConversationActive: false,
 
   /* ----- 面板可见性操作 ----- */
   setActiveSidePanel: (panel) =>
@@ -231,4 +244,8 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
   setShowPluginCenterPage: (show) => set(buildFullscreenToggle('showPluginCenterPage', show)),
   setShowScenarioPage: (show) => set(buildFullscreenToggle('showScenarioPage', show)),
   closeAllFullPages: () => set(buildFullscreenReset()),
+
+  /* ----- 语音对话模式操作 ----- */
+  setVoiceConversationActive: (active) => set({ voiceConversationActive: active }),
+  toggleVoiceConversation: () => set((state) => ({ voiceConversationActive: !state.voiceConversationActive })),
 })

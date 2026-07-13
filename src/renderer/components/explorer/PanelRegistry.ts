@@ -60,6 +60,7 @@ export function unregisterScenarioPanelComponents(scenarioId: string): void {
 }
 
 function getScenarioModule(scenarioId: string) {
+  // 1. 优先从内置场景（/src/scenarios/*/index.ts）查找
   try {
     const entries = import.meta.glob('/src/scenarios/*/index.ts', { eager: true }) as Record<string, { default: { id: string; getComponents?: () => Record<string, PanelComponent> } }>
     for (const path in entries) {
@@ -67,5 +68,13 @@ function getScenarioModule(scenarioId: string) {
       if (mod?.id === scenarioId) return mod
     }
   } catch {}
+
+  // 2. 从场景加载器（含程序化场景）查找
+  try {
+    const { scenarioLoader } = require('@scenario-system/core')
+    const entry = scenarioLoader.getEntry(scenarioId)
+    if (entry?.module) return entry.module
+  } catch {}
+
   return null
 }

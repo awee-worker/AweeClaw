@@ -96,17 +96,36 @@ function readScenarioConfig(sourceDir: string): ScenarioConfigFile | null {
   }
 }
 
+/**
+ * 递归复制场景目录
+ *
+ * 排除不需要的目录和文件：
+ * - node_modules/（依赖包，体积大且不需要在安装目录中）
+ * - .git/（版本控制元数据）
+ * - src/（源代码，运行时只需 dist/ 编译产物）
+ * - .gitignore, tsconfig.json, esbuild.config.mjs（开发配置文件）
+ */
+const COPY_EXCLUDE_DIRS = new Set(['node_modules', '.git', 'src', '.vscode', '.idea'])
+const COPY_EXCLUDE_FILES = new Set([
+  '.gitignore', 'tsconfig.json', 'esbuild.config.mjs', 'package-lock.json',
+  'yarn.lock', 'pnpm-lock.yaml', '.DS_Store', 'README.md',
+])
+
 function copyDirRecursive(src: string, dest: string): void {
   if (!fs.existsSync(dest)) {
     fs.mkdirSync(dest, { recursive: true })
   }
   const entries = fs.readdirSync(src, { withFileTypes: true })
   for (const entry of entries) {
-    const srcPath = path.join(src, entry.name)
-    const destPath = path.join(dest, entry.name)
     if (entry.isDirectory()) {
+      if (COPY_EXCLUDE_DIRS.has(entry.name)) continue
+      const srcPath = path.join(src, entry.name)
+      const destPath = path.join(dest, entry.name)
       copyDirRecursive(srcPath, destPath)
     } else {
+      if (COPY_EXCLUDE_FILES.has(entry.name)) continue
+      const srcPath = path.join(src, entry.name)
+      const destPath = path.join(dest, entry.name)
       fs.copyFileSync(srcPath, destPath)
     }
   }
@@ -543,7 +562,7 @@ export function registerScenarioInstallIpcHandlers(
 
       const config = readScenarioConfig(scenarioDir)
 
-      return { success: true, files, config }
+      return { success: true, files, config, scenarioDir }
     } catch (err) {
       logger.agent.error(`[ScenarioInstall] Failed to load scenario files for "${scenarioId}":`, err)
       return { success: false, error: err instanceof Error ? err.message : String(err), files: {}, config: null }

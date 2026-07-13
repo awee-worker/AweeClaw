@@ -56,6 +56,8 @@ export interface ProgrammaticScenarioConfig {
 
 export interface ProgrammaticScenarioExports {
   default?: {
+    /** 自定义插件配置（identity/capabilities/ui/dataSources），覆盖默认 chat-centric 配置 */
+    getPlugin?: () => Partial<ScenarioPlugin>
     getTools?: () => ScenarioToolDefinition[]
     getIpcHandlers?: () => ScenarioIpcHandler[]
     getComponents?: () => ScenarioComponentRegistry
@@ -102,8 +104,14 @@ export class ProgrammaticScenarioModule implements ScenarioModule {
       const module = await import(/* @vite-ignore */ bundleUrl)
       this.moduleExports = module.default || module
 
+      // 注入样式文件（使用 scenario-bundle:// 协议避免 webSecurity 限制）
       if (this.config.styleFile) {
-        this.injectStyles(this.config.styleFile)
+        // bundleUrl = scenario-bundle:///path/to/scenario/dist/index.js
+        // entryPoint = dist/index.js
+        // 移除末尾的 entryPoint，得到场景目录 URL，再拼接 styleFile
+        const baseUrl = bundleUrl.substring(0, bundleUrl.length - this.config.entryPoint.length)
+        const styleUrl = baseUrl + this.config.styleFile
+        this.injectStyles(styleUrl)
       }
 
       logger.agent.info(
@@ -172,8 +180,15 @@ export class ProgrammaticScenarioModule implements ScenarioModule {
     }
   }
 
+  /**
+   * 返回场景插件配置
+   *
+   * 默认提供 chat-centric 布局的最小可用配置。
+   * 若 bundle 通过 getPlugin() 返回自定义配置（identity/capabilities/ui/dataSources），
+   * 则与默认配置深度合并，使程序化场景能拥有独立的 systemPrompt、布局与侧边栏。
+   */
   getPlugin(): ScenarioPlugin {
-    return {
+    const defaultPlugin: ScenarioPlugin = {
       id: this.config.id,
       name: this.config.name,
       nameZh: this.config.nameZh,
@@ -229,6 +244,14 @@ export class ProgrammaticScenarioModule implements ScenarioModule {
       },
       dataSources: { workspace: false },
     }
+
+    // 合并 bundle 提供的自定义配置
+    const customPlugin = this.moduleExports?.getPlugin?.()
+    if (customPlugin) {
+      return mergePluginConfig(defaultPlugin, customPlugin)
+    }
+
+    return defaultPlugin
   }
 
   getTools(): ScenarioToolDefinition[] {
@@ -315,5 +338,46 @@ export class ProgrammaticScenarioModule implements ScenarioModule {
         versionRange: d.versionRange,
         required: d.required ?? true,
       }))
+  }
+}
+
+// ============================================
+// 配置合并工具
+// ============================================
+
+/**
+ * 深度合并场景插件配置
+ *
+ * 将 bundle 提供的自定义配置（Partial<ScenarioPlugin>）与默认配置深度合并。
+ * 对于对象类型的字段（identity/capabilities/ui/dataSources），逐级合并；
+ * 对于数组与基础类型字段，自定义值覆盖默认值。
+ */
+function mergePluginConfig(
+  base: ScenarioPlugin,
+  override: Partial<ScenarioPlugin>,
+): ScenarioPlugin {
+  return {
+    ...base,
+    ...override,
+    identity: { ...base.identity, ...(override.identity || {}) },
+    capabilities: {
+      ...base.capabilities,
+      ...(override.capabilities || {}),
+      modes: override.capabilities?.modes ?? base.capabilities.modes,
+      contextTypes: override.capabilities?.contextTypes ?? base.capabilities.contextTypes,
+      toolPacks: override.capabilities?.toolPacks ?? base.capabilities.toolPacks,
+      outputFormats: override.capabilities?.outputFormats ?? base.capabilities.outputFormats,
+    },
+    ui: {
+      ...base.ui,
+      ...(override.ui || {}),
+      panels: override.ui?.panels ?? base.ui.panels,
+      sidebarItems: override.ui?.sidebarItems ?? base.ui.sidebarItems,
+      statusBarItems: override.ui?.statusBarItems ?? base.ui.statusBarItems,
+    },
+    dataSources: {
+      ...base.dataSources,
+      ...(override.dataSources || {}),
+    },
   }
 }

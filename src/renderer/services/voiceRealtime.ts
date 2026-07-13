@@ -36,9 +36,20 @@ export interface VoiceCommand {
 }
 
 export interface VoiceRealtimeCallbacks {
-  onSessionStarted?: (data: { sessionId: string; mode: VoiceMode; language: string; enableVad: boolean }) => void;
+  onSessionStarted?: (data: {
+    sessionId: string;
+    mode: VoiceMode;
+    language: string;
+    enableVad: boolean;
+    provider?: string;
+    model?: string;
+  }) => void;
   onSttPartial?: (data: { text: string }) => void;
   onSttFinal?: (data: { text: string; language: string; duration: number; provider: string }) => void;
+  /** AI 文本增量推送（流式） */
+  onAiText?: (data: { text: string; isFinal: boolean }) => void;
+  /** AI 文本全部完成 */
+  onAiTextEnd?: (data: { text: string }) => void;
   onTtsAudio?: (data: { data: string; contentType: string; isFinal: boolean }) => void;
   onTtsEnd?: (data: { provider: string; voice: string }) => void;
   onVadSilence?: (data: { silenceDurationMs: number }) => void;
@@ -104,6 +115,16 @@ export class VoiceRealtimeService {
           );
         });
 
+        this.socket.on(VoiceWsResponse.AI_TEXT, (data) => {
+          this.callbacks.onAiText?.(
+            data as { text: string; isFinal: boolean },
+          );
+        });
+
+        this.socket.on(VoiceWsResponse.AI_TEXT_END, (data) => {
+          this.callbacks.onAiTextEnd?.(data as { text: string });
+        });
+
         this.socket.on(VoiceWsResponse.TTS_AUDIO, (data) => {
           this.callbacks.onTtsAudio?.(
             data as Parameters<NonNullable<VoiceRealtimeCallbacks['onTtsAudio']>>[0],
@@ -143,6 +164,48 @@ export class VoiceRealtimeService {
     enableVad?: boolean;
     vadSilenceThreshold?: number;
     vadSilenceDuration?: number;
+    /** LLM provider（如 openai、deepseek、azure 等），由客户端从 llmConfig 传入 */
+    provider?: string;
+    /** LLM model id（如 gpt-4o、deepseek-chat 等），由客户端从 llmConfig 传入 */
+    model?: string;
+    /** 自定义系统提示词 */
+    systemPrompt?: string;
+    /** 会话线程 ID（可选） */
+    threadId?: string;
+    /**
+     * 语音流水线模式
+     * - classic: STT → LLM → TTS（默认）
+     * - realtime: 端到端语音模型（音频输入直接产生音频输出）
+     */
+    pipeline?: 'classic' | 'realtime';
+    /**
+     * 端到端模式的额外配置（仅 pipeline=realtime 时使用）
+     */
+    realtimeConfig?: {
+      endpoint?: string;
+      apiKey?: string;
+      voice?: string;
+      serverVad?: boolean;
+    };
+    /**
+     * 用户自定义的 STT/TTS 配置（classic 模式下优先于系统配置）
+     * 由客户端 VoiceModelPanel 配置，包含用户自己的 API Key
+     */
+    userVoiceConfig?: {
+      sttEnabled: boolean;
+      sttProvider?: string;
+      sttModel?: string;
+      sttApiKey?: string;
+      sttBaseUrl?: string;
+      sttLanguage?: string;
+      ttsEnabled: boolean;
+      ttsProvider?: string;
+      ttsModel?: string;
+      ttsVoice?: string;
+      ttsApiKey?: string;
+      ttsBaseUrl?: string;
+      ttsSpeed?: number;
+    };
   }): Promise<void> {
     if (!this.socket?.connected) {
       throw new Error('Socket.IO not connected');
@@ -154,6 +217,13 @@ export class VoiceRealtimeService {
       enableVad: options?.enableVad ?? true,
       vadSilenceThreshold: options?.vadSilenceThreshold,
       vadSilenceDuration: options?.vadSilenceDuration,
+      provider: options?.provider,
+      model: options?.model,
+      systemPrompt: options?.systemPrompt,
+      threadId: options?.threadId,
+      pipeline: options?.pipeline,
+      realtimeConfig: options?.realtimeConfig,
+      userVoiceConfig: options?.userVoiceConfig,
     });
   }
 

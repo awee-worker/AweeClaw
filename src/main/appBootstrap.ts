@@ -24,6 +24,10 @@ import {
   registerLocalPreviewHandler,
 } from './bootstrap/localPreviewProtocol'
 import {
+  registerScenarioBundleScheme,
+  registerScenarioBundleHandler,
+} from './bootstrap/scenarioBundleProtocol'
+import {
   createWindow,
   loadWindowContent,
   getMainWindow,
@@ -85,6 +89,9 @@ setQuitStateController(quitStateController)
 // 注册 local-preview 协议为 privileged（必须在 app ready 之前）
 registerLocalPreviewScheme()
 
+// 注册 scenario-bundle 协议为 privileged（用于编程式场景 ESM bundle 加载）
+registerScenarioBundleScheme()
+
 // ==========================================
 // 全局异常处理
 // ==========================================
@@ -116,6 +123,9 @@ process.on('unhandledRejection', (reason: unknown, promise: Promise<unknown>) =>
 app.whenReady().then(async () => {
   // 1. 注册 local-preview 协议处理器
   registerLocalPreviewHandler()
+
+  // 注册 scenario-bundle 协议处理器（用于编程式场景 ESM bundle 加载）
+  registerScenarioBundleHandler()
 
   // 2. 初始化 Store（必须在模块加载前完成）
   await initStores()

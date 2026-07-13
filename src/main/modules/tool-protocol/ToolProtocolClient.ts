@@ -130,6 +130,36 @@ async function resolveUvxCommand(originalArgs: string[]): Promise<{ command: str
   throw new Error(hint)
 }
 
+/**
+ * 国内 PyPI 镜像源（首选清华，兼顾阿里云、华为云）。
+ * 用于 uvx/npx 命令安装 Python 依赖时加速下载。
+ */
+const PYPI_MIRROR_URL = 'https://pypi.tuna.tsinghua.edu.cn/simple'
+
+/**
+ * 为 uvx 命令注入国内 PyPI 镜像源环境变量，加速依赖下载。
+ *
+ * uv/uvx 读取以下环境变量确定包索引：
+ * - UV_INDEX_URL：等价于 --index-url，设置主索引
+ * - PIP_INDEX_URL：兼容 MCP 服务器内部可能调用的 pip
+ *
+ * 仅在用户未手动设置时注入，避免覆盖用户自定义配置。
+ */
+function injectMirrorEnv(
+  env: Record<string, string>,
+  command: string,
+): Record<string, string> {
+  if (command !== 'uvx') return env
+  const patched: Record<string, string> = { ...env }
+  if (!patched.UV_INDEX_URL) {
+    patched.UV_INDEX_URL = PYPI_MIRROR_URL
+  }
+  if (!patched.PIP_INDEX_URL) {
+    patched.PIP_INDEX_URL = PYPI_MIRROR_URL
+  }
+  return patched
+}
+
 type Transport = StdioClientTransport | StreamableHTTPClientTransport | SSEClientTransport | InMemoryTransport
 
 interface ClientState {
@@ -290,7 +320,7 @@ export class McpClient extends EventEmitter {
     const transport = new StdioClientTransport({
       command,
       args,
-      env: { ...process.env, ...config.env } as Record<string, string>,
+      env: injectMirrorEnv({ ...process.env, ...config.env } as Record<string, string>, config.command),
       cwd: config.cwd,
       stderr: 'pipe',
     })
@@ -475,7 +505,10 @@ export class McpClient extends EventEmitter {
 
     const pluginDir = this.resolvePluginDir(config)
     const baseArgs = (config.args || []).map((a) => a.replace('{{pluginDir}}', pluginDir))
-    const env = { ...process.env, ...config.env, PLUGIN_DIR: pluginDir } as Record<string, string>
+    const env = injectMirrorEnv(
+      { ...process.env, ...config.env, PLUGIN_DIR: pluginDir } as Record<string, string>,
+      config.command,
+    )
 
     // 工作目录优先使用当前工作区路径，使插件生成的文件默认输出到工作区
     // fallback 到插件目录（无工作区时）

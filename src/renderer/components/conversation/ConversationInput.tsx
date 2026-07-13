@@ -32,6 +32,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { getFileName } from '@shared/toolkit/pathHelper'
 import { WorkMode } from '@/renderer/modes/workModeTypes'
 import { motion, AnimatePresence } from 'framer-motion'
+// VoiceRealtimePanel 已迁移到独立的 VoiceConversationOverlay 全屏语音对话界面
 import {t, type Language} from '@renderer/i18n'
 import { ActionButton } from '../ui'
 
@@ -39,7 +40,6 @@ import ModelSelector from './AIModelSelector'
 import ModeSelector from './WorkModeSelector'
 import { useVoiceInput } from '../../composables/useVoiceInput'
 import VoiceVisualizer from '../voice/VoiceVisualizer'
-import { VoiceRealtimePanel } from '../voice/VoiceRealtimePanel'
 import { ContextItem, FileContext } from '@intelligence/providerTypes'
 import { api } from '../../adapters/electronBridge'
 import { getEffectiveLLMConfig } from '@services/modelConfigHelper'
@@ -106,7 +106,6 @@ const ChatInput = memo(function ChatInput({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isFocused, setIsFocused] = useState(false)
   const [isOptimizing, setIsOptimizing] = useState(false)
-  const [showRealtimeVoice, setShowRealtimeVoice] = useState(false)
 
   const voiceInput = useVoiceInput({
     onResult: (text) => {
@@ -265,24 +264,6 @@ const ChatInput = memo(function ChatInput({
 
   return (
     <div ref={inputContainerRef} className="z-20">
-      <AnimatePresence>
-        {showRealtimeVoice && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 10 }}
-            transition={{ duration: 0.2 }}
-            className="mb-3"
-          >
-            <VoiceRealtimePanel
-              onSttResult={(text) => {
-                setInput(input ? `${input} ${text}` : text);
-              }}
-              onClose={() => setShowRealtimeVoice(false)}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
       <div
         className={`
             relative group flex flex-col rounded-xl transition-all duration-500 ease-out border
@@ -582,10 +563,6 @@ const ChatInput = memo(function ChatInput({
               ) : (
                 <button
                   onClick={voiceInput.startRecording}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    setShowRealtimeVoice(true);
-                  }}
                   disabled={!hasApiKey}
                   className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300
                     ${hasApiKey
@@ -593,7 +570,7 @@ const ChatInput = memo(function ChatInput({
                       : 'bg-text-primary/5 text-text-muted/75 cursor-not-allowed border border-transparent'
                     }
                     `}
-                  title={lt('语音输入（右键开启实时对话）', 'Voice input (right-click for realtime)')}
+                  title={lt('语音输入', 'Voice input')}
                 >
                   <Mic className="w-4 h-4" />
                 </button>

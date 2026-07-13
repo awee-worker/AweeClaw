@@ -1,4 +1,4 @@
-import { Minus, Square, X, Search, Plus, Bell, Cloud } from 'lucide-react'
+import { Minus, Square, X, Search, Plus, Bell, Cloud, Phone } from 'lucide-react'
 
 function PanelLeftIcon({ filled = false, className }: { filled?: boolean; className?: string }) {
     return (
@@ -175,7 +175,7 @@ function CloudQuotaIndicator({ language }: { language: Language }) {
 }
 
 export default function AppTitleBar() {
-  const { setShowQuickOpen, language, activeSidePanel, chatVisible, toggleSidebar, toggleChat, navRailExpanded, setNavRailExpanded } = useStore(useShallow(s => ({
+  const { setShowQuickOpen, language, activeSidePanel, chatVisible, toggleSidebar, toggleChat, navRailExpanded, setNavRailExpanded, setVoiceConversationActive, closeAllFullPages } = useStore(useShallow(s => ({
     setShowQuickOpen: s.setShowQuickOpen,
     language: s.language,
     activeSidePanel: s.activeSidePanel,
@@ -184,6 +184,8 @@ export default function AppTitleBar() {
     toggleChat: s.toggleChat,
     navRailExpanded: s.navRailExpanded,
     setNavRailExpanded: s.setNavRailExpanded,
+    setVoiceConversationActive: s.setVoiceConversationActive,
+    closeAllFullPages: s.closeAllFullPages,
   })))
 
   const sidebarVisible = activeSidePanel !== null
@@ -244,14 +246,26 @@ export default function AppTitleBar() {
           <ImStatusFloating />
 
           {chatVisible && (
-            <button
-              onClick={() => createThread()}
-              className="flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-medium text-text-muted hover:text-text-primary hover:bg-[rgba(var(--text-primary),0.06)] rounded-md transition-colors"
-              title={t('layout.newchat', language as Language)}
-            >
-              <Plus className="w-3.5 h-3.5" />
-              {t('layout.newchat2', language as Language)}
-            </button>
+            <>
+              <button
+                onClick={() => createThread()}
+                className="flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-medium text-text-muted hover:text-text-primary hover:bg-[rgba(var(--text-primary),0.06)] rounded-md transition-colors"
+                title={t('layout.newchat', language as Language)}
+              >
+                <Plus className="w-3.5 h-3.5" />
+                {t('layout.newchat2', language as Language)}
+              </button>
+              <button
+                onClick={() => {
+                  closeAllFullPages()
+                  setVoiceConversationActive(true)
+                }}
+                className="flex items-center justify-center w-7 h-7 text-text-muted hover:text-accent hover:bg-accent/10 rounded-md transition-colors"
+                title={language === 'zh' ? '语音对话' : 'Voice conversation'}
+              >
+                <Phone className="w-3.5 h-3.5" />
+              </button>
+            </>
           )}
 
           <div className="w-[1px] h-4 bg-border/50 mx-1"></div>

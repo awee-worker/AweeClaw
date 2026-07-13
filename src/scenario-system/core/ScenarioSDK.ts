@@ -80,6 +80,8 @@ export interface ScenarioSDK {
     reactDom: typeof import('react-dom/client')
     zustand: typeof import('zustand')
     lucideReact: typeof import('lucide-react')
+    xyflow: typeof import('@xyflow/react')
+    framerMotion: typeof import('framer-motion')
     getModule: <K extends keyof SharedDependencyRegistry>(name: K) => SharedDependencyRegistry[K] | null
   }
   style: ScenarioStyleAPI
@@ -202,6 +204,8 @@ export function createScenarioSDK(
       reactDom: sharedDeps?.modules.reactDom as typeof import('react-dom/client'),
       zustand: sharedDeps?.modules.zustand as typeof import('zustand'),
       lucideReact: sharedDeps?.modules.lucideReact as typeof import('lucide-react'),
+      xyflow: sharedDeps?.modules.xyflow as typeof import('@xyflow/react'),
+      framerMotion: sharedDeps?.modules.framerMotion as typeof import('framer-motion'),
       getModule: <K extends keyof SharedDependencyRegistry>(name: K) => {
         return sharedDependencyProvider.getModule(name)
       },

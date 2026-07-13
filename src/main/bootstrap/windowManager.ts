@@ -288,8 +288,8 @@ function registerCsp(win: BrowserWindow): void {
         // 注意：Monaco Editor 在 Electron 中硬性依赖 unsafe-eval，无法移除
         'Content-Security-Policy': [
           "default-src 'self'",
-          "script-src 'self' 'unsafe-inline' 'unsafe-eval' local-preview:",
-          "style-src 'self' 'unsafe-inline' local-preview:",
+          "script-src 'self' 'unsafe-inline' 'unsafe-eval' local-preview: scenario-bundle:",
+          "style-src 'self' 'unsafe-inline' local-preview: scenario-bundle:",
           "img-src 'self' data: https: blob: local-preview:",
           "connect-src 'self' https: wss: http://127.0.0.1:* http://localhost:*",
           "frame-src 'self' http://127.0.0.1:* http://localhost:*",

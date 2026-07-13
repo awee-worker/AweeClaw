@@ -253,6 +253,19 @@ export function PluginMarketplacePanel() {
         )
         setInstalledKeys((prev) => new Set(prev).add(item.pluginKey))
         setSelectedItem(null)
+        // 安装成功但 MCP 连接失败时，提示用户前往设置面板重试
+        if (result.mcpConnectError) {
+          toast.card({
+            type: 'warning',
+            title: language === 'zh' ? 'MCP 服务连接失败' : 'MCP Service Connection Failed',
+            message:
+              language === 'zh'
+                ? `插件已安装，但 MCP 服务连接失败：${result.mcpConnectError}\n可前往「设置 → MCP 服务」点击刷新重连。`
+                : `Plugin installed, but MCP service connection failed: ${result.mcpConnectError}\nGo to "Settings → MCP Servers" to retry.`,
+            duration: 10000,
+            source: 'PluginMarketplace',
+          })
+        }
       } else if (result.requiresPayment) {
         // 后端再次确认付费（兜底）
         await handlePaidPluginPurchase(item)
@@ -301,6 +314,19 @@ export function PluginMarketplacePanel() {
         setInstalledKeys((prev) => new Set(prev).add(item.pluginKey))
         setSelectedItem(null)
         setConfigDialog({ open: false, item: null, fields: [], loading: false })
+        // 安装成功但 MCP 连接失败时，提示用户前往设置面板重试
+        if (result.mcpConnectError) {
+          toast.card({
+            type: 'warning',
+            title: language === 'zh' ? 'MCP 服务连接失败' : 'MCP Service Connection Failed',
+            message:
+              language === 'zh'
+                ? `插件已安装，但 MCP 服务连接失败：${result.mcpConnectError}\n可前往「设置 → MCP 服务」点击刷新重连。`
+                : `Plugin installed, but MCP service connection failed: ${result.mcpConnectError}\nGo to "Settings → MCP Servers" to retry.`,
+            duration: 10000,
+            source: 'PluginMarketplace',
+          })
+        }
       } else if (result.requiresPayment) {
         setConfigDialog({ open: false, item: null, fields: [], loading: false })
         await handlePaidPluginPurchase(item)
