@@ -5,6 +5,8 @@ import {
   stripNonSpeakableContent,
   buildVoiceSystemPrompt,
 } from '../utils/voiceTextUtils'
+import { createActivityStatus, type ActivityStatus } from '../utils/voiceActivityStatus'
+import type { StreamEntry } from '../components/voice/VoiceTextStream'
 import { runVoiceToolLoop } from '@intelligence/voice/voiceToolLoop'
 import type {
   LLMConfig,
@@ -109,13 +111,19 @@ export interface VoiceChatOptions {
   /** AI 回复完成回调 */
   onAiTextEnd?: (fullText: string) => void
   /**
-   * 一轮对话完成回调（用户文本 + AI 完整文本）
+   * 一轮对话完成回调（用户文本 + AI 完整文本 + 工具调用记录）
    * 触发时机：AI 音频播放完毕
    * 用于把对话内容保存到聊天历史
    */
-  onConversationComplete?: (userText: string, aiText: string) => void
+  onConversationComplete?: (
+    userText: string,
+    aiText: string,
+    toolCallRecords?: Array<{ id: string; name: string; args: Record<string, unknown>; success: boolean; resultSummary: string }>,
+  ) => void
   /** 错误回调 */
   onError?: (message: string) => void
+  /** 结束对话回调（用户说"结束对话"等指令时触发） */
+  onEndConversation?: () => void
 }
 
 // ============================================
@@ -130,6 +138,47 @@ const VAD_CHECK_INTERVAL = 100   // VAD 检测间隔（ms）
 const SAMPLE_RATE = 16000        // 采样率
 // 对话历史裁剪：保留 system + 最近 N 条消息
 const MAX_HISTORY_MESSAGES = 30
+
+/**
+ * 结束对话指令关键词
+ * 用户说这些词时自动关闭语音对话
+ */
+const END_COMMAND_PATTERNS = [
+  // 中文
+  '结束对话', '结束', '退出', '再见', '拜拜', '拜', '关掉', '关闭语音',
+  '停止对话', '停止', '结束了', '完事了', '没事了', '可以了',
+  // 英文
+  'end call', 'end', 'exit', 'bye', 'goodbye', 'stop', 'close', 'quit', 'done',
+]
+
+/**
+ * 检测用户输入是否为结束对话指令
+ *
+ * 匹配规则：
+ * 1. 完全匹配关键词（忽略大小写、空格、标点）
+ * 2. 文本包含"结束对话"等明确指令
+ * 3. 文本长度短（<=10字符）且包含关键词
+ */
+function isEndConversationCommand(text: string): boolean {
+  const normalized = text.trim().toLowerCase()
+    .replace(/[，。！？,.!?]/g, '') // 去掉标点
+    .replace(/\s+/g, '')             // 去掉空格
+
+  if (!normalized) return false
+
+  // 完全匹配
+  if (END_COMMAND_PATTERNS.includes(normalized)) return true
+
+  // 包含明确指令（短文本时才匹配，避免误判正常对话）
+  if (normalized.length <= 10) {
+    const explicitCommands = ['结束对话', '关闭语音', '停止对话', '退出语音', 'endcall', 'goodbye']
+    for (const cmd of explicitCommands) {
+      if (normalized.includes(cmd)) return true
+    }
+  }
+
+  return false
+}
 
 // ============================================
 // 音频工具函数
@@ -160,6 +209,23 @@ export function useVoiceChat(options?: VoiceChatOptions) {
   const [volume, setVolume] = useState(0)
   const [sttText, setSttText] = useState('')
   const [aiText, setAiText] = useState('')
+  /** 当前 AI 活动状态（用于 UI 展示 AI 正在做什么） */
+  const [activityStatus, setActivityStatus] = useState<ActivityStatus | null>(null)
+  /** 实时文本流条目（用于浮动/沉浸模式的文本展示） */
+  const [streamEntries, setStreamEntries] = useState<StreamEntry[]>([])
+
+  /** 添加文本流条目 */
+  const addStreamEntry = useCallback((entry: Omit<StreamEntry, 'id'>) => {
+    setStreamEntries((prev) => [
+      ...prev,
+      { ...entry, id: `${Date.now()}_${Math.random().toString(36).slice(2, 6)}` },
+    ])
+  }, [])
+
+  /** 清空文本流 */
+  const clearStreamEntries = useCallback(() => {
+    setStreamEntries([])
+  }, [])
 
   // refs - 音频采集
   const audioContextRef = useRef<AudioContext | null>(null)
@@ -191,6 +257,16 @@ export function useVoiceChat(options?: VoiceChatOptions) {
   const ttsAudioContextRef = useRef<AudioContext | null>(null)
   const ttsQueueRef = useRef<{ data: string; contentType: string }[]>([])
   const isPlayingRef = useRef(false)
+  /** 正在生成中的 TTS 数量（用于防止 checkPlaybackComplete 在 TTS 生成期间误判为播放完成） */
+  const ttsPendingRef = useRef(0)
+  /** 已通过 onToolAnnouncement 播放过的预告文字（用于避免最终 TTS 重复播放） */
+  const announcementTextRef = useRef<string>('')
+  /** 本轮已执行的工具调用次数（用于步骤指示"第N步"） */
+  const toolStepRef = useRef(0)
+  /** 跟踪 checkPlaybackComplete 的 interval（用于打断时清除） */
+  const playbackCheckRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  /** 标记本轮对话是否已保存到历史（避免重复保存） */
+  const historySavedRef = useRef(false)
 
   // refs - 端到端模式 WebSocket
   const socketRef = useRef<Socket | null>(null)
@@ -236,6 +312,49 @@ export function useVoiceChat(options?: VoiceChatOptions) {
       ttsAudioContextRef.current = null
     }
   }, [])
+
+  // ============================================================
+  // 即时 TTS 播放（用于工具调用前的语音预告）
+  // ============================================================
+
+  /**
+   * 立即将文本 TTS 并加入播放队列
+   *
+   * 用于工具调用前的语音预告：
+   * 当 LLM 返回工具调用时，先 TTS 播放附带的文字（如"好的，我现在开始为您创建网站"），
+   * 让用户实时听到 AI 的意图，而不必等到所有工具执行完毕。
+   *
+   * TTS 和工具执行并行：预告语音在播放时，工具已经在后台开始执行。
+   * 后续最终回复的 TTS 会自动排队，等预告播放完后继续。
+   *
+   * 使用 ttsPendingRef 跟踪正在生成中的 TTS 数量，
+   * 防止 checkPlaybackComplete 在 TTS 生成期间误判为播放完成。
+   */
+  const speakTextImmediately = useCallback(async (text: string) => {
+    const speakable = stripNonSpeakableContent(text)
+    if (!speakable.trim()) return
+
+    ttsPendingRef.current++
+    try {
+      const ttsBlob = await voiceApi.textToSpeech(speakable, {
+        voice: options?.userVoiceConfig?.ttsVoice,
+        speed: options?.userVoiceConfig?.ttsSpeed,
+        format: 'mp3',
+        forceLocal: voiceModeRef.current === 'split',
+      })
+      const base64 = await blobToBase64(ttsBlob)
+      if (base64) {
+        ttsQueueRef.current.push({ data: base64, contentType: 'audio/mp3' })
+        setState('speaking')
+        isSpeakingRef.current = true
+        playTtsQueue()
+      }
+    } catch (err) {
+      logger.system.warn('[VoiceChat] Announcement TTS failed:', err)
+    } finally {
+      ttsPendingRef.current--
+    }
+  }, [options?.userVoiceConfig, playTtsQueue])
 
   // ============================================================
   // 端到端模式：实时音频播放
@@ -307,6 +426,30 @@ export function useVoiceChat(options?: VoiceChatOptions) {
       setSttText(sttResult.text)
       options?.onUserText?.(sttResult.text)
 
+      // 添加用户消息到文本流
+      addStreamEntry({ type: 'user', text: sttResult.text })
+
+      // ============================================================
+      // 语音指令检测：用户说"结束对话"/"退出"/"再见"等时自动关闭
+      // ============================================================
+      if (isEndConversationCommand(sttResult.text)) {
+        logger.system.info('[VoiceChat] 检测到结束对话指令:', sttResult.text)
+        // 添加 AI 告别消息到文本流
+        addStreamEntry({ type: 'ai', text: '好的，对话已结束，再见！' })
+        // 保存告别对话到历史
+        if (!historySavedRef.current) {
+          historySavedRef.current = true
+          options?.onConversationComplete?.(sttResult.text, '好的，对话已结束，再见！', [])
+        }
+        // 通知 UI 关闭
+        options?.onEndConversation?.()
+        // 延迟断开，让 UI 有时间响应
+        setTimeout(() => {
+          disconnect()
+        }, 800)
+        return
+      }
+
       // 阶段 2：构建系统提示词（注入工作区上下文）
       const systemPrompt = buildVoiceSystemPrompt({
         basePrompt: options?.systemPrompt,
@@ -348,11 +491,18 @@ export function useVoiceChat(options?: VoiceChatOptions) {
       })
 
       // 阶段 4：构建消息列表
+      // 每轮都更新 system 消息（确保日期时间是最新的）
       if (conversationHistoryRef.current.length === 0) {
         conversationHistoryRef.current.push({
           role: 'system',
           content: systemPrompt,
         })
+      } else {
+        // 更新已有 system 消息的内容（刷新日期时间）
+        conversationHistoryRef.current[0] = {
+          role: 'system',
+          content: systemPrompt,
+        }
       }
 
       conversationHistoryRef.current.push({
@@ -386,71 +536,143 @@ export function useVoiceChat(options?: VoiceChatOptions) {
           setAiText(aiTextRef.current)
           options?.onAiText?.(chunk)
         },
+        // 工具调用前的语音预告：立即 TTS 播放 LLM 附带的文字
+        // 让用户实时听到 AI 的意图（如"好的，我现在开始为您创建网站"）
+        onToolAnnouncement: (text, _toolNames) => {
+          // 记录预告文字，用于避免最终 TTS 重复播放
+          announcementTextRef.current = text
+          speakTextImmediately(text)
+          // 添加 AI 预告到文本流
+          addStreamEntry({ type: 'ai', text })
+        },
+        // 工具开始执行：更新活动状态（用于 UI 展示 AI 正在做什么）
+        onToolStart: (toolName, args) => {
+          toolStepRef.current++
+          const status = createActivityStatus(
+            toolName,
+            args,
+            toolStepRef.current,
+            Math.max(3, toolStepRef.current + 2), // 估算总步骤
+          )
+          setActivityStatus(status)
+          // 添加工具开始到文本流
+          addStreamEntry({
+            type: 'tool-start',
+            text: status.action + (status.target ? ` ${status.target}` : ''),
+            toolName,
+          })
+        },
+        // 工具执行完成：清除活动状态
+        onToolComplete: (toolName, success, output) => {
+          setActivityStatus(null)
+          // 添加工具完成到文本流
+          addStreamEntry({
+            type: 'tool-end',
+            text: output,
+            toolName,
+            success,
+          })
+        },
         abortSignal: abortController.signal,
       })
 
       abortControllerRef.current = null
 
-      const aiFullText = result.content || aiTextRef.current
+      // ============================================================
+      // 最终回复处理
+      // ============================================================
 
-      if (!aiFullText.trim()) {
+      // 完整的 AI 回复（用于历史保存，包含所有 iteration 的文字）
+      const fullAiText = result.allContent || result.content || aiTextRef.current || announcementTextRef.current
+
+      // 最终 TTS 文本（只播放最后一次 LLM 回复，不重复预告）
+      const finalResponseText = result.content || ''
+
+      // 如果完整回复为空，且没有工具调用，说明 LLM 没有生成任何回复
+      if (!fullAiText.trim() && result.toolCallsCount === 0) {
         conversationHistoryRef.current.pop()
         setState('listening')
         return
       }
 
-      if (result.error && !aiFullText.trim()) {
+      if (result.error && !fullAiText.trim()) {
         options?.onError?.(result.error)
         conversationHistoryRef.current.pop()
         setState('listening')
         return
       }
 
-      options?.onAiTextEnd?.(aiFullText)
+      options?.onAiTextEnd?.(fullAiText)
 
-      // 阶段 6：过滤舞台指示 → TTS
-      const speakableText = stripNonSpeakableContent(aiFullText)
-      if (!speakableText.trim()) {
-        if (sttTextRef.current.trim() && aiFullText.trim()) {
-          options?.onConversationComplete?.(sttTextRef.current, aiFullText)
+      // 添加最终 AI 回复到文本流（如果有新内容且不是预告重复）
+      const finalStreamText = result.content || ''
+      if (finalStreamText.trim() && finalStreamText !== announcementTextRef.current) {
+        addStreamEntry({ type: 'ai', text: finalStreamText })
+      } else if (!announcementTextRef.current && fullAiText.trim()) {
+        // 没有预告但有回复（无工具调用的情况）
+        addStreamEntry({ type: 'ai', text: fullAiText })
+      }
+
+      // 判断是否需要播放最终 TTS
+      // - 如果最终回复为空 → 跳过（预告已播放）
+      // - 如果最终回复与预告相同 → 跳过（已通过预告播放）
+      const speakableFinal = stripNonSpeakableContent(finalResponseText)
+      const speakableAnnouncement = stripNonSpeakableContent(announcementTextRef.current)
+      const shouldPlayFinalTts = speakableFinal.trim() && speakableFinal !== speakableAnnouncement
+
+      if (shouldPlayFinalTts) {
+        // 需要播放最终 TTS（如"故事已写好，放在了你的根目录下"）
+        setState('speaking')
+        isSpeakingRef.current = true
+
+        ttsPendingRef.current++
+        try {
+          const ttsBlob = await voiceApi.textToSpeech(speakableFinal, {
+            voice: options?.userVoiceConfig?.ttsVoice,
+            speed: options?.userVoiceConfig?.ttsSpeed,
+            format: 'mp3',
+            forceLocal: voiceModeRef.current === 'split',
+          })
+          const base64 = await blobToBase64(ttsBlob)
+          if (base64) {
+            ttsQueueRef.current.push({ data: base64, contentType: 'audio/mp3' })
+            playTtsQueue()
+          }
+        } catch (err) {
+          logger.system.warn('[VoiceChat] Final TTS failed:', err)
+        } finally {
+          ttsPendingRef.current--
         }
-        aiTextRef.current = ''
-        sttTextRef.current = ''
-        setAiText('')
-        setSttText('')
-        setState('listening')
-        return
       }
 
-      setState('speaking')
-      isSpeakingRef.current = true
-
-      // 阶段 7：TTS（voiceApi 自动分流云端/本地）
-      const ttsBlob = await voiceApi.textToSpeech(speakableText, {
-        voice: options?.userVoiceConfig?.ttsVoice,
-        speed: options?.userVoiceConfig?.ttsSpeed,
-        format: 'mp3',
-        // 拆分式模式：强制使用用户配置的 TTS，不受 cloudMode 影响
-        forceLocal: voiceModeRef.current === 'split',
-      })
-
-      // 转为 base64 播放
-      const base64 = await blobToBase64(ttsBlob)
-      if (base64) {
-        ttsQueueRef.current.push({ data: base64, contentType: 'audio/mp3' })
-        playTtsQueue()
-      }
-
-      // 等待播放完成（轮询）
-      const checkPlaybackComplete = setInterval(() => {
-        if (!isPlayingRef.current && ttsQueueRef.current.length === 0) {
-          clearInterval(checkPlaybackComplete)
+      // 等待所有 TTS 播放完成（包括预告和最终回复）
+      // ttsPendingRef 确保在 TTS 生成期间不会误判为播放完成
+      // TTS 播放完毕后才保存历史，避免 store 更新打断音频播放
+      playbackCheckRef.current = setInterval(() => {
+        if (ttsPendingRef.current === 0 && !isPlayingRef.current && ttsQueueRef.current.length === 0) {
+          if (playbackCheckRef.current) {
+            clearInterval(playbackCheckRef.current)
+            playbackCheckRef.current = null
+          }
           isSpeakingRef.current = false
 
-          if (sttTextRef.current.trim() && aiFullText.trim()) {
-            options?.onConversationComplete?.(sttTextRef.current, aiFullText)
+          // 保存对话到历史（TTS 播放完毕后，不会打断音频）
+          if (!historySavedRef.current && sttTextRef.current.trim() && fullAiText.trim()) {
+            historySavedRef.current = true
+            // 用 setTimeout 异步保存，避免 store 更新阻塞 UI
+            const userText = sttTextRef.current
+            const aiText = fullAiText
+            const toolRecords = result.toolCallRecords
+            setTimeout(() => {
+              options?.onConversationComplete?.(userText, aiText, toolRecords)
+            }, 0)
           }
 
+          // 重置状态
+          announcementTextRef.current = ''
+          toolStepRef.current = 0
+          historySavedRef.current = false
+          setActivityStatus(null)
           aiTextRef.current = ''
           sttTextRef.current = ''
           setAiText('')
@@ -463,7 +685,18 @@ export function useVoiceChat(options?: VoiceChatOptions) {
       logger.system.error('Voice processing failed:', err)
       isSpeakingRef.current = false
       abortControllerRef.current = null
+
+      // 清除播放完成检查 interval
+      if (playbackCheckRef.current) {
+        clearInterval(playbackCheckRef.current)
+        playbackCheckRef.current = null
+      }
+
       options?.onError?.((err as Error).message)
+      announcementTextRef.current = ''
+      toolStepRef.current = 0
+      historySavedRef.current = false
+      setActivityStatus(null)
       setState('listening')
     }
   }, [options, playTtsQueue])
@@ -858,6 +1091,10 @@ export function useVoiceChat(options?: VoiceChatOptions) {
 
       // 初始化对话历史
       conversationHistoryRef.current = []
+      // 清空文本流
+      clearStreamEntries()
+      // 重置保存标记
+      historySavedRef.current = false
 
       // 端到端模式：建立 WebSocket 连接
       if (voiceMode === 'realtime') {
@@ -921,8 +1158,25 @@ export function useVoiceChat(options?: VoiceChatOptions) {
   // 手动打断 AI
   const interrupt = useCallback(() => {
     if (isSpeakingRef.current) {
+      // 在打断前保存历史（如果还没保存）
+      // 用 setTimeout 异步保存，避免 store 更新阻塞 UI
+      if (!historySavedRef.current && sttTextRef.current.trim() && aiTextRef.current.trim()) {
+        historySavedRef.current = true
+        const userText = sttTextRef.current
+        const aiText = aiTextRef.current
+        setTimeout(() => {
+          options?.onConversationComplete?.(userText, aiText, [])
+        }, 0)
+      }
+
       stopTtsPlayback()
       isSpeakingRef.current = false
+
+      // 清除播放完成检查 interval
+      if (playbackCheckRef.current) {
+        clearInterval(playbackCheckRef.current)
+        playbackCheckRef.current = null
+      }
 
       // 端到端模式：发送打断事件
       if (voiceModeRef.current === 'realtime' && socketRef.current?.connected) {
@@ -935,9 +1189,18 @@ export function useVoiceChat(options?: VoiceChatOptions) {
         abortControllerRef.current = null
       }
 
+      // 重置状态
+      announcementTextRef.current = ''
+      toolStepRef.current = 0
+      historySavedRef.current = false
+      setActivityStatus(null)
+      aiTextRef.current = ''
+      sttTextRef.current = ''
+      setAiText('')
+      setSttText('')
       setState('listening')
     }
-  }, [stopTtsPlayback])
+  }, [stopTtsPlayback, options])
 
   // 清理
   useEffect(() => {
@@ -951,6 +1214,8 @@ export function useVoiceChat(options?: VoiceChatOptions) {
     volume,
     sttText,
     aiText,
+    activityStatus,
+    streamEntries,
     connect,
     disconnect,
     interrupt,

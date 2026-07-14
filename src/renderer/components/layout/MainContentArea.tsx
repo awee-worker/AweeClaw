@@ -34,7 +34,7 @@ const BillingCenterPage = lazy(() => import('@components/user/BillingCenterPage'
 const SessionHistoryPage = lazy(() => import('@components/user/SessionHistoryPage'))
 const PluginCenterPage = lazy(() => import('@components/plugin/PluginCenterPage'))
 const EditorBottomBar = lazy(() => import('@components/layout/EditorBottomBar'))
-const VoiceConversationOverlay = lazy(() => import('@components/voice/VoiceConversationOverlay'))
+import { VoiceConversationOverlay } from '@components/voice/VoiceConversationOverlay'
 
 interface MainContentAreaProps {
   layoutConfig: LayoutConfig
@@ -353,9 +353,7 @@ function VoiceConversationOverlaySlot() {
 
   return (
     <ErrorBoundary>
-      <Suspense fallback={null}>
-        <VoiceConversationOverlay onClose={() => setVoiceConversationActive(false)} />
-      </Suspense>
+      <VoiceConversationOverlay onClose={() => setVoiceConversationActive(false)} />
     </ErrorBoundary>
   )
 }

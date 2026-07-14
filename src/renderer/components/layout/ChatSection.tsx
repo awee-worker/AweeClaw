@@ -21,7 +21,7 @@ import { CrashGuard as ErrorBoundary } from '@components/foundation/CrashGuard'
 import { ChatSkeleton } from '@components/ui/ProgressIndicator'
 
 const ChatPanel = lazy(() => import('@components/intelligence/ChatPanel'))
-const VoiceConversationOverlay = lazy(() => import('@components/voice/VoiceConversationOverlay'))
+import { VoiceConversationOverlay } from '@components/voice/VoiceConversationOverlay'
 
 interface ChatSectionProps {
   /** 是否显示聊天面板 */

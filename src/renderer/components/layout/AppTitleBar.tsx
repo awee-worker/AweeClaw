@@ -257,8 +257,9 @@ export default function AppTitleBar() {
               </button>
               <button
                 onClick={() => {
-                  closeAllFullPages()
                   setVoiceConversationActive(true)
+                  // 异步关闭其他全屏页面，避免阻塞语音窗口渲染
+                  setTimeout(() => closeAllFullPages(), 0)
                 }}
                 className="flex items-center justify-center w-7 h-7 text-text-muted hover:text-accent hover:bg-accent/10 rounded-md transition-colors"
                 title={language === 'zh' ? '语音对话' : 'Voice conversation'}
