@@ -35,6 +35,49 @@ export function withTimeout<T>(promise: Promise<T>, ms: number, label: string): 
 
 let cleanupStarted = false
 
+/**
+ * 快速杀死所有子进程（用于自动更新场景）
+ *
+ * 自动更新时 NSIS 安装器会尝试卸载旧版本，但旧版本文件仍被子进程锁定。
+ * 此函数快速杀死终端、LSP、调试器等子进程，释放文件锁，
+ * 让 NSIS 安装器能成功卸载旧版本。
+ *
+ * 与 performGlobalCleanup 的区别：
+ * - performGlobalCleanup: 优雅退出，保存状态，等待 flush（5秒超时）
+ * - performFastCleanup: 立即杀死子进程，不等待 flush（500ms 超时）
+ */
+export async function performFastCleanup(): Promise<void> {
+  logger.system.info('[Cleanup] Starting fast cleanup for auto-update...')
+
+  try {
+    // 1. IPC 处理器（包括终端）—— 立即杀死所有终端子进程
+    ipcModule?.cleanupAllHandlers()
+  } catch (err) {
+    logger.system.warn('[Cleanup] IPC cleanup error:', err)
+  }
+
+  // 2. LSP 服务器（快速杀死，超时 1s）
+  try {
+    await withTimeout(
+      lspManager?.stopAllServers() ?? Promise.resolve(),
+      1000,
+      'LSP stopAllServers (fast)',
+    )
+  } catch {
+    /* ignore */
+  }
+
+  // 3. 模块数据持久化—— 快速 flush（超时 500ms）
+  try {
+    const { moduleDataStore } = await import('../modules/persistence/ModuleDataStore')
+    moduleDataStore.flush()
+  } catch {
+    /* ignore */
+  }
+
+  logger.system.info('[Cleanup] Fast cleanup completed')
+}
+
 /** 集中执行所有后台服务的清理，幂等：重复调用直接返回 */
 export async function performGlobalCleanup(): Promise<void> {
   if (cleanupStarted) return

@@ -8,7 +8,7 @@
 
 import { memo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Mic, Volume2, PhoneOff, AlertCircle, Minimize2 } from 'lucide-react'
+import { X, Mic, MicOff, Volume2, PhoneOff, AlertCircle, Minimize2 } from 'lucide-react'
 import type { VoiceChatState } from '../../composables/useVoiceChat'
 import type { ActivityStatus } from '../../utils/voiceActivityStatus'
 import type { StreamEntry } from './VoiceTextStream'
@@ -17,12 +17,16 @@ import { VoiceTextStream } from './VoiceTextStream'
 interface ImmersiveVoiceViewProps {
   state: VoiceChatState
   volume: number
+  /** 麦克风是否静音 */
+  isMuted: boolean
   streamEntries: StreamEntry[]
   activityStatus: ActivityStatus | null
   errorMessage: string | null
   isZh: boolean
   onClose: () => void
   onInterrupt: () => void
+  /** 切换麦克风静音 */
+  onToggleMute: () => void
   onMinimize: () => void
   onDismissError: () => void
 }
@@ -44,12 +48,14 @@ const STATE_CONFIG: Record<VoiceChatState, {
 function ImmersiveVoiceViewImpl({
   state: currentState,
   volume,
+  isMuted,
   streamEntries,
   activityStatus,
   errorMessage,
   isZh,
   onClose,
   onInterrupt,
+  onToggleMute,
   onMinimize,
   onDismissError,
 }: ImmersiveVoiceViewProps) {
@@ -207,7 +213,11 @@ function ImmersiveVoiceViewImpl({
                   ))}
                 </div>
               ) : currentState === 'listening' ? (
-                <Mic className="w-9 h-9 text-white/90" />
+                isMuted ? (
+                  <MicOff className="w-9 h-9 text-white/90" />
+                ) : (
+                  <Mic className="w-9 h-9 text-white/90" />
+                )
               ) : currentState === 'processing' ? (
                 <div className="flex items-center gap-1.5">
                   {[0, 1, 2].map(i => (
@@ -287,6 +297,21 @@ function ImmersiveVoiceViewImpl({
             {isZh ? '点击球体或按空格键打断' : 'Click orb or press Space to interrupt'}
           </motion.div>
         )}
+
+        <button
+          onClick={onToggleMute}
+          className={`px-4 py-2 rounded-full transition-colors flex items-center gap-2 border ${
+            isMuted
+              ? 'bg-red-500/15 text-red-400 hover:bg-red-500/25 border-red-500/30'
+              : 'bg-surface/60 text-text-primary hover:bg-surface border-border/40'
+          }`}
+          title={isMuted ? (isZh ? '取消静音' : 'Unmute') : (isZh ? '静音麦克风' : 'Mute Microphone')}
+        >
+          {isMuted ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
+          <span className="text-sm font-medium">
+            {isMuted ? (isZh ? '已静音' : 'Muted') : (isZh ? '静音' : 'Mute')}
+          </span>
+        </button>
 
         <button
           onClick={onClose}

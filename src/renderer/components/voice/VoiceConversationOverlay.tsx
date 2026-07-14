@@ -162,11 +162,13 @@ export function VoiceConversationOverlay({ onClose }: VoiceConversationOverlayPr
   const {
     state,
     volume,
+    isMuted,
     activityStatus,
     streamEntries,
     connect,
     disconnect,
     interrupt,
+    toggleMute,
   } = useVoiceChat({
     language: 'auto',
     voiceMode,
@@ -235,9 +237,11 @@ export function VoiceConversationOverlay({ onClose }: VoiceConversationOverlayPr
           key="compact"
           state={state}
           volume={volume}
+          isMuted={isMuted}
           isZh={isZh}
           onClose={handleClose}
           onInterrupt={handleInterrupt}
+          onToggleMute={toggleMute}
           onExpand={() => setViewMode('immersive')}
         />
       ) : (
@@ -245,12 +249,14 @@ export function VoiceConversationOverlay({ onClose }: VoiceConversationOverlayPr
           key="immersive"
           state={state}
           volume={volume}
+          isMuted={isMuted}
           streamEntries={streamEntries}
           activityStatus={activityStatus}
           errorMessage={errorMessage}
           isZh={isZh}
           onClose={handleClose}
           onInterrupt={handleInterrupt}
+          onToggleMute={toggleMute}
           onDismissError={dismissError}
           onMinimize={() => setViewMode('compact')}
         />

@@ -21,6 +21,7 @@ import * as path from 'path'
 import * as https from 'https'
 import * as http from 'http'
 import { getUserConfigDir } from '../../modules/configPath'
+import { markAutoUpdateQuit } from '../../appBootstrap'
 
 export interface UpdateStatus {
   status: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error'
@@ -749,6 +750,8 @@ class UpdateService {
         logger.system.info('[Updater] Installer launched, quitting app...')
         // 延迟退出，确保安装程序已启动
         setTimeout(() => {
+          // 标记自动更新退出，before-quit 走快速清理路径杀死子进程，释放文件锁
+          markAutoUpdateQuit()
           app.quit()
         }, 500)
       } catch (err) {
@@ -766,6 +769,9 @@ class UpdateService {
     logger.system.info('[Updater] Initiating quit and install...')
 
     setTimeout(() => {
+      // 标记自动更新退出，before-quit 走快速清理路径杀死子进程，释放文件锁
+      // 否则 NSIS 安装器卸载旧版本时文件仍被子进程锁定，导致卸载失败
+      markAutoUpdateQuit()
       logger.system.info('[Updater] Calling autoUpdater.quitAndInstall(true, true)')
       autoUpdater.quitAndInstall(true, true)
     }, 100)

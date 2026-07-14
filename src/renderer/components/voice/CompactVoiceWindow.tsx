@@ -7,16 +7,20 @@
 
 import { memo } from 'react'
 import { motion } from 'framer-motion'
-import { X, Mic, Volume2, PhoneOff, Maximize2, GripHorizontal } from 'lucide-react'
+import { X, Mic, MicOff, Volume2, PhoneOff, Maximize2, GripHorizontal } from 'lucide-react'
 import type { VoiceChatState } from '../../composables/useVoiceChat'
 import { useDraggableWindow } from '../../composables/useDraggableWindow'
 
 interface CompactVoiceWindowProps {
   state: VoiceChatState
   volume: number
+  /** 麦克风是否静音 */
+  isMuted: boolean
   isZh: boolean
   onClose: () => void
   onInterrupt: () => void
+  /** 切换麦克风静音 */
+  onToggleMute: () => void
   onExpand: () => void
 }
 
@@ -37,9 +41,11 @@ const WINDOW_HEIGHT = 260
 function CompactVoiceWindowImpl({
   state: currentState,
   volume,
+  isMuted,
   isZh,
   onClose,
   onInterrupt,
+  onToggleMute,
   onExpand,
 }: CompactVoiceWindowProps) {
   const { position, isDragging, dragHandleProps } = useDraggableWindow({
@@ -215,7 +221,11 @@ function CompactVoiceWindowImpl({
                   ))}
                 </div>
               ) : currentState === 'listening' ? (
-                <Mic className="w-6 h-6 text-white/90" />
+                isMuted ? (
+                  <MicOff className="w-6 h-6 text-white/90" />
+                ) : (
+                  <Mic className="w-6 h-6 text-white/90" />
+                )
               ) : currentState === 'processing' ? (
                 <div className="flex items-center gap-1">
                   {[0, 1, 2].map(i => (
@@ -240,8 +250,19 @@ function CompactVoiceWindowImpl({
         </div>
       </div>
 
-      {/* 结束对话按钮 */}
-      <div className="flex items-center justify-center pb-3 pt-1">
+      {/* 底部按钮：静音 + 结束对话 */}
+      <div className="flex items-center justify-center gap-2 pb-3 pt-1">
+        <button
+          onClick={onToggleMute}
+          className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors border ${
+            isMuted
+              ? 'bg-red-500/15 text-red-400 hover:bg-red-500/25 border-red-500/30'
+              : 'bg-surface/60 text-text-muted hover:bg-surface hover:text-text-primary border-border/40'
+          }`}
+          title={isMuted ? (isZh ? '取消静音' : 'Unmute') : (isZh ? '静音麦克风' : 'Mute Microphone')}
+        >
+          {isMuted ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
+        </button>
         <button
           onClick={onClose}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors border border-red-500/30"

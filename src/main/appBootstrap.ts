@@ -38,7 +38,7 @@ import {
   type QuitStateController,
 } from './bootstrap/windowManager'
 import { requestRendererShutdown } from './bootstrap/shutdownCoordinator'
-import { performGlobalCleanup, withTimeout } from './bootstrap/globalCleanup'
+import { performGlobalCleanup, performFastCleanup, withTimeout } from './bootstrap/globalCleanup'
 import { initializeModules } from './bootstrap/moduleInitializer'
 
 // 重新导出 Language 类型，保持向后兼容（menu 模块从 appBootstrap 导入）
@@ -50,6 +50,23 @@ export type { Language } from './bootstrap/moduleInitializer'
 
 let appQuitInProgress = false
 let isCleanupDone = false
+/** 自动更新退出标志：为 true 时 before-quit 跳过冗长清理，快速释放子进程后退出 */
+let isAutoUpdateQuit = false
+
+/**
+ * 标记应用即将因自动更新而退出
+ *
+ * 设置此标志后，before-quit 事件处理会：
+ * 1. 跳过渲染进程关闭协调和关闭界面展示
+ * 2. 执行 performFastCleanup（500ms 超时）而非 performGlobalCleanup（5s 超时）
+ * 3. 直接退出，让 NSIS 安装器能尽快卸载旧版本
+ *
+ * 必须在调用 autoUpdater.quitAndInstall() 之前调用。
+ */
+export function markAutoUpdateQuit(): void {
+  isAutoUpdateQuit = true
+  logger.system.info('[Main] Auto-update quit marked, before-quit will use fast cleanup')
+}
 
 /** 注入到 windowManager 的退出状态控制器 */
 const quitStateController: QuitStateController = {
@@ -207,6 +224,27 @@ app.on('before-quit', async (e) => {
   }
 
   if (isCleanupDone) return
+
+  // 自动更新场景：快速清理子进程后立即退出，让 NSIS 安装器尽快卸载旧版本
+  if (isAutoUpdateQuit) {
+    e.preventDefault()
+    appQuitInProgress = true
+    logger.system.info('[Main] Auto-update quit: performing fast cleanup...')
+
+    // 关闭所有窗口（不等待渲染进程响应）
+    getOpenWindows().forEach((win) => {
+      authorizeWindowClose(win.id)
+      if (!win.isDestroyed()) win.close()
+    })
+
+    // 快速杀死子进程（终端、LSP 等），释放文件锁
+    await withTimeout(performFastCleanup(), 2000, 'performFastCleanup')
+
+    isCleanupDone = true
+    logger.system.info('[Main] Fast cleanup done, exiting for auto-update')
+    app.quit()
+    return
+  }
 
   e.preventDefault()
   logger.system.info('[Main] Intercepting before-quit for cleanup')

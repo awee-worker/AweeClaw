@@ -1,6 +1,6 @@
 {
   "name": "aweeclaw",
-  "version": "1.4.0",
+  "version": "1.4.2",
   "description": "AweeClaw - Connect AI to Your World",
   "productName": "AweeClaw",
   "author": "awee <aweelee@qq.com>",
@@ -213,7 +213,8 @@
       "installerIcon": "public/brand/icons/app.ico",
       "uninstallerIcon": "public/brand/icons/app.ico",
       "installerHeaderIcon": "public/brand/icons/app.ico",
-      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}"
+      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}",
+      "deleteAppDataOnUninstall": false
     },
     "mac": {
       "icon": "public/brand/icons/app.icns",

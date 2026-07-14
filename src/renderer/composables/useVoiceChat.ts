@@ -209,6 +209,8 @@ export function useVoiceChat(options?: VoiceChatOptions) {
   const [volume, setVolume] = useState(0)
   const [sttText, setSttText] = useState('')
   const [aiText, setAiText] = useState('')
+  /** 麦克风静音状态（用户不想让 AI 听见自己说话时开启） */
+  const [isMuted, setIsMuted] = useState(false)
   /** 当前 AI 活动状态（用于 UI 展示 AI 正在做什么） */
   const [activityStatus, setActivityStatus] = useState<ActivityStatus | null>(null)
   /** 实时文本流条目（用于浮动/沉浸模式的文本展示） */
@@ -246,6 +248,8 @@ export function useVoiceChat(options?: VoiceChatOptions) {
   const sttTextRef = useRef('')
   const cloudModeRef = useRef<'cloud' | 'local'>('cloud')
   const voiceModeRef = useRef<VoiceMode>('split')
+  /** 麦克风静音标志（ref 版本，供 VAD 回调内读取最新值，避免闭包旧值） */
+  const isMutedRef = useRef(false)
 
   // refs - 对话历史（LLMMessage 格式，支持工具调用上下文）
   const conversationHistoryRef = useRef<LLMMessage[]>([])
@@ -976,6 +980,12 @@ export function useVoiceChat(options?: VoiceChatOptions) {
       const rms = Math.sqrt(sum / dataArray.length)
       setVolume(rms)
 
+      // 麦克风静音时：不检测说话、不触发录音、不允许打断
+      // （track.enabled=false 已使 RMS≈0，此处显式跳过确保语义明确）
+      if (isMutedRef.current) {
+        return
+      }
+
       const now = Date.now()
 
       // AI 说话时也检测用户打断
@@ -1095,6 +1105,9 @@ export function useVoiceChat(options?: VoiceChatOptions) {
       clearStreamEntries()
       // 重置保存标记
       historySavedRef.current = false
+      // 重置静音状态（新会话默认不静音）
+      isMutedRef.current = false
+      setIsMuted(false)
 
       // 端到端模式：建立 WebSocket 连接
       if (voiceMode === 'realtime') {
@@ -1202,6 +1215,56 @@ export function useVoiceChat(options?: VoiceChatOptions) {
     }
   }, [stopTtsPlayback, options])
 
+  // ============================================================
+  // 麦克风静音切换
+  // ============================================================
+
+  /**
+   * 切换麦克风静音状态
+   *
+   * 静音时：
+   * 1. 禁用 MediaStream 音频轨道（track.enabled = false），AnalyserNode 收到全 0 数据
+   * 2. VAD 检测循环跳过（isMutedRef 为 true），不触发新的录音
+   * 3. 停止当前正在进行的录音并丢弃音频数据（不发送给 STT）
+   * 4. 重置 VAD 状态机为 silence
+   *
+   * 静音不影响 AI 说话：TTS 播放队列继续运行，用户仍能听到 AI 回复。
+   * 取消静音时恢复 track.enabled，VAD 自然恢复检测。
+   */
+  const toggleMute = useCallback(() => {
+    const newMuted = !isMutedRef.current
+    isMutedRef.current = newMuted
+    setIsMuted(newMuted)
+
+    // 控制 MediaStream 音频轨道的 enabled 属性
+    if (mediaStreamRef.current) {
+      const audioTracks = mediaStreamRef.current.getAudioTracks()
+      audioTracks.forEach((track) => {
+        track.enabled = !newMuted
+      })
+    }
+
+    if (newMuted) {
+      // 静音：停止当前正在进行的录音，丢弃音频数据
+      const recorder = mediaRecorderRef.current
+      if (recorder && recorder.state === 'recording') {
+        recorder.onstop = () => {
+          audioChunksRef.current = []
+        }
+        recorder.stop()
+      }
+      // 重置 VAD 状态机为 silence，避免恢复后误触发
+      vadStateRef.current = 'silence'
+      speechStartTimeRef.current = 0
+      silenceStartTimeRef.current = 0
+      // 若当前处于 recording 状态，回到 listening
+      setState((prev) => (prev === 'recording' ? 'listening' : prev))
+      logger.system.info('[VoiceChat] Microphone muted')
+    } else {
+      logger.system.info('[VoiceChat] Microphone unmuted')
+    }
+  }, [])
+
   // 清理
   useEffect(() => {
     return () => {
@@ -1212,6 +1275,7 @@ export function useVoiceChat(options?: VoiceChatOptions) {
   return {
     state,
     volume,
+    isMuted,
     sttText,
     aiText,
     activityStatus,
@@ -1219,5 +1283,6 @@ export function useVoiceChat(options?: VoiceChatOptions) {
     connect,
     disconnect,
     interrupt,
+    toggleMute,
   }
 }
