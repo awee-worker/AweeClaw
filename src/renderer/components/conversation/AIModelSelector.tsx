@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronDown, Check, Search, Cloud } from 'lucide-react'
+import { ChevronDown, Check, Search, Cloud, CloudOff } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { BUILTIN_PROVIDERS, getBuiltinProvider } from '@shared/configuration/aiProviders'
@@ -22,16 +22,20 @@ interface ModelSelectorProps {
 }
 
 export default function ModelSelector({ className = '', alignLeft = false, disabled = false }: ModelSelectorProps) {
-  const { llmConfig, update, providerConfigs, save, cloudMode, isAuthenticated } = useStore(useShallow(s => ({
+  const { llmConfig, update, providerConfigs, save, cloudMode, isAuthenticated, setCloudMode, serverUrl } = useStore(useShallow(s => ({
     llmConfig: s.llmConfig,
     update: s.update,
     providerConfigs: s.providerConfigs,
     save: s.save,
     cloudMode: s.cloudMode,
     isAuthenticated: s.isAuthenticated,
+    setCloudMode: s.setCloudMode,
+    serverUrl: s.serverUrl,
   })))
   const [isOpen, setIsOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  // Tab 状态：跟随 cloudMode，但弹窗内可以独立切换
+  const [activeTab, setActiveTab] = useState<'local' | 'cloud'>(cloudMode === 'cloud' ? 'cloud' : 'local')
   const [cloudModels, setCloudModels] = useState<FlatModel[]>([])
   const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({})
   const containerRef = useRef<HTMLDivElement>(null)
@@ -47,7 +51,7 @@ export default function ModelSelector({ className = '', alignLeft = false, disab
       bottom: window.innerHeight - rect.top + 8,
       left: rect.left,
       width: Math.min(320, rect.width + 60),
-      maxHeight: 360,
+      maxHeight: 400,
     })
   }, [])
 
@@ -86,14 +90,22 @@ export default function ModelSelector({ className = '', alignLeft = false, disab
     }
   }, [isOpen, updateDropdownPosition])
 
+  // 打开弹窗时同步 tab 状态
+  useEffect(() => {
+    if (isOpen) {
+      setActiveTab(cloudMode === 'cloud' ? 'cloud' : 'local')
+    }
+  }, [isOpen, cloudMode])
+
+  // 获取云端模型列表
   const fetchCloudModels = useCallback(() => {
-    if (cloudMode !== 'cloud' || !isAuthenticated) {
+    if (!isAuthenticated) {
       setCloudModels([])
       return
     }
 
-    const serverUrl = getServerUrl()
-    if (!serverUrl) return
+    const sUrl = getServerUrl() || serverUrl
+    if (!sUrl) return
 
     backendApi
       .get<Array<{ provider: string; models: string[] }>>('/api/v1/llm/models')
@@ -112,26 +124,19 @@ export default function ModelSelector({ className = '', alignLeft = false, disab
         setCloudModels(flat)
       })
       .catch(() => {
-        // 401 等错误：backendApi 已统一处理 onAuthFailed，此处仅清空模型列表
         setCloudModels([])
       })
-  }, [cloudMode, isAuthenticated])
+  }, [isAuthenticated, serverUrl])
 
+  // 弹窗打开时，如果 cloud tab 激活，获取云端模型
   useEffect(() => {
-    fetchCloudModels()
-  }, [fetchCloudModels])
-
-  useEffect(() => {
-    if (isOpen && cloudMode === 'cloud' && isAuthenticated) {
+    if (isOpen && activeTab === 'cloud' && isAuthenticated) {
       fetchCloudModels()
     }
-  }, [isOpen, cloudMode, isAuthenticated, fetchCloudModels])
+  }, [isOpen, activeTab, isAuthenticated, fetchCloudModels])
 
-  const allModels = useMemo<FlatModel[]>(() => {
-    if (cloudMode === 'cloud' && isAuthenticated && cloudModels.length > 0) {
-      return cloudModels
-    }
-
+  // 构建本地模型列表
+  const localModels = useMemo<FlatModel[]>(() => {
     const models: FlatModel[] = []
     const seen = new Set<string>()
 
@@ -184,19 +189,36 @@ export default function ModelSelector({ className = '', alignLeft = false, disab
     }
 
     return models
-  }, [providerConfigs, llmConfig.apiKey, cloudMode, isAuthenticated, cloudModels])
+  }, [providerConfigs, llmConfig.apiKey])
+
+  // 当前 tab 对应的模型列表
+  const allModels = useMemo<FlatModel[]>(() => {
+    if (activeTab === 'cloud') {
+      return cloudModels
+    }
+    return localModels
+  }, [activeTab, cloudModels, localModels])
 
   const currentModel = useMemo(() => {
     return allModels.find(m => m.providerId === llmConfig.provider && m.id === llmConfig.model) || allModels[0] || null
   }, [allModels, llmConfig.provider, llmConfig.model])
 
+  // Tab 切换：调用 setCloudMode 同步云端字段
+  const handleTabSwitch = useCallback((tab: 'local' | 'cloud') => {
+    if (tab === activeTab) return
+    setActiveTab(tab)
+    setCloudMode(tab)
+    setSearchQuery('')
+  }, [activeTab, setCloudMode])
+
   const applyProviderConfig = useCallback((providerId: string, modelId: string) => {
-    if (cloudMode === 'cloud' && isAuthenticated) {
+    if (activeTab === 'cloud' && isAuthenticated) {
       update('llmConfig', { provider: providerId, model: modelId })
       save()
       return
     }
 
+    // 本地模式：切换 provider 时恢复对应的 apiKey/baseUrl
     if (llmConfig.provider === providerId) {
       update('llmConfig', { model: modelId })
       save()
@@ -216,7 +238,7 @@ export default function ModelSelector({ className = '', alignLeft = false, disab
       headers: config?.headers,
     })
     save()
-  }, [llmConfig.provider, llmConfig.timeout, providerConfigs, update, save, cloudMode, isAuthenticated])
+  }, [llmConfig.provider, llmConfig.timeout, providerConfigs, update, save, activeTab, isAuthenticated])
 
   const filteredModels = useMemo(() => {
     if (!searchQuery.trim()) return allModels
@@ -230,8 +252,6 @@ export default function ModelSelector({ className = '', alignLeft = false, disab
   }, [allModels, searchQuery])
 
   const isCloud = cloudMode === 'cloud' && isAuthenticated
-
-  if (!currentModel) return null
 
   return (
     <div ref={containerRef} className={`${alignLeft ? '' : 'relative'} flex items-center ${className}`}>
@@ -248,9 +268,9 @@ export default function ModelSelector({ className = '', alignLeft = false, disab
           }
         `}
       >
-        <ProviderIcon providerId={currentModel.providerId} size={14} className="opacity-80 flex-shrink-0" />
-        <span className="truncate max-w-[200px]" title={currentModel.name}>
-          {currentModel.name}
+        <ProviderIcon providerId={currentModel?.providerId || llmConfig.provider} size={14} className="opacity-80 flex-shrink-0" />
+        <span className="truncate max-w-[200px]" title={currentModel?.name || llmConfig.model}>
+          {currentModel?.name || llmConfig.model || '选择模型'}
         </span>
         {isCloud && <Cloud className="w-3 h-3 text-accent flex-shrink-0" />}
         <ChevronDown className={`w-3 h-3 text-text-muted transition-transform flex-shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
@@ -262,7 +282,41 @@ export default function ModelSelector({ className = '', alignLeft = false, disab
           style={dropdownStyle}
           className="flex flex-col bg-surface border border-border rounded-xl shadow-2xl z-[9999] animate-scale-in overflow-hidden"
         >
-          <div className="p-2 border-b border-border/50 sticky top-0 bg-surface/95 backdrop-blur-sm z-10 rounded-t-xl shrink-0">
+          {/* Tab 切换栏 */}
+          <div className="flex items-center gap-1 px-2 pt-2 pb-1 border-b border-border/50 shrink-0">
+            <button
+              onClick={() => handleTabSwitch('local')}
+              className={`
+                flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all
+                ${activeTab === 'local'
+                  ? 'bg-surface-active text-text-primary'
+                  : 'text-text-muted hover:text-text-secondary hover:bg-surface-hover'
+                }
+              `}
+            >
+              <CloudOff className="w-3.5 h-3.5" />
+              <span>自定义</span>
+            </button>
+            <button
+              onClick={() => handleTabSwitch('cloud')}
+              disabled={!isAuthenticated}
+              className={`
+                flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all
+                ${activeTab === 'cloud'
+                  ? 'bg-surface-active text-text-primary'
+                  : 'text-text-muted hover:text-text-secondary hover:bg-surface-hover'
+                }
+                ${!isAuthenticated ? 'opacity-40 cursor-not-allowed' : ''}
+              `}
+              title={!isAuthenticated ? '请先登录' : undefined}
+            >
+              <Cloud className="w-3.5 h-3.5" />
+              <span>云端</span>
+            </button>
+          </div>
+
+          {/* 搜索框 */}
+          <div className="p-2 border-b border-border/50 sticky top-0 bg-surface/95 backdrop-blur-sm z-10 shrink-0">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted" />
               <input
@@ -276,9 +330,18 @@ export default function ModelSelector({ className = '', alignLeft = false, disab
             </div>
           </div>
 
+          {/* 模型列表 */}
           <div className="overflow-y-auto flex-1 p-1 custom-scrollbar">
-            {filteredModels.length === 0 ? (
-              <div className="py-6 text-center text-xs text-text-muted">无相关模型</div>
+            {/* 云端未登录提示 */}
+            {activeTab === 'cloud' && !isAuthenticated ? (
+              <div className="py-6 px-4 text-center">
+                <Cloud className="w-6 h-6 text-text-muted/40 mx-auto mb-2" />
+                <p className="text-xs text-text-muted">请先登录后使用云端模型</p>
+              </div>
+            ) : filteredModels.length === 0 ? (
+              <div className="py-6 text-center text-xs text-text-muted">
+                {activeTab === 'cloud' ? '暂无可用云端模型' : '无相关模型'}
+              </div>
             ) : (
               filteredModels.map(model => {
                 const isSelected = llmConfig.provider === model.providerId && llmConfig.model === model.id
@@ -297,7 +360,7 @@ export default function ModelSelector({ className = '', alignLeft = false, disab
                     <span className="flex items-center gap-2 min-w-0">
                       <ProviderIcon providerId={model.providerId} size={14} className="flex-shrink-0 opacity-60" />
                       <span className="truncate" title={model.name}>{model.name}</span>
-                      {isCloud && <Cloud className="w-3 h-3 text-accent flex-shrink-0" />}
+                      {activeTab === 'cloud' && <Cloud className="w-3 h-3 text-accent flex-shrink-0" />}
                     </span>
                     {isSelected && <Check className="w-3.5 h-3.5 flex-shrink-0 ml-2" />}
                   </button>

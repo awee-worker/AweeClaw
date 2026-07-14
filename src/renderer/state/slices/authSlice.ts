@@ -15,6 +15,7 @@ import {
 import { toast } from '@components/foundation/NotificationProvider'
 import { api } from '../../adapters/electronBridge'
 import { aweeclawDir } from '../../adapters/appDirService'
+import { useStore } from '@store'
 import { knowledgeSyncService } from '@intelligence/runtime/knowledgeService/syncService'
 import { knowledgeGraphSyncService } from '@intelligence/runtime/knowledgeService/graphSyncService'
 import { t, type Language } from '@renderer/i18n'
@@ -27,8 +28,7 @@ import { restoreWorkspaceAgentStore } from '@services/workspaceLoader'
  */
 function hasUserCustomModelConfig(): boolean {
   try {
-    const store = (window as any).__ZUSTAND_STORE__ || (require('@store') as any).useStore?.getState?.()
-    if (!store) return false
+    const store = useStore.getState()
     const llmConfig = store.llmConfig
     if (!llmConfig) return false
     // provider 非空且 apiKey 非空 = 用户已配置自定义模型
@@ -333,6 +333,32 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
     const persisted = loadPersistedAuth();
     if (persisted) {
       persistAuth({ ...persisted, cloudMode: mode });
+    }
+
+    // 同步更新 llmConfig 中的云端字段
+    // 切换到云端模式：注入 cloudMode/serverUrl/accessToken，主进程会路由到后端代理
+    // 切换到本地模式：清除云端字段，主进程会使用 apiKey/baseUrl 直连
+    if (mode === 'cloud') {
+      const tokens = getTokens();
+      useStore.setState((state) => ({
+        llmConfig: {
+          ...state.llmConfig,
+          cloudMode: true as any,
+          serverUrl: get().serverUrl,
+          accessToken: tokens?.accessToken,
+          refreshToken: tokens?.refreshToken,
+        },
+      }));
+    } else {
+      useStore.setState((state) => ({
+        llmConfig: {
+          ...state.llmConfig,
+          cloudMode: false as any,
+          serverUrl: undefined,
+          accessToken: undefined,
+          refreshToken: undefined,
+        },
+      }));
     }
   },
 

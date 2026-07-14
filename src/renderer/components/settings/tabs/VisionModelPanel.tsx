@@ -13,9 +13,9 @@
  * 3. 自定义模式 + 视觉模型未启用 → 回退到当前活跃的聊天模型
  */
 
-import { memo, useState, useEffect, useCallback } from 'react'
+import { memo, useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Eye, EyeOff, Eye as EyeIcon, Server, Cloud, Check } from 'lucide-react'
-import { ActionButton, ToggleSwitch } from '@components/ui'
+import { ToggleSwitch } from '@components/ui'
 import { api } from '@renderer/adapters/electronBridge'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -49,6 +49,24 @@ const DEFAULT_CONFIG: VisionModelConfig = {
   enabled: false,
 }
 
+/**
+ * 需要手动保存的字段（非即时保存）。
+ * enabled 字段为即时保存（handleToggleEnabled），不触发 dirty。
+ */
+const PERSISTED_FIELDS: (keyof VisionModelConfig)[] = [
+  'provider', 'model', 'apiKey', 'baseUrl',
+  'timeout', 'protocol', 'openAICompatibilityProfile', 'headers',
+]
+
+/** 对 config 中需要手动保存的字段做快照（JSON 字符串），用于 dirty 检测 */
+function snapshotPersisted(config: VisionModelConfig): string {
+  const partial: Record<string, unknown> = {}
+  for (const field of PERSISTED_FIELDS) {
+    partial[field] = config[field]
+  }
+  return JSON.stringify(partial)
+}
+
 export const VisionModelPanel = memo(function VisionModelPanel({ language }: { language: Language }) {
   const { cloudMode, isAuthenticated } = useStore(
     useShallow((s) => ({
@@ -64,15 +82,29 @@ export const VisionModelPanel = memo(function VisionModelPanel({ language }: { l
   const [showApiKey, setShowApiKey] = useState(false)
   const [backendVisionModel, setBackendVisionModel] = useState<{ provider: string; model: string } | null>(null)
 
+  /** 已保存的配置快照（仅 PERSISTED_FIELDS），用于 dirty 检测和"返回应用"重置 */
+  const savedSnapshotRef = useRef<string>('')
+
+  /** dirty 检测：当前 config 的 PERSISTED_FIELDS 与已保存快照不一致时为 true */
+  const isDirty = useMemo(() => {
+    if (!savedSnapshotRef.current) return false
+    return snapshotPersisted(config) !== savedSnapshotRef.current
+  }, [config])
+
   // 加载本地视觉模型配置
   const loadConfig = useCallback(async () => {
     try {
       const result = await api.settings.dbGetVisionModelConfig()
       if (result) {
-        setConfig({ ...DEFAULT_CONFIG, ...result })
+        const loaded = { ...DEFAULT_CONFIG, ...result }
+        setConfig(loaded)
+        savedSnapshotRef.current = snapshotPersisted(loaded)
+      } else {
+        savedSnapshotRef.current = snapshotPersisted(DEFAULT_CONFIG)
       }
     } catch (err) {
       console.error('[VisionModelPanel] Load config failed:', err)
+      savedSnapshotRef.current = snapshotPersisted(DEFAULT_CONFIG)
     } finally {
       setLoading(false)
     }
@@ -113,6 +145,8 @@ export const VisionModelPanel = memo(function VisionModelPanel({ language }: { l
       const result = await api.settings.dbSaveVisionModelConfig(config)
       if (result.success) {
         toast.success(t('provider.visionModel.saveSuccess', language))
+        // 更新已保存快照，清除 dirty 状态
+        savedSnapshotRef.current = snapshotPersisted(config)
       } else {
         toast.error(result.error || t('provider.visionModel.saveFailed', language))
       }
@@ -122,6 +156,25 @@ export const VisionModelPanel = memo(function VisionModelPanel({ language }: { l
       setSaving(false)
     }
   }, [config, language])
+
+  /** "返回应用"：放弃未保存的改动，将 PERSISTED_FIELDS 重置到上次保存的状态 */
+  const handleReset = useCallback(() => {
+    if (!savedSnapshotRef.current) return
+    try {
+      const saved = JSON.parse(savedSnapshotRef.current) as Record<string, unknown>
+      setConfig((prev) => {
+        const next = { ...prev }
+        for (const field of PERSISTED_FIELDS) {
+          if (saved[field] !== undefined) {
+            ;(next as Record<string, unknown>)[field] = saved[field]
+          }
+        }
+        return next
+      })
+    } catch (err) {
+      console.error('[VisionModelPanel] Reset failed:', err)
+    }
+  }, [])
 
   const handleToggleEnabled = useCallback(async (enabled: boolean) => {
     setConfig((prev) => ({ ...prev, enabled }))
@@ -285,22 +338,36 @@ export const VisionModelPanel = memo(function VisionModelPanel({ language }: { l
                 />
               </div>
 
-              {/* 保存按钮 */}
-              <div className="flex justify-end pt-2">
-                <ActionButton
-                  onClick={handleSave}
-                  disabled={saving || !config.provider || !config.model}
-                  variant="primary"
-                  size="sm"
-                >
-                  {saving ? t('common.saving', language) : t('common.save', language)}
-                </ActionButton>
-              </div>
+              {/* 保存按钮已移至底部弹出保存栏 */}
               </div>
             )}
           </>
         )}
       </div>
+
+      {/* ============ 底部弹出保存栏（与全局保存栏样式一致） ============ */}
+      {isDirty && !isCloudMode && config.enabled && (
+        <div className="absolute bottom-6 right-8 left-8 p-4 rounded-xl bg-surface/95 border border-border/60 shadow-lg flex items-center justify-between z-10 transition-all duration-300">
+          <span className="text-xs text-text-muted ml-2 font-medium">
+            {t('settings.unsavedChanges', language)}
+          </span>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleReset}
+              className="px-4 py-2 rounded-lg text-text-secondary hover:bg-text-primary/[0.05] transition-colors text-sm"
+            >
+              {t('settings.backToApp', language)}
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving || !config.provider || !config.model}
+              className="min-w-[140px] px-6 py-2.5 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-bold shadow-lg shadow-accent/20 transition-all duration-300 disabled:opacity-50"
+            >
+              {saving ? t('common.saving', language) : t('common.save', language)}
+            </button>
+          </div>
+        </div>
+      )}
     </section>
   )
 })

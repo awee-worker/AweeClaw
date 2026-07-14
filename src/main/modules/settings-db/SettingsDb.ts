@@ -68,6 +68,7 @@ export interface VisionModelConfigRow {
 /** 语音模型配置行（STT + TTS 合并一行，id=1） */
 export interface VoiceModelConfigRow {
   id: number
+  mode: string                 // 'split' | 'realtime'
   stt_enabled: number         // 0 | 1
   stt_provider: string
   stt_model: string
@@ -83,11 +84,20 @@ export interface VoiceModelConfigRow {
   tts_base_url: string
   tts_speed: number
   tts_timeout: number
+  // 端到端实时语音模型字段
+  realtime_enabled: number    // 0 | 1
+  realtime_provider: string
+  realtime_model: string
+  realtime_api_key: string    // 加密存储
+  realtime_base_url: string
+  realtime_voice: string
+  realtime_timeout: number
   updated_at: number
 }
 
 /** 语音模型配置（已解密、字段已规范化，供上层使用） */
 export interface VoiceModelConfig {
+  mode: 'split' | 'realtime'   // 拆分式（STT+LLM+TTS）或端到端实时
   sttEnabled: boolean
   sttProvider: string
   sttModel: string
@@ -103,6 +113,14 @@ export interface VoiceModelConfig {
   ttsBaseUrl: string
   ttsSpeed: number
   ttsTimeout: number
+  // 端到端实时语音模型
+  realtimeEnabled: boolean
+  realtimeProvider: string
+  realtimeModel: string
+  realtimeApiKey: string
+  realtimeBaseUrl: string
+  realtimeVoice: string
+  realtimeTimeout: number
   updatedAt: number
 }
 
@@ -292,6 +310,7 @@ export class SettingsDb {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS voice_model_config (
         id              INTEGER PRIMARY KEY CHECK (id = 1),
+        mode            TEXT NOT NULL DEFAULT 'split',
         stt_enabled     INTEGER NOT NULL DEFAULT 0,
         stt_provider    TEXT NOT NULL DEFAULT 'openai',
         stt_model       TEXT NOT NULL DEFAULT 'whisper-1',
@@ -307,14 +326,51 @@ export class SettingsDb {
         tts_base_url    TEXT NOT NULL DEFAULT '',
         tts_speed       REAL NOT NULL DEFAULT 1.0,
         tts_timeout     INTEGER NOT NULL DEFAULT 120000,
+        realtime_enabled  INTEGER NOT NULL DEFAULT 0,
+        realtime_provider TEXT NOT NULL DEFAULT 'openai',
+        realtime_model   TEXT NOT NULL DEFAULT 'gpt-4o-realtime',
+        realtime_api_key TEXT NOT NULL DEFAULT '',
+        realtime_base_url TEXT NOT NULL DEFAULT '',
+        realtime_voice   TEXT NOT NULL DEFAULT 'alloy',
+        realtime_timeout INTEGER NOT NULL DEFAULT 120000,
         updated_at      INTEGER NOT NULL DEFAULT 0
       )
     `)
 
+    // 兼容旧表：如果 voice_model_config 已存在但缺少新字段，用 ALTER TABLE 补齐
+    this.migrateVoiceModelConfigSchema()
+
     // 标记 schema 版本
     const existingVersion = this.db.prepare("SELECT value FROM schema_version WHERE key = 'version'").get() as any
     if (!existingVersion) {
-      this.db.prepare("INSERT INTO schema_version (key, value) VALUES ('version', '1')").run()
+      this.db.prepare("INSERT INTO schema_version (key, value) VALUES ('version', '2')").run()
+    }
+  }
+
+  /**
+   * 语音模型配置表 schema 迁移
+   * 兼容 v1（仅 STT/TTS）→ v2（新增 mode + realtime_* 字段）
+   * 使用 ALTER TABLE ADD COLUMN，保留现有数据
+   */
+  private migrateVoiceModelConfigSchema(): void {
+    const columns = this.db.prepare("PRAGMA table_info(voice_model_config)").all() as { name: string }[]
+    const columnNames = new Set(columns.map(c => c.name))
+
+    const newColumns: { name: string; def: string }[] = [
+      { name: 'mode', def: "TEXT NOT NULL DEFAULT 'split'" },
+      { name: 'realtime_enabled', def: 'INTEGER NOT NULL DEFAULT 0' },
+      { name: 'realtime_provider', def: "TEXT NOT NULL DEFAULT 'openai'" },
+      { name: 'realtime_model', def: "TEXT NOT NULL DEFAULT 'gpt-4o-realtime'" },
+      { name: 'realtime_api_key', def: "TEXT NOT NULL DEFAULT ''" },
+      { name: 'realtime_base_url', def: "TEXT NOT NULL DEFAULT ''" },
+      { name: 'realtime_voice', def: "TEXT NOT NULL DEFAULT 'alloy'" },
+      { name: 'realtime_timeout', def: 'INTEGER NOT NULL DEFAULT 120000' },
+    ]
+
+    for (const col of newColumns) {
+      if (!columnNames.has(col.name)) {
+        this.db.exec(`ALTER TABLE voice_model_config ADD COLUMN ${col.name} ${col.def}`)
+      }
     }
   }
 
@@ -611,6 +667,7 @@ export class SettingsDb {
   /** 行转对象（解密 api_key，规范化字段） */
   private rowToVoiceModelConfig(row: VoiceModelConfigRow): VoiceModelConfig {
     return {
+      mode: (row.mode as 'split' | 'realtime') || 'split',
       sttEnabled: row.stt_enabled === 1,
       sttProvider: row.stt_provider || 'openai',
       sttModel: row.stt_model || 'whisper-1',
@@ -626,12 +683,20 @@ export class SettingsDb {
       ttsBaseUrl: row.tts_base_url || '',
       ttsSpeed: row.tts_speed ?? 1.0,
       ttsTimeout: row.tts_timeout || 120000,
+      realtimeEnabled: row.realtime_enabled === 1,
+      realtimeProvider: row.realtime_provider || 'openai',
+      realtimeModel: row.realtime_model || 'gpt-4o-realtime',
+      realtimeApiKey: row.realtime_api_key ? decryptString(row.realtime_api_key) || '' : '',
+      realtimeBaseUrl: row.realtime_base_url || '',
+      realtimeVoice: row.realtime_voice || 'alloy',
+      realtimeTimeout: row.realtime_timeout || 120000,
       updatedAt: row.updated_at,
     }
   }
 
-  /** 保存语音模型配置（upsert，STT 和 TTS 一并写入） */
+  /** 保存语音模型配置（upsert，STT / TTS / Realtime 一并写入） */
   upsertVoiceModelConfig(config: {
+    mode?: 'split' | 'realtime'
     sttEnabled?: boolean
     sttProvider?: string
     sttModel?: string
@@ -647,34 +712,53 @@ export class SettingsDb {
     ttsBaseUrl?: string
     ttsSpeed?: number
     ttsTimeout?: number
+    realtimeEnabled?: boolean
+    realtimeProvider?: string
+    realtimeModel?: string
+    realtimeApiKey?: string
+    realtimeBaseUrl?: string
+    realtimeVoice?: string
+    realtimeTimeout?: number
   }): void {
     const now = Date.now()
     const encryptedSttKey = config.sttApiKey ? encryptString(config.sttApiKey) : ''
     const encryptedTtsKey = config.ttsApiKey ? encryptString(config.ttsApiKey) : ''
+    const encryptedRealtimeKey = config.realtimeApiKey ? encryptString(config.realtimeApiKey) : ''
     this.db.prepare(`
       INSERT INTO voice_model_config (
-        id, stt_enabled, stt_provider, stt_model, stt_api_key, stt_base_url, stt_language, stt_timeout,
+        id, mode,
+        stt_enabled, stt_provider, stt_model, stt_api_key, stt_base_url, stt_language, stt_timeout,
         tts_enabled, tts_provider, tts_model, tts_voice, tts_api_key, tts_base_url, tts_speed, tts_timeout,
+        realtime_enabled, realtime_provider, realtime_model, realtime_api_key, realtime_base_url, realtime_voice, realtime_timeout,
         updated_at
-      ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
-        stt_enabled  = excluded.stt_enabled,
-        stt_provider = excluded.stt_provider,
-        stt_model    = excluded.stt_model,
-        stt_api_key  = excluded.stt_api_key,
-        stt_base_url = excluded.stt_base_url,
-        stt_language = excluded.stt_language,
-        stt_timeout  = excluded.stt_timeout,
-        tts_enabled  = excluded.tts_enabled,
-        tts_provider = excluded.tts_provider,
-        tts_model    = excluded.tts_model,
-        tts_voice    = excluded.tts_voice,
-        tts_api_key  = excluded.tts_api_key,
-        tts_base_url = excluded.tts_base_url,
-        tts_speed    = excluded.tts_speed,
-        tts_timeout  = excluded.tts_timeout,
-        updated_at   = excluded.updated_at
+        mode              = excluded.mode,
+        stt_enabled       = excluded.stt_enabled,
+        stt_provider      = excluded.stt_provider,
+        stt_model         = excluded.stt_model,
+        stt_api_key       = excluded.stt_api_key,
+        stt_base_url      = excluded.stt_base_url,
+        stt_language      = excluded.stt_language,
+        stt_timeout       = excluded.stt_timeout,
+        tts_enabled       = excluded.tts_enabled,
+        tts_provider      = excluded.tts_provider,
+        tts_model         = excluded.tts_model,
+        tts_voice         = excluded.tts_voice,
+        tts_api_key       = excluded.tts_api_key,
+        tts_base_url      = excluded.tts_base_url,
+        tts_speed         = excluded.tts_speed,
+        tts_timeout       = excluded.tts_timeout,
+        realtime_enabled  = excluded.realtime_enabled,
+        realtime_provider = excluded.realtime_provider,
+        realtime_model    = excluded.realtime_model,
+        realtime_api_key  = excluded.realtime_api_key,
+        realtime_base_url = excluded.realtime_base_url,
+        realtime_voice    = excluded.realtime_voice,
+        realtime_timeout  = excluded.realtime_timeout,
+        updated_at        = excluded.updated_at
     `).run(
+      config.mode ?? 'split',
       config.sttEnabled ? 1 : 0,
       config.sttProvider ?? 'openai',
       config.sttModel ?? 'whisper-1',
@@ -690,6 +774,13 @@ export class SettingsDb {
       config.ttsBaseUrl ?? '',
       config.ttsSpeed ?? 1.0,
       config.ttsTimeout ?? 120000,
+      config.realtimeEnabled ? 1 : 0,
+      config.realtimeProvider ?? 'openai',
+      config.realtimeModel ?? 'gpt-4o-realtime',
+      encryptedRealtimeKey,
+      config.realtimeBaseUrl ?? '',
+      config.realtimeVoice ?? 'alloy',
+      config.realtimeTimeout ?? 120000,
       now,
     )
   }

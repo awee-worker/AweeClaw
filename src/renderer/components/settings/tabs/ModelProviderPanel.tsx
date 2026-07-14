@@ -26,10 +26,9 @@ import { ProviderIcon } from '@components/ui/ProviderIcon'
 import { ProviderSettingsProps } from '../preferencesTypes'
 import { isCustomProvider, type ModelConfig, type ModelGenerationParams } from '@renderer/types/modelProvider'
 import { ModelCardGrid } from './ModelCardGrid'
-import { VisionModelPanel } from './VisionModelPanel'
-import { VoiceModelPanel } from './VoiceModelPanel'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
+import { getTokens } from '@services/backendApi'
 import type { CloudProviderModel } from '@store/slices/authSlice'
 import { t, type Language } from '@renderer/i18n'
 
@@ -748,6 +747,7 @@ export function ModelProviderPanel({
     cloudMode,
     isAuthenticated,
     cloudModels,
+    serverUrl,
     setCloudMode,
     fetchCloudModels,
   } = useStore(
@@ -755,6 +755,7 @@ export function ModelProviderPanel({
       cloudMode: s.cloudMode,
       isAuthenticated: s.isAuthenticated,
       cloudModels: s.cloudModels,
+      serverUrl: s.serverUrl,
       setCloudMode: s.setCloudMode,
       fetchCloudModels: s.fetchCloudModels,
     })),
@@ -770,12 +771,32 @@ export function ModelProviderPanel({
 
   const handleModeChange = useCallback(
     (mode: 'local' | 'cloud') => {
+      // 切换模式时同步更新 localConfig 的云端字段
+      // setCloudMode 已更新 store.llmConfig，这里同步 localConfig 防止 handleSave 覆盖
+      if (mode === 'cloud') {
+        const tokens = getTokens()
+        setLocalConfig({
+          ...localConfig,
+          cloudMode: true as any,
+          serverUrl,
+          accessToken: tokens?.accessToken,
+          refreshToken: tokens?.refreshToken,
+        })
+      } else {
+        setLocalConfig({
+          ...localConfig,
+          cloudMode: false as any,
+          serverUrl: undefined,
+          accessToken: undefined,
+          refreshToken: undefined,
+        })
+      }
       setCloudMode(mode)
       if (mode === 'cloud' && isAuthenticated) {
         fetchCloudModels().catch(() => {})
       }
     },
-    [setCloudMode, isAuthenticated, fetchCloudModels],
+    [setCloudMode, isAuthenticated, fetchCloudModels, localConfig, setLocalConfig, serverUrl],
   )
 
   const handleSelectCloudProvider = useCallback(
@@ -2277,12 +2298,6 @@ export function ModelProviderPanel({
             </div>
           </div>
           </section>
-
-          {/* 视觉模型独立配置（用于桌面视觉智能体） */}
-          <VisionModelPanel language={language} />
-
-          {/* 语音模型独立配置（自定义模式：语音识别 STT + 语音合成 TTS） */}
-          <VoiceModelPanel language={language} />
           </>
       </div>
       {isAddingCustom && !isCloudMode && (

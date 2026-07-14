@@ -25,7 +25,7 @@ Spinner.displayName = 'Spinner'
 interface FullscreenLoaderProps { message?: string }
 
 export const FullscreenLoader = memo(({ message }: FullscreenLoaderProps) => (
-  <div className="h-full flex flex-col items-center justify-center gap-3 bg-background">
+  <div className="h-full w-full flex flex-col items-center justify-center gap-3 bg-background">
     <Spinner size="lg" />
     {message && <span className="text-xs text-text-muted">{message}</span>}
   </div>

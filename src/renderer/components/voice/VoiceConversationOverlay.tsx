@@ -13,9 +13,9 @@
  * 具备与普通文字对话完全相同的 AI 能力（工具、插件等）
  */
 
-import { useCallback, useEffect, useState } from 'react'
-import { motion } from 'framer-motion'
-import { X, Mic, Volume2, PhoneOff } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { X, Mic, Volume2, PhoneOff, AlertCircle } from 'lucide-react'
 import { useVoiceChat } from '../../composables/useVoiceChat'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -90,6 +90,34 @@ export function VoiceConversationOverlay({ onClose }: VoiceConversationOverlayPr
   const isZh = language === 'zh'
   const isCloudMode = cloudMode === 'cloud'
 
+  // 错误提示状态
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  /** 显示错误提示（自动 5 秒后消失） */
+  const showError = useCallback((message: string) => {
+    setErrorMessage(message)
+    if (errorTimerRef.current) clearTimeout(errorTimerRef.current)
+    errorTimerRef.current = setTimeout(() => {
+      setErrorMessage(null)
+    }, 5000)
+  }, [])
+
+  /** 关闭错误提示 */
+  const dismissError = useCallback(() => {
+    setErrorMessage(null)
+    if (errorTimerRef.current) {
+      clearTimeout(errorTimerRef.current)
+      errorTimerRef.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (errorTimerRef.current) clearTimeout(errorTimerRef.current)
+    }
+  }, [])
+
   // 保存对话到聊天历史的函数
   // 直接调用 store 的 addUserMessage + addAssistantMessage + finalizeAssistant
   // 不触发 LLM 调用（语音对话已通过 voiceToolLoop 完成完整 LLM + 工具调用流程）
@@ -112,41 +140,35 @@ export function VoiceConversationOverlay({ onClose }: VoiceConversationOverlayPr
     [],
   )
 
-  // 加载用户自定义语音配置（本地模式下使用）
-  const [userVoiceConfig, setUserVoiceConfig] = useState<
-    | {
-        sttEnabled: boolean
-        sttProvider?: string
-        sttModel?: string
-        sttApiKey?: string
-        sttBaseUrl?: string
-        ttsEnabled: boolean
-        ttsProvider?: string
-        ttsModel?: string
-        ttsVoice?: string
-        ttsApiKey?: string
-        ttsBaseUrl?: string
-        ttsSpeed?: number
-      }
-    | undefined
-  >(undefined)
+  // 加载用户语音模型配置（包含模式和 STT/TTS/Realtime 配置）
+  const [voiceModelConfig, setVoiceModelConfig] = useState<any>(undefined)
 
   useEffect(() => {
-    if (isCloudMode) return
     let cancelled = false
     api.settings
       .dbGetVoiceModelConfig()
       .then((config) => {
         if (cancelled || !config) return
-        if (config.sttEnabled || config.ttsEnabled) {
-          setUserVoiceConfig(config)
-        }
+        setVoiceModelConfig(config)
       })
       .catch(() => {})
     return () => {
       cancelled = true
     }
-  }, [isCloudMode])
+  }, [])
+
+  // 提取语音模式和配置
+  const voiceMode: 'split' | 'realtime' = voiceModelConfig?.mode || 'split'
+  const userVoiceConfig = voiceMode === 'split' ? voiceModelConfig : undefined
+  const realtimeConfig = voiceMode === 'realtime' && voiceModelConfig?.realtimeEnabled
+    ? {
+        endpoint: voiceModelConfig.realtimeBaseUrl || undefined,
+        apiKey: voiceModelConfig.realtimeApiKey || undefined,
+        voice: voiceModelConfig.realtimeVoice || 'alloy',
+        model: voiceModelConfig.realtimeModel || 'gpt-4o-realtime',
+        serverVad: false, // 前端 VAD
+      }
+    : undefined
 
   const {
     state,
@@ -156,21 +178,26 @@ export function VoiceConversationOverlay({ onClose }: VoiceConversationOverlayPr
     interrupt,
   } = useVoiceChat({
     language: 'auto',
+    // 语音模式：拆分式或端到端
+    voiceMode,
     // 云端/本地模式：决定 STT/TTS 走后端 API 还是用户配置
     cloudMode: isCloudMode ? 'cloud' : 'local',
-    // 完整 LLM 配置：
-    // - 云端模式含 cloudMode=true/serverUrl/accessToken，主进程路由到后端代理
-    // - 本地模式含 apiKey/baseUrl，直连用户配置的模型
-    // 两种模式都走客户端 api.llm.send()，支持完整的工具调用和插件能力
+    // 完整 LLM 配置（拆分式模式使用）
     llmConfig: llmConfig || undefined,
     userVoiceConfig,
-    // 工作区上下文：让 AI 知道用户当前的工作目录和打开的文件
+    // 端到端实时语音配置（端到端模式使用）
+    realtimeConfig,
+    // 工作区上下文
     workspacePath: workspacePath || undefined,
     openFiles: openFiles?.map(f => f.path).filter(Boolean),
     activeFile: activeFilePath || undefined,
     // AI 音频播放完毕后，把这一轮对话保存到聊天历史
     onConversationComplete: (userText, aiFullText) => {
       saveConversationToHistory(userText, aiFullText)
+    },
+    // 错误提示
+    onError: (message) => {
+      showError(message)
     },
   })
 
@@ -382,6 +409,32 @@ export function VoiceConversationOverlay({ onClose }: VoiceConversationOverlayPr
           </motion.button>
         </div>
       </div>
+
+      {/* 错误提示（浮动在底部控制栏上方，5 秒自动消失） */}
+      <AnimatePresence>
+        {errorMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: 20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.95 }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
+            className="absolute bottom-20 left-1/2 -translate-x-1/2 z-20 max-w-md"
+          >
+            <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-red-500/15 border border-red-500/40 backdrop-blur-md shadow-lg">
+              <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+              <p className="text-[13px] text-red-300 leading-relaxed flex-1">
+                {errorMessage}
+              </p>
+              <button
+                onClick={dismissError}
+                className="flex-shrink-0 text-red-400/60 hover:text-red-300 transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* 底部控制栏 */}
       <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center gap-3 px-4 py-4">

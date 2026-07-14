@@ -1,5 +1,5 @@
 import { lazy, Suspense, useMemo, useCallback } from 'react'
-import { Cpu, Settings2, Shield, Monitor, Plug, Brain, FileText, Zap, X, Palette, Radio, Cloud, Eye, Search, Mail, Mic, MonitorSmartphone, ArrowLeft } from 'lucide-react'
+import { Cpu, Settings2, Shield, Monitor, Plug, Brain, FileText, Zap, X, Palette, Radio, Cloud, Eye, Search, Mail, Mic, MonitorSmartphone, ArrowLeft, ScanEye } from 'lucide-react'
 import { PROVIDERS } from '@configuration/aiProviders'
 import { t, type Language } from '@renderer/i18n'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
@@ -51,6 +51,9 @@ const PrivacySettingsPanel = lazy(() =>
 )
 const VoiceSettingsPanel = lazy(() =>
     import('./tabs/VoiceSettingsPanel').then(m => ({ default: m.default })),
+)
+const VisionSettingsPanel = lazy(() =>
+    import('./tabs/VisionSettingsPanel').then(m => ({ default: m.default })),
 )
 const DesktopControlPanel = lazy(() =>
     import('./tabs/desktop/DesktopControlPanel').then(m => ({ default: m.DesktopControlPanel })),
@@ -130,6 +133,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
         { id: 'agent', label: t('settings.agent', language as Language), icon: <Settings2 className="w-4 h-4" /> },
         { id: 'search', label: t('settings.searchEngine', language as Language), icon: <Search className="w-4 h-4" /> },
         { id: 'voice', label: t('settings.voiceSettings', language as Language), icon: <Mic className="w-4 h-4" /> },
+        { id: 'vision', label: t('settings.visionSettings', language as Language), icon: <ScanEye className="w-4 h-4" /> },
         { id: 'rules', label: t('settings.rules', language as Language), icon: <FileText className="w-4 h-4" /> },
         { id: 'memory', label: t('settings.memory', language as Language), icon: <Brain className="w-4 h-4" /> },
         { id: 'skills', label: t('settings.skills', language as Language), icon: <Zap className="w-4 h-4" /> },
@@ -243,6 +247,8 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                 return <CloudSettings language={language} />
             case 'voice':
                 return <VoiceSettingsPanel language={language} />
+            case 'vision':
+                return <VisionSettingsPanel language={language} />
             case 'desktop':
                 return <DesktopControlPanel language={language} />
             default:
@@ -314,21 +320,21 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                         </div>
                     </div>
 
-                    {isDirty && state.activeTab !== 'channel' && (
+                    {isDirty && state.activeTab !== 'channel' && state.activeTab !== 'voice' && state.activeTab !== 'vision' && (
                         <div className="absolute bottom-6 right-8 left-8 p-4 rounded-xl bg-surface/95 border border-border/60 shadow-lg flex items-center justify-between z-10 transition-all duration-300">
                             <span className="text-xs text-text-muted ml-2 font-medium">
                                 {t('settings.unsavedChanges', language as Language)}
                             </span>
                             <div className="flex items-center gap-3">
                                 <ActionButton variant="ghost" onClick={handleClose} className="hover:bg-text-primary/[0.05] text-text-secondary rounded-lg">
-                                    {t('statusBar.cancel', language as Language)}
+                                    {t('settings.backToApp', language as Language)}
                                 </ActionButton>
                                 <ActionButton
                                     variant="primary"
                                     onClick={handleSave}
                                     className="min-w-[140px] shadow-lg transition-all duration-300 rounded-xl bg-accent hover:bg-accent-hover text-white shadow-accent/20"
                                 >
-                                    <span className="font-bold">{t('settings.saveChanges', language as Language)}</span>
+                                    <span className="font-bold">{t('common.save', language as Language)}</span>
                                 </ActionButton>
                             </div>
                         </div>
