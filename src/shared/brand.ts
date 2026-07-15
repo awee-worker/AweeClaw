@@ -15,19 +15,19 @@ export const BRAND = {
   lightTheme: 'aweeclaw-light',
 
   author: {
-    name: 'awee',
-    wechat: 'awee_worker',
-    email: 'awee.worker@qq.com',
+    name: 'Awee Lee',
+    wechat: 'jst-jst-ja-ja-ja',
+    email: 'aweelee@qq.com',
   },
 
   links: {
-    gitee: 'https://gitee.com/jweelee/aweeclaw.git',
-    github: 'https://github.com/jweelee/aweeclaw',
-    releases: 'https://github.com/jweelee/aweeclaw/releases/latest',
-    website: 'https://aweeclaw.com',
-    docs: 'https://aweeclaw.com/docs',
-    developer: 'https://aweeclaw.com/developer',
-    scenarios: 'https://aweeclaw.com/scenarios',
+    gitee: 'https://gitee.com/aweelee/aweeclaw.git',
+    github: 'https://github.com/aweelee/aweeclaw',
+    releases: 'https://github.com/aweelee/aweeclaw/releases/latest',
+    website: 'https://www.aweeclaw.com',
+    docs: 'https://docs.aweeclaw.com',
+    developer: 'https://developer.aweeclaw.com',
+    scenarios: 'https://docs.aweeclaw.com',
   },
 
   tagline: 'Connect AI to Your World',
