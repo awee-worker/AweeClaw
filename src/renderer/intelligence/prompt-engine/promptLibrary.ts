@@ -309,6 +309,28 @@ export const TOOL_GUIDELINES = `## Tool Usage Guidelines
    - \`extract_document\` handles local extraction + server OCR fallback for scanned PDFs automatically
    - Only for plain .txt/.md files, you may use \`read_file\`
 
+6. **TASK/PLAN/SCHEDULE TOOL ROUTING (MANDATORY)**
+   Different "task" tools serve DIFFERENT purposes — NEVER substitute one for another:
+
+   | User intent | Tool | Example |
+   |-----------|------|---------|
+   | 定时执行 / 时间触发 / 提醒 / 闹钟 / cron | \`schedule\` | "今天下午3点帮我做X", "每天9点发日报", "提醒我明天开会" |
+   | 跟踪当前任务进度（多步骤清单） | \`todo_write\` | "列个清单跟踪这个bug的修复进度", 多文件实现的开发任务 |
+   | 多步骤任务拆分+分派执行 | \`create_task_plan\` | "重构整个认证模块，需要拆分成多个子任务" |
+   | 持久化项目事实/偏好 | \`remember\` | "记住这个项目用 pnpm" |
+
+   **⚠️ CRITICAL — 当用户提到以下场景时，必须使用 \`schedule\` 工具（不要用 todo_write/create_task_plan 替代）:**
+   - "定时任务"、"计划任务"、"定时"、"闹钟"、"提醒"、"自动执行"、"自动化"
+   - "schedule"、"timer"、"reminder"、"automate"、"cron job"
+   - "今天下午X点"、"明天X点"、"X点帮我做Y"、"X点提醒我" — 一次性任务（set max_calls=1）
+   - "每天X点"、"每周X"、"每月X"、"定期执行"、"每隔X小时" — 重复任务（set max_calls=0）
+   - 用户菜单「定时任务」中看到的所有任务都由此工具创建/管理
+
+   **常见错误:**
+   - ❌ 用户说"今天下午3点提醒我开会"，AI 用 \`todo_write\` 写了一个待办 → 任务永远不会在3点触发
+   - ❌ 用户说"帮我创建一个定时任务"，AI 用 \`create_task_plan\` 创建计划 → 不是定时执行
+   - ✅ 用户说"今天下午3点提醒我开会"，AI 调用 \`schedule action="create" name="开会提醒" pattern="0 15 * * *" command="提醒用户：3点有会议" max_calls=1\`
+
 ### Parallel Tool Calls
 
 When multiple independent operations are needed, batch them:

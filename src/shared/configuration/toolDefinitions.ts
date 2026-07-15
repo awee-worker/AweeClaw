@@ -1132,13 +1132,21 @@ The tool returns the full skill content which you MUST follow as project-specifi
     schedule: {
         name: 'schedule',
         displayName: 'Schedule Task',
-        description: 'Create, update, delete, or list scheduled tasks that run automatically on a cron schedule. Use this when the user wants to automate recurring actions.',
-        detailedDescription: `Manage scheduled tasks (cron jobs) that execute automatically at specified times.
+        description: 'Create, update, delete, or list scheduled tasks (定时任务) that run automatically at specified times. MUST use this tool when the user mentions scheduled tasks, timers, reminders, or time-based automation — including one-shot tasks like "今天下午3点帮我做X" or recurring tasks like "每天早上9点发报告".',
+        detailedDescription: `Manage scheduled tasks (定时任务 / cron jobs) that execute automatically at specified times.
+
+## ⚠️ MUST USE THIS TOOL when user mentions:
+- **定时任务 / 计划任务 / 定时 / 闹钟 / 提醒 / 自动执行 / 自动化任务** (Chinese)
+- **scheduled task / schedule / timer / reminder / automate / cron job / run at / run every** (English)
+- **Specific time execution**: "今天下午3点帮我做X", "明天上午9点提醒我", "下午帮我做什么", "每天早上发报告", "每周一汇总"
+- **Recurring automation**: "每天/每周/每月/定期 执行X", "every day/week/month run X"
 
 ## When to use:
-- User wants to set up recurring automated tasks (daily reports, periodic checks, scheduled cleanup)
-- User asks to "schedule", "automate", "run periodically", or "set up a cron job"
-- User wants to list, modify, or delete existing scheduled tasks
+- **One-shot tasks** (执行一次): "今天下午帮我做X", "明天9点提醒我开会" → set \`max_calls=1\`
+- **Recurring tasks** (重复执行): "每天9点发日报", "每周一汇总代码" → set \`max_calls=0\` (unlimited)
+- **Time-based reminders**: "下午3点提醒我开会" → command 描述提醒内容
+- **Periodic automation**: "每天凌晨清理临时文件", "每小时检查一次状态"
+- **List/modify/delete**: 查看、修改、删除现有定时任务
 
 ## Actions:
 - **create**: Create a new scheduled task with a name, cron pattern, and command
@@ -1157,6 +1165,24 @@ The tool returns the full skill content which you MUST follow as project-specifi
 * * * * *
 \`\`\`
 
+## Natural Language → Cron Conversion Guide:
+| User says | Cron pattern | max_calls |
+|-----------|--------------|-----------|
+| "今天下午3点" (3pm today) | \`0 15 * * *\` | 1 (one-shot) |
+| "明天上午9点" (9am tomorrow) | \`0 9 * * *\` | 1 (one-shot) |
+| "下午5点半" (5:30pm) | \`30 17 * * *\` | 1 (one-shot) |
+| "每天早上9点" (daily 9am) | \`0 9 * * *\` | 0 (recurring) |
+| "每周一上午9点" (Mon 9am) | \`0 9 * * 1\` | 0 (recurring) |
+| "每月1号0点" (1st of month) | \`0 0 1 * *\` | 0 (recurring) |
+| "每小时整点" (every hour) | \`0 * * * *\` | 0 (recurring) |
+| "每30分钟" (every 30 min) | \`*/30 * * * *\` | 0 (recurring) |
+| "工作日9点" (weekdays 9am) | \`0 9 * * 1-5\` | 0 (recurring) |
+
+**关键规则:**
+- 一次性任务（"今天X点"、"明天X点"、"X点提醒我"）→ MUST set \`max_calls=1\`, otherwise it will repeat every day
+- 重复任务（"每天X点"、"每周X"、"每月X"）→ set \`max_calls=0\` (unlimited)
+- "今天下午3点" → cron pattern 用 \`0 15 * * *\` (今天匹配即触发，max_calls=1 确保只执行一次)
+
 ## Examples:
 - \`0 9 * * *\` — Every day at 9:00
 - \`*/30 * * * *\` — Every 30 minutes
@@ -1168,8 +1194,18 @@ The tool returns the full skill content which you MUST follow as project-specifi
 - The \`command\` is a natural language instruction that will be sent to the AI agent when the schedule triggers
 - The agent will execute the command using its available tools
 - Set \`max_calls\` to limit total executions (0 = unlimited)
-- Tasks persist across app restarts`,
+- Tasks persist across app restarts
+- 用户菜单「定时任务」入口对应的就是此工具创建的任务`,
+        criticalRules: [
+            '当用户提到"定时任务"、"计划任务"、"定时"、"提醒"、"闹钟"、"schedule"、"cron"、"automate"、"每天X点"、"每周X"、"X点帮我做Y" 时，MUST 调用此工具，不要用 todo_write 或 create_task_plan 替代',
+            '一次性任务（"今天X点"、"明天X点"、"X点提醒我"）必须设置 max_calls=1，否则任务会每天重复执行',
+            '重复任务（"每天X点"、"每周X"、"每月X"）设置 max_calls=0 (unlimited)',
+            '将自然语言时间转换为 cron 表达式：今天下午3点 → "0 15 * * *" + max_calls=1；每天9点 → "0 9 * * *" + max_calls=0',
+            'todo_write 是用于跟踪当前任务进度的清单，不是定时执行；create_task_plan 是用于多步骤任务拆分执行，不是定时触发。两者都不能替代定时任务功能',
+        ],
         examples: [
+            'schedule action="create" name="下午3点提醒" pattern="0 15 * * *" command="提醒用户：下午3点有一个重要会议" max_calls=1',
+            'schedule action="create" name="每天日报" pattern="0 9 * * *" command="生成今天的日报并发送" max_calls=0',
             'schedule action="create" name="Daily Summary" pattern="0 9 * * *" command="Summarize today\'s git commits and create a brief report"',
             'schedule action="list"',
             'schedule action="delete" task_id="cron-xxx"',
@@ -1189,7 +1225,7 @@ The tool returns the full skill content which you MUST follow as project-specifi
             },
             name: {
                 type: 'string',
-                description: 'Task name (for create/update). A short display name like "Daily Summary"',
+                description: 'Task name (for create/update). A short display name like "Daily Summary", "下午3点提醒", "每天日报"',
                 required: false,
             },
             description: {
@@ -1199,12 +1235,12 @@ The tool returns the full skill content which you MUST follow as project-specifi
             },
             pattern: {
                 type: 'string',
-                description: 'Cron expression with 5 fields: minute hour day month weekday (for create/update). Example: "0 9 * * *" for daily at 9:00',
+                description: 'Cron expression with 5 fields: minute hour day month weekday (for create/update). Convert natural language time to cron: "今天下午3点"→"0 15 * * *", "每天9点"→"0 9 * * *", "每周一9点"→"0 9 * * 1", "每30分钟"→"*/30 * * * *", "工作日9点"→"0 9 * * 1-5"',
                 required: false,
             },
             command: {
                 type: 'string',
-                description: 'Natural language instruction to execute when the schedule triggers (for create/update). Example: "Summarize today\'s news and send to the user"',
+                description: 'Natural language instruction to execute when the schedule triggers (for create/update). This will be sent to the AI agent. Example: "提醒用户：下午3点有会议", "生成今天的日报并发送", "Summarize today\'s news"',
                 required: false,
             },
             task_id: {
@@ -1219,7 +1255,7 @@ The tool returns the full skill content which you MUST follow as project-specifi
             },
             max_calls: {
                 type: 'number',
-                description: 'Maximum number of executions (0 = unlimited, for create/update)',
+                description: 'Maximum number of executions. CRITICAL: 一次性任务（"今天X点"、"明天X点"、"X点提醒我"）必须设为 1；重复任务（"每天X点"、"每周X"）设为 0 (unlimited)',
                 required: false,
             },
         },

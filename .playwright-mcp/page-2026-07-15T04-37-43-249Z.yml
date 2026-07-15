@@ -1,0 +1,216 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - heading "🔌 桂花井台区 · 数字化拓扑图" [level=1] [ref=e3]
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - text: "杆塔/点位:"
+        - strong [ref=e6]: "78"
+      - generic [ref=e7]:
+        - text: "线段:"
+        - strong [ref=e8]: "79"
+      - generic [ref=e9]:
+        - text: "用户:"
+        - strong [ref=e10]: "39"
+      - generic [ref=e11]:
+        - text: "主干线:"
+        - strong [ref=e12]: 95mm²
+      - generic [ref=e13]:
+        - text: "供电半径:"
+        - strong [ref=e14]: 1048m
+      - generic [ref=e15]:
+        - text: "负载率:"
+        - strong [ref=e16]: 98%
+  - generic [ref=e17]:
+    - generic [ref=e18]: 台区变压站
+    - generic [ref=e20]: 主干杆塔
+    - generic [ref=e22]: 分支杆塔
+    - generic [ref=e24]: 用户点
+    - generic [ref=e26]: JKLGYJ-95 主干线
+    - generic [ref=e28]: JKLGYJ-70 分支线
+    - generic [ref=e30]: JKLGYJ-35 分支线
+  - generic [ref=e32]:
+    - button "＋" [ref=e33] [cursor=pointer]
+    - button "−" [ref=e34] [cursor=pointer]
+    - button "⟲" [ref=e35] [cursor=pointer]
+  - generic [ref=e36]: 🖱 滚轮缩放 · 拖拽平移 · 悬停查看详情 · 基于真实GIS坐标
+  - img [ref=e37]:
+    - generic [ref=e38]:
+      - generic: "29.5580"
+      - generic: "29.5590"
+      - generic: "29.5600"
+      - generic: "29.5610"
+      - generic: "29.5620"
+      - generic: "29.5630"
+      - generic: "29.5640"
+      - generic: "29.5650"
+      - generic: "29.5660"
+      - generic: "29.5670"
+      - generic: "29.5680"
+      - generic: "29.5690"
+      - generic: "29.5700"
+      - generic: "29.5710"
+      - generic: "29.5720"
+      - generic: "106.9250"
+      - generic: "106.9260"
+      - generic: "106.9270"
+      - generic: "106.9280"
+      - generic: "106.9290"
+      - generic: "106.9300"
+      - generic: "106.9310"
+      - generic: "106.9320"
+      - generic: "106.9330"
+      - generic: "106.9340"
+      - generic [ref=e39]:
+        - generic: 42m 95
+        - generic: 43m 35
+        - generic: 44m 35
+        - generic: 107m 35
+        - generic: 48m 35
+        - generic: 60m 35
+        - generic: 65m 35
+        - generic: 89m 35
+        - generic: 64m 35
+        - generic: 43m 35
+        - generic: 89m 95
+        - generic: 89m 95
+        - generic: 41m 95
+        - generic: 63m 95
+        - generic: 63m 95
+        - generic: 57m 95
+        - generic: 82m 95
+        - generic: 69m 95
+        - generic: 72m 95
+        - generic: 39m 95
+        - generic: 66m 95
+        - generic: 59m 70
+        - generic: 48m 95
+        - generic: 28m 70
+        - generic: 48m 70
+        - generic: 89m 70
+        - generic: 41m 70
+        - generic: 63m 70
+        - generic: 63m 70
+        - generic: 57m 70
+        - generic: 71m 35
+        - generic: 35m 35
+        - generic: 44m 35
+        - generic: 27m 35
+        - generic: 33m 35
+        - generic: 89m 70
+        - generic: 52m 70
+        - generic: 46m 70
+        - generic: 35m 70
+        - generic: 33m 70
+        - generic: 116m 35
+        - generic: 48m 35
+        - generic: 89m 35
+        - generic: 34m 35
+        - generic: 54m 35
+        - generic: 42m 35
+        - generic: 31m 35
+        - generic: 42m 35
+        - generic: 43m 35
+        - generic: 22m 35
+        - generic: 32m 35
+        - generic: 63m 95
+        - generic: 72m 95
+        - generic: 46m 95
+        - generic: 66m 95
+        - generic: 80m 95
+        - generic: 67m 35
+        - generic: 86m 35
+        - generic: 27m 35
+        - generic: 27m 35
+        - generic: 48m 35
+        - generic: 42m 95
+        - generic: 51m 95
+        - generic: 28m 35
+        - generic: 49m 35
+        - generic: 28m 35
+        - generic: 49m 35
+        - generic: 43m 35
+        - generic: 89m 35
+        - generic: 26m 35
+        - generic: 40m 35
+        - generic: 23m 35
+        - generic: 25m 70
+      - generic [ref=e116]: ⚡
+      - generic [ref=e274]:
+        - generic: "1"
+        - generic: 1-A1
+        - generic: 1-A2
+        - generic: 1-C1
+        - generic: 1-C1-A1
+        - generic: 1-C1-B1
+        - generic: 1-C1-B2
+        - generic: 1-C1-B3
+        - generic: 1-C1-C1
+        - generic: 1-C10
+        - generic: 1-C10-A1
+        - generic: 1-C10-A2
+        - generic: 1-C11
+        - generic: 1-C12
+        - generic: 1-C13
+        - generic: 1-C2
+        - generic: 1-C3
+        - generic: 1-C3-A1
+        - generic: 1-C3-A1-A1
+        - generic: 1-C3-A2
+        - generic: 1-C4
+        - generic: 1-C4-A1
+        - generic: 1-C4-A2
+        - generic: 1-C4-A2-A1
+        - generic: 1-C4-A2-B1
+        - generic: 1-C4-A3
+        - generic: 1-C4-A3-A1
+        - generic: 1-C4-A4
+        - generic: 1-C4-A4-A1
+        - generic: 1-C4-A4-A2
+        - generic: 1-C4-A4-B1
+        - generic: 1-C4-A4-B2
+        - generic: 1-C4-A4-B2-A1
+        - generic: 1-C4-A4-B3
+        - generic: 1-C4-A5
+        - generic: 1-C4-A6
+        - generic: 1-C4-A6-A1
+        - generic: 1-C4-A6-A1-A1
+        - generic: 1-C4-A6-B1
+        - generic: 1-C4-A6-B1-A1
+        - generic: 1-C4-A6-C1
+        - generic: 1-C4-A7
+        - generic: 1-C5
+        - generic: 1-C6
+        - generic: 1-C6-A1
+        - generic: 1-C7
+        - generic: 1-C7-A1
+        - generic: 1-C7-A1-A1
+        - generic: 1-C7-A1-A2
+        - generic: 1-C7-B1
+        - generic: 1-C8
+        - generic: 1-C8-A1
+        - generic: 1-C9
+        - generic: 1-C10-A
+        - generic: "2"
+        - generic: "3"
+        - generic: "4"
+        - generic: "5"
+        - generic: "6"
+        - generic: "7"
+        - generic: 7-A1
+        - generic: 自定义打点22
+        - generic: 7-A2-A1
+        - generic: 7-A3
+        - generic: 7-A4
+        - generic: "8"
+        - generic: 8-A1
+        - generic: "9"
+        - generic: 9-A1
+        - generic: 9-A1-A1
+        - generic: 9-A1-B1
+        - generic: 9-A2
+        - generic: 9-A3
+        - generic: 桂花井
+        - generic: "10"
+        - generic: "11"
+        - generic: 11-A1
+        - generic: "12"
