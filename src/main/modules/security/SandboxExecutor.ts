@@ -161,6 +161,10 @@ class SandboxExecutor extends EventEmitter {
 
   /**
    * 验证命令是否允许执行
+   *
+   * 策略：只检查黑名单（deniedCommands），不检查白名单。
+   * 命令不在黑名单中即允许执行，与 terminalSandbox 的黑名单策略保持一致。
+   * 白名单（allowedCommands）字段保留用于配置兼容性，但不参与实际校验。
    */
   validateCommand(command: string, agentId?: string): SandboxValidationResult {
     if (!this.config.enabled) {
@@ -172,14 +176,9 @@ class SandboxExecutor extends EventEmitter {
     // 提取命令名
     const cmdName = this.extractCommandName(command)
 
-    // 检查黑名单
+    // 检查黑名单：命中即拒绝
     if (config.deniedCommands.includes(cmdName)) {
       return { allowed: false, reason: `Command is denied: ${cmdName}` }
-    }
-
-    // 如果有白名单，检查是否在白名单内
-    if (config.allowedCommands.length > 0 && !config.allowedCommands.includes(cmdName)) {
-      return { allowed: false, reason: `Command is not in allowed list: ${cmdName}` }
     }
 
     // 检查危险参数模式

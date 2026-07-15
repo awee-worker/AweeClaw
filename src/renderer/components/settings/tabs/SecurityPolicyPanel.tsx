@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react'
-import { AlertTriangle, Plus, X, RotateCcw, ShieldCheck, ShieldAlert, FolderLock, Ban } from 'lucide-react'
+import { AlertTriangle, Plus, X, RotateCcw, ShieldCheck, ShieldAlert, FolderLock, Ban, FolderPlus, FolderOpen } from 'lucide-react'
 import { ToggleSwitch } from '@components/ui'
 import { toast } from '@components/foundation/NotificationProvider'
 import { t, type Language } from '@renderer/i18n'
@@ -100,6 +100,36 @@ export function SecurityPolicyPanel({
         } catch (error) {
             toast.error(t('settings.failedtoresetwhitelist', language as Language), error instanceof Error ? error.message : String(error))
         }
+    }
+
+    /** 添加工作区外允许访问的目录 */
+    const handleAddExternalDir = async () => {
+        try {
+            const selectedDir = await api.file.selectFolder()
+            if (!selectedDir) return
+
+            const currentDirs = securitySettings.allowedExternalDirectories || []
+            if (currentDirs.includes(selectedDir)) {
+                toast.info(t('settings.directoryexists', language as Language))
+                return
+            }
+            updateSecuritySettings({
+                allowedExternalDirectories: [...currentDirs, selectedDir],
+            })
+        } catch (error) {
+            toast.error(
+                t('settings.failedtoadddirectory', language as Language),
+                error instanceof Error ? error.message : String(error),
+            )
+        }
+    }
+
+    /** 移除工作区外允许访问的目录 */
+    const handleRemoveExternalDir = (dir: string) => {
+        const currentDirs = securitySettings.allowedExternalDirectories || []
+        updateSecuritySettings({
+            allowedExternalDirectories: currentDirs.filter(d => d !== dir),
+        })
     }
 
     const handleIgnoredDirsChange = (value: string) => {
@@ -219,6 +249,62 @@ export function SecurityPolicyPanel({
                     />
                 </section>
             )}
+
+            {/* 工作区外允许访问的目录 */}
+            <section className="space-y-4 p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border shadow-sm">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <div className="p-1.5 bg-emerald-500/10 rounded-md text-emerald-400">
+                            <FolderOpen className="w-3.5 h-3.5" />
+                        </div>
+                        <h4 className="text-[12px] font-bold text-text-muted uppercase tracking-widest opacity-60">
+                            {t('settings.allowedexternaldirectories', language as Language)}
+                        </h4>
+                    </div>
+                    <button
+                        onClick={handleAddExternalDir}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/80 text-white rounded text-xs hover:bg-emerald-500 transition-colors"
+                    >
+                        <FolderPlus className="w-3.5 h-3.5" />
+                        {t('settings.adddirectory', language as Language)}
+                    </button>
+                </div>
+                <p className="text-xs text-text-secondary">
+                    {t('settings.allowedexternaldirectoriesdesc', language as Language)}
+                </p>
+                <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[11px]">
+                    <ShieldAlert className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    <p>{t('settings.allowedexternaldirectorieswarn', language as Language)}</p>
+                </div>
+                {(securitySettings.allowedExternalDirectories || []).length === 0 ? (
+                    <p className="text-xs text-text-muted italic py-2 text-center">
+                        {t('settings.nodirectories', language as Language)}
+                    </p>
+                ) : (
+                    <div className="space-y-2">
+                        {(securitySettings.allowedExternalDirectories || []).map(dir => (
+                            <div
+                                key={dir}
+                                className="flex items-center justify-between gap-2 px-3 py-2 bg-background/50 rounded-lg border border-border group"
+                            >
+                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                    <FolderOpen className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                    <span className="text-xs text-text-secondary truncate font-mono" title={dir}>
+                                        {dir}
+                                    </span>
+                                </div>
+                                <button
+                                    onClick={() => handleRemoveExternalDir(dir)}
+                                    className="text-text-muted hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                                    title={t('settings.remove', language as Language)}
+                                >
+                                    <X className="w-3.5 h-3.5" />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </section>
 
             {/* Shell 命令黑名单 */}
             <section className="space-y-4 p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border shadow-sm">

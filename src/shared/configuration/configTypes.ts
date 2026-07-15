@@ -179,6 +179,13 @@ export interface SecurityPolicyPanel {
   deniedShellCommands: string[]
   allowedGitSubcommands: string[]
   showSecurityWarnings: boolean
+  /**
+   * 工作区外允许访问的目录列表。
+   * 用户主动配置的额外可读写目录，这些目录及其子目录和文件不受工作区边界限制，
+   * 但仍受敏感路径检查约束（如 .ssh、.aws 等系统敏感目录仍被拒绝）。
+   * 适用于需要读取工作区外文件（如引用公共库、配置文件等）的场景。
+   */
+  allowedExternalDirectories?: string[]
 }
 
 export interface SearchEngineConfig {

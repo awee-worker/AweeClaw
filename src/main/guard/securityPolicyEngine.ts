@@ -81,7 +81,12 @@ export interface SecurityPolicyPanel {
   enablePermissionConfirm: boolean
   strictWorkspaceMode: boolean
   allowedShellCommands?: string[]
+  /** Shell 命令黑名单：命中即拒绝执行（实际生效的拦截策略） */
+  deniedShellCommands?: string[]
+  allowedGitSubcommands?: string[]
   showSecurityWarnings?: boolean
+  /** 工作区外允许访问的目录列表 */
+  allowedExternalDirectories?: string[]
 }
 
 interface SecurityModule {
@@ -132,7 +137,8 @@ const DEFAULT_PERMISSIONS: PermissionConfig = {
 }
 
 // 命令白名单（已统一到 constants.ts）
-const ALLOWED_SHELL_COMMANDS = new Set(SECURITY_DEFAULTS.SHELL_COMMANDS.map(cmd => cmd.toLowerCase()))
+// 默认 Shell 命令黑名单：与 SECURITY_DEFAULTS.DENIED_SHELL_COMMANDS 一致
+const DEFAULT_DENIED_SHELL_COMMANDS = new Set(SECURITY_DEFAULTS.DENIED_SHELL_COMMANDS.map(cmd => cmd.toLowerCase()))
 
 const ALLOWED_GIT_SUBCOMMANDS = new Set(SECURITY_DEFAULTS.GIT_SUBCOMMANDS.map(cmd => cmd.toLowerCase()))
 
@@ -147,6 +153,8 @@ class SecurityManager implements SecurityModule {
   private sessionStorage: Map<string, boolean> = new Map()
   private config: Partial<SecurityPolicyPanel> = {}
   private allowedAppPaths: string[] = []
+  /** 用户配置的工作区外允许访问目录（持久化在 securitySettings.allowedExternalDirectories） */
+  private allowedExternalDirs: string[] = []
 
   /**
    * 注册应用可信路径（如全局 Skills 目录）
@@ -169,6 +177,38 @@ class SecurityManager implements SecurityModule {
     return this.allowedAppPaths.some(allowed =>
       resolved === allowed || resolved.startsWith(allowed + path.sep)
     )
+  }
+
+  /**
+   * 设置用户配置的工作区外允许访问目录列表
+   * 这些目录及其子目录下的文件可读写，但仍受敏感路径检查约束
+   * @param dirs 目录绝对路径数组；传空数组清空列表
+   */
+  setAllowedExternalDirectories(dirs: string[]): void {
+    this.allowedExternalDirs = (dirs || [])
+      .map(d => path.resolve(d))
+      .filter(Boolean)
+    logger.security.info(`[Security] Allowed external directories updated:`, this.allowedExternalDirs)
+  }
+
+  /**
+   * 检查路径是否在用户配置的工作区外允许访问目录下
+   * 与 isAllowedAppPath 区别：isAllowedAppPath 用于应用内置可信路径（如 Skills 目录），
+   * isAllowedExternalDir 用于用户主动配置的额外可访问目录
+   */
+  isAllowedExternalDir(filePath: string): boolean {
+    if (this.allowedExternalDirs.length === 0) return false
+    const resolved = path.resolve(filePath)
+    return this.allowedExternalDirs.some(allowed =>
+      resolved === allowed || resolved.startsWith(allowed + path.sep)
+    )
+  }
+
+  /**
+   * 获取当前配置的工作区外允许访问目录列表
+   */
+  getAllowedExternalDirectories(): string[] {
+    return [...this.allowedExternalDirs]
   }
 
   /**
@@ -263,15 +303,29 @@ class SecurityManager implements SecurityModule {
 
   /**
    * 验证工作区边界
+   *
+   * 检查顺序：
+   * 1. 应用可信路径（isAllowedAppPath）：Skills 目录等内置可信路径，跳过工作区边界检查
+   * 2. 用户配置的外部目录（isAllowedExternalDir）：用户主动配置的额外可访问目录，跳过工作区边界检查
+   * 3. 严格工作区模式：未启用则允许所有路径（但仍检查敏感路径）
+   * 4. 工作区边界：路径必须在给定工作区内且非敏感路径
+   *
+   * 所有检查均保留敏感路径检查（isSensitivePath），确保 .ssh、.aws 等系统敏感目录始终被拒绝
    */
   validateWorkspacePath(filePath: string, workspace: string | string[]): boolean {
-    // 可信应用路径跳过工作区边界检查，但仍检查敏感路径
+    // 1. 可信应用路径跳过工作区边界检查，但仍检查敏感路径
     if (this.isAllowedAppPath(filePath)) {
       const resolvedPath = path.resolve(filePath)
       return !this.isSensitivePath(resolvedPath)
     }
 
-    // 如果未启用严格工作区模式，允许所有路径（但仍检查敏感路径）
+    // 2. 用户配置的工作区外允许访问目录，跳过工作区边界检查，但仍检查敏感路径
+    if (this.isAllowedExternalDir(filePath)) {
+      const resolvedPath = path.resolve(filePath)
+      return !this.isSensitivePath(resolvedPath)
+    }
+
+    // 3. 如果未启用严格工作区模式，允许所有路径（但仍检查敏感路径）
     if (this.config.strictWorkspaceMode === false) {
       const resolvedPath = path.resolve(filePath)
       return !this.isSensitivePath(resolvedPath)
@@ -308,24 +362,36 @@ class SecurityManager implements SecurityModule {
   }
 
   /**
-   * 检查允许的命令
+   * 检查命令是否允许执行
+   *
+   * 策略：
+   * - git 类型：使用白名单策略（ALLOWED_GIT_SUBCOMMANDS），Git 子命令必须明确允许
+   * - shell 类型：使用黑名单策略（deniedShellCommands），命令不在黑名单中即允许
+   *
+   * 这与项目安全约定一致：Shell 命令使用黑名单拦截危险命令，不使用白名单限制。
+   * allowedShellCommands 字段保留用于配置兼容性，但不参与实际校验。
    */
   isAllowedCommand(command: string, type: 'shell' | 'git'): boolean {
     const parts = command.trim().split(/\s+/)
     const baseCommand = normalizeCommandName(parts[0] || '')
 
     if (type === 'git') {
+      // Git 子命令使用白名单策略（不变）
       const subCommand = normalizeCommandName(parts[1] || '')
       return ALLOWED_GIT_SUBCOMMANDS.has(subCommand)
     }
 
     if (type === 'shell') {
-      if (this.config.allowedShellCommands && Array.isArray(this.config.allowedShellCommands)) {
-        return this.config.allowedShellCommands
-          .map(cmd => normalizeCommandName(cmd))
-          .includes(baseCommand)
+      // Shell 命令使用黑名单策略：不在黑名单中即允许
+      const deniedCommands = this.config.deniedShellCommands
+      if (Array.isArray(deniedCommands) && deniedCommands.length > 0) {
+        const normalizedDenied = deniedCommands.map(cmd => normalizeCommandName(cmd))
+        if (normalizedDenied.includes(baseCommand)) {
+          return false
+        }
       }
-      return ALLOWED_SHELL_COMMANDS.has(baseCommand)
+      // 未配置黑名单时，使用默认黑名单兜底
+      return !DEFAULT_DENIED_SHELL_COMMANDS.has(baseCommand)
     }
 
     return false

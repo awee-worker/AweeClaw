@@ -139,6 +139,13 @@ export function registerSettingsHandlers(
             ? securitySettings.deniedShellCommands
             : SECURITY_DEFAULTS.DENIED_SHELL_COMMANDS
         securityRef.updateBlacklist(deniedShellCommands)
+
+        // 工作区外允许访问目录同步（用户主动配置的额外可访问目录）
+        const allowedExternalDirs =
+          Array.isArray(securitySettings?.allowedExternalDirectories)
+            ? securitySettings.allowedExternalDirectories
+            : []
+        securityRef.securityManager.setAllowedExternalDirectories(allowedExternalDirs)
       }
 
       return true
