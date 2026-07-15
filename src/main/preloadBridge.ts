@@ -47,6 +47,7 @@ import { createScenarioApi } from './preload/api/scenario'
 import { createDebugMiscApi } from './preload/api/debugMisc'
 import { createDesktopApi } from './preload/api/desktop'
 import { createPluginApi } from './preload/api/plugin'
+import { createClipboardApi } from './preload/api/clipboard'
 
 /**
  * 聚合所有领域 API 并暴露到渲染进程。
@@ -69,4 +70,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   ...createDebugMiscApi(),
   ...createDesktopApi(),
   ...createPluginApi(),
+  ...createClipboardApi(),
 })

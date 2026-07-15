@@ -36,6 +36,16 @@ interface AuditEntry {
   details?: Record<string, unknown>
 }
 
+interface ClipboardFileAttachment {
+  path: string
+  name: string
+  ext: string
+  mimeType: string
+  base64: string
+  isImage: boolean
+  size: number
+}
+
 interface AuditQueryFilter {
   pipelineId?: string
   action?: string
@@ -420,6 +430,11 @@ export interface ElectronAPI {
   onSearchResults: (callback: (searchId: string, results: SearchFileResult[]) => void) => () => void
   onSearchDone: (callback: (searchId: string) => void) => () => void
   onFileChanged: (callback: (event: { event: 'create' | 'update' | 'delete'; path: string }) => void) => () => void
+
+  // Clipboard
+  getClipboardFilePaths: () => Promise<string[]>
+  hasClipboardFiles: () => Promise<boolean>
+  getClipboardFileAttachments: () => Promise<ClipboardFileAttachment[]>
 
   // Settings
   getSetting: (key: string) => Promise<unknown>

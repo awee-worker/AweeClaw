@@ -82,6 +82,9 @@ import { registerSessionLifecycleHandlers } from '../session/sessionLifecycle'
 // ── plugin ──────────────────────────────────────────────
 import { registerPluginHandlers } from '../plugin/pluginBridge'
 
+// ── clipboard ───────────────────────────────────────────
+import { registerClipboardHandlers } from '../system/clipboardService'
+
 // 安全模块（guard 目录）
 import {
   securityManager,
@@ -286,6 +289,9 @@ export function registerAllHandlers(context: IPCContext) {
 
   // 插件系统
   registerOnce('plugin', () => registerPluginHandlers({ getMainWindow }))
+
+  // 剪贴板服务（读取原生剪贴板文件路径，用于粘贴文件到聊天）
+  registerOnce('clipboard', () => registerClipboardHandlers())
 
   logger.ipc.info(`[Security] 所有安全IPC处理器已注册 (${registeredHandlers.size} 个)`)
 }

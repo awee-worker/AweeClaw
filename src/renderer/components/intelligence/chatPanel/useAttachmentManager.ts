@@ -95,19 +95,118 @@ export function useAttachmentManager({ workspacePath, addContextItem }: UseAttac
     [],
   )
 
-  /** 粘贴事件处理 */
+  /**
+   * 粘贴事件处理
+   *
+   * 三层检测策略：
+   * 1. 同步：clipboardData.items 中的 file kind（图片 + Electron File.path 扩展）
+   * 2. 同步：clipboardData.files（FileList，Electron 有时直接暴露）
+   * 3. 异步：原生剪贴板 IPC（macOS Finder / Windows Explorer 复制的非图片文件）
+   *
+   * 对于第 3 层，先同步 preventDefault 阻止文件名文本插入，
+   * 再异步 IPC 读取文件路径；若无文件则回退恢复文本。
+   */
   const handlePaste = useCallback(
-    (e: React.ClipboardEvent) => {
+    async (e: React.ClipboardEvent) => {
       const items = e.clipboardData.items
+      const pastedText = e.clipboardData.getData('text/plain')
+
+      // ── 层 1：clipboardData.items 中的 file kind ──
+      let handledFile = false
       for (const item of items) {
-        if (item.type.startsWith('image/')) {
-          e.preventDefault()
-          const file = item.getAsFile()
-          if (file) addImage(file)
+        if (item.kind !== 'file') continue
+        const file = item.getAsFile()
+        if (!file) continue
+
+        if (file.type.startsWith('image/')) {
+          // 图片：直接添加
+          if (!handledFile) e.preventDefault()
+          addImage(file)
+          handledFile = true
+        } else if ((file as any).path) {
+          // Electron 扩展：非图片 File 对象附带 path 属性
+          if (!handledFile) e.preventDefault()
+          await addImageFromPath((file as any).path)
+          handledFile = true
+        }
+      }
+      if (handledFile) return
+
+      // ── 层 2：clipboardData.files（FileList，Electron 有时直接暴露） ──
+      const fileList = e.clipboardData.files
+      if (fileList && fileList.length > 0) {
+        let handledAny = false
+        for (let i = 0; i < fileList.length; i++) {
+          const file = fileList[i]
+          const filePath = (file as any).path
+          if (filePath) {
+            if (!handledAny) e.preventDefault()
+            await addImageFromPath(filePath)
+            handledAny = true
+          } else if (file.type.startsWith('image/')) {
+            if (!handledAny) e.preventDefault()
+            addImage(file)
+            handledAny = true
+          }
+        }
+        if (handledAny) return
+      }
+
+      // ── 层 3：原生剪贴板 IPC（macOS Finder / Windows Explorer 复制文件） ──
+      // 当从 Finder/Explorer 复制非图片文件时，clipboardData 可能：
+      // - macOS Finder：完全无 text/plain 数据（只有 public.file-url），pastedText 为空
+      // - 部分 Windows 场景：仅含文件名文本
+      // 因此在以下两种情况都触发 IPC 检测：
+      //   a) pastedText 为空（macOS Finder 典型场景）
+      //   b) pastedText 看起来像文件名（单行、短、非 URL）
+      const looksLikeFilename =
+        pastedText &&
+        !pastedText.includes('\n') &&
+        pastedText.length < 256 &&
+        !pastedText.startsWith('http')
+
+      // 无文本数据 或 文本像文件名 → 触发原生剪贴板检测
+      const shouldCheckNativeClipboard = !pastedText || !!looksLikeFilename
+
+      if (shouldCheckNativeClipboard) {
+        // 同步 preventDefault 阻止文件名文本插入（或空文本的默认行为）
+        e.preventDefault()
+
+        try {
+          // 直接读取文件附件数据（base64 + 元信息）
+          // 使用专用 clipboard:getFileAttachments handler，绕过工作区安全检查
+          // （用户主动粘贴是明确意图，不应被工作区边界限制）
+          const attachments = await api.clipboard?.getFileAttachments?.()
+          if (attachments && attachments.length > 0) {
+            for (const att of attachments) {
+              const id = crypto.randomUUID()
+              const dataUrl = `data:${att.mimeType};base64,${att.base64}`
+              setImages(prev => [
+                ...prev,
+                {
+                  id,
+                  file: new File([], att.name, { type: att.mimeType }),
+                  previewUrl: att.isImage ? dataUrl : undefined,
+                  base64: att.base64,
+                  isImage: att.isImage,
+                },
+              ])
+            }
+            return // 文件已添加为附件，文本已被阻止
+          }
+        } catch (err) {
+          logger.ui.warn('[AttachmentManager] Clipboard IPC failed:', err)
+        }
+
+        // 回退：未发现文件，恢复文本粘贴
+        // execCommand('insertText') 在 Chromium/Electron 中可用，会触发 input 事件
+        // pastedText 为空时无需恢复
+        if (pastedText) {
+          document.execCommand('insertText', false, pastedText)
         }
       }
     },
-    [addImage],
+    [addImage, addImageFromPath],
   )
 
   /** 拖拽进入 */

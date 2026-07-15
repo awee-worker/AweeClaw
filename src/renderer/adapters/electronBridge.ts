@@ -394,6 +394,13 @@ function createGroupedAPI() {
       onChanged: (callback: Parameters<typeof raw.onFileChanged>[0]) => raw.onFileChanged(callback),
     },
 
+    // 剪贴板
+    clipboard: {
+      getFilePaths: () => raw.getClipboardFilePaths(),
+      hasFiles: () => raw.hasClipboardFiles(),
+      getFileAttachments: () => raw.getClipboardFileAttachments(),
+    },
+
     // 工作区
     workspace: {
       open: () => raw.openWorkspace(),
