@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronDown, Check, Search, Cloud, CloudOff } from 'lucide-react'
+import { ChevronDown, Check, Search, Cloud, Puzzle } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { BUILTIN_PROVIDERS, getBuiltinProvider } from '@shared/configuration/aiProviders'
@@ -280,28 +280,28 @@ export default function ModelSelector({ className = '', alignLeft = false, disab
         <div
           ref={dropdownRef}
           style={dropdownStyle}
-          className="flex flex-col bg-surface border border-border rounded-xl shadow-2xl z-[9999] animate-scale-in overflow-hidden"
+          className="flex flex-col bg-surface border border-border min-w-[200px] rounded-xl shadow-2xl z-[9999] animate-scale-in overflow-hidden"
         >
           {/* Tab 切换栏 */}
           <div className="flex items-center gap-1 px-2 pt-2 pb-1 border-b border-border/50 shrink-0">
             <button
               onClick={() => handleTabSwitch('local')}
               className={`
-                flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all
+                flex flex-1 items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all
                 ${activeTab === 'local'
                   ? 'bg-surface-active text-text-primary'
                   : 'text-text-muted hover:text-text-secondary hover:bg-surface-hover'
                 }
               `}
             >
-              <CloudOff className="w-3.5 h-3.5" />
+              <Puzzle className="w-3.5 h-3.5" />
               <span>自定义</span>
             </button>
             <button
               onClick={() => handleTabSwitch('cloud')}
               disabled={!isAuthenticated}
               className={`
-                flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all
+                flex flex-1 items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all
                 ${activeTab === 'cloud'
                   ? 'bg-surface-active text-text-primary'
                   : 'text-text-muted hover:text-text-secondary hover:bg-surface-hover'
