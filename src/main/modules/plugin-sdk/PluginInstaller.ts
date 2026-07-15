@@ -1191,7 +1191,9 @@ export class PluginInstaller {
       ? Object.fromEntries(
           Object.entries(mcpConfig.env).map(([k, v]) => [k, this.resolveTemplateString(v, configValues) ?? v])
         )
-      : undefined
+      : Object.keys(configValues).length > 0
+        ? { ...configValues }
+        : undefined
     const url = mcpConfig.url ? this.resolveTemplateString(mcpConfig.url, configValues) : undefined
 
     const serverId = `plugin:${plugin.pluginKey}`

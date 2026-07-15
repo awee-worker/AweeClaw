@@ -45,7 +45,7 @@ const PlainCode: React.FC<{ code: string; fontSize: number; className?: string; 
     }
     return (
       <pre
-        className={`!bg-transparent !p-4 !m-0 custom-scrollbar leading-relaxed font-mono ${className || ''}`}
+        className={`!bg-transparent !p-4 !m-0 custom-scrollbar overflow-x-auto leading-relaxed font-mono ${className || ''}`}
         style={{ fontSize: `${fontSize}px`, tabSize: 2 }}
       >
         <code>{code}</code>
@@ -75,7 +75,7 @@ const HighlightedCode: React.FC<{
   }
   return (
     <div
-      className={`!bg-transparent !p-4 !m-0 custom-scrollbar leading-relaxed font-mono [&>pre]:!bg-transparent [&>pre]:!m-0 [&>pre]:!p-0 [&>pre]:!text-[inherit] [&_code]:!font-mono ${className || ''}`}
+      className={`!bg-transparent !p-4 !m-0 custom-scrollbar overflow-x-auto leading-relaxed font-mono [&>pre]:!bg-transparent [&>pre]:!m-0 [&>pre]:!p-0 [&>pre]:!text-[inherit] [&_code]:!font-mono ${className || ''}`}
       style={{ fontSize: `${fontSize}px` }}
       dangerouslySetInnerHTML={{ __html: html }}
     />
