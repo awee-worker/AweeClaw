@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react'
-import { AlertTriangle, Plus, X, RotateCcw, ShieldCheck, ShieldAlert, FolderLock } from 'lucide-react'
+import { AlertTriangle, Plus, X, RotateCcw, ShieldCheck, ShieldAlert, FolderLock, Ban } from 'lucide-react'
 import { ToggleSwitch } from '@components/ui'
 import { toast } from '@components/foundation/NotificationProvider'
 import { t, type Language } from '@renderer/i18n'
@@ -61,9 +61,9 @@ export function SecurityPolicyPanel({
 
     const handleAddShellCommand = () => {
         const cmd = newShellCmd.trim().toLowerCase()
-        if (cmd && !securitySettings.allowedShellCommands.includes(cmd)) {
+        if (cmd && !(securitySettings.deniedShellCommands || []).includes(cmd)) {
             updateSecuritySettings({
-                allowedShellCommands: [...securitySettings.allowedShellCommands, cmd],
+                deniedShellCommands: [...(securitySettings.deniedShellCommands || []), cmd],
             })
             setNewShellCmd('')
         }
@@ -71,7 +71,7 @@ export function SecurityPolicyPanel({
 
     const handleRemoveShellCommand = (cmd: string) => {
         updateSecuritySettings({
-            allowedShellCommands: securitySettings.allowedShellCommands.filter(item => item !== cmd),
+            deniedShellCommands: (securitySettings.deniedShellCommands || []).filter(item => item !== cmd),
         })
     }
 
@@ -91,12 +91,11 @@ export function SecurityPolicyPanel({
         })
     }
 
-    const handleResetWhitelist = async () => {
+    const handleResetBlacklist = async () => {
         try {
-            const result = await api.settings.resetWhitelist()
+            const result = await api.settings.resetBlacklist()
             updateSecuritySettings({
-                allowedShellCommands: result.shell,
-                allowedGitSubcommands: result.git,
+                deniedShellCommands: result.shell,
             })
         } catch (error) {
             toast.error(t('settings.failedtoresetwhitelist', language as Language), error instanceof Error ? error.message : String(error))
@@ -221,14 +220,19 @@ export function SecurityPolicyPanel({
                 </section>
             )}
 
-            {/* Shell 命令白名单 */}
+            {/* Shell 命令黑名单 */}
             <section className="space-y-4 p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border shadow-sm">
                 <div className="flex items-center justify-between">
-                    <h4 className="text-[12px] font-bold text-text-muted uppercase tracking-widest opacity-60">
-                        {t('settings.shellcommandwhitelist', language as Language)}
-                    </h4>
+                    <div className="flex items-center gap-2">
+                        <div className="p-1.5 bg-red-500/10 rounded-md text-red-400">
+                            <Ban className="w-3.5 h-3.5" />
+                        </div>
+                        <h4 className="text-[12px] font-bold text-text-muted uppercase tracking-widest opacity-60">
+                            {t('settings.shellcommandwhitelist', language as Language)}
+                        </h4>
+                    </div>
                     <button
-                        onClick={handleResetWhitelist}
+                        onClick={handleResetBlacklist}
                         className="flex items-center gap-1 text-xs text-text-secondary hover:text-text-primary transition-colors"
                         title={t('settings.resettodefaults', language as Language)}
                     >
@@ -240,10 +244,10 @@ export function SecurityPolicyPanel({
                     {t('settings.onlycommandsinthislist', language as Language)}
                 </p>
                 <div className="flex flex-wrap gap-2">
-                    {securitySettings.allowedShellCommands.map(cmd => (
-                        <span key={cmd} className="inline-flex items-center gap-1 px-2 py-1 bg-surface rounded text-xs text-text-secondary border border-border">
+                    {(securitySettings.deniedShellCommands || []).map(cmd => (
+                        <span key={cmd} className="inline-flex items-center gap-1 px-2 py-1 bg-red-500/10 rounded text-xs text-red-400 border border-red-500/20">
                             {cmd}
-                            <button onClick={() => handleRemoveShellCommand(cmd)} className="hover:text-red-400 transition-colors">
+                            <button onClick={() => handleRemoveShellCommand(cmd)} className="hover:text-red-300 transition-colors">
                                 <X className="w-3 h-3" />
                             </button>
                         </span>
@@ -256,12 +260,12 @@ export function SecurityPolicyPanel({
                         onChange={(e) => setNewShellCmd(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleAddShellCommand()}
                         placeholder={t('settings.addcommand', language as Language)}
-                        className="flex-1 px-3 py-1.5 bg-surface border border-border rounded text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent"
+                        className="flex-1 px-3 py-1.5 bg-surface border border-border rounded text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-red-400/50"
                     />
                     <button
                         onClick={handleAddShellCommand}
                         disabled={!newShellCmd.trim()}
-                        className="px-3 py-1.5 bg-accent text-white rounded text-sm hover:bg-accent/80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        className="px-3 py-1.5 bg-red-500/80 text-white rounded text-sm hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                         <Plus className="w-4 h-4" />
                     </button>

@@ -78,7 +78,13 @@ export function hasPathTraversal(path: string): boolean {
   return DANGEROUS_PATH_PATTERNS.some(pattern => pattern.test(path))
 }
 
-/** 允许的 Shell 命令（安全白名单） */
+/**
+ * Shell 命令安全配置
+ *
+ * - SHELL_COMMANDS: 旧版白名单（保留以兼容已安装版本，不再用于校验）
+ * - DENIED_SHELL_COMMANDS: 黑名单默认值，命中即禁止执行
+ * - GIT_SUBCOMMANDS: Git 子命令白名单（仍用于 git:execSecure 校验）
+ */
 export const SECURITY_DEFAULTS = {
   SHELL_COMMANDS: [
     'npm', 'yarn', 'pnpm', 'bun',
@@ -91,6 +97,18 @@ export const SECURITY_DEFAULTS = {
     'make', 'gcc', 'clang', 'cmake',
     'pwd', 'ls', 'dir', 'cat', 'type', 'echo', 'mkdir', 'touch', 'rm', 'mv', 'cp', 'cd',
     'open', 'find',
+  ],
+  // 默认 Shell 命令黑名单：仅包含具有破坏性/提权/系统级影响的命令。
+  // 注意：curl/wget 等网络命令不放入默认黑名单（已由 DANGEROUS_PATTERNS 防御 curl|sh 等危险用法）
+  DENIED_SHELL_COMMANDS: [
+    // 'rm', 'rmdir', 'del', 'erase',   // 删除
+    'format', 'mkfs', 'fdisk',        // 磁盘格式化
+    // 'sudo', 'su', 'doas',             // 提权
+    // 'chmod', 'chown', 'chattr',       // 权限变更
+    'shutdown', 'reboot', 'halt', 'poweroff',  // 关机重启
+    'dd',                              // 块设备读写
+    // 'systemctl', 'service',            // 系统服务控制
+    // 'crontab',                         // 计划任务修改
   ],
   GIT_SUBCOMMANDS: [
     'status', 'log', 'diff', 'show', 'ls-files', 'rev-parse', 'rev-list', 'blame',

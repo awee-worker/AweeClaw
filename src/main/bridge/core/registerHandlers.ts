@@ -91,6 +91,8 @@ import {
   cleanupTerminals,
   updateWhitelist,
   getWhitelist,
+  updateBlacklist,
+  getBlacklist,
 } from '../../guard/index'
 // 上下文类型
 export interface IPCContext {
@@ -167,7 +169,9 @@ export function registerAllHandlers(context: IPCContext) {
   registerOnce('settings', () => registerSettingsHandlers(resolveStore, preferencesStore, bootstrapStore, {
     securityManager,
     updateWhitelist,
-    getWhitelist
+    getWhitelist,
+    updateBlacklist,
+    getBlacklist,
   }))
 
   // 终端（安全版）- 传入窗口工作区获取函数实现多窗口隔离

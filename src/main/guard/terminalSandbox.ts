@@ -46,13 +46,18 @@ interface CommandWhitelist {
   git: Set<string>
 }
 
-// 白名单配置（已统一到 constants.ts）
+// 旧版白名单配置（保留以兼容已安装版本；shell 部分不再用于校验，仅 git 部分仍生效）
 let WHITELIST: CommandWhitelist = {
   shell: new Set(SECURITY_DEFAULTS.SHELL_COMMANDS.map(cmd => cmd.toLowerCase())),
   git: new Set(SECURITY_DEFAULTS.GIT_SUBCOMMANDS.map(cmd => cmd.toLowerCase())),
 }
 
-// 更新白名单配置
+// Shell 命令黑名单：命中即拒绝执行（AI 执行 Shell 命令时实际生效的拦截策略）
+let BLACKLIST: Set<string> = new Set(
+  SECURITY_DEFAULTS.DENIED_SHELL_COMMANDS.map(cmd => cmd.toLowerCase())
+)
+
+// 更新白名单配置（保留以兼容旧调用方；shell 部分实际不再用于校验）
 export function updateWhitelist(shellCommands: string[], gitCommands: string[]) {
   WHITELIST.shell = new Set(shellCommands.map(cmd => cmd.toLowerCase()))
   WHITELIST.git = new Set(gitCommands.map(cmd => cmd.toLowerCase()))
@@ -67,6 +72,21 @@ export function getWhitelist() {
   return {
     shell: Array.from(WHITELIST.shell),
     git: Array.from(WHITELIST.git)
+  }
+}
+
+// 更新 Shell 命令黑名单
+export function updateBlacklist(deniedShellCommands: string[]) {
+  BLACKLIST = new Set(deniedShellCommands.map(cmd => cmd.toLowerCase()))
+  logger.security.info('[Security] Shell blacklist updated:', {
+    denied: Array.from(BLACKLIST)
+  })
+}
+
+// 获取当前 Shell 命令黑名单
+export function getBlacklist() {
+  return {
+    shell: Array.from(BLACKLIST),
   }
 }
 
@@ -161,37 +181,41 @@ interface SecurityCheckResult {
 }
 
 /**
- * 安全命令解析器
- */
-class SecureCommandParser {
-  private static normalizeCommandForWhitelist(baseCommand: string): string {
-    const normalized = path.basename(baseCommand).toLowerCase()
-    if (process.platform === 'win32') {
-      return normalized.replace(/\.(cmd|bat|exe)$/i, '')
-    }
-    return normalized
-  }
-
-  /**
-   * 验证命令是否在白名单中
+   * 安全命令解析器
    */
-  static validateCommand(baseCommand: string, type: 'shell' | 'git'): SecurityCheckResult {
-    const normalizedCommand = this.normalizeCommandForWhitelist(baseCommand)
+  class SecureCommandParser {
+    private static normalizeCommandForWhitelist(baseCommand: string): string {
+      const normalized = path.basename(baseCommand).toLowerCase()
+      if (process.platform === 'win32') {
+        return normalized.replace(/\.(cmd|bat|exe)$/i, '')
+      }
+      return normalized
+    }
 
-    if (type === 'git') {
-      const allowed = WHITELIST.git.has(normalizedCommand)
+    /**
+     * 验证命令是否允许执行
+     *
+     * - type='shell': 黑名单校验，命中黑名单即拒绝；否则放行
+     * - type='git':   白名单校验，未命中白名单即拒绝
+     */
+    static validateCommand(baseCommand: string, type: 'shell' | 'git'): SecurityCheckResult {
+      const normalizedCommand = this.normalizeCommandForWhitelist(baseCommand)
+
+      if (type === 'git') {
+        const allowed = WHITELIST.git.has(normalizedCommand)
+        return {
+          safe: allowed,
+          reason: allowed ? undefined : `Git子命令"${baseCommand}"不在白名单中`,
+        }
+      }
+
+      // Shell 命令：黑名单校验
+      const denied = BLACKLIST.has(normalizedCommand)
       return {
-        safe: allowed,
-        reason: allowed ? undefined : `Git子命令"${baseCommand}"不在白名单中`,
+        safe: !denied,
+        reason: denied ? `Shell命令"${baseCommand}"在黑名单中，禁止执行` : undefined,
       }
     }
-
-    const allowed = WHITELIST.shell.has(normalizedCommand)
-    return {
-      safe: allowed,
-      reason: allowed ? undefined : `Shell命令"${baseCommand}"不在白名单中`,
-    }
-  }
 
   /**
    * 检测危险命令模式
@@ -309,14 +333,14 @@ export function registerSecureTerminalHandlers(
       return { success: false, error: dangerousCheck.reason }
     }
 
-    // 3. 白名单验证
+    // 3. 黑名单验证（Shell 命令采用黑名单策略：命中即拒绝）
     const baseCommand = command.toLowerCase()
-    const whitelistCheck = SecureCommandParser.validateCommand(baseCommand, 'shell')
-    if (!whitelistCheck.safe) {
+    const blacklistCheck = SecureCommandParser.validateCommand(baseCommand, 'shell')
+    if (!blacklistCheck.safe) {
       securityManager.logOperation(OperationType.SHELL_EXECUTE, fullCommand, false, {
-        reason: whitelistCheck.reason,
+        reason: blacklistCheck.reason,
       })
-      return { success: false, error: whitelistCheck.reason }
+      return { success: false, error: blacklistCheck.reason }
     }
 
     // 3.5. args 注入字符检测（防止通过参数注入 shell 特殊字符）

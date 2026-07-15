@@ -415,6 +415,8 @@ function createGroupedAPI() {
       setConfigPath: (path: string) => raw.setConfigPath(path),
       getWhitelist: () => raw.getWhitelist(),
       resetWhitelist: () => raw.resetWhitelist(),
+      getBlacklist: () => raw.getBlacklist(),
+      resetBlacklist: () => raw.resetBlacklist(),
       getUserDataPath: () => raw.getUserDataPath(),
       getAppConfig: () => raw.getAppConfig(),
       getRecentLogs: () => raw.getRecentLogs(),

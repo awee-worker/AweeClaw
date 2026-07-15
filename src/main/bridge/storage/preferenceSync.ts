@@ -20,6 +20,10 @@ interface SecurityModuleRef {
   securityManager: any
   updateWhitelist: (shell: string[], git: string[]) => void
   getWhitelist: () => { shell: string[]; git: string[] }
+  /** 更新 Shell 命令黑名单 */
+  updateBlacklist: (deniedShellCommands: string[]) => void
+  /** 获取当前 Shell 命令黑名单 */
+  getBlacklist: () => { shell: string[] }
 }
 
 const RECENT_LOG_MAX_BYTES = 1024 * 1024
@@ -113,10 +117,12 @@ export function registerSettingsHandlers(
           enablePermissionConfirm: true,
           strictWorkspaceMode: true,
           allowedShellCommands: SECURITY_DEFAULTS.SHELL_COMMANDS,
+          deniedShellCommands: SECURITY_DEFAULTS.DENIED_SHELL_COMMANDS,
           allowedGitSubcommands: SECURITY_DEFAULTS.GIT_SUBCOMMANDS,
         }
         securityRef.securityManager.updateConfig(securitySettings ?? defaults)
 
+        // 旧版白名单同步（保留以兼容已安装版本；shell 部分不再用于校验）
         const shellCommands =
           securitySettings?.allowedShellCommands != null
             ? securitySettings.allowedShellCommands
@@ -126,6 +132,13 @@ export function registerSettingsHandlers(
             ? securitySettings.allowedGitSubcommands
             : SECURITY_DEFAULTS.GIT_SUBCOMMANDS
         securityRef.updateWhitelist(shellCommands, gitCommands)
+
+        // 黑名单同步（AI 执行 Shell 命令时实际生效的拦截策略）
+        const deniedShellCommands =
+          securitySettings?.deniedShellCommands != null
+            ? securitySettings.deniedShellCommands
+            : SECURITY_DEFAULTS.DENIED_SHELL_COMMANDS
+        securityRef.updateBlacklist(deniedShellCommands)
       }
 
       return true
@@ -145,20 +158,51 @@ export function registerSettingsHandlers(
   ipcMain.handle('settings:resetWhitelist', () => {
     const defaultShellCommands = [...SECURITY_DEFAULTS.SHELL_COMMANDS]
     const defaultGitCommands = [...SECURITY_DEFAULTS.GIT_SUBCOMMANDS]
+    const defaultDeniedShellCommands = [...SECURITY_DEFAULTS.DENIED_SHELL_COMMANDS]
 
     if (securityRef) {
+      // 旧版白名单（仍同步以便兼容已安装版本配置）
       securityRef.updateWhitelist(defaultShellCommands, defaultGitCommands)
+      // 黑名单也一并重置为默认值（UI 上的"重置"按钮会触发此 IPC）
+      securityRef.updateBlacklist(defaultDeniedShellCommands)
     }
 
     const currentSecuritySettings = preferencesStore.get('securitySettings', {}) as any
     const newSecuritySettings = {
       ...currentSecuritySettings,
       allowedShellCommands: defaultShellCommands,
+      deniedShellCommands: defaultDeniedShellCommands,
       allowedGitSubcommands: defaultGitCommands,
     }
     preferencesStore.set('securitySettings', newSecuritySettings)
 
     return { shell: defaultShellCommands, git: defaultGitCommands }
+  })
+
+  // 获取当前 Shell 命令黑名单
+  ipcMain.handle('settings:getBlacklist', () => {
+    if (!securityRef) {
+      return { shell: [] }
+    }
+    return securityRef.getBlacklist()
+  })
+
+  // 重置 Shell 命令黑名单为默认值
+  ipcMain.handle('settings:resetBlacklist', () => {
+    const defaultDeniedShellCommands = [...SECURITY_DEFAULTS.DENIED_SHELL_COMMANDS]
+
+    if (securityRef) {
+      securityRef.updateBlacklist(defaultDeniedShellCommands)
+    }
+
+    const currentSecuritySettings = preferencesStore.get('securitySettings', {}) as any
+    const newSecuritySettings = {
+      ...currentSecuritySettings,
+      deniedShellCommands: defaultDeniedShellCommands,
+    }
+    preferencesStore.set('securitySettings', newSecuritySettings)
+
+    return { shell: defaultDeniedShellCommands }
   })
 
   ipcMain.handle('settings:getConfigPath', () => {

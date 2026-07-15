@@ -170,7 +170,13 @@ export interface EditorConfig {
 export interface SecurityPolicyPanel {
   enablePermissionConfirm: boolean
   strictWorkspaceMode: boolean
+  /**
+   * 旧版 Shell 命令白名单（保留以兼容已安装版本，不再用于实际校验）。
+   * AI 执行 Shell 命令时改由 deniedShellCommands 黑名单拦截。
+   */
   allowedShellCommands: string[]
+  /** Shell 命令黑名单：命中即拒绝执行（AI 执行 Shell 命令时实际生效的拦截策略） */
+  deniedShellCommands: string[]
   allowedGitSubcommands: string[]
   showSecurityWarnings: boolean
 }

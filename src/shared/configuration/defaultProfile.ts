@@ -250,6 +250,17 @@ export const SECURITY_SETTINGS_DEFAULTS = {
     'make', 'gcc', 'clang', 'cmake', 'eslint', 'tsc',
     'git',
   ],
+  // Shell 命令黑名单默认值：命中即拒绝执行
+  deniedShellCommands: [
+    'rm', 'rmdir', 'del', 'erase',
+    'format', 'mkfs', 'fdisk',
+    'sudo', 'su', 'doas',
+    'chmod', 'chown', 'chattr',
+    'shutdown', 'reboot', 'halt', 'poweroff',
+    'dd',
+    'systemctl', 'service',
+    'crontab',
+  ],
   allowedGitSubcommands: [
     'status', 'log', 'diff', 'show', 'ls-files', 'rev-parse', 'rev-list', 'blame',
     'add', 'commit', 'reset', 'restore',

@@ -429,6 +429,8 @@ export interface ElectronAPI {
   onSettingsChanged: (callback: (event: { key: string; value: unknown }) => void) => () => void
   getWhitelist: () => Promise<{ shell: string[]; git: string[] }>
   resetWhitelist: () => Promise<{ shell: string[]; git: string[] }>
+  getBlacklist: () => Promise<{ shell: string[] }>
+  resetBlacklist: () => Promise<{ shell: string[] }>
   getUserDataPath: () => Promise<string>
   getAppConfig: () => Promise<{ serverUrl: string } | null>
   getRecentLogs: () => Promise<string>

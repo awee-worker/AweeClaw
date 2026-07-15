@@ -187,6 +187,7 @@ const defaultSecuritySettings: SecurityPolicyPanel = {
   enablePermissionConfirm: SECURITY_SETTINGS_DEFAULTS.enablePermissionConfirm,
   strictWorkspaceMode: SECURITY_SETTINGS_DEFAULTS.strictWorkspaceMode,
   allowedShellCommands: [...SECURITY_SETTINGS_DEFAULTS.allowedShellCommands],
+  deniedShellCommands: [...SECURITY_SETTINGS_DEFAULTS.deniedShellCommands],
   allowedGitSubcommands: [...SECURITY_SETTINGS_DEFAULTS.allowedGitSubcommands],
   showSecurityWarnings: SECURITY_SETTINGS_DEFAULTS.showSecurityWarnings,
 }

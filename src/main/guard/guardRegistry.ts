@@ -26,5 +26,5 @@ export {
   type ScenarioPermissionPolicy,
   type SecurityEvent,
 } from './securityPolicyEngine'
-export { registerSecureTerminalHandlers, cleanupTerminals, updateWhitelist, getWhitelist } from './terminalSandbox'
+export { registerSecureTerminalHandlers, cleanupTerminals, updateWhitelist, getWhitelist, updateBlacklist, getBlacklist } from './terminalSandbox'
 export { registerSecureFileHandlers, cleanupSecureFileWatcher } from './filePermissionGuard'

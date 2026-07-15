@@ -81,18 +81,25 @@ export async function initializeModules(firstWin: BrowserWindow): Promise<void> 
     enablePermissionConfirm: true,
     strictWorkspaceMode: true,
     allowedShellCommands: [...SECURITY_DEFAULTS.SHELL_COMMANDS],
+    deniedShellCommands: [...SECURITY_DEFAULTS.DENIED_SHELL_COMMANDS],
     allowedGitSubcommands: [...SECURITY_DEFAULTS.GIT_SUBCOMMANDS],
   }) as {
     enablePermissionConfirm: boolean
     strictWorkspaceMode: boolean
     allowedShellCommands?: string[]
+    deniedShellCommands?: string[]
     allowedGitSubcommands?: string[]
   }
 
   securityManager.updateConfig(securityConfig)
+  // 旧版白名单（保留以兼容已安装版本；shell 部分不再用于校验，仅 git 部分仍生效）
   security.updateWhitelist(
     securityConfig.allowedShellCommands || [...SECURITY_DEFAULTS.SHELL_COMMANDS],
     securityConfig.allowedGitSubcommands || [...SECURITY_DEFAULTS.GIT_SUBCOMMANDS],
+  )
+  // Shell 命令黑名单（AI 执行 Shell 命令时实际生效的拦截策略）
+  security.updateBlacklist(
+    securityConfig.deniedShellCommands || [...SECURITY_DEFAULTS.DENIED_SHELL_COMMANDS],
   )
 
   // ==========================================

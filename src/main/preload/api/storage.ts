@@ -2,7 +2,7 @@
  * 设置 / 持久化存储 API
  *
  * 覆盖 IPC 频道：
- * - settings:*    通用配置读写 / 白名单 / 路径
+ * - settings:*    通用配置读写 / 白名单 / 黑名单 / 路径
  * - settings-db:* SQLite 设置库（provider / 行为 / 应用配置）
  * - session-db:*  SQLite 会话库（消息 / 线程元数据）
  * - memory-db:*   SQLite 记忆库（条目 / 关系 / 同步）
@@ -19,6 +19,8 @@ export function createStorageApi() {
     onSettingsChanged: on<{ key: string; value: unknown }>('settings:changed'),
     getWhitelist: invoke('settings:getWhitelist'),
     resetWhitelist: invoke('settings:resetWhitelist'),
+    getBlacklist: invoke('settings:getBlacklist'),
+    resetBlacklist: invoke('settings:resetBlacklist'),
     getUserDataPath: invoke('settings:getUserDataPath'),
     getAppConfig: invoke('settings:getAppConfig'),
     getRecentLogs: invoke('settings:getRecentLogs'),
