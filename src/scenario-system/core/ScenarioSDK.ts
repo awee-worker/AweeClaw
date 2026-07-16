@@ -199,16 +199,22 @@ export function createScenarioSDK(
   }
 
   const sdk: ScenarioSDK = {
-    shared: {
-      react: sharedDeps?.modules.react as typeof React,
-      reactDom: sharedDeps?.modules.reactDom as typeof import('react-dom/client'),
-      zustand: sharedDeps?.modules.zustand as typeof import('zustand'),
-      lucideReact: sharedDeps?.modules.lucideReact as typeof import('lucide-react'),
-      xyflow: sharedDeps?.modules.xyflow as typeof import('@xyflow/react'),
-      framerMotion: sharedDeps?.modules.framerMotion as typeof import('framer-motion'),
-      getModule: <K extends keyof SharedDependencyRegistry>(name: K) => {
-        return sharedDependencyProvider.getModule(name)
-      },
+    // shared 字段使用 getter 动态读取，避免创建 SDK 时 sharedDeps 尚未注入导致永久 undefined。
+    // 场景 bundle 顶层代码可能在 import 时就访问 shared.zustand，
+    // 此时必须能读到最新的 sharedDependencyProvider 数据。
+    get shared() {
+      const deps = sharedDependencyProvider.get()
+      return {
+        react: deps?.modules.react as typeof React,
+        reactDom: deps?.modules.reactDom as typeof import('react-dom/client'),
+        zustand: deps?.modules.zustand as typeof import('zustand'),
+        lucideReact: deps?.modules.lucideReact as typeof import('lucide-react'),
+        xyflow: deps?.modules.xyflow as typeof import('@xyflow/react'),
+        framerMotion: deps?.modules.framerMotion as typeof import('framer-motion'),
+        getModule: <K extends keyof SharedDependencyRegistry>(name: K) => {
+          return sharedDependencyProvider.getModule(name)
+        },
+      }
     },
     style: styleApi,
     storage: storageApi,

@@ -150,8 +150,15 @@ export async function registerInstalledScenario(
     }
   } catch (moduleErr) {
     logger.scenario.warn('[ScenarioInstall] Failed to register scenario module:', moduleErr)
-    const fallbackPlugin = buildBasePlugin(config, scenarioId, source, version)
-    scenarioRegistry.registerAndPersist(fallbackPlugin)
+    // 对于 programmatic 场景，加载失败时不注册 fallback plugin，
+    // 避免空配置（sidebarItems=[]）被持久化导致 NavigationRail 显示默认菜单而非场景菜单。
+    // 对于 declarative 场景，保留 fallback 行为（声明式场景的 sidebarItems 可由 UI 默认渲染）。
+    if (!isProgrammatic) {
+      const fallbackPlugin = buildBasePlugin(config, scenarioId, source, version)
+      scenarioRegistry.registerAndPersist(fallbackPlugin)
+    }
+    // 重新抛出错误，让调用方知道安装失败并显示错误提示
+    throw moduleErr
   }
 
   // 执行安装脚本（初始化数据库表）
@@ -172,6 +179,11 @@ export async function registerInstalledScenario(
  * 2. ProgrammaticScenarioModule 在加载时读取 bundle 的 getPlugin() 获取自定义 UI 配置
  * 3. 从 scenarioLoader 获取完整的 plugin 配置（含 bundle 提供的 sidebarItems、systemPrompt 等）
  * 4. 注册到 scenarioRegistry 以供 UI 层消费
+ *
+ * 注意：不预先注册占位 plugin。若预先注册 buildBasePlugin 返回的占位 plugin
+ * （ui.sidebarItems=[]），一旦 ESM bundle 加载失败，空配置会被持久化到 localStorage，
+ * 导致 NavigationRail 找不到 sidebarItems 而回退到 DEFAULT_ITEMS，场景功能完全失效。
+ * 正确做法是加载成功后才注册完整 plugin；加载失败时抛出错误由调用方处理。
  */
 async function registerProgrammaticScenario(
   config: ScenarioConfigData,
@@ -179,10 +191,6 @@ async function registerProgrammaticScenario(
   source: 'local' | 'marketplace',
   version: string | undefined,
 ): Promise<void> {
-  // 先注册一个基础 plugin 作为占位（确保 scenarioRegistry 中有记录）
-  const basePlugin = buildBasePlugin(config, scenarioId, source, version)
-  scenarioRegistry.registerAndPersist(basePlugin)
-
   // 调用 loadProgrammaticScenario 加载 ESM bundle
   const loadResult = await loadProgrammaticScenario(scenarioId)
 
@@ -190,15 +198,16 @@ async function registerProgrammaticScenario(
     logger.scenario.warn(
       `[ScenarioInstall] Failed to load programmatic scenario "${scenarioId}": ${loadResult.error}`
     )
-    // 加载失败时保留基础 plugin（已在上面注册）
-    return
+    // 加载失败时抛出错误，由调用方决定后续处理
+    // 不注册空配置占位 plugin，避免误导 UI
+    throw new Error(`Failed to load programmatic scenario: ${loadResult.error}`)
   }
 
   // 从 scenarioLoader 获取完整的 plugin 配置
   // ProgrammaticScenarioModule.getPlugin() 会合并 bundle 的 getPlugin() 返回值
   const fullPlugin = scenarioLoader.getPlugin(scenarioId)
   if (fullPlugin) {
-    // 用 bundle 提供的完整配置覆盖占位 plugin
+    // 加载成功，注册完整 plugin（含 bundle 提供的 sidebarItems、systemPrompt 等）
     const plugin: ScenarioPlugin = {
       ...fullPlugin,
       source,
@@ -207,6 +216,13 @@ async function registerProgrammaticScenario(
     scenarioRegistry.registerAndPersist(plugin)
     logger.scenario.info(
       `[ScenarioInstall] Registered programmatic scenario "${scenarioId}" with ${plugin.ui?.sidebarItems?.length || 0} sidebar items`
+    )
+  } else {
+    // bundle 加载成功但 scenarioLoader 中没有 plugin 配置，使用基础配置作为兜底
+    const basePlugin = buildBasePlugin(config, scenarioId, source, version)
+    scenarioRegistry.registerAndPersist(basePlugin)
+    logger.scenario.warn(
+      `[ScenarioInstall] Programmatic scenario "${scenarioId}" loaded but no plugin config found, using base config`
     )
   }
 }

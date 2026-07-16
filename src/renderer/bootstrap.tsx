@@ -12,6 +12,9 @@ globalThis.__PROD__ = import.meta.env.PROD
 // 刷新 Logger 的生产环境检测（确保配置已更新）
 logger.refreshProductionMode()
 
+// 异步注入共享依赖（React、zustand 等）到 window.__AWEECLAW_SHARED__
+// 不 await：应用启动时场景尚未加载，注入会在场景加载前完成；
+// ProgrammaticScenarioLoader 中有兜底检查（isInjected + await），确保 bundle 执行前已注入。
 injectSharedDependencies()
 
 // ============================================

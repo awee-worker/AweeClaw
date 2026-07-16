@@ -86,7 +86,14 @@ export class ProgrammaticScenarioModule implements ScenarioModule {
     )
   }
 
-  async loadModule(bundleUrl: string): Promise<void> {
+  /**
+   * 加载 ESM bundle 模块
+   *
+   * @param bundleUrl 用于 dynamic import 的 URL（通常是 Blob URL，已重写 bare specifier）
+   * @param styleBaseUrl 用于样式文件加载的原始 URL（scenario-bundle:// 协议）
+   *                     如果未提供，则使用 bundleUrl（兼容旧调用方）
+   */
+  async loadModule(bundleUrl: string, styleBaseUrl?: string): Promise<void> {
     try {
       const compatCheck = sharedDependencyProvider.checkCompatibility(
         this.config.sharedDeps || {}
@@ -105,12 +112,15 @@ export class ProgrammaticScenarioModule implements ScenarioModule {
       this.moduleExports = module.default || module
 
       // 注入样式文件（使用 scenario-bundle:// 协议避免 webSecurity 限制）
+      // 注意：bundleUrl 可能是 Blob URL，不能用于加载样式文件
+      // 必须使用原始的 scenario-bundle:// URL（styleBaseUrl）构造样式路径
       if (this.config.styleFile) {
-        // bundleUrl = scenario-bundle:///path/to/scenario/dist/index.js
+        const baseUrl = styleBaseUrl || bundleUrl
+        // baseUrl = scenario-bundle://localhost/path/to/scenario/dist/index.js
         // entryPoint = dist/index.js
         // 移除末尾的 entryPoint，得到场景目录 URL，再拼接 styleFile
-        const baseUrl = bundleUrl.substring(0, bundleUrl.length - this.config.entryPoint.length)
-        const styleUrl = baseUrl + this.config.styleFile
+        const dirUrl = baseUrl.substring(0, baseUrl.length - this.config.entryPoint.length)
+        const styleUrl = dirUrl + this.config.styleFile
         this.injectStyles(styleUrl)
       }
 

@@ -69,6 +69,12 @@ export async function loadExternalScenarios(): Promise<number> {
           logger.agent.warn(
             `[ExternalScenarioLoader] Failed to load programmatic scenario "${scenario.id}": ${loadResult.error}`
           )
+          // 加载失败时从 scenarioRegistry 中移除该场景，清理历史损坏数据。
+          // 若不移除，scenarioRegistry 中残留的空配置（sidebarItems=[]）会导致：
+          // 1. NavigationRail 回退到 DEFAULT_ITEMS，显示错误的菜单
+          // 2. scenarioLoader 中没有该场景的 entry，onActivate 不被调用，场景功能失效
+          // 移除后用户可在场景管理界面重新安装该场景。
+          scenarioRegistry.unregister(scenario.id)
           continue
         }
 
