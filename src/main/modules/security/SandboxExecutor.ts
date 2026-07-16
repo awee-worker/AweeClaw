@@ -71,16 +71,18 @@ export const DEFAULT_SANDBOX_CONFIG: SandboxConfig = {
     'ssh', 'scp', 'sftp', 'telnet',
   ],
   deniedArgPatterns: [
-    // 命令替换注入风险（保留禁止）
+    // 命令替换注入风险（经典 shell 注入向量，必须禁止）
     '`', '$(',
-    // 自动确认参数（用正则匹配单词边界，避免误判文件名）
-    '--no-confirm', '-y', '--yes',
-    // 隐藏错误输出
-    '/dev/null', '2>&1',
-    // 危险删除
-    'rm -rf /', 'rm -rf ~',
-    // NOTE: &&, ||, ;, |, >, >>, < 是合法 shell 操作符，已从禁止列表移除
-    // 命令安全性由 deniedCommands（rm/sudo/curl 等）和 allowedCommands 白名单保障
+    // 跳过确认的参数（可能让 AI 未经用户审批执行破坏性操作）
+    // 使用正则匹配独立参数，避免误判文件名（如 --yes-please 不会被匹配）
+    '--no-confirm', '--yes',
+    // NOTE: 以下模式已从禁止列表移除（经测试验证存在误拦截或冗余）：
+    //   - '-y'：ls -y 等命令被误拦截；apt/yum 本身已不在 allowedCommands
+    //   - 'rm -rf /' / 'rm -rf ~'：rm 已在 deniedCommands 中，子串匹配反而误拦
+    //     合法的 rm -rf /tmp/test、rm -rf ~/Downloads
+    //   - '/dev/null' / '2>&1'：合法 shell 重定向操作符，非安全风险
+    //   - &&, ||, ;, |, >, >>, <：合法 shell 操作符
+    // 命令安全性由 deniedCommands（rm/sudo/curl/dd/mkfs 等）保障
   ],
   allowNetwork: false,
   commandTimeoutMs: 30000,
