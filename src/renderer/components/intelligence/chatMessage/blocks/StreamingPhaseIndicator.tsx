@@ -58,7 +58,7 @@ function StreamingPhaseIndicatorBase({
   }, [retryAttempt])
 
   /** 生成状态文案 */
-  const label = useMemo(() => {
+  const computedLabel = useMemo(() => {
     if (isRetrying) {
       const base = t('waitPhase.retrying', language as any, { attempt: retryAttempt })
       return retryCountdown > 0 ? `${base} ${retryCountdown}s` : base
@@ -79,6 +79,20 @@ function StreamingPhaseIndicatorBase({
       default: return null
     }
   }, [mode, waitPhase, streamDetail, language, retryAttempt, isRetrying, hasReasoningBlock, retryCountdown])
+
+  // 缓存上一个有效 label，避免 streamDetail 在 tool_executing/undefined 之间短暂切换
+  // 导致组件反复挂载/卸载（"处理中..."显示容器跳动）
+  // 仅当 computedLabel 为 null（无明确状态）且非重试/等待模式时，保留上一个有效 label
+  const lastValidLabelRef = useRef<string | null>(null)
+  if (computedLabel) {
+    lastValidLabelRef.current = computedLabel
+  } else if (mode !== 'waiting' && !isRetrying) {
+    // inline 模式下，流式仍在进行但 streamDetail 暂时为 undefined（工具执行间隙）
+    // 此时不清除缓存，保持上一个状态显示，避免组件卸载跳动
+  } else {
+    lastValidLabelRef.current = null
+  }
+  const label = computedLabel ?? (mode !== 'waiting' && !isRetrying ? lastValidLabelRef.current : null)
 
   if (!label) return null
 

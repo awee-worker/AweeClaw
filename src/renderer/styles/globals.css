@@ -299,7 +299,12 @@ textarea,
   animation: fade-in 0.2s ease-out forwards;
 }
 
-/* Text Shimmer/Sweep Effect for running tool cards */
+/* Text Shimmer/Sweep Effect for running tool cards
+ * 设计原则：
+ * 1. 使用 linear 而非 ease-in-out，让亮带匀速移动，避免两端停留导致闪烁
+ * 2. 文字基色保持 text-secondary（中等亮度），亮带扫过时变亮，两端不变暗
+ * 3. background-size 设为 400%，让亮带在元素内停留更久，减少暗-亮-暗的突变
+ */
 @keyframes text-shimmer {
   0% {
     background-position: 200% 0;
@@ -312,33 +317,34 @@ textarea,
 
 .text-shimmer {
   background: linear-gradient(90deg,
-      rgb(var(--text-muted)) 0%,
-      rgb(var(--text-muted)) 30%,
-      rgb(var(--accent)) 45%,
+      rgb(var(--text-secondary)) 0%,
+      rgb(var(--text-secondary)) 35%,
+      rgb(var(--accent) / 0.9) 47%,
       rgb(var(--text-primary)) 50%,
-      rgb(var(--accent)) 55%,
-      rgb(var(--text-muted)) 70%,
-      rgb(var(--text-muted)) 100%);
-  background-size: 300% 100%;
+      rgb(var(--accent) / 0.9) 53%,
+      rgb(var(--text-secondary)) 65%,
+      rgb(var(--text-secondary)) 100%);
+  background-size: 400% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: text-shimmer 1.5s ease-in-out infinite;
+  animation: text-shimmer 2s linear infinite;
 }
 
 .tool-text-shimmer {
   background: linear-gradient(90deg,
-      rgb(var(--text-muted)) 0%,
-      rgb(var(--text-secondary)) 38%,
-      rgb(var(--accent) / 0.85) 48%,
-      rgb(var(--text-primary)) 52%,
-      rgb(var(--text-secondary)) 62%,
-      rgb(var(--text-muted)) 100%);
-  background-size: 280% 100%;
+      rgb(var(--text-secondary)) 0%,
+      rgb(var(--text-secondary)) 35%,
+      rgb(var(--accent) / 0.9) 47%,
+      rgb(var(--text-primary)) 50%,
+      rgb(var(--accent) / 0.9) 53%,
+      rgb(var(--text-secondary)) 65%,
+      rgb(var(--text-secondary)) 100%);
+  background-size: 400% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: text-shimmer 3.2s ease-in-out infinite;
+  animation: text-shimmer 3.5s linear infinite;
 }
 
 .tool-card-sweep {

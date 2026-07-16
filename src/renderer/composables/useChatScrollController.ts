@@ -29,6 +29,8 @@ export interface UseChatScrollControllerOptions {
   isSwitchingThread: boolean
   messageCount: number
   threadId: string | null
+  /** 外部传入的 virtuosoRef，用于解决与 useTimelineProjection 的循环依赖 */
+  virtuosoRef?: React.RefObject<VirtuosoHandle>
 }
 
 /** Hook 返回值 */
@@ -69,8 +71,11 @@ export function useChatScrollController({
   isSwitchingThread,
   messageCount,
   threadId,
+  virtuosoRef: externalVirtuosoRef,
 }: UseChatScrollControllerOptions): ChatScrollController {
-  const virtuosoRef = useRef<VirtuosoHandle>(null)
+  // 优先使用外部传入的 virtuosoRef，用于解决与 useTimelineProjection 的循环依赖
+  const internalVirtuosoRef = useRef<VirtuosoHandle>(null)
+  const virtuosoRef = externalVirtuosoRef ?? internalVirtuosoRef
   const scrollerRef = useRef<HTMLDivElement | null>(null)
 
   // 滚动状态
@@ -103,12 +108,29 @@ export function useChatScrollController({
   const scrollToBottom = useCallback(
     (behavior: 'auto' | 'smooth' = 'smooth') => {
       if (messageCount <= 0) return
+      // 标记正在自动滚动，防止 syncFromScroller 和 handleBottomStateChange 干扰
+      isAutoScrollingRef.current = true
       atBottomRef.current = true
       setShowScrollButton(false)
 
       requestAnimationFrame(() => {
+        // 优先用 scrollToIndex 滚动到最后一条消息底部
         virtuosoRef.current?.scrollToIndex({ index: messageCount - 1, align: 'end', behavior })
-        requestAnimationFrame(syncFromScroller)
+        // 同时用 stickToBottom 兜底（直接操作 scrollTop），防止 scrollToIndex 在流式增长时失效
+        const scroller = scrollerRef.current
+        if (scroller) {
+          scroller.scrollTop = scroller.scrollHeight
+        }
+        // 延迟清除 isAutoScrolling 标记，等待 smooth 动画完成
+        const delay = behavior === 'smooth' ? 350 : 100
+        setTimeout(() => {
+          isAutoScrollingRef.current = false
+          // 再次确保到底部
+          if (scrollerRef.current && atBottomRef.current) {
+            scrollerRef.current.scrollTop = scrollerRef.current.scrollHeight
+          }
+          syncFromScroller()
+        }, delay)
       })
     },
     [messageCount, syncFromScroller],
@@ -179,14 +201,31 @@ export function useChatScrollController({
     })
   }, [getMetrics, isStreaming, stickToBottom, syncFromScroller])
 
-  /** Virtuoso 底部状态变化回调 */
+  /** Virtuoso 底部状态变化回调
+   *
+   * 关键设计：流式期间，Virtuoso 可能因布局变化（输入框高度变化、思考内容展开动画等）
+   * 报告 bottom=false，但实际上用户并未主动向上滚动。此时应使用 measureScroller 的结果
+   * （距底部 < BOTTOM_THRESHOLD_PX 视为在底部）而非 Virtuoso 报告的值，
+   * 避免错误地停止 followOutput 导致内容不自动滚动到底部。
+   */
   const handleBottomStateChange = useCallback(
     (bottom: boolean) => {
       if (isAutoScrollingRef.current) return
+      // 流式期间：以 measureScroller 的度量为准，避免 Virtuoso 因布局抖动误报
+      if (isStreaming) {
+        const metrics = getMetrics()
+        applyBottomState(metrics.bottom, metrics.hasOverflow)
+        // 如果度量认为在底部，但 Virtuoso 报告不在底部，调度吸底
+        if (metrics.bottom && !bottom) {
+          scheduleStick()
+        }
+        return
+      }
+      // 非流式：直接使用 Virtuoso 报告的值
       const { hasOverflow } = getMetrics()
       applyBottomState(bottom, hasOverflow)
     },
-    [getMetrics, applyBottomState],
+    [getMetrics, applyBottomState, isStreaming, scheduleStick],
   )
 
   /** 可见范围变化回调（保留接口，度量以 scroll 为准） */

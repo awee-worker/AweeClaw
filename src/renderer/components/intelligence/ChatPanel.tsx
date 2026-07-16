@@ -11,6 +11,7 @@
  * 主组件仅负责组合各 Hook 和渲染子组件
  */
 import { useState, useRef, useEffect, useCallback, useMemo, forwardRef, type ComponentPropsWithoutRef } from 'react'
+import type { VirtuosoHandle } from 'react-virtuoso'
 import { Virtuoso } from 'react-virtuoso'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useStore, useModeStore } from '@store'
@@ -278,22 +279,10 @@ export default function ChatPanel() {
 
   const isHydratingActiveThread = hasActiveThread && !activeThreadMessagesHydrated
 
-  const {
-    attachScrollerNode,
-    followOutput,
-    handleBottomStateChange,
-    handleTotalListHeightChanged,
-    handleVisibleRangeChanged,
-    scrollToBottom,
-    showScrollButton,
-    virtuosoRef: scrollVirtuosoRef,
-  } = useChatScrollController({
-    isHydratingActiveThread,
-    isStreaming,
-    isSwitchingThread: false,
-    messageCount: 0,
-    threadId: currentThreadId,
-  })
+  // 先创建 virtuosoRef，解决 useChatScrollController 和 useTimelineProjection 的循环依赖
+  // useTimelineProjection 需要 virtuosoRef 来设置初始滚动位置
+  // useChatScrollController 需要 messageCount（来自 timelineItems）来正确执行 scrollToBottom
+  const scrollVirtuosoRef = useRef<VirtuosoHandle>(null)
 
   const timelineProjection = useTimelineProjection({
     filteredMessages,
@@ -303,6 +292,23 @@ export default function ChatPanel() {
   })
 
   const { isSwitchingThread, timelineItems } = timelineProjection
+
+  const {
+    attachScrollerNode,
+    followOutput,
+    handleBottomStateChange,
+    handleTotalListHeightChanged,
+    handleVisibleRangeChanged,
+    scrollToBottom,
+    showScrollButton,
+  } = useChatScrollController({
+    isHydratingActiveThread,
+    isStreaming,
+    isSwitchingThread,
+    messageCount: timelineItems.length,
+    threadId: currentThreadId,
+    virtuosoRef: scrollVirtuosoRef,
+  })
 
   const { handleKeyDown } = useChatKeyboard({
     showFileMention: mentionController.showFileMention,

@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState, useEffect, useMemo, useRef } from 'react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
-import { useWindowTitle, useAppInit, useGlobalShortcuts, useMenuBridge, useFileWatcher, useAppShutdownState, usePreviewDiscoveryToasts, useChannelBridge } from '@hooks'
+import { useWindowTitle, useAppInit, useGlobalShortcuts, useMenuBridge, useFileWatcher, useAppShutdownState, usePreviewDiscoveryToasts, useChannelBridge, usePluginUpdateChecker } from '@hooks'
 import AppTitleBar from './components/layout/AppTitleBar'
 import NavigationRail from './components/layout/NavigationRail'
 import SidebarSection from './components/layout/SidebarSection'
@@ -122,6 +122,7 @@ function AppContent() {
   useMenuBridge()
   usePreviewDiscoveryToasts(hasWorkspace && isInitialized && activeScenarioId === 'dev-assistant')
   useChannelBridge()
+  usePluginUpdateChecker()
 
   const layoutConfig = useMemo<LayoutConfig>(() => {
     const scenario = scenarioRegistry.get(activeScenarioId)

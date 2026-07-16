@@ -27,12 +27,15 @@ function ThinkingBlockViewBase({ content, startTime, isStreaming, fontSize }: Th
   const [shadowClass, setShadowClass] = useState('')
   const prevIsStreamingRef = useRef(isStreaming)
   const userToggledRef = useRef(false)
+  // 用户手动向上滚动标记：为 true 时暂停自动跟随，直到用户滚回底部或流式结束
+  const userScrolledUpRef = useRef(false)
 
   /** 流式开始时自动展开，结束时按用户偏好折叠 */
   useEffect(() => {
     if (isStreaming && !prevIsStreamingRef.current) {
       setIsExpanded(true)
       userToggledRef.current = false
+      userScrolledUpRef.current = false
     } else if (!isStreaming && prevIsStreamingRef.current) {
       if (!userToggledRef.current && !expandThinkingByDefault) {
         const timer = setTimeout(() => setIsExpanded(false), 600)
@@ -58,28 +61,87 @@ function ThinkingBlockViewBase({ content, startTime, isStreaming, fontSize }: Th
     return () => clearInterval(timer)
   }, [startTime, isStreaming])
 
-  /** 滚动阴影检测 */
+  const { displayedContent: fluidContent } = useSmoothStream(content, isStreaming, 1.5)
+
+  /** 滚动阴影检测 + 用户手动滚动检测
+   *
+   * 关键设计：只在 isExpanded 变化时绑定 scroll listener，不依赖 content。
+   * 避免流式内容更新时重新绑定 listener 导致 checkScroll 误判"用户向上滚动"。
+   *
+   * 区分"用户主动滚动"与"内容增长导致距离变大"：
+   * - 用户主动向上滚动：scrollTop 减小（用户用滚轮或拖拽滚动条向上）
+   * - 内容增长：scrollTop 不变，但 scrollHeight 增大（不触发 scroll 事件，或触发但 scrollTop 不减）
+   * - 自动滚动到底部：scrollTop 增大（由代码触发，不应标记为用户滚动）
+   */
   useEffect(() => {
     const el = scrollRef.current
     if (!el || !isExpanded) return
+
+    let lastScrollTop = el.scrollTop
+
     const checkScroll = () => {
+      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
       const hasTop = el.scrollTop > 0
-      const hasBottom = el.scrollTop < el.scrollHeight - el.clientHeight - 1
+      const hasBottom = distanceFromBottom > 1
       setShadowClass([hasTop ? 'shadow-top' : '', hasBottom ? 'shadow-bottom' : ''].filter(Boolean).join(' '))
     }
-    checkScroll()
-    el.addEventListener('scroll', checkScroll)
-    return () => el.removeEventListener('scroll', checkScroll)
-  }, [isExpanded, content])
 
-  const { displayedContent: fluidContent } = useSmoothStream(content, isStreaming, 1.5)
-
-  /** 流式时自动滚动到底部 */
-  useEffect(() => {
-    if (isStreaming && isExpanded && scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    const handleScroll = () => {
+      const currentScrollTop = el.scrollTop
+      // 只在 scrollTop 减小（用户主动向上滚动）时标记，避免内容增长误判
+      if (isStreaming && currentScrollTop < lastScrollTop - 2) {
+        userScrolledUpRef.current = true
+      }
+      // 用户滚回底部时清除标记
+      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+      if (distanceFromBottom < 10) {
+        userScrolledUpRef.current = false
+      }
+      lastScrollTop = currentScrollTop
+      checkScroll()
     }
+
+    checkScroll()
+    el.addEventListener('scroll', handleScroll, { passive: true })
+    return () => el.removeEventListener('scroll', handleScroll)
+  }, [isExpanded, isStreaming])
+
+  /** 流式时自动滚动到底部（尊重用户手动滚动） */
+  useEffect(() => {
+    if (!isStreaming || !isExpanded || !scrollRef.current) return
+    if (userScrolledUpRef.current) return
+    // 使用 rAF 确保在 DOM 更新后执行，避免 scrollHeight 计算不准
+    const raf = requestAnimationFrame(() => {
+      if (scrollRef.current && !userScrolledUpRef.current) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+      }
+    })
+    return () => cancelAnimationFrame(raf)
   }, [fluidContent, isStreaming, isExpanded])
+
+  /** 展开动画完成后滚动到底部（motion.div 展开需要 0.25s） */
+  useEffect(() => {
+    if (!isExpanded || !scrollRef.current) return
+    userScrolledUpRef.current = false
+    const timer = setTimeout(() => {
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+      }
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [isExpanded])
+
+  /** 流式结束时滚动到底部，确保显示完整内容 */
+  useEffect(() => {
+    if (!isStreaming && prevIsStreamingRef.current && isExpanded && scrollRef.current) {
+      userScrolledUpRef.current = false
+      requestAnimationFrame(() => {
+        if (scrollRef.current) {
+          scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+        }
+      })
+    }
+  }, [isStreaming, isExpanded])
 
   const durationText = !isStreaming
     ? (lastElapsed.current > 0 ? t('thought.for', language, { sec: lastElapsed.current }) : t('thought.done', language))

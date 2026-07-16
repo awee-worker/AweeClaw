@@ -69,6 +69,23 @@ export default function NotificationCenterContent({ language = 'zh' }: Notificat
                   <div className="mt-1.5 text-[12px] text-text-muted/70 font-mono tracking-wide">
                     {formatTime(toast.timestamp || Date.now())}
                   </div>
+                  {/* 操作按钮（如"去更新"跳转） */}
+                  {toast.actions && toast.actions.length > 0 && (
+                    <div className="mt-2 flex items-center gap-2">
+                      {toast.actions.map(action => (
+                        <button
+                          key={action.id}
+                          onClick={() => {
+                            action.onClick?.()
+                            removeToast(toast.id)
+                          }}
+                          className="px-2.5 py-1 rounded-md text-[12px] font-medium bg-accent/15 text-accent hover:bg-accent/25 hover:text-accent transition-colors border border-accent/20"
+                        >
+                          {action.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="absolute right-2 top-1.5 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">

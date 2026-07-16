@@ -107,7 +107,15 @@ export function registerPluginHandlers(context: PluginIpcContext): void {
       backendUrl: string,
       authToken?: string,
     ) => {
-      return installer.checkUpdate(pluginKey, backendUrl, authToken)
+      // 后端返回 { needsUpdate, currentVersion, latestVersion }
+      // 前端期望 { hasUpdate, currentVersion, latestVersion }
+      // 这里做字段转换，避免前端拿到 hasUpdate=undefined
+      const result = await installer.checkUpdate(pluginKey, backendUrl, authToken)
+      return {
+        hasUpdate: result.needsUpdate,
+        currentVersion: result.currentVersion,
+        latestVersion: result.latestVersion,
+      }
     },
     'plugin',
   )
