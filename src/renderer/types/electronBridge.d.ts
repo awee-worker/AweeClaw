@@ -8,7 +8,7 @@
  * 语音模型配置（自定义模式，STT + TTS 合并存储但分别启用）
  * 与本地 SQLite voice_model_config 表对应（已解密、字段已规范化）
  */
-interface VoiceModelConfig {
+export interface VoiceModelConfig {
   sttEnabled: boolean
   sttProvider: string
   sttModel: string
@@ -36,7 +36,7 @@ interface AuditEntry {
   details?: Record<string, unknown>
 }
 
-interface ClipboardFileAttachment {
+export interface ClipboardFileAttachment {
   path: string
   name: string
   ext: string
@@ -46,7 +46,7 @@ interface ClipboardFileAttachment {
   size: number
 }
 
-interface AuditQueryFilter {
+export interface AuditQueryFilter {
   pipelineId?: string
   action?: string
   outcome?: AuditEntry['outcome']

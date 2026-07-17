@@ -833,6 +833,32 @@ export class TerminalManagerClass {
     this.notify();
   }
 
+  /**
+   * 中断所有正在执行的 Agent 终端命令
+   *
+   * 当用户点击"结束对话"时调用，确保正在运行的 shell 命令（如 npm install）
+   * 被及时终止，而不是继续在后台执行。
+   *
+   * 实现步骤：
+   * 1. 向每个有活跃命令的终端发送 Ctrl+C（\x03）中断信号
+   * 2. 调用 finalize 结束命令执行 Promise，使 run_command 工具返回
+   * 3. 更新命令会话状态为 'cancelled'
+   */
+  abortActiveAgentCommands(): void {
+    for (const [termId, execution] of this.activeExecutions.entries()) {
+      // 发送 Ctrl+C 中断信号到终端
+      try {
+        this.writeToTerminal(termId, '\x03')
+      } catch {
+        // 终端可能已关闭，忽略写入错误
+      }
+      // 结束命令执行 Promise，使等待的 run_command 返回
+      execution.finalize('cleanup', {
+        finalStatus: 'cancelled',
+      })
+    }
+  }
+
   hasTerminal(id: string): boolean {
     return this.state.terminals.some(t => t.id === id);
   }
@@ -1029,7 +1055,13 @@ export class TerminalManagerClass {
    *
    * @param cwd 可选工作目录。若提供，用 Push-Location/popd（PS）或子 shell（Unix）临时切换目录。
    */
-  executeCommandWithOutput(termId: string, command: string, timeoutMs: number, cwd?: string): Promise<CommandResult> {
+  executeCommandWithOutput(
+    termId: string,
+    command: string,
+    timeoutMs: number,
+    cwd?: string,
+    onPartialOutput?: (partialOutput: string) => void,
+  ): Promise<CommandResult> {
     const sentinelId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
     // OSC 序列格式：ESC ] 9001 ; <payload> BEL
     // xterm.js 在序列解析阶段静默消耗未注册的 OSC 编号，完全不渲染任何文本。
@@ -1083,6 +1115,14 @@ export class TerminalManagerClass {
           partialOutput,
           captureStartSeq: captureStartSeq ?? session.captureStartSeq,
         }))
+        // 流式输出回调：通知外部（如 run_command 工具）实时推送输出到聊天界面
+        if (onPartialOutput) {
+          try {
+            onPartialOutput(partialOutput)
+          } catch {
+            // 回调失败不影响命令执行
+          }
+        }
       }
 
       const clearIdleTimer = () => {

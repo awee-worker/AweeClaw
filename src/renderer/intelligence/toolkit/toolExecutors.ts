@@ -31,7 +31,7 @@ import { agentStorePlanBridge, agentStoreTodoBridge } from '../state/intelligenc
 import { useAgentStore } from '../state/IntelligenceStore'
 import { buildFileChangeDescriptor } from '@intelligence/utils/fileMutationHelper'
 import { EventBus } from '../engine/EventDispatcher'
-import { isLongRunningCommand } from './commandExecutor'
+import { isLongRunningCommand, EXTENDED_TIMEOUT_COMMAND_PATTERN, EXTENDED_TIMEOUT_MS } from './commandExecutor'
 import { internalWriteTracker } from '@services/writeTracker'
 import { toolRegistry } from './toolRegistry'
 import { terminalManager } from '@services/TerminalAdapter'
@@ -1866,9 +1866,14 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         const resolvedCwd = args.cwd ? resolvePath(args.cwd, ctx.workspacePath, true) : null
         const isBackground = args.is_background as boolean
         const config = resolveAgentConfig()
+        // 超时优先级：AI 显式指定 > 安装/构建类命令扩展超时 > 默认 toolTimeoutMs
+        // npm install、cargo build 等命令耗时较长，使用 5 分钟扩展超时避免被误杀
+        const isExtendedTimeoutCommand = EXTENDED_TIMEOUT_COMMAND_PATTERN.test(command.trim())
         const timeout = args.timeout
             ? (args.timeout as number) * 1000
-            : config.toolTimeoutMs
+            : isExtendedTimeoutCommand
+                ? EXTENDED_TIMEOUT_MS
+                : config.toolTimeoutMs
 
         const isLongRunningProcess = isLongRunningCommand(command, isBackground)
 
@@ -1938,12 +1943,61 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 }
             }
 
-            const commandResult = await terminalManager.executeCommandWithOutput(
-                termId,
-                command,
-                timeout,
-                resolvedCwd || undefined,
-            )
+            // 流式输出回调：将命令执行过程中的实时输出推送到聊天界面
+            // 通过 setToolStreamingPreview 更新 ToolStreamingPreview.partialOutput
+            // 让 renderRunCommand 能够实时渲染执行结果
+            const toolCallIdForStream = ctx.toolCallId
+            const threadIdForStream = ctx.threadId
+            let lastFlushedLength = 0
+            let flushTimer: ReturnType<typeof setTimeout> | null = null
+            const STREAM_FLUSH_INTERVAL_MS = 150
+
+            const flushPartialOutput = (partialOutput: string) => {
+                if (!toolCallIdForStream || !threadIdForStream) return
+                // 只在有新内容时更新，避免重复刷新
+                if (partialOutput.length <= lastFlushedLength) return
+                lastFlushedLength = partialOutput.length
+
+                const store = useAgentStore.getState()
+                const threadStore = store.forThread(threadIdForStream)
+                threadStore.setToolStreamingPreview(toolCallIdForStream, {
+                    isStreaming: true,
+                    partialOutput,
+                    lastUpdateTime: Date.now(),
+                })
+            }
+
+            const onPartialOutput = (partialOutput: string) => {
+                // 节流：避免频繁更新 store 导致渲染压力
+                if (flushTimer) clearTimeout(flushTimer)
+                flushTimer = setTimeout(() => {
+                    flushTimer = null
+                    flushPartialOutput(partialOutput)
+                }, STREAM_FLUSH_INTERVAL_MS)
+            }
+
+            let commandResult
+            try {
+                commandResult = await terminalManager.executeCommandWithOutput(
+                    termId,
+                    command,
+                    timeout,
+                    resolvedCwd || undefined,
+                    onPartialOutput,
+                )
+            } finally {
+                // 命令结束后：清除节流定时器，立即刷新最后一次输出
+                if (flushTimer) {
+                    clearTimeout(flushTimer)
+                    flushTimer = null
+                }
+                // 清除流式预览状态（命令已结束，renderRunCommand 会显示最终 result）
+                if (toolCallIdForStream && threadIdForStream) {
+                    const store = useAgentStore.getState()
+                    const threadStore = store.forThread(threadIdForStream)
+                    threadStore.clearToolStreamingPreview(toolCallIdForStream)
+                }
+            }
 
             const displayOutput = (commandResult.output || commandResult.partialOutput || '').trim()
             let resultText = displayOutput

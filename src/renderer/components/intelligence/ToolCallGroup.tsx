@@ -287,9 +287,10 @@ function ToolCallGroup({
   // 按状态分组
   const groups = useMemo(() => groupToolsByStatus(toolCalls), [toolCalls])
 
-  // 已完成组默认折叠
+  // 默认展开所有分组，避免分组头闪烁和用户需要手动展开查看结果
+  // 用户反馈：多个相同工具分组显示时分组头会闪烁，默认展开体验更好
   const [collapsedGroups, setCollapsedGroups] = useState<Set<ToolGroupStatus>>(
-    new Set(['success']),
+    new Set(),
   )
 
   const toggleGroup = useCallback((status: ToolGroupStatus) => {

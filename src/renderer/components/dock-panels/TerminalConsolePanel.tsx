@@ -170,8 +170,9 @@ const TerminalPanel = memo(function TerminalPanel() {
     return (
         <>
             <style>{XTERM_STYLE}</style>
-            <div className="h-full bg-background-editor relative" style={{ boxSizing: 'border-box' }}>
-                <div className={`h-full w-full ${terminals.length > 1 ? 'pr-[200px]' : ''}`} style={{ boxSizing: 'border-box' }}>
+            <div className="h-full bg-background-editor flex" style={{ boxSizing: 'border-box' }}>
+                {/* 终端内容区：flex-1 填充剩余空间，左侧 */}
+                <div className="flex-1 h-full min-w-0" style={{ boxSizing: 'border-box' }}>
                     {terminals.map(term => (
                         <div
                             key={term.id}
@@ -191,23 +192,24 @@ const TerminalPanel = memo(function TerminalPanel() {
                         />
                     ))}
                 </div>
+                {/* 终端标签栏：右侧固定宽度，垂直排列，左对齐 */}
                 {terminals.length > 1 && (
-                    <div className="absolute right-0 top-0 bottom-0 flex flex-col gap-1.5 px-2 py-1.5 border-l border-border/40 bg-background-editor" style={{ width: 200, boxSizing: 'border-box' }}>
+                    <div className="flex flex-col gap-1 py-1.5 px-1.5 border-l border-border/40 bg-background-editor flex-shrink-0" style={{ width: 160, boxSizing: 'border-box' }}>
                         {terminals.map(term => (
                             <button
                                 key={term.id}
                                 onClick={() => terminalManager.setActiveTerminal(term.id)}
-                                className={`flex items-center justify-start gap-1.5 px-2 py-1 rounded-md text-xs transition-colors group ${
+                                className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs transition-colors group w-full text-left ${
                                     activeId === term.id
                                         ? 'bg-background border border-border text-text-primary'
-                                        : 'text-text-muted hover:text-text-primary hover:bg-surface/60'
+                                        : 'text-text-muted hover:text-text-primary hover:bg-surface/60 border border-transparent'
                                 }`}
                             >
                                 <Terminal className="w-3 h-3 flex-shrink-0" />
-                                <span className="max-w-[120px] truncate flex-1 text-left">{term.name}</span>
+                                <span className="truncate flex-1 text-left">{term.name}</span>
                                 <span
                                     onClick={(e) => { e.stopPropagation(); closeTerminal(term.id) }}
-                                    className="opacity-0 group-hover:opacity-100 group-hover:text-red-400 transition-opacity cursor-pointer flex-shrink-0 ml-auto"
+                                    className="opacity-0 group-hover:opacity-100 group-hover:text-red-400 transition-opacity cursor-pointer flex-shrink-0"
                                 >
                                     <X className="w-3 h-3" />
                                 </span>

@@ -83,12 +83,18 @@ function StreamingPhaseIndicatorBase({
   // 缓存上一个有效 label，避免 streamDetail 在 tool_executing/undefined 之间短暂切换
   // 导致组件反复挂载/卸载（"处理中..."显示容器跳动）
   // 仅当 computedLabel 为 null（无明确状态）且非重试/等待模式时，保留上一个有效 label
+  // 但当 AI 正在输出文本（streamDetail === 'responding'）时，必须清除缓存，
+  // 否则"处理中..."会一直显示在 AI 回复期间，体验不佳
   const lastValidLabelRef = useRef<string | null>(null)
   if (computedLabel) {
     lastValidLabelRef.current = computedLabel
   } else if (mode !== 'waiting' && !isRetrying) {
     // inline 模式下，流式仍在进行但 streamDetail 暂时为 undefined（工具执行间隙）
     // 此时不清除缓存，保持上一个状态显示，避免组件卸载跳动
+    // 但 responding 状态表示 AI 正在输出文本内容，工具执行阶段已结束，应清除缓存
+    if (streamDetail === 'responding') {
+      lastValidLabelRef.current = null
+    }
   } else {
     lastValidLabelRef.current = null
   }

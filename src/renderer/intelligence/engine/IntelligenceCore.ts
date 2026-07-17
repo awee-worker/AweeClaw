@@ -46,6 +46,7 @@ import { buildAgentSystemPrompt } from '../prompt-engine/PromptComposer'
 import { taskComplexityDetector } from '../capabilities/planning/TaskComplexityDetector'
 import { executeMultiAgent, continueMultiAgent, type RunningTask } from './MultiAgentExecution'
 import { useStore } from '@renderer/state'
+import { terminalManager } from '@services/TerminalAdapter'
 
 export class AgentClass {
   /** 运行中的任务（按线程追踪） */
@@ -347,6 +348,14 @@ export class AgentClass {
     }
 
     api.llm.abort()
+
+    // 中断所有正在执行的 Agent 终端命令（如 npm install 等长命令）
+    // 确保用户点击"结束对话"后，后台 shell 命令不再继续执行
+    try {
+      terminalManager.abortActiveAgentCommands()
+    } catch (err) {
+      logger.agent.warn('[Agent.abort] Failed to abort active terminal commands:', err)
+    }
 
     const globalStore = useStore.getState()
     const activeSession = globalStore.activeWorkspaceSession

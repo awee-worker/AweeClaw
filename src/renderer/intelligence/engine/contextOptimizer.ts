@@ -149,11 +149,37 @@ async function executeCompressionStrategy(
   autoHandoff: boolean,
   budgetController?: TokenBudgetController
 ): Promise<CompressionCheckResult> {
-  if (calculatedLevel === 3 && (!previousStats || previousStats.level < 3)) {
+  // ===== 智能化对话轮次保护 =====
+  // 系统提示 + 工具定义本身会占用大量 token（可能 30-50% contextLimit），
+  // 如果仅凭 token 比例触发压缩，会导致短对话也被强制交接。
+  // 保护规则：
+  //   - 用户对话轮次 < 3 轮：最高只到 level 2（清理旧工具结果），不触发摘要/handoff
+  //   - 用户对话轮次 < 5 轮：不触发 level 4 handoff（可以 level 3 摘要）
+  //   - 用户对话轮次 >= 5 轮：正常触发所有级别
+  const userTurnCount = thread?.messages.filter(m => m.role === 'user').length ?? 0
+  const MIN_TURNS_FOR_SUMMARY = 3
+  const MIN_TURNS_FOR_HANDOFF = 5
+
+  let effectiveLevel = calculatedLevel
+  if (userTurnCount < MIN_TURNS_FOR_SUMMARY && calculatedLevel >= 3) {
+    effectiveLevel = 2 as CompressionCheckResult['level']
+    logger.agent.info(
+      `[Compression] 降级保护: 用户仅 ${userTurnCount} 轮对话，` +
+      `level ${calculatedLevel} → ${effectiveLevel}（短对话不触发摘要/handoff）`
+    )
+  } else if (userTurnCount < MIN_TURNS_FOR_HANDOFF && calculatedLevel >= 4) {
+    effectiveLevel = 3 as CompressionCheckResult['level']
+    logger.agent.info(
+      `[Compression] 降级保护: 用户仅 ${userTurnCount} 轮对话，` +
+      `level ${calculatedLevel} → ${effectiveLevel}（短对话不触发 handoff）`
+    )
+  }
+
+  if (effectiveLevel === 3 && (!previousStats || previousStats.level < 3)) {
     publishCompressionWarning(usage, contextLimit, ratio, budgetController)
   }
 
-  if (calculatedLevel >= 3 && enableLLMSummary && thread) {
+  if (effectiveLevel >= 3 && enableLLMSummary && thread) {
     threadStore.setCompressionPhase('summarizing')
     try {
       await refreshSummarySnapshot(threadId, threadStore)
@@ -165,7 +191,7 @@ async function executeCompressionStrategy(
   }
 
   let didAutoHandoff = false
-  if (calculatedLevel >= 4) {
+  if (effectiveLevel >= 4) {
     if (thread) {
       threadStore.setCompressionPhase('summarizing')
       try {
@@ -180,9 +206,9 @@ async function executeCompressionStrategy(
     }
   }
 
-  EventBus.emit({ type: 'context:level', level: calculatedLevel, tokens: totalTokens, ratio })
+  EventBus.emit({ type: 'context:level', level: effectiveLevel, tokens: totalTokens, ratio })
 
-  return { level: calculatedLevel, needsHandoff: calculatedLevel >= 4 }
+  return { level: effectiveLevel, needsHandoff: effectiveLevel >= 4 }
 }
 
 export async function checkAndHandleCompression(

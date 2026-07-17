@@ -146,7 +146,7 @@ export const AGENT_DEFAULTS = {
   // 上下文限制
   maxToolResultChars: 10000,
   maxFileContentChars: 15000,
-  maxTotalContextChars: 60000,
+  maxTotalContextChars: 120000,
   maxContextTokens: 128000,
   maxSingleFileChars: 12000,
   maxContextFiles: 6,
@@ -166,9 +166,9 @@ export const AGENT_DEFAULTS = {
   expandContextByDefault: true,
 
   // 上下文压缩
-  keepRecentTurns: 5,
-  deepCompressionTurns: 2,
-  maxImportantOldTurns: 3,
+  keepRecentTurns: 8,
+  deepCompressionTurns: 3,
+  maxImportantOldTurns: 5,
   enableLLMSummary: true,
   autoHandoff: true,
 

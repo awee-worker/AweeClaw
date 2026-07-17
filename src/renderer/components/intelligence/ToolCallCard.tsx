@@ -79,7 +79,7 @@ const ToolCallCard = memo(function ToolCallCard({
       expandToolCallsByDefault: state.agentConfig.expandToolCallsByDefault ?? false,
     })),
   )
-  const { args, effectiveName, isSuccess, isError, isRejected, isRunning, isStreaming } = useToolDisplayState(toolCall)
+  const { args, effectiveName, isSuccess, isError, isRejected, isRunning, isStreaming, previewState } = useToolDisplayState(toolCall)
   const isActive = isRunning || isStreaming
   const shouldAutoExpand = effectiveName === 'todo_write'
   const { isExpanded, animateContent, handleToggleExpanded } = useToolCardExpansion({
@@ -150,6 +150,7 @@ const ToolCallCard = memo(function ToolCallCard({
           language,
           currentTheme,
           onCopyResult: handleCopyResult,
+          previewState,
         })}
         {toolCall.error && (
           <div className="px-3 py-2 bg-status-error/10 rounded-md">

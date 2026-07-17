@@ -5,7 +5,7 @@ import { themeManager } from '@/renderer/config/themeDefinition'
 import { BRAND } from '@shared/brand'
 
 export const XTERM_STYLE = `
-.xterm { font-feature-settings: "liga" 0; position: relative; user-select: none; -ms-user-select: none; -webkit-user-select: none; padding: 0; }
+.xterm { font-feature-settings: "liga" 0; position: relative; user-select: none; -ms-user-select: none; -webkit-user-select: none; padding: 8px 10px; text-align: left; }
 .xterm.focus, .xterm:focus { outline: none; }
 .xterm .xterm-helpers { position: absolute; z-index: 5; }
 .xterm .xterm-helper-textarea { padding: 0; border: 0; margin: 0; position: absolute; opacity: 0; left: -9999em; top: 0; width: 0; height: 0; z-index: -5; overflow: hidden; white-space: nowrap; }
@@ -22,7 +22,7 @@ export const XTERM_STYLE = `
 }
 .xterm .composition-view.active { display: block; }
 .xterm .xterm-viewport { background-color: rgb(var(--background)); overflow-y: scroll; cursor: default; position: absolute; right: 0; left: 0; top: 0; bottom: 0; }
-.xterm .xterm-screen { position: relative; }
+.xterm .xterm-screen { position: relative; text-align: left; }
 .xterm .xterm-screen canvas { position: absolute; left: 0; top: 0; }
 .xterm .xterm-scroll-area { visibility: hidden; }
 .xterm-char-measure-element { display: inline-block; visibility: hidden; position: absolute; left: -9999em; top: 0; }

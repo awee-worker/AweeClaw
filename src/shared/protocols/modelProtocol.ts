@@ -302,6 +302,8 @@ export interface ToolStreamingPreview {
     isStreaming: boolean
     name?: string
     partialArgs?: Record<string, unknown>
+    /** 流式输出内容（如 run_command 执行过程中的实时终端输出） */
+    partialOutput?: string
     lastUpdateTime?: number
 }
 

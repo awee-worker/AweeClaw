@@ -35,6 +35,8 @@ interface PreviewContext {
   language: Language
   currentTheme: string
   onCopyResult: () => void
+  /** 流式预览状态（包含 partialOutput 等实时数据） */
+  previewState?: import('@intelligence/providerTypes').ToolStreamingPreview
 }
 
 /** 预览渲染器类型 */
@@ -77,25 +79,40 @@ function TruncatedText({ text, max, language }: { text: string; max: number; lan
 
 /** 命令行工具预览 */
 const renderRunCommand: PreviewRenderer = (ctx) => {
-  const { args, toolCall, isRunning, isStreaming, language } = ctx
+  const { args, toolCall, isRunning, language, previewState } = ctx
   const cmd = asString(args.command)
   const stringResult = typeof toolCall.result === 'string' ? toolCall.result : ''
+  // 流式输出：命令执行过程中实时显示终端输出
+  const streamingOutput = previewState?.partialOutput || ''
 
   return (
     <div className="font-mono text-[12px] space-y-1">
       <div className="flex items-start gap-1.5">
         <span className="text-accent/60 select-none flex-shrink-0 mt-px">$</span>
         <span className="text-text-primary break-all flex-1 min-w-0">{cmd}</span>
+        {isRunning && !stringResult && !streamingOutput && (
+          <span className="text-accent flex items-center gap-1 flex-shrink-0 mt-px">
+            <span className="w-1 h-1 rounded-full bg-accent animate-pulse" />
+          </span>
+        )}
       </div>
+      {/* 优先显示最终结果，其次显示流式输出 */}
       {stringResult ? (
         <ExpandablePreviewContainer language={language}>
           <div className="text-text-muted/90 whitespace-pre-wrap break-all p-2 font-mono text-[12px]">
             <TruncatedText text={stringResult} max={5000} language={language} />
           </div>
         </ExpandablePreviewContainer>
-      ) : (
-        (isRunning || isStreaming) && pendingPreview(t('tool.status.waitingTerminalOutput', language as any), language)
-      )}
+      ) : streamingOutput ? (
+        <ExpandablePreviewContainer language={language}>
+          <div className="text-text-muted/90 whitespace-pre-wrap break-all p-2 font-mono text-[12px]">
+            <TruncatedText text={streamingOutput} max={5000} language={language} />
+            {isRunning && (
+              <span className="inline-block w-1.5 h-3 bg-accent/60 animate-pulse ml-0.5 align-middle" />
+            )}
+          </div>
+        </ExpandablePreviewContainer>
+      ) : null}
     </div>
   )
 }
