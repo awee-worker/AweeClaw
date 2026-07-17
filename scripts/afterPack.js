@@ -335,6 +335,39 @@ function cleanXenovaModels(appDir) {
 }
 
 /**
+ * electron-builder Arch 枚举到字符串的映射
+ * electron-builder 的 afterPack context 中 arch 字段是数字枚举（Arch.arm64 = 3），
+ * 不是字符串 'arm64'，直接使用会导致后续的字符串比较失败（如 'arm64' !== 3），
+ * 进而误删目标平台的原生二进制包。
+ *
+ * 枚举值来源：node_modules/electron-builder/out/arch.js
+ *   0 = ia32, 1 = x64, 2 = armv7l, 3 = arm64, 4 = universal
+ */
+const ELECTRON_BUILDER_ARCH_MAP = {
+  0: 'ia32',
+  1: 'x64',
+  2: 'armv7l',
+  3: 'arm64',
+  4: 'universal',
+}
+
+/**
+ * 将 arch 值规范化为字符串
+ * - 如果是字符串（如 'arm64'），直接返回
+ * - 如果是数字（electron-builder Arch 枚举），转换为对应字符串
+ * - 如果无法识别，回退到 process.arch
+ */
+function normalizeArch(rawArch) {
+  if (typeof rawArch === 'string') {
+    return rawArch
+  }
+  if (typeof rawArch === 'number' && ELECTRON_BUILDER_ARCH_MAP[rawArch]) {
+    return ELECTRON_BUILDER_ARCH_MAP[rawArch]
+  }
+  return process.arch
+}
+
+/**
  * 判断当前构建的目标平台和架构
  * @returns {{platform: string, arch: string}}
  */
@@ -348,11 +381,13 @@ function detectPlatform(buildResult) {
   else if (platform === 'win32' || platform === 'win') normalizedPlatform = 'win'
 
   // 获取目标架构（electron-builder context 中可能在不同字段提供）
-  // 优先级：buildResult.arch > packager.arch > process.arch
-  const arch = buildResult.arch
+  // 注意：arch 可能是 Arch 枚举（数字），需要通过 normalizeArch 转换为字符串
+  // 优先级：buildResult.arch > packager.arch > options.arch > process.arch
+  const rawArch = buildResult.arch
     || buildResult.packager?.arch
     || buildResult.options?.arch
     || process.arch
+  const arch = normalizeArch(rawArch)
 
   return { platform: normalizedPlatform, arch }
 }
