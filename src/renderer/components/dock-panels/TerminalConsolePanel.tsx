@@ -171,13 +171,14 @@ const TerminalPanel = memo(function TerminalPanel() {
         <>
             <style>{XTERM_STYLE}</style>
             <div className="h-full bg-background-editor flex" style={{ boxSizing: 'border-box' }}>
-                {/* 终端内容区：flex-1 填充剩余空间，左侧 */}
-                <div className="flex-1 h-full min-w-0" style={{ boxSizing: 'border-box' }}>
+                {/* 终端内容区：flex-1 填充剩余空间，左侧。
+                    overflow-hidden 约束 xterm 内部绝对定位的 canvas，防止溢出遮挡右侧标签栏 */}
+                <div className="flex-1 h-full min-w-0 relative overflow-hidden" style={{ boxSizing: 'border-box' }}>
                     {terminals.map(term => (
                         <div
                             key={term.id}
                             ref={el => { if (el) containerRefs.current.set(term.id, el) }}
-                            className={`h-full w-full ${activeId === term.id ? '' : 'hidden'}`}
+                            className={`h-full w-full overflow-hidden ${activeId === term.id ? '' : 'hidden'}`}
                             onClick={() => terminalManager.setActiveTerminal(term.id)}
                             onContextMenu={(e) => {
                                 e.preventDefault()
@@ -192,9 +193,10 @@ const TerminalPanel = memo(function TerminalPanel() {
                         />
                     ))}
                 </div>
-                {/* 终端标签栏：右侧固定宽度，垂直排列，左对齐 */}
+                {/* 终端标签栏：右侧固定宽度，垂直排列，左对齐。
+                    relative z-10 确保标签栏在层叠上下文中位于终端内容之上，不被 xterm canvas 遮挡 */}
                 {terminals.length > 1 && (
-                    <div className="flex flex-col gap-1 py-1.5 px-1.5 border-l border-border/40 bg-background-editor flex-shrink-0" style={{ width: 160, boxSizing: 'border-box' }}>
+                    <div className="flex flex-col gap-1 py-1.5 px-1.5 border-l border-border/40 bg-background-editor flex-shrink-0 relative z-10" style={{ width: 160, boxSizing: 'border-box' }}>
                         {terminals.map(term => (
                             <button
                                 key={term.id}
