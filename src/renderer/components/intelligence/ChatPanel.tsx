@@ -58,6 +58,7 @@ import { ScrollToBottomButton } from './chatPanel/components/ScrollToBottomButto
 import { DeleteSelectionBar } from './chatPanel/components/DeleteSelectionBar'
 import { ArchiveTimelineItemView } from './chatPanel/components/ArchiveTimelineItemView'
 import { ChatInputWrapper } from './chatPanel/components/ChatInputWrapper'
+import { MessageIndexBar, type MessageIndexItem } from './chatPanel/components/MessageIndexBar'
 import PendingChangesBar from './PendingChangesBar'
 import { playPendingReviewSound } from '@renderer/utils/sound'
 
@@ -293,6 +294,73 @@ export default function ChatPanel() {
 
   const { isSwitchingThread, timelineItems } = timelineProjection
 
+  // ===== 用户消息索引（左侧圆点导航）=====
+  // timelineItems 的 ref，避免 handleTimelineRangeChanged 频繁重建（Virtuoso 性能优化）
+  const timelineItemsRef = useRef(timelineItems)
+  timelineItemsRef.current = timelineItems
+
+  // 从 timelineItems 中提取所有用户消息及其在虚拟列表中的索引
+  const userMessageIndexItems = useMemo<MessageIndexItem[]>(() => {
+    const items: MessageIndexItem[] = []
+    for (let i = 0; i < timelineItems.length; i++) {
+      const tlItem = timelineItems[i]
+      if (tlItem.kind !== 'message') continue
+      const msg = tlItem.item.message
+      if (!isUserMessage(msg)) continue
+      items.push({
+        id: msg.id,
+        preview: getMessageText(msg.content),
+        index: i,
+      })
+    }
+    return items
+  }, [timelineItems])
+
+  // 当前可见区域内的首个用户消息 ID（用于圆点高亮）
+  const [activeUserMessageId, setActiveUserMessageId] = useState<string | null>(null)
+  const visibleRangeRef = useRef<{ startIndex: number; endIndex: number } | null>(null)
+
+  // 当 timelineItems 变化时（如新消息加入、线程切换），重新计算 active 用户消息
+  useEffect(() => {
+    const range = visibleRangeRef.current
+    if (!range || timelineItems.length === 0) {
+      setActiveUserMessageId(null)
+      return
+    }
+    // 边界保护：Virtuoso 在首次挂载或空列表时可能报告无效 range（endIndex=-1 等）
+    const start = Math.max(0, Math.min(range.startIndex, timelineItems.length - 1))
+    const end = Math.max(start, Math.min(range.endIndex, timelineItems.length - 1))
+    let foundId: string | null = null
+    for (let i = start; i <= end; i++) {
+      const tlItem = timelineItems[i]
+      if (!tlItem) continue
+      if (tlItem.kind === 'message' && isUserMessage(tlItem.item.message)) {
+        foundId = tlItem.item.message.id
+        break
+      }
+    }
+    if (!foundId) {
+      for (let i = start - 1; i >= 0; i--) {
+        const tlItem = timelineItems[i]
+        if (!tlItem) continue
+        if (tlItem.kind === 'message' && isUserMessage(tlItem.item.message)) {
+          foundId = tlItem.item.message.id
+          break
+        }
+      }
+    }
+    setActiveUserMessageId(foundId)
+  }, [timelineItems])
+
+  // 点击圆点跳转到对应消息
+  const handleJumpToMessage = useCallback((index: number) => {
+    scrollVirtuosoRef.current?.scrollToIndex({
+      index,
+      align: 'start',
+      behavior: 'smooth',
+    })
+  }, [scrollVirtuosoRef])
+
   const {
     attachScrollerNode,
     followOutput,
@@ -507,6 +575,37 @@ export default function ChatPanel() {
     (range: { startIndex: number; endIndex: number }) => {
       timelineProjection.handleTimelineRangeChanged(range)
       handleVisibleRangeChanged(range)
+      // 更新可见范围引用，并立即计算 active 用户消息
+      // （不能仅依赖 useEffect[timelineItems]，因为 range 变化时 timelineItems 引用可能未变）
+      visibleRangeRef.current = range
+      const tlItems = timelineItemsRef.current
+      if (!tlItems || tlItems.length === 0) {
+        setActiveUserMessageId(null)
+        return
+      }
+      // 边界保护：Virtuoso 在首次挂载或空列表时可能报告无效 range（endIndex=-1 等）
+      const start = Math.max(0, Math.min(range.startIndex, tlItems.length - 1))
+      const end = Math.max(start, Math.min(range.endIndex, tlItems.length - 1))
+      let foundId: string | null = null
+      for (let i = start; i <= end; i++) {
+        const tlItem = tlItems[i]
+        if (!tlItem) continue
+        if (tlItem.kind === 'message' && isUserMessage(tlItem.item.message)) {
+          foundId = tlItem.item.message.id
+          break
+        }
+      }
+      if (!foundId) {
+        for (let i = start - 1; i >= 0; i--) {
+          const tlItem = tlItems[i]
+          if (!tlItem) continue
+          if (tlItem.kind === 'message' && isUserMessage(tlItem.item.message)) {
+            foundId = tlItem.item.message.id
+            break
+          }
+        }
+      }
+      setActiveUserMessageId(foundId)
     },
     [timelineProjection, handleVisibleRangeChanged],
   )
@@ -629,6 +728,16 @@ export default function ChatPanel() {
                         </motion.div>
                       )}
                     </AnimatePresence>
+
+                    {/* 用户消息索引栏（左侧浮动圆点导航） */}
+                    {!isSwitchingThread && !isHydratingActiveThread && (
+                      <MessageIndexBar
+                        items={userMessageIndexItems}
+                        activeMessageId={activeUserMessageId}
+                        onJump={handleJumpToMessage}
+                        language={language}
+                      />
+                    )}
 
                     <Virtuoso
                       key={currentThreadId ?? 'no-thread'}
