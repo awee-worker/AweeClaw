@@ -174,6 +174,10 @@ export interface AgentRuntimeConfig {
     maxExactRepeats: number
     maxSameTargetRepeats: number
     patternRepeatHardStop: number
+    /** 模式重复警告阈值：达到此次数才发出非阻塞警告（默认 5） */
+    patternWarningThreshold: number
+    /** 相同工具+相同参数的渐进式警告阈值（默认 5） */
+    sameToolWarningThreshold: number
     dynamicThreshold: boolean
   }
 

@@ -189,7 +189,9 @@ export const AGENT_DEFAULTS = {
     maxHistory: 50,            // 历史记录保留数量
     maxExactRepeats: 10,        // 相同参数的精确重复阈值（progressive 警告在 floor(10*0.6)=6 次触发）
     maxSameTargetRepeats: 20,   // 同一文件的连续编辑阈值
-    patternRepeatHardStop: 5,  // 模式重复硬停止阈值
+    patternRepeatHardStop: 8,  // 模式重复硬停止阈值（强制停止）
+    patternWarningThreshold: 5, // 模式重复警告阈值（达到此次数才发出非阻塞警告）
+    sameToolWarningThreshold: 5, // 相同工具+参数的渐进式警告阈值（达到此次数才提醒）
     dynamicThreshold: true,    // 根据任务复杂度动态调整阈值
   },
 

@@ -53,6 +53,10 @@ interface LoopDetectorInternalConfig {
   minPatternLength: number
   maxPatternLength: number
   patternRepeatHardStop: number
+  /** 模式重复警告阈值：达到此次数才发出非阻塞警告（默认 5） */
+  patternWarningThreshold: number
+  /** 相同工具+相同参数的渐进式警告阈值（默认 5） */
+  sameToolWarningThreshold: number
   readOpMultiplier: number
   dynamicThreshold: boolean
   progressiveWarningRatio: number
@@ -63,6 +67,11 @@ function getLoopConfig(): LoopDetectorInternalConfig {
   const agentConfig = getAgentConfig()
   const loopConfig = agentConfig.loopDetection
   const storeEnabled = useStore.getState().agentConfig?.loopDetection?.enabled
+
+  // 渐进式警告阈值：优先使用配置的 sameToolWarningThreshold，否则用 maxExactRepeats * 0.6
+  const sameToolWarningThreshold = loopConfig.sameToolWarningThreshold ?? 5
+  // 模式警告阈值：优先使用配置的 patternWarningThreshold，否则用 5
+  const patternWarningThreshold = loopConfig.patternWarningThreshold ?? 5
 
   return {
     enabled: storeEnabled === false ? false : (loopConfig.enabled ?? true),
@@ -79,7 +88,9 @@ function getLoopConfig(): LoopDetectorInternalConfig {
     maxHistory: loopConfig.maxHistory,
     minPatternLength: 2,
     maxPatternLength: 4,
-    patternRepeatHardStop: loopConfig.patternRepeatHardStop ?? 3,
+    patternRepeatHardStop: loopConfig.patternRepeatHardStop ?? 8,
+    patternWarningThreshold,
+    sameToolWarningThreshold,
     readOpMultiplier: 6,
     dynamicThreshold: loopConfig.dynamicThreshold ?? true,
     progressiveWarningRatio: 0.6,
@@ -310,9 +321,11 @@ export class CycleDetector {
     const isRead = category === 'read' || category === 'search'
     const config = this.config
 
+    // 阈值计算：使用配置的 sameToolWarningThreshold 作为基线
+    // 读取类操作乘以 readOpMultiplier（默认 6 倍）
     let threshold = isRead
-      ? config.maxExactRepeats * config.readOpMultiplier
-      : config.maxExactRepeats
+      ? config.sameToolWarningThreshold * config.readOpMultiplier
+      : config.sameToolWarningThreshold
 
     if (config.dynamicThreshold) {
       const complexity = this.estimateTaskComplexity()
@@ -323,7 +336,12 @@ export class CycleDetector {
 
     threshold = this.applyProgressMultiplier(threshold)
 
-    const warningThreshold = Math.floor(threshold * config.progressiveWarningRatio)
+    // 渐进式警告阈值 = floor(threshold * progressiveWarningRatio)
+    // 但最低不能低于 sameToolWarningThreshold（避免过度敏感）
+    const warningThreshold = Math.max(
+      Math.floor(threshold * config.progressiveWarningRatio),
+      config.sameToolWarningThreshold
+    )
     const exactMatches = this.history.filter(
       entry => entry.name === record.name && entry.argsHash === record.argsHash
     )
@@ -524,6 +542,7 @@ export class CycleDetector {
         const repeatCount = (this.patternRepeatCount.get(patternKey) || 1) + 1
         this.patternRepeatCount.set(patternKey, repeatCount)
 
+        // 硬停止：达到 patternRepeatHardStop 强制停止
         if (repeatCount >= this.config.patternRepeatHardStop) {
           return {
             isLoop: true,
@@ -539,24 +558,30 @@ export class CycleDetector {
           }
         }
 
-        const warningKey = `pattern_warning_${patternKey}`
-        if (!this.warningEmitted.has(warningKey)) {
-          this.warningEmitted.add(warningKey)
-          return {
-            isLoop: false,
-            warning: `Detected repeating pattern: ${pattern} (repeated ${repeatCount} time(s)).`,
-            suggestion: 'This pattern may indicate a loop. Consider whether a different approach would be more effective.',
-            details: {
-              category: 'pattern_loop',
-              pattern,
-              count: repeatCount,
-              threshold: this.config.patternRepeatHardStop,
-              severity: 'medium',
-            },
+        // 非阻塞警告：达到 patternWarningThreshold 才发出（默认 5 次）
+        // 避免 2 次相同模式就触发警告，给 AI 足够的探索空间
+        if (repeatCount >= this.config.patternWarningThreshold) {
+          const warningKey = `pattern_warning_${patternKey}`
+          if (!this.warningEmitted.has(warningKey)) {
+            this.warningEmitted.add(warningKey)
+            return {
+              isLoop: false,
+              warning: `Detected repeating pattern: ${pattern} (repeated ${repeatCount} time(s)).`,
+              suggestion: 'This pattern may indicate a loop. Consider whether a different approach would be more effective.',
+              details: {
+                category: 'pattern_loop',
+                pattern,
+                count: repeatCount,
+                threshold: this.config.patternRepeatHardStop,
+                severity: 'medium',
+              },
+            }
           }
         }
       }
 
+      // Fuzzy pattern：相似但不完全相同的模式
+      // 仅在模式重复次数达到 patternWarningThreshold 才警告，避免过度敏感
       const isFuzzyPattern = firstHalf.every((recordItem, index) => {
         if (recordItem.name !== secondHalf[index].name) return false
         if (recordItem.argsHash === secondHalf[index].argsHash) return true
@@ -564,21 +589,28 @@ export class CycleDetector {
       })
 
       if (isFuzzyPattern && !this.isPathExploration(firstHalf, secondHalf)) {
-        const warningKey = `fuzzy_pattern_${firstHalf.map(r => r.name).join('_')}`
-        if (!this.warningEmitted.has(warningKey)) {
-          this.warningEmitted.add(warningKey)
-          const pattern = firstHalf.map(item => `${item.name}(${item.target || 'N/A'})`).join(' -> ')
-          return {
-            isLoop: false,
-            warning: `Detected a similar pattern repeating: ${pattern}`,
-            suggestion: 'The agent may be repeating similar operations. Consider a different strategy.',
-            details: {
-              category: 'pattern_loop',
-              pattern,
-              count: 2,
-              threshold: this.config.patternRepeatHardStop,
-              severity: 'low',
-            },
+        // fuzzy pattern 也使用 patternRepeatCount 跟踪，与 exact pattern 区分键
+        const fuzzyPatternKey = `fuzzy_pattern_${firstHalf.map(r => r.name).join('_')}`
+        const fuzzyRepeatCount = (this.patternRepeatCount.get(fuzzyPatternKey) || 1) + 1
+        this.patternRepeatCount.set(fuzzyPatternKey, fuzzyRepeatCount)
+
+        if (fuzzyRepeatCount >= this.config.patternWarningThreshold) {
+          const warningKey = `fuzzy_pattern_warning_${fuzzyPatternKey}`
+          if (!this.warningEmitted.has(warningKey)) {
+            this.warningEmitted.add(warningKey)
+            const pattern = firstHalf.map(item => `${item.name}(${item.target || 'N/A'})`).join(' -> ')
+            return {
+              isLoop: false,
+              warning: `Detected a similar pattern repeating: ${pattern} (repeated ${fuzzyRepeatCount} times).`,
+              suggestion: 'The agent may be repeating similar operations. Consider a different strategy.',
+              details: {
+                category: 'pattern_loop',
+                pattern,
+                count: fuzzyRepeatCount,
+                threshold: this.config.patternRepeatHardStop,
+                severity: 'low',
+              },
+            }
           }
         }
       }

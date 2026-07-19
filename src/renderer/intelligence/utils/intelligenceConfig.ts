@@ -80,6 +80,8 @@ export function resolveAgentConfig(): AgentRuntimeConfig {
             maxExactRepeats: agentConfig.loopDetection?.maxExactRepeats ?? DEFAULT_AGENT_CONFIG.loopDetection.maxExactRepeats,
             maxSameTargetRepeats: agentConfig.loopDetection?.maxSameTargetRepeats ?? DEFAULT_AGENT_CONFIG.loopDetection.maxSameTargetRepeats,
             patternRepeatHardStop: agentConfig.loopDetection?.patternRepeatHardStop ?? DEFAULT_AGENT_CONFIG.loopDetection.patternRepeatHardStop,
+            patternWarningThreshold: agentConfig.loopDetection?.patternWarningThreshold ?? DEFAULT_AGENT_CONFIG.loopDetection.patternWarningThreshold,
+            sameToolWarningThreshold: agentConfig.loopDetection?.sameToolWarningThreshold ?? DEFAULT_AGENT_CONFIG.loopDetection.sameToolWarningThreshold,
             dynamicThreshold: agentConfig.loopDetection?.dynamicThreshold ?? DEFAULT_AGENT_CONFIG.loopDetection.dynamicThreshold,
         },
 

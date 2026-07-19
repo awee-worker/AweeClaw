@@ -269,16 +269,44 @@ export function AgentProfilePanel({
                                                 />
                                             </div>
                                             <div className="space-y-1.5">
+                                                <label className="text-[11px] font-medium text-text-muted">{t('app.sametoolwarningthreshold', language as Language)}</label>
+                                                <TextField
+                                                    type="number"
+                                                    value={agentConfig.loopDetection?.sameToolWarningThreshold ?? 5}
+                                                    onChange={(e) => setAgentConfig({
+                                                        ...agentConfig,
+                                                        loopDetection: { ...agentConfig.loopDetection, enabled: true, sameToolWarningThreshold: parseInt(e.target.value) || 5 }
+                                                    })}
+                                                    min={3}
+                                                    max={20}
+                                                    className="bg-background/50 border-border text-xs h-9"
+                                                />
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                <label className="text-[11px] font-medium text-text-muted">{t('app.patternwarningthreshold', language as Language)}</label>
+                                                <TextField
+                                                    type="number"
+                                                    value={agentConfig.loopDetection?.patternWarningThreshold ?? 5}
+                                                    onChange={(e) => setAgentConfig({
+                                                        ...agentConfig,
+                                                        loopDetection: { ...agentConfig.loopDetection, enabled: true, patternWarningThreshold: parseInt(e.target.value) || 5 }
+                                                    })}
+                                                    min={3}
+                                                    max={15}
+                                                    className="bg-background/50 border-border text-xs h-9"
+                                                />
+                                            </div>
+                                            <div className="space-y-1.5">
                                                 <label className="text-[11px] font-medium text-text-muted">{t('app.patternhardstop', language as Language)}</label>
                                                 <TextField
                                                     type="number"
-                                                    value={agentConfig.loopDetection?.patternRepeatHardStop ?? 3}
+                                                    value={agentConfig.loopDetection?.patternRepeatHardStop ?? 8}
                                                     onChange={(e) => setAgentConfig({
                                                         ...agentConfig,
-                                                        loopDetection: { ...agentConfig.loopDetection, enabled: true, patternRepeatHardStop: parseInt(e.target.value) || 3 }
+                                                        loopDetection: { ...agentConfig.loopDetection, enabled: true, patternRepeatHardStop: parseInt(e.target.value) || 8 }
                                                     })}
-                                                    min={2}
-                                                    max={10}
+                                                    min={5}
+                                                    max={20}
                                                     className="bg-background/50 border-border text-xs h-9"
                                                 />
                                             </div>
