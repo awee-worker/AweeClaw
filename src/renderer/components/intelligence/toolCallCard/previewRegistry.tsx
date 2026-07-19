@@ -89,7 +89,7 @@ const renderRunCommand: PreviewRenderer = (ctx) => {
     <div className="font-mono text-[12px] space-y-1">
       <div className="flex items-start gap-1.5">
         <span className="text-accent/60 select-none flex-shrink-0 mt-px">$</span>
-        <span className="text-text-primary break-all flex-1 min-w-0">{cmd}</span>
+        <span className="text-text-primary whitespace-pre-wrap break-all flex-1 min-w-0">{cmd}</span>
         {isRunning && !stringResult && !streamingOutput && (
           <span className="text-accent flex items-center gap-1 flex-shrink-0 mt-px">
             <span className="w-1 h-1 rounded-full bg-accent animate-pulse" />

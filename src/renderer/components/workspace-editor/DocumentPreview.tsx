@@ -332,14 +332,241 @@ export function DocPreview({ path }: DocPreviewProps) {
 }
 
 // ===== Excel (.xlsx) 预览组件 =====
+// 使用 exceljs 读取单元格样式（字体颜色、背景色、边框、对齐、合并单元格、列宽、行高）
+// Sheet Tab 放置在底部，符合 Excel 习惯
 
 interface XlsxPreviewProps {
   path: string
 }
 
+/** ARGB 颜色对象转 CSS 颜色字符串 */
+function argbToCss(color?: { argb?: string; theme?: number; indexed?: number }): string | undefined {
+  if (!color) return undefined
+  // 优先使用 argb（最常见）
+  if (color.argb) {
+    const argb = color.argb
+    // ARGB 格式：FFRRGGBB（前2位 alpha，后6位 RGB）
+    if (argb.length === 8) {
+      return `#${argb.slice(2).toLowerCase()}`
+    }
+    // 兼容 RGB 格式
+    if (argb.length === 6) {
+      return `#${argb.toLowerCase()}`
+    }
+  }
+  // theme 颜色（主题色）无法精确映射，使用透明返回 undefined 让 CSS fallback
+  // indexed 颜色（索引色）同理
+  return undefined
+}
+
+/** 边框样式映射 */
+function borderStyleToCss(style?: string): string | undefined {
+  if (!style) return undefined
+  const map: Record<string, string> = {
+    thin: '1px solid',
+    medium: '2px solid',
+    thick: '3px solid',
+    dotted: '1px dotted',
+    dashed: '1px dashed',
+    double: '3px double',
+    hair: '1px solid',
+    mediumDashed: '2px dashed',
+    mediumDashDot: '2px dashed',
+    mediumDashDotDot: '2px dashed',
+    slantDashDot: '2px dashed',
+  }
+  return map[style]
+}
+
+/** 将 exceljs 单元格样式转为 CSS 样式对象 */
+function buildCellStyle(cell: any): React.CSSProperties {
+  const style: React.CSSProperties = {}
+  // 字体
+  if (cell.font) {
+    const font = cell.font
+    if (font.bold) style.fontWeight = 'bold'
+    if (font.italic) style.fontStyle = 'italic'
+    if (font.underline) style.textDecoration = 'underline'
+    if (font.strike) style.textDecoration = (style.textDecoration as string || '') + ' line-through'
+    if (font.size) style.fontSize = `${font.size}px`
+    if (font.name) style.fontFamily = font.name
+    const fontColor = argbToCss(font.color)
+    if (fontColor) style.color = fontColor
+  }
+  // 填充（背景色）：仅处理 pattern 类型
+  if (cell.fill && cell.fill.type === 'pattern' && cell.fill.pattern === 'solid') {
+    const bgColor = argbToCss(cell.fill.fgColor) || argbToCss(cell.fill.bgColor)
+    if (bgColor) style.backgroundColor = bgColor
+  }
+  // 对齐
+  if (cell.alignment) {
+    const align = cell.alignment
+    if (align.horizontal) {
+      const hMap: Record<string, React.CSSProperties['textAlign']> = {
+        left: 'left', center: 'center', right: 'right',
+        fill: 'left', justify: 'justify', centerContinuous: 'center', distributed: 'justify',
+      }
+      if (hMap[align.horizontal]) style.textAlign = hMap[align.horizontal]
+    }
+    if (align.vertical) {
+      const vMap: Record<string, React.CSSProperties['verticalAlign']> = {
+        top: 'top', middle: 'middle', bottom: 'bottom',
+        distributed: 'middle', justify: 'middle',
+      }
+      if (vMap[align.vertical]) style.verticalAlign = vMap[align.vertical]
+    }
+    if (align.wrapText) style.whiteSpace = 'normal'
+    if (align.textRotation) {
+      // Excel 文本旋转：0-90 表示逆时针 0-90 度；91-180 表示顺时针
+      const deg = align.textRotation <= 90 ? align.textRotation : 90 - align.textRotation
+      style.transform = `rotate(${-deg}deg)`
+      style.transformOrigin = 'center'
+    }
+  }
+  return style
+}
+
+/** 构造边框 CSS 片段（返回完整的 border 字符串） */
+function buildBorderString(cell: any): React.CSSProperties {
+  const style: React.CSSProperties = {}
+  if (!cell.border) return style
+  const b = cell.border
+  if (b.top && b.top.style) {
+    const bs = borderStyleToCss(b.top.style)
+    const color = argbToCss(b.top.color)
+    if (bs) style.borderTop = `${bs} ${color || 'rgb(var(--border))'}`
+  }
+  if (b.bottom && b.bottom.style) {
+    const bs = borderStyleToCss(b.bottom.style)
+    const color = argbToCss(b.bottom.color)
+    if (bs) style.borderBottom = `${bs} ${color || 'rgb(var(--border))'}`
+  }
+  if (b.left && b.left.style) {
+    const bs = borderStyleToCss(b.left.style)
+    const color = argbToCss(b.left.color)
+    if (bs) style.borderLeft = `${bs} ${color || 'rgb(var(--border))'}`
+  }
+  if (b.right && b.right.style) {
+    const bs = borderStyleToCss(b.right.style)
+    const color = argbToCss(b.right.color)
+    if (bs) style.borderRight = `${bs} ${color || 'rgb(var(--border))'}`
+  }
+  return style
+}
+
+/** 解析 exceljs worksheet 为可渲染的表格数据 */
+interface ParsedSheet {
+  name: string
+  rows: Array<{
+    cells: Array<{
+      value: string
+      style: React.CSSProperties
+      border: React.CSSProperties
+      isMerged: boolean
+      mergeSpan?: { colSpan: number; rowSpan: number }
+    }>
+    height?: number
+  }>
+  columnWidths: number[]
+  mergeMap: Map<string, { colSpan: number; rowSpan: number }>
+}
+
+function parseWorksheet(worksheet: any, sheetName: string): ParsedSheet {
+  // 收集合并单元格信息：key 为 "row,col"，value 为 { colSpan, rowSpan }
+  const mergeMap = new Map<string, { colSpan: number; rowSpan: number }>()
+  // exceljs 的 _merges 是以 top-left cell 为 key 的对象
+  const merges = (worksheet as any)._merges || {}
+  for (const key in merges) {
+    const merge = merges[key]
+    if (merge && merge.model) {
+      const top = merge.model.top
+      const left = merge.model.left
+      const bottom = merge.model.bottom
+      const right = merge.model.right
+      const rowSpan = bottom - top + 1
+      const colSpan = right - left + 1
+      mergeMap.set(`${top},${left}`, { colSpan, rowSpan })
+    }
+  }
+
+  // 被合并覆盖的单元格（非左上角）集合
+  const mergedAway = new Set<string>()
+  for (const [key, span] of mergeMap.entries()) {
+    const [r, c] = key.split(',').map(Number)
+    for (let i = r; i <= r + span.rowSpan - 1; i++) {
+      for (let j = c; j <= c + span.colSpan - 1; j++) {
+        if (i === r && j === c) continue
+        mergedAway.add(`${i},${j}`)
+      }
+    }
+  }
+
+  // 列宽（pixel 估算：Excel width 单位约等于字符数）
+  const columnWidths: number[] = []
+  const columnCount = worksheet.columnCount || 0
+  for (let i = 1; i <= columnCount; i++) {
+    const col = worksheet.getColumn(i)
+    // Excel 列宽 → px 估算：width * 7 + 5
+    const width = col.width ? Math.round(col.width * 7 + 5) : 80
+    columnWidths.push(Math.min(Math.max(width, 40), 400))
+  }
+
+  // 行数据
+  const rows: ParsedSheet['rows'] = []
+  const rowCount = worksheet.rowCount || 0
+  for (let r = 1; r <= rowCount; r++) {
+    const row = worksheet.getRow(r)
+    const cells: ParsedSheet['rows'][0]['cells'] = []
+    const cellCount = columnCount || (row.cellCount || 0)
+    for (let c = 1; c <= cellCount; c++) {
+      const cell = row.getCell(c)
+      // 值转换：支持字符串、数字、日期、布尔、公式结果
+      let value = ''
+      if (cell.value !== null && cell.value !== undefined) {
+        if (cell.value instanceof Date) {
+          value = cell.value.toLocaleString()
+        } else if (typeof cell.value === 'object') {
+          // 公式单元格：{ formula, result }
+          if ('result' in cell.value) {
+            value = String(cell.value.result ?? '')
+          } else if ('richText' in cell.value) {
+            // 富文本：拼接所有 run 的 text
+            value = (cell.value.richText || []).map((rt: any) => rt.text || '').join('')
+          } else if ('text' in cell.value) {
+            value = String(cell.value.text)
+          } else if ('hyperlink' in cell.value && 'text' in cell.value) {
+            value = String(cell.value.text)
+          } else {
+            value = String(cell.value)
+          }
+        } else {
+          value = String(cell.value)
+        }
+      }
+
+      const mergeKey = `${r},${c}`
+      const isMergedAway = mergedAway.has(mergeKey)
+      const mergeSpan = mergeMap.get(mergeKey)
+
+      cells.push({
+        value,
+        style: buildCellStyle(cell),
+        border: buildBorderString(cell),
+        isMerged: isMergedAway,
+        mergeSpan: mergeSpan,
+      })
+    }
+    // 行高（point → px：* 1.333）
+    const height = row.height ? Math.round(row.height * 1.333) : undefined
+    rows.push({ cells, height })
+  }
+
+  return { name: sheetName, rows, columnWidths, mergeMap }
+}
+
 export function XlsxPreview({ path }: XlsxPreviewProps) {
   const language = useStore(s => s.language)
-  const [sheets, setSheets] = useState<{ name: string; data: string[][] }[]>([])
+  const [sheets, setSheets] = useState<ParsedSheet[]>([])
   const [activeSheet, setActiveSheet] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
@@ -359,13 +586,11 @@ export function XlsxPreview({ path }: XlsxPreviewProps) {
         for (let i = 0; i < binaryString.length; i++) {
           bytes[i] = binaryString.charCodeAt(i)
         }
-        const XLSX = await import('xlsx')
-        const workbook = XLSX.read(bytes, { type: 'array' })
-        const sheetData = workbook.SheetNames.map((name: string) => {
-          const worksheet = workbook.Sheets[name]
-          const json: string[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' })
-          return { name, data: json }
-        })
+        // 使用 exceljs 读取，支持单元格样式
+        const ExcelJS = await import('exceljs')
+        const workbook = new ExcelJS.Workbook()
+        await workbook.xlsx.load(bytes.buffer as ArrayBuffer)
+        const sheetData = workbook.worksheets.map((ws: any) => parseWorksheet(ws, ws.name))
         setSheets(sheetData)
         setActiveSheet(0)
       } catch (e) {
@@ -380,10 +605,16 @@ export function XlsxPreview({ path }: XlsxPreviewProps) {
 
   const currentSheet = sheets[activeSheet]
 
-  const maxCols = useMemo(() => {
-    if (!currentSheet) return 0
-    return Math.max(...currentSheet.data.map(row => row.length), 0)
-  }, [currentSheet])
+  // 列字母（A, B, ..., Z, AA, AB, ...）用于表头
+  const colLabel = (idx: number): string => {
+    let s = ''
+    let n = idx
+    while (n >= 0) {
+      s = String.fromCharCode(65 + (n % 26)) + s
+      n = Math.floor(n / 26) - 1
+    }
+    return s
+  }
 
   if (loading) {
     return (
@@ -405,8 +636,82 @@ export function XlsxPreview({ path }: XlsxPreviewProps) {
 
   return (
     <div className="h-full flex flex-col bg-background-editor">
+      <div className="flex-1 overflow-auto p-4">
+        {currentSheet && currentSheet.rows.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="border-collapse min-w-full text-sm" style={{ tableLayout: 'fixed' }}>
+              <thead className="sticky top-0 z-10">
+                <tr>
+                  <th
+                    className="border border-border/50 px-2 py-1.5 text-text-muted text-xs text-center w-12 bg-surface/80 font-normal select-none"
+                    style={{ minWidth: 48 }}
+                  >
+                    #
+                  </th>
+                  {currentSheet.columnWidths.map((width, colIdx) => (
+                    <th
+                      key={colIdx}
+                      className="border border-border/50 px-2 py-1.5 text-center text-xs font-semibold text-text-primary bg-surface/80 select-none"
+                      style={{ width, minWidth: width, maxWidth: width }}
+                    >
+                      {colLabel(colIdx)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {currentSheet.rows.map((row, rowIdx) => (
+                  <tr key={rowIdx} style={row.height ? { height: row.height } : undefined}>
+                    <td
+                      className="border border-border/50 px-2 py-1 text-text-muted text-xs text-center bg-surface/30 select-none"
+                    >
+                      {rowIdx + 1}
+                    </td>
+                    {row.cells.map((cell, colIdx) => {
+                      // 被合并覆盖的单元格不渲染（由左上角单元格的 colSpan/rowSpan 覆盖）
+                      if (cell.isMerged) {
+                        return <td key={colIdx} className="border border-border/50" style={{ padding: 0 }} />
+                      }
+                      const baseStyle: React.CSSProperties = {
+                        padding: '6px 12px',
+                        maxWidth: currentSheet.columnWidths[colIdx] || 300,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        backgroundColor: 'rgb(var(--background-editor))',
+                        color: 'rgb(var(--text-secondary))',
+                        ...cell.style,
+                        ...cell.border,
+                      }
+                      // 合并单元格：设置 colSpan / rowSpan
+                      const spanProps = cell.mergeSpan
+                        ? { colSpan: cell.mergeSpan.colSpan, rowSpan: cell.mergeSpan.rowSpan }
+                        : {}
+                      return (
+                        <td
+                          key={colIdx}
+                          style={baseStyle}
+                          title={cell.value || undefined}
+                          {...spanProps}
+                        >
+                          {cell.value}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center h-full text-text-muted text-sm">
+            {t('editor.emptysheet', language as Language)}
+          </div>
+        )}
+      </div>
+      {/* Sheet Tab：底部，符合 Excel 习惯 */}
       {sheets.length > 1 && (
-        <div className="flex-shrink-0 flex items-center gap-1 px-3 py-2 border-b border-border bg-surface/50 overflow-x-auto">
+        <div className="flex-shrink-0 flex items-center gap-1 px-3 py-2 border-t border-border bg-surface/50 overflow-x-auto">
           <FileSpreadsheet className="w-4 h-4 text-accent mr-1 flex-shrink-0" />
           {sheets.map((sheet, idx) => (
             <button
@@ -423,43 +728,6 @@ export function XlsxPreview({ path }: XlsxPreviewProps) {
           ))}
         </div>
       )}
-      <div className="flex-1 overflow-auto p-4">
-        {currentSheet && currentSheet.data.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="border-collapse min-w-full text-sm">
-              <tbody>
-                {currentSheet.data.map((row, rowIdx) => (
-                  <tr key={rowIdx} className={rowIdx === 0 ? 'bg-surface/50' : ''}>
-                    <td className="border border-border/50 px-2 py-1 text-text-muted text-xs text-center w-10 bg-surface/30 select-none">
-                      {rowIdx + 1}
-                    </td>
-                    {Array.from({ length: maxCols }).map((_, colIdx) => {
-                      const cell = row[colIdx]
-                      return (
-                        <td
-                          key={colIdx}
-                          className={`border border-border/50 px-3 py-1.5 max-w-[300px] truncate ${
-                            rowIdx === 0
-                              ? 'font-semibold text-text-primary bg-surface/30'
-                              : 'text-text-secondary'
-                          }`}
-                          title={cell !== undefined && cell !== '' ? String(cell) : undefined}
-                        >
-                          {cell !== undefined && cell !== '' ? String(cell) : ''}
-                        </td>
-                      )
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="flex items-center justify-center h-full text-text-muted text-sm">
-            {t('editor.emptysheet', language as Language)}
-          </div>
-        )}
-      </div>
     </div>
   )
 }

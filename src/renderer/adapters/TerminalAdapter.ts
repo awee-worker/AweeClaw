@@ -1139,7 +1139,7 @@ export class TerminalManagerClass {
         if (settled) return
         settled = true
         unsubRaw()
-        clearTimeout(timer)
+        if (timer) clearTimeout(timer)
         clearIdleTimer()
         this.activeExecutions.delete(termId)
 
@@ -1204,14 +1204,18 @@ export class TerminalManagerClass {
         }, 1200)
       }
 
-      const timer = setTimeout(() => {
-        settle('timeout', {
-          finalStatus: 'timed_out',
-          timedOut: true,
-          partialOutput: getVisibleOutput(),
-          output: getVisibleOutput(),
-        })
-      }, timeoutMs)
+      // timeoutMs = 0 表示不限制超时（AI 执行命令时取消超时限制）
+      // 仅在显式指定正数超时的情况下才设置定时器
+      const timer = timeoutMs > 0
+        ? setTimeout(() => {
+            settle('timeout', {
+              finalStatus: 'timed_out',
+              timedOut: true,
+              partialOutput: getVisibleOutput(),
+              output: getVisibleOutput(),
+            })
+          }, timeoutMs)
+        : null
 
       const unsubRaw = this.onRawData((event) => {
         if (event.id !== termId || settled) return
@@ -1291,8 +1295,12 @@ export class TerminalManagerClass {
 
       // ── 回显清除策略 ──
       // PTY 行规程在内核层将发送的命令回显到终端（包装代码对用户可见），应用层无法阻止。
-      // 解决方案：命令开始执行时立刻输出 ANSI "上移+清除行" 序列，将回显抹掉。
-      //   \033[1A = 光标上移1行；\033[2K = 清除当前行。重复 N 次，N 为回显占用的行数。
+      // 解决方案：命令开始执行时立刻输出 ANSI "上移+清除行+回车" 序列，将回显抹掉。
+      //   \033[1A = 光标上移1行（列位置保持）；\033[2K = 清除当前行（光标位置保持）；
+      //   \r = 回车（光标回到行首）。
+      // 关键：\033[1A 和 \033[2K 都不重置光标列位置。若回显因自动换行使光标停在非 0 列，
+      //   清除后光标仍在该列，后续 printf 输出会从该列开始，前面出现大量"空格"。
+      //   追加 \r 强制光标回到行首，确保后续输出从行首开始，避免对齐错乱。
       // 这与 VS Code/Cursor Shell Integration 使用 PROMPT_COMMAND 钩子的终态效果相同
       // （用户只看到命令输出，不看到包装代码），只是实现层级不同。
       //
@@ -1301,7 +1309,10 @@ export class TerminalManagerClass {
       const cols = xtermInst?.fitAddon?.proposeDimensions?.()?.cols ?? 80
       const promptLen = isWindows ? 60 : 35
       // 每个清除单元的字面长度（PS 使用 $([char]N) 表达式，Unix 使用 octal 转义）
-      const clearUnit = isWindows ? '$([char]27)[1A$([char]27)[2K' : '\\033[1A\\033[2K'
+      // 清除单元 = 上移1行 + 清除整行 + 回车（光标回行首）
+      const clearUnit = isWindows
+        ? '$([char]27)[1A$([char]27)[2K$([char]13)'
+        : '\\033[1A\\033[2K\\r'
       const clearWrapLen = isWindows ? 22 : 10  // "Write-Host -NoNewline \"\"; " 或 "printf ''; "
       // 两次迭代逼近（消除循环依赖）
       const roughLines = Math.ceil((promptLen + mainCommand.length) / cols)
@@ -1318,6 +1329,7 @@ export class TerminalManagerClass {
         : command.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\$/g, '\\$').replace(/`/g, '\\`')
 
       // 提示符路径：有 cwd 时直接嵌入，否则运行时动态获取当前目录
+      // 伪提示符前的 \r 确保从行首开始输出（clearSeq 已含 \r，此处为双保险）
       const fakeEchoCmd = isWindows
         ? `Write-Host -NoNewline "${clearSeq}"; Write-Host "PS ${cwd ?? '$(Get-Location)'}> ${displayCmd}"`
         : `printf '${clearSeq}'; printf '%s\\n' "${cwd ? cwd.replace(/\\/g, '/') : '$(pwd)'}\\$ ${displayCmd}"`

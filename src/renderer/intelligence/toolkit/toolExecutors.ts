@@ -31,7 +31,7 @@ import { agentStorePlanBridge, agentStoreTodoBridge } from '../state/intelligenc
 import { useAgentStore } from '../state/IntelligenceStore'
 import { buildFileChangeDescriptor } from '@intelligence/utils/fileMutationHelper'
 import { EventBus } from '../engine/EventDispatcher'
-import { isLongRunningCommand, EXTENDED_TIMEOUT_COMMAND_PATTERN, EXTENDED_TIMEOUT_MS } from './commandExecutor'
+import { isLongRunningCommand } from './commandExecutor'
 import { internalWriteTracker } from '@services/writeTracker'
 import { toolRegistry } from './toolRegistry'
 import { terminalManager } from '@services/TerminalAdapter'
@@ -1865,28 +1865,106 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         // cwd 解析：若 AI 传了 cwd 参数，解析为绝对路径；否则用工作区根目录
         const resolvedCwd = args.cwd ? resolvePath(args.cwd, ctx.workspacePath, true) : null
         const isBackground = args.is_background as boolean
-        const config = resolveAgentConfig()
-        // 超时优先级：AI 显式指定 > 安装/构建类命令扩展超时 > 默认 toolTimeoutMs
-        // npm install、cargo build 等命令耗时较长，使用 5 分钟扩展超时避免被误杀
-        const isExtendedTimeoutCommand = EXTENDED_TIMEOUT_COMMAND_PATTERN.test(command.trim())
+        // 取消超时限制：AI 执行命令时不设置超时，避免长命令被误杀
+        // 仅当 AI 显式指定 timeout 参数时才使用该超时
         const timeout = args.timeout
             ? (args.timeout as number) * 1000
-            : isExtendedTimeoutCommand
-                ? EXTENDED_TIMEOUT_MS
-                : config.toolTimeoutMs
+            : 0
+
+        // 中止信号处理：用户点击停止按钮时，立即取消命令执行
+        // 避免长命令阻塞 AI 主循环，确保停止按钮能真正中断所有操作
+        const abortSignal = ctx.abortSignal
+        if (abortSignal?.aborted) {
+            return {
+                success: false,
+                result: 'Command cancelled by user before execution',
+                error: 'Aborted by user',
+                meta: { command, finalStatus: 'cancelled', terminationReason: 'aborted_before_start' }
+            }
+        }
+
+        // 注册中止监听器：信号触发时调用 terminalManager.abortActiveAgentCommands()
+        // 作为 IntelligenceCore.abort() 流程的兜底，确保终端命令被中断
+        let abortListener: (() => void) | null = null
+        if (abortSignal) {
+            abortListener = () => {
+                try {
+                    terminalManager.abortActiveAgentCommands()
+                } catch (err) {
+                    logger.agent.warn('[run_command] Abort listener failed to cancel terminal commands:', err)
+                }
+            }
+            abortSignal.addEventListener('abort', abortListener, { once: true })
+        }
+
+        // 中止结果工厂：统一构造被取消的返回值
+        const buildCancelledResult = (partialOutput?: string): ToolExecutionResult => ({
+            success: false,
+            result: partialOutput
+                ? `[Command cancelled by user]\n${partialOutput}`
+                : 'Command cancelled by user',
+            error: 'Aborted by user',
+            meta: {
+                command,
+                cwd: resolvedCwd,
+                finalStatus: 'cancelled',
+                terminationReason: 'aborted_by_user',
+            }
+        })
+
+        // 将任意 Promise 与中止信号竞争：信号触发时返回 cancelled 结果
+        // 用于让 runInlineScriptViaTempFile / tryRunPythonFile / executeCommandWithOutput
+        // 都能响应停止按钮，避免阻塞 AI 主循环
+        const raceWithAbort = <T>(promise: Promise<T>): Promise<T | { __aborted: true }> => {
+            if (!abortSignal) return promise
+            return new Promise<T | { __aborted: true }>((resolve) => {
+                const onAbort = () => resolve({ __aborted: true })
+                if (abortSignal.aborted) {
+                    resolve({ __aborted: true })
+                    return
+                }
+                abortSignal.addEventListener('abort', onAbort, { once: true })
+                promise.then(
+                    (val) => {
+                        abortSignal.removeEventListener('abort', onAbort)
+                        resolve(val)
+                    },
+                    (err) => {
+                        abortSignal.removeEventListener('abort', onAbort)
+                        resolve({ __aborted: true, __error: err } as any)
+                    }
+                )
+            })
+        }
+
+        // 清理中止监听器（在函数返回前调用）
+        const cleanupAbortListener = () => {
+            if (abortListener && abortSignal) {
+                abortSignal.removeEventListener('abort', abortListener)
+                abortListener = null
+            }
+        }
 
         const isLongRunningProcess = isLongRunningCommand(command, isBackground)
 
         try {
             if (!isLongRunningProcess) {
-                const directExecutionResult = await runInlineScriptViaTempFile(command, ctx, timeout)
-                if (directExecutionResult) {
-                    return directExecutionResult
+                // 内联脚本路径：与中止信号竞争，避免长脚本阻塞停止按钮
+                const inlineResult = await raceWithAbort(runInlineScriptViaTempFile(command, ctx, timeout))
+                if (inlineResult && !('__aborted' in inlineResult)) {
+                    return inlineResult
+                }
+                if (inlineResult && '__aborted' in inlineResult) {
+                    return buildCancelledResult()
                 }
 
-                const pythonFileResult = await tryRunPythonFile(command, ctx, timeout)
-                if (pythonFileResult) {
-                    return pythonFileResult
+                // Python 文件路径：同样与中止信号竞争
+                const pythonResult = await raceWithAbort(tryRunPythonFile(command, ctx, timeout))
+                if (pythonResult && !('__aborted' in pythonResult)) {
+                    return pythonResult
+                }
+                if (pythonResult && '__aborted' in pythonResult) {
+                    return buildCancelledResult()
                 }
             }
 
@@ -1976,15 +2054,34 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 }, STREAM_FLUSH_INTERVAL_MS)
             }
 
+            // 终端执行路径：与中止信号竞争
+            // 即使 abortActiveAgentCommands() 已经调用 finalize，raceWithAbort 作为兜底
+            // 确保极端情况下（如 finalize 失败）也能及时返回
             let commandResult
-            try {
-                commandResult = await terminalManager.executeCommandWithOutput(
+            const racedResult = await raceWithAbort(
+                terminalManager.executeCommandWithOutput(
                     termId,
                     command,
                     timeout,
                     resolvedCwd || undefined,
                     onPartialOutput,
                 )
+            )
+
+            try {
+                if ('__aborted' in racedResult) {
+                    // 中止触发：尽力获取已捕获的部分输出
+                    let partialSnapshot = ''
+                    try {
+                        partialSnapshot = terminalManager.getOutputPreview(termId, 200, 8000) || ''
+                    } catch {
+                        // 终端可能已关闭，忽略
+                    }
+                    // 直接返回 cancelled 结果，跳过后续状态映射逻辑
+                    return buildCancelledResult(partialSnapshot.trim() || undefined)
+                } else {
+                    commandResult = racedResult
+                }
             } finally {
                 // 命令结束后：清除节流定时器，立即刷新最后一次输出
                 if (flushTimer) {
@@ -2004,7 +2101,9 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
 
             if (!resultText) {
                 if (commandResult.finalStatus === 'timed_out') {
-                    resultText = `Command timed out after ${timeout / 1000}s`
+                    resultText = timeout > 0
+                        ? `Command timed out after ${timeout / 1000}s`
+                        : 'Command timed out'
                 } else if (commandResult.exitCode === 0 && commandResult.finalStatus === 'completed') {
                     resultText = 'Command executed successfully (no output)'
                 } else {
@@ -2013,7 +2112,9 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             }
 
             if (commandResult.finalStatus === 'timed_out' && displayOutput) {
-                resultText = `[Timed out after ${timeout / 1000}s]\n${displayOutput}`
+                resultText = timeout > 0
+                    ? `[Timed out after ${timeout / 1000}s]\n${displayOutput}`
+                    : `[Timed out]\n${displayOutput}`
             }
 
             if (commandResult.finalStatus === 'interrupted' && !commandResult.sentinelMatched) {
@@ -2051,6 +2152,9 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 result: `Error: Failed to execute command: ${errorMsg}`,
                 error: errorMsg
             }
+        } finally {
+            // 清理中止监听器，避免内存泄漏
+            cleanupAbortListener()
         }
     },
 

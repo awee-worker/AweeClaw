@@ -121,9 +121,12 @@ function resolveCommandPath(cmd: string): string | null {
 
 function execCommandAsync(command: string, args: string[], options?: { cwd?: string; timeout?: number }): Promise<{ stdout: string; stderr: string; code: number }> {
   return new Promise((resolve) => {
+    // timeout = 0 表示不限制超时（AI 执行命令时取消超时限制）
+    // 仅在显式指定正数超时的情况下才设置定时器
+    const effectiveTimeout = options?.timeout && options.timeout > 0 ? options.timeout : undefined
     const proc = spawn(command, args, {
       cwd: options?.cwd,
-      timeout: options?.timeout || 60000,
+      timeout: effectiveTimeout,
       env: { ...process.env, PATH: getAugmentedPathEnv() },
     })
     let stdout = ''

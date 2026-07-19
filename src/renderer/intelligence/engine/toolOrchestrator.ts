@@ -379,7 +379,8 @@ function resolveToolDependencyGraph(toolCalls: ToolCall[]): Map<string, Set<stri
 async function invokeToolInvocation(
   toolCall: ToolCall,
   context: ToolExecutionContext,
-  store: import('../state/IntelligenceStore').ThreadBoundStore
+  store: import('../state/IntelligenceStore').ThreadBoundStore,
+  abortSignal?: AbortSignal
 ): Promise<AgentToolExecutionResult> {
   const mainStore = useStore.getState()
   const { currentAssistantId, workspacePath } = context
@@ -439,6 +440,7 @@ async function invokeToolInvocation(
           toolCallId: toolCall.id,
           chatMode: context.chatMode,
           skipMainApproval: true,
+          abortSignal,
         }
       )
 
@@ -692,7 +694,7 @@ export async function orchestrateToolBatch(
 
         const run = async () => {
           try {
-            const result = await invokeToolInvocation(tc, context, store)
+            const result = await invokeToolInvocation(tc, context, store, abortSignal)
             results.push(result)
             pending.delete(result.toolCall.id)
             if (result.result.content.startsWith('Error:')) {
@@ -857,7 +859,7 @@ export async function orchestrateToolBatch(
 
       for (const tc of approvedTools) {
         if (abortSignal?.aborted) break
-        const result = await invokeToolInvocation(tc, context, store)
+        const result = await invokeToolInvocation(tc, context, store, abortSignal)
         results.push(result)
         pending.delete(tc.id)
         if (result.result.content.startsWith('Error:')) {

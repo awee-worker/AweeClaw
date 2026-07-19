@@ -371,6 +371,8 @@ export interface ToolExecutionContext {
     checkpointId?: string
     /** 跳过主进程审批（渲染进程已处理审批时设为 true） */
     skipMainApproval?: boolean
+    /** 中止信号：用户点击停止按钮时触发，工具执行器应监听并提前返回 */
+    abortSignal?: AbortSignal
 }
 
 export type ToolExecutor = (
