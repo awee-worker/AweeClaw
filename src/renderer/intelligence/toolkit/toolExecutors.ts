@@ -721,7 +721,7 @@ function buildExtractResult(
     const MAX_LEN = 100 * 1024
     const truncated = rawText.length > MAX_LEN
     const content = truncated
-        ? rawText.slice(0, MAX_LEN) + `\n\n...(已截断，共 ${rawText.length} 字符)`
+        ? rawText.slice(0, MAX_LEN) + `\n\n...（内容较长，共 ${rawText.length} 字符，已显示前 ${MAX_LEN} 字符）`
         : rawText
 
     const durationMs = Date.now() - startTime
@@ -729,7 +729,7 @@ function buildExtractResult(
 
     const meta = [
         `格式: ${ext}`,
-        `字符数: ${rawText.length}${truncated ? ` (已截断至 ${MAX_LEN})` : ''}`,
+        `字符数: ${rawText.length}${truncated ? ` (仅显示前 ${MAX_LEN} 字符)` : ''}`,
         options.sheetNames && options.sheetNames.length > 0 ? `工作表: ${options.sheetNames.join(', ')}` : '',
         `OCR: ${options.ocrUsed ? '是' : '否'}`,
         `来源: ${source === 'backend' ? '后端兜底' : '本地'}`,

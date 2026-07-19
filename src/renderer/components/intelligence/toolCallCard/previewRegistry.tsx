@@ -16,6 +16,7 @@ import InlineDiffPreview from '../InlineDiffPreview'
 import { RichContentRenderer } from '../RichContentRenderer'
 import { themeManager } from '../../../config/themeDefinition'
 import { ExpandablePreviewContainer } from './ExpandablePreviewContainer'
+import { CommandOutputContainer } from './CommandOutputContainer'
 import {
   asString,
   guessLanguage,
@@ -67,12 +68,26 @@ function pendingPreview(label: string | undefined, language: Language) {
   )
 }
 
-/** 截断结果文本展示 */
-function TruncatedText({ text, max, language }: { text: string; max: number; language: Language }) {
+/** 截断结果文本展示
+ *  当文本超过指定字符数时截断，避免 DOM 节点过大导致渲染卡顿。
+ *  提示文案使用"仅显示前 N 字符"，避免"已截断"让用户误以为命令执行被中断。
+ *
+ *  - 命令输出（run_command）：使用大阈值 MAX_OUTPUT_CHARS（50000），配合容器滚动查看
+ *  - 其他工具预览：由调用方按需传入 max（如目录列表 5000、搜索结果 3000）
+ */
+const MAX_OUTPUT_CHARS = 50000
+function TruncatedText({ text, max, language }: { text: string; max?: number; language: Language }) {
+  const limit = max ?? MAX_OUTPUT_CHARS
+  if (text.length <= limit) {
+    return <>{text}</>
+  }
+  const truncated = text.slice(0, limit)
   return (
     <>
-      {text.slice(0, max)}
-      {text.length > max && <span className="opacity-50 mt-1 block">{t('tool.truncated', language as any)}</span>}
+      {truncated}
+      <div className="mt-2 pt-2 border-t border-border/30 text-text-muted text-[11px] italic">
+        {t('tool.outputLimited', language as any, { count: limit.toLocaleString() })}
+      </div>
     </>
   )
 }
@@ -89,7 +104,10 @@ const renderRunCommand: PreviewRenderer = (ctx) => {
     <div className="font-mono text-[12px] space-y-1">
       <div className="flex items-start gap-1.5">
         <span className="text-accent/60 select-none flex-shrink-0 mt-px">$</span>
-        <span className="text-text-primary whitespace-pre-wrap break-all flex-1 min-w-0">{cmd}</span>
+        {/* 命令脚本：长脚本限制最大高度并支持滚动查看，短命令不受影响 */}
+        <div className="text-text-primary whitespace-pre-wrap break-all flex-1 min-w-0 max-h-[200px] overflow-y-auto custom-scrollbar">
+          {cmd}
+        </div>
         {isRunning && !stringResult && !streamingOutput && (
           <span className="text-accent flex items-center gap-1 flex-shrink-0 mt-px">
             <span className="w-1 h-1 rounded-full bg-accent animate-pulse" />
@@ -98,20 +116,20 @@ const renderRunCommand: PreviewRenderer = (ctx) => {
       </div>
       {/* 优先显示最终结果，其次显示流式输出 */}
       {stringResult ? (
-        <ExpandablePreviewContainer language={language}>
+        <CommandOutputContainer maxHeightPx={400}>
           <div className="text-text-muted/90 whitespace-pre-wrap break-all p-2 font-mono text-[12px]">
-            <TruncatedText text={stringResult} max={5000} language={language} />
+            <TruncatedText text={stringResult} language={language} />
           </div>
-        </ExpandablePreviewContainer>
+        </CommandOutputContainer>
       ) : streamingOutput ? (
-        <ExpandablePreviewContainer language={language}>
+        <CommandOutputContainer maxHeightPx={400}>
           <div className="text-text-muted/90 whitespace-pre-wrap break-all p-2 font-mono text-[12px]">
-            <TruncatedText text={streamingOutput} max={5000} language={language} />
+            <TruncatedText text={streamingOutput} language={language} />
             {isRunning && (
               <span className="inline-block w-1.5 h-3 bg-accent/60 animate-pulse ml-0.5 align-middle" />
             )}
           </div>
-        </ExpandablePreviewContainer>
+        </CommandOutputContainer>
       ) : null}
     </div>
   )
@@ -271,7 +289,7 @@ const renderEditFile: PreviewRenderer = (ctx) => {
           </span>
         )}
         {isTruncated && !isStreaming && (
-          <span className="text-amber-500">({t('tool.truncated', language as any).replace('... ', '')})</span>
+          <span className="text-amber-500">· {t('tool.truncated', language as any)}</span>
         )}
       </div>
       {isLargeWrite && !isStreaming ? (

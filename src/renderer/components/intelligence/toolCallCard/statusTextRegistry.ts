@@ -27,6 +27,8 @@ interface StatusContext {
   phase: StatusPhase
   language: Language
   result?: string
+  /** 卡片是否展开（仅 run_command 使用：展开时显示通用文案，收起时显示具体命令） */
+  isExpanded?: boolean
 }
 
 /** 状态文案构建器 */
@@ -362,8 +364,22 @@ function buildKnowledgeSearchStatus(ctx: StatusContext): string {
 
 /** 命令执行工具的专用构建器 */
 function buildRunCommandStatus(ctx: StatusContext): string {
-  const { args, phase, language } = ctx
+  const { args, phase, language, isExpanded } = ctx
   const cmd = asString(args.command) || asString(args.cmd) || ''
+  // 展开状态下：命令本身已在内容区显示，标题用通用文案避免冗余
+  // 收起状态下：命令不可见，标题需要带命令预览方便用户识别
+  if (isExpanded) {
+    switch (phase) {
+      case 'running':
+        return t('tool.status.executingCommand', language as any)
+      case 'success':
+        return t('tool.status.executedCommand', language as any)
+      case 'error':
+        return t('tool.status.cmdFailedShort', language as any)
+      default:
+        return t('tool.label.run_command', language as any)
+    }
+  }
   switch (phase) {
     case 'running':
       return cmd
@@ -395,9 +411,10 @@ export function getStatusText(
   isStreaming: boolean,
   language: Language,
   result?: string,
+  isExpanded?: boolean,
 ): string {
   const phase = resolvePhase(status, isStreaming)
-  const ctx: StatusContext = { args, phase, language, result }
+  const ctx: StatusContext = { args, phase, language, result, isExpanded }
 
   const builder = STATUS_BUILDERS[name]
   if (builder) return builder(ctx)
