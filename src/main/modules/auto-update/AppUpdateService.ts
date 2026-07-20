@@ -41,6 +41,8 @@ export interface UpdateStatus {
   minRequiredVersion?: string
   /** 更新来源：backend 后端版本管理 / github GitHub Release / electron electron-updater */
   source?: 'backend' | 'github' | 'electron'
+  /** 安装方式：auto-restart 自动重启安装 / manual-open 手动打开安装包 */
+  installerType?: 'auto-restart' | 'manual-open'
 }
 
 /** 后端 /api/v1/app-version/check 返回结构 */
@@ -196,6 +198,8 @@ class UpdateService {
       this.updateStatus({
         status: 'downloaded',
         version: info.version,
+        // electron-updater 下载的走自动重启安装流程
+        installerType: 'auto-restart',
       })
     })
 
@@ -502,17 +506,35 @@ class UpdateService {
       throw new Error('No update available')
     }
 
+    // macOS 未签名应用兜底：Squirrel.Mac 要求应用必须签名才能用 quitAndInstall 重启，
+    // 否则会出现「下载完成但点击立即重启无反应」或「应用退出后不重启」。
+    // 因此 macOS 下优先走 dmg 完整包下载 + shell.openPath 启动安装流程，绕过签名依赖。
+    // 仅在后端显式返回 updateFeedUrl 且应用已签名时才走差量热更新（当前未签名，全部走 dmg）。
+    const isMacosUnsigned = process.platform === 'darwin'
+
     // 后端来源的热更新：后端返回了 updateFeedUrl（指向 latest.yml 所在目录），
     // 使用 electron-updater 差量下载，体验与 VSCode 一样（静默安装、重启生效）
-    if (this.status.source === 'backend' && this.backendUpdateFeedUrl && !this.status.requiresManualDownload) {
+    // macOS 未签名应用跳过此路径，改走下面的 dmg 下载
+    if (
+      this.status.source === 'backend' &&
+      this.backendUpdateFeedUrl &&
+      !this.status.requiresManualDownload &&
+      !isMacosUnsigned
+    ) {
       await this.downloadViaElectronUpdater(this.backendUpdateFeedUrl)
       return
     }
 
-    // 后端来源但无 updateFeedUrl 或免安装版：使用自定义下载器下载完整安装包
+    // 后端来源的 dmg 下载（macOS 首选路径，或其他平台无 feedUrl 时）
     if (this.status.source === 'backend' && this.status.downloadUrl) {
       await this.downloadUpdateFromUrl(this.status.downloadUrl)
       return
+    }
+
+    // macOS 下 electron-updater 自动下载的 zip 包也走不通（未签名无法 quitAndInstall）
+    // 改为抛出友好提示，引导用户手动下载
+    if (isMacosUnsigned && !this.status.downloadUrl) {
+      throw new Error('macOS 未签名应用暂不支持自动热更新，请前往发布页手动下载 dmg 安装包。')
     }
 
     if (this.status.requiresManualDownload) {
@@ -617,7 +639,8 @@ class UpdateService {
     try {
       await this.downloadFile(url, filePath)
       this.downloadedInstallerPath = filePath
-      this.updateStatus({ status: 'downloaded', progress: 100 })
+      // 自定义下载的安装包（dmg/exe）需要用户手动打开安装，不走自动重启流程
+      this.updateStatus({ status: 'downloaded', progress: 100, installerType: 'manual-open' })
       logger.system.info(`[Updater] Update downloaded successfully: ${filePath}`)
     } catch (err) {
       // 清理不完整的下载文件

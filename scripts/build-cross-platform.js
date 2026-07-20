@@ -108,19 +108,21 @@ function getPlatformPackages(platform, arch) {
 
   // sharp 平台包（@img/sharp-*）
   // 注意：sharp 0.34+ 的 win32-ia32 不存在，32位 Windows 不支持
+  // 版本必须锁定（不用 ^），否则 npm pack 会下载最新的 1.3.x（libvips 8.18.x），
+  // 但 sharp@0.34.5 的 native binding 只兼容 libvips 8.17.x，会导致 dylib 加载失败
   const sharpMap = {
     win32: {
-      x64: ['@img/sharp-win32-x64@^0.34.5', '@img/sharp-libvips-win32-x64@^1.2.4'],
-      arm64: ['@img/sharp-win32-arm64@^0.34.5', '@img/sharp-libvips-win32-arm64@^1.2.4'],
+      x64: ['@img/sharp-win32-x64@0.34.5', '@img/sharp-libvips-win32-x64@1.2.4'],
+      arm64: ['@img/sharp-win32-arm64@0.34.5', '@img/sharp-libvips-win32-arm64@1.2.4'],
       // ia32: 不支持
     },
     darwin: {
-      x64: ['@img/sharp-darwin-x64@^0.34.5', '@img/sharp-libvips-darwin-x64@^1.2.4'],
-      arm64: ['@img/sharp-darwin-arm64@^0.34.5', '@img/sharp-libvips-darwin-arm64@^1.2.4'],
+      x64: ['@img/sharp-darwin-x64@0.34.5', '@img/sharp-libvips-darwin-x64@1.2.4'],
+      arm64: ['@img/sharp-darwin-arm64@0.34.5', '@img/sharp-libvips-darwin-arm64@1.2.4'],
     },
     linux: {
-      x64: ['@img/sharp-linux-x64@^0.34.5', '@img/sharp-libvips-linux-x64@^1.2.4'],
-      arm64: ['@img/sharp-linux-arm64@^0.34.5', '@img/sharp-libvips-linux-arm64@^1.2.4'],
+      x64: ['@img/sharp-linux-x64@0.34.5', '@img/sharp-libvips-linux-x64@1.2.4'],
+      arm64: ['@img/sharp-linux-arm64@0.34.5', '@img/sharp-libvips-linux-arm64@1.2.4'],
     },
   }
 

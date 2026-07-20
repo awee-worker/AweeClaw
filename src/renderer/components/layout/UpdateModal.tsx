@@ -36,8 +36,16 @@ export function UpdateModal({
   }, [isOpen])
 
   // 下载完成后自动重启安装（3 秒倒计时）
+  // 仅对 auto-restart 安装方式（electron-updater 已签名应用）启用自动倒计时
+  // manual-open 安装方式（macOS dmg / 自定义下载安装包）需要用户手动点击按钮打开安装包
   useEffect(() => {
     if (status?.status === 'downloaded' && !autoInstallTriggered.current) {
+      // macOS dmg 安装包：不自动倒计时，等用户手动点击
+      if (status.installerType === 'manual-open') {
+        autoInstallTriggered.current = true
+        return
+      }
+
       autoInstallTriggered.current = true
       setRestartCountdown(3)
 
@@ -54,7 +62,7 @@ export function UpdateModal({
 
       return () => clearInterval(timer)
     }
-  }, [status?.status])
+  }, [status?.status, status?.installerType])
 
   const handleCheck = async () => updaterService.checkForUpdates()
 
@@ -77,17 +85,23 @@ export function UpdateModal({
   // requiresManualDownload 且非后端来源：安装方式不支持自动更新，只能打开浏览器下载
   // 后端来源（source === 'backend'）：支持自动下载（自定义下载器），不需要打开浏览器
   const isManualDownload = status?.requiresManualDownload && status?.source !== 'backend'
+  // manual-open 安装方式：macOS dmg / 自定义下载的安装包，需要用户手动点击打开
+  const isManualInstaller = status?.installerType === 'manual-open'
 
   const labels = {
     title: t('layout.systemupdate', language as Language),
     checking: t('layout.checkingforupdates', language as Language),
     available: t('layout.newversionavailable', language as Language),
-    downloaded: t('layout.updateready', language as Language),
+    downloaded: isManualInstaller
+      ? t('layout.installerReady', language as Language)
+      : t('layout.updateready', language as Language),
     downloading: t('layout.downloadingupdate', language as Language),
     notAvailable: t('layout.youareuptodate', language as Language),
     error: t('layout.updatefailed', language as Language),
     download: t('layout.updatenow', language as Language),
-    install: t('layout.restarttoapply', language as Language),
+    install: isManualInstaller
+      ? t('layout.openInstaller', language as Language)
+      : t('layout.restarttoapply', language as Language),
     openPage: t('layout.opendownloadpage', language as Language),
     checkNow: t('layout.checkforupdates', language as Language),
     manualHint:
@@ -97,6 +111,7 @@ export function UpdateModal({
     forceUpdateHint: t('layout.forceUpdateHint', language as Language),
     releaseNotes: t('layout.releaseNotes', language as Language),
     mustUpdate: t('layout.mustUpdate', language as Language),
+    installerHint: t('layout.installerHint', language as Language),
   }
 
   return (
@@ -223,6 +238,11 @@ export function UpdateModal({
                 {restartCountdown > 0 && (
                   <p className="text-center text-[12px] text-text-muted">
                     {restartCountdown} 秒后自动重启安装...
+                  </p>
+                )}
+                {isManualInstaller && (
+                  <p className="text-center text-[12px] text-text-muted leading-relaxed">
+                    {labels.installerHint}
                   </p>
                 )}
                 <button

@@ -30,6 +30,8 @@ export interface UpdateStatus {
   minRequiredVersion?: string
   /** 更新来源：backend 后端版本管理 / github GitHub Release / electron electron-updater */
   source?: 'backend' | 'github' | 'electron'
+  /** 安装方式：auto-restart 自动重启安装 / manual-open 手动打开安装包 */
+  installerType?: 'auto-restart' | 'manual-open'
 }
 
 interface ScenarioUpdateConfig {
