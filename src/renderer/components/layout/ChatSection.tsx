@@ -13,12 +13,13 @@
  * 替代原有聊天界面（非全屏覆盖，仅覆盖聊天面板区域）。
  */
 
-import { Suspense, useRef, lazy } from 'react'
+import { Suspense, useRef, lazy, useCallback } from 'react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { useChatResize } from '@hooks'
 import { CrashGuard as ErrorBoundary } from '@components/foundation/CrashGuard'
 import { ChatSkeleton } from '@components/ui/ProgressIndicator'
+import { LAYOUT } from '@shared/appConstants'
 
 const ChatPanel = lazy(() => import('@components/intelligence/ChatPanel'))
 import { VoiceConversationOverlay } from '@components/voice/VoiceConversationOverlay'
@@ -31,15 +32,23 @@ interface ChatSectionProps {
 }
 
 export default function ChatSection({ visible, mode = 'secondary' }: ChatSectionProps) {
-  const { chatWidth, setChatWidth, voiceConversationActive, setVoiceConversationActive } = useStore(useShallow((s) => ({
+  const { chatWidth, setChatWidth, setChatVisible, voiceConversationActive, setVoiceConversationActive } = useStore(useShallow((s) => ({
     chatWidth: s.chatWidth,
     setChatWidth: s.setChatWidth,
+    setChatVisible: s.setChatVisible,
     voiceConversationActive: s.voiceConversationActive,
     setVoiceConversationActive: s.setVoiceConversationActive,
   })))
 
   const chatRef = useRef<HTMLDivElement>(null)
-  const { startResize } = useChatResize(setChatWidth, chatRef)
+
+  /** 拖拽到最小宽度及以下时自动收起聊天面板，并恢复默认宽度以便下次打开 */
+  const handleCollapse = useCallback(() => {
+    setChatWidth(LAYOUT.CHAT_DEFAULT_WIDTH)
+    setChatVisible(false)
+  }, [setChatWidth, setChatVisible])
+
+  const { startResize } = useChatResize(setChatWidth, chatRef, handleCollapse)
 
   if (!visible) return null
 
@@ -48,8 +57,8 @@ export default function ChatSection({ visible, mode = 'secondary' }: ChatSection
   return (
     <div
       ref={chatRef}
-      style={{ width: chatWidth, ...(isPrimary ? { minWidth: chatWidth } : {}) }}
-      className={`flex-shrink-0 relative border-l border-border/30 shadow-[-1px_0_15px_rgba(0,0,0,0.03)] z-20 bg-background-chat ${isPrimary ? 'min-w-[580px]' : ''}`}
+      style={{ width: chatWidth, minWidth: isPrimary ? LAYOUT.CHAT_MIN_WIDTH : undefined }}
+      className={`flex-shrink-0 relative border-l border-border/30 shadow-[-1px_0_15px_rgba(0,0,0,0.03)] z-20 bg-background-chat`}
     >
       <div
         className="absolute top-0 left-0 w-1 h-full cursor-col-resize active:bg-accent transition-colors z-50 -translate-x-[2px]"

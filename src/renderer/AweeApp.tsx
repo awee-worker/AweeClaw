@@ -15,6 +15,7 @@ import { api } from './adapters/electronBridge'
 import { shellComposer, type LayoutConfig } from './shell/ShellComposer'
 import { getPanelComponent } from '@components/explorer/PanelRegistry'
 import { ToastProvider, useToast, setGlobalToast } from '@components/foundation/NotificationProvider'
+import { MonitoringToastSubscriber } from '@components/foundation/MonitoringToastSubscriber'
 import { GlobalDecisionOverlay } from '@components/foundation/DecisionOverlay'
 import { CrashGuard as ErrorBoundary } from '@components/foundation/CrashGuard'
 import { GlobalErrorHandler } from '@components/foundation/AppErrorHandler'
@@ -265,6 +266,7 @@ export default function App() {
   return (
     <ToastProvider>
       <ToastInitializer />
+      <MonitoringToastSubscriber />
       <GlobalErrorHandler>
         <ThemeManager>
           <AppContent />

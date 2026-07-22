@@ -214,7 +214,7 @@ export interface PlanConfig {
 /** 默认配置 */
 export const DEFAULT_PLAN_CONFIG: PlanConfig = {
     maxRetries: 2,
-    taskTimeout: 300_000, // 5 分钟
+    taskTimeout: 0, // 0 = 不限制超时
     autoSkipOnDependencyFailure: true,
     maxConcurrency: 3,
 }

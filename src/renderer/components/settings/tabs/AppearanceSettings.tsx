@@ -34,7 +34,7 @@ const THEME_MODE_OPTIONS: { value: ThemeMode; labelZh: string; labelEn: string; 
     { value: 'system', labelZh: '跟随系统', labelEn: 'System', icon: Monitor },
 ]
 
-export function AppearanceSettings({ settings, setSettings, language, localLanguage, setLocalLanguage, agentConfig, setAgentConfig }: EditorSettingsProps & {
+export function AppearanceSettings({ settings, setSettings, language, localLanguage, setLocalLanguage, applyLanguageImmediately, agentConfig, setAgentConfig }: EditorSettingsProps & {
     /** Agent 配置（用于对话展示偏好 expand*ByDefault，从 AgentProfilePanel 迁入） */
     agentConfig?: AgentConfig
     setAgentConfig?: (config: AgentConfig) => void
@@ -175,7 +175,7 @@ export function AppearanceSettings({ settings, setSettings, language, localLangu
 
     return (
         <div className="space-y-8 animate-fade-in pb-10">
-            {localLanguage && setLocalLanguage && (
+            {localLanguage && (setLocalLanguage || applyLanguageImmediately) && (
                 <section className="p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border shadow-sm">
                     <div className="flex items-center gap-2 mb-4">
                         <div className="p-1.5 rounded-md bg-accent/10">
@@ -197,7 +197,14 @@ export function AppearanceSettings({ settings, setSettings, language, localLangu
                             return (
                                 <button
                                     key={item.id}
-                                    onClick={() => setLocalLanguage(item.id)}
+                                    onClick={() => {
+                                        // 阶段7 s7-09：优先使用运行时切换（立即生效），fallback 到本地状态编辑
+                                        if (applyLanguageImmediately) {
+                                            applyLanguageImmediately(item.id)
+                                        } else if (setLocalLanguage) {
+                                            setLocalLanguage(item.id)
+                                        }
+                                    }}
                                     className={`group relative p-4 rounded-xl border text-left transition-all duration-300 ${
                                         isActive
                                             ? 'border-accent bg-accent/5 shadow-lg shadow-accent/5 ring-1 ring-accent/20'

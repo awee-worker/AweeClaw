@@ -44,15 +44,23 @@ export const OverlayDialog: React.FC<ModalProps> = memo(function OverlayDialog({
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ duration: 0.3 }}
+        transition={{ duration: 0.2 }}
         className={`absolute inset-0 ${disableGlassEffect ? 'bg-text-inverted/60' : 'bg-text-inverted/50'}`}
         onClick={onClose}
       />
+      {/*
+        内容容器只使用 opacity 动画，不使用 scale/y。
+        原因：framer-motion 的 scale/y 会在元素上残留 CSS transform，
+        transform 会创建包含块（containing block），导致内部子模态的
+        position:fixed 失效（被 overflow-hidden 裁剪），
+        同时可能干扰 absolute 定位元素的命中测试。
+        纯 opacity 动画不产生 transform，彻底消除此类问题。
+      */}
       <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 10 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ type: 'spring', duration: 0.5, bounce: 0.2 }}
-        className={`relative w-full ${widthCls} bg-background/95 border border-border/50 rounded-3xl shadow-2xl shadow-black/20 overflow-hidden flex flex-col ${className}`}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.2 }}
+        className={`relative w-full ${widthCls} max-h-[90vh] bg-background/95 border border-border/50 rounded-3xl shadow-2xl shadow-black/20 overflow-hidden flex flex-col ${className}`}
       >
         {!disableGlassEffect && (
           <div className="absolute inset-0 pointer-events-none overflow-hidden select-none">
@@ -66,7 +74,7 @@ export const OverlayDialog: React.FC<ModalProps> = memo(function OverlayDialog({
           </div>
         )}
         {showCloseButton && (
-          <button onClick={onClose} className="absolute top-3 right-3 z-20 p-1.5 rounded-lg hover:bg-text-primary/[0.05] text-text-muted hover:text-text-primary transition-all duration-200 group">
+          <button onClick={onClose} className="absolute top-3 right-3 z-30 p-2 rounded-lg hover:bg-text-primary/[0.05] text-text-muted hover:text-text-primary transition-all duration-200 group">
             <X className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" />
           </button>
         )}

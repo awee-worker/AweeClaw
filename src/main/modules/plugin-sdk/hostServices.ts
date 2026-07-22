@@ -26,9 +26,17 @@ import { getDesktopControlManager } from '../desktop-control/DesktopControlManag
 import { macVisionOcrRouter } from '../desktop-control/MacVisionOcrRouter'
 import { sharpBridge } from './SharpBridge'
 import { ocrBridge } from './OcrBridge'
+import { PerceptionStore } from '../perception/PerceptionStore'
+import { LocalEmbedder } from '../perception/LocalEmbedder'
+import { VlmModelManager } from '../perception/VlmModelManager'
+import { BehaviorPredictor } from '../perception/BehaviorPredictor'
+import { CodeDependencyGraph } from '../perception/CodeDependencyGraph'
+import { ImpactAnalyzer } from '../perception/ImpactAnalyzer'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { z } from 'zod'
+import { MonitoringService } from '../monitoring/MonitoringService'
+import { IoTBridge } from '../iot/IoTBridge'
 
 /** Host 服务接口 */
 export interface HostServices {
@@ -50,6 +58,33 @@ export interface HostServices {
   InMemoryTransport: typeof InMemoryTransport
   /** zod schema 构建器 */
   z: typeof z
+  /** 感知数据存储（LanceDB），供 screen-watcher 等感知插件使用 */
+  perceptionStore: PerceptionStore
+  /** 本地嵌入模型（@xenova/transformers，供插件向量化场景文本） */
+  localEmbedder: LocalEmbedder
+  /**
+   * VLM 视觉语言模型管理器（阶段8 s8-06/s8-07）
+   *
+   * 基于 @xenova/transformers 的 image-to-text pipeline（Xenova/vit-gpt2-image-captioning）。
+   * 提供图像描述生成能力，支持按需下载（首次 load 时下载约 500MB）。
+   * 供 screen-watcher 等感知插件在 OCR 基础上补充图像语义理解。
+   */
+  vlmModelManager: VlmModelManager
+  /** 行为预测器（基于本地嵌入+历史场景检索） */
+  behaviorPredictor: BehaviorPredictor
+  /** 代码依赖图构建器（多语言解析+BFS 影响分析） */
+  codeDependencyGraph: CodeDependencyGraph
+  /** 影响分析器（评估变更对项目的影响等级） */
+  impactAnalyzer: ImpactAnalyzer
+  /** 监控服务（系统指标采集 + 异常检测 + 提前预警） */
+  monitoringService: MonitoringService
+  /**
+   * IoT Bridge（设备协议适配与传感器读数聚合，阶段5）
+   *
+   * 协议适配器（HomeAssistant/MQTT/自定义）通过 host.iotBridge.registerAdapter()
+   * 注册，并经 IoTIpc 暴露给渲染层。
+   */
+  iotBridge: IoTBridge
 }
 
 /** 全局变量名 */
@@ -81,6 +116,22 @@ export function initHostServices(): void {
     McpServer,
     InMemoryTransport,
     z,
+    // 感知数据存储单例（懒初始化，首次调用 initialize 时才连接 LanceDB）
+    perceptionStore: PerceptionStore.getInstance(),
+    // 阶段2：本地嵌入模型（懒加载，首次 embed 时才加载 transformers 模型）
+    localEmbedder: LocalEmbedder.getInstance(),
+    // 阶段8 s8-06/s8-07：VLM 视觉语言模型管理器（懒加载，首次 load 时才下载模型）
+    vlmModelManager: VlmModelManager.getInstance(),
+    // 阶段2：行为预测器（基于本地嵌入+历史场景检索）
+    behaviorPredictor: BehaviorPredictor.getInstance(),
+    // 阶段2：代码依赖图构建器（多语言解析+BFS 影响分析）
+    codeDependencyGraph: CodeDependencyGraph.getInstance(),
+    // 阶段2：影响分析器（评估变更对项目的影响等级）
+    impactAnalyzer: ImpactAnalyzer.getInstance(),
+    // 阶段3：监控服务（系统指标采集 + 异常检测 + 提前预警）
+    monitoringService: MonitoringService.getInstance(),
+    // 阶段5：IoT Bridge（设备协议适配与传感器读数聚合）
+    iotBridge: IoTBridge.getInstance(),
   }
 
   Object.defineProperty(globalThis, HOST_GLOBAL_KEY, {

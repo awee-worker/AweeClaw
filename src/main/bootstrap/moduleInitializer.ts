@@ -31,6 +31,19 @@ import {
 import { setIpcModuleForWindow } from './windowManager'
 import { setIpcModule as setIpcModuleForCleanup } from './globalCleanup'
 import { initHostServices } from '../modules/plugin-sdk/hostServices'
+import { registerPerceptionIpc } from '../modules/perception/PerceptionIpc'
+import { registerPerceptionFusionIpc } from '../modules/perception/PerceptionFusionIpc'
+import { registerMonitoringIpc } from '../modules/monitoring/MonitoringIpc'
+import { MonitoringService } from '../modules/monitoring/MonitoringService'
+import { registerCausalReasoningIpc } from '../modules/causal-reasoning/CausalReasoningIpc'
+import { CausalReasoningService } from '../modules/causal-reasoning/CausalReasoningService'
+import { registerIoTIpc } from '../modules/iot/IoTIpc'
+import { registerSensorFusionIpc } from '../modules/iot/SensorFusionIpc'
+import { SensorFusionService } from '../modules/iot/SensorFusionService'
+import { registerProactiveIpc } from '../modules/proactive/ProactiveIpc'
+import { proactiveStore } from '../modules/proactive/ProactiveStore'
+import { proactiveActionTrigger } from '../modules/proactive/ProactiveActionTrigger'
+import { proactivePermission } from '../modules/proactive/ProactivePermission'
 
 export type Language = 'zh' | 'en'
 
@@ -141,6 +154,18 @@ export async function initializeModules(firstWin: BrowserWindow): Promise<void> 
   initDesktopControlPlugin()
   // 初始化 Host 服务桥（供外部插件访问 native 能力 + MCP SDK）
   initHostServicesBridge()
+  // 注册感知层 IPC 处理器（暴露 PerceptionStore 给渲染进程）
+  initPerceptionIpc()
+  // 注册监控层 IPC 处理器（暴露 MonitoringService 给渲染进程）
+  initMonitoringIpc()
+  // 注册因果推理 IPC 处理器（暴露 CausalReasoningService 给渲染进程）
+  initCausalReasoningIpc()
+  // 注册 IoT Bridge IPC 处理器（暴露 IoTBridge 给渲染进程）
+  initIoTIpc(firstWin)
+  // 注册 SensorFusion IPC 处理器（暴露 SensorFusionService 给渲染进程）
+  initSensorFusionIpc(firstWin)
+  // 注册主动式助手 IPC 处理器（暴露 ProactiveStore 给渲染进程，阶段10 s10-02）
+  initProactiveIpc()
 
   // ==========================================
   // 7. 应用菜单与语言同步
@@ -299,6 +324,309 @@ function initHostServicesBridge(): void {
     initHostServices()
   } catch (err) {
     logger.system.warn('[Main] Host services bridge initialization failed:', errMsg(err))
+  }
+}
+
+/**
+ * 注册感知层 IPC 处理器。
+ *
+ * 将 PerceptionStore 的能力通过 IPC 暴露给渲染进程，
+ * 供 IntelligenceCore 注入预测上下文、设置面板读写隐私配置。
+ */
+function initPerceptionIpc(): void {
+  try {
+    registerPerceptionIpc()
+    registerPerceptionFusionIpc()
+  } catch (err) {
+    logger.system.warn('[Main] Perception IPC registration failed:', errMsg(err))
+  }
+}
+
+/**
+ * 注册监控层 IPC 处理器并初始化监控服务。
+ *
+ * 将 MonitoringService 的能力通过 IPC 暴露给渲染进程，
+ * 供设置面板读写监控配置、系统监控面板查询指标与异常事件。
+ * 监控服务会根据配置自动启动定时采样（默认 30s）。
+ */
+function initMonitoringIpc(): void {
+  try {
+    registerMonitoringIpc()
+    // 异步初始化监控服务（不阻塞启动）
+    const service = MonitoringService.getInstance()
+    service.initialize()
+      .then(() => {
+        const config = service.getConfig()
+        if (config.enabled) {
+          service.start()
+          logger.system.info('[Main] Monitoring service started (enabled in config)')
+        } else {
+          logger.system.info('[Main] Monitoring service initialized (disabled by default)')
+        }
+      })
+      .catch((err) => {
+        logger.system.warn('[Main] Monitoring service init failed:', errMsg(err))
+      })
+  } catch (err) {
+    logger.system.warn('[Main] Monitoring IPC registration failed:', errMsg(err))
+  }
+}
+
+/**
+ * 注册因果推理 IPC 处理器并初始化因果推理服务。
+ *
+ * 将 CausalReasoningService 的能力通过 IPC 暴露给渲染进程，
+ * 供设置面板读写因果推理配置、因果图管理面板查询节点/边/断言/反事实查询。
+ * 服务会根据配置自动启动事件流收集器（默认 5 分钟抽取一次断言）。
+ */
+function initCausalReasoningIpc(): void {
+  try {
+    registerCausalReasoningIpc()
+    // 异步初始化因果推理服务（不阻塞启动）
+    const service = CausalReasoningService.getInstance()
+    service.initialize()
+      .then(() => {
+        const config = service.getConfig()
+        if (config.enabled) {
+          logger.system.info('[Main] Causal reasoning service initialized (enabled)')
+        } else {
+          logger.system.info('[Main] Causal reasoning service initialized (disabled by default)')
+        }
+      })
+      .catch((err) => {
+        logger.system.warn('[Main] Causal reasoning service init failed:', errMsg(err))
+      })
+  } catch (err) {
+    logger.system.warn('[Main] Causal reasoning IPC registration failed:', errMsg(err))
+  }
+}
+
+/**
+ * 注册 IoT Bridge IPC 处理器。
+ *
+ * 将 IoTBridge 的能力通过 IPC 暴露给渲染进程，
+ * 供 IoT 设置面板连接/断开 Provider、查询实体快照、订阅实时事件。
+ *
+ * Bridge 启动需由渲染层主动调用 iot.start() 完成（依赖渲染层注入回调）。
+ * 协议适配器（HomeAssistant/MQTT/自定义）由插件或内置模块通过
+ * registerIoTAdapter() 注册。
+ */
+function initIoTIpc(mainWindow: BrowserWindow): void {
+  try {
+    registerIoTIpc(mainWindow)
+    logger.system.info('[Main] IoT Bridge IPC registered')
+  } catch (err) {
+    logger.system.warn('[Main] IoT Bridge IPC registration failed:', errMsg(err))
+  }
+}
+
+/**
+ * 注册 SensorFusion IPC 处理器并初始化传感器融合服务。
+ *
+ * SensorFusionService 在初始化阶段懒加载因果推理服务引用（避免循环依赖），
+ * 启动需由渲染层主动调用 sensorFusion.start() 或通过 updateConfig({enabled:true}) 触发。
+ *
+ * 默认配置：未启用。需用户在 IoT 设置面板中显式开启。
+ */
+function initSensorFusionIpc(mainWindow: BrowserWindow): void {
+  try {
+    registerSensorFusionIpc(mainWindow)
+    // 异步初始化（不阻塞启动）
+    const service = SensorFusionService.getInstance()
+    service.initialize()
+      .then(() => {
+        logger.system.info('[Main] SensorFusion service initialized')
+      })
+      .catch((err) => {
+        logger.system.warn('[Main] SensorFusion service init failed:', errMsg(err))
+      })
+  } catch (err) {
+    logger.system.warn('[Main] SensorFusion IPC registration failed:', errMsg(err))
+  }
+}
+
+/**
+ * 注册主动式助手 IPC 处理器并初始化 ProactiveStore + Permission + ActionTrigger。
+ *
+ * 启动顺序：
+ * 1. 注册 IPC handler（同步）
+ * 2. 加载 ProactivePermission 配置（从 ModuleDataStore，同步内存读取）
+ * 3. 异步初始化 SQLite（不阻塞启动）
+ * 4. 注入权限校验器到 ActionTrigger
+ * 5. 启动 ActionTrigger（被动监听 decisionEngine 的 proposal 事件）
+ * 6. 若权限配置启用 → 启动决策引擎
+ *
+ * 注意：
+ * - ProactiveStore 仅持久化数据
+ * - 决策引擎的启停由 ProactivePermission 配置驱动（updateConfig 触发 syncDecisionEngine）
+ * - ActionTrigger 作为被动监听器提前启动，确保决策引擎启动后提案能即时派发
+ */
+function initProactiveIpc(): void {
+  try {
+    registerProactiveIpc()
+
+    // 加载权限配置（同步内存读取，无 IO 阻塞）
+    proactivePermission.load()
+
+    // 异步初始化 SQLite（不阻塞启动）
+    proactiveStore.initialize()
+      .then(() => {
+        logger.system.info('[Main] Proactive store initialized')
+        // s10-10：初始化 ProactiveLearner（注册每日 04:00 校准任务 + 恢复上次快照）
+        // 必须在 store 初始化完成后进行，否则首次校准会因 SQLite 未就绪而失败
+        return import('../modules/proactive/ProactiveLearner')
+      })
+      .then(({ proactiveLearner }) => {
+        return proactiveLearner.initialize()
+      })
+      .then(() => {
+        logger.system.info('[Main] Proactive learner initialized (daily 04:00 calibration)')
+      })
+      .catch((err) => {
+        logger.system.warn('[Main] Proactive learner init failed:', errMsg(err))
+      })
+
+    // 注入权限校验器到 ActionTrigger（每条提案派发前都会校验）
+    proactiveActionTrigger.setPermissionChecker((proposal) => {
+      const result = proactivePermission.check(proposal)
+      return {
+        allowed: result.allowed,
+        reason: result.reason,
+        effectiveSeverity: result.effectiveSeverity,
+      }
+    })
+
+    // 注入派发回调（用于频率限制记录，s10-05 ProactivePermission 使用）
+    proactiveActionTrigger.setDispatchCallback((_proposal, effectiveSeverity) => {
+      proactivePermission.recordDispatch(effectiveSeverity)
+    })
+
+    // 启动 ActionTrigger（监听 decisionEngine proposal 事件）
+    proactiveActionTrigger.start()
+
+    // 若权限配置已启用，启动决策引擎（默认 enabled=false，不启动）
+    const permConfig = proactivePermission.getConfig()
+    if (permConfig.enabled && permConfig.level !== 'off') {
+      try {
+        // 延迟导入避免在模块加载阶段触发决策引擎的复杂依赖初始化
+        import('../modules/proactive/ProactiveDecisionEngine')
+          .then(({ proactiveDecisionEngine }) => {
+            // 注册编码场景探测器（s10-08）
+            registerCodingScenarioDetectors(proactiveDecisionEngine)
+            // 注册 IoT + 系统场景探测器（s10-09）
+            registerIotSystemScenarioDetectors(proactiveDecisionEngine)
+            proactiveDecisionEngine.start()
+            logger.system.info('[Main] Proactive decision engine started (enabled in config)')
+          })
+          .catch((err) => {
+            logger.system.warn('[Main] Proactive decision engine start failed:', errMsg(err))
+          })
+      } catch (err) {
+        logger.system.warn('[Main] Proactive decision engine start failed:', errMsg(err))
+      }
+    } else {
+      logger.system.info('[Main] Proactive decision engine not started (disabled by default)')
+    }
+  } catch (err) {
+    logger.system.warn('[Main] Proactive IPC registration failed:', errMsg(err))
+  }
+}
+
+/**
+ * 注册编码场景探测器到决策引擎（s10-08）
+ *
+ * 包含 4 个探测器：
+ * - BuildFailureDetector：构建失败模式检测
+ * - RepeatCommandDetector：重复命令模式检测
+ * - ImpactAnalysisDetector：影响分析提示
+ * - DebugStallDetector：调试卡顿检测
+ */
+function registerCodingScenarioDetectors(
+  engine: import('../modules/proactive/ProactiveDecisionEngine').ProactiveDecisionEngine,
+): void {
+  try {
+    // 初始化 ActivityTracker（注册 powerMonitor 监听）
+    import('../modules/proactive/scenarios/ActivityTracker')
+      .then(({ activityTracker }) => {
+        activityTracker.initialize()
+        logger.system.info('[Main] ActivityTracker initialized for coding scenario detectors')
+      })
+      .catch((err) => {
+        logger.system.warn('[Main] ActivityTracker init failed:', errMsg(err))
+      })
+
+    // 注册 4 个编码场景探测器
+    import('../modules/proactive/scenarios/CodingScenario')
+      .then(({ codingDetectors }) => {
+        for (const detector of codingDetectors) {
+          engine.registerScenarioDetector(detector)
+        }
+        logger.system.info(
+          `[Main] Registered ${codingDetectors.length} coding scenario detectors`,
+        )
+      })
+      .catch((err) => {
+        logger.system.warn('[Main] Coding scenario detectors registration failed:', errMsg(err))
+      })
+  } catch (err) {
+    logger.system.warn('[Main] registerCodingScenarioDetectors failed:', errMsg(err))
+  }
+}
+
+/**
+ * 注册 IoT + 系统场景探测器到决策引擎（s10-09）
+ *
+ * 包含 4 个探测器：
+ * - IotAnomalyPersistenceDetector：IoT 异常持续检测
+ * - MqttMessageAnomalyDetector：MQTT 消息频率突变检测
+ * - SystemResourceAlertDetector：系统资源告警
+ * - PredictiveAlertDetector：预测性资源告警
+ *
+ * 同时初始化 MqttMessageTracker，订阅 IoTBridge 内部事件以记录 MQTT 消息。
+ */
+function registerIotSystemScenarioDetectors(
+  engine: import('../modules/proactive/ProactiveDecisionEngine').ProactiveDecisionEngine,
+): void {
+  try {
+    // 初始化 MqttMessageTracker（订阅 IoTBridge 内部事件）
+    import('../modules/proactive/scenarios/MqttMessageTracker')
+      .then(({ mqttMessageTracker }) => {
+        mqttMessageTracker.subscribeToMqttAdapter()
+        logger.system.info('[Main] MqttMessageTracker subscribed to IoTBridge')
+      })
+      .catch((err) => {
+        logger.system.warn('[Main] MqttMessageTracker init failed:', errMsg(err))
+      })
+
+    // 注册 2 个 IoT 场景探测器
+    import('../modules/proactive/scenarios/IotScenario')
+      .then(({ iotDetectors }) => {
+        for (const detector of iotDetectors) {
+          engine.registerScenarioDetector(detector)
+        }
+        logger.system.info(
+          `[Main] Registered ${iotDetectors.length} IoT scenario detectors`,
+        )
+      })
+      .catch((err) => {
+        logger.system.warn('[Main] IoT scenario detectors registration failed:', errMsg(err))
+      })
+
+    // 注册 2 个系统场景探测器
+    import('../modules/proactive/scenarios/SystemScenario')
+      .then(({ systemDetectors }) => {
+        for (const detector of systemDetectors) {
+          engine.registerScenarioDetector(detector)
+        }
+        logger.system.info(
+          `[Main] Registered ${systemDetectors.length} system scenario detectors`,
+        )
+      })
+      .catch((err) => {
+        logger.system.warn('[Main] System scenario detectors registration failed:', errMsg(err))
+      })
+  } catch (err) {
+    logger.system.warn('[Main] registerIotSystemScenarioDetectors failed:', errMsg(err))
   }
 }
 

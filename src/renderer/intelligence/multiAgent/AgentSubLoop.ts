@@ -246,10 +246,7 @@ function callLLMWithTools(
       doResolve(errMsg)
     })
 
-    setTimeout(() => {
-      if (settled) return
-      doResolve('Sub-task timeout (180s)')
-    }, 180000)
+    // 取消子任务超时限制，AI 执行不受时间限制
   })
 }
 

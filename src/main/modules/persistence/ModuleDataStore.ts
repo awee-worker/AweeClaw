@@ -33,6 +33,10 @@ export const STORE_KEYS = {
   SECURITY_SANDBOX_CONFIG: 'security_sandbox_config',
   SECURITY_AGENT_APPROVAL_OVERRIDES: 'security_agent_approval_overrides',
   SECURITY_AGENT_SANDBOX_OVERRIDES: 'security_agent_sandbox_overrides',
+  // 阶段10 s10-05：主动式助手权限配置（含 level/categories/quietHours/frequencyLimit/criticalWhitelist）
+  PROACTIVE_PERMISSION: 'proactive_permission',
+  // 阶段10 s10-10：ProactiveLearner 自适应阈值（保留最近一次校准结果）
+  PROACTIVE_LEARNER_STATS: 'proactive_learner_stats',
 } as const
 
 // ============================================

@@ -53,6 +53,13 @@ const EXTERNAL_DEPS = [
   '@img/sharp-libvips-win32-x64',
   '@img/sharp-libvips-win32-ia32',
   '@img/sharp-libvips-win32-arm64',
+  // BLE 原生模块（s8-01，@abandonware/noble 懒加载 require，保持 external 避免 Rollup 打包）
+  '@abandonware/noble',
+  '@abandonware/bluetooth-hci-socket',
+  'noble',
+  'bluetooth-hci-socket',
+  // MQTT 协议模块（s9-10，mqtt 懒加载 require，保持 external 避免 Rollup 打包）
+  'mqtt',
 ]
 
 // 路径别名配置

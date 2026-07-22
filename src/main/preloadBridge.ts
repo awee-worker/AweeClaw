@@ -30,6 +30,9 @@
  *       ├── scenario.ts      场景管理 / 开发者中心
  *       ├── debugMisc.ts     调试 / 更新 / 审计 / 资源
  *       └── desktop.ts       桌面控制（Phase 1-4）
+ *       ├── perception.ts    感知层（阶段2-3）
+ *       ├── monitoring.ts    监控层（阶段3）
+ *       └── causalReasoning.ts  因果推理（阶段4）
  */
 import { contextBridge } from 'electron'
 
@@ -48,6 +51,13 @@ import { createDebugMiscApi } from './preload/api/debugMisc'
 import { createDesktopApi } from './preload/api/desktop'
 import { createPluginApi } from './preload/api/plugin'
 import { createClipboardApi } from './preload/api/clipboard'
+import { createPerceptionApi } from './preload/api/perception'
+import { createPerceptionFusionApi } from './preload/api/perceptionFusion'
+import { createMonitoringApi } from './preload/api/monitoring'
+import { createCausalReasoningApi } from './preload/api/causalReasoning'
+import { createIoTBridgeApi } from './preload/api/iot'
+import { createSensorFusionApi } from './preload/api/sensorFusion'
+import { createProactiveApi } from './preload/api/proactive'
 
 /**
  * 聚合所有领域 API 并暴露到渲染进程。
@@ -71,4 +81,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   ...createDesktopApi(),
   ...createPluginApi(),
   ...createClipboardApi(),
+  perception: createPerceptionApi(),
+  perceptionFusion: createPerceptionFusionApi(),
+  monitoring: createMonitoringApi(),
+  causal: createCausalReasoningApi(),
+  iot: createIoTBridgeApi(),
+  sensorFusion: createSensorFusionApi(),
+  proactive: createProactiveApi(),
 })

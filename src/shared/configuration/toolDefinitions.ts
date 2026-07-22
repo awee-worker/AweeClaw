@@ -471,7 +471,7 @@ For long-running servers or watch tasks:
         parameters: {
             command: { type: 'string', description: 'Shell command', required: true },
             cwd: { type: 'string', description: 'Working directory relative to workspace root (e.g., "packages/engine", NOT "./packages/engine")', },
-            timeout: { type: 'number', description: 'Timeout seconds (default: 60). Increase for slow commands like installs.', default: 60 },
+            timeout: { type: 'number', description: 'Timeout seconds (0 = no limit).', default: 0 },
             is_background: { type: 'boolean', description: 'Run in background as a visible UI terminal. Required for long-running processes like servers or watchers.', default: false },
         },
     },
@@ -676,7 +676,7 @@ BAD: Separate searches for "Python asyncio" and "Python threading"`,
                 required: true,
             },
             max_results: { type: 'number', description: 'Maximum results to return (default: 5, max: 10)', default: 5 },
-            timeout: { type: 'number', description: 'Timeout in seconds (default: 30, minimum: 15). Increase for slow networks.', default: 30 },
+            timeout: { type: 'number', description: 'Timeout in seconds (0 = no limit).', default: 0 },
         },
     },
 
@@ -702,7 +702,7 @@ TIPS:
         enabled: true,
         parameters: {
             url: { type: 'string', description: 'Full URL to fetch (must start with http:// or https://)', required: true },
-            timeout: { type: 'number', description: 'Timeout in seconds (default: 60, minimum: 30). Use higher values for complex pages.', default: 60 },
+            timeout: { type: 'number', description: 'Timeout in seconds (0 = no limit).', default: 0 },
         },
     },
 

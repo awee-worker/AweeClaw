@@ -1865,11 +1865,8 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         // cwd 解析：若 AI 传了 cwd 参数，解析为绝对路径；否则用工作区根目录
         const resolvedCwd = args.cwd ? resolvePath(args.cwd, ctx.workspacePath, true) : null
         const isBackground = args.is_background as boolean
-        // 取消超时限制：AI 执行命令时不设置超时，避免长命令被误杀
-        // 仅当 AI 显式指定 timeout 参数时才使用该超时
-        const timeout = args.timeout
-            ? (args.timeout as number) * 1000
-            : 0
+        // 取消超时限制：AI 执行命令时不限制超时时间
+        const timeout = 0
 
         // 中止信号处理：用户点击停止按钮时，立即取消命令执行
         // 避免长命令阻塞 AI 主循环，确保停止按钮能真正中断所有操作
@@ -2323,16 +2320,15 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
     },
 
     async web_search(args) {
-        const timeout = (args.timeout as number) || 30
-        const result = await api.http.webSearch(args.query as string, args.max_results as number, timeout * 1000)
+        // 取消网络搜索超时限制
+        const result = await api.http.webSearch(args.query as string, args.max_results as number, 0)
         if (!result.success || !result.results) return { success: false, result: '', error: result.error || 'Search failed' }
         return { success: true, result: result.results.map((r: { title: string; url: string; snippet: string }) => `[${r.title}](${r.url})\n${r.snippet}`).join('\n\n') }
     },
 
     async read_url(args) {
-        // timeout 参数单位是秒，转换为毫秒，最小 30 秒，默认 60 秒
-        const timeoutSec = Math.max((args.timeout as number) || 60, 30)
-        const result = await api.http.readUrl(args.url as string, timeoutSec * 1000)
+        // 取消 URL 读取超时限制
+        const result = await api.http.readUrl(args.url as string, 0)
         if (!result.success || !result.content) return { success: false, result: '', error: result.error || 'Failed to read URL' }
         return { success: true, result: `Title: ${result.title}\n\n${result.content}` }
     },
@@ -3264,21 +3260,21 @@ export const toolExecutors = Object.fromEntries(
     Object.entries(rawToolExecutors).map(([name, executor]) => [
         name,
         async (args: Record<string, unknown>, ctx: ToolExecutionContext): Promise<ToolExecutionResult> => {
-            let timeoutMs: number
-            if (['generate_tests', 'run_command', 'edit_file', 'replace_file_content', 'web_search'].includes(name)) {
-                timeoutMs = 120000
-            } else {
-                timeoutMs = 60000
-            }
+            // timeoutMs = 0 表示不限制超时（AI 执行命令时取消超时限制）
+            const timeoutMs = 0
             let timer: ReturnType<typeof setTimeout>
 
             try {
-                return await Promise.race([
-                    executor(args, ctx),
-                    new Promise<ToolExecutionResult>((_, reject) => {
-                        timer = setTimeout(() => reject(new Error(`Tool [${name}] execution timed out after ${timeoutMs / 1000}s`)), timeoutMs)
-                    })
-                ]).finally(() => clearTimeout(timer))
+                const resultPromise = executor(args, ctx)
+                if (timeoutMs > 0) {
+                    return await Promise.race([
+                        resultPromise,
+                        new Promise<ToolExecutionResult>((_, reject) => {
+                            timer = setTimeout(() => reject(new Error(`Tool [${name}] execution timed out after ${timeoutMs / 1000}s`)), timeoutMs)
+                        })
+                    ]).finally(() => clearTimeout(timer))
+                }
+                return await resultPromise
             } catch (err) {
                 logger.agent.error(`[ToolExecutor] Error executing ${name}:`, err)
                 return {

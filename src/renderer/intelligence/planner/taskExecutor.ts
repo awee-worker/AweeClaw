@@ -125,7 +125,7 @@ function getTaskOutput(threadId: string, assistantId: string): string {
 
 function waitForAgentCompletion(
     identity: { threadId: string; assistantId?: string; requestId: string; taskId: string },
-    timeoutMs = DEFAULT_PLAN_CONFIG.taskTimeout,
+    timeoutMs = 0, // 0 = no timeout
 ): Promise<{ success: boolean; output: string; error?: string; assistantId?: string }> {
     return new Promise((resolve) => {
         let settled = false
@@ -164,9 +164,12 @@ function waitForAgentCompletion(
             settle({ success: true, output, assistantId })
         })
 
-        timer = setTimeout(() => {
-            settle({ success: false, output: '', error: `Agent execution timed out after ${timeoutMs}ms` })
-        }, timeoutMs)
+        // timeoutMs = 0 表示不限制超时
+        if (timeoutMs > 0) {
+            timer = setTimeout(() => {
+                settle({ success: false, output: '', error: `Agent execution timed out after ${timeoutMs}ms` })
+            }, timeoutMs)
+        }
     })
 }
 

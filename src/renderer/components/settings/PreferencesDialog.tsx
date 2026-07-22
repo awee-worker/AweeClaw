@@ -1,5 +1,5 @@
 import { lazy, Suspense, useMemo, useCallback } from 'react'
-import { Cpu, Settings2, Shield, Monitor, Plug, Brain, FileText, Zap, X, Palette, Radio, Cloud, Eye, Search, Mail, Mic, MonitorSmartphone, ArrowLeft, ScanEye } from 'lucide-react'
+import { Cpu, Settings2, Shield, Monitor, Plug, Brain, FileText, Zap, X, Palette, Radio, Cloud, Eye, Search, Mail, Mic, MonitorSmartphone, ArrowLeft, ScanEye, Activity, Network, Cable, Sparkles } from 'lucide-react'
 import { PROVIDERS } from '@configuration/aiProviders'
 import { t, type Language } from '@renderer/i18n'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
@@ -49,6 +49,15 @@ const CloudSettings = lazy(() =>
 const PrivacySettingsPanel = lazy(() =>
     import('./tabs/PrivacySettingsPanel').then(m => ({ default: m.PrivacySettingsPanel })),
 )
+const PerceptionSettingsPanel = lazy(() =>
+    import('./tabs/PerceptionSettingsPanel').then(m => ({ default: m.PerceptionSettingsPanel })),
+)
+const CausalReasoningPanel = lazy(() =>
+    import('./tabs/CausalReasoningPanel').then(m => ({ default: m.CausalReasoningPanel })),
+)
+const IoTSettingsPanel = lazy(() =>
+    import('./tabs/IoTSettingsPanel').then(m => ({ default: m.IoTSettingsPanel })),
+)
 const VoiceSettingsPanel = lazy(() =>
     import('./tabs/VoiceSettingsPanel').then(m => ({ default: m.default })),
 )
@@ -57,6 +66,9 @@ const VisionSettingsPanel = lazy(() =>
 )
 const DesktopControlPanel = lazy(() =>
     import('./tabs/desktop/DesktopControlPanel').then(m => ({ default: m.DesktopControlPanel })),
+)
+const ProactiveSettingsPanel = lazy(() =>
+    import('./tabs/proactive/ProactiveSettingsPanel').then(m => ({ default: m.ProactiveSettingsPanel })),
 )
 
 function SettingsTabFallback({ language }: { language: Language }) {
@@ -79,6 +91,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
         state, dispatch, isDirty, handleSave,
         language, setProvider,
         setShowSettings, setShowSettingsPage,
+        applyLanguageImmediately,
     } = useSettingsLocalState(embedded)
 
     const requestClose = useCallback(async () => {
@@ -142,9 +155,13 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
         { id: 'channel', label: t('settings.channels', language as Language), icon: <Radio className="w-4 h-4" /> },
         { id: 'security', label: t('settings.security', language as Language), icon: <Shield className="w-4 h-4" /> },
         { id: 'privacy', label: t('settings.privacy', language as Language), icon: <Eye className="w-4 h-4" /> },
+        { id: 'perception', label: t('settings.perception', language as Language) || '感知预测', icon: <Activity className="w-4 h-4" /> },
+        { id: 'causal', label: t('settings.causal', language as Language) || '因果推理', icon: <Network className="w-4 h-4" /> },
+        { id: 'iot', label: t('settings.iot', language as Language) || 'IoT 集成', icon: <Cable className="w-4 h-4" /> },
         { id: 'system', label: t('settings.system', language as Language), icon: <Monitor className="w-4 h-4" /> },
         { id: 'cloud', label: t('settings.cloud', language as Language), icon: <Cloud className="w-4 h-4" /> },
         { id: 'desktop', label: t('settings.desktop', language as Language) || '桌面控制', icon: <MonitorSmartphone className="w-4 h-4" /> },
+        { id: 'proactive', label: t('settings.proactive', language as Language) || '主动助手', icon: <Sparkles className="w-4 h-4" /> },
     ], [language])
 
     const renderActiveTab = () => {
@@ -174,6 +191,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                         language={language}
                         localLanguage={state.localLanguage as Language}
                         setLocalLanguage={(lang) => dispatch({ type: 'SET_LOCAL_LANGUAGE', language: lang })}
+                        applyLanguageImmediately={applyLanguageImmediately}
                         agentConfig={state.localAgentConfig}
                         setAgentConfig={(config) => dispatch({ type: 'SET_LOCAL_AGENT_CONFIG', config })}
                     />
@@ -235,6 +253,24 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                         setPrivacySettings={(settings) => dispatch({ type: 'SET_LOCAL_PRIVACY_SETTINGS', settings })}
                     />
                 )
+            case 'perception':
+                return (
+                    <PerceptionSettingsPanel
+                        language={language}
+                    />
+                )
+            case 'causal':
+                return (
+                    <CausalReasoningPanel
+                        language={language}
+                    />
+                )
+            case 'iot':
+                return (
+                    <IoTSettingsPanel
+                        language={language}
+                    />
+                )
             case 'system':
                 return (
                     <SystemPreferencesPanel
@@ -251,6 +287,8 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                 return <VisionSettingsPanel language={language} />
             case 'desktop':
                 return <DesktopControlPanel language={language} />
+            case 'proactive':
+                return <ProactiveSettingsPanel language={language} />
             default:
                 return null
         }

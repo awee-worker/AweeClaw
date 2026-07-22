@@ -366,6 +366,40 @@ export function useSettingsLocalState(embedded: boolean) {
     enableFileLogging, providerConfigs, securitySettings, privacySettings, editorConfig,
   ])
 
+  /**
+   * 立即应用语言切换（阶段7 s7-09）
+   *
+   * 与其他设置项"先编辑后保存"的流程不同，语言切换需要立即生效：
+   * 1. 更新本地 reducer 状态（保证 UI 选中态即时反馈）
+   * 2. 更新 zustand store（触发所有 useI18n() 订阅者响应式重渲染）
+   * 3. 同步到主进程（影响原生菜单、系统对话框语言）
+   * 4. 后台异步持久化到 SQLite + electron-store（不阻塞 UI）
+   *
+   * 异常处理：仅记录日志，不向用户抛出 toast —— 即时生效已在 UI 体现，
+   * 持久化失败不会影响当前会话体验，下次启动会回退到旧值但用户可重新选择。
+   */
+  const applyLanguageImmediately = useCallback((lang: Language) => {
+    // 1. 更新本地选中态
+    dispatch({ type: 'SET_LOCAL_LANGUAGE', language: lang })
+
+    // 2. 更新 store，触发响应式重渲染
+    set('language', lang)
+
+    // 3. 同步主进程（菜单、对话框）
+    try {
+      window.electronAPI?.setLanguage?.(lang)
+    } catch (e) {
+      logger.settings.error('[useSettingsLocalState] 语言同步主进程失败:', e)
+    }
+
+    // 4. 后台异步持久化（不阻塞 UI，不抛 toast）
+    // 注：saveSingle<'language'> 的形参类型被 schema 中的 `default: 'zh' as const`
+    // 推断为字面量 "zh"，需用 `as never` 绕过这个预存的窄类型问题，运行时无影响
+    settingsService.saveSingle('language', lang as never).catch((err) => {
+      logger.settings.error('[useSettingsLocalState] 语言持久化失败:', err)
+    })
+  }, [set])
+
   // 保存逻辑
   const handleSave = useCallback(async () => {
     if (!isDirty) return
@@ -435,6 +469,8 @@ export function useSettingsLocalState(embedded: boolean) {
     finalEditorConfig,
     isDirty,
     handleSave,
+    // 语言运行时切换（阶段7 s7-09）
+    applyLanguageImmediately,
     // store 相关
     language,
     setProvider,

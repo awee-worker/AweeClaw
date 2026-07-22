@@ -32,10 +32,10 @@ import { withTimeout, performGlobalCleanup } from './globalCleanup'
 const WINDOW_CONFIG = {
   WIDTH: 1600,
   HEIGHT: 1000,
-  MIN_WIDTH: 1200,
-  MIN_HEIGHT: 700,
-  EMPTY_MIN_WIDTH: 800,
-  EMPTY_MIN_HEIGHT: 500,
+  MIN_WIDTH: 960,
+  MIN_HEIGHT: 640,
+  EMPTY_MIN_WIDTH: 720,
+  EMPTY_MIN_HEIGHT: 480,
 } as const
 
 // ==========================================

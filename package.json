@@ -1,6 +1,6 @@
 {
   "name": "aweeclaw",
-  "version": "1.5.3",
+  "version": "1.6.1",
   "description": "AweeClaw - Connect AI to Your World",
   "productName": "AweeClaw",
   "author": "Awee Lee <aweelee@qq.com>",
@@ -36,6 +36,7 @@
     "test": "vitest --run",
     "test:watch": "vitest",
     "test:coverage": "vitest --run --coverage",
+    "test:baseline": "node scripts/run-perf-baseline.js",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "assets:icons": "node scripts/generate-platform-icons.js",
@@ -179,7 +180,12 @@
       "node_modules/sharp/**",
       "node_modules/@img/**",
       "node_modules/ssh2/**",
-      "node_modules/cpu-features/**"
+      "node_modules/cpu-features/**",
+      "node_modules/@abandonware/noble/**",
+      "node_modules/@abandonware/bluetooth-hci-socket/**",
+      "node_modules/noble/**",
+      "node_modules/bluetooth-hci-socket/**",
+      "node_modules/mqtt/**"
     ],
     "files": [
       "dist/**/*",
@@ -191,6 +197,11 @@
       "node_modules/@lancedb/lancedb*/**",
       "node_modules/@img/sharp*/**",
       "node_modules/sharp/**",
+      "node_modules/@abandonware/noble/**",
+      "node_modules/@abandonware/bluetooth-hci-socket/**",
+      "node_modules/noble/**",
+      "node_modules/bluetooth-hci-socket/**",
+      "node_modules/mqtt/**",
       "!**/*.map",
       "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
       "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
@@ -253,6 +264,9 @@
   },
   "optionalDependencies": {
     "@lancedb/lancedb-win32-x64-msvc": "^0.22.3",
-    "@parcel/watcher-win32-x64": "^2.5.1"
+    "@parcel/watcher-win32-x64": "^2.5.1",
+    "@abandonware/noble": "^1.9.2",
+    "noble": "^1.9.1",
+    "mqtt": "^5.10.1"
   }
 }

@@ -39,6 +39,7 @@ import type { MessageContent, TextContent, ImageContent } from '@intelligence/pr
 import type { CheckpointImage } from '@intelligence/providerTypes'
 import type { LLMConfig, ExecutionContext } from '@intelligence/providerTypes'
 import { agentExecutor } from '../application/AgentExecutor'
+import { loadPerceptionContext } from './perceptionContextLoader'
 import type { ExecutionConfig } from '../application/AgentExecutor'
 import { translateAgentText } from '@intelligence/utils/intelligenceTextUtils'
 import { agentRuntime } from './AgentRuntime'
@@ -82,6 +83,14 @@ export class AgentClass {
       planTaskId?: string
       /** 是否来自外部渠道消息（飞书/微信/WhatsApp等） */
       isChannel?: boolean
+      /**
+       * 是否为主动式助手触发的对话（阶段10 s10-04 新增）
+       * - true 表示由 ProactiveActionTrigger 通过 IPC 触发
+       * - 用于在对话结束后回写 ProactiveProposal 状态
+       */
+      isProactive?: boolean
+      /** 关联的 ProactiveProposal ID（isProactive=true 时必填） */
+      proposalId?: string
     }
   ): Promise<{ threadId: string; assistantId: string; requestId: string }> {
     const store = useAgentStore.getState()
@@ -154,10 +163,23 @@ export class AgentClass {
 
       // 4. 构建系统提示词（异步执行）
       const userMsgText = typeof userMessage === 'string' ? userMessage : ''
+
+      // 4.1 阶段2：异步加载感知预测上下文（带超时保护，失败静默）
+      const perceptionContext = await loadPerceptionContext({
+        activeFile: promptOptions?.activeFile,
+        openFiles: promptOptions?.openFiles,
+        workspacePath,
+        userMessage: userMsgText,
+      }).catch((e) => {
+        logger.agent?.warn(`[Agent] 感知上下文加载失败: ${e instanceof Error ? e.message : String(e)}`)
+        return null
+      })
+
       const { prompt: systemPrompt, appliedSkills } = await buildAgentSystemPrompt(chatMode, workspacePath, {
         ...promptOptions,
         mentionedSkills: mentionedSkills.length > 0 ? mentionedSkills : undefined,
         userMessage: userMsgText,
+        perceptionContext,
       })
 
       // 提前提取，避免后续重复声明

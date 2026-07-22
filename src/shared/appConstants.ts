@@ -15,8 +15,9 @@ export const LAYOUT = {
   ACTIVITY_BAR_WIDTH: 48,
   SIDEBAR_MIN_WIDTH: 170,
   SIDEBAR_MAX_WIDTH: 600,
-  CHAT_MIN_WIDTH: 580,
+  CHAT_MIN_WIDTH: 460,
   CHAT_MAX_WIDTH: 880,
+  CHAT_DEFAULT_WIDTH: 600,
 } as const
 
 // ==========================================
@@ -26,8 +27,8 @@ export const LAYOUT = {
 export const WINDOW_DEFAULTS = {
   WIDTH: 1600,
   HEIGHT: 1000,
-  MIN_WIDTH: 1200,
-  MIN_HEIGHT: 700,
+  MIN_WIDTH: 960,
+  MIN_HEIGHT: 640,
   BACKGROUND_COLOR: '#f5faff',
 } as const
 

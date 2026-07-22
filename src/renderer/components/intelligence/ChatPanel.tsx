@@ -59,8 +59,11 @@ import { DeleteSelectionBar } from './chatPanel/components/DeleteSelectionBar'
 import { ArchiveTimelineItemView } from './chatPanel/components/ArchiveTimelineItemView'
 import { ChatInputWrapper } from './chatPanel/components/ChatInputWrapper'
 import { MessageIndexBar, type MessageIndexItem } from './chatPanel/components/MessageIndexBar'
+import { PredictionBubble } from './chatPanel/components/PredictionBubble'
 import PendingChangesBar from './PendingChangesBar'
 import { playPendingReviewSound } from '@renderer/utils/sound'
+import { ProactiveSuggestionsContainer } from './proactive/ProactiveSuggestionsContainer'
+import { useProactiveInvoker } from './proactive/useProactiveInvoker'
 
 export default function ChatPanel() {
   // ===== Store 状态订阅 =====
@@ -213,7 +216,23 @@ export default function ChatPanel() {
     [messageCheckpoints],
   )
 
+  // ===== 感知预测场景上下文（用于 PredictionBubble 触发预测） =====
+  const perceptionSceneContext = useMemo(
+    () => ({
+      app: 'AweeClaw',
+      activity: 'coding' as const,
+      text: [activeFilePath, workspacePath].filter(Boolean).join(' '),
+      openFiles: activeFilePath ? [activeFilePath] : [],
+    }),
+    [activeFilePath, workspacePath],
+  )
+
   useAutoSpeak({ isStreaming, messages })
+
+  // ===== 主动式助手 high/critical 级派发订阅（s10-06）=====
+  // 订阅 'proactive:invoke-agent' 和 'proactive:execute-action' 频道
+  // 收到 high/critical 级提案时自动调用 Agent.send 发起主动对话
+  useProactiveInvoker()
 
   // ===== 过滤消息列表 =====
   const filteredMessages = useMemo(
@@ -739,6 +758,11 @@ export default function ChatPanel() {
                       />
                     )}
 
+                    {/* 主动建议卡片（medium 级，s10-06）*/}
+                    {!isSwitchingThread && !isHydratingActiveThread && (
+                      <ProactiveSuggestionsContainer language={language as Language} />
+                    )}
+
                     <Virtuoso
                       key={currentThreadId ?? 'no-thread'}
                       ref={scrollVirtuosoRef}
@@ -799,6 +823,10 @@ export default function ChatPanel() {
               }`}
             >
               <div className="mx-4 mb-4 flex flex-col">
+                <PredictionBubble
+                  language={language}
+                  sceneContext={perceptionSceneContext}
+                />
                 <PendingChangesBar pendingChanges={pendingChanges} />
                 <ChatInputWrapper
                   input={input}

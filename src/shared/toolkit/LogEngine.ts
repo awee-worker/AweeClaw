@@ -41,6 +41,11 @@ export type LogCategory =
   | 'Scenario'
   | 'Session'
   | 'Desktop'
+  | 'Perception'
+  | 'Monitoring'
+  | 'Causal'
+  | 'IoT'
+  | 'Proactive'
 
 /** 单条日志记录的不可变快照 */
 export interface LogEntry {
@@ -121,6 +126,11 @@ const RENDER_CATEGORY_HUE: Readonly<Partial<Record<LogCategory, string>>> = Obje
   Scenario: '#c050c4',
   Session: '#5c6bc0',
   Desktop: '#26c6da',
+  Perception: '#ec407a',
+  Monitoring: '#ef5350',
+  Causal: '#ab47bc',
+  IoT: '#26a69a',
+  Proactive: '#9c27b0',
 })
 
 /** 主进程 ANSI 转义码 — 使用 256 色扩展调色板 */
@@ -171,6 +181,11 @@ const CATEGORY_ANSI_FG: Readonly<Partial<Record<LogCategory, string>>> = Object.
   Session: ANSI.blue,
   Gateway: ANSI.yellow,
   Desktop: ANSI.cyan,
+  Perception: ANSI.magenta,
+  Monitoring: ANSI.red,
+  Causal: ANSI.magenta,
+  IoT: ANSI.cyan,
+  Proactive: ANSI.magenta,
 })
 
 /* ------------------------------------------------------------------ */
@@ -821,6 +836,21 @@ class LogEngineCore {
   }
   get desktop(): CategoryLogger {
     return this.createCategoryLogger('Desktop')
+  }
+  get perception(): CategoryLogger {
+    return this.createCategoryLogger('Perception')
+  }
+  get monitoring(): CategoryLogger {
+    return this.createCategoryLogger('Monitoring')
+  }
+  get causal(): CategoryLogger {
+    return this.createCategoryLogger('Causal')
+  }
+  get iot(): CategoryLogger {
+    return this.createCategoryLogger('IoT')
+  }
+  get proactive(): CategoryLogger {
+    return this.createCategoryLogger('Proactive')
   }
 
   /* -------------------- 便捷方法 -------------------- */

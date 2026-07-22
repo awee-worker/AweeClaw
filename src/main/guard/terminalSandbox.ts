@@ -297,7 +297,8 @@ export function registerSecureTerminalHandlers(
     exitCode?: number
     error?: string
   }> => {
-    const { command, args = [], cwd, timeout = 30000, requireConfirm = true } = request
+    // timeout = 0 表示不限制超时，AI 执行命令不受时间限制
+    const { command, args = [], cwd, timeout = 0, requireConfirm = true } = request
     const mainWindow = getMainWindow()
     const workspace = getWorkspace(event)
 

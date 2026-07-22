@@ -8,6 +8,13 @@ interface ResizeConfig {
   minSize: number
   maxSize: number
   onResizeEnd?: (size: number) => void
+  /**
+   * 拖拽松手时，若最终尺寸 ≤ collapseThreshold 则触发，用于自动收起面板。
+   * 传入后，拖拽过程中允许尺寸低于 minSize（提供"即将收起"的视觉反馈），
+   * 松手时判断：大于阈值则钳制到 minSize 并回调 onResizeEnd，否则回调 onCollapse。
+   */
+  collapseThreshold?: number
+  onCollapse?: () => void
   panelRef?: React.RefObject<HTMLDivElement | null>
 }
 
@@ -49,7 +56,7 @@ function createOverlay(): HTMLDivElement {
 export function useResizePanel(config: ResizeConfig): ResizeState {
   const [isResizing, setIsResizing] = useState(false)
   const sessionRef = useRef<DragSession | null>(null)
-  const { direction, minSize, maxSize, onResizeEnd, panelRef } = config
+  const { direction, minSize, maxSize, onResizeEnd, collapseThreshold, onCollapse, panelRef } = config
 
   const startResize = useCallback(
     (e: React.MouseEvent) => {
@@ -65,12 +72,18 @@ export function useResizePanel(config: ResizeConfig): ResizeState {
   useEffect(() => {
     if (!isResizing) return
 
+    const hasCollapse = collapseThreshold !== undefined && onCollapse !== undefined
+
     const handleMouseMove = (e: MouseEvent) => {
       const session = sessionRef.current
       if (!session) return
 
       const delta = e.clientX - session.originX
-      const next = clampWidth(session.baseWidth + deltaToWidth(direction, delta), minSize, maxSize)
+      const raw = session.baseWidth + deltaToWidth(direction, delta)
+
+      // 有收起阈值时，拖拽下限放宽到 collapseThreshold，给"即将收起"的视觉反馈
+      const lowerBound = hasCollapse ? collapseThreshold! : minSize
+      const next = clampWidth(raw, lowerBound, maxSize)
 
       const el = panelRef?.current
       if (el) el.style.width = `${next}px`
@@ -82,9 +95,19 @@ export function useResizePanel(config: ResizeConfig): ResizeState {
       setIsResizing(false)
       document.body.style.cursor = 'default'
 
-      if (onResizeEnd && finalWidth !== null) {
-        onResizeEnd(finalWidth)
+      if (finalWidth === null) return
+
+      // 收起判定：最终宽度 ≤ 阈值 → 收起面板
+      if (hasCollapse && finalWidth <= collapseThreshold!) {
+        onCollapse!()
+        return
       }
+
+      // 正常情况：钳制到 minSize~maxSize 并同步宽度
+      const clamped = clampWidth(finalWidth, minSize, maxSize)
+      const el = panelRef?.current
+      if (el && clamped !== finalWidth) el.style.width = `${clamped}px`
+      if (onResizeEnd) onResizeEnd(clamped)
     }
 
     window.addEventListener('mousemove', handleMouseMove)
@@ -96,7 +119,7 @@ export function useResizePanel(config: ResizeConfig): ResizeState {
       window.removeEventListener('mouseup', handleMouseUp)
       overlay.remove()
     }
-  }, [isResizing, direction, minSize, maxSize, onResizeEnd, panelRef])
+  }, [isResizing, direction, minSize, maxSize, onResizeEnd, collapseThreshold, onCollapse, panelRef])
 
   return { isResizing, startResize }
 }
@@ -163,10 +186,17 @@ export function useSidebarResize(
   return useResizePanel(config)
 }
 
-/** 聊天面板拖拽（从右侧拖拽） */
+/**
+ * 聊天面板拖拽（从右侧拖拽）
+ *
+ * @param onResizeEnd 宽度变化完成回调（未收起时）
+ * @param panelRef    面板 DOM 引用
+ * @param onCollapse  拖拽到最小宽度以下时的收起回调（可选）
+ */
 export function useChatResize(
   onResizeEnd: (width: number) => void,
   panelRef: React.RefObject<HTMLDivElement | null>,
+  onCollapse?: () => void,
 ) {
   const config = useMemo(
     () => ({
@@ -174,9 +204,12 @@ export function useChatResize(
       minSize: LAYOUT.CHAT_MIN_WIDTH,
       maxSize: LAYOUT.CHAT_MAX_WIDTH,
       onResizeEnd,
+      // 拖拽下限放宽到 CHAT_MIN_WIDTH，松手时若 ≤ 该值则收起
+      collapseThreshold: LAYOUT.CHAT_MIN_WIDTH,
+      onCollapse,
       panelRef,
     }),
-    [onResizeEnd, panelRef],
+    [onResizeEnd, onCollapse, panelRef],
   )
   return useResizePanel(config)
 }

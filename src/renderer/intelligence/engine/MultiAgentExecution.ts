@@ -141,13 +141,7 @@ export function createCallLLM(config: LLMConfig, abortController: AbortControlle
           }
         }, 200)
 
-        setTimeout(() => {
-          if (settled) return
-          settled = true
-          abortController?.signal.removeEventListener('abort', onAbort)
-          cleanup()
-          reject(new Error('Sub-task timeout (120s)'))
-        }, 120000)
+        // 取消子任务超时限制，AI 执行任务不受时间限制
       })
     }
 

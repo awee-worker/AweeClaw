@@ -2,6 +2,9 @@
  * AgentRuntime 初始化器
  * 在应用启动时注册 AgentRuntime 并建立 Store 同步
  * 解耦 IntelligenceCore 与 loopDetector 之间的循环依赖
+ *
+ * 阶段9 s9-03：集成因果推理 LLM 抽取器初始化
+ * 阶段9 s9-04：集成感知层 LLM 行为预测器初始化
  */
 
 import { agentRuntime } from './AgentRuntime'
@@ -11,6 +14,8 @@ import { useStore } from '@store'
 import { Agent } from './IntelligenceCore'
 import { logger } from '@toolkit/LogEngine'
 import { StoreSynchronizer } from '@store/storeSync'
+import { setupCausalLlmExtractor } from '../runtime/causalLlmInitializer'
+import { setupPerceptionLlmPredictor } from '../runtime/perceptionLlmInitializer'
 
 let syncInstance: StoreSynchronizer<ReturnType<typeof useAgentStore.getState>, ReturnType<typeof useStore.getState>> | null = null
 
@@ -90,13 +95,20 @@ export function startStoreSynchronization(): () => void {
 
 /**
  * 完整的 Agent 运行时初始化
- * 包括 Runtime 注册和 Store 同步
+ * 包括 Runtime 注册、Store 同步、因果推理 LLM 抽取器初始化（阶段9 s9-03）、
+ * 感知层 LLM 行为预测器初始化（阶段9 s9-04）
  */
 export function setupAgentRuntime(): () => void {
   initializeAgentRuntime()
   const stopSync = startStoreSynchronization()
+  // 阶段9 s9-03：初始化因果推理 LLM 抽取器（异步，不阻塞主流程）
+  const stopCausalLlm = setupCausalLlmExtractor()
+  // 阶段9 s9-04：初始化感知层 LLM 行为预测器（异步，不阻塞主流程）
+  const stopPerceptionLlm = setupPerceptionLlmPredictor()
 
   return () => {
+    stopPerceptionLlm()
+    stopCausalLlm()
     stopSync()
     agentRuntime.dispose()
   }

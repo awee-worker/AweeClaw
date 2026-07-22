@@ -61,7 +61,7 @@ const LAYOUT_DEFAULTS = {
   debugVisible: false,
   chatVisible: true,
   sidebarWidth: 175,
-  chatWidth: 600,
+  chatWidth: LAYOUT.CHAT_DEFAULT_WIDTH,
   terminalLayout: 'tabs' as TerminalLayout,
   navRailExpanded: true,
   dockPanelVisible: false,

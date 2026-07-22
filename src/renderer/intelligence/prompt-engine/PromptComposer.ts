@@ -104,6 +104,146 @@ export interface PromptContext {
   userInfo?: UserInfo | null
   /** 场景动态上下文：由 active scenario 的 getDynamicContext 提供（如当前选中项目） */
   scenarioDynamicContext?: string | null
+  /** 阶段2：感知预测上下文（当前场景 + 预测建议 + 代码影响） */
+  perceptionContext?: PerceptionContext | null
+}
+
+/** 感知预测上下文（由主进程通过 IPC 提供） */
+export interface PerceptionContext {
+  /** 当前场景摘要 */
+  currentScene?: {
+    app: string
+    activity: string
+    textSummary: string
+  } | null
+  /** 预测的下一步动作（Top-K） */
+  predictions?: Array<{
+    actionType: string
+    target: string
+    confidence: number
+    reason: string
+  }>
+  /** 代码影响分析（如果有） */
+  codeImpact?: {
+    overallLevel: 'high' | 'medium' | 'low' | 'none'
+    totalImpactedFiles: number
+    highRiskCount: number
+    summary: string
+  } | null
+  /**
+   * IoT 上下文摘要（阶段9 s9-01 新增）
+   *
+   * 由 perceptionContextAggregator 从 IoTBridge 聚合，
+   * 包含连接的 Provider、实体数量、最近传感器异常。
+   */
+  iotContext?: IoTContextSummary | null
+  /**
+   * 因果推理上下文摘要（阶段9 s9-01 新增）
+   *
+   * 由 perceptionContextAggregator 从 CausalReasoningService 聚合，
+   * 包含因果图规模、最近反事实查询结果。
+   */
+  causalContext?: CausalContextSummary | null
+  /**
+   * 监控上下文摘要（阶段9 s9-01 新增）
+   *
+   * 由 perceptionContextAggregator 从 MonitoringService 聚合，
+   * 包含活跃异常数量、最近告警、系统指标摘要。
+   */
+  monitoringContext?: MonitoringContextSummary | null
+}
+
+/**
+ * IoT 上下文摘要（轻量级，用于系统提示词注入）
+ *
+ * 设计原则：
+ * - 只保留摘要信息，避免传输大量实体数据
+ * - 实体状态仅取 top N 个最近变化的
+ * - 异常事件仅取 top N 个最近的
+ */
+export interface IoTContextSummary {
+  /** Bridge 是否运行中 */
+  bridgeRunning: boolean
+  /** 已连接的 Provider 数量 */
+  connectedProviders: number
+  /** Provider 总数 */
+  totalProviders: number
+  /** 实体总数 */
+  totalEntities: number
+  /** 已连接 Provider 摘要（最多 5 个） */
+  providers: Array<{
+    name: string
+    protocol: string
+    state: string
+    entityCount: number
+    /** 距离最近一次读数的秒数（null 表示从未收到） */
+    secondsSinceLastReading: number | null
+  }>
+  /** 最近变化的实体（最多 5 个，按 lastStateChangedAt 倒序） */
+  recentEntities: Array<{
+    externalId: string
+    entityType: string
+    state: string | number | boolean | null
+    unit?: string | null
+  }>
+  /** 传感器异常数量（最近 24h） */
+  recentAnomalyCount: number
+  /** 最近传感器异常摘要（最多 3 个） */
+  recentAnomalies: Array<{
+    type: string
+    severity: string
+    description: string
+    entityExternalId: string
+  }>
+}
+
+/**
+ * 因果推理上下文摘要（轻量级）
+ */
+export interface CausalContextSummary {
+  /** 因果推理是否启用 */
+  enabled: boolean
+  /** 节点数量 */
+  nodeCount: number
+  /** 边数量 */
+  edgeCount: number
+  /** 图密度 */
+  density: number
+  /** 是否存在环 */
+  hasCycle: boolean
+  /** 最近反事实查询数量（24h） */
+  recentQueryCount: number
+  /** 最近反事实查询摘要（最多 3 个） */
+  recentQueries: Array<{
+    queryType: string
+    interventionVar: string
+    observedVar: string
+    impactLevel: string
+    success: boolean
+  }>
+}
+
+/**
+ * 监控上下文摘要（轻量级）
+ */
+export interface MonitoringContextSummary {
+  /** 监控是否运行中 */
+  running: boolean
+  /** 活跃异常数量 */
+  activeAnomalyCount: number
+  /** 最近异常摘要（最多 3 个） */
+  recentAnomalies: Array<{
+    type: string
+    severity: string
+    description: string
+    timestamp: number
+  }>
+  /** 系统指标摘要（仅关键指标） */
+  systemMetrics: {
+    cpuUsage: number | null
+    memoryUsage: number | null
+    diskUsage: number | null
+  } | null
 }
 
 function getActiveScenarioIdentity() {
@@ -301,6 +441,149 @@ function buildModeSpecificSections(modeDescriptor: ModeDescriptor): string | nul
   return `${header}\n\n${body}`
 }
 
+/**
+ * 构建感知预测上下文段落
+ *
+ * 将当前场景、预测建议、代码影响分析注入系统提示词，
+ * 让 AI 能基于物理感知数据做出更贴合用户习惯的决策。
+ *
+ * 注入策略：
+ * - 仅在 perceptionContext 非空时注入
+ * - 预测建议作为"参考"提供，不强制 AI 采纳
+ * - 代码影响分析提示 AI 关注高风险文件
+ *
+ * 阶段9 s9-01 扩展：
+ * - 新增 IoT 上下文（连接的 Provider、实体、传感器异常）
+ * - 新增因果推理上下文（因果图规模、最近反事实查询）
+ * - 新增监控上下文（活跃异常、系统指标摘要）
+ */
+function buildPerceptionContext(ctx: PerceptionContext | null | undefined): string | null {
+  if (!ctx) return null
+
+  const parts: string[] = []
+
+  // 1. 当前场景
+  if (ctx.currentScene) {
+    const scene = ctx.currentScene
+    parts.push(
+      `- Current Scene: app=${scene.app}, activity=${scene.activity}`,
+    )
+    if (scene.textSummary) {
+      parts.push(`- Scene Summary: ${scene.textSummary.slice(0, 200)}`)
+    }
+  }
+
+  // 2. 预测建议
+  if (ctx.predictions && ctx.predictions.length > 0) {
+    const predLines = ctx.predictions.slice(0, 3).map((p, i) => {
+      const pct = Math.round(p.confidence * 100)
+      return `  ${i + 1}. ${p.actionType}: ${p.target.slice(0, 60)} (${pct}% confidence)`
+    })
+    parts.push(`- Predicted Next Actions (reference only, do NOT auto-execute):`)
+    parts.push(...predLines)
+  }
+
+  // 3. 代码影响分析
+  if (ctx.codeImpact && ctx.codeImpact.overallLevel !== 'none') {
+    const impact = ctx.codeImpact
+    parts.push(
+      `- Code Impact: ${impact.overallLevel.toUpperCase()} level, ${impact.totalImpactedFiles} files affected, ${impact.highRiskCount} high-risk`,
+    )
+    if (impact.summary) {
+      parts.push(`- Impact Summary: ${impact.summary.slice(0, 200)}`)
+    }
+  }
+
+  // 4. IoT 上下文（阶段9 s9-01）
+  if (ctx.iotContext) {
+    const iot = ctx.iotContext
+    if (iot.bridgeRunning && iot.totalProviders > 0) {
+      parts.push(
+        `- IoT Bridge: ${iot.connectedProviders}/${iot.totalProviders} providers connected, ${iot.totalEntities} entities tracked`,
+      )
+      if (iot.providers.length > 0) {
+        const provLines = iot.providers.slice(0, 5).map((p) => {
+          const stale = p.secondsSinceLastReading !== null && p.secondsSinceLastReading > 120
+          return `  - ${p.name} (${p.protocol}, ${p.state}, ${p.entityCount} entities${
+            p.secondsSinceLastReading !== null
+              ? `, last reading ${p.secondsSinceLastReading}s ago${stale ? ' [STALE]' : ''}`
+              : ''
+          })`
+        })
+        parts.push(...provLines)
+      }
+      if (iot.recentEntities.length > 0) {
+        const entLines = iot.recentEntities.slice(0, 5).map((e) => {
+          const stateStr = typeof e.state === 'boolean' ? (e.state ? 'on' : 'off') : String(e.state)
+          const unitStr = e.unit ? ` ${e.unit}` : ''
+          return `  - ${e.externalId} (${e.entityType}): ${stateStr}${unitStr}`
+        })
+        parts.push(`- Recent Entity Changes:`)
+        parts.push(...entLines)
+      }
+      if (iot.recentAnomalyCount > 0) {
+        parts.push(`- Sensor Anomalies (24h): ${iot.recentAnomalyCount} detected`)
+        if (iot.recentAnomalies.length > 0) {
+          const anomLines = iot.recentAnomalies.slice(0, 3).map(
+            (a) => `  - [${a.severity}] ${a.type} on ${a.entityExternalId}: ${a.description.slice(0, 80)}`,
+          )
+          parts.push(...anomLines)
+        }
+      }
+    }
+  }
+
+  // 5. 因果推理上下文（阶段9 s9-01）
+  if (ctx.causalContext && ctx.causalContext.enabled && ctx.causalContext.nodeCount > 0) {
+    const causal = ctx.causalContext
+    parts.push(
+      `- Causal Graph: ${causal.nodeCount} nodes, ${causal.edgeCount} edges, density=${causal.density.toFixed(3)}${causal.hasCycle ? ' [HAS CYCLE]' : ''}`,
+    )
+    if (causal.recentQueryCount > 0) {
+      parts.push(`- Counterfactual Queries (24h): ${causal.recentQueryCount}`)
+      if (causal.recentQueries.length > 0) {
+        const qLines = causal.recentQueries.slice(0, 3).map(
+          (q) =>
+            `  - [${q.queryType}] ${q.interventionVar} → ${q.observedVar}: ${q.impactLevel}${q.success ? '' : ' (failed)'}`,
+        )
+        parts.push(...qLines)
+      }
+    }
+  }
+
+  // 6. 监控上下文（阶段9 s9-01）
+  if (ctx.monitoringContext && ctx.monitoringContext.running) {
+    const mon = ctx.monitoringContext
+    if (mon.activeAnomalyCount > 0) {
+      parts.push(`- Active System Anomalies: ${mon.activeAnomalyCount}`)
+      if (mon.recentAnomalies.length > 0) {
+        const anomLines = mon.recentAnomalies.slice(0, 3).map((a) => {
+          const ageMin = Math.round((Date.now() - a.timestamp) / 60000)
+          return `  - [${a.severity}] ${a.type}: ${a.description.slice(0, 80)} (${ageMin}min ago)`
+        })
+        parts.push(...anomLines)
+      }
+    }
+    if (mon.systemMetrics) {
+      const m = mon.systemMetrics
+      const metricsParts: string[] = []
+      if (m.cpuUsage !== null) metricsParts.push(`CPU=${m.cpuUsage.toFixed(1)}%`)
+      if (m.memoryUsage !== null) metricsParts.push(`Mem=${m.memoryUsage.toFixed(1)}%`)
+      if (m.diskUsage !== null) metricsParts.push(`Disk=${m.diskUsage.toFixed(1)}%`)
+      if (metricsParts.length > 0) {
+        parts.push(`- System Metrics: ${metricsParts.join(', ')}`)
+      }
+    }
+  }
+
+  if (parts.length === 0) return null
+
+  return `## Perception Context
+The following context is derived from local physical perception (screen scenes, behavior history, code dependency analysis), IoT bridge (connected sensors/devices), causal reasoning (cause-effect graph), and system monitoring (anomalies/metrics). Use it to better understand the user's current environment and proactively assist, but do NOT auto-execute predicted actions or IoT device controls without user confirmation.
+
+${parts.join('\n')}`
+}
+
 export function buildSystemPrompt(ctx: PromptContext): string {
   const identity = getActiveScenarioIdentity()
   const sections: (string | null)[] = [
@@ -322,6 +605,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     buildKnowledge(ctx.knowledgeEntries),
     ...buildSkillsSections(ctx.autoSkills, ctx.mentionedSkills),
     buildScenarioDynamicContext(ctx.scenarioDynamicContext),
+    buildPerceptionContext(ctx.perceptionContext),
     buildCustomInstructions(ctx.customInstructions),
   ]
 
@@ -346,6 +630,7 @@ export function buildChatPrompt(ctx: PromptContext): string {
     buildLongTermMemory(ctx.longTermMemories),
     ...buildSkillsSections(ctx.autoSkills, ctx.mentionedSkills),
     buildScenarioDynamicContext(ctx.scenarioDynamicContext),
+    buildPerceptionContext(ctx.perceptionContext),
     buildCustomInstructions(ctx.customInstructions),
   ]
 
@@ -363,6 +648,8 @@ export async function buildAgentSystemPrompt(
     planPhase?: 'planning' | 'executing'
     mentionedSkills?: string[]
     userMessage?: string
+    /** 阶段2：感知预测上下文 */
+    perceptionContext?: PerceptionContext | null
   }
 ): Promise<{ prompt: string; activeSkills: { name: string; description: string }[]; appliedSkills: { name: string; description: string }[] }> {
   const {
@@ -373,6 +660,7 @@ export async function buildAgentSystemPrompt(
     planPhase,
     mentionedSkills,
     userMessage,
+    perceptionContext,
   } = options || {}
 
   let template = promptTemplateId
@@ -463,6 +751,7 @@ export async function buildAgentSystemPrompt(
     planPhase,
     userInfo,
     scenarioDynamicContext,
+    perceptionContext: perceptionContext ?? null,
   }
 
   const prompt = mode === 'chat' ? buildChatPrompt(ctx) : buildSystemPrompt(ctx)

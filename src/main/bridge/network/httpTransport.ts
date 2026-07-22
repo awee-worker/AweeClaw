@@ -349,8 +349,13 @@ function getEngineConfig(engineId: string): { apiKey?: string; extraValues?: Rec
 
 async function webSearch(query: string, maxResults = 5, timeout?: number): Promise<WebSearchResult> {
     const engineOrder = getEnabledEngineOrder()
-    const globalTimeout = timeout || ((cachedSearchEngineState?.searchTimeout ?? 30) * 1000)
-    const perEngineTimeout = Math.max(Math.floor(globalTimeout / Math.min(engineOrder.length, 3)), 8000)
+    // 0 = 不限制超时
+    const globalTimeout = timeout !== undefined && timeout !== null
+        ? timeout
+        : (cachedSearchEngineState?.searchTimeout ?? 30) * 1000
+    const perEngineTimeout = globalTimeout > 0
+        ? Math.max(Math.floor(globalTimeout / Math.min(engineOrder.length, 3)), 8000)
+        : 0
 
     const errors: string[] = []
 

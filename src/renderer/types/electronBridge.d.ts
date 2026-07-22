@@ -369,6 +369,1051 @@ export interface ElectronAPI {
   respondToShutdownRequest: (requestId: string, success: boolean) => Promise<boolean>
   onShutdownRequested: (callback: (event: { requestId: string; reason: 'window-close' | 'app-quit' }) => void) => () => void
 
+  // Perception（感知层）
+  perception: {
+    // 阶段1：配置与查询
+    getPrivacyConfig: () => Promise<{ success: boolean; data?: unknown; error?: string }>
+    updatePrivacyConfig: (config: Record<string, unknown>) => Promise<{ success: boolean; error?: string }>
+    getRecentScenes: (limit?: number) => Promise<{ success: boolean; data?: unknown[]; error?: string }>
+    searchSimilarScenes: (embedding: number[], topK?: number) => Promise<{ success: boolean; data?: unknown[]; error?: string }>
+    searchSimilarBehaviors: (embedding: number[], topK?: number) => Promise<{ success: boolean; data?: unknown[]; error?: string }>
+    clearAllData: () => Promise<{ success: boolean; error?: string }>
+    cleanupExpiredData: () => Promise<{ success: boolean; error?: string }>
+    updatePredictionOutcome: (
+      predictionId: string,
+      actualAction: unknown,
+      feedback?: 'accepted' | 'rejected' | 'ignored',
+    ) => Promise<{ success: boolean; error?: string }>
+
+    // 阶段2：行为预测
+    predictAction: (req: {
+      sceneText: string
+      app: string
+      activity: string
+      openFiles?: string[]
+      terminalCmds?: string[]
+      topK?: number
+      confidenceThreshold?: number
+    }) => Promise<{
+      success: boolean
+      predictions: Array<{
+        id: string
+        predictedAction: { type: string; target: string; durationMs?: number }
+        confidence: number
+        basedOnBehaviors: string[]
+        reason: string
+        modelVersion: string
+      }>
+      embedding: number[]
+      sampleCount: number
+      error?: string
+    }>
+    recordBehavior: (params: {
+      sceneId?: string
+      sceneText: string
+      app: string
+      activity: string
+      action: { type: string; target: string; durationMs?: number }
+      outcome?: 'success' | 'failure' | 'abandoned'
+      openFiles?: string[]
+      terminalCmds?: string[]
+    }) => Promise<{ success: boolean; error?: string }>
+    submitFeedback: (
+      predictionId: string,
+      feedback: 'accepted' | 'rejected' | 'ignored',
+      actualAction?: { type: string; target: string; durationMs?: number },
+    ) => Promise<{ success: boolean; error?: string }>
+
+    // 阶段2：代码影响分析
+    analyzeImpact: (req: {
+      projectPath: string
+      language?: 'typescript' | 'javascript' | 'python'
+      changedFiles: Array<{
+        filePath: string
+        relativePath: string
+        changeType: 'modified' | 'added' | 'deleted' | 'renamed'
+        additions?: number
+        deletions?: number
+      }>
+      forceRebuild?: boolean
+      maxDepth?: number
+      /** 是否启用 Git 伴随修改分析（阶段9 s9-09，默认 true） */
+      enableCoModification?: boolean
+      /** 伴随修改分析返回的 Top-K（默认 5） */
+      coModificationTopK?: number
+      /** 是否强制刷新伴随修改缓存（阶段9 s9-09） */
+      forceRefreshCoModification?: boolean
+    }) => Promise<{
+      success: boolean
+      projectPath: string
+      overallImpact: 'high' | 'medium' | 'low' | 'none'
+      totalImpactedFiles: number
+      results: Array<{
+        changedFile: string
+        relativePath: string
+        changeType: 'modified' | 'added' | 'deleted' | 'renamed'
+        impactedFiles: Array<{
+          filePath: string
+          relativePath: string
+          depth: number
+          isTest: boolean
+        }>
+        impactedCount: number
+        nonTestCount: number
+        testCount: number
+        impactLevel: 'high' | 'medium' | 'low' | 'none'
+        maxDepth: number
+        /** Git 伴随修改文件列表（阶段9 s9-09） */
+        coModifiedFiles?: Array<{
+          relativePath: string
+          coOccurrence: number
+          frequency: number
+        }>
+        /** 该文件在 git 历史中出现的 commit 数（阶段9 s9-09） */
+        coModifiedTotalCommits?: number
+      }>
+      graphStats: { fileCount: number; edgeCount: number; builtAt: number }
+      highRiskFiles: Array<{
+        filePath: string
+        relativePath: string
+        impactedByCount: number
+      }>
+      /** Git 伴随修改分析统计（阶段9 s9-09，未启用时为 null） */
+      coModificationStats?: {
+        totalCommits: number
+        uniqueFiles: number
+        uniqueFilePairs: number
+        analyzedAt: number
+        fromCache: boolean
+      } | null
+      error?: string
+    }>
+
+    // ===== 阶段9 s9-09：Git 伴随修改分析 =====
+    /** 分析项目的 git 历史伴随修改模式 */
+    analyzeCoModification: (
+      projectPath: string,
+      options?: {
+        maxCommits?: number
+        forceRefresh?: boolean
+        excludedDirs?: string[]
+      },
+    ) => Promise<{
+      success: boolean
+      data?: {
+        projectPath: string
+        totalCommits: number
+        uniqueFiles: number
+        uniqueFilePairs: number
+        analysisDurationMs: number
+        analyzedAt: number
+        cachePath: string
+        fromCache: boolean
+      }
+      error?: string
+    }>
+    /** 查询单个文件的伴随修改文件列表 */
+    getCoModifiedFiles: (
+      projectPath: string,
+      relativeFilePath: string,
+      topK?: number,
+    ) => Promise<{
+      success: boolean
+      data?: {
+        filePath: string
+        totalCommits: number
+        coModifiedFiles: Array<{
+          relativePath: string
+          coOccurrence: number
+          frequency: number
+        }>
+      }
+      error?: string
+    }>
+    /** 获取已分析项目的伴随修改统计信息 */
+    getCoModificationStats: (projectPath: string) => Promise<{
+      success: boolean
+      data?: {
+        projectPath: string
+        totalCommits: number
+        uniqueFiles: number
+        uniqueFilePairs: number
+        analysisDurationMs: number
+        analyzedAt: number
+        cachePath: string
+        fromCache: boolean
+      } | null
+      error?: string
+    }>
+    /** 清空指定项目的伴随修改缓存 */
+    clearCoModificationCache: (projectPath: string) => Promise<{
+      success: boolean
+      error?: string
+    }>
+
+    // 阶段2：统计
+    getPredictionStats: (days?: number) => Promise<{ success: boolean; data?: unknown; error?: string }>
+
+    // 阶段2：场景时间轴与热力图
+    getSceneTimeline: (startDate: number, endDate: number, limit?: number) => Promise<{
+      success: boolean
+      data?: Array<{
+        id: string
+        timestamp: number
+        app: string
+        windowTitle: string
+        activity: 'coding' | 'browsing' | 'chatting' | 'reading' | 'writing' | 'debugging' | 'idle' | 'unknown'
+        textSummary: string
+      }>
+      error?: string
+    }>
+    getBehaviorHeatmap: (days?: number) => Promise<{
+      success: boolean
+      data?: Array<{
+        date: string
+        hour: number
+        count: number
+        topActivity: string
+      }>
+      error?: string
+    }>
+    getBehaviorsByTimeRange: (startTime: number, endTime: number, limit?: number) => Promise<{
+      success: boolean
+      data?: unknown[]
+      error?: string
+    }>
+
+    // ===== 阶段3：摄像头权限 =====
+    /** 查询摄像头权限状态 */
+    getCameraPermissionStatus: () => Promise<{
+      success: boolean
+      data?: 'not-determined' | 'granted' | 'denied' | 'restricted' | 'unknown'
+      error?: string
+    }>
+    /**
+     * 请求摄像头权限
+     * - data=true: 已授权
+     * - data=false + redirectToSettings=true: 用户曾拒绝，需引导到系统设置
+     */
+    requestCameraPermission: () => Promise<{
+      success: boolean
+      data?: boolean
+      redirectToSettings?: boolean
+      error?: string
+    }>
+    /** 打开系统设置中的摄像头权限页面 */
+    openCameraSettings: () => Promise<{
+      success: boolean
+      error?: string
+    }>
+
+    // ===== 阶段9：LLM 双模式行为预测 =====
+    /** 初始化 LLM 行为预测器（启用双模式融合） */
+    initLlmPredictor: (config: {
+      model: string
+      apiKey?: string
+      baseUrl?: string
+      temperature?: number
+    }) => Promise<{ success: boolean; data?: boolean; error?: string }>
+    /** 查询 LLM 预测器是否已就绪 */
+    isLlmPredictorReady: () => Promise<{ success: boolean; data?: boolean; error?: string }>
+    /** 重置 LLM 预测器（恢复纯统计模式） */
+    resetLlmPredictor: () => Promise<{ success: boolean; error?: string }>
+  }
+
+  // PerceptionFusion（多模态融合感知层 - 阶段9 s9-05）
+  perceptionFusion: {
+    /** 获取当前环境上下文（4 通道融合） */
+    getEnvironmentContext: () => Promise<{
+      success: boolean
+      data?: {
+        timestamp: number
+        channels: Array<{
+          name: 'scene' | 'iot' | 'causal' | 'monitoring'
+          running: boolean
+          lastUpdateAt: number | null
+          anomalyCount: number
+          summary: string
+          stale: boolean
+          data?: unknown
+        }>
+        totalAnomalyCount: number
+        attentionScore: number
+        insights: Array<{
+          type: string
+          description: string
+          severity: 'info' | 'warning' | 'critical'
+          channels: Array<'scene' | 'iot' | 'causal' | 'monitoring'>
+        }>
+        staleChannels: Array<'scene' | 'iot' | 'causal' | 'monitoring'>
+        scene: unknown
+        iot: unknown
+        causal: unknown
+        monitoring: unknown
+      }
+      error?: string
+    }>
+    /** 获取融合历史（最近 N 次） */
+    getFusionHistory: (limit?: number) => Promise<{
+      success: boolean
+      data?: unknown[]
+      error?: string
+    }>
+    /** 获取最近一次融合结果（从缓存读取） */
+    getLastContext: () => Promise<{
+      success: boolean
+      data?: unknown
+      error?: string
+    }>
+    /** 清空融合历史 */
+    clearHistory: () => Promise<{ success: boolean; error?: string }>
+  }
+
+  // Monitoring（监控层 - 阶段3）
+  monitoring: {
+    // 配置
+    getConfig: () => Promise<{
+      success: boolean
+      data?: {
+        enabled: boolean
+        sampleIntervalSec: number
+        retentionDays: number
+        anomalyDetectionEnabled: boolean
+        predictiveAlertEnabled: boolean
+        predictiveWindowMin: number
+        thresholds: {
+          cpuWarning: number
+          cpuCritical: number
+          memoryWarning: number
+          memoryCritical: number
+          diskWarning: number
+          diskCritical: number
+          temperatureWarning: number
+          temperatureCritical: number
+          batteryLow: number
+          processExplosion: number
+        }
+        notificationsEnabled: boolean
+        cloudReportingEnabled: boolean
+      }
+      error?: string
+    }>
+    updateConfig: (config: Record<string, unknown>) => Promise<{ success: boolean; data?: unknown; error?: string }>
+
+    // 状态查询
+    isRunning: () => Promise<{ success: boolean; data?: boolean; error?: string }>
+    getLatestMetrics: () => Promise<{
+      success: boolean
+      data?: {
+        timestamp: number
+        cpuUsage: number
+        cpuLoadAvg1: number
+        cpuLoadAvg5: number
+        cpuLoadAvg15: number
+        memoryUsage: number
+        memoryAvailableMB: number
+        memoryTotalMB: number
+        diskUsage: number
+        diskIoReadKBps: number
+        diskIoWriteKBps: number
+        networkRxKBps: number
+        networkTxKBps: number
+        processCount: number
+        cpuTemperature: number
+        batteryPercent: number
+        batteryCharging: boolean
+      } | null
+      error?: string
+    }>
+    getMetricsByTimeRange: (
+      startTime: number,
+      endTime: number,
+      limit?: number,
+    ) => Promise<{ success: boolean; data?: unknown[]; error?: string }>
+
+    // 异常查询
+    getActiveAnomalies: () => Promise<{ success: boolean; data?: unknown[]; error?: string }>
+    getRecentAnomalies: (limit?: number) => Promise<{ success: boolean; data?: unknown[]; error?: string }>
+    getAnomaliesByTimeRange: (
+      startTime: number,
+      endTime: number,
+      limit?: number,
+    ) => Promise<{ success: boolean; data?: unknown[]; error?: string }>
+
+    // 异常管理
+    acknowledgeAnomaly: (anomalyId: string) => Promise<{ success: boolean; error?: string }>
+    resolveAnomaly: (anomalyId: string) => Promise<{ success: boolean; error?: string }>
+
+    // 事件订阅
+    subscribe: () => Promise<{ success: boolean; error?: string }>
+    onAnomalyEvent: (callback: (event: unknown) => void) => () => void
+
+    // 诊断
+    getDetectorStats: () => Promise<{
+      success: boolean
+      data?: {
+        forestTrained: boolean
+        forestTreeCount: number
+        trainingSampleCount: number
+        lastTrainedAt: number
+        activeAnomalyCount: number
+      }
+      error?: string
+    }>
+    clearAllData: () => Promise<{ success: boolean; error?: string }>
+  }
+
+  // Causal Reasoning（因果推理 - 阶段4）
+  causal: {
+    // 配置
+    getConfig: () => Promise<{
+      success: boolean
+      data?: {
+        enabled: boolean
+        autoExtractionEnabled: boolean
+        cloudReportingEnabled: boolean
+        extractionMinConfidence: number
+        counterfactualEnabled: boolean
+        maxNodes: number
+        retentionDays: number
+        updatedAt: number
+      }
+      error?: string
+    }>
+    updateConfig: (
+      updates: Record<string, unknown>,
+    ) => Promise<{ success: boolean; data?: unknown; error?: string }>
+
+    // 节点 CRUD
+    listNodes: (filter?: Record<string, unknown>) => Promise<{
+      success: boolean
+      data?: Array<{
+        id: string
+        type: string
+        name: string
+        description?: string
+        source: string
+        metadata?: Record<string, unknown>
+        enabled: boolean
+        createdAt: number
+        updatedAt: number
+      }>
+      error?: string
+    }>
+    createNode: (input: Record<string, unknown>) => Promise<{ success: boolean; data?: unknown; error?: string }>
+    updateNode: (
+      nodeId: string,
+      updates: Record<string, unknown>,
+    ) => Promise<{ success: boolean; data?: unknown; error?: string }>
+    deleteNode: (nodeId: string) => Promise<{ success: boolean; error?: string }>
+
+    // 边 CRUD
+    listEdges: (filter?: Record<string, unknown>) => Promise<{
+      success: boolean
+      data?: Array<{
+        id: string
+        fromNodeId: string
+        toNodeId: string
+        relation: string
+        strength: number
+        evidence?: string
+        source: string
+        enabled: boolean
+        createdAt: number
+        updatedAt: number
+      }>
+      error?: string
+    }>
+    createEdge: (input: Record<string, unknown>) => Promise<{ success: boolean; data?: unknown; error?: string }>
+    createEdgeByNames: (input: Record<string, unknown>) => Promise<{ success: boolean; data?: unknown; error?: string }>
+    updateEdge: (
+      edgeId: string,
+      updates: Record<string, unknown>,
+    ) => Promise<{ success: boolean; data?: unknown; error?: string }>
+    deleteEdge: (edgeId: string) => Promise<{ success: boolean; error?: string }>
+
+    // 断言管理
+    listAssertions: (filter?: Record<string, unknown>) => Promise<{
+      success: boolean
+      data?: Array<{
+        id: string
+        sourceText: string
+        causeName: string
+        effectName: string
+        relation: string
+        strength: number
+        extractor: string
+        extractMeta?: Record<string, unknown>
+        reviewStatus: string
+        reviewedBy?: string
+        reviewedAt?: number
+        reviewNote?: string
+        mergedEdgeId?: string
+        createdAt: number
+      }>
+      error?: string
+    }>
+    reportAssertion: (input: Record<string, unknown>) => Promise<{ success: boolean; data?: unknown; error?: string }>
+    batchReportAssertions: (
+      inputs: Array<Record<string, unknown>>,
+    ) => Promise<{ success: boolean; data?: unknown; error?: string }>
+    reviewAssertion: (
+      assertionId: string,
+      review: { status: string; reviewedBy?: string; reviewNote?: string },
+    ) => Promise<{ success: boolean; data?: unknown; error?: string }>
+    extractAssertions: (
+      sourceText: string,
+      minConfidence?: number,
+    ) => Promise<{ success: boolean; data?: unknown; error?: string }>
+
+    // LLM 抽取（阶段5新增）
+    extractWithLlm: (
+      sourceText: string,
+      minConfidence?: number,
+    ) => Promise<{ success: boolean; data?: unknown; error?: string }>
+    registerLlmCallback: () => Promise<{
+      success: boolean
+      data?: boolean
+      error?: string
+    }>
+    unregisterLlmCallback: () => Promise<{
+      success: boolean
+      data?: boolean
+      error?: string
+    }>
+    /**
+     * 初始化 LLM 抽取器（阶段9 s9-03 新增）
+     *
+     * 传入 LLM 配置，主进程直接持有 LLMService 调用 LLM。
+     * 调用后需再调用 registerLlmCallback() 启用自动抽取。
+     */
+    initLlmExtractor: (config: {
+      model: string
+      apiKey?: string
+      baseUrl?: string
+      temperature?: number
+    }) => Promise<{ success: boolean; data?: boolean; error?: string }>
+
+    // 干预/反事实查询
+    // 阶段5新增：所有查询方法均支持可选 sceneKey 参数，用于场景级阈值覆盖
+    intervention: (
+      interventionVar: string,
+      interventionValue: unknown,
+      observedVar: string,
+      sceneKey?: string,
+    ) => Promise<{ success: boolean; data?: unknown; error?: string }>
+    counterfactual: (
+      interventionVar: string,
+      interventionValue: unknown,
+      observedVar: string,
+      observedValue: unknown,
+      sceneKey?: string,
+    ) => Promise<{ success: boolean; data?: unknown; error?: string }>
+    /** 后门调整查询（识别混淆变量 Z，计算调整后因果效应） */
+    backdoorAdjustment: (
+      interventionVar: string,
+      observedVar: string,
+      sceneKey?: string,
+    ) => Promise<{ success: boolean; data?: unknown; error?: string }>
+    /** 前门调整查询（识别中介变量 M，通过中介路径计算因果效应） */
+    frontdoorAdjustment: (
+      interventionVar: string,
+      observedVar: string,
+      sceneKey?: string,
+    ) => Promise<{ success: boolean; data?: unknown; error?: string }>
+    /** 敏感性分析（评估未观测混淆变量对反事实结论的影响） */
+    sensitivityAnalysis: (
+      interventionVar: string,
+      observedVar: string,
+      sceneKey?: string,
+    ) => Promise<{ success: boolean; data?: unknown; error?: string }>
+    listQueries: (filter?: Record<string, unknown>) => Promise<{
+      success: boolean
+      data?: Array<{
+        id: string
+        queryType: string
+        interventionVar: string
+        interventionValue: unknown
+        observedVar: string
+        result: unknown
+        engine: string
+        durationMs: number
+        success: boolean
+        error?: string
+        createdAt: number
+      }>
+      error?: string
+    }>
+
+    // 场景级阈值配置（阶段5新增）
+    /** 列出所有场景阈值配置 */
+    listSceneConfigs: () => Promise<{
+      success: boolean
+      data?: Array<{
+        sceneKey: string
+        strongThreshold: number
+        moderateThreshold: number
+        weakThreshold: number
+        enabled: boolean
+        description: string | null
+        updatedAt: number
+      }>
+      error?: string
+    }>
+    /** 获取指定场景的阈值配置（未配置或被禁用时返回 null） */
+    getSceneConfig: (
+      sceneKey: string,
+    ) => Promise<{
+      success: boolean
+      data?: {
+        sceneKey: string
+        strongThreshold: number
+        moderateThreshold: number
+        weakThreshold: number
+        enabled: boolean
+        description: string | null
+        updatedAt: number
+      } | null
+      error?: string
+    }>
+    /** 创建或更新场景阈值配置 */
+    upsertSceneConfig: (
+      sceneKey: string,
+      updates: {
+        strongThreshold?: number
+        moderateThreshold?: number
+        weakThreshold?: number
+        enabled?: boolean
+        description?: string
+      },
+    ) => Promise<{
+      success: boolean
+      data?: {
+        sceneKey: string
+        strongThreshold: number
+        moderateThreshold: number
+        weakThreshold: number
+        enabled: boolean
+        description: string | null
+        updatedAt: number
+      }
+      error?: string
+    }>
+    /** 删除场景阈值配置 */
+    deleteSceneConfig: (
+      sceneKey: string,
+    ) => Promise<{ success: boolean; data?: boolean; error?: string }>
+
+    // 图统计
+    getStats: () => Promise<{
+      success: boolean
+      data?: {
+        nodeCount: number
+        edgeCount: number
+        density: number
+        componentCount: number
+        avgOutDegree: number
+        avgInDegree: number
+        hasCycle: boolean
+      }
+      error?: string
+    }>
+
+    // 事件流
+    collectEvent: (event: Record<string, unknown>) => Promise<{ success: boolean; error?: string }>
+    flushEvents: () => Promise<{ success: boolean; data?: { extracted: number }; error?: string }>
+
+    // 数据维护
+    cleanupExpired: () => Promise<{ success: boolean; data?: { deleted: number }; error?: string }>
+    clearAllData: () => Promise<{ success: boolean; error?: string }>
+  }
+
+  // IoT Bridge（IoT 融合 - 阶段5）
+  iot: {
+    // Bridge 生命周期
+    start: () => Promise<{ success: boolean; data?: boolean; error?: string }>
+    stop: () => Promise<{ success: boolean; error?: string }>
+    isRunning: () => Promise<{ success: boolean; data?: boolean; error?: string }>
+    getStatus: () => Promise<{
+      success: boolean
+      data?: {
+        running: boolean
+        startedAt?: number
+        providers: Array<{
+          providerId: string
+          providerName: string
+          protocol: string
+          state: 'disconnected' | 'connecting' | 'connected' | 'error' | 'disabled'
+          entityCount: number
+          lastError?: string
+          lastConnectedAt?: number
+          lastDataAt?: number
+          receivedReadings: number
+          staleThresholdMs?: number
+        }>
+        totalEntities: number
+        totalReadings: number
+      }
+      error?: string
+    }>
+
+    // Provider 连接管理
+    connectProvider: (providerId: string) => Promise<{ success: boolean; error?: string }>
+    disconnectProvider: (providerId: string) => Promise<{ success: boolean; error?: string }>
+    testProviderConnection: (
+      providerId: string,
+    ) => Promise<{
+      success: boolean
+      data?: { success: boolean; latencyMs?: number; message: string }
+      error?: string
+    }>
+    /**
+     * 向指定 Provider 的 broker 发布消息（阶段9 s9-10，仅 MQTT 协议支持）
+     *
+     * 用于向设备发送控制命令，例如开关设备、设置亮度等。
+     */
+    publishMessage: (
+      providerId: string,
+      topic: string,
+      payload: string,
+      options?: { qos?: 0 | 1 | 2; retain?: boolean },
+    ) => Promise<{
+      success: boolean
+      data?: { success: boolean; message: string }
+      error?: string
+    }>
+
+    // 实体查询
+    listEntitySnapshots: () => Promise<{
+      success: boolean
+      data?: Array<{
+        id: string
+        deviceId: string
+        externalId: string
+        entityType: string
+        deviceClass?: string | null
+        unitOfMeasurement?: string | null
+        state: string | number | boolean | null
+        attributes: Record<string, unknown>
+        lastStateChangedAt: number
+      }>
+      error?: string
+    }>
+    listEntitySnapshotsByProvider: (
+      providerId: string,
+    ) => Promise<{ success: boolean; data?: unknown[]; error?: string }>
+
+    // 适配器查询
+    hasAdapter: (
+      protocol: 'homeassistant' | 'mqtt' | 'ble' | 'custom',
+    ) => Promise<{ success: boolean; data?: boolean; error?: string }>
+
+    // 渲染层回调注入
+    setRendererCallbacks: (callbacks: {
+      fetchProviderConfig: (
+        providerId: string,
+      ) => Promise<{ success: boolean; data?: unknown; error?: string }>
+      reportReadings: (
+        readings: Array<{
+          entityExternalId: string
+          value?: number
+          stringValue?: string
+          unit?: string
+          source?: string
+          recordedAt: number
+        }>,
+      ) => Promise<{ success: boolean; error?: string }>
+    }) => Promise<{ success: boolean; data?: boolean; error?: string }>
+
+    // 性能指标（阶段8 s8-08）
+    getMetrics: () => Promise<{
+      success: boolean
+      data?: {
+        collectedAt: number
+        startedAt: number | null
+        uptimeSeconds: number
+        totalReadings: number
+        totalErrors: number
+        totalStateChanges: number
+        windowReadings: number
+        windowErrors: number
+        globalReadingsPerMinute: number
+        globalErrorRate: number
+        connectedProviders: number
+        totalProviders: number
+        totalEntities: number
+        providers: Array<{
+          providerId: string
+          providerName: string
+          protocol: string
+          state: 'disconnected' | 'connecting' | 'connected' | 'error' | 'disabled'
+          totalReadings: number
+          totalErrors: number
+          totalStateChanges: number
+          lastReadingAt: number | null
+          lastErrorAt: number | null
+          lastConnectedAt: number | null
+          windowReadings: number
+          windowErrors: number
+          readingsPerMinute: number
+          errorRate: number
+          uptimeSeconds: number
+          secondsSinceLastReading: number | null
+        }>
+        protocols: Array<{
+          protocol: string
+          providerCount: number
+          connectedCount: number
+          errorCount: number
+          totalReadings: number
+          totalErrors: number
+        }>
+      }
+      error?: string
+    }>
+    setMetricsWindow: (
+      window: '1m' | '5m' | '1h',
+    ) => Promise<{ success: boolean; data?: string; error?: string }>
+
+    // 性能指标历史趋势（阶段9 s9-08）
+    getMetricsHistory: (
+      durationMs?: number,
+    ) => Promise<{
+      success: boolean
+      data?: Array<{
+        timestamp: number
+        globalReadingsPerMinute: number
+        globalErrorRate: number
+        connectedProviders: number
+        totalProviders: number
+        totalEntities: number
+        uptimeSeconds: number
+        windowReadings: number
+        windowErrors: number
+      }>
+      error?: string
+    }>
+
+    // 事件订阅
+    onBridgeEvent: (
+      callback: (event: {
+        type: 'provider:connected' | 'provider:disconnected' | 'provider:error' | 'entity:update' | 'reading:received'
+        providerId?: string
+        entity?: {
+          providerId: string
+          entityId: string
+          externalId: string
+          entityType: string
+          state: string | number | boolean | null
+          attributes: Record<string, unknown>
+          timestamp: number
+        }
+        error?: string
+        timestamp: number
+      }) => void,
+    ) => () => void
+  }
+
+  // SensorFusion（传感器数据融合 - 阶段5）
+  sensorFusion: {
+    // 生命周期
+    start: () => Promise<{ success: boolean; data?: boolean; error?: string }>
+    stop: () => Promise<{ success: boolean; error?: string }>
+    isRunning: () => Promise<{ success: boolean; data?: boolean; error?: string }>
+
+    // 配置管理
+    getConfig: () => Promise<{
+      success: boolean
+      data?: {
+        enabled: boolean
+        windowSize: number
+        zscoreThreshold: number
+        rateOfChangeThreshold: number
+        stuckValueTimeoutMs: number
+        stuckMinReadings: number
+        causalIntegrationEnabled: boolean
+        counterfactualOnAnomaly: boolean
+        monitoringIntegrationEnabled: boolean
+        cooldownMs: number
+        retentionDays: number
+      }
+      error?: string
+    }>
+    updateConfig: (
+      patch: Partial<{
+        enabled: boolean
+        windowSize: number
+        zscoreThreshold: number
+        rateOfChangeThreshold: number
+        stuckValueTimeoutMs: number
+        stuckMinReadings: number
+        causalIntegrationEnabled: boolean
+        counterfactualOnAnomaly: boolean
+        monitoringIntegrationEnabled: boolean
+        cooldownMs: number
+        retentionDays: number
+      }>,
+    ) => Promise<{ success: boolean; data?: unknown; error?: string }>
+
+    // 状态与窗口统计查询
+    getStatus: () => Promise<{
+      success: boolean
+      data?: {
+        running: boolean
+        startedAt?: number
+        trackedEntityCount: number
+        totalReadingsProcessed: number
+        totalAnomaliesDetected: number
+        activeAnomalyCount: number
+      }
+      error?: string
+    }>
+    listEntityWindowStats: () => Promise<{
+      success: boolean
+      data?: Array<{
+        externalId: string
+        count: number
+        mean: number
+        std: number
+        min: number
+        max: number
+        lastTimestamp: number
+        lastValue: number | null
+      }>
+      error?: string
+    }>
+    getEntityWindowStats: (
+      externalId: string,
+    ) => Promise<{
+      success: boolean
+      data?:
+        | {
+            externalId: string
+            count: number
+            mean: number
+            std: number
+            min: number
+            max: number
+            lastTimestamp: number
+            lastValue: number | null
+          }
+        | null
+      error?: string
+    }>
+
+    // 事件订阅
+    onAnomaly: (
+      callback: (event: {
+        id: string
+        timestamp: number
+        type: 'zscore_outlier' | 'rate_of_change' | 'stuck_value' | 'out_of_range'
+        severity: 'info' | 'warning' | 'critical'
+        providerId: string
+        entityId: string
+        externalId: string
+        entityType: string
+        currentValue: number
+        unit?: string
+        windowStats: {
+          externalId: string
+          count: number
+          mean: number
+          std: number
+          min: number
+          max: number
+          lastTimestamp: number
+          lastValue: number | null
+        }
+        description: string
+        recommendation: string
+        zscore?: number
+        rateOfChange?: number
+        stuckDurationMs?: number
+      }) => void,
+    ) => () => void
+
+    // 异常事件历史查询（阶段7 s7-07）
+    queryAnomalies: (
+      filter: {
+        providerId?: string
+        entityType?: string
+        severity?: string
+        type?: string
+        startTime?: number
+        endTime?: number
+        limit?: number
+        offset?: number
+        sort?: 'asc' | 'desc'
+      },
+    ) => Promise<{
+      success: boolean
+      data?: {
+        items: Array<{
+          id: string
+          timestamp: number
+          type: 'zscore_outlier' | 'rate_of_change' | 'stuck_value' | 'out_of_range'
+          severity: 'info' | 'warning' | 'critical'
+          providerId: string
+          entityId: string
+          externalId: string
+          entityType: string
+          currentValue: number
+          unit?: string
+          windowStats: {
+            externalId: string
+            count: number
+            mean: number
+            std: number
+            min: number
+            max: number
+            lastTimestamp: number
+            lastValue: number | null
+          }
+          description: string
+          recommendation: string
+          zscore?: number
+          rateOfChange?: number
+          stuckDurationMs?: number
+        }>
+        total: number
+      }
+      error?: string
+    }>
+    getRecentAnomalies: (
+      limit: number,
+    ) => Promise<{
+      success: boolean
+      data?: Array<{
+        id: string
+        timestamp: number
+        type: 'zscore_outlier' | 'rate_of_change' | 'stuck_value' | 'out_of_range'
+        severity: 'info' | 'warning' | 'critical'
+        providerId: string
+        entityId: string
+        externalId: string
+        entityType: string
+        currentValue: number
+        unit?: string
+        windowStats: {
+          externalId: string
+          count: number
+          mean: number
+          std: number
+          min: number
+          max: number
+          lastTimestamp: number
+          lastValue: number | null
+        }
+        description: string
+        recommendation: string
+        zscore?: number
+        rateOfChange?: number
+        stuckDurationMs?: number
+      }>
+      error?: string
+    }>
+  }
+
   // Window
   minimize: () => void
   maximize: () => void
@@ -980,6 +2025,293 @@ export interface ElectronAPI {
     percent: number
     message?: string
   }) => void) => () => void
+
+  // Proactive（主动式助手 - 阶段10 s10-02）
+  proactive: {
+    /** 主动提案来源场景 */
+    // type ProactiveSource = 'coding' | 'iot' | 'system' | 'time' | 'fusion'
+
+    /** 提案查询过滤条件 */
+    // interface ProposalQueryFilter { ... }
+
+    /** 分页查询提案历史 */
+    listProposals: (filter?: {
+      source?: 'coding' | 'iot' | 'system' | 'time' | 'fusion'
+      severity?: 'info' | 'low' | 'medium' | 'high' | 'critical'
+      status?: 'pending' | 'notified' | 'suggested' | 'acted' | 'dismissed' | 'accepted' | 'rejected'
+      startTime?: number
+      endTime?: number
+      limit?: number
+      offset?: number
+      sort?: 'asc' | 'desc'
+    }) => Promise<{
+      success: boolean
+      data?: {
+        items: Array<{
+          id: string
+          source: 'coding' | 'iot' | 'system' | 'time' | 'fusion'
+          trigger: string
+          severity: 'info' | 'low' | 'medium' | 'high' | 'critical'
+          title: string
+          description: string
+          action: {
+            type: 'notify' | 'suggest' | 'chat' | 'execute'
+            payload: string
+          }
+          confidence: number
+          reason: string
+          signals: string[]
+          dedupKey: string
+          createdAt: number
+        }>
+        total: number
+      }
+      error?: string
+    }>
+
+    /** 记录用户反馈 */
+    recordFeedback: (
+      proposalId: string,
+      feedback: 'accepted' | 'rejected' | 'later' | 'ignored',
+      actualAction?: string,
+    ) => Promise<{ success: boolean; error?: string }>
+
+    /** 获取采纳率统计 */
+    getStats: (
+      startTime?: number,
+      endTime?: number,
+    ) => Promise<{
+      success: boolean
+      data?: {
+        total: number
+        accepted: number
+        rejected: number
+        later: number
+        ignored: number
+        adoptionRate: number
+        bySource: Record<'coding' | 'iot' | 'system' | 'time' | 'fusion', {
+          total: number
+          accepted: number
+          rate: number
+        }>
+        bySeverity: Record<'info' | 'low' | 'medium' | 'high' | 'critical', {
+          total: number
+          accepted: number
+          rate: number
+        }>
+      }
+      error?: string
+    }>
+
+    /** 清空所有历史数据 */
+    clearHistory: () => Promise<{ success: boolean; error?: string }>
+
+    /** 查询某提案的反馈列表 */
+    listFeedback: (proposalId: string) => Promise<{
+      success: boolean
+      data?: Array<{
+        feedback: 'accepted' | 'rejected' | 'later' | 'ignored'
+        actualAction: string | null
+        createdAt: number
+      }>
+      error?: string
+    }>
+
+    /** 查询某提案的审计日志 */
+    listAuditLogs: (proposalId: string) => Promise<{
+      success: boolean
+      data?: Array<{
+        id: string
+        proposalId: string
+        event: 'created' | 'permitted' | 'blocked' | 'dispatched' | 'failed' | 'feedback'
+        detail: Record<string, unknown>
+        createdAt: number
+      }>
+      error?: string
+    }>
+
+    /** 清理过期数据（按 30 天保留期） */
+    cleanupExpired: () => Promise<{
+      success: boolean
+      data?: { removed: number }
+      error?: string
+    }>
+
+    // ===== 权限配置（s10-05） =====
+    /** 获取权限配置（含引擎运行状态 + 频率窗口状态） */
+    getPermissionConfig: () => Promise<{
+      success: boolean
+      data?: {
+        config: {
+          enabled: boolean
+          level: 'off' | 'notify' | 'suggest' | 'act'
+          categories: {
+            coding: boolean
+            iot: boolean
+            system: boolean
+            time: boolean
+          }
+          quietHours: {
+            enabled: boolean
+            start: string
+            end: string
+          }
+          maxDisturbPerHour: number
+          criticalWhitelist: string[]
+        }
+        engineRunning: boolean
+        frequency: {
+          count: number
+          maxPerHour: number
+          windowMs: number
+        }
+      }
+      error?: string
+    }>
+
+    /** 更新权限配置（部分更新） */
+    updatePermissionConfig: (
+      patch: Partial<{
+        enabled: boolean
+        level: 'off' | 'notify' | 'suggest' | 'act'
+        categories: {
+          coding: boolean
+          iot: boolean
+          system: boolean
+          time: boolean
+        }
+        quietHours: {
+          enabled: boolean
+          start: string
+          end: string
+        }
+        maxDisturbPerHour: number
+        criticalWhitelist: string[]
+      }>,
+    ) => Promise<{
+      success: boolean
+      data?: {
+        config: {
+          enabled: boolean
+          level: 'off' | 'notify' | 'suggest' | 'act'
+          categories: {
+            coding: boolean
+            iot: boolean
+            system: boolean
+            time: boolean
+          }
+          quietHours: {
+            enabled: boolean
+            start: string
+            end: string
+          }
+          maxDisturbPerHour: number
+          criticalWhitelist: string[]
+        }
+        engineRunning: boolean
+      }
+      error?: string
+    }>
+
+    /** 重置权限配置为默认值 */
+    resetPermissionConfig: () => Promise<{
+      success: boolean
+      data?: {
+        config: {
+          enabled: boolean
+          level: 'off' | 'notify' | 'suggest' | 'act'
+          categories: {
+            coding: boolean
+            iot: boolean
+            system: boolean
+            time: boolean
+          }
+          quietHours: {
+            enabled: boolean
+            start: string
+            end: string
+          }
+          maxDisturbPerHour: number
+          criticalWhitelist: string[]
+        }
+        engineRunning: boolean
+      }
+      error?: string
+    }>
+
+    // ===== LLM 决策增强器（s10-03） =====
+    /** 初始化 LLM 决策增强器 */
+    initLlmRefiner: (config: {
+      model: string
+      apiKey?: string
+      baseUrl?: string
+      temperature?: number
+    }) => Promise<{ success: boolean; data?: boolean; error?: string }>
+
+    /** 查询 LLM 决策增强器是否已就绪 */
+    isLlmRefinerReady: () => Promise<{ success: boolean; data?: boolean; error?: string }>
+
+    /** 重置 LLM 决策增强器（恢复纯规则模式） */
+    resetLlmRefiner: () => Promise<{ success: boolean; error?: string }>
+
+    /**
+     * 订阅 medium 级主动提案推送（s10-06）
+     * 主进程通过 'proactive:proposal' 频道推送，渲染层展示 SuggestionCard
+     * @returns 取消订阅函数
+     */
+    onProposal: (
+      callback: (proposal: {
+        id: string
+        source: 'coding' | 'iot' | 'system' | 'time' | 'fusion'
+        trigger: string
+        severity: 'info' | 'low' | 'medium' | 'high' | 'critical'
+        title: string
+        description: string
+        action: {
+          type: 'notify' | 'suggest' | 'chat' | 'execute'
+          payload: string
+        }
+        confidence: number
+        reason: string
+        signals: string[]
+        dedupKey: string
+        createdAt: number
+      }) => void,
+    ) => () => void
+
+    /**
+     * 订阅 high 级主动对话请求（s10-06）
+     * 主进程通过 'proactive:invoke-agent' 频道推送，渲染层调用 Agent.send
+     * @returns 取消订阅函数
+     */
+    onInvokeAgent: (
+      callback: (payload: {
+        proposalId: string
+        message: string
+        source: 'coding' | 'iot' | 'system' | 'time' | 'fusion'
+        title: string
+        reason: string
+      }) => void,
+    ) => () => void
+
+    /**
+     * 订阅 critical 级主动执行请求（s10-06）
+     * 主进程通过 'proactive:execute-action' 频道推送，渲染层执行预授权动作
+     * @returns 取消订阅函数
+     */
+    onExecuteAction: (
+      callback: (payload: {
+        proposalId: string
+        action: {
+          type: 'notify' | 'suggest' | 'chat' | 'execute'
+          payload: string
+        }
+        source: 'coding' | 'iot' | 'system' | 'time' | 'fusion'
+        title: string
+        reason: string
+      }) => void,
+    ) => () => void
+  }
 }
 
 declare global {
