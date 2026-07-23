@@ -197,7 +197,9 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
     return item?.hideEditor === true
   }, [activeSidePanel, layoutConfig.sidebarItems])
 
-  // 是否隐藏 Chat（宽模式面板 + 特定条件）
+  // 是否隐藏 Chat
+  // hideChat 面板由 AweeApp 中的 useEffect 自动设置 chatVisible=false（默认隐藏）
+  // 用户可通过右上角按钮手动切换 chatVisible，此处仅由 chatVisible 控制显隐
   const shouldHideChat = useMemo(() => {
     if (!chatVisible) return true
     if (isWideModePanel && activeSidePanel !== 'knowledge' && (layoutConfig.wideModeHidesChat || activeSidePanel === 'scenarios')) return true

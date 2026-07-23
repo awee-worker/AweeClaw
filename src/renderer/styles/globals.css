@@ -299,6 +299,27 @@ textarea,
   animation: fade-in 0.2s ease-out forwards;
 }
 
+/* Tool Card Appear Animation
+ * 用于工具调用分组中新增卡片的淡入效果。
+ * 通过 opacity + 轻微 translateY 掩盖卡片插入时的瞬时高度跳变，
+ * 配合 CSS contain: layout style 隔离 reflow，减少会话内容上下抖动。
+ * 时长 150ms，足够平滑但不会让用户感到延迟。 */
+@keyframes tool-card-appear {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tool-card-appear {
+  animation: tool-card-appear 0.15s ease-out;
+}
+
 /* Text Shimmer/Sweep Effect for running tool cards
  * 设计原则：
  * 1. 使用 linear 而非 ease-in-out，让亮带匀速移动，避免两端停留导致闪烁

@@ -161,6 +161,12 @@ export interface LayoutSlice {
   setVoiceConversationActive: (active: boolean) => void
   /** 切换语音对话模式 */
   toggleVoiceConversation: () => void
+
+  /* ===== 场景配置版本（用于强制布局重算） ===== */
+  /** 场景配置版本号，每次场景安装/更新时递增 */
+  scenarioConfigVersion: number
+  /** 递增场景配置版本号，触发 AweeApp 重新计算 layoutConfig */
+  incrementScenarioConfigVersion: () => void
 }
 
 export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> = (set) => ({
@@ -180,6 +186,9 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
 
   /* ----- 语音对话模式初始状态 ----- */
   voiceConversationActive: false,
+
+  /* ----- 场景配置版本初始状态 ----- */
+  scenarioConfigVersion: 0,
 
   /* ----- 面板可见性操作 ----- */
   setActiveSidePanel: (panel) =>
@@ -248,4 +257,7 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
   /* ----- 语音对话模式操作 ----- */
   setVoiceConversationActive: (active) => set({ voiceConversationActive: active }),
   toggleVoiceConversation: () => set((state) => ({ voiceConversationActive: !state.voiceConversationActive })),
+
+  /* ----- 场景配置版本操作 ----- */
+  incrementScenarioConfigVersion: () => set((state) => ({ scenarioConfigVersion: state.scenarioConfigVersion + 1 })),
 })

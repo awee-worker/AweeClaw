@@ -102,6 +102,12 @@ export interface SidebarItemDescriptor {
    * 避免无文件的编辑器欢迎页占据主区域空间，让 Chat 占满主区。
    */
   hideEditor?: boolean
+  /**
+   * 激活该宽模式面板时隐藏聊天窗口。
+   * 适用于需要最大化空间的面板（如画布、图纸库），
+   * 让面板独占主内容区。仅对 wideMode 面板生效。
+   */
+  hideChat?: boolean
 }
 
 export interface StatusBarItemDescriptor {

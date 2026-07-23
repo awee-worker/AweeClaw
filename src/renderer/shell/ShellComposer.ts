@@ -35,6 +35,8 @@ export interface LayoutConfig {
   chatDefaultWidth: number
   wideModePanelIds: string[]
   wideModeHidesChat: boolean
+  /** 声明了 hideChat 的面板 ID 列表，切换到这些面板时自动隐藏聊天（用户可手动切换显示） */
+  autoHideChatPanelIds: string[]
   panels: PanelDescriptor[]
   sidebarItems: ScenarioPlugin['ui']['sidebarItems']
   statusBarItems: ScenarioPlugin['ui']['statusBarItems']
@@ -51,6 +53,12 @@ function extractWideModePanelIds(scenario: ScenarioPlugin): string[] {
 
 function getWideModeHidesChat(scenario: ScenarioPlugin): boolean {
   return scenario.ui.wideModeHidesChat !== false
+}
+
+/** 提取声明了 hideChat 的面板 ID（切换到这些面板时自动隐藏聊天，用户可手动切换显示） */
+function extractAutoHideChatPanelIds(scenario: ScenarioPlugin): string[] {
+  if (!scenario.ui.sidebarItems) return []
+  return scenario.ui.sidebarItems.filter(item => item.hideChat).map(item => item.id)
 }
 
 function buildEditorCentricConfig(scenario: ScenarioPlugin): LayoutConfig {
@@ -71,6 +79,7 @@ function buildEditorCentricConfig(scenario: ScenarioPlugin): LayoutConfig {
     chatDefaultWidth: 450,
     wideModePanelIds: extractWideModePanelIds(scenario),
     wideModeHidesChat: getWideModeHidesChat(scenario),
+    autoHideChatPanelIds: extractAutoHideChatPanelIds(scenario),
     panels: scenario.ui.panels,
     sidebarItems: scenario.ui.sidebarItems,
     statusBarItems: scenario.ui.statusBarItems,
@@ -96,6 +105,7 @@ function buildChatCentricConfig(scenario: ScenarioPlugin): LayoutConfig {
     chatDefaultWidth: 0,
     wideModePanelIds: extractWideModePanelIds(scenario),
     wideModeHidesChat: getWideModeHidesChat(scenario),
+    autoHideChatPanelIds: extractAutoHideChatPanelIds(scenario),
     panels: scenario.ui.panels,
     sidebarItems: scenario.ui.sidebarItems,
     statusBarItems: scenario.ui.statusBarItems,
@@ -120,6 +130,7 @@ function buildDashboardCentricConfig(scenario: ScenarioPlugin): LayoutConfig {
     chatDefaultWidth: 450,
     wideModePanelIds: extractWideModePanelIds(scenario),
     wideModeHidesChat: getWideModeHidesChat(scenario),
+    autoHideChatPanelIds: extractAutoHideChatPanelIds(scenario),
     panels: scenario.ui.panels,
     sidebarItems: scenario.ui.sidebarItems,
     statusBarItems: scenario.ui.statusBarItems,
@@ -144,6 +155,7 @@ function buildAnalyticsCentricConfig(scenario: ScenarioPlugin): LayoutConfig {
     chatDefaultWidth: 500,
     wideModePanelIds: extractWideModePanelIds(scenario),
     wideModeHidesChat: getWideModeHidesChat(scenario),
+    autoHideChatPanelIds: extractAutoHideChatPanelIds(scenario),
     panels: scenario.ui.panels,
     sidebarItems: scenario.ui.sidebarItems,
     statusBarItems: scenario.ui.statusBarItems,
@@ -168,6 +180,7 @@ function buildCanvasCentricConfig(scenario: ScenarioPlugin): LayoutConfig {
     chatDefaultWidth: 400,
     wideModePanelIds: extractWideModePanelIds(scenario),
     wideModeHidesChat: getWideModeHidesChat(scenario),
+    autoHideChatPanelIds: extractAutoHideChatPanelIds(scenario),
     panels: scenario.ui.panels,
     sidebarItems: scenario.ui.sidebarItems,
     statusBarItems: scenario.ui.statusBarItems,
@@ -192,6 +205,7 @@ function buildFullscreenChatConfig(scenario: ScenarioPlugin): LayoutConfig {
     chatDefaultWidth: 0,
     wideModePanelIds: extractWideModePanelIds(scenario),
     wideModeHidesChat: getWideModeHidesChat(scenario),
+    autoHideChatPanelIds: extractAutoHideChatPanelIds(scenario),
     panels: scenario.ui.panels,
     sidebarItems: scenario.ui.sidebarItems,
     statusBarItems: scenario.ui.statusBarItems,
@@ -216,6 +230,7 @@ function buildMinimalConfig(scenario: ScenarioPlugin): LayoutConfig {
     chatDefaultWidth: 0,
     wideModePanelIds: extractWideModePanelIds(scenario),
     wideModeHidesChat: getWideModeHidesChat(scenario),
+    autoHideChatPanelIds: extractAutoHideChatPanelIds(scenario),
     panels: scenario.ui.panels,
     sidebarItems: scenario.ui.sidebarItems,
     statusBarItems: scenario.ui.statusBarItems,
@@ -241,6 +256,7 @@ function buildResearchCentricConfig(scenario: ScenarioPlugin): LayoutConfig {
     chatDefaultWidth: 420,
     wideModePanelIds: extractWideModePanelIds(scenario),
     wideModeHidesChat: getWideModeHidesChat(scenario),
+    autoHideChatPanelIds: extractAutoHideChatPanelIds(scenario),
     panels: scenario.ui.panels,
     sidebarItems: scenario.ui.sidebarItems,
     statusBarItems: scenario.ui.statusBarItems,
@@ -265,6 +281,7 @@ function buildFocusCentricConfig(scenario: ScenarioPlugin): LayoutConfig {
     chatDefaultWidth: 380,
     wideModePanelIds: extractWideModePanelIds(scenario),
     wideModeHidesChat: getWideModeHidesChat(scenario),
+    autoHideChatPanelIds: extractAutoHideChatPanelIds(scenario),
     panels: scenario.ui.panels,
     sidebarItems: scenario.ui.sidebarItems,
     statusBarItems: scenario.ui.statusBarItems,
@@ -289,6 +306,7 @@ function buildSplitCentricConfig(scenario: ScenarioPlugin): LayoutConfig {
     chatDefaultWidth: 400,
     wideModePanelIds: extractWideModePanelIds(scenario),
     wideModeHidesChat: getWideModeHidesChat(scenario),
+    autoHideChatPanelIds: extractAutoHideChatPanelIds(scenario),
     panels: scenario.ui.panels,
     sidebarItems: scenario.ui.sidebarItems,
     statusBarItems: scenario.ui.statusBarItems,

@@ -322,7 +322,10 @@ function ToolCallGroup({
   )
 
   return (
-    <div className="my-2 space-y-2">
+    <div
+      className="my-2 space-y-2"
+      style={{ contain: 'layout style paint', willChange: 'transform' }}
+    >
       {groups.map((group) => {
         const hasApproval = groupHasApproval(group)
         const isAwaitingGroup = group.status === 'awaiting'
@@ -330,60 +333,82 @@ function ToolCallGroup({
         const isCollapsed = !hasApproval && collapsedGroups.has(group.status)
         const Icon = group.icon
         const isPendingGroup = group.status === 'pending'
+        const showHeader = group.tools.length > 1
 
         return (
-          <div key={group.status}>
-            {/* 分组标题（仅多工具时显示） */}
-            {group.tools.length > 1 && (
-              <button
-                onClick={() => !hasApproval && toggleGroup(group.status)}
-                disabled={hasApproval}
-                className={`flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium transition-colors ${
-                  hasApproval
-                    ? 'text-text-primary cursor-default'
-                    : 'text-text-muted hover:text-text-primary cursor-pointer'
-                }`}
-                aria-expanded={!isCollapsed}
-                aria-label={`${group.label} (${group.tools.length})`}
-                title={
-                  hasApproval
-                    ? '当前有工具等待批准，无法折叠'
-                    : undefined
-                }
-              >
-                {isCollapsed ? (
-                  <ChevronRight className="w-3 h-3" aria-hidden />
-                ) : (
-                  <ChevronDown className="w-3 h-3" aria-hidden />
-                )}
-                <Icon
-                  className={`w-3 h-3 ${group.color} ${
-                    isPendingGroup ? 'animate-spin' : ''
+          <div
+            key={group.status}
+            style={{ contain: 'layout style' }}
+          >
+            {/* 分组标题（仅多工具时显示）
+                固定高度占位避免标题出现/消失时的高度跳变。
+                使用 opacity 过渡让标题平滑出现/消失，而非瞬间弹出 */}
+            <div
+              style={{
+                minHeight: showHeader ? 28 : 0,
+                transition: 'min-height 0.2s ease',
+              }}
+            >
+              {showHeader && (
+                <button
+                  onClick={() => !hasApproval && toggleGroup(group.status)}
+                  disabled={hasApproval}
+                  className={`flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium transition-colors ${
+                    hasApproval
+                      ? 'text-text-primary cursor-default'
+                      : 'text-text-muted hover:text-text-primary cursor-pointer'
                   }`}
-                  aria-hidden
-                />
-                <span>
-                  {group.label} ({group.tools.length})
-                  {(group.status === 'success' || group.status === 'error') && (
-                    <span className="text-text-muted/70 font-normal ml-1">
-                      · {buildGroupSummary(group.tools, language)}
+                  style={{ height: 28 }}
+                  aria-expanded={!isCollapsed}
+                  aria-label={`${group.label} (${group.tools.length})`}
+                  title={
+                    hasApproval
+                      ? '当前有工具等待批准，无法折叠'
+                      : undefined
+                  }
+                >
+                  {isCollapsed ? (
+                    <ChevronRight className="w-3 h-3" aria-hidden />
+                  ) : (
+                    <ChevronDown className="w-3 h-3" aria-hidden />
+                  )}
+                  <Icon
+                    className={`w-3 h-3 ${group.color} ${
+                      isPendingGroup ? 'animate-spin' : ''
+                    }`}
+                    aria-hidden
+                  />
+                  <span>
+                    {group.label} ({group.tools.length})
+                    {(group.status === 'success' || group.status === 'error') && (
+                      <span className="text-text-muted/70 font-normal ml-1">
+                        · {buildGroupSummary(group.tools, language)}
+                      </span>
+                    )}
+                  </span>
+                  {/* 仅在非 awaiting 组显示“待批准”徽标，避免与 awaiting 组标题重复 */}
+                  {hasApproval && !isAwaitingGroup && (
+                    <span className="ml-1 text-[12px] px-1.5 py-0.5 rounded bg-status-warning/15 text-status-warning">
+                      待批准
                     </span>
                   )}
-                </span>
-                {/* 仅在非 awaiting 组显示“待批准”徽标，避免与 awaiting 组标题重复 */}
-                {hasApproval && !isAwaitingGroup && (
-                  <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-status-warning/15 text-status-warning">
-                    待批准
-                  </span>
-                )}
-              </button>
-            )}
+                </button>
+              )}
+            </div>
 
-            {/* 工具卡片列表：包含待批准工具时强制渲染；多工具分组项向右缩进 */}
+            {/* 工具卡片列表：包含待批准工具时强制渲染；多工具分组项向右缩进。
+                每个卡片包裹层使用 layout containment 隔离内部 reflow，
+                并添加淡入动画掩盖新增卡片时的瞬时高度跳变。 */}
             {(!isCollapsed || group.tools.length === 1 || hasApproval) && (
               <div className={`space-y-2 ${group.tools.length > 1 ? 'pl-5' : ''}`}>
                 {group.tools.map((tc) => (
-                  <div key={tc.id}>{renderToolCallCard(tc, opts)}</div>
+                  <div
+                    key={tc.id}
+                    style={{ contain: 'layout style' }}
+                    className="tool-card-appear"
+                  >
+                    {renderToolCallCard(tc, opts)}
+                  </div>
                 ))}
               </div>
             )}

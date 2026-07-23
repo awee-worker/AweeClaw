@@ -61,8 +61,8 @@ function AppContent() {
     showWorkflow, setShowWorkflow,
     showSettingsPage, showWelcomePage, showUserProfilePage, showBillingCenterPage,
     showSessionHistoryPage, showPluginCenterPage, showScenarioPage,
-    activeScenarioId, language,
-    isAuthenticated, setShowWelcomePage,
+    activeScenarioId, scenarioConfigVersion, language,
+    isAuthenticated, setShowWelcomePage, setChatVisible,
   } = useStore(useShallow((state) => ({
     workspace: state.workspace,
     activeSidePanel: state.activeSidePanel,
@@ -77,9 +77,11 @@ function AppContent() {
     showPluginCenterPage: state.showPluginCenterPage,
     showScenarioPage: state.showScenarioPage,
     activeScenarioId: state.activeScenarioId,
+    scenarioConfigVersion: state.scenarioConfigVersion,
     language: state.language,
     isAuthenticated: state.isAuthenticated,
     setShowWelcomePage: state.setShowWelcomePage,
+    setChatVisible: state.setChatVisible,
   })))
 
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false)
@@ -126,13 +128,18 @@ function AppContent() {
   usePluginUpdateChecker()
 
   const layoutConfig = useMemo<LayoutConfig>(() => {
+    // 场景安装/重装后，scenarioConfigVersion 递增，强制重新计算布局配置
+    // 同时清除 ShellComposer 缓存，确保读取最新的 sidebarItems / wideModePanelIds
+    if (scenarioConfigVersion > 0) {
+      shellComposer.clearCache()
+    }
     const scenario = scenarioRegistry.get(activeScenarioId)
     if (scenario) {
       return shellComposer.getLayoutConfig(scenario)
     }
     const defaultScenario = scenarioRegistry.getDefault()
     return shellComposer.getLayoutConfig(defaultScenario)
-  }, [activeScenarioId])
+  }, [activeScenarioId, scenarioConfigVersion])
 
   // 当场景切换时应用布局配置中的 sidebar 默认宽度
   useEffect(() => {
@@ -140,6 +147,15 @@ function AppContent() {
       useStore.getState().setSidebarWidth(layoutConfig.sidebarDefaultWidth)
     }
   }, [layoutConfig.sidebarDefaultWidth])
+
+  // 切换到声明了 hideChat 的面板时自动隐藏聊天窗口（用户可通过右上角按钮手动切换显示）
+  // 与 hideChat 强制隐藏不同，这里是"默认隐藏"：用户点击切换按钮后聊天可正常显示
+  useEffect(() => {
+    if (!activeSidePanel) return
+    if (layoutConfig.autoHideChatPanelIds.includes(activeSidePanel)) {
+      setChatVisible(false)
+    }
+  }, [activeSidePanel, layoutConfig.autoHideChatPanelIds, setChatVisible])
 
   const isWideModePanel = useMemo(() => {
     if (!activeSidePanel) return false

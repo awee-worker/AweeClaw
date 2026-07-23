@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
+import { scenarioLoader } from '@scenario-system/core'
 
 type PanelComponent = ComponentType<unknown>
 
@@ -70,8 +71,9 @@ function getScenarioModule(scenarioId: string) {
   } catch {}
 
   // 2. 从场景加载器（含程序化场景）查找
+  // 注意：不能使用 require()，因为渲染进程 nodeIntegration=false，
+  // require 不可用。改用顶层静态 import 的 scenarioLoader。
   try {
-    const { scenarioLoader } = require('@scenario-system/core')
     const entry = scenarioLoader.getEntry(scenarioId)
     if (entry?.module) return entry.module
   } catch {}

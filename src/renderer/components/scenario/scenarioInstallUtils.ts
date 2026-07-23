@@ -17,6 +17,7 @@ import { DeclarativeScenarioModule } from '@scenario-system/core/DeclarativeScen
 import { loadProgrammaticScenario } from '@scenario-system/core/ProgrammaticScenarioLoader'
 import { api } from '../../adapters/electronBridge'
 import type { ScenarioPlugin } from '@shared/protocols/scenario'
+import { useStore } from '@store'
 
 interface ScenarioConfigData {
   id?: string
@@ -169,6 +170,10 @@ export async function registerInstalledScenario(
       installScripts,
     })
   }
+
+  // 递增场景配置版本号，触发 AweeApp 重新计算 layoutConfig
+  // 这确保场景安装/重装后，ShellComposer 缓存被清除，新的 sidebarItems/wideModePanelIds 立即生效
+  useStore.getState().incrementScenarioConfigVersion()
 }
 
 /**
