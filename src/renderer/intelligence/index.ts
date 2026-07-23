@@ -103,7 +103,7 @@ export type {
 /* ------------------------------------------------------------------ */
 /* 工具函数                                                           */
 /* ------------------------------------------------------------------ */
-export { MentionParser, SPECIAL_MENTIONS } from '@intelligence/utils/mentionDecoder'
+export { MentionParser } from '@intelligence/utils/mentionDecoder'
 export type { MentionCandidate, MentionParseResult } from '@intelligence/utils/mentionDecoder'
 
 /* ------------------------------------------------------------------ */

@@ -2851,7 +2851,7 @@ export const en = {
   'searchPlaceholder': 'Search...',
   'searchResultsCount': '{count} results',
   'selectAll': 'Select All',
-  'selectFileToReference': 'Select file to reference',
+  'selectFileToReference': 'Select skill or file to reference',
   'selectItem': 'Select item',
   'setupRequired': 'Setup Required',
   'setupRequiredDesc': 'Please configure your API key to start using AI features.',

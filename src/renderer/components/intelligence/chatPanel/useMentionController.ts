@@ -92,22 +92,6 @@ export function useMentionController({
       let contextItem: ContextItem | null = null
 
       switch (candidate.type) {
-        case 'codebase':
-          replacement = '@codebase '
-          contextItem = { type: 'Codebase' }
-          break
-        case 'git':
-          replacement = '@git '
-          contextItem = { type: 'Git' }
-          break
-        case 'terminal':
-          replacement = '@terminal '
-          contextItem = { type: 'Terminal' }
-          break
-        case 'symbols':
-          replacement = '@symbols '
-          contextItem = { type: 'Symbols' }
-          break
         case 'skill':
           replacement = `@${candidate.data.skillId} `
           contextItem = {
@@ -123,10 +107,6 @@ export function useMentionController({
             type: candidate.type === 'folder' ? 'Folder' : 'File',
             uri: candidate.data.path,
           }
-          break
-        case 'web':
-          replacement = '@web '
-          contextItem = { type: 'Web' }
           break
       }
 

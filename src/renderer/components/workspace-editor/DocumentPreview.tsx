@@ -331,8 +331,9 @@ export function DocPreview({ path }: DocPreviewProps) {
   )
 }
 
-// ===== Excel (.xlsx) 预览组件 =====
-// 使用 exceljs 读取单元格样式（字体颜色、背景色、边框、对齐、合并单元格、列宽、行高）
+// ===== Excel (.xlsx / .xls) 预览组件 =====
+// .xlsx (OOXML) 使用 exceljs 读取单元格样式（字体颜色、背景色、边框、对齐、合并单元格、列宽、行高）
+// .xls (BIFF8 旧版二进制) 使用 SheetJS 解析（exceljs 不支持 .xls），尽力提取样式
 // Sheet Tab 放置在底部，符合 Excel 习惯
 
 interface XlsxPreviewProps {
@@ -564,6 +565,178 @@ function parseWorksheet(worksheet: any, sheetName: string): ParsedSheet {
   return { name: sheetName, rows, columnWidths, mergeMap }
 }
 
+// ===== SheetJS (.xls 旧版 BIFF 格式) 解析支持 =====
+// exceljs 仅支持 .xlsx (OOXML)，无法解析 .xls (BIFF8 二进制)。
+// 使用 SheetJS (xlsx) 解析 .xls，复用 ParsedSheet 结构与渲染逻辑。
+// SheetJS 社区版对 .xls 样式读取有限，尽力提取字体/填充/对齐/边框，缺失则使用默认样式。
+
+/** SheetJS 颜色对象转 CSS 颜色字符串（颜色格式为 { rgb: 'RRGGBB' }，无 alpha） */
+function sheetJsColorToCss(color?: { rgb?: string; theme?: number; indexed?: number }): string | undefined {
+  if (!color) return undefined
+  // SheetJS 颜色通常为 RRGGBB（6 位），排除纯黑默认色以免覆盖主题文字色
+  if (color.rgb && color.rgb.length === 6 && color.rgb.toUpperCase() !== '000000') {
+    return `#${color.rgb.toLowerCase()}`
+  }
+  // theme / indexed 颜色无法精确映射，返回 undefined 让 CSS fallback
+  return undefined
+}
+
+/** SheetJS 单元格样式对象 → CSS 样式（字体、填充、对齐） */
+function buildSheetJsCellStyle(s?: any): React.CSSProperties {
+  const style: React.CSSProperties = {}
+  if (!s) return style
+  // 字体
+  if (s.font) {
+    const font = s.font
+    if (font.bold) style.fontWeight = 'bold'
+    if (font.italic) style.fontStyle = 'italic'
+    if (font.underline) style.textDecoration = 'underline'
+    if (font.strike) style.textDecoration = (style.textDecoration as string || '') + ' line-through'
+    if (font.sz) style.fontSize = `${font.sz}px`
+    if (font.name) style.fontFamily = font.name
+    const fontColor = sheetJsColorToCss(font.color)
+    if (fontColor) style.color = fontColor
+  }
+  // 填充（背景色）：仅处理 solid 类型
+  if (s.fill && s.fill.patternType === 'solid') {
+    const bgColor = sheetJsColorToCss(s.fill.fgColor) || sheetJsColorToCss(s.fill.bgColor)
+    if (bgColor) style.backgroundColor = bgColor
+  }
+  // 对齐
+  if (s.alignment) {
+    const align = s.alignment
+    if (align.horizontal) {
+      const hMap: Record<string, React.CSSProperties['textAlign']> = {
+        left: 'left', center: 'center', right: 'right',
+        fill: 'left', justify: 'justify', centerContinuous: 'center', distributed: 'justify',
+      }
+      if (hMap[align.horizontal]) style.textAlign = hMap[align.horizontal]
+    }
+    if (align.vertical) {
+      const vMap: Record<string, React.CSSProperties['verticalAlign']> = {
+        top: 'top', center: 'middle', bottom: 'bottom',
+        distributed: 'middle', justify: 'middle',
+      }
+      if (vMap[align.vertical]) style.verticalAlign = vMap[align.vertical]
+    }
+    if (align.wrapText) style.whiteSpace = 'normal'
+    if (align.textRotation) {
+      // Excel 文本旋转：0-90 表示逆时针 0-90 度；91-180 表示顺时针
+      const deg = align.textRotation <= 90 ? align.textRotation : 90 - align.textRotation
+      style.transform = `rotate(${-deg}deg)`
+      style.transformOrigin = 'center'
+    }
+  }
+  return style
+}
+
+/** SheetJS 单元格边框 → CSS border 片段（复用 borderStyleToCss 映射） */
+function buildSheetJsBorderString(s?: any): React.CSSProperties {
+  const style: React.CSSProperties = {}
+  if (!s || !s.border) return style
+  const b = s.border
+  /** 转换单边边框为完整 CSS border 字符串 */
+  const conv = (edge?: { style?: string; color?: { rgb?: string; theme?: number; indexed?: number } }): string | undefined => {
+    if (!edge || !edge.style) return undefined
+    const bs = borderStyleToCss(edge.style)
+    if (!bs) return undefined
+    const color = sheetJsColorToCss(edge.color)
+    return `${bs} ${color || 'rgb(var(--border))'}`
+  }
+  const top = conv(b.top); if (top) style.borderTop = top
+  const bottom = conv(b.bottom); if (bottom) style.borderBottom = bottom
+  const left = conv(b.left); if (left) style.borderLeft = left
+  const right = conv(b.right); if (right) style.borderRight = right
+  return style
+}
+
+/**
+ * 将 SheetJS worksheet 转为 ParsedSheet 结构。
+ * SheetJS worksheet 是以单元格地址（如 "A1"）为 key 的对象，元数据通过 "!ref"/"!merges"/"!cols"/"!rows" 字段承载。
+ */
+function parseSheetJSWorksheet(XLSX: any, ws: any, sheetName: string): ParsedSheet {
+  // 解析范围，无数据时退化为单格
+  const ref = ws['!ref'] || 'A1'
+  const range = XLSX.utils.decode_range(ref)
+  const rowCount = range.e.r - range.s.r + 1
+  const columnCount = range.e.c - range.s.c + 1
+
+  // 合并单元格：收集左上角跨度 + 被覆盖单元格集合
+  const mergeMap = new Map<string, { colSpan: number; rowSpan: number }>()
+  const mergedAway = new Set<string>()
+  const merges = ws['!merges'] || []
+  for (const m of merges) {
+    // SheetJS 合并范围基于 0 起始索引，转换为 1 起始（与 exceljs 解析路径一致）
+    const top = m.s.r + 1
+    const left = m.s.c + 1
+    const bottom = m.e.r + 1
+    const right = m.e.c + 1
+    const rowSpan = bottom - top + 1
+    const colSpan = right - left + 1
+    mergeMap.set(`${top},${left}`, { colSpan, rowSpan })
+    for (let i = top; i <= bottom; i++) {
+      for (let j = left; j <= right; j++) {
+        if (i === top && j === left) continue
+        mergedAway.add(`${i},${j}`)
+      }
+    }
+  }
+
+  // 列宽：优先 wpx(像素)，其次 wch(字符宽) 估算为像素
+  const colsMeta = ws['!cols'] || []
+  const columnWidths: number[] = []
+  for (let i = 0; i < columnCount; i++) {
+    const meta = colsMeta[i]
+    let width = 80
+    if (meta) {
+      if (meta.wpx) width = Math.round(meta.wpx)
+      else if (meta.width) width = Math.round(meta.width * 7 + 5)
+      else if (meta.wch) width = Math.round(meta.wch * 7 + 5)
+    }
+    columnWidths.push(Math.min(Math.max(width, 40), 400))
+  }
+
+  // 行高元数据
+  const rowsMeta = ws['!rows'] || []
+
+  const rows: ParsedSheet['rows'] = []
+  for (let r = 1; r <= rowCount; r++) {
+    const cells: ParsedSheet['rows'][0]['cells'] = []
+    for (let c = 1; c <= columnCount; c++) {
+      const addr = XLSX.utils.encode_cell({ r: r - 1, c: c - 1 })
+      const cell = ws[addr]
+      // 值转换：优先用格式化文本 cell.w（符合 Excel 显示），其次原始值 cell.v
+      let value = ''
+      if (cell) {
+        if (cell.w !== undefined && cell.w !== null) {
+          value = String(cell.w)
+        } else if (cell.v !== undefined && cell.v !== null) {
+          value = cell.v instanceof Date ? cell.v.toLocaleString() : String(cell.v)
+        }
+      }
+
+      const mergeKey = `${r},${c}`
+      cells.push({
+        value,
+        style: buildSheetJsCellStyle(cell?.s),
+        border: buildSheetJsBorderString(cell?.s),
+        isMerged: mergedAway.has(mergeKey),
+        mergeSpan: mergeMap.get(mergeKey),
+      })
+    }
+    // 行高：优先 hpx(像素)，其次 hpt(磅) 转 px（* 1.333）
+    const rowMeta = rowsMeta[r - 1]
+    let height: number | undefined
+    if (rowMeta) {
+      if (rowMeta.hpx) height = Math.round(rowMeta.hpx)
+      else if (rowMeta.hpt) height = Math.round(rowMeta.hpt * 1.333)
+    }
+    rows.push({ cells, height })
+  }
+
+  return { name: sheetName, rows, columnWidths, mergeMap }
+}
+
 export function XlsxPreview({ path }: XlsxPreviewProps) {
   const language = useStore(s => s.language)
   const [sheets, setSheets] = useState<ParsedSheet[]>([])
@@ -586,11 +759,26 @@ export function XlsxPreview({ path }: XlsxPreviewProps) {
         for (let i = 0; i < binaryString.length; i++) {
           bytes[i] = binaryString.charCodeAt(i)
         }
-        // 使用 exceljs 读取，支持单元格样式
-        const ExcelJS = await import('exceljs')
-        const workbook = new ExcelJS.Workbook()
-        await workbook.xlsx.load(bytes.buffer as ArrayBuffer)
-        const sheetData = workbook.worksheets.map((ws: any) => parseWorksheet(ws, ws.name))
+
+        // 按扩展名分流：.xls (BIFF8) 用 SheetJS 解析；.xlsx (OOXML) 用 exceljs 解析（支持完整样式）
+        const ext = path.split('.').pop()?.toLowerCase() || ''
+        let sheetData: ParsedSheet[]
+
+        if (ext === 'xls') {
+          // SheetJS 原生支持 .xls 旧版二进制格式；cellStyles 开启样式读取，cellDates 把日期转为 Date 对象
+          const XLSX = await import('xlsx')
+          const workbook = XLSX.read(bytes, { type: 'array', cellStyles: true, cellDates: true })
+          sheetData = workbook.SheetNames.map((name: string) =>
+            parseSheetJSWorksheet(XLSX, workbook.Sheets[name], name)
+          )
+        } else {
+          // exceljs 读取 .xlsx，支持单元格样式（字体颜色、背景色、边框、对齐、合并、列宽、行高）
+          const ExcelJS = await import('exceljs')
+          const workbook = new ExcelJS.Workbook()
+          await workbook.xlsx.load(bytes.buffer as ArrayBuffer)
+          sheetData = workbook.worksheets.map((ws: any) => parseWorksheet(ws, ws.name))
+        }
+
         setSheets(sheetData)
         setActiveSheet(0)
       } catch (e) {
@@ -690,6 +878,7 @@ export function XlsxPreview({ path }: XlsxPreviewProps) {
                       return (
                         <td
                           key={colIdx}
+                          className="border border-border/50"
                           style={baseStyle}
                           title={cell.value || undefined}
                           {...spanProps}

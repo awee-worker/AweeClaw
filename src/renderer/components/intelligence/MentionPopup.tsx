@@ -4,7 +4,7 @@
  */
 
 import { useMemo } from 'react'
-import { Search, Sparkles } from 'lucide-react'
+import { Search } from 'lucide-react'
 import { t } from '@renderer/i18n'
 import { MentionCandidate } from '@intelligence/utils/mentionDecoder'
 import { useStore } from '@store'
@@ -49,7 +49,7 @@ export default function MentionPopup({
         onSelect(item.candidate)
     }
 
-    // 条目渲染逻辑：为 codebase 类型添加特殊图标标识
+    // 条目渲染逻辑：文件类型用 muted 色，技能类型用 accent 色
     const renderItem = (item: MentionItem, _index: number, isSelected: boolean) => {
         const Icon = item.icon
         const candidate = item.candidate
@@ -66,7 +66,6 @@ export default function MentionPopup({
                         <div className="text-[11px] text-text-muted truncate">{item.description}</div>
                     )}
                 </div>
-                {candidate.type === 'codebase' && <Sparkles className="w-3 h-3 text-purple-400" />}
             </div>
         )
     }

@@ -2850,7 +2850,7 @@ export const zh = {
   'searchPlaceholder': '搜索...',
   'searchResultsCount': '{count} 个结果',
   'selectAll': '全选',
-  'selectFileToReference': '选择要引用的文件',
+  'selectFileToReference': '选择要引用的技能或文件',
   'selectItem': '选择项目',
   'setupRequired': '需要配置',
   'setupRequiredDesc': '请配置您的 API Key 以开始使用 AI 功能。',

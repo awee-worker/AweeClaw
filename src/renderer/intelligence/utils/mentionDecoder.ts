@@ -1,15 +1,15 @@
 /**
  * @ 提及解析器
- * 解析用户输入中的 @file, @codebase, @web 等提及
+ * 解析用户输入中的 @file、@skill 等提及
  */
 
 import { api } from '../../adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
-import { FileText, Folder, Database, Globe, FileCode, Terminal, GitBranch, AlertCircle, Wrench } from 'lucide-react'
+import { FileText, Folder, Wrench } from 'lucide-react'
 import { skillService } from '@intelligence/runtime/skillRepository'
 import { BRAND } from '@shared/brand'
 
-export type MentionType = 'file' | 'folder' | 'codebase' | 'web' | 'git' | 'terminal' | 'symbols' | 'problems' | 'skill'
+export type MentionType = 'file' | 'folder' | 'skill'
 
 export interface MentionCandidate {
     id: string
@@ -26,51 +26,6 @@ export interface MentionParseResult {
     query: string
     range: { start: number; end: number }
 }
-
-export const SPECIAL_MENTIONS: MentionCandidate[] = [
-    {
-        id: 'codebase',
-        type: 'codebase',
-        label: '@codebase',
-        description: 'Search across the entire codebase',
-        icon: Database,
-    },
-    {
-        id: 'web',
-        type: 'web',
-        label: '@web',
-        description: 'Search the web',
-        icon: Globe,
-    },
-    {
-        id: 'symbols',
-        type: 'symbols',
-        label: '@symbols',
-        description: 'Search symbols in current file',
-        icon: FileCode,
-    },
-    {
-        id: 'git',
-        type: 'git',
-        label: '@git',
-        description: 'Reference git changes',
-        icon: GitBranch,
-    },
-    {
-        id: 'terminal',
-        type: 'terminal',
-        label: '@terminal',
-        description: 'Reference terminal output',
-        icon: Terminal,
-    },
-    {
-        id: 'problems',
-        type: 'problems',
-        label: '@problems',
-        description: 'Reference current file diagnostics/errors',
-        icon: AlertCircle,
-    },
-]
 
 export class MentionParser {
     /**
@@ -110,14 +65,7 @@ export class MentionParser {
         const lowerQuery = query.toLowerCase()
         const suggestions: MentionCandidate[] = []
 
-        // 1. 匹配特殊提及
-        SPECIAL_MENTIONS.forEach(m => {
-            if (m.label.toLowerCase().includes(lowerQuery) || m.type.includes(lowerQuery)) {
-                suggestions.push(m)
-            }
-        })
-
-        // 2. 匹配已安装的 Skills
+        // 1. 匹配已安装的 Skills
         try {
             const skills = await skillService.getSkills()
             const enabledSkills = skills.filter(s => s.enabled)
@@ -142,7 +90,7 @@ export class MentionParser {
             logger.agent.error('Error fetching skills for mention:', err)
         }
 
-        // 3. 搜索文件
+        // 2. 搜索文件
         if (workspacePath && (options.includeFiles || options.includeFolders)) {
             try {
                 const files = await this.searchFiles(workspacePath, lowerQuery, options)
