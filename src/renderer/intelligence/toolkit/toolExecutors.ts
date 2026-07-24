@@ -2005,7 +2005,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
 
                 return {
                     success: true,
-                    result: `[Background Process Started]\nCommand: ${command}\nTerminal ID: ${termId}\nSession ID: ${detachedSession.commandSessionId}\n\nThe process is running in the Agent terminal panel. Use 'read_terminal_output' with terminal_id="${termId}" to check logs. Use 'send_terminal_input' to send input or Ctrl+C (is_ctrl=true). Use 'stop_terminal' to kill it.`,
+                    result: `[后台进程已启动]\n命令: ${command}\n终端 ID: ${termId}\n会话 ID: ${detachedSession.commandSessionId}\n\n该进程已在 Agent 终端面板中运行，不会自动退出。命令已成功启动，你可以继续执行下一步任务。\n\n如需查看实时日志：调用 read_terminal_output（terminal_id="${termId}"）\n如需发送输入或 Ctrl+C：调用 send_terminal_input（is_ctrl=true 发送中断）\n如需停止进程：调用 stop_terminal`,
                     meta: {
                         command,
                         cwd: resolvedCwd,

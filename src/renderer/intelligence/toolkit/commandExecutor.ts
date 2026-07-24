@@ -7,8 +7,14 @@ import { platform as runtimePlatform } from '@shared/toolkit/pathHelper'
  * 1. 持续运行的服务类命令（dev server、watch 等）— 永不退出
  * 2. 耗时较长的安装/构建命令（install、ci、build 等）— 可能耗时数分钟
  *    这类命令不作为后台进程，但需要更长的超时时间
+ *
+ * 匹配规则说明：
+ * - 命令分隔符（&&/;/||）后匹配具体命令，支持 `cd xxx && python3 -m http.server` 形式
+ * - python 版本号兼容：python、python3、python3.11、python3.12 等均匹配
+ * - 包含常见静态服务器、开发服务器、文件监听、数据库服务等持续运行进程
+ * - `--watch`/`--serve`/`-w` 等持续监听标志单独匹配（tsc --watch、sass --watch 等）
  */
-export const LONG_RUNNING_COMMAND_PATTERN = /^(npm|yarn|pnpm|bun)\s+(run\s+)?(dev|start|serve|watch)|python\s+-m\s+(http\.server|flask)|uvicorn|nodemon|webpack|vite/
+export const LONG_RUNNING_COMMAND_PATTERN = /(?:^|&&|;|\|\|)\s*(?:(?:npm|yarn|pnpm|bun)\s+(?:run\s+)?(?:dev|start|serve|serve:|watch)|python\d*(?:\.\d+)*\s+-m\s+(?:http\.server|flask|werkzeug|gunicorn)|uvicorn|nodemon|webpack(?:-dev-server)?|vite|http-server|live-server|serve\s+-s|json-server|php\s+-S|ruby\s+-runhttpd|docker\s+(?:compose\s+)?up|kubectl\s+port-forward|minio\s+server|redis-server|tailwindcss\s+--watch)|\s--watch(?:\s|$)|\s--serve(?:\s|$)/
 
 /**
  * 安装/构建类耗时命令模式

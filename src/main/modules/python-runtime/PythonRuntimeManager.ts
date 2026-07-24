@@ -31,26 +31,47 @@ const DEFAULT_PYTHON_DIR = path.join(app.getPath('userData'), 'python-env')
 const PYTHON_VERSION = '3.12'
 const BASE_PACKAGES = ['debugpy', 'pylint']
 
+/**
+ * uv 下载源列表（按优先级排序）
+ *
+ * 国内网络优化策略：
+ * 1. ghfast.top（GitHub 加速，稳定性和速度较好）
+ * 2. gh-proxy.com（GitHub 加速镜像）
+ * 3. ghproxy.net（GitHub 加速，备选）
+ * 4. GitHub 官方（海外用户/直连可用时）
+ *
+ * 注意：镜像源 URL 格式为 https://镜像域名/https://github.com/...
+ */
 const UV_DOWNLOAD_URLS: Record<string, string[]> = {
   'darwin-arm64': [
-    'https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-apple-darwin.tar.gz',
+    'https://ghfast.top/https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-apple-darwin.tar.gz',
+    'https://gh-proxy.com/https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-apple-darwin.tar.gz',
     'https://ghproxy.net/https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-apple-darwin.tar.gz',
+    'https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-apple-darwin.tar.gz',
   ],
   'darwin-x64': [
-    'https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-apple-darwin.tar.gz',
+    'https://ghfast.top/https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-apple-darwin.tar.gz',
+    'https://gh-proxy.com/https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-apple-darwin.tar.gz',
     'https://ghproxy.net/https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-apple-darwin.tar.gz',
+    'https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-apple-darwin.tar.gz',
   ],
   'win32-x64': [
-    'https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip',
+    'https://ghfast.top/https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip',
+    'https://gh-proxy.com/https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip',
     'https://ghproxy.net/https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip',
+    'https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip',
   ],
   'linux-x64': [
-    'https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-gnu.tar.gz',
+    'https://ghfast.top/https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-gnu.tar.gz',
+    'https://gh-proxy.com/https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-gnu.tar.gz',
     'https://ghproxy.net/https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-gnu.tar.gz',
+    'https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-gnu.tar.gz',
   ],
   'linux-arm64': [
-    'https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-unknown-linux-gnu.tar.gz',
+    'https://ghfast.top/https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-unknown-linux-gnu.tar.gz',
+    'https://gh-proxy.com/https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-unknown-linux-gnu.tar.gz',
     'https://ghproxy.net/https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-unknown-linux-gnu.tar.gz',
+    'https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-unknown-linux-gnu.tar.gz',
   ],
 }
 
@@ -84,28 +105,147 @@ function getCommonBinaryDirs(): string[] {
       path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python312'),
       path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python311'),
       path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python310'),
+      // uv 官方安装程序（Windows）： %USERPROFILE%\.local\bin
+      path.join(process.env.USERPROFILE || '', '.local', 'bin'),
+      // Scoop 安装路径
+      path.join(process.env.USERPROFILE || '', 'scoop', 'shims'),
+      // Chocolatey 安装路径
+      'C:\\ProgramData\\chocolatey\\bin',
     ]
   }
+  const home = process.env.HOME || ''
   return [
     '/opt/homebrew/bin',
+    '/opt/homebrew/sbin',
     '/usr/local/bin',
+    '/usr/local/sbin',
     '/opt/local/bin',
     '/usr/bin',
     '/bin',
+    '/usr/sbin',
+    '/sbin',
+    // uv 官方安装程序（curl -LsSf https://astral.sh/uv/install.sh | sh）安装位置
+    path.join(home, '.local', 'bin'),
+    // cargo 安装的 uv 位置
+    path.join(home, '.cargo', 'bin'),
+    // bun 安装位置（未来兼容）
+    path.join(home, '.bun', 'bin'),
+    // nvm 默认路径（部分用户 uv 通过 npm 全局安装）
+    path.join(home, '.nvm', 'versions', 'node'),
+    // asdf 版本管理器
+    path.join(home, '.asdf', 'shims'),
+    // volta
+    path.join(home, '.volta', 'bin'),
   ]
 }
 
-function getAugmentedPathEnv(): string {
+/**
+ * 缓存的用户完整 PATH（从登录 shell 解析）
+ *
+ * macOS GUI 应用从 launchd 继承精简的 PATH（通常只有 /usr/bin:/bin:/usr/sbin:/sbin），
+ * 不包含 ~/.local/bin、~/.cargo/bin 等用户自定义路径。
+ * 这导致用户在终端安装的 uv/uvx 无法被客户端检测到。
+ *
+ * 解决方案：通过登录 shell（-l -i）解析用户完整的 PATH 环境变量。
+ */
+let cachedUserPath: string | null = null
+let userPathResolvePromise: Promise<string | null> | null = null
+
+/**
+ * 通过登录 shell 解析用户完整的 PATH 环境变量。
+ *
+ * macOS GUI 应用从 launchd 继承的 PATH 通常只有 /usr/bin:/bin:/usr/sbin:/sbin，
+ * 不包含 ~/.local/bin（uv 官方安装位置）、~/.cargo/bin（cargo 安装位置）等路径。
+ * 这导致用户在终端 `uv --version` 能用，但客户端无法检测到 uv。
+ *
+ * 解决方案：以登录交互式 shell 方式运行 echo $PATH，获取用户 shell 配置
+ * （.zshrc/.bashrc/.zprofile/.bash_profile）中定义的完整 PATH。
+ *
+ * @returns 用户完整 PATH，或 null（解析失败）
+ */
+function resolveUserShellPath(): Promise<string | null> {
+  if (cachedUserPath !== null) return Promise.resolve(cachedUserPath)
+  if (userPathResolvePromise) return userPathResolvePromise
+
+  userPathResolvePromise = new Promise((resolve) => {
+    // Windows 没有 shell PATH 问题，直接返回 null
+    if (process.platform === 'win32') {
+      cachedUserPath = null
+      resolve(null)
+      return
+    }
+
+    // 用户的默认 shell（$SHELL），回退到 /bin/zsh（macOS 默认）或 /bin/bash
+    const userShell = process.env.SHELL || (process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash')
+
+    // 使用 -l（登录 shell）+ -i（交互式）确保加载 .zprofile/.zshrc 或 .bash_profile/.bashrc
+    // 通过 echo $PATH 获取完整 PATH
+    const proc = spawn(userShell, ['-l', '-i', '-c', 'echo $PATH'], {
+      timeout: 5000,
+      env: { ...process.env },
+    })
+
+    let stdout = ''
+    let settled = false
+
+    const finish = (result: string | null) => {
+      if (settled) return
+      settled = true
+      cachedUserPath = result
+      userPathResolvePromise = null
+      resolve(result)
+    }
+
+    proc.stdout?.on('data', (data: Buffer) => { stdout += data.toString() })
+    proc.on('close', (code) => {
+      if (code === 0 && stdout.trim()) {
+        const resolvedPath = stdout.trim()
+        logger.system.info(`[PythonManager] Resolved user shell PATH: ${resolvedPath}`)
+        finish(resolvedPath)
+      } else {
+        logger.system.warn(`[PythonManager] Shell PATH resolution failed (code=${code}), using common dirs only`)
+        finish(null)
+      }
+    })
+    proc.on('error', (err) => {
+      logger.system.warn(`[PythonManager] Shell PATH resolution error: ${err.message}`)
+      finish(null)
+    })
+    proc.on('timeout', () => {
+      logger.system.warn('[PythonManager] Shell PATH resolution timed out')
+      try { proc.kill() } catch { /* ignore */ }
+      finish(null)
+    })
+  })
+
+  return userPathResolvePromise
+}
+
+/**
+ * 获取增强后的 PATH 环境变量。
+ *
+ * 合并三个来源：
+ * 1. 当前进程 PATH（launchd 继承的精简 PATH）
+ * 2. 用户登录 shell 解析的完整 PATH（含 ~/.local/bin 等）
+ * 3. 预定义的常见二进制目录（getCommonBinaryDirs）
+ *
+ * @param userShellPath 可选：已解析的用户 shell PATH（避免重复解析）
+ */
+function getAugmentedPathEnv(userShellPath?: string | null): string {
   const existing = (process.env.PATH || '').split(path.delimiter).filter(Boolean)
-  const merged = [...existing, ...getCommonBinaryDirs()]
+  const shellPath = userShellPath
+    ? userShellPath.split(path.delimiter).filter(Boolean)
+    : []
+  const common = getCommonBinaryDirs()
+  const merged = [...existing, ...shellPath, ...common]
   return Array.from(new Set(merged)).join(path.delimiter)
 }
 
-function resolveCommandPath(cmd: string): string | null {
+function resolveCommandPath(cmd: string, augmentedPath?: string): string | null {
   if (!cmd) return null
   if (path.isAbsolute(cmd) && fs.existsSync(cmd)) return cmd
 
-  const searchDirs = getAugmentedPathEnv().split(path.delimiter).filter(Boolean)
+  const searchDirs = (augmentedPath || getAugmentedPathEnv()).split(path.delimiter).filter(Boolean)
   const executableCandidates = process.platform === 'win32'
     ? Array.from(new Set([cmd, `${cmd}.cmd`, `${cmd}.exe`, `${cmd}.bat`]))
     : [cmd]
@@ -119,7 +259,35 @@ function resolveCommandPath(cmd: string): string | null {
   return null
 }
 
-function execCommandAsync(command: string, args: string[], options?: { cwd?: string; timeout?: number }): Promise<{ stdout: string; stderr: string; code: number }> {
+/**
+ * 异步解析命令路径（含用户 shell PATH）。
+ *
+ * 先解析用户登录 shell 的完整 PATH，再合并预定义目录搜索。
+ * 用于 uv/uvx/python 等命令的检测，解决 macOS GUI 应用 PATH 不完整问题。
+ *
+ * @param cmd 命令名（如 'uv'、'python3'）
+ * @returns 命令绝对路径，或 null（未找到）
+ */
+async function resolveCommandPathAsync(cmd: string): Promise<string | null> {
+  if (!cmd) return null
+  if (path.isAbsolute(cmd) && fs.existsSync(cmd)) return cmd
+
+  const userShellPath = await resolveUserShellPath()
+  const augmentedPath = getAugmentedPathEnv(userShellPath)
+  return resolveCommandPath(cmd, augmentedPath)
+}
+
+/**
+ * 预初始化：提前解析用户 shell PATH 并缓存。
+ *
+ * 在应用启动时调用，避免首次 uv 检测时的 5 秒等待。
+ * 解析结果缓存在 cachedUserPath 中，后续调用立即返回。
+ */
+async function prewarmUserShellPath(): Promise<void> {
+  await resolveUserShellPath()
+}
+
+function execCommandAsync(command: string, args: string[], options?: { cwd?: string; timeout?: number; env?: Record<string, string> }): Promise<{ stdout: string; stderr: string; code: number }> {
   return new Promise((resolve) => {
     // timeout = 0 表示不限制超时（AI 执行命令时取消超时限制）
     // 仅在显式指定正数超时的情况下才设置定时器
@@ -127,7 +295,7 @@ function execCommandAsync(command: string, args: string[], options?: { cwd?: str
     const proc = spawn(command, args, {
       cwd: options?.cwd,
       timeout: effectiveTimeout,
-      env: { ...process.env, PATH: getAugmentedPathEnv() },
+      env: { ...process.env, ...(options?.env || {}), PATH: getAugmentedPathEnv(cachedUserPath) },
     })
     let stdout = ''
     let stderr = ''
@@ -301,18 +469,40 @@ class PythonManager {
    * 如果用户已有系统 Python 但没有 uv/uvx，ensureReady() 会跳过 uv 安装。
    * 此方法专门用于 MCP 插件等需要 uvx 但不需要 Python 的场景。
    *
+   * 优化：使用 resolveCommandPathAsync 解析用户 shell PATH，
+   * 解决 macOS GUI 应用 PATH 不完整导致检测不到用户手动安装的 uv 的问题。
+   *
    * @returns uvx 命令路径（优先 uvx 二进制，其次 uv 路径用于 `uv tool run` 等价命令），或 null 表示安装失败
    */
   async ensureUvx(): Promise<{ uvxPath: string; uvPath: string } | null> {
-    // 先检查是否已有 uvx
-    const existingUvx = this.getUvxPath()
+    // 预热用户 shell PATH 缓存（首次调用时解析，后续使用缓存）
+    await prewarmUserShellPath()
+
+    // 先检查缓存的 uvx 路径
+    if (this._status.uvxPath && fs.existsSync(this._status.uvxPath)) {
+      return { uvxPath: this._status.uvxPath, uvPath: this._status.uvPath || this._status.uvxPath }
+    }
+
+    // 异步搜索 uvx（含用户 shell PATH，如 ~/.local/bin）
+    const existingUvx = await resolveCommandPathAsync('uvx')
     if (existingUvx) {
+      this._status.uvxPath = existingUvx
+      store.set(CONFIG_KEY_UVX_PATH, existingUvx)
+      // 同时解析 uv 路径（uvx 和 uv 通常在同一目录）
+      const uvSibling = path.join(path.dirname(existingUvx), process.platform === 'win32' ? 'uv.exe' : 'uv')
+      if (fs.existsSync(uvSibling)) {
+        this._status.uvPath = uvSibling
+        store.set(CONFIG_KEY_UV_PATH, uvSibling)
+      }
       return { uvxPath: existingUvx, uvPath: this._status.uvPath || existingUvx }
     }
 
     // 检查是否已有 uv（可以用 uv tool run 替代）
-    const existingUv = this.getUvPath()
+    const existingUv = await resolveCommandPathAsync('uv')
     if (existingUv) {
+      this._status.uvPath = existingUv
+      store.set(CONFIG_KEY_UV_PATH, existingUv)
+      logger.system.info(`[PythonManager] Found system uv (will use as uvx fallback): ${existingUv}`)
       return { uvxPath: existingUv, uvPath: existingUv }
     }
 
@@ -419,12 +609,16 @@ class PythonManager {
   }
 
   private async _detectSystemPython(): Promise<{ path: string; version: string } | null> {
+    // 预热用户 shell PATH，确保能检测到用户手动安装的 Python
+    await prewarmUserShellPath()
+
     const commands = process.platform === 'win32'
       ? ['python', 'python3', 'py']
       : ['python3', 'python']
 
     for (const cmd of commands) {
-      const resolved = resolveCommandPath(cmd)
+      // 使用异步解析（含用户 shell PATH，如 ~/.local/bin、pyenv shims 等）
+      const resolved = await resolveCommandPathAsync(cmd)
       if (!resolved) continue
 
       const version = await this._getPythonVersion(resolved)
@@ -451,7 +645,13 @@ class PythonManager {
 
   private async _ensureUv(): Promise<string | null> {
     this.notifyStatus('正在检查 uv 运行环境...')
-    const systemUv = resolveCommandPath('uv')
+
+    // 预热用户 shell PATH，确保能检测到用户手动安装的 uv
+    // 解决 macOS GUI 应用 PATH 不完整导致检测不到 ~/.local/bin/uv 的问题
+    await prewarmUserShellPath()
+
+    // 异步搜索 uv（含用户 shell PATH）
+    const systemUv = await resolveCommandPathAsync('uv')
     if (systemUv) {
       logger.system.info(`[PythonManager] Found system uv: ${systemUv}`)
       this.notifyStatus('已检测到系统 uv')
@@ -594,7 +794,11 @@ class PythonManager {
       }
     }
 
-    this.notifyStatus('uv 安装失败，请手动安装 uv 后重试')
+    // 提供详细的手动安装指引（含平台特定命令）
+    const installGuide = process.platform === 'win32'
+      ? 'PowerShell: irm https://astral.sh/uv/install.ps1 | iex'
+      : '终端: curl -LsSf https://astral.sh/uv/install.sh | sh'
+    this.notifyStatus(`uv 自动安装失败。请手动安装 uv 后重启客户端：\n${installGuide}\n安装后客户端会自动检测到 uv。`)
     logger.system.error('[PythonManager] uv installation failed (all methods exhausted):', lastError)
     return null
   }
