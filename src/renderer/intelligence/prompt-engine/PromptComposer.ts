@@ -31,6 +31,7 @@ import {
   WORKFLOW_GUIDELINES,
   OUTPUT_FORMAT,
   TOOL_GUIDELINES,
+  GRAPH_PLAN_GUIDE,
   getPromptTemplateById,
   getDefaultPromptTemplate,
 } from './promptLibrary'
@@ -595,6 +596,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     buildTools(ctx.mode, ctx.templateId, ctx.planPhase),
     identity.conventions,
     identity.workflow,
+    GRAPH_PLAN_GUIDE,
     identity.outputFormat,
     buildModeSpecificSections(ctx.modeDescriptor),
     buildEnvironment(ctx),
@@ -622,6 +624,7 @@ export function buildChatPrompt(ctx: PromptContext): string {
     identity.securityRules,
     buildTools(ctx.mode, ctx.templateId, ctx.planPhase),
     identity.conventions,
+    GRAPH_PLAN_GUIDE,
     identity.outputFormat,
     buildModeSpecificSections(ctx.modeDescriptor),
     buildEnvironment(ctx),

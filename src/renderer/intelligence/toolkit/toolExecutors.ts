@@ -9,6 +9,14 @@ import { resolveEditFileRequest } from '@toolkit/fileEditor'
 import { resolveReadFileRequest } from '@toolkit/fileReader'
 import { logger } from '@toolkit/LogEngine'
 import type { ToolExecutionResult, ToolExecutionContext } from '@intelligence/providerTypes'
+import { PLAN_DIR_NAME } from '@intelligence/providerTypes'
+import {
+    buildPlanFromToolArgs,
+    buildAddedTask,
+    applyUpdateEdges,
+    type PlanTaskArg,
+    type PlanEdgeArg,
+} from './planBuilder'
 import { validatePath, isSensitivePath, platform, getDirname } from '@shared/toolkit/pathHelper'
 import { pathToLspUri } from '@shared/toolkit/uriHelper'
 import { waitForDiagnostics, isLanguageSupported, getLanguageId, didOpenDocument } from '@services/languageServerAdapter'
@@ -41,6 +49,7 @@ import type { Language } from '@renderer/i18n'
 import type { ReplaceErrorCode } from '@utils/smartReplace'
 import { resolveAgentLanguage, pickLocalizedText, translateAgentText } from '@intelligence/utils/intelligenceTextUtils'
 import { guardWriteFile } from './fileWritePolicy'
+import { executeAddNode, executeAddEdge } from './graphToolExecutors'
 
 // ===== 辅助函数 =====
 
@@ -2419,15 +2428,6 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
     async create_task_plan(args, ctx) {
         const name = args.name as string
         const requirementsDoc = args.requirementsDoc as string
-        const tasks = args.tasks as Array<{
-            title: string
-            description: string
-            suggestedProvider: string
-            suggestedModel: string
-            suggestedRole: string
-            dependencies?: string[]
-        }>
-        const executionMode = (args.executionMode as 'sequential' | 'parallel') || 'sequential'
 
         if (!ctx.workspacePath) {
             return { success: false, result: 'No workspace path available' }
@@ -2439,7 +2439,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 30)
             const planId = `${slug}-${timestamp}`
 
-            const planDir = `${ctx.workspacePath}/${BRAND.dirName}/plan`
+            const planDir = `${ctx.workspacePath}/${BRAND.dirName}/${PLAN_DIR_NAME}`
             await api.file.mkdir(planDir)
 
             // 保存需求文档 (markdown)
@@ -2447,35 +2447,20 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             internalWriteTracker.mark(mdPath)
             await api.file.write(mdPath, requirementsDoc)
 
-            // 构建任务对象
-            // 处理 "default" 值，转换为真实的默认配置
-            const resolveDefault = (value: string | undefined, fallback: string) => {
-                if (!value || value === 'default' || value === 'Default') return fallback
-                return value
-            }
-
-            const planTasks = tasks.map((t, idx) => ({
-                id: `task-${idx + 1}`,
-                title: t.title,
-                description: t.description,
-                provider: resolveDefault(t.suggestedProvider, 'anthropic'),
-                model: resolveDefault(t.suggestedModel, 'claude-sonnet-4-20250514'),
-                role: resolveDefault(t.suggestedRole, 'coder'),
-                dependencies: t.dependencies || [],
-                status: 'pending' as const,
-            }))
-
-            // 构建规划对象
-            const plan = {
-                id: planId,
-                name,
-                createdAt: timestamp,
-                updatedAt: timestamp,
-                requirementsDoc: `${planId}.md`,
-                executionMode,
-                status: 'draft' as const,
-                tasks: planTasks,
-            }
+            // 构建规划对象（通过 planBuilder 纯函数，支持 graphVersion=2 图扩展字段）
+            const plan = buildPlanFromToolArgs({
+                args: {
+                    name,
+                    requirementsDoc,
+                    tasks: args.tasks as PlanTaskArg[],
+                    executionMode: args.executionMode as string | undefined,
+                    graphVersion: args.graphVersion as number | undefined,
+                    allowDynamicExpansion: args.allowDynamicExpansion as boolean | undefined,
+                    edges: args.edges as PlanEdgeArg[] | undefined,
+                },
+                planId,
+                timestamp,
+            })
 
             // 保存规划文件 (json)
             const jsonPath = `${planDir}/${planId}.json`
@@ -2488,12 +2473,22 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             // 打开 plan 文件（触发 ExecutionBoard 渲染）
             useStore.getState().openFile(jsonPath, JSON.stringify(plan, null, 2))
 
+            // 根据是否图计划构造反馈信息
+            const isGraphPlan = plan.graphVersion === 2
+            const graphHint = isGraphPlan
+                ? getLocalizedText(
+                    getCurrentLanguage(),
+                    '（图计划：已启用条件边/循环节点）',
+                    ' (Graph plan: conditional edges/loops enabled)',
+                )
+                : ''
+
             return {
                 success: true,
                 result: getLocalizedText(
                     getCurrentLanguage(),
-                    `已创建任务规划“${name}”，共 ${tasks.length} 个任务。\n规划文件：${jsonPath}\n需求文档：${mdPath}\n\nTaskBoard 已打开，请先审核规划，再点击“开始执行”。`,
-                    `Created task plan "${name}" with ${tasks.length} tasks.\nPlan file: ${jsonPath}\nRequirements: ${mdPath}\n\nThe ExecutionBoard has been opened for user review. Please review the plan and click "Start Execution" to proceed.`,
+                    `已创建任务规划“${name}”，共 ${plan.tasks.length} 个任务${graphHint}。\n规划文件：${jsonPath}\n需求文档：${mdPath}\n\nTaskBoard 已打开，请先审核规划，再点击“开始执行”。`,
+                    `Created task plan "${name}" with ${plan.tasks.length} task(s)${graphHint}.\nPlan file: ${jsonPath}\nRequirements: ${mdPath}\n\nThe ExecutionBoard has been opened for user review. Please review the plan and click "Start Execution" to proceed.`,
                 ),
                 meta: { planId, planPath: jsonPath, stopLoop: true },
             }
@@ -2507,14 +2502,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         try {
             const planId = args.planId as string
             const updateRequirements = args.updateRequirements as string | undefined
-            const addTasks = args.addTasks as Array<{
-                title: string
-                description: string
-                suggestedProvider?: string
-                suggestedModel?: string
-                suggestedRole?: string
-                insertAfter?: string
-            }> | undefined
+            const addTasks = args.addTasks as PlanTaskArg[] | undefined
             const removeTasks = args.removeTasks as string[] | undefined
             const updateTasks = args.updateTasks as Array<{
                 taskId: string
@@ -2523,8 +2511,15 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 provider?: string
                 model?: string
                 role?: string
+                nodeType?: string
+                maxIterations?: number
+                reflectionPrompt?: string
+                requireApproval?: boolean
             }> | undefined
             const executionMode = args.executionMode as 'sequential' | 'parallel' | undefined
+            const setGraphVersion = args.setGraphVersion as number | undefined
+            const setAllowDynamicExpansion = args.setAllowDynamicExpansion as boolean | undefined
+            const updateEdges = args.updateEdges as PlanEdgeArg[] | undefined
 
             const store = agentStorePlanBridge
             const plan = store.getPlanById(planId)
@@ -2537,7 +2532,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
 
             // 更新需求文档
             if (updateRequirements) {
-                const mdPath = `${ctx.workspacePath}/${BRAND.dirName}/planner/${plan.requirementsDoc}`
+                const mdPath = `${ctx.workspacePath}/${BRAND.dirName}/${PLAN_DIR_NAME}/${plan.requirementsDoc}`
                 const existingContent = (await api.file.read(mdPath)) || ''
                 const newContent = `${existingContent}\n\n---\n## Updates\n${updateRequirements}`
                 internalWriteTracker.mark(mdPath)
@@ -2547,24 +2542,18 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
 
             // 删除任务
             if (removeTasks?.length) {
-                const newTasks = plan.tasks.filter(t => !removeTasks.includes(t.id))
-                store.updatePlan(planId, { tasks: newTasks })
+                const currentPlan1 = store.getPlanById(planId)
+                if (currentPlan1) {
+                    const newTasks = currentPlan1.tasks.filter(t => !removeTasks.includes(t.id))
+                    store.updatePlan(planId, { tasks: newTasks })
+                }
                 changes.push(`Removed ${removeTasks.length} tasks`)
             }
 
-            // 添加任务
+            // 添加任务（复用 planBuilder.buildAddedTask，支持图扩展字段）
             if (addTasks?.length) {
                 const timestamp = Date.now()
-                const newTasks = addTasks.map((t, i) => ({
-                    id: `task-${timestamp}-${i}`,
-                    title: t.title,
-                    description: t.description,
-                    provider: t.suggestedProvider || 'anthropic',
-                    model: t.suggestedModel || 'claude-sonnet-4-20250514',
-                    role: t.suggestedRole || 'coder',
-                    status: 'pending' as const,
-                    dependencies: [],
-                }))
+                const newTasks = addTasks.map((t, i) => buildAddedTask(t, timestamp, i))
 
                 const currentPlan = store.getPlanById(planId)
                 if (currentPlan) {
@@ -2573,18 +2562,73 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 changes.push(`Added ${addTasks.length} tasks`)
             }
 
-            // 更新任务
+            // 更新任务（含图扩展字段 nodeType/maxIterations/reflectionPrompt/requireApproval）
             if (updateTasks?.length) {
-                for (const update of updateTasks) {
-                    store.updateTask(planId, update.taskId, {
-                        title: update.title,
-                        description: update.description,
-                        provider: update.provider,
-                        model: update.model,
-                        role: update.role,
+                const currentPlan = store.getPlanById(planId)
+                if (currentPlan) {
+                    const updatedTasks = currentPlan.tasks.map(task => {
+                        const update = updateTasks.find(u => u.taskId === task.id)
+                        if (!update) return task
+
+                        const merged: any = { ...task }
+                        if (update.title !== undefined) merged.title = update.title
+                        if (update.description !== undefined) merged.description = update.description
+                        if (update.provider !== undefined) merged.provider = update.provider
+                        if (update.model !== undefined) merged.model = update.model
+                        if (update.role !== undefined) merged.role = update.role
+                        // 图扩展字段
+                        if (update.nodeType !== undefined) {
+                            const valid = ['task', 'llm', 'tool', 'decision', 'human']
+                            if (valid.includes(update.nodeType)) {
+                                merged.nodeType = update.nodeType
+                            }
+                        }
+                        if (update.maxIterations !== undefined) merged.maxIterations = update.maxIterations
+                        if (update.reflectionPrompt !== undefined) merged.reflectionPrompt = update.reflectionPrompt
+                        if (update.requireApproval !== undefined) merged.requireApproval = update.requireApproval
+                        return merged
                     })
+                    store.updatePlan(planId, { tasks: updatedTasks })
                 }
                 changes.push(`Updated ${updateTasks.length} tasks`)
+            }
+
+            // 升级/切换 graphVersion（图能力版本）
+            if (setGraphVersion !== undefined) {
+                const currentPlan = store.getPlanById(planId)
+                if (currentPlan) {
+                    const graphPlan: any = { ...currentPlan }
+                    graphPlan.graphVersion = setGraphVersion === 2 ? 2 : 1
+                    store.updatePlan(planId, graphPlan)
+                    changes.push(`Set graphVersion to ${graphPlan.graphVersion}`)
+                }
+            }
+
+            // 切换 allowDynamicExpansion
+            if (setAllowDynamicExpansion !== undefined) {
+                const currentPlan = store.getPlanById(planId)
+                if (currentPlan) {
+                    const graphPlan: any = { ...currentPlan }
+                    graphPlan.allowDynamicExpansion = setAllowDynamicExpansion
+                    // 若开启动态扩展但 graphVersion 未设，自动升级到 2
+                    if (setAllowDynamicExpansion && graphPlan.graphVersion !== 2) {
+                        graphPlan.graphVersion = 2
+                        changes.push('Auto-upgraded graphVersion to 2 (allowDynamicExpansion requires it)')
+                    }
+                    store.updatePlan(planId, graphPlan)
+                    changes.push(`Set allowDynamicExpansion to ${setAllowDynamicExpansion}`)
+                }
+            }
+
+            // 更新图边（重分配节点级出边）
+            if (updateEdges?.length) {
+                const currentPlan = store.getPlanById(planId)
+                if (currentPlan) {
+                    const tasks = currentPlan.tasks.map(t => ({ ...t }))
+                    applyUpdateEdges(tasks, updateEdges)
+                    store.updatePlan(planId, { tasks })
+                    changes.push(`Updated ${updateEdges.length} edges`)
+                }
             }
 
             // 更新执行模式
@@ -2596,7 +2640,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             // 更新 JSON 文件
             const updatedPlan = store.getPlanById(planId)
             if (updatedPlan) {
-                const jsonPath = `${ctx.workspacePath}/${BRAND.dirName}/planner/${planId}.json`
+                const jsonPath = `${ctx.workspacePath}/${BRAND.dirName}/${PLAN_DIR_NAME}/${planId}.json`
                 internalWriteTracker.mark(jsonPath)
                 await api.file.write(jsonPath, JSON.stringify(updatedPlan, null, 2))
             }
@@ -2660,6 +2704,21 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 }
             }
 
+            // Graph Runtime 阶段六：graphVersion=2 计划结构完整性校验（拦截非法图计划）
+            const { validatePlan, formatValidationIssues } = await import('../planner/planValidator')
+            const validation = validatePlan(plan)
+            if (!validation.valid) {
+                const issueText = formatValidationIssues(validation)
+                return {
+                    success: false,
+                    result: getLocalizedText(
+                        getCurrentLanguage(),
+                        `错误：图计划校验失败，存在 ${validation.issues.filter(i => i.severity === 'error').length} 个严重问题：\n${issueText}\n\n请使用 update_task_plan 修正边定义或节点配置后重试。`,
+                        `Error: Graph plan validation failed with ${validation.issues.filter(i => i.severity === 'error').length} error(s):\n${issueText}\n\nPlease fix edge definitions or node config via update_task_plan and retry.`,
+                    ),
+                }
+            }
+
             const { startPlanExecution } = await import('../planner/taskExecutor')
 
             // 异步启动执行（不等待完成）
@@ -2682,6 +2741,27 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             const error = toAppError(err)
             return { success: false, result: error.message }
         }
+    },
+
+    /**
+     * 动态添加图节点（Graph Runtime 阶段三）
+     *
+     * 委托给 graphToolExecutors.executeAddNode，通过 GraphExecutionBridge 定位
+     * 当前执行中的图（graphVersion=2）并调用 GraphScheduler.addNode 扩展图。
+     * 实现独立于本文件，便于单独测试与演进。
+     */
+    async add_node(args, ctx) {
+        return executeAddNode(args, ctx)
+    },
+
+    /**
+     * 动态添加图边（Graph Runtime 阶段三）
+     *
+     * 委托给 graphToolExecutors.executeAddEdge，调用 GraphScheduler.addEdge
+     * 为节点添加出边（simple/conditional/loop）。
+     */
+    async add_edge(args, ctx) {
+        return executeAddEdge(args, ctx)
     },
 
     async uiux_search(args) {

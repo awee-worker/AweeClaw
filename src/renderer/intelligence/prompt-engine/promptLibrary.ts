@@ -397,10 +397,65 @@ mcp_server__get_data items=["a", "b", "c"]  // If batch supported
 // BASE_SYSTEM_INFO 不再需要，由 PromptBuilder 动态构建
 
 // ============================================
-// 模板定义：只包含差异化的人格部分
+// Graph Runtime 共享指引（graphVersion=2 图计划）
 // ============================================
 
+/**
+ * Graph 计划指引 —— 所有模板共享
+ *
+ * 设计：从 rigorous-researcher 模板的 personality 中提取为共享常量，
+ * 由 PromptComposer 统一注入到所有模板的系统提示词，
+ * 确保 LLM 在任意模板下都能感知 graphVersion=2 图能力。
+ *
+ * 触发原则：仅在需要条件路由 / 反思重试 / HITL / 运行时扩展时使用 graphVersion=2，
+ * 简单线性任务保持 graphVersion=1（零破坏）。
+ */
+export const GRAPH_PLAN_GUIDE = `## Graph Plans (graphVersion=2) — when to use advanced routing
 
+Use \`graphVersion=2\` with \`edges\` when the task needs:
+- **Conditional routing**: different paths based on results (e.g., "if tests pass → deploy, else → fix")
+- **Retry with reflection**: a failed task auto-retries with adjusted strategy (e.g., "maxIterations=3, reflectionPrompt='fix root cause'")
+- **Human-in-the-loop**: pause for user approval at critical nodes (\`nodeType="human"\` or \`requireApproval=true\`)
+- **Runtime expansion**: add sub-tasks during execution (\`allowDynamicExpansion=true\`)
+
+**When NOT to use graphVersion=2** (use default graphVersion=1):
+- Simple linear tasks with no branching
+- No retry needed
+- No conditional paths
+
+**Edge types:**
+- \`simple\`: unconditional, node completes → go to target
+- \`conditional\`: evaluated by \`condition\` (first matching edge wins, short-circuit)
+  - \`conditionKind="rule"\`: declarative expression like \`node.status === 'failed'\`
+  - \`conditionKind="llm"\`: semantic judgment via prompt like "Does output contain errors?"
+- \`loop\`: retry target (points back to source or upstream), constrained by \`maxIterations\`
+
+**Example — retry loop with reflection:**
+\`\`\`
+create_task_plan
+  name="Refactor with Retry"
+  graphVersion=2
+  requirementsDoc="..."
+  tasks=[{
+    title: "Implement core logic",
+    description: "...",
+    nodeType: "task",
+    maxIterations: 3,
+    reflectionPrompt: "If tests fail, analyze the root cause and fix it differently"
+  }]
+  edges=[{source: "task-1", target: "task-1", type: "loop"}]
+\`\`\`
+
+**Example — conditional routing:**
+\`\`\`
+edges=[
+  {source: "task-1", target: "task-2", type: "conditional", conditionKind: "rule", conditionExpression: "node.status === 'completed'"},
+  {source: "task-1", target: "task-3", type: "conditional", conditionKind: "rule", conditionExpression: "node.status === 'failed'"}
+]
+\`\`\`
+
+**⚠️ When using edges, every source/target MUST reference an existing task id (task-1, task-2, etc.).**
+**⚠️ Set \`maxIterations\` on nodes with loop edges to prevent infinite loops (default 2).**`
 
 // ============================================
 // 模板定义：只包含差异化的人格部分

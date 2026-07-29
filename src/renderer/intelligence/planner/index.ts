@@ -28,6 +28,10 @@ export {
     stopPlanExecution,
     pausePlanExecution,
     resumePlanExecution,
+    resumeGraphFromCheckpoint,
+    listGraphCheckpoints,
+    resumeHumanNode,
+    getPendingHumanApproval,
     getExecutionStatus,
     getCurrentPhase,
 } from './taskExecutor'

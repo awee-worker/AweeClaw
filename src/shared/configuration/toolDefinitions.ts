@@ -830,20 +830,33 @@ TIPS:
     create_task_plan: {
         name: 'create_task_plan',
         displayName: 'Create Task Plan',
-        description: 'Create a structured task plan with requirements document and task list.',
+        description: 'Create a structured task plan with requirements document and task list. Supports graphVersion=2 for advanced plans with conditional edges, retry loops, and runtime graph expansion.',
         detailedDescription: `Generate a task plan file that will be displayed in the ExecutionBoard.
 - Creates a plan file in ${BRAND.dirName}/planner/ directory
 - Automatically opens the ExecutionBoard tab
 - Each task includes suggested provider/model/role
-- User can modify assignments before execution`,
+- User can modify assignments before execution
+
+**Graph Runtime (graphVersion=2)** — use when tasks need:
+- Conditional routing (different paths based on results)
+- Retry with reflection (failed task auto-retries with adjusted strategy)
+- Human-in-the-loop approval nodes (pause for user input)
+- Runtime graph expansion (add nodes during execution)
+
+Set \`graphVersion=2\` and optionally \`allowDynamicExpansion=true\` + \`edges\` array to define explicit routing.
+Nodes with \`nodeType="task"\` (default) use sub-agent loops; \`nodeType="llm/tool/decision/human"\` use lightweight executors.
+Loop edges (\`type="loop"\`) point back to a node for retry; set \`maxIterations\` (default 2) and \`reflectionPrompt\` on the source node.`,
         examples: [
             'create_task_plan name="Login Page" requirementsDoc="..." tasks=[{title:"Create form",suggestedProvider:"anthropic",suggestedModel:"claude-sonnet-4",suggestedRole:"coder"}]',
+            'create_task_plan name="Refactor with Retry" graphVersion=2 requirementsDoc="..." tasks=[{title:"Implement core",nodeType:"task",maxIterations:3,reflectionPrompt:"If tests fail, fix the root cause"}] edges=[{source:"task-1",target:"task-1",type:"loop"}]',
         ],
         criticalRules: [
             'Always gather requirements with ask_user before creating a plan',
             'Break complex requests into atomic tasks',
             'Suggest appropriate models based on task complexity',
             'Include clear task descriptions',
+            'Use graphVersion=2 only when conditional routing or retry loops are needed; default graphVersion=1 for linear tasks',
+            'When using edges, every edge source/target must reference an existing task id',
         ],
         category: 'plan',
         approvalType: 'none',
@@ -867,10 +880,35 @@ TIPS:
                         suggestedModel: { type: 'string', description: 'Recommended model ID (e.g., "claude-sonnet-4-6", "gpt-4o", "gemini-2.0-flash")', required: true },
                         suggestedRole: { type: 'string', description: 'Recommended role/persona (e.g., "coder", "reviewer", "planner", "tester")', required: true },
                         dependencies: { type: 'array', description: 'IDs of tasks this depends on', items: { type: 'string', description: 'Task ID' } },
+                        nodeType: { type: 'string', description: 'Node type for graphVersion=2 (default "task"). "task"=sub-agent loop, "llm"=single LLM call, "tool"=direct tool execution, "decision"=pure routing, "human"=HITL pause', enum: ['task', 'llm', 'tool', 'decision', 'human'] },
+                        maxIterations: { type: 'number', description: 'Max retry iterations for loop nodes (default 2, range 1-10)' },
+                        reflectionPrompt: { type: 'string', description: 'Reflection guidance for retry nodes — injected as context when retrying to help LLM adjust strategy' },
+                        llmPrompt: { type: 'string', description: 'Prompt for llm-type nodes (defaults to description if omitted)' },
+                        toolCall: { type: 'object', description: 'Tool call for tool-type nodes', properties: { name: { type: 'string', description: 'Tool name', required: true }, arguments: { type: 'object', description: 'Tool arguments' } } },
+                        requireApproval: { type: 'boolean', description: 'Force human approval before this node executes (overrides global auth mode)' },
                     },
                 },
             },
             executionMode: { type: 'string', description: 'Default execution mode: sequential or parallel', enum: ['sequential', 'parallel'], default: 'sequential' },
+            graphVersion: { type: 'number', description: 'Graph capability version: 1=static DAG (default, existing behavior), 2=dynamic graph (enables conditional edges, retry loops, runtime graph expansion). Use 2 for plans needing retry or conditional routing.', default: 1 },
+            allowDynamicExpansion: { type: 'boolean', description: 'Allow runtime dynamic node addition (only effective when graphVersion=2)', default: false },
+            edges: {
+                type: 'array',
+                description: 'Explicit graph edges for graphVersion=2. Defines routing after node completion. When omitted, falls back to dependencies-based topological progression.',
+                items: {
+                    type: 'object',
+                    description: 'Graph edge definition',
+                    properties: {
+                        source: { type: 'string', description: 'Source node id', required: true },
+                        target: { type: 'string', description: 'Target node id', required: true },
+                        type: { type: 'string', description: 'Edge type: "simple"=unconditional, "conditional"=evaluated by condition, "loop"=retry target (points back for retry)', enum: ['simple', 'conditional', 'loop'], required: true },
+                        conditionKind: { type: 'string', description: 'Condition evaluation kind (only for type="conditional"): "rule"=declarative expression, "llm"=async LLM judgment', enum: ['rule', 'llm'] },
+                        conditionExpression: { type: 'string', description: 'Rule expression for conditionKind="rule" (e.g., "node.status === \'failed\'")' },
+                        conditionPrompt: { type: 'string', description: 'LLM judgment prompt for conditionKind="llm" (e.g., "Does the upstream output contain errors requiring retry?")' },
+                        maxIterations: { type: 'number', description: 'Loop edge max iterations (overrides node maxIterations, default 2, range 1-10)' },
+                    },
+                },
+            },
         },
     },
 
@@ -910,6 +948,13 @@ You can:
                         suggestedModel: { type: 'string', description: 'Model' },
                         suggestedRole: { type: 'string', description: 'Role' },
                         insertAfter: { type: 'string', description: 'Insert after this task ID' },
+                        nodeType: { type: 'string', description: 'Node type for graphVersion=2', enum: ['task', 'llm', 'tool', 'decision', 'human'] },
+                        maxIterations: { type: 'number', description: 'Max retry iterations for loop nodes (range 1-10)' },
+                        reflectionPrompt: { type: 'string', description: 'Reflection guidance for retry nodes' },
+                        llmPrompt: { type: 'string', description: 'Prompt for llm-type nodes' },
+                        toolCall: { type: 'object', description: 'Tool call for tool-type nodes', properties: { name: { type: 'string', description: 'Tool name', required: true }, arguments: { type: 'object', description: 'Tool arguments' } } },
+                        requireApproval: { type: 'boolean', description: 'Force human approval before this node' },
+                        dependencies: { type: 'array', description: 'IDs of tasks this depends on', items: { type: 'string', description: 'Task ID' } },
                     },
                 },
             },
@@ -931,10 +976,33 @@ You can:
                         provider: { type: 'string', description: 'New provider' },
                         model: { type: 'string', description: 'New model' },
                         role: { type: 'string', description: 'New role' },
+                        nodeType: { type: 'string', description: 'Change node type (graphVersion=2)', enum: ['task', 'llm', 'tool', 'decision', 'human'] },
+                        maxIterations: { type: 'number', description: 'Change max retry iterations (range 1-10)' },
+                        reflectionPrompt: { type: 'string', description: 'Update reflection guidance' },
+                        requireApproval: { type: 'boolean', description: 'Toggle human approval requirement' },
                     },
                 },
             },
             executionMode: { type: 'string', description: 'New execution mode', enum: ['sequential', 'parallel'] },
+            setGraphVersion: { type: 'number', description: 'Upgrade graph capability version. Use 2 to enable graph features (conditional edges, retry loops). Use 1 to downgrade to static DAG.' },
+            setAllowDynamicExpansion: { type: 'boolean', description: 'Toggle runtime dynamic node addition (only effective when graphVersion=2)' },
+            updateEdges: {
+                type: 'array',
+                description: 'Replace/append graph edges (graphVersion=2). Clears existing edges on matching source nodes and re-assigns.',
+                items: {
+                    type: 'object',
+                    description: 'Graph edge definition',
+                    properties: {
+                        source: { type: 'string', description: 'Source node id', required: true },
+                        target: { type: 'string', description: 'Target node id', required: true },
+                        type: { type: 'string', description: 'Edge type', enum: ['simple', 'conditional', 'loop'], required: true },
+                        conditionKind: { type: 'string', description: 'Condition kind for conditional edges', enum: ['rule', 'llm'] },
+                        conditionExpression: { type: 'string', description: 'Rule expression' },
+                        conditionPrompt: { type: 'string', description: 'LLM judgment prompt' },
+                        maxIterations: { type: 'number', description: 'Loop max iterations (range 1-10)' },
+                    },
+                },
+            },
         },
     },
 
@@ -960,6 +1028,109 @@ This will trigger the task executor to run through the plan.`,
         enabled: true,
         parameters: {
             planId: { type: 'string', description: 'Plan ID (optional, uses active plan if not specified)' },
+        },
+    },
+
+    // ===== Graph Runtime 动态建图工具（阶段三）=====
+    // 仅在 graphVersion=2 且 allowDynamicExpansion=true 的图执行期间有效
+    // 执行期 LLM 发现需补充子任务时调用，新增节点进入调度队列
+    add_node: {
+        name: 'add_node',
+        displayName: 'Add Graph Node',
+        description: 'Dynamically add a new node to the executing graph at runtime. Only works when the active plan uses graphVersion=2 with allowDynamicExpansion=true. Use when execution reveals additional sub-tasks are needed.',
+        detailedDescription: `Dynamically extend the executing graph by adding a new node.
+- Only available during execution of a dynamic graph (graphVersion=2, allowDynamicExpansion=true)
+- New node enters the scheduler queue; once its dependencies are satisfied it executes
+- nodeType defaults to 'task' (sub-agent loop); use 'llm' for lightweight decisions, 'tool' for direct tool execution, 'decision' for pure routing, 'human' for HITL pause
+- Set dependencies to control when the new node becomes executable
+- Optionally set edges to define explicit outgoing routing (conditional/loop)
+- Common use: a coder task discovers an unhandled edge case → add_node to supplement`,
+        examples: [
+            'add_node title="Add input validation" description="Validate email format before submit" provider="anthropic" model="claude-sonnet-4" role="coder" dependencies=["task-3"]',
+            'add_node title="Retry with fallback API" nodeType="task" dependencies=["task-5"] maxIterations=3',
+        ],
+        criticalRules: [
+            'Only call when the active plan is a dynamic graph (graphVersion=2)',
+            'New node id must be unique within the graph; auto-generated if omitted',
+            'Dependencies must reference existing node ids',
+        ],
+        category: 'plan',
+        approvalType: 'none',
+        parallel: false,
+        requiresWorkspace: true,
+        enabled: true,
+        parameters: {
+            title: { type: 'string', description: 'Node title', required: true },
+            description: { type: 'string', description: 'Detailed node description / task instructions', required: true },
+            nodeType: {
+                type: 'string',
+                description: "Node type (default 'task'). 'task'=sub-agent loop, 'llm'=single LLM call, 'tool'=direct tool, 'decision'=pure routing, 'human'=HITL pause",
+                enum: ['task', 'llm', 'tool', 'decision', 'human'],
+            },
+            provider: { type: 'string', description: 'Provider for task node (e.g., anthropic, openai, gemini, ollama)' },
+            model: { type: 'string', description: 'Model id for task node' },
+            role: { type: 'string', description: 'Role/persona for task node (e.g., coder, reviewer, planner, tester)' },
+            dependencies: {
+                type: 'array',
+                description: 'Ids of nodes this new node depends on (must exist in graph)',
+                items: { type: 'string', description: 'Existing node id' },
+            },
+            maxIterations: { type: 'number', description: 'Max loop iterations for this node (default 2, only meaningful with loop edges)' },
+            requireApproval: { type: 'boolean', description: 'Force human approval when this node executes (overrides global authorization mode)' },
+        },
+    },
+
+    add_edge: {
+        name: 'add_edge',
+        displayName: 'Add Graph Edge',
+        description: 'Dynamically add an outgoing edge to a node in the executing graph. Only works when the active plan uses graphVersion=2 with allowDynamicExpansion=true. Use to define explicit routing (conditional/loop) at runtime.',
+        detailedDescription: `Dynamically add an edge from an existing node to another node.
+- Only available during execution of a dynamic graph (graphVersion=2, allowDynamicExpansion=true)
+- Edge types: 'simple' (unconditional), 'conditional' (rule/llm based), 'loop' (retry target)
+- For conditional edges, provide condition with kind='rule' (expression) or kind='llm' (prompt)
+- For loop edges, set maxIterations to cap retry count (default 2)
+- Edges define outgoing routing; node dependencies still control readiness`,
+        examples: [
+            'add_edge sourceId="task-3" targetId="task-4" type="simple"',
+            'add_edge sourceId="task-5" targetId="task-5" type="loop" maxIterations=3',
+            'add_edge sourceId="task-2" targetId="task-6" type="conditional" conditionKind="rule" conditionExpression="state.retryCount < 2"',
+        ],
+        criticalRules: [
+            'Both sourceId and targetId must reference existing nodes in the graph',
+            'Conditional edges short-circuit: first matching condition wins',
+            'Loop edges target already-executed nodes (including self) for retry',
+        ],
+        category: 'plan',
+        approvalType: 'none',
+        parallel: false,
+        requiresWorkspace: true,
+        enabled: true,
+        parameters: {
+            sourceId: { type: 'string', description: 'Id of the source node (must exist)', required: true },
+            targetId: { type: 'string', description: 'Id of the target node (must exist)', required: true },
+            type: {
+                type: 'string',
+                description: "Edge type: 'simple'=unconditional, 'conditional'=rule/llm based, 'loop'=retry",
+                enum: ['simple', 'conditional', 'loop'],
+                required: true,
+            },
+            conditionKind: {
+                type: 'string',
+                description: "Condition evaluator (only for type='conditional'): 'rule'=declarative expression, 'llm'=async LLM judgment",
+                enum: ['rule', 'llm'],
+            },
+            conditionExpression: {
+                type: 'string',
+                description: "Rule expression when conditionKind='rule' (e.g., \"state.retryCount < 3 && node.status === 'failed'\")",
+            },
+            conditionPrompt: {
+                type: 'string',
+                description: "LLM judgment prompt when conditionKind='llm'",
+            },
+            maxIterations: {
+                type: 'number',
+                description: 'Max loop iterations (only for type=loop, default 2)',
+            },
         },
     },
 

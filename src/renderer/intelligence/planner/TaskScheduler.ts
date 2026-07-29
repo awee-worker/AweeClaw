@@ -40,7 +40,13 @@ const collectResourceKeys = (task: PlanTask): string[] => {
     return Array.from(keys)
 }
 
-const hasConflict = (task: PlanTask, selected: PlanTask[]): boolean => {
+/**
+ * 资源互斥检查：判断 task 与 selected 中已有任务是否存在文件资源冲突
+ *
+ * Graph Runtime 阶段四：导出供 GraphScheduler.getParallelBatchWithBoost 复用，
+ * 让 boosted 节点（边路由目标）也参与资源互斥检查，避免并行写入同一文件。
+ */
+export const hasConflict = (task: PlanTask, selected: PlanTask[]): boolean => {
     const taskWrites = new Set(task.producesFiles || [])
     const taskReads = new Set(task.consumesFiles || [])
 

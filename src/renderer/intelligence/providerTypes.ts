@@ -281,6 +281,8 @@ export type {
 
 export {
   DEFAULT_PLAN_CONFIG,
+  PLAN_DIR_NAME,
+  LEGACY_PLAN_DIR_NAME,
 } from './planner/planTypes'
 
 // ============================================

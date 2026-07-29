@@ -14,10 +14,15 @@ import type {
     ExecutionMode,
     PlanStatus,
 } from '../../planner/providerTypes'
+import {
+    PLAN_DIR_NAME,
+    LEGACY_PLAN_DIR_NAME,
+} from '../../planner/providerTypes'
 import { useStore } from '@store'
 import { logger } from '@shared/toolkit/LogEngine'
 import { api } from '../../../adapters/electronBridge'
 import { BRAND } from '@shared/brand'
+import { deleteRuntimeState } from '../../graph/runtimePersistence'
 
 export type { TaskStatus, ExecutionMode, PlanStatus, PlanTask, TaskPlan }
 export type PlanTaskStatus = TaskStatus
@@ -92,6 +97,65 @@ function normalizeLoadedPlan(plan: TaskPlan): TaskPlan {
     }
 }
 
+/**
+ * 从指定目录加载所有 plan JSON 文件
+ *
+ * @param workspacePath 工作区路径
+ * @param dirName 目录名（planner 或 plan）
+ * @returns 加载的 plan 列表（可能为空）
+ */
+async function loadPlansFromDirectory(
+    workspacePath: string,
+    dirName: string,
+): Promise<TaskPlan[]> {
+    const planDir = `${workspacePath}/${BRAND.dirName}/${dirName}`
+    const exists = await api.file.exists(planDir)
+    if (!exists) return []
+
+    const files = await api.file.readDir(planDir)
+    if (!files || !Array.isArray(files) || files.length === 0) return []
+
+    const jsonFiles = files
+        .filter((f: any) => {
+            const name = typeof f === 'string' ? f : f.name
+            const isDir = typeof f === 'string' ? false : f.isDirectory
+            return !isDir && name.endsWith('.json')
+        })
+        .map((f: any) => typeof f === 'string' ? f : f.name)
+
+    const plans: TaskPlan[] = []
+
+    for (const file of jsonFiles) {
+        try {
+            const content = await api.file.read(`${planDir}/${file}`)
+            if (content) {
+                const plan = JSON.parse(content) as TaskPlan
+                if (plan.id && plan.name && Array.isArray(plan.tasks)) {
+                    plans.push(normalizeLoadedPlan({ ...plan, revision: plan.revision || 1 }))
+                }
+            }
+        } catch (e) {
+            logger.plan.warn(`[PlanSlice] Failed to load plan: ${file}`, e)
+        }
+    }
+
+    return plans
+}
+
+/**
+ * 按 plan id 去重，同 id 保留 updatedAt 更新的
+ */
+function dedupePlansById(plans: TaskPlan[]): TaskPlan[] {
+    const map = new Map<string, TaskPlan>()
+    for (const plan of plans) {
+        const existing = map.get(plan.id)
+        if (!existing || (plan.updatedAt || 0) > (existing.updatedAt || 0)) {
+            map.set(plan.id, plan)
+        }
+    }
+    return Array.from(map.values())
+}
+
 export const createPlanSlice: StateCreator<
     AgentStore,
     [],
@@ -128,6 +192,15 @@ export const createPlanSlice: StateCreator<
             plans: state.plans.filter((p) => p.id !== planId),
             activePlanId: state.activePlanId === planId ? null : state.activePlanId,
         }))
+
+        // Graph Runtime 阶段五：plan 删除时联动清理 runtime 持久化文件
+        // 避免残留 runtime.json 在恢复时尝试恢复已删除的 plan
+        const workspacePath = useStore.getState().workspacePath
+        if (workspacePath) {
+            void deleteRuntimeState(workspacePath, planId).catch(err => {
+                logger.plan.warn(`[PlanSlice] Failed to delete runtime file for plan ${planId}:`, err)
+            })
+        }
     },
 
     setPlans: (plans) => {
@@ -136,40 +209,23 @@ export const createPlanSlice: StateCreator<
 
     loadPlansFromDisk: async (workspacePath) => {
         try {
-            const planDir = `${workspacePath}/${BRAND.dirName}/plan`
-            const exists = await api.file.exists(planDir)
-            if (!exists) return
+            // 统一从 planner/ 目录加载；兼容回退读取旧版 plan/ 目录
+            const plans = await loadPlansFromDirectory(workspacePath, PLAN_DIR_NAME)
 
-            const files = await api.file.readDir(planDir)
-            if (!files || !Array.isArray(files) || files.length === 0) return
-
-            const jsonFiles = files
-                .filter((f: any) => {
-                    const name = typeof f === 'string' ? f : f.name
-                    const isDir = typeof f === 'string' ? false : f.isDirectory
-                    return !isDir && name.endsWith('.json')
-                })
-                .map((f: any) => typeof f === 'string' ? f : f.name)
-
-            const plans: TaskPlan[] = []
-
-            for (const file of jsonFiles) {
-                try {
-                    const content = await api.file.read(`${planDir}/${file}`)
-                    if (content) {
-                        const plan = JSON.parse(content) as TaskPlan
-                        if (plan.id && plan.name && Array.isArray(plan.tasks)) {
-                            plans.push(normalizeLoadedPlan({ ...plan, revision: plan.revision || 1 }))
-                        }
-                    }
-                } catch (e) {
-                    logger.plan.warn(`[PlanSlice] Failed to load plan: ${file}`, e)
+            // 兼容回退：旧版本数据落在 plan/ 目录，合并加载（planner/ 优先，同 id 不覆盖）
+            if (plans.length === 0) {
+                const legacyPlans = await loadPlansFromDirectory(workspacePath, LEGACY_PLAN_DIR_NAME)
+                if (legacyPlans.length > 0) {
+                    logger.plan.info(`[PlanSlice] Loaded ${legacyPlans.length} plans from legacy ${LEGACY_PLAN_DIR_NAME}/ dir`)
+                    plans.push(...legacyPlans)
                 }
             }
 
             if (plans.length > 0) {
-                plans.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
-                set({ plans })
+                // 去重：同 id 保留 updatedAt 更新的
+                const deduped = dedupePlansById(plans)
+                deduped.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+                set({ plans: deduped })
             }
         } catch (e) {
             logger.plan.warn('[PlanSlice] Failed to load plans from disk:', e)
@@ -200,7 +256,7 @@ export const createPlanSlice: StateCreator<
                     const workspacePath = useStore.getState().workspacePath
                     if (!workspacePath) return
 
-                    const planPath = `${workspacePath}/${BRAND.dirName}/planner/${planId}.json`
+                    const planPath = `${workspacePath}/${BRAND.dirName}/${PLAN_DIR_NAME}/${planId}.json`
                     await api.file.write(planPath, JSON.stringify(latestPlan, null, 2))
                 } catch (error) {
                     logger.plan.error('[PlanSlice] Failed to save plan:', error)

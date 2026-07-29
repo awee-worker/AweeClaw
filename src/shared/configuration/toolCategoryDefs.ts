@@ -93,6 +93,9 @@ const CORE_TOOLS: string[] = [
   'todo_write',
   // 渠道交互
   'send_file_to_channel',
+  // Graph Runtime 动态建图（graphVersion=2 执行期可用，无活跃图时工具返回友好错误）
+  'add_node',
+  'add_edge',
 ]
 
 /** UI/UX 工具 - uiux-designer 角色专用 */

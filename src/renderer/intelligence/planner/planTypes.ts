@@ -7,6 +7,21 @@
  */
 
 // ============================================
+// 持久化目录常量
+// ============================================
+
+/**
+ * Plan 持久化目录名（相对 ${BRAND.dirName}/）
+ *
+ * 统一所有 plan 文件读写路径，消除历史 `plan/` 与 `planner/` 目录不一致问题。
+ * 旧版本数据落在 `plan/` 目录的，loadPlansFromDisk 会兼容回退读取。
+ */
+export const PLAN_DIR_NAME = 'planner'
+
+/** 旧版 plan 目录名（兼容回退读取用） */
+export const LEGACY_PLAN_DIR_NAME = 'plan'
+
+// ============================================
 // 状态机类型
 // ============================================
 
@@ -116,6 +131,13 @@ export interface TaskPlan {
     tasks: PlanTask[]
     /** 用户原始请求 */
     userRequest?: string
+    /**
+     * 图能力版本（Graph Runtime）
+     * - 缺省/1：静态 DAG，回退现有执行行为（拓扑排序 + 并行批次）
+     * - 2：动态图，启用条件边 / 循环回流 / 运行时建图
+     * 字段 optional 保证旧版本持久化数据向后兼容
+     */
+    graphVersion?: 1 | 2
 }
 
 // ============================================
@@ -172,9 +194,27 @@ export interface ExecutionSession {
     workspacePath: string
     startedAt: number
     scheduler: import('./TaskScheduler').ExecutionScheduler
-    status: 'running' | 'pausing' | 'paused' | 'stopping' | 'stopped' | 'completed' | 'failed'
+    /**
+     * Session 状态
+     * - running / pausing / paused / stopping / stopped / completed / failed：现有语义
+     * - awaiting_approval：Graph Runtime 阶段四新增，human 节点 HITL 暂停
+     *   （区别于 paused：不 abort 现有任务、不清空 session，仅停止批次推进等待恢复）
+     */
+    status: 'running' | 'pausing' | 'paused' | 'stopping' | 'stopped' | 'completed' | 'failed' | 'awaiting_approval'
     bindings: Map<string, ExecutionSessionTaskBinding>
     abortControllers: Map<string, AbortController>
+    /**
+     * Graph Runtime 阶段四：图调度器实例（仅 graphVersion=2 时挂载）
+     * - 持有 boost 机制、边路由等图能力
+     * - undefined 时（graphVersion=1）所有图分支跳过，走原拓扑行为
+     */
+    graphScheduler?: import('../graph/GraphScheduler').GraphScheduler
+    /**
+     * 当前等待人工审批的节点 id（human 节点 HITL 专用）
+     * - status === 'awaiting_approval' 时必有值
+     * - resumeHumanNode(approved) 时据此节点恢复执行
+     */
+    awaitingNodeId?: string
 }
 
 // ============================================

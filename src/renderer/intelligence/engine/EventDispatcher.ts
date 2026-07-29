@@ -77,6 +77,9 @@ export type IntelligenceEvent =
   | { type: 'task:start'; taskId: string; planId: string; threadId?: string; assistantId?: string; requestId?: string }
   | { type: 'task:complete'; taskId: string; output: string; duration: number; threadId?: string; assistantId?: string; requestId?: string }
   | { type: 'task:failed'; taskId: string; error: string; threadId?: string; assistantId?: string; requestId?: string }
+  // Graph Runtime 阶段四：HITL 节点暂停/恢复事件（human 节点专用）
+  | { type: 'task:awaiting_approval'; taskId: string; planId: string; threadId?: string; requestId?: string }
+  | { type: 'task:approval_resumed'; taskId: string; planId: string; approved: boolean; feedback?: string }
 
   // 任务列表
   | { type: 'todos:all_completed'; total: number }

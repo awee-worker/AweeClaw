@@ -48,6 +48,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { shellComposer } from '@/renderer/shell/ShellComposer'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { t, type Language } from '@renderer/i18n'
+import { recoverGraphRuntimeFromDisk } from '@intelligence/graph/graphRecovery'
 
 function CloudQuotaIndicator({ language }: { language: Language }) {
   const { isAuthenticated, cloudMode, quota, fetchQuota } = useStore(
@@ -293,7 +294,13 @@ export default function WorkspaceStatusBar() {
 
   useEffect(() => {
     if (workspacePath) {
-      loadPlansFromDisk(workspacePath)
+      // Graph Runtime 阶段五：plan 加载完成后，自动恢复崩溃前的图执行状态
+      // （含 HITL 审批卡片恢复，无需用户干预）
+      loadPlansFromDisk(workspacePath).then(() => {
+        recoverGraphRuntimeFromDisk(workspacePath).catch(err => {
+          logger.ui.error('[WorkspaceStatusBar] Graph runtime recovery failed:', err)
+        })
+      })
     }
   }, [workspacePath, loadPlansFromDisk])
 

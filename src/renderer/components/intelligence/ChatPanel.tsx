@@ -50,6 +50,7 @@ import { useMessageOperations } from './chatPanel/useMessageOperations'
 import { useFileEventBridge } from './chatPanel/useFileEventBridge'
 import { useTimelineProjection, type RenderableMessageItem } from './chatPanel/useTimelineProjection'
 import { useChatKeyboard } from './chatPanel/useChatKeyboard'
+import { useHumanApprovalWatcher } from './chatPanel/useHumanApprovalWatcher'
 
 import { DragOverlay } from './chatPanel/components/DragOverlay'
 import { WorkspaceToggleBar } from './chatPanel/components/WorkspaceToggleBar'
@@ -61,6 +62,7 @@ import { ChatInputWrapper } from './chatPanel/components/ChatInputWrapper'
 import { MessageIndexBar, type MessageIndexItem } from './chatPanel/components/MessageIndexBar'
 import { PredictionBubble } from './chatPanel/components/PredictionBubble'
 import PendingChangesBar from './PendingChangesBar'
+import { HumanApprovalCard } from './HumanApprovalCard'
 import { playPendingReviewSound } from '@renderer/utils/sound'
 import { ProactiveSuggestionsContainer } from './proactive/ProactiveSuggestionsContainer'
 import { useProactiveInvoker } from './proactive/useProactiveInvoker'
@@ -296,6 +298,10 @@ export default function ChatPanel() {
     setActiveFile,
     teamModeEnabled,
   })
+
+  // Graph Runtime 阶段四：HITL 人工审批监听
+  const { awaitingApproval, resume: resumeHumanApproval, isResuming: isHumanApprovalResuming } =
+    useHumanApprovalWatcher()
 
   const isHydratingActiveThread = hasActiveThread && !activeThreadMessagesHydrated
 
@@ -823,6 +829,13 @@ export default function ChatPanel() {
               }`}
             >
               <div className="mx-4 mb-4 flex flex-col">
+                {awaitingApproval && (
+                  <HumanApprovalCard
+                    info={awaitingApproval}
+                    onResume={resumeHumanApproval}
+                    isResuming={isHumanApprovalResuming}
+                  />
+                )}
                 <PredictionBubble
                   language={language}
                   sceneContext={perceptionSceneContext}

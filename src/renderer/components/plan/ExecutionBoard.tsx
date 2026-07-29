@@ -22,6 +22,7 @@ import {
     Sparkles,
     Loader2,
     Zap,
+    UserCheck,
 } from 'lucide-react'
 import { ActionButton, DropdownSelector } from '@/renderer/components/ui'
 import { MarkdownPreview } from '@components/workspace-editor/FilePreviewPanel'
@@ -30,6 +31,8 @@ import { BRAND } from '@shared/brand'
 import { useStore } from '@store'
 import { toast } from '@components/foundation/NotificationProvider'
 import { api } from '../../adapters/electronBridge'
+import { EventBus } from '@intelligence/engine/EventDispatcher'
+import { getPendingHumanApproval } from '@intelligence/planner'
 import { BUILTIN_PROVIDERS } from '@configuration/aiProviders'
 import {
     getPromptTemplateSummary,
@@ -50,7 +53,24 @@ function getLocalizedText(language: Language, zh: string, en: string): string {
 // ============================================
 
 /** 任务状态图标 */
-const TaskStatusIcon = memo(function TaskStatusIcon({ status }: { status: PlanTask['status'] }) {
+const TaskStatusIcon = memo(function TaskStatusIcon({
+    status,
+    isAwaitingApproval,
+}: {
+    status: PlanTask['status']
+    isAwaitingApproval?: boolean
+}) {
+    // HITL 等待审批：优先于 running 显示（task.status 仍为 running，由 awaitingApproval 标记区分）
+    if (isAwaitingApproval) {
+        return (
+            <motion.div
+                animate={{ opacity: [0.5, 1, 0.5] }}
+                transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+            >
+                <UserCheck className="w-4 h-4 text-amber-500" />
+            </motion.div>
+        )
+    }
     switch (status) {
         case 'completed':
             return <CheckCircle2 className="w-4 h-4 text-green-500" />
@@ -206,10 +226,12 @@ const TaskCard = memo(function TaskCard({
     task,
     planId,
     isExecuting,
+    isAwaitingApproval,
 }: {
     task: PlanTask
     planId: string
     isExecuting: boolean
+    isAwaitingApproval?: boolean
 }) {
     const [expanded, setExpanded] = useState(false)
     const updateTask = useAgentStore((s) => s.updateTask)
@@ -231,16 +253,22 @@ const TaskCard = memo(function TaskCard({
             animate={{ opacity: 1, y: 0 }}
             className={`
         relative rounded-lg border transition-all duration-200 overflow-hidden
-        ${isActive
-                    ? 'border-blue-500/50 bg-blue-500/5 shadow-lg shadow-blue-500/10'
-                    : 'border-border bg-surface/50 hover:bg-surface/80'}
+        ${isAwaitingApproval
+                    ? 'border-amber-500/50 bg-amber-500/5 shadow-lg shadow-amber-500/10'
+                    : isActive
+                        ? 'border-blue-500/50 bg-blue-500/5 shadow-lg shadow-blue-500/10'
+                        : 'border-border bg-surface/50 hover:bg-surface/80'}
       `}
         >
             {/* 进度条 */}
-            {isActive && (
+            {(isActive || isAwaitingApproval) && (
                 <>
                     <motion.div
-                        className="absolute top-0 left-0 h-0.5 bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500 rounded-t-lg"
+                        className={`absolute top-0 left-0 h-0.5 rounded-t-lg ${
+                            isAwaitingApproval
+                                ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500'
+                                : 'bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500'
+                        }`}
                         style={{ backgroundSize: '200% 100%' }}
                         animate={{ backgroundPosition: ['0% 0%', '200% 0%'] }}
                         transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
@@ -248,11 +276,17 @@ const TaskCard = memo(function TaskCard({
                     <motion.div
                         className="absolute inset-0 rounded-lg pointer-events-none"
                         animate={{
-                            boxShadow: [
-                                'inset 0 0 0 0 rgba(59,130,246,0)',
-                                'inset 0 0 20px 0 rgba(59,130,246,0.08)',
-                                'inset 0 0 0 0 rgba(59,130,246,0)',
-                            ]
+                            boxShadow: isAwaitingApproval
+                                ? [
+                                    'inset 0 0 0 0 rgba(245,158,11,0)',
+                                    'inset 0 0 20px 0 rgba(245,158,11,0.08)',
+                                    'inset 0 0 0 0 rgba(245,158,11,0)',
+                                ]
+                                : [
+                                    'inset 0 0 0 0 rgba(59,130,246,0)',
+                                    'inset 0 0 20px 0 rgba(59,130,246,0.08)',
+                                    'inset 0 0 0 0 rgba(59,130,246,0)',
+                                ]
                         }}
                         transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
                     />
@@ -264,27 +298,37 @@ const TaskCard = memo(function TaskCard({
                 className="flex items-center gap-3 p-3 cursor-pointer"
                 onClick={() => setExpanded((e) => !e)}
             >
-                <TaskStatusIcon status={task.status} />
+                <TaskStatusIcon status={task.status} isAwaitingApproval={isAwaitingApproval} />
                 <div className="flex-1 min-w-0">
                     <div className="font-medium text-sm text-text-primary truncate flex items-center gap-2">
                         {task.title}
-                        {isActive && (
+                        {isAwaitingApproval && (
                             <motion.span
-                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-400 text-[10px] font-medium"
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 text-[12px] font-medium"
+                                animate={{ opacity: [0.4, 1, 0.4] }}
+                                transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+                            >
+                                <UserCheck className="w-3 h-3" />
+                                等待审批
+                            </motion.span>
+                        )}
+                        {isActive && !isAwaitingApproval && (
+                            <motion.span
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-400 text-[12px] font-medium"
                                 animate={{ opacity: [1, 0.5, 1] }}
                                 transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
                             >
-                                <Zap className="w-2.5 h-2.5" />
+                                <Zap className="w-3 h-3" />
                                 执行中
                             </motion.span>
                         )}
                         {isPending && isExecuting && (
                             <motion.span
-                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 text-[10px] font-medium"
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 text-[12px] font-medium"
                                 animate={{ opacity: [0.4, 1, 0.4] }}
                                 transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
                             >
-                                <Clock className="w-2.5 h-2.5" />
+                                <Clock className="w-3 h-3" />
                                 等待中
                             </motion.span>
                         )}
@@ -408,6 +452,8 @@ const ExecutionModeToggle = memo(function ExecutionModeToggle({
 export const ExecutionBoard = memo(function ExecutionBoard({ planId }: TaskBoardProps) {
     const [showRequirements, setShowRequirements] = useState(true)
     const [requirementsContent, setRequirementsContent] = useState<string>('')
+    // HITL 等待审批节点 id（Graph Runtime 阶段四）
+    const [awaitingNodeId, setAwaitingNodeId] = useState<string | undefined>(undefined)
     const plan = useAgentStore((s) => s.plans.find((p) => p.id === planId))
     const updatePlan = useAgentStore((s) => s.updatePlan)
     const workspacePath = useStore((s) => s.workspacePath)
@@ -431,6 +477,29 @@ export const ExecutionBoard = memo(function ExecutionBoard({ planId }: TaskBoard
         }
         loadRequirements()
     }, [plan?.requirementsDoc, workspacePath])
+
+    // HITL 审批状态订阅：追踪当前 plan 的等待审批节点
+    // human 节点暂停时 task.status 仍为 running，需通过事件 + getPendingHumanApproval 区分
+    useEffect(() => {
+        // 初始查询：恢复已存在的待审批状态
+        const pending = getPendingHumanApproval(planId)
+        setAwaitingNodeId(pending?.nodeId)
+
+        const unsubAwaiting = EventBus.subscribe('task:awaiting_approval', event => {
+            if (event.planId === planId) {
+                setAwaitingNodeId(event.taskId)
+            }
+        })
+        const unsubResumed = EventBus.subscribe('task:approval_resumed', event => {
+            if (event.planId === planId) {
+                setAwaitingNodeId(undefined)
+            }
+        })
+        return () => {
+            unsubAwaiting()
+            unsubResumed()
+        }
+    }, [planId])
 
     // 统计
     const stats = useMemo(() => {
@@ -582,6 +651,7 @@ export const ExecutionBoard = memo(function ExecutionBoard({ planId }: TaskBoard
                                 task={task}
                                 planId={plan.id}
                                 isExecuting={isExecuting}
+                                isAwaitingApproval={task.id === awaitingNodeId}
                             />
                         ))}
                     </div>
