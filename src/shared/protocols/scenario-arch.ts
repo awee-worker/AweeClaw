@@ -83,6 +83,7 @@ export type ScenarioPermission =
   | 'clipboard:write'
   | 'notification:send'
   | 'system:info'
+  | 'mcp:call'
 
 // ============================================
 // 场景版本信息

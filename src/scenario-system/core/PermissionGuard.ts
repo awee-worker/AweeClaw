@@ -69,6 +69,7 @@ const PERMISSION_GROUPS: Record<string, ScenarioPermission[]> = {
     'clipboard:write',
     'notification:send',
     'system:info',
+    'mcp:call',
   ],
 }
 
@@ -94,8 +95,26 @@ export class PermissionGuard {
 
   /**
    * 检查指定工具是否有权限执行
+   *
+   * 注意：MCP 工具（`mcp_` 前缀）统一要求 `mcp:call` 权限，
+   * 不在 TOOL_PERMISSION_MAP 中逐个映射。
    */
   checkTool(toolName: string): PermissionCheckResult {
+    // MCP 工具统一要求 mcp:call 权限
+    if (toolName.startsWith('mcp_')) {
+      if (this.declaredPermissions.has('mcp:call')) {
+        return { allowed: true, missingPermissions: [] }
+      }
+      logger.agent.warn(
+        `[PermissionGuard] Scenario "${this.scenarioId}" lacks permission "mcp:call" for MCP tool "${toolName}"`,
+      )
+      return {
+        allowed: false,
+        missingPermissions: ['mcp:call'],
+        reason: `Scenario "${this.scenarioId}" does not have the required permission "mcp:call" to call MCP tool "${toolName}".`,
+      }
+    }
+
     const requiredPermission = TOOL_PERMISSION_MAP[toolName]
 
     // 工具不在映射表中 → 视为安全工具，允许执行（如 ask_user, todo_write 等）
@@ -192,6 +211,7 @@ export class PermissionGuard {
       'clipboard:write',
       'notification:send',
       'system:info',
+      'mcp:call',
     ]
 
     const valid: ScenarioPermission[] = []

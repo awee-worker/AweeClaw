@@ -1802,6 +1802,19 @@ export interface ElectronAPI {
 
   // Skills
   skillsGetGlobalDir: () => Promise<string>
+  skillsList: (workspacePaths?: string[]) => Promise<{
+    success: boolean
+    skills?: Array<{ name: string; description: string; scope: 'global' | 'workspace' }>
+    error?: string
+  }>
+  skillsRead: (
+    name: string,
+    workspacePaths?: string[],
+  ) => Promise<{
+    success: boolean
+    skill?: { name: string; content: string; scope: 'global' | 'workspace' } | null
+    error?: string
+  }>
 
   // Channel 多渠道
   channelInitialize: () => Promise<{ success: boolean; error?: string }>

@@ -667,6 +667,10 @@ function createGroupedAPI() {
     // Skills
     skills: {
       getGlobalDir: () => raw.skillsGetGlobalDir(),
+      /** 列出所有技能（global + workspace） */
+      list: (workspacePaths?: string[]) => raw.skillsList(workspacePaths),
+      /** 读取指定技能内容（不存在返回 skill:null） */
+      read: (name: string, workspacePaths?: string[]) => raw.skillsRead(name, workspacePaths),
     },
 
     // LSP

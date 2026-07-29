@@ -87,5 +87,10 @@ export function createMcpApi() {
 
     // ── Skills ──
     skillsGetGlobalDir: invoke<string>('skills:getGlobalDir'),
+    /** 列出所有技能（global + workspace） */
+    skillsList: (workspacePaths?: string[]) => invoke('skills:list')(workspacePaths),
+    /** 读取指定技能内容（不存在返回 skill:null） */
+    skillsRead: (name: string, workspacePaths?: string[]) =>
+      invoke('skills:read')(name, workspacePaths),
   }
 }

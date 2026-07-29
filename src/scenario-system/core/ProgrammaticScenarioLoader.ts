@@ -294,9 +294,11 @@ export async function loadProgrammaticScenario(scenarioId: string): Promise<{
     // bundle 顶层代码（如 drawStore.ts）会通过 window.__AWEECLAW_SDK__.shared.zustand
     // 动态获取共享依赖，必须在 import bundle 前注入。
     // SDK 中的 shared 字段直接引用 sharedDependencyProvider 的模块，确保数据一致。
-    const sdk = createScenarioSDK(scenarioId, config.version || '1.0.0', null)
+    // 传入 manifest 声明的 permissions，供 mcp/tools 命名空间做前置权限校验。
+    const declaredPermissions = (config.permissions || []) as import('@shared/protocols/scenario-arch').ScenarioPermission[]
+    const sdk = createScenarioSDK(scenarioId, config.version || '1.0.0', null, declaredPermissions)
     injectScenarioSDK(sdk)
-    logger.agent.info(`[ProgrammaticLoader] Injected ScenarioSDK for "${scenarioId}"`)
+    logger.agent.info(`[ProgrammaticLoader] Injected ScenarioSDK for "${scenarioId}" (permissions: ${declaredPermissions.join(',') || 'none'})`)
 
     // 使用 scenario-bundle:// 协议加载 ESM bundle
     // 该协议在 Electron 主进程中注册为 standard: true，支持 dynamic import()
