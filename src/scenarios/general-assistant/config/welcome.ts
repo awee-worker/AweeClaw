@@ -9,7 +9,7 @@ export const GENERAL_ASSISTANT_WELCOME_SUGGESTIONS: WelcomeSuggestionItem[] = [
 
 export const GENERAL_ASSISTANT_WELCOME_TITLE: WelcomeTitleConfig = {
   title: 'How can I help?',
-  titleZh: '有什么可以帮你的？',
+  titleZh: '需要我帮您做什么？',
   subtitle: 'Choose a suggestion below, or ask me anything.',
   subtitleZh: '选择下方建议，或直接问我任何问题',
 }

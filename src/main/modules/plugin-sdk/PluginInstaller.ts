@@ -558,6 +558,14 @@ export class PluginInstaller {
 
   /**
    * 启用插件
+   *
+   * 流程：
+   * 1. 调用 registry.enable 激活运行时（MCP 型插件跳过 load/initialize）
+   * 2. MCP 型插件：重连 MCP 服务
+   *    - 优先 toggle + connect（同会话内禁用后再启用的场景，服务仍在 mcpManager 中）
+   *    - 若失败（应用重启后禁用插件未参与 restoreInstalled 的 MCP 重连，服务可能不存在），
+   *      回退到 registerMcpServer 重新注册并连接
+   * 3. 持久化 enabled = true
    */
   async enable(pluginKey: string): Promise<{ success: boolean; error?: string }> {
     const record = this.installedRecords.get(pluginKey)
@@ -569,10 +577,31 @@ export class PluginInstaller {
       const registry = getPluginRegistry(this.pluginsRoot)
       await registry.enable(pluginKey)
 
-      if (record.mcpServerId) {
+      // MCP 型插件：重连 MCP 服务
+      if (record.mcpServerId && record.manifest?.capabilities?.mcp) {
         const { mcpManager } = await import('../tool-protocol/ToolProtocolManager')
-        await mcpManager.toggleServer(record.mcpServerId, false, 'user')
-        await mcpManager.connectServer(record.mcpServerId)
+        try {
+          // 同会话内禁用 → 启用：服务仍在 mcpManager 中，直接解除禁用并重连
+          await mcpManager.toggleServer(record.mcpServerId, false, 'user')
+          await mcpManager.connectServer(record.mcpServerId)
+        } catch (mcpErr) {
+          // 重连失败：可能因应用重启后禁用插件未注册 MCP 服务
+          // 回退到重新注册 + 连接（registerMcpServer 内部会 addServer + connectServer）
+          logger.system.warn(
+            `[PluginInstaller] MCP reconnect failed for ${pluginKey}, re-registering: ${mcpErr instanceof Error ? mcpErr.message : String(mcpErr)}`,
+          )
+          await this.registerMcpServer(
+            {
+              pluginId: record.pluginId,
+              pluginKey: record.pluginKey,
+              name: record.name,
+              nameZh: record.nameZh,
+              type: record.type,
+            },
+            record.version,
+            record.manifest,
+          )
+        }
       }
 
       record.enabled = true
@@ -682,9 +711,14 @@ export class PluginInstaller {
 
         McpClient.registerPluginDir(pluginKey, pluginDir)
 
+        // 始终将插件目录加入搜索路径并 discover，使插件出现在 registrations Map 中。
+        // 这样禁用的插件也能被 enable() 找到，避免 "Plugin not found" 错误。
+        // （discover 内部对同一 id 仅保留最新版本，重复调用安全）
+        registry.addSearchDir(path.join(this.pluginsRoot, pluginKey))
+        await registry.discover()
+
         if (record.enabled) {
-          registry.addSearchDir(path.join(this.pluginsRoot, pluginKey))
-          await registry.discover()
+          // 仅对启用的插件执行 load/initialize 和 MCP 自动连接
 
           // MCP 型插件跳过 load/initialize（入口是 MCP 工厂函数，不是 PluginRuntime）
           // 真正的激活由下面的 MCP 重连逻辑完成

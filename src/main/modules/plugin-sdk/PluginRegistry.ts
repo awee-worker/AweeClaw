@@ -294,16 +294,40 @@ class PluginRegistry implements IPluginRegistry {
 
   /**
    * 启用插件
+   *
+   * 行为分支：
+   * - 已激活（active）：直接返回
+   * - 普通插件（有 main 入口且非 MCP）：执行 load → initialize
+   * - MCP 型插件 / 配置型插件（无 main 或具备 capabilities.mcp）：
+   *   跳过 load/initialize，仅重置状态。MCP 服务的真正激活由上层
+   *   PluginInstaller.enable 通过 mcpManager.connectServer 完成。
+   *
+   * 注意：禁用插件在应用重启后通过 restoreInstalled → discover 重新加入
+   * registrations Map 时，status 为 'discovered'（非 'disabled'），
+   * 因此此处不再依赖 status === 'disabled' 判断，而是检查 status !== 'active'。
    */
   async enable(pluginId: string): Promise<void> {
     const registration = this.registrations.get(pluginId)
     if (!registration) {
       throw new Error(`Plugin not found: ${pluginId}`)
     }
-    if (registration.status === 'disabled') {
+    // 已激活则无需操作
+    if (registration.status === 'active') return
+
+    const types = Array.isArray(registration.manifest.type)
+      ? registration.manifest.type
+      : [registration.manifest.type]
+    const hasMcpCapability = !!registration.manifest.capabilities?.mcp
+    const isMcpPlugin = types.includes('mcp' as PluginType) || hasMcpCapability
+    const hasEntry = !!registration.manifest.main
+
+    if (hasEntry && !isMcpPlugin) {
+      // 普通插件：加载并初始化运行时（load 内部已处理 'loaded' 状态的幂等性）
       await this.load(pluginId)
       await this.initialize(pluginId)
     }
+    // MCP 型插件 / 配置型插件：不执行 load/initialize
+    // MCP 服务的激活由上层 PluginInstaller.enable 通过 mcpManager.connectServer 完成
   }
 
   /**
@@ -342,6 +366,12 @@ class PluginRegistry implements IPluginRegistry {
 
   /**
    * 验证 Manifest 合法性
+   *
+   * main 字段规则：
+   * - 普通插件（有 JS 运行时入口）：必须有非空 main
+   * - MCP 型插件（具备 capabilities.mcp）：允许 main 为空字符串或省略
+   *   原因：stdio/sse 传输的 MCP 插件通过外部进程（npx/uvx）或远程端点运行，
+   *         不需要本地 JS 入口文件；其激活由 McpManager 管理，不走 PluginRuntime
    */
   validateManifest(manifest: unknown): manifest is PluginManifest {
     if (!manifest || typeof manifest !== 'object') return false
@@ -349,8 +379,19 @@ class PluginRegistry implements IPluginRegistry {
     if (typeof m.id !== 'string' || !m.id) return false
     if (typeof m.name !== 'string' || !m.name) return false
     if (typeof m.version !== 'string' || !m.version) return false
-    if (typeof m.main !== 'string' || !m.main) return false
     if (m.type === undefined) return false
+
+    // 判断是否为 MCP 型插件（capabilities.mcp 存在即视为 MCP 型）
+    const caps = m.capabilities as Record<string, unknown> | undefined
+    const hasMcpCapability = !!caps && typeof caps === 'object' && !!caps.mcp
+
+    if (hasMcpCapability) {
+      // MCP 型插件：main 可以省略或为空字符串，但类型必须是 string（若提供）
+      if (m.main !== undefined && typeof m.main !== 'string') return false
+    } else {
+      // 非 MCP 型插件：必须有非空 main 入口
+      if (typeof m.main !== 'string' || !m.main) return false
+    }
     return true
   }
 

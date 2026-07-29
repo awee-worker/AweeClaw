@@ -152,6 +152,55 @@ export class PerceptionStore {
     }
   }
 
+  /**
+   * 预热：在决策引擎首次节拍前异步完成 LanceDB native 模块加载与表打开。
+   *
+   * 根因：`import('@lancedb/lancedb')` 是 native 模块加载，首次调用会阻塞
+   * 主进程事件循环约 2-3 秒。若懒加载到首次查询时才触发，会导致
+   * ProactiveDecisionEngine 同一节拍的 10 路信号全部因事件循环阻塞而超时。
+   *
+   * 本方法在应用启动时（决策引擎 start 之前）异步调用，将阻塞提前到启动阶段，
+   * 避免污染决策引擎的节拍采集。
+   *
+   * @param preloadTables 是否预打开常用表（screen_scenes / user_behaviors / predictions）
+   */
+  async warmup(preloadTables = true): Promise<boolean> {
+    const ok = await this.initialize()
+    if (!ok || !preloadTables) return ok
+
+    // 并行预打开三张常用表（ensureTable 内部有缓存，后续查询直接命中）
+    const sampleRecords: Record<string, Record<string, unknown>> = {
+      [TABLE_NAMES.SCREEN_SCENES]: {
+        id: '', timestamp: 0, app: '', windowTitle: '',
+        activity: 'unknown', textSummary: '', embedding: [],
+        elements: '[]', screenshotDataUrl: null,
+      },
+      [TABLE_NAMES.USER_BEHAVIORS]: {
+        id: '', timestamp: 0, sceneId: '', sceneEmbedding: [],
+        scene: '{}', action: '{}', outcome: 'success',
+      },
+      [TABLE_NAMES.PREDICTIONS]: {
+        id: '', timestamp: 0, type: 'behavior', predictedAction: '{}',
+        confidence: 0, basedOnBehaviors: '[]', reason: '',
+        actualAction: null, feedback: 'ignored',
+      },
+    }
+
+    await Promise.allSettled(
+      Object.entries(sampleRecords).map(([name, sample]) =>
+        this.ensureTable(name, sample),
+      ),
+    )
+
+    logger.perception?.info('[PerceptionStore] 预热完成（DB + 常用表已就绪）')
+    return ok
+  }
+
+  /** 数据库是否已初始化就绪（供外部探测是否需要 warmup） */
+  isReady(): boolean {
+    return this.initialized && this.db !== null
+  }
+
   /** 确保表存在 */
   private async ensureTable(
     name: string,

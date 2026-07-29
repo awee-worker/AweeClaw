@@ -28,11 +28,7 @@ import type { InstalledPlugin } from '@services/pluginService'
 /** 启动后延迟检查时间（毫秒） */
 const INITIAL_DELAY_MS = 30 * 1000
 
-/** 检查间隔（24 小时） */
-const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000
-
 /** localStorage 键名 */
-const LAST_CHECK_KEY = 'aweeclaw:plugin-update-last-check'
 const NOTIFIED_VERSIONS_KEY = 'aweeclaw:plugin-update-notified-versions'
 const AUTO_UPDATE_KEY = 'aweeclaw:plugin-auto-update'
 
@@ -64,25 +60,6 @@ interface NotifiedVersion {
   pluginKey: string
   latestVersion: string
   notifiedAt: number
-}
-
-/** 读取上次检查时间 */
-function getLastCheckTime(): number {
-  try {
-    const v = localStorage.getItem(LAST_CHECK_KEY)
-    return v ? parseInt(v, 10) : 0
-  } catch {
-    return 0
-  }
-}
-
-/** 记录检查时间 */
-function saveCheckTime(time: number): void {
-  try {
-    localStorage.setItem(LAST_CHECK_KEY, String(time))
-  } catch {
-    // ignore
-  }
 }
 
 /** 读取已通知的版本列表 */
@@ -150,17 +127,12 @@ export function usePluginUpdateChecker(): void {
     hasCheckedRef.current = true
 
     const checkUpdates = async () => {
-      // 24 小时内只检查一次
-      const lastCheck = getLastCheckTime()
-      if (Date.now() - lastCheck < CHECK_INTERVAL_MS) {
-        logger.system.debug('[PluginUpdateChecker] Skipped: checked within 24h')
-        return
-      }
+      logger.system.info('[PluginUpdateChecker] Start checking for plugin updates...')
 
       try {
         const installed = await getInstalledPlugins()
         if (installed.length === 0) {
-          saveCheckTime(Date.now())
+          logger.system.info('[PluginUpdateChecker] No installed plugins, skip')
           return
         }
 
@@ -178,15 +150,13 @@ export function usePluginUpdateChecker(): void {
           }),
         )
 
-        // 筛选有更新且未通知过的
+        // 筛选有更新且未通知过的（NOTIFIED_VERSIONS 去重，避免同一版本重复通知/自动更新）
         const newUpdates = results.filter(
           (r) => r.hasUpdate && r.latestVersion && !isAlreadyNotified(r.plugin.pluginKey, r.latestVersion),
         )
 
-        saveCheckTime(Date.now())
-
         if (newUpdates.length === 0) {
-          logger.system.debug('[PluginUpdateChecker] No new updates found')
+          logger.system.info('[PluginUpdateChecker] No new updates found (all up-to-date or already notified)')
           return
         }
 

@@ -29,10 +29,28 @@ export default function NotificationCenterContent({ language = 'zh' }: Notificat
     return t('app.hago', language as Language, { diffHours: Math.floor(mins / 60) })
   }
 
-  const handleCopy = useCallback((id: string, message: string) => {
-    navigator.clipboard.writeText(message).catch(() => {})
-    setCopiedId(id)
-    setTimeout(() => setCopiedId(null), 2000)
+  /**
+   * 复制通知内容到剪贴板
+   *
+   * 通知数据模型中 title 是主标题、message 是正文详情。
+   * 多数通知（如 toast.success('文件已保存')）只填充了 title，message 为空字符串，
+   * 因此需要取「用户实际可见的内容」：
+   * - 两者都有：拼接为 "标题\n正文"
+   * - 只有 title（message 为空）：复制 title
+   * - 只有 message（title 为空）：复制 message
+   */
+  const handleCopy = useCallback(async (id: string, title: string | undefined, message: string) => {
+    const parts = [title, message].filter((s): s is string => !!s && s.trim().length > 0)
+    const text = parts.join('\n')
+    if (!text) return
+
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopiedId(id)
+      setTimeout(() => setCopiedId(null), 2000)
+    } catch {
+      // 剪贴板 API 不可用时静默失败（不显示虚假的"已复制"对勾）
+    }
   }, [])
 
   return (
@@ -90,7 +108,7 @@ export default function NotificationCenterContent({ language = 'zh' }: Notificat
 
                 <div className="absolute right-2 top-1.5 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button
-                    onClick={() => handleCopy(toast.id, toast.message)}
+                    onClick={() => handleCopy(toast.id, toast.title, toast.message)}
                     className="p-1.5 rounded-md text-text-muted/85 hover:text-text-primary hover:bg-white/5 transition-all"
                     title={copiedId === toast.id ? t('app.copied', language as Language) : t('app.copy', language as Language)}
                   >

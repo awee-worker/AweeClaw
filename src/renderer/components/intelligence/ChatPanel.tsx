@@ -705,7 +705,7 @@ export default function ChatPanel() {
               {messages.length === 0 ? (
                 <div className="flex-1 flex flex-col items-center justify-center min-h-0 overflow-y-auto px-4">
                   <EmptyChatSuggestions />
-                  <div className="w-full max-w-[800px] mt-6">
+                  <div className="w-full max-w-[800px] mt-16">
                     <ChatInputWrapper
                       input={input}
                       setInput={setInput}

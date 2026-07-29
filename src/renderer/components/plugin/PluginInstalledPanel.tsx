@@ -2,8 +2,8 @@
  * PluginInstalledPanel — 已安装插件管理面板
  *
  * 职责：
- * - 列出本地已安装的插件
- * - 启用 / 禁用 / 卸载插件
+ * - 以九宫格卡片形式列出本地已安装的插件
+ * - 启用 / 禁用 / 卸载 / 配置 / 更新插件（操作按钮图标 + 文字）
  * - 检查更新
  * - 显示插件元信息（版本 / 类型 / MCP 服务状态）
  *
@@ -34,6 +34,8 @@ import {
   ExternalLink,
   Settings,
   Download,
+  Clock,
+  Globe,
 } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -66,11 +68,19 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   education: <BookOpen className="w-5 h-5" />,
   lifestyle: <Heart className="w-5 h-5" />,
   composite: <Layers className="w-5 h-5" />,
+  other: <Clock className="w-5 h-5" />,
+}
+
+/** manifest.icon 字符串 → lucide 图标组件映射（与 marketplace 图标名对齐） */
+const NAMED_ICONS: Record<string, React.ReactNode> = {
+  Clock: <Clock className="w-5 h-5" />,
+  Globe: <Globe className="w-5 h-5" />,
+  Sparkles: <Sparkles className="w-5 h-5" />,
 }
 
 /** 插件类型徽章 */
 const TYPE_LABELS: Record<string, { zh: string; en: string; color: string }> = {
-  mcp: { zh: 'MCP 工具', en: 'MCP Tool', color: 'bg-purple-500/15 text-purple-400' },
+  mcp: { zh: 'MCP', en: 'MCP', color: 'bg-purple-500/15 text-purple-400' },
   channel: { zh: '渠道', en: 'Channel', color: 'bg-blue-500/15 text-blue-400' },
   tool: { zh: '工具', en: 'Tool', color: 'bg-green-500/15 text-green-400' },
   hook: { zh: '钩子', en: 'Hook', color: 'bg-orange-500/15 text-orange-400' },
@@ -301,37 +311,37 @@ export function PluginInstalledPanel() {
         </div>
       </div>
 
-      {/* 列表 */}
+      {/* 九宫格卡片列表 */}
       <div className="flex-1 overflow-y-auto">
         {isLoading ? (
           <div className="flex items-center justify-center h-32">
             <RefreshCw className="w-4 h-4 animate-spin text-text-muted" />
           </div>
         ) : (
-          <div className="divide-y divide-border/20">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3">
             {plugins.map((plugin) => {
               // 查找该插件对应的 MCP 服务器状态
               const mcpServer = plugin.mcpServerId
                 ? mcpServers.find(s => s.id === plugin.mcpServerId)
                 : undefined
               return (
-              <PluginRow
-                key={plugin.pluginKey}
-                plugin={plugin}
-                language={language}
-                operating={operating === plugin.pluginKey}
-                updating={updatingKey === plugin.pluginKey}
-                updateInfo={updates[plugin.pluginKey]}
-                mcpStatus={mcpServer?.status}
-                mcpError={mcpServer?.error}
-                onEnable={() => handleEnable(plugin)}
-                onDisable={() => handleDisable(plugin)}
-                onUninstall={() => handleUninstall(plugin)}
-                onOpenConfig={() => handleOpenConfig(plugin)}
-                onUpdate={updates[plugin.pluginKey]?.latestVersion
-                  ? () => handleUpdate(plugin, updates[plugin.pluginKey].latestVersion!)
-                  : undefined}
-              />
+                <PluginCard
+                  key={plugin.pluginKey}
+                  plugin={plugin}
+                  language={language}
+                  operating={operating === plugin.pluginKey}
+                  updating={updatingKey === plugin.pluginKey}
+                  updateInfo={updates[plugin.pluginKey]}
+                  mcpStatus={mcpServer?.status}
+                  mcpError={mcpServer?.error}
+                  onEnable={() => handleEnable(plugin)}
+                  onDisable={() => handleDisable(plugin)}
+                  onUninstall={() => handleUninstall(plugin)}
+                  onOpenConfig={() => handleOpenConfig(plugin)}
+                  onUpdate={updates[plugin.pluginKey]?.latestVersion
+                    ? () => handleUpdate(plugin, updates[plugin.pluginKey].latestVersion!)
+                    : undefined}
+                />
               )
             })}
           </div>
@@ -350,7 +360,7 @@ export function PluginInstalledPanel() {
   )
 }
 
-// ─── 子组件：插件行 ────────────────────────────────────
+// ─── 子组件：插件卡片（九宫格单元） ───────────────────
 
 /**
  * 判断 icon 是否为图片（URL 或 data URL）
@@ -362,7 +372,49 @@ function isImageIcon(icon: string | null | undefined): icon is string {
   return icon.startsWith('http://') || icon.startsWith('https://') || icon.startsWith('data:')
 }
 
-function PluginRow({
+/**
+ * 卡片操作按钮：图标 + 文字，统一紧凑样式。
+ * 字号 12px（符合最小字体限制），高度 28px，圆角 md。
+ */
+function CardActionButton({
+  icon,
+  label,
+  onClick,
+  disabled,
+  loading,
+  tone = 'default',
+  title,
+}: {
+  icon: React.ReactNode
+  label: string
+  onClick: () => void
+  disabled?: boolean
+  loading?: boolean
+  tone?: 'default' | 'success' | 'warning' | 'danger' | 'accent'
+  title?: string
+}) {
+  const toneCls = {
+    default: 'text-text-secondary hover:bg-text-primary/[0.06] hover:text-text-primary',
+    success: 'text-green-400 hover:bg-green-500/10 hover:text-green-300',
+    warning: 'text-orange-400 hover:bg-orange-500/10 hover:text-orange-300',
+    danger: 'text-status-error/80 hover:bg-status-error/10 hover:text-status-error',
+    accent: 'text-accent hover:bg-accent/10',
+  }[tone]
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      className={`flex items-center justify-center gap-1 h-7 px-2 rounded-md text-[12px] font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none ${toneCls}`}
+    >
+      {loading ? <RefreshCw className="w-3 h-3 animate-spin" /> : icon}
+      <span>{label}</span>
+    </button>
+  )
+}
+
+function PluginCard({
   plugin,
   language,
   operating,
@@ -414,56 +466,75 @@ function PluginRow({
 
   const primaryType = plugin.types?.[0] || 'tool'
   const typeLabel = TYPE_LABELS[primaryType]
-  const category = manifest.category || 'productivity'
+  const category = manifest.category || 'other'
+  const hasConfigFields = !!(manifest.configSchema?.fields && manifest.configSchema.fields.length > 0)
+
+  /** 解析图标：图片 URL > manifest.icon 命名图标 > 分类图标 > Package 默认 */
+  function renderIcon() {
+    if (isImageIcon(manifest.icon)) {
+      return (
+        <img
+          src={manifest.icon}
+          alt={displayName}
+          className="w-full h-full object-cover"
+          onError={(e) => {
+            const target = e.currentTarget
+            target.style.display = 'none'
+            const fallback = target.nextElementSibling as HTMLElement | null
+            if (fallback) fallback.style.display = 'flex'
+          }}
+        />
+      )
+    }
+    // manifest.icon 为命名图标字符串（如 "Clock"）时尝试匹配
+    if (manifest.icon && NAMED_ICONS[manifest.icon]) {
+      return NAMED_ICONS[manifest.icon]
+    }
+    return CATEGORY_ICONS[category] || <Package className="w-5 h-5" />
+  }
 
   return (
-    <div className="px-4 py-3 hover:bg-bg-hover/30 transition-colors">
-      <div className="flex items-start gap-3">
-        {/* 图标：优先显示自定义上传的图片，否则回退到分类图标 / Package 默认图标 */}
+    <div
+      className={`flex flex-col rounded-xl border transition-all duration-200 overflow-hidden group ${
+        plugin.enabled
+          ? 'border-border/40 bg-bg-base hover:border-accent/40 hover:bg-bg-hover/30'
+          : 'border-border/20 bg-bg-hover/20 opacity-75 hover:border-accent/40 hover:opacity-100'
+      }`}
+    >
+      {/* ── 卡片头部：图标 + 名称 + 状态 ── */}
+      <div className="flex items-start gap-3 p-3 pb-2">
+        {/* 图标 */}
         <div
           className={`shrink-0 w-10 h-10 rounded-lg flex items-center justify-center overflow-hidden ${
             plugin.enabled ? 'bg-accent/10' : 'bg-bg-hover'
           }`}
         >
-          {isImageIcon(manifest.icon) ? (
-            <img
-              src={manifest.icon}
-              alt={displayName}
-              className="w-full h-full object-cover"
-              onError={(e) => {
-                // 图片加载失败时回退到分类图标 / Package 图标
-                const target = e.currentTarget
-                target.style.display = 'none'
-                const fallback = target.nextElementSibling as HTMLElement | null
-                if (fallback) fallback.style.display = 'flex'
-              }}
-            />
-          ) : null}
           <div
             className={`w-full h-full flex items-center justify-center ${
               plugin.enabled ? 'text-accent' : 'text-text-muted'
             }`}
-            style={isImageIcon(manifest.icon) ? { display: 'none' } : undefined}
           >
-            {CATEGORY_ICONS[category] || <Package className="w-5 h-5" />}
+            {renderIcon()}
           </div>
         </div>
 
-        {/* 主体 */}
+        {/* 名称 + 徽章 */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-0.5">
-            <span className={`text-xs font-medium truncate ${!plugin.enabled && 'text-text-muted'}`}>
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <span className={`text-xs font-semibold truncate ${!plugin.enabled && 'text-text-muted'}`}>
               {displayName}
             </span>
-            {typeLabel && (
-              <span className={`shrink-0 px-1.5 py-0.5 text-[12px] rounded ${typeLabel.color}`}>
-                {language === 'zh' ? typeLabel.zh : typeLabel.en}
-              </span>
-            )}
             {plugin.enabled ? (
               <CheckCircle2 className="shrink-0 w-3 h-3 text-green-400" />
             ) : (
               <XCircle className="shrink-0 w-3 h-3 text-text-muted/60" />
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {typeLabel && (
+              <span className={`shrink-0 px-1.5 py-0.5 text-[12px] rounded ${typeLabel.color}`}>
+                {language === 'zh' ? typeLabel.zh : typeLabel.en}
+              </span>
             )}
             {updateInfo?.hasUpdate && (
               <span className="shrink-0 flex items-center gap-0.5 px-1.5 py-0.5 text-[12px] rounded bg-orange-500/15 text-orange-400">
@@ -472,138 +543,126 @@ function PluginRow({
               </span>
             )}
           </div>
-
-          {description && (
-            <p className="text-[12px] text-text-muted line-clamp-1 mb-1">{description}</p>
-          )}
-
-          <div className="flex items-center gap-2 text-[12px] text-text-muted/70">
-            <span>v{plugin.version}</span>
-            <span>·</span>
-            <span>{new Date(plugin.installedAt).toLocaleDateString()}</span>
-            {plugin.mcpServerId && (
-              <>
-                <span>·</span>
-                <span
-                  className={`flex items-center gap-0.5 ${
-                    mcpStatus === 'connected'
-                      ? 'text-green-400'
-                      : mcpStatus === 'error'
-                        ? 'text-red-400'
-                        : mcpStatus === 'connecting'
-                          ? 'text-yellow-400'
-                          : 'text-text-muted'
-                  }`}
-                  title={mcpStatus === 'error' && mcpError ? mcpError : undefined}
-                >
-                  {mcpStatus === 'error' ? (
-                    <AlertCircle className="w-2.5 h-2.5" />
-                  ) : mcpStatus === 'connected' ? (
-                    <CheckCircle2 className="w-2.5 h-2.5" />
-                  ) : (
-                    <Sparkles className="w-2.5 h-2.5" />
-                  )}
-                  {mcpStatus === 'connected'
-                    ? (language === 'zh' ? 'MCP 已连接' : 'MCP Connected')
-                    : mcpStatus === 'error'
-                      ? (language === 'zh' ? 'MCP 连接错误' : 'MCP Error')
-                      : mcpStatus === 'connecting'
-                        ? (language === 'zh' ? 'MCP 连接中' : 'MCP Connecting')
-                        : (language === 'zh' ? 'MCP 未连接' : 'MCP Disconnected')}
-                </span>
-              </>
-            )}
-            {updateInfo?.hasUpdate && updateInfo.latestVersion && (
-              <>
-                <span>·</span>
-                <span className="text-orange-400">
-                  → v{updateInfo.latestVersion}
-                </span>
-              </>
-            )}
-            {manifest.homepage && (
-              <>
-                <span>·</span>
-                <a
-                  href={manifest.homepage}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-0.5 text-accent hover:underline"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <ExternalLink className="w-2.5 h-2.5" />
-                  {language === 'zh' ? '主页' : 'Home'}
-                </a>
-              </>
-            )}
-          </div>
         </div>
+      </div>
 
-        {/* 操作按钮 */}
-        <div className="shrink-0 flex items-center gap-1">
+      {/* ── 描述（两行截断） ── */}
+      {description && (
+        <p className="text-[12px] text-text-muted px-3 pb-2 leading-relaxed line-clamp-2 overflow-hidden break-words">
+          {description}
+        </p>
+      )}
+
+      {/* ── 元信息：版本 / 安装时间 / MCP 状态 ── */}
+      <div className="flex items-center gap-2 text-[12px] text-text-muted/70 px-3 pb-2 flex-wrap">
+        <span>v{plugin.version}</span>
+        <span>·</span>
+        <span>{new Date(plugin.installedAt).toLocaleDateString()}</span>
+        {plugin.mcpServerId && (
+          <>
+            <span>·</span>
+            <span
+              className={`flex items-center gap-0.5 ${
+                mcpStatus === 'connected'
+                  ? 'text-green-400'
+                  : mcpStatus === 'error'
+                    ? 'text-red-400'
+                    : mcpStatus === 'connecting'
+                      ? 'text-yellow-400'
+                      : 'text-text-muted'
+              }`}
+              title={mcpStatus === 'error' && mcpError ? mcpError : undefined}
+            >
+              {mcpStatus === 'error' ? (
+                <AlertCircle className="w-2.5 h-2.5" />
+              ) : mcpStatus === 'connected' ? (
+                <CheckCircle2 className="w-2.5 h-2.5" />
+              ) : (
+                <Sparkles className="w-2.5 h-2.5" />
+              )}
+              {mcpStatus === 'connected'
+                ? (language === 'zh' ? 'MCP 已连接' : 'MCP Connected')
+                : mcpStatus === 'error'
+                  ? (language === 'zh' ? 'MCP 错误' : 'MCP Error')
+                  : mcpStatus === 'connecting'
+                    ? (language === 'zh' ? 'MCP 连接中' : 'MCP Connecting')
+                    : (language === 'zh' ? 'MCP 未连接' : 'MCP Disconnected')}
+            </span>
+          </>
+        )}
+        {updateInfo?.hasUpdate && updateInfo.latestVersion && (
+          <span className="text-orange-400">→ v{updateInfo.latestVersion}</span>
+        )}
+      </div>
+
+      {/* ── 主页链接（如有） ── */}
+      {manifest.homepage && (
+        <div className="px-3 pb-2">
+          <a
+            href={manifest.homepage}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-0.5 text-[12px] text-accent hover:underline"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <ExternalLink className="w-2.5 h-2.5" />
+            {language === 'zh' ? '主页' : 'Homepage'}
+          </a>
+        </div>
+      )}
+
+      {/* ── 操作按钮区：图标 + 文字 ── */}
+      <div className="mt-auto border-t border-border/20 p-2">
+        <div className="flex items-center flex-wrap gap-0.5">
           {/* 更新按钮：仅当检测到新版本时展示，橙色高亮 */}
           {updateInfo?.hasUpdate && onUpdate && (
-            <ActionButton
+            <CardActionButton
+              icon={<Download className="w-3 h-3" />}
+              label={language === 'zh' ? '更新' : 'Update'}
               onClick={onUpdate}
-              variant="ghost"
-              size="sm"
               disabled={operating || updating}
+              loading={updating}
+              tone="warning"
               title={language === 'zh' ? `更新到 v${updateInfo.latestVersion}` : `Update to v${updateInfo.latestVersion}`}
-              className="text-orange-400 hover:text-orange-300 hover:bg-orange-500/10"
-            >
-              {updating ? (
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Download className="w-3.5 h-3.5" />
-              )}
-            </ActionButton>
+            />
           )}
           {/* 配置按钮：仅当插件声明了 configSchema.fields 时展示 */}
-          {manifest.configSchema?.fields && manifest.configSchema.fields.length > 0 && (
-            <ActionButton
+          {hasConfigFields && (
+            <CardActionButton
+              icon={<Settings className="w-3 h-3" />}
+              label={language === 'zh' ? '配置' : 'Config'}
               onClick={onOpenConfig}
-              variant="ghost"
-              size="sm"
               disabled={operating}
-              title={language === 'zh' ? '配置' : 'Settings'}
-            >
-              <Settings className="w-3.5 h-3.5" />
-            </ActionButton>
+              tone="default"
+            />
           )}
+          {/* 启用 / 禁用 */}
           {plugin.enabled ? (
-            <ActionButton
+            <CardActionButton
+              icon={<PowerOff className="w-3 h-3" />}
+              label={language === 'zh' ? '禁用' : 'Disable'}
               onClick={onDisable}
-              variant="ghost"
-              size="sm"
               disabled={operating}
-              title={language === 'zh' ? '禁用' : 'Disable'}
-            >
-              <PowerOff className="w-3.5 h-3.5" />
-            </ActionButton>
+              tone="default"
+            />
           ) : (
-            <ActionButton
+            <CardActionButton
+              icon={<Power className="w-3 h-3" />}
+              label={language === 'zh' ? '启用' : 'Enable'}
               onClick={onEnable}
-              variant="ghost"
-              size="sm"
               disabled={operating}
-              title={language === 'zh' ? '启用' : 'Enable'}
-            >
-              <Power className="w-3.5 h-3.5 text-green-400" />
-            </ActionButton>
+              tone="success"
+            />
           )}
-          <ActionButton
+          {/* 卸载 */}
+          <CardActionButton
+            icon={<Trash2 className="w-3 h-3" />}
+            label={language === 'zh' ? '删除' : 'Delete'}
             onClick={onUninstall}
-            variant="ghost"
-            size="sm"
             disabled={operating}
-            title={language === 'zh' ? '卸载' : 'Uninstall'}
-          >
-            {operating ? (
-              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Trash2 className="w-3.5 h-3.5 text-status-error/80" />
-            )}
-          </ActionButton>
+            loading={operating}
+            tone="danger"
+          />
         </div>
       </div>
     </div>

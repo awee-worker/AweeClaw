@@ -104,6 +104,17 @@ const CACHE_DIR_NAME = 'co-modification-cache'
 /** 缓存文件版本 */
 const CACHE_VERSION = 1
 
+/**
+ * git log 子进程超时（毫秒）。
+ *
+ * 根因：原值为 30s，大仓库首次分析会阻塞事件循环，导致
+ * ProactiveDecisionEngine 的 3s 信号采集超时。改为 8s：
+ * - 命中磁盘缓存时 git log 不会执行，无影响
+ * - 未命中缓存时 8s 足以完成中小型仓库（<5k commits）的分析
+ * - 超大仓库 8s 内未完成则放弃，下次节拍命中磁盘缓存（部分结果已落盘）
+ */
+const GIT_LOG_TIMEOUT_MS = 8_000
+
 /** 缓存文件 TTL（7 天，毫秒） */
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000
 
@@ -148,6 +159,16 @@ export class GitCoModificationAnalyzer {
       pairCounts: Map<string, number>
     }
   >()
+
+  /**
+   * 正在进行中的后台分析任务（projectPath → Promise）。
+   *
+   * 防止同一项目被重复触发后台分析：
+   * - prefetchAnalysis 检查此 Map，已有任务则复用
+   * - getCoModifiedFiles 缓存未就绪时触发 prefetch 并立即返回空，
+   *   下次节拍命中此 Promise 完成后的缓存
+   */
+  private readonly inflightAnalysis = new Map<string, Promise<CoModificationStats | null>>()
 
   /** 缓存目录路径 */
   private readonly cacheDir: string
@@ -288,6 +309,14 @@ export class GitCoModificationAnalyzer {
   /**
    * 查询单个文件的伴随修改文件列表
    *
+   * 非阻塞设计：
+   * - 缓存就绪 → 立即从内存缓存查询返回（<1ms）
+   * - 缓存未就绪 → 立即返回空结果，并触发后台 prefetchAnalysis（不阻塞调用方）
+   *   下次节拍（10s 后）将命中已完成的缓存
+   *
+   * 根因：原实现 `await this.analyze()` 会同步等待 git log 全量分析，
+   * 大仓库首次分析耗时 >3s，导致 ProactiveDecisionEngine 信号采集超时。
+   *
    * @param projectPath 项目根路径
    * @param relativeFilePath 查询文件的相对路径
    * @param topK 返回前 K 个最常共现的文件（默认 10）
@@ -297,20 +326,18 @@ export class GitCoModificationAnalyzer {
     relativeFilePath: string,
     topK: number = 10,
   ): Promise<CoModificationQueryResult> {
-    // 确保缓存存在
-    let cached = this.projectCache.get(projectPath)
+    const cached = this.projectCache.get(projectPath)
+
+    // 缓存未就绪：触发后台分析（非阻塞），本次返回空
     if (!cached) {
-      const stats = await this.analyze(projectPath)
-      cached = this.projectCache.get(projectPath)
-      if (!cached) {
-        return {
-          filePath: relativeFilePath,
-          totalCommits: 0,
-          coModifiedFiles: [],
-        }
+      this.prefetchAnalysis(projectPath).catch(() => {
+        // 后台分析失败静默处理，下次节拍会重试
+      })
+      return {
+        filePath: relativeFilePath,
+        totalCommits: 0,
+        coModifiedFiles: [],
       }
-      // 使用新分析的 stats（避免未使用变量警告）
-      void stats
     }
 
     const { fileCommitCounts, pairCounts } = cached
@@ -355,6 +382,49 @@ export class GitCoModificationAnalyzer {
   }
 
   /**
+   * 后台预分析：异步触发 git log 分析，不阻塞调用方。
+   *
+   * 使用场景：
+   * 1. ProactiveDecisionEngine 启动时预热工作区（moduleInitializer 调用）
+   * 2. getCoModifiedFiles 缓存未就绪时自动触发
+   *
+   * 幂等保护：同一项目已有 inflight 任务时复用，不重复触发。
+   *
+   * @param projectPath 项目根路径
+   * @returns 分析结果（null 表示分析失败）；调用方通常忽略返回值
+   */
+  prefetchAnalysis(projectPath: string): Promise<CoModificationStats | null> {
+    // 内存缓存已就绪，无需重复分析
+    if (this.projectCache.has(projectPath)) {
+      return Promise.resolve(this.projectCache.get(projectPath)?.stats ?? null)
+    }
+    // 已有 inflight 任务，复用
+    const existing = this.inflightAnalysis.get(projectPath)
+    if (existing) return existing
+
+    // 启动后台分析（不阻塞事件循环的关键：analyze 内部的 git log 已有超时保护）
+    const task = this.analyze(projectPath)
+      .then((stats) => stats)
+      .catch((e) => {
+        logger.perception?.warn(
+          `[GitCoModificationAnalyzer] 后台预分析失败: ${projectPath} - ${e instanceof Error ? e.message : String(e)}`,
+        )
+        return null
+      })
+      .finally(() => {
+        this.inflightAnalysis.delete(projectPath)
+      })
+
+    this.inflightAnalysis.set(projectPath, task)
+    return task
+  }
+
+  /** 缓存是否已就绪（供探测器快速判断是否需要触发 prefetch） */
+  isCacheReady(projectPath: string): boolean {
+    return this.projectCache.has(projectPath)
+  }
+
+  /**
    * 批量查询多个文件的伴随修改
    *
    * 用于 ImpactAnalyzer 一次分析多个变更文件。
@@ -369,10 +439,12 @@ export class GitCoModificationAnalyzer {
     topK: number = 5,
   ): Promise<Map<string, CoModificationQueryResult>> {
     const results = new Map<string, CoModificationQueryResult>()
-    // 确保缓存已加载
-    await this.analyze(projectPath).catch(() => {
-      // 分析失败时返回空结果
-    })
+    // 缓存未就绪时触发后台预分析（非阻塞），本次批量查询返回空结果
+    if (!this.projectCache.has(projectPath)) {
+      this.prefetchAnalysis(projectPath).catch(() => {
+        // 后台分析失败静默处理
+      })
+    }
 
     for (const filePath of relativeFilePaths) {
       try {
@@ -483,7 +555,7 @@ export class GitCoModificationAnalyzer {
       {
         cwd: projectPath,
         maxBuffer: 50 * 1024 * 1024, // 50MB，大仓库可能输出很多
-        timeout: 30_000, // 30s 超时
+        timeout: GIT_LOG_TIMEOUT_MS, // 8s 超时（避免阻塞决策引擎节拍）
       },
     )
 

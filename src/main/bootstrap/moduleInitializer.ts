@@ -510,7 +510,13 @@ function initProactiveIpc(): void {
       try {
         // 延迟导入避免在模块加载阶段触发决策引擎的复杂依赖初始化
         import('../modules/proactive/ProactiveDecisionEngine')
-          .then(({ proactiveDecisionEngine }) => {
+          .then(async ({ proactiveDecisionEngine }) => {
+            // ── 预热：在决策引擎首次节拍前完成 LanceDB 加载与工作区 git 预分析 ──
+            // 根因：LanceDB native 模块首次 import 阻塞事件循环 2-3s，
+            //       git log 全量分析阻塞 >3s，两者都会导致决策引擎 10 路信号
+            //       在首个节拍全部超时。预热将阻塞提前到启动阶段，避免污染节拍。
+            await warmupProactiveDependencies()
+
             // 注册编码场景探测器（s10-08）
             registerCodingScenarioDetectors(proactiveDecisionEngine)
             // 注册 IoT + 系统场景探测器（s10-09）
@@ -627,6 +633,34 @@ function registerIotSystemScenarioDetectors(
       })
   } catch (err) {
     logger.system.warn('[Main] registerIotSystemScenarioDetectors failed:', errMsg(err))
+  }
+}
+
+/**
+ * 预热主动决策引擎的重量级依赖。
+ *
+ * 在 `proactiveDecisionEngine.start()` 之前调用，确保首次节拍（10s 后）采集信号时
+ * LanceDB native 模块已加载完毕，避免事件循环阻塞导致 10 路信号集体超时。
+ *
+ * 预热内容：
+ * 1. PerceptionStore.warmup() — 加载 @lancedb/lancedb native 模块 + 预打开常用表
+ *
+ * 注意：GitCoModificationAnalyzer 的 git log 预分析不在此处触发，因为工作区路径
+ * 在启动时尚未确定。改为在 ImpactAnalysisDetector 首次 detect 时通过非阻塞的
+ * getCoModifiedFiles → prefetchAnalysis 按需触发（下次节拍命中缓存）。
+ */
+async function warmupProactiveDependencies(): Promise<void> {
+  try {
+    const { PerceptionStore } = await import('../modules/perception/PerceptionStore')
+    const store = PerceptionStore.getInstance()
+    if (!store.isReady()) {
+      logger.system.info('[Main] Warming up PerceptionStore (LanceDB preload)...')
+      await store.warmup(true)
+      logger.system.info('[Main] PerceptionStore warmup complete')
+    }
+  } catch (err) {
+    // 预热失败不阻塞引擎启动，首次节拍会降级返回空信号
+    logger.system.warn('[Main] PerceptionStore warmup failed:', errMsg(err))
   }
 }
 
