@@ -38,6 +38,7 @@ import { ActionButton } from '../ui'
 
 import ModelSelector from './AIModelSelector'
 import ModeSelector from './WorkModeSelector'
+import AuthorizationModeSelector from './AuthorizationModeSelector'
 import { useVoiceInput } from '../../composables/useVoiceInput'
 import VoiceVisualizer from '../voice/VoiceVisualizer'
 import { ContextItem, FileContext } from '@intelligence/providerTypes'
@@ -268,10 +269,10 @@ const ChatInput = memo(function ChatInput({
         className={`
             relative group flex flex-col rounded-xl transition-all duration-500 ease-out border
             ${isStreaming
-            ? 'bg-surface/30 border-accent/20 shadow-[0_4px_24px_-12px_rgba(var(--accent)/0.15)]'
+            ? 'bg-surface border-accent/20 shadow-[0_4px_24px_-12px_rgba(var(--accent)/0.15)]'
             : isFocused
-              ? 'bg-background/80 border-accent/30 shadow-[0_8px_32px_-16px_rgba(var(--accent)/0.2)] ring-1 ring-accent/10 translate-y-[-1px]'
-              : 'bg-surface/60 border-border/50 hover:border-text-primary/10 shadow-[0_4px_16px_-8px_rgba(0,0,0,0.1)]'
+              ? 'bg-background border-accent/30 shadow-[0_8px_32px_-16px_rgba(var(--accent)/0.2)] ring-1 ring-accent/10 translate-y-[-1px]'
+              : 'bg-surface border-border/50 hover:border-text-primary/10 shadow-[0_4px_16px_-8px_rgba(0,0,0,0.1)]'
           }
         `}
       >
@@ -577,6 +578,21 @@ const ChatInput = memo(function ChatInput({
               )}
             </div>
           </div>
+        </div>
+      </div>
+
+      {/*
+        授权方式栏：独立底部栏，粘附在输入框容器底部
+        - 用 clip-path 让顶部 12px（= rounded-xl 圆角距离）完全透明，直接露出容器底部圆角区
+          → 永不透色（透明区无背景可渗透）、永不断开（露出容器本体），且无需匹配容器多变的状态底色
+        - 主体背景接近边框色、无边框、层级 z-10 低于容器 z-20
+        - padding-top 容纳透明区高度，内容下移不贴顶
+      */}
+      <div
+        className="-mt-5 z-10"
+      >
+        <div className="flex items-center gap-2 bg-border/20 px-4 pt-6 pb-1 rounded-b-xl rounded-t-none">
+          <AuthorizationModeSelector disabled={isStreaming} />
         </div>
       </div>
     </div>

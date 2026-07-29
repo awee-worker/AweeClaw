@@ -27,6 +27,17 @@ export interface AutoApproveSettings {
   dangerous: boolean
 }
 
+/**
+ * 授权方式：控制 UI 层工具审批门禁的严格程度
+ *
+ * 优先级：authorizationMode > freeModeEnabled > autoApprove
+ * - undefined（旧版本未设置）时回退到 autoApprove/freeModeEnabled 逻辑
+ * - 有值时覆盖 autoApprove/freeModeEnabled，成为工具审批的唯一开关
+ *
+ * 仅控制 UI 层审批门禁，不影响主进程安全底线（命令黑名单、危险模式、敏感路径、工作区边界）
+ */
+export type AuthorizationMode = 'every-step' | 'dangerous-only' | 'never'
+
 export interface LoopDetectionConfig {
   enabled: boolean
   maxHistory: number
@@ -252,6 +263,8 @@ export interface AppSettings {
   llmConfig: PersistedLLMConfig
   language: string
   autoApprove: AutoApproveSettings
+  /** 授权方式：undefined 表示旧版本未设置，回退到 autoApprove/freeModeEnabled 逻辑 */
+  authorizationMode?: AuthorizationMode
   promptTemplateId?: string
   agentConfig: AgentConfig
   providerConfigs: Record<string, ProviderConfig>

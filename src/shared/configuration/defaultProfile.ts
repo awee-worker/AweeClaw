@@ -232,6 +232,17 @@ export const AUTO_APPROVE_DEFAULTS = {
   dangerous: false,
 } as const
 
+// ============================================
+// 授权方式默认值
+// ============================================
+
+/**
+ * 授权方式默认值：仅危险操作（删除文件、危险命令如 rm -rf）需审批
+ *
+ * 对应 AuthorizationMode 类型，覆盖 autoApprove/freeModeEnabled
+ */
+export const AUTHORIZATION_MODE_DEFAULT = 'dangerous-only' as const
+
 
 // ============================================
 // 安全设置默认值

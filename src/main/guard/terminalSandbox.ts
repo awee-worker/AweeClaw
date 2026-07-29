@@ -26,6 +26,7 @@ import { EventEmitter } from 'events'
 import { StringDecoder } from 'node:string_decoder'
 import { securityManager, OperationType } from './securityPolicyEngine'
 import { SECURITY_DEFAULTS } from '@shared/appConstants'
+import { DANGEROUS_COMMAND_PATTERNS } from '@shared/configuration/dangerousCommands'
 import { safeIpcHandle } from '../bridge/core/ipcGuard'
 import { normalizePipeTerminalInput } from './terminalInputFilter'
 export { normalizePipeTerminalInput }
@@ -137,21 +138,9 @@ export function cleanupTerminals(): void {
   logger.security.info(`[Terminal] All terminals and background processes cleaned up`)
 }
 
-// 危险命令模式列表
-const DANGEROUS_PATTERNS = [
-  /rm\s+-rf\s+.*\//i,  // rm -rf /
-  /wget\s+.*\s+-O\s+/i,  // 下载文件
-  /curl\s+.*\s+(-o\s+|--output\s+)/i,  // 下载文件
-  /curl\s+.*\|\s*(bash|sh|python|node)/i,  // curl | sh 远程执行
-  /wget\s+.*\|\s*(bash|sh|python|node)/i,  // wget | sh 远程执行
-  /powershell\s+-e(ncodedCommand)?.*frombase64/i,  // PowerShell 编码命令
-  /\/etc\/passwd|\/etc\/shadow/i,
-  /Windows\\System32/i,
-  /registry/i,
-  /\beval\s*\(/i,  // eval 执行
-  /\bchmod\s+[0-7]*7[0-7]*\s/i,  // chmod 危险权限
-  /\bsudo\b/i,  // sudo 提权
-]
+// 危险命令模式列表（统一来源：@shared/configuration/dangerousCommands）
+// 本地引用 shared 定义，主进程作为安全底线硬拦截，渲染进程审批门禁共用同一份模式
+const DANGEROUS_PATTERNS = DANGEROUS_COMMAND_PATTERNS
 
 // Shell 注入字符检测（用于 args 参数）
 const SHELL_INJECTION_CHARS = /[;&|`$(){}<>]/

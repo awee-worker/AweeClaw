@@ -66,7 +66,7 @@ const LLM_BEHAVIOR_KEYS = [
 
 // 存在 app_settings 表的键列表
 const APP_SETTING_KEYS = [
-  'language', 'autoApprove', 'promptTemplateId', 'activeScenarioId',
+  'language', 'autoApprove', 'authorizationMode', 'promptTemplateId', 'activeScenarioId',
   'agentConfig', 'aiInstructions', 'onboardingCompleted',
   'webSearchConfig', 'mcpConfig', 'emailConfig', 'enableFileLogging',
   'browserMode', 'scenarioPreferences',
@@ -173,6 +173,8 @@ function rebuildSettingsFromDb(dbData: {
     llmConfig,
     language: (appSettings.language as 'en' | 'zh') || defaults.language,
     autoApprove: { ...defaults.autoApprove, ...(appSettings.autoApprove as object || {}) },
+    // authorizationMode：不合并默认值，保持 undefined 以标记旧版本未设置（回退到 autoApprove/freeModeEnabled 逻辑）
+    authorizationMode: appSettings.authorizationMode as SettingsState['authorizationMode'],
     promptTemplateId: (appSettings.promptTemplateId as string) || defaults.promptTemplateId,
     activeScenarioId: (appSettings.activeScenarioId as string) || defaults.activeScenarioId,
     providerConfigs: providerConfigs as Record<string, ProviderModelConfig>,
@@ -554,6 +556,8 @@ class SettingsService {
       llmConfig,
       language: ((saved.language as string) || defaults.language) as 'en' | 'zh',
       autoApprove: { ...defaults.autoApprove, ...(saved.autoApprove as object || {}) },
+      // authorizationMode：不合并默认值，保持 undefined 以标记旧版本未设置
+      authorizationMode: saved.authorizationMode as SettingsState['authorizationMode'],
       promptTemplateId: (saved.promptTemplateId as string) || defaults.promptTemplateId,
       activeScenarioId: (saved.activeScenarioId as string) || defaults.activeScenarioId,
       providerConfigs: providerConfigs as Record<string, ProviderModelConfig>,
@@ -729,6 +733,7 @@ function buildPersistedSettingsPayload(
     llmConfig: serializePersistedLLMConfig(settings.llmConfig),
     language: settings.language,
     autoApprove: settings.autoApprove,
+    authorizationMode: settings.authorizationMode,
     promptTemplateId: settings.promptTemplateId,
     agentConfig: settings.agentConfig,
     providerConfigs,

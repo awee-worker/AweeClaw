@@ -31,7 +31,15 @@ interface ToolCallCardProps {
 }
 
 /** 状态指示器视觉配置 */
-function resolveStatusVisual(isStreaming: boolean, isRunning: boolean, isSuccess: boolean, isError: boolean, isRejected: boolean) {
+function resolveStatusVisual(isStreaming: boolean, isRunning: boolean, isSuccess: boolean, isError: boolean, isRejected: boolean, isAwaitingApproval?: boolean) {
+  // 待批准：显示警告图标，不显示默认空心圆圈
+  if (isAwaitingApproval) {
+    return (
+      <div className="w-3.5 h-3.5 flex items-center justify-center">
+        <AlertTriangle className="w-3 h-3 text-status-warning" />
+      </div>
+    )
+  }
   if (isStreaming || isRunning) {
     return (
       <div className="w-3.5 h-3.5 rounded-full bg-accent/20 flex items-center justify-center border border-accent/30">
@@ -188,7 +196,7 @@ const ToolCallCard = memo(function ToolCallCard({
         </motion.div>
 
         <div className="shrink-0 relative z-10 w-4 h-4 flex items-center justify-center">
-          {resolveStatusVisual(isStreaming, isRunning, isSuccess, isError, isRejected)}
+          {resolveStatusVisual(isStreaming, isRunning, isSuccess, isError, isRejected, isAwaitingApproval)}
         </div>
 
         <div className="flex-1 min-w-0 flex items-center justify-between gap-2 overflow-hidden relative z-10">

@@ -16,6 +16,7 @@ import {
   LLM_DEFAULTS,
   AGENT_DEFAULTS,
   AUTO_APPROVE_DEFAULTS,
+  AUTHORIZATION_MODE_DEFAULT,
   EDITOR_DEFAULTS,
   TERMINAL_DEFAULTS,
   GIT_DEFAULTS,
@@ -31,6 +32,7 @@ import type {
   LLMConfig,
   AgentConfig,
   AutoApproveSettings,
+  AuthorizationMode,
   EditorConfig,
   SecurityPolicyPanel,
   WebSearchConfig,
@@ -194,6 +196,15 @@ const defaultSecuritySettings: SecurityPolicyPanel = {
 
 const defaultAutoApprove: AutoApproveSettings = { ...AUTO_APPROVE_DEFAULTS }
 
+/**
+ * 授权方式默认值
+ *
+ * 注意：SettingsState 中 authorizationMode 类型为 AuthorizationMode | undefined，
+ * undefined 表示旧版本未设置（回退到 autoApprove/freeModeEnabled 逻辑）。
+ * 此默认值用于全新用户（无任何存储数据时走 getAllDefaults 兜底）及 UI 展示。
+ */
+const defaultAuthorizationMode: AuthorizationMode = AUTHORIZATION_MODE_DEFAULT
+
 const defaultWebSearchConfig: WebSearchConfig = {
   googleApiKey: '',
   googleCx: '',
@@ -242,6 +253,9 @@ export const SETTINGS = {
   },
   autoApprove: {
     default: defaultAutoApprove,
+  },
+  authorizationMode: {
+    default: defaultAuthorizationMode,
   },
   promptTemplateId: {
     default: 'default' as string,
@@ -310,6 +324,8 @@ export type SettingsState = {
   llmConfig: LLMConfig
   language: 'en' | 'zh'
   autoApprove: AutoApproveSettings
+  /** 授权方式：undefined 表示旧版本未设置，回退到 autoApprove/freeModeEnabled 逻辑 */
+  authorizationMode: AuthorizationMode | undefined
   promptTemplateId: string
   activeScenarioId: string
   providerConfigs: Record<string, ProviderModelConfig>
@@ -342,6 +358,7 @@ export function getAllDefaults(): SettingsState {
     llmConfig: SETTINGS.llmConfig.default,
     language: SETTINGS.language.default as 'en' | 'zh',
     autoApprove: SETTINGS.autoApprove.default,
+    authorizationMode: SETTINGS.authorizationMode.default,
     promptTemplateId: SETTINGS.promptTemplateId.default,
     activeScenarioId: SETTINGS.activeScenarioId.default,
     providerConfigs: SETTINGS.providerConfigs.default,

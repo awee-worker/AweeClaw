@@ -64,6 +64,7 @@ function buildSavePayload(state: SettingsSlice): SettingsState {
     llmConfig: state.llmConfig,
     language: state.language,
     autoApprove: state.autoApprove,
+    authorizationMode: state.authorizationMode,
     promptTemplateId: state.promptTemplateId,
     activeScenarioId: state.activeScenarioId,
     providerConfigs: state.providerConfigs,

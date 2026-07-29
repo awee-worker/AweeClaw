@@ -264,7 +264,7 @@ export default function ModelSelector({ className = '', alignLeft = false, disab
             ? 'opacity-40 cursor-not-allowed'
             : isOpen
               ? 'bg-surface-active text-text-primary shadow-[0_0_0_2px_rgba(var(--accent)/0.15)]'
-              : 'bg-white/[0.03] text-text-secondary hover:text-text-primary hover:bg-white/[0.08]'
+              : 'text-text-muted hover:text-text-secondary'
           }
         `}
       >

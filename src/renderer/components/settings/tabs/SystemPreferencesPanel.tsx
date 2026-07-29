@@ -389,6 +389,7 @@ export function SystemPreferencesPanel({ language, enableFileLogging, setEnableF
             llmConfig: getStore().llmConfig,
             language: getStore().language,
             autoApprove: getStore().autoApprove,
+            authorizationMode: getStore().authorizationMode,
             promptTemplateId: getStore().promptTemplateId,
             activeScenarioId: getStore().activeScenarioId,
             providerConfigs: getStore().providerConfigs,

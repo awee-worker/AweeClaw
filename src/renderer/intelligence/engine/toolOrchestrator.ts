@@ -13,8 +13,9 @@ import pLimit from 'p-limit'
 import { api } from '../../adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
 import { toolManager } from '../toolkit/providers'
-import { getToolApprovalType, isFileEditTool, needsFileSnapshot } from '@configuration/toolDefinitions'
+import { getToolApprovalType, isFileEditTool, needsFileSnapshot, isWriteTool } from '@configuration/toolDefinitions'
 import { pathStartsWith, joinPath } from '@shared/toolkit/pathHelper'
+import { isDangerousCommand } from '@shared/configuration/dangerousCommands'
 import { useStore } from '@store'
 import { EventBus } from './EventDispatcher'
 import { truncateToolResult } from '@utils/partialJson'
@@ -253,14 +254,41 @@ function indicatesDependencyFailure(content: string): boolean {
  * 检查工具是否需要审批
  * 基于 TOOL_CONFIGS 中的 approvalType 配置和用户的 autoApprove 设置
  */
-function requiresApprovalGate(toolName: string, chatMode?: string): boolean {
+function requiresApprovalGate(toolCall: ToolCall, chatMode?: string): boolean {
+  // chat 模式（纯对话无工具副作用）始终不审批，与授权方式正交
   if (chatMode === 'chat') return false
 
+  const toolName = toolCall.name
   const approvalType = getToolApprovalType(toolName)
-
-  if (approvalType === 'none') return false
-
   const mainStore = useStore.getState()
+  const authMode = mainStore.authorizationMode
+
+  // 新授权方式优先且覆盖 autoApprove/freeModeEnabled
+  // authMode 有值时，成为工具审批的唯一开关（用户在输入框下方选择的授权方式）
+  if (authMode !== undefined) {
+    if (authMode === 'never') {
+      // 无需确认：所有操作免 UI 审批（主进程安全底线仍独立生效）
+      return false
+    }
+    if (authMode === 'dangerous-only') {
+      // 危险确认：危险操作（删除文件）+ 危险命令（rm -rf / curl|sh / sudo 等）需审批
+      if (approvalType === 'dangerous') return true
+      if (toolName === 'run_command') {
+        const command = toolCall.arguments?.command as string | undefined
+        if (command && isDangerousCommand(command)) return true
+      }
+      return false
+    }
+    if (authMode === 'every-step') {
+      // 每步确认：所有有副作用操作都审批（terminal/dangerous/interaction + 写入类工具）；纯读不审批
+      return approvalType !== 'none' || isWriteTool(toolName)
+    }
+    // 未知模式兜底：需审批（更安全）
+    return true
+  }
+
+  // ===== 兼容性回退：authorizationMode 未设置（旧版本升级），使用原有 autoApprove/freeModeEnabled 逻辑 =====
+  if (approvalType === 'none') return false
 
   // 自由模式：自动批准所有工具调用，无需用户确认
   if (mainStore.freeModeEnabled) {
@@ -626,8 +654,8 @@ export async function orchestrateToolBatch(
   const pending = new Set(toolCalls.map(tc => tc.id))
 
   // 分离需要审批和不需要审批的工具
-  const approvalRequired = toolCalls.filter(tc => requiresApprovalGate(tc.name, context.chatMode))
-  const noApprovalRequired = toolCalls.filter(tc => !requiresApprovalGate(tc.name, context.chatMode))
+  const approvalRequired = toolCalls.filter(tc => requiresApprovalGate(tc, context.chatMode))
+  const noApprovalRequired = toolCalls.filter(tc => !requiresApprovalGate(tc, context.chatMode))
 
   // 在执行前保存文件快照
   await captureFileSnapshots(toolCalls, context)
