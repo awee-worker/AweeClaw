@@ -6,7 +6,7 @@ import { useStore } from '@store'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { playNotificationSound } from '@utils/notificationSound'
 import { getToolApprovalType, getToolDisplayName } from '@configuration/toolDefinitions'
-import { approvalService } from '@intelligence/engine/toolOrchestrator'
+import { approvalService, requiresApprovalGate } from '@intelligence/engine/toolOrchestrator'
 import type { LLMConfig, LLMMessage, ToolDefinition, ToolExecutionContext, ToolExecutionResult } from '@intelligence/providerTypes'
 
 export interface SubLoopOptions {
@@ -267,13 +267,9 @@ async function executeToolCall(
   // interaction 类型采用事后确认模式（像 VSCode/Trae），工具直接执行，
   // 执行成功后由 FileChangeCard 显示"接受/拒绝"按钮
   if (approvalType === 'terminal' || approvalType === 'dangerous') {
-    const mainStoreState = useStore.getState()
-    // 自由模式：自动批准所有工具调用，无需用户确认
-    const isAutoApproved = mainStoreState.freeModeEnabled
-      || (approvalType === 'terminal' && mainStoreState.autoApprove?.terminal)
-      || (approvalType === 'dangerous' && mainStoreState.autoApprove?.dangerous)
-
-    if (!isAutoApproved) {
+    // 统一复用 requiresApprovalGate，确保授权方式选择对子 Agent 同样生效
+    const needsApproval = requiresApprovalGate(toolCall, 'agent')
+    if (needsApproval) {
       const toolDisplayName = getToolDisplayName(toolCall.name)
 
       // 非自动化模式：走原有聊天卡片批准流程

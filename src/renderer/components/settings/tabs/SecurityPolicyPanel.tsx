@@ -31,8 +31,6 @@ export function SecurityPolicyPanel({
     securitySettings,
     setSecuritySettings,
     isWorkspaceEditor = true,
-    autoApprove,
-    setAutoApprove,
     agentConfig,
     setAgentConfig,
 }: SecuritySettingsProps) {
@@ -49,10 +47,8 @@ export function SecurityPolicyPanel({
         setSecuritySettings({ ...securitySettings, ...updates })
     }
 
-    const updateAutoApprove = (updates: Partial<AutoApproveSettings>) => {
-        if (!autoApprove || !setAutoApprove) return
-        setAutoApprove({ ...autoApprove, ...updates })
-    }
+    // autoApprove.terminal / dangerous 已由聊天输入框下方的「授权方式」选择器接管，
+    // 此处不再需要 updateAutoApprove；props（autoApprove / setAutoApprove）保留以兼容调用方
 
     const updateAgentConfig = (updates: Partial<AgentConfig>) => {
         if (!agentConfig || !setAgentConfig) return
@@ -174,25 +170,16 @@ export function SecurityPolicyPanel({
                     {t('settings.permissionandapprovaldesc', language as Language)}
                 </p>
                 <div className="flex flex-wrap gap-x-8 gap-y-4">
-                    {/* 操作审批类（autoApprove / enableAutoFix） */}
-                    {autoApprove && setAutoApprove && agentConfig && setAgentConfig && (
-                        <>
-                            <ToggleSwitch
-                                label={t('settings.autoapproveterminal', language as Language)}
-                                checked={autoApprove.terminal}
-                                onChange={(e) => updateAutoApprove({ terminal: e.target.checked })}
-                            />
-                            <ToggleSwitch
-                                label={t('settings.autoapprovedangerous', language as Language)}
-                                checked={autoApprove.dangerous}
-                                onChange={(e) => updateAutoApprove({ dangerous: e.target.checked })}
-                            />
-                            <ToggleSwitch
-                                label={t('settings.autodetectandfix', language as Language)}
-                                checked={agentConfig.enableAutoFix}
-                                onChange={(e) => updateAgentConfig({ enableAutoFix: e.target.checked })}
-                            />
-                        </>
+                    {/* 操作审批类（autoApprove / enableAutoFix）
+                        注：autoApprove.terminal / autoApprove.dangerous 已由聊天输入框下方的
+                        「授权方式」选择器（authorizationMode）统一接管并覆盖，此处不再展示，
+                        避免双开关冲突；autoApprove 数据保留以兼容旧版本升级回退逻辑 */}
+                    {agentConfig && setAgentConfig && (
+                        <ToggleSwitch
+                            label={t('settings.autodetectandfix', language as Language)}
+                            checked={agentConfig.enableAutoFix}
+                            onChange={(e) => updateAgentConfig({ enableAutoFix: e.target.checked })}
+                        />
                     )}
                     {/* 安全策略类（原"安全选项"） */}
                     <ToggleSwitch

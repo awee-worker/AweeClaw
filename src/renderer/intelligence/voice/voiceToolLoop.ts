@@ -27,6 +27,7 @@ import {
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { useStore } from '@store'
 import { getToolApprovalType } from '@configuration/toolDefinitions'
+import { requiresApprovalGate } from '@intelligence/engine/toolOrchestrator'
 import type {
   LLMConfig,
   LLMMessage,
@@ -359,20 +360,15 @@ async function executeVoiceToolCall(
     skipMainApproval: true,
   }
 
-  // 检查是否需要审批
+  // 检查是否需要审批（统一复用 requiresApprovalGate，确保授权方式选择对语音模式同样生效）
   const approvalType = getToolApprovalType(toolCall.name)
   if (approvalType === 'terminal' || approvalType === 'dangerous') {
-    const mainStoreState = useStore.getState()
-    const isAutoApproved =
-      mainStoreState.freeModeEnabled ||
-      (approvalType === 'terminal' && mainStoreState.autoApprove?.terminal) ||
-      (approvalType === 'dangerous' && mainStoreState.autoApprove?.dangerous)
-
-    if (!isAutoApproved) {
+    const needsApproval = requiresApprovalGate(toolCall, 'agent')
+    if (needsApproval) {
       logger.agent.info(`[VoiceToolLoop] Tool ${toolCall.name} skipped (requires approval in voice mode)`)
       return {
         role: 'tool',
-        content: '此操作需要用户确认，请在文字对话模式中执行，或在设置中开启自动批准。',
+        content: '此操作需要用户确认，请在文字对话模式中执行，或在输入框下方切换为更宽松的授权方式。',
         tool_call_id: toolCall.id,
         name: toolCall.name,
       }

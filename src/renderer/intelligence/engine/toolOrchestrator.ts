@@ -251,10 +251,22 @@ function indicatesDependencyFailure(content: string): boolean {
 
 
 /**
- * 检查工具是否需要审批
- * 基于 TOOL_CONFIGS 中的 approvalType 配置和用户的 autoApprove 设置
+ * 审批判定所需的最小工具信息（结构化类型，兼容 ToolCall / CollectedToolCall 等）
  */
-function requiresApprovalGate(toolCall: ToolCall, chatMode?: string): boolean {
+export interface ApprovalGateToolInfo {
+  name: string
+  arguments?: Record<string, unknown>
+}
+
+/**
+ * 检查工具是否需要审批
+ * 基于 TOOL_CONFIGS 中的 approvalType 配置和用户的 autoApprove / authorizationMode 设置
+ *
+ * 优先级：authorizationMode > freeModeEnabled > autoApprove
+ * - authorizationMode 有值时覆盖 autoApprove/freeModeEnabled（用户在输入框下方选择的授权方式）
+ * - authorizationMode 为 undefined（旧版本未设置）时回退到 autoApprove/freeModeEnabled 逻辑
+ */
+export function requiresApprovalGate(toolCall: ApprovalGateToolInfo, chatMode?: string): boolean {
   // chat 模式（纯对话无工具副作用）始终不审批，与授权方式正交
   if (chatMode === 'chat') return false
 
