@@ -28,18 +28,25 @@ import {
   Brain,
   Bot,
   Monitor,
+  Wrench,
 } from 'lucide-react'
 import type { PluginCategory } from '@services/pluginService'
 import { t, type Language } from '@renderer/i18n'
 
 /** 分类图标映射（与后端 category id 对应） */
 const CATEGORY_ICONS: Record<string, React.ReactNode> = {
+  // ── 8 个大类（新发布插件使用） ──
   productivity: <Zap className="w-3.5 h-3.5" />,
   development: <Code2 className="w-3.5 h-3.5" />,
   automation: <Cpu className="w-3.5 h-3.5" />,
+  database: <BarChart3 className="w-3.5 h-3.5" />,
+  design: <PenTool className="w-3.5 h-3.5" />,
+  office: <FileText className="w-3.5 h-3.5" />,
+  ai: <Sparkles className="w-3.5 h-3.5" />,
+  utility: <Wrench className="w-3.5 h-3.5" />,
+  // ── 兼容旧分类（历史数据可能仍返回这些 id） ──
   data: <BarChart3 className="w-3.5 h-3.5" />,
   creative: <PenTool className="w-3.5 h-3.5" />,
-  ai: <Sparkles className="w-3.5 h-3.5" />,
   business: <TrendingUp className="w-3.5 h-3.5" />,
   education: <BookOpen className="w-3.5 h-3.5" />,
   cloud: <Cloud className="w-3.5 h-3.5" />,
@@ -48,8 +55,6 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   security: <Shield className="w-3.5 h-3.5" />,
   composite: <Layers className="w-3.5 h-3.5" />,
   general: <Package className="w-3.5 h-3.5" />,
-  office: <FileText className="w-3.5 h-3.5" />,
-  design: <PenTool className="w-3.5 h-3.5" />,
   'ai-model': <Brain className="w-3.5 h-3.5" />,
   channel: <Bot className="w-3.5 h-3.5" />,
   desktop: <Monitor className="w-3.5 h-3.5" />,
@@ -99,7 +104,7 @@ export function PluginCategoryFilter({
         >
           {CATEGORY_ICONS[cat.id] || <Package className="w-3.5 h-3.5" />}
           <span>{isZh ? cat.nameZh : cat.name}</span>
-          <span className="text-[11px] opacity-60">({cat.count})</span>
+          <span className="text-[12px] opacity-60">({cat.count})</span>
         </button>
       ))}
     </div>

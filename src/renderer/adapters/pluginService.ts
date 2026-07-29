@@ -137,7 +137,8 @@ export interface PluginCategory {
   id: string
   name: string
   nameZh: string
-  icon: string
+  /** 客户端兜底分类携带的图标名（后端不返回该字段，渲染时由 PluginCategoryFilter 的 CATEGORY_ICONS 映射） */
+  icon?: string
   count: number
 }
 
@@ -218,23 +219,44 @@ export async function getPopularPlugins(): Promise<PluginMarketItem[]> {
   }
 }
 
-/** 获取插件市场分类 */
+/**
+ * 兜底分类定义（与后端 PLUGIN_CATEGORIES 保持一致）。
+ *
+ * 用于未登录 / 后端不可达 / 接口返回空 等场景，确保分类筛选始终完整。
+ * 新增分类时需同步更新后端 plugin.service.ts 的 PLUGIN_CATEGORIES。
+ */
+const FALLBACK_CATEGORIES: PluginCategory[] = [
+  { id: 'productivity', name: 'Productivity', nameZh: '效率', icon: 'Zap', count: 0 },
+  { id: 'development', name: 'Development', nameZh: '开发', icon: 'Code2', count: 0 },
+  { id: 'automation', name: 'Automation', nameZh: '自动化与集成', icon: 'Cpu', count: 0 },
+  { id: 'database', name: 'Database', nameZh: '数据库', icon: 'BarChart3', count: 0 },
+  { id: 'design', name: 'Design', nameZh: '设计', icon: 'PenTool', count: 0 },
+  { id: 'office', name: 'Office', nameZh: '办公', icon: 'FileText', count: 0 },
+  { id: 'ai', name: 'AI', nameZh: 'AI 与搜索', icon: 'Sparkles', count: 0 },
+  { id: 'utility', name: 'Utility', nameZh: '实用工具', icon: 'Wrench', count: 0 },
+]
+
+/**
+ * 获取插件市场分类
+ *
+ * 数据来源优先级：
+ *   1. 已登录 → 调用后端 GET /api/v1/plugins/categories（返回所有大类，含 count=0）
+ *   2. 未登录 / 接口异常 → 返回与后端 PLUGIN_CATEGORIES 一致的兜底分类（8 大类）
+ *
+ * 兜底分类必须与后端 plugin.service.ts 中的 PLUGIN_CATEGORIES 保持同步，
+ * 确保未登录或离线场景下分类筛选列表仍然完整且一致。
+ */
 export async function getPluginCategories(): Promise<PluginCategory[]> {
   if (!isAuthenticated()) {
-    return [
-      { id: 'productivity', name: 'Productivity', nameZh: '效率', icon: 'Zap', count: 0 },
-      { id: 'development', name: 'Development', nameZh: '开发', icon: 'Code2', count: 0 },
-      { id: 'automation', name: 'Automation', nameZh: '自动化', icon: 'Cpu', count: 0 },
-      { id: 'data', name: 'Data', nameZh: '数据', icon: 'BarChart3', count: 0 },
-      { id: 'creative', name: 'Creative', nameZh: '创意', icon: 'PenTool', count: 0 },
-      { id: 'ai', name: 'AI', nameZh: 'AI 增强', icon: 'Sparkles', count: 0 },
-    ]
+    return FALLBACK_CATEGORIES
   }
 
   try {
-    return await backendApi.get<PluginCategory[]>('/api/v1/plugins/categories')
+    const result = await backendApi.get<PluginCategory[]>('/api/v1/plugins/categories')
+    // 后端返回空数组时（极端异常），回退到本地兜底分类，避免分类筛选条空白
+    return result && result.length > 0 ? result : FALLBACK_CATEGORIES
   } catch {
-    return []
+    return FALLBACK_CATEGORIES
   }
 }
 
