@@ -32,6 +32,19 @@ export interface PluginConfigField {
   defaultValue?: string
   placeholder?: string
   options?: Array<{ value: string; label?: string; labelZh?: string }>
+  /**
+   * 条件显示规则：当依赖字段的值满足条件时才显示本字段。
+   * 用于实现"选择服务商后只显示该服务商的配置项"等动态表单场景。
+   * 未设置时字段始终显示。
+   */
+  visibleWhen?: {
+    /** 依赖的字段 key（如 'provider'） */
+    field: string
+    /** 当依赖字段值等于此值时显示（与 in 互斥，equals 优先） */
+    equals?: string
+    /** 当依赖字段值在此列表中时显示（与 equals 互斥） */
+    in?: string[]
+  }
 }
 
 /** configSchema 完整结构 */
@@ -90,6 +103,22 @@ function validateField(field: PluginConfigField, value: string, isZh: boolean): 
   return ''
 }
 
+/**
+ * 判断字段是否可见（基于 visibleWhen 条件 + 当前表单值）。
+ * 未设置 visibleWhen 的字段始终可见。
+ */
+function isFieldVisible(field: PluginConfigField, values: PluginConfigValues): boolean {
+  if (!field.visibleWhen) return true
+  const depValue = values[field.visibleWhen.field] ?? ''
+  if (field.visibleWhen.equals !== undefined) {
+    return depValue === field.visibleWhen.equals
+  }
+  if (field.visibleWhen.in !== undefined) {
+    return field.visibleWhen.in.includes(depValue)
+  }
+  return true
+}
+
 // ─── 组件 ──────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -124,9 +153,12 @@ const PluginConfigForm = forwardRef<PluginConfigFormHandle, Props>(function Plug
     isZh ? f.descriptionZh || f.description : f.description
 
   // 计算每个字段的错误（外部优先，否则用内部校验）
+  // 不可见字段（visibleWhen 不满足）跳过 required 校验，避免隐藏的必填项阻断提交
   const errors = useMemo(() => {
     const map: Record<string, string> = {}
     for (const f of fields) {
+      // 不可见字段不参与校验
+      if (!isFieldVisible(f, value)) continue
       const ext = externalErrors[f.key]
       if (ext) {
         map[f.key] = ext
@@ -155,6 +187,9 @@ const PluginConfigForm = forwardRef<PluginConfigFormHandle, Props>(function Plug
     setVisibility((s) => ({ ...s, [key]: !s[key] }))
   }
 
+  // 过滤出可见字段（visibleWhen 条件满足的字段）
+  const visibleFields = fields.filter((f) => isFieldVisible(f, value))
+
   if (fields.length === 0) {
     return (
       <div className="py-6 text-center text-sm text-zinc-500 dark:text-zinc-400">
@@ -163,9 +198,17 @@ const PluginConfigForm = forwardRef<PluginConfigFormHandle, Props>(function Plug
     )
   }
 
+  if (visibleFields.length === 0) {
+    return (
+      <div className="py-6 text-center text-sm text-zinc-500 dark:text-zinc-400">
+        {isZh ? '请先选择上方选项以显示配置项' : 'Select an option above to reveal config fields'}
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4">
-      {fields.map((field) => {
+      {visibleFields.map((field) => {
         const v = value[field.key] ?? ''
         const err = errors[field.key]
         const desc = descOf(field)

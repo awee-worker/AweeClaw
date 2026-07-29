@@ -14,6 +14,7 @@ import {Language, t} from '@renderer/i18n'
 import { useStore } from '@store'
 import { downloadSettings, importSettings } from '../../../settings/configMigration'
 import { settingsService } from '../../../settings/preferencesService'
+import { isPluginAutoUpdateEnabled, setPluginAutoUpdateEnabled } from '@hooks/usePluginUpdateChecker'
 import { Agent } from '@intelligence/engine'
 import { memoryService } from '@intelligence/runtime/recallService'
 import type { ProviderModelConfig, SettingsState } from '@shared/configuration/preferenceSync'
@@ -356,6 +357,8 @@ export function SystemPreferencesPanel({ language, enableFileLogging, setEnableF
     const [isClearing, setIsClearing] = useState(false)
     const [includeApiKeys, setIncludeApiKeys] = useState(false)
     const [logPath, setLogPath] = useState('')
+    /** 插件自动更新开关（从 localStorage 读取，默认开启） */
+    const [pluginAutoUpdate, setPluginAutoUpdate] = useState(true)
     const fileInputRef = useRef<HTMLInputElement>(null)
     const getStore = () => useStore.getState()
     const browserMode = useStore(s => s.browserMode)
@@ -373,6 +376,8 @@ export function SystemPreferencesPanel({ language, enableFileLogging, setEnableF
             }
         }
         getLogPath()
+        // 初始化插件自动更新开关
+        setPluginAutoUpdate(isPluginAutoUpdateEnabled())
     }, [])
 
     const handleToggleFileLogging = (enabled: boolean) => {
@@ -638,6 +643,29 @@ export function SystemPreferencesPanel({ language, enableFileLogging, setEnableF
                     </h4>
                 </div>
                 <div className="space-y-4">
+                    {/* 插件自动更新 */}
+                    <div className="p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border shadow-sm">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <div className="text-sm font-bold text-text-primary">
+                                    {language === 'zh' ? '自动更新插件' : 'Auto-update Plugins'}
+                                </div>
+                                <div className="text-xs text-text-muted mt-1 opacity-70">
+                                    {language === 'zh'
+                                        ? '检测到新版本时自动升级插件（升级后右上角通知）。关闭后仅提醒，需手动更新。'
+                                        : 'Automatically upgrade plugins when new versions are detected (notifies on success). When off, only reminds you to update manually.'}
+                                </div>
+                            </div>
+                            <ToggleSwitch
+                                checked={pluginAutoUpdate}
+                                onChange={(e) => {
+                                    setPluginAutoUpdate(e.target.checked)
+                                    setPluginAutoUpdateEnabled(e.target.checked)
+                                }}
+                            />
+                        </div>
+                    </div>
+
                     <div className="p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border space-y-5 shadow-sm">
                         <div className="flex items-center justify-between">
                             <div>

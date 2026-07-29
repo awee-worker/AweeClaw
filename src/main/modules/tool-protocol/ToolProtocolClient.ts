@@ -432,6 +432,21 @@ export class McpClient extends EventEmitter {
 
   /** 插件 in-process 模式：动态加载插件入口模块 */
   private async connectPluginInProcess(config: McpPluginServerConfig): Promise<void> {
+    // 注入插件配置到 process.env（与 stdio 模式对齐）。
+    // stdio 模式通过子进程 env 注入 config.env；in-process 插件共享主进程，
+    // 必须显式写入 process.env，否则插件代码无法读取用户在 configSchema 中填写的配置。
+    // 始终用最新配置覆盖，确保用户修改插件配置后重连能生效。
+    // config.env 的键来自 manifest configSchema 字段名（如 stability_api_key），
+    // 不会与 PATH/HOME 等系统环境变量冲突。
+    if (config.env) {
+      for (const [key, value] of Object.entries(config.env)) {
+        if (typeof value === 'string') {
+          process.env[key] = value
+        }
+      }
+      logger.mcp?.debug?.(`[MCP:${config.id}] Injected ${Object.keys(config.env).length} config env vars for in-process plugin`)
+    }
+
     // 优先使用内置插件工厂（随应用打包的插件，如 computer-use）
     const builtinFactory = McpClient.builtinPluginFactories.get(config.pluginKey)
     let server: { close(): Promise<void> }

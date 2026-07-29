@@ -350,6 +350,11 @@ export class PluginInstaller {
     // 这使 configOnly 模式也能支持自包含代码插件（无需 MinIO 存储服务）
     if (inlineCode && manifest.main) {
       const entryPath = path.join(pluginDir, manifest.main)
+      // 确保入口文件所在目录存在（manifest.main 可能含子路径，如 "dist/index.js"）
+      const entryDir = path.dirname(entryPath)
+      if (!fs.existsSync(entryDir)) {
+        fs.mkdirSync(entryDir, { recursive: true })
+      }
       fs.writeFileSync(entryPath, inlineCode, 'utf-8')
       // 写入 package.json 声明 ESM 模块类型，否则 Node.js 将 .js 按 CommonJS 解析
       // 导致 import 语法报错
@@ -895,7 +900,9 @@ export class PluginInstaller {
     if (authToken) headers['Authorization'] = `Bearer ${authToken}`
 
     const response = await this.makeHttpRequest(url, 'GET', undefined, headers)
-    return JSON.parse(response) as PluginDownloadInfo
+    // 后端统一响应格式为 { success, data, timestamp }，需要解包 data 字段
+    const parsed = JSON.parse(response) as { success?: boolean; data?: PluginDownloadInfo } & PluginDownloadInfo
+    return parsed.data ?? parsed
   }
 
   /** 从后端获取插件详情 */
@@ -909,7 +916,10 @@ export class PluginInstaller {
     if (authToken) headers['Authorization'] = `Bearer ${authToken}`
 
     const response = await this.makeHttpRequest(url, 'GET', undefined, headers)
-    return JSON.parse(response) as MarketplacePluginDetail
+    // 后端统一响应格式为 { success, data, timestamp }，需要解包 data 字段
+    // 不解包会导致 detail.latestVersion 取到 undefined，checkUpdate 永远返回无更新
+    const parsed = JSON.parse(response) as { success?: boolean; data?: MarketplacePluginDetail } & MarketplacePluginDetail
+    return parsed.data ?? parsed
   }
 
   /** 上报安装到后端 */

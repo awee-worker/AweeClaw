@@ -410,6 +410,70 @@ export async function installPluginFromMarketplace(
   }
 }
 
+/**
+ * 升级插件到指定版本（复用安装流程）
+ *
+ * 设计要点：
+ * - 不传 marketItem：让主进程自行 fetchPluginDetail 获取最新详情
+ * - 不传 userConfig：主进程 resolveConfigDefaults 会自动用已保存的 pluginConfigs
+ *   作为兜底，实现升级时保留用户原有配置（API Key 等不丢失）
+ * - 升级流程会自动卸载旧版本运行时、重连 MCP 服务
+ *
+ * @param pluginId  插件 ID（后端主键，非 pluginKey）
+ * @param version   目标版本号
+ * @returns 安装/升级结果
+ */
+export async function updatePlugin(
+  pluginId: string,
+  version: string,
+): Promise<PluginInstallResult> {
+  if (!isAuthenticated()) {
+    return { success: false, error: 'Not authenticated. Please log in first.' }
+  }
+
+  try {
+    const api = getAPI()
+    const backendUrl = getServerUrl()
+    const authToken = getAccessToken() || undefined
+
+    // 获取下载信息（含 manifest、configOnly 标记）
+    const downloadInfo = await backendApi.get<PluginDownloadInfo>(
+      `/api/v1/plugins/download/${pluginId}/${encodeURIComponent(version)}`,
+    )
+
+    // 上报安装（递增下载量、创建/更新免费购买记录）
+    await backendApi.post(`/api/v1/plugins/install/${pluginId}?version=${encodeURIComponent(version)}`, {})
+
+    // 调用主进程 IPC 完成本地升级（不传 userConfig，主进程自动保留旧配置）
+    const ipcResult = await api.plugin.install({
+      pluginId,
+      version,
+      backendUrl,
+      authToken,
+      preloadedDownloadInfo: {
+        downloadUrl: downloadInfo.downloadUrl,
+        checksum: downloadInfo.checksum,
+        packageSize: downloadInfo.packageSize,
+        manifest: downloadInfo.manifest as Record<string, unknown> | undefined,
+        configOnly: downloadInfo.configOnly,
+      },
+      // preloadedPluginDetail 不传：主进程会自行 fetchPluginDetail
+      // userConfig 不传：主进程 resolveConfigDefaults 自动复用已保存配置
+    })
+
+    logger.ipc.info(`[pluginService] Update result: ${ipcResult.success ? 'ok' : 'fail'} (${pluginId} → v${version})`)
+    return {
+      ...ipcResult,
+      manifest: ipcResult.manifest as Record<string, unknown> | undefined,
+    }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    }
+  }
+}
+
 /** 卸载插件 */
 export async function uninstallPlugin(pluginKey: string): Promise<{ success: boolean; error?: string }> {
   try {

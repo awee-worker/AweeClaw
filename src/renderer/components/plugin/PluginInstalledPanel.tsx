@@ -33,6 +33,7 @@ import {
   TrendingUp,
   ExternalLink,
   Settings,
+  Download,
 } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -44,6 +45,7 @@ import {
   enablePlugin,
   disablePlugin,
   checkPluginUpdate,
+  updatePlugin,
 } from '@services/pluginService'
 import type { InstalledPlugin } from '@services/pluginService'
 import type { McpServerStatus } from '@shared/protocols/toolProtocolBridge'
@@ -86,6 +88,8 @@ export function PluginInstalledPanel() {
   const [plugins, setPlugins] = useState<InstalledPlugin[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [operating, setOperating] = useState<string | null>(null)
+  /** 正在升级的插件 pluginKey（用于按钮 loading 态） */
+  const [updatingKey, setUpdatingKey] = useState<string | null>(null)
   const [updates, setUpdates] = useState<Record<string, { hasUpdate: boolean; latestVersion?: string }>>({})
   // 配置编辑对话框
   const [configTarget, setConfigTarget] = useState<{ pluginKey: string; name: string; fields: PluginConfigField[] } | null>(null)
@@ -170,6 +174,42 @@ export function PluginInstalledPanel() {
       }
     } finally {
       setOperating(null)
+    }
+  }
+
+  /** 升级插件到最新版本（保留用户原有配置） */
+  async function handleUpdate(plugin: InstalledPlugin, latestVersion: string) {
+    setUpdatingKey(plugin.pluginKey)
+    const displayName =
+      language === 'zh'
+        ? (plugin.manifest.nameZh as string) || (plugin.manifest.name as string) || plugin.pluginKey
+        : (plugin.manifest.name as string) || plugin.pluginKey
+    try {
+      const result = await updatePlugin(plugin.pluginId, latestVersion)
+      if (result.success) {
+        toast.success(
+          language === 'zh'
+            ? `「${displayName}」已更新到 v${latestVersion}`
+            : `${displayName} updated to v${latestVersion}`,
+        )
+        // 清除该插件的更新标记
+        setUpdates(prev => {
+          const next = { ...prev }
+          delete next[plugin.pluginKey]
+          return next
+        })
+        await loadPlugins()
+      } else {
+        toast.card({
+          type: 'error',
+          title: language === 'zh' ? '更新失败' : 'Update Failed',
+          message: result.error || 'Unknown error',
+          duration: 5000,
+          source: 'PluginInstalled',
+        })
+      }
+    } finally {
+      setUpdatingKey(null)
     }
   }
 
@@ -280,6 +320,7 @@ export function PluginInstalledPanel() {
                 plugin={plugin}
                 language={language}
                 operating={operating === plugin.pluginKey}
+                updating={updatingKey === plugin.pluginKey}
                 updateInfo={updates[plugin.pluginKey]}
                 mcpStatus={mcpServer?.status}
                 mcpError={mcpServer?.error}
@@ -287,6 +328,9 @@ export function PluginInstalledPanel() {
                 onDisable={() => handleDisable(plugin)}
                 onUninstall={() => handleUninstall(plugin)}
                 onOpenConfig={() => handleOpenConfig(plugin)}
+                onUpdate={updates[plugin.pluginKey]?.latestVersion
+                  ? () => handleUpdate(plugin, updates[plugin.pluginKey].latestVersion!)
+                  : undefined}
               />
               )
             })}
@@ -322,6 +366,7 @@ function PluginRow({
   plugin,
   language,
   operating,
+  updating,
   updateInfo,
   mcpStatus,
   mcpError,
@@ -329,10 +374,13 @@ function PluginRow({
   onDisable,
   onUninstall,
   onOpenConfig,
+  onUpdate,
 }: {
   plugin: InstalledPlugin
   language: Language
   operating: boolean
+  /** 正在升级中（更新按钮显示 loading） */
+  updating: boolean
   updateInfo?: { hasUpdate: boolean; latestVersion?: string }
   mcpStatus?: McpServerStatus
   mcpError?: string
@@ -340,6 +388,8 @@ function PluginRow({
   onDisable: () => void
   onUninstall: () => void
   onOpenConfig: () => void
+  /** 升级回调（仅当有更新时传入） */
+  onUpdate?: () => void
 }) {
   const manifest = plugin.manifest as {
     name?: string
@@ -491,6 +541,23 @@ function PluginRow({
 
         {/* 操作按钮 */}
         <div className="shrink-0 flex items-center gap-1">
+          {/* 更新按钮：仅当检测到新版本时展示，橙色高亮 */}
+          {updateInfo?.hasUpdate && onUpdate && (
+            <ActionButton
+              onClick={onUpdate}
+              variant="ghost"
+              size="sm"
+              disabled={operating || updating}
+              title={language === 'zh' ? `更新到 v${updateInfo.latestVersion}` : `Update to v${updateInfo.latestVersion}`}
+              className="text-orange-400 hover:text-orange-300 hover:bg-orange-500/10"
+            >
+              {updating ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Download className="w-3.5 h-3.5" />
+              )}
+            </ActionButton>
+          )}
           {/* 配置按钮：仅当插件声明了 configSchema.fields 时展示 */}
           {manifest.configSchema?.fields && manifest.configSchema.fields.length > 0 && (
             <ActionButton
