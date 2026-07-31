@@ -254,6 +254,9 @@ export function createWindow(isEmpty = false, deferLoad = false): BrowserWindow 
       allowRunningInsecureContent: false,
       v8CacheOptions: 'bypassHeatCheck',
       backgroundThrottling: false,
+      // 启用 <webview> 标签用于内置浏览器（元素检查/原生导航）
+      // 安全由 registerWebviewGuard 的 will-attach-webview 守卫保障
+      webviewTag: true,
     },
   })
 
@@ -261,6 +264,7 @@ export function createWindow(isEmpty = false, deferLoad = false): BrowserWindow 
   registerWindowLifecycle(win)
   registerShortcuts(win)
   registerExternalLinkHandler(win)
+  registerWebviewGuard(win)
 
   const windowId = win.id
   windows.set(windowId, win)
@@ -424,6 +428,56 @@ function registerExternalLinkHandler(win: BrowserWindow): void {
       event.preventDefault()
       openUrlSafely(url)
     }
+  })
+}
+
+/**
+ * webview 安全守卫
+ *
+ * 主窗口启用了 webviewTag 后，必须在此强制覆盖每个 webview 的 webPreferences，
+ * 防止页面通过 <webview> 标签属性（如 nodeintegration）提权；同时校验 src 协议，
+ * 仅允许 http/https（阻止 file://、javascript:、data: 等危险协议）。
+ *
+ * did-attach-webview 在 guest webContents 就绪后注册新窗口与导航拦截，
+ * 使 webview 内的 target=_blank 外部链接走系统浏览器，与主窗口行为一致。
+ */
+function registerWebviewGuard(win: BrowserWindow): void {
+  win.webContents.on('will-attach-webview', (event, webPreferences, params) => {
+    // 强制安全 webPreferences，忽略标签属性中的任何提权设置
+    webPreferences.nodeIntegration = false
+    webPreferences.contextIsolation = true
+    webPreferences.sandbox = true
+    webPreferences.webSecurity = true
+    webPreferences.allowRunningInsecureContent = false
+
+    // 仅允许 http/https 协议，阻止 file://、javascript:、data: 等
+    const src = typeof params.src === 'string' ? params.src.trim() : ''
+    if (!/^https?:\/\//i.test(src)) {
+      logger.system.warn(`[WebviewGuard] Blocked webview with unsafe src: ${src || '(empty)'}`)
+      event.preventDefault()
+      return
+    }
+  })
+
+  win.webContents.on('did-attach-webview', (_event, guestWebContents) => {
+    // webview 内新窗口拦截：devtools 与本地 dev server 放行，其余 http/https 走系统浏览器
+    guestWebContents.setWindowOpenHandler(({ url }) => {
+      if (url.startsWith('devtools://')) {
+        return { action: 'allow' }
+      }
+      if (/^https?:\/\//i.test(url)) {
+        void safeOpenExternal(url)
+        return { action: 'deny' }
+      }
+      return { action: 'deny' }
+    })
+
+    // webview 内导航拦截：仅允许 http/https 同窗口跳转，阻止其他协议
+    guestWebContents.on('will-navigate', (navEvent, url) => {
+      if (!/^https?:\/\//i.test(url)) {
+        navEvent.preventDefault()
+      }
+    })
   })
 }
 

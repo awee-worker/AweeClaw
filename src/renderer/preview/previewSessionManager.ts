@@ -75,21 +75,25 @@ export class PreviewSessionService {
       workspaceRoot?: string
       candidateId?: string
       activate?: boolean
+      /** 强制创建新会话，不复用同 URL 的已有会话（用于「新建标签页」） */
+      forceNew?: boolean
     } = {},
   ): PreviewSession {
-    const existingSessionId = this.sessionByUrl.get(url)
-    if (existingSessionId) {
-      const existingSession = this.sessions.get(existingSessionId)
-      if (existingSession) {
-        useStore.getState().openPreview({
-          sessionId: existingSession.id,
-          url: existingSession.url,
-          title: existingSession.title,
-          source: existingSession.source,
-          workspaceRoot: existingSession.workspaceRoot,
-          candidateId: existingSession.candidateId,
-        }, { activate: options.activate })
-        return existingSession
+    if (!options.forceNew) {
+      const existingSessionId = this.sessionByUrl.get(url)
+      if (existingSessionId) {
+        const existingSession = this.sessions.get(existingSessionId)
+        if (existingSession) {
+          useStore.getState().openPreview({
+            sessionId: existingSession.id,
+            url: existingSession.url,
+            title: existingSession.title,
+            source: existingSession.source,
+            workspaceRoot: existingSession.workspaceRoot,
+            candidateId: existingSession.candidateId,
+          }, { activate: options.activate })
+          return existingSession
+        }
       }
     }
 
@@ -107,7 +111,10 @@ export class PreviewSessionService {
     }
 
     this.sessions.set(session.id, session)
-    this.sessionByUrl.set(session.url, session.id)
+    // forceNew 时不写入 sessionByUrl，避免多个同 URL 新标签页互相覆盖映射
+    if (!options.forceNew) {
+      this.sessionByUrl.set(session.url, session.id)
+    }
     this.rebuildState()
     this.emit()
 
@@ -218,6 +225,30 @@ export class PreviewSessionService {
       ...session,
       status: 'loading',
       reloadToken: session.reloadToken + 1,
+      updatedAt: Date.now(),
+    })
+    this.rebuildState()
+    this.emit()
+  }
+
+  /**
+   * 同步 webview 派生状态（canGoBack/canGoForward/devtoolsOpen/zoomFactor）
+   *
+   * 仅更新内存 sessions Map，不调用 useStore.updatePreviewMetadata，
+   * 避免导航状态频繁变更导致持久化抖动。这些字段为运行时态，无需持久化。
+   */
+  syncWebviewState(
+    sessionId: string,
+    partial: Pick<PreviewSession, 'canGoBack' | 'canGoForward' | 'devtoolsOpen' | 'zoomFactor'>,
+  ): void {
+    const session = this.sessions.get(sessionId)
+    if (!session) {
+      return
+    }
+
+    this.sessions.set(sessionId, {
+      ...session,
+      ...partial,
       updatedAt: Date.now(),
     })
     this.rebuildState()

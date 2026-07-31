@@ -31,6 +31,14 @@ export interface PreviewSession {
   workspaceRoot?: string
   candidateId?: string
   lastError?: string
+  /** 是否可后退（由 webview canGoBack 同步，运行时态，不持久化） */
+  canGoBack?: boolean
+  /** 是否可前进（由 webview canGoForward 同步，运行时态，不持久化） */
+  canGoForward?: boolean
+  /** DevTools 是否打开（运行时态，不持久化） */
+  devtoolsOpen?: boolean
+  /** 当前缩放因子（1.0 = 100%，运行时态） */
+  zoomFactor?: number
 }
 
 export interface OpenPreviewMetadata {

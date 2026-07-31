@@ -38,6 +38,11 @@ export function GlobalErrorHandler({ children }: GlobalErrorHandlerProps) {
       if (error?.message?.includes('TextModel got disposed before DiffEditorWidget')) {
         return
       }
+
+      // 忽略 webview 导航中止错误（-3 ERR_ABORTED，由内置浏览器 did-fail-load 事件处理）
+      if (error?.message?.includes('GUEST_VIEW_MANAGER_CALL')) {
+        return
+      }
       
       const appError = AppError.fromError(error)
       

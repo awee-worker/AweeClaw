@@ -29,12 +29,18 @@ const CAPABILITIES = [
 
 /** 技术栈 */
 const TECH_STACK = [
+  // ── 通用基础技术 ──
   { name: 'Electron', category: 'Runtime' },
   { name: 'React 19', category: 'UI' },
   { name: 'TypeScript', category: 'Language' },
   { name: 'Monaco Editor', category: 'Editor' },
   { name: 'Zustand', category: 'State' },
   { name: 'MCP Protocol', category: 'Tools' },
+  // ── AweeClaw 核心架构 ──
+  { name: 'Scenario', category: 'Framework' },
+  { name: 'Loop', category: 'Agent' },
+  { name: 'Graph', category: 'Engine' },
+  { name: 'Harness', category: 'Runtime' },
 ]
 
 /** 生态入口配置 */
