@@ -251,6 +251,15 @@ async function startCronScheduler(): Promise<void> {
   } catch (err) {
     logger.system.warn('[Main] Cron scheduler start skipped:', errMsg(err))
   }
+
+  // 启动插件级 Cron 调度桥（独立于主 CronScheduler，供插件注册本地回调任务）
+  try {
+    const { getCronSchedulerBridge } = await import('../modules/plugin-sdk/CronSchedulerBridge')
+    getCronSchedulerBridge().start()
+    logger.system.info('[Main] Plugin cron scheduler bridge started')
+  } catch (err) {
+    logger.system.warn('[Main] Plugin cron scheduler bridge start skipped:', errMsg(err))
+  }
 }
 
 /** 非阻塞初始化渠道服务（连接在后台异步进行） */

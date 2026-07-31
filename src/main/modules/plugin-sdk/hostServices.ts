@@ -37,6 +37,8 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { z } from 'zod'
 import { MonitoringService } from '../monitoring/MonitoringService'
 import { IoTBridge } from '../iot/IoTBridge'
+import { InputListenerBridge } from './InputListenerBridge'
+import { CronSchedulerBridge } from './CronSchedulerBridge'
 
 /** Host 服务接口 */
 export interface HostServices {
@@ -85,6 +87,23 @@ export interface HostServices {
    * 注册，并经 IoTIpc 暴露给渲染层。
    */
   iotBridge: IoTBridge
+  /**
+   * 输入监听桥（截图流方案，供 ai-macro-recorder 等插件录制用户操作）
+   *
+   * V1 采用截图流：定时截屏 + 可选变化检测，推送屏幕时间线给插件。
+   * 不依赖 native 输入库，跨平台一致，无需额外系统权限。
+   * 插件通过 host.inputListener.startScreenshotStream(options, cb) 启动采集，
+   * 在回调中对帧做 VLM 语义化推断。
+   */
+  inputListener: InputListenerBridge
+  /**
+   * 插件定时调度桥（独立于主 CronScheduler，供插件注册 cron 任务）
+   *
+   * 与 automation/CronScheduler（发 command 给 Agent）隔离，本桥触发时直接调用
+   * 插件注册的回调，不进入 Agent 对话流。支持注册/取消/暂停/恢复/立即触发，
+   * 并提供 unregisterByPlugin 用于插件卸载时批量清理。
+   */
+  cronScheduler: CronSchedulerBridge
 }
 
 /** 全局变量名 */
@@ -132,6 +151,10 @@ export function initHostServices(): void {
     monitoringService: MonitoringService.getInstance(),
     // 阶段5：IoT Bridge（设备协议适配与传感器读数聚合）
     iotBridge: IoTBridge.getInstance(),
+    // 输入监听桥（截图流方案，供插件录制用户操作）
+    inputListener: InputListenerBridge.getInstance(),
+    // 插件定时调度桥（独立于主 CronScheduler，供插件注册 cron 回调任务）
+    cronScheduler: CronSchedulerBridge.getInstance(),
   }
 
   Object.defineProperty(globalThis, HOST_GLOBAL_KEY, {

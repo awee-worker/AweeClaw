@@ -113,6 +113,20 @@ export async function performGlobalCleanup(): Promise<void> {
       /* ignore */
     }
 
+    // 5.1 插件级 Cron 调度桥 + 输入监听桥（host bridge 扩展服务）
+    try {
+      const { getCronSchedulerBridge } = await import('../modules/plugin-sdk/CronSchedulerBridge')
+      getCronSchedulerBridge().stop()
+    } catch {
+      /* ignore */
+    }
+    try {
+      const { getInputListenerBridge } = await import('../modules/plugin-sdk/InputListenerBridge')
+      getInputListenerBridge().stopAll()
+    } catch {
+      /* ignore */
+    }
+
     // 6. Session 生命周期管理器
     try {
       const { sessionLifecycleManager } = await import('../modules/session/SessionLifecycleManager')
