@@ -338,8 +338,12 @@ export class PluginInstaller {
     const pluginDir = path.join(this.pluginsRoot, pluginDetail.pluginKey, version)
     fs.mkdirSync(pluginDir, { recursive: true })
 
-    // 写入 manifest（排除 inlineCode 字段，避免本地 manifest 过大）
-    const { inlineCode, ...manifestWithoutCode } = manifest as typeof manifest & { inlineCode?: string }
+    // 写入 manifest（排除 inlineCode / inlineUiCode 字段，避免本地 manifest 过大）
+    const {
+      inlineCode,
+      inlineUiCode,
+      ...manifestWithoutCode
+    } = manifest as typeof manifest & { inlineCode?: string; inlineUiCode?: string }
     fs.writeFileSync(
       path.join(pluginDir, 'manifest.json'),
       JSON.stringify(manifestWithoutCode, null, 2),
@@ -365,6 +369,20 @@ export class PluginInstaller {
       )
       logger.system.info(
         `[PluginInstaller] Inline code extracted to ${manifest.main} (${inlineCode.length} chars)`,
+      )
+    }
+
+    // 如果 manifest 内联了 UI 代码（inlineUiCode），写入 contributes.ui.entry 指定的文件
+    // 这使 configOnly 模式也能支持插件 UI（无需 MinIO 存储服务）
+    if (inlineUiCode && manifest.contributes?.ui?.entry) {
+      const uiEntryPath = path.join(pluginDir, manifest.contributes.ui.entry)
+      const uiEntryDir = path.dirname(uiEntryPath)
+      if (!fs.existsSync(uiEntryDir)) {
+        fs.mkdirSync(uiEntryDir, { recursive: true })
+      }
+      fs.writeFileSync(uiEntryPath, inlineUiCode, 'utf-8')
+      logger.system.info(
+        `[PluginInstaller] Inline UI code extracted to ${manifest.contributes.ui.entry} (${inlineUiCode.length} chars)`,
       )
     }
 

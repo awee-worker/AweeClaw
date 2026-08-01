@@ -2024,6 +2024,30 @@ export interface ElectronAPI {
   }>
   /** 读取插件用户配置（用于 {{config.KEY}} 模板替换） */
   pluginGetConfig: (pluginKey: string) => Promise<Record<string, string>>
+  /** 获取已安装插件的 UI 贡献列表（用于扩展点加载器） */
+  pluginGetUiContributions: () => Promise<Array<{
+    pluginKey: string
+    version: string
+    uiEntryAbsPath: string
+    contributes: {
+      ui?: { entry: string }
+      sidebarPanels?: Array<{
+        id: string
+        icon: string
+        label: string
+        labelZh: string
+        component: string
+        position?: number
+        wideMode?: boolean
+      }>
+      topActions?: Array<{
+        id: string
+        component: string
+        position?: number
+      }>
+    }
+    mcpServerId?: string
+  }>
   /** 保存插件用户配置（并触发 MCP 重连，若该插件是 MCP 型且已注册） */
   pluginSaveConfig: (
     pluginKey: string,

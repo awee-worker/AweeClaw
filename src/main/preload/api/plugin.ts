@@ -117,6 +117,34 @@ export interface PluginUpdateInfo {
   latestVersion?: string
 }
 
+/** 插件 UI 贡献记录（与主进程 PluginUiContribution 对应） */
+export interface PluginUiContributionRecord {
+  pluginKey: string
+  version: string
+  /** ui.js 绝对路径 */
+  uiEntryAbsPath: string
+  /** UI 贡献声明（sidebarPanels + topActions） */
+  contributes: {
+    ui?: { entry: string }
+    sidebarPanels?: Array<{
+      id: string
+      icon: string
+      label: string
+      labelZh: string
+      component: string
+      position?: number
+      wideMode?: boolean
+    }>
+    topActions?: Array<{
+      id: string
+      component: string
+      position?: number
+    }>
+  }
+  /** MCP 服务器 ID（用于 callTool） */
+  mcpServerId?: string
+}
+
 // ─── API 工厂 ──
 
 export function createPluginApi() {
@@ -138,6 +166,10 @@ export function createPluginApi() {
       invoke<PluginInstalledRecord[]>('plugin:getInstalled')(),
     pluginIsInstalled: (pluginKey: string) =>
       invoke<boolean>('plugin:isInstalled')(pluginKey),
+
+    // ── 插件 UI 贡献（扩展点加载器使用） ──
+    pluginGetUiContributions: () =>
+      invoke<PluginUiContributionRecord[]>('plugin:getUiContributions')(),
 
     // ── 更新 ──
     pluginCheckUpdate: (

@@ -23,6 +23,7 @@ import GlobalToastContainer from '@components/foundation/AppToastContainer'
 import { ThemeManager } from '@components/workspace-editor/EditorThemeProvider'
 import { FullScreenLoading } from './components/ui/ProgressIndicator'
 import { startupMetrics } from '@shared/toolkit/bootMetrics'
+import { PluginHostBridge } from '@renderer/plugins/PluginHostBridge'
 
 startupMetrics.mark('app-module-loaded')
 
@@ -274,6 +275,9 @@ function AppContent() {
 
       <GlobalDecisionOverlay />
       <GlobalToastContainer />
+
+      {/* 插件宿主桥接器：代理插件 UI 的宿主能力请求（如发送聊天消息），无 UI */}
+      <PluginHostBridge />
     </div>
   )
 }

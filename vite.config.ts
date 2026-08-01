@@ -60,6 +60,11 @@ const EXTERNAL_DEPS = [
   'bluetooth-hci-socket',
   // MQTT 协议模块（s9-10，mqtt 懒加载 require，保持 external 避免 Rollup 打包）
   'mqtt',
+  // 原生输入监听模块（uiohook-napi，供 ai-macro-recorder 录制鼠标/键盘事件）
+  // 必须保持 external：该模块内部使用 node-gyp-build 加载 .node 二进制，
+  // 若被 Rollup 打包进 chunk，__dirname 路径错误导致 node-gyp-build 找不到 prebuild 二进制
+  'uiohook-napi',
+  'node-gyp-build',
 ]
 
 // 路径别名配置

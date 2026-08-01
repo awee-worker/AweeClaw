@@ -38,6 +38,7 @@ import { Volume2 } from 'lucide-react'
 import DockPopover from '../ui/DockPopover'
 import NotificationCenterContent, { NotificationClearButton } from '../dock-panels/NotificationPanel'
 import { getQuotaBarColor, getQuotaTextColor, getQuotaGlowColor } from '@utils/quotaColors'
+import { PluginTopActions } from '@renderer/plugins/PluginTopActions'
 import { formatTokenCount } from '@utils/formatter'
 import { useEffect } from 'react'
 import { t, type Language } from '@renderer/i18n'
@@ -266,6 +267,8 @@ export default function AppTitleBar() {
               >
                 <Phone className="w-3.5 h-3.5" />
               </button>
+              {/* 插件贡献的顶部按钮（扩展点），紧跟语音按钮之后 */}
+              <PluginTopActions />
             </>
           )}
 

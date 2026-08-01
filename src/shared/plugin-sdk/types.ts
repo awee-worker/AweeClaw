@@ -50,6 +50,8 @@ export interface PluginManifest {
   configSchema?: PluginConfigSchema
   /** 所需权限 */
   permissions?: PluginPermission[]
+  /** UI 扩展点贡献（Phase 6：插件 UI 渲染） */
+  contributes?: PluginContributes
   /** 支持的平台 */
   platforms?: PluginPlatform[]
   /** 是否为内置插件 */
@@ -228,6 +230,7 @@ export type PluginPermission =
   | 'desktop.recording'    // 操作录制
   | 'desktop.workflow'     // 工作流执行
   | 'desktop.visual-agent' // 视觉智能体
+  | 'ui.render'            // Phase 6: 在客户端渲染 UI 组件
 
 // ============================================
 // 插件运行时接口
@@ -404,3 +407,76 @@ export type PluginSystemEvent =
 
 /** 插件事件监听器 */
 export type PluginSystemEventListener = (event: PluginSystemEvent) => void
+
+// ============================================
+// 插件 UI 扩展点（Phase 6）
+// ============================================
+
+/**
+ * 插件 UI 入口声明
+ *
+ * 插件通过 contributes.ui.entry 指定 UI bundle 的相对路径（相对于插件根目录）。
+ * bundle 必须是 ESM 格式，默认导出形状：
+ *   { components: { [key]: Component }, topActions: { [key]: Component } }
+ *
+ * bundle 中的 bare specifier（react、zustand、lucide-react 等）会被重写为
+ * 从 window.__AWEECLAW_SHARED__.modules 读取，无需插件自行打包这些依赖。
+ */
+export interface PluginUiEntry {
+  /** ESM bundle 相对路径（相对于插件根目录），如 "ui.js" */
+  entry: string
+}
+
+/**
+ * 插件 UI 贡献声明
+ *
+ * 插件通过 manifest.contributes 声明要注入到客户端的 UI 元素。
+ * 客户端安装插件后，PluginUiRegistry 会扫描此字段并加载对应组件。
+ */
+export interface PluginContributes {
+  /** UI 入口（缺省时无 UI 贡献） */
+  ui?: PluginUiEntry
+  /** 侧边栏面板贡献（注入到 NavigationRail 导航项） */
+  sidebarPanels?: PluginSidebarPanelContribution[]
+  /** 顶部按钮贡献（注入到聊天头部操作区） */
+  topActions?: PluginTopActionContribution[]
+}
+
+/**
+ * 侧边栏面板贡献 — 形状与 SidebarItemDescriptor 兼容
+ *
+ * id 建议以 "<pluginKey>:" 为前缀避免与内置面板冲突。
+ */
+export interface PluginSidebarPanelContribution {
+  /** 面板唯一 id，建议以插件 id 为前缀，如 "ai-macro-recorder:panel" */
+  id: string
+  /** lucide 图标名（通过 IconMap 解析） */
+  icon: string
+  /** 英文标签 */
+  label: string
+  /** 中文标签 */
+  labelZh: string
+  /**
+   * ui.js 模块导出的组件键名。
+   * 插件 ui.js 默认导出应为 { components: { [key]: Component }, ... }
+   */
+  component: string
+  /** 排序权重，越大越靠下；默认 50（位于内置项之后） */
+  position?: number
+  /** 是否宽模式（面板在主内容区全屏展示） */
+  wideMode?: boolean
+}
+
+/**
+ * 顶部按钮贡献
+ *
+ * 按钮组件自行渲染图标和状态，通过 props.host 调用插件 MCP 工具。
+ */
+export interface PluginTopActionContribution {
+  /** 按钮唯一 id，如 "ai-macro-recorder:record" */
+  id: string
+  /** ui.js 模块导出的组件键名（topActions 映射中的键） */
+  component: string
+  /** 排序权重，越大越靠右；默认 50 */
+  position?: number
+}

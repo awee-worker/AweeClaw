@@ -17,6 +17,15 @@ logger.refreshProductionMode()
 // ProgrammaticScenarioLoader 中有兜底检查（isInjected + await），确保 bundle 执行前已注入。
 injectSharedDependencies()
 
+// 初始化插件 UI 扩展点注册表：拉取已安装插件的 contributes 声明，
+// 注册插件贡献的侧边栏导航项（懒加载，ui.js 在面板首次激活时才 import）。
+// 不 await：注册表初始化是异步的，导航项就绪后通过订阅机制触发 NavigationRail 重新渲染。
+void import('./plugins/PluginUiRegistry').then(({ pluginUiRegistry }) => {
+  pluginUiRegistry.initialize().catch((err) => {
+    logger.system.error('[Bootstrap] PluginUiRegistry initialize failed:', err)
+  })
+})
+
 // ============================================
 // 主应用入口
 // ============================================

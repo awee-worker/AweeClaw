@@ -420,6 +420,15 @@ export async function installPluginFromMarketplace(
     })
 
     logger.ipc.debug('[pluginService] IPC install result:', JSON.stringify(ipcResult))
+
+    // 安装成功后刷新插件 UI 扩展点注册表，使新插件贡献的导航项/顶部按钮立即可用
+    // 失败不阻塞返回值（已安装成功），仅记录日志
+    if (ipcResult.success) {
+      void refreshPluginUiRegistry().catch((e) =>
+        logger.ipc.warn(`[pluginService] refreshPluginUiRegistry after install failed: ${e}`),
+      )
+    }
+
     return {
       ...ipcResult,
       manifest: ipcResult.manifest as Record<string, unknown> | undefined,
@@ -430,6 +439,18 @@ export async function installPluginFromMarketplace(
       error: err instanceof Error ? err.message : String(err),
     }
   }
+}
+
+/**
+ * 刷新插件 UI 扩展点注册表
+ *
+ * 动态 import 避免循环依赖（PluginUiRegistry 可能间接依赖 pluginService）。
+ * 在插件安装/卸载/更新/启用/禁用成功后调用，使 UI 扩展点（导航项、顶部按钮）
+ * 即时反映变更，无需重启应用。
+ */
+async function refreshPluginUiRegistry(): Promise<void> {
+  const { pluginUiRegistry } = await import('@renderer/plugins/PluginUiRegistry')
+  await pluginUiRegistry.refresh()
 }
 
 /**
@@ -484,6 +505,14 @@ export async function updatePlugin(
     })
 
     logger.ipc.info(`[pluginService] Update result: ${ipcResult.success ? 'ok' : 'fail'} (${pluginId} → v${version})`)
+
+    // 更新成功后刷新插件 UI 扩展点注册表（版本变化会触发 reloadPlugin 清理旧组件并重新注册）
+    if (ipcResult.success) {
+      void refreshPluginUiRegistry().catch((e) =>
+        logger.ipc.warn(`[pluginService] refreshPluginUiRegistry after update failed: ${e}`),
+      )
+    }
+
     return {
       ...ipcResult,
       manifest: ipcResult.manifest as Record<string, unknown> | undefined,
@@ -500,7 +529,15 @@ export async function updatePlugin(
 export async function uninstallPlugin(pluginKey: string): Promise<{ success: boolean; error?: string }> {
   try {
     const api = getAPI()
-    return await api.plugin.uninstall(pluginKey)
+    const result = await api.plugin.uninstall(pluginKey)
+
+    // 卸载成功后刷新插件 UI 扩展点注册表，使导航项/顶部按钮立即消失
+    if (result.success) {
+      void refreshPluginUiRegistry().catch((e) =>
+        logger.ipc.warn(`[pluginService] refreshPluginUiRegistry after uninstall failed: ${e}`),
+      )
+    }
+    return result
   } catch (err) {
     return {
       success: false,
@@ -513,7 +550,15 @@ export async function uninstallPlugin(pluginKey: string): Promise<{ success: boo
 export async function enablePlugin(pluginKey: string): Promise<{ success: boolean; error?: string }> {
   try {
     const api = getAPI()
-    return await api.plugin.enable(pluginKey)
+    const result = await api.plugin.enable(pluginKey)
+
+    // 启用后刷新插件 UI 扩展点注册表，使该插件贡献的导航项/顶部按钮重新出现
+    if (result.success) {
+      void refreshPluginUiRegistry().catch((e) =>
+        logger.ipc.warn(`[pluginService] refreshPluginUiRegistry after enable failed: ${e}`),
+      )
+    }
+    return result
   } catch (err) {
     return {
       success: false,
@@ -526,7 +571,15 @@ export async function enablePlugin(pluginKey: string): Promise<{ success: boolea
 export async function disablePlugin(pluginKey: string): Promise<{ success: boolean; error?: string }> {
   try {
     const api = getAPI()
-    return await api.plugin.disable(pluginKey)
+    const result = await api.plugin.disable(pluginKey)
+
+    // 禁用后刷新插件 UI 扩展点注册表，使该插件贡献的导航项/顶部按钮立即消失
+    if (result.success) {
+      void refreshPluginUiRegistry().catch((e) =>
+        logger.ipc.warn(`[pluginService] refreshPluginUiRegistry after disable failed: ${e}`),
+      )
+    }
+    return result
   } catch (err) {
     return {
       success: false,

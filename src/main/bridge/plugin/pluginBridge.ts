@@ -17,7 +17,8 @@
  * - plugin:onInstallProgress  安装进度事件订阅
  */
 
-import { BrowserWindow } from 'electron'
+import { BrowserWindow, app } from 'electron'
+import * as path from 'path'
 import { logger } from '@shared/toolkit/LogEngine'
 import { safeIpcHandle } from '../core/ipcGuard'
 import { getPluginInstaller } from '../../modules/plugin-sdk/PluginInstaller'
@@ -27,6 +28,19 @@ import type {
   InstallProgress,
   InstalledPluginRecord,
 } from '../../modules/plugin-sdk/PluginInstaller'
+import type { PluginContributes } from '@shared/plugin-sdk/types'
+
+/** 插件 UI 贡献记录（供渲染进程扩展点加载器使用） */
+export interface PluginUiContribution {
+  pluginKey: string
+  version: string
+  /** ui.js 绝对路径（pluginsRoot/pluginKey/version/uiEntry） */
+  uiEntryAbsPath: string
+  /** UI 贡献声明（sidebarPanels + topActions） */
+  contributes: PluginContributes
+  /** MCP 服务器 ID（用于 callTool） */
+  mcpServerId?: string
+}
 
 /** IPC 上下文（与 registerHandlers 一致） */
 interface PluginIpcContext {
@@ -85,6 +99,36 @@ export function registerPluginHandlers(context: PluginIpcContext): void {
     'plugin:getInstalled',
     async () => {
       return installer.getInstalledList()
+    },
+    'plugin',
+  )
+
+  // ── 插件 UI 贡献列表（用于扩展点加载器） ──
+  // 返回有 contributes.ui 的已安装插件，含 ui.js 绝对路径和 contributes 声明
+  safeIpcHandle<PluginUiContribution[]>(
+    'plugin:getUiContributions',
+    async () => {
+      const installed = installer.getInstalledList()
+      const result: PluginUiContribution[] = []
+      for (const rec of installed) {
+        const contributes = rec.manifest?.contributes
+        if (!contributes?.ui?.entry || !rec.enabled) continue
+        const pluginDir = path.join(
+          app.getPath('userData'),
+          'plugins',
+          rec.pluginKey,
+          rec.version,
+        )
+        const uiEntryAbsPath = path.join(pluginDir, contributes.ui.entry)
+        result.push({
+          pluginKey: rec.pluginKey,
+          version: rec.version,
+          uiEntryAbsPath,
+          contributes,
+          mcpServerId: rec.mcpServerId,
+        })
+      }
+      return result
     },
     'plugin',
   )

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { Settings, Workflow, Compass, LogIn, ChevronUp, CloudSync, Info, MessageSquare, Plus, MoreHorizontal, Edit2, Trash2, LogOut, UserCircle, Wallet, History, Clock, Puzzle } from 'lucide-react'
+import { Settings, Compass, LogIn, ChevronUp, CloudSync, Info, MessageSquare, Plus, MoreHorizontal, Edit2, Trash2, LogOut, UserCircle, Wallet, History, Clock, Puzzle } from 'lucide-react'
 import { HintOverlay } from '../ui/HintOverlay'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -20,6 +20,7 @@ import type { SidePanel } from '@store/slices'
 import { BRAND } from '@shared/brand'
 import { formatUserDisplayName } from '@shared/toolkit/formatHelper'
 import { t, type Language } from '@renderer/i18n'
+import { usePluginExtensions } from '@renderer/plugins/usePluginExtensions'
 
 const isMac = typeof navigator !== 'undefined' && (
   navigator.platform.toUpperCase().indexOf('MAC') >= 0 ||
@@ -423,10 +424,14 @@ export default function NavigationRail() {
   const rawSidebarItems = scenario?.ui?.sidebarItems?.length
     ? [...scenario.ui.sidebarItems].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
     : DEFAULT_ITEMS
-  const sidebarItems = rawSidebarItems.filter(item => {
+  const scenarioSidebarItems = rawSidebarItems.filter(item => {
     if (item.id === 'checkpoint' && activeScenarioId !== 'dev-assistant') return false
     return true
   })
+
+  // 合并插件贡献的侧边栏面板（来自 PluginUiRegistry）
+  const { sidebarItems: pluginSidebarItems } = usePluginExtensions()
+  const sidebarItems = [...scenarioSidebarItems, ...pluginSidebarItems]
 
   const p = BRAND.cssPrefix
 

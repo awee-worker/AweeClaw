@@ -1,17 +1,46 @@
 import type { ComponentType } from 'react'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { scenarioLoader } from '@scenario-system/core'
+import type { PluginHostApi } from '@renderer/plugins/types'
 
 type PanelComponent = ComponentType<unknown>
 
-const panelComponentRegistry = new Map<string, PanelComponent>()
+/** 注册表条目：组件 + 可选的插件宿主 API */
+interface PanelRegistryEntry {
+  component: PanelComponent
+  /** 插件面板专属的宿主 API；场景面板为 undefined */
+  host?: PluginHostApi
+}
 
-export function registerPanelComponent(panelId: string, component: PanelComponent): void {
-  panelComponentRegistry.set(panelId, component)
+const panelComponentRegistry = new Map<string, PanelRegistryEntry>()
+
+/**
+ * 注册面板组件
+ *
+ * @param panelId 面板 ID（场景面板用 scenario item id，插件面板用 contribution.id）
+ * @param component 面板 React 组件
+ * @param host 插件面板专属的宿主 API（场景面板不传）
+ */
+export function registerPanelComponent(
+  panelId: string,
+  component: PanelComponent,
+  host?: PluginHostApi,
+): void {
+  panelComponentRegistry.set(panelId, { component, host })
 }
 
 export function getPanelComponent(panelId: string): PanelComponent | undefined {
-  return panelComponentRegistry.get(panelId)
+  return panelComponentRegistry.get(panelId)?.component
+}
+
+/**
+ * 获取面板的宿主 API（仅插件面板有）
+ *
+ * 供 AdaptivePanelView 渲染插件面板时取出并作为 props.host 传入。
+ * 场景面板返回 undefined。
+ */
+export function getPanelHost(panelId: string): PluginHostApi | undefined {
+  return panelComponentRegistry.get(panelId)?.host
 }
 
 export function hasPanelComponent(panelId: string): boolean {

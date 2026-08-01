@@ -11,7 +11,7 @@
  *   列表 ← pluginService.getInstalledPlugins → IPC
  *   操作 ← pluginService.enable/disable/uninstall → IPC
  */
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   Trash2,
   Power,
@@ -36,6 +36,8 @@ import {
   Download,
   Clock,
   Globe,
+  Search,
+  X,
 } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -103,6 +105,53 @@ export function PluginInstalledPanel() {
   const [updates, setUpdates] = useState<Record<string, { hasUpdate: boolean; latestVersion?: string }>>({})
   // 配置编辑对话框
   const [configTarget, setConfigTarget] = useState<{ pluginKey: string; name: string; fields: PluginConfigField[] } | null>(null)
+  /** 搜索关键字（匹配名称、pluginKey、描述、类型） */
+  const [searchQuery, setSearchQuery] = useState('')
+
+  /**
+   * 按关键字过滤已安装插件
+   *
+   * 匹配字段（大小写不敏感）：
+   * - 插件名（name / nameZh）
+   * - pluginKey
+   * - 描述（description / descriptionZh）
+   * - 类型徽章（mcp / channel / tool 等）
+   * - 分类（category）
+   * - 版本号
+   *
+   * 空关键字返回全部列表（保持原引用，避免无谓重渲染）。
+   */
+  const filteredPlugins = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+    if (!query) return plugins
+    return plugins.filter((plugin) => {
+      const manifest = plugin.manifest as {
+        name?: string
+        nameZh?: string
+        description?: string
+        descriptionZh?: string
+        category?: string
+      }
+      const name = (manifest.name || '').toLowerCase()
+      const nameZh = (manifest.nameZh || '').toLowerCase()
+      const pluginKey = plugin.pluginKey.toLowerCase()
+      const desc = (manifest.description || '').toLowerCase()
+      const descZh = (manifest.descriptionZh || '').toLowerCase()
+      const category = (manifest.category || '').toLowerCase()
+      const types = (plugin.types || []).join(' ').toLowerCase()
+      const version = (plugin.version || '').toLowerCase()
+      return (
+        name.includes(query) ||
+        nameZh.includes(query) ||
+        pluginKey.includes(query) ||
+        desc.includes(query) ||
+        descZh.includes(query) ||
+        category.includes(query) ||
+        types.includes(query) ||
+        version.includes(query)
+      )
+    })
+  }, [plugins, searchQuery])
 
   const loadPlugins = useCallback(async () => {
     setIsLoading(true)
@@ -256,21 +305,6 @@ export function PluginInstalledPanel() {
     }
   }
 
-  // 空状态
-  if (!isLoading && plugins.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full px-4 text-center">
-        <Package className="w-8 h-8 text-text-muted/40 mb-3" />
-        <p className="text-xs text-text-muted mb-1">
-          {language === 'zh' ? '暂无已安装插件' : 'No installed plugins'}
-        </p>
-        <p className="text-[12px] text-text-muted/60">
-          {language === 'zh' ? '前往插件市场安装插件' : 'Go to marketplace to install plugins'}
-        </p>
-      </div>
-    )
-  }
-
   /** 从 manifest 提取 configSchema.fields（类型安全） */
   function extractConfigFields(manifest: Record<string, unknown>): PluginConfigField[] {
     const schema = manifest.configSchema as { fields?: PluginConfigField[] } | undefined
@@ -288,14 +322,40 @@ export function PluginInstalledPanel() {
   return (
     <div className="flex flex-col h-full">
       {/* 顶部操作栏 */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border/40">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-border/40 flex-shrink-0">
+        {/* 搜索框 */}
+        <div className="relative flex-1 min-w-0">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted/60 pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={language === 'zh' ? '搜索已安装插件...' : 'Search installed plugins...'}
+            className="w-full h-8 pl-8 pr-7 text-xs bg-bg-hover rounded-md border border-border/40 focus:border-accent/50 focus:outline-none"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-text-muted/60 hover:text-text-primary hover:bg-text-primary/10 transition-colors"
+              title={language === 'zh' ? '清除' : 'Clear'}
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        {/* 计数 */}
+        <div className="flex items-center gap-1.5 shrink-0">
           <span className="text-xs font-medium">
             {language === 'zh' ? '已安装' : 'Installed'}
           </span>
-          <span className="text-[12px] text-text-muted">({plugins.length})</span>
+          <span className="text-[12px] text-text-muted">
+            ({searchQuery ? `${filteredPlugins.length}/${plugins.length}` : plugins.length})
+          </span>
         </div>
-        <div className="flex items-center gap-1.5">
+
+        {/* 操作按钮 */}
+        <div className="flex items-center gap-1.5 shrink-0">
           <ActionButton
             onClick={handleCheckAllUpdates}
             variant="ghost"
@@ -305,7 +365,7 @@ export function PluginInstalledPanel() {
             <RefreshCw className={`w-3.5 h-3.5 ${operating === '__check_updates__' ? 'animate-spin' : ''}`} />
             <span>{language === 'zh' ? '检查更新' : 'Check Updates'}</span>
           </ActionButton>
-          <ActionButton onClick={loadPlugins} variant="ghost" size="sm" disabled={isLoading}>
+          <ActionButton onClick={loadPlugins} variant="ghost" size="sm" disabled={isLoading} title={language === 'zh' ? '刷新' : 'Refresh'}>
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
           </ActionButton>
         </div>
@@ -317,9 +377,39 @@ export function PluginInstalledPanel() {
           <div className="flex items-center justify-center h-32">
             <RefreshCw className="w-4 h-4 animate-spin text-text-muted" />
           </div>
+        ) : filteredPlugins.length === 0 ? (
+          /* 空状态：区分「无插件」和「搜索无结果」两种情况 */
+          <div className="flex flex-col items-center justify-center h-32 px-4 text-center">
+            {searchQuery ? (
+              <>
+                <Search className="w-6 h-6 text-text-muted/40 mb-2" />
+                <p className="text-xs text-text-muted">
+                  {language === 'zh'
+                    ? `未找到匹配「${searchQuery}」的插件`
+                    : `No plugins match "${searchQuery}"`}
+                </p>
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="mt-2 text-[12px] text-accent hover:underline"
+                >
+                  {language === 'zh' ? '清除搜索' : 'Clear search'}
+                </button>
+              </>
+            ) : (
+              <>
+                <Package className="w-8 h-8 text-text-muted/40 mb-3" />
+                <p className="text-xs text-text-muted mb-1">
+                  {language === 'zh' ? '暂无已安装插件' : 'No installed plugins'}
+                </p>
+                <p className="text-[12px] text-text-muted/60">
+                  {language === 'zh' ? '前往插件市场安装插件' : 'Go to marketplace to install plugins'}
+                </p>
+              </>
+            )}
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3">
-            {plugins.map((plugin) => {
+            {filteredPlugins.map((plugin) => {
               // 查找该插件对应的 MCP 服务器状态
               const mcpServer = plugin.mcpServerId
                 ? mcpServers.find(s => s.id === plugin.mcpServerId)

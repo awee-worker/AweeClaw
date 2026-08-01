@@ -28,6 +28,10 @@ import {
   registerScenarioBundleHandler,
 } from './bootstrap/scenarioBundleProtocol'
 import {
+  registerPluginBundleScheme,
+  registerPluginBundleHandler,
+} from './bootstrap/pluginBundleProtocol'
+import {
   createWindow,
   loadWindowContent,
   getMainWindow,
@@ -109,6 +113,9 @@ registerLocalPreviewScheme()
 // 注册 scenario-bundle 协议为 privileged（用于编程式场景 ESM bundle 加载）
 registerScenarioBundleScheme()
 
+// 注册 plugin-bundle 协议为 privileged（用于插件 UI ESM bundle 加载）
+registerPluginBundleScheme()
+
 // ==========================================
 // 全局异常处理
 // ==========================================
@@ -143,6 +150,9 @@ app.whenReady().then(async () => {
 
   // 注册 scenario-bundle 协议处理器（用于编程式场景 ESM bundle 加载）
   registerScenarioBundleHandler()
+
+  // 注册 plugin-bundle 协议处理器（用于插件 UI ESM bundle 加载）
+  registerPluginBundleHandler()
 
   // 2. 初始化 Store（必须在模块加载前完成）
   await initStores()
