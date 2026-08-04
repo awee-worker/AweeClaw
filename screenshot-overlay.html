@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AweeClaw Screenshot Overlay</title>
+  <!-- 截图覆盖窗口：全屏透明、无滚动条、禁用文本选择 -->
+  <!-- 背景必须透明：用户透过窗口看到真实桌面，在桌面上直接框选，杜绝"截图展示在窗口上"的重影问题 -->
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: transparent;
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-user-drag: none;
+      cursor: crosshair;
+    }
+    #root { width: 100%; height: 100%; }
+  </style>
+</head>
+
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/renderer/screenshotOverlayEntry.tsx"></script>
+</body>
+
+</html>

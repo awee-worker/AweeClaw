@@ -18,7 +18,32 @@
 
 import { backendApi, getServerUrl, getAccessToken, tryRefreshToken } from '../adapters/backendApi';
 import { api } from '../adapters/electronBridge';
-import { useStore } from '@store';
+
+/**
+ * 云端模式状态（模块级缓存，避免对全局 store 的依赖）
+ *
+ * 设计原因：
+ * 原实现 `useStore.getState().cloudMode` 会将 `@store`（聚合 12 个 slice、含 MCP/Monaco/插件等重依赖）
+ * 拉入本模块。悬浮头像窗口作为轻量独立 renderer，不能导入 `@store`（会重复启动 MCP 连接等副作用），
+ * 因此改用「初始化器注入」模式解耦：
+ *
+ * - 主窗口 `AweeApp.tsx` 在初始化及 `cloudMode` 变化时调用 `setVoiceCloudMode(mode)` 注入最新值。
+ * - 头像窗口通过 IPC 取得 cloudMode 后同样调用 `setVoiceCloudMode(mode)` 注入。
+ * - 默认值 `'cloud'` 保持与原行为一致（未注入时按云端模式处理）。
+ */
+let currentCloudMode: 'cloud' | 'local' = 'cloud';
+
+/** 注入云端模式状态（由主窗口/头像窗口在初始化时调用） */
+export function setVoiceCloudMode(mode: 'cloud' | 'local'): void {
+  if (mode !== currentCloudMode) {
+    currentCloudMode = mode;
+  }
+}
+
+/** 获取当前云端模式状态（供外部读取，主要用于日志/调试） */
+export function getVoiceCloudMode(): 'cloud' | 'local' {
+  return currentCloudMode;
+}
 
 export interface SttResult {
   text: string;
@@ -108,9 +133,9 @@ async function fetchWithoutAuthRetry(
   return fetch(url, init);
 }
 
-/** 读取云端模式状态（避免循环依赖，每次调用时实时读取） */
+/** 读取云端模式状态（由 setVoiceCloudMode 注入，避免对全局 store 的依赖） */
 function isCloudMode(): boolean {
-  return useStore.getState().cloudMode === 'cloud'
+  return currentCloudMode === 'cloud'
 }
 
 /** 加载本地语音模型配置（自定义模式使用） */

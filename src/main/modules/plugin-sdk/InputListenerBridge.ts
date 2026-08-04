@@ -17,6 +17,7 @@
  * @module plugin-sdk/InputListenerBridge
  */
 
+import { exec } from 'node:child_process'
 import { nativeImage, screen, shell, systemPreferences } from 'electron'
 import { logger } from '@shared/toolkit/LogEngine'
 import { getDesktopControlManager } from '../desktop-control/DesktopControlManager'
@@ -388,6 +389,8 @@ export class InputListenerBridge {
    * prompt=true 时的行为：
    *   - 先调用 isTrustedAccessibilityClient(true) 尝试弹出系统授权对话框（仅首次有效）
    *   - 如果权限仍未授予（用户之前拒绝过 / 非首次），直接打开系统设置的辅助功能面板
+   *   - 使用 child_process.exec('open ...') 作为主要方式（比 shell.openExternal 更可靠），
+   *     shell.openExternal 作为降级方案
    *   - 这样无论用户之前是否拒绝过，都能引导到正确的设置页面
    *
    * @param prompt 是否弹出系统授权对话框（仅 macOS 有效）
@@ -404,11 +407,25 @@ export class InputListenerBridge {
       // isTrustedAccessibilityClient(true) 仅首次请求时弹窗，用户拒绝过就不再弹
       // 所以这里主动打开系统设置，确保用户能找到授权入口
       if (prompt) {
-        void shell
-          .openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility')
-          .catch((err) => {
-            logger.system?.warn(`[InputListenerBridge] Failed to open Accessibility settings: ${err}`)
-          })
+        const accessibilityUrl =
+          'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'
+
+        // 方案1：使用 macOS 原生的 open 命令（最可靠，不受 Electron sandbox 影响）
+        exec(`open "${accessibilityUrl}"`, (err) => {
+          if (err) {
+            logger.system?.warn(
+              `[InputListenerBridge] exec open failed: ${err.message}, fallback to shell.openExternal`,
+            )
+            // 方案2：降级到 shell.openExternal
+            void shell.openExternal(accessibilityUrl).catch((shellErr) => {
+              logger.system?.error(
+                `[InputListenerBridge] shell.openExternal also failed: ${shellErr}`,
+              )
+            })
+          } else {
+            logger.system?.info('[InputListenerBridge] Opened Accessibility settings via open command')
+          }
+        })
       }
       return 'denied'
     } catch {

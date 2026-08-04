@@ -16,6 +16,7 @@
  * @module desktop-control/AccessibilityPermission
  */
 
+import { exec } from 'node:child_process'
 import { shell, systemPreferences } from 'electron'
 import { logger } from '@shared/toolkit/LogEngine'
 
@@ -125,6 +126,9 @@ export class AccessibilityPermissionService {
   /**
    * 打开系统偏好设置对应面板
    * 仅 macOS 有效
+   *
+   * 使用 exec('open ...') 作为主要方式（比 shell.openExternal 更可靠，
+   * 不受 Electron sandbox 限制），shell.openExternal 作为降级方案。
    */
   async openSystemPreferences(type: AccessibilityPermissionType = 'accessibility'): Promise<boolean> {
     if (process.platform !== 'darwin') {
@@ -133,14 +137,30 @@ export class AccessibilityPermissionService {
     }
 
     const url = SYSTEM_PREFERENCES_URL[type]
-    try {
-      await shell.openExternal(url)
-      logger.desktop.info(`[AccessibilityPermission] Opened system preferences for ${type}`)
-      return true
-    } catch (err) {
-      logger.desktop.error(`[AccessibilityPermission] Failed to open preferences:`, err)
-      return false
-    }
+
+    return new Promise((resolve) => {
+      // 方案1：使用 macOS 原生的 open 命令（最可靠）
+      exec(`open "${url}"`, (err) => {
+        if (err) {
+          logger.desktop.warn(
+            `[AccessibilityPermission] exec open failed: ${err.message}, fallback to shell.openExternal`,
+          )
+          // 方案2：降级到 shell.openExternal
+          shell.openExternal(url)
+            .then(() => {
+              logger.desktop.info(`[AccessibilityPermission] Opened system preferences for ${type} via shell.openExternal`)
+              resolve(true)
+            })
+            .catch((shellErr) => {
+              logger.desktop.error(`[AccessibilityPermission] shell.openExternal also failed:`, shellErr)
+              resolve(false)
+            })
+        } else {
+          logger.desktop.info(`[AccessibilityPermission] Opened system preferences for ${type} via open command`)
+          resolve(true)
+        }
+      })
+    })
   }
 
   /**

@@ -26,8 +26,11 @@ import {
 } from '@intelligence/toolkit'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { useStore } from '@store'
-import { getToolApprovalType } from '@configuration/toolDefinitions'
+import { getToolApprovalType, getToolDisplayName } from '@configuration/toolDefinitions'
 import { requiresApprovalGate } from '@intelligence/engine/toolOrchestrator'
+import { truncateToolResult } from '@utils/partialJson'
+import { getAgentConfig } from '@intelligence/utils/intelligenceConfig'
+import { miniChatApprovalService, type AuthorizationMode } from './miniChatApprovalService'
 import type {
   LLMConfig,
   LLMMessage,
@@ -104,7 +107,8 @@ function generateDefaultAnnouncement(toolNames: string[]): string {
   return `好的，我正在处理：${unique.join('、')}`
 }
 
-interface CollectedToolCall {
+/** LLM 返回的工具调用（已解析参数） */
+export interface CollectedToolCall {
   id: string
   name: string
   arguments: Record<string, unknown>
@@ -183,7 +187,7 @@ let voiceToolsInitialized = false
  *
  * 加载内置工具 + 插件工具，与普通对话使用相同的工具集
  */
-async function ensureVoiceToolsInitialized(): Promise<void> {
+export async function ensureVoiceToolsInitialized(): Promise<void> {
   if (voiceToolsInitialized) return
 
   logger.agent.info('[VoiceToolLoop] Initializing tools for voice mode...')
@@ -215,35 +219,84 @@ async function ensureVoiceToolsInitialized(): Promise<void> {
 }
 
 /**
+ * 调用 LLM 的可选参数
+ */
+export interface CallLLMOptions {
+  /** 单次 LLM 请求超时（ms），默认 60000（语音模式），文字聊天可传 0 表示不限制 */
+  timeout?: number
+  /** 中断信号，触发时通知主进程取消请求 */
+  abortSignal?: AbortSignal
+  /** 推理内容流式回调（思考模型如 DeepSeek-R1 的 reasoning_content） */
+  onReasoningChunk?: (text: string) => void
+}
+
+/**
+ * 调用 LLM 的返回结果
+ */
+export interface CallLLMResult {
+  /** 文本内容 */
+  content: string
+  /** 推理内容（思考模型的 reasoning_content，用于显示 AI 的思考过程） */
+  reasoning: string
+  /** 工具调用列表 */
+  toolCalls: CollectedToolCall[]
+  /** 错误信息（如果有） */
+  error?: string
+}
+
+/**
  * 调用 LLM（带工具支持）
  *
- * 流式收集文本和工具调用，返回完整结果
+ * 流式收集文本、推理内容和工具调用，返回完整结果
+ *
+ * 导出供 useAvatarMiniChat 复用（迷你聊天窗需要自己控制工具循环，
+ * 为每轮迭代创建独立的 assistant 消息，与主窗口体验一致）
+ *
+ * @param options.timeout 单次请求超时（ms），传 0 表示不限制（文字聊天场景）
+ * @param options.abortSignal 中断信号，触发时调用 api.llm.abort() 通知主进程取消
+ * @param options.onReasoningChunk 推理内容流式回调（思考模型的思考过程）
  */
-function callLLMWithTools(
+export function callLLMWithTools(
   config: LLMConfig,
   messages: LLMMessage[],
   tools: ToolDefinition[],
   systemPrompt: string,
   requestId: string,
   onTextChunk?: (text: string) => void,
-): Promise<{ content: string; toolCalls: CollectedToolCall[]; error?: string }> {
+  options?: CallLLMOptions,
+): Promise<CallLLMResult> {
+  const timeoutMs = options?.timeout ?? VOICE_LLM_TIMEOUT
+  const abortSignal = options?.abortSignal
+  const onReasoningChunk = options?.onReasoningChunk
+
   return new Promise((resolve) => {
     let fullContent = ''
+    let fullReasoning = ''
     const toolCalls: CollectedToolCall[] = []
     const streamingToolCalls = new Map<string, { id: string; name: string; argsString: string }>()
     let settled = false
+    let timeoutId: NodeJS.Timeout | null = null
 
     const cleanup = () => {
       unsubStream()
       unsubError()
       unsubDone()
+      if (timeoutId) { clearTimeout(timeoutId); timeoutId = null }
+      if (abortSignal) abortSignal.removeEventListener('abort', onAbort)
     }
 
     const doResolve = (error?: string) => {
       if (settled) return
       settled = true
       cleanup()
-      resolve({ content: fullContent, toolCalls, error })
+      resolve({ content: fullContent, reasoning: fullReasoning, toolCalls, error })
+    }
+
+    /** abort 信号回调：通知主进程取消 + resolve */
+    const onAbort = () => {
+      if (settled) return
+      try { api.llm.abort() } catch { /* noop */ }
+      doResolve('Aborted')
     }
 
     // 订阅流式响应
@@ -253,6 +306,15 @@ function callLLMWithTools(
           if (data.content) {
             fullContent += data.content
             onTextChunk?.(data.content)
+          }
+          break
+
+        case 'reasoning':
+          // 思考模型的推理内容（如 DeepSeek-R1 的 reasoning_content）
+          // 与普通聊天窗口一致，支持显示 AI 的思考过程
+          if (data.content) {
+            fullReasoning += data.content
+            onReasoningChunk?.(data.content)
           }
           break
 
@@ -308,10 +370,24 @@ function callLLMWithTools(
       doResolve(err.message || 'LLM error')
     })
 
-    const unsubDone = api.llm.onDone(requestId, () => {
+    const unsubDone = api.llm.onDone(requestId, (data) => {
       if (settled) return
+      // done 事件可能携带完整的 reasoning（部分模型在 done 时才返回完整推理内容）
+      if (typeof data?.reasoning === 'string' && data.reasoning.length >= fullReasoning.length) {
+        fullReasoning = data.reasoning
+      }
       doResolve()
     })
+
+    // 注册 abort 信号监听
+    if (abortSignal) {
+      if (abortSignal.aborted) {
+        // 已中止，直接返回
+        doResolve('Aborted')
+        return
+      }
+      abortSignal.addEventListener('abort', onAbort)
+    }
 
     // 构建发送参数
     const sendParams: Record<string, unknown> = {
@@ -331,11 +407,13 @@ function callLLMWithTools(
       doResolve(errMsg)
     })
 
-    // 超时保护
-    setTimeout(() => {
-      if (settled) return
-      doResolve('语音 LLM 请求超时')
-    }, VOICE_LLM_TIMEOUT)
+    // 超时保护（timeoutMs <= 0 表示不限制，适用于文字聊天长回复场景）
+    if (timeoutMs > 0) {
+      timeoutId = setTimeout(() => {
+        if (settled) return
+        doResolve('LLM 请求超时')
+      }, timeoutMs)
+    }
   })
 }
 
@@ -348,7 +426,7 @@ function callLLMWithTools(
  *   - 已开启自动批准 → 执行
  *   - 未开启 → 跳过并返回提示消息（不在语音模式中弹审批框）
  */
-async function executeVoiceToolCall(
+export async function executeVoiceToolCall(
   toolCall: CollectedToolCall,
   workspacePath: string | null,
   requestId: string,
@@ -375,11 +453,121 @@ async function executeVoiceToolCall(
     }
   }
 
+  return executeToolCallInternal(toolCall, context)
+}
+
+/**
+ * 执行单个工具调用（迷你聊天模式）
+ *
+ * 与普通聊天窗口（AgentSubLoop）的审批流程完全一致：
+ * - 检查 requiresApprovalGate（通过 miniChatApprovalService.checkApprovalNeeded）
+ * - 需要审批时，通过 miniChatApprovalService 等待用户在迷你聊天窗口中批准/拒绝
+ * - 用户批准 → 执行工具
+ * - 用户拒绝 → 返回"用户拒绝了此操作"
+ *
+ * 与语音模式的区别：
+ * - skipMainApproval: false → 走主窗口正常审批流程（与普通聊天窗口一致）
+ * - 不跳过 terminal/dangerous 工具，由授权方式选择决定是否需要审批
+ *
+ * 迷你聊天窗口底部有授权方式选择栏，用户可选择：
+ * - 每步确认（every-step）：危险操作弹审批框
+ * - 仅危险操作（dangerous-only）：只有危险操作弹审批框
+ * - 从不确认（never）：所有操作自动执行
+ *
+ * @param toolCall 工具调用信息
+ * @param workspacePath 工作区路径
+ * @param requestId 请求 ID
+ * @param authorizationMode 授权方式（来自 voiceContext，传给审批门禁检查）
+ */
+export async function executeMiniChatToolCall(
+  toolCall: CollectedToolCall,
+  workspacePath: string | null,
+  requestId: string,
+  authorizationMode?: AuthorizationMode,
+): Promise<{ role: 'tool'; content: string; tool_call_id: string; name: string }> {
+  // 审批检查：与 AgentSubLoop.executeToolCall 逻辑一致
+  // 仅 terminal / dangerous 类型需要事前审批；
+  // interaction 类型采用事后确认模式（像 VSCode/Trae），工具直接执行
+  const approvalType = getToolApprovalType(toolCall.name)
+  if (approvalType === 'terminal' || approvalType === 'dangerous') {
+    const needsApproval = miniChatApprovalService.checkApprovalNeeded(
+      toolCall,
+      authorizationMode,
+      'agent',
+    )
+
+    if (needsApproval) {
+      const toolDisplayName = getToolDisplayName(toolCall.name)
+      logger.agent.info(
+        `[MiniChatToolLoop] Tool needs approval: ${toolDisplayName} (${toolCall.name}, id=${toolCall.id}), ` +
+          `requestId=${requestId}, authorizationMode=${authorizationMode}`,
+      )
+
+      // 等待用户在迷你聊天窗口中审批
+      const approved = await miniChatApprovalService.waitForApproval(
+        toolCall.id,
+        requestId,
+        {
+          id: toolCall.id,
+          name: toolCall.name,
+          arguments: toolCall.arguments,
+        },
+      )
+
+      if (!approved) {
+        logger.agent.info(
+          `[MiniChatToolLoop] Tool ${toolCall.name} rejected by user`,
+        )
+        return {
+          role: 'tool',
+          content: '用户拒绝了此操作',
+          tool_call_id: toolCall.id,
+          name: toolCall.name,
+        }
+      }
+
+      logger.agent.info(
+        `[MiniChatToolLoop] Tool ${toolCall.name} approved by user`,
+      )
+    }
+  }
+
+  const context: ToolExecutionContext = {
+    workspacePath,
+    chatMode: 'agent',
+    requestId,
+    skipMainApproval: false, // 走正常审批流程，与普通聊天窗口一致
+  }
+
+  return executeToolCallInternal(toolCall, context)
+}
+
+/**
+ * 工具调用执行的内部实现（语音/迷你聊天共用）
+ *
+ * 与普通聊天窗口（toolOrchestrator.ts）一致：
+ * - 工具结果使用 truncateToolResult 截断，防止过长的工具输出导致上下文溢出
+ * - 截断配置来自 getAgentConfig().maxToolResultChars
+ */
+async function executeToolCallInternal(
+  toolCall: CollectedToolCall,
+  context: ToolExecutionContext,
+): Promise<{ role: 'tool'; content: string; tool_call_id: string; name: string }> {
   try {
     const result = await toolManager.execute(toolCall.name, toolCall.arguments, context)
 
     if (result.success) {
-      const output = typeof result.result === 'string' ? result.result : JSON.stringify(result.result)
+      const rawOutput = typeof result.result === 'string' ? result.result : JSON.stringify(result.result)
+      // 工具结果截断（与普通聊天窗口一致，防止过长输出导致 LLM 上下文溢出）
+      const agentConfig = getAgentConfig()
+      const output = truncateToolResult(rawOutput, toolCall.name, agentConfig.maxToolResultChars)
+
+      if (output.length < rawOutput.length) {
+        logger.agent.info(
+          `[VoiceToolLoop] Truncated ${toolCall.name} result: ${rawOutput.length} -> ${output.length} chars`,
+        )
+      }
+
       logger.agent.info(`[VoiceToolLoop] Tool ${toolCall.name} executed successfully`)
       return {
         role: 'tool',
@@ -477,6 +665,7 @@ export async function runVoiceToolLoop(options: VoiceToolLoopOptions): Promise<V
       systemPrompt,
       requestId,
       onTextChunk,
+      { abortSignal },
     )
 
     if (result.error) {
@@ -535,7 +724,8 @@ export async function runVoiceToolLoop(options: VoiceToolLoopOptions): Promise<V
       }
     }
 
-    // 构建 assistant 消息（包含 tool_calls）
+    // 构建 assistant 消息（包含 tool_calls + reasoning）
+    // 与 AgentSubLoop 一致：思考模型的 reasoning_content 也需要传回给 LLM
     const assistantMsg: LLMMessage = {
       role: 'assistant',
       content: result.content || null,
@@ -547,6 +737,9 @@ export async function runVoiceToolLoop(options: VoiceToolLoopOptions): Promise<V
           arguments: JSON.stringify(tc.arguments),
         },
       })),
+    }
+    if (result.reasoning) {
+      ;(assistantMsg as LLMMessage & { reasoning_content?: string }).reasoning_content = result.reasoning
     }
     messages.push(assistantMsg)
 

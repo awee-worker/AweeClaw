@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState, useEffect, useMemo, useRef } from 'react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
-import { useWindowTitle, useAppInit, useGlobalShortcuts, useMenuBridge, useFileWatcher, useAppShutdownState, usePreviewDiscoveryToasts, useChannelBridge, usePluginUpdateChecker } from '@hooks'
+import { useWindowTitle, useAppInit, useGlobalShortcuts, useMenuBridge, useFileWatcher, useAppShutdownState, usePreviewDiscoveryToasts, useChannelBridge, usePluginUpdateChecker, useFloatingAvatarSync } from '@hooks'
 import AppTitleBar from './components/layout/AppTitleBar'
 import NavigationRail from './components/layout/NavigationRail'
 import SidebarSection from './components/layout/SidebarSection'
@@ -127,6 +127,7 @@ function AppContent() {
   usePreviewDiscoveryToasts(hasWorkspace && isInitialized && activeScenarioId === 'dev-assistant')
   useChannelBridge()
   usePluginUpdateChecker()
+  useFloatingAvatarSync()
 
   const layoutConfig = useMemo<LayoutConfig>(() => {
     // 场景安装/重装后，scenarioConfigVersion 递增，强制重新计算布局配置

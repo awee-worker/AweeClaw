@@ -44,6 +44,7 @@ import {
 import { requestRendererShutdown } from './bootstrap/shutdownCoordinator'
 import { performGlobalCleanup, performFastCleanup, withTimeout } from './bootstrap/globalCleanup'
 import { initializeModules } from './bootstrap/moduleInitializer'
+import { FloatingAvatarManager } from './modules/floating-avatar/FloatingAvatarManager'
 
 // 重新导出 Language 类型，保持向后兼容（menu 模块从 appBootstrap 导入）
 export type { Language } from './bootstrap/moduleInitializer'
@@ -195,6 +196,8 @@ app.on('second-instance', () => {
   } else {
     createWindow(false)
   }
+  // 二次启动时确保悬浮头像可见（用户感知应用已运行）
+  ensureFloatingAvatarVisible()
 })
 
 // ==========================================
@@ -205,6 +208,12 @@ app.on('window-all-closed', () => {
   logger.system.info('[Main] All windows closed, platform:', process.platform)
   // 应用正在退出但清理未完成时，阻止默认退出逻辑（由 before-quit 流程接管）
   if (appQuitInProgress && !isCleanupDone) {
+    return
+  }
+  // 悬浮头像可见时，保持应用存活（头像 + 托盘作为伴生入口）
+  // 满足需求：「关闭主窗口后头像仍在，完全退出才消失」
+  if (isFloatingAvatarVisible()) {
+    logger.system.info('[Main] Floating avatar visible, keeping app alive')
     return
   }
   if (process.platform !== 'darwin') {
@@ -332,4 +341,26 @@ function setupFileLogging(): void {
     arch: process.arch,
     isPackaged: app.isPackaged,
   })
+}
+
+/**
+ * 查询悬浮头像是否可见（用于 window-all-closed 判定：头像可见时保持应用存活）
+ */
+function isFloatingAvatarVisible(): boolean {
+  try {
+    return FloatingAvatarManager.getInstance().isVisible()
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 确保悬浮头像可见（二次启动 / 激活时调用）
+ */
+function ensureFloatingAvatarVisible(): void {
+  try {
+    FloatingAvatarManager.getInstance().show()
+  } catch {
+    /* 模块未初始化时忽略 */
+  }
 }

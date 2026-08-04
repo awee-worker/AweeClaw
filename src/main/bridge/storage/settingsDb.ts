@@ -284,6 +284,40 @@ export function registerSettingsDbIpcHandlers(preferencesStore: Store): void {
     }
   })
 
+  // ============ 语音唤醒配置 ============
+
+  // 获取语音唤醒配置
+  safeIpcHandle('settings-db:getWakeWordConfig', async () => {
+    try {
+      return db.getWakeWordConfig()
+    } catch (err) {
+      logger.settings.error('[SettingsDb] GetWakeWordConfig failed:', err)
+      return null
+    }
+  })
+
+  // 保存语音唤醒配置（upsert，唤醒词/灵敏度/冷却一并写入）
+  safeIpcHandle('settings-db:saveWakeWordConfig', async (_event, config: any) => {
+    try {
+      db.upsertWakeWordConfig(config)
+      return { success: true }
+    } catch (err) {
+      logger.settings.error('[SettingsDb] SaveWakeWordConfig failed:', err)
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
+  // 仅更新唤醒启用状态（即时生效，无需走保存栏）
+  safeIpcHandle('settings-db:setWakeWordEnabled', async (_event, enabled: boolean) => {
+    try {
+      db.setWakeWordEnabled(enabled)
+      return { success: true }
+    } catch (err) {
+      logger.settings.error('[SettingsDb] SetWakeWordEnabled failed:', err)
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
   // 获取视觉 OCR 配置（macOS Vision OCR + OCR 路由策略）
   // 配置存储在 app_settings.visualOcrConfig，无配置时返回 null（使用默认值）
   safeIpcHandle('settings-db:getVisualOcrConfig', async () => {

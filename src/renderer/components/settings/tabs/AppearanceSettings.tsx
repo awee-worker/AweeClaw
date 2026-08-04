@@ -1,4 +1,4 @@
-import { Layout, Check, Sun, Moon, Monitor, Globe, Type, MessageSquare, Code2 } from 'lucide-react'
+import { Layout, Check, Sun, Moon, Monitor, Globe, Type, MessageSquare, Code2, Circle } from 'lucide-react'
 import { useStore, type ThemeName, type ThemeMode, type ThemeColor } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { themeManager, THEME_COLOR_OPTIONS } from '@/renderer/config/themeDefinition'
@@ -10,6 +10,7 @@ import type { AgentConfig } from '@shared/configuration/configTypes'
 
 import { useEffect, useCallback, useMemo } from 'react'
 import { t, type Language } from '@renderer/i18n'
+import { FloatingAvatarSettings } from './FloatingAvatarSettings'
 
 const LANGUAGE_META: Record<Language, { labelZh: string; labelEn: string; descriptionZh: string; descriptionEn: string; flag: string }> = {
     zh: {
@@ -510,6 +511,26 @@ export function AppearanceSettings({ settings, setSettings, language, localLangu
                         ))}
                     </div>
                 </div>
+            </section>
+
+            {/* 悬浮头像设置 */}
+            <section className="p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border shadow-sm">
+                <div className="flex items-center gap-2 mb-4">
+                    <div className="p-1.5 rounded-md bg-accent/10">
+                        <Circle className="w-4 h-4 text-accent" />
+                    </div>
+                    <h4 className="text-sm font-bold text-text-primary tracking-tight">
+                        {language === 'zh' ? '悬浮头像' : 'Floating Avatar'}
+                    </h4>
+                </div>
+
+                <p className="text-sm text-text-muted mb-4">
+                    {language === 'zh'
+                        ? '配置屏幕上的悬浮头像，支持语音唤醒与迷你聊天。'
+                        : 'Configure the floating avatar on screen, supporting voice wake word and mini chat.'}
+                </p>
+
+                <FloatingAvatarSettings />
             </section>
         </div>
     )

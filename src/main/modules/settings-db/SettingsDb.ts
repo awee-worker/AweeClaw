@@ -124,6 +124,27 @@ export interface VoiceModelConfig {
   updatedAt: number
 }
 
+/** 语音唤醒配置行（单行表，id=1） */
+export interface WakeWordConfigRow {
+  id: number
+  enabled: number            // 0 | 1
+  keyword: string            // 唤醒词，如「小喵小喵」
+  sensitivity: string        // 'strict' | 'balanced' | 'loose'
+  cooldown_ms: number        // 命中后冷却时长（ms）
+  min_speech_ms: number      // 最短说话时长（ms），过滤噪音
+  updated_at: number
+}
+
+/** 语音唤醒配置（已规范化，供上层使用） */
+export interface WakeWordConfig {
+  enabled: boolean
+  keyword: string
+  sensitivity: 'strict' | 'balanced' | 'loose'
+  cooldownMs: number
+  minSpeechMs: number
+  updatedAt: number
+}
+
 // ============================================
 // 数据库路径
 // ============================================
@@ -340,6 +361,33 @@ export class SettingsDb {
     // 兼容旧表：如果 voice_model_config 已存在但缺少新字段，用 ALTER TABLE 补齐
     this.migrateVoiceModelConfigSchema()
 
+    // 语音唤醒配置表（单行，id=1）
+    // 与语音模型配置分离：唤醒是独立开关，不依赖 STT/TTS 启用状态
+    // keyword 不加密（非敏感），sensitivity 三档：strict / balanced / loose
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS wake_word_config (
+        id              INTEGER PRIMARY KEY CHECK (id = 1),
+        enabled         INTEGER NOT NULL DEFAULT 0,
+        keyword         TEXT NOT NULL DEFAULT '小喵小喵',
+        sensitivity     TEXT NOT NULL DEFAULT 'balanced',
+        cooldown_ms     INTEGER NOT NULL DEFAULT 8000,
+        min_speech_ms   INTEGER NOT NULL DEFAULT 300,
+        updated_at      INTEGER NOT NULL DEFAULT 0
+      )
+    `)
+
+    // 兼容旧表：补齐后续版本可能新增的唤醒字段
+    this.migrateWakeWordConfigSchema()
+
+    // 确保默认行存在（id=1）。
+    // 必须插入：setWakeWordEnabled/getWakeWordConfig 依赖该行，否则无行时
+    // UPDATE no-op、SELECT 返回 null，导致右键菜单唤醒开关切换不生效。
+    this.db.prepare(`
+      INSERT OR IGNORE INTO wake_word_config
+        (id, enabled, keyword, sensitivity, cooldown_ms, min_speech_ms, updated_at)
+      VALUES (1, 0, '小喵小喵', 'balanced', 8000, 300, 0)
+    `).run()
+
     // 标记 schema 版本
     const existingVersion = this.db.prepare("SELECT value FROM schema_version WHERE key = 'version'").get() as any
     if (!existingVersion) {
@@ -370,6 +418,26 @@ export class SettingsDb {
     for (const col of newColumns) {
       if (!columnNames.has(col.name)) {
         this.db.exec(`ALTER TABLE voice_model_config ADD COLUMN ${col.name} ${col.def}`)
+      }
+    }
+  }
+
+  /**
+   * 语音唤醒配置表 schema 迁移
+   * 使用 ALTER TABLE ADD COLUMN 补齐后续版本新增字段，保留现有数据
+   */
+  private migrateWakeWordConfigSchema(): void {
+    const columns = this.db.prepare("PRAGMA table_info(wake_word_config)").all() as { name: string }[]
+    const columnNames = new Set(columns.map(c => c.name))
+
+    const newColumns: { name: string; def: string }[] = [
+      { name: 'cooldown_ms', def: 'INTEGER NOT NULL DEFAULT 8000' },
+      { name: 'min_speech_ms', def: 'INTEGER NOT NULL DEFAULT 300' },
+    ]
+
+    for (const col of newColumns) {
+      if (!columnNames.has(col.name)) {
+        this.db.exec(`ALTER TABLE wake_word_config ADD COLUMN ${col.name} ${col.def}`)
       }
     }
   }
@@ -790,6 +858,75 @@ export class SettingsDb {
     this.db.prepare(
       'UPDATE voice_model_config SET stt_enabled = ?, tts_enabled = ?, updated_at = ? WHERE id = 1',
     ).run(sttEnabled ? 1 : 0, ttsEnabled ? 1 : 0, Date.now())
+  }
+
+  // ============================================
+  // 语音唤醒配置 CRUD
+  // ============================================
+
+  /** 获取语音唤醒配置 */
+  getWakeWordConfig(): WakeWordConfig | null {
+    const row = this.db.prepare('SELECT * FROM wake_word_config WHERE id = 1').get() as WakeWordConfigRow | undefined
+    return row ? this.rowToWakeWordConfig(row) : null
+  }
+
+  /** 行转对象（规范化 sensitivity 枚举与字段命名） */
+  private rowToWakeWordConfig(row: WakeWordConfigRow): WakeWordConfig {
+    const sensitivity = row.sensitivity === 'strict' || row.sensitivity === 'loose'
+      ? row.sensitivity
+      : 'balanced'
+    return {
+      enabled: row.enabled === 1,
+      keyword: row.keyword || '小喵小喵',
+      sensitivity,
+      cooldownMs: row.cooldown_ms ?? 8000,
+      minSpeechMs: row.min_speech_ms ?? 300,
+      updatedAt: row.updated_at,
+    }
+  }
+
+  /** 保存语音唤醒配置（upsert） */
+  upsertWakeWordConfig(config: {
+    enabled?: boolean
+    keyword?: string
+    sensitivity?: 'strict' | 'balanced' | 'loose'
+    cooldownMs?: number
+    minSpeechMs?: number
+  }): void {
+    const now = Date.now()
+    this.db.prepare(`
+      INSERT INTO wake_word_config (
+        id, enabled, keyword, sensitivity, cooldown_ms, min_speech_ms, updated_at
+      ) VALUES (1, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        enabled       = excluded.enabled,
+        keyword       = excluded.keyword,
+        sensitivity   = excluded.sensitivity,
+        cooldown_ms   = excluded.cooldown_ms,
+        min_speech_ms = excluded.min_speech_ms,
+        updated_at    = excluded.updated_at
+    `).run(
+      (config.enabled ? 1 : 0),
+      config.keyword ?? '小喵小喵',
+      config.sensitivity ?? 'balanced',
+      config.cooldownMs ?? 8000,
+      config.minSpeechMs ?? 300,
+      now,
+    )
+  }
+
+  /** 仅更新唤醒启用状态（upsert，保证无行时也能写入） */
+  setWakeWordEnabled(enabled: boolean): void {
+    // 使用 INSERT ... ON CONFLICT upsert，避免无默认行时 UPDATE 影响 0 行导致切换不生效。
+    // 保留已有行的 keyword/sensitivity 等字段（用 COALESCE 取旧值）。
+    this.db.prepare(`
+      INSERT INTO wake_word_config
+        (id, enabled, keyword, sensitivity, cooldown_ms, min_speech_ms, updated_at)
+      VALUES (1, ?, '小喵小喵', 'balanced', 8000, 300, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        enabled    = excluded.enabled,
+        updated_at = excluded.updated_at
+    `).run(enabled ? 1 : 0, Date.now())
   }
 
   // ============================================

@@ -9,6 +9,7 @@ import type {
   RemoteShellServer,
   RemoteShellUploadResult,
   RemoteShellDownloadResult,
+  AvatarModelOption,
 } from '@renderer/types/electronBridge'
 
 type ElectronAPIWithRemoteShell = ElectronAPI & {
@@ -445,6 +446,10 @@ function createGroupedAPI() {
         raw.settingsDbSaveVoiceModelConfig(config),
       dbSetVoiceModelEnabled: (payload: { sttEnabled: boolean; ttsEnabled: boolean }) =>
         raw.settingsDbSetVoiceModelEnabled(payload),
+      // 语音唤醒配置（唤醒开关 + 唤醒词 + 灵敏度 + 冷却）
+      dbGetWakeWordConfig: () => raw.settingsDbGetWakeWordConfig(),
+      dbSaveWakeWordConfig: (config: any) => raw.settingsDbSaveWakeWordConfig(config),
+      dbSetWakeWordEnabled: (enabled: boolean) => raw.settingsDbSetWakeWordEnabled(enabled),
     },
 
     // 会话数据库 (SQLite)
@@ -1045,6 +1050,104 @@ function createGroupedAPI() {
         percent: number
         message?: string
       }) => void) => raw.onPluginInstallProgress(callback),
+    },
+
+    // 悬浮头像（语音唤醒 + 系统级悬浮头像 + 托盘）
+    floatingAvatar: {
+      // 窗口显隐
+      show: () => raw.floatingAvatar.show(),
+      hide: () => raw.floatingAvatar.hide(),
+      toggle: () => raw.floatingAvatar.toggle(),
+      isVisible: () => raw.floatingAvatar.isVisible(),
+      // 偏好配置
+      getConfig: () => raw.floatingAvatar.getConfig(),
+      updateConfig: (config: Parameters<typeof raw.floatingAvatar.updateConfig>[0]) =>
+        raw.floatingAvatar.updateConfig(config),
+      // 位置
+      getPosition: () => raw.floatingAvatar.getPosition(),
+      setPosition: (x: number, y: number) => raw.floatingAvatar.setPosition(x, y),
+      // 语音上下文
+      getVoiceContext: () => raw.floatingAvatar.getVoiceContext(),
+      updateVoiceContext: (partial: Parameters<typeof raw.floatingAvatar.updateVoiceContext>[0]) =>
+        raw.floatingAvatar.updateVoiceContext(partial),
+      // 唤醒 / 状态 / 保存（头像→main）
+      wakeWordDetected: (info: unknown) => raw.floatingAvatar.wakeWordDetected(info),
+      voiceStateChanged: (payload: Parameters<typeof raw.floatingAvatar.voiceStateChanged>[0]) =>
+        raw.floatingAvatar.voiceStateChanged(payload),
+      saveConversation: (payload: Parameters<typeof raw.floatingAvatar.saveConversation>[0]) =>
+        raw.floatingAvatar.saveConversation(payload),
+      // 主窗口控制
+      openMainWindow: () => raw.floatingAvatar.openMainWindow(),
+      requestMicPermission: () => raw.floatingAvatar.requestMicPermission(),
+      quitApp: () => raw.floatingAvatar.quitApp(),
+      // 拖拽频道获取（头像窗口启动时调用一次）
+      getDragChannel: () => raw.floatingAvatar.getDragChannel(),
+      // 模型列表 / 模型切换（头像窗口→main→主窗口）
+      getAvailableModels: () => raw.floatingAvatar.getAvailableModels(),
+      selectModel: (payload: { provider: string; model: string; isCloud: boolean }) =>
+        raw.floatingAvatar.selectModel(payload),
+      sendModelsResponse: (requestId: string, models: AvatarModelOption[]) =>
+        raw.floatingAvatar.sendModelsResponse(requestId, models),
+      onRequestModels: (callback: Parameters<typeof raw.floatingAvatar.onRequestModels>[0]) =>
+        raw.floatingAvatar.onRequestModels(callback),
+      onSelectModel: (callback: Parameters<typeof raw.floatingAvatar.onSelectModel>[0]) =>
+        raw.floatingAvatar.onSelectModel(callback),
+      // 授权方式切换（头像窗口→main→主窗口）
+      selectAuthorizationMode: (mode: 'every-step' | 'dangerous-only' | 'never') =>
+        raw.floatingAvatar.selectAuthorizationMode(mode),
+      onSelectAuthorizationMode: (
+        callback: Parameters<typeof raw.floatingAvatar.onSelectAuthorizationMode>[0],
+      ) => raw.floatingAvatar.onSelectAuthorizationMode(callback),
+      // 主题色同步（主窗口→main→头像窗口）
+      updateTheme: (payload: { themeColor: string; themeMode: string }) =>
+        raw.floatingAvatar.updateTheme(payload),
+      onUpdateTheme: (callback: Parameters<typeof raw.floatingAvatar.onUpdateTheme>[0]) =>
+        raw.floatingAvatar.onUpdateTheme(callback),
+      // 窗口展开/收起（对话面板）
+      expand: () => raw.floatingAvatar.expand(),
+      collapse: () => raw.floatingAvatar.collapse(),
+      isExpanded: () => raw.floatingAvatar.isExpanded(),
+      // 主窗口→头像：通知主窗口全功能语音对话状态
+      notifyMainConversationActive: (active: boolean) =>
+        raw.floatingAvatar.notifyMainConversationActive(active),
+      // 事件订阅（main→渲染进程）
+      onVoiceContextUpdated: (callback: Parameters<typeof raw.floatingAvatar.onVoiceContextUpdated>[0]) =>
+        raw.floatingAvatar.onVoiceContextUpdated(callback),
+      onMainConversationActive: (callback: Parameters<typeof raw.floatingAvatar.onMainConversationActive>[0]) =>
+        raw.floatingAvatar.onMainConversationActive(callback),
+      onWakeWordToggled: (callback: Parameters<typeof raw.floatingAvatar.onWakeWordToggled>[0]) =>
+        raw.floatingAvatar.onWakeWordToggled(callback),
+      onSaveConversation: (callback: Parameters<typeof raw.floatingAvatar.onSaveConversation>[0]) =>
+        raw.floatingAvatar.onSaveConversation(callback),
+      onVoiceStateChanged: (callback: Parameters<typeof raw.floatingAvatar.onVoiceStateChanged>[0]) =>
+        raw.floatingAvatar.onVoiceStateChanged(callback),
+      // 右键菜单/托盘「设置」点击（打开设置页指定 tab）
+      onOpenSettings: (callback: Parameters<typeof raw.floatingAvatar.onOpenSettings>[0]) =>
+        raw.floatingAvatar.onOpenSettings(callback),
+      // 截图提问完成（main→头像窗口）
+      onScreenshotResult: (callback: Parameters<typeof raw.floatingAvatar.onScreenshotResult>[0]) =>
+        raw.floatingAvatar.onScreenshotResult(callback),
+      // 拖拽（动态频道）：主进程在 start 时自取鼠标+窗口坐标，渲染层无需 payload
+      sendDragStart: (channel: string) => raw.floatingAvatar.sendDragStart(channel),
+      sendDragEnd: (channel: string) => raw.floatingAvatar.sendDragEnd(channel),
+    },
+
+    // 会议纪要窗口（独立常驻窗口）
+    meetingNotes: {
+      /** 显示/聚焦会议纪要窗口 */
+      show: () => raw.meetingNotes.show(),
+      /** 获取当前工作区路径 */
+      getWorkspace: () => raw.meetingNotes.getWorkspace(),
+      /** 保存录音原文 txt */
+      saveTranscript: (payload: Parameters<typeof raw.meetingNotes.saveTranscript>[0]) =>
+        raw.meetingNotes.saveTranscript(payload),
+      /** 生成并保存 docx */
+      generateDocx: (payload: Parameters<typeof raw.meetingNotes.generateDocx>[0]) =>
+        raw.meetingNotes.generateDocx(payload),
+      /** 整理进度推送订阅 */
+      onOrganizeProgress: (
+        callback: Parameters<typeof raw.meetingNotes.onOrganizeProgress>[0],
+      ) => raw.meetingNotes.onOrganizeProgress(callback),
     },
   }
 }

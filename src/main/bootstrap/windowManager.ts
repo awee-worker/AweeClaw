@@ -49,6 +49,22 @@ let lastActiveWindow: BrowserWindow | null = null
 /** 已授权关闭的窗口集合（无需再次拦截） */
 const authorizedCloseWindows = new Set<number>()
 
+/**
+ * 主窗口「关闭即隐藏」开关（hide-on-close）
+ *
+ * 启用后：用户点击主窗口关闭按钮时，仅隐藏窗口（保留 warm renderer），
+ * 不触发 shutdown 流程、不退出应用。悬浮头像激活时由 FloatingAvatarManager 开启，
+ * 使主窗口关闭后仍能持续 push 语音上下文/刷新 token 到头像窗口。
+ *
+ * 退出流程（appQuitInProgress）时自动失效，走原 handleWindowCloseFlow。
+ */
+let hideOnCloseEnabled = false
+
+/** 设置主窗口「关闭即隐藏」开关（由 FloatingAvatarManager 按头像开关联动） */
+export function setHideOnCloseEnabled(enabled: boolean): void {
+  hideOnCloseEnabled = enabled
+}
+
 /** IPC 模块句柄，用于 closed 时清理 LLM 服务 */
 let ipcModule: { cleanupLLMService: (webContentsId: number) => void } | null = null
 
@@ -322,6 +338,15 @@ function registerWindowLifecycle(win: BrowserWindow): void {
     // 已授权关闭或应用正在退出，直接放行
     if (authorizedCloseWindows.delete(windowId) || quitStateController.isAppQuitting()) {
       logger.system.info(`[Window] ${windowId} close event allowed`)
+      return
+    }
+
+    // hide-on-close：悬浮头像激活时，关闭主窗口仅隐藏（保留 warm renderer + 持续 push 上下文）
+    // 满足需求：「关闭主窗口后头像仍在」+ 主窗口 warm 保持 token 刷新
+    if (hideOnCloseEnabled) {
+      event.preventDefault()
+      win.hide()
+      logger.system.info(`[Window] ${windowId} hidden on close (hide-on-close enabled)`)
       return
     }
 

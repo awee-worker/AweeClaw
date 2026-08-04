@@ -338,12 +338,17 @@ export class PluginInstaller {
     const pluginDir = path.join(this.pluginsRoot, pluginDetail.pluginKey, version)
     fs.mkdirSync(pluginDir, { recursive: true })
 
-    // 写入 manifest（排除 inlineCode / inlineUiCode 字段，避免本地 manifest 过大）
+    // 写入 manifest（排除 inlineCode / inlineUiCode / inlineSrcFiles 字段，避免本地 manifest 过大）
     const {
       inlineCode,
       inlineUiCode,
+      inlineSrcFiles,
       ...manifestWithoutCode
-    } = manifest as typeof manifest & { inlineCode?: string; inlineUiCode?: string }
+    } = manifest as typeof manifest & {
+      inlineCode?: string
+      inlineUiCode?: string
+      inlineSrcFiles?: Record<string, string>
+    }
     fs.writeFileSync(
       path.join(pluginDir, 'manifest.json'),
       JSON.stringify(manifestWithoutCode, null, 2),
@@ -383,6 +388,26 @@ export class PluginInstaller {
       fs.writeFileSync(uiEntryPath, inlineUiCode, 'utf-8')
       logger.system.info(
         `[PluginInstaller] Inline UI code extracted to ${manifest.contributes.ui.entry} (${inlineUiCode.length} chars)`,
+      )
+    }
+
+    // ★ V4: 如果 manifest 内联了 src/ 目录文件（inlineSrcFiles），提取到 src/ 目录
+    // 支持模块化插件架构（入口文件 import 了 src/ 下的子模块）
+    if (inlineSrcFiles && Object.keys(inlineSrcFiles).length > 0) {
+      const srcDir = path.join(pluginDir, 'src')
+      fs.mkdirSync(srcDir, { recursive: true })
+      let totalChars = 0
+      for (const [relPath, content] of Object.entries(inlineSrcFiles)) {
+        const filePath = path.join(srcDir, relPath)
+        const fileDir = path.dirname(filePath)
+        if (!fs.existsSync(fileDir)) {
+          fs.mkdirSync(fileDir, { recursive: true })
+        }
+        fs.writeFileSync(filePath, content, 'utf-8')
+        totalChars += content.length
+      }
+      logger.system.info(
+        `[PluginInstaller] Inline src files extracted: ${Object.keys(inlineSrcFiles).length} files (${totalChars} chars)`,
       )
     }
 

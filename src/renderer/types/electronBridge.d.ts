@@ -27,6 +27,59 @@ export interface VoiceModelConfig {
   updatedAt: number
 }
 
+/** 语音唤醒配置 */
+export interface WakeWordConfig {
+  enabled: boolean
+  keyword: string
+  sensitivity: 'strict' | 'balanced' | 'loose'
+  cooldownMs: number
+  minSpeechMs: number
+  updatedAt: number
+}
+
+/** 悬浮头像语音上下文（主窗口 push，头像窗口 get） */
+export interface VoiceContextPayload {
+  llmConfig: unknown | null
+  cloudMode: 'cloud' | 'local'
+  serverUrl: string | null
+  accessToken: string | null
+  refreshToken: string | null
+  voiceModelConfig: unknown | null
+  language: 'zh' | 'en'
+  workspacePath: string | null
+  /** 工具执行授权方式（every-step / dangerous-only / never），同步主窗口 authorizationMode */
+  authorizationMode?: 'every-step' | 'dangerous-only' | 'never'
+  updatedAt: number
+}
+
+/** 悬浮头像语音状态变化载荷（头像→main→主窗口 + 托盘） */
+export interface VoiceStateChangedPayload {
+  state: 'idle' | 'listening' | 'recording' | 'processing' | 'speaking' | 'error'
+  volume: number
+}
+
+/** 悬浮头像保存对话历史载荷（头像→main→主窗口） */
+export interface SaveConversationPayload {
+  userText: string
+  aiText: string
+  toolCallRecords?: Array<{
+    id: string
+    name: string
+    args: Record<string, unknown>
+    success: boolean
+    resultSummary: string
+  }>
+}
+
+/** 可用模型选项（扁平化，供头像窗口渲染模型选择器） */
+export interface AvatarModelOption {
+  id: string
+  name: string
+  provider: string
+  providerName: string
+  isCloud: boolean
+}
+
 interface AuditEntry {
   pipelineId: string
   action: string
@@ -1511,6 +1564,11 @@ export interface ElectronAPI {
   settingsDbGetVoiceModelConfig: () => Promise<VoiceModelConfig | null>
   settingsDbSaveVoiceModelConfig: (config: Partial<VoiceModelConfig>) => Promise<{ success: boolean; error?: string }>
   settingsDbSetVoiceModelEnabled: (payload: { sttEnabled: boolean; ttsEnabled: boolean }) => Promise<{ success: boolean; error?: string }>
+  // 语音唤醒配置（唤醒开关 + 唤醒词 + 灵敏度 + 冷却）
+  // 配置结构：{ enabled, keyword, sensitivity('strict'|'balanced'|'loose'), cooldownMs, minSpeechMs }
+  settingsDbGetWakeWordConfig: () => Promise<WakeWordConfig | null>
+  settingsDbSaveWakeWordConfig: (config: Partial<WakeWordConfig>) => Promise<{ success: boolean; error?: string }>
+  settingsDbSetWakeWordEnabled: (enabled: boolean) => Promise<{ success: boolean; error?: string }>
   // LLM
   sendMessage: (params: LLMSendMessageParams) => Promise<void>
   compactContext: (params: LLMSendMessageParams) => Promise<{
@@ -2047,7 +2105,7 @@ export interface ElectronAPI {
       }>
     }
     mcpServerId?: string
-  }>
+  }>>
   /** 保存插件用户配置（并触发 MCP 重连，若该插件是 MCP 型且已注册） */
   pluginSaveConfig: (
     pluginKey: string,
@@ -2062,6 +2120,130 @@ export interface ElectronAPI {
     percent: number
     message?: string
   }) => void) => () => void
+
+  // ============================================
+  // 悬浮头像（语音唤醒 + 系统级悬浮头像 + 托盘）
+  // ============================================
+  /** 语音上下文（主窗口 push，头像窗口 get） */
+  floatingAvatar: {
+    /** 显示头像窗口 */
+    show: () => Promise<{ success: boolean; error?: string }>
+    /** 隐藏头像窗口（不销毁） */
+    hide: () => Promise<{ success: boolean; error?: string }>
+    /** 切换显示/隐藏 */
+    toggle: () => Promise<{ success: boolean; visible: boolean; error?: string }>
+    /** 查询头像是否可见 */
+    isVisible: () => Promise<{ success: boolean; visible: boolean; error?: string }>
+    /** 读取头像偏好配置（持久化） */
+    getConfig: () => Promise<{
+      success: boolean
+      data?: {
+        enabled: boolean
+        showOnStartup: boolean
+        size: number
+        positionX: number | null
+        positionY: number | null
+      }
+      error?: string
+    }>
+    /** 增量更新头像偏好配置并持久化 */
+    updateConfig: (config: Partial<{
+      enabled: boolean
+      showOnStartup: boolean
+      size: number
+      positionX: number | null
+      positionY: number | null
+    }>) => Promise<{
+      success: boolean
+      data?: {
+        enabled: boolean
+        showOnStartup: boolean
+        size: number
+        positionX: number | null
+        positionY: number | null
+      }
+      error?: string
+    }>
+    /** 读取头像窗口当前位置 */
+    getPosition: () => Promise<{ success: boolean; data?: { x: number; y: number } | null; error?: string }>
+    /** 设置头像窗口位置并持久化 */
+    setPosition: (x: number, y: number) => Promise<{ success: boolean; error?: string }>
+    /** 读取语音上下文缓存（头像窗口启动时调用） */
+    getVoiceContext: () => Promise<{
+      success: boolean
+      data?: VoiceContextPayload
+      error?: string
+    }>
+    /** 主窗口 push 语音上下文到缓存（并转发给头像窗口） */
+    updateVoiceContext: (partial: Partial<VoiceContextPayload>) => Promise<{
+      success: boolean
+      data?: VoiceContextPayload
+      error?: string
+    }>
+    /** 头像→main：唤醒词命中通知 */
+    wakeWordDetected: (info: unknown) => Promise<{ success: boolean; error?: string }>
+    /** 头像→main：语音状态变化（转发主窗口 + 托盘） */
+    voiceStateChanged: (payload: VoiceStateChangedPayload) => Promise<{ success: boolean; error?: string }>
+    /** 头像→main→主窗口：保存对话历史 */
+    saveConversation: (payload: SaveConversationPayload) => Promise<{ success: boolean; error?: string }>
+    /** 头像→main：打开/创建并聚焦主窗口 */
+    openMainWindow: () => Promise<{ success: boolean; error?: string }>
+    /** 头像→main：请求麦克风权限（macOS） */
+    requestMicPermission: () => Promise<{
+      success: boolean
+      data?: { granted: boolean; platform: string }
+      error?: string
+    }>
+    /** 头像/托盘→main：触发完整退出 */
+    quitApp: () => Promise<{ success: boolean; error?: string }>
+    /** 头像→main：获取拖拽 IPC 频道对象（含窗口 id，启动时调用一次）
+     *  返回 { start, end } 两个频道，主进程在 start 时自取鼠标+窗口坐标 */
+    getDragChannel: () => Promise<{ success: boolean; data?: { start: string; end: string }; error?: string }>
+    /** 头像→main→主窗口：获取可用模型列表（主窗口从 store 构建后返回） */
+    getAvailableModels: () => Promise<{ success: boolean; data?: AvatarModelOption[]; error?: string }>
+    /** 头像→main→主窗口：切换模型（主窗口更新 store + save + 重新 push voiceContext） */
+    selectModel: (payload: { provider: string; model: string; isCloud: boolean }) => Promise<{ success: boolean; error?: string }>
+    /** 主窗口→main：返回模型列表（内部中转，主窗口监听 onRequestModels 后调用） */
+    sendModelsResponse: (requestId: string, models: AvatarModelOption[]) => void
+    /** 事件：主窗口收到模型列表请求（main→主窗口监听） */
+    onRequestModels: (callback: (requestId: string) => void) => () => void
+    /** 事件：头像窗口请求切换模型（main→主窗口监听） */
+    onSelectModel: (callback: (payload: { provider: string; model: string; isCloud: boolean }) => void) => () => void
+    /** 头像→main→主窗口：切换授权方式 */
+    selectAuthorizationMode: (mode: 'every-step' | 'dangerous-only' | 'never') => Promise<{ success: boolean; error?: string }>
+    /** 事件：头像窗口请求切换授权方式（main→主窗口监听） */
+    onSelectAuthorizationMode: (callback: (mode: 'every-step' | 'dangerous-only' | 'never') => void) => () => void
+    /** 主窗口→main→头像窗口：推送主题色更新 */
+    updateTheme: (payload: { themeColor: string; themeMode: string }) => void
+    /** 事件：主题更新（main→头像窗口监听） */
+    onUpdateTheme: (callback: (payload: { themeColor: string; themeMode: string }) => void) => () => void
+    /** 头像→main：展开窗口以显示对话面板 */
+    expand: () => Promise<{ success: boolean; expanded: boolean; error?: string }>
+    /** 头像→main：收起窗口到仅显示球体 */
+    collapse: () => Promise<{ success: boolean; expanded: boolean; error?: string }>
+    /** 头像→main：查询当前是否展开 */
+    isExpanded: () => Promise<{ success: boolean; expanded: boolean; error?: string }>
+    /** 主窗口→main→头像：通知主窗口全功能语音对话是否激活（单向 send） */
+    notifyMainConversationActive: (active: boolean) => void
+    /** 事件：语音上下文已更新（main→头像窗口） */
+    onVoiceContextUpdated: (callback: (payload: VoiceContextPayload) => void) => () => void
+    /** 事件：主窗口全功能语音对话状态变化（main→头像窗口） */
+    onMainConversationActive: (callback: (active: boolean) => void) => () => void
+    /** 事件：唤醒开关被托盘/菜单切换（main→头像窗口） */
+    onWakeWordToggled: (callback: (enabled: boolean) => void) => () => void
+    /** 事件：对话历史保存请求（main→主窗口，头像对话完成后转发） */
+    onSaveConversation: (callback: (payload: SaveConversationPayload) => void) => () => void
+    /** 事件：语音状态变化转发（main→主窗口，用于 UI 联动） */
+    onVoiceStateChanged: (callback: (payload: VoiceStateChangedPayload) => void) => () => void
+    /** 事件：右键菜单/托盘「设置」点击（main→主窗口，打开设置页指定 tab） */
+    onOpenSettings: (callback: (tab?: string) => void) => () => void
+    /** 事件：截图提问完成（main→头像窗口，截图 base64 + 落盘路径，作为附件添加到输入框，由用户输入问题后手动发送） */
+    onScreenshotResult: (callback: (payload: { base64: string; mediaType: string; width: number; height: number; filePath: string; fileName: string }) => void) => () => void
+    /** 拖拽：发送拖拽开始信号（主进程接管鼠标追踪，自取坐标） */
+    sendDragStart: (channel: string) => void
+    /** 拖拽：发送拖拽结束信号（触发边缘吸附 + 位置持久化） */
+    sendDragEnd: (channel: string) => void
+  }
 
   // Proactive（主动式助手 - 阶段10 s10-02）
   proactive: {
@@ -2347,6 +2529,32 @@ export interface ElectronAPI {
         title: string
         reason: string
       }) => void,
+    ) => () => void
+  }
+
+  // ============================================
+  // 会议纪要窗口（独立常驻窗口）
+  // ============================================
+  meetingNotes: {
+    /** 显示/聚焦会议纪要窗口 */
+    show: () => Promise<{ success: boolean; error?: string }>
+    /** 获取当前工作区路径（用于显示保存位置预览） */
+    getWorkspace: () => Promise<{
+      success: boolean
+      data?: { workspacePath: string }
+      error?: string
+    }>
+    /** 保存录音原文 txt 到工作区/会议纪要/YYYY-MM-DD/ */
+    saveTranscript: (
+      payload: import('@protocols/meetingNotes').SaveTranscriptPayload,
+    ) => Promise<import('@protocols/meetingNotes').SaveTranscriptResult>
+    /** 生成并保存 docx 到工作区/会议纪要/YYYY-MM-DD/ */
+    generateDocx: (
+      payload: import('@protocols/meetingNotes').GenerateDocxPayload,
+    ) => Promise<import('@protocols/meetingNotes').GenerateDocxResult>
+    /** 整理进度推送订阅（预留，当前整理在渲染层） */
+    onOrganizeProgress: (
+      callback: (progress: import('@protocols/meetingNotes').OrganizeProgress) => void,
     ) => () => void
   }
 }

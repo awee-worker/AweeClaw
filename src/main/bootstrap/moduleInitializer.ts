@@ -44,6 +44,8 @@ import { registerProactiveIpc } from '../modules/proactive/ProactiveIpc'
 import { proactiveStore } from '../modules/proactive/ProactiveStore'
 import { proactiveActionTrigger } from '../modules/proactive/ProactiveActionTrigger'
 import { proactivePermission } from '../modules/proactive/ProactivePermission'
+import { initFloatingAvatar, syncWakeWordEnabledToAvatar } from '../modules/floating-avatar'
+import { SettingsDb } from '../modules/settings-db/SettingsDb'
 
 export type Language = 'zh' | 'en'
 
@@ -166,6 +168,8 @@ export async function initializeModules(firstWin: BrowserWindow): Promise<void> 
   initSensorFusionIpc(firstWin)
   // 注册主动式助手 IPC 处理器（暴露 ProactiveStore 给渲染进程，阶段10 s10-02）
   initProactiveIpc()
+  // 初始化悬浮头像模块（语音唤醒 + 系统级悬浮头像 + 托盘，不阻塞启动）
+  initFloatingAvatarModule(firstWin)
 
   // ==========================================
   // 7. 应用菜单与语言同步
@@ -670,6 +674,139 @@ async function warmupProactiveDependencies(): Promise<void> {
   } catch (err) {
     // 预热失败不阻塞引擎启动，首次节拍会降级返回空信号
     logger.system.warn('[Main] PerceptionStore warmup failed:', errMsg(err))
+  }
+}
+
+/**
+ * 初始化悬浮头像模块（语音唤醒 + 系统级悬浮头像 + 托盘）。
+ *
+ * 流程：加载配置 → 注册 IPC → 创建头像窗口 → 绑定右键菜单 → 创建托盘。
+ * 按 showOnStartup 配置决定是否显示头像。
+ *
+ * 依赖注入：通过 initFloatingAvatar 的 deps 回调避免直接依赖 windowManager/appBootstrap，
+ * 防止循环依赖（floating-avatar 模块 → windowManager → appBootstrap → moduleInitializer）。
+ *
+ * 主窗口关闭后（hide-on-close 或 platform !== darwin），头像 + 托盘维持应用存活，
+ * 由 appBootstrap.window-all-closed 中检查 floatingAvatar.isVisible() 实现。
+ */
+function initFloatingAvatarModule(_firstWin: BrowserWindow): void {
+  try {
+    initFloatingAvatar({
+      getOrCreateMainWindow: () => {
+        const win = getMainWindow()
+        if (win && !win.isDestroyed()) return win
+        // 主窗口不存在时新建
+        return createWindow(false)
+      },
+      // 主窗口实例：用于监听 dom-ready，延迟显示头像避免启动闪烁
+      mainWindow: _firstWin,
+      openSettings: () => {
+        // 打开/聚焦主窗口，并发送导航事件（导航到外观设置 tab）
+        // 兼容两种场景：主窗口 warm（hide-on-close 隐藏中）与新创建窗口。
+        const sendNav = (w: BrowserWindow): void => {
+          if (w.isDestroyed() || w.webContents.isDestroyed()) return
+          w.webContents.send('floating-avatar:open-settings', 'appearance')
+        }
+        const win = getMainWindow()
+        if (win && !win.isDestroyed()) {
+          if (win.isMinimized()) win.restore()
+          win.show()
+          win.focus()
+          // renderer 仍在加载时等 dom-ready 再发；已就绪则立即发
+          if (win.webContents.isLoading()) {
+            win.webContents.once('dom-ready', () => sendNav(win))
+          } else {
+            sendNav(win)
+          }
+        } else {
+          const newWin = createWindow(false)
+          newWin.webContents.once('dom-ready', () => sendNav(newWin))
+        }
+      },
+      quitApp: () => {
+        // 触发完整退出流程（before-quit 会执行清理并销毁头像/托盘）
+        app.quit()
+      },
+      forwardSaveConversation: (payload) => {
+        // 转发到主窗口（主窗口写入 IntelligenceStore 聊天历史）
+        const win = getMainWindow()
+        if (win && !win.isDestroyed()) {
+          win.webContents.send('floating-avatar:save-conversation', payload)
+        }
+      },
+      forwardVoiceStateChanged: (payload) => {
+        // 转发到主窗口（用于主窗口 UI 联动）
+        const win = getMainWindow()
+        if (win && !win.isDestroyed()) {
+          win.webContents.send('floating-avatar:voice-state-changed', payload)
+        }
+      },
+      isWakeWordEnabled: () => {
+        try {
+          const cfg = SettingsDb.getInstance().getWakeWordConfig()
+          return !!cfg?.enabled
+        } catch {
+          return false
+        }
+      },
+      toggleWakeWord: async () => {
+        try {
+          const db = SettingsDb.getInstance()
+          const cfg = db.getWakeWordConfig()
+          const next = !cfg?.enabled
+          db.setWakeWordEnabled(next)
+          // 同步到头像窗口（让唤醒引擎启停）
+          syncWakeWordEnabledToAvatar(next)
+          return next
+        } catch (err) {
+          logger.system.warn('[Main] Toggle wake word failed:', errMsg(err))
+          return false
+        }
+      },
+      getLanguage: () => {
+        const lang = getConfigStore().get('language') as string
+        return lang?.toLowerCase().includes('en') ? 'en' : 'zh'
+      },
+      getWorkspacePath: () => {
+        // 优先：当前主窗口已绑定的工作区（运行时切换工作区后即时反映）
+        const win = getMainWindow()
+        if (win && !win.isDestroyed()) {
+          const roots = getWindowWorkspace(win.id)
+          if (roots && roots.length > 0) return roots[0]
+        }
+        // 兜底：持久化的最近工作区（启动时/无窗口时可用）
+        const session = getConfigStore().get('lastWorkspaceSession') as
+          | { roots?: string[] }
+          | undefined
+        if (session?.roots && session.roots.length > 0) return session.roots[0]
+        return (getConfigStore().get('lastWorkspacePath') as string | null) ?? null
+      },
+      forwardRequestModels: (requestId) => {
+        // 转发模型列表请求到主窗口（主窗口从 store 构建，通过 models-response 返回）
+        const win = getMainWindow()
+        if (win && !win.isDestroyed()) {
+          win.webContents.send('floating-avatar:request-models', requestId)
+        }
+      },
+      forwardSelectModel: (payload) => {
+        // 转发模型切换到主窗口（主窗口更新 store + save + 重新 push voiceContext）
+        const win = getMainWindow()
+        if (win && !win.isDestroyed()) {
+          win.webContents.send('floating-avatar:select-model', payload)
+        }
+      },
+      forwardSelectAuthorizationMode: (mode) => {
+        // 转发授权方式切换到主窗口（主窗口更新 store + save + 重新 push voiceContext）
+        const win = getMainWindow()
+        if (win && !win.isDestroyed()) {
+          win.webContents.send('floating-avatar:select-authorization-mode', mode)
+        }
+      },
+    })
+
+    logger.system.info('[Main] Floating avatar module initialized')
+  } catch (err) {
+    logger.system.warn('[Main] Floating avatar module init skipped:', errMsg(err))
   }
 }
 

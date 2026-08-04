@@ -4,7 +4,9 @@ import { voiceApi } from '../services/voiceApi'
 import {
   stripNonSpeakableContent,
   buildVoiceSystemPrompt,
+  isEndConversationCommand,
 } from '../utils/voiceTextUtils'
+import { resolveVoiceLlmConfig } from '../utils/voiceLlmConfig'
 import { createActivityStatus, type ActivityStatus } from '../utils/voiceActivityStatus'
 import type { StreamEntry } from '../components/voice/VoiceTextStream'
 import { runVoiceToolLoop } from '@intelligence/voice/voiceToolLoop'
@@ -14,7 +16,6 @@ import type {
 } from '@intelligence/providerTypes'
 import { api } from '@renderer/adapters/electronBridge'
 import { logger } from '@shared/toolkit/LogEngine'
-import { useStore } from '@store'
 import { io, type Socket } from 'socket.io-client'
 import { getTokens } from '@services/backendApi'
 
@@ -66,6 +67,8 @@ export interface VoiceChatOptions {
   voiceMode?: VoiceMode
   /** 云端/本地模式（决定 STT/TTS 走后端还是用户配置） */
   cloudMode?: 'cloud' | 'local'
+  /** 后端服务地址（云端模式补全 llmConfig 时使用；缺失时由调用方保证 llmConfig 已含 serverUrl） */
+  serverUrl?: string
   /** 完整 LLM 配置（拆分式模式使用） */
   llmConfig?: LLMConfig
   /** 系统提示词 */
@@ -139,46 +142,8 @@ const SAMPLE_RATE = 16000        // 采样率
 // 对话历史裁剪：保留 system + 最近 N 条消息
 const MAX_HISTORY_MESSAGES = 30
 
-/**
- * 结束对话指令关键词
- * 用户说这些词时自动关闭语音对话
- */
-const END_COMMAND_PATTERNS = [
-  // 中文
-  '结束对话', '结束', '退出', '再见', '拜拜', '拜', '关掉', '关闭语音',
-  '停止对话', '停止', '结束了', '完事了', '没事了', '可以了',
-  // 英文
-  'end call', 'end', 'exit', 'bye', 'goodbye', 'stop', 'close', 'quit', 'done',
-]
-
-/**
- * 检测用户输入是否为结束对话指令
- *
- * 匹配规则：
- * 1. 完全匹配关键词（忽略大小写、空格、标点）
- * 2. 文本包含"结束对话"等明确指令
- * 3. 文本长度短（<=10字符）且包含关键词
- */
-function isEndConversationCommand(text: string): boolean {
-  const normalized = text.trim().toLowerCase()
-    .replace(/[，。！？,.!?]/g, '') // 去掉标点
-    .replace(/\s+/g, '')             // 去掉空格
-
-  if (!normalized) return false
-
-  // 完全匹配
-  if (END_COMMAND_PATTERNS.includes(normalized)) return true
-
-  // 包含明确指令（短文本时才匹配，避免误判正常对话）
-  if (normalized.length <= 10) {
-    const explicitCommands = ['结束对话', '关闭语音', '停止对话', '退出语音', 'endcall', 'goodbye']
-    for (const cmd of explicitCommands) {
-      if (normalized.includes(cmd)) return true
-    }
-  }
-
-  return false
-}
+// 结束对话指令检测已抽取到 @utils/voiceTextUtils（isEndConversationCommand），
+// 供主窗口 useVoiceChat 与头像窗口 useAvatarVoiceChat 共享复用。
 
 // ============================================
 // 音频工具函数
@@ -463,33 +428,23 @@ export function useVoiceChat(options?: VoiceChatOptions) {
       })
 
       // 阶段 3：构建 LLM 配置
-      // 始终从 store 获取最新 llmConfig，避免 Overlay 传入的闭包旧值导致 cloudMode 字段未同步
-      const storeState = useStore.getState()
-      const llmConfig: LLMConfig = {
-        ...(storeState.llmConfig || {
-          provider: 'openai',
-          model: 'gpt-4o',
-          apiKey: '',
-          baseUrl: '',
-        }),
-      }
-
-      // 云端模式兜底：如果 authSlice.cloudMode === 'cloud' 但 llmConfig 中 cloudMode 字段缺失，
-      // 自动补充 cloudMode/serverUrl/accessToken，确保主进程走后端代理而非本地 apiKey
-      if (storeState.cloudMode === 'cloud' && !llmConfig.cloudMode) {
-        const tokens = getTokens()
-        llmConfig.cloudMode = true
-        llmConfig.serverUrl = storeState.serverUrl
-        llmConfig.accessToken = tokens?.accessToken
-        llmConfig.refreshToken = tokens?.refreshToken
-        logger.system.info('[VoiceChat] 云端模式兜底：补充 llmConfig 的 cloudMode 字段')
-      }
+      // 信任上层（VoiceConversationOverlay）传入的 options.llmConfig/cloudMode/serverUrl，
+      // 不再直接读取 @store（解除耦合，使 voiceApi/语音栈可被头像窗口复用）。
+      // 云端模式兜底补全（cloudMode/serverUrl/accessToken）由 resolveVoiceLlmConfig 统一处理。
+      const cloudMode = options?.cloudMode || 'cloud'
+      const tokens = getTokens()
+      const llmConfig: LLMConfig = resolveVoiceLlmConfig(
+        options?.llmConfig,
+        cloudMode,
+        options?.serverUrl,
+        tokens,
+      )
 
       logger.system.info('[VoiceChat] LLM 配置:', {
         provider: llmConfig.provider,
         model: llmConfig.model,
         cloudMode: llmConfig.cloudMode,
-        authCloudMode: storeState.cloudMode,
+        authCloudMode: cloudMode,
         hasApiKey: !!llmConfig.apiKey,
         hasAccessToken: !!llmConfig.accessToken,
       })
@@ -1272,6 +1227,63 @@ export function useVoiceChat(options?: VoiceChatOptions) {
     }
   }, [disconnect])
 
+  /**
+   * 播放问候语（唤醒后调用）
+   *
+   * 流程：TTS 生成"在呢"音频 → 加入播放队列 → 播放期间 state='speaking'
+   * 播放完后自动恢复到 'listening'，开始监听用户指令。
+   *
+   * 与 speakTextImmediately 的区别：
+   * - speakTextImmediately 用于对话中途的工具调用预告，不恢复 listening
+   * - speakGreeting 用于唤醒后的开场问候，播放完恢复 listening
+   */
+  const speakGreeting = useCallback(async (text: string) => {
+    const speakable = stripNonSpeakableContent(text)
+    if (!speakable.trim()) return
+
+    ttsPendingRef.current++
+    setState('speaking')
+    isSpeakingRef.current = true
+    try {
+      const ttsBlob = await voiceApi.textToSpeech(speakable, {
+        voice: options?.userVoiceConfig?.ttsVoice,
+        speed: options?.userVoiceConfig?.ttsSpeed,
+        format: 'mp3',
+        forceLocal: voiceModeRef.current === 'split',
+      })
+      const base64 = await blobToBase64(ttsBlob)
+      if (base64) {
+        ttsQueueRef.current.push({ data: base64, contentType: 'audio/mp3' })
+        playTtsQueue()
+
+        // 启动播放完成检查：TTS 播放完后恢复 listening
+        const greetingCheck = setInterval(() => {
+          if (
+            ttsPendingRef.current === 0 &&
+            !isPlayingRef.current &&
+            ttsQueueRef.current.length === 0
+          ) {
+            clearInterval(greetingCheck)
+            isSpeakingRef.current = false
+            setState('listening')
+            logger.system.info('[VoiceChat] Greeting finished, now listening')
+          }
+        }, 200)
+      } else {
+        // TTS 生成失败，直接恢复 listening
+        setState('listening')
+        isSpeakingRef.current = false
+      }
+    } catch (err) {
+      logger.system.warn('[VoiceChat] Greeting TTS failed:', err)
+      // TTS 失败不阻塞对话，恢复 listening 状态
+      setState('listening')
+      isSpeakingRef.current = false
+    } finally {
+      ttsPendingRef.current--
+    }
+  }, [options?.userVoiceConfig, playTtsQueue])
+
   return {
     state,
     volume,
@@ -1284,5 +1296,6 @@ export function useVoiceChat(options?: VoiceChatOptions) {
     disconnect,
     interrupt,
     toggleMute,
+    speakGreeting,
   }
 }

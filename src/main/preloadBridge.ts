@@ -58,6 +58,9 @@ import { createCausalReasoningApi } from './preload/api/causalReasoning'
 import { createIoTBridgeApi } from './preload/api/iot'
 import { createSensorFusionApi } from './preload/api/sensorFusion'
 import { createProactiveApi } from './preload/api/proactive'
+import { createFloatingAvatarApi } from './preload/api/floatingAvatar'
+import { createScreenshotOverlayApi } from './preload/api/screenshotOverlay'
+import { createMeetingNotesApi } from './preload/api/meetingNotes'
 
 /**
  * 聚合所有领域 API 并暴露到渲染进程。
@@ -88,4 +91,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   iot: createIoTBridgeApi(),
   sensorFusion: createSensorFusionApi(),
   proactive: createProactiveApi(),
+  floatingAvatar: createFloatingAvatarApi(),
+  screenshotOverlay: createScreenshotOverlayApi(),
+  meetingNotes: createMeetingNotesApi(),
 })

@@ -46,6 +46,12 @@ export function createStorageApi() {
       invoke('settings-db:saveVoiceModelConfig')(config),
     settingsDbSetVoiceModelEnabled: (payload: { sttEnabled: boolean; ttsEnabled: boolean }) =>
       invoke('settings-db:setVoiceModelEnabled')(payload),
+    // 语音唤醒配置（唤醒开关 + 唤醒词 + 灵敏度 + 冷却）
+    settingsDbGetWakeWordConfig: invoke('settings-db:getWakeWordConfig'),
+    settingsDbSaveWakeWordConfig: (config: unknown) =>
+      invoke('settings-db:saveWakeWordConfig')(config),
+    settingsDbSetWakeWordEnabled: (enabled: boolean) =>
+      invoke('settings-db:setWakeWordEnabled')(enabled),
 
     // ── Session DB ──
     sessionDbInitialize: (params?: { sessionsDir?: string }) =>

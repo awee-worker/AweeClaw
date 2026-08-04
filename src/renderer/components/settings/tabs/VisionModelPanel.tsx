@@ -216,18 +216,16 @@ export const VisionModelPanel = memo(function VisionModelPanel({ language }: { l
               </p>
             </div>
           </div>
-          {!isCloudMode && (
-            <ToggleSwitch
+          <ToggleSwitch
               checked={config.enabled}
               switchSize="sm"
               onChange={(e) => handleToggleEnabled(e.target.checked)}
             />
-          )}
         </div>
 
-        {/* 云端模式提示 */}
-        {isCloudMode ? (
-          <div className="space-y-3">
+        {/* 云端模式信息提示（不阻止配置） */}
+        {isCloudMode && (
+          <div className="space-y-3 mb-4">
             <div className="flex items-center gap-2 p-3 rounded-lg bg-accent/5 border border-accent/20">
               <Cloud className="w-4 h-4 text-accent shrink-0" />
               <div className="text-xs">
@@ -249,8 +247,8 @@ export const VisionModelPanel = memo(function VisionModelPanel({ language }: { l
               </div>
             )}
           </div>
-        ) : (
-          <>
+        )}
+        <>
             {/* 未启用时的提示 */}
             {!config.enabled ? (
               <div className="flex items-center gap-2 p-3 rounded-lg bg-surface-active/30 border border-border/30">
@@ -342,11 +340,10 @@ export const VisionModelPanel = memo(function VisionModelPanel({ language }: { l
               </div>
             )}
           </>
-        )}
       </div>
 
       {/* ============ 底部弹出保存栏（与全局保存栏样式一致） ============ */}
-      {isDirty && !isCloudMode && config.enabled && (
+      {isDirty && config.enabled && (
         <div className="absolute bottom-6 right-8 left-8 p-4 rounded-xl bg-surface/95 border border-border/60 shadow-lg flex items-center justify-between z-10 transition-all duration-300">
           <span className="text-xs text-text-muted ml-2 font-medium">
             {t('settings.unsavedChanges', language)}

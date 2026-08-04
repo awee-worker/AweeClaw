@@ -87,6 +87,7 @@ export const BRAND = {
     agentTemp: '.aweeclaw/agent-temp',
     pythonTemp: '.aweeclaw/python-temp',
     uploads: '.aweeclaw/uploads',
+    screenshot: '.aweeclaw/screenshot',
   },
 
   marketplace: {

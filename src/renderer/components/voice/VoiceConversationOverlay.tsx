@@ -15,7 +15,7 @@ import { useVoiceChat } from '../../composables/useVoiceChat'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { api } from '../../adapters/electronBridge'
-import { useAgentStore } from '@intelligence/state/IntelligenceStore'
+import { saveVoiceConversationToHistory } from '@intelligence/state/saveConversation'
 import { CompactVoiceWindow } from './CompactVoiceWindow'
 import { ImmersiveVoiceView } from './ImmersiveVoiceView'
 
@@ -28,10 +28,11 @@ interface VoiceConversationOverlayProps {
 }
 
 export function VoiceConversationOverlay({ onClose }: VoiceConversationOverlayProps) {
-  const { language, llmConfig, cloudMode, workspacePath, openFiles, activeFilePath } = useStore(useShallow(s => ({
+  const { language, llmConfig, cloudMode, serverUrl, workspacePath, openFiles, activeFilePath } = useStore(useShallow(s => ({
     language: s.language,
     llmConfig: s.llmConfig,
     cloudMode: s.cloudMode,
+    serverUrl: s.serverUrl,
     workspacePath: s.workspacePath,
     openFiles: s.openFiles,
     activeFilePath: s.activeFilePath,
@@ -85,7 +86,7 @@ export function VoiceConversationOverlay({ onClose }: VoiceConversationOverlayPr
     }
   }, [])
 
-  // 保存对话到聊天历史（包含工具调用记录）
+  // 保存对话到聊天历史（复用共享工具，头像窗口经 IPC 转发后也走同一逻辑）
   const saveConversationToHistory = useCallback(
     (
       userText: string,
@@ -98,34 +99,7 @@ export function VoiceConversationOverlay({ onClose }: VoiceConversationOverlayPr
         resultSummary: string
       }>,
     ) => {
-      try {
-        const store = useAgentStore.getState()
-        store.addUserMessage(userText)
-        const assistantId = store.addAssistantMessage(aiText)
-
-        if (assistantId && toolCallRecords && toolCallRecords.length > 0) {
-          for (const record of toolCallRecords) {
-            store.addToolCallPart(assistantId, {
-              id: record.id,
-              name: record.name,
-              arguments: record.args,
-            })
-            store.addToolResult(
-              record.id,
-              record.name,
-              record.resultSummary,
-              record.success ? 'success' : 'tool_error',
-              record.args,
-            )
-          }
-        }
-
-        if (assistantId) {
-          store.finalizeAssistant(assistantId)
-        }
-      } catch (err) {
-        console.error('[VoiceOverlay] Save conversation to history failed:', err)
-      }
+      saveVoiceConversationToHistory({ userText, aiText, toolCallRecords })
     },
     [],
   )
@@ -173,6 +147,7 @@ export function VoiceConversationOverlay({ onClose }: VoiceConversationOverlayPr
     language: 'auto',
     voiceMode,
     cloudMode: isCloudMode ? 'cloud' : 'local',
+    serverUrl: serverUrl || undefined,
     llmConfig: llmConfig || undefined,
     userVoiceConfig,
     realtimeConfig,
