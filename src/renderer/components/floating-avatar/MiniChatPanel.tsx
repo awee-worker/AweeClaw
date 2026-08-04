@@ -1,7 +1,10 @@
 /**
- * MiniChatPanel - 悬浮头像迷你聊天面板（类豆包）
+ * MiniChatPanel - 悬浮头像迷你聊天面板（普通聊天窗口的缩小版）
  *
- * 与普通聊天窗口功能完全一致（工具调用、命令执行等），只是窗口更小。
+ * 布局与普通聊天窗口一致：
+ * - 消息列表内容居中（max-width 800px），用户气泡右、AI 气泡左
+ * - 底部输入区居中（max-width 840px），附件 + 模型选择 + 输入框 + 发送
+ * - 完整工具栏始终展示（窗口最小宽度 960px，无需响应式收起）
  *
  * 特性：
  * - 纯文本输入 + 流式 LLM 输出（带工具调用循环）
@@ -11,30 +14,25 @@
  * - 发送/语音按钮合并：有内容→发送，无内容→语音，流式中→停止
  * - 主题色跟随系统（CSS 变量 var(--accent) 等）
  *
- * 响应式布局（窗口可拖动调整宽度 340~560）：
- * - 宽度 < 380px：收起模型选择器（仅显示当前模型名）
- * - 宽度 ≥ 380px：显示完整工具栏（附件 + 模型选择器）
- * - 宽度 ≥ 460px：显示模型 provider 名称
- *
- * 布局（展开窗口 340×480）：
- * ┌──────────────────────────────┐
- * │ [头像] 迷你助手          [×]  │  顶栏（44px）
- * ├──────────────────────────────┤
- * │ [附件预览区]                  │  可选（有附件时显示）
- * ├──────────────────────────────┤
- * │ 消息列表（气泡，可滚动）       │  弹性高度
- * │  user 气泡（右） / ai 气泡（左）│
- * │  [工具调用状态]               │
- * ├──────────────────────────────┤
- * │ [活动状态栏]                  │  可选（AI 执行工具时显示）
- * ├──────────────────────────────┤
- * │ [📎] [模型选择] [输入框] [➤/🎤]│  工具栏 + 输入栏
- * └──────────────────────────────┘
+ * 布局（展开窗口 960×780）：
+ * ┌────────────────────────────────────────────────┐
+ * │ [最大化]              [清空] [关闭]              │  顶栏（44px）
+ * ├────────────────────────────────────────────────┤
+ * │         消息列表（居中 max-w-800，可滚动）       │  弹性高度
+ * │          user 气泡（右） / ai 气泡（左）         │
+ * │          [工具调用状态] [审批卡片]               │
+ * ├────────────────────────────────────────────────┤
+ * │ [活动状态栏]                                    │  可选
+ * ├────────────────────────────────────────────────┤
+ * │    [附件预览区]                                 │  可选
+ * │    [📎] [模型选择] [授权方式]                    │  工具栏（居中 max-w-840）
+ * │    [输入框................................] [➤] │  输入行
+ * └────────────────────────────────────────────────┘
  */
 
 import { memo, useEffect, useRef, useState, useCallback } from 'react'
 import {
-  Send,
+  ArrowUp,
   Mic,
   X,
   Loader2,
@@ -46,7 +44,6 @@ import {
   FileText,
   FileCode,
   File,
-  Square,
   Wrench,
   Maximize2,
   Puzzle,
@@ -57,6 +54,7 @@ import {
   Folder,
   Brain,
   ChevronRight,
+  Sparkles,
 } from 'lucide-react'
 import { api } from '@renderer/adapters/electronBridge'
 import {
@@ -69,6 +67,8 @@ import {
 import type { PendingApprovalToolCall } from '@intelligence/voice/miniChatApprovalService'
 import { MiniMarkdown } from './MiniMarkdown'
 import { MiniAuthorizationSelector } from './MiniAuthorizationSelector'
+import { MiniWorkModeSelector } from './MiniWorkModeSelector'
+import { publicAsset } from '@utils/publicAsset'
 import { getToolDisplayName } from '@configuration/toolDefinitions'
 import type { AvatarModelOption } from '../../types/electronBridge'
 
@@ -109,8 +109,12 @@ export interface MiniChatPanelProps {
   currentProvider?: string
   currentModel?: string
   cloudMode?: 'cloud' | 'local'
+  /** 完整 LLM 配置对象（来自 voiceContext.llmConfig，用于 AI 优化输入时调用 LLM） */
+  llmConfig?: unknown | null
   /** 工具执行授权方式（来自 voiceContext，同步主窗口 authorizationMode） */
   authorizationMode?: 'every-step' | 'dangerous-only' | 'never'
+  /** 工作模式（来自 voiceContext，同步主窗口 workMode）：快速/思考/专家 */
+  workMode?: 'chat' | 'agent' | 'plan'
   /** 外部注入的待添加附件（如截图提问结果），组件合并到输入框附件区后调用 onPendingAttachmentConsumed */
   pendingAttachment?: ChatAttachment | null
   /** 外部附件已被合并消费，调用方应清空 pendingAttachment */
@@ -121,7 +125,10 @@ export interface MiniChatPanelProps {
 // 常量
 // ============================================
 
-const TOOLBAR_COLLAPSE_THRESHOLD = 380
+/** 消息列表内容最大宽度（与普通聊天窗口一致） */
+const MESSAGE_MAX_WIDTH = 800
+/** 底部输入区最大宽度（与普通聊天窗口一致） */
+const INPUT_MAX_WIDTH = 840
 
 // ============================================
 // 主组件
@@ -145,32 +152,15 @@ function MiniChatPanelImpl({
   currentProvider,
   currentModel,
   cloudMode,
+  llmConfig,
   authorizationMode,
+  workMode,
   pendingAttachment,
   onPendingAttachmentConsumed,
 }: MiniChatPanelProps) {
   const isZh = language === 'zh'
   const [input, setInput] = useState('')
   const [attachments, setAttachments] = useState<ChatAttachment[]>([])
-
-  // 响应式：监听窗口宽度
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [containerWidth, setContainerWidth] = useState(340)
-
-  useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        setContainerWidth(entry.contentRect.width)
-      }
-    })
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
-
-  const showFullToolbar = containerWidth >= TOOLBAR_COLLAPSE_THRESHOLD
-  const showProviderName = containerWidth >= 460
 
   // 自动滚动控制
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -245,16 +235,96 @@ function MiniChatPanelImpl({
   const handleSend = useCallback(() => {
     if (!isSendable || streaming) return
     const text = input.trim()
-    const atts = attachments.length > 0 ? attachments : undefined
-    onSend(text, atts)
+    onSend(text, attachments.length > 0 ? attachments : undefined)
+    // 清空输入框和附件
     setInput('')
-    attachments.forEach((a) => {
-      if (a.previewUrl) URL.revokeObjectURL(a.previewUrl)
-    })
     setAttachments([])
-    userScrolledUpRef.current = false
-    requestAnimationFrame(() => scrollToBottom())
-  }, [input, attachments, streaming, onSend, scrollToBottom])
+    // 重置 textarea 高度
+    requestAnimationFrame(() => {
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto'
+      }
+    })
+  }, [isSendable, streaming, input, attachments, onSend])
+
+  // --------------------------------------------
+  // AI 优化输入（与主窗口 ConversationInput.handleOptimize 一致）
+  // --------------------------------------------
+  const [isOptimizing, setIsOptimizing] = useState(false)
+
+  const handleOptimize = useCallback(async () => {
+    if (!input.trim() || isOptimizing || streaming) return
+    if (!llmConfig) return
+
+    setIsOptimizing(true)
+    const requestId = `mini-opt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    let result = ''
+    let resolved = false
+    const unsubs: (() => void)[] = []
+
+    const cleanup = () => {
+      if (!resolved) {
+        resolved = true
+        unsubs.forEach((u) => u())
+      }
+    }
+
+    unsubs.push(
+      api.llm.onStream(requestId, (chunk: { type: string; content?: string }) => {
+        if (chunk.type === 'text' && chunk.content) {
+          result += chunk.content
+        }
+      }),
+    )
+
+    unsubs.push(
+      api.llm.onDone(requestId, () => {
+        cleanup()
+        const optimized = result.trim()
+        if (optimized) {
+          setInput(optimized)
+          requestAnimationFrame(() => {
+            if (textareaRef.current) {
+              textareaRef.current.style.height = 'auto'
+              textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`
+            }
+          })
+        }
+        setIsOptimizing(false)
+      }),
+    )
+
+    unsubs.push(
+      api.llm.onError(requestId, () => {
+        cleanup()
+        setIsOptimizing(false)
+      }),
+    )
+
+    // 超时保护（30s）
+    setTimeout(() => {
+      if (!resolved) {
+        cleanup()
+        setIsOptimizing(false)
+      }
+    }, 30000)
+
+    try {
+      const systemPrompt = isZh
+        ? '你是一个输入优化助手，请帮用户优化输入内容，使其更清晰、更完整、更易于 AI 理解。直接输出优化后的内容，不要添加任何解释。'
+        : 'You are an input optimization assistant. Help the user optimize their input to be clearer, more complete, and easier for AI to understand. Output the optimized content directly without any explanation.'
+
+      await api.llm.send({
+        config: llmConfig as never,
+        messages: [{ role: 'user', content: input.trim() }] as never,
+        systemPrompt,
+        requestId,
+      })
+    } catch {
+      cleanup()
+      setIsOptimizing(false)
+    }
+  }, [input, isOptimizing, streaming, llmConfig, isZh])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -271,7 +341,10 @@ function MiniChatPanelImpl({
   // --------------------------------------------
 
   return (
-    <div ref={containerRef} style={panelStyle}>
+    <div
+      className="flex flex-col w-full h-full overflow-hidden rounded-2xl border border-[rgba(128,128,128,0.15)] shadow-[0_0_10px_rgba(0,0,0,0.1)]"
+      style={{ background: 'rgb(var(--background-secondary) / 0.98)', backdropFilter: 'blur(20px)' }}
+    >
       <style>{`
         @keyframes mini-chat-blink {
           0%, 50% { opacity: 1; }
@@ -281,62 +354,114 @@ function MiniChatPanelImpl({
           0%, 100% { opacity: 1; transform: scale(1); }
           50% { opacity: 0.5; transform: scale(0.85); }
         }
+        .mini-brand-logo-light { display: none; }
+        .mini-brand-logo-dark { display: block; }
+        @media (prefers-color-scheme: light) {
+          .mini-brand-logo-dark { display: none; }
+          .mini-brand-logo-light { display: block; }
+        }
       `}</style>
 
-      {/* ============ 顶栏 ============ */}
-      <div style={headerStyle}>
+      {/* ============ 顶栏（可拖动移动窗口） ============ */}
+      <div
+        className="flex items-center gap-2 px-4 h-11 flex-shrink-0 border-b border-border/40 bg-background/85"
+        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+      >
+        {/* 左侧：应用头像 + AweeClaw 品牌名 */}
+        <div
+          className="flex items-center gap-2 select-none"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+        >
+          {/* 根据系统明暗偏好自动切换 logo（不依赖 store） */}
+          <img
+            src={publicAsset('brand/logos/app.png')}
+            alt="AweeClaw"
+            className="mini-brand-logo-dark w-6 h-6 rounded-md object-contain"
+          />
+          <img
+            src={publicAsset('brand/logos/app-light.png')}
+            alt="AweeClaw"
+            className="mini-brand-logo-light w-6 h-6 rounded-md object-contain"
+          />
+          <span
+            className="font-bold tracking-tight"
+            style={{
+              fontSize: '13px',
+              color: 'rgb(var(--text-primary) / 0.9)',
+              fontFamily: '-apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif',
+            }}
+          >
+            AweeClaw
+          </span>
+        </div>
+
+        <div style={{ flex: 1 }} />
+
+        {/* 右侧：清空 + 最大化 + 关闭 */}
+        {messages.length > 0 && !streaming && (
+          <button
+            onClick={onClear}
+            style={{ ...headerBtnStyle, WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            title={isZh ? '清空对话' : 'Clear'}
+          >
+            <span style={{ fontSize: '12px' }}>{isZh ? '清空' : 'Clear'}</span>
+          </button>
+        )}
+
         {/* 最大化按钮：打开主聊天窗口并关闭迷你助手 */}
         <button
           onClick={onOpenMain}
-          style={headerMaximizeBtnStyle}
+          style={{ ...headerMaximizeBtnStyle, WebkitAppRegion: 'no-drag' } as React.CSSProperties}
           title={isZh ? '打开主窗口' : 'Open main window'}
         >
           <Maximize2 size={15} color="rgb(var(--text-secondary) / 0.9)" />
         </button>
 
-        <div style={{ flex: 1 }} />
-
-        {messages.length > 0 && !streaming && (
-          <button onClick={onClear} style={headerBtnStyle} title={isZh ? '清空对话' : 'Clear'}>
-            <span style={{ fontSize: '12px' }}>{isZh ? '清空' : 'Clear'}</span>
-          </button>
-        )}
-
-        <button onClick={onClose} style={headerCloseBtnStyle} title={isZh ? '关闭' : 'Close'}>
+        <button
+          onClick={onClose}
+          style={{ ...headerCloseBtnStyle, WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+          title={isZh ? '关闭' : 'Close'}
+        >
           <X size={14} color="rgb(var(--text-secondary) / 0.8)" />
         </button>
       </div>
 
-      {/* ============ 消息列表 ============ */}
-      <div ref={scrollRef} style={messageListStyle} onScroll={handleScroll}>
-        {messages.length === 0 && !errorMessage && pendingApproval.length === 0 && (
-          <div style={emptyStyle}>
-            <p style={{ fontSize: '13px', color: 'rgb(var(--text-muted) / 0.6)', margin: 0 }}>
-              {isZh ? '有什么可以帮你的？' : 'How can I help you?'}
-            </p>
-          </div>
-        )}
+      {/* ============ 消息列表（Tailwind class 与主窗口一致） ============ */}
+      <div
+        ref={scrollRef}
+        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 py-3 custom-scrollbar"
+        onScroll={handleScroll}
+      >
+        <div className="mx-auto w-full" style={{ maxWidth: MESSAGE_MAX_WIDTH }}>
+          {messages.length === 0 && !errorMessage && pendingApproval.length === 0 && (
+            <div className="flex flex-1 items-center justify-center min-h-[200px]">
+              <p className="text-[13px] text-text-muted/60">
+                {isZh ? '有什么可以帮你的？' : 'How can I help you?'}
+              </p>
+            </div>
+          )}
 
-        {errorMessage && (
-          <div style={errorBannerStyle}>
-            <AlertCircle size={13} style={{ flexShrink: 0 }} />
-            <span>{errorMessage}</span>
-          </div>
-        )}
+          {errorMessage && (
+            <div className="flex items-center gap-2 px-3 py-2 mb-3 rounded-lg bg-status-error/10 border border-status-error/20 text-status-error text-[13px]">
+              <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
 
-        {messages.map((msg) => (
-          <MessageBubble key={msg.id} message={msg} isZh={isZh} />
-        ))}
+          {messages.map((msg) => (
+            <MessageBubble key={msg.id} message={msg} isZh={isZh} />
+          ))}
 
-        {/* 工具审批卡片（与普通聊天窗口的 BatchApprovalPanel 一致） */}
-        {pendingApproval.length > 0 && (
-          <MiniApprovalCard
-            pendingTools={pendingApproval}
-            isZh={isZh}
-            onApproveAll={onApproveAll}
-            onRejectAll={onRejectAll}
-          />
-        )}
+          {/* 工具审批卡片（与普通聊天窗口的 BatchApprovalPanel 一致） */}
+          {pendingApproval.length > 0 && (
+            <MiniApprovalCard
+              pendingTools={pendingApproval}
+              isZh={isZh}
+              onApproveAll={onApproveAll}
+              onRejectAll={onRejectAll}
+            />
+          )}
+        </div>
       </div>
 
       {/* ============ 活动状态栏 ============ */}
@@ -355,93 +480,154 @@ function MiniChatPanelImpl({
         </div>
       )}
 
-      {/* ============ 工具栏 + 输入栏 ============ */}
-      <div style={inputBarStyle}>
-        {/* 附件预览区：紧贴输入栏上方（上传附件按钮上方），让用户直观看到已添加的截图等附件 */}
-        {attachments.length > 0 && (
-          <div style={attachmentPreviewStyle}>
-            {attachments.map((att) => (
-              <div key={att.id} style={attachmentItemStyle}>
-                {att.isImage && att.previewUrl ? (
-                  <img src={att.previewUrl} alt={att.name} style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 6 }} />
-                ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    {getAttachmentIcon(att.name, att.mediaType)}
-                    <span style={{ fontSize: '12px', color: 'rgb(var(--text-secondary) / 0.8)', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {att.name}
-                    </span>
-                  </div>
-                )}
-                <button onClick={() => removeAttachment(att.id)} style={attachmentRemoveBtnStyle} title={isZh ? '移除' : 'Remove'}>
-                  <X size={10} color="#fff" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* 工具栏：附件按钮 + 模型选择器 + 授权选择器 */}
-        <div style={toolbarStyle}>
-          <input type="file" ref={fileInputRef} multiple onChange={handleFileSelect} style={{ display: 'none' }} />
-          {/* 附件按钮（正方形） */}
-          <button
-            onClick={() => !streaming && fileInputRef.current?.click()}
-            disabled={streaming}
-            style={{
-              ...attachBtnStyle,
-              opacity: streaming ? 0.4 : 1,
-              cursor: streaming ? 'not-allowed' : 'pointer',
-            }}
-            title={isZh ? '上传附件' : 'Upload attachment'}
+      {/* ============ 输入区（Tailwind class 与主窗口 ConversationInput 完全一致） ============ */}
+      <div className="z-20 px-4 pb-3">
+        <div className="mx-auto" style={{ maxWidth: INPUT_MAX_WIDTH }}>
+          {/* 输入框卡片：rounded-xl + border + shadow，与 ConversationInput 一致 */}
+          <div
+            className={`relative group flex flex-col rounded-xl transition-all duration-500 ease-out border ${
+              streaming
+                ? 'bg-surface border-accent/20 shadow-[0_4px_24px_-12px_rgba(var(--accent)/0.15)]'
+                : 'bg-surface border-border/50 hover:border-text-primary/10 shadow-[0_4px_16px_-8px_rgba(0,0,0,0.1)]'
+            }`}
           >
-            <Paperclip size={14} color="rgb(var(--text-secondary) / 0.8)" />
-          </button>
+            {/* 附件预览区 */}
+            {attachments.length > 0 && (
+              <div className="flex gap-2 px-4 pt-4 overflow-x-auto custom-scrollbar">
+                {attachments.map((att) => (
+                  <div
+                    key={att.id}
+                    className="relative group/att flex-shrink-0 rounded-xl overflow-hidden border border-border shadow-sm"
+                  >
+                    {att.isImage && att.previewUrl ? (
+                      <div className="w-16 h-16 relative">
+                        <img src={att.previewUrl} alt={att.name} className="w-full h-full object-cover" />
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 px-3 py-2 bg-surface/50 min-w-[120px] max-w-[180px]">
+                        {getAttachmentIcon(att.name, att.mediaType)}
+                        <span className="text-[12px] text-text-secondary truncate max-w-[100px]">{att.name}</span>
+                      </div>
+                    )}
+                    <button
+                      onClick={() => removeAttachment(att.id)}
+                      className="absolute top-1 right-1 p-1 bg-black/60 backdrop-blur rounded-full text-white hover:bg-red-500 transition-all opacity-0 group-hover/att:opacity-100 scale-90 hover:scale-100"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
 
-          <ModelSelectorButton
-            currentProvider={currentProvider}
-            currentModel={currentModel}
-            cloudMode={cloudMode}
-            showFull={showFullToolbar}
-            showProviderName={showProviderName}
-            disabled={streaming}
-            language={language}
-          />
+            {/* 文本输入区 + 底部工具栏（与 ConversationInput 结构一致） */}
+            <div className="flex flex-col px-4 pb-3 pt-2">
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={isZh ? '输入消息...' : 'Type a message...'}
+                rows={1}
+                disabled={streaming}
+                className="w-full bg-transparent border-none p-0 py-2.5 text-[15px] text-text-primary placeholder-text-muted/40 resize-none focus:ring-0 focus:outline-none leading-relaxed custom-scrollbar max-h-[50vh] caret-accent font-medium tracking-wide"
+                style={{ minHeight: '48px' }}
+              />
 
-          {/* 授权方式选择器（与普通会话一致，控制工具执行审批门禁） */}
-          <MiniAuthorizationSelector
-            currentMode={authorizationMode}
-            language={language}
-            disabled={streaming}
-          />
-        </div>
+              {/* 底部工具栏：左侧模型选择器 | 右侧附件+发送（与 ConversationInput 一致） */}
+              <div className="relative flex items-center justify-between pt-1 gap-2">
+                {/* 左侧：模型选择器 */}
+                <div className="flex items-center gap-2 opacity-80 hover:opacity-100 transition-opacity">
+                  <ModelSelectorButton
+                    currentProvider={currentProvider}
+                    currentModel={currentModel}
+                    cloudMode={cloudMode}
+                    disabled={streaming}
+                    language={language}
+                  />
+                </div>
 
-        {/* 输入行 */}
-        <div style={inputRowStyle}>
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={isZh ? '输入消息...' : 'Type a message...'}
-            rows={1}
-            style={textareaStyle}
-            disabled={streaming}
-          />
+                {/* 右侧：附件 + 发送/停止/语音 */}
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <input type="file" ref={fileInputRef} multiple onChange={handleFileSelect} className="hidden" />
+                  <button
+                    onClick={() => !streaming && fileInputRef.current?.click()}
+                    disabled={streaming}
+                    title={isZh ? '上传附件' : 'Upload attachment'}
+                    className={`rounded-xl w-8 h-8 transition-all active:scale-95 flex items-center justify-center ${
+                      streaming
+                        ? 'opacity-40 cursor-not-allowed text-text-muted'
+                        : 'hover:bg-surface-active text-text-muted hover:text-text-primary'
+                    }`}
+                  >
+                    <Paperclip className="w-4 h-4 opacity-70 group-hover:opacity-100" />
+                  </button>
 
-          {/* 合并按钮：发送 / 停止 / 语音 */}
-          {streaming ? (
-            <button onClick={onAbort} style={stopBtnStyle} title={isZh ? '停止生成' : 'Stop'}>
-              <Square size={13} color="#fff" fill="currentColor" />
-            </button>
-          ) : isSendable ? (
-            <button onClick={handleSend} style={sendBtnStyle} title={isZh ? '发送' : 'Send'}>
-              <Send size={14} color="#fff" />
-            </button>
-          ) : (
-            <button onClick={onSwitchToVoice} style={micBtnStyle} title={isZh ? '语音对话' : 'Voice chat'}>
-              <Mic size={14} color="rgb(var(--text-secondary) / 0.9)" />
-            </button>
-          )}
+                  {/* AI 优化输入按钮（与主窗口 ConversationInput 一致） */}
+                  <button
+                    onClick={handleOptimize}
+                    disabled={!input.trim() || isOptimizing || streaming}
+                    title={isZh ? '优化输入' : 'Optimize input'}
+                    className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300 ${
+                      isOptimizing
+                        ? 'bg-accent/10 text-accent border border-accent/20'
+                        : input.trim() && !streaming
+                          ? 'bg-surface/50 text-text-muted hover:text-accent hover:bg-accent/10 border border-border/30 hover:border-accent/20 active:scale-95'
+                          : 'bg-transparent text-text-muted/30 cursor-not-allowed border border-transparent'
+                    }`}
+                  >
+                    {isOptimizing ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Sparkles className="w-4 h-4" />
+                    )}
+                  </button>
+
+                  {streaming ? (
+                    <button
+                      onClick={onAbort}
+                      title={isZh ? '停止生成' : 'Stop'}
+                      className="w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300 bg-surface/50 text-text-primary border border-text-primary/10 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20"
+                    >
+                      <div className="w-2.5 h-2.5 bg-current rounded-[1px] animate-pulse" />
+                    </button>
+                  ) : isSendable ? (
+                    <button
+                      onClick={handleSend}
+                      title={isZh ? '发送' : 'Send'}
+                      className="w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300 bg-accent text-white shadow-md shadow-accent/20 hover:shadow-accent/40 hover:-translate-y-0.5 active:translate-y-0 border border-transparent"
+                    >
+                      <ArrowUp className="w-5 h-5 stroke-[3]" />
+                    </button>
+                  ) : (
+                    <button
+                      onClick={onSwitchToVoice}
+                      title={isZh ? '语音对话' : 'Voice chat'}
+                      className="w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300 bg-surface/50 text-text-muted hover:text-accent hover:bg-accent/10 border border-border/30 hover:border-accent/20 active:scale-95"
+                    >
+                      <Mic className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 授权方式栏：独立底部栏，粘附在输入框容器底部（与主窗口 -mt-5 一致） */}
+          <div className="-mt-5 z-10">
+            <div className="flex items-center gap-2 bg-border/20 px-4 pt-6 pb-1 rounded-b-xl rounded-t-none">
+              <MiniWorkModeSelector
+                currentMode={workMode}
+                language={language}
+                disabled={streaming}
+              />
+              <MiniAuthorizationSelector
+                currentMode={authorizationMode}
+                language={language}
+                disabled={streaming}
+              />
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -459,22 +645,18 @@ function MessageBubble({ message, isZh }: { message: MiniChatMessage; isZh: bool
   const hasReasoning = !isUser && !!message.reasoning && message.reasoning.trim().length > 0
 
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column',
-      alignItems: isUser ? 'flex-end' : 'flex-start',
-      marginBottom: 8,
-    }}>
+    <div className={`flex flex-col mb-2 ${isUser ? 'items-end' : 'items-start'}`}>
       {/* 附件预览（仅 user 消息） */}
       {message.attachments && message.attachments.length > 0 && (
-        <div style={{ display: 'flex', gap: 4, marginBottom: 4, flexWrap: 'wrap', maxWidth: '80%' }}>
+        <div className="flex gap-1 mb-1 flex-wrap max-w-[80%]">
           {message.attachments.map((att) => (
-            <div key={att.id} style={{ borderRadius: 6, overflow: 'hidden', border: '1px solid rgb(var(--border) / 0.4)' }}>
+            <div key={att.id} className="rounded-md overflow-hidden border border-border/40">
               {att.isImage && att.previewUrl ? (
-                <img src={att.previewUrl} alt={att.name} style={{ width: 60, height: 60, objectFit: 'cover' }} />
+                <img src={att.previewUrl} alt={att.name} className="w-15 h-15 object-cover" style={{ width: 60, height: 60 }} />
               ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', background: 'rgb(var(--surface) / 0.4)' }}>
+                <div className="flex items-center gap-1 px-2 py-1 bg-surface/40">
                   {getAttachmentIcon(att.name, att.mediaType)}
-                  <span style={{ fontSize: '12px', color: 'rgb(var(--text-secondary) / 0.8)', maxWidth: 60, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span className="text-[12px] text-text-secondary/80 truncate max-w-[60px]">
                     {att.name}
                   </span>
                 </div>
@@ -491,22 +673,24 @@ function MessageBubble({ message, isZh }: { message: MiniChatMessage; isZh: bool
 
       {/* 文本气泡 */}
       {(message.content || !hasToolCalls) && (
-        <div style={{
-          ...bubbleBaseStyle,
-          ...(isUser ? userBubbleStyle : aiBubbleStyle),
-          ...(hasError ? errorBubbleStyle : {}),
-        }}>
+        <div
+          className={`max-w-[85%] px-4 py-2.5 rounded-2xl text-[14px] leading-relaxed break-words ${
+            isUser
+              ? 'bg-accent text-white rounded-br-md'
+              : 'bg-surface text-text-primary rounded-bl-md'
+          } ${hasError ? 'border border-status-error/30 bg-status-error/5' : ''}`}
+        >
           {hasError && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-              <AlertCircle size={12} color="rgb(var(--status-error))" />
-              <span style={{ fontSize: '12px', color: 'rgb(var(--status-error))' }}>
+            <div className="flex items-center gap-1.5 mb-1">
+              <AlertCircle className="w-3 h-3 text-status-error" />
+              <span className="text-[12px] text-status-error">
                 {isZh ? '生成失败' : 'Error'}
               </span>
             </div>
           )}
           {isUser ? (
             /* 用户消息：纯文本渲染 */
-            <span style={bubbleTextStyle}>
+            <span className="whitespace-pre-wrap">
               {message.content || ''}
             </span>
           ) : (
@@ -515,10 +699,10 @@ function MessageBubble({ message, isZh }: { message: MiniChatMessage; isZh: bool
               {message.content ? (
                 <MiniMarkdown content={message.content} isStreaming={message.streaming} />
               ) : message.streaming ? (
-                <span style={{ ...bubbleTextStyle, color: 'rgb(var(--text-muted) / 0.5)' }}>...</span>
+                <span className="text-text-muted/50">...</span>
               ) : null}
               {message.streaming && message.content && (
-                <span style={cursorBlinkStyle}>▋</span>
+                <span className="inline-block w-2 h-4 bg-accent animate-pulse ml-0.5" />
               )}
             </>
           )}
@@ -527,7 +711,7 @@ function MessageBubble({ message, isZh }: { message: MiniChatMessage; isZh: bool
 
       {/* 工具调用状态 */}
       {hasToolCalls && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 2, maxWidth: '80%' }}>
+        <div className="flex flex-col gap-1 mt-1 max-w-[80%]">
           {message.toolCalls!.map((tc) => (
             <ToolCallStatus key={tc.id} toolCall={tc} isZh={isZh} />
           ))}
@@ -746,13 +930,11 @@ function ToolCallStatus({ toolCall }: { toolCall: MiniChatToolCall; isZh: boolea
 
 function ModelSelectorButton({
   currentProvider, currentModel, cloudMode,
-  showFull, showProviderName, disabled, language,
+  disabled, language,
 }: {
   currentProvider?: string
   currentModel?: string
   cloudMode?: 'cloud' | 'local'
-  showFull: boolean
-  showProviderName: boolean
   disabled: boolean
   language: 'zh' | 'en'
 }) {
@@ -838,7 +1020,7 @@ function ModelSelectorButton({
         <span style={{
           fontSize: '12px', color: 'rgb(var(--text-secondary) / 0.85)',
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          maxWidth: showFull ? (showProviderName ? 140 : 100) : 70,
+          maxWidth: 200,
         }}>
           {displayName}
         </span>
@@ -919,21 +1101,6 @@ function getAttachmentIcon(fileName: string, mimeType: string) {
 // 样式（使用 CSS 变量，跟随系统主题色）
 // ============================================
 
-const panelStyle: React.CSSProperties = {
-  display: 'flex', flexDirection: 'column', width: '100%', height: '100%',
-  background: 'rgb(var(--background-secondary) / 0.98)',
-  backdropFilter: 'blur(20px)', borderRadius: '16px', overflow: 'hidden',
-  // 极淡边框（勾勒轮廓，不抢眼）+ 极淡大模糊阴影（自然淡出，无硬边缘）
-  border: '1px solid rgba(128, 128, 128, 0.15)',
-  boxShadow: '0 0 10px rgba(0, 0, 0, 0.1)',
-}
-
-const headerStyle: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
-  borderBottom: '1px solid rgb(var(--border) / 0.4)',
-  background: 'rgb(var(--background) / 0.85)', flexShrink: 0, height: 44,
-}
-
 /** 顶栏「最大化」图标按钮（点击打开主聊天窗口并关闭迷你助手） */
 const headerMaximizeBtnStyle: React.CSSProperties = {
   width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -955,40 +1122,6 @@ const headerCloseBtnStyle: React.CSSProperties = {
   cursor: 'pointer', flexShrink: 0, transition: 'background 0.15s',
 }
 
-const attachmentPreviewStyle: React.CSSProperties = {
-  display: 'flex', gap: 6, padding: '6px 12px', flexShrink: 0,
-  overflowX: 'auto', borderBottom: '1px solid rgb(var(--border) / 0.2)',
-}
-
-const attachmentItemStyle: React.CSSProperties = {
-  position: 'relative', display: 'flex', alignItems: 'center', padding: 4,
-  borderRadius: 6, background: 'rgb(var(--surface) / 0.3)',
-  border: '1px solid rgb(var(--border) / 0.4)', flexShrink: 0,
-}
-
-const attachmentRemoveBtnStyle: React.CSSProperties = {
-  position: 'absolute', top: -4, right: -4, width: 16, height: 16, borderRadius: '50%',
-  background: 'rgb(var(--status-error) / 0.85)', border: '1px solid rgb(var(--border) / 0.6)',
-  display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 10,
-}
-
-const messageListStyle: React.CSSProperties = {
-  flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '12px 14px',
-  minHeight: 0, scrollbarWidth: 'thin',
-}
-
-const emptyStyle: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%',
-  fontFamily: '-apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif',
-}
-
-const errorBannerStyle: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px', marginBottom: 8,
-  background: 'rgb(var(--status-error) / 0.1)', border: '1px solid rgb(var(--status-error) / 0.2)',
-  borderRadius: 8, color: 'rgb(var(--status-error))', fontSize: '12px',
-  fontFamily: '-apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif',
-}
-
 const activityBarStyle: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 6,
   padding: '5px 12px', borderTop: '1px solid rgb(var(--border) / 0.3)',
@@ -1001,90 +1134,26 @@ const activityTextStyle: React.CSSProperties = {
   whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
 }
 
-const bubbleBaseStyle: React.CSSProperties = {
-  maxWidth: '80%', padding: '8px 12px', borderRadius: 12,
-  fontSize: '13px', lineHeight: 1.5, wordBreak: 'break-word',
-  fontFamily: '-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif',
-}
-
-const userBubbleStyle: React.CSSProperties = {
-  background: 'rgb(var(--accent) / 0.85)', color: 'rgb(var(--accent-foreground))',
-  borderBottomRightRadius: 4,
-}
-
-const aiBubbleStyle: React.CSSProperties = {
-  background: 'rgb(var(--surface) / 0.4)', border: '1px solid rgb(var(--border) / 0.4)',
-  color: 'rgb(var(--text-primary) / 0.95)', borderBottomLeftRadius: 4,
-}
-
-const errorBubbleStyle: React.CSSProperties = {
-  background: 'rgb(var(--status-error) / 0.08)', border: '1px solid rgb(var(--status-error) / 0.2)',
-}
-
-const bubbleTextStyle: React.CSSProperties = { whiteSpace: 'pre-wrap' }
-
-const cursorBlinkStyle: React.CSSProperties = {
-  animation: 'mini-chat-blink 1s step-end infinite', marginLeft: 1, opacity: 0.7,
-}
-
-const inputBarStyle: React.CSSProperties = {
-  padding: '6px 10px 8px', borderTop: '1px solid rgb(var(--border) / 0.4)',
-  background: 'rgb(var(--background) / 0.85)', flexShrink: 0,
-}
-
-const toolbarStyle: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: 4, marginBottom: 6,
-}
-
+/** 保留旧的 toolbarBtnStyle 供 ModelSelectorButton 使用 */
 const toolbarBtnStyle: React.CSSProperties = {
-  height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center',
-  borderRadius: 8, border: '1px solid rgb(var(--border) / 0.4)', background: 'rgb(var(--surface) / 0.3)',
-  cursor: 'pointer', flexShrink: 0, transition: 'background 0.15s',
-}
-
-/** 附件上传按钮（正方形，与输入框高度协调） */
-const attachBtnStyle: React.CSSProperties = {
-  width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center',
-  borderRadius: 8, border: '1px solid rgb(var(--border) / 0.4)', background: 'rgb(var(--surface) / 0.3)',
-  cursor: 'pointer', flexShrink: 0, transition: 'background 0.15s',
-}
-
-const inputRowStyle: React.CSSProperties = {
-  display: 'flex', alignItems: 'flex-end', gap: 6,
-}
-
-const textareaStyle: React.CSSProperties = {
-  flex: 1, minHeight: 32, maxHeight: 100, padding: '7px 10px', borderRadius: 10,
-  border: '1px solid rgb(var(--border) / 0.4)', background: 'rgb(var(--surface) / 0.3)',
-  color: 'rgb(var(--text-primary) / 0.95)', fontSize: '13px',
-  fontFamily: '-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif',
-  resize: 'none', outline: 'none', lineHeight: 1.4, transition: 'border-color 0.15s',
-}
-
-const sendBtnStyle: React.CSSProperties = {
-  width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
-  borderRadius: 8, border: 'none', background: 'rgb(var(--accent) / 0.85)',
-  cursor: 'pointer', flexShrink: 0, transition: 'opacity 0.15s',
-}
-
-const stopBtnStyle: React.CSSProperties = {
-  width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
-  borderRadius: 8, border: 'none', background: 'rgb(var(--status-error) / 0.8)',
-  cursor: 'pointer', flexShrink: 0,
-}
-
-const micBtnStyle: React.CSSProperties = {
-  width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
-  borderRadius: 8, border: '1px solid rgb(var(--border) / 0.4)', background: 'rgb(var(--surface) / 0.3)',
-  cursor: 'pointer', flexShrink: 0, transition: 'background 0.15s',
+  height: 32,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  borderRadius: 8,
+  border: '1px solid rgb(var(--border) / 0.4)',
+  background: 'rgb(var(--surface) / 0.3)',
+  cursor: 'pointer',
+  flexShrink: 0,
+  transition: 'background 0.15s',
 }
 
 const modelDropdownStyle: React.CSSProperties = {
-  position: 'absolute', bottom: 'calc(100% + 4px)', left: 0, right: 0,
-  maxHeight: 280, overflowY: 'auto',
+  position: 'absolute', bottom: 'calc(100% + 4px)', left: 0,
+  width: 240, maxHeight: 320, overflowY: 'auto',
   background: 'rgb(var(--background-secondary) / 0.98)', backdropFilter: 'blur(20px)',
   border: '1px solid rgb(var(--border) / 0.6)', borderRadius: 10,
-  boxShadow: '0 -4px 20px rgba(0, 0, 0, 0.4)', zIndex: 100, padding: 4,
+  boxShadow: '0 -4px 20px rgba(0, 0, 0, 0.4)', zIndex: 200, padding: 4,
 }
 
 /** Tab 切换栏容器 */

@@ -536,7 +536,9 @@ export function AvatarApp({ onReady }: AvatarAppProps) {
           currentProvider={(bridge.voiceContext?.llmConfig as { provider?: string } | null)?.provider}
           currentModel={(bridge.voiceContext?.llmConfig as { model?: string } | null)?.model}
           cloudMode={bridge.voiceContext?.cloudMode}
+          llmConfig={bridge.voiceContext?.llmConfig}
           authorizationMode={bridge.voiceContext?.authorizationMode}
+          workMode={bridge.voiceContext?.workMode ?? undefined}
           pendingAttachment={pendingAttachment}
           onPendingAttachmentConsumed={handlePendingAttachmentConsumed}
         />

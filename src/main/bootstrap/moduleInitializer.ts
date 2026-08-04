@@ -802,6 +802,13 @@ function initFloatingAvatarModule(_firstWin: BrowserWindow): void {
           win.webContents.send('floating-avatar:select-authorization-mode', mode)
         }
       },
+      forwardSelectWorkMode: (mode) => {
+        // 转发工作模式切换到主窗口（主窗口更新 useModeStore + 重新 push voiceContext）
+        const win = getMainWindow()
+        if (win && !win.isDestroyed()) {
+          win.webContents.send('floating-avatar:select-work-mode', mode)
+        }
+      },
     })
 
     logger.system.info('[Main] Floating avatar module initialized')

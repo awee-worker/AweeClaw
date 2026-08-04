@@ -49,6 +49,8 @@ export interface VoiceContextPayload {
   workspacePath: string | null
   /** 工具执行授权方式（every-step / dangerous-only / never），同步主窗口 authorizationMode */
   authorizationMode?: 'every-step' | 'dangerous-only' | 'never'
+  /** 工作模式（chat/agent/plan），同步主窗口 useModeStore.currentMode */
+  workMode?: 'chat' | 'agent' | 'plan' | null
   updatedAt: number
 }
 
@@ -2213,6 +2215,10 @@ export interface ElectronAPI {
     selectAuthorizationMode: (mode: 'every-step' | 'dangerous-only' | 'never') => Promise<{ success: boolean; error?: string }>
     /** 事件：头像窗口请求切换授权方式（main→主窗口监听） */
     onSelectAuthorizationMode: (callback: (mode: 'every-step' | 'dangerous-only' | 'never') => void) => () => void
+    /** 头像→main→主窗口：切换工作模式 */
+    selectWorkMode: (mode: 'chat' | 'agent' | 'plan') => Promise<{ success: boolean; error?: string }>
+    /** 事件：头像窗口请求切换工作模式（main→主窗口监听） */
+    onSelectWorkMode: (callback: (mode: 'chat' | 'agent' | 'plan') => void) => () => void
     /** 主窗口→main→头像窗口：推送主题色更新 */
     updateTheme: (payload: { themeColor: string; themeMode: string }) => void
     /** 事件：主题更新（main→头像窗口监听） */

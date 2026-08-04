@@ -70,6 +70,8 @@ export interface FloatingAvatarDeps {
   forwardSelectModel: (payload: SelectModelPayload) => void
   /** 转发授权方式切换到主窗口（主窗口更新 store + save + 重新 push voiceContext） */
   forwardSelectAuthorizationMode: (mode: 'every-step' | 'dangerous-only' | 'never') => void
+  /** 转发工作模式切换到主窗口（主窗口更新 useModeStore + 重新 push voiceContext） */
+  forwardSelectWorkMode: (mode: 'chat' | 'agent' | 'plan') => void
 }
 
 /**
@@ -113,6 +115,7 @@ export function initFloatingAvatar(deps: FloatingAvatarDeps): void {
       forwardRequestModels: (requestId) => deps.forwardRequestModels(requestId),
       forwardSelectModel: (payload) => deps.forwardSelectModel(payload),
       forwardSelectAuthorizationMode: (mode) => deps.forwardSelectAuthorizationMode(mode),
+      forwardSelectWorkMode: (mode) => deps.forwardSelectWorkMode(mode),
     }
     registerFloatingAvatarIpc(ipcCallbacks)
 

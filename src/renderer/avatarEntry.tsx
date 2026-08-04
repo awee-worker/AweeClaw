@@ -17,6 +17,11 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { logger } from '@shared/toolkit/LogEngine'
 
+// 加载全局样式（Tailwind CSS + CSS 变量），使 avatar 窗口能使用与主窗口一致的 Tailwind class。
+// avatar.html 的 `background: transparent !important` 会覆盖 globals.css 的 body 背景色，
+// 确保透明窗口（悬浮球态）不受影响。展开为聊天面板时，面板容器有自己的不透明背景。
+import './styles/globals.css'
+
 // 注入生产环境标记（供 shared 代码使用，必须在 Logger 首次使用前设置）
 globalThis.__PROD__ = import.meta.env.PROD
 logger.refreshProductionMode()

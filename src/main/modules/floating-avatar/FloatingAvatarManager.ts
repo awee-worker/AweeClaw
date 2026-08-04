@@ -30,12 +30,13 @@ const AVATAR_WIDTH = 46
 const AVATAR_HEIGHT = 46
 
 /** 展开后的窗口尺寸（对话面板：球体 + 迷你聊天/语音面板）
- *  390×580：迷你聊天窗更可用（消息列表 + 输入框 + 附件/模型工具栏），语音面板百分比布局自适应
- *  展开后可拖动调整宽度（340~560），窄时收起工具栏，宽时显示附件/模型选择 */
-const EXPANDED_WIDTH = 390
-const EXPANDED_HEIGHT = 580
-const EXPANDED_MIN_WIDTH = 340
-const EXPANDED_MAX_WIDTH = 560
+ *  426×780：默认宽度在 576 基础上再缩小 150px，高度比原来增加 200px。
+ *  可拖动调整宽度（360~800），高度固定 780。
+ *  内容区复用主窗口聊天组件（ConversationInput / ChatMessage），布局样式一致。 */
+const EXPANDED_WIDTH = 426
+const EXPANDED_HEIGHT = 780
+const EXPANDED_MIN_WIDTH = 360
+const EXPANDED_MAX_WIDTH = 800
 
 /** 头像窗口距离屏幕右下角的默认偏移 */
 const DEFAULT_MARGIN_RIGHT = 12
@@ -426,7 +427,7 @@ export class FloatingAvatarManager {
     const clampedX = Math.max(0, newX)
     const clampedY = Math.max(0, newY)
 
-    // 展开后允许拖动调整宽度（340~560）
+    // 展开后允许拖动调整宽度（960~1400），高度固定
     this.window.setMinimumSize(EXPANDED_MIN_WIDTH, EXPANDED_HEIGHT)
     this.window.setMaximumSize(EXPANDED_MAX_WIDTH, EXPANDED_HEIGHT)
     this.window.setResizable(true)

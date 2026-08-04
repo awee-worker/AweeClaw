@@ -83,6 +83,8 @@ export interface FloatingAvatarIpcCallbacks {
   forwardSelectModel: (payload: SelectModelPayload) => void
   /** 转发授权方式切换到主窗口（主窗口更新 store + save + 重新 push voiceContext） */
   forwardSelectAuthorizationMode: (mode: 'every-step' | 'dangerous-only' | 'never') => void
+  /** 转发工作模式切换到主窗口（主窗口更新 useModeStore + 重新 push voiceContext） */
+  forwardSelectWorkMode: (mode: 'chat' | 'agent' | 'plan') => void
 }
 
 let registered = false
@@ -378,6 +380,21 @@ export function registerFloatingAvatarIpc(callbacks: FloatingAvatarIpcCallbacks)
       return { success: true }
     } catch (err) {
       logger.system.error('[FloatingAvatarIpc] Select authorization mode failed:', err)
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
+  // 头像窗口切换工作模式（转发到主窗口，主窗口更新 useModeStore + 重新 push voiceContext）
+  safeIpcHandle('floating-avatar:select-work-mode', async (_event, mode: unknown) => {
+    const validModes = ['chat', 'agent', 'plan']
+    if (!validModes.includes(mode as string)) {
+      return { success: false, error: 'Invalid work mode' }
+    }
+    try {
+      callbacks.forwardSelectWorkMode(mode as 'chat' | 'agent' | 'plan')
+      return { success: true }
+    } catch (err) {
+      logger.system.error('[FloatingAvatarIpc] Select work mode failed:', err)
       return { success: false, error: err instanceof Error ? err.message : String(err) }
     }
   })

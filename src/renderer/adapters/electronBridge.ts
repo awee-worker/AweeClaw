@@ -1098,6 +1098,12 @@ function createGroupedAPI() {
       onSelectAuthorizationMode: (
         callback: Parameters<typeof raw.floatingAvatar.onSelectAuthorizationMode>[0],
       ) => raw.floatingAvatar.onSelectAuthorizationMode(callback),
+      // 工作模式切换（头像窗口→main→主窗口）
+      selectWorkMode: (mode: 'chat' | 'agent' | 'plan') =>
+        raw.floatingAvatar.selectWorkMode(mode),
+      onSelectWorkMode: (
+        callback: Parameters<typeof raw.floatingAvatar.onSelectWorkMode>[0],
+      ) => raw.floatingAvatar.onSelectWorkMode(callback),
       // 主题色同步（主窗口→main→头像窗口）
       updateTheme: (payload: { themeColor: string; themeMode: string }) =>
         raw.floatingAvatar.updateTheme(payload),

@@ -35,6 +35,8 @@ export interface VoiceContext {
   language: 'zh' | 'en'
   /** 当前工作区路径（注入系统提示词） */
   workspacePath: string | null
+  /** 工作模式（chat/agent/plan，同步主窗口 currentMode） */
+  workMode: 'chat' | 'agent' | 'plan' | null
   /** 最后更新时间（ms） */
   updatedAt: number
 }
@@ -49,6 +51,7 @@ const DEFAULT_CONTEXT: VoiceContext = {
   voiceModelConfig: null,
   language: 'zh',
   workspacePath: null,
+  workMode: 'chat',
   updatedAt: 0,
 }
 

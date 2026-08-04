@@ -20,7 +20,7 @@
  */
 
 import { useEffect, useRef } from 'react'
-import { useStore } from '@store'
+import { useStore, useModeStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { api } from '@renderer/adapters/electronBridge'
 import { getTokens } from '@renderer/adapters/backendApi'
@@ -62,6 +62,9 @@ export function useFloatingAvatarSync(): void {
     })),
   )
 
+  // 工作模式来自独立的 useModeStore（chat/agent/plan）
+  const workMode = useModeStore((s) => s.currentMode)
+
   // 用 ref 跟踪上一次推送的上下文，避免重复推送
   const lastPushedRef = useRef<string>('')
 
@@ -86,6 +89,7 @@ export function useFloatingAvatarSync(): void {
       language: language === 'en' ? 'en' as const : 'zh' as const,
       workspacePath,
       authorizationMode: authorizationMode ?? 'dangerous-only',
+      workMode,
       updatedAt: Date.now(),
     }
 
@@ -99,6 +103,7 @@ export function useFloatingAvatarSync(): void {
       language: voiceContext.language,
       workspacePath: voiceContext.workspacePath,
       authorizationMode: voiceContext.authorizationMode,
+      workMode: voiceContext.workMode,
     })
 
     if (signature === lastPushedRef.current) return
@@ -113,7 +118,7 @@ export function useFloatingAvatarSync(): void {
       .catch((err) => {
         logger.system.warn('[FloatingAvatarSync] Push voice context failed:', err)
       })
-  }, [llmConfig, cloudMode, serverUrl, language, workspacePath, tokens?.accessToken, authorizationMode])
+  }, [llmConfig, cloudMode, serverUrl, language, workspacePath, tokens?.accessToken, authorizationMode, workMode])
 
   // --------------------------------------------
   // 2. 异步加载 voiceModelConfig 并推送
@@ -345,6 +350,21 @@ export function useFloatingAvatarSync(): void {
     })
     return unsubscribe
   }, [setRef, saveRef])
+
+  // --------------------------------------------
+  // 10. 接收头像窗口的工作模式切换请求（更新 useModeStore，voiceContext 会自动重新 push）
+  // --------------------------------------------
+  useEffect(() => {
+    const unsubscribe = api.floatingAvatar.onSelectWorkMode((mode) => {
+      logger.system.info('[FloatingAvatarSync] Select work mode from avatar:', mode)
+      try {
+        useModeStore.getState().setMode(mode)
+      } catch (err) {
+        logger.system.error('[FloatingAvatarSync] Select work mode failed:', err)
+      }
+    })
+    return unsubscribe
+  }, [])
 }
 
 // ============================================
