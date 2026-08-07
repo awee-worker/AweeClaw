@@ -60,6 +60,7 @@ import { createSensorFusionApi } from './preload/api/sensorFusion'
 import { createProactiveApi } from './preload/api/proactive'
 import { createFloatingAvatarApi } from './preload/api/floatingAvatar'
 import { createScreenshotOverlayApi } from './preload/api/screenshotOverlay'
+import { createScreenshotApi } from './preload/api/screenshot'
 import { createMeetingNotesApi } from './preload/api/meetingNotes'
 import { createPptPreviewApi } from './preload/api/pptPreview'
 
@@ -94,6 +95,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   proactive: createProactiveApi(),
   floatingAvatar: createFloatingAvatarApi(),
   screenshotOverlay: createScreenshotOverlayApi(),
+  screenshot: createScreenshotApi(),
   meetingNotes: createMeetingNotesApi(),
   pptPreview: createPptPreviewApi(),
 })

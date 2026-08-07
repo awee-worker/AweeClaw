@@ -25,6 +25,13 @@ import type {
   PluginLogger,
 } from '@shared/plugin-sdk/types'
 import { hookEngine } from '@shared/plugin-sdk/hooks'
+import {
+  validatePermissions,
+  registerPermissions,
+  unregisterPermissions,
+  createGuardedHostServices,
+} from './PluginPermissionGuard'
+import { getHostServices } from './hostServices'
 
 /** 内部注册信息（扩展 PluginRegistration，添加运行时工厂） */
 interface InternalPluginRegistration extends PluginRegistration {
@@ -189,6 +196,10 @@ class PluginRegistry implements IPluginRegistry {
     }
 
     try {
+      // 注册插件权限（在加载前注册，使 createContext 能创建受限代理）
+      const permissions = validatePermissions(pluginId, registration.manifest.permissions)
+      registerPermissions(pluginId, permissions)
+
       let runtime: PluginRuntime
 
       // 内置插件通过工厂函数创建
@@ -256,6 +267,8 @@ class PluginRegistry implements IPluginRegistry {
       }
       // 移除该插件的所有 Hook
       hookEngine.removeByPlugin(pluginId)
+      // 注销插件的运行时权限
+      unregisterPermissions(pluginId)
 
       registration.runtime = null
       registration.status = 'discovered'
@@ -436,6 +449,16 @@ class PluginRegistry implements IPluginRegistry {
   private createContext(pluginId: string): PluginContext {
     const pluginDataDir = path.join(this.dataRoot, pluginId)
 
+    // 创建受限的 HostServices 代理（基于 manifest.permissions 校验）
+    // 若 HostServices 未初始化（如测试环境），host 为 undefined
+    let guardedHost: unknown = undefined
+    try {
+      const fullHost = getHostServices()
+      guardedHost = createGuardedHostServices(pluginId, fullHost)
+    } catch {
+      // HostServices 未初始化，跳过（测试环境或初始化前调用）
+    }
+
     return {
       pluginId,
       dataDir: pluginDataDir,
@@ -460,6 +483,7 @@ class PluginRegistry implements IPluginRegistry {
         // 由上层注入实现
         logger.system.debug(`[Plugin:${pluginId}] sendToRenderer: ${channel}`)
       },
+      host: guardedHost,
     }
   }
 

@@ -42,7 +42,6 @@ const BrowserPreviewTab = safeLazy(() => import('./WebPreviewTab'), { label: 'Br
 const PdfPreview = safeNamedLazy(() => import('./DocumentPreview'), 'PdfPreview', { label: 'PdfPreview', silent: true })
 const DocxPreview = safeNamedLazy(() => import('./DocumentPreview'), 'DocxPreview', { label: 'DocxPreview', silent: true })
 const DocPreview = safeNamedLazy(() => import('./DocumentPreview'), 'DocPreview', { label: 'DocPreview', silent: true })
-const PptxPreview = safeNamedLazy(() => import('./DocumentPreview'), 'PptxPreview', { label: 'PptxPreview', silent: true })
 const PptPreview = safeNamedLazy(() => import('./DocumentPreview'), 'PptPreview', { label: 'PptPreview', silent: true })
 // v2.3.2：工作区 .pptx 文件预览改用 SlideCanvas 渲染（与 PPT 生成预览视觉一致）
 const WorkspacePptxPreview = safeLazy(() => import('../ppt-preview/WorkspacePptxPreview'), { label: 'WorkspacePptxPreview', silent: true })

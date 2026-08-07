@@ -270,7 +270,7 @@ export function ScreenshotOverlay() {
             取消 (ESC)
           </button>
           <button style={confirmBtnStyle} onClick={handleConfirm}>
-            确认提问 (Enter)
+            确认 (Enter)
           </button>
         </div>
       )}

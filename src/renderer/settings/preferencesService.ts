@@ -529,9 +529,12 @@ class SettingsService {
 
   private saveToLocalStorage(settings: SettingsState): void {
     try {
+      // 安全策略：localStorage 可被渲染进程 JS 直接读取（XSS 风险），
+      // 不缓存 apiKey 等敏感凭证。apiKey 的唯一真相来源是 SQLite / electron-store。
+      const sanitizedConfigs = stripSensitiveProviderData(settings.providerConfigs)
       StorageService.set(
         LOCAL_CACHE_KEY,
-        buildPersistedSettingsPayload(settings, settings.providerConfigs),
+        buildPersistedSettingsPayload(settings, sanitizedConfigs),
       )
     } catch {
       // ignore local cache write failures
@@ -723,6 +726,24 @@ function mergeProviderConfigsFromJson(
   }
 
   return merged
+}
+
+/**
+ * 剥离 providerConfigs 中的敏感字段（apiKey），用于 localStorage 缓存。
+ *
+ * localStorage 可被渲染进程任意 JS 读取，存在 XSS 泄露风险。
+ * apiKey 等凭证仅应存储在 SQLite / electron-store（主进程加密通道）中。
+ *
+ * @returns providerConfigs 的浅拷贝，每个 provider 的 apiKey 被置空
+ */
+function stripSensitiveProviderData(
+  configs: Record<string, ProviderModelConfig>
+): Record<string, ProviderModelConfig> {
+  const result: Record<string, ProviderModelConfig> = {}
+  for (const [id, config] of Object.entries(configs)) {
+    result[id] = { ...config, apiKey: '' }
+  }
+  return result
 }
 
 function buildPersistedSettingsPayload(

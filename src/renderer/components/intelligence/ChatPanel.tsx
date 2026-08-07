@@ -242,6 +242,11 @@ export default function ChatPanel() {
     [messages, messageListVersion],
   )
 
+  // ref 桥接：保存最新的 filteredMessages，避免 EventBus 订阅因 filteredMessages
+  // 引用变化而频繁注销/重注册（每次消息更新都会产生新的 filteredMessages 引用）
+  const filteredMessagesRef = useRef(filteredMessages)
+  filteredMessagesRef.current = filteredMessages
+
   // ===== DOM 引用 =====
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const inputContainerRef = useRef<HTMLDivElement>(null)
@@ -443,6 +448,11 @@ export default function ChatPanel() {
   }, [sendMessage])
 
   // ===== 选项卡片事件监听 =====
+  // ref 桥接：保存最新的 handleRegenerate，避免因 messages 引用变化导致事件监听频繁重注册
+  // （SystemAlert 的"重试"按钮通过 chat-retry-message 事件触发，需读取最新实现）
+  const handleRegenerateRef = useRef(messageOps.handleRegenerate)
+  handleRegenerateRef.current = messageOps.handleRegenerate
+
   useEffect(() => {
     const handleOptionSelect = (event: CustomEvent<{ content: string; messageId: string }>) => {
       const { content } = event.detail
@@ -468,15 +478,40 @@ export default function ChatPanel() {
       }
     }
 
+    // SystemAlert「重试」按钮：重新生成该 assistant 消息（删除其后内容并重发用户消息）
+    const handleRetryMessage = (event: CustomEvent<{ messageId: string }>) => {
+      const { messageId } = event.detail
+      if (messageId && typeof handleRegenerateRef.current === 'function') {
+        handleRegenerateRef.current(messageId)
+      }
+    }
+
+    // SystemAlert「前往设置」按钮：打开设置页面
+    const handleOpenSettings = () => {
+      useStore.getState().setShowSettingsPage(true)
+    }
+
+    // SystemAlert「切换模型」按钮：打开设置页面（模型配置位于设置页中）
+    const handleSwitchModel = () => {
+      useStore.getState().setShowSettingsPage(true)
+    }
+
     window.addEventListener('chat-send-message', handleOptionSelect as EventListener)
     window.addEventListener('chat-update-interactive', handleUpdateInteractive as EventListener)
+    window.addEventListener('chat-retry-message', handleRetryMessage as EventListener)
+    window.addEventListener('chat-open-settings', handleOpenSettings as EventListener)
+    window.addEventListener('chat-switch-model', handleSwitchModel as EventListener)
     return () => {
       window.removeEventListener('chat-send-message', handleOptionSelect as EventListener)
       window.removeEventListener('chat-update-interactive', handleUpdateInteractive as EventListener)
+      window.removeEventListener('chat-retry-message', handleRetryMessage as EventListener)
+      window.removeEventListener('chat-open-settings', handleOpenSettings as EventListener)
+      window.removeEventListener('chat-switch-model', handleSwitchModel as EventListener)
     }
   }, [sendMessage])
 
   // ===== Agent 循环结束监听 =====
+  // 使用 ref 桥接读取 filteredMessages，避免每次消息变化都重新注册 EventBus 订阅
   useEffect(() => {
     const unsub = EventBus.on('loop:end', event => {
       if (event.reason === 'error') {
@@ -486,14 +521,16 @@ export default function ChatPanel() {
       }
 
       if (event.reason === 'complete' || event.reason === 'tool_requested_stop' || event.reason === 'waiting_for_user') {
-        const convMessages = filteredMessages
+        // 从 ref 读取最新的消息列表，避免闭包捕获过期的 filteredMessages
+        const currentMessages = filteredMessagesRef.current
+        const convMessages = currentMessages
           .filter(m => m.role === 'user' || m.role === 'assistant')
           .map(m => ({ role: m.role, content: getMessageText(m.content) }))
         knowledgeExtractor.extractFromMessages(convMessages).catch(() => {})
       }
     })
     return unsub
-  }, [filteredMessages])
+  }, [])
 
   // ===== 审批提示音 =====
   useEffect(() => {

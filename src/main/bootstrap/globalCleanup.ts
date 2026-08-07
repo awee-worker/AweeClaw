@@ -81,7 +81,15 @@ export async function performFastCleanup(): Promise<void> {
     /* ignore */
   }
 
-  // 3. 模块数据持久化—— 快速 flush（超时 500ms）
+  // 3. 自动更新服务（取消定时器与下载，避免退出时触发检查）
+  try {
+    const { updateService } = await import('../modules/auto-update/AppUpdateService')
+    updateService.destroy()
+  } catch {
+    /* ignore */
+  }
+
+  // 4. 模块数据持久化—— 快速 flush（超时 500ms）
   try {
     const { moduleDataStore } = await import('../modules/persistence/ModuleDataStore')
     moduleDataStore.flush()
@@ -173,7 +181,15 @@ export async function performGlobalCleanup(): Promise<void> {
       /* ignore */
     }
 
-    // 8. 模块数据持久化存储（最后 flush，确保前序服务产生的状态被持久化）
+    // 8. 自动更新服务（清理定时器、取消下载、移除事件监听）
+    try {
+      const { updateService } = await import('../modules/auto-update/AppUpdateService')
+      updateService.destroy()
+    } catch {
+      /* ignore */
+    }
+
+    // 9. 模块数据持久化存储（最后 flush，确保前序服务产生的状态被持久化）
     try {
       const { moduleDataStore } = await import('../modules/persistence/ModuleDataStore')
       moduleDataStore.flush()

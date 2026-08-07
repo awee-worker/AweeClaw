@@ -33,9 +33,11 @@ import * as crypto from 'crypto'
 import * as zlib from 'zlib'
 import * as tar from 'tar'
 import { logger } from '@shared/toolkit/LogEngine'
+import { encryptString, decryptString, isEncrypted } from '../../guard/safeStorageUtil'
+import { validatePluginPackageSignature } from './PluginSignatureVerifier'
 import { getPluginRegistry } from './PluginRegistry'
 import { McpClient } from '../tool-protocol/ToolProtocolClient'
-import type { PluginManifest, PluginType } from '@shared/plugin-sdk/types'
+import type { PluginManifest, PluginConfigField, PluginType } from '@shared/plugin-sdk/types'
 import type { McpPluginServerConfig } from '@shared/protocols/toolProtocolBridge'
 
 // ============================================
@@ -81,6 +83,12 @@ export interface PluginDownloadInfo {
   manifest?: PluginManifest
   /** 是否为配置型插件（无包文件） */
   configOnly?: boolean
+  /**
+   * 插件包的 Ed25519 数字签名（Base64 编码）。
+   * 后端用私钥对包文件签名，客户端用内置公钥验证。
+   * 缺失时过渡期允许安装（记录警告），后续将改为强制要求。
+   */
+  signature?: string
 }
 
 /** 已安装插件记录 */
@@ -255,11 +263,18 @@ export class PluginInstaller {
         downloadInfo.packageSize,
       )
 
-      // 3. 校验 SHA256
+      // 3. 校验 SHA256（完整性校验，防传输损坏）
       this.emitProgress(pluginId, 'verifying', downloadInfo.packageSize, downloadInfo.packageSize, 'Verifying checksum...')
       if (!this.verifyChecksum(archivePath, downloadInfo.checksum)) {
         fs.unlinkSync(archivePath)
         return this.fail(pluginId, 'Checksum verification failed. The package may be corrupted or tampered with.')
+      }
+
+      // 3.5 校验 Ed25519 数字签名（防篡改，防后端被入侵后投放恶意插件）
+      // SHA256 防传输损坏，签名防恶意篡改，两者互补
+      if (!validatePluginPackageSignature(archivePath, downloadInfo.signature)) {
+        fs.unlinkSync(archivePath)
+        return this.fail(pluginId, 'Signature verification failed. The package may be tampered with or from an untrusted source.')
       }
 
       // 4. 解压
@@ -879,27 +894,109 @@ export class PluginInstaller {
   // 插件用户配置（{{config.KEY}} 模板变量持久化）
   // ============================================
 
-  /** 加载插件用户配置 */
+  /**
+   * 判断字段是否为敏感字段（需要加密存储）。
+   *
+   * 判定规则：
+   * 1. manifest.configSchema.fields 中标记 secret: true 的字段
+   * 2. 字段 type 为 'password' 的字段
+   * 3. 字段 key 命中常见敏感关键词（api_key/apiKey/secret/password/token/accessToken/refreshToken）
+   *    兜底防御：插件开发者漏标 secret 时仍能保护密钥
+   */
+  private isSecretField(field: PluginConfigField): boolean {
+    if (field.secret === true) return true
+    if (field.type === 'password') return true
+    const key = field.key.toLowerCase()
+    return (
+      key.includes('api_key') ||
+      key.includes('apikey') ||
+      key.includes('secret') ||
+      key.includes('password') ||
+      key.includes('token') ||
+      key.includes('accesstoken') ||
+      key.includes('refreshtoken')
+    )
+  }
+
+  /**
+   * 获取插件需要加密的字段 key 集合。
+   * 优先从已安装记录的 manifest 读取，其次从内置插件记录读取。
+   * 若找不到 manifest（插件已卸载但配置残留），返回空集，保留原值不加密。
+   */
+  private getSecretFieldKeys(pluginKey: string): Set<string> {
+    const manifest = this.installedRecords.get(pluginKey)?.manifest
+      ?? this.builtinRecords.get(pluginKey)?.manifest
+    const fields = manifest?.configSchema?.fields
+    if (!fields?.length) return new Set()
+    const secretKeys = new Set<string>()
+    for (const field of fields) {
+      if (this.isSecretField(field)) secretKeys.add(field.key)
+    }
+    return secretKeys
+  }
+
+  /**
+   * 加载插件用户配置。
+   *
+   * 安全策略：
+   * - 对所有字段值调用 decryptString 解密
+   * - decryptString 对无 'enc:v1:' 前缀的字符串原样返回，兼容旧版明文数据
+   * - 即使插件已卸载、manifest 丢失，也能正确解密（因为解密不依赖 manifest）
+   */
   private loadPluginConfigs(): void {
     if (!fs.existsSync(this.pluginConfigPath)) return
     try {
       const raw = fs.readFileSync(this.pluginConfigPath, 'utf-8')
       const data = JSON.parse(raw) as Record<string, Record<string, string>>
+      let migratedCount = 0
       for (const [key, value] of Object.entries(data)) {
-        this.pluginConfigs.set(key, value)
+        const decrypted: Record<string, string> = {}
+        for (const [k, v] of Object.entries(value)) {
+          // 记录旧版明文数据（未加密）以备日志统计
+          if (v && !isEncrypted(v) && this.getSecretFieldKeys(key).has(k)) {
+            migratedCount++
+          }
+          decrypted[k] = decryptString(v)
+        }
+        this.pluginConfigs.set(key, decrypted)
       }
-      logger.system.info(`[PluginInstaller] Loaded ${this.pluginConfigs.size} plugin config(s)`)
+      logger.system.info(
+        `[PluginInstaller] Loaded ${this.pluginConfigs.size} plugin config(s)` +
+          (migratedCount > 0 ? `, ${migratedCount} plaintext secret(s) will be re-encrypted on next save` : ''),
+      )
     } catch (err) {
       logger.system.warn(`[PluginInstaller] Failed to load plugin configs: ${err}`)
     }
   }
 
-  /** 保存所有插件用户配置 */
+  /**
+   * 保存所有插件用户配置。
+   *
+   * 安全策略：
+   * - 内存中保持明文（便于 {{config.KEY}} 模板替换与 IPC 返回）
+   * - 写入磁盘前，根据 manifest.configSchema 对敏感字段调用 encryptString 加密
+   * - 非敏感字段（baseUrl、model 等）保持明文，便于用户直接查看 plugin-configs.json
+   * - 若 safeStorage 不可用（Linux 无 libsecret），encryptString 会降级返回明文并告警
+   * - 插件已卸载但配置残留时，getSecretFieldKeys 返回空集，配置原样保留不加密
+   */
   private savePluginConfigs(): void {
     try {
       const data: Record<string, Record<string, string>> = {}
       for (const [key, value] of this.pluginConfigs.entries()) {
-        data[key] = value
+        const secretKeys = this.getSecretFieldKeys(key)
+        const processed: Record<string, string> = {}
+        for (const [k, v] of Object.entries(value)) {
+          // 已加密的值（理论上不应出现在内存中，防御性处理）保持原样；
+          // 敏感字段明文值走加密；非敏感字段保持明文
+          if (typeof v === 'string' && isEncrypted(v)) {
+            processed[k] = v
+          } else if (secretKeys.has(k)) {
+            processed[k] = encryptString(v)
+          } else {
+            processed[k] = v
+          }
+        }
+        data[key] = processed
       }
       fs.writeFileSync(this.pluginConfigPath, JSON.stringify(data, null, 2), 'utf-8')
     } catch (err) {

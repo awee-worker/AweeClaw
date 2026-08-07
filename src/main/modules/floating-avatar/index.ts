@@ -98,6 +98,20 @@ export function initFloatingAvatar(deps: FloatingAvatarDeps): void {
     const config = manager.getConfig()
 
     // 2. 注册 IPC handler
+    // 截图提问管理器：右键菜单「截图提问」和迷你助手截图按钮共用，
+    // 截图完成后落盘 + 推送 base64 到头像窗口（作为附件添加到输入框）
+    const screenshotAskManager = new ScreenshotAskManager(deps.getWorkspacePath)
+    // 截图流程的窗口可见性回调：start 时隐藏迷你助手避免遮挡桌面，end 时恢复
+    // 迷你助手按钮和右键菜单共用同一回调，确保两条入口行为一致
+    const onScreenshotVisibilityChange = (phase: 'start' | 'end') => {
+      if (phase === 'start') {
+        // 截图覆盖窗口全屏显示前，隐藏迷你助手避免遮挡桌面
+        manager.hide()
+      } else {
+        // 截图流程结束，恢复迷你助手显示（用户从迷你助手发起截图，本就期望恢复显示）
+        manager.show()
+      }
+    }
     const ipcCallbacks: FloatingAvatarIpcCallbacks = {
       openMainWindow: () => {
         const win = deps.getOrCreateMainWindow()
@@ -116,6 +130,15 @@ export function initFloatingAvatar(deps: FloatingAvatarDeps): void {
       forwardSelectModel: (payload) => deps.forwardSelectModel(payload),
       forwardSelectAuthorizationMode: (mode) => deps.forwardSelectAuthorizationMode(mode),
       forwardSelectWorkMode: (mode) => deps.forwardSelectWorkMode(mode),
+      startScreenshotAsk: () => {
+        // 复用右键菜单的 screenshotAskManager 实例，截图完成后推送结果到头像窗口
+        void screenshotAskManager.start(
+          (payload) => {
+            manager.sendToAvatar('floating-avatar:screenshot-result', payload)
+          },
+          onScreenshotVisibilityChange,
+        )
+      },
     }
     registerFloatingAvatarIpc(ipcCallbacks)
 
@@ -123,8 +146,6 @@ export function initFloatingAvatar(deps: FloatingAvatarDeps): void {
     const avatarWin = manager.create()
 
     // 4. 绑定右键菜单
-    // 截图提问管理器：右键「截图提问」触发，截图完成后落盘 + 推送到头像窗口
-    const screenshotAskManager = new ScreenshotAskManager(deps.getWorkspacePath)
     // 会议纪要管理器：右键「会议纪要」触发，显示独立常驻窗口
     // 复用主进程单例（首次 getInstance 注入 getWorkspacePath，后续 show 时幂等注册 IPC）
     const meetingNotesManager = MeetingNotesManager.getInstance(deps.getWorkspacePath)
@@ -138,10 +159,13 @@ export function initFloatingAvatar(deps: FloatingAvatarDeps): void {
         }
       },
       startScreenshotAsk: () => {
-        void screenshotAskManager.start((payload) => {
-          // 截图完成 → 推送到头像窗口（携带 base64 + 落盘路径）
-          manager.sendToAvatar('floating-avatar:screenshot-result', payload)
-        })
+        void screenshotAskManager.start(
+          (payload) => {
+            // 截图完成 → 推送到头像窗口（携带 base64 + 落盘路径）
+            manager.sendToAvatar('floating-avatar:screenshot-result', payload)
+          },
+          onScreenshotVisibilityChange,
+        )
       },
       startMeetingNotes: () => {
         // 显示会议纪要窗口（已存在则聚焦，不存在则创建）

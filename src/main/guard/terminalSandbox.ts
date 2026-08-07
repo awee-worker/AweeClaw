@@ -1051,7 +1051,10 @@ export function registerSecureTerminalHandlers(
               try {
                 terminalProcess = pty.spawn(shellPath, shellArgs, {
                   name: 'xterm-256color',
-                  cols: 80,
+                  // 默认 120 cols（而非 80），匹配大多数终端容器的实际宽度
+                  // AI 执行命令时终端面板可能未显示，PTY 按此宽度处理回显和换行
+                  // 用户后续打开终端时 xterm fit 会修正到实际 cols，120 接近常见值可减少排版差异
+                  cols: 120,
                   rows: 24,
                   cwd: targetCwd,
                   env: terminalEnv,

@@ -17,6 +17,15 @@ export interface SyncConfig {
   debounceMs: number
   /** 是否启用调试日志 */
   debug: boolean
+  /**
+   * 可选守卫函数：返回 true 时跳过本次入队（用于双向同步防死锁）。
+   * 在 sourceStore 的订阅回调中调用，若上游正在应用更新则跳过反向同步。
+   */
+  shouldSkip?: () => boolean
+  /** 应用更新前的钩子（setState 调用前） */
+  onBeforeApply?: () => void
+  /** 应用更新后的钩子（setState 调用后） */
+  onAfterApply?: () => void
 }
 
 const DEFAULT_SYNC_CONFIG: SyncConfig = {
@@ -73,6 +82,8 @@ export class StoreSynchronizer<SourceState extends object, TargetState extends o
    */
   start(): this {
     const unsubscribe = this.sourceStore.subscribe((state) => {
+      // 双向同步防死锁：若上游正在应用更新（_isSyncing=true），跳过本次入队
+      if (this.config.shouldSkip?.()) return
       this.enqueueSync(state)
     })
     this.unsubscribers.push(unsubscribe)
@@ -148,7 +159,14 @@ export class StoreSynchronizer<SourceState extends object, TargetState extends o
       }
 
       if (hasUpdates) {
-        this.targetStore.setState(updates)
+        // 在 setState 前设置同步标志，setState 会同步触发目标 store 的订阅回调，
+        // 反向同步器通过 shouldSkip 检测到此标志后跳过入队，避免无限循环。
+        this.config.onBeforeApply?.()
+        try {
+          this.targetStore.setState(updates)
+        } finally {
+          this.config.onAfterApply?.()
+        }
         if (this.config.debug) {
           logger.store.info('[StoreSync] Applied updates:', Object.keys(updates))
         }
@@ -161,19 +179,43 @@ export class StoreSynchronizer<SourceState extends object, TargetState extends o
 
 /**
  * 创建双向同步器（带死锁检测）
+ *
+ * 死锁问题：当两个 Store 存在重叠字段时，forwardSync 写入 store2 会触发
+ * backwardSync 的订阅，backwardSync 又写回 store1 触发 forwardSync，形成无限循环。
+ *
+ * 解决方案：通过 _isSyncing 标志在 setState 期间抑制反向同步的入队。
+ * setState 会同步触发订阅回调，因此：
+ *   1. onBeforeApply 设置 _isSyncing = true
+ *   2. setState 触发反向同步的订阅 → shouldSkip 检测到 _isSyncing → 跳过入队
+ *   3. onAfterApply 清除 _isSyncing = false
  */
 export class BidirectionalStoreSynchronizer<S1 extends object, S2 extends object> {
   private forwardSync: StoreSynchronizer<S1, S2>
   private backwardSync: StoreSynchronizer<S2, S1>
-  // private _isSyncing = false
+  /** 同步进行中标志：防止双向同步无限循环 */
+  private _isSyncing = false
 
   constructor(
     store1: StoreApi<S1>,
     store2: StoreApi<S2>,
     config: Partial<SyncConfig> = {}
   ) {
-    this.forwardSync = new StoreSynchronizer(store1, store2, config)
-    this.backwardSync = new StoreSynchronizer(store2, store1, config)
+    const setSyncing = (): void => { this._isSyncing = true }
+    const clearSyncing = (): void => { this._isSyncing = false }
+    const shouldSkip = (): boolean => this._isSyncing
+
+    this.forwardSync = new StoreSynchronizer(store1, store2, {
+      ...config,
+      shouldSkip,
+      onBeforeApply: setSyncing,
+      onAfterApply: clearSyncing,
+    })
+    this.backwardSync = new StoreSynchronizer(store2, store1, {
+      ...config,
+      shouldSkip,
+      onBeforeApply: setSyncing,
+      onAfterApply: clearSyncing,
+    })
   }
 
   registerForwardRule(

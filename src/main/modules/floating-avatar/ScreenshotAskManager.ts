@@ -57,6 +57,8 @@ export class ScreenshotAskManager {
   private scaleFactor: number = 1
   /** 工作区路径获取函数（用于截图落盘到 .aweeclaw/screenshot） */
   private readonly getWorkspacePath: WorkspacePathGetter
+  /** 当前截图流程的窗口可见性回调（start 时隐藏迷你助手，end 时恢复） */
+  private onVisibilityChange: ((phase: 'start' | 'end') => void) | null = null
 
   constructor(getWorkspacePath: WorkspacePathGetter) {
     this.getWorkspacePath = getWorkspacePath
@@ -66,8 +68,14 @@ export class ScreenshotAskManager {
    * 启动截图提问流程
    *
    * @param onScreenshotComplete 截图完成回调（主进程把 base64 推送到头像窗口）
+   * @param onVisibilityChange   可选的窗口可见性回调：
+   *   - 'start'：截图覆盖窗口即将显示，调用方应隐藏迷你助手窗口避免遮挡桌面
+   *   - 'end'：截图流程结束（完成/取消/异常），调用方应恢复迷你助手窗口
    */
-  async start(onScreenshotComplete: (payload: ScreenshotResultPayload) => void): Promise<void> {
+  async start(
+    onScreenshotComplete: (payload: ScreenshotResultPayload) => void,
+    onVisibilityChange?: (phase: 'start' | 'end') => void,
+  ): Promise<void> {
     // 防止重复启动
     if (this.overlayWindow) {
       logger.system.warn('[ScreenshotAsk] Overlay already open')
@@ -75,6 +83,11 @@ export class ScreenshotAskManager {
     }
 
     try {
+      // 保存可见性回调，cleanup 时触发 'end' 恢复迷你助手窗口
+      this.onVisibilityChange = onVisibilityChange ?? null
+      // 截图覆盖窗口即将全屏显示，先隐藏迷你助手避免遮挡桌面
+      this.onVisibilityChange?.('start')
+
       const primaryDisplay = screen.getPrimaryDisplay()
       this.scaleFactor = primaryDisplay.scaleFactor
       const { width, height } = primaryDisplay.bounds
@@ -190,6 +203,9 @@ export class ScreenshotAskManager {
     rect: SelectionRect,
     onScreenshotComplete: (payload: ScreenshotResultPayload) => void,
   ): Promise<void> {
+    // 暂存截图结果：等 cleanup 恢复窗口可见后再回调推送
+    let pendingPayload: ScreenshotResultPayload | null = null
+
     try {
       // 1. 校验选区有效性（CSS 像素）
       if (rect.width < 10 || rect.height < 10) {
@@ -246,11 +262,20 @@ export class ScreenshotAskManager {
           (saved ? `, saved=${saved.filePath}` : ', save skipped'),
       )
 
-      onScreenshotComplete(payload)
+      // 暂存 payload，等 cleanup 恢复窗口可见后再回调
+      // 若先 send 再 show，渲染进程收到消息时 document.visibilityState 可能仍为 hidden，
+      // 导致 requestAnimationFrame 不执行、附件注入失败
+      pendingPayload = payload
     } catch (err) {
       logger.system.error('[ScreenshotAsk] captureAndProcess failed:', err)
     } finally {
       this.cleanup()
+    }
+
+    // cleanup 已恢复头像窗口可见性（onVisibilityChange('end') → manager.show()），
+    // 此时再推送截图结果，确保渲染进程的 visibilityState 已恢复 visible
+    if (pendingPayload) {
+      onScreenshotComplete(pendingPayload)
     }
   }
 
@@ -336,5 +361,15 @@ export class ScreenshotAskManager {
       this.overlayWindow.close()
     }
     this.overlayWindow = null
+
+    // 截图流程结束，恢复迷你助手窗口可见性
+    if (this.onVisibilityChange) {
+      try {
+        this.onVisibilityChange('end')
+      } catch (err) {
+        logger.system.warn('[ScreenshotAsk] onVisibilityChange end failed:', err)
+      }
+      this.onVisibilityChange = null
+    }
   }
 }

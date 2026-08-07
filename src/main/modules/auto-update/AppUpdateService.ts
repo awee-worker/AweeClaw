@@ -81,8 +81,16 @@ class UpdateService {
   private backendUpdateFeedUrl: string | null = null
   /** 抑制 electron-updater 事件更新状态（热更新下载流程中使用） */
   private suppressStatusEvents = false
+  /** 幂等保护：initialize() 重复调用时跳过，避免重复注册事件监听与定时器 */
+  private isInitialized = false
 
   initialize(mainWindow: BrowserWindow): void {
+    if (this.isInitialized) {
+      logger.system.warn('[Updater] initialize() called multiple times, skipping')
+      return
+    }
+    this.isInitialized = true
+
     this.mainWindow = mainWindow
 
     const requiresManualDownload = this.detectManualDownloadMode()
@@ -657,14 +665,24 @@ class UpdateService {
 
   /**
    * 下载文件（支持 HTTPS/HTTP，自动处理重定向）
+   *
+   * 重定向处理：遇到 301/302/307/308 时销毁当前响应流后递归跟随，
+   * 避免响应流未关闭导致的句柄泄漏。
    */
   private downloadFile(url: string, filePath: string, maxRedirects = 5): Promise<void> {
     return new Promise((resolve, reject) => {
       const protocol = url.startsWith('https:') ? https : http
 
       const request = protocol.get(url, (response) => {
-        // 处理重定向
-        if ((response.statusCode === 301 || response.statusCode === 302 || response.statusCode === 307 || response.statusCode === 308) && response.headers.location) {
+        // 处理重定向：必须先销毁响应流再递归，否则底层 socket 句柄泄漏
+        if (
+          response.statusCode !== undefined &&
+          [301, 302, 307, 308].includes(response.statusCode) &&
+          response.headers.location
+        ) {
+          // 销毁当前响应流，释放底层资源
+          response.destroy()
+
           if (maxRedirects <= 0) {
             reject(new Error('重定向次数过多'))
             return
@@ -676,6 +694,8 @@ class UpdateService {
         }
 
         if (response.statusCode !== 200) {
+          // 非 200 响应也需销毁流，避免句柄挂起
+          response.destroy()
           reject(new Error(`下载失败: HTTP ${response.statusCode}`))
           return
         }
@@ -705,6 +725,7 @@ class UpdateService {
         })
 
         fileStream.on('error', (err) => {
+          response.destroy()
           fs.unlink(filePath, () => {})
           reject(err)
         })
@@ -819,6 +840,11 @@ class UpdateService {
       try { fs.unlinkSync(this.downloadedInstallerPath) } catch { /* ignore */ }
       this.downloadedInstallerPath = null
     }
+    // 重置幂等标志，允许 destroy 后重新 initialize（测试/重启场景）
+    this.isInitialized = false
+    // 移除 electron-updater 所有事件监听，防止内存泄漏
+    autoUpdater.removeAllListeners()
+    this.mainWindow = null
   }
 
   private updateStatus(partial: Partial<UpdateStatus>): void {

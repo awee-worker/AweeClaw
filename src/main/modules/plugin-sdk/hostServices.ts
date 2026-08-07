@@ -15,7 +15,10 @@
  *
  * 安全约束：
  * - 仅在主进程设置，渲染进程无法访问
- * - 插件通过 host 桥访问的能力受插件 permissions 声明约束（由 PluginInstaller 校验）
+ * - globalThis.__AWEECLAW_HOST__ 为全局共享实例，不做权限校验（内置插件可用）
+ * - 外部插件应通过 PluginContext.host 访问受限代理（基于 manifest.permissions 校验）
+ * - 受限代理由 PluginPermissionGuard.createGuardedHostServices 创建，未声明权限的能力访问会抛错
+ * - 完整沙箱隔离（UtilityProcess）待后续实施，当前 JS 代理为第一层防线
  *
  * @module plugin-sdk/hostServices
  */

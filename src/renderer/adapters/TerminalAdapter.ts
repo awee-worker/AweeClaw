@@ -61,7 +61,8 @@ export type TerminalCommandTerminationReason =
   | 'timeout'
   | 'user_closed_terminal'
   | 'cleanup'
-  | 'detached';
+  | 'detached'
+  | 'error_detected';
 
 export interface TerminalCommandSession {
   commandSessionId: string;
@@ -788,6 +789,51 @@ export class TerminalManagerClass {
     } catch { }
   }
 
+  /**
+   * 确保终端已 mount 并正确 fit，PTY 尺寸与 xterm 一致
+   *
+   * 核心问题：PTY 创建时 cols=80 rows=24（硬编码默认值），而 xterm 实际尺寸取决于容器。
+   * 如果在 xterm mount + fit 之前写入命令，PTY 按 80 cols 处理回显和换行，
+   * xterm 按实际 cols 渲染 → 排版错乱（递增缩进、行错位）。
+   *
+   * 时序：
+   *   setTerminalVisible(true) → React 渲染 → useEffect(100ms) → mountTerminal → fitTerminal(100ms)
+   *   共 ~200ms 延迟，此方法等待 mount 完成后 fit，确保 PTY resize 在写入命令前完成
+   *
+   * @param termId    终端 ID
+   * @param maxWaitMs 最大等待时间（默认 1000ms，覆盖 React 渲染 + useEffect 延迟）
+   */
+  async ensureTerminalReady(termId: string, maxWaitMs = 1000): Promise<void> {
+    // 如果 xterm 已 mount，直接 fit 并返回
+    if (this.xtermInstances.has(termId)) {
+      this.fitTerminal(termId)
+      return
+    }
+
+    // 等待 xterm mount（React useEffect 中的 100ms 延迟 + DOM 布局）
+    return new Promise<void>((resolve) => {
+      const start = Date.now()
+      const check = () => {
+        if (this.xtermInstances.has(termId)) {
+          // mount 完成，fit 并 resize PTY
+          this.fitTerminal(termId)
+          resolve()
+        } else if (Date.now() - start > maxWaitMs) {
+          // 超时：终端面板可能未显示，或 xterm mount 失败
+          // 放弃等待继续执行（排版可能不完美，但命令能正常执行）
+          logger.agent.warn(
+            `[TerminalManager] ensureTerminalReady timed out for ${termId} ` +
+            `(xterm not mounted after ${maxWaitMs}ms, proceeding with default cols)`,
+          )
+          resolve()
+        } else {
+          setTimeout(check, 30)
+        }
+      }
+      check()
+    })
+  }
+
   closeTerminal(id: string) {
     const activeExecution = this.activeExecutions.get(id)
     if (activeExecution) {
@@ -863,6 +909,56 @@ export class TerminalManagerClass {
     return this.state.terminals.some(t => t.id === id);
   }
 
+  /**
+   * 检查指定终端是否有正在执行的 agent 命令
+   *
+   * 用于 terminalWatcher 判断是否需要主动结束出错的命令。
+   * 仅 'queued' / 'running' 状态视为活动，已结束的命令返回 false。
+   */
+  hasActiveAgentCommand(terminalId: string): boolean {
+    const session = this.currentCommandSessions.get(terminalId)
+    if (!session) return false
+    return session.status === 'queued' || session.status === 'running'
+  }
+
+  /**
+   * 主动结束指定终端的活动命令执行（错误检测场景）
+   *
+   * 当 terminalWatcher 检测到命令输出中包含明确的错误关键字（npm ERR!、Error: 等）时，
+   * 调用此方法立即结束命令执行，将已捕获的输出作为错误结果返回给 AI。
+   *
+   * 设计要点：
+   * 1. 仅结束活动命令，不影响空闲终端
+   * 2. 不发送 Ctrl+C（命令可能已自行出错，无需中断进程；避免破坏终端状态）
+   * 3. finalStatus 设为 'failed'，让 run_command 正确返回错误给 AI
+   * 4. 优先使用命令会话的 partialOutput（命令级输出），避免混入命令前的历史输出
+   *    fallback 到 getOutputPreview（终端级）以防 partialOutput 为空
+   *
+   * @param terminalId 终端 ID
+   * @returns 是否成功结束（false 表示无活动命令或已结束）
+   */
+  finalizeActiveCommandOnError(terminalId: string): boolean {
+    const execution = this.activeExecutions.get(terminalId)
+    if (!execution) return false
+
+    // 优先使用命令会话的 partialOutput（命令级输出，不含命令前的历史）
+    // fallback 到终端级 getOutputPreview，确保极端情况下也有输出可用
+    const session = this.currentCommandSessions.get(terminalId)
+    const sessionOutput = session?.partialOutput || session?.output || ''
+    const partialOutput = sessionOutput || this.getOutputPreview(terminalId, 200, 16000) || ''
+
+    execution.finalize('error_detected', {
+      finalStatus: 'failed',
+      exitCode: 1,
+      output: partialOutput,
+      partialOutput,
+      sentinelMatched: false,
+    })
+
+    return true
+  }
+
+
   setActiveTerminal(id: string | null) {
     // 验证终端是否存在，不存在则静默忽略（终端可能已被手动关闭）
     if (id !== null && !this.state.terminals.find(t => t.id === id)) {
@@ -929,6 +1025,11 @@ export class TerminalManagerClass {
   /**
    * 获取或创建 Agent 专属终端。
    * Agent 终端跨 tool call 复用，避免每次 run_command 产生孤立 tab。
+   *
+   * 复用策略（优先级从高到低）：
+   * 1. 终端空闲（无活动命令）→ 直接复用
+   * 2. 终端被卡住的命令占用（running 但非 detached）→ 发送 Ctrl+C 中断后复用
+   * 3. 终端被长进程占用（detached）→ 创建新终端（长进程不应被打断）
    */
   async getOrCreateAgentTerminal(cwd: string, shell?: string): Promise<string> {
     // 检查现有 agent 终端是否仍然存活
@@ -943,11 +1044,21 @@ export class TerminalManagerClass {
           commandInfo.current?.status === 'queued' ||
           commandInfo.current?.status === 'running'
 
+        // 空闲终端：直接复用
         if (!occupiedByDetachedWork && !occupiedByActiveCommand) {
           return this.agentTerminalId
         }
 
-        this.agentTerminalId = null
+        // 长进程（detached）正确占用终端：不能中断，创建新终端
+        if (occupiedByDetachedWork) {
+          this.agentTerminalId = null
+        } else {
+          // 命令卡在 running 状态（sentinel 失败等导致状态残留）
+          // 发送 Ctrl+C 中断卡住的命令，清理状态后复用终端
+          // 避免每次卡住都创建新标签
+          this.interruptStaleAgentCommand(this.agentTerminalId)
+          return this.agentTerminalId
+        }
       }
       // 已被关闭，重置
       else {
@@ -984,6 +1095,51 @@ export class TerminalManagerClass {
    */
   releaseAgentTerminal() {
     this.agentTerminalId = null
+  }
+
+  /**
+   * 中断卡住的 Agent 命令并清理状态，使终端可被复用
+   *
+   * 场景：上一条命令因 sentinel 失败等原因卡在 running 状态，
+   * 下一次 run_command 调用 getOrCreateAgentTerminal 时，
+   * 通过此方法中断卡住的命令（发送 Ctrl+C），清理命令会话状态，
+   * 避免每次卡住都创建新标签。
+   *
+   * 操作：
+   * 1. finalize 活动命令执行（让 executeCommandWithOutput 的 Promise 返回）
+   * 2. 发送 Ctrl+C 中断终端中可能还在运行的进程
+   * 3. 发送换行符让 shell 回到干净状态
+   * 4. 清理 currentCommandSessions
+   */
+  private interruptStaleAgentCommand(terminalId: string): void {
+    // 1. finalize 活动命令执行（如果有），让等待的 Promise 返回
+    const execution = this.activeExecutions.get(terminalId)
+    if (execution) {
+      try {
+        const partialOutput = this.getOutputPreview(terminalId, 200, 16000) || ''
+        execution.finalize('cleanup', {
+          finalStatus: 'interrupted',
+          output: partialOutput,
+          partialOutput,
+          sentinelMatched: false,
+        })
+      } catch {
+        // finalize 可能已执行，忽略
+      }
+    }
+
+    // 2. 发送 Ctrl+C 中断可能还在运行的进程
+    this.writeToTerminal(terminalId, '\x03')
+
+    // 3. 发送换行符让 shell 回到干净状态（新 prompt）
+    this.writeToTerminal(terminalId, '\r')
+
+    // 4. 清理命令会话状态
+    this.currentCommandSessions.delete(terminalId)
+
+    logger.agent.info(
+      `[TerminalManager] Interrupted stale agent command in terminal ${terminalId} for reuse`,
+    )
   }
 
   private getNextAgentTerminalName(): string {
@@ -1200,6 +1356,10 @@ export class TerminalManagerClass {
               partialOutput: getVisibleOutput(),
               sentinelMatched: false,
             })
+          } else {
+            // 未检测到 shell prompt，重新调度（周期性检查）
+            // 覆盖 sentinel 失败 + 长命令无输出后恢复的场景（如 sleep 10 结束后 shell 回显 prompt）
+            scheduleIdleFallback()
           }
         }, 1200)
       }
@@ -1304,8 +1464,12 @@ export class TerminalManagerClass {
       // 这与 VS Code/Cursor Shell Integration 使用 PROMPT_COMMAND 钩子的终态效果相同
       // （用户只看到命令输出，不看到包装代码），只是实现层级不同。
       //
-      // N 的计算：ceil((提示符估算长度 + 完整命令长度) / 终端列数) + 1
+      // N 的计算：ceil((提示符估算长度 + 完整命令长度) / 终端列数) + 冗余行
       const xtermInst = this.xtermInstances.get(termId)
+      // 确保 cols 准确：先 fit 一次，避免终端尺寸变化后 proposeDimensions 返回过期值
+      if (xtermInst?.fitAddon) {
+        try { xtermInst.fitAddon.fit() } catch { /* 终端未挂载时忽略 */ }
+      }
       const cols = xtermInst?.fitAddon?.proposeDimensions?.()?.cols ?? 80
       const promptLen = isWindows ? 60 : 35
       // 每个清除单元的字面长度（PS 使用 $([char]N) 表达式，Unix 使用 octal 转义）
@@ -1317,7 +1481,9 @@ export class TerminalManagerClass {
       // 两次迭代逼近（消除循环依赖）
       const roughLines = Math.ceil((promptLen + mainCommand.length) / cols)
       const clearOverhead = clearWrapLen + clearUnit.length * roughLines
-      const echoLines = Math.ceil((promptLen + mainCommand.length + clearOverhead) / cols) + 1
+      // +2 冗余：多清除 1 行以覆盖 shell 自动换行、光标位置偏差等边界情况
+      // 之前 +1 在某些终端宽度下会少清一行，导致残留回显和排版错乱
+      const echoLines = Math.ceil((promptLen + mainCommand.length + clearOverhead) / cols) + 2
 
       const clearSeq = clearUnit.repeat(echoLines)
 

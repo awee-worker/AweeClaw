@@ -45,6 +45,7 @@ import { z } from 'zod'
   },
 }
 
+// @ts-ignore: 第三方插件为 JS，缺少类型声明文件
 const { MacroPlayer } = await import(/* @vite-ignore */ '../../../../aweeclaw-plugins/plugins/ai-macro-recorder/index.js')
 
 // ============================================================

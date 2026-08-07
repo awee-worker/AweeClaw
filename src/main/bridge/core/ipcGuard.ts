@@ -100,34 +100,71 @@ async function runMiddlewares(channel: string, args: unknown[]): Promise<boolean
 
 // ─── 核心：safeIpcHandle ───────────────────────────────────
 
+/** safeIpcHandle 可选配置 */
+export interface SafeIpcHandleOptions {
+    /** 日志域名称（缺省时自动从频道名前缀提取） */
+    domain?: string
+    /**
+     * 每分钟最大调用次数（速率限制）。
+     * 设为 0 或省略表示不限流。
+     * 超出限制的请求将被拒绝并返回 ERR_IPC_RATE_LIMIT。
+     */
+    rateLimitPerMinute?: number
+}
+
 /**
  * 安全包装 `ipcMain.handle`
  *
  * 功能：
- * 1. 中间件拦截 — 执行前校验权限 / 过滤参数
- * 2. 异常捕获 — handler 抛出的任何错误均被捕获，转为结构化响应
- * 3. 序列化校验（仅开发环境）— 检测返回值是否可被 JSON 序列化
- * 4. 日志记录 — 按频道前缀自动路由到对应日志域
+ * 1. 速率限制 — 通过 IpcChannelGuard 自动限流，防止频道被高频滥用
+ * 2. 中间件拦截 — 执行前校验权限 / 过滤参数
+ * 3. 异常捕获 — handler 抛出的任何错误均被捕获，转为结构化响应
+ * 4. 序列化校验（仅开发环境）— 检测返回值是否可被 JSON 序列化
+ * 5. 日志记录 — 按频道前缀自动路由到对应日志域
+ * 6. 调用统计 — 每次调用自动记录到 IpcChannelGuard，供监控面板使用
  *
  * @param channel IPC 频道名称（约定格式：`domain:action`，如 `llm:chat`）
  * @param handler 实际的处理器函数
- * @param domain  日志域名称（缺省时自动从频道名前缀提取）
+ * @param options 配置项（日志域、速率限制），或直接传字符串作为日志域（向后兼容）
  */
 export function safeIpcHandle<T = unknown>(
     channel: string,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- IPC handler 参数类型由调用方决定，包装器需保持参数类型协变
     handler: (event: IpcMainInvokeEvent, ...args: any[]) => Promise<T> | T,
-    domain?: string
+    options?: string | SafeIpcHandleOptions
 ): void {
-    const logDomain = domain || channel.split(':')[0] || 'ipc'
+    // 向后兼容：第三个参数既可以是字符串（日志域）也可以是配置对象
+    const opts: SafeIpcHandleOptions = typeof options === 'string'
+        ? { domain: options }
+        : (options ?? {})
+
+    const logDomain = opts.domain || channel.split(':')[0] || 'ipc'
+    const channelGuard = IpcChannelGuard.getInstance()
+
+    // 注册时配置速率限制（若指定）
+    if (opts.rateLimitPerMinute && opts.rateLimitPerMinute > 0) {
+        channelGuard.setRateLimit(channel, opts.rateLimitPerMinute)
+    }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Electron ipcMain.handle 的参数类型
     ipcMain.handle(channel, async (event: IpcMainInvokeEvent, ...args: any[]) => {
         try {
+            // 0. 速率限制检查
+            if (!channelGuard.checkRateLimit(channel)) {
+                logger.ipc.warn(`[${channel}] Rate limit exceeded`)
+                return {
+                    success: false,
+                    error: `Rate limit exceeded for channel: ${channel}`,
+                    code: 'ERR_IPC_RATE_LIMIT',
+                    timestamp: Date.now(),
+                } satisfies IpcGuardResponse
+            }
+
             // 1. 中间件拦截
             const middlewarePassed = await runMiddlewares(channel, args)
             if (!middlewarePassed) {
                 logger.ipc.warn(`[${channel}] Blocked by middleware`)
+                channelGuard.recordCall(channel, false)
                 return {
                     success: false,
                     error: `Request blocked: ${channel}`,
@@ -147,6 +184,7 @@ export function safeIpcHandle<T = unknown>(
                 } catch (serializeErr) {
                     const targetLogger = getLogger(logDomain)
                     targetLogger.error(`[${channel}] Unserializable return value:`, serializeErr)
+                    channelGuard.recordCall(channel, false)
 
                     return {
                         success: false,
@@ -157,12 +195,14 @@ export function safeIpcHandle<T = unknown>(
                 }
             }
 
+            channelGuard.recordCall(channel, true)
             return result
         } catch (err) {
             // 4. 异常捕获并转为结构化响应
             const appError = toAppError(err)
             const targetLogger = getLogger(logDomain)
             targetLogger.error(`[${channel}] Unhandled error:`, appError)
+            channelGuard.recordCall(channel, false)
 
             return {
                 success: false,
@@ -194,8 +234,9 @@ function getLogger(domain: string) {
  * - 频道级调用统计（调用次数、错误次数、最后调用时间）
  * - 频道级速率限制（每分钟最大调用次数）
  *
- * 注意：此守卫为独立工具，需在 handler 中手动调用。
- * `safeIpcHandle` 不会自动集成限流逻辑。
+ * 集成方式：`safeIpcHandle` 已自动调用 `checkRateLimit` / `recordCall`，
+ * 注册 handler 时传入 `{ rateLimitPerMinute: N }` 即可启用限流。
+ * 也可通过 `getInstance().setRateLimit(channel, N)` 在运行时动态配置。
  */
 export class IpcChannelGuard {
     private static instance: IpcChannelGuard | null = null

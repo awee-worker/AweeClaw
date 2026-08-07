@@ -46,6 +46,7 @@ const {
   extractMetadata,
   removeNoise,
   extractMainContent,
+  // @ts-ignore: 第三方插件为 JS，缺少类型声明文件
 } = await import(/* @vite-ignore */ '../../../../aweeclaw-plugins/plugins/ai-web-scraper/index.js')
 
 // ============================================================

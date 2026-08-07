@@ -85,6 +85,9 @@ import { registerPluginHandlers } from '../plugin/pluginBridge'
 // ── clipboard ───────────────────────────────────────────
 import { registerClipboardHandlers } from '../system/clipboardService'
 
+// ── screenshot ──────────────────────────────────────────
+import { registerMainWindowScreenshotHandlers } from '../../modules/screenshot/mainWindowScreenshot'
+
 // 安全模块（guard 目录）
 import {
   securityManager,
@@ -292,6 +295,27 @@ export function registerAllHandlers(context: IPCContext) {
 
   // 剪贴板服务（读取原生剪贴板文件路径，用于粘贴文件到聊天）
   registerOnce('clipboard', () => registerClipboardHandlers())
+
+  // 主窗口截图（聊天输入框截图按钮触发，结果作为附件添加到输入框）
+  registerOnce('screenshot-main-window', () =>
+    registerMainWindowScreenshotHandlers(
+      getMainWindow,
+      () => {
+        // 优先：当前主窗口已绑定的工作区（运行时切换工作区后即时反映）
+        const win = getMainWindow()
+        if (win && !win.isDestroyed() && context.getWindowWorkspace) {
+          const roots = context.getWindowWorkspace(win.id)
+          if (roots && roots.length > 0) return roots[0]
+        }
+        // 兜底：持久化的最近工作区
+        const session = workspaceMetaStore.get('lastWorkspaceSession') as
+          | { roots?: string[] }
+          | undefined
+        if (session?.roots && session.roots.length > 0) return session.roots[0]
+        return (workspaceMetaStore.get('lastWorkspacePath') as string | null) ?? null
+      },
+    ),
+  )
 
   logger.ipc.info(`[Security] 所有安全IPC处理器已注册 (${registeredHandlers.size} 个)`)
 }

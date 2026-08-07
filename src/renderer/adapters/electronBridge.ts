@@ -11,6 +11,7 @@ import type {
   RemoteShellDownloadResult,
   AvatarModelOption,
 } from '@renderer/types/electronBridge'
+import { createGroup } from './autoGroup'
 
 type ElectronAPIWithRemoteShell = ElectronAPI & {
   remoteShellList: (server: RemoteShellServer, remotePath?: string) => Promise<RemoteShellEntry[]>
@@ -452,57 +453,11 @@ function createGroupedAPI() {
       dbSetWakeWordEnabled: (enabled: boolean) => raw.settingsDbSetWakeWordEnabled(enabled),
     },
 
-    // 会话数据库 (SQLite)
-    sessionDb: {
-      initialize: (params?: { sessionsDir?: string }) => raw.sessionDbInitialize(params),
-      getAllSessionMeta: () => raw.sessionDbGetAllSessionMeta(),
-      upsertSessionMeta: (key: string, value: any) => raw.sessionDbUpsertSessionMeta(key, value),
-      batchUpsertSessionMeta: (meta: Record<string, any>) => raw.sessionDbBatchUpsertSessionMeta(meta),
-      deleteSessionMeta: (key: string) => raw.sessionDbDeleteSessionMeta(key),
-      getAllThreadSummaries: (userId?: string | null) => raw.sessionDbGetAllThreadSummaries(userId),
-      getThreadMeta: (threadId: string) => raw.sessionDbGetThreadMeta(threadId),
-      batchGetThreadMeta: (threadIds: string[]) => raw.sessionDbBatchGetThreadMeta(threadIds),
-      upsertThreadMeta: (threadId: string, data: any) => raw.sessionDbUpsertThreadMeta(threadId, data),
-      deleteThreadMeta: (threadId: string) => raw.sessionDbDeleteThreadMeta(threadId),
-      claimOrphanThreads: (userId: string) => raw.sessionDbClaimOrphanThreads(userId),
-      repairMissingTitles: () => raw.sessionDbRepairMissingTitles(),
-      getThreadMessages: (threadId: string) => raw.sessionDbGetThreadMessages(threadId),
-      batchUpsertThreadMessages: (threadId: string, messages: any[]) => raw.sessionDbBatchUpsertThreadMessages(threadId, messages),
-      appendThreadMessage: (threadId: string, message: any) => raw.sessionDbAppendThreadMessage(threadId, message),
-      deleteThreadMessages: (threadId: string) => raw.sessionDbDeleteThreadMessages(threadId),
-      getThreadMessageCount: (threadId: string) => raw.sessionDbGetThreadMessageCount(threadId),
-      deleteThread: (threadId: string) => raw.sessionDbDeleteThread(threadId),
-      clearAll: () => raw.sessionDbClearAll(),
-      getPath: () => raw.sessionDbGetPath(),
-    },
+    // 会话数据库 (SQLite)（自动分组：sessionDbXxx → sessionDb.xxx）
+    sessionDb: createGroup(raw, 'sessionDb'),
 
-    // 记忆数据库 (SQLite) - 客户端本地记忆存储
-    memoryDb: {
-      initialize: () => raw.memoryDbInitialize(),
-      upsertEntry: (entry: any) => raw.memoryDbUpsertEntry(entry),
-      batchUpsertEntries: (entries: any[]) => raw.memoryDbBatchUpsertEntries(entries),
-      getEntryById: (id: string) => raw.memoryDbGetEntryById(id),
-      queryEntries: (options?: any) => raw.memoryDbQueryEntries(options),
-      updateEntry: (id: string, updates: any) => raw.memoryDbUpdateEntry(id, updates),
-      deleteEntry: (id: string) => raw.memoryDbDeleteEntry(id),
-      softDeleteEntry: (id: string) => raw.memoryDbSoftDeleteEntry(id),
-      clearAll: (userId?: string | null) => raw.memoryDbClearAll(userId),
-      getStats: (userId?: string | null) => raw.memoryDbGetStats(userId),
-      getOverview: (userId?: string | null) => raw.memoryDbGetOverview(userId),
-      getVisualizationData: (options?: any) => raw.memoryDbGetVisualizationData(options),
-      getTimeline: (options?: any) => raw.memoryDbGetTimeline(options),
-      getTimelineByMonth: (options?: any) => raw.memoryDbGetTimelineByMonth(options),
-      getTimelineMonths: (options?: any) => raw.memoryDbGetTimelineMonths(options),
-      upsertRelation: (rel: any) => raw.memoryDbUpsertRelation(rel),
-      getRelations: (memoryId: string) => raw.memoryDbGetRelations(memoryId),
-      deleteRelation: (id: string) => raw.memoryDbDeleteRelation(id),
-      getSyncState: (key: string) => raw.memoryDbGetSyncState(key),
-      setSyncState: (key: string, value: string) => raw.memoryDbSetSyncState(key, value),
-      getPendingPush: (limit?: number) => raw.memoryDbGetPendingPush(limit),
-      markAsSynced: (id: string, remoteId: string) => raw.memoryDbMarkAsSynced(id, remoteId),
-      migrateFromJsonStore: (store: any) => raw.memoryDbMigrateFromJsonStore(store),
-      getPath: () => raw.memoryDbGetPath(),
-    },
+    // 记忆数据库 (SQLite) - 客户端本地记忆存储（自动分组：memoryDbXxx → memoryDb.xxx）
+    memoryDb: createGroup(raw, 'memoryDb'),
 
     // LLM
     llm: {
@@ -597,34 +552,11 @@ function createGroupedAPI() {
       sandboxExecute: (command: string, cwd: string, agentId?: string) => raw.securitySandboxExecute(command, cwd, agentId),
     },
 
-    // 索引
-    index: {
-      initialize: (workspacePath: string) => raw.indexInitialize(workspacePath),
-      start: (workspacePath: string) => raw.indexStart(workspacePath),
-      status: (workspacePath: string) => raw.indexStatus(workspacePath),
-      hasIndex: (workspacePath: string) => raw.indexHasIndex(workspacePath),
-      search: (workspacePath: string, query: string, topK?: number) => raw.indexSearch(workspacePath, query, topK),
-      hybridSearch: (workspacePath: string, query: string, topK?: number) => raw.indexHybridSearch(workspacePath, query, topK),
-      searchSymbols: (workspacePath: string, query: string, topK?: number) => raw.indexSearchSymbols(workspacePath, query, topK),
-      getProjectSummary: (workspacePath: string) => raw.indexGetProjectSummary(workspacePath),
-      getProjectSummaryText: (workspacePath: string) => raw.indexGetProjectSummaryText(workspacePath),
-      setMode: (workspacePath: string, mode: 'structural' | 'semantic') => raw.indexSetMode(workspacePath, mode),
-      updateFile: (workspacePath: string, filePath: string) => raw.indexUpdateFile(workspacePath, filePath),
-      clear: (workspacePath: string) => raw.indexClear(workspacePath),
-      updateEmbeddingConfig: (workspacePath: string, config: Parameters<typeof raw.indexUpdateEmbeddingConfig>[1]) =>
-        raw.indexUpdateEmbeddingConfig(workspacePath, config),
-      testConnection: (workspacePath: string) => raw.indexTestConnection(workspacePath),
-      getProviders: () => raw.indexGetProviders(),
-      parseCallGraph: (filePath: string, content: string) => raw.indexParseCallGraph(filePath, content),
-      onProgress: (callback: Parameters<typeof raw.onIndexProgress>[0]) => raw.onIndexProgress(callback),
-    },
+    // 索引（自动分组：indexXxx → index.xxx, onIndexXxx → index.onXxx）
+    index: createGroup(raw, 'index'),
 
-    // HTTP
-    http: {
-      readUrl: (url: string, timeout?: number) => raw.httpReadUrl(url, timeout),
-      webSearch: (query: string, maxResults?: number, timeout?: number) => raw.httpWebSearch(query, maxResults, timeout),
-      setSearchEngineState: (state: unknown) => raw.httpSetSearchEngineState(state),
-    },
+    // HTTP（自动分组：httpXxx → http.xxx）
+    http: createGroup(raw, 'http'),
 
     // 资源
     resources: {
@@ -634,132 +566,26 @@ function createGroupedAPI() {
       clearCache: (prefix?: string) => raw.resourcesClearCache(prefix),
     },
 
-    // MCP
-    mcp: {
-      initialize: (workspaceRoots: string[]) => raw.mcpInitialize(workspaceRoots),
-      getServersState: () => raw.mcpGetServersState(),
-      getAllTools: () => raw.mcpGetAllTools(),
-      connectServer: (serverId: string) => raw.mcpConnectServer(serverId),
-      disconnectServer: (serverId: string) => raw.mcpDisconnectServer(serverId),
-      reconnectServer: (serverId: string) => raw.mcpReconnectServer(serverId),
-      callTool: (request: Parameters<typeof raw.mcpCallTool>[0]) => raw.mcpCallTool(request),
-      readResource: (request: Parameters<typeof raw.mcpReadResource>[0]) => raw.mcpReadResource(request),
-      getPrompt: (request: Parameters<typeof raw.mcpGetPrompt>[0]) => raw.mcpGetPrompt(request),
-      refreshCapabilities: (serverId: string) => raw.mcpRefreshCapabilities(serverId),
-      getConfigPaths: () => raw.mcpGetConfigPaths(),
-      reloadConfig: () => raw.mcpReloadConfig(),
-      addServer: (config: Parameters<typeof raw.mcpAddServer>[0], level?: 'user' | 'workspace') => raw.mcpAddServer(config, level),
-      removeServer: (serverId: string, level?: 'user' | 'workspace') => raw.mcpRemoveServer(serverId, level),
-      toggleServer: (serverId: string, disabled: boolean, level?: 'user' | 'workspace') => raw.mcpToggleServer(serverId, disabled, level),
-      setAutoConnect: (enabled: boolean) => raw.mcpSetAutoConnect(enabled),
-      startOAuth: (serverId: string) => raw.mcpStartOAuth(serverId),
-      finishOAuth: (serverId: string, authorizationCode: string) => raw.mcpFinishOAuth(serverId, authorizationCode),
-      refreshOAuthToken: (serverId: string) => raw.mcpRefreshOAuthToken(serverId),
-      onServerStatus: (callback: Parameters<typeof raw.onMcpServerStatus>[0]) => raw.onMcpServerStatus(callback),
-      onToolsUpdated: (callback: Parameters<typeof raw.onMcpToolsUpdated>[0]) => raw.onMcpToolsUpdated(callback),
-      onResourcesUpdated: (callback: Parameters<typeof raw.onMcpResourcesUpdated>[0]) => raw.onMcpResourcesUpdated(callback),
-      onStateChanged: (callback: Parameters<typeof raw.onMcpStateChanged>[0]) => raw.onMcpStateChanged(callback),
-      registrySearch: (query?: string) => raw.mcpRegistrySearch(query),
-      registryGetDetails: (serverName: string) => raw.mcpRegistryGetDetails(serverName),
-    },
+    // MCP（自动分组：mcpXxx → mcp.xxx, onMcpXxx → mcp.onXxx）
+    mcp: createGroup(raw, 'mcp'),
 
-    // Email
-    email: {
-      testConnection: (config: Parameters<typeof raw.emailTestConnection>[0]) => raw.emailTestConnection(config),
-      send: (params: Parameters<typeof raw.emailSend>[0]) => raw.emailSend(params),
-    },
+    // Email（自动分组：emailXxx → email.xxx）
+    email: createGroup(raw, 'email'),
 
-    // Skills
-    skills: {
-      getGlobalDir: () => raw.skillsGetGlobalDir(),
-      /** 列出所有技能（global + workspace） */
-      list: (workspacePaths?: string[]) => raw.skillsList(workspacePaths),
-      /** 读取指定技能内容（不存在返回 skill:null） */
-      read: (name: string, workspacePaths?: string[]) => raw.skillsRead(name, workspacePaths),
-    },
+    // Skills（自动分组：skillsXxx → skills.xxx）
+    skills: createGroup(raw, 'skills'),
 
-    // LSP
-    lsp: {
-      start: (workspacePath: string) => raw.lspStart(workspacePath),
-      stop: () => raw.lspStop(),
-      didOpen: (params: Parameters<typeof raw.lspDidOpen>[0]) => raw.lspDidOpen(params),
-      didChange: (params: Parameters<typeof raw.lspDidChange>[0]) => raw.lspDidChange(params),
-      didClose: (params: Parameters<typeof raw.lspDidClose>[0]) => raw.lspDidClose(params),
-      didSave: (params: Parameters<typeof raw.lspDidSave>[0]) => raw.lspDidSave(params),
-      definition: (params: Parameters<typeof raw.lspDefinition>[0]) => raw.lspDefinition(params),
-      typeDefinition: (params: Parameters<typeof raw.lspTypeDefinition>[0]) => raw.lspTypeDefinition(params),
-      implementation: (params: Parameters<typeof raw.lspImplementation>[0]) => raw.lspImplementation(params),
-      references: (params: Parameters<typeof raw.lspReferences>[0]) => raw.lspReferences(params),
-      hover: (params: Parameters<typeof raw.lspHover>[0]) => raw.lspHover(params),
-      completion: (params: Parameters<typeof raw.lspCompletion>[0]) => raw.lspCompletion(params),
-      completionResolve: (item: Parameters<typeof raw.lspCompletionResolve>[0]) => raw.lspCompletionResolve(item),
-      signatureHelp: (params: Parameters<typeof raw.lspSignatureHelp>[0]) => raw.lspSignatureHelp(params),
-      rename: (params: Parameters<typeof raw.lspRename>[0]) => raw.lspRename(params),
-      prepareRename: (params: Parameters<typeof raw.lspPrepareRename>[0]) => raw.lspPrepareRename(params),
-      documentSymbol: (params: Parameters<typeof raw.lspDocumentSymbol>[0]) => raw.lspDocumentSymbol(params),
-      workspaceSymbol: (params: Parameters<typeof raw.lspWorkspaceSymbol>[0]) => raw.lspWorkspaceSymbol(params),
-      codeAction: (params: Parameters<typeof raw.lspCodeAction>[0]) => raw.lspCodeAction(params),
-      formatting: (params: Parameters<typeof raw.lspFormatting>[0]) => raw.lspFormatting(params),
-      rangeFormatting: (params: Parameters<typeof raw.lspRangeFormatting>[0]) => raw.lspRangeFormatting(params),
-      documentHighlight: (params: Parameters<typeof raw.lspDocumentHighlight>[0]) => raw.lspDocumentHighlight(params),
-      foldingRange: (params: Parameters<typeof raw.lspFoldingRange>[0]) => raw.lspFoldingRange(params),
-      inlayHint: (params: Parameters<typeof raw.lspInlayHint>[0]) => raw.lspInlayHint(params),
+    // LSP（自动分组：lspXxx → lsp.xxx, onLspXxx → lsp.onXxx）
+    // getLspDiagnostics 不符合前缀约定，通过 custom 补充
+    lsp: createGroup(raw, 'lsp', {
       getDiagnostics: (filePath: string) => raw.getLspDiagnostics(filePath),
-      onDiagnostics: (callback: Parameters<typeof raw.onLspDiagnostics>[0]) => raw.onLspDiagnostics(callback),
-      // 新增 LSP 功能
-      prepareCallHierarchy: (params: Parameters<typeof raw.lspPrepareCallHierarchy>[0]) => raw.lspPrepareCallHierarchy(params),
-      incomingCalls: (params: Parameters<typeof raw.lspIncomingCalls>[0]) => raw.lspIncomingCalls(params),
-      outgoingCalls: (params: Parameters<typeof raw.lspOutgoingCalls>[0]) => raw.lspOutgoingCalls(params),
-      waitForDiagnostics: (params: Parameters<typeof raw.lspWaitForDiagnostics>[0]) => raw.lspWaitForDiagnostics(params),
-      findBestRoot: (params: Parameters<typeof raw.lspFindBestRoot>[0]) => raw.lspFindBestRoot(params),
-      ensureServerForFile: (params: Parameters<typeof raw.lspEnsureServerForFile>[0]) => raw.lspEnsureServerForFile(params),
-      didChangeWatchedFiles: (params: Parameters<typeof raw.lspDidChangeWatchedFiles>[0]) => raw.lspDidChangeWatchedFiles(params),
-      getSupportedLanguages: () => raw.lspGetSupportedLanguages(),
-      // LSP 服务器安装管理
-      getServerStatus: () => raw.lspGetServerStatus(),
-      getBinDir: () => raw.lspGetBinDir(),
-      getDefaultBinDir: () => raw.lspGetDefaultBinDir(),
-      setCustomBinDir: (customPath: string | null) => raw.lspSetCustomBinDir(customPath),
-      installServer: (serverType: string) => raw.lspInstallServer(serverType),
-      installBasicServers: () => raw.lspInstallBasicServers(),
-    },
+    }),
 
-    // Debug
-    debug: {
-      createSession: (config: Parameters<typeof raw.debugCreateSession>[0]) => raw.debugCreateSession(config),
-      launch: (sessionId: string) => raw.debugLaunch(sessionId),
-      attach: (sessionId: string) => raw.debugAttach(sessionId),
-      stop: (sessionId: string) => raw.debugStop(sessionId),
-      continue: (sessionId: string) => raw.debugContinue(sessionId),
-      stepOver: (sessionId: string) => raw.debugStepOver(sessionId),
-      stepInto: (sessionId: string) => raw.debugStepInto(sessionId),
-      stepOut: (sessionId: string) => raw.debugStepOut(sessionId),
-      pause: (sessionId: string) => raw.debugPause(sessionId),
-      setBreakpoints: (sessionId: string, file: string, breakpoints: Parameters<typeof raw.debugSetBreakpoints>[2]) =>
-        raw.debugSetBreakpoints(sessionId, file, breakpoints),
-      getStackTrace: (sessionId: string, threadId: number) => raw.debugGetStackTrace(sessionId, threadId),
-      getScopes: (sessionId: string, frameId: number) => raw.debugGetScopes(sessionId, frameId),
-      getVariables: (sessionId: string, variablesReference: number) => raw.debugGetVariables(sessionId, variablesReference),
-      evaluate: (sessionId: string, expression: string, frameId?: number) => raw.debugEvaluate(sessionId, expression, frameId),
-      getSessionState: (sessionId: string) => raw.debugGetSessionState(sessionId),
-      getAllSessions: () => raw.debugGetAllSessions(),
-      getSupportedTypes: () => raw.debugGetSupportedTypes(),
-      getConfigSnippets: (type: string) => raw.debugGetConfigSnippets(type),
-      configurationDone: (sessionId: string) => raw.debugConfigurationDone(sessionId),
-      getThreads: (sessionId: string) => raw.debugGetThreads(sessionId),
-      getCapabilities: (sessionId: string) => raw.debugGetCapabilities(sessionId),
-      onEvent: (callback: Parameters<typeof raw.onDebugEvent>[0]) => raw.onDebugEvent(callback),
-    },
+    // Debug（自动分组：debugXxx → debug.xxx, onDebugXxx → debug.onXxx）
+    debug: createGroup(raw, 'debug'),
 
-    // 更新服务
-    updater: {
-      check: () => raw.updaterCheck(),
-      getStatus: () => raw.updaterGetStatus(),
-      download: () => raw.updaterDownload(),
-      install: () => raw.updaterInstall(),
-      openDownloadPage: (url?: string) => raw.updaterOpenDownloadPage(url),
-      onStatus: (callback: Parameters<typeof raw.onUpdaterStatus>[0]) => raw.onUpdaterStatus(callback),
-    },
+    // 更新服务（自动分组：updaterXxx → updater.xxx, onUpdaterXxx → updater.onXxx）
+    updater: createGroup(raw, 'updater'),
 
     // 应用错误（来自主进程）
     app: {
@@ -768,37 +594,8 @@ function createGroupedAPI() {
       onShutdownRequested: (callback: Parameters<typeof raw.onShutdownRequested>[0]) => raw.onShutdownRequested(callback),
     },
 
-    // 多渠道
-    channel: {
-      initialize: () => raw.channelInitialize(),
-      shutdown: () => raw.channelShutdown(),
-      getRegisteredChannels: () => raw.channelGetRegisteredChannels(),
-      getSecretSchema: (channelId: string) => raw.channelGetSecretSchema(channelId),
-      validateCredentials: (channelId: string, credentials: Record<string, string>) => raw.channelValidateCredentials(channelId, credentials),
-      addAccount: (channelId: string, account: any) => raw.channelAddAccount(channelId, account),
-      removeAccount: (channelId: string, accountId: string) => raw.channelRemoveAccount(channelId, accountId),
-      updateAccount: (channelId: string, account: any) => raw.channelUpdateAccount(channelId, account),
-      connectAccount: (channelId: string, accountId: string) => raw.channelConnectAccount(channelId, accountId),
-      disconnectAccount: (channelId: string, accountId: string) => raw.channelDisconnectAccount(channelId, accountId),
-      sendMessage: (message: any) => raw.channelSendMessage(message),
-      getAccountStatus: (channelId: string, accountId: string) => raw.channelGetAccountStatus(channelId, accountId),
-      getAllAccountStatuses: () => raw.channelGetAllAccountStatuses(),
-      getConfig: (channelId: string) => raw.channelGetConfig(channelId),
-      getAllConfigs: () => raw.channelGetAllConfigs(),
-      setChannelEnabled: (channelId: string, enabled: boolean) => raw.channelSetChannelEnabled(channelId, enabled),
-      getWebhookInfo: () => raw.channelGetWebhookInfo(),
-      weixinFetchQRCode: () => raw.channelWeixinFetchQRCode(),
-      weixinPollQRStatus: (qrcode: string) => raw.channelWeixinPollQRStatus(qrcode),
-      sendReply: (conversationKey: string, text: string, replyToId?: string) => raw.channelSendReply(conversationKey, text, replyToId),
-      sendFile: (conversationKey: string, filePath: string, fileName?: string, mediaType?: 'file' | 'image' | 'audio' | 'video', replyToId?: string) => raw.channelSendFile(conversationKey, filePath, fileName, mediaType, replyToId),
-      updateReaction: (accountId: string, messageId: string, status: string) => raw.channelUpdateReaction(accountId, messageId, status),
-      streamReply: (accountId: string, to: string, fullText: string, replyToId?: string) => raw.channelStreamReply(accountId, to, fullText, replyToId),
-      rendererReply: (messageId: string, replyText: string) => raw.channelRendererReply(messageId, replyText),
-      onMessage: (callback: (message: any) => void) => raw.onChannelMessage(callback),
-      onInboundMessage: (callback: (message: any) => void) => raw.onChannelInboundMessage(callback),
-      onStatusChange: (callback: (snapshot: any) => void) => raw.onChannelStatusChange(callback),
-      onImProcessingStatus: (callback: (status: any) => void) => raw.onChannelImProcessingStatus(callback),
-    },
+    // 多渠道（自动分组：channelXxx → channel.xxx, onChannelXxx → channel.onXxx）
+    channel: createGroup(raw, 'channel'),
 
     // 命令执行
     onExecuteCommand: (callback: Parameters<typeof raw.onExecuteCommand>[0]) => raw.onExecuteCommand(callback),
@@ -807,70 +604,20 @@ function createGroupedAPI() {
     syncScenarios: (data: Parameters<typeof raw.syncScenarios>[0]) => raw.syncScenarios(data),
     onScenarioRequest: (callback: Parameters<typeof raw.onScenarioRequest>[0]) => raw.onScenarioRequest(callback),
 
-    // Python 环境
-    python: {
-      getStatus: () => raw.pythonGetStatus(),
-      getPath: () => raw.pythonGetPath(),
-      getUvPath: () => raw.pythonGetUvPath(),
-      ensureReady: () => raw.pythonEnsureReady(),
-      reinstall: () => raw.pythonReinstall(),
-      installPkg: (pkg: string) => raw.pythonInstallPkg(pkg),
-      setCustomPath: (customPath: string | null) => raw.pythonSetCustomPath(customPath),
-      executeScript: (params: Parameters<typeof raw.pythonExecuteScript>[0]) => raw.pythonExecuteScript(params),
-      executeInlineScript: (params: Parameters<typeof raw.pythonExecuteInlineScript>[0]) => raw.pythonExecuteInlineScript(params),
-    },
+    // Python 环境（自动分组：pythonXxx → python.xxx）
+    python: createGroup(raw, 'python'),
 
-    node: {
-      getStatus: () => raw.nodeGetStatus(),
-      getPath: () => raw.nodeGetPath(),
-      getNpmPath: () => raw.nodeGetNpmPath(),
-      getNpxPath: () => raw.nodeGetNpxPath(),
-      ensureReady: () => raw.nodeEnsureReady(),
-      reinstall: () => raw.nodeReinstall(),
-      installPkg: (pkg: string) => raw.nodeInstallPkg(pkg),
-      setCustomPath: (customPath: string | null) => raw.nodeSetCustomPath(customPath),
-      executeScript: (params: Parameters<typeof raw.nodeExecuteScript>[0]) => raw.nodeExecuteScript(params),
-    },
+    // Node.js 运行时（自动分组：nodeXxx → node.xxx）
+    node: createGroup(raw, 'node'),
 
-    data: {
-      executeQuery: (params: Parameters<typeof raw.dataExecuteQuery>[0]) => raw.dataExecuteQuery(params),
-      transform: (params: Parameters<typeof raw.dataTransform>[0]) => raw.dataTransform(params),
-      analyzeCsv: (params: Parameters<typeof raw.dataAnalyzeCsv>[0]) => raw.dataAnalyzeCsv(params),
-      generateChart: (params: Parameters<typeof raw.dataGenerateChart>[0]) => raw.dataGenerateChart(params),
-      statisticalTest: (params: Parameters<typeof raw.dataStatisticalTest>[0]) => raw.dataStatisticalTest(params),
-      restApiCall: (params: Parameters<typeof raw.dataRestApiCall>[0]) => raw.dataRestApiCall(params),
-      connectDatabase: (config: Parameters<typeof raw.dataConnectDatabase>[0]) => raw.dataConnectDatabase(config),
-      disconnectDatabase: (connectionId: string) => raw.dataDisconnectDatabase(connectionId),
-      getConnections: () => raw.dataGetConnections(),
-      clearCache: () => raw.dataClearCache(),
-      eda: (params: Parameters<typeof raw.dataEda>[0]) => raw.dataEda(params),
-      cleanData: (params: Parameters<typeof raw.dataCleanData>[0]) => raw.dataCleanData(params),
-      browseSchema: (params: Parameters<typeof raw.dataBrowseSchema>[0]) => raw.dataBrowseSchema(params),
-      saveQuery: (params: Parameters<typeof raw.dataSaveQuery>[0]) => raw.dataSaveQuery(params),
-      getQueryHistory: (params?: Parameters<typeof raw.dataGetQueryHistory>[0]) => raw.dataGetQueryHistory(params),
-      exportReport: (params: Parameters<typeof raw.dataExportReport>[0]) => raw.dataExportReport(params),
-    },
+    // 数据分析（自动分组：dataXxx → data.xxx）
+    data: createGroup(raw, 'data'),
 
-    scenarioDb: {
-      initialize: (params: Parameters<typeof raw.scenarioDbInitialize>[0]) => raw.scenarioDbInitialize(params),
-      executeSql: (params: Parameters<typeof raw.scenarioDbExecuteSql>[0]) => raw.scenarioDbExecuteSql(params),
-      drop: (params: Parameters<typeof raw.scenarioDbDrop>[0]) => raw.scenarioDbDrop(params),
-      getPath: (scenarioId: string) => raw.scenarioDbGetPath(scenarioId),
-    },
+    // 场景数据库（自动分组：scenarioDbXxx → scenarioDb.xxx）
+    scenarioDb: createGroup(raw, 'scenarioDb'),
 
-    cron: {
-      register: (config: any) => raw.cronRegister(config),
-      update: (taskId: string, updates: any) => raw.cronUpdate(taskId, updates),
-      unregister: (taskId: string) => raw.cronUnregister(taskId),
-      pause: (taskId: string) => raw.cronPause(taskId),
-      resume: (taskId: string) => raw.cronResume(taskId),
-      getAllTasks: () => raw.cronGetAllTasks(),
-      getTasksForAgent: (agentId: string) => raw.cronGetTasksForAgent(agentId),
-      start: () => raw.cronStart(),
-      stop: () => raw.cronStop(),
-      onTaskStateChanged: (callback: (taskData: any) => void) => raw.onCronTaskStateChanged(callback),
-      onTaskExecute: (callback: (event: any) => void) => raw.onCronTaskExecute(callback),
-    },
+    // 定时任务（自动分组：cronXxx → cron.xxx, onCronXxx → cron.onXxx）
+    cron: createGroup(raw, 'cron'),
 
     scenarioInstall: {
       getScenariosDir: () => raw.scenarioGetScenariosDir(),
@@ -1133,9 +880,20 @@ function createGroupedAPI() {
       // 截图提问完成（main→头像窗口）
       onScreenshotResult: (callback: Parameters<typeof raw.floatingAvatar.onScreenshotResult>[0]) =>
         raw.floatingAvatar.onScreenshotResult(callback),
+      // 启动截图提问（头像窗口→main，与右键菜单共用同一流程）
+      startScreenshotAsk: () => raw.floatingAvatar.startScreenshotAsk(),
       // 拖拽（动态频道）：主进程在 start 时自取鼠标+窗口坐标，渲染层无需 payload
       sendDragStart: (channel: string) => raw.floatingAvatar.sendDragStart(channel),
       sendDragEnd: (channel: string) => raw.floatingAvatar.sendDragEnd(channel),
+    },
+
+    // 主窗口截图（聊天输入框截图按钮，结果作为附件添加到输入框）
+    screenshot: {
+      /** 启动截图：触发全屏区域选择覆盖窗口 */
+      start: () => raw.screenshot.start(),
+      /** 截图完成事件订阅（main→主窗口：截图 base64 + 落盘路径） */
+      onResult: (callback: Parameters<typeof raw.screenshot.onResult>[0]) =>
+        raw.screenshot.onResult(callback),
     },
 
     // 会议纪要窗口（独立常驻窗口）

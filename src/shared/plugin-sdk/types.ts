@@ -256,6 +256,16 @@ export interface PluginContext {
   registerHook: (event: HookEventName, handler: HookHandler) => () => void
   /** 发送 IPC 事件到渲染进程 */
   sendToRenderer: (channel: string, ...args: unknown[]) => void
+  /**
+   * 受限的 Host Services 代理（基于 manifest.permissions 校验）。
+   *
+   * 推荐通过 ctx.host 访问 native 能力，而非 globalThis.__AWEECLAW_HOST__。
+   * - ctx.host: 按 pluginId 校验权限，未声明的能力访问会抛出 PermissionDeniedError
+   * - globalThis.__AWEECLAW_HOST__: 全局共享，不做权限校验（向后兼容，内置插件可用）
+   *
+   * 可选字段：旧版插件未使用 ctx.host 时为 undefined，不影响运行。
+   */
+  host?: unknown
 }
 
 /** 插件日志接口 */

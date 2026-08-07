@@ -47,10 +47,9 @@ import { useAvatarBridge } from '../../composables/useAvatarBridge'
 import { useWakeWordEngine } from '../../composables/useWakeWordEngine'
 import { useAvatarVoiceChat } from '../../composables/useAvatarVoiceChat'
 import { useAvatarMiniChat, type ChatAttachment } from '../../composables/useAvatarMiniChat'
-import { AvatarOrb3D } from './AvatarOrb3D'
 import { AvatarStatic } from './AvatarStatic'
-import { ConversationPanel } from './ConversationPanel'
 import { MiniChatPanel } from './MiniChatPanel'
+import { ImmersiveVoiceView } from '../voice/ImmersiveVoiceView'
 
 // ============================================
 // 常量
@@ -82,6 +81,9 @@ export function AvatarApp({ onReady }: AvatarAppProps) {
   const [mode, setMode] = useState<AvatarMode>('idle')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [isHovered, setIsHovered] = useState(false)
+
+  /** 清除错误提示（ImmersiveVoiceView 的 onDismissError 回调） */
+  const dismissError = useCallback(() => setErrorMessage(null), [])
 
   // 拖拽状态
   const dragStateRef = useRef<{
@@ -354,12 +356,15 @@ export function AvatarApp({ onReady }: AvatarAppProps) {
       // 3. 等待 chat 模式渲染稳定后再注入附件
       //    setMode('chat') 触发的 React 渲染 + 窗口 expand 动画需要时间，
       //    若立即 setPendingAttachment，MiniChatPanel 可能尚未挂载，props 虽会传递但
-      //    expand 动画期间的 resize 可能干扰附件区渲染。用双 rAF 确保渲染完成。
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          setPendingAttachment(attachment)
-        })
-      })
+      //    expand 动画期间的 resize 可能干扰附件区渲染。
+      //
+      //    注意：不用 requestAnimationFrame。截图流程中窗口经历了 hide → show，
+      //    document.visibilityState 从 hidden 恢复到 visible 有延迟，rAF 可能不执行。
+      //    setTimeout 不受 visibilityState 影响，更可靠。
+      //    - 已在 chat 模式（迷你助手按钮路径）：短延迟 50ms 等 React 状态同步
+      //    - 刚切换到 chat 模式（右键菜单路径）：100ms 等 expand 动画 + 渲染稳定
+      const delay = mode === 'chat' ? 50 : 100
+      setTimeout(() => setPendingAttachment(attachment), delay)
     })
     return unsubscribe
   }, [bridge, mode])
@@ -545,78 +550,25 @@ export function AvatarApp({ onReady }: AvatarAppProps) {
       )}
 
       {mode === 'voice' && (
-        /* ============ voice：3D 球体 + 语音对话面板 ============ */
-        <>
-          {/* 头像区域（顶部，可拖拽） */}
-          <div
-            style={{
-              width: '100%',
-              height: '100px',
-              position: 'relative',
-              flexShrink: 0,
-              cursor: 'pointer',
-            }}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-          >
-            <AvatarOrb3D
-              state={voiceState}
-              volume={voiceChat.volume}
-              isHovered={isHovered}
-              onClick={() => {
-                // 点击由 mouseUp 统一处理
-              }}
-            />
-
-            {/* 关闭按钮（右上角） */}
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                void returnToIdle()
-              }}
-              style={{
-                position: 'absolute',
-                top: 8,
-                right: 8,
-                width: 24,
-                height: 24,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: '50%',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                background: 'rgba(20, 20, 24, 0.6)',
-                backdropFilter: 'blur(8px)',
-                cursor: 'pointer',
-                zIndex: 20,
-              }}
-              title={language === 'zh' ? '关闭' : 'Close'}
-            >
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <path
-                  d="M2 2L10 10M10 2L2 10"
-                  stroke="rgba(200, 200, 210, 0.8)"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </button>
-          </div>
-
-          {/* 语音对话面板 */}
-          <ConversationPanel
-            state={voiceState}
-            streamEntries={voiceChat.streamEntries}
-            activityStatus={voiceChat.activityStatus}
-            isMuted={voiceChat.isMuted}
-            errorMessage={errorMessage}
-            language={language}
-            onClose={() => void returnToIdle()}
-            onInterrupt={voiceChat.interrupt}
-            onToggleMute={voiceChat.toggleMute}
-          />
-        </>
+        /* ============ voice：沉浸式语音对话（与主窗口语音对话页面一致） ============ */
+        <ImmersiveVoiceView
+          state={voiceState}
+          volume={voiceChat.volume}
+          isMuted={voiceChat.isMuted}
+          streamEntries={voiceChat.streamEntries}
+          activityStatus={voiceChat.activityStatus}
+          errorMessage={errorMessage}
+          isZh={language === 'zh'}
+          onClose={() => void returnToIdle()}
+          onInterrupt={voiceChat.interrupt}
+          onToggleMute={voiceChat.toggleMute}
+          onDismissError={dismissError}
+          onMinimize={() => {
+            // 「浮动模式」按钮：迷你助手没有浮动窗口，切回文本聊天模式
+            voiceChat.disconnect()
+            setMode('chat')
+          }}
+        />
       )}
     </div>
   )

@@ -254,6 +254,8 @@ export function createFloatingAvatarApi() {
       filePath: string
       fileName: string
     }>('floating-avatar:screenshot-result'),
+    /** 启动截图提问（头像窗口→main：触发全屏区域选择覆盖窗口，与右键菜单「截图提问」共用同一流程） */
+    startScreenshotAsk: invoke<IpcResponse>('floating-avatar:start-screenshot-ask'),
 
     // --------------------------------------------
     // 拖拽（渲染进程→main，动态频道）

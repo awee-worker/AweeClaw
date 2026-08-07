@@ -2,7 +2,7 @@
  * 聊天输入组件
  * 极致打磨：悬浮光晕、灵动按钮、精致上下文药丸
  */
-import { memo, useRef, useCallback, useMemo, useState, useLayoutEffect } from 'react'
+import { memo, useRef, useCallback, useMemo, useState, useLayoutEffect, useEffect } from 'react'
 import {
   FileText,
   X,
@@ -16,7 +16,6 @@ import {
   Globe,
   Wrench,
   Paperclip,
-  File,
   FileSpreadsheet,
   FileCode,
   Archive,
@@ -26,6 +25,8 @@ import {
   EyeOff,
   Mic,
   Square,
+  Crop,
+  File as FileIcon,
 } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -174,6 +175,46 @@ const ChatInput = memo(function ChatInput({
     },
     [setImages]
   )
+
+  // --------------------------------------------
+  // 截图提问：触发主进程全屏区域选择 → 截图 → 作为附件注入输入框
+  // 与迷你助手截图按钮功能一致，复用 ScreenshotAskManager（独立实例）
+  // --------------------------------------------
+  const handleScreenshot = useCallback(async () => {
+    if (isStreaming) return
+    try {
+      await api.screenshot.start()
+    } catch (err) {
+      console.error('[ConversationInput] Start screenshot failed:', err)
+    }
+  }, [isStreaming])
+
+  // 监听截图完成事件：将截图 base64 转为 File 对象并添加为附件
+  useEffect(() => {
+    const unsubscribe = api.screenshot.onResult(async (payload) => {
+      try {
+        // base64 → Uint8Array → File（与 AvatarApp 截图附件创建方式一致）
+        const file = new File(
+          [Uint8Array.from(atob(payload.base64), (c) => c.charCodeAt(0))],
+          payload.fileName || `screenshot_${Date.now()}.png`,
+          { type: payload.mediaType },
+        )
+        await addAttachment(file)
+        // 标记最后一个附件的 localPath（用于发送时带 localPath）
+        setImages((prev) => {
+          if (prev.length === 0) return prev
+          const last = prev[prev.length - 1]
+          if (last.localPath) return prev
+          return prev.map((img, idx) =>
+            idx === prev.length - 1 ? { ...img, localPath: payload.filePath } : img,
+          )
+        })
+      } catch (err) {
+        console.error('[ConversationInput] Screenshot result processing failed:', err)
+      }
+    })
+    return unsubscribe
+  }, [addAttachment, setImages])
 
   const toggleAnalyzeMode = useCallback(
     (id: string) => {
@@ -459,6 +500,21 @@ const ChatInput = memo(function ChatInput({
               />
               {voiceInput.state === 'idle' && (
                 <>
+                  {/* 截图提问按钮：触发全屏区域选择，截图完成后作为附件添加到输入框 */}
+                  <ActionButton
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleScreenshot}
+                    disabled={isStreaming}
+                    title={lt('截图提问', 'Screenshot & Ask')}
+                    className={`rounded-xl w-8 h-8 transition-all active:scale-95 ${
+                      isStreaming
+                        ? 'opacity-40 cursor-not-allowed text-text-muted'
+                        : 'hover:bg-surface-active text-text-muted hover:text-text-primary'
+                    }`}
+                  >
+                    <Crop className="w-4 h-4 opacity-70 group-hover:opacity-100" />
+                  </ActionButton>
                   <ActionButton
                     variant="ghost"
                     size="icon"
@@ -610,7 +666,7 @@ function getFileIcon(fileName: string, mimeType: string) {
     if (dataExts.includes(ext)) return <FileSpreadsheet className="w-4 h-4 text-emerald-400 flex-shrink-0" />
     const archiveExts = ['zip', 'tar', 'gz', 'rar', '7z', 'bz2']
     if (archiveExts.includes(ext)) return <Archive className="w-4 h-4 text-amber-400 flex-shrink-0" />
-    return <File className="w-4 h-4 text-text-muted flex-shrink-0" />
+    return <FileIcon className="w-4 h-4 text-text-muted flex-shrink-0" />
 }
 
 // 辅助组件：上下文 Chip

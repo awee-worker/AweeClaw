@@ -13,6 +13,7 @@
 import { EventEmitter } from 'events'
 import * as childProcess from 'child_process'
 import * as path from 'path'
+import { isDangerousCommand, matchDangerousCommand } from '@shared/configuration/dangerousCommands'
 
 // ============================================
 // 沙箱配置
@@ -65,7 +66,10 @@ export const DEFAULT_SANDBOX_CONFIG: SandboxConfig = {
   deniedCommands: [
     'rm', 'rmdir', 'del', 'format', 'mkfs',
     'sudo', 'su', 'chmod', 'chown',
-    'curl', 'wget', 'nc', 'ncat',
+    // curl/wget 不在黑名单：普通网络请求是常用开发操作（如 curl API 测试）。
+    // 危险用法（curl|sh、curl -o 下载可执行文件）由 isDangerousCommand() 精确拦截，
+    // 与 terminalSandbox.ts 共用 @shared/configuration/dangerousCommands 的模式定义。
+    'nc', 'ncat',
     'shutdown', 'reboot', 'halt',
     'dd', 'mkfs', 'fdisk',
     'ssh', 'scp', 'sftp', 'telnet',
@@ -164,8 +168,12 @@ class SandboxExecutor extends EventEmitter {
   /**
    * 验证命令是否允许执行
    *
-   * 策略：只检查黑名单（deniedCommands），不检查白名单。
-   * 命令不在黑名单中即允许执行，与 terminalSandbox 的黑名单策略保持一致。
+   * 策略（三层校验，与 terminalSandbox.ts 保持一致）：
+   * 1. 黑名单（deniedCommands）：命中即拒绝 — rm/sudo/dd 等破坏性/提权命令
+   * 2. 危险命令模式（isDangerousCommand）：命中即拒绝 — curl|sh、rm -rf / 等
+   *    复用 @shared/configuration/dangerousCommands 的模式定义，确保两层共用同一份规则
+   * 3. 危险参数模式（deniedArgPatterns）：命令替换注入、跳过确认参数
+   *
    * 白名单（allowedCommands）字段保留用于配置兼容性，但不参与实际校验。
    */
   validateCommand(command: string, agentId?: string): SandboxValidationResult {
@@ -178,12 +186,19 @@ class SandboxExecutor extends EventEmitter {
     // 提取命令名
     const cmdName = this.extractCommandName(command)
 
-    // 检查黑名单：命中即拒绝
+    // 1. 检查黑名单：命中即拒绝
     if (config.deniedCommands.includes(cmdName)) {
       return { allowed: false, reason: `Command is denied: ${cmdName}` }
     }
 
-    // 检查危险参数模式
+    // 2. 检查危险命令模式（curl|sh、rm -rf /、wget -O 等）
+    //    与 terminalSandbox.ts 的 detectDangerousPatterns 共用同一份模式定义
+    if (isDangerousCommand(command)) {
+      const matchedPattern = matchDangerousCommand(command)
+      return { allowed: false, reason: `检测到危险命令模式: ${matchedPattern}` }
+    }
+
+    // 3. 检查危险参数模式
     for (const pattern of config.deniedArgPatterns) {
       // 参数模式（以 - 开头，如 -y, --yes, --no-confirm）：
       // 必须作为独立参数出现（前面是空格/命令开头，后面是空格/行尾）

@@ -9,7 +9,8 @@
  */
 
 import { logger } from '@shared/toolkit/LogEngine'
-import { ipcMain, BrowserWindow } from 'electron'
+import { BrowserWindow } from 'electron'
+import { safeIpcHandle } from '../core/ipcGuard'
 import * as fs from 'fs'
 import Store from 'electron-store'
 import { getBootstrapStore, getUserConfigDir, setUserConfigDir } from '../../modules/configPath'
@@ -76,7 +77,7 @@ export function registerSettingsHandlers(
     securityRef = securityModule
   }
 
-  ipcMain.handle('settings:get', (_, key: string) => {
+  safeIpcHandle('settings:get', (_, key: string) => {
     try {
       const store = resolveStore(key)
       if (!store) {
@@ -90,7 +91,7 @@ export function registerSettingsHandlers(
     }
   })
 
-  ipcMain.handle('settings:set', (_event, key: string, value: unknown) => {
+  safeIpcHandle('settings:set', (_event, key: string, value: unknown) => {
     try {
       const store = resolveStore(key)
       if (!store) {
@@ -155,14 +156,14 @@ export function registerSettingsHandlers(
     }
   })
 
-  ipcMain.handle('settings:getWhitelist', () => {
+  safeIpcHandle('settings:getWhitelist', () => {
     if (!securityRef) {
       return { shell: [], git: [] }
     }
     return securityRef.getWhitelist()
   })
 
-  ipcMain.handle('settings:resetWhitelist', () => {
+  safeIpcHandle('settings:resetWhitelist', () => {
     const defaultShellCommands = [...SECURITY_DEFAULTS.SHELL_COMMANDS]
     const defaultGitCommands = [...SECURITY_DEFAULTS.GIT_SUBCOMMANDS]
     const defaultDeniedShellCommands = [...SECURITY_DEFAULTS.DENIED_SHELL_COMMANDS]
@@ -187,7 +188,7 @@ export function registerSettingsHandlers(
   })
 
   // 获取当前 Shell 命令黑名单
-  ipcMain.handle('settings:getBlacklist', () => {
+  safeIpcHandle('settings:getBlacklist', () => {
     if (!securityRef) {
       return { shell: [] }
     }
@@ -195,7 +196,7 @@ export function registerSettingsHandlers(
   })
 
   // 重置 Shell 命令黑名单为默认值
-  ipcMain.handle('settings:resetBlacklist', () => {
+  safeIpcHandle('settings:resetBlacklist', () => {
     const defaultDeniedShellCommands = [...SECURITY_DEFAULTS.DENIED_SHELL_COMMANDS]
 
     if (securityRef) {
@@ -212,11 +213,11 @@ export function registerSettingsHandlers(
     return { shell: defaultDeniedShellCommands }
   })
 
-  ipcMain.handle('settings:getConfigPath', () => {
+  safeIpcHandle('settings:getConfigPath', () => {
     return getUserConfigDir()
   })
 
-  ipcMain.handle('settings:setConfigPath', async (_, newPath: string) => {
+  safeIpcHandle('settings:setConfigPath', async (_, newPath: string) => {
     try {
       if (!fs.existsSync(newPath)) {
         fs.mkdirSync(newPath, { recursive: true })
@@ -229,16 +230,16 @@ export function registerSettingsHandlers(
     }
   })
 
-  ipcMain.handle('workspace:restore:legacy', () => {
+  safeIpcHandle('workspace:restore:legacy', () => {
     const store = resolveStore('lastWorkspacePath')
     return store ? store.get('lastWorkspacePath') : undefined
   })
 
-  ipcMain.handle('settings:getUserDataPath', () => {
+  safeIpcHandle('settings:getUserDataPath', () => {
     return getUserConfigDir()
   })
 
-  ipcMain.handle('settings:getAppConfig', async () => {
+  safeIpcHandle('settings:getAppConfig', async () => {
     try {
       const path = require('path')
       const configPath = path.join(getUserConfigDir(), '.aweeclaw', 'aweeclaw-config.json')
@@ -254,7 +255,7 @@ export function registerSettingsHandlers(
     }
   })
 
-  ipcMain.handle('settings:getRecentLogs', async () => {
+  safeIpcHandle('settings:getRecentLogs', async () => {
     try {
       const path = require('path')
       const logPath = path.join(getUserConfigDir(), 'logs', 'main.log')

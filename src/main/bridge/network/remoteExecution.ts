@@ -7,7 +7,8 @@
  * - 提供远程文件浏览、上传、下载能力
  */
 
-import { BrowserWindow, dialog, ipcMain } from 'electron'
+import { BrowserWindow, dialog } from 'electron'
+import { safeIpcHandle } from '../core/ipcGuard'
 import fs from 'fs'
 import path from 'path'
 import { pipeline } from 'stream/promises'
@@ -318,7 +319,7 @@ function pruneIdleConnections(): void {
 setInterval(pruneIdleConnections, 60000)
 
 export function registerRemoteExecutionHandlers(): void {
-  ipcMain.handle('remote:list', async (_, endpoint: SshEndpoint, remotePath?: string): Promise<RemoteNode[]> => {
+  safeIpcHandle('remote:list', async (_, endpoint: SshEndpoint, remotePath?: string): Promise<RemoteNode[]> => {
     return await withSftpSession(endpoint, async (sftp) => {
       const targetPath = sanitizeRemotePath(remotePath || endpoint.remotePath || '.')
       const entries = await sftpReaddir(sftp, targetPath)
@@ -338,39 +339,39 @@ export function registerRemoteExecutionHandlers(): void {
     })
   })
 
-  ipcMain.handle('remote:readText', async (_, endpoint: SshEndpoint, remotePath: string): Promise<string | null> => {
+  safeIpcHandle('remote:readText', async (_, endpoint: SshEndpoint, remotePath: string): Promise<string | null> => {
     return await withSftpSession(endpoint, async (sftp) => fetchRemoteTextFile(sftp, sanitizeRemotePath(remotePath)))
   })
 
-  ipcMain.handle('remote:writeText', async (_, endpoint: SshEndpoint, remotePath: string, content: string): Promise<boolean> => {
+  safeIpcHandle('remote:writeText', async (_, endpoint: SshEndpoint, remotePath: string, content: string): Promise<boolean> => {
     await withSftpSession(endpoint, async (sftp) => {
       await persistRemoteTextFile(sftp, sanitizeRemotePath(remotePath), content)
     })
     return true
   })
 
-  ipcMain.handle('remote:mkdir', async (_, endpoint: SshEndpoint, remotePath: string): Promise<boolean> => {
+  safeIpcHandle('remote:mkdir', async (_, endpoint: SshEndpoint, remotePath: string): Promise<boolean> => {
     await withSftpSession(endpoint, async (sftp) => {
       await ensureRemoteDirectory(sftp, sanitizeRemotePath(remotePath))
     })
     return true
   })
 
-  ipcMain.handle('remote:rename', async (_, endpoint: SshEndpoint, oldPath: string, newPath: string): Promise<boolean> => {
+  safeIpcHandle('remote:rename', async (_, endpoint: SshEndpoint, oldPath: string, newPath: string): Promise<boolean> => {
     await withSftpSession(endpoint, async (sftp) => {
       await sftpRename(sftp, sanitizeRemotePath(oldPath), sanitizeRemotePath(newPath))
     })
     return true
   })
 
-  ipcMain.handle('remote:delete', async (_, endpoint: SshEndpoint, remotePath: string): Promise<boolean> => {
+  safeIpcHandle('remote:delete', async (_, endpoint: SshEndpoint, remotePath: string): Promise<boolean> => {
     await withSftpSession(endpoint, async (sftp) => {
       await removeRemoteRecursive(sftp, sanitizeRemotePath(remotePath))
     })
     return true
   })
 
-  ipcMain.handle('remote:testConnection', async (_, endpoint: SshEndpoint): Promise<ConnectionHealth> => {
+  safeIpcHandle('remote:testConnection', async (_, endpoint: SshEndpoint): Promise<ConnectionHealth> => {
     const startMs = Date.now()
     try {
       await withSftpSession(endpoint, async (sftp) => {
@@ -382,7 +383,7 @@ export function registerRemoteExecutionHandlers(): void {
     }
   })
 
-  ipcMain.handle('remote:upload', async (event, endpoint: SshEndpoint, remoteDirectory: string): Promise<TransferUploadOutcome> => {
+  safeIpcHandle('remote:upload', async (event, endpoint: SshEndpoint, remoteDirectory: string): Promise<TransferUploadOutcome> => {
     const window = BrowserWindow.fromWebContents(event.sender) ?? undefined
     const selection = await dialog.showOpenDialog(window as BrowserWindow, {
       title: 'Upload files to remote server',
@@ -407,7 +408,7 @@ export function registerRemoteExecutionHandlers(): void {
     return { canceled: false, uploaded }
   })
 
-  ipcMain.handle('remote:download', async (event, endpoint: SshEndpoint, remotePath: string): Promise<TransferDownloadOutcome> => {
+  safeIpcHandle('remote:download', async (event, endpoint: SshEndpoint, remotePath: string): Promise<TransferDownloadOutcome> => {
     const normalizedRemotePath = sanitizeRemotePath(remotePath)
     const window = BrowserWindow.fromWebContents(event.sender) ?? undefined
     const saveResult = await dialog.showSaveDialog(window as BrowserWindow, {
@@ -430,7 +431,7 @@ export function registerRemoteExecutionHandlers(): void {
     return { canceled: false, localPath: saveResult.filePath }
   })
 
-  ipcMain.handle('remote:connectionStatus', async (_, endpoint: SshEndpoint): Promise<ConnectionHealth> => {
+  safeIpcHandle('remote:connectionStatus', async (_, endpoint: SshEndpoint): Promise<ConnectionHealth> => {
     const key = getEndpointKey(endpoint)
     const entry = activeConnections.get(key)
     if (entry) {
@@ -528,7 +529,7 @@ export function registerRemoteExecutionHandlers(): void {
     }
   }
 
-  ipcMain.handle('remote:desktopAction', async (_, endpoint: SshEndpoint, params: RemoteDesktopParams): Promise<RemoteDesktopResult> => {
+  safeIpcHandle('remote:desktopAction', async (_, endpoint: SshEndpoint, params: RemoteDesktopParams): Promise<RemoteDesktopResult> => {
     try {
       const remoteOS = await detectRemoteOS(endpoint)
 
@@ -654,7 +655,7 @@ export function registerRemoteExecutionHandlers(): void {
   })
 
   /** 远程执行工作流（将工作流 JSON 传输到远程主机并执行） */
-  ipcMain.handle('remote:executeWorkflow', async (_, endpoint: SshEndpoint, workflowJson: string): Promise<RemoteDesktopResult> => {
+  safeIpcHandle('remote:executeWorkflow', async (_, endpoint: SshEndpoint, workflowJson: string): Promise<RemoteDesktopResult> => {
     try {
       // 将工作流 JSON 写入远程临时文件
       const remotePath = '/tmp/aweeclaw_workflow.json'
@@ -680,7 +681,7 @@ export function registerRemoteExecutionHandlers(): void {
   })
 
   /** 检测远程主机桌面控制能力 */
-  ipcMain.handle('remote:detectCapabilities', async (_, endpoint: SshEndpoint): Promise<{ os: string; hasXdtool: boolean; hasWmctrl: boolean; hasScrot: boolean; hasAweeclaw: boolean }> => {
+  safeIpcHandle('remote:detectCapabilities', async (_, endpoint: SshEndpoint): Promise<{ os: string; hasXdtool: boolean; hasWmctrl: boolean; hasScrot: boolean; hasAweeclaw: boolean }> => {
     try {
       const osResult = await executeRemoteCommand(endpoint, 'uname -s')
       const remoteOS = osResult.stdout.trim()

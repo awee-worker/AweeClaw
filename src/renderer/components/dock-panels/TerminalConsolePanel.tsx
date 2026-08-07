@@ -47,14 +47,16 @@ const TerminalPanel = memo(function TerminalPanel() {
         const timer = setTimeout(() => {
             for (const terminal of managerState.terminals) {
                 const container = containerRefs.current.get(terminal.id)
-                
+
                 if (container && !mountedTerminals.current.has(terminal.id)) {
                     terminalManager.mountTerminal(terminal.id, container)
                     mountedTerminals.current.add(terminal.id)
-                    
+
+                    // fit 延迟从 100ms 减少到 50ms，加快 PTY resize
+                    // ensureTerminalReady 会等待 mount 完成，减少此延迟能缩短 AI 命令写入前的等待
                     setTimeout(() => {
                         terminalManager.fitTerminal(terminal.id)
-                    }, 100)
+                    }, 50)
                 }
             }
 
@@ -64,7 +66,7 @@ const TerminalPanel = memo(function TerminalPanel() {
                     mountedTerminals.current.delete(id)
                 }
             }
-        }, 100)
+        }, 50)
 
         return () => clearTimeout(timer)
     }, [managerState.terminals.length, managerState.terminals.map(t => t.id).join(',')])
@@ -170,6 +172,18 @@ const TerminalPanel = memo(function TerminalPanel() {
     return (
         <>
             <style>{XTERM_STYLE}</style>
+            <style>{`
+                .terminal-tab-scroll::-webkit-scrollbar { width: 6px; }
+                .terminal-tab-scroll::-webkit-scrollbar-track { background: transparent; }
+                .terminal-tab-scroll::-webkit-scrollbar-thumb {
+                    background: rgba(128, 128, 128, 0.3);
+                    border-radius: 3px;
+                }
+                .terminal-tab-scroll::-webkit-scrollbar-thumb:hover {
+                    background: rgba(128, 128, 128, 0.5);
+                }
+                .terminal-tab-scroll { scrollbar-width: thin; scrollbar-color: rgba(128,128,128,0.3) transparent; }
+            `}</style>
             <div className="h-full bg-background-editor flex" style={{ boxSizing: 'border-box' }}>
                 {/* 终端内容区：flex-1 填充剩余空间，左侧。
                     overflow-hidden 约束 xterm 内部绝对定位的 canvas，防止溢出遮挡右侧标签栏 */}
@@ -194,14 +208,15 @@ const TerminalPanel = memo(function TerminalPanel() {
                     ))}
                 </div>
                 {/* 终端标签栏：右侧固定宽度，垂直排列，左对齐。
-                    relative z-10 确保标签栏在层叠上下文中位于终端内容之上，不被 xterm canvas 遮挡 */}
+                    relative z-10 确保标签栏在层叠上下文中位于终端内容之上，不被 xterm canvas 遮挡。
+                    overflow-y-auto 支持标签过多时纵向滚动查看。 */}
                 {terminals.length > 1 && (
-                    <div className="flex flex-col gap-1 py-1.5 px-1.5 border-l border-border/40 bg-background-editor flex-shrink-0 relative z-10" style={{ width: 160, boxSizing: 'border-box' }}>
+                    <div className="flex flex-col gap-1 py-1.5 px-1.5 border-l border-border/40 bg-background-editor flex-shrink-0 relative z-10 overflow-y-auto overflow-x-hidden terminal-tab-scroll" style={{ width: 160, boxSizing: 'border-box' }}>
                         {terminals.map(term => (
                             <button
                                 key={term.id}
                                 onClick={() => terminalManager.setActiveTerminal(term.id)}
-                                className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs transition-colors group w-full text-left ${
+                                className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs transition-colors group w-full text-left flex-shrink-0 ${
                                     activeId === term.id
                                         ? 'bg-background border border-border text-text-primary'
                                         : 'text-text-muted hover:text-text-primary hover:bg-surface/60 border border-transparent'

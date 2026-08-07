@@ -136,6 +136,10 @@ const ToolCallCard = memo(function ToolCallCard({
       }
       setTerminalVisible(true)
       terminalManager.setActiveTerminal(meta.terminalId!)
+      // 等待 xterm mount + fit，确保 PTY cols 与 xterm 一致，排版正确
+      // 命令可能是在终端面板不可见时执行的（PTY 用默认 120 cols），
+      // 用户点击查看时需要 fit 到实际 cols，后续输出排版才会正确
+      await terminalManager.ensureTerminalReady(meta.terminalId)
       window.setTimeout(() => terminalManager.setActiveTerminal(meta.terminalId!), 0)
     },
     [runCommandMeta, language, setTerminalVisible],

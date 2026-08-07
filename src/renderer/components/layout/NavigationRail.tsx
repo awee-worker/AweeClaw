@@ -51,7 +51,7 @@ function UserMenuDropdown({
   language,
   onSettingsClick,
   onExploreClick,
-  onWorkflowClick,
+  // onWorkflowClick 见类型声明；工作流菜单暂隐藏（见 featureItems 注释），恢复时在此重新解构
   onScheduleClick,
   onPluginCenterClick,
   onUserInfoClick,

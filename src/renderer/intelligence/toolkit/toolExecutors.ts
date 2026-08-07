@@ -33,7 +33,6 @@ import { memoryService } from '../runtime/recallService'
 import { knowledgeService } from '../runtime/knowledgeService'
 import type { KnowledgeCategory, KnowledgeEntry } from '@intelligence/providerTypes'
 import { useStore } from '@store'
-import { getAccessToken, getServerUrl } from '@services/backendApi'
 import { composerService } from '../runtime/composerEngine'
 import { agentStorePlanBridge, agentStoreTodoBridge } from '../state/intelligenceBridge'
 import { useAgentStore } from '../state/IntelligenceStore'
@@ -43,6 +42,7 @@ import { isLongRunningCommand } from './commandExecutor'
 import { internalWriteTracker } from '@services/writeTracker'
 import { toolRegistry } from './toolRegistry'
 import { terminalManager } from '@services/TerminalAdapter'
+import { isDangerousCommand, matchDangerousCommand } from '@shared/configuration/dangerousCommands'
 import pLimit from 'p-limit'
 import { skillService } from '../runtime/skillRepository'
 import type { Language } from '@renderer/i18n'
@@ -50,6 +50,10 @@ import type { ReplaceErrorCode } from '@utils/smartReplace'
 import { resolveAgentLanguage, pickLocalizedText, translateAgentText } from '@intelligence/utils/intelligenceTextUtils'
 import { guardWriteFile } from './fileWritePolicy'
 import { executeAddNode, executeAddEdge } from './graphToolExecutors'
+import {
+    extractDocumentLocal,
+    extractDocumentViaBackendStream,
+} from './documentExtractor'
 
 // ===== 辅助函数 =====
 
@@ -703,344 +707,6 @@ async function guardedWriteFile(opts: {
             preHash: originalHash,
             postHash: hashContent(opts.nextContent),
         }
-    }
-}
-
-
-// ─── 文档提取辅助函数（模块级，供 extract_document 执行器调用） ───
-
-/** 文档提取结果构建选项 */
-interface ExtractResultOptions {
-    sheetNames?: string[]
-    ocrUsed?: boolean
-    source?: 'local' | 'backend'
-}
-
-/**
- * 构建提取结果（统一格式化输出）
- * - 大文件截断保护（100KB）
- * - 输出带元信息的轻量 Markdown
- */
-function buildExtractResult(
-    ext: string,
-    rawText: string,
-    startTime: number,
-    options: ExtractResultOptions = {},
-): ToolExecutionResult {
-    const MAX_LEN = 100 * 1024
-    const truncated = rawText.length > MAX_LEN
-    const content = truncated
-        ? rawText.slice(0, MAX_LEN) + `\n\n...（内容较长，共 ${rawText.length} 字符，已显示前 ${MAX_LEN} 字符）`
-        : rawText
-
-    const durationMs = Date.now() - startTime
-    const source = options.source || 'local'
-
-    const meta = [
-        `格式: ${ext}`,
-        `字符数: ${rawText.length}${truncated ? ` (仅显示前 ${MAX_LEN} 字符)` : ''}`,
-        options.sheetNames && options.sheetNames.length > 0 ? `工作表: ${options.sheetNames.join(', ')}` : '',
-        `OCR: ${options.ocrUsed ? '是' : '否'}`,
-        `来源: ${source === 'backend' ? '后端兜底' : '本地'}`,
-        `耗时: ${durationMs}ms`,
-    ].filter(Boolean).join(' | ')
-
-    const result = `> 📄 文档提取: ${meta}\n\n${content}`
-
-    logger.agent.info(`[extract_document] Success: format=${ext}, chars=${rawText.length}, source=${source}, duration=${durationMs}ms`)
-
-    return { success: true, result }
-}
-
-/**
- * 本地提取（IPC 调用 main 进程原生库）
- * 调用 api.file.extractXxxText 系列函数，对应格式自动分发
- */
-async function extractDocumentLocal(
-    filePath: string,
-    ext: string,
-    startTime: number,
-): Promise<ToolExecutionResult> {
-    try {
-        let rawText: string | null = null
-        let sheetNames: string[] | undefined
-
-        switch (ext) {
-            case 'pdf':
-                rawText = await api.file.extractPdfText(filePath)
-                break
-            case 'docx':
-                rawText = await api.file.extractDocxText(filePath)
-                break
-            case 'doc':
-                rawText = await api.file.extractDocText(filePath)
-                break
-            case 'xlsx':
-            case 'xls':
-            case 'csv':
-                rawText = await api.file.extractXlsxText(filePath)
-                sheetNames = rawText?.match(/## Sheet: (.+)/g)?.map(m => m.replace('## Sheet: ', '')) || []
-                break
-            case 'ppt':
-            case 'pptx':
-                rawText = await api.file.extractPptText(filePath)
-                break
-            case 'txt':
-            case 'md':
-                rawText = await api.file.read(filePath)
-                break
-        }
-
-        if (!rawText || rawText.trim().length === 0) {
-            const durationMs = Date.now() - startTime
-            return {
-                success: false,
-                result: '',
-                error: `本地文本提取为空（耗时 ${durationMs}ms）。该文档可能是扫描版/图片型，需要 OCR 或后端兜底。`,
-            }
-        }
-
-        return buildExtractResult(ext, rawText, startTime, { sheetNames, source: 'local' })
-    } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        logger.agent.warn(`[extract_document] Local failed: ${filePath}, error: ${message}`)
-        return {
-            success: false,
-            result: '',
-            error: `本地提取失败: ${message}`,
-        }
-    }
-}
-
-/**
- * 后端兜底提取（multipart/form-data 上传文件到 /api/v1/document-extract）
- * 当本地提取失败或返回空内容时触发，复用后端的提取能力（含未来 OCR 扩展）
- */
-async function extractDocumentViaBackend(
-    filePath: string,
-    ext: string,
-    startTime: number,
-): Promise<ToolExecutionResult> {
-    const serverUrl = getServerUrl()
-    const accessToken = getAccessToken()
-
-    if (!serverUrl) {
-        logger.agent.warn(`[extract_document] Backend fallback skipped: server URL not configured`)
-        return { success: false, result: '', error: '后端服务未配置，无法兜底' }
-    }
-
-    try {
-        // 1. 读取文件二进制数据（readBinary 返回 base64 字符串）
-        const base64Data = await api.file.readBinary(filePath)
-        if (!base64Data) {
-            return { success: false, result: '', error: `无法读取文件: ${filePath}` }
-        }
-        const filename = filePath.split(/[\\/]/).pop() || `document.${ext}`
-
-        // 2. base64 解码为 Uint8Array，构建 FormData 上传
-        const binaryString = atob(base64Data)
-        const bytes = new Uint8Array(binaryString.length)
-        for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i)
-        }
-        const formData = new FormData()
-        const blob = new Blob([bytes])
-        formData.append('file', blob, filename)
-
-        // 3. 调用后端接口
-        const response = await fetch(`${serverUrl}/api/v1/document-extract`, {
-            method: 'POST',
-            headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-            body: formData,
-        })
-
-        if (!response.ok) {
-            const errText = await response.text().catch(() => '')
-            logger.agent.warn(`[extract_document] Backend HTTP ${response.status}: ${errText}`)
-            return { success: false, result: '', error: `后端提取失败 (HTTP ${response.status})` }
-        }
-
-        const json = await response.json() as {
-            success: boolean
-            data?: {
-                format: string
-                content: string
-                meta: {
-                    charCount: number
-                    sheetNames?: string[]
-                    ocrUsed: boolean
-                    durationMs: number
-                    truncated: boolean
-                }
-                error?: string
-            }
-        }
-
-        if (!json.success || !json.data?.content) {
-            return {
-                success: false,
-                result: '',
-                error: json.data?.error || '后端提取返回空内容，可能为扫描版需 OCR',
-            }
-        }
-
-        return buildExtractResult(ext, json.data.content, startTime, {
-            sheetNames: json.data.meta.sheetNames,
-            ocrUsed: json.data.meta.ocrUsed,
-            source: 'backend',
-        })
-    } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        logger.agent.warn(`[extract_document] Backend fallback failed: ${filePath}, error: ${message}`)
-        return { success: false, result: '', error: `后端兜底失败: ${message}` }
-    }
-}
-
-/**
- * 后端流式兜底提取（SSE，分块接收内容）
- *
- * 调用后端 POST /api/v1/document-extract/stream：
- * - 服务端推送 progress 事件（cache_check / extracting / ocr_start / ocr_progress）
- * - 内容分块通过 content 事件推送（每块 8KB），客户端按 index 顺序拼接
- * - 最终 done 事件携带元信息（format / meta / error）
- *
- * 适用场景：大文件提取、扫描版 PDF OCR 等耗时操作，避免 HTTP 长连接超时，
- * 同时支持流式注入 AI 上下文（边接收边显示进度）。
- *
- * 失败回退：若 SSE 建立失败，自动回退到非流式 extractDocumentViaBackend。
- */
-async function extractDocumentViaBackendStream(
-    filePath: string,
-    ext: string,
-    startTime: number,
-): Promise<ToolExecutionResult> {
-    const serverUrl = getServerUrl()
-    const accessToken = getAccessToken()
-
-    if (!serverUrl) {
-        return extractDocumentViaBackend(filePath, ext, startTime)
-    }
-
-    try {
-        const base64Data = await api.file.readBinary(filePath)
-        if (!base64Data) {
-            return { success: false, result: '', error: `无法读取文件: ${filePath}` }
-        }
-        const filename = filePath.split(/[\\/]/).pop() || `document.${ext}`
-
-        const binaryString = atob(base64Data)
-        const bytes = new Uint8Array(binaryString.length)
-        for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i)
-        }
-        const formData = new FormData()
-        const blob = new Blob([bytes])
-        formData.append('file', blob, filename)
-
-        const response = await fetch(`${serverUrl}/api/v1/document-extract/stream`, {
-            method: 'POST',
-            headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-            body: formData,
-        })
-
-        if (!response.ok || !response.body) {
-            logger.agent.warn(`[extract_document] Stream HTTP ${response.status}, fallback to non-stream`)
-            return extractDocumentViaBackend(filePath, ext, startTime)
-        }
-
-        // ── SSE 解析 ──
-        const reader = response.body.getReader()
-        const decoder = new TextDecoder('utf-8')
-        let buffer = ''
-
-        /** 按序号缓存的内容块 */
-        const chunks = new Map<number, string>()
-        let totalChunks = 0
-        let doneMeta: {
-            success: boolean
-            format?: string
-            meta?: { sheetNames?: string[]; ocrUsed?: boolean; charCount?: number; durationMs?: number }
-            error?: string
-        } | null = null
-
-        /** 解析 SSE 事件块 */
-        const parseSseEvents = (raw: string): Array<{ event: string; data: string }> => {
-            const events: Array<{ event: string; data: string }> = []
-            const blocks = raw.split('\n\n')
-            for (const block of blocks) {
-                if (!block.trim()) continue
-                let event = 'message'
-                let data = ''
-                for (const line of block.split('\n')) {
-                    if (line.startsWith('event: ')) event = line.slice(7).trim()
-                    else if (line.startsWith('data: ')) data += line.slice(6)
-                }
-                events.push({ event, data })
-            }
-            return events
-        }
-
-        while (true) {
-            const { done, value } = await reader.read()
-            if (done) break
-            buffer += decoder.decode(value, { stream: true })
-
-            // 按空行切分事件
-            const lastDoubleNewline = buffer.lastIndexOf('\n\n')
-            if (lastDoubleNewline === -1) continue
-
-            const rawEvents = buffer.slice(0, lastDoubleNewline + 2)
-            buffer = buffer.slice(lastDoubleNewline + 2)
-
-            for (const { event, data } of parseSseEvents(rawEvents)) {
-                try {
-                    const payload = JSON.parse(data)
-                    if (event === 'progress') {
-                        logger.agent.info(
-                            `[extract_document] Stream progress: ${payload.stage} ${payload.percent}% - ${payload.message}`,
-                        )
-                    } else if (event === 'content') {
-                        chunks.set(payload.index, payload.chunk)
-                        totalChunks = Math.max(totalChunks, payload.total)
-                    } else if (event === 'done') {
-                        doneMeta = payload
-                    } else if (event === 'error') {
-                        logger.agent.warn(`[extract_document] Stream error event: ${payload.message}`)
-                        return { success: false, result: '', error: `后端流式提取失败: ${payload.message}` }
-                    }
-                } catch (err) {
-                    logger.agent.warn(`[extract_document] SSE parse error: ${err instanceof Error ? err.message : err}`)
-                }
-            }
-        }
-
-        if (!doneMeta || !doneMeta.success) {
-            return {
-                success: false,
-                result: '',
-                error: doneMeta?.error || '后端流式提取返回失败',
-            }
-        }
-
-        // 按 index 顺序拼接内容
-        let content = ''
-        for (let i = 0; i < totalChunks; i++) {
-            content += chunks.get(i) || ''
-        }
-
-        if (!content) {
-            return { success: false, result: '', error: '后端流式提取返回空内容' }
-        }
-
-        return buildExtractResult(ext, content, startTime, {
-            sheetNames: doneMeta.meta?.sheetNames,
-            ocrUsed: doneMeta.meta?.ocrUsed,
-            source: 'backend',
-        })
-    } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        logger.agent.warn(`[extract_document] Stream failed, fallback: ${message}`)
-        return extractDocumentViaBackend(filePath, ext, startTime)
     }
 }
 
@@ -1874,8 +1540,34 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         // cwd 解析：若 AI 传了 cwd 参数，解析为绝对路径；否则用工作区根目录
         const resolvedCwd = args.cwd ? resolvePath(args.cwd, ctx.workspacePath, true) : null
         const isBackground = args.is_background as boolean
-        // 取消超时限制：AI 执行命令时不限制超时时间
-        const timeout = 0
+        // 默认超时 120 秒，防止命令因 sentinel 失败等原因卡住导致 AI 无限等待
+        // 长进程（isLongRunningProcess）走 detached 路径，不受此超时影响
+        const timeout = 120_000
+
+        // ── 安全底线：危险命令硬拦截 ──────────────────────────
+        // 即使 toolOrchestrator 审批通过，仍在此处做最终内容校验。
+        // 审批机制问的是"是否允许执行此工具"，此处校验的是"命令内容是否安全"。
+        // 命中 DANGEROUS_COMMAND_PATTERNS 的命令（rm -rf /、curl|sh、sudo 等）
+        // 一律拒绝执行，AI 需改用更安全的替代方案或提示用户手动操作。
+        // 用户如需执行这些命令，可直接在终端面板中手动输入（不经过 AI 工具入口）。
+        if (typeof command === 'string' && isDangerousCommand(command)) {
+            const matchedPattern = matchDangerousCommand(command) || 'unknown'
+            logger.security.warn(
+                `[run_command] Blocked dangerous command (pattern: ${matchedPattern}): ${command.slice(0, 200)}`,
+            )
+            return {
+                success: false,
+                result: `命令被安全策略拦截：命中危险模式 "${matchedPattern}"。\n该命令可能造成不可逆的系统损害（如删除文件、远程脚本执行、权限提升等）。\n如确需执行，请用户在终端面板中手动输入。`,
+                error: 'Command blocked by safety policy',
+                meta: {
+                    command,
+                    cwd: resolvedCwd,
+                    finalStatus: 'blocked',
+                    terminationReason: 'safety_policy_violation',
+                    blockedPattern: matchedPattern,
+                },
+            }
+        }
 
         // 中止信号处理：用户点击停止按钮时，立即取消命令执行
         // 避免长命令阻塞 AI 主循环，确保停止按钮能真正中断所有操作
@@ -1975,21 +1667,24 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             }
 
 
-            // 先唤出面板，再创建/获取终端，避免竞态：
-            // 若先创建终端，notify() 触发时面板还不可见 → useEffect 销毁刚创建的终端
-            // 仅长进程（如 dev server）自动显示终端面板，短命令结果直接返回给 AI，
-            // 用户可通过命令容器处的">_终端"按钮手动打开终端查看
-            if (isLongRunningProcess) {
-                useStore.getState().setTerminalVisible(true)
-            }
+            // 终端面板默认不弹出：AI 执行命令静默进行，结果直接返回给 AI。
+            // 用户可通过命令容器右侧的">_终端"按钮手动打开终端查看当前命令。
+            // 长进程也不再自动弹出面板（通过 ToolCallCard 的"运行中"状态和终端按钮提示用户）
 
             // 获取或复用 Agent 专属终端（初始 cwd 用工作区根目录，避免反复改变终端目录）
             const termId = await terminalManager.getOrCreateAgentTerminal(
                 ctx.workspacePath || '/'
             )
 
-            // 激活 Agent 终端 tab，让用户看到执行过程
-            terminalManager.setActiveTerminal(termId)
+            // 不自动激活终端 tab：静默执行，避免打断用户当前关注的终端
+            // 仅当终端面板已可见时才激活（用户已主动打开终端的场景）
+            if (useStore.getState().terminalVisible) {
+                terminalManager.setActiveTerminal(termId)
+                // 面板可见时等待 xterm mount + fit，确保 PTY cols 与 xterm 一致
+                await terminalManager.ensureTerminalReady(termId)
+            }
+            // 面板不可见时不等待 xterm mount（xterm 不会 mount，等待会超时浪费 1 秒）
+            // PTY 用默认 cols（120）执行，用户后续点击查看时 xterm mount + fit 会修正
 
             // === 长进程：直接写入并立即返回，让用户在终端里跟踪 ===
             if (isLongRunningProcess) {
@@ -1999,7 +1694,9 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                         ? `Push-Location "${resolvedCwd}"; ${command}; Pop-Location`
                         : `(cd "${resolvedCwd}" && ${command})`)
                     : command
-                terminalManager.writeToTerminal(termId, `${bgCmd}\r`)
+                // 先发送 \r 确保光标在行首（复用终端时上次输出可能残留光标位置），
+                // 再写入命令并执行。避免命令从非行首位置开始显示导致排版错乱。
+                terminalManager.writeToTerminal(termId, `\r${bgCmd}\r`)
 
                 const detachedSession = terminalManager.recordDetachedCommand(
                     termId,
@@ -2133,6 +1830,12 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 resultText = `[Shell exited while command was running]\n${displayOutput}`
             }
 
+            // 错误检测主动终止：terminalWatcher 检测到错误关键字后主动结束命令
+            // 添加前缀让 AI 明确知道这是因错误被提前终止，而非正常完成
+            if (commandResult.terminationReason === 'error_detected' && displayOutput) {
+                resultText = `[Command terminated due to error detected in output]\n${displayOutput}`
+            }
+
             return {
                 success: commandResult.success,
                 result: resultText,
@@ -2209,6 +1912,30 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 const charCode = input.toLowerCase().charCodeAt(0)
                 if (charCode >= 97 && charCode <= 122) { // 'a' - 'z'
                     dataToSend = String.fromCharCode(charCode - 96)
+                }
+            }
+
+            // ── 安全底线：对非 Ctrl 的文本输入做行级危险命令检测 ──
+            // Ctrl 组合键（如 Ctrl+C）是控制信号，不携带命令内容，跳过检测。
+            // 普通文本输入可能包含完整命令行（如 AI 向 REPL 发送 "import os; os.system('rm -rf /')"），
+            // 按换行符拆分后对每行做 isDangerousCommand 检测，命中即拦截。
+            if (!isCtrl && typeof dataToSend === 'string' && dataToSend.length > 0) {
+                const lines = dataToSend.split(/\r?\n/)
+                for (const line of lines) {
+                    const trimmed = line.trim()
+                    if (!trimmed) continue
+                    if (isDangerousCommand(trimmed)) {
+                        const matchedPattern = matchDangerousCommand(trimmed) || 'unknown'
+                        logger.security.warn(
+                            `[send_terminal_input] Blocked dangerous input (pattern: ${matchedPattern}): ${trimmed.slice(0, 200)}`,
+                        )
+                        return {
+                            success: false,
+                            result: `输入被安全策略拦截：命中危险模式 "${matchedPattern}"。\n如确需执行，请用户在终端面板中手动输入。`,
+                            error: 'Input blocked by safety policy',
+                            meta: { terminalId, sentCtrl: isCtrl, blockedPattern: matchedPattern },
+                        }
+                    }
                 }
             }
 

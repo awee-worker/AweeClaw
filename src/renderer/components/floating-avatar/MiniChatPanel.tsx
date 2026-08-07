@@ -55,8 +55,13 @@ import {
   Brain,
   ChevronRight,
   Sparkles,
+  Crop,
+  Phone,
+  Square,
 } from 'lucide-react'
 import { api } from '@renderer/adapters/electronBridge'
+import { useVoiceInput } from '../../composables/useVoiceInput'
+import VoiceVisualizer from '../voice/VoiceVisualizer'
 import {
   readFileAsAttachment,
   type MiniChatMessage,
@@ -214,6 +219,37 @@ function MiniChatPanelImpl({
       return prev.filter((a) => a.id !== id)
     })
   }, [])
+
+  // --------------------------------------------
+  // 截图提问：触发主进程全屏区域选择 → 截图 → 作为附件注入输入框
+  // 与右键菜单「截图提问」共用同一流程（ScreenshotAskManager）
+  // --------------------------------------------
+  const handleScreenshot = useCallback(async () => {
+    if (streaming) return
+    try {
+      await api.floatingAvatar.startScreenshotAsk()
+    } catch (err) {
+      console.error('[MiniChatPanel] Start screenshot ask failed:', err)
+    }
+  }, [streaming])
+
+  // --------------------------------------------
+  // 语音输入（听写）：录音 → 语音转文字 → 填入输入框
+  // 与主窗口 ConversationInput 的语音输入功能一致，复用同一 useVoiceInput hook
+  // --------------------------------------------
+  const voiceInput = useVoiceInput({
+    language: isZh ? 'zh' : 'en',
+    onResult: (text) => {
+      setInput((prev) => (prev ? `${prev} ${text}` : text))
+      // 自动调整 textarea 高度
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.style.height = 'auto'
+          textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`
+        }
+      }, 0)
+    },
+  })
 
   // --------------------------------------------
   // 外部注入附件（如截图提问结果）：合并到输入框附件区，不自动发送
@@ -417,6 +453,21 @@ function MiniChatPanelImpl({
           <Maximize2 size={15} color="rgb(var(--text-secondary) / 0.9)" />
         </button>
 
+        {/* 语音对话按钮：切换到语音模式（与主窗口语音助手一致，缩小版） */}
+        <button
+          onClick={onSwitchToVoice}
+          disabled={streaming}
+          style={{
+            ...headerMaximizeBtnStyle,
+            WebkitAppRegion: 'no-drag',
+            opacity: streaming ? 0.4 : 1,
+            cursor: streaming ? 'not-allowed' : 'pointer',
+          } as React.CSSProperties}
+          title={isZh ? '语音对话' : 'Voice chat'}
+        >
+          <Phone size={15} color="rgb(var(--text-secondary) / 0.9)" />
+        </button>
+
         <button
           onClick={onClose}
           style={{ ...headerCloseBtnStyle, WebkitAppRegion: 'no-drag' } as React.CSSProperties}
@@ -534,6 +585,13 @@ function MiniChatPanelImpl({
                 style={{ minHeight: '48px' }}
               />
 
+              {/* 语音识别中的实时文字预览（与主窗口一致） */}
+              {voiceInput.state === 'recording' && voiceInput.partialText && (
+                <div className="py-1 text-[13px] text-accent/70 italic truncate">
+                  {voiceInput.partialText}
+                </div>
+              )}
+
               {/* 底部工具栏：左侧模型选择器 | 右侧附件+发送（与 ConversationInput 一致） */}
               <div className="relative flex items-center justify-between pt-1 gap-2">
                 {/* 左侧：模型选择器 */}
@@ -547,41 +605,59 @@ function MiniChatPanelImpl({
                   />
                 </div>
 
-                {/* 右侧：附件 + 发送/停止/语音 */}
+                {/* 右侧：截图 + 附件 + 发送/停止/语音 */}
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <input type="file" ref={fileInputRef} multiple onChange={handleFileSelect} className="hidden" />
-                  <button
-                    onClick={() => !streaming && fileInputRef.current?.click()}
-                    disabled={streaming}
-                    title={isZh ? '上传附件' : 'Upload attachment'}
-                    className={`rounded-xl w-8 h-8 transition-all active:scale-95 flex items-center justify-center ${
-                      streaming
-                        ? 'opacity-40 cursor-not-allowed text-text-muted'
-                        : 'hover:bg-surface-active text-text-muted hover:text-text-primary'
-                    }`}
-                  >
-                    <Paperclip className="w-4 h-4 opacity-70 group-hover:opacity-100" />
-                  </button>
+                  {/* 语音输入中隐藏截图/附件/AI优化按钮，腾出空间给录音可视化（与主窗口一致） */}
+                  {voiceInput.state === 'idle' && (
+                    <>
+                      {/* 截图提问按钮：触发全屏区域选择，截图完成后作为附件添加到输入框 */}
+                      <button
+                        onClick={handleScreenshot}
+                        disabled={streaming}
+                        title={isZh ? '截图提问' : 'Screenshot & Ask'}
+                        className={`rounded-xl w-8 h-8 transition-all active:scale-95 flex items-center justify-center ${
+                          streaming
+                            ? 'opacity-40 cursor-not-allowed text-text-muted'
+                            : 'hover:bg-surface-active text-text-muted hover:text-text-primary'
+                        }`}
+                      >
+                        <Crop className="w-4 h-4 opacity-70 group-hover:opacity-100" />
+                      </button>
+                      <button
+                        onClick={() => !streaming && fileInputRef.current?.click()}
+                        disabled={streaming}
+                        title={isZh ? '上传附件' : 'Upload attachment'}
+                        className={`rounded-xl w-8 h-8 transition-all active:scale-95 flex items-center justify-center ${
+                          streaming
+                            ? 'opacity-40 cursor-not-allowed text-text-muted'
+                            : 'hover:bg-surface-active text-text-muted hover:text-text-primary'
+                        }`}
+                      >
+                        <Paperclip className="w-4 h-4 opacity-70 group-hover:opacity-100" />
+                      </button>
 
-                  {/* AI 优化输入按钮（与主窗口 ConversationInput 一致） */}
-                  <button
-                    onClick={handleOptimize}
-                    disabled={!input.trim() || isOptimizing || streaming}
-                    title={isZh ? '优化输入' : 'Optimize input'}
-                    className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300 ${
-                      isOptimizing
-                        ? 'bg-accent/10 text-accent border border-accent/20'
-                        : input.trim() && !streaming
-                          ? 'bg-surface/50 text-text-muted hover:text-accent hover:bg-accent/10 border border-border/30 hover:border-accent/20 active:scale-95'
-                          : 'bg-transparent text-text-muted/30 cursor-not-allowed border border-transparent'
-                    }`}
-                  >
-                    {isOptimizing ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Sparkles className="w-4 h-4" />
-                    )}
-                  </button>
+                      {/* AI 优化输入按钮（与主窗口 ConversationInput 一致） */}
+                      <button
+                        onClick={handleOptimize}
+                        disabled={!input.trim() || isOptimizing || streaming}
+                        title={isZh ? '优化输入' : 'Optimize input'}
+                        className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300 ${
+                          isOptimizing
+                            ? 'bg-accent/10 text-accent border border-accent/20'
+                            : input.trim() && !streaming
+                              ? 'bg-surface/50 text-text-muted hover:text-accent hover:bg-accent/10 border border-border/30 hover:border-accent/20 active:scale-95'
+                              : 'bg-transparent text-text-muted/30 cursor-not-allowed border border-transparent'
+                        }`}
+                      >
+                        {isOptimizing ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Sparkles className="w-4 h-4" />
+                        )}
+                      </button>
+                    </>
+                  )}
 
                   {streaming ? (
                     <button
@@ -591,6 +667,54 @@ function MiniChatPanelImpl({
                     >
                       <div className="w-2.5 h-2.5 bg-current rounded-[1px] animate-pulse" />
                     </button>
+                  ) : voiceInput.state !== 'idle' ? (
+                    /* 录音/处理中：显示可视化 + 停止按钮（与主窗口一致） */
+                    <div className="relative flex items-center gap-1.5">
+                      {voiceInput.state === 'recording' && voiceInput.stream && (
+                        <div className="w-16 h-8 flex items-center">
+                          <VoiceVisualizer
+                            stream={voiceInput.stream}
+                            isActive={voiceInput.state === 'recording'}
+                            color="rgb(239, 68, 68)"
+                            height={32}
+                            barCount={12}
+                            barGap={1}
+                          />
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={voiceInput.state === 'recording' ? voiceInput.stopRecording : undefined}
+                        onContextMenu={(e) => {
+                          e.preventDefault()
+                          if (voiceInput.state === 'recording') {
+                            voiceInput.cancelRecording()
+                          }
+                        }}
+                        disabled={voiceInput.state === 'requesting' || voiceInput.state === 'processing'}
+                        className={`relative flex items-center justify-center rounded-full transition-all duration-200 focus:outline-none ${
+                          voiceInput.state === 'recording'
+                            ? 'w-8 h-8 bg-red-500 text-white shadow-lg shadow-red-500/30 hover:bg-red-600'
+                            : 'w-8 h-8 bg-blue-500/20 text-blue-400 cursor-wait'
+                        }`}
+                        title={
+                          voiceInput.state === 'recording'
+                            ? isZh ? '停止录音' : 'Stop recording'
+                            : voiceInput.state === 'processing'
+                              ? isZh ? '识别中...' : 'Processing...'
+                              : isZh ? '请求麦克风...' : 'Requesting microphone...'
+                        }
+                      >
+                        {voiceInput.state === 'recording' && (
+                          <span className="absolute inset-0 rounded-full border-2 border-red-400 animate-ping opacity-60" />
+                        )}
+                        {(voiceInput.state === 'requesting' || voiceInput.state === 'processing') ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Square className="w-3 h-3" fill="currentColor" />
+                        )}
+                      </button>
+                    </div>
                   ) : isSendable ? (
                     <button
                       onClick={handleSend}
@@ -600,9 +724,10 @@ function MiniChatPanelImpl({
                       <ArrowUp className="w-5 h-5 stroke-[3]" />
                     </button>
                   ) : (
+                    /* 语音输入按钮：点击开始录音，语音转文字填入输入框（与主窗口一致） */
                     <button
-                      onClick={onSwitchToVoice}
-                      title={isZh ? '语音对话' : 'Voice chat'}
+                      onClick={voiceInput.startRecording}
+                      title={isZh ? '语音输入' : 'Voice input'}
                       className="w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300 bg-surface/50 text-text-muted hover:text-accent hover:bg-accent/10 border border-border/30 hover:border-accent/20 active:scale-95"
                     >
                       <Mic className="w-4 h-4" />

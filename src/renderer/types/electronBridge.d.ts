@@ -2245,10 +2245,20 @@ export interface ElectronAPI {
     onOpenSettings: (callback: (tab?: string) => void) => () => void
     /** 事件：截图提问完成（main→头像窗口，截图 base64 + 落盘路径，作为附件添加到输入框，由用户输入问题后手动发送） */
     onScreenshotResult: (callback: (payload: { base64: string; mediaType: string; width: number; height: number; filePath: string; fileName: string }) => void) => () => void
+    /** 启动截图提问（与右键菜单「截图提问」共用同一流程：全屏区域选择 → 截图 → 作为附件添加到输入框） */
+    startScreenshotAsk: () => Promise<{ success: boolean; error?: string }>
     /** 拖拽：发送拖拽开始信号（主进程接管鼠标追踪，自取坐标） */
     sendDragStart: (channel: string) => void
     /** 拖拽：发送拖拽结束信号（触发边缘吸附 + 位置持久化） */
     sendDragEnd: (channel: string) => void
+  }
+
+  // 主窗口截图（聊天输入框截图按钮，与悬浮球截图完全独立）
+  screenshot: {
+    /** 启动截图：触发全屏区域选择覆盖窗口，用户框选确认后截图并推送给主窗口 */
+    start: () => Promise<{ success: boolean; error?: string }>
+    /** 截图完成事件订阅（main→主窗口：截图 base64 + 落盘路径，主窗口作为附件添加到输入框） */
+    onResult: (callback: (payload: { base64: string; mediaType: string; width: number; height: number; filePath: string; fileName: string }) => void) => () => void
   }
 
   // Proactive（主动式助手 - 阶段10 s10-02）
