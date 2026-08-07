@@ -611,6 +611,18 @@ function MiniChatPanelImpl({
                   {/* 语音输入中隐藏截图/附件/AI优化按钮，腾出空间给录音可视化（与主窗口一致） */}
                   {voiceInput.state === 'idle' && (
                     <>
+                      <button
+                        onClick={() => !streaming && fileInputRef.current?.click()}
+                        disabled={streaming}
+                        title={isZh ? '上传附件' : 'Upload attachment'}
+                        className={`rounded-xl w-8 h-8 transition-all active:scale-95 flex items-center justify-center ${
+                          streaming
+                            ? 'opacity-40 cursor-not-allowed text-text-muted'
+                            : 'hover:bg-surface-active text-text-muted hover:text-text-primary'
+                        }`}
+                      >
+                        <Paperclip className="w-4 h-4 opacity-70 group-hover:opacity-100" />
+                      </button>
                       {/* 截图提问按钮：触发全屏区域选择，截图完成后作为附件添加到输入框 */}
                       <button
                         onClick={handleScreenshot}
@@ -623,18 +635,6 @@ function MiniChatPanelImpl({
                         }`}
                       >
                         <Crop className="w-4 h-4 opacity-70 group-hover:opacity-100" />
-                      </button>
-                      <button
-                        onClick={() => !streaming && fileInputRef.current?.click()}
-                        disabled={streaming}
-                        title={isZh ? '上传附件' : 'Upload attachment'}
-                        className={`rounded-xl w-8 h-8 transition-all active:scale-95 flex items-center justify-center ${
-                          streaming
-                            ? 'opacity-40 cursor-not-allowed text-text-muted'
-                            : 'hover:bg-surface-active text-text-muted hover:text-text-primary'
-                        }`}
-                      >
-                        <Paperclip className="w-4 h-4 opacity-70 group-hover:opacity-100" />
                       </button>
 
                       {/* AI 优化输入按钮（与主窗口 ConversationInput 一致） */}

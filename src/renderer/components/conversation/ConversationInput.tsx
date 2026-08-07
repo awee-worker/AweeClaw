@@ -500,6 +500,20 @@ const ChatInput = memo(function ChatInput({
               />
               {voiceInput.state === 'idle' && (
                 <>
+                  <ActionButton
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => !isStreaming && fileInputRef.current?.click()}
+                    disabled={isStreaming}
+                    title={t('app.uploadattachment', language as Language)}
+                    className={`rounded-xl w-8 h-8 transition-all active:scale-95 ${
+                      isStreaming
+                        ? 'opacity-40 cursor-not-allowed text-text-muted'
+                        : 'hover:bg-surface-active text-text-muted hover:text-text-primary'
+                    }`}
+                  >
+                    <Paperclip className="w-4 h-4 opacity-70 group-hover:opacity-100" />
+                  </ActionButton>
                   {/* 截图提问按钮：触发全屏区域选择，截图完成后作为附件添加到输入框 */}
                   <ActionButton
                     variant="ghost"
@@ -514,20 +528,6 @@ const ChatInput = memo(function ChatInput({
                     }`}
                   >
                     <Crop className="w-4 h-4 opacity-70 group-hover:opacity-100" />
-                  </ActionButton>
-                  <ActionButton
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => !isStreaming && fileInputRef.current?.click()}
-                    disabled={isStreaming}
-                    title={t('app.uploadattachment', language as Language)}
-                    className={`rounded-xl w-8 h-8 transition-all active:scale-95 ${
-                      isStreaming
-                        ? 'opacity-40 cursor-not-allowed text-text-muted'
-                        : 'hover:bg-surface-active text-text-muted hover:text-text-primary'
-                    }`}
-                  >
-                    <Paperclip className="w-4 h-4 opacity-70 group-hover:opacity-100" />
                   </ActionButton>
 
                   <button
