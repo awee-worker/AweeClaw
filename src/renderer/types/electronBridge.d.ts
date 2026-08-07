@@ -2563,6 +2563,28 @@ export interface ElectronAPI {
       callback: (progress: import('@protocols/meetingNotes').OrganizeProgress) => void,
     ) => () => void
   }
+
+  // ============================================
+  // PPT 预览窗口（独立常驻窗口，供 mcp-pptx 插件实时预览）
+  // ============================================
+  pptPreview: {
+    /** 隐藏预览窗口（不销毁，便于下次快速显示） */
+    close: () => Promise<{ success: boolean; error?: string }>
+    /** 在系统文件管理器中显示已保存的 .pptx 文件 */
+    export: (filePath: string) => Promise<{ success: boolean; error?: string }>
+    /** 会话打开事件订阅：初始化预览（清空旧数据，设置标题） */
+    onOpen: (
+      callback: (meta: import('@protocols/pptPreviewProtocol').PptPresentationMeta) => void,
+    ) => () => void
+    /** 幻灯片数据推送事件订阅：新增/更新一张幻灯片 */
+    onPushSlide: (
+      callback: (slide: import('@protocols/pptPreviewProtocol').PptSlideData) => void,
+    ) => () => void
+    /** 生成完成事件订阅：附带保存路径 */
+    onMarkComplete: (
+      callback: (payload: { sessionId: string; filePath: string }) => void,
+    ) => () => void
+  }
 }
 
 declare global {

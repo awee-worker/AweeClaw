@@ -1,6 +1,6 @@
 {
   "name": "aweeclaw",
-  "version": "1.8.1",
+  "version": "1.8.2",
   "description": "AweeClaw - Connect AI to Your World",
   "productName": "AweeClaw",
   "author": "Awee Lee <aweelee@qq.com>",
@@ -95,6 +95,7 @@
     "pdfjs-dist": "^4.4.168",
     "picomatch": "^4.0.3",
     "png2icons": "^2.0.1",
+    "pptxgenjs": "^4.0.1",
     "ps-list": "^8.1.1",
     "qrcode": "^1.5.4",
     "quickjs-emscripten": "^0.32.0",

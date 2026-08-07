@@ -87,6 +87,8 @@ const EXT_ICONS: Record<string, IconDef> = {
   docx: { glyph: '\uf1c2', hue: '#2b579a' },
   xls: { glyph: '\uf1c3', hue: '#217346' },
   xlsx: { glyph: '\uf1c3', hue: '#217346' },
+  ppt: { glyph: '\uf1c4', hue: '#d24726' },
+  pptx: { glyph: '\uf1c4', hue: '#d24726' },
   ttf: { glyph: '\uf031', hue: '#a9a9a9' },
   woff: { glyph: '\uf031', hue: '#a9a9a9' },
   woff2: { glyph: '\uf031', hue: '#a9a9a9' },

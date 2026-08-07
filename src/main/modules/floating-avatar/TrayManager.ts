@@ -8,11 +8,12 @@
  *
  * 设计：
  * - 单例，destroy() 时销毁托盘
- * - macOS 上托盘图标建议 16x16/22x22 template image（自动适配深浅色），此处用 sizes/16.png
- * - Linux/Windows 用 app.png
+ * - macOS：彩色 Logo 不适合 setTemplateImage，改为根据系统深浅模式自动切换
+ *   app-light（深色模式，浅色 Logo）或 app-dark（浅色模式，深色 Logo）版本
+ * - Linux/Windows 用 app.ico / app.png
  */
 
-import { app, Tray, Menu, MenuItem, nativeImage } from 'electron'
+import { app, Tray, Menu, MenuItem, nativeImage, nativeTheme } from 'electron'
 import * as path from 'path'
 import * as fs from 'fs'
 import { logger } from '@shared/toolkit/LogEngine'
@@ -59,6 +60,8 @@ export class TrayManager {
   private labels: TrayLabels = LABELS_ZH
   private iconState: TrayIconState = 'idle'
   private callbacks: TrayCallbacks | null = null
+  /** 主题变化监听器引用（销毁时移除） */
+  private themeListener: (() => void) | null = null
 
   private constructor() {}
 
@@ -86,10 +89,8 @@ export class TrayManager {
     let image: Electron.NativeImage
     try {
       image = nativeImage.createFromPath(iconPath)
-      // macOS template image：自动适配深浅色（仅对单色图标有效）
-      if (process.platform === 'darwin') {
-        image.setTemplateImage(true)
-      }
+      // 不使用 setTemplateImage：当前图标为彩色 Logo，设为 template 会将彩色像素渲染为实色方块
+      // 改为根据系统深浅模式自动切换图标版本（app-light / app-dark）确保可见性
       if (image.isEmpty()) {
         logger.system.warn('[TrayManager] Tray icon image is empty:', iconPath)
       }
@@ -108,8 +109,37 @@ export class TrayManager {
       manager.toggle()
     })
 
+    // macOS：监听系统主题变化，动态切换深浅色托盘图标
+    if (process.platform === 'darwin') {
+      this.themeListener = () => {
+        this.refreshTrayIcon()
+      }
+      nativeTheme.on('updated', this.themeListener)
+    }
+
     logger.system.info('[TrayManager] Tray created', { iconPath })
     return this.tray
+  }
+
+  /** 刷新托盘图标（主题切换后调用，使用匹配当前主题的图标版本） */
+  private refreshTrayIcon(): void {
+    if (!this.tray || this.tray.isDestroyed()) return
+
+    const iconPath = this.resolveTrayIcon()
+    if (!iconPath) return
+
+    try {
+      const image = nativeImage.createFromPath(iconPath)
+      if (!image.isEmpty()) {
+        this.tray.setImage(image)
+        logger.system.info('[TrayManager] Tray icon refreshed', {
+          iconPath,
+          darkMode: nativeTheme.shouldUseDarkColors,
+        })
+      }
+    } catch (err) {
+      logger.system.warn('[TrayManager] Refresh tray icon failed:', err)
+    }
   }
 
   /** 设置语言并重建菜单 */
@@ -176,13 +206,23 @@ export class TrayManager {
     }
   }
 
-  /** 解析托盘图标路径 */
+  /** 解析托盘图标路径
+   *
+   * macOS 菜单栏背景：
+   *   深色模式 → 黑色背景 → 需要浅色 Logo（app-light）
+   *   浅色模式 → 白色/浅灰背景 → 需要深色 Logo（app-dark）
+   * 因彩色图标不适合 setTemplateImage，改为根据系统主题切换图标版本。
+   */
   private resolveTrayIcon(): string | null {
     const brandIconDir = path.join(app.getAppPath(), 'public/brand/icons')
 
     if (process.platform === 'darwin') {
-      // macOS 托盘推荐 16x16 或 22x22 template image
+      // 根据系统深浅模式选择对应版本的图标
+      const variantDir = nativeTheme.shouldUseDarkColors ? 'sizes/app-light' : 'sizes/app-dark'
       const candidates = [
+        path.join(brandIconDir, variantDir, '16.png'),
+        path.join(brandIconDir, variantDir, '32.png'),
+        // 兜底：通用彩色版本
         path.join(brandIconDir, 'sizes/app/16.png'),
         path.join(brandIconDir, 'sizes/app/32.png'),
         path.join(brandIconDir, 'app.png'),
@@ -210,6 +250,11 @@ export class TrayManager {
 
   /** 销毁托盘（彻底退出时调用） */
   destroy(): void {
+    // 移除主题监听器，避免内存泄漏
+    if (this.themeListener) {
+      nativeTheme.off('updated', this.themeListener)
+      this.themeListener = null
+    }
     if (this.tray && !this.tray.isDestroyed()) {
       this.tray.destroy()
       logger.system.info('[TrayManager] Tray destroyed')

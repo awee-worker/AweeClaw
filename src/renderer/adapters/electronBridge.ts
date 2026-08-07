@@ -1155,6 +1155,23 @@ function createGroupedAPI() {
         callback: Parameters<typeof raw.meetingNotes.onOrganizeProgress>[0],
       ) => raw.meetingNotes.onOrganizeProgress(callback),
     },
+
+    // PPT 预览窗口（供 mcp-pptx 插件实时预览生成过程）
+    pptPreview: {
+      /** 隐藏预览窗口（不销毁，便于下次快速显示） */
+      close: () => raw.pptPreview.close(),
+      /** 在系统文件管理器中显示已保存的 .pptx 文件 */
+      export: (filePath: string) => raw.pptPreview.export(filePath),
+      /** 会话打开事件订阅 */
+      onOpen: (callback: Parameters<typeof raw.pptPreview.onOpen>[0]) =>
+        raw.pptPreview.onOpen(callback),
+      /** 幻灯片数据推送事件订阅 */
+      onPushSlide: (callback: Parameters<typeof raw.pptPreview.onPushSlide>[0]) =>
+        raw.pptPreview.onPushSlide(callback),
+      /** 生成完成事件订阅 */
+      onMarkComplete: (callback: Parameters<typeof raw.pptPreview.onMarkComplete>[0]) =>
+        raw.pptPreview.onMarkComplete(callback),
+    },
   }
 }
 

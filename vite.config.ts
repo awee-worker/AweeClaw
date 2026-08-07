@@ -204,12 +204,13 @@ export default defineConfig({
   build: {
     outDir: 'dist/renderer',
     rollupOptions: {
-      // 多入口：主窗口 index.html + 悬浮头像窗口 avatar.html + 截图覆盖窗口 screenshot-overlay.html + 会议纪要窗口 meeting-notes.html
+      // 多入口：主窗口 index.html + 悬浮头像窗口 avatar.html + 截图覆盖窗口 screenshot-overlay.html + 会议纪要窗口 meeting-notes.html + PPT 预览窗口 ppt-preview.html
       input: {
         main: path.resolve(__dirname, 'index.html'),
         avatar: path.resolve(__dirname, 'avatar.html'),
         'screenshot-overlay': path.resolve(__dirname, 'screenshot-overlay.html'),
         'meeting-notes': path.resolve(__dirname, 'meeting-notes.html'),
+        'ppt-preview': path.resolve(__dirname, 'ppt-preview.html'),
       },
       // 忽略 web-tree-sitter 的 eval 警告（这是库内部使用，无法避免）
       onwarn(warning, warn) {

@@ -61,6 +61,7 @@ import { createProactiveApi } from './preload/api/proactive'
 import { createFloatingAvatarApi } from './preload/api/floatingAvatar'
 import { createScreenshotOverlayApi } from './preload/api/screenshotOverlay'
 import { createMeetingNotesApi } from './preload/api/meetingNotes'
+import { createPptPreviewApi } from './preload/api/pptPreview'
 
 /**
  * 聚合所有领域 API 并暴露到渲染进程。
@@ -94,4 +95,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   floatingAvatar: createFloatingAvatarApi(),
   screenshotOverlay: createScreenshotOverlayApi(),
   meetingNotes: createMeetingNotesApi(),
+  pptPreview: createPptPreviewApi(),
 })

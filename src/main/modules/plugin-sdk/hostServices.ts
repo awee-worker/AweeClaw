@@ -39,6 +39,11 @@ import { MonitoringService } from '../monitoring/MonitoringService'
 import { IoTBridge } from '../iot/IoTBridge'
 import { InputListenerBridge } from './InputListenerBridge'
 import { CronSchedulerBridge } from './CronSchedulerBridge'
+import { PptPreviewBridge } from './PptPreviewBridge'
+// v2.4：导入 PPT 解析函数（必须用 ESM import，不能用 require，
+// 否则 vite-plugin-electron 打包时会保留 require() 运行时调用，
+// 而 dist/main 下没有 pptxParserMain.js 独立文件，导致 MODULE_NOT_FOUND）
+import { parsePptxFile } from './pptxParserMain'
 
 /** Host 服务接口 */
 export interface HostServices {
@@ -104,6 +109,15 @@ export interface HostServices {
    * 并提供 unregisterByPlugin 用于插件卸载时批量清理。
    */
   cronScheduler: CronSchedulerBridge
+  /** pptxgenjs 库（供 mcp-pptx 等插件生成 PowerPoint 文件） */
+  pptxgen: typeof import('pptxgenjs').default
+  /** PPT 预览桥（推送幻灯片数据到独立预览窗口，实现实时预览） */
+  pptPreview: PptPreviewBridge
+  /**
+   * 解析已有 .pptx 文件（供 mcp-pptx 插件 open_presentation 工具使用）
+   * 在主进程用 jszip + xmldom 解析 OOXML，返回 PptSlideData[] 格式
+   */
+  parsePptxFile: typeof import('./pptxParserMain').parsePptxFile
 }
 
 /** 全局变量名 */
@@ -155,6 +169,15 @@ export function initHostServices(): void {
     inputListener: InputListenerBridge.getInstance(),
     // 插件定时调度桥（独立于主 CronScheduler，供插件注册 cron 回调任务）
     cronScheduler: CronSchedulerBridge.getInstance(),
+    // pptxgenjs 库（供 mcp-pptx 等插件生成 PowerPoint）
+    // 动态 require 避免 ESM/CJS 互操作问题；pptxgenjs 是 CJS 兼容的
+    pptxgen: require('pptxgenjs'),
+    // PPT 预览桥（推送幻灯片数据到独立预览窗口）
+    pptPreview: PptPreviewBridge.getInstance(),
+    // v2.4：解析已有 .pptx 文件（供 mcp-pptx open_presentation 工具使用）
+    // 注意：必须用 ESM import 静态引入（顶部已 import），不能在此处 require，
+    // 否则 vite-plugin-electron 打包后 require("./pptxParserMain") 找不到模块
+    parsePptxFile,
   }
 
   Object.defineProperty(globalThis, HOST_GLOBAL_KEY, {

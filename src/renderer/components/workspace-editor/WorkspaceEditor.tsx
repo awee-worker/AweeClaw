@@ -44,8 +44,13 @@ const DocxPreview = safeNamedLazy(() => import('./DocumentPreview'), 'DocxPrevie
 const DocPreview = safeNamedLazy(() => import('./DocumentPreview'), 'DocPreview', { label: 'DocPreview', silent: true })
 const PptxPreview = safeNamedLazy(() => import('./DocumentPreview'), 'PptxPreview', { label: 'PptxPreview', silent: true })
 const PptPreview = safeNamedLazy(() => import('./DocumentPreview'), 'PptPreview', { label: 'PptPreview', silent: true })
+// v2.3.2：工作区 .pptx 文件预览改用 SlideCanvas 渲染（与 PPT 生成预览视觉一致）
+const WorkspacePptxPreview = safeLazy(() => import('../ppt-preview/WorkspacePptxPreview'), { label: 'WorkspacePptxPreview', silent: true })
 const XlsxPreview = safeNamedLazy(() => import('./DocumentPreview'), 'XlsxPreview', { label: 'XlsxPreview', silent: true })
 const CsvPreview = safeNamedLazy(() => import('./DocumentPreview'), 'CsvPreview', { label: 'CsvPreview', silent: true })
+
+// v2.3：PPT 实时预览面板（主窗口内嵌 Tab 模式）
+const PptPreviewPanel = safeLazy(() => import('../ppt-preview/PptPreviewPanel'), { label: 'PptPreviewPanel', silent: true })
 
 const DockPanel = safeLazy(() => import('@components/dock-panels/DockPanel'), { label: 'DockPanel', silent: true })
 
@@ -71,6 +76,7 @@ import { useEditorActions, useAICompletion, useEditorEvents, useComposerInlineDi
 import { getLanguage } from './utils/langIdMapper'
 import { defineMonacoTheme } from './utils/editorTheme'
 import { isPreviewDocumentPath } from '@shared/protocols/previewProtocol'
+import { isPptPreviewPath, extractSessionIdFromPptPreviewPath } from '@shared/protocols/pptPreviewProtocol'
 
 loader.config({ monaco })
 
@@ -113,6 +119,9 @@ export default function Editor() {
   const { setupCursorTracking } = useEditorEvents(editorRef)
 
   const isPreviewDocument = Boolean(activeFile && (activeFile.kind === 'preview' || isPreviewDocumentPath(activeFile.path)))
+  // v2.3：PPT 预览 Tab（主窗口内嵌模式）
+  const isPptPreviewTab = Boolean(activeFile && activeFile.kind === 'ppt-preview' && isPptPreviewPath(activeFile.path))
+  const pptPreviewSessionId = isPptPreviewTab && activeFile ? extractSessionIdFromPptPreviewPath(activeFile.path) : null
 
   useComposerInlineDiff(isPreviewDocument ? null : activeFilePath, editorRef.current, monacoRef.current)
 
@@ -423,7 +432,7 @@ export default function Editor() {
         }}
       />
 
-      {activeFile && !isPreviewDocument && (
+      {activeFile && !isPreviewDocument && !isPptPreviewTab && (
         <EditorBreadcrumbs
           filePath={activeFile.path}
           largeFileInfo={activeFileInfo}
@@ -466,7 +475,12 @@ export default function Editor() {
 
       {/* 编辑器主体 */}
       <div className="flex-1 relative min-h-0 overflow-hidden flex flex-col">
-        {activeFile?.path.startsWith('diff://') || activeFile?.path.startsWith('git-diff://') ? (
+        {/* v2.3：PPT 实时预览面板（主窗口内嵌 Tab 模式） */}
+        {isPptPreviewTab && pptPreviewSessionId ? (
+          <Suspense fallback={<CodeSkeleton lines={8} />}>
+            <PptPreviewPanel sessionId={pptPreviewSessionId} />
+          </Suspense>
+        ) : activeFile?.path.startsWith('diff://') || activeFile?.path.startsWith('git-diff://') ? (
           <DiffPreview
             diff={{
               original: activeFile.originalContent || '',
@@ -512,7 +526,9 @@ export default function Editor() {
             ) : activeFileType === 'doc' ? (
               <DocPreview path={activeFile.path} />
             ) : activeFileType === 'pptx' ? (
-              <PptxPreview path={activeFile.path} />
+              <Suspense fallback={<CodeSkeleton lines={8} />}>
+                <WorkspacePptxPreview path={activeFile.path} />
+              </Suspense>
             ) : activeFileType === 'ppt' ? (
               <PptPreview path={activeFile.path} />
             ) : activeFileType === 'xlsx' ? (

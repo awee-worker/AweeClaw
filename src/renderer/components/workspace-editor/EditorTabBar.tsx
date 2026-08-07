@@ -9,6 +9,7 @@ import { useStore } from '@store'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { t } from '@renderer/i18n'
 import { isPreviewDocumentPath } from '@shared/protocols/previewProtocol'
+import { isPptPreviewPath } from '@shared/protocols/pptPreviewProtocol'
 import { BRAND } from '@shared/brand'
 
 export type ViewMode = 'edit' | 'preview' | 'split'
@@ -22,7 +23,7 @@ interface EditorTabsProps {
   lintWarningCount: number
   isLinting: boolean
   onRunLint: () => void
-  activeFileKind?: 'file' | 'diff' | 'preview'
+  activeFileKind?: 'file' | 'diff' | 'preview' | 'ppt-preview'
   /** 当前活跃文件类型（用于决定是否显示视图模式按钮） */
   activeFileType?: string
   /** 当前视图模式 */
@@ -97,6 +98,12 @@ export const EditorTabs = memo(function EditorTabs({
           fileName = file.preview?.title || 'Preview'
         }
 
+        // v2.3：PPT 预览 Tab 显示标题
+        const isPptPreview = file.kind === 'ppt-preview' || isPptPreviewPath(file.path)
+        if (isPptPreview) {
+          fileName = file.pptPreview?.meta?.title || 'PPT 预览'
+        }
+
         return (
           <div
             key={file.path}
@@ -143,7 +150,7 @@ export const EditorTabs = memo(function EditorTabs({
       })}
 
       {/* 右侧操作区：视图模式 + Lint 状态 */}
-      {activeFilePath && activeFileKind !== 'preview' && (
+      {activeFilePath && activeFileKind !== 'preview' && activeFileKind !== 'ppt-preview' && (
         <div className="ml-auto flex items-center flex-shrink-0 h-full">
           {/* 视图模式按钮组（仅 markdown / html 显示） */}
           {activeFileType && (activeFileType === 'markdown' || activeFileType === 'html') && viewMode && onViewModeChange && (

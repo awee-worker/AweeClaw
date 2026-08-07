@@ -170,6 +170,8 @@ export async function initializeModules(firstWin: BrowserWindow): Promise<void> 
   initProactiveIpc()
   // 初始化悬浮头像模块（语音唤醒 + 系统级悬浮头像 + 托盘，不阻塞启动）
   initFloatingAvatarModule(firstWin)
+  // 初始化 PPT 预览模块（窗口懒创建，仅预注册 IPC，不阻塞启动）
+  initPptPreviewModule()
 
   // ==========================================
   // 7. 应用菜单与语言同步
@@ -814,6 +816,34 @@ function initFloatingAvatarModule(_firstWin: BrowserWindow): void {
     logger.system.info('[Main] Floating avatar module initialized')
   } catch (err) {
     logger.system.warn('[Main] Floating avatar module init skipped:', errMsg(err))
+  }
+}
+
+/**
+ * 初始化 PPT 预览模块。
+ *
+ * v2.3：从独立窗口改为主窗口内嵌 Tab
+ * - 注入主窗口获取函数，让 PptPreviewManager 能向主窗口发 IPC
+ * - 主窗口渲染层接收 IPC 后打开 PptPreviewPanel Tab
+ * - 降级：主窗口不可用时回退到独立窗口
+ *
+ * 供 mcp-pptx 插件通过 Host 桥 (host.pptPreview) 推送幻灯片数据，
+ * 实现生成过程中的实时预览。
+ */
+function initPptPreviewModule(): void {
+  try {
+    import('../modules/ppt-preview/PptPreviewManager')
+      .then(({ PptPreviewManager }) => {
+        const instance = PptPreviewManager.getInstance()
+        // 注入主窗口获取函数（v2.3 内嵌 Tab 模式必需）
+        instance.setMainWindowGetter(getMainWindow)
+        logger.system.info('[Main] PPT preview module initialized (main-window tab mode)')
+      })
+      .catch((err) => {
+        logger.system.warn('[Main] PPT preview module init skipped:', errMsg(err))
+      })
+  } catch (err) {
+    logger.system.warn('[Main] PPT preview module init failed:', errMsg(err))
   }
 }
 

@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState, useEffect, useMemo, useRef } from 'react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
-import { useWindowTitle, useAppInit, useGlobalShortcuts, useMenuBridge, useFileWatcher, useAppShutdownState, usePreviewDiscoveryToasts, useChannelBridge, usePluginUpdateChecker, useFloatingAvatarSync } from '@hooks'
+import { useWindowTitle, useAppInit, useGlobalShortcuts, useMenuBridge, useFileWatcher, useAppShutdownState, usePreviewDiscoveryToasts, useChannelBridge, usePluginUpdateChecker, useFloatingAvatarSync, usePptPreviewIpc } from '@hooks'
 import AppTitleBar from './components/layout/AppTitleBar'
 import NavigationRail from './components/layout/NavigationRail'
 import SidebarSection from './components/layout/SidebarSection'
@@ -95,6 +95,17 @@ function AppContent() {
     }
   }, [activeSidePanel, activeFilePath])
 
+  // v2.3.1：打开文件/预览/PPT 预览时，自动缩小聊天窗口到最小宽度，给编辑器更多空间
+  useEffect(() => {
+    if (activeFilePath) {
+      const { setChatWidth, chatWidth } = useStore.getState()
+      // 仅当聊天窗口比最小宽度大时才缩小（避免用户手动调宽后又被打回）
+      if (chatWidth > 480) {
+        setChatWidth(460) // CHAT_MIN_WIDTH
+      }
+    }
+  }, [activeFilePath])
+
   useEffect(() => {
     window.__AWEECLAW_STORE__ = { getState: () => useStore.getState() }
   }, [])
@@ -128,6 +139,8 @@ function AppContent() {
   useChannelBridge()
   usePluginUpdateChecker()
   useFloatingAvatarSync()
+  // v2.3：监听 PPT 预览 IPC 事件，在主窗口打开内嵌 Tab
+  usePptPreviewIpc()
 
   const layoutConfig = useMemo<LayoutConfig>(() => {
     // 场景安装/重装后，scenarioConfigVersion 递增，强制重新计算布局配置

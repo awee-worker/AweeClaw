@@ -49,14 +49,16 @@ let cleanupStarted = false
 export async function performFastCleanup(): Promise<void> {
   logger.system.info('[Cleanup] Starting fast cleanup for auto-update...')
 
-  // 0.5 悬浮头像 + 系统托盘 + 会议纪要窗口（快速销毁，释放窗口资源）
+  // 0.5 悬浮头像 + 系统托盘 + 会议纪要窗口 + PPT 预览窗口（快速销毁，释放窗口资源）
   try {
     const { FloatingAvatarManager } = await import('../modules/floating-avatar/FloatingAvatarManager')
     const { TrayManager } = await import('../modules/floating-avatar/TrayManager')
     const { MeetingNotesManager } = await import('../modules/meeting-notes/MeetingNotesManager')
+    const { PptPreviewManager } = await import('../modules/ppt-preview/PptPreviewManager')
     FloatingAvatarManager.getInstance().destroy()
     TrayManager.getInstance().destroy()
     try { MeetingNotesManager.getInstance().destroy() } catch { /* 模块未初始化 */ }
+    try { PptPreviewManager.getInstance().destroy() } catch { /* 模块未初始化 */ }
   } catch {
     /* ignore */
   }
@@ -97,16 +99,18 @@ export async function performGlobalCleanup(): Promise<void> {
 
   logger.system.info('[Cleanup] Starting global cleanup...')
   try {
-    // 0.5 悬浮头像 + 系统托盘 + 会议纪要窗口（彻底退出时销毁，满足「完全退出头像才消失」需求）
+    // 0.5 悬浮头像 + 系统托盘 + 会议纪要窗口 + PPT 预览窗口（彻底退出时销毁，满足「完全退出头像才消失」需求）
     try {
       const { FloatingAvatarManager } = await import('../modules/floating-avatar/FloatingAvatarManager')
       const { TrayManager } = await import('../modules/floating-avatar/TrayManager')
       const { VoiceContextCache } = await import('../modules/floating-avatar/VoiceContextCache')
       const { MeetingNotesManager } = await import('../modules/meeting-notes/MeetingNotesManager')
+      const { PptPreviewManager } = await import('../modules/ppt-preview/PptPreviewManager')
       FloatingAvatarManager.getInstance().destroy()
       TrayManager.getInstance().destroy()
       VoiceContextCache.getInstance().clear()
       try { MeetingNotesManager.getInstance().destroy() } catch { /* 模块未初始化 */ }
+      try { PptPreviewManager.getInstance().destroy() } catch { /* 模块未初始化 */ }
     } catch {
       /* 模块未初始化时忽略 */
     }

@@ -8,7 +8,13 @@ import { StateCreator } from 'zustand'
 import type { FileItem } from '@protocols'
 import type { OpenPreviewMetadata } from '@shared/protocols/previewProtocol'
 import { buildPreviewDocumentPath } from '@shared/protocols/previewProtocol'
+import {
+  buildPptPreviewPath,
+  type PptPresentationMeta,
+  type PptSlideData,
+} from '@shared/protocols/pptPreviewProtocol'
 import { normalizePath } from '@shared/toolkit/pathHelper'
+import { logger } from '@shared/toolkit/LogEngine'
 
 /** 同时保留内容的最大文件数 */
 const MAX_OPEN_FILES_WITH_CONTENT = 30
@@ -57,7 +63,7 @@ export interface RemoteBinding {
 export interface OpenFile {
   path: string
   content: string
-  kind?: 'file' | 'diff' | 'preview'
+  kind?: 'file' | 'diff' | 'preview' | 'ppt-preview'
   isDirty: boolean
   originalContent?: string
   savedVersionId?: number
@@ -68,6 +74,11 @@ export interface OpenFile {
   lastAccessed?: number
   preview?: OpenPreviewMetadata
   scrollPosition?: unknown
+  /** v2.3：PPT 预览 Tab 专用数据（kind='ppt-preview' 时使用） */
+  pptPreview?: {
+    meta: PptPresentationMeta
+    slides: Map<number, PptSlideData>
+  }
 }
 
 /** 打开文件时的可选参数 */
@@ -108,6 +119,9 @@ export interface FileSlice {
   setShowWorkspaceSystemDir: (show: boolean) => void
   openFile: (path: string, content: string, originalContent?: string, options?: OpenFileOptions) => void
   openPreview: (preview: OpenPreviewMetadata, options?: { activate?: boolean }) => void
+  openPptPreview: (meta: PptPresentationMeta, options?: { activate?: boolean }) => void
+  pushPptPreviewSlide: (sessionId: string, slide: PptSlideData) => void
+  markPptPreviewComplete: (sessionId: string, filePath: string) => void
   restoreOpenFiles: (files: RestoreFileEntry[], activeFilePath?: string | null) => void
   closeFile: (path: string) => void
   setActiveFile: (path: string | null) => void
@@ -267,6 +281,86 @@ export const createFileSlice: StateCreator<FileSlice, [], [], FileSlice> = (set)
         openFiles: resultFiles,
         activeFilePath: options?.activate === false ? state.activeFilePath : path,
       }
+    }),
+
+  // v2.3：打开 PPT 预览 Tab（主窗口内嵌模式）
+  openPptPreview: (meta, options) =>
+    set((state) => {
+      const path = buildPptPreviewPath(meta.sessionId)
+      const existing = state.openFiles.find(
+        (f) => f.path === path && f.kind === 'ppt-preview',
+      )
+      const resultFiles = upsertOpenFile(state.openFiles, {
+        path,
+        kind: 'ppt-preview',
+        content: '',
+        isDirty: false,
+        lastAccessed: Date.now(),
+        pptPreview: {
+          meta,
+          slides: existing?.pptPreview?.slides || new Map(),
+        },
+      })
+
+      return {
+        openFiles: applyLruEviction(resultFiles, path),
+        activeFilePath: options?.activate === false ? state.activeFilePath : path,
+      }
+    }),
+
+  // v2.3：推送幻灯片数据到 PPT 预览 Tab
+  pushPptPreviewSlide: (sessionId, slide) =>
+    set((state) => {
+      const path = buildPptPreviewPath(sessionId)
+      let found = false
+      const openFiles = state.openFiles.map((f) => {
+        if (f.path === path && f.kind === 'ppt-preview' && f.pptPreview) {
+          found = true
+          // 创建新的 Map 触发 React 更新
+          const newSlides = new Map(f.pptPreview.slides)
+          newSlides.set(slide.slideIndex, slide)
+          return {
+            ...f,
+            pptPreview: {
+              meta: {
+                ...f.pptPreview.meta,
+                slideCount: newSlides.size,
+              },
+              slides: newSlides,
+            },
+            lastAccessed: Date.now(),
+          }
+        }
+        return f
+      })
+      if (!found) {
+        logger.system.warn('[FileSlice] PPT preview Tab not found for pushSlide', { sessionId })
+      }
+      return { openFiles }
+    }),
+
+  // v2.3：标记 PPT 预览完成
+  markPptPreviewComplete: (sessionId, filePath) =>
+    set((state) => {
+      const path = buildPptPreviewPath(sessionId)
+      const openFiles = state.openFiles.map((f) => {
+        if (f.path === path && f.kind === 'ppt-preview' && f.pptPreview) {
+          return {
+            ...f,
+            pptPreview: {
+              meta: {
+                ...f.pptPreview.meta,
+                completed: true,
+                filePath,
+              },
+              slides: f.pptPreview.slides,
+            },
+            lastAccessed: Date.now(),
+          }
+        }
+        return f
+      })
+      return { openFiles }
     }),
 
   restoreOpenFiles: (files, activeFilePath) =>

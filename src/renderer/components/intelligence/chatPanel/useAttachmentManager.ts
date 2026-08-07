@@ -8,6 +8,7 @@ import { logger } from '@toolkit/LogEngine'
 import { BRAND } from '@shared/brand'
 import { compressImage } from '@intelligence/utils/imageCompressor'
 import { needsVisualAnalysis } from '@intelligence/utils/imageIntentDetector'
+import { convertUriToPath } from '@shared/toolkit/pathHelper'
 import type { PendingAttachment } from '../../conversation'
 import type { ContextItem } from '@intelligence/providerTypes'
 
@@ -250,32 +251,42 @@ export function useAttachmentManager({ workspacePath, addContextItem }: UseAttac
         return
       }
 
-      const items = e.dataTransfer.items
-      if (!items || items.length === 0) return
+      // 使用同步 getData() 读取拖拽数据，避免异步 getAsString() 在 await 后
+      // 因 Chromium 清理 DataTransferItemList 导致自定义 MIME type 读取失败
+      //
+      // 优先级：
+      // 1. 自定义 MIME type（应用内部文件树拖拽，携带原始绝对路径）
+      // 2. text/uri-list（外部应用拖拽，如 Finder/Explorer/VS Code）
 
-      let filePath: string | null = null
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i]
-        if (item.kind === 'string') {
-          if (item.type === BRAND.dragDrop.fileMimeType) {
-            filePath = await new Promise<string>(resolve => {
-              item.getAsString(s => resolve(s))
-            })
-            break
-          } else if (item.type === 'text/uri-list' && !filePath) {
-            const uriList = await new Promise<string>(resolve => {
-              item.getAsString(s => resolve(s))
-            })
-            const match = uriList.match(/file:\/\/\/(.+)/)
-            if (match) {
-              filePath = decodeURIComponent(match[1])
-            }
-          }
-        }
+      // 1. 自定义 MIME type — 绝对路径，直接使用
+      const customPath = e.dataTransfer.getData(BRAND.dragDrop.fileMimeType)
+      if (customPath) {
+        await addImageFromPath(customPath)
+        return
       }
 
-      if (filePath) {
-        await addImageFromPath(filePath)
+      // 2. text/uri-list — 需将 file:// URI 转换为本地路径
+      //    注意：原 regex file:\/\/\/(.+) 会丢失 Unix 路径的前导斜杠，
+      //    导致 path.resolve() 误判为相对路径，工作区边界校验失败。
+      //    改用 convertUriToPath() 正确处理 file:/// → /path
+      const uriList = e.dataTransfer.getData('text/uri-list')
+      if (uriList) {
+        // text/uri-list 可能多行，取第一行有效 URI（跳过 # 注释行）
+        const uri = uriList
+          .split(/\r?\n/)
+          .map(l => l.trim())
+          .find(l => l && !l.startsWith('#'))
+        if (uri) {
+          let filePath = convertUriToPath(uri)
+          try {
+            filePath = decodeURIComponent(filePath)
+          } catch {
+            // 路径中可能含有非百分号编码的 % 字符，解码失败时保留原始路径
+          }
+          if (filePath) {
+            await addImageFromPath(filePath)
+          }
+        }
       }
     },
     [addImage, addImageFromPath],
