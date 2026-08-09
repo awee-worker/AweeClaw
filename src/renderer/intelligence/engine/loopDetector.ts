@@ -15,6 +15,8 @@ import { estimateMessagesTokens } from '../capabilities/context/ContextCompresso
 import { lintService } from '../runtime/codeAnalysisService'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { resolveRelativeChangePath, isFileWriteToolResult } from '@intelligence/utils/fileMutationHelper'
+import { isCodeFile } from '@intelligence/toolkit/fileReadPolicies'
+import { composerService } from '@intelligence/runtime/composerEngine'
 import { agentHarness } from '../harness'
 import type { Span } from '../harness/observability/Trace'
 import type { TokenBudgetController } from '../capabilities/budget/TokenQuotaManager'
@@ -214,7 +216,7 @@ async function invokeModelCall(
   threadStore: import('../state/IntelligenceStore').ThreadBoundStore,
   requestId: string,
   tools: import('@protocols/modelGateway').ToolDefinition[],
-  options?: { allowToolCalls?: boolean }
+  options?: { allowToolCalls?: boolean; abortSignal?: AbortSignal }
 ): Promise<LLMCallResult> {
   performanceMonitor.start(`llm:${config.model}`, 'llm', { provider: config.provider, messageCount: messages.length })
 
@@ -338,7 +340,10 @@ async function invokeModelCallWithRetry(
         }
 
         try {
-          const result = await invokeModelCall(config, messages, assistantId, threadStore, reqId, tools, options)
+          const result = await invokeModelCall(config, messages, assistantId, threadStore, reqId, tools, {
+            ...options,
+            abortSignal,
+          })
           if (result.error) {
             const errorMsg = result.error.toLowerCase()
             const isToolParseError = errorMsg.includes('tool call parse')
@@ -1111,6 +1116,31 @@ export async function executeAgentCycle(
         }
 
         const relativePath = resolveRelativeChangePath(meta.filePath, context.workspacePath ?? null, meta.relativePath)
+
+        // 只有代码文件才需要用户接受/拒绝，非代码文件（文档、配置等）自动接受
+        if (!isCodeFile(meta.filePath)) {
+          // 非代码文件：记录到 fileChangeHistory（标记为已接受），不进入待确认列表
+          store.addPendingChange({
+            filePath: meta.filePath,
+            relativePath,
+            toolCallId: toolCall.id,
+            toolName: toolCall.name,
+            changeType: meta.oldContent ? 'modify' : 'create',
+            snapshot: {
+              path: meta.filePath,
+              content: (meta.oldContent as string) || null,
+              timestamp: Date.now(),
+            },
+            newContent: typeof meta.newContent === 'string' ? meta.newContent : null,
+            linesAdded: (meta.linesAdded as number) || 0,
+            linesRemoved: (meta.linesRemoved as number) || 0,
+          })
+          // 立即自动接受（从 pendingChanges 移除，保留在 fileChangeHistory 中标记为 accepted）
+          store.acceptChange(meta.filePath)
+          // 同步清除编辑器的 diff 状态（若有该文件的 diff 视图打开）
+          void composerService.acceptChange(meta.filePath)
+          continue
+        }
 
         store.addPendingChange({
           filePath: meta.filePath,

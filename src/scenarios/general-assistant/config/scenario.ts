@@ -113,6 +113,9 @@ const GENERAL_ASSISTANT_UI: ScenarioUI = {
   sidebarItems: [
     { id: 'explorer', icon: 'Files', label: 'Workspace', labelZh: '工作区', component: 'ExplorerView', position: 0 },
     { id: 'knowledge', icon: 'BookOpen', label: 'Knowledge', labelZh: '知识库', component: 'KnowledgeView', position: 1, wideMode: true },
+    { id: 'projects', icon: 'FolderKanban', label: 'Projects', labelZh: '项目', component: 'ProjectsView', position: 2, wideMode: true },
+    { id: 'tasks', icon: 'CheckSquare', label: 'Tasks', labelZh: '任务', component: 'TaskWorkspace', position: 3, wideMode: true },
+    { id: 'automation', icon: 'Zap', label: 'Automation', labelZh: '自动化', component: 'AutomationView', position: 4, wideMode: true },
   ],
   statusBarItems: [],
   welcomeComponent: 'GeneralWelcomePage',

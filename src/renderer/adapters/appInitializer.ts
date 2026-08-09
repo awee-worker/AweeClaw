@@ -411,10 +411,14 @@ export async function initializeApp(
 }
 
 export function registerSettingsSync(): () => void {
-  const store = useStore.getState()
-
+  // ⚠️ 不在注册时捕获 store 快照，而是在回调中实时读取 useStore.getState()
+  // 原因：注册时捕获的 store.llmConfig 是陈旧值，当主窗口广播模型变更时，
+  //   比较 current.model !== next.model 会使用旧值导致判断错误，更新被跳过。
+  //   这在执行窗口等多窗口场景下是模型选择不同步的核心原因。
   return api.settings.onChanged(({ key, value }: { key: string; value: unknown }) => {
     logger.system.debug(`[Init] Setting changed: ${key}`)
+    // 每次回调实时获取最新 store（Zustand 的 getState() 返回当前快照）
+    const store = useStore.getState()
 
     switch (key) {
       case 'llmConfig':
@@ -422,6 +426,38 @@ export function registerSettingsSync(): () => void {
           store.update('llmConfig', value)
         }
         break
+      // settingsService.save() 通过 api.settings.set('app-settings', payload) 持久化
+      // 此时整个 SettingsState 被写入，需要从中提取 llmConfig 同步到 store
+      // 这对执行窗口等多窗口场景至关重要：主窗口修改模型后，执行窗口需实时同步
+      case 'app-settings': {
+        const payload = value as { llmConfig?: unknown; language?: string } | null
+        if (payload?.llmConfig && isLLMConfig(payload.llmConfig)) {
+          // 使用实时读取的 store.llmConfig 进行比较（而非注册时的快照）
+          const current = store.llmConfig
+          const next = payload.llmConfig as typeof current
+          if (current.provider !== next.provider || current.model !== next.model) {
+            logger.system.info(
+              '[Init] llmConfig changed via app-settings, syncing to store',
+              `${current.provider}/${current.model} → ${next.provider}/${next.model}`,
+            )
+            // 合并更新：保留运行时云端字段（cloudMode/serverUrl/accessToken）
+            //   payload 中的 llmConfig 来自 serializePersistedLLMConfig，可能缺少这些字段
+            store.update('llmConfig', {
+              ...current,
+              ...next,
+              // 保留运行时云端字段（payload 中可能不存在）
+              cloudMode: next.cloudMode ?? current.cloudMode,
+              serverUrl: next.serverUrl ?? current.serverUrl,
+              accessToken: next.accessToken ?? current.accessToken,
+              refreshToken: next.refreshToken ?? current.refreshToken,
+            })
+          }
+        }
+        if (payload?.language === 'en' || payload?.language === 'zh') {
+          store.set('language', payload.language)
+        }
+        break
+      }
       case 'language':
         if (value === 'en' || value === 'zh') {
           store.set('language', value)

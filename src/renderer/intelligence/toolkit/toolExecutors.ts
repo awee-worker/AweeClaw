@@ -297,7 +297,13 @@ function formatDirTree(nodes: DirTreeNode[], prefix = ''): string {
 
 function resolvePath(p: unknown, workspacePath: string | null, allowRead = false): string {
     if (typeof p !== 'string') throw new Error('Invalid path: not a string')
-    const validation = validatePath(p, workspacePath, { allowSensitive: false, allowOutsideWorkspace: false })
+    // 从 store 读取额外允许的目录（如项目执行窗口的项目目录，可能不在工作区内）
+    const extraAllowedRoots = useStore.getState().allowedToolPaths ?? []
+    const validation = validatePath(p, workspacePath, {
+        allowSensitive: false,
+        allowOutsideWorkspace: false,
+        extraAllowedRoots,
+    })
     if (!validation.valid) throw new Error(`Security: ${validation.error}`)
     if (!allowRead && isSensitivePath(validation.sanitizedPath!)) {
         throw new Error('Security: Cannot modify sensitive files')

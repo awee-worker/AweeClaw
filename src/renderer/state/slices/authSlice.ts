@@ -417,21 +417,49 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
   selectCloudModel: async () => {
     try {
       const models = await backendApi.get<Array<{ provider: string; models: string[] }>>('/api/v1/llm/models');
-      if (models.length > 0 && models[0].models.length > 0) {
-        const firstProvider = models[0].provider.toLowerCase();
-        const firstModel = models[0].models[0];
-        const { useStore } = await import('@store');
-        useStore.setState((state) => ({
-          llmConfig: {
-            ...state.llmConfig,
-            provider: firstProvider,
-            model: firstModel,
-            cloudMode: true as any,
-            serverUrl: get().serverUrl,
-            accessToken: getTokens()?.accessToken,
-          },
-        }));
+      if (models.length === 0) return;
+
+      const { useStore } = await import('@store');
+      const currentConfig = useStore.getState().llmConfig;
+
+      // 检查用户已保存的模型是否仍在云端可用列表中
+      // 如果是，保留用户的选择（避免重启后恢复到第一个模型）
+      if (currentConfig.model) {
+        const currentProviderLower = currentConfig.provider?.toLowerCase();
+        const currentModelLower = currentConfig.model.toLowerCase();
+        const matchingProvider = models.find(
+          (m) => m.provider.toLowerCase() === currentProviderLower,
+        );
+        // 模型名大小写不敏感比较（后端可能返回 'GPT-4' 而本地存的是 'gpt-4'）
+        if (matchingProvider && matchingProvider.models.some(m => m.toLowerCase() === currentModelLower)) {
+          // 用户保存的模型仍然有效，只需补充云端字段
+          useStore.setState((state) => ({
+            llmConfig: {
+              ...state.llmConfig,
+              cloudMode: true as any,
+              serverUrl: get().serverUrl,
+              accessToken: getTokens()?.accessToken,
+            },
+          }));
+          return;
+        }
       }
+
+      // 用户未选择模型或保存的模型已不可用 → 选择第一个可用模型作为兜底
+      const firstEntry = models.find((m) => m.models.length > 0);
+      if (!firstEntry) return;
+      const firstProvider = firstEntry.provider.toLowerCase();
+      const firstModel = firstEntry.models[0];
+      useStore.setState((state) => ({
+        llmConfig: {
+          ...state.llmConfig,
+          provider: firstProvider,
+          model: firstModel,
+          cloudMode: true as any,
+          serverUrl: get().serverUrl,
+          accessToken: getTokens()?.accessToken,
+        },
+      }));
     } catch (e) {
       logger.system?.error('[Auth] DropdownSelector cloud model failed:', e);
     }

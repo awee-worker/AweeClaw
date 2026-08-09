@@ -154,16 +154,12 @@ export default function PptPreviewPanel({ sessionId }: PptPreviewPanelProps) {
           ))}
         </div>
 
-        {/* 右侧大图画布：w-full 撑满 flex-1，AutoFitSlideCanvas 内部自测宽度 */}
-        <div className="flex-1 min-w-0 flex items-center justify-center overflow-hidden bg-black/20 p-2">
+        {/* 右侧大图画布：flex-1 提供确定高度，AutoFitSlideCanvas 内部 contain 模式自测宽高 */}
+        <div className="flex-1 min-w-0 overflow-hidden bg-black/20 p-2">
           {currentSlide ? (
-            <div className="w-full h-full flex items-center justify-center">
-              <div className="w-full" style={{ maxWidth: '100%', maxHeight: '100%' }}>
-                <AutoFitSlideCanvas slide={currentSlide} slideSize={slideSize} />
-              </div>
-            </div>
+            <AutoFitSlideCanvas slide={currentSlide} slideSize={slideSize} />
           ) : (
-            <div className="text-text-muted/40 text-[13px]">
+            <div className="h-full flex items-center justify-center text-text-muted/40 text-[13px]">
               选择左侧幻灯片查看预览
             </div>
           )}

@@ -50,6 +50,7 @@ import { useAvatarMiniChat, type ChatAttachment } from '../../composables/useAva
 import { AvatarStatic } from './AvatarStatic'
 import { MiniChatPanel } from './MiniChatPanel'
 import { ImmersiveVoiceView } from '../voice/ImmersiveVoiceView'
+import { AvatarExecutionStatus } from './AvatarExecutionStatus'
 
 // ============================================
 // 常量
@@ -484,12 +485,13 @@ export function AvatarApp({ onReady }: AvatarAppProps) {
         position: 'relative',
         display: 'flex',
         flexDirection: 'column',
-        // chat 模式下留 padding 给面板阴影渲染空间，并放开 overflow；
-        // 其他模式（idle/voice）保持原样（圆形头像无阴影需求）
+        // chat 模式：留 padding + overflow visible + 圆角面板
+        // idle 模式：overflow visible（让 Pill 不被裁剪），球体自身的圆角由球体包裹 div 控制
+        // voice 模式：overflow hidden
         padding: mode === 'chat' ? '6px' : 0,
-        overflow: mode === 'chat' ? 'visible' : 'hidden',
+        overflow: mode === 'voice' ? 'hidden' : 'visible',
         background: 'transparent',
-        borderRadius: isExpanded ? '16px' : '50%',
+        borderRadius: isExpanded ? '16px' : '0',
         transition: 'border-radius 0.3s ease',
       }}
       onMouseEnter={() => setIsHovered(true)}
@@ -508,13 +510,40 @@ export function AvatarApp({ onReady }: AvatarAppProps) {
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
         >
-          <AvatarStatic
-            wakeWordActive={wakeWordEngine.running && !wakeWordEngine.cooling}
-            cooling={wakeWordEngine.cooling}
-            transcribing={wakeWordEngine.transcribing}
-            isHovered={isHovered}
-            language={language}
+          {/* 执行状态指示器（球体上方，有项目任务执行时显示） */}
+          <AvatarExecutionStatus
+            status={bridge.executionStatus}
+            edge={bridge.statusEdge}
+            onClick={() => {
+              // 点击恢复执行窗口（从悬浮球展开）
+              api.projectExecution.restore()
+            }}
           />
+          {/* 球体固定在窗口底部（41×41），根据状态栏边缘方向定位 */}
+          {/* - edge=null（未扩展）：球体居中（窗口=球体宽度 41px） */}
+          {/* - edge='right'（靠右）：球体在窗口右下角（right: 0），tooltip 向左延伸 */}
+          {/* - edge='left'（靠左）：球体在窗口左下角（left: 0），tooltip 向右延伸 */}
+          <div style={{
+            width: '41px',
+            height: '41px',
+            position: 'absolute',
+            bottom: 0,
+            ...(bridge.statusEdge === 'right'
+              ? { right: 0 }
+              : bridge.statusEdge === 'left'
+                ? { left: 0 }
+                : { left: '50%', transform: 'translateX(-50%)' }),
+            borderRadius: '50%',
+            overflow: 'hidden',
+          }}>
+            <AvatarStatic
+              wakeWordActive={wakeWordEngine.running && !wakeWordEngine.cooling}
+              cooling={wakeWordEngine.cooling}
+              transcribing={wakeWordEngine.transcribing}
+              isHovered={isHovered}
+              language={language}
+            />
+          </div>
         </div>
       )}
 

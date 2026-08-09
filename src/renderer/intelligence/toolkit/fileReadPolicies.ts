@@ -88,6 +88,17 @@ export function classifyReadContent(path: string): ReadContentKind {
 }
 
 /**
+ * 判断文件是否为代码文件
+ *
+ * 用于文件变更确认逻辑：只有代码文件才需要用户接受/拒绝，
+ * 非代码文件（文档、配置、数据等）自动接受，不进入待确认列表。
+ */
+export function isCodeFile(filePath: string): boolean {
+  const ext = getExtension(filePath)
+  return CODE_EXTENSIONS.has(ext)
+}
+
+/**
  * 统一生成 read_file 的读取策略。
  *
  * 特别说明：

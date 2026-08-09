@@ -172,6 +172,22 @@ export default function ChatPanel() {
   }, [isStreaming, pendingChanges.length])
 
   const { sendMessage, abort, approveCurrentTool, rejectCurrentTool, approveAllTools, rejectAllTools } = useAgentCommands()
+
+  // abort 显式传入 currentThreadId，确保执行窗口等多窗口场景下中止正确的线程
+  // ⚠️ 优先使用闭包中的 currentThreadId（来自 useAgentViewState，响应式更新），
+  //   若闭包值过期（如组件未及时重渲染），回退到 store 中的实时值。
+  //   Agent.abort 内部还有全量中止兜底，即使 threadId 不匹配也能停止 AI。
+  const handleAbort = useCallback(() => {
+    // 实时读取 store 中的 currentThreadId，防止闭包值过期
+    const freshThreadId = useAgentStore.getState().currentThreadId
+    const effectiveThreadId = freshThreadId || currentThreadId
+    logger.system.info(
+      '[ChatPanel] handleAbort called, closureThreadId:', currentThreadId,
+      'freshThreadId:', freshThreadId,
+      'effectiveThreadId:', effectiveThreadId,
+    )
+    abort(effectiveThreadId ?? undefined)
+  }, [abort, currentThreadId])
   const {
     clearMessages,
     deleteMessagesAfter,
@@ -436,8 +452,14 @@ export default function ChatPanel() {
   )
 
   // ===== 定时任务监听 =====
+  // 监听 Cron 任务触发，将 command 作为用户消息发送给 AI。
+  // 跳过内部标记 command（以 '__' 开头包裹的指令，如 __proactive_learner_calibrate__）：
+  // 这类 command 由对应模块在主进程内部自行处理（如 ProactiveLearner 的自适应校准），
+  // 不应转发给 AI，否则 AI 会收到无意义的内部标记文本。
   useEffect(() => {
     const unsub = api.cron.onTaskExecute(async (event: { taskId: string; taskName: string; command: string }) => {
+      // 内部标记 command 跳过（约定：'__' 前缀为模块内部指令，不发送给 Agent）
+      if (event.command.startsWith('__')) return
       try {
         await sendMessage(event.command)
       } catch (err) {
@@ -747,15 +769,15 @@ export default function ChatPanel() {
                       input={input}
                       setInput={setInput}
                       images={attachmentManager.images}
-                      setImages={attachmentManager.setImages}
-                      isStreaming={isStreaming}
-                      hasApiKey={hasApiKey}
-                      needsCloudLogin={needsCloudLogin}
-                      hasPendingToolCall={!!pendingToolCall}
-                      chatMode={chatMode}
-                      setChatMode={setChatMode}
-                      onSubmit={() => messageOps.handleSubmit(input, isStreaming)}
-                      onAbort={abort}
+            setImages={attachmentManager.setImages}
+            hasApiKey={hasApiKey}
+            needsCloudLogin={needsCloudLogin}
+            hasPendingToolCall={!!pendingToolCall}
+            chatMode={chatMode}
+            setChatMode={setChatMode}
+            isStreaming={isStreaming}
+            onSubmit={() => messageOps.handleSubmit(input, isStreaming)}
+            onAbort={handleAbort}
                       onInputChange={handleInputChange}
                       onKeyDown={handleKeyDown}
                       onPaste={attachmentManager.handlePaste}
@@ -883,14 +905,14 @@ export default function ChatPanel() {
                   setInput={setInput}
                   images={attachmentManager.images}
                   setImages={attachmentManager.setImages}
-                  isStreaming={isStreaming}
                   hasApiKey={hasApiKey}
                   needsCloudLogin={needsCloudLogin}
                   hasPendingToolCall={!!pendingToolCall}
                   chatMode={chatMode}
                   setChatMode={setChatMode}
+                  isStreaming={isStreaming}
                   onSubmit={() => messageOps.handleSubmit(input, isStreaming)}
-                  onAbort={abort}
+                  onAbort={handleAbort}
                   onInputChange={handleInputChange}
                   onKeyDown={handleKeyDown}
                   onPaste={attachmentManager.handlePaste}

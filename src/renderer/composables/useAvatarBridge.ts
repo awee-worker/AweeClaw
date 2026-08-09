@@ -32,6 +32,7 @@ import type {
   WakeWordConfig,
   VoiceStateChangedPayload,
   SaveConversationPayload,
+  ExecutionStatusSummary,
 } from '../types/electronBridge'
 
 // ============================================
@@ -49,6 +50,10 @@ export interface AvatarBridgeState {
   mainConversationActive: boolean
   /** 是否已初始化完成 */
   ready: boolean
+  /** 项目执行状态摘要（主窗口 push，null 表示无执行中任务） */
+  executionStatus: ExecutionStatusSummary | null
+  /** 状态栏边缘方向（主进程 push，null 表示未扩展；球体据此在窗口内靠左/靠右定位） */
+  statusEdge: 'left' | 'right' | null
 }
 
 export interface AvatarBridgeActions {
@@ -94,6 +99,8 @@ export function useAvatarBridge(): AvatarBridge {
   const [dragChannels, setDragChannels] = useState<{ start: string; end: string } | null>(null)
   const [mainConversationActive, setMainConversationActive] = useState(false)
   const [ready, setReady] = useState(false)
+  const [executionStatus, setExecutionStatus] = useState<ExecutionStatusSummary | null>(null)
+  const [statusEdge, setStatusEdge] = useState<'left' | 'right' | null>(null)
 
   // 用 ref 保存最新的 voiceContext，供回调内读取（避免闭包旧值）
   const voiceContextRef = useRef<VoiceContextPayload | null>(null)
@@ -248,6 +255,30 @@ export function useAvatarBridge(): AvatarBridge {
   }, [])
 
   // --------------------------------------------
+  // 订阅：项目执行状态更新（主窗口→main→头像窗口）
+  // --------------------------------------------
+  // 主窗口有项目任务执行时推送执行状态摘要，头像窗口在悬浮球上方显示指示器
+  useEffect(() => {
+    const unsubscribe = api.floatingAvatar.onExecutionStatus((status) => {
+      setExecutionStatus(status)
+    })
+    return unsubscribe
+  }, [])
+
+  // --------------------------------------------
+  // 订阅：状态栏边缘方向（main→头像窗口）
+  // --------------------------------------------
+  // 主进程在扩展/收起状态栏时推送边缘方向：
+  // - 'left' | 'right'：窗口已扩展，球体需在窗口对应侧定位
+  // - null：窗口已收起，球体回到居中
+  useEffect(() => {
+    const unsubscribe = api.floatingAvatar.onStatusEdge((edge) => {
+      setStatusEdge(edge)
+    })
+    return unsubscribe
+  }, [])
+
+  // --------------------------------------------
   // 转发方法
   // --------------------------------------------
 
@@ -313,6 +344,8 @@ export function useAvatarBridge(): AvatarBridge {
     dragChannels,
     mainConversationActive,
     ready,
+    executionStatus,
+    statusEdge,
     notifyWakeWordDetected,
     notifyVoiceStateChanged,
     notifySaveConversation,

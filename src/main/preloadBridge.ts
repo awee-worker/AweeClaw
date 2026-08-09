@@ -63,6 +63,7 @@ import { createScreenshotOverlayApi } from './preload/api/screenshotOverlay'
 import { createScreenshotApi } from './preload/api/screenshot'
 import { createMeetingNotesApi } from './preload/api/meetingNotes'
 import { createPptPreviewApi } from './preload/api/pptPreview'
+import { createProjectExecutionApi } from './preload/api/projectExecution'
 
 /**
  * 聚合所有领域 API 并暴露到渲染进程。
@@ -98,4 +99,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   screenshot: createScreenshotApi(),
   meetingNotes: createMeetingNotesApi(),
   pptPreview: createPptPreviewApi(),
+  projectExecution: createProjectExecutionApi(),
 })

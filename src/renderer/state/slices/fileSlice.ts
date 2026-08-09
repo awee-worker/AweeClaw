@@ -108,6 +108,11 @@ export interface FileSlice {
   activeFilePath: string | null
   selectedFolderPath: string | null
   showWorkspaceSystemDir: boolean
+  /**
+   * 工具执行时额外允许访问的目录路径列表（除 workspacePath 外）
+   * 用于项目执行窗口：当项目目录不在工作区内时，允许 AI 读写项目目录
+   */
+  allowedToolPaths: string[]
 
   setWorkspace: (workspace: WorkspaceConfig | null) => void
   addRoot: (path: string) => void
@@ -133,6 +138,8 @@ export interface FileSlice {
   markFileRestored: (path: string) => void
   updatePreviewMetadata: (path: string, preview: Partial<OpenPreviewMetadata>) => void
   setFileScrollPosition: (path: string, scrollPosition: { scrollTop: number; scrollLeft: number }) => void
+  /** 设置工具执行时额外允许访问的目录路径列表 */
+  setAllowedToolPaths: (paths: string[]) => void
 }
 
 /* ------------------------------------------------------------------ */
@@ -190,6 +197,7 @@ export const createFileSlice: StateCreator<FileSlice, [], [], FileSlice> = (set)
   activeFilePath: null,
   selectedFolderPath: null,
   showWorkspaceSystemDir: false,
+  allowedToolPaths: [],
 
   setWorkspace: (workspace) =>
     set((state) => {
@@ -458,6 +466,8 @@ export const createFileSlice: StateCreator<FileSlice, [], [], FileSlice> = (set)
 
   setFileScrollPosition: (path, scrollPosition) =>
     set((state) => ({ openFiles: patchFile(state.openFiles, path, { scrollPosition }) })),
+
+  setAllowedToolPaths: (paths) => set({ allowedToolPaths: paths }),
 })
 
 /* ------------------------------------------------------------------ */

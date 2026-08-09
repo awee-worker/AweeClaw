@@ -185,7 +185,7 @@ export function useAgentCommands() {
     })
   }, [])
 
-  const abort = useCallback(() => Agent.abort(), [])
+  const abort = useCallback((threadId?: string) => Agent.abort(threadId), [])
 
   const pendingApprovalRequestId = useMemo(() => {
     return streamState.phase === 'tool_pending' ? streamState.requestId : undefined
@@ -223,6 +223,7 @@ export function useAgentActions() {
       createThread: actions.createThread,
       renameThread: actions.renameThread,
       switchThread: actions.switchThread,
+      ensureThreadLoaded: actions.ensureThreadLoaded,
       deleteThread: actions.deleteThread,
       deleteMessagesAfter: actions.deleteMessagesAfter,
       deleteMessagesByIds: actions.deleteMessagesByIds,
@@ -340,4 +341,118 @@ export function useAgent() {
     ...actions,
     ...historyActions,
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* 定向线程消息发送（不切换 currentThreadId）                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * useThreadMessenger — 向指定线程发送消息，不切换主聊天线程
+ *
+ * 与 useAgentCommands.sendMessage 的区别：
+ * - sendMessage 绑定 currentThreadId（主聊天线程）
+ * - sendToThread 通过 Agent.send 的 executionOptions.threadId 定向发送
+ *   流式状态通过 forThread(threadId) 绑定目标线程，不污染主聊天
+ *
+ * 用途：项目任务执行、嵌入式对话等不希望切换主聊天界面的场景。
+ */
+export function useThreadMessenger() {
+  const llmConfig = useStore((state) => state.llmConfig)
+  const workspacePath = useStore((state) => state.workspacePath)
+  const promptTemplateId = useStore((state) => state.promptTemplateId)
+  const openFiles = useStore((state) => state.openFiles)
+  const activeFilePath = useStore((state) => state.activeFilePath)
+  const chatMode = useModeStore((state) => state.currentMode)
+
+  const [aiInstructions, setAiInstructions] = useState('')
+
+  useEffect(() => {
+    void api.settings.get('app-settings').then((settings: unknown) => {
+      const typed = settings as { aiInstructions?: string } | undefined
+      if (typed?.aiInstructions) setAiInstructions(typed.aiInstructions)
+    })
+  }, [])
+
+  const planPhase = useAgentStore<'planning' | 'executing'>((state) => {
+    const activePlan = state.plans.find((plan) => plan.id === state.activePlanId)
+    const status = activePlan?.status
+    const executingStatuses: PlanStatus[] = ['executing', 'pausing', 'stopping']
+    return status && executingStatuses.includes(status) ? 'executing' : 'planning'
+  })
+
+  const sendParamsRef = useRef({
+    llmConfig,
+    workspacePath,
+    chatMode,
+    promptTemplateId,
+    aiInstructions,
+    openFiles,
+    activeFilePath,
+    planPhase,
+  })
+  sendParamsRef.current = {
+    llmConfig,
+    workspacePath,
+    chatMode,
+    promptTemplateId,
+    aiInstructions,
+    openFiles,
+    activeFilePath,
+    planPhase,
+  }
+
+  /**
+   * 向指定线程发送消息（不切换 currentThreadId）
+   *
+   * @param content 消息内容
+   * @param threadId 目标线程 ID
+   * @param options 发送选项
+   *   - silent: 静默注入模式（不显示为用户消息气泡，但仍发送给 LLM）
+   * @throws 若线程正在运行中（Agent.send 内部 runningTasks 拦截）
+   */
+  const sendToThread = useCallback(
+    async (content: MessageContent, threadId: string, options?: { silent?: boolean }): Promise<void> => {
+      const params = sendParamsRef.current
+      const agentConfig = getAgentConfig()
+      const effectiveConfig = await getEffectiveLLMConfigAsync(params.llmConfig)
+      const overrides = buildModeOverrides(params.chatMode, effectiveConfig)
+
+      const enhancedConfig: LLMConfig = {
+        ...effectiveConfig,
+        ...overrides,
+        contextLimit: agentConfig.maxContextTokens,
+      }
+
+      await Agent.send(
+        content,
+        enhancedConfig,
+        params.workspacePath,
+        params.chatMode,
+        {
+          openFiles: params.openFiles.map((file) => file.path),
+          activeFile: params.activeFilePath || undefined,
+          customInstructions: params.aiInstructions,
+          promptTemplateId: params.promptTemplateId,
+          planPhase: params.chatMode === 'plan' ? params.planPhase : undefined,
+        },
+        { threadId, silent: options?.silent },
+      )
+    },
+    [],
+  )
+
+  /** 中止指定线程的执行（不影响主聊天线程） */
+  const abortThread = useCallback((threadId: string): void => {
+    Agent.abort(threadId)
+  }, [])
+
+  /** 查询指定线程是否正在流式输出 */
+  const isThreadStreaming = useCallback((threadId: string): boolean => {
+    const state = useAgentStore.getState()
+    const phase = state.threads[threadId]?.streamState?.phase
+    return phase === 'streaming' || phase === 'tool_running' || phase === 'tool_pending'
+  }, [])
+
+  return { sendToThread, abortThread, isThreadStreaming }
 }

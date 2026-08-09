@@ -24,6 +24,15 @@ export interface ThreadActions {
     createThread: (options?: { activate?: boolean }) => string
     renameThread: (threadId: string, title: string) => boolean
     switchThread: (threadId: string) => void
+    /**
+     * 确保指定线程已加载到 store（含消息体）
+     *
+     * 与 switchThread 的区别：**不修改 currentThreadId、不关闭全屏页面**。
+     * 用于在不切换主聊天线程的前提下，加载某个任务关联线程（如项目任务执行）。
+     *
+     * @param threadId 线程 ID
+     */
+    ensureThreadLoaded: (threadId: string) => Promise<void>
     deleteThread: (threadId: string) => void
     getCurrentThread: () => ChatThread | null
 
@@ -49,6 +58,78 @@ export interface ThreadActions {
 }
 
 export type ThreadSlice = ThreadStoreState & ThreadActions
+
+/**
+ * ensureThreadLoaded 实现：加载线程元数据 + 消息体到 store
+ *
+ * 与 switchThread 的区别：**不修改 currentThreadId、不关闭全屏页面**。
+ * 用于项目任务执行等场景，在不切换主聊天线程的前提下加载指定线程。
+ *
+ * 幂等：线程已加载（messagesHydrated === true）时直接返回。
+ */
+async function ensureThreadLoadedImpl(
+    get: () => ThreadSlice,
+    set: (partial: Partial<ThreadSlice> | ((state: ThreadSlice) => Partial<ThreadSlice>)) => void,
+    threadId: string,
+): Promise<void> {
+    const state = get()
+    // 已加载完成，直接返回
+    if (state.threads[threadId]?.messagesHydrated) return
+
+    // 线程不在 store → 从数据库加载元数据
+    if (!state.threads[threadId]) {
+        let threadData: ChatThread | null
+        try {
+            threadData = await agentSessionRepository.loadThreadById(threadId)
+        } catch (err) {
+            logger.agent.error(`[ThreadSlice] ensureThreadLoaded: failed to load thread ${threadId}:`, err)
+            return
+        }
+        if (!threadData) {
+            logger.agent.warn(`[ThreadSlice] ensureThreadLoaded: thread ${threadId} not found in repository`)
+            return
+        }
+        set(s => ({
+            threads: { ...s.threads, [threadId]: threadData },
+            threadMessageVersions: {
+                ...s.threadMessageVersions,
+                [threadId]: (s.threadMessageVersions[threadId] || 0) + 1,
+            },
+        }))
+    }
+
+    // 懒加载消息体
+    const thread = get().threads[threadId]
+    if (thread?.messagesHydrated === false) {
+        try {
+            const messages = await agentSessionRepository.loadThreadMessages(threadId)
+            set(s => ({
+                threads: {
+                    ...s.threads,
+                    [threadId]: {
+                        ...s.threads[threadId],
+                        messages,
+                        messagesHydrated: true,
+                        messageCount: messages.length,
+                    },
+                },
+            }))
+        } catch (err) {
+            logger.agent.error(`[ThreadSlice] ensureThreadLoaded: failed to load messages for ${threadId}:`, err)
+            // 加载失败时也标记为已水合（空消息），避免重复加载
+            set(s => ({
+                threads: {
+                    ...s.threads,
+                    [threadId]: {
+                        ...s.threads[threadId],
+                        messages: [],
+                        messagesHydrated: true,
+                    },
+                },
+            }))
+        }
+    }
+}
 
 const generateId = () => crypto.randomUUID()
 
@@ -206,85 +287,22 @@ export const createThreadSlice: StateCreator<
         const state = get()
         if (state.currentThreadId === threadId && state.threads[threadId]) return
 
-        // 线程不在 store 中时，从数据库加载并注入 store
-        if (!state.threads[threadId]) {
-            agentSessionRepository.loadThreadById(threadId).then(threadData => {
-                if (!threadData) {
-                    logger.agent.warn(`[ThreadSlice] Thread ${threadId} not found in repository`)
-                    return
-                }
-                set(state => ({
-                    threads: {
-                        ...state.threads,
-                        [threadId]: threadData,
-                    },
-                    currentThreadId: threadId,
-                    threadMessageVersions: {
-                        ...state.threadMessageVersions,
-                        [threadId]: (state.threadMessageVersions[threadId] || 0) + 1,
-                    },
-                }))
+        // 复用 ensureThreadLoaded 加载线程与消息（不切 currentThreadId）
+        void ensureThreadLoadedImpl(get, set, threadId).then(() => {
+            // 加载完成后切换 currentThreadId 并关闭全屏页面
+            set({ currentThreadId: threadId })
 
-                // 关闭全屏页面
-                const storeState = useStore.getState()
-                if (storeState.showWelcomePage || storeState.showSettingsPage || storeState.showUserProfilePage || storeState.showBillingCenterPage || storeState.showSessionHistoryPage) {
-                    useStore.getState().closeAllFullPages()
-                }
-                if (storeState.activeWorkspaceSession && storeState.activeWorkspaceSession.threadId !== threadId) {
-                    useStore.getState().clearWorkspaceSession()
-                }
-            }).catch(err => {
-                logger.agent.error('[ThreadSlice] Failed to load missing thread:', err)
-            })
-            return
-        }
-
-        set({ currentThreadId: threadId })
-
-        // 切换会话时关闭欢迎页面等全屏页面
-        const storeState = useStore.getState()
-        if (storeState.showWelcomePage || storeState.showSettingsPage || storeState.showUserProfilePage || storeState.showBillingCenterPage || storeState.showSessionHistoryPage) {
-            useStore.getState().closeAllFullPages()
-        }
-
-        // 切换会话时，清理不属于新会话的工作台会话
-        if (storeState.activeWorkspaceSession && storeState.activeWorkspaceSession.threadId !== threadId) {
-            useStore.getState().clearWorkspaceSession()
-        }
-
-        // 懒加载切换后线程的消息
-        const thread = state.threads[threadId]
-        if (thread?.messagesHydrated === false) {
-            agentSessionRepository.loadThreadMessages(threadId).then(messages => {
-                // 无论消息是否为空，都触发一次 set，确保 ChatPanel 的 useEffect
-                // 检测到 filteredMessages 引用变化，能正常退出骨架屏状态
-                set(state => ({
-                    threads: {
-                        ...state.threads,
-                        [threadId]: {
-                            ...state.threads[threadId],
-                            messages,
-                            messagesHydrated: true,
-                            messageCount: messages.length,
-                        },
-                    },
-                }))
-            }).catch(err => {
-                logger.agent.error('[ThreadSlice] Failed to load messages:', err)
-                // 加载失败时也强制触发 set，让骨架屏能正常退出
-                set(state => ({
-                    threads: {
-                        ...state.threads,
-                        [threadId]: {
-                            ...state.threads[threadId],
-                            messages: [],
-                            messagesHydrated: true,
-                        },
-                    },
-                }))
-            })
-        }
+            const storeState = useStore.getState()
+            if (storeState.showWelcomePage || storeState.showSettingsPage || storeState.showUserProfilePage || storeState.showBillingCenterPage || storeState.showSessionHistoryPage) {
+                useStore.getState().closeAllFullPages()
+            }
+            if (storeState.activeWorkspaceSession && storeState.activeWorkspaceSession.threadId !== threadId) {
+                useStore.getState().clearWorkspaceSession()
+            }
+        })
     },
+
+    ensureThreadLoaded: (threadId) => ensureThreadLoadedImpl(get, set, threadId),
 
     deleteThread: (threadId) => {
         let didDelete = false

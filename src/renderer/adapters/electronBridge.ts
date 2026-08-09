@@ -13,6 +13,20 @@ import type {
 } from '@renderer/types/electronBridge'
 import { createGroup } from './autoGroup'
 
+/** 本地附件项（本地优先架构，存储在 .aweeclaw/attachments/{projectId}/） */
+export interface LocalAttachmentItem {
+  id: string
+  projectId: string
+  fileName: string
+  fileSize: number
+  mimeType: string
+  textContent: string | null
+  textTruncated: boolean
+  hasText: boolean
+  createdAt: string
+  localPath: string
+}
+
 type ElectronAPIWithRemoteShell = ElectronAPI & {
   remoteShellList: (server: RemoteShellServer, remotePath?: string) => Promise<RemoteShellEntry[]>
   remoteShellReadText: (server: RemoteShellServer, remotePath: string) => Promise<string | null>
@@ -256,6 +270,12 @@ type ElectronAPIWithRemoteShell = ElectronAPI & {
   memoryDbMigrateFromJsonStore: (store: any) => Promise<{ success: boolean; migrated: number; skipped: number; error?: string }>
   memoryDbGetPath: () => Promise<string>
 
+  // 项目附件本地存储（本地优先，后端兜底）
+  attachmentSave: (params: { projectId: string; fileName: string; base64Data: string; mimeType?: string }) => Promise<LocalAttachmentItem>
+  attachmentList: (projectId: string) => Promise<LocalAttachmentItem[]>
+  attachmentDelete: (params: { projectId: string; attachmentId: string }) => Promise<void>
+  attachmentReadText: (params: { projectId: string; attachmentId: string }) => Promise<{ textContent: string | null; textTruncated: boolean; fileName: string }>
+
   // Security (SecureToolExecutor + ToolApproval + Sandbox)
   securityPreCheckTool: (request: {
     toolName: string
@@ -458,6 +478,9 @@ function createGroupedAPI() {
 
     // 记忆数据库 (SQLite) - 客户端本地记忆存储（自动分组：memoryDbXxx → memoryDb.xxx）
     memoryDb: createGroup(raw, 'memoryDb'),
+
+    // 项目附件本地存储（本地优先，后端兜底）（自动分组：attachmentXxx → attachment.xxx）
+    attachment: createGroup(raw, 'attachment'),
 
     // LLM
     llm: {
@@ -863,6 +886,23 @@ function createGroupedAPI() {
       // 主窗口→头像：通知主窗口全功能语音对话状态
       notifyMainConversationActive: (active: boolean) =>
         raw.floatingAvatar.notifyMainConversationActive(active),
+      // 主窗口→头像：推送项目执行状态摘要
+      pushExecutionStatus: (status: Parameters<typeof raw.floatingAvatar.pushExecutionStatus>[0]) =>
+        raw.floatingAvatar.pushExecutionStatus(status),
+      // 事件：项目执行状态更新（main→头像窗口）
+      onExecutionStatus: (callback: Parameters<typeof raw.floatingAvatar.onExecutionStatus>[0]) =>
+        raw.floatingAvatar.onExecutionStatus(callback),
+      // 事件：状态栏边缘方向（main→头像窗口）
+      onStatusEdge: (callback: Parameters<typeof raw.floatingAvatar.onStatusEdge>[0]) =>
+        raw.floatingAvatar.onStatusEdge(callback),
+      // 头像→main：扩展窗口高度以显示执行状态栏
+      expandForStatus: () => raw.floatingAvatar.expandForStatus(),
+      // 头像→main：收起执行状态栏
+      collapseForStatus: () => raw.floatingAvatar.collapseForStatus(),
+      // 头像→main：扩展窗口宽度以显示 tooltip（鼠标悬停时）
+      expandForTooltip: () => raw.floatingAvatar.expandForTooltip(),
+      // 头像→main：收起 tooltip 扩展（鼠标离开时恢复窗口宽度）
+      collapseForTooltip: () => raw.floatingAvatar.collapseForTooltip(),
       // 事件订阅（main→渲染进程）
       onVoiceContextUpdated: (callback: Parameters<typeof raw.floatingAvatar.onVoiceContextUpdated>[0]) =>
         raw.floatingAvatar.onVoiceContextUpdated(callback),
@@ -929,6 +969,49 @@ function createGroupedAPI() {
       /** 生成完成事件订阅 */
       onMarkComplete: (callback: Parameters<typeof raw.pptPreview.onMarkComplete>[0]) =>
         raw.pptPreview.onMarkComplete(callback),
+    },
+
+    // ========================================
+    // 项目执行窗口（execution.html 专用 + 主窗口调用）
+    // ========================================
+    projectExecution: {
+      /** 最小化到悬浮球（执行窗口调用） */
+      minimize: () => raw.projectExecution.minimize(),
+      /** 关闭窗口（执行窗口调用） */
+      close: () => raw.projectExecution.close(),
+      /** 获取悬浮球位置（执行窗口计算动画方向） */
+      getAvatarPosition: () => raw.projectExecution.getAvatarPosition(),
+      /** 获取初始任务消息（一次性消费，执行窗口调用） */
+      getInitialMessage: (messageKey: string) =>
+        raw.projectExecution.getInitialMessage(messageKey),
+      /** 回传 threadId 给主窗口（执行窗口调用） */
+      reportThreadId: (sessionId: string, threadId: string) =>
+        raw.projectExecution.reportThreadId(sessionId, threadId),
+      /** 监听 threadId 回传事件（主窗口调用） */
+      onThreadIdReported: (callback: Parameters<typeof raw.projectExecution.onThreadIdReported>[0]) =>
+        raw.projectExecution.onThreadIdReported(callback),
+      /** 推送执行状态（执行窗口 → 主进程 → 主窗口/悬浮球） */
+      pushStatus: (status: Parameters<typeof raw.projectExecution.pushStatus>[0]) =>
+        raw.projectExecution.pushStatus(status),
+      /** 请求打开执行窗口（主窗口调用） */
+      open: (params: Parameters<typeof raw.projectExecution.open>[0]) =>
+        raw.projectExecution.open(params),
+      /** 请求恢复执行窗口（悬浮球调用） */
+      restore: () => raw.projectExecution.restore(),
+      /** 查询执行窗口是否存在（含最小化/隐藏状态） */
+      exists: () => raw.projectExecution.exists(),
+      /** 新增 Tab 事件（主进程 → 执行窗口） */
+      onNewTab: (callback: Parameters<typeof raw.projectExecution.onNewTab>[0]) =>
+        raw.projectExecution.onNewTab(callback),
+      /** 开始最小化动画事件（主进程 → 执行窗口） */
+      onStartMinimizeAnimation: (callback: Parameters<typeof raw.projectExecution.onStartMinimizeAnimation>[0]) =>
+        raw.projectExecution.onStartMinimizeAnimation(callback),
+      /** 开始恢复动画事件（主进程 → 执行窗口） */
+      onStartRestoreAnimation: (callback: Parameters<typeof raw.projectExecution.onStartRestoreAnimation>[0]) =>
+        raw.projectExecution.onStartRestoreAnimation(callback),
+      /** 执行状态广播事件（主进程 → 主窗口） */
+      onStatusBroadcast: (callback: Parameters<typeof raw.projectExecution.onStatusBroadcast>[0]) =>
+        raw.projectExecution.onStatusBroadcast(callback),
     },
   }
 }

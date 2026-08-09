@@ -447,13 +447,20 @@ class SettingsService {
     await this.ensureDbInitialized()
     if (!this.dbInitialized) return
 
+    const currentProviderId = settings.llmConfig.provider
+
     // 构建 provider 配置（完整数据，不做 clean，SQLite 是唯一真相来源）
     const providerConfigs: Record<string, any> = {}
     for (const [id, config] of Object.entries(settings.providerConfigs)) {
       providerConfigs[id] = {
         apiKey: config.apiKey ?? '',
         baseUrl: config.baseUrl ?? '',
-        model: config.model ?? '',
+        // ⚠️ 当前 provider 的 model 必须与 llmConfig.model 同步
+        //   rebuildSettingsFromDb 从 providerConfigs[currentProviderId].model 重建 llmConfig
+        //   若不同步，聊天界面选模型后重启会恢复到旧模型
+        model: id === currentProviderId
+          ? (settings.llmConfig.model || config.model || '')
+          : (config.model || ''),
         timeout: config.timeout ?? 120000,
         customModels: config.customModels ?? [],
         headers: config.headers ?? {},
@@ -506,10 +513,17 @@ class SettingsService {
   // ============================================
 
   private async saveToJsonStore(settings: SettingsState): Promise<void> {
+    const currentProviderId = settings.llmConfig.provider
     const cleanedProviderConfigs: Record<string, ProviderConfig> = {}
 
     for (const [id, config] of Object.entries(settings.providerConfigs)) {
-      const cleaned = cleanProviderConfig(id, config, id === settings.llmConfig.provider)
+      const isCurrent = id === currentProviderId
+      // 同步当前 provider 的 model 到 providerConfigs，确保 JSON 存储与 llmConfig 一致
+      // （与 saveToDb 同步逻辑保持一致，防止重启后从 JSON 回退加载时恢复旧模型）
+      const configToClean = isCurrent
+        ? { ...config, model: settings.llmConfig.model || config.model }
+        : config
+      const cleaned = cleanProviderConfig(id, configToClean, isCurrent)
       if (cleaned) cleanedProviderConfigs[id] = cleaned as ProviderConfig
     }
 
@@ -529,9 +543,19 @@ class SettingsService {
 
   private saveToLocalStorage(settings: SettingsState): void {
     try {
+      const currentProviderId = settings.llmConfig.provider
+      // 同步当前 provider 的 model 到 providerConfigs，确保缓存数据一致性
+      // （与 saveToDb / saveToJsonStore 同步逻辑保持一致）
+      const syncedConfigs = { ...settings.providerConfigs }
+      if (currentProviderId && syncedConfigs[currentProviderId]) {
+        syncedConfigs[currentProviderId] = {
+          ...syncedConfigs[currentProviderId],
+          model: settings.llmConfig.model || syncedConfigs[currentProviderId].model,
+        }
+      }
       // 安全策略：localStorage 可被渲染进程 JS 直接读取（XSS 风险），
       // 不缓存 apiKey 等敏感凭证。apiKey 的唯一真相来源是 SQLite / electron-store。
-      const sanitizedConfigs = stripSensitiveProviderData(settings.providerConfigs)
+      const sanitizedConfigs = stripSensitiveProviderData(syncedConfigs)
       StorageService.set(
         LOCAL_CACHE_KEY,
         buildPersistedSettingsPayload(settings, sanitizedConfigs),

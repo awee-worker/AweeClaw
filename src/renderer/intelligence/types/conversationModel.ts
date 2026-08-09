@@ -156,6 +156,17 @@ export interface UserMessage {
   displayContent?: string
   timestamp: number
   contextItems?: ContextItem[]
+  /**
+   * 静默注入标记（不显示为用户消息气泡）
+   *
+   * 用于任务执行等场景：项目上下文/任务详情需要发送给 AI，
+   * 但不应像用户手动输入的消息那样显示在对话界面中。
+   *
+   * - true：消息仍会发送给 LLM（存在于 thread.messages 中），
+   *   但 LightweightMessageView 等轻量视图会跳过渲染。
+   * - false / undefined：正常显示为用户消息气泡。
+   */
+  hidden?: boolean
 }
 
 /** 用户对助手消息的反馈（赞/踩 + 可选评论），持久化到会话数据库 */

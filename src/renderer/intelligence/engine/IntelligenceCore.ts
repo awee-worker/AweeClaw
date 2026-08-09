@@ -91,6 +91,17 @@ export class AgentClass {
       isProactive?: boolean
       /** 关联的 ProactiveProposal ID（isProactive=true 时必填） */
       proposalId?: string
+      /**
+       * 静默注入模式（不显示为用户消息气泡）
+       *
+       * 用于任务执行等场景：项目上下文/任务详情需要发送给 AI，
+       * 但不应像用户手动输入的消息那样显示在对话界面中。
+       *
+       * - true：用户消息会标记为 hidden=true，轻量视图（LightweightMessageView）
+       *   会跳过渲染，但消息仍正常发送给 LLM。
+       * - false / undefined：正常显示为用户消息气泡。
+       */
+      silent?: boolean
     }
   ): Promise<{ threadId: string; assistantId: string; requestId: string }> {
     const store = useAgentStore.getState()
@@ -127,12 +138,18 @@ export class AgentClass {
       suspendAgentStorageWrites()
       persistSuspended = true
       // 1. 【性能关键】批量初始化消息环境（合并用户消息、助手气泡、上下文清理）
-      const { assistantId, threadId: preparedThreadId } = store.prepareExecution(userMessage, contextItems, executionOptions?.threadId)
+      const { userMessageId, assistantId, threadId: preparedThreadId } = store.prepareExecution(userMessage, contextItems, executionOptions?.threadId)
 
       threadId = preparedThreadId
       if (!threadId) {
         logger.agent.error('[Agent] No thread ID after prepareExecution')
         throw new Error('No thread ID after prepareExecution')
+      }
+
+      // 静默注入模式：将用户消息标记为 hidden，轻量视图不渲染为用户气泡
+      // 消息仍正常发送给 LLM（存在于 thread.messages 中），仅 UI 层面隐藏
+      if (executionOptions?.silent && userMessageId) {
+        store.updateMessage(userMessageId, { hidden: true } as Partial<import('../types/conversationModel').UserMessage>, threadId)
       }
 
       const threadStore = useAgentStore.getState().forThread(threadId)
@@ -246,7 +263,7 @@ export class AgentClass {
       // 5. 创建检查点（用于撤销）
       const checkpointImages = this.extractCheckpointImages(userMessage)
       const messageText = typeof userMessage === 'string' ? userMessage.slice(0, 50) : 'User message'
-      const userMessageId = useAgentStore.getState().threads[threadId]?.messages.filter(m => m.role === 'user').at(-1)?.id
+      // userMessageId 已从 prepareExecution 返回值获取（步骤1），无需重复查询
       const checkpointId = userMessageId
         ? await store.createMessageCheckpoint(userMessageId, messageText, checkpointImages, contextItems)
         : undefined
@@ -338,17 +355,33 @@ export class AgentClass {
    */
   abort(threadId?: string): void {
     // 记录调用栈，诊断非用户主动停止时的意外 abort
-    logger.agent.warn('[Agent.abort] Called. Stack:', new Error().stack?.slice(0, 800))
+    logger.agent.warn('[Agent.abort] Called. threadId:', threadId, 'Stack:', new Error().stack?.slice(0, 800))
 
     const store = useAgentStore.getState()
     const targetThreadId = threadId || store.currentThreadId
 
-    // 中止当前线程的任务
+    // 收集需要中止的线程 ID 列表
+    // 优先中止指定线程；若未找到则全量中止（兜底，确保停止按钮始终生效）
+    const threadIdsToAbort: string[] = []
     if (targetThreadId && this.runningTasks.has(targetThreadId)) {
-      const task = this.runningTasks.get(targetThreadId)!
+      threadIdsToAbort.push(targetThreadId)
+    } else if (this.runningTasks.size > 0) {
+      // ⚠️ 兜底机制：指定线程未在 runningTasks 中找到（可能因 currentThreadId 闭包过期、
+      //   多窗口线程 ID 不一致等），此时中止所有运行中的任务，确保用户点击停止后 AI 真正停下
+      logger.agent.warn(
+        `[Agent.abort] Thread "${targetThreadId}" not found in runningTasks (size=${this.runningTasks.size}), aborting all as fallback`,
+      )
+      threadIdsToAbort.push(...this.runningTasks.keys())
+    }
+
+    // 中止所有目标线程的任务
+    for (const tid of threadIdsToAbort) {
+      const task = this.runningTasks.get(tid)
+      if (!task) continue
+
       task.abortController.abort()
 
-      const thread = store.threads[targetThreadId]
+      const thread = store.threads[tid]
       if (task.assistantId && thread) {
         const msg = thread.messages.find(m => m.id === task.assistantId)
         if (msg?.role === 'assistant') {
@@ -359,14 +392,14 @@ export class AgentClass {
                 status: 'error',
                 error: 'Aborted by user',
                 streamingState: undefined,
-              }, targetThreadId)
+              }, tid)
             }
           }
         }
-        store.finalizeAssistant(task.assistantId, targetThreadId)
+        store.finalizeAssistant(task.assistantId, tid)
       }
 
-      this.runningTasks.delete(targetThreadId)
+      this.runningTasks.delete(tid)
     }
 
     api.llm.abort()
@@ -388,8 +421,9 @@ export class AgentClass {
       })
     }
 
-    if (targetThreadId) {
-      const thread = useAgentStore.getState().threads[targetThreadId]
+    // 拒绝所有被中止线程的待审批工具
+    for (const tid of threadIdsToAbort) {
+      const thread = useAgentStore.getState().threads[tid]
       const reqId = thread?.executionMeta?.requestId
       const pendingToolCalls = thread?.streamState?.pendingApprovalToolCalls
       if (reqId && pendingToolCalls && pendingToolCalls.length > 0) {
@@ -401,25 +435,40 @@ export class AgentClass {
       }
     }
 
-    const thread = targetThreadId ? store.threads[targetThreadId] : store.getCurrentThread()
-    if (thread) {
-      for (const msg of thread.messages) {
-        if (msg.role === 'assistant') {
-          const assistantMsg = msg as import('../providerTypes').AssistantMessage
-          if (assistantMsg.isStreaming) {
-            store.finalizeAssistant(msg.id, thread.id)
+    // 终结所有被中止线程中正在流式输出的助手消息
+    for (const tid of threadIdsToAbort) {
+      const thread = store.threads[tid]
+      if (thread) {
+        for (const msg of thread.messages) {
+          if (msg.role === 'assistant') {
+            const assistantMsg = msg as import('../providerTypes').AssistantMessage
+            if (assistantMsg.isStreaming) {
+              store.finalizeAssistant(msg.id, thread.id)
+            }
           }
         }
       }
     }
 
-    if (targetThreadId) {
-      const threadStore = store.forThread(targetThreadId)
-      threadStore.updateExecutionMeta({ loopState: 'aborted' })
-      threadStore.setStreamPhase('idle')
+    // 清理所有被中止线程的执行状态
+    // ⚠️ 顺序至关重要：先设置 loopState: 'aborted'，再触发 running → idle 转换
+    //   任务完成监控 effect 在检测到 running → idle 转换时，会读取 loopState 判断是否被中止。
+    //   必须确保 effect 执行时 loopState 已是 'aborted'，否则会误判为正常完成。
+    //   （React effect 在渲染后异步执行，但 Zustand 的 setState 是同步的，
+    //    所以 setStreamPhase('idle') 触发的重渲染中 loopState 已是 'aborted'）
+    for (const tid of threadIdsToAbort) {
+      const threadStore = store.forThread(tid)
       threadStore.setStreamState({ streamDetail: undefined })
       threadStore.clearExecutionMeta()
-    } else {
+      // 先设置 loopState: 'aborted'（在触发 idle 转换之前）
+      threadStore.updateExecutionMeta({ loopState: 'aborted' })
+      // 再设置 phase: 'idle'，触发 running → idle 转换
+      // 此时 effect 读取到的 loopState 已是 'aborted'
+      threadStore.setStreamPhase('idle')
+    }
+
+    // 兜底：若未中止任何线程（runningTasks 为空），仍强制将当前线程状态设为 idle
+    if (threadIdsToAbort.length === 0) {
       store.setStreamPhase('idle')
     }
   }
@@ -671,9 +720,21 @@ export class AgentClass {
     // 重置该线程的流状态
     if (threadId) {
       const threadStore = store.forThread(threadId)
+      // 先读取当前 loopState，判断是否被用户中止
+      // Agent.abort() 会设置 loopState: 'aborted'，需要在清理后保留此标志
+      // 任务完成监控 effect 通过此标志区分"正常完成"和"被中止"，
+      // 决定标记任务为 DONE 还是 CANCELED，是否继续推进下一个任务
+      const currentLoopState = store.threads[threadId]?.executionMeta?.loopState
+      const wasAborted = currentLoopState === 'aborted'
+
       threadStore.setStreamPhase('idle')
       threadStore.setStreamState({ streamDetail: undefined })
       threadStore.clearExecutionMeta()
+      // 若是被用户中止的，清理后重新设置 loopState: 'aborted'
+      // 确保 effect 执行时仍能检测到此标志
+      if (wasAborted) {
+        threadStore.updateExecutionMeta({ loopState: 'aborted' })
+      }
     }
   }
 

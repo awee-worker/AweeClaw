@@ -14,7 +14,7 @@ import {
   Package, Box, Container, Database as DatabaseIcon, HardDrive, Server as ServerIcon,
   StickyNote, Briefcase, Calculator, FlaskConical, GraduationCap,
   Lightbulb, Palette, Scale, ShieldCheck, Stethoscope, Store, Building2, ClipboardList,
-  LayoutDashboard, Network,
+  LayoutDashboard, Network, FolderKanban,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -34,7 +34,7 @@ export const LUCIDE_ICON_MAP: Record<string, LucideIcon> = {
   Package, Box, Container, DatabaseIcon, HardDrive, ServerIcon,
   StickyNote, Briefcase, Calculator, FlaskConical, GraduationCap,
   Lightbulb, Palette, Scale, ShieldCheck, Stethoscope, Store, Building2, ClipboardList,
-  LayoutDashboard, Network,
+  LayoutDashboard, Network, FolderKanban,
 }
 
 export function getLucideIcon(name: string): LucideIcon {

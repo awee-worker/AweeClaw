@@ -344,6 +344,77 @@ export const backendApi = {
   put: <T>(path: string, body?: unknown, options?: RequestOptions) =>
     request<T>('PUT', path, { ...options, body }),
 
+  patch: <T>(path: string, body?: unknown, options?: RequestOptions) =>
+    request<T>('PATCH', path, { ...options, body }),
+
   delete: <T>(path: string, options?: RequestOptions) =>
     request<T>('DELETE', path, options),
+
+  /**
+   * 文件上传（multipart/form-data）
+   *
+   * 与 JSON 请求不同：
+   * - 不设置 Content-Type，由浏览器自动添加 boundary
+   * - 直接发送 FormData，不走 JSON 序列化
+   * - 复用 token 刷新逻辑（401 重试）
+   */
+  uploadFiles: async <T>(path: string, formData: FormData): Promise<T> => {
+    const url = `${serverUrl}${path}`;
+
+    const headers: Record<string, string> = {};
+    if (tokens?.accessToken) {
+      headers['Authorization'] = `Bearer ${tokens.accessToken}`;
+    }
+    // 注意：不设置 Content-Type，浏览器会自动设置 multipart/form-data; boundary=...
+
+    let res = await fetch(url, { method: 'POST', headers, body: formData });
+
+    // 401 处理：复用 token 刷新逻辑
+    if (res.status === 401 && tokens) {
+      if (isHandling401) {
+        throw new BackendApiError(401, 'Unauthorized');
+      }
+      isHandling401 = true;
+      try {
+        const refreshToken = tokens?.refreshToken || loadPersistedRefreshToken();
+        if (refreshToken) {
+          const result = await refreshAccessToken();
+          if (result.ok) {
+            headers['Authorization'] = `Bearer ${result.tokens.accessToken}`;
+            res = await fetch(url, { method: 'POST', headers, body: formData });
+          } else if (result.tokenInvalid) {
+            handleAuthFailed('401 + refreshToken invalid');
+            throw new BackendApiError(401, 'Session expired');
+          }
+        } else {
+          handleAuthFailed('401 + no refreshToken');
+          throw new BackendApiError(401, 'Session expired');
+        }
+      } finally {
+        isHandling401 = false;
+      }
+    }
+
+    if (!res.ok) {
+      const errorBody = await res.text().catch(() => '');
+      let errorMessage = errorBody || res.statusText;
+      try {
+        const errorJson = JSON.parse(errorBody);
+        if (errorJson?.message) {
+          errorMessage = Array.isArray(errorJson.message)
+            ? errorJson.message.join(', ')
+            : String(errorJson.message);
+        }
+      } catch { /* ignore parse error */ }
+      throw new BackendApiError(res.status, errorMessage);
+    }
+
+    const text = await res.text();
+    if (!text) return {} as T;
+    const json = JSON.parse(text);
+    if (json && typeof json === 'object' && 'success' in json && 'data' in json) {
+      return json.data as T;
+    }
+    return json as T;
+  },
 };

@@ -26,6 +26,8 @@ export type SidePanel =
   | 'knowledge'
   | 'prompts'
   | 'tasks'
+  | 'projects'
+  | 'automation'
   | 'bookmarks'
   | 'stores'
   | 'diagnosis'

@@ -82,6 +82,25 @@ export interface AvatarModelOption {
   isCloud: boolean
 }
 
+/** 项目执行状态摘要（主窗口→main→头像窗口，用于悬浮球上方显示执行状态） */
+export interface ExecutionStatusSummary {
+  /** 活跃会话数（running + queued） */
+  activeCount: number
+  /** 运行中会话数 */
+  runningCount: number
+  /** 排队中会话数 */
+  queuedCount: number
+  /** 会话详情列表（最多显示前 5 个） */
+  sessions: Array<{
+    id: string
+    projectName: string
+    status: 'running' | 'queued' | 'completed' | 'failed' | 'aborted'
+    kind: 'task' | 'batch'
+    batchTotal?: number
+    batchCompleted?: number
+  }>
+}
+
 interface AuditEntry {
   pipelineId: string
   action: string
@@ -2231,6 +2250,20 @@ export interface ElectronAPI {
     isExpanded: () => Promise<{ success: boolean; expanded: boolean; error?: string }>
     /** 主窗口→main→头像：通知主窗口全功能语音对话是否激活（单向 send） */
     notifyMainConversationActive: (active: boolean) => void
+    /** 主窗口→main→头像：推送项目执行状态摘要（单向 send） */
+    pushExecutionStatus: (status: ExecutionStatusSummary | null) => void
+    /** 事件：项目执行状态更新（main→头像窗口） */
+    onExecutionStatus: (callback: (status: ExecutionStatusSummary | null) => void) => () => void
+    /** 事件：状态栏边缘方向（main→头像窗口，'left' | 'right' | null） */
+    onStatusEdge: (callback: (edge: 'left' | 'right' | null) => void) => () => void
+    /** 头像→main：扩展窗口高度以显示执行状态栏（球体上方） */
+    expandForStatus: () => void
+    /** 头像→main：收起执行状态栏（恢复原始球体尺寸） */
+    collapseForStatus: () => void
+    /** 头像→main：扩展窗口宽度以显示 tooltip（鼠标悬停时） */
+    expandForTooltip: () => void
+    /** 头像→main：收起 tooltip 扩展（鼠标离开时恢复窗口宽度） */
+    collapseForTooltip: () => void
     /** 事件：语音上下文已更新（main→头像窗口） */
     onVoiceContextUpdated: (callback: (payload: VoiceContextPayload) => void) => () => void
     /** 事件：主窗口全功能语音对话状态变化（main→头像窗口） */
@@ -2593,6 +2626,111 @@ export interface ElectronAPI {
     /** 生成完成事件订阅：附带保存路径 */
     onMarkComplete: (
       callback: (payload: { sessionId: string; filePath: string }) => void,
+    ) => () => void
+  }
+
+  // ============================================
+  // 项目执行窗口（独立窗口 + 主窗口调用）
+  // ============================================
+  /** 打开执行窗口参数 */
+  projectExecution: {
+    /** 最小化到悬浮球（执行窗口调用） */
+    minimize: () => void
+    /** 关闭窗口（执行窗口调用） */
+    close: () => void
+    /** 获取悬浮球位置（执行窗口计算动画方向） */
+    getAvatarPosition: () => Promise<{
+      success: boolean
+      data?: { x: number; y: number } | null
+      error?: string
+    }>
+    /** 获取初始任务消息（一次性消费，执行窗口调用） */
+    getInitialMessage: (messageKey: string) => Promise<{
+      message: string
+      silent: boolean
+      taskContext?: { taskIds: string[]; kind: 'task' | 'batch' }
+    } | null>
+    /**
+     * 回传 threadId 给主窗口（执行窗口调用）
+     * 当主窗口传空 threadId 时，执行窗口创建线程后通过此接口上报。
+     */
+    reportThreadId: (sessionId: string, threadId: string) => void
+    /**
+     * 监听 threadId 回传事件（主窗口调用）
+     * 执行窗口创建线程后上报，主窗口监听后更新对应任务的 threadId。
+     */
+    onThreadIdReported: (
+      callback: (payload: { sessionId: string; threadId: string }) => void,
+    ) => () => void
+    /** 推送执行状态（执行窗口 → 主进程 → 主窗口/悬浮球） */
+    pushStatus: (
+      status: {
+        activeCount: number
+        runningCount: number
+        queuedCount: number
+        sessions: Array<{
+          id: string
+          projectName: string
+          status: 'running' | 'queued' | 'completed' | 'failed' | 'aborted'
+          kind: 'task' | 'batch'
+          batchTotal?: number
+          batchCompleted?: number
+        }>
+      } | null,
+    ) => void
+    /** 请求打开执行窗口（主窗口调用） */
+    open: (params: {
+      projectId: string
+      projectName: string
+      sessionId: string
+      threadId: string
+      /** 初始任务消息（执行窗口打开后自动发送给 AI 的首条消息） */
+      initialMessage?: string
+      /** 是否静默注入（不显示为用户消息气泡，但仍发送给 LLM） */
+      silent?: boolean
+      /** 任务执行上下文（批量执行时用于自动推进 + 同步任务状态） */
+      taskContext?: { taskIds: string[]; kind: 'task' | 'batch' }
+    }) => void
+    /** 请求恢复执行窗口（悬浮球调用） */
+    restore: () => void
+    /** 查询执行窗口是否存在（含最小化/隐藏状态） */
+    exists: () => Promise<boolean>
+    /** 新增 Tab 事件（主进程 → 执行窗口） */
+    onNewTab: (
+      callback: (params: {
+        projectId: string
+        projectName: string
+        sessionId: string
+        threadId: string
+        /** 初始任务消息（执行窗口打开后自动发送给 AI 的首条消息） */
+        initialMessage?: string
+        /** 是否静默注入（不显示为用户消息气泡，但仍发送给 LLM） */
+        silent?: boolean
+        /** 任务执行上下文（批量执行时用于自动推进 + 同步任务状态） */
+        taskContext?: { taskIds: string[]; kind: 'task' | 'batch' }
+      }) => void,
+    ) => () => void
+    /** 开始最小化动画事件（主进程 → 执行窗口） */
+    onStartMinimizeAnimation: (callback: () => void) => () => void
+    /** 开始恢复动画事件（主进程 → 执行窗口） */
+    onStartRestoreAnimation: (callback: () => void) => () => void
+    /** 执行状态广播事件（主进程 → 主窗口） */
+    onStatusBroadcast: (
+      callback: (
+        status: {
+          activeCount: number
+          runningCount: number
+          queuedCount: number
+          sessions: Array<{
+            id: string
+            projectName: string
+            status: 'running' | 'queued' | 'completed' | 'failed' | 'aborted'
+            kind: 'task' | 'batch'
+            batchTotal?: number
+            batchCompleted?: number
+          }>
+        } | null,
+      ) => void,
     ) => () => void
   }
 }

@@ -8,6 +8,7 @@ import SidebarSection from './components/layout/SidebarSection'
 import MainContentArea from './components/layout/MainContentArea'
 import GlobalOverlays from './components/layout/GlobalOverlays'
 import WorkspaceStatusBar from './components/layout/WorkspaceStatusBar'
+import { ExecutionStatusDock } from './components/layout/ExecutionStatusDock'
 import { scenarioRegistry, initializeScenarios } from '@shared/configuration/scenarios'
 import { scenarioLoader, registerBuiltinScenarios } from '@/scenarios'
 import { loadExternalScenarios, setExternalScenarioLoadFunctions } from '@scenario-system/core/ExternalScenarioLoader'
@@ -17,6 +18,7 @@ import { getPanelComponent } from '@components/explorer/PanelRegistry'
 import { ToastProvider, useToast, setGlobalToast } from '@components/foundation/NotificationProvider'
 import { MonitoringToastSubscriber } from '@components/foundation/MonitoringToastSubscriber'
 import { GlobalDecisionOverlay } from '@components/foundation/DecisionOverlay'
+import { GlobalPromptOverlay } from '@components/foundation/PromptOverlay'
 import { CrashGuard as ErrorBoundary } from '@components/foundation/CrashGuard'
 import { GlobalErrorHandler } from '@components/foundation/AppErrorHandler'
 import GlobalToastContainer from '@components/foundation/AppToastContainer'
@@ -288,7 +290,11 @@ function AppContent() {
       />
 
       <GlobalDecisionOverlay />
+      <GlobalPromptOverlay />
       <GlobalToastContainer />
+
+      {/* 全局悬浮执行状态面板：有项目任务执行时在右下角显示 */}
+      <ExecutionStatusDock />
 
       {/* 插件宿主桥接器：代理插件 UI 的宿主能力请求（如发送聊天消息），无 UI */}
       <PluginHostBridge />

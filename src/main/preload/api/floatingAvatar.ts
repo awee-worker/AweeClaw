@@ -93,6 +93,25 @@ export interface SelectModelPayload {
   isCloud: boolean
 }
 
+/** 执行会话摘要（推送到头像窗口用于显示执行状态） */
+export interface ExecutionStatusSummary {
+  /** 活跃会话数（running + queued） */
+  activeCount: number
+  /** 运行中会话数 */
+  runningCount: number
+  /** 排队中会话数 */
+  queuedCount: number
+  /** 会话详情列表（最多显示前 5 个） */
+  sessions: Array<{
+    id: string
+    projectName: string
+    status: 'running' | 'queued' | 'completed' | 'failed' | 'aborted'
+    kind: 'task' | 'batch'
+    batchTotal?: number
+    batchCompleted?: number
+  }>
+}
+
 /**
  * 创建悬浮头像 API（preload 侧工厂）
  *
@@ -213,6 +232,35 @@ export function createFloatingAvatarApi() {
     },
     // 事件：主题更新（main→头像窗口监听）
     onUpdateTheme: on<{ themeColor: string; themeMode: string }>('floating-avatar:update-theme'),
+
+    // --------------------------------------------
+    // 项目执行状态同步（主窗口→main→头像窗口）
+    // --------------------------------------------
+    // 主窗口有项目任务执行时，将执行会话摘要推送到头像窗口
+    pushExecutionStatus: (status: ExecutionStatusSummary | null) => {
+      ipcRenderer.send('floating-avatar:execution-status', status)
+    },
+    // 事件：执行状态更新（main→头像窗口监听）
+    onExecutionStatus: on<ExecutionStatusSummary | null>('floating-avatar:execution-status'),
+    // 事件：状态栏边缘方向（main→头像窗口，扩展/收起时推送 'left' | 'right' | null）
+    // 渲染进程据此调整球体在窗口内的水平位置（靠左/靠右/居中）
+    onStatusEdge: on<'left' | 'right' | null>('floating-avatar:status-edge'),
+    // 头像→main：扩展窗口高度以显示执行状态栏（球体上方）
+    expandForStatus: () => {
+      ipcRenderer.send('floating-avatar:expand-for-status')
+    },
+    // 头像→main：收起执行状态栏（恢复原始球体尺寸）
+    collapseForStatus: () => {
+      ipcRenderer.send('floating-avatar:collapse-for-status')
+    },
+    // 头像→main：扩展窗口宽度以显示 tooltip（鼠标悬停时）
+    expandForTooltip: () => {
+      ipcRenderer.send('floating-avatar:expand-for-tooltip')
+    },
+    // 头像→main：收起 tooltip 扩展（鼠标离开时恢复窗口宽度）
+    collapseForTooltip: () => {
+      ipcRenderer.send('floating-avatar:collapse-for-tooltip')
+    },
 
     // --------------------------------------------
     // 窗口展开/收起（对话面板）

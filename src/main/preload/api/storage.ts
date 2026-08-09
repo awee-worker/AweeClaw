@@ -6,6 +6,7 @@
  * - settings-db:* SQLite 设置库（provider / 行为 / 应用配置）
  * - session-db:*  SQLite 会话库（消息 / 线程元数据）
  * - memory-db:*   SQLite 记忆库（条目 / 关系 / 同步）
+ * - attachment:*  项目附件本地存储（本地优先，后端兜底）
  */
 import { invoke, on } from '../ipcHelpers'
 
@@ -121,5 +122,15 @@ export function createStorageApi() {
     memoryDbMigrateFromJsonStore: (store: unknown) =>
       invoke('memory-db:migrateFromJsonStore')(store),
     memoryDbGetPath: invoke('memory-db:getPath'),
+
+    // ── 项目附件本地存储（本地优先） ──
+    attachmentSave: (params: { projectId: string; fileName: string; base64Data: string; mimeType?: string }) =>
+      invoke('attachment:save')(params),
+    attachmentList: (projectId: string) =>
+      invoke('attachment:list')(projectId),
+    attachmentDelete: (params: { projectId: string; attachmentId: string }) =>
+      invoke('attachment:delete')(params),
+    attachmentReadText: (params: { projectId: string; attachmentId: string }) =>
+      invoke('attachment:readText')(params),
   }
 }

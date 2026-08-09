@@ -172,6 +172,8 @@ export async function initializeModules(firstWin: BrowserWindow): Promise<void> 
   initFloatingAvatarModule(firstWin)
   // 初始化 PPT 预览模块（窗口懒创建，仅预注册 IPC，不阻塞启动）
   initPptPreviewModule()
+  // 初始化项目执行窗口模块（单例创建 + IPC 注册，不阻塞启动）
+  initProjectExecutionModule()
 
   // ==========================================
   // 7. 应用菜单与语言同步
@@ -844,6 +846,28 @@ function initPptPreviewModule(): void {
       })
   } catch (err) {
     logger.system.warn('[Main] PPT preview module init failed:', errMsg(err))
+  }
+}
+
+/**
+ * 项目执行窗口模块初始化
+ *
+ * 触发 ProjectExecutionWindowManager 单例创建（构造时注册 IPC）。
+ * 窗口懒创建（首次 open 时才创建）。
+ */
+function initProjectExecutionModule(): void {
+  try {
+    import('../modules/project-execution/ProjectExecutionWindowManager')
+      .then(({ projectExecutionWindowManager }) => {
+        // 触发单例创建 + IPC 注册（getInstance 在构造时调用 registerIpc）
+        void projectExecutionWindowManager
+        logger.system.info('[Main] Project execution window module initialized (IPC registered)')
+      })
+      .catch((err) => {
+        logger.system.warn('[Main] Project execution module init skipped:', errMsg(err))
+      })
+  } catch (err) {
+    logger.system.warn('[Main] Project execution module init failed:', errMsg(err))
   }
 }
 

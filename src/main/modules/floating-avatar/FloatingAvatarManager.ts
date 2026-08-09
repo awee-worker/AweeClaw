@@ -26,8 +26,8 @@ import { setHideOnCloseEnabled } from '../../bootstrap/windowManager'
 // ============================================
 
 /** 头像窗口尺寸（正方形，静态头像 / 3D 球体 + 周围光晕） */
-const AVATAR_WIDTH = 46
-const AVATAR_HEIGHT = 46
+const AVATAR_WIDTH = 41
+const AVATAR_HEIGHT = 41
 
 /** 展开后的窗口尺寸（对话面板：球体 + 迷你聊天/语音面板）
  *  426×780：默认宽度在 576 基础上再缩小 150px，高度比原来增加 200px。
@@ -41,6 +41,15 @@ const EXPANDED_MAX_WIDTH = 800
 /** 头像窗口距离屏幕右下角的默认偏移 */
 const DEFAULT_MARGIN_RIGHT = 12
 const DEFAULT_MARGIN_BOTTOM = 12
+
+/** 执行状态栏高度（idle 模式下，球体上方显示执行状态卡片时扩展的窗口高度） */
+const STATUS_BAR_HEIGHT = 28
+/** 执行状态栏与球体之间的间距 */
+const STATUS_BAR_GAP = 2
+/** tooltip 预留高度（悬停时在状态栏上方显示提示文字的空间，透明不可见） */
+const TOOLTIP_RESERVE_HEIGHT = 44
+/** tooltip 扩展宽度（悬停时窗口宽度扩展到此值，容纳 tooltip 文字） */
+const TOOLTIP_EXPAND_WIDTH = 220
 
 /** 边缘吸附距离（px）：距离屏幕边缘 ≤ 此值时自动贴边 */
 const EDGE_SNAP_DISTANCE = 100
@@ -414,14 +423,27 @@ export class FloatingAvatarManager {
    *
    * 展开策略：保持窗口右下角不变（向左上方扩展），避免遮挡右下角内容。
    * 展开后尺寸：EXPANDED_WIDTH × EXPANDED_HEIGHT。
+   *
+   * ⚠️ 展开前必须重置 statusExpanded 状态：
+   *    若状态栏扩展中（窗口已向上扩展高度），直接 setSize 到 EXPANDED 尺寸
+   *    会产生跳变。重置后由 collapse() 的收起逻辑保证球体回到正确位置，
+   *    AvatarExecutionStatus 的 useEffect 会在回到 idle 后重新 expandForStatus()。
    */
   expand(): void {
     if (!this.window || this.window.isDestroyed() || this.expanded) return
 
+    // 重置状态栏扩展状态（避免收起对话面板后 statusExpanded 残留导致窗口尺寸异常）
+    this.statusExpanded = false
+    this.tooltipExpanded = false
+    this.statusEdge = null
+
     const [x, y] = this.window.getPosition()
     // 保持右下角不变：新 x = 旧 x + 旧宽 - 新宽；新 y = 旧 y + 旧高 - 新高
-    const newX = x + AVATAR_WIDTH - EXPANDED_WIDTH
-    const newY = y + AVATAR_HEIGHT - EXPANDED_HEIGHT
+    // ⚠️ 此处旧高可能是 AVATAR_HEIGHT（正常）或 AVATAR_HEIGHT + extraHeight（状态栏扩展中）
+    //    但因为上面已重置 statusExpanded=false，收起后由 AvatarExecutionStatus 重新扩展
+    const [oldW, oldH] = this.window.getSize()
+    const newX = x + oldW - EXPANDED_WIDTH
+    const newY = y + oldH - EXPANDED_HEIGHT
 
     // 确保不超出屏幕左边界
     const clampedX = Math.max(0, newX)
@@ -471,11 +493,182 @@ export class FloatingAvatarManager {
     return this.expanded
   }
 
+  // --------------------------------------------
+  // 执行状态栏扩展（idle 模式下球体上方显示 Pill）
+  // --------------------------------------------
+
+  /** 当前是否已为执行状态栏扩展窗口 */
+  private statusExpanded = false
+  /** 当前是否已为 tooltip 扩展窗口宽度 */
+  private tooltipExpanded = false
+  /** 状态栏边缘方向（扩展时确定，决定窗口宽度扩展方向 + 渲染进程定位球体） */
+  private statusEdge: 'left' | 'right' | null = null
+
+  /**
+   * 判断头像当前靠近屏幕的哪一侧
+   *
+   * 用于决定 tooltip 扩展时窗口向哪个方向扩展宽度：
+   * - 靠右 → 窗口右边缘固定，向左扩展宽度（球体在窗口右侧）
+   * - 靠左 → 窗口左边缘固定，向右扩展宽度（球体在窗口左侧）
+   */
+  private getScreenEdge(): 'left' | 'right' {
+    if (!this.window || this.window.isDestroyed()) return 'right'
+    const [x] = this.window.getPosition()
+    const display = screen.getDisplayNearestPoint({ x, y: 0 })
+    const { width: sw, x: dx } = display.workArea
+    const centerX = x + AVATAR_WIDTH / 2
+    const screenCenterX = dx + sw / 2
+    return centerX <= screenCenterX ? 'left' : 'right'
+  }
+
+  /**
+   * 扩展窗口高度以显示执行状态栏（球体上方）
+   *
+   * 策略：保持球体屏幕位置不变（窗口底部不变），向上扩展高度。
+   * 窗口宽度保持 AVATAR_WIDTH 不变（与球体同宽）。
+   * 扩展高度包含：tooltip 预留区 + 状态栏 + 间距，为悬停 tooltip 预留空间。
+   * 同时确定边缘方向并通知渲染进程，以便球体在窗口内正确定位。
+   *
+   * 仅在 idle 模式（未展开对话面板）时生效。
+   */
+  expandForStatus(): void {
+    if (!this.window || this.window.isDestroyed()) return
+    if (this.expanded) return
+    if (this.statusExpanded) return
+
+    const [x, y] = this.window.getPosition()
+    const extraHeight = STATUS_BAR_HEIGHT + TOOLTIP_RESERVE_HEIGHT + STATUS_BAR_GAP
+    const newY = y - extraHeight
+
+    this.window.setSize(AVATAR_WIDTH, AVATAR_HEIGHT + extraHeight)
+    this.window.setPosition(x, newY, false)
+    this.statusExpanded = true
+
+    // 确定边缘方向并通知渲染进程
+    const edge = this.getScreenEdge()
+    this.statusEdge = edge
+    this.sendToAvatar('floating-avatar:status-edge', edge)
+
+    logger.system.info('[FloatingAvatar] Expanded for status bar', { y: newY, edge })
+  }
+
+  /**
+   * 收起执行状态栏（恢复原始球体尺寸）
+   *
+   * 策略：保持球体位置不变（窗口底部不变），向下收缩高度。
+   */
+  collapseForStatus(): void {
+    if (!this.window || this.window.isDestroyed()) return
+    if (this.expanded) return
+    if (!this.statusExpanded) return
+
+    const [x, y] = this.window.getPosition()
+    const extraHeight = STATUS_BAR_HEIGHT + TOOLTIP_RESERVE_HEIGHT + STATUS_BAR_GAP
+    const newY = y + extraHeight
+
+    // 根据边缘方向恢复 X 坐标（tooltip 扩展可能改变了窗口宽度）
+    let restoreX = x
+    if (this.tooltipExpanded) {
+      if (this.statusEdge === 'right') {
+        // 右边缘固定：收起后左边缘右移
+        restoreX = x + (TOOLTIP_EXPAND_WIDTH - AVATAR_WIDTH)
+      }
+      // 左边缘固定：X 不变
+    }
+
+    this.window.setSize(AVATAR_WIDTH, AVATAR_HEIGHT)
+    this.window.setPosition(restoreX, newY, false)
+    this.statusExpanded = false
+    this.tooltipExpanded = false
+    this.statusEdge = null
+
+    // 通知渲染进程清除边缘（球体回到居中）
+    this.sendToAvatar('floating-avatar:status-edge', null)
+
+    logger.system.info('[FloatingAvatar] Collapsed status bar', { y: newY })
+  }
+
+  /**
+   * 扩展窗口宽度以显示 tooltip（鼠标悬停时）
+   *
+   * 边缘感知策略：根据球体靠近屏幕的哪一侧，决定窗口扩展方向：
+   * - 靠右：窗口右边缘固定（= 球体右边缘），向左扩展宽度
+   *   球体在窗口右下角（right: 0），tooltip 向左延伸
+   * - 靠左：窗口左边缘固定（= 球体左边缘），向右扩展宽度
+   *   球体在窗口左下角（left: 0），tooltip 向右延伸
+   *
+   * 球体屏幕位置始终保持不变。
+   */
+  expandForTooltip(): void {
+    if (!this.window || this.window.isDestroyed()) return
+    if (this.expanded) return
+    if (!this.statusExpanded) return
+    if (this.tooltipExpanded) return
+
+    const [x, y] = this.window.getPosition()
+    const [, h] = this.window.getSize()
+    const edge = this.statusEdge || this.getScreenEdge()
+
+    let newX: number
+    if (edge === 'right') {
+      // 右边缘固定：窗口右边缘 = 球体右边缘，向左扩展
+      newX = x + AVATAR_WIDTH - TOOLTIP_EXPAND_WIDTH
+    } else {
+      // 左边缘固定：窗口左边缘 = 球体左边缘，向右扩展
+      newX = x
+    }
+
+    // 防止超出屏幕对侧边界
+    const display = screen.getDisplayNearestPoint({ x: newX, y })
+    const { x: dx, width: sw } = display.workArea
+    if (newX < dx) newX = dx
+    if (newX + TOOLTIP_EXPAND_WIDTH > dx + sw) newX = dx + sw - TOOLTIP_EXPAND_WIDTH
+
+    this.window.setSize(TOOLTIP_EXPAND_WIDTH, h)
+    this.window.setPosition(newX, y, false)
+    this.tooltipExpanded = true
+  }
+
+  /**
+   * 收起 tooltip 扩展（鼠标离开时恢复窗口宽度）
+   *
+   * 边缘感知策略：根据扩展时的边缘方向恢复窗口位置。
+   */
+  collapseForTooltip(): void {
+    if (!this.window || this.window.isDestroyed()) return
+    if (!this.tooltipExpanded) return
+
+    const [x, y] = this.window.getPosition()
+    const [, h] = this.window.getSize()
+    const edge = this.statusEdge || 'right'
+
+    let newX: number
+    if (edge === 'right') {
+      // 右边缘固定：收起后左边缘右移
+      newX = x + (TOOLTIP_EXPAND_WIDTH - AVATAR_WIDTH)
+    } else {
+      // 左边缘固定：X 不变
+      newX = x
+    }
+
+    this.window.setSize(AVATAR_WIDTH, h)
+    this.window.setPosition(newX, y, false)
+    this.tooltipExpanded = false
+  }
+
+  /** 当前是否已为执行状态栏扩展 */
+  isStatusExpanded(): boolean {
+    return this.statusExpanded
+  }
+
   /** 销毁头像窗口（彻底退出时调用） */
   destroy(): void {
     // 销毁前关闭 hide-on-close，避免影响后续窗口关闭流程
     setHideOnCloseEnabled(false)
     this.expanded = false
+    this.statusExpanded = false
+    this.tooltipExpanded = false
+    this.statusEdge = null
     if (this.window && !this.window.isDestroyed()) {
       this.window.destroy()
       logger.system.info('[FloatingAvatar] Destroyed')

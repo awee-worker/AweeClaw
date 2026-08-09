@@ -49,6 +49,7 @@ import { registerSettingsDbIpcHandlers } from '../storage/settingsDb'
 import { registerSessionDbIpcHandlers } from '../storage/sessionDb'
 import { registerMemoryDbIpcHandlers } from '../storage/memoryDb'
 import { registerScenarioDbIpcHandlers } from '../storage/scenarioDb'
+import { registerProjectAttachmentIpcHandlers } from '../storage/projectAttachments'
 
 // ── scenario ────────────────────────────────────────────
 import { registerScenarioInstallIpcHandlers, registerScenarioMarketplaceHandlers } from '../scenario/scenarioInstall'
@@ -283,6 +284,26 @@ export function registerAllHandlers(context: IPCContext) {
 
   // 会话数据库
   registerOnce('session-db', () => registerSessionDbIpcHandlers())
+
+  // 项目附件本地存储（本地优先：工作区 .aweeclaw 缓存目录，后端兜底）
+  // 附件跟随工作区走：优先当前窗口绑定的工作区，兜底持久化的最近工作区
+  registerOnce('project-attachments', () =>
+    registerProjectAttachmentIpcHandlers(() => {
+      // 优先：当前主窗口已绑定的工作区（运行时切换工作区后即时反映）
+      const win = getMainWindow()
+      if (win && !win.isDestroyed() && context.getWindowWorkspace) {
+        const roots = context.getWindowWorkspace(win.id)
+        if (roots && roots.length > 0) return roots[0]
+      }
+      // 兜底：持久化的最近工作区
+      const session = workspaceMetaStore.get('lastWorkspaceSession') as
+        | { roots?: string[] }
+        | undefined
+      if (session?.roots && session.roots.length > 0) return session.roots[0]
+      // 最终兜底：lastWorkspacePath（旧字段）或 null（回退到 userData）
+      return (workspaceMetaStore.get('lastWorkspacePath') as string | null) ?? null
+    }),
+  )
 
   // 记忆数据库
   registerOnce('memory-db', () => registerMemoryDbIpcHandlers())

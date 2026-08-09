@@ -27,6 +27,9 @@ const CanvasWorkspace = lazy(() => import('@components/canvas/WorkspaceCanvas'))
 const DynamicPanelView = lazy(() => import('@components/explorer/AdaptivePanelView').then(m => ({ default: m.DynamicPanelView })))
 const ScenarioManagerView = lazy(() => import('@components/scenario/ScenarioManagerView').then(m => ({ default: m.ScenarioManagerView })))
 const KnowledgeView = lazy(() => import('@components/explorer/panels/KnowledgeExplorer').then(m => ({ default: m.KnowledgeView })))
+const TaskWorkspace = lazy(() => import('@components/explorer/panels/tasks/TaskWorkspace').then(m => ({ default: m.TaskWorkspace })))
+const ProjectsView = lazy(() => import('@components/explorer/panels/projects/ProjectsView').then(m => ({ default: m.ProjectsView })))
+const AutomationView = lazy(() => import('@components/explorer/panels/automation/AutomationView').then(m => ({ default: m.AutomationView })))
 const WelcomePage = lazy(() => import('@components/welcome/WelcomePage'))
 const PreferencesDialog = lazy(() => import('@components/settings/PreferencesDialog'))
 const UserProfilePage = lazy(() => import('@components/user/UserProfilePage'))
@@ -104,6 +107,27 @@ function PrimaryMainContent({ layoutConfig, isWideModePanel }: MainContentAreaPr
           </FullPageSlot>
           {layoutConfig.showChat && chatVisible && <ChatSection visible mode="secondary" />}
         </>
+      )
+    }
+    if (activeSidePanel === 'tasks') {
+      return (
+        <FullPageSlot>
+          <PanelSlot><TaskWorkspace /></PanelSlot>
+        </FullPageSlot>
+      )
+    }
+    if (activeSidePanel === 'projects') {
+      return (
+        <FullPageSlot>
+          <PanelSlot><ProjectsView /></PanelSlot>
+        </FullPageSlot>
+      )
+    }
+    if (activeSidePanel === 'automation') {
+      return (
+        <FullPageSlot>
+          <PanelSlot><AutomationView /></PanelSlot>
+        </FullPageSlot>
       )
     }
     return (
@@ -202,7 +226,9 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
   // 用户可通过右上角按钮手动切换 chatVisible，此处仅由 chatVisible 控制显隐
   const shouldHideChat = useMemo(() => {
     if (!chatVisible) return true
-    if (isWideModePanel && activeSidePanel !== 'knowledge' && (layoutConfig.wideModeHidesChat || activeSidePanel === 'scenarios')) return true
+    // 全屏工作台面板（任务/项目/自动化）隐藏聊天，独占主区域
+    const fullScreenPanels = ['tasks', 'projects', 'automation', 'scenarios']
+    if (isWideModePanel && activeSidePanel !== 'knowledge' && (layoutConfig.wideModeHidesChat || fullScreenPanels.includes(activeSidePanel ?? ''))) return true
     // 仅在非编辑器布局下隐藏 chat：编辑器布局由 EditorSlot 处理空状态（EditorWelcome），
     // 不渲染 scenarioWelcomeComponent，此时隐藏 chat 会导致用户无法与 AI 交互
     if (scenarioWelcomeComponent && !layoutConfig.showEditor && activeSidePanel === 'explorer' && !(openFiles.length > 0 && activeFilePath)) return true
@@ -211,13 +237,19 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
 
   // 宽模式面板
   if (isWideModePanel && activeSidePanel) {
+    const renderWidePanel = () => {
+      if (activeSidePanel === 'scenarios') return <ScenarioManagerView />
+      if (activeSidePanel === 'knowledge') return <KnowledgeView />
+      if (activeSidePanel === 'tasks') return <TaskWorkspace />
+      if (activeSidePanel === 'projects') return <ProjectsView />
+      if (activeSidePanel === 'automation') return <AutomationView />
+      return <DynamicPanelView panelId={activeSidePanel} />
+    }
     return (
       <>
         <FullPageSlot>
           <PanelSlot>
-            {activeSidePanel === 'scenarios' ? <ScenarioManagerView />
-              : activeSidePanel === 'knowledge' ? <KnowledgeView />
-              : <DynamicPanelView panelId={activeSidePanel} />}
+            {renderWidePanel()}
           </PanelSlot>
         </FullPageSlot>
         {layoutConfig.showChat && <ChatSection visible={!shouldHideChat} mode="secondary" />}

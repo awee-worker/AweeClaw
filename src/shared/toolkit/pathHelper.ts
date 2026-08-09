@@ -54,13 +54,24 @@ export interface PathSafetyAssertion {
 
 /**
  * 校验路径安全性，返回校验结果与规范化后的路径
+ *
+ * @param target 待校验的路径
+ * @param workspaceRoot 工作区根目录
+ * @param options.allowSensitive 是否允许访问敏感路径（如 .ssh、.aws）
+ * @param options.allowOutsideWorkspace 是否允许访问工作区外路径（跳过工作区边界检查）
+ * @param options.extraAllowedRoots 额外允许访问的根目录列表（如项目目录），
+ *        路径在这些目录下也视为合法，用于项目目录不在工作区内时的放行
  */
 export function assertPathSafety(
   target: string,
   workspaceRoot: string | null,
-  options?: { allowSensitive?: boolean; allowOutsideWorkspace?: boolean }
+  options?: {
+    allowSensitive?: boolean
+    allowOutsideWorkspace?: boolean
+    extraAllowedRoots?: string[]
+  }
 ): PathSafetyAssertion {
-  const { allowSensitive = false, allowOutsideWorkspace = false } = options || {}
+  const { allowSensitive = false, allowOutsideWorkspace = false, extraAllowedRoots = [] } = options || {}
   if (!target || typeof target !== 'string') {
     return { valid: false, error: 'Invalid path: empty or not a string' }
   }
@@ -71,7 +82,13 @@ export function assertPathSafety(
     return { valid: false, error: 'Access to sensitive path denied' }
   }
   if (!allowOutsideWorkspace && workspaceRoot && !isPathWithinWorkspace(target, workspaceRoot)) {
-    return { valid: false, error: 'Path is outside workspace' }
+    // 不在工作区内时，检查是否在额外允许的根目录下（如项目目录）
+    const inExtraRoot = extraAllowedRoots.some(root =>
+      root && isPathWithinWorkspace(target, root)
+    )
+    if (!inExtraRoot) {
+      return { valid: false, error: 'Path is outside workspace' }
+    }
   }
   return { valid: true, sanitizedPath: resolveToAbsolute(target, workspaceRoot) }
 }

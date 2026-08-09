@@ -17,6 +17,7 @@ import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { composerService } from '@intelligence/runtime/composerEngine'
 import { useStore } from '@store'
 import { toast } from '@components/foundation/NotificationProvider'
+import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
 import { getFileName } from '@shared/toolkit/pathHelper'
 
 interface PendingChangesBarProps {
@@ -61,8 +62,20 @@ function PendingChangesBarBase({ pendingChanges }: PendingChangesBarProps) {
     toast.success(isZh ? `已接受全部 ${stats.total} 个变更` : `Accepted ${stats.total} changes`)
   }
 
-  /** 全部拒绝（撤销） */
+  /** 全部拒绝（撤销）— 加二次确认，防止误点 */
   const handleRejectAll = async () => {
+    // 二次确认：防止用户误点「全部拒绝」导致 AI 生成的代码被全部撤销
+    const confirmed = await globalConfirm({
+      title: isZh ? '确认拒绝全部变更' : 'Confirm Reject All Changes',
+      message: isZh
+        ? `即将撤销全部 ${stats.total} 个文件的变更（恢复为原始内容），此操作不可恢复。确认拒绝吗？`
+        : `This will revert all ${stats.total} file(s) to their original content. This action cannot be undone. Are you sure?`,
+      confirmText: isZh ? '确认拒绝' : 'Confirm Reject',
+      cancelText: isZh ? '取消' : 'Cancel',
+      variant: 'danger',
+    })
+    if (!confirmed) return
+
     const result = await undoAllChanges()
     // 同步清除编辑器的 diff 状态（恢复旧内容 + 移除编辑器 diff 标记）
     await composerService.rejectAll()

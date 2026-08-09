@@ -44,9 +44,11 @@ export function createStreamProcessor(
   requestId: string,
   options?: {
     allowToolCalls?: boolean
+    abortSignal?: AbortSignal
   }
 ): StreamProcessor {
   const allowToolCalls = options?.allowToolCalls ?? true
+  const abortSignal = options?.abortSignal
 
   let content = ''
   let reasoning = ''
@@ -673,6 +675,22 @@ export function createStreamProcessor(
 
   cleanups.push(unsubStream, unsubError, unsubDone)
   activeListenerCount += 3
+
+  // ⚠️ abort 信号监听：用户点击停止按钮时立即 resolve processor
+  //   不依赖主进程的 error 事件（可能有延迟或链路问题），确保渲染进程能即时响应
+  //   这是停止按钮生效的关键：processor.wait() 不会卡在等待主进程响应上
+  if (abortSignal) {
+    // 如果信号已经触发（如 abort 在 send 之前调用），立即 resolve
+    if (abortSignal.aborted) {
+      resolveWithError({ message: 'Aborted by user', code: 'ABORTED' })
+    } else {
+      const onAbort = () => {
+        resolveWithError({ message: 'Aborted by user', code: 'ABORTED' })
+      }
+      abortSignal.addEventListener('abort', onAbort, { once: true })
+      cleanups.push(() => abortSignal.removeEventListener('abort', onAbort))
+    }
+  }
 
   // Expose the already-created completion promise.
   const wait = (): Promise<LLMCallResult> => waitPromise

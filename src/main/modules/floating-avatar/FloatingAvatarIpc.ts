@@ -315,6 +315,36 @@ export function registerFloatingAvatarIpc(callbacks: FloatingAvatarIpcCallbacks)
   })
 
   // --------------------------------------------
+  // 主窗口→头像：项目执行状态同步（单向 send，转发给头像窗口）
+  // --------------------------------------------
+  // 主窗口有项目任务执行时，将执行会话摘要推送到头像窗口，
+  // 头像窗口在悬浮球上方显示执行状态指示器。
+  // 主窗口通过 api.floatingAvatar.pushExecutionStatus(status) 发送。
+  ipcMain.on('floating-avatar:execution-status', (_event, payload: unknown) => {
+    manager.sendToAvatar('floating-avatar:execution-status', payload)
+  })
+
+  // --------------------------------------------
+  // 头像→main：执行状态栏窗口扩展/收起
+  // --------------------------------------------
+  // 头像窗口收到执行状态后，需要扩展窗口高度以在球体上方显示 Pill。
+  // 由头像窗口通过 api.floatingAvatar.expandForStatus() / collapseForStatus() 调用。
+  ipcMain.on('floating-avatar:expand-for-status', () => {
+    manager.expandForStatus()
+  })
+  ipcMain.on('floating-avatar:collapse-for-status', () => {
+    manager.collapseForStatus()
+  })
+
+  // 头像→main：tooltip 扩展/收起窗口宽度（悬停时扩展以容纳 tooltip 文字）
+  ipcMain.on('floating-avatar:expand-for-tooltip', () => {
+    manager.expandForTooltip()
+  })
+  ipcMain.on('floating-avatar:collapse-for-tooltip', () => {
+    manager.collapseForTooltip()
+  })
+
+  // --------------------------------------------
   // 模型列表请求/响应（头像→main→主窗口→main→头像）
   // --------------------------------------------
   // 头像窗口通过 invoke 发起请求 → 主进程向主窗口发事件 →

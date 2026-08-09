@@ -13,6 +13,15 @@ import type { PartRenderContext, AssistantGroupItem } from '../types'
 
 interface AssistantMessageContentViewProps extends PartRenderContext {
   parts: AssistantPart[]
+  /**
+   * 是否隐藏 todo 列表（todo_write 工具调用的渲染）
+   *
+   * 用于项目执行等场景：左侧已有项目任务列表，
+   * AI 的 todo 列表与项目任务列表高度重叠，重复显示会造成混淆。
+   * - true：跳过 todo_list 分组的渲染（todo_write 仍会执行，只是不显示）
+   * - false / undefined：正常渲染 todo 列表（默认行为）
+   */
+  hideTodoList?: boolean
 }
 
 /** 从 todo_write 工具调用参数中安全提取任务列表 */
@@ -44,7 +53,7 @@ function mergeTodoStatus(snapshot: TodoItem[], live?: TodoItem[]): TodoItem[] {
   )
 }
 
-function AssistantMessageContentViewBase({ parts, ...ctx }: AssistantMessageContentViewProps) {
+function AssistantMessageContentViewBase({ parts, hideTodoList, ...ctx }: AssistantMessageContentViewProps) {
   /** 订阅当前线程的最新任务列表，用于同步更新历史任务列表中已完成任务的状态 */
   const liveTodos = useAgentStore(s => {
     const threadId = s.currentThreadId
@@ -97,7 +106,9 @@ function AssistantMessageContentViewBase({ parts, ...ctx }: AssistantMessageCont
       {groups.map((group) => {
         // 任务列表：在 AI 调用 todo_write 的位置嵌入渲染
         // 合并快照与最新状态：已完成任务同步更新为 completed，避免历史列表停留在 in_progress
+        // hideTodoList=true 时跳过渲染（项目执行场景：左侧已有项目任务列表）
         if (group.type === 'todo_list') {
+          if (hideTodoList) return null
           const todos = mergeTodoStatus(group.todos, liveTodos)
           if (todos.length === 0) return null
           return (

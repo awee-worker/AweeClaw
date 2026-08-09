@@ -1,21 +1,18 @@
 /**
- * AutoFitSlideCanvas - 自适应宽度的 SlideCanvas 包装组件
+ * AutoFitSlideCanvas - 自适应宽高的 SlideCanvas 包装组件
  *
- * 核心解决：大图预览宽度无法正确撑满父容器的问题。
+ * 核心解决：大图预览在容器内按比例完整显示（contain 模式），不溢出、不裁剪、不塌陷。
  *
- * 原方案的问题：父组件用 useElementWidth 测量容器宽度，再传给 SlideCanvas。
- * 但 flex 布局下，父容器宽度会被内部 SlideCanvas 子元素反向影响，形成循环依赖，
- * 导致测量值卡在初始值（如 200px），大图永远只有容器一半不到。
+ * 测量策略（关键）：
+ *  外层用 `position: relative` 占位并撑满父容器（width/height: 100%）；
+ *  内层测量层用 `position: absolute; inset: 0` 撑满外层。
+ *  absolute 元素的 clientWidth/clientHeight 直接等于外层 content box 尺寸，
+ *  绕开了「父级高度链路不明确 → height:100% 塌成 0」的循环依赖问题。
+ *  这样无论父级是 flex-1、还是有冗余包裹层，都能稳定测得真实可用宽高。
  *
- * 本方案：
- * - 外层 div 用 `width: 100%` 撑满父容器（纯 CSS，不依赖 JS 测量父容器）
- * - 内部用 ResizeObserver 测量外层 div 的真实宽度（此时外层已被 CSS 撑开）
- * - 测量到宽度后传给 SlideCanvas 渲染
- *
- * 关键区别：测量的是「自己撑开后的宽度」，而非「父容器分配的宽度」。
- * 因为 `width: 100%` 是 CSS 引擎计算的，不受子元素影响，测量值稳定可靠。
- *
- * 用 aspect-ratio 保持幻灯片宽高比，避免高度塌缩。
+ * 缩放算法（contain）：
+ *  按幻灯片宽高比，分别计算按宽度撑满 / 按高度撑满两个候选宽度，取较小者，
+ *  保证等比缩放后完全落在容器内。
  */
 
 import { useEffect, useRef, useState, memo } from 'react'
@@ -33,24 +30,28 @@ const DEFAULT_SLIDE_W = 10
 const DEFAULT_SLIDE_H = 5.625
 
 function AutoFitSlideCanvasImpl({ slide, slideSize }: AutoFitSlideCanvasProps) {
+  // 外层 relative 占位，撑满父容器
   const containerRef = useRef<HTMLDivElement>(null)
-  const [width, setWidth] = useState(0)
+  // 内层 absolute 测量层，其尺寸即容器可用宽高
+  const measureRef = useRef<HTMLDivElement>(null)
+  const [size, setSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 })
 
   useEffect(() => {
-    const el = containerRef.current
+    const el = measureRef.current
     if (!el) return
 
-    // 测量函数：读取自身被 CSS width:100% 撑开后的实际宽度
+    // 测量 absolute 层的真实宽高（= 外层 content box 尺寸，不受子元素反向影响）
     const measure = () => {
       const w = el.clientWidth
-      if (w > 0) setWidth(w)
+      const h = el.clientHeight
+      if (w > 0 && h > 0) setSize({ w, h })
     }
 
     measure()
 
-    // 监听容器尺寸变化（窗口缩放、flex 重新分配等）
     const observer = new ResizeObserver(() => measure())
-    observer.observe(el)
+    // 观察外层容器尺寸变化（窗口缩放、flex 重分配、最大化/还原等）
+    if (containerRef.current) observer.observe(containerRef.current)
 
     window.addEventListener('resize', measure)
     return () => {
@@ -61,23 +62,46 @@ function AutoFitSlideCanvasImpl({ slide, slideSize }: AutoFitSlideCanvasProps) {
 
   const slideW = slideSize?.width || DEFAULT_SLIDE_W
   const slideH = slideSize?.height || DEFAULT_SLIDE_H
-  // 宽高比，用于 CSS aspect-ratio 保持幻灯片比例
-  const aspectRatio = `${slideW} / ${slideH}`
+
+  // contain 模式：取宽/高两个方向能容纳的较小缩放，保证幻灯片完整显示
+  const canvasWidth = (() => {
+    if (size.w <= 0 || size.h <= 0) return 0
+    const widthBasedScale = size.w / slideW
+    const heightByWidth = slideH * widthBasedScale
+    if (heightByWidth <= size.h) {
+      return size.w
+    }
+    const heightBasedScale = size.h / slideH
+    return slideW * heightBasedScale
+  })()
 
   return (
     <div
       ref={containerRef}
       style={{
+        position: 'relative',
         width: '100%',
-        // 用 aspect-ratio 让高度随宽度等比变化，容器自然保持幻灯片比例
-        aspectRatio,
-        maxWidth: '100%',
-        maxHeight: '100%',
-        // 居中显示（当容器比幻灯片比例宽时，宽度不会撑满，居中即可）
-        margin: '0 auto',
+        height: '100%',
+        minHeight: 0,
       }}
     >
-      {width > 0 && <SlideCanvas slide={slide} width={width} slideSize={slideSize} />}
+      {/* 测量层：absolute 撑满外层，其 clientWidth/clientHeight 即可用尺寸 */}
+      <div ref={measureRef} style={{ position: 'absolute', inset: 0 }} />
+
+      {/* 渲染层：居中显示幻灯片画布 */}
+      {canvasWidth > 0 && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <SlideCanvas slide={slide} width={canvasWidth} slideSize={slideSize} />
+        </div>
+      )}
     </div>
   )
 }
