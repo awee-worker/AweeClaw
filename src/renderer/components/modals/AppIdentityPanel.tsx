@@ -12,6 +12,8 @@ import { OverlayDialog } from '../ui'
 import { motion } from 'framer-motion'
 import { BRAND } from '@shared/brand'
 import { api } from '../../adapters/electronBridge'
+import { AboutCustomizationTab } from './AboutCustomizationTab'
+import { AboutPartnerTab } from './AboutPartnerTab'
 
 interface AppIdentityPanelProps {
   onClose: () => void
@@ -86,7 +88,7 @@ const ECOSYSTEM_LINKS: { key: string; icon: typeof Blocks; href: string; labelZh
 export default function AppIdentityPanel({ onClose }: AppIdentityPanelProps) {
   const language = useStore(s => s.language)
   const [version, setVersion] = useState('1.0.0')
-  const [activeTab, setActiveTab] = useState<'about' | 'system' | 'ecosystem'>('about')
+  const [activeTab, setActiveTab] = useState<'about' | 'system' | 'ecosystem' | 'customization' | 'partner'>('about')
   const isZh = language === 'zh'
   // 年份动态显示当前年
   const currentYear = new Date().getFullYear()
@@ -155,13 +157,19 @@ export default function AppIdentityPanel({ onClose }: AppIdentityPanelProps) {
               transition={{ delay: 0.25, duration: 0.4 }}
               className="flex gap-1.5 mt-5 bg-surface/50 rounded-full p-1 border border-border/30"
             >
-              {(['about', 'system', 'ecosystem'] as const).map(tab => (
+              {([
+                { id: 'about', zh: '概览', en: 'Overview' },
+                { id: 'system', zh: '系统', en: 'System' },
+                { id: 'ecosystem', zh: '生态', en: 'Ecosystem' },
+                { id: 'customization', zh: '定制', en: 'Custom' },
+                { id: 'partner', zh: '合伙人', en: 'Partner' },
+              ] as const).map(tab => (
                 <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`px-4 py-1.5 rounded-full text-[11px] font-bold transition-all ${activeTab === tab ? 'bg-accent/15 text-accent shadow-sm' : 'text-text-muted hover:text-text-secondary'}`}
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`px-3.5 py-1.5 rounded-full text-[11px] font-bold transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-accent/15 text-accent shadow-sm' : 'text-text-muted hover:text-text-secondary'}`}
                 >
-                  {tab === 'about' ? (isZh ? '概览' : 'Overview') : tab === 'system' ? (isZh ? '系统' : 'System') : (isZh ? '生态' : 'Ecosystem')}
+                  {isZh ? tab.zh : tab.en}
                 </button>
               ))}
             </motion.div>
@@ -252,6 +260,14 @@ export default function AppIdentityPanel({ onClose }: AppIdentityPanelProps) {
                   })}
                 </div>
               </motion.div>
+            )}
+
+            {activeTab === 'customization' && (
+              <AboutCustomizationTab isZh={isZh} />
+            )}
+
+            {activeTab === 'partner' && (
+              <AboutPartnerTab isZh={isZh} />
             )}
           </div>
 

@@ -20,6 +20,15 @@ export const BRAND = {
     email: 'aweelee@qq.com',
   },
 
+  /**
+   * 商务合作联系方式（定制服务 / 合伙人招募等）
+   * 与 author（创建者个人）区分，用于对外商务对接。
+   */
+  contact: {
+    wechat: 'AweeClaw',
+    email: 'jweelee@qq.com',
+  },
+
   links: {
     gitee: 'https://gitee.com/aweelee/aweeclaw.git',
     github: 'https://github.com/aweelee/aweeclaw',
