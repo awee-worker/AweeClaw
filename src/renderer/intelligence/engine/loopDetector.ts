@@ -1117,9 +1117,16 @@ export async function executeAgentCycle(
 
         const relativePath = resolveRelativeChangePath(meta.filePath, context.workspacePath ?? null, meta.relativePath)
 
-        // 只有代码文件才需要用户接受/拒绝，非代码文件（文档、配置等）自动接受
-        if (!isCodeFile(meta.filePath)) {
-          // 非代码文件：记录到 fileChangeHistory（标记为已接受），不进入待确认列表
+        // 判断是否需要用户确认接受/拒绝：
+        // 1. 非代码文件（文档、配置等）→ 自动接受
+        // 2. 新建文件（create）→ 自动接受（仅编辑现有文件需确认）
+        // 3. 授权模式为 'never'（无需确认）→ 自动接受
+        const isModify = !!meta.oldContent
+        const authMode = useStore.getState().authorizationMode
+        const shouldAutoAccept = !isCodeFile(meta.filePath) || !isModify || authMode === 'never'
+
+        if (shouldAutoAccept) {
+          // 自动接受：记录到 fileChangeHistory（标记为已接受），不进入待确认列表
           store.addPendingChange({
             filePath: meta.filePath,
             relativePath,

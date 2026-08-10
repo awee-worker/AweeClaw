@@ -109,7 +109,7 @@ export function AvatarApp({ onReady }: AvatarAppProps) {
   const handleWakeWordDetected = useCallback(
     (info: { keyword: string; transcript: string; confidence: number }) => {
       logger.system.info('[AvatarApp] Wake word detected, starting voice conversation', info)
-      void startVoiceConversation()
+      void startVoiceConversation(true)
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [bridge.voiceContext],
@@ -210,8 +210,10 @@ export function AvatarApp({ onReady }: AvatarAppProps) {
     }
   }, [mode, bridge.voiceContext])
 
-  /** 启动语音对话（唤醒词触发或从聊天切换） */
-  const startVoiceConversation = useCallback(async () => {
+  /** 启动语音对话
+   *  @param withGreeting 是否播放问候语（仅唤醒词触发时为 true，手动切换不播放）
+   */
+  const startVoiceConversation = useCallback(async (withGreeting = false) => {
     if (mode === 'voice') return
     if (!bridge.voiceContext) {
       logger.system.warn('[AvatarApp] No voice context, cannot start voice conversation')
@@ -256,12 +258,14 @@ export function AvatarApp({ onReady }: AvatarAppProps) {
       await voiceChat.connect()
       logger.system.info('[AvatarApp] Voice conversation started')
 
-      // 唤醒后先说问候语，再开始监听
-      const greeting = language === 'zh' ? '在呢' : 'Yes?'
-      try {
-        await voiceChat.speakGreeting(greeting)
-      } catch (err) {
-        logger.system.warn('[AvatarApp] Greeting failed, continuing:', err)
+      // 仅唤醒词触发时播放问候语，手动切换不播放
+      if (withGreeting) {
+        const greeting = language === 'zh' ? '在呢' : 'Yes?'
+        try {
+          await voiceChat.speakGreeting(greeting)
+        } catch (err) {
+          logger.system.warn('[AvatarApp] Greeting failed, continuing:', err)
+        }
       }
     } catch (err) {
       logger.system.error('[AvatarApp] Failed to start voice conversation:', err)

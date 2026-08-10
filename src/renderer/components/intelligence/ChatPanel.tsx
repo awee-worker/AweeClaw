@@ -66,6 +66,7 @@ import { HumanApprovalCard } from './HumanApprovalCard'
 import { playPendingReviewSound } from '@renderer/utils/sound'
 import { ProactiveSuggestionsContainer } from './proactive/ProactiveSuggestionsContainer'
 import { useProactiveInvoker } from './proactive/useProactiveInvoker'
+import { useAutomationCronExecutor } from './proactive/useAutomationCronExecutor'
 
 export default function ChatPanel() {
   // ===== Store 状态订阅 =====
@@ -251,6 +252,10 @@ export default function ChatPanel() {
   // 订阅 'proactive:invoke-agent' 和 'proactive:execute-action' 频道
   // 收到 high/critical 级提案时自动调用 Agent.send 发起主动对话
   useProactiveInvoker()
+
+  // ===== 自动化规则 Cron 执行订阅 =====
+  // 监听 'cron:task-execute' 事件，用用户当前配置的模型在本地执行自动化 Agent 任务
+  useAutomationCronExecutor()
 
   // ===== 过滤消息列表 =====
   const filteredMessages = useMemo(

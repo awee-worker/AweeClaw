@@ -109,6 +109,8 @@ export interface CronTask {
   command: string
   /** 关联的 Agent ID（会话 ID） */
   agentId?: string
+  /** 关联的后端自动化规则 ID（用于本地优先执行 + 后端兜底协调） */
+  ruleId?: string
   /** 状态 */
   status: CronTaskStatus
   /** 上次执行时间 */
@@ -136,6 +138,8 @@ export interface CronTaskConfig {
   command: string
   /** 关联的 Agent ID */
   agentId?: string
+  /** 关联的后端自动化规则 ID */
+  ruleId?: string
   /** 触发的 Hook 事件名 */
   hookEvent?: string
   /** 是否立即激活（默认 true） */
@@ -152,6 +156,7 @@ export interface PersistedCronTask {
   expression: string
   command: string
   agentId?: string
+  ruleId?: string
   hookEvent?: string
   active: boolean
   maxCalls: number
@@ -164,6 +169,7 @@ export interface CronTaskExecutionEvent {
   taskName: string
   command: string
   agentId?: string
+  ruleId?: string
   timestamp: number
 }
 
@@ -229,6 +235,7 @@ class CronScheduler extends EventEmitter {
           expression: p.expression,
           command: p.command,
           agentId: p.agentId,
+          ruleId: p.ruleId,
           hookEvent: p.hookEvent,
           active: p.active,
           maxCalls: p.maxCalls,
@@ -251,6 +258,7 @@ class CronScheduler extends EventEmitter {
       expression: t.expression,
       command: t.command,
       agentId: t.agentId,
+      ruleId: t.ruleId,
       hookEvent: t.hookEvent,
       active: t.status === 'active',
       maxCalls: t.maxCalls,
@@ -278,6 +286,7 @@ class CronScheduler extends EventEmitter {
       fields,
       command: config.command,
       agentId: config.agentId,
+      ruleId: config.ruleId,
       status: config.active !== false ? 'active' : 'paused',
       lastRunAt: null,
       nextRunAt: this.calculateNextRun(fields),
@@ -379,6 +388,78 @@ class CronScheduler extends EventEmitter {
   }
 
   // ============================================
+  // 按 ruleId 操作（用于自动化规则同步）
+  // ============================================
+
+  /**
+   * 按后端规则 ID 查找任务
+   */
+  findByRuleId(ruleId: string): CronTask | undefined {
+    return Array.from(this.tasks.values()).find(t => t.ruleId === ruleId)
+  }
+
+  /**
+   * 按后端规则 ID 移除任务
+   */
+  unregisterByRuleId(ruleId: string): boolean {
+    const task = this.findByRuleId(ruleId)
+    if (!task) return false
+    return this.unregister(task.id)
+  }
+
+  /**
+   * 按后端规则 ID 暂停任务
+   */
+  pauseByRuleId(ruleId: string): boolean {
+    const task = this.findByRuleId(ruleId)
+    if (!task) return false
+    return this.pause(task.id)
+  }
+
+  /**
+   * 按后端规则 ID 恢复任务
+   */
+  resumeByRuleId(ruleId: string): boolean {
+    const task = this.findByRuleId(ruleId)
+    if (!task) return false
+    return this.resume(task.id)
+  }
+
+  /**
+   * 按后端规则 ID 更新任务（不存在则注册）
+   */
+  upsertByRuleId(
+    ruleId: string,
+    updates: Partial<Pick<CronTaskConfig, 'name' | 'description' | 'expression' | 'command' | 'maxCalls'>>,
+    active?: boolean,
+  ): CronTask | null {
+    const existing = this.findByRuleId(ruleId)
+    if (existing) {
+      const updated = this.update(existing.id, updates)
+      // 同步启停状态
+      if (active !== undefined) {
+        if (active && existing.status === 'paused') {
+          this.resume(existing.id)
+        } else if (!active && existing.status === 'active') {
+          this.pause(existing.id)
+        }
+      }
+      return updated
+    }
+    // 不存在则注册（需要 expression 和 command）
+    if (!updates.expression) return null
+    return this.register({
+      name: updates.name || ruleId,
+      description: updates.description || '',
+      expression: updates.expression,
+      command: updates.command || '',
+      ruleId,
+      active: active ?? true,
+      maxCalls: updates.maxCalls,
+    })
+  }
+
+  // ============================================
   // 调度逻辑（私有）
   // ============================================
 
@@ -428,6 +509,7 @@ class CronScheduler extends EventEmitter {
         taskName: task.name,
         command: task.command,
         agentId: task.agentId,
+        ruleId: task.ruleId,
         timestamp: Date.now(),
       }
       this.emit('task-execute', executionEvent)
@@ -471,6 +553,7 @@ class CronScheduler extends EventEmitter {
       expression: task.expression,
       command: task.command,
       agentId: task.agentId,
+      ruleId: task.ruleId,
       status: task.status,
       lastRunAt: task.lastRunAt,
       nextRunAt: task.nextRunAt,

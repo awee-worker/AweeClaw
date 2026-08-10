@@ -429,8 +429,8 @@ export function PluginMarketplacePanel() {
   if (!authenticated) {
     return (
       <div className="flex flex-col items-center justify-center h-full px-4 text-center">
-        <Globe className="w-8 h-8 text-text-muted/40 mb-3" />
-        <p className="text-xs text-text-muted mb-1">
+        <Globe className="w-12 h-12 text-text-muted/40 mb-4" />
+        <p className="text-[13px] text-text-muted mb-1">
           {t('app.pleaseloginfirst', language)}
         </p>
         <p className="text-[12px] text-text-muted/60">
@@ -459,9 +459,9 @@ export function PluginMarketplacePanel() {
   return (
     <div className="flex flex-col h-full">
       {/* 顶部搜索栏（固定吸顶，不参与滚动） */}
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-border/40 flex-shrink-0">
+      <div className="flex items-center gap-2.5 px-5 py-3.5 border-b border-border/40 flex-shrink-0">
         <div className="relative flex-1">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted/60" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted/60" />
           <input
             type="text"
             value={searchQuery}
@@ -470,7 +470,7 @@ export function PluginMarketplacePanel() {
               setSearchQuery(e.target.value)
             }}
             placeholder={language === 'zh' ? '搜索插件...' : 'Search plugins...'}
-            className="w-full h-8 pl-8 pr-3 text-xs bg-bg-hover rounded-md border border-border/40 focus:border-accent/50 focus:outline-none"
+            className="w-full h-9 pl-9 pr-3 text-[13px] bg-bg-hover rounded-lg border border-border/40 focus:border-accent/50 focus:outline-none transition-colors"
           />
         </div>
         <ActionButton
@@ -479,7 +479,7 @@ export function PluginMarketplacePanel() {
           size="sm"
           title={language === 'zh' ? '刷新' : 'Refresh'}
         >
-          <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
         </ActionButton>
       </div>
 
@@ -515,12 +515,15 @@ export function PluginMarketplacePanel() {
         )}
 
         {/* 全部插件列表标题 */}
-        <div className="px-4 py-2.5 border-b border-border/30 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-text-primary">
-            {searchQuery || selectedCategory
-              ? (language === 'zh' ? '搜索结果' : 'Search Results')
-              : (language === 'zh' ? '全部插件' : 'All Plugins')}
-          </h3>
+        <div className="px-5 py-3.5 border-b border-border/30 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <span className="w-1 h-5 rounded-full bg-gradient-to-b from-accent to-accent/60" />
+            <h3 className="text-base font-semibold text-text-primary tracking-tight">
+              {searchQuery || selectedCategory
+                ? (language === 'zh' ? '搜索结果' : 'Search Results')
+                : (language === 'zh' ? '全部插件' : 'All Plugins')}
+            </h3>
+          </div>
           <span className="text-[12px] text-text-muted/70">
             {language === 'zh' ? `${total} 个` : `${total} total`}
           </span>
@@ -529,17 +532,17 @@ export function PluginMarketplacePanel() {
         {/* 全部插件列表 */}
         {isLoading ? (
           <div className="flex items-center justify-center h-32">
-            <RefreshCw className="w-4 h-4 animate-spin text-text-muted" />
+            <RefreshCw className="w-5 h-5 animate-spin text-text-muted" />
           </div>
         ) : items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-32 text-text-muted/60">
-            <Package className="w-6 h-6 mb-2 opacity-40" />
-            <p className="text-xs">
+          <div className="flex flex-col items-center justify-center h-40 text-text-muted/60">
+            <Package className="w-8 h-8 mb-3 opacity-40" />
+            <p className="text-[13px]">
               {language === 'zh' ? '暂无插件' : 'No plugins found'}
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-2 p-3 items-start [align-content:start]">
+          <div className="grid grid-cols-2 gap-3 p-4 items-start [align-content:start]">
             {items.map((item) => (
               <PluginCard
                 key={item.id}
@@ -559,11 +562,11 @@ export function PluginMarketplacePanel() {
 
         {/* 分页（随内容滚动，不再浮动吸底） */}
         {total > 20 && (
-          <div className="flex items-center justify-between px-4 py-3 text-[12px] text-text-muted">
+          <div className="flex items-center justify-between px-5 py-4 text-[12px] text-text-muted">
             <span>
               {language === 'zh' ? `共 ${total} 个` : `${total} total`}
             </span>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-2">
               <ActionButton
                 variant="ghost"
                 size="sm"
@@ -572,7 +575,7 @@ export function PluginMarketplacePanel() {
               >
                 {language === 'zh' ? '上一页' : 'Prev'}
               </ActionButton>
-              <span className="px-1.5">{page}</span>
+              <span className="px-2 text-text-primary font-medium">{page}</span>
               <ActionButton
                 variant="ghost"
                 size="sm"
@@ -628,22 +631,22 @@ function PluginCard({
   return (
     <div
       onClick={onClick}
-      className="flex items-center gap-2.5 p-2.5 h-full rounded-xl border border-border/40 bg-bg-base hover:border-accent/40 hover:bg-bg-hover/30 cursor-pointer transition-all"
+      className="flex items-center gap-3 p-3.5 h-full rounded-xl border border-border/40 bg-bg-base hover:border-accent/40 hover:bg-bg-hover/30 hover:shadow-md hover:shadow-black/5 cursor-pointer transition-all duration-200"
     >
       {/* 图标 */}
-      <PluginIcon icon={item.icon} category={item.category} size={36} />
+      <PluginIcon icon={item.icon} category={item.category} size={44} />
 
       {/* 名称 + 描述（中间区域，自适应宽度） */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1 mb-0.5">
-          <span className="text-xs font-medium truncate">
+          <span className="text-[13px] font-semibold truncate">
             {language === 'zh' ? item.nameZh : item.name}
           </span>
           {item.featured && (
-            <Sparkles className="shrink-0 w-3 h-3 text-yellow-400" />
+            <Sparkles className="shrink-0 w-3.5 h-3.5 text-yellow-400" />
           )}
         </div>
-        <p className="text-[11px] text-text-muted line-clamp-1">
+        <p className="text-[12px] text-text-muted line-clamp-1">
           {language === 'zh' ? item.descriptionZh : item.description}
         </p>
       </div>
@@ -651,7 +654,7 @@ function PluginCard({
       {/* 安装按钮（最右侧） */}
       <div className="shrink-0">
         {installed ? (
-          <div className="flex items-center justify-center gap-1 h-7 px-2.5 rounded-md bg-green-500/10 text-green-400 text-[11px]">
+          <div className="flex items-center justify-center gap-1 h-8 px-3 rounded-lg bg-green-500/10 text-green-400 text-[12px]">
             <CheckCircle2 className="w-3.5 h-3.5" />
             {language === 'zh' ? '已安装' : 'Installed'}
           </div>
@@ -659,7 +662,7 @@ function PluginCard({
           <button
             onClick={onInstall}
             disabled={installing}
-            className={`flex items-center justify-center gap-1 h-7 px-2.5 rounded-md text-[11px] font-medium transition-colors ${
+            className={`flex items-center justify-center gap-1 h-8 px-3 rounded-lg text-[12px] font-medium transition-all duration-200 ${
               installing
                 ? 'bg-bg-hover text-text-muted cursor-not-allowed'
                 : item.isFree
@@ -669,17 +672,17 @@ function PluginCard({
           >
             {installing ? (
               <>
-                <RefreshCw className="w-3 h-3 animate-spin" />
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                 {language === 'zh' ? '安装中' : 'Installing'}
               </>
             ) : item.isFree ? (
               <>
-                <Download className="w-3 h-3" />
+                <Download className="w-3.5 h-3.5" />
                 {language === 'zh' ? '安装' : 'Install'}
               </>
             ) : (
               <>
-                <Download className="w-3 h-3" />
+                <Download className="w-3.5 h-3.5" />
                 {language === 'zh' ? `¥${item.price}` : `¥${item.price}`}
               </>
             )}

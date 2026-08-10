@@ -258,7 +258,7 @@ export default function ModelSelector({ className = '', alignLeft = false, disab
       <button
         onClick={() => !disabled && setIsOpen((prev) => !prev)}
         className={`
-          inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-medium border border-transparent
+          inline-flex items-center gap-1.5 px-[7px] py-1.5 rounded-full text-[12px] font-medium border border-transparent
           transition-all duration-200
           ${disabled
             ? 'opacity-40 cursor-not-allowed'

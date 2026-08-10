@@ -116,6 +116,7 @@ const GENERAL_ASSISTANT_UI: ScenarioUI = {
     { id: 'projects', icon: 'FolderKanban', label: 'Projects', labelZh: '项目', component: 'ProjectsView', position: 2, wideMode: true },
     { id: 'tasks', icon: 'CheckSquare', label: 'Tasks', labelZh: '任务', component: 'TaskWorkspace', position: 3, wideMode: true },
     { id: 'automation', icon: 'Zap', label: 'Automation', labelZh: '自动化', component: 'AutomationView', position: 4, wideMode: true },
+    { id: 'plugin-market', icon: 'Store', label: 'Plugin Market', labelZh: '插件与技能市场', component: 'PluginMarketView', position: 5, wideMode: true, hideEditor: true },
   ],
   statusBarItems: [],
   welcomeComponent: 'GeneralWelcomePage',

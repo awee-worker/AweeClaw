@@ -52,6 +52,7 @@ export function registerAutomationHandlers(): void {
         expression: task.expression,
         command: task.command,
         agentId: task.agentId,
+        ruleId: task.ruleId,
         status: task.status,
         lastRunAt: task.lastRunAt,
         nextRunAt: task.nextRunAt,
@@ -125,6 +126,7 @@ export function registerAutomationHandlers(): void {
         expression: t.expression,
         command: t.command,
         agentId: t.agentId,
+        ruleId: t.ruleId,
         status: t.status,
         lastRunAt: t.lastRunAt,
         nextRunAt: t.nextRunAt,
@@ -171,4 +173,90 @@ export function registerAutomationHandlers(): void {
     cronScheduler.stop()
     return { success: true }
   })
+
+  // ─── 按 ruleId 操作（自动化规则同步用） ──────────────
+
+  /** 按后端规则 ID 移除任务 */
+  safeIpcHandle('cron:unregisterByRuleId', async (_, ruleId: string) => {
+    const removed = cronScheduler.unregisterByRuleId(ruleId)
+    return { success: removed }
+  })
+
+  /** 按后端规则 ID 暂停任务 */
+  safeIpcHandle('cron:pauseByRuleId', async (_, ruleId: string) => {
+    const paused = cronScheduler.pauseByRuleId(ruleId)
+    return { success: paused }
+  })
+
+  /** 按后端规则 ID 恢复任务 */
+  safeIpcHandle('cron:resumeByRuleId', async (_, ruleId: string) => {
+    const resumed = cronScheduler.resumeByRuleId(ruleId)
+    return { success: resumed }
+  })
+
+  /** 按后端规则 ID 查询任务 */
+  safeIpcHandle('cron:getTaskByRuleId', async (_, ruleId: string) => {
+    const task = cronScheduler.findByRuleId(ruleId)
+    if (!task) return { success: false, task: null }
+    return {
+      success: true,
+      task: {
+        id: task.id,
+        name: task.name,
+        description: task.description,
+        expression: task.expression,
+        command: task.command,
+        agentId: task.agentId,
+        ruleId: task.ruleId,
+        status: task.status,
+        lastRunAt: task.lastRunAt,
+        nextRunAt: task.nextRunAt,
+        runCount: task.runCount,
+        maxCalls: task.maxCalls,
+        lastError: task.lastError,
+        createdAt: task.createdAt,
+        hookEvent: task.hookEvent,
+      },
+    }
+  })
+
+  /** 按后端规则 ID 更新或创建任务（upsert） */
+  safeIpcHandle(
+    'cron:upsertByRuleId',
+    async (
+      _,
+      ruleId: string,
+      updates: {
+        name?: string
+        description?: string
+        expression?: string
+        command?: string
+        maxCalls?: number
+      },
+      active?: boolean,
+    ) => {
+      const task = cronScheduler.upsertByRuleId(ruleId, updates, active)
+      if (!task) return { success: false, error: 'Task not found and no expression provided' }
+      return {
+        success: true,
+        task: {
+          id: task.id,
+          name: task.name,
+          description: task.description,
+          expression: task.expression,
+          command: task.command,
+          agentId: task.agentId,
+          ruleId: task.ruleId,
+          status: task.status,
+          lastRunAt: task.lastRunAt,
+          nextRunAt: task.nextRunAt,
+          runCount: task.runCount,
+          maxCalls: task.maxCalls,
+          lastError: task.lastError,
+          createdAt: task.createdAt,
+          hookEvent: task.hookEvent,
+        },
+      }
+    },
+  )
 }

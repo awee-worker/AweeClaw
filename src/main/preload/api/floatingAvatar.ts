@@ -334,5 +334,11 @@ export function createFloatingAvatarApi() {
     menuClose: () => {
       ipcRenderer.send('avatar-menu:close')
     },
+    /** 订阅菜单刷新事件（复用窗口时主进程推送，通知渲染层重新获取菜单项） */
+    onMenuRefresh: (callback: () => void) => {
+      const handler = () => callback()
+      ipcRenderer.on('avatar-menu:refresh', handler)
+      return () => ipcRenderer.removeListener('avatar-menu:refresh', handler)
+    },
   }
 }

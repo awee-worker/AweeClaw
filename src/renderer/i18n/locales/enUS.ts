@@ -2572,6 +2572,8 @@ export const en = {
   'layout.workflow': 'Workflow',
   'layout.schedule': 'Schedule',
   'layout.plugins': 'Plugins',
+  'layout.pluginsandskills': 'Plugins & Skills',
+  'layout.pluginmarket': 'Plugin & Skill Market',
   'plugin.category.all': 'All',
   'plugin.type.mcp': 'MCP Tool',
   'plugin.type.channel': 'Channel',

@@ -23,6 +23,16 @@ export function createAutomationApi() {
     cronGetTasksForAgent: (agentId: string) => invoke('cron:getTasksForAgent')(agentId),
     cronStart: invoke('cron:start'),
     cronStop: invoke('cron:stop'),
+    // 按 ruleId 操作（自动化规则同步用）
+    cronUnregisterByRuleId: (ruleId: string) => invoke('cron:unregisterByRuleId')(ruleId),
+    cronPauseByRuleId: (ruleId: string) => invoke('cron:pauseByRuleId')(ruleId),
+    cronResumeByRuleId: (ruleId: string) => invoke('cron:resumeByRuleId')(ruleId),
+    cronGetTaskByRuleId: (ruleId: string) => invoke('cron:getTaskByRuleId')(ruleId),
+    cronUpsertByRuleId: (
+      ruleId: string,
+      updates: { name?: string; description?: string; expression?: string; command?: string; maxCalls?: number },
+      active?: boolean,
+    ) => invoke('cron:upsertByRuleId')(ruleId, updates, active),
     onCronTaskStateChanged: on<unknown>('cron:task-state-changed'),
     onCronTaskExecute: on<unknown>('cron:task-execute'),
 

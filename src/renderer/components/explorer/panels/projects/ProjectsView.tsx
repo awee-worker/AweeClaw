@@ -417,7 +417,7 @@ function ProjectCard({
       className={`p-3 rounded-lg cursor-pointer transition-all border ${
         isSelected
           ? 'border-accent/40 bg-accent/5'
-          : 'border-transparent hover:bg-surface-hover/40 hover:border-border/20'
+          : 'border-border/30 hover:bg-surface-hover/40 hover:border-border/50'
       }`}
     >
       <div className="flex items-start gap-2.5 mb-1.5">

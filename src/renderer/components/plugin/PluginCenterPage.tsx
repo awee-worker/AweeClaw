@@ -19,7 +19,7 @@ import { t, type Language } from '@renderer/i18n'
 type PluginTab = 'marketplace' | 'installed'
 
 const pluginTabs: { id: PluginTab; icon: React.ReactNode; labelZh: string; labelEn: string }[] = [
-  { id: 'marketplace', icon: <Store className="w-4 h-4" />, labelZh: '插件市场', labelEn: 'Marketplace' },
+  { id: 'marketplace', icon: <Store className="w-4 h-4" />, labelZh: '插件与技能市场', labelEn: 'Plugin & Skill Market' },
   { id: 'installed', icon: <Package className="w-4 h-4" />, labelZh: '已安装', labelEn: 'Installed' },
 ]
 
@@ -92,8 +92,8 @@ export default function PluginCenterPage() {
               </h3>
               <p className="text-sm text-text-muted mt-1.5 opacity-80">
                 {lang === 'zh'
-                  ? '发现、安装并管理你的插件'
-                  : 'Discover, install and manage your plugins'}
+                  ? '发现、安装并管理你的插件与技能'
+                  : 'Discover, install and manage your plugins & skills'}
               </p>
             </div>
           </div>

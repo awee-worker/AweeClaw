@@ -1947,6 +1947,16 @@ export interface ElectronAPI {
   cronGetTasksForAgent: (agentId: string) => Promise<{ success: boolean; tasks: any[] }>
   cronStart: () => Promise<{ success: boolean }>
   cronStop: () => Promise<{ success: boolean }>
+  // 按 ruleId 操作（自动化规则同步用）
+  cronUnregisterByRuleId: (ruleId: string) => Promise<{ success: boolean }>
+  cronPauseByRuleId: (ruleId: string) => Promise<{ success: boolean }>
+  cronResumeByRuleId: (ruleId: string) => Promise<{ success: boolean }>
+  cronGetTaskByRuleId: (ruleId: string) => Promise<{ success: boolean; task: any | null }>
+  cronUpsertByRuleId: (
+    ruleId: string,
+    updates: { name?: string; description?: string; expression?: string; command?: string; maxCalls?: number },
+    active?: boolean,
+  ) => Promise<{ success: boolean; task?: any; error?: string }>
   onCronTaskStateChanged: (callback: (taskData: any) => void) => () => void
   onCronTaskExecute: (callback: (event: any) => void) => () => void
 

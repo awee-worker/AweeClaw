@@ -2571,6 +2571,8 @@ export const zh = {
   'layout.workflow': '工作流',
   'layout.schedule': '定时任务',
   'layout.plugins': '插件',
+  'layout.pluginsandskills': '插件与技能',
+  'layout.pluginmarket': '插件与技能市场',
   'plugin.category.all': '全部',
   'plugin.type.mcp': 'MCP 工具',
   'plugin.type.channel': '渠道',

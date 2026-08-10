@@ -33,6 +33,7 @@ const avatarApi = (window as unknown as {
       menuGetItems: () => Promise<MenuItem[]>
       menuClick: (itemId: string) => void
       menuClose: () => void
+      onMenuRefresh: (callback: () => void) => () => void
     }
   }
 }).electronAPI.floatingAvatar
@@ -40,8 +41,8 @@ const avatarApi = (window as unknown as {
 export function AvatarContextMenu() {
   const [items, setItems] = useState<MenuItem[]>([])
 
-  // 挂载后获取菜单项
-  useEffect(() => {
+  // 获取最新菜单项（主进程实时构建：显示/隐藏文案、唤醒开关勾选态等）
+  const fetchItems = () => {
     avatarApi
       .menuGetItems()
       .then((list) => {
@@ -50,6 +51,16 @@ export function AvatarContextMenu() {
       .catch((err: unknown) => {
         console.error('[AvatarContextMenu] Get items failed:', err)
       })
+  }
+
+  // 挂载后获取菜单项
+  useEffect(() => {
+    fetchItems()
+  }, [])
+
+  // 订阅刷新事件：复用窗口时主进程推送，重新获取菜单项（勾选态可能已变化）
+  useEffect(() => {
+    return avatarApi.onMenuRefresh(() => fetchItems())
   }, [])
 
   // ESC 关闭

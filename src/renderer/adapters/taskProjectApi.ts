@@ -278,6 +278,14 @@ export const automationApi = {
     return backendApi.post<unknown>(`/api/v1/automation-rules/${id}/execute`, { payload })
   },
 
+  /**
+   * 上报规则已由客户端本地执行（更新 lastExecutedAt）
+   * 用于本地优先策略：客户端执行后通知后端跳过本次调度，避免重复执行
+   */
+  async reportExecuted(id: string): Promise<void> {
+    await backendApi.post<void>(`/api/v1/automation-rules/${id}/executed`, {})
+  },
+
   /** 获取全局运行历史 */
   async listRuns(params: { limit?: number; offset?: number; status?: string } = {}): Promise<ListResponse<AutomationRun>> {
     const qs = buildQuery(params)

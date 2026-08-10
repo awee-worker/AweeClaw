@@ -60,11 +60,69 @@ export function AutomationView() {
       if (data.length > 0 && !selectedId) {
         setSelectedId(data[0].id)
       }
+      // 同步本地 cronScheduler：清理孤儿任务、注册缺失的 schedule 规则、同步启停状态
+      void syncLocalCronWithBackend(data)
     } catch (e) {
       setError(getApiErrorMessage(e, isZh ? '加载失败' : 'Failed to load'))
     }
     setLoading(false)
   }, [selectedId, isZh])
+
+  /**
+   * 同步本地 cronScheduler 与后端规则列表
+   * - 清理本地孤儿任务（后端已删除的）
+   * - 注册缺失的 schedule 类型规则
+   * - 同步启停状态（其他设备可能改过 enabled）
+   */
+  const syncLocalCronWithBackend = useCallback(async (backendRules: AutomationRule[]) => {
+    const api = (window as Window & {
+      electronAPI?: {
+        cronGetAllTasks?: () => Promise<{ success: boolean; tasks: Array<{ id: string; ruleId?: string; status: string }> }>
+        cronUnregister?: (taskId: string) => Promise<unknown>
+        cronRegister?: (config: unknown) => Promise<unknown>
+        cronResumeByRuleId?: (id: string) => Promise<unknown>
+        cronPauseByRuleId?: (id: string) => Promise<unknown>
+      }
+    }).electronAPI
+    if (!api?.cronGetAllTasks) return
+
+    try {
+      const result = await api.cronGetAllTasks()
+      const localTasks = result.tasks || []
+      const scheduleRules = backendRules.filter(r => r.triggerConfig?.type === 'schedule' && r.triggerConfig.cron)
+
+      // 1. 清理本地孤儿任务（后端已删除或无 ruleId 的旧任务）
+      for (const task of localTasks) {
+        if (task.ruleId && !backendRules.find(r => r.id === task.ruleId)) {
+          await api.cronUnregister?.(task.id)
+        }
+      }
+
+      // 2. 注册缺失的 schedule 规则 + 3. 同步启停状态
+      for (const rule of scheduleRules) {
+        const existing = localTasks.find(t => t.ruleId === rule.id)
+        if (!existing) {
+          await api.cronRegister?.({
+            name: rule.name,
+            expression: rule.triggerConfig.cron!,
+            command: rule.actionConfig?.prompt || '',
+            ruleId: rule.id,
+            agentId: rule.actionConfig?.agentId,
+            active: rule.enabled,
+          })
+        } else {
+          // 同步启停状态
+          if (rule.enabled && existing.status === 'paused') {
+            await api.cronResumeByRuleId?.(rule.id)
+          } else if (!rule.enabled && existing.status === 'active') {
+            await api.cronPauseByRuleId?.(rule.id)
+          }
+        }
+      }
+    } catch {
+      // 同步失败不阻断 UI，下次加载会重试
+    }
+  }, [])
 
   useEffect(() => {
     loadRules()
@@ -99,6 +157,19 @@ export function AutomationView() {
     ))
     try {
       await automationApi.update(rule.id, { enabled: !rule.enabled })
+      // 同步本地 cronScheduler 的启停状态（仅 schedule 类型规则）
+      if (rule.triggerConfig?.type === 'schedule') {
+        const api = (window as Window & { electronAPI?: { cronResumeByRuleId?: (id: string) => Promise<unknown>; cronPauseByRuleId?: (id: string) => Promise<unknown> } }).electronAPI
+        if (api) {
+          if (rule.enabled) {
+            // 当前 enabled=true → 即将禁用 → pause
+            await api.cronPauseByRuleId?.(rule.id)
+          } else {
+            // 当前 enabled=false → 即将启用 → resume
+            await api.cronResumeByRuleId?.(rule.id)
+          }
+        }
+      }
     } catch {
       // 回滚
       setRules(prev => prev.map(r =>
@@ -110,6 +181,9 @@ export function AutomationView() {
   const handleDelete = useCallback(async (id: string) => {
     try {
       await automationApi.remove(id)
+      // 同步删除本地 cronScheduler 中的任务
+      const api = (window as Window & { electronAPI?: { cronUnregisterByRuleId?: (id: string) => Promise<unknown> } }).electronAPI
+      await api?.cronUnregisterByRuleId?.(id)
       setRules(prev => prev.filter(r => r.id !== id))
       if (selectedId === id) setSelectedId(null)
     } catch (e) {
@@ -138,6 +212,18 @@ export function AutomationView() {
       setRules(prev => [created, ...prev])
       setSelectedId(created.id)
       setShowTemplates(false)
+      // 同步注册到本地 cronScheduler（仅 schedule 类型）
+      if (created.triggerConfig?.type === 'schedule' && created.triggerConfig.cron) {
+        const api = (window as Window & { electronAPI?: { cronRegister?: (config: unknown) => Promise<unknown> } }).electronAPI
+        await api?.cronRegister?.({
+          name: created.name,
+          expression: created.triggerConfig.cron,
+          command: created.actionConfig?.prompt || '',
+          ruleId: created.id,
+          agentId: created.actionConfig?.agentId,
+          active: created.enabled,
+        })
+      }
     } catch (e) {
       setError(getApiErrorMessage(e, isZh ? '创建失败' : 'Create failed'))
     }
@@ -163,6 +249,23 @@ export function AutomationView() {
         })
         setRules(prev => prev.map(r => r.id === updated.id ? updated : r))
         setShowFormDialog(false)
+        // 同步本地 cronScheduler（upsert：存在则更新，不存在则注册）
+        if (updated.triggerConfig?.type === 'schedule' && updated.triggerConfig.cron) {
+          const api = (window as Window & { electronAPI?: { cronUpsertByRuleId?: (ruleId: string, updates: Record<string, unknown>, active?: boolean) => Promise<unknown>; cronUnregisterByRuleId?: (id: string) => Promise<unknown> } }).electronAPI
+          await api?.cronUpsertByRuleId?.(
+            updated.id,
+            {
+              name: updated.name,
+              expression: updated.triggerConfig.cron,
+              command: updated.actionConfig?.prompt || '',
+            },
+            updated.enabled,
+          )
+        } else {
+          // 非 schedule 类型规则：移除可能存在的本地 cron 任务
+          const api = (window as Window & { electronAPI?: { cronUnregisterByRuleId?: (id: string) => Promise<unknown> } }).electronAPI
+          await api?.cronUnregisterByRuleId?.(updated.id)
+        }
       } catch (e) {
         setError(getApiErrorMessage(e, isZh ? '更新失败' : 'Update failed'))
       }
@@ -180,6 +283,18 @@ export function AutomationView() {
         setRules(prev => [created, ...prev])
         setSelectedId(created.id)
         setShowFormDialog(false)
+        // 同步注册到本地 cronScheduler（仅 schedule 类型）
+        if (created.triggerConfig?.type === 'schedule' && created.triggerConfig.cron) {
+          const api = (window as Window & { electronAPI?: { cronRegister?: (config: unknown) => Promise<unknown> } }).electronAPI
+          await api?.cronRegister?.({
+            name: created.name,
+            expression: created.triggerConfig.cron,
+            command: created.actionConfig?.prompt || '',
+            ruleId: created.id,
+            agentId: created.actionConfig?.agentId,
+            active: created.enabled,
+          })
+        }
       } catch (e) {
         setError(getApiErrorMessage(e, isZh ? '创建失败' : 'Create failed'))
       }

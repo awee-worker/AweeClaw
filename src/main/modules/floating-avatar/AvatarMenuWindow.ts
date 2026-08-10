@@ -133,6 +133,8 @@ export class AvatarMenuWindow {
         win.setPosition(Math.round(screenX), Math.round(screenY))
         win.show()
         win.focus()
+        // 复用窗口时通知渲染层重新获取菜单项（勾选态等可能已变化）
+        win.webContents.send('avatar-menu:refresh')
       } else {
         // 首次渲染未完成：缓存坐标，等 ready-to-show 事件触发后再显示
         // 窗口此时 show:false，用户看不到白底闪现

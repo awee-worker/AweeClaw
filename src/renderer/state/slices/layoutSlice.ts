@@ -34,6 +34,7 @@ export type SidePanel =
   | 'plans'
   | 'benchmarks'
   | 'schedule'
+  | 'plugin-market'
   | null
 
 /** 终端布局模式 */

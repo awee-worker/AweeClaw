@@ -124,7 +124,7 @@ function UserMenuDropdown({
 
   const featureItems = [
     { icon: Compass, label: t('layout.workscenes', language as Language), onClick: onExploreClick },
-    { icon: Puzzle, label: t('layout.plugins', language as Language), onClick: onPluginCenterClick },
+    { icon: Puzzle, label: t('layout.pluginsandskills', language as Language), onClick: onPluginCenterClick },
     { icon: Clock, label: t('layout.schedule', language as Language), onClick: onScheduleClick },
     // 工作流菜单暂时隐藏，后续版本恢复
     // { icon: Workflow, label: t('layout.workflow', language as Language), onClick: onWorkflowClick },

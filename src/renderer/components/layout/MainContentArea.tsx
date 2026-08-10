@@ -30,6 +30,7 @@ const KnowledgeView = lazy(() => import('@components/explorer/panels/KnowledgeEx
 const TaskWorkspace = lazy(() => import('@components/explorer/panels/tasks/TaskWorkspace').then(m => ({ default: m.TaskWorkspace })))
 const ProjectsView = lazy(() => import('@components/explorer/panels/projects/ProjectsView').then(m => ({ default: m.ProjectsView })))
 const AutomationView = lazy(() => import('@components/explorer/panels/automation/AutomationView').then(m => ({ default: m.AutomationView })))
+const PluginMarketView = lazy(() => import('@components/explorer/panels/plugin-market/PluginMarketView').then(m => ({ default: m.PluginMarketView })))
 const WelcomePage = lazy(() => import('@components/welcome/WelcomePage'))
 const PreferencesDialog = lazy(() => import('@components/settings/PreferencesDialog'))
 const UserProfilePage = lazy(() => import('@components/user/UserProfilePage'))
@@ -130,6 +131,13 @@ function PrimaryMainContent({ layoutConfig, isWideModePanel }: MainContentAreaPr
         </FullPageSlot>
       )
     }
+    if (activeSidePanel === 'plugin-market') {
+      return (
+        <FullPageSlot>
+          <PanelSlot><PluginMarketView /></PanelSlot>
+        </FullPageSlot>
+      )
+    }
     return (
       <FullPageSlot>
         <PanelSlot>
@@ -227,7 +235,7 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
   const shouldHideChat = useMemo(() => {
     if (!chatVisible) return true
     // 全屏工作台面板（任务/项目/自动化）隐藏聊天，独占主区域
-    const fullScreenPanels = ['tasks', 'projects', 'automation', 'scenarios']
+    const fullScreenPanels = ['tasks', 'projects', 'automation', 'scenarios', 'plugin-market']
     if (isWideModePanel && activeSidePanel !== 'knowledge' && (layoutConfig.wideModeHidesChat || fullScreenPanels.includes(activeSidePanel ?? ''))) return true
     // 仅在非编辑器布局下隐藏 chat：编辑器布局由 EditorSlot 处理空状态（EditorWelcome），
     // 不渲染 scenarioWelcomeComponent，此时隐藏 chat 会导致用户无法与 AI 交互
@@ -243,6 +251,7 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
       if (activeSidePanel === 'tasks') return <TaskWorkspace />
       if (activeSidePanel === 'projects') return <ProjectsView />
       if (activeSidePanel === 'automation') return <AutomationView />
+      if (activeSidePanel === 'plugin-market') return <PluginMarketView />
       return <DynamicPanelView panelId={activeSidePanel} />
     }
     return (

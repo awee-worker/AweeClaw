@@ -481,7 +481,6 @@ const ChatInput = memo(function ChatInput({
           {/* Bottom Actions */}
           <div className="relative flex items-center justify-between pt-1 gap-2">
             <div className="flex items-center gap-2 opacity-80 hover:opacity-100 transition-opacity">
-              <ModeSelector mode={chatMode} onModeChange={setChatMode} disabled={isStreaming} />
               <ModelSelector alignLeft disabled={isStreaming} />
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
@@ -648,6 +647,7 @@ const ChatInput = memo(function ChatInput({
         className="-mt-5 z-10"
       >
         <div className="flex items-center gap-2 bg-border/20 px-4 pt-6 pb-1 rounded-b-xl rounded-t-none">
+          <ModeSelector mode={chatMode} onModeChange={setChatMode} disabled={isStreaming} />
           <AuthorizationModeSelector disabled={isStreaming} />
         </div>
       </div>

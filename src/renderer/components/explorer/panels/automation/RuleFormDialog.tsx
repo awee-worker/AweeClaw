@@ -8,9 +8,12 @@
  * - 启用状态
  */
 import { useState, useCallback, useEffect } from 'react'
+import { Clock } from 'lucide-react'
 import { OverlayDialog } from '@components/ui/OverlayDialog'
 import { useStore } from '@store'
 import type { AutomationRule } from '../tasks/types'
+import { CronBuilder } from './CronBuilder'
+import { WorkflowSelector } from './WorkflowSelector'
 
 interface RuleFormDialogProps {
   rule: AutomationRule | null
@@ -63,6 +66,7 @@ export function RuleFormDialog({ rule, onSubmit, onClose }: RuleFormDialogProps)
   const [actionTemplate, setActionTemplate] = useState(actionConfig.template ?? '')
   const [enabled, setEnabled] = useState(rule?.enabled ?? true)
   const [error, setError] = useState<string | null>(null)
+  const [showCronBuilder, setShowCronBuilder] = useState(false)
 
   useEffect(() => {
     setName(rule?.name ?? '')
@@ -79,6 +83,7 @@ export function RuleFormDialog({ rule, onSubmit, onClose }: RuleFormDialogProps)
     setActionTemplate(actionConfig.template ?? '')
     setEnabled(rule?.enabled ?? true)
     setError(null)
+    setShowCronBuilder(false)
   }, [rule])
 
   const handleSubmit = useCallback(() => {
@@ -107,6 +112,18 @@ export function RuleFormDialog({ rule, onSubmit, onClose }: RuleFormDialogProps)
     if (actionUrl) actionConfig.url = actionUrl
     if (actionWorkflowId) actionConfig.workflowId = actionWorkflowId
     if (actionTemplate) actionConfig.template = actionTemplate
+
+    // agent 类型动作：携带当前模型快照（provider/model），供后端兜底执行时使用
+    // 注意：本地优先执行总是用 useStore.llmConfig 当前值，快照仅用于后端兜底
+    if (actionType === 'agent') {
+      const llmConfig = useStore.getState().llmConfig
+      if (llmConfig?.provider && llmConfig?.model) {
+        actionConfig.modelConfig = {
+          provider: llmConfig.provider,
+          model: llmConfig.model,
+        }
+      }
+    }
 
     onSubmit({
       name: trimmedName,
@@ -175,12 +192,23 @@ export function RuleFormDialog({ rule, onSubmit, onClose }: RuleFormDialogProps)
           {triggerType === 'schedule' && (
             <div>
               <label className="block text-[12px] text-text-secondary mb-1">Cron {isZh ? '表达式' : 'Expression'}</label>
-              <input
-                value={triggerCron}
-                onChange={e => setTriggerCron(e.target.value)}
-                placeholder="0 9 * * 1-5 (Mon-Fri 9:00)"
-                className="w-full px-3 py-2 bg-surface/50 rounded-lg border border-border/40 focus:border-accent/50 text-[13px] text-text-primary outline-none transition-colors font-mono"
-              />
+              <div className="flex gap-2">
+                <input
+                  value={triggerCron}
+                  onChange={e => setTriggerCron(e.target.value)}
+                  placeholder="0 9 * * 1-5 (Mon-Fri 9:00)"
+                  className="flex-1 px-3 py-2 bg-surface/50 rounded-lg border border-border/40 focus:border-accent/50 text-[13px] text-text-primary outline-none transition-colors font-mono"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowCronBuilder(true)}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-surface/50 rounded-lg border border-border/40 text-[13px] text-text-primary hover:border-accent/50 hover:bg-surface-hover/40 transition-colors whitespace-nowrap"
+                  title={isZh ? '打开 Cron 表达式生成器' : 'Open Cron expression builder'}
+                >
+                  <Clock className="w-3.5 h-3.5 text-accent" />
+                  {isZh ? '生成' : 'Generate'}
+                </button>
+              </div>
               <p className="text-[11px] text-text-muted mt-1">
                 {isZh ? '格式：分 时 日 月 周' : 'Format: minute hour day month weekday'}
               </p>
@@ -241,12 +269,11 @@ export function RuleFormDialog({ rule, onSubmit, onClose }: RuleFormDialogProps)
           )}
           {actionType === 'workflow' && (
             <div>
-              <label className="block text-[12px] text-text-secondary mb-1">{isZh ? '工作流 ID' : 'Workflow ID'}</label>
-              <input
+              <label className="block text-[12px] text-text-secondary mb-1">{isZh ? '工作流' : 'Workflow'}</label>
+              <WorkflowSelector
                 value={actionWorkflowId}
-                onChange={e => setActionWorkflowId(e.target.value)}
-                placeholder="workflow-id"
-                className="w-full px-3 py-2 bg-surface/50 rounded-lg border border-border/40 focus:border-accent/50 text-[13px] text-text-primary outline-none transition-colors font-mono"
+                onChange={setActionWorkflowId}
+                isZh={isZh}
               />
             </div>
           )}
@@ -313,6 +340,15 @@ export function RuleFormDialog({ rule, onSubmit, onClose }: RuleFormDialogProps)
           </button>
         </div>
       </div>
+
+      {/* Cron 表达式生成器（通过 portal 渲染到顶层，覆盖在当前表单之上） */}
+      {showCronBuilder && (
+        <CronBuilder
+          value={triggerCron || '* * * * *'}
+          onConfirm={cron => { setTriggerCron(cron); setShowCronBuilder(false) }}
+          onClose={() => setShowCronBuilder(false)}
+        />
+      )}
     </OverlayDialog>
   )
 }

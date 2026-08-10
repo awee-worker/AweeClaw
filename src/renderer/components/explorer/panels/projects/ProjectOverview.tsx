@@ -8,7 +8,7 @@
  * - 自动化规则数
  * - 关联的工作区、知识库、对话
  */
-import { CheckCircle2, Circle, Clock, AlertCircle, Zap, Target, Package, FileCode } from 'lucide-react'
+import { CheckCircle2, Circle, Clock, AlertCircle, Zap, Target, Package, FileCode, FolderOpen } from 'lucide-react'
 import type { ProjectItem, TaskItem, AutomationRule } from '../tasks/types'
 import { ProjectExecutionSummary } from './ProjectExecutionSummary'
 import { extractExecutionResult, type DeliverableItem } from './taskQuality'
@@ -65,6 +65,27 @@ export function ProjectOverview({ project, tasks, rules, isZh, onNavigateToExecu
             {isZh ? '描述' : 'Description'}
           </h3>
           <p className="text-[14px] text-text-secondary leading-relaxed whitespace-pre-wrap">{project.description}</p>
+        </div>
+      )}
+
+      {/* 项目目录 */}
+      {project.workspacePaths.length > 0 && (
+        <div>
+          <h3 className="text-[13px] font-semibold text-text-muted uppercase tracking-wider mb-2">
+            {isZh ? '项目目录' : 'Project Directory'}
+          </h3>
+          <div className="space-y-1">
+            {project.workspacePaths.map((p, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-surface/40 border border-border/20 text-[12px] text-text-secondary font-mono"
+                title={p}
+              >
+                <FolderOpen className="w-3.5 h-3.5 text-accent flex-shrink-0" />
+                <span className="truncate">{p}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
