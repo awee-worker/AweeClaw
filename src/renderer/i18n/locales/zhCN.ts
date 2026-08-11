@@ -287,6 +287,10 @@ export const zh = {
   'filePreview.unsupportedFileDesc': '不支持打开 .{ext} 格式的文件。',
   'filePreview.openWithDefault': '使用默认程序打开',
   'filePreview.fit': '适应',
+  'filePreview.cannotLoadVideo': '无法加载视频',
+  'filePreview.videoNotSupported': '当前浏览器不支持视频播放',
+  'filePreview.showInFolder': '在文件夹中显示',
+  'filePreview.cannotLoadModel': '无法加载 3D 模型',
 
   // Agent Settings
   'agent.systemInstructionsPlaceholder': '在此输入全局系统指令，例如："总是使用中文回答"、"代码风格偏好..."',

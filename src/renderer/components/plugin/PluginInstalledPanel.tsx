@@ -305,10 +305,17 @@ export function PluginInstalledPanel() {
     }
   }
 
-  /** 从 manifest 提取 configSchema.fields（类型安全） */
+  /** 从 manifest 提取 configSchema.fields（类型安全）
+   *  兼容 manifest 中的 "default" 字段名（代码中用 "defaultValue"）
+   */
   function extractConfigFields(manifest: Record<string, unknown>): PluginConfigField[] {
-    const schema = manifest.configSchema as { fields?: PluginConfigField[] } | undefined
-    return schema?.fields || []
+    const schema = manifest.configSchema as { fields?: Array<Record<string, unknown>> } | undefined
+    const fields = schema?.fields || []
+    return fields.map(f => ({
+      ...f,
+      // manifest 用 "default"，PluginConfigField 用 "defaultValue"，做一次映射
+      defaultValue: (f.defaultValue as string) ?? (f.default as string),
+    })) as PluginConfigField[]
   }
 
   /** 打开配置编辑对话框 */
@@ -747,7 +754,7 @@ function PluginCard({
           {/* 卸载 */}
           <CardActionButton
             icon={<Trash2 className="w-3 h-3" />}
-            label={language === 'zh' ? '删除' : 'Delete'}
+            label={language === 'zh' ? '卸载' : 'Uninstall'}
             onClick={onUninstall}
             disabled={operating}
             loading={operating}

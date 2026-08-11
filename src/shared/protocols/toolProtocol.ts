@@ -127,6 +127,13 @@ export interface McpPluginServerConfig {
   disabled?: boolean
   /** 自动批准的工具列表 */
   autoApprove?: string[]
+  /**
+   * 工具调用超时（毫秒）
+   * 控制单个 MCP 工具调用的最大等待时间（包含异步轮询等长时间操作）。
+   * 未设置时使用全局默认值（30 秒），不适合视频生成等长时间任务。
+   * 插件可在 manifest capabilities.mcp.timeout 中声明自定义超时。
+   */
+  timeout?: number
   /** 来源预设 ID */
   presetId?: string
   /** 配置来源层级（运行时填充，不持久化） */

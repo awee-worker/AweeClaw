@@ -47,6 +47,8 @@ import { PptPreviewBridge } from './PptPreviewBridge'
 // 否则 vite-plugin-electron 打包时会保留 require() 运行时调用，
 // 而 dist/main 下没有 pptxParserMain.js 独立文件，导致 MODULE_NOT_FOUND）
 import { parsePptxFile } from './pptxParserMain'
+import { getMainWindow, getWindowWorkspace } from '../../bootstrap/windowManager'
+import { getConfigStore } from '../../bootstrap/stores'
 
 /** Host 服务接口 */
 export interface HostServices {
@@ -121,6 +123,13 @@ export interface HostServices {
    * 在主进程用 jszip + xmldom 解析 OOXML，返回 PptSlideData[] 格式
    */
   parsePptxFile: typeof import('./pptxParserMain').parsePptxFile
+  /**
+   * 获取当前工作区路径（供插件落盘文件到工作区 .aweeclaw 目录）
+   *
+   * 优先级：当前主窗口已绑定的工作区 > 持久化的最近工作区 > null
+   * 返回 null 时插件应降级到 OS 临时目录。
+   */
+  getWorkspacePath: () => string | null
 }
 
 /** 全局变量名 */
@@ -181,6 +190,20 @@ export function initHostServices(): void {
     // 注意：必须用 ESM import 静态引入（顶部已 import），不能在此处 require，
     // 否则 vite-plugin-electron 打包后 require("./pptxParserMain") 找不到模块
     parsePptxFile,
+    // 获取当前工作区路径（供插件落盘文件到工作区 .aweeclaw 目录）
+    // 优先级：当前主窗口已绑定的工作区 > 持久化的最近工作区 > null
+    getWorkspacePath: () => {
+      const win = getMainWindow()
+      if (win && !win.isDestroyed()) {
+        const roots = getWindowWorkspace(win.id)
+        if (roots && roots.length > 0) return roots[0]
+      }
+      const session = getConfigStore().get('lastWorkspaceSession') as
+        | { roots?: string[] }
+        | undefined
+      if (session?.roots && session.roots.length > 0) return session.roots[0]
+      return (getConfigStore().get('lastWorkspacePath') as string | null) ?? null
+    },
   }
 
   Object.defineProperty(globalThis, HOST_GLOBAL_KEY, {

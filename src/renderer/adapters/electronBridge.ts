@@ -1013,6 +1013,22 @@ function createGroupedAPI() {
       onStatusBroadcast: (callback: Parameters<typeof raw.projectExecution.onStatusBroadcast>[0]) =>
         raw.projectExecution.onStatusBroadcast(callback),
     },
+
+    // 视频转码（用 ffmpeg-static 转码不支持的视频编码，如 H.265 → H.264）
+    videoTranscode: {
+      /** 探测视频编码信息 */
+      probe: (filePath: string) => raw.videoTranscode.probe(filePath),
+      /** 判断编码是否被 Chromium 原生支持 */
+      isSupported: (probe: Parameters<typeof raw.videoTranscode.isSupported>[0]) =>
+        raw.videoTranscode.isSupported(probe),
+      /** 转码为 H.264（进度通过 onProgress 订阅） */
+      transcode: (filePath: string) => raw.videoTranscode.transcode(filePath),
+      /** 取消正在进行的转码 */
+      cancel: (filePath: string) => raw.videoTranscode.cancel(filePath),
+      /** 转码进度事件订阅 */
+      onProgress: (callback: Parameters<typeof raw.videoTranscode.onProgress>[0]) =>
+        raw.videoTranscode.onProgress(callback),
+    },
   }
 }
 

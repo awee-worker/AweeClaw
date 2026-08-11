@@ -1395,6 +1395,10 @@ export class PluginInstaller {
       url,
       autoApprove: [],
       source: 'plugin',
+      // 从 manifest capabilities.mcp.timeout 读取工具调用超时
+      // 视频生成等长时间任务需要在 manifest 中声明更大的 timeout（如 660000 = 11 分钟）
+      // 未声明时为 undefined，ToolProtocolClient.callTool 会使用 DEFAULT_TIMEOUT（30 秒）
+      timeout: mcpConfig.timeout,
     }
 
     const { mcpManager } = await import('../tool-protocol/ToolProtocolManager')
@@ -1450,9 +1454,11 @@ export class PluginInstaller {
         values[field.key] = String(userVal)
         continue
       }
-      // 2. 其次使用 defaultValue
-      if (field.defaultValue !== undefined && field.defaultValue !== null && field.defaultValue !== '') {
-        values[field.key] = String(field.defaultValue)
+      // 2. 其次使用 defaultValue（兼容 manifest 中的 "default" 字段名）
+      const defaultVal = (field as { defaultValue?: unknown; default?: unknown }).defaultValue
+        ?? (field as { default?: unknown }).default
+      if (defaultVal !== undefined && defaultVal !== null && defaultVal !== '') {
+        values[field.key] = String(defaultVal)
       }
       // 3. 无值字段不放入映射（保留占位符，运行时会替换为空字符串）
     }

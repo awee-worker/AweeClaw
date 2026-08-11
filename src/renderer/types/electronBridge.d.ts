@@ -2743,6 +2743,54 @@ export interface ElectronAPI {
       ) => void,
     ) => () => void
   }
+
+  // ============================================
+  // 视频转码（ffmpeg-static 转码不支持的视频编码）
+  // ============================================
+  videoTranscode: {
+    /** 探测视频编码信息 */
+    probe: (filePath: string) => Promise<{
+      videoCodec: string | null
+      audioCodec: string | null
+      width: number | null
+      height: number | null
+      duration: number | null
+      fileSize: number | null
+      fps: number | null
+      bitrate: number | null
+      format: string | null
+    }>
+    /** 判断编码是否被 Chromium 原生支持 */
+    isSupported: (probe: {
+      videoCodec: string | null
+      audioCodec: string | null
+      width: number | null
+      height: number | null
+      duration: number | null
+      fileSize: number | null
+      fps: number | null
+      bitrate: number | null
+      format: string | null
+    }) => Promise<{ supported: boolean; reason: string }>
+    /** 转码为 H.264（进度通过 onProgress 订阅） */
+    transcode: (filePath: string) => Promise<{
+      outputPath: string
+      fromCache: boolean
+      elapsedMs: number
+    }>
+    /** 取消正在进行的转码 */
+    cancel: (filePath: string) => Promise<void>
+    /** 转码进度事件订阅 */
+    onProgress: (
+      callback: (payload: {
+        filePath: string
+        currentTime: number
+        duration: number
+        percent: number
+        speed: string | null
+      }) => void,
+    ) => () => void
+  }
 }
 
 declare global {

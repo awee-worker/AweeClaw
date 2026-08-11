@@ -17,6 +17,7 @@ import { RichContentRenderer } from '../RichContentRenderer'
 import { themeManager } from '../../../config/themeDefinition'
 import { ExpandablePreviewContainer } from './ExpandablePreviewContainer'
 import { CommandOutputContainer } from './CommandOutputContainer'
+import { renderGenerateImage } from './GenerateImagePreview'
 import {
   asString,
   guessLanguage,
@@ -579,6 +580,8 @@ const PREVIEW_REGISTRY: Record<string, PreviewRenderer> = {
   go_to_definition: renderCodeAnalysis,
   get_hover_info: renderCodeAnalysis,
   get_document_symbols: renderCodeAnalysis,
+  // design-image-gen 插件：AI 文生图工具，渲染图片缩略图 + 全屏预览
+  generate_image: renderGenerateImage,
 }
 
 /** 渲染工具预览 */

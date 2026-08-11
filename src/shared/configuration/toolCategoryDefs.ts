@@ -40,6 +40,8 @@ export interface ToolLoadingContext {
   scenarioId?: string
   /** 场景工具包列表（可选）：直接指定需要的工具包 */
   scenarioToolPacks?: string[]
+  /** 是否为消息渠道会话（飞书/微信等），仅渠道会话才注入 send_file_to_channel 等渠道工具 */
+  isChannel?: boolean
 }
 
 /** 角色工具配置 */
@@ -91,8 +93,6 @@ const CORE_TOOLS: string[] = [
   'apply_skill',
   // 任务列表
   'todo_write',
-  // 渠道交互
-  'send_file_to_channel',
   // Graph Runtime 动态建图（graphVersion=2 执行期可用，无活跃图时工具返回友好错误）
   'add_node',
   'add_edge',
@@ -202,6 +202,13 @@ export function getToolsForContext(context: ToolLoadingContext): string[] {
   // 文档提取工具在所有模式、所有场景下都无条件可用
   // （用户上传 PDF/Word/Excel 等二进制文档时必须能用 extract_document 提取）
   tools.add('extract_document')
+
+  // 渠道工具仅在消息渠道会话中可用（飞书/微信等），普通聊天不可用
+  if (context.isChannel) {
+    for (const tool of CHANNEL_TOOLS) {
+      tools.add(tool)
+    }
+  }
 
   if (context.mode === 'chat') {
     if (!scenarioPacks || scenarioPacks.length === 0) {

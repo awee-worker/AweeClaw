@@ -197,6 +197,7 @@ export class AgentClass {
         mentionedSkills: mentionedSkills.length > 0 ? mentionedSkills : undefined,
         userMessage: userMsgText,
         perceptionContext,
+        isChannel: executionOptions?.isChannel,
       })
 
       // 提前提取，避免后续重复声明

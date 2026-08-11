@@ -54,6 +54,13 @@ export interface PluginConfigField {
   buttonText?: string
   /** action 类型专属：按钮文字（中文） */
   buttonTextZh?: string
+  /**
+   * action 类型专属：预设模型列表。
+   * 当声明了此字段时，"获取模型" 按钮直接弹出此列表供用户选择，
+   * 不再调用 IPC fetchModels（避免硬编码字段映射和 API 差异问题）。
+   * 各插件可在 manifest 中为不同 provider 声明不同的预设模型列表。
+   */
+  presetModels?: string[]
 }
 
 /** configSchema 完整结构 */
@@ -235,44 +242,51 @@ const PluginConfigForm = forwardRef<PluginConfigFormHandle, Props>(function Plug
 
     setActionLoading((s) => ({ ...s, [field.key]: true }))
     try {
-      // 从表单值读取当前 provider 和对应凭据
-      const provider = value.provider || ''
-      // provider 名对应 config 中的字段前缀，如 dalle3 → openai_api_key / openai_base_url
-      const apiKeyByProvider: Record<string, string> = {
-        dalle3: value.openai_api_key || '',
-        stability: value.stability_api_key || '',
-        wanxiang: value.dashscope_api_key || '',
-        'openai-compatible': value.openai_compatible_api_key || '',
-      }
-      const baseUrlByProvider: Record<string, string> = {
-        dalle3: value.openai_base_url || 'https://api.openai.com/v1',
-        stability: '',
-        wanxiang: '',
-        'openai-compatible': value.openai_compatible_base_url || 'https://api.openai.com/v1',
-      }
-      const apiKey = apiKeyByProvider[provider] || ''
-      const baseUrl = baseUrlByProvider[provider] || ''
-
-      // 调用已有 IPC：window.electronAPI.fetchModels(provider, apiKey, baseUrl, protocol?)
-      const electronAPI = (window as unknown as { electronAPI?: { fetchModels?: (p: string, k: string, b?: string, pr?: string) => Promise<{ success: boolean; models?: string[]; error?: string }> } }).electronAPI
       let models: string[] = []
       let isPreset = false
 
-      if (electronAPI?.fetchModels && apiKey) {
-        const result = await electronAPI.fetchModels(provider, apiKey, baseUrl, undefined)
-        if (result.success && result.models && result.models.length > 0) {
-          models = result.models
-        }
-      }
-
-      // 降级：IPC 不可用 / 失败 / 返回空 → 使用预设列表
-      if (models.length === 0) {
-        models = getPresetModels(provider)
+      // 优先级 1：使用 manifest 中声明的 presetModels（各插件自定义预设列表）
+      // 这样不同插件（如视频生成 vs 图片生成）可以有自己的模型列表，不依赖硬编码映射
+      if (field.presetModels && field.presetModels.length > 0) {
+        models = [...field.presetModels]
         isPreset = true
       }
 
+      // 优先级 2：调用 IPC fetchModels（从服务商 API 实时获取）
+      // 仅当 presetModels 未声明或为空时才走此路径
       if (models.length === 0) {
-        // 没有任何模型可用，提示错误
+        const provider = value.provider || ''
+        const apiKeyByProvider: Record<string, string> = {
+          dalle3: value.openai_api_key || '',
+          stability: value.stability_api_key || '',
+          wanxiang: value.dashscope_api_key || value.wanxiang_api_key || '',
+          'openai-compatible': value.openai_compatible_api_key || value.openai_api_key || '',
+        }
+        const baseUrlByProvider: Record<string, string> = {
+          dalle3: value.openai_base_url || 'https://api.openai.com/v1',
+          stability: '',
+          wanxiang: '',
+          'openai-compatible': value.openai_compatible_base_url || value.openai_base_url || 'https://api.openai.com/v1',
+        }
+        const apiKey = apiKeyByProvider[provider] || ''
+        const baseUrl = baseUrlByProvider[provider] || ''
+
+        const electronAPI = (window as unknown as { electronAPI?: { fetchModels?: (p: string, k: string, b?: string, pr?: string) => Promise<{ success: boolean; models?: string[]; error?: string }> } }).electronAPI
+        if (electronAPI?.fetchModels && apiKey) {
+          const result = await electronAPI.fetchModels(provider, apiKey, baseUrl, undefined)
+          if (result.success && result.models && result.models.length > 0) {
+            models = result.models
+          }
+        }
+
+        // 降级：IPC 不可用 / 失败 / 返回空 → 使用内置预设列表
+        if (models.length === 0) {
+          models = getPresetModels(provider)
+          isPreset = true
+        }
+      }
+
+      if (models.length === 0) {
         const errMsg = isZh ? '未获取到模型列表，请检查 API Key 或手动填写模型名' : 'No models fetched, check API Key or enter model name manually'
         window.alert(errMsg)
         return
@@ -284,9 +298,11 @@ const PluginConfigForm = forwardRef<PluginConfigFormHandle, Props>(function Plug
       const msg = e instanceof Error ? e.message : String(e)
       // 出错时也尝试降级到预设
       const provider = value.provider || ''
-      const presets = getPresetModels(provider)
+      const presets = field.presetModels && field.presetModels.length > 0
+        ? field.presetModels
+        : getPresetModels(provider)
       if (presets.length > 0) {
-        setModelPicker({ field, models: presets, query: '', isPreset: true })
+        setModelPicker({ field, models: [...presets], query: '', isPreset: true })
       } else {
         window.alert(isZh ? `获取模型失败: ${msg}` : `Fetch models failed: ${msg}`)
       }

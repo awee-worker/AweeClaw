@@ -488,6 +488,7 @@ export async function executeAgentCycle(
     planPhase: context.chatMode === 'plan' ? context.planPhase : undefined,
     scenarioId: activeScenarioId,
     scenarioToolPacks,
+    isChannel: context.isChannel,
   })
 
   const agentTools = toolManager.getAllToolDefinitions()

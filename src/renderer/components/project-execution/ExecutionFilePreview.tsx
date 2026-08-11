@@ -41,6 +41,7 @@ import {
   getFileType,
   MarkdownPreview,
   ImagePreview,
+  VideoPreview,
   HtmlPreview,
   UnsupportedFile,
 } from '@renderer/components/workspace-editor/FilePreviewPanel'
@@ -490,6 +491,9 @@ function FilePreviewContent({ filePath, fileType, content }: FilePreviewContentP
 
     case 'image':
       return <ImagePreview path={filePath} />
+
+    case 'video':
+      return <VideoPreview path={filePath} />
 
     case 'html':
       return <HtmlPreview content={content ?? ''} filePath={filePath} />

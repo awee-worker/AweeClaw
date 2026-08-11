@@ -901,7 +901,7 @@ export class McpClient extends EventEmitter {
     const result = await this.state.client!.callTool(
       { name: toolName, arguments: args },
       CallToolResultSchema,
-      { timeout: (this.state.config as { timeout?: number }).timeout || DEFAULT_TIMEOUT }
+      { timeout: this.resolveToolTimeout() }
     )
 
     return {
@@ -1072,6 +1072,26 @@ export class McpClient extends EventEmitter {
     if (this.state.status !== 'connected' || !this.state.client) {
       throw new Error(`MCP server ${this.id} is not connected`)
     }
+  }
+
+  /**
+   * 解析工具调用超时
+   *
+   * 优先级：
+   * 1. config.timeout（插件 manifest capabilities.mcp.timeout 声明的值）
+   * 2. in-process 插件默认 600000ms（10 分钟）— 视频生成等长时间任务需要
+   * 3. DEFAULT_TIMEOUT（30000ms = 30 秒）— 本地/远程 MCP 服务器
+   */
+  private resolveToolTimeout(): number {
+    const configTimeout = (this.state.config as { timeout?: number }).timeout
+    if (typeof configTimeout === 'number' && configTimeout > 0) {
+      return configTimeout
+    }
+    // in-process 插件可能执行长时间任务（如视频生成异步轮询），使用更大的默认超时
+    if (this.state.config.type === 'plugin' && (this.state.config as { transport?: string }).transport === 'in-process') {
+      return 600000 // 10 分钟
+    }
+    return DEFAULT_TIMEOUT
   }
 
   private withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {

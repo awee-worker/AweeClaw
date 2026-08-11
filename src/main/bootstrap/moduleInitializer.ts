@@ -46,6 +46,7 @@ import { proactiveActionTrigger } from '../modules/proactive/ProactiveActionTrig
 import { proactivePermission } from '../modules/proactive/ProactivePermission'
 import { initFloatingAvatar, syncWakeWordEnabledToAvatar } from '../modules/floating-avatar'
 import { SettingsDb } from '../modules/settings-db/SettingsDb'
+import { registerVideoTranscodeIpc } from '../modules/video-transcode/VideoTranscodeIpc'
 
 export type Language = 'zh' | 'en'
 
@@ -174,6 +175,8 @@ export async function initializeModules(firstWin: BrowserWindow): Promise<void> 
   initPptPreviewModule()
   // 初始化项目执行窗口模块（单例创建 + IPC 注册，不阻塞启动）
   initProjectExecutionModule()
+  // 注册视频转码 IPC 处理器（用 ffmpeg-static 转码不支持的视频编码，如 H.265 → H.264）
+  registerVideoTranscodeIpc()
 
   // ==========================================
   // 7. 应用菜单与语言同步

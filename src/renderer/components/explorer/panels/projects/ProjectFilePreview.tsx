@@ -14,7 +14,7 @@ import { useState, useCallback, useMemo, useEffect, useRef, Suspense } from 'rea
 import {
   Loader2, X, Maximize2, Minimize2, ExternalLink, RefreshCw,
   FileText, Image as ImageIcon, FileQuestion, AlertTriangle, FileType2,
-  FileSpreadsheet, Presentation,
+  FileSpreadsheet, Presentation, Video, Box,
 } from 'lucide-react'
 import { useStore } from '@store'
 import { api } from '@renderer/adapters/electronBridge'
@@ -100,6 +100,7 @@ function FileTypeBadge({ fileType }: { fileType: FileType }) {
   const config: Record<FileType, { label: string; icon: React.ReactNode; cls: string }> = {
     markdown: { label: 'Markdown', icon: <FileText className="w-3 h-3" />, cls: 'text-blue-400' },
     image: { label: 'Image', icon: <ImageIcon className="w-3 h-3" />, cls: 'text-green-400' },
+    video: { label: 'Video', icon: <Video className="w-3 h-3" />, cls: 'text-purple-400' },
     html: { label: 'HTML', icon: <FileType2 className="w-3 h-3" />, cls: 'text-orange-400' },
     text: { label: 'Text', icon: <FileText className="w-3 h-3" />, cls: 'text-text-muted' },
     pdf: { label: 'PDF', icon: <FileText className="w-3 h-3" />, cls: 'text-red-400' },
@@ -109,6 +110,7 @@ function FileTypeBadge({ fileType }: { fileType: FileType }) {
     ppt: { label: 'PPT', icon: <Presentation className="w-3 h-3" />, cls: 'text-orange-500' },
     xlsx: { label: 'XLSX', icon: <FileSpreadsheet className="w-3 h-3" />, cls: 'text-green-500' },
     csv: { label: 'CSV', icon: <FileSpreadsheet className="w-3 h-3" />, cls: 'text-green-500' },
+    model3d: { label: '3D', icon: <Box className="w-3 h-3" />, cls: 'text-cyan-400' },
     binary: { label: 'Binary', icon: <FileQuestion className="w-3 h-3" />, cls: 'text-text-muted' },
     unknown: { label: 'Unknown', icon: <AlertTriangle className="w-3 h-3" />, cls: 'text-warning' },
   }

@@ -56,7 +56,8 @@ const DockPanel = safeLazy(() => import('@components/dock-panels/DockPanel'), { 
 import { DiffPreview } from './DiffViewerPanel'
 import DiffViewer from './CodeDiffViewer'
 import { SafeDiffEditor } from './SecureDiffEditor'
-import { getFileType, MarkdownPreview, ImagePreview, HtmlPreview, UnsupportedFile } from './FilePreviewPanel'
+import { getFileType, MarkdownPreview, ImagePreview, VideoPreview, HtmlPreview, UnsupportedFile } from './FilePreviewPanel'
+import { Model3DPreview } from './Model3DPreview'
 import { CodeSkeleton } from '../ui/ProgressIndicator'
 import { ExecutionBoard } from '../plan/ExecutionBoard'
 import WritingWorkspace from '../writing/WritingWorkspace'
@@ -518,6 +519,10 @@ export default function Editor() {
           <>
             {activeFileType === 'image' ? (
               <ImagePreview path={activeFile.path} />
+            ) : activeFileType === 'video' ? (
+              <VideoPreview path={activeFile.path} />
+            ) : activeFileType === 'model3d' ? (
+              <Model3DPreview path={activeFile.path} />
             ) : activeFileType === 'pdf' ? (
               <PdfPreview path={activeFile.path} />
             ) : activeFileType === 'docx' ? (

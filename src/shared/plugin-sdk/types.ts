@@ -149,6 +149,12 @@ export interface PluginCapabilities {
     url?: string
     /** 是否在应用启动时自动连接 */
     autoConnect?: boolean
+    /**
+     * 工具调用超时（毫秒）
+     * 控制单个 MCP 工具调用的最大等待时间。
+     * 默认 30 秒；视频生成等长时间任务需设置更大的值（如 660000 = 11 分钟）。
+     */
+    timeout?: number
   }
 }
 

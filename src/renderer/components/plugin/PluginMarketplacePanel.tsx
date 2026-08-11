@@ -227,11 +227,18 @@ export function PluginMarketplacePanel() {
     }
   }
 
-  /** 从 manifest 提取 configSchema.fields（类型安全） */
+  /** 从 manifest 提取 configSchema.fields（类型安全）
+   *  兼容 manifest 中的 "default" 字段名（代码中用 "defaultValue"）
+   */
   function extractConfigFields(manifest: Record<string, unknown> | null): PluginConfigField[] {
     if (!manifest) return []
-    const schema = manifest.configSchema as { fields?: PluginConfigField[] } | undefined
-    return schema?.fields || []
+    const schema = manifest.configSchema as { fields?: Array<Record<string, unknown>> } | undefined
+    const fields = schema?.fields || []
+    return fields.map(f => ({
+      ...f,
+      // manifest 用 "default"，PluginConfigField 用 "defaultValue"，做一次映射
+      defaultValue: (f.defaultValue as string) ?? (f.default as string),
+    })) as PluginConfigField[]
   }
 
   /** 真正执行安装（带可选的用户配置） */

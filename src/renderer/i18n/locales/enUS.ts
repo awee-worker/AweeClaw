@@ -287,6 +287,10 @@ export const en = {
   'filePreview.unsupportedFileDesc': 'Cannot open .{ext} format files.',
   'filePreview.openWithDefault': 'Open with default program',
   'filePreview.fit': 'Fit',
+  'filePreview.cannotLoadVideo': 'Cannot load video',
+  'filePreview.videoNotSupported': 'Your browser does not support video playback',
+  'filePreview.showInFolder': 'Show in Folder',
+  'filePreview.cannotLoadModel': 'Cannot load 3D model',
 
   // Agent Settings
   'agent.systemInstructionsPlaceholder': 'Enter global system instructions here, e.g.: "Always reply in Chinese", "Code style preferences..."',

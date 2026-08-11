@@ -107,6 +107,8 @@ export interface PromptContext {
   scenarioDynamicContext?: string | null
   /** 阶段2：感知预测上下文（当前场景 + 预测建议 + 代码影响） */
   perceptionContext?: PerceptionContext | null
+  /** 是否为消息渠道会话（飞书/微信等），控制 send_file_to_channel 等渠道工具是否在提示词中可见 */
+  isChannel?: boolean
 }
 
 /** 感知预测上下文（由主进程通过 IPC 提供） */
@@ -269,11 +271,11 @@ function getActiveScenarioIdentity() {
   }
 }
 
-function buildTools(mode: WorkMode, templateId?: string, planPhase?: 'planning' | 'executing'): string {
+function buildTools(mode: WorkMode, templateId?: string, planPhase?: 'planning' | 'executing', isChannel?: boolean): string {
   const excludeCategories: ToolCategory[] = []
   const activeScenario = scenarioRegistry.getActive()
   const scenarioToolPacks = activeScenario?.capabilities?.toolPacks
-  const allowedTools = getToolsForContext({ mode, templateId, planPhase, scenarioToolPacks })
+  const allowedTools = getToolsForContext({ mode, templateId, planPhase, scenarioToolPacks, isChannel })
   const baseTools = generateToolsPromptDescriptionFiltered(excludeCategories, allowedTools)
   const { toolGuidelines } = getActiveScenarioIdentity()
 
@@ -593,7 +595,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     PROFESSIONAL_OBJECTIVITY,
     LANGUAGE_MATCHING,
     identity.securityRules,
-    buildTools(ctx.mode, ctx.templateId, ctx.planPhase),
+    buildTools(ctx.mode, ctx.templateId, ctx.planPhase, ctx.isChannel),
     identity.conventions,
     identity.workflow,
     GRAPH_PLAN_GUIDE,
@@ -622,7 +624,7 @@ export function buildChatPrompt(ctx: PromptContext): string {
     PROFESSIONAL_OBJECTIVITY,
     LANGUAGE_MATCHING,
     identity.securityRules,
-    buildTools(ctx.mode, ctx.templateId, ctx.planPhase),
+    buildTools(ctx.mode, ctx.templateId, ctx.planPhase, ctx.isChannel),
     identity.conventions,
     GRAPH_PLAN_GUIDE,
     identity.outputFormat,
@@ -653,6 +655,8 @@ export async function buildAgentSystemPrompt(
     userMessage?: string
     /** 阶段2：感知预测上下文 */
     perceptionContext?: PerceptionContext | null
+    /** 是否为消息渠道会话（飞书/微信等），控制渠道工具在提示词中的可见性 */
+    isChannel?: boolean
   }
 ): Promise<{ prompt: string; activeSkills: { name: string; description: string }[]; appliedSkills: { name: string; description: string }[] }> {
   const {
@@ -664,6 +668,7 @@ export async function buildAgentSystemPrompt(
     mentionedSkills,
     userMessage,
     perceptionContext,
+    isChannel,
   } = options || {}
 
   let template = promptTemplateId
@@ -755,6 +760,7 @@ export async function buildAgentSystemPrompt(
     userInfo,
     scenarioDynamicContext,
     perceptionContext: perceptionContext ?? null,
+    isChannel,
   }
 
   const prompt = mode === 'chat' ? buildChatPrompt(ctx) : buildSystemPrompt(ctx)

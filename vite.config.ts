@@ -65,6 +65,9 @@ const EXTERNAL_DEPS = [
   // 若被 Rollup 打包进 chunk，__dirname 路径错误导致 node-gyp-build 找不到 prebuild 二进制
   'uiohook-napi',
   'node-gyp-build',
+  // ffmpeg-static：包含平台预编译二进制，内部用 __dirname 定位 .ffmpeg 文件
+  // 必须保持 external，否则打包后 __dirname 指向 dist/main 导致找不到二进制
+  'ffmpeg-static',
 ]
 
 // 路径别名配置
