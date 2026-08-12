@@ -75,6 +75,18 @@ class PluginUiRegistryImpl {
     component: ComponentType<PluginPanelProps>
     host: PluginHostApi
   }> | null = null
+  /**
+   * 合并后的设置页 Tab 缓存（引用稳定，供 useSyncExternalStore 使用）
+   *
+   * 与 sidebarItemsCache/topActionsCache 同理：仅在 discovered/loaded 变化时重建。
+   * 避免每次 getSettingsTabs() 返回新数组导致 useSyncExternalStore 无限循环。
+   */
+  private settingsTabsCache: Array<{
+    pluginKey: string
+    contribution: PluginSettingsTabContribution
+    component: ComponentType<PluginPanelProps>
+    host: PluginHostApi
+  }> | null = null
 
   /**
    * 初始化：从主进程拉取所有已安装插件的 UI 贡献声明
@@ -242,6 +254,7 @@ class PluginUiRegistryImpl {
   private invalidateCache(): void {
     this.sidebarItemsCache = null
     this.topActionsCache = null
+    this.settingsTabsCache = null
   }
 
   /**
@@ -249,6 +262,9 @@ class PluginUiRegistryImpl {
    *
    * 返回扁平化的 Tab 列表（含组件和 host），供 PreferencesDialog 渲染。
    * 未加载 ui.js 的插件 Tab 不返回（或由调用方触发 ensureLoaded）。
+   *
+   * 引用稳定：与 getSidebarItems/getTopActions 同理，缓存保证引用稳定，
+   * 避免 useSyncExternalStore 无限循环。
    */
   getSettingsTabs(): Array<{
     pluginKey: string
@@ -256,6 +272,8 @@ class PluginUiRegistryImpl {
     component: ComponentType<PluginPanelProps>
     host: PluginHostApi
   }> {
+    if (this.settingsTabsCache) return this.settingsTabsCache
+
     const result: Array<{
       pluginKey: string
       contribution: PluginSettingsTabContribution
@@ -275,6 +293,7 @@ class PluginUiRegistryImpl {
       }
     }
     result.sort((a, b) => (a.contribution.position ?? 50) - (b.contribution.position ?? 50))
+    this.settingsTabsCache = result
     return result
   }
 
