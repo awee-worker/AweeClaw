@@ -77,6 +77,7 @@ export class WeixinChannelPlugin implements ChannelPlugin {
       streaming: false,
       voice: true,
       files: true,
+      qrLogin: true,
     },
     order: 1,
   }

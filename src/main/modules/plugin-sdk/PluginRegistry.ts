@@ -38,6 +38,22 @@ interface InternalPluginRegistration extends PluginRegistration {
   _runtimeFactory?: (ctx: PluginContext) => PluginRuntime
 }
 
+/**
+ * Channel 插件加载处理器
+ *
+ * 当 PluginRegistry 加载 type='channel' 的外部插件时，module 导出的是
+ * ChannelPlugin 实例（非 PluginRuntime）。此处理器负责：
+ * 1. 从 module 中提取 ChannelPlugin 实例
+ * 2. 注册到 channelRegistry（消息收发就绪）
+ * 3. 返回 ChannelPluginRuntimeAdapter 作为 PluginRuntime
+ *
+ * 由 ChannelPluginRegistrar 在应用启动时注册，避免循环依赖。
+ */
+export type ChannelPluginHandler = (
+  manifest: PluginManifest,
+  module: Record<string, unknown>,
+) => PluginRuntime
+
 // ============================================
 // 插件日志适配器
 // ============================================
@@ -79,6 +95,8 @@ class PluginRegistry implements IPluginRegistry {
   private configStore = new Map<string, Record<string, unknown>>()
   /** 插件密钥存储（内存中，实际应使用安全存储） */
   private secretStore = new Map<string, Map<string, string>>()
+  /** Channel 插件加载处理器（由 ChannelPluginRegistrar 注册） */
+  private channelPluginHandler: ChannelPluginHandler | null = null
 
   constructor(dataRoot: string) {
     this.dataRoot = dataRoot
@@ -91,6 +109,17 @@ class PluginRegistry implements IPluginRegistry {
     if (!this.searchDirs.includes(dir)) {
       this.searchDirs.push(dir)
     }
+  }
+
+  /**
+   * 注册 Channel 插件加载处理器
+   *
+   * 由 ChannelPluginRegistrar 在应用启动时调用，使 PluginRegistry 能够
+   * 正确加载 type='channel' 的外部插件（将 ChannelPlugin 实例适配为 PluginRuntime）。
+   */
+  registerChannelPluginHandler(handler: ChannelPluginHandler): void {
+    this.channelPluginHandler = handler
+    logger.system.info('[PluginRegistry] Channel plugin handler registered')
   }
 
   /**
@@ -490,6 +519,20 @@ class PluginRegistry implements IPluginRegistry {
   private async loadExternalRuntime(manifest: PluginManifest): Promise<PluginRuntime> {
     try {
       const module = await import(manifest.main)
+
+      // Channel 类型插件：module 导出的是 ChannelPlugin 实例，需通过 handler 适配
+      const types = Array.isArray(manifest.type) ? manifest.type : [manifest.type]
+      if (types.includes('channel' as PluginType)) {
+        if (!this.channelPluginHandler) {
+          throw new Error(
+            `Cannot load channel plugin '${manifest.id}': no channel plugin handler registered. ` +
+            'Ensure ChannelPluginRegistrar is initialized before loading channel plugins.',
+          )
+        }
+        return this.channelPluginHandler(manifest, module as Record<string, unknown>)
+      }
+
+      // 默认：module 导出的就是 PluginRuntime
       const runtime: PluginRuntime = module.default || module
       return runtime
     } catch (err) {

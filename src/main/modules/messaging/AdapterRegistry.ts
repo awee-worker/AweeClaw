@@ -98,6 +98,34 @@ class ChannelRegistry {
     return plugin.getStatus(accountId)
   }
 
+  /**
+   * 获取扫码登录二维码（仅支持 qrLogin 能力的渠道）
+   */
+  async fetchQRCode(channelId: ChannelId): Promise<import('@shared/protocols/channel').QRCodeResult> {
+    const plugin = this.plugins.get(channelId)
+    if (!plugin) {
+      throw new Error(`Channel plugin not found: ${channelId}`)
+    }
+    if (!plugin.fetchQRCode) {
+      throw new Error(`Channel '${channelId}' does not support QR login`)
+    }
+    return plugin.fetchQRCode()
+  }
+
+  /**
+   * 轮询扫码状态（仅支持 qrLogin 能力的渠道）
+   */
+  async pollQRStatus(channelId: ChannelId, qrcode: string): Promise<import('@shared/protocols/channel').QRPollResult> {
+    const plugin = this.plugins.get(channelId)
+    if (!plugin) {
+      throw new Error(`Channel plugin not found: ${channelId}`)
+    }
+    if (!plugin.pollQRStatus) {
+      throw new Error(`Channel '${channelId}' does not support QR login`)
+    }
+    return plugin.pollQRStatus(qrcode)
+  }
+
   getAllAccountStatuses(): ChannelAccountSnapshot[] {
     const snapshots: ChannelAccountSnapshot[] = []
     const seen = new Set<string>()

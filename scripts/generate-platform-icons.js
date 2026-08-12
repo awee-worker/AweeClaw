@@ -104,7 +104,9 @@ async function removeLegacyMixedOutputs() {
   ]
 
   for (const file of legacy) {
-    await fs.rm(file, { force: true })
+    // recursive: true 兼容目录（legacy 含 sizes/app-light、variants/app-light 目录）
+    // force: true 路径不存在时不报错
+    await fs.rm(file, { recursive: true, force: true })
   }
 }
 

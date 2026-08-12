@@ -13,6 +13,7 @@
  *   进度      ← pluginService.onPluginInstallProgress
  */
 import { useState, useEffect } from 'react'
+import { getAPI } from '../../adapters/electronBridge'
 import {
   Search,
   Download,
@@ -48,7 +49,7 @@ import type {
   PluginInstallProgress,
 } from '@services/pluginService'
 import { t, type Language } from '@renderer/i18n'
-import { PluginInstallConfigDialog } from './PluginInstallConfigDialog'
+import { PluginInstallConfigDialog, PluginQrLoginModal } from './PluginInstallConfigDialog'
 import type { PluginConfigField, PluginConfigValues } from './PluginConfigForm'
 import { PluginCategoryFilter } from './PluginCategoryFilter'
 import { PluginFeaturedSection } from './PluginFeaturedSection'
@@ -100,6 +101,14 @@ export function PluginMarketplacePanel() {
     loading: boolean
     error?: string
   }>({ open: false, item: null, fields: [], loading: false })
+
+  // 扫码登录对话框状态（qrLogin 渠道安装成功后弹出）
+  const [qrLoginDialog, setQrLoginDialog] = useState<{
+    open: boolean
+    item: PluginMarketItem | null
+    channelId: string | null
+    addingAccount: boolean
+  }>({ open: false, item: null, channelId: null, addingAccount: false })
 
   // 加载精选 / 热门 / 分类
   useEffect(() => {
@@ -206,14 +215,26 @@ export function PluginMarketplacePanel() {
       const fields = extractConfigFields(manifest)
       const hasRequired = fields.some((f) => f.required)
 
+      // 检测渠道插件是否支持扫码登录
+      const capabilities = manifest?.capabilities as { channel?: { qrLogin?: boolean } } | undefined
+      const qrLogin = capabilities?.channel?.qrLogin === true
+      // 渠道插件的 channelId 去除 "channel-" 前缀
+      const channelId = item.pluginKey?.startsWith('channel-') ? item.pluginKey.replace('channel-', '') : undefined
+
       if (hasRequired) {
-        // 弹出配置对话框，等待用户填写后再安装
+        // 有必填配置：弹出配置对话框，等待用户填写后再安装
         setConfigDialog({ open: true, item, fields, loading: false })
         return
       }
 
-      // 无必填配置：直接安装（可选配置后续在详情中补充）
-      await doInstall(item, undefined)
+      // 先安装插件（无必填配置）
+      const installResult = await doInstall(item, undefined)
+
+      // qrLogin 渠道：安装成功后弹出扫码登录对话框
+      // 必须先安装插件，渠道插件才能注册到 channelRegistry，fetchQRCode 才能工作
+      if (installResult && qrLogin && channelId) {
+        setQrLoginDialog({ open: true, item, channelId, addingAccount: false })
+      }
     } catch (err) {
       toast.card({
         type: 'error',
@@ -241,8 +262,8 @@ export function PluginMarketplacePanel() {
     })) as PluginConfigField[]
   }
 
-  /** 真正执行安装（带可选的用户配置） */
-  async function doInstall(item: PluginMarketItem, userConfig?: PluginConfigValues) {
+  /** 真正执行安装（带可选的用户配置），返回是否安装成功 */
+  async function doInstall(item: PluginMarketItem, userConfig?: PluginConfigValues): Promise<boolean> {
     setInstalling(item.id)
     try {
       const result = await installPluginFromMarketplace(
@@ -253,11 +274,6 @@ export function PluginMarketplacePanel() {
       )
 
       if (result.success) {
-        toast.success(
-          language === 'zh'
-            ? `插件「${item.nameZh}」安装成功`
-            : `Plugin "${item.name}" installed successfully`,
-        )
         setInstalledKeys((prev) => new Set(prev).add(item.pluginKey))
         setSelectedItem(null)
         // 安装成功但 MCP 连接失败时，提示用户前往设置面板重试
@@ -273,9 +289,11 @@ export function PluginMarketplacePanel() {
             source: 'PluginMarketplace',
           })
         }
+        return true
       } else if (result.requiresPayment) {
         // 后端再次确认付费（兜底）
         await handlePaidPluginPurchase(item)
+        return false
       } else {
         toast.card({
           type: 'error',
@@ -284,6 +302,7 @@ export function PluginMarketplacePanel() {
           duration: 5000,
           source: 'PluginMarketplace',
         })
+        return false
       }
     } catch (err) {
       toast.card({
@@ -293,6 +312,7 @@ export function PluginMarketplacePanel() {
         duration: 5000,
         source: 'PluginMarketplace',
       })
+      return false
     } finally {
       setInstalling(null)
     }
@@ -303,46 +323,17 @@ export function PluginMarketplacePanel() {
     const item = configDialog.item
     if (!item) return
     setConfigDialog((s) => ({ ...s, loading: true, error: undefined }))
-    // 先关闭对话框再执行安装（避免遮挡 toast）
-    // 但保留 loading 状态以禁用按钮 - 这里改为安装期间保持对话框显示
     try {
-      const result = await installPluginFromMarketplace(
-        item.id,
-        item.latestVersion || undefined,
-        item,
-        values,
-      )
-      if (result.success) {
+      const success = await doInstall(item, values)
+      if (success) {
         toast.success(
           language === 'zh'
             ? `插件「${item.nameZh}」安装成功`
             : `Plugin "${item.name}" installed successfully`,
         )
-        setInstalledKeys((prev) => new Set(prev).add(item.pluginKey))
-        setSelectedItem(null)
         setConfigDialog({ open: false, item: null, fields: [], loading: false })
-        // 安装成功但 MCP 连接失败时，提示用户前往设置面板重试
-        if (result.mcpConnectError) {
-          toast.card({
-            type: 'warning',
-            title: language === 'zh' ? 'MCP 服务连接失败' : 'MCP Service Connection Failed',
-            message:
-              language === 'zh'
-                ? `插件已安装，但 MCP 服务连接失败：${result.mcpConnectError}\n可前往「设置 → MCP 服务」点击刷新重连。`
-                : `Plugin installed, but MCP service connection failed: ${result.mcpConnectError}\nGo to "Settings → MCP Servers" to retry.`,
-            duration: 10000,
-            source: 'PluginMarketplace',
-          })
-        }
-      } else if (result.requiresPayment) {
-        setConfigDialog({ open: false, item: null, fields: [], loading: false })
-        await handlePaidPluginPurchase(item)
       } else {
-        setConfigDialog((s) => ({
-          ...s,
-          loading: false,
-          error: result.error || (language === 'zh' ? '安装失败，请检查配置' : 'Install failed'),
-        }))
+        setConfigDialog({ open: false, item: null, fields: [], loading: false })
       }
     } catch (err) {
       setConfigDialog((s) => ({
@@ -352,6 +343,50 @@ export function PluginMarketplacePanel() {
       }))
     } finally {
       setInstalling(null)
+    }
+  }
+
+  /** 扫码登录成功：创建渠道账户并立即连接
+   *
+   * iLink Bot 扫码获得的 token 有时效性，必须立即连接激活会话，
+   * 否则用户手动点击连接时 token 已过期（"Token expired or invalid"）
+   */
+  async function handleQrLoginSuccess(token: string, baseUrl: string) {
+    const { item, channelId } = qrLoginDialog
+    if (!item || !channelId) return
+
+    setQrLoginDialog((s) => ({ ...s, addingAccount: true }))
+    try {
+      const api = getAPI()
+      const accountId = `${channelId}-bot-${Date.now().toString(36)}`
+      const account = {
+        id: accountId,
+        name: language === 'zh' ? `${item.nameZh} 机器人` : `${item.name} Bot`,
+        enabled: true,
+        credentials: {
+          token,
+          ...(baseUrl ? { baseUrl } : {}),
+        },
+      }
+      await api.channel.addAccount(channelId, account)
+      toast.success(
+        language === 'zh'
+          ? `${item.nameZh} 扫码登录成功，账户已连接`
+          : `${item.name} QR login successful, account connected`,
+      )
+      setQrLoginDialog({ open: false, item: null, channelId: null, addingAccount: false })
+    } catch (err: any) {
+      toast.card({
+        type: 'warning',
+        title: language === 'zh' ? '账户连接失败' : 'Account Connection Failed',
+        message:
+          language === 'zh'
+            ? `扫码成功，但账户连接失败：${err?.message || '未知错误'}\n可前往「设置 → 渠道」重新扫码登录。`
+            : `QR login succeeded, but account connection failed: ${err?.message || 'unknown error'}\nGo to "Settings → Channels" to retry.`,
+        duration: 10000,
+        source: 'PluginMarketplace',
+      })
+      setQrLoginDialog({ open: false, item: null, channelId: null, addingAccount: false })
     }
   }
 
@@ -614,6 +649,21 @@ export function PluginMarketplacePanel() {
           setConfigDialog({ open: false, item: null, fields: [], loading: false })
         }
       />
+
+      {/* 扫码登录对话框（qrLogin 渠道安装成功后弹出） */}
+      {qrLoginDialog.open && qrLoginDialog.item && qrLoginDialog.channelId && (
+        <PluginQrLoginModal
+          pluginName={qrLoginDialog.item.nameZh || qrLoginDialog.item.name || ''}
+          channelId={qrLoginDialog.channelId}
+          language={language}
+          addingAccount={qrLoginDialog.addingAccount}
+          onSuccess={handleQrLoginSuccess}
+          onCancel={() =>
+            !qrLoginDialog.addingAccount &&
+            setQrLoginDialog({ open: false, item: null, channelId: null, addingAccount: false })
+          }
+        />
+      )}
     </div>
   )
 }

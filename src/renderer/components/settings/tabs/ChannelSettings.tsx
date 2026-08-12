@@ -20,6 +20,11 @@ import {
   Pencil,
   X,
   Check,
+  Webhook,
+  Send,
+  Mail,
+  Bell,
+  Radio,
 } from 'lucide-react'
 import { ActionButton, TextField } from '@components/ui'
 import { toast } from '@components/foundation/NotificationProvider'
@@ -27,7 +32,7 @@ import { getAPI } from '../../../adapters/electronBridge'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { BUILTIN_PROVIDERS } from '@shared/configuration/aiProviders'
-import { WeixinQRLogin } from './WeixinQRLogin'
+import { QRLoginView } from './QRLoginView'
 import type { ChannelId, ChannelAccountConfig, ChannelAccountSnapshot, ChannelConfig, ChannelSecretSchema } from '@shared/protocols/channel'
 import { t, type Language } from '@renderer/i18n'
 
@@ -46,8 +51,8 @@ import whatsappLogo from '@renderer/assets/channel/whatsapp.svg'
 import qqLogo from '@renderer/assets/channel/qq.svg'
 
 /** 渠道 logo 组件 */
-function ChannelLogo({ channelId, className }: { channelId: ChannelId; className?: string }) {
-  const logoMap: Partial<Record<ChannelId, string>> = {
+function ChannelLogo({ channelId, iconName, className }: { channelId: ChannelId; iconName?: string; className?: string }) {
+  const logoMap: Partial<Record<string, string>> = {
     feishu: feishuLogo,
     wechat: wechatLogo,
     weixin: weixinLogo,
@@ -61,17 +66,26 @@ function ChannelLogo({ channelId, className }: { channelId: ChannelId; className
     whatsapp: whatsappLogo,
     qq: qqLogo,
   }
-  const src = logoMap[channelId]
+  const src = logoMap[channelId as string]
   if (src) {
     return <img src={src} alt={channelId} className={className || 'w-5 h-5'} />
   }
-  // 无 logo 的渠道使用 lucide 图标兜底
-  const fallbackIcons: Partial<Record<ChannelId, React.ReactNode>> = {
-    whatsapp: <Smartphone className={className || 'w-4 h-4'} />,
-    telegram: <MessageCircle className={className || 'w-4 h-4'} />,
-    slack: <MessageSquare className={className || 'w-4 h-4'} />,
+  // 外部渠道插件：根据 meta.icon 名称选择 lucide 图标
+  const iconMap: Record<string, React.ReactNode> = {
+    Webhook: <Webhook className={className || 'w-4 h-4'} />,
+    Send: <Send className={className || 'w-4 h-4'} />,
+    MessageCircle: <MessageCircle className={className || 'w-4 h-4'} />,
+    MessageSquare: <MessageSquare className={className || 'w-4 h-4'} />,
+    Smartphone: <Smartphone className={className || 'w-4 h-4'} />,
+    Mail: <Mail className={className || 'w-4 h-4'} />,
+    Bell: <Bell className={className || 'w-4 h-4'} />,
+    Radio: <Radio className={className || 'w-4 h-4'} />,
   }
-  return <>{fallbackIcons[channelId] || <MessageCircle className={className || 'w-4 h-4'} />}</>
+  if (iconName && iconMap[iconName]) {
+    return <>{iconMap[iconName]}</>
+  }
+  // 最终兜底
+  return <MessageCircle className={className || 'w-4 h-4'} />
 }
 
 interface ChannelSettingsProps {
@@ -88,7 +102,7 @@ function WebhookUrlDisplay({ channelId, language }: { channelId: ChannelId; lang
     }).catch(() => {})
   }, [])
 
-  const path = channelId === 'wechat' ? '/webhook/wechat' : '/webhook/whatsapp'
+  const path = `/webhook/${channelId}`
   const fullUrl = webhookInfo ? `${webhookInfo.url}${path}` : ''
 
   return (
@@ -123,7 +137,7 @@ function WebhookUrlDisplay({ channelId, language }: { channelId: ChannelId; lang
 export function ChannelSettings({ language }: ChannelSettingsProps) {
   const api = getAPI()
   const { llmConfig, providerConfigs } = useStore(useShallow(s => ({ llmConfig: s.llmConfig, providerConfigs: s.providerConfigs })))
-  const [channels, setChannels] = useState<Array<{ id: ChannelId; meta: { label: string; labelZh: string; description: string; descriptionZh: string; icon: string; order: number } }>>([])
+  const [channels, setChannels] = useState<Array<{ id: ChannelId; meta: { label: string; labelZh: string; description: string; descriptionZh: string; icon: string; order: number; connectionModes?: string[]; capabilities?: { qrLogin?: boolean } } }>>([])
   const [configs, setConfigs] = useState<ChannelConfig[]>([])
   const [statuses, setStatuses] = useState<ChannelAccountSnapshot[]>([])
   const [secretSchemas, setSecretSchemas] = useState<Partial<Record<ChannelId, ChannelSecretSchema[]>>>({})
@@ -398,7 +412,7 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                 className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-active/30 transition-colors"
                 onClick={() => setExpandedChannel(isExpanded ? null : channel.id)}
               >
-                <ChannelLogo channelId={channel.id} />
+                <ChannelLogo channelId={channel.id} iconName={channel.meta.icon} />
                 <div className="flex-1 text-left">
                   <div className="text-sm font-medium text-text-primary">
                     {language === 'zh' ? channel.meta.labelZh : channel.meta.label}
@@ -425,35 +439,37 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
                     </div>
                   )}
 
-                  {(channel.id === 'wechat' || channel.id === 'whatsapp') && (
+                  {/* Webhook URL 显示：检测 connectionModes 是否包含 webhook */}
+                  {channel.meta.connectionModes?.includes('webhook') && (
                     <WebhookUrlDisplay channelId={channel.id} language={language} />
                   )}
 
-                  {channel.id === 'weixin' && (
-                    <WeixinQRLogin
+                  {/* 扫码登录：检测 capabilities.qrLogin 是否为 true */}
+                  {channel.meta.capabilities?.qrLogin && (
+                    <QRLoginView
+                      channelId={channel.id}
                       language={language}
                       onLoginSuccess={async (token, baseUrl) => {
                         // 扫码登录成功后，自动添加账户
-                        const accountId = `weixin-bot-${Date.now().toString(36)}`
+                        const accountId = `${channel.id}-bot-${Date.now().toString(36)}`
                         const account: ChannelAccountConfig = {
                           id: accountId,
-                          name: language === 'zh' ? '我的微信机器人' : 'My WeChat Bot',
+                          name: language === 'zh' ? `${channel.meta.labelZh} 机器人` : `${channel.meta.label} Bot`,
                           enabled: true,
-                          credentials: { token, baseUrl },
+                          credentials: { token, ...(baseUrl ? { baseUrl } : {}) },
                         }
                         try {
-                          await api.channel.addAccount('weixin', account)
-                          toast.success(language === 'zh' ? '微信登录成功，账户已自动添加' : 'WeChat login successful, account auto-added')
+                          await api.channel.addAccount(channel.id, account)
+                          toast.success(language === 'zh' ? '登录成功，账户已自动添加' : 'Login successful, account auto-added')
                           await loadData()
                         } catch (err: any) {
-                          // 自动添加失败时，回退到手动填写
                           toast.error(err?.message || (language === 'zh' ? '自动添加失败，请手动添加' : 'Auto-add failed, please add manually'))
-                          setShowAddAccount('weixin')
+                          setShowAddAccount(channel.id)
                           setNewAccountForm({
                             id: accountId,
-                            name: language === 'zh' ? '我的微信机器人' : 'My WeChat Bot',
+                            name: language === 'zh' ? `${channel.meta.labelZh} 机器人` : `${channel.meta.label} Bot`,
                             enabled: true,
-                            credentials: { token, baseUrl },
+                            credentials: { token, ...(baseUrl ? { baseUrl } : {}) },
                           })
                         }
                       }}

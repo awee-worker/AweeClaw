@@ -1,4 +1,10 @@
-export type ChannelId = 'feishu' | 'wechat' | 'weixin' | 'wechatmp' | 'whatsapp' | 'telegram' | 'dingtalk' | 'slack' | 'discord' | 'misskey' | 'matrix' | 'qq'
+/**
+ * 内置渠道 ID 联合类型 + 外部插件自定义渠道 ID
+ *
+ * (string & {}) 技巧：保留 12 个内置渠道的 IDE 自动补全，
+ * 同时允许外部渠道插件使用任意字符串作为 channelId。
+ */
+export type ChannelId = 'feishu' | 'wechat' | 'weixin' | 'wechatmp' | 'whatsapp' | 'telegram' | 'dingtalk' | 'slack' | 'discord' | 'misskey' | 'matrix' | 'qq' | (string & {})
 
 export type ChatType = 'direct' | 'group' | 'channel'
 
@@ -32,6 +38,8 @@ export interface ChannelCapabilities {
   streaming: boolean
   voice: boolean
   files: boolean
+  /** 是否支持扫码登录（如微信个人号 QR 扫码绑定） */
+  qrLogin?: boolean
 }
 
 export interface ChannelAccountConfig {
@@ -152,6 +160,21 @@ export interface ChannelEvent {
   timestamp: number
 }
 
+/** QR 码扫码登录结果 */
+export interface QRCodeResult {
+  qrcode?: string
+  qrcode_img_content?: string
+  [key: string]: unknown
+}
+
+/** QR 码扫码状态轮询结果 */
+export interface QRPollResult {
+  status: string
+  bot_token?: string
+  baseurl?: string
+  [key: string]: unknown
+}
+
 export interface ChannelPlugin {
   id: ChannelId
   meta: ChannelMeta
@@ -165,6 +188,10 @@ export interface ChannelPlugin {
   onStatusChange(callback: (snapshot: ChannelAccountSnapshot) => void): void
   onEvent(callback: (event: ChannelEvent) => void): void
   destroy(): void
+  /** 获取扫码登录二维码（仅 capabilities.qrLogin=true 的渠道实现） */
+  fetchQRCode?(): Promise<QRCodeResult>
+  /** 轮询扫码状态（仅 capabilities.qrLogin=true 的渠道实现） */
+  pollQRStatus?(qrcode: string): Promise<QRPollResult>
 }
 
 export type ImProcessingPhase = 'received' | 'thinking' | 'replying' | 'done' | 'error'

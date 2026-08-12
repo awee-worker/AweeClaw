@@ -221,6 +221,7 @@ export interface SendTypingRequest {
 export interface QRCodeResponse {
   qrcode?: string
   qrcode_img_content?: string
+  [key: string]: unknown
 }
 
 export interface QRStatusResponse {
@@ -229,6 +230,7 @@ export interface QRStatusResponse {
   ilink_bot_id?: string
   baseurl?: string
   ilink_user_id?: string
+  [key: string]: unknown
 }
 
 // ============================================

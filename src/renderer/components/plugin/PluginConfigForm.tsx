@@ -27,7 +27,14 @@ export interface PluginConfigField {
   labelZh?: string
   description?: string
   descriptionZh?: string
-  type: 'text' | 'password' | 'number' | 'boolean' | 'select' | 'multiselect' | 'action'
+  /**
+   * 字段类型
+   * - text/password/number/boolean/select/multiselect：基础类型
+   * - textarea：多行文本
+   * - code：代码编辑器（等宽字体）
+   * - action：按钮触发动作（如获取模型列表、测试连接）
+   */
+  type: 'text' | 'password' | 'number' | 'boolean' | 'select' | 'multiselect' | 'textarea' | 'code' | 'action'
   required?: boolean
   secret?: boolean
   defaultValue?: string
@@ -46,13 +53,24 @@ export interface PluginConfigField {
     /** 当依赖字段值在此列表中时显示（与 equals 互斥） */
     in?: string[]
   }
-  /** action 类型专属：按钮触发的动作（目前仅支持 fetchModels） */
-  action?: 'fetchModels'
-  /** action 类型专属：选择后填入的目标字段 key */
+  /** action 类型专属：action 声明（通用） */
+  action?: {
+    /** action 类型标识，用于匹配 handler */
+    kind: string
+    /** 按钮文字（英文） */
+    buttonText?: string
+    /** 按钮文字（中文） */
+    buttonTextZh?: string
+    /** action 执行后，将结果填入此字段 */
+    targetField?: string
+    /** 传递给 handler 的参数映射（{fieldKey} 表示从表单值取值） */
+    params?: Record<string, string>
+  }
+  /** action 类型专属：选择后填入的目标字段 key（向后兼容，等价于 action.targetField） */
   targetField?: string
-  /** action 类型专属：按钮文字（英文） */
+  /** action 类型专属：按钮文字（英文，向后兼容，等价于 action.buttonText） */
   buttonText?: string
-  /** action 类型专属：按钮文字（中文） */
+  /** action 类型专属：按钮文字（中文，向后兼容，等价于 action.buttonTextZh） */
   buttonTextZh?: string
   /**
    * action 类型专属：预设模型列表。
@@ -61,6 +79,10 @@ export interface PluginConfigField {
    * 各插件可在 manifest 中为不同 provider 声明不同的预设模型列表。
    */
   presetModels?: string[]
+  /** textarea/code 类型专属：行数提示（影响渲染高度） */
+  rows?: number
+  /** code 类型专属：语言标识（如 'json', 'yaml'） */
+  language?: string
 }
 
 /** configSchema 完整结构 */
@@ -228,17 +250,23 @@ const PluginConfigForm = forwardRef<PluginConfigFormHandle, Props>(function Plug
   }
 
   /**
-   * 处理 action 字段点击（目前仅支持 fetchModels 动作）
+   * 处理 action 字段点击
    *
-   * 流程：
-   * 1. 从当前表单值读取 provider / apiKey / baseUrl
-   * 2. 调用已有的 fetchModels IPC 通道（providerMonitor.ts:321）
-   * 3. 成功且非空 → 弹出列表供选择
-   * 4. 失败或空 → 降级到预设列表（getPresetModels）
+   * 支持的 action kind：
+   * - 'fetchModels'：获取模型列表（内置实现，向后兼容）
+   * - 'testConnection'：测试连接（内置实现）
+   * - 其他自定义 kind：通过 pluginUiRegistry 查找插件注册的 handler
+   *
+   * 向后兼容：
+   * - 旧格式 field.action === 'fetchModels'（字符串）
+   * - 新格式 field.action = { kind: 'fetchModels', ... }（对象）
    */
   async function handleAction(field: PluginConfigField) {
-    if (field.action !== 'fetchModels') return
-    if (!field.targetField) return
+    // 解析 action kind（兼容旧字符串格式和新对象格式）
+    const actionKind = typeof field.action === 'object' ? field.action?.kind : field.action
+    if (!actionKind) return
+    const targetField = field.targetField || (typeof field.action === 'object' ? field.action?.targetField : undefined)
+    if (!targetField) return
 
     setActionLoading((s) => ({ ...s, [field.key]: true }))
     try {
@@ -401,8 +429,25 @@ const PluginConfigForm = forwardRef<PluginConfigFormHandle, Props>(function Plug
                 {actionLoading[field.key] && <Loader2 size={14} className="animate-spin" />}
                 {actionLoading[field.key]
                   ? (isZh ? '获取中...' : 'Fetching...')
-                  : (isZh ? field.buttonTextZh || field.buttonText || '获取模型' : field.buttonText || 'Fetch Models')}
+                  : (isZh
+                      ? (typeof field.action === 'object' ? field.action?.buttonTextZh : undefined) || field.buttonTextZh || field.buttonText || '获取模型'
+                      : (typeof field.action === 'object' ? field.action?.buttonText : undefined) || field.buttonText || 'Fetch Models')}
               </button>
+            ) : field.type === 'textarea' || field.type === 'code' ? (
+              <textarea
+                value={v}
+                disabled={disabled}
+                placeholder={field.placeholder}
+                rows={field.rows || (field.type === 'code' ? 8 : 4)}
+                onChange={(e) => updateField(field.key, e.target.value)}
+                className={`w-full rounded-md border bg-white px-3 py-2 text-sm transition-colors dark:bg-zinc-900 dark:text-zinc-100 ${
+                  field.type === 'code' ? 'font-mono' : ''
+                } ${
+                  err
+                    ? 'border-red-400 focus:border-red-500'
+                    : 'border-zinc-300 focus:border-blue-500 dark:border-zinc-700'
+                } focus:outline-none focus:ring-1 focus:ring-blue-500/40`}
+              />
             ) : (
               <div className="relative">
                 <input

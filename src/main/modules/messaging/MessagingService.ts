@@ -6,18 +6,6 @@ import { channelErrorHandler } from './MessageErrorHandler'
 import { webhookServer } from './WebhookReceiver'
 import { channelPluginRegistrar } from './ChannelPluginRegistrar'
 import { agentRouter } from '../agent/AgentRouter'
-import { feishuChannelPlugin } from './adapters/feishu'
-import { wechatChannelPlugin } from './adapters/wechat'
-import { weixinChannelPlugin } from './adapters/weixin'
-import { wechatmpChannelPlugin } from './adapters/wechatmp'
-import { whatsappChannelPlugin } from './adapters/whatsapp'
-import { qqChannelPlugin } from './adapters/qq'
-import { dingtalkChannelPlugin } from './adapters/dingtalk'
-import { slackChannelPlugin } from './adapters/slack'
-import { discordChannelPlugin } from './adapters/discord'
-import { telegramChannelPlugin } from './adapters/telegram'
-import { misskeyChannelPlugin } from './adapters/misskey'
-import { matrixChannelPlugin } from './adapters/matrix'
 import type {
   ChannelId,
   ChannelPlugin,
@@ -37,7 +25,12 @@ class ChannelService {
     if (this.initialized) return
     logger.channel.info('Initializing channel service...')
     channelConfigStore.load()
-    this.registerBuiltInPlugins()
+
+    // 注册 Channel 插件加载处理器（使 PluginRegistry 能加载外部渠道插件）
+    // 外部渠道插件（如 channel-feishu、channel-telegram 等）通过插件市场安装后，
+    // PluginRegistry.discover() 会发现并调用 handler 将其注册到 channelRegistry
+    channelPluginRegistrar.registerHandler()
+
     channelRegistry.onMessage(msg => this.handleInboundMessage(msg))
 
     // 非阻塞启动：注册插件后立即返回，各渠道连接在后台异步进行
@@ -223,35 +216,16 @@ class ChannelService {
   }
 
   /**
-   * 注册内置渠道插件
-   * 通过 ChannelPluginRegistrar 统一注册到 Plugin SDK 体系
+   * 渠道插件已迁移为外部插件，通过插件市场安装。
+   * - PluginRegistry.discover() 扫描已安装插件目录
+   * - 发现 type='channel' 插件时，通过 channelPluginHandler 加载
+   * - handler 将 ChannelPlugin 实例注册到 channelRegistry + channelPluginRegistrar
+   *
+   * 支持的渠道插件（需从插件市场安装）：
+   * channel-feishu / channel-wechat / channel-weixin / channel-wechatmp
+   * channel-whatsapp / channel-qq / channel-dingtalk / channel-slack
+   * channel-discord / channel-telegram / channel-misskey / channel-matrix
    */
-  private registerBuiltInPlugins(): void {
-    const plugins = [
-      feishuChannelPlugin,
-      wechatChannelPlugin,
-      weixinChannelPlugin,
-      wechatmpChannelPlugin,
-      whatsappChannelPlugin,
-      qqChannelPlugin,
-      dingtalkChannelPlugin,
-      slackChannelPlugin,
-      discordChannelPlugin,
-      telegramChannelPlugin,
-      misskeyChannelPlugin,
-      matrixChannelPlugin,
-    ]
-
-    // 通过 ChannelPluginRegistrar 注册到 Plugin SDK
-    channelPluginRegistrar.registerAll(plugins)
-
-    // 同时注册到 ChannelRegistry（保持向后兼容）
-    for (const plugin of plugins) {
-      channelRegistry.register(plugin)
-    }
-
-    logger.channel.info('Registered built-in channel plugins via Plugin SDK: feishu, wechat, weixin, wechatmp, whatsapp, qq, dingtalk, slack, discord, telegram, misskey, matrix')
-  }
 
   private handleInboundMessage(message: InboundMessage): void {
     const config = channelConfigStore.get(message.channelId)

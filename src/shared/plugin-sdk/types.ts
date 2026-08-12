@@ -186,6 +186,33 @@ export interface PluginConfigSchema {
   fields: PluginConfigField[]
 }
 
+/**
+ * 配置字段 action 声明
+ *
+ * action 类型字段渲染为按钮，点击后触发 action handler。
+ * handler 通过 PluginUiModule.configActions 注册（按 kind 匹配）。
+ * 内置 kind：
+ *  - 'fetchModels'：获取模型列表（内置实现，向后兼容）
+ *  - 'testConnection'：测试连接（内置实现）
+ * 插件可在 ui.js 中注册自定义 kind 的 handler。
+ */
+export interface PluginConfigAction {
+  /** action 类型标识，用于匹配 handler */
+  kind: string
+  /** 按钮文字（英文） */
+  buttonText?: string
+  /** 按钮文字（中文） */
+  buttonTextZh?: string
+  /** action 执行后，将结果填入此字段（如 fetchModels 后填入 model 字段） */
+  targetField?: string
+  /**
+   * 传递给 handler 的参数映射。
+   * 值格式 "{fieldKey}" 表示从当前表单值中取该字段的值；
+   * 其他格式按字面量传递。
+   */
+  params?: Record<string, string>
+}
+
 export interface PluginConfigField {
   /** 字段键名 */
   key: string
@@ -197,8 +224,14 @@ export interface PluginConfigField {
   description?: string
   /** 中文描述 */
   descriptionZh?: string
-  /** 字段类型 */
-  type: 'text' | 'password' | 'number' | 'boolean' | 'select' | 'multiselect'
+  /**
+   * 字段类型
+   * - text/password/number/boolean/select/multiselect：基础类型
+   * - textarea：多行文本
+   * - code：代码编辑器（等宽字体，支持语法高亮占位）
+   * - action：按钮触发动作（如获取模型列表、测试连接）
+   */
+  type: 'text' | 'password' | 'number' | 'boolean' | 'select' | 'multiselect' | 'textarea' | 'code' | 'action'
   /** 是否必填 */
   required: boolean
   /** 默认值 */
@@ -216,6 +249,27 @@ export interface PluginConfigField {
     pattern?: string
     patternMessage?: string
   }
+  /**
+   * 条件显示规则：当依赖字段的值满足条件时才显示本字段。
+   * 用于实现"选择服务商后只显示该服务商的配置项"等动态表单场景。
+   * 未设置时字段始终显示。
+   */
+  visibleWhen?: {
+    /** 依赖的字段 key（如 'provider'） */
+    field: string
+    /** 当依赖字段值等于此值时显示（与 in 互斥，equals 优先） */
+    equals?: string
+    /** 当依赖字段值在此列表中时显示（与 equals 互斥） */
+    in?: string[]
+  }
+  /** action 类型专属：action 声明 */
+  action?: PluginConfigAction
+  /** action 类型专属：预设模型列表（fetchModels kind 专用，避免 IPC 调用） */
+  presetModels?: string[]
+  /** textarea/code 类型专属：行数提示（影响渲染高度） */
+  rows?: number
+  /** code 类型专属：语言标识（如 'json', 'yaml'），用于语法高亮 */
+  language?: string
 }
 
 /** 插件权限声明 */
@@ -456,6 +510,8 @@ export interface PluginContributes {
   sidebarPanels?: PluginSidebarPanelContribution[]
   /** 顶部按钮贡献（注入到聊天头部操作区） */
   topActions?: PluginTopActionContribution[]
+  /** 设置页 Tab 贡献（注入到设置页导航） */
+  settingsTabs?: PluginSettingsTabContribution[]
 }
 
 /**
@@ -494,5 +550,26 @@ export interface PluginTopActionContribution {
   /** ui.js 模块导出的组件键名（topActions 映射中的键） */
   component: string
   /** 排序权重，越大越靠右；默认 50 */
+  position?: number
+}
+
+/**
+ * 设置页 Tab 贡献
+ *
+ * 插件可在设置页贡献自己的 Tab，组件通过 props.host 访问插件能力。
+ * Tab 显示在内置 Tab 之后，按 position 排序。
+ */
+export interface PluginSettingsTabContribution {
+  /** Tab 唯一 id，建议以插件 id 为前缀，如 "channel-weixin:settings" */
+  id: string
+  /** lucide 图标名（通过 IconMap 解析） */
+  icon: string
+  /** 英文标签 */
+  label: string
+  /** 中文标签 */
+  labelZh: string
+  /** ui.js 模块导出的组件键名（settingsTabs 映射中的键） */
+  component: string
+  /** 排序权重，越大越靠下；默认 50（位于内置 Tab 之后） */
   position?: number
 }

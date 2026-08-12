@@ -19,11 +19,11 @@
 
 import type { ComponentType } from 'react'
 import type { SidebarItemDescriptor } from '@shared/protocols/scenario'
-import type { PluginSidebarPanelContribution, PluginTopActionContribution } from '@shared/plugin-sdk/types'
+import type { PluginSidebarPanelContribution, PluginTopActionContribution, PluginSettingsTabContribution } from '@shared/plugin-sdk/types'
 import { registerPanelComponent, unregisterPanelComponent } from '@renderer/components/explorer/PanelRegistry'
 import { fetchAndRewriteBundle, buildPluginBundleUrl } from './rewriteBareSpecifiers'
 import { createPluginHostApi } from './PluginHostApi'
-import type { PluginHostApi, PluginPanelProps, PluginUiModule, LoadedPluginUi } from './types'
+import type { PluginHostApi, PluginPanelProps, PluginUiModule, LoadedPluginUi, PluginConfigActionHandler } from './types'
 import { contributionToSidebarItem } from './types'
 
 /** 单个插件的 UI 贡献记录（来自主进程 IPC） */
@@ -35,6 +35,7 @@ interface PluginUiContribution {
     ui?: { entry: string }
     sidebarPanels?: PluginSidebarPanelContribution[]
     topActions?: PluginTopActionContribution[]
+    settingsTabs?: PluginSettingsTabContribution[]
   }
   mcpServerId?: string
 }
@@ -244,6 +245,73 @@ class PluginUiRegistryImpl {
   }
 
   /**
+   * 获取所有已加载插件的设置页 Tab
+   *
+   * 返回扁平化的 Tab 列表（含组件和 host），供 PreferencesDialog 渲染。
+   * 未加载 ui.js 的插件 Tab 不返回（或由调用方触发 ensureLoaded）。
+   */
+  getSettingsTabs(): Array<{
+    pluginKey: string
+    contribution: PluginSettingsTabContribution
+    component: ComponentType<PluginPanelProps>
+    host: PluginHostApi
+  }> {
+    const result: Array<{
+      pluginKey: string
+      contribution: PluginSettingsTabContribution
+      component: ComponentType<PluginPanelProps>
+      host: PluginHostApi
+    }> = []
+
+    for (const [pluginKey, loaded] of this.loaded) {
+      if (!loaded.settingsTabs || loaded.settingsTabs.length === 0) continue
+      for (const st of loaded.settingsTabs) {
+        result.push({
+          pluginKey,
+          contribution: st.contribution,
+          component: st.component,
+          host: st.host,
+        })
+      }
+    }
+    result.sort((a, b) => (a.contribution.position ?? 50) - (b.contribution.position ?? 50))
+    return result
+  }
+
+  /**
+   * 确保声明了 settingsTabs 的所有插件 ui.js 已加载
+   *
+   * 与 ensureTopActionsLoaded 类似：设置页 Tab 必须先加载 ui.js 才能拿到组件。
+   * 在 PreferencesDialog 打开时调用，触发所有有 settingsTabs 声明的插件加载。
+   */
+  async ensureSettingsTabsLoaded(): Promise<void> {
+    const pluginsToLoad: string[] = []
+    for (const [pluginKey, contribution] of this.discovered) {
+      if (contribution.contributes.settingsTabs?.length && !this.loaded.has(pluginKey)) {
+        pluginsToLoad.push(pluginKey)
+      }
+    }
+    if (pluginsToLoad.length === 0) return
+
+    await Promise.allSettled(pluginsToLoad.map((key) => this.ensureLoaded(key)))
+  }
+
+  /**
+   * 获取指定插件的 config action handler
+   *
+   * 供 PluginConfigForm 在用户点击 action 按钮时调用。
+   * 如果插件未加载 ui.js 或未注册该 kind 的 handler，返回 undefined。
+   *
+   * @param pluginKey 插件 key
+   * @param kind action kind（如 'fetchModels', 'testConnection'）
+   */
+  getConfigActionHandler(pluginKey: string, kind: string): PluginConfigActionHandler | undefined {
+    const loaded = this.loaded.get(pluginKey)
+    if (!loaded?.module.configActions) return undefined
+    return loaded.module.configActions[kind]
+  }
+
+  /**
    * 确保指定插件的 ui.js 已加载
    *
    * 懒加载入口：面板首次激活或按钮首次渲染时调用。
@@ -373,11 +441,34 @@ class PluginUiRegistryImpl {
         }
       }
 
+      // 加载设置页 Tab 组件
+      const settingsTabs: LoadedPluginUi['settingsTabs'] = []
+      if (contribution.contributes.settingsTabs) {
+        const tabHost = createPluginHostApi({
+          pluginKey,
+          mcpServerId: contribution.mcpServerId,
+          language: this.getCurrentLanguage(),
+        })
+        for (const st of contribution.contributes.settingsTabs) {
+          const comp = uiModule.settingsTabs?.[st.component]
+          if (comp) {
+            settingsTabs.push({ contribution: st, component: comp, host: tabHost })
+            console.log(`[PluginUiRegistry] Registered settingsTab "${st.id}" for ${pluginKey}`)
+          } else {
+            console.error(
+              `[PluginUiRegistry] Plugin ${pluginKey} settingsTab "${st.component}" not found in ui.js. ` +
+                `Available settingsTabs: ${Object.keys(uiModule.settingsTabs || {}).join(', ')}`,
+            )
+          }
+        }
+      }
+
       this.loaded.set(pluginKey, {
         pluginKey,
         module: uiModule,
         sidebarItems,
         topActions,
+        settingsTabs,
       })
       this.invalidateCache()
       this.notifyListeners()

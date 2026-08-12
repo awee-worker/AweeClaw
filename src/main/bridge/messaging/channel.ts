@@ -10,7 +10,7 @@
 import { safeIpcHandle } from '../core/ipcGuard'
 import { channelService } from '../../modules/messaging'
 import { channelBridge } from '../../modules/messaging/MessageBridge'
-import { weixinChannelPlugin } from '../../modules/messaging/adapters/weixin'
+import { channelRegistry } from '../../modules/messaging/AdapterRegistry'
 import type { ChannelAccountConfig, OutboundMessage } from '@shared/protocols/channel'
 import type { BrowserWindow } from 'electron'
 import type Store from 'electron-store'
@@ -138,18 +138,19 @@ export function registerChannelHandlers(getMainWindow?: () => BrowserWindow | nu
   })
 
   // 微信个人号 QR 码登录
-  safeIpcHandle('channel:weixin:fetchQRCode', async () => {
+  // ── 扫码登录（通用，支持所有声明了 qrLogin 能力的渠道） ──
+  safeIpcHandle('channel:fetchQRCode', async (_event, channelId: string) => {
     try {
-      const result = await weixinChannelPlugin.fetchQRCode()
+      const result = await channelRegistry.fetchQRCode(channelId)
       return { success: true, ...result }
     } catch (err: any) {
       return { success: false, error: err?.message || String(err) }
     }
   })
 
-  safeIpcHandle('channel:weixin:pollQRStatus', async (_, qrcode: string) => {
+  safeIpcHandle('channel:pollQRStatus', async (_event, channelId: string, qrcode: string) => {
     try {
-      const result = await weixinChannelPlugin.pollQRStatus(qrcode)
+      const result = await channelRegistry.pollQRStatus(channelId, qrcode)
       return { success: true, ...result }
     } catch (err: any) {
       return { success: false, error: err?.message || String(err) }

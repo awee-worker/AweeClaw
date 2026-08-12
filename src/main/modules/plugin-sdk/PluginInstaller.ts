@@ -580,6 +580,13 @@ export class PluginInstaller {
         logger.system.warn(`[PluginInstaller] Failed to unload runtime: ${err}`)
       }
 
+      // 1.5 渠道插件清理：注销渠道 + 断开所有账户 + 删除渠道配置
+      // 避免卸载后设置→多渠道仍显示已卸载的渠道
+      const types = Array.isArray(record.manifest.type) ? record.manifest.type : [record.manifest.type]
+      if (types.includes('channel' as PluginType)) {
+        await this.cleanupChannelPlugin(pluginKey)
+      }
+
       // 2. 断开并移除 MCP 服务
       if (record.mcpServerId) {
         try {
@@ -611,6 +618,56 @@ export class PluginInstaller {
       const msg = err instanceof Error ? err.message : String(err)
       logger.system.error(`[PluginInstaller] Uninstall failed for ${pluginKey}: ${msg}`)
       return { success: false, pluginKey, error: msg }
+    }
+  }
+
+  /**
+   * 清理渠道插件相关数据
+   *
+   * 卸载渠道插件时调用，确保设置→多渠道不再显示已卸载的渠道：
+   * 1. 断开该渠道所有账户的连接（释放 WebSocket 等资源）
+   * 2. 从 channelRegistry 注销渠道插件（停止消息路由）
+   * 3. 从 channelConfigStore 删除渠道配置（含所有账户）
+   * 4. 从 channelPluginRegistrar 注销适配器
+   *
+   * 使用动态 import 避免循环依赖（messaging 模块依赖 plugin-sdk）
+   *
+   * @param pluginKey 插件 key，如 "channel-weixin"
+   */
+  private async cleanupChannelPlugin(pluginKey: string): Promise<void> {
+    // 从 pluginKey 提取 channelId（去除 "channel-" 前缀）
+    const channelId = pluginKey.startsWith('channel-')
+      ? pluginKey.replace('channel-', '')
+      : pluginKey
+
+    try {
+      const { channelConfigStore, channelRegistry, channelPluginRegistrar } =
+        await import('../messaging')
+
+      // 1. 断开所有账户连接
+      const config = channelConfigStore.get(channelId as any)
+      if (config) {
+        for (const account of config.accounts) {
+          try {
+            await channelRegistry.disconnectAccount(channelId as any, account.id)
+          } catch (err) {
+            logger.system.warn(`[PluginInstaller] Failed to disconnect account ${account.id}: ${err}`)
+          }
+        }
+      }
+
+      // 2. 从 channelRegistry 注销渠道插件
+      channelRegistry.unregister(channelId as any)
+
+      // 3. 从 channelConfigStore 删除渠道配置（含所有账户）
+      channelConfigStore.remove(channelId as any)
+
+      // 4. 从 channelPluginRegistrar 注销适配器
+      channelPluginRegistrar.unregister(channelId as any)
+
+      logger.system.info(`[PluginInstaller] Channel plugin cleaned up: ${channelId}`)
+    } catch (err) {
+      logger.system.warn(`[PluginInstaller] Failed to cleanup channel plugin ${channelId}: ${err}`)
     }
   }
 

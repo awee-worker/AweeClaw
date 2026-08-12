@@ -5,20 +5,54 @@
  */
 
 import type { ComponentType } from 'react'
-import type { PluginSidebarPanelContribution, PluginTopActionContribution } from '@shared/plugin-sdk/types'
+import type { PluginSidebarPanelContribution, PluginTopActionContribution, PluginSettingsTabContribution } from '@shared/plugin-sdk/types'
 import type { SidebarItemDescriptor } from '@shared/protocols/scenario'
 
 /**
  * 插件 UI 模块的默认导出形状
  *
  * 插件 ui.js 必须 default export 此形状的对象。
- * components / topActions 的键名与 manifest.contributes 中的 component 字段对应。
+ * components / topActions / settingsTabs 的键名与 manifest.contributes 中的 component 字段对应。
  */
 export interface PluginUiModule {
   /** 侧边栏面板组件映射：contributes.sidebarPanels[].component → React 组件 */
   components?: Record<string, ComponentType<PluginPanelProps>>
   /** 顶部按钮组件映射：contributes.topActions[].component → React 组件 */
   topActions?: Record<string, ComponentType<PluginPanelProps>>
+  /** 设置页 Tab 组件映射：contributes.settingsTabs[].component → React 组件 */
+  settingsTabs?: Record<string, ComponentType<PluginPanelProps>>
+  /**
+   * 配置表单 action handler 映射：configSchema.fields[].action.kind → handler
+   *
+   * 插件可注册自定义 action handler，供 PluginConfigForm 在用户点击 action 按钮时调用。
+   * handler 接收当前表单值和参数，返回结果列表或错误。
+   */
+  configActions?: Record<string, PluginConfigActionHandler>
+}
+
+/**
+ * 配置表单 action handler 类型
+ *
+ * @param params 从 manifest.action.params 解析后的参数（{fieldKey} 已替换为表单值）
+ * @param formValues 当前表单所有字段的值
+ * @param host 插件宿主 API（调用 MCP 工具等）
+ * @returns 结果列表（如模型列表）或错误
+ */
+export type PluginConfigActionHandler = (
+  params: Record<string, string>,
+  formValues: Record<string, string>,
+  host: PluginHostApi,
+) => Promise<PluginConfigActionResult>
+
+/** action handler 返回结果 */
+export interface PluginConfigActionResult {
+  success: boolean
+  /** 结果列表（如模型列表），用于弹出选择弹窗 */
+  items?: string[]
+  /** 直接填入 targetField 的值（跳过选择弹窗） */
+  value?: string
+  /** 错误信息 */
+  error?: string
 }
 
 /**
@@ -92,6 +126,12 @@ export interface LoadedPluginUi {
   topActions: Array<{
     contribution: PluginTopActionContribution
     component: ComponentType<PluginPanelProps>
+  }>
+  /** 该插件贡献的设置页 Tab（已加载组件） */
+  settingsTabs?: Array<{
+    contribution: PluginSettingsTabContribution
+    component: ComponentType<PluginPanelProps>
+    host: PluginHostApi
   }>
 }
 

@@ -3,17 +3,20 @@
  *
  * 将现有 Channel adapter 桥接到 Plugin SDK 体系。
  * 负责为每个内置 Channel adapter 生成 PluginManifest 并注册到 PluginRegistry。
+ * 同时支持外部渠道插件（通过插件市场安装）的动态注册。
  *
  * 设计原则：
  * - 现有 ChannelPlugin 接口不变，adapter 代码无需修改
  * - 通过适配层将 ChannelPlugin 包装为 PluginRuntime
  * - MessagingService 不再硬编码 import adapter，而是从 PluginRegistry 获取
+ * - 外部渠道插件通过 PluginRegistry.loadExternalRuntime 加载后，由 handler 适配
  *
  * @module messaging/ChannelPluginRegistrar
  */
 
 import { logger } from '@shared/toolkit/LogEngine'
 import { getPluginRegistry } from '../plugin-sdk/PluginRegistry'
+import { channelRegistry } from './AdapterRegistry'
 import type { PluginManifest, PluginRuntime, PluginContext } from '@shared/plugin-sdk/types'
 import type { ChannelPlugin, ChannelId } from '@shared/protocols/channel'
 
@@ -140,6 +143,68 @@ class ChannelPluginRegistrar {
       this.register(plugin)
     }
     logger.channel.info(`[ChannelPluginRegistrar] Registered ${plugins.length} channel plugins`)
+  }
+
+  /**
+   * 注册外部渠道插件（通过插件市场安装）
+   *
+   * 与 register() 的区别：
+   * - 不调用 registry.registerBuiltin()（外部插件已由 PluginRegistry.discover() 发现）
+   * - manifest 来自插件的 manifest.json（而非从 ChannelPlugin 生成）
+   * - 仅注册到 adapters Map，使渠道对 MessagingService 可见
+   *
+   * @param plugin 从外部模块导入的 ChannelPlugin 实例
+   * @param manifest 插件的 manifest.json
+   * @returns ChannelPluginRuntimeAdapter 实例
+   */
+  registerExternal(plugin: ChannelPlugin, manifest: PluginManifest): ChannelPluginRuntimeAdapter {
+    const channelId = plugin.id
+    const adapter = new ChannelPluginRuntimeAdapter(plugin, manifest)
+    this.adapters.set(channelId, adapter)
+    logger.channel.info(`[ChannelPluginRegistrar] Registered external channel plugin: ${channelId}`)
+    return adapter
+  }
+
+  /**
+   * 向 PluginRegistry 注册 Channel 插件加载处理器
+   *
+   * 当 PluginRegistry 加载 type='channel' 的外部插件时，会调用此处理器：
+   * 1. 从 module 中提取 ChannelPlugin 实例
+   * 2. 注册到 channelRegistry（消息收发就绪）
+   * 3. 通过 registerExternal() 注册到 adapters Map（Plugin SDK 集成）
+   * 4. 返回 ChannelPluginRuntimeAdapter 作为 PluginRuntime
+   *
+   * 应在应用启动时（MessagingService.init）调用，先于 registerBuiltInPlugins。
+   */
+  registerHandler(): void {
+    const registry = getPluginRegistry()
+    registry.registerChannelPluginHandler((manifest, module) => {
+      // 外部渠道插件的入口模块应 default 导出 ChannelPlugin 实例
+      const channelPlugin = (module.default ?? module) as ChannelPlugin
+
+      if (!channelPlugin.id || !channelPlugin.meta || !channelPlugin.connect) {
+        throw new Error(
+          `Invalid channel plugin module: expected a ChannelPlugin instance as default export, ` +
+          `got ${typeof channelPlugin} (keys: ${Object.keys(channelPlugin).join(', ')})`,
+        )
+      }
+
+      // 注册到 channelRegistry（消息路由、账户管理、状态回调）
+      channelRegistry.register(channelPlugin)
+
+      // 注册到 channelPluginRegistrar（Plugin SDK 集成）
+      const adapter = this.registerExternal(channelPlugin, manifest)
+      return adapter
+    })
+    logger.channel.info('[ChannelPluginRegistrar] Channel plugin handler registered to PluginRegistry')
+  }
+
+  /**
+   * 注销渠道插件（卸载时调用）
+   */
+  unregister(channelId: ChannelId): void {
+    this.adapters.delete(channelId)
+    logger.channel.info(`[ChannelPluginRegistrar] Unregistered channel plugin: ${channelId}`)
   }
 
   /**

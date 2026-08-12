@@ -1,11 +1,12 @@
-import { lazy, Suspense, useMemo, useCallback } from 'react'
-import { Cpu, Settings2, Shield, Monitor, Plug, Brain, FileText, Zap, X, Palette, Radio, Cloud, Eye, Search, Mail, Mic, MonitorSmartphone, ArrowLeft, ScanEye, Activity, Network, Cable, Sparkles } from 'lucide-react'
+import { lazy, Suspense, useMemo, useCallback, useEffect, useSyncExternalStore } from 'react'
+import { Cpu, Settings2, Shield, Monitor, Plug, Brain, FileText, Zap, X, Palette, Radio, Cloud, Eye, Search, Mail, Mic, MonitorSmartphone, ArrowLeft, ScanEye, Activity, Network, Cable, Sparkles, Puzzle } from 'lucide-react'
 import { PROVIDERS } from '@configuration/aiProviders'
 import { t, type Language } from '@renderer/i18n'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
 import { ActionButton, OverlayDialog } from '@components/ui'
 import { SettingsTab } from './preferencesTypes'
 import { useSettingsLocalState } from './useSettingsLocalState'
+import { pluginUiRegistry } from '@renderer/plugins/PluginUiRegistry'
 
 const ModelProviderPanel = lazy(() =>
     import('./tabs/ModelProviderPanel').then(m => ({ default: m.ModelProviderPanel })),
@@ -164,6 +165,36 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
         { id: 'proactive', label: t('settings.proactive', language as Language) || '主动助手', icon: <Sparkles className="w-4 h-4" /> },
     ], [language])
 
+    // ── 插件贡献的设置页 Tab（动态加载） ──
+    // 通过 useSyncExternalStore 订阅 pluginUiRegistry 状态变化，
+    // 插件安装/卸载时自动更新 Tab 列表。
+    const pluginSettingsTabs = useSyncExternalStore(
+        (cb) => pluginUiRegistry.subscribe(cb),
+        () => pluginUiRegistry.getSettingsTabs(),
+    )
+
+    // 设置页打开时，确保声明了 settingsTabs 的插件 ui.js 已加载
+    useEffect(() => {
+        pluginUiRegistry.ensureSettingsTabsLoaded()
+    }, [])
+
+    // 合并内置 Tab 和插件 Tab
+    const allTabs = useMemo(() => {
+        const builtinTabs = tabs.map((tab) => ({
+            id: tab.id,
+            label: tab.label,
+            icon: tab.icon,
+            isPlugin: false,
+        }))
+        const pluginTabs = pluginSettingsTabs.map((pt) => ({
+            id: pt.contribution.id,
+            label: language === 'zh' ? pt.contribution.labelZh : pt.contribution.label,
+            icon: <Puzzle className="w-4 h-4" />,
+            isPlugin: true,
+        }))
+        return [...builtinTabs, ...pluginTabs]
+    }, [tabs, pluginSettingsTabs, language])
+
     const renderActiveTab = () => {
         switch (state.activeTab) {
             case 'provider':
@@ -289,8 +320,15 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                 return <DesktopControlPanel language={language} />
             case 'proactive':
                 return <ProactiveSettingsPanel language={language} />
-            default:
+            default: {
+                // 插件贡献的设置页 Tab：查找匹配的插件 Tab 组件并渲染
+                const pluginTab = pluginSettingsTabs.find(pt => pt.contribution.id === state.activeTab)
+                if (pluginTab) {
+                    const PluginTabComponent = pluginTab.component
+                    return <PluginTabComponent host={pluginTab.host} />
+                }
                 return null
+            }
         }
     }
 
@@ -312,7 +350,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                 )}
 
                 <nav className="flex-1 p-4 space-y-1 overflow-y-auto no-scrollbar">
-                    {tabs.map(tab => (
+                    {allTabs.map(tab => (
                         <button
                             key={tab.id}
                             onClick={() => dispatch({ type: 'SET_ACTIVE_TAB', tab: tab.id as SettingsTab })}
@@ -332,7 +370,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                     <div className={`shrink-0 px-8 pb-4 border-b border-border/40 flex items-center ${embedded ? 'pt-10 drag-region' : 'pt-6 justify-between'}`}>
                         <div className="no-drag">
                             <h3 className="text-2xl font-semibold text-text-primary tracking-tight">
-                                {tabs.find(tab => tab.id === state.activeTab)?.label}
+                                {allTabs.find(tab => tab.id === state.activeTab)?.label}
                             </h3>
                             <p className="text-sm text-text-muted mt-1.5 opacity-80">
                                 {t('settings.managePreferences', language as Language)}

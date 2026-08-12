@@ -1913,8 +1913,8 @@ export interface ElectronAPI {
   channelGetAllConfigs: () => Promise<{ success: boolean; configs?: any[]; error?: string }>
   channelSetChannelEnabled: (channelId: string, enabled: boolean) => Promise<{ success: boolean; error?: string }>
   channelGetWebhookInfo: () => Promise<{ success: boolean; running: boolean; port: number; url: string; error?: string }>
-  channelWeixinFetchQRCode: () => Promise<{ success: boolean; qrcode?: string; qrcode_img_content?: string; error?: string }>
-  channelWeixinPollQRStatus: (qrcode: string) => Promise<{ success: boolean; status?: string; bot_token?: string; ilink_bot_id?: string; baseurl?: string; error?: string }>
+  channelFetchQRCode: (channelId: string) => Promise<{ success: boolean; qrcode?: string; qrcode_img_content?: string; error?: string }>
+  channelPollQRStatus: (channelId: string, qrcode: string) => Promise<{ success: boolean; status?: string; bot_token?: string; ilink_bot_id?: string; baseurl?: string; error?: string }>
   channelSendReply: (conversationKey: string, text: string, replyToId?: string) => Promise<{ success: boolean; error?: string; messageId?: string }>
   channelSendFile: (conversationKey: string, filePath: string, fileName?: string, mediaType?: 'file' | 'image' | 'audio' | 'video', replyToId?: string) => Promise<{ success: boolean; error?: string; messageId?: string }>
   channelUpdateReaction: (accountId: string, messageId: string, status: string) => Promise<{ success: boolean }>

@@ -73,10 +73,11 @@ export function createChannelApi() {
       invoke('channel:setChannelEnabled')(channelId, enabled),
     channelGetWebhookInfo: invoke('channel:getWebhookInfo'),
 
-    // ── 微信扫码登录 ──
-    channelWeixinFetchQRCode: invoke('channel:weixin:fetchQRCode'),
-    channelWeixinPollQRStatus: (qrcode: string) =>
-      invoke('channel:weixin:pollQRStatus')(qrcode),
+    // ── 扫码登录（通用，支持所有声明了 qrLogin 能力的渠道） ──
+    channelFetchQRCode: (channelId: string) =>
+      invoke('channel:fetchQRCode')(channelId),
+    channelPollQRStatus: (channelId: string, qrcode: string) =>
+      invoke('channel:pollQRStatus')(channelId, qrcode),
 
     // ── 渠道事件订阅 ──
     onChannelMessage: on<unknown>('channel:message'),
