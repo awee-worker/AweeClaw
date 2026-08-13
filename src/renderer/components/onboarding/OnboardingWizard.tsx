@@ -14,7 +14,8 @@ import {
   ChevronRight, ChevronLeft, Check, Sparkles, Palette,
   Globe, Cpu, FolderOpen, Rocket, Eye, EyeOff, Settings,
   Monitor, Lock as LockIcon, Smartphone, ShieldCheck,
-  AlertCircle, Loader2, Sun, Moon, RefreshCw, CloudOff, Search
+  AlertCircle, Loader2, Sun, Moon, RefreshCw, CloudOff, Search,
+  ExternalLink, Key, ChevronDown
 } from 'lucide-react'
 import { useStore, LLMConfig } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -24,7 +25,9 @@ import { THEME_COLOR_OPTIONS } from '@renderer/config/themeDefinition'
 import type { ThemeColor } from '@/renderer/state/slices/themeSlice'
 import { PROVIDERS } from '@configuration/aiProviders'
 import { LLM_DEFAULTS } from '@shared/configuration/defaultProfile'
-import { DEFAULT_SCENARIO_PREFERENCES } from '@shared/configuration/preferenceSchema'
+import { DEFAULT_SCENARIO_PREFERENCES, defaultWebSearchConfig } from '@shared/configuration/preferenceSchema'
+import { BUILTIN_SEARCH_ENGINES } from '@shared/configuration/searchProviders'
+import type { WebSearchConfig } from '@shared/configuration/configTypes'
 import { Logo } from '@components/foundation/BrandMark'
 import { workspaceManager } from '@services/WorkspaceAdapter'
 import { ActionButton, TextField, DropdownSelector } from '@components/ui'
@@ -46,11 +49,12 @@ interface OnboardingWizardProps {
  * 4. theme      — 选择主题
  * 5. workspace  — 选择工作区目录（必选）
  * 6. model      — AI 模型配置（云端 / 自定义，支持跳过）
- * 7. complete   — 完成确认
+ * 7. search     — 搜索引擎选择（可跳过，默认 Bing，国内可直接访问）
+ * 8. complete   — 完成确认
  */
-type Step = 'welcome' | 'auth' | 'language' | 'theme' | 'workspace' | 'model' | 'complete'
+type Step = 'welcome' | 'auth' | 'language' | 'theme' | 'workspace' | 'model' | 'search' | 'complete'
 
-const STEPS: Step[] = ['welcome', 'auth', 'language', 'theme', 'workspace', 'model', 'complete']
+const STEPS: Step[] = ['welcome', 'auth', 'language', 'theme', 'workspace', 'model', 'search', 'complete']
 
 /** AI 模型配置模式：cloud=云端代理，custom=自定义直连 */
 type ModelMode = 'cloud' | 'custom'
@@ -122,6 +126,11 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
   const [direction, setDirection] = useState(0)
   const [isExiting, setIsExiting] = useState(false)
   const [defaultWorkspacePath, setDefaultWorkspacePath] = useState<string | null>(null)
+  // 搜索引擎配置（search 步骤）：默认使用 preferenceSchema 的 defaultWebSearchConfig
+  const [webSearchConfig, setWebSearchConfig] = useState<WebSearchConfig>(() => ({
+    ...defaultWebSearchConfig,
+    searchEngines: { ...defaultWebSearchConfig.searchEngines },
+  }))
 
   const currentStepIndex = STEPS.indexOf(currentStep)
   const isZh = selectedLanguage === 'zh'
@@ -243,7 +252,7 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
   }
 
   const handleComplete = async () => {
-    const { defaultAgentConfig, defaultAutoApprove, defaultEditorConfig, defaultSecuritySettings, defaultWebSearchConfig, defaultMcpConfig } = await import('@shared/configuration/preferenceSchema')
+    const { defaultAgentConfig, defaultAutoApprove, defaultEditorConfig, defaultSecuritySettings, defaultMcpConfig } = await import('@shared/configuration/preferenceSchema')
     const { settingsService } = await import('@renderer/settings/preferencesService')
 
     // 构建 providerConfigs：
@@ -286,6 +295,8 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
     set('language', selectedLanguage)
     set('llmConfig', providerConfig)
     set('providerConfigs', builtProviderConfigs)
+    // 搜索引擎配置：用户在 search 步骤选择的引擎
+    set('webSearchConfig', webSearchConfig)
     // 主题：themeManager 已通过 useEffect 应用并持久化到 config
     // 此处同步 themeMode/themeColor 到 store，确保设置页显示与实际一致
     useStore.getState().setThemeMode(themeMode)
@@ -322,7 +333,7 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
         onboardingCompleted: true,
         editorConfig: defaultEditorConfig,
         securitySettings: defaultSecuritySettings,
-        webSearchConfig: defaultWebSearchConfig,
+        webSearchConfig: webSearchConfig,
         mcpConfig: defaultMcpConfig,
         promptTemplateId: 'default',
         // 默认激活场景为 general-assistant（通用助手）
@@ -513,6 +524,13 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
                       }}
                     />
                   )}
+                  {currentStep === 'search' && (
+                    <SearchEngineStep
+                      isZh={isZh}
+                      webSearchConfig={webSearchConfig}
+                      setWebSearchConfig={setWebSearchConfig}
+                    />
+                  )}
                   {currentStep === 'complete' && (
                     <CompleteStep
                       isZh={isZh}
@@ -522,6 +540,7 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
                       workspacePath={workspacePath}
                       providerConfig={providerConfig}
                       modelMode={modelMode}
+                      webSearchConfig={webSearchConfig}
                     />
                   )}
                 </motion.div>
@@ -1996,6 +2015,302 @@ function CustomModelContent({
 }
 
 
+/**
+ * 搜索引擎选择步骤
+ *
+ * 与设置页 SearchEnginePanel 保持一致的引擎列表（全部 12 个内置引擎）：
+ * - 卡片式展示所有搜索引擎，点击选中作为主引擎
+ * - 免费引擎（Bing/搜狗/SearXNG/DuckDuckGo）可直接使用，无需 API Key
+ * - 国内可用引擎优先排列（Bing/搜狗/SearXNG），DuckDuckGo 标注为「国际网络」
+ * - 付费/需鉴权引擎选中后，下方展开 API Key 输入区域，支持立即配置
+ * - API Key 输入区域提供「申请方法」外链，引导用户获取 Key
+ * - 支持跳过（使用默认 Bing，国内可直接访问）
+ */
+function SearchEngineStep({
+  isZh,
+  webSearchConfig,
+  setWebSearchConfig,
+}: {
+  isZh: boolean
+  webSearchConfig: WebSearchConfig
+  setWebSearchConfig: (config: WebSearchConfig) => void
+}) {
+  const activeEngineId = webSearchConfig.activeSearchEngine || 'aweeclaw-searxng'
+  const searchEngines = webSearchConfig.searchEngines || {}
+  // 控制付费引擎 API Key 输入区域的展开/收起（默认选中的付费引擎自动展开）
+  const [showApiKeyInput, setShowApiKeyInput] = useState(true)
+
+  /** 切换激活的搜索引擎 */
+  const handleSelect = (engineId: string) => {
+    const currentConfig = searchEngines[engineId] || { enabled: false }
+    const updatedEngines = {
+      ...searchEngines,
+      [engineId]: { ...currentConfig, enabled: true },
+    }
+    setWebSearchConfig({
+      ...webSearchConfig,
+      searchEngines: updatedEngines,
+      activeSearchEngine: engineId,
+    })
+    // 切换引擎时自动展开 API Key 输入区域
+    setShowApiKeyInput(true)
+  }
+
+  /** 更新引擎的 API Key */
+  const handleApiKeyChange = (engineId: string, apiKey: string) => {
+    const currentConfig = searchEngines[engineId] || { enabled: true }
+    const updatedEngines = {
+      ...searchEngines,
+      [engineId]: { ...currentConfig, apiKey, enabled: true },
+    }
+    setWebSearchConfig({
+      ...webSearchConfig,
+      searchEngines: updatedEngines,
+    })
+  }
+
+  /** 更新引擎的额外字段值（如 Google 的 CX、SearXNG 的 baseUrl） */
+  const handleExtraFieldChange = (engineId: string, fieldKey: string, value: string) => {
+    const currentConfig = searchEngines[engineId] || { enabled: true }
+    const extraValues = { ...(currentConfig.extraValues || {}), [fieldKey]: value }
+    const updatedEngines = {
+      ...searchEngines,
+      [engineId]: { ...currentConfig, extraValues, enabled: true },
+    }
+    setWebSearchConfig({
+      ...webSearchConfig,
+      searchEngines: updatedEngines,
+    })
+  }
+
+  // 全部内置搜索引擎（按推荐顺序排列，AweeClaw 官方引擎优先）
+  const engineOrder = [
+    'aweeclaw-searxng', 'bing', 'sogou', 'searxng', 'duckduckgo',
+    'google', 'brave', 'tavily', 'serper',
+    'jina', 'exa', 'bocha', 'yandex',
+  ]
+  const allEngines = engineOrder
+    .map(id => ({ id, def: BUILTIN_SEARCH_ENGINES[id] }))
+    .filter(e => e.def)
+
+  const selectedDef = BUILTIN_SEARCH_ENGINES[activeEngineId]
+  const needsApiKey = selectedDef && selectedDef.auth.type !== 'none'
+  const hasApiKey = !!(searchEngines[activeEngineId]?.apiKey)
+  const selectedExtraFields = selectedDef?.extraFields || []
+
+  // 区域提示文案
+  const regionText = (hint?: string) => {
+    if (!hint) return ''
+    if (hint === 'china') return isZh ? '国内可访问' : 'China Accessible'
+    if (hint === 'both') return isZh ? '国内外均可访问' : 'Global & China'
+    return isZh ? '国际网络（国内无法访问）' : 'Global (No China Access)'
+  }
+
+  return (
+    <div className="px-10 py-10 min-h-full flex flex-col">
+      {/* 标题 */}
+      <div className="mb-6">
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center">
+            <Search className="w-5 h-5 text-accent" />
+          </div>
+          <h2 className="text-2xl font-bold text-text-primary">
+            {isZh ? '选择搜索引擎' : 'Choose Search Engine'}
+          </h2>
+        </div>
+        <p className="text-text-muted text-sm ml-13">
+          {isZh
+            ? 'AI 助手在需要联网搜索时会使用此引擎，可随时在设置中修改'
+            : 'AI assistant uses this engine for web searches. You can change it anytime in Settings'}
+        </p>
+      </div>
+
+      {/* 搜索引擎卡片列表（3 列网格，展示全部引擎） */}
+      <div className="grid grid-cols-3 gap-2.5 mb-4">
+        {allEngines.map(({ id, def }) => {
+          const isActive = id === activeEngineId
+          const isFree = def.free
+          const engineConfig = searchEngines[id]
+          const hasKey = !!(engineConfig?.apiKey)
+          const needsKey = def.auth.type !== 'none'
+          return (
+            <button
+              key={id}
+              onClick={() => handleSelect(id)}
+              className={`relative p-3 rounded-xl border-2 text-left transition-all duration-200 ${
+                isActive
+                  ? 'border-accent bg-accent/5 shadow-md'
+                  : 'border-border hover:border-accent/40 hover:bg-surface-hover'
+              }`}
+            >
+              {/* 选中标记 */}
+              {isActive && (
+                <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-accent flex items-center justify-center">
+                  <Check className="w-3 h-3 text-white" />
+                </div>
+              )}
+              {/* 引擎名称 + 免费/付费标签 */}
+              <div className="flex items-center gap-1.5 mb-1 pr-6">
+                <span className="font-semibold text-text-primary text-sm truncate">
+                  {isZh ? def.displayNameZh : def.displayName}
+                </span>
+              </div>
+              <div className="flex items-center gap-1 mb-1">
+                {isFree ? (
+                  <span className="px-1.5 py-0.5 text-xs font-medium rounded bg-status-success/15 text-status-success">
+                    {isZh ? '免费' : 'Free'}
+                  </span>
+                ) : (
+                  <span className="px-1.5 py-0.5 text-xs font-medium rounded bg-accent/15 text-accent">
+                    {isZh ? '付费' : 'Paid'}
+                  </span>
+                )}
+                {needsKey && (
+                  <span className={`px-1.5 py-0.5 text-xs font-medium rounded ${
+                    hasKey
+                      ? 'bg-status-success/15 text-status-success'
+                      : 'bg-status-warning/15 text-status-warning'
+                  }`}>
+                    {hasKey ? (isZh ? '已配置' : 'Ready') : (isZh ? '需 Key' : 'Need Key')}
+                  </span>
+                )}
+              </div>
+              {/* 引擎描述 */}
+              <p className="text-xs text-text-muted leading-relaxed line-clamp-2">
+                {isZh ? def.descriptionZh : def.description}
+              </p>
+              {/* 区域提示标签 */}
+              {def.regionHint && (
+                <span className={`mt-1.5 inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs font-medium rounded border ${
+                  def.regionHint === 'global'
+                    ? 'bg-status-warning/10 text-status-warning border-status-warning/20'
+                    : def.regionHint === 'china'
+                      ? 'bg-status-success/10 text-status-success border-status-success/20'
+                      : 'bg-text-muted/10 text-text-muted border-text-muted/20'
+                }`}>
+                  {regionText(def.regionHint)}
+                </span>
+              )}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* 选中引擎的配置区域 */}
+      {selectedDef && needsApiKey && (
+        <div className="mb-4 rounded-lg border border-border bg-surface/30 overflow-hidden">
+          {/* 配置区域标题栏（可折叠） */}
+          <button
+            onClick={() => setShowApiKeyInput(!showApiKeyInput)}
+            className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-surface-hover transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <Key className="w-4 h-4 text-accent" />
+              <span className="text-sm font-medium text-text-primary">
+                {isZh ? `配置 ${selectedDef.displayNameZh}` : `Configure ${selectedDef.displayName}`}
+              </span>
+              {!hasApiKey && (
+                <span className="px-1.5 py-0.5 text-xs font-medium rounded bg-status-warning/15 text-status-warning">
+                  {isZh ? '未配置' : 'Not configured'}
+                </span>
+              )}
+              {hasApiKey && (
+                <span className="px-1.5 py-0.5 text-xs font-medium rounded bg-status-success/15 text-status-success">
+                  {isZh ? '已配置' : 'Configured'}
+                </span>
+              )}
+            </div>
+            <ChevronDown className={`w-4 h-4 text-text-muted transition-transform ${showApiKeyInput ? 'rotate-180' : ''}`} />
+          </button>
+
+          {/* 展开内容 */}
+          {showApiKeyInput && (
+            <div className="px-4 pb-4 space-y-3">
+              {/* API Key 输入框 */}
+              <div>
+                <label className="flex items-center gap-1 text-sm font-medium text-text-primary mb-1.5">
+                  <span>API Key</span>
+                  <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="password"
+                  value={searchEngines[activeEngineId]?.apiKey || ''}
+                  onChange={(e) => handleApiKeyChange(activeEngineId, e.target.value)}
+                  placeholder={selectedDef.auth.placeholder || (isZh ? '输入 API Key' : 'Enter API Key')}
+                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-text-primary placeholder:text-text-muted/50 focus:border-accent focus:outline-none"
+                />
+                {/* 申请方法外链 */}
+                <a
+                  href={selectedDef.auth.helpUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-1.5 inline-flex items-center gap-1 text-xs text-accent hover:underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  {isZh ? '如何获取 API Key？点击查看申请方法' : 'How to get API Key? Click for instructions'}
+                </a>
+              </div>
+
+              {/* 额外字段（如 Google 的 CX、SearXNG 的 baseUrl） */}
+              {selectedExtraFields.map(field => (
+                <div key={field.key}>
+                  <label className="flex items-center gap-1 text-sm font-medium text-text-primary mb-1.5">
+                    <span>{isZh ? field.labelZh : field.label}</span>
+                    {field.required && <span className="text-red-500">*</span>}
+                  </label>
+                  <input
+                    type={field.secret ? 'password' : 'text'}
+                    value={searchEngines[activeEngineId]?.extraValues?.[field.key] || ''}
+                    onChange={(e) => handleExtraFieldChange(activeEngineId, field.key, e.target.value)}
+                    placeholder={isZh ? field.placeholderZh : field.placeholder}
+                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-text-primary placeholder:text-text-muted/50 focus:border-accent focus:outline-none"
+                  />
+                </div>
+              ))}
+
+              {/* 未配置提示 */}
+              {!hasApiKey && (
+                <div className="flex items-start gap-2 p-2.5 rounded-md bg-status-warning/10 border border-status-warning/20">
+                  <AlertCircle className="w-3.5 h-3.5 text-status-warning flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-text-secondary">
+                    {isZh
+                      ? '可先跳过此步骤，后续在 设置 → 搜索引擎 中配置。未配置 API Key 的引擎将无法使用。'
+                      : 'You can skip for now and configure later in Settings → Search Engine. Engines without API Key will not work.'}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 选中免费引擎的提示 */}
+      {selectedDef && !needsApiKey && (
+        <div className="mb-4 flex items-start gap-2 p-2.5 rounded-md bg-status-success/10 border border-status-success/20">
+          <Check className="w-4 h-4 text-status-success flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-text-secondary">
+            {isZh
+              ? `${selectedDef.displayNameZh} 无需 API Key，可直接使用。`
+              : `${selectedDef.displayName} does not require an API Key. Ready to use.`}
+          </p>
+        </div>
+      )}
+
+      {/* 跳过提示 */}
+      <div className="mt-auto pt-4 border-t border-border">
+        <p className="text-xs text-text-muted flex items-center gap-1.5">
+          <Settings className="w-3.5 h-3.5" />
+          {isZh
+            ? '可跳过此步骤，默认使用 AweeClaw 搜索（官方引擎，无需配置，国内可直接访问）。后续可在 设置 → 搜索引擎 中修改'
+            : 'You can skip this step. Default: AweeClaw Search (official engine, no configuration needed, accessible in China). Change later in Settings → Search Engine'}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+
 function CompleteStep({
   isZh,
   selectedLanguage,
@@ -2004,6 +2319,7 @@ function CompleteStep({
   workspacePath,
   providerConfig,
   modelMode,
+  webSearchConfig,
 }: {
   isZh: boolean
   selectedLanguage: Language
@@ -2012,6 +2328,7 @@ function CompleteStep({
   workspacePath: string | null
   providerConfig: LLMConfig
   modelMode: ModelMode
+  webSearchConfig: WebSearchConfig
 }) {
   // 主题摘要：模式 + 颜色
   const modeLabelZh = themeMode === 'light' ? '亮色' : themeMode === 'dark' ? '暗色' : '跟随系统'
@@ -2030,6 +2347,13 @@ function CompleteStep({
   const modelSummary = isModelConfigured
     ? `${providerConfig.provider} / ${providerConfig.model}${isCloud ? ` · ${isZh ? '云端' : 'Cloud'}` : ''}`
     : (isZh ? '未配置' : 'Not configured')
+
+  // 搜索引擎摘要：显示当前激活的搜索引擎名称
+  const activeEngineId = webSearchConfig.activeSearchEngine || 'aweeclaw-searxng'
+  const activeEngineDef = BUILTIN_SEARCH_ENGINES[activeEngineId]
+  const searchSummary = activeEngineDef
+    ? (isZh ? activeEngineDef.displayNameZh : activeEngineDef.displayName)
+    : activeEngineId
 
   return (
     <div className="px-10 py-10 min-h-full flex flex-col overflow-y-auto">
@@ -2085,6 +2409,11 @@ function CompleteStep({
             label={isZh ? 'AI 模型' : 'AI Model'}
             value={modelSummary}
             accent={!isModelConfigured}
+          />
+          <SummaryRow
+            icon={<Search className="w-4 h-4" />}
+            label={isZh ? '搜索引擎' : 'Search Engine'}
+            value={searchSummary}
           />
         </div>
       </div>

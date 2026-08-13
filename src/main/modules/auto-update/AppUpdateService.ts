@@ -185,6 +185,10 @@ class UpdateService {
           releaseNotes: this.formatReleaseNotes(info.releaseNotes),
           releaseDate: info.releaseDate,
         })
+        // 自动下载：检查到更新后静默下载，下载完成后在 UI 上展示"重启以更新"按钮
+        this.autoDownloadUpdate().catch(err => {
+          logger.system.warn('[Updater] Auto-download failed:', err)
+        })
       }
     })
 
@@ -277,6 +281,10 @@ class UpdateService {
                 version: result.updateInfo.version,
                 releaseNotes: this.formatReleaseNotes(result.updateInfo.releaseNotes),
                 releaseDate: result.updateInfo.releaseDate as string | undefined,
+              })
+              // 自动下载：electron-updater 检测到更新后静默下载
+              this.autoDownloadUpdate().catch(err => {
+                logger.system.warn('[Updater] Auto-download failed (electron source):', err)
               })
             }
             return
@@ -408,6 +416,12 @@ class UpdateService {
       logger.system.info(
         `[Updater] Backend reports update available: v${result.version}, critical=${isCritical}, force=${forceUpdate}, feedUrl=${this.backendUpdateFeedUrl || 'none'}`,
       )
+
+      // 自动下载：后端确认有更新后静默下载
+      this.autoDownloadUpdate().catch(err => {
+        logger.system.warn('[Updater] Auto-download failed (backend source):', err)
+      })
+
       return this.status
     } catch (err) {
       clearTimeout(timeoutId)
@@ -482,6 +496,10 @@ class UpdateService {
             releaseDate: release.published_at,
             downloadUrl: this.findDownloadUrl(release.assets),
           })
+          // 自动下载：GitHub 检测到新版本后静默下载
+          this.autoDownloadUpdate().catch(err => {
+            logger.system.warn('[Updater] Auto-download failed (github source):', err)
+          })
         } else {
           this.updateStatus({ status: 'not-available' })
         }
@@ -550,6 +568,34 @@ class UpdateService {
     }
 
     await autoUpdater.downloadUpdate()
+  }
+
+  /**
+   * 自动下载更新（静默，不打扰用户）
+   *
+   * 触发时机：
+   * - electron-updater 检测到 update-available 事件时
+   * - 后端版本检查确认有更新时
+   *
+   * 失败处理：
+   * - 静默失败，仅记录日志，不弹错误提示
+   * - 用户仍可在设置页手动触发下载
+   */
+  private async autoDownloadUpdate(): Promise<void> {
+    const currentStatus = this.status.status
+    if (currentStatus !== 'available') return
+
+    try {
+      logger.system.info(`[Updater] Auto-downloading update v${this.status.version}...`)
+      await this.downloadUpdate()
+    } catch (err) {
+      logger.system.warn('[Updater] Auto-download failed:', err)
+      // 静默失败：状态回退到 available，用户可在设置页手动重试
+      const afterStatus = this.status.status
+      if (afterStatus === 'downloading' || afterStatus === 'error') {
+        this.updateStatus({ status: 'available', error: undefined, progress: undefined })
+      }
+    }
   }
 
   /**

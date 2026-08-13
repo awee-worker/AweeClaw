@@ -84,6 +84,12 @@ export function createDebugMiscApi() {
       invoke('http:readUrl')(url, timeout),
     httpWebSearch: (query: string, maxResults?: number, timeout?: number) =>
       invoke('http:webSearch')(query, maxResults, timeout),
+    httpSmartSearch: (query: string, maxResults?: number) =>
+      invoke('http:smartSearch')(query, maxResults),
+    httpImageSearch: (query: string, maxResults?: number, timeout?: number) =>
+      invoke('http:imageSearch')(query, maxResults, timeout),
+    httpVideoSearch: (query: string, maxResults?: number, timeout?: number) =>
+      invoke('http:videoSearch')(query, maxResults, timeout),
     httpSetSearchEngineState: (state: unknown) =>
       invoke('http:setSearchEngineState')(state),
   }

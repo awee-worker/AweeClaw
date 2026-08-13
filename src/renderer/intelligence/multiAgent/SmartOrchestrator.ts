@@ -1,4 +1,5 @@
 import { logger } from '@toolkit/LogEngine'
+import { agentIRChannel, type AgentResultIR } from './AgentIRChannel'
 
 export interface SmartAgentDef {
   id: string
@@ -77,6 +78,28 @@ export function extractFilesFromOutput(output: string): ExtractedFile[] {
   }
 
   return files
+}
+
+/**
+ * 从智能体 ID 推断角色标签（用于 IR 显示）
+ *
+ * 轻量启发式，不做完整角色映射（完整映射在 MultiAgentExecution 中处理）。
+ */
+function inferRoleFromId(agentId: string): string {
+  const lower = agentId.toLowerCase()
+  const roleHints: Array<{ pattern: RegExp; role: string }> = [
+    { pattern: /architect/, role: 'architect' },
+    { pattern: /front|ui|design/, role: 'frontend' },
+    { pattern: /back|api|server/, role: 'backend' },
+    { pattern: /test|qa/, role: 'tester' },
+    { pattern: /devops|deploy|sre/, role: 'devops' },
+    { pattern: /review|analyst/, role: 'analyst' },
+    { pattern: /pm|manager|coord/, role: 'pm' },
+  ]
+  for (const { pattern, role } of roleHints) {
+    if (pattern.test(lower)) return role
+  }
+  return 'agent'
 }
 
 const TOOL_FIRST_INSTRUCTION = 'You MUST use tools to do your job. Use write_file tool to create actual files — never put code inside markdown code blocks. Always create real files using the available tools. If you need to write code, use write_file. If you need to read files, use read_file. If you need to search, use search_files. Complete your tasks using tools, not by writing content in chat.'
@@ -264,9 +287,12 @@ export class SmartOrchestrator {
     projectDir?: string | null
   ): Promise<Map<string, string>> {
     const results = new Map<string, string>()
-    const completedWorkLog: Array<{ agentName: string; agentId: string; summary: string }> = []
+    // completedWorkLog 现在携带 IR，用于结构化 handoff（替代自然语言摘要）
+    const completedWorkLog: Array<{ agentName: string; agentId: string; summary: string; ir?: AgentResultIR }> = []
     const retryCounts = new Map<string, number>()
 
+    // 清空 IR 通道（新一轮协作）
+    agentIRChannel.clear()
     callbacks.onPlanCreated(plan)
 
     for (let layerIdx = 0; layerIdx < plan.executionOrder.length; layerIdx++) {
@@ -305,10 +331,23 @@ export class SmartOrchestrator {
             )
             results.set(agentId, result)
 
-            const summary = result.length > 500 ? result.slice(0, 500) + '...' : result
-            completedWorkLog.push({ agentName: agent.name, agentId: agent.id, summary })
-
             const files = extractFilesFromOutput(result)
+
+            // 编码为结构化 IR，替代原始文本摘要
+            const ir = agentIRChannel.encode(
+              agentId,
+              agent.name,
+              inferRoleFromId(agent.id),
+              result,
+              files,
+            )
+            completedWorkLog.push({
+              agentName: agent.name,
+              agentId: agent.id,
+              summary: ir.summary,
+              ir,
+            })
+
             callbacks.onAgentComplete(agentId, result, files)
             break
           } catch (err) {
@@ -327,8 +366,23 @@ export class SmartOrchestrator {
             })
 
             if (attemptCount >= maxAttempts) {
-              results.set(agentId, 'Error: ' + errorMsg)
-              completedWorkLog.push({ agentName: agent.name, agentId: agent.id, summary: '[Failed] ' + errorMsg })
+              const errorResult = 'Error: ' + errorMsg
+              results.set(agentId, errorResult)
+
+              // 失败也编码为 IR，下游可感知失败状态与原因
+              const ir = agentIRChannel.encode(
+                agentId,
+                agent.name,
+                inferRoleFromId(agent.id),
+                errorResult,
+                [],
+              )
+              completedWorkLog.push({
+                agentName: agent.name,
+                agentId: agent.id,
+                summary: '[Failed] ' + errorMsg,
+                ir,
+              })
               callbacks.onAgentError(agentId, errorMsg)
             }
           }
@@ -374,10 +428,21 @@ export class SmartOrchestrator {
 
   private buildHandoffContext(
     agent: SmartAgentDef,
-    completedWorkLog: Array<{ agentName: string; agentId: string; summary: string }>,
+    completedWorkLog: Array<{ agentName: string; agentId: string; summary: string; ir?: AgentResultIR }>,
     _layerIdx: number,
     projectDir?: string | null
   ): string {
+    // 优先使用 IR 通道构建结构化 handoff（紧凑、低 token）
+    const irList = completedWorkLog
+      .map(e => e.ir)
+      .filter((ir): ir is AgentResultIR => ir != null)
+
+    if (irList.length === completedWorkLog.length && irList.length > 0) {
+      // 所有条目都有 IR：使用结构化 handoff
+      return agentIRChannel.buildHandoffContext(agent.name, irList, projectDir || null)
+    }
+
+    // 回退：IR 不完整时使用原始文本拼接（保证兼容性）
     const lines: string[] = ['']
 
     if (projectDir) {
@@ -394,8 +459,13 @@ export class SmartOrchestrator {
       lines.push('')
 
       for (const entry of completedWorkLog) {
-        lines.push('### ' + entry.agentName + ' (completed)')
-        lines.push(entry.summary)
+        // 有 IR 时用 IR 解码文本（紧凑），无 IR 时用原始摘要
+        if (entry.ir) {
+          lines.push(agentIRChannel.decode(entry.ir))
+        } else {
+          lines.push('### ' + entry.agentName + ' (completed)')
+          lines.push(entry.summary)
+        }
         lines.push('')
       }
 
@@ -486,10 +556,18 @@ export class SmartOrchestrator {
   }
 
   private synthesizeResults(plan: SmartPlanResult, results: Map<string, string>): string {
+    // 单智能体：直接返回原文
     if (plan.agents.length === 1) {
       return results.get(plan.agents[0].id) || ''
     }
 
+    // 优先使用 IR 通道进行结构化聚合（紧凑、低 token）
+    const irList = agentIRChannel.getAll()
+    if (irList.length > 0) {
+      return agentIRChannel.synthesize(irList, results)
+    }
+
+    // 回退：原始文本拼接（保证兼容性）
     const parts: string[] = []
     for (const agent of plan.agents) {
       const result = results.get(agent.id)

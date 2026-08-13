@@ -1,14 +1,14 @@
 {
   "name": "aweeclaw",
-  "version": "1.9.4",
+  "version": "1.9.5",
   "description": "AweeClaw - Connect AI to Your World",
   "productName": "AweeClaw",
   "author": "Awee Lee <aweelee@qq.com>",
   "license": "SEE LICENSE IN LICENSE",
-  "homepage": "https://github.com/aweelee/aweeclaw",
+  "homepage": "https://github.com/awee-worker/AweeClaw",
   "repository": {
     "type": "git",
-    "url": "https://github.com/aweelee/aweeclaw.git"
+    "url": "https://github.com/awee-worker/AweeClaw.git"
   },
   "main": "dist/main/appBootstrap.js",
   "scripts": {

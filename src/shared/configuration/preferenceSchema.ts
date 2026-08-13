@@ -209,7 +209,7 @@ const defaultWebSearchConfig: WebSearchConfig = {
   googleApiKey: '',
   googleCx: '',
   searchEngines: generateDefaultSearchEngineConfigs(),
-  activeSearchEngine: 'duckduckgo',
+  activeSearchEngine: 'aweeclaw-searxng',
   searchTimeout: 30,
 }
 

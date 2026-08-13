@@ -183,7 +183,7 @@ async function loadUserSettings(_isEmptyWindow: boolean): Promise<string | null>
   if (webSearchConfig?.searchEngines) {
     api.http.setSearchEngineState({
       searchEngines: webSearchConfig.searchEngines,
-      activeSearchEngine: webSearchConfig.activeSearchEngine || 'duckduckgo',
+      activeSearchEngine: webSearchConfig.activeSearchEngine || 'aweeclaw-searxng',
     }).catch((e) => {
       logger.system.warn('[Init] Failed to set search engine state:', e)
     })

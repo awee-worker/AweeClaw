@@ -452,7 +452,7 @@ export function useSettingsLocalState(embedded: boolean) {
 
       window.electronAPI?.httpSetSearchEngineState?.({
         searchEngines: state.localWebSearchConfig.searchEngines || {},
-        activeSearchEngine: state.localWebSearchConfig.activeSearchEngine || 'duckduckgo',
+        activeSearchEngine: state.localWebSearchConfig.activeSearchEngine || 'aweeclaw-searxng',
       })
 
       window.electronAPI?.mcpSetAutoConnect?.(state.localMcpConfig.autoConnect ?? true)

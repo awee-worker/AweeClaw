@@ -1,4 +1,4 @@
-import { Minus, Square, X, Search, Plus, Bell, Cloud, Phone } from 'lucide-react'
+import { Minus, Square, X, Search, Plus, Bell, Cloud, Phone, RefreshCw } from 'lucide-react'
 
 function PanelLeftIcon({ filled = false, className }: { filled?: boolean; className?: string }) {
     return (
@@ -40,13 +40,62 @@ import NotificationCenterContent, { NotificationClearButton } from '../dock-pane
 import { getQuotaBarColor, getQuotaTextColor, getQuotaGlowColor } from '@utils/quotaColors'
 import { PluginTopActions } from '@renderer/plugins/PluginTopActions'
 import { formatTokenCount } from '@utils/formatter'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { t, type Language } from '@renderer/i18n'
+import { updaterService, type UpdateStatus } from '@renderer/adapters/updateAdapter'
 
 const isMac = typeof navigator !== 'undefined' && (
   navigator.platform.toUpperCase().indexOf('MAC') >= 0 ||
   ((navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform?.toUpperCase().indexOf('MAC') ?? -1) >= 0
 )
+
+/**
+ * "重启以更新" 按钮
+ *
+ * 当应用更新下载完成后，在顶部"新对话"按钮前显示一个醒目按钮，
+ * 用户点击后触发 quitAndInstall 重启应用安装更新。
+ *
+ * 订阅 updaterService 状态，仅在 status === 'downloaded' 时显示。
+ */
+function UpdateReadyButton({ language }: { language: Language }) {
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null)
+  const [installing, setInstalling] = useState(false)
+
+  useEffect(() => {
+    const unsubscribe = updaterService.subscribe(status => {
+      setUpdateStatus(status)
+    })
+    // 主动获取一次当前状态（避免订阅前的状态丢失）
+    updaterService.getStatus().then(setUpdateStatus).catch(() => {})
+    return unsubscribe
+  }, [])
+
+  // 仅在更新下载完成后显示
+  if (!updateStatus || updateStatus.status !== 'downloaded') return null
+
+  const isZh = language === 'zh'
+  const handleInstall = () => {
+    if (installing) return
+    setInstalling(true)
+    try {
+      updaterService.installAndRestart()
+    } catch {
+      setInstalling(false)
+    }
+  }
+
+  return (
+    <button
+      onClick={handleInstall}
+      disabled={installing}
+      className="flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-medium text-white bg-accent hover:bg-accent-hover rounded-md transition-colors disabled:opacity-60"
+      title={isZh ? `重启以更新到 v${updateStatus.version || ''}` : `Restart to update to v${updateStatus.version || ''}`}
+    >
+      <RefreshCw className={`w-3.5 h-3.5 ${installing ? 'animate-spin' : ''}`} />
+      {isZh ? '重启以更新' : 'Restart to Update'}
+    </button>
+  )
+}
 
 function CloudQuotaIndicator({ language }: { language: Language }) {
   const { isAuthenticated, cloudMode, quota, fetchQuota } = useStore(
@@ -248,6 +297,7 @@ export default function AppTitleBar() {
 
           {chatVisible && (
             <>
+              <UpdateReadyButton language={language as Language} />
               <button
                 onClick={() => createThread()}
                 className="flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-medium text-text-muted hover:text-text-primary hover:bg-[rgba(var(--text-primary),0.06)] rounded-md transition-colors"

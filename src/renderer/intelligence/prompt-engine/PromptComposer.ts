@@ -16,11 +16,11 @@ import { getToolsForContext } from '@configuration/toolCategoryDefs'
 import { DEFAULT_AGENT_CONFIG } from '@configuration/agentProfile'
 import { PERFORMANCE_DEFAULTS } from '@shared/configuration/defaultProfile'
 import { rulesService, type ProjectRules } from '../runtime/ruleEngine'
-import { memoryService, type MemoryItem } from '../runtime/recallService'
-import { knowledgeService } from '../runtime/knowledgeService'
 import type { KnowledgeEntry } from '@intelligence/providerTypes'
 import { longTermMemoryService } from '../runtime/longTermMemoryService'
 import type { MemoryEntry } from '@intelligence/providerTypes'
+import { contextRetriever } from '../runtime/contextRetriever'
+import { proceduralSkillLearner } from '../runtime/proceduralSkillLearner'
 import { skillService, type SkillItem } from '../runtime/skillRepository'
 import {
   APP_IDENTITY,
@@ -92,9 +92,10 @@ export interface PromptContext {
   modeDescriptor: ModeDescriptor
   personality: string
   projectRules: ProjectRules | null
-  memories: MemoryItem[]
   knowledgeEntries: KnowledgeEntry[]
   longTermMemories: MemoryEntry[]
+  /** 程序性技能建议方案（命中模板时注入） */
+  proceduralSuggestion?: string | null
   userQuery?: string
   autoSkills: SkillItem[]
   mentionedSkills: SkillItem[]
@@ -610,6 +611,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     ...buildSkillsSections(ctx.autoSkills, ctx.mentionedSkills),
     buildScenarioDynamicContext(ctx.scenarioDynamicContext),
     buildPerceptionContext(ctx.perceptionContext),
+    ctx.proceduralSuggestion ?? null,
     buildCustomInstructions(ctx.customInstructions),
   ]
 
@@ -636,6 +638,7 @@ export function buildChatPrompt(ctx: PromptContext): string {
     ...buildSkillsSections(ctx.autoSkills, ctx.mentionedSkills),
     buildScenarioDynamicContext(ctx.scenarioDynamicContext),
     buildPerceptionContext(ctx.perceptionContext),
+    ctx.proceduralSuggestion ?? null,
     buildCustomInstructions(ctx.customInstructions),
   ]
 
@@ -680,15 +683,31 @@ export async function buildAgentSystemPrompt(
     template = getDefaultPromptTemplate()
   }
 
-  const [projectRules, memories, knowledgeEntries, longTermMemories, allSkills, projectSummary, scenarioDynamicContext] = await Promise.all([
+  const [projectRules, retrieved, allSkills, projectSummary, scenarioDynamicContext] = await Promise.all([
     rulesService.getRules(),
-    memoryService.getMemories(),
-    knowledgeService.getEnabledEntries(),
-    longTermMemoryService.getEnabledEntries(),
+    contextRetriever.retrieve({
+      query: userMessage,
+      activeFile: activeFile || null,
+    }),
     skillService.getSkills(),
     workspacePath ? loadProjectSummary(workspacePath) : Promise.resolve(null),
     loadScenarioDynamicContext(),
   ])
+
+  const { knowledgeEntries, longTermMemories } = retrieved
+
+  // 程序性技能匹配：命中模板时生成建议方案注入上下文
+  let proceduralSuggestion: string | null = null
+  if (userMessage) {
+    try {
+      const matchedTemplate = await proceduralSkillLearner.matchTemplate(userMessage)
+      if (matchedTemplate) {
+        proceduralSuggestion = proceduralSkillLearner.buildSuggestionPrompt(matchedTemplate)
+      }
+    } catch (err) {
+      logger.agent.warn('[PromptBuilder] Procedural skill match failed:', err)
+    }
+  }
 
   const autoSkills = allSkills.filter(skill => skill.type === 'auto' && skill.enabled)
   const mentionedManualSkills = mentionedSkills?.length
@@ -747,7 +766,6 @@ export async function buildAgentSystemPrompt(
     modeDescriptor,
     personality: template.personality,
     projectRules,
-    memories,
     knowledgeEntries,
     longTermMemories,
     userQuery: userMessage,
@@ -760,6 +778,7 @@ export async function buildAgentSystemPrompt(
     userInfo,
     scenarioDynamicContext,
     perceptionContext: perceptionContext ?? null,
+    proceduralSuggestion,
     isChannel,
   }
 

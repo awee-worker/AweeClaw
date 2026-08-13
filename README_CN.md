@@ -5,186 +5,221 @@
 <h1 align="center">AweeClaw</h1>
 
 <p align="center">
-  <strong>Connect AI to Your World</strong>
+  <strong>连接 AI 与你的世界</strong>
 </p>
 
 <p align="center">
-  下一代 AI 智能助手平台 —— 惊艳的视觉体验与深度集成的 AI Agent
+  新一代 AI Agent 平台，将 AI 深度融入你的工作流——<br/>
+  代码、数据、创作、研究、搜索、自动化，一个桌面应用全搞定。
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.7.41-blue" alt="version" />
+  <img src="https://img.shields.io/badge/版本-1.9.4-blue" alt="version" />
   <img src="https://img.shields.io/badge/Electron-39-green" alt="electron" />
   <img src="https://img.shields.io/badge/React-18-blue" alt="react" />
   <img src="https://img.shields.io/badge/TypeScript-5.7-blue" alt="typescript" />
-  <img src="https://img.shields.io/badge/License-Custom-orange" alt="license" />
+  <img src="https://img.shields.io/badge/许可证-自定义-orange" alt="license" />
 </p>
 
 <p align="center">
-  <a href="./README.md">English</a> | 中文
+  中文 | <a href="./README.md">English</a>
 </p>
 
 ---
 
-## ✨ 项目简介
+## 🌟 为什么选择 AweeClaw
 
-AweeClaw 是一款基于 Electron + React + TypeScript 构建的桌面端 AI 智能助手平台。它不仅仅是一个代码编辑器，更是一个集成了 AI Agent、多场景工作台、多渠道消息、代码索引、调试器等能力的综合性 AI 协作平台。
+AweeClaw 不仅仅是 AI 聊天工具，而是一个**全栈 AI Agent 平台**——让大模型成为真正的工作伙伴，能读懂代码库、分析数据、创作内容、搜索网络、执行命令，自主完成跨领域的复杂多步骤任务。
 
-**核心理念**：将 AI 深度集成到开发者的工作流中，通过场景化的方式适配不同工作需求，让 AI 真正成为你的智能伙伴。
+**核心差异化：**
 
-## 🌟 核心特性
+- 🧠 **自主 Agent** — AI 自主规划、执行、验证任务，而不只是回答问题
+- 🛠️ **30+ 内置工具** — 文件读写、终端、代码搜索、LSP、联网搜索、调试器，开箱即用
+- 🗂️ **代码库理解** — Tree-sitter + 向量索引，让 AI 像资深工程师一样理解项目
+- 💾 **智能记忆系统** — 用户级 + 项目级双层记忆，AI 自动归类存储，对话时智能检索注入相关上下文，让 AI 真正记住你的偏好、项目背景和历史决策
+- 🎨 **多场景工作区** — 代码、数据、写作、通用，每个场景都有专属 UX
+- 🔌 **无限扩展** — MCP 协议 + 插件系统，连接万物
+- 🔒 **隐私优先** — 本地优先数据存储、工作区隔离、敏感操作逐项授权
 
-### 🤖 AI Agent 系统
-- **多模式交互**：支持 Chat（对话）、Agent（智能体）、Plan（计划）三种工作模式
-- **流式输出**：真正的流式消息渲染，实时展示 AI 思考和生成过程
-- **工具调用**：内置 30+ 工具，覆盖文件读写、终端执行、代码搜索、LSP 操作等
-- **MCP 协议支持**：通过 Model Context Protocol 连接外部工具和数据源，无限扩展能力
-- **上下文压缩**：智能上下文管理，自动压缩历史对话，保持长对话的连贯性
-- **会话交接**：支持线程间 Handoff，跨会话延续工作上下文
-- **情绪感知**：独创的情绪检测引擎，根据用户行为和上下文动态调整交互方式
+---
 
-### 🎨 多场景工作台
-- **代码编辑器**：面向软件开发的全功能代码编辑场景
-- **数据分析**：面向数据分析和可视化的工作台场景
-- **创意写作**：面向小说创作和文案撰写的写作场景
-- **通用助手**：面向日常问答和通用任务的助手场景
-- 支持自定义场景插件，灵活扩展
+## 📸 应用截图
 
-### 📝 代码编辑器
-- 基于 **Monaco Editor** 的专业代码编辑体验
-- 支持 **30+ 编程语言** 的语法高亮和智能补全
-- 内置 **LSP（语言服务器协议）** 支持，提供代码诊断、跳转定义、引用查找等
-- **AI 代码补全**：Ghost Text 风格的行内 AI 补全
-- **内联编辑**：直接在编辑器中发起 AI 编辑请求
-- **Diff 预览**：实时查看 AI 修改的差异对比
-- **Composer 模式**：Cursor 风格的多文件批量编辑，统一 Diff 审查
+### AI Agent 自主工作
+<p align="center">
+  <img src="screenshots/agent-chat.png" alt="AI Agent 对话" width="800" />
+</p>
+*AI 自主读取文件、执行命令、完成任务——你只需描述需求。*
 
-### 🔍 代码库索引
-- **结构化索引**：基于 Tree-sitter + BM25，零配置即可使用
-- **语义索引**：基于 Embedding + 向量搜索，支持深度语义检索
-- **符号索引**：提取函数、类、接口等代码符号
-- **项目摘要**：自动生成项目结构和关键信息摘要
-- 支持 25+ 语言的 Tree-sitter 解析
+### 代码编辑器 + AI
+<p align="center">
+  <img src="screenshots/code-editor.png" alt="代码编辑器" width="800" />
+</p>
+*基于 Monaco 的专业编辑器，内置 AI 行内补全、多文件 Composer、差异预览。*
 
-### 🛠️ 内置工具体系
-| 类别 | 工具 |
-|------|------|
-| 文件读取 | `read_file`, `read_multiple_files`, `list_directory`, `get_dir_tree` |
-| 文件写入 | `edit_file`, `write_file`, `create_file_or_folder` |
-| 代码搜索 | `search_files`, `codebase_search` |
-| 终端操作 | `execute_command`, `run_terminal_command` |
-| LSP 操作 | `diagnostics`, `go_to_definition`, `find_references`, `get_symbols` |
-| 网络 | `web_search`, `read_url` |
-| 计划管理 | `todo_read`, `todo_write`, `plan_create`, `plan_update` |
-| UI/UX | `uiux_search`（12 个设计域 + 13 种技术栈） |
-| 办公文档 | `read_document`（PDF, Word, Excel, PPT） |
-| 交互 | `ask_user`, `attempt_completion` |
+### 联网搜索 & 实时知识
+<p align="center">
+  <img src="screenshots/web-search.png" alt="联网搜索" width="800" />
+</p>
+*内置 AweeClaw 搜索引擎——无需 API Key、无需配置，国内开箱即用。*
 
-### 📡 多渠道消息
-- **飞书**：通过飞书机器人接收和回复消息
-- **微信**：通过 Webhook 桥接微信消息
-- **WhatsApp**：通过 Webhook 桥接 WhatsApp 消息
-- 统一消息路由和安全管控
-- 支持自定义渠道插件扩展
+### 多场景工作区
+<p align="center">
+  <img src="screenshots/scenarios.png" alt="多场景" width="800" />
+</p>
+*代码、数据、写作、通用场景自由切换——每个场景都有专属工具和界面。*
 
-### 🔐 安全体系
-- **权限管理**：文件读写、终端执行等敏感操作需要用户确认
-- **工作区隔离**：严格的工作区路径限制，防止越权访问
-- **安全审计**：所有敏感操作记录审计日志
-- **终端安全**：终端命令白名单和危险命令拦截
-- **文件监控**：实时监控工作区文件变更
+### 设置 & 搜索引擎
+<p align="center">
+  <img src="screenshots/settings-search.png" alt="搜索引擎设置" width="800" />
+</p>
+*AweeClaw 搜索为默认引擎——基于自建 SearXNG 集群，聚合 70+ 搜索引擎。*
 
-### 🐛 调试器
-- 支持 **Node.js** 原生调试适配器
-- 支持 **DAP（Debug Adapter Protocol）** 通用调试协议
-- 断点管理、调用栈查看、变量检查
-- 调试会话生命周期管理
+---
 
-### 🖥️ 远程开发
-- **SSH/SFTP**：连接远程服务器，浏览文件系统
-- 远程文件上传和下载
-- 支持密码和密钥认证
+## ✨ 核心能力
 
-### 📦 其他特性
-- **自动更新**：支持 Windows (NSIS)、macOS (DMG/ZIP)、Linux (AppImage)
-- **Skill 系统**：基于 agentskills.io 标准，支持从市场安装技能包
-- **记忆系统**：项目级 AI 记忆，跨会话保持上下文
-- **Git 集成**：内置 Git 操作和冲突解决
-- **工作流引擎**：可视化工作流编排和执行
-- **画布工作台**：自由画布，支持笔记、想法、任务节点
-- **国际化**：中英文双语支持
-- **主题系统**：深色/浅色主题，支持自定义
-- **命令面板**：快速搜索和执行命令
-- **吉祥物 IP**：可爱的 AweeClaw 形象互动
+### 🤖 1. 自主 AI Agent
 
-## 🏗️ 技术架构
+Agent 不只是聊天——它会**规划、执行、验证**。
+
+- **3 种工作模式**：Chat（问答）、Agent（自主任务执行）、Plan（先规划再执行）
+- **全流程流式输出**：实时展示 AI 思考、工具调用、生成内容
+- **工具链式调用**：AI 可顺序调用 30+ 工具完成复杂工作流
+- **上下文压缩**：自动压缩历史记录，长对话不丢失关键信息
+- **会话接力**：跨线程上下文延续，工作不中断
+- **情绪感知**：根据用户行为模式自适应交互风格
+
+### 🛠️ 2. 30+ 内置工具
+
+| 分类 | 工具 | 功能 |
+|------|------|------|
+| **文件读写** | `read_file`, `write_file`, `edit_file`, `list_directory`, `get_dir_tree` | 读取、创建、修改文件和目录 |
+| **终端** | `execute_command`, `run_terminal_command` | 执行 Shell 命令（带安全检查） |
+| **代码搜索** | `search_files`, `codebase_search` | Ripgrep + 语义搜索 |
+| **LSP** | `diagnostics`, `go_to_definition`, `find_references`, `get_symbols` | 完整语言服务器集成 |
+| **联网** | `web_search`, `read_url` | 网络搜索、URL 抓取解析 |
+| **规划** | `todo_read`, `todo_write`, `plan_create`, `plan_update` | 任务规划与跟踪 |
+| **UI/UX** | `uiux_search` | 12 个设计领域 × 13 个技术栈数据库 |
+| **办公文档** | `read_document` | PDF、Word、Excel、PPT 解析 |
+| **交互** | `ask_user`, `attempt_completion` | 用户确认与任务完成 |
+
+### 🗂️ 3. 深度代码库理解
+
+AweeClaw 为你的项目构建**多层索引**，让 AI 像资深工程师一样理解上下文：
+
+- **结构索引** — Tree-sitter 解析 25+ 种语言，零配置
+- **语义索引** — 向量嵌入 + LanceDB，深度语义检索
+- **符号索引** — 自动提取函数、类、接口等代码符号
+- **项目摘要** — AI 自动生成架构概览和关键文件说明
+
+### 🔍 4. AweeClaw 搜索——零配置联网搜索
+
+默认搜索引擎为 **AweeClaw 搜索**，基于自建 SearXNG 集群：
+
+- ✅ **无需 API Key** — 安装后立即可用
+- ✅ **国内可访问** — 聚合百度、Bing、搜狗、360 等
+- ✅ **70+ 引擎** — 元搜索，自动去重
+- ✅ **15 分钟缓存** — Redis 加速重复查询
+- ✅ **隐私优先** — 无追踪、无画像
+
+同时支持 12+ 其他引擎：Bing、Google PSE、Tavily、Brave、Serper、Exa、Jina、博查、搜狗、DuckDuckGo、Yandex、自建 SearXNG。
+
+### 🎨 5. 多场景工作区
+
+| 场景 | 专为优化 |
+|------|----------|
+| **代码编辑器** | 软件开发，集成 Monaco、LSP、Git、调试器 |
+| **数据分析师** | 数据分析、可视化、仪表盘 |
+| **创意写作** | 长文写作、小说、文案 |
+| **通用助手** | 日常问答、研究、通用任务 |
+
+每个场景都有专属工具、提示词和界面布局——从侧边栏一键切换。
+
+### 🔌 6. 无限扩展
+
+- **MCP 协议** — 连接任何 MCP 服务器（stdio/SSE），自动发现工具
+- **插件系统** — 从插件市场安装，每个插件完全自包含
+- **技能系统** — 基于 agentskills.io 标准，可复用提示词包
+- **自定义引擎** — 添加任何 OpenAI 兼容的大模型或自定义搜索引擎
+
+### 🔐 7. 安全与隐私
+
+- **权限系统** — 每次文件写入、终端命令、网络请求都需用户授权
+- **工作区隔离** — 严格路径限制，防止越权访问
+- **本地优先** — 所有数据留在你的机器上，云同步可选
+- **审计日志** — 所有敏感操作均有日志记录
+- **危险命令拦截** — 终端命令经过黑名单筛查
+
+---
+
+## 🚀 快速开始
+
+### 环境要求
+
+- **Node.js** >= 18
+- **npm** >= 9
+- **Git**
+
+### 安装 & 运行
+
+```bash
+# 克隆仓库
+git clone https://github.com/awee-worker/AweeClaw.git
+cd AweeClaw
+
+# 安装依赖
+npm install
+
+# 重建原生模块（node-pty）
+npm run rebuild
+
+# 启动开发模式（热重载）
+npm run dev
+```
+
+### 构建
+
+```bash
+# 打包安装程序
+npm run dist
+
+# 或按平台构建
+npm run dist:mac    # macOS（DMG + ZIP）
+npm run dist:win    # Windows（NSIS）
+npm run dist:linux  # Linux（AppImage）
+```
+
+### 下载预构建版本
+
+Windows、macOS、Linux 的预构建安装包可在 [Releases 页面](https://github.com/awee-worker/AweeClaw/releases) 下载。
+
+---
+
+## 🏗️ 架构
 
 ```
 AweeClaw
 ├── src/
 │   ├── main/                    # Electron 主进程
-│   │   ├── main.ts              # 应用入口，窗口管理
-│   │   ├── preload.ts           # 安全的 IPC 桥接
-│   │   ├── ipc/                 # IPC 处理器
-│   │   │   ├── channel.ts       # 多渠道消息
-│   │   │   ├── debug.ts         # 调试器
-│   │   │   ├── healthCheck.ts   # 健康检查
-│   │   │   ├── http.ts          # HTTP 请求
-│   │   │   ├── indexing.ts      # 代码索引
-│   │   │   ├── llm.ts           # LLM 服务
-│   │   │   ├── lsp.ts           # LSP 服务
-│   │   │   ├── mcp.ts           # MCP 服务
-│   │   │   ├── remoteShell.ts   # 远程 Shell
-│   │   │   ├── search.ts        # 文件搜索
-│   │   │   ├── settings.ts      # 设置管理
-│   │   │   ├── skills.ts        # 技能系统
-│   │   │   └── window.ts        # 窗口控制
-│   │   ├── indexing/             # 代码库索引引擎
-│   │   │   ├── treeSitterChunker.ts  # Tree-sitter 代码分块
+│   │   ├── main.ts              # 应用入口 & 窗口管理
+│   │   ├── ipc/                 # IPC 处理器（http, llm, lsp, mcp, ...）
+│   │   ├── indexing/            # 代码库索引引擎
+│   │   │   ├── treeSitterChunker.ts
 │   │   │   ├── embedder.ts      # 向量嵌入
-│   │   │   ├── vectorStore.ts   # 向量存储 (LanceDB)
-│   │   │   ├── search/          # BM25 + 符号索引
-│   │   │   └── summary/         # 项目摘要生成
-│   │   ├── lsp/                 # LSP 管理器
-│   │   ├── security/            # 安全模块
-│   │   └── services/            # 核心服务
-│   │       ├── channel/         # 多渠道消息服务
-│   │       ├── debugger/        # 调试服务
-│   │       ├── llm/             # LLM 服务（流式/同步/结构化/嵌入）
-│   │       ├── mcp/             # MCP 管理器
-│   │       └── updater/         # 自动更新
-│   ├── renderer/                # Electron 渲染进程
-│   │   ├── agent/               # AI Agent 核心
-│   │   │   ├── core/            # Agent 核心（事件总线、循环、流式处理）
-│   │   │   ├── domains/         # 领域模块（上下文、消息、模式、预算）
-│   │   │   ├── emotion/         # 情绪检测引擎
-│   │   │   ├── harness/         # Agent 容器（DI、管道、可观测性）
-│   │   │   ├── plan/            # 计划执行引擎
-│   │   │   ├── prompts/         # 提示词构建
-│   │   │   ├── services/        # Agent 服务（记忆、技能、检索等）
-│   │   │   ├── store/           # Agent 状态管理
-│   │   │   └── tools/           # 工具系统（注册表、执行器、UI/UX）
-│   │   ├── components/          # UI 组件
-│   │   │   ├── agent/           # Agent 对话组件
-│   │   │   ├── editor/          # 编辑器组件
-│   │   │   ├── sidebar/         # 侧边栏面板
-│   │   │   ├── settings/        # 设置面板
-│   │   │   ├── workflow/        # 工作流组件
-│   │   │   ├── canvas/          # 画布工作台
-│   │   │   ├── writing/         # 写作工作台
-│   │   │   └── dashboard/       # 数据分析面板
+│   │   │   └── vectorStore.ts   # LanceDB 向量存储
+│   │   ├── lsp/                 # 语言服务器协议管理
+│   │   ├── security/            # 权限 & 审计
+│   │   └── services/            # LLM、MCP、调试器、更新器
+│   ├── renderer/                # React 界面
+│   │   ├── agent/               # AI Agent 核心（循环、工具、规划、情绪）
+│   │   ├── components/          # 对话、编辑器、设置、工作流、画布
 │   │   └── store/               # Zustand 全局状态
-│   └── shared/                  # 主进程与渲染进程共享
-│       ├── config/              # 配置（工具、场景、提供商、默认值）
-│       ├── types/               # 共享类型定义
-│       └── utils/               # 共享工具函数
+│   └── shared/                  # 共享配置、类型、工具
 ├── resources/
-│   ├── tree-sitter/             # Tree-sitter WASM 文件（25+ 语言）
+│   ├── tree-sitter/             # 25+ 语言的 WASM 文件
 │   └── uiux/                    # UI/UX 设计数据库
-├── public/                      # 静态资源
-│   └── brand/                   # 品牌资源（图标、Logo、IP 形象）
-├── scripts/                     # 构建和工具脚本
-└── tests/                       # 测试文件
+└── public/brand/                # Logo、图标、吉祥物
 ```
 
 ### 技术栈
@@ -202,140 +237,58 @@ AweeClaw
 | 向量数据库 | LanceDB |
 | 嵌入模型 | Xenova/transformers.js |
 | 搜索 | Ripgrep |
-| LLM SDK | Vercel AI SDK (@ai-sdk/*) |
+| LLM SDK | Vercel AI SDK |
 | MCP | @modelcontextprotocol/sdk |
 | Git | dugite |
 | 动画 | Framer Motion |
-| 测试 | Vitest |
 
-### LLM 提供商支持
+### 大模型支持
 
-AweeClaw 通过 Vercel AI SDK 支持多种 LLM 提供商：
+| 服务商 | 流式输出 | 工具调用 | 视觉 |
+|--------|----------|----------|------|
+| OpenAI | ✅ | ✅ | ✅ |
+| Anthropic | ✅ | ✅ | ✅ |
+| Google | ✅ | ✅ | ✅ |
+| OpenAI 兼容 | ✅ | ✅ | — |
+| 自定义 | 可配置 | 可配置 | — |
 
-| 提供商 | 协议 | 流式输出 | 工具调用 | 视觉 |
-|--------|------|----------|----------|------|
-| OpenAI | OpenAI | ✅ | ✅ | ✅ |
-| Anthropic | Anthropic | ✅ | ✅ | ✅ |
-| Google | Google | ✅ | ✅ | ✅ |
-| OpenAI 兼容 | OpenAI | ✅ | ✅ | — |
-| 自定义 | 可配置 | 可配置 | 可配置 | — |
-
-支持自定义提供商，可配置 API 协议、认证方式、请求头等。
-
-## 🚀 快速开始
-
-### 环境要求
-
-- **Node.js** >= 18
-- **npm** >= 9
-- **Git**
-
-### 安装
-
-```bash
-# 克隆仓库
-git clone https://github.com/jweelee/aweeclaw.git
-cd aweeclaw
-
-# 安装依赖
-npm install
-
-# 重建原生模块（node-pty）
-npm run rebuild
-```
-
-### 开发
-
-```bash
-# 启动开发模式（主进程 + 渲染进程热重载）
-npm run dev
-
-# 仅启动渲染进程开发服务器
-npm run dev:renderer
-
-# 仅启动主进程类型检查
-npm run dev:main
-```
-
-### 构建
-
-```bash
-# 构建渲染进程
-npm run build
-
-# 打包安装程序
-npm run dist
-
-# 仅打包（不生成安装程序）
-npm run pack
-```
-
-### 测试
-
-```bash
-# 运行测试
-npm run test
-
-# 监听模式
-npm run test:watch
-
-# 带覆盖率
-npm run test:coverage
-```
+---
 
 ## 📖 使用指南
 
 ### 首次启动
 
-1. 启动 AweeClaw 后，进入欢迎页面
-2. 打开一个项目文件夹作为工作区
-3. 在设置中配置 LLM 提供商和 API Key
-4. 开始与 AI 对话
-
-### 场景切换
-
-AweeClaw 提供四种内置场景，可在侧边栏的场景选择器中切换：
-
-- **代码编辑器**：默认场景，面向软件开发
-- **数据分析**：数据分析与可视化
-- **创意写作**：小说创作与文案撰写
-- **通用助手**：日常问答与通用任务
+1. 打开 AweeClaw → 引导向导带你完成初始设置
+2. 选择语言、主题、大模型服务商
+3. **搜索引擎已预配置** — AweeClaw 搜索开箱即用
+4. 打开一个项目文件夹作为工作区
+5. 开始对话 — 切换到 **Agent 模式** 体验自主任务执行
 
 ### 工作模式
 
-在对话面板中可切换三种工作模式：
-
-- **Chat**：纯对话模式，AI 仅回答问题
-- **Agent**：智能体模式，AI 可调用工具自主完成任务
-- **Plan**：计划模式，AI 先制定计划再逐步执行
+- **Chat** — 纯对话，AI 只回答问题
+- **Agent** — AI 调用工具自主完成任务
+- **Plan** — AI 先制定分步计划，再逐步执行
 
 ### MCP 集成
 
-1. 在设置 → MCP 中添加 MCP 服务器配置
-2. 支持 `stdio` 和 `sse` 两种传输方式
-3. 支持 OAuth 认证
-4. 连接成功后，MCP 工具会自动出现在可用工具列表中
-
-### Skill 系统
-
-1. 在设置 → Skill 中管理技能包
-2. 支持从 skills.sh 市场安装
-3. 支持从 GitHub 仓库克隆安装
-4. 技能文件存放在 `.aweeclaw/skills/` 目录下
+1. 进入 设置 → MCP
+2. 添加 MCP 服务器配置（stdio 或 SSE）
+3. 工具自动出现在 Agent 的工具列表中
 
 ### 记忆系统
 
-1. 在对话中使用 `/remember` 命令添加记忆
-2. 记忆存储在 `.aweeclaw/memory.json` 中
-3. 所有启用的记忆会自动注入到 AI 上下文中
+- 在对话中使用 `/remember <内容>` 保存记忆
+- 记忆会自动注入 AI 上下文
+- 存储在 `.aweeclaw/memory.json`
 
-## 🤝 贡献
+---
 
-我们欢迎各种形式的贡献！请阅读 [贡献指南](./CONTRIBUTING.md) 了解如何参与项目。
+## 🤝 参与贡献
+
+欢迎贡献！请阅读 [CONTRIBUTING.md](./CONTRIBUTING.md)。
 
 ### 贡献者
-
-感谢所有为 AweeClaw 做出贡献的开发者！
 
 <a href="https://github.com/awee-worker"><img src="https://github.com/awee-worker.png" width="40" height="40" style="border-radius:50%" alt="awee"/></a>
 <a href="https://github.com/kerwin2046"><img src="https://github.com/kerwin2046.png" width="40" height="40" style="border-radius:50%" alt="kerwin"/></a>
@@ -344,19 +297,22 @@ AweeClaw 提供四种内置场景，可在侧边栏的场景选择器中切换�
 <a href="https://github.com/joanboss"><img src="https://github.com/joanboss.png" width="40" height="40" style="border-radius:50%" alt="joanboss"/></a>
 <a href="https://github.com/yuheng-888"><img src="https://github.com/yuheng-888.png" width="40" height="40" style="border-radius:50%" alt="玉衡"/></a>
 
+---
+
 ## 📄 许可证
 
-本项目采用自定义许可证，详见 [LICENSE](./LICENSE)。
+本项目使用自定义许可证，详见 [LICENSE](./LICENSE)。
 
-- **非商业使用**：免费，包括个人学习、研究和教育用途
-- **商业使用**：需获得作者授权
+- **非商业用途**：免费（个人学习、研究、教育）
+- **商业用途**：需获得作者授权
+
+---
 
 ## 📮 联系方式
 
 - **作者**：awee
-- **微信**：awee_worker
-- **邮箱**：awee.worker@gmail.com
-- **GitHub**：[https://github.com/jweelee/aweeclaw](https://github.com/jweelee/aweeclaw)
+- **邮箱**：aweelee@qq.com
+- **GitHub**：[https://github.com/awee-worker/AweeClaw](https://github.com/awee-worker/AweeClaw)
 - **Gitee**：[https://gitee.com/jweelee/aweeclaw](https://gitee.com/jweelee/aweeclaw)
 
 ---

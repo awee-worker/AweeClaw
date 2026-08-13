@@ -65,93 +65,96 @@ export const EditorTabs = memo(function EditorTabs({
   const plans = useAgentStore(state => state.plans)
 
   return (
-    <div
-      className="h-[42px] flex items-center bg-background border-b border-border/50 overflow-x-auto overflow-y-hidden scrollbar-none select-none px-2 gap-1.5 py-1.5"
-      onWheel={(e) => {
-        if (e.deltaY !== 0 && e.currentTarget) {
-          e.currentTarget.scrollLeft += e.deltaY
-        }
-      }}
-    >
-      {openFiles.map((file) => {
-        const isActive = file.path === activeFilePath
-
-        // 计算显示名称
-        let fileName = getTabDisplayName(file.path)
-
-        // 如果是计划文件，尝试显示计划名称
-        if (isPlanJsonFile(file.path)) {
-          const planId = fileName.replace('.json', '')
-          const plan = plans.find(p => p.id === planId)
-          if (plan) {
-            fileName = plan.name
+    <div className="h-[42px] flex items-stretch bg-background border-b border-border/50 select-none">
+      {/* 左侧：Tab 滚动区域 */}
+      <div
+        className="flex-1 flex items-center overflow-x-auto overflow-y-hidden scrollbar-none px-2 gap-1.5 py-1.5 min-w-0"
+        onWheel={(e) => {
+          if (e.deltaY !== 0 && e.currentTarget) {
+            e.currentTarget.scrollLeft += e.deltaY
           }
-        }
+        }}
+      >
+        {openFiles.map((file) => {
+          const isActive = file.path === activeFilePath
 
-        const isDiff = file.path.startsWith('diff://')
-        if (isDiff) {
-          fileName = `Diff: ${getFileName(file.path.slice(7))}`
-        }
+          // 计算显示名称
+          let fileName = getTabDisplayName(file.path)
 
-        const isPreview = file.kind === 'preview' || isPreviewDocumentPath(file.path)
-        if (isPreview) {
-          fileName = file.preview?.title || 'Preview'
-        }
+          // 如果是计划文件，尝试显示计划名称
+          if (isPlanJsonFile(file.path)) {
+            const planId = fileName.replace('.json', '')
+            const plan = plans.find(p => p.id === planId)
+            if (plan) {
+              fileName = plan.name
+            }
+          }
 
-        // v2.3：PPT 预览 Tab 显示标题
-        const isPptPreview = file.kind === 'ppt-preview' || isPptPreviewPath(file.path)
-        if (isPptPreview) {
-          fileName = file.pptPreview?.meta?.title || 'PPT 预览'
-        }
+          const isDiff = file.path.startsWith('diff://')
+          if (isDiff) {
+            fileName = `Diff: ${getFileName(file.path.slice(7))}`
+          }
 
-        return (
-          <div
-            key={file.path}
-            className={`
-              group relative flex items-center gap-2 px-3 h-full min-w-[120px] max-w-[200px] cursor-pointer transition-colors duration-150 rounded-md
-              ${isActive
-                ? 'bg-surface-hover text-text-primary'
-                : 'bg-transparent text-text-muted hover:bg-surface-hover/50 hover:text-text-primary'}
-              ${file.isDeleted ? 'opacity-60' : ''}
-            `}
-            onClick={() => onSelectFile(file.path)}
-            onContextMenu={(e) => {
-              e.preventDefault()
-              onContextMenu(e, file.path)
-            }}
-          >
+          const isPreview = file.kind === 'preview' || isPreviewDocumentPath(file.path)
+          if (isPreview) {
+            fileName = file.preview?.title || 'Preview'
+          }
 
-            {/* 已删除文件图标 */}
-            {file.isDeleted && (
-              <span title={t('editor.fileDeleted', language)}>
-                <FileX className="w-3.5 h-3.5 text-status-error flex-shrink-0" />
-              </span>
-            )}
+          // v2.3：PPT 预览 Tab 显示标题
+          const isPptPreview = file.kind === 'ppt-preview' || isPptPreviewPath(file.path)
+          if (isPptPreview) {
+            fileName = file.pptPreview?.meta?.title || 'PPT 预览'
+          }
 
-            {isDiff && <FileDiff className="w-3.5 h-3.5 text-accent flex-shrink-0" />}
-            {isPreview && <Globe className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />}
-
-            <span className={`text-[13px] truncate flex-1 ${file.isDeleted ? 'line-through text-text-muted' : ''}`}>{fileName}</span>
-
+          return (
             <div
-              className="flex items-center justify-center w-5 h-5 rounded-lg hover:bg-surface-hover transition-colors"
-              onClick={(e) => {
-                e.stopPropagation()
-                onCloseFile(file.path)
+              key={file.path}
+              className={`
+                group relative flex items-center gap-2 px-3 h-full min-w-[120px] max-w-[200px] cursor-pointer transition-colors duration-150 rounded-md flex-shrink-0
+                ${isActive
+                  ? 'bg-surface-hover text-text-primary'
+                  : 'bg-transparent text-text-muted hover:bg-surface-hover/50 hover:text-text-primary'}
+                ${file.isDeleted ? 'opacity-60' : ''}
+              `}
+              onClick={() => onSelectFile(file.path)}
+              onContextMenu={(e) => {
+                e.preventDefault()
+                onContextMenu(e, file.path)
               }}
             >
-              {file.isDirty ? (
-                <div className="w-2 h-2 rounded-full bg-accent group-hover:hidden" />
-              ) : null}
-              <X className={`w-3.5 h-3.5 ${file.isDirty ? 'hidden group-hover:block' : 'opacity-0 group-hover:opacity-100'} transition-opacity`} />
-            </div>
-          </div>
-        )
-      })}
 
-      {/* 右侧操作区：视图模式 + Lint 状态 */}
+              {/* 已删除文件图标 */}
+              {file.isDeleted && (
+                <span title={t('editor.fileDeleted', language)}>
+                  <FileX className="w-3.5 h-3.5 text-status-error flex-shrink-0" />
+                </span>
+              )}
+
+              {isDiff && <FileDiff className="w-3.5 h-3.5 text-accent flex-shrink-0" />}
+              {isPreview && <Globe className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />}
+
+              <span className={`text-[13px] truncate flex-1 ${file.isDeleted ? 'line-through text-text-muted' : ''}`}>{fileName}</span>
+
+              <div
+                className="flex items-center justify-center w-5 h-5 rounded-lg hover:bg-surface-hover transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onCloseFile(file.path)
+                }}
+              >
+                {file.isDirty ? (
+                  <div className="w-2 h-2 rounded-full bg-accent group-hover:hidden" />
+                ) : null}
+                <X className={`w-3.5 h-3.5 ${file.isDirty ? 'hidden group-hover:block' : 'opacity-0 group-hover:opacity-100'} transition-opacity`} />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* 右侧操作区：固定位置，不随 Tab 滚动 */}
       {activeFilePath && activeFileKind !== 'preview' && activeFileKind !== 'ppt-preview' && (
-        <div className="ml-auto flex items-center flex-shrink-0 h-full">
+        <div className="flex items-center flex-shrink-0 h-full">
           {/* 视图模式按钮组（仅 markdown / html 显示） */}
           {activeFileType && (activeFileType === 'markdown' || activeFileType === 'html') && viewMode && onViewModeChange && (
             <div className="flex items-center gap-1 px-2 h-full border-l border-border">

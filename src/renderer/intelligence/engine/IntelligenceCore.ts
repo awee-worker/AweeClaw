@@ -30,6 +30,8 @@ import {
   suspendAgentStorageWrites,
 } from '../state/intelligenceStorage'
 import { fileCacheService } from '../runtime/fileCacheManager'
+import { proceduralSkillLearner } from '../runtime/proceduralSkillLearner'
+import { modelRouter } from '../runtime/modelRouter'
 import { approvalService } from './toolOrchestrator'
 import { EventBus } from './EventDispatcher'
 import { agentHarness } from '../harness'
@@ -261,6 +263,20 @@ export class AgentClass {
         return { threadId, assistantId, requestId }
       }
 
+      // ===== 模型路由分层 =====
+      // 单 Agent 路径：根据复杂度在同提供商内选择合适层级模型
+      // - 简单对话（打招呼/闲聊）路由到轻量模型，降低 token 消耗与延迟
+      // - 中等/复杂任务保留用户主模型，确保能力充足
+      // 多 Agent 协作路径已在上方提前返回，此处仅处理单 Agent
+      const routingDecision = modelRouter.route(config, complexityResult, userQueryText)
+      const effectiveConfig = routingDecision.config
+      if (routingDecision.swapped) {
+        logger.agent.info(
+          `[Agent] Model routed: ${routingDecision.originalModel} → ${routingDecision.routedModel} ` +
+          `(tier=${routingDecision.tier})`
+        )
+      }
+
       // 5. 创建检查点（用于撤销）
       const checkpointImages = this.extractCheckpointImages(userMessage)
       const messageText = typeof userMessage === 'string' ? userMessage.slice(0, 50) : 'User message'
@@ -277,7 +293,7 @@ export class AgentClass {
         assistantId,
         requestId,
         planTaskId: executionOptions?.planTaskId,
-        contextLimit: config.contextLimit,
+        contextLimit: effectiveConfig.contextLimit,
       }
 
       const preparation = await agentExecutor.prepare(
@@ -310,12 +326,23 @@ export class AgentClass {
       }
 
       await agentRuntime.get().runLoop({
-        config,
+        config: effectiveConfig,
         llmMessages: preparation.messages,
         context: executionContext,
         assistantId,
         budgetController: preparation.budgetController,
       })
+
+      // 程序性技能学习：任务完成后记录工具调用序列（不阻塞主流程）
+      const threadForLearning = useAgentStore.getState().threads[threadId]
+      if (threadForLearning && !abortController.signal.aborted) {
+        void proceduralSkillLearner.recordTaskCompletion({
+          userMessage,
+          threadMessages: threadForLearning.messages,
+          assistantId,
+          success: true,
+        }).catch(err => logger.agent.warn('[Agent] Procedural skill record failed:', err))
+      }
 
       return { threadId, assistantId, requestId }
     } catch (error) {

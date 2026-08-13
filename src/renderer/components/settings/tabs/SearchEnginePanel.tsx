@@ -22,7 +22,7 @@ const BUILTIN_IDS = getBuiltinSearchEngineIds()
 export function SearchEnginePanel({ webSearchConfig, setWebSearchConfig, language }: SearchEnginePanelProps) {
 
   const searchEngines = webSearchConfig.searchEngines || {}
-  const activeEngine = webSearchConfig.activeSearchEngine || 'duckduckgo'
+  const activeEngine = webSearchConfig.activeSearchEngine || 'aweeclaw-searxng'
 
   const [selectedEngineId, setSelectedEngineId] = useState<string>(activeEngine)
   const [showApiKey, setShowApiKey] = useState(false)
@@ -103,7 +103,7 @@ export function SearchEnginePanel({ webSearchConfig, setWebSearchConfig, languag
   const handleDeleteCustom = useCallback((engineId: string) => {
     const updated = { ...searchEngines }
     delete updated[engineId]
-    const newActive = activeEngine === engineId ? 'duckduckgo' : activeEngine
+    const newActive = activeEngine === engineId ? 'aweeclaw-searxng' : activeEngine
     setWebSearchConfig({
       ...webSearchConfig,
       searchEngines: updated,

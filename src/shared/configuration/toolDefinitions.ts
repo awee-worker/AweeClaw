@@ -649,21 +649,36 @@ For long-running servers or watch tasks:
     web_search: {
         name: 'web_search',
         displayName: 'Web Search',
-        description: 'Search the web for information. Use ONE comprehensive search query instead of multiple separate searches.',
-        detailedDescription: `Search the web using Google or DuckDuckGo.
+        description: 'General web search ONLY. For domain-specific queries (汽车/销量/新能源/房价/楼盘/论文/算法/是什么/简介/图片/壁纸/视频/教程), you MUST use smart_search instead — it queries specialized sources (autohome, baike, Wikipedia, Semantic Scholar, Unsplash) for much higher quality results.',
+        detailedDescription: `Search the web using the configured search engine (SearXNG by default).
+
+WHEN TO USE web_search:
+- Simple factual lookups
+- General web content that doesn't fit a specific domain
+- When you need fast, lightweight results
+
+WHEN TO USE smart_search INSTEAD (PREFERRED for domain-specific queries):
+- Encyclopedia questions ("什么是X", "X简介") → smart_search queries Wikipedia + Baidu Baike
+- Academic queries ("论文", "算法", "原理") → smart_search queries Semantic Scholar
+- Auto queries ("汽车", "销量", "车型") → smart_search queries autohome.com.cn, dongchedi.com
+- Real estate ("房价", "楼盘", "二手房") → smart_search queries ke.com, lianjia.com
+- Tech ("手机", "电脑", "AI") → smart_search queries 36kr.com, ithome.com
+- Images ("图片", "壁纸", "照片") → smart_search queries Unsplash/Pexels
+- Videos ("视频", "教程") → smart_search queries bilibili, bing videos
 
 IMPORTANT GUIDELINES:
 - Use ONE well-crafted search query that covers your information need
 - DO NOT make multiple separate searches for related topics - combine them into one query
 - Use specific keywords and phrases for better results
 - For technical topics, include version numbers or specific terms
-- After getting results, use read_url to get detailed content from relevant pages
+
+CONTENT SUMMARIES:
+- The top 3 results now include a "content" field with a prefetched page summary (up to 800 chars)
+- In MOST cases, the snippet + content summary is sufficient — you do NOT need to call read_url
+- Only call read_url if the content summary is missing or you need the full page text
 
 GOOD: "React 18 useEffect cleanup function best practices"
-BAD: Multiple searches like "React useEffect", "useEffect cleanup", "React best practices"
-
-GOOD: "Python asyncio vs threading performance comparison 2024"
-BAD: Separate searches for "Python asyncio" and "Python threading"`,
+BAD: Multiple searches like "React useEffect", "useEffect cleanup", "React best practices"`,
         category: 'network',
         approvalType: 'none',
         parallel: false,  // 禁止并行，避免多次分散搜索
@@ -677,6 +692,57 @@ BAD: Separate searches for "Python asyncio" and "Python threading"`,
             },
             max_results: { type: 'number', description: 'Maximum results to return (default: 5, max: 10)', default: 5 },
             timeout: { type: 'number', description: 'Timeout in seconds (0 = no limit).', default: 0 },
+        },
+    },
+
+    smart_search: {
+        name: 'smart_search',
+        displayName: 'Smart Search',
+        description: 'RECOMMENDED search tool. Auto-detects query domain and searches specialized sources: 汽车→汽车之家/懂车帝, 百科→维基/百度百科, 学术→Semantic Scholar, 图片→Unsplash/Pexels, plus general web search. Use this for ALL searches unless you need a simple general lookup.',
+        detailedDescription: `Intelligent search with automatic domain detection and multi-source aggregation.
+
+HOW IT WORKS:
+1. Analyzes the query to detect the domain (auto/realestate/tech/academic/encyclopedia/image/video/news)
+2. Dispatches to specialized search sources based on the domain:
+   - Encyclopedia questions (是什么/简介/定义) → Wikipedia API + Baidu Baike
+   - Academic queries (论文/算法/原理) → Semantic Scholar API
+   - Auto queries (汽车/销量/车型) → SearXNG + site:autohome.com.cn/dongchedi.com
+   - Real estate (房价/楼盘/二手房) → SearXNG + site:ke.com/lianjia.com
+   - Tech (手机/电脑/AI) → SearXNG + site:36kr.com/ithome.com
+   - Image (图片/壁纸/照片) → Unsplash/Pexels API + SearXNG images
+   - Video (视频/教程) → SearXNG videos (bilibili/bing videos)
+3. Always includes general SearXNG search as fallback
+4. Merges and deduplicates results from all sources
+
+WHEN TO USE (PREFERRED over web_search):
+- When the user asks "what is X" or needs encyclopedia knowledge
+- When searching for academic papers or research
+- When searching for automobiles, real estate, or tech products
+- When the user needs high-quality images (wallpapers, stock photos)
+- When you need comprehensive results from multiple specialized sources
+
+WHEN TO USE web_search INSTEAD:
+- Simple factual lookups
+- When you need fast, lightweight results
+- For general web content that doesn't fit a specific domain
+
+RESULTS:
+- Each result includes: title, url, snippet, sourceType, sourceName
+- sourceType indicates the source category (general/vertical-site/encyclopedia/academic/image-stock/image-search/video-search)
+- sourceName shows the specific source (e.g., "维基百科", "汽车之家", "Semantic Scholar")
+- Content summaries are included for web results (prefetched, up to 800 chars)`,
+        category: 'network',
+        approvalType: 'none',
+        parallel: false,
+        requiresWorkspace: false,
+        enabled: true,
+        parameters: {
+            query: {
+                type: 'string',
+                description: 'Search query - natural language or keywords. The system will auto-detect the domain and route to appropriate sources.',
+                required: true,
+            },
+            max_results: { type: 'number', description: 'Maximum results to return (default: 8, max: 15)', default: 8 },
         },
     },
 
@@ -702,6 +768,77 @@ TIPS:
         enabled: true,
         parameters: {
             url: { type: 'string', description: 'Full URL to fetch (must start with http:// or https://)', required: true },
+            timeout: { type: 'number', description: 'Timeout in seconds (0 = no limit).', default: 0 },
+        },
+    },
+
+    image_search: {
+        name: 'image_search',
+        displayName: 'Image Search',
+        description: 'Search for images on the web. Returns image direct links and thumbnails.',
+        detailedDescription: `Search for images using the configured search engine (SearXNG images category).
+
+WHEN TO USE:
+- When the user asks to find, search, or look for images/pictures/photos
+- When you need image URLs for display, download, or reference
+- When the user wants visual content on a specific topic
+
+RESULTS:
+- Each result includes: title, page URL, image direct link (imgSrc), thumbnail link, and source engine
+- The imgSrc field is the direct URL to the image file (can be used in img tags or downloaded)
+- The thumbnailSrc field is a smaller preview image
+
+TIPS:
+- Use descriptive queries with visual keywords (e.g., "sunset landscape", "React logo")
+- For specific image types, add keywords like "screenshot", "diagram", "icon", "wallpaper"`,
+        category: 'network',
+        approvalType: 'none',
+        parallel: false,
+        requiresWorkspace: false,
+        enabled: true,
+        parameters: {
+            query: {
+                type: 'string',
+                description: 'Image search query - use descriptive keywords for visual content.',
+                required: true,
+            },
+            max_results: { type: 'number', description: 'Maximum results to return (default: 5, max: 10)', default: 5 },
+            timeout: { type: 'number', description: 'Timeout in seconds (0 = no limit).', default: 0 },
+        },
+    },
+
+    video_search: {
+        name: 'video_search',
+        displayName: 'Video Search',
+        description: 'Search for videos on the web. Returns video links, thumbnails, duration, and author.',
+        detailedDescription: `Search for videos using the configured search engine (SearXNG videos category).
+
+WHEN TO USE:
+- When the user asks to find, search, or look for videos
+- When you need video URLs for reference or playback
+- When the user wants video content on a specific topic
+
+RESULTS:
+- Each result includes: title, video URL, thumbnail, duration (length), author, and source engine
+- The thumbnail field is a preview image of the video
+- The length field shows the video duration (e.g., "10:30")
+- The author field shows the channel or uploader name
+
+TIPS:
+- Use descriptive queries with video keywords (e.g., "React tutorial", "Python course")
+- For specific video types, add keywords like "tutorial", "demo", "review", "talk"`,
+        category: 'network',
+        approvalType: 'none',
+        parallel: false,
+        requiresWorkspace: false,
+        enabled: true,
+        parameters: {
+            query: {
+                type: 'string',
+                description: 'Video search query - use descriptive keywords for video content.',
+                required: true,
+            },
+            max_results: { type: 'number', description: 'Maximum results to return (default: 5, max: 10)', default: 5 },
             timeout: { type: 'number', description: 'Timeout in seconds (0 = no limit).', default: 0 },
         },
     },
@@ -1797,6 +1934,32 @@ export const SEARCH_DECISION_GUIDE = `
 - Use read_multiple_files instead of multiple read_file calls
 `
 
+export const NETWORK_SEARCH_DECISION_GUIDE = `
+## Web Search Tool Selection
+
+**Choose the right search tool:**
+
+1. Domain-specific queries (PREFERRED - use \`smart_search\`):
+   - Encyclopedia ("什么是X", "X简介", "X定义") → queries Wikipedia + Baidu Baike
+   - Academic ("论文", "算法", "专利", "研究") → queries Semantic Scholar
+   - Automobile ("汽车", "销量", "车型", "新能源", "比亚迪") → queries autohome.com.cn, dongchedi.com
+   - Real estate ("房价", "楼盘", "二手房", "租房") → queries ke.com, lianjia.com
+   - Technology ("手机", "电脑", "AI", "芯片") → queries 36kr.com, ithome.com
+   - News ("最新", "今日", "热点", "事件") → queries news.sina.com.cn, news.qq.com
+   - Images ("图片", "壁纸", "照片", "素材") → queries Unsplash/Pexels + SearXNG images
+   - Videos ("视频", "教程视频", "看视频") → queries bilibili, bing videos
+
+2. General web search (use \`web_search\`):
+   - Simple factual lookups not covered above
+   - General web content that doesn't fit a specific domain
+
+3. Specific media search:
+   - Images only: use \`image_search\`
+   - Videos only: use \`video_search\`
+
+**RULE: When in doubt, use \`smart_search\` — it always includes general search as fallback.**
+`
+
 // ============================================
 // 生成器函数
 // ============================================
@@ -2086,6 +2249,7 @@ export function generateToolsPromptDescriptionFiltered(
 
     if (categories.network.length > 0) {
         sections.push('## Network Tools')
+        sections.push(NETWORK_SEARCH_DECISION_GUIDE)
         for (const config of categories.network) {
             sections.push(generateToolPromptDescription(config))
         }

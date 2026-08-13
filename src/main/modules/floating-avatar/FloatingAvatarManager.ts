@@ -235,22 +235,26 @@ export class FloatingAvatarManager {
     const endChannel = `floating-avatar:drag-end:${winId}`
 
     // 拖拽状态
-    let dragOrigin: { mouseX: number; mouseY: number; winX: number; winY: number } | null = null
+    // dragDisplay：拖拽起点所在的显示器，整个拖拽过程中以它为参考系，
+    // 避免跨显示器时 getDisplayNearestPoint 返回新 display 导致 workArea 突变、位置跳变
+    type DragOrigin = { mouseX: number; mouseY: number; winX: number; winY: number; display: Electron.Display }
+    let dragOrigin: DragOrigin | null = null
     let dragTimer: ReturnType<typeof setInterval> | null = null
 
-    const applyPosition = (x: number, y: number): void => {
+    const applyPosition = (x: number, y: number, display: Electron.Display): void => {
       if (!this.window || this.window.isDestroyed()) return
       const w = this.expanded ? EXPANDED_WIDTH : AVATAR_WIDTH
       const h = this.expanded ? EXPANDED_HEIGHT : AVATAR_HEIGHT
-      const display = screen.getDisplayNearestPoint({ x, y })
       const { width: sw, height: sh } = display.workAreaSize
       const { x: dx, y: dy } = display.workArea
 
-      // 边界限制：窗口必须至少 50% 在屏幕内
-      const minX = dx - w * 0.5
-      const maxX = dx + sw - w * 0.5
-      const minY = dy - h * 0.5
-      const maxY = dy + sh - h * 0.5
+      // 边界限制：窗口必须完全在屏幕 workArea 内（仅允许 10px 出屏作为视觉余量）
+      // 收紧旧方案"50% 出屏"的宽松限制，避免拖到屏幕外找不到
+      const margin = 10
+      const minX = dx + margin - w + Math.min(w, 40)
+      const maxX = dx + sw - margin - Math.min(w, 40)
+      const minY = dy + margin - h + Math.min(h, 40)
+      const maxY = dy + sh - margin - Math.min(h, 40)
       const clampedX = Math.max(minX, Math.min(maxX, x))
       const clampedY = Math.max(minY, Math.min(maxY, y))
 
@@ -262,7 +266,8 @@ export class FloatingAvatarManager {
       const [x, y] = this.window.getPosition()
       const w = this.expanded ? EXPANDED_WIDTH : AVATAR_WIDTH
       const h = this.expanded ? EXPANDED_HEIGHT : AVATAR_HEIGHT
-      const display = screen.getDisplayNearestPoint({ x, y })
+      // 用窗口中心点找显示器，避免窗口跨屏时边缘吸附到错误的屏幕
+      const display = screen.getDisplayNearestPoint({ x: x + w / 2, y: y + h / 2 })
       const { width: sw, height: sh } = display.workAreaSize
       const { x: dx, y: dy } = display.workArea
 
@@ -295,7 +300,10 @@ export class FloatingAvatarManager {
       // 渲染层 mousedown 时拿到的是 client 坐标，与 screen 坐标系不一致会导致跳变）
       const cursor = screen.getCursorScreenPoint()
       const [wx, wy] = this.window.getPosition()
-      dragOrigin = { mouseX: cursor.x, mouseY: cursor.y, winX: wx, winY: wy }
+      // 锁定拖拽起点所在的显示器，整个拖拽过程都以它为参考系
+      // 避免 Windows 多显示器不同 DPI 下跨屏时坐标跳变
+      const display = screen.getDisplayNearestPoint({ x: cursor.x, y: cursor.y })
+      dragOrigin = { mouseX: cursor.x, mouseY: cursor.y, winX: wx, winY: wy, display }
 
       // 用 setInterval 轮询鼠标坐标（不依赖渲染进程 mousemove，避免移出窗口后中断）
       if (dragTimer) clearInterval(dragTimer)
@@ -304,7 +312,8 @@ export class FloatingAvatarManager {
         const cursor = screen.getCursorScreenPoint()
         const newX = dragOrigin.winX + (cursor.x - dragOrigin.mouseX)
         const newY = dragOrigin.winY + (cursor.y - dragOrigin.mouseY)
-        applyPosition(newX, newY)
+        // 始终用拖拽起点所在的 display 做边界限制，不随鼠标跨屏切换
+        applyPosition(newX, newY, dragOrigin.display)
       }, 16) // ~60fps
     }
 

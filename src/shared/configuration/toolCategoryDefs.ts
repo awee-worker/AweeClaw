@@ -83,7 +83,10 @@ const CORE_TOOLS: string[] = [
   'codebase_search',
   // 网络
   'web_search',
+  'smart_search',
   'read_url',
+  'image_search',
+  'video_search',
   // 交互与记忆
   'remember',
   'knowledge_search',

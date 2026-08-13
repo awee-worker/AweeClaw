@@ -1769,7 +1769,34 @@ export interface ElectronAPI {
     success: boolean; content?: string; title?: string; error?: string; contentType?: string; statusCode?: number
   }>
   httpWebSearch: (query: string, maxResults?: number, timeout?: number) => Promise<{
-    success: boolean; results?: Array<{ title: string; url: string; snippet: string }>; error?: string
+    success: boolean; results?: Array<{ title: string; url: string; snippet: string; content?: string; publishedDate?: string; engine?: string; score?: number }>; error?: string
+  }>
+  httpSmartSearch: (query: string, maxResults?: number) => Promise<{
+    success: boolean
+    domain: string
+    domainClassification: { primary: string; secondary: string | null; hits: Array<{ domain: string; count: number; matchedKeywords: string[] }>; isVertical: boolean }
+    results: Array<{
+      title: string
+      url: string
+      snippet: string
+      content?: string
+      sourceType: 'general' | 'vertical-site' | 'encyclopedia' | 'academic' | 'image-stock' | 'image-search' | 'video-search'
+      sourceName?: string
+      publishedDate?: string
+      score?: number
+      imageUrl?: string
+      thumbnailUrl?: string
+      videoLength?: string
+      videoAuthor?: string
+    }>
+    sources: string[]
+    error?: string
+  }>
+  httpImageSearch: (query: string, maxResults?: number, timeout?: number) => Promise<{
+    success: boolean; results?: Array<{ title: string; url: string; imgSrc: string; thumbnailSrc?: string; source?: string; imgSize?: string }>; error?: string
+  }>
+  httpVideoSearch: (query: string, maxResults?: number, timeout?: number) => Promise<{
+    success: boolean; results?: Array<{ title: string; url: string; thumbnail?: string; length?: string; author?: string; source?: string; publishedDate?: string }>; error?: string
   }>
   httpSetSearchEngineState: (state: unknown) => Promise<{ success: boolean }>
 

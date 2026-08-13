@@ -660,7 +660,7 @@ class SettingsService {
       promises.push(
         api.http.setSearchEngineState({
           searchEngines: settings.webSearchConfig.searchEngines,
-          activeSearchEngine: settings.webSearchConfig.activeSearchEngine || 'duckduckgo',
+          activeSearchEngine: settings.webSearchConfig.activeSearchEngine || 'aweeclaw-searxng',
         }),
       )
     }

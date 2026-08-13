@@ -36,7 +36,28 @@ export interface SearchEngineProviderConfig {
   customBaseUrl?: string
 }
 
+// ===== AweeClaw 内置 SearXNG 服务 =====
+// 官方云端 SearXNG 实例，API Key 内置，用户无需配置
+export const AWEECLAW_SEARXNG_BASE_URL = 'https://search.aweeclaw.com'
+export const AWEECLAW_SEARXNG_API_KEY = 'd25f3a23fa3bf7b291d6ff98e14d6f39'
+
 export const BUILTIN_SEARCH_ENGINES: Record<string, SearchEngineProviderDef> = {
+  // AweeClaw 官方搜索引擎（排在第一位，默认选中）
+  'aweeclaw-searxng': {
+    id: 'aweeclaw-searxng',
+    displayName: 'AweeClaw Search',
+    displayNameZh: 'AweeClaw 搜索',
+    description: 'AweeClaw official search engine, powered by SearXNG, no configuration required',
+    descriptionZh: 'AweeClaw 官方搜索引擎，基于 SearXNG，无需配置即可使用',
+    auth: {
+      type: 'none',
+      keyName: '',
+      placeholder: '',
+      helpUrl: '',
+    },
+    free: true,
+    regionHint: 'china',
+  },
   brave: {
     id: 'brave',
     displayName: 'Brave Search',
@@ -56,25 +77,14 @@ export const BUILTIN_SEARCH_ENGINES: Record<string, SearchEngineProviderDef> = {
     id: 'bing',
     displayName: 'Bing',
     displayNameZh: '必应',
-    description: 'Microsoft Bing search, accessible in China',
-    descriptionZh: '微软必应搜索，国内可直接访问',
+    description: 'Microsoft Bing search, no API key required, accessible in China',
+    descriptionZh: '微软必应搜索，无需 API Key，国内可直接访问',
     auth: {
-      type: 'header',
-      keyName: 'Ocp-Apim-Subscription-Key',
-      placeholder: '...',
+      type: 'none',
+      keyName: '',
+      placeholder: '',
       helpUrl: 'https://www.microsoft.com/en-us/bing/apis/bing-web-search-api',
     },
-    extraFields: [
-      {
-        key: 'customConfigId',
-        label: 'Custom Config ID',
-        labelZh: '自定义配置 ID',
-        placeholder: 'Optional custom config ID',
-        placeholderZh: '可选的自定义配置 ID',
-        required: false,
-        secret: false,
-      },
-    ],
     free: true,
     regionHint: 'both',
   },
@@ -272,8 +282,14 @@ export function generateDefaultSearchEngineConfigs(): Record<string, SearchEngin
   const configs: Record<string, SearchEngineProviderConfig> = {}
   for (const [id, engine] of Object.entries(BUILTIN_SEARCH_ENGINES)) {
     configs[id] = {
-      enabled: engine.auth.type === 'none' || engine.id === 'bing' || engine.id === 'duckduckgo',
+      enabled: engine.auth.type === 'none',
     }
+  }
+  // AweeClaw 官方搜索引擎：内置 baseUrl 和 apiKey，用户无需填写
+  configs['aweeclaw-searxng'] = {
+    enabled: true,
+    apiKey: AWEECLAW_SEARXNG_API_KEY,
+    extraValues: { baseUrl: AWEECLAW_SEARXNG_BASE_URL },
   }
   return configs
 }
@@ -290,9 +306,10 @@ export function getPrimarySearchEngine(
   configs: Record<string, SearchEngineProviderConfig>,
 ): string {
   const enabled = getEnabledSearchEngines(configs)
-  if (enabled.length === 0) return 'duckduckgo'
+  if (enabled.length === 0) return 'aweeclaw-searxng'
 
-  const priority = ['google', 'brave', 'tavily', 'bing', 'serper', 'jina', 'exa', 'sogou', 'bocha', 'searxng', 'yandex', 'duckduckgo']
+  // 优先级：AweeClaw 官方引擎 > 国内可用的免费引擎 > 付费引擎 > 国际免费引擎
+  const priority = ['aweeclaw-searxng', 'bing', 'sogou', 'searxng', 'google', 'brave', 'tavily', 'serper', 'jina', 'exa', 'bocha', 'yandex', 'duckduckgo']
   for (const id of priority) {
     if (enabled.includes(id)) return id
   }
