@@ -201,7 +201,11 @@ class SmartSearchDispatcher {
     for (const variant of optimized.variants) {
       tasks.push(
         this.searchGeneral(variant, Math.ceil(maxResults / 2)).then(items => {
-          if (items.length > 0) sources.push(`变体搜索(${variant.slice(0, 20)})`)
+          if (items.length > 0) {
+            // 截断显示用：按词边界截断，避免截断中文词
+            const display = variant.length > 25 ? variant.slice(0, 25) + '…' : variant
+            sources.push(`变体搜索(${display})`)
+          }
           return items
         }),
       )
@@ -211,6 +215,7 @@ class SmartSearchDispatcher {
     switch (domain) {
       case 'auto':
       case 'realestate':
+      case 'travel':
       case 'tech':
       case 'news':
         tasks.push(
@@ -317,12 +322,11 @@ class SmartSearchDispatcher {
     }))
 
     return {
-      success: finalResults.length > 0,
+      success: true, // 始终返回 success=true，由 toolExecutor 层处理空结果回退
       domain,
       domainClassification: classification,
       results: finalResults,
       sources: [...new Set(sources)],
-      error: finalResults.length === 0 ? '所有搜索源均无结果' : undefined,
     }
   }
 

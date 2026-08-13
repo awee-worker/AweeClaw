@@ -44,6 +44,16 @@ export const VERTICAL_SITES: Record<Exclude<SearchDomain, 'general' | 'image' | 
     { name: '58同城房产', domain: '58.com', weight: 0.9 },
   ],
 
+  // 酒旅领域
+  travel: [
+    { name: '携程', domain: 'ctrip.com', weight: 1.5 },
+    { name: '马蜂窝', domain: 'mafengwo.cn', weight: 1.4 },
+    { name: '大众点评', domain: 'dianping.com', weight: 1.3 },
+    { name: '去哪儿', domain: 'qunar.com', weight: 1.3 },
+    { name: '飞猪', domain: 'fliggy.com', weight: 1.2 },
+    { name: '美团酒店', domain: 'meituan.com', weight: 1.1 },
+  ],
+
   // 科技领域
   tech: [
     { name: '36氪', domain: '36kr.com', weight: 1.4 },

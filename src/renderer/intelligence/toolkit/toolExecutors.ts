@@ -11,35 +11,6 @@ import { logger } from '@toolkit/LogEngine'
 import type { ToolExecutionResult, ToolExecutionContext } from '@intelligence/providerTypes'
 import { PLAN_DIR_NAME } from '@intelligence/providerTypes'
 
-/**
- * 检测查询是否包含垂直领域关键词，应转发到 smart_search
- *
- * 与 main 进程的 domainClassifier 保持关键词同步（轻量副本）
- */
-function shouldRedirectToSmartSearch(query: string): boolean {
-    const domainKeywords = [
-        // 汽车
-        '汽车', '车型', '轿车', 'SUV', '销量', '排行', '评测', '试驾', '报价', '油耗',
-        '新能源', '电动车', '混动', '充电', '比亚迪', '特斯拉', '丰田', '本田', '大众',
-        '宝马', '奔驰', '奥迪', '蔚来', '小鹏', '理想', '问界', '极氪', '续航',
-        // 房产
-        '房价', '楼盘', '二手房', '新房', '租房', '房贷', '首付', '学区房', '别墅',
-        '贝壳', '链家', '安居客', '房产', '楼市',
-        // 科技
-        '手机', '电脑', '笔记本', '处理器', 'CPU', 'GPU', '显卡', '芯片', '半导体',
-        // 学术
-        '论文', '专利', '研究', '算法', '原理', '学术', '期刊', '文献', 'arXiv',
-        // 百科
-        '是什么', '是什么意思', '简介', '定义', '百科', '详细介绍', '历史', '由来',
-        // 图片
-        '图片', '照片', '壁纸', '截图', '海报', '图标', 'logo', '素材', '图库',
-        // 视频
-        '视频', '教程视频', '看视频', '在线观看', 'B站', '抖音',
-        // 新闻
-        '新闻', '最新', '今日', '热点', '事件', '快讯', '资讯',
-    ]
-    return domainKeywords.some(kw => query.includes(kw))
-}
 import {
     buildPlanFromToolArgs,
     buildAddedTask,
@@ -2094,29 +2065,6 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
     async web_search(args) {
         const query = args.query as string
 
-        // 兜底：检测到垂直领域关键词时自动转发到 smart_search
-        // 确保 AI 即使选了 web_search，领域查询也能走专业搜索源
-        if (shouldRedirectToSmartSearch(query)) {
-            const smartResult = await api.http.smartSearch(query, (args.max_results as number) || 8)
-            if (smartResult.success && smartResult.results.length > 0) {
-                const domainLabel = `[自动转发至智能搜索] 识别领域: ${smartResult.domain}${smartResult.sources.length > 0 ? ` | 搜索源: ${smartResult.sources.join(', ')}` : ''}`
-                const resultsText = smartResult.results.map((r) => {
-                    const parts: string[] = [`[${r.title}](${r.url})`]
-                    if (r.sourceName) parts.push(`[Source]: ${r.sourceName} (${r.sourceType})`)
-                    if (r.snippet) parts.push(r.snippet)
-                    if (r.content) parts.push(`[Content Summary]: ${r.content}`)
-                    if (r.publishedDate) parts.push(`[Published]: ${r.publishedDate}`)
-                    if (r.imageUrl) parts.push(`[Image]: ${r.imageUrl}`)
-                    if (r.thumbnailUrl && r.thumbnailUrl !== r.imageUrl) parts.push(`[Thumbnail]: ${r.thumbnailUrl}`)
-                    if (r.videoLength) parts.push(`[Duration]: ${r.videoLength}`)
-                    if (r.videoAuthor) parts.push(`[Author]: ${r.videoAuthor}`)
-                    return parts.filter(Boolean).join('\n')
-                }).join('\n\n')
-                return { success: true, result: `${domainLabel}\n\n${resultsText}` }
-            }
-            // smart_search 失败则降级到普通 web_search
-        }
-
         // 取消网络搜索超时限制
         const result = await api.http.webSearch(query, args.max_results as number, 0)
         if (!result.success || !result.results) return { success: false, result: '', error: result.error || 'Search failed' }
@@ -2132,33 +2080,26 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         }
     },
 
-    async smart_search(args) {
-        const result = await api.http.smartSearch(args.query as string, args.max_results as number)
-        if (!result.success || result.results.length === 0) {
-            return { success: false, result: '', error: result.error || 'Smart search failed' }
-        }
-        // 智能搜索富结果格式：包含领域识别信息 + 来源标注 + 预取摘要
-        const domainLabel = `识别领域: ${result.domain}${result.sources.length > 0 ? ` | 搜索源: ${result.sources.join(', ')}` : ''}`
-        const resultsText = result.results.map((r) => {
-            const parts: string[] = [`[${r.title}](${r.url})`]
-            if (r.sourceName) parts.push(`[Source]: ${r.sourceName} (${r.sourceType})`)
-            if (r.snippet) parts.push(r.snippet)
-            if (r.content) parts.push(`[Content Summary]: ${r.content}`)
-            if (r.publishedDate) parts.push(`[Published]: ${r.publishedDate}`)
-            // 图片专用字段
-            if (r.imageUrl) parts.push(`[Image]: ${r.imageUrl}`)
-            if (r.thumbnailUrl && r.thumbnailUrl !== r.imageUrl) parts.push(`[Thumbnail]: ${r.thumbnailUrl}`)
-            // 视频专用字段
-            if (r.videoLength) parts.push(`[Duration]: ${r.videoLength}`)
-            if (r.videoAuthor) parts.push(`[Author]: ${r.videoAuthor}`)
-            return parts.filter(Boolean).join('\n')
-        }).join('\n\n')
-        return { success: true, result: `${domainLabel}\n\n${resultsText}` }
-    },
-
     async read_url(args) {
+        const url = args.url as string
+
+        // 拦截搜索引擎自身的搜索结果页 URL（robots.txt 禁止抓取）
+        const searchEnginePatterns = [
+            /baidu\.com\/s\?/i, /baidu\.com\/link\?/i,
+            /google\.\w+\/search\?/i, /google\.\w+\/url\?/i,
+            /bing\.com\/search\?/i, /yandex\.\w+\/search\?/i,
+            /sogou\.com\/web/i, /so\.com\/s\?/i,
+        ]
+        if (searchEnginePatterns.some(p => p.test(url))) {
+            return {
+                success: false,
+                result: '',
+                error: '该 URL 是搜索引擎搜索结果页，robots.txt 禁止抓取。请使用 web_search 工具搜索内容，而非直接读取搜索引擎页面。',
+            }
+        }
+
         // 取消 URL 读取超时限制
-        const result = await api.http.readUrl(args.url as string, 0)
+        const result = await api.http.readUrl(url, 0)
         if (!result.success || !result.content) return { success: false, result: '', error: result.error || 'Failed to read URL' }
         return { success: true, result: `Title: ${result.title}\n\n${result.content}` }
     },

@@ -70,7 +70,6 @@ const MCP_TOOL_ACTION_MAP_ZH: Record<string, string> = {
     read_file: '读取文件',
     write_file: '写入文件',
     web_search: '搜索网页',
-    smart_search: '智能搜索',
     image_search: '搜索图片',
     video_search: '搜索视频',
     open_url: '打开链接',

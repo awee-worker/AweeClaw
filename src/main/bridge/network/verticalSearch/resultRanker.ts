@@ -57,6 +57,9 @@ const DOMAIN_AUTHORITY: Record<string, number> = {
     'pcauto.com.cn': 7, 'xcar.com.cn': 7,
     // 房产
     'ke.com': 8, 'lianjia.com': 8, 'anjuke.com': 7, 'fang.com': 7,
+    // 酒旅
+    'ctrip.com': 9, 'mafengwo.cn': 8, 'dianping.com': 8, 'qunar.com': 8,
+    'fliggy.com': 7, 'meituan.com': 7, 'tuniu.com': 7, 'qyer.com': 7,
     // 科技
     '36kr.com': 8, 'ithome.com': 7, 'leiphone.com': 7, 'cnbeta.com': 6,
     'sspai.com': 6, 'ifanr.com': 7,
@@ -302,11 +305,33 @@ export function rankAndDedup<T extends {
         }
     })
 
-    // 2. 按分数降序排序
-    ranked.sort((a, b) => b.score - a.score)
+    // 2. 相关性阈值过滤：丢弃与查询完全不相关的结果
+    // relevance < 2 表示标题和摘要几乎没有匹配任何查询实体/关键词
+    // 这类结果（如 CSDN、GitHub、恶意网站列表）会污染搜索质量
+    const MIN_RELEVANCE_THRESHOLD = 2
+    const filtered = ranked.filter(r => r.scoreBreakdown.relevance >= MIN_RELEVANCE_THRESHOLD)
 
-    // 3. 去重
-    const deduped = markDuplicates(ranked)
+    // 安全兜底：过滤后结果太少时，放宽阈值确保返回足够结果
+    // 优先用过滤后的结果；不足 3 条时用全部结果补齐
+    // 绝不会返回空数组，避免 AI 告诉用户"无相关内容"
+    let finalPool: typeof ranked
+    if (filtered.length >= 3) {
+        finalPool = filtered
+    } else if (filtered.length > 0) {
+        // 有少量相关结果，补充不相关的结果凑够 3 条
+        const filteredUrls = new Set(filtered.map(r => r.url))
+        const supplement = ranked.filter(r => !filteredUrls.has(r.url)).slice(0, 3 - filtered.length)
+        finalPool = [...filtered, ...supplement]
+    } else {
+        // 全部不相关 → 取分数最高的前 5 条（总比没有强）
+        finalPool = ranked.slice(0, Math.min(5, ranked.length))
+    }
+
+    // 3. 按分数降序排序
+    finalPool.sort((a, b) => b.score - a.score)
+
+    // 4. 去重
+    const deduped = markDuplicates(finalPool)
 
     return deduped
 }

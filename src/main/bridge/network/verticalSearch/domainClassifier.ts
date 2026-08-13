@@ -9,6 +9,7 @@
  * 识别领域：
  * - auto：汽车（销量/车型/评测/4S店）
  * - realestate：房产（房价/楼盘/二手房/租房）
+ * - travel：酒旅（酒店/旅游/美食/景点/机票）
  * - tech：科技（数码/互联网/AI/产品）
  * - academic：学术（论文/专利/研究/算法原理）
  * - encyclopedia：百科（是什么/简介/定义/历史）
@@ -27,6 +28,7 @@
 export type SearchDomain =
   | 'auto'
   | 'realestate'
+  | 'travel'
   | 'tech'
   | 'academic'
   | 'encyclopedia'
@@ -59,6 +61,14 @@ const DOMAIN_KEYWORDS: Record<Exclude<SearchDomain, 'general'>, string[]> = {
     '房价', '楼盘', '二手房', '新房', '租房', '房贷', '首付', '月供',
     '物业', '学区房', '别墅', '公寓', '商铺', '写字楼', '土地',
     '贝壳', '链家', '安居客', '房产', '楼市', '成交', '均价',
+  ],
+  travel: [
+    '酒店', '宾馆', '民宿', '旅馆', '住宿', '预订', '预定',
+    '旅游', '旅行', '攻略', '景点', '景区', '门票', '游记',
+    '美食', '餐厅', '饭店', '小吃', '推荐', '打卡',
+    '五星级', '四星级', '度假', '度蜜月', '自由行', '跟团',
+    '携程', '去哪儿', '飞猪', '美团', '大众点评', '马蜂窝',
+    '航班', '机票', '高铁', '火车票', '汽车票',
   ],
   tech: [
     '手机', '电脑', '笔记本', '处理器', 'CPU', 'GPU', '显卡', '主板',
@@ -120,7 +130,7 @@ export function classifyDomain(query: string): DomainClassification {
   }
 
   const domains: Exclude<SearchDomain, 'general'>[] = [
-    'auto', 'realestate', 'tech', 'academic', 'encyclopedia', 'image', 'video', 'news',
+    'auto', 'realestate', 'travel', 'tech', 'academic', 'encyclopedia', 'image', 'video', 'news',
   ]
 
   const hits: DomainClassification['hits'] = []

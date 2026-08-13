@@ -844,20 +844,161 @@ async function prefetchContentSummaries(
     await Promise.allSettled(tasks)
 }
 
+/**
+ * 检测搜索结果与查询的相关性
+ *
+ * 解决 bing 引擎对长中文查询返回垃圾结果的问题：
+ * - 中文查询但结果全是英文 → 不相关
+ * - 查询实体在结果标题/摘要中完全没出现 → 不相关
+ */
+function isRelevantResults(query: string, results: RichSearchResult[]): boolean {
+    if (results.length === 0) return false
+
+    // 1. 语言不匹配检测：中文查询但结果全是英文
+    const hasChineseQuery = /[\u4e00-\u9fa5]/.test(query)
+    if (hasChineseQuery) {
+        const chineseResultCount = results.filter(r =>
+            /[\u4e00-\u9fa5]/.test(r.title) || /[\u4e00-\u9fa5]/.test(r.snippet)
+        ).length
+        // 中文查询但超过 70% 的结果是纯英文 → 不相关
+        if (chineseResultCount < results.length * 0.3) {
+            logger.ipc.warn(`[SearXNG] Language mismatch: query is Chinese but ${results.length - chineseResultCount}/${results.length} results are non-Chinese`)
+            return false
+        }
+    }
+
+    // 2. 实体匹配检测：提取查询中的关键词实体，检查结果是否包含
+    const entityMatch = query.match(/[\u4e00-\u9fa5]{2,8}/g) || []
+    const entities = [...new Set(entityMatch.filter((e: string) => e.length >= 2))].slice(0, 5)
+
+    if (entities.length > 0) {
+        let matchCount = 0
+        for (const r of results.slice(0, 5)) {
+            const text = (r.title + ' ' + r.snippet).toLowerCase()
+            if (entities.some(e => text.includes(e.toLowerCase()))) {
+                matchCount++
+            }
+        }
+        // top 5 结果中没有任何一个包含查询实体 → 不相关
+        if (matchCount === 0) {
+            logger.ipc.warn(`[SearXNG] Entity mismatch: none of top 5 results contain query entities [${entities.join(', ')}]`)
+            return false
+        }
+    }
+
+    return true
+}
+
+/**
+ * 过滤搜索引擎自身的搜索结果页 URL
+ *
+ * 这些 URL 是搜索引擎的搜索页面，不是实际内容页面：
+ * - baidu.com/s? (百度搜索结果页)
+ * - google.com/search
+ * - bing.com/search
+ * - yandex.com/search
+ * - sogou.com/web
+ * - so.com/s
+ *
+ * 这些页面 robots.txt 禁止抓取，且对用户无价值
+ */
+function filterSearchEngineUrls(results: RichSearchResult[]): RichSearchResult[] {
+    const searchEnginePatterns = [
+        /baidu\.com\/s\?/i,
+        /baidu\.com\/link\?/i,
+        /google\.\w+\/search\?/i,
+        /google\.\w+\/url\?/i,
+        /bing\.com\/search\?/i,
+        /yandex\.\w+\/search\?/i,
+        /sogou\.com\/web/i,
+        /so\.com\/s\?/i,
+        /duckduckgo\.com\//i,
+    ]
+
+    const filtered = results.filter(r => {
+        const url = r.url || ''
+        return !searchEnginePatterns.some(p => p.test(url))
+    })
+
+    if (filtered.length < results.length) {
+        logger.ipc.info(`[SearXNG] Filtered ${results.length - filtered.length} search engine result pages`)
+    }
+
+    return filtered
+}
+
+/**
+ * 精简查询：当长查询返回垃圾结果时，提取核心实体重新搜索
+ *
+ * 策略：
+ * - 去除修饰词（最好吃的、推荐的等）
+ * - 去除数字和特殊字符
+ * - 保留核心中文实体
+ * - 按 level 渐进精简
+ */
+function simplifyQuery(query: string, level: number = 1): string {
+    // 修饰词列表（按长度降序排列，确保长的先匹配）
+    const modifiers = [
+        '最好吃的', '最好吃', '推荐的', '推荐', '最好的', '最好',
+        '排行榜', '排行', '十大', '最新', '今日', '高端', '五星级',
+        '性价比', '便宜', '正宗', '附近', '怎么样', '如何', '哪些',
+        '哪家', '哪个', '什么', '多少', '多么', '求解', '求助',
+    ]
+
+    // Step 1: 去除修饰词
+    let simplified = query
+    for (const mod of modifiers) {
+        simplified = simplified.split(mod).join('')
+    }
+
+    // Step 2: 去除数字、英文年份、特殊字符
+    simplified = simplified.replace(/\b20\d{2}\b/g, '') // 去除年份 2024/2025/2026
+    simplified = simplified.replace(/\b\d+\b/g, '')      // 去除独立数字
+    simplified = simplified.replace(/[^\u4e00-\u9fa5a-zA-Z\s]/g, ' ') // 保留中英文和空格
+    simplified = simplified.replace(/\s+/g, ' ').trim()  // 合并多余空格
+
+    // Step 3: 提取中文实体词组
+    const chineseWords = simplified.match(/[\u4e00-\u9fa5]{2,8}/g) || []
+
+    // Step 4: 按级别精简
+    let result: string
+    if (level === 1) {
+        // 第 1 级：保留前 3 个实体
+        result = chineseWords.slice(0, 3).join(' ')
+    } else if (level === 2) {
+        // 第 2 级：只保留前 2 个核心实体
+        result = chineseWords.slice(0, 2).join(' ')
+    } else {
+        // 第 3 级：只保留最重要的 1 个实体
+        result = chineseWords[0] || ''
+    }
+
+    // 兜底：如果精简后为空，回退到原始查询的前几个词
+    if (!result) {
+        result = query.split(/\s+/).slice(0, level === 3 ? 1 : level === 2 ? 2 : 3).join(' ')
+    }
+
+    return result
+}
+
 async function searchWithSearXNG(query: string, baseUrl: string, maxResults: number, timeout: number, apiKey?: string): Promise<WebSearchResult> {
     if (!baseUrl) return { success: false, error: 'SearXNG instance URL not configured' }
-    try {
-        const cleanBase = baseUrl.replace(/\/+$/, '')
-        const encoded = encodeURIComponent(query)
-        const headers: Record<string, string> = { 'Accept': 'application/json' }
-        // AweeClaw 官方实例和需要鉴权的 SearXNG 实例通过 X-API-Key 头认证
-        if (apiKey) headers['X-API-Key'] = apiKey
+
+    const cleanBase = baseUrl.replace(/\/+$/, '')
+    const headers: Record<string, string> = { 'Accept': 'application/json' }
+    if (apiKey) headers['X-API-Key'] = apiKey
+
+    /**
+     * 执行单次 SearXNG 搜索
+     */
+    const doSearch = async (q: string): Promise<RichSearchResult[]> => {
+        const encoded = encodeURIComponent(q)
         const { status, data } = await makeJsonRequest(
             `${cleanBase}/search?q=${encoded}&format=json&categories=general&pageno=1`,
             headers,
             timeout,
         )
-        if (status !== 200) return { success: false, error: `SearXNG returned status ${status}` }
+        if (status !== 200) return []
         const json = JSON.parse(data)
         const results: RichSearchResult[] = []
         if (json.results) {
@@ -872,10 +1013,57 @@ async function searchWithSearXNG(query: string, baseUrl: string, maxResults: num
                 })
             }
         }
+        // 过滤搜索引擎自身的搜索结果页（baidu.com/s? 等）
+        return filterSearchEngineUrls(results)
+    }
 
-        // 并行预取 top 3 结果的网页摘要，减少 AI 后续 read_url 调用
-        // 预取不阻塞错误路径，仅在结果非空时执行
-        // 智能内容提取：段落级相关性截取，替代原始字符截断
+    try {
+        // 第 1 次搜索：使用原始查询
+        let results = await doSearch(query)
+
+        // 相关性检测：如果结果不相关，逐级精简查询重试
+        if (results.length > 0 && !isRelevantResults(query, results)) {
+            // 最多尝试 3 级精简
+            for (let level = 1; level <= 3; level++) {
+                const simplified = simplifyQuery(query, level)
+                if (simplified === query || simplified.length === 0) break
+
+                logger.ipc.info(`[SearXNG] Retry level ${level}: "${query}" → "${simplified}"`)
+                const retryResults = await doSearch(simplified)
+
+                if (retryResults.length > 0 && isRelevantResults(simplified, retryResults)) {
+                    results = retryResults
+                    logger.ipc.info(`[SearXNG] Retry level ${level} succeeded with ${results.length} relevant results`)
+                    break
+                }
+
+                // 如果最后一级重试仍然不相关，但有结果，至少用重试结果（比垃圾结果好）
+                if (level === 3 && retryResults.length > 0) {
+                    results = retryResults
+                    logger.ipc.warn(`[SearXNG] All retries failed relevance check, using last retry results (${results.length})`)
+                }
+            }
+        }
+
+        // 最终兜底：如果结果仍然不相关，尝试过滤掉不相关的，只保留相关的
+        if (results.length > 0 && !isRelevantResults(query, results)) {
+            // 提取查询实体
+            const entityMatch = query.match(/[\u4e00-\u9fa5]{2,8}/g) || []
+            const entities = [...new Set(entityMatch.filter((e: string) => e.length >= 2))].slice(0, 5)
+
+            if (entities.length > 0) {
+                const relevantOnly = results.filter(r => {
+                    const text = (r.title + ' ' + r.snippet).toLowerCase()
+                    return entities.some(e => text.includes(e.toLowerCase()))
+                })
+                if (relevantOnly.length > 0) {
+                    results = relevantOnly
+                    logger.ipc.info(`[SearXNG] Post-filter: kept ${results.length} relevant results from ${results.length + relevantOnly.length}`)
+                }
+            }
+        }
+
+        // 并行预取 top 3 结果的网页摘要
         if (results.length > 0) {
             await prefetchContentSummaries(results, 3, query)
         }
