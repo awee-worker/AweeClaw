@@ -1,5 +1,5 @@
 import { lazy, Suspense, useMemo, useCallback, useEffect, useSyncExternalStore } from 'react'
-import { Cpu, Settings2, Shield, Monitor, Plug, Brain, FileText, Zap, X, Palette, Radio, Cloud, Eye, Search, Mail, Mic, MonitorSmartphone, ArrowLeft, ScanEye, Activity, Network, Cable, Sparkles, Puzzle } from 'lucide-react'
+import { Cpu, Settings2, Shield, Monitor, Plug, Brain, FileText, Zap, X, Palette, Radio, Eye, Search, Mail, Mic, MonitorSmartphone, ArrowLeft, ScanEye, Activity, Network, Cable, Sparkles, Puzzle } from 'lucide-react'
 import { PROVIDERS } from '@configuration/aiProviders'
 import { t, type Language } from '@renderer/i18n'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
@@ -43,9 +43,6 @@ const SystemPreferencesPanel = lazy(() =>
 )
 const ChannelSettings = lazy(() =>
     import('./tabs/ChannelSettings').then(m => ({ default: m.ChannelSettings })),
-)
-const CloudSettings = lazy(() =>
-    import('./tabs/CloudSettings').then(m => ({ default: m.CloudSettings })),
 )
 const PrivacySettingsPanel = lazy(() =>
     import('./tabs/PrivacySettingsPanel').then(m => ({ default: m.PrivacySettingsPanel })),
@@ -160,7 +157,6 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
         { id: 'causal', label: t('settings.causal', language as Language) || '因果推理', icon: <Network className="w-4 h-4" /> },
         { id: 'iot', label: t('settings.iot', language as Language) || 'IoT 集成', icon: <Cable className="w-4 h-4" /> },
         { id: 'system', label: t('settings.system', language as Language), icon: <Monitor className="w-4 h-4" /> },
-        { id: 'cloud', label: t('settings.cloud', language as Language), icon: <Cloud className="w-4 h-4" /> },
         { id: 'desktop', label: t('settings.desktop', language as Language) || '桌面控制', icon: <MonitorSmartphone className="w-4 h-4" /> },
         { id: 'proactive', label: t('settings.proactive', language as Language) || '主动助手', icon: <Sparkles className="w-4 h-4" /> },
     ], [language])
@@ -310,8 +306,6 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                         setEnableFileLogging={(value) => dispatch({ type: 'SET_LOCAL_ENABLE_FILE_LOGGING', value })}
                     />
                 )
-            case 'cloud':
-                return <CloudSettings language={language} />
             case 'voice':
                 return <VoiceSettingsPanel language={language} />
             case 'vision':

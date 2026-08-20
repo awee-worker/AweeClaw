@@ -80,7 +80,8 @@ export interface MessageActions {
             message: string
             suggestion?: string
             compact?: boolean
-            action?: { label: string; actionType: 'continue' | 'retry' | 'dismiss' | 'open-settings' | 'switch-model' }
+            action?: { label: string; actionType: 'continue' | 'retry' | 'dismiss' | 'open-settings' | 'switch-model' | 'upgrade' }
+            actions?: Array<{ label: string; actionType: 'continue' | 'retry' | 'dismiss' | 'open-settings' | 'switch-model' | 'upgrade' }>
         },
         targetThreadId?: string
     ) => void
@@ -1257,7 +1258,8 @@ export const createMessageSlice: StateCreator<
                         suggestion: alert.suggestion,
                         compact: 'compact' in alert ? Boolean((alert as { compact?: boolean }).compact) : false,
                         action: alert.action,
-                    }
+                        actions: alert.actions,
+                    } as any
                     return { ...assistantMsg, parts: [...assistantMsg.parts, newPart] }
                 }
                 return msg

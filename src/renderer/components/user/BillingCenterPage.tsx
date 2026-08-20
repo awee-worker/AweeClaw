@@ -5,11 +5,13 @@ import {
   Receipt,
   BarChart3,
   ArrowLeft,
+  Zap,
 } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { type BillingTab } from './tabs'
 import { OrdersPanel } from './tabs/OrdersPanel'
+import { BoosterPanel } from './tabs/BoosterPanel'
 import { InvoicesPanel } from './tabs/InvoicesPanel'
 import { PaymentsPanel } from './tabs/PaymentsPanel'
 const UsagePanel = lazy(() => import('./tabs/UsagePanel').then(m => ({ default: m.UsagePanel })))
@@ -17,6 +19,7 @@ import { t, type Language } from '@renderer/i18n'
 
 const billingTabs: { id: BillingTab; icon: React.ReactNode; labelZh: string; labelEn: string }[] = [
   { id: 'orders', icon: <CreditCard className="w-4 h-4" />, labelZh: '订单管理', labelEn: 'Orders' },
+  { id: 'booster', icon: <Zap className="w-4 h-4" />, labelZh: '加油包', labelEn: 'Booster' },
   { id: 'invoices', icon: <FileText className="w-4 h-4" />, labelZh: '发票管理', labelEn: 'Invoices' },
   { id: 'payments', icon: <Receipt className="w-4 h-4" />, labelZh: '消费记录', labelEn: 'Payments' },
   { id: 'usage', icon: <BarChart3 className="w-4 h-4" />, labelZh: '使用统计', labelEn: 'Usage' },
@@ -83,6 +86,7 @@ export default function BillingCenterPage() {
           <div className="flex-1 overflow-y-auto px-8 py-6 custom-scrollbar pb-28">
             <div className="space-y-6">
               {activeTab === 'orders' && <OrdersPanel key="orders" language={language as Language} />}
+              {activeTab === 'booster' && <BoosterPanel key="booster" language={language as Language} />}
               {activeTab === 'invoices' && <InvoicesPanel key="invoices" language={language as Language} />}
               {activeTab === 'payments' && <PaymentsPanel key="payments" language={language as Language} />}
               {activeTab === 'usage' && <Suspense fallback={<div className="p-4 text-muted-foreground">Loading charts...</div>}><UsagePanel key="usage" language={language as Language} /></Suspense>}

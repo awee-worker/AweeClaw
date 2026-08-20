@@ -14,6 +14,7 @@ export function SystemAlertPartView(part: AssistantPart, ctx: PartRenderContext)
     suggestion?: string
     compact?: boolean
     action?: any
+    actions?: any[]
   }
   return (
     <SystemAlert
@@ -23,6 +24,7 @@ export function SystemAlertPartView(part: AssistantPart, ctx: PartRenderContext)
       suggestion={alertPart.suggestion}
       compact={alertPart.compact}
       action={alertPart.action}
+      actions={alertPart.actions}
       onAction={(action) => {
         if (action.actionType === 'continue') {
           window.dispatchEvent(new CustomEvent('chat-send-message', {
@@ -30,6 +32,10 @@ export function SystemAlertPartView(part: AssistantPart, ctx: PartRenderContext)
           }))
         } else if (action.actionType === 'retry') {
           window.dispatchEvent(new CustomEvent('chat-retry-message', {
+            detail: { messageId: ctx.messageId }
+          }))
+        } else if (action.actionType === 'upgrade') {
+          window.dispatchEvent(new CustomEvent('chat-upgrade-plan', {
             detail: { messageId: ctx.messageId }
           }))
         } else if (action.actionType === 'open-settings') {

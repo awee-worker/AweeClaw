@@ -294,6 +294,10 @@ export const SETTINGS = {
   onboardingCompleted: {
     default: false as boolean,
   },
+  /** 环境检测弹窗是否已完成（跳过或安装后置 true，避免每次启动都弹） */
+  environmentCheckCompleted: {
+    default: false as boolean,
+  },
   enableFileLogging: {
     default: false as boolean,
   },
@@ -337,6 +341,7 @@ export type SettingsState = {
   emailConfig: EmailConfig
   aiInstructions: string
   onboardingCompleted: boolean
+  environmentCheckCompleted: boolean
   enableFileLogging: boolean
   browserMode: BrowserMode
   scenarioPreferences: ScenarioPreferences
@@ -370,6 +375,7 @@ export function getAllDefaults(): SettingsState {
     emailConfig: SETTINGS.emailConfig.default,
     aiInstructions: SETTINGS.aiInstructions.default,
     onboardingCompleted: SETTINGS.onboardingCompleted.default,
+    environmentCheckCompleted: SETTINGS.environmentCheckCompleted.default,
     enableFileLogging: SETTINGS.enableFileLogging.default,
     browserMode: SETTINGS.browserMode.default,
     scenarioPreferences: SETTINGS.scenarioPreferences.default,

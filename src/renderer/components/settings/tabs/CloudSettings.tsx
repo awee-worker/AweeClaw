@@ -28,8 +28,15 @@ interface PaymentResult {
 }
 
 interface PaymentChannelInfo {
-  channels: string[]
+  channels: string[] | Array<{ channel: string; iconUrl: string | null }>
   mockMode: boolean
+}
+
+/** 从 PaymentChannelInfo 提取渠道名称（兼容新旧格式） */
+function extractChannelNames(info: PaymentChannelInfo | undefined): string[] {
+  if (!info?.channels || info.channels.length === 0) return []
+  if (typeof info.channels[0] === 'string') return info.channels as string[]
+  return (info.channels as Array<{ channel: string; iconUrl: string | null }>).map((c) => c.channel)
 }
 
 const planIcons: Record<string, React.ReactNode> = {
@@ -114,7 +121,7 @@ export function CloudSettings({ language }: { language: Language }) {
   const fetchChannels = useCallback(async () => {
     try {
       const data = await backendApi.get<PaymentChannelInfo>('/api/v1/payment/channels')
-      setAvailableChannels(data?.channels || [])
+      setAvailableChannels(extractChannelNames(data))
       setMockMode(data?.mockMode ?? false)
     } catch {
       setAvailableChannels(['WECHAT', 'ALIPAY'])

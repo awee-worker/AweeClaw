@@ -39,7 +39,7 @@ import { agentStorePlanBridge, agentStoreTodoBridge } from '../state/intelligenc
 import { useAgentStore } from '../state/IntelligenceStore'
 import { buildFileChangeDescriptor } from '@intelligence/utils/fileMutationHelper'
 import { EventBus } from '../engine/EventDispatcher'
-import { isLongRunningCommand } from './commandExecutor'
+import { isLongRunningCommand, EXTENDED_TIMEOUT_COMMAND_PATTERN, EXTENDED_TIMEOUT_MS } from './commandExecutor'
 import { internalWriteTracker } from '@services/writeTracker'
 import { toolRegistry } from './toolRegistry'
 import { terminalManager } from '@services/TerminalAdapter'
@@ -1549,7 +1549,13 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         const isBackground = args.is_background as boolean
         // 默认超时 120 秒，防止命令因 sentinel 失败等原因卡住导致 AI 无限等待
         // 长进程（isLongRunningProcess）走 detached 路径，不受此超时影响
-        const timeout = 120_000
+        //
+        // 安装/构建类耗时命令（pip install、npm install、apt install、brew install、
+        // cargo build、docker build 等）使用扩展超时（EXTENDED_TIMEOUT_MS，10 分钟）。
+        // 原因：numpy/scipy 等大包下载+编译频繁超过 120s，导致 AI 误判命令失败。
+        // 命令分隔符（&&/;/||）后的子命令也会匹配，支持 `cd xxx && pip install` 形式。
+        const isExtendedTimeoutCommand = EXTENDED_TIMEOUT_COMMAND_PATTERN.test(command)
+        const timeout = isExtendedTimeoutCommand ? EXTENDED_TIMEOUT_MS : 120_000
 
         // ── 安全底线：危险命令硬拦截 ──────────────────────────
         // 即使 toolOrchestrator 审批通过，仍在此处做最终内容校验。

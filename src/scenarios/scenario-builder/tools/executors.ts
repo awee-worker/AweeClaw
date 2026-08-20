@@ -5,8 +5,18 @@
  * 每个执行器调用对应的服务方法。
  */
 import type { ToolExecutor } from '@shared/protocols/modelGateway'
-import { projectService, buildService, installService, publishService } from '../services'
+import { projectService, buildService, installService, publishService, wizardService } from '../services'
 import { SCENARIO_DEV_KNOWLEDGE, SCENARIO_DEV_QUICK_REF } from '../config/prompts-knowledge'
+import { getBuiltinTemplates as getBuiltinTemplatesFromRegistry } from '../templates'
+import { listExampleMetas, getExampleById } from '../examples'
+import {
+  listSnippetMetas,
+  getSnippetById,
+  resolveSnippet,
+  SNIPPET_CATEGORIES,
+} from '../snippets'
+import type { SnippetCategory } from '../snippets/types'
+import type { ScenarioType } from '../types'
 
 // ==========================================
 // 项目管理执行器
@@ -147,23 +157,34 @@ export const deleteScenarioProjectExecutor: ToolExecutor = async (args, _context
 // ==========================================
 
 export const getScenarioTemplatesExecutor: ToolExecutor = async (args, _context) => {
-  // 返回内置模板列表
-  const templates = getBuiltinTemplates()
-  const type = args.type as string | undefined
-  const filtered = type ? templates.filter((t) => t.type === type) : templates
+  // 从模板注册表获取内置模板（统一数据源，避免与 UI 端不一致）
+  const type = args.type as 'declarative' | 'programmatic' | undefined
+  const templates = getBuiltinTemplatesFromRegistry({ type })
 
   return {
     success: true,
     result: JSON.stringify({
-      templates: filtered.map((t) => ({
+      templates: templates.map((t) => ({
         id: t.id,
         name: t.name,
         nameZh: t.nameZh,
         type: t.type,
         category: t.category,
+        icon: t.icon,
+        tags: t.tags,
         description: t.description,
+        descriptionZh: t.descriptionZh,
+        variables: t.variables?.map((v) => ({
+          key: v.key,
+          label: v.label,
+          labelEn: v.labelEn,
+          defaultValue: v.defaultValue,
+          required: v.required,
+          placeholder: v.placeholder,
+        })),
+        previewStructure: t.previewStructure,
       })),
-      total: filtered.length,
+      total: templates.length,
     }),
   }
 }
@@ -499,50 +520,236 @@ export const checkPublishStatusExecutor: ToolExecutor = async (_args, _context) 
 }
 
 // ==========================================
-// 辅助函数
+// 示例场景执行器
 // ==========================================
 
-/** 内置模板列表 */
-function getBuiltinTemplates() {
-  return [
-    {
-      id: 'declarative-basic',
-      name: 'Declarative Basic',
-      nameZh: '声明式基础模板',
-      type: 'declarative' as const,
-      category: 'basic',
-      description: 'Basic declarative scenario with system prompt',
-      descriptionZh: '基础声明式场景，包含系统提示词',
-    },
-    {
-      id: 'declarative-with-tools',
-      name: 'Declarative with Tools',
-      nameZh: '声明式带工具模板',
-      type: 'declarative' as const,
-      category: 'advanced',
-      description: 'Declarative scenario with custom tools',
-      descriptionZh: '带自定义工具的声明式场景',
-    },
-    {
-      id: 'programmatic-basic',
-      name: 'Programmatic Basic',
-      nameZh: '编程式基础模板',
-      type: 'programmatic' as const,
-      category: 'basic',
-      description: 'Basic programmatic scenario with TypeScript',
-      descriptionZh: '基础编程式场景，使用 TypeScript',
-    },
-    {
-      id: 'programmatic-full',
-      name: 'Programmatic Full',
-      nameZh: '编程式完整模板',
-      type: 'programmatic' as const,
-      category: 'advanced',
-      description: 'Full programmatic scenario with UI, tools, database',
-      descriptionZh: '完整编程式场景，包含 UI、工具、数据库',
-    },
-  ]
+export const listExampleScenariosExecutor: ToolExecutor = async (args, _context) => {
+  const metas = listExampleMetas({
+    type: args.type as 'declarative' | 'programmatic' | undefined,
+    difficulty: args.difficulty as 'beginner' | 'intermediate' | 'advanced' | undefined,
+  })
+  return {
+    success: true,
+    result: JSON.stringify({
+      examples: metas,
+      total: metas.length,
+      message: `共 ${metas.length} 个内置示例场景`,
+    }),
+  }
 }
+
+export const cloneExampleScenarioExecutor: ToolExecutor = async (args, _context) => {
+  const exampleId = args.example_id as string
+  const example = getExampleById(exampleId)
+  if (!example) {
+    return { success: false, result: '', error: `Example not found: ${exampleId}` }
+  }
+
+  const result = await projectService.cloneExample(example, {
+    scenarioId: args.scenario_id as string | undefined,
+    name: args.project_name as string | undefined,
+  })
+
+  if (!result.success) {
+    return { success: false, result: '', error: result.error }
+  }
+
+  return {
+    success: true,
+    result: JSON.stringify({
+      projectId: result.projectId,
+      localPath: result.localPath,
+      exampleId,
+      message: `已克隆示例 "${example.nameZh}" 到本地项目（路径：${result.localPath}）`,
+    }),
+  }
+}
+
+// ==========================================
+// 场景生成向导执行器
+// ==========================================
+
+export const createScenarioWizardExecutor: ToolExecutor = async (args, _context) => {
+  // 必填字段校验
+  const requiredFields = ['name', 'scenario_id', 'description', 'goal']
+  for (const f of requiredFields) {
+    const v = args[f]
+    if (v === undefined || v === null || String(v).trim() === '') {
+      return { success: false, result: '', error: `参数 ${f} 不能为空` }
+    }
+  }
+
+  const result = await wizardService.generateScenario({
+    name: args.name as string,
+    scenarioId: args.scenario_id as string,
+    type: args.type as 'declarative' | 'programmatic' | undefined,
+    version: args.version as string | undefined,
+    description: args.description as string,
+    goal: args.goal as string,
+    targetUsers: args.target_users as string | undefined,
+    author: args.author as string | undefined,
+    category: args.category as string | undefined,
+    useTools: args.use_tools as boolean | undefined,
+    useDatabase: args.use_database as boolean | undefined,
+    useUi: args.use_ui as boolean | undefined,
+    builtinTools: args.builtin_tools as string[] | undefined,
+  })
+
+  if (!result.success) {
+    return { success: false, result: '', error: result.error }
+  }
+
+  return {
+    success: true,
+    result: JSON.stringify({
+      projectId: result.projectId,
+      localPath: result.localPath,
+      files: result.files,
+      nextSteps: result.nextSteps,
+      message: `场景已生成：${args.name}（路径：${result.localPath}）`,
+    }),
+  }
+}
+
+// ==========================================
+// 代码片段执行器
+// ==========================================
+
+/** 列出内置代码片段 */
+export const listScenarioSnippetsExecutor: ToolExecutor = async (args, _context) => {
+  const filter: {
+    category?: SnippetCategory
+    type?: ScenarioType | 'both'
+    difficulty?: 'beginner' | 'intermediate' | 'advanced'
+    tag?: string
+  } = {}
+
+  if (args.category) filter.category = args.category as SnippetCategory
+  if (args.type) filter.type = args.type as ScenarioType | 'both'
+  if (args.difficulty) filter.difficulty = args.difficulty as 'beginner' | 'intermediate' | 'advanced'
+  if (args.tag) filter.tag = args.tag as string
+
+  const metas = listSnippetMetas(filter)
+
+  return {
+    success: true,
+    result: JSON.stringify({
+      snippets: metas,
+      total: metas.length,
+      categories: SNIPPET_CATEGORIES,
+      message: `共 ${metas.length} 个可用片段`,
+    }),
+  }
+}
+
+/** 插入代码片段到项目文件 */
+export const insertScenarioSnippetExecutor: ToolExecutor = async (args, context) => {
+  const projectId = args.project_id as string
+  const snippetId = args.snippet_id as string
+
+  // 1. 查询项目与片段
+  const project = await projectService.getProject(projectId)
+  if (!project) {
+    return { success: false, result: '', error: `Project not found: ${projectId}` }
+  }
+
+  const snippet = getSnippetById(snippetId)
+  if (!snippet) {
+    return { success: false, result: '', error: `Snippet not found: ${snippetId}` }
+  }
+
+  // 2. 解析变量（生成最终代码）
+  const variables = (args.variables as Record<string, string>) || {}
+  const resolved = resolveSnippet(snippet, variables)
+  if (!resolved.success || !resolved.code) {
+    return {
+      success: false,
+      result: '',
+      error: resolved.error || '变量替换失败',
+    }
+  }
+
+  // 3. 确定目标文件
+  const targetFile = (args.target_file as string) || snippet.targetFile
+  if (!targetFile) {
+    return { success: false, result: '', error: 'snippet 未声明 targetFile，需通过 target_file 参数指定' }
+  }
+
+  // 4. 确定插入模式
+  const mode = (args.mode as 'append' | 'prepend' | 'replace' | 'at_line') || 'append'
+  const atLine = args.at_line as number | undefined
+
+  if (mode === 'at_line' && (!Number.isInteger(atLine) || atLine! < 1)) {
+    return { success: false, result: '', error: 'mode=at_line 时 at_line 必须为正整数' }
+  }
+
+  // 5. 读取原文件（可能不存在）
+  const oldContent = await readFileViaIpc(project.localPath, targetFile)
+
+  // 6. 拼接最终内容
+  const snippetCode = resolved.code
+  let newContent: string
+
+  if (mode === 'replace') {
+    newContent = snippetCode
+  } else if (oldContent === null) {
+    // 文件不存在：无论 append/prepend/at_line，都以 snippetCode 作为内容
+    newContent = snippetCode
+  } else if (mode === 'append') {
+    // 追加到末尾，自动加换行
+    newContent = oldContent.endsWith('\n') || oldContent === ''
+      ? oldContent + snippetCode
+      : oldContent + '\n' + snippetCode
+  } else if (mode === 'prepend') {
+    // 插入到开头
+    newContent = snippetCode.endsWith('\n')
+      ? snippetCode + oldContent
+      : snippetCode + '\n' + oldContent
+  } else {
+    // mode === 'at_line'：在指定行号前插入
+    const lines = oldContent!.split('\n')
+    const idx = Math.min(Math.max(0, atLine! - 1), lines.length)
+    lines.splice(idx, 0, snippetCode)
+    newContent = lines.join('\n')
+  }
+
+  // 7. 写入文件
+  const ok = await writeFileViaIpc(project.localPath, targetFile, newContent)
+  if (!ok) {
+    return { success: false, result: '', error: `文件写入失败：${targetFile}` }
+  }
+
+  // 8. 计算行变更并构造 meta（供 FileChangeCard 显示与 addPendingChange 记录）
+  const { added, removed } = computeLineChanges(oldContent, newContent)
+  const fullPath = `${project.localPath}/${targetFile}`
+
+  return {
+    success: true,
+    result: JSON.stringify({
+      snippetId,
+      snippetName: snippet.nameZh,
+      targetFile,
+      mode,
+      insertedLines: added - removed > 0 ? added - removed : 0,
+      linesAdded: added,
+      linesRemoved: removed,
+      message: `已插入片段 "${snippet.nameZh}" 到 ${targetFile}（mode=${mode}, +${added}/-${removed}）`,
+    }),
+    meta: {
+      filePath: fullPath,
+      relativePath: targetFile,
+      oldContent: oldContent ?? null,
+      newContent,
+      linesAdded: added,
+      linesRemoved: removed,
+      toolCallId: context.toolCallId,
+    },
+  }
+}
+
+// ==========================================
+// 辅助函数
+// ==========================================
 
 /** 按主题提取知识片段 */
 function extractTopic(knowledge: string, topic: string): string | null {

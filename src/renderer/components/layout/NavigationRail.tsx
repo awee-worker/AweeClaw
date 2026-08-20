@@ -115,9 +115,11 @@ function UserMenuDropdown({
 
   const planLabel = cloudUser?.planId === 'ENTERPRISE'
     ? (t('layout.enterprise', language as Language))
-    : cloudUser?.planId === 'PRO' || cloudUser?.planId === 'PROFESSIONAL'
+    : cloudUser?.planId === 'PRO'
       ? (t('layout.pro', language as Language))
-      : t('layout.free', language as Language)
+      : cloudUser?.planId === 'TEAM'
+        ? (t('layout.team', language as Language))
+        : t('layout.free', language as Language)
 
   const initial = cloudUser?.username?.[0]?.toUpperCase() || cloudUser?.email?.[0]?.toUpperCase() || '?'
   const displayName = formatUserDisplayName(cloudUser?.username || cloudUser?.email || cloudUser?.phone || '')
@@ -426,6 +428,8 @@ export default function NavigationRail() {
     : DEFAULT_ITEMS
   const scenarioSidebarItems = rawSidebarItems.filter(item => {
     if (item.id === 'checkpoint' && activeScenarioId !== 'dev-assistant') return false
+    // hidden 入口不在导航菜单显示，但仍注册到 PanelRegistry 可被代码激活
+    if (item.hidden) return false
     return true
   })
 

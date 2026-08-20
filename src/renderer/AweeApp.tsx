@@ -89,6 +89,8 @@ function AppContent() {
 
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)
+  // 环境检测弹窗：引导完成后（或老用户首次升级到带此功能版本时）显示
+  const [showEnvironmentSetup, setShowEnvironmentSetup] = useState(false)
   const [isInitialized, setIsInitialized] = useState(false)
 
   useEffect(() => {
@@ -207,8 +209,29 @@ function AppContent() {
       if (!isAuthenticated) {
         setShowWelcomePage(true)
       }
+      // 环境检测：引导已完成（非首次启动）且未做过环境检测时弹出
+      // 首次启动会先走引导流程，引导完成后由下方 effect 触发环境检测
+      if (!result.shouldShowOnboarding) {
+        const { environmentCheckCompleted } = useStore.getState()
+        if (!environmentCheckCompleted) {
+          // 延迟 1s 弹出，让主界面先渲染稳定
+          setTimeout(() => setShowEnvironmentSetup(true), 1000)
+        }
+      }
     },
   })
+
+  // 引导完成（showOnboarding 从 true→false）后触发环境检测
+  useEffect(() => {
+    if (isInitialized && !showOnboarding) {
+      const { environmentCheckCompleted } = useStore.getState()
+      if (!environmentCheckCompleted) {
+        // 引导刚完成的短延后再弹环境检测，避免视觉跳变
+        const timer = setTimeout(() => setShowEnvironmentSetup(true), 500)
+        return () => clearTimeout(timer)
+      }
+    }
+  }, [isInitialized, showOnboarding])
 
   // 侧边栏是否隐藏
   const sidebarHidden = useMemo(() => {
@@ -287,6 +310,8 @@ function AppContent() {
         showOnboarding={showOnboarding}
         setShowOnboarding={setShowOnboarding}
         isInitialized={isInitialized}
+        showEnvironmentSetup={showEnvironmentSetup}
+        setShowEnvironmentSetup={setShowEnvironmentSetup}
       />
 
       <GlobalDecisionOverlay />

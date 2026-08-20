@@ -76,6 +76,7 @@ function buildSavePayload(state: SettingsSlice): SettingsState {
     emailConfig: state.emailConfig,
     aiInstructions: state.aiInstructions,
     onboardingCompleted: state.onboardingCompleted,
+    environmentCheckCompleted: state.environmentCheckCompleted,
     enableFileLogging: state.enableFileLogging,
     browserMode: state.browserMode,
     scenarioPreferences: state.scenarioPreferences ?? DEFAULT_SCENARIO_PREFERENCES,

@@ -158,6 +158,174 @@ export const SCENARIO_BUILDER_TOOLS: ToolDefinition[] = [
       },
     },
   },
+  {
+    name: 'list_example_scenarios',
+    description: 'List built-in example scenarios that can be cloned to local workspace for learning. Examples are complete, runnable scenarios (translator-assistant / doc-generator / kb-qa) covering beginner to advanced difficulty.',
+    parameters: {
+      type: 'object',
+      properties: {
+        type: {
+          type: 'string',
+          description: 'Filter by scenario type',
+          enum: ['declarative', 'programmatic'],
+        },
+        difficulty: {
+          type: 'string',
+          description: 'Filter by difficulty',
+          enum: ['beginner', 'intermediate', 'advanced'],
+        },
+      },
+    },
+  },
+  {
+    name: 'clone_example_scenario',
+    description: 'Clone a built-in example scenario to the local workspace as a new project. Useful when user wants to learn from a complete, runnable scenario. After cloning, the project will appear in list_scenario_projects (it is registered in the database automatically).',
+    parameters: {
+      type: 'object',
+      properties: {
+        example_id: {
+          type: 'string',
+          description: 'The example scenario ID (e.g. translator-assistant, doc-generator, kb-qa)',
+        },
+        project_name: {
+          type: 'string',
+          description: 'Display name for the new project (defaults to example name)',
+        },
+        scenario_id: {
+          type: 'string',
+          description: 'Scenario ID for the new project (defaults to example_id + "-copy")',
+        },
+      },
+      required: ['example_id'],
+    },
+  },
+  {
+    name: 'create_scenario_wizard',
+    description: 'Generate a complete scenario skeleton from natural language requirements. The wizard creates a customized scenario with system prompt, configuration, optional tools/database/UI based on the goal and target users. Useful for quickly scaffolding a scenario based on user intent without writing boilerplate. The generated project will appear in list_scenario_projects.',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Project display name (1-100 chars, required)',
+        },
+        scenario_id: {
+          type: 'string',
+          description: 'Scenario ID (lowercase letters, digits, hyphens; must start with letter, required)',
+        },
+        type: {
+          type: 'string',
+          description: 'Scenario type (default: declarative)',
+          enum: ['declarative', 'programmatic'],
+        },
+        version: {
+          type: 'string',
+          description: 'Semantic version (default: 1.0.0)',
+        },
+        description: {
+          type: 'string',
+          description: 'Scenario description (required)',
+        },
+        goal: {
+          type: 'string',
+          description: 'Natural language goal: what the scenario should help users do (required)',
+        },
+        target_users: {
+          type: 'string',
+          description: 'Target user group (optional, default: 普通用户)',
+        },
+        author: {
+          type: 'string',
+          description: 'Author name (default: developer)',
+        },
+        category: {
+          type: 'string',
+          description: 'Scenario category (default: general)',
+        },
+        use_tools: {
+          type: 'boolean',
+          description: 'Whether to scaffold custom tools (default: false)',
+        },
+        use_database: {
+          type: 'boolean',
+          description: 'Whether to scaffold database scripts (default: false)',
+        },
+        use_ui: {
+          type: 'boolean',
+          description: 'Whether to scaffold UI components (only valid for programmatic type, default: false)',
+        },
+        builtin_tools: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Built-in tools to enable (default: ["web_search"])',
+        },
+      },
+      required: ['name', 'scenario_id', 'description', 'goal'],
+    },
+  },
+  {
+    name: 'list_scenario_snippets',
+    description: 'List built-in code snippets (reusable boilerplate) that can be inserted into existing scenario projects. Snippets cover tool definitions, executors, validators, error handlers, service templates, lifecycle hooks, and database scripts. Returns metadata only (no code); use insert_scenario_snippet to write a snippet into a project file.',
+    parameters: {
+      type: 'object',
+      properties: {
+        category: {
+          type: 'string',
+          description: 'Filter by category',
+          enum: ['tool', 'validation', 'error', 'service', 'lifecycle', 'database', 'ui', 'ipc', 'misc'],
+        },
+        type: {
+          type: 'string',
+          description: 'Filter by applicable scenario type',
+          enum: ['declarative', 'programmatic', 'both'],
+        },
+        difficulty: {
+          type: 'string',
+          description: 'Filter by difficulty',
+          enum: ['beginner', 'intermediate', 'advanced'],
+        },
+        tag: {
+          type: 'string',
+          description: 'Filter by tag (matches any tag in snippet.tags)',
+        },
+      },
+    },
+  },
+  {
+    name: 'insert_scenario_snippet',
+    description: 'Insert a built-in code snippet into a file within a scenario project. The snippet is resolved (variables replaced) and written via file IPC, with line-change tracking for the change panel. Useful for quickly scaffolding common patterns (CRUD tool, validator, error handler, etc.) into an existing project without writing boilerplate manually.',
+    parameters: {
+      type: 'object',
+      properties: {
+        project_id: {
+          type: 'string',
+          description: 'The target project ID (required)',
+        },
+        snippet_id: {
+          type: 'string',
+          description: 'The snippet ID to insert (use list_scenario_snippets to discover IDs, required)',
+        },
+        variables: {
+          type: 'object',
+          description: 'Variable values map (e.g. {"tableName": "items"}). Keys are variable names, values are string replacements. Unset variables use defaults; required variables without defaults cause failure.',
+        },
+        target_file: {
+          type: 'string',
+          description: 'Override snippet target file path (defaults to snippet.targetFile). Relative to project root.',
+        },
+        mode: {
+          type: 'string',
+          description: 'Insert mode (default: append)',
+          enum: ['append', 'prepend', 'replace', 'at_line'],
+        },
+        at_line: {
+          type: 'number',
+          description: 'When mode=at_line, the 1-based line number to insert at (existing line shifted down). Required when mode=at_line.',
+        },
+      },
+      required: ['project_id', 'snippet_id'],
+    },
+  },
 
   // ==========================================
   // 构建调试工具

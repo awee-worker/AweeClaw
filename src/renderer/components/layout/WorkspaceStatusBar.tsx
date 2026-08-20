@@ -168,11 +168,11 @@ function CloudQuotaIndicator({ language }: { language: Language }) {
 
         <button
           onClick={() => {
-            useStore.getState().setShowSettingsPage(true)
+            useStore.getState().setShowUserProfilePage(true)
           }}
           className="w-full py-2 text-xs text-accent hover:text-accent-hover transition-colors text-center"
         >
-          {t('layout.managecloud', language as Language)}
+          {t('layout.manageplan', language as Language)}
         </button>
       </div>
     </DockPopover>

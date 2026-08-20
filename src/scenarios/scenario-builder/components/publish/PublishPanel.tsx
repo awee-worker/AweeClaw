@@ -2,13 +2,16 @@
  * 发布面板
  *
  * 将场景发布到开发者中心市场。
+ * 集成发布前预检查：critical 项会阻止发布按钮。
  */
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import type React from 'react'
 import { publishService, buildService } from '../../services'
 import type { PublishRecord } from '../../types'
+import type { ChecklistResult } from '../../services'
 import { useI18n } from '@renderer/i18n'
 import { useSelectedProject } from '../../hooks/useSelectedProject'
+import PreChecklistPanel from '../precheck/PreChecklistPanel'
 
 const PublishPanel: React.FC = () => {
   const { t } = useI18n()
@@ -21,6 +24,10 @@ const PublishPanel: React.FC = () => {
   const [packageName, setPackageName] = useState('')
   const [packagePath, setPackagePath] = useState('')
   const [version, setVersion] = useState('1.0.0')
+  // 发布前预检查结果（用于禁用发布按钮）
+  const [checkResult, setCheckResult] = useState<ChecklistResult | null>(null)
+  // 使用 ref 保存最新结果，避免回调闭包问题
+  const checkResultRef = useRef<ChecklistResult | null>(null)
 
   // 当切换项目时自动填充 packageName / packagePath / version
   useEffect(() => {
@@ -70,9 +77,18 @@ const PublishPanel: React.FC = () => {
     loadHistory()
   }, [checkStatus, loadHistory])
 
+  // PreChecklistPanel 结果变化回调
+  const handleCheckResultChange = useCallback((r: ChecklistResult | null) => {
+    checkResultRef.current = r
+    setCheckResult(r)
+  }, [])
+
   const handlePublish = useCallback(async () => {
     if (!loggedIn) return
     if (!selectedProjectId || !packageName.trim() || !packagePath.trim()) return
+    // 二次校验：若已运行预检查且有 critical 项，阻止发布
+    const current = checkResultRef.current
+    if (current && !current.publishable) return
 
     setPublishing(true)
     try {
@@ -93,6 +109,10 @@ const PublishPanel: React.FC = () => {
     pending: 'text-muted-foreground',
     rejected: 'text-destructive',
   }
+
+  // 发布按钮禁用条件：
+  // - 未登录 / 正在发布 / 缺少必填字段 / 已运行预检查且有 critical 项
+  const blockedByCheck = checkResult !== null && !checkResult.publishable
 
   return (
     <div className="flex h-full flex-col">
@@ -116,6 +136,11 @@ const PublishPanel: React.FC = () => {
             {t('builder.publish.checkStatus')}
           </button>
         </div>
+      </div>
+
+      {/* 发布前预检查（独立组件） */}
+      <div className="border-b border-border">
+        <PreChecklistPanel onResultChange={handleCheckResultChange} />
       </div>
 
       {/* 发布表单 */}
@@ -149,16 +174,19 @@ const PublishPanel: React.FC = () => {
         </div>
         <button
           onClick={handlePublish}
-          disabled={!loggedIn || publishing || !packageName.trim() || !packagePath.trim() || !selectedProjectId}
+          disabled={!loggedIn || publishing || !packageName.trim() || !packagePath.trim() || !selectedProjectId || blockedByCheck}
           className="w-full rounded bg-accent px-3 py-1.5 text-xs text-accent-foreground hover:bg-accent/90 disabled:opacity-50"
         >
           {publishing ? t('builder.publish.uploading') : t('builder.publish.publish')}
         </button>
         {!loggedIn && (
-          <p className="text-[10px] text-destructive">{t('builder.publish.loginFirst')}</p>
+          <p className="text-[12px] text-destructive">{t('builder.publish.loginFirst')}</p>
         )}
         {!selectedProjectId && (
-          <p className="text-[10px] text-muted-foreground">请先在项目列表中选择一个项目</p>
+          <p className="text-[12px] text-muted-foreground">请先在项目列表中选择一个项目</p>
+        )}
+        {blockedByCheck && (
+          <p className="text-[12px] text-destructive">{t('builder.precheck.blocked')}</p>
         )}
       </div>
 
@@ -176,14 +204,14 @@ const PublishPanel: React.FC = () => {
                     {t(`builder.publish.${record.status === 'published' ? 'published' : record.status === 'failed' ? 'failed' : 'uploading'}`)}
                   </span>
                 </div>
-                <div className="mt-1 text-[10px] text-muted-foreground">v{record.version}</div>
+                <div className="mt-1 text-[12px] text-muted-foreground">v{record.version}</div>
                 {record.marketplaceId && (
-                  <div className="mt-1 text-[10px] text-muted-foreground">
+                  <div className="mt-1 text-[12px] text-muted-foreground">
                     {t('builder.publish.marketplaceId')}: {record.marketplaceId}
                   </div>
                 )}
-                {record.error && <div className="mt-1 text-[10px] text-destructive">{record.error}</div>}
-                <div className="mt-1 text-[10px] text-muted-foreground">{record.publishedAt}</div>
+                {record.error && <div className="mt-1 text-[12px] text-destructive">{record.error}</div>}
+                <div className="mt-1 text-[12px] text-muted-foreground">{record.publishedAt}</div>
               </li>
             ))}
           </ul>

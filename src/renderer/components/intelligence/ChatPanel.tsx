@@ -523,17 +523,24 @@ export default function ChatPanel() {
       useStore.getState().setShowSettingsPage(true)
     }
 
+    // SystemAlert「升级套餐」按钮：打开用户中心（含套餐升级面板）
+    const handleUpgradePlan = () => {
+      useStore.getState().setShowUserProfilePage(true)
+    }
+
     window.addEventListener('chat-send-message', handleOptionSelect as EventListener)
     window.addEventListener('chat-update-interactive', handleUpdateInteractive as EventListener)
     window.addEventListener('chat-retry-message', handleRetryMessage as EventListener)
     window.addEventListener('chat-open-settings', handleOpenSettings as EventListener)
     window.addEventListener('chat-switch-model', handleSwitchModel as EventListener)
+    window.addEventListener('chat-upgrade-plan', handleUpgradePlan as EventListener)
     return () => {
       window.removeEventListener('chat-send-message', handleOptionSelect as EventListener)
       window.removeEventListener('chat-update-interactive', handleUpdateInteractive as EventListener)
       window.removeEventListener('chat-retry-message', handleRetryMessage as EventListener)
       window.removeEventListener('chat-open-settings', handleOpenSettings as EventListener)
       window.removeEventListener('chat-switch-model', handleSwitchModel as EventListener)
+      window.removeEventListener('chat-upgrade-plan', handleUpgradePlan as EventListener)
     }
   }, [sendMessage])
 

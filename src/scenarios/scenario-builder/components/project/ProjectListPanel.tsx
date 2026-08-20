@@ -11,6 +11,7 @@ import type { ScenarioProject, ProjectStatus } from '../../types'
 import { useI18n } from '@renderer/i18n'
 import { api } from '@services/electronBridge'
 import { useStore } from '@store'
+import type { SidePanel } from '@store/slices'
 import { toast } from '@components/foundation/NotificationProvider'
 import { directoryCacheService } from '@services/dirCacheAdapter'
 import ProjectCreateDialog from './ProjectCreateDialog'
@@ -26,6 +27,7 @@ const ProjectListPanel: React.FC = () => {
   const { project: selectedProject, select, refresh: refreshSelected } = useSelectedProject()
   const setActiveSidePanel = useStore((s) => s.setActiveSidePanel)
   const setSelectedFolder = useStore((s) => s.setSelectedFolder)
+  const setChatVisible = useStore((s) => s.setChatVisible)
   const [projects, setProjects] = useState<ScenarioProject[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreate, setShowCreate] = useState(false)
@@ -61,6 +63,21 @@ const ProjectListPanel: React.FC = () => {
       select(project)
     },
     [select],
+  )
+
+  /**
+   * 打开项目工作区：选中项目并切换到 project-workspace 面板，
+   * 让用户在该项目内进行配置/提示词/工具/脚本/数据库/校验/预览/安装/发布等操作。
+   */
+  const handleOpenWorkspace = useCallback(
+    (project: ScenarioProject, e: React.MouseEvent) => {
+      e.stopPropagation()
+      select(project)
+      // 'project-workspace' 是 scenario-builder 自定义面板 id，不在内置 SidePanel 联合类型中，
+      // 与 NavigationRail 一致使用 as 转换（运行时不受限）
+      setActiveSidePanel('project-workspace' as SidePanel)
+    },
+    [select, setActiveSidePanel],
   )
 
   const handleDelete = useCallback(
@@ -128,11 +145,15 @@ const ProjectListPanel: React.FC = () => {
   )
 
   /**
-   * 在工作区定位项目目录：展开父级目录链并滚动定位到项目目录节点。
+   * AI 开发：打开工作区文件树 + 定位项目目录 + 显示聊天窗口。
    *
-   * 不再使用 setWorkspace 替换工作区根目录，原因：
-   * - 替换工作区根会导致原工作区的 .aweeclaw 配置目录丢失（项目目录中不存在该配置）。
-   * - 仅需"展开 + 定位"即可满足用户在文件树中查看项目的需求。
+   * 与"可视化开发"（进入 ProjectWorkspacePanel 图形化 Tab 编辑器）互补，
+   * 这是"文件树 + AI 对话"的协作开发模式：
+   * - 切到 explorer 面板（聊天窗口在编辑器布局下显示）
+   * - 显式 setChatVisible(true)，确保从 hideChat 面板切来时聊天可见
+   * - 在文件树展开并定位到项目目录（优先 scenario.json）
+   *
+   * 不替换工作区根目录，保留 .aweeclaw 配置。
    */
   const handleOpenInWorkspace = useCallback(
     async (project: ScenarioProject, e: React.MouseEvent) => {
@@ -144,7 +165,7 @@ const ProjectListPanel: React.FC = () => {
         if (!exists) {
           toast.error(t('builder.project.dirNotFound'), project.localPath)
           setLocalError({
-            operationLabel: t('builder.project.openInWorkspace'),
+            operationLabel: t('builder.project.aiDevelop'),
             projectName: project.name,
             message: t('builder.project.dirNotFound'),
             detail: project.localPath,
@@ -157,7 +178,7 @@ const ProjectListPanel: React.FC = () => {
         if (!currentWorkspacePath) {
           toast.error(t('builder.project.noWorkspace'))
           setLocalError({
-            operationLabel: t('builder.project.openInWorkspace'),
+            operationLabel: t('builder.project.aiDevelop'),
             projectName: project.name,
             message: t('builder.project.noWorkspace'),
             timestamp: Date.now(),
@@ -175,7 +196,7 @@ const ProjectListPanel: React.FC = () => {
         if (!inWorkspace) {
           toast.error(t('builder.project.notInWorkspace'), project.localPath)
           setLocalError({
-            operationLabel: t('builder.project.openInWorkspace'),
+            operationLabel: t('builder.project.aiDevelop'),
             projectName: project.name,
             message: t('builder.project.notInWorkspace'),
             detail: project.localPath,
@@ -187,6 +208,8 @@ const ProjectListPanel: React.FC = () => {
         // 仅展开并定位到项目目录，不改变工作区根目录（保留 .aweeclaw 等工作区配置）
         setActiveSidePanel('explorer')
         setSelectedFolder(project.localPath)
+        // 显式显示聊天窗口：AI 开发模式下需要 AI 辅助对话（从 hideChat 面板切来时 chatVisible 可能为 false）
+        setChatVisible(true)
 
         // 定位策略：优先 reveal 到项目内的 scenario.json（场景配置文件），
         // 这样会自动展开项目目录并定位到配置文件，与编辑器 tab 右键"在侧边栏中定位"行为一致。
@@ -197,7 +220,7 @@ const ProjectListPanel: React.FC = () => {
         window.dispatchEvent(
           new CustomEvent('explorer:reveal-file', { detail: { filePath: revealTarget } }),
         )
-        toast.success(t('builder.project.openInWorkspaceDone'), project.name)
+        toast.success(t('builder.project.aiDevelopDone'), project.name)
       } catch (err) {
         console.error('Failed to open project in workspace:', err)
         const msg = err instanceof Error ? err.message : String(err)
@@ -213,7 +236,7 @@ const ProjectListPanel: React.FC = () => {
         setOpeningWorkspaceId(null)
       }
     },
-    [openingWorkspaceId, setActiveSidePanel, setSelectedFolder, t],
+    [openingWorkspaceId, setActiveSidePanel, setSelectedFolder, setChatVisible, t],
   )
 
   const filteredProjects = searchQuery
@@ -366,27 +389,45 @@ const ProjectListPanel: React.FC = () => {
                     )}
                   </div>
 
-                  {/* 第四行：快捷操作按钮 - 校验 / 构建 / 打包 / 安装 / 发布 */}
-                  <div className="mt-2.5 border-t border-border/60 pt-2.5">
+                  {/* 第四行：可视化开发 / AI 开发（两种开发模式横向平铺） */}
+                  <div className="mt-2.5 grid grid-cols-2 gap-2 border-t border-border/60 pt-2.5">
+                    {/* 可视化开发：进入项目工作区 Tab 编辑器（配置/提示词/工具/脚本/校验/预览/安装/发布） */}
+                    <button
+                      onClick={(e) => handleOpenWorkspace(project, e)}
+                      disabled={anyRunning}
+                      className="flex items-center justify-center gap-1.5 rounded bg-accent/90 px-2 py-1.5 text-xs font-medium text-accent-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                      title={t('builder.project.visualDevelopDesc')}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="3" width="7" height="7" />
+                        <rect x="14" y="3" width="7" height="7" />
+                        <rect x="14" y="14" width="7" height="7" />
+                        <rect x="3" y="14" width="7" height="7" />
+                      </svg>
+                      <span>{t('builder.project.visualDevelop')}</span>
+                    </button>
+                    {/* AI 开发：打开工作区文件树 + 定位项目 + 显示聊天窗口（配合 AI 辅助开发） */}
+                    <button
+                      onClick={(e) => handleOpenInWorkspace(project, e)}
+                      disabled={openingWorkspaceId === project.id || anyRunning}
+                      className="flex items-center justify-center gap-1 rounded border border-border px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:border-accent/40 hover:bg-accent/5 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+                      title={t('builder.project.aiDevelopDesc')}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 2l2 6 6 2-6 2-2 6-2-6-6-2 6-2z" />
+                      </svg>
+                      <span>{openingWorkspaceId === project.id ? t('builder.common.loading') : t('builder.project.aiDevelop')}</span>
+                    </button>
+                  </div>
+
+                  {/* 第五行：快捷操作按钮 - 校验 / 构建 / 打包 / 安装 / 发布 */}
+                  <div className="mt-2 border-t border-border/60 pt-2">
                     <ProjectActionButtons
                       project={project}
                       operations={operations}
                       size="compact"
                     />
                   </div>
-
-                  {/* 第五行：在工作区定位（次要操作，置于底部） */}
-                  <button
-                    onClick={(e) => handleOpenInWorkspace(project, e)}
-                    disabled={openingWorkspaceId === project.id || anyRunning}
-                    className="mt-2 flex w-full items-center justify-center gap-1 rounded border border-border px-2 py-1 text-xs text-muted-foreground transition-colors hover:border-accent/40 hover:bg-accent/5 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
-                    title={t('builder.project.openInWorkspaceDesc')}
-                  >
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                    </svg>
-                    <span>{openingWorkspaceId === project.id ? t('builder.common.loading') : t('builder.project.openInWorkspace')}</span>
-                  </button>
                 </div>
               )
             })}

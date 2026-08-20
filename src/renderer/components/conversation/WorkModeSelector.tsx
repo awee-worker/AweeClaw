@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
-import { ChevronDown, Check, Zap, Brain, GraduationCap } from 'lucide-react'
+import { ChevronDown, Check, Zap, Brain, GraduationCap, Lock } from 'lucide-react'
 import { WorkMode } from '@/renderer/modes/workModeTypes'
 import { useStore } from '@store'
+import { useFeatureGuard } from '@hooks/useFeatureGuard'
 
 interface ModeSelectorProps {
   mode: WorkMode
@@ -50,6 +51,7 @@ const MODES: Array<{
 
 export default function ModeSelector({ mode, onModeChange, className = '', disabled = false }: ModeSelectorProps) {
   const language = useStore(s => s.language)
+  const { canUseMode, requireMode } = useFeatureGuard()
   const [isOpen, setIsOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -96,11 +98,22 @@ export default function ModeSelector({ mode, onModeChange, className = '', disab
           {MODES.map((m) => {
             const ModeIcon = m.icon
             const isSelected = mode === m.id
+            const modeLocked = m.id !== 'chat' && !canUseMode(m.id)
             return (
               <button
                 key={m.id}
-                onClick={() => {
-                  onModeChange(m.id)
+                onClick={async () => {
+                  // chat 模式所有人可用，直接切换
+                  if (m.id === 'chat') {
+                    onModeChange(m.id)
+                    setIsOpen(false)
+                    return
+                  }
+                  // 付费模式异步校验权限，不通过则弹升级提示
+                  const allowed = await requireMode(m.id)
+                  if (allowed) {
+                    onModeChange(m.id)
+                  }
                   setIsOpen(false)
                 }}
                 className={`
@@ -117,11 +130,15 @@ export default function ModeSelector({ mode, onModeChange, className = '', disab
                   <div className={`text-xs font-medium ${isSelected ? 'text-accent' : 'text-text-primary'}`}>
                     {isZh ? m.labelZh : m.labelEn}
                   </div>
-                  <div className="text-[11px] text-text-muted truncate opacity-80">
+                  <div className="text-[12px] text-text-muted truncate opacity-80">
                     {isZh ? m.descZh : m.descEn}
                   </div>
                 </div>
-                {isSelected && <Check className="w-3.5 h-3.5 text-accent flex-shrink-0" />}
+                {modeLocked ? (
+                  <Lock className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
+                ) : isSelected ? (
+                  <Check className="w-3.5 h-3.5 text-accent flex-shrink-0" />
+                ) : null}
               </button>
             )
           })}

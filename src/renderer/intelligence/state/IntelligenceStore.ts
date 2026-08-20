@@ -150,7 +150,8 @@ export interface ThreadBoundStore {
             message: string
             suggestion?: string
             compact?: boolean
-            action?: { label: string; actionType: 'continue' | 'retry' | 'dismiss' | 'open-settings' | 'switch-model' }
+            action?: { label: string; actionType: 'continue' | 'retry' | 'dismiss' | 'open-settings' | 'switch-model' | 'upgrade' }
+            actions?: Array<{ label: string; actionType: 'continue' | 'retry' | 'dismiss' | 'open-settings' | 'switch-model' | 'upgrade' }>
         }
     ) => void
 

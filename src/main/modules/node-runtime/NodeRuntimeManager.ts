@@ -47,6 +47,61 @@ const NODE_MAJOR_VERSION = 22
 /** nodejs.org 官方索引文件，用于解析大版本对应的最新小版本号 */
 const NODE_INDEX_URL = 'https://nodejs.org/dist/index.json'
 
+/**
+ * 后端服务器地址（从 aweeclaw-config.json 读取）
+ *
+ * 与 PythonRuntimeManager 共用同一份配置文件，
+ * 客户端首次启动时由 appBootstrap 创建。
+ */
+function getBackendServerUrl(): string | null {
+  try {
+    const configPath = path.join(
+      app.getPath('home'),
+      '.aweeclaw',
+      'aweeclaw-config.json',
+    )
+    if (!fs.existsSync(configPath)) return null
+    const raw = fs.readFileSync(configPath, 'utf-8')
+    const config = JSON.parse(raw)
+    return config.serverUrl || null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 从后端 /api/v1/runtime-assets/resolve 解析推荐下载源
+ *
+ * 管理员在后台管理上传 Node.js 二进制到对象存储后，在此登记下载地址。
+ * 客户端优先使用后端返回的地址，失败后回退到 nodejs.org 官方。
+ *
+ * @returns 下载地址（后端未登记则返回 null）
+ */
+async function resolveBackendAssetUrl(): Promise<string | null> {
+  const serverUrl = getBackendServerUrl()
+  if (!serverUrl) return null
+
+  const platform = getPlatformKey()
+  const url = `${serverUrl}/api/v1/runtime-assets/resolve?assetKey=node&platform=${platform}`
+
+  try {
+    const response = await fetch(url, { method: 'GET' })
+    if (!response.ok) {
+      logger.system.warn(`[NodeManager] Backend resolve node HTTP ${response.status}`)
+      return null
+    }
+    const data = await response.json()
+    if (data && data.downloadUrl) {
+      logger.system.info(`[NodeManager] Backend resolved node: ${data.downloadUrl}`)
+      return data.downloadUrl as string
+    }
+    return null
+  } catch (err) {
+    logger.system.warn(`[NodeManager] Backend resolve node failed:`, err)
+    return null
+  }
+}
+
 /** 下载超时（5 分钟），覆盖慢速网络场景 */
 const DOWNLOAD_TIMEOUT_MS = 300_000
 
@@ -347,6 +402,15 @@ class NodeManager {
   /** 初始化进行中标志，防止并发调用 */
   private initializing = false
 
+  /**
+   * 状态回调，用于监听 Node.js 安装过程中的进度消息。
+   *
+   * EnvironmentSetupService 会注册此回调，把安装进度推送到渲染进程，
+   * 让首次启动弹窗能显示"正在下载 Node.js..."等阶段性反馈，
+   * 避免用户在长时间安装过程中以为应用卡死。
+   */
+  private statusCallback: ((message: string) => void) | null = null
+
   private constructor() {}
 
   static getInstance(): NodeManager {
@@ -359,6 +423,25 @@ class NodeManager {
   /** 当前状态快照（只读） */
   get status(): NodeStatus {
     return { ...this._status }
+  }
+
+  /**
+   * 设置状态回调，用于监听 Node.js 安装过程中的进度消息。
+   * 传 null 可取消订阅。
+   */
+  setStatusCallback(callback: ((message: string) => void) | null): void {
+    this.statusCallback = callback
+  }
+
+  /** 内部方法：发送状态消息到回调 */
+  private notifyStatus(message: string): void {
+    if (this.statusCallback) {
+      try {
+        this.statusCallback(message)
+      } catch {
+        // 忽略回调错误
+      }
+    }
   }
 
   /** 获取 node 可执行文件路径 */
@@ -423,6 +506,7 @@ class NodeManager {
    */
   private async _ensureReady(): Promise<void> {
     logger.system.info('[NodeManager] Starting Node.js environment setup...')
+    this.notifyStatus('正在检查 Node.js 运行环境...')
 
     // 步骤 1：检查缓存
     const cachedNode = store.get(CONFIG_KEY_NODE_PATH) as string | undefined
@@ -430,6 +514,7 @@ class NodeManager {
       const version = await this._getNodeVersion(cachedNode)
       if (version) {
         logger.system.info(`[NodeManager] Found cached Node.js: ${cachedNode} (${version})`)
+        this.notifyStatus(`已检测到缓存的 Node.js (${version})`)
         const cachedNpm = (store.get(CONFIG_KEY_NPM_PATH) as string) || null
         const cachedNpx = (store.get(CONFIG_KEY_NPX_PATH) as string) || null
         const cachedDir = (store.get(CONFIG_KEY_NODE_DIR) as string) || null
@@ -460,6 +545,7 @@ class NodeManager {
     const systemNode = await this._detectSystemNode()
     if (systemNode) {
       logger.system.info(`[NodeManager] Found system Node.js: ${systemNode.path} (${systemNode.version})`)
+      this.notifyStatus(`已检测到系统 Node.js (${systemNode.version})`)
       this._status.nodePath = systemNode.path
       this._status.version = systemNode.version
       this._status.source = 'system'
@@ -473,9 +559,11 @@ class NodeManager {
 
     // 步骤 3：自动下载便携版 Node.js
     logger.system.info('[NodeManager] No system Node.js found, attempting managed installation...')
+    this.notifyStatus('未检测到 Node.js，正在自动下载便携版...')
 
     const managedResult = await this._installManagedNode()
     if (managedResult) {
+      this.notifyStatus(`Node.js 安装完成 (${managedResult.version})`)
       this._status = {
         ready: true,
         nodePath: managedResult.nodePath,
@@ -597,9 +685,17 @@ class NodeManager {
     // 示例：https://nodejs.org/dist/v22.11.0/node-v22.11.0-darwin-arm64.tar.gz
     //       https://nodejs.org/dist/v22.11.0/node-v22.11.0-win-x64.zip
     const archiveName = `node-${version}-${platformKey}${ext}`
-    const downloadUrl = `https://nodejs.org/dist/${version}/${archiveName}`
+    const officialUrl = `https://nodejs.org/dist/${version}/${archiveName}`
 
-    logger.system.info(`[NodeManager] Downloading Node.js ${version} from: ${downloadUrl}`)
+    // 优先从后端获取推荐下载源（管理员在后台管理上传的二进制）
+    // 后端未登记则回退到 nodejs.org 官方地址
+    this.notifyStatus('正在从后端获取 Node.js 推荐下载源...')
+    const backendUrl = await resolveBackendAssetUrl()
+    const downloadUrl = backendUrl || officialUrl
+    const sourceName = backendUrl ? '后端托管源' : 'nodejs.org 官方'
+
+    logger.system.info(`[NodeManager] Downloading Node.js ${version} from: ${downloadUrl} (${sourceName})`)
+    this.notifyStatus(`正在下载 Node.js ${version}（${sourceName}）...`)
 
     // 准备临时目录
     const tmpDir = path.join(DEFAULT_NODE_DIR, 'tmp')
@@ -609,9 +705,20 @@ class NodeManager {
     const extractDir = path.join(tmpDir, 'extract')
 
     try {
-      // 下载
-      await downloadFile(downloadUrl, archivePath)
+      // 下载（若后端源失败且不是官方地址，回退到官方重试）
+      try {
+        await downloadFile(downloadUrl, archivePath)
+      } catch (downloadErr) {
+        if (backendUrl && officialUrl !== downloadUrl) {
+          logger.system.warn('[NodeManager] Backend download failed, falling back to nodejs.org:', downloadErr)
+          this.notifyStatus('后端源下载失败，回退到 nodejs.org 官方...')
+          await downloadFile(officialUrl, archivePath)
+        } else {
+          throw downloadErr
+        }
+      }
       logger.system.info('[NodeManager] Download complete, extracting...')
+      this.notifyStatus('下载完成，正在解压...')
 
       // 解压
       await extractArchive(archivePath, extractDir)

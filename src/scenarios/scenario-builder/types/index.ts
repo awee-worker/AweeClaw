@@ -128,25 +128,10 @@ export interface PublishRecord {
 // ==========================================
 // 模板
 // ==========================================
-
-export interface ScenarioTemplate {
-  id: string
-  name: string
-  nameZh: string
-  description: string
-  descriptionZh: string
-  type: ScenarioType
-  icon: string
-  category: string
-  tags: string[]
-  files: Record<string, string>
-  variables?: Array<{
-    key: string
-    label: string
-    default?: string
-    required?: boolean
-  }>
-}
+//
+// 注意：ScenarioTemplate 接口已迁移至 templates/types.ts
+// 此处保留空注释区段，避免下游 import 路径变更产生破坏性改动
+// 新代码请从 '../../templates' 或 '../../templates/types' 导入
 
 // ==========================================
 // 创建项目选项

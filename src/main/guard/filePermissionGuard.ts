@@ -53,6 +53,8 @@ import {
   logFileFailure,
   ensureParentDir,
   isNewFile,
+  writeFileWithRetry,
+  writeBinaryFileWithRetry,
 } from './fileSecurityHelpers'
 
 /**
@@ -496,7 +498,15 @@ export function registerSecureFileHandlers(
     try {
       await ensureParentDir(filePath)
       const isNew = await isNewFile(filePath)
-      await fsPromises.writeFile(filePath, content, 'utf-8')
+      // 使用带重试 + 原子写入的安全写入：
+      // - 原子写入：写入同目录临时文件后 rename 替换，避免部分写入和大部分文件锁冲突
+      // - 自动重试：对 EBUSY/EAGAIN/EACCES 等瞬时错误最多重试 3 次，间隔递增
+      // 解决 AI 写文件偶尔失败的常见原因（文件被 LSP/编辑器/Git 短暂占用等）
+      const success = await writeFileWithRetry(filePath, content, 'utf-8')
+      if (!success) {
+        logFileFailure(OperationType.FILE_WRITE, filePath, new Error('writeFileWithRetry returned false after retries'))
+        return false
+      }
       logFileSuccess(OperationType.FILE_WRITE, filePath, {
         size: content.length,
         bypass: true,
@@ -531,7 +541,12 @@ export function registerSecureFileHandlers(
       await ensureParentDir(filePath)
       const isNew = await isNewFile(filePath)
       const buffer = Buffer.from(base64Data, 'base64')
-      await fsPromises.writeFile(filePath, buffer)
+      // 二进制写入同样使用重试 + 原子写入，避免附件保存失败
+      const success = await writeBinaryFileWithRetry(filePath, buffer)
+      if (!success) {
+        logger.security.error('[File] write binary failed (retries exhausted):', filePath)
+        return false
+      }
       logFileSuccess(OperationType.FILE_WRITE, filePath, {
         size: buffer.length,
         binary: true,

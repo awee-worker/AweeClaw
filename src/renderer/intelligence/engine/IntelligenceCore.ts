@@ -21,7 +21,7 @@
 
 import { api } from '../../adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
-import { AppError, formatErrorMessage } from '@shared/exceptions'
+import { AppError, formatErrorMessage, ErrorCodes } from '@shared/exceptions'
 import { useAgentStore } from '../state/IntelligenceStore'
 import {
   buildPersistedAgentSessionState,
@@ -352,7 +352,15 @@ export class AgentClass {
       }
       const appError = AppError.fromError(error)
       logger.agent.error('[Agent] Error:', appError.toJSON())
-      this.showError(formatErrorMessage(appError))
+      // 配额用完：显示「重试」+「升级套餐」两个动作按钮
+      if (appError.code === ErrorCodes.LLM_QUOTA_EXCEEDED) {
+        this.showError(formatErrorMessage(appError), [
+          { label: translateAgentText('agent.retry'), actionType: 'retry' },
+          { label: translateAgentText('agent.upgradePlan'), actionType: 'upgrade' },
+        ])
+      } else {
+        this.showError(formatErrorMessage(appError))
+      }
       throw error
     } finally {
       if (harnessSpan) {
@@ -714,14 +722,16 @@ export class AgentClass {
 
   /**
    * 显示错误消息给用户
+   * @param actions 可选的动作按钮列表（如配额用完时提供「重试」+「升级套餐」）
    */
-  private showError(message: string): void {
+  private showError(message: string, actions?: Array<{ label: string; actionType: 'continue' | 'retry' | 'dismiss' | 'open-settings' | 'switch-model' | 'upgrade' }>): void {
     const store = useAgentStore.getState()
     const id = store.addAssistantMessage()
     store.addSystemAlertPart(id, {
       alertType: 'error',
       title: translateAgentText('error'),
       message,
+      actions,
     })
     store.finalizeAssistant(id)
   }

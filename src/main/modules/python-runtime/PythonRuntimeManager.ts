@@ -75,6 +75,33 @@ const UV_DOWNLOAD_URLS: Record<string, string[]> = {
   ],
 }
 
+/**
+ * Python 下载镜像源列表（用于 UV_PYTHON_INSTALL_MIRROR 环境变量）
+ *
+ * uv python install 默认从 GitHub python-build-standalone 下载 Python，
+ * 国内直连 GitHub 极慢或失败。通过 UV_PYTHON_INSTALL_MIRROR 环境变量
+ * 指定镜像前缀，让 uv 从国内镜像下载。
+ *
+ * ⚠️ 关键：uv 内部 strip_prefix 的 URL 是 indygreg（不是 astral-sh）！
+ *    python-build-standalone 仓库已从 indygreg 迁移到 astral-sh，
+ *    但 uv 0.12.x 内部仍使用 indygreg 作为 strip_prefix 的前缀。
+ *    如果配置成 astral-sh，strip_prefix 会失败，mirror 配置完全不生效。
+ *    所以镜像 URL 中必须用 indygreg（GitHub 会自动重定向到 astral-sh）。
+ *
+ * 镜像 URL 格式：https://镜像域名/https://github.com/indygreg/python-build-standalone/releases/download
+ * uv 会自动拼接 /<tag>/cpython-<version>+<date>-<platform>.tar.gz
+ *
+ * 依次尝试，任一成功即可。
+ */
+const PYTHON_DOWNLOAD_MIRRORS: string[] = [
+  'https://ghfast.top/https://github.com/indygreg/python-build-standalone/releases/download',
+  'https://gh-proxy.com/https://github.com/indygreg/python-build-standalone/releases/download',
+  'https://ghproxy.net/https://github.com/indygreg/python-build-standalone/releases/download',
+  // GitHub 官方（海外用户/直连可用时的最终回退）
+  // 注意：这里也用 indygreg，因为 uv 内部 strip_prefix 用的是 indygreg
+  'https://github.com/indygreg/python-build-standalone/releases/download',
+]
+
 export interface PythonStatus {
   ready: boolean
   pythonPath: string | null
@@ -93,6 +120,62 @@ function getPlatformKey(): string {
 
 function getUvDownloadUrls(): string[] {
   return UV_DOWNLOAD_URLS[getPlatformKey()] || []
+}
+
+/**
+ * 后端服务器地址（从 aweeclaw-config.json 读取）
+ *
+ * 客户端首次启动时由 appBootstrap 创建配置文件，
+ * 包含 serverUrl 字段（默认 https://gateway.aweeclaw.com）。
+ */
+function getBackendServerUrl(): string | null {
+  try {
+    const configPath = path.join(
+      app.getPath('home'),
+      '.aweeclaw',
+      'aweeclaw-config.json',
+    )
+    if (!fs.existsSync(configPath)) return null
+    const raw = fs.readFileSync(configPath, 'utf-8')
+    const config = JSON.parse(raw)
+    return config.serverUrl || null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 从后端 /api/v1/runtime-assets/resolve 解析推荐下载源
+ *
+ * 管理员在后台管理上传二进制到对象存储后，在此登记下载地址。
+ * 客户端优先使用后端返回的地址，失败后回退到 GitHub 镜像列表。
+ *
+ * @param assetKey 工具包标识：'uv' | 'python' | 'node'
+ * @returns 下载地址（后端未登记则返回 null）
+ */
+async function resolveBackendAssetUrl(assetKey: 'uv' | 'python' | 'node'): Promise<string | null> {
+  const serverUrl = getBackendServerUrl()
+  if (!serverUrl) return null
+
+  const platform = getPlatformKey()
+  const url = `${serverUrl}/api/v1/runtime-assets/resolve?assetKey=${assetKey}&platform=${platform}`
+
+  try {
+    const response = await fetch(url, { method: 'GET' })
+    if (!response.ok) {
+      logger.system.warn(`[PythonManager] Backend resolve ${assetKey} HTTP ${response.status}`)
+      return null
+    }
+    const data = await response.json()
+    if (data && data.downloadUrl) {
+      logger.system.info(`[PythonManager] Backend resolved ${assetKey}: ${data.downloadUrl}`)
+      return data.downloadUrl as string
+    }
+    return null
+  } catch (err) {
+    logger.system.warn(`[PythonManager] Backend resolve ${assetKey} failed:`, err)
+    return null
+  }
 }
 
 function getCommonBinaryDirs(): string[] {
@@ -463,6 +546,72 @@ class PythonManager {
   }
 
   /**
+   * 只读检测 uv：搜索系统/缓存中的 uv/uvx 路径，不触发安装。
+   *
+   * 与 ensureUvx() 的区别：
+   * - ensureUvx()：找不到就触发 _installUv() 安装
+   * - detectUvAsync()：只搜索，找不到返回 null，用于"只读检测"场景（如环境检测弹窗）
+   *
+   * 搜索优先级：
+   * 1. 已缓存的 status.uvPath（之前找到过）
+   * 2. electron-store 持久化缓存的 uv 路径
+   * 3. 用户 shell PATH 异步搜索（resolveCommandPathAsync，支持 ~/.local/bin 等非标准路径）
+   *
+   * 解决问题：首次启动时 status.uvPath 可能为空（ensureReady 未执行），
+   * 但用户系统中实际已安装 uv（如通过 brew/pip 安装），此时应主动搜索而不是直接判定为未安装。
+   *
+   * @returns uv/uvx 路径信息，或 null（未找到）
+   */
+  async detectUvAsync(): Promise<{ uvPath: string; uvxPath: string } | null> {
+    // 1. 已缓存的 status.uvPath
+    if (this._status.uvPath && fs.existsSync(this._status.uvPath)) {
+      return { uvPath: this._status.uvPath, uvxPath: this._status.uvxPath || this._status.uvPath }
+    }
+
+    // 2. electron-store 持久化缓存
+    const cachedUv = store.get(CONFIG_KEY_UV_PATH) as string | undefined
+    if (cachedUv && fs.existsSync(cachedUv)) {
+      this._status.uvPath = cachedUv
+      // 同步解析 uvx 路径
+      this._resolveUvxPath(cachedUv)
+      store.set(CONFIG_KEY_UV_PATH, cachedUv)
+      logger.system.info(`[PythonManager] detectUvAsync: found cached uv: ${cachedUv}`)
+      return { uvPath: cachedUv, uvxPath: this._status.uvxPath || cachedUv }
+    }
+
+    // 3. 异步搜索系统 PATH（含用户 shell PATH，如 ~/.local/bin）
+    await prewarmUserShellPath()
+
+    const existingUv = await resolveCommandPathAsync('uv')
+    if (existingUv) {
+      this._status.uvPath = existingUv
+      store.set(CONFIG_KEY_UV_PATH, existingUv)
+      // 解析同目录下的 uvx
+      this._resolveUvxPath(existingUv)
+      logger.system.info(`[PythonManager] detectUvAsync: found system uv: ${existingUv}`)
+      return { uvPath: existingUv, uvxPath: this._status.uvxPath || existingUv }
+    }
+
+    // 4. 直接搜索 uvx（某些安装方式可能只有 uvx 符号链接）
+    const existingUvx = await resolveCommandPathAsync('uvx')
+    if (existingUvx) {
+      this._status.uvxPath = existingUvx
+      store.set(CONFIG_KEY_UVX_PATH, existingUvx)
+      // 尝试解析同目录下的 uv
+      const uvSibling = path.join(path.dirname(existingUvx), process.platform === 'win32' ? 'uv.exe' : 'uv')
+      if (fs.existsSync(uvSibling)) {
+        this._status.uvPath = uvSibling
+        store.set(CONFIG_KEY_UV_PATH, uvSibling)
+      }
+      logger.system.info(`[PythonManager] detectUvAsync: found system uvx: ${existingUvx}`)
+      return { uvPath: this._status.uvPath || existingUvx, uvxPath: existingUvx }
+    }
+
+    logger.system.info('[PythonManager] detectUvAsync: uv not found in system PATH')
+    return null
+  }
+
+  /**
    * 确保 uv/uvx 可用，独立于 Python 安装状态。
    *
    * ensureReady() 只在需要安装 Python 时才会安装 uv。
@@ -704,8 +853,55 @@ class PythonManager {
 
   private async _installUv(): Promise<string | null> {
     // 安装策略（按优先级，国内网络优化）：
+    // 0. 后端托管下载源（管理员在后台管理上传的二进制，最优、最稳定）
     // 1. pip install uv + 国内 PyPI 镜像源（清华/阿里云，最快最可靠）
     // 2. GitHub 二进制下载 + ghproxy.net 镜像加速（不依赖 Python）
+
+    // 策略 0：优先从后端解析推荐下载源
+    this.notifyStatus('正在从后端获取 uv 推荐下载源...')
+    const backendUrl = await resolveBackendAssetUrl('uv')
+    if (backendUrl) {
+      this.notifyStatus('已获取后端推荐下载源，开始下载 uv...')
+      const tmpDir = path.join(DEFAULT_PYTHON_DIR, 'tmp')
+      if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true })
+      const ext = backendUrl.endsWith('.zip') ? '.zip' : '.tar.gz'
+      const archivePath = path.join(tmpDir, `uv-backend${ext}`)
+      const extractDir = path.join(tmpDir, 'uv-extract-backend')
+
+      try {
+        await downloadFile(backendUrl, archivePath)
+        this.notifyStatus('uv 下载完成（后端源），正在解压...')
+        await extractArchive(archivePath, extractDir)
+        this.notifyStatus('正在安装 uv 和 uvx 二进制文件...')
+
+        const uvBinary = this._findBinary(extractDir, 'uv')
+        if (uvBinary) {
+          const uvDestDir = path.join(DEFAULT_PYTHON_DIR, 'bin')
+          if (!fs.existsSync(uvDestDir)) fs.mkdirSync(uvDestDir, { recursive: true })
+          const uvDest = path.join(uvDestDir, process.platform === 'win32' ? 'uv.exe' : 'uv')
+          fs.copyFileSync(uvBinary, uvDest)
+          if (process.platform !== 'win32') fs.chmodSync(uvDest, 0o755)
+
+          const uvxBinary = this._findBinary(extractDir, 'uvx')
+          if (uvxBinary) {
+            const uvxDest = path.join(uvDestDir, process.platform === 'win32' ? 'uvx.exe' : 'uvx')
+            fs.copyFileSync(uvxBinary, uvxDest)
+            if (process.platform !== 'win32') fs.chmodSync(uvxDest, 0o755)
+            this._status.uvxPath = uvxDest
+            store.set(CONFIG_KEY_UVX_PATH, uvxDest)
+          }
+
+          try { fs.rmSync(tmpDir, { recursive: true, force: true }) } catch { /* ignore */ }
+          logger.system.info(`[PythonManager] uv installed from backend at: ${uvDest}`)
+          this.notifyStatus('uv 工具安装完成（后端源）')
+          return uvDest
+        }
+      } catch (err) {
+        logger.system.warn('[PythonManager] Backend uv download failed:', err)
+        this.notifyStatus('后端源下载失败，回退到 pip 安装...')
+        try { fs.rmSync(tmpDir, { recursive: true, force: true }) } catch { /* ignore */ }
+      }
+    }
 
     // 策略 1：优先通过 pip + 国内镜像源安装
     this.notifyStatus('正在通过 pip 安装 uv（使用国内镜像源）...')
@@ -978,30 +1174,68 @@ class PythonManager {
     const pythonInstallDir = path.join(DEFAULT_PYTHON_DIR, 'python')
     if (!fs.existsSync(pythonInstallDir)) fs.mkdirSync(pythonInstallDir, { recursive: true })
 
-    try {
-      const { stdout, stderr, code } = await execCommandAsync(
-        uvPath,
-        ['python', 'install', PYTHON_VERSION, '--preview', '--install-dir', pythonInstallDir],
-        { timeout: 300000 }
-      )
+    // 构建下载源列表：后端托管源（优先）+ GitHub 镜像列表
+    // 后端源是管理员在后台管理上传的二进制，最优最稳定
+    this.notifyStatus('正在从后端获取 Python 推荐下载源...')
+    const backendUrl = await resolveBackendAssetUrl('python')
+    const mirrors = backendUrl
+      ? [backendUrl, ...PYTHON_DOWNLOAD_MIRRORS]
+      : PYTHON_DOWNLOAD_MIRRORS
 
-      if (code !== 0) {
-        logger.system.error('[PythonManager] uv python install failed:', { stdout, stderr })
+    // 依次尝试下载源
+    let lastError: unknown = null
+    for (let i = 0; i < mirrors.length; i++) {
+      const mirror = mirrors[i]
+      const mirrorName = i === 0
+        ? (backendUrl ? '后端托管源' : `镜像源 ${i + 1}`)
+        : (i === mirrors.length - 1 ? 'GitHub 官方' : `镜像源 ${i}`)
+      this.notifyStatus(`正在通过 ${mirrorName} 下载 Python ${PYTHON_VERSION}（可能需要 2-5 分钟）...`)
+
+      try {
+        logger.system.info(`[PythonManager] uv python install from: ${mirror}`)
+        // 设置 UV_PYTHON_INSTALL_MIRROR 环境变量让 uv 从镜像源下载 Python
+        // 同时设置 UV_DEFAULT_INDEX 为国内 PyPI 镜像，加速后续 pip install
+        const env: Record<string, string> = {
+          ...process.env,
+          UV_PYTHON_INSTALL_MIRROR: mirror,
+          UV_DEFAULT_INDEX: PythonManager.PYPI_MIRRORS[0].url,
+        }
+
+        const { stdout, stderr, code } = await execCommandAsync(
+          uvPath,
+          ['python', 'install', PYTHON_VERSION, '--preview', '--install-dir', pythonInstallDir],
+          { timeout: 600000, env } // 10 分钟超时（Python 下载约 30-40MB，国内镜像通常 1-2 分钟）
+        )
+
+        if (code !== 0) {
+          logger.system.warn(`[PythonManager] uv python install failed (${mirrorName}):`, { stdout, stderr })
+          this.notifyStatus(`${mirrorName} 下载失败，尝试下一个源...`)
+          lastError = new Error(stderr || stdout)
+          continue
+        }
+
+        logger.system.info(`[PythonManager] Python installed successfully from ${mirrorName}`)
+        this.notifyStatus(`Python ${PYTHON_VERSION} 下载完成，正在配置环境...`)
+
+        const pythonBin = this._findPythonInDir(pythonInstallDir)
+        if (pythonBin) {
+          logger.system.info(`[PythonManager] Python installed at: ${pythonBin}`)
+          return pythonBin
+        }
+
+        logger.system.error('[PythonManager] Python binary not found after uv install')
+        this.notifyStatus('Python 安装完成但未找到二进制文件')
         return null
+      } catch (err) {
+        logger.system.warn(`[PythonManager] uv python install error (${mirrorName}):`, err)
+        this.notifyStatus(`${mirrorName} 下载异常，尝试下一个源...`)
+        lastError = err
       }
-
-      const pythonBin = this._findPythonInDir(pythonInstallDir)
-      if (pythonBin) {
-        logger.system.info(`[PythonManager] Python installed at: ${pythonBin}`)
-        return pythonBin
-      }
-
-      logger.system.error('[PythonManager] Python binary not found after uv install')
-      return null
-    } catch (err) {
-      logger.system.error('[PythonManager] uv python install error:', err)
-      return null
     }
+
+    logger.system.error('[PythonManager] uv python install failed (all mirrors exhausted):', lastError)
+    this.notifyStatus('Python 下载失败（所有源均不可用），请检查网络或手动安装 Python')
+    return null
   }
 
   private _findPythonInDir(searchDir: string): string | null {
@@ -1092,6 +1326,61 @@ class PythonManager {
     return fs.existsSync(pip) ? pip : null
   }
 
+  /**
+   * 通用 pip install 方法，自动轮询国内 PyPI 镜像源
+   *
+   * 依次尝试清华、阿里云、华为云镜像源，任一成功即可。
+   * 全部失败后回退到默认 PyPI 源。
+   * 解决国内用户 pip install 慢/失败的问题。
+   *
+   * @param pipPath pip 可执行文件路径
+   * @param packages 要安装的包名列表
+   * @param timeoutMs 超时时间（毫秒），默认 300s
+   * @returns 成功返回 true，失败返回 false
+   */
+  private async _pipInstallWithMirrors(
+    pipPath: string,
+    packages: string[],
+    timeoutMs: number = 300000,
+  ): Promise<boolean> {
+    // 依次尝试国内镜像源
+    for (const mirror of PythonManager.PYPI_MIRRORS) {
+      try {
+        logger.system.info(`[PythonManager] pip install ${packages.join(' ')} (${mirror.name})`)
+        const { code, stderr } = await execCommandAsync(
+          pipPath,
+          ['install', '--quiet', ...packages, '-i', mirror.url, '--trusted-host', new URL(mirror.url).hostname],
+          { timeout: timeoutMs },
+        )
+        if (code === 0) {
+          logger.system.info(`[PythonManager] pip install succeeded (${mirror.name})`)
+          return true
+        }
+        logger.system.warn(`[PythonManager] pip install failed (${mirror.name}):`, stderr)
+      } catch (err) {
+        logger.system.warn(`[PythonManager] pip install error (${mirror.name}):`, err)
+      }
+    }
+
+    // 所有国内镜像源都失败，最后尝试默认 PyPI 源
+    try {
+      logger.system.info(`[PythonManager] pip install ${packages.join(' ')} (default PyPI)`)
+      const { code, stderr } = await execCommandAsync(
+        pipPath,
+        ['install', '--quiet', ...packages],
+        { timeout: timeoutMs },
+      )
+      if (code === 0) {
+        logger.system.info('[PythonManager] pip install succeeded (default PyPI)')
+        return true
+      }
+      logger.system.error('[PythonManager] pip install failed (default):', stderr)
+    } catch (err) {
+      logger.system.error('[PythonManager] pip install error (default):', err)
+    }
+    return false
+  }
+
   private async _installBasePackages(venvDir: string): Promise<void> {
     const pipPath = this._getVenvPip(venvDir)
     if (!pipPath) {
@@ -1100,20 +1389,16 @@ class PythonManager {
     }
 
     logger.system.info(`[PythonManager] Installing base packages: ${BASE_PACKAGES.join(', ')}`)
-    try {
-      const { code, stderr } = await execCommandAsync(
-        pipPath,
-        ['install', '--quiet', ...BASE_PACKAGES],
-        { timeout: 120000 }
-      )
-      if (code !== 0) {
-        logger.system.error('[PythonManager] pip install failed:', stderr)
-        return
-      }
+    this.notifyStatus(`正在安装基础包（${BASE_PACKAGES.join(', ')}，使用国内镜像源）...`)
+
+    const success = await this._pipInstallWithMirrors(pipPath, BASE_PACKAGES, 300000)
+    if (success) {
       this._status.installedPackages = [...BASE_PACKAGES]
+      this.notifyStatus('基础包安装完成')
       logger.system.info('[PythonManager] Base packages installed successfully')
-    } catch (err) {
-      logger.system.error('[PythonManager] pip install error:', err)
+    } else {
+      this.notifyStatus('基础包安装失败，部分 Python 功能可能不可用')
+      logger.system.error('[PythonManager] pip install base packages failed (all mirrors)')
     }
   }
 
@@ -1124,17 +1409,14 @@ class PythonManager {
     const pipPath = this._getVenvPip(venvDir)
     if (!pipPath) return { success: false, error: 'pip not found in venv' }
 
-    try {
-      const { code, stderr } = await execCommandAsync(pipPath, ['install', '--quiet', packageName], { timeout: 120000 })
-      if (code !== 0) return { success: false, error: stderr }
+    // 使用带国内镜像源轮询的 pip install
+    const success = await this._pipInstallWithMirrors(pipPath, [packageName], 300000)
+    if (!success) return { success: false, error: `Failed to install ${packageName} from all mirrors` }
 
-      if (!this._status.installedPackages.includes(packageName)) {
-        this._status.installedPackages.push(packageName)
-      }
-      return { success: true }
-    } catch (err) {
-      return { success: false, error: toAppError(err).message }
+    if (!this._status.installedPackages.includes(packageName)) {
+      this._status.installedPackages.push(packageName)
     }
+    return { success: true }
   }
 
   private _extractPythonDependencies(scriptContent: string): string[] {

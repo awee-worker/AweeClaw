@@ -206,13 +206,32 @@ const SCENARIO_BUILDER_UI: ScenarioUI = {
     { id: 'terminal', component: 'TerminalPanel', region: 'floating', defaultVisible: false },
   ],
   sidebarItems: [
+    // ===== 全局入口（与具体项目无关）=====
     { id: 'explorer', icon: 'FolderTree', label: 'Workspace', labelZh: '工作区', component: 'ExplorerView', position: 0 },
-    { id: 'projects', icon: 'FolderTree', label: 'Projects', labelZh: '项目', component: 'ProjectListPanel', position: 1, wideMode: true },
-    { id: 'templates', icon: 'LayoutTemplate', label: 'Templates', labelZh: '模板', component: 'TemplateListPanel', position: 2, wideMode: true },
-    { id: 'build', icon: 'Hammer', label: 'Build', labelZh: '构建', component: 'BuildPanel', position: 3, wideMode: true },
-    { id: 'install', icon: 'Package', label: 'Install', labelZh: '安装', component: 'InstallPanel', position: 4, wideMode: true },
-    { id: 'publish', icon: 'Cloud', label: 'Publish', labelZh: '发布', component: 'PublishPanel', position: 5, wideMode: true },
-    { id: 'settings', icon: 'Settings', label: 'Settings', labelZh: '设置', component: 'BuilderSettingsPanel', position: 6, wideMode: true },
+    { id: 'projects', icon: 'FolderKanban', label: 'Projects', labelZh: '场景项目', component: 'ProjectListPanel', position: 1, wideMode: true },
+    { id: 'templates', icon: 'LayoutTemplate', label: 'Templates', labelZh: '模板', component: 'TemplateListPanel', position: 2, wideMode: true, hideChat: true },
+    { id: 'docs', icon: 'BookOpen', label: 'Docs', labelZh: '文档', component: 'DocsBrowserPanel', position: 3, wideMode: true, hideChat: true },
+    // 构建面板是多项目总览（横向对比所有项目构建状态 + 批量操作），保留为全局入口
+    { id: 'build', icon: 'Hammer', label: 'Build', labelZh: '构建', component: 'BuildPanel', position: 4, wideMode: true, hideChat: true },
+    { id: 'settings', icon: 'Settings', label: 'Settings', labelZh: '设置', component: 'BuilderSettingsPanel', position: 5, wideMode: true, hideChat: true },
+
+    // ===== 项目工作区（聚合单项目操作，不在侧边栏显示）=====
+    // 单项目操作（配置/提示词/工具/脚本/数据库/校验/预览/安装/发布）已收拢进 ProjectWorkspacePanel 的 Tab，
+    // 由项目列表卡片的"打开工作区"按钮激活（setActiveSidePanel('project-workspace')）。
+    // hidden=true：注册到 PanelRegistry 但不在 NavigationRail 显示。
+    // hideChat=true：进入工作区时默认隐藏聊天（用户需要 AI 辅助时可手动打开）。
+    {
+      id: 'project-workspace',
+      icon: 'FolderOpen',
+      label: 'Project Workspace',
+      labelZh: '项目工作区',
+      component: 'ProjectWorkspacePanel',
+      position: 6,
+      wideMode: true,
+      hideEditor: true,
+      hideChat: true,
+      hidden: true,
+    },
   ],
   statusBarItems: [
     { id: 'builder-project', component: 'BuilderStatusBar', position: 'left', order: 0 },

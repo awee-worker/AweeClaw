@@ -6,7 +6,7 @@ import { api } from '../../../adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
 import { StorageService } from '@shared/toolkit/StorageService'
 import { useState, useEffect, useRef } from 'react'
-import { HardDrive, AlertTriangle, Download, Upload, FileText, ExternalLink, Terminal, Globe } from 'lucide-react'
+import { HardDrive, AlertTriangle, Download, Upload, FileText, ExternalLink, Terminal, Globe, Package } from 'lucide-react'
 import { toast } from '@components/foundation/NotificationProvider'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
 import { ActionButton, ToggleSwitch } from '@components/ui'
@@ -33,6 +33,138 @@ function DataPathDisplay() {
         api.settings.getConfigPath?.().then(setPath)
     }, [])
     return <span>{path || '...'}</span>
+}
+
+/** uv 包管理器环境区块 */
+function UvEnvSection({ language }: { language: Language }) {
+    // 复用 environment 检测接口获取 uv 状态
+    const [uvStatus, setUvStatus] = useState<{
+        ready: boolean
+        path?: string
+        source: string
+    } | null>(null)
+    const [isInstalling, setIsInstalling] = useState(false)
+    const [progressMsg, setProgressMsg] = useState<string>('')
+
+    const refreshStatus = async () => {
+        try {
+            const result = await api.environment.environmentCheck()
+            if (result.success) {
+                setUvStatus(result.status.uv)
+            }
+        } catch (err) {
+            logger.settings.warn('Failed to check uv status:', err)
+        }
+    }
+
+    useEffect(() => {
+        refreshStatus()
+        // 订阅安装进度
+        const off = api.environment.onEnvironmentProgress((event) => {
+            if (event.id === 'uv') {
+                setProgressMsg(event.message)
+                if (event.stage === 'done' || event.stage === 'error') {
+                    // 安装结束，刷新状态
+                    setTimeout(refreshStatus, 300)
+                }
+            }
+        })
+        return off
+    }, [])
+
+    const handleInstall = async () => {
+        setIsInstalling(true)
+        setProgressMsg(language === 'zh' ? '正在安装 uv...' : 'Installing uv...')
+        try {
+            const result = await api.environment.environmentInstall('uv')
+            if (result.success) {
+                toast.success(language === 'zh' ? 'uv 安装成功' : 'uv installed successfully')
+            } else {
+                toast.error(language === 'zh' ? 'uv 安装失败，请查看日志排查' : 'uv installation failed, check logs')
+            }
+            // 无论成功失败都刷新状态（environmentInstall 不返回 status）
+            await refreshStatus()
+        } catch (err) {
+            toast.error(language === 'zh' ? 'uv 安装失败' : 'uv installation failed')
+        } finally {
+            setIsInstalling(false)
+            setProgressMsg('')
+        }
+    }
+
+    return (
+        <div className="p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border space-y-4 shadow-sm">
+            <div className="flex items-center justify-between">
+                <div>
+                    <div className="text-sm font-bold text-text-primary flex items-center gap-2">
+                        <Package className="w-4 h-4 text-accent" />
+                        {t('settings.uvpackagemanager', language as Language) || 'uv Package Manager'}
+                    </div>
+                    <div className="text-xs text-text-muted mt-1 opacity-70">
+                        {t('settings.uvfordesc', language as Language) || 'Python package installer/resolver used by plugins and MCP tools'}
+                    </div>
+                </div>
+                <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${uvStatus?.ready ? 'bg-green-500' : 'bg-red-500'}`} />
+                    <span className="text-xs font-medium text-text-secondary">
+                        {uvStatus?.ready
+                            ? t('settings.ready', language as Language)
+                            : t('settings.notready', language as Language)}
+                    </span>
+                </div>
+            </div>
+
+            {uvStatus && uvStatus.ready && uvStatus.path && (
+                <div className="space-y-2 p-4 bg-background/50 rounded-xl border border-border shadow-inner">
+                    <div className="flex items-center gap-2 text-xs">
+                        <span className="text-text-muted w-20">{t('settings.path', language as Language)}</span>
+                        <span className="text-text-secondary font-mono break-all">{uvStatus.path}</span>
+                    </div>
+                </div>
+            )}
+
+            {uvStatus && !uvStatus.ready && (
+                <div className="flex items-start gap-2 text-[11px] font-medium text-yellow-500 bg-yellow-500/10 px-3 py-2 rounded-lg border border-yellow-500/20">
+                    <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                    <div>
+                        {t('settings.uvisnotavailable', language as Language) || 'uv is not available. Plugin installation and MCP tool dependency resolution will be unavailable. Click install to auto-download.'}
+                    </div>
+                </div>
+            )}
+
+            {isInstalling && progressMsg && (
+                <div className="flex items-center gap-2 text-xs text-accent bg-accent/5 px-3 py-2 rounded-lg border border-accent/20">
+                    <div className="w-3 h-3 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
+                    <span>{progressMsg}</span>
+                </div>
+            )}
+
+            <div className="flex gap-3">
+                <ActionButton
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleInstall}
+                    disabled={isInstalling}
+                    className="rounded-xl px-4"
+                >
+                    {isInstalling
+                        ? t('settings.installing', language as Language)
+                        : uvStatus?.ready
+                            ? (t('settings.reinstall', language as Language))
+                            : (t('settings.install', language as Language) || 'Install')}
+                </ActionButton>
+                <ActionButton
+                    variant="secondary"
+                    size="sm"
+                    onClick={refreshStatus}
+                    disabled={isInstalling}
+                    className="rounded-xl px-4"
+                >
+                    {t('settings.refresh', language as Language) || 'Refresh'}
+                </ActionButton>
+            </div>
+        </div>
+    )
 }
 
 function PythonEnvSection({ language }: { language: Language }) {
@@ -85,33 +217,26 @@ function PythonEnvSection({ language }: { language: Language }) {
     }
 
     return (
-        <section>
-            <div className="flex items-center gap-2 mb-5 ml-1">
-                <Terminal className="w-4 h-4 text-accent" />
-                <h4 className="text-[12px] font-bold text-text-muted uppercase tracking-[0.2em]">
-                    {t('settings.pythonenvironment', language as Language)}
-                </h4>
-            </div>
-            <div className="space-y-4">
-                <div className="p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border space-y-4 shadow-sm">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <div className="text-sm font-bold text-text-primary">
-                                {t('settings.pythonruntime', language as Language)}
-                            </div>
-                            <div className="text-xs text-text-muted mt-1 opacity-70">
-                                {t('settings.aiagentscriptexecutionpython', language as Language)}
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <div className={`w-2 h-2 rounded-full ${pythonStatus?.ready ? 'bg-green-500' : 'bg-red-500'}`} />
-                            <span className="text-xs font-medium text-text-secondary">
-                                {pythonStatus?.ready
-                                    ? (t('settings.ready', language as Language))
-                                    : (t('settings.notready', language as Language))}
-                            </span>
-                        </div>
+        <div className="p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border space-y-4 shadow-sm">
+            <div className="flex items-center justify-between">
+                <div>
+                    <div className="text-sm font-bold text-text-primary flex items-center gap-2">
+                        <Terminal className="w-4 h-4 text-accent" />
+                        {t('settings.pythonruntime', language as Language)}
                     </div>
+                    <div className="text-xs text-text-muted mt-1 opacity-70 ml-6">
+                        {t('settings.aiagentscriptexecutionpython', language as Language)}
+                    </div>
+                </div>
+                <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${pythonStatus?.ready ? 'bg-green-500' : 'bg-red-500'}`} />
+                    <span className="text-xs font-medium text-text-secondary">
+                        {pythonStatus?.ready
+                            ? (t('settings.ready', language as Language))
+                            : (t('settings.notready', language as Language))}
+                    </span>
+                </div>
+            </div>
 
                     {pythonStatus && (
                         <div className="space-y-2 p-4 bg-background/50 rounded-xl border border-border shadow-inner">
@@ -181,9 +306,7 @@ function PythonEnvSection({ language }: { language: Language }) {
                             {t('settings.setpythonpath', language as Language)}
                         </ActionButton>
                     </div>
-                </div>
-            </div>
-        </section>
+        </div>
     )
 }
 
@@ -243,33 +366,26 @@ function NodeEnvSection({ language }: { language: Language }) {
     }
 
     return (
-        <section>
-            <div className="flex items-center gap-2 mb-5 ml-1">
-                <Terminal className="w-4 h-4 text-accent" />
-                <h4 className="text-[12px] font-bold text-text-muted uppercase tracking-[0.2em]">
-                    {t('settings.nodeenvironment', language as Language) || 'Node.js Environment'}
-                </h4>
-            </div>
-            <div className="space-y-4">
-                <div className="p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border space-y-4 shadow-sm">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <div className="text-sm font-bold text-text-primary">
-                                {t('settings.noderuntime', language as Language) || 'Node.js Runtime'}
-                            </div>
-                            <div className="text-xs text-text-muted mt-1 opacity-70">
-                                {t('settings.aiagentscriptexecutionnode', language as Language) || 'For AI agent script execution and MCP plugin startup'}
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <div className={`w-2 h-2 rounded-full ${nodeStatus?.ready ? 'bg-green-500' : 'bg-red-500'}`} />
-                            <span className="text-xs font-medium text-text-secondary">
-                                {nodeStatus?.ready
-                                    ? (t('settings.ready', language as Language))
-                                    : (t('settings.notready', language as Language))}
-                            </span>
-                        </div>
+        <div className="p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border space-y-4 shadow-sm">
+            <div className="flex items-center justify-between">
+                <div>
+                    <div className="text-sm font-bold text-text-primary flex items-center gap-2">
+                        <Terminal className="w-4 h-4 text-accent" />
+                        {t('settings.noderuntime', language as Language) || 'Node.js Runtime'}
                     </div>
+                    <div className="text-xs text-text-muted mt-1 opacity-70 ml-6">
+                        {t('settings.aiagentscriptexecutionnode', language as Language) || 'For AI agent script execution and MCP plugin startup'}
+                    </div>
+                </div>
+                <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${nodeStatus?.ready ? 'bg-green-500' : 'bg-red-500'}`} />
+                    <span className="text-xs font-medium text-text-secondary">
+                        {nodeStatus?.ready
+                            ? (t('settings.ready', language as Language))
+                            : (t('settings.notready', language as Language))}
+                    </span>
+                </div>
+            </div>
 
                     {nodeStatus && (
                         <div className="space-y-2 p-4 bg-background/50 rounded-xl border border-border shadow-inner">
@@ -347,9 +463,7 @@ function NodeEnvSection({ language }: { language: Language }) {
                             {t('settings.setnodepath', language as Language) || 'Set Node Path'}
                         </ActionButton>
                     </div>
-                </div>
-            </div>
-        </section>
+        </div>
     )
 }
 
@@ -406,6 +520,7 @@ export function SystemPreferencesPanel({ language, enableFileLogging, setEnableF
             emailConfig: getStore().emailConfig,
             aiInstructions: getStore().aiInstructions,
             onboardingCompleted: getStore().onboardingCompleted,
+            environmentCheckCompleted: getStore().environmentCheckCompleted,
             enableFileLogging: getStore().enableFileLogging,
             browserMode: getStore().browserMode,
             scenarioPreferences: getStore().scenarioPreferences ?? DEFAULT_SCENARIO_PREFERENCES,
@@ -617,29 +732,30 @@ export function SystemPreferencesPanel({ language, enableFileLogging, setEnableF
                             {isClearing ? (t('settings.clearing', language as Language)) : (t('settings.clear', language as Language))}
                         </ActionButton>
                     </div>
-
-                    <div className="flex items-center justify-between p-6 bg-red-500/10 rounded-2xl border border-red-500/20 shadow-sm">
-                        <div>
-                            <div className="text-sm font-bold text-red-400">{t('settings.resetallsettings', language as Language)}</div>
-                            <div className="text-xs text-red-400/70 mt-1">{t('settings.restorefactorysettingsirreversible', language as Language)}</div>
-                        </div>
-                        <ActionButton variant="danger" size="sm" onClick={handleReset} className="rounded-xl px-6">
-                            {t('settings.reset', language as Language)}
-                        </ActionButton>
-                    </div>
                 </div>
             </section>
 
-            {/* Python 环境 */}
-            <PythonEnvSection language={language} />
-            <NodeEnvSection language={language} />
-
-            {/* 日志管理 */}
+            {/* 环境管理（Python / uv / Node.js 三项核心运行时） */}
             <section>
                 <div className="flex items-center gap-2 mb-5 ml-1">
-                    <FileText className="w-4 h-4 text-accent" />
+                    <Terminal className="w-4 h-4 text-accent" />
                     <h4 className="text-[12px] font-bold text-text-muted uppercase tracking-[0.2em]">
-                        {t('settings.logmanagement', language as Language)}
+                        {t('settings.environmentmanagement', language as Language) || '环境管理'}
+                    </h4>
+                </div>
+                <div className="space-y-4">
+                    <UvEnvSection language={language} />
+                    <PythonEnvSection language={language} />
+                    <NodeEnvSection language={language} />
+                </div>
+            </section>
+
+            {/* 插件管理 */}
+            <section>
+                <div className="flex items-center gap-2 mb-5 ml-1">
+                    <Package className="w-4 h-4 text-accent" />
+                    <h4 className="text-[12px] font-bold text-text-muted uppercase tracking-[0.2em]">
+                        {t('settings.pluginmanagement', language as Language) || '插件管理'}
                     </h4>
                 </div>
                 <div className="space-y-4">
@@ -665,7 +781,18 @@ export function SystemPreferencesPanel({ language, enableFileLogging, setEnableF
                             />
                         </div>
                     </div>
+                </div>
+            </section>
 
+            {/* 日志管理 */}
+            <section>
+                <div className="flex items-center gap-2 mb-5 ml-1">
+                    <FileText className="w-4 h-4 text-accent" />
+                    <h4 className="text-[12px] font-bold text-text-muted uppercase tracking-[0.2em]">
+                        {t('settings.logmanagement', language as Language)}
+                    </h4>
+                </div>
+                <div className="space-y-4">
                     <div className="p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border space-y-5 shadow-sm">
                         <div className="flex items-center justify-between">
                             <div>
@@ -865,6 +992,25 @@ export function SystemPreferencesPanel({ language, enableFileLogging, setEnableF
                             className="hidden"
                         />
                     </div>
+                </div>
+            </section>
+
+            {/* 危险区域：重置所有设置（置于页面最后） */}
+            <section>
+                <div className="flex items-center gap-2 mb-5 ml-1">
+                    <AlertTriangle className="w-4 h-4 text-red-400" />
+                    <h4 className="text-[12px] font-bold text-red-400/80 uppercase tracking-[0.2em]">
+                        {t('settings.dangerzone', language as Language) || '危险区域'}
+                    </h4>
+                </div>
+                <div className="flex items-center justify-between p-6 bg-red-500/10 rounded-2xl border border-red-500/20 shadow-sm">
+                    <div>
+                        <div className="text-sm font-bold text-red-400">{t('settings.resetallsettings', language as Language)}</div>
+                        <div className="text-xs text-red-400/70 mt-1">{t('settings.restorefactorysettingsirreversible', language as Language)}</div>
+                    </div>
+                    <ActionButton variant="danger" size="sm" onClick={handleReset} className="rounded-xl px-6">
+                        {t('settings.reset', language as Language)}
+                    </ActionButton>
                 </div>
             </section>
         </div>

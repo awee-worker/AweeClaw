@@ -12,6 +12,10 @@ import {
   syncRefreshedTokens,
   backendApi,
 } from '@services/backendApi'
+import {
+  preloadFeatures,
+  clearFeatureGuardCache,
+} from '@services/featureGuardService'
 import { toast } from '@components/foundation/NotificationProvider'
 import { api } from '../../adapters/electronBridge'
 import { aweeclawDir } from '../../adapters/appDirService'
@@ -175,6 +179,7 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
   authFailedHandler = () => {
     logger.system.warn('[Auth] authFailedHandler called, clearing all auth state')
     clearPersistedAuth();
+    clearFeatureGuardCache();
 
     const wasAuthenticated = get().isAuthenticated;
 
@@ -240,6 +245,8 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
     // 顺序：先获取 profile，再并发获取其他数据
     await get().fetchProfile();
     get().fetchQuota().catch(() => {});
+    // 预加载功能权限配置（付费墙）
+    preloadFeatures().catch(() => {});
     // 仅在未配置自定义模型时自动选择云端模型
     if (!hasCustomModel) {
       get().selectCloudModel().catch(() => {});
@@ -265,6 +272,7 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
 
     await get().fetchProfile();
     get().fetchQuota().catch(() => {});
+    preloadFeatures().catch(() => {});
     if (!hasCustomModel) {
       get().selectCloudModel().catch(() => {});
     }
@@ -289,6 +297,7 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
 
     await get().fetchProfile();
     get().fetchQuota().catch(() => {});
+    preloadFeatures().catch(() => {});
     if (!hasCustomModel) {
       get().selectCloudModel().catch(() => {});
     }
@@ -320,6 +329,7 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
     knowledgeSyncService.stopAutoSync();
     knowledgeGraphSyncService.stopAutoSync();
     setTokens(null);
+    clearFeatureGuardCache();
     clearPersistedAuth();
     set({ isAuthenticated: false, cloudUser: null, quota: null, cloudMode: 'local' });
     restoreWorkspaceAgentStore().catch(() => {});
@@ -513,6 +523,8 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
 
     // 会话恢复成功后
     get().fetchQuota().catch(() => {});
+    // 预加载功能权限配置（付费墙）
+    preloadFeatures().catch(() => {});
     if (persisted.cloudMode === 'cloud') {
       get().selectCloudModel().catch(() => {});
     }

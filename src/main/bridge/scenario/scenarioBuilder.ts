@@ -100,6 +100,61 @@ interface CreateProjectFilesParams {
 }
 
 /**
+ * 从模板创建项目的参数
+ *
+ * 在 CreateProjectFilesParams 之上扩展模板相关字段：
+ * - configOverride：模板的 scenarioConfigOverride，深度合并到 scenario.json
+ * - extraFiles：模板的额外文件（已替换变量占位符）
+ * - overrideFiles：模板的覆盖文件（已替换变量占位符）
+ */
+interface CreateFromTemplateParams extends CreateProjectFilesParams {
+  configOverride?: Record<string, unknown>
+  extraFiles?: Record<string, string>
+  overrideFiles?: Record<string, string>
+}
+
+/**
+ * 深度合并两个对象（后者覆盖前者）
+ *
+ * 用于将模板的 scenarioConfigOverride 合并到基础 scenario.json：
+ * - 同名对象字段递归合并
+ * - 非对象字段（字符串/数组/数字等）直接覆盖
+ * - 数组采用整体替换（不做并集，避免顺序混乱）
+ */
+function deepMerge<T extends Record<string, unknown>>(base: T, override: Record<string, unknown>): T {
+  const result: Record<string, unknown> = { ...base }
+  for (const [key, value] of Object.entries(override)) {
+    if (
+      value !== null &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      typeof result[key] === 'object' &&
+      !Array.isArray(result[key]) &&
+      result[key] !== null
+    ) {
+      // 双方都是普通对象 → 递归合并
+      result[key] = deepMerge(
+        result[key] as Record<string, unknown>,
+        value as Record<string, unknown>,
+      )
+    } else {
+      // 非对象或数组 → 直接覆盖
+      result[key] = value
+    }
+  }
+  return result as T
+}
+
+/**
+ * 安全写入文件：自动创建目录，路径穿越校验
+ */
+function safeWriteFile(basePath: string, relativePath: string, content: string): void {
+  const fullPath = safeJoinPath(basePath, relativePath)
+  ensureDir(path.dirname(fullPath))
+  fs.writeFileSync(fullPath, content, 'utf-8')
+}
+
+/**
  * 构建声明式场景配置（DeclarativeScenarioConfig）
  * 包含完整的 identity（多提示词文件）、capabilities、ui、database、scripts 配置
  */
@@ -213,6 +268,110 @@ function createProjectScaffold(params: CreateProjectFilesParams): void {
   } else {
     createDeclarativeScaffold(params)
   }
+}
+
+/**
+ * 从模板创建项目骨架
+ *
+ * 流程：
+ * 1. 调用 createProjectScaffold 生成基础骨架（含 scenario.json/prompts/scripts/db 等）
+ * 2. 应用 configOverride：深度合并到 scenario.json（按类型读取对应配置格式）
+ * 3. 写入 extraFiles：模板提供的额外文件（如 scripts/tools/queryData.js）
+ * 4. 写入 overrideFiles：覆盖基础骨架中的同名文件（如 prompts/system.md）
+ *
+ * 设计要点：
+ * - 顺序：先基础骨架 → 再 extraFiles → 最后 overrideFiles（overrideFiles 优先级最高）
+ * - scenario.json 采用深度合并，保留基础骨架的字段，仅覆盖 configOverride 指定的字段
+ * - 所有文件写入使用 safeWriteFile，防止路径穿越
+ *
+ * @returns 步骤记录，用于前端展示创建进度
+ */
+function createProjectFromTemplateScaffold(params: CreateFromTemplateParams): Array<{
+  id: string
+  status: 'success' | 'failed'
+  message: string
+}> {
+  const steps: Array<{ id: string; status: 'success' | 'failed'; message: string }> = []
+  const { localPath, configOverride, extraFiles, overrideFiles } = params
+
+  // 1. 生成基础骨架
+  try {
+    createProjectScaffold(params)
+    steps.push({ id: 'scaffold', status: 'success', message: '基础骨架已创建' })
+  } catch (err) {
+    steps.push({
+      id: 'scaffold',
+      status: 'failed',
+      message: `基础骨架创建失败: ${err instanceof Error ? err.message : String(err)}`,
+    })
+    return steps
+  }
+
+  // 2. 应用 configOverride：深度合并到 scenario.json
+  if (configOverride && Object.keys(configOverride).length > 0) {
+    try {
+      const configPath = path.join(localPath, 'config', 'scenario.json')
+      if (!fs.existsSync(configPath)) {
+        steps.push({
+          id: 'config',
+          status: 'failed',
+          message: 'config/scenario.json 不存在，无法应用模板配置覆盖',
+        })
+        return steps
+      }
+      const baseConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8')) as Record<string, unknown>
+      const mergedConfig = deepMerge(baseConfig, configOverride)
+      writeJsonFile(configPath, mergedConfig)
+      steps.push({ id: 'config', status: 'success', message: '模板配置已合并到 scenario.json' })
+    } catch (err) {
+      steps.push({
+        id: 'config',
+        status: 'failed',
+        message: `配置合并失败: ${err instanceof Error ? err.message : String(err)}`,
+      })
+      return steps
+    }
+  }
+
+  // 3. 写入 extraFiles（模板提供的额外文件）
+  if (extraFiles && Object.keys(extraFiles).length > 0) {
+    try {
+      let count = 0
+      for (const [relPath, content] of Object.entries(extraFiles)) {
+        safeWriteFile(localPath, relPath, content)
+        count++
+      }
+      steps.push({ id: 'extraFiles', status: 'success', message: `已写入 ${count} 个模板额外文件` })
+    } catch (err) {
+      steps.push({
+        id: 'extraFiles',
+        status: 'failed',
+        message: `额外文件写入失败: ${err instanceof Error ? err.message : String(err)}`,
+      })
+      return steps
+    }
+  }
+
+  // 4. 写入 overrideFiles（覆盖基础骨架中的同名文件，优先级最高）
+  if (overrideFiles && Object.keys(overrideFiles).length > 0) {
+    try {
+      let count = 0
+      for (const [relPath, content] of Object.entries(overrideFiles)) {
+        safeWriteFile(localPath, relPath, content)
+        count++
+      }
+      steps.push({ id: 'overrideFiles', status: 'success', message: `已覆盖 ${count} 个骨架文件` })
+    } catch (err) {
+      steps.push({
+        id: 'overrideFiles',
+        status: 'failed',
+        message: `覆盖文件写入失败: ${err instanceof Error ? err.message : String(err)}`,
+      })
+      return steps
+    }
+  }
+
+  return steps
 }
 
 /**
@@ -976,6 +1135,14 @@ interface WriteFileParams {
   createDirs?: boolean
 }
 
+/** 克隆示例场景到本地项目目录的参数 */
+interface CloneExampleParams {
+  /** 目标项目路径（如 workspace/scenarios/<scenarioId>） */
+  targetPath: string
+  /** 要写入的文件列表（相对路径 + 内容） */
+  files: Array<{ path: string; content: string }>
+}
+
 // ==========================================
 // 内嵌构建/打包
 // ==========================================
@@ -1226,9 +1393,10 @@ function startTryRun(projectPath: string): { success: boolean; scenarioId?: stri
 
     // 标记为试运行（场景加载器会优先检查此注册表）
     tryRunRegistry.set(scenarioId, projectPath)
+    // 记录启动时间，供性能指标 / 健康状态查询使用
+    markTryRunStarted(scenarioId)
 
-    // 通过 webContents 通知渲染进程刷新场景列表
-    // 实际加载由渲染进程的 ScenarioLoader 完成
+    logger.agent.info(`[ScenarioBuilder] tryRun started: scenarioId=${scenarioId}, projectPath=${projectPath}`)
     return { success: true, scenarioId }
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : String(err) }
@@ -1237,6 +1405,8 @@ function startTryRun(projectPath: string): { success: boolean; scenarioId?: stri
 
 function stopTryRun(scenarioId: string): { success: boolean } {
   tryRunRegistry.delete(scenarioId)
+  clearTryRunStarted(scenarioId)
+  logger.agent.info(`[ScenarioBuilder] tryRun stopped: scenarioId=${scenarioId}`)
   return { success: true }
 }
 
@@ -1246,6 +1416,432 @@ function isTryRunning(scenarioId: string): boolean {
 
 function getTryRunPath(scenarioId: string): string | null {
   return tryRunRegistry.get(scenarioId) || null
+}
+
+// ==========================================
+// 预览调试数据查询（C2 扩展）
+// ==========================================
+
+/** 预览启动时间记录：scenarioId → 启动时间戳（毫秒） */
+const tryRunStartedAtMap = new Map<string, number>()
+
+/** 标记预览启动时间（在 startTryRun 中调用） */
+function markTryRunStarted(scenarioId: string): void {
+  tryRunStartedAtMap.set(scenarioId, Date.now())
+}
+
+/** 清除预览启动时间（在 stopTryRun 中调用） */
+function clearTryRunStarted(scenarioId: string): void {
+  tryRunStartedAtMap.delete(scenarioId)
+}
+
+/**
+ * 获取场景数据库文件路径
+ * 路径: {userDataPath}/scenario-data/{scenarioId}/{scenarioId}.db
+ */
+function getScenarioDbPath(scenarioId: string): string {
+  return path.join(app.getPath('userData'), 'scenario-data', scenarioId, `${scenarioId}.db`)
+}
+
+/**
+ * 查询 SQLite 数据库的表快照
+ * 使用 node:sqlite 内置模块（Node.js 22+）
+ *
+ * 注意：DatabaseSync.exec() 只用于执行不返回结果的 DDL/DML（返回 void），
+ *      所有 SELECT / PRAGMA 查询必须使用 prepare(...).all() 获取数据。
+ */
+async function queryDatabaseSnapshot(
+  scenarioId: string,
+  tableName?: string,
+  sampleLimit = 10,
+): Promise<{
+  success: boolean
+  snapshot?: {
+    databasePath: string
+    tables: Array<{
+      name: string
+      rowCount: number
+      columns: Array<{ name: string; type: string; nullable?: boolean; primaryKey?: boolean }>
+      sampleRows: Record<string, unknown>[]
+      indexes: Array<{ name: string; columns: string[] }>
+    }>
+    sizeBytes: number
+    queryDurationMs: number
+  }
+  error?: string
+}> {
+  const startTime = Date.now()
+  const dbPath = getScenarioDbPath(scenarioId)
+
+  if (!fs.existsSync(dbPath)) {
+    return {
+      success: false,
+      error: `Database file not found: ${dbPath}`,
+    }
+  }
+
+  try {
+    // 动态导入 node:sqlite，避免旧版本 Node.js 启动失败
+    const { DatabaseSync } = await import('node:sqlite')
+    const db = new DatabaseSync(dbPath, { open: true, readOnly: true })
+    try {
+      // PRAGMA journal_mode 仅为设置，使用 exec 即可
+      try {
+        db.exec('PRAGMA journal_mode=WAL')
+      } catch {
+        // 只读模式下忽略 journal_mode 设置失败
+      }
+
+      // 1. 获取所有表名（SELECT 查询用 prepare + all）
+      const tableNamesStmt = db.prepare(
+        `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name`,
+      )
+      const tableRows = tableNamesStmt.all() as Array<{ name: string }>
+      const allTableNames: string[] = tableRows.map((r) => r.name)
+
+      // 2. 确定要查询的表列表
+      const targetTables = tableName ? allTableNames.filter((n) => n === tableName) : allTableNames
+      if (targetTables.length === 0) {
+        return {
+          success: true,
+          snapshot: {
+            databasePath: dbPath,
+            tables: [],
+            sizeBytes: fs.statSync(dbPath).size,
+            queryDurationMs: Date.now() - startTime,
+          },
+        }
+      }
+
+      // 3. 查询每张表的快照
+      const tables = targetTables.map((name) => {
+        // 行数
+        const countStmt = db.prepare(`SELECT COUNT(*) as cnt FROM "${name}"`)
+        const countRow = countStmt.get() as { cnt: number } | undefined
+        const rowCount = countRow?.cnt ?? 0
+
+        // 列信息：PRAGMA table_info 返回 { cid, name, type, notnull, dflt_value, pk }
+        const columnsStmt = db.prepare(`PRAGMA table_info(?)`)
+        const columnsRows = columnsStmt.all(name) as Array<{
+          cid: number
+          name: string
+          type: string
+          notnull: number
+          dflt_value: string | null
+          pk: number
+        }>
+        const columns = columnsRows.map((r) => ({
+          name: r.name,
+          type: r.type || 'TEXT',
+          nullable: r.notnull === 0,
+          primaryKey: r.pk > 0,
+        }))
+
+        // 索引：PRAGMA index_list 返回 { seq, name, unique, origin, partial }
+        const indexListStmt = db.prepare(`PRAGMA index_list(?)`)
+        const indexListRows = indexListStmt.all(name) as Array<{
+          seq: number
+          name: string
+          unique: number
+          origin: string
+          partial: number
+        }>
+        const indexes: Array<{ name: string; columns: string[] }> = []
+        for (const ir of indexListRows) {
+          // PRAGMA index_info 返回 { seqno, cid, name }
+          const indexInfoStmt = db.prepare(`PRAGMA index_info(?)`)
+          const indexInfoRows = indexInfoStmt.all(ir.name) as Array<{
+            seqno: number
+            cid: number
+            name: string | null
+          }>
+          const indexColumns = indexInfoRows
+            .map((r) => r.name)
+            .filter((n): n is string => typeof n === 'string')
+          indexes.push({ name: ir.name, columns: indexColumns })
+        }
+
+        // 样本数据：SELECT * 限定行数
+        const safeLimit = Math.max(1, Math.min(sampleLimit, 100))
+        const sampleStmt = db.prepare(`SELECT * FROM "${name}" LIMIT ?`)
+        const sampleRows = sampleStmt.all(safeLimit) as Record<string, unknown>[]
+
+        return { name, rowCount, columns, sampleRows, indexes }
+      })
+
+      return {
+        success: true,
+        snapshot: {
+          databasePath: dbPath,
+          tables,
+          sizeBytes: fs.statSync(dbPath).size,
+          queryDurationMs: Date.now() - startTime,
+        },
+      }
+    } finally {
+      db.close()
+    }
+  } catch (err) {
+    logger.agent.warn(
+      `[ScenarioBuilder] queryDatabaseSnapshot failed for scenarioId=${scenarioId}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    )
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    }
+  }
+}
+
+/**
+ * 获取预览性能指标（基础版本）
+ * 运行时长、数据库大小、健康状态
+ */
+function getTryRunMetrics(scenarioId: string): {
+  success: boolean
+  metrics?: {
+    startedAt: string
+    uptimeMs: number
+    memoryUsageBytes: number
+    toolCallCount: number
+    toolCallSuccessCount: number
+    toolCallFailureCount: number
+    avgToolCallDurationMs: number
+    dbQueryCount: number
+    avgDbQueryDurationMs: number
+    activeIpcHandlers: number
+    databaseSizeBytes: number
+    healthStatus: 'healthy' | 'degraded' | 'unhealthy'
+    healthMessage?: string
+  }
+  error?: string
+} {
+  const startedAt = tryRunStartedAtMap.get(scenarioId)
+  if (!startedAt) {
+    return { success: false, error: '预览未运行' }
+  }
+
+  const now = Date.now()
+  const uptimeMs = now - startedAt
+  const memoryUsage = process.memoryUsage()
+
+  // 数据库大小
+  const dbPath = getScenarioDbPath(scenarioId)
+  let dbSize = 0
+  try {
+    if (fs.existsSync(dbPath)) {
+      dbSize = fs.statSync(dbPath).size
+    }
+  } catch {
+    // 忽略
+  }
+
+  // 健康状态：运行超过 1 小时且内存超过 500MB 标记为 degraded
+  let healthStatus: 'healthy' | 'degraded' | 'unhealthy' = 'healthy'
+  let healthMessage: string | undefined
+  if (memoryUsage.rss > 500 * 1024 * 1024) {
+    healthStatus = 'degraded'
+    healthMessage = `内存占用较高（${Math.round(memoryUsage.rss / 1024 / 1024)}MB）`
+  }
+  if (uptimeMs > 60 * 60 * 1000) {
+    healthStatus = 'degraded'
+    healthMessage = (healthMessage || '运行时间较长') + `，运行时长 ${Math.round(uptimeMs / 1000 / 60)} 分钟`
+  }
+
+  return {
+    success: true,
+    metrics: {
+      startedAt: new Date(startedAt).toISOString(),
+      uptimeMs,
+      memoryUsageBytes: memoryUsage.rss,
+      // 工具调用统计暂未收集，返回 0
+      toolCallCount: 0,
+      toolCallSuccessCount: 0,
+      toolCallFailureCount: 0,
+      avgToolCallDurationMs: 0,
+      // 数据库查询统计暂未收集
+      dbQueryCount: 0,
+      avgDbQueryDurationMs: 0,
+      activeIpcHandlers: tryRunRegistry.size,
+      databaseSizeBytes: dbSize,
+      healthStatus,
+      healthMessage,
+    },
+  }
+}
+
+// ==========================================
+// 文件监听（用于热重载）
+// ==========================================
+
+/** 主窗口引用（由 registerScenarioBuilderIpcHandlers 注入，供文件事件回调使用） */
+let mainWindowRef: (() => BrowserWindow | null) | null = null
+
+/** 文件监听注册表：projectPath → { watcher, ignore } */
+interface WatchEntry {
+  /** 根目录 watcher */
+  rootWatcher: fs.FSWatcher
+  /** 子目录 watcher 集合（用于非 recursive 平台的兜底） */
+  subWatchers: fs.FSWatcher[]
+  /** 忽略规则（相对路径前缀或 glob） */
+  ignore: string[]
+}
+
+const watchRegistry = new Map<string, WatchEntry>()
+
+/**
+ * 判断相对路径是否被忽略
+ * @param relativePath 相对项目根目录的路径（POSIX 风格，如 "src/index.ts"）
+ * @param ignore 忽略规则数组（前缀匹配或简单 glob，如 "node_modules/" / "*.log"）
+ */
+function shouldIgnore(relativePath: string, ignore: string[]): boolean {
+  const normalized = relativePath.replace(/\\/g, '/')
+  for (const rule of ignore) {
+    if (rule.endsWith('/')) {
+      // 目录前缀匹配
+      if (normalized.startsWith(rule) || normalized.includes('/' + rule)) {
+        return true
+      }
+    } else if (rule.startsWith('*.')) {
+      // 后缀通配符（如 *.log）
+      const ext = rule.slice(1)
+      if (normalized.endsWith(ext)) {
+        return true
+      }
+    } else if (rule.includes('/')) {
+      // 路径包含匹配
+      if (normalized.includes(rule)) {
+        return true
+      }
+    } else {
+      // 文件名等值匹配
+      if (normalized === rule || normalized.endsWith('/' + rule)) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
+/**
+ * 递归收集项目目录下的所有子目录（最多 3 层，避免性能开销）
+ * 用于在非 recursive 平台兜底监听
+ */
+function collectSubdirs(rootPath: string, maxDepth = 3): string[] {
+  const result: string[] = []
+  function walk(dir: string, depth: number) {
+    if (depth > maxDepth) return
+    let entries: fs.Dirent[]
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        // 跳过常见忽略目录
+        if (['node_modules', '.git', 'dist', '.aweeclaw'].includes(entry.name)) {
+          continue
+        }
+        const fullPath = path.join(dir, entry.name)
+        result.push(fullPath)
+        walk(fullPath, depth + 1)
+      }
+    }
+  }
+  walk(rootPath, 0)
+  return result
+}
+
+/**
+ * 启动项目目录监听
+ * - 使用 fs.watch(recursive: true) 在 macOS/Windows 上原生递归监听
+ * - 在不支持 recursive 的平台，会兜底递归监听 3 层子目录
+ * - 文件变化时通过 webContents.send 推送 'scenario-builder:fileChange' 事件
+ */
+function startWatchProject(
+  projectPath: string,
+  ignore: string[],
+): { success: boolean; error?: string } {
+  if (!fs.existsSync(projectPath)) {
+    return { success: false, error: `Project path not found: ${projectPath}` }
+  }
+  // 若已存在监听，先关闭
+  stopWatchProject(projectPath)
+
+  const subWatchers: fs.FSWatcher[] = []
+  let rootWatcher: fs.FSWatcher
+
+  const handleEvent = (eventType: string, filename: string | null) => {
+    if (!filename) return
+    const relativePath = filename.replace(/\\/g, '/')
+    if (shouldIgnore(relativePath, ignore)) return
+    const win = mainWindowRef?.()
+    if (!win || win.isDestroyed()) return
+    win.webContents.send('scenario-builder:fileChange', {
+      projectPath,
+      relativePath,
+      type: eventType === 'rename' ? 'add' : 'change',
+    })
+  }
+
+  try {
+    // 根目录递归监听（macOS/Windows 支持）
+    rootWatcher = fs.watch(projectPath, { recursive: true }, (eventType, filename) => {
+      handleEvent(eventType, filename)
+    })
+  } catch (err) {
+    // 不支持 recursive（Linux），降级为子目录监听
+    logger.agent.warn('[FileWatcher] recursive watch unsupported, fallback to subdirs:', err)
+    try {
+      rootWatcher = fs.watch(projectPath, (eventType, filename) => {
+        handleEvent(eventType, filename)
+      })
+      const subdirs = collectSubdirs(projectPath)
+      for (const subdir of subdirs) {
+        try {
+          const sw = fs.watch(subdir, (eventType, filename) => {
+            // 将子目录文件名转为相对路径
+            const relativeName = filename ? path.relative(projectPath, path.join(subdir, filename)).replace(/\\/g, '/') : null
+            handleEvent(eventType, relativeName)
+          })
+          subWatchers.push(sw)
+        } catch {
+          // 单个子目录监听失败不影响整体
+        }
+      }
+    } catch (err2) {
+      return { success: false, error: err2 instanceof Error ? err2.message : String(err2) }
+    }
+  }
+
+  watchRegistry.set(projectPath, { rootWatcher, subWatchers, ignore })
+  logger.agent.info(`[FileWatcher] Started watching: ${projectPath}`)
+  return { success: true }
+}
+
+/**
+ * 停止项目目录监听
+ */
+function stopWatchProject(projectPath: string): { success: boolean } {
+  const entry = watchRegistry.get(projectPath)
+  if (!entry) return { success: true }
+  try {
+    entry.rootWatcher.close()
+  } catch {
+    // ignore
+  }
+  for (const sw of entry.subWatchers) {
+    try {
+      sw.close()
+    } catch {
+      // ignore
+    }
+  }
+  watchRegistry.delete(projectPath)
+  logger.agent.info(`[FileWatcher] Stopped watching: ${projectPath}`)
+  return { success: true }
 }
 
 // ==========================================
@@ -1390,6 +1986,8 @@ async function uploadScenarioPackage(
 export function registerScenarioBuilderIpcHandlers(
   getMainWindow: () => BrowserWindow | null,
 ): void {
+  // 注入主窗口引用供文件监听事件回调使用
+  mainWindowRef = getMainWindow
   // ─── 项目骨架创建 ─────────────────────────────────────
   safeIpcHandle('scenario-builder:createProjectFiles', async (_event, params: CreateProjectFilesParams) => {
     try {
@@ -1407,6 +2005,60 @@ export function registerScenarioBuilderIpcHandlers(
       return { success: false, error: err instanceof Error ? err.message : String(err) }
     }
   })
+
+  // ─── 从模板创建项目骨架 ─────────────────────────────────
+  // 流程：基础骨架 → 合并 configOverride → 写入 extraFiles → 覆盖 overrideFiles
+  safeIpcHandle(
+    'scenario-builder:createProjectFromTemplate',
+    async (_event, params: CreateFromTemplateParams) => {
+      try {
+        if (!params.localPath || !params.scenarioId || !params.name) {
+          return {
+            success: false,
+            error: 'Missing required fields: localPath, scenarioId, name',
+            steps: [],
+          }
+        }
+        if (fs.existsSync(params.localPath) && fs.readdirSync(params.localPath).length > 0) {
+          return {
+            success: false,
+            error: `Directory not empty: ${params.localPath}`,
+            steps: [],
+          }
+        }
+
+        const steps = createProjectFromTemplateScaffold(params)
+        const allSuccess = steps.every((s) => s.status === 'success')
+
+        if (allSuccess) {
+          logger.agent.info(
+            `[ScenarioBuilder] Created project "${params.scenarioId}" from template at ${params.localPath}`,
+          )
+        } else {
+          logger.agent.error(
+            `[ScenarioBuilder] Failed to create project from template: ${steps
+              .filter((s) => s.status === 'failed')
+              .map((s) => s.message)
+              .join('; ')}`,
+          )
+        }
+
+        return {
+          success: allSuccess,
+          localPath: params.localPath,
+          steps,
+          error: allSuccess ? undefined : steps.find((s) => s.status === 'failed')?.message,
+        }
+      } catch (err) {
+        logger.agent.error('[ScenarioBuilder] createProjectFromTemplate failed:', err)
+        return {
+          success: false,
+          error: err instanceof Error ? err.message : String(err),
+          steps: [],
+        }
+      }
+    },
+  )
 
   // ─── 文件读取 ───────────────────────────────────────
   safeIpcHandle('scenario-builder:readFile', async (_event, params: ReadFileParams) => {
@@ -1437,6 +2089,68 @@ export function registerScenarioBuilderIpcHandlers(
       return { success: true }
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
+  // ─── 克隆示例场景 ──────────────────────────────────
+  // 一次性写入示例场景的所有文件，提供原子性与进度反馈
+  safeIpcHandle('scenario-builder:cloneExample', async (_event, params: CloneExampleParams) => {
+    try {
+      if (!params.targetPath) {
+        return { success: false, error: 'Missing required field: targetPath', filesWritten: 0 }
+      }
+      if (!Array.isArray(params.files) || params.files.length === 0) {
+        return { success: false, error: 'No files to clone', filesWritten: 0 }
+      }
+      // 目标目录如已存在且非空，拒绝覆盖
+      if (fs.existsSync(params.targetPath) && fs.readdirSync(params.targetPath).length > 0) {
+        return {
+          success: false,
+          error: `Target directory not empty: ${params.targetPath}`,
+          filesWritten: 0,
+        }
+      }
+      // 创建根目录
+      ensureDir(params.targetPath)
+      // 逐个写入文件，记录成功数
+      let written = 0
+      const failures: Array<{ path: string; error: string }> = []
+      for (const f of params.files) {
+        try {
+          const fullPath = safeJoinPath(params.targetPath, f.path)
+          ensureDir(path.dirname(fullPath))
+          fs.writeFileSync(fullPath, f.content, 'utf-8')
+          written++
+        } catch (err) {
+          failures.push({
+            path: f.path,
+            error: err instanceof Error ? err.message : String(err),
+          })
+        }
+      }
+      if (failures.length > 0) {
+        logger.agent.warn(
+          `[ScenarioBuilder] cloneExample: ${written} succeeded, ${failures.length} failed`,
+        )
+      } else {
+        logger.agent.info(
+          `[ScenarioBuilder] Cloned example with ${written} files to ${params.targetPath}`,
+        )
+      }
+      return {
+        success: failures.length === 0,
+        localPath: params.targetPath,
+        filesWritten: written,
+        failures,
+        error: failures.length > 0 ? `${failures.length} file(s) failed` : undefined,
+      }
+    } catch (err) {
+      logger.agent.error('[ScenarioBuilder] cloneExample failed:', err)
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : String(err),
+        filesWritten: 0,
+      }
     }
   })
 
@@ -1479,6 +2193,130 @@ export function registerScenarioBuilderIpcHandlers(
   safeIpcHandle('scenario-builder:tryRunStatus', async (_event, params: { scenarioId: string }) => {
     return { running: isTryRunning(params.scenarioId), projectPath: getTryRunPath(params.scenarioId) }
   })
+
+  // ─── 预览调试数据查询（C2 扩展） ─────────────────────
+  // 1. 实时日志：从 logger ring buffer 中按 scenarioId 过滤
+  safeIpcHandle(
+    'scenario-builder:getLiveLogs',
+    async (
+      _event,
+      params: { scenarioId: string; limit?: number; level?: 'info' | 'warn' | 'error' | 'debug' },
+    ) => {
+      try {
+        if (!isTryRunning(params.scenarioId)) {
+          return { success: false, logs: [], error: '预览未运行' }
+        }
+        const limit = Math.max(1, Math.min(params.limit ?? 200, 1000))
+        const all = logger.getLogs()
+        // 先按 scenarioId 精确过滤
+        let filtered = all.filter((e) => e.scenarioId === params.scenarioId)
+        // 兜底：若 scenarioId 过滤为空，则按 message 包含 scenarioId 匹配
+        if (filtered.length === 0) {
+          filtered = all.filter((e) => typeof e.message === 'string' && e.message.includes(params.scenarioId))
+        }
+        // 按 level 二次过滤
+        if (params.level) {
+          filtered = filtered.filter((e) => e.level === params.level)
+        }
+        // 取最后 limit 条，按时间正序返回
+        const tail = filtered.slice(-limit)
+        const logs = tail.map((e) => ({
+          timestamp: e.timestamp instanceof Date ? e.timestamp.toISOString() : new Date(e.timestamp).toISOString(),
+          level: e.level,
+          source: e.category,
+          message: e.message,
+          meta: e.data,
+        }))
+        return { success: true, logs }
+      } catch (err) {
+        return {
+          success: false,
+          logs: [],
+          error: err instanceof Error ? err.message : String(err),
+        }
+      }
+    },
+  )
+
+  // 2. 数据库快照：查询场景专属 SQLite 的表结构 + 样本数据
+  safeIpcHandle(
+    'scenario-builder:getDatabaseSnapshot',
+    async (
+      _event,
+      params: { scenarioId: string; tableName?: string; sampleLimit?: number },
+    ) => {
+      try {
+        if (!isTryRunning(params.scenarioId)) {
+          return { success: false, snapshot: null, error: '预览未运行' }
+        }
+        return await queryDatabaseSnapshot(params.scenarioId, params.tableName, params.sampleLimit)
+      } catch (err) {
+        return {
+          success: false,
+          snapshot: null,
+          error: err instanceof Error ? err.message : String(err),
+        }
+      }
+    },
+  )
+
+  // 3. 工具调用轨迹：暂未在主进程收集，返回空数组
+  safeIpcHandle(
+    'scenario-builder:getToolCallTrace',
+    async (_event, params: { scenarioId: string; limit?: number; toolName?: string }) => {
+      try {
+        if (!isTryRunning(params.scenarioId)) {
+          return { success: false, traces: [], error: '预览未运行' }
+        }
+        // 注：工具调用轨迹由渲染进程 ScenarioRuntime 在执行工具时收集并通过 IPC 上报，
+        // 主进程此处仅为占位接口；实际数据查询由渲染进程侧的 TraceCollector 提供。
+        return { success: true, traces: [] }
+      } catch (err) {
+        return {
+          success: false,
+          traces: [],
+          error: err instanceof Error ? err.message : String(err),
+        }
+      }
+    },
+  )
+
+  // 4. 性能指标：运行时长、内存、数据库大小、健康状态
+  safeIpcHandle('scenario-builder:getMetrics', async (_event, params: { scenarioId: string }) => {
+    try {
+      return getTryRunMetrics(params.scenarioId)
+    } catch (err) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : String(err),
+      }
+    }
+  })
+
+  // ─── 文件监听（热重载） ────────────────────────────
+  safeIpcHandle(
+    'scenario-builder:watchProject',
+    async (_event, params: { projectPath: string; ignore?: string[] }) => {
+      try {
+        if (!params.projectPath) {
+          return { success: false, error: 'projectPath is required' }
+        }
+        return startWatchProject(params.projectPath, params.ignore ?? [])
+      } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+  )
+  safeIpcHandle(
+    'scenario-builder:unwatchProject',
+    async (_event, params: { projectPath: string }) => {
+      try {
+        return stopWatchProject(params.projectPath)
+      } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+  )
 
   // ─── 卸载 ──────────────────────────────────────────
   safeIpcHandle('scenario:uninstall', async (_event, scenarioId: string) => {

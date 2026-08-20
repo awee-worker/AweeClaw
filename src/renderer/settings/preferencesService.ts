@@ -68,6 +68,7 @@ const LLM_BEHAVIOR_KEYS = [
 const APP_SETTING_KEYS = [
   'language', 'autoApprove', 'authorizationMode', 'promptTemplateId', 'activeScenarioId',
   'agentConfig', 'aiInstructions', 'onboardingCompleted',
+  'environmentCheckCompleted',
   'webSearchConfig', 'mcpConfig', 'emailConfig', 'enableFileLogging',
   'browserMode', 'scenarioPreferences',
 ] as const
@@ -204,6 +205,9 @@ function rebuildSettingsFromDb(dbData: {
     onboardingCompleted: typeof appSettings.onboardingCompleted === 'boolean'
       ? appSettings.onboardingCompleted
       : defaults.onboardingCompleted,
+    environmentCheckCompleted: typeof appSettings.environmentCheckCompleted === 'boolean'
+      ? appSettings.environmentCheckCompleted
+      : defaults.environmentCheckCompleted,
     enableFileLogging: typeof appSettings.enableFileLogging === 'boolean'
       ? appSettings.enableFileLogging
       : defaults.enableFileLogging,
@@ -611,6 +615,9 @@ class SettingsService {
       onboardingCompleted: typeof saved.onboardingCompleted === 'boolean'
         ? saved.onboardingCompleted
         : defaults.onboardingCompleted,
+      environmentCheckCompleted: typeof saved.environmentCheckCompleted === 'boolean'
+        ? saved.environmentCheckCompleted
+        : defaults.environmentCheckCompleted,
       enableFileLogging: typeof saved.enableFileLogging === 'boolean'
         ? saved.enableFileLogging
         : defaults.enableFileLogging,

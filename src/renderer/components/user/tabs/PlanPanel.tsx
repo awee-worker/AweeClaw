@@ -1,14 +1,25 @@
-import { useState, useCallback, useEffect } from 'react'
+/**
+ * PlanPanel — 套餐管理面板
+ *
+ * 布局：左右分栏（100% 宽度）
+ * - 左侧：当前套餐、用量、套餐列表
+ * - 右侧：支付方式选择、支付二维码/跳转
+ *
+ * 响应式：移动端自动堆叠为上下布局
+ */
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { logger } from '@shared/toolkit/LogEngine'
 import {
   Crown,
   Zap,
   Feather,
   Rocket,
-  CreditCard,
-  ExternalLink,
   AlertCircle,
   Loader2,
+  Users,
+  BellRing,
+  X,
+  CheckCircle2,
 } from 'lucide-react'
 import QRCode from 'qrcode'
 import { useStore } from '@store'
@@ -16,17 +27,19 @@ import { useShallow } from 'zustand/react/shallow'
 import { ActionButton } from '@components/ui'
 import { t, type Language } from '@renderer/i18n'
 import { backendApi } from '@services/backendApi'
+import { useFeatureGuard } from '@hooks/useFeatureGuard'
 import { getQuotaBarColor, getQuotaTextColor } from '@utils/quotaColors'
 import { formatTokenCount } from '@utils/formatter'
 import {
   type PlanItem,
   type PaymentResult,
   type PaymentChannelInfo,
-  planIcons,
-  planColors,
   channelLabels,
   channelStyles,
+  extractChannelNames,
+  getChannelIconUrl,
 } from './shared'
+import { PlanCard } from './PlanCard'
 
 interface PlanPanelProps {
   language: Language
@@ -39,10 +52,11 @@ export function PlanPanel({ language }: PlanPanelProps) {
     fetchQuota: s.fetchQuota,
     fetchProfile: s.fetchProfile,
   })))
+  const { effectivePlanId, refresh: refreshFeatures } = useFeatureGuard()
 
   const [plans, setPlans] = useState<PlanItem[]>([])
-  const [availableChannels, setAvailableChannels] = useState<string[]>([])
-  const [mockMode, setMockMode] = useState(false)
+  const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly')
+  const [channelInfo, setChannelInfo] = useState<PaymentChannelInfo | null>(null)
   const [selectedPlan, setSelectedPlan] = useState<PlanItem | null>(null)
   const [paymentChannel, setPaymentChannel] = useState('')
   const [paymentLoading, setPaymentLoading] = useState(false)
@@ -51,26 +65,111 @@ export function PlanPanel({ language }: PlanPanelProps) {
   const [polling, setPolling] = useState(false)
   const [loadingPlans, setLoadingPlans] = useState(false)
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState('')
+  /** 支付成功标识（轮询检测到 PAID 后置为 true） */
+  const [paymentSuccess, setPaymentSuccess] = useState(false)
+  /** 未读的订阅到期提醒通知 */
+  const [expiryNotification, setExpiryNotification] = useState<{
+    id: string
+    title: string
+    content: string | null
+  } | null>(null)
+  /** 轮询定时器引用，用于组件卸载或取消支付时清理 */
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  /** 停止订单状态轮询 */
+  const stopPolling = useCallback(() => {
+    setPolling(false)
+    if (pollTimerRef.current) {
+      clearTimeout(pollTimerRef.current)
+      pollTimerRef.current = null
+    }
+  }, [])
+
+  // 组件卸载时清理轮询定时器，避免内存泄漏和状态更新警告
+  useEffect(() => {
+    return () => {
+      if (pollTimerRef.current) {
+        clearTimeout(pollTimerRef.current)
+        pollTimerRef.current = null
+      }
+    }
+  }, [])
+
+  // 获取未读的订阅到期提醒通知
+  useEffect(() => {
+    backendApi
+      .get<{ items: Array<{ id: string; type: string; title: string; content: string | null; isRead: boolean }> }>(
+        '/api/v1/payment/notifications?unreadOnly=true&limit=10',
+      )
+      .then(data => {
+        const expiryNote = (data?.items || []).find(n => n.type === 'subscription_expiring')
+        if (expiryNote) {
+          setExpiryNotification({
+            id: expiryNote.id,
+            title: expiryNote.title,
+            content: expiryNote.content,
+          })
+        }
+      })
+      .catch(() => {})
+  }, [effectivePlanId])
+
+  /** 关闭到期提醒横幅并标记已读 */
+  const dismissNotification = useCallback(() => {
+    if (!expiryNotification) return
+    backendApi
+      .post(`/api/v1/payment/notifications/${expiryNotification.id}/read`)
+      .catch(() => {})
+    setExpiryNotification(null)
+  }, [expiryNotification])
 
   useEffect(() => {
     setLoadingPlans(true)
     Promise.all([
       backendApi
         .get<PlanItem[]>('/api/v1/payment/plans')
-        .then(data => setPlans((data || []).filter(p => p.isActive && Number(p.price) > 0 && p.name !== cloudUser?.planId)))
+        .then(data => {
+          const sorted = (data || []).filter(p => p.isActive).sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0))
+          setPlans(sorted)
+
+          // 默认选中当前套餐的下一级套餐（跳过 FREE，免费版不可手动订阅）
+          // 若已是最后一级套餐，则选最后一级（即当前套餐本身，右侧面板显示"使用中"状态）
+          if (sorted.length > 0) {
+            const currentIdx = sorted.findIndex(p => p.name === effectivePlanId)
+            let nextPlan: PlanItem | undefined
+            if (currentIdx === -1) {
+              // 未找到当前套餐，选第一个非 FREE 套餐
+              nextPlan = sorted.find(p => p.name !== 'FREE') || sorted[0]
+            } else if (currentIdx >= sorted.length - 1) {
+              // 已是最后一级，选最后一级（跳过 FREE）
+              nextPlan = sorted.slice().reverse().find(p => p.name !== 'FREE') || sorted[sorted.length - 1]
+            } else {
+              // 从当前位置往后找第一个非 FREE 套餐
+              nextPlan = sorted.slice(currentIdx + 1).find(p => p.name !== 'FREE')
+              if (!nextPlan) {
+                // 后面全是 FREE，往前找
+                nextPlan = sorted.slice(0, currentIdx).reverse().find(p => p.name !== 'FREE')
+              }
+              if (!nextPlan) nextPlan = sorted[currentIdx]
+            }
+            setSelectedPlan(nextPlan)
+          }
+        })
         .catch(() => setPlans([])),
       backendApi
         .get<PaymentChannelInfo>('/api/v1/payment/channels')
         .then(data => {
-          setAvailableChannels(data?.channels || [])
-          setMockMode(data?.mockMode ?? false)
+          const info = data || null
+          setChannelInfo(info)
+          // 默认选中微信支付（若不可用则选第一个可用渠道）
+          const names = extractChannelNames(info || undefined)
+          if (names.length > 0 && !paymentChannel) {
+            setPaymentChannel(names.includes('WECHAT') ? 'WECHAT' : names[0])
+          }
         })
-        .catch(() => {
-          setAvailableChannels(['WECHAT', 'ALIPAY'])
-          setMockMode(false)
-        }),
+        .catch(() => setChannelInfo({ channels: ['WECHAT', 'ALIPAY'], mockMode: false })),
     ]).finally(() => setLoadingPlans(false))
-  }, [cloudUser?.planId])
+  }, [effectivePlanId])
 
   useEffect(() => {
     if (paymentResult?.qrCodeUrl) {
@@ -88,16 +187,21 @@ export function PlanPanel({ language }: PlanPanelProps) {
     setPaymentError('')
     setPaymentResult(null)
     setQrCodeDataUrl('')
+    setPaymentSuccess(false)
     try {
       const result = await backendApi.post<{ order: any; payment: PaymentResult }>('/api/v1/payment/create', {
         planId: selectedPlan.id,
         channel: paymentChannel,
-        periodMonths: 1,
+        periodMonths: billingPeriod === 'yearly' ? 12 : 1,
       })
-      setPaymentResult(result.payment)
-      if (paymentChannel === 'ALIPAY' && result.payment?.paymentUrl) {
-        window.electronAPI?.openExternalUrl?.(result.payment.paymentUrl)
+
+      // 支付网关下单失败（后端已将 success:false 转为异常，这里做二次防御）
+      if (result.payment?.success === false) {
+        setPaymentError(result.payment.error || t('user.failedtocreateorder', language as Language))
+        return
       }
+
+      setPaymentResult(result.payment)
       setPolling(true)
       pollOrderStatus(result.order.orderNo || result.payment.orderNo)
     } catch (e: any) {
@@ -105,85 +209,149 @@ export function PlanPanel({ language }: PlanPanelProps) {
     } finally {
       setPaymentLoading(false)
     }
-  }, [selectedPlan, paymentChannel, language])
+  }, [selectedPlan, paymentChannel, language, billingPeriod])
 
   const pollOrderStatus = useCallback(async (orderNo: string) => {
     let attempts = 0
-    const maxAttempts = 60
+    const maxAttempts = 60   // 最多轮询 60 次
+    const intervalMs = 3000  // 每 3 秒轮询一次，共约 3 分钟
+
     const poll = async () => {
-      if (attempts >= maxAttempts) { setPolling(false); return }
+      if (attempts >= maxAttempts) {
+        stopPolling()
+        setPaymentError(language === 'zh' ? '支付确认超时，如已支付请刷新页面' : 'Payment confirmation timeout, please refresh if already paid')
+        return
+      }
       attempts++
       try {
         const order = await backendApi.get<any>(`/api/v1/payment/order/${orderNo}`)
         if (order?.status === 'PAID') {
-          setPolling(false)
+          stopPolling()
+          setPaymentSuccess(true)
           await fetchQuota()
           await fetchProfile()
+          await refreshFeatures()
           return
         }
         if (order?.status === 'CANCELLED' || order?.status === 'EXPIRED') {
-          setPolling(false)
+          stopPolling()
           setPaymentError(t('user.order', language as Language, { status: order.status.toLowerCase(), status2: order.status === 'CANCELLED' ? '取消' : '过期' }))
           return
         }
       } catch (e) { logger.ui.warn('Failed to poll order status:', e) }
+      // 继续下一轮轮询
+      pollTimerRef.current = setTimeout(poll, intervalMs)
     }
     poll()
-  }, [language, fetchQuota, fetchProfile])
+  }, [language, fetchQuota, fetchProfile, refreshFeatures, stopPolling])
 
   const quotaPercent = quota && quota.limit > 0 ? Math.min((quota.used / quota.limit) * 100, 100) : 0
-  const displayChannels = mockMode ? ['MOCK', ...availableChannels.filter(c => c !== 'MOCK')] : availableChannels
+  const displayChannels = extractChannelNames(channelInfo || undefined)
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3 p-4 rounded-xl bg-surface/50 border border-border/40">
-        {cloudUser?.planId === 'ENTERPRISE' ? (
-          <Rocket className="w-6 h-6 text-amber-400" />
-        ) : cloudUser?.planId === 'PRO' || cloudUser?.planId === 'PROFESSIONAL' ? (
-          <Crown className="w-6 h-6 text-violet-400" />
-        ) : (
-          <Feather className="w-6 h-6 text-text-muted" />
-        )}
-        <div className="flex-1">
-          <p className="text-sm font-semibold text-text-primary">
-            {quota?.displayName || (cloudUser?.planId === 'FREE'
-              ? t('user.freeplan', language as Language)
-              : cloudUser?.planId === 'PRO' || cloudUser?.planId === 'PROFESSIONAL'
-                ? t('user.proplan', language as Language)
-                : cloudUser?.planId === 'ENTERPRISE'
-                  ? t('user.enterpriseplan', language as Language)
-                  : cloudUser?.planId)}
-          </p>
-          <p className="text-xs text-text-muted">{cloudUser?.role}</p>
-        </div>
-      </div>
-
-      {quota && (
-        <div className="space-y-2 px-1">
-          <div className="flex items-center justify-between text-xs">
-            <span className={`flex items-center gap-1 ${getQuotaTextColor(quotaPercent)}`}>
-              <Zap className="w-3 h-3" />
-              {t('user.tokenusage', language as Language)}
-            </span>
-            <span className={`${getQuotaTextColor(quotaPercent)} font-mono`}>
-              {formatTokenCount(quota.used)} / {quota.remaining === -1 ? (t('user.text1', language as Language)) : formatTokenCount(quota.limit)}
-            </span>
+    <div className="w-full">
+      {/* 到期提醒横幅 */}
+      {expiryNotification && (
+        <div className="mb-4 flex items-start gap-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30">
+          <BellRing className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-amber-400">{expiryNotification.title}</p>
+            {expiryNotification.content && (
+              <p className="text-[12px] text-text-secondary mt-1">{expiryNotification.content}</p>
+            )}
           </div>
-          <div className="h-1.5 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all duration-500 ${getQuotaBarColor(quotaPercent)}`}
-              style={{ width: `${Math.max(quotaPercent, quotaPercent > 0 ? 3 : 0)}%` }}
-            />
-          </div>
+          <button
+            onClick={dismissNotification}
+            className="shrink-0 p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-white/5 transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
+      <div className="flex flex-col lg:flex-row gap-4 lg:gap-6">
+        {/* ======================================== */}
+        {/* 左侧：当前套餐 + 用量 + 套餐列表 */}
+        {/* ======================================== */}
+        <div className="flex-1 min-w-0 space-y-4">
+          {/* 当前套餐卡片 */}
+          <div className="flex items-center gap-3 p-4 rounded-xl bg-surface/50 border border-border/40">
+            {effectivePlanId === 'ENTERPRISE' ? (
+              <Rocket className="w-6 h-6 text-amber-400" />
+            ) : effectivePlanId === 'PRO' ? (
+              <Crown className="w-6 h-6 text-violet-400" />
+            ) : effectivePlanId === 'TEAM' ? (
+              <Users className="w-6 h-6 text-blue-400" />
+            ) : (
+              <Feather className="w-6 h-6 text-text-muted" />
+            )}
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-text-primary">
+                {quota?.displayName || (effectivePlanId === 'FREE'
+                  ? t('user.freeplan', language as Language)
+                  : effectivePlanId === 'PRO'
+                    ? t('user.proplan', language as Language)
+                    : effectivePlanId === 'TEAM'
+                      ? (language === 'zh' ? '团队版' : 'Team')
+                      : effectivePlanId === 'ENTERPRISE'
+                        ? t('user.enterpriseplan', language as Language)
+                        : effectivePlanId)}
+              </p>
+              <p className="text-xs text-text-muted">{cloudUser?.role}</p>
+            </div>
+          </div>
 
-      <div className="border-t border-border/30 pt-4">
-        {cloudUser?.planId !== 'ENTERPRISE' && !paymentResult && (
-          <>
-            <h4 className="text-sm font-medium text-text-primary mb-3">
-              {t('user.upgradeplan', language as Language)}
-            </h4>
+          {/* 用量进度条 */}
+          {quota && (
+            <div className="space-y-2 px-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className={`flex items-center gap-1 ${getQuotaTextColor(quotaPercent)}`}>
+                  <Zap className="w-3 h-3" />
+                  {t('user.tokenusage', language as Language)}
+                </span>
+                <span className={`${getQuotaTextColor(quotaPercent)} font-mono`}>
+                  {formatTokenCount(quota.used)} / {quota.remaining === -1 ? (t('user.text1', language as Language)) : formatTokenCount(quota.limit)}
+                </span>
+              </div>
+              <div className="h-1.5 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${getQuotaBarColor(quotaPercent)}`}
+                  style={{ width: `${Math.max(quotaPercent, quotaPercent > 0 ? 3 : 0)}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* 套餐列表 */}
+          <div className="border-t border-border/30 pt-4">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-sm font-medium text-text-primary">
+                {t('user.upgradeplan', language as Language)}
+              </h4>
+              {/* 月/年付切换 */}
+              <div className="flex items-center gap-1 p-0.5 rounded-lg bg-surface/50 border border-border/40">
+                <button
+                  onClick={() => setBillingPeriod('monthly')}
+                  className={`px-3 py-1 rounded-md text-[12px] font-medium transition-all ${
+                    billingPeriod === 'monthly'
+                      ? 'bg-accent text-white'
+                      : 'text-text-muted hover:text-text-primary'
+                  }`}
+                >
+                  {language === 'zh' ? '月付' : 'Monthly'}
+                </button>
+                <button
+                  onClick={() => setBillingPeriod('yearly')}
+                  className={`px-3 py-1 rounded-md text-[12px] font-medium transition-all ${
+                    billingPeriod === 'yearly'
+                      ? 'bg-accent text-white'
+                      : 'text-text-muted hover:text-text-primary'
+                  }`}
+                >
+                  {language === 'zh' ? '年付' : 'Yearly'}
+                  <span className="ml-1 text-accent/80">省2月</span>
+                </button>
+              </div>
+            </div>
             {loadingPlans ? (
               <div className="flex items-center justify-center py-6">
                 <Loader2 className="w-5 h-5 animate-spin text-accent" />
@@ -195,112 +363,191 @@ export function PlanPanel({ language }: PlanPanelProps) {
             ) : (
               <div className="space-y-2">
                 {plans.map(plan => (
-                  <button
+                  <PlanCard
                     key={plan.id}
-                    onClick={() => { setSelectedPlan(plan); setPaymentChannel(''); setPaymentError('') }}
-                    className={`w-full p-3 rounded-xl border text-left transition-all ${
-                      selectedPlan?.id === plan.id
-                        ? `${planColors[plan.name] || 'border-accent/30 bg-accent/5'} border-accent/50 ring-1 ring-accent/30`
-                        : 'border-border/50 bg-surface/30 hover:border-border'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      {planIcons[plan.name] || <CreditCard className="w-5 h-5 text-text-muted" />}
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-text-primary">{plan.displayName}</p>
-                        {plan.description && <p className="text-xs text-text-muted mt-0.5">{plan.description}</p>}
-                      </div>
-                      <div className="text-right">
-                        <p className="text-lg font-bold text-text-primary">¥{Number(plan.price).toFixed(0)}</p>
-                        <p className="text-xs text-text-muted">{t('user.mo', language as Language)}</p>
-                      </div>
-                    </div>
-                  </button>
+                    plan={plan}
+                    isCurrent={plan.name === effectivePlanId}
+                    selected={selectedPlan?.id === plan.id}
+                    onSelect={(p) => {
+                      setSelectedPlan(p)
+                      stopPolling()
+                      setPaymentResult(null)
+                      setPaymentError('')
+                      setQrCodeDataUrl('')
+                      setPaymentSuccess(false)
+                      // 切换套餐后保留已选支付渠道，提升体验
+                    }}
+                    billingPeriod={billingPeriod}
+                    language={language}
+                  />
                 ))}
               </div>
             )}
+          </div>
+        </div>
 
-            {selectedPlan && (
-              <div className="space-y-3 mt-4">
-                <p className="text-xs text-text-muted">{t('user.selectpaymentmethod', language as Language)}</p>
-                <div className={`grid gap-2 ${displayChannels.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
-                  {displayChannels.map(ch => {
-                    const style = channelStyles[ch] || channelStyles.MOCK
-                    const label = channelLabels[ch] || { zh: ch, en: ch }
-                    return (
-                      <button
-                        key={ch}
-                        onClick={() => setPaymentChannel(ch)}
-                        className={`p-3 rounded-xl border text-center transition-all ${paymentChannel === ch ? style.active : style.inactive}`}
-                      >
-                        <span className="text-sm font-medium text-text-primary">{language === 'zh' ? label.zh : label.en}</span>
-                      </button>
-                    )
-                  })}
+        {/* ======================================== */}
+        {/* 右侧：支付方式 + 支付信息（固定宽度 360px） */}
+        {/* ======================================== */}
+        <div className="w-full lg:w-[360px] shrink-0 space-y-4">
+          {/* 支付方式选择 + 二维码区域 */}
+          <div className="p-4 rounded-xl bg-surface/50 border border-border/40">
+            <h4 className="text-sm font-medium text-text-primary mb-3">
+              {t('user.selectpaymentmethod', language as Language)}
+            </h4>
+
+            {selectedPlan ? (
+              <>
+                {/* 已选套餐摘要 */}
+                <div className="mb-3 p-3 rounded-lg bg-accent/5 border border-accent/20">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-text-primary">
+                      {selectedPlan.displayName}
+                    </span>
+                    <span className="text-lg font-bold text-accent">
+                      ¥{(billingPeriod === 'yearly' && selectedPlan.yearPrice
+                        ? Number(selectedPlan.yearPrice)
+                        : Number(selectedPlan.price)
+                      ).toFixed(2)}
+                    </span>
+                  </div>
+                  <p className="text-[12px] text-text-muted mt-1">
+                    {billingPeriod === 'yearly' && selectedPlan.yearPrice
+                      ? (language === 'zh' ? '年付' : 'Yearly')
+                      : (language === 'zh' ? '月付' : 'Monthly')}
+                  </p>
                 </div>
+
+                {/* 渠道列表 */}
+                {displayChannels.length === 0 ? (
+                  <div className="text-center py-6 text-sm text-text-muted">
+                    {language === 'zh' ? '暂无可用支付方式，请联系管理员' : 'No payment channels available'}
+                  </div>
+                ) : (
+                  <div className={`grid gap-2 ${displayChannels.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                    {displayChannels.map(ch => {
+                      const style = channelStyles[ch] || { active: 'border-accent/50 bg-accent/10 ring-1 ring-accent/30', inactive: 'border-border/50 bg-surface/30 hover:border-border' }
+                      const label = channelLabels[ch] || { zh: ch, en: ch }
+                      const iconUrl = getChannelIconUrl(channelInfo || undefined, ch)
+                      return (
+                        <button
+                          key={ch}
+                          onClick={() => setPaymentChannel(ch)}
+                          disabled={!!paymentResult}
+                          className={`p-3 rounded-xl border text-center transition-all flex flex-col items-center gap-1.5 ${paymentChannel === ch ? style.active : style.inactive} ${paymentResult ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        >
+                          {iconUrl ? (
+                            <img src={iconUrl} alt={label.zh} className="w-6 h-6 object-contain" />
+                          ) : (
+                            <span className="w-6 h-6 flex items-center justify-center text-sm font-bold text-text-primary">
+                              {ch === 'WECHAT' ? '微' : ch === 'ALIPAY' ? '支' : ch.charAt(0)}
+                            </span>
+                          )}
+                          <span className="text-sm font-medium text-text-primary">
+                            {language === 'zh' ? label.zh : label.en}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {/* 错误提示 */}
                 {paymentError && (
-                  <div className="flex items-center gap-2 p-3 rounded-lg bg-status-error/5 border border-status-error/20 text-status-error text-xs">
+                  <div className="flex items-center gap-2 p-3 mt-3 rounded-lg bg-status-error/5 border border-status-error/20 text-status-error text-xs">
                     <AlertCircle className="w-4 h-4 shrink-0" />
                     <span>{paymentError}</span>
                   </div>
                 )}
-                <ActionButton variant="primary" className="w-full" onClick={handleUpgrade} disabled={!paymentChannel || paymentLoading}>
-                  {paymentLoading ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : t('user.pay', language as Language, { price: Number(selectedPlan.price).toFixed(2) })}
-                </ActionButton>
-              </div>
-            )}
-          </>
-        )}
-      </div>
 
-      {paymentResult && (
-        <div className="text-center space-y-4">
-          <div className="p-6 rounded-xl bg-surface/50 border border-border/50">
-            {paymentChannel === 'WECHAT' && paymentResult.qrCodeUrl && (
-              <div className="space-y-3">
-                <p className="text-sm text-text-primary">{t('user.scanwithwechattopay', language as Language)}</p>
-                <div className="w-48 h-48 mx-auto bg-white rounded-xl flex items-center justify-center overflow-hidden">
-                  {qrCodeDataUrl ? <img src={qrCodeDataUrl} alt="QR" className="w-full h-full" /> : <Loader2 className="w-5 h-5 animate-spin text-gray-400" />}
-                </div>
-              </div>
-            )}
-            {paymentChannel === 'ALIPAY' && paymentResult.paymentUrl && (
-              <div className="space-y-3">
-                <p className="text-sm text-text-primary">{t('user.redirectingtoalipay', language as Language)}</p>
-                <ActionButton variant="secondary" onClick={() => window.electronAPI?.openExternalUrl?.(paymentResult.paymentUrl!)} leftIcon={<ExternalLink className="w-4 h-4" />}>
-                  {t('user.gotopay', language as Language)}
-                </ActionButton>
-              </div>
-            )}
-            {paymentChannel === 'MOCK' && (
-              <div className="space-y-3">
-                <p className="text-sm text-text-primary">{t('user.mockpaymentmode', language as Language)}</p>
-                <ActionButton variant="success" onClick={async () => {
-                  if (!paymentResult.qrCodeUrl) return
-                  try {
-                    const serverUrl = useStore.getState().serverUrl
-                    const url = paymentResult.qrCodeUrl.replace('mock://qr', `${serverUrl}/api/v1/payment/mock-pay`)
-                    await fetch(url)
-                  } catch (e) { logger.ui.warn('Mock pay failed:', e) }
-                }}>
-                  {t('user.mockpaysuccess', language as Language)}
-                </ActionButton>
+                {/* 支付按钮 / 支付结果（二维码显示在支付方式下方） */}
+                {!paymentResult ? (
+                  <ActionButton
+                    variant="primary"
+                    className="w-full mt-3"
+                    onClick={handleUpgrade}
+                    disabled={!paymentChannel || paymentLoading}
+                  >
+                    {paymentLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : t('user.pay', language as Language, {
+                      price: (billingPeriod === 'yearly' && selectedPlan.yearPrice
+                        ? Number(selectedPlan.yearPrice)
+                        : Number(selectedPlan.price)
+                      ).toFixed(2),
+                    })}
+                  </ActionButton>
+                ) : paymentSuccess ? (
+                  /* 支付成功标识 */
+                  <div className="mt-3 space-y-3 text-center">
+                    <div className="py-6 flex flex-col items-center gap-3">
+                      <div className="w-16 h-16 rounded-full bg-green-500/15 flex items-center justify-center">
+                        <CheckCircle2 className="w-10 h-10 text-green-500" />
+                      </div>
+                      <div>
+                        <p className="text-base font-semibold text-text-primary">
+                          {language === 'zh' ? '支付成功' : 'Payment Successful'}
+                        </p>
+                        <p className="text-[12px] text-text-muted mt-1">
+                          {language === 'zh' ? '套餐已激活，权益已更新' : 'Plan activated, benefits updated'}
+                        </p>
+                      </div>
+                    </div>
+                    <ActionButton
+                      variant="ghost"
+                      className="w-full"
+                      onClick={() => {
+                        setPaymentResult(null)
+                        setPaymentSuccess(false)
+                        setPaymentError('')
+                        setQrCodeDataUrl('')
+                      }}
+                    >
+                      {language === 'zh' ? '完成' : 'Done'}
+                    </ActionButton>
+                  </div>
+                ) : (
+                  <div className="mt-3 space-y-3">
+                    {/* 微信支付二维码 */}
+                    {paymentChannel === 'WECHAT' && paymentResult.qrCodeUrl && (
+                      <div className="space-y-2 text-center">
+                        <p className="text-sm text-text-primary">{t('user.scanwithwechattopay', language as Language)}</p>
+                        <div className="w-48 h-48 mx-auto bg-white rounded-xl flex items-center justify-center overflow-hidden">
+                          {qrCodeDataUrl ? <img src={qrCodeDataUrl} alt="QR" className="w-full h-full" /> : <Loader2 className="w-5 h-5 animate-spin text-gray-400" />}
+                        </div>
+                      </div>
+                    )}
+                    {/* 支付宝扫码支付 */}
+                    {paymentChannel === 'ALIPAY' && paymentResult.qrCodeUrl && (
+                      <div className="space-y-2 text-center">
+                        <p className="text-sm text-text-primary">{language === 'zh' ? '请用支付宝扫码支付' : 'Scan with Alipay to pay'}</p>
+                        <div className="w-48 h-48 mx-auto bg-white rounded-xl flex items-center justify-center overflow-hidden">
+                          {qrCodeDataUrl ? <img src={qrCodeDataUrl} alt="QR" className="w-full h-full" /> : <Loader2 className="w-5 h-5 animate-spin text-gray-400" />}
+                        </div>
+                      </div>
+                    )}
+                    {/* 轮询提示 */}
+                    {polling && (
+                      <div className="flex items-center justify-center gap-2 text-xs text-text-muted">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        {t('user.waitingforpaymentconfirmation', language as Language)}
+                      </div>
+                    )}
+                    {/* 取消按钮 */}
+                    <ActionButton variant="ghost" className="w-full" onClick={() => { stopPolling(); setPaymentResult(null); setPaymentError(''); setQrCodeDataUrl(''); setPaymentSuccess(false) }}>
+                      {t('user.back', language as Language)}
+                    </ActionButton>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="text-center py-8 text-sm text-text-muted">
+                {language === 'zh' ? '请从左侧选择要升级的套餐' : 'Please select a plan from the left'}
               </div>
             )}
           </div>
-          {polling && (
-            <div className="flex items-center justify-center gap-2 text-xs text-text-muted">
-              <Loader2 className="w-3 h-3 animate-spin" />
-              {t('user.waitingforpaymentconfirmation', language as Language)}
-            </div>
-          )}
-          <ActionButton variant="ghost" onClick={() => { setPaymentResult(null); setPaymentError(''); setPolling(false); setQrCodeDataUrl('') }}>
-            {t('user.back', language as Language)}
-          </ActionButton>
         </div>
-      )}
+      </div>
     </div>
   )
 }

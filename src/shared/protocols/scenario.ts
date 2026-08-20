@@ -108,6 +108,16 @@ export interface SidebarItemDescriptor {
    * 让面板独占主内容区。仅对 wideMode 面板生效。
    */
   hideChat?: boolean
+  /**
+   * 是否在侧边栏导航中隐藏此入口。
+   *
+   * hidden=true 的面板仍会被 PanelRegistry 注册（可通过代码 setActiveSidePanel 激活），
+   * 但不出现在 NavigationRail 的菜单列表中。
+   *
+   * 用途：聚合型工作区面板（如场景开发助手的"项目工作区"），
+   * 由其他面板（如项目列表卡片的"打开"按钮）触发激活，而非直接作为菜单项。
+   */
+  hidden?: boolean
 }
 
 export interface StatusBarItemDescriptor {

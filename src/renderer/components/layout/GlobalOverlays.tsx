@@ -17,6 +17,7 @@ const ShortcutReference = lazy(() => import('@components/modals/ShortcutReferenc
 const FileNavigator = lazy(() => import('@components/modals/FileNavigator'))
 const AppIdentityPanel = lazy(() => import('@components/modals/AppIdentityPanel'))
 const OnboardingWizard = lazy(() => import('@components/onboarding/OnboardingWizard'))
+const EnvironmentSetupDialog = lazy(() => import('@components/onboarding/EnvironmentSetupDialog'))
 
 interface GlobalOverlaysProps {
   showKeyboardShortcuts: boolean
@@ -24,6 +25,9 @@ interface GlobalOverlaysProps {
   showOnboarding: boolean
   setShowOnboarding: (v: boolean) => void
   isInitialized: boolean
+  /** 是否显示环境检测弹窗（首次启动引导完成后触发） */
+  showEnvironmentSetup: boolean
+  setShowEnvironmentSetup: (v: boolean) => void
 }
 
 export default function GlobalOverlays({
@@ -32,6 +36,8 @@ export default function GlobalOverlays({
   showOnboarding,
   setShowOnboarding,
   isInitialized,
+  showEnvironmentSetup,
+  setShowEnvironmentSetup,
 }: GlobalOverlaysProps) {
   const { showCommandPalette, setShowCommandPalette, showQuickOpen, setShowQuickOpen, showAbout, setShowAbout } =
     useStore(useShallow((s) => ({
@@ -76,6 +82,12 @@ export default function GlobalOverlays({
       {isInitialized && showOnboarding && (
         <Suspense fallback={null}>
           <OnboardingWizard onComplete={() => setShowOnboarding(false)} />
+        </Suspense>
+      )}
+      {/* 环境检测弹窗：引导完成后且未做过环境检测时弹出 */}
+      {isInitialized && showEnvironmentSetup && !showOnboarding && (
+        <Suspense fallback={null}>
+          <EnvironmentSetupDialog onComplete={() => setShowEnvironmentSetup(false)} />
         </Suspense>
       )}
     </>

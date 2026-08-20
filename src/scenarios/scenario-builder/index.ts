@@ -23,7 +23,7 @@ import { scenarioBuilderComponents } from './components'
 import { scenarioBuilderIpcHandlers } from './ipc/handlers'
 import { INSTALL_SCRIPTS, UNINSTALL_SCRIPTS } from './db/scripts'
 import { registerScenarioBuilderI18n, unregisterScenarioBuilderI18n } from './i18n'
-import { projectService, buildService, installService, publishService } from './services'
+import { projectService, buildService, installService, publishService, templateService, prePublishChecklistService, wizardService } from './services'
 
 const SCENARIO_BUILDER_MANIFEST: ScenarioManifest = {
   id: 'scenario-builder',
@@ -87,6 +87,9 @@ const scenarioBuilderModule: ScenarioModule = {
     buildService.setContext(context)
     installService.setContext(context)
     publishService.setContext(context)
+    templateService.setContext(context)
+    prePublishChecklistService.setContext(context)
+    wizardService.setContext(context)
 
     // 发布激活事件
     context.publishData('scenario:activated', {

@@ -45,7 +45,7 @@ export interface SearchPart {
 
 export interface SystemAlertAction {
   label: string
-  actionType: 'continue' | 'retry' | 'dismiss' | 'open-settings' | 'switch-model'
+  actionType: 'continue' | 'retry' | 'dismiss' | 'open-settings' | 'switch-model' | 'upgrade'
 }
 
 export interface SystemAlertPart {
@@ -56,6 +56,8 @@ export interface SystemAlertPart {
   suggestion?: string
   compact?: boolean
   action?: SystemAlertAction
+  /** 多个动作按钮（优先于 action） */
+  actions?: SystemAlertAction[]
 }
 
 export interface ContextSnapshotPart {

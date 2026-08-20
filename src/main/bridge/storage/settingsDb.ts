@@ -119,6 +119,7 @@ function migrateFromJsonStore(preferencesStore: Store): boolean {
     const appSettingKeys = [
       'language', 'autoApprove', 'promptTemplateId', 'activeScenarioId',
       'agentConfig', 'aiInstructions', 'onboardingCompleted',
+      'environmentCheckCompleted',
       'webSearchConfig', 'mcpConfig', 'emailConfig', 'enableFileLogging',
       'browserMode', 'scenarioPreferences',
     ]

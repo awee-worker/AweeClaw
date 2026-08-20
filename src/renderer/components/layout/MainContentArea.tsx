@@ -25,12 +25,6 @@ const TerminalStudio = lazy(() => import('@renderer/shell/components/TerminalStu
 const DataDashboard = lazy(() => import('@components/dashboard/InsightDashboard'))
 const CanvasWorkspace = lazy(() => import('@components/canvas/WorkspaceCanvas'))
 const DynamicPanelView = lazy(() => import('@components/explorer/AdaptivePanelView').then(m => ({ default: m.DynamicPanelView })))
-const ScenarioManagerView = lazy(() => import('@components/scenario/ScenarioManagerView').then(m => ({ default: m.ScenarioManagerView })))
-const KnowledgeView = lazy(() => import('@components/explorer/panels/KnowledgeExplorer').then(m => ({ default: m.KnowledgeView })))
-const TaskWorkspace = lazy(() => import('@components/explorer/panels/tasks/TaskWorkspace').then(m => ({ default: m.TaskWorkspace })))
-const ProjectsView = lazy(() => import('@components/explorer/panels/projects/ProjectsView').then(m => ({ default: m.ProjectsView })))
-const AutomationView = lazy(() => import('@components/explorer/panels/automation/AutomationView').then(m => ({ default: m.AutomationView })))
-const PluginMarketView = lazy(() => import('@components/explorer/panels/plugin-market/PluginMarketView').then(m => ({ default: m.PluginMarketView })))
 const WelcomePage = lazy(() => import('@components/welcome/WelcomePage'))
 const PreferencesDialog = lazy(() => import('@components/settings/PreferencesDialog'))
 const UserProfilePage = lazy(() => import('@components/user/UserProfilePage'))
@@ -100,48 +94,21 @@ function PrimaryMainContent({ layoutConfig, isWideModePanel }: MainContentAreaPr
 
   // 宽模式面板
   if (isWideModePanel && activeSidePanel) {
+    // 知识库面板与 Chat 并列展示（参考资料 + 对话），其余面板独占主区域
     if (activeSidePanel === 'knowledge') {
       return (
         <>
           <FullPageSlot>
-            <PanelSlot><KnowledgeView /></PanelSlot>
+            <PanelSlot><DynamicPanelView panelId="knowledge" /></PanelSlot>
           </FullPageSlot>
           {layoutConfig.showChat && chatVisible && <ChatSection visible mode="secondary" />}
         </>
       )
     }
-    if (activeSidePanel === 'tasks') {
-      return (
-        <FullPageSlot>
-          <PanelSlot><TaskWorkspace /></PanelSlot>
-        </FullPageSlot>
-      )
-    }
-    if (activeSidePanel === 'projects') {
-      return (
-        <FullPageSlot>
-          <PanelSlot><ProjectsView /></PanelSlot>
-        </FullPageSlot>
-      )
-    }
-    if (activeSidePanel === 'automation') {
-      return (
-        <FullPageSlot>
-          <PanelSlot><AutomationView /></PanelSlot>
-        </FullPageSlot>
-      )
-    }
-    if (activeSidePanel === 'plugin-market') {
-      return (
-        <FullPageSlot>
-          <PanelSlot><PluginMarketView /></PanelSlot>
-        </FullPageSlot>
-      )
-    }
     return (
       <FullPageSlot>
         <PanelSlot>
-          {activeSidePanel === 'scenarios' ? <ScenarioManagerView /> : <DynamicPanelView panelId={activeSidePanel} />}
+          <DynamicPanelView panelId={activeSidePanel} />
         </PanelSlot>
       </FullPageSlot>
     )
@@ -245,20 +212,11 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
 
   // 宽模式面板
   if (isWideModePanel && activeSidePanel) {
-    const renderWidePanel = () => {
-      if (activeSidePanel === 'scenarios') return <ScenarioManagerView />
-      if (activeSidePanel === 'knowledge') return <KnowledgeView />
-      if (activeSidePanel === 'tasks') return <TaskWorkspace />
-      if (activeSidePanel === 'projects') return <ProjectsView />
-      if (activeSidePanel === 'automation') return <AutomationView />
-      if (activeSidePanel === 'plugin-market') return <PluginMarketView />
-      return <DynamicPanelView panelId={activeSidePanel} />
-    }
     return (
       <>
         <FullPageSlot>
           <PanelSlot>
-            {renderWidePanel()}
+            <DynamicPanelView panelId={activeSidePanel} />
           </PanelSlot>
         </FullPageSlot>
         {layoutConfig.showChat && <ChatSection visible={!shouldHideChat} mode="secondary" />}

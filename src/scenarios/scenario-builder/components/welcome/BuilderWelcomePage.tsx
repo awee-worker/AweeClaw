@@ -21,6 +21,7 @@ import {
   Rocket, Code2, Hammer, Package, Cloud,
   ArrowRight, BookOpen, Sparkles, ChevronRight,
 } from 'lucide-react'
+import ExampleScenariosGrid from './ExampleScenariosGrid'
 
 /** 工作流阶段配置 */
 interface FlowStage {
@@ -223,6 +224,23 @@ const BuilderWelcomePage: React.FC = () => {
           </div>
 
           {/* ====== 底部双栏：快捷操作 + 文档 ====== */}
+          {/* 示例场景区：克隆学习样本 */}
+          <div className="mb-8">
+            <ExampleScenariosGrid
+              onCloned={(_projectId, localPath) => {
+                // 克隆成功后向用户提示并触发刷新
+                window.dispatchEvent(
+                  new CustomEvent('scenario:welcome-suggestion', {
+                    detail: {
+                      scenarioId: 'scenario-builder',
+                      prompt: `已克隆示例到本地项目（路径：${localPath}），请帮我打开并查看它的结构`,
+                    },
+                  }),
+                )
+              }}
+            />
+          </div>
+
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
             {/* 快捷操作 */}
             <div className="lg:col-span-2 rounded-xl border border-border bg-surface/30 p-4">

@@ -355,9 +355,9 @@ async function invokeModelCallWithRetry(
               return result
             }
 
-            const err = new Error(result.error) as Error & { retryable?: boolean }
-            err.retryable = result.retryable
-            throw err
+            // 非 tool parse 错误：直接返回 result，由主循环（第 611 行）基于 errorCode 做差异化 UI 提示
+            // 不要 throw，否则 errorCode/errorSuggestion 信息会丢失，主循环的 QUOTA_EXCEEDED 等分支无法匹配
+            return result
           }
 
           return result
@@ -819,15 +819,19 @@ export async function executeAgentCycle(
               suggestion: errorSuggestion || getLocalizedText(language, '请前往后台管理 → AI 服务商，更新对应的 API Key', 'Please go to Admin Panel → AI Providers to update the API Key'),
               action: { label: getLocalizedText(language, '前往设置', 'Go to Settings'), actionType: 'open-settings' },
             })
-          } else if (errorCode === 'QUOTA_EXCEEDED') {
-            // 额度不足 → 提示充值
+          } else if (errorCode === 'QUOTA_EXCEEDED' || errorCode === 'LLM_QUOTA_EXCEEDED') {
+            // 额度不足 → 提示充值/升级套餐
             threadStore.addSystemAlertPart(assistantId, {
               alertType: 'error',
               title: getLocalizedText(language, 'API 额度不足', 'Quota Exceeded'),
               message: result.error || getLocalizedText(language, 'API 额度已用完', 'API quota has been exhausted'),
-              suggestion: errorSuggestion || getLocalizedText(language, '请前往模型服务商平台查看账户余额和用量', 'Please check your account balance and usage on the provider platform'),
+              suggestion: errorSuggestion || getLocalizedText(language, '请前往设置->云端服务查看账户余额和用量', 'Please go to Settings -> Cloud Service to check your account balance and usage'),
+              actions: [
+                { label: getLocalizedText(language, '重试', 'Retry'), actionType: 'retry' },
+                { label: getLocalizedText(language, '升级套餐', 'Upgrade Plan'), actionType: 'upgrade' },
+              ],
             })
-          } else if (errorCode === 'RATE_LIMITED') {
+          } else if (errorCode === 'RATE_LIMITED' || errorCode === 'API_RATE_LIMIT') {
             // 频率限制 → 提示稍后重试
             threadStore.addSystemAlertPart(assistantId, {
               alertType: 'warning',
@@ -863,13 +867,23 @@ export async function executeAgentCycle(
               action: { label: getLocalizedText(language, '重试', 'Retry'), actionType: 'retry' },
             })
           } else {
-            // 通用错误 → 重试按钮
+            // 通用错误 → 重试按钮；若错误消息包含配额关键词，追加升级套餐按钮
+            const errMsg = (result.error || '').toLowerCase()
+            const isQuotaRelated = errMsg.includes('配额') || errMsg.includes('quota') || errMsg.includes('额度')
             threadStore.addSystemAlertPart(assistantId, {
               alertType: 'error',
               title: getLocalizedText(language, '模型错误', 'Model Error'),
               message: result.error || 'Unknown error',
               suggestion: errorSuggestion,
-              action: { label: getLocalizedText(language, '重试', 'Retry'), actionType: 'retry' },
+              actions: isQuotaRelated
+                ? [
+                    { label: getLocalizedText(language, '重试', 'Retry'), actionType: 'retry' },
+                    { label: getLocalizedText(language, '升级套餐', 'Upgrade Plan'), actionType: 'upgrade' },
+                  ]
+                : undefined,
+              action: !isQuotaRelated
+                ? { label: getLocalizedText(language, '重试', 'Retry'), actionType: 'retry' }
+                : undefined,
             })
           }
         }

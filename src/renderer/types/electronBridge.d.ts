@@ -2818,6 +2818,41 @@ export interface ElectronAPI {
       }) => void,
     ) => () => void
   }
+
+  /** 运行时环境检测与安装 */
+  environment: {
+    /** 检测全部核心运行时状态（只读，秒级返回，不触发安装） */
+    environmentCheck: () => Promise<{
+      success: boolean
+      status: {
+        python: { ready: boolean; path?: string; version?: string; source: string }
+        uv: { ready: boolean; path?: string; source: string }
+        node: { ready: boolean; path?: string; version?: string; source: string }
+        allReady: boolean
+      }
+    }>
+    /** 安装指定运行时（推送进度事件） */
+    environmentInstall: (id: 'python' | 'uv' | 'node') => Promise<{ success: boolean }>
+    /** 一键安装所有缺失项（按 uv→python→node 顺序串行） */
+    environmentInstallAll: () => Promise<{
+      success: boolean
+      status: {
+        python: { ready: boolean; path?: string; version?: string; source: string }
+        uv: { ready: boolean; path?: string; source: string }
+        node: { ready: boolean; path?: string; version?: string; source: string }
+        allReady: boolean
+      }
+    }>
+    /** 订阅安装进度事件（返回取消订阅函数） */
+    onEnvironmentProgress: (
+      callback: (payload: {
+        id: 'python' | 'uv' | 'node'
+        stage: 'downloading' | 'installing' | 'configuring' | 'done' | 'error'
+        percent: number
+        message: string
+      }) => void,
+    ) => () => void
+  }
 }
 
 declare global {

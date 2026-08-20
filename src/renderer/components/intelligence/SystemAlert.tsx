@@ -12,7 +12,10 @@ interface SystemAlertProps {
     message: string
     suggestion?: string
     compact?: boolean
+    /** 单个动作按钮（向后兼容） */
     action?: SystemAlertAction
+    /** 多个动作按钮（优先于 action） */
+    actions?: SystemAlertAction[]
     onAction?: (action: SystemAlertAction) => void
     className?: string
 }
@@ -50,6 +53,7 @@ function getActionStyle(actionType: string): string {
     const styles: Record<string, string> = {
         continue: 'bg-accent/10 text-accent hover:bg-accent/20 active:bg-accent/30',
         retry: 'bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 active:bg-blue-500/30',
+        upgrade: 'bg-violet-500/15 text-violet-400 hover:bg-violet-500/25 active:bg-violet-500/35',
     }
     return styles[actionType] || 'bg-border/30 text-text-secondary hover:bg-border/50 active:bg-border/60'
 }
@@ -81,13 +85,22 @@ function SuggestionBlock({ text, compact }: { text: string; compact: boolean }) 
 /** 动作按钮 */
 function ActionButton({ action, onAction }: { action: SystemAlertAction; onAction?: (a: SystemAlertAction) => void }) {
     return (
-        <div className="mt-2 pt-1.5 border-t border-border/30">
-            <button
-                onClick={() => onAction?.(action)}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium transition-all duration-150 ${getActionStyle(action.actionType)}`}
-            >
-                {action.label}
-            </button>
+        <button
+            onClick={() => onAction?.(action)}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium transition-all duration-150 ${getActionStyle(action.actionType)}`}
+        >
+            {action.label}
+        </button>
+    )
+}
+
+/** 动作按钮组容器 */
+function ActionGroup({ actions, onAction }: { actions: SystemAlertAction[]; onAction?: (a: SystemAlertAction) => void }) {
+    return (
+        <div className="mt-2 pt-1.5 border-t border-border/30 flex flex-wrap items-center gap-2">
+            {actions.map((action, idx) => (
+                <ActionButton key={`${action.actionType}-${idx}`} action={action} onAction={onAction} />
+            ))}
         </div>
     )
 }
@@ -104,10 +117,13 @@ export const SystemAlert: React.FC<SystemAlertProps> = ({
     suggestion,
     compact = false,
     action,
+    actions,
     onAction,
     className = '',
 }) => {
     const visual = buildAlertVisual(type)
+    // actions 数组优先；否则降级到单个 action
+    const actionList = actions && actions.length > 0 ? actions : (action ? [action] : [])
 
     return (
         <motion.div
@@ -132,7 +148,7 @@ export const SystemAlert: React.FC<SystemAlertProps> = ({
 
                     {suggestion && <SuggestionBlock text={suggestion} compact={compact} />}
 
-                    {action && <ActionButton action={action} onAction={onAction} />}
+                    {actionList.length > 0 && <ActionGroup actions={actionList} onAction={onAction} />}
                 </div>
             </div>
         </motion.div>

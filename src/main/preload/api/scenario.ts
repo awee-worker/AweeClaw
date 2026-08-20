@@ -100,6 +100,21 @@ export function createScenarioApi() {
       category?: string
       type: 'declarative' | 'programmatic'
     }) => invoke('scenario-builder:createProjectFiles')(params),
+    scenarioBuilderCreateProjectFromTemplate: (params: {
+      localPath: string
+      scenarioId: string
+      name: string
+      nameZh: string
+      description?: string
+      descriptionZh?: string
+      author?: string
+      version?: string
+      category?: string
+      type: 'declarative' | 'programmatic'
+      configOverride?: Record<string, unknown>
+      extraFiles?: Record<string, string>
+      overrideFiles?: Record<string, string>
+    }) => invoke('scenario-builder:createProjectFromTemplate')(params),
     scenarioBuilderReadFile: (params: { projectPath: string; relativePath: string }) =>
       invoke('scenario-builder:readFile')(params),
     scenarioBuilderWriteFile: (params: {
@@ -108,6 +123,11 @@ export function createScenarioApi() {
       content: string
       createDirs?: boolean
     }) => invoke('scenario-builder:writeFile')(params),
+    // 克隆示例场景到本地项目目录（一次性写入所有文件）
+    scenarioBuilderCloneExample: (params: {
+      targetPath: string
+      files: Array<{ path: string; content: string }>
+    }) => invoke('scenario-builder:cloneExample')(params),
     scenarioBuilderValidate: (params: { projectPath: string }) =>
       invoke('scenario-builder:validate')(params),
     scenarioBuilderBuild: (params: { projectPath: string }) =>
@@ -120,6 +140,41 @@ export function createScenarioApi() {
       invoke('scenario-builder:tryRunStop')(params),
     scenarioBuilderTryRunStatus: (params: { scenarioId: string }) =>
       invoke('scenario-builder:tryRunStatus')(params),
+
+    // ── 预览调试数据查询（C2 扩展） ──
+    scenarioBuilderGetLiveLogs: (params: {
+      scenarioId: string
+      limit?: number
+      level?: 'info' | 'warn' | 'error' | 'debug'
+    }) => invoke('scenario-builder:getLiveLogs')(params),
+    scenarioBuilderGetDatabaseSnapshot: (params: {
+      scenarioId: string
+      tableName?: string
+      sampleLimit?: number
+    }) => invoke('scenario-builder:getDatabaseSnapshot')(params),
+    scenarioBuilderGetToolCallTrace: (params: {
+      scenarioId: string
+      limit?: number
+      toolName?: string
+    }) => invoke('scenario-builder:getToolCallTrace')(params),
+    scenarioBuilderGetMetrics: (params: { scenarioId: string }) =>
+      invoke('scenario-builder:getMetrics')(params),
+
+    // ── 文件监听（热重载） ──
+    scenarioBuilderWatchProject: (params: { projectPath: string; ignore?: string[] }) =>
+      invoke('scenario-builder:watchProject')(params),
+    scenarioBuilderUnwatchProject: (params: { projectPath: string }) =>
+      invoke('scenario-builder:unwatchProject')(params),
+    onScenarioBuilderFileChange: (callback: (payload: {
+      projectPath: string
+      relativePath: string
+      type: 'add' | 'change' | 'unlink'
+    }) => void) =>
+      on<{
+        projectPath: string
+        relativePath: string
+        type: 'add' | 'change' | 'unlink'
+      }>('scenario-builder:fileChange')(callback),
 
     // ── 开发者中心 ──
     developerCheckAuth: invoke('developer:checkAuth'),
