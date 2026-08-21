@@ -11,6 +11,8 @@
 import { WorkMode } from '@/renderer/modes/workModeTypes'
 import { modeRegistry } from '../capabilities/mode/WorkModeRegistry'
 import type { ModeDescriptor } from '../capabilities/mode/WorkModeDescriptor'
+import { useSceneModeStore } from '@/renderer/modes/sceneModeStore'
+import type { SceneModeProfile } from '../capabilities/sceneMode/SceneModeDescriptor'
 import { generateToolsPromptDescriptionFiltered, type ToolCategory } from '@configuration/toolDefinitions'
 import { getToolsForContext } from '@configuration/toolCategoryDefs'
 import { DEFAULT_AGENT_CONFIG } from '@configuration/agentProfile'
@@ -110,6 +112,10 @@ export interface PromptContext {
   perceptionContext?: PerceptionContext | null
   /** 是否为消息渠道会话（飞书/微信等），控制 send_file_to_channel 等渠道工具是否在提示词中可见 */
   isChannel?: boolean
+  /** 场景模式人设提示词（work/life/study，正交于 WorkMode 的推理深度） */
+  scenePersonaPrompt?: string
+  /** 场景模式指令段落（记忆域、可用技能等约束） */
+  sceneModeDirectives?: string | null
 }
 
 /** 感知预测上下文（由主进程通过 IPC 提供） */
@@ -314,7 +320,14 @@ ${rules.content}`
 }
 
 function buildKnowledge(entries: KnowledgeEntry[]): string | null {
-  const enabled = entries.filter(e => e.enabled)
+  const { memoryDomainTag } = useSceneModeStore.getState().getActiveProfile()
+  const enabled = entries.filter(e => {
+    if (!e.enabled) return false
+    // 域隔离：当前域 + 共享域 + 无 tag 旧数据（向后兼容）
+    return e.tags.length === 0
+      || e.tags.includes(memoryDomainTag)
+      || e.tags.includes('domain:shared')
+  })
   if (enabled.length === 0) return null
 
   const lines: string[] = []
@@ -338,7 +351,14 @@ ${lines.join('\n')}`
 }
 
 function buildLongTermMemory(entries: MemoryEntry[], tokenBudget: number = 1500): string | null {
-  const enabled = entries.filter(e => e.enabled && e.content.trim())
+  const { memoryDomainTag } = useSceneModeStore.getState().getActiveProfile()
+  const enabled = entries.filter(e => {
+    if (!e.enabled || !e.content.trim()) return false
+    // 域隔离：当前域 + 共享域 + 无 tag 旧数据（向后兼容）
+    return e.tags.length === 0
+      || e.tags.includes(memoryDomainTag)
+      || e.tags.includes('domain:shared')
+  })
   if (enabled.length === 0) return null
 
   const longTermFirst = [...enabled.filter(e => e.status === 'long_term'), ...enabled.filter(e => e.status === 'short_term')]
@@ -443,6 +463,24 @@ function buildModeSpecificSections(modeDescriptor: ModeDescriptor): string | nul
   const body = sections.join('\n\n')
 
   return `${header}\n\n${body}`
+}
+
+/**
+ * 构建场景模式指令段落
+ *
+ * 注入当前场景模式的记忆域约束和可用技能清单，
+ * 让 AI 知道当前处于哪种使用场景（work/life/study），遵循该模式的边界。
+ */
+function buildSceneModeDirectives(profile: SceneModeProfile): string {
+  const parts: string[] = [
+    `## ${profile.displayNameZh}场景模式`,
+    `当前处于「${profile.displayNameZh}」场景模式，请遵循该模式的人设与边界。`,
+    `记忆域约束：仅读写「${profile.memoryDomainTag}」与「domain:shared」共享域的记忆与知识，避免跨域污染。`,
+  ]
+  if (profile.modeSkills.length > 0) {
+    parts.push(`当前模式可用技能：${profile.modeSkills.join('、')}`)
+  }
+  return parts.join('\n')
 }
 
 /**
@@ -592,6 +630,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
   const identity = getActiveScenarioIdentity()
   const sections: (string | null)[] = [
     ctx.personality,
+    ctx.scenePersonaPrompt ?? null,
     identity.systemPrompt,
     PROFESSIONAL_OBJECTIVITY,
     LANGUAGE_MATCHING,
@@ -602,6 +641,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     GRAPH_PLAN_GUIDE,
     identity.outputFormat,
     buildModeSpecificSections(ctx.modeDescriptor),
+    ctx.sceneModeDirectives ?? null,
     buildEnvironment(ctx),
     buildUserContext(ctx.userInfo),
     buildProjectSummary(ctx.projectSummary || null),
@@ -622,6 +662,7 @@ export function buildChatPrompt(ctx: PromptContext): string {
   const identity = getActiveScenarioIdentity()
   const sections: (string | null)[] = [
     ctx.personality,
+    ctx.scenePersonaPrompt ?? null,
     identity.systemPrompt,
     PROFESSIONAL_OBJECTIVITY,
     LANGUAGE_MATCHING,
@@ -631,6 +672,7 @@ export function buildChatPrompt(ctx: PromptContext): string {
     GRAPH_PLAN_GUIDE,
     identity.outputFormat,
     buildModeSpecificSections(ctx.modeDescriptor),
+    ctx.sceneModeDirectives ?? null,
     buildEnvironment(ctx),
     buildUserContext(ctx.userInfo),
     buildProjectRules(ctx.projectRules),
@@ -755,6 +797,7 @@ export async function buildAgentSystemPrompt(
     : null
 
   const modeDescriptor = modeRegistry.getOrDefault(mode)
+  const sceneProfile = useSceneModeStore.getState().getActiveProfile()
 
   const ctx: PromptContext = {
     os: getOS(),
@@ -780,6 +823,8 @@ export async function buildAgentSystemPrompt(
     perceptionContext: perceptionContext ?? null,
     proceduralSuggestion,
     isChannel,
+    scenePersonaPrompt: sceneProfile.personaPrompt,
+    sceneModeDirectives: buildSceneModeDirectives(sceneProfile),
   }
 
   const prompt = mode === 'chat' ? buildChatPrompt(ctx) : buildSystemPrompt(ctx)

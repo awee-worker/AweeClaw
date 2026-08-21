@@ -14,6 +14,7 @@
 import { api } from '../../../adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
 import { useStore } from '@store'
+import { useSceneModeStore } from '@/renderer/modes/sceneModeStore'
 import { joinPath } from '@shared/toolkit/pathHelper'
 import { BRAND } from '@shared/brand'
 import { reflectiveDreamingService } from './reflectiveDreamingService'
@@ -225,6 +226,12 @@ class LongTermMemoryService {
     }
 
     const now = Date.now()
+    const { memoryDomainTag } = useSceneModeStore.getState().getActiveProfile()
+    const baseMemoryTags = input.tags ?? []
+    // 自动注入当前场景模式记忆域 tag，避免跨域污染
+    const tags = baseMemoryTags.some(t => t.startsWith('domain:'))
+      ? baseMemoryTags
+      : [...baseMemoryTags, memoryDomainTag]
     const entry: MemoryEntry = {
       id: crypto.randomUUID(),
       content,
@@ -235,7 +242,7 @@ class LongTermMemoryService {
       uniqueQueryCount: 0,
       lastRecalledAt: now,
       halfLifeDays: 14,
-      tags: input.tags ?? [],
+      tags,
       enabled: input.enabled ?? true,
       createdAt: now,
       updatedAt: now,

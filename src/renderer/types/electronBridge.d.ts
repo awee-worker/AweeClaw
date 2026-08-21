@@ -693,6 +693,19 @@ export interface ElectronAPI {
     isLlmPredictorReady: () => Promise<{ success: boolean; data?: boolean; error?: string }>
     /** 重置 LLM 预测器（恢复纯统计模式） */
     resetLlmPredictor: () => Promise<{ success: boolean; error?: string }>
+
+    // ===== D-步骤5：场景模式感知策略切换 =====
+    /**
+     * 设置场景模式感知过滤器
+     *
+     * 场景模式切换时由渲染进程调用，将新模式的 perceptionFilter 同步到
+     * PerceptionFusionService，控制各感知通道的启停。
+     *
+     * @param filter 感知过滤器（null 表示清除过滤，全部启用）
+     */
+    setSceneFilter: (
+      filter: Record<string, boolean> | null,
+    ) => Promise<{ success: boolean; error?: string }>
   }
 
   // PerceptionFusion（多模态融合感知层 - 阶段9 s9-05）
@@ -1978,6 +1991,8 @@ export interface ElectronAPI {
   cronUnregisterByRuleId: (ruleId: string) => Promise<{ success: boolean }>
   cronPauseByRuleId: (ruleId: string) => Promise<{ success: boolean }>
   cronResumeByRuleId: (ruleId: string) => Promise<{ success: boolean }>
+  cronPauseByRuleIdPrefix: (prefix: string) => Promise<{ success: boolean; count: number }>
+  cronResumeByRuleIdPrefix: (prefix: string) => Promise<{ success: boolean; count: number }>
   cronGetTaskByRuleId: (ruleId: string) => Promise<{ success: boolean; task: any | null }>
   cronUpsertByRuleId: (
     ruleId: string,
@@ -2616,6 +2631,20 @@ export interface ElectronAPI {
         reason: string
       }) => void,
     ) => () => void
+
+    /**
+     * 设置场景模式主动行为规则（D-步骤4）
+     *
+     * 场景模式切换时由渲染进程调用，将新模式的 proactiveRules 同步到决策引擎。
+     * 决策引擎内部注册场景探测器，在节拍中评估规则条件并生成提案。
+     */
+    setSceneRules: (rules: Array<{
+      id: string
+      name: string
+      condition: string
+      action: string
+      payload: string
+    }>) => Promise<{ success: boolean; data?: boolean; error?: string }>
   }
 
   // ============================================
@@ -2915,6 +2944,14 @@ export interface ElectronAPI {
         error?: string
       },
     ) => void
+
+    // ===== 方向4：场景模式跨端协同 =====
+    /** 推送场景模式切换到移动端（PC→移动端） */
+    pushSceneMode: (mode: string) => Promise<boolean>
+    /** 订阅场景模式同步事件（移动端→PC） */
+    onSceneModeSync: (
+      callback: (payload: { mode: string }) => void,
+    ) => () => void
   }
 }
 

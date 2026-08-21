@@ -117,7 +117,7 @@ function AvatarStaticImpl({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          transition: 'all 0.2s ease',
+          transition: 'all 0.4s ease',
           filter: cooling ? 'grayscale(0.5)' : 'none',
           animation: wakeWordActive && !isBusy
             ? 'avatar-static-breathe 3s ease-in-out infinite'

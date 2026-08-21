@@ -436,6 +436,33 @@ export default function ChatPanel() {
     onSubmit: () => messageOps.handleSubmit(input, isStreaming),
   })
 
+  // ===== UI3：快捷引导卡片点击发送 =====
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const prompt = (e as CustomEvent<string>).detail
+      if (typeof prompt === 'string' && prompt.trim()) {
+        setInput(prompt)
+        // 异步发送，等 setInput 生效
+        setTimeout(() => messageOps.handleSubmit(prompt, false), 0)
+      }
+    }
+    window.addEventListener('aweeclaw:quick-prompt', handler as EventListener)
+    return () => window.removeEventListener('aweeclaw:quick-prompt', handler as EventListener)
+  }, [messageOps, setInput])
+
+  // ===== AI 智能主动模式：自动发起对话 =====
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ message: string; mode: string }>).detail
+      if (detail?.message && typeof detail.message === 'string') {
+        const proactiveMessage = `[智能主动提醒] ${detail.message}`
+        setTimeout(() => messageOps.handleSubmit(proactiveMessage, false), 0)
+      }
+    }
+    window.addEventListener('aweeclaw:smart-proactive', handler as EventListener)
+    return () => window.removeEventListener('aweeclaw:smart-proactive', handler as EventListener)
+  }, [messageOps])
+
   // ===== 输入变化处理 =====
   const handleInputChange = useCallback(
     async (e: React.ChangeEvent<HTMLTextAreaElement>) => {

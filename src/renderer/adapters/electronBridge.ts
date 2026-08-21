@@ -642,6 +642,12 @@ function createGroupedAPI() {
     // 定时任务（自动分组：cronXxx → cron.xxx, onCronXxx → cron.onXxx）
     cron: createGroup(raw, 'cron'),
 
+    // 主动式助手（preload 已暴露为嵌套对象，直接透传）
+    proactive: raw.proactive,
+
+    // 感知层（preload 已暴露为嵌套对象，直接透传）
+    perception: raw.perception,
+
     scenarioInstall: {
       getScenariosDir: () => raw.scenarioGetScenariosDir(),
       selectScenarioDir: () => raw.scenarioSelectScenarioDir(),
@@ -1062,6 +1068,11 @@ function createGroupedAPI() {
         raw.deviceLink.onRunScenario(callback),
       replyResult: (requestId: string, result: { success: boolean; output?: string; error?: string }) =>
         raw.deviceLink.replyResult(requestId, result),
+
+      // 方向4：场景模式跨端协同
+      pushSceneMode: (mode: string) => raw.deviceLink.pushSceneMode(mode),
+      onSceneModeSync: (callback: Parameters<typeof raw.deviceLink.onSceneModeSync>[0]) =>
+        raw.deviceLink.onSceneModeSync(callback),
     },
   }
 }

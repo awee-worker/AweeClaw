@@ -308,6 +308,17 @@ export interface PerceptionApi {
   isLlmPredictorReady: () => Promise<IpcResponse<boolean>>
   /** 重置 LLM 预测器（恢复纯统计模式） */
   resetLlmPredictor: () => Promise<IpcResponse<void>>
+
+  // ===== D-步骤5：场景模式感知策略切换 =====
+  /**
+   * 设置场景模式感知过滤器
+   *
+   * 场景模式切换时由渲染进程调用，将新模式的 perceptionFilter 同步到
+   * PerceptionFusionService，控制各感知通道（scene/iot/monitoring）的启停。
+   *
+   * @param filter 感知过滤器（与 SceneModeDescriptor.PerceptionFilter 结构一致）
+   */
+  setSceneFilter: (filter: Record<string, boolean> | null) => Promise<IpcResponse<void>>
 }
 
 /** 创建感知层 API */
@@ -398,5 +409,9 @@ export function createPerceptionApi(): PerceptionApi {
 
     resetLlmPredictor: () =>
       ipcRenderer.invoke('perception:resetLlmPredictor'),
+
+    // ===== D-步骤5：场景模式感知策略切换 =====
+    setSceneFilter: (filter) =>
+      ipcRenderer.invoke('perception:setSceneFilter', filter),
   }
 }

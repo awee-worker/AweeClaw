@@ -1,5 +1,5 @@
 import { lazy, Suspense, useMemo, useCallback, useEffect, useSyncExternalStore } from 'react'
-import { Cpu, Settings2, Shield, Monitor, Plug, Brain, FileText, Zap, X, Palette, Radio, Eye, Search, Mail, Mic, MonitorSmartphone, ArrowLeft, ScanEye, Activity, Network, Cable, Sparkles, Puzzle } from 'lucide-react'
+import { Cpu, Settings2, Shield, Monitor, Plug, Brain, FileText, Zap, X, Palette, Radio, Eye, Search, Mail, Mic, MonitorSmartphone, ArrowLeft, ScanEye, Activity, Network, Cable, Sparkles, Puzzle, Layers } from 'lucide-react'
 import { PROVIDERS } from '@configuration/aiProviders'
 import { t, type Language } from '@renderer/i18n'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
@@ -67,6 +67,9 @@ const DesktopControlPanel = lazy(() =>
 )
 const ProactiveSettingsPanel = lazy(() =>
     import('./tabs/proactive/ProactiveSettingsPanel').then(m => ({ default: m.ProactiveSettingsPanel })),
+)
+const SceneModeSettingsPanel = lazy(() =>
+    import('./tabs/SceneModeSettingsPanel').then(m => ({ default: m.SceneModeSettingsPanel })),
 )
 
 function SettingsTabFallback({ language }: { language: Language }) {
@@ -159,6 +162,7 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
         { id: 'system', label: t('settings.system', language as Language), icon: <Monitor className="w-4 h-4" /> },
         { id: 'desktop', label: t('settings.desktop', language as Language) || '桌面控制', icon: <MonitorSmartphone className="w-4 h-4" /> },
         { id: 'proactive', label: t('settings.proactive', language as Language) || '主动助手', icon: <Sparkles className="w-4 h-4" /> },
+        { id: 'sceneMode', label: '场景模式', icon: <Layers className="w-4 h-4" /> },
     ], [language])
 
     // ── 插件贡献的设置页 Tab（动态加载） ──
@@ -314,6 +318,8 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                 return <DesktopControlPanel language={language} />
             case 'proactive':
                 return <ProactiveSettingsPanel language={language} />
+            case 'sceneMode':
+                return <SceneModeSettingsPanel />
             default: {
                 // 插件贡献的设置页 Tab：查找匹配的插件 Tab 组件并渲染
                 const pluginTab = pluginSettingsTabs.find(pt => pt.contribution.id === state.activeTab)

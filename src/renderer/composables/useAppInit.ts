@@ -13,6 +13,7 @@ import {
   registerAppErrorListener,
 } from '@services/appInitializer'
 import { initWorkspaceStateSync } from '@services/workspaceStateAdapter'
+import { useSceneModeEffects } from '@hooks/useSceneModeEffects'
 import { logger } from '@toolkit/LogEngine'
 
 /** 初始化完成回调携带的结果 */
@@ -50,6 +51,9 @@ function removeInitialLoader(): void {
 }
 
 export function useAppInit(options: UseAppInitOptions = {}): void {
+  // 注册场景模式副作用（悬浮头像颜色切换等）
+  useSceneModeEffects()
+
   const initRef = useRef(false)
   const optionsRef = useRef(options)
   optionsRef.current = options

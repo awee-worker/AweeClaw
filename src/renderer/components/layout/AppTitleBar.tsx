@@ -28,6 +28,7 @@ import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { useAgentActions } from '@hooks/useAgent'
 import ProjectSelector from './ProjectSelector'
+import SceneModeSelector from '../SceneModeSelector'
 import { ScenarioSelector } from '../scenario/ScenarioSelector'
 import { useInlineToast } from '@components/foundation/InlineNotification'
 import { useHasElevatedToastLayer } from '@components/foundation/toastLayerStore'
@@ -265,6 +266,12 @@ export default function AppTitleBar() {
             : <PanelLeftIcon className="w-4 h-4" />
           }
         </button>
+
+        <div className="no-drag">
+          <SceneModeSelector />
+        </div>
+
+        <div className="w-[1px] h-4 bg-border/50" />
 
         <div className="no-drag">
           <ScenarioSelector />

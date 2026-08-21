@@ -232,6 +232,22 @@ export interface ProactiveApi {
    * @returns 取消订阅函数
    */
   onExecuteAction: (callback: (payload: ExecuteActionPayload) => void) => () => void
+
+  /**
+   * 设置场景模式主动行为规则（D-步骤4）
+   *
+   * 场景模式切换时由渲染进程调用，将新模式的 proactiveRules 同步到决策引擎。
+   * 决策引擎内部注册场景探测器，在节拍中评估规则条件并生成提案。
+   *
+   * @param rules 场景规则集（已过滤 enabled=true 的规则）
+   */
+  setSceneRules: (rules: Array<{
+    id: string
+    name: string
+    condition: string
+    action: string
+    payload: string
+  }>) => Promise<IpcResponse<boolean>>
 }
 
 /** 创建主动式助手 API */
@@ -307,5 +323,9 @@ export function createProactiveApi(): ProactiveApi {
         ipcRenderer.removeListener('proactive:execute-action', handler)
       }
     },
+
+    // ===== 场景模式规则同步（D-步骤4）=====
+    setSceneRules: (rules) =>
+      ipcRenderer.invoke('proactive:setSceneRules', rules),
   }
 }

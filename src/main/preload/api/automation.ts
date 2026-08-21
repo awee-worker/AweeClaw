@@ -27,6 +27,8 @@ export function createAutomationApi() {
     cronUnregisterByRuleId: (ruleId: string) => invoke('cron:unregisterByRuleId')(ruleId),
     cronPauseByRuleId: (ruleId: string) => invoke('cron:pauseByRuleId')(ruleId),
     cronResumeByRuleId: (ruleId: string) => invoke('cron:resumeByRuleId')(ruleId),
+    cronPauseByRuleIdPrefix: (prefix: string) => invoke('cron:pauseByRuleIdPrefix')(prefix),
+    cronResumeByRuleIdPrefix: (prefix: string) => invoke('cron:resumeByRuleIdPrefix')(prefix),
     cronGetTaskByRuleId: (ruleId: string) => invoke('cron:getTaskByRuleId')(ruleId),
     cronUpsertByRuleId: (
       ruleId: string,

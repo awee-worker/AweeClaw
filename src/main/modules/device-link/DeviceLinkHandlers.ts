@@ -25,6 +25,7 @@ import { promisify } from 'util'
 import { logger } from '@shared/toolkit/LogEngine'
 import { getDesktopControlManager } from '../desktop-control'
 import type { ScreenshotResult } from '../desktop-control/types/actions'
+import { SessionDb } from '../../modules/session-db'
 
 const execAsync = promisify(exec)
 
@@ -135,9 +136,18 @@ function assertSafePath(workspaceRoot: string | null, relativePath: string): str
     return workspaceRoot
   }
   if (!workspaceRoot) throw new Error('no_workspace')
-  if (path.isAbsolute(relativePath)) throw new Error('absolute_path_forbidden')
-  if (relativePath.includes('..')) throw new Error('path_traversal_forbidden')
-  const abs = path.resolve(workspaceRoot, relativePath)
+  // 移动端可能对含中文的路径做了 URL 编码，统一解码后再拼接
+  let decoded = relativePath
+  try {
+    if (relativePath.includes('%')) {
+      decoded = decodeURIComponent(relativePath)
+    }
+  } catch {
+    // decode 失败则使用原值
+  }
+  if (path.isAbsolute(decoded)) throw new Error('absolute_path_forbidden')
+  if (decoded.includes('..')) throw new Error('path_traversal_forbidden')
+  const abs = path.resolve(workspaceRoot, decoded)
   // 防御性：再次确认结果仍位于工作区内
   const rel = path.relative(workspaceRoot, abs)
   if (rel.startsWith('..') || path.isAbsolute(rel)) {
@@ -605,6 +615,58 @@ export async function handleKnowledgeExport(
     if (err?.code === 'ENOENT') return { items: [], count: 0 }
     logger.deviceLink.error('[KnowledgeExport] Failed to read store', err?.message)
     throw new Error('knowledge_read_failed')
+  }
+}
+
+// ============================================================================
+// 聊天记录导出
+// ============================================================================
+
+/** chat.export.req → 读取本地 SQLite 会话数据库，返回线程及其消息列表 */
+export async function handleChatExport(
+  _ctx: DeviceHandlerContext,
+): Promise<{
+  items: Array<{
+    id: string
+    title: string
+    messages: Array<{ role: string; content: string; createdAt?: number }>
+    createdAt?: number
+    lastModified?: number
+  }>
+  count: number
+}> {
+  try {
+    const db = SessionDb.getInstance()
+    // 确保数据库已初始化（若 renderer 未触发初始化，此处兜底）
+    await db.initialize()
+
+    // 取所有线程摘要（不按 userId 过滤，导出本机全部会话）
+    const summaries = db.getAllThreadSummaries()
+    // 限制导出数量，避免数据过大：最近 50 个线程
+    const limited = summaries.slice(0, 50)
+
+    const items = limited.map((s) => {
+      const rawMessages = db.getThreadMessages(s.id) || []
+      // 限制每个线程最多 100 条消息
+      const msgs = rawMessages.slice(-100).map((m: any) => ({
+        role: String(m?.role || 'user'),
+        content: String(m?.content || ''),
+        createdAt: typeof m?.createdAt === 'number' ? m.createdAt : undefined,
+      })).filter((m: any) => m.content)
+
+      return {
+        id: String(s.id),
+        title: String(s.title || '').trim() || (msgs[0]?.content?.slice(0, 30) || 'Untitled'),
+        messages: msgs,
+        createdAt: undefined,
+        lastModified: typeof s.lastModified === 'number' ? s.lastModified : undefined,
+      }
+    }).filter((i: any) => i.messages.length > 0)
+
+    return { items, count: items.length }
+  } catch (err: any) {
+    logger.deviceLink.error('[ChatExport] Failed to export chats:', err?.message)
+    throw new Error('chat_export_failed')
   }
 }
 

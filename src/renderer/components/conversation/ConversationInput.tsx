@@ -369,7 +369,7 @@ const ChatInput = memo(function ChatInput({
 
         {/* Context Display Area (Top) */}
         {(contextItems.length > 0 || hasCodebaseRef || hasSymbolsRef || hasGitRef || hasTerminalRef || hasWebRef || fileRefs.length > 0 || (activeFilePath && onAddFile && !contextItems.some(i => i.type === 'File' && (i as FileContext).uri === activeFilePath))) && (
-          <div className="flex flex-wrap items-center gap-1.5 px-4 pt-3 pb-1 border-b border-border/10">
+          <div className="flex flex-wrap items-center gap-1.5 px-2 pt-2 pb-1 border-b border-border/10">
             <AnimatePresence>
               {/* Active File Suggestion */}
               {activeFilePath && onAddFile && !contextItems.some(i => i.type === 'File' && (i as FileContext).uri === activeFilePath) && (

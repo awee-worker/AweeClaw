@@ -194,6 +194,18 @@ export function registerAutomationHandlers(): void {
     return { success: resumed }
   })
 
+  /** 按 ruleId 前缀批量暂停任务（场景模式 Cron 切换用） */
+  safeIpcHandle('cron:pauseByRuleIdPrefix', async (_, prefix: string) => {
+    const paused = cronScheduler.pauseByRuleIdPrefix(prefix)
+    return { success: true, count: paused }
+  })
+
+  /** 按 ruleId 前缀批量恢复任务（场景模式 Cron 切换用） */
+  safeIpcHandle('cron:resumeByRuleIdPrefix', async (_, prefix: string) => {
+    const resumed = cronScheduler.resumeByRuleIdPrefix(prefix)
+    return { success: true, count: resumed }
+  })
+
   /** 按后端规则 ID 查询任务 */
   safeIpcHandle('cron:getTaskByRuleId', async (_, ruleId: string) => {
     const task = cronScheduler.findByRuleId(ruleId)

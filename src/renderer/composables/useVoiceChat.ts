@@ -15,6 +15,9 @@ import type {
   LLMMessage,
 } from '@intelligence/providerTypes'
 import { api } from '@renderer/adapters/electronBridge'
+import { resolveSceneVoice } from '@intelligence/capabilities/sceneMode/sceneVoiceResolver'
+import { recognizeSceneCommand } from '@intelligence/capabilities/sceneMode/sceneCommandRecognizer'
+import { useSceneModeStore } from '@renderer/modes/sceneModeStore'
 import { logger } from '@shared/toolkit/LogEngine'
 import { io, type Socket } from 'socket.io-client'
 import { getTokens } from '@services/backendApi'
@@ -165,6 +168,27 @@ function blobToBase64(blob: Blob): Promise<string> {
   })
 }
 
+/**
+ * 解析当前场景模式的 TTS 音色配置
+ *
+ * 读取 useSceneModeStore 中的 activeProfile.voiceProfile，
+ * 通过 sceneVoiceResolver 映射为 Provider 特定音色 ID，
+ * 与用户配置的 userVoiceConfig 合并（场景模式优先）。
+ *
+ * @returns { voice, speed } 用于 voiceApi.textToSpeech
+ */
+function getResolvedVoiceConfig(
+  userVoiceConfig: VoiceChatOptions['userVoiceConfig'],
+): { voice: string; speed: number } {
+  const { activeProfile } = useSceneModeStore.getState()
+  return resolveSceneVoice(
+    activeProfile.voiceProfile,
+    userVoiceConfig?.ttsProvider,
+    userVoiceConfig?.ttsVoice,
+    userVoiceConfig?.ttsSpeed,
+  )
+}
+
 // ============================================
 // 主 hook
 // ============================================
@@ -305,9 +329,10 @@ export function useVoiceChat(options?: VoiceChatOptions) {
 
     ttsPendingRef.current++
     try {
+      const resolved = getResolvedVoiceConfig(options?.userVoiceConfig)
       const ttsBlob = await voiceApi.textToSpeech(speakable, {
-        voice: options?.userVoiceConfig?.ttsVoice,
-        speed: options?.userVoiceConfig?.ttsSpeed,
+        voice: resolved.voice,
+        speed: resolved.speed,
         format: 'mp3',
         forceLocal: voiceModeRef.current === 'split',
       })
@@ -415,6 +440,39 @@ export function useVoiceChat(options?: VoiceChatOptions) {
         // 延迟断开，让 UI 有时间响应
         setTimeout(() => {
           disconnect()
+        }, 800)
+        return
+      }
+
+      // ============================================================
+      // 方向2：场景模式语音命令检测
+      // 说"切换到工作模式"等命令时直接切换，跳过 LLM 调用
+      // ============================================================
+      const sceneCommand = recognizeSceneCommand(sttResult.text)
+      if (sceneCommand) {
+        logger.system.info(
+          `[VoiceChat] 检测到场景切换命令: ${sceneCommand.ruleName} -> ${sceneCommand.mode}`,
+        )
+        // 切换场景模式（静默，Toast 由 store 内部显示）
+        await useSceneModeStore.getState().setSceneMode(sceneCommand.mode)
+        // 回复确认
+        const profile = useSceneModeStore.getState().getActiveProfile()
+        const confirmText = `好的，已切换到${profile.displayNameZh}模式`
+        addStreamEntry({ type: 'ai', text: confirmText })
+        if (!historySavedRef.current) {
+          historySavedRef.current = true
+          options?.onConversationComplete?.(sttResult.text, confirmText, [])
+        }
+        // 重置状态，重新开始监听（连续对话）
+        sttTextRef.current = ''
+        setSttText('')
+        aiTextRef.current = ''
+        setAiText('')
+        historySavedRef.current = false
+        // 延迟后恢复监听
+        setTimeout(() => {
+          setState('listening')
+          startRecording()
         }, 800)
         return
       }
@@ -586,9 +644,10 @@ export function useVoiceChat(options?: VoiceChatOptions) {
 
         ttsPendingRef.current++
         try {
+          const resolved = getResolvedVoiceConfig(options?.userVoiceConfig)
           const ttsBlob = await voiceApi.textToSpeech(speakableFinal, {
-            voice: options?.userVoiceConfig?.ttsVoice,
-            speed: options?.userVoiceConfig?.ttsSpeed,
+            voice: resolved.voice,
+            speed: resolved.speed,
             format: 'mp3',
             forceLocal: voiceModeRef.current === 'split',
           })
@@ -1245,9 +1304,10 @@ export function useVoiceChat(options?: VoiceChatOptions) {
     setState('speaking')
     isSpeakingRef.current = true
     try {
+      const resolved = getResolvedVoiceConfig(options?.userVoiceConfig)
       const ttsBlob = await voiceApi.textToSpeech(speakable, {
-        voice: options?.userVoiceConfig?.ttsVoice,
-        speed: options?.userVoiceConfig?.ttsSpeed,
+        voice: resolved.voice,
+        speed: resolved.speed,
         format: 'mp3',
         forceLocal: voiceModeRef.current === 'split',
       })

@@ -155,5 +155,26 @@ export function createDeviceLinkApi() {
      */
     replyResult: (requestId: string, result: DeviceLinkReplyResult) =>
       send(`device-link:renderer-reply:${requestId}`)(result),
+
+    // ===== 方向4：场景模式跨端协同 =====
+
+    /**
+     * 推送场景模式切换到移动端（PC→移动端）
+     *
+     * PC 端切换模式时调用，通过后端 WS 中转到移动端。
+     *
+     * @param mode 目标模式
+     */
+    pushSceneMode: (mode: string) => invoke<boolean>('device-link:push-scene-mode')({ mode }),
+
+    /**
+     * 订阅场景模式同步事件（移动端→PC）
+     *
+     * 移动端切换模式时，后端推送此事件到 PC 端。
+     * 收到后应静默切换模式（避免反向推送形成循环）。
+     *
+     * @returns 取消订阅函数
+     */
+    onSceneModeSync: on<{ mode: string }>('device-link:scene-mode-sync'),
   }
 }

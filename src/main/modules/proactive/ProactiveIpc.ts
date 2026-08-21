@@ -358,4 +358,33 @@ export function registerProactiveIpc(): void {
   logger.proactive?.info(
     '[IPC] 主动式助手 IPC 处理器已注册（listProposals/recordFeedback/getStats/clearHistory/listFeedback/listAuditLogs/cleanupExpired/getPermissionConfig/updatePermissionConfig/resetPermissionConfig/initLlmRefiner/isLlmRefinerReady/resetLlmRefiner）',
   )
+
+  // ============================================================
+  // 10. 场景模式规则同步（D-步骤4：主动行为策略切换）
+  // ============================================================
+
+  /**
+   * 设置场景模式主动行为规则
+   *
+   * 场景模式切换时由渲染进程调用，将新模式的 proactiveRules 同步到决策引擎。
+   * 决策引擎内部注册场景探测器，在节拍中评估规则条件并生成提案。
+   */
+  ipcMain.handle(
+    `${IPC_PREFIX}setSceneRules`,
+    async (_, rules: Array<{
+      id: string
+      name: string
+      condition: string
+      action: string
+      payload: string
+    }>) => {
+      try {
+        proactiveDecisionEngine.setSceneRules(rules)
+        return { success: true }
+      } catch (e) {
+        logger.proactive?.error('[IPC] setSceneRules 失败:', e)
+        return errorResponse(e)
+      }
+    },
+  )
 }

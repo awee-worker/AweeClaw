@@ -199,6 +199,14 @@ export class PerceptionFusionService {
   /** 最后一次融合结果（缓存） */
   private lastContext: EnvironmentContext | null = null
 
+  /**
+   * 场景模式感知过滤器（D-步骤5）
+   *
+   * 控制各感知信号的启停。null 表示无过滤（全部启用）。
+   * 由渲染进程通过 IPC perception:setSceneFilter 同步。
+   */
+  private sceneFilter: Record<string, boolean> | null = null
+
   private constructor() {}
 
   static getInstance(): PerceptionFusionService {
@@ -209,19 +217,56 @@ export class PerceptionFusionService {
   }
 
   /**
+   * 设置场景模式感知过滤器（D-步骤5）
+   *
+   * @param filter 感知过滤器（与 SceneModeDescriptor.PerceptionFilter 结构一致），
+   *               null 表示清除过滤，全部信号启用。
+   */
+  setSceneFilter(filter: Record<string, boolean> | null): void {
+    this.sceneFilter = filter
+    logger.perception?.info(
+      `[PerceptionFusion] 场景感知过滤器已更新: ${filter ? `${Object.entries(filter).filter(([, v]) => v).length}/${Object.keys(filter).length} 信号启用` : '已清除（全部启用）'}`,
+    )
+  }
+
+  /**
+   * 检查感知信号是否被当前场景模式启用（D-步骤5）
+   *
+   * @param signal 信号名（对应 PerceptionFilter 的字段名）
+   * @returns true 表示启用（无过滤或过滤器中该信号不为 false）
+   */
+  isSignalEnabled(signal: string): boolean {
+    if (!this.sceneFilter) return true
+    return this.sceneFilter[signal] !== false
+  }
+
+  /**
    * 获取当前环境上下文（4 通道融合）
    *
    * 并行查询 4 个通道，每个通道独立超时（800ms），
    * 任一通道失败不影响其他通道。
+   *
+   * D-步骤5：根据 sceneFilter 跳过被禁用的通道：
+   * - 场景通道：desktopWindowSwitching 和 activeAppTracking 都禁用时跳过
+   * - IoT 通道：iotHealth 和 iotEnvironment 都禁用时跳过
+   * - 监控/因果通道：始终采集（监控用于注意力分数，因果不依赖过滤器）
    */
   async getEnvironmentContext(): Promise<EnvironmentContext> {
     const timestamp = Date.now()
 
-    // 并行查询 4 个通道
+    // 根据场景过滤器决定是否采集各通道
+    const sceneEnabled =
+      this.isSignalEnabled('desktopWindowSwitching') ||
+      this.isSignalEnabled('activeAppTracking')
+    const iotEnabled =
+      this.isSignalEnabled('iotHealth') ||
+      this.isSignalEnabled('iotEnvironment')
+
+    // 并行查询 4 个通道（被禁用的通道直接返回 null）
     const [sceneResult, iotResult, causalResult, monitoringResult] =
       await Promise.allSettled([
-        this.loadSceneChannel(),
-        this.loadIoTChannel(),
+        sceneEnabled ? this.loadSceneChannel() : Promise.resolve(null),
+        iotEnabled ? this.loadIoTChannel() : Promise.resolve(null),
         this.loadCausalChannel(),
         this.loadMonitoringChannel(),
       ])

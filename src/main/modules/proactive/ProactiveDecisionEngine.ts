@@ -33,6 +33,8 @@ import {
   generateProactiveId,
   type ProactiveProposal,
   type ProactiveSeverity,
+  type ProactiveSource,
+  type ProactiveActionType,
   type ScenarioDetector,
   type ScenarioSignal,
 } from './ProactiveInterface'
@@ -267,6 +269,146 @@ class ProactiveDecisionEngine extends EventEmitter {
     this.detectors.splice(idx, 1)
     logger.proactive?.info(`[ProactiveDecisionEngine] 已注销场景探测器: ${name}`)
     return true
+  }
+
+  // ============================================
+  // 场景模式规则（D-步骤4：主动行为策略切换）
+  // ============================================
+
+  /** 当前场景模式的主动行为规则 */
+  private sceneRules: Array<{
+    id: string
+    name: string
+    condition: string
+    action: string
+    payload: string
+  }> = []
+
+  /** 场景探测器名称（用于注册/注销） */
+  private static readonly SCENE_DETECTOR_NAME = 'scene-mode-detector'
+
+  /**
+   * 设置场景模式主动行为规则
+   *
+   * 切换场景模式时调用，替换当前生效的规则集。
+   * 内部注册一个场景探测器，在 evaluate 节拍中评估规则条件并生成信号。
+   *
+   * @param rules 场景规则列表（来自 SceneModeProfile.proactiveRules）
+   */
+  setSceneRules(rules: Array<{
+    id: string
+    name: string
+    condition: string
+    action: string
+    payload: string
+  }>): void {
+    this.sceneRules = rules
+
+    // 注销旧探测器（如果存在）
+    this.unregisterScenarioDetector(ProactiveDecisionEngine.SCENE_DETECTOR_NAME)
+
+    // 注册新的场景探测器
+    if (rules.length > 0) {
+      this.registerScenarioDetector({
+        name: ProactiveDecisionEngine.SCENE_DETECTOR_NAME,
+        source: 'time' as ProactiveSource,
+        detect: async (): Promise<ScenarioSignal[]> => {
+          return this.evaluateSceneRules()
+        },
+      })
+    }
+
+    logger.proactive?.info(
+      `[ProactiveDecisionEngine] Scene rules updated: ${rules.length} rules active`,
+    )
+  }
+
+  /**
+   * 评估场景规则条件，生成场景信号
+   *
+   * 时间类条件直接判断当前时间；其他条件返回空（感知信号由其他探测器提供）。
+   */
+  private async evaluateSceneRules(): Promise<ScenarioSignal[]> {
+    if (this.sceneRules.length === 0) return []
+
+    const now = new Date()
+    const signals: ScenarioSignal[] = []
+
+    for (const rule of this.sceneRules) {
+      const matched = this.matchCondition(rule.condition, now)
+      if (!matched) continue
+
+      const actionType = this.mapActionType(rule.action)
+      signals.push({
+        source: 'time' as ProactiveSource,
+        trigger: `scene-rule:${rule.id}`,
+        severity: actionType === 'notify' ? 'low' : 'medium',
+        title: rule.name,
+        description: rule.payload,
+        action: {
+          type: actionType,
+          payload: rule.payload,
+        },
+        confidence: 0.8,
+        reason: `场景规则触发: ${rule.condition}`,
+        dedupKey: `scene-rule:${rule.id}`,
+      })
+    }
+
+    return signals
+  }
+
+  /** 评估时间类条件 */
+  private matchCondition(condition: string, now: Date): boolean {
+    const hour = now.getHours()
+    const minute = now.getMinutes()
+    const dayOfWeek = now.getDay() // 0=Sunday
+
+    switch (condition) {
+      case 'time_23pm':
+        return hour === 23
+      case 'daily_9am':
+        return hour === 9 && minute === 0
+      case 'friday_16pm':
+        return dayOfWeek === 5 && hour === 16
+      case 'sunday_8pm':
+        return dayOfWeek === 0 && hour === 20
+      case 'study_time':
+        return hour >= 9 && hour < 22
+      case 'every_hour':
+        return minute === 0
+      // 以下条件需要感知数据，暂不评估（由其他探测器提供信号）
+      case 'calendar_event_in_15min':
+      case 'task_due_in_1day':
+      case 'window_switching_high':
+      case 'idle_90min':
+      case 'idle_45min':
+      case 'emotion_low':
+      case 'forgetting_curve_due':
+      case 'knowledge_completed':
+      case 'study_2hours':
+        return false
+      default:
+        return false
+    }
+  }
+
+  /** 映射场景规则 action 到 ProactiveActionType */
+  private mapActionType(action: string): ProactiveActionType {
+    switch (action) {
+      case 'notify':
+        return 'notify'
+      case 'remind':
+        return 'notify'
+      case 'suggest':
+        return 'suggest'
+      case 'trigger-skill':
+        return 'chat'
+      case 'iot-control':
+        return 'execute'
+      default:
+        return 'suggest'
+    }
   }
 
   // ============================================

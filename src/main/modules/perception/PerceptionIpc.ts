@@ -14,6 +14,7 @@
 import { ipcMain, systemPreferences, BrowserWindow } from 'electron'
 import { logger } from '@shared/toolkit/LogEngine'
 import { PerceptionStore } from './PerceptionStore'
+import { PerceptionFusionService } from './PerceptionFusionService'
 import { BehaviorPredictor, type PredictRequest, type PredictionFeedback } from './BehaviorPredictor'
 import { ImpactAnalyzer, type ImpactAnalysisRequest } from './ImpactAnalyzer'
 import { GitCoModificationAnalyzer, type AnalyzeOptions } from './GitCoModificationAnalyzer'
@@ -527,5 +528,34 @@ export function registerPerceptionIpc(): void {
     }
   })
 
-  logger.perception?.info('[IPC] 感知层 IPC 处理器已注册（含阶段2 预测/影响分析/时间轴 + 阶段3 摄像头权限 + 阶段9 LLM 双模式）')
+  // ============================================================
+  // D-步骤5：场景模式感知策略切换
+  // ============================================================
+
+  /**
+   * 设置场景模式感知过滤器
+   *
+   * 场景模式切换时由渲染进程调用，将新模式的 perceptionFilter 同步到
+   * PerceptionFusionService，控制各感知通道（scene/iot/monitoring）的启停。
+   *
+   * filter 为 null 时清除过滤，全部通道启用。
+   */
+  ipcMain.handle(
+    `${IPC_PREFIX}setSceneFilter`,
+    async (_, filter: Record<string, boolean> | null) => {
+      try {
+        PerceptionFusionService.getInstance().setSceneFilter(filter)
+        logger.perception?.info(
+          `[IPC] 场景感知过滤器已更新: ${filter ? `${Object.entries(filter).filter(([, v]) => v).length} 信号启用` : '已清除（全部启用）'}`,
+        )
+        return { success: true }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        logger.perception?.error('[IPC] setSceneFilter 失败:', e)
+        return { success: false, error: msg }
+      }
+    },
+  )
+
+  logger.perception?.info('[IPC] 感知层 IPC 处理器已注册（含阶段2 预测/影响分析/时间轴 + 阶段3 摄像头权限 + 阶段9 LLM 双模式 + D-步骤5 场景感知过滤）')
 }

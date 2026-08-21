@@ -426,6 +426,51 @@ class CronScheduler extends EventEmitter {
   }
 
   /**
+   * 按 ruleId 前缀查找所有匹配的任务
+   *
+   * 用于场景模式 Cron 批量操作，如 pauseByRuleIdPrefix('scene:work:')
+   */
+  findByRuleIdPrefix(prefix: string): CronTask[] {
+    return Array.from(this.tasks.values()).filter(t => t.ruleId?.startsWith(prefix))
+  }
+
+  /**
+   * 按 ruleId 前缀批量暂停任务
+   *
+   * @param prefix ruleId 前缀（如 'scene:work:'）
+   * @returns 暂停的任务数
+   */
+  pauseByRuleIdPrefix(prefix: string): number {
+    const tasks = this.findByRuleIdPrefix(prefix)
+    let paused = 0
+    for (const task of tasks) {
+      if (this.pause(task.id)) paused++
+    }
+    if (paused > 0) {
+      logger.system.info(`[CronScheduler] Paused ${paused} tasks by prefix: ${prefix}`)
+    }
+    return paused
+  }
+
+  /**
+   * 按 ruleId 前缀批量恢复任务
+   *
+   * @param prefix ruleId 前缀（如 'scene:life:'）
+   * @returns 恢复的任务数
+   */
+  resumeByRuleIdPrefix(prefix: string): number {
+    const tasks = this.findByRuleIdPrefix(prefix)
+    let resumed = 0
+    for (const task of tasks) {
+      if (this.resume(task.id)) resumed++
+    }
+    if (resumed > 0) {
+      logger.system.info(`[CronScheduler] Resumed ${resumed} tasks by prefix: ${prefix}`)
+    }
+    return resumed
+  }
+
+  /**
    * 按后端规则 ID 更新任务（不存在则注册）
    */
   upsertByRuleId(

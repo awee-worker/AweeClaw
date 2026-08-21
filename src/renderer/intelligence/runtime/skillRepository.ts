@@ -9,6 +9,7 @@
 import { api } from '../../adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
 import { useStore } from '@store'
+import { useSceneModeStore } from '@/renderer/modes/sceneModeStore'
 import { joinPath, platform } from '@shared/toolkit/pathHelper'
 import { parse as parseYaml } from 'yaml'
 import { BRAND } from '@shared/brand'
@@ -91,7 +92,14 @@ class SkillService {
      */
     async getSkills(): Promise<SkillItem[]> {
         const all = await this.getAllSkills()
-        return all.filter(s => s.enabled)
+        const { currentSceneMode } = useSceneModeStore.getState()
+        return all.filter(s => {
+            if (!s.enabled) return false
+            // 按场景模式过滤：无 sceneMode 标记的技能所有模式可见（向后兼容）
+            const sceneMode = s.metadata?.sceneMode
+            if (!sceneMode) return true
+            return sceneMode.split(',').map(m => m.trim()).includes(currentSceneMode)
+        })
     }
 
     /**

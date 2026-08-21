@@ -1,6 +1,7 @@
 import { api } from '../../../adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
 import { useStore } from '@store'
+import { useSceneModeStore } from '@/renderer/modes/sceneModeStore'
 import { joinPath } from '@shared/toolkit/pathHelper'
 import { BRAND } from '@shared/brand'
 import { vectorIndex } from './vectorIndex'
@@ -54,12 +55,18 @@ class KnowledgeService {
     if (existing) return existing
 
     const now = Date.now()
+    const { memoryDomainTag } = useSceneModeStore.getState().getActiveProfile()
+    const baseTags = input.tags ?? this.extractTags(normalizedContent)
+    // 自动注入当前场景模式记忆域 tag，避免跨域污染
+    const tags = baseTags.some(t => t.startsWith('domain:'))
+      ? baseTags
+      : [...baseTags, memoryDomainTag]
     const entry: KnowledgeEntry = {
       id: crypto.randomUUID(),
       title: input.title?.trim() || this.autoTitle(normalizedContent),
       content: normalizedContent,
       category: input.category ?? this.inferCategory(normalizedContent),
-      tags: input.tags ?? this.extractTags(normalizedContent),
+      tags,
       starred: input.starred ?? false,
       enabled: input.enabled ?? true,
       source: input.source ?? 'user',
@@ -616,6 +623,52 @@ ${lines.join('\n')}
     }
 
     return totalMigrated
+  }
+
+  /**
+   * 迁移知识库条目的记忆域 tag（方向3）
+   *
+   * 将所有包含 sourceTag 的条目的 domain:xxx tag 替换为 targetTag。
+   * 用于场景模式间数据迁移，如将工作模式的知识迁移到学习模式。
+   *
+   * @param sourceTag 源域 tag（如 'domain:work'）
+   * @param targetTag 目标域 tag（如 'domain:study'）
+   * @returns 迁移的条目数量
+   */
+  async migrateDomain(sourceTag: string, targetTag: string): Promise<number> {
+    if (!sourceTag.startsWith('domain:') || !targetTag.startsWith('domain:')) {
+      logger.agent.warn('[KnowledgeService] migrateDomain: tags must start with "domain:"')
+      return 0
+    }
+    if (sourceTag === targetTag) return 0
+
+    const store = await this.loadStore()
+    let migrated = 0
+
+    for (const entry of store.entries) {
+      const hasSourceTag = entry.tags.includes(sourceTag)
+      if (!hasSourceTag) continue
+
+      // 替换 sourceTag 为 targetTag（避免重复）
+      entry.tags = entry.tags.filter((t) => t !== sourceTag && t !== targetTag)
+      entry.tags.push(targetTag)
+      entry.updatedAt = Date.now()
+      migrated++
+
+      // 重新提取图谱
+      localGraphStore.extractAndStore(entry.id, entry.title, entry.content, entry.tags).catch((err: unknown) => {
+        logger.agent.warn('[KnowledgeService] Local graph re-extraction on migrate failed:', err)
+      })
+    }
+
+    if (migrated > 0) {
+      await this.saveStore(store)
+      logger.agent.info(
+        `[KnowledgeService] Migrated ${migrated} entries from ${sourceTag} to ${targetTag}`,
+      )
+    }
+
+    return migrated
   }
 
   private async loadStore(): Promise<KnowledgeStore> {

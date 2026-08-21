@@ -20,6 +20,7 @@ import { credentialsHolder, type DeviceLinkCredentials } from './DeviceLinkCrede
 import {
   initDeviceLinkClient,
   shutdownDeviceLinkClient,
+  getDeviceLinkClient,
 } from './DeviceLinkClient'
 import { deviceLinkEventBridge } from './DeviceLinkEventBridge'
 import type Store from 'electron-store'
@@ -147,6 +148,27 @@ function registerIpcHandlers(client: ReturnType<typeof initDeviceLinkClient>): v
   ipcMain.handle('device-link:get-device-id', async (): Promise<string> => {
     return client.getDeviceId()
   })
+
+  // ── 方向4：场景模式跨端同步 ──────────────────────────────
+  // PC→移动端：renderer 调用 pushSceneMode，通过 WS 推送 event.scene_mode.sync 到后端
+  ipcMain.handle(
+    'device-link:push-scene-mode',
+    async (_event, { mode }: { mode: string }): Promise<boolean> => {
+      const linkClient = getDeviceLinkClient()
+      if (!linkClient) {
+        logger.deviceLink.warn('[IPC] push-scene-mode: client not initialized')
+        return false
+      }
+      try {
+        linkClient.reportEvent('scene_mode.sync', { mode, source: 'pc' })
+        logger.deviceLink.info(`[IPC] Pushed scene mode to mobile: ${mode}`)
+        return true
+      } catch (err) {
+        logger.deviceLink.error(`[IPC] push-scene-mode failed: ${(err as Error).message}`)
+        return false
+      }
+    },
+  )
 }
 
 /**

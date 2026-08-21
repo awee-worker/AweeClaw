@@ -33,6 +33,7 @@ import {
   handleTaskTransferPull,
   handleTaskTransferDeliver,
   handleKnowledgeExport,
+  handleChatExport,
   type DeviceHandlerContext,
   type DeviceLinkPreferences,
 } from './DeviceLinkHandlers'
@@ -331,6 +332,19 @@ class DeviceLinkClient {
       return
     }
 
+    // 方向4：场景模式同步（移动端→PC）
+    if (msg?.type === 'scene_mode.sync') {
+      const mode = String(msg?.mode ?? '')
+      if (mode) {
+        logger.deviceLink.info(`[Client] Received scene mode sync from mobile: ${mode}`)
+        const win = this.getMainWindow()
+        if (win && !win.isDestroyed()) {
+          win.webContents.send('device-link:scene-mode-sync', { mode })
+        }
+      }
+      return
+    }
+
     logger.deviceLink.debug(`[Client] Unhandled message type: ${msg?.type}`)
   }
 
@@ -380,6 +394,9 @@ class DeviceLinkClient {
           break
         case 'knowledge.export.req':
           payload = await handleKnowledgeExport(ctx)
+          break
+        case 'chat.export.req':
+          payload = await handleChatExport(ctx)
           break
         default:
           throw new Error(`unsupported_rpc_type: ${req.type}`)
