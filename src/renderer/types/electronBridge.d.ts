@@ -2853,6 +2853,69 @@ export interface ElectronAPI {
       }) => void,
     ) => () => void
   }
+
+  /** 设备联动（移动端 ↔ 桌面端）API */
+  deviceLink: {
+    /** 推送登录凭据，触发或重置 WebSocket 连接 */
+    pushCredentials: (payload: {
+      serverUrl: string
+      accessToken: string
+      /** 设备显示名（可选，主进程会用 hostname+OS 自动填充） */
+      deviceName?: string
+      workspacePath?: string
+      workspaceName?: string
+    }) => Promise<{ ok: boolean }>
+    /** 用户登出：清除凭据并断开 WS 连接 */
+    clearCredentials: () => Promise<{ ok: boolean }>
+    /** 更新偏好策略 */
+    setPreferences: (patch: {
+      allowRemoteCommand?: boolean
+      allowClipboardPush?: boolean
+      allowScreenshot?: boolean
+      allowPowerControl?: boolean
+    }) => Promise<{ ok: boolean }>
+    /** 查询连接状态 */
+    getStatus: () => Promise<{
+      started: boolean
+      deviceId: string
+      connected: boolean
+      reconnectAttempts: number
+      credentialsValid: boolean
+    }>
+    /** 查询设备 ID */
+    getDeviceId: () => Promise<string>
+    /** 订阅任务接续事件（来自其他设备） */
+    onTaskTransfer: (
+      callback: (payload: {
+        fromDeviceId: string
+        threadId: string
+        snippet: string
+      }) => void,
+    ) => () => void
+    onAiTask: (
+      callback: (payload: {
+        requestId: string
+        prompt: string
+        scenarioId?: string
+        needResult?: boolean
+      }) => void,
+    ) => () => void
+    onRunScenario: (
+      callback: (payload: {
+        requestId: string
+        scenarioId?: string
+        prompt?: string
+      }) => void,
+    ) => () => void
+    replyResult: (
+      requestId: string,
+      result: {
+        success: boolean
+        output?: string
+        error?: string
+      },
+    ) => void
+  }
 }
 
 declare global {

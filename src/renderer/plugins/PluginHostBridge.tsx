@@ -23,6 +23,9 @@ import { PLUGIN_CHAT_SEND_EVENT, type PluginChatSendDetail } from './PluginHostA
 /** window 上标记 bridge 就绪的全局字段名 */
 const READY_FLAG = '__AWEECLAW_PLUGIN_HOST_READY__'
 
+/** 设备联动 AI 任务事件名（来自 authSlice 的 onAiTask/onRunScenario） */
+const DEVICE_LINK_AI_TASK_EVENT = 'aweeclaw:device-link:ai-task'
+
 export function PluginHostBridge() {
   const { sendMessage } = useAgentCommands()
 
@@ -41,12 +44,26 @@ export function PluginHostBridge() {
       }
     }
 
+    /** 处理设备联动 AI 任务请求（来自移动端远程触发） */
+    const handleDeviceLinkAiTask = async (event: Event) => {
+      const detail = (event as CustomEvent<{ text: string; scenarioId?: string }>).detail
+      if (!detail?.text) return
+      try {
+        await sendMessage(detail.text)
+        logger.system.info('[PluginHostBridge] Device-link AI task sent to agent')
+      } catch (err) {
+        logger.system.error('[PluginHostBridge] Device-link AI task failed:', err)
+      }
+    }
+
     window.addEventListener(PLUGIN_CHAT_SEND_EVENT, handleChatSend as EventListener)
+    window.addEventListener(DEVICE_LINK_AI_TASK_EVENT, handleDeviceLinkAiTask as EventListener)
     // 标记 bridge 就绪，供 PluginHostApi 检测
     ;(window as unknown as Record<string, unknown>)[READY_FLAG] = true
 
     return () => {
       window.removeEventListener(PLUGIN_CHAT_SEND_EVENT, handleChatSend as EventListener)
+      window.removeEventListener(DEVICE_LINK_AI_TASK_EVENT, handleDeviceLinkAiTask as EventListener)
       delete (window as unknown as Record<string, unknown>)[READY_FLAG]
     }
   }, [sendMessage])

@@ -42,7 +42,7 @@ function hasUserCustomModelConfig(): boolean {
   }
 }
 
-/** 认证成功后：归属孤儿线程 + 修复缺失标题 + 重新加载会话数据 */
+/** 认证成功后：归属孤儿线程 + 修复缺失标题 + 重新加载会话数据 + 推送设备联动凭据 */
 async function onAuthSuccess(userId: string | undefined): Promise<void> {
   if (userId) {
     try {
@@ -66,6 +66,45 @@ async function onAuthSuccess(userId: string | undefined): Promise<void> {
   } catch (e) {
     logger.system.warn('[Auth] Rehydrate after auth failed:', e)
   }
+  // 推送登录凭据给主进程的设备联动模块，触发 WebSocket 与后端长连接
+  try {
+    pushDeviceLinkCredentials()
+  } catch (e) {
+    logger.system.warn('[Auth] Push device-link credentials failed:', e)
+  }
+}
+
+/**
+ * 推送当前登录态到主进程的设备联动模块。
+ * - 登录/注册/手机号登录成功后调用
+ * - token 刷新后调用（让 WS 用新 token 重连）
+ * - restoreSession 成功后调用（应用启动时恢复连接）
+ * - 工作区切换后可再次调用以更新 workspacePath
+ *
+ * deviceName 不传，由主进程自动用 hostname + OS 填充。
+ */
+function pushDeviceLinkCredentials(): void {
+  const state = useStore.getState()
+  const serverUrl = state.serverUrl
+  const tokens = getTokens()
+  if (!serverUrl || !tokens?.accessToken) {
+    logger.system.debug('[Auth] Skip device-link push: no serverUrl or accessToken')
+    return
+  }
+  const workspacePath = state.workspacePath || undefined
+  const workspaceName = workspacePath
+    ? workspacePath.split(/[\\/]/).pop() || undefined
+    : undefined
+  void api.deviceLink
+    .pushCredentials({
+      serverUrl,
+      accessToken: tokens.accessToken,
+      workspacePath,
+      workspaceName,
+    })
+    .catch((e) => {
+      logger.system.warn('[Auth] deviceLink.pushCredentials failed:', e)
+    })
 }
 
 export interface CloudUser {
@@ -333,6 +372,10 @@ export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set,
     clearPersistedAuth();
     set({ isAuthenticated: false, cloudUser: null, quota: null, cloudMode: 'local' });
     restoreWorkspaceAgentStore().catch(() => {});
+    // 通知主进程断开设备联动 WebSocket 连接
+    void api.deviceLink.clearCredentials().catch((e) => {
+      logger.system.warn('[Auth] deviceLink.clearCredentials failed:', e)
+    });
     import('@store').then(({ useStore }) => {
       useStore.getState().setShowWelcomePage(true);
     }).catch(() => {});
@@ -551,6 +594,8 @@ setOnTokenRefresh((newTokens) => {
       }
     }).catch(() => {});
   }
+  // 同步推送新 token 给设备联动模块，让 WS 用新 token 重连
+  pushDeviceLinkCredentials();
 });
 
 setOnAuthFailed(() => {
@@ -563,11 +608,15 @@ setOnAuthFailed(() => {
 api.llm.onCloudTokenRefreshed((data) => {
   logger.system.info('[Auth] Cloud token refreshed from main process')
   syncRefreshedTokens(data.accessToken, data.refreshToken)
+  // 主进程刷新的 token 也同步到设备联动模块
+  pushDeviceLinkCredentials()
 })
 
 // 监听主进程云端认证失效事件
 api.llm.onCloudAuthFailed(() => {
   logger.system.warn('[Auth] Cloud auth failed from main process')
+  // 通知设备联动模块断开 WS（避免用失效 token 持续重连）
+  void api.deviceLink.clearCredentials().catch(() => {})
   if (authFailedHandler) {
     authFailedHandler()
   }
@@ -584,4 +633,60 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
     tryRefreshToken().catch(() => {})
   }
+})
+
+// ============================================================================
+// 设备联动：监听来自移动端的 AI 任务 / 场景运行请求
+// ============================================================================
+
+/**
+ * 收到远程 AI 任务请求后，通过 window CustomEvent 派发给 PluginHostBridge，
+ * 由其调用 useAgentCommands().sendMessage() 发送到当前会话。
+ * 完成后通过 api.deviceLink.replyResult 回复主进程。
+ */
+api.deviceLink.onAiTask((payload) => {
+  const { requestId, prompt, needResult } = payload
+  logger.system.info(`[DeviceLink] AI task received: requestId=${requestId} prompt=${prompt.slice(0, 60)}...`)
+
+  if (!prompt) {
+    api.deviceLink.replyResult(requestId, { success: false, error: 'empty_prompt' })
+    return
+  }
+
+  // 通过 window event 派发给 PluginHostBridge（复用插件发送消息的机制）
+  const event = new CustomEvent('aweeclaw:device-link:ai-task', {
+    detail: { text: prompt },
+  })
+  window.dispatchEvent(event)
+
+  // AI 任务是异步的，LLM 流式回复需要时间，这里立即回复 queued
+  // 实际结果会通过 SSE command-result 事件推送到移动端
+  if (needResult) {
+    // 给一定时间让消息发送流程启动，超时则回复 queued
+    setTimeout(() => {
+      api.deviceLink.replyResult(requestId, {
+        success: true,
+        output: 'task_queued',
+      })
+    }, 500)
+  } else {
+    api.deviceLink.replyResult(requestId, { success: true })
+  }
+})
+
+/**
+ * 收到远程场景运行请求后，同样通过 window event 派发。
+ */
+api.deviceLink.onRunScenario((payload) => {
+  const { requestId, scenarioId, prompt } = payload
+  logger.system.info(`[DeviceLink] Run scenario: requestId=${requestId} scenario=${scenarioId}`)
+
+  if (prompt) {
+    const event = new CustomEvent('aweeclaw:device-link:ai-task', {
+      detail: { text: prompt, scenarioId },
+    })
+    window.dispatchEvent(event)
+  }
+
+  api.deviceLink.replyResult(requestId, { success: true, output: 'scenario_started' })
 })

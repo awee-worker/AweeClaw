@@ -177,6 +177,9 @@ export async function initializeModules(firstWin: BrowserWindow): Promise<void> 
   initProjectExecutionModule()
   // 注册视频转码 IPC 处理器（用 ffmpeg-static 转码不支持的视频编码，如 H.265 → H.264）
   registerVideoTranscodeIpc()
+  // 初始化设备联动模块（WebSocket 长连接 + RPC 处理器 + 事件桥接）
+  // 不阻塞启动：WebSocket 连接在 renderer 推送 token 后才发起
+  initDeviceLinkModule()
 
   // ==========================================
   // 7. 应用菜单与语言同步
@@ -871,6 +874,52 @@ function initProjectExecutionModule(): void {
       })
   } catch (err) {
     logger.system.warn('[Main] Project execution module init failed:', errMsg(err))
+  }
+}
+
+/**
+ * 初始化设备联动模块。
+ *
+ * 顺序：
+ * 1. 创建 DeviceLinkClient（不立即连接，等 renderer 推送凭据）
+ * 2. 启动 EventBridge（监听 powerMonitor、文件变更、空闲轮询）
+ * 3. 注册 IPC handler（renderer 通过 device-link:set-credentials 推送 token）
+ *
+ * 工作区根解析器复用 floating-avatar 的逻辑：
+ * - 优先取当前主窗口已绑定的工作区
+ * - 回退到 lastWorkspaceSession 的 roots[0]
+ * - 再回退到 lastWorkspacePath
+ *
+ * 不阻塞启动：WS 连接由 renderer 在登录后调用 IPC 触发。
+ */
+function initDeviceLinkModule(): void {
+  try {
+    import('../modules/device-link/deviceLink.ipc')
+      .then(({ initDeviceLinkModule: initMod }) => {
+        initMod({
+          configStore: getConfigStore(),
+          getMainWindow: () => getMainWindow(),
+          resolveWorkspaceRoot: () => {
+            const win = getMainWindow()
+            if (win && !win.isDestroyed()) {
+              const roots = getWindowWorkspace(win.id)
+              if (roots && roots.length > 0) return roots[0]
+            }
+            const session = getConfigStore().get('lastWorkspaceSession') as
+              | { roots?: string[] }
+              | undefined
+            if (session?.roots && session.roots.length > 0) return session.roots[0]
+            const lastPath = getConfigStore().get('lastWorkspacePath') as string | null
+            return lastPath ?? null
+          },
+        })
+        logger.system.info('[Main] Device link module initialized (IPC registered)')
+      })
+      .catch((err) => {
+        logger.system.warn('[Main] Device link module init skipped:', errMsg(err))
+      })
+  } catch (err) {
+    logger.system.warn('[Main] Device link module init failed:', errMsg(err))
   }
 }
 

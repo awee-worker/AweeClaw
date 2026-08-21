@@ -53,6 +53,24 @@ const DEFAULT_CONFIG: FileWatcherConfig = {
 
 const watcherEntries = new Map<string, WatcherEntry>()
 
+/**
+ * 全局文件变更转发器
+ *
+ * 由 DeviceLinkEventBridge 在主进程内直接订阅，
+ * 无需经 renderer 中转，降低延迟并避免 renderer 未就绪时事件丢失。
+ * 同一事件会同时派发给调用 setupFileWatcher 时传入的 callback 和此转发器。
+ */
+type FileChangeForwarder = (data: FileWatcherEvent) => void
+let fileChangeForwarder: FileChangeForwarder | null = null
+
+/**
+ * 注册全局文件变更转发器（仅可注册一个，重复注册会覆盖）。
+ * 传入 null 可清除。
+ */
+export function setFileChangeForwarder(fn: FileChangeForwarder | null): void {
+  fileChangeForwarder = fn
+}
+
 const LSP_FILE_CHANGE_TYPE = {
   create: 1,
   update: 2,
@@ -145,6 +163,12 @@ export async function setupFileWatcher(
 
       const eventType = event.type === 'create' ? 'create' : event.type === 'delete' ? 'delete' : 'update'
       callback({ event: eventType, path: event.path })
+      // 同步派发给主进程内的全局订阅者（设备联动等），失败不阻塞主流程
+      try {
+        fileChangeForwarder?.({ event: eventType, path: event.path })
+      } catch (err) {
+        logger.security.warn('[Watcher] fileChangeForwarder threw:', err)
+      }
       fileChangeBuffer.add({ type: eventType, path: event.path, timestamp: Date.now() })
       lspChanges.push({ path: event.path, type: eventType })
     }

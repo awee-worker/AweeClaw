@@ -66,6 +66,7 @@ import { createPptPreviewApi } from './preload/api/pptPreview'
 import { createProjectExecutionApi } from './preload/api/projectExecution'
 import { createVideoTranscodeApi } from './preload/api/videoTranscode'
 import { createEnvironmentApi } from './preload/api/environment'
+import { createDeviceLinkApi } from './preload/api/deviceLink'
 
 /**
  * 聚合所有领域 API 并暴露到渲染进程。
@@ -104,4 +105,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   projectExecution: createProjectExecutionApi(),
   videoTranscode: createVideoTranscodeApi(),
   environment: createEnvironmentApi(),
+  deviceLink: createDeviceLinkApi(),
 })

@@ -46,6 +46,7 @@ export type LogCategory =
   | 'Causal'
   | 'IoT'
   | 'Proactive'
+  | 'DeviceLink'
 
 /** 单条日志记录的不可变快照 */
 export interface LogEntry {
@@ -851,6 +852,9 @@ class LogEngineCore {
   }
   get proactive(): CategoryLogger {
     return this.createCategoryLogger('Proactive')
+  }
+  get deviceLink(): CategoryLogger {
+    return this.createCategoryLogger('DeviceLink')
   }
 
   /* -------------------- 便捷方法 -------------------- */

@@ -70,6 +70,14 @@ export async function performFastCleanup(): Promise<void> {
     logger.system.warn('[Cleanup] IPC cleanup error:', err)
   }
 
+  // 1.5 设备联动模块（关闭 WebSocket 长连接，避免后端在线设备缓存延迟）
+  try {
+    const { shutdownDeviceLinkModule } = await import('../modules/device-link/deviceLink.ipc')
+    shutdownDeviceLinkModule()
+  } catch {
+    /* ignore */
+  }
+
   // 2. LSP 服务器（快速杀死，超时 1s）
   try {
     await withTimeout(
@@ -125,6 +133,14 @@ export async function performGlobalCleanup(): Promise<void> {
 
     // 1. IPC 处理器（包括终端）
     ipcModule?.cleanupAllHandlers()
+
+    // 1.5 设备联动模块（关闭 WebSocket 长连接 + EventBridge detach）
+    try {
+      const { shutdownDeviceLinkModule } = await import('../modules/device-link/deviceLink.ipc')
+      shutdownDeviceLinkModule()
+    } catch {
+      /* ignore */
+    }
 
     // 2. LSP 服务器（超时 3s）
     await withTimeout(lspManager?.stopAllServers() ?? Promise.resolve(), 3000, 'LSP stopAllServers')

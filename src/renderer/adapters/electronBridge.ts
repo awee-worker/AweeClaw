@@ -1044,6 +1044,25 @@ function createGroupedAPI() {
         callback: Parameters<typeof raw.environment.onEnvironmentProgress>[0],
       ) => raw.environment.onEnvironmentProgress(callback),
     },
+
+    // 设备联动（移动端 ↔ 桌面端）
+    deviceLink: {
+      pushCredentials: (payload: Parameters<typeof raw.deviceLink.pushCredentials>[0]) =>
+        raw.deviceLink.pushCredentials(payload),
+      clearCredentials: () => raw.deviceLink.clearCredentials(),
+      setPreferences: (patch: Parameters<typeof raw.deviceLink.setPreferences>[0]) =>
+        raw.deviceLink.setPreferences(patch),
+      getStatus: () => raw.deviceLink.getStatus(),
+      getDeviceId: () => raw.deviceLink.getDeviceId(),
+      onTaskTransfer: (callback: Parameters<typeof raw.deviceLink.onTaskTransfer>[0]) =>
+        raw.deviceLink.onTaskTransfer(callback),
+      onAiTask: (callback: Parameters<typeof raw.deviceLink.onAiTask>[0]) =>
+        raw.deviceLink.onAiTask(callback),
+      onRunScenario: (callback: Parameters<typeof raw.deviceLink.onRunScenario>[0]) =>
+        raw.deviceLink.onRunScenario(callback),
+      replyResult: (requestId: string, result: { success: boolean; output?: string; error?: string }) =>
+        raw.deviceLink.replyResult(requestId, result),
+    },
   }
 }
 
