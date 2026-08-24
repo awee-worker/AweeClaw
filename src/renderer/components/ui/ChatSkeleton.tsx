@@ -266,12 +266,10 @@ ChatInputSkeleton.displayName = 'ChatInputSkeleton'
  * 完整聊天骨架屏
  *
  * 组合所有子组件，呈现完整的聊天界面加载占位。
- * 包含：顶部标题栏 + 消息列表（用户/AI 交替）+ 底部输入框。
+ * 包含：消息列表（用户/AI 交替）+ 底部输入框。
  */
 export const ChatSkeleton = memo(() => (
   <div className="h-full flex flex-col bg-background-chat">
-    <ChatHeaderSkeleton />
-
     {/* 消息列表区：严格匹配真实容器结构 */}
     <div className="flex-1 overflow-hidden">
       <div className="max-w-[800px] mx-auto w-full px-4 py-2 flex flex-col gap-1">

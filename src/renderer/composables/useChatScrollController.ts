@@ -94,8 +94,9 @@ export function useChatScrollController({
 
   /** 同步底部状态与按钮显隐 */
   const applyBottomState = useCallback((bottom: boolean, hasOverflow = true) => {
+    const next = hasOverflow && !bottom
     atBottomRef.current = bottom
-    setShowScrollButton(hasOverflow && !bottom)
+    setShowScrollButton(next)
   }, [])
 
   /** 基于滚动容器度量同步状态 */

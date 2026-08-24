@@ -68,6 +68,8 @@ import { ProactiveSuggestionsContainer } from './proactive/ProactiveSuggestionsC
 import { useProactiveInvoker } from './proactive/useProactiveInvoker'
 import { useAutomationCronExecutor } from './proactive/useAutomationCronExecutor'
 
+
+
 export default function ChatPanel() {
   // ===== Store 状态订阅 =====
   const {
@@ -345,6 +347,8 @@ export default function ChatPanel() {
 
   const { isSwitchingThread, timelineItems } = timelineProjection
 
+
+
   // ===== 用户消息索引（左侧圆点导航）=====
   // timelineItems 的 ref，避免 handleTimelineRangeChanged 频繁重建（Virtuoso 性能优化）
   const timelineItemsRef = useRef(timelineItems)
@@ -428,6 +432,8 @@ export default function ChatPanel() {
     threadId: currentThreadId,
     virtuosoRef: scrollVirtuosoRef,
   })
+
+
 
   const { handleKeyDown } = useChatKeyboard({
     showFileMention: mentionController.showFileMention,
