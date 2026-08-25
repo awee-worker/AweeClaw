@@ -14,6 +14,7 @@ import { EventBus } from './EventDispatcher'
 import { estimateMessagesTokens } from '../capabilities/context/ContextCompressor'
 import { lintService } from '../runtime/codeAnalysisService'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
+import { getActiveCustomAgent, getAgentToolLoadingFields } from '@renderer-configuration/customAgentTools'
 import { resolveRelativeChangePath, isFileWriteToolResult } from '@intelligence/utils/fileMutationHelper'
 import { isCodeFile } from '@intelligence/toolkit/fileReadPolicies'
 import { composerService } from '@intelligence/runtime/composerEngine'
@@ -482,6 +483,10 @@ export async function executeAgentCycle(
   const activeScenario = scenarioRegistry.getActive()
   const scenarioToolPacks = activeScenario?.capabilities?.toolPacks
 
+  // 自定义智能体工具白名单：激活了智能体时限制其可用工具
+  const activeAgent = getActiveCustomAgent()
+  const agentToolFields = getAgentToolLoadingFields(activeAgent)
+
   setToolLoadingContext({
     mode: context.chatMode,
     templateId: useStore.getState().promptTemplateId,
@@ -489,6 +494,7 @@ export async function executeAgentCycle(
     scenarioId: activeScenarioId,
     scenarioToolPacks,
     isChannel: context.isChannel,
+    ...agentToolFields,
   })
 
   const agentTools = toolManager.getAllToolDefinitions()
@@ -911,7 +917,8 @@ export async function executeAgentCycle(
         assistantId,
         enableLLMSummary,
         autoHandoff,
-        budgetController
+        budgetController,
+        (result.toolCalls?.length ?? 0) > 0
       )
 
       if (compressionResult.needsHandoff) {
@@ -947,7 +954,8 @@ export async function executeAgentCycle(
         assistantId,
         enableLLMSummary,
         autoHandoff,
-        budgetController
+        budgetController,
+        (result.toolCalls?.length ?? 0) > 0
       )
 
       if (compressionResult.needsHandoff) {

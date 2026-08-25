@@ -25,6 +25,7 @@ import {
   initializeTools,
 } from '@intelligence/toolkit'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
+import { getActiveCustomAgent, getAgentToolLoadingFields } from '@renderer-configuration/customAgentTools'
 import { useStore } from '@store'
 import { getToolApprovalType, getToolDisplayName } from '@configuration/toolDefinitions'
 import { requiresApprovalGate } from '@intelligence/engine/toolOrchestrator'
@@ -194,18 +195,6 @@ export async function ensureVoiceToolsInitialized(): Promise<void> {
 
   try {
     initializeToolProviders()
-
-    const activeScenarioId = useStore.getState().activeScenarioId
-    const activeScenario = scenarioRegistry.getActive()
-    const scenarioToolPacks = activeScenario?.capabilities?.toolPacks
-
-    setToolLoadingContext({
-      mode: 'agent',
-      templateId: useStore.getState().promptTemplateId,
-      scenarioId: activeScenarioId,
-      scenarioToolPacks,
-    })
-
     await initializeTools()
     voiceToolsInitialized = true
 
@@ -216,6 +205,28 @@ export async function ensureVoiceToolsInitialized(): Promise<void> {
     // 不 throw，允许在无工具模式下继续（LLM 仍可正常对话）
     voiceToolsInitialized = true
   }
+}
+
+/**
+ * 每次执行时刷新工具加载上下文（场景/智能体可能在会话间切换）
+ * 确保语音路径始终使用最新的智能体工具白名单
+ */
+function refreshVoiceToolLoadingContext(): void {
+  const activeScenarioId = useStore.getState().activeScenarioId
+  const activeScenario = scenarioRegistry.getActive()
+  const scenarioToolPacks = activeScenario?.capabilities?.toolPacks
+
+  // 自定义智能体工具白名单：激活了智能体时限制其可用工具
+  const activeAgent = getActiveCustomAgent()
+  const agentToolFields = getAgentToolLoadingFields(activeAgent)
+
+  setToolLoadingContext({
+    mode: 'agent',
+    templateId: useStore.getState().promptTemplateId,
+    scenarioId: activeScenarioId,
+    scenarioToolPacks,
+    ...agentToolFields,
+  })
 }
 
 /**
@@ -625,6 +636,8 @@ export async function runVoiceToolLoop(options: VoiceToolLoopOptions): Promise<V
 
   // 确保工具系统已初始化（失败也不阻塞，只是没有工具可用）
   await ensureVoiceToolsInitialized()
+  // 每次执行刷新工具加载上下文（智能体可能已切换）
+  refreshVoiceToolLoadingContext()
 
   // 获取可用工具列表（与普通对话完全相同）
   const tools = toolManager.getAllToolDefinitions()

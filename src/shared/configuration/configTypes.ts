@@ -100,6 +100,8 @@ export interface AgentConfig {
     requireConsensus: boolean
     maxAgents: number
   }
+  /** 当前激活的自定义智能体 ID */
+  activeCustomAgentId?: string
   /** 自定义 Agent 角色配置 */
   customAgentProfiles?: Array<{
     id: string
@@ -109,7 +111,28 @@ export interface AgentConfig {
     capabilities: string[]
     priority: number
     enabled: boolean
+    icon?: string
+    identifier?: string
+    /** 是否可被其他智能体调用 */
+    callable?: boolean
+    /** 何时被调用：always | on_request | manual */
+    triggerMode?: 'always' | 'on_request' | 'manual'
+    /** 关联的内置工具 ID 列表 */
+    builtinTools?: string[]
+    /** 关联的 MCP 服务 ID 列表 */
+    mcpServices?: string[]
+    /** 关联的插件 ID 列表 */
+    plugins?: string[]
+    createdAt?: number
+    updatedAt?: number
   }>
+  /** 声音提醒设置 */
+  soundNotifications?: {
+    enabled: boolean
+    taskComplete: boolean
+    taskError: boolean
+    needApproval: boolean
+  }
 }
 
 export interface TerminalConfig {

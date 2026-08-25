@@ -6,10 +6,21 @@
 
 import { StateCreator } from 'zustand'
 
+/** 设置面板打开意图：指定要定位到的 Tab / 子 Tab / 操作 */
+export interface SettingsIntent {
+  /** 设置面板一级 Tab（如 'agent'） */
+  tab: string
+  /** 智能体 Tab 下的二级子 Tab（'agentConfig' | 'custom'） */
+  agentSubTab?: 'agentConfig' | 'custom'
+  /** 是否自动打开「自定义智能体」新建表单 */
+  createNewAgent?: boolean
+}
+
 /** 切片接口 */
 export interface DialogSlice {
   showSettings: boolean
   settingsInitialTab: string | null
+  settingsIntent: SettingsIntent | null
   showCommandPalette: boolean
   showComposer: boolean
   showWorkflow: boolean
@@ -17,6 +28,7 @@ export interface DialogSlice {
   showAbout: boolean
 
   setShowSettings: (show: boolean, initialTab?: string) => void
+  setSettingsIntent: (intent: SettingsIntent | null) => void
   setShowCommandPalette: (show: boolean) => void
   setShowComposer: (show: boolean) => void
   setShowWorkflow: (show: boolean) => void
@@ -29,6 +41,7 @@ export interface DialogSlice {
 const ALL_CLOSED = {
   showSettings: false,
   settingsInitialTab: null,
+  settingsIntent: null,
   showCommandPalette: false,
   showComposer: false,
   showWorkflow: false,
@@ -41,6 +54,7 @@ export const createDialogSlice: StateCreator<DialogSlice, [], [], DialogSlice> =
 
   setShowSettings: (show, initialTab) =>
     set({ showSettings: show, settingsInitialTab: initialTab || null }),
+  setSettingsIntent: (intent) => set({ settingsIntent: intent }),
   setShowCommandPalette: (show) => set({ showCommandPalette: show }),
   setShowComposer: (show) => set({ showComposer: show }),
   setShowWorkflow: (show) => set({ showWorkflow: show }),

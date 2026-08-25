@@ -344,12 +344,12 @@ Avoid:
         displayName: 'Write File',
         description: `Write complete file content.
 Use for new files, intentional full-file replacement, or generated artifact files.
-Do not use for partial edits; write_file overwrites the whole file, so use edit_file for targeted changes.`,
+Overwrites the whole file. For existing files, prefer edit_file for small local changes; write_file is allowed when the agent has current content and a full rewrite is intended.`,
         criticalRules: [
-            'Overwrites the entire file; use edit_file for partial changes',
+            'Overwrites the entire file; prefer edit_file for small local changes',
             'Prefer over create_file_or_folder when you have file content ready',
             'Do not rewrite the same large file multiple times in one turn unless absolutely necessary',
-            'If the file already exists and you are only changing a section, DO NOT use write_file',
+            'For existing files, prefer edit_file for small local edits; use write_file for full rewrites or when a partial edit is impractical',
         ],
         category: 'write',
         approvalType: 'none',
@@ -1833,8 +1833,10 @@ export const FILE_EDIT_DECISION_GUIDE = `
 ## File Editing Decision Guide
 
 **1. Pick the tool**
-- New file or full-file replacement: use \`write_file\`.
-- Partial change to an existing file: use \`edit_file\` after \`read_file\`.
+- New file (does not exist yet): use \`write_file\`.
+- Full-file replacement of an EXISTING file: use \`write_file\`.
+- Partial change to an existing file: use \`edit_file\` after reading the file with \`read_file\`.
+- **NEVER** use \`write_file\` to partially modify an existing file — it will be rejected by the system. Use \`edit_file\` instead.
 
 **2. Pick exactly one edit_file mode**
 - String mode: \`old_string\` + \`new_string\`.
@@ -1845,6 +1847,12 @@ export const FILE_EDIT_DECISION_GUIDE = `
 - Never mix string, line, and batch fields in one call.
 - Never send empty placeholder edits.
 - Prefer line or batch mode for large files.
+
+**4. If write_file is rejected with a "partial update" or "use edit_file" error:**
+- STOP trying write_file for this file.
+- Read the current file content with \`read_file\`.
+- Use \`edit_file\` with the appropriate mode (string/line/batch) to make the change.
+- After a failed edit, read the file again before retrying — the file may have changed.
 `
 
 /**

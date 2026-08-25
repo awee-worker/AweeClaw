@@ -167,10 +167,12 @@ export function computeSidebarMinWidth(windowWidth: number): number {
  * 侧边栏拖拽（从左侧拖拽）
  *
  * 最小宽度按窗口宽度动态计算（见 computeSidebarMinWidth），并受 SIDEBAR_MAX_WIDTH 约束。
+ * 拖拽到最小宽度及以下时（松手判定）触发 onCollapse，用于自动收起侧边栏。
  */
 export function useSidebarResize(
   onResizeEnd: (width: number) => void,
   panelRef: React.RefObject<HTMLDivElement | null>,
+  onCollapse?: () => void,
 ) {
   const windowWidth = useWindowWidth()
   const config = useMemo(() => {
@@ -180,9 +182,12 @@ export function useSidebarResize(
       minSize,
       maxSize: LAYOUT.SIDEBAR_MAX_WIDTH,
       onResizeEnd,
+      // 拖拽下限放宽到最小宽度，松手时若 ≤ 最小宽度则收起（与聊天面板行为一致）
+      collapseThreshold: minSize,
+      onCollapse,
       panelRef,
     }
-  }, [onResizeEnd, panelRef, windowWidth])
+  }, [onResizeEnd, onCollapse, panelRef, windowWidth])
   return useResizePanel(config)
 }
 

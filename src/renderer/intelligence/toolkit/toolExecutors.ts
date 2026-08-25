@@ -420,6 +420,35 @@ function joinPath(basePath: string, ...parts: string[]): string {
     return [trimmedBase, ...trimmedParts].join(sep)
 }
 
+/**
+ * 备份文件到 .history 目录（仅路径操作，不传输内容，零 Token 消耗）
+ * 格式：{workspacePath}/.history/{basename}_{timestamp}{ext}
+ * 例如：src/main.ts → .history/main_20260825110301.ts
+ */
+async function backupFile(filePath: string): Promise<void> {
+    try {
+        if (!filePath) return
+        const norm = filePath.replace(/[\\/]+/g, '/').replace(/\/+$/, '')
+        const historyDir = joinPath(getDirname(norm), '.history')
+        const normWs = (norm || '').replace(/[\\/]+/g, '/').replace(/\/+$/, '')
+        if (!normWs || !historyDir.startsWith(normWs + '/') && historyDir !== normWs) return
+        await api.file.ensureDir(historyDir)
+        const fileName = norm.split('/').pop()!
+        const dotIdx = fileName.lastIndexOf('.')
+        const namePart = dotIdx > 0 ? fileName.slice(0, dotIdx) : fileName
+        const extPart = dotIdx > 0 ? fileName.slice(dotIdx) : ''
+        const timestamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14)
+        const backupName = `${namePart}_${timestamp}${extPart}`
+        const backupPath = joinPath(historyDir, backupName)
+        const content = await api.file.read(norm)
+        if (content !== null && content !== undefined) {
+            await api.file.write(backupPath, content)
+        }
+    } catch {
+        // 备份失败不影响主流程
+    }
+}
+
 type InlineScriptRuntime = 'python' | 'node' | 'powershell' | 'sh'
 
 interface InlineScriptCommand {
@@ -991,6 +1020,9 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         // 发送文件正在编写事件，触发自动打开预览
         EventBus.emit({ type: 'file:writing', filePath: path, workspacePath: ctx.workspacePath || '' })
 
+        // 备份原文件到 .history（不传内容给 AI，零 Token 消耗）
+        await backupFile(path)
+
         const originalContent = await api.file.read(path)
         if (originalContent === null || originalContent === undefined) return { success: false, result: '', error: `File not found: ${path}. Use write_file to create new files.` }
 
@@ -1400,6 +1432,8 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         }
 
         const originalContent = await api.file.read(path) || ''
+        // 备份原文件到 .history（仅路径操作，不传内容给 AI，零 Token 消耗）
+        if (originalContent) await backupFile(path)
         const writeDecision = guardWriteFile({
             path,
             originalContent,
@@ -1446,7 +1480,10 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         EventBus.emit({ type: 'file:written', filePath: path, workspacePath: ctx.workspacePath || '', content })
         return {
             success: true,
-            result: 'File written successfully',
+            // 附加策略层软提示（如建议局部修改优先用 edit_file），帮助模型后续选择更合适的工具
+            result: writeDecision.reason
+                ? `File written successfully. ${writeDecision.reason}`
+                : 'File written successfully',
             meta: buildWriteMeta(path, originalContent, content, lineChanges, guardedWrite.meta, {
                 writeIntent: writeDecision.intent,
                 writeAnalysis: writeDecision.analysis,

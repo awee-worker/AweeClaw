@@ -40,6 +40,7 @@ import { ActionButton } from '../ui'
 import ModelSelector from './AIModelSelector'
 import ModeSelector from './WorkModeSelector'
 import AuthorizationModeSelector from './AuthorizationModeSelector'
+import AgentSelector from './AgentSelector'
 import { useVoiceInput } from '../../composables/useVoiceInput'
 import VoiceVisualizer from '../voice/VoiceVisualizer'
 import { ContextItem, FileContext } from '@intelligence/providerTypes'
@@ -78,6 +79,8 @@ interface ChatInputProps {
   onRemoveContextItem: (item: ContextItem) => void
   activeFilePath?: string | null
   onAddFile?: (filePath: string) => void
+  language?: string
+  onOpenSettings?: () => void
 }
 
 const ChatInput = memo(function ChatInput({
@@ -102,8 +105,11 @@ const ChatInput = memo(function ChatInput({
   onRemoveContextItem,
   activeFilePath,
   onAddFile,
+  language: propLanguage,
+  onOpenSettings,
 }: ChatInputProps) {
-  const { language, editorConfig } = useStore(useShallow(s => ({ language: s.language, editorConfig: s.editorConfig })))
+  const { language: storeLanguage, editorConfig } = useStore(useShallow(s => ({ language: s.language, editorConfig: s.editorConfig })))
+  const language = (propLanguage || storeLanguage) as Language
   const lt = (zh: string, en: string) => language === 'zh' ? zh : en
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isFocused, setIsFocused] = useState(false)
@@ -647,6 +653,7 @@ const ChatInput = memo(function ChatInput({
         className="-mt-5 z-10"
       >
         <div className="flex items-center gap-2 bg-border/20 px-4 pt-6 pb-1 rounded-b-xl rounded-t-none">
+          <AgentSelector language={language} onOpenSettings={onOpenSettings} disabled={isStreaming} />
           <ModeSelector mode={chatMode} onModeChange={setChatMode} disabled={isStreaming} />
           <AuthorizationModeSelector disabled={isStreaming} />
         </div>

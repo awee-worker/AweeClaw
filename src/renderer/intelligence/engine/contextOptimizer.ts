@@ -147,7 +147,8 @@ async function executeCompressionStrategy(
   assistantId: string,
   enableLLMSummary: boolean,
   autoHandoff: boolean,
-  budgetController?: TokenBudgetController
+  budgetController?: TokenBudgetController,
+  hasPendingToolCalls = false
 ): Promise<CompressionCheckResult> {
   // ===== 智能化对话轮次保护 =====
   // 系统提示 + 工具定义本身会占用大量 token（可能 30-50% contextLimit），
@@ -192,23 +193,35 @@ async function executeCompressionStrategy(
 
   let didAutoHandoff = false
   if (effectiveLevel >= 4) {
-    if (thread) {
-      threadStore.setCompressionPhase('summarizing')
-      try {
-        didAutoHandoff = await refreshHandoffSnapshot(threadId, threadStore, context, autoHandoff)
-      } finally {
-        threadStore.setCompressionPhase('idle')
+    // 判断 AI 是否仍在执行中：本轮 LLM 返回后是否还有待执行的工具调用。
+    // 注意：不能依赖 executionMeta.loopState —— 它在整个 agent 循环中恒为 'running'，
+    // 且 'waiting_for_tools' 从未被任何代码设置，会导致 isAgentRunning 恒为 true，
+    // 从而既跳过实际交接又返回 needsHandoff=true，使主循环在 AI 回复完成前被强制 break。
+    const isAgentRunning = hasPendingToolCalls
+    if (isAgentRunning) {
+      logger.agent.info(
+        `[Compression] 跳过 handoff: AI 仍有待执行工具调用，等待本轮执行完成后再交接`
+      )
+    } else {
+      if (thread) {
+        threadStore.setCompressionPhase('summarizing')
+        try {
+          didAutoHandoff = await refreshHandoffSnapshot(threadId, threadStore, context, autoHandoff)
+        } finally {
+          threadStore.setCompressionPhase('idle')
+        }
       }
     }
 
-    if (!didAutoHandoff) {
+    if (!didAutoHandoff && !isAgentRunning) {
       notifyContextLimitReached(threadStore, assistantId)
     }
   }
 
   EventBus.emit({ type: 'context:level', level: effectiveLevel, tokens: totalTokens, ratio })
 
-  return { level: effectiveLevel, needsHandoff: effectiveLevel >= 4 }
+  // needsHandoff 必须与实际交接行为一致：AI 仍在执行中时不中断主循环
+  return { level: effectiveLevel, needsHandoff: effectiveLevel >= 4 && !hasPendingToolCalls }
 }
 
 export async function checkAndHandleCompression(
@@ -220,7 +233,8 @@ export async function checkAndHandleCompression(
   assistantId: string,
   enableLLMSummary: boolean,
   autoHandoff: boolean,
-  budgetController?: TokenBudgetController
+  budgetController?: TokenBudgetController,
+  hasPendingToolCalls = false
 ): Promise<CompressionCheckResult> {
   const thread = fetchLiveThread(threadId)
   const messageCount = thread?.messages.length || 0
@@ -265,6 +279,7 @@ export async function checkAndHandleCompression(
     assistantId,
     enableLLMSummary,
     autoHandoff,
-    budgetController
+    budgetController,
+    hasPendingToolCalls
   )
 }

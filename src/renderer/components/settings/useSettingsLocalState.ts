@@ -186,6 +186,7 @@ export function useSettingsLocalState(embedded: boolean) {
     editorConfig: s.editorConfig,
     save: s.save,
     settingsInitialTab: s.settingsInitialTab,
+    settingsIntent: s.settingsIntent,
     set: s.set,
     setProvider: s.setProvider,
     setShowSettings: s.setShowSettings,
@@ -196,13 +197,13 @@ export function useSettingsLocalState(embedded: boolean) {
     llmConfig, language, autoApprove, promptTemplateId, agentConfig,
     providerConfigs, aiInstructions, webSearchConfig, mcpConfig, emailConfig,
     enableFileLogging, securitySettings, privacySettings, editorConfig,
-    save, settingsInitialTab, set, setProvider,
+    save, settingsInitialTab, settingsIntent, set, setProvider,
     setShowSettings, setShowSettingsPage,
   } = storeValues
 
-  // 初始化 reducer state
+  // 初始化 reducer state（settingsIntent.tab 优先于 settingsInitialTab）
   const [state, dispatch] = useReducer(settingsReducer, {
-    activeTab: (settingsInitialTab || 'provider') as SettingsTab,
+    activeTab: (settingsIntent?.tab || settingsInitialTab || 'provider') as SettingsTab,
     showApiKey: false,
     isClosing: false,
     localConfig: llmConfig,

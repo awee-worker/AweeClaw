@@ -38,6 +38,7 @@ import {
   getDefaultPromptTemplate,
 } from './promptLibrary'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
+import { getActiveCustomAgent, getAgentToolLoadingFields } from '@renderer-configuration/customAgentTools'
 import { api } from '../../adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
 import { useStore } from '@store'
@@ -116,6 +117,8 @@ export interface PromptContext {
   scenePersonaPrompt?: string
   /** 场景模式指令段落（记忆域、可用技能等约束） */
   sceneModeDirectives?: string | null
+  /** 自定义智能体提示词（AgentSelector 选中的智能体 systemPrompt） */
+  customAgentPrompt?: string | null
 }
 
 /** 感知预测上下文（由主进程通过 IPC 提供） */
@@ -282,7 +285,9 @@ function buildTools(mode: WorkMode, templateId?: string, planPhase?: 'planning' 
   const excludeCategories: ToolCategory[] = []
   const activeScenario = scenarioRegistry.getActive()
   const scenarioToolPacks = activeScenario?.capabilities?.toolPacks
-  const allowedTools = getToolsForContext({ mode, templateId, planPhase, scenarioToolPacks, isChannel })
+  const activeAgent = getActiveCustomAgent()
+  const agentFields = activeAgent ? getAgentToolLoadingFields(activeAgent) : {}
+  const allowedTools = getToolsForContext({ mode, templateId, planPhase, scenarioToolPacks, isChannel, ...agentFields })
   const baseTools = generateToolsPromptDescriptionFiltered(excludeCategories, allowedTools)
   const { toolGuidelines } = getActiveScenarioIdentity()
 
@@ -293,12 +298,24 @@ ${baseTools}
 ${toolGuidelines}`
 }
 
+/**
+ * 自定义智能体提示词段落（AgentSelector 选中的智能体 systemPrompt）
+ * 未选择智能体或提示词为空时返回 null，不影响原流程
+ */
+function buildCustomAgentPrompt(prompt?: string | null): string | null {
+  if (!prompt?.trim()) return null
+  return `## Agent Persona & Instructions
+${prompt.trim()}`
+}
+
 function buildEnvironment(ctx: PromptContext): string {
   const now = new Date(ctx.date)
   const dateStr = now.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })
   const timeStr = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
   const weekday = now.toLocaleDateString('zh-CN', { weekday: 'long' })
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+
+  const historyDir = ctx.workspacePath ? `${ctx.workspacePath}/.history` : ''
 
   return `## Environment
 - OS: ${ctx.os}
@@ -309,7 +326,7 @@ function buildEnvironment(ctx: PromptContext): string {
 - Current Time: ${timeStr}
 - Timezone: ${tz}
 - ISO: ${ctx.date}
-
+${historyDir ? `\nIMPORTANT: All file modifications are automatically backed up to \`${historyDir}\` with timestamped names (e.g., \`filename_20260825110301.ext\`). If you need to restore a file or view its historical content, prioritize reading from the .history directory.\n` : ''}
 IMPORTANT: The above date and time are the REAL current time from the user's system. Always use this as the current time reference. Do NOT rely on your training data's knowledge cutoff date for any time-sensitive information.`
 }
 
@@ -632,6 +649,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     ctx.personality,
     ctx.scenePersonaPrompt ?? null,
     identity.systemPrompt,
+    buildCustomAgentPrompt(ctx.customAgentPrompt),
     PROFESSIONAL_OBJECTIVITY,
     LANGUAGE_MATCHING,
     identity.securityRules,
@@ -664,6 +682,7 @@ export function buildChatPrompt(ctx: PromptContext): string {
     ctx.personality,
     ctx.scenePersonaPrompt ?? null,
     identity.systemPrompt,
+    buildCustomAgentPrompt(ctx.customAgentPrompt),
     PROFESSIONAL_OBJECTIVITY,
     LANGUAGE_MATCHING,
     identity.securityRules,
@@ -799,6 +818,12 @@ export async function buildAgentSystemPrompt(
   const modeDescriptor = modeRegistry.getOrDefault(mode)
   const sceneProfile = useSceneModeStore.getState().getActiveProfile()
 
+  // 自定义智能体（AgentSelector 选中）：其 systemPrompt 需注入到系统提示词
+  const activeAgent = getActiveCustomAgent()
+  logger.agent.info(
+    `[PromptBuilder] Custom agent ${activeAgent ? `"${activeAgent.name}"` : '(none)'} active, systemPrompt ${activeAgent?.systemPrompt?.length ?? 0} chars`,
+  )
+
   const ctx: PromptContext = {
     os: getOS(),
     workspacePath,
@@ -825,6 +850,7 @@ export async function buildAgentSystemPrompt(
     isChannel,
     scenePersonaPrompt: sceneProfile.personaPrompt,
     sceneModeDirectives: buildSceneModeDirectives(sceneProfile),
+    customAgentPrompt: activeAgent?.systemPrompt || null,
   }
 
   const prompt = mode === 'chat' ? buildChatPrompt(ctx) : buildSystemPrompt(ctx)

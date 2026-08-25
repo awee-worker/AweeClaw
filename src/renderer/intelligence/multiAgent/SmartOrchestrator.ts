@@ -102,7 +102,7 @@ function inferRoleFromId(agentId: string): string {
   return 'agent'
 }
 
-const TOOL_FIRST_INSTRUCTION = 'You MUST use tools to do your job. Use write_file tool to create actual files — never put code inside markdown code blocks. Always create real files using the available tools. If you need to write code, use write_file. If you need to read files, use read_file. If you need to search, use search_files. Complete your tasks using tools, not by writing content in chat.'
+const TOOL_FIRST_INSTRUCTION = 'You MUST use tools to do your job. For NEW files, use write_file. For MODIFYING existing files, you MUST use edit_file (read the file first with read_file to get the current content, then use edit_file to make changes). NEVER try to use write_file to partially update an existing file — it will be rejected. Always create real files using the available tools. If you need to read files, use read_file. If you need to search, use search_files. Complete your tasks using tools, not by writing content in chat.'
 
 const OUTPUT_QUALITY_INSTRUCTION = [
   '## Output Quality Rules (CRITICAL)',
@@ -140,7 +140,7 @@ const PLANNING_SYSTEM_PROMPT = [
   '',
   '1. **Each agent has access to powerful tools** — including write_file, create_file_or_folder, read_file, search_files, run_command, and all MCP tools. Agents MUST use these tools to create actual files and execute real work, NOT write code inside markdown documents.',
   '',
-  '2. **Tool-first approach**: Every agent\'s systemPrompt MUST instruct them to use tools to do their job. NEVER put code inside markdown code blocks — always use write_file tool to create real files.',
+   '2. **Tool-first approach**: Every agent\'s systemPrompt MUST instruct them to use tools to do their job. For new files use write_file; for modifying existing files use edit_file after reading the file first with read_file. NEVER put code inside markdown code blocks.',
   '',
   '3. **Pipeline workflow**: Agents work sequentially in a pipeline. Each agent receives the results from all previous agents. This simulates a real team where work flows from one role to the next.',
   '',

@@ -91,6 +91,7 @@ const aliases = {
   '@toolkit': path.resolve(__dirname, './src/shared/toolkit'),
   '@protocols': path.resolve(__dirname, './src/shared/protocols'),
   '@configuration': path.resolve(__dirname, './src/shared/configuration'),
+  '@renderer-configuration': path.resolve(__dirname, './src/renderer/configuration'),
   '@scenario-system': path.resolve(__dirname, './src/scenario-system'),
   '@scenarios': path.resolve(__dirname, './src/scenarios'),
   'vscode-nls': path.resolve(__dirname, './node_modules/monaco-editor-nls')
@@ -268,6 +269,9 @@ export default defineConfig({
     target: 'esnext',
     cssCodeSplit: true,
     sourcemap: false,
+  },
+  server: {
+    port: 5170,
   },
   optimizeDeps: {
     include: ['monaco-editor']

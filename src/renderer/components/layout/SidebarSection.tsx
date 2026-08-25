@@ -5,12 +5,13 @@
  * 从 AweeApp.tsx 中提取，消除两种布局模式下的重复代码。
  */
 
-import { Suspense, useRef, lazy, useEffect, useState } from 'react'
+import { Suspense, useRef, lazy, useEffect, useState, useCallback } from 'react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { useSidebarResize, computeSidebarMinWidth } from '@hooks'
 import { CrashGuard as ErrorBoundary } from '@components/foundation/CrashGuard'
 import { PanelSkeleton } from '@components/ui/ProgressIndicator'
+import { LAYOUT } from '@shared/appConstants'
 
 const Sidebar = lazy(() => import('@components/explorer/ExplorerSidebar'))
 
@@ -33,14 +34,22 @@ interface SidebarSectionProps {
 }
 
 export default function SidebarSection({ hidden }: SidebarSectionProps) {
-  const { sidebarWidth, setSidebarWidth } = useStore(useShallow((s) => ({
+  const { sidebarWidth, setSidebarWidth, setActiveSidePanel } = useStore(useShallow((s) => ({
     sidebarWidth: s.sidebarWidth,
     setSidebarWidth: s.setSidebarWidth,
+    setActiveSidePanel: s.setActiveSidePanel,
   })))
   const minWidth = useDynamicSidebarMinWidth()
 
   const sidebarRef = useRef<HTMLDivElement>(null)
-  const { startResize } = useSidebarResize(setSidebarWidth, sidebarRef)
+
+  /** 拖拽到最小宽度及以下时自动收起侧边栏，并恢复默认宽度以便下次打开 */
+  const handleCollapse = useCallback(() => {
+    setSidebarWidth(LAYOUT.SIDEBAR_DEFAULT_WIDTH)
+    setActiveSidePanel(null)
+  }, [setSidebarWidth, setActiveSidePanel])
+
+  const { startResize } = useSidebarResize(setSidebarWidth, sidebarRef, handleCollapse)
 
   if (hidden) return null
 

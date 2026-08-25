@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useCallback, useEffect, useSyncExternalStore } from 'react'
+import { lazy, Suspense, useMemo, useCallback, useEffect, useSyncExternalStore, useState } from 'react'
 import { Cpu, Settings2, Shield, Monitor, Plug, Brain, FileText, Zap, X, Palette, Radio, Eye, Search, Mail, Mic, MonitorSmartphone, ArrowLeft, ScanEye, Activity, Network, Cable, Sparkles, Puzzle, Layers } from 'lucide-react'
 import { PROVIDERS } from '@configuration/aiProviders'
 import { t, type Language } from '@renderer/i18n'
@@ -7,6 +7,11 @@ import { ActionButton, OverlayDialog } from '@components/ui'
 import { SettingsTab } from './preferencesTypes'
 import { useSettingsLocalState } from './useSettingsLocalState'
 import { pluginUiRegistry } from '@renderer/plugins/PluginUiRegistry'
+import { useStore } from '@store'
+import { useShallow } from 'zustand/react/shallow'
+import type { ScenarioDomain } from '@configuration/defaultProfile'
+import { settingsService } from '@renderer/settings/preferencesService'
+
 
 const ModelProviderPanel = lazy(() =>
     import('./tabs/ModelProviderPanel').then(m => ({ default: m.ModelProviderPanel })),
@@ -16,6 +21,9 @@ const AppearanceSettings = lazy(() =>
 )
 const AgentProfilePanel = lazy(() =>
     import('./tabs/AgentProfilePanel').then(m => ({ default: m.AgentProfilePanel })),
+)
+const CustomAgentPanel = lazy(() =>
+    import('./tabs/CustomAgentPanel').then(m => ({ default: m.CustomAgentPanel })),
 )
 const SearchEnginePanel = lazy(() =>
     import('./tabs/SearchEnginePanel').then(m => ({ default: m.SearchEnginePanel })),
@@ -72,6 +80,7 @@ const SceneModeSettingsPanel = lazy(() =>
     import('./tabs/SceneModeSettingsPanel').then(m => ({ default: m.SceneModeSettingsPanel })),
 )
 
+
 function SettingsTabFallback({ language }: { language: Language }) {
     return (
         <div className="min-h-[320px] flex items-center justify-center rounded-2xl border border-border/40 bg-surface/70">
@@ -85,9 +94,16 @@ function SettingsTabFallback({ language }: { language: Language }) {
 
 interface PreferencesDialogProps {
     embedded?: boolean
+    pendingNewAgentId?: string
 }
 
-export default function PreferencesDialog({ embedded = false }: PreferencesDialogProps) {
+/**
+ * 用于触发 CustomAgentPanel 自动打开「新建智能体」表单的哨兵 ID。
+ * 该 ID 不可能是真实智能体 ID，仅作为意图标记，避免与已保存的智能体冲突。
+ */
+const NEW_AGENT_TRIGGER_ID = '__create_new_agent__'
+
+export default function PreferencesDialog({ embedded = false, pendingNewAgentId }: PreferencesDialogProps) {
     const {
         state, dispatch, isDirty, handleSave,
         language, setProvider,
@@ -95,39 +111,60 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
         applyLanguageImmediately,
     } = useSettingsLocalState(embedded)
 
-    const requestClose = useCallback(async () => {
-        if (state.isClosing) return
+    // 设置面板打开意图：用于「创建智能体」等入口定位到指定 Tab / 子 Tab
+    const settingsIntent = useStore(s => s.settingsIntent)
+    const setSettingsIntent = useStore(s => s.setSettingsIntent)
 
-        dispatch({ type: 'SET_CLOSING', closing: true })
+    const [agentSubTab, setAgentSubTab] = useState<'agentConfig' | 'custom'>(
+        pendingNewAgentId || settingsIntent?.agentSubTab === 'custom' ? 'custom' : 'agentConfig',
+    )
 
-        if (isDirty) {
-            const result = await globalConfirm({
-                title: t('settings.confirmTitle', language as Language),
-                message: t('settings.unsavedChangesConfirm', language as Language),
-                confirmText: t('statusBar.discard', language as Language),
-                cancelText: t('statusBar.cancel', language as Language),
-                saveText: t('settings.saveChanges', language as Language),
-                variant: 'warning',
+    // 消费打开意图：挂载后立即清空，避免影响下次普通打开设置
+    useEffect(() => {
+        if (settingsIntent) setSettingsIntent(null)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+
+
+
+    const handleNewAgentCreated = useCallback((agentId: string) => {
+        if (!agentId || !state.localAgentConfig) return
+        const cfg = state.localAgentConfig
+        const profiles = cfg.customAgentProfiles || []
+        if (profiles.some(p => p.id === agentId)) {
+            dispatch({
+                type: 'SET_LOCAL_AGENT_CONFIG',
+                config: { ...cfg, activeCustomAgentId: agentId },
             })
-            if (result === 'save') {
-                await handleSave()
-            } else if (!result) {
-                dispatch({ type: 'SET_CLOSING', closing: false })
-                return
-            }
         }
+    }, [state.localAgentConfig, dispatch])
 
-        if (embedded) {
-            setShowSettingsPage(false)
-        } else {
-            setShowSettings(false)
+    const storeSet = useStore(useShallow(s => s.set))
+
+    // 新建智能体后自动选中、持久化并关闭
+    useEffect(() => {
+        if (!pendingNewAgentId) return
+        const cfg = state.localAgentConfig
+        if (!cfg) return
+        const profiles = cfg.customAgentProfiles || []
+        const exists = profiles.some(p => p.id === pendingNewAgentId)
+        if (exists) {
+            const updatedCfg = { ...cfg, activeCustomAgentId: pendingNewAgentId }
+            dispatch({
+                type: 'SET_LOCAL_AGENT_CONFIG',
+                config: updatedCfg,
+            })
+            storeSet('agentConfig', updatedCfg)
+            // 立即持久化到 SQLite，避免重启后丢失
+            settingsService.saveSingle('agentConfig', updatedCfg).catch((err) => {
+                console.error('[PreferencesDialog] 保存智能体配置失败:', err)
+            })
+            setTimeout(() => {
+                if (embedded) setShowSettingsPage(false)
+                else setShowSettings(false)
+            }, 100)
         }
-        dispatch({ type: 'SET_CLOSING', closing: false })
-    }, [state.isClosing, isDirty, language, setShowSettings, setShowSettingsPage, embedded, handleSave, dispatch])
-
-    const handleClose = useCallback(() => {
-        void requestClose()
-    }, [requestClose])
+    }, [pendingNewAgentId])
 
     const providers = useMemo(() =>
         Object.entries(PROVIDERS).map(([id, provider]) => ({
@@ -143,8 +180,8 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
 
     const tabs = useMemo(() => [
         { id: 'provider', label: t('settings.provider', language as Language), icon: <Cpu className="w-4 h-4" /> },
-        { id: 'appearance', label: t('settings.appearance', language as Language), icon: <Palette className="w-4 h-4" /> },
         { id: 'agent', label: t('settings.agent', language as Language), icon: <Settings2 className="w-4 h-4" /> },
+        { id: 'appearance', label: t('settings.appearance', language as Language), icon: <Palette className="w-4 h-4" /> },
         { id: 'search', label: t('settings.searchEngine', language as Language), icon: <Search className="w-4 h-4" /> },
         { id: 'voice', label: t('settings.voiceSettings', language as Language), icon: <Mic className="w-4 h-4" /> },
         { id: 'vision', label: t('settings.visionSettings', language as Language), icon: <ScanEye className="w-4 h-4" /> },
@@ -163,22 +200,19 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
         { id: 'desktop', label: t('settings.desktop', language as Language) || '桌面控制', icon: <MonitorSmartphone className="w-4 h-4" /> },
         { id: 'proactive', label: t('settings.proactive', language as Language) || '主动助手', icon: <Sparkles className="w-4 h-4" /> },
         { id: 'sceneMode', label: '场景模式', icon: <Layers className="w-4 h-4" /> },
+
     ], [language])
 
     // ── 插件贡献的设置页 Tab（动态加载） ──
-    // 通过 useSyncExternalStore 订阅 pluginUiRegistry 状态变化，
-    // 插件安装/卸载时自动更新 Tab 列表。
     const pluginSettingsTabs = useSyncExternalStore(
         (cb) => pluginUiRegistry.subscribe(cb),
         () => pluginUiRegistry.getSettingsTabs(),
     )
 
-    // 设置页打开时，确保声明了 settingsTabs 的插件 ui.js 已加载
     useEffect(() => {
         pluginUiRegistry.ensureSettingsTabsLoaded()
     }, [])
 
-    // 合并内置 Tab 和插件 Tab
     const allTabs = useMemo(() => {
         const builtinTabs = tabs.map((tab) => ({
             id: tab.id,
@@ -227,22 +261,59 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                         setAgentConfig={(config) => dispatch({ type: 'SET_LOCAL_AGENT_CONFIG', config })}
                     />
                 )
-            case 'agent':
+            case 'agent': {
                 return (
-                    <AgentProfilePanel
-                        autoApprove={state.localAutoApprove}
-                        setAutoApprove={(value) => dispatch({ type: 'SET_LOCAL_AUTO_APPROVE', value })}
-                        aiInstructions={state.localAiInstructions}
-                        setAiInstructions={(value) => dispatch({ type: 'SET_LOCAL_AI_INSTRUCTIONS', value })}
-                        promptTemplateId={state.localPromptTemplateId}
-                        setPromptTemplateId={(value) => dispatch({ type: 'SET_LOCAL_PROMPT_TEMPLATE_ID', value })}
-                        agentConfig={state.localAgentConfig}
-                        setAgentConfig={(config) => dispatch({ type: 'SET_LOCAL_AGENT_CONFIG', config })}
-                        webSearchConfig={state.localWebSearchConfig}
-                        setWebSearchConfig={(config) => dispatch({ type: 'SET_LOCAL_WEB_SEARCH_CONFIG', config })}
-                        language={language}
-                    />
+                    <div className="space-y-4 animate-fade-in">
+                        <div className="flex items-center gap-1 p-1 bg-surface-active/50 rounded-xl border border-border/40 w-fit">
+                            <button
+                                onClick={() => setAgentSubTab('agentConfig')}
+                                className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                                    agentSubTab === 'agentConfig'
+                                        ? 'bg-accent/15 text-accent shadow-sm'
+                                        : 'text-text-muted hover:text-text-primary'
+                                }`}
+                            >
+                                {t('settings.agentSubTab.agentConfig', language as Language)}
+                            </button>
+                            <button
+                                onClick={() => setAgentSubTab('custom')}
+                                className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                                    agentSubTab === 'custom'
+                                        ? 'bg-accent/15 text-accent shadow-sm'
+                                        : 'text-text-muted hover:text-text-primary'
+                                }`}
+                            >
+                                {language === 'zh' ? '自定义智能体' : 'Custom Agents'}
+                            </button>
+                        </div>
+                        {agentSubTab === 'agentConfig' ? (
+                            <AgentProfilePanel
+                                autoApprove={state.localAutoApprove}
+                                setAutoApprove={(value) => dispatch({ type: 'SET_LOCAL_AUTO_APPROVE', value })}
+                                aiInstructions={state.localAiInstructions}
+                                setAiInstructions={(value) => dispatch({ type: 'SET_LOCAL_AI_INSTRUCTIONS', value })}
+                                promptTemplateId={state.localPromptTemplateId}
+                                setPromptTemplateId={(value) => dispatch({ type: 'SET_LOCAL_PROMPT_TEMPLATE_ID', value })}
+                                agentConfig={state.localAgentConfig}
+                                setAgentConfig={(config) => dispatch({ type: 'SET_LOCAL_AGENT_CONFIG', config })}
+                                webSearchConfig={state.localWebSearchConfig}
+                                setWebSearchConfig={(config) => dispatch({ type: 'SET_LOCAL_WEB_SEARCH_CONFIG', config })}
+                                language={language}
+                            />
+                        ) : (
+                            <Suspense fallback={<div className="py-8 text-center text-xs text-text-muted">{t('settings.loadingSettings', language as Language)}</div>}>
+                                <CustomAgentPanel
+                                    agentConfig={state.localAgentConfig}
+                                    setAgentConfig={(config) => dispatch({ type: 'SET_LOCAL_AGENT_CONFIG', config })}
+                                    language={language}
+                                    onNewAgentCreated={handleNewAgentCreated}
+                                    pendingNewAgentId={settingsIntent?.createNewAgent ? NEW_AGENT_TRIGGER_ID : pendingNewAgentId}
+                                />
+                            </Suspense>
+                        )}
+                    </div>
                 )
+            }
             case 'search':
                 return (
                     <SearchEnginePanel
@@ -285,23 +356,11 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                     />
                 )
             case 'perception':
-                return (
-                    <PerceptionSettingsPanel
-                        language={language}
-                    />
-                )
+                return <PerceptionSettingsPanel language={language} />
             case 'causal':
-                return (
-                    <CausalReasoningPanel
-                        language={language}
-                    />
-                )
+                return <CausalReasoningPanel language={language} />
             case 'iot':
-                return (
-                    <IoTSettingsPanel
-                        language={language}
-                    />
-                )
+                return <IoTSettingsPanel language={language} />
             case 'system':
                 return (
                     <SystemPreferencesPanel
@@ -321,7 +380,6 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
             case 'sceneMode':
                 return <SceneModeSettingsPanel />
             default: {
-                // 插件贡献的设置页 Tab：查找匹配的插件 Tab 组件并渲染
                 const pluginTab = pluginSettingsTabs.find(pt => pt.contribution.id === state.activeTab)
                 if (pluginTab) {
                     const PluginTabComponent = pluginTab.component
@@ -332,10 +390,37 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
         }
     }
 
+    const requestClose = useCallback(async () => {
+        if (state.isClosing) return
+        dispatch({ type: 'SET_CLOSING', closing: true })
+        if (isDirty) {
+            const result = await globalConfirm({
+                title: t('settings.confirmTitle', language as Language),
+                message: t('settings.unsavedChangesConfirm', language as Language),
+                confirmText: t('statusBar.discard', language as Language),
+                cancelText: t('statusBar.cancel', language as Language),
+                saveText: t('settings.saveChanges', language as Language),
+                variant: 'warning',
+            })
+            if (result === 'save') {
+                await handleSave()
+            } else if (!result) {
+                dispatch({ type: 'SET_CLOSING', closing: false })
+                return
+            }
+        }
+        if (embedded) setShowSettingsPage(false)
+        else setShowSettings(false)
+        dispatch({ type: 'SET_CLOSING', closing: false })
+    }, [state.isClosing, isDirty, language, setShowSettings, setShowSettingsPage, embedded, handleSave, dispatch])
+
+    const handleClose = useCallback(() => {
+        void requestClose()
+    }, [requestClose])
+
     const dialogContent = (
         <div className={`flex h-full w-full relative ${embedded ? '' : 'max-h-[800px]'}`}>
             <div className={`bg-surface/30 backdrop-blur-xl flex flex-col pb-6 border-r border-border/40 shadow-xl shadow-black/10 ${embedded ? 'w-56 pt-10' : 'w-64 pt-8'}`}>
-                {/* 嵌入式全屏模式：顶部返回按钮 */}
                 {embedded && (
                     <div className="px-4 mb-4">
                         <button
@@ -348,7 +433,6 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                         </button>
                     </div>
                 )}
-
                 <nav className="flex-1 p-4 space-y-1 overflow-y-auto no-scrollbar">
                     {allTabs.map(tab => (
                         <button
@@ -364,7 +448,6 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                     ))}
                 </nav>
             </div>
-
             <div className="flex-1 flex justify-center overflow-hidden">
                 <div className="w-full max-w-[1000px] flex flex-col min-w-0 bg-transparent relative">
                     <div className={`shrink-0 px-8 pb-4 border-b border-border/40 flex items-center ${embedded ? 'pt-10 drag-region' : 'pt-6 justify-between'}`}>
@@ -376,7 +459,6 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                                 {t('settings.managePreferences', language as Language)}
                             </p>
                         </div>
-                        {/* 非嵌入式模式：保留原右侧关闭按钮；嵌入式模式关闭按钮已移至顶部右侧绝对定位 */}
                         {!embedded && (
                             <button
                                 onClick={handleClose}
@@ -387,7 +469,6 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                             </button>
                         )}
                     </div>
-
                     <div className="settings-scroll-region flex-1 overflow-y-auto px-8 py-6 custom-scrollbar pb-28">
                         <div className="settings-tab-panel space-y-6">
                             <Suspense fallback={<SettingsTabFallback language={language as Language} />}>
@@ -395,7 +476,6 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
                             </Suspense>
                         </div>
                     </div>
-
                     {isDirty && state.activeTab !== 'channel' && state.activeTab !== 'voice' && state.activeTab !== 'vision' && (
                         <div className="absolute bottom-6 right-8 left-8 p-4 rounded-xl bg-surface/95 border border-border/60 shadow-lg flex items-center justify-between z-10 transition-all duration-300">
                             <span className="text-xs text-text-muted ml-2 font-medium">
@@ -431,11 +511,10 @@ export default function PreferencesDialog({ embedded = false }: PreferencesDialo
     )
 }
 
-/* ------------------------------------------------------------------ */
+
 /* 场景感知设置面板策略                                              */
 /* ------------------------------------------------------------------ */
 
-import type { ScenarioDomain } from '@configuration/defaultProfile'
 /** 场景设置面板策略 */
 export interface ScenarioSettingsPanelPolicy {
   /** 场景类型 */

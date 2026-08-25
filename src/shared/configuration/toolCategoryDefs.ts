@@ -42,6 +42,10 @@ export interface ToolLoadingContext {
   scenarioToolPacks?: string[]
   /** 是否为消息渠道会话（飞书/微信等），仅渠道会话才注入 send_file_to_channel 等渠道工具 */
   isChannel?: boolean
+  /** 自定义智能体允许的内置工具名白名单（已解析为真实工具名；存在时内置工具仅保留白名单内） */
+  agentBuiltinTools?: string[]
+  /** 自定义智能体允许的 MCP 服务 ID 白名单（存在时仅暴露白名单内 MCP 服务器的工具） */
+  agentMcpServices?: string[]
 }
 
 /** 角色工具配置 */
@@ -231,11 +235,8 @@ export function getToolsForContext(context: ToolLoadingContext): string[] {
         }
       }
     }
-    return Array.from(tools)
-  }
-
-  // plan 模式：专家模式拥有最大权限，所有阶段均可使用全部工具
-  if (context.mode === 'plan') {
+  } else if (context.mode === 'plan') {
+    // plan 模式：专家模式拥有最大权限，所有阶段均可使用全部工具
     if (!scenarioPacks || scenarioPacks.length === 0) {
       for (const tool of CORE_TOOLS) {
         tools.add(tool)
@@ -250,29 +251,37 @@ export function getToolsForContext(context: ToolLoadingContext): string[] {
     for (const tool of PLAN_EXPLORATION_TOOLS) {
       tools.add(tool)
     }
-    return Array.from(tools)
-  }
-
-  // 1. Agent 模式：core 工具（如果场景已提供工具包则跳过默认 core）
-  if (!scenarioPacks || scenarioPacks.length === 0) {
-    for (const tool of CORE_TOOLS) {
-      tools.add(tool)
+  } else {
+    // 1. Agent 模式：core 工具（如果场景已提供工具包则跳过默认 core）
+    if (!scenarioPacks || scenarioPacks.length === 0) {
+      for (const tool of CORE_TOOLS) {
+        tools.add(tool)
+      }
     }
-  }
 
-  // 2. 添加角色专属工具
-  if (context.templateId) {
-    const templateConfig = TEMPLATE_TOOLS[context.templateId]
-    if (templateConfig) {
-      for (const groupId of templateConfig.toolGroups) {
-        const groupTools = TOOL_GROUPS[groupId]
-        if (groupTools) {
-          for (const tool of groupTools) {
-            tools.add(tool)
+    // 2. 添加角色专属工具
+    if (context.templateId) {
+      const templateConfig = TEMPLATE_TOOLS[context.templateId]
+      if (templateConfig) {
+        for (const groupId of templateConfig.toolGroups) {
+          const groupTools = TOOL_GROUPS[groupId]
+          if (groupTools) {
+            for (const tool of groupTools) {
+              tools.add(tool)
+            }
           }
         }
       }
     }
+  }
+
+  // 3. 自定义智能体白名单过滤：激活了智能体且配置了 builtinTools 时，
+  //    内置工具仅保留白名单内的（extract_document 为系统必需工具，始终保留）
+  //    空数组表示不允许任何内置工具
+  if (context.agentBuiltinTools !== undefined) {
+    const allow = new Set(context.agentBuiltinTools)
+    allow.add('extract_document')
+    return Array.from(tools).filter((tool) => allow.has(tool))
   }
 
   return Array.from(tools)

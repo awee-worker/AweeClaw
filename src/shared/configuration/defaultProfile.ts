@@ -221,6 +221,7 @@ export const AGENT_DEFAULTS = {
 
   // 自定义 Agent 角色
   customAgentProfiles: [],
+  activeCustomAgentId: undefined as string | undefined,
 } as const
 
 // ============================================

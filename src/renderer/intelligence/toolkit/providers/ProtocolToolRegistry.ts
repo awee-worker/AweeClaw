@@ -104,7 +104,15 @@ export class McpToolProvider implements ToolProvider {
   }
 
   getToolDefinitions(): ToolDefinition[] {
-    const servers = this.getConnectedServers()
+    let servers = this.getConnectedServers()
+
+    // 自定义智能体 MCP 服务白名单：激活了智能体且配置了 mcpServices 时，
+    // 仅暴露白名单内 MCP 服务器的工具（空数组表示不允许任何 MCP 工具）
+    if (this.context.agentMcpServices !== undefined) {
+      const allow = new Set(this.context.agentMcpServices)
+      servers = servers.filter((server) => allow.has(server.id))
+    }
+
     const definitions: ToolDefinition[] = []
 
     for (const server of servers) {

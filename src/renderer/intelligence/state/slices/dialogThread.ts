@@ -370,6 +370,9 @@ export const createThreadSlice: StateCreator<
             const thread = state.threads[targetId]
             if (!thread) return state
 
+            // 防止重复设置相同 phase 导致 streamState 引用变化，触发下游 selector 缓存失效和无限重渲染
+            if (thread.streamState?.phase === phase) return state
+
             const nextStreamState = phase === 'idle'
                 ? {
                     ...thread.streamState,

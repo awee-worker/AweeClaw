@@ -10,7 +10,7 @@ interface DiscoveryState {
 
 type DiscoveryListener = (state: DiscoveryState) => void
 
-const COMMON_PORTS = [3000, 4173, 4200, 4321, 5173, 8000, 8080, 8081]
+const COMMON_PORTS = [3000, 4173, 4200, 4321, 5170, 8000, 8080, 8081]
 const LOCAL_URL_PATTERN = /https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d{2,5})?(?:[/?#][^\s"'`<>]*)?/gi
 
 function stripAnsi(value: string): string {
@@ -139,7 +139,7 @@ export class DevServerDiscoveryService {
           }
 
           if (/vite/i.test(scripts) || dependencies.vite) {
-            ports.add(5173)
+            ports.add(5170)
             ports.add(4173)
           }
           if (/next\s+dev/i.test(scripts) || dependencies.next) {

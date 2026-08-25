@@ -106,6 +106,50 @@ function deepMerge<T extends object>(target: T, source: Partial<T>): T {
   return result
 }
 
+/**
+ * 递归剥离不可克隆内容，生成可安全通过 Electron IPC（structuredClone）的深拷贝。
+ *
+ * - 函数 / Symbol / 循环引用 → 丢弃（undefined）
+ * - Date / Map / Set 等特殊对象 → 丢弃，避免主进程序列化异常
+ * - 普通对象 / 数组 / 原始值 → 保留
+ *
+ * 设置数据本质是纯 JSON 数据，运行时混入的函数（如 modePostProcessHooks.hook）
+ * 本就不应持久化，剥离后语义不变。
+ */
+function stripUnserializable<T>(value: T, seen = new WeakSet<object>()): T {
+  if (value === null || value === undefined) return value
+  const type = typeof value
+  // 原始值 / 函数 / Symbol 直接处理：函数与 Symbol 无法克隆，返回 undefined
+  if (type !== 'object') {
+    return type === 'function' || type === 'symbol' || type === 'bigint'
+      ? (undefined as unknown as T)
+      : value
+  }
+
+  // 循环引用保护
+  if (seen.has(value as object)) return undefined as unknown as T
+  seen.add(value as object)
+
+  // 特殊对象（Date/Map/Set/RegExp/ArrayBuffer 等）不序列化原始结构
+  const proto = Object.getPrototypeOf(value as object) as unknown
+  const isPlain =
+    proto === Object.prototype || proto === null || Array.isArray(value)
+
+  if (Array.isArray(value)) {
+    return value.map((item) => stripUnserializable(item, seen)) as unknown as T
+  }
+  if (!isPlain) {
+    return undefined as unknown as T
+  }
+
+  const result: Record<string, unknown> = {}
+  for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+    const cleaned = stripUnserializable(val, seen)
+    if (cleaned !== undefined) result[key] = cleaned
+  }
+  return result as unknown as T
+}
+
 /** 将 SQLite 中的 provider 配置合并默认值，生成运行时 ProviderModelConfig */
 function mergeDbProviderConfigs(
   dbConfigs: Record<string, any>,
@@ -367,13 +411,20 @@ class SettingsService {
   async save(settings: SettingsState): Promise<void> {
     try {
       this.cache = settings
-      this.saveToLocalStorage(settings)
+
+      // ⚠️ 必须剥离不可克隆内容（函数/Symbol/循环引用）后再走 IPC。
+      // Electron IPC 使用 structuredClone 序列化参数，若 agentConfig 等字段
+      // 混入运行时函数（如 modePostProcessHooks.hook），会抛
+      // "An object could not be cloned" 导致 SQLite 与 electron-store 双通道保存失败。
+      const ipcSafe = stripUnserializable(settings)
+
+      this.saveToLocalStorage(ipcSafe)
 
       // 并行发起 SQLite 与 electron-store 写入
       // 使用 allSettled 确保 electron-store（语言持久化的关键）不受 SQLite 失败影响
       const [sqliteResult, jsonResult] = await Promise.allSettled([
-        this.saveToDb(settings),
-        this.saveToJsonStore(settings),
+        this.saveToDb(ipcSafe),
+        this.saveToJsonStore(ipcSafe),
       ])
 
       // SQLite 失败仅记录日志，不阻塞流程（electron-store 仍是可靠兜底）

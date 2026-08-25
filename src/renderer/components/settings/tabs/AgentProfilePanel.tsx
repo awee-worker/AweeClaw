@@ -9,6 +9,7 @@ import { TextField } from '@components/ui'
 import { AgentSettingsProps } from '../preferencesTypes'
 import { FileText, BrainCircuit, AlertOctagon, RefreshCw } from 'lucide-react'
 import { t, type Language } from '@renderer/i18n'
+import { SoundNotificationPanel } from './SoundNotificationPanel'
 
 export function AgentProfilePanel({
     agentConfig, setAgentConfig,
@@ -384,6 +385,18 @@ export function AgentProfilePanel({
                             </div>
                         </div>
                     </div>
+                </div>
+            </section>
+
+            {/* 声音提醒 */}
+            <section className="rounded-2xl border border-border/50 bg-surface/20 p-5 backdrop-blur-xl shadow-sm relative overflow-hidden group">
+                <div className="absolute inset-0 bg-gradient-to-br from-accent/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                <div className="relative">
+                    <SoundNotificationPanel
+                        settings={agentConfig.soundNotifications ?? { enabled: false, taskComplete: true, taskError: true, needApproval: true }}
+                        onChange={(settings) => setAgentConfig({ ...agentConfig, soundNotifications: settings })}
+                        language={language}
+                    />
                 </div>
             </section>
         </div>

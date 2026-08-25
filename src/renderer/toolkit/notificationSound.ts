@@ -1,6 +1,7 @@
 type SoundType = 'error' | 'approval' | 'attention' | 'interaction' | 'success'
 
 import { logger } from '@shared/toolkit/LogEngine'
+import { isSoundAllowed, type SoundCategory } from '@utils/soundGate'
 
 const SOUND_PRESETS: Record<SoundType, { type: OscillatorType; freq: [number, number]; gain: number; duration: number }> = {
   error: { type: 'square', freq: [330, 262], gain: 0.12, duration: 0.35 },
@@ -10,7 +11,18 @@ const SOUND_PRESETS: Record<SoundType, { type: OscillatorType; freq: [number, nu
   success: { type: 'sine', freq: [523, 784], gain: 0.15, duration: 0.5 },
 }
 
+/** 声音类型 → 设置分类映射；attention 归入错误提醒（max_iterations/重试等异常场景），interaction（需要用户选择）归入操作确认提醒 */
+const SOUND_CATEGORY: Record<SoundType, SoundCategory> = {
+  error: 'taskError',
+  approval: 'needApproval',
+  attention: 'taskError',
+  interaction: 'needApproval',
+  success: 'taskComplete',
+}
+
 export function playNotificationSound(type: SoundType): void {
+  // 统一受「设置 → 智能体 → 声音提醒」开关控制
+  if (!isSoundAllowed(SOUND_CATEGORY[type])) return
   try {
     const preset = SOUND_PRESETS[type]
     const ctx = new AudioContext()

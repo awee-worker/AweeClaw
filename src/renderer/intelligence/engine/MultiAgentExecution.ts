@@ -772,10 +772,6 @@ export async function executeMultiAgent(
         }
 
         agentStore.appendToAssistant(assistantId, resultSummary, threadId)
-
-        try {
-          playNotificationSound(finalStatus === 'completed' ? 'success' : 'attention')
-        } catch (e) { logger.ui.warn('Failed to play notification sound:', e) }
       },
 
       callLLM,
@@ -1014,10 +1010,6 @@ Output ONLY JSON, nothing else. agentId must be one of the existing team members
       `\n\n✅ **团队调整任务已完成**\n\n📁 **项目位置**: \`${projectDir}\`\n\n💡 继续提出修改需求，团队将基于现有成果进行调整。`,
       threadId
     )
-
-    try {
-      playNotificationSound('success')
-    } catch (e) { logger.ui.warn('Failed to play success sound:', e) }
 
     agentStore.finalizeAssistant(assistantId, threadId)
     agentStore.setStreamPhase('idle', threadId)

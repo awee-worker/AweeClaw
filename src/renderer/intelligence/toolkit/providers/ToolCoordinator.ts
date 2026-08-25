@@ -6,6 +6,7 @@
 import { logger } from '@toolkit/LogEngine'
 import { toAppError } from '@shared/toolkit/errorCatalog'
 import { getToolMetadata } from '@configuration/toolDefinitions'
+import { getActiveCustomAgent, isToolAllowedForAgent } from '@renderer-configuration/customAgentTools'
 import type { ToolProvider, ToolMeta } from '@intelligence/providerTypes'
 import type {
   ToolDefinition,
@@ -238,6 +239,22 @@ class ToolManager {
   ): Promise<ToolExecutionResult> {
     const executionId = crypto.randomUUID()
     const startedAt = Date.now()
+
+    // 自定义智能体工具权限兜底校验（执行层强制）
+    // 即使工具定义被误注入，或调用方绕过上下文过滤，这里也会拒绝越权调用
+    const activeAgent = getActiveCustomAgent()
+    if (activeAgent && !isToolAllowedForAgent(toolName, activeAgent)) {
+      logger.agent.warn(
+        `[ToolManager] Tool "${toolName}" rejected: not allowed for active agent "${activeAgent.name}"`,
+      )
+      return this.finalizeResult(toolName, executionId, startedAt, undefined, {
+        success: false,
+        result: '',
+        error: `Tool "${toolName}" is not allowed for the active agent "${activeAgent.name}"`,
+        outcome: { kind: 'error', code: 'TOOL_NOT_ALLOWED', retryable: false },
+      }, 'validation')
+    }
+
     const provider = this.findProviderForTool(toolName)
 
     if (!provider) {

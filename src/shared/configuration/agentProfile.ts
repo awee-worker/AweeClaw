@@ -196,6 +196,14 @@ export interface AgentRuntimeConfig {
 
   // 自动上下文（隐式 RAG）
   enableAutoContext?: boolean
+
+  // 声音提醒
+  soundNotifications?: {
+    enabled: boolean
+    taskComplete: boolean
+    taskError: boolean
+    needApproval: boolean
+  }
 }
 
 // 从 defaults.ts 构建完整的 Agent 配置
@@ -222,6 +230,13 @@ export const DEFAULT_AGENT_CONFIG: AgentRuntimeConfig = {
       dependsOn: ['read_file'],
       type: 'sequential',
     },
+  },
+  // 声音提醒
+  soundNotifications: {
+    enabled: false,
+    taskComplete: true,
+    taskError: true,
+    needApproval: true,
   },
   // Auto-Context Configuration
   enableAutoContext: true,

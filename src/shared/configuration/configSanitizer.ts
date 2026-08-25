@@ -200,6 +200,13 @@ export interface AgentConfigSchema {
     requireConsensus?: boolean
     maxAgents?: number
   }
+  activeCustomAgentId?: string
+  soundNotifications?: {
+    enabled?: boolean
+    taskComplete?: boolean
+    taskError?: boolean
+    needApproval?: boolean
+  }
   customAgentProfiles?: Array<{
     id: string
     name: string
@@ -208,6 +215,15 @@ export interface AgentConfigSchema {
     capabilities: string[]
     priority: number
     enabled: boolean
+    icon?: string
+    identifier?: string
+    callable?: boolean
+    triggerMode?: 'always' | 'on_request' | 'manual'
+    builtinTools?: string[]
+    mcpServices?: string[]
+    plugins?: string[]
+    createdAt?: number
+    updatedAt?: number
   }>
 }
 
@@ -262,6 +278,22 @@ export function cleanAgentConfig(config: Record<string, unknown>): AgentConfigSc
     if (typeof ma.maxAgents === 'number') cleaned.multiAgent.maxAgents = ma.maxAgents
   }
 
+  // activeCustomAgentId
+  if (typeof config.activeCustomAgentId === 'string') {
+    cleaned.activeCustomAgentId = config.activeCustomAgentId
+  }
+
+  // soundNotifications 子对象
+  if (config.soundNotifications && typeof config.soundNotifications === 'object') {
+    const sn = config.soundNotifications as Record<string, unknown>
+    const cleanedSn: { enabled?: boolean; taskComplete?: boolean; taskError?: boolean; needApproval?: boolean } = {}
+    if (typeof sn.enabled === 'boolean') cleanedSn.enabled = sn.enabled
+    if (typeof sn.taskComplete === 'boolean') cleanedSn.taskComplete = sn.taskComplete
+    if (typeof sn.taskError === 'boolean') cleanedSn.taskError = sn.taskError
+    if (typeof sn.needApproval === 'boolean') cleanedSn.needApproval = sn.needApproval
+    cleaned.soundNotifications = cleanedSn as NonNullable<AgentConfigSchema['soundNotifications']>
+  }
+
   // customAgentProfiles 数组
   if (Array.isArray(config.customAgentProfiles)) {
     cleaned.customAgentProfiles = config.customAgentProfiles
@@ -276,6 +308,23 @@ export function cleanAgentConfig(config: Record<string, unknown>): AgentConfigSc
           : [],
         priority: typeof p.priority === 'number' ? p.priority : 5,
         enabled: typeof p.enabled === 'boolean' ? p.enabled : true,
+        ...(typeof p.icon === 'string' ? { icon: p.icon } : {}),
+        ...(typeof p.identifier === 'string' ? { identifier: p.identifier } : {}),
+        ...(typeof p.callable === 'boolean' ? { callable: p.callable } : {}),
+        ...(p.triggerMode === 'always' ? { triggerMode: 'always' as const } : {}),
+        ...(p.triggerMode === 'on_request' ? { triggerMode: 'on_request' as const } : {}),
+        ...(p.triggerMode === 'manual' ? { triggerMode: 'manual' as const } : {}),
+        builtinTools: Array.isArray(p.builtinTools)
+          ? p.builtinTools.filter((t): t is string => typeof t === 'string')
+          : undefined,
+        mcpServices: Array.isArray(p.mcpServices)
+          ? p.mcpServices.filter((t): t is string => typeof t === 'string')
+          : undefined,
+        plugins: Array.isArray(p.plugins)
+          ? p.plugins.filter((t): t is string => typeof t === 'string')
+          : undefined,
+        createdAt: typeof p.createdAt === 'number' ? p.createdAt : undefined,
+        updatedAt: typeof p.updatedAt === 'number' ? p.updatedAt : undefined,
       }))
       .filter((p) => p.id && p.name)
   }

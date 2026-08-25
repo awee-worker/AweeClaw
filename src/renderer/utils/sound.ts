@@ -5,6 +5,8 @@
  * 使用 Web Audio API 合成短促提示音，无需音频文件资源。
  */
 
+import { isSoundAllowed, type SoundCategory } from '@utils/soundGate'
+
 let sharedCtx: AudioContext | null = null
 
 function getAudioContext(): AudioContext | null {
@@ -57,6 +59,7 @@ function playTone(ctx: AudioContext, opts: ToneOptions) {
  * 用于 TodoListPanel 全部完成、文件变更待确认等正向提醒场景。
  */
 export function playCompletionSound() {
+  if (!isSoundAllowed('taskComplete')) return
   const ctx = getAudioContext()
   if (!ctx) return
   playTone(ctx, { freq: 880, startOffset: 0, duration: 0.15, gain: 0.15 })
@@ -69,8 +72,32 @@ export function playCompletionSound() {
  * 用于 AI 回复完成且有待接受文件变更时提醒用户。
  */
 export function playPendingReviewSound() {
+  if (!isSoundAllowed('needApproval')) return
   const ctx = getAudioContext()
   if (!ctx) return
   playTone(ctx, { freq: 660, startOffset: 0, duration: 0.18, gain: 0.14 })
   playTone(ctx, { freq: 880, startOffset: 0.16, duration: 0.25, gain: 0.12 })
+}
+
+/**
+ * 播放错误提示音（低沉警示音）
+ * 用于 AI 执行出错时提醒用户。
+ */
+export function playErrorSound() {
+  if (!isSoundAllowed('taskError')) return
+  const ctx = getAudioContext()
+  if (!ctx) return
+  playTone(ctx, { freq: 330, startOffset: 0, duration: 0.25, gain: 0.15, type: 'square' })
+  playTone(ctx, { freq: 262, startOffset: 0.2, duration: 0.35, gain: 0.12, type: 'square' })
+}
+
+/**
+ * 播放需确认提示音（温和单音）
+ * 用于需要用户确认操作时提醒用户。
+ */
+export function playApprovalSound() {
+  if (!isSoundAllowed('needApproval')) return
+  const ctx = getAudioContext()
+  if (!ctx) return
+  playTone(ctx, { freq: 784, startOffset: 0, duration: 0.2, gain: 0.13 })
 }

@@ -176,6 +176,12 @@ export class FloatingAvatarManager {
     // 设置 alwaysOnTop 级别（create 选项中 alwaysOnTop:true 默认 level 为 'normal'，需显式提升）
     this.window.setAlwaysOnTop(true, 'screen-saver')
 
+    // macOS：悬浮球不出现在 Dock 右键菜单的窗口列表中
+    // （excludedFromShownWindowsMenu 仅支持实例属性，不支持构造选项，故此处设置）
+    if (process.platform === 'darwin') {
+      this.window.excludedFromShownWindowsMenu = true
+    }
+
     // 拖拽：渲染进程通过 IPC 通知主进程移动窗口（避免 -webkit-app-region:drag 在透明窗口的残影问题）
     this.registerDragHandler()
 

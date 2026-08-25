@@ -522,6 +522,12 @@ let lastMessageListState = DEFAULT_MESSAGE_LIST_STATE
 let hasInitializedAgentSessionSync = false
 const selectLatestContextSnapshotCached = createLatestContextSnapshotSelector()
 
+// ===== 流状态缓存：避免每次 store 更新都返回新对象引用 =====
+// 防止 useAgentViewState 因 streamState 引用变化而触发不必要的重渲染
+let lastStreamStateThreadId: string | null = null
+let lastStreamState: StreamState = DEFAULT_STREAM_STATE
+let lastStreamStateRef: StreamState = DEFAULT_STREAM_STATE
+
 function scheduleAgentSessionPersistence(): void {
     schedulePersistedAgentSessionState(() => buildPersistedAgentSessionState(useAgentStore.getState()))
 }
@@ -530,9 +536,21 @@ export function flushAgentSessionPersistence(): void {
     flushScheduledPersistedAgentSessionState(() => buildPersistedAgentSessionState(useAgentStore.getState()))
 }
 
+// ===== 当前线程缓存：避免 thread 对象重建导致下游 selector 缓存失效 =====
+let lastCurrentThreadId: string | null = null
+let lastCurrentThread: any = null
+
 export const selectCurrentThread = (state: AgentStore) => {
-    if (!state.currentThreadId) return null
-    return state.threads[state.currentThreadId] || null
+    const threadId = state.currentThreadId
+    if (!threadId) return null
+    const thread = state.threads[threadId]
+    // 缓存：仅在 threadId 或 thread 对象变化时更新
+    if (lastCurrentThreadId === threadId && lastCurrentThread === thread) {
+        return lastCurrentThread
+    }
+    lastCurrentThreadId = threadId
+    lastCurrentThread = thread
+    return thread
 }
 
 export const selectMessages = (state: AgentStore) => {
@@ -551,15 +569,22 @@ export const selectMessageListState = (state: AgentStore) => {
     const messages = thread.messages || EMPTY_MESSAGES
     const version = state.threadMessageVersions[threadId] || 0
 
+    // 线程切换时清除缓存，防止旧缓存返回错误数据
+    if (lastMessageListThreadId !== threadId) {
+        lastMessageListThreadId = threadId
+        lastMessageListMessages = messages
+        lastMessageListVersion = version
+        lastMessageListState = { messages, version }
+        return lastMessageListState
+    }
+
     if (
-        lastMessageListThreadId === threadId &&
         lastMessageListMessages === messages &&
         lastMessageListVersion === version
     ) {
         return lastMessageListState
     }
 
-    lastMessageListThreadId = threadId
     lastMessageListMessages = messages
     lastMessageListVersion = version
     lastMessageListState = { messages, version }
@@ -580,15 +605,46 @@ export const selectToolStreamingPreview = (toolCallId: string) => (state: AgentS
 }
 
 // 从当前线程获取流状态
+// 使用缓存确保引用稳定性：当流状态未变化时返回同一对象引用，
+// 避免 useAgentViewState 因引用变化而触发不必要的重渲染（导致 Maximum update depth exceeded）
 export const selectStreamState = (state: AgentStore) => {
     const thread = selectCurrentThread(state)
-    return thread?.streamState || DEFAULT_STREAM_STATE
+    if (!thread) return DEFAULT_STREAM_STATE
+
+    const streamState = thread.streamState
+    // 使用 thread 的 streamState 内容比较而非引用比较，避免 thread 对象重建导致缓存失效
+    if (
+        lastStreamStateThreadId === state.currentThreadId &&
+        lastStreamState === streamState
+    ) {
+        return lastStreamStateRef
+    }
+
+    lastStreamStateThreadId = state.currentThreadId
+    lastStreamState = streamState
+    lastStreamStateRef = streamState
+    return streamState
 }
+
+// 上下文 items 缓存：避免每次 store 更新都返回新数组引用
+let lastContextItemsThreadId: string | null = null
+let lastContextItems: ContextItem[] = EMPTY_CONTEXT_ITEMS
+let lastContextItemsRef: ContextItem[] = EMPTY_CONTEXT_ITEMS
 
 export const selectContextItems = (state: AgentStore) => {
     if (!state.currentThreadId) return EMPTY_CONTEXT_ITEMS
     const thread = state.threads[state.currentThreadId]
-    return thread?.contextItems || EMPTY_CONTEXT_ITEMS
+    const contextItems = thread?.contextItems || EMPTY_CONTEXT_ITEMS
+    if (
+        lastContextItemsThreadId === state.currentThreadId &&
+        lastContextItems === contextItems
+    ) {
+        return lastContextItemsRef
+    }
+    lastContextItemsThreadId = state.currentThreadId
+    lastContextItems = contextItems
+    lastContextItemsRef = contextItems
+    return contextItems
 }
 
 export const selectIsStreaming = (state: AgentStore) => {
@@ -605,9 +661,24 @@ export const selectPendingChanges = (state: AgentStore) => state.pendingChanges
 
 export const selectHasPendingChanges = (state: AgentStore) => state.pendingChanges.length > 0
 
+// 消息检查点缓存
+let lastCheckpointThreadId: string | null = null
+let lastMessageCheckpoints: MessageCheckpoint[] = EMPTY_MESSAGE_CHECKPOINTS
+let lastMessageCheckpointsRef: MessageCheckpoint[] = EMPTY_MESSAGE_CHECKPOINTS
+
 export const selectMessageCheckpoints = (state: AgentStore) => {
     const thread = selectCurrentThread(state)
-    return thread?.messageCheckpoints || EMPTY_MESSAGE_CHECKPOINTS
+    const checkpoints = thread?.messageCheckpoints || EMPTY_MESSAGE_CHECKPOINTS
+    if (
+        lastCheckpointThreadId === state.currentThreadId &&
+        lastMessageCheckpoints === checkpoints
+    ) {
+        return lastMessageCheckpointsRef
+    }
+    lastCheckpointThreadId = state.currentThreadId
+    lastMessageCheckpoints = checkpoints
+    lastMessageCheckpointsRef = checkpoints
+    return checkpoints
 }
 
 // 分支相关 selectors

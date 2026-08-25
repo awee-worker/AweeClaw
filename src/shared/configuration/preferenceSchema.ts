@@ -156,6 +156,14 @@ const defaultAgentConfig: AgentConfig = {
   ignoredDirectories: [...AGENT_DEFAULTS.ignoredDirectories],
   multiAgent: { ...AGENT_DEFAULTS.multiAgent },
   customAgentProfiles: [...AGENT_DEFAULTS.customAgentProfiles],
+  // 声音提醒（与 agentProfile.ts DEFAULT_AGENT_CONFIG 保持一致；
+  // 必须作为默认值存在，否则旧数据缺 enabled 时无法通过 deepMerge 兜底补全）
+  soundNotifications: {
+    enabled: false,
+    taskComplete: true,
+    taskError: true,
+    needApproval: true,
+  },
 }
 
 const defaultEditorConfig: EditorConfig = {

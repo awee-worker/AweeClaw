@@ -4,6 +4,7 @@
 
 export { ModelProviderPanel } from './ModelProviderPanel'
 export { AgentProfilePanel } from './AgentProfilePanel'
+export { CustomAgentPanel } from './CustomAgentPanel'
 export { RulesSettings } from './RulesSettings'
 export { MemorySettings } from './MemorySettings'
 export { PromptPreviewDialog } from './PromptPreviewDialog'

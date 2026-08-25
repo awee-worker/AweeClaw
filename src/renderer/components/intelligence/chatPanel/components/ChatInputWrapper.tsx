@@ -29,6 +29,8 @@ interface ChatInputWrapperProps {
   onRemoveContextItem: (item: ContextItem) => void
   activeFilePath: string | null
   onAddFile: () => void
+  language?: string
+  onOpenSettings?: () => void
 }
 
 function ChatInputWrapperBase({
@@ -53,6 +55,8 @@ function ChatInputWrapperBase({
   onRemoveContextItem,
   activeFilePath,
   onAddFile,
+  language,
+  onOpenSettings,
 }: ChatInputWrapperProps) {
   return (
     <ChatInput
@@ -77,6 +81,8 @@ function ChatInputWrapperBase({
       onRemoveContextItem={onRemoveContextItem}
       activeFilePath={activeFilePath}
       onAddFile={onAddFile}
+      language={language}
+      onOpenSettings={onOpenSettings}
     />
   )
 }

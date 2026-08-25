@@ -249,6 +249,12 @@ export class AvatarMenuWindow {
     // 确保菜单浮在头像之上
     this.window.setAlwaysOnTop(true, 'pop-up-menu')
 
+    // macOS：菜单窗口不出现在 Dock 右键菜单的窗口列表中
+    // （excludedFromShownWindowsMenu 仅支持实例属性，不支持构造选项，故此处设置）
+    if (process.platform === 'darwin') {
+      this.window.excludedFromShownWindowsMenu = true
+    }
+
     // 首次渲染完成后再显示窗口，避免白底闪现
     // （窗口 show:false 创建，ready-to-show 表示渲染层已完成首次绘制）
     this.window.once('ready-to-show', () => {

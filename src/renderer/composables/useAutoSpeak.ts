@@ -13,6 +13,9 @@ export function useAutoSpeak({ isStreaming, messages }: UseAutoSpeakOptions): vo
   const prevStreamingRef = useRef(false);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const blobUrlRef = useRef<string | null>(null);
+  // 用 ref 桥接 messages，避免每次消息变化都触发 TTS effect
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
 
   useEffect(() => {
     return () => {
@@ -36,7 +39,7 @@ export function useAutoSpeak({ isStreaming, messages }: UseAutoSpeakOptions): vo
         return;
       }
 
-      const lastAssistantMsg = [...messages]
+      const lastAssistantMsg = [...messagesRef.current]
         .reverse()
         .find((m) => isAssistantMessage(m));
 
@@ -96,5 +99,5 @@ export function useAutoSpeak({ isStreaming, messages }: UseAutoSpeakOptions): vo
     }
 
     prevStreamingRef.current = isStreaming;
-  }, [isStreaming, messages]);
+  }, [isStreaming]);
 }

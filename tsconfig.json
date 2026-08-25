@@ -36,6 +36,8 @@
       "@protocols/*": ["src/shared/protocols/*"],
       "@configuration": ["src/shared/configuration"],
       "@configuration/*": ["src/shared/configuration/*"],
+      "@renderer-configuration": ["src/renderer/configuration"],
+      "@renderer-configuration/*": ["src/renderer/configuration/*"],
       "@scenario-system/*": ["src/scenario-system/*"],
       "@scenarios/*": ["src/scenarios/*"],
       "@shared/exceptions": ["src/shared/exceptions"],

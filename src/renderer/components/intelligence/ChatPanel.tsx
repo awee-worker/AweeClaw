@@ -18,7 +18,7 @@ import { useStore, useModeStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { useAgentActions, useAgentCommands, useAgentViewState } from '@hooks/useAgent'
 import { useChatScrollController, useAutoSpeak } from '@hooks'
-import { useAgentStore } from '@intelligence/state/IntelligenceStore'
+import { useAgentStore, selectCompressionPhase, selectIsCompacting } from '@intelligence/state/IntelligenceStore'
 import { EventBus } from '@intelligence/engine/EventDispatcher'
 import { knowledgeExtractor } from '@intelligence/runtime/knowledgeService/extractor'
 import { type Language } from '@renderer/i18n'
@@ -38,7 +38,7 @@ import ChatMessageUI from './ChatMessage'
 import ChangesReviewPanel from './ChangesReviewPanel'
 import SlashCommandPopup from './SlashCommandPopup'
 import EmptyChatSuggestions from '../conversation/WelcomeSuggestions'
-import { ChatMessagesSkeleton } from '../ui/ProgressIndicator'
+import { ChatMessagesSkeleton, Spinner } from '../ui/ProgressIndicator'
 import { playNotificationSound } from '@utils/notificationSound'
 import { AgentWorkspace } from './AgentWorkspace'
 import type { ChatTimelineItem } from './chatTimelineProjection'
@@ -68,7 +68,36 @@ import { ProactiveSuggestionsContainer } from './proactive/ProactiveSuggestionsC
 import { useProactiveInvoker } from './proactive/useProactiveInvoker'
 import { useAutomationCronExecutor } from './proactive/useAutomationCronExecutor'
 
+// ===== 自动上下文压缩中提示（消息列表末尾） =====
+// 当 AI 执行过程中触发上下文压缩/自动交接（compressionPhase 进入
+// summarizing/compressing）时，在会话末尾显示提示，避免交接期间 UI 停顿
+// 让用户误以为卡死。交接完成切换到新会话后该状态复位为 idle，提示自动消失。
+function AutoCompressionHint() {
+  const compressionPhase = useAgentStore(selectCompressionPhase)
+  const isCompacting = useAgentStore(selectIsCompacting)
+  const language = useStore((s) => s.language)
 
+  const isCompressing =
+    compressionPhase === 'summarizing' ||
+    compressionPhase === 'compressing' ||
+    isCompacting
+
+  if (!isCompressing) {
+    return <div className="h-28" />
+  }
+
+  return (
+    <>
+      <div className="flex items-center justify-center py-2">
+        <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-surface/80 backdrop-blur border border-border/50 text-xs text-text-muted shadow-sm">
+          <Spinner size="xs" />
+          <span>{language === 'zh' ? '自动上下文压缩中...' : 'Auto context compressing...'}</span>
+        </div>
+      </div>
+      <div className="h-28" />
+    </>
+  )
+}
 
 export default function ChatPanel() {
   // ===== Store 状态订阅 =====
@@ -214,23 +243,34 @@ export default function ChatPanel() {
     setInputState(value ?? '')
   }, [])
   const inputPromptConsumedRef = useRef(false)
+  // 用 ref 保存 setInputPrompt，避免依赖项变化导致 effect 重复触发
+  const setInputPromptRef = useRef(setInputPrompt)
+  setInputPromptRef.current = setInputPrompt
 
   useEffect(() => {
     if (inputPrompt && !inputPromptConsumedRef.current) {
       setInputState(inputPrompt)
       inputPromptConsumedRef.current = true
-      setInputPrompt('')
-    }
-    if (!inputPrompt) {
+      setInputPromptRef.current('')
+    } else if (!inputPrompt) {
       inputPromptConsumedRef.current = false
     }
-  }, [inputPrompt, setInputPrompt])
+  }, [inputPrompt])
 
+  // 用 ref 桥接 activeWorkspaceSession，避免 session 对象引用频繁变化导致 effect 重复触发
+  const activeWorkspaceSessionRef = useRef(activeWorkspaceSession)
+  activeWorkspaceSessionRef.current = activeWorkspaceSession
+
+  // 防止 teamModeEnabled 循环设置：记录上次设置的值，只有真正变化时才执行
+  const teamModeSetRef = useRef(false)
   useEffect(() => {
-    if (activeWorkspaceSession && !teamModeEnabled) {
+    if (activeWorkspaceSessionRef.current && !teamModeEnabled && !teamModeSetRef.current) {
+      teamModeSetRef.current = true
       setTeamModeEnabled(true)
+    } else if (!activeWorkspaceSessionRef.current) {
+      teamModeSetRef.current = false
     }
-  }, [activeWorkspaceSession, teamModeEnabled, setTeamModeEnabled])
+  }, [teamModeEnabled])
 
   const checkpointMessageIds = useMemo(
     () => new Set(messageCheckpoints.map(checkpoint => checkpoint.messageId)),
@@ -319,6 +359,11 @@ export default function ChatPanel() {
     scrollToBottom: () => scrollToBottom('smooth'),
   })
 
+  // 使用 ref 桥接 messageOps，避免对象引用变化导致依赖它的 useEffect 频繁重注册
+  const messageOpsRef = useRef(messageOps)
+  messageOpsRef.current = messageOps
+
+
   useFileEventBridge({
     workspacePath,
     activeFilePath,
@@ -332,6 +377,15 @@ export default function ChatPanel() {
     useHumanApprovalWatcher()
 
   const isHydratingActiveThread = hasActiveThread && !activeThreadMessagesHydrated
+
+  // 渲染守卫：防止无限循环渲染（Maximum update depth exceeded）
+  // 记录连续快速渲染次数，超过阈值时强制跳过后续更新
+  const _renderGuardRef = useRef(0)
+  const _lastRenderAtRef = useRef(Date.now())
+  const now = Date.now()
+  const elapsed = now - _lastRenderAtRef.current
+  _lastRenderAtRef.current = now
+  const _isRenderLoopDetected = elapsed < 16 && ++_renderGuardRef.current > 10
 
   // 先创建 virtuosoRef，解决 useChatScrollController 和 useTimelineProjection 的循环依赖
   // useTimelineProjection 需要 virtuosoRef 来设置初始滚动位置
@@ -376,7 +430,14 @@ export default function ChatPanel() {
   const visibleRangeRef = useRef<{ startIndex: number; endIndex: number } | null>(null)
 
   // 当 timelineItems 变化时（如新消息加入、线程切换），重新计算 active 用户消息
+  // 使用 ref 防止 timelineItems 引用变化但内容未变时频繁触发
+  const prevTimelineKeyRef = useRef<string>('')
   useEffect(() => {
+    // 生成 timeline 内容的 key（而非引用），避免同内容新引用触发无效更新
+    const key = `${timelineItems.length}:${timelineItems.map((t: any) => t.key).join(',')}`
+    if (key === prevTimelineKeyRef.current) return
+    prevTimelineKeyRef.current = key
+
     const range = visibleRangeRef.current
     if (!range || timelineItems.length === 0) {
       setActiveUserMessageId(null)
@@ -513,6 +574,13 @@ export default function ChatPanel() {
   const handleRegenerateRef = useRef(messageOps.handleRegenerate)
   handleRegenerateRef.current = messageOps.handleRegenerate
 
+  // 聊天输入区「创建智能体」入口：打开设置 → 智能体 → 自定义智能体，并自动弹出新建表单
+  const handleCreateAgent = useCallback(() => {
+    const store = useStore.getState()
+    store.setSettingsIntent({ tab: 'agent', agentSubTab: 'custom', createNewAgent: true })
+    store.setShowSettingsPage(true)
+  }, [])
+
   useEffect(() => {
     const handleOptionSelect = (event: CustomEvent<{ content: string; messageId: string }>) => {
       const { content } = event.detail
@@ -585,6 +653,11 @@ export default function ChatPanel() {
         playNotificationSound('error')
       } else if (event.reason === 'max_iterations') {
         playNotificationSound('attention')
+      } else if (event.reason === 'complete') {
+        // 任务完成提醒 = AI 回复完内容时播放；排除 Planner 子任务（带 planTaskId），避免每个子任务都响
+        if (!event.planTaskId) {
+          playNotificationSound('success')
+        }
       }
 
       if (event.reason === 'complete' || event.reason === 'tool_requested_stop' || event.reason === 'waiting_for_user') {
@@ -700,10 +773,16 @@ export default function ChatPanel() {
     ],
   )
 
+  // 用 ref 桥接 timelineProjection，避免 handleTimelineRangeChanged 因对象引用变化而频繁重建
+  const timelineProjectionRef = useRef(timelineProjection)
+  timelineProjectionRef.current = timelineProjection
+  const handleVisibleRangeChangedRef = useRef(handleVisibleRangeChanged)
+  handleVisibleRangeChangedRef.current = handleVisibleRangeChanged
+
   const handleTimelineRangeChanged = useCallback(
     (range: { startIndex: number; endIndex: number }) => {
-      timelineProjection.handleTimelineRangeChanged(range)
-      handleVisibleRangeChanged(range)
+      timelineProjectionRef.current.handleTimelineRangeChanged(range)
+      handleVisibleRangeChangedRef.current(range)
       // 更新可见范围引用，并立即计算 active 用户消息
       // （不能仅依赖 useEffect[timelineItems]，因为 range 变化时 timelineItems 引用可能未变）
       visibleRangeRef.current = range
@@ -736,7 +815,7 @@ export default function ChatPanel() {
       }
       setActiveUserMessageId(foundId)
     },
-    [timelineProjection, handleVisibleRangeChanged],
+    [],
   )
 
   // ===== Virtuoso 组件配置 =====
@@ -755,7 +834,7 @@ export default function ChatPanel() {
           }}
         />
       )),
-      Footer: () => <div className="h-28" />,
+      Footer: AutoCompressionHint,
       EmptyPlaceholder: () => <div />,
     }),
     [attachScrollerNode],
@@ -837,6 +916,8 @@ export default function ChatPanel() {
                       }}
                       activeFilePath={activeFilePath}
                       onAddFile={handleAddCurrentFile}
+                      language={language}
+                      onOpenSettings={handleCreateAgent}
                     />
                   </div>
                 </div>
@@ -844,19 +925,19 @@ export default function ChatPanel() {
                 <>
                   {/* 消息列表 */}
                   <div className="flex-1 relative overflow-hidden flex flex-col min-h-0">
-                    {/* 过渡骨架屏 */}
-                    <AnimatePresence>
-                      {(isSwitchingThread || isHydratingActiveThread) && (
-                        <motion.div
-                          initial={{ opacity: 1 }}
-                          exit={{ opacity: 0 }}
-                          transition={{ duration: 0.15 }}
-                          className="absolute inset-0 z-30 bg-background-chat pointer-events-auto"
-                        >
-                          <ChatMessagesSkeleton />
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
+                      {/* 过渡骨架屏 */}
+                      <AnimatePresence>
+                        {(!_isRenderLoopDetected && (isSwitchingThread || isHydratingActiveThread)) && (
+                          <motion.div
+                            initial={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.15 }}
+                            className="absolute inset-0 z-30 bg-background-chat pointer-events-auto"
+                          >
+                            <ChatMessagesSkeleton />
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
 
                     {/* 用户消息索引栏（左侧浮动圆点导航） */}
                     {!isSwitchingThread && !isHydratingActiveThread && (
@@ -972,6 +1053,8 @@ export default function ChatPanel() {
                   }}
                   activeFilePath={activeFilePath}
                   onAddFile={handleAddCurrentFile}
+                  language={language}
+                  onOpenSettings={handleCreateAgent}
                 />
               </div>
             </div>

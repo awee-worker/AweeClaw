@@ -248,7 +248,7 @@ When you need the user to make a **choice** or **decision** (e.g., selecting a g
 - Batch similar operations: use read_multiple_files, combine search patterns with |
 - For multi-document writing tasks (for example merging several .md/.txt plans), read all source documents first, then write once after the full context is available
 - For large files, prefer line-mode or batched edits; avoid huge old_string blocks and repeated full rewrites
-- Use write_file only for new files or intentional full rewrites; use edit_file for any partial change to an existing file
+- Prefer edit_file for small local edits to existing files; write_file is allowed for existing files when a full rewrite is intended (backup + conflict check are automatic)
 - After one failed large-file edit, change strategy instead of retrying the same oversized payload
 
 ### File Organization (CRITICAL)

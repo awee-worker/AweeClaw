@@ -6,6 +6,7 @@ import { useStore } from '@store'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { playNotificationSound } from '@utils/notificationSound'
 import { getToolApprovalType, getToolDisplayName } from '@configuration/toolDefinitions'
+import { getActiveCustomAgent, getAgentToolLoadingFields } from '@renderer-configuration/customAgentTools'
 import { approvalService, requiresApprovalGate } from '@intelligence/engine/toolOrchestrator'
 import type { LLMConfig, LLMMessage, ToolDefinition, ToolExecutionContext, ToolExecutionResult } from '@intelligence/providerTypes'
 
@@ -49,18 +50,6 @@ async function ensureToolsInitialized(): Promise<void> {
 
   try {
     initializeToolProviders()
-
-    const activeScenarioId = useStore.getState().activeScenarioId
-    const activeScenario = scenarioRegistry.getActive()
-    const scenarioToolPacks = activeScenario?.capabilities?.toolPacks
-
-    setToolLoadingContext({
-      mode: 'agent',
-      templateId: useStore.getState().promptTemplateId,
-      scenarioId: activeScenarioId,
-      scenarioToolPacks,
-    })
-
     await initializeTools()
     toolsInitialized = true
 
@@ -70,6 +59,28 @@ async function ensureToolsInitialized(): Promise<void> {
     logger.agent.error('[AgentSubLoop] Failed to initialize tools:', err)
     throw err
   }
+}
+
+/**
+ * 每次执行时刷新工具加载上下文（场景/智能体可能在会话间切换）
+ * 确保子智能体路径始终使用最新的智能体工具白名单
+ */
+function refreshToolLoadingContext(): void {
+  const activeScenarioId = useStore.getState().activeScenarioId
+  const activeScenario = scenarioRegistry.getActive()
+  const scenarioToolPacks = activeScenario?.capabilities?.toolPacks
+
+  // 自定义智能体工具白名单：激活了智能体时限制其可用工具
+  const activeAgent = getActiveCustomAgent()
+  const agentToolFields = getAgentToolLoadingFields(activeAgent)
+
+  setToolLoadingContext({
+    mode: 'agent',
+    templateId: useStore.getState().promptTemplateId,
+    scenarioId: activeScenarioId,
+    scenarioToolPacks,
+    ...agentToolFields,
+  })
 }
 
 function callLLMWithTools(
@@ -303,7 +314,8 @@ async function executeToolCall(
       }
 
       try {
-        playNotificationSound('attention')
+        // 等待审批属于「需确认操作提醒」，用 approval 类型以正确匹配设置开关
+        playNotificationSound('approval')
       } catch (e) { logger.ui.warn('Failed to play notification sound:', e) }
 
       logger.agent.info(`[AgentSubLoop] Waiting for approval: ${requestId}_${toolCall.id} (tool: ${toolCall.name})`)
@@ -376,6 +388,8 @@ export async function runAgentSubLoop(options: SubLoopOptions): Promise<SubLoopR
   logger.agent.info(`[AgentSubLoop] Starting sub-loop for task: ${userMessage.slice(0, 100)}...`)
 
   await ensureToolsInitialized()
+  // 每次执行刷新工具加载上下文（智能体可能已切换）
+  refreshToolLoadingContext()
 
   const agentTools = toolManager.getAllToolDefinitions()
 
@@ -392,7 +406,6 @@ export async function runAgentSubLoop(options: SubLoopOptions): Promise<SubLoopR
 
   let totalToolCallsCount = 0
   let iteration = 0
-
   while (iteration < maxIterations) {
     if (abortSignal?.aborted) {
       return { content: '', iterations: iteration, toolCallsCount: totalToolCallsCount, error: 'Aborted' }

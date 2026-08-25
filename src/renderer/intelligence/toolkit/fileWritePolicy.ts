@@ -1,12 +1,12 @@
 /**
  * 文件职责：
  * 1. 统一判断 write_file 这次调用的真实意图，是“新建”、“整文件重写”还是“局部修改”。
- * 2. 为执行层提供强约束，防止模型把已有文件的局部修改误用成整文件覆盖。
+ * 2. 为执行层提供意图分析，辅助工具选择与元信息回传。
  * 3. 将“是否允许 write_file 执行”的规则收敛到一个地方，避免散落在提示词和执行器里。
  *
  * 设计原则：
- * - write_file 保持“整文件写入”语义，不承担局部编辑职责。
- * - edit_file 保持“局部修改”语义，不让 write_file 去抢这部分工作。
+ * - write_file 保持“整文件写入”语义，允许覆盖已有文件（执行层自带备份与冲突检测）。
+ * - edit_file 保持“局部修改”语义，作为局部编辑的首选；write_file 仅在整写场景使用。
  * - 策略层只做判定，不直接执行 IO，便于复用、测试和后续扩展。
  */
 export type WriteIntent = 'create' | 'full-rewrite' | 'partial-update'
@@ -112,18 +112,18 @@ export function analyzeWriteIntent(originalContent: string, nextContent: string)
     changedRatio,
   }
 }
-
 /**
  * write_file 执行前的统一守卫。
  *
  * 核心规则：
  * 1. 新文件允许直接 write_file。
- * 2. 已有文件如果没有先 read_file 建立上下文，不允许直接整写。
- * 3. 已有文件如果看起来只是局部修改，拒绝 write_file，强制引导走 edit_file。
+ * 2. 已有文件允许 write_file 整写（执行层会做 .history 备份、冲突检测与变更审批）。
+ * 3. 若改动看起来像局部修改，仅附加软提示，引导模型后续优先用 edit_file，不做硬拒绝。
  *
- * 这层守卫的价值在于：
- * - 把“提示词建议”升级为“执行层硬约束”；
- * - 降低大文件误整写导致的超时、冲突和无意义重试。
+ * 设计背景：
+ * - 早期版本对“已有文件 + 未先 read_file”和“疑似局部修改”做硬拒绝，导致模型
+ *   在编辑已有文件时频繁报错、反复重试甚至卡住任务。现已改为放行 + 提示，
+ *   由执行层的备份/审批兜底安全性，由提示词引导工具选择效率。
  */
 export function guardWriteFile(input: WriteGuardInput): WriteGuardDecision {
   const analysis = analyzeWriteIntent(input.originalContent, input.nextContent)
@@ -136,29 +136,20 @@ export function guardWriteFile(input: WriteGuardInput): WriteGuardDecision {
     }
   }
 
-  if (!input.hasRecentRead) {
-    return {
-      allow: false,
-      intent: analysis.intent,
-      reason: `Refusing write_file for existing file ${input.path}: read_file must be used first so the agent can choose between edit_file and write_file with current content.`,
-      analysis,
-    }
-  }
-
+  // 已有文件：允许 write_file 整写。执行层自带备份与冲突检测，覆盖是安全的。
   const looksLikePartialUpdate =
     analysis.intent === 'partial-update' ||
     analysis.changedOriginalChars <= SMALL_PARTIAL_CHANGE_CHARS ||
     (input.originalContent.length >= LARGE_FILE_THRESHOLD && analysis.changedRatio <= 0.5)
 
-  if (looksLikePartialUpdate) {
+  if (looksLikePartialUpdate || !input.hasRecentRead) {
     return {
-      allow: false,
-      intent: 'partial-update',
+      allow: true,
+      intent: analysis.intent,
       reason:
-        `Refusing write_file for existing file ${input.path}: the change appears partial ` +
-        `(${Math.round(analysis.changedRatio * 100)}% of original content changed, ` +
-        `${analysis.changedOriginalChars} original chars affected). ` +
-        'Use edit_file instead: string mode for a small unique local change, line mode for known line ranges, or batch mode for multiple edits.',
+        `Note: write_file on existing file ${input.path} executed as full rewrite ` +
+        `(${Math.round(analysis.changedRatio * 100)}% of original content changed). ` +
+        'Prefer edit_file (string/line/batch mode) for smaller local edits in future calls.',
       analysis,
     }
   }
