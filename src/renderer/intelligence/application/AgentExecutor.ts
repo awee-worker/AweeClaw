@@ -167,7 +167,15 @@ class CompressionIterationStage implements ExecutionStage {
 
   run(ctx: PipelineContext) {
     const descriptor = ctx.modeDescriptor
-    let level = descriptor.budgetProfile.initialCompressionLevel
+    // 起点：初始压缩级别。若上下文未超限，直接以初始级别发送 —— 保留完整上下文
+    // 让 AI 更懂用户意图，避免上一轮重度压缩的级别残留导致"未超限也过度裁剪"，
+    // 使 AI 丢失关键上下文（失忆/幻觉）。
+    // prevLevel（上一轮实际压缩级别）仅在预算超限时作为跳级起点，加速收敛到
+    // 合适级别，同时防止"压缩→继续→立刻又压缩"的循环。
+    const prevLevel = ctx.config.threadId
+      ? (useAgentStore.getState().threads[ctx.config.threadId]?.compressionStats?.level ?? 0)
+      : 0
+    let level = descriptor.budgetProfile.initialCompressionLevel as CompressionLevel
     let result = this.assembler.assemble(
       ctx.messageHistory,
       ctx.userMessageContent!,
@@ -191,7 +199,8 @@ class CompressionIterationStage implements ExecutionStage {
         break
       }
 
-      const next = (level + 1) as CompressionLevel
+      // 超限：优先跳到上一轮压缩级别（若更高则直接沿用），加速收敛避免多次迭代
+      const next = Math.max(level + 1, prevLevel) as CompressionLevel
       logger.agent.info(
         `[AgentExecutor] compression L${level} → L${next} ` +
           `(${(estimate.usageRatio * 100).toFixed(1)}% > ${(descriptor.budgetProfile.targetRatio * 100).toFixed(1)}% target)`,

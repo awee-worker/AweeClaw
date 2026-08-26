@@ -46,7 +46,9 @@ export default function ContextStatsContent({
   const [isCreatingHandoff, setIsCreatingHandoff] = useState(false)
 
   const currentLevel = (compressionStats?.level ?? 0) as CompressionLevel
-  const needsHandoff = compressionStats?.needsHandoff ?? currentLevel >= 4
+  // stats.needsHandoff 已恒为 false（自动压缩不再中断会话/触发交接），
+  // 此处用 || 兜底：上下文达 L4 时仍在此面板提示用户可手动压缩交接（主动操作入口）。
+  const needsHandoff = (compressionStats?.needsHandoff ?? false) || currentLevel >= 4
   const ratio = compressionStats?.ratio ?? 0
   const contextLimit = compressionStats?.contextLimit ?? 128000
   const inputTokens = compressionStats?.inputTokens ?? 0

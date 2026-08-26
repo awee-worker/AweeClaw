@@ -6,7 +6,7 @@
  *  - 状态视觉工厂：根据运行/成功/错误/审批状态生成卡片样式与状态图标
  *  - 子组件拆分：头部、内容体、审批栏、错误信息各自独立
  */
-import { useState, useEffect, useMemo, memo, type ReactNode } from 'react'
+import { useState, useEffect, useMemo, memo, useRef, type ReactNode } from 'react'
 import { Check, X, ChevronDown, ExternalLink } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ToolCall } from '@intelligence/providerTypes'
@@ -371,6 +371,13 @@ function FileChangeCard({
     isActive,
   })
 
+  // P0-A：记忆「曾因活动而展开」，完成后保持展开（流式 diff → 静态 diff 平滑过渡），
+  // 避免每个文件编辑完成时内容体整体消失 → 高度骤减 → 批量编辑时的抖动。
+  const wasActiveRef = useRef(false)
+  useEffect(() => {
+    if (isActive) wasActiveRef.current = true
+  }, [isActive])
+
   const meta = args._meta as Record<string, unknown> | undefined
   const filePath = extractFilePath(args, meta)
 
@@ -505,7 +512,13 @@ function FileChangeCard({
       <div className="absolute left-[13.5px] top-0 bottom-4 w-[1.5px] bg-border/40 rounded-full" />
       <div className="relative z-10">
         <ExpandablePreviewContainer language={language}>
-          <div className="relative min-h-[60px] p-2">
+          {/* P2-E：流式期间 diff 行数持续增长会让卡片高度持续变化，
+              限制为固定最大高度 + 内部滚动，消除流式阶段的高度抖动；完成后恢复自然高度 */}
+          <div
+            className={`relative min-h-[60px] p-2 ${
+              isActive ? 'max-h-[240px] overflow-y-auto' : ''
+            }`}
+          >
             {isLargeWrite && !isStreaming && !isRunning ? (
               <LargeFileDeferred meta={meta} onOpen={() => void openFullFile()} />
             ) : (
@@ -539,7 +552,7 @@ function FileChangeCard({
         trailing={trailing}
       />
 
-      {isExpanded && (newContent || isActive || isLargeWrite) && (
+      {isExpanded && (newContent || isActive || isLargeWrite || wasActiveRef.current) && (
         animateContent ? (
           <AnimatePresence initial={false}>
             <motion.div

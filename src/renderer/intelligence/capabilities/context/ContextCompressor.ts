@@ -383,7 +383,9 @@ export function updateStats(
     savedTokens,
     savedPercent,
     messageCount,
-    needsHandoff: level >= 4,
+    // 需求变更：自动压缩完成后不再中断会话/触发交接，AI 直接基于压缩后的上下文继续执行。
+    // 该字段保留仅为兼容旧消费者，恒为 false，防止任何路径误判为需要手动交接。
+    needsHandoff: false,
     lastUpdatedAt: Date.now(),
   }
 }

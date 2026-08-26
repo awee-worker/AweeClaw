@@ -42,6 +42,14 @@ interface ToolGroup {
   tools: ToolCall[]
 }
 
+/** 各状态分组的视觉配置 */
+const GROUP_VISUALS: Record<ToolGroupStatus, { label: string; icon: LucideIcon; color: string }> = {
+  pending: { label: '进行中', icon: Loader2, color: 'text-accent' },
+  awaiting: { label: '待批准', icon: AlertTriangle, color: 'text-status-warning' },
+  error: { label: '失败', icon: XCircle, color: 'text-status-error' },
+  success: { label: '已完成', icon: CheckCircle2, color: 'text-status-success' },
+}
+
 /** 工具调用卡片渲染选项 */
 export interface ToolCallCardOptions {
   pendingToolId?: string
@@ -115,7 +123,6 @@ export function renderToolCallCard(
     />
   )
 }
-
 /**
  * 获取工具状态分组
  *
@@ -126,76 +133,57 @@ export function renderToolCallCard(
  * - error             → 失败
  * - success           → 已完成
  *
+ * 分组策略（P1-D 顺序固定渲染）：
+ * - 有待批准工具（事前审批场景）：按状态分组，卡片停留在待批准位置。
+ * - 无待批准工具（批量执行场景）：单一组按调用原始顺序渲染，卡片位置固定，
+ *   状态用卡片内图标表达 —— 工具完成时卡片不移动，彻底消除
+ *   「从进行中组移到已完成组」导致的 DOM 重排抖动。
+ *
  * @param tools 工具调用列表
  * @returns 分组列表（顺序：进行中 → 待批准 → 失败 → 已完成）
  */
 function groupToolsByStatus(tools: ToolCall[]): ToolGroup[] {
-  const groups: Record<ToolGroupStatus, ToolCall[]> = {
-    pending: [],
-    awaiting: [],
-    success: [],
-    error: [],
-  }
-
-  for (const tc of tools) {
-    if (tc.status === 'pending' || tc.status === 'running') {
-      groups.pending.push(tc)
-    } else if (tc.status === 'awaiting') {
-      // 等待用户批准的工具单独成组，不混入“已完成”
-      groups.awaiting.push(tc)
-    } else if (tc.status === 'success') {
-      groups.success.push(tc)
-    } else if (tc.status === 'error' || tc.status === 'rejected') {
-      groups.error.push(tc)
-    } else {
-      // 未知状态归入已完成
-      groups.success.push(tc)
+  // 事前审批场景：保留状态分组
+  if (tools.some((tc) => tc.status === 'awaiting')) {
+    const groups: Record<ToolGroupStatus, ToolCall[]> = {
+      pending: [],
+      awaiting: [],
+      success: [],
+      error: [],
     }
+
+    for (const tc of tools) {
+      if (tc.status === 'pending' || tc.status === 'running') {
+        groups.pending.push(tc)
+      } else if (tc.status === 'awaiting') {
+        // 等待用户批准的工具单独成组，不混入“已完成”
+        groups.awaiting.push(tc)
+      } else if (tc.status === 'success') {
+        groups.success.push(tc)
+      } else if (tc.status === 'error' || tc.status === 'rejected') {
+        groups.error.push(tc)
+      } else {
+        // 未知状态归入已完成
+        groups.success.push(tc)
+      }
+    }
+
+    const order: ToolGroupStatus[] = ['pending', 'awaiting', 'error', 'success']
+    return order
+      .filter((s) => groups[s].length > 0)
+      .map((s) => ({ status: s, ...GROUP_VISUALS[s], tools: groups[s] }))
   }
 
-  const result: ToolGroup[] = []
-
-  if (groups.pending.length > 0) {
-    result.push({
-      status: 'pending',
-      label: '进行中',
-      icon: Loader2,
-      color: 'text-accent',
-      tools: groups.pending,
-    })
+  // 批量执行场景：单一组按原始顺序渲染，卡片位置固定
+  // 组状态取当前最高优先级状态：进行中 > 失败 > 已完成
+  const hasRunning = tools.some((tc) => tc.status === 'pending' || tc.status === 'running')
+  let status: ToolGroupStatus = 'success'
+  if (hasRunning) {
+    status = 'pending'
+  } else if (tools.some((tc) => tc.status === 'error' || tc.status === 'rejected')) {
+    status = 'error'
   }
-
-  if (groups.awaiting.length > 0) {
-    result.push({
-      status: 'awaiting',
-      label: '待批准',
-      icon: AlertTriangle,
-      color: 'text-status-warning',
-      tools: groups.awaiting,
-    })
-  }
-
-  if (groups.error.length > 0) {
-    result.push({
-      status: 'error',
-      label: '失败',
-      icon: XCircle,
-      color: 'text-status-error',
-      tools: groups.error,
-    })
-  }
-
-  if (groups.success.length > 0) {
-    result.push({
-      status: 'success',
-      label: '已完成',
-      icon: CheckCircle2,
-      color: 'text-status-success',
-      tools: groups.success,
-    })
-  }
-
-  return result
+  return [{ status, ...GROUP_VISUALS[status], tools }]
 }
 
 /**
@@ -286,6 +274,13 @@ function ToolCallGroup({
 
   // 按状态分组
   const groups = useMemo(() => groupToolsByStatus(toolCalls), [toolCalls])
+
+  // P1-C 组级进度：批量执行时统计已完成/总数，显示在「进行中」组头
+  const doneCount = useMemo(
+    () => toolCalls.filter((tc) => tc.status === 'success').length,
+    [toolCalls],
+  )
+  const totalCount = toolCalls.length
 
   // 默认展开所有分组，避免分组头闪烁和用户需要手动展开查看结果
   // 用户反馈：多个相同工具分组显示时分组头会闪烁，默认展开体验更好
@@ -380,6 +375,12 @@ function ToolCallGroup({
                   />
                   <span>
                     {group.label} ({group.tools.length})
+                    {/* P1-C 组级进度：进行中组显示已完成/总数，替代逐卡闪烁 */}
+                    {isPendingGroup && totalCount > 1 && (
+                      <span className="text-text-muted/70 font-normal ml-1">
+                        · {doneCount}/{totalCount}
+                      </span>
+                    )}
                     {(group.status === 'success' || group.status === 'error') && (
                       <span className="text-text-muted/70 font-normal ml-1">
                         · {buildGroupSummary(group.tools, language)}

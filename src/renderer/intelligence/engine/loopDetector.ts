@@ -908,7 +908,10 @@ export async function executeAgentCycle(
         output: usageData.completionTokens || 0,
       }
 
-      const compressionResult = await runCompressionCheck(
+      // 传入 llmMessages：压缩检查发现上下文超限（L2+）且 AI 仍要继续执行时，
+      // 会就地清理较早的低价值工具结果，确保下一轮 LLM 请求不超限 ——
+      // 压缩后 AI 直接基于压缩后的上下文继续执行，绝不中断主循环。
+      await runCompressionCheck(
         usage,
         contextLimit,
         threadStore,
@@ -918,14 +921,9 @@ export async function executeAgentCycle(
         enableLLMSummary,
         autoHandoff,
         budgetController,
-        (result.toolCalls?.length ?? 0) > 0
+        (result.toolCalls?.length ?? 0) > 0,
+        llmMessages
       )
-
-      if (compressionResult.needsHandoff) {
-        threadStore.updateExecutionMeta({ loopState: 'completed' })
-        EventBus.emit({ type: 'loop:end', reason: 'handoff_required', threadId, assistantId, requestId, planTaskId: context.planTaskId })
-        break
-      }
     } else {
       logger.agent.warn('[Loop] No valid usage data from LLM, using estimated tokens')
 
@@ -945,7 +943,10 @@ export async function executeAgentCycle(
         } as Partial<AssistantMessage>)
       }
 
-      const compressionResult = await runCompressionCheck(
+      // 传入 llmMessages：压缩检查发现上下文超限（L2+）且 AI 仍要继续执行时，
+      // 会就地清理较早的低价值工具结果，确保下一轮 LLM 请求不超限 ——
+      // 压缩后 AI 直接基于压缩后的上下文继续执行，绝不中断主循环。
+      await runCompressionCheck(
         usage,
         contextLimit,
         threadStore,
@@ -955,14 +956,9 @@ export async function executeAgentCycle(
         enableLLMSummary,
         autoHandoff,
         budgetController,
-        (result.toolCalls?.length ?? 0) > 0
+        (result.toolCalls?.length ?? 0) > 0,
+        llmMessages
       )
-
-      if (compressionResult.needsHandoff) {
-        threadStore.updateExecutionMeta({ loopState: 'completed' })
-        EventBus.emit({ type: 'loop:end', reason: 'handoff_required', threadId, assistantId, requestId, planTaskId: context.planTaskId })
-        break
-      }
     }
 
     if (!result.toolCalls || result.toolCalls.length === 0) {
