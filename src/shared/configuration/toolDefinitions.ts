@@ -346,10 +346,11 @@ Avoid:
 Use for new files, intentional full-file replacement, or generated artifact files.
 Overwrites the whole file. For existing files, prefer edit_file for small local changes; write_file is allowed when the agent has current content and a full rewrite is intended.`,
         criticalRules: [
-            'Overwrites the entire file; prefer edit_file for small local changes',
+            'Creating a NEW file: use write_file.',
+            'Editing an EXISTING file: you MUST use edit_file (read_file first, then edit_file with string/line/batch mode). NEVER use write_file to partially modify an existing file.',
+            'write_file on an existing file is ONLY allowed for intentional full-file replacement (the whole file is regenerated on purpose).',
             'Prefer over create_file_or_folder when you have file content ready',
             'Do not rewrite the same large file multiple times in one turn unless absolutely necessary',
-            'For existing files, prefer edit_file for small local edits; use write_file for full rewrites or when a partial edit is impractical',
         ],
         category: 'write',
         approvalType: 'none',
@@ -1832,11 +1833,11 @@ The tool returns the full skill content which you MUST follow as project-specifi
 export const FILE_EDIT_DECISION_GUIDE = `
 ## File Editing Decision Guide
 
-**1. Pick the tool**
-- New file (does not exist yet): use \`write_file\`.
-- Full-file replacement of an EXISTING file: use \`write_file\`.
-- Partial change to an existing file: use \`edit_file\` after reading the file with \`read_file\`.
-- **NEVER** use \`write_file\` to partially modify an existing file — it will be rejected by the system. Use \`edit_file\` instead.
+**1. Pick the tool (MANDATORY)**
+- Creating a NEW file: use \`write_file\`.
+- Editing an EXISTING file: you MUST use \`edit_file\` — first read the file with \`read_file\` to get the current content, then apply changes with \`edit_file\` (string/line/batch mode).
+- \`write_file\` on an existing file is ONLY allowed for intentional full-file replacement (the whole file is regenerated on purpose).
+- **NEVER** use \`write_file\` to partially modify an existing file. For ANY targeted change on an existing file, always use \`edit_file\`.
 
 **2. Pick exactly one edit_file mode**
 - String mode: \`old_string\` + \`new_string\`.
@@ -1848,8 +1849,8 @@ export const FILE_EDIT_DECISION_GUIDE = `
 - Never send empty placeholder edits.
 - Prefer line or batch mode for large files.
 
-**4. If write_file is rejected with a "partial update" or "use edit_file" error:**
-- STOP trying write_file for this file.
+**4. If you used \`write_file\` on an existing file and the response asks you to switch to \`edit_file\`:**
+- STOP using write_file for this file.
 - Read the current file content with \`read_file\`.
 - Use \`edit_file\` with the appropriate mode (string/line/batch) to make the change.
 - After a failed edit, read the file again before retrying — the file may have changed.

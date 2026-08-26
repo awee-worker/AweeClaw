@@ -367,8 +367,9 @@ DO NOT make parallel edits to the SAME file.
 
 ### Write vs Edit Selection
 
-- \`write_file\`: only for new files, near-total rewrites, or deliberate full regeneration
-- \`edit_file\`: for any partial modification to an existing file
+- Creating a NEW file: use \`write_file\`.
+- Editing an EXISTING file: you MUST use \`edit_file\` — read the file with \`read_file\` first, then apply changes with \`edit_file\` (string/line/batch mode).
+- \`write_file\` on an existing file is ONLY for intentional full-file replacement; NEVER use it for partial modification of an existing file.
 - Small, unique local change 鈫?use \`edit_file\` string mode
 - Known line range or large file 鈫?use \`edit_file\` line mode
 - Multiple non-overlapping changes in one file 鈫?use \`edit_file\` batch mode

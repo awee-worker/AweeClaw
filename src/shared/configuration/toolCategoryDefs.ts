@@ -142,6 +142,16 @@ const PLAN_EXPLORATION_TOOLS: string[] = [
   'get_file_info',
 ]
 
+/** 场景工具 AI 桥接工具名（scene_tools_*） */
+export const SCENE_TOOL_NAMES: readonly string[] = [
+  'scene_tools_list',
+  'scene_tools_read',
+  'scene_tools_add',
+  'scene_tools_update',
+  'scene_tools_delete',
+  'scene_tools_stats',
+]
+
 /** 工具组注册表 */
 const TOOL_GROUPS: Record<string, string[]> = {
   core: CORE_TOOLS,
@@ -281,10 +291,12 @@ export function getToolsForContext(context: ToolLoadingContext): string[] {
   if (context.agentBuiltinTools !== undefined) {
     const allow = new Set(context.agentBuiltinTools)
     allow.add('extract_document')
-    return Array.from(tools).filter((tool) => allow.has(tool))
+    // 场景工具（scene_tools_*）始终对 AI 可见：
+    // 纯本地个人数据 CRUD，无外部副作用且 approvalType='none'，不受智能体工具白名单限制
+    return Array.from(tools).filter((tool) => allow.has(tool)).concat(SCENE_TOOL_NAMES)
   }
 
-  return Array.from(tools)
+  return Array.from(tools).concat(SCENE_TOOL_NAMES)
 }
 
 /**

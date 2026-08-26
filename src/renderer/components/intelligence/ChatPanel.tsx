@@ -973,11 +973,6 @@ export default function ChatPanel() {
                       components={virtuosoComponents}
                     />
 
-                    <ScrollToBottomButton
-                      visible={showScrollButton}
-                      onClick={() => scrollToBottom('smooth')}
-                      language={language as Language}
-                    />
                   </div>
                 </>
               )}
@@ -1013,7 +1008,13 @@ export default function ChatPanel() {
                 isChatPrimary ? 'max-w-[840px] mx-auto w-full' : ''
               }`}
             >
-              <div className="mx-4 mb-4 flex flex-col">
+              <div className="relative mx-4 mb-4 flex flex-col">
+                {/* 滚动到底部按钮：吸附在输入框顶部中间，与输入框融为一体 */}
+                <ScrollToBottomButton
+                  visible={showScrollButton}
+                  onClick={() => scrollToBottom('smooth')}
+                  language={language as Language}
+                />
                 {awaitingApproval && (
                   <HumanApprovalCard
                     info={awaitingApproval}

@@ -246,7 +246,7 @@ function MessageIndexBarImpl({
     <>
       <div
         ref={containerRef}
-        className="absolute left-0.5 top-1/2 -translate-y-1/2 z-20 flex flex-col items-center gap-2 py-1 rounded-full bg-surface/40 backdrop-blur-sm max-h-[320px] overflow-y-auto scrollbar-none"
+        className="absolute left-0.5 top-1/2 -translate-y-1/2 z-20 flex flex-col items-center gap-2 py-1 max-h-[320px] overflow-y-auto scrollbar-none"
         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         role="navigation"
         aria-label="用户消息索引"

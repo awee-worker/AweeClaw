@@ -1653,6 +1653,13 @@ export interface ElectronAPI {
   settingsDbGetWakeWordConfig: () => Promise<WakeWordConfig | null>
   settingsDbSaveWakeWordConfig: (config: Partial<WakeWordConfig>) => Promise<{ success: boolean; error?: string }>
   settingsDbSetWakeWordEnabled: (enabled: boolean) => Promise<{ success: boolean; error?: string }>
+  // Scene Tools DB（场景工具 SQLite 持久化）
+  sceneToolsDbInitialize: () => Promise<{ success: boolean; dbPath?: string; error?: string }>
+  sceneToolsDbGet: (key: string) => Promise<string | null>
+  sceneToolsDbSet: (key: string, value: string) => Promise<{ success: boolean; error?: string }>
+  sceneToolsDbRemove: (key: string) => Promise<{ success: boolean; error?: string }>
+  sceneToolsDbLoadAll: () => Promise<Record<string, string>>
+  sceneToolsDbGetPath: () => Promise<string>
   // LLM
   sendMessage: (params: LLMSendMessageParams) => Promise<void>
   compactContext: (params: LLMSendMessageParams) => Promise<{

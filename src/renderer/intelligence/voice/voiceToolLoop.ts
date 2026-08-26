@@ -195,6 +195,8 @@ export async function ensureVoiceToolsInitialized(): Promise<void> {
 
   try {
     initializeToolProviders()
+    // 确保场景工具 AI 桥接已注册（幂等注册，语音路径同样需要 scene_tools_* 可见）
+    await import('@/renderer/components/scene-tools/agentBridge').then(({ registerSceneToolsAgent }) => registerSceneToolsAgent())
     await initializeTools()
     voiceToolsInitialized = true
 

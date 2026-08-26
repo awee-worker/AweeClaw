@@ -123,6 +123,15 @@ export function createStorageApi() {
       invoke('memory-db:migrateFromJsonStore')(store),
     memoryDbGetPath: invoke('memory-db:getPath'),
 
+    // ── Scene Tools DB（场景工具 SQLite 持久化） ──
+    sceneToolsDbInitialize: invoke('scene-tools-db:initialize'),
+    sceneToolsDbGet: (key: string) => invoke('scene-tools-db:get')(key),
+    sceneToolsDbSet: (key: string, value: string) =>
+      invoke('scene-tools-db:set')(key, value),
+    sceneToolsDbRemove: (key: string) => invoke('scene-tools-db:remove')(key),
+    sceneToolsDbLoadAll: invoke('scene-tools-db:loadAll'),
+    sceneToolsDbGetPath: invoke('scene-tools-db:getPath'),
+
     // ── 项目附件本地存储（本地优先） ──
     attachmentSave: (params: { projectId: string; fileName: string; base64Data: string; mimeType?: string }) =>
       invoke('attachment:save')(params),

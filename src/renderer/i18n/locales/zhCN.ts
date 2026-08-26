@@ -2678,6 +2678,7 @@ export const zh = {
   'layout.workscenes': '场景应用',
   'layout.workflow': '工作流',
   'layout.schedule': '定时任务',
+  'layout.scenetools': '场景工具',
   'layout.plugins': '插件',
   'layout.pluginsandskills': '插件与技能',
   'layout.pluginmarket': '插件与技能市场',

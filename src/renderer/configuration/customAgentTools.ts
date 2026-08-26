@@ -56,6 +56,7 @@ const AGENT_BUILTIN_TOOL_MAP: Record<string, string[]> = {
   web_search: ['web_search'],
   web_fetch: ['read_url'],
   code_action: ['edit_file', 'write_file', 'create_file_or_folder', 'delete_file_or_folder', 'replace_file_content'],
+  scene_tools: ['scene_tools_list', 'scene_tools_read', 'scene_tools_add', 'scene_tools_update', 'scene_tools_delete', 'scene_tools_stats'],
   browser: [],
   computer_use: [],
   image_gen: [],

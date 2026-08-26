@@ -8,6 +8,7 @@ import { TaskWorkspace } from './panels/tasks/TaskWorkspace'
 import { AutomationView } from './panels/automation/AutomationView'
 import { PluginMarketView } from './panels/plugin-market/PluginMarketView'
 import { ScenarioManagerView } from '../scenario/ScenarioManagerView'
+import { SceneToolsPanel } from '../scene-tools/SceneToolsPanel'
 
 type PanelComponent = ComponentType<unknown>
 
@@ -28,6 +29,7 @@ const BUILTIN_PANEL_COMPONENTS: Record<string, PanelComponent> = {
   AutomationView,
   PluginMarketView,
   ScenarioManagerView,
+  SceneToolsPanel,
 }
 
 /** 注册表条目：组件 + 可选的插件宿主 API */
@@ -38,6 +40,9 @@ interface PanelRegistryEntry {
 }
 
 const panelComponentRegistry = new Map<string, PanelRegistryEntry>()
+
+// 场景内置工具面板：全局注册，任何场景下均可通过 panelId='scene-tools' 激活
+registerPanelComponent('scene-tools', SceneToolsPanel)
 
 /**
  * 注册面板组件

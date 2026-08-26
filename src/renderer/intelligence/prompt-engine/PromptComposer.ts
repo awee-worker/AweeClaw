@@ -42,6 +42,11 @@ import { getActiveCustomAgent, getAgentToolLoadingFields } from '@renderer-confi
 import { api } from '../../adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
 import { useStore } from '@store'
+import {
+  getSceneToolsGuide,
+  getSceneToolsSnapshot,
+  getSceneToolsRecentEvents,
+} from '@/renderer/components/scene-tools/agentBridge'
 
 let projectSummaryCache: { path: string; summary: string; timestamp: number } | null = null
 const SUMMARY_CACHE_TTL = 5 * 60 * 1000
@@ -117,6 +122,10 @@ export interface PromptContext {
   scenePersonaPrompt?: string
   /** 场景模式指令段落（记忆域、可用技能等约束） */
   sceneModeDirectives?: string | null
+  /** 场景工具使用指南（能力声明 + 调用时机，仅 Agent/Plan 模式注入，chat 模式无工具调用能力） */
+  sceneToolsGuide?: string | null
+  /** 场景工具上下文（今日数据速览 + 最近工具动态，让 AI 主动感知用户状态） */
+  sceneToolsContext?: string | null
   /** 自定义智能体提示词（AgentSelector 选中的智能体 systemPrompt） */
   customAgentPrompt?: string | null
 }
@@ -501,6 +510,27 @@ function buildSceneModeDirectives(profile: SceneModeProfile): string {
 }
 
 /**
+ * 构建场景工具使用指南段落（能力声明 + 主动调用时机）
+ * 仅注入 Agent/Plan 模式（这些模式向 LLM 传工具参数，AI 可真实调用 scene_tools_*）。
+ */
+function buildSceneToolsGuideSection(profile: SceneModeProfile): string {
+  return getSceneToolsGuide(profile.id)
+}
+
+/**
+ * 构建场景工具上下文段落（今日数据速览 + 最近工具动态）
+ * 注入到系统提示词，让 AI 主动感知用户"今天"的状态与刚完成的工具操作，
+ * 实现 AI ⇄ 场景工具的双向紧密联动。
+ * 无数据时返回 null，不占用 token。
+ */
+function buildSceneToolsContextSection(profile: SceneModeProfile): string | null {
+  const snapshot = getSceneToolsSnapshot(profile.id)
+  const events = getSceneToolsRecentEvents(5)
+  if (!snapshot && !events) return null
+  return [snapshot, events].filter(Boolean).join('\n\n')
+}
+
+/**
  * 构建感知预测上下文段落
  *
  * 将当前场景、预测建议、代码影响分析注入系统提示词，
@@ -660,6 +690,8 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     identity.outputFormat,
     buildModeSpecificSections(ctx.modeDescriptor),
     ctx.sceneModeDirectives ?? null,
+    ctx.sceneToolsGuide ?? null,
+    ctx.sceneToolsContext ?? null,
     buildEnvironment(ctx),
     buildUserContext(ctx.userInfo),
     buildProjectSummary(ctx.projectSummary || null),
@@ -692,6 +724,7 @@ export function buildChatPrompt(ctx: PromptContext): string {
     identity.outputFormat,
     buildModeSpecificSections(ctx.modeDescriptor),
     ctx.sceneModeDirectives ?? null,
+    ctx.sceneToolsContext ?? null,
     buildEnvironment(ctx),
     buildUserContext(ctx.userInfo),
     buildProjectRules(ctx.projectRules),
@@ -850,6 +883,8 @@ export async function buildAgentSystemPrompt(
     isChannel,
     scenePersonaPrompt: sceneProfile.personaPrompt,
     sceneModeDirectives: buildSceneModeDirectives(sceneProfile),
+    sceneToolsGuide: buildSceneToolsGuideSection(sceneProfile),
+    sceneToolsContext: buildSceneToolsContextSection(sceneProfile),
     customAgentPrompt: activeAgent?.systemPrompt || null,
   }
 

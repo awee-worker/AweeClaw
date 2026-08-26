@@ -26,6 +26,27 @@ void import('./plugins/PluginUiRegistry').then(({ pluginUiRegistry }) => {
   })
 })
 
+// 注册场景工具 AI 桥接：将 21 个内置工具数据域暴露给 AI Agent（scene_tools_* 工具）。
+// 同时启动 UI 事件跟踪：用户在工具面板的操作（增删改）会记录为事件，供 AI 感知衔接。
+// 懒加载 + 幂等注册，失败不影响主流程。
+void import('./components/scene-tools/agentBridge').then(({ registerSceneToolsAgent, initSceneToolEventTracking }) => {
+  try {
+    registerSceneToolsAgent()
+    initSceneToolEventTracking()
+  } catch (err) {
+    logger.system.error('[Bootstrap] SceneTools agent bridge register failed:', err)
+  }
+})
+
+// 预热场景工具 SQLite 持久化：等待所有场景工具 store 完成 hydration，
+// 保证工具面板与 AI Agent 读取到完整数据（而非空数据）。
+// 数据已从 localStorage 迁移到 SQLite（scene-tools.db），不阻塞启动。
+void import('./components/scene-tools/stores').then(({ warmupSceneToolsStores }) => {
+  warmupSceneToolsStores().catch((err) => {
+    logger.system.error('[Bootstrap] SceneTools stores warmup failed:', err)
+  })
+})
+
 // ============================================
 // 主应用入口
 // ============================================

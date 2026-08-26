@@ -147,9 +147,11 @@ export function guardWriteFile(input: WriteGuardInput): WriteGuardDecision {
       allow: true,
       intent: analysis.intent,
       reason:
-        `Note: write_file on existing file ${input.path} executed as full rewrite ` +
+        `write_file was used on existing file ${input.path}; full rewrite executed ` +
         `(${Math.round(analysis.changedRatio * 100)}% of original content changed). ` +
-        'Prefer edit_file (string/line/batch mode) for smaller local edits in future calls.',
+        'To edit an existing file you MUST use edit_file: read the file with read_file first, ' +
+        'then apply changes with edit_file (string/line/batch mode). ' +
+        'Use write_file only for creating new files or intentional full-file replacement.',
       analysis,
     }
   }

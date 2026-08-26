@@ -50,6 +50,7 @@ import { registerSessionDbIpcHandlers } from '../storage/sessionDb'
 import { registerMemoryDbIpcHandlers } from '../storage/memoryDb'
 import { registerScenarioDbIpcHandlers } from '../storage/scenarioDb'
 import { registerProjectAttachmentIpcHandlers } from '../storage/projectAttachments'
+import { registerSceneToolsDbIpcHandlers } from '../storage/sceneToolsDb'
 
 // ── scenario ────────────────────────────────────────────
 import { registerScenarioInstallIpcHandlers, registerScenarioMarketplaceHandlers } from '../scenario/scenarioInstall'
@@ -311,6 +312,9 @@ export function registerAllHandlers(context: IPCContext) {
 
   // 记忆数据库
   registerOnce('memory-db', () => registerMemoryDbIpcHandlers())
+
+  // 场景工具数据库（工作/生活/学习模式内置工具的数据持久化）
+  registerOnce('scene-tools-db', () => registerSceneToolsDbIpcHandlers())
 
   // 桌面控制
   registerOnce('desktop-control', () => registerDesktopControlHandlers(getMainWindow))

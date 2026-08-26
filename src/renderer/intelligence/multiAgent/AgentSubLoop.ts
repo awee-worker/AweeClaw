@@ -50,6 +50,9 @@ async function ensureToolsInitialized(): Promise<void> {
 
   try {
     initializeToolProviders()
+    // 确保场景工具 AI 桥接已注册（幂等注册；bootstrap 异步注册可能晚于首次对话，
+    // 这里兜底保证 AI 首次执行前 scene_tools_* 工具一定对 LLM 可见）
+    await import('@/renderer/components/scene-tools/agentBridge').then(({ registerSceneToolsAgent }) => registerSceneToolsAgent())
     await initializeTools()
     toolsInitialized = true
 

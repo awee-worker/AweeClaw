@@ -13,8 +13,10 @@ import {
   Workflow, GitMerge, GitPullRequest, Bug, TestTube, Beaker, Rocket,
   Package, Box, Container, Database as DatabaseIcon, HardDrive, Server as ServerIcon,
   StickyNote, Briefcase, Calculator, FlaskConical, GraduationCap,
-  Lightbulb, Palette, Scale, ShieldCheck, Stethoscope, Store, Building2, ClipboardList,
   LayoutDashboard, Network, FolderKanban,
+  ListTodo, Timer, MessageSquareQuote, Droplets, HeartHandshake, CloudSun,
+  ShoppingCart, Cake, ChefHat, AlarmClock, BookX, NotebookPen, CalendarRange,
+  Blocks, Wrench,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -33,9 +35,12 @@ export const LUCIDE_ICON_MAP: Record<string, LucideIcon> = {
   Workflow, GitMerge, GitPullRequest, Bug, TestTube, Beaker, Rocket,
   Package, Box, Container, DatabaseIcon, HardDrive, ServerIcon,
   StickyNote, Briefcase, Calculator, FlaskConical, GraduationCap,
-  Lightbulb, Palette, Scale, ShieldCheck, Stethoscope, Store, Building2, ClipboardList,
   LayoutDashboard, Network, FolderKanban,
+  ListTodo, Timer, MessageSquareQuote, Droplets, HeartHandshake, CloudSun,
+  ShoppingCart, Cake, ChefHat, AlarmClock, BookX, NotebookPen, CalendarRange,
+  Blocks, Wrench,
 }
+
 
 export function getLucideIcon(name: string): LucideIcon {
   return LUCIDE_ICON_MAP[name] || Sparkles

@@ -90,8 +90,12 @@ function notifyContextLimitReached(threadStore: ThreadBoundStore, assistantId: s
   const { language } = useStore.getState()
   threadStore.addSystemAlertPart(assistantId, {
     alertType: 'warning',
-    title: getLocalizedText(language, '上下文已满', 'Context Limit Reached'),
-    message: getLocalizedText(language, '当前对话已达到上下文限制，请开始新会话继续。', 'Please start a new session to continue.'),
+    title: getLocalizedText(language, '上下文已压缩', 'Context Compressed'),
+    message: getLocalizedText(
+      language,
+      '当前对话已达到上下文限制，历史内容已自动压缩，AI 将继续执行。',
+      'Context limit reached. Conversation history was compressed automatically; the assistant will continue.',
+    ),
   })
 }
 
@@ -150,6 +154,10 @@ async function executeCompressionStrategy(
   budgetController?: TokenBudgetController,
   hasPendingToolCalls = false
 ): Promise<CompressionCheckResult> {
+  // 说明：autoHandoff 参数保留以兼容调用方签名。
+  // 自动上下文压缩完成后不再向 AI 发送交接消息（需求变更），AI 直接基于压缩后的上下文继续执行。
+  void autoHandoff
+
   // ===== 智能化对话轮次保护 =====
   // 系统提示 + 工具定义本身会占用大量 token（可能 30-50% contextLimit），
   // 如果仅凭 token 比例触发压缩，会导致短对话也被强制交接。
@@ -200,13 +208,15 @@ async function executeCompressionStrategy(
     const isAgentRunning = hasPendingToolCalls
     if (isAgentRunning) {
       logger.agent.info(
-        `[Compression] 跳过 handoff: AI 仍有待执行工具调用，等待本轮执行完成后再交接`
+        `[Compression] AI 仍有待执行工具调用，压缩后直接继续执行，不中断主循环`
       )
     } else {
       if (thread) {
         threadStore.setCompressionPhase('summarizing')
         try {
-          didAutoHandoff = await refreshHandoffSnapshot(threadId, threadStore, context, autoHandoff)
+          // 自动上下文压缩后只生成交接快照（供 UI 展示与手动交接使用），
+          // 不再自动发送“上下文交接”消息给 AI —— AI 直接基于注入的摘要继续执行。
+          didAutoHandoff = await refreshHandoffSnapshot(threadId, threadStore, context, false)
         } finally {
           threadStore.setCompressionPhase('idle')
         }
@@ -220,8 +230,8 @@ async function executeCompressionStrategy(
 
   EventBus.emit({ type: 'context:level', level: effectiveLevel, tokens: totalTokens, ratio })
 
-  // needsHandoff 必须与实际交接行为一致：AI 仍在执行中时不中断主循环
-  return { level: effectiveLevel, needsHandoff: effectiveLevel >= 4 && !hasPendingToolCalls }
+  // 压缩后不再打断主循环：AI 直接基于压缩后的上下文继续执行
+  return { level: effectiveLevel, needsHandoff: false }
 }
 
 export async function checkAndHandleCompression(

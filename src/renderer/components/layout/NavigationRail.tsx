@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { Settings, Compass, LogIn, ChevronUp, CloudSync, Info, MessageSquare, Plus, MoreHorizontal, Edit2, Trash2, LogOut, UserCircle, Wallet, History, Clock, Puzzle } from 'lucide-react'
+import { Settings, Compass, LogIn, ChevronUp, CloudSync, Info, MessageSquare, Plus, MoreHorizontal, Edit2, Trash2, LogOut, UserCircle, Wallet, History, Clock, Puzzle, Blocks } from 'lucide-react'
 import { HintOverlay } from '../ui/HintOverlay'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -474,6 +474,12 @@ export default function NavigationRail() {
     setActiveSidePanel(activeSidePanel === 'schedule' ? null : 'schedule')
   }, [activeSidePanel, setActiveSidePanel, closeAllFullPages, setShowWorkflow])
 
+  const handleSceneToolsClick = useCallback(() => {
+    closeAllFullPages()
+    setShowWorkflow(false)
+    setActiveSidePanel(activeSidePanel === 'scene-tools' ? null : 'scene-tools')
+  }, [activeSidePanel, setActiveSidePanel, closeAllFullPages, setShowWorkflow])
+
   const handlePluginCenterClick = useCallback(() => {
     setActiveSidePanel(null)
     setShowPluginCenterPage(true)
@@ -842,6 +848,43 @@ export default function NavigationRail() {
           )
         })}
       </div>
+
+      {/* 场景工具入口：随场景模式提供内置工具面板 */}
+      {(() => {
+        const isSceneToolsActive = activeSidePanel === 'scene-tools'
+        const sceneToolsLabel = t('layout.scenetools', language as Language)
+        return navRailExpanded ? (
+          <button
+            onClick={handleSceneToolsClick}
+            className={`${p}-nav-rail-item hover:bg-text-primary/[0.06]`}
+            data-active={isSceneToolsActive}
+            style={{ marginTop: 4 }}
+          >
+            <Blocks
+              className={`w-[18px] h-[18px] transition-all duration-200 flex-shrink-0 ${isSceneToolsActive ? 'scale-105' : 'opacity-60'}`}
+              strokeWidth={isSceneToolsActive ? 2 : 1.5}
+            />
+            <span className={`${p}-nav-rail-label ${isSceneToolsActive ? 'text-accent' : ''}`}>
+              {sceneToolsLabel}
+            </span>
+          </button>
+        ) : (
+          <HintOverlay content={sceneToolsLabel} side="right" delay={400}>
+            <button
+              onClick={handleSceneToolsClick}
+              className={`${p}-nav-rail-item hover:bg-text-primary/[0.06]`}
+              data-active={isSceneToolsActive}
+              style={{ marginTop: 4 }}
+            >
+              <NavPill active={isSceneToolsActive} />
+              <Blocks
+                className={`w-[18px] h-[18px] transition-all duration-200 ${isSceneToolsActive ? 'scale-105' : 'opacity-60'}`}
+                strokeWidth={isSceneToolsActive ? 2 : 1.5}
+              />
+            </button>
+          </HintOverlay>
+        )
+      })()}
 
       <div className={`${p}-nav-rail-divider`} style={{ marginTop: 20, marginBottom: 20 }} />
 
