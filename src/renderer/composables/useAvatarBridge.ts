@@ -22,6 +22,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '@renderer/adapters/electronBridge'
+import { useStore } from '@store'
 import { setVoiceCloudMode } from '../services/voiceApi'
 import { setServerUrl, setTokens } from '../adapters/backendApi'
 import { logger } from '@shared/toolkit/LogEngine'
@@ -33,6 +34,8 @@ import type {
   VoiceStateChangedPayload,
   SaveConversationPayload,
   ExecutionStatusSummary,
+  MainConversationSnapshot,
+  AvatarAgentConfig,
 } from '../types/electronBridge'
 
 // ============================================
@@ -54,6 +57,28 @@ export interface AvatarBridgeState {
   executionStatus: ExecutionStatusSummary | null
   /** 状态栏边缘方向（主进程 push，null 表示未扩展；球体据此在窗口内靠左/靠右定位） */
   statusEdge: 'left' | 'right' | null
+  /** 主窗口当前对话快照（主窗口 push，迷你聊天同步显示主窗口对话） */
+  mainConversation: MainConversationSnapshot | null
+}
+
+/**
+ * 将 voiceContext 中的智能体配置同步到头像窗口进程内的 store，
+ * 使迷你聊天 buildAgentSystemPrompt → getActiveCustomAgent 能读到正确的智能体
+ * （智能体 systemPrompt 注入 + 工具白名单生效）
+ */
+function syncAgentConfigToStore(agentConfig?: AvatarAgentConfig | null): void {
+  if (!agentConfig) return
+  try {
+    const current = useStore.getState().agentConfig
+    // 仅同步智能体相关字段，避免覆盖头像窗口进程内的其他配置
+    useStore.getState().set('agentConfig', {
+      ...(current || {}),
+      activeCustomAgentId: agentConfig.activeCustomAgentId ?? undefined,
+      customAgentProfiles: agentConfig.customAgentProfiles || [],
+    })
+  } catch (err) {
+    logger.system.warn('[AvatarBridge] Sync agentConfig to store failed:', err)
+  }
 }
 
 export interface AvatarBridgeActions {
@@ -101,6 +126,7 @@ export function useAvatarBridge(): AvatarBridge {
   const [ready, setReady] = useState(false)
   const [executionStatus, setExecutionStatus] = useState<ExecutionStatusSummary | null>(null)
   const [statusEdge, setStatusEdge] = useState<'left' | 'right' | null>(null)
+  const [mainConversation, setMainConversation] = useState<MainConversationSnapshot | null>(null)
 
   // 用 ref 保存最新的 voiceContext，供回调内读取（避免闭包旧值）
   const voiceContextRef = useRef<VoiceContextPayload | null>(null)
@@ -147,6 +173,8 @@ export function useAvatarBridge(): AvatarBridge {
           setVoiceCloudMode(ctxRes.data.cloudMode)
           // 注入 serverUrl + tokens 到 backendApi（唤醒词 STT 云端模式依赖）
           injectAuthToBackendApi(ctxRes.data)
+          // 同步智能体配置到头像窗口 store（迷你聊天智能体生效）
+          syncAgentConfigToStore(ctxRes.data.agentConfig)
           logger.system.info('[AvatarBridge] Voice context loaded', {
             cloudMode: ctxRes.data.cloudMode,
             hasLlmConfig: !!ctxRes.data.llmConfig,
@@ -193,6 +221,8 @@ export function useAvatarBridge(): AvatarBridge {
       }
       // 同步注入 serverUrl + tokens（token 可能已刷新）
       injectAuthToBackendApi(payload)
+      // 同步智能体配置到头像窗口 store（迷你聊天智能体生效）
+      syncAgentConfigToStore(payload.agentConfig)
       voiceContextRef.current = payload
       logger.system.debug('[AvatarBridge] Voice context updated', {
         cloudMode: payload.cloudMode,
@@ -279,6 +309,21 @@ export function useAvatarBridge(): AvatarBridge {
   }, [])
 
   // --------------------------------------------
+  // 订阅：主窗口当前对话快照（主窗口→main→头像窗口）
+  // --------------------------------------------
+  // 迷你聊天同步显示主窗口对话内容，并在提问时作为上下文
+  useEffect(() => {
+    const unsubscribe = api.floatingAvatar.onMainConversation((snapshot) => {
+      setMainConversation(snapshot)
+      logger.system.debug('[AvatarBridge] Main conversation updated', {
+        count: snapshot?.messages?.length ?? 0,
+        threadId: snapshot?.threadId ?? null,
+      })
+    })
+    return unsubscribe
+  }, [])
+
+  // --------------------------------------------
   // 转发方法
   // --------------------------------------------
 
@@ -346,6 +391,7 @@ export function useAvatarBridge(): AvatarBridge {
     ready,
     executionStatus,
     statusEdge,
+    mainConversation,
     notifyWakeWordDetected,
     notifyVoiceStateChanged,
     notifySaveConversation,

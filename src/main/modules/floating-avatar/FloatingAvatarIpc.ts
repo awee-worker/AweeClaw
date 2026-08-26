@@ -86,6 +86,10 @@ export interface FloatingAvatarIpcCallbacks {
   forwardSelectAuthorizationMode: (mode: 'every-step' | 'dangerous-only' | 'never') => void
   /** 转发工作模式切换到主窗口（主窗口更新 useModeStore + 重新 push voiceContext） */
   forwardSelectWorkMode: (mode: 'chat' | 'agent' | 'plan') => void
+  /** 转发自定义智能体切换到主窗口（主窗口更新 store + save + 重新 push voiceContext） */
+  forwardSelectAgent: (agentId: string | null) => void
+  /** 打开主窗口设置页（迷你聊天「创建智能体」入口，与右键菜单 openSettings 一致） */
+  openSettings: () => void
   /** 启动截图提问（迷你助手按钮 / 右键菜单共用，由 index.ts 注入 ScreenshotAskManager.start） */
   startScreenshotAsk: () => void
 }
@@ -430,6 +434,37 @@ export function registerFloatingAvatarIpc(callbacks: FloatingAvatarIpcCallbacks)
       logger.system.error('[FloatingAvatarIpc] Select work mode failed:', err)
       return { success: false, error: err instanceof Error ? err.message : String(err) }
     }
+  })
+
+  // 头像窗口切换自定义智能体（转发到主窗口，主窗口更新 store + save + 重新 push voiceContext）
+  safeIpcHandle('floating-avatar:select-agent', async (_event, agentId: unknown) => {
+    if (agentId !== null && typeof agentId !== 'string') {
+      return { success: false, error: 'Invalid agent id' }
+    }
+    try {
+      callbacks.forwardSelectAgent(agentId as string | null)
+      return { success: true }
+    } catch (err) {
+      logger.system.error('[FloatingAvatarIpc] Select agent failed:', err)
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
+  // 头像窗口打开主窗口设置页（迷你聊天「创建智能体」入口，与右键菜单 openSettings 一致）
+  safeIpcHandle('floating-avatar:open-settings', async () => {
+    try {
+      callbacks.openSettings()
+      return { success: true }
+    } catch (err) {
+      logger.system.error('[FloatingAvatarIpc] Open settings failed:', err)
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
+  // 主窗口推送当前对话快照 → 转发头像窗口（迷你聊天同步显示主窗口对话）
+  ipcMain.on('floating-avatar:main-conversation', (_event, snapshot: unknown) => {
+    if (!snapshot || typeof snapshot !== 'object') return
+    manager.sendToAvatar('floating-avatar:main-conversation', snapshot)
   })
 
   // 启动截图提问（迷你助手按钮触发，与右键菜单共用 ScreenshotAskManager）

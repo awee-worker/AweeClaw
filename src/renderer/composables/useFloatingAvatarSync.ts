@@ -22,13 +22,19 @@
 import { useEffect, useRef } from 'react'
 import { useStore, useModeStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
+import { useAgentStore } from '@intelligence/state/IntelligenceStore'
+import { getMessageText } from '@intelligence/types/conversationModel'
 import { api } from '@renderer/adapters/electronBridge'
 import { getTokens } from '@renderer/adapters/backendApi'
 import { setVoiceCloudMode } from '../services/voiceApi'
 import { saveVoiceConversationToHistory } from '@intelligence/state/saveConversation'
 import { logger } from '@shared/toolkit/LogEngine'
 import { BUILTIN_PROVIDERS, getBuiltinProvider } from '@shared/configuration/aiProviders'
-import type { AvatarModelOption } from '@renderer/types/electronBridge'
+import type {
+  AvatarModelOption,
+  MainConversationMessage,
+  MainConversationSnapshot,
+} from '@renderer/types/electronBridge'
 /**
  * 主窗口 → 头像窗口状态同步 hook
  *
@@ -47,6 +53,7 @@ export function useFloatingAvatarSync(): void {
     themeMode,
     systemPrefersDark,
     authorizationMode,
+    agentConfig,
   } = useStore(
     useShallow((state) => ({
       llmConfig: state.llmConfig,
@@ -59,6 +66,7 @@ export function useFloatingAvatarSync(): void {
       themeMode: state.themeMode,
       systemPrefersDark: state.systemPrefersDark,
       authorizationMode: state.authorizationMode,
+      agentConfig: state.agentConfig,
     })),
   )
 
@@ -78,6 +86,31 @@ export function useFloatingAvatarSync(): void {
     // 同步 cloudMode 到 voiceApi（主窗口侧也需注入）
     setVoiceCloudMode(cloudMode)
 
+    // 自定义智能体配置（精简为迷你聊天所需字段，含完整 systemPrompt/工具白名单供生效）
+    const avatarAgentConfig = agentConfig
+      ? {
+          activeCustomAgentId: agentConfig.activeCustomAgentId ?? null,
+          customAgentProfiles: (agentConfig.customAgentProfiles || []).map((p) => ({
+            id: p.id,
+            name: p.name,
+            description: p.description,
+            systemPrompt: p.systemPrompt,
+            capabilities: p.capabilities || [],
+            priority: p.priority ?? 0,
+            enabled: p.enabled,
+            icon: p.icon,
+            identifier: p.identifier,
+            callable: p.callable,
+            triggerMode: p.triggerMode,
+            builtinTools: p.builtinTools,
+            mcpServices: p.mcpServices,
+            plugins: p.plugins,
+            createdAt: p.createdAt,
+            updatedAt: p.updatedAt,
+          })),
+        }
+      : null
+
     // 构建语音上下文
     const voiceContext = {
       llmConfig: llmConfig || null,
@@ -90,6 +123,7 @@ export function useFloatingAvatarSync(): void {
       workspacePath,
       authorizationMode: authorizationMode ?? 'dangerous-only',
       workMode,
+      agentConfig: avatarAgentConfig,
       updatedAt: Date.now(),
     }
 
@@ -104,6 +138,8 @@ export function useFloatingAvatarSync(): void {
       workspacePath: voiceContext.workspacePath,
       authorizationMode: voiceContext.authorizationMode,
       workMode: voiceContext.workMode,
+      agentActiveId: voiceContext.agentConfig?.activeCustomAgentId ?? null,
+      agentProfiles: (voiceContext.agentConfig?.customAgentProfiles || []).map((p) => p.id).join(','),
     })
 
     if (signature === lastPushedRef.current) return
@@ -118,7 +154,7 @@ export function useFloatingAvatarSync(): void {
       .catch((err) => {
         logger.system.warn('[FloatingAvatarSync] Push voice context failed:', err)
       })
-  }, [llmConfig, cloudMode, serverUrl, language, workspacePath, tokens?.accessToken, authorizationMode, workMode])
+  }, [llmConfig, cloudMode, serverUrl, language, workspacePath, tokens?.accessToken, authorizationMode, workMode, agentConfig])
 
   // --------------------------------------------
   // 2. 异步加载 voiceModelConfig 并推送
@@ -365,6 +401,112 @@ export function useFloatingAvatarSync(): void {
     })
     return unsubscribe
   }, [])
+
+  // --------------------------------------------
+  // 11. 接收头像窗口的自定义智能体切换请求（更新 store + save，voiceContext 会自动重新 push）
+  // --------------------------------------------
+  useEffect(() => {
+    const unsubscribe = api.floatingAvatar.onSelectAgent((agentId) => {
+      logger.system.info('[FloatingAvatarSync] Select agent from avatar:', agentId)
+      try {
+        const current = useStore.getState().agentConfig
+        useStore.getState().set('agentConfig', {
+          ...current,
+          activeCustomAgentId: agentId || undefined,
+        })
+        void saveRef()
+      } catch (err) {
+        logger.system.error('[FloatingAvatarSync] Select agent failed:', err)
+      }
+    })
+    return unsubscribe
+  }, [saveRef])
+
+  // --------------------------------------------
+  // 12. 推送主窗口当前对话快照到头像窗口（迷你聊天同步显示主窗口对话）
+  // 订阅当前线程的 user/assistant 消息，转换为轻量快照后单向 push
+  // --------------------------------------------
+  const mainThreadMessages = useAgentStore(
+    useShallow((state) => {
+      const thread = state.currentThreadId ? state.threads[state.currentThreadId] : undefined
+      return thread?.messages ?? null
+    }),
+  )
+  const mainThreadId = useAgentStore((state) => state.currentThreadId)
+
+  // 上次推送的消息指纹（消息数 + 最后一条内容前 120 字符），避免无变化时重复推送
+  const lastConversationSigRef = useRef('')
+  // 防抖定时器：流式输出期间消息高频变化，合并为一次推送（600ms 内无变化才推送）
+  const conversationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (conversationTimerRef.current) {
+      clearTimeout(conversationTimerRef.current)
+      conversationTimerRef.current = null
+    }
+
+    conversationTimerRef.current = setTimeout(() => {
+      const list = mainThreadMessages
+      if (!list || list.length === 0) {
+        if (lastConversationSigRef.current !== 'empty') {
+          lastConversationSigRef.current = 'empty'
+          const empty: MainConversationSnapshot = {
+            threadId: mainThreadId ?? null,
+            messages: [],
+            updatedAt: Date.now(),
+          }
+          api.floatingAvatar.pushMainConversation(empty)
+        }
+        return
+      }
+
+      // 提取 user/assistant 消息文本（限制条数与单条长度，避免超大 payload）
+      const messages: MainConversationMessage[] = []
+      for (const m of list) {
+        if (m.role !== 'user' && m.role !== 'assistant') continue
+        const text = getMessageText(m.content as never)
+        if (!text.trim()) continue
+        messages.push({
+          id: m.id,
+          role: m.role,
+          content: text.length > 4000 ? text.slice(0, 4000) : text,
+          reasoning:
+            m.role === 'assistant' && m.reasoning
+              ? m.reasoning.length > 2000
+                ? m.reasoning.slice(0, 2000)
+                : m.reasoning
+              : undefined,
+          timestamp: typeof m.timestamp === 'number' ? m.timestamp : Date.now(),
+        })
+        // 最多同步最近 50 条，避免历史过长导致 payload 过大
+        if (messages.length >= 50) break
+      }
+      if (messages.length === 0) return
+
+      const lastMsg = messages[messages.length - 1]
+      const sig = `${messages.length}:${lastMsg.id}:${lastMsg.content.slice(0, 120)}`
+      if (sig === lastConversationSigRef.current) return
+      lastConversationSigRef.current = sig
+
+      const snapshot: MainConversationSnapshot = {
+        threadId: mainThreadId ?? null,
+        messages,
+        updatedAt: Date.now(),
+      }
+      api.floatingAvatar.pushMainConversation(snapshot)
+      // 调试日志：仅在快照实际变化时输出
+      logger.system.debug('[FloatingAvatarSync] Main conversation pushed', {
+        count: messages.length,
+        threadId: mainThreadId,
+      })
+    }, 600)
+
+    return () => {
+      if (conversationTimerRef.current) {
+        clearTimeout(conversationTimerRef.current)
+        conversationTimerRef.current = null
+      }
+    }
+  }, [mainThreadMessages, mainThreadId])
 }
 
 // ============================================

@@ -175,6 +175,7 @@ export function AvatarApp({ onReady }: AvatarAppProps) {
   // --------------------------------------------
   const miniChat = useAvatarMiniChat({
     voiceContext: bridge.voiceContext,
+    mainConversation: bridge.mainConversation,
     onConversationComplete: (userText, aiText, toolCallRecords) => {
       // 对话完成后保存到聊天历史（含工具调用记录）
       void bridge.notifySaveConversation({ userText, aiText, toolCallRecords })
@@ -577,6 +578,8 @@ export function AvatarApp({ onReady }: AvatarAppProps) {
           llmConfig={bridge.voiceContext?.llmConfig}
           authorizationMode={bridge.voiceContext?.authorizationMode}
           workMode={bridge.voiceContext?.workMode ?? undefined}
+          agentConfig={bridge.voiceContext?.agentConfig ?? null}
+          mainConversation={bridge.mainConversation}
           pendingAttachment={pendingAttachment}
           onPendingAttachmentConsumed={handlePendingAttachmentConsumed}
         />

@@ -40,7 +40,7 @@ import { buildAgentSystemPrompt } from '@intelligence/prompt-engine/PromptCompos
 import { compressImageFromBase64 } from '@intelligence/utils/imageCompressor'
 import { needsVisualAnalysis } from '@intelligence/utils/imageIntentDetector'
 import { BRAND } from '@shared/brand'
-import type { VoiceContextPayload } from '../types/electronBridge'
+import type { MainConversationSnapshot, VoiceContextPayload } from '../types/electronBridge'
 import type { LLMConfig, LLMMessage, MessageContentPart } from '@shared/protocols/modelProtocol'
 
 // ============================================
@@ -90,6 +90,8 @@ export interface MiniChatActivity {
 
 export interface UseAvatarMiniChatOptions {
   voiceContext: VoiceContextPayload | null
+  /** 主窗口当前对话快照（首次发送时作为 LLM 初始历史，使迷你聊天延续主窗口上下文） */
+  mainConversation?: MainConversationSnapshot | null
   onConversationComplete?: (
     userText: string,
     aiText: string,
@@ -257,7 +259,7 @@ async function saveImagesToWorkspace(
 export function useAvatarMiniChat(
   options: UseAvatarMiniChatOptions,
 ): UseAvatarMiniChatResult {
-  const { voiceContext, onConversationComplete, onError } = options
+  const { voiceContext, mainConversation, onConversationComplete, onError } = options
 
   const [messages, setMessages] = useState<MiniChatMessage[]>([])
   const [streaming, setStreaming] = useState(false)
@@ -386,6 +388,20 @@ export function useAvatarMiniChat(
       // 与普通聊天窗口一致：使用 needsVisualAnalysis 检测是否需要视觉分析
       const cloudVisionMode = !!(llmConfig as { cloudVisionMode?: boolean })?.cloudVisionMode
       const currentUserContent = buildMessageContent(trimmed, attachments, cloudVisionMode, savedImagePaths)
+
+      // 首次发送时注入主窗口对话历史：迷你会话延续主窗口上下文（clear 后重新注入最新快照）
+      if (llmMessagesRef.current.length === 0 && mainConversation?.messages?.length) {
+        const mainHistory: LLMMessage[] = mainConversation.messages
+          .filter((m) => m.role === 'user' || m.role === 'assistant')
+          .map((m) => ({ role: m.role, content: m.content }))
+        if (mainHistory.length > 0) {
+          llmMessagesRef.current.push(...mainHistory)
+          logger.system.info(
+            `[AvatarMiniChat] Injected ${mainHistory.length} main conversation messages as context`,
+          )
+        }
+      }
+
       llmMessagesRef.current.push({ role: 'user', content: currentUserContent })
 
       // 本地直连模式下发送图片：提示用户当前模型可能不支持图片识别

@@ -819,6 +819,13 @@ function initFloatingAvatarModule(_firstWin: BrowserWindow): void {
           win.webContents.send('floating-avatar:select-work-mode', mode)
         }
       },
+      forwardSelectAgent: (agentId) => {
+        // 转发自定义智能体切换到主窗口（主窗口更新 store + save + 重新 push voiceContext）
+        const win = getMainWindow()
+        if (win && !win.isDestroyed()) {
+          win.webContents.send('floating-avatar:select-agent', agentId)
+        }
+      },
     })
 
     logger.system.info('[Main] Floating avatar module initialized')

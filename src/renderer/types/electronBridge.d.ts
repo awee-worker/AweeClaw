@@ -51,6 +51,56 @@ export interface VoiceContextPayload {
   authorizationMode?: 'every-step' | 'dangerous-only' | 'never'
   /** 工作模式（chat/agent/plan），同步主窗口 useModeStore.currentMode */
   workMode?: 'chat' | 'agent' | 'plan' | null
+  /** 自定义智能体配置（同步主窗口 store.agentConfig，供迷你聊天选择/生效） */
+  agentConfig?: AvatarAgentConfig | null
+  updatedAt: number
+}
+
+/** 迷你聊天可用的自定义智能体配置（与主窗口 store.agentConfig 结构对齐） */
+export interface AvatarAgentConfig {
+  /** 当前激活的智能体 id（未选择为 undefined） */
+  activeCustomAgentId?: string | null
+  /** 自定义智能体列表（含完整 systemPrompt/工具白名单，供迷你聊天生效） */
+  customAgentProfiles?: AvatarAgentProfile[]
+}
+
+/** 迷你聊天用的自定义智能体摘要（完整字段，与 customAgentTools.CustomAgentProfile 对齐） */
+export interface AvatarAgentProfile {
+  id: string
+  name: string
+  description: string
+  systemPrompt: string
+  capabilities: string[]
+  priority: number
+  enabled: boolean
+  icon?: string
+  identifier?: string
+  callable?: boolean
+  triggerMode?: 'always' | 'on_request' | 'manual'
+  /** 关联的内置工具 ID 列表（UI 分类 ID） */
+  builtinTools?: string[]
+  /** 关联的 MCP 服务 ID 列表 */
+  mcpServices?: string[]
+  /** 关联的插件 ID 列表 */
+  plugins?: string[]
+  createdAt?: number
+  updatedAt?: number
+}
+
+/** 主窗口当前对话快照（主窗口→main→头像窗口，供迷你聊天同步显示主窗口对话） */
+export interface MainConversationMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  /** 推理内容（思考模型的 reasoning_content） */
+  reasoning?: string
+  timestamp: number
+}
+
+export interface MainConversationSnapshot {
+  /** 当前线程 id（无线程为 null） */
+  threadId: string | null
+  messages: MainConversationMessage[]
   updatedAt: number
 }
 
@@ -2290,6 +2340,16 @@ export interface ElectronAPI {
     selectWorkMode: (mode: 'chat' | 'agent' | 'plan') => Promise<{ success: boolean; error?: string }>
     /** 事件：头像窗口请求切换工作模式（main→主窗口监听） */
     onSelectWorkMode: (callback: (mode: 'chat' | 'agent' | 'plan') => void) => () => void
+    /** 头像→main→主窗口：切换自定义智能体（agentId 为 null 表示不使用智能体） */
+    selectAgent: (agentId: string | null) => Promise<{ success: boolean; error?: string }>
+    /** 事件：头像窗口请求切换自定义智能体（main→主窗口监听） */
+    onSelectAgent: (callback: (agentId: string | null) => void) => () => void
+    /** 头像→main：打开主窗口设置页（迷你聊天「创建智能体」入口） */
+    openSettings: () => Promise<{ success: boolean; error?: string }>
+    /** 主窗口→main→头像：推送主窗口当前对话快照（单向 send） */
+    pushMainConversation: (snapshot: MainConversationSnapshot) => void
+    /** 事件：主窗口对话快照更新（main→头像窗口） */
+    onMainConversation: (callback: (snapshot: MainConversationSnapshot) => void) => () => void
     /** 主窗口→main→头像窗口：推送主题色更新 */
     updateTheme: (payload: { themeColor: string; themeMode: string }) => void
     /** 事件：主题更新（main→头像窗口监听） */

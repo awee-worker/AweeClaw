@@ -25,6 +25,49 @@ export interface VoiceContext {
   language: 'zh' | 'en'
   workspacePath: string | null
   workMode: 'chat' | 'agent' | 'plan' | null
+  /** 自定义智能体配置（同步主窗口 store.agentConfig） */
+  agentConfig?: AvatarAgentConfig | null
+  updatedAt: number
+}
+
+/** 迷你聊天可用的自定义智能体配置 */
+export interface AvatarAgentConfig {
+  activeCustomAgentId?: string | null
+  customAgentProfiles?: AvatarAgentProfile[]
+}
+
+/** 迷你聊天用的自定义智能体摘要 */
+export interface AvatarAgentProfile {
+  id: string
+  name: string
+  description: string
+  systemPrompt: string
+  capabilities: string[]
+  priority: number
+  enabled: boolean
+  icon?: string
+  identifier?: string
+  callable?: boolean
+  triggerMode?: 'always' | 'on_request' | 'manual'
+  builtinTools?: string[]
+  mcpServices?: string[]
+  plugins?: string[]
+  createdAt?: number
+  updatedAt?: number
+}
+
+/** 主窗口当前对话快照 */
+export interface MainConversationMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  reasoning?: string
+  timestamp: number
+}
+
+export interface MainConversationSnapshot {
+  threadId: string | null
+  messages: MainConversationMessage[]
   updatedAt: number
 }
 
@@ -222,6 +265,30 @@ export function createFloatingAvatarApi() {
       ipcRenderer.invoke('floating-avatar:select-work-mode', mode) as Promise<IpcResponse>,
     // 事件：头像窗口请求切换工作模式（main→主窗口监听）
     onSelectWorkMode: on<'chat' | 'agent' | 'plan'>('floating-avatar:select-work-mode'),
+
+    // --------------------------------------------
+    // 自定义智能体切换（头像窗口→main→主窗口）
+    // --------------------------------------------
+    // 切换自定义智能体（agentId 为 null 表示不使用智能体；主窗口更新 store + save + 重新 push voiceContext）
+    selectAgent: (agentId: string | null) =>
+      ipcRenderer.invoke('floating-avatar:select-agent', agentId) as Promise<IpcResponse>,
+    // 事件：头像窗口请求切换自定义智能体（main→主窗口监听）
+    onSelectAgent: on<string | null>('floating-avatar:select-agent'),
+
+    // --------------------------------------------
+    // 打开主窗口设置（迷你聊天「创建智能体」入口）
+    // --------------------------------------------
+    openSettings: invoke<IpcResponse>('floating-avatar:open-settings'),
+
+    // --------------------------------------------
+    // 主窗口对话快照同步（主窗口→main→头像窗口）
+    // --------------------------------------------
+    // 主窗口推送当前对话快照（单向 send）
+    pushMainConversation: (snapshot: MainConversationSnapshot) => {
+      ipcRenderer.send('floating-avatar:main-conversation', snapshot)
+    },
+    // 事件：主窗口对话快照更新（main→头像窗口监听）
+    onMainConversation: on<MainConversationSnapshot>('floating-avatar:main-conversation'),
 
     // --------------------------------------------
     // 主题色同步（主窗口→main→头像窗口）

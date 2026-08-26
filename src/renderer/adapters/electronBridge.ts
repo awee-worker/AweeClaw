@@ -880,6 +880,18 @@ function createGroupedAPI() {
       onSelectWorkMode: (
         callback: Parameters<typeof raw.floatingAvatar.onSelectWorkMode>[0],
       ) => raw.floatingAvatar.onSelectWorkMode(callback),
+      // 自定义智能体切换（头像窗口→main→主窗口）
+      selectAgent: (agentId: string | null) =>
+        raw.floatingAvatar.selectAgent(agentId),
+      onSelectAgent: (callback: Parameters<typeof raw.floatingAvatar.onSelectAgent>[0]) =>
+        raw.floatingAvatar.onSelectAgent(callback),
+      // 打开主窗口设置（迷你聊天「创建智能体」入口）
+      openSettings: () => raw.floatingAvatar.openSettings(),
+      // 主窗口→main→头像：推送主窗口当前对话快照
+      pushMainConversation: (snapshot: Parameters<typeof raw.floatingAvatar.pushMainConversation>[0]) =>
+        raw.floatingAvatar.pushMainConversation(snapshot),
+      onMainConversation: (callback: Parameters<typeof raw.floatingAvatar.onMainConversation>[0]) =>
+        raw.floatingAvatar.onMainConversation(callback),
       // 主题色同步（主窗口→main→头像窗口）
       updateTheme: (payload: { themeColor: string; themeMode: string }) =>
         raw.floatingAvatar.updateTheme(payload),

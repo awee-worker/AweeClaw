@@ -72,6 +72,8 @@ export interface FloatingAvatarDeps {
   forwardSelectAuthorizationMode: (mode: 'every-step' | 'dangerous-only' | 'never') => void
   /** 转发工作模式切换到主窗口（主窗口更新 useModeStore + 重新 push voiceContext） */
   forwardSelectWorkMode: (mode: 'chat' | 'agent' | 'plan') => void
+  /** 转发自定义智能体切换到主窗口（主窗口更新 store + save + 重新 push voiceContext） */
+  forwardSelectAgent: (agentId: string | null) => void
 }
 
 /**
@@ -130,6 +132,8 @@ export function initFloatingAvatar(deps: FloatingAvatarDeps): void {
       forwardSelectModel: (payload) => deps.forwardSelectModel(payload),
       forwardSelectAuthorizationMode: (mode) => deps.forwardSelectAuthorizationMode(mode),
       forwardSelectWorkMode: (mode) => deps.forwardSelectWorkMode(mode),
+      forwardSelectAgent: (agentId) => deps.forwardSelectAgent(agentId),
+      openSettings: () => deps.openSettings(),
       startScreenshotAsk: () => {
         // 复用右键菜单的 screenshotAskManager 实例，截图完成后推送结果到头像窗口
         void screenshotAskManager.start(

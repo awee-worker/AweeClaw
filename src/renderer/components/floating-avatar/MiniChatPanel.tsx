@@ -30,7 +30,7 @@
  * └────────────────────────────────────────────────┘
  */
 
-import { memo, useEffect, useRef, useState, useCallback } from 'react'
+import { memo, useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import {
   ArrowUp,
   Mic,
@@ -73,9 +73,14 @@ import type { PendingApprovalToolCall } from '@intelligence/voice/miniChatApprov
 import { MiniMarkdown } from './MiniMarkdown'
 import { MiniAuthorizationSelector } from './MiniAuthorizationSelector'
 import { MiniWorkModeSelector } from './MiniWorkModeSelector'
+import { MiniAgentSelector } from './MiniAgentSelector'
 import { publicAsset } from '@utils/publicAsset'
 import { getToolDisplayName } from '@configuration/toolDefinitions'
-import type { AvatarModelOption } from '../../types/electronBridge'
+import type {
+  AvatarAgentConfig,
+  AvatarModelOption,
+  MainConversationSnapshot,
+} from '../../types/electronBridge'
 
 // ============================================
 // 类型定义
@@ -120,6 +125,10 @@ export interface MiniChatPanelProps {
   authorizationMode?: 'every-step' | 'dangerous-only' | 'never'
   /** 工作模式（来自 voiceContext，同步主窗口 workMode）：快速/思考/专家 */
   workMode?: 'chat' | 'agent' | 'plan'
+  /** 自定义智能体配置（来自 voiceContext.agentConfig，供智能体选择器显示/切换） */
+  agentConfig?: AvatarAgentConfig | null
+  /** 主窗口当前对话快照（同步显示主窗口对话内容，提问时作为上下文） */
+  mainConversation?: MainConversationSnapshot | null
   /** 外部注入的待添加附件（如截图提问结果），组件合并到输入框附件区后调用 onPendingAttachmentConsumed */
   pendingAttachment?: ChatAttachment | null
   /** 外部附件已被合并消费，调用方应清空 pendingAttachment */
@@ -160,6 +169,8 @@ function MiniChatPanelImpl({
   llmConfig,
   authorizationMode,
   workMode,
+  agentConfig,
+  mainConversation,
   pendingAttachment,
   onPendingAttachmentConsumed,
 }: MiniChatPanelProps) {
@@ -181,7 +192,7 @@ function MiniChatPanelImpl({
     if (!userScrolledUpRef.current) {
       scrollToBottom()
     }
-  }, [messages, activity, pendingApproval, scrollToBottom])
+  }, [messages, activity, pendingApproval, mainConversation, scrollToBottom])
 
   const handleScroll = useCallback(() => {
     const el = scrollRef.current
@@ -373,6 +384,20 @@ function MiniChatPanelImpl({
   )
 
   // --------------------------------------------
+  // 主窗口对话快照 → 迷你消息格式（只读，复用 MessageBubble 渲染）
+  // --------------------------------------------
+  const mainMessages = useMemo<MiniChatMessage[]>(() => {
+    if (!mainConversation?.messages?.length) return []
+    return mainConversation.messages.map((m) => ({
+      id: m.id,
+      role: m.role,
+      content: m.content,
+      reasoning: m.reasoning,
+      timestamp: m.timestamp,
+    }))
+  }, [mainConversation])
+
+  // --------------------------------------------
   // 渲染
   // --------------------------------------------
 
@@ -484,7 +509,7 @@ function MiniChatPanelImpl({
         onScroll={handleScroll}
       >
         <div className="mx-auto w-full" style={{ maxWidth: MESSAGE_MAX_WIDTH }}>
-          {messages.length === 0 && !errorMessage && pendingApproval.length === 0 && (
+          {messages.length === 0 && mainMessages.length === 0 && !errorMessage && pendingApproval.length === 0 && (
             <div className="flex flex-1 items-center justify-center min-h-[200px]">
               <p className="text-[13px] text-text-muted/60">
                 {isZh ? '有什么可以帮你的？' : 'How can I help you?'}
@@ -496,6 +521,31 @@ function MiniChatPanelImpl({
             <div className="flex items-center gap-2 px-3 py-2 mb-3 rounded-lg bg-status-error/10 border border-status-error/20 text-status-error text-[13px]">
               <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
               <span>{errorMessage}</span>
+            </div>
+          )}
+
+          {/* 主窗口当前对话（只读同步，顶部区块） */}
+          {mainMessages.length > 0 && (
+            <div className="mb-2">
+              <div className="flex items-center gap-2 my-2">
+                <div className="flex-1 h-px bg-border/40" />
+                <span className="text-[11px] text-text-muted/60 whitespace-nowrap select-none">
+                  {isZh ? '主窗口对话' : 'Main window conversation'}
+                </span>
+                <div className="flex-1 h-px bg-border/40" />
+              </div>
+              {mainMessages.map((msg) => (
+                <MessageBubble key={msg.id} message={msg} isZh={isZh} />
+              ))}
+              {messages.length > 0 && (
+                <div className="flex items-center gap-2 my-2">
+                  <div className="flex-1 h-px bg-border/40" />
+                  <span className="text-[11px] text-text-muted/60 whitespace-nowrap select-none">
+                    {isZh ? '迷你对话' : 'Mini chat'}
+                  </span>
+                  <div className="flex-1 h-px bg-border/40" />
+                </div>
+              )}
             </div>
           )}
 
@@ -741,6 +791,11 @@ function MiniChatPanelImpl({
           {/* 授权方式栏：独立底部栏，粘附在输入框容器底部（与主窗口 -mt-5 一致） */}
           <div className="-mt-5 z-10">
             <div className="flex items-center gap-2 bg-border/20 px-4 pt-6 pb-1 rounded-b-xl rounded-t-none">
+              <MiniAgentSelector
+                agentConfig={agentConfig}
+                language={language}
+                disabled={streaming}
+              />
               <MiniWorkModeSelector
                 currentMode={workMode}
                 language={language}
