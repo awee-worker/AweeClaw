@@ -27,7 +27,6 @@ import { AssistantMessageContentView } from './AssistantMessageContentView'
 import { StreamingPhaseIndicator } from './StreamingPhaseIndicator'
 import { MessageActionsBar } from '../components/MessageActionsBar'
 import { InteractiveCard } from '../../InteractiveCard'
-import ToolCallGroup from '../../ToolCallGroup'
 import { MessageMetaGroupView } from './MessageMetaGroupView'
 
 const EMPTY_PREVIEWS: Record<string, ToolStreamingPreview> = {}
@@ -356,9 +355,10 @@ function AssistantMessageViewBase({
 
       <div className="w-full text-[15px] leading-relaxed text-text-primary/90 pl-1">
         <div className="prose-custom w-full max-w-none">
-          {assistantParts && assistantParts.length > 0 && (
+          {(assistantParts && assistantParts.length > 0) || previewToolCalls.length > 0 ? (
             <AssistantMessageContentView
-              parts={assistantParts}
+              parts={assistantParts || []}
+              previewToolCalls={previewToolCalls}
               pendingToolId={pendingToolId}
               pendingToolIds={pendingToolIds}
               onApproveTool={onApproveTool}
@@ -368,7 +368,7 @@ function AssistantMessageViewBase({
               isStreaming={messageIsStreaming}
               messageId={message.id}
             />
-          )}
+          ) : null}
           {isStreaming && assistantParts && assistantParts.length > 0 && (
             <StreamingPhaseIndicator
               mode="inline"
@@ -386,17 +386,6 @@ function AssistantMessageViewBase({
               streamDetail={streamDetail}
               retryAttempt={retryAttempt}
               retryDelay={retryDelay}
-            />
-          )}
-          {previewToolCalls.length > 0 && (
-            <ToolCallGroup
-              toolCalls={previewToolCalls}
-              pendingToolId={pendingToolId}
-              pendingToolIds={pendingToolIds}
-              onApproveTool={onApproveTool}
-              onRejectTool={onRejectTool}
-              onOpenDiff={onOpenDiff}
-              messageId={message.id}
             />
           )}
         </div>

@@ -33,16 +33,48 @@ import { api } from '../adapters/electronBridge';
  */
 let currentCloudMode: 'cloud' | 'local' = 'cloud';
 
-/** 注入云端模式状态（由主窗口/头像窗口在初始化时调用） */
+/**
+ * 语音设置独立的云端/自定义模式（来自 voice_model_config.cloud_mode）。
+ * null 表示未设置，此时回退到服务商 cloudMode（currentCloudMode）。
+ *
+ * 与服务商 cloudMode 解耦：用户可在「设置 → 语音设置」中独立切换，
+ * 不受服务商全局云端/自定义模式影响。
+ */
+let currentVoiceCloudMode: 'cloud' | 'local' | null = null;
+
+/** 注入云端模式状态（由主窗口/头像窗口在初始化时调用，语义为「服务商 cloudMode」） */
 export function setVoiceCloudMode(mode: 'cloud' | 'local'): void {
   if (mode !== currentCloudMode) {
     currentCloudMode = mode;
   }
 }
 
-/** 获取当前云端模式状态（供外部读取，主要用于日志/调试） */
+/** 获取当前服务商云端模式状态（供外部读取，主要用于日志/调试） */
 export function getVoiceCloudMode(): 'cloud' | 'local' {
   return currentCloudMode;
+}
+
+/** 注入语音设置独立的云端/自定义模式（来自 voice_model_config.cloud_mode） */
+export function setVoiceConfigCloudMode(mode: 'cloud' | 'local' | null): void {
+  currentVoiceCloudMode = mode;
+}
+
+/** 获取语音设置独立的云端/自定义模式（null = 未设置，回退服务商模式） */
+export function getVoiceConfigCloudMode(): 'cloud' | 'local' | null {
+  return currentVoiceCloudMode;
+}
+
+/** 从本地设置数据库加载语音独立云端模式并注入（主窗口初始化/语音设置保存后调用） */
+export async function reloadVoiceCloudModeFromDb(): Promise<void> {
+  try {
+    const result = await api.settings.dbGetVoiceModelConfig()
+    const config = result as { cloudMode?: 'cloud' | 'local' } | null
+    if (config && typeof config.cloudMode === 'string') {
+      setVoiceConfigCloudMode(config.cloudMode)
+    }
+  } catch (err) {
+    console.error('[voiceApi] Reload voice cloud mode failed:', err)
+  }
 }
 
 export interface SttResult {
@@ -133,9 +165,11 @@ async function fetchWithoutAuthRetry(
   return fetch(url, init);
 }
 
-/** 读取云端模式状态（由 setVoiceCloudMode 注入，避免对全局 store 的依赖） */
+/** 读取语音分流模式：优先使用语音设置独立的云端/自定义模式，未设置时回退服务商 cloudMode */
 function isCloudMode(): boolean {
-  return currentCloudMode === 'cloud'
+  return currentVoiceCloudMode !== null
+    ? currentVoiceCloudMode === 'cloud'
+    : currentCloudMode === 'cloud'
 }
 
 /** 加载本地语音模型配置（自定义模式使用） */

@@ -10,6 +10,7 @@ import { getMessageImages, getMessageFiles } from '@intelligence/providerTypes'
 import { t, type Language } from '@renderer/i18n'
 
 import { MarkdownContentView } from '../markdown/MarkdownContentView'
+import { CollapsibleContent } from '../components/CollapsibleContent'
 import { UserMessageEditor } from '../components/UserMessageEditor'
 import { ContextItemsView } from '../components/ContextItemsView'
 import { ImageAttachmentsView } from '../components/ImageAttachmentsView'
@@ -97,9 +98,17 @@ function UserMessageViewBase({
             {hasText && (
               <div className="relative bg-surface text-text-primary/95 px-4 py-2.5 rounded-[18px] rounded-tr-[4px] shadow-sm w-fit max-w-full border border-border/50">
                 <ContextItemsView items={(message as any).contextItems || []} />
-                <div className="text-[14px] leading-relaxed">
-                  <MarkdownContentView content={textContent} fontSize={fontSize} preserveLineBreaks />
-                </div>
+                {/* 长内容折叠：超过 360px 自动隐藏，点击「展开更多」查看全部 */}
+                <CollapsibleContent
+                  maxHeight={360}
+                  fadeColor="var(--surface)"
+                  expandLabel={t('ai.expandmore', language)}
+                  collapseLabel={t('ai.collapse', language)}
+                >
+                  <div className="text-[14px] leading-relaxed">
+                    <MarkdownContentView content={textContent} fontSize={fontSize} preserveLineBreaks />
+                  </div>
+                </CollapsibleContent>
               </div>
             )}
 

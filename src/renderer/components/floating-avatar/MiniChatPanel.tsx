@@ -74,6 +74,7 @@ import { MiniMarkdown } from './MiniMarkdown'
 import { MiniAuthorizationSelector } from './MiniAuthorizationSelector'
 import { MiniWorkModeSelector } from './MiniWorkModeSelector'
 import { MiniAgentSelector } from './MiniAgentSelector'
+import { CollapsibleContent } from '@components/intelligence/chatMessage/components/CollapsibleContent'
 import { publicAsset } from '@utils/publicAsset'
 import { getToolDisplayName } from '@configuration/toolDefinitions'
 import type {
@@ -869,10 +870,18 @@ function MessageBubble({ message, isZh }: { message: MiniChatMessage; isZh: bool
             </div>
           )}
           {isUser ? (
-            /* 用户消息：纯文本渲染 */
-            <span className="whitespace-pre-wrap">
-              {message.content || ''}
-            </span>
+            /* 用户消息：纯文本渲染（长内容折叠，点击「展开更多」查看全部） */
+            <CollapsibleContent
+              maxHeight={360}
+              fadeColor="var(--accent)"
+              expandLabel={isZh ? '展开更多' : 'Show more'}
+              collapseLabel={isZh ? '收起' : 'Collapse'}
+              buttonClassName="text-white/85 hover:text-white"
+            >
+              <span className="whitespace-pre-wrap">
+                {message.content || ''}
+              </span>
+            </CollapsibleContent>
           ) : (
             /* AI 消息：Markdown 渲染（支持代码块、列表、标题等，与主窗口体验一致） */
             <>

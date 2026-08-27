@@ -22,6 +22,15 @@ interface AssistantMessageContentViewProps extends PartRenderContext {
    * - false / undefined：正常渲染 todo 列表（默认行为）
    */
   hideTodoList?: boolean
+  /**
+   * 流式预览中的工具调用（尚未正式写入消息 parts）
+   *
+   * 工具在流式阶段先以 preview 形式出现（tool_call_start / tool_call_available），
+   * 正式执行时才通过 addToolCallPart 写入 parts。为避免「预览组」与「正式组」
+   * 两套 UI 切换导致的分组栏闪动，预览工具合并进同一个工具组渲染：
+   * 工具正式化时在同组同位置更新，卡片 DOM 复用，不再闪动。
+   */
+  previewToolCalls?: ToolCall[]
 }
 
 /** 从 todo_write 工具调用参数中安全提取任务列表 */
@@ -53,7 +62,7 @@ function mergeTodoStatus(snapshot: TodoItem[], live?: TodoItem[]): TodoItem[] {
   )
 }
 
-function AssistantMessageContentViewBase({ parts, hideTodoList, ...ctx }: AssistantMessageContentViewProps) {
+function AssistantMessageContentViewBase({ parts, hideTodoList, previewToolCalls, ...ctx }: AssistantMessageContentViewProps) {
   /** 订阅当前线程的最新任务列表，用于同步更新历史任务列表中已完成任务的状态 */
   const liveTodos = useAgentStore(s => {
     const threadId = s.currentThreadId
@@ -98,8 +107,39 @@ function AssistantMessageContentViewBase({ parts, hideTodoList, ...ctx }: Assist
 
     flushToolGroup()
 
+    // 流式预览工具合并进最后一个工具组：
+    // 预览工具是「当前正在流式输出/即将执行」的调用，追加到最后一个工具组，
+    // 使预览与正式工具在同一 ToolCallGroup 内按序渲染。工具正式化时
+    // （preview 移除 + parts 添加）在同组内更新，卡片 key=tc.id 复用，不闪动。
+    if (previewToolCalls && previewToolCalls.length > 0) {
+      const existingIds = new Set(result.flatMap(g =>
+        g.type === 'tool_group' ? g.toolCalls.map(tc => tc.id) : []
+      ))
+      const freshPreviews = previewToolCalls.filter(tc => !existingIds.has(tc.id))
+      if (freshPreviews.length > 0) {
+        // 找到最后一个工具组（倒序查找），将预览工具追加其后
+        let merged = false
+        for (let i = result.length - 1; i >= 0; i--) {
+          const g = result[i]
+          if (g.type === 'tool_group') {
+            result[i] = {
+              type: 'tool_group',
+              toolCalls: [...g.toolCalls, ...freshPreviews],
+              startIndex: g.startIndex,
+            }
+            merged = true
+            break
+          }
+        }
+        // 没有任何工具组（纯文本或空 parts），为预览工具新建工具组
+        if (!merged) {
+          result.push({ type: 'tool_group', toolCalls: freshPreviews, startIndex: parts.length })
+        }
+      }
+    }
+
     return result
-  }, [parts])
+  }, [parts, previewToolCalls])
 
   return (
     <>
@@ -126,16 +166,10 @@ function AssistantMessageContentViewBase({ parts, hideTodoList, ...ctx }: Assist
           )
         }
 
-        // 单个工具调用走普通渲染路径
-        if (group.toolCalls.length === 1) {
-          return (
-            <div key={`wrap-tool-${group.startIndex}`} className="w-full">
-              {renderPart(parts[group.startIndex], ctx)}
-            </div>
-          )
-        }
-
-        // 多个工具调用合并为工具组
+        // 工具调用统一走 ToolCallGroup 渲染（含单工具）：
+        // 关键：单个工具调用不再走 renderPart 普通路径，避免
+        // 「单工具卡片 → 多工具分组」切换时 key/组件树变化导致整组卸载重建闪动。
+        // ToolCallGroup 内部对单工具不显示分组头，视觉与普通卡片一致。
         return (
           <div key={`wrap-group-${group.startIndex}`} className="w-full">
             <ToolCallGroup

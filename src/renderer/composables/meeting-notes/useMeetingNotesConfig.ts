@@ -22,7 +22,7 @@
 import { useEffect, useState } from 'react'
 import { logger } from '@shared/toolkit/LogEngine'
 import { setServerUrl, setTokens } from '../../adapters/backendApi'
-import { setVoiceCloudMode } from '../../services/voiceApi'
+import { setVoiceCloudMode, setVoiceConfigCloudMode } from '../../services/voiceApi'
 import type { LLMConfig } from '@shared/protocols/modelProtocol'
 
 export interface VoiceContextPayload {
@@ -97,6 +97,9 @@ export function useMeetingNotesConfig(): UseMeetingNotesConfigResult {
 
         // 注入 cloudMode 到 voiceApi（STT 路由依赖）
         setVoiceCloudMode(data.cloudMode ?? 'cloud')
+        // 注入语音设置独立的云端/自定义模式（voiceModelConfig.cloud_mode，优先于服务商模式）
+        const vmc = data.voiceModelConfig as { cloudMode?: 'cloud' | 'local' } | null
+        setVoiceConfigCloudMode(vmc?.cloudMode ?? null)
         // 注入 serverUrl + tokens 到 backendApi（云端 STT 依赖）
         injectAuthToBackendApi(data)
 
@@ -116,6 +119,9 @@ export function useMeetingNotesConfig(): UseMeetingNotesConfigResult {
             setCloudMode(next.cloudMode)
             setVoiceCloudMode(next.cloudMode)
           }
+          // 同步注入语音设置独立的云端/自定义模式
+          const vmc = next.voiceModelConfig as { cloudMode?: 'cloud' | 'local' } | null
+          setVoiceConfigCloudMode(vmc?.cloudMode ?? null)
           if (next?.workspacePath !== undefined) setWorkspacePath(next.workspacePath)
           // 认证信息变化时重新注入
           if (next?.serverUrl || next?.accessToken || next?.refreshToken) {

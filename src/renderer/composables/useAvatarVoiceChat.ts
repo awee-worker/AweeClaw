@@ -103,7 +103,9 @@ function buildVoiceChatOptions(
 
   return {
     language: voiceContext.language === 'en' ? 'en' : 'zh',
-    cloudMode: voiceContext.cloudMode,
+    // 语音分流模式：优先使用语音设置独立的云端/自定义模式（voiceModelConfig.cloudMode），
+    // 未设置时回退 VoiceContext.cloudMode（服务商 cloudMode）
+    cloudMode: vmc?.cloudMode ?? voiceContext.cloudMode,
     serverUrl: voiceContext.serverUrl || undefined,
     llmConfig: (voiceContext.llmConfig as LLMConfig | null) || undefined,
     workspacePath: voiceContext.workspacePath || undefined,

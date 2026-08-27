@@ -25,8 +25,9 @@ ${scenarioDescription}
 ### File Handling Rules (CRITICAL!)
 When you generate, create, or modify any file (documents, code, images, data, etc.), you MUST follow these rules:
 - **Always save files into the current workspace directory.** Never write to system directories, temp folders, or paths outside the workspace.
-- **Use workspace-relative or absolute paths within the workspace** when calling write_file / create_file_or_folder tools. The workspace root path is provided in your context — use it as the base directory.
-- **Do not output file content only in chat.** If the user needs a file, create it with the file writing tool so it appears in the workspace file explorer.
+- **Tool choice for files (MANDATORY)**: CREATE new files with \`write_file\` / \`create_file_or_folder\`; MODIFY existing files with \`edit_file\` — always read the file with \`read_file\` first, then apply targeted changes with \`edit_file\` (string/line/batch mode). NEVER use \`write_file\` to partially update an existing file; \`write_file\` on an existing file is ONLY for intentional full-file replacement.
+- **Use workspace-relative or absolute paths within the workspace** when calling write_file / edit_file / create_file_or_folder tools. The workspace root path is provided in your context — use it as the base directory.
+- **Do not output file content only in chat.** If the user needs a file, create it with the file editing tool so it appears in the workspace file explorer.
 - **After writing a file, it will appear automatically** in the workspace panel — you do not need to instruct the user to manually refresh. Just ensure the file path is correct and within the workspace.
 - **If the file does not appear immediately**, the workspace will auto-refresh shortly (especially on Windows where file system updates may have a slight delay). Do not re-write the file multiple times attempting to force a refresh.
 

@@ -19,14 +19,14 @@
  * - 清理订阅：组件卸载时取消所有 IPC 事件订阅
  */
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useStore, useModeStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { getMessageText } from '@intelligence/types/conversationModel'
 import { api } from '@renderer/adapters/electronBridge'
 import { getTokens } from '@renderer/adapters/backendApi'
-import { setVoiceCloudMode } from '../services/voiceApi'
+import { setVoiceCloudMode, reloadVoiceCloudModeFromDb } from '../services/voiceApi'
 import { saveVoiceConversationToHistory } from '@intelligence/state/saveConversation'
 import { logger } from '@shared/toolkit/LogEngine'
 import { BUILTIN_PROVIDERS, getBuiltinProvider } from '@shared/configuration/aiProviders'
@@ -41,6 +41,24 @@ import type {
  * 在 AweeApp 顶层调用一次。
  */
 export function useFloatingAvatarSync(): void {
+  // 视觉设置独立的云端/自定义模式（vision_model_config.cloud_mode），注入 cloudVisionMode 到头像迷你聊天
+  const [visionCloudMode, setVisionCloudMode] = useState<'cloud' | 'local'>('cloud')
+
+  // 从本地设置数据库读取视觉独立云端模式（异步，不阻塞渲染）
+  useEffect(() => {
+    let cancelled = false
+    api.settings
+      .dbGetVisionModelConfig()
+      .then((cfg) => {
+        if (cancelled) return
+        const cm = (cfg as { cloudMode?: 'cloud' | 'local' } | null)?.cloudMode
+        if (cm) setVisionCloudMode(cm)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
   // 从 store 读取语音上下文相关状态（仅订阅必要字段，避免无关渲染）
   const {
     llmConfig,
@@ -85,6 +103,9 @@ export function useFloatingAvatarSync(): void {
   useEffect(() => {
     // 同步 cloudMode 到 voiceApi（主窗口侧也需注入）
     setVoiceCloudMode(cloudMode)
+    // 同步语音设置独立的云端/自定义模式（voice_model_config.cloud_mode）
+    // 语音分流优先使用该独立值，不受服务商 cloudMode 控制
+    reloadVoiceCloudModeFromDb()
 
     // 自定义智能体配置（精简为迷你聊天所需字段，含完整 systemPrompt/工具白名单供生效）
     const avatarAgentConfig = agentConfig
@@ -111,9 +132,11 @@ export function useFloatingAvatarSync(): void {
         }
       : null
 
-    // 构建语音上下文
+    // 构建语音上下文（注入视觉独立云端模式：cloudVisionMode 控制头像聊天图片是否走后端视觉接口）
     const voiceContext = {
-      llmConfig: llmConfig || null,
+      llmConfig: llmConfig
+        ? { ...llmConfig, cloudVisionMode: visionCloudMode === 'cloud' }
+        : null,
       cloudMode,
       serverUrl: serverUrl || null,
       accessToken: tokens?.accessToken || null,
@@ -138,6 +161,7 @@ export function useFloatingAvatarSync(): void {
       workspacePath: voiceContext.workspacePath,
       authorizationMode: voiceContext.authorizationMode,
       workMode: voiceContext.workMode,
+      cloudVisionMode: visionCloudMode,
       agentActiveId: voiceContext.agentConfig?.activeCustomAgentId ?? null,
       agentProfiles: (voiceContext.agentConfig?.customAgentProfiles || []).map((p) => p.id).join(','),
     })
@@ -154,7 +178,7 @@ export function useFloatingAvatarSync(): void {
       .catch((err) => {
         logger.system.warn('[FloatingAvatarSync] Push voice context failed:', err)
       })
-  }, [llmConfig, cloudMode, serverUrl, language, workspacePath, tokens?.accessToken, authorizationMode, workMode, agentConfig])
+  }, [llmConfig, cloudMode, serverUrl, language, workspacePath, tokens?.accessToken, authorizationMode, workMode, agentConfig, visionCloudMode])
 
   // --------------------------------------------
   // 2. 异步加载 voiceModelConfig 并推送

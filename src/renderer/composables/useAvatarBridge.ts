@@ -23,7 +23,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '@renderer/adapters/electronBridge'
 import { useStore } from '@store'
-import { setVoiceCloudMode } from '../services/voiceApi'
+import { setVoiceCloudMode, setVoiceConfigCloudMode } from '../services/voiceApi'
 import { setServerUrl, setTokens } from '../adapters/backendApi'
 import { logger } from '@shared/toolkit/LogEngine'
 import { themeManager } from '../config/themeDefinition'
@@ -171,10 +171,11 @@ export function useAvatarBridge(): AvatarBridge {
           setVoiceContext(ctxRes.data)
           // 注入 cloudMode 到 voiceApi（解除与 @store 的耦合）
           setVoiceCloudMode(ctxRes.data.cloudMode)
+          // 注入语音设置独立的云端/自定义模式（voiceModelConfig.cloud_mode，优先于服务商模式）
+          const vmc = ctxRes.data.voiceModelConfig as { cloudMode?: 'cloud' | 'local' } | null
+          setVoiceConfigCloudMode(vmc?.cloudMode ?? null)
           // 注入 serverUrl + tokens 到 backendApi（唤醒词 STT 云端模式依赖）
           injectAuthToBackendApi(ctxRes.data)
-          // 同步智能体配置到头像窗口 store（迷你聊天智能体生效）
-          syncAgentConfigToStore(ctxRes.data.agentConfig)
           logger.system.info('[AvatarBridge] Voice context loaded', {
             cloudMode: ctxRes.data.cloudMode,
             hasLlmConfig: !!ctxRes.data.llmConfig,
@@ -219,11 +220,11 @@ export function useAvatarBridge(): AvatarBridge {
       if (payload.cloudMode) {
         setVoiceCloudMode(payload.cloudMode)
       }
+      // 同步注入语音设置独立的云端/自定义模式（优先于服务商模式）
+      const vmc = payload.voiceModelConfig as { cloudMode?: 'cloud' | 'local' } | null
+      setVoiceConfigCloudMode(vmc?.cloudMode ?? null)
       // 同步注入 serverUrl + tokens（token 可能已刷新）
       injectAuthToBackendApi(payload)
-      // 同步智能体配置到头像窗口 store（迷你聊天智能体生效）
-      syncAgentConfigToStore(payload.agentConfig)
-      voiceContextRef.current = payload
       logger.system.debug('[AvatarBridge] Voice context updated', {
         cloudMode: payload.cloudMode,
         updatedAt: payload.updatedAt,

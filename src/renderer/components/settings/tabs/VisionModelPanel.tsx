@@ -35,6 +35,8 @@ interface VisionModelConfig {
   openAICompatibilityProfile: string
   headers: Record<string, string>
   enabled: boolean
+  /** 独立云端/自定义模式：云端用后端视觉配置，自定义用本地配置（不受服务商 cloudMode 控制） */
+  cloudMode: 'cloud' | 'local'
 }
 
 const DEFAULT_CONFIG: VisionModelConfig = {
@@ -47,6 +49,7 @@ const DEFAULT_CONFIG: VisionModelConfig = {
   openAICompatibilityProfile: 'full',
   headers: {},
   enabled: false,
+  cloudMode: 'cloud',
 }
 
 /**
@@ -68,15 +71,14 @@ function snapshotPersisted(config: VisionModelConfig): string {
 }
 
 export const VisionModelPanel = memo(function VisionModelPanel({ language }: { language: Language }) {
-  const { cloudMode, isAuthenticated } = useStore(
+  const { isAuthenticated } = useStore(
     useShallow((s) => ({
-      cloudMode: s.cloudMode,
       isAuthenticated: s.isAuthenticated,
     })),
   )
-  const isCloudMode = cloudMode === 'cloud'
-
+  // 视觉设置独立的云端/自定义模式：以本地配置为准，不受服务商 cloudMode 控制
   const [config, setConfig] = useState<VisionModelConfig>(DEFAULT_CONFIG)
+  const isCloudMode = config.cloudMode === 'cloud'
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [showApiKey, setShowApiKey] = useState(false)
@@ -185,6 +187,18 @@ export const VisionModelPanel = memo(function VisionModelPanel({ language }: { l
     }
   }, [])
 
+  // 切换独立云端/自定义模式（不受服务商 cloudMode 控制）
+  const handleCloudModeChange = useCallback(async (mode: 'cloud' | 'local') => {
+    if (mode === config.cloudMode) return
+    const next = { ...config, cloudMode: mode }
+    setConfig(next)
+    try {
+      await api.settings.dbSaveVisionModelConfig(next)
+    } catch (err) {
+      console.error('[VisionModelPanel] Save cloud mode failed:', err)
+    }
+  }, [config])
+
   const updateField = useCallback(<K extends keyof VisionModelConfig>(field: K, value: VisionModelConfig[K]) => {
     setConfig((prev) => ({ ...prev, [field]: value }))
   }, [])
@@ -198,10 +212,83 @@ export const VisionModelPanel = memo(function VisionModelPanel({ language }: { l
   }
 
   return (
-    <section className="rounded-2xl border border-border/50 bg-surface/20 p-5 backdrop-blur-xl shadow-sm relative overflow-hidden group">
-      <div className="absolute inset-0 bg-gradient-to-br from-accent/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-      <div className="relative">
-        {/* 标题 */}
+    <div className="space-y-6 relative">
+      {/* ============ 云端/自定义模式切换（独立容器，与语音设置一致） ============ */}
+      <div className="rounded-xl border border-border/40 bg-surface/30 p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2 min-w-0">
+            {isCloudMode
+              ? <Cloud className="w-4 h-4 text-accent shrink-0" />
+              : <Server className="w-4 h-4 text-accent shrink-0" />}
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-text-primary">
+                {t('provider.visionModel.cloudModeSwitch', language)}
+              </p>
+              <p className="text-[10px] text-text-muted mt-0.5">
+                {t('provider.visionModel.cloudModeSwitchDesc', language)}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1 p-1 rounded-lg bg-background/50 border border-border/30 shrink-0">
+            <button
+              type="button"
+              onClick={() => handleCloudModeChange('cloud')}
+              className={`flex items-center justify-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                isCloudMode
+                  ? 'bg-accent text-white shadow-sm'
+                  : 'text-text-secondary hover:text-text-primary hover:bg-surface-active/50'
+              }`}
+            >
+              <Cloud className="w-3.5 h-3.5" />
+              {t('provider.visionModel.cloud', language)}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleCloudModeChange('local')}
+              className={`flex items-center justify-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                !isCloudMode
+                  ? 'bg-accent text-white shadow-sm'
+                  : 'text-text-secondary hover:text-text-primary hover:bg-surface-active/50'
+              }`}
+            >
+              <Server className="w-3.5 h-3.5" />
+              {t('provider.visionModel.custom', language)}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ============ 云端模式信息提示 ============ */}
+      {isCloudMode && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 p-3 rounded-lg bg-accent/5 border border-accent/20">
+            <Cloud className="w-4 h-4 text-accent shrink-0" />
+            <div className="text-xs">
+              <p className="text-text-primary font-medium">
+                {t('provider.visionModel.cloudMode', language)}
+              </p>
+              <p className="text-text-muted mt-0.5">
+                {t('provider.visionModel.cloudModeDesc', language)}
+              </p>
+            </div>
+          </div>
+          {backendVisionModel && (
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-surface/30 border border-border/30">
+              <Check className="w-3.5 h-3.5 text-green-500 shrink-0" />
+              <div className="text-xs">
+                <span className="text-text-muted">{t('provider.visionModel.backendConfig', language)}: </span>
+                <span className="text-text-primary font-mono">{backendVisionModel.provider} / {backendVisionModel.model}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ============ 视觉设置容器 ============ */}
+      <section className="rounded-2xl border border-border/50 bg-surface/20 p-5 backdrop-blur-xl shadow-sm relative overflow-hidden group">
+        <div className="absolute inset-0 bg-gradient-to-br from-accent/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+        <div className="relative">
+          {/* 标题 */}
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-2">
             <div className="p-1.5 bg-accent/10 rounded-md text-accent">
@@ -223,32 +310,7 @@ export const VisionModelPanel = memo(function VisionModelPanel({ language }: { l
             />
         </div>
 
-        {/* 云端模式信息提示（不阻止配置） */}
-        {isCloudMode && (
-          <div className="space-y-3 mb-4">
-            <div className="flex items-center gap-2 p-3 rounded-lg bg-accent/5 border border-accent/20">
-              <Cloud className="w-4 h-4 text-accent shrink-0" />
-              <div className="text-xs">
-                <p className="text-text-primary font-medium">
-                  {t('provider.visionModel.cloudMode', language)}
-                </p>
-                <p className="text-text-muted mt-0.5">
-                  {t('provider.visionModel.cloudModeDesc', language)}
-                </p>
-              </div>
-            </div>
-            {backendVisionModel && (
-              <div className="flex items-center gap-2 p-3 rounded-lg bg-surface/30 border border-border/30">
-                <Check className="w-3.5 h-3.5 text-green-500 shrink-0" />
-                <div className="text-xs">
-                  <span className="text-text-muted">{t('provider.visionModel.backendConfig', language)}: </span>
-                  <span className="text-text-primary font-mono">{backendVisionModel.provider} / {backendVisionModel.model}</span>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-        <>
+        {!isCloudMode && (<>
             {/* 未启用时的提示 */}
             {!config.enabled ? (
               <div className="flex items-center gap-2 p-3 rounded-lg bg-surface-active/30 border border-border/30">
@@ -339,8 +401,9 @@ export const VisionModelPanel = memo(function VisionModelPanel({ language }: { l
               {/* 保存按钮已移至底部弹出保存栏 */}
               </div>
             )}
-          </>
-      </div>
+          </>)}
+        </div>
+      </section>
 
       {/* ============ 底部弹出保存栏（与全局保存栏样式一致） ============ */}
       {isDirty && config.enabled && (
@@ -365,6 +428,6 @@ export const VisionModelPanel = memo(function VisionModelPanel({ language }: { l
           </div>
         </div>
       )}
-    </section>
+    </div>
   )
 })

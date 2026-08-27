@@ -941,7 +941,7 @@ Output ONLY JSON, nothing else. agentId must be one of the existing team members
         ? '\n\n【语言要求】你必须使用中文进行所有交流和输出。代码变量名和文件路径保持英文。'
         : '\n\n[Language] You MUST use English for all communication and output.'
 
-      const systemPrompt = `你是${agent.name}，负责${agent.scope}。你的职责范围：${agent.scope}。禁止做：${agent.forbidden}。项目目录：${projectDir}。你必须使用工具（write_file等）创建实际文件。${langDirective}`
+      const systemPrompt = `你是${agent.name}，负责${agent.scope}。你的职责范围：${agent.scope}。禁止做：${agent.forbidden}。项目目录：${projectDir}。你必须使用工具创建和编辑实际文件：创建新文件用 write_file，修改已有文件必须先用 read_file 读取、再用 edit_file 做局部修改，禁止用 write_file 部分覆盖已有文件。${langDirective}`
 
       try {
         const result = await executeAgent(systemPrompt, assignment.task)

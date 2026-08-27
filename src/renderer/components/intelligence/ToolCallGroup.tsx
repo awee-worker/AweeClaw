@@ -332,7 +332,10 @@ function ToolCallGroup({
 
         return (
           <div
-            key={group.status}
+            // 关键：批量执行场景只有单一组，使用固定 key 而非 group.status，
+            // 避免组状态变化（进行中 → 已完成）时整个分组容器卸载重建导致闪动。
+            // 审批场景多组并存，按 status 分组本就是设计，保持 status key。
+            key={groups.length === 1 ? 'group-main' : group.status}
             style={{ contain: 'layout style' }}
           >
             {/* 分组标题（仅多工具时显示）

@@ -54,6 +54,10 @@ export function resolveThinkingCompatibility(
   config: LLMConfig,
   messages: LLMMessage[] = [],
 ): ThinkingCompatibilityDecision {
+  // 智谱 GLM-5.x：思考强制开启（thinking.type 仅支持 enabled），不能关闭
+  if (isZhipuGLM5Model(config.model)) {
+    return { enabled: true }
+  }
   if (config.enableThinking) {
     return { enabled: true }
   }
@@ -105,6 +109,21 @@ export function buildThinkingProviderOptions(config: LLMConfig): RequestProvider
 
   if (!usesOpenAIProtocol(config)) {
     return undefined
+  }
+
+  // 智谱 GLM-5.x：reasoning_effort 仅支持 low / high / max，需将内部档位映射为智谱合法值
+  if (isZhipuGLM5Model(config.model)) {
+    const zhipuEffort = resolveZhipuGLM5Effort(config.reasoningEffort)
+    if (usesOpenAIResponsesProtocol(config) && supportsFullOpenAIProfile(config)) {
+      const configuredReasoningSummary = config.providerOptions?.openai?.reasoningSummary
+      return buildOpenAIStyleProviderOptions(config, {
+        reasoningEffort: zhipuEffort,
+        reasoningSummary: typeof configuredReasoningSummary === 'string'
+          ? configuredReasoningSummary
+          : 'detailed',
+      })
+    }
+    return buildOpenAIStyleProviderOptions(config, { reasoningEffort: zhipuEffort })
   }
 
   const reasoningEffort = supportsFullOpenAIProfile(config)
@@ -259,6 +278,43 @@ function resolveGoogleThinkingLevel(
       return effort
     default:
       return undefined
+  }
+}
+
+/**
+ * 判断是否为智谱 GLM-5.x 系列模型。
+ *
+ * GLM-5 系列 API 行为与 GLM-4 不同：
+ * - thinking.type 仅支持 "enabled"，思考强制开启，不允许关闭
+ * - reasoning_effort 仅支持 low / high / max 三档（默认 max）
+ */
+export function isZhipuGLM5Model(model: string): boolean {
+  return /^glm-5/i.test(model.trim())
+}
+
+/**
+ * 将内部 6 档推理强度映射为智谱 GLM-5.x 支持的档位。
+ *
+ * 映射规则（智谱只接受 low / high / max）：
+ * - none / minimal / low   → low（模型强制思考，无法真正关闭，最低档即 low）
+ * - medium / high          → high
+ * - xhigh / 未设置         → max
+ */
+function resolveZhipuGLM5Effort(
+  effort: LLMConfig['reasoningEffort'],
+): 'low' | 'high' | 'max' {
+  switch (effort) {
+    case 'low':
+    case 'minimal':
+    case 'none':
+      return 'low'
+    case 'medium':
+    case 'high':
+      return 'high'
+    case 'xhigh':
+      return 'max'
+    default:
+      return 'max'
   }
 }
 

@@ -2,13 +2,14 @@
  * 编辑器标签栏组件
  * [AweeClaw] 增强功能：场景标签指示、文件类型图标、拖拽排序视觉反馈
  */
-import { memo } from 'react'
+import { memo, useEffect, useRef } from 'react'
 import { X, AlertCircle, AlertTriangle, RefreshCw, FileX, FileDiff, Globe, Eye, Edit, Columns } from 'lucide-react'
 import { getFileName, normalizePath } from '@shared/toolkit/pathHelper'
 import { useStore } from '@store'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { t } from '@renderer/i18n'
 import { isPreviewDocumentPath } from '@shared/protocols/previewProtocol'
+import { HintOverlay } from '../ui/HintOverlay'
 import { isPptPreviewPath } from '@shared/protocols/pptPreviewProtocol'
 import { BRAND } from '@shared/brand'
 
@@ -64,11 +65,39 @@ export const EditorTabs = memo(function EditorTabs({
   const language = useStore(state => state.language)
   const plans = useAgentStore(state => state.plans)
 
+  // Tab 滚动容器 ref：当打开的文件较多时，保证当前激活 Tab 自动滚动到可见区域
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+
+  // activeFilePath 变化（切换/打开/关闭文件）时，自动将激活 Tab 滚动进可视区
+  useEffect(() => {
+    if (!activeFilePath) return
+    const container = scrollContainerRef.current
+    if (!container) return
+    const tab = container.querySelector<HTMLElement>(`[data-file-path="${CSS.escape(activeFilePath)}"]`)
+    if (!tab) return
+    // 注意：Tab 外包了 HintOverlay（relative wrapper），offsetLeft 参照的是 wrapper 而非滚动容器，
+    // 必须用 getBoundingClientRect 差值计算 Tab 在滚动内容中的真实位置
+    const tabRect = tab.getBoundingClientRect()
+    const containerRect = container.getBoundingClientRect()
+    const tabLeft = tabRect.left - containerRect.left + container.scrollLeft
+    const tabRight = tabLeft + tabRect.width
+    const viewLeft = container.scrollLeft
+    const viewRight = viewLeft + container.clientWidth
+    const MARGIN = 8
+    if (tabLeft < viewLeft + MARGIN) {
+      // Tab 在可视区左侧之外（或贴边）：向左滚动，露出完整 Tab
+      container.scrollTo({ left: Math.max(0, tabLeft - MARGIN), behavior: 'smooth' })
+    } else if (tabRight > viewRight - MARGIN) {
+      // Tab 在可视区右侧之外（或贴边）：向右滚动，露出完整 Tab
+      container.scrollTo({ left: tabRight - container.clientWidth + MARGIN, behavior: 'smooth' })
+    }
+  }, [activeFilePath])
   return (
     <div className="h-[42px] flex items-stretch bg-background border-b border-border/50 select-none">
       {/* 左侧：Tab 滚动区域 */}
       <div
-        className="flex-1 flex items-center overflow-x-auto overflow-y-hidden scrollbar-none px-2 gap-1.5 py-1.5 min-w-0"
+        ref={scrollContainerRef}
+        className="relative flex-1 flex items-center overflow-x-auto overflow-y-hidden scrollbar-none px-2 gap-1.5 py-1.5 min-w-0"
         onWheel={(e) => {
           if (e.deltaY !== 0 && e.currentTarget) {
             e.currentTarget.scrollLeft += e.deltaY
@@ -107,8 +136,9 @@ export const EditorTabs = memo(function EditorTabs({
           }
 
           return (
+            <HintOverlay key={file.path} content={file.path} side="top" delay={400} className="flex-shrink-0 h-full">
             <div
-              key={file.path}
+              data-file-path={file.path}
               className={`
                 group relative flex items-center gap-2 px-3 h-full min-w-[120px] max-w-[200px] cursor-pointer transition-colors duration-150 rounded-md flex-shrink-0
                 ${isActive
@@ -121,6 +151,7 @@ export const EditorTabs = memo(function EditorTabs({
                 e.preventDefault()
                 onContextMenu(e, file.path)
               }}
+
             >
 
               {/* 已删除文件图标 */}
@@ -148,6 +179,7 @@ export const EditorTabs = memo(function EditorTabs({
                 <X className={`w-3.5 h-3.5 ${file.isDirty ? 'hidden group-hover:block' : 'opacity-0 group-hover:opacity-100'} transition-opacity`} />
               </div>
             </div>
+            </HintOverlay>
           )
         })}
       </div>

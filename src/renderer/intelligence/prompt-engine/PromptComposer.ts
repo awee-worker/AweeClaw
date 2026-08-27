@@ -290,6 +290,15 @@ function getActiveScenarioIdentity() {
   }
 }
 
+/**
+ * 文件编辑工具优先级硬规则
+ * 独立于场景 toolGuidelines 强制注入，防止场景覆盖默认指南后核心规则丢失
+ */
+const FILE_EDIT_PRIORITY = `## File Editing Priority (MANDATORY)
+- **CREATE a new file** → use \`write_file\` (or \`create_file_or_folder\`).
+- **MODIFY an existing file** → you MUST use \`edit_file\`: first \`read_file\` to get the current content, then apply targeted changes with \`edit_file\` (string/line/batch mode).
+- \`write_file\` on an existing file is ONLY allowed for intentional full-file replacement (the whole file is regenerated on purpose). NEVER use \`write_file\` to partially modify an existing file.`
+
 function buildTools(mode: WorkMode, templateId?: string, planPhase?: 'planning' | 'executing', isChannel?: boolean): string {
   const excludeCategories: ToolCategory[] = []
   const activeScenario = scenarioRegistry.getActive()
@@ -303,6 +312,8 @@ function buildTools(mode: WorkMode, templateId?: string, planPhase?: 'planning' 
   return `## Available Tools
 
 ${baseTools}
+
+${FILE_EDIT_PRIORITY}
 
 ${toolGuidelines}`
 }

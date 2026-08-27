@@ -38,7 +38,9 @@ export function VoiceConversationOverlay({ onClose }: VoiceConversationOverlayPr
     activeFilePath: s.activeFilePath,
   })))
   const isZh = language === 'zh'
-  const isCloudMode = cloudMode === 'cloud'
+  // 语音对话分流模式：优先使用语音设置独立的云端/自定义模式（voiceModelConfig.cloudMode），
+  // 未加载时回退服务商 cloudMode（默认云端）
+  const isCloudMode = (voiceModelConfig?.cloudMode ?? (cloudMode === 'cloud' ? 'cloud' : 'local')) === 'cloud'
 
   // 模式：默认沉浸式，从 localStorage 读取偏好
   const [viewMode, setViewMode] = useState<VoiceMode>(() => {

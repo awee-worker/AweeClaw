@@ -67,7 +67,7 @@ const GENERAL_ASSISTANT_IDENTITY: ScenarioIdentity = {
   toolGuidelines: `## Tool Usage Guidelines
 - Use web_search for research and fact-checking
 - Use read_url to access web content
-- Use write_file to save documents
+- **File editing priority (MANDATORY)**: use \`write_file\` ONLY to CREATE new files or save brand-new documents; use \`edit_file\` to MODIFY existing files (read the file with \`read_file\` first, then apply targeted changes with \`edit_file\`). NEVER use \`write_file\` to partially update an existing file — it is only for intentional full-file replacement.
 - Use read_file to review existing content
 - Use run_command for calculations and processing
 - Use todo_write for task tracking`,

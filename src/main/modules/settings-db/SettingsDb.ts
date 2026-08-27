@@ -62,6 +62,7 @@ export interface VisionModelConfigRow {
   openai_compatibility_profile: string
   headers: string             // JSON 对象字符串
   enabled: number             // 0 | 1
+  cloud_mode: number          // 0=自定义模式 1=云端模式
   updated_at: number
 }
 
@@ -92,6 +93,7 @@ export interface VoiceModelConfigRow {
   realtime_base_url: string
   realtime_voice: string
   realtime_timeout: number
+  cloud_mode: number          // 0=自定义模式 1=云端模式
   updated_at: number
 }
 
@@ -121,6 +123,8 @@ export interface VoiceModelConfig {
   realtimeBaseUrl: string
   realtimeVoice: string
   realtimeTimeout: number
+  /** 云端模式（使用后端配置） / 自定义模式（本地配置直连） */
+  cloudMode: 'cloud' | 'local'
   updatedAt: number
 }
 
@@ -321,9 +325,13 @@ export class SettingsDb {
         openai_compatibility_profile TEXT NOT NULL DEFAULT 'full',
         headers                     TEXT NOT NULL DEFAULT '{}',
         enabled                     INTEGER NOT NULL DEFAULT 0,
+        cloud_mode                  INTEGER NOT NULL DEFAULT 1,
         updated_at                  INTEGER NOT NULL DEFAULT 0
       )
     `)
+
+    // 兼容旧表：vision_model_config 可能已存在但缺少 cloud_mode 字段
+    this.migrateVisionModelConfigSchema()
 
     // 语音模型独立配置表（自定义模式下使用）
     // 拆分 STT（语音识别）与 TTS（语音合成）两部分，分别可启用
@@ -354,6 +362,7 @@ export class SettingsDb {
         realtime_base_url TEXT NOT NULL DEFAULT '',
         realtime_voice   TEXT NOT NULL DEFAULT 'alloy',
         realtime_timeout INTEGER NOT NULL DEFAULT 120000,
+        cloud_mode       INTEGER NOT NULL DEFAULT 1,
         updated_at      INTEGER NOT NULL DEFAULT 0
       )
     `)
@@ -413,6 +422,7 @@ export class SettingsDb {
       { name: 'realtime_base_url', def: "TEXT NOT NULL DEFAULT ''" },
       { name: 'realtime_voice', def: "TEXT NOT NULL DEFAULT 'alloy'" },
       { name: 'realtime_timeout', def: 'INTEGER NOT NULL DEFAULT 120000' },
+      { name: 'cloud_mode', def: 'INTEGER NOT NULL DEFAULT 1' },
     ]
 
     for (const col of newColumns) {
@@ -438,6 +448,26 @@ export class SettingsDb {
     for (const col of newColumns) {
       if (!columnNames.has(col.name)) {
         this.db.exec(`ALTER TABLE wake_word_config ADD COLUMN ${col.name} ${col.def}`)
+      }
+    }
+  }
+
+  /**
+   * 视觉模型配置表 schema 迁移
+   * 兼容旧表（无 cloud_mode 字段）→ 新增独立云端/自定义模式开关
+   * 使用 ALTER TABLE ADD COLUMN，保留现有数据
+   */
+  private migrateVisionModelConfigSchema(): void {
+    const columns = this.db.prepare("PRAGMA table_info(vision_model_config)").all() as { name: string }[]
+    const columnNames = new Set(columns.map(c => c.name))
+
+    const newColumns: { name: string; def: string }[] = [
+      { name: 'cloud_mode', def: 'INTEGER NOT NULL DEFAULT 1' },
+    ]
+
+    for (const col of newColumns) {
+      if (!columnNames.has(col.name)) {
+        this.db.exec(`ALTER TABLE vision_model_config ADD COLUMN ${col.name} ${col.def}`)
       }
     }
   }
@@ -673,6 +703,7 @@ export class SettingsDb {
   }
 
   /** 保存视觉模型配置（upsert） */
+  /** 保存视觉模型配置（upsert） */
   upsertVisionModelConfig(config: {
     provider: string
     model: string
@@ -683,6 +714,8 @@ export class SettingsDb {
     openaiCompatibilityProfile?: string
     headers?: Record<string, string>
     enabled?: boolean
+    /** 0=自定义模式 1=云端模式（独立于服务商 cloudMode） */
+    cloudMode?: 'cloud' | 'local'
   }): void {
     const now = Date.now()
     const headersJson = JSON.stringify(config.headers ?? {})
@@ -690,8 +723,8 @@ export class SettingsDb {
     this.db.prepare(`
       INSERT INTO vision_model_config (
         id, provider, model, api_key, base_url, timeout,
-        protocol, openai_compatibility_profile, headers, enabled, updated_at
-      ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        protocol, openai_compatibility_profile, headers, enabled, cloud_mode, updated_at
+      ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         provider = excluded.provider,
         model = excluded.model,
@@ -702,6 +735,7 @@ export class SettingsDb {
         openai_compatibility_profile = excluded.openai_compatibility_profile,
         headers = excluded.headers,
         enabled = excluded.enabled,
+        cloud_mode = excluded.cloud_mode,
         updated_at = excluded.updated_at
     `).run(
       config.provider,
@@ -713,6 +747,7 @@ export class SettingsDb {
       config.openaiCompatibilityProfile ?? 'full',
       headersJson,
       config.enabled ? 1 : 0,
+      config.cloudMode === 'local' ? 0 : 1,
       now,
     )
   }
@@ -732,6 +767,7 @@ export class SettingsDb {
     return row ? this.rowToVoiceModelConfig(row) : null
   }
 
+  /** 行转对象（解密 api_key，规范化字段） */
   /** 行转对象（解密 api_key，规范化字段） */
   private rowToVoiceModelConfig(row: VoiceModelConfigRow): VoiceModelConfig {
     return {
@@ -758,10 +794,13 @@ export class SettingsDb {
       realtimeBaseUrl: row.realtime_base_url || '',
       realtimeVoice: row.realtime_voice || 'alloy',
       realtimeTimeout: row.realtime_timeout || 120000,
+      /** 独立云端/自定义模式（不随服务商 cloudMode） */
+      cloudMode: row.cloud_mode === 1 ? 'cloud' : 'local',
       updatedAt: row.updated_at,
     }
   }
 
+  /** 保存语音模型配置（upsert，STT / TTS / Realtime 一并写入） */
   /** 保存语音模型配置（upsert，STT / TTS / Realtime 一并写入） */
   upsertVoiceModelConfig(config: {
     mode?: 'split' | 'realtime'
@@ -787,6 +826,8 @@ export class SettingsDb {
     realtimeBaseUrl?: string
     realtimeVoice?: string
     realtimeTimeout?: number
+    /** 0=自定义模式 1=云端模式（独立于服务商 cloudMode） */
+    cloudMode?: 'cloud' | 'local'
   }): void {
     const now = Date.now()
     const encryptedSttKey = config.sttApiKey ? encryptString(config.sttApiKey) : ''
@@ -798,8 +839,8 @@ export class SettingsDb {
         stt_enabled, stt_provider, stt_model, stt_api_key, stt_base_url, stt_language, stt_timeout,
         tts_enabled, tts_provider, tts_model, tts_voice, tts_api_key, tts_base_url, tts_speed, tts_timeout,
         realtime_enabled, realtime_provider, realtime_model, realtime_api_key, realtime_base_url, realtime_voice, realtime_timeout,
-        updated_at
-      ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        cloud_mode, updated_at
+      ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         mode              = excluded.mode,
         stt_enabled       = excluded.stt_enabled,
@@ -824,6 +865,7 @@ export class SettingsDb {
         realtime_base_url = excluded.realtime_base_url,
         realtime_voice    = excluded.realtime_voice,
         realtime_timeout  = excluded.realtime_timeout,
+        cloud_mode        = excluded.cloud_mode,
         updated_at        = excluded.updated_at
     `).run(
       config.mode ?? 'split',
@@ -849,6 +891,7 @@ export class SettingsDb {
       config.realtimeBaseUrl ?? '',
       config.realtimeVoice ?? 'alloy',
       config.realtimeTimeout ?? 120000,
+      config.cloudMode === 'local' ? 0 : 1,
       now,
     )
   }
@@ -1008,6 +1051,8 @@ export class SettingsDb {
       openAICompatibilityProfile: row.openai_compatibility_profile || 'full',
       headers: Object.keys(headers).length > 0 ? headers : {},
       enabled: row.enabled === 1,
+      /** 独立云端/自定义模式（不随服务商 cloudMode） */
+      cloudMode: row.cloud_mode === 1 ? 'cloud' : 'local',
       updatedAt: row.updated_at,
     }
   }
