@@ -60,6 +60,7 @@ import {
   Square,
 } from 'lucide-react'
 import { api } from '@renderer/adapters/electronBridge'
+import ScreenPermissionGuide from '../ui/ScreenPermissionGuide'
 import { useVoiceInput } from '../../composables/useVoiceInput'
 import VoiceVisualizer from '../voice/VoiceVisualizer'
 import {
@@ -239,7 +240,16 @@ function MiniChatPanelImpl({
   const handleScreenshot = useCallback(async () => {
     if (streaming) return
     try {
-      await api.floatingAvatar.startScreenshotAsk()
+      const res = await api.floatingAvatar.startScreenshotAsk()
+      // 主进程权限前置检查：未授予 macOS 屏幕录制权限 → 弹出引导弹窗
+      if (res && !res.success) {
+        if (res.error === 'SCREEN_PERMISSION_DENIED') {
+          setPermissionGuideOpen(true)
+          return
+        }
+        console.error('[MiniChatPanel] Start screenshot ask failed:', res.error)
+        return
+      }
     } catch (err) {
       console.error('[MiniChatPanel] Start screenshot ask failed:', err)
     }
@@ -299,6 +309,8 @@ function MiniChatPanelImpl({
   // AI 优化输入（与主窗口 ConversationInput.handleOptimize 一致）
   // --------------------------------------------
   const [isOptimizing, setIsOptimizing] = useState(false)
+  // macOS 屏幕录制权限引导弹窗（截图返回 SCREEN_PERMISSION_DENIED 时打开）
+  const [permissionGuideOpen, setPermissionGuideOpen] = useState(false)
 
   const handleOptimize = useCallback(async () => {
     if (!input.trim() || isOptimizing || streaming) return
@@ -810,7 +822,14 @@ function MiniChatPanelImpl({
             </div>
           </div>
         </div>
-      </div>
+        </div>
+
+      {/* macOS 屏幕录制权限引导（截图未授权时弹出） */}
+      <ScreenPermissionGuide
+        isOpen={permissionGuideOpen}
+        onClose={() => setPermissionGuideOpen(false)}
+        language={language}
+      />
     </div>
   )
 }

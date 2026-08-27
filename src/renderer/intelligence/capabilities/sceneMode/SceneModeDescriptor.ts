@@ -84,6 +84,9 @@ export interface WorkHoursConfig {
   days: number[]
 }
 
+/** 问候时段（用于时段问候动态选择） */
+export type TimePeriod = 'morning' | 'noon' | 'afternoon' | 'evening' | 'night'
+
 /** 场景模式完整配置描述符 */
 export interface SceneModeProfile {
   /** 模式 ID */
@@ -131,6 +134,11 @@ export interface SceneModeProfile {
   greetings?: {
     zh: string[]
     en: string[]
+    /** 时段问候：按当前时间动态选择（morning/noon/afternoon/evening/night），优先于静态池轮换 */
+    timeGreetings?: {
+      zh: Partial<Record<TimePeriod, string>>
+      en: Partial<Record<TimePeriod, string>>
+    }
   }
 
   /** 空对话态快捷引导卡片（UI3） */

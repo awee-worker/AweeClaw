@@ -41,6 +41,7 @@ import ModelSelector from './AIModelSelector'
 import ModeSelector from './WorkModeSelector'
 import AuthorizationModeSelector from './AuthorizationModeSelector'
 import AgentSelector from './AgentSelector'
+import ScreenPermissionGuide from '../ui/ScreenPermissionGuide'
 import { useVoiceInput } from '../../composables/useVoiceInput'
 import VoiceVisualizer from '../voice/VoiceVisualizer'
 import { ContextItem, FileContext } from '@intelligence/providerTypes'
@@ -114,6 +115,8 @@ const ChatInput = memo(function ChatInput({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isFocused, setIsFocused] = useState(false)
   const [isOptimizing, setIsOptimizing] = useState(false)
+  // macOS 屏幕录制权限引导弹窗（截图返回 SCREEN_PERMISSION_DENIED 时打开）
+  const [permissionGuideOpen, setPermissionGuideOpen] = useState(false)
 
   const voiceInput = useVoiceInput({
     onResult: (text) => {
@@ -189,7 +192,16 @@ const ChatInput = memo(function ChatInput({
   const handleScreenshot = useCallback(async () => {
     if (isStreaming) return
     try {
-      await api.screenshot.start()
+      const res = await api.screenshot.start()
+      // 主进程权限前置检查：未授予 macOS 屏幕录制权限 → 弹出引导弹窗
+      if (res && !res.success) {
+        if (res.error === 'SCREEN_PERMISSION_DENIED') {
+          setPermissionGuideOpen(true)
+          return
+        }
+        console.error('[ConversationInput] Start screenshot failed:', res.error)
+        return
+      }
     } catch (err) {
       console.error('[ConversationInput] Start screenshot failed:', err)
     }
@@ -658,6 +670,13 @@ const ChatInput = memo(function ChatInput({
           <AuthorizationModeSelector disabled={isStreaming} />
         </div>
       </div>
+
+      {/* macOS 屏幕录制权限引导（截图未授权时弹出） */}
+      <ScreenPermissionGuide
+        isOpen={permissionGuideOpen}
+        onClose={() => setPermissionGuideOpen(false)}
+        language={language}
+      />
     </div>
   )
 })

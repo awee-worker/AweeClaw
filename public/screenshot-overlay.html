@@ -7,6 +7,13 @@
   <title>AweeClaw Screenshot Overlay</title>
   <!-- 截图覆盖窗口：全屏透明、无滚动条、禁用文本选择 -->
   <!-- 背景必须透明：用户透过窗口看到真实桌面，在桌面上直接框选，杜绝"截图展示在窗口上"的重影问题 -->
+  <!--
+    原生 JS 实现（无 React 依赖）：
+    历史背景——该窗口曾使用 React 构建（screenshotOverlayEntry.tsx → ScreenshotOverlay.tsx），
+    但打包后 React vendor chunk 与 agent/ui-core 共享 chunk 形成循环依赖（react-vendor ↔ agent ↔ ui-core），
+    覆盖窗口加载时序触发 ui-core 执行时 React.forwardRef 为 undefined，导致 React 应用无法挂载、蒙版不渲染。
+    故改为原生 JS：无任何 chunk 依赖，dev 与打包行为完全一致。
+  -->
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
@@ -25,7 +32,7 @@
 
 <body>
   <div id="root"></div>
-  <script type="module" src="/src/renderer/screenshotOverlayEntry.tsx"></script>
+  <script src="./screenshot-overlay.js"></script>
 </body>
 
 </html>

@@ -13,6 +13,7 @@ import { useSceneModeStore } from '@renderer/modes/sceneModeStore'
 import * as LucideIcons from 'lucide-react'
 import { Users, Sparkles, Rocket } from 'lucide-react'
 import { t, type Language } from '@renderer/i18n'
+import type { TimePeriod } from '@intelligence/capabilities/sceneMode/SceneModeDescriptor'
 
 const DEFAULT_TITLE_ZH = '需要我帮您做什么？'
 const DEFAULT_TITLE_EN = 'How can I help?'
@@ -61,8 +62,30 @@ export default function EmptyChatSuggestions() {
   // ── UI1：问候语轮换 ──
   // 模式切换时重新随机，避免连续相同
   const lastGreetingRef = useRef<string>('')
+
+  /** 根据当前小时映射问候时段 */
+  const getTimePeriod = (hour: number): TimePeriod => {
+    if (hour >= 5 && hour < 11) return 'morning'
+    if (hour >= 11 && hour < 13) return 'noon'
+    if (hour >= 13 && hour < 18) return 'afternoon'
+    if (hour >= 18 && hour < 23) return 'evening'
+    return 'night'
+  }
+
   const greeting = useMemo(() => {
     const greetings = activeProfile.greetings
+    // 时段问候：按当前时间动态选择，保证早上/中午/下午/晚上文案与真实时间一致
+    const timeGreetings = greetings?.timeGreetings
+    if (timeGreetings) {
+      const period = getTimePeriod(new Date().getHours())
+      const pool = isZh ? timeGreetings.zh : timeGreetings.en
+      const timeGreeting = pool?.[period]
+      // 50% 概率优先展示时段问候，其余从静态池轮换，兼顾准确与自然
+      if (timeGreeting && Math.random() < 0.5) {
+        lastGreetingRef.current = timeGreeting
+        return timeGreeting
+      }
+    }
     if (!greetings) {
       return isZh ? DEFAULT_TITLE_ZH : DEFAULT_TITLE_EN
     }

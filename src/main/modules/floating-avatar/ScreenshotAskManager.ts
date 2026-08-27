@@ -23,6 +23,10 @@ import { promises as fsPromises } from 'fs'
 import { logger } from '@shared/toolkit/LogEngine'
 import { ensureDirectory } from '../../guard/fileAccessControl'
 import { BRAND } from '@shared/brand'
+import {
+  createPermissionDeniedError,
+  isScreenPermissionGranted,
+} from '../screenshot/screenPermission'
 
 /** 选区坐标（CSS 像素，覆盖窗口坐标系） */
 export interface SelectionRect {
@@ -80,6 +84,12 @@ export class ScreenshotAskManager {
     if (this.overlayWindow) {
       logger.system.warn('[ScreenshotAsk] Overlay already open')
       return
+    }
+
+    // 权限前置检查：未授予 macOS 屏幕录制权限时抛错（带 screenPermission 标记），
+    // 由调用方返回给渲染层弹出引导弹窗，避免创建覆盖窗口后截图黑屏。
+    if (!isScreenPermissionGranted()) {
+      throw createPermissionDeniedError()
     }
 
     try {
@@ -300,6 +310,14 @@ export class ScreenshotAskManager {
       })
       if (sources.length === 0) {
         logger.system.error('[ScreenshotAsk] No screen source available')
+        return null
+      }
+      // 空图兜底：macOS 未授予屏幕录制权限时，desktopCapturer 返回空缩略图（黑屏）。
+      // 若前置权限检查漏检（如权限状态为 unknown），这里拦截并提示，避免把黑图当截图。
+      if (sources[0].thumbnail.isEmpty()) {
+        logger.system.error(
+          '[ScreenshotAsk] Captured thumbnail is empty (likely missing Screen Recording permission)',
+        )
         return null
       }
       return sources[0].thumbnail.toDataURL()

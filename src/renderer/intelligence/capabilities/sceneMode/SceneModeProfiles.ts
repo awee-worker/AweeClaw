@@ -91,15 +91,29 @@ export const WORK_MODE_PROFILE: SceneModeProfile = {
   greetings: {
     zh: [
       '今天有什么任务需要跟进？',
-      '早上好，准备开始今天的工作了吗？',
       '需要我帮您整理一下待办事项吗？',
       '有什么工作上的问题需要我帮忙？',
     ],
     en: [
       'What tasks do you need to follow up today?',
-      'Good morning, ready to start your workday?',
       'Need help organizing your to-do list?',
     ],
+    timeGreetings: {
+      zh: {
+        morning: '早上好，准备好开始今天的工作了吗？',
+        noon: '中午好，上午辛苦了，先休息片刻再继续',
+        afternoon: '下午好，今天的工作进展还顺利吗？',
+        evening: '晚上好，今天辛苦了，还有什么需要处理的吗？',
+        night: '夜深了还在忙吗？记得早点休息',
+      },
+      en: {
+        morning: 'Good morning! Ready to start your workday?',
+        noon: 'Good noon! You have earned a short break.',
+        afternoon: 'Good afternoon! How is your work going?',
+        evening: 'Good evening! You have worked hard today.',
+        night: "It's late — don't forget to rest.",
+      },
+    },
   },
   quickPrompts: [
     { icon: 'ClipboardList', label: '整理会议纪要', labelEn: 'Meeting Notes', prompt: '请帮我整理一份会议纪要模板，包含议题、讨论要点、行动项' },
@@ -205,6 +219,22 @@ export const LIFE_MODE_PROFILE: SceneModeProfile = {
       'Hey, how are you? Remember to drink some water.',
       'Want to chat about anything?',
     ],
+    timeGreetings: {
+      zh: {
+        morning: '早上好，新的一天，愿你有好心情',
+        noon: '中午好，记得按时吃午饭哦',
+        afternoon: '下午好，来杯水休息一下吧',
+        evening: '晚上好，今天过得怎么样？',
+        night: '夜深了，别太晚睡哦',
+      },
+      en: {
+        morning: 'Good morning! Hope you have a wonderful day.',
+        noon: 'Good noon! Remember to have lunch on time.',
+        afternoon: 'Good afternoon! Take a break and have some water.',
+        evening: 'Good evening! How was your day?',
+        night: "It's late — don't stay up too long.",
+      },
+    },
   },
   quickPrompts: [
     { icon: 'CloudSun', label: '今天天气如何', labelEn: "Today's Weather", prompt: '今天天气怎么样？适合户外活动吗？' },
@@ -307,6 +337,22 @@ export const STUDY_MODE_PROFILE: SceneModeProfile = {
       'What topic do you want to tackle today?',
       'Want to review what you learned yesterday?',
     ],
+    timeGreetings: {
+      zh: {
+        morning: '早上好，头脑清醒，适合开始今天的学习',
+        noon: '中午好，休息片刻再继续学习吧',
+        afternoon: '下午好，今天想攻克哪个知识点？',
+        evening: '晚上好，适合静下心来学习一会儿',
+        night: '夜深了，学习也要注意休息',
+      },
+      en: {
+        morning: 'Good morning! A fresh mind is perfect for learning.',
+        noon: 'Good noon! Rest a while before continuing.',
+        afternoon: 'Good afternoon! What topic will you tackle today?',
+        evening: 'Good evening! A quiet evening suits focused study.',
+        night: "It's late — remember to rest between sessions.",
+      },
+    },
   },
   quickPrompts: [
     { icon: 'Network', label: '生成知识图谱', labelEn: 'Knowledge Graph', prompt: '请帮我生成一个关于【填入主题】的知识图谱，包含核心概念和关联关系' },

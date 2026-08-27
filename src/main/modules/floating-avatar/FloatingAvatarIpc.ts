@@ -90,8 +90,11 @@ export interface FloatingAvatarIpcCallbacks {
   forwardSelectAgent: (agentId: string | null) => void
   /** 打开主窗口设置页（迷你聊天「创建智能体」入口，与右键菜单 openSettings 一致） */
   openSettings: () => void
-  /** 启动截图提问（迷你助手按钮 / 右键菜单共用，由 index.ts 注入 ScreenshotAskManager.start） */
-  startScreenshotAsk: () => void
+  /**
+   * 启动截图提问（迷你助手按钮 / 右键菜单共用，由 index.ts 注入 ScreenshotAskManager.start）
+   * 返回结果供渲染层判断：SCREEN_PERMISSION_DENIED → 弹出权限引导弹窗
+   */
+  startScreenshotAsk: () => Promise<{ success: boolean; error?: string; screenPermission?: string }>
 }
 
 let registered = false
@@ -470,10 +473,10 @@ export function registerFloatingAvatarIpc(callbacks: FloatingAvatarIpcCallbacks)
   // 启动截图提问（迷你助手按钮触发，与右键菜单共用 ScreenshotAskManager）
   // 渲染进程通过 api.floatingAvatar.startScreenshotAsk() 调用，
   // 主进程启动全屏区域选择覆盖窗口 → 用户框选 → 截图 → 推送结果到头像窗口
+  // 未授予屏幕录制权限时返回 SCREEN_PERMISSION_DENIED，渲染层据此弹出引导弹窗
   safeIpcHandle('floating-avatar:start-screenshot-ask', async () => {
     try {
-      callbacks.startScreenshotAsk()
-      return { success: true }
+      return (await callbacks.startScreenshotAsk()) ?? { success: true }
     } catch (err) {
       logger.system.error('[FloatingAvatarIpc] Start screenshot ask failed:', err)
       return { success: false, error: err instanceof Error ? err.message : String(err) }

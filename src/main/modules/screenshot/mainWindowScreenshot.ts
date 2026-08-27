@@ -20,6 +20,12 @@ import {
   ScreenshotAskManager,
   type ScreenshotResultPayload,
 } from '../floating-avatar/ScreenshotAskManager'
+import {
+  getScreenPermissionStatus,
+  isScreenPermissionGranted,
+  openScreenPermissionSettings,
+  SCREEN_PERMISSION_DENIED,
+} from './screenPermission'
 
 /** 工作区路径获取函数类型 */
 type WorkspacePathGetter = () => string | null
@@ -38,6 +44,14 @@ export function registerMainWindowScreenshotHandlers(
   const screenshotManager = new ScreenshotAskManager(getWorkspacePath)
 
   /**
+   * 打开 macOS 屏幕录制权限系统设置页（渲染层权限引导弹窗的「打开系统设置」按钮调用）
+   */
+  safeIpcHandle('screenshot:open-permission-settings', async () => {
+    openScreenPermissionSettings()
+    return { success: true }
+  })
+
+  /**
    * 启动截图（主窗口→main）
    *
    * 渲染进程通过 api.screenshot.start() 调用，
@@ -45,8 +59,19 @@ export function registerMainWindowScreenshotHandlers(
    *
    * 截图结果通过 'main-window:screenshot-result' 事件推送到主窗口 webContents，
    * ConversationInput 监听后调用 addAttachment 添加截图附件。
+   *
+   * 权限前置检查：未授予 macOS 屏幕录制权限时，desktopCapturer 返回空图（黑屏），
+   * 直接返回 SCREEN_PERMISSION_DENIED，由渲染层弹出引导弹窗（而非静默失败）。
    */
   safeIpcHandle('screenshot:start-for-main-window', async (event) => {
+    const permission = getScreenPermissionStatus()
+    if (!isScreenPermissionGranted()) {
+      logger.system.warn(
+        `[MainWindowScreenshot] Screen recording permission not granted (${permission}), guiding user`,
+      )
+      return { success: false, error: SCREEN_PERMISSION_DENIED, screenPermission: permission }
+    }
+
     try {
       // 截图结果回调：推送到发起请求的主窗口
       const onScreenshotComplete = (payload: ScreenshotResultPayload) => {
@@ -63,7 +88,12 @@ export function registerMainWindowScreenshotHandlers(
       return { success: true }
     } catch (err) {
       logger.system.error('[MainWindowScreenshot] Start failed:', err)
-      return { success: false, error: err instanceof Error ? err.message : String(err) }
+      const screenPermission = (err as { screenPermission?: string })?.screenPermission
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : String(err),
+        ...(screenPermission ? { screenPermission } : {}),
+      }
     }
   })
 

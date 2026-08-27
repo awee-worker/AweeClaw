@@ -55,5 +55,8 @@ export function createScreenshotApi() {
       ipcRenderer.invoke('screenshot:start-for-main-window') as Promise<IpcResponse>,
     /** 截图完成事件（main→主窗口：截图 base64 + 落盘路径，主窗口作为附件添加到输入框） */
     onResult: on<ScreenshotResultPayload>('main-window:screenshot-result'),
+    /** 打开 macOS「隐私与安全性 → 屏幕录制」系统设置（权限引导弹窗按钮调用） */
+    openPermissionSettings: () =>
+      ipcRenderer.invoke('screenshot:open-permission-settings') as Promise<IpcResponse>,
   }
 }

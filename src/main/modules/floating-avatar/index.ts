@@ -134,14 +134,28 @@ export function initFloatingAvatar(deps: FloatingAvatarDeps): void {
       forwardSelectWorkMode: (mode) => deps.forwardSelectWorkMode(mode),
       forwardSelectAgent: (agentId) => deps.forwardSelectAgent(agentId),
       openSettings: () => deps.openSettings(),
-      startScreenshotAsk: () => {
+      startScreenshotAsk: async () => {
         // 复用右键菜单的 screenshotAskManager 实例，截图完成后推送结果到头像窗口
-        void screenshotAskManager.start(
-          (payload) => {
-            manager.sendToAvatar('floating-avatar:screenshot-result', payload)
-          },
-          onScreenshotVisibilityChange,
-        )
+        try {
+          await screenshotAskManager.start(
+            (payload) => {
+              manager.sendToAvatar('floating-avatar:screenshot-result', payload)
+            },
+            onScreenshotVisibilityChange,
+          )
+          return { success: true }
+        } catch (err) {
+          const screenPermission = (err as { screenPermission?: string })?.screenPermission
+          logger.system.warn(
+            '[FloatingAvatar] Start screenshot ask failed:',
+            err instanceof Error ? err.message : err,
+          )
+          return {
+            success: false,
+            error: err instanceof Error ? err.message : String(err),
+            ...(screenPermission ? { screenPermission } : {}),
+          }
+        }
       },
     }
     registerFloatingAvatarIpc(ipcCallbacks)
@@ -162,14 +176,29 @@ export function initFloatingAvatar(deps: FloatingAvatarDeps): void {
           win.focus()
         }
       },
-      startScreenshotAsk: () => {
-        void screenshotAskManager.start(
-          (payload) => {
-            // 截图完成 → 推送到头像窗口（携带 base64 + 落盘路径）
-            manager.sendToAvatar('floating-avatar:screenshot-result', payload)
-          },
-          onScreenshotVisibilityChange,
-        )
+      startScreenshotAsk: async () => {
+        // 右键菜单「截图提问」：同样受屏幕录制权限约束，未授权时返回错误供上层引导
+        try {
+          await screenshotAskManager.start(
+            (payload) => {
+              // 截图完成 → 推送到头像窗口（携带 base64 + 落盘路径）
+              manager.sendToAvatar('floating-avatar:screenshot-result', payload)
+            },
+            onScreenshotVisibilityChange,
+          )
+          return { success: true }
+        } catch (err) {
+          const screenPermission = (err as { screenPermission?: string })?.screenPermission
+          logger.system.warn(
+            '[FloatingAvatar] Menu screenshot ask failed:',
+            err instanceof Error ? err.message : err,
+          )
+          return {
+            success: false,
+            error: err instanceof Error ? err.message : String(err),
+            ...(screenPermission ? { screenPermission } : {}),
+          }
+        }
       },
       startMeetingNotes: () => {
         // 显示会议纪要窗口（已存在则聚焦，不存在则创建）

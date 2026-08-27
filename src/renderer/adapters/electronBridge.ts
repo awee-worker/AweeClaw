@@ -952,6 +952,8 @@ function createGroupedAPI() {
       /** 截图完成事件订阅（main→主窗口：截图 base64 + 落盘路径） */
       onResult: (callback: Parameters<typeof raw.screenshot.onResult>[0]) =>
         raw.screenshot.onResult(callback),
+      /** 打开 macOS 屏幕录制权限系统设置（权限引导弹窗按钮） */
+      openPermissionSettings: () => raw.screenshot.openPermissionSettings(),
     },
 
     // 会议纪要窗口（独立常驻窗口）
