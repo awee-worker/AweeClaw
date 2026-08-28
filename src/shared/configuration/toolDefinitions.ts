@@ -342,9 +342,8 @@ Avoid:
     write_file: {
         name: 'write_file',
         displayName: 'Write File',
-        description: `Write complete file content.
-Use for new files, intentional full-file replacement, or generated artifact files.
-Overwrites the whole file. For existing files, prefer edit_file for small local changes; write_file is allowed when the agent has current content and a full rewrite is intended.`,
+        description: `Write complete file content. For CREATING NEW files or intentional full-file replacement ONLY.
+To MODIFY an existing file you MUST use edit_file: first read_file to get the current content, then apply targeted changes with edit_file (string/line/batch mode). Using write_file on an existing file for partial edits will be REJECTED and fail — switch to edit_file immediately. NEVER use write_file to partially modify an existing file. Overwrites the whole file.`,
         criticalRules: [
             'Creating a NEW file: use write_file.',
             'Editing an EXISTING file: you MUST use edit_file (read_file first, then edit_file with string/line/batch mode). NEVER use write_file to partially modify an existing file.',
@@ -1938,7 +1937,11 @@ export function generateToolDefinition(config: ToolConfig): ToolDefinition {
 
     return {
         name: config.name,
-        description: config.description,
+        // function-calling 模式下模型主要看 description 字段，
+        // 将 criticalRules 合并进来，保证"编辑已有文件必须用 edit_file"等硬规则对云端模型可见。
+        description: config.criticalRules && config.criticalRules.length > 0
+            ? `${config.description}\n\nRules:\n${config.criticalRules.map((r) => `- ${r}`).join('\n')}`
+            : config.description,
         ...(config.approvalType !== 'none' && { approvalType: config.approvalType }),
         parameters: {
             type: 'object',
