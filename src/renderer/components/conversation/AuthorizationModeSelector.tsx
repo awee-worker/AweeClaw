@@ -5,9 +5,9 @@
  * 用户选择后即覆盖 autoApprove / freeModeEnabled，成为工具审批的唯一开关。
  *
  * 三种方式：
- * - every-step（每步确认）：所有有副作用操作均需审批（命令、编辑、删除、邮件等）
- * - dangerous-only（危险确认，默认）：仅危险操作（删除文件、危险命令如 rm -rf）需审批
- * - never（无需确认）：所有操作自动执行（主进程安全底线仍独立生效）
+ * - every-step（手动审批，默认）：所有有副作用操作均需审批（命令、编辑、删除、邮件等）
+ * - dangerous-only（自动审批）：仅危险操作（删除文件、危险命令如 rm -rf）需审批
+ * - never（完全访问）：所有操作自动执行（主进程安全底线仍独立生效）
  *
  * 注意：只控制 UI 层审批门禁，不影响主进程安全底线（命令黑名单、危险模式、敏感路径、工作区边界）
  */
@@ -35,17 +35,17 @@ const MODES: Array<{
   {
     id: 'every-step',
     icon: ShieldCheck,
-    labelZh: '每步确认',
-    labelEn: 'Every Step',
+    labelZh: '手动审批',
+    labelEn: 'Manual Approval',
     descZh: '所有副作用操作均需审批（命令、编辑、删除、邮件等）',
-    descEn: 'All side-effect operations require approval',
+    descEn: 'All side-effect operations require manual approval',
     color: 'text-emerald-400',
   },
   {
     id: 'dangerous-only',
     icon: ShieldAlert,
-    labelZh: '危险确认',
-    labelEn: 'Dangerous Only',
+    labelZh: '自动审批',
+    labelEn: 'Auto Approval',
     descZh: '仅危险操作（删除文件、危险命令如 rm -rf）需审批',
     descEn: 'Only dangerous operations (deletion, dangerous commands) require approval',
     color: 'text-amber-400',
@@ -53,8 +53,8 @@ const MODES: Array<{
   {
     id: 'never',
     icon: ShieldOff,
-    labelZh: '无需确认',
-    labelEn: 'No Confirmation',
+    labelZh: '完全访问',
+    labelEn: 'Full Access',
     descZh: '所有操作自动执行（仍受安全底线限制）',
     descEn: 'All operations auto-execute (still subject to security baseline)',
     color: 'text-red-400',
@@ -65,7 +65,7 @@ const MODES: Array<{
  * authorizationMode 为 undefined（旧版本未设置，回退 autoApprove 逻辑）时，
  * UI 仍展示等效的默认值 dangerous-only，让用户感知当前行为并引导显式选择。
  */
-const DISPLAY_DEFAULT: AuthorizationMode = 'dangerous-only'
+const DISPLAY_DEFAULT: AuthorizationMode = 'every-step'
 
 export default function AuthorizationModeSelector({
   className = '',

@@ -7,9 +7,9 @@
  * - 使用内联样式 + CSS 变量跟随主题
  *
  * 三种授权方式：
- * - every-step（每步确认）：所有副作用操作均需审批
- * - dangerous-only（危险确认，默认）：仅危险操作需审批
- * - never（无需确认）：所有操作自动执行
+ * - every-step（手动审批）：所有副作用操作均需审批
+ * - dangerous-only（自动审批）：仅危险操作需审批
+ * - never（完全访问）：所有操作自动执行
  */
 
 import { memo, useState, useEffect, useRef } from 'react'
@@ -40,17 +40,17 @@ const MODES: Array<{
   {
     id: 'every-step',
     icon: ShieldCheck,
-    labelZh: '每步确认',
-    labelEn: 'Every Step',
+    labelZh: '手动审批',
+    labelEn: 'Manual Approval',
     descZh: '所有副作用操作均需审批',
-    descEn: 'All side-effect operations require approval',
+    descEn: 'All side-effect operations require manual approval',
     color: 'rgb(52, 211, 153)',
   },
   {
     id: 'dangerous-only',
     icon: ShieldAlert,
-    labelZh: '危险确认',
-    labelEn: 'Dangerous Only',
+    labelZh: '自动审批',
+    labelEn: 'Auto Approval',
     descZh: '仅危险操作需审批',
     descEn: 'Only dangerous operations require approval',
     color: 'rgb(251, 191, 36)',
@@ -58,8 +58,8 @@ const MODES: Array<{
   {
     id: 'never',
     icon: ShieldOff,
-    labelZh: '无需确认',
-    labelEn: 'No Confirmation',
+    labelZh: '完全访问',
+    labelEn: 'Full Access',
     descZh: '所有操作自动执行',
     descEn: 'All operations auto-execute',
     color: 'rgb(248, 113, 113)',
@@ -67,7 +67,7 @@ const MODES: Array<{
 ]
 
 /** 默认展示值（undefined 时回退到 dangerous-only） */
-const DISPLAY_DEFAULT: AuthorizationMode = 'dangerous-only'
+const DISPLAY_DEFAULT: AuthorizationMode = 'every-step'
 
 function MiniAuthorizationSelectorImpl({
   currentMode,

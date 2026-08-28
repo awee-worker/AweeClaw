@@ -2,7 +2,7 @@
  * 空对话态欢迎屏
  *
  * UI1：问候语随场景模式变化，多句轮换
- * UI3：模式相关的快捷引导卡片，点击直接发送
+ * UI3：当前场景模式的内置工具列表（5-6个核心工具 + 更多工具入口）
  *
  * @see {@link file:///Volumes/MacData/Ai/aweeclaw/aweeclaw-client/docs/scene-modes/06-ui-differentiation.md}
  */
@@ -11,9 +11,10 @@ import { useState, useCallback, useMemo, useRef } from 'react'
 import { useStore } from '@store'
 import { useSceneModeStore } from '@renderer/modes/sceneModeStore'
 import * as LucideIcons from 'lucide-react'
-import { Users, Sparkles, Rocket } from 'lucide-react'
+import { Users, Sparkles, Rocket, ChevronRight } from 'lucide-react'
 import { t, type Language } from '@renderer/i18n'
 import type { TimePeriod } from '@intelligence/capabilities/sceneMode/SceneModeDescriptor'
+import { getToolsByMode } from '@renderer/components/scene-tools/registry'
 
 const DEFAULT_TITLE_ZH = '需要我帮您做什么？'
 const DEFAULT_TITLE_EN = 'How can I help?'
@@ -37,6 +38,9 @@ type WorkTab = 'daily' | 'team' | 'free'
  */
 const SHOW_WORK_MODE_SELECTOR = false
 
+/** 欢迎界面默认展示的工具数量（不含"更多工具"） */
+const WELCOME_TOOL_COUNT = 5
+
 /**
  * 从 lucide-react 动态获取图标组件
  */
@@ -47,6 +51,8 @@ function getIconComponent(name: string): React.ComponentType<{ className?: strin
 
 export default function EmptyChatSuggestions() {
   const language = useStore(s => s.language)
+  const activeSidePanel = useStore(s => s.activeSidePanel)
+  const setActiveSidePanel = useStore(s => s.setActiveSidePanel)
   const teamModeEnabled = useStore(s => s.teamModeEnabled)
   const freeModeEnabled = useStore(s => s.freeModeEnabled)
   const setTeamModeEnabled = useStore(s => s.setTeamModeEnabled)
@@ -121,14 +127,32 @@ export default function EmptyChatSuggestions() {
   // 选择器隐藏时仅展示标题，去除原标题与选择器之间的大间距
   const contentGap = SHOW_WORK_MODE_SELECTOR ? 'gap-[66px]' : ''
 
-  // ── UI3：快捷引导卡片 ──
-  const quickPrompts = activeProfile.quickPrompts ?? []
+  // ── UI3：当前场景模式的内置工具列表 ──
+  const allTools = useMemo(() => getToolsByMode(currentSceneMode), [currentSceneMode])
 
-  // 点击卡片发送 prompt
-  const handlePromptClick = useCallback((prompt: string) => {
-    // 通过自定义事件通知 ChatPanel 发送
+  // 优先 core（P0），不足再补 enhanced（P1），取前 WELCOME_TOOL_COUNT 个
+  const coreTools = allTools.filter(t => t.tier === 'core')
+  const enhancedTools = allTools.filter(t => t.tier === 'enhanced')
+  const welcomeTools = [...coreTools, ...enhancedTools].slice(0, WELCOME_TOOL_COUNT)
+
+  // 点击工具卡片：发送自然语言 prompt 到输入框
+  const handleToolClick = useCallback((toolName: string, toolNameEn: string) => {
+    const prompt = isZh
+      ? `请帮我打开「${toolName}」工具`
+      : `Please open the ${toolNameEn} tool for me`
     window.dispatchEvent(new CustomEvent('aweeclaw:quick-prompt', { detail: prompt }))
-  }, [])
+  }, [isZh])
+
+  // 点击"更多工具"：打开场景工具面板
+  const handleMoreTools = useCallback(() => {
+    if (activeSidePanel === 'scene-tools') {
+      setActiveSidePanel(null)
+    } else {
+      setActiveSidePanel('scene-tools')
+    }
+  }, [activeSidePanel, setActiveSidePanel])
+
+  const hasMoreTools = allTools.length > WELCOME_TOOL_COUNT
 
   return (
     <div className="flex flex-col items-center w-full select-none">
@@ -193,16 +217,17 @@ export default function EmptyChatSuggestions() {
           </div>
         )}
 
-        {/* UI3：快捷引导卡片 */}
-        {quickPrompts.length > 0 && (
-          <div className="flex flex-wrap items-center justify-center gap-2 mt-6 max-w-[640px]">
-            {quickPrompts.map((item, idx) => {
-              const Icon = getIconComponent(item.icon)
-              const label = isZh ? item.label : (item.labelEn ?? item.label)
+        {/* UI3：内置工具列表 */}
+        {welcomeTools.length > 0 && (
+          <div className="flex flex-wrap items-center justify-center gap-2.5 mt-6 max-w-[700px]">
+            {welcomeTools.map((tool) => {
+              const Icon = getIconComponent(tool.icon)
+              const label = isZh ? tool.name : tool.nameEn
               return (
                 <button
-                  key={`${item.icon}-${idx}`}
-                  onClick={() => handlePromptClick(item.prompt)}
+                  key={tool.id}
+                  onClick={() => handleToolClick(tool.name, tool.nameEn)}
+                  title={isZh ? tool.description : tool.description}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-surface/60 border border-border/50 text-text-secondary hover:text-text-primary hover:border-accent/30 hover:bg-accent/5 transition-all duration-200"
                 >
                   <Icon className="w-3.5 h-3.5" strokeWidth={1.5} />
@@ -210,6 +235,15 @@ export default function EmptyChatSuggestions() {
                 </button>
               )
             })}
+            {hasMoreTools && (
+              <button
+                onClick={handleMoreTools}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium bg-surface/60 border border-border/50 text-text-muted hover:text-text-primary hover:border-accent/30 hover:bg-accent/5 transition-all duration-200"
+              >
+                <span>{isZh ? '更多工具' : 'More Tools'}</span>
+                <ChevronRight className="w-3 h-3" />
+              </button>
+            )}
           </div>
         )}
       </div>
