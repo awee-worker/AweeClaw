@@ -235,12 +235,16 @@ export default function ChatPanel() {
   } = useAgentActions()
 
   // ===== 输入状态 =====
-  const [inputState, setInputState] = useState('')
+  // 用 ref 持久化输入内容，防止组件卸载/重新挂载时丢失
+  const inputRef = useRef('')
+  const [inputState, setInputState] = useState(inputRef.current)
   const [deleteSelectionMode, setDeleteSelectionMode] = useState(false)
   const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(new Set())
   const input = inputState
   const setInput = useCallback((value: string | null | undefined) => {
-    setInputState(value ?? '')
+    const next = value ?? ''
+    inputRef.current = next
+    setInputState(next)
   }, [])
   const inputPromptConsumedRef = useRef(false)
   // 用 ref 保存 setInputPrompt，避免依赖项变化导致 effect 重复触发
@@ -250,6 +254,7 @@ export default function ChatPanel() {
   useEffect(() => {
     if (inputPrompt && !inputPromptConsumedRef.current) {
       setInputState(inputPrompt)
+      inputRef.current = inputPrompt
       inputPromptConsumedRef.current = true
       setInputPromptRef.current('')
     } else if (!inputPrompt) {

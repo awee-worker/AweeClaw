@@ -96,21 +96,21 @@ export default function LifeWeather() {
 
       {data && (
         <div className="p-4 rounded-xl bg-gradient-to-br from-sky-500/10 to-indigo-500/10 border border-sky-500/20">
-          <div className="flex items-center gap-1.5 text-[11px] text-text-muted mb-2">
+          <div className="flex items-center gap-1.5 text-[12px] text-text-muted mb-2">
             <MapPin className="w-3 h-3" /> {city || input}
           </div>
           <div className="flex items-center gap-4">
             <div className="text-4xl font-semibold tabular-nums">{data.temp}°</div>
             <div className="flex-1">
               <div className="text-[14px] font-medium">{data.desc}</div>
-              <div className="text-[11px] text-text-muted mt-0.5">体感 {data.feels}°</div>
+              <div className="text-[12px] text-text-muted mt-0.5">体感 {data.feels}°</div>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2 mt-3">
-            <div className="flex items-center gap-1.5 text-[11px] text-text-muted">
+            <div className="flex items-center gap-1.5 text-[12px] text-text-muted">
               <Droplets className="w-3 h-3 text-sky-400" /> 湿度 {data.humidity}%
             </div>
-            <div className="flex items-center gap-1.5 text-[11px] text-text-muted">
+            <div className="flex items-center gap-1.5 text-[12px] text-text-muted">
               <Wind className="w-3 h-3 text-sky-400" /> 风速 {data.wind} km/h
             </div>
           </div>
@@ -126,7 +126,7 @@ export default function LifeWeather() {
         </div>
       )}
 
-      <div className="mt-auto pt-3 text-[10px] text-text-muted/50">
+      <div className="mt-auto pt-3 text-[12px] text-text-muted/50">
         数据来源：wttr.in 公共天气服务
       </div>
     </div>

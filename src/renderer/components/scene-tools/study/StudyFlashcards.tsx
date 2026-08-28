@@ -64,7 +64,7 @@ export default function StudyFlashcards() {
       <div className="flex items-center gap-2 px-1 mb-2">
         <Layers className="w-4 h-4 text-accent" />
         <span className="text-[13px] font-semibold">闪卡复习</span>
-        <span className="text-[11px] text-text-muted">{stats.total} 张 · {stats.mastered} 已掌握</span>
+        <span className="text-[12px] text-text-muted">{stats.total} 张 · {stats.mastered} 已掌握</span>
         <button
           onClick={() => setShowForm((v) => !v)}
           className="ml-auto w-5 h-5 rounded-md bg-accent/10 text-accent flex items-center justify-center hover:bg-accent/20 transition-colors"
@@ -77,7 +77,7 @@ export default function StudyFlashcards() {
       <div className="flex items-center gap-1.5 mb-2">
         <select
           value={deck} onChange={(e) => { setDeck(e.target.value); setReviewIdx(0); setFlipped(false) }}
-          className="flex-1 text-[11px] px-2 py-1.5 rounded-md bg-surface border border-border/50 text-text-muted focus:outline-none"
+          className="flex-1 text-[12px] px-2 py-1.5 rounded-md bg-surface border border-border/50 text-text-muted focus:outline-none"
         >
           <option value="全部">全部牌组</option>
           {decks.map((d) => <option key={d} value={d}>{d}</option>)}
@@ -85,13 +85,13 @@ export default function StudyFlashcards() {
         <div className="flex gap-1">
           <button
             onClick={() => setView('review')}
-            className={`px-2 py-1 rounded-md text-[11px] transition-colors ${view === 'review' ? 'bg-accent/10 text-accent' : 'text-text-muted'}`}
+            className={`px-2 py-1 rounded-md text-[12px] transition-colors ${view === 'review' ? 'bg-accent/10 text-accent' : 'text-text-muted'}`}
           >
             复习 <span className="text-accent font-semibold">{stats.due}</span>
           </button>
           <button
             onClick={() => setView('list')}
-            className={`px-2 py-1 rounded-md text-[11px] transition-colors ${view === 'list' ? 'bg-accent/10 text-accent' : 'text-text-muted'}`}
+            className={`px-2 py-1 rounded-md text-[12px] transition-colors ${view === 'list' ? 'bg-accent/10 text-accent' : 'text-text-muted'}`}
           >
             列表
           </button>
@@ -112,8 +112,8 @@ export default function StudyFlashcards() {
           </div>
           <div className="flex gap-2">
             <input value={newDeck} onChange={(e) => setNewDeck(e.target.value)} placeholder="新牌组名（可选）"
-              className="flex-1 text-[11px] px-2 py-1 rounded-md bg-background border border-border/60 focus:outline-none" />
-            <button onClick={handleAddDeck} className="px-2 py-1 rounded-md border border-border/60 text-[11px] text-text-muted hover:text-text-primary transition-colors">
+              className="flex-1 text-[12px] px-2 py-1 rounded-md bg-background border border-border/60 focus:outline-none" />
+            <button onClick={handleAddDeck} className="px-2 py-1 rounded-md border border-border/60 text-[12px] text-text-muted hover:text-text-primary transition-colors">
               新建牌组
             </button>
           </div>
@@ -125,7 +125,7 @@ export default function StudyFlashcards() {
         <div className="flex-1 flex flex-col min-h-0">
           {current ? (
             <>
-              <div className="text-center text-[10px] text-text-muted mb-1">
+              <div className="text-center text-[12px] text-text-muted mb-1">
                 待复习 {dueCards.length} 张 · 第 {Math.min(reviewIdx + 1, dueCards.length)} 张 · 盒子{current.box}
               </div>
               <div
@@ -134,7 +134,7 @@ export default function StudyFlashcards() {
               >
                 <div className="text-center">
                   <div className="text-[15px] font-medium leading-relaxed">{flipped ? current.back : current.front}</div>
-                  <div className="mt-3 text-[10px] text-text-muted flex items-center justify-center gap-1">
+                  <div className="mt-3 text-[12px] text-text-muted flex items-center justify-center gap-1">
                     {flipped ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
                     点击卡片翻转
                   </div>
@@ -159,7 +159,7 @@ export default function StudyFlashcards() {
             <div className="flex-1 flex flex-col items-center justify-center gap-3 text-text-muted/60">
               <RefreshCw className="w-8 h-8" />
               <div className="text-[12px]">没有待复习的卡片 🎉</div>
-              <div className="text-[11px] text-center px-4">根据遗忘曲线，已掌握的卡片会在合适的时间再次出现</div>
+              <div className="text-[12px] text-center px-4">根据遗忘曲线，已掌握的卡片会在合适的时间再次出现</div>
             </div>
           )}
         </div>
@@ -176,14 +176,14 @@ export default function StudyFlashcards() {
             .sort((a, b) => a.createdAt - b.createdAt)
             .map((c) => (
               <div key={c.id} className="group flex items-center gap-2 px-2 py-1.5 rounded-lg border border-border/40">
-                <span className="w-4 h-4 rounded text-[10px] bg-accent/10 text-accent flex items-center justify-center flex-shrink-0">
+                <span className="w-4 h-4 rounded text-[12px] bg-accent/10 text-accent flex items-center justify-center flex-shrink-0">
                   {c.box}
                 </span>
                 <div className="flex-1 min-w-0">
                   <div className="text-[12px] truncate">{c.front}</div>
-                  <div className="text-[10px] text-text-muted truncate">{c.back} · {c.deck}</div>
+                  <div className="text-[12px] text-text-muted truncate">{c.back} · {c.deck}</div>
                 </div>
-                <div className="text-[10px] text-text-muted flex-shrink-0">
+                <div className="text-[12px] text-text-muted flex-shrink-0">
                   {c.wrongCount > 0 && <span className="text-red-500 mr-1">错{c.wrongCount}</span>}
                   {c.rightCount > 0 && <span className="text-emerald-500">对{c.rightCount}</span>}
                 </div>

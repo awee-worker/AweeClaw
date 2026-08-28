@@ -146,10 +146,10 @@ export default function WorkHours() {
       <div className="flex items-center gap-2 px-1 mb-3">
         <Clock className="w-4 h-4 text-accent" />
         <span className="text-[13px] font-semibold">工时记录</span>
-        <span className="text-[11px] text-text-muted">累计 {fmtHours(totalMin)}</span>
+        <span className="text-[12px] text-text-muted">累计 {fmtHours(totalMin)}</span>
         <button
           onClick={() => setShowBackfill((v) => !v)}
-          className="ml-auto flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-accent/10 text-accent text-[11px] hover:bg-accent/20 transition-colors"
+          className="ml-auto flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-accent/10 text-accent text-[12px] hover:bg-accent/20 transition-colors"
         >
           <Plus className="w-3 h-3" /> 补录
         </button>
@@ -157,16 +157,16 @@ export default function WorkHours() {
 
       {/* 今日打卡 */}
       <div className="p-3 rounded-xl bg-surface/70 border border-border/40 mb-3">
-        <div className="text-[11px] text-text-muted mb-2">今日 · {today}</div>
+        <div className="text-[12px] text-text-muted mb-2">今日 · {today}</div>
         <div className="grid grid-cols-2 gap-2 mb-2">
           <div className="px-2 py-1.5 rounded-lg bg-background border border-border/40 text-center">
-            <div className="text-[10px] text-text-muted">上班</div>
+            <div className="text-[12px] text-text-muted">上班</div>
             <div className="text-[16px] font-semibold tabular-nums">
               <TimeBlock item={todayRecord} field="start" />
             </div>
           </div>
           <div className="px-2 py-1.5 rounded-lg bg-background border border-border/40 text-center">
-            <div className="text-[10px] text-text-muted">下班</div>
+            <div className="text-[12px] text-text-muted">下班</div>
             <div className="text-[16px] font-semibold tabular-nums">
               <TimeBlock item={todayRecord} field="end" />
             </div>
@@ -183,7 +183,7 @@ export default function WorkHours() {
               <input
                 value={note} onChange={(e) => setNote(e.target.value)}
                 placeholder="备注（可选）"
-                className="flex-1 text-[11px] px-2 py-1.5 rounded-md bg-background border border-border/50 focus:outline-none"
+                className="flex-1 text-[12px] px-2 py-1.5 rounded-md bg-background border border-border/50 focus:outline-none"
               />
               <button onClick={clockIn} className="px-3 py-1.5 rounded-md bg-accent text-white text-[12px] flex items-center gap-1 hover:opacity-90 transition-opacity">
                 <LogIn className="w-3 h-3" /> 上班打卡
@@ -196,7 +196,7 @@ export default function WorkHours() {
             </button>
           )}
           {todayRecord?.end && (
-            <div className="w-full text-center text-[11px] text-text-muted/70 py-1">今日已打卡，点击时间可修正</div>
+            <div className="w-full text-center text-[12px] text-text-muted/70 py-1">今日已打卡，点击时间可修正</div>
           )}
         </div>
       </div>
@@ -206,17 +206,17 @@ export default function WorkHours() {
         <div className="space-y-2 mb-3 p-2.5 rounded-xl bg-surface/70 border border-border/40">
           <input
             type="date" value={bfDate} onChange={(e) => setBfDate(e.target.value)}
-            className="w-full text-[11px] px-2 py-1.5 rounded-md bg-background border border-border/50 text-text-muted [color-scheme:dark]"
+            className="w-full text-[12px] px-2 py-1.5 rounded-md bg-background border border-border/50 text-text-muted [color-scheme:dark]"
           />
           <div className="flex items-center gap-2">
-            <label className="text-[11px] text-text-muted flex-1 flex items-center justify-between gap-1">
+            <label className="text-[12px] text-text-muted flex-1 flex items-center justify-between gap-1">
               开始
               <input
                 type="time" value={bfStart} onChange={(e) => setBfStart(e.target.value)}
                 className="text-[12px] px-2 py-1 rounded-md bg-background border border-border/50 tabular-nums [color-scheme:dark]"
               />
             </label>
-            <label className="text-[11px] text-text-muted flex-1 flex items-center justify-between gap-1">
+            <label className="text-[12px] text-text-muted flex-1 flex items-center justify-between gap-1">
               结束
               <input
                 type="time" value={bfEnd} onChange={(e) => setBfEnd(e.target.value)}
@@ -227,9 +227,9 @@ export default function WorkHours() {
           <input
             value={bfNote} onChange={(e) => setBfNote(e.target.value)}
             placeholder="备注（可选）"
-            className="w-full text-[11px] px-2 py-1.5 rounded-md bg-background border border-border/50 focus:outline-none"
+            className="w-full text-[12px] px-2 py-1.5 rounded-md bg-background border border-border/50 focus:outline-none"
           />
-          {bfError && <div className="text-[11px] text-red-500">{bfError}</div>}
+          {bfError && <div className="text-[12px] text-red-500">{bfError}</div>}
           <button
             onClick={handleBackfill}
             className="w-full py-1.5 rounded-md bg-accent text-white text-[12px] hover:opacity-90 transition-opacity"
@@ -241,13 +241,13 @@ export default function WorkHours() {
 
       {/* 历史 */}
       <div className="flex-1 overflow-y-auto no-scrollbar space-y-1">
-        <div className="text-[11px] text-text-muted mb-1">历史记录（点击时间可修正）</div>
+        <div className="text-[12px] text-text-muted mb-1">历史记录（点击时间可修正）</div>
         {items.length === 0 && <div className="text-center text-[12px] text-text-muted/60 py-6">暂无记录</div>}
         {[...items].sort((a, b) => (a.date < b.date ? 1 : -1)).map((i) => (
           <div key={i.id} className="group flex items-center gap-2 px-2 py-1.5 rounded-lg border border-border/40">
             <div className="flex-1 min-w-0">
               <div className="text-[12px] tabular-nums">{i.date}</div>
-              <div className="text-[10px] text-text-muted">
+              <div className="text-[12px] text-text-muted">
                 <button
                   onClick={() => openEditor(i.id, 'start', i.start)}
                   className="tabular-nums hover:text-accent transition-colors"

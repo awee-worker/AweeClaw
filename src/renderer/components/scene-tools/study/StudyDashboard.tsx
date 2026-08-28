@@ -68,7 +68,7 @@ export default function StudyDashboard() {
       <div className="grid grid-cols-2 gap-2 mb-3">
         {stats.map((s) => (
           <div key={s.label} className="px-3 py-2.5 rounded-xl bg-surface/70 border border-border/40">
-            <div className={`flex items-center gap-1 ${s.color}`}>{s.icon}<span className="text-[10px] text-text-muted ml-0.5">{s.label}</span></div>
+            <div className={`flex items-center gap-1 ${s.color}`}>{s.icon}<span className="text-[12px] text-text-muted ml-0.5">{s.label}</span></div>
             <div className="text-[18px] font-semibold mt-0.5 tabular-nums">{s.value}</div>
           </div>
         ))}
@@ -76,7 +76,7 @@ export default function StudyDashboard() {
 
       {/* 近7天 */}
       <div className="mb-3">
-        <div className="text-[11px] text-text-muted mb-1.5">近 7 天学习时长</div>
+        <div className="text-[12px] text-text-muted mb-1.5">近 7 天学习时长</div>
         <div className="flex items-end gap-1.5 h-20">
           {week.map((d) => (
             <div key={d.date} className="flex-1 flex flex-col items-center gap-1">
@@ -92,26 +92,26 @@ export default function StudyDashboard() {
       </div>
 
       {/* 学习资产 */}
-      <div className="text-[11px] text-text-muted mb-1.5">学习资产</div>
+      <div className="text-[12px] text-text-muted mb-1.5">学习资产</div>
       <div className="grid grid-cols-3 gap-2">
         <div className="px-3 py-2 rounded-xl bg-surface/70 border border-border/40">
-          <div className="flex items-center gap-1 text-accent"><Layers className="w-3 h-3" /><span className="text-[10px] text-text-muted">闪卡</span></div>
-          <div className="text-[15px] font-semibold mt-0.5">{cards.length}<span className="text-[10px] text-text-muted ml-1">张</span></div>
-          <div className="text-[10px] text-amber-500">{dueCards} 待复习</div>
+          <div className="flex items-center gap-1 text-accent"><Layers className="w-3 h-3" /><span className="text-[12px] text-text-muted">闪卡</span></div>
+          <div className="text-[15px] font-semibold mt-0.5">{cards.length}<span className="text-[12px] text-text-muted ml-1">张</span></div>
+          <div className="text-[12px] text-amber-500">{dueCards} 待复习</div>
         </div>
         <div className="px-3 py-2 rounded-xl bg-surface/70 border border-border/40">
-          <div className="flex items-center gap-1 text-emerald-500"><Layers className="w-3 h-3" /><span className="text-[10px] text-text-muted">掌握度</span></div>
-          <div className="text-[15px] font-semibold mt-0.5 tabular-nums">{mastery}<span className="text-[10px] text-text-muted">%</span></div>
-          <div className="text-[10px] text-text-muted">{masteredCards} 张已掌握</div>
+          <div className="flex items-center gap-1 text-emerald-500"><Layers className="w-3 h-3" /><span className="text-[12px] text-text-muted">掌握度</span></div>
+          <div className="text-[15px] font-semibold mt-0.5 tabular-nums">{mastery}<span className="text-[12px] text-text-muted">%</span></div>
+          <div className="text-[12px] text-text-muted">{masteredCards} 张已掌握</div>
         </div>
         <div className="px-3 py-2 rounded-xl bg-surface/70 border border-border/40">
-          <div className="flex items-center gap-1 text-red-500"><BookX className="w-3 h-3" /><span className="text-[10px] text-text-muted">错题</span></div>
-          <div className="text-[15px] font-semibold mt-0.5">{mistakes.length}<span className="text-[10px] text-text-muted">题</span></div>
-          <div className="text-[10px] text-amber-500">{openMistakes} 待复习</div>
+          <div className="flex items-center gap-1 text-red-500"><BookX className="w-3 h-3" /><span className="text-[12px] text-text-muted">错题</span></div>
+          <div className="text-[15px] font-semibold mt-0.5">{mistakes.length}<span className="text-[12px] text-text-muted">题</span></div>
+          <div className="text-[12px] text-amber-500">{openMistakes} 待复习</div>
         </div>
       </div>
 
-      <div className="mt-auto pt-3 text-[10px] text-text-muted/50">
+      <div className="mt-auto pt-3 text-[12px] text-text-muted/50">
         数据来自闪卡复习、学习番茄钟、错题本 · 持续学习，稳步提升 📈
       </div>
     </div>

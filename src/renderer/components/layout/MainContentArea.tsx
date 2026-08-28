@@ -134,34 +134,18 @@ function PrimaryMainContent({ layoutConfig, isWideModePanel }: MainContentAreaPr
     return <FullPageSlot><ErrorBoundary><Suspense fallback={<InlineSettingsSkeleton />}><PluginCenterPage /></Suspense></ErrorBoundary></FullPageSlot>
   }
 
-  // 编辑器 + Chat
-  if (openFiles.length > 0 && activeFilePath) {
-    return (
-      <>
-        <EditorSlot />
-        <ChatSection visible={chatVisible} mode="primary" />
-      </>
-    )
-  }
-
-  // 仅 Chat
-  if (chatVisible) {
-    return (
-      <div className="flex-1 min-w-0 overflow-hidden relative">
-        <ErrorBoundary><Suspense fallback={<ChatSkeleton />}><ChatPanel /></Suspense></ErrorBoundary>
-
-        {/* 语音对话覆盖层 - 仅覆盖聊天区域 */}
-        <VoiceConversationOverlaySlot />
-      </div>
-    )
-  }
-
-  // 空状态
+  // 始终渲染 ChatSection，避免 activeFilePath 变化时卸载/重新挂载
+  // 有文件时：EditorSlot 在左，ChatSection 在右固定宽度
+  // 无文件时：只渲染 ChatSection，flex:1 占满整个主区域
+  const hasFile = openFiles.length > 0 && activeFilePath !== null
   return (
-    <div className="flex-1 min-w-0 overflow-hidden flex items-center justify-center">
-      <div className="text-text-muted text-sm">
-        {t('app.aiassistanthiddenclickthe', language as Language)}
-      </div>
+    <div className="flex-1 flex min-h-0 overflow-hidden">
+      {hasFile && <EditorSlot />}
+      <ChatSection
+        visible={chatVisible}
+        mode="primary"
+        hasFile={hasFile}
+      />
     </div>
   )
 }

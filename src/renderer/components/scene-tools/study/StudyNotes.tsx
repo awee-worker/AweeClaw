@@ -68,7 +68,7 @@ export default function StudyNotes() {
       <div className="flex items-center gap-2 px-1 mb-2">
         <NotebookPen className="w-4 h-4 text-accent" />
         <span className="text-[13px] font-semibold">笔记库</span>
-        <span className="text-[11px] text-text-muted">{items.length} 篇</span>
+        <span className="text-[12px] text-text-muted">{items.length} 篇</span>
         <button
           onClick={() => { setShowForm((v) => !v); setSelectedId(null) }}
           className="ml-auto w-5 h-5 rounded-md bg-accent/10 text-accent flex items-center justify-center hover:bg-accent/20 transition-colors"
@@ -94,7 +94,7 @@ export default function StudyNotes() {
           <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="内容（支持 Markdown）…" rows={4}
             className="w-full text-[12px] px-2 py-1.5 rounded-md bg-background border border-border/60 focus:outline-none resize-none" />
           <input value={tagsInput} onChange={(e) => setTagsInput(e.target.value)} placeholder="标签，逗号分隔：算法, 笔记"
-            className="w-full text-[11px] px-2 py-1.5 rounded-md bg-background border border-border/60 focus:outline-none" />
+            className="w-full text-[12px] px-2 py-1.5 rounded-md bg-background border border-border/60 focus:outline-none" />
           <button onClick={handleAdd} className="w-full py-1.5 rounded-md bg-accent text-white text-[12px] hover:opacity-90 transition-opacity">
             保存笔记
           </button>
@@ -111,7 +111,7 @@ export default function StudyNotes() {
               <textarea value={editContent} onChange={(e) => setEditContent(e.target.value)} rows={6}
                 className="w-full text-[12px] px-2 py-1.5 rounded-md bg-background border border-border/60 focus:outline-none resize-none" />
               <input value={editTags} onChange={(e) => setEditTags(e.target.value)}
-                className="w-full text-[11px] px-2 py-1 rounded-md bg-background border border-border/60 focus:outline-none" />
+                className="w-full text-[12px] px-2 py-1 rounded-md bg-background border border-border/60 focus:outline-none" />
               <div className="flex gap-2">
                 <button onClick={saveEdit} className="flex-1 py-1 rounded-md bg-accent text-white text-[12px] hover:opacity-90 transition-opacity">保存</button>
                 <button onClick={() => setEditing(false)} className="px-3 py-1 rounded-md border border-border/60 text-[12px] text-text-muted">取消</button>
@@ -121,7 +121,7 @@ export default function StudyNotes() {
             <>
               <div className="flex items-center gap-2">
                 <span className="flex-1 text-[13px] font-medium break-words">{selected.title}</span>
-                <button onClick={startEdit} className="text-[10px] text-accent hover:underline">编辑</button>
+                <button onClick={startEdit} className="text-[12px] text-accent hover:underline">编辑</button>
                 <button onClick={() => { remove(selected.id); setSelectedId(null) }} className="text-text-muted hover:text-red-500 transition-colors">
                   <Trash2 className="w-3 h-3" />
                 </button>
@@ -129,7 +129,7 @@ export default function StudyNotes() {
               <div className="text-[12px] text-text-muted whitespace-pre-line leading-relaxed max-h-48 overflow-y-auto no-scrollbar">{selected.content}</div>
               <div className="flex gap-1 flex-wrap">
                 {selected.tags.map((t) => (
-                  <span key={t} className="text-[10px] px-1.5 py-px rounded bg-accent/10 text-accent flex items-center gap-0.5">
+                  <span key={t} className="text-[12px] px-1.5 py-px rounded bg-accent/10 text-accent flex items-center gap-0.5">
                     <Tag className="w-2 h-2" /> {t}
                   </span>
                 ))}
@@ -153,7 +153,7 @@ export default function StudyNotes() {
             }`}
           >
             <div className="text-[12px] font-medium truncate">{n.title}</div>
-            <div className="text-[10px] text-text-muted mt-0.5 truncate">{n.content}</div>
+            <div className="text-[12px] text-text-muted mt-0.5 truncate">{n.content}</div>
             <div className="flex items-center gap-1 mt-1">
               {n.tags.slice(0, 3).map((t) => (
                 <span key={t} className="text-[9px] px-1 py-px rounded bg-accent/10 text-accent">{t}</span>

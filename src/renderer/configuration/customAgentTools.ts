@@ -62,8 +62,16 @@ const AGENT_BUILTIN_TOOL_MAP: Record<string, string[]> = {
   image_gen: [],
 }
 
-/** 系统必需工具：不参与智能体白名单过滤（文档提取等基础设施） */
-const ALWAYS_ALLOWED_TOOLS = new Set<string>(['extract_document'])
+/** 系统必需工具：不参与智能体白名单过滤（文档提取、场景工具等基础设施） */
+const ALWAYS_ALLOWED_TOOLS = new Set<string>([
+  'extract_document',
+  'scene_tools_list',
+  'scene_tools_read',
+  'scene_tools_add',
+  'scene_tools_update',
+  'scene_tools_delete',
+  'scene_tools_stats',
+])
 
 /** 读取当前激活的自定义智能体（未选择 / 已禁用返回 null） */
 export function getActiveCustomAgent(): CustomAgentProfile | null {

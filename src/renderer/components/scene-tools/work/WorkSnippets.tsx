@@ -62,7 +62,7 @@ export default function WorkSnippets() {
           <button
             key={c}
             onClick={() => setActiveCat(c)}
-            className={`px-2 py-0.5 rounded-md text-[11px] transition-colors ${
+            className={`px-2 py-0.5 rounded-md text-[12px] transition-colors ${
               activeCat === c ? 'bg-accent/10 text-accent' : 'text-text-muted hover:text-text-primary'
             }`}
           >
@@ -77,7 +77,7 @@ export default function WorkSnippets() {
             <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="标题，如：进度同步邮件"
               className="flex-1 text-[12px] px-2 py-1.5 rounded-md bg-background border border-border/60 focus:outline-none" />
             <select value={category} onChange={(e) => setCategory(e.target.value)}
-              className="text-[11px] px-1.5 py-1 rounded-md bg-background border border-border/60 text-text-muted focus:outline-none">
+              className="text-[12px] px-1.5 py-1 rounded-md bg-background border border-border/60 text-text-muted focus:outline-none">
               {categories.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
@@ -104,8 +104,8 @@ export default function WorkSnippets() {
                 <Trash2 className="w-3 h-3" />
               </button>
             </div>
-            <div className="text-[11px] text-text-muted leading-relaxed line-clamp-3 whitespace-pre-line">{s.content}</div>
-            <div className="text-[10px] text-accent/70 mt-1">{s.category}</div>
+            <div className="text-[12px] text-text-muted leading-relaxed line-clamp-3 whitespace-pre-line">{s.content}</div>
+            <div className="text-[12px] text-accent/70 mt-1">{s.category}</div>
           </div>
         ))}
       </div>

@@ -35,7 +35,7 @@ export default function LifeShopping() {
       </button>
       <div className="flex-1 min-w-0">
         <div className={`text-[12px] truncate ${item.done ? 'line-through text-text-muted' : ''}`}>{item.name}</div>
-        {item.note && <div className="text-[10px] text-text-muted truncate">{item.note}</div>}
+        {item.note && <div className="text-[12px] text-text-muted truncate">{item.note}</div>}
       </div>
       <button onClick={() => remove(item.id)} className="opacity-0 group-hover:opacity-100 text-text-muted hover:text-red-500 transition-opacity">
         <Trash2 className="w-3 h-3" />
@@ -48,9 +48,9 @@ export default function LifeShopping() {
       <div className="flex items-center gap-2 px-1 mb-3">
         <ShoppingCart className="w-4 h-4 text-accent" />
         <span className="text-[13px] font-semibold">购物清单</span>
-        <span className="text-[11px] text-text-muted">{active.length} 待购 · {done.length} 已购</span>
+        <span className="text-[12px] text-text-muted">{active.length} 待购 · {done.length} 已购</span>
         {items.length > 0 && (
-          <button onClick={reset} className="ml-auto text-[10px] text-text-muted hover:text-red-500 transition-colors">
+          <button onClick={reset} className="ml-auto text-[12px] text-text-muted hover:text-red-500 transition-colors">
             清空
           </button>
         )}
@@ -66,7 +66,7 @@ export default function LifeShopping() {
         <input
           value={note} onChange={(e) => setNote(e.target.value)}
           placeholder="备注"
-          className="w-20 text-[11px] px-2 py-1.5 rounded-lg bg-surface border border-border/60 focus:outline-none"
+          className="w-20 text-[12px] px-2 py-1.5 rounded-lg bg-surface border border-border/60 focus:outline-none"
         />
         <button onClick={handleAdd} className="px-2.5 py-1.5 rounded-lg bg-accent text-white text-[12px] flex items-center gap-1 hover:opacity-90 transition-opacity">
           <Plus className="w-3.5 h-3.5" />
@@ -83,7 +83,7 @@ export default function LifeShopping() {
         {active.map(renderItem)}
         {done.length > 0 && (
           <>
-            <div className="text-[10px] text-text-muted mt-3 mb-1">已购 ({done.length})</div>
+            <div className="text-[12px] text-text-muted mt-3 mb-1">已购 ({done.length})</div>
             {done.map(renderItem)}
           </>
         )}

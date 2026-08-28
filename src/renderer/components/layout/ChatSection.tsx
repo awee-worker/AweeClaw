@@ -29,9 +29,11 @@ interface ChatSectionProps {
   visible: boolean
   /** 布局模式：primary 对应 chatPosition=primary，secondary 对应其他 */
   mode?: 'primary' | 'secondary'
+  /** 是否有文件打开，用于控制宽度行为 */
+  hasFile?: boolean
 }
 
-export default function ChatSection({ visible, mode = 'secondary' }: ChatSectionProps) {
+export default function ChatSection({ visible, mode = 'secondary', hasFile }: ChatSectionProps) {
   const { chatWidth, setChatWidth, setChatVisible, voiceConversationActive, setVoiceConversationActive } = useStore(useShallow((s) => ({
     chatWidth: s.chatWidth,
     setChatWidth: s.setChatWidth,
@@ -53,17 +55,26 @@ export default function ChatSection({ visible, mode = 'secondary' }: ChatSection
   if (!visible) return null
 
   const isPrimary = mode === 'primary'
+  // primary 模式下，无文件时 ChatSection 应占满剩余空间
+  const isFlexible = isPrimary && !hasFile
 
   return (
     <div
       ref={chatRef}
-      style={{ width: chatWidth, minWidth: isPrimary ? LAYOUT.CHAT_MIN_WIDTH : undefined }}
-      className={`flex-shrink-0 relative border-l border-border/30 shadow-[-1px_0_15px_rgba(0,0,0,0.03)] z-20 bg-background-chat`}
+      style={{
+        width: isFlexible ? undefined : chatWidth,
+        minWidth: isPrimary && !isFlexible ? LAYOUT.CHAT_MIN_WIDTH : undefined,
+        flex: isFlexible ? '1 1 0%' : undefined,
+      }}
+      className={`relative border-l border-border/30 shadow-[-1px_0_15px_rgba(0,0,0,0.03)] z-20 bg-background-chat ${isFlexible ? 'min-w-0' : 'flex-shrink-0'}`}
     >
-      <div
-        className="absolute top-0 left-0 w-1 h-full cursor-col-resize active:bg-accent transition-colors z-50 -translate-x-[2px]"
-        onMouseDown={startResize}
-      />
+      {/* 非弹性模式下显示拖拽手柄 */}
+      {!isFlexible && (
+        <div
+          className="absolute top-0 left-0 w-1 h-full cursor-col-resize active:bg-accent transition-colors z-50 -translate-x-[2px]"
+          onMouseDown={startResize}
+        />
+      )}
       <ErrorBoundary>
         <Suspense fallback={<ChatSkeleton />}>
           <ChatPanel />

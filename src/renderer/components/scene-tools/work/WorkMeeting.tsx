@@ -71,7 +71,7 @@ export default function WorkMeeting() {
   const exportActions = () => {
     if (!selected) return
     selected.actionItems.filter((a) => !a.startsWith('✅')).forEach((a) => {
-      addTodo({ text: `[会议] ${selected.title}：${a}`, done: false, priority: 'medium', source: 'meeting' })
+      addTodo({ text: `[会议] ${selected.title}：${a}`, status: 'pending', priority: 'medium', source: 'meeting' })
     })
     update(selected.id, { actionItems: selected.actionItems.map((a) => `✅ ${a.replace(/^✅ /, '')}`) })
   }
@@ -125,7 +125,7 @@ export default function WorkMeeting() {
       <div className="flex items-center gap-2 px-1 mb-3">
         <Users className="w-4 h-4 text-accent" />
         <span className="text-[13px] font-semibold">会议助手</span>
-        <span className="text-[11px] text-text-muted">{items.length} 场</span>
+        <span className="text-[12px] text-text-muted">{items.length} 场</span>
         <button
           onClick={() => setShowForm((v) => !v)}
           className="ml-auto w-5 h-5 rounded-md bg-accent/10 text-accent flex items-center justify-center hover:bg-accent/20 transition-colors"
@@ -145,19 +145,19 @@ export default function WorkMeeting() {
           <div className="flex gap-2">
             <input
               type="date" value={date} onChange={(e) => setDate(e.target.value)}
-              className="flex-1 text-[11px] px-2 py-1 rounded-md bg-background border border-border/60 text-text-muted"
+              className="flex-1 text-[12px] px-2 py-1 rounded-md bg-background border border-border/60 text-text-muted"
             />
             <input
               value={goal} onChange={(e) => setGoal(e.target.value)}
               placeholder="会议目标（会前准备）"
-              className="flex-1 text-[11px] px-2 py-1 rounded-md bg-background border border-border/60 focus:outline-none"
+              className="flex-1 text-[12px] px-2 py-1 rounded-md bg-background border border-border/60 focus:outline-none"
             />
           </div>
           <textarea
             value={agenda} onChange={(e) => setAgenda(e.target.value)}
             placeholder="议程（一行一个议题）"
             rows={2}
-            className="w-full text-[11px] px-2 py-1.5 rounded-md bg-background border border-border/60 focus:outline-none resize-none"
+            className="w-full text-[12px] px-2 py-1.5 rounded-md bg-background border border-border/60 focus:outline-none resize-none"
           />
           <button
             onClick={handleCreate}
@@ -186,7 +186,7 @@ export default function WorkMeeting() {
               <span className="flex-1 text-[12px] font-medium truncate">{m.title}</span>
               <ChevronRight className={`w-3 h-3 text-text-muted flex-shrink-0 ${selectedId === m.id ? 'rotate-90' : ''}`} />
             </div>
-            <div className="flex items-center gap-2 mt-1 text-[10px] text-text-muted">
+            <div className="flex items-center gap-2 mt-1 text-[12px] text-text-muted">
               <CalendarDays className="w-3 h-3" /> {m.date}
               {m.actionItems.length > 0 && (
                 <span className="flex items-center gap-0.5">
@@ -203,10 +203,10 @@ export default function WorkMeeting() {
         <div className="mt-2 pt-2 border-t border-border/40 space-y-2">
           <div className="flex items-center gap-2">
             <Target className="w-3.5 h-3.5 text-accent" />
-            <span className="text-[11px] font-medium">会议目标</span>
+            <span className="text-[12px] font-medium">会议目标</span>
             <button
               onClick={() => update(selected.id, { status: selected.status === 'done' ? 'pending' : 'done' })}
-              className={`ml-auto text-[10px] px-1.5 py-0.5 rounded-full border ${
+              className={`ml-auto text-[12px] px-1.5 py-0.5 rounded-full border ${
                 selected.status === 'done' ? 'text-emerald-500 border-emerald-500/40' : 'text-text-muted border-border/60'
               }`}
             >
@@ -216,7 +216,7 @@ export default function WorkMeeting() {
           <p className="text-[12px] text-text-muted leading-relaxed">{selected.goal || '未填写'}</p>
           {selected.agenda && (
             <>
-              <div className="text-[11px] font-medium">议程</div>
+              <div className="text-[12px] font-medium">议程</div>
               <div className="text-[12px] text-text-muted whitespace-pre-line leading-relaxed">{selected.agenda}</div>
             </>
           )}
@@ -233,20 +233,20 @@ export default function WorkMeeting() {
               onClick={aiGenerateNotes}
               disabled={aiLoading}
               title="基于会前准备与草稿，AI 生成结构化纪要 + 行动项"
-              className="self-stretch px-2 rounded-md bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white text-[11px] flex flex-col items-center justify-center gap-0.5 hover:opacity-90 transition-opacity disabled:opacity-50 shrink-0"
+              className="self-stretch px-2 rounded-md bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white text-[12px] flex flex-col items-center justify-center gap-0.5 hover:opacity-90 transition-opacity disabled:opacity-50 shrink-0"
             >
               {aiLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
               <span>AI 纪要</span>
             </button>
           </div>
-          {aiError && <div className="text-[11px] text-red-500">{aiError}</div>}
+          {aiError && <div className="text-[12px] text-red-500">{aiError}</div>}
           {/* 行动项 */}
           <div className="flex items-center gap-1.5">
             <ListChecks className="w-3.5 h-3.5 text-accent" />
-            <span className="text-[11px] font-medium">行动项</span>
+            <span className="text-[12px] font-medium">行动项</span>
             <button
               onClick={exportActions}
-              className="ml-auto text-[10px] px-1.5 py-0.5 rounded border border-accent/40 text-accent hover:bg-accent/10 transition-colors flex items-center gap-0.5"
+              className="ml-auto text-[12px] px-1.5 py-0.5 rounded border border-accent/40 text-accent hover:bg-accent/10 transition-colors flex items-center gap-0.5"
             >
               <ClipboardList className="w-2.5 h-2.5" /> 全部加入待办
             </button>
@@ -272,9 +272,9 @@ export default function WorkMeeting() {
               value={actionDraft} onChange={(e) => setActionDraft(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && addAction()}
               placeholder="添加行动项…"
-              className="flex-1 text-[11px] px-2 py-1 rounded-md bg-surface border border-border/50 focus:outline-none focus:border-accent/60"
+              className="flex-1 text-[12px] px-2 py-1 rounded-md bg-surface border border-border/50 focus:outline-none focus:border-accent/60"
             />
-            <button onClick={addAction} className="px-2 py-1 rounded-md bg-accent/10 text-accent text-[11px] hover:bg-accent/20 transition-colors">
+            <button onClick={addAction} className="px-2 py-1 rounded-md bg-accent/10 text-accent text-[12px] hover:bg-accent/20 transition-colors">
               添加
             </button>
           </div>

@@ -135,13 +135,12 @@ export default function EmptyChatSuggestions() {
   const enhancedTools = allTools.filter(t => t.tier === 'enhanced')
   const welcomeTools = [...coreTools, ...enhancedTools].slice(0, WELCOME_TOOL_COUNT)
 
-  // 点击工具卡片：发送自然语言 prompt 到输入框
-  const handleToolClick = useCallback((toolName: string, toolNameEn: string) => {
-    const prompt = isZh
-      ? `请帮我打开「${toolName}」工具`
-      : `Please open the ${toolNameEn} tool for me`
-    window.dispatchEvent(new CustomEvent('aweeclaw:quick-prompt', { detail: prompt }))
-  }, [isZh])
+  // 点击工具卡片：直接打开场景工具面板
+  const handleToolClick = useCallback((toolId: string) => {
+    setActiveSidePanel('scene-tools')
+    // 通知面板切换到对应工具
+    window.dispatchEvent(new CustomEvent('aweeclaw:scene-tool-open', { detail: toolId }))
+  }, [setActiveSidePanel])
 
   // 点击"更多工具"：打开场景工具面板
   const handleMoreTools = useCallback(() => {
@@ -226,7 +225,7 @@ export default function EmptyChatSuggestions() {
               return (
                 <button
                   key={tool.id}
-                  onClick={() => handleToolClick(tool.name, tool.nameEn)}
+                  onClick={() => handleToolClick(tool.id)}
                   title={isZh ? tool.description : tool.description}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-surface/60 border border-border/50 text-text-secondary hover:text-text-primary hover:border-accent/30 hover:bg-accent/5 transition-all duration-200"
                 >

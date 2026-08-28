@@ -25,6 +25,7 @@ export interface SceneToolMeta {
 // 工作模式
 // ============================================
 
+const WorkPlan = lazy(() => import('./work/WorkPlan'))
 const WorkTodo = lazy(() => import('./work/WorkTodo'))
 const WorkPomodoro = lazy(() => import('./work/WorkPomodoro'))
 const WorkMeeting = lazy(() => import('./work/WorkMeeting'))
@@ -63,6 +64,7 @@ const StudyPlanner = lazy(() => import('./study/StudyPlanner'))
 
 export const SCENE_TOOLS: SceneToolMeta[] = [
   // ---- 工作 ----
+  { id: 'work-plan', name: '工作计划', nameEn: 'Work Plan', icon: 'CalendarDays', mode: 'work', description: '周/月/日计划管理，到期提醒，优先级追踪', tier: 'core', component: WorkPlan },
   { id: 'work-todo', name: '待办清单', nameEn: 'Todo List', icon: 'ListTodo', mode: 'work', description: '任务管理：优先级、截止日期、完成追踪', tier: 'core', component: WorkTodo },
   { id: 'work-pomodoro', name: '番茄专注钟', nameEn: 'Pomodoro', icon: 'Timer', mode: 'work', description: '25 分钟专注循环，专注数据自动沉淀', tier: 'core', component: WorkPomodoro },
   { id: 'work-meeting', name: '会议助手', nameEn: 'Meeting Assistant', icon: 'Users', mode: 'work', description: '会前准备卡片 + 纪要要点 + 行动项', tier: 'core', component: WorkMeeting },

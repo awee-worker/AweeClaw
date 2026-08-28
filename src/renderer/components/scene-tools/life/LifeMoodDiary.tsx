@@ -54,18 +54,18 @@ export default function LifeMoodDiary() {
       <div className="flex items-center gap-2 px-1 mb-3">
         <HeartHandshake className="w-4 h-4 text-accent" />
         <span className="text-[13px] font-semibold">心情日记</span>
-        <span className="text-[11px] text-text-muted">累计 {items.length} 条</span>
+        <span className="text-[12px] text-text-muted">累计 {items.length} 条</span>
       </div>
 
       {/* 今日打卡 */}
       <div className="p-3 rounded-xl bg-surface/70 border border-border/40 mb-3">
-        <div className="text-[11px] text-text-muted mb-2">{todayEntry ? '今天的心情' : '今天感觉怎么样？'}</div>
+        <div className="text-[12px] text-text-muted mb-2">{todayEntry ? '今天的心情' : '今天感觉怎么样？'}</div>
         {todayEntry ? (
           <div className="flex items-center gap-2">
             <span className="text-2xl">{MOOD_META[todayEntry.mood - 1]?.emoji}</span>
             <div className="flex-1">
               <div className="text-[12px] font-medium">心情 {todayEntry.mood}/5</div>
-              {todayEntry.text && <div className="text-[11px] text-text-muted">{todayEntry.text}</div>}
+              {todayEntry.text && <div className="text-[12px] text-text-muted">{todayEntry.text}</div>}
             </div>
             <button onClick={() => remove(todayEntry.id)} className="text-text-muted hover:text-red-500 transition-colors">
               <Trash2 className="w-3.5 h-3.5" />
@@ -83,7 +83,7 @@ export default function LifeMoodDiary() {
                   }`}
                 >
                   <div className="text-[18px]">{m.emoji}</div>
-                  <div className="text-[10px] text-text-muted">{m.label}</div>
+                  <div className="text-[12px] text-text-muted">{m.label}</div>
                 </button>
               ))}
             </div>
@@ -104,10 +104,10 @@ export default function LifeMoodDiary() {
 
       {/* 趋势 */}
       <div className="flex items-center gap-3 px-1 mb-2">
-        <span className="text-[11px] text-text-muted">近7天平均</span>
+        <span className="text-[12px] text-text-muted">近7天平均</span>
         <span className="text-[14px] font-semibold">{avgThisWeek.toFixed(1)}/5</span>
         {Math.abs(trend) > 0.05 && (
-          <span className={`text-[11px] flex items-center gap-0.5 ${trend > 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+          <span className={`text-[12px] flex items-center gap-0.5 ${trend > 0 ? 'text-emerald-500' : 'text-red-500'}`}>
             {trend > 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
             {trend > 0 ? '+' : ''}{trend.toFixed(1)}
           </span>
@@ -128,14 +128,14 @@ export default function LifeMoodDiary() {
 
       {/* 历史 */}
       <div className="flex-1 overflow-y-auto no-scrollbar space-y-1">
-        <div className="text-[11px] text-text-muted mb-1">最近记录</div>
+        <div className="text-[12px] text-text-muted mb-1">最近记录</div>
         {sorted.length === 0 && <div className="text-center text-[12px] text-text-muted/60 py-6">还没有心情记录</div>}
         {sorted.map((e) => (
           <div key={e.id} className="flex items-start gap-2 px-2 py-1.5 rounded-lg border border-border/40">
             <span className="text-[16px]">{MOOD_META[e.mood - 1]?.emoji}</span>
             <div className="flex-1 min-w-0">
               {e.text && <div className="text-[12px] leading-snug">{e.text}</div>}
-              <div className="text-[10px] text-text-muted mt-0.5">{e.date} · {MOOD_META[e.mood - 1]?.label}</div>
+              <div className="text-[12px] text-text-muted mt-0.5">{e.date} · {MOOD_META[e.mood - 1]?.label}</div>
             </div>
             <button onClick={() => remove(e.id)} className="opacity-0 hover:opacity-100 text-text-muted hover:text-red-500 transition-opacity">
               <Trash2 className="w-3 h-3" />

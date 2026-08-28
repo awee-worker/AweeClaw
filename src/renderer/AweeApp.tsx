@@ -65,7 +65,7 @@ function AppContent() {
     showSettingsPage, showWelcomePage, showUserProfilePage, showBillingCenterPage,
     showSessionHistoryPage, showPluginCenterPage, showScenarioPage,
     activeScenarioId, scenarioConfigVersion, language,
-    isAuthenticated, setShowWelcomePage, setChatVisible,
+    isAuthenticated, setShowWelcomePage, setChatVisible, setActiveSidePanel,
   } = useStore(useShallow((state) => ({
     workspace: state.workspace,
     activeSidePanel: state.activeSidePanel,
@@ -85,6 +85,7 @@ function AppContent() {
     isAuthenticated: state.isAuthenticated,
     setShowWelcomePage: state.setShowWelcomePage,
     setChatVisible: state.setChatVisible,
+    setActiveSidePanel: state.setActiveSidePanel,
   })))
 
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false)
@@ -113,6 +114,18 @@ function AppContent() {
   useEffect(() => {
     window.__AWEECLAW_STORE__ = { getState: () => useStore.getState() }
   }, [])
+
+  // 监听 AI Agent 调用的场景工具面板自动打开事件
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const toolId = (e as CustomEvent).detail as string
+      if (toolId) {
+        setActiveSidePanel('scene-tools')
+      }
+    }
+    window.addEventListener('aweeclaw:scene-panel-open', handler)
+    return () => window.removeEventListener('aweeclaw:scene-panel-open', handler)
+  }, [setActiveSidePanel])
 
   // 监听菜单"键盘快捷键"命令派发的全局事件
   useEffect(() => {

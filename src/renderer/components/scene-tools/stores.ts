@@ -180,11 +180,16 @@ function createListStore<T extends BaseItem>(key: string) {
 
 export interface WorkTodoItem extends BaseItem {
   text: string
-  done: boolean
+  /** pending | executing | done */
+  status: 'pending' | 'executing' | 'done'
   /** high / medium / low */
   priority: 'high' | 'medium' | 'low'
   dueDate?: string
   source?: string
+  /** AI 完成后的摘要/备注 */
+  aiNote?: string
+  /** 执行完成时间 */
+  executedAt?: number
 }
 
 export interface PomodoroRecord extends BaseItem {
@@ -232,11 +237,41 @@ export interface SnippetItem extends BaseItem {
   category: string
 }
 
+/** 工作计划项 */
+export interface WorkPlanItem extends BaseItem {
+  /** 计划类型：week / month / day */
+  planType: 'week' | 'month' | 'day'
+  /** 计划标题，如 "本周计划" */
+  title: string
+  /** 计划的基准日期（周一/月初/具体日期） */
+  baseDate: string
+  /** 日程条目列表 */
+  entries: WorkPlanEntry[]
+  /** 已提醒的日期集合 */
+  remindedDates: string[]
+}
+
+/** 单个日程条目 */
+export interface WorkPlanEntry {
+  id: string
+  /** 日期 YYYY-MM-DD */
+  date: string
+  /** 任务描述 */
+  task: string
+  /** 优先级：high / medium / low */
+  priority: 'high' | 'medium' | 'low'
+  /** 完成状态 */
+  done: boolean
+  /** 预计耗时（分钟） */
+  estimatedMin?: number
+}
+
 // ============================================
 // 工作模式 · Stores
 // ============================================
 
 export const useTodoStore = createListStore<WorkTodoItem>('work-todo')
+export const useWorkPlanStore = createListStore<WorkPlanItem>('work-plan')
 
 export interface PomodoroSettings {
   focusMin: number

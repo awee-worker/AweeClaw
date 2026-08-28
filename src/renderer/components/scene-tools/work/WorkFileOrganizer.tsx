@@ -66,7 +66,7 @@ export default function WorkFileOrganizer() {
         </button>
       </div>
 
-      <div className="flex items-start gap-1.5 px-1 mb-2 text-[10px] text-text-muted/80">
+      <div className="flex items-start gap-1.5 px-1 mb-2 text-[12px] text-text-muted/80">
         <Info className="w-3 h-3 mt-px flex-shrink-0" />
         <span>定义"文件名关键词 → 目标目录"规则，一键整理工作区未分类文件。</span>
       </div>
@@ -97,7 +97,7 @@ export default function WorkFileOrganizer() {
                 <Trash2 className="w-3 h-3" />
               </button>
             </div>
-            <div className="flex items-center gap-1 mt-1 text-[10px] text-text-muted">
+            <div className="flex items-center gap-1 mt-1 text-[12px] text-text-muted">
               <span className="flex items-center gap-0.5 flex-wrap gap-x-1">
                 {r.keywords.map((k, i) => (
                   <span key={i} className="px-1 py-px rounded bg-accent/10 text-accent">{k}</span>
@@ -120,7 +120,7 @@ export default function WorkFileOrganizer() {
           <Wand2 className="w-3.5 h-3.5" /> {running ? '整理中…' : '一键整理工作区'}
         </button>
       )}
-      {result && <div className="mt-1.5 text-[11px] text-emerald-500 text-center">{result}</div>}
+      {result && <div className="mt-1.5 text-[12px] text-emerald-500 text-center">{result}</div>}
     </div>
   )
 }

@@ -43,7 +43,7 @@ export default function WorkPomodoro() {
       <div className="flex items-center gap-2 px-1 mb-3">
         <Timer className="w-4 h-4 text-accent" />
         <span className="text-[13px] font-semibold">番茄专注钟</span>
-        <span className={`text-[11px] px-1.5 py-0.5 rounded-full border ${phaseMeta.cls}`}>{phaseMeta.label}</span>
+        <span className={`text-[12px] px-1.5 py-0.5 rounded-full border ${phaseMeta.cls}`}>{phaseMeta.label}</span>
       </div>
 
       {/* 计时主体 */}
@@ -62,7 +62,7 @@ export default function WorkPomodoro() {
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
             <span className="text-3xl font-semibold tabular-nums">{fmt(remainingSec)}</span>
-            <span className="text-[11px] text-text-muted mt-0.5">
+            <span className="text-[12px] text-text-muted mt-0.5">
               {phase === 'idle' ? '准备开始' : `第 ${Math.min(round + 1, settings.roundsBeforeLongBreak)} / ${settings.roundsBeforeLongBreak} 轮`}
             </span>
           </div>
@@ -118,12 +118,12 @@ export default function WorkPomodoro() {
         <Coffee className="w-4 h-4 text-accent" />
         <span className="text-[12px] text-text-muted">今日专注</span>
         <span className="text-[13px] font-semibold">{todayRecords.length} 个番茄</span>
-        <span className="text-[11px] text-text-muted">≈ {totalMinutes} 分钟</span>
+        <span className="text-[12px] text-text-muted">≈ {totalMinutes} 分钟</span>
       </div>
 
       {/* 设置 */}
       <details className="mb-2 group">
-        <summary className="flex items-center gap-1.5 text-[11px] text-text-muted cursor-pointer hover:text-text-primary transition-colors select-none">
+        <summary className="flex items-center gap-1.5 text-[12px] text-text-muted cursor-pointer hover:text-text-primary transition-colors select-none">
           <Settings2 className="w-3 h-3" /> 时长设置
         </summary>
         <div className="grid grid-cols-3 gap-2 mt-2">
@@ -133,7 +133,7 @@ export default function WorkPomodoro() {
             { key: 'longBreakMin', label: '长休(分)' },
           ] as const).map(({ key, label }) => (
             <label key={key} className="flex flex-col gap-0.5">
-              <span className="text-[10px] text-text-muted">{label}</span>
+              <span className="text-[12px] text-text-muted">{label}</span>
               <input
                 type="number" min={1} max={120}
                 value={settings[key]}
@@ -147,10 +147,10 @@ export default function WorkPomodoro() {
 
       {/* 历史记录 */}
       <div className="flex-1 overflow-y-auto no-scrollbar pb-1">
-        <div className="text-[11px] text-text-muted mb-1">最近记录</div>
+        <div className="text-[12px] text-text-muted mb-1">最近记录</div>
         {records.length === 0 && <div className="text-center text-[12px] text-text-muted/60 py-4">还没有专注记录</div>}
         {records.slice(0, 20).map((r) => (
-          <div key={r.id} className="flex items-center gap-2 px-2 py-1 rounded-md text-[11px] text-text-muted">
+          <div key={r.id} className="flex items-center gap-2 px-2 py-1 rounded-md text-[12px] text-text-muted">
             <span className="w-2 h-2 rounded-full bg-accent/70 flex-shrink-0" />
             <span className="flex-1">{r.date}</span>
             <span>{r.minutes} 分钟</span>

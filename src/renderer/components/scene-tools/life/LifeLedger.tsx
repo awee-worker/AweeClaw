@@ -53,19 +53,19 @@ export default function LifeLedger() {
       <div className="p-3 rounded-xl bg-surface/70 border border-border/40 mb-3">
         <input
           type="month" value={month} onChange={(e) => setMonth(e.target.value)}
-          className="text-[11px] px-2 py-0.5 rounded-md bg-background border border-border/50 text-text-muted mb-2"
+          className="text-[12px] px-2 py-0.5 rounded-md bg-background border border-border/50 text-text-muted mb-2"
         />
         <div className="grid grid-cols-3 gap-2">
           <div>
-            <div className="text-[10px] text-text-muted flex items-center gap-0.5"><TrendingUp className="w-2.5 h-2.5" /> 收入</div>
+            <div className="text-[12px] text-text-muted flex items-center gap-0.5"><TrendingUp className="w-2.5 h-2.5" /> 收入</div>
             <div className="text-[15px] font-semibold text-emerald-500">¥{income.toFixed(0)}</div>
           </div>
           <div>
-            <div className="text-[10px] text-text-muted flex items-center gap-0.5"><TrendingDown className="w-2.5 h-2.5" /> 支出</div>
+            <div className="text-[12px] text-text-muted flex items-center gap-0.5"><TrendingDown className="w-2.5 h-2.5" /> 支出</div>
             <div className="text-[15px] font-semibold text-red-500">¥{expense.toFixed(0)}</div>
           </div>
           <div>
-            <div className="text-[10px] text-text-muted flex items-center gap-0.5"><PieChart className="w-2.5 h-2.5" /> 结余</div>
+            <div className="text-[12px] text-text-muted flex items-center gap-0.5"><PieChart className="w-2.5 h-2.5" /> 结余</div>
             <div className="text-[15px] font-semibold text-accent">¥{(income - expense).toFixed(0)}</div>
           </div>
         </div>
@@ -73,11 +73,11 @@ export default function LifeLedger() {
           <div className="mt-2 space-y-1">
             {catStats.slice(0, 4).map(([c, v]) => (
               <div key={c} className="flex items-center gap-2">
-                <span className="text-[10px] text-text-muted w-8 flex-shrink-0">{c}</span>
+                <span className="text-[12px] text-text-muted w-8 flex-shrink-0">{c}</span>
                 <div className="flex-1 h-1.5 rounded-full bg-border/40 overflow-hidden">
                   <div className="h-full rounded-full bg-accent/70" style={{ width: `${expense > 0 ? (v / expense) * 100 : 0}%` }} />
                 </div>
-                <span className="text-[10px] text-text-muted w-12 text-right flex-shrink-0">¥{v.toFixed(0)}</span>
+                <span className="text-[12px] text-text-muted w-12 text-right flex-shrink-0">¥{v.toFixed(0)}</span>
               </div>
             ))}
           </div>
@@ -100,15 +100,15 @@ export default function LifeLedger() {
           <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="金额"
             className="w-24 text-[13px] px-2 py-1.5 rounded-md bg-background border border-border/60 focus:outline-none" />
           <select value={category} onChange={(e) => setCategory(e.target.value)}
-            className="flex-1 text-[11px] px-1.5 py-1.5 rounded-md bg-background border border-border/60 text-text-muted focus:outline-none">
+            className="flex-1 text-[12px] px-1.5 py-1.5 rounded-md bg-background border border-border/60 text-text-muted focus:outline-none">
             {cats.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
-            className="text-[11px] px-1.5 py-1.5 rounded-md bg-background border border-border/60 text-text-muted" />
+            className="text-[12px] px-1.5 py-1.5 rounded-md bg-background border border-border/60 text-text-muted" />
         </div>
         <div className="flex gap-2">
           <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="备注（可选）"
-            className="flex-1 text-[11px] px-2 py-1.5 rounded-md bg-background border border-border/60 focus:outline-none" />
+            className="flex-1 text-[12px] px-2 py-1.5 rounded-md bg-background border border-border/60 focus:outline-none" />
           <button onClick={handleAdd} className="px-3 py-1.5 rounded-md bg-accent text-white text-[12px] flex items-center gap-1 hover:opacity-90 transition-opacity">
             <Plus className="w-3 h-3" /> 记一笔
           </button>
@@ -117,14 +117,14 @@ export default function LifeLedger() {
 
       {/* 最近记录 */}
       <div className="flex-1 overflow-y-auto no-scrollbar space-y-1">
-        <div className="text-[11px] text-text-muted mb-1">最近记录</div>
+        <div className="text-[12px] text-text-muted mb-1">最近记录</div>
         {sorted.length === 0 && <div className="text-center text-[12px] text-text-muted/60 py-6">还没有记账记录</div>}
         {sorted.map((i) => (
           <div key={i.id} className="group flex items-center gap-2 px-2 py-1.5 rounded-lg border border-border/40">
             <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${i.type === 'expense' ? 'bg-red-500' : 'bg-emerald-500'}`} />
             <div className="flex-1 min-w-0">
               <div className="text-[12px] truncate">{i.category}{i.note ? ` · ${i.note}` : ''}</div>
-              <div className="text-[10px] text-text-muted">{i.date}</div>
+              <div className="text-[12px] text-text-muted">{i.date}</div>
             </div>
             <span className={`text-[12px] font-medium tabular-nums ${i.type === 'expense' ? 'text-red-500' : 'text-emerald-500'}`}>
               {i.type === 'expense' ? '-' : '+'}¥{i.amount.toFixed(2)}

@@ -1,73 +1,63 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import {
     Plus, Trash2, Search, CheckSquare, Square,
+    Loader2, Sparkles,
 } from 'lucide-react'
 import { useStore } from '@store'
 import { t, type Language } from '@renderer/i18n'
+import { useTodoStore, type WorkTodoItem } from '@renderer/components/scene-tools/stores'
 
-interface TaskItem {
-    id: string
-    title: string
-    completed: boolean
-    priority: 'low' | 'medium' | 'high'
-    tags: string[]
-    createdAt: number
-}
-
-const PRIORITY_CONFIG = {
-    low: { label: 'Low', labelZh: '低', color: 'text-blue-400', dot: 'bg-blue-400' },
-    medium: { label: 'Medium', labelZh: '中', color: 'text-amber-400', dot: 'bg-amber-400' },
-    high: { label: 'High', labelZh: '高', color: 'text-red-400', dot: 'bg-red-400' },
+/** 向 ChatPanel 发送 prompt，触发 AI 执行任务 */
+function executeTask(item: WorkTodoItem, update: (id: string, patch: Partial<WorkTodoItem>) => void): void {
+    update(item.id, { status: 'executing' })
+    const prompt = `请帮我执行以下任务，完成后告知结果：\n\n${item.text}`
+    window.dispatchEvent(new CustomEvent('aweeclaw:quick-prompt', { detail: prompt }))
 }
 
 export function TasksView() {
     const language = useStore(s => s.language)
-    const [tasks, setTasks] = useState<TaskItem[]>([
-        { id: 'task-1', title: t('explorer.welcometotasks', language as Language), completed: false, priority: 'medium', tags: [t('explorer.demo', language as Language)], createdAt: Date.now() },
-    ])
+    const { items, add, update, remove } = useTodoStore()
     const [searchQuery, setSearchQuery] = useState('')
-    const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'completed'>('all')
+    const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'done'>('all')
     const [newTaskTitle, setNewTaskTitle] = useState('')
 
-    const filteredTasks = tasks.filter(t => {
-        if (filterStatus === 'active' && t.completed) return false
-        if (filterStatus === 'completed' && !t.completed) return false
-        if (searchQuery) return t.title.toLowerCase().includes(searchQuery.toLowerCase())
-        return true
-    })
+    const activeCount = useMemo(() => items.filter(t => t.status !== 'done').length, [items])
 
-    const activeTasks = filteredTasks.filter(t => !t.completed)
-    const completedTasks = filteredTasks.filter(t => t.completed)
+    const filteredTasks = useMemo(() => {
+        return items.filter(t => {
+            if (filterStatus === 'active' && t.status === 'done') return false
+            if (filterStatus === 'done' && t.status !== 'done') return false
+            if (searchQuery) return t.text.toLowerCase().includes(searchQuery.toLowerCase())
+            return true
+        }).sort((a, b) => {
+            if (a.status === 'done' && b.status !== 'done') return 1
+            if (a.status !== 'done' && b.status === 'done') return -1
+            if (a.status === 'executing' && b.status !== 'executing') return -1
+            if (a.status !== 'executing' && b.status === 'executing') return 1
+            return 0
+        })
+    }, [items, filterStatus, searchQuery])
+
+    const activeTasks = filteredTasks.filter(t => t.status !== 'done')
+    const completedTasks = filteredTasks.filter(t => t.status === 'done')
 
     const handleAdd = useCallback(() => {
         if (!newTaskTitle.trim()) return
-        setTasks(prev => [{
-            id: `task-${Date.now()}`,
-            title: newTaskTitle.trim(),
-            completed: false,
-            priority: 'medium',
-            tags: [],
-            createdAt: Date.now(),
-        }, ...prev])
+        add({ text: newTaskTitle.trim(), status: 'pending', priority: 'medium' })
         setNewTaskTitle('')
-    }, [newTaskTitle])
+    }, [newTaskTitle, add])
 
     const handleToggle = useCallback((id: string) => {
-        setTasks(prev => prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t))
-    }, [])
+        update(id, { status: 'done' })
+    }, [update])
 
     const handleDelete = useCallback((id: string) => {
-        setTasks(prev => prev.filter(t => t.id !== id))
-    }, [])
+        remove(id)
+    }, [remove])
 
-    const handleCyclePriority = useCallback((id: string) => {
-        setTasks(prev => prev.map(t => {
-            if (t.id !== id) return t
-            const order: TaskItem['priority'][] = ['low', 'medium', 'high']
-            const nextIndex = (order.indexOf(t.priority) + 1) % order.length
-            return { ...t, priority: order[nextIndex] }
-        }))
-    }, [])
+    const handleExecute = useCallback((item: WorkTodoItem) => {
+        executeTask(item, update)
+    }, [update])
 
     return (
         <div className="h-full flex flex-col bg-transparent">
@@ -76,9 +66,9 @@ export function TasksView() {
                     {t('explorer.tasks', language as Language)}
                 </span>
                 <div className="flex items-center gap-1 text-[10px] text-text-muted">
-                    <span>{activeTasks.length}</span>
+                    <span>{activeCount}</span>
                     <span>/</span>
-                    <span>{tasks.length}</span>
+                    <span>{items.length}</span>
                 </div>
             </div>
 
@@ -105,7 +95,7 @@ export function TasksView() {
                 </div>
 
                 <div className="flex items-center gap-1">
-                    {(['all', 'active', 'completed'] as const).map(status => (
+                    {(['all', 'active', 'done'] as const).map(status => (
                         <button
                             key={status}
                             onClick={() => setFilterStatus(status)}
@@ -126,7 +116,7 @@ export function TasksView() {
                                 task={task}
                                 onToggle={handleToggle}
                                 onDelete={handleDelete}
-                                onCyclePriority={handleCyclePriority}
+                                onExecute={handleExecute}
                                 language={language}
                             />
                         ))}
@@ -136,19 +126,17 @@ export function TasksView() {
                 {completedTasks.length > 0 && (
                     <div>
                         <div className="flex items-center gap-1.5 px-2 py-1">
-                            <CheckSquare className="w-3 h-3 text-text-muted" />
-                            <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">
-                                {t('explorer.completed', language as Language)} ({completedTasks.length})
-                            </span>
+                            <CheckSquare className="w-3 h-3 text-text-muted/50" />
+                            <span className="text-[10px] text-text-muted/60">{t('explorer.completed', language as Language)}</span>
                         </div>
-                        <div className="space-y-0.5">
+                        <div className="space-y-0.5 mt-1">
                             {completedTasks.map(task => (
                                 <TaskRow
                                     key={task.id}
                                     task={task}
                                     onToggle={handleToggle}
                                     onDelete={handleDelete}
-                                    onCyclePriority={handleCyclePriority}
+                                    onExecute={handleExecute}
                                     language={language}
                                 />
                             ))}
@@ -168,27 +156,38 @@ export function TasksView() {
 }
 
 function TaskRow({
-    task, onToggle, onDelete, onCyclePriority, language,
+    task, onToggle, onDelete, onExecute, language,
 }: {
-    task: TaskItem
+    task: WorkTodoItem
     onToggle: (id: string) => void
     onDelete: (id: string) => void
-    onCyclePriority: (id: string) => void
+    onExecute: (item: WorkTodoItem) => void
     language: Language
 }) {
-    const priorityConfig = PRIORITY_CONFIG[task.priority]
     return (
-        <div className={`flex items-center gap-2 px-2 py-1.5 mx-1 rounded-md group hover:bg-surface-hover transition-colors ${task.completed ? 'opacity-55' : ''}`}>
+        <div className={`flex items-center gap-2 px-2 py-1.5 mx-1 rounded-md group hover:bg-surface-hover transition-colors ${
+            task.status === 'done' ? 'opacity-55' : task.status === 'executing' ? 'bg-accent/5 border border-accent/20' : ''
+        }`}>
             <button onClick={() => onToggle(task.id)} className="flex-shrink-0">
-                {task.completed
+                {task.status === 'done'
                     ? <CheckSquare className="w-3.5 h-3.5 text-accent" />
                     : <Square className="w-3.5 h-3.5 text-text-muted" />
                 }
             </button>
-            <span className={`text-[11px] flex-1 truncate ${task.completed ? 'line-through text-text-muted' : 'text-text-primary'}`}>{task.title}</span>
-            <button onClick={() => onCyclePriority(task.id)} className="flex-shrink-0 opacity-60 group-hover:opacity-100 transition-opacity" title={language === 'zh' ? priorityConfig.labelZh : priorityConfig.label}>
-                <div className={`w-2 h-2 rounded-full ${priorityConfig.dot}`} />
-            </button>
+            <span className={`text-[11px] flex-1 truncate ${task.status === 'done' ? 'line-through text-text-muted' : 'text-text-primary'}`}>{task.text}</span>
+            {/* AI 执行按钮 */}
+            {task.status !== 'done' && (
+                <button
+                    onClick={() => onExecute(task)}
+                    title={language === 'zh' ? '让AI执行此任务' : 'Let AI execute'}
+                    className={`flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity ${task.status === 'executing' ? 'text-accent' : 'text-text-muted hover:text-violet-400'}`}
+                >
+                    {task.status === 'executing'
+                        ? <Loader2 className="w-3 h-3 animate-spin" />
+                        : <Sparkles className="w-3 h-3" />
+                    }
+                </button>
+            )}
             <button onClick={() => onDelete(task.id)} className="p-0.5 text-text-muted hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity">
                 <Trash2 className="w-2.5 h-2.5" />
             </button>

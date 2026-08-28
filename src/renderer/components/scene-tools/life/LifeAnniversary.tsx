@@ -70,13 +70,13 @@ export default function LifeAnniversary() {
 
       {nearest && (
         <div className="p-3 rounded-xl bg-gradient-to-br from-pink-500/10 to-rose-500/10 border border-pink-500/20 mb-3">
-          <div className="text-[10px] text-text-muted mb-1">最近的重要日子</div>
+          <div className="text-[12px] text-text-muted mb-1">最近的重要日子</div>
           <div className="text-[15px] font-semibold">{nearest.name}</div>
           <div className="flex items-center gap-2 mt-1">
             <span className="text-[22px] font-semibold text-rose-500 tabular-nums">
               {nearest.countdown.days === 0 ? '就是今天 🎉' : `还有 ${nearest.countdown.days} 天`}
             </span>
-            <span className="text-[10px] text-text-muted">{nearest.countdown.dateLabel}</span>
+            <span className="text-[12px] text-text-muted">{nearest.countdown.dateLabel}</span>
           </div>
         </div>
       )}
@@ -87,15 +87,15 @@ export default function LifeAnniversary() {
             className="w-full text-[12px] px-2 py-1.5 rounded-md bg-background border border-border/60 focus:outline-none" />
           <div className="flex gap-2">
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
-              className="flex-1 text-[11px] px-2 py-1 rounded-md bg-background border border-border/60 text-text-muted" />
+              className="flex-1 text-[12px] px-2 py-1 rounded-md bg-background border border-border/60 text-text-muted" />
             <select value={type} onChange={(e) => setType(e.target.value as typeof type)}
-              className="text-[11px] px-1.5 py-1 rounded-md bg-background border border-border/60 text-text-muted">
+              className="text-[12px] px-1.5 py-1 rounded-md bg-background border border-border/60 text-text-muted">
               <option value="birthday">生日</option>
               <option value="anniversary">纪念日</option>
               <option value="custom">其他</option>
             </select>
           </div>
-          <label className="flex items-center gap-1.5 text-[11px] text-text-muted">
+          <label className="flex items-center gap-1.5 text-[12px] text-text-muted">
             <input type="checkbox" checked={repeatYearly} onChange={(e) => setRepeatYearly(e.target.checked)} />
             每年重复
           </label>
@@ -111,12 +111,12 @@ export default function LifeAnniversary() {
         )}
         {sorted.map((i) => (
           <div key={i.id} className="group flex items-center gap-2 px-2 py-2 rounded-lg border border-border/40">
-            <span className={`px-1.5 py-0.5 rounded text-[10px] border flex items-center gap-0.5 flex-shrink-0 ${TYPE_META[i.type].cls}`}>
+            <span className={`px-1.5 py-0.5 rounded text-[12px] border flex items-center gap-0.5 flex-shrink-0 ${TYPE_META[i.type].cls}`}>
               {TYPE_META[i.type].icon} {TYPE_META[i.type].label}
             </span>
             <div className="flex-1 min-w-0">
               <div className="text-[12px] font-medium truncate">{i.name}</div>
-              <div className="text-[10px] text-text-muted flex items-center gap-1">
+              <div className="text-[12px] text-text-muted flex items-center gap-1">
                 <CalendarDays className="w-2.5 h-2.5" /> {i.date}{i.repeatYearly ? ' · 每年' : ''}
               </div>
             </div>

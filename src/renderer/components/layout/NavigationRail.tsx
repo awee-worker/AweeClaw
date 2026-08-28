@@ -849,8 +849,8 @@ export default function NavigationRail() {
         })}
       </div>
 
-      {/* 场景工具入口：随场景模式提供内置工具面板（暂时隐藏） */}
-      {false && (() => {
+      {/* 场景工具入口：随场景模式提供内置工具面板 */}
+      {(() => {
         const isSceneToolsActive = activeSidePanel === 'scene-tools'
         const sceneToolsLabel = t('layout.scenetools', language as Language)
         return navRailExpanded ? (

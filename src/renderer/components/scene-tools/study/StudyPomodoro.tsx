@@ -44,7 +44,7 @@ export default function StudyPomodoro() {
       <div className="flex items-center gap-2 px-1 mb-3">
         <AlarmClock className="w-4 h-4 text-accent" />
         <span className="text-[13px] font-semibold">学习番茄钟</span>
-        <span className={`text-[11px] px-1.5 py-0.5 rounded-full border ${
+        <span className={`text-[12px] px-1.5 py-0.5 rounded-full border ${
           phase === 'focus' ? 'text-emerald-500 border-emerald-500/40 bg-emerald-500/10' : phase === 'idle' ? 'text-text-muted border-border bg-surface' : 'text-sky-500 border-sky-500/40 bg-sky-500/10'
         }`}>
           {phase === 'focus' ? '专注' : phase === 'idle' ? '待开始' : '休息'}
@@ -57,7 +57,7 @@ export default function StudyPomodoro() {
           <button
             key={s}
             onClick={() => setSubject(s)}
-            className={`px-2 py-0.5 rounded-md text-[11px] border transition-colors ${
+            className={`px-2 py-0.5 rounded-md text-[12px] border transition-colors ${
               subject === s ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/40' : 'border-border/50 text-text-muted hover:border-border'
             }`}
           >
@@ -80,7 +80,7 @@ export default function StudyPomodoro() {
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
             <span className="text-2xl font-semibold tabular-nums">{fmt(remainingSec)}</span>
-            <span className="text-[10px] text-text-muted mt-0.5">{subject}</span>
+            <span className="text-[12px] text-text-muted mt-0.5">{subject}</span>
           </div>
         </div>
         <div className="flex items-center gap-2 mt-4">
@@ -124,7 +124,7 @@ export default function StudyPomodoro() {
         <BookOpen className="w-4 h-4 text-emerald-500" />
         <span className="text-[12px] text-text-muted">今日学习</span>
         <span className="text-[13px] font-semibold">{todayRecords.length} 个番茄</span>
-        <span className="text-[11px] text-text-muted">≈ {totalMin} 分钟</span>
+        <span className="text-[12px] text-text-muted">≈ {totalMin} 分钟</span>
       </div>
 
       {/* 科目分布 */}
@@ -134,11 +134,11 @@ export default function StudyPomodoro() {
             const max = subjectStats[0][1]
             return (
               <div key={s} className="flex items-center gap-2">
-                <span className="text-[10px] text-text-muted w-10 flex-shrink-0">{s}</span>
+                <span className="text-[12px] text-text-muted w-10 flex-shrink-0">{s}</span>
                 <div className="flex-1 h-1.5 rounded-full bg-border/40 overflow-hidden">
                   <div className="h-full rounded-full bg-emerald-500/70" style={{ width: `${(min / max) * 100}%` }} />
                 </div>
-                <span className="text-[10px] text-text-muted w-12 text-right">{min} 分</span>
+                <span className="text-[12px] text-text-muted w-12 text-right">{min} 分</span>
               </div>
             )
           })}
@@ -147,12 +147,12 @@ export default function StudyPomodoro() {
 
       {/* 历史 */}
       <div className="flex-1 overflow-y-auto no-scrollbar mt-1">
-        <div className="text-[11px] text-text-muted mb-1">最近记录</div>
+        <div className="text-[12px] text-text-muted mb-1">最近记录</div>
         {records.filter((r) => r.kind === 'study').length === 0 && (
           <div className="text-center text-[12px] text-text-muted/60 py-4">开始第一个学习番茄吧</div>
         )}
         {records.filter((r) => r.kind === 'study').slice(0, 15).map((r) => (
-          <div key={r.id} className="flex items-center gap-2 px-2 py-1 text-[11px] text-text-muted">
+          <div key={r.id} className="flex items-center gap-2 px-2 py-1 text-[12px] text-text-muted">
             <span className="w-2 h-2 rounded-full bg-emerald-500/70 flex-shrink-0" />
             <span className="flex-1">{r.date}</span>
             <span>{r.subject ?? '其他'}</span>

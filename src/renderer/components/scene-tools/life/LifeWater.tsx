@@ -28,7 +28,7 @@ export default function LifeWater() {
       <div className="flex items-center gap-2 px-1 mb-3">
         <Droplets className="w-4 h-4 text-accent" />
         <span className="text-[13px] font-semibold">喝水打卡</span>
-        <span className="text-[11px] text-text-muted">目标 {target} 杯/天</span>
+        <span className="text-[12px] text-text-muted">目标 {target} 杯/天</span>
       </div>
 
       {/* 进度环 */}
@@ -44,8 +44,8 @@ export default function LifeWater() {
             />
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-2xl font-semibold tabular-nums">{todayCups}<span className="text-[11px] text-text-muted">/{target}</span></span>
-            <span className="text-[10px] text-text-muted">{percent}%</span>
+            <span className="text-2xl font-semibold tabular-nums">{todayCups}<span className="text-[12px] text-text-muted">/{target}</span></span>
+            <span className="text-[12px] text-text-muted">{percent}%</span>
           </div>
         </div>
         <div className="flex-1 space-y-2">
@@ -62,9 +62,9 @@ export default function LifeWater() {
             <input
               type="number" min={1} max={30} value={target}
               onChange={(e) => setTarget(Math.max(1, Number(e.target.value) || 8))}
-              className="flex-1 text-[11px] px-2 py-1 rounded-md bg-surface border border-border/50 focus:outline-none"
+              className="flex-1 text-[12px] px-2 py-1 rounded-md bg-surface border border-border/50 focus:outline-none"
             />
-            <button onClick={() => resetDay(today)} className="text-[10px] text-text-muted hover:text-red-500 transition-colors flex items-center gap-0.5">
+            <button onClick={() => resetDay(today)} className="text-[12px] text-text-muted hover:text-red-500 transition-colors flex items-center gap-0.5">
               <RotateCcw className="w-2.5 h-2.5" /> 重置
             </button>
           </div>
@@ -73,7 +73,7 @@ export default function LifeWater() {
 
       {/* 近7日 */}
       <div className="mt-1 mb-3">
-        <div className="text-[11px] text-text-muted mb-1.5">近 7 天</div>
+        <div className="text-[12px] text-text-muted mb-1.5">近 7 天</div>
         <div className="flex items-end gap-1.5 h-16">
           {week.map((w) => (
             <div key={w.date} className="flex-1 flex flex-col items-center gap-1">
@@ -88,7 +88,7 @@ export default function LifeWater() {
         </div>
       </div>
 
-      <div className="text-[11px] text-text-muted/70 px-1">
+      <div className="text-[12px] text-text-muted/70 px-1">
         💡 建议少量多次：每小时一杯，晚上减少饮水避免影响睡眠。
       </div>
     </div>

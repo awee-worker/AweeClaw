@@ -44,7 +44,7 @@ export default function WorkWeeklyReport() {
   }
 
   const weekTodos = useMemo(() => todos.filter((t) => inWeek(t.createdAt)), [todos, weekStart])
-  const doneTodos = weekTodos.filter((t) => t.done)
+  const doneTodos = weekTodos.filter((t) => t.status === 'done')
   const weekPomos = useMemo(() => pomoRecords.filter((r) => inWeek(r.createdAt) && r.kind === 'work'), [pomoRecords, weekStart])
   const totalFocusMin = weekPomos.reduce((s, r) => s + r.minutes, 0)
 
@@ -60,7 +60,7 @@ export default function WorkWeeklyReport() {
     lines.push(`- 完成 ${weekPomos.length} 个番茄专注，合计约 ${totalFocusMin} 分钟`)
     lines.push('')
     lines.push('## 三、进行中')
-    weekTodos.filter((t) => !t.done).forEach((t) => lines.push(`- [ ] ${t.text}`))
+    weekTodos.filter((t) => t.status !== 'done').forEach((t) => lines.push(`- [ ] ${t.text}`))
     lines.push('')
     lines.push('## 四、下周计划')
     lines.push('- ')
@@ -82,7 +82,7 @@ export default function WorkWeeklyReport() {
       const data = {
         weekRange: `${weekStart} ~ ${weekEnd}`,
         doneTodos: doneTodos.map((t) => t.text),
-        pendingTodos: weekTodos.filter((t) => !t.done).map((t) => t.text),
+        pendingTodos: weekTodos.filter((t) => t.status !== 'done').map((t) => t.text),
         focusSessions: weekPomos.length,
         focusMinutes: totalFocusMin,
       }
@@ -131,12 +131,12 @@ export default function WorkWeeklyReport() {
         <CalendarRange className="w-4 h-4 text-text-muted flex-shrink-0" />
         <input
           type="date" value={weekStart} onChange={(e) => setWeekStart(e.target.value)}
-          className="flex-1 text-[11px] px-2 py-1 rounded-md bg-surface border border-border/50 text-text-muted focus:outline-none"
+          className="flex-1 text-[12px] px-2 py-1 rounded-md bg-surface border border-border/50 text-text-muted focus:outline-none"
         />
         <button
           onClick={generate}
           title="本地模板快速生成"
-          className="px-2.5 py-1 rounded-md border border-border/60 text-[11px] text-text-muted hover:text-text-primary transition-colors flex items-center gap-1"
+          className="px-2.5 py-1 rounded-md border border-border/60 text-[12px] text-text-muted hover:text-text-primary transition-colors flex items-center gap-1"
         >
           模板生成
         </button>
@@ -144,7 +144,7 @@ export default function WorkWeeklyReport() {
           onClick={aiGenerate}
           disabled={aiLoading}
           title="AI 基于本周数据生成正式周报"
-          className="px-2.5 py-1 rounded-md bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white text-[11px] flex items-center gap-1 hover:opacity-90 transition-opacity disabled:opacity-50"
+          className="px-2.5 py-1 rounded-md bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white text-[12px] flex items-center gap-1 hover:opacity-90 transition-opacity disabled:opacity-50"
         >
           {aiLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />} AI 生成
         </button>
@@ -154,15 +154,15 @@ export default function WorkWeeklyReport() {
       <div className="grid grid-cols-3 gap-2 mb-3">
         <div className="px-2 py-1.5 rounded-lg bg-surface/70 border border-border/40 text-center">
           <div className="text-[15px] font-semibold text-accent">{doneTodos.length}</div>
-          <div className="text-[10px] text-text-muted">完成待办</div>
+          <div className="text-[12px] text-text-muted">完成待办</div>
         </div>
         <div className="px-2 py-1.5 rounded-lg bg-surface/70 border border-border/40 text-center">
           <div className="text-[15px] font-semibold text-emerald-500">{weekPomos.length}</div>
-          <div className="text-[10px] text-text-muted">专注番茄</div>
+          <div className="text-[12px] text-text-muted">专注番茄</div>
         </div>
         <div className="px-2 py-1.5 rounded-lg bg-surface/70 border border-border/40 text-center">
           <div className="text-[15px] font-semibold text-sky-500">{Math.round(totalFocusMin / 60 * 10) / 10}h</div>
-          <div className="text-[10px] text-text-muted">专注时长</div>
+          <div className="text-[12px] text-text-muted">专注时长</div>
         </div>
       </div>
 
@@ -179,18 +179,18 @@ export default function WorkWeeklyReport() {
       <div className="flex items-center gap-2 mt-2">
         <button
           onClick={copy}
-          className="px-2.5 py-1 rounded-md border border-border/60 text-[11px] text-text-muted hover:text-text-primary transition-colors flex items-center gap-1"
+          className="px-2.5 py-1 rounded-md border border-border/60 text-[12px] text-text-muted hover:text-text-primary transition-colors flex items-center gap-1"
         >
           {copied ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />} 复制
         </button>
         <button
           onClick={save}
-          className="px-2.5 py-1 rounded-md bg-accent/10 text-accent text-[11px] hover:bg-accent/20 transition-colors flex items-center gap-1"
+          className="px-2.5 py-1 rounded-md bg-accent/10 text-accent text-[12px] hover:bg-accent/20 transition-colors flex items-center gap-1"
         >
           <Save className="w-3 h-3" /> 保存
         </button>
-        {existing && <span className="text-[10px] text-emerald-500">已保存 · 重新生成会覆盖</span>}
-        {aiError && <span className="text-[10px] text-red-500">{aiError}</span>}
+        {existing && <span className="text-[12px] text-emerald-500">已保存 · 重新生成会覆盖</span>}
+        {aiError && <span className="text-[12px] text-red-500">{aiError}</span>}
       </div>
     </div>
   )

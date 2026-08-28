@@ -41,7 +41,7 @@ export default function StudyMistakeBook() {
       <div className="flex items-center gap-2 px-1 mb-2">
         <BookX className="w-4 h-4 text-accent" />
         <span className="text-[13px] font-semibold">错题本</span>
-        <span className="text-[11px] text-text-muted">{openCount} 待复习</span>
+        <span className="text-[12px] text-text-muted">{openCount} 待复习</span>
         <button
           onClick={() => setShowForm((v) => !v)}
           className="ml-auto w-5 h-5 rounded-md bg-accent/10 text-accent flex items-center justify-center hover:bg-accent/20 transition-colors"
@@ -56,7 +56,7 @@ export default function StudyMistakeBook() {
           <button
             key={v}
             onClick={() => setFilter(v)}
-            className={`px-2 py-0.5 rounded-md text-[11px] transition-colors ${
+            className={`px-2 py-0.5 rounded-md text-[12px] transition-colors ${
               filter === v ? 'bg-accent/10 text-accent' : 'text-text-muted hover:text-text-primary'
             }`}
           >
@@ -68,7 +68,7 @@ export default function StudyMistakeBook() {
       {showForm && (
         <div className="space-y-2 mb-2 p-2.5 rounded-lg bg-surface border border-border/50">
           <select value={subject} onChange={(e) => setSubject(e.target.value)}
-            className="text-[11px] px-2 py-1 rounded-md bg-background border border-border/60 text-text-muted">
+            className="text-[12px] px-2 py-1 rounded-md bg-background border border-border/60 text-text-muted">
             {SUBJECTS.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
           <textarea value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="题目内容…" rows={2}
@@ -92,8 +92,8 @@ export default function StudyMistakeBook() {
             <div className="flex items-start gap-2">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5 mb-1">
-                  <span className="text-[10px] px-1.5 py-px rounded bg-accent/10 text-accent flex-shrink-0">{m.subject}</span>
-                  <span className={`text-[10px] px-1.5 py-px rounded flex-shrink-0 ${
+                  <span className="text-[12px] px-1.5 py-px rounded bg-accent/10 text-accent flex-shrink-0">{m.subject}</span>
+                  <span className={`text-[12px] px-1.5 py-px rounded flex-shrink-0 ${
                     m.status === 'open' ? 'bg-amber-500/10 text-amber-500' : 'bg-emerald-500/10 text-emerald-500'
                   }`}>
                     {m.status === 'open' ? '待复习' : '已掌握'}
@@ -101,8 +101,8 @@ export default function StudyMistakeBook() {
                 </div>
                 <div className="text-[12px] leading-snug">{m.question}</div>
                 <details className="mt-1">
-                  <summary className="text-[10px] text-text-muted cursor-pointer hover:text-text-primary">查看答案与解析</summary>
-                  <div className="mt-1 text-[11px] text-text-muted leading-relaxed whitespace-pre-line">
+                  <summary className="text-[12px] text-text-muted cursor-pointer hover:text-text-primary">查看答案与解析</summary>
+                  <div className="mt-1 text-[12px] text-text-muted leading-relaxed whitespace-pre-line">
                     <div className="text-emerald-500">答案：{m.answer}</div>
                     {m.reason && <div className="text-amber-500 mt-0.5">错因：{m.reason}</div>}
                   </div>
@@ -136,7 +136,7 @@ export default function StudyMistakeBook() {
       </div>
 
       {items.length > 0 && (
-        <div className="flex items-center justify-center gap-1.5 mt-2 text-[10px] text-text-muted/70">
+        <div className="flex items-center justify-center gap-1.5 mt-2 text-[12px] text-text-muted/70">
           <GraduationCap className="w-3 h-3" /> 定期重做错题，直到完全掌握
         </div>
       )}

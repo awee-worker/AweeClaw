@@ -39,7 +39,7 @@ export default function LifeRecipe() {
       <div className="flex items-center gap-2 px-1 mb-3">
         <ChefHat className="w-4 h-4 text-accent" />
         <span className="text-[13px] font-semibold">菜谱推荐</span>
-        <span className="text-[11px] text-text-muted">{items.length} 道 · {favCount} 收藏</span>
+        <span className="text-[12px] text-text-muted">{items.length} 道 · {favCount} 收藏</span>
         <button
           onClick={() => setShowForm((v) => !v)}
           className="ml-auto w-5 h-5 rounded-md bg-accent/10 text-accent flex items-center justify-center hover:bg-accent/20 transition-colors"
@@ -83,17 +83,17 @@ export default function LifeRecipe() {
             {selectedId === r.id && (
               <div className="mt-2 space-y-2">
                 <div>
-                  <div className="text-[10px] text-text-muted flex items-center gap-1 mb-1"><ListChecks className="w-3 h-3" /> 食材</div>
+                  <div className="text-[12px] text-text-muted flex items-center gap-1 mb-1"><ListChecks className="w-3 h-3" /> 食材</div>
                   <div className="flex gap-1 flex-wrap">
                     {r.ingredients.map((ing, i) => (
-                      <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-accent/10 text-accent">{ing}</span>
+                      <span key={i} className="text-[12px] px-1.5 py-0.5 rounded bg-accent/10 text-accent">{ing}</span>
                     ))}
                   </div>
                 </div>
                 {r.steps && (
                   <div>
-                    <div className="text-[10px] text-text-muted flex items-center gap-1 mb-1"><BookOpen className="w-3 h-3" /> 做法</div>
-                    <div className="text-[11px] text-text-muted whitespace-pre-line leading-relaxed">{r.steps}</div>
+                    <div className="text-[12px] text-text-muted flex items-center gap-1 mb-1"><BookOpen className="w-3 h-3" /> 做法</div>
+                    <div className="text-[12px] text-text-muted whitespace-pre-line leading-relaxed">{r.steps}</div>
                   </div>
                 )}
               </div>
