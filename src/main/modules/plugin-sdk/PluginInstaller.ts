@@ -489,8 +489,13 @@ export class PluginInstaller {
     const types = Array.isArray(manifest.type) ? manifest.type : [manifest.type]
     const hasMcpCapability = !!manifest.capabilities?.mcp
     const isMcpPlugin = types.includes('mcp' as PluginType) || hasMcpCapability
+    const isSkillPlugin = types.includes('skill' as PluginType)
     const hasEntry = !!manifest.main
-    if (hasEntry && !isMcpPlugin) {
+    if (isSkillPlugin) {
+      // Skill 型插件：读取 SKILL.md 并注册到技能系统，无需加载运行时
+      await registry.discover()
+      await this.registerSkillFromPlugin(pluginDetail.pluginKey, pluginDir, manifest, backendUrl, authToken)
+    } else if (hasEntry && !isMcpPlugin) {
       await registry.discover()
       await registry.load(pluginDetail.pluginKey)
       await registry.initialize(pluginDetail.pluginKey)
@@ -1165,6 +1170,86 @@ export class PluginInstaller {
     if (authToken) headers['Authorization'] = `Bearer ${authToken}`
 
     await this.makeHttpRequest(url, 'POST', { version }, headers)
+  }
+
+  /**
+   * 将 Skill 类型插件注册到技能系统
+   *
+   * 流程：读取插件目录中的 SKILL.md → 解析 YAML frontmatter → 调用后端 skills API 创建 skill
+   */
+  private async registerSkillFromPlugin(
+    pluginKey: string,
+    pluginDir: string,
+    manifest: PluginManifest,
+    backendUrl: string,
+    authToken?: string,
+  ): Promise<void> {
+    const skillMdPath = path.join(pluginDir, 'SKILL.md')
+    if (!fs.existsSync(skillMdPath)) {
+      logger.warn(`[PluginInstaller] SKILL.md not found for skill plugin: ${pluginKey}`)
+      return
+    }
+
+    const skillContent = fs.readFileSync(skillMdPath, 'utf-8')
+
+    // 解析 YAML frontmatter（格式：---\nkey: value\n---\ncontent）
+    const frontmatterMatch = skillContent.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/)
+    if (!frontmatterMatch) {
+      logger.warn(`[PluginInstaller] Invalid SKILL.md format for: ${pluginKey}`)
+      return
+    }
+
+    const fmText = frontmatterMatch[1]
+    const content = frontmatterMatch[2].trim()
+
+    // 简单解析 YAML（支持 name, description, keywords 字段）
+    const skillName = this.extractYamlValue(fmText, 'name') || pluginKey
+    const skillDescription = this.extractYamlValue(fmText, 'description') || manifest.descriptionZh || manifest.description
+    const keywordsRaw = this.extractYamlValue(fmText, 'keywords')
+    const keywords = keywordsRaw
+      ? keywordsRaw.split(',').map((k) => k.trim()).filter(Boolean)
+      : []
+    const triggerWords = this.extractYamlValue(fmText, 'triggerWords')
+    const allKeywords = triggerWords
+      ? [...keywords, ...triggerWords.split(',').map((k) => k.trim()).filter(Boolean)]
+      : keywords
+
+    logger.system.info(`[PluginInstaller] Registering skill "${skillName}" from plugin ${pluginKey}`)
+
+    try {
+      const url = `${backendUrl}/api/v1/skills`
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      }
+      if (authToken) headers['Authorization'] = `Bearer ${authToken}`
+
+      const body = JSON.stringify({
+        name: skillName,
+        description: skillDescription,
+        content: content,
+        keywords: allKeywords.length > 0 ? allKeywords : [pluginKey],
+        type: 'auto',
+        enabled: true,
+      })
+
+      await this.makeHttpRequest(url, 'POST', body, headers)
+      logger.system.info(`[PluginInstaller] Skill "${skillName}" registered successfully`)
+    } catch (err) {
+      logger.system.warn(`[PluginInstaller] Failed to register skill "${skillName}": ${err}`)
+    }
+  }
+
+  /** 从 YAML 文本中提取指定键的值 */
+  private extractYamlValue(yamlText: string, key: string): string | null {
+    const match = yamlText.match(new RegExp(`^${key}:\\s*(.+)$`, 'm'))
+    if (!match) return null
+    let value = match[1].trim()
+    // 移除引号
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1)
+    }
+    return value
   }
 
   /** HTTP 请求封装 */
