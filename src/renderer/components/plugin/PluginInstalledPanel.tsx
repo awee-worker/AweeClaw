@@ -327,7 +327,7 @@ export function PluginInstalledPanel() {
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col min-h-0 flex-1">
       {/* 顶部操作栏 */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-border/40 flex-shrink-0">
         {/* 搜索框 */}
@@ -415,7 +415,7 @@ export function PluginInstalledPanel() {
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-6">
             {filteredPlugins.map((plugin) => {
               // 查找该插件对应的 MCP 服务器状态
               const mcpServer = plugin.mcpServerId

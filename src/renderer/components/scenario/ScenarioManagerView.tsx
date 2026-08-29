@@ -514,64 +514,72 @@ export function ScenarioManagerView() {
             <div
                 key={scenario.id}
                 className={`
-                    rounded-xl border transition-all duration-200 overflow-hidden shadow-sm
+                    rounded-2xl border transition-all duration-200 overflow-hidden shadow-sm
                     ${isActive
                         ? 'border-accent/30 bg-accent/[0.06] shadow-accent/5'
-                        : 'border-border/20 bg-surface/20 hover:bg-surface/40 hover:border-border/40 shadow-black/5'}
+                        : 'border-border/15 bg-surface/20 hover:bg-surface/40 hover:border-border/30 shadow-black/5'}
                 `}
             >
-                <div className="px-4 py-3.5">
-                    <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors ${isActive ? 'bg-accent/15' : 'bg-surface/60'}`}>
-                            <IconComponent className={`w-5 h-5 ${isActive ? 'text-accent' : 'text-text-muted'}`} strokeWidth={1.5} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                                <span className="text-sm font-semibold text-text-primary truncate">
+                <div className="p-5">
+                    <div className="flex items-start gap-4">
+                        {scenario.icon ? (
+                            isImageIcon(scenario.icon) ? (
+                                <img src={scenario.icon} alt="" className="w-12 h-12 flex-shrink-0 rounded-xl object-cover bg-background/50" />
+                            ) : (
+                                <IconComponent className={`w-12 h-12 flex-shrink-0 ${isActive ? 'text-accent' : 'text-text-muted'}`} strokeWidth={1.5} />
+                            )
+                        ) : (
+                            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 transition-colors overflow-hidden ${isActive ? 'bg-accent/15' : 'bg-surface/60'}`}>
+                                <IconComponent className={`w-6 h-6 ${isActive ? 'text-accent' : 'text-text-muted'}`} strokeWidth={1.5} />
+                            </div>
+                        )}
+                        <div className="flex-1 min-w-0 pt-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-base font-semibold text-text-primary truncate">
                                     {language === 'zh' ? scenario.nameZh : scenario.name}
                                 </span>
                                 {isActive && (
-                                    <span className="flex items-center gap-0.5 text-[10px] font-medium text-accent bg-accent/10 px-1.5 py-0.5 rounded-full">
+                                    <span className="flex items-center gap-0.5 text-xs font-medium text-accent bg-accent/10 px-2 py-0.5 rounded-lg">
                                         <Check className="w-2.5 h-2.5" />
                                         {t('scenario.active', language as Language)}
                                     </span>
                                 )}
                                 {isBuiltin && (
-                                    <span className="flex items-center gap-0.5 text-[10px] font-medium text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded-full">
-                                        <Shield className="w-2.5 h-2.5" />
+                                    <span className="flex items-center gap-1 text-xs font-medium text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-lg">
+                                        <Shield className="w-3 h-3" />
                                         {t('scenario.builtin', language as Language)}
                                     </span>
                                 )}
                             </div>
-                            <div className="flex items-center gap-2 mt-0.5 text-[11px] text-text-muted">
+                            <div className="flex items-center gap-2 mt-2 text-xs text-text-muted">
                                 <span className={`flex items-center gap-0.5 ${catLabel.color}`}>
                                     {language === 'zh' ? catLabel.zh : catLabel.en}
                                 </span>
                                 <span>·</span>
                                 <span>v{scenario.version}</span>
                                 <span>·</span>
-                                <SourceIcon className="w-3 h-3" />
+                                <SourceIcon className="w-3.5 h-3.5" />
                                 <span>{language === 'zh' ? sourceInfo?.zh : sourceInfo?.en}</span>
                             </div>
                         </div>
                     </div>
 
-                    <p className="text-[12px] text-text-muted/80 mt-2 line-clamp-2 leading-relaxed">
+                    <p className="text-xs text-text-muted/80 mt-4 line-clamp-2 leading-relaxed">
                         {language === 'zh' ? scenario.descriptionZh : scenario.description}
                     </p>
 
                     {updateInfo && (
-                        <div className="flex items-center gap-2 mt-2 px-2.5 py-1.5 rounded-lg bg-blue-500/5 border border-blue-500/15">
-                            <ArrowUpCircle className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                            <span className="text-[11px] text-blue-400 font-medium">
+                        <div className="flex items-center gap-2 mt-3 px-3 py-2 rounded-xl bg-blue-500/5 border border-blue-500/15">
+                            <ArrowUpCircle className="w-4 h-4 text-blue-400 shrink-0" />
+                            <span className="text-xs text-blue-400 font-medium">
                                 {t('scenario.vavailable', language as Language, { latestVersion: updateInfo.latestVersion })}
                             </span>
                             {isUpdating ? (
-                                <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400 ml-auto" />
+                                <Loader2 className="w-4 h-4 animate-spin text-blue-400 ml-auto" />
                             ) : (
                                 <button
                                     onClick={(e) => { e.stopPropagation(); handleUpdateScenario(scenario.id) }}
-                                    className="ml-auto text-[11px] px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-colors font-medium"
+                                    className="ml-auto text-xs px-2.5 py-1 rounded-lg bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-colors font-medium"
                                 >
                                     {t('scenario.update', language as Language)}
                                 </button>
@@ -579,15 +587,15 @@ export function ScenarioManagerView() {
                         </div>
                     )}
 
-                    <div className="flex items-center gap-2 mt-3">
+                    <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-border/10">
                         {!isActive && (
                             <ActionButton
                                 variant="primary"
                                 size="sm"
-                                className="h-7 text-[12px] gap-1.5 px-3 rounded-lg"
+                                className="h-8 text-xs gap-1.5 px-4 rounded-xl"
                                 onClick={(e) => { e.stopPropagation(); handleSwitch(scenario) }}
                             >
-                                <Check className="w-3 h-3" />
+                                <Check className="w-3.5 h-3.5" />
                                 {t('scenario.switch', language as Language)}
                             </ActionButton>
                         )}
@@ -595,40 +603,40 @@ export function ScenarioManagerView() {
                             <ActionButton
                                 variant="ghost"
                                 size="sm"
-                                className="h-7 text-[12px] gap-1.5 px-3 rounded-lg"
+                                className="h-8 text-xs gap-1.5 px-4 rounded-xl"
                                 onClick={(e) => { e.stopPropagation(); handleOpenSettings(scenario.id) }}
                             >
-                                <Settings className="w-3 h-3" />
+                                <Settings className="w-3.5 h-3.5" />
                                 {t('scenario.settings', language as Language)}
                             </ActionButton>
                         )}
                         <ActionButton
                             variant="ghost"
                             size="sm"
-                            className="h-7 text-[12px] gap-1.5 px-3 rounded-lg"
+                            className="h-8 text-xs gap-1.5 px-4 rounded-xl"
                             onClick={(e) => { e.stopPropagation(); handleOpenPromptConfig(scenario.id) }}
                             title={language === 'zh' ? '配置此场景的 Prompt' : 'Configure Prompt for this scene'}
                         >
-                            <FileText className="w-3 h-3" />
+                            <FileText className="w-3.5 h-3.5" />
                             {language === 'zh' ? 'Prompt' : 'Prompt'}
                         </ActionButton>
                         <ActionButton
                             variant="ghost"
                             size="sm"
-                            className="h-7 text-[12px] gap-1.5 px-3 rounded-lg"
+                            className="h-8 text-xs gap-1.5 px-4 rounded-xl"
                             onClick={(e) => { e.stopPropagation(); handleOpenDetail(scenario.id) }}
                         >
-                            <Info className="w-3 h-3" />
+                            <Info className="w-3.5 h-3.5" />
                             {t('scenario.details', language as Language)}
                         </ActionButton>
                         {!isBuiltin && (
                             <ActionButton
                                 variant="ghost"
                                 size="sm"
-                                className="h-7 text-[12px] gap-1.5 px-3 rounded-lg text-red-400/60 hover:text-red-400 hover:bg-red-400/10 ml-auto"
+                                className="h-8 text-xs gap-1.5 px-4 rounded-xl text-red-400/60 hover:text-red-400 hover:bg-red-400/10 ml-auto"
                                 onClick={(e) => { e.stopPropagation(); handleRequestUninstall(scenario) }}
                             >
-                                <PackageX className="w-3 h-3" />
+                                <PackageX className="w-3.5 h-3.5" />
                                 {t('scenario.uninstall', language as Language)}
                             </ActionButton>
                         )}
@@ -636,10 +644,10 @@ export function ScenarioManagerView() {
                             <ActionButton
                                 variant="ghost"
                                 size="sm"
-                                className="h-7 text-[12px] gap-1.5 px-3 rounded-lg text-red-400/60 hover:text-red-400 hover:bg-red-400/10 ml-auto"
+                                className="h-8 text-xs gap-1.5 px-4 rounded-xl text-red-400/60 hover:text-red-400 hover:bg-red-400/10 ml-auto"
                                 onClick={(e) => { e.stopPropagation(); handleRequestUninstall(scenario) }}
                             >
-                                <PackageX className="w-3 h-3" />
+                                <PackageX className="w-3.5 h-3.5" />
                                 {t('scenario.uninstall2', language as Language)}
                             </ActionButton>
                         )}
@@ -709,8 +717,8 @@ export function ScenarioManagerView() {
             </div>
 
             {/* 右侧内容 */}
-            <div className="flex-1 flex justify-center overflow-hidden">
-                <div className="w-full max-w-[1000px] flex flex-col min-w-0 bg-transparent relative">
+            <div className="flex-1 min-h-0 flex flex-col">
+                <div className="flex-1 w-full flex flex-col min-w-0 min-h-0 bg-transparent relative">
                     <div className="shrink-0 px-8 pt-10 pb-4 border-b border-border/40 drag-region">
                         <div className="no-drag">
                             <h3 className="text-2xl font-semibold text-text-primary tracking-tight">
@@ -724,7 +732,7 @@ export function ScenarioManagerView() {
                         </div>
                     </div>
 
-                    <div className="flex-1 overflow-hidden">
+                    <div className="flex-1 min-h-0 flex flex-col">
                         {activeTab === 'installed' ? (
                             <InstalledTab
                                 language={language}
@@ -769,9 +777,17 @@ export function ScenarioManagerView() {
                     {installState.phase === 'confirming' && installState.config && (
                         <div className="space-y-4">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center">
-                                    <Package className="w-5 h-5 text-accent" strokeWidth={1.5} />
-                                </div>
+                                {installState.config.icon ? (
+                                    isImageIcon(installState.config.icon as string) ? (
+                                        <img src={installState.config.icon as string} alt="" className="w-8 h-8 object-contain" />
+                                    ) : (
+                                        (() => { const C = ICON_MAP[installState.config.icon as string] || Package; return <C className="w-8 h-8 text-accent" strokeWidth={1.5} /> })()
+                                    )
+                                ) : (
+                                    <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center">
+                                        <Package className="w-5 h-5 text-accent" strokeWidth={1.5} />
+                                    </div>
+                                )}
                                 <div>
                                     <h4 className="text-sm font-medium text-text-primary">
                                         {language === 'zh' ? (installState.config.nameZh as string) : (installState.config.name as string)}
@@ -868,12 +884,19 @@ export function ScenarioManagerView() {
                 {detailScenario && (
                     <div className="space-y-5">
                         <div className="flex items-center gap-4">
-                            <div className="w-14 h-14 rounded-2xl bg-accent/10 flex items-center justify-center flex-shrink-0">
-                                {(() => {
+                            {detailScenario.icon ? (
+                                (() => {
+                                    if (isImageIcon(detailScenario.icon)) {
+                                        return <img src={detailScenario.icon} alt="" className="w-10 h-10 flex-shrink-0 rounded object-cover" />
+                                    }
                                     const Icon = ICON_MAP[detailScenario.icon] || Sparkles
-                                    return <Icon className="w-7 h-7 text-accent" strokeWidth={1.5} />
-                                })()}
-                            </div>
+                                    return <Icon className="w-10 h-10 text-accent flex-shrink-0" strokeWidth={1.5} />
+                                })()
+                            ) : (
+                                <div className="w-14 h-14 rounded-2xl bg-accent/10 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                                    <Sparkles className="w-7 h-7 text-accent" strokeWidth={1.5} />
+                                </div>
+                            )}
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
                                     <h3 className="text-lg font-bold text-text-primary">
@@ -1173,14 +1196,14 @@ function InstalledTab({
     renderScenarioCard: (scenario: ScenarioPlugin) => React.ReactNode
 }) {
     return (
-        <div className="h-full overflow-y-auto p-6">
+        <div className="flex flex-col flex-1 min-h-0 overflow-auto">
             {sortedCategories.length > 1 && (
-                <div className="flex items-center gap-1.5 mb-5 overflow-x-auto no-scrollbar">
+                <div className="flex items-center gap-2 mb-6 overflow-x-auto no-scrollbar">
                     <button
                         onClick={() => setFilterCategory(null)}
-                        className={`text-[11px] px-3 py-1.5 rounded-lg whitespace-nowrap transition-all font-medium ${
+                        className={`text-xs px-4 py-2 rounded-xl whitespace-nowrap transition-all font-medium ${
                             !filterCategory
-                                ? 'bg-accent/15 text-accent border border-accent/30'
+                                ? 'bg-accent/15 text-accent border border-accent/20'
                                 : 'text-text-muted hover:text-text-primary border border-border/20 hover:border-border/40'
                         }`}
                     >
@@ -1192,9 +1215,9 @@ function InstalledTab({
                             <button
                                 key={cat}
                                 onClick={() => setFilterCategory(filterCategory === cat ? null : cat)}
-                                className={`text-[11px] px-3 py-1.5 rounded-lg whitespace-nowrap transition-all font-medium ${
+                                className={`text-xs px-4 py-2 rounded-xl whitespace-nowrap transition-all font-medium ${
                                     filterCategory === cat
-                                        ? 'bg-accent/15 text-accent border border-accent/30'
+                                        ? 'bg-accent/15 text-accent border border-accent/20'
                                         : `${catLabel.color} hover:opacity-80 border border-border/20 hover:border-border/40`
                                 }`}
                             >
@@ -1206,48 +1229,52 @@ function InstalledTab({
             )}
 
             {filteredBuiltin.length > 0 && (
-                <div className="mb-6">
-                    <div className="flex items-center gap-1.5 mb-3">
-                        <Shield className="w-3.5 h-3.5 text-amber-400/60" strokeWidth={1.5} />
+                <div className="mb-8">
+                    <div className="flex items-center gap-2 mb-4">
+                        <Shield className="w-4 h-4 text-amber-400/70" strokeWidth={1.5} />
                         <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">
                             {t('scenario.builtin3', language as Language)}
                         </span>
-                        <span className="text-[10px] text-text-muted/60">({filteredBuiltin.length})</span>
+                        <span className="text-[11px] text-text-muted/50">({filteredBuiltin.length})</span>
                     </div>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                         {filteredBuiltin.map(renderScenarioCard)}
                     </div>
                 </div>
             )}
 
             {filteredInstalled.length > 0 && (
-                <div className="mb-6">
-                    <div className="flex items-center gap-1.5 mb-3">
-                        <Package className="w-3.5 h-3.5 text-accent/60" strokeWidth={1.5} />
+                <div className="mb-8">
+                    <div className="flex items-center gap-2 mb-4">
+                        <Package className="w-4 h-4 text-accent/70" strokeWidth={1.5} />
                         <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">
                             {t('scenario.installed2', language as Language)}
                         </span>
-                        <span className="text-[10px] text-text-muted/60">({filteredInstalled.length})</span>
+                        <span className="text-[11px] text-text-muted/50">({filteredInstalled.length})</span>
                     </div>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                         {filteredInstalled.map(renderScenarioCard)}
                     </div>
                 </div>
             )}
 
             {scenarios.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-20 text-center">
-                    <Package className="w-12 h-12 text-text-muted/20 mb-4" strokeWidth={1} />
-                    <p className="text-sm text-text-muted/60">
+                <div className="flex flex-col items-center justify-center py-24 text-center">
+                    <Package className="w-16 h-16 text-text-muted/15 mb-5" strokeWidth={1} />
+                    <p className="text-base text-text-muted/70 font-medium">
                         {t('scenario.noscenariosinstalled', language as Language)}
                     </p>
-                    <p className="text-xs text-text-muted/40 mt-1">
+                    <p className="text-xs text-text-muted/40 mt-2">
                         {t('scenario.installfrommarketplaceorclick', language as Language)}
                     </p>
                 </div>
             )}
         </div>
     )
+}
+
+function isImageIcon(val?: string | null): boolean {
+    return !!val && (val.startsWith('http://') || val.startsWith('https://') || val.startsWith('data:'))
 }
 
 function MarketplaceTab({ language, isAuthenticated }: { language: Language; isAuthenticated: boolean }) {
@@ -1282,66 +1309,28 @@ function MarketplaceTab({ language, isAuthenticated }: { language: Language; isA
         return error
     }
 
-    useEffect(() => {
-        loadFeatured()
-        loadCategories()
-    }, [isAuthenticated])
-
-    useEffect(() => {
-        loadItems()
-    }, [searchQuery, selectedCategory, page, isAuthenticated])
+    useEffect(() => { loadFeatured(); loadCategories() }, [isAuthenticated])
+    useEffect(() => { loadItems() }, [searchQuery, selectedCategory, page, isAuthenticated])
 
     async function loadItems() {
         setIsLoading(true)
         try {
-            const result = await browseScenarios({
-                category: selectedCategory || undefined,
-                search: searchQuery || undefined,
-                page,
-                limit: 20,
-            })
-            setItems(result.scenarios)
-            setTotal(result.total)
-        } catch {
-            setItems([])
-            setTotal(0)
-        } finally {
-            setIsLoading(false)
-        }
+            const result = await browseScenarios({ category: selectedCategory || undefined, search: searchQuery || undefined, page, limit: 20 })
+            setItems(result.scenarios || [])
+            setTotal(result.total || 0)
+        } catch { setItems([]); setTotal(0) } finally { setIsLoading(false) }
     }
-
     async function loadFeatured() {
-        try {
-            const result = await getFeaturedScenarios()
-            setFeatured(result)
-        } catch {
-            setFeatured([])
-        }
+        try { const f = await getFeaturedScenarios(); setFeatured(f || []) } catch { /* ignore */ }
     }
-
     async function loadCategories() {
-        try {
-            const result = await getMarketplaceCategories()
-            setCategories(result)
-        } catch {
-            setCategories([])
-        }
+        try { const c = await getMarketplaceCategories(); setCategories(c || []) } catch { /* ignore */ }
     }
-
-    async function handleInstall(item: MarketplaceScenario) {
-        if (scenarioRegistry.has(item.id)) {
-            toast.warning(
-                t('scenario.scenarioisalreadyinstalled', language as Language, { name: item.name, nameZh: item.nameZh })
-            )
-            return
-        }
-        if (item.permissions && (item.permissions?.length ?? 0) > 0) {
-            setPermissionPending(item)
-            return
-        }
-        await doInstall(item)
+    function handleInstall(item: MarketplaceScenario) {
+        if (scenarioRegistry.has(item.id)) { toast.warning(t('scenario.alreadyinstalled', language as Language)); return }
+        if (item.permissions?.length > 0) { setPermissionPending(item); return }
+        doInstall(item)
     }
-
     async function doInstall(item: MarketplaceScenario) {
         setInstalling(item.id)
         try {
@@ -1349,62 +1338,24 @@ function MarketplaceTab({ language, isAuthenticated }: { language: Language; isA
             if (result.success) {
                 const config = result.config
                 const scenarioId = result.scenarioId || item.id
-
-                if (config) {
-                    await registerInstalledScenario(config as any, {
-                        scenarioId,
-                        source: 'marketplace',
-                        version: result.version,
-                    })
-                }
-
-                toast.success(
-                    t('scenario.scenarioinstalledsuccessfully', language as Language, { name: item.name, nameZh: item.nameZh }),
-                )
+                if (config) await registerInstalledScenario(config as any, { scenarioId, source: 'marketplace', version: result.version })
+                toast.success(t('scenario.scenarioinstalledsuccessfully', language as Language, { name: item.name, nameZh: item.nameZh }))
                 setSelectedItem(null)
                 await loadItems()
             } else if (result.requiresPayment) {
-                toast.card({
-                    type: 'warning',
-                    title: t('scenario.paidscenario', language as Language),
-                    message: t('scenario.thisisapaidscenario', language as Language, { price: result.price }),
-                    duration: 5000,
-                    source: 'ScenarioMarketplace',
-                })
+                toast.card({ type: 'warning', title: t('scenario.paidscenario', language as Language), message: t('scenario.thisisapaidscenario', language as Language, { price: result.price }), duration: 5000, source: 'ScenarioMarketplace' })
             } else {
-                const errorMsg = translateInstallError(result.error || (t('scenario.unknownerror2', language as Language)))
-                toast.card({
-                    type: 'error',
-                    title: t('scenario.installfailed', language as Language),
-                    message: errorMsg,
-                    duration: 5000,
-                    source: 'ScenarioMarketplace',
-                })
+                const errorMsg = translateInstallError(result.error || t('scenario.unknownerror2', language as Language))
+                toast.card({ type: 'error', title: t('scenario.installfailed', language as Language), message: errorMsg, duration: 5000, source: 'ScenarioMarketplace' })
             }
         } catch (err) {
             const errorMsg = translateInstallError(err instanceof Error ? err.message : String(err))
-            toast.card({
-                type: 'error',
-                title: t('scenario.installfailed2', language as Language),
-                message: errorMsg,
-                duration: 5000,
-                source: 'ScenarioMarketplace',
-            })
-        } finally {
-            setInstalling(null)
-        }
+            toast.card({ type: 'error', title: t('scenario.installfailed2', language as Language), message: errorMsg, duration: 5000, source: 'ScenarioMarketplace' })
+        } finally { setInstalling(null) }
     }
-
     function renderStars(rating: number) {
         const stars = []
-        for (let i = 1; i <= 5; i++) {
-            stars.push(
-                <Star
-                    key={i}
-                    className={`w-3 h-3 ${i <= Math.round(rating) ? 'text-yellow-400 fill-yellow-400' : 'text-border/40'}`}
-                />
-            )
-        }
+        for (let i = 1; i <= 5; i++) stars.push(<Star key={i} className={`w-3 h-3 ${i <= Math.round(rating) ? 'text-yellow-300 fill-yellow-300' : 'text-border/40'}`} />)
         return <div className="flex items-center gap-0.5">{stars}</div>
     }
 
@@ -1418,160 +1369,129 @@ function MarketplaceTab({ language, isAuthenticated }: { language: Language; isA
         )
     }
 
+    // ── 详情视图 ──
     if (selectedItem) {
         return (
-            <div className="h-full overflow-auto p-6">
-                <button
-                    onClick={() => setSelectedItem(null)}
-                    className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text-primary mb-4 transition-colors"
-                >
-                    <ArrowLeft className="w-3.5 h-3.5" />
-                    {t('app.backtolist', language as Language)}
+            <div className="p-6">
+                <button onClick={() => setSelectedItem(null)} className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text-primary mb-4 transition-colors">
+                    <ArrowLeft className="w-3.5 h-3.5" />{t('app.backtolist', language as Language)}
                 </button>
-
-                <div className="max-w-3xl mx-auto">
-                    <div className="flex items-start gap-4 mb-6">
-                        <div className="w-16 h-16 rounded-2xl bg-accent/10 flex items-center justify-center text-accent flex-shrink-0">
-                            {CATEGORY_ICONS[selectedItem.category] || <Package className="w-7 h-7" />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <h2 className="text-xl font-bold text-text-primary">
-                                {language === 'zh' ? selectedItem.nameZh : selectedItem.name}
-                            </h2>
-                            <p className="text-sm text-text-secondary mt-1">
-                                {language === 'zh' ? selectedItem.descriptionZh : selectedItem.description}
-                            </p>
+                <div>
+                    {/* 头部卡片 */}
+                    <div className="rounded-2xl border border-border/15 bg-surface/20 p-6 mb-6 shadow-sm shadow-black/5">
+                        <div className="flex items-start gap-5">
+                            {selectedItem.icon ? (
+                                isImageIcon(selectedItem.icon) ? (
+                                    <img src={selectedItem.icon} alt={selectedItem.name} className="w-16 h-16 flex-shrink-0 object-contain rounded-2xl bg-background/50" />
+                                ) : (() => {
+                                    const I = ICON_MAP[selectedItem.icon]
+                                    return I
+                                        ? <I className="w-16 h-16 text-accent flex-shrink-0" strokeWidth={1.5} />
+                                        : <span className="text-4xl font-bold text-accent flex-shrink-0">{(language === 'zh' ? selectedItem.nameZh : selectedItem.name)?.[0]?.toUpperCase()}</span>
+                                })()
+                            ) : (
+                                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-accent/20 to-accent/5 flex items-center justify-center text-accent flex-shrink-0 border border-accent/10">
+                                    <span className="text-3xl font-bold">{(language === 'zh' ? selectedItem.nameZh : selectedItem.name)?.[0]?.toUpperCase()}</span>
+                                </div>
+                            )}
+                            <div className="flex-1 min-w-0 pt-1">
+                                <h2 className="text-2xl font-bold text-text-primary truncate">
+                                    {language === 'zh' ? selectedItem.nameZh : selectedItem.name}
+                                </h2>
+                                <p className="text-sm text-text-secondary mt-1.5 line-clamp-2">{language === 'zh' ? selectedItem.descriptionZh : selectedItem.description}</p>
+                                <div className="flex items-center gap-2 mt-3 flex-wrap">
+                                    <span className={`px-3 py-1 text-xs rounded-lg font-medium ${selectedItem.isFree ? 'bg-green-500/10 text-green-400' : 'bg-accent/10 text-accent'}`}>
+                                        {selectedItem.isFree ? t('app.free', language as Language) : `¥${selectedItem.price}`}
+                                    </span>
+                                    {selectedItem.category && (
+                                        <span className="px-3 py-1 text-xs rounded-lg bg-surface/50 text-text-muted border border-border/15">
+                                            {CATEGORY_LABELS[selectedItem.category]?.[language === 'zh' ? 'zh' : 'en'] || selectedItem.category}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-3 mb-6">
-                        <div className="text-center p-3 rounded-xl bg-surface/30 border border-border/20 shadow-sm shadow-black/5">
-                            <div className="text-lg font-bold text-text-primary">{selectedItem.rating.toFixed(1)}</div>
-                            <div className="text-[11px] text-text-muted mt-0.5">{t('app.rating', language as Language)}</div>
-                            <div className="flex items-center justify-center mt-1">{renderStars(selectedItem.rating)}</div>
+                    {/* 统计卡片 */}
+                    <div className="grid grid-cols-3 gap-4 mb-6">
+                        <div className="text-center p-4 rounded-2xl bg-surface/20 border border-border/15">
+                            <div className="text-xl font-bold text-text-primary flex items-center justify-center gap-1.5">
+                                {selectedItem.rating.toFixed(1)} <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" />
+                            </div>
+                            <div className="text-xs text-text-muted mt-1">{t('app.rating', language as Language)}</div>
                         </div>
-                        <div className="text-center p-3 rounded-xl bg-surface/30 border border-border/20 shadow-sm shadow-black/5">
-                            <div className="text-lg font-bold text-text-primary">{selectedItem.downloads}</div>
-                            <div className="text-[11px] text-text-muted mt-0.5">{t('app.downloads', language as Language)}</div>
+                        <div className="text-center p-4 rounded-2xl bg-surface/20 border border-border/15">
+                            <div className="text-xl font-bold text-text-primary">{selectedItem.downloads}</div>
+                            <div className="text-xs text-text-muted mt-1">{t('app.downloads', language as Language)}</div>
                         </div>
-                        <div className="text-center p-3 rounded-xl bg-surface/30 border border-border/20 shadow-sm shadow-black/5">
-                            <div className="text-lg font-bold text-text-primary">v{selectedItem.version}</div>
-                            <div className="text-[11px] text-text-muted mt-0.5">{t('app.version', language as Language)}</div>
+                        <div className="text-center p-4 rounded-2xl bg-surface/20 border border-border/15">
+                            <div className="text-xl font-bold text-text-primary">v{selectedItem.version}</div>
+                            <div className="text-xs text-text-muted mt-1">{t('app.version', language as Language)}</div>
                         </div>
                     </div>
 
                     {selectedItem.tags?.length > 0 && (
                         <div className="mb-6">
-                            <h4 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">{t('app.tags', language as Language)}</h4>
-                            <div className="flex flex-wrap gap-1.5">
+                            <h4 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-3">{t('app.tags', language as Language)}</h4>
+                            <div className="flex flex-wrap gap-2">
                                 {selectedItem.tags.map(tag => (
-                                    <span key={tag} className="px-2 py-0.5 text-[11px] rounded-md bg-surface/40 text-text-secondary border border-border/15 flex items-center gap-1">
-                                        <Tag className="w-2.5 h-2.5" />
-                                        {tag}
-                                    </span>
+                                    <span key={tag} className="px-3 py-1 text-xs rounded-lg bg-surface/30 text-text-secondary border border-border/15 flex items-center gap-1.5"><Tag className="w-3 h-3" />{tag}</span>
                                 ))}
                             </div>
                         </div>
                     )}
+                    {selectedItem.minAppVersion && <div className="text-sm text-text-muted mb-4">{t('app.minappversion', language as Language, { minAppVersion: selectedItem.minAppVersion })}</div>}
 
-                    {selectedItem.minAppVersion && (
-                        <div className="text-[12px] text-text-muted mb-4">
-                            {t('app.minappversion', language as Language, { minAppVersion: selectedItem.minAppVersion })}
-                        </div>
-                    )}
-
-                    <div className="flex items-center gap-2 text-[12px] text-text-muted mb-6">
-                        <Shield className="w-3.5 h-3.5 text-green-400" />
-                        <span>{t('app.securityreviewpassed', language as Language)}</span>
-                    </div>
+                    <div className="flex items-center gap-2 text-sm text-text-muted mb-6"><Shield className="w-4 h-4 text-green-400" /><span>{t('app.securityreviewpassed', language as Language)}</span></div>
 
                     <div className="flex items-center gap-3 mb-8">
                         {scenarioRegistry.has(selectedItem.id) ? (
-                            <ActionButton
-                                className="h-10 text-sm gap-2 px-6 rounded-xl"
-                                disabled
-                            >
-                                <CheckCircle2 className="w-4 h-4" />
-                                {t('app.installed', language as Language)}
-                            </ActionButton>
+                            <ActionButton className="h-10 text-sm gap-2 px-6 rounded-xl" disabled><CheckCircle2 className="w-4 h-4" />{t('app.installed', language as Language)}</ActionButton>
                         ) : (
-                            <ActionButton
-                                className="h-10 text-sm gap-2 px-6 rounded-xl"
-                                onClick={() => handleInstall(selectedItem)}
-                                disabled={installing === selectedItem.id}
-                            >
-                                {installing === selectedItem.id ? (
-                                    <>
-                                        <Clock className="w-4 h-4 animate-spin" />
-                                        {t('app.installing', language as Language)}
-                                    </>
-                                ) : (
-                                    <>
-                                        <Download className="w-4 h-4" />
-                                        {t('app.installscenario', language as Language)}
-                                    </>
-                                )}
+                            <ActionButton className="h-10 text-sm gap-2 px-6 rounded-xl" onClick={() => handleInstall(selectedItem)} disabled={installing === selectedItem.id}>
+                                {installing === selectedItem.id ? <><Clock className="w-4 h-4 animate-spin" />{t('app.installing', language as Language)}</> : <><Download className="w-4 h-4" />{t('app.installscenario', language as Language)}</>}
                             </ActionButton>
                         )}
                     </div>
 
-                    <ScenarioReviewPanel
-                        scenarioId={selectedItem.id}
-                        scenarioName={selectedItem.name}
-                        scenarioNameZh={selectedItem.nameZh}
-                        currentRating={selectedItem.rating}
-                        ratingCount={selectedItem.ratingCount}
-                    />
+                    <ScenarioReviewPanel scenarioId={selectedItem.id} scenarioName={selectedItem.name} scenarioNameZh={selectedItem.nameZh} currentRating={selectedItem.rating} ratingCount={selectedItem.ratingCount} />
                 </div>
             </div>
         )
     }
 
+    // ── 列表视图 ──
     return (
-        <div className="flex flex-col h-full">
-            <div className="px-6 py-3 border-b border-border/10">
-                <div className="flex items-center gap-3 mb-3">
-                    <div className="relative flex-1 max-w-md">
+        <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+            {/* 顶部搜索栏 */}
+            <div className="shrink-0 px-6 py-4 border-b border-border/10 bg-surface/20">
+                <div className="flex items-center gap-3">
+                    <div className="relative flex-1">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
                         <input
-                            type="text"
-                            value={searchQuery}
+                            type="text" value={searchQuery}
                             onChange={e => { setSearchQuery(e.target.value); setPage(1) }}
                             placeholder={t('app.searchscenarios', language as Language)}
-                            className="w-full h-9 pl-9 pr-3 rounded-lg bg-surface/30 border border-border/15 text-sm text-text-primary placeholder:text-text-muted/50 outline-none focus:border-accent/30 transition-colors"
+                            className="w-full h-9 pl-9 pr-3 rounded-xl bg-surface/40 border border-border/20 text-sm text-text-primary placeholder:text-text-muted/50 outline-none focus:border-accent/40 transition-colors"
                         />
                     </div>
-                    <button
-                        onClick={() => { loadItems(); loadFeatured(); loadCategories(); }}
-                        className="p-2 rounded-lg hover:bg-surface/40 text-text-muted hover:text-text-primary transition-colors"
-                        title={t('app.refresh', language as Language)}
-                    >
+                    <button onClick={() => { loadItems(); loadFeatured(); loadCategories(); }}
+                        className="p-2 rounded-xl hover:bg-surface/40 text-text-muted hover:text-text-primary transition-colors" title={t('app.refresh', language as Language)}>
                         <RefreshCw className="w-4 h-4" />
                     </button>
                 </div>
 
-                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-                    <button
-                        onClick={() => { setSelectedCategory(null); setPage(1) }}
-                        className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all ${
-                            !selectedCategory
-                                ? 'bg-accent/15 text-accent border border-accent/30'
-                                : 'text-text-muted hover:text-text-secondary border border-border/20'
-                        }`}
-                    >
+                {/* 分类筛选 */}
+                <div className="flex items-center gap-2 mt-4 overflow-x-auto no-scrollbar">
+                    <button onClick={() => { setSelectedCategory(null); setPage(1) }}
+                        className={`flex-shrink-0 px-4 py-2 rounded-xl text-xs font-medium transition-all ${!selectedCategory ? 'bg-accent/15 text-accent border border-accent/20' : 'text-text-muted hover:text-text-secondary border border-border/20 hover:border-border/40'}`}>
                         {t('app.all', language as Language)}
                     </button>
                     {categories.map(cat => (
-                        <button
-                            key={cat.id}
-                            onClick={() => { setSelectedCategory(cat.id === selectedCategory ? null : cat.id); setPage(1) }}
-                            className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all flex items-center gap-1 ${
-                                cat.id === selectedCategory
-                                    ? 'bg-accent/15 text-accent border border-accent/30'
-                                    : 'text-text-muted hover:text-text-secondary border border-border/20'
-                            }`}
-                        >
-                            {CATEGORY_ICONS[cat.id]}
+                        <button key={cat.id} onClick={() => { setSelectedCategory(cat.id === selectedCategory ? null : cat.id); setPage(1) }}
+                            className={`flex-shrink-0 px-4 py-2 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5 border ${cat.id === selectedCategory ? 'bg-accent/15 text-accent border border-accent/20' : 'text-text-muted hover:text-text-secondary border border-border/20 hover:border-border/40'}`}>
+                            <span className="w-4 h-4">{CATEGORY_ICONS[cat.id]}</span>
                             <span>{cat.nameZh && language === 'zh' ? cat.nameZh : cat.name}</span>
                             <span className="opacity-60">{cat.count}</span>
                         </button>
@@ -1579,29 +1499,40 @@ function MarketplaceTab({ language, isAuthenticated }: { language: Language; isA
                 </div>
             </div>
 
-            <div className="flex-1 overflow-auto p-6">
+                {/* 内容区域 */}
+                <div className="flex-1 min-h-0 overflow-auto p-5">
+                {/* 精选推荐 */}
                 {featured.length > 0 && !searchQuery && !selectedCategory && (
-                    <div className="mb-8">
-                        <h3 className="text-sm font-semibold text-text-primary mb-3">{t('app.featured', language as Language)}</h3>
-                        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
+                    <div className="mb-6">
+                        <div className="flex items-center gap-2 mb-3">
+                            <Sparkles className="w-4 h-4 text-accent" />
+                            <h3 className="text-sm font-semibold text-text-primary">{t('app.featured', language as Language)}</h3>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                             {featured.slice(0, 8).map(item => (
-                                <button
-                                    key={item.id}
-                                    onClick={() => setSelectedItem(item)}
-                                    className="w-full rounded-xl border border-border/20 bg-surface/20 hover:bg-surface/40 hover:border-border/40 shadow-sm shadow-black/5 text-left transition-all group overflow-hidden"
-                                >
-                                    <div className="px-4 py-3.5">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-xl bg-surface/60 flex items-center justify-center text-text-muted flex-shrink-0 group-hover:bg-accent/10 group-hover:text-accent transition-colors">
-                                                {CATEGORY_ICONS[item.category] || <Package className="w-5 h-5" strokeWidth={1.5} />}
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <span className="text-sm font-semibold text-text-primary truncate block">
-                                                    {language === 'zh' ? item.nameZh : item.name}
-                                                </span>
-                                                <div className="flex items-center gap-2 mt-0.5">
+                                <button key={item.id} onClick={() => setSelectedItem(item)}
+                                    className="rounded-2xl border border-border/15 bg-surface/20 hover:bg-surface/40 hover:border-accent/20 transition-all duration-200 group text-left overflow-hidden shadow-sm shadow-black/5">
+                                    <div className="p-5">
+                                        <div className="flex items-start gap-4">
+                                            {item.icon ? (
+                                                isImageIcon(item.icon) ? (
+                                                    <img src={item.icon} alt={item.name} className="w-12 h-12 flex-shrink-0 object-contain rounded-xl bg-background/50" />
+                                                ) : (() => {
+                                                    const I = ICON_MAP[item.icon]
+                                                    return I
+                                                        ? <I className="w-12 h-12 text-accent flex-shrink-0 group-hover:scale-105 transition-transform" strokeWidth={1.5} />
+                                                        : <span className="text-2xl font-bold text-accent flex-shrink-0">{(language === 'zh' ? item.nameZh : item.name)?.[0]?.toUpperCase()}</span>
+                                                })()
+                                            ) : (
+                                                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-accent/20 to-accent/5 flex items-center justify-center text-accent flex-shrink-0 border border-accent/10">
+                                                    <span className="text-xl font-bold">{(language === 'zh' ? item.nameZh : item.name)?.[0]?.toUpperCase()}</span>
+                                                </div>
+                                            )}
+                                            <div className="flex-1 min-w-0 pt-1">
+                                                <span className="text-base font-semibold text-text-primary truncate block">{language === 'zh' ? item.nameZh : item.name}</span>
+                                                <div className="flex items-center gap-2 mt-1.5">
                                                     {renderStars(item.rating)}
-                                                    <span className="text-[12px] text-text-muted">({item.downloads} {t('app.dl', language as Language)})</span>
+                                                    <span className="text-xs text-text-muted">{item.downloads} {t('app.dl', language as Language)}</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -1612,12 +1543,11 @@ function MarketplaceTab({ language, isAuthenticated }: { language: Language; isA
                     </div>
                 )}
 
+                {/* 搜索结果 / 全部 */}
                 <div>
                     <div className="flex items-center justify-between mb-3">
                         <h3 className="text-sm font-semibold text-text-primary">
-                            {searchQuery || selectedCategory
-                                ? t('app.searchresults', language as Language)
-                                : t('app.allscenarios', language as Language)}
+                            {searchQuery || selectedCategory ? t('app.searchresults', language as Language) : t('app.allscenarios', language as Language)}
                             {total > 0 && <span className="ml-1.5 text-text-muted font-normal text-xs">({total})</span>}
                         </h3>
                         {isLoading && <Loader2 className="w-4 h-4 text-text-muted animate-spin" />}
@@ -1630,43 +1560,40 @@ function MarketplaceTab({ language, isAuthenticated }: { language: Language; isA
                         </div>
                     )}
 
-                    <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                         {items.map(item => (
-                            <button
-                                key={item.id}
-                                onClick={() => setSelectedItem(item)}
-                                className="w-full rounded-xl border border-border/20 bg-surface/20 hover:bg-surface/40 hover:border-border/40 shadow-sm shadow-black/5 text-left transition-all group overflow-hidden"
-                            >
-                                <div className="px-4 py-3.5">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 rounded-xl bg-surface/60 flex items-center justify-center text-text-muted flex-shrink-0 group-hover:bg-accent/10 group-hover:text-accent transition-colors">
-                                            {CATEGORY_ICONS[item.category] || <Package className="w-5 h-5" strokeWidth={1.5} />}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-sm font-semibold text-text-primary truncate">
-                                                    {language === 'zh' ? item.nameZh : item.name}
-                                                </span>
-                                                {item.isFree && (
-                                                    <span className="px-1.5 py-0.5 text-[12px] rounded-md bg-green-500/10 text-green-400 font-semibold flex-shrink-0">
-                                                        {t('app.free', language as Language)}
-                                                    </span>
-                                                )}
-                                                {scenarioRegistry.has(item.id) && (
-                                                    <span className="px-1.5 py-0.5 text-[12px] rounded-md bg-accent/10 text-accent font-semibold flex-shrink-0 flex items-center gap-0.5">
-                                                        <CheckCircle2 className="w-3 h-3" />
-                                                        {t('app.installed2', language as Language)}
-                                                    </span>
-                                                )}
+                            <button key={item.id} onClick={() => setSelectedItem(item)}
+                                className="rounded-2xl border border-border/15 bg-surface/20 hover:bg-surface/40 hover:border-accent/20 transition-all duration-200 group text-left overflow-hidden shadow-sm shadow-black/5">
+                                <div className="p-5">
+                                    <div className="flex items-start gap-4">
+                                        {item.icon ? (
+                                            isImageIcon(item.icon) ? (
+                                                <img src={item.icon} alt={item.name} className="w-12 h-12 flex-shrink-0 object-contain rounded-xl bg-background/50" />
+                                            ) : (() => {
+                                                const I = ICON_MAP[item.icon]
+                                                return I
+                                                    ? <I className="w-12 h-12 text-accent flex-shrink-0 group-hover:scale-105 transition-transform" strokeWidth={1.5} />
+                                                    : <span className="text-2xl font-bold text-accent flex-shrink-0">{(language === 'zh' ? item.nameZh : item.name)?.[0]?.toUpperCase()}</span>
+                                            })()
+                                        ) : (
+                                            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-accent/20 to-accent/5 flex items-center justify-center text-accent flex-shrink-0 border border-accent/10">
+                                                <span className="text-xl font-bold">{(language === 'zh' ? item.nameZh : item.name)?.[0]?.toUpperCase()}</span>
                                             </div>
-                                            <div className="flex items-center gap-2 mt-0.5">
+                                        )}
+                                        <div className="flex-1 min-w-0 pt-1">
+                                            <span className="text-base font-semibold text-text-primary truncate block">{language === 'zh' ? item.nameZh : item.name}</span>
+                                            <div className="flex items-center gap-2 mt-1.5">
                                                 {renderStars(item.rating)}
-                                                <span className="text-[12px] text-text-muted">{item.downloads} {t('app.dl2', language as Language)}</span>
+                                                <span className="text-xs text-text-muted">{item.downloads} {t('app.dl', language as Language)}</span>
+                                            </div>
+                                            <div className="flex items-center gap-1.5 mt-2">
+                                                {item.isFree && <span className="px-2 py-0.5 text-xs rounded-lg bg-green-500/10 text-green-400 font-medium">{t('app.free', language as Language)}</span>}
+                                                {!item.isFree && <span className="px-2 py-0.5 text-xs rounded-lg bg-amber-500/10 text-amber-400 font-medium">¥{item.price}</span>}
+                                                {scenarioRegistry.has(item.id) && <span className="px-2 py-0.5 text-xs rounded-lg bg-accent/10 text-accent font-medium">{t('app.installed2', language as Language)}</span>}
                                             </div>
                                         </div>
-                                        <ChevronRight className="w-4 h-4 text-text-muted/30 group-hover:text-text-muted/60 flex-shrink-0" />
                                     </div>
-                                    <p className="text-[12px] text-text-muted/80 mt-2 line-clamp-2 leading-relaxed">
+                                    <p className="text-xs text-text-muted/70 mt-4 line-clamp-2 leading-relaxed">
                                         {language === 'zh' ? item.descriptionZh : item.description}
                                     </p>
                                 </div>
@@ -1676,21 +1603,11 @@ function MarketplaceTab({ language, isAuthenticated }: { language: Language; isA
 
                     {total > 20 && (
                         <div className="flex items-center justify-center gap-3 mt-6">
-                            <button
-                                onClick={() => setPage(p => Math.max(1, p - 1))}
-                                disabled={page <= 1}
-                                className="px-3 py-1.5 text-[11px] rounded-lg bg-surface/30 text-text-muted disabled:opacity-40 hover:bg-surface/50 transition-colors"
-                            >
-                                {t('app.prev', language as Language)}
-                            </button>
+                            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}
+                                className="px-3 py-1.5 text-[11px] rounded-lg bg-surface/30 text-text-muted disabled:opacity-40 hover:bg-surface/50 transition-colors">{t('app.prev', language as Language)}</button>
                             <span className="text-[11px] text-text-muted">{page} / {Math.ceil(total / 20)}</span>
-                            <button
-                                onClick={() => setPage(p => p + 1)}
-                                disabled={page * 20 >= total}
-                                className="px-3 py-1.5 text-[11px] rounded-lg bg-surface/30 text-text-muted disabled:opacity-40 hover:bg-surface/50 transition-colors"
-                            >
-                                {t('app.next', language as Language)}
-                            </button>
+                            <button onClick={() => setPage(p => p + 1)} disabled={page * 20 >= total}
+                                className="px-3 py-1.5 text-[11px] rounded-lg bg-surface/30 text-text-muted disabled:opacity-40 hover:bg-surface/50 transition-colors">{t('app.next', language as Language)}</button>
                         </div>
                     )}
                 </div>
@@ -1701,11 +1618,7 @@ function MarketplaceTab({ language, isAuthenticated }: { language: Language; isA
                     scenarioName={permissionPending.name}
                     scenarioNameZh={permissionPending.nameZh}
                     permissions={permissionPending.permissions || []}
-                    onConfirm={() => {
-                        const item = permissionPending
-                        setPermissionPending(null)
-                        doInstall(item)
-                    }}
+                    onConfirm={() => { setPermissionPending(null); doInstall(permissionPending) }}
                     onCancel={() => setPermissionPending(null)}
                 />
             )}

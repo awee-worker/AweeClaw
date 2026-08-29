@@ -48,9 +48,9 @@ export function PluginPopularSection({
         enSubtitle="By downloads"
       />
 
-      {/* 第一行：前 2 名 Hero 大卡片（2 列） */}
+      {/* 第一行：前 2 名 Hero 大卡片 */}
       {topItems.length > 0 && (
-        <div className="grid grid-cols-2 gap-3 mb-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
           {topItems.map((item, idx) => (
             <PluginPopularHeroCard
               key={item.id}
@@ -64,9 +64,9 @@ export function PluginPopularSection({
         </div>
       )}
 
-      {/* 第二、三行：第 3~10 名标准卡片（4 列） */}
+      {/* 剩余插件标准卡片 */}
       {restItems.length > 0 && (
-        <div className="grid grid-cols-4 gap-3 items-start [align-content:start]">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 items-start [align-content:start]">
           {restItems.map((item, idx) => (
             <PluginCompactCard
               key={item.id}

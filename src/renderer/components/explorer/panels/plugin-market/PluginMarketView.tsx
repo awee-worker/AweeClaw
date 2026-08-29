@@ -74,28 +74,26 @@ export function PluginMarketView() {
         </nav>
       </div>
 
-      {/* 右侧内容 */}
-      <div className="flex-1 flex justify-center overflow-hidden">
-        <div className="w-full max-w-[1000px] flex flex-col min-w-0 bg-transparent relative">
-          {/* 顶部标题栏 */}
-          <div className="shrink-0 px-8 pt-10 pb-4 border-b border-border/40 drag-region">
-            <div className="no-drag">
-              <h3 className="text-2xl font-semibold text-text-primary tracking-tight">
-                {currentTab.label}
-              </h3>
-              <p className="text-sm text-text-muted mt-1.5 opacity-80">{subtitle}</p>
-            </div>
-          </div>
+          {/* 右侧内容 */}
+          <div className="flex-1 min-h-0 flex flex-col">
+            <div className="flex-1 w-full flex flex-col min-w-0 min-h-0 bg-transparent relative">
+              {/* 顶部标题栏 */}
+              <div className="shrink-0 px-8 pt-10 pb-4 border-b border-border/40 drag-region">
+                <div className="no-drag">
+                  <h3 className="text-2xl font-semibold text-text-primary tracking-tight">
+                    {currentTab.label}
+                  </h3>
+                  <p className="text-sm text-text-muted mt-1.5 opacity-80">{subtitle}</p>
+                </div>
+              </div>
 
-          {/* 内容区 */}
-          <div className="flex-1 overflow-y-auto px-8 py-6 custom-scrollbar">
-            <div className="space-y-6 h-full">
-              {activeTab === 'marketplace' && <PluginMarketplacePanel key="marketplace" />}
-              {activeTab === 'installed' && <PluginInstalledPanel key="installed" />}
+              {/* 内容区 */}
+              <div className="flex-1 min-h-0 flex flex-col px-8 py-6">
+                {activeTab === 'marketplace' && <PluginMarketplacePanel key="marketplace" />}
+                {activeTab === 'installed' && <PluginInstalledPanel key="installed" />}
+              </div>
             </div>
           </div>
-        </div>
-      </div>
     </div>
   )
 }

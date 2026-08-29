@@ -27,6 +27,10 @@ interface RecentWorkspace {
   name: string
 }
 
+function isImageIcon(val?: string | null): boolean {
+  return !!val && (val.startsWith('http://') || val.startsWith('https://') || val.startsWith('data:'))
+}
+
 const CATEGORY_COLORS: Record<string, { bg: string; accent: string; border: string }> = {
   productivity: { bg: 'from-violet-500/15 to-purple-500/8', accent: 'text-violet-400', border: 'hover:border-violet-400/40' },
   development: { bg: 'from-blue-500/15 to-cyan-500/8', accent: 'text-blue-400', border: 'hover:border-blue-400/40' },
@@ -213,13 +217,21 @@ function WorkspaceWelcome({
                 className={`${p}-welcome-scenario-card ${colors.border} ${isActive ? 'ring-1 ring-accent/50 bg-accent/5' : ''}`}
                 onClick={() => onScenarioSelect(scenario.id)}
               >
-                <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${colors.bg} flex items-center justify-center mb-2.5 transition-transform duration-200`}>
-                  {IconComponent ? (
-                    <IconComponent className={`w-5 h-5 ${colors.accent}`} />
+                {scenario.icon ? (
+                  isImageIcon(scenario.icon) ? (
+                    <img src={scenario.icon} alt="" className="w-8 h-8 object-contain mb-2.5" />
+                  ) : IconComponent ? (
+                    <IconComponent className={`w-8 h-8 ${colors.accent} mb-2.5`} />
                   ) : (
+                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${colors.bg} flex items-center justify-center mb-2.5 overflow-hidden`}>
+                      <Sparkles className={`w-5 h-5 ${colors.accent}`} />
+                    </div>
+                  )
+                ) : (
+                  <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${colors.bg} flex items-center justify-center mb-2.5 overflow-hidden`}>
                     <Sparkles className={`w-5 h-5 ${colors.accent}`} />
-                  )}
-                </div>
+                  </div>
+                )}
                 <span className="text-[13px] font-semibold text-text-primary block">
                   {isZh ? scenario.nameZh : scenario.name}
                 </span>

@@ -499,7 +499,7 @@ export function PluginMarketplacePanel() {
 
   // 列表视图
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col min-h-0 flex-1">
       {/* 顶部搜索栏（固定吸顶，不参与滚动） */}
       <div className="flex items-center gap-2.5 px-5 py-3.5 border-b border-border/40 flex-shrink-0">
         <div className="relative flex-1">
@@ -584,7 +584,7 @@ export function PluginMarketplacePanel() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3 p-4 items-start [align-content:start]">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-5 items-start [align-content:start]">
             {items.map((item) => (
               <PluginCard
                 key={item.id}
@@ -773,7 +773,7 @@ function PluginDetailView({
   const typeColor = TYPE_COLORS[item.type]
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto">
+    <div className="flex flex-col min-h-0 flex-1 overflow-y-auto">
       {/* 顶部导航 */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-border/40 sticky top-0 bg-bg-base z-10">
         <ActionButton onClick={onBack} variant="ghost" size="sm">

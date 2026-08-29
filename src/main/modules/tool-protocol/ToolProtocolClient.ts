@@ -453,7 +453,7 @@ export class McpClient extends EventEmitter {
     let clientTransport: InMemoryTransport
 
     if (builtinFactory) {
-      const result = builtinFactory()
+      const result = await builtinFactory()
       server = result.server
       clientTransport = result.clientTransport
     } else {
@@ -479,7 +479,7 @@ export class McpClient extends EventEmitter {
         )
       }
 
-      const result = factory() as {
+      const result = await factory() as {
         server: { close(): Promise<void> }
         clientTransport: InMemoryTransport
       }

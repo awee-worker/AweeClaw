@@ -26,6 +26,10 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Package, HardDrive, Wrench,
 }
 
+function isImageIcon(val?: string | null): boolean {
+  return !!val && (val.startsWith('http://') || val.startsWith('https://') || val.startsWith('data:'))
+}
+
 export function ScenarioSelector() {
   const [isOpen, setIsOpen] = useState(false)
   const activeScenarioId = useStore(s => s.activeScenarioId)
@@ -109,10 +113,14 @@ export function ScenarioSelector() {
             : 'text-text-primary hover:bg-surface-hover'}
         `}
       >
-        <ScenarioIcon
-          className={`w-4 h-4 flex-shrink-0 ${isActive ? 'text-accent' : 'text-text-muted'}`}
-          strokeWidth={1.5}
-        />
+        {isImageIcon(scenario.icon) ? (
+          <img src={scenario.icon} alt="" className="w-4 h-4 flex-shrink-0 rounded object-cover" />
+        ) : (
+          <ScenarioIcon
+            className={`w-4 h-4 flex-shrink-0 ${isActive ? 'text-accent' : 'text-text-muted'}`}
+            strokeWidth={1.5}
+          />
+        )}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
             <span className="text-xs font-medium truncate">
@@ -139,9 +147,17 @@ export function ScenarioSelector() {
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-text-muted hover:text-text-primary hover:bg-surface-hover transition-all duration-200"
       >
-        <div className="p-1 rounded-md bg-text-primary/5">
-          <IconComponent className="w-3.5 h-3.5" strokeWidth={1.5} />
-        </div>
+        {activeScenario.icon ? (
+          isImageIcon(activeScenario.icon) ? (
+            <img src={activeScenario.icon} alt="" className="w-4 h-4 rounded object-cover" />
+          ) : (
+            <IconComponent className="w-4 h-4" strokeWidth={1.5} />
+          )
+        ) : (
+          <div className="p-1 rounded-md bg-text-primary/5">
+            <IconComponent className="w-3.5 h-3.5" strokeWidth={1.5} />
+          </div>
+        )}
         <span>{language === 'zh' ? activeScenario.nameZh : activeScenario.name}</span>
         <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
