@@ -121,6 +121,10 @@ export interface LayoutSlice {
   showSessionHistoryPage: boolean
   showPluginCenterPage: boolean
   showScenarioPage: boolean
+  /** 场景管理页面当前标签页 */
+  scenarioPageTab: 'installed' | 'marketplace'
+  /** 设置场景管理页面标签页 */
+  setScenarioPageTab: (tab: 'installed' | 'marketplace') => void
 
   /* ===== 语音对话模式 ===== */
   /** 语音对话模式是否激活（覆盖整个聊天区域的实时语音对话界面） */
@@ -193,6 +197,9 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
 
   /* ----- 场景配置版本初始状态 ----- */
   scenarioConfigVersion: 0,
+  /* ----- 场景管理页面标签页初始状态 ----- */
+  scenarioPageTab: 'installed',
+  setScenarioPageTab: (tab) => set({ scenarioPageTab: tab }),
 
   /* ----- 面板可见性操作 ----- */
   setActiveSidePanel: (panel) =>

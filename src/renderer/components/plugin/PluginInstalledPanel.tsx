@@ -35,10 +35,10 @@ import {
   Settings,
   Download,
   Clock,
-  Globe,
   Search,
   X,
 } from 'lucide-react'
+import { resolveLucideIcon } from './pluginIconResolver'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { ActionButton } from '../ui'
@@ -71,13 +71,6 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   lifestyle: <Heart className="w-5 h-5" />,
   composite: <Layers className="w-5 h-5" />,
   other: <Clock className="w-5 h-5" />,
-}
-
-/** manifest.icon 字符串 → lucide 图标组件映射（与 marketplace 图标名对齐） */
-const NAMED_ICONS: Record<string, React.ReactNode> = {
-  Clock: <Clock className="w-5 h-5" />,
-  Globe: <Globe className="w-5 h-5" />,
-  Sparkles: <Sparkles className="w-5 h-5" />,
 }
 
 /** 插件类型徽章 */
@@ -583,9 +576,10 @@ function PluginCard({
         />
       )
     }
-    // manifest.icon 为命名图标字符串（如 "Clock"）时尝试匹配
-    if (manifest.icon && NAMED_ICONS[manifest.icon]) {
-      return NAMED_ICONS[manifest.icon]
+    // manifest.icon 为命名图标字符串（如 "Clock"、"Braces"）时按名解析
+    const NamedIcon = resolveLucideIcon(manifest.icon)
+    if (NamedIcon) {
+      return <NamedIcon className="w-5 h-5" />
     }
     return CATEGORY_ICONS[category] || <Package className="w-5 h-5" />
   }

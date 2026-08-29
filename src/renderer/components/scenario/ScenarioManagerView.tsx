@@ -136,7 +136,8 @@ export function ScenarioManagerView() {
     const activeScenarioId = useStore(s => s.activeScenarioId)
     const isAuthenticated = useStore(s => s.isAuthenticated)
     const setShowScenarioPage = useStore(s => s.setShowScenarioPage)
-    const [activeTab, setActiveTab] = useState<ManagerTab>('installed')
+    const activeTab = useStore(s => s.scenarioPageTab)
+    const setActiveTab = useStore(s => s.setScenarioPageTab)
     const [filterCategory, setFilterCategory] = useState<string | null>(null)
 
     const [scenarioUpdates, setScenarioUpdates] = useState<Map<string, MarketplaceUpdateInfo>>(new Map())

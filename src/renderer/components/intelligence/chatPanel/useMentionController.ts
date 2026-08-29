@@ -100,6 +100,14 @@ export function useMentionController({
             name: candidate.data.name,
           }
           break
+        case 'plugin':
+          replacement = `@${candidate.data.name} `
+          contextItem = {
+            type: 'Skill',
+            skillId: candidate.data.pluginKey,
+            name: candidate.data.name,
+          }
+          break
         case 'file':
         case 'folder':
           replacement = `@${candidate.description || candidate.label} `

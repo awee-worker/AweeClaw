@@ -7,7 +7,7 @@ import {
   GraduationCap, Heart, Lightbulb, MessageSquare,
   Music, Palette, Rocket, Scale, Search,
   ShieldCheck, Stethoscope, TrendingUp, Users, Zap,
-  Wrench,
+  Wrench, Store,
 } from 'lucide-react'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { useStore } from '@store'
@@ -184,6 +184,24 @@ export function ScenarioSelector() {
                 {installedScenarios.map(renderScenarioItem)}
               </>
             )}
+          </div>
+
+          {/* 场景应用市场入口 */}
+          <div className="border-t border-border/30 mt-1 pt-1">
+            <button
+              onClick={() => {
+                useStore.getState().setScenarioPageTab('marketplace')
+                useStore.getState().setShowScenarioPage(true)
+                setIsOpen(false)
+              }}
+              className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-all duration-200 text-text-muted hover:bg-surface-hover hover:text-text-primary"
+            >
+              <Store className="w-4 h-4 flex-shrink-0" strokeWidth={1.5} />
+              <span className="text-xs font-medium">
+                {language === 'zh' ? '场景应用市场' : 'Scenario Market'}
+              </span>
+              <Download className="w-3 h-3 ml-auto text-text-muted/60" strokeWidth={1.5} />
+            </button>
           </div>
         </div>
       )}

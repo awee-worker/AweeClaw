@@ -1,21 +1,24 @@
 /**
  * @ 提及解析器
- * 解析用户输入中的 @file、@skill 等提及
+ * 解析用户输入中的 @file、@skill、@plugin 等提及
  */
 
 import { api } from '../../adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
-import { FileText, Folder, Wrench } from 'lucide-react'
+import { FileText, Folder, Wrench, Puzzle } from 'lucide-react'
 import { skillService } from '@intelligence/runtime/skillRepository'
 import { BRAND } from '@shared/brand'
-
-export type MentionType = 'file' | 'folder' | 'skill'
-
+import { resolveLucideIcon, isImageIcon } from '@components/plugin/pluginIconResolver'
+export type MentionType = 'file' | 'folder' | 'skill' | 'plugin'
 export interface MentionCandidate {
     id: string
     type: MentionType
     label: string
+    /** 中文名称（技能/插件有中文名时提供，用于中文界面显示） */
+    labelZh?: string
     description?: string
+    /** 中文描述（技能/插件有中文描述时提供） */
+    descriptionZh?: string
     icon?: any
     data?: any
     score?: number
@@ -72,13 +75,26 @@ export class MentionParser {
 
             for (const skill of enabledSkills) {
                 const label = `@${skill.name.toLowerCase()}`
-                if (label.includes(lowerQuery)) {
+                const nameZh = skill.metadata?.nameZh
+                const labelZh = nameZh ? `@${nameZh}` : undefined
+                // 支持按英文名或中文名（若有）匹配
+                if (label.includes(lowerQuery) || (labelZh && labelZh.includes(lowerQuery))) {
+                    // 技能图标：metadata.icon 图片 URL 直传字符串，lucide 名按名解析，缺省用 Wrench
+                    let skillIcon: unknown = Wrench
+                    const rawIcon = skill.metadata?.icon
+                    if (isImageIcon(rawIcon)) {
+                        skillIcon = rawIcon
+                    } else {
+                        skillIcon = resolveLucideIcon(rawIcon) || Wrench
+                    }
                     suggestions.push({
                         id: `skill-${skill.filePath}`,
                         type: 'skill',
                         label: label,
+                        labelZh,
                         description: skill.description || 'Custom Skill',
-                        icon: Wrench,
+                        descriptionZh: skill.metadata?.descriptionZh,
+                        icon: skillIcon,
                         data: {
                             skillId: skill.name.toLowerCase(),
                             name: skill.name
@@ -90,7 +106,50 @@ export class MentionParser {
             logger.agent.error('Error fetching skills for mention:', err)
         }
 
-        // 2. 搜索文件
+        // 2. 匹配已安装的 Plugins
+        try {
+            const { getInstalledPlugins } = await import('../../adapters/pluginService')
+            const plugins = await getInstalledPlugins()
+            const enabledPlugins = plugins.filter(p => p.enabled)
+
+            for (const plugin of enabledPlugins) {
+                const manifest = plugin.manifest || {}
+                const name = (manifest.name as string) || plugin.pluginKey || plugin.pluginId
+                const label = `@${name.toLowerCase()}`
+                const nameZh = manifest.nameZh as string | undefined
+                const labelZh = nameZh ? `@${nameZh}` : undefined
+                // 支持按英文名或中文名（若有）匹配
+                if (label.includes(lowerQuery) || (labelZh && labelZh.includes(lowerQuery))) {
+                    // 插件图标：manifest.icon 图片 URL 直传字符串，lucide 名按名解析，缺省用 Puzzle
+                    const rawIcon = manifest.icon as string | undefined
+                    let pluginIcon: unknown = Puzzle
+                    if (isImageIcon(rawIcon)) {
+                        pluginIcon = rawIcon
+                    } else {
+                        pluginIcon = resolveLucideIcon(rawIcon) || Puzzle
+                    }
+                    suggestions.push({
+                        id: `plugin-${plugin.pluginKey}`,
+                        type: 'plugin',
+                        label: label,
+                        labelZh,
+                        description: (manifest.description as string) || `Plugin v${plugin.version}`,
+                        descriptionZh: manifest.descriptionZh as string | undefined,
+                        icon: pluginIcon,
+                        data: {
+                            pluginKey: plugin.pluginKey,
+                            pluginId: plugin.pluginId,
+                            name: name,
+                            types: plugin.types
+                        }
+                    })
+                }
+            }
+        } catch (err) {
+            logger.agent.error('Error fetching plugins for mention:', err)
+        }
+
+        // 3. 搜索文件
         if (workspacePath && (options.includeFiles || options.includeFolders)) {
             try {
                 const files = await this.searchFiles(workspacePath, lowerQuery, options)
