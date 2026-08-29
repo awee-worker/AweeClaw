@@ -130,6 +130,10 @@ export interface LayoutSlice {
   /** 语音对话模式是否激活（覆盖整个聊天区域的实时语音对话界面） */
   voiceConversationActive: boolean
 
+  /* ===== 场景工具直达 ===== */
+  /** 欢迎页点击工具卡片时暂存的目标工具 ID，SceneToolsPanel 工具就绪后自动跳转 */
+  pendingSceneToolId: string | null
+
   /* ===== 面板可见性操作 ===== */
   setActiveSidePanel: (panel: SidePanel) => void
   setTerminalVisible: (visible: boolean) => void
@@ -194,6 +198,9 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
 
   /* ----- 语音对话模式初始状态 ----- */
   voiceConversationActive: false,
+
+  /* ----- 场景工具直达初始状态 ----- */
+  pendingSceneToolId: null,
 
   /* ----- 场景配置版本初始状态 ----- */
   scenarioConfigVersion: 0,
@@ -268,6 +275,9 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
   /* ----- 语音对话模式操作 ----- */
   setVoiceConversationActive: (active) => set({ voiceConversationActive: active }),
   toggleVoiceConversation: () => set((state) => ({ voiceConversationActive: !state.voiceConversationActive })),
+
+  /* ----- 场景工具直达操作 ----- */
+  setPendingSceneToolId: (id) => set({ pendingSceneToolId: id }),
 
   /* ----- 场景配置版本操作 ----- */
   incrementScenarioConfigVersion: () => set((state) => ({ scenarioConfigVersion: state.scenarioConfigVersion + 1 })),

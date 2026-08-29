@@ -12,6 +12,7 @@ import { Blocks, Layers, ChevronLeft } from 'lucide-react'
 import { useSceneModeStore } from '@/renderer/modes/sceneModeStore'
 import { getLucideIcon } from '@components/foundation/IconMap'
 import { getToolsByMode, type SceneToolMeta } from './registry'
+import { useStore } from '@store'
 
 /** 各模式的品牌色与渐变 */
 const MODE_META: Record<string, { accent: string; gradient: string }> = {
@@ -32,6 +33,8 @@ const MODE_META: Record<string, { accent: string; gradient: string }> = {
 export function SceneToolsPanel() {
   const currentSceneMode = useSceneModeStore((s) => s.currentSceneMode)
   const activeProfile = useSceneModeStore((s) => s.activeProfile)
+  const pendingSceneToolId = useStore((s) => s.pendingSceneToolId)
+  const setPendingSceneToolId = useStore((s) => s.setPendingSceneToolId)
   const tools = useMemo(() => getToolsByMode(currentSceneMode), [currentSceneMode])
   const [activeToolId, setActiveToolId] = useState<string | null>(null)
   const [pendingToolId, setPendingToolId] = useState<string | null>(null)
@@ -40,7 +43,8 @@ export function SceneToolsPanel() {
   useEffect(() => {
     setActiveToolId(null)
     setPendingToolId(null)
-  }, [currentSceneMode])
+    setPendingSceneToolId(null)
+  }, [currentSceneMode, setPendingSceneToolId])
 
   // 当 pendingToolId 变化时，延迟切换到对应工具（等首页渲染完毕）
   useEffect(() => {
@@ -52,17 +56,29 @@ export function SceneToolsPanel() {
     return () => clearTimeout(timer)
   }, [pendingToolId])
 
-  // 监听来自欢迎页和 AI Agent 的工具打开请求
+  // 监听 store 中的 pendingSceneToolId：模式就绪后自动跳转
+  useEffect(() => {
+    if (!pendingSceneToolId || !tools.length) return
+    const timer = setTimeout(() => {
+      if (tools.some((t) => t.id === pendingSceneToolId)) {
+        setActiveToolId(pendingSceneToolId)
+        setPendingSceneToolId(null)
+      }
+    }, 50)
+    return () => clearTimeout(timer)
+  }, [pendingSceneToolId, tools, setPendingSceneToolId])
+
+  // 监听来自 AI Agent 的工具打开请求（保留事件方式，兼容已有调用）
   useEffect(() => {
     const handler = (e: Event) => {
       const toolId = (e as CustomEvent).detail as string
-      if (toolId && tools.some((t) => t.id === toolId)) {
+      if (toolId) {
         setPendingToolId(toolId)
       }
     }
     window.addEventListener('aweeclaw:scene-tool-open', handler)
     return () => window.removeEventListener('aweeclaw:scene-tool-open', handler)
-  }, [tools])
+  }, [])
 
   const activeTool: SceneToolMeta | undefined = tools.find((t) => t.id === activeToolId)
   const meta = MODE_META[currentSceneMode] ?? MODE_META.work

@@ -7,7 +7,7 @@
  *  - 审批栏：待审批时展示批准/拒绝按钮
  */
 import { memo, useCallback, useMemo } from 'react'
-import { AlertTriangle, Check, ChevronDown, Terminal, X } from 'lucide-react'
+import { AlertTriangle, Check, ChevronDown, ShieldAlert, Settings2, Terminal, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useShallow } from 'zustand/react/shallow'
 import { useStore } from '@store'
@@ -151,6 +151,15 @@ const ToolCallCard = memo(function ToolCallCard({
     }
   }, [toolCall.result])
 
+  // 智能体工具权限不足时，跳转到设置中编辑当前激活的智能体
+  const handleEditAgent = useCallback(() => {
+    const store = useStore.getState()
+    const activeId = store.agentConfig?.activeCustomAgentId
+    if (!activeId) return
+    store.setSettingsIntent({ tab: 'agent', agentSubTab: 'custom', editAgentId: activeId })
+    store.setShowSettingsPage(true)
+  }, [])
+
   const contentBody = (
     <div className="pl-[26px] pr-3 pb-3 pt-0 relative border-t-0">
       <div className="absolute left-[13.5px] top-0 bottom-4 w-[1.5px] bg-border/40 rounded-full" />
@@ -168,11 +177,30 @@ const ToolCallCard = memo(function ToolCallCard({
         })}
         {toolCall.error && (
           <div className="px-3 py-2 bg-status-error/10 rounded-md">
-            <div className="flex items-center gap-2 text-status-error text-xs font-medium mb-1">
-              <AlertTriangle className="w-3 h-3" />
-              {t('tool.error', language as any)}
-            </div>
-            <p className="text-[12px] text-status-error/80 font-mono break-all">{toolCall.error}</p>
+            {toolCall.errorCode === 'TOOL_NOT_ALLOWED' ? (
+              <>
+                <div className="flex items-center gap-2 text-status-error text-xs font-medium mb-1">
+                  <ShieldAlert className="w-3 h-3" />
+                  {t('tool.notAllowed', language as any)}
+                </div>
+                <p className="text-[12px] text-status-error/80 break-all leading-relaxed">{toolCall.error}</p>
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleEditAgent() }}
+                  className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[12px] font-medium text-accent bg-accent/10 hover:bg-accent/20 active:bg-accent/30 transition-colors"
+                >
+                  <Settings2 className="w-3 h-3" />
+                  {t('tool.editAgent', language as any)}
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 text-status-error text-xs font-medium mb-1">
+                  <AlertTriangle className="w-3 h-3" />
+                  {t('tool.error', language as any)}
+                </div>
+                <p className="text-[12px] text-status-error/80 font-mono break-all">{toolCall.error}</p>
+              </>
+            )}
           </div>
         )}
       </div>

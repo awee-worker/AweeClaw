@@ -14,6 +14,8 @@ export interface SettingsIntent {
   agentSubTab?: 'agentConfig' | 'custom'
   /** 是否自动打开「自定义智能体」新建表单 */
   createNewAgent?: boolean
+  /** 自动打开指定智能体的编辑器（编辑已有智能体，如聊天输入区「设置智能体」入口） */
+  editAgentId?: string
 }
 
 /** 切片接口 */

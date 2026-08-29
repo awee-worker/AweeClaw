@@ -57,6 +57,8 @@ interface Props {
   language: Language
   onNewAgentCreated?: (agentId: string) => void
   pendingNewAgentId?: string
+  /** 自动打开指定智能体的编辑器（编辑已有智能体，来自聊天输入区「设置智能体」入口） */
+  editAgentId?: string
 }
 
 function createEmptyAgent({
@@ -86,7 +88,7 @@ function createEmptyAgent({
   }
 }
 
-export function CustomAgentPanel({ agentConfig, setAgentConfig, language, onNewAgentCreated, pendingNewAgentId }: Props) {
+export function CustomAgentPanel({ agentConfig, setAgentConfig, language, onNewAgentCreated, pendingNewAgentId, editAgentId }: Props) {
   const { mcpServers } = useStore(useShallow(s => ({
     mcpServers: s.mcpServers,
   })))
@@ -163,6 +165,17 @@ export function CustomAgentPanel({ agentConfig, setAgentConfig, language, onNewA
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingNewAgentId])
+
+  // 当外部传入 editAgentId 时，自动打开该智能体的编辑器（编辑已有智能体）
+  useEffect(() => {
+    if (!editAgentId || editingId || pendingNewAgent) return
+    const profile = profiles.find(p => p.id === editAgentId)
+    if (profile) {
+      setEditingId(profile.id)
+      setView('editor')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editAgentId])
 
   const handleDelete = async (profile: CustomAgent) => {
     const confirmed = await globalConfirm({

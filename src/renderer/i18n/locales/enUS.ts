@@ -589,6 +589,9 @@ export const en = {
   'tool.groupSummaryMore': '{shown} and {rest} more',
 
   'tool.error': 'Error',
+  'tool.notAllowed': 'Agent tool permission denied',
+  'tool.notAllowedDesc': 'The active agent has not been granted this tool/skill. Enable it in the agent settings to continue.',
+  'tool.editAgent': 'Edit Agent',
   'tool.arguments': 'Arguments:',
   'tool.result': 'Result:',
   'tool.copyResult': 'Copy Result',
@@ -3569,7 +3572,7 @@ export const en = {
   'app.aiassistanthiddenclickthe': 'AI Assistant hidden, click the icon to show',
   'app.thisfileislargesome': 'This file is large{category} ({size}{lines}), some editor features are disabled for performance',
   'app.thisfileislargeeditor': 'This file is large{category} ({size}{lines}), editor performance may be affected',
-  'app.youareaninputoptimization': 'You are an input optimization assistant. Optimize the user\'s input to be clearer, more specific, and better structured for AI understanding and execution. Output only the optimized content without any explanation or prefix. Preserve the user\'s original intent without changing the core meaning. If the user writes in Chinese, respond in Chinese; if in English, respond in English.',
+  'app.youareaninputoptimization': 'You are an input optimization assistant. Read the user\'s input along with the attached context (workspace info, current file, recent conversation), then optimize it into a clearer, more specific, and well-structured prompt for accurate AI understanding and efficient execution. Output only the optimized content directly — no explanations, prefixes, or markers. Preserve the user\'s original intent without changing the core meaning. If the user writes in Chinese, respond in Chinese; if in English, respond in English.',
   'app.uploadattachment': 'Upload attachment',
   'app.optimizeinput': 'Optimize input',
   'app.contextusagekk': 'Context usage: {size}K / {size}K',

@@ -590,6 +590,9 @@ export const zh = {
   'tool.groupSummaryMore': '{shown} 等 {rest} 项',
 
   'tool.error': '错误',
+  'tool.notAllowed': '智能体工具权限不足',
+  'tool.notAllowedDesc': '当前智能体未授权使用此工具/技能，请在智能体设置中开启对应工具支持',
+  'tool.editAgent': '编辑智能体',
   'tool.arguments': '参数：',
   'tool.result': '结果：',
   'tool.copyResult': '复制结果',
@@ -3568,7 +3571,7 @@ export const zh = {
   'app.aiassistanthiddenclickthe': 'AI 助手已隐藏，点击右上角图标显示',
   'app.thisfileislargesome': '此文件较大{category} ({size}{lines})，部分编辑器功能已禁用以提高性能',
   'app.thisfileislargeeditor': '此文件较大{category} ({size}{lines})，可能影响编辑器性能',
-  'app.youareaninputoptimization': '你是一个输入优化助手。优化用户的输入，使其更清晰、更具体、更有条理，便于AI理解和执行。直接输出优化后的内容，不要添加任何解释或前缀。保持用户的原始意图，不要改变核心意思。如果用户输入的是中文，优化后也用中文；如果是英文，优化后也用英文。',
+  'app.youareaninputoptimization': '你是一个输入优化助手。请仔细阅读用户输入以及附带的上下文（工作区信息、当前文件、近期对话），将用户的输入优化为更清晰、更具体、更有条理的提示词，便于AI准确理解和高效执行。直接输出优化后的内容，不要添加任何解释、前缀或标记。保持用户的原始意图，不要改变核心意思。如果用户输入的是中文，优化后也用中文；如果是英文，优化后也用英文。',
   'app.uploadattachment': '上传附件',
   'app.optimizeinput': '优化输入内容',
   'app.contextusagekk': '上下文使用量: {size}K / {size}K',

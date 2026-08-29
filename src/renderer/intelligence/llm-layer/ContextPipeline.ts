@@ -12,13 +12,14 @@
  * - 向后兼容：现有上下文类型自动注册为内置 Provider
  */
 
-import type { ContextItem, ProblemsContext } from '@intelligence/providerTypes'
+import type { ContextItem, ProblemsContext, PluginContext } from '@intelligence/providerTypes'
 import { getAgentConfig } from '@intelligence/utils/intelligenceConfig'
 import { api } from '../../adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
 import { useStore } from '@store'
 import { useAgentStore } from '../state/IntelligenceStore'
 import { toolRegistry } from '@intelligence/toolkit'
+import { McpToolProvider } from '@intelligence/toolkit/providers/ProtocolToolRegistry'
 import { CacheService } from '@shared/toolkit/CacheManager'
 import { useDiagnosticsStore } from '@services/diagnosticRepository'
 import { normalizePath } from '@shared/toolkit/pathHelper'
@@ -410,6 +411,39 @@ const SkillProvider: ContextProvider = {
   },
 }
 
+const PluginProvider: ContextProvider = {
+  type: 'Plugin',
+  label: 'Plugin',
+  labelZh: '插件',
+  priority: 11,
+  async process(item, _ctx) {
+    const plugin = item as PluginContext
+    const name = plugin.name || plugin.pluginId
+    const desc = plugin.description ? `\n${plugin.description}` : ''
+
+    // 尝试从已连接 MCP server 中查询该插件实际注册的工具，让 AI 知道该调用哪个工具
+    let toolHint = ''
+    try {
+      const servers = useStore.getState().mcpServers
+      const serverId = plugin.mcpServerId || `plugin:${plugin.pluginId}`
+      const server = servers.find(s => s.id === serverId)
+      if (server && Array.isArray(server.tools) && server.tools.length > 0) {
+        const toolNames = server.tools.map(t => `\`${McpToolProvider.getFullToolName(server.id, t.name)}\``)
+        toolHint = `\n\n此插件已连接 MCP（server: \`${server.id}\`），已注册以下工具，请直接调用：\n${toolNames.join('\n')}`
+      }
+    } catch {
+      // 查询失败不影响注入
+    }
+
+    return (
+      `\n### Plugin: ${name}\n${desc}${toolHint}\n\n` +
+      `注意：这是用户通过 @ 引用的已安装插件（MCP 插件），不是 Skill。` +
+      `请直接调用上面列出的 MCP 工具（mcp_ 前缀）或从可用工具列表中选择该插件的工具来执行任务，` +
+      `不要使用 apply_skill 加载它。\n`
+    )
+  },
+}
+
 // ============================================
 // 注册内置 Provider
 // ============================================
@@ -424,6 +458,7 @@ contextPipeline.register(SymbolsProvider)
 contextPipeline.register(WebProvider)
 contextPipeline.register(ProblemsProvider)
 contextPipeline.register(SkillProvider)
+contextPipeline.register(PluginProvider)
 
 // ============================================
 // 管道式上下文构建（替代原 buildContextContent）

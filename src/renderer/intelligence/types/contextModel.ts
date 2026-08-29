@@ -14,6 +14,7 @@ export type ContextItemType =
   | 'Web'
   | 'Problems'
   | 'Skill'
+  | 'Plugin'
 
 export interface FileContext {
   type: 'File'
@@ -72,6 +73,16 @@ export interface SkillContext {
   auto?: boolean
 }
 
+export interface PluginContext {
+  type: 'Plugin'
+  /** 插件唯一标识（pluginKey，如 3d-webpage-gen） */
+  pluginId: string
+  name: string
+  description?: string
+  /** 插件连接对应的 MCP server id（如 plugin:3d-webpage-gen） */
+  mcpServerId?: string
+}
+
 /** 上下文项联合类型 */
 export type ContextItem =
   | FileContext
@@ -84,3 +95,4 @@ export type ContextItem =
   | WebContext
   | ProblemsContext
   | SkillContext
+  | PluginContext

@@ -3,7 +3,7 @@
  * 展示用户消息附带的上文上下文（文件、代码、文件夹、技能等）
  */
 import React from 'react'
-import { FileText, Code, Folder, Wrench } from 'lucide-react'
+import { FileText, Code, Folder, Wrench, Puzzle } from 'lucide-react'
 import { getFileName } from '@shared/toolkit/pathHelper'
 
 interface ContextItemTag {
@@ -11,6 +11,8 @@ interface ContextItemTag {
   uri?: string
   range?: [number, number]
   skillId?: string
+  pluginId?: string
+  name?: string
   /** 静默项（上传附件自动添加），UI 不显示 */
   silent?: boolean
 }
@@ -30,6 +32,8 @@ function getContextStyle(type: string) {
       return { bg: 'bg-yellow-500/10', text: 'text-yellow-400', border: 'border-transparent', Icon: Folder }
     case 'Skill':
       return { bg: 'bg-blue-500/10', text: 'text-blue-400', border: 'border-blue-500/20', Icon: Wrench }
+    case 'Plugin':
+      return { bg: 'bg-purple-500/10', text: 'text-purple-400', border: 'border-purple-500/20', Icon: Puzzle }
     default:
       return { bg: 'bg-text-primary/[0.04]', text: 'text-text-muted', border: 'border-transparent', Icon: FileText }
   }
@@ -50,7 +54,9 @@ function getContextLabel(item: ContextItemTag): string {
       return range ? `${name}:${range[0]}-${range[1]}` : name
     }
     case 'Skill':
-      return `@${item.skillId || 'skill'}`
+      return `@${item.name || item.skillId || 'skill'}`
+    case 'Plugin':
+      return `@${item.name || item.pluginId || 'plugin'}`
     default:
       return 'Context'
   }

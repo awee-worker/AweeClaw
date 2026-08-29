@@ -53,6 +53,7 @@ export default function EmptyChatSuggestions() {
   const language = useStore(s => s.language)
   const activeSidePanel = useStore(s => s.activeSidePanel)
   const setActiveSidePanel = useStore(s => s.setActiveSidePanel)
+  const setPendingSceneToolId = useStore(s => s.setPendingSceneToolId)
   const teamModeEnabled = useStore(s => s.teamModeEnabled)
   const freeModeEnabled = useStore(s => s.freeModeEnabled)
   const setTeamModeEnabled = useStore(s => s.setTeamModeEnabled)
@@ -135,12 +136,12 @@ export default function EmptyChatSuggestions() {
   const enhancedTools = allTools.filter(t => t.tier === 'enhanced')
   const welcomeTools = [...coreTools, ...enhancedTools].slice(0, WELCOME_TOOL_COUNT)
 
-  // 点击工具卡片：直接打开场景工具面板
+  // 点击工具卡片：直接打开场景工具面板并跳转至对应工具详情页
   const handleToolClick = useCallback((toolId: string) => {
     setActiveSidePanel('scene-tools')
-    // 通知面板切换到对应工具
-    window.dispatchEvent(new CustomEvent('aweeclaw:scene-tool-open', { detail: toolId }))
-  }, [setActiveSidePanel])
+    // 通过 store 写入目标工具 ID，SceneToolsPanel 在工具就绪后自动跳转
+    setPendingSceneToolId(toolId)
+  }, [setActiveSidePanel, setPendingSceneToolId])
 
   // 点击"更多工具"：打开场景工具面板
   const handleMoreTools = useCallback(() => {

@@ -5,7 +5,7 @@
 import { useState, useRef, useCallback } from 'react'
 import { logger } from '@toolkit/LogEngine'
 import { MentionParser, type MentionCandidate } from '@intelligence/utils/mentionDecoder'
-import type { ContextItem, FileContext } from '@intelligence/providerTypes'
+import type { ContextItem, FileContext, PluginContext } from '@intelligence/providerTypes'
 
 interface UseMentionControllerParams {
   workspacePath: string | null
@@ -103,9 +103,11 @@ export function useMentionController({
         case 'plugin':
           replacement = `@${candidate.data.name} `
           contextItem = {
-            type: 'Skill',
-            skillId: candidate.data.pluginKey,
+            type: 'Plugin',
+            pluginId: candidate.data.pluginKey,
             name: candidate.data.name,
+            description: candidate.description,
+            mcpServerId: candidate.data.mcpServerId,
           }
           break
         case 'file':
@@ -126,6 +128,10 @@ export function useMentionController({
           if (item.type !== contextItem!.type) return false
           if (item.type === 'File' && contextItem!.type === 'File') {
             return (item as FileContext).uri === (contextItem as FileContext).uri
+          }
+          // 插件按 pluginId 判重（避免误把不同插件当重复）
+          if (item.type === 'Plugin' && contextItem!.type === 'Plugin') {
+            return (item as PluginContext).pluginId === (contextItem as PluginContext).pluginId
           }
           return true
         })

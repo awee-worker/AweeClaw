@@ -150,6 +150,7 @@ export type {
   WebContext,
   ProblemsContext,
   SkillContext,
+  PluginContext,
   ContextItem,
 } from './types/contextModel'
 

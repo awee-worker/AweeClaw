@@ -27,9 +27,11 @@ import {
   Square,
   Crop,
   File as FileIcon,
+  Puzzle,
 } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
+import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { getFileName } from '@shared/toolkit/pathHelper'
 import { WorkMode } from '@/renderer/modes/workModeTypes'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -82,6 +84,8 @@ interface ChatInputProps {
   onAddFile?: (filePath: string) => void
   language?: string
   onOpenSettings?: () => void
+  /** 编辑指定智能体 */
+  onEditAgent?: (agentId: string) => void
 }
 
 const ChatInput = memo(function ChatInput({
@@ -108,6 +112,7 @@ const ChatInput = memo(function ChatInput({
   onAddFile,
   language: propLanguage,
   onOpenSettings,
+  onEditAgent,
 }: ChatInputProps) {
   const { language: storeLanguage, editorConfig } = useStore(useShallow(s => ({ language: s.language, editorConfig: s.editorConfig })))
   const language = (propLanguage || storeLanguage) as Language
@@ -308,11 +313,37 @@ const ChatInput = memo(function ChatInput({
     }, 30000)
 
     try {
+      // 收集上下文信息：工作区路径、当前文件、近期对话历史
+      const agentState = useAgentStore.getState()
+      const uiState = useStore.getState()
+      const currentThreadId = agentState.currentThreadId
+      const thread = currentThreadId ? agentState.threads[currentThreadId] : null
+      const recentMessages = thread?.messages?.slice(-8).filter(m => m.role === 'user' || m.role === 'assistant').map(m =>
+        `${m.role === 'user' ? '用户' : 'AI'}: ${m.content?.slice(0, 200)}`
+      ).filter(Boolean).join('\n') ?? ''
+
+      const workspacePath = uiState.workspacePath
+      const activeFile = uiState.activeFilePath
+      const fileName = activeFile ? activeFile.split('/').pop() : null
+
+      let contextNote = ''
+      if (workspacePath) {
+        const dirName = workspacePath.split(/[/\\]/).pop()
+        contextNote += `\n\n## 工作区上下文\n- 工作目录：${dirName}（${workspacePath}）`
+      }
+      if (fileName) {
+        contextNote += `\n- 当前打开文件：${fileName}`
+      }
+      if (recentMessages) {
+        contextNote += '\n- 近期对话摘要：\n' + recentMessages
+      }
+
       const systemPrompt = t('app.youareaninputoptimization', language as Language)
+      const userContent = contextNote ? `${contextNote}\n\n## 用户输入\n${input.trim()}` : input.trim()
 
       await api.llm.send({
         config,
-        messages: [{ role: 'user', content: input.trim() }],
+        messages: [{ role: 'user', content: userContent }],
         systemPrompt,
         requestId,
       })
@@ -407,13 +438,14 @@ const ChatInput = memo(function ChatInput({
               )}
 
               {/* Context Items */}
-              {contextItems.filter(item => ['File', 'Folder', 'CodeSelection', 'Skill'].includes(item.type)).map((item, i) => {
+              {contextItems.filter(item => ['File', 'Folder', 'CodeSelection', 'Skill', 'Plugin'].includes(item.type)).map((item, i) => {
                 const getContextStyle = (type: string) => {
                   switch (type) {
                     case 'File': return { bg: 'bg-text-primary/[0.04]', text: 'text-text-secondary', border: 'border-transparent', Icon: FileText }
                     case 'CodeSelection': return { bg: 'bg-purple-500/10', text: 'text-purple-400', border: 'border-transparent', Icon: Code }
                     case 'Folder': return { bg: 'bg-yellow-500/10', text: 'text-yellow-400', border: 'border-transparent', Icon: Folder }
                     case 'Skill': return { bg: 'bg-blue-500/10', text: 'text-blue-400', border: 'border-blue-500/20', Icon: Wrench }
+                    case 'Plugin': return { bg: 'bg-purple-500/10', text: 'text-purple-400', border: 'border-purple-500/20', Icon: Puzzle }
                     default: return { bg: 'bg-text-primary/[0.04]', text: 'text-text-muted', border: 'border-transparent', Icon: FileText }
                   }
                 }
@@ -435,6 +467,9 @@ const ChatInput = memo(function ChatInput({
                     }
                     case 'Skill': {
                       return `@${(item as import('@intelligence/providerTypes').SkillContext).skillId || 'skill'}`
+                    }
+                    case 'Plugin': {
+                      return `@${(item as import('@intelligence/providerTypes').PluginContext).name || 'plugin'}`
                     }
                     default: return 'Context'
                   }
@@ -665,7 +700,7 @@ const ChatInput = memo(function ChatInput({
         className="-mt-5 z-10"
       >
         <div className="flex items-center gap-2 bg-border/20 px-4 pt-6 pb-1 rounded-b-xl rounded-t-none">
-          <AgentSelector language={language} onOpenSettings={onOpenSettings} disabled={isStreaming} />
+          <AgentSelector language={language} onOpenSettings={onOpenSettings} onEditAgent={onEditAgent} disabled={isStreaming} />
           <ModeSelector mode={chatMode} onModeChange={setChatMode} disabled={isStreaming} />
           <AuthorizationModeSelector disabled={isStreaming} />
         </div>

@@ -308,6 +308,7 @@ export default function PreferencesDialog({ embedded = false, pendingNewAgentId 
                                     language={language}
                                     onNewAgentCreated={handleNewAgentCreated}
                                     pendingNewAgentId={settingsIntent?.createNewAgent ? NEW_AGENT_TRIGGER_ID : pendingNewAgentId}
+                                    editAgentId={settingsIntent?.editAgentId}
                                 />
                             </Suspense>
                         )}

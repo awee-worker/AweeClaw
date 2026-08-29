@@ -140,7 +140,8 @@ export class MentionParser {
                             pluginKey: plugin.pluginKey,
                             pluginId: plugin.pluginId,
                             name: name,
-                            types: plugin.types
+                            types: plugin.types,
+                            mcpServerId: plugin.mcpServerId,
                         }
                     })
                 }

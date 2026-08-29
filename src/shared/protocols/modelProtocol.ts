@@ -315,6 +315,8 @@ export interface ToolCall {
     status: ToolStatus
     result?: string
     error?: string
+    /** 结构化错误码（如 TOOL_NOT_ALLOWED），供 UI 针对特定错误做专属展示 */
+    errorCode?: string
     richContent?: ToolRichContent[]
     streamingState?: ToolStreamingPreview
     startTime?: number

@@ -371,12 +371,24 @@ function MiniChatPanelImpl({
 
     try {
       const systemPrompt = isZh
-        ? '你是一个输入优化助手，请帮用户优化输入内容，使其更清晰、更完整、更易于 AI 理解。直接输出优化后的内容，不要添加任何解释。'
-        : 'You are an input optimization assistant. Help the user optimize their input to be clearer, more complete, and easier for AI to understand. Output the optimized content directly without any explanation.'
+        ? '你是一个输入优化助手。请仔细阅读用户输入以及附带的上下文（近期对话记录），将用户的输入优化为更清晰、更具体、更有条理的提示词，便于AI准确理解和高效执行。直接输出优化后的内容，不要添加任何解释、前缀或标记。保持用户的原始意图，不要改变核心意思。如果用户输入的是中文，优化后也用中文；如果是英文，优化后也用英文。'
+        : 'You are an input optimization assistant. Read the user\'s input along with the attached context (recent conversation), then optimize it into a clearer, more specific, and well-structured prompt for accurate AI understanding and efficient execution. Output only the optimized content directly — no explanations, prefixes, or markers. Preserve the user\'s original intent without changing the core meaning. If the user writes in Chinese, respond in Chinese; if in English, respond in English.'
+
+      // 提取近期对话历史作为上下文
+      const recentMsgs = (messages as unknown as Array<{ role?: string; content?: string }>)
+        ?.slice(-6)
+        .filter(m => m?.role && m?.content)
+        .map(m => `${m.role === 'user' ? '用户' : 'AI'}: ${(m.content as string)?.slice(0, 150)}`)
+        .filter(Boolean)
+        .join('\n') ?? ''
+
+      const userContent = recentMsgs
+        ? `## 近期对话\n${recentMsgs}\n\n## 用户输入\n${input.trim()}`
+        : input.trim()
 
       await api.llm.send({
         config: llmConfig as never,
-        messages: [{ role: 'user', content: input.trim() }] as never,
+        messages: [{ role: 'user', content: userContent }] as never,
         systemPrompt,
         requestId,
       })
@@ -384,7 +396,7 @@ function MiniChatPanelImpl({
       cleanup()
       setIsOptimizing(false)
     }
-  }, [input, isOptimizing, streaming, llmConfig, isZh])
+  }, [input, isOptimizing, streaming, llmConfig, isZh, messages])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {

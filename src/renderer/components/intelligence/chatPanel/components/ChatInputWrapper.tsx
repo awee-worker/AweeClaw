@@ -31,6 +31,8 @@ interface ChatInputWrapperProps {
   onAddFile: () => void
   language?: string
   onOpenSettings?: () => void
+  /** 编辑指定智能体 */
+  onEditAgent?: (agentId: string) => void
 }
 
 function ChatInputWrapperBase({
@@ -57,6 +59,7 @@ function ChatInputWrapperBase({
   onAddFile,
   language,
   onOpenSettings,
+  onEditAgent,
 }: ChatInputWrapperProps) {
   return (
     <ChatInput
@@ -83,6 +86,7 @@ function ChatInputWrapperBase({
       onAddFile={onAddFile}
       language={language}
       onOpenSettings={onOpenSettings}
+      onEditAgent={onEditAgent}
     />
   )
 }

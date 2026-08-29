@@ -611,6 +611,7 @@ async function invokeToolInvocation(
           richContent,
           streamingState: undefined,
           endTime: Date.now(),
+          errorCode: result.success ? undefined : result.outcome?.code,
         })
 
         store.addToolResult(toolCall.id, toolCall.name, content, result.success ? 'success' : 'tool_error')
@@ -685,6 +686,7 @@ async function invokeToolInvocation(
           result: errorMsg,
           streamingState: undefined,
           endTime: Date.now(),
+          errorCode: 'EXECUTION_ERROR',
         })
         store.addToolResult(toolCall.id, toolCall.name, `Error: ${errorMsg}`, 'tool_error')
       }

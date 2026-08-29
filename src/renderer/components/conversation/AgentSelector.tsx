@@ -12,10 +12,12 @@ interface AgentSelectorProps {
   language: Language
   onOpenSettings?: () => void
   onNewAgentCreated?: (agentId: string) => void
+  /** 编辑指定智能体（打开设置并定位到其编辑器） */
+  onEditAgent?: (agentId: string) => void
   className?: string
   disabled?: boolean
 }
-export default function AgentSelector({ language, onOpenSettings, onNewAgentCreated, className = '', disabled = false }: AgentSelectorProps) {
+export default function AgentSelector({ language, onOpenSettings, onNewAgentCreated, onEditAgent, className = '', disabled = false }: AgentSelectorProps) {
   const isZh = language === 'zh'
   // 分开订阅，避免 useShallow + set 返回新引用导致的无限循环
   const agentConfig = useStore(s => s.agentConfig)
@@ -50,6 +52,13 @@ export default function AgentSelector({ language, onOpenSettings, onNewAgentCrea
     set('agentConfig', { ...agentConfig!, activeCustomAgentId: undefined })
     setIsOpen(false)
   }, [disabled, set, agentConfig])
+
+  // 编辑当前选中的智能体（打开设置并定位到对应编辑器）
+  const handleEdit = useCallback(() => {
+    if (disabled || !activeProfile) return
+    setIsOpen(false)
+    onEditAgent?.(activeProfile.id)
+  }, [disabled, activeProfile, onEditAgent, setIsOpen])
 
   const enabledProfiles = profiles.filter(p => p.enabled)
 
@@ -140,14 +149,28 @@ export default function AgentSelector({ language, onOpenSettings, onNewAgentCrea
               </div>
             )}
 
-            {/* 创建智能体入口 */}
-            <div className="border-t border-border/30 mt-1 pt-1">
+            {/* 创建智能体入口 + 编辑当前智能体入口 */}
+            <div className="border-t border-border/30 mt-1 pt-1 flex items-center">
               <button
                 onClick={() => { setIsOpen(false); onNewAgentCreated?.(''); onOpenSettings?.() }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
+                className="flex-1 flex items-center gap-2 px-3 py-2 text-left text-xs text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors min-w-0"
               >
-                <Plus className="w-3 h-3" />
-                {isZh ? '创建智能体' : 'Create Agent'}
+                <Plus className="w-3 h-3 flex-shrink-0" />
+                <span className="truncate">{isZh ? '创建智能体' : 'Create Agent'}</span>
+              </button>
+              <button
+                onClick={handleEdit}
+                disabled={!activeProfile || disabled}
+                title={activeProfile
+                  ? (isZh ? `编辑「${activeProfile.name}」` : `Edit "${activeProfile.name}"`)
+                  : (isZh ? '请先选择智能体' : 'Select an agent first')}
+                className={`flex items-center justify-center w-8 h-8 mr-1 rounded-lg text-xs transition-colors ${
+                  activeProfile && !disabled
+                    ? 'text-text-muted hover:text-accent hover:bg-accent/10'
+                    : 'text-text-muted/30 cursor-not-allowed'
+                }`}
+              >
+                <Settings2 className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>

@@ -586,6 +586,13 @@ export default function ChatPanel() {
     store.setShowSettingsPage(true)
   }, [])
 
+  // 聊天输入区「设置智能体」入口：打开设置 → 智能体 → 自定义智能体，并定位到指定智能体编辑器
+  const handleEditAgent = useCallback((agentId: string) => {
+    const store = useStore.getState()
+    store.setSettingsIntent({ tab: 'agent', agentSubTab: 'custom', editAgentId: agentId })
+    store.setShowSettingsPage(true)
+  }, [])
+
   useEffect(() => {
     const handleOptionSelect = (event: CustomEvent<{ content: string; messageId: string }>) => {
       const { content } = event.detail
@@ -923,6 +930,7 @@ export default function ChatPanel() {
                       onAddFile={handleAddCurrentFile}
                       language={language}
                       onOpenSettings={handleCreateAgent}
+                      onEditAgent={handleEditAgent}
                     />
                   </div>
                 </div>
@@ -1061,6 +1069,7 @@ export default function ChatPanel() {
                   onAddFile={handleAddCurrentFile}
                   language={language}
                   onOpenSettings={handleCreateAgent}
+                  onEditAgent={handleEditAgent}
                 />
               </div>
             </div>

@@ -7,6 +7,7 @@ import { logger } from '@toolkit/LogEngine'
 import { toAppError } from '@shared/toolkit/errorCatalog'
 import { getToolMetadata } from '@configuration/toolDefinitions'
 import { getActiveCustomAgent, isToolAllowedForAgent } from '@renderer-configuration/customAgentTools'
+import { useStore } from '@store'
 import type { ToolProvider, ToolMeta } from '@intelligence/providerTypes'
 import type {
   ToolDefinition,
@@ -247,10 +248,15 @@ class ToolManager {
       logger.agent.warn(
         `[ToolManager] Tool "${toolName}" rejected: not allowed for active agent "${activeAgent.name}"`,
       )
+      // 双语文案：tool result 返回给 LLM 的同时，error 会直接展示在工具卡片上，需对用户友好
+      const isZh = useStore.getState().language === 'zh'
+      const errorMsg = isZh
+        ? `工具 "${toolName}" 未被当前智能体「${activeAgent.name}」授权使用。\n该智能体未开启此工具/技能权限，请编辑智能体并开启该工具支持后重试。`
+        : `Tool "${toolName}" is not allowed for the active agent "${activeAgent.name}".\nThis agent has not enabled this tool/skill. Please edit the agent and enable it to continue.`
       return this.finalizeResult(toolName, executionId, startedAt, undefined, {
         success: false,
         result: '',
-        error: `Tool "${toolName}" is not allowed for the active agent "${activeAgent.name}"`,
+        error: errorMsg,
         outcome: { kind: 'error', code: 'TOOL_NOT_ALLOWED', retryable: false },
       }, 'validation')
     }
