@@ -208,13 +208,14 @@ export class DeclarativeScenarioModule implements ScenarioModule {
       toolGuidelines: identity?.toolGuidelines,
     }
 
-    const toolNames = [
+    const scenarioTools = [
       ...(capabilities?.builtinTools || []),
       ...(capabilities?.customTools?.map(t => t.name) || []),
     ]
 
     const scenarioCapabilities: ScenarioCapabilities = {
-      toolPacks: toolNames.length > 0 ? ['custom'] : [],
+      toolPacks: [],
+      tools: scenarioTools.length > 0 ? scenarioTools : undefined,
       modes: capabilities?.modes || [
         {
           id: 'chat',

@@ -145,12 +145,16 @@ export function guardWriteFile(input: WriteGuardInput): WriteGuardDecision {
       allow: false,
       intent: analysis.intent,
       reason:
-        `write_file was used on existing file ${input.path} with a partial-edit intent ` +
-        `(${Math.round(analysis.changedRatio * 100)}% of original content changed). ` +
-        'write_file is ONLY for creating new files or intentional full-file replacement. ' +
-        'To edit an existing file you MUST use edit_file: read the file with read_file first, ' +
-        'then apply targeted changes with edit_file (string/line/batch mode). ' +
-        'Do NOT retry write_file for this file.',
+        `REJECTED: write_file cannot be used to partially modify existing file "${input.path}". ` +
+        `${Math.round(analysis.changedRatio * 100)}% of the file content would change, indicating a partial edit. ` +
+        `write_file is ONLY for creating new files or complete full-file replacement.\n\n` +
+        `CORRECT PROCEDURE:\n` +
+        `1. Call read_file(path="${input.path}") to get the current file content\n` +
+        `2. Use edit_file with one of these modes:\n` +
+        `   - String mode: {path, old_string: "...", new_string: "..."}  (for small text replacements)\n` +
+        `   - Line mode: {path, start_line: N, end_line: M, content: "..."}  (for line-range replacements)\n` +
+        `   - Batch mode: {path, edits: [{action, start_line, end_line, content}]}  (for multiple changes)\n` +
+        `3. Do NOT call write_file again for this file`,
       analysis,
     }
   }
@@ -161,10 +165,11 @@ export function guardWriteFile(input: WriteGuardInput): WriteGuardDecision {
       allow: true,
       intent: analysis.intent,
       reason:
-        `write_file was used on existing file ${input.path} without a recent read; full rewrite executed. ` +
-        'To edit an existing file you MUST use edit_file: read the file with read_file first, ' +
-        'then apply changes with edit_file (string/line/batch mode). ' +
-        'Use write_file only for creating new files or intentional full-file replacement.',
+        `NOTE: write_file was used on existing file "${input.path}" without a prior read_file call. ` +
+        `The full file was overwritten. For future edits to this file, use edit_file instead:\n` +
+        `1. Call read_file(path="${input.path}") first\n` +
+        `2. Then use edit_file with old_string/new_string, start_line/end_line/content, or edits array\n` +
+        `3. Only use write_file for new files or intentional full-file replacement.`,
       analysis,
     }
   }

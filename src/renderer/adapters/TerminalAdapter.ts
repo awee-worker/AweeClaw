@@ -251,7 +251,13 @@ function looksLikeShellPrompt(str: string): boolean {
   if (!text) return false
 
   const tail = text.split('\n').slice(-3).join('\n')
-  return /(?:^|\n)(?:PS\s+[^\n>]*>\s*|(?:[^\n@\s]+@[^\n:\s]+:[^\n#$]+[#$]\s*)|(?:[A-Za-z]:\\[^\n>]*>\s*)|(?:[^\n]*[#$]\s*))$/.test(tail)
+  // 支持 bash/zsh/fish 等常见提示符：
+  // - PS xxx >                    PowerShell
+  // - user@host:path $ / #        bash（普通用户 $ / root #）
+  // - user@host path % / #        zsh 默认提示符（普通用户 % / root #）
+  // - C:\path>                    cmd.exe
+  // - 任意以 $ / # / % / > 结尾   通用兜底（含 fish ➜、自定义 PS1 等）
+  return /(?:^|\n)(?:PS\s+[^\n>]*>\s*|(?:[^\n@\s]+@[^\n:\s]+:[^\n#$%]+[#$%]\s*)|(?:[A-Za-z]:\\[^\n>]*>\s*)|(?:[^\n]*[#$%>]\s*))$/.test(tail)
 }
 
 function cloneCommandSession(session: TerminalCommandSession | null): TerminalCommandSession | null {
@@ -1046,6 +1052,20 @@ export class TerminalManagerClass {
 
         // 空闲终端：直接复用
         if (!occupiedByDetachedWork && !occupiedByActiveCommand) {
+          // 上次命令异常结束（超时/中断/被错误终止/shell 退出）时，终端里可能残留
+          // 未被杀死的挂起进程（如无超时的 fetch/网络脚本）。此时直接复用会把新命令
+          // 写入被占用 stdin 的 shell，导致新命令无人执行、再次超时（连锁超时）。
+          // 因此复用前发送 Ctrl+C + 换行，把终端恢复到干净可用的状态。
+          const lastStatus = commandInfo.last?.status
+          const lastAbnormal =
+            lastStatus === 'timed_out' ||
+            lastStatus === 'interrupted' ||
+            lastStatus === 'failed' ||
+            lastStatus === 'shell_exited' ||
+            lastStatus === 'cancelled'
+          if (lastAbnormal) {
+            this.interruptStaleAgentCommand(this.agentTerminalId)
+          }
           return this.agentTerminalId
         }
 
@@ -1345,7 +1365,10 @@ export class TerminalManagerClass {
 
       const scheduleIdleFallback = () => {
         clearIdleTimer()
-        if (textAtStart === -1 || sentinelMatched) return
+        // 已通过 sentinel 完成则不再调度；START sentinel 是否检测到不影响提示符兜底——
+        // 即使 START 未检测到（极端时序/数据丢失），只要 shell 回到提示符就说明命令已结束，
+        // 应立即结束等待，而不是干等到超时。
+        if (sentinelMatched) return
         idleTimer = setTimeout(() => {
           if (settled) return
           const tail = rawAccumulator.slice(-400)
@@ -1368,6 +1391,14 @@ export class TerminalManagerClass {
       // 仅在显式指定正数超时的情况下才设置定时器
       const timer = timeoutMs > 0
         ? setTimeout(() => {
+            // 超时兜底：先向终端发送 Ctrl+C 中断可能挂起的进程（如无超时的 fetch/网络脚本），
+            // 确保挂起的进程被终止、shell 回到可接受新命令的状态。
+            // 否则超时后终端被残留进程占用，下一次 run_command 复用终端会连锁超时。
+            try {
+              this.writeToTerminal(termId, '\x03')
+            } catch {
+              // 终端可能已关闭，忽略
+            }
             settle('timeout', {
               finalStatus: 'timed_out',
               timedOut: true,

@@ -34,6 +34,8 @@ export interface ScenarioIdentity {
 
 export interface ScenarioCapabilities {
   toolPacks: string[]
+  /** 场景直接声明的工具名列表（用于声明式场景，无需 toolPack 注册） */
+  tools?: string[]
   modes: ScenarioModeDescriptor[]
   contextTypes: ContextTypeDescriptor[]
   outputFormats: string[]

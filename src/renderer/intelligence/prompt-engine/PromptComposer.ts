@@ -294,18 +294,21 @@ function getActiveScenarioIdentity() {
  * 文件编辑工具优先级硬规则
  * 独立于场景 toolGuidelines 强制注入，防止场景覆盖默认指南后核心规则丢失
  */
-const FILE_EDIT_PRIORITY = `## File Editing Priority (MANDATORY)
+const FILE_EDIT_PRIORITY = `## File Editing Priority (MANDATORY — NO EXCEPTIONS)
 - **CREATE a new file** → use \`write_file\` (or \`create_file_or_folder\`).
-- **MODIFY an existing file** → you MUST use \`edit_file\`: first \`read_file\` to get the current content, then apply targeted changes with \`edit_file\` (string/line/batch mode).
-- \`write_file\` on an existing file is ONLY allowed for intentional full-file replacement (the whole file is regenerated on purpose). NEVER use \`write_file\` to partially modify an existing file.`
+- **MODIFY an existing file** → you MUST use \`edit_file\`: first call \`read_file\` to read the file, then use \`edit_file\` to make targeted changes (string/line/batch mode).
+- **write_file on an existing file will be REJECTED** if it appears to be a partial edit. The rejection message will tell you to switch to edit_file.
+- **If write_file is rejected**: Do NOT retry write_file. Instead: 1) call read_file(path) to get current content, 2) use edit_file with old_string/new_string or start_line/end_line/content.
+- \`write_file\` on an existing file is ONLY allowed for intentional full-file replacement (the entire file content is being regenerated). NEVER use write_file for partial modification of an existing file.`
 
 function buildTools(mode: WorkMode, templateId?: string, planPhase?: 'planning' | 'executing', isChannel?: boolean): string {
   const excludeCategories: ToolCategory[] = []
   const activeScenario = scenarioRegistry.getActive()
   const scenarioToolPacks = activeScenario?.capabilities?.toolPacks
+  const scenarioTools = activeScenario?.capabilities?.tools || []
   const activeAgent = getActiveCustomAgent()
   const agentFields = activeAgent ? getAgentToolLoadingFields(activeAgent) : {}
-  const allowedTools = getToolsForContext({ mode, templateId, planPhase, scenarioToolPacks, isChannel, ...agentFields })
+  const allowedTools = getToolsForContext({ mode, templateId, planPhase, scenarioToolPacks, scenarioTools, isChannel, ...agentFields })
   const baseTools = generateToolsPromptDescriptionFiltered(excludeCategories, allowedTools)
   const { toolGuidelines } = getActiveScenarioIdentity()
 

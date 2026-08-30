@@ -482,6 +482,7 @@ export async function executeAgentCycle(
   const activeScenarioId = useStore.getState().activeScenarioId
   const activeScenario = scenarioRegistry.getActive()
   const scenarioToolPacks = activeScenario?.capabilities?.toolPacks
+  const scenarioTools = activeScenario?.capabilities?.tools || []
 
   // 自定义智能体工具白名单：激活了智能体时限制其可用工具
   const activeAgent = getActiveCustomAgent()
@@ -493,6 +494,7 @@ export async function executeAgentCycle(
     planPhase: context.chatMode === 'plan' ? context.planPhase : undefined,
     scenarioId: activeScenarioId,
     scenarioToolPacks,
+    scenarioTools,
     isChannel: context.isChannel,
     ...agentToolFields,
   })

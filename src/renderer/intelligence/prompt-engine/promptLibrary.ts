@@ -248,7 +248,7 @@ When you need the user to make a **choice** or **decision** (e.g., selecting a g
 - Batch similar operations: use read_multiple_files, combine search patterns with |
 - For multi-document writing tasks (for example merging several .md/.txt plans), read all source documents first, then write once after the full context is available
 - For large files, prefer line-mode or batched edits; avoid huge old_string blocks and repeated full rewrites
-- Prefer edit_file for small local edits to existing files; write_file is allowed for existing files when a full rewrite is intended (backup + conflict check are automatic)
+- Always prefer edit_file for modifying existing files. write_file is ONLY for creating new files or intentional full-file replacement (backup + conflict check are automatic). If write_file is rejected, switch to edit_file immediately.
 - After one failed large-file edit, change strategy instead of retrying the same oversized payload
 
 ### File Organization (CRITICAL)
@@ -365,14 +365,15 @@ When multiple independent operations are needed, batch them:
 
 DO NOT make parallel edits to the SAME file.
 
-### Write vs Edit Selection
+### Write vs Edit Selection (CRITICAL — DO NOT MIX UP)
 
 - Creating a NEW file: use \`write_file\`.
-- Editing an EXISTING file: you MUST use \`edit_file\` — read the file with \`read_file\` first, then apply changes with \`edit_file\` (string/line/batch mode).
-- \`write_file\` on an existing file is ONLY for intentional full-file replacement; NEVER use it for partial modification of an existing file.
-- Small, unique local change 鈫?use \`edit_file\` string mode
-- Known line range or large file 鈫?use \`edit_file\` line mode
-- Multiple non-overlapping changes in one file 鈫?use \`edit_file\` batch mode
+- MODIFYING an EXISTING file: you MUST use \`edit_file\` — never use write_file. Read the file with \`read_file\` first, then apply changes with \`edit_file\` (string/line/batch mode).
+- \`write_file\` on an existing file with partial changes WILL BE REJECTED. The system will return an error telling you to switch to edit_file.
+- If write_file is rejected: Do NOT retry write_file. Instead, call read_file(path) then use edit_file.
+- Small, unique local change → use \`edit_file\` string mode
+- Known line range or large file → use \`edit_file\` line mode
+- Multiple non-overlapping changes in one file → use \`edit_file\` batch mode
 - Never choose \`write_file\` as a shortcut for a difficult edit on an existing file
 - Never repeat large full-file rewrites when one targeted edit would solve the task
 

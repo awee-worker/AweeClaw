@@ -3,11 +3,13 @@
  *
  * 首次启动完成引导后弹出，检测 Python/uv/Node 三项核心运行时：
  * - 全部就绪：自动关闭，不打扰用户
- * - 有缺失项：展示"一键安装"和"跳过"按钮
+ * - 有缺失项：展示"一键安装"、"后台安装"和"跳过"按钮
  * - 安装中：显示进度条 + 阶段文案
  *
  * 跳过后写入 environmentCheckCompleted=true，不再自动弹出，
  * 用户仍可在设置 → 环境管理中手动检测/安装。
+ *
+ * 后台安装：关闭弹窗但继续后台安装，顶部"新对话"按钮前出现状态提示。
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
@@ -49,6 +51,7 @@ type RuntimeId = keyof typeof RUNTIME_META
 export default function EnvironmentSetupDialog({ onComplete }: EnvironmentSetupDialogProps) {
   const language = useStore((s) => s.language)
   const isZh = language !== 'en'
+  const setEnvInstallStatus = useStore((s) => s.setEnvInstallStatus)
 
   const [status, setStatus] = useState<EnvironmentStatus | null>(null)
   const [checking, setChecking] = useState(true)
@@ -89,9 +92,28 @@ export default function EnvironmentSetupDialog({ onComplete }: EnvironmentSetupD
   useEffect(() => {
     const off = api.environment.onEnvironmentProgress((event: InstallProgressEvent) => {
       setProgress((prev) => ({ ...prev, [event.id]: event }))
+      
+      // 同步更新后台安装状态
+      setEnvInstallStatus((prev) => {
+        const newProgress = { ...prev.progress, [event.id]: event }
+        // 计算整体进度
+        const values = Object.values(newProgress).filter(Boolean)
+        const avgPercent = values.length > 0 
+          ? Math.round(values.reduce((sum, p) => sum + p.percent, 0) / values.length)
+          : prev.percent
+        
+        return {
+          ...prev,
+          progress: newProgress,
+          percent: avgPercent,
+          activeId: event.id,
+          message: event.message || prev.message,
+          state: event.stage === 'done' ? 'done' : event.stage === 'error' ? 'error' : 'installing',
+        }
+      })
     })
     return off
-  }, [])
+  }, [setEnvInstallStatus])
 
   // 检测完成且全部就绪：自动关闭（不打扰用户）
   useEffect(() => {
@@ -105,7 +127,57 @@ export default function EnvironmentSetupDialog({ onComplete }: EnvironmentSetupD
     }
   }, [checking, status, installing, onComplete])
 
-  /** 一键安装所有缺失项 */
+  /** 后台安装所有缺失项（关闭弹窗，继续后台安装） */
+  const handleBackgroundInstall = useCallback(async () => {
+    setInstalling(true)
+    setError(null)
+    setProgress({ python: null, uv: null, node: null })
+    
+    // 设置后台安装状态
+    setEnvInstallStatus({
+      state: 'installing',
+      isInstalling: true,
+      percent: 0,
+      message: isZh ? '正在后台安装环境...' : 'Installing environment in background...',
+    })
+
+    try {
+      const result = await api.environment.environmentInstallAll()
+      
+      // 更新最终状态
+      if (result.success && result.status.allReady) {
+        setEnvInstallStatus({
+          state: 'done',
+          isInstalling: false,
+          percent: 100,
+          message: isZh ? '环境安装完成！' : 'Environment setup complete!',
+        })
+        useStore.getState().set('environmentCheckCompleted', true)
+      } else if (!result.status.allReady) {
+        setEnvInstallStatus({
+          state: 'error',
+          isInstalling: false,
+          message: isZh ? '部分环境安装失败，可到设置 → 环境管理 中重试' : 'Some environments failed, retry in Settings → Environment',
+        })
+        setStatus(result.status)
+      }
+    } catch (err) {
+      logger.system.error('[EnvironmentSetupDialog] background install failed:', err)
+      setEnvInstallStatus({
+        state: 'error',
+        isInstalling: false,
+        message: isZh ? '安装失败，请稍后重试' : 'Install failed, please retry',
+      })
+      setError(isZh ? '安装失败，请稍后重试' : 'Install failed, please retry')
+    } finally {
+      setInstalling(false)
+      // 立即关闭弹窗
+      dialogClosedRef.current = true
+      onComplete()
+    }
+  }, [isZh, onComplete, setEnvInstallStatus])
+
+  /** 一键安装所有缺失项（保持弹窗打开） */
   const handleInstallAll = useCallback(async () => {
     setInstalling(true)
     setError(null)
@@ -286,24 +358,33 @@ export default function EnvironmentSetupDialog({ onComplete }: EnvironmentSetupD
           )}
 
           {/* 按钮区 */}
-          <div className="px-6 pb-6 pt-2 flex gap-3">
+          <div className="px-6 pb-6 pt-2 flex flex-col gap-2">
             {!allReady && (
               <>
-                <button
-                  onClick={handleInstallAll}
-                  disabled={installing || checking}
-                  className="flex-1 px-4 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {installing
-                    ? isZh ? '安装中...' : 'Installing...'
-                    : isZh ? '一键安装缺失项' : 'Install Missing'}
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleInstallAll}
+                    disabled={installing || checking}
+                    className="flex-1 px-4 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {installing
+                      ? isZh ? '安装中...' : 'Installing...'
+                      : isZh ? '一键安装（保持弹窗）' : 'Install (Stay)'}
+                  </button>
+                  <button
+                    onClick={handleBackgroundInstall}
+                    disabled={installing || checking}
+                    className="flex-1 px-4 py-2.5 rounded-lg bg-surface-active text-text-secondary text-sm font-medium hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors border border-border"
+                  >
+                    {isZh ? '后台安装' : 'Background Install'}
+                  </button>
+                </div>
                 <button
                   onClick={handleSkip}
                   disabled={installing}
-                  className="px-4 py-2.5 rounded-lg bg-surface-active text-text-secondary text-sm font-medium hover:bg-surface-active/80 disabled:opacity-50 transition-colors"
+                  className="w-full px-4 py-2 rounded-lg text-xs text-text-muted hover:text-text-primary transition-colors"
                 >
-                  {isZh ? '跳过' : 'Skip'}
+                  {isZh ? '跳过，我稍后再安装' : 'Skip, install later'}
                 </button>
               </>
             )}

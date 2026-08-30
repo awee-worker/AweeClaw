@@ -119,8 +119,13 @@ export async function registerInstalledScenario(
   const { scenarioId, source, version } = options
   const isProgrammatic = config.packageType === 'programmatic'
 
+  // 注册到 registry/loader 的 key 是 config.id（可能与市场场景 ID/目录名不一致），
+  // 因此加载场景文件必须以 config.id 为准；主进程 loadScenarioFiles 已支持
+  // 目录名与 config.id 不一致时按 config.id 扫描匹配实际目录。
+  const loadScenarioId = config.id || scenarioId
+
   try {
-    const filesResult = await api.scenarioInstall.loadScenarioFiles(scenarioId)
+    const filesResult = await api.scenarioInstall.loadScenarioFiles(loadScenarioId)
 
     if (isProgrammatic) {
       // ============================================

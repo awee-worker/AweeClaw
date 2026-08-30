@@ -40,6 +40,8 @@ export interface ToolLoadingContext {
   scenarioId?: string
   /** 场景工具包列表（可选）：直接指定需要的工具包 */
   scenarioToolPacks?: string[]
+  /** 场景直接声明的工具名列表（用于声明式场景，无需 toolPack 注册） */
+  scenarioTools?: string[]
   /** 是否为消息渠道会话（飞书/微信等），仅渠道会话才注入 send_file_to_channel 等渠道工具 */
   isChannel?: boolean
   /** 自定义智能体允许的内置工具名白名单（已解析为真实工具名；存在时内置工具仅保留白名单内） */
@@ -208,9 +210,16 @@ export function getToolsForContext(context: ToolLoadingContext): string[] {
   const tools = new Set<string>()
 
   const scenarioPacks = context.scenarioToolPacks
+  const scenarioTools = context.scenarioTools
   if (scenarioPacks && scenarioPacks.length > 0) {
     const packTools = toolPackRegistry.resolveTools(scenarioPacks)
     for (const tool of packTools) {
+      tools.add(tool)
+    }
+  }
+  // 声明式场景直接声明的工具名（无需 toolPack 注册）
+  if (scenarioTools && scenarioTools.length > 0) {
+    for (const tool of scenarioTools) {
       tools.add(tool)
     }
   }

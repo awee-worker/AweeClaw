@@ -28,7 +28,7 @@ const CONFIG_KEY_VENV_DIR = 'venvDir'
 const CONFIG_KEY_STATUS = 'status'
 
 const DEFAULT_PYTHON_DIR = path.join(app.getPath('userData'), 'python-env')
-const PYTHON_VERSION = '3.12'
+const PYTHON_VERSION = '3.11'
 const BASE_PACKAGES = ['debugpy', 'pylint']
 
 /**
@@ -46,31 +46,26 @@ const UV_DOWNLOAD_URLS: Record<string, string[]> = {
   'darwin-arm64': [
     'https://ghfast.top/https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-apple-darwin.tar.gz',
     'https://gh-proxy.com/https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-apple-darwin.tar.gz',
-    'https://ghproxy.net/https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-apple-darwin.tar.gz',
     'https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-apple-darwin.tar.gz',
   ],
   'darwin-x64': [
     'https://ghfast.top/https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-apple-darwin.tar.gz',
     'https://gh-proxy.com/https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-apple-darwin.tar.gz',
-    'https://ghproxy.net/https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-apple-darwin.tar.gz',
     'https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-apple-darwin.tar.gz',
   ],
   'win32-x64': [
     'https://ghfast.top/https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip',
     'https://gh-proxy.com/https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip',
-    'https://ghproxy.net/https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip',
     'https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip',
   ],
   'linux-x64': [
     'https://ghfast.top/https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-gnu.tar.gz',
     'https://gh-proxy.com/https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-gnu.tar.gz',
-    'https://ghproxy.net/https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-gnu.tar.gz',
     'https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-gnu.tar.gz',
   ],
   'linux-arm64': [
     'https://ghfast.top/https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-unknown-linux-gnu.tar.gz',
     'https://gh-proxy.com/https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-unknown-linux-gnu.tar.gz',
-    'https://ghproxy.net/https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-unknown-linux-gnu.tar.gz',
     'https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-unknown-linux-gnu.tar.gz',
   ],
 }
@@ -82,24 +77,19 @@ const UV_DOWNLOAD_URLS: Record<string, string[]> = {
  * 国内直连 GitHub 极慢或失败。通过 UV_PYTHON_INSTALL_MIRROR 环境变量
  * 指定镜像前缀，让 uv 从国内镜像下载。
  *
- * ⚠️ 关键：uv 内部 strip_prefix 的 URL 是 indygreg（不是 astral-sh）！
- *    python-build-standalone 仓库已从 indygreg 迁移到 astral-sh，
- *    但 uv 0.12.x 内部仍使用 indygreg 作为 strip_prefix 的前缀。
- *    如果配置成 astral-sh，strip_prefix 会失败，mirror 配置完全不生效。
- *    所以镜像 URL 中必须用 indygreg（GitHub 会自动重定向到 astral-sh）。
+ * python-build-standalone 仓库已从 indygreg 迁移到 astral-sh（2024年），
+ * uv 0.12+ 已同步更新，请使用 astral-sh 路径。
  *
- * 镜像 URL 格式：https://镜像域名/https://github.com/indygreg/python-build-standalone/releases/download
+ * 镜像 URL 格式：https://镜像域名/https://github.com/astral-sh/python-build-standalone/releases/download
  * uv 会自动拼接 /<tag>/cpython-<version>+<date>-<platform>.tar.gz
  *
  * 依次尝试，任一成功即可。
  */
 const PYTHON_DOWNLOAD_MIRRORS: string[] = [
-  'https://ghfast.top/https://github.com/indygreg/python-build-standalone/releases/download',
-  'https://gh-proxy.com/https://github.com/indygreg/python-build-standalone/releases/download',
-  'https://ghproxy.net/https://github.com/indygreg/python-build-standalone/releases/download',
+  'https://ghfast.top/https://github.com/astral-sh/python-build-standalone/releases/download',
+  'https://gh-proxy.com/https://github.com/astral-sh/python-build-standalone/releases/download',
   // GitHub 官方（海外用户/直连可用时的最终回退）
-  // 注意：这里也用 indygreg，因为 uv 内部 strip_prefix 用的是 indygreg
-  'https://github.com/indygreg/python-build-standalone/releases/download',
+  'https://github.com/astral-sh/python-build-standalone/releases/download',
 ]
 
 export interface PythonStatus {
@@ -1168,61 +1158,116 @@ class PythonManager {
     return null
   }
 
+  /**
+   * 判断 URL 是否为 python-build-standalone 镜像前缀（前缀格式，供 UV_PYTHON_INSTALL_MIRROR 使用）
+   *
+   * 示例：
+   *   https://ghfast.top/https://github.com/astral-sh/python-build-standalone/releases/download  → true
+   *   https://cdn.xxx.com/cpython-3.11+20260825-aarch64-apple-darwin-install_only.tar.gz       → false
+   */
+  private static _isMirrorPrefix(url: string): boolean {
+    return url.includes('python-build-standalone/releases/download')
+  }
+
   private async _installPythonViaUv(uvPath: string): Promise<string | null> {
     logger.system.info(`[PythonManager] Installing Python ${PYTHON_VERSION} via uv...`)
 
     const pythonInstallDir = path.join(DEFAULT_PYTHON_DIR, 'python')
     if (!fs.existsSync(pythonInstallDir)) fs.mkdirSync(pythonInstallDir, { recursive: true })
 
-    // 构建下载源列表：后端托管源（优先）+ GitHub 镜像列表
-    // 后端源是管理员在后台管理上传的二进制，最优最稳定
+    // 优先尝试后端托管下载源
+    // 策略分两种：
+    //   A. 后端返回的是镜像前缀（含 python-build-standalone/releases/download）→ 设 UV_PYTHON_INSTALL_MIRROR，交给 uv 处理
+    //   B. 后端返回的是完整文件 URL（如 CDN 直链 tar.gz）→ 客户端自行下载 + 解压，不经过 uv
     this.notifyStatus('正在从后端获取 Python 推荐下载源...')
     const backendUrl = await resolveBackendAssetUrl('python')
-    const mirrors = backendUrl
-      ? [backendUrl, ...PYTHON_DOWNLOAD_MIRRORS]
-      : PYTHON_DOWNLOAD_MIRRORS
 
-    // 依次尝试下载源
+    if (backendUrl) {
+      if (PythonManager._isMirrorPrefix(backendUrl)) {
+        // 策略 A：后端返回镜像前缀，交给 uv 通过 UV_PYTHON_INSTALL_MIRROR 下载
+        try {
+          this.notifyStatus('正在通过后端镜像源下载 Python...')
+          const env: Record<string, string> = {
+            ...process.env,
+            UV_PYTHON_INSTALL_MIRROR: backendUrl,
+            UV_DEFAULT_INDEX: PythonManager.PYPI_MIRRORS[0].url,
+          }
+          const { code, stdout, stderr } = await execCommandAsync(
+            uvPath,
+            ['python', 'install', PYTHON_VERSION, '--preview', '--install-dir', pythonInstallDir],
+            { timeout: 600000, env },
+          )
+          if (code === 0) {
+            logger.system.info('[PythonManager] Python installed from backend mirror prefix')
+            this.notifyStatus('Python 下载完成，正在配置环境...')
+            const pythonBin = this._findPythonInDir(pythonInstallDir)
+            if (pythonBin) return pythonBin
+            logger.system.error('[PythonManager] Python binary not found after backend mirror install')
+            this.notifyStatus('Python 安装完成但未找到二进制文件')
+            return null
+          }
+          logger.system.warn('[PythonManager] Backend mirror prefix install failed:', { stdout, stderr })
+          this.notifyStatus('后端镜像源下载失败，尝试内置镜像源...')
+        } catch (err) {
+          logger.system.warn('[PythonManager] Backend mirror prefix install error:', err)
+          this.notifyStatus('后端镜像源下载异常，尝试内置镜像源...')
+        }
+      } else {
+        // 策略 B：后端返回完整文件 URL（CDN 直链），客户端直接下载 + 解压
+        try {
+          this.notifyStatus('正在从后端 CDN 下载 Python（免 uv 中转）...')
+          const tmpDir = path.join(DEFAULT_PYTHON_DIR, 'tmp')
+          if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true })
+          const archivePath = path.join(tmpDir, `python-backend.tar.gz`)
+          await downloadFile(backendUrl, archivePath)
+          this.notifyStatus('Python 下载完成，正在解压...')
+          await extractArchive(archivePath, pythonInstallDir)
+          try { fs.rmSync(tmpDir, { recursive: true, force: true }) } catch { /* ignore */ }
+          logger.system.info('[PythonManager] Python extracted from backend CDN URL')
+          this.notifyStatus('Python 下载完成，正在配置环境...')
+          const pythonBin = this._findPythonInDir(pythonInstallDir)
+          if (pythonBin) return pythonBin
+          logger.system.error('[PythonManager] Python binary not found after backend CDN install')
+          this.notifyStatus('Python 安装完成但未找到二进制文件')
+          return null
+        } catch (err) {
+          logger.system.warn('[PythonManager] Backend CDN download failed:', err)
+          this.notifyStatus('后端 CDN 下载失败，尝试内置镜像源...')
+        }
+      }
+    }
+
+    // 后端无托管源或后端源下载失败 → 回退到内置镜像源（通过 uv）
     let lastError: unknown = null
-    for (let i = 0; i < mirrors.length; i++) {
-      const mirror = mirrors[i]
-      const mirrorName = i === 0
-        ? (backendUrl ? '后端托管源' : `镜像源 ${i + 1}`)
-        : (i === mirrors.length - 1 ? 'GitHub 官方' : `镜像源 ${i}`)
+    for (let i = 0; i < PYTHON_DOWNLOAD_MIRRORS.length; i++) {
+      const mirror = PYTHON_DOWNLOAD_MIRRORS[i]
+      const mirrorName = i === PYTHON_DOWNLOAD_MIRRORS.length - 1 ? 'GitHub 官方' : `镜像源 ${i + 1}`
       this.notifyStatus(`正在通过 ${mirrorName} 下载 Python ${PYTHON_VERSION}（可能需要 2-5 分钟）...`)
 
       try {
-        logger.system.info(`[PythonManager] uv python install from: ${mirror}`)
-        // 设置 UV_PYTHON_INSTALL_MIRROR 环境变量让 uv 从镜像源下载 Python
-        // 同时设置 UV_DEFAULT_INDEX 为国内 PyPI 镜像，加速后续 pip install
         const env: Record<string, string> = {
           ...process.env,
           UV_PYTHON_INSTALL_MIRROR: mirror,
           UV_DEFAULT_INDEX: PythonManager.PYPI_MIRRORS[0].url,
         }
-
         const { stdout, stderr, code } = await execCommandAsync(
           uvPath,
           ['python', 'install', PYTHON_VERSION, '--preview', '--install-dir', pythonInstallDir],
-          { timeout: 600000, env } // 10 分钟超时（Python 下载约 30-40MB，国内镜像通常 1-2 分钟）
+          { timeout: 600000, env },
         )
-
         if (code !== 0) {
           logger.system.warn(`[PythonManager] uv python install failed (${mirrorName}):`, { stdout, stderr })
           this.notifyStatus(`${mirrorName} 下载失败，尝试下一个源...`)
           lastError = new Error(stderr || stdout)
           continue
         }
-
         logger.system.info(`[PythonManager] Python installed successfully from ${mirrorName}`)
-        this.notifyStatus(`Python ${PYTHON_VERSION} 下载完成，正在配置环境...`)
-
+        this.notifyStatus('Python 下载完成，正在配置环境...')
         const pythonBin = this._findPythonInDir(pythonInstallDir)
         if (pythonBin) {
           logger.system.info(`[PythonManager] Python installed at: ${pythonBin}`)
           return pythonBin
         }
-
         logger.system.error('[PythonManager] Python binary not found after uv install')
         this.notifyStatus('Python 安装完成但未找到二进制文件')
         return null

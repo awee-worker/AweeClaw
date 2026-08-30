@@ -16,3 +16,4 @@ export { createEditorStateSlice, type EditorStateSlice } from './editorStateSlic
 export { createAuthSlice, type AuthSlice, type CloudUser, type CloudQuota } from './authSlice'
 export { createAgentWorkspaceSlice, type AgentWorkspaceSlice, type AgentWorkspaceSession, type WorkspaceAgent, type AgentToolCall, type AgentProgressEvent, type TeamChatMessage } from './agentWorkspaceSlice'
 export { createExecutionSessionSlice, type ExecutionSessionSlice, type ExecutionSession, type ExecutionSessionKind, type ExecutionSessionStatus, type CreateSessionInput, MAX_CONCURRENT_SESSIONS } from './executionSessionSlice'
+export { createEnvInstallSlice, type EnvInstallSlice, type EnvInstallStage, type EnvInstallProgressItem } from './envInstallSlice'

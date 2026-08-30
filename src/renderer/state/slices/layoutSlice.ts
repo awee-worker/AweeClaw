@@ -121,6 +121,8 @@ export interface LayoutSlice {
   showSessionHistoryPage: boolean
   showPluginCenterPage: boolean
   showScenarioPage: boolean
+  /** 环境检测弹窗是否显示 */
+  showEnvironmentSetup: boolean
   /** 场景管理页面当前标签页 */
   scenarioPageTab: 'installed' | 'marketplace'
   /** 设置场景管理页面标签页 */
@@ -208,6 +210,9 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
   scenarioPageTab: 'installed',
   setScenarioPageTab: (tab) => set({ scenarioPageTab: tab }),
 
+  /* ----- 环境检测弹窗初始状态 ----- */
+  showEnvironmentSetup: false,
+
   /* ----- 面板可见性操作 ----- */
   setActiveSidePanel: (panel) =>
     set((state) => ({
@@ -281,4 +286,7 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
 
   /* ----- 场景配置版本操作 ----- */
   incrementScenarioConfigVersion: () => set((state) => ({ scenarioConfigVersion: state.scenarioConfigVersion + 1 })),
+
+  /* ----- 环境检测弹窗操作 ----- */
+  setShowEnvironmentSetup: (show) => set({ showEnvironmentSetup: show }),
 })

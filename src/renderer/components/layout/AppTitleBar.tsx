@@ -1,4 +1,4 @@
-import { Minus, Square, X, Search, Plus, Bell, Cloud, Phone, RefreshCw } from 'lucide-react'
+import { Minus, Square, X, Search, Plus, Bell, Cloud, Phone, RefreshCw, Loader2, CheckCircle2 } from 'lucide-react'
 
 function PanelLeftIcon({ filled = false, className }: { filled?: boolean; className?: string }) {
     return (
@@ -226,7 +226,7 @@ function CloudQuotaIndicator({ language }: { language: Language }) {
 }
 
 export default function AppTitleBar() {
-  const { setShowQuickOpen, language, activeSidePanel, chatVisible, toggleSidebar, toggleChat, navRailExpanded, setNavRailExpanded, setVoiceConversationActive, closeAllFullPages } = useStore(useShallow(s => ({
+  const { setShowQuickOpen, language, activeSidePanel, chatVisible, toggleSidebar, toggleChat, navRailExpanded, setNavRailExpanded, setVoiceConversationActive, closeAllFullPages, setShowEnvironmentSetup } = useStore(useShallow(s => ({
     setShowQuickOpen: s.setShowQuickOpen,
     language: s.language,
     activeSidePanel: s.activeSidePanel,
@@ -237,10 +237,12 @@ export default function AppTitleBar() {
     setNavRailExpanded: s.setNavRailExpanded,
     setVoiceConversationActive: s.setVoiceConversationActive,
     closeAllFullPages: s.closeAllFullPages,
+    setShowEnvironmentSetup: s.setShowEnvironmentSetup,
   })))
 
   const sidebarVisible = activeSidePanel !== null
   const { createThread } = useAgentActions()
+  const envInstallStatus = useStore((s) => s.envInstallStatus)
 
   const { toasts, visibleIds } = useInlineToast()
   const notificationCount = toasts.length
@@ -305,6 +307,27 @@ export default function AppTitleBar() {
           {chatVisible && (
             <>
               <UpdateReadyButton language={language as Language} />
+              {/* 环境安装状态提示：在"新对话"按钮前显示 */}
+              {envInstallStatus.isInstalling && (
+                <button
+                  onClick={() => setShowEnvironmentSetup(true)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-medium text-accent hover:text-accent-hover hover:bg-accent/10 rounded-md transition-colors animate-pulse"
+                  title={language === 'zh' ? '环境安装中，点击查看进度' : 'Installing environment, click for progress'}
+                >
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span className="text-xs">{language === 'zh' ? envInstallStatus.message : envInstallStatus.message}</span>
+                </button>
+              )}
+              {envInstallStatus.state === 'done' && !envInstallStatus.isInstalling && (
+                <button
+                  onClick={() => setShowEnvironmentSetup(false)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-medium text-green-500 hover:text-green-400 hover:bg-green-500/10 rounded-md transition-colors"
+                  title={language === 'zh' ? '环境安装完成' : 'Environment setup complete'}
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span className="text-xs">{language === 'zh' ? envInstallStatus.message : envInstallStatus.message}</span>
+                </button>
+              )}
               <button
                 onClick={() => createThread()}
                 className="flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-medium text-text-muted hover:text-text-primary hover:bg-[rgba(var(--text-primary),0.06)] rounded-md transition-colors"

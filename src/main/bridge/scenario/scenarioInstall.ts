@@ -464,7 +464,28 @@ export function registerScenarioInstallIpcHandlers(
 
   safeIpcHandle('scenario:deleteScenarioDir', async (_event, scenarioId: string) => {
     try {
-      const scenarioDir = getScenarioDir(scenarioId)
+      let scenarioDir = getScenarioDir(scenarioId)
+      if (!fs.existsSync(scenarioDir)) {
+        // 兼容：磁盘目录名可能与 config.id 不一致（市场场景使用市场 ID 命名目录），
+        // 按 config.id 扫描匹配实际目录，避免卸载后磁盘目录残留。
+        const scenariosDir = getScenariosDir()
+        if (fs.existsSync(scenariosDir)) {
+          const entries = fs.readdirSync(scenariosDir, { withFileTypes: true })
+          for (const entry of entries) {
+            if (!entry.isDirectory()) continue
+            const candidate = path.join(scenariosDir, entry.name)
+            try {
+              const cfg = readScenarioConfig(candidate)
+              if (cfg?.id === scenarioId) {
+                scenarioDir = candidate
+                break
+              }
+            } catch {
+              // ignore
+            }
+          }
+        }
+      }
       if (fs.existsSync(scenarioDir)) {
         fs.rmSync(scenarioDir, { recursive: true, force: true })
         logger.agent.info(`[ScenarioInstall] Deleted scenario directory for "${scenarioId}"`)
@@ -502,7 +523,33 @@ export function registerScenarioInstallIpcHandlers(
 
   safeIpcHandle('scenario:loadScenarioFiles', async (_event, scenarioId: string) => {
     try {
-      const scenarioDir = getScenarioDir(scenarioId)
+      let scenarioDir = getScenarioDir(scenarioId)
+      if (!fs.existsSync(scenarioDir)) {
+        // 兼容处理：市场场景的磁盘目录名可能使用市场 ID（与 config.id 不一致），
+        // 例如目录为 {scenarios}/2j01rqaAydQx 而 config.id 为 education-assistant。
+        // 直接按 scenarioId 找不到目录时，扫描场景根目录，按 config.id 匹配实际目录，
+        // 确保应用重启后 loadExternalScenarios 能正确加载已安装场景到 scenarioLoader。
+        const scenariosDir = getScenariosDir()
+        if (fs.existsSync(scenariosDir)) {
+          const entries = fs.readdirSync(scenariosDir, { withFileTypes: true })
+          for (const entry of entries) {
+            if (!entry.isDirectory()) continue
+            const candidate = path.join(scenariosDir, entry.name)
+            try {
+              const cfg = readScenarioConfig(candidate)
+              if (cfg?.id === scenarioId) {
+                scenarioDir = candidate
+                logger.agent.info(
+                  `[ScenarioInstall] Resolved scenario "${scenarioId}" to dir "${candidate}" (dir name differs from config.id)`
+                )
+                break
+              }
+            } catch {
+              // 单个目录读取失败不影响其他目录扫描
+            }
+          }
+        }
+      }
       if (!fs.existsSync(scenarioDir)) {
         return { success: false, error: `Scenario directory not found: ${scenarioDir}`, files: {}, config: null }
       }
@@ -669,15 +716,39 @@ export function registerScenarioInstallIpcHandlers(
         logger.agent.warn(`[ScenarioMarketplace] No scenario.json found after extraction for "${scenarioId}", but files are in place`)
       }
 
+      // 根因修复：市场场景的包内 config.id 可能与市场场景 ID 不一致
+      // （例如市场 ID 为 2j01rqaAydQx，config.id 为 education-assistant）。
+      // 统一以 config.id 作为场景目录名，确保 registry/loader 的 key 与磁盘目录一致，
+      // 否则应用重启后 loadExternalScenarios 按 config.id 找不到目录，场景无法加载到 scenarioLoader。
+      let finalScenarioId = scenarioId
+      let finalTargetDir = targetDir
+      if (config?.id && config.id !== scenarioId) {
+        const canonicalDir = getScenarioDir(config.id)
+        if (!fs.existsSync(canonicalDir)) {
+          fs.renameSync(targetDir, canonicalDir)
+          finalScenarioId = config.id
+          finalTargetDir = canonicalDir
+          logger.agent.info(
+            `[ScenarioMarketplace] Renamed scenario dir "${targetDir}" → "${canonicalDir}" to match config.id "${config.id}"`
+          )
+        } else {
+          // 目标目录已存在（如历史安装过），保留原目录并回退用 config.id 作为返回 ID
+          finalScenarioId = config.id
+          logger.agent.warn(
+            `[ScenarioMarketplace] Scenario dir "${canonicalDir}" already exists, keeping "${targetDir}" but returning config.id "${config.id}"`
+          )
+        }
+      }
+
       if (fs.existsSync(archivePath)) {
         fs.unlinkSync(archivePath)
       }
 
       return {
         success: true,
-        scenarioId,
+        scenarioId: finalScenarioId,
         version,
-        targetDir,
+        targetDir: finalTargetDir,
         config,
         packageType,
       }
@@ -835,6 +906,26 @@ export function registerScenarioInstallIpcHandlers(
         logger.agent.warn(`[ScenarioMarketplace] No scenario.json found after update for "${scenarioId}"`)
       }
 
+      // 与安装流程一致：config.id 与目录名不一致时统一目录名，保证重启后按 config.id 可找到场景
+      let finalScenarioId = scenarioId
+      let finalTargetDir = targetDir
+      if (config?.id && config.id !== scenarioId) {
+        const canonicalDir = getScenarioDir(config.id)
+        if (!fs.existsSync(canonicalDir)) {
+          fs.renameSync(targetDir, canonicalDir)
+          finalScenarioId = config.id
+          finalTargetDir = canonicalDir
+          logger.agent.info(
+            `[ScenarioMarketplace] Normalized update dir for "${config.id}" → "${canonicalDir}"`
+          )
+        } else {
+          finalScenarioId = config.id
+          logger.agent.warn(
+            `[ScenarioMarketplace] Scenario dir "${canonicalDir}" already exists for update, returning config.id "${config.id}"`
+          )
+        }
+      }
+
       if (fs.existsSync(archivePath)) {
         fs.unlinkSync(archivePath)
       }
@@ -861,9 +952,9 @@ export function registerScenarioInstallIpcHandlers(
 
       return {
         success: true,
-        scenarioId,
+        scenarioId: finalScenarioId,
         version,
-        targetDir,
+        targetDir: finalTargetDir,
         config,
         packageType,
       }

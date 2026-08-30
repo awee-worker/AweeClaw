@@ -259,22 +259,27 @@ Client-first: local extraction; falls back to server if local fails.`,
     edit_file: {
         name: 'edit_file',
         displayName: 'Edit File',
-        description: `Edit part of an existing file after reading it first.
+        description: `Edit part of an existing file after reading it first. MUST use this tool for modifying existing files — NOT write_file.
 Choose one mode only: string mode (old_string + new_string), line mode (start_line + end_line + content), or batch mode (edits array).
-Never mix modes, never send empty placeholder edits, and never use edit_file to replace a whole file; use write_file for full replacement.`,
-        detailedDescription: `When to use:
-- Use edit_file for partial changes to an existing file after read_file.
-- Use write_file for new files or intentional full-file replacement.
+Never mix modes, never send empty placeholder edits. Use write_file ONLY for creating new files.`,
+        detailedDescription: `PROCEDURE FOR MODIFYING AN EXISTING FILE:
+1. Call read_file(path="...") to get the current content
+2. Identify the exact text or line range to change
+3. Use edit_file with the appropriate mode:
+   - String mode: {path, old_string, new_string} — for replacing a specific text block
+   - Line mode: {path, start_line, end_line, content} — for replacing lines by number
+   - Batch mode: {path, edits: [...]} — for multiple independent changes
 
-Choose one mode:
-- String mode: old_string + new_string for one small unique replacement.
-- Line mode: start_line + end_line + content when exact line numbers are known.
-- Batch mode: edits array for multiple non-overlapping changes in one file.
+CHOOSING THE RIGHT MODE:
+- String mode: Use when you know the exact text to replace (small, unique snippet)
+- Line mode: Use when you know the exact line numbers (after reading the file)
+- Batch mode: Use when making 2+ non-overlapping changes to the same file
 
-Avoid:
-- Do not combine edits with top-level old_string/new_string/start_line/end_line/content.
-- Do not include empty mirrored placeholders such as content="".
-- Keep old_string short and unique; prefer line or batch mode for large files.`,
+AVOID:
+- Do not mix string/line/batch fields in one call
+- Do not include empty placeholder fields
+- Keep old_string concise but unique enough to match exactly one location
+- Prefer line or batch mode for large files or when you have line numbers`,
         customSchema: z.object({
             path: z.string().min(1, 'path is required'),
             old_string: z.string().optional(),
@@ -342,12 +347,18 @@ Avoid:
     write_file: {
         name: 'write_file',
         displayName: 'Write File',
-        description: `Write complete file content. For CREATING NEW files or intentional full-file replacement ONLY.
-To MODIFY an existing file you MUST use edit_file: first read_file to get the current content, then apply targeted changes with edit_file (string/line/batch mode). Using write_file on an existing file for partial edits will be REJECTED and fail — switch to edit_file immediately. NEVER use write_file to partially modify an existing file. Overwrites the whole file.`,
+        description: `Write complete file content. For CREATING NEW files ONLY or intentional full-file replacement.
+
+⚠️ CRITICAL: If you are MODIFYING an existing file, you MUST NOT use write_file. Instead, use edit_file:
+  1. First call read_file to get the current content
+  2. Then use edit_file with old_string/new_string (string mode) OR start_line/end_line/content (line mode) OR edits array (batch mode)
+
+Using write_file on an existing file for partial edits will be REJECTED — the system will return an error telling you to switch to edit_file.`,
         criticalRules: [
             'Creating a NEW file: use write_file.',
-            'Editing an EXISTING file: you MUST use edit_file (read_file first, then edit_file with string/line/batch mode). NEVER use write_file to partially modify an existing file.',
-            'write_file on an existing file is ONLY allowed for intentional full-file replacement (the whole file is regenerated on purpose).',
+            'MODIFYING an EXISTING file: you MUST use edit_file, NOT write_file. First read_file, then edit_file.',
+            'write_file on an existing file with partial changes WILL BE REJECTED. The error will tell you to use edit_file instead.',
+            'If write_file is rejected, do NOT retry write_file — immediately use read_file to get content, then edit_file to make changes.',
             'Prefer over create_file_or_folder when you have file content ready',
             'Do not rewrite the same large file multiple times in one turn unless absolutely necessary',
         ],

@@ -39,7 +39,7 @@ import { agentStorePlanBridge, agentStoreTodoBridge } from '../state/intelligenc
 import { useAgentStore } from '../state/IntelligenceStore'
 import { buildFileChangeDescriptor } from '@intelligence/utils/fileMutationHelper'
 import { EventBus } from '../engine/EventDispatcher'
-import { isLongRunningCommand, EXTENDED_TIMEOUT_COMMAND_PATTERN, EXTENDED_TIMEOUT_MS } from './commandExecutor'
+import { isLongRunningCommand, EXTENDED_TIMEOUT_MS } from './commandExecutor'
 import { internalWriteTracker } from '@services/writeTracker'
 import { toolRegistry } from './toolRegistry'
 import { terminalManager } from '@services/TerminalAdapter'
@@ -1030,7 +1030,10 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
 
         // 判断使用哪种模式：content 单独存在时不触发 line mode（保持与 validate 逻辑一致）
         if (!resolution.ok) {
-            return { success: false, result: '', error: `Validation failed: ${resolution.error}` }
+            const helpTip = resolution.error.includes('mix')
+                ? ' You can only use ONE mode at a time: string (old_string+new_string), line (start_line+end_line+content), or batch (edits array).'
+                : ''
+            return { success: false, result: '', error: `edit_file validation failed: ${resolution.error}. ${helpTip} Use read_file first, then pick exactly one mode and include all required fields for that mode.` }
         }
 
         const hasBatchMode = resolution.mode === 'batch'
@@ -1584,15 +1587,14 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         // cwd 解析：若 AI 传了 cwd 参数，解析为绝对路径；否则用工作区根目录
         const resolvedCwd = args.cwd ? resolvePath(args.cwd, ctx.workspacePath, true) : null
         const isBackground = args.is_background as boolean
-        // 默认超时 120 秒，防止命令因 sentinel 失败等原因卡住导致 AI 无限等待
-        // 长进程（isLongRunningProcess）走 detached 路径，不受此超时影响
-        //
-        // 安装/构建类耗时命令（pip install、npm install、apt install、brew install、
-        // cargo build、docker build 等）使用扩展超时（EXTENDED_TIMEOUT_MS，10 分钟）。
-        // 原因：numpy/scipy 等大包下载+编译频繁超过 120s，导致 AI 误判命令失败。
-        // 命令分隔符（&&/;/||）后的子命令也会匹配，支持 `cd xxx && pip install` 形式。
-        const isExtendedTimeoutCommand = EXTENDED_TIMEOUT_COMMAND_PATTERN.test(command)
-        const timeout = isExtendedTimeoutCommand ? EXTENDED_TIMEOUT_MS : 120_000
+        // 统一使用扩展超时（EXTENDED_TIMEOUT_MS，10 分钟）：
+        // 1. 120s 对无超时的网络请求脚本（如 fetch 后端 API 的 node 脚本）等场景过于苛刻，
+        //    容易把正常慢命令误判为失败。
+        // 2. 超时兜底仅用于防止命令永久卡死导致 AI 无限等待；超时后
+        //    executeCommandWithOutput 会发送 Ctrl+C 中断挂起进程并恢复终端，
+        //    下次复用终端前也会清理残留进程，因此提高上限不会带来"卡住就无限等"的风险。
+        // 3. 长进程（isLongRunningProcess）走 detached 路径，不受此超时影响。
+        const timeout = EXTENDED_TIMEOUT_MS
 
         // ── 安全底线：危险命令硬拦截 ──────────────────────────
         // 即使 toolOrchestrator 审批通过，仍在此处做最终内容校验。

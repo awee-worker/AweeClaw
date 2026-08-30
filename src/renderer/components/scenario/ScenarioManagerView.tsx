@@ -1197,7 +1197,7 @@ function InstalledTab({
     renderScenarioCard: (scenario: ScenarioPlugin) => React.ReactNode
 }) {
     return (
-        <div className="flex flex-col flex-1 min-h-0 overflow-auto">
+        <div className="flex flex-col flex-1 min-h-0 overflow-auto px-8 pt-6 pb-8">
             {sortedCategories.length > 1 && (
                 <div className="flex items-center gap-2 mb-6 overflow-x-auto no-scrollbar">
                     <button

@@ -90,9 +90,12 @@ function AppContent() {
 
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)
-  // 环境检测弹窗：引导完成后（或老用户首次升级到带此功能版本时）显示
-  const [showEnvironmentSetup, setShowEnvironmentSetup] = useState(false)
   const [isInitialized, setIsInitialized] = useState(false)
+  // 环境检测弹窗：从 store 读取状态
+  const { showEnvironmentSetup, setShowEnvironmentSetup } = useStore(useShallow(s => ({
+    showEnvironmentSetup: s.showEnvironmentSetup,
+    setShowEnvironmentSetup: s.setShowEnvironmentSetup,
+  })))
 
   useEffect(() => {
     if (activeSidePanel === 'shell' || activeFilePath) {

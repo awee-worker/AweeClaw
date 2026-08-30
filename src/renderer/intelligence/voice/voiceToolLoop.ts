@@ -217,6 +217,7 @@ function refreshVoiceToolLoadingContext(): void {
   const activeScenarioId = useStore.getState().activeScenarioId
   const activeScenario = scenarioRegistry.getActive()
   const scenarioToolPacks = activeScenario?.capabilities?.toolPacks
+  const scenarioTools = activeScenario?.capabilities?.tools || []
 
   // 自定义智能体工具白名单：激活了智能体时限制其可用工具
   const activeAgent = getActiveCustomAgent()
@@ -227,6 +228,7 @@ function refreshVoiceToolLoadingContext(): void {
     templateId: useStore.getState().promptTemplateId,
     scenarioId: activeScenarioId,
     scenarioToolPacks,
+    scenarioTools,
     ...agentToolFields,
   })
 }
