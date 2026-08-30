@@ -21,6 +21,7 @@ import { BRAND } from '@shared/brand'
 import { formatUserDisplayName } from '@shared/toolkit/formatHelper'
 import { t, type Language } from '@renderer/i18n'
 import { usePluginExtensions } from '@renderer/plugins/usePluginExtensions'
+import AddCustomMenuDialog from '../browser/AddCustomMenuDialog'
 
 const isMac = typeof navigator !== 'undefined' && (
   navigator.platform.toUpperCase().indexOf('MAC') >= 0 ||
@@ -378,6 +379,11 @@ export default function NavigationRail() {
     setShowScenarioPage,
     closeAllFullPages,
     logout,
+    customMenus,
+    removeCustomMenu,
+    openInternalBrowser,
+    activeCustomMenuId,
+    closeInternalBrowser,
   } = useStore(useShallow(s => ({
     activeSidePanel: s.activeSidePanel,
     setActiveSidePanel: s.setActiveSidePanel,
@@ -399,6 +405,11 @@ export default function NavigationRail() {
     setShowScenarioPage: s.setShowScenarioPage,
     closeAllFullPages: s.closeAllFullPages,
     logout: s.logout,
+    customMenus: s.customMenus,
+    removeCustomMenu: s.removeCustomMenu,
+    openInternalBrowser: s.openInternalBrowser,
+    activeCustomMenuId: s.activeCustomMenuId,
+    closeInternalBrowser: s.closeInternalBrowser,
   })))
 
   const currentThreadId = useAgentStore(state => state.currentThreadId)
@@ -408,6 +419,7 @@ export default function NavigationRail() {
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [showLoginModal, setShowLoginModal] = useState(false)
   const [showUpdateModal, setShowUpdateModal] = useState(false)
+  const [showAddCustomMenu, setShowAddCustomMenu] = useState(false)
   const userAreaRef = useRef<HTMLDivElement>(null)
   const [renamingThreadId, setRenamingThreadId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
@@ -442,67 +454,79 @@ export default function NavigationRail() {
   const handleMenuItemClick = (itemId: string, isActive: boolean) => {
     setActiveSidePanel(isActive ? null : (itemId as SidePanel))
     closeAllFullPages()
+    // 点击侧边栏面板时自动关闭内部浏览器
+    closeInternalBrowser()
   }
 
   const handleBrandClick = useCallback(() => {
     setActiveSidePanel(null)
     setShowWelcomePage(true)
     setShowWorkflow(false)
-  }, [setActiveSidePanel, setShowWelcomePage, setShowWorkflow])
+    closeInternalBrowser()
+  }, [setActiveSidePanel, setShowWelcomePage, setShowWorkflow, closeInternalBrowser])
 
   const handleSettingsClick = useCallback(() => {
     setActiveSidePanel(null)
     setShowSettingsPage(true)
     setShowWorkflow(false)
-  }, [setActiveSidePanel, setShowSettingsPage, setShowWorkflow])
+    closeInternalBrowser()
+  }, [setActiveSidePanel, setShowSettingsPage, setShowWorkflow, closeInternalBrowser])
 
   const handleExploreClick = useCallback(() => {
     setActiveSidePanel(null)
     setShowScenarioPage(true)
     setShowWorkflow(false)
-  }, [setActiveSidePanel, setShowScenarioPage, setShowWorkflow])
+    closeInternalBrowser()
+  }, [setActiveSidePanel, setShowScenarioPage, setShowWorkflow, closeInternalBrowser])
 
   const handleWorkflowClick = useCallback(() => {
     setActiveSidePanel(null)
     closeAllFullPages()
     setShowWorkflow(true)
-  }, [setActiveSidePanel, closeAllFullPages, setShowWorkflow])
+    closeInternalBrowser()
+  }, [setActiveSidePanel, closeAllFullPages, setShowWorkflow, closeInternalBrowser])
 
   const handleScheduleClick = useCallback(() => {
     closeAllFullPages()
     setShowWorkflow(false)
     setActiveSidePanel(activeSidePanel === 'schedule' ? null : 'schedule')
-  }, [activeSidePanel, setActiveSidePanel, closeAllFullPages, setShowWorkflow])
+    closeInternalBrowser()
+  }, [activeSidePanel, setActiveSidePanel, closeAllFullPages, setShowWorkflow, closeInternalBrowser])
 
   const handleSceneToolsClick = useCallback(() => {
     closeAllFullPages()
     setShowWorkflow(false)
     setActiveSidePanel(activeSidePanel === 'scene-tools' ? null : 'scene-tools')
-  }, [activeSidePanel, setActiveSidePanel, closeAllFullPages, setShowWorkflow])
+    closeInternalBrowser()
+  }, [activeSidePanel, setActiveSidePanel, closeAllFullPages, setShowWorkflow, closeInternalBrowser])
 
   const handlePluginCenterClick = useCallback(() => {
     setActiveSidePanel(null)
     setShowPluginCenterPage(true)
     setShowWorkflow(false)
-  }, [setActiveSidePanel, setShowPluginCenterPage, setShowWorkflow])
+    closeInternalBrowser()
+  }, [setActiveSidePanel, setShowPluginCenterPage, setShowWorkflow, closeInternalBrowser])
 
   const handleUserInfoClick = useCallback(() => {
     setActiveSidePanel(null)
     setShowUserProfilePage(true)
     setShowWorkflow(false)
-  }, [setActiveSidePanel, setShowUserProfilePage, setShowWorkflow])
+    closeInternalBrowser()
+  }, [setActiveSidePanel, setShowUserProfilePage, setShowWorkflow, closeInternalBrowser])
 
   const handleBillingCenterClick = useCallback(() => {
     setActiveSidePanel(null)
     setShowBillingCenterPage(true)
     setShowWorkflow(false)
-  }, [setActiveSidePanel, setShowBillingCenterPage, setShowWorkflow])
+    closeInternalBrowser()
+  }, [setActiveSidePanel, setShowBillingCenterPage, setShowWorkflow, closeInternalBrowser])
 
   const handleSessionHistoryClick = useCallback(() => {
     setActiveSidePanel(null)
     setShowSessionHistoryPage(true)
     setShowWorkflow(false)
-  }, [setActiveSidePanel, setShowSessionHistoryPage, setShowWorkflow])
+    closeInternalBrowser()
+  }, [setActiveSidePanel, setShowSessionHistoryPage, setShowWorkflow, closeInternalBrowser])
 
   const handleLogout = useCallback(() => {
     logout()
@@ -659,6 +683,8 @@ export default function NavigationRail() {
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
+          /* 修复 button 默认 text-align:center + flex-1 撑满后文字居中问题 */
+          text-align: left;
         }
         .${p}-nav-rail[data-expanded="false"] .${p}-nav-rail-label {
           display: none;
@@ -801,7 +827,7 @@ export default function NavigationRail() {
           <div className={`${p}-nav-rail-brand-icon`}>
             <Logo className="w-full h-full" />
           </div>
-          <span className={`${p}-nav-rail-brand-name`}>{BRAND.name}</span>
+          <span className={`${p}-nav-rail-brand-name`}>工作台</span>
         </div>
       ) : (
         <div className={`${p}-nav-rail-brand`} onClick={handleBrandClick}>
@@ -886,6 +912,78 @@ export default function NavigationRail() {
         )
       })()}
 
+      {/* 自定义菜单：用户通过「自定义菜单」入口添加的网页菜单（内部浏览器打开） */}
+      {customMenus.length > 0 && (
+        <div className="flex flex-col gap-0.5 mt-1">
+          {customMenus.map((menu) => {
+            const MenuIcon = getLucideIcon(menu.icon)
+            const isCustomMenuActive = activeCustomMenuId === menu.id
+            return navRailExpanded ? (
+              <button
+                key={menu.id}
+                title={menu.url}
+                onClick={() => { setActiveSidePanel(null); closeAllFullPages(); openInternalBrowser(menu.url, menu.name, menu.id) }}
+                className={`${p}-nav-rail-item hover:bg-text-primary/[0.06] group`}
+                data-active={isCustomMenuActive}
+              >
+                <MenuIcon className={`w-[18px] h-[18px] transition-all duration-200 flex-shrink-0 ${isCustomMenuActive ? 'scale-105' : 'opacity-60'}`} strokeWidth={isCustomMenuActive ? 2 : 1.5} />
+                <span className={`${p}-nav-rail-label flex-1 truncate ${isCustomMenuActive ? 'text-accent' : ''}`}>{menu.name}</span>
+                <span
+                  role="button"
+                  title={t('layout.deletemenu', language as Language)}
+                  onClick={(e) => { e.stopPropagation(); removeCustomMenu(menu.id) }}
+                  className="w-5 h-5 mr-1 rounded flex items-center justify-center text-text-muted opacity-0 group-hover:opacity-100 hover:text-red-500 hover:bg-red-500/10 transition-all flex-shrink-0"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </span>
+              </button>
+            ) : (
+              <HintOverlay key={menu.id} content={menu.name} side="right" delay={400}>
+                <button
+                  onClick={() => { setActiveSidePanel(null); closeAllFullPages(); openInternalBrowser(menu.url, menu.name, menu.id) }}
+                  className={`${p}-nav-rail-item hover:bg-text-primary/[0.06]`}
+                  data-active={isCustomMenuActive}
+                >
+                  <NavPill active={isCustomMenuActive} />
+                  <MenuIcon className={`w-[18px] h-[18px] transition-all duration-200 ${isCustomMenuActive ? 'scale-105' : 'opacity-60'}`} strokeWidth={isCustomMenuActive ? 2 : 1.5} />
+                </button>
+              </HintOverlay>
+            )
+          })}
+        </div>
+      )}
+
+      {/* 自定义菜单添加入口 */}
+      {(() => {
+        const customMenuLabel = t('layout.custommenu', language as Language)
+        return navRailExpanded ? (
+          <button
+            onClick={() => { closeInternalBrowser(); setShowAddCustomMenu(true) }}
+            className={`${p}-nav-rail-item hover:bg-text-primary/[0.06]`}
+            style={{ marginTop: customMenus.length > 0 ? 2 : 6 }}
+          >
+            <Plus
+              className="w-[18px] h-[18px] transition-all duration-200 flex-shrink-0 opacity-60"
+              strokeWidth={1.5}
+            />
+            <span className={`${p}-nav-rail-label`}>
+              {customMenuLabel}
+            </span>
+          </button>
+        ) : (
+          <HintOverlay content={customMenuLabel} side="right" delay={400}>
+            <button
+              onClick={() => { closeInternalBrowser(); setShowAddCustomMenu(true) }}
+              className={`${p}-nav-rail-item hover:bg-text-primary/[0.06]`}
+              style={{ marginTop: 6 }}
+            >
+              <NavPill active={false} />
+              <Plus className="w-[18px] h-[18px] transition-all duration-200 opacity-60" strokeWidth={1.5} />
+            </button>
+          </HintOverlay>
+        )
+      })()}
+
       <div className={`${p}-nav-rail-divider`} style={{ marginTop: 20, marginBottom: 20 }} />
 
       {navRailExpanded ? (
@@ -894,13 +992,6 @@ export default function NavigationRail() {
             <span className={`${p}-nav-rail-history-title`}>
               {t('layout.chathistory', language as Language)}
             </span>
-            <button
-              className={`${p}-nav-rail-history-new-btn`}
-              onClick={handleNewThread}
-              title={t('layout.newchat', language as Language)}
-            >
-              <Plus className="w-3.5 h-3.5" />
-            </button>
           </div>
           <div className="flex-1 overflow-y-auto no-scrollbar">
             {allThreads.length === 0 ? (
@@ -951,14 +1042,6 @@ export default function NavigationRail() {
         </div>
       ) : (
         <div className="flex-1 flex flex-col items-center min-h-0">
-          <HintOverlay content={t('layout.newchat2', language as Language)} side="right" delay={400}>
-            <button
-              onClick={handleNewThread}
-              className="w-[38px] h-[38px] rounded-lg flex items-center justify-center text-text-muted hover:text-accent hover:bg-accent/8 transition-all"
-            >
-              <Plus className="w-[18px] h-[18px] opacity-60" strokeWidth={1.5} />
-            </button>
-          </HintOverlay>
           {allThreads.length > 0 && (
             <div className="flex-1 overflow-y-auto no-scrollbar w-full flex flex-col items-center gap-1 py-1">
               {allThreads.slice(0, 5).map(thread => (
@@ -1070,7 +1153,8 @@ export default function NavigationRail() {
       </div>
 
       <UserAccountPopover language={language} forceLoginOpen={showLoginModal} onLoginClose={() => setShowLoginModal(false)} hideButton />
-      <UpdateModal isOpen={showUpdateModal} onClose={() => setShowUpdateModal(false)} />
+          <UpdateModal isOpen={showUpdateModal} onClose={() => setShowUpdateModal(false)} />
+          <AddCustomMenuDialog isOpen={showAddCustomMenu} onClose={() => setShowAddCustomMenu(false)} />
     </div>
   )
 }

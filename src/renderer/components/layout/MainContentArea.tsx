@@ -32,6 +32,7 @@ const BillingCenterPage = lazy(() => import('@components/user/BillingCenterPage'
 const SessionHistoryPage = lazy(() => import('@components/user/SessionHistoryPage'))
 const PluginCenterPage = lazy(() => import('@components/plugin/PluginCenterPage'))
 const EditorBottomBar = lazy(() => import('@components/layout/EditorBottomBar'))
+const InternalBrowser = lazy(() => import('@components/browser/InternalBrowser'))
 import { VoiceConversationOverlay } from '@components/voice/VoiceConversationOverlay'
 
 interface MainContentAreaProps {
@@ -343,9 +344,47 @@ function VoiceConversationOverlaySlot() {
   )
 }
 
+/**
+ * 内部浏览器插槽
+ *
+ * 仅当 internalBrowserUrl 非空时渲染 InternalBrowser，占据内容区左侧工作区位置。
+ * 独立成组件避免在每个布局分支中重复订阅 store。
+ */
+function InternalBrowserSlot() {
+  const internalBrowserUrl = useStore((s) => s.internalBrowserUrl)
+
+  if (!internalBrowserUrl) return null
+
+  return (
+    <div className="flex-1 min-w-0 overflow-hidden">
+      <ErrorBoundary>
+        <Suspense fallback={null}>
+          <InternalBrowser />
+        </Suspense>
+      </ErrorBoundary>
+    </div>
+  )
+}
+
 export default function MainContentArea(props: MainContentAreaProps) {
-  if (props.layoutConfig.chatPosition === 'primary') {
-    return <PrimaryMainContent {...props} />
+  // 自定义菜单打开时：内部浏览器占据左侧工作区位置（flex-1）。
+  // 打开时自动隐藏聊天窗口（见 layoutSlice.openInternalBrowser），浏览器全宽显示；
+  // chatVisible 为 true 时右侧恢复聊天窗口，浏览器让出空间
+  const internalBrowserUrl = useStore((s) => s.internalBrowserUrl)
+  const chatVisible = useStore((s) => s.chatVisible)
+
+  if (internalBrowserUrl) {
+    return (
+      <div className="flex-1 flex min-h-0 overflow-hidden">
+        <InternalBrowserSlot />
+        {chatVisible && <ChatSection visible mode="primary" hasFile />}
+      </div>
+    )
   }
-  return <SecondaryMainContent {...props} />
+
+  return (
+    <>
+      {props.layoutConfig.chatPosition === 'primary' ? <PrimaryMainContent {...props} /> : <SecondaryMainContent {...props} />}
+    </>
+  )
 }

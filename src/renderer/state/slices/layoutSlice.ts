@@ -7,6 +7,10 @@
  */
 import { StateCreator } from 'zustand'
 import { LAYOUT } from '@shared/appConstants'
+import type { SceneMode } from '@protocols/sceneModeProtocol'
+import { BRAND } from '@shared/brand'
+import { StorageService } from '@shared/toolkit/StorageService'
+import { logger } from '@shared/toolkit/LogEngine'
 
 /** 侧边栏可选面板类型 */
 export type SidePanel =
@@ -43,6 +47,97 @@ export type TerminalLayout = 'tabs' | 'split'
 
 /** 底部 Dock 面板 Tab 类型 */
 export type DockTab = 'problems' | 'output' | 'debug' | 'terminal'
+
+/** 各场景模式工作台默认卡片集合（macOS 桌面小组件式） */
+export const WORKBENCH_DEFAULT_WIDGETS: Record<SceneMode, string[]> = {
+  work: ['new-chat', 'work-todo', 'work-weekly', 'work-pomodoro', 'recent-workspaces'],
+  life: ['new-chat', 'life-ledger', 'life-water', 'life-mood', 'recent-workspaces'],
+  study: ['new-chat', 'study-flashcards', 'study-planner', 'study-pomodoro', 'recent-workspaces'],
+}
+
+/* ===================== 工作台配置持久化 ===================== */
+
+const WORKBENCH_STORAGE_KEY = `${BRAND.cssPrefix}-workbench`
+
+/** 持久化结构：三个工作台自定义状态字段的整体快照 */
+interface PersistedWorkbench {
+  widgets?: Record<SceneMode, string[]>
+  positions?: Record<SceneMode, Record<string, WorkbenchCardPos>>
+  backgrounds?: Record<SceneMode, WorkbenchBackground | null>
+}
+
+/**
+ * 从 localStorage 恢复工作台自定义配置。
+ * 同步读取用于 slice 初始化；electron-store 写入作为跨会话兜底。
+ */
+function loadPersistedWorkbench(): PersistedWorkbench {
+  try {
+    const raw = StorageService.get<string>(WORKBENCH_STORAGE_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw) as PersistedWorkbench
+      if (parsed && typeof parsed === 'object') return parsed
+    }
+  } catch (e) {
+    logger.ui.warn('[LayoutSlice] Failed to load persisted workbench:', e)
+  }
+  return {}
+}
+
+/**
+ * 持久化工作台配置（新增/移除卡片、调整位置/大小、更换背景后自动调用）：
+ * 1. 同步写入 localStorage（主存储，初始化时恢复）
+ * 2. 异步写入 electron-store（兜底，防止 localStorage 丢失）
+ */
+function persistWorkbench(state: {
+  widgets: Record<SceneMode, string[]>
+  positions: Record<SceneMode, Record<string, WorkbenchCardPos>>
+  backgrounds: Record<SceneMode, WorkbenchBackground | null>
+}): void {
+  const payload = JSON.stringify(state)
+  try {
+    StorageService.set(WORKBENCH_STORAGE_KEY, payload)
+  } catch (e) {
+    logger.ui.warn('[LayoutSlice] Failed to persist workbench to localStorage:', e)
+  }
+  try {
+    import('@/renderer/adapters/electronBridge').then(({ api }) => {
+      api.settings.set('workbench', payload).catch((e: unknown) => {
+        logger.ui.warn('[LayoutSlice] Failed to persist workbench to electron-store:', e)
+      })
+    })
+  } catch (e) {
+    // ignore import errors
+  }
+}
+
+/** 从 state 快照提取三个工作台字段并持久化 */
+function persistWorkbenchFrom(state: {
+  workbenchWidgets: Record<SceneMode, string[]>
+  workbenchPositions: Record<SceneMode, Record<string, WorkbenchCardPos>>
+  workbenchBackgrounds: Record<SceneMode, WorkbenchBackground | null>
+}): void {
+  persistWorkbench({
+    widgets: state.workbenchWidgets,
+    positions: state.workbenchPositions,
+    backgrounds: state.workbenchBackgrounds,
+  })
+}
+
+/**
+ * 工作台卡片宫格位置（CSS Grid 模型）
+ * col/row 为 1-based 网格坐标；colSpan/rowSpan 支持横向/竖向跨格，最小 1 格
+ */
+export interface WorkbenchCardPos {
+  col: number
+  row: number
+  colSpan: number
+  rowSpan: number
+}
+
+/** 工作台背景配置：color 为颜色/渐变，image 的 value 为 dataURL */
+export type WorkbenchBackground =
+  | { type: 'color'; value: string }
+  | { type: 'image'; value: string }
 
 /** 全屏页面状态键集合 */
 const FULLSCREEN_PAGE_KEYS = [
@@ -95,6 +190,46 @@ function buildFullscreenToggle(
   return next
 }
 
+/** 自定义菜单项（用户通过「自定义菜单」入口添加，持久化到 localStorage） */
+export interface CustomMenu {
+  id: string
+  name: string
+  /** lucide 图标名称，见 foundation/IconMap */
+  icon: string
+  /** 必须以 http:// 或 https:// 开头 */
+  url: string
+  createdAt: number
+}
+
+/* ===================== 自定义菜单持久化 ===================== */
+
+const CUSTOM_MENUS_STORAGE_KEY = `${BRAND.cssPrefix}-custom-menus`
+
+/** 从 localStorage 恢复自定义菜单列表 */
+function loadCustomMenus(): CustomMenu[] {
+  try {
+    const raw = StorageService.get<string>(CUSTOM_MENUS_STORAGE_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw) as CustomMenu[]
+      if (Array.isArray(parsed)) {
+        return parsed.filter(m => m && typeof m.name === 'string' && typeof m.url === 'string')
+      }
+    }
+  } catch (e) {
+    logger.ui.warn('[LayoutSlice] Failed to load custom menus:', e)
+  }
+  return []
+}
+
+/** 持久化自定义菜单列表 */
+function persistCustomMenus(menus: CustomMenu[]): void {
+  try {
+    StorageService.set(CUSTOM_MENUS_STORAGE_KEY, JSON.stringify(menus))
+  } catch (e) {
+    logger.ui.warn('[LayoutSlice] Failed to persist custom menus:', e)
+  }
+}
+
 export interface LayoutSlice {
   /* ===== 面板可见性 ===== */
   activeSidePanel: SidePanel
@@ -123,6 +258,8 @@ export interface LayoutSlice {
   showScenarioPage: boolean
   /** 环境检测弹窗是否显示 */
   showEnvironmentSetup: boolean
+  /** 设置环境检测弹窗显隐 */
+  setShowEnvironmentSetup: (show: boolean) => void
   /** 场景管理页面当前标签页 */
   scenarioPageTab: 'installed' | 'marketplace'
   /** 设置场景管理页面标签页 */
@@ -135,6 +272,30 @@ export interface LayoutSlice {
   /* ===== 场景工具直达 ===== */
   /** 欢迎页点击工具卡片时暂存的目标工具 ID，SceneToolsPanel 工具就绪后自动跳转 */
   pendingSceneToolId: string | null
+  /** 设置待跳转的场景工具 ID */
+  setPendingSceneToolId: (id: string) => void
+
+  /* ===== 工作台自定义 ===== */
+  /** 每个场景模式的工作台卡片集合（用户可自定义：添加/移除/排序） */
+  workbenchWidgets: Record<SceneMode, string[]>
+  /** 切换某模式下某卡片的可见性 */
+  setWorkbenchWidget: (mode: SceneMode, widgetId: string, visible: boolean) => void
+  /** 调整某模式下卡片顺序（上移/下移） */
+  moveWorkbenchWidget: (mode: SceneMode, widgetId: string, direction: 'up' | 'down') => void
+  /** 重置某模式为默认卡片配置 */
+  resetWorkbenchWidgets: (mode: SceneMode) => void
+
+  /* ===== 工作台自由摆放与背景 ===== */
+  /** 每个场景模式的工作台卡片自由摆放位置 */
+  workbenchPositions: Record<SceneMode, Record<string, WorkbenchCardPos>>
+  /** 设置单张卡片位置 */
+  setWorkbenchPosition: (mode: SceneMode, widgetId: string, pos: WorkbenchCardPos) => void
+  /** 批量设置卡片位置（拖拽碰撞解析用，一次渲染） */
+  setWorkbenchPositions: (mode: SceneMode, positions: Record<string, WorkbenchCardPos>) => void
+  /** 每个场景模式的工作台背景配置 */
+  workbenchBackgrounds: Record<SceneMode, WorkbenchBackground | null>
+  /** 设置工作台背景（null 表示移除背景） */
+  setWorkbenchBackground: (mode: SceneMode, background: WorkbenchBackground | null) => void
 
   /* ===== 面板可见性操作 ===== */
   setActiveSidePanel: (panel: SidePanel) => void
@@ -181,9 +342,32 @@ export interface LayoutSlice {
   scenarioConfigVersion: number
   /** 递增场景配置版本号，触发 AweeApp 重新计算 layoutConfig */
   incrementScenarioConfigVersion: () => void
+
+  /* ===== 自定义菜单 ===== */
+  /** 用户自定义菜单列表（持久化到 localStorage） */
+  customMenus: CustomMenu[]
+  /** 添加自定义菜单 */
+  addCustomMenu: (input: { name: string; icon: string; url: string }) => void
+  /** 删除自定义菜单 */
+  removeCustomMenu: (id: string) => void
+
+  /* ===== 内部浏览器 ===== */
+  /** 内部浏览器当前打开的 URL（null 表示未打开） */
+  internalBrowserUrl: string | null
+  /** 内部浏览器页面标题 */
+  internalBrowserTitle: string
+  /** 当前激活的自定义菜单 ID（导航栏高亮用，null 表示未激活自定义菜单） */
+  activeCustomMenuId: string | null
+  /** 打开内部浏览器 */
+  openInternalBrowser: (url: string, title?: string, menuId?: string) => void
+  /** 关闭内部浏览器 */
+  closeInternalBrowser: () => void
 }
 
-export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> = (set) => ({
+export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> = (set) => {
+  // 恢复上次保存的工作台配置（卡片集合、位置/大小、背景）
+  const persistedWorkbench = loadPersistedWorkbench()
+  return {
   /* ----- 初始状态 ----- */
   activeSidePanel: LAYOUT_DEFAULTS.activeSidePanel,
   lastActiveSidePanel: LAYOUT_DEFAULTS.activeSidePanel as Exclude<SidePanel, null>,
@@ -206,6 +390,23 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
 
   /* ----- 场景配置版本初始状态 ----- */
   scenarioConfigVersion: 0,
+
+  /* ----- 自定义菜单初始状态（从 localStorage 恢复） ----- */
+  customMenus: loadCustomMenus(),
+
+  /* ----- 内部浏览器初始状态 ----- */
+  internalBrowserUrl: null,
+  internalBrowserTitle: '',
+  activeCustomMenuId: null,
+
+  /* ----- 工作台自定义初始状态（优先恢复上次保存的配置） ----- */
+  workbenchWidgets: {
+    work: persistedWorkbench.widgets?.work?.length ? [...persistedWorkbench.widgets.work] : [...WORKBENCH_DEFAULT_WIDGETS.work],
+    life: persistedWorkbench.widgets?.life?.length ? [...persistedWorkbench.widgets.life] : [...WORKBENCH_DEFAULT_WIDGETS.life],
+    study: persistedWorkbench.widgets?.study?.length ? [...persistedWorkbench.widgets.study] : [...WORKBENCH_DEFAULT_WIDGETS.study],
+  },
+  workbenchPositions: persistedWorkbench.positions ?? {},
+  workbenchBackgrounds: persistedWorkbench.backgrounds ?? {},
   /* ----- 场景管理页面标签页初始状态 ----- */
   scenarioPageTab: 'installed',
   setScenarioPageTab: (tab) => set({ scenarioPageTab: tab }),
@@ -289,4 +490,138 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
 
   /* ----- 环境检测弹窗操作 ----- */
   setShowEnvironmentSetup: (show) => set({ showEnvironmentSetup: show }),
-})
+
+  /* ----- 工作台自定义操作 ----- */
+  setWorkbenchWidget: (mode, widgetId, visible) =>
+    set((state) => {
+      const list = state.workbenchWidgets[mode] ?? []
+      const nextWidgets = {
+        ...state.workbenchWidgets,
+        [mode]: visible ? [...list, widgetId] : list.filter((w) => w !== widgetId),
+      }
+      // 移除卡片时同步清理其自由摆放位置
+      let nextPositions = state.workbenchPositions
+      if (!visible) {
+        const positions = state.workbenchPositions[mode]
+        if (positions && positions[widgetId]) {
+          const next = { ...positions }
+          delete next[widgetId]
+          nextPositions = { ...state.workbenchPositions, [mode]: next }
+        }
+      }
+      // 自动保存：新增 / 移除卡片
+      persistWorkbenchFrom({
+        workbenchWidgets: nextWidgets,
+        workbenchPositions: nextPositions,
+        workbenchBackgrounds: state.workbenchBackgrounds,
+      })
+      return {
+        workbenchWidgets: nextWidgets,
+        ...(nextPositions !== state.workbenchPositions ? { workbenchPositions: nextPositions } : {}),
+      }
+    }),
+  moveWorkbenchWidget: (mode, widgetId, direction) =>
+    set((state) => {
+      const list = [...(state.workbenchWidgets[mode] ?? [])]
+      const idx = list.indexOf(widgetId)
+      if (idx === -1) return state
+      const target = direction === 'up' ? idx - 1 : idx + 1
+      if (target < 0 || target >= list.length) return state
+      const [item] = list.splice(idx, 1)
+      list.splice(target, 0, item)
+      return { workbenchWidgets: { ...state.workbenchWidgets, [mode]: list } }
+    }),
+  setWorkbenchPosition: (mode, widgetId, pos) =>
+    set((state) => {
+      const next = {
+        ...state.workbenchPositions,
+        [mode]: { ...(state.workbenchPositions[mode] ?? {}), [widgetId]: pos },
+      }
+      // 自动保存：单张卡片位置
+      persistWorkbenchFrom({
+        workbenchWidgets: state.workbenchWidgets,
+        workbenchPositions: next,
+        workbenchBackgrounds: state.workbenchBackgrounds,
+      })
+      return { workbenchPositions: next }
+    }),
+  setWorkbenchPositions: (mode, positions) =>
+    set((state) => {
+      const next = { ...state.workbenchPositions, [mode]: positions }
+      // 自动保存：拖拽结束后的整体排布（位置 / 大小）
+      persistWorkbenchFrom({
+        workbenchWidgets: state.workbenchWidgets,
+        workbenchPositions: next,
+        workbenchBackgrounds: state.workbenchBackgrounds,
+      })
+      return { workbenchPositions: next }
+    }),
+  setWorkbenchBackground: (mode, background) =>
+    set((state) => {
+      const next = { ...state.workbenchBackgrounds, [mode]: background }
+      // 自动保存：背景设置 / 移除
+      persistWorkbenchFrom({
+        workbenchWidgets: state.workbenchWidgets,
+        workbenchPositions: state.workbenchPositions,
+        workbenchBackgrounds: next,
+      })
+      return { workbenchBackgrounds: next }
+    }),
+  resetWorkbenchWidgets: (mode) =>
+    set((state) => {
+      const nextWidgets = {
+        ...state.workbenchWidgets,
+        [mode]: [...WORKBENCH_DEFAULT_WIDGETS[mode]],
+      }
+      // 恢复默认布局同时清空自定义位置，回落到默认流式排布
+      const nextPositions = { ...state.workbenchPositions, [mode]: {} }
+      // 自动保存：恢复默认布局
+      persistWorkbenchFrom({
+        workbenchWidgets: nextWidgets,
+        workbenchPositions: nextPositions,
+        workbenchBackgrounds: state.workbenchBackgrounds,
+      })
+      return { workbenchWidgets: nextWidgets, workbenchPositions: nextPositions }
+    }),
+
+  /* ----- 自定义菜单操作 ----- */
+  addCustomMenu: (input) =>
+    set((state) => {
+      const menu: CustomMenu = {
+        id: `custom-menu-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name: input.name.trim(),
+        icon: input.icon || 'Globe',
+        url: input.url.trim(),
+        createdAt: Date.now(),
+      }
+      const next = [...state.customMenus, menu]
+      persistCustomMenus(next)
+      return { customMenus: next }
+    }),
+  removeCustomMenu: (id) =>
+    set((state) => {
+      const next = state.customMenus.filter((m) => m.id !== id)
+      persistCustomMenus(next)
+      return { customMenus: next }
+    }),
+
+  /* ----- 内部浏览器操作 ----- */
+  openInternalBrowser: (url, title, menuId) =>
+    set({
+      internalBrowserUrl: url,
+      internalBrowserTitle: title ?? '',
+      activeCustomMenuId: menuId ?? null,
+      // 打开自定义菜单时自动隐藏聊天窗口，内部浏览器占据其位置；
+      // 用户可随时通过「显示聊天窗口」重新显示
+      chatVisible: false,
+    }),
+  closeInternalBrowser: () =>
+    set({
+      internalBrowserUrl: null,
+      internalBrowserTitle: '',
+      activeCustomMenuId: null,
+      // 关闭内部浏览器后恢复聊天窗口显示
+      chatVisible: true,
+    }),
+  }
+}

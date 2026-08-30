@@ -16,7 +16,6 @@ import { sceneModeRegistry } from '@intelligence/capabilities/sceneMode/SceneMod
 import type { SceneModeProfile } from '@intelligence/capabilities/sceneMode/SceneModeDescriptor'
 import { api } from '../adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
-import { toast } from '@components/foundation/InlineNotification'
 
 const STORE_KEY = 'sceneModeStore'
 
@@ -190,11 +189,6 @@ export const useSceneModeStore = create<SceneModeStore>()(
 
         // 通知各子系统切换配置
         await notifySceneModeChange(mode, profile)
-
-        // Toast 反馈（方向1：非静默切换时显示）
-        if (!options?.silent) {
-          toast.success(`已切换到${profile.displayNameZh}模式`)
-        }
 
         // 方向4：PC→移动端模式同步（非 silent 调用才推送，避免循环）
         if (!options?.silent) {
