@@ -25,7 +25,11 @@ const execFileAsync = promisify(execFile)
 import { EventEmitter } from 'events'
 import { StringDecoder } from 'node:string_decoder'
 import { securityManager, OperationType } from './securityPolicyEngine'
-import { SECURITY_DEFAULTS } from '@shared/appConstants'
+import {
+  SECURITY_DEFAULTS,
+  isProtectedAppDirDeletion,
+  PROTECTED_APP_DIR_NAME,
+} from '@shared/appConstants'
 import { DANGEROUS_COMMAND_PATTERNS } from '@shared/configuration/dangerousCommands'
 import { safeIpcHandle } from '../bridge/core/ipcGuard'
 import { normalizePipeTerminalInput } from './terminalInputFilter'
@@ -321,6 +325,17 @@ export function registerSecureTerminalHandlers(
         reason: dangerousCheck.reason,
       })
       return { success: false, error: dangerousCheck.reason }
+    }
+
+    // 2.5 受保护应用数据目录（.aweeclaw）删除拦截 —— 静默拒绝，不弹窗
+    if (isProtectedAppDirDeletion(fullCommand)) {
+      securityManager.logOperation(OperationType.SHELL_EXECUTE, fullCommand, false, {
+        reason: '安全底线：禁止删除工作区系统目录 (.aweeclaw)，已静默拒绝',
+      })
+      return {
+        success: false,
+        error: `Refused: "${PROTECTED_APP_DIR_NAME}" is a protected system directory and cannot be deleted.`,
+      }
     }
 
     // 3. 黑名单验证（Shell 命令采用黑名单策略：命中即拒绝）
@@ -1235,6 +1250,20 @@ export function registerSecureTerminalHandlers(
         source: 'executeBackground',
       })
       return { success: false, output: '', exitCode: 1, error: dangerousCheck.reason }
+    }
+
+    // 安全检查：受保护应用数据目录（.aweeclaw）删除拦截 —— 静默拒绝，不弹窗
+    if (isProtectedAppDirDeletion(command)) {
+      securityManager.logOperation(OperationType.SHELL_EXECUTE, command, false, {
+        reason: '安全底线：禁止删除工作区系统目录 (.aweeclaw)，已静默拒绝',
+        source: 'executeBackground',
+      })
+      return {
+        success: false,
+        output: '',
+        exitCode: 1,
+        error: `Refused: "${PROTECTED_APP_DIR_NAME}" is a protected system directory and cannot be deleted.`,
+      }
     }
 
     // 安全检查：检测 shell 注入

@@ -50,8 +50,34 @@ export type InteractiveTerminalBackend = 'pty' | 'pipe'
 
 const currentPlatform: NodeJS.Platform = runtimePlatform.isWindows ? 'win32' : runtimePlatform.isMac ? 'darwin' : 'linux'
 
+/**
+ * 纯文本匹配：命令是否命中「持续运行的服务进程」关键词
+ *
+ * 只做文本匹配，不含 is_background / 结尾 `&` 等「显式后台意图」判断。
+ * 调用方需要区分「命令文本本身是长进程」和「调用方要求后台执行」时可单独使用。
+ */
+export function matchesLongRunningCommand(command: string): boolean {
+  return LONG_RUNNING_COMMAND_PATTERN.test(command.trim())
+}
+
+/**
+ * 检测命令是否以未转义的 `&` 结尾（shell 的「后台执行」操作符）
+ *
+ * 这类命令会把整条命令丢到后台并立刻返回提示符，属于**显式的后台意图**，必须走
+ * 长进程/后台通道立即返回：
+ * - 若误走 sentinel 等待通道，包裹后的命令会变成 `... &; printf END`，
+ *   在 bash / sh 下是语法错误 → 命令根本不执行、END sentinel 永远不输出，
+ *   工具只能靠超时兜底（最长 10 分钟），表现为「命令一直在执行、拿不到结果」。
+ * - zsh 恰好接受 `&;`，所以同一条命令在不同用户机器上时好时坏。
+ */
+export function hasTrailingBackgroundOperator(command: string): boolean {
+  return /(?:[^&\\]|^)&\s*$/.test(command.trim())
+}
+
 export function isLongRunningCommand(command: string, isBackground = false): boolean {
-  return Boolean(isBackground) || LONG_RUNNING_COMMAND_PATTERN.test(command.trim())
+  return Boolean(isBackground)
+    || hasTrailingBackgroundOperator(command)
+    || matchesLongRunningCommand(command)
 }
 
 export function getInteractiveTerminalBackend(

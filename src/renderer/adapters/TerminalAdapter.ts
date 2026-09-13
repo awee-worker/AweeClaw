@@ -1482,7 +1482,11 @@ export class TerminalManagerClass {
         ? `Write-Host -NoNewline "$([char]27)]9001;${END_PAYLOAD_PREFIX}$LASTEXITCODE$([char]7)"`
         : `printf '\\033]9001;${END_PAYLOAD_PREFIX}'"$?"'\\007'`
 
-      const mainCommand = `${sentinelStart}; ${cmdWithCwd}; ${sentinelEnd}`
+      // 命令以未转义的 `&` 结尾时，不能再直接拼 `; ` —— shell 会看到 `&;`：
+      // bash / sh 直接报语法错误（命令不执行、END sentinel 也不输出，工具只能靠超时兜底），
+      // zsh 恰好接受。这里补一个空操作 `:`，让 `&` 与后面的 `;` 合法分隔，保证 sentinel 一定输出。
+      const backgroundSeam = /(?:[^&\\]|^)&\s*$/.test(cmdWithCwd) ? ' :' : ''
+      const mainCommand = `${sentinelStart}; ${cmdWithCwd}${backgroundSeam}; ${sentinelEnd}`
 
       // ── 回显清除策略 ──
       // PTY 行规程在内核层将发送的命令回显到终端（包装代码对用户可见），应用层无法阻止。

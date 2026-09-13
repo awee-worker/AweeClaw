@@ -7,6 +7,8 @@
  * - 安全相关的模式匹配放在这里（不应该被用户修改）
  */
 
+import { BRAND } from './brand'
+
 // ==========================================
 // 布局常量（UI 固定值，不需要用户配置）
 // ==========================================
@@ -78,6 +80,36 @@ export function isSensitivePath(path: string): boolean {
 
 export function hasPathTraversal(path: string): boolean {
   return DANGEROUS_PATH_PATTERNS.some(pattern => pattern.test(path))
+}
+
+/** 受保护的应用数据目录名（工作区内的 .aweeclaw） */
+export const PROTECTED_APP_DIR_NAME = BRAND.dirName
+
+/** 删除类命令动词（覆盖 POSIX / Windows / PowerShell） */
+const DELETE_VERB_PATTERN =
+  /(?:^|[\s;&|()])(rm|rmdir|rd|del|erase|unlink|remove-item|ri)\b/i
+
+/**
+ * 路径是否位于受保护的应用数据目录（.aweeclaw）内（含目录本身）
+ *
+ * 该目录存储项目配置、记忆、索引等核心数据，禁止删除及破坏性操作。
+ */
+export function isProtectedAppDirPath(targetPath: string): boolean {
+  if (!targetPath) return false
+  const normalized = targetPath.replace(/\\/g, '/')
+  return normalized.split('/').includes(PROTECTED_APP_DIR_NAME)
+}
+
+/**
+ * 命令是否为删除受保护应用目录（.aweeclaw）及其内容的操作
+ *
+ * 用于主进程安全底线静默拦截：命中即拒绝执行且不弹窗，
+ * 避免 AI 自主执行任务时频繁误触打扰用户。
+ */
+export function isProtectedAppDirDeletion(command: string): boolean {
+  if (!command) return false
+  if (!command.includes(PROTECTED_APP_DIR_NAME)) return false
+  return DELETE_VERB_PATTERN.test(command)
 }
 
 /**

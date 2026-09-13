@@ -39,11 +39,20 @@ import { agentStorePlanBridge, agentStoreTodoBridge } from '../state/intelligenc
 import { useAgentStore } from '../state/IntelligenceStore'
 import { buildFileChangeDescriptor } from '@intelligence/utils/fileMutationHelper'
 import { EventBus } from '../engine/EventDispatcher'
-import { isLongRunningCommand, EXTENDED_TIMEOUT_MS } from './commandExecutor'
+import {
+    hasTrailingBackgroundOperator,
+    matchesLongRunningCommand,
+    EXTENDED_TIMEOUT_MS,
+} from './commandExecutor'
 import { internalWriteTracker } from '@services/writeTracker'
 import { toolRegistry } from './toolRegistry'
 import { terminalManager } from '@services/TerminalAdapter'
 import { isDangerousCommand, matchDangerousCommand } from '@shared/configuration/dangerousCommands'
+import {
+    isProtectedAppDirDeletion,
+    isProtectedAppDirPath,
+    PROTECTED_APP_DIR_NAME,
+} from '@shared/appConstants'
 import type { ExternalAgentId, AgentPermissionMode } from '@shared/externalAgents'
 import { publishAgentRunStart } from './agentRunBus'
 import pLimit from 'p-limit'
@@ -1577,6 +1586,15 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
 
     async delete_file_or_folder(args, ctx) {
         const path = resolvePath(args.path, ctx.workspacePath)
+        // 受保护的应用数据目录（.aweeclaw）禁止删除：静默拒绝，不弹窗打扰用户
+        if (isProtectedAppDirPath(path)) {
+            logger.security.warn(`[delete_file_or_folder] Refused to delete protected dir: ${path}`)
+            return {
+                success: false,
+                result: `"${PROTECTED_APP_DIR_NAME}" is a protected system directory (project config, memory, index) and cannot be deleted.`,
+                error: 'Protected directory',
+            }
+        }
         const success = await api.file.delete(path)
         if (success) {
             notifyComposerChange({ filePath: path, workspacePath: ctx.workspacePath || '', oldContent: null, newContent: null, changeType: 'delete', linesAdded: 0, linesRemoved: 0 })
@@ -1619,6 +1637,26 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                     finalStatus: 'blocked',
                     terminationReason: 'safety_policy_violation',
                     blockedPattern: matchedPattern,
+                },
+            }
+        }
+
+        // ── 安全底线：受保护应用数据目录（.aweeclaw）删除拦截 ──────────
+        // 该目录存储项目配置、记忆、索引等核心数据，禁止任何删除操作。
+        // 静默拒绝（不弹窗），并明确告知 AI 改用其它方案。
+        if (typeof command === 'string' && isProtectedAppDirDeletion(command)) {
+            logger.security.warn(
+                `[run_command] Blocked protected-dir deletion: ${command.slice(0, 200)}`,
+            )
+            return {
+                success: false,
+                result: `命令被安全策略拦截："${PROTECTED_APP_DIR_NAME}" 是受保护的工作区系统目录（存储项目配置、记忆、索引），禁止删除其内容。请勿再尝试删除该目录。`,
+                error: 'Protected directory cannot be deleted',
+                meta: {
+                    command,
+                    cwd: resolvedCwd,
+                    finalStatus: 'blocked',
+                    terminationReason: 'protected_dir_violation',
                 },
             }
         }
@@ -1697,7 +1735,24 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             }
         }
 
-        const isLongRunningProcess = isLongRunningCommand(command, isBackground)
+        // ── 执行通道判定 ──────────────────────────────────────────
+        // 1. 显式后台意图（is_background=true 或命令以未转义的 `&` 结尾）→ 后台通道，启动后立即返回，
+        //    绝不能进入 sentinel 等待通道（`... &; printf END` 在 bash/sh 下是语法错误，
+        //    会导致命令不执行且永远等不到结束标记，表现为「一直在执行、拿不到结果」）。
+        // 2. 内联脚本正文是否 shell 代码：只有 `bash -c` / `sh -c` 的正文才是 shell 命令，
+        //    此时命中长进程关键词才代表真的会起服务；而 `node -e` / `python -c` /
+        //    `powershell -Command` 的正文不是 shell，命中关键词只是字符串字面量
+        //    （例如 node -e "console.log('vite')"、grep -r "npm run dev"），
+        //    若据此判定为长进程，命令会被静默跳过（不执行却返回「已启动」）。
+        // 3. 其余命令按关键词模式匹配（含 `cd xxx && python3 -m http.server` 组合形式）。
+        const inlineScript = parseInlineScriptCommand(command)
+        const inlineBodyIsShell = inlineScript?.runtime === 'sh'
+        const isBackgroundRequest = Boolean(isBackground) || hasTrailingBackgroundOperator(command)
+        const isLongRunningProcess = isBackgroundRequest
+            || ((!inlineScript || inlineBodyIsShell) && (
+                matchesLongRunningCommand(command)
+                || (inlineScript ? matchesLongRunningCommand(inlineScript.script) : false)
+            ))
 
         try {
             if (!isLongRunningProcess) {
@@ -1742,12 +1797,17 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
 
             // === 长进程：直接写入并立即返回，让用户在终端里跟踪 ===
             if (isLongRunningProcess) {
+                const isWindowsHost = /windows/i.test(navigator.userAgent)
+                // 结尾的 `&` 是 shell（bash/zsh/sh）的后台操作符，在 PowerShell 下不是，
+                // 直接写入会得到解析错误，因此在 Windows 上剥掉，避免暴露给用户一条报错。
+                const effectiveCommand = isWindowsHost ? command.replace(/&\s*$/, '').trimEnd() : command
+
                 // 长进程也需要处理 cwd
                 const bgCmd = resolvedCwd
-                    ? (/windows/i.test(navigator.userAgent)
-                        ? `Push-Location "${resolvedCwd}"; ${command}; Pop-Location`
-                        : `(cd "${resolvedCwd}" && ${command})`)
-                    : command
+                    ? (isWindowsHost
+                        ? `Push-Location "${resolvedCwd}"; ${effectiveCommand}; Pop-Location`
+                        : `(cd "${resolvedCwd}" && ${effectiveCommand})`)
+                    : effectiveCommand
                 // 先发送 \r 确保光标在行首（复用终端时上次输出可能残留光标位置），
                 // 再写入命令并执行。避免命令从非行首位置开始显示导致排版错乱。
                 terminalManager.writeToTerminal(termId, `\r${bgCmd}\r`)
@@ -1765,7 +1825,7 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
 
                 return {
                     success: true,
-                    result: `[后台进程已启动]\n命令: ${command}\n终端 ID: ${termId}\n会话 ID: ${detachedSession.commandSessionId}\n\n该进程已在 Agent 终端面板中运行，不会自动退出。命令已成功启动，你可以继续执行下一步任务。\n\n如需查看实时日志：调用 read_terminal_output（terminal_id="${termId}"）\n如需发送输入或 Ctrl+C：调用 send_terminal_input（is_ctrl=true 发送中断）\n如需停止进程：调用 stop_terminal`,
+                    result: `[后台进程已启动]\n命令: ${command}\n终端 ID: ${termId}\n会话 ID: ${detachedSession.commandSessionId}\n\n该进程已在 Agent 终端面板中运行，不会自动退出。命令已成功启动，你可以继续执行下一步任务。\n\n不要重复执行这条启动命令（会造成端口占用/多实例），需要确认是否就绪时请调用 read_terminal_output 查看日志，或用一个短命令探测端口。\n\n如需查看实时日志：调用 read_terminal_output（terminal_id="${termId}"）\n如需发送输入或 Ctrl+C：调用 send_terminal_input（is_ctrl=true 发送中断）\n如需停止进程：调用 stop_terminal`,
                     meta: {
                         command,
                         cwd: resolvedCwd,
@@ -1988,6 +2048,18 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                             result: `输入被安全策略拦截：命中危险模式 "${matchedPattern}"。\n如确需执行，请用户在终端面板中手动输入。`,
                             error: 'Input blocked by safety policy',
                             meta: { terminalId, sentCtrl: isCtrl, blockedPattern: matchedPattern },
+                        }
+                    }
+                    // 受保护应用数据目录（.aweeclaw）禁止删除：静默拒绝
+                    if (isProtectedAppDirDeletion(trimmed)) {
+                        logger.security.warn(
+                            `[send_terminal_input] Blocked protected-dir deletion: ${trimmed.slice(0, 200)}`,
+                        )
+                        return {
+                            success: false,
+                            result: `输入被安全策略拦截："${PROTECTED_APP_DIR_NAME}" 是受保护的工作区系统目录（存储项目配置、记忆、索引），禁止删除其内容。`,
+                            error: 'Protected directory cannot be deleted',
+                            meta: { terminalId, sentCtrl: isCtrl, reason: 'protected_dir_violation' },
                         }
                     }
                 }

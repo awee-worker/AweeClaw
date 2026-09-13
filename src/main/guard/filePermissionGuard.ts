@@ -17,6 +17,7 @@
 
 import { logger } from '@shared/toolkit/LogEngine'
 import { toAppError, ErrorCode } from '@shared/toolkit/errorCatalog'
+import { isProtectedAppDirPath, PROTECTED_APP_DIR_NAME } from '@shared/appConstants'
 import { ipcMain, dialog, shell } from 'electron'
 import { safeOpenExternal } from './safeExternalUrl'
 import * as path from 'path'
@@ -846,18 +847,11 @@ export function registerSecureFileHandlers(
     }
 
     // 工作区系统目录保护（.aweeclaw 及其子文件/子目录）
-    const normalizedPath = path.normalize(filePath).replace(/\\/g, '/')
-    const pathSegments = normalizedPath.split('/')
-    const aweeclawIndex = pathSegments.findIndex(seg => seg === '.aweeclaw')
-    if (aweeclawIndex !== -1) {
+    // 静默拒绝：AI 自主执行任务时可能误触，此处不弹「安全警告」避免干扰用户，仅记录安全日志
+    if (isProtectedAppDirPath(filePath)) {
       securityManager.logOperation(OperationType.FILE_DELETE, filePath, false, {
-        reason: '安全底线：工作区系统目录 (.aweeclaw)',
+        reason: `安全底线：工作区系统目录 (${PROTECTED_APP_DIR_NAME})，已静默拒绝`,
       })
-      showSecurityError(
-        getMainWindowFn(),
-        '安全警告',
-        '不允许删除工作区系统目录 (.aweeclaw) 及其内容，该目录存储了项目配置、记忆和索引数据。',
-      )
       return false
     }
 
