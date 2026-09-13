@@ -44,6 +44,8 @@ import { internalWriteTracker } from '@services/writeTracker'
 import { toolRegistry } from './toolRegistry'
 import { terminalManager } from '@services/TerminalAdapter'
 import { isDangerousCommand, matchDangerousCommand } from '@shared/configuration/dangerousCommands'
+import type { ExternalAgentId, AgentPermissionMode } from '@shared/externalAgents'
+import { publishAgentRunStart } from './agentRunBus'
 import pLimit from 'p-limit'
 import { skillService } from '../runtime/skillRepository'
 import type { Language } from '@renderer/i18n'
@@ -2018,6 +2020,133 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             const errorMsg = error instanceof Error ? error.message : String(error)
             return { success: false, result: `Failed to stop terminal: ${errorMsg}`, error: errorMsg }
         }
+    },
+
+    // ================= 外部智能体（Claude Code / Codex CLI 子进程桥接）=================
+
+    /**
+     * 委托编码任务给外部编码智能体（非阻塞启动 + 等待结果）
+     * - 主进程负责 spawn / 沙箱 workdir / 看门狗 / 推流
+     * - 渲染进程订阅 onStream 打日志（P2 接入聊天卡片）
+     */
+    async external_agent_delegate(args, ctx) {
+        const agent = String(args.agent || '').trim()
+        const task = String(args.task || '').trim()
+        if (!task) return { success: false, result: '', error: 'task is required' }
+        if (!ctx.workspacePath) return { success: false, result: '', error: 'No workspace open — external agents require a workspace' }
+
+        // 工作目录：相对路径基于工作区根解析，主进程再按工作区白名单校验
+        const workdirRaw = args.workdir ? String(args.workdir) : '.'
+        const workdir = workdirRaw === '.' ? ctx.workspacePath : resolvePath(workdirRaw, ctx.workspacePath, true)
+
+        // 配置校验（暴露开关 / 启用开关 / headless 支持）
+        const config = await api.externalAgent.getConfig()
+        if (!config.toolsExposed) {
+            return {
+                success: false,
+                result: '',
+                error: 'External agent tools are not exposed to AI (Settings → External Agents → "Expose to AI" is off). Ask the user to enable it, then retry.',
+            }
+        }
+        if (!config.enabled[agent as ExternalAgentId]) {
+            return {
+                success: false,
+                result: '',
+                error: `External agent "${agent}" is not enabled. Ask the user to enable it in Settings → External Agents, then retry.`,
+            }
+        }
+
+        const preflight = await api.externalAgent.preflight(agent as ExternalAgentId)
+        if (!preflight.available) {
+            return {
+                success: false,
+                result: '',
+                error: `External agent "${agent}" is not available: ${preflight.reason || 'CLI not found'}. Install it (see Settings → External Agents) and try again.`,
+            }
+        }
+
+        const started = await api.externalAgent.start({
+            agent: agent as ExternalAgentId,
+            task,
+            workdir,
+            permissionMode: (args.permission_mode as AgentPermissionMode | undefined) || undefined,
+            resumeSession: args.resume_session ? String(args.resume_session) : undefined,
+            maxDurationMs: args.timeout_ms ? Number(args.timeout_ms) : undefined,
+        })
+        if (!started.ok) {
+            return { success: false, result: '', error: started.error || 'Failed to start external agent' }
+        }
+
+        // 广播运行启动：聊天进度卡片（external_agent_delegate 预览）按 toolCallId 绑定 requestId 实时渲染
+        publishAgentRunStart({
+            toolCallId: ctx.toolCallId || '',
+            requestId: started.requestId,
+            agent,
+            task,
+            at: Date.now(),
+        })
+
+        // 流式进度日志（聊天进度卡片订阅同一频道渲染实时状态）
+        const offStream = api.externalAgent.onStream(started.requestId, (payload) => {
+            const evt = payload.event
+            if (evt.type === 'tool') logger.agent.info(`[external_agent:${agent}] tool: ${evt.name}`)
+            else if (evt.type === 'error') logger.agent.warn(`[external_agent:${agent}] ${evt.message}`)
+        })
+
+        // 等待结束（默认 30 分钟，与主进程看门狗对齐 + 60s 缓冲）
+        const timeoutMs = args.timeout_ms ? Number(args.timeout_ms) + 60_000 : undefined
+        const result = await api.externalAgent.wait(started.requestId, timeoutMs)
+        offStream()
+
+        const lines = [
+            `External agent "${agent}" ${result.success ? 'succeeded' : 'failed'} (requestId=${started.requestId}).`,
+        ]
+        if (result.session) lines.push(`Session id for resume: ${result.session}`)
+        if (result.error) lines.push(`Error: ${result.error}`)
+        if (result.output) lines.push(`Output:\n${result.output.slice(0, 8000)}`)
+
+        return {
+            success: result.success,
+            result: lines.join('\n'),
+            ...(result.success ? {} : { error: result.error || 'External agent run failed' }),
+            meta: { requestId: started.requestId, session: result.session, agent },
+        }
+    },
+
+    /** 查询外部智能体运行状态 */
+    async external_agent_status(args) {
+        const requestId = String(args.request_id || '')
+        if (!requestId) return { success: false, result: '', error: 'request_id is required' }
+
+        const s = await api.externalAgent.status(requestId)
+        if (s.status === 'unknown') {
+            return { success: false, result: '', error: `No session found for request ${requestId}` }
+        }
+        if (s.status === 'running') {
+            return { success: true, result: `External agent run ${requestId} is still running.` }
+        }
+        const r = s.result
+        const lines = [`External agent run ${requestId} finished with status: ${s.status}.`]
+        if (r?.session) lines.push(`Session id: ${r.session}`)
+        if (r?.error) lines.push(`Error: ${r.error}`)
+        if (r?.output) lines.push(`Output:\n${r.output.slice(0, 8000)}`)
+        return {
+            success: r?.success ?? false,
+            result: lines.join('\n'),
+            ...(r?.success ? {} : { error: r?.error || 'External agent run failed' }),
+        }
+    },
+
+    /** 中止外部智能体运行 */
+    async external_agent_abort(args) {
+        const requestId = String(args.request_id || '')
+        if (!requestId) return { success: false, result: '', error: 'request_id is required' }
+
+        const { aborted } = await api.externalAgent.abort(requestId)
+        if (aborted) {
+            return { success: true, result: `External agent run ${requestId} aborted.` }
+        }
+        return { success: false, result: '', error: `Run ${requestId} is not running (already finished or unknown).` }
     },
 
     async get_lint_errors(args, ctx) {

@@ -474,8 +474,11 @@ export const VirtualFileTree = memo(function VirtualFileTree({
       // 检查文件类型
       const fileType = getFileType(node.item.path)
 
-      if (fileType === 'image' || fileType === 'binary') {
-        // 图片和二进制文件不需要读取内容，直接打开
+      if (fileType === 'image' || fileType === 'binary'
+        || fileType === 'xlsx'
+        || fileType === 'pdf' || fileType === 'docx' || fileType === 'doc'
+        || fileType === 'pptx' || fileType === 'ppt') {
+        // 图片、二进制及文档类文件不需要读取文本内容，直接打开让预览组件自行处理
         openFile(node.item.path, '')
         setActiveFile(node.item.path)
       } else {

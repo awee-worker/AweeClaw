@@ -21,6 +21,8 @@ import { runAgentSubLoop } from '../multiAgent/AgentSubLoop'
 import { TeamCollaborationProtocol } from '../multiAgent/TeamCollaborationProtocol'
 import { playNotificationSound } from '@utils/notificationSound'
 import { agentHarness } from '../harness'
+import { EventBus } from './EventDispatcher'
+import { scheduleAutoResume, resetAutoResumeCounter } from './autoResume'
 
 // ===== 类型定义 =====
 
@@ -40,6 +42,76 @@ export interface RunningTask {
 }
 
 // ===== 共享工具函数 =====
+
+/**
+ * 多 Agent 协作终态收尾（与单 Agent 主循环对齐）
+ *
+ * 多 Agent 路径此前只更新 workspaceSession.status，从不写 executionMeta.loopState、
+ * 也不派发 loop:end，于是：
+ * - loopState 永远停在 'running'（IntelligenceCore 启动时写入），断点续接/状态判断
+ *   识别不到「未完成」；
+ * - 异常中断时主聊天没有「继续」入口，也没有自动续接，用户看到「AI 无提示停下」。
+ *
+ * 这里统一补齐终态 + loop:end；非用户主动停止的失败额外给出提示并触发自动续接（内部限次）。
+ */
+function finalizeMultiAgentRun(params: {
+  threadId: string
+  assistantId: string
+  requestId?: string
+  planTaskId?: string
+  outcome: 'completed' | 'aborted' | 'failed'
+  errorMessage?: string
+}): void {
+  const { threadId, assistantId, outcome, errorMessage } = params
+  try {
+    const agentStore = useAgentStore.getState()
+    const boundStore = agentStore.forThread(threadId)
+    const meta = agentStore.threads[threadId]?.executionMeta
+    const baseEvent = {
+      threadId,
+      assistantId,
+      requestId: params.requestId || meta?.requestId,
+      planTaskId: params.planTaskId ?? meta?.planTaskId,
+    }
+
+    if (outcome === 'completed') {
+      resetAutoResumeCounter(threadId)
+      boundStore.updateExecutionMeta({ loopState: 'completed' })
+      EventBus.emit({ type: 'loop:end', reason: 'complete', ...baseEvent })
+      return
+    }
+
+    if (outcome === 'aborted') {
+      // 用户主动停止：重置续接预算，不自动续接
+      resetAutoResumeCounter(threadId)
+      boundStore.updateExecutionMeta({ loopState: 'aborted' })
+      EventBus.emit({ type: 'loop:end', reason: 'aborted', ...baseEvent })
+      return
+    }
+
+    const isZh = useStore.getState().language === 'zh'
+    boundStore.updateExecutionMeta({ loopState: 'failed' })
+    boundStore.addSystemAlertPart(assistantId, {
+      alertType: 'error',
+      title: isZh ? '多智能体协作中断' : 'Multi-Agent Collaboration Interrupted',
+      message: errorMessage
+        ? (isZh
+            ? `团队协作因未预期的错误中断，任务尚未完成。\n\n原因：${errorMessage}`
+            : `The team collaboration was interrupted by an unexpected error before completion.\n\nReason: ${errorMessage}`)
+        : (isZh ? '团队协作因未预期的错误中断，任务尚未完成。' : 'The team collaboration was interrupted by an unexpected error before completion.'),
+      suggestion: isZh
+        ? '可点击继续以续接未完成的团队任务。'
+        : 'Click Continue to resume the unfinished team task.',
+      action: { label: isZh ? '继续' : 'Continue', actionType: 'continue' },
+    })
+    EventBus.emit({ type: 'loop:end', reason: 'error', ...baseEvent })
+
+    // 非用户主动停止 → 自动续接（内部限次，避免「中断 → 续接 → 再中断」无限循环）
+    scheduleAutoResume(threadId, 'multi-agent-failed')
+  } catch (finalizeErr) {
+    logger.agent.warn('[MultiAgent] Failed to finalize run state:', finalizeErr)
+  }
+}
 
 /**
  * 创建 callLLM 函数
@@ -83,7 +155,7 @@ export function createCallLLM(config: LLMConfig, abortController: AbortControlle
           if (settled) return
           settled = true
           cleanup()
-          api.llm.abort()
+          api.llm.abort(subRequestId)
           reject(new Error('Aborted by user'))
         }
 
@@ -136,7 +208,7 @@ export function createCallLLM(config: LLMConfig, abortController: AbortControlle
           if (abortController?.signal.aborted && !settled) {
             settled = true
             cleanup()
-            api.llm.abort()
+            api.llm.abort(subRequestId)
             reject(new Error('Aborted by user'))
           }
         }, 200)
@@ -319,7 +391,7 @@ export async function executeMultiAgent(
   workspacePath: string | null,
   threadId: string,
   assistantId: string,
-  _requestId: string,
+  requestId: string,
   _multiAgentConfig: MultiAgentConfig,
   runningTasks: Map<string, RunningTask>
 ): Promise<void> {
@@ -781,6 +853,14 @@ export async function executeMultiAgent(
     agentStore.finalizeAssistant(assistantId, threadId)
     agentStore.setStreamPhase('idle', threadId)
 
+    finalizeMultiAgentRun({
+      threadId,
+      assistantId,
+      requestId,
+      planTaskId: runningTasks.get(threadId)?.planTaskId,
+      outcome: 'completed',
+    })
+
     logger.agent.info(
       `[SmartOrchestrator] Collaboration completed: agents=${plan.agents.length}, project=${projectName}`
     )
@@ -805,6 +885,15 @@ export async function executeMultiAgent(
     }
     agentStore.finalizeAssistant(assistantId, threadId)
     agentStore.setStreamPhase('idle', threadId)
+
+    finalizeMultiAgentRun({
+      threadId,
+      assistantId,
+      requestId,
+      planTaskId: runningTasks.get(threadId)?.planTaskId,
+      outcome: isAborted ? 'aborted' : 'failed',
+      errorMessage: errorMsg,
+    })
   }
 }
 
@@ -1013,6 +1102,14 @@ Output ONLY JSON, nothing else. agentId must be one of the existing team members
 
     agentStore.finalizeAssistant(assistantId, threadId)
     agentStore.setStreamPhase('idle', threadId)
+
+    finalizeMultiAgentRun({
+      threadId,
+      assistantId,
+      requestId: runningTasks.get(threadId)?.requestId,
+      planTaskId: runningTasks.get(threadId)?.planTaskId,
+      outcome: 'completed',
+    })
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error)
     logger.agent.error('[ContinueMultiAgent] Failed:', errorMsg)
@@ -1034,5 +1131,14 @@ Output ONLY JSON, nothing else. agentId must be one of the existing team members
     }
     agentStore.finalizeAssistant(assistantId, threadId)
     agentStore.setStreamPhase('idle', threadId)
+
+    finalizeMultiAgentRun({
+      threadId,
+      assistantId,
+      requestId: runningTasks.get(threadId)?.requestId,
+      planTaskId: runningTasks.get(threadId)?.planTaskId,
+      outcome: isAborted ? 'aborted' : 'failed',
+      errorMessage: errorMsg,
+    })
   }
 }

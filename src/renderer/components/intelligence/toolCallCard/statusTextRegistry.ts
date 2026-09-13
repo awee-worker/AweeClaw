@@ -395,6 +395,23 @@ function buildRunCommandStatus(ctx: StatusContext): string {
       return t('tool.label.run_command', language as any)
   }
 }
+/** 外部智能体委托工具的专用构建器（运行中显示 Agent 名 + 任务预览） */
+function buildExternalAgentStatus(ctx: StatusContext): string {
+  const { args, phase, language } = ctx
+  const isZh = language === 'zh'
+  const agent = asString(args.agent)
+  const taskPreview = previewSlice(asString(args.task), 40)
+  switch (phase) {
+    case 'running':
+      return `${agent ? `${agent} ` : ''}${isZh ? '执行中' : 'running'}${taskPreview ? ` "${taskPreview}"` : ''}…`
+    case 'success':
+      return isZh ? '外部智能体任务完成' : 'External agent task completed'
+    case 'error':
+      return isZh ? '外部智能体任务失败' : 'External agent task failed'
+    default:
+      return isZh ? '正在执行外部智能体任务…' : 'Running external agent task…'
+  }
+}
 
 /** 注册专用构建器 */
 STATUS_BUILDERS.read_url = buildReadUrlStatus
@@ -402,6 +419,7 @@ STATUS_BUILDERS.remember = buildRememberStatus
 STATUS_BUILDERS.ask_user = buildAskUserStatus
 STATUS_BUILDERS.knowledge_search = buildKnowledgeSearchStatus
 STATUS_BUILDERS.run_command = buildRunCommandStatus
+STATUS_BUILDERS.external_agent_delegate = buildExternalAgentStatus
 
 /** 生成工具状态文案 */
 export function getStatusText(

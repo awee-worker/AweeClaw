@@ -18,6 +18,7 @@ import { themeManager } from '../../../config/themeDefinition'
 import { ExpandablePreviewContainer } from './ExpandablePreviewContainer'
 import { CommandOutputContainer } from './CommandOutputContainer'
 import { renderGenerateImage } from './GenerateImagePreview'
+import { renderExternalAgent } from './agentRunCard'
 import {
   asString,
   guessLanguage,
@@ -582,6 +583,8 @@ const PREVIEW_REGISTRY: Record<string, PreviewRenderer> = {
   get_document_symbols: renderCodeAnalysis,
   // design-image-gen 插件：AI 文生图工具，渲染图片缩略图 + 全屏预览
   generate_image: renderGenerateImage,
+  // 外部智能体委托：聊天内嵌实时进度卡片（阶段/工具调用/中止）
+  external_agent_delegate: renderExternalAgent,
 }
 
 /** 渲染工具预览 */

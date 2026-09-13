@@ -5,7 +5,7 @@
  */
 
 import type { ComponentType } from 'react'
-import type { PluginSidebarPanelContribution, PluginTopActionContribution, PluginSettingsTabContribution } from '@shared/plugin-sdk/types'
+import type { PluginSidebarPanelContribution, PluginTopActionContribution, PluginSettingsTabContribution, PluginWidgetCardContribution } from '@shared/plugin-sdk/types'
 import type { SidebarItemDescriptor } from '@shared/protocols/scenario'
 
 /**
@@ -21,6 +21,11 @@ export interface PluginUiModule {
   topActions?: Record<string, ComponentType<PluginPanelProps>>
   /** 设置页 Tab 组件映射：contributes.settingsTabs[].component → React 组件 */
   settingsTabs?: Record<string, ComponentType<PluginPanelProps>>
+  /**
+   * 工作台卡片预览组件映射：contributes.widgetCards[].previewComponent → React 组件
+   * 组件签名：({ host, data, loading, onRefresh }: WidgetCardPreviewProps) => ReactNode
+   */
+  widgetCards?: Record<string, ComponentType<WidgetCardPreviewProps>>
   /**
    * 配置表单 action handler 映射：configSchema.fields[].action.kind → handler
    *
@@ -114,6 +119,22 @@ export interface PluginPanelProps {
 }
 
 /**
+ * 工作台卡片预览组件 props
+ *
+ * 由 WorkbenchHome.PluginCardPreview 注入，组件通过此接口访问宿主能力与数据。
+ */
+export interface WidgetCardPreviewProps {
+  /** 插件宿主 API（调用 MCP 工具等） */
+  host: PluginHostApi
+  /** 卡片数据（由刷新逻辑填充，首次为 null） */
+  data: Record<string, unknown> | null
+  /** 是否正在加载 */
+  loading: boolean
+  /** 触发手动刷新（用户点击刷新按钮时调用） */
+  onRefresh: () => void
+}
+
+/**
  * 已加载的插件 UI 信息（PluginUiRegistry 内部使用）
  */
 export interface LoadedPluginUi {
@@ -132,6 +153,11 @@ export interface LoadedPluginUi {
     contribution: PluginSettingsTabContribution
     component: ComponentType<PluginPanelProps>
     host: PluginHostApi
+  }>
+  /** 该插件贡献的工作台卡片预览组件（已加载） */
+  widgetCards?: Array<{
+    contribution: PluginWidgetCardContribution
+    component: ComponentType<WidgetCardPreviewProps>
   }>
 }
 

@@ -5,7 +5,7 @@
  * 使用 Web Audio API 合成短促提示音，无需音频文件资源。
  */
 
-import { isSoundAllowed, type SoundCategory } from '@utils/soundGate'
+import { isSoundAllowed } from '@utils/soundGate'
 
 let sharedCtx: AudioContext | null = null
 

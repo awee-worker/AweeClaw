@@ -2,7 +2,7 @@ import { logger } from '@toolkit/LogEngine'
 import type {
   PluginManifest,
   PluginInstance,
-  PluginContext,
+  PluginRuntimeContext,
   PluginStorage,
   PluginLogger,
   PluginSandbox,
@@ -138,7 +138,7 @@ export class PluginRegistry {
     const pluginLogger = new PluginLoggerImpl(manifest.id)
     const sandbox = new PluginSandboxImpl(manifest.permissions)
 
-    const context: PluginContext = {
+    const context: PluginRuntimeContext = {
       pluginId: manifest.id,
       storage,
       logger: pluginLogger,

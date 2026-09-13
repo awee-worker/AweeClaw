@@ -31,6 +31,8 @@ export function createAppLifecycleApi() {
     toggleDevTools: send('window:toggleDevTools'),
     newWindow: invoke('window:new'),
     getWindowId: invoke<number>('window:getId'),
+    // 自绘菜单（Windows/Linux）执行原生角色：undo/copy/zoomIn/minimize...
+    executeMenuRole: (role: string) => send('menu:execute-role')(role),
     resizeWindow: (width: number, height: number, minWidth?: number, minHeight?: number) =>
       invoke('window:resize')(width, height, minWidth, minHeight),
     setTheme: (theme: 'light' | 'dark' | 'system', bgColor?: string) =>

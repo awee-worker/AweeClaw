@@ -175,6 +175,8 @@ export async function initializeModules(firstWin: BrowserWindow): Promise<void> 
   initPptPreviewModule()
   // 初始化项目执行窗口模块（单例创建 + IPC 注册，不阻塞启动）
   initProjectExecutionModule()
+  // 初始化 ONLYOFFICE 在线编辑模块（IPC 注册 + 会话管理，不阻塞启动）
+  initOoEditModule()
   // 注册视频转码 IPC 处理器（用 ffmpeg-static 转码不支持的视频编码，如 H.265 → H.264）
   registerVideoTranscodeIpc()
   // 初始化设备联动模块（WebSocket 长连接 + RPC 处理器 + 事件桥接）
@@ -859,6 +861,29 @@ function initPptPreviewModule(): void {
       })
   } catch (err) {
     logger.system.warn('[Main] PPT preview module init failed:', errMsg(err))
+  }
+}
+
+/**
+ * 初始化 ONLYOFFICE 在线编辑模块。
+ *
+ * 懒加载 OoEditManager 单例（构造时注册 oo-edit:* IPC 处理器）：
+ * - 上传本地文档到 ONLYOFFICE 网关并创建编辑会话
+ * - 保存时 force save + 下载回写本地源文件
+ * - 服务器地址从 aweeclaw-config.json（onlyOffice 段）读取
+ */
+function initOoEditModule(): void {
+  try {
+    import('../modules/onlyoffice/OoEditManager')
+      .then(({ OoEditManager }) => {
+        OoEditManager.getInstance()
+        logger.system.info('[Main] ONLYOFFICE edit module initialized')
+      })
+      .catch((err) => {
+        logger.system.warn('[Main] ONLYOFFICE edit module init skipped:', errMsg(err))
+      })
+  } catch (err) {
+    logger.system.warn('[Main] ONLYOFFICE edit module init failed:', errMsg(err))
   }
 }
 

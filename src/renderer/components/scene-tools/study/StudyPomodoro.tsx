@@ -36,7 +36,6 @@ export default function StudyPomodoro() {
     return Array.from(map.entries()).sort((a, b) => b[1] - a[1])
   }, [todayRecords])
 
-  const isFocus = phase === 'focus'
   const progress = phase === 'idle' ? 0 : 1 - remainingSec / (settings.focusMin * 60)
 
   return (

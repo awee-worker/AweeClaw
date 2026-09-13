@@ -154,7 +154,7 @@ export function MarkdownPreview({ content, fontSize = 14, isStreaming }: Markdow
             style={{ fontSize: `${fontSize}px` }}
             onScroll={handleScroll}
         >
-            <div className={`max-w-3xl mx-auto prose ${isLight ? '' : 'prose-invert'}`}>
+            <div className={`w-full prose ${isLight ? '' : 'prose-invert'}`}>
                 <ReactMarkdown
                     remarkPlugins={[remarkGfm, remarkMath]}
                     rehypePlugins={[rehypeKatex]}

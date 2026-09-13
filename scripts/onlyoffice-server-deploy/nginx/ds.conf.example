@@ -1,0 +1,37 @@
+# ONLYOFFICE Docs 反向代理示例（可选：域名 + HTTPS 时使用）
+# 放置到服务器 Nginx: /etc/nginx/conf.d/onlyoffice-ds.conf
+# 需先配置证书（certbot --nginx -d docs.你的域名.com）
+# 注意：ONLYOFFICE 要求文档服务器可通过浏览器直连(WebSocket/长连接)，
+# 以下关键头不能省。
+
+server {
+    listen 80;
+    server_name docs.你的域名.com;
+    # HTTP 跳转 HTTPS（certbot 会自动补齐这段，此处给出完整示例）
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name docs.你的域名.com;
+
+    ssl_certificate     /etc/letsencrypt/live/docs.你的域名.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/docs.你的域名.com/privkey.pem;
+
+    client_max_body_size 100m;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_connect_timeout 3600s;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # WebSocket（OnlyOffice 协同/状态推送依赖）
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}

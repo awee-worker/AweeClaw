@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>__META_TITLE__ — ONLYOFFICE 在线编辑</title>
+  <style>
+    html, body { height: 100%; margin: 0; font-family: -apple-system, "PingFang SC", sans-serif; }
+    #placeholder { position: fixed; inset: 0; }
+    .toast { position: fixed; left: 50%; top: 12px; transform: translateX(-50%);
+      background: rgba(17,24,39,.92); color: #fff; padding: 6px 14px; border-radius: 999px;
+      font-size: 13px; z-index: 9999; opacity: 0; transition: opacity .3s; pointer-events: none; }
+    .toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+  <div id="placeholder"></div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const CONFIG = __CONFIG__            // 服务端注入：含 token 签名（JWT）
+    const DOC_SERVER = '__DOC_SERVER__'  // DS 公网基址
+    let toastTimer = null
+
+    function toast(text) {
+      const el = document.getElementById('toast')
+      el.textContent = text
+      el.classList.add('show')
+      clearTimeout(toastTimer)
+      toastTimer = setTimeout(() => el.classList.remove('show'), 2200)
+    }
+
+    function bootEditor() {
+      if (!window.DocsAPI) { toast('DocsAPI 未就绪'); return }
+      const docEditor = new DocsAPI.DocEditor('placeholder', {
+        ...CONFIG,
+        events: {
+          onAppReady: () => toast('编辑器就绪，可直接编辑，保存自动回写'),
+          onDocumentStateChange: (e) => { if (e.data) toast('有未保存的修改…') },
+          onError: (e) => toast('编辑器错误: ' + JSON.stringify(e)),
+          onRequestClose: () => { try { docEditor.destroyEditor() } catch (_) {} },
+        },
+      })
+      window.docEditor = docEditor
+    }
+
+    const script = document.createElement('script')
+    script.src = DOC_SERVER + '/web-apps/apps/api/documents/api.js'
+    script.onload = bootEditor
+    script.onerror = () => toast('无法加载 Document Server（' + DOC_SERVER + '），请确认 DS 已启动且 api.js 可访问')
+    document.head.appendChild(script)
+  </script>
+</body>
+</html>

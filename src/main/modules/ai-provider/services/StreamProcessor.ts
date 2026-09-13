@@ -297,6 +297,12 @@ export class StreamingService {
         if (!this.window.isDestroyed()) {
           logger.llm.warn('[StreamProcessor] 处理流式分片出错:', error)
         }
+        // 不再静默吞掉分片异常：记录为首个流错误，使最终结果如实上报失败。
+        // 否则异常被吞后，只要此前已产出部分文本，就会按"正常完成"上报 done，
+        // 前端会误判任务正常结束（表现为"AI 无提示自行中断"）。
+        if (!streamError) {
+          streamError = error instanceof Error ? error : new Error(String(error))
+        }
       }
     }
 
@@ -350,7 +356,12 @@ export class StreamingService {
       case 'start':
       case 'finish':
       case 'raw':
+        break
+
       case 'abort':
+        // 流被中止：显式上报为错误，避免"已产出部分文本 → 被当作正常完成上报 done"。
+        // 前端据此可区分"正常完成"与"被中止"，而不是静默结束且无任何原因提示。
+        ctx.onError(new LLMError('模型响应被中止', ErrorCode.ABORTED, false))
         break
 
       case 'start-step':

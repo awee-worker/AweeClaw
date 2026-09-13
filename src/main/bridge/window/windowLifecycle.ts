@@ -10,6 +10,15 @@
 import { ipcMain, BrowserWindow, app, nativeTheme } from 'electron'
 import { logger } from '@shared/toolkit/LogEngine'
 
+/** 自绘菜单可执行的原生角色 */
+export type MenuRole =
+  | 'undo' | 'redo' | 'cut' | 'copy' | 'paste' | 'selectAll' | 'delete'
+  | 'zoomIn' | 'zoomOut' | 'resetZoom' | 'toggleFullScreen' | 'reload' | 'toggleDevTools'
+  | 'minimize' | 'maximize' | 'close' | 'quit'
+
+/** 缩放进阶（与 Chromium 每级 zoom 一致） */
+const ZOOM_STEP = 0.5
+
 // 标记是否已注册基础窗口控制
 let basicHandlersRegistered = false
 
@@ -40,6 +49,38 @@ export function registerWindowHandlers(createWindow: (isEmpty?: boolean) => Brow
     ipcMain.on('window:toggleDevTools', (event) => {
       const win = BrowserWindow.fromWebContents(event.sender)
       win?.webContents.toggleDevTools()
+    })
+
+    /**
+     * 自绘菜单角色执行（Windows/Linux）
+     *
+     * 主窗口 frame:false，原生菜单栏不显示；渲染进程自绘菜单栏通过此频道
+     * 请求执行等价的「原生角色」（撤销/复制/缩放/重载/窗口控制等）。
+     */
+    ipcMain.on('menu:execute-role', (event, role: MenuRole) => {
+      const win = BrowserWindow.fromWebContents(event.sender)
+      if (!win || win.isDestroyed()) return
+      const wc = win.webContents
+      switch (role) {
+        case 'undo': wc.undo(); break
+        case 'redo': wc.redo(); break
+        case 'cut': wc.cut(); break
+        case 'copy': wc.copy(); break
+        case 'paste': wc.paste(); break
+        case 'selectAll': wc.selectAll(); break
+        case 'delete': wc.delete(); break
+        case 'zoomIn': wc.setZoomLevel(wc.getZoomLevel() + ZOOM_STEP); break
+        case 'zoomOut': wc.setZoomLevel(wc.getZoomLevel() - ZOOM_STEP); break
+        case 'resetZoom': wc.setZoomLevel(0); break
+        case 'toggleFullScreen': win.setFullScreen(!win.isFullScreen()); break
+        case 'reload': wc.reload(); break
+        case 'toggleDevTools': wc.toggleDevTools(); break
+        case 'minimize': win.minimize(); break
+        case 'maximize': win.isMaximized() ? win.unmaximize() : win.maximize(); break
+        case 'close': win.close(); break
+        case 'quit': app.quit(); break
+        default: logger.system.warn('[Window] Unknown menu role:', role)
+      }
     })
 
     ipcMain.handle('app:getVersion', () => {

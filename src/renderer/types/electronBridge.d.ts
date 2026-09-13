@@ -9,6 +9,8 @@
  * 与本地 SQLite voice_model_config 表对应（已解密、字段已规范化）
  */
 export interface VoiceModelConfig {
+  /** 语音模式：拆分式（STT+LLM+TTS）或端到端实时 */
+  mode?: 'split' | 'realtime'
   sttEnabled: boolean
   sttProvider: string
   sttModel: string
@@ -24,6 +26,16 @@ export interface VoiceModelConfig {
   ttsBaseUrl: string
   ttsSpeed: number
   ttsTimeout: number
+  // 端到端实时语音模型
+  realtimeEnabled?: boolean
+  realtimeProvider?: string
+  realtimeModel?: string
+  realtimeApiKey?: string
+  realtimeBaseUrl?: string
+  realtimeVoice?: string
+  realtimeTimeout?: number
+  /** 云端模式（使用后端配置） / 自定义模式（本地配置直连） */
+  cloudMode?: 'cloud' | 'local'
   updatedAt: number
 }
 
@@ -1557,6 +1569,8 @@ export interface ElectronAPI {
   close: () => void
   toggleDevTools: () => void
   newWindow: () => void
+  /** 自绘菜单（Windows/Linux）执行原生角色：undo/copy/zoomIn/minimize... */
+  executeMenuRole: (role: string) => void
   getWindowId: () => Promise<number>
   resizeWindow: (width: number, height: number, minWidth?: number, minHeight?: number) => Promise<void>
   setTheme: (theme: 'light' | 'dark' | 'system', bgColor?: string) => Promise<boolean>
@@ -1597,6 +1611,7 @@ export interface ElectronAPI {
   extractPdfText: (path: string) => Promise<string | null>
   writeFile: (path: string, content: string) => Promise<boolean>
   writeBinaryFile: (path: string, base64Data: string) => Promise<boolean>
+  saveXlsx: (path: string, sheetData: any) => Promise<boolean>
   ensureDir: (path: string) => Promise<boolean>
   saveFile: (content: string, path?: string) => Promise<string | null>
   fileExists: (path: string) => Promise<boolean>
@@ -1669,7 +1684,7 @@ export interface ElectronAPI {
     error?: string
     code?: string
   }>
-  abortMessage: () => void
+  abortMessage: (requestId?: string) => void
   onLLMStream: (requestId: string, callback: (chunk: LLMStreamChunk) => void) => () => void
   onLLMToolCall: (callback: (toolCall: LLMToolCall) => void) => () => void
   onLLMError: (requestId: string, callback: (error: LLMError) => void) => () => void
@@ -2765,6 +2780,36 @@ export interface ElectronAPI {
   }
 
   // ============================================
+  // ONLYOFFICE 在线编辑（本地文档 → 服务器编辑 → 回写本地）
+  // ============================================
+  onlyOffice: {
+    /** 获取服务器配置（aweeclaw-config.json → onlyOffice 段） */
+    getConfig: () => Promise<{
+      enabled: boolean
+      serverUrl: string
+      basePath: string
+    }>
+    /** 开始会话：上传本地文件，成功返回含 editorUrl 的会话元信息 */
+    startSession: (payload: {
+      sourcePath: string
+      title?: string
+    }) => Promise<{
+      ok: boolean
+      error?: string
+      session?: import('@protocols/onlyOfficeProtocol').OnlyOfficeEditSessionMeta
+    }>
+    /** 保存并回写本地（force save → 下载 → 原子写回） */
+    saveSession: (sessionId: string) => Promise<{
+      ok: boolean
+      error?: string
+      size?: number
+      sourcePath?: string
+    }>
+    /** 放弃会话：删除远端副本，不写回本地 */
+    discardSession: (sessionId: string) => Promise<{ ok: boolean; error?: string }>
+  }
+
+  // ============================================
   // 项目执行窗口（独立窗口 + 主窗口调用）
   // ============================================
   /** 打开执行窗口参数 */
@@ -3020,6 +3065,41 @@ export interface ElectronAPI {
     /** 订阅场景模式同步事件（移动端→PC） */
     onSceneModeSync: (
       callback: (payload: { mode: string }) => void,
+    ) => () => void
+  }
+
+  /** 外部智能体（Claude Code / Codex / Cursor 子进程桥接） */
+  externalAgent: {
+    /** 检测 CLI 可用性（快速，不启动长任务） */
+    preflight: (agent: import('../../shared/externalAgents').ExternalAgentId) =>
+      Promise<import('../../shared/externalAgents').AgentPreflightResult>
+    /** 启动一次运行（立即返回 requestId，进度经 onStream 推送） */
+    start: (request: import('../../shared/externalAgents').ExternalAgentRunRequest) =>
+      Promise<{ requestId: string; ok: boolean; error?: string }>
+    /** 等待运行结束（阻塞至 done/error/aborted 或超时） */
+    wait: (requestId: string, timeoutMs?: number) =>
+      Promise<import('../../shared/externalAgents').ExternalAgentRunResult>
+    /** 中止运行 */
+    abort: (requestId: string) => Promise<{ aborted: boolean }>
+    /** 查询状态 */
+    status: (requestId: string) =>
+      Promise<{ status: 'running' | 'done' | 'error' | 'aborted' | 'unknown'; result: import('../../shared/externalAgents').ExternalAgentRunResult | null }>
+    /** 读取配置 */
+    getConfig: () => Promise<import('../../shared/externalAgents').ExternalAgentConfig>
+    /** 保存配置（增量 patch） */
+    saveConfig: (patch: Partial<import('../../shared/externalAgents').ExternalAgentConfig>) =>
+      Promise<{ success: boolean; config: import('../../shared/externalAgents').ExternalAgentConfig }>
+    /** 列出最近运行记录（新→旧，最多 10 条，供「继续上次任务」UI） */
+    recent: () => Promise<import('../../shared/externalAgents').RecentAgentRun[]>
+    /** 清空最近运行记录 */
+    clearRecent: () => Promise<{ success: boolean }>
+    /** 订阅指定 requestId 的流式事件，返回取消订阅函数 */
+    onStream: (
+      requestId: string,
+      callback: (payload: {
+        requestId: string
+        event: import('../../shared/externalAgents').AgentStreamEvent
+      }) => void,
     ) => () => void
   }
 }

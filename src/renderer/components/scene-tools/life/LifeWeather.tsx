@@ -5,7 +5,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react'
-import { CloudSun, Search, MapPin, RefreshCw, Droplets, Wind, Thermometer } from 'lucide-react'
+import { CloudSun, Search, MapPin, RefreshCw, Droplets, Wind } from 'lucide-react'
 import { useWeatherPrefStore } from '../stores'
 
 interface WeatherData {

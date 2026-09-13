@@ -21,6 +21,16 @@ export interface CompressionCheckResult {
 /** 重度压缩（L3/L4）后的冷却期：冷却期内不重复触发摘要/交接，避免连续压缩 */
 const COMPRESSION_COOLDOWN_MS = 60_000
 
+/** 就地压缩（L2）动作节流：同一线程两次“就地清理/摘要”间的最小间隔。
+ *  主循环每一轮 LLM 返回后都会做压缩检查，若无节流会导致“压缩一次后 AI 没回复
+ *  多少内容又开始压缩”的频繁抖动（致命问题 #2）。 */
+const COMPRESSION_ACTION_MIN_INTERVAL_MS = 15_000
+const lastCompressionActionAt = new Map<string, number>()
+
+function markCompressionAction(threadId: string): void {
+  lastCompressionActionAt.set(threadId, Date.now())
+}
+
 /** 主循环内压缩时受保护的工具（结果不清理） */
 const LOOP_PROTECTED_TOOLS = new Set(['ask_user', 'read_file', 'search_files'])
 
@@ -258,14 +268,28 @@ async function executeCompressionStrategy(
   // 工具结果，确保下一轮 LLM 请求不因上下文超限而报错/降质。
   // 这是"压缩后不中断、直接继续执行"的关键：仅做统计/快照而不实际压缩，
   // 会让下一轮请求携带未压缩的超长上下文，最终仍会中断。
+  // 节流：主循环每轮 LLM 返回都会执行本检查，15s 内的重复就地清理会被跳过，
+  // 避免“压缩一次后没回多少内容又压缩”的频繁抖动（致命问题 #2）。
   if (effectiveLevel >= 2 && hasPendingToolCalls && messages && messages.length > 0) {
-    compressLlmMessagesInPlace(messages, effectiveLevel)
+    const lastAction = lastCompressionActionAt.get(threadId) ?? 0
+    const withinThrottle = Date.now() - lastAction < COMPRESSION_ACTION_MIN_INTERVAL_MS
+    if (withinThrottle && effectiveLevel < 3) {
+      logger.agent.info(
+        `[Compression] 动作节流: 距上次就地压缩 ${Date.now() - lastAction}ms，本轮跳过 L${effectiveLevel} 就地清理`
+      )
+    } else {
+      compressLlmMessagesInPlace(messages, effectiveLevel)
+      markCompressionAction(threadId)
+    }
   }
 
-  if (effectiveLevel >= 3 && enableLLMSummary && thread) {
+  if (effectiveLevel === 3 && enableLLMSummary && thread) {
+    // 注意：L4 时跳过独立摘要（避免 L3 摘要 + L4 交接快照两次 LLM 调用）
+    // L4 交接快照会 setContextSummary，摘要数据随后经 MessageBuilder 注入给 LLM
     threadStore.setCompressionPhase('summarizing')
     try {
       await refreshSummarySnapshot(threadId, threadStore)
+      markCompressionAction(threadId)
     } catch {
       // Summary generation failed, not critical
     } finally {

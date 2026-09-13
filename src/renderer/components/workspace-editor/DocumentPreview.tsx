@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import * as pdfjsLib from 'pdfjs-dist'
-import mammoth from 'mammoth/mammoth.browser.min.js'
+import { renderAsync } from 'docx-preview'
+
 import JSZip from 'jszip'
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize2, Loader2, FileSpreadsheet, Presentation } from 'lucide-react'
 import { ActionButton } from '@components/ui'
@@ -183,24 +184,124 @@ const DOCX_STYLES = `
   .docx-preview hr { border: none; border-top: 1px solid rgb(var(--border)); margin: 1.5rem 0; }
 `
 
+// ===== Word 高保真渲染辅助 =====
+// docx 常用字体在 Windows/macOS 间差异很大，把 Word/WPS 常用字体名映射为
+// 本机可用的近似字体（优先系统中文字体），缩小预览与 Word 的字体观感差距。
+// 注：映射输出为不带引号的字体列表，兼容 CSS font-family 语法。
+const FONT_FALLBACK_MAP: Record<string, string> = {
+  '宋体': 'Songti SC, SimSun',
+  '新宋体': 'Songti SC, NSimSun',
+  '仿宋': 'STFangsong, FangSong',
+  '仿宋_GB2312': 'STFangsong, FangSong',
+  '楷体': 'Kaiti SC, KaiTi',
+  '楷体_GB2312': 'Kaiti SC, KaiTi',
+  '黑体': 'Heiti SC, SimHei',
+  '微软雅黑': 'PingFang SC, Microsoft YaHei',
+  'Microsoft YaHei': 'PingFang SC, Microsoft YaHei',
+  'Microsoft YaHei UI': 'PingFang SC, Microsoft YaHei UI',
+  '等线': 'PingFang SC, DengXian',
+  'DengXian': 'PingFang SC, DengXian',
+  '华文仿宋': 'STFangsong',
+  '华文楷体': 'STKaiti',
+  '华文宋体': 'STSong',
+  '华文中宋': 'STZhongsong',
+  '华文细黑': 'STHeiti Light',
+  '华文琥珀': 'STHupo',
+  '华文新魏': 'STXinwei',
+  '华文隶书': 'STLiti',
+  '华文彩云': 'STCaiyun',
+  '幼圆': 'YouYuan',
+  '方正舒体': 'FZKaiTi',
+  '方正姚体': 'FZYaoTi',
+  'Times New Roman': 'Times New Roman, Times, serif',
+  'Arial': 'Arial, Helvetica, sans-serif',
+  'Tahoma': 'Tahoma, Geneva, sans-serif',
+  'Verdana': 'Verdana, Geneva, sans-serif',
+  // 西文 Office 字体 → 本机近似
+  'Calibri': 'Calibri, Arial, Helvetica, sans-serif',
+  'Cambria': 'Cambria, Times New Roman, Times, serif',
+  'Segoe UI': 'PingFang SC, Segoe UI, Arial, sans-serif',
+  'Consolas': 'Consolas, Menlo, monospace',
+  'MS Gothic': 'Hiragino Kaku Gothic ProN, MS Gothic',
+  'MS Mincho': 'Hiragino Mincho ProN, MS Mincho',
+  // Word 符号字体（Symbol/Wingdings/Webdings）：macOS 无对应字体，缺字形会把
+  // “· ▪ ✓” 等符号渲染成方框，映射到包含相似字形的系统字体。
+  'Symbol': "'Apple Symbols', 'Arial Unicode MS', sans-serif",
+  'Wingdings': "'Apple Symbols', 'Arial Unicode MS', sans-serif",
+  'Webdings': "'Apple Symbols', 'Arial Unicode MS', sans-serif",
+  'Monotype Sorts': "'Apple Symbols', 'Arial Unicode MS', sans-serif",
+}
+
+/**
+ * Word 私有区（PUA, U+E000–U+F8FF）常用符号字形 → Unicode 等价字符。
+ * Word 的项目符号（如 “·”）在文档内常以 Symbol/Wingdings 字体编码为 PUA 字符
+ * （U+F0B7 等），macOS 无这些字体、系统回退字体也不含 PUA 字形，直接渲染会变成方框 □。
+ * 因此将常见 PUA 字形归一化为等价的 Unicode 字符后再显示。
+ */
+const PUA_SYMBOL_MAP: Record<string, string> = {
+  '\uf0b7': '•', // Symbol：圆点项目符号（最常见）
+  '\uf0a7': '▪', // Wingdings：小方块项目符号
+  '\uf0b2': '●', // Wingdings：圆形
+  '\uf0a8': '◆', // Wingdings：实心菱形
+  '\uf0fc': '✓', // Wingdings：对勾
+  '\uf0fe': '✗', // Wingdings：叉
+}
+
+/** 遍历渲染结果，把 PUA 符号字形替换为 Unicode 等价字符，避免显示为缺字方框 */
+function normalizePuaSymbols(root: HTMLElement): void {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  const textNodes: Text[] = []
+  while (walker.nextNode()) textNodes.push(walker.currentNode as Text)
+  for (const node of textNodes) {
+    const t = node.nodeValue
+    if (!t || !/[\ue000-\uf8ff]/.test(t)) continue
+    node.nodeValue = t.replace(/[\ue000-\uf8ff]/g, ch => PUA_SYMBOL_MAP[ch.toLowerCase()] ?? ch)
+  }
+}
+
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/** 将 CSS 文本 / font-family 值中的 Word 字体名映射为本机近似字体（保留引号/边界结构） */
+function patchFontNames(text: string): string {
+  let out = text
+  for (const [cn, mac] of Object.entries(FONT_FALLBACK_MAP)) {
+    const esc = escapeRegExp(cn)
+    // 带引号：font-family: '微软雅黑' 或 "微软雅黑"
+    const qRe = new RegExp('(["\'])' + esc + '\\1', 'i')
+    if (qRe.test(out)) {
+      out = out.replace(new RegExp('(["\'])' + esc + '\\1', 'gi'), () => mac)
+      continue
+    }
+    // 不带引号：font-family:微软雅黑;
+    const pRe = new RegExp('(^|[;:,\\s])' + esc + '(?=[;,\\s]|$)', 'i')
+    if (pRe.test(out)) {
+      out = out.replace(new RegExp('(^|[;:,\\s])' + esc + '(?=[;,\\s]|$)', 'gi'), (_m: string, p1: string) => p1 + mac)
+    }
+  }
+  return out
+}
+
 interface DocxPreviewProps {
   path: string
 }
 
 export function DocxPreview({ path }: DocxPreviewProps) {
   const language = useStore(s => s.language)
-  const [html, setHtml] = useState<string>('')
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const styleRef = useRef<HTMLStyleElement>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    let cancelled = false
     const loadDocx = async () => {
       try {
         setLoading(true)
-        setError(false)
+        setError(null)
         const base64 = await api.file.readBinary(path)
         if (!base64) {
-          setError(true)
+          logger.ui.error('Failed to read DOCX file:', path)
+          setError('无法读取文件')
           return
         }
         const binaryString = atob(base64)
@@ -208,43 +309,104 @@ export function DocxPreview({ path }: DocxPreviewProps) {
         for (let i = 0; i < binaryString.length; i++) {
           bytes[i] = binaryString.charCodeAt(i)
         }
-        const result = await mammoth.convertToHtml({ arrayBuffer: bytes.buffer as ArrayBuffer })
-        setHtml(result.value)
+        logger.ui.info('DOCX file loaded, size:', bytes.length, 'bytes')
+        if (cancelled) return
+        const bodyEl = bodyRef.current
+        if (!bodyEl) {
+          logger.ui.error('DOCX container ref is null')
+          setError('容器未就绪，请重试')
+          return
+        }
+        bodyEl.innerHTML = ''
+        // style 与内容分离渲染：库生成的样式统一放入独立 style 容器，避免污染/重复
+        const styleHost = styleRef.current
+        if (styleHost) styleHost.innerHTML = ''
+
+        await renderAsync(bytes.buffer as ArrayBuffer, bodyEl, styleHost || undefined, {
+          inWrapper: true,
+          ignoreWidth: false,   // 保留文档真实页宽，换行/行宽与 Word 一致
+          ignoreHeight: true,   // 连续流式排版，防止长文档被固定页高裁切导致内容错乱
+          breakPages: false,    // 不做硬分页切块，稳定完整展示全部内容
+          renderHeaders: true,
+          renderFooters: true,
+          renderFootnotes: true,
+          renderEndnotes: true,
+          renderComments: true,
+          ignoreLastRenderedPageBreak: true,
+          useBase64URL: true,   // 图片/字体转 dataURL，避免对象 URL 未释放导致切换文件后错图
+        })
+
+        // 纸张外观：去掉 docx-preview 默认在内容外生成的两层“宽边框”观感
+        // （wrapper 的灰色背景 + 30px 内边距，以及 section 的黑色投影），
+        // 外层留白由容器内边距承担，section 本身保留白纸底色。
+        const wrapper = bodyEl.querySelector('.docx-wrapper') as HTMLElement | null
+        if (wrapper) {
+          wrapper.style.background = 'transparent'
+          wrapper.style.padding = '0'
+          wrapper.style.boxShadow = 'none'
+          wrapper.querySelectorAll('section.docx').forEach(section => {
+            const sec = section as HTMLElement
+            sec.style.boxShadow = 'none'
+            sec.style.marginBottom = '16px'
+          })
+        }
+
+        // PUA 符号字形归一化：避免 “· / ▪ / ✓” 等列表符号缺字显示为方框
+        normalizePuaSymbols(bodyEl)
+
+        // 字体映射：Word/WPS 常用字体 → 本机近似字体，缩小字体观感差异
+        if (styleHost) {
+          styleHost.textContent = patchFontNames(styleHost.textContent || '')
+        }
+        bodyEl.querySelectorAll<HTMLElement>('[style]').forEach(el => {
+          const raw = el.getAttribute('style')
+          if (raw && /font-family/i.test(raw)) {
+            el.setAttribute('style', patchFontNames(raw))
+          }
+        })
+
+        // 检查渲染结果
+        const childCount = bodyEl.children.length
+        logger.ui.info('DOCX rendered, children:', childCount)
+        if (childCount === 0) {
+          logger.ui.warn('DOCX rendered but container is empty')
+        }
       } catch (e) {
         logger.ui.error('Failed to load DOCX:', e)
-        setError(true)
+        setError(`加载文档失败: ${(e as Error)?.message || '未知错误'}`)
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }
     loadDocx()
+    return () => { cancelled = true }
   }, [path])
 
-  if (loading) {
-    return (
-      <div className="h-full flex items-center justify-center bg-background-editor">
-        <Loader2 className="w-8 h-8 text-accent animate-spin" />
-      </div>
-    )
-  }
-
+  // 错误页
   if (error) {
     return (
       <div className="h-full flex items-center justify-center bg-background-editor">
         <div className="text-center p-8">
           <p className="text-text-muted">{t('filePreview.cannotOpenFile', language)}</p>
+          <p className="text-xs text-text-muted/60 mt-2">{error}</p>
         </div>
       </div>
     )
   }
 
+  // 渲染容器始终挂载（loading 以 overlay 呈现），保证 useEffect 执行时 bodyRef/styleRef 已就绪。
+  // 去掉外层灰色背景，内容区加内边距，铺满整个预览区域。
   return (
-    <div className="h-full overflow-auto bg-background-editor p-6">
-      <style>{DOCX_STYLES}</style>
-      <div
-        className="docx-preview max-w-3xl mx-auto"
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
+    <div className="relative h-full overflow-auto bg-background-editor">
+      <div className="p-4 min-h-full">
+        <style ref={styleRef} data-docx-styles />
+        <div ref={bodyRef} className="max-w-full" />
+      </div>
+      {loading && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-background-editor">
+          <Loader2 className="w-8 h-8 text-accent animate-spin" />
+        </div>
+      )}
     </div>
   )
 }
@@ -331,595 +493,12 @@ export function DocPreview({ path }: DocPreviewProps) {
   )
 }
 
-// ===== Excel (.xlsx / .xls) 预览组件 =====
-// .xlsx (OOXML) 使用 exceljs 读取单元格样式（字体颜色、背景色、边框、对齐、合并单元格、列宽、行高）
-// .xls (BIFF8 旧版二进制) 使用 SheetJS 解析（exceljs 不支持 .xls），尽力提取样式
-// Sheet Tab 放置在底部，符合 Excel 习惯
 
-interface XlsxPreviewProps {
-  path: string
-}
+// ===== Excel (.xlsx / .xls) 可编辑预览 =====
+// 实现已独立到 XlsxView.tsx：打开即就地编辑（双击单元格），改动自动保存，
+// 保留源文件的样式、合并、列宽/行高与图片（图片以浮层还原，不再丢失）。
+export { XlsxView, XlsxFileView, XlsxEditor } from './XlsxView'
 
-/** ARGB 颜色对象转 CSS 颜色字符串 */
-function argbToCss(color?: { argb?: string; theme?: number; indexed?: number }): string | undefined {
-  if (!color) return undefined
-  // 优先使用 argb（最常见）
-  if (color.argb) {
-    const argb = color.argb
-    // ARGB 格式：FFRRGGBB（前2位 alpha，后6位 RGB）
-    if (argb.length === 8) {
-      return `#${argb.slice(2).toLowerCase()}`
-    }
-    // 兼容 RGB 格式
-    if (argb.length === 6) {
-      return `#${argb.toLowerCase()}`
-    }
-  }
-  // theme 颜色（主题色）无法精确映射，使用透明返回 undefined 让 CSS fallback
-  // indexed 颜色（索引色）同理
-  return undefined
-}
-
-/** 边框样式映射 */
-function borderStyleToCss(style?: string): string | undefined {
-  if (!style) return undefined
-  const map: Record<string, string> = {
-    thin: '1px solid',
-    medium: '2px solid',
-    thick: '3px solid',
-    dotted: '1px dotted',
-    dashed: '1px dashed',
-    double: '3px double',
-    hair: '1px solid',
-    mediumDashed: '2px dashed',
-    mediumDashDot: '2px dashed',
-    mediumDashDotDot: '2px dashed',
-    slantDashDot: '2px dashed',
-  }
-  return map[style]
-}
-
-/** 将 exceljs 单元格样式转为 CSS 样式对象 */
-function buildCellStyle(cell: any): React.CSSProperties {
-  const style: React.CSSProperties = {}
-  // 字体
-  if (cell.font) {
-    const font = cell.font
-    if (font.bold) style.fontWeight = 'bold'
-    if (font.italic) style.fontStyle = 'italic'
-    if (font.underline) style.textDecoration = 'underline'
-    if (font.strike) style.textDecoration = (style.textDecoration as string || '') + ' line-through'
-    if (font.size) style.fontSize = `${font.size}px`
-    if (font.name) style.fontFamily = font.name
-    const fontColor = argbToCss(font.color)
-    if (fontColor) style.color = fontColor
-  }
-  // 填充（背景色）：仅处理 pattern 类型
-  if (cell.fill && cell.fill.type === 'pattern' && cell.fill.pattern === 'solid') {
-    const bgColor = argbToCss(cell.fill.fgColor) || argbToCss(cell.fill.bgColor)
-    if (bgColor) style.backgroundColor = bgColor
-  }
-  // 对齐
-  if (cell.alignment) {
-    const align = cell.alignment
-    if (align.horizontal) {
-      const hMap: Record<string, React.CSSProperties['textAlign']> = {
-        left: 'left', center: 'center', right: 'right',
-        fill: 'left', justify: 'justify', centerContinuous: 'center', distributed: 'justify',
-      }
-      if (hMap[align.horizontal]) style.textAlign = hMap[align.horizontal]
-    }
-    if (align.vertical) {
-      const vMap: Record<string, React.CSSProperties['verticalAlign']> = {
-        top: 'top', middle: 'middle', bottom: 'bottom',
-        distributed: 'middle', justify: 'middle',
-      }
-      if (vMap[align.vertical]) style.verticalAlign = vMap[align.vertical]
-    }
-    if (align.wrapText) style.whiteSpace = 'normal'
-    if (align.textRotation) {
-      // Excel 文本旋转：0-90 表示逆时针 0-90 度；91-180 表示顺时针
-      const deg = align.textRotation <= 90 ? align.textRotation : 90 - align.textRotation
-      style.transform = `rotate(${-deg}deg)`
-      style.transformOrigin = 'center'
-    }
-  }
-  return style
-}
-
-/** 构造边框 CSS 片段（返回完整的 border 字符串） */
-function buildBorderString(cell: any): React.CSSProperties {
-  const style: React.CSSProperties = {}
-  if (!cell.border) return style
-  const b = cell.border
-  if (b.top && b.top.style) {
-    const bs = borderStyleToCss(b.top.style)
-    const color = argbToCss(b.top.color)
-    if (bs) style.borderTop = `${bs} ${color || 'rgb(var(--border))'}`
-  }
-  if (b.bottom && b.bottom.style) {
-    const bs = borderStyleToCss(b.bottom.style)
-    const color = argbToCss(b.bottom.color)
-    if (bs) style.borderBottom = `${bs} ${color || 'rgb(var(--border))'}`
-  }
-  if (b.left && b.left.style) {
-    const bs = borderStyleToCss(b.left.style)
-    const color = argbToCss(b.left.color)
-    if (bs) style.borderLeft = `${bs} ${color || 'rgb(var(--border))'}`
-  }
-  if (b.right && b.right.style) {
-    const bs = borderStyleToCss(b.right.style)
-    const color = argbToCss(b.right.color)
-    if (bs) style.borderRight = `${bs} ${color || 'rgb(var(--border))'}`
-  }
-  return style
-}
-
-/** 解析 exceljs worksheet 为可渲染的表格数据 */
-interface ParsedSheet {
-  name: string
-  rows: Array<{
-    cells: Array<{
-      value: string
-      style: React.CSSProperties
-      border: React.CSSProperties
-      isMerged: boolean
-      mergeSpan?: { colSpan: number; rowSpan: number }
-    }>
-    height?: number
-  }>
-  columnWidths: number[]
-  mergeMap: Map<string, { colSpan: number; rowSpan: number }>
-}
-
-function parseWorksheet(worksheet: any, sheetName: string): ParsedSheet {
-  // 收集合并单元格信息：key 为 "row,col"，value 为 { colSpan, rowSpan }
-  const mergeMap = new Map<string, { colSpan: number; rowSpan: number }>()
-  // exceljs 的 _merges 是以 top-left cell 为 key 的对象
-  const merges = (worksheet as any)._merges || {}
-  for (const key in merges) {
-    const merge = merges[key]
-    if (merge && merge.model) {
-      const top = merge.model.top
-      const left = merge.model.left
-      const bottom = merge.model.bottom
-      const right = merge.model.right
-      const rowSpan = bottom - top + 1
-      const colSpan = right - left + 1
-      mergeMap.set(`${top},${left}`, { colSpan, rowSpan })
-    }
-  }
-
-  // 被合并覆盖的单元格（非左上角）集合
-  const mergedAway = new Set<string>()
-  for (const [key, span] of mergeMap.entries()) {
-    const [r, c] = key.split(',').map(Number)
-    for (let i = r; i <= r + span.rowSpan - 1; i++) {
-      for (let j = c; j <= c + span.colSpan - 1; j++) {
-        if (i === r && j === c) continue
-        mergedAway.add(`${i},${j}`)
-      }
-    }
-  }
-
-  // 列宽（pixel 估算：Excel width 单位约等于字符数）
-  const columnWidths: number[] = []
-  const columnCount = worksheet.columnCount || 0
-  for (let i = 1; i <= columnCount; i++) {
-    const col = worksheet.getColumn(i)
-    // Excel 列宽 → px 估算：width * 7 + 5
-    const width = col.width ? Math.round(col.width * 7 + 5) : 80
-    columnWidths.push(Math.min(Math.max(width, 40), 400))
-  }
-
-  // 行数据
-  const rows: ParsedSheet['rows'] = []
-  const rowCount = worksheet.rowCount || 0
-  for (let r = 1; r <= rowCount; r++) {
-    const row = worksheet.getRow(r)
-    const cells: ParsedSheet['rows'][0]['cells'] = []
-    const cellCount = columnCount || (row.cellCount || 0)
-    for (let c = 1; c <= cellCount; c++) {
-      const cell = row.getCell(c)
-      // 值转换：支持字符串、数字、日期、布尔、公式结果
-      let value = ''
-      if (cell.value !== null && cell.value !== undefined) {
-        if (cell.value instanceof Date) {
-          value = cell.value.toLocaleString()
-        } else if (typeof cell.value === 'object') {
-          // 公式单元格：{ formula, result }
-          if ('result' in cell.value) {
-            value = String(cell.value.result ?? '')
-          } else if ('richText' in cell.value) {
-            // 富文本：拼接所有 run 的 text
-            value = (cell.value.richText || []).map((rt: any) => rt.text || '').join('')
-          } else if ('text' in cell.value) {
-            value = String(cell.value.text)
-          } else if ('hyperlink' in cell.value && 'text' in cell.value) {
-            value = String(cell.value.text)
-          } else {
-            value = String(cell.value)
-          }
-        } else {
-          value = String(cell.value)
-        }
-      }
-
-      const mergeKey = `${r},${c}`
-      const isMergedAway = mergedAway.has(mergeKey)
-      const mergeSpan = mergeMap.get(mergeKey)
-
-      cells.push({
-        value,
-        style: buildCellStyle(cell),
-        border: buildBorderString(cell),
-        isMerged: isMergedAway,
-        mergeSpan: mergeSpan,
-      })
-    }
-    // 行高（point → px：* 1.333）
-    const height = row.height ? Math.round(row.height * 1.333) : undefined
-    rows.push({ cells, height })
-  }
-
-  return { name: sheetName, rows, columnWidths, mergeMap }
-}
-
-// ===== SheetJS (.xls 旧版 BIFF 格式) 解析支持 =====
-// exceljs 仅支持 .xlsx (OOXML)，无法解析 .xls (BIFF8 二进制)。
-// 使用 SheetJS (xlsx) 解析 .xls，复用 ParsedSheet 结构与渲染逻辑。
-// SheetJS 社区版对 .xls 样式读取有限，尽力提取字体/填充/对齐/边框，缺失则使用默认样式。
-
-/** SheetJS 颜色对象转 CSS 颜色字符串（颜色格式为 { rgb: 'RRGGBB' }，无 alpha） */
-function sheetJsColorToCss(color?: { rgb?: string; theme?: number; indexed?: number }): string | undefined {
-  if (!color) return undefined
-  // SheetJS 颜色通常为 RRGGBB（6 位），排除纯黑默认色以免覆盖主题文字色
-  if (color.rgb && color.rgb.length === 6 && color.rgb.toUpperCase() !== '000000') {
-    return `#${color.rgb.toLowerCase()}`
-  }
-  // theme / indexed 颜色无法精确映射，返回 undefined 让 CSS fallback
-  return undefined
-}
-
-/** SheetJS 单元格样式对象 → CSS 样式（字体、填充、对齐） */
-function buildSheetJsCellStyle(s?: any): React.CSSProperties {
-  const style: React.CSSProperties = {}
-  if (!s) return style
-  // 字体
-  if (s.font) {
-    const font = s.font
-    if (font.bold) style.fontWeight = 'bold'
-    if (font.italic) style.fontStyle = 'italic'
-    if (font.underline) style.textDecoration = 'underline'
-    if (font.strike) style.textDecoration = (style.textDecoration as string || '') + ' line-through'
-    if (font.sz) style.fontSize = `${font.sz}px`
-    if (font.name) style.fontFamily = font.name
-    const fontColor = sheetJsColorToCss(font.color)
-    if (fontColor) style.color = fontColor
-  }
-  // 填充（背景色）：仅处理 solid 类型
-  if (s.fill && s.fill.patternType === 'solid') {
-    const bgColor = sheetJsColorToCss(s.fill.fgColor) || sheetJsColorToCss(s.fill.bgColor)
-    if (bgColor) style.backgroundColor = bgColor
-  }
-  // 对齐
-  if (s.alignment) {
-    const align = s.alignment
-    if (align.horizontal) {
-      const hMap: Record<string, React.CSSProperties['textAlign']> = {
-        left: 'left', center: 'center', right: 'right',
-        fill: 'left', justify: 'justify', centerContinuous: 'center', distributed: 'justify',
-      }
-      if (hMap[align.horizontal]) style.textAlign = hMap[align.horizontal]
-    }
-    if (align.vertical) {
-      const vMap: Record<string, React.CSSProperties['verticalAlign']> = {
-        top: 'top', center: 'middle', bottom: 'bottom',
-        distributed: 'middle', justify: 'middle',
-      }
-      if (vMap[align.vertical]) style.verticalAlign = vMap[align.vertical]
-    }
-    if (align.wrapText) style.whiteSpace = 'normal'
-    if (align.textRotation) {
-      // Excel 文本旋转：0-90 表示逆时针 0-90 度；91-180 表示顺时针
-      const deg = align.textRotation <= 90 ? align.textRotation : 90 - align.textRotation
-      style.transform = `rotate(${-deg}deg)`
-      style.transformOrigin = 'center'
-    }
-  }
-  return style
-}
-
-/** SheetJS 单元格边框 → CSS border 片段（复用 borderStyleToCss 映射） */
-function buildSheetJsBorderString(s?: any): React.CSSProperties {
-  const style: React.CSSProperties = {}
-  if (!s || !s.border) return style
-  const b = s.border
-  /** 转换单边边框为完整 CSS border 字符串 */
-  const conv = (edge?: { style?: string; color?: { rgb?: string; theme?: number; indexed?: number } }): string | undefined => {
-    if (!edge || !edge.style) return undefined
-    const bs = borderStyleToCss(edge.style)
-    if (!bs) return undefined
-    const color = sheetJsColorToCss(edge.color)
-    return `${bs} ${color || 'rgb(var(--border))'}`
-  }
-  const top = conv(b.top); if (top) style.borderTop = top
-  const bottom = conv(b.bottom); if (bottom) style.borderBottom = bottom
-  const left = conv(b.left); if (left) style.borderLeft = left
-  const right = conv(b.right); if (right) style.borderRight = right
-  return style
-}
-
-/**
- * 将 SheetJS worksheet 转为 ParsedSheet 结构。
- * SheetJS worksheet 是以单元格地址（如 "A1"）为 key 的对象，元数据通过 "!ref"/"!merges"/"!cols"/"!rows" 字段承载。
- */
-function parseSheetJSWorksheet(XLSX: any, ws: any, sheetName: string): ParsedSheet {
-  // 解析范围，无数据时退化为单格
-  const ref = ws['!ref'] || 'A1'
-  const range = XLSX.utils.decode_range(ref)
-  const rowCount = range.e.r - range.s.r + 1
-  const columnCount = range.e.c - range.s.c + 1
-
-  // 合并单元格：收集左上角跨度 + 被覆盖单元格集合
-  const mergeMap = new Map<string, { colSpan: number; rowSpan: number }>()
-  const mergedAway = new Set<string>()
-  const merges = ws['!merges'] || []
-  for (const m of merges) {
-    // SheetJS 合并范围基于 0 起始索引，转换为 1 起始（与 exceljs 解析路径一致）
-    const top = m.s.r + 1
-    const left = m.s.c + 1
-    const bottom = m.e.r + 1
-    const right = m.e.c + 1
-    const rowSpan = bottom - top + 1
-    const colSpan = right - left + 1
-    mergeMap.set(`${top},${left}`, { colSpan, rowSpan })
-    for (let i = top; i <= bottom; i++) {
-      for (let j = left; j <= right; j++) {
-        if (i === top && j === left) continue
-        mergedAway.add(`${i},${j}`)
-      }
-    }
-  }
-
-  // 列宽：优先 wpx(像素)，其次 wch(字符宽) 估算为像素
-  const colsMeta = ws['!cols'] || []
-  const columnWidths: number[] = []
-  for (let i = 0; i < columnCount; i++) {
-    const meta = colsMeta[i]
-    let width = 80
-    if (meta) {
-      if (meta.wpx) width = Math.round(meta.wpx)
-      else if (meta.width) width = Math.round(meta.width * 7 + 5)
-      else if (meta.wch) width = Math.round(meta.wch * 7 + 5)
-    }
-    columnWidths.push(Math.min(Math.max(width, 40), 400))
-  }
-
-  // 行高元数据
-  const rowsMeta = ws['!rows'] || []
-
-  const rows: ParsedSheet['rows'] = []
-  for (let r = 1; r <= rowCount; r++) {
-    const cells: ParsedSheet['rows'][0]['cells'] = []
-    for (let c = 1; c <= columnCount; c++) {
-      const addr = XLSX.utils.encode_cell({ r: r - 1, c: c - 1 })
-      const cell = ws[addr]
-      // 值转换：优先用格式化文本 cell.w（符合 Excel 显示），其次原始值 cell.v
-      let value = ''
-      if (cell) {
-        if (cell.w !== undefined && cell.w !== null) {
-          value = String(cell.w)
-        } else if (cell.v !== undefined && cell.v !== null) {
-          value = cell.v instanceof Date ? cell.v.toLocaleString() : String(cell.v)
-        }
-      }
-
-      const mergeKey = `${r},${c}`
-      cells.push({
-        value,
-        style: buildSheetJsCellStyle(cell?.s),
-        border: buildSheetJsBorderString(cell?.s),
-        isMerged: mergedAway.has(mergeKey),
-        mergeSpan: mergeMap.get(mergeKey),
-      })
-    }
-    // 行高：优先 hpx(像素)，其次 hpt(磅) 转 px（* 1.333）
-    const rowMeta = rowsMeta[r - 1]
-    let height: number | undefined
-    if (rowMeta) {
-      if (rowMeta.hpx) height = Math.round(rowMeta.hpx)
-      else if (rowMeta.hpt) height = Math.round(rowMeta.hpt * 1.333)
-    }
-    rows.push({ cells, height })
-  }
-
-  return { name: sheetName, rows, columnWidths, mergeMap }
-}
-
-export function XlsxPreview({ path }: XlsxPreviewProps) {
-  const language = useStore(s => s.language)
-  const [sheets, setSheets] = useState<ParsedSheet[]>([])
-  const [activeSheet, setActiveSheet] = useState(0)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(false)
-
-  useEffect(() => {
-    const loadXlsx = async () => {
-      try {
-        setLoading(true)
-        setError(false)
-        const base64 = await api.file.readBinary(path)
-        if (!base64) {
-          setError(true)
-          return
-        }
-        const binaryString = atob(base64)
-        const bytes = new Uint8Array(binaryString.length)
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i)
-        }
-
-        // 按扩展名分流：.xls (BIFF8) 用 SheetJS 解析；.xlsx (OOXML) 用 exceljs 解析（支持完整样式）
-        const ext = path.split('.').pop()?.toLowerCase() || ''
-        let sheetData: ParsedSheet[]
-
-        if (ext === 'xls') {
-          // SheetJS 原生支持 .xls 旧版二进制格式；cellStyles 开启样式读取，cellDates 把日期转为 Date 对象
-          const XLSX = await import('xlsx')
-          const workbook = XLSX.read(bytes, { type: 'array', cellStyles: true, cellDates: true })
-          sheetData = workbook.SheetNames.map((name: string) =>
-            parseSheetJSWorksheet(XLSX, workbook.Sheets[name], name)
-          )
-        } else {
-          // exceljs 读取 .xlsx，支持单元格样式（字体颜色、背景色、边框、对齐、合并、列宽、行高）
-          const ExcelJS = await import('exceljs')
-          const workbook = new ExcelJS.Workbook()
-          await workbook.xlsx.load(bytes.buffer as ArrayBuffer)
-          sheetData = workbook.worksheets.map((ws: any) => parseWorksheet(ws, ws.name))
-        }
-
-        setSheets(sheetData)
-        setActiveSheet(0)
-      } catch (e) {
-        logger.ui.error('Failed to load XLSX:', e)
-        setError(true)
-      } finally {
-        setLoading(false)
-      }
-    }
-    loadXlsx()
-  }, [path])
-
-  const currentSheet = sheets[activeSheet]
-
-  // 列字母（A, B, ..., Z, AA, AB, ...）用于表头
-  const colLabel = (idx: number): string => {
-    let s = ''
-    let n = idx
-    while (n >= 0) {
-      s = String.fromCharCode(65 + (n % 26)) + s
-      n = Math.floor(n / 26) - 1
-    }
-    return s
-  }
-
-  if (loading) {
-    return (
-      <div className="h-full flex items-center justify-center bg-background-editor">
-        <Loader2 className="w-8 h-8 text-accent animate-spin" />
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="h-full flex items-center justify-center bg-background-editor">
-        <div className="text-center p-8">
-          <p className="text-text-muted">{t('filePreview.cannotOpenFile', language)}</p>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="h-full flex flex-col bg-background-editor">
-      <div className="flex-1 overflow-auto p-4">
-        {currentSheet && currentSheet.rows.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="border-collapse min-w-full text-sm" style={{ tableLayout: 'fixed' }}>
-              <thead className="sticky top-0 z-10">
-                <tr>
-                  <th
-                    className="border border-border/50 px-2 py-1.5 text-text-muted text-xs text-center w-12 bg-surface/80 font-normal select-none"
-                    style={{ minWidth: 48 }}
-                  >
-                    #
-                  </th>
-                  {currentSheet.columnWidths.map((width, colIdx) => (
-                    <th
-                      key={colIdx}
-                      className="border border-border/50 px-2 py-1.5 text-center text-xs font-semibold text-text-primary bg-surface/80 select-none"
-                      style={{ width, minWidth: width, maxWidth: width }}
-                    >
-                      {colLabel(colIdx)}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {currentSheet.rows.map((row, rowIdx) => (
-                  <tr key={rowIdx} style={row.height ? { height: row.height } : undefined}>
-                    <td
-                      className="border border-border/50 px-2 py-1 text-text-muted text-xs text-center bg-surface/30 select-none"
-                    >
-                      {rowIdx + 1}
-                    </td>
-                    {row.cells.map((cell, colIdx) => {
-                      // 被合并覆盖的单元格不渲染（由左上角单元格的 colSpan/rowSpan 覆盖）
-                      if (cell.isMerged) {
-                        return <td key={colIdx} className="border border-border/50" style={{ padding: 0 }} />
-                      }
-                      const baseStyle: React.CSSProperties = {
-                        padding: '6px 12px',
-                        maxWidth: currentSheet.columnWidths[colIdx] || 300,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        backgroundColor: 'rgb(var(--background-editor))',
-                        color: 'rgb(var(--text-secondary))',
-                        ...cell.style,
-                        ...cell.border,
-                      }
-                      // 合并单元格：设置 colSpan / rowSpan
-                      const spanProps = cell.mergeSpan
-                        ? { colSpan: cell.mergeSpan.colSpan, rowSpan: cell.mergeSpan.rowSpan }
-                        : {}
-                      return (
-                        <td
-                          key={colIdx}
-                          className="border border-border/50"
-                          style={baseStyle}
-                          title={cell.value || undefined}
-                          {...spanProps}
-                        >
-                          {cell.value}
-                        </td>
-                      )
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="flex items-center justify-center h-full text-text-muted text-sm">
-            {t('editor.emptysheet', language as Language)}
-          </div>
-        )}
-      </div>
-      {/* Sheet Tab：底部，符合 Excel 习惯 */}
-      {sheets.length > 1 && (
-        <div className="flex-shrink-0 flex items-center gap-1 px-3 py-2 border-t border-border bg-surface/50 overflow-x-auto">
-          <FileSpreadsheet className="w-4 h-4 text-accent mr-1 flex-shrink-0" />
-          {sheets.map((sheet, idx) => (
-            <button
-              key={sheet.name}
-              onClick={() => setActiveSheet(idx)}
-              className={`px-3 py-1 rounded-md text-xs font-medium whitespace-nowrap transition-colors ${
-                idx === activeSheet
-                  ? 'bg-accent/20 text-accent'
-                  : 'text-text-muted hover:text-text-primary hover:bg-surface-hover'
-              }`}
-            >
-              {sheet.name}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
 
 // ===== PowerPoint (.pptx) 预览组件 =====
 

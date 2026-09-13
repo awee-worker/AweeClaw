@@ -16,7 +16,7 @@ import { Virtuoso } from 'react-virtuoso'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useStore, useModeStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
-import { useAgentActions, useAgentCommands, useAgentViewState } from '@hooks/useAgent'
+import { useAgentActions, useAgentCommands, useAgentViewState, useThreadMessenger } from '@hooks/useAgent'
 import { useChatScrollController, useAutoSpeak } from '@hooks'
 import { useAgentStore, selectCompressionPhase, selectIsCompacting } from '@intelligence/state/IntelligenceStore'
 import { EventBus } from '@intelligence/engine/EventDispatcher'
@@ -204,6 +204,9 @@ export default function ChatPanel() {
   }, [isStreaming, pendingChanges.length])
 
   const { sendMessage, abort, approveCurrentTool, rejectCurrentTool, approveAllTools, rejectAllTools } = useAgentCommands()
+  // 定向发送（不切换当前线程）：供自动续接把消息发回被中断的线程。
+  // 注意：sendToThread 由 useThreadMessenger 提供（useAgent 的返回值里没有它）。
+  const { sendToThread } = useThreadMessenger()
 
   // abort 显式传入 currentThreadId，确保执行窗口等多窗口场景下中止正确的线程
   // ⚠️ 优先使用闭包中的 currentThreadId（来自 useAgentViewState，响应式更新），
@@ -594,11 +597,30 @@ export default function ChatPanel() {
   }, [])
 
   useEffect(() => {
-    const handleOptionSelect = (event: CustomEvent<{ content: string; messageId: string }>) => {
-      const { content } = event.detail
-      if (content) {
-        sendMessage(content)
+    const handleOptionSelect = (
+      event: CustomEvent<{ content: string; messageId?: string; threadId?: string; silent?: boolean }>
+    ) => {
+      const { content, threadId: targetThreadId, silent } = event.detail
+      if (!content) return
+
+      const currentThreadId = useAgentStore.getState().currentThreadId
+      const resolvedThreadId = targetThreadId || currentThreadId
+      if (!resolvedThreadId) return
+
+      // 定向静默续接（自动续接）：发往被中断的线程本身，且不显示为用户气泡。
+      // 若改发到「当前线程」，用户切走线程后续接会发错目标；且 sendMessage 抛错
+      // （如 "Thread already running"）无人捕获会静默失败，表现为 AI 不再继续。
+      if (silent || (targetThreadId && targetThreadId !== currentThreadId)) {
+        void sendToThread(content, resolvedThreadId, { silent: true }).catch((err: unknown) => {
+          logger.agent.warn('[ChatPanel] Targeted resume dispatch failed:', err)
+        })
+        return
       }
+
+      // 既有路径：用户点击「继续」/表单提交等，正常显示为用户消息
+      void Promise.resolve(sendMessage(content)).catch(err => {
+        logger.agent.warn('[ChatPanel] Send message failed:', err)
+      })
     }
 
     const handleUpdateInteractive = (event: CustomEvent<{ messageId: string; selectedIds: string[] }>) => {
@@ -655,7 +677,7 @@ export default function ChatPanel() {
       window.removeEventListener('chat-switch-model', handleSwitchModel as EventListener)
       window.removeEventListener('chat-upgrade-plan', handleUpgradePlan as EventListener)
     }
-  }, [sendMessage])
+  }, [sendMessage, sendToThread])
 
   // ===== Agent 循环结束监听 =====
   // 使用 ref 桥接读取 filteredMessages，避免每次消息变化都重新注册 EventBus 订阅

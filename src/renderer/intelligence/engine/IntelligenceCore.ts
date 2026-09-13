@@ -47,6 +47,7 @@ import { translateAgentText } from '@intelligence/utils/intelligenceTextUtils'
 import { agentRuntime } from './AgentRuntime'
 import { buildAgentSystemPrompt } from '../prompt-engine/PromptComposer'
 import { taskComplexityDetector } from '../capabilities/planning/TaskComplexityDetector'
+import { buildResumeNotice } from '../utils/resumeContext'
 import { executeMultiAgent, continueMultiAgent, type RunningTask } from './MultiAgentExecution'
 import { useStore } from '@renderer/state'
 import { terminalManager } from '@services/TerminalAdapter'
@@ -134,6 +135,24 @@ export class AgentClass {
     let harnessSpan: Span | null = null
 
     try {
+      // 断点续接附加（致命问题 #1）：
+      // 上次执行被中断（用户停止/失败/达到工具调用上限）后，若用户再次发送
+      // （尤其是“继续”等短消息），自动在消息前附加续接说明，让 AI 知道要续接什么，
+      // 而不是“从头再来”。若线程已正常完成或消息与上次任务无关则返回 null 不附加。
+      if (typeof userMessage === 'string' || Array.isArray(userMessage)) {
+        const resumeThread = threadId ? store.threads[threadId] : undefined
+        const incomingText = typeof userMessage === 'string'
+          ? userMessage
+          : userMessage.filter((p): p is { type: 'text'; text: string } => p.type === 'text').map(p => p.text).join('')
+        const resumeNotice = resumeThread ? buildResumeNotice(resumeThread, incomingText) : null
+        if (resumeNotice) {
+          logger.agent.info('[Agent] 检测到断点续接请求，已附加续接说明')
+          userMessage = typeof userMessage === 'string'
+            ? `${resumeNotice}\n\n${userMessage}`
+            : [{ type: 'text', text: resumeNotice }, ...userMessage]
+        }
+      }
+
       if (agentHarness.isInitialized) {
         harnessSpan = agentHarness.observability.startSpan('agent.send', `thread-${threadId ?? 'new'}`, undefined, { chatMode, workspacePath })
       }
@@ -223,8 +242,11 @@ export class AgentClass {
 
       if (shouldUseMultiAgent) {
         const existingSession = globalStore.activeWorkspaceSession
+        // status === 'failed' 也允许续接：团队任务异常中断后，无论用户点「继续」
+        // 还是自动续接，都应回到原团队与原项目成果上继续，而不是丢掉已有成果
+        // 重新发起一次全新的协作。
         const canContinueSession = existingSession
-          && existingSession.status === 'completed'
+          && (existingSession.status === 'completed' || existingSession.status === 'failed')
           && existingSession.agents.length > 0
           && existingSession.projectPath
 
@@ -350,6 +372,44 @@ export class AgentClass {
         agentHarness.observability.endSpan(harnessSpan, 'error')
         harnessSpan = null
       }
+      // 兜底收尾：主循环若从「未捕获异常」路径逃逸（如工具编排、压缩检查、文件快照
+      // 等 await 抛出），会越过 loopDetector 尾部的终态兜底，导致 loopState 卡在
+      // 'running' —— 用户看到「AI 无提示停下」，断点续接也无法识别未完成状态。
+      // 此处补齐终态与「继续」入口，保证异常始终对用户可见、可续接。
+      if (threadId) {
+        try {
+          const agentState = useAgentStore.getState()
+          const boundStore = agentState.forThread(threadId)
+          const meta = agentState.threads[threadId]?.executionMeta
+          if (meta?.loopState === 'running' && meta.assistantId) {
+            const { language } = useStore.getState()
+            const isZh = language === 'zh'
+            logger.agent.warn('[Agent] Loop escaped without terminal state → finalizing as failed')
+            boundStore.updateExecutionMeta({ loopState: 'failed' })
+            boundStore.addSystemAlertPart(meta.assistantId, {
+              alertType: 'error',
+              title: isZh ? '执行异常中断' : 'Execution Interrupted',
+              message: isZh
+                ? '本次执行因未预期的错误中断，任务尚未完成。'
+                : 'This execution was interrupted by an unexpected error before the task completed.',
+              suggestion: isZh
+                ? '可点击继续以续接未完成的任务。'
+                : 'Click Continue to resume the unfinished task.',
+              action: { label: isZh ? '继续' : 'Continue', actionType: 'continue' },
+            })
+            EventBus.emit({
+              type: 'loop:end',
+              reason: 'error',
+              threadId,
+              assistantId: meta.assistantId,
+              requestId,
+              planTaskId: meta.planTaskId,
+            })
+          }
+        } catch (finalizeErr) {
+          logger.agent.warn('[Agent] Failed to finalize loop state after error:', finalizeErr)
+        }
+      }
       const appError = AppError.fromError(error)
       logger.agent.error('[Agent] Error:', appError.toJSON())
       // 配额用完：显示「重试」+「升级套餐」两个动作按钮
@@ -377,6 +437,20 @@ export class AgentClass {
         this.cleanupTask(threadId)
       }
     }
+  }
+
+  /**
+   * 指定线程当前是否正在执行（存在执行锁）。
+   *
+   * 供自动续接等场景判断「执行锁是否已释放」——直接派发续接消息若早于
+   * cleanupTask 释放锁，Agent.send 会因 "Thread already running" 抛错并静默失败，
+   * 表现为「AI 中断后没有继续执行」。调用方可据此轮询等待。
+   *
+   * @param threadId 目标线程；为空时判断是否存在任意运行中任务
+   */
+  isRunning(threadId: string | null): boolean {
+    if (!threadId) return this.runningTasks.size > 0
+    return this.runningTasks.has(threadId)
   }
 
   /**
@@ -438,7 +512,17 @@ export class AgentClass {
       this.runningTasks.delete(tid)
     }
 
-    api.llm.abort()
+    // 精确中止各线程自己的 LLM 请求：带 requestId 避免误杀同窗口内其他并发流
+    // （悬浮球 / 代码补全 / 场景工具 / 多 Agent 子任务等可能同时在运行）
+    const abortedRequestIds = threadIdsToAbort
+      .map(tid => store.threads[tid]?.executionMeta?.requestId)
+      .filter((id): id is string => Boolean(id))
+    if (abortedRequestIds.length > 0) {
+      for (const id of abortedRequestIds) api.llm.abort(id)
+    } else {
+      // 兜底：未取到 requestId 时中止本窗口全部请求，确保停止按钮始终生效
+      api.llm.abort()
+    }
 
     // 中断所有正在执行的 Agent 终端命令（如 npm install 等长命令）
     // 确保用户点击"结束对话"后，后台 shell 命令不再继续执行

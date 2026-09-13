@@ -2,13 +2,14 @@
  * 菜单系统桥接 Hook
  *
  * 职责：
- * 1. 监听主进程菜单命令（onExecuteCommand），分发到对应业务逻辑
- * 2. 将场景列表 + 当前激活场景同步到主进程（用于动态构建场景菜单）
- * 3. 监听主进程的场景请求，按需推送最新场景数据
+ * 1. 监听主进程菜单命令（onExecuteCommand）→ menuCommandDispatcher
+ * 2. 监听渲染进程自绘菜单本地事件（Windows/Linux）→ 同一分发器
+ * 3. 将场景列表 + 当前激活场景同步到主进程（用于动态构建场景菜单）
+ * 4. 监听主进程的场景请求，按需推送最新场景数据
  *
  * 与 useGlobalShortcuts 的分工：
  * - useGlobalShortcuts：处理键盘快捷键
- * - useMenuBridge：处理菜单点击（通过 IPC 命令）
+ * - useMenuBridge：处理菜单点击（原生菜单 IPC + 自绘菜单本地事件）
  *
  * 命令清单参见 src/main/menu/menuItems/*.ts 中的 commandId
  */
@@ -17,10 +18,14 @@ import { useEffect, useRef } from 'react'
 import { useStore } from '@store'
 import { api } from '../adapters/electronBridge'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
-import { scenarioLoader } from '@/scenarios'
 import { useAgentHistoryActions } from './useAgent'
-import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { logger } from '@toolkit/LogEngine'
+import {
+  dispatchMenuCommand,
+  MENU_EXECUTE_COMMAND_EVENT,
+  type MenuCommandContext,
+  type MenuExecuteCommandDetail,
+} from './menuCommandDispatcher'
 
 /** 需要主进程菜单派发的命令 ID */
 type MenuCommandId =
@@ -73,7 +78,7 @@ export function useMenuBridge(): void {
   const { clearMessages, clearCheckpoints } = useAgentHistoryActions()
 
   // 通过 ref 保持最新值，避免重新订阅 IPC
-  const stateRef = useRef({
+  const stateRef = useRef<MenuCommandContext>({
     language,
     setShowSettingsPage,
     setShowCommandPalette,
@@ -100,142 +105,30 @@ export function useMenuBridge(): void {
     clearCheckpoints,
   }
 
-  // 1. 监听主进程菜单命令
+  // 1. 监听菜单命令（原生菜单 IPC + 自绘菜单本地事件）
   useEffect(() => {
+    const handle = (commandId: string, payload?: unknown) => {
+      dispatchMenuCommand(stateRef.current, commandId, payload)
+    }
+
+    // 原生菜单：主进程 → 渲染进程
     const unsubscribe = api.onExecuteCommand((commandId: MenuCommandId, payload?: unknown) => {
-      const ctx = stateRef.current
-      try {
-        switch (commandId) {
-          // ===== 应用菜单 =====
-          case 'app.about':
-          case 'about':
-            ctx.setShowAbout(true)
-            break
-
-          // ===== 文件菜单 =====
-          case 'new-window':
-            api.window.new()
-            break
-          case 'open-folder':
-            api.workspace.open()
-            break
-          case 'add-folder':
-            api.workspace.addFolder()
-            break
-          case 'save-workspace': {
-            const { workspace } = useStore.getState()
-            if (workspace) {
-              api.workspace.save(workspace.configPath || '', workspace.roots).catch((err) => {
-                logger.system.error('[MenuBridge] Save workspace failed', err)
-              })
-            }
-            break
-          }
-          case 'save-file':
-            // 触发编辑器保存当前文件（通过全局事件）
-            window.dispatchEvent(new CustomEvent('editor:save-active-file'))
-            break
-          case 'refresh-files':
-            // 触发文件树刷新（FileExplorer 监听此事件）
-            window.dispatchEvent(
-              new CustomEvent('workspace:files-changed', { detail: { refreshRoot: true } }),
-            )
-            break
-          case 'settings':
-            ctx.setShowSettingsPage(true)
-            break
-
-          // ===== 视图菜单 =====
-          case 'workbench.action.showCommands':
-            ctx.setShowCommandPalette(true)
-            break
-          case 'workbench.action.quickOpen':
-            ctx.setShowQuickOpen(true)
-            break
-          case 'toggle-terminal':
-            ctx.toggleTerminal()
-            break
-          case 'toggle-ai-panel':
-            ctx.setChatVisible(true)
-            break
-          case 'workbench.action.toggleSidebar':
-            ctx.toggleSidebar()
-            break
-          case 'workbench.action.toggleDevTools':
-            api.window.toggleDevTools()
-            break
-
-          // ===== 场景菜单 =====
-          case 'scenario.switch': {
-            const scenarioId = (payload as { scenarioId?: string })?.scenarioId
-            if (scenarioId && scenarioLoader.has(scenarioId)) {
-              useStore.getState().set('activeScenarioId', scenarioId)
-            } else {
-              logger.system.warn(`[MenuBridge] Scenario not found: ${scenarioId}`)
-            }
-            break
-          }
-          case 'scenario.openManager':
-            // 打开场景管理侧边面板
-            ctx.setActiveSidePanel('scenarios')
-            break
-
-          // ===== 会话菜单 =====
-          case 'ai-chat':
-            // 显示聊天面板 + 创建新会话（与右上角"新对话"按钮一致）
-            ctx.setChatVisible(true)
-            useAgentStore.getState().createThread()
-            break
-          case 'ai-explain':
-            ctx.setChatVisible(true)
-            window.dispatchEvent(new CustomEvent('ai:explain-current-file'))
-            break
-          case 'ai-refactor':
-            ctx.setChatVisible(true)
-            window.dispatchEvent(new CustomEvent('ai:refactor-current-file'))
-            break
-          case 'ai-fix':
-            ctx.setChatVisible(true)
-            window.dispatchEvent(new CustomEvent('ai:fix-current-file'))
-            break
-          case 'ai-clear-history': {
-            const isZh = stateRef.current.language.toLowerCase().includes('zh')
-            const ok = window.confirm(
-              isZh
-                ? '确定要清除当前会话的所有消息吗？此操作不可撤销。'
-                : 'Clear all messages in the current conversation? This cannot be undone.',
-            )
-            if (ok) ctx.clearMessages()
-            break
-          }
-          case 'ai-clear-checkpoints': {
-            const isZh = stateRef.current.language.toLowerCase().includes('zh')
-            const ok = window.confirm(
-              isZh
-                ? '确定要清除所有检查点吗？此操作不可撤销。'
-                : 'Clear all checkpoints? This cannot be undone.',
-            )
-            if (ok) ctx.clearCheckpoints()
-            break
-          }
-
-          // ===== 帮助菜单 =====
-          case 'keyboard-shortcuts':
-            // 通过全局事件触发快捷键面板（AweeApp 监听）
-            window.dispatchEvent(new CustomEvent('app:show-keyboard-shortcuts'))
-            break
-
-          default:
-            logger.system.warn(`[MenuBridge] Unknown command: ${commandId}`)
-        }
-      } catch (err) {
-        logger.system.error(`[MenuBridge] Command failed: ${commandId}`, err)
-      }
+      handle(commandId, payload)
     })
+
+    // 自绘菜单（Windows/Linux）：渲染进程本地事件
+    const onLocalCommand = (event: Event) => {
+      const detail = (event as CustomEvent<MenuExecuteCommandDetail>).detail
+      if (detail?.commandId) handle(detail.commandId, detail.payload)
+    }
+    window.addEventListener(MENU_EXECUTE_COMMAND_EVENT, onLocalCommand)
+
     return () => {
       unsubscribe?.()
+      window.removeEventListener(MENU_EXECUTE_COMMAND_EVENT, onLocalCommand)
     }
   }, [])
+
 
   // 2. 场景列表同步到主进程
   useEffect(() => {

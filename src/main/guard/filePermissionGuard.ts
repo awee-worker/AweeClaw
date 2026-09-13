@@ -564,6 +564,113 @@ export function registerSecureFileHandlers(
     }
   })
 
+  // 保存 Excel 文件（xlsx/xls）— 将渲染进程传来的 sheet 数据写回文件
+  ipcMain.handle('file:saveXlsx', async (event, filePath: string, sheetData: any) => {
+    if (!filePath || typeof filePath !== 'string') return false
+    if (!sheetData || typeof sheetData !== 'object') return false
+
+    const workspace = getWorkspaceSessionFn(event)
+    const securityCheck = validateFileOperation(
+      filePath,
+      workspace,
+      OperationType.FILE_WRITE,
+    )
+    if (!securityCheck.passed) return false
+
+    try {
+      const ExcelJS = await import('exceljs')
+      const workbook = new ExcelJS.Workbook()
+
+      // 如果 sheetData 包含原始 xlsx 的 base64，先加载；否则创建新工作簿
+       if (sheetData._rawBase64) {
+        const buffer = Buffer.from(sheetData._rawBase64, 'base64')
+        // exceljs 类型定义中的 Buffer 为旧版无泛型接口，需显式断言（@types/node 22 泛型 Buffer 兼容）
+        await workbook.xlsx.load(buffer as unknown as Parameters<typeof workbook.xlsx.load>[0])
+        // 清除元数据字段
+        delete (sheetData as any)._rawBase64
+      }
+
+      // 遍历每个工作表数据
+      for (const [sheetName, sheetInfo] of Object.entries(sheetData)) {
+        if (sheetName === '_rawBase64' || typeof sheetInfo !== 'object') continue
+
+        let worksheet = workbook.getWorksheet(sheetName)
+        if (!worksheet) {
+          worksheet = workbook.addWorksheet(sheetName)
+        }
+
+        const info = sheetInfo as { rows?: Array<{ values: Array<string | null>; height?: number }>; merges?: Array<{ top: number; left: number; colSpan: number; rowSpan: number }> }
+        const rows = info?.rows
+        if (!rows || !Array.isArray(rows)) continue
+
+        // 恢复列宽
+        try {
+          const colInfo = (worksheet as any)._columns
+          if (colInfo) {
+            for (let i = 0; i < colInfo.length; i++) {
+              const col = worksheet.getColumn(i + 1)
+              if (col && colInfo[i]?.width) {
+                col.width = colInfo[i].width
+              }
+            }
+          }
+        } catch {
+          // 列宽恢复失败不影响数据写入
+        }
+
+        // 写入单元格值
+        for (let r = 0; r < rows.length; r++) {
+          const rowData = rows[r]
+          const excelRow = worksheet.getRow(r + 1)
+          // 恢复行高
+          if (rowData.height) {
+            excelRow.height = rowData.height / 1.333 // px → point
+          }
+          const values = rowData.values
+          if (Array.isArray(values)) {
+            for (let c = 0; c < values.length; c++) {
+              const cellValue = values[c]
+              if (cellValue !== undefined && cellValue !== null) {
+                excelRow.getCell(c + 1).value = cellValue
+              }
+            }
+          }
+        }
+
+        // 恢复合并单元格
+        const merges = info?.merges
+        if (merges && Array.isArray(merges)) {
+          for (const m of merges) {
+            try {
+              worksheet.mergeCells(m.top + 1, m.left + 1, m.top + m.rowSpan, m.left + m.colSpan)
+            } catch {
+              // 单合并操作失败不影响整体保存
+            }
+          }
+        }
+      }
+
+      const buffer = await workbook.xlsx.writeBuffer()
+      const success = await writeBinaryFileWithRetry(filePath, buffer as unknown as Buffer)
+      if (!success) {
+        logger.security.error('[File] save xlsx failed (retries exhausted):', filePath)
+        return false
+      }
+      logFileSuccess(OperationType.FILE_WRITE, filePath, {
+        size: (buffer as unknown as Uint8Array).length,
+        binary: true,
+      })
+      notifyFileChanged(getMainWindowFn, {
+        event: 'update',
+        path: filePath,
+      })
+      return true
+    } catch (err) {
+      logger.security.error('[File] save xlsx failed:', filePath, toAppError(err).message)
+      return false
+    }
+  })
+
   // 确保目录存在
   ipcMain.handle('file:ensureDir', async (event, dirPath: string) => {
     if (!dirPath) return false

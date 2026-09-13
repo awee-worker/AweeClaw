@@ -6,7 +6,7 @@
 
 import { useMemo, useState } from 'react'
 import { NotebookPen, Plus, Trash2, Search, Tag } from 'lucide-react'
-import { useNoteStore, uid } from '../stores'
+import { useNoteStore } from '../stores'
 
 export default function StudyNotes() {
   const { items, add, update, remove } = useNoteStore()

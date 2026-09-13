@@ -51,9 +51,9 @@ const PptPreview = safeNamedLazy(
   () => import('@renderer/components/workspace-editor/DocumentPreview'),
   'PptPreview', { label: 'PptPreview', silent: true },
 )
-const XlsxPreview = safeNamedLazy(
+const XlsxEditor = safeNamedLazy(
   () => import('@renderer/components/workspace-editor/DocumentPreview'),
-  'XlsxPreview', { label: 'XlsxPreview', silent: true },
+  'XlsxEditor', { label: 'XlsxEditor', silent: true },
 )
 const CsvPreview = safeNamedLazy(
   () => import('@renderer/components/workspace-editor/DocumentPreview'),
@@ -304,7 +304,7 @@ export function ProjectFilePreview({
             {fileType === 'doc' && <DocPreview path={file.path} />}
             {fileType === 'pptx' && <WorkspacePptxPreview path={file.path} />}
             {fileType === 'ppt' && <PptPreview path={file.path} />}
-            {fileType === 'xlsx' && <XlsxPreview path={file.path} />}
+            {fileType === 'xlsx' && <XlsxEditor path={file.path} />}
           </Suspense>
         )}
         {/* 二进制 / 未知类型不支持内联预览 */}

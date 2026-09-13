@@ -16,7 +16,8 @@ export function createAiApi() {
     // ── 消息发送 ──
     sendMessage: (params: LLMSendMessageParams) => invoke('llm:sendMessage')(params),
     compactContext: (params: LLMSendMessageParams) => invoke('llm:compactContext')(params),
-    abortMessage: send('llm:abort'),
+    // 传入 requestId 仅中止对应请求；不传则由主进程兜底中止该窗口全部请求
+    abortMessage: (requestId?: string) => send('llm:abort')(requestId),
 
     // ── 结构化输出 ──
     analyzeCode: (params: unknown) => invoke('llm:analyzeCode')(params),

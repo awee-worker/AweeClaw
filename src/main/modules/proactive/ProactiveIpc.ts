@@ -355,8 +355,22 @@ export function registerProactiveIpc(): void {
     }
   })
 
+  /**
+   * 手动触发 ProactiveLearner 校准（测试/调试用）
+   */
+  ipcMain.handle(`${IPC_PREFIX}calibrate`, async () => {
+    try {
+      const { proactiveLearner } = await import('./ProactiveLearner')
+      const snapshot = await proactiveLearner.calibrate()
+      return { success: true, data: snapshot }
+    } catch (e) {
+      logger.proactive?.error('[IPC] calibrate 失败:', e)
+      return errorResponse(e)
+    }
+  })
+
   logger.proactive?.info(
-    '[IPC] 主动式助手 IPC 处理器已注册（listProposals/recordFeedback/getStats/clearHistory/listFeedback/listAuditLogs/cleanupExpired/getPermissionConfig/updatePermissionConfig/resetPermissionConfig/initLlmRefiner/isLlmRefinerReady/resetLlmRefiner）',
+    '[IPC] 主动式助手 IPC 处理器已注册（listProposals/recordFeedback/getStats/clearHistory/listFeedback/listAuditLogs/cleanupExpired/getPermissionConfig/updatePermissionConfig/resetPermissionConfig/initLlmRefiner/isLlmRefinerReady/resetLlmRefiner/calibrate）',
   )
 
   // ============================================================

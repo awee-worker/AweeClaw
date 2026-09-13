@@ -114,7 +114,7 @@ export function callLLM(
     const onAbort = (): void => {
       if (settled) return
       try {
-        api.llm.abort()
+        api.llm.abort(requestId)
       } catch {
         /* noop */
       }

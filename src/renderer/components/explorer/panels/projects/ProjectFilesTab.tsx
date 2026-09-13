@@ -339,10 +339,17 @@ export function ProjectFilesTab({ workspacePaths, isZh }: ProjectFilesTabProps) 
   // 双击文件 / 头部「在编辑器中打开」→ 在工作区编辑器中打开（保留原能力）
   const handleOpenInEditor = useCallback(async (item: FileItem) => {
     if (item.isDirectory) return
+    const ext = item.path.split('.').pop()?.toLowerCase() || ''
+    const isDocumentFile = ['xlsx', 'xls', 'pdf', 'docx', 'doc', 'pptx', 'ppt'].includes(ext)
     try {
-      const content = await api.file.read(item.path)
-      if (content !== null) {
-        useStore.getState().openFile(item.path, content)
+      if (isDocumentFile) {
+        // 文档类文件由预览组件自行读取二进制内容，无需预读文本
+        useStore.getState().openFile(item.path, '')
+      } else {
+        const content = await api.file.read(item.path)
+        if (content !== null) {
+          useStore.getState().openFile(item.path, content)
+        }
       }
     } catch {
       // 忽略打开错误

@@ -650,7 +650,7 @@ ${params.useTools ? '3. 在 `src/tools/index.ts` 实现工具执行器（默认�
   /** 给 AI 的下一步建议 */
   private buildNextSteps(
     params: WizardParams,
-    type: 'declarative' | 'programmatic',
+    _type: 'declarative' | 'programmatic',
     useTools: boolean,
     useDatabase: boolean,
     useUi: boolean,

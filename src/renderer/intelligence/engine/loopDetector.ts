@@ -4,6 +4,7 @@ import { performanceMonitor, withRetry, isRetryableError } from '@toolkit'
 import { useAgentStore } from '../state/IntelligenceStore'
 import { useStore } from '@store'
 import { toolManager, initializeToolProviders, setToolLoadingContext, initializeTools } from '@intelligence/toolkit'
+import { isExternalAgentToolsExposed } from '@intelligence/toolkit/externalAgentToolsGate'
 import { getAgentConfig, READ_TOOLS } from '@intelligence/utils/intelligenceConfig'
 import { LoopDetector } from '@intelligence/utils/CycleDetector'
 import { getReadOnlyTools, isFileEditTool } from '@configuration/toolDefinitions'
@@ -11,10 +12,18 @@ import { pathStartsWith, joinPath } from '@shared/toolkit/pathHelper'
 import { createStreamProcessor } from './streamProcessor'
 import { orchestrateToolBatch as executeTools } from './toolOrchestrator'
 import { EventBus } from './EventDispatcher'
+import {
+  scheduleAutoResume,
+  resetAutoResumeCounter,
+  scheduleFreeModeContinuation,
+  resetFreeModeRounds,
+  MAX_FREE_MODE_ROUNDS,
+} from './autoResume'
 import { estimateMessagesTokens } from '../capabilities/context/ContextCompressor'
 import { lintService } from '../runtime/codeAnalysisService'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { getActiveCustomAgent, getAgentToolLoadingFields } from '@renderer-configuration/customAgentTools'
+import { isSceneToolsIntentFromMessages } from '@intelligence/utils/sceneToolsIntent'
 import { resolveRelativeChangePath, isFileWriteToolResult } from '@intelligence/utils/fileMutationHelper'
 import { isCodeFile } from '@intelligence/toolkit/fileReadPolicies'
 import { composerService } from '@intelligence/runtime/composerEngine'
@@ -443,6 +452,13 @@ async function detectLintIssues(toolCalls: ToolCall[], workspacePath: string): P
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* 异常中断自动续接                                                   */
+/* 实现已抽到 ./autoResume，供单 Agent 主循环与多 Agent 协作共用       */
+/* （scheduleAutoResume / resetAutoResumeCounter / dispatchContinuation）*/
+/* ------------------------------------------------------------------ */
+
+
 export async function executeAgentCycle(
   config: LLMConfig,
   llmMessages: LLMMessage[],
@@ -496,6 +512,10 @@ export async function executeAgentCycle(
     scenarioToolPacks,
     scenarioTools,
     isChannel: context.isChannel,
+    // 场景工具按需暴露：仅当用户最新消息带有明确的场景数据记录/查询/管理意图时
+    // 才对 LLM 可见；执行任务/开发时 AI 任务跟踪应使用系统内置 todo_write 等（致命问题 #4）
+    sceneToolsEnabled: isSceneToolsIntentFromMessages(llmMessages),
+    externalAgentEnabled: isExternalAgentToolsExposed(),
     ...agentToolFields,
   })
 
@@ -533,19 +553,56 @@ export async function executeAgentCycle(
     )
 
     if (finalResult.error) {
+      // 区分「用户主动停止」与「异常中断」：此前一律提示「模型错误」且无续接入口，
+      // 与其他中断分支不一致，用户看到 AI 无提示停下（连「继续」按钮都没有）。
+      const aborted = Boolean(context.abortSignal?.aborted)
+        || /aborted|abort|已取消|已中止|interrupt/i.test(finalResult.error)
       logger.agent.error('[Loop] Soft-limit recovery failed:', finalResult.error)
+      threadStore.updateExecutionMeta({ loopState: aborted ? 'aborted' : 'failed' })
       threadStore.addSystemAlertPart(assistantId, {
-        alertType: 'error',
-        title: getLocalizedText(language, '模型错误', 'Model Error'),
-        message: finalResult.error,
+        alertType: aborted ? 'warning' : 'error',
+        title: aborted
+          ? getLocalizedText(language, '执行已停止', 'Execution Stopped')
+          : getLocalizedText(language, '模型错误', 'Model Error'),
+        message: aborted
+          ? getLocalizedText(language, '本次执行已中断，任务尚未完成。', 'This execution was interrupted before the task completed.')
+          : finalResult.error,
+        suggestion: getLocalizedText(language, '可点击继续以续接未完成的任务。', 'Click Continue to resume the unfinished task.'),
+        action: { label: getLocalizedText(language, '继续', 'Continue'), actionType: 'continue' },
       })
-      threadStore.updateExecutionMeta({ loopState: 'failed' })
-      EventBus.emit({ type: 'loop:end', reason: 'error', threadId, assistantId, requestId, planTaskId: context.planTaskId })
+      EventBus.emit({ type: 'loop:end', reason: aborted ? 'aborted' : 'error', threadId, assistantId, requestId, planTaskId: context.planTaskId })
+
+      // 非用户主动停止的异常中断 → 自动续接（内部限次），避免用户被迫手动点「继续」
+      if (!aborted) {
+        scheduleAutoResume(threadId, 'soft-limit-recovery-failed')
+      }
       return
     }
 
     threadStore.updateExecutionMeta({ loopState: 'completed' })
     EventBus.emit({ type: 'loop:end', reason: 'complete', threadId, assistantId, requestId, planTaskId: context.planTaskId })
+  }
+
+  /**
+   * 以「被中止」收尾：更新 loopState 并给出明确提示。
+   * 此前 abort 分支是静默 break —— 既无任何提示，loopState 还停留在 'running'，
+   * 导致用户看到"AI 无原因自行中断"，且断点续接/状态判断均失准。
+   */
+  const concludeAsAborted = (): void => {
+    const { language } = useStore.getState()
+    logger.agent.warn('[Loop] Aborted, concluding with user-visible notice')
+    resetAutoResumeCounter(threadId)
+    resetFreeModeRounds(threadId)
+    threadStore.updateExecutionMeta({ loopState: 'aborted' })
+    threadStore.addSystemAlertPart(assistantId, {
+      alertType: 'warning',
+      title: getLocalizedText(language, '执行已停止', 'Execution Stopped'),
+      message: getLocalizedText(language, '本次执行已中断，任务尚未完成。', 'This execution was interrupted before the task completed.'),
+      suggestion: getLocalizedText(language, '可点击继续以续接未完成的任务。', 'Click Continue to resume the unfinished task.'),
+      compact: true,
+      action: { label: getLocalizedText(language, '继续', 'Continue'), actionType: 'continue' },
+    })
+    EventBus.emit({ type: 'loop:end', reason: 'aborted', threadId, assistantId, requestId, planTaskId: context.planTaskId })
   }
 
   const prunePendingToolInvocations = (toolCallsToClear?: Array<{ id: string }>) => {
@@ -576,13 +633,18 @@ export async function executeAgentCycle(
     })
   }
 
-  while (shouldContinue && iteration < maxIterations && !context.abortSignal?.aborted) {
+  // ⚠️ 循环条件刻意不包含 abortSignal 检查：abort 的回调只在 await 让出时执行，
+  //    若把中止判定放在 while 条件里，一旦中止发生在循环体尾部（如工具执行完成后），
+  //    条件会直接失败退出循环 —— 既不调用 concludeAsAborted()，也不发 loop:end，
+  //    表现为「AI 无任何提示自行中断」且 loopState 卡在 running。
+  //    中止判定统一放在循环体内（模型调用前后、工具执行后），确保总能收尾。
+  while (shouldContinue && iteration < maxIterations) {
     iteration++
     shouldContinue = false
     EventBus.emit({ type: 'loop:iteration', count: iteration, threadId, assistantId, requestId, planTaskId: context.planTaskId })
 
     if (context.abortSignal?.aborted) {
-      EventBus.emit({ type: 'loop:end', reason: 'aborted', threadId, assistantId, requestId, planTaskId: context.planTaskId })
+      concludeAsAborted()
       break
     }
 
@@ -612,7 +674,7 @@ export async function executeAgentCycle(
     )
 
     if (context.abortSignal?.aborted) {
-      EventBus.emit({ type: 'loop:end', reason: 'aborted', threadId, assistantId, requestId, planTaskId: context.planTaskId })
+      concludeAsAborted()
       break
     }
 
@@ -878,21 +940,37 @@ export async function executeAgentCycle(
             // 通用错误 → 重试按钮；若错误消息包含配额关键词，追加升级套餐按钮
             const errMsg = (result.error || '').toLowerCase()
             const isQuotaRelated = errMsg.includes('配额') || errMsg.includes('quota') || errMsg.includes('额度')
+            // 识别"被意外中止"（非用户主动停止）场景：给出明确的中断说明 + 续接入口，
+            // 而不是笼统的"模型错误"，避免用户以为 AI 无原因自行中断。
+            const interrupted = /aborted|abort|已取消|已中止|interrupt/i.test(result.error || '')
             threadStore.addSystemAlertPart(assistantId, {
-              alertType: 'error',
-              title: getLocalizedText(language, '模型错误', 'Model Error'),
+              alertType: interrupted ? 'warning' : 'error',
+              title: interrupted
+                ? getLocalizedText(language, '响应已中断', 'Response Interrupted')
+                : getLocalizedText(language, '模型错误', 'Model Error'),
               message: result.error || 'Unknown error',
-              suggestion: errorSuggestion,
+              suggestion: interrupted
+                ? getLocalizedText(language, '响应被意外中止（非您主动停止），任务未完成。可点击继续以续接。', 'The response was aborted unexpectedly (not by you). The task is incomplete — click Continue to resume.')
+                : errorSuggestion,
               actions: isQuotaRelated
                 ? [
                     { label: getLocalizedText(language, '重试', 'Retry'), actionType: 'retry' },
                     { label: getLocalizedText(language, '升级套餐', 'Upgrade Plan'), actionType: 'upgrade' },
                   ]
                 : undefined,
-              action: !isQuotaRelated
-                ? { label: getLocalizedText(language, '重试', 'Retry'), actionType: 'retry' }
-                : undefined,
+              action: interrupted
+                ? { label: getLocalizedText(language, '继续', 'Continue'), actionType: 'continue' }
+                : !isQuotaRelated
+                  ? { label: getLocalizedText(language, '重试', 'Retry'), actionType: 'retry' }
+                  : undefined,
             })
+
+            // 非用户主动停止的「意外中止」→ 自动续接，避免用户看到 AI 无提示停下、
+            // 也避免用户被迫手动点「继续」。（用户点停止时 abortSignal 已 aborted，
+            // 早在上方 abort 检查处即走 concludeAsAborted 收尾，不会进入此分支。）
+            if (interrupted && !context.abortSignal?.aborted) {
+              scheduleAutoResume(threadId, 'error-interrupted')
+            }
           }
         }
         threadStore.updateExecutionMeta({ loopState: 'failed' })
@@ -913,19 +991,24 @@ export async function executeAgentCycle(
       // 传入 llmMessages：压缩检查发现上下文超限（L2+）且 AI 仍要继续执行时，
       // 会就地清理较早的低价值工具结果，确保下一轮 LLM 请求不超限 ——
       // 压缩后 AI 直接基于压缩后的上下文继续执行，绝不中断主循环。
-      await runCompressionCheck(
-        usage,
-        contextLimit,
-        threadStore,
-        threadId,
-        context,
-        assistantId,
-        enableLLMSummary,
-        autoHandoff,
-        budgetController,
-        (result.toolCalls?.length ?? 0) > 0,
-        llmMessages
-      )
+      // 压缩检查内部含摘要/上下文交接等重逻辑，失败不应中断主循环
+      try {
+        await runCompressionCheck(
+          usage,
+          contextLimit,
+          threadStore,
+          threadId,
+          context,
+          assistantId,
+          enableLLMSummary,
+          autoHandoff,
+          budgetController,
+          (result.toolCalls?.length ?? 0) > 0,
+          llmMessages
+        )
+      } catch (compressionErr) {
+        logger.agent.warn('[Loop] Compression check failed, continuing main loop:', compressionErr)
+      }
     } else {
       logger.agent.warn('[Loop] No valid usage data from LLM, using estimated tokens')
 
@@ -948,19 +1031,24 @@ export async function executeAgentCycle(
       // 传入 llmMessages：压缩检查发现上下文超限（L2+）且 AI 仍要继续执行时，
       // 会就地清理较早的低价值工具结果，确保下一轮 LLM 请求不超限 ——
       // 压缩后 AI 直接基于压缩后的上下文继续执行，绝不中断主循环。
-      await runCompressionCheck(
-        usage,
-        contextLimit,
-        threadStore,
-        threadId,
-        context,
-        assistantId,
-        enableLLMSummary,
-        autoHandoff,
-        budgetController,
-        (result.toolCalls?.length ?? 0) > 0,
-        llmMessages
-      )
+      // 压缩检查内部含摘要/上下文交接等重逻辑，失败不应中断主循环
+      try {
+        await runCompressionCheck(
+          usage,
+          contextLimit,
+          threadStore,
+          threadId,
+          context,
+          assistantId,
+          enableLLMSummary,
+          autoHandoff,
+          budgetController,
+          (result.toolCalls?.length ?? 0) > 0,
+          llmMessages
+        )
+      } catch (compressionErr) {
+        logger.agent.warn('[Loop] Compression check failed, continuing main loop:', compressionErr)
+      }
     }
 
     if (!result.toolCalls || result.toolCalls.length === 0) {
@@ -988,6 +1076,33 @@ export async function executeAgentCycle(
         continue
       }
 
+      // 细化结束状态：无工具调用但也没有任何可见输出 → 判为"异常中断"而非"正常完成"。
+      // 否则流被异常截断（完全无输出，或内容被过滤后为空）会被误判为任务已完成，
+      // 用户看到 AI 无提示停下，且断点续接逻辑认为已正常结束而不予续接。
+      const hasVisibleOutput = Boolean(
+        (result.content && result.content.trim()) || (result.reasoning && result.reasoning.trim()),
+      )
+      if (!hasVisibleOutput) {
+        const { language } = useStore.getState()
+        logger.agent.warn('[Loop] Ended with no tool calls and no visible output → treating as interrupted')
+        threadStore.addSystemAlertPart(assistantId, {
+          alertType: 'warning',
+          title: getLocalizedText(language, '执行中断', 'Execution Interrupted'),
+          message: getLocalizedText(language, 'AI 在未产生任何输出时中断了本次执行。', 'The AI stopped without producing any output.'),
+          suggestion: getLocalizedText(language, '可直接点击继续，或重新发送以续接任务。', 'Click Continue, or resend to resume the task.'),
+          action: { label: getLocalizedText(language, '继续', 'Continue'), actionType: 'continue' },
+        })
+        threadStore.updateExecutionMeta({ loopState: 'aborted' })
+        EventBus.emit({ type: 'loop:end', reason: 'interrupted', threadId, assistantId, requestId, planTaskId: context.planTaskId })
+
+        // 异常中断非用户意愿 → 自动续接（内部限次），避免用户看到 AI 无提示停下
+        scheduleAutoResume(threadId, 'interrupted')
+        break
+      }
+
+      resetAutoResumeCounter(threadId)
+      // 任务收尾（有可见输出）→ 新一轮任务的自由模式轮次预算重新计数
+      resetFreeModeRounds(threadId)
       threadStore.updateExecutionMeta({ loopState: 'completed' })
       EventBus.emit({ type: 'loop:end', reason: 'complete', threadId, assistantId, requestId, planTaskId: context.planTaskId })
       break
@@ -1065,23 +1180,42 @@ export async function executeAgentCycle(
     }
     llmMessages.push(assistantLLMMsg)
 
-    const { results: toolResults, userRejected } = await executeTools(
-      result.toolCalls,
-      {
-        workspacePath: context.workspacePath,
-        currentAssistantId: assistantId,
-        assistantId,
-        threadId,
-        requestId,
-        chatMode: context.chatMode,
-        checkpointId: context.checkpointId,
-      },
-      threadStore,
-      context.abortSignal
-    )
+    // 工具编排整体加保护：orchestrateToolBatch 内部的文件快照、审批派发等步骤位于
+    // 单工具 try/catch 之外，若抛出会直接窜出主循环 —— 越过尾部的终态兜底，
+    // 表现为「AI 无提示停下」且 loopState 卡在 running。
+    // 这里把编排级异常降级为工具错误结果回传给模型，让 AI 自行修正并继续推进主线。
+    let toolResults: Awaited<ReturnType<typeof executeTools>>['results'] = []
+    let userRejected = false
+    try {
+      const batchOutcome = await executeTools(
+        result.toolCalls,
+        {
+          workspacePath: context.workspacePath,
+          currentAssistantId: assistantId,
+          assistantId,
+          threadId,
+          requestId,
+          chatMode: context.chatMode,
+          checkpointId: context.checkpointId,
+        },
+        threadStore,
+        context.abortSignal
+      )
+      toolResults = batchOutcome.results
+      userRejected = batchOutcome.userRejected
+    } catch (toolExecError) {
+      const toolExecMessage = toolExecError instanceof Error ? toolExecError.message : String(toolExecError)
+      logger.agent.error('[Loop] Tool orchestration threw, degrading to tool error results:', toolExecError)
+      threadStore.setStreamPhase('streaming')
+      threadStore.setStreamState({ streamDetail: 'reasoning' })
+      toolResults = result.toolCalls.map(tc => ({
+        toolCall: tc,
+        result: { content: `Error: tool orchestration failed — ${toolExecMessage}` },
+      }))
+    }
 
     if (context.abortSignal?.aborted) {
-      EventBus.emit({ type: 'loop:end', reason: 'aborted', threadId, assistantId, requestId, planTaskId: context.planTaskId })
+      concludeAsAborted()
       break
     }
 
@@ -1189,7 +1323,13 @@ export async function executeAgentCycle(
     }
 
     if (enableAutoFix && !userRejected && context.workspacePath) {
-      const lintIssueReport = await detectLintIssues(result.toolCalls, context.workspacePath)
+      // 自动修复检查涉及文件读写与 lint 服务，失败不应中断主循环
+      let lintIssueReport: Awaited<ReturnType<typeof detectLintIssues>> = null
+      try {
+        lintIssueReport = await detectLintIssues(result.toolCalls, context.workspacePath)
+      } catch (lintErr) {
+        logger.agent.warn('[Loop] Lint auto-check failed, continuing main loop:', lintErr)
+      }
       if (lintIssueReport) {
         threadStore.addLintCheckPart(assistantId)
         threadStore.updateLintCheckPart(assistantId, {
@@ -1226,13 +1366,27 @@ export async function executeAgentCycle(
       logger.agent.info('[Loop] Free mode: auto-continue after max iterations')
       threadStore.updateExecutionMeta({ loopState: 'completed' })
       EventBus.emit({ type: 'loop:end', reason: 'max_iterations', threadId, assistantId, requestId, planTaskId: context.planTaskId })
-      // 延迟派发事件，等待 IntelligenceCore.finalizeExecution 清理 runningTasks 执行锁后再触发新一轮
-      if (typeof window !== 'undefined') {
-        setTimeout(() => {
-          window.dispatchEvent(new CustomEvent('chat-send-message', {
-            detail: { content: '继续执行未完成的任务', messageId: '' }
-          }))
-        }, 100)
+      // 等待执行锁释放后再触发新一轮（轮询 isRunning，避免 "Thread already running" 静默失败）。
+      // ⚠️ 连续轮次有硬上限：若 AI 每轮都跑满却不收尾（任务发散/死循环），
+      //    无限自动续接会持续烧额度与时间；达到上限即停止自动续接并交还用户。
+      if (!scheduleFreeModeContinuation(threadId)) {
+        const { language } = useStore.getState()
+        threadStore.addSystemAlertPart(assistantId, {
+          alertType: 'warning',
+          title: getLocalizedText(language, '已暂停自动继续', 'Auto-continue Paused'),
+          message: getLocalizedText(
+            language,
+            `自由模式已连续自动执行 ${MAX_FREE_MODE_ROUNDS} 轮仍未收尾，为避免持续消耗额度，已暂停自动继续。`,
+            `Free mode has auto-continued ${MAX_FREE_MODE_ROUNDS} rounds without finishing. Auto-continue was paused to avoid draining your quota.`,
+          ),
+          suggestion: getLocalizedText(
+            language,
+            '请确认任务是否陷入循环；可补充更明确的要求，或点击继续再推进一轮。',
+            'Please check whether the task is looping. Add clearer instructions, or click Continue to run one more round.',
+          ),
+          action: { label: getLocalizedText(language, '继续', 'Continue'), actionType: 'continue' },
+        })
+        EventBus.emit({ type: 'loop:warning', message: 'Free-mode auto-continue cap reached', threadId, assistantId, requestId, planTaskId: context.planTaskId })
       }
     } else {
       const { language } = useStore.getState()
@@ -1252,8 +1406,22 @@ export async function executeAgentCycle(
       })
       EventBus.emit({ type: 'loop:warning', message: 'Max iterations reached', threadId, assistantId, requestId, planTaskId: context.planTaskId })
 
+      // 本轮到上限后交还用户（点「继续」推进），重置续接预算，下一轮重新计数
+      resetAutoResumeCounter(threadId)
+      resetFreeModeRounds(threadId)
       threadStore.updateExecutionMeta({ loopState: 'completed' })
       EventBus.emit({ type: 'loop:end', reason: 'max_iterations', threadId, assistantId, requestId, planTaskId: context.planTaskId })
+    }
+  }
+
+  // 兜底收尾：若主循环从异常路径静默退出（未达上限、未走任何 break 收尾），
+  // executionMeta.loopState 会停留在 'running'。此时补一次「异常中断」处理，
+  // 避免用户看到「AI 无提示自行停下」，并保证断点续接能识别未完成状态。
+  if (iteration < maxIterations) {
+    const metaAfterLoop = useAgentStore.getState().threads[threadId]?.executionMeta
+    if (metaAfterLoop?.loopState === 'running') {
+      logger.agent.warn('[Loop] Loop exited without terminal state → concluding as interrupted')
+      concludeAsAborted()
     }
   }
 

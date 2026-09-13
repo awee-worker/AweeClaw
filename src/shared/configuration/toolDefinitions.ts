@@ -487,6 +487,117 @@ For long-running servers or watch tasks:
         },
     },
 
+    external_agent_delegate: {
+        name: 'external_agent_delegate',
+        displayName: 'External Agent Delegate',
+        description: 'Delegate a coding task to an external autonomous AI coding agent (Claude Code / Codex CLI). The agent runs in a sandboxed workspace directory with its own tool loop, file editing and test execution. Returns the final result and a session id for resuming. Use only when the user explicitly asks to use an external agent, or for large multi-file coding tasks where a dedicated coding agent is preferred.',
+        detailedDescription: `Delegate a task to an external coding agent.
+- The external agent (Claude Code / Codex CLI) is a full autonomous coding agent: it plans, edits files, runs tests, and reports back
+- It runs in the given workdir (must be inside the current workspace) with a permission mode
+- The call blocks until the agent finishes (may take minutes); progress is streamed to the UI
+- Returns: success, final output, and a session id (pass to resume_session to continue the same task later)
+- Prefer the built-in tools (edit_file, run_command, ...) for small changes; use this only for substantial coding work`,
+        examples: [
+            'external_agent_delegate agent="claude-code" task="Add input validation and unit tests to the login form" workdir="src"',
+            'external_agent_delegate agent="codex" task="Fix the failing CI test" permission_mode="acceptEdits"',
+        ],
+        criticalRules: [
+            'Only use when the user explicitly requests an external agent or for large multi-file coding tasks',
+            'workdir MUST be a directory inside the current workspace (relative paths are resolved against the workspace root)',
+            'Default permission_mode is "acceptEdits"; use "planOnly" for review-only, "bypass" only with explicit user consent',
+            'The call may run for minutes; do NOT retry it on apparent slowness',
+        ],
+        category: 'terminal',
+        // 'dangerous'：外部 Agent 拥有文件编辑 + 命令执行权限（等效 run_command 高危），
+        // dangerous-only 授权模式下必须经用户确认；不可用 'terminal'（会被 autoApprove.terminal 静默放行）
+        approvalType: 'dangerous',
+        parallel: false,
+        concurrencyMode: 'approval-gated',
+        resourceScope: ['process:external-agent'],
+        resultSemantics: 'command',
+        retryPolicy: { maxAttempts: 1 },
+        validationLevel: 'semantic',
+        requiresWorkspace: true,
+        enabled: true,
+        parameters: {
+            agent: {
+                type: 'string',
+                description: 'External agent id: "claude-code" (Claude Code CLI), "codex" (Codex CLI), or "cursor" (Cursor headless CLI).',
+                required: true,
+                enum: ['claude-code', 'codex', 'cursor'],
+            },
+            task: {
+                type: 'string',
+                description: 'Natural-language task description to hand to the external agent (be specific about goals and acceptance criteria).',
+                required: true,
+            },
+            workdir: {
+                type: 'string',
+                description: 'Working directory for the agent, relative to the workspace root (default: "." for the workspace root). Must stay inside the workspace.',
+                default: '.',
+            },
+            permission_mode: {
+                type: 'string',
+                description: 'Permission level: "default" (agent may read), "acceptEdits" (agent may edit files), "planOnly" (agent only plans), "bypass" (no approvals, dangerous). Default "acceptEdits".',
+                enum: ['default', 'acceptEdits', 'planOnly', 'bypass'],
+            },
+            resume_session: {
+                type: 'string',
+                description: 'Optional session id from a previous run to continue that task (resumes context).',
+            },
+            timeout_ms: {
+                type: 'number',
+                description: 'Optional max runtime in ms (default 30 minutes).',
+            },
+        },
+    },
+
+    external_agent_status: {
+        name: 'external_agent_status',
+        displayName: 'External Agent Status',
+        description: 'Check the status/result of a delegated external agent run by its request id. Use after external_agent_delegate to poll progress or retrieve the final result without waiting.',
+        category: 'terminal',
+        approvalType: 'none',
+        parallel: true,
+        concurrencyMode: 'parallel-safe',
+        resourceScope: ['process:external-agent'],
+        resultSemantics: 'command',
+        retryPolicy: { maxAttempts: 1 },
+        validationLevel: 'schema',
+        requiresWorkspace: false,
+        enabled: true,
+        parameters: {
+            request_id: {
+                type: 'string',
+                description: 'The requestId returned by external_agent_delegate',
+                required: true,
+            },
+        },
+    },
+
+    external_agent_abort: {
+        name: 'external_agent_abort',
+        displayName: 'External Agent Abort',
+        description: 'Abort a running external agent run by its request id. Use when the user asks to stop it or when it is clearly stuck.',
+        category: 'terminal',
+        approvalType: 'none',
+        parallel: false,
+        concurrencyMode: 'approval-gated',
+        resourceScope: ['process:external-agent'],
+        resultSemantics: 'command',
+        retryPolicy: { maxAttempts: 1 },
+        validationLevel: 'schema',
+        requiresWorkspace: false,
+        enabled: true,
+        parameters: {
+            request_id: {
+                type: 'string',
+                description: 'The requestId to abort',
+                required: true,
+            },
+        },
+    },
+
     read_terminal_output: {
         name: 'read_terminal_output',
         displayName: 'Read Terminal',

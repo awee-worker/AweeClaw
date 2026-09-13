@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { Settings, Compass, LogIn, ChevronUp, CloudSync, Info, MessageSquare, Plus, MoreHorizontal, Edit2, Trash2, LogOut, UserCircle, Wallet, History, Clock, Puzzle, Blocks } from 'lucide-react'
+import { Settings, Compass, LogIn, ChevronUp, CloudSync, Info, MessageSquare, MessageSquarePlus, Plus, MoreHorizontal, Edit2, Trash2, LogOut, UserCircle, Wallet, History, Clock, Puzzle, Blocks } from 'lucide-react'
 import { HintOverlay } from '../ui/HintOverlay'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
@@ -32,6 +32,12 @@ const DEFAULT_ITEMS: SidebarItemDescriptor[] = [
   { id: 'explorer', icon: 'Files', label: 'Workspace', labelZh: '工作区', component: 'ExplorerView', position: 0 },
   { id: 'knowledge', icon: 'BookOpen', label: 'Knowledge', labelZh: '知识库', component: 'KnowledgeView', position: 1 },
 ]
+
+// 导航栏隐藏的菜单项（按需求隐藏：工作区 / 知识库 / 任务）
+// 这些入口仍注册在 PanelRegistry 中，可被代码激活（如「新建任务」打开 explorer）
+const HIDDEN_NAV_ITEM_IDS = new Set<string>(['explorer', 'knowledge', 'tasks'])
+// 场景工具入口是否在导航栏显示（按需求暂时隐藏）
+const SHOW_SCENE_TOOLS_ENTRY = false
 
 function NavPill({ active }: { active: boolean }) {
   return (
@@ -367,6 +373,7 @@ export default function NavigationRail() {
     activeScenarioId,
     navRailExpanded,
     showSettingsPage,
+    showWelcomePage,
     showUserProfilePage,
     isAuthenticated,
     cloudUser,
@@ -384,6 +391,7 @@ export default function NavigationRail() {
     openInternalBrowser,
     activeCustomMenuId,
     closeInternalBrowser,
+    setChatVisible,
   } = useStore(useShallow(s => ({
     activeSidePanel: s.activeSidePanel,
     setActiveSidePanel: s.setActiveSidePanel,
@@ -393,6 +401,7 @@ export default function NavigationRail() {
     activeScenarioId: s.activeScenarioId,
     navRailExpanded: s.navRailExpanded,
     showSettingsPage: s.showSettingsPage,
+    showWelcomePage: s.showWelcomePage,
     showUserProfilePage: s.showUserProfilePage,
     isAuthenticated: s.isAuthenticated,
     cloudUser: s.cloudUser,
@@ -410,11 +419,12 @@ export default function NavigationRail() {
     openInternalBrowser: s.openInternalBrowser,
     activeCustomMenuId: s.activeCustomMenuId,
     closeInternalBrowser: s.closeInternalBrowser,
+    setChatVisible: s.setChatVisible,
   })))
 
   const currentThreadId = useAgentStore(state => state.currentThreadId)
   const allThreads = useAllThreads()
-  const { switchThread, deleteThread, createThread, renameThread } = useAgentActions()
+  const { switchThread, deleteThread, renameThread, createThread } = useAgentActions()
 
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [showLoginModal, setShowLoginModal] = useState(false)
@@ -448,6 +458,7 @@ export default function NavigationRail() {
   // 合并插件贡献的侧边栏面板（来自 PluginUiRegistry）
   const { sidebarItems: pluginSidebarItems } = usePluginExtensions()
   const sidebarItems = [...scenarioSidebarItems, ...pluginSidebarItems]
+    .filter(item => !HIDDEN_NAV_ITEM_IDS.has(item.id))
 
   const p = BRAND.cssPrefix
 
@@ -464,6 +475,26 @@ export default function NavigationRail() {
     setShowWorkflow(false)
     closeInternalBrowser()
   }, [setActiveSidePanel, setShowWelcomePage, setShowWorkflow, closeInternalBrowser])
+
+  // 新建任务：新建对话（聊天界面）并进入「新建任务页面」。
+  // 若当前已选择工作区，则默认打开工作区文件面板；未选择工作区时不打开，避免出现空面板。
+  const handleNewTask = useCallback(() => {
+    if (useStore.getState().workspace?.roots?.length) {
+      setActiveSidePanel('explorer')
+    }
+    closeAllFullPages()
+    setChatVisible(true)
+    closeInternalBrowser()
+    createThread()
+  }, [setActiveSidePanel, closeAllFullPages, setChatVisible, closeInternalBrowser, createThread])
+
+  // 仪表盘（欢迎页）选中态
+  const isDashboardActive = showWelcomePage
+
+  // 新建任务不参与高亮：它是动作入口（打开工作区文件面板 + 新建会话），
+  // 当前会话的选中态统一由下方历史会话列表体现（currentThreadId === thread.id）。
+  // 若绑定 activeSidePanel === 'explorer'，会导致仅打开工作区面板时误高亮。
+  const newTaskActive = false
 
   const handleSettingsClick = useCallback(() => {
     setActiveSidePanel(null)
@@ -541,10 +572,6 @@ export default function NavigationRail() {
     setShowAbout(true)
   }, [setShowAbout])
 
-  const handleNewThread = useCallback(() => {
-    createThread()
-  }, [createThread])
-
   const handleRenameThread = useCallback((threadId: string) => {
     const thread = useAgentStore.getState().threads[threadId]
     if (thread) {
@@ -607,6 +634,12 @@ export default function NavigationRail() {
         }
         .${p}-nav-rail-brand:hover {
           background: rgb(var(--text-primary) / 0.06);
+        }
+        .${p}-nav-rail-brand[data-active="true"] {
+          background: rgba(var(--accent), 0.08);
+        }
+        .${p}-nav-rail-brand[data-active="true"] .${p}-nav-rail-brand-name {
+          color: rgb(var(--accent));
         }
         .${p}-nav-rail[data-expanded="false"] .${p}-nav-rail-brand {
           justify-content: center;
@@ -823,25 +856,56 @@ export default function NavigationRail() {
       `}</style>
 
       {navRailExpanded ? (
-        <div className={`${p}-nav-rail-brand`} onClick={handleBrandClick}>
+        <div className={`${p}-nav-rail-brand`} data-active={isDashboardActive} onClick={handleBrandClick}>
           <div className={`${p}-nav-rail-brand-icon`}>
             <Logo className="w-full h-full" />
           </div>
-          <span className={`${p}-nav-rail-brand-name`}>工作台</span>
+          <span className={`${p}-nav-rail-brand-name`}>仪表盘</span>
         </div>
       ) : (
-        <div className={`${p}-nav-rail-brand`} onClick={handleBrandClick}>
+        <div className={`${p}-nav-rail-brand`} data-active={isDashboardActive} onClick={handleBrandClick}>
           <div className={`${p}-nav-rail-brand-icon`}>
             <Logo className="w-full h-full" />
           </div>
         </div>
       )}
 
+      {/* 新建任务：所有场景共有的固定入口，点击进入新对话并打开工作区面板 */}
+      {navRailExpanded ? (
+        <button
+          onClick={handleNewTask}
+          className={`${p}-nav-rail-item hover:bg-text-primary/[0.06]`}
+          data-active={newTaskActive}
+        >
+          <MessageSquarePlus
+            className={`w-[18px] h-[18px] transition-all duration-200 flex-shrink-0 ${newTaskActive ? 'scale-105' : 'opacity-60'}`}
+            strokeWidth={newTaskActive ? 2 : 1.5}
+          />
+          <span className={`${p}-nav-rail-label ${newTaskActive ? 'text-accent' : ''}`}>
+            {language === 'zh' ? '新建任务' : 'New Task'}
+          </span>
+        </button>
+      ) : (
+        <HintOverlay content={language === 'zh' ? '新建任务' : 'New Task'} side="right" delay={400}>
+          <button
+            onClick={handleNewTask}
+            className={`${p}-nav-rail-item hover:bg-text-primary/[0.06]`}
+            data-active={newTaskActive}
+          >
+            <NavPill active={newTaskActive} />
+            <MessageSquarePlus
+              className={`w-[18px] h-[18px] transition-all duration-200 ${newTaskActive ? 'scale-105' : 'opacity-60'}`}
+              strokeWidth={newTaskActive ? 2 : 1.5}
+            />
+          </button>
+        </HintOverlay>
+      )}
+
       <div className="flex-shrink-0 w-full flex flex-col gap-0.5">
         {sidebarItems.map((item) => {
           const IconComponent = getLucideIcon(item.icon)
           const label = language === 'zh' ? item.labelZh : item.label
-          const isActive = !showSettingsPage && !showUserProfilePage && activeSidePanel === item.id
+          const isActive = !showWelcomePage && !showSettingsPage && !showUserProfilePage && activeSidePanel === item.id
           return navRailExpanded ? (
             <button
               key={item.id}
@@ -875,9 +939,9 @@ export default function NavigationRail() {
         })}
       </div>
 
-      {/* 场景工具入口：随场景模式提供内置工具面板 */}
-      {(() => {
-        const isSceneToolsActive = activeSidePanel === 'scene-tools'
+      {/* 场景工具入口：随场景模式提供内置工具面板（按需求暂时隐藏，SHOW_SCENE_TOOLS_ENTRY 置 true 可恢复） */}
+      {SHOW_SCENE_TOOLS_ENTRY && (() => {
+        const isSceneToolsActive = !showWelcomePage && activeSidePanel === 'scene-tools'
         const sceneToolsLabel = t('layout.scenetools', language as Language)
         return navRailExpanded ? (
           <button
@@ -917,7 +981,7 @@ export default function NavigationRail() {
         <div className="flex flex-col gap-0.5 mt-1">
           {customMenus.map((menu) => {
             const MenuIcon = getLucideIcon(menu.icon)
-            const isCustomMenuActive = activeCustomMenuId === menu.id
+            const isCustomMenuActive = !showWelcomePage && activeCustomMenuId === menu.id
             return navRailExpanded ? (
               <button
                 key={menu.id}

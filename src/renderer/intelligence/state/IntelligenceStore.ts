@@ -32,7 +32,7 @@ import {
     type PlanSlice,
 } from './slices/taskSlice'
 import { createIdleHandoffState } from '@intelligence/providerTypes'
-import type { ChatMessage, ContextItem, MessageCheckpoint, StreamState, TodoItem, ContextStats, ThreadHandoffState, AssistantMessage } from '@intelligence/providerTypes'
+import type { ChatMessage, ChatThread, ContextItem, MessageCheckpoint, StreamState, TodoItem, ContextStats, ThreadHandoffState, AssistantMessage } from '@intelligence/providerTypes'
 import type { CompressionStats } from '@intelligence/providerTypes'
 import type { HandoffDocument, StructuredSummary } from '@intelligence/providerTypes'
 import { buildHandoffContext } from '../capabilities/context/SessionHandoff'
@@ -538,9 +538,9 @@ export function flushAgentSessionPersistence(): void {
 
 // ===== 当前线程缓存：避免 thread 对象重建导致下游 selector 缓存失效 =====
 let lastCurrentThreadId: string | null = null
-let lastCurrentThread: any = null
+let lastCurrentThread: ChatThread | null = null
 
-export const selectCurrentThread = (state: AgentStore) => {
+export const selectCurrentThread = (state: AgentStore): ChatThread | null => {
     const threadId = state.currentThreadId
     if (!threadId) return null
     const thread = state.threads[threadId]

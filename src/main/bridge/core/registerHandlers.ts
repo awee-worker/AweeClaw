@@ -70,6 +70,9 @@ import { registerDesktopControlHandlers } from '../system/desktopControl'
 import { registerGatewayHandlers } from '../system/gateway'
 import { registerAutomationHandlers } from '../system/automation'
 
+// ── external-agent（外部编码智能体：Claude Code / Codex / Cursor）─────────
+import { registerExternalAgentHandlers } from '../../modules/external-agent'
+
 // ── network ─────────────────────────────────────────────
 import { registerHttpHandlers } from '../network/httpTransport'
 import { registerRemoteExecutionHandlers } from '../network/remoteExecution'
@@ -265,6 +268,20 @@ export function registerAllHandlers(context: IPCContext) {
 
   // 运行时环境检测与安装（Python/uv/Node 统一编排）
   registerOnce('environment', () => registerEnvironmentHandlers())
+
+  // 外部智能体（Claude Code / Codex / Cursor 子进程桥接）
+  registerOnce('external-agent', () =>
+    registerExternalAgentHandlers((event) => {
+      // 与 secure-terminal 一致：优先请求来源窗口的工作区，回退到全局最近工作区
+      if (context.getWindowWorkspace) {
+        const windowId = event.sender.id
+        const windowRoots = context.getWindowWorkspace(windowId)
+        if (windowRoots && windowRoots.length > 0) return windowRoots
+      }
+      const last = workspaceMetaStore.get('lastWorkspaceSession') as { roots: string[] } | null
+      return last?.roots ?? null
+    }),
+  )
 
   // 数据服务
   registerOnce('data', () => registerDataIpcHandlers())

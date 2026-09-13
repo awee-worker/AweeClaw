@@ -13,7 +13,6 @@ export default function StudyDashboard() {
   const pomoRecords = usePomodoroStore((s) => s.records)
   const mistakes = useMistakeStore((s) => s.items)
 
-  const today = todayStr()
   const studyRecords = useMemo(() => pomoRecords.filter((r) => r.kind === 'study'), [pomoRecords])
 
   // 近7天

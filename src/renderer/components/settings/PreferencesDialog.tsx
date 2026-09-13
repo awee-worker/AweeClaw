@@ -79,6 +79,9 @@ const ProactiveSettingsPanel = lazy(() =>
 const SceneModeSettingsPanel = lazy(() =>
     import('./tabs/SceneModeSettingsPanel').then(m => ({ default: m.SceneModeSettingsPanel })),
 )
+const ExternalAgentPanel = lazy(() =>
+    import('./tabs/ExternalAgentPanel').then(m => ({ default: m.ExternalAgentPanel })),
+)
 
 
 function SettingsTabFallback({ language }: { language: Language }) {
@@ -200,6 +203,7 @@ export default function PreferencesDialog({ embedded = false, pendingNewAgentId 
         { id: 'desktop', label: t('settings.desktop', language as Language) || '桌面控制', icon: <MonitorSmartphone className="w-4 h-4" /> },
         { id: 'proactive', label: t('settings.proactive', language as Language) || '主动助手', icon: <Sparkles className="w-4 h-4" /> },
         { id: 'sceneMode', label: '场景模式', icon: <Layers className="w-4 h-4" /> },
+        { id: 'externalAgents', label: '外部智能体', icon: <Puzzle className="w-4 h-4" /> },
 
     ], [language])
 
@@ -380,6 +384,8 @@ export default function PreferencesDialog({ embedded = false, pendingNewAgentId 
                 return <ProactiveSettingsPanel language={language} />
             case 'sceneMode':
                 return <SceneModeSettingsPanel />
+            case 'externalAgents':
+                return <ExternalAgentPanel language={language} />
             default: {
                 const pluginTab = pluginSettingsTabs.find(pt => pt.contribution.id === state.activeTab)
                 if (pluginTab) {

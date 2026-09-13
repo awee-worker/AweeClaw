@@ -11,7 +11,7 @@ import {
     PackageX, Download, Info, HardDrive, Tag,
     Layers, Activity, Loader2, FolderOpen, CheckCircle2, XCircle,
     AlertTriangle, RotateCcw, Star, RefreshCw, ArrowLeft, Clock,
-    ChevronRight, ArrowUpCircle,
+    ArrowUpCircle,
 } from 'lucide-react'
 import { useStore } from '@store'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
@@ -128,8 +128,6 @@ export function registerScenarioSettingsComponent(
 ) {
     SCENARIO_SETTINGS_COMPONENTS[scenarioId] = component
 }
-
-type ManagerTab = 'installed' | 'marketplace'
 
 export function ScenarioManagerView() {
     const language = useStore(s => s.language)
@@ -1329,7 +1327,7 @@ function MarketplaceTab({ language, isAuthenticated }: { language: Language; isA
     }
     function handleInstall(item: MarketplaceScenario) {
         if (scenarioRegistry.has(item.id)) { toast.warning(t('scenario.alreadyinstalled', language as Language)); return }
-        if (item.permissions?.length > 0) { setPermissionPending(item); return }
+        if ((item.permissions?.length ?? 0) > 0) { setPermissionPending(item); return }
         doInstall(item)
     }
     async function doInstall(item: MarketplaceScenario) {

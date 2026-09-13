@@ -3,7 +3,7 @@
  * [AweeClaw] 增强功能：场景标签指示、文件类型图标、拖拽排序视觉反馈
  */
 import { memo, useEffect, useRef } from 'react'
-import { X, AlertCircle, AlertTriangle, RefreshCw, FileX, FileDiff, Globe, Eye, Edit, Columns } from 'lucide-react'
+import { X, AlertCircle, AlertTriangle, RefreshCw, FileX, FileDiff, Globe, Eye, Edit, Columns, PenLine } from 'lucide-react'
 import { getFileName, normalizePath } from '@shared/toolkit/pathHelper'
 import { useStore } from '@store'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
@@ -11,6 +11,7 @@ import { t } from '@renderer/i18n'
 import { isPreviewDocumentPath } from '@shared/protocols/previewProtocol'
 import { HintOverlay } from '../ui/HintOverlay'
 import { isPptPreviewPath } from '@shared/protocols/pptPreviewProtocol'
+import { isOoEditPath, OO_EDITABLE_EXTENSIONS } from '@shared/protocols/onlyOfficeProtocol'
 import { BRAND } from '@shared/brand'
 
 export type ViewMode = 'edit' | 'preview' | 'split'
@@ -24,13 +25,15 @@ interface EditorTabsProps {
   lintWarningCount: number
   isLinting: boolean
   onRunLint: () => void
-  activeFileKind?: 'file' | 'diff' | 'preview' | 'ppt-preview'
+  activeFileKind?: 'file' | 'diff' | 'preview' | 'ppt-preview' | 'oo-edit'
   /** 当前活跃文件类型（用于决定是否显示视图模式按钮） */
   activeFileType?: string
   /** 当前视图模式 */
   viewMode?: ViewMode
   /** 视图模式切换回调 */
   onViewModeChange?: (mode: ViewMode) => void
+  /** ONLYOFFICE 在线编辑入口（doc/docx/ppt/pptx/xls/xlsx/csv 等，保存后回写本地） */
+  onOnlyOfficeEdit?: (filePath: string) => void
 }
 
 /**
@@ -46,6 +49,13 @@ function isPlanJsonFile(filePath: string): boolean {
   return normalizedPath.includes(`/${BRAND.dirName}/planner/`) && normalizedPath.endsWith('.json')
 }
 
+/** 可在 ONLYOFFICE 中在线编辑的扩展名（与主进程上传白名单共用一份） */
+const ONLYOFFICE_ENTRY_EXTENSIONS = new Set<string>(OO_EDITABLE_EXTENSIONS)
+function isOnlyOfficeEntryPath(filePath: string): boolean {
+  const ext = filePath.split('.').pop()?.toLowerCase() || ''
+  return ONLYOFFICE_ENTRY_EXTENSIONS.has(ext)
+}
+
 export const EditorTabs = memo(function EditorTabs({
   activeFilePath,
   onSelectFile,
@@ -59,6 +69,7 @@ export const EditorTabs = memo(function EditorTabs({
   activeFileType,
   viewMode,
   onViewModeChange,
+  onOnlyOfficeEdit,
 }: EditorTabsProps) {
   // 获取数据
   const openFiles = useStore(state => state.openFiles)
@@ -135,6 +146,12 @@ export const EditorTabs = memo(function EditorTabs({
             fileName = file.pptPreview?.meta?.title || 'PPT 预览'
           }
 
+          // v2.4：ONLYOFFICE 在线编辑 Tab 显示标题
+          const isOoEdit = file.kind === 'oo-edit' || isOoEditPath(file.path)
+          if (isOoEdit) {
+            fileName = file.ooEdit?.title || '在线编辑'
+          }
+
           return (
             <HintOverlay key={file.path} content={file.path} side="top" delay={400} className="flex-shrink-0 h-full">
             <div
@@ -163,6 +180,7 @@ export const EditorTabs = memo(function EditorTabs({
 
               {isDiff && <FileDiff className="w-3.5 h-3.5 text-accent flex-shrink-0" />}
               {isPreview && <Globe className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />}
+              {isOoEdit && <PenLine className="w-3.5 h-3.5 text-accent flex-shrink-0" />}
 
               <span className={`text-[13px] truncate flex-1 ${file.isDeleted ? 'line-through text-text-muted' : ''}`}>{fileName}</span>
 
@@ -185,7 +203,7 @@ export const EditorTabs = memo(function EditorTabs({
       </div>
 
       {/* 右侧操作区：固定位置，不随 Tab 滚动 */}
-      {activeFilePath && activeFileKind !== 'preview' && activeFileKind !== 'ppt-preview' && (
+      {activeFilePath && activeFileKind !== 'preview' && activeFileKind !== 'ppt-preview' && activeFileKind !== 'oo-edit' && (
         <div className="flex items-center flex-shrink-0 h-full">
           {/* 视图模式按钮组（仅 markdown / html 显示） */}
           {activeFileType && (activeFileType === 'markdown' || activeFileType === 'html') && viewMode && onViewModeChange && (
@@ -198,6 +216,20 @@ export const EditorTabs = memo(function EditorTabs({
               </button>
               <button onClick={() => onViewModeChange('preview')} className={`p-1.5 rounded-md transition-colors ${viewMode === 'preview' ? 'bg-accent/20 text-accent' : 'text-text-muted hover:text-text-primary hover:bg-surface-hover'}`} title={t('editor.previewMode', language)}>
                 <Eye className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* ONLYOFFICE 在线编辑入口（doc/docx/ppt/pptx/xls/xlsx/csv 等，保存后回写本地） */}
+          {isOnlyOfficeEntryPath(activeFilePath) && onOnlyOfficeEdit && (
+            <div className="flex items-center px-2 h-full border-l border-border">
+              <button
+                onClick={() => onOnlyOfficeEdit(activeFilePath)}
+                className="flex items-center gap-1.5 px-2.5 h-7 rounded-lg text-xs text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
+                title="在 ONLYOFFICE 中在线编辑（保存后回写本地文件）"
+              >
+                <PenLine className="w-3.5 h-3.5 text-accent" />
+                在线编辑
               </button>
             </div>
           )}

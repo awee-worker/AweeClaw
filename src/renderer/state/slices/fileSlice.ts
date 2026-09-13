@@ -13,6 +13,10 @@ import {
   type PptPresentationMeta,
   type PptSlideData,
 } from '@shared/protocols/pptPreviewProtocol'
+import {
+  buildOoEditPath,
+  type OnlyOfficeEditSessionMeta,
+} from '@shared/protocols/onlyOfficeProtocol'
 import { normalizePath } from '@shared/toolkit/pathHelper'
 import { logger } from '@shared/toolkit/LogEngine'
 
@@ -60,10 +64,11 @@ export interface RemoteBinding {
 }
 
 /** 已打开文件 */
+/** 已打开文件 */
 export interface OpenFile {
   path: string
   content: string
-  kind?: 'file' | 'diff' | 'preview' | 'ppt-preview'
+  kind?: 'file' | 'diff' | 'preview' | 'ppt-preview' | 'oo-edit'
   isDirty: boolean
   originalContent?: string
   savedVersionId?: number
@@ -79,6 +84,8 @@ export interface OpenFile {
     meta: PptPresentationMeta
     slides: Map<number, PptSlideData>
   }
+  /** v2.4：ONLYOFFICE 在线编辑 Tab 专用数据（kind='oo-edit' 时使用） */
+  ooEdit?: OnlyOfficeEditSessionMeta
 }
 
 /** 打开文件时的可选参数 */
@@ -125,6 +132,7 @@ export interface FileSlice {
   openFile: (path: string, content: string, originalContent?: string, options?: OpenFileOptions) => void
   openPreview: (preview: OpenPreviewMetadata, options?: { activate?: boolean }) => void
   openPptPreview: (meta: PptPresentationMeta, options?: { activate?: boolean }) => void
+  openOnlyOfficeEdit: (meta: OnlyOfficeEditSessionMeta, options?: { activate?: boolean }) => void
   pushPptPreviewSlide: (sessionId: string, slide: PptSlideData) => void
   markPptPreviewComplete: (sessionId: string, filePath: string) => void
   restoreOpenFiles: (files: RestoreFileEntry[], activeFilePath?: string | null) => void
@@ -308,6 +316,25 @@ export const createFileSlice: StateCreator<FileSlice, [], [], FileSlice> = (set)
           meta,
           slides: existing?.pptPreview?.slides || new Map(),
         },
+      })
+
+      return {
+        openFiles: applyLruEviction(resultFiles, path),
+        activeFilePath: options?.activate === false ? state.activeFilePath : path,
+      }
+    }),
+
+  // v2.4：打开 ONLYOFFICE 在线编辑 Tab（kind='oo-edit'）
+  openOnlyOfficeEdit: (meta, options) =>
+    set((state) => {
+      const path = buildOoEditPath(meta.sessionId)
+      const resultFiles = upsertOpenFile(state.openFiles, {
+        path,
+        kind: 'oo-edit',
+        content: '',
+        isDirty: false,
+        lastAccessed: Date.now(),
+        ooEdit: meta,
       })
 
       return {

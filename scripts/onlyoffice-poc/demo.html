@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ONLYOFFICE PoC — 本地文件编辑回写</title>
+  <style>
+    html, body { height: 100%; margin: 0; font-family: -apple-system, "PingFang SC", sans-serif; }
+    #placeholder { width: 100%; height: 100%; }
+    .bar { padding: 8px 14px; font-size: 13px; background: #f4f4f4; border-bottom: 1px solid #ddd;
+           display: flex; gap: 16px; align-items: center; }
+    .bar b { color: #333; }
+    .bar .status { color: #b45309; }
+    .bar .status.ok { color: #047857; }
+  </style>
+</head>
+<body>
+  <div class="bar">
+    <b>__TITLE__</b>
+    <span class="status" id="status">加载 ONLYOFFICE 编辑器…</span>
+  </div>
+  <div id="placeholder"></div>
+
+  <script>
+    const DOC_SERVER = '__DOC_SERVER__'      // OnlyOffice Document Server（Docker 映射端口）
+    const HOST_URL   = '__HOST_URL__'        // 本地网关（供 download/callback）
+    const DOC_TYPE   = '__DOCUMENT_TYPE__'   // word | cell | slide
+    const EXT        = '__EXT__'
+    const statusEl   = document.getElementById('status')
+
+    function setStatus(text, ok) {
+      statusEl.textContent = text
+      statusEl.className = 'status' + (ok ? ' ok' : '')
+    }
+
+    // 唯一 key：每次刷新视为新文档会话
+    const key = Date.now() + '-' + Math.random().toString(36).slice(2, 10)
+
+    function bootEditor() {
+      if (!window.DocsAPI) { setStatus('DocsAPI 未就绪'); return }
+      setStatus('加载中…')
+      const config = {
+        document: {
+          fileType: EXT,
+          key,
+          title: '__TITLE__',
+          url: `${HOST_URL}/download`,
+        },
+        documentType: DOC_TYPE,
+        editorConfig: {
+          lang: 'zh-CN',
+          callbackUrl: `${HOST_URL}/callback`,
+          user: { id: 'poc-user', name: 'PoC' },
+          mode: 'edit',
+        },
+        events: {
+          onAppReady: () => setStatus('编辑器就绪，可直接编辑（保存自动回写本地）', true),
+          onDocumentStateChange: (e) => {},
+          onError: (e) => setStatus('编辑器错误: ' + JSON.stringify(e)),
+          onRequestClose: () => { try { DocsAPI.DocEditor('placeholder').destroyEditor() } catch (_) {} },
+        },
+      }
+      new DocsAPI.DocEditor('placeholder', config)
+    }
+
+    const script = document.createElement('script')
+    script.src = `${DOC_SERVER}/web-apps/apps/api/documents/api.js`
+    script.onload = bootEditor
+    script.onerror = () => setStatus('无法加载 Document Server（' + DOC_SERVER + '），请确认容器已启动')
+    document.head.appendChild(script)
+  </script>
+</body>
+</html>

@@ -3,14 +3,17 @@
  *
  * 职责：
  * - 读取当前激活的自定义智能体（AgentSelector 选中）
- * - 将智能体配置的 builtinTools（UI 分类 ID）解析为真实工具名
  * - 提供执行层权限判断（isToolAllowedForAgent）
  * - 提供工具加载上下文字段（getAgentToolLoadingFields），供 setToolLoadingContext 使用
  *
- * 规则：
+ * 规则（致命问题 #3 调整后）：
  * - 未选择智能体 → 不施加任何限制（保持原流程）
- * - builtinTools / mcpServices / plugins 字段为数组 → 视为显式白名单
- * - 字段为 undefined（旧数据）→ 视为未配置，放行
+ * - 选择智能体 → 内置工具（read_file/write_file/run_command/web_search/…）
+ *   全部放行，不再受 builtinTools 白名单限制（AI 自动执行复杂任务需要完整内置工具集）；
+ *   自定义智能体自定义的内容改为通过 systemPrompt 等表达，UI 不再提供"内置工具"勾选
+ * - MCP 工具（mcp_<serverId>__*）→ 由 mcpServices 白名单控制（保留）
+ * - 插件工具 → 由 plugins 白名单控制（保留）
+ * - builtinTools / mcpServices / plugins 为 undefined（旧数据）→ 放行
  */
 
 import { useStore } from '@store'
@@ -28,7 +31,7 @@ export interface CustomAgentProfile {
   identifier?: string
   callable?: boolean
   triggerMode?: 'always' | 'on_request' | 'manual'
-  /** 关联的内置工具 ID 列表（UI 分类 ID） */
+  /** 关联的内置工具 ID 列表（UI 分类 ID；已废弃，选择智能体时内置工具全部放行） */
   builtinTools?: string[]
   /** 关联的 MCP 服务 ID 列表 */
   mcpServices?: string[]
@@ -102,6 +105,9 @@ export function resolveAgentAllowedToolNames(profile: CustomAgentProfile): Set<s
  *
  * @param toolName 实际工具名（如 read_file / mcp_mcp-playwright__browser_snapshot）
  * @param profile  激活的智能体；null 表示未选择，直接放行
+ *
+ * 注意（致命问题 #3）：内置工具一律放行，不再受 builtinTools 白名单限制；
+ * 该白名单仅约束 MCP 服务与插件。
  */
 export function isToolAllowedForAgent(toolName: string, profile: CustomAgentProfile | null): boolean {
   if (!profile) return true
@@ -131,18 +137,15 @@ export function isToolAllowedForAgent(toolName: string, profile: CustomAgentProf
     }
   }
 
-  // 内置工具：builtinTools 为数组 → 显式白名单
-  if (Array.isArray(profile.builtinTools)) {
-    if (profile.builtinTools.length === 0) return false
-    return resolveAgentAllowedToolNames(profile).has(toolName)
-  }
-
-  return true // builtinTools 未配置（旧数据）→ 放行
+  // 内置工具：选择智能体后全部放行（致命问题 #3 —— 智能体需要完整内置工具集才能执行复杂任务）
+  return true
 }
 
 /**
  * 构建工具加载上下文的智能体字段（供 setToolLoadingContext / getToolsForContext 使用）
  * 返回 undefined 表示不施加限制，调用方可放心展开（...agentFields）
+ *
+ * 致命问题 #3：不再下发 agentBuiltinTools（内置工具全放行），仅保留 MCP 服务白名单。
  */
 export function getAgentToolLoadingFields(profile: CustomAgentProfile | null): {
   agentBuiltinTools?: string[]
@@ -150,9 +153,6 @@ export function getAgentToolLoadingFields(profile: CustomAgentProfile | null): {
 } {
   if (!profile) return {}
   const fields: { agentBuiltinTools?: string[]; agentMcpServices?: string[] } = {}
-  if (Array.isArray(profile.builtinTools)) {
-    fields.agentBuiltinTools = Array.from(resolveAgentAllowedToolNames(profile))
-  }
   if (Array.isArray(profile.mcpServices)) {
     fields.agentMcpServices = profile.mcpServices
   }

@@ -26,8 +26,17 @@ interface ShutdownWindowState {
   description: string
 }
 
-const WINDOW_WIDTH = 500
-const WINDOW_HEIGHT = 214
+/** 卡片内容宽度（不含外围透明留白） */
+const CARD_WIDTH = 468
+/** 卡片最小高度，保证各阶段视觉高度一致 */
+const CARD_MIN_HEIGHT = 176
+/**
+ * 投影留白：窗口四周预留的透明内边距。
+ * 卡片投影需要留在窗口内，否则会被窗口边界裁切出一条难看的硬边黑框。
+ */
+const SHADOW_PAD = 40
+const WINDOW_WIDTH = CARD_WIDTH + SHADOW_PAD * 2
+const WINDOW_HEIGHT = CARD_MIN_HEIGHT + SHADOW_PAD * 2
 
 const DEFAULT_PRESENTATION: ShutdownWindowPresentation = {
   language: 'zh',
@@ -155,15 +164,18 @@ function buildHtml(state: ShutdownWindowState, presentation: ShutdownWindowPrese
         align-items: center;
         justify-content: center;
         background: transparent;
+        /* 为卡片投影预留空间（与窗口尺寸一致），避免投影被裁切 */
+        padding: ${SHADOW_PAD}px;
       }
       .card {
-        width: min(468px, calc(100vw - 28px));
-        border-radius: 24px;
+        width: 100%;
+        min-height: ${CARD_MIN_HEIGHT}px;
+        border-radius: 20px;
         border: 1px solid var(--border);
         background: var(--card);
-        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.18);
-        backdrop-filter: blur(18px);
-        padding: 28px;
+        /* 柔和的单层投影，完全落在窗口留白内，不再出现被裁切的硬边阴影框 */
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.16), 0 2px 6px rgba(0, 0, 0, 0.06);
+        padding: 24px;
       }
       .row { display: flex; gap: 16px; align-items: flex-start; }
       .icon {
@@ -331,7 +343,9 @@ export class ShutdownWindowController {
         alwaysOnTop: true,
         focusable: false,
         roundedCorners: true,
-        icon: this.getIconPath(),
+        // 透明无边框窗口禁用系统原生矩形阴影：原生阴影按窗口矩形绘制，
+        // 会在透明区域外形成一圈难看的方形阴影边框；阴影改由渲染层卡片自带。
+        hasShadow: false,
         backgroundColor: '#00000000',
         webPreferences: {
           contextIsolation: true,

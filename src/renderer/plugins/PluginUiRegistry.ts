@@ -19,11 +19,11 @@
 
 import type { ComponentType } from 'react'
 import type { SidebarItemDescriptor } from '@shared/protocols/scenario'
-import type { PluginSidebarPanelContribution, PluginTopActionContribution, PluginSettingsTabContribution } from '@shared/plugin-sdk/types'
+import type { PluginSidebarPanelContribution, PluginTopActionContribution, PluginSettingsTabContribution, PluginWidgetCardContribution } from '@shared/plugin-sdk/types'
 import { registerPanelComponent, unregisterPanelComponent } from '@renderer/components/explorer/PanelRegistry'
 import { fetchAndRewriteBundle, buildPluginBundleUrl } from './rewriteBareSpecifiers'
 import { createPluginHostApi } from './PluginHostApi'
-import type { PluginHostApi, PluginPanelProps, PluginUiModule, LoadedPluginUi, PluginConfigActionHandler } from './types'
+import type { PluginHostApi, PluginPanelProps, PluginUiModule, LoadedPluginUi, PluginConfigActionHandler, WidgetCardPreviewProps } from './types'
 import { contributionToSidebarItem } from './types'
 
 /** 单个插件的 UI 贡献记录（来自主进程 IPC） */
@@ -31,12 +31,13 @@ interface PluginUiContribution {
   pluginKey: string
   version: string
   uiEntryAbsPath: string
-  contributes: {
-    ui?: { entry: string }
-    sidebarPanels?: PluginSidebarPanelContribution[]
-    topActions?: PluginTopActionContribution[]
-    settingsTabs?: PluginSettingsTabContribution[]
-  }
+   contributes: {
+     ui?: { entry: string }
+     sidebarPanels?: PluginSidebarPanelContribution[]
+     topActions?: PluginTopActionContribution[]
+     settingsTabs?: PluginSettingsTabContribution[]
+     widgetCards?: PluginWidgetCardContribution[]
+   }
   mcpServerId?: string
 }
 
@@ -482,12 +483,30 @@ class PluginUiRegistryImpl {
         }
       }
 
+      // 加载工作台卡片预览组件
+      const widgetCards: LoadedPluginUi['widgetCards'] = []
+      if (contribution.contributes.widgetCards) {
+        for (const wc of contribution.contributes.widgetCards) {
+          const comp = uiModule.widgetCards?.[wc.previewComponent]
+          if (comp) {
+            widgetCards.push({ contribution: wc, component: comp })
+            console.log(`[PluginUiRegistry] Registered widgetCard "${wc.id}" for ${pluginKey}`)
+          } else {
+            console.error(
+              `[PluginUiRegistry] Plugin ${pluginKey} widgetCard "${wc.previewComponent}" not found in ui.js. ` +
+                `Available widgetCards: ${Object.keys(uiModule.widgetCards || {}).join(', ')}`,
+            )
+          }
+        }
+      }
+
       this.loaded.set(pluginKey, {
         pluginKey,
         module: uiModule,
         sidebarItems,
         topActions,
         settingsTabs,
+        widgetCards,
       })
       this.invalidateCache()
       this.notifyListeners()
@@ -596,6 +615,66 @@ class PluginUiRegistryImpl {
     if (pluginsToLoad.length === 0) return
 
     // 并发加载，单个失败不影响其他
+    await Promise.allSettled(pluginsToLoad.map((key) => this.ensureLoaded(key)))
+  }
+
+  /**
+   * 获取指定插件的工作台卡片预览组件（已加载）
+   *
+   * 返回该插件所有已加载的 widgetCard 贡献。
+   * 若插件未加载 ui.js，返回空数组。
+   *
+   * @param pluginKey 插件 key
+   * @param mode 当前场景模式（用于过滤 modes 约束）
+   */
+  getWidgetCards(pluginKey: string, mode?: string): Array<{
+    contribution: PluginWidgetCardContribution
+    component: ComponentType<WidgetCardPreviewProps>
+    host: PluginHostApi
+  }> {
+    const loaded = this.loaded.get(pluginKey)
+    if (!loaded?.widgetCards?.length) return []
+
+    const language = this.getCurrentLanguage()
+    const contribution = this.discovered.get(pluginKey)
+    if (!contribution) return []
+
+    const host = createPluginHostApi({
+      pluginKey,
+      mcpServerId: contribution.mcpServerId,
+      language,
+    })
+
+    return loaded.widgetCards
+      .filter((wc) => {
+        // 若声明了 modes，则检查当前模式是否在允许列表内
+        const modes = wc.contribution.modes
+        if (modes?.length && mode) {
+          return modes.includes(mode as 'work' | 'life' | 'study')
+        }
+        return true
+      })
+      .map((wc) => ({
+        contribution: wc.contribution,
+        component: wc.component,
+        host,
+      }))
+  }
+
+  /**
+   * 确保声明了 widgetCards 的所有插件 ui.js 已加载
+   *
+   * 在工作台挂载时调用，触发所有有 widgetCards 声明的插件加载。
+   */
+  async ensureWidgetCardsLoaded(): Promise<void> {
+    const pluginsToLoad: string[] = []
+    for (const [pluginKey, contribution] of this.discovered) {
+      if (contribution.contributes.widgetCards?.length && !this.loaded.has(pluginKey)) {
+        pluginsToLoad.push(pluginKey)
+      }
+    }
+    if (pluginsToLoad.length === 0) return
+
     await Promise.allSettled(pluginsToLoad.map((key) => this.ensureLoaded(key)))
   }
 

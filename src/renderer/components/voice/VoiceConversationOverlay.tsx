@@ -38,6 +38,8 @@ export function VoiceConversationOverlay({ onClose }: VoiceConversationOverlayPr
     activeFilePath: s.activeFilePath,
   })))
   const isZh = language === 'zh'
+  // 加载语音模型配置（需在 isCloudMode 派生之前声明）
+  const [voiceModelConfig, setVoiceModelConfig] = useState<any>(undefined)
   // 语音对话分流模式：优先使用语音设置独立的云端/自定义模式（voiceModelConfig.cloudMode），
   // 未加载时回退服务商 cloudMode（默认云端）
   const isCloudMode = (voiceModelConfig?.cloudMode ?? (cloudMode === 'cloud' ? 'cloud' : 'local')) === 'cloud'
@@ -105,9 +107,6 @@ export function VoiceConversationOverlay({ onClose }: VoiceConversationOverlayPr
     },
     [],
   )
-
-  // 加载语音模型配置
-  const [voiceModelConfig, setVoiceModelConfig] = useState<any>(undefined)
 
   useEffect(() => {
     let cancelled = false

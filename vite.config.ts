@@ -94,7 +94,10 @@ const aliases = {
   '@renderer-configuration': path.resolve(__dirname, './src/renderer/configuration'),
   '@scenario-system': path.resolve(__dirname, './src/scenario-system'),
   '@scenarios': path.resolve(__dirname, './src/scenarios'),
-  'vscode-nls': path.resolve(__dirname, './node_modules/monaco-editor-nls')
+   'vscode-nls': path.resolve(__dirname, './node_modules/monaco-editor-nls'),
+   // x-data-spreadsheet 是 UMD 包，源码有 ESM 兼容性问题和 LESS 依赖，
+   // 通过别名强制指向 dist 预构建 JS 文件（注意：alias value 不带 .js，Vite 会自动补全）
+   'x-data-spreadsheet': path.resolve(__dirname, './node_modules/x-data-spreadsheet/dist/xspreadsheet'),
 }
 
 export default defineConfig({

@@ -214,6 +214,26 @@ export async function handleWorkspaceFile(
   // 二进制或超大文件：不读文本，返回 size + mimeType，由移动端走 download
   const isText = isTextFile(name)
   if (!isText || stat.size > MAX_TEXT_FILE_SIZE) {
+    // Office 文档（docx/xlsx/pptx）需要通过提取器获取文本
+    const officeExts = new Set(['.docx', '.doc', '.xlsx', '.xls', '.csv', '.ppt', '.pptx'])
+    if (officeExts.has(path.extname(name).toLowerCase())) {
+      try {
+        const { extractDocument } = await import('../../guard/documentExtractor')
+        const result = await extractDocument(abs)
+        if (result.success && result.content) {
+          return {
+            name,
+            path: payload.path,
+            size: stat.size,
+            mimeType,
+            encoding: 'utf-8' as const,
+            text: result.content,
+          }
+        }
+      } catch (err) {
+        logger.deviceLink.warn('[handleWorkspaceFile] Office 文档提取失败:', err)
+      }
+    }
     return {
       name,
       path: payload.path,

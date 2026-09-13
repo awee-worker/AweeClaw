@@ -29,6 +29,6 @@ export function isImageIcon(value: string | null | undefined): value is string {
  */
 export function resolveLucideIcon(name?: string | null): LucideIcon | null {
   if (!name) return null
-  const icons = LucideIcons as Record<string, LucideIcon>
+  const icons = LucideIcons as unknown as Record<string, LucideIcon>
   return icons[name] || null
 }

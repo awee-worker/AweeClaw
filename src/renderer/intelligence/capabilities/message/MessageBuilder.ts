@@ -6,6 +6,7 @@ import { logger } from '@toolkit/LogEngine'
 import type { ChatMessage, MessageContent, TodoItem } from '@intelligence/providerTypes'
 import type { LLMMessage } from '@intelligence/providerTypes'
 import type { CompressionLevel } from '../context/compressionUtils'
+import type { StructuredSummary } from '../context/contextTypes'
 import { prepareMessages, estimateMessagesTokens } from '../context/ContextCompressor'
 import { buildLLMApiMessages } from './MessageAdapter'
 import { countTokens } from '@shared/toolkit/tokenEstimator'
@@ -15,6 +16,8 @@ export interface RuntimeStateContext {
   todos?: TodoItem[]
   pendingObjective?: string
   pendingSteps?: string[]
+  /** 会话结构化摘要：压缩/交接后保留的长期上下文，防止裁剪后 AI“失忆” */
+  contextSummary?: StructuredSummary | null
 }
 
 export interface MessageAssemblyResult {
@@ -124,7 +127,8 @@ export class MessageAssembler {
       : compressedMessages
 
     const llmMessages = buildLLMApiMessages(messagesToConvert, systemPrompt)
-    const runtimeStateMessage = this.buildRuntimeStateMessage(runtimeState)
+    // 摘要仅在确实发生压缩（L2+）时注入，避免低等级/新话题把陈旧摘要混入上下文
+    const runtimeStateMessage = this.buildRuntimeStateMessage(runtimeState, compressionLevel >= 2)
     if (runtimeStateMessage) {
       llmMessages.push(runtimeStateMessage)
     }
@@ -151,13 +155,35 @@ export class MessageAssembler {
     }
   }
 
-  private buildRuntimeStateMessage(runtimeState?: RuntimeStateContext): LLMMessage | null {
+  private buildRuntimeStateMessage(runtimeState?: RuntimeStateContext, injectSummary = false): LLMMessage | null {
     if (!runtimeState) return null
 
     const sections: string[] = []
 
     if (runtimeState.handoffContext?.trim()) {
       sections.push(runtimeState.handoffContext.trim())
+    }
+
+    // 会话背景摘要：压缩（L2+）会把较早历史折叠为结构化摘要。
+    // 若裁剪后不再把摘要注入 LLM，AI 会“失忆”，导致用户说“继续”时
+    // AI 不知道要续接什么（致命问题 #1/#2）。仅在实际发生压缩（injectSummary）时注入。
+    const summary = injectSummary ? runtimeState.contextSummary : null
+    if (summary && (summary.objective || (summary.completedSteps?.length ?? 0) > 0 || (summary.pendingSteps?.length ?? 0) > 0)) {
+      const summaryLines: string[] = ['## Conversation Background (structured summary of earlier history)']
+      if (summary.objective?.trim()) {
+        summaryLines.push(`**Objective**: ${summary.objective.trim()}`)
+      }
+      if (summary.completedSteps?.length) {
+        summaryLines.push(`**Completed**:\n${summary.completedSteps.slice(-8).map(s => `- ${s}`).join('\n')}`)
+      }
+      if (summary.pendingSteps?.length) {
+        summaryLines.push(`**Still Pending**:\n${summary.pendingSteps.slice(-8).map(s => `- ${s}`).join('\n')}`)
+      }
+      if (summary.todos?.length) {
+        summaryLines.push(`**Task List**:\n${summary.todos.slice(-8).map(todo => `- [${todo.status}] ${todo.status === 'in_progress' ? todo.activeForm : todo.content}`).join('\n')}`)
+      }
+      summaryLines.push('Treat this as background context from earlier turns. Continue naturally and do not redo completed work unless the user asks.')
+      sections.push(summaryLines.join('\n'))
     }
 
     if (runtimeState.pendingObjective || (runtimeState.pendingSteps && runtimeState.pendingSteps.length > 0)) {

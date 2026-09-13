@@ -13,10 +13,13 @@
  *   clipboard:write  → clipboard_write
  *   notification:send → notification_send
  *   system:info      → system_info
+ *
+ * 支持项目级（per-workspace）权限覆盖，用于自定义模式下的细粒度控制
  */
 
 import type { ScenarioPermission } from '@shared/protocols/scenario-arch'
 import { logger } from '@shared/toolkit/LogEngine'
+import { StorageService } from '@shared/toolkit/StorageService'
 
 // ─── 工具 → 权限映射 ─────────────────────────────────────
 
@@ -73,13 +76,32 @@ const PERMISSION_GROUPS: Record<string, ScenarioPermission[]> = {
   ],
 }
 
+// ─── 项目级权限配置 ────────────────────────────────────────
+
+export interface ProjectPermissionConfig {
+  /** 允许的工具白名单（如果为空则不过滤） */
+  allowedTools?: string[]
+  /** 禁止的工具黑名单 */
+  blockedTools?: string[]
+}
+
 // ─── 权限守卫核心 ────────────────────────────────────────
+
+/**
+ * 权限检查缺失项：
+ * - 场景级权限（ScenarioPermission）
+ * - 项目级策略标记（project:blocked / project:whitelist，非真实场景权限，仅用于说明拒绝来源）
+ */
+export type MissingPermission =
+  | ScenarioPermission
+  | 'project:blocked'
+  | 'project:whitelist'
 
 export interface PermissionCheckResult {
   /** 是否允许执行 */
   allowed: boolean
   /** 缺失的权限列表 */
-  missingPermissions: ScenarioPermission[]
+  missingPermissions: MissingPermission[]
   /** 拒绝原因 */
   reason?: string
 }
@@ -87,20 +109,66 @@ export interface PermissionCheckResult {
 export class PermissionGuard {
   private declaredPermissions: Set<ScenarioPermission>
   private scenarioId: string
+  private projectConfig?: ProjectPermissionConfig
+  private workspacePath?: string
 
-  constructor(scenarioId: string, declaredPermissions: ScenarioPermission[]) {
+  constructor(
+    scenarioId: string,
+    declaredPermissions: ScenarioPermission[],
+    workspacePath?: string,
+  ) {
     this.scenarioId = scenarioId
+    this.workspacePath = workspacePath
     this.declaredPermissions = new Set(declaredPermissions)
+    
+    // 加载项目级权限配置
+    if (workspacePath) {
+      this.projectConfig = this.loadProjectConfig(workspacePath)
+    }
+  }
+
+  /**
+   * 加载项目级权限配置
+   */
+  private loadProjectConfig(workspacePath: string): ProjectPermissionConfig | undefined {
+    try {
+      const key = `project:${workspacePath}:permissions`
+      return StorageService.get<ProjectPermissionConfig>(key) ?? undefined
+    } catch {
+      return undefined
+    }
   }
 
   /**
    * 检查指定工具是否有权限执行
    *
+   * 优先级：项目级黑名单 > 项目级白名单 > 场景级权限
+   *
    * 注意：MCP 工具（`mcp_` 前缀）统一要求 `mcp:call` 权限，
    * 不在 TOOL_PERMISSION_MAP 中逐个映射。
    */
   checkTool(toolName: string): PermissionCheckResult {
-    // MCP 工具统一要求 mcp:call 权限
+    // 1. 项目级黑名单优先检查
+    if (this.projectConfig?.blockedTools?.includes(toolName)) {
+      return {
+        allowed: false,
+        missingPermissions: ['project:blocked'],
+        reason: `Tool "${toolName}" is blocked by project configuration.`,
+      }
+    }
+
+    // 2. 项目级白名单检查（如果配置了白名单）
+    if (this.projectConfig?.allowedTools && this.projectConfig.allowedTools.length > 0) {
+      if (!this.projectConfig.allowedTools.includes(toolName)) {
+        return {
+          allowed: false,
+          missingPermissions: ['project:whitelist'],
+          reason: `Tool "${toolName}" is not in the project whitelist.`,
+        }
+      }
+    }
+
+    // 3. MCP 工具统一要求 mcp:call 权限
     if (toolName.startsWith('mcp_')) {
       if (this.declaredPermissions.has('mcp:call')) {
         return { allowed: true, missingPermissions: [] }
@@ -177,6 +245,41 @@ export class PermissionGuard {
    */
   getDeclaredPermissions(): ScenarioPermission[] {
     return [...this.declaredPermissions]
+  }
+
+  /**
+   * 获取项目级权限配置
+   */
+  getProjectConfig(): ProjectPermissionConfig | null {
+    return this.projectConfig ?? null
+  }
+
+  /**
+   * 更新项目级权限配置
+   */
+  updateProjectConfig(config: Partial<ProjectPermissionConfig>): void {
+    if (!this.workspacePath) return
+    
+    this.projectConfig = {
+      ...this.projectConfig,
+      ...config,
+    }
+    
+    const key = `project:${this.workspacePath}:permissions`
+    StorageService.set(key, this.projectConfig)
+    logger.agent.info(`[PermissionGuard] Updated project config for ${this.workspacePath}`)
+  }
+
+  /**
+   * 重置为场景默认权限
+   */
+  resetProjectConfig(): void {
+    if (!this.workspacePath) return
+    
+    this.projectConfig = undefined
+    const key = `project:${this.workspacePath}:permissions`
+    StorageService.remove(key)
+    logger.agent.info(`[PermissionGuard] Reset project config for ${this.workspacePath}`)
   }
 
   /**

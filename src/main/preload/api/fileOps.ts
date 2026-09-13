@@ -41,6 +41,7 @@ export function createFileOpsApi() {
     readBinaryFile: (path: string) => invoke('file:readBinary')(path),
     writeFile: (path: string, content: string) => invoke('file:write')(path, content),
     writeBinaryFile: (path: string, base64Data: string) => invoke('file:writeBinary')(path, base64Data),
+    saveXlsx: (path: string, sheetData: any) => invoke('file:saveXlsx')(path, sheetData),
     ensureDir: (path: string) => invoke('file:ensureDir')(path),
     fileExists: (path: string) => invoke('file:exists')(path),
     showItemInFolder: (path: string) => invoke('file:showInFolder')(path),

@@ -13,7 +13,6 @@
  */
 
 import { useSceneModeStore } from '@renderer/modes/sceneModeStore'
-import { api } from '@renderer/adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
 import type { SceneMode } from '@protocols/sceneModeProtocol'
 

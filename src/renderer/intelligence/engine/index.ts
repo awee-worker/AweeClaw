@@ -22,6 +22,18 @@ export {
   startStoreSynchronization,
   setupAgentRuntime,
 } from './runtimeInitializer'
+export {
+  initializeEngines,
+  initializeBehaviorEngine,
+  initializeSubAgentEngine,
+  disposeEngines,
+  getInitializedBehaviorEngine,
+  getInitializedSubAgentEngine,
+} from './engineInitializer'
+export { BehaviorEngine } from '../runtime/BehaviorEngine'
+export type { BehaviorRule, TriggerType, ActionType } from '../runtime/BehaviorEngine'
+export { SubAgentEngine } from './SubAgentEngine'
+export type { BackgroundTask, TaskStatus, TaskProgressEvent, TaskResultEvent } from './SubAgentEngine'
 
 export type {
   LLMConfig,

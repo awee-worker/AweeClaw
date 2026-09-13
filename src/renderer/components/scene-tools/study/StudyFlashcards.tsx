@@ -6,7 +6,7 @@
  */
 
 import { useMemo, useState } from 'react'
-import { Layers, Plus, Trash2, RefreshCw, Check, X, Eye, EyeOff, ChevronLeft, ChevronRight, BookPlus } from 'lucide-react'
+import { Layers, Plus, Trash2, RefreshCw, Check, X, Eye, EyeOff, BookPlus } from 'lucide-react'
 import { useFlashcardStore } from '../stores'
 
 export default function StudyFlashcards() {

@@ -5,7 +5,7 @@
  */
 
 import { useMemo, useState } from 'react'
-import { HeartHandshake, Send, Trash2, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { HeartHandshake, Send, Trash2, TrendingUp, TrendingDown } from 'lucide-react'
 import { useMoodStore, todayStr } from '../stores'
 
 const MOOD_META = [

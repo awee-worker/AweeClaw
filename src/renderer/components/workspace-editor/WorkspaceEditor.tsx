@@ -1,7 +1,8 @@
 /**
  * 编辑器主组件
  */
-import { useRef, useCallback, useEffect, useState, Suspense } from 'react'
+import { useRef, useCallback, useEffect, useState, Suspense, type ReactNode } from 'react'
+import { Loader2 } from 'lucide-react'
 import MonacoEditor, { OnMount, BeforeMount, loader } from '@monaco-editor/react'
 import type { editor } from 'monaco-editor'
 
@@ -45,11 +46,15 @@ const DocPreview = safeNamedLazy(() => import('./DocumentPreview'), 'DocPreview'
 const PptPreview = safeNamedLazy(() => import('./DocumentPreview'), 'PptPreview', { label: 'PptPreview', silent: true })
 // v2.3.2：工作区 .pptx 文件预览改用 SlideCanvas 渲染（与 PPT 生成预览视觉一致）
 const WorkspacePptxPreview = safeLazy(() => import('../ppt-preview/WorkspacePptxPreview'), { label: 'WorkspacePptxPreview', silent: true })
-const XlsxPreview = safeNamedLazy(() => import('./DocumentPreview'), 'XlsxPreview', { label: 'XlsxPreview', silent: true })
+// v2.4：xlsx 默认进入高保真只读预览（exceljs/SheetJS），点「编辑表格」再切换 x-data-spreadsheet 编辑
+const XlsxFileView = safeNamedLazy(() => import('./DocumentPreview'), 'XlsxFileView', { label: 'XlsxFileView', silent: true })
 const CsvPreview = safeNamedLazy(() => import('./DocumentPreview'), 'CsvPreview', { label: 'CsvPreview', silent: true })
 
 // v2.3：PPT 实时预览面板（主窗口内嵌 Tab 模式）
 const PptPreviewPanel = safeLazy(() => import('../ppt-preview/PptPreviewPanel'), { label: 'PptPreviewPanel', silent: true })
+
+// v2.4：ONLYOFFICE 在线编辑视图（主窗口内嵌 Tab，kind='oo-edit'）
+const OnlyOfficeEditView = safeLazy(() => import('../onlyoffice/OnlyOfficeEditView'), { label: 'OnlyOfficeEditView', silent: true })
 
 const DockPanel = safeLazy(() => import('@components/dock-panels/DockPanel'), { label: 'DockPanel', silent: true })
 
@@ -77,6 +82,68 @@ import { getLanguage } from './utils/langIdMapper'
 import { defineMonacoTheme } from './utils/editorTheme'
 import { isPreviewDocumentPath } from '@shared/protocols/previewProtocol'
 import { isPptPreviewPath, extractSessionIdFromPptPreviewPath } from '@shared/protocols/pptPreviewProtocol'
+import { isOoEditPath, OO_EDITABLE_EXTENSIONS } from '@shared/protocols/onlyOfficeProtocol'
+
+/* ---------------- v2.4.2：Office 文档（Word/PPT/Excel）默认走 ONLYOFFICE 在线编辑 ---------------- */
+
+/** 打开普通文件 Tab 时自动接入 ONLYOFFICE 的扩展名（与手动「在线编辑」入口共用一份：doc/docx/ppt/pptx/xls/xlsx/csv） */
+const OO_AUTO_EXTENSIONS = new Set<string>(OO_EDITABLE_EXTENSIONS)
+/** 本会话内已自动尝试过的文件路径 → 是否成功（避免反复自动启动；失败回退本地后可手动点「在线编辑」重试） */
+const ooAutoAttempted = new Map<string, boolean>()
+
+/**
+ * Office 文档自动宿主（Word/PPT/Excel）：
+ * 本地 file Tab 打开 Office 文档时自动接入 ONLYOFFICE —— 会话建立成功后立即关闭本地 file Tab，
+ * 只保留唯一的 oo-edit Tab（「点击文件 → 只打开 ONLYOFFICE 在线编辑」）。
+ * 服务器不可用/未配置/启动失败 → 回退本地预览（children），本会话内不再自动重试，
+ * 可在标签栏点「在线编辑」手动重试。
+ */
+function OnlyOfficeAutoHost({ filePath, title, children }: { filePath: string; title: string; children: ReactNode }) {
+  const [failed, setFailed] = useState(ooAutoAttempted.get(filePath) === false)
+  useEffect(() => {
+    // 本会话自动启动失败过一次 → 回退本地预览，不再反复打扰
+    if (ooAutoAttempted.get(filePath) === false) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const st = useStore.getState()
+        // 同源文件的 oo-edit Tab 已存在 → 不重复建会话，只激活它并移除新建的本地 file Tab
+        const existingOoTab = st.openFiles.find((f) => f.kind === 'oo-edit' && f.ooEdit?.sourcePath === filePath)
+        if (existingOoTab) {
+          ooAutoAttempted.set(filePath, true)
+          st.closeFile(filePath)
+          st.setActiveFile(existingOoTab.path)
+          return
+        }
+        const res = await api.onlyOffice.startSession({ sourcePath: filePath, title })
+        if (cancelled) return
+        if (res?.ok && res.session) {
+          ooAutoAttempted.set(filePath, true)
+          st.openOnlyOfficeEdit(res.session, { activate: true })
+          // 只保留 oo-edit Tab：关闭本地 file Tab（活跃 Tab 已切到 oo，不受影响）
+          st.closeFile(filePath)
+        } else {
+          ooAutoAttempted.set(filePath, false)
+          setFailed(true)
+          toast.error(res?.error || 'ONLYOFFICE 在线编辑不可用，已回退本地预览')
+        }
+      } catch (err) {
+        ooAutoAttempted.set(filePath, false)
+        if (!cancelled) setFailed(true)
+        toast.error(`启动 ONLYOFFICE 在线编辑失败：${(err as Error)?.message || '未知错误'}`)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [filePath, title])
+
+  if (failed) return <>{children}</>
+  return (
+    <div className="h-full flex flex-col items-center justify-center gap-3 text-text-muted select-none">
+      <Loader2 className="w-6 h-6 animate-spin text-accent" />
+      <span className="text-sm">正在 ONLYOFFICE 中打开 {title}…</span>
+    </div>
+  )
+}
 
 loader.config({ monaco })
 
@@ -104,6 +171,7 @@ export default function Editor() {
   const markFileSaved = useStore((state) => state.markFileSaved)
   const language = useStore((state) => state.language)
   const closeFile = useStore((state) => state.closeFile)
+  const openOnlyOfficeEdit = useStore((state) => state.openOnlyOfficeEdit)
 
   const { pendingChanges, acceptChange, undoChange } = useAgentChangeState()
 
@@ -123,6 +191,41 @@ export default function Editor() {
   const isPptPreviewTab = Boolean(activeFile && activeFile.kind === 'ppt-preview' && isPptPreviewPath(activeFile.path))
   const pptPreviewSessionId = isPptPreviewTab && activeFile ? extractSessionIdFromPptPreviewPath(activeFile.path) : null
 
+  // v2.4：ONLYOFFICE 在线编辑 Tab（主窗口内嵌模式）
+  const isOoEditTab = Boolean(activeFile && activeFile.kind === 'oo-edit' && isOoEditPath(activeFile.path))
+  const ooEditSession = isOoEditTab && activeFile?.ooEdit ? activeFile.ooEdit : null
+
+  /** 启动 ONLYOFFICE 在线编辑会话：主进程上传本地文件 → 打开编辑 Tab（成功后关闭本地 file Tab，只保留 oo-edit Tab） */
+  const handleOnlyOfficeEdit = async (filePath: string) => {
+    try {
+      const st = useStore.getState()
+      // 同源文件的 oo-edit Tab 已存在 → 不重复建会话，只激活它并移除本地 file Tab
+      const existingOoTab = st.openFiles.find((f) => f.kind === 'oo-edit' && f.ooEdit?.sourcePath === filePath)
+      if (existingOoTab) {
+        closeFile(filePath)
+        st.setActiveFile(existingOoTab.path)
+        return
+      }
+      const res = await api.onlyOffice.startSession({ sourcePath: filePath, title: getFileName(filePath) })
+      if (!res?.ok) {
+        toast.error(res?.error || '无法启动 ONLYOFFICE 在线编辑')
+        return
+      }
+      if (!res.session) {
+        toast.error('启动失败：服务器未返回会话')
+        return
+      }
+      openOnlyOfficeEdit(res.session, { activate: true })
+      // 只保留 oo-edit Tab：关闭本地 file Tab（活跃 Tab 已切到 oo，不受影响）
+      closeFile(filePath)
+      ooAutoAttempted.set(filePath, true)
+    } catch (err) {
+      toast.error(`启动 ONLYOFFICE 编辑失败：${(err as Error)?.message || '未知错误'}`)
+    }
+  }
+
+
+
   useComposerInlineDiff(isPreviewDocument ? null : activeFilePath, editorRef.current, monacoRef.current)
 
   const { registerActions } = useEditorActions(setInlineEditState)
@@ -131,6 +234,11 @@ export default function Editor() {
   const activeLanguage = activeFile && !isPreviewDocument ? getLanguage(activeFile.path) : 'plaintext'
   const activeFileType = activeFile && !isPreviewDocument ? getFileType(activeFile.path) : 'text'
   const activeFileInfo = (activeFile && activeFile.content != null) ? getFileInfo(activeFile.path, activeFile.content) : null
+  // v2.4.2：Office 文档（Word/PPT/Excel：doc/docx/ppt/pptx/xls/xlsx/csv）普通文件 Tab 默认接入 ONLYOFFICE 在线编辑，不可用才回退本地预览
+  const activeFileExt = activeFile ? (activeFile.path.split('.').pop() || '').toLowerCase() : ''
+  const isOoAutoDocument = Boolean(
+    activeFile && activeFile.kind === 'file' && !isOoEditTab && !isPreviewDocument && OO_AUTO_EXTENSIONS.has(activeFileExt),
+  )
   const currentTheme = useStore((state) => state.currentTheme) as ThemeName
 
   // 断点管理
@@ -423,6 +531,7 @@ export default function Editor() {
         lintWarningCount={warningCount}
         isLinting={isLinting}
         onRunLint={handleRunLint}
+        onOnlyOfficeEdit={handleOnlyOfficeEdit}
         activeFileKind={activeFile?.kind}
         activeFileType={activeFileType}
         viewMode={activeFileType === 'markdown' ? markdownMode : activeFileType === 'html' ? htmlMode : undefined}
@@ -432,7 +541,7 @@ export default function Editor() {
         }}
       />
 
-      {activeFile && !isPreviewDocument && !isPptPreviewTab && (
+      {activeFile && !isPreviewDocument && !isPptPreviewTab && !isOoEditTab && (
         <EditorBreadcrumbs
           filePath={activeFile.path}
           largeFileInfo={activeFileInfo}
@@ -475,8 +584,10 @@ export default function Editor() {
 
       {/* 编辑器主体 */}
       <div className="flex-1 relative min-h-0 overflow-hidden flex flex-col">
-        {/* v2.3：PPT 实时预览面板（主窗口内嵌 Tab 模式） */}
-        {isPptPreviewTab && pptPreviewSessionId ? (
+        {/* v2.4：ONLYOFFICE 在线编辑（主窗口内嵌 Tab） */}
+        {isOoEditTab && ooEditSession ? (
+          <OnlyOfficeEditView session={ooEditSession} />
+        ) : isPptPreviewTab && pptPreviewSessionId ? (
           <Suspense fallback={<CodeSkeleton lines={8} />}>
             <PptPreviewPanel sessionId={pptPreviewSessionId} />
           </Suspense>
@@ -525,20 +636,25 @@ export default function Editor() {
               <Model3DPreview path={activeFile.path} />
             ) : activeFileType === 'pdf' ? (
               <PdfPreview path={activeFile.path} />
-            ) : activeFileType === 'docx' ? (
-              <DocxPreview path={activeFile.path} />
-            ) : activeFileType === 'doc' ? (
-              <DocPreview path={activeFile.path} />
-            ) : activeFileType === 'pptx' ? (
-              <Suspense fallback={<CodeSkeleton lines={8} />}>
-                <WorkspacePptxPreview path={activeFile.path} />
-              </Suspense>
-            ) : activeFileType === 'ppt' ? (
-              <PptPreview path={activeFile.path} />
-            ) : activeFileType === 'xlsx' ? (
-              <XlsxPreview path={activeFile.path} />
-            ) : activeFileType === 'csv' ? (
-              <CsvPreview path={activeFile.path} content={activeFile.content} />
+            ) : isOoAutoDocument ? (
+              /* v2.4.2：Word/PPT/Excel 等 Office 文档默认接入 ONLYOFFICE 在线编辑，启动失败自动回退本地预览 */
+              <OnlyOfficeAutoHost filePath={activeFile.path} title={getFileName(activeFile.path)}>
+                {activeFileType === 'docx' ? (
+                  <DocxPreview path={activeFile.path} />
+                ) : activeFileType === 'doc' ? (
+                  <DocPreview path={activeFile.path} />
+                ) : activeFileType === 'pptx' ? (
+                  <Suspense fallback={<CodeSkeleton lines={8} />}>
+                    <WorkspacePptxPreview path={activeFile.path} />
+                  </Suspense>
+                ) : activeFileType === 'ppt' ? (
+                  <PptPreview path={activeFile.path} />
+                ) : activeFileType === 'csv' ? (
+                  <CsvPreview path={activeFile.path} content={activeFile.content} />
+                ) : (
+                  <XlsxFileView path={activeFile.path} />
+                )}
+              </OnlyOfficeAutoHost>
             ) : activeFileType === 'binary' ? (
               <UnsupportedFile path={activeFile.path} fileType="binary" />
             ) : isPlanJsonFile(activeFile.path) ? (

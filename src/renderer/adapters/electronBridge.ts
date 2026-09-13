@@ -368,6 +368,11 @@ function createGroupedAPI() {
       setTheme: (theme: 'light' | 'dark' | 'system', bgColor?: string) => raw.setTheme(theme, bgColor),
     },
 
+    // 自绘菜单（Windows/Linux）：执行原生角色
+    menu: {
+      executeRole: (role: string) => raw.executeMenuRole(role),
+    },
+
     // 文件操作
     file: {
       open: () => raw.openFile(),
@@ -486,7 +491,8 @@ function createGroupedAPI() {
     llm: {
       send: (params: Parameters<typeof raw.sendMessage>[0]) => raw.sendMessage(params),
       compactContext: (params: Parameters<typeof raw.compactContext>[0]) => raw.compactContext(params),
-      abort: () => raw.abortMessage(),
+      // 传 requestId 时仅中止该请求；不传时兜底中止本窗口所有请求
+      abort: (requestId?: string) => raw.abortMessage(requestId),
       // LLM 事件订阅（使用动态 IPC 频道实现请求隔离）
       onStream: (requestId: string, callback: (data: {
         type: string
@@ -991,6 +997,15 @@ function createGroupedAPI() {
         raw.pptPreview.onMarkComplete(callback),
     },
 
+    // ONLYOFFICE 在线编辑（本地文档 → 服务器编辑 → 回写本地）
+    onlyOffice: {
+      getConfig: () => raw.onlyOffice.getConfig(),
+      startSession: (payload: Parameters<typeof raw.onlyOffice.startSession>[0]) =>
+        raw.onlyOffice.startSession(payload),
+      saveSession: (sessionId: string) => raw.onlyOffice.saveSession(sessionId),
+      discardSession: (sessionId: string) => raw.onlyOffice.discardSession(sessionId),
+    },
+
     // ========================================
     // 项目执行窗口（execution.html 专用 + 主窗口调用）
     // ========================================
@@ -1087,6 +1102,25 @@ function createGroupedAPI() {
       pushSceneMode: (mode: string) => raw.deviceLink.pushSceneMode(mode),
       onSceneModeSync: (callback: Parameters<typeof raw.deviceLink.onSceneModeSync>[0]) =>
         raw.deviceLink.onSceneModeSync(callback),
+    },
+
+    // 外部智能体（Claude Code / Codex / Cursor 子进程桥接）
+    externalAgent: {
+      preflight: (agent: Parameters<typeof raw.externalAgent.preflight>[0]) =>
+        raw.externalAgent.preflight(agent),
+      start: (request: Parameters<typeof raw.externalAgent.start>[0]) =>
+        raw.externalAgent.start(request),
+      wait: (requestId: string, timeoutMs?: number) =>
+        raw.externalAgent.wait(requestId, timeoutMs),
+      abort: (requestId: string) => raw.externalAgent.abort(requestId),
+      status: (requestId: string) => raw.externalAgent.status(requestId),
+      getConfig: () => raw.externalAgent.getConfig(),
+      saveConfig: (patch: Parameters<typeof raw.externalAgent.saveConfig>[0]) =>
+        raw.externalAgent.saveConfig(patch),
+      recent: () => raw.externalAgent.recent(),
+      clearRecent: () => raw.externalAgent.clearRecent(),
+      onStream: (requestId: string, callback: Parameters<typeof raw.externalAgent.onStream>[1]) =>
+        raw.externalAgent.onStream(requestId, callback),
     },
   }
 }

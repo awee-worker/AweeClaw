@@ -89,9 +89,12 @@ const ToolCallCard = memo(function ToolCallCard({
   )
   const { args, effectiveName, isSuccess, isError, isRejected, isRunning, isStreaming, previewState } = useToolDisplayState(toolCall)
   const isActive = isRunning || isStreaming
-  // 自动展开的工具：todo_write（任务列表）和 run_command（命令执行）
+  // 自动展开的工具：todo_write（任务列表）、run_command（命令执行）、external_agent_delegate（外部智能体实时进度）
   // 这些工具的内容需要用户实时查看，不受"默认展开工具调用"设置影响
-  const shouldAutoExpand = effectiveName === 'todo_write' || effectiveName === 'run_command'
+  const shouldAutoExpand =
+    effectiveName === 'todo_write' ||
+    effectiveName === 'run_command' ||
+    effectiveName === 'external_agent_delegate'
   const { isExpanded, animateContent, handleToggleExpanded } = useToolCardExpansion({
     defaultExpanded: defaultExpanded ?? (shouldAutoExpand || expandToolCallsByDefault),
     isActive,

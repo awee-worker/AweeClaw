@@ -7,17 +7,11 @@
 import { useMemo, useState, useEffect } from 'react'
 import {
   Plus, Trash2, Calendar, CheckCircle2, Circle, Clock,
-  ChevronLeft, ChevronRight, Flag, AlertCircle,
+  ChevronLeft, ChevronRight, AlertCircle,
 } from 'lucide-react'
 import { useWorkPlanStore, type WorkPlanItem, type WorkPlanEntry, todayStr } from '../stores'
 
 type PlanType = 'week' | 'month' | 'day'
-
-const PRIORITY_META: Record<string, { label: string; cls: string; dot: string }> = {
-  high: { label: '高', cls: 'bg-red-500/10 text-red-500 border-red-500/30', dot: 'bg-red-500' },
-  medium: { label: '中', cls: 'bg-amber-500/10 text-amber-500 border-amber-500/30', dot: 'bg-amber-500' },
-  low: { label: '低', cls: 'bg-sky-500/10 text-sky-500 border-sky-500/30', dot: 'bg-sky-500' },
-}
 
 function getWeekStart(d: Date): Date {
   const date = new Date(d)
@@ -97,7 +91,9 @@ export default function WorkPlan() {
 
   // 每日提醒检查
   useEffect(() => {
-    if (!notifyEnabled || !window.electronAPI?.notificationRequest) return
+    if (!notifyEnabled) return
+    const canNotify = typeof Notification !== 'undefined' && Notification.permission === 'granted'
+    if (!canNotify) return
     const checkReminders = () => {
       const today = todayStr()
       let changed = false
@@ -105,8 +101,7 @@ export default function WorkPlan() {
         if (plan.remindedDates?.includes(today)) return
         const dueToday = plan.entries.some((e) => e.date === today && !e.done)
         if (dueToday) {
-          window.electronAPI.notificationRequest({
-            title: '工作计划提醒',
+          new Notification('工作计划提醒', {
             body: `今日有 ${plan.entries.filter((e) => e.date === today && !e.done).length} 项待办`,
           })
           update(plan.id, { remindedDates: [...(plan.remindedDates ?? []), today] })
@@ -257,7 +252,6 @@ export default function WorkPlan() {
 
   const dateLabel = (dateStr: string) => {
     if (dateStr === todayStr()) return '今天'
-    const d = new Date(dateStr)
     const today = new Date(todayStr())
     const tomorrow = new Date(today)
     tomorrow.setDate(tomorrow.getDate() + 1)
@@ -494,7 +488,7 @@ export default function WorkPlan() {
 /** 单行条目组件 */
 function PlanEntryRow({
   entry,
-  isToday,
+  isToday: _isToday,
   onChange,
   onToggle,
   onRemove,

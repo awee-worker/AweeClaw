@@ -18,6 +18,7 @@ import type {
 } from '@intelligence/providerTypes'
 import type { McpTool, McpServerState, McpContent } from '@shared/protocols/toolProtocolBridge'
 import type { ToolLoadingContext } from '@configuration/toolCategoryDefs'
+import { prepareJsForPlaywright } from '@intelligence/toolkit/playwrightBridge'
 
 /** MCP 工具名称前缀 */
 const MCP_TOOL_PREFIX = 'mcp_'
@@ -201,11 +202,27 @@ export class McpToolProvider implements ToolProvider {
 
     logger.agent.info(`[McpToolProvider] Executing ${actualToolName} on server ${serverId}`)
 
+    // Phase 2.1：Playwright JS 执行容错预处理
+    const playwrightJsTools = ['browser_run_code_unsafe', 'browser_evaluate']
+    let processedArgs = args
+    if (playwrightJsTools.includes(actualToolName)) {
+      const codeArg = (args as Record<string, unknown>).code as string | undefined
+      if (typeof codeArg === 'string' && codeArg.trim()) {
+        const prepared = prepareJsForPlaywright(codeArg)
+        if (prepared !== codeArg) {
+          logger.agent.debug(
+            `[McpToolProvider] Playwright JS pre-processed for ${actualToolName}: wrapped=${prepared.includes('function()') || prepared.includes('setTimeout')}`,
+          )
+          processedArgs = { ...args, code: prepared }
+        }
+      }
+    }
+
     try {
       const result = await mcpService.callTool({
         serverId,
         toolName: actualToolName,
-        arguments: args,
+        arguments: processedArgs,
       })
 
       if (!result.success) {

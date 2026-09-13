@@ -26,6 +26,8 @@ import {
 } from '@intelligence/toolkit'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { getActiveCustomAgent, getAgentToolLoadingFields } from '@renderer-configuration/customAgentTools'
+import { isExternalAgentToolsExposed } from '@intelligence/toolkit/externalAgentToolsGate'
+import { isSceneToolsIntentFromMessages } from '@intelligence/utils/sceneToolsIntent'
 import { useStore } from '@store'
 import { getToolApprovalType, getToolDisplayName } from '@configuration/toolDefinitions'
 import { requiresApprovalGate } from '@intelligence/engine/toolOrchestrator'
@@ -213,7 +215,7 @@ export async function ensureVoiceToolsInitialized(): Promise<void> {
  * 每次执行时刷新工具加载上下文（场景/智能体可能在会话间切换）
  * 确保语音路径始终使用最新的智能体工具白名单
  */
-function refreshVoiceToolLoadingContext(): void {
+function refreshVoiceToolLoadingContext(sceneToolsEnabled = false): void {
   const activeScenarioId = useStore.getState().activeScenarioId
   const activeScenario = scenarioRegistry.getActive()
   const scenarioToolPacks = activeScenario?.capabilities?.toolPacks
@@ -229,6 +231,9 @@ function refreshVoiceToolLoadingContext(): void {
     scenarioId: activeScenarioId,
     scenarioToolPacks,
     scenarioTools,
+    // 场景工具按需暴露（致命问题 #4）：语音对话同样仅在场景数据意图时可见
+    sceneToolsEnabled,
+    externalAgentEnabled: isExternalAgentToolsExposed(),
     ...agentToolFields,
   })
 }
@@ -310,7 +315,7 @@ export function callLLMWithTools(
     /** abort 信号回调：通知主进程取消 + resolve */
     const onAbort = () => {
       if (settled) return
-      try { api.llm.abort() } catch { /* noop */ }
+      try { api.llm.abort(requestId) } catch { /* noop */ }
       doResolve('Aborted')
     }
 
@@ -641,7 +646,7 @@ export async function runVoiceToolLoop(options: VoiceToolLoopOptions): Promise<V
   // 确保工具系统已初始化（失败也不阻塞，只是没有工具可用）
   await ensureVoiceToolsInitialized()
   // 每次执行刷新工具加载上下文（智能体可能已切换）
-  refreshVoiceToolLoadingContext()
+  refreshVoiceToolLoadingContext(isSceneToolsIntentFromMessages(messages))
 
   // 获取可用工具列表（与普通对话完全相同）
   const tools = toolManager.getAllToolDefinitions()

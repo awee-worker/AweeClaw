@@ -512,6 +512,8 @@ export interface PluginContributes {
   topActions?: PluginTopActionContribution[]
   /** 设置页 Tab 贡献（注入到设置页导航） */
   settingsTabs?: PluginSettingsTabContribution[]
+  /** 工作台卡片贡献（插件数据卡片，展示在工作台） */
+  widgetCards?: PluginWidgetCardContribution[]
 }
 
 /**
@@ -573,3 +575,46 @@ export interface PluginSettingsTabContribution {
   /** 排序权重，越大越靠下；默认 50（位于内置 Tab 之后） */
   position?: number
 }
+
+/**
+ * 工作台卡片贡献 — 插件可在用户工作台展示数据卡片
+ *
+ * 卡片通过插件 MCP 工具按需拉取数据，支持增量刷新与手动刷新。
+ *
+ * 卡片 id 格式建议："<pluginKey>:<cardName>"，如 "ai-macro-recorder:stats"
+ * 该 id 会作为工作台卡片 id 写入 workbenchWidgets，支持用户添加/移除。
+ */
+export interface PluginWidgetCardContribution {
+  /** 卡片唯一 id，如 "ai-macro-recorder:stats" */
+  id: string
+  /** lucide 图标名（通过 IconMap 解析） */
+  icon: string
+  /** 英文标题 */
+  label: string
+  /** 中文标题 */
+  labelZh: string
+  /** 英文描述（卡片底部显示） */
+  description?: string
+  /** 中文描述（卡片底部显示） */
+  descriptionZh?: string
+  /**
+   * 刷新优先级分层：
+   * - 'core'：高频刷新（15s），适用于核心数据卡片
+   * - 'enhanced'：低频刷新（60s），适用于一般数据卡片
+   * - 默认 'enhanced'
+   */
+  tier?: 'core' | 'enhanced'
+  /**
+   * ui.js 模块导出的预览组件键名（components 映射中的键）。
+   * 组件签名：({ host, data, loading, onRefresh }: WidgetCardPreviewProps) => ReactNode
+   */
+  previewComponent: string
+  /**
+   * 关联的场景模式：不填则所有模式可见；
+   * 填 ['work'] 则仅工作模式可见，['life'] 则仅生活模式可见。
+   */
+  modes?: SceneMode[]
+}
+
+/** 场景模式（与 sceneModeProtocol 保持一致） */
+export type SceneMode = 'work' | 'life' | 'study'

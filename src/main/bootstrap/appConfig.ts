@@ -12,6 +12,8 @@ import { getUserConfigDir } from '../modules/configPath'
 const CONFIG_DIR_NAME = '.aweeclaw'
 const CONFIG_FILE_NAME = 'aweeclaw-config.json'
 const DEFAULT_SERVER_URL = 'https://gateway.aweeclaw.com'
+/** ONLYOFFICE 在线编辑服务器（与 serverUrl 同一配置文件；置空 serverUrl 可禁用） */
+const DEFAULT_ONLYOFFICE_URL = 'https://onlyoffice.aweeclaw.com'
 
 /** 确保应用配置文件存在，不存在则写入默认值 */
 export function ensureAppConfig(): void {
@@ -22,7 +24,14 @@ export function ensureAppConfig(): void {
     if (fs.existsSync(configPath)) return
 
     fs.mkdirSync(configDir, { recursive: true })
-    const defaultConfig = { serverUrl: DEFAULT_SERVER_URL }
+    const defaultConfig = {
+      serverUrl: DEFAULT_SERVER_URL,
+      onlyOffice: {
+        serverUrl: DEFAULT_ONLYOFFICE_URL,
+        basePath: '/oo-gw',
+        adminKey: '',
+      },
+    }
     fs.writeFileSync(configPath, JSON.stringify(defaultConfig, null, 2), 'utf-8')
     logger.system.info('[AppConfig] Created default config:', configPath)
   } catch (err) {

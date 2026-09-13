@@ -48,6 +48,24 @@ export interface ToolLoadingContext {
   agentBuiltinTools?: string[]
   /** 自定义智能体允许的 MCP 服务 ID 白名单（存在时仅暴露白名单内 MCP 服务器的工具） */
   agentMcpServices?: string[]
+  /**
+   * 是否暴露场景工具（scene_tools_*）。
+   *
+   * 缺省为 false —— 场景工具不再无条件对 LLM 可见（致命问题 #4）：
+   * AI 在执行开发/多步任务时不得自动调用场景工具（如自动创建 work-todo 任务清单），
+   * 其自身任务跟踪应使用系统内置 todo_write / create_task_plan / schedule。
+   *
+   * 仅当用户最新消息带有明确的“场景数据记录/查询/管理”意图时，由上层
+   * （loopDetector / AgentSubLoop / voiceToolLoop / PromptComposer）计算后置为 true。
+   */
+  sceneToolsEnabled?: boolean
+  /**
+   * 是否暴露外部编码智能体工具（external_agent_*）。
+   *
+   * 缺省为 false —— 外部智能体工具默认不对 LLM 可见，
+   * 仅当用户在「设置 → 外部智能体」中开启“向 AI 暴露工具”后由上层置为 true。
+   */
+  externalAgentEnabled?: boolean
 }
 
 /** 角色工具配置 */
@@ -144,6 +162,13 @@ const PLAN_EXPLORATION_TOOLS: string[] = [
   'get_file_info',
 ]
 
+/** 外部编码智能体 AI 桥接工具名（external_agent_*，按需暴露：externalAgentEnabled === true 时附加） */
+export const EXTERNAL_AGENT_TOOL_NAMES: readonly string[] = [
+  'external_agent_delegate',
+  'external_agent_status',
+  'external_agent_abort',
+]
+
 /** 场景工具 AI 桥接工具名（scene_tools_*） */
 export const SCENE_TOOL_NAMES: readonly string[] = [
   'scene_tools_list',
@@ -207,7 +232,7 @@ export function getToolGroup(id: string): string[] | undefined {
  * - 场景: 场景声明 toolPacks，自动解析依赖
  */
 export function getToolsForContext(context: ToolLoadingContext): string[] {
-  const tools = new Set<string>()
+  let tools = new Set<string>()
 
   const scenarioPacks = context.scenarioToolPacks
   const scenarioTools = context.scenarioTools
@@ -300,12 +325,28 @@ export function getToolsForContext(context: ToolLoadingContext): string[] {
   if (context.agentBuiltinTools !== undefined) {
     const allow = new Set(context.agentBuiltinTools)
     allow.add('extract_document')
-    // 场景工具（scene_tools_*）始终对 AI 可见：
-    // 纯本地个人数据 CRUD，无外部副作用且 approvalType='none'，不受智能体工具白名单限制
-    return Array.from(tools).filter((tool) => allow.has(tool)).concat(SCENE_TOOL_NAMES)
+    tools = new Set(Array.from(tools).filter((tool) => allow.has(tool)))
   }
 
-  return Array.from(tools).concat(SCENE_TOOL_NAMES)
+  // 4. 场景工具（scene_tools_*）为“按需暴露”：
+  //    - 仅当 sceneToolsEnabled === true 时附加（上层根据用户消息意图判定）
+  //    - 不再无条件对所有对话/任务可见（致命问题 #4）：
+  //      AI 执行任务时不得自动调用场景工具，任务跟踪应使用系统内置 todo_write 等
+  if (context.sceneToolsEnabled === true) {
+    for (const tool of SCENE_TOOL_NAMES) {
+      tools.add(tool)
+    }
+  }
+
+  // 5. 外部编码智能体工具（external_agent_*）为“按需暴露”：
+  //    仅当 externalAgentEnabled === true（用户在设置面板开启“向 AI 暴露”）时附加
+  if (context.externalAgentEnabled === true) {
+    for (const tool of EXTERNAL_AGENT_TOOL_NAMES) {
+      tools.add(tool)
+    }
+  }
+
+  return Array.from(tools)
 }
 
 /**

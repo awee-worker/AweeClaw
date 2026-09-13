@@ -243,6 +243,7 @@ function resolveRuntimeState(threadId?: string): RuntimeStateContext | undefined
     todos: thread.todos,
     pendingObjective: thread.pendingObjective,
     pendingSteps: thread.pendingSteps,
+    contextSummary: thread.contextSummary,
   }
 }
 
@@ -253,7 +254,8 @@ function hasRuntimeState(state?: RuntimeStateContext): boolean {
     state.handoffContext ||
       (state.todos && state.todos.length > 0) ||
       state.pendingObjective ||
-      (state.pendingSteps && state.pendingSteps.length > 0),
+      (state.pendingSteps && state.pendingSteps.length > 0) ||
+      state.contextSummary,
   )
 }
 

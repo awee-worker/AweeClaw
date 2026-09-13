@@ -8,6 +8,7 @@
 import { useState } from 'react'
 import { FolderTree, Plus, Trash2, FolderInput, Wand2, Info } from 'lucide-react'
 import { useFileRuleStore } from '../stores'
+import { useStore } from '@store'
 
 export default function WorkFileOrganizer() {
   const { items, add, remove } = useFileRuleStore()
@@ -37,14 +38,14 @@ export default function WorkFileOrganizer() {
     setResult(null)
     try {
       // 通过 IPC 调用主进程整理工作区文件（若宿主未实现则提示规则已就绪）
-      const { api } = await import('@renderer/adapters/electronBridge')
-      const workspace = await api.workspace.getCurrent()
-      if (!workspace) {
+      const workspacePath = useStore.getState().workspacePath
+      if (!workspacePath) {
         setResult('未打开工作区，规则已就绪（可稍后在项目内使用）')
         return
       }
+      const { api } = await import('@renderer/adapters/electronBridge')
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const res = await (api as any).file?.organizeByRules?.({ rules: items, workspacePath: workspace.path })
+      const res = await (api as any).file?.organizeByRules?.({ rules: items, workspacePath })
       setResult(res?.moved ?? `${items.length} 条规则已就绪`)
     } catch {
       setResult('规则已保存，整理动作由主进程执行')

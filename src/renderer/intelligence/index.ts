@@ -112,6 +112,22 @@ export type { MentionCandidate, MentionParseResult } from '@intelligence/utils/m
 export { getAgentConfig } from './utils/intelligenceConfig'
 
 /* ------------------------------------------------------------------ */
+/* 引擎初始化                                                         */
+/* ------------------------------------------------------------------ */
+export {
+  initializeEngines,
+  initializeBehaviorEngine,
+  initializeSubAgentEngine,
+  disposeEngines,
+  getInitializedBehaviorEngine,
+  getInitializedSubAgentEngine,
+} from './engine/engineInitializer'
+export { BehaviorEngine } from './runtime/BehaviorEngine'
+export type { BehaviorRule, TriggerType, ActionType } from './runtime/BehaviorEngine'
+export { SubAgentEngine } from './engine/SubAgentEngine'
+export type { BackgroundTask, TaskStatus, TaskProgressEvent, TaskResultEvent } from './engine/SubAgentEngine'
+
+/* ------------------------------------------------------------------ */
 /* 错误处理                                                           */
 /* ------------------------------------------------------------------ */
 export { isRetryableError } from '@toolkit'

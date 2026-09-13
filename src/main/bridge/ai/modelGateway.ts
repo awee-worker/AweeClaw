@@ -213,8 +213,10 @@ export function registerLLMHandlers(
     }
   })
 
-  ipcMain.on('llm:abort', (event) => {
-    llmServices.get(event.sender.id)?.abort()
+  ipcMain.on('llm:abort', (event, requestId?: string) => {
+    // 带 requestId 时精确中止单个请求，避免误杀同窗口内其他并发 LLM 流
+    // （主对话 / 悬浮球 / 代码补全 / 场景工具 / 多 Agent 子任务等）
+    llmServices.get(event.sender.id)?.abort(requestId)
   })
 
   /* -------- 同步生成（上下文压缩） -------- */

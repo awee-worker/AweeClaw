@@ -15,22 +15,6 @@ import { globalDecide as globalConfirm } from '@components/foundation/DecisionOv
 // ─── 系统提示词最大长度 ───
 const SYSTEM_PROMPT_MAX = 10000
 
-// ─── 内置工具列表（供选择）───
-const BUILTIN_TOOLS = [
-  { id: 'read_file', labelZh: '读取文件', labelEn: 'Read File' },
-  { id: 'write_file', labelZh: '写入文件', labelEn: 'Write File' },
-  { id: 'edit_file', labelZh: '编辑文件', labelEn: 'Edit File' },
-  { id: 'glob', labelZh: '文件搜索', labelEn: 'Glob Search' },
-  { id: 'grep', labelZh: '内容搜索', labelEn: 'Grep Search' },
-  { id: 'bash', labelZh: '命令行', labelEn: 'Terminal' },
-  { id: 'web_search', labelZh: '网页搜索', labelEn: 'Web Search' },
-  { id: 'web_fetch', labelZh: '网页抓取', labelEn: 'Web Fetch' },
-  { id: 'browser', labelZh: '浏览器', labelEn: 'Browser' },
-  { id: 'computer_use', labelZh: '桌面控制', labelEn: 'Desktop Control' },
-  { id: 'image_gen', labelZh: '图像生成', labelEn: 'Image Gen' },
-  { id: 'code_action', labelZh: '代码操作', labelEn: 'Code Action' },
-]
-
 type TriggerMode = 'always' | 'on_request' | 'manual'
 
 interface CustomAgent {
@@ -61,13 +45,7 @@ interface Props {
   editAgentId?: string
 }
 
-function createEmptyAgent({
-  allToolIds,
-  allMcpIds,
-}: {
-  allToolIds: string[]
-  allMcpIds: string[]
-}): CustomAgent {
+function createEmptyAgent({ allMcpIds }: { allMcpIds: string[] }): CustomAgent {
   return {
     id: `agent-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     name: '',
@@ -80,7 +58,8 @@ function createEmptyAgent({
     identifier: '',
     callable: false,
     triggerMode: 'manual',
-    builtinTools: [...allToolIds],
+    // 致命问题 #3：内置工具不再需要勾选 —— 选择智能体后内置工具全部放行
+    builtinTools: undefined,
     mcpServices: [...allMcpIds],
     plugins: [],
     createdAt: Date.now(),
@@ -116,11 +95,8 @@ export function CustomAgentPanel({ agentConfig, setAgentConfig, language, onNewA
     )
   }, [profiles, searchQuery])
 
-  const allToolIds = useMemo(() => BUILTIN_TOOLS.map(t => t.id), [])
-
   const handleCreate = () => {
     const empty = createEmptyAgent({
-      allToolIds,
       allMcpIds: connectedMcpNames.map(s => s.id),
     })
     setPendingNewAgent(empty)
@@ -156,7 +132,6 @@ export function CustomAgentPanel({ agentConfig, setAgentConfig, language, onNewA
   useEffect(() => {
     if (pendingNewAgentId && !editingId && !pendingNewAgent) {
       const empty = createEmptyAgent({
-        allToolIds,
         allMcpIds: connectedMcpNames.map(s => s.id),
       })
       setPendingNewAgent(empty)
@@ -420,7 +395,6 @@ function AgentEditor({
   const [localIcon, setLocalIcon] = useState(profile.icon || 'bot')
   const [localCallable, setLocalCallable] = useState(profile.callable || false)
   const [localTriggerMode, setLocalTriggerMode] = useState<TriggerMode>(profile.triggerMode || 'manual')
-  const [localBuiltinTools, setLocalBuiltinTools] = useState<string[]>(profile.builtinTools || [])
   const [localMcpServices, setLocalMcpServices] = useState<string[]>(profile.mcpServices || [])
   const [localPriority, setLocalPriority] = useState(profile.priority)
 
@@ -454,16 +428,11 @@ function AgentEditor({
       icon: localIcon.trim() || 'bot',
       callable: localCallable,
       triggerMode: localTriggerMode,
-      builtinTools: localBuiltinTools,
+      // 致命问题 #3：内置工具全放行，不再保存 builtinTools 白名单
+      builtinTools: undefined,
       mcpServices: localMcpServices,
       priority: localPriority,
     })
-  }
-
-  const toggleBuiltinTool = (toolId: string) => {
-    setLocalBuiltinTools(prev =>
-      prev.includes(toolId) ? prev.filter(t => t !== toolId) : [...prev, toolId],
-    )
   }
 
   const toggleMcpService = (serverId: string) => {
@@ -706,28 +675,20 @@ function AgentEditor({
         </div>
       </section>
 
-      {/* 工具配置 */}
+      {/* 内置工具说明（致命问题 #3：无需选择，全部可用） */}
       <section>
         <h4 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-3 flex items-center gap-2">
           <Zap className="w-3 h-3" />
           {t('agent.tools', language as Language)}
           <span className="text-text-muted font-normal normal-case text-[10px]">({t('agent.toolsDesc', language as Language)})</span>
         </h4>
-        <div className="grid grid-cols-2 gap-2">
-          {BUILTIN_TOOLS.map(tool => (
-            <button
-              key={tool.id}
-              onClick={() => toggleBuiltinTool(tool.id)}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs transition-all ${
-                localBuiltinTools.includes(tool.id)
-                  ? 'border-accent/40 bg-accent/10 text-accent'
-                  : 'border-border/30 bg-surface-active/30 text-text-muted hover:border-border/60'
-              }`}
-            >
-              {localBuiltinTools.includes(tool.id) && <Check className="w-3 h-3 flex-shrink-0" />}
-              <span>{isZh ? tool.labelZh : tool.labelEn}</span>
-            </button>
-          ))}
+        <div className="flex items-start gap-2 px-3 py-2.5 bg-surface-active/30 rounded-lg border border-border/30 text-xs text-text-muted leading-relaxed">
+          <Check className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-accent" />
+          <span>
+            {isZh
+              ? '内置工具已全部启用（文件读写、搜索、终端、网页等），无需单独配置。如需扩展能力，请在下方连接插件与技能（MCP）。'
+              : 'All built-in tools are enabled (file I/O, search, terminal, web, etc.) — no configuration needed. Connect plugins & skills (MCP) below for more capabilities.'}
+          </span>
         </div>
       </section>
 
@@ -778,7 +739,6 @@ function AgentEditor({
             setLocalIcon(profile.icon || 'bot')
             setLocalCallable(profile.callable || false)
             setLocalTriggerMode(profile.triggerMode || 'manual')
-            setLocalBuiltinTools(profile.builtinTools || [])
             setLocalMcpServices(profile.mcpServices || [])
             setLocalPriority(profile.priority)
           }}

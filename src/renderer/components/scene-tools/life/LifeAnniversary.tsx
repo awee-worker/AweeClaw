@@ -6,7 +6,7 @@
 
 import { useMemo, useState } from 'react'
 import { Cake, Plus, Trash2, Gift, Heart, CalendarHeart, CalendarDays } from 'lucide-react'
-import { useAnniversaryStore, todayStr } from '../stores'
+import { useAnniversaryStore } from '../stores'
 
 const TYPE_META: Record<string, { label: string; icon: React.ReactNode; cls: string }> = {
   birthday: { label: '生日', icon: <Cake className="w-3 h-3" />, cls: 'text-pink-500 bg-pink-500/10 border-pink-500/30' },

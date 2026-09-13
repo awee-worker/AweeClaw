@@ -767,7 +767,12 @@ export async function orchestrateToolBatch(
   const noApprovalRequired = toolCalls.filter(tc => !requiresApprovalGate(tc, context.chatMode))
 
   // 在执行前保存文件快照
-  await captureFileSnapshots(toolCalls, context)
+  // 快照仅用于「撤销」，失败不应阻断工具执行本身（否则编排会整体抛出、中断主循环）
+  try {
+    await captureFileSnapshots(toolCalls, context)
+  } catch (snapshotError) {
+    logger.agent.warn('[Tools] Failed to capture file snapshots, continuing without undo points:', snapshotError)
+  }
 
   // 1. 先执行不需要审批的工具。
   //    注意：即使无需审批，也必须尊重工具的 parallel 配置。

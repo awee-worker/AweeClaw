@@ -6,7 +6,7 @@
 
 import { useMemo, useState } from 'react'
 import { CalendarRange, Plus, Check, Trash2, Target } from 'lucide-react'
-import { usePlanStore, todayStr, uid } from '../stores'
+import { usePlanStore, todayStr } from '../stores'
 
 const SUBJECTS = ['数学', '英语', '编程', '阅读', '专业课', '复习', '其他']
 const TIME_SLOTS = ['上午', '下午', '晚上']

@@ -1,12 +1,14 @@
 import { api } from '../../adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
 import { toolManager, initializeToolProviders, setToolLoadingContext, initializeTools } from '@intelligence/toolkit'
+import { isExternalAgentToolsExposed } from '@intelligence/toolkit/externalAgentToolsGate'
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { useStore } from '@store'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { playNotificationSound } from '@utils/notificationSound'
 import { getToolApprovalType, getToolDisplayName } from '@configuration/toolDefinitions'
 import { getActiveCustomAgent, getAgentToolLoadingFields } from '@renderer-configuration/customAgentTools'
+import { isSceneToolsIntent } from '@intelligence/utils/sceneToolsIntent'
 import { approvalService, requiresApprovalGate } from '@intelligence/engine/toolOrchestrator'
 import type { LLMConfig, LLMMessage, ToolDefinition, ToolExecutionContext, ToolExecutionResult } from '@intelligence/providerTypes'
 
@@ -68,7 +70,7 @@ async function ensureToolsInitialized(): Promise<void> {
  * 每次执行时刷新工具加载上下文（场景/智能体可能在会话间切换）
  * 确保子智能体路径始终使用最新的智能体工具白名单
  */
-function refreshToolLoadingContext(): void {
+function refreshToolLoadingContext(sceneToolsEnabled = false): void {
   const activeScenarioId = useStore.getState().activeScenarioId
   const activeScenario = scenarioRegistry.getActive()
   const scenarioToolPacks = activeScenario?.capabilities?.toolPacks
@@ -84,6 +86,9 @@ function refreshToolLoadingContext(): void {
     scenarioId: activeScenarioId,
     scenarioToolPacks,
     scenarioTools,
+    // 场景工具按需暴露（致命问题 #4）：子智能体仅在任务本身是场景数据操作时可见
+    sceneToolsEnabled,
+    externalAgentEnabled: isExternalAgentToolsExposed(),
     ...agentToolFields,
   })
 }
@@ -394,7 +399,7 @@ export async function runAgentSubLoop(options: SubLoopOptions): Promise<SubLoopR
 
   await ensureToolsInitialized()
   // 每次执行刷新工具加载上下文（智能体可能已切换）
-  refreshToolLoadingContext()
+  refreshToolLoadingContext(isSceneToolsIntent(userMessage))
 
   const agentTools = toolManager.getAllToolDefinitions()
 

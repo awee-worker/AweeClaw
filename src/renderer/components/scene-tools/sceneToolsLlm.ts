@@ -50,7 +50,7 @@ export function runLlmText({ systemPrompt, userPrompt, signal }: LlmTextParams):
     const onAbort = () => {
       if (finished) return
       finished = true
-      api.llm.abort()
+      api.llm.abort(requestId)
       cleanup()
       reject(new DOMException('Aborted', 'AbortError'))
     }

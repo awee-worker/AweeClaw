@@ -1186,7 +1186,7 @@ export class PluginInstaller {
   ): Promise<void> {
     const skillMdPath = path.join(pluginDir, 'SKILL.md')
     if (!fs.existsSync(skillMdPath)) {
-      logger.warn(`[PluginInstaller] SKILL.md not found for skill plugin: ${pluginKey}`)
+    logger.system.warn(`[PluginInstaller] SKILL.md not found for skill plugin: ${pluginKey}`)
       return
     }
 
@@ -1195,7 +1195,7 @@ export class PluginInstaller {
     // 解析 YAML frontmatter（格式：---\nkey: value\n---\ncontent）
     const frontmatterMatch = skillContent.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/)
     if (!frontmatterMatch) {
-      logger.warn(`[PluginInstaller] Invalid SKILL.md format for: ${pluginKey}`)
+    logger.system.warn(`[PluginInstaller] Invalid SKILL.md format for: ${pluginKey}`)
       return
     }
 

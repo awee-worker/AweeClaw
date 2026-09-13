@@ -4,15 +4,16 @@
  * 结构：
  * - 顶部栏：问候语 + 日期 + 场景模式分段切换（工作/生活/学习）+ 自定义按钮
  * - 卡片墙：一张卡片一个入口（操作卡 / 工具卡），macOS 桌面小组件式网格布局
- *   - 操作卡：新对话、打开文件夹、场景市场、场景工具、场景管理、最近工作
+ *   - 操作卡：新建任务、打开文件夹、场景市场、场景工具、场景管理、最近工作
+ *     · 「新建任务」卡片的描述文案随场景模式动态轮换，与新建任务页（空对话态）欢迎语同源
  *   - 工具卡：当前模式的内置工具，实时展示数据摘要（待办数、今日专注、本周周报等）
  *   - 卡片可添加 / 移除，不同模式拥有独立卡片集合与默认配置
  * - 添加卡片弹层：macOS 小组件库风格，按当前模式分组选择
  *
  * 模式默认卡片（见 layoutSlice WORKBENCH_DEFAULT_WIDGETS）：
- *   work  → 新对话、待办清单、工作周报、番茄专注钟、最近工作
- *   life  → 新对话、记账本、喝水打卡、心情日记、最近工作
- *   study → 新对话、闪卡复习、学习计划、学习番茄钟、最近工作
+ *   work  → 新建任务、待办清单、工作周报、番茄专注钟、最近工作
+ *   life  → 新建任务、记账本、喝水打卡、心情日记、最近工作
+ *   study → 新建任务、闪卡复习、学习计划、学习番茄钟、最近工作
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
@@ -45,6 +46,7 @@ import type { WorkbenchBackground, WorkbenchCardPos } from '@/renderer/state/sli
 import { api } from '@renderer/adapters/electronBridge'
 import { workspaceManager, WorkspaceOpenError } from '@services/WorkspaceAdapter'
 import { useStore } from '@store'
+import { useAgentActions } from '@hooks/useAgent'
 import { getLucideIcon } from '@components/foundation/IconMap'
 import { logger } from '@toolkit/LogEngine'
 import { toast } from '@components/foundation/NotificationProvider'
@@ -53,8 +55,11 @@ import { t, type Language } from '@renderer/i18n'
 import { useSceneModeStore } from '@/renderer/modes/sceneModeStore'
 import { useModeStore } from '@/renderer/modes/workModeStore'
 import { sceneModeRegistry } from '@intelligence/capabilities/sceneMode/SceneModeRegistry'
+import type { SceneModeProfile, TimePeriod } from '@intelligence/capabilities/sceneMode/SceneModeDescriptor'
 import type { SceneMode } from '@protocols/sceneModeProtocol'
 import { getToolsByMode, getToolById } from '@components/scene-tools/registry'
+import { pluginUiRegistry } from '@renderer/plugins/PluginUiRegistry'
+import type { PluginWidgetCardContribution } from '@shared/plugin-sdk/types'
 import {
   todayStr,
   useTodoStore,
@@ -99,7 +104,7 @@ interface ActionCardDef {
 }
 
 const ACTION_CARDS: ActionCardDef[] = [
-  { id: 'new-chat', icon: MessageSquare, color: '#3B82F6', titleZh: '新对话', titleEn: 'New Chat', descZh: '与 AI 助手开始新的对话', descEn: 'Start a new conversation' },
+  { id: 'new-chat', icon: MessageSquare, color: '#3B82F6', titleZh: '新建任务', titleEn: 'New Task', descZh: '与 AI 助手开始一项新任务', descEn: 'Start a new task with AI' },
   { id: 'open-folder', icon: FolderOpen, color: '#8B5CF6', titleZh: '打开文件夹', titleEn: 'Open Folder', descZh: '打开或切换工作目录', descEn: 'Open or switch workspace' },
   { id: 'open-market', icon: Store, color: '#F97316', titleZh: '场景市场', titleEn: 'Scenario Market', descZh: '发现并安装新场景', descEn: 'Discover new scenarios' },
   { id: 'open-scene-tools', icon: Blocks, color: '#10B981', titleZh: '场景工具', titleEn: 'Scene Tools', descZh: '全部工具面板', descEn: 'All scene tools' },
@@ -182,6 +187,43 @@ function getWeekStartStr(d = new Date()): string {
   const mon = new Date(d)
   mon.setDate(d.getDate() - day + 1)
   return todayStr(mon)
+}
+
+/** 根据当前小时映射问候时段（与新建任务页欢迎语保持同一套规则） */
+function getTimePeriod(hour: number): TimePeriod {
+  if (hour >= 5 && hour < 11) return 'morning'
+  if (hour >= 11 && hour < 13) return 'noon'
+  if (hour >= 13 && hour < 18) return 'afternoon'
+  if (hour >= 18 && hour < 23) return 'evening'
+  return 'night'
+}
+
+/**
+ * 从当前场景模式的问候语池中动态挑选一条，用作「新建任务」卡片的描述文案。
+ *
+ * 与新建任务页（空对话态）的欢迎语使用同一数据源（SceneModeProfile.greetings）：
+ * - 时段问候（timeGreetings）：按当前时间优先，50% 概率命中，保证文案与真实时间一致；
+ * - 静态池（zh / en）：随机轮换，排除上一次结果，避免连续相同。
+ *
+ * @returns 命中的问候语；无可用数据时返回 null（由调用方回退到默认文案）
+ */
+function pickNewTaskGreeting(
+  greetings: SceneModeProfile['greetings'],
+  isZh: boolean,
+  last: string
+): string | null {
+  const timeGreetings = greetings?.timeGreetings
+  if (timeGreetings) {
+    const period = getTimePeriod(new Date().getHours())
+    const pool = isZh ? timeGreetings.zh : timeGreetings.en
+    const timeGreeting = pool?.[period]
+    if (timeGreeting && Math.random() < 0.5) return timeGreeting
+  }
+  const pool = isZh ? greetings?.zh : greetings?.en
+  if (!pool || pool.length === 0) return null
+  if (pool.length === 1) return pool[0]
+  const candidates = pool.filter((g) => g !== last)
+  return candidates[Math.floor(Math.random() * candidates.length)] ?? pool[0]
 }
 
 /* ===================== 数据预览小组件 ===================== */
@@ -350,6 +392,16 @@ function StudyPlanCardPreview() {
 
 /** 工具卡数据摘要分发 */
 function ToolCardPreview({ toolId }: { toolId: string }) {
+  // 插件卡片：通过 pluginUiRegistry 查找（组件内部自动读取，无需传 component/host）
+  const pluginMatch = /^([^:]+):(.+)$/.exec(toolId)
+  if (pluginMatch) {
+    const [_, pluginKey] = pluginMatch
+    const cards = pluginUiRegistry.getWidgetCards(pluginKey)
+    if (cards.length > 0) {
+      const wc = cards[0]
+      return <PluginCardPreview key={toolId} cardId={toolId} pluginKey={pluginKey} contribution={wc.contribution} />
+    }
+  }
   switch (toolId) {
     case 'work-todo': return <TodoCardPreview />
     case 'work-weekly': return <WeeklyCardPreview />
@@ -375,6 +427,127 @@ function ToolCardPreview({ toolId }: { toolId: string }) {
   }
 }
 
+/**
+ * PluginCardPreview — 插件工作台卡片预览组件
+ *
+ * 刷新策略：
+ * - core tier：15s 自动刷新
+ * - enhanced tier：60s 自动刷新
+ * - 手动刷新按钮（用户点击时立即触发）
+ * - IntersectionObserver：卡片不可见时暂停刷新
+ * - 增量刷新：首次全量加载，后续仅更新数据字段（由插件预览组件自行实现 diff）
+ */
+function PluginCardPreview({
+  cardId,
+  pluginKey,
+  contribution,
+}: {
+  cardId: string
+  pluginKey: string
+  contribution: PluginWidgetCardContribution
+}) {
+  // 从 registry 获取已加载的组件和 host（懒加载确保 ui.js 已就绪）
+  const cards = pluginUiRegistry.getWidgetCards(pluginKey)
+  const cardInfo = cards.find((c) => c.contribution.id === cardId)
+  const PreviewComponent = cardInfo?.component ?? null
+  const host = cardInfo?.host
+
+  const [data, setData] = useState<Record<string, unknown> | null>(null)
+  const [loading, setLoading] = useState(true)
+  const visibleRef = useRef(true)
+  const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const refresh = useCallback(async () => {
+    if (!host || !visibleRef.current) return
+    setLoading(true)
+    try {
+      // 插件约定：调用 "getCardData" MCP 工具，传入 { cardId } 参数
+      const result = await host.callTool('getCardData', { cardId })
+      if (result.success && result.content) {
+        const text = result.content[0]?.text
+        if (text) {
+          try {
+            const parsed = JSON.parse(text) as Record<string, unknown>
+            setData((prev) => {
+              // 增量合并：保留上次已有字段，仅更新返回的字段
+              return prev ? { ...prev, ...parsed } : parsed
+            })
+            return
+          } catch {
+            // JSON 解析失败，按字符串处理
+          }
+        }
+      }
+      setData(null)
+    } catch (err) {
+      logger.ui.warn(`[PluginCardPreview] Failed to refresh card ${cardId}:`, err)
+    } finally {
+      setLoading(false)
+    }
+  }, [host, cardId])
+
+  useEffect(() => {
+    if (!host) return
+    void refresh()
+
+    // 根据 tier 确定刷新间隔
+    const intervalMs = contribution.tier === 'core' ? 15_000 : 60_000
+
+    // IntersectionObserver：卡片不可见时暂停刷新
+    const observer = new IntersectionObserver(
+      ([entry]) => { visibleRef.current = entry.isIntersecting },
+      { threshold: 0.1 },
+    )
+    const el = document.querySelector(`[data-card-id="${cardId}"]`)
+    if (el) observer.observe(el)
+
+    refreshTimerRef.current = setInterval(refresh, intervalMs)
+
+    // 监听手动刷新事件（由卡片右上角刷新按钮派发）
+    const onRefreshEvent = (e: Event) => {
+      if ((e as CustomEvent).detail === cardId) {
+        void refresh()
+      }
+    }
+    document.addEventListener('plugin-card-refresh', onRefreshEvent as EventListener)
+
+    return () => {
+      observer.disconnect()
+      if (refreshTimerRef.current) clearInterval(refreshTimerRef.current)
+      document.removeEventListener('plugin-card-refresh', onRefreshEvent as EventListener)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cardId, contribution.tier, host])
+
+  const handleManualRefresh = useCallback(() => {
+    void refresh()
+  }, [refresh])
+
+  // 组件未加载时显示占位
+  if (!PreviewComponent || !host) {
+    return (
+      <div className="flex items-center justify-center h-full text-[11px] text-text-muted">
+        {loading ? (
+          <span className="animate-pulse">{contribution.labelZh ?? contribution.label}</span>
+        ) : (
+          <span>组件未就绪</span>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="w-full h-full flex flex-col">
+      <PreviewComponent
+        host={host}
+        data={data}
+        loading={loading}
+        onRefresh={handleManualRefresh}
+      />
+    </div>
+  )
+}
+
 /* ===================== 主组件 ===================== */
 
 export default function WorkbenchHome() {
@@ -390,6 +563,8 @@ export default function WorkbenchHome() {
   const setShowWelcomePage = useStore((s) => s.setShowWelcomePage)
   const setActiveSidePanel = useStore((s) => s.setActiveSidePanel)
   const setPendingSceneToolId = useStore((s) => s.setPendingSceneToolId)
+
+  const { createThread } = useAgentActions()
 
   const { currentSceneMode, setSceneMode } = useSceneModeStore()
   const { setMode: setWorkMode } = useModeStore()
@@ -420,7 +595,7 @@ export default function WorkbenchHome() {
     grabDY: number
     targetCol: number
     targetRow: number
-  }>(null)
+  } | null>(null)
   const suppressClickRef = useRef(false)
   const posMapRef = useRef<Record<string, WorkbenchCardPos>>({})
   // 宫格容器与滚动容器引用（拖拽时计算网格坐标用）
@@ -432,6 +607,8 @@ export default function WorkbenchHome() {
   /* ---------- 数据加载 ---------- */
   useEffect(() => {
     void loadRecentWorkspaces()
+    // 确保所有插件卡片组件已加载
+    void pluginUiRegistry.ensureWidgetCardsLoaded()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -492,9 +669,15 @@ export default function WorkbenchHome() {
 
   /* ---------- 操作入口 ---------- */
   const handleNewChat = useCallback(() => {
+    // 有已选工作区时，进入新建任务页面默认打开工作区面板
+    if (useStore.getState().workspace?.roots?.length) {
+      setActiveSidePanel('explorer')
+    }
     setChatVisible(true)
     setShowWelcomePage(false)
-  }, [setChatVisible, setShowWelcomePage])
+    // 创建全新空会话（与右上角「新对话」入口一致）
+    createThread()
+  }, [setChatVisible, setShowWelcomePage, setActiveSidePanel, createThread])
 
   const handleOpenFolder = useCallback(async () => {
     try {
@@ -674,13 +857,23 @@ export default function WorkbenchHome() {
     }
   }, [isZh, currentSceneMode, setWorkbenchBackground])
 
+  /* ---------- 「新建任务」卡片描述：随场景模式动态轮换（与新建任务页欢迎语同源） ---------- */
+  const lastCardGreetingRef = useRef<string>('')
+  const newTaskDesc = useMemo(() => {
+    const greetings = sceneModeRegistry.getOrDefault(currentSceneMode).greetings
+    const picked = pickNewTaskGreeting(greetings, isZh, lastCardGreetingRef.current)
+    if (picked) lastCardGreetingRef.current = picked
+    return picked ?? (isZh ? '与 AI 助手开始一项新任务' : 'Start a new task with AI')
+  }, [currentSceneMode, isZh])
+
   /* ---------- 卡片解析 ---------- */
   const cards = useMemo(() => {
     const ids = workbenchWidgets[currentSceneMode] ?? []
     return ids
       .map((id) => resolveCardMeta(id, currentSceneMode))
       .filter((c): c is CardMeta => c !== null)
-  }, [workbenchWidgets, currentSceneMode])
+      .map((c) => (c.id === 'new-chat' ? { ...c, descZh: newTaskDesc, descEn: newTaskDesc } : c))
+  }, [workbenchWidgets, currentSceneMode, newTaskDesc])
 
   /* 背景样式 */
   const background: WorkbenchBackground | null = workbenchBackgrounds[currentSceneMode] ?? null
@@ -945,7 +1138,7 @@ export default function WorkbenchHome() {
 
 /* ===================== 卡片元数据 ===================== */
 
-type CardKind = 'action' | 'tool'
+type CardKind = 'action' | 'tool' | 'plugin'
 
 interface CardMeta {
   id: string
@@ -956,11 +1149,34 @@ interface CardMeta {
   descZh: string
   descEn: string
   color: string
+  /** 插件卡片元数据（kind==='plugin' 时有效） */
+  pluginMeta?: { pluginKey: string; contribution: PluginWidgetCardContribution }
 }
 function resolveCardMeta(id: string, mode: SceneMode): CardMeta | null {
   const action = ACTION_CARDS.find((a) => a.id === id)
   if (action) {
     return { ...action, kind: 'action' }
+  }
+  // 插件卡片：id 格式为 "<pluginKey>:<cardName>"
+  const pluginMatch = /^([^:]+):(.+)$/.exec(id)
+  if (pluginMatch) {
+    const [_, pluginKey] = pluginMatch
+    const cards = pluginUiRegistry.getWidgetCards(pluginKey, mode)
+    if (cards.length > 0) {
+      const wc = cards[0]
+      const idx = TOOL_COLORS.length > 0 ? Math.abs(hashCode(id)) % TOOL_COLORS.length : 0
+      return {
+        id,
+        kind: 'plugin',
+        icon: getLucideIcon(wc.contribution.icon) || Zap,
+        titleZh: wc.contribution.labelZh ?? wc.contribution.label,
+        titleEn: wc.contribution.label,
+        descZh: wc.contribution.descriptionZh ?? wc.contribution.description ?? '',
+        descEn: wc.contribution.description ?? '',
+        color: TOOL_COLORS[idx],
+        pluginMeta: { pluginKey, contribution: wc.contribution },
+      }
+    }
   }
   const tool = getToolById(id)
   if (tool && tool.mode === mode) {
@@ -988,17 +1204,23 @@ function hashCode(str: string): number {
   return h
 }
 
-/* ===================== 宫格布局工具 ===================== */
-
-/** 两个卡片位置是否重叠 */
-function isGridOverlap(a: WorkbenchCardPos, b: WorkbenchCardPos): boolean {
-  return (
-    a.col < b.col + b.colSpan &&
-    b.col < a.col + a.colSpan &&
-    a.row < b.row + b.rowSpan &&
-    b.row < a.row + a.rowSpan
-  )
+/** 根据文件扩展名推断图片 MIME 类型；非图片返回 null */
+function getImageMime(filePath: string): string | null {
+  const ext = filePath.split('.').pop()?.toLowerCase() ?? ''
+  const map: Record<string, string> = {
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    webp: 'image/webp',
+    gif: 'image/gif',
+    svg: 'image/svg+xml',
+    bmp: 'image/bmp',
+    ico: 'image/x-icon',
+  }
+  return map[ext] ?? null
 }
+
+/* ===================== 宫格布局工具 ===================== */
 
 /**
  * 宫格重排：将 movedId 插入 (targetCol, targetRow) 目标宫格。
@@ -1162,13 +1384,19 @@ function WorkbenchCard({
           <RecentWorkspacesList isZh={isZh} items={recentWorkspaces} onOpenRecent={onOpenRecent} />
         ) : isAction ? (
           <p className="text-[11px] text-text-muted leading-relaxed line-clamp-2">{desc}</p>
+        ) : card.kind === 'plugin' && card.pluginMeta ? (
+          <PluginCardPreview
+            cardId={card.id}
+            pluginKey={card.pluginMeta.pluginKey}
+            contribution={card.pluginMeta.contribution}
+          />
         ) : (
           <ToolCardPreview toolId={card.id} />
         )}
       </div>
 
-      {/* 底部：工具卡描述 */}
-      {card.kind === 'tool' && (
+      {/* 底部：工具卡/插件卡描述 */}
+      {(card.kind === 'tool' || card.kind === 'plugin') && (
         <p className="text-[11px] text-text-muted truncate w-full mt-1.5">{desc}</p>
       )}
 
@@ -1197,6 +1425,21 @@ function WorkbenchCard({
         >
           <Move className="w-3.5 h-3.5" strokeWidth={2} />
         </button>
+        {/* 刷新：插件卡片显示，点击立即重新拉取数据 */}
+        {card.kind === 'plugin' && (
+          <button
+            title={isZh ? '刷新数据' : 'Refresh'}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation()
+              // 触发对应 PluginCardPreview 的刷新：通过 dispatch 自定义事件
+              document.dispatchEvent(new CustomEvent('plugin-card-refresh', { detail: card.id }))
+            }}
+            className="p-1 rounded-md text-text-muted/70 hover:text-accent hover:bg-accent/10 transition-colors"
+          >
+            <RotateCcw className="w-3.5 h-3.5" strokeWidth={2} />
+          </button>
+        )}
         {/* 尺寸：点击图标弹出大小选择菜单 */}
         <div className="relative">
           <button

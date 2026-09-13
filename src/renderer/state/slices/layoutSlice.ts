@@ -273,7 +273,7 @@ export interface LayoutSlice {
   /** 欢迎页点击工具卡片时暂存的目标工具 ID，SceneToolsPanel 工具就绪后自动跳转 */
   pendingSceneToolId: string | null
   /** 设置待跳转的场景工具 ID */
-  setPendingSceneToolId: (id: string) => void
+  setPendingSceneToolId: (id: string | null) => void
 
   /* ===== 工作台自定义 ===== */
   /** 每个场景模式的工作台卡片集合（用户可自定义：添加/移除/排序） */
@@ -405,8 +405,16 @@ export const createLayoutSlice: StateCreator<LayoutSlice, [], [], LayoutSlice> =
     life: persistedWorkbench.widgets?.life?.length ? [...persistedWorkbench.widgets.life] : [...WORKBENCH_DEFAULT_WIDGETS.life],
     study: persistedWorkbench.widgets?.study?.length ? [...persistedWorkbench.widgets.study] : [...WORKBENCH_DEFAULT_WIDGETS.study],
   },
-  workbenchPositions: persistedWorkbench.positions ?? {},
-  workbenchBackgrounds: persistedWorkbench.backgrounds ?? {},
+  workbenchPositions: {
+    work: persistedWorkbench.positions?.work ?? {},
+    life: persistedWorkbench.positions?.life ?? {},
+    study: persistedWorkbench.positions?.study ?? {},
+  },
+  workbenchBackgrounds: {
+    work: persistedWorkbench.backgrounds?.work ?? null,
+    life: persistedWorkbench.backgrounds?.life ?? null,
+    study: persistedWorkbench.backgrounds?.study ?? null,
+  },
   /* ----- 场景管理页面标签页初始状态 ----- */
   scenarioPageTab: 'installed',
   setScenarioPageTab: (tab) => set({ scenarioPageTab: tab }),

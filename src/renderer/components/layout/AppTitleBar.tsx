@@ -28,6 +28,7 @@ import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { useAgentActions } from '@hooks/useAgent'
 import ProjectSelector from './ProjectSelector'
+import AppMenuBar from './AppMenuBar'
 import { useInlineToast } from '@components/foundation/InlineNotification'
 import { useHasElevatedToastLayer } from '@components/foundation/toastLayerStore'
 import { BRAND } from '@shared/brand'
@@ -224,7 +225,7 @@ function CloudQuotaIndicator({ language }: { language: Language }) {
 }
 
 export default function AppTitleBar() {
-  const { setShowQuickOpen, language, activeSidePanel, chatVisible, toggleSidebar, toggleChat, navRailExpanded, setNavRailExpanded, setVoiceConversationActive, closeAllFullPages, setShowEnvironmentSetup } = useStore(useShallow(s => ({
+  const { setShowQuickOpen, language, activeSidePanel, chatVisible, toggleSidebar, toggleChat, navRailExpanded, setNavRailExpanded, setVoiceConversationActive, closeAllFullPages, setShowEnvironmentSetup, showWelcomePage } = useStore(useShallow(s => ({
     setShowQuickOpen: s.setShowQuickOpen,
     language: s.language,
     activeSidePanel: s.activeSidePanel,
@@ -236,6 +237,7 @@ export default function AppTitleBar() {
     setVoiceConversationActive: s.setVoiceConversationActive,
     closeAllFullPages: s.closeAllFullPages,
     setShowEnvironmentSetup: s.setShowEnvironmentSetup,
+    showWelcomePage: s.showWelcomePage,
   })))
 
   const sidebarVisible = activeSidePanel !== null
@@ -266,6 +268,9 @@ export default function AppTitleBar() {
             : <PanelLeftIcon className="w-4 h-4" />
           }
         </button>
+
+        {/* Windows/Linux：自绘顶部菜单栏（macOS 使用系统菜单栏） */}
+        {!isMac && <AppMenuBar />}
 
         <div className="no-drag">
           <ProjectSelector />
@@ -314,14 +319,22 @@ export default function AppTitleBar() {
                   <span className="text-xs">{language === 'zh' ? envInstallStatus.message : envInstallStatus.message}</span>
                 </button>
               )}
-              <button
-                onClick={() => createThread()}
-                className="flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-medium text-text-muted hover:text-text-primary hover:bg-[rgba(var(--text-primary),0.06)] rounded-md transition-colors"
-                title={t('layout.newchat', language as Language)}
-              >
-                <Plus className="w-3.5 h-3.5" />
-                {t('layout.newchat2', language as Language)}
-              </button>
+              {!showWelcomePage && (
+                <button
+                  onClick={() => {
+                    // 新对话：若当前已选择工作区，默认打开工作区面板
+                    if (useStore.getState().workspace?.roots?.length) {
+                      useStore.getState().setActiveSidePanel('explorer')
+                    }
+                    createThread()
+                  }}
+                  className="flex items-center gap-1.5 px-2.5 py-1 text-[13px] font-medium text-text-muted hover:text-text-primary hover:bg-[rgba(var(--text-primary),0.06)] rounded-md transition-colors"
+                  title={t('layout.newchat', language as Language)}
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  {t('layout.newchat2', language as Language)}
+                </button>
+              )}
               <button
                 onClick={() => {
                   setVoiceConversationActive(true)

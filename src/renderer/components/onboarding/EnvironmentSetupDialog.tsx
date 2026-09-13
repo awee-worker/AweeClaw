@@ -97,7 +97,9 @@ export default function EnvironmentSetupDialog({ onComplete }: EnvironmentSetupD
       setEnvInstallStatus((prev) => {
         const newProgress = { ...prev.progress, [event.id]: event }
         // 计算整体进度
-        const values = Object.values(newProgress).filter(Boolean)
+        const values = Object.values(newProgress).filter(
+          (v): v is NonNullable<typeof v> => v != null,
+        )
         const avgPercent = values.length > 0 
           ? Math.round(values.reduce((sum, p) => sum + p.percent, 0) / values.length)
           : prev.percent

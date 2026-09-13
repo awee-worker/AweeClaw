@@ -16,7 +16,6 @@ export default function LifeRecipe() {
   const [steps, setSteps] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
-  const selected = items.find((i) => i.id === selectedId) ?? null
   const favCount = items.filter((i) => i.favorite).length
 
   const handleAdd = () => {

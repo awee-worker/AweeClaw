@@ -22,7 +22,6 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '@renderer/adapters/electronBridge'
-import { useStore } from '@store'
 import { setVoiceCloudMode, setVoiceConfigCloudMode } from '../services/voiceApi'
 import { setServerUrl, setTokens } from '../adapters/backendApi'
 import { logger } from '@shared/toolkit/LogEngine'
@@ -35,7 +34,6 @@ import type {
   SaveConversationPayload,
   ExecutionStatusSummary,
   MainConversationSnapshot,
-  AvatarAgentConfig,
 } from '../types/electronBridge'
 
 // ============================================
@@ -59,26 +57,6 @@ export interface AvatarBridgeState {
   statusEdge: 'left' | 'right' | null
   /** 主窗口当前对话快照（主窗口 push，迷你聊天同步显示主窗口对话） */
   mainConversation: MainConversationSnapshot | null
-}
-
-/**
- * 将 voiceContext 中的智能体配置同步到头像窗口进程内的 store，
- * 使迷你聊天 buildAgentSystemPrompt → getActiveCustomAgent 能读到正确的智能体
- * （智能体 systemPrompt 注入 + 工具白名单生效）
- */
-function syncAgentConfigToStore(agentConfig?: AvatarAgentConfig | null): void {
-  if (!agentConfig) return
-  try {
-    const current = useStore.getState().agentConfig
-    // 仅同步智能体相关字段，避免覆盖头像窗口进程内的其他配置
-    useStore.getState().set('agentConfig', {
-      ...(current || {}),
-      activeCustomAgentId: agentConfig.activeCustomAgentId ?? undefined,
-      customAgentProfiles: agentConfig.customAgentProfiles || [],
-    })
-  } catch (err) {
-    logger.system.warn('[AvatarBridge] Sync agentConfig to store failed:', err)
-  }
 }
 
 export interface AvatarBridgeActions {

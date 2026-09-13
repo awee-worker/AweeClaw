@@ -63,10 +63,12 @@ import { createScreenshotOverlayApi } from './preload/api/screenshotOverlay'
 import { createScreenshotApi } from './preload/api/screenshot'
 import { createMeetingNotesApi } from './preload/api/meetingNotes'
 import { createPptPreviewApi } from './preload/api/pptPreview'
+import { createOnlyOfficeApi } from './preload/api/onlyOffice'
 import { createProjectExecutionApi } from './preload/api/projectExecution'
 import { createVideoTranscodeApi } from './preload/api/videoTranscode'
 import { createEnvironmentApi } from './preload/api/environment'
 import { createDeviceLinkApi } from './preload/api/deviceLink'
+import { createExternalAgentApi } from './preload/api/externalAgent'
 
 /**
  * 聚合所有领域 API 并暴露到渲染进程。
@@ -102,8 +104,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   screenshot: createScreenshotApi(),
   meetingNotes: createMeetingNotesApi(),
   pptPreview: createPptPreviewApi(),
+  onlyOffice: createOnlyOfficeApi(),
   projectExecution: createProjectExecutionApi(),
   videoTranscode: createVideoTranscodeApi(),
   environment: createEnvironmentApi(),
-  deviceLink: createDeviceLinkApi(),
-})
+    deviceLink: createDeviceLinkApi(),
+    externalAgent: createExternalAgentApi(),
+  })

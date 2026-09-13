@@ -370,7 +370,7 @@ export type {
   PluginHookDefinition,
   PluginHookEvent,
   PluginSettingDefinition,
-  PluginContext,
+  PluginContext as PluginRuntimeContext,
   PluginStorage,
   PluginLogger,
   PluginSandbox,

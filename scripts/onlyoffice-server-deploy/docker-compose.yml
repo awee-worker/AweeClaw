@@ -1,0 +1,72 @@
+# =========================================================
+# ONLYOFFICE Docs 9.x 单服务部署（Docker Compose）
+#
+# 说明：
+# - 9.4 起社区版为单进程架构，已内置 PostgreSQL/RabbitMQ，
+#   不再需要额外的 db/queue 容器 —— 一个服务即可跑起来。
+# - 健康检查：GET /healthcheck 返回 200 视为就绪。
+# - 授权：社区版 AGPL-3.0 自托管免费（带 OnlyOffice 品牌栏）；
+#   对外提供服务的修改版需遵守 AGPL；去品牌/商业内嵌需商业授权。
+# =========================================================
+
+services:
+  onlyoffice-document-server:
+    image: ${ONLYOFFICE_IMAGE:-onlyoffice/documentserver:9.4.0.1}
+    container_name: onlyoffice-ds
+    restart: unless-stopped
+    ports:
+      - "${DS_PORT:-8080}:80"
+    environment:
+      # JWT：集成方(config/callback)与服务端必须用同一 secret 签名
+      - JWT_ENABLED=${JWT_ENABLED:-true}
+      - JWT_SECRET=${JWT_SECRET:?请在 .env 中设置 JWT_SECRET}
+      - TZ=${TZ:-Asia/Shanghai}
+      # 禁止访问示例页，降低攻击面（文档服务器仅对业务网关开放）
+      - EXAMPLE_ENABLED=false
+    volumes:
+      - ds_data:/var/www/onlyoffice/Data   # 配置 / 证书 / 主数据
+      - ds_logs:/var/log/onlyoffice        # 日志
+      - ds_lib:/var/lib/onlyoffice         # 库/缓存（重要：磁盘需 ≥20GB）
+    stop_grace_period: 60s
+    # 容器内自带健康检查，compose 亦依赖外部 curl 轮询即可
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
+
+  # ---------------------------------------------------------
+  # 桥接网关：文件上传/下载 + 保存回调回写（与 DS 同机）
+  #   - 对外仅经外层反代路径 {GW_BASE_PATH}（如 /oo-gw）访问
+  #   - 端口只绑定 127.0.0.1，不经外层反代无法直接访问
+  #   - 源码目录 ./gateway 挂载进容器，改代码重启即生效，无需构建镜像
+  # ---------------------------------------------------------
+  oo-gateway:
+    image: node:20-alpine
+    container_name: oo-gateway
+    restart: unless-stopped
+    working_dir: /app
+    command: node server.js
+    depends_on:
+      - onlyoffice-document-server
+    volumes:
+      - ./gateway:/app
+      - gw_data:/data            # 上传的文档持久化
+    environment:
+      - GW_PORT=8090
+      - DATA_DIR=/data
+      - DOC_SERVER=${PUBLIC_DS_URL}
+      - PUBLIC_BASE_URL=${PUBLIC_DS_URL}${GW_BASE_PATH}
+      - JWT_SECRET=${JWT_SECRET}
+      - DS_INTERNAL=${DS_INTERNAL:-http://onlyoffice-document-server}
+      - GW_ADMIN_KEY=${GW_ADMIN_KEY:-}
+      - TTL_HOURS=${TTL_HOURS:-24}
+    ports:
+      - "127.0.0.1:${GW_PORT:-8090}:8090"
+
+volumes:
+  ds_data:
+  ds_logs:
+  ds_lib:
+  gw_data:

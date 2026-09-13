@@ -408,7 +408,7 @@ function waitForAgentCompletion(
             const output = assistantId
                 ? getTaskOutput(identity.threadId, assistantId) || 'Task execution completed'
                 : 'Task execution completed'
-            if (event.reason === 'error' || event.reason === 'aborted' || event.reason === 'loop_detected' || event.reason === 'max_iterations') {
+            if (event.reason === 'error' || event.reason === 'aborted' || event.reason === 'loop_detected' || event.reason === 'max_iterations' || event.reason === 'interrupted') {
                 settle({ success: false, output: '', error: event.reason, assistantId })
                 return
             }

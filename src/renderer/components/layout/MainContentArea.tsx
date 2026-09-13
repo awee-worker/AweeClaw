@@ -13,13 +13,11 @@ import { Suspense, lazy, useMemo } from 'react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { CrashGuard as ErrorBoundary } from '@components/foundation/CrashGuard'
-import { EditorSkeleton, PanelSkeleton, FullScreenLoading, InlineSettingsSkeleton, ChatSkeleton } from '@components/ui/ProgressIndicator'
-import { t, type Language } from '@renderer/i18n'
+import { EditorSkeleton, PanelSkeleton, FullScreenLoading, InlineSettingsSkeleton } from '@components/ui/ProgressIndicator'
 import type { LayoutConfig } from '@renderer/shell/ShellComposer'
 import { getScenarioComponent } from '@components/scenario/ScenarioComponentResolver'
 import ChatSection from './ChatSection'
 
-const ChatPanel = lazy(() => import('@components/intelligence/ChatPanel'))
 const Editor = lazy(() => import('@components/workspace-editor/WorkspaceEditor'))
 const TerminalStudio = lazy(() => import('@renderer/shell/components/TerminalStudio'))
 const DataDashboard = lazy(() => import('@components/dashboard/InsightDashboard'))
@@ -33,7 +31,6 @@ const SessionHistoryPage = lazy(() => import('@components/user/SessionHistoryPag
 const PluginCenterPage = lazy(() => import('@components/plugin/PluginCenterPage'))
 const EditorBottomBar = lazy(() => import('@components/layout/EditorBottomBar'))
 const InternalBrowser = lazy(() => import('@components/browser/InternalBrowser'))
-import { VoiceConversationOverlay } from '@components/voice/VoiceConversationOverlay'
 
 interface MainContentAreaProps {
   layoutConfig: LayoutConfig
@@ -77,13 +74,12 @@ function PanelSlot({ children }: { children: React.ReactNode }) {
 // ====== Primary 布局（chatPosition=primary）======
 
 function PrimaryMainContent({ layoutConfig, isWideModePanel }: MainContentAreaProps) {
-  const { chatVisible, openFiles, activeFilePath, language,
+  const { chatVisible, openFiles, activeFilePath,
     showSettingsPage, showWelcomePage, showUserProfilePage, showBillingCenterPage, showSessionHistoryPage, showPluginCenterPage,
     activeSidePanel } = useStore(useShallow((s) => ({
     chatVisible: s.chatVisible,
     openFiles: s.openFiles,
     activeFilePath: s.activeFilePath,
-    language: s.language,
     showSettingsPage: s.showSettingsPage,
     showWelcomePage: s.showWelcomePage,
     showUserProfilePage: s.showUserProfilePage,
@@ -322,27 +318,6 @@ function SecondaryMainContent({ layoutConfig, isWideModePanel, scenarioWelcomeCo
 }
 
 // ====== 导出 ======
-
-/**
- * 语音对话覆盖层插槽
- *
- * 仅当 voiceConversationActive 为 true 时渲染 VoiceConversationOverlay。
- * 独立成组件避免在每个布局分支中重复订阅 store。
- */
-function VoiceConversationOverlaySlot() {
-  const { voiceConversationActive, setVoiceConversationActive } = useStore(useShallow((s) => ({
-    voiceConversationActive: s.voiceConversationActive,
-    setVoiceConversationActive: s.setVoiceConversationActive,
-  })))
-
-  if (!voiceConversationActive) return null
-
-  return (
-    <ErrorBoundary>
-      <VoiceConversationOverlay onClose={() => setVoiceConversationActive(false)} />
-    </ErrorBoundary>
-  )
-}
 
 /**
  * 内部浏览器插槽

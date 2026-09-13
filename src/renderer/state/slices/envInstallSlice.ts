@@ -43,9 +43,14 @@ const DEFAULT_STATUS: EnvInstallStatus = {
   isInstalling: false,
 }
 
+/** 更新入参：允许传部分字段，或基于当前状态计算更新内容 */
+export type EnvInstallStatusUpdater =
+  | Partial<EnvInstallStatus>
+  | ((prev: EnvInstallStatus) => Partial<EnvInstallStatus>)
+
 export interface EnvInstallSlice {
   envInstallStatus: EnvInstallStatus
-  setEnvInstallStatus: (partial: Partial<EnvInstallStatus>) => void
+  setEnvInstallStatus: (partial: EnvInstallStatusUpdater) => void
   resetEnvInstallStatus: () => void
 }
 
@@ -54,7 +59,10 @@ export const createEnvInstallSlice: StateCreator<EnvInstallSlice, [], [], EnvIns
 
   setEnvInstallStatus: (partial) =>
     set((state) => ({
-      envInstallStatus: { ...state.envInstallStatus, ...partial },
+      envInstallStatus: {
+        ...state.envInstallStatus,
+        ...(typeof partial === 'function' ? partial(state.envInstallStatus) : partial),
+      },
     })),
 
   resetEnvInstallStatus: () =>

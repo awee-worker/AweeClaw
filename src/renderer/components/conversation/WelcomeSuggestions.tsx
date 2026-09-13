@@ -45,7 +45,7 @@ const WELCOME_TOOL_COUNT = 5
  * 从 lucide-react 动态获取图标组件
  */
 function getIconComponent(name: string): React.ComponentType<{ className?: string; strokeWidth?: number }> {
-  const Comp = (LucideIcons as Record<string, React.ComponentType<{ className?: string; strokeWidth?: number }>>)[name]
+  const Comp = (LucideIcons as unknown as Record<string, React.ComponentType<{ className?: string; strokeWidth?: number }>>)[name]
   return Comp ?? Sparkles
 }
 
