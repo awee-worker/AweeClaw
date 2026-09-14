@@ -25,6 +25,7 @@ import { BUILTIN_PROVIDERS, isBuiltinProvider } from '@shared/configuration/aiPr
 import { logger } from '@shared/toolkit/LogEngine'
 import type { ApiProtocol } from '@shared/configuration/aiProviders'
 import { supportsFullOpenAIStyleFeatures } from '@shared/configuration/aiProviders'
+import { aiFetch } from './core/NetworkDispatcher'
 
 export interface ModelOptions {
     enableThinking?: boolean
@@ -147,14 +148,9 @@ function createCloudModel(config: LLMConfig, options: ModelOptions): LanguageMod
         ? `${serverUrl}/api/v1/llm/vision`
         : `${serverUrl}/api/v1/llm`
 
-    const baseFetch = (() => {
-        try {
-            const undici = require('undici')
-            return undici.fetch as typeof globalThis.fetch
-        } catch {
-            return globalThis.fetch.bind(globalThis)
-        }
-    })()
+    // 统一复用带自定义 dispatcher 的 fetch：
+    // bodyTimeout / headersTimeout 关闭（长思考静默不掐断）+ TCP keepalive + 连接池保活
+    const baseFetch = aiFetch
 
     // 当前有效的 access token（可能被刷新更新）
     let currentAccessToken = options.accessToken || ''
@@ -286,6 +282,7 @@ function createBuiltinModel(route: ResolvedModelRoute): LanguageModel {
             const openai = createOpenAI({
                 apiKey: route.apiKey,
                 baseURL: route.baseUrl,
+                fetch: aiFetch,
             })
 
             if (route.protocol === 'openai-responses') {
@@ -299,6 +296,7 @@ function createBuiltinModel(route: ResolvedModelRoute): LanguageModel {
             const anthropic = createAnthropic({
                 apiKey: route.apiKey,
                 baseURL: route.baseUrl,
+                fetch: aiFetch,
             })
             return anthropic(route.model)
         }
@@ -307,6 +305,7 @@ function createBuiltinModel(route: ResolvedModelRoute): LanguageModel {
             const google = createGoogleGenerativeAI({
                 apiKey: route.apiKey,
                 baseURL: route.baseUrl,
+                fetch: aiFetch,
             })
             return google(route.model)
         }
@@ -322,6 +321,7 @@ function createBuiltinModel(route: ResolvedModelRoute): LanguageModel {
                         name: route.providerId,
                         apiKey: route.apiKey,
                         baseURL: route.baseUrl,
+                        fetch: aiFetch,
                         supportsStructuredOutputs: supportsFullOpenAIStyleFeatures(
                             route.providerId,
                             route.protocol,
@@ -335,6 +335,7 @@ function createBuiltinModel(route: ResolvedModelRoute): LanguageModel {
                     const openai = createOpenAI({
                         apiKey: route.apiKey,
                         baseURL: route.baseUrl,
+                        fetch: aiFetch,
                     })
                     return openai.responses(route.model)
                 }
@@ -343,6 +344,7 @@ function createBuiltinModel(route: ResolvedModelRoute): LanguageModel {
                     const anthropic = createAnthropic({
                         apiKey: route.apiKey,
                         baseURL: route.baseUrl,
+                        fetch: aiFetch,
                     })
                     return anthropic(route.model)
                 }
@@ -351,6 +353,7 @@ function createBuiltinModel(route: ResolvedModelRoute): LanguageModel {
                     const google = createGoogleGenerativeAI({
                         apiKey: route.apiKey,
                         baseURL: route.baseUrl,
+                        fetch: aiFetch,
                     })
                     return google(route.model)
                 }
@@ -360,6 +363,7 @@ function createBuiltinModel(route: ResolvedModelRoute): LanguageModel {
                         name: route.providerId,
                         apiKey: route.apiKey,
                         baseURL: route.baseUrl,
+                        fetch: aiFetch,
                     })
                     return fallback(route.model)
                 }
@@ -381,6 +385,7 @@ function createCustomModel(
                 name: 'custom-openai',
                 apiKey: route.apiKey,
                 baseURL: route.baseUrl,
+                fetch: aiFetch,
                 supportsStructuredOutputs: supportsFullOpenAIStyleFeatures(
                     route.providerId,
                     route.protocol,
@@ -394,6 +399,7 @@ function createCustomModel(
             const openai = createOpenAI({
                 apiKey: route.apiKey,
                 baseURL: route.baseUrl,
+                fetch: aiFetch,
             })
             return openai.responses(route.model)
         }
@@ -402,6 +408,7 @@ function createCustomModel(
             const anthropic = createAnthropic({
                 apiKey: route.apiKey,
                 baseURL: route.baseUrl,
+                fetch: aiFetch,
             })
             return anthropic(route.model)
         }
@@ -410,6 +417,7 @@ function createCustomModel(
             const google = createGoogleGenerativeAI({
                 apiKey: route.apiKey,
                 baseURL: route.baseUrl,
+                fetch: aiFetch,
             })
             return google(route.model)
         }
@@ -419,6 +427,7 @@ function createCustomModel(
                 name: 'custom',
                 apiKey: route.apiKey,
                 baseURL: route.baseUrl,
+                fetch: aiFetch,
                 supportsStructuredOutputs: supportsFullOpenAIStyleFeatures(
                     route.providerId,
                     route.protocol,

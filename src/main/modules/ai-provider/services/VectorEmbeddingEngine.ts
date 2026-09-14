@@ -18,6 +18,7 @@ import { logger } from '@shared/toolkit/LogEngine'
 import { LLMError } from '../providerTypes'
 import type { LLMResponse } from '../providerTypes'
 import type { LLMConfig } from '@protocols'
+import { aiFetch } from '../core/NetworkDispatcher'
 
 export interface EmbeddingResult {
   embedding: number[]
@@ -37,6 +38,8 @@ function createEmbeddingModel(config: LLMConfig) {
     const openai = createOpenAI({
       apiKey,
       baseURL: baseUrl,
+      // 与生成请求共用同一个 dispatcher（关闭 bodyTimeout + TCP keepalive）
+      fetch: aiFetch,
     })
     return openai.textEmbeddingModel('text-embedding-3-small')
   }

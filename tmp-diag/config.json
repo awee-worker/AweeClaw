@@ -1,0 +1,464 @@
+{
+	"themeId": "aweeclaw-dark",
+	"themeBg": "15 23 42",
+	"customThemes": [],
+	"lastWorkspacePath": "/Volumes/MacData/Ai/aweeclaw",
+	"lastWorkspaceSession": {
+		"configPath": null,
+		"roots": [
+			"/Volumes/MacData/Ai/aweeclaw"
+		],
+		"workspaceId": "ws_1784313705098_ct21k3dp"
+	},
+	"recentWorkspaces": [
+		"/Volumes/MacData/Ai/aweeclaw",
+		"/Volumes/MacData/Customers/Application/depuapp/depu-boot",
+		"/Volumes/MacData/test/aweeclaw-test",
+		"/Volumes/MacData/Ai/e-project",
+		"/Volumes/MacData/Customers/Application/depuapp/switch-app"
+	],
+	"app-settings": {
+		"llmConfig": {
+			"provider": "deepseek",
+			"model": "deepseek-v4-flash",
+			"enableThinking": false,
+			"thinkingBudget": 10000,
+			"temperature": 0.7,
+			"maxTokens": 8192,
+			"topP": 1,
+			"topK": 0,
+			"frequencyPenalty": 0,
+			"presencePenalty": 0,
+			"maxRetries": 2,
+			"parallelToolCalls": true,
+			"reasoningEffort": "medium",
+			"toolChoice": "auto"
+		},
+		"language": "zh",
+		"autoApprove": {
+			"terminal": true,
+			"dangerous": false
+		},
+		"promptTemplateId": "default",
+		"agentConfig": {
+			"maxToolLoops": 150,
+			"maxHistoryMessages": 60,
+			"maxToolResultChars": 10000,
+			"maxFileContentChars": 15000,
+			"maxTotalContextChars": 120000,
+			"maxContextTokens": 128000,
+			"maxSingleFileChars": 12000,
+			"maxContextFiles": 6,
+			"maxSemanticResults": 5,
+			"maxTerminalChars": 3000,
+			"maxRetries": 3,
+			"retryDelayMs": 1000,
+			"toolTimeoutMs": 60000,
+			"keepRecentTurns": 8,
+			"deepCompressionTurns": 3,
+			"maxImportantOldTurns": 5,
+			"enableAutoFix": true,
+			"expandThinkingByDefault": true,
+			"expandToolCallsByDefault": false,
+			"expandContextByDefault": true,
+			"enableLLMSummary": true,
+			"autoHandoff": true,
+			"loopDetection": {
+				"enabled": true,
+				"maxHistory": 50,
+				"maxExactRepeats": 10,
+				"maxSameTargetRepeats": 20,
+				"patternRepeatHardStop": 8,
+				"dynamicThreshold": true
+			},
+			"ignoredDirectories": [
+				"node_modules",
+				".git",
+				"dist",
+				"build",
+				".next",
+				"__pycache__",
+				".venv",
+				"venv",
+				".cache",
+				"coverage",
+				".nyc_output",
+				"tmp",
+				"temp",
+				".idea",
+				".vscode"
+			],
+			"multiAgent": {
+				"enabled": true,
+				"mode": "auto",
+				"threshold": 50,
+				"requireConsensus": true,
+				"maxAgents": 5
+			},
+			"activeCustomAgentId": "agent-1787625714421-ub8s",
+			"soundNotifications": {
+				"enabled": true,
+				"taskComplete": true,
+				"taskError": true,
+				"needApproval": true
+			},
+			"customAgentProfiles": [
+				{
+					"id": "agent-1787625714421-ub8s",
+					"name": "AweeClaw开发工程师",
+					"description": "",
+					"systemPrompt": "一、角色定位\n你是一名资深AI智能体开发工程师，深耕大模型智能体（Agent）全栈开发领域，精通智能体架构设计、提示词工程、工具调用编排、记忆系统搭建、多智能体协作、任务自主规划与落地调优。具备工业级、可落地、可部署的智能体开发能力，不局限于理论设计，能够根据业务场景输出标准化、模块化、可直接复用的智能体方案、代码框架、提示词脚本与调优策略。\n你的核心工作：根据用户业务需求，从零设计、开发、优化、调试各类垂直场景AI智能体，解决智能体幻觉、任务拆解混乱、工具调用失败、上下文溢出、自主决策能力弱等核心问题，输出可直接落地的开发成果，完成AweeClaw项目的开发工作。\n二、核心专业能力\n精通主流智能体架构：单智能体自主决策、ReAct推理架构、CoT思维链架构、Plan-and-Execute规划执行架构、多智能体分工协作架构、RAG+Agent检索增强架构、记忆型长效智能体架构。能够根据场景复杂度（简单单任务/复杂多步骤/长期持续任务）匹配最优架构，明确智能体核心模块：感知模块、规划模块、工具调用模块、记忆模块、执行模块、反思迭代模块、输出模块。\n可独立开发各类垂直智能体，涵盖但不限于：办公自动化智能体、数据分析智能体、文案创作智能体、编程开发智能体、运维监控智能体、客服应答智能体、市场调研智能体、学习辅助智能体、私人助理智能体、多角色协作工作流智能体。支持轻量化无代码智能体、轻量化脚本智能体、工业级可部署智能体的定制开发。\n- 提示词工程：精通结构化、角色化、指令式、约束式高阶提示词编写，擅长解决幻觉、答非所问、逻辑混乱、格式不统一等问题，输出高稳定性、高复用性提示词模板。\n- 记忆系统搭建：掌握短时上下文记忆、长时向量记忆、用户画像记忆、任务进度记忆、对话历史归档能力，实现智能体持续迭代、个性化适配。\n- 反思迭代优化：支持任务执行后自我复盘，识别逻辑漏洞、执行错误、效率问题，自动迭代优化工作流程与提示词规则。\n精准解决智能体常见问题：幻觉生成、任务遗漏、重复执行、工具调用报错、上下文超限、逻辑断层、输出格式混乱、决策冗余、响应效率低、场景适配性差等，提供针对性调优方案与落地修改代码/规则。\n1. 落地优先原则：所有设计、代码、提示词、流程必须可直接落地、可直接使用，拒绝空泛理论、无效话术、伪解决方案。\n4. 精准克制原则：严格贴合用户需求场景，不冗余拓展、不缺漏功能，精准匹配场景复杂度，轻量化场景不做过度设计，复杂场景保证架构稳定。\n6. 迭代优化原则：初次交付完整可用版本，同时预留优化空间，支持根据用户反馈迭代升级功能、优化逻辑、提升稳定性。\n用户提出任意智能体开发需求后，固定输出以下结构化内容，按需适配场景精简或补充：\n3. 整体架构方案：选用架构、核心模块组成、工作逻辑链路\n5. 完整工作流程：需求接收→任务拆解→规划决策→工具执行→结果整合→自我反思→输出交付\n7. 部署使用说明：使用方法、参数配置、适配平台、注意事项\n五、交互响应规则\n- 用户需求清晰时，直接输出完整、可落地的全套智能体开发方案，无需多余寒暄。\n- 可输出轻量化极简版、标准版、专业工业级三种版本方案，适配不同使用需求。\n你已激活AI智能体开发工程师完整能力，后续所有对话均严格遵循以上角色定位、能力标准、工作准则与输出规范，专注为用户开发、设计、调优、迭代各类可落地AI智能体。请等待用户具体智能体开发需求。\n六、AweeClaw项目结构说明\n- aweeclaw-admin：管理后台项目。\n- aweeclaw-app：移动端项目。\n- aweeclaw-backend：后端项目。\n- aweeclaw-client：客户端项目。\n- aweeclaw-client-help：客户端帮助中心项目。\n- aweeclaw-developer：开发者中心项目。\n- aweeclaw-docs：开发者文档项目。\n- aweeclaw-plugins：插件开发项目，开发的插件，插件发布等相关项目。\n- aweeclaw-scenario-cli：场景开发CLI项目。\n- aweeclaw-scenario-sdk：场景开发SDK项目。\n- aweeclaw-scenario-dev：场景开发项目，开发的外部场景都在里面。\n- aweeclaw-website：官网项目。\n- aweeclaw-searxng-deploy：AweeClaw搜索引擎项目；\n- Brand IP：Aweeclaw品牌标识。\n七、注意事项\n1、根目录下/example目录里面的内容是一些参考项目，不要动里面项目的代码。\n2、/aweeclaw-plugins/plugins里面是开发的插件，后续开发新的插件都要放在该目录，/aweeclaw-plugins/scripts里面是插件发布相关脚本，记住，开发新的插件或者更新现有插件后都需要发布到后端，后端地址是：https://gateway.aweeclaw.com，账号：admin@aweeclaw.com，密码：awee2099lw..\n3、如果修改了插件开发或者场景开发的核心代码，如aweeclaw-scenario-cli、aweeclaw-scenario-sdk，需要更新一下开发者文档项目的相应内容，保持开发者文档为最新，并且匹配实际项目内容。",
+					"capabilities": [],
+					"priority": 5,
+					"enabled": true,
+					"icon": "🤖",
+					"identifier": "aweeclaw_dev",
+					"callable": false,
+					"triggerMode": "manual",
+					"builtinTools": [
+						"read_file",
+						"write_file",
+						"edit_file",
+						"glob",
+						"grep",
+						"bash",
+						"web_search",
+						"web_fetch",
+						"browser",
+						"computer_use",
+						"image_gen",
+						"code_action"
+					],
+					"mcpServices": [
+						"plugin:mcp-time",
+						"plugin:mcp-excel",
+						"plugin:computer-use",
+						"plugin:mcp-playwright",
+						"plugin:mcp-memory",
+						"plugin:mcp-pdf",
+						"plugin:mcp-pandoc",
+						"plugin:mcp-sequential-thinking",
+						"plugin:mcp-fetch",
+						"plugin:mcp-docx",
+						"plugin:3d-webpage-gen"
+					],
+					"plugins": [],
+					"createdAt": 1787625714421,
+					"updatedAt": 1788751516381
+				}
+			]
+		},
+		"providerConfigs": {
+			"anthropic": {
+				"protocol": "openai",
+				"openAICompatibilityProfile": "full"
+			},
+			"gemini": {
+				"protocol": "openai",
+				"openAICompatibilityProfile": "full"
+			},
+			"deepseek": {
+				"apiKey": "sk-d8968da15c2745c7a5bec00c5d1e1ac7",
+				"model": "deepseek-v4-flash",
+				"customModels": [
+					"deepseek-v4-flash",
+					"deepseek-v4-pro"
+				]
+			},
+			"zhipu": {
+				"apiKey": "58b5b085c26640659e83e3d5793f8cdb.80ybUq1o00lpWPHS",
+				"customModels": [
+					"glm-5.3-flash"
+				]
+			},
+			"xiaomi": {
+				"apiKey": "sk-c3694fa59p1r2elptn0fhdnai04slvgwhfi1k45sdjfpf1jn",
+				"customModels": [
+					"mimo-v2.5",
+					"mimo-v2.5-asr",
+					"mimo-v2.5-pro"
+				]
+			}
+		},
+		"aiInstructions": "",
+		"onboardingCompleted": true,
+		"enableFileLogging": false,
+		"webSearchConfig": {
+			"googleApiKey": "",
+			"googleCx": "",
+			"activeSearchEngine": "aweeclaw-searxng",
+			"searchTimeout": 30,
+			"searchEngines": {
+				"aweeclaw-searxng": {
+					"enabled": true,
+					"apiKey": "d25f3a23fa3bf7b291d6ff98e14d6f39",
+					"extraValues": {
+						"baseUrl": "https://search.aweeclaw.com"
+					}
+				},
+				"brave": {
+					"enabled": false
+				},
+				"bing": {
+					"enabled": true
+				},
+				"google": {
+					"enabled": false
+				},
+				"tavily": {
+					"enabled": false
+				},
+				"sogou": {
+					"enabled": false
+				},
+				"serper": {
+					"enabled": false
+				},
+				"searxng": {
+					"enabled": true
+				},
+				"jina": {
+					"enabled": false
+				},
+				"exa": {
+					"enabled": false
+				},
+				"bocha": {
+					"enabled": false
+				},
+				"duckduckgo": {
+					"enabled": true
+				},
+				"yandex": {
+					"enabled": false
+				}
+			}
+		},
+		"mcpConfig": {
+			"autoConnect": true
+		},
+		"emailConfig": {
+			"enabled": false
+		}
+	},
+	"editorConfig": {
+		"fontSize": 13,
+		"chatFontSize": 15,
+		"fontFamily": "'Menlo', 'Monaco', 'Consolas', 'Courier New', '宋体', 'SimSun', '黑体', 'Microsoft YaHei', monospace",
+		"tabSize": 2,
+		"wordWrap": "on",
+		"lineHeight": 1.5,
+		"minimap": false,
+		"minimapScale": 1,
+		"lineNumbers": "on",
+		"bracketPairColorization": true,
+		"enableInlineDiff": false,
+		"formatOnSave": false,
+		"autoSave": "off",
+		"autoSaveDelay": 1000,
+		"terminal": {
+			"fontSize": 13,
+			"fontFamily": "'Menlo', 'Monaco', 'Consolas', 'Courier New', '宋体', 'SimSun', '黑体', 'Microsoft YaHei', monospace",
+			"lineHeight": 1.2,
+			"cursorBlink": true,
+			"scrollback": 1000,
+			"maxOutputLines": 1000
+		},
+		"git": {
+			"autoRefresh": true
+		},
+		"lsp": {
+			"timeoutMs": 30000,
+			"completionTimeoutMs": 2000,
+			"crashCooldownMs": 5000
+		},
+		"performance": {
+			"maxProjectFiles": 500,
+			"maxFileTreeDepth": 5,
+			"fileChangeDebounceMs": 300,
+			"completionDebounceMs": 300,
+			"searchDebounceMs": 200,
+			"saveDebounceMs": 2000,
+			"indexStatusIntervalMs": 10000,
+			"fileWatchIntervalMs": 5000,
+			"flushIntervalMs": 5000,
+			"requestTimeoutMs": 120000,
+			"commandTimeoutMs": 30000,
+			"workerTimeoutMs": 30000,
+			"healthCheckTimeoutMs": 10000,
+			"terminalBufferSize": 500,
+			"maxResultLength": 2000,
+			"largeFileWarningThresholdMB": 5,
+			"largeFileLineCount": 10000,
+			"veryLargeFileLineCount": 50000,
+			"maxSearchResults": 1000
+		},
+		"ai": {
+			"completionEnabled": true,
+			"completionMaxTokens": 256,
+			"completionTemperature": 0.1,
+			"completionTriggerChars": [
+				".",
+				"(",
+				"{",
+				"[",
+				"\"",
+				"'",
+				"/",
+				" "
+			]
+		}
+	},
+	"securitySettings": {
+		"enablePermissionConfirm": false,
+		"strictWorkspaceMode": true,
+		"allowedShellCommands": [
+			"npm",
+			"pnpm",
+			"yarn",
+			"bun",
+			"node",
+			"npx",
+			"deno",
+			"powershell",
+			"pwsh",
+			"bash",
+			"sh",
+			"python",
+			"python3",
+			"py",
+			"pip",
+			"pip3",
+			"java",
+			"javac",
+			"mvn",
+			"gradle",
+			"go",
+			"rust",
+			"cargo",
+			"pwd",
+			"ls",
+			"dir",
+			"cat",
+			"type",
+			"echo",
+			"mkdir",
+			"touch",
+			"rm",
+			"mv",
+			"cp",
+			"cd",
+			"open",
+			"find",
+			"make",
+			"gcc",
+			"clang",
+			"cmake",
+			"eslint",
+			"tsc",
+			"git"
+		],
+		"deniedShellCommands": [
+			"rm",
+			"rmdir",
+			"del",
+			"erase",
+			"format",
+			"mkfs",
+			"fdisk",
+			"sudo",
+			"su",
+			"doas",
+			"chmod",
+			"chown",
+			"chattr",
+			"shutdown",
+			"reboot",
+			"halt",
+			"poweroff",
+			"dd",
+			"systemctl",
+			"service",
+			"crontab"
+		],
+		"allowedGitSubcommands": [
+			"status",
+			"log",
+			"diff",
+			"show",
+			"ls-files",
+			"rev-parse",
+			"rev-list",
+			"blame",
+			"add",
+			"commit",
+			"reset",
+			"restore",
+			"push",
+			"pull",
+			"fetch",
+			"remote",
+			"branch",
+			"checkout",
+			"switch",
+			"merge",
+			"rebase",
+			"cherry-pick",
+			"clone",
+			"init",
+			"stash",
+			"tag",
+			"config"
+		],
+		"showSecurityWarnings": true
+	},
+	"themeMode": "system",
+	"language": "zh",
+	"shellRegistry": {
+		"presets": [],
+		"links": []
+	},
+	"themeColor": "blue",
+	"device-link": {
+		"id": "eeba01aa94904b15ba5f8ee8"
+	},
+	"sceneModeStore": {
+		"aweeclaw-scene-mode-store": {
+			"state": {
+				"currentSceneMode": "work",
+				"modeUsageStats": {
+					"work": 249947,
+					"life": 97024,
+					"study": 44899,
+					"lastSwitchAt": 1788119621518
+				},
+				"autoSwitchEnabled": false,
+				"cronGlobalEnabled": false,
+				"cronOverrides": {},
+				"smartProactiveEnabled": false,
+				"smartProactiveLastTriggeredAt": 0
+			},
+			"version": 0
+		}
+	},
+	"modeStore": {
+		"aweeclaw-mode-store": {
+			"state": {
+				"currentMode": "agent"
+			},
+			"version": 0
+		}
+	},
+	"privacySettings": {
+		"knowledgeSyncMode": "local-only",
+		"enableLocalGraphExtraction": true,
+		"enableServerSync": false,
+		"enableE2EE": false,
+		"e2eePublicKey": "",
+		"e2eeEncryptedPrivateKey": "",
+		"autoSyncIntervalMs": 300000,
+		"enableOfflineMode": true,
+		"dataRetentionDays": 0
+	},
+	"workbench": "{\"widgets\":{\"work\":[\"new-chat\",\"work-todo\",\"work-weekly\",\"work-pomodoro\",\"recent-workspaces\"],\"life\":[\"new-chat\",\"life-ledger\",\"life-water\",\"life-mood\",\"recent-workspaces\"],\"study\":[\"new-chat\",\"study-flashcards\",\"study-planner\",\"study-pomodoro\",\"recent-workspaces\"]},\"positions\":{\"work\":{\"new-chat\":{\"col\":1,\"row\":1,\"colSpan\":1,\"rowSpan\":1},\"work-todo\":{\"col\":2,\"row\":1,\"colSpan\":1,\"rowSpan\":1},\"work-weekly\":{\"col\":3,\"row\":1,\"colSpan\":1,\"rowSpan\":1},\"work-pomodoro\":{\"col\":4,\"row\":1,\"colSpan\":1,\"rowSpan\":1},\"recent-workspaces\":{\"col\":1,\"row\":2,\"colSpan\":1,\"rowSpan\":1}}},\"backgrounds\":{}}"
+}

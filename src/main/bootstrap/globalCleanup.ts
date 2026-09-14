@@ -214,6 +214,14 @@ export async function performGlobalCleanup(): Promise<void> {
       /* ignore */
     }
 
+    // 8.5 AI 网络调度器（关闭 undici 连接池，释放自定义 dispatcher 持有的 keep-alive socket）
+    try {
+      const { disposeAiDispatcher } = await import('../modules/ai-provider/core/NetworkDispatcher')
+      await disposeAiDispatcher()
+    } catch {
+      /* ignore */
+    }
+
     // 9. 模块数据持久化存储（最后 flush，确保前序服务产生的状态被持久化）
     try {
       const { moduleDataStore } = await import('../modules/persistence/ModuleDataStore')

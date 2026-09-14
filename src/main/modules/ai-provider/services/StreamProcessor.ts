@@ -25,6 +25,16 @@ import type { LLMConfig, LLMMessage, ToolDefinition } from '@protocols'
 import { ThinkingStrategyFactory, type ThinkingStrategy } from '../strategies/ReasoningStrategy'
 import { PseudoToolDetector, normalizeToolCallArguments, repairToolCallInput } from './PseudoToolDetector'
 import { StreamEventDispatcher } from './StreamEventDispatcher'
+import {
+  CONNECTION_PROBE_FAILURE_THRESHOLD,
+  CONNECTION_PROBE_INTERVAL_MS,
+  CONNECTION_PROBE_TIMEOUT_MS,
+  describeConnectionDropError,
+  isConnectionDropError,
+  probeTcpReachable,
+  resolveProbeTarget,
+  type ConnectionProbeTarget,
+} from '../core/ConnectionHealth'
 
 /** 流式生成参数 */
 export interface StreamingParams {
@@ -62,13 +72,14 @@ const DEFAULT_IDLE_TIMEOUT_MS = 60_000
 const DEFAULT_FIRST_CHUNK_TIMEOUT_MS = 180_000
 
 /**
- * 思考阶段的空闲超时时间（毫秒）。
+ * 「无超时上限」标记（毫秒）。
  *
- * 模型思考期间可能长时间不产出任何分片（取决于 provider 是否流式返回
- * reasoning 增量），必须给出远高于常规的空闲容忍，否则思考时间一旦
- * 超过常规阈值，请求就会被强制中止。
+ * 思考 / 长任务阶段的耗时无法预估，任何有限阈值都可能把正常思考误判为
+ * 「流停滞」并强制中止请求，表现为「AI 还没思考完就自动中断」。
+ * 这里统一用 Infinity 表示「不设超时」，中止只由用户主动点击「停止」
+ * （AbortSignal）触发。
  */
-const THINKING_IDLE_TIMEOUT_MS = 300_000
+const UNLIMITED_TIMEOUT_MS = Number.POSITIVE_INFINITY
 
 /**
  * AI SDK 总请求超时的安全下限（毫秒）。
@@ -119,7 +130,15 @@ class StreamTimeoutGuard {
     requestId: string,
     timeoutMs: number,
     phase: StreamPhase = 'streaming',
+    probeTarget: ConnectionProbeTarget | null = null,
   ): Promise<IteratorResult<any>> {
+    // 无限制模式（思考 / 长任务）：不设超时上限，改为静默期连通性探测。
+    // 探测通过说明只是模型在思考 → 继续无限等待；只有连续探测失败才判定
+    // 连接已断开，避免「正在思考」被当成「流停滞」而误杀。
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+      return this.awaitUnlimited(iterator, requestId, phase, probeTarget)
+    }
+
     let timeoutId: NodeJS.Timeout | null = null
 
     try {
@@ -143,6 +162,102 @@ class StreamTimeoutGuard {
       if (timeoutId) clearTimeout(timeoutId)
     }
   }
+
+  /**
+   * 无上限等待下一个分片（思考 / 长任务）。
+   *
+   * 不做任何「空闲多久就中断」的时间判定，只做「连接是否还活着」的探测：
+   * - 无探测目标（无法解析 host:port）→ 纯无限等待，完全交给 AbortSignal
+   * - 静默超过 CONNECTION_PROBE_INTERVAL_MS → 发起一次 TCP 连通性探测
+   *   - 可达：重置失败计数，继续无限等待
+   *   - 不可达：累计失败，连续 CONNECTION_PROBE_FAILURE_THRESHOLD 次后
+   *     判定连接已断开，中止等待并以 NETWORK 错误上报（可自动重试）
+   */
+  private async awaitUnlimited(
+    iterator: AsyncIterator<any>,
+    requestId: string,
+    phase: StreamPhase,
+    probeTarget: ConnectionProbeTarget | null,
+  ): Promise<IteratorResult<any>> {
+    let probeTimer: NodeJS.Timeout | null = null
+    let consecutiveFailures = 0
+    let finished = false
+
+    const stop = () => {
+      finished = true
+      if (probeTimer) {
+        clearTimeout(probeTimer)
+        probeTimer = null
+      }
+    }
+
+    try {
+      return await Promise.race([
+        iterator.next().then(
+          (result) => { stop(); return result },
+          (error) => { stop(); throw error },
+        ),
+        new Promise<never>((_, reject) => {
+          if (!probeTarget) return
+
+          const scheduleProbe = () => {
+            probeTimer = setTimeout(() => {
+              void (async () => {
+                if (finished) return
+
+                const reachable = await probeTcpReachable(probeTarget, CONNECTION_PROBE_TIMEOUT_MS)
+                if (finished) return
+
+                if (reachable) {
+                  if (consecutiveFailures > 0) {
+                    logger.llm.info('[StreamProcessor] 静默期连通性已恢复', {
+                      requestId,
+                      target: probeTarget.label,
+                    })
+                  }
+                  consecutiveFailures = 0
+                  logger.llm.debug('[StreamProcessor] 静默期连通性探测通过，继续等待模型输出', {
+                    requestId,
+                    phase,
+                    target: probeTarget.label,
+                    silentMs: CONNECTION_PROBE_INTERVAL_MS,
+                  })
+                  scheduleProbe()
+                  return
+                }
+
+                consecutiveFailures += 1
+                logger.llm.warn('[StreamProcessor] 静默期连通性探测失败', {
+                  requestId,
+                  phase,
+                  target: probeTarget.label,
+                  consecutiveFailures,
+                  threshold: CONNECTION_PROBE_FAILURE_THRESHOLD,
+                })
+
+                if (consecutiveFailures < CONNECTION_PROBE_FAILURE_THRESHOLD) {
+                  scheduleProbe()
+                  return
+                }
+
+                stop()
+                void iterator.return?.()
+                reject(new LLMError(
+                  `与模型服务的连接已断开（连续 ${consecutiveFailures} 次连通性探测失败，阶段：${describeStreamPhase(phase)}）`,
+                  ErrorCode.NETWORK,
+                  true,
+                ))
+              })()
+            }, CONNECTION_PROBE_INTERVAL_MS)
+          }
+
+          scheduleProbe()
+        }),
+      ])
+    } finally {
+      stop()
+    }
+  }
 }
 
 /** 阶段的中文描述（用于面向用户的错误文案与日志） */
@@ -160,9 +275,15 @@ function describeStreamPhase(phase: StreamPhase): string {
 /**
  * 解析各阶段的流式超时阈值。
  *
- * 关键点：用户在模型配置里设置的 `timeout` 语义更接近「多久没有数据算超时」，
- * 数值可能偏小（例如 30 秒）。这里统一把它作为**下界**，各阶段再取自身的
- * 保守默认值，确保思考阶段始终拥有足够的静默容忍，不会被偏小的配置误判为停滞。
+ * 关键点：AI 思考耗时无法预估，不能给思考 / 长任务设任何时间上限，否则
+ * 正常思考会被误判为「流停滞」并强制中断。因此：
+ * - 思考阶段（含首包到达前的等待）：一律不设上限（Infinity）。
+ * - 思考容忍模型（显式 / 隐式开启思考）：整段生成都不设上限，连流式输出
+ *   阶段的静默也放开，避免「输出中途再思考」被空闲守卫误杀。
+ * - 非思考型模型：保留宽松兜底（首包 3 分钟、空闲 60 秒），仅用于识别
+ *   连接确实建立 / 中断，避免请求永久挂起。
+ *
+ * 用户在模型配置里填写的 `timeout` 只作为非思考型模型的**下界**。
  *
  * @param configuredTimeoutMs 模型配置中的 timeout（毫秒，可选）
  * @param thinkingTolerant 本次请求是否启用思考容忍
@@ -178,13 +299,18 @@ export function resolveStreamTimeouts(
       ? configuredTimeoutMs
       : 0
 
-  const idleMs = Math.max(configured, DEFAULT_IDLE_TIMEOUT_MS)
-  const thinkingIdleMs = Math.max(idleMs, THINKING_IDLE_TIMEOUT_MS)
-  const firstChunkMs = Math.max(
-    idleMs,
-    configured,
-    thinkingTolerant ? THINKING_IDLE_TIMEOUT_MS : DEFAULT_FIRST_CHUNK_TIMEOUT_MS,
-  )
+  // 思考阶段一律不设超时上限
+  const thinkingIdleMs = UNLIMITED_TIMEOUT_MS
+
+  // 思考容忍模型：整段生成不设上限，中止交给用户主动触发
+  const idleMs = thinkingTolerant
+    ? UNLIMITED_TIMEOUT_MS
+    : Math.max(configured, DEFAULT_IDLE_TIMEOUT_MS)
+
+  // 首包：思考型模型不设上限；非思考型模型保留宽松兜底
+  const firstChunkMs = thinkingTolerant
+    ? UNLIMITED_TIMEOUT_MS
+    : Math.max(idleMs, configured, DEFAULT_FIRST_CHUNK_TIMEOUT_MS)
 
   return { firstChunkMs, idleMs, thinkingIdleMs, thinkingTolerant }
 }
@@ -195,21 +321,23 @@ export function resolveStreamTimeouts(
  * 与本地空闲守卫是两套独立机制：AI SDK 的 `timeout` 覆盖整个请求，
  * 一旦命中会直接中止。
  *
- * ⚠️ 这里**不能**把用户配置的 `timeout`（界面上以秒为单位，语义上更接近
- * 「多久没数据算超时」）直接当作「整个请求总耗时上限」：思考型模型在思考
- * 阶段可能长时间静默，长回答 / 长任务也可能超过该值，一旦原样透传，SDK 会
- * 在请求完成前强制中断，表现为「AI 还在思考就被自动中断」。
+ * ⚠️ 思考型模型**不设总超时**（返回 `undefined`，即交给 SDK 不做限制）：
+ * 思考 / 长任务耗时不可预估，任何有限上限都会在请求完成前强制中断，
+ * 表现为「AI 还在思考就被自动中断」。
  *
- * 因此总超时统一抬到安全下限（仅兜底「请求永久挂起」），真正的停滞检测
- * 由按阶段分级的本地空闲守卫负责。
+ * 非思考型模型保留一个宽松的安全下限，仅兜底「请求永久挂起」。
  *
  * @param configuredTimeoutMs 模型配置中的 timeout（毫秒，可选）
- * @param _thinkingTolerant 兼容保留（总超时不再区分思考容忍度）
+ * @param thinkingTolerant 本次请求是否启用思考容忍
+ * @returns SDK 总超时（毫秒）；`undefined` 表示不设上限
  */
 export function resolveRequestTimeoutMs(
   configuredTimeoutMs: number | undefined,
-  _thinkingTolerant: boolean,
+  thinkingTolerant: boolean,
 ): number | undefined {
+  // 思考型模型：不设总超时，交由用户主动中止
+  if (thinkingTolerant) return undefined
+
   const configured =
     typeof configuredTimeoutMs === 'number' &&
     Number.isFinite(configuredTimeoutMs) &&
@@ -318,7 +446,8 @@ export class StreamingService {
 
       // AI SDK 的 `timeout` 是「整个请求总超时」（与本地空闲守卫是两套独立机制），
       // 思考 / 长任务耗时一旦超过该值，SDK 会直接中止请求。
-      // 因此这里统一抬到安全下限，详见 resolveRequestTimeoutMs 的说明。
+      // 因此思考型模型不设总超时（undefined），非思考型模型才给安全下限，
+      // 详见 resolveRequestTimeoutMs 的说明。
       const requestTimeoutMs = resolveRequestTimeoutMs(
         prepared.callOptions.timeout,
         thinkingTolerant,
@@ -343,6 +472,9 @@ export class StreamingService {
 
       const timeouts = resolveStreamTimeouts(prepared.callOptions.timeout, thinkingTolerant)
 
+      // 连接断开检测的探测目标（无法解析时为 null → 退化为纯无限等待）
+      const probeTarget = resolveProbeTarget(config)
+
       logger.llm.info('[StreamProcessor] 超时策略已解析', {
         requestId,
         thinkingTolerant,
@@ -351,6 +483,7 @@ export class StreamingService {
         firstChunkMs: timeouts.firstChunkMs,
         idleMs: timeouts.idleMs,
         thinkingIdleMs: timeouts.thinkingIdleMs,
+        probeTarget: probeTarget?.label ?? null,
       })
 
       return await this.processStream(
@@ -359,6 +492,7 @@ export class StreamingService {
         requestId,
         timeouts,
         (tools?.length ?? 0) > 0,
+        probeTarget,
         prepared.cacheWriteTokens,
       )
     } catch (error) {
@@ -371,29 +505,49 @@ export class StreamingService {
       // AI SDK 的请求总超时（或 Provider 侧主动断开）会以 AbortError 形式抛出，
       // 而 ABORTED 与「用户主动取消」是同一个错误码，前端会把二者都当作
       // 「用户取消」静默处理，表现为「没有任何提示的自动中断」。
-      // 用户取消已在上面的分支返回，因此走到这里的中断类错误必然是超时 /
-      // 连接断开，按 TIMEOUT 上报（可重试 + 有明确提示），不再伪装成取消。
+      // 用户取消已在上面的分支返回，因此走到这里的都是真实异常，需明确上报。
+      //
+      // 归类优先级：
+      // 1) 已是 LLMError（含「提前 EOF」与「探测失败」包装）→ 保留原始语义
+      // 2) 传输层断开（ECONNRESET / EPIPE / UND_ERR_SOCKET ...）→ NETWORK（可重试）
+      // 3) 超时类（TimeoutError / AbortError / timeout 文案）→ TIMEOUT（可重试）
+      // 4) 其他 → 交给统一错误分类器
       const errorName = (error as Error)?.name
       const errorMessage = (error as Error)?.message ?? ''
       const isTimeoutLike =
         errorName === 'TimeoutError' ||
         errorName === 'AbortError' ||
         /timed?\s*out|timeout|aborted/i.test(errorMessage)
+      const isConnectionDrop = !(error instanceof LLMError) && isConnectionDropError(error)
 
-      const llmError = isTimeoutLike
-        ? new LLMError(
-            '模型响应超时或连接被中断',
-            ErrorCode.TIMEOUT,
-            true,
-            undefined,
-            error instanceof Error ? error : undefined,
-          )
-        : LLMError.fromError(error)
+      let llmError: LLMError
+      if (error instanceof LLMError) {
+        llmError = error
+      } else if (isConnectionDrop) {
+        llmError = new LLMError(
+          `${describeConnectionDropError(error)}，生成已中断`,
+          ErrorCode.NETWORK,
+          true,
+          undefined,
+          error instanceof Error ? error : undefined,
+        )
+      } else if (isTimeoutLike) {
+        llmError = new LLMError(
+          '模型响应超时或连接被中断',
+          ErrorCode.TIMEOUT,
+          true,
+          undefined,
+          error instanceof Error ? error : undefined,
+        )
+      } else {
+        llmError = LLMError.fromError(error)
+      }
 
       logger.llm.error('[StreamProcessor] 流式错误', {
         errorType: error?.constructor?.name,
         errorMessage: (error as Error)?.message?.substring(0, 500),
         errorCode: llmError.code,
+        connectionDrop: isConnectionDrop,
         provider: config.provider,
         model: config.model,
         cloudMode: config.cloudMode,
@@ -448,6 +602,7 @@ export class StreamingService {
     requestId: string,
     timeouts: StreamTimeoutProfile,
     enablePseudoTool: boolean,
+    probeTarget: ConnectionProbeTarget | null,
     cacheWriteTokens?: number,
   ): Promise<StreamingResult> {
     let reasoning = ''
@@ -461,6 +616,9 @@ export class StreamingService {
     let receivedFirstChunk = false
     let reasoningActive = false
     let sawTextOutput = false
+    // 连接断开检测所需的状态
+    let sawFinish = false
+    let windowDestroyed = false
 
     const hasCustomParser = !!strategy.parseStreamText
     const iterator = result.fullStream[Symbol.asyncIterator]()
@@ -492,10 +650,13 @@ export class StreamingService {
             ? timeouts.thinkingIdleMs
             : timeouts.idleMs
 
-      const next = await this.timeoutGuard.next(iterator, requestId, timeoutMs, phase)
+      const next = await this.timeoutGuard.next(iterator, requestId, timeoutMs, phase, probeTarget)
       if (next.done) break
       const part = next.value
-      if (this.window.isDestroyed()) break
+      if (this.window.isDestroyed()) {
+        windowDestroyed = true
+        break
+      }
 
       receivedFirstChunk = true
 
@@ -513,6 +674,7 @@ export class StreamingService {
           onNonTextOutput: () => { sawNonTextOutput = true },
           onMetadata: (meta) => { responseMeta = meta },
           onError: (err) => { if (!streamError) streamError = err },
+          onFinish: () => { sawFinish = true },
         })
       } catch (error) {
         if (!this.window.isDestroyed()) {
@@ -531,6 +693,26 @@ export class StreamingService {
     if (finalState.visibleText) {
       streamedText += finalState.visibleText
       this.dispatcher.dispatch(requestId, { type: 'text', content: finalState.visibleText })
+    }
+
+    // 提前 EOF 检测：流在未收到 finish 事件的情况下结束，说明响应被对端截断
+    // （连接被关闭 / 中间设备静默丢弃）。此时若已产出部分文本，finalizeStream
+    // 会把它当作正常完成上报 done —— 用户看到「看起来完整其实被截断」的回复，
+    // 且不会触发任何重试。因此这里显式判定为连接断开（NETWORK，可自动重试）。
+    if (!streamError && !sawFinish && !windowDestroyed) {
+      streamError = new LLMError(
+        '模型响应在完成前中断（未收到结束标志），连接可能已断开',
+        ErrorCode.NETWORK,
+        true,
+      )
+      logger.llm.warn('[StreamProcessor] 检测到流提前结束（未收到 finish），判定为连接断开', {
+        requestId,
+        receivedFirstChunk,
+        sawTextOutput,
+        sawToolActivity,
+        contentLength: streamedText.length,
+        reasoningLength: reasoning.length,
+      })
     }
 
     if (streamError) throw streamError
@@ -566,6 +748,7 @@ export class StreamingService {
       onNonTextOutput: () => void
       onMetadata: (meta: ResponseMetadata) => void
       onError: (err: Error) => void
+      onFinish: () => void
     },
   ): void {
     const { strategy, detector, requestId, hasCustomParser } = ctx
@@ -574,8 +757,12 @@ export class StreamingService {
       case 'text-start':
       case 'text-end':
       case 'start':
-      case 'finish':
       case 'raw':
+        break
+
+      case 'finish':
+        // 流的正常结束标志 —— 连接断开检测靠它区分「正常完成」与「被截断」
+        ctx.onFinish()
         break
 
       case 'reasoning-start':

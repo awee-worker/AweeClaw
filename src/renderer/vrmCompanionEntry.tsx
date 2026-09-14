@@ -10,6 +10,11 @@
  * 通信约定：全部通过 IPC（electronAPI.vrmCompanion.*），不直接访问 @store。
  */
 
+// ⚠️ 必须在任何 three.js / GLTFLoader 代码之前导入：
+// 修复 file:// 页面下内嵌贴图的 blob URL 无法被 fetch 的问题，否则 VRM 会渲染成白色剪影。
+// 详见 blobUrlFetchShim.ts 的根因说明。
+import './components/vrm-companion/blobUrlFetchShim'
+
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { logger } from '@shared/toolkit/LogEngine'

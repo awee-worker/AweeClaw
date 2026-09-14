@@ -9,6 +9,10 @@ const EXTERNAL_DEPS = [
   'electron',
   'electron-store',
   'electron-updater',
+  // undici：AI 请求的自定义 dispatcher（bodyTimeout / headersTimeout 关闭 + TCP keepalive）
+  // 依赖其 Agent 类实现。内部存在动态 require 与运行时探测，且已作为生产依赖随 asar 分发，
+  // 保持 external 交由运行时从 node_modules 解析，避免 Rollup 打包破坏其内部结构
+  'undici',
   '@anthropic-ai/sdk',
   'openai',
   '@google/genai',

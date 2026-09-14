@@ -910,13 +910,53 @@ export const VrmStage = forwardRef<VrmStageHandle, VrmStageProps>(function VrmSt
           logger.system.warn('[VrmStage] Optimize failed (ignored):', err)
         }
 
-        // 关闭视锥剔除，避免骨骼动画导致整体被剔除
+        // 关闭视锥剔除，避免骨骼动画导致整体被剔除；
+        // 同时修正透明材质的 alpha 合成（对齐 example/super-ai-browser 的材质修复）。
+        //
+        // 为什么必须修正：VRM 的头发 / 睫毛 / 服装大量使用 alpha 混合。
+        // 打包安装后（Electron 透明窗口 + GPU 合成路径）若沿用引擎默认的混合设置，
+        // 半透明像素会被重复预乘 / 叠加，整个角色发白并失去色彩 ——
+        // 表现为「像底片一样的白色剪影」，而 npm run dev 下该问题不显现。
         vrm.scene.traverse((obj) => {
           obj.frustumCulled = false
+
+          const mesh = obj as THREE.Mesh
+          if (!mesh.isMesh || !mesh.material) return
+
+          const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+          for (const material of materials) {
+            // 透明材质：用极小 alphaTest 剔除全透明像素，并写深度，避免排序叠加导致的透光发白
+            if (material.transparent) {
+              material.alphaTest = 0.01
+              material.depthWrite = true
+            }
+            // 统一为普通混合：MToon 若落到叠加类混合会让重叠区域过曝、整体失去色彩
+            material.blending = THREE.NormalBlending
+            // 与透明窗口的合成约定保持一致（非预乘），避免 alpha 被重复预乘导致颜色爆白
+            material.premultipliedAlpha = false
+            material.needsUpdate = true
+          }
+
+          // 渲染顺序：不透明先画、透明后画
+          mesh.renderOrder = materials[0]?.transparent ? 1 : 0
         })
 
         scene.add(vrm.scene)
         vrmRef.current = vrm
+
+        // 调试钩子：供内部分析脚本 / 自动化探针读取渲染器与材质的真实状态。
+        // 生产态同样保留（只读引用，无副作用），用于排查「打包后画面发白」
+        // 这类只在 file:// + GPU 合成路径下才出现的问题。
+        try {
+          ;(window as unknown as Record<string, unknown>).__AWEE_VRM_DEBUG__ = {
+            renderer: rendererRef.current,
+            scene,
+            camera: cameraRef.current,
+            vrm,
+          }
+        } catch {
+          /* 忽略：调试钩子不得影响渲染 */
+        }
 
         // 视线跟随：把 lookAt 目标指向场景中的空对象，交由 VRM 自动驱动眼/头
         try {
