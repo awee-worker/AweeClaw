@@ -7,10 +7,11 @@ import { useShallow } from 'zustand/react/shallow'
 import {
   AlertCircle, ScrollText, Bug, Terminal as TerminalIcon,
   ChevronDown, ChevronUp, X, Trash2, RefreshCw,
-  Plus, Sparkles, SplitSquareHorizontal,
+  Plus, Sparkles, SplitSquareHorizontal, ListTree,
 } from 'lucide-react'
 import { type DockTab } from '@store/slices/layoutSlice'
 import { useDiagnosticsStore } from '@services/diagnosticRepository'
+import { useReferencesStore } from '@services/referencesRepository'
 import { useAgentStore } from '@intelligence/state/IntelligenceStore'
 import { terminalManager } from '@services/TerminalAdapter'
 import { t } from '@renderer/i18n'
@@ -18,6 +19,7 @@ import ProblemsPanel from './ProblemsPanel'
 import OutputPanel from './OutputPanel'
 import DockDebugPanel from './DockDebugPanel'
 import TerminalConsolePanel from './TerminalConsolePanel'
+import ReferencesPanel from './ReferencesPanel'
 
 const TAB_CONFIG: Record<DockTab, {
   icon: React.ComponentType<{ className?: string }>
@@ -28,6 +30,7 @@ const TAB_CONFIG: Record<DockTab, {
   output: { icon: ScrollText, label: 'Output', labelZh: '输出' },
   debug: { icon: Bug, label: 'Debug', labelZh: '调试' },
   terminal: { icon: TerminalIcon, label: 'Terminal', labelZh: '终端' },
+  references: { icon: ListTree, label: 'References', labelZh: '引用' },
 }
 
 const DockPanel = memo(function DockPanel() {
@@ -55,6 +58,7 @@ const DockPanel = memo(function DockPanel() {
 
   const errorCount = useDiagnosticsStore(s => s.errorCount)
   const warningCount = useDiagnosticsStore(s => s.warningCount)
+  const referenceCount = useReferencesStore(s => s.items.length)
 
   const [terminalState, setTerminalState] = useState(() => terminalManager.getState())
 
@@ -105,6 +109,8 @@ const DockPanel = memo(function DockPanel() {
       badge = `${errorCount}${warningCount > 0 ? `,${warningCount}` : ''}`
     } else if (tab === 'output' && toolCallLogs.length > 0) {
       badge = String(toolCallLogs.length)
+    } else if (tab === 'references' && referenceCount > 0) {
+      badge = String(referenceCount)
     }
 
     return (
@@ -130,7 +136,7 @@ const DockPanel = memo(function DockPanel() {
         )}
       </button>
     )
-  }, [activeDockTab, language, errorCount, warningCount, toolCallLogs.length, terminalState.terminals.length, setActiveDockTab])
+  }, [activeDockTab, language, errorCount, warningCount, referenceCount, toolCallLogs.length, terminalState.terminals.length, setActiveDockTab])
 
   const renderActionButtons = useCallback(() => {
     const isZh = language === 'zh'
@@ -246,6 +252,28 @@ const DockPanel = memo(function DockPanel() {
         )
       }
 
+      case 'references':
+        return (
+          <>
+            <button
+              onClick={() => { void useReferencesStore.getState().refresh() }}
+              className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
+              title={isZh ? '刷新引用' : 'Refresh References'}
+            >
+              <RefreshCw className="w-3 h-3" />
+              {isZh ? '刷新' : 'Refresh'}
+            </button>
+            <button
+              onClick={() => useReferencesStore.getState().clear()}
+              className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs text-text-muted hover:text-red-400 hover:bg-red-500/10 transition-colors"
+              title={isZh ? '清空引用' : 'Clear References'}
+            >
+              <Trash2 className="w-3 h-3" />
+              {isZh ? '清空' : 'Clear'}
+            </button>
+          </>
+        )
+
       default:
         return null
     }
@@ -261,6 +289,8 @@ const DockPanel = memo(function DockPanel() {
         return <DockDebugPanel />
       case 'terminal':
         return <TerminalConsolePanel />
+      case 'references':
+        return <ReferencesPanel />
       default:
         return null
     }
@@ -285,7 +315,7 @@ const DockPanel = memo(function DockPanel() {
               }
             }}
           >
-            {(['problems', 'output', 'debug', 'terminal'] as DockTab[]).map(renderTab)}
+            {(['problems', 'output', 'debug', 'terminal', 'references'] as DockTab[]).map(renderTab)}
           </div>
         </div>
 

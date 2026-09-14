@@ -209,10 +209,15 @@ textarea,
 }
 
 /* --- Utilities --- */
+/* 窗口拖拽区标记：自定义标题栏（frameless）用 drag 标记可拖拽区域 */
 .drag-region {
   -webkit-app-region: drag;
 }
 
+/* 浮层防拖拽吞事件：
+   任何可能覆盖到窗口顶部拖拽区的浮层（右键菜单、Quick Pick、下拉面板等），
+   必须显式声明 no-drag，否则该区域的鼠标事件会被拖拽区吞掉，
+   表现为菜单看得见但点不动（如编辑器顶部右键菜单的“转到定义”）。 */
 .no-drag {
   -webkit-app-region: no-drag;
 }

@@ -13,7 +13,7 @@ import { getFileName } from '@shared/toolkit/pathHelper'
 import { formatShortcut } from '@services/keybindingAdapter'
 import type { editor } from 'monaco-editor'
 import { logger } from '@shared/toolkit/LogEngine'
-import { navigateToDefinition } from './hooks/useCodeActions'
+import { navigateToDefinition, openReferencesPanel } from './hooks/useCodeActions'
 
 // 支持 Call Hierarchy 的语言（只有支持函数/方法调用的语言才有意义）
 const CALL_HIERARCHY_SUPPORTED_LANGUAGES = [
@@ -312,7 +312,7 @@ export default function EditorContextMenu({ x, y, editor, onClose }: EditorConte
   const menuItems: MenuItem[] = [
     // 导航
     { id: 'goto-def', labelKey: 'ctxGotoDefinition', shortcut: 'F12', action: handleGotoDefinition },
-    { id: 'find-refs', labelKey: 'ctxFindReferences', shortcut: 'Shift+F12', action: () => runAction('editor.action.goToReferences') },
+    { id: 'find-refs', labelKey: 'ctxFindReferences', shortcut: 'Shift+F12', action: () => { void openReferencesPanel(editor); onClose() } },
     { id: 'goto-symbol', labelKey: 'ctxGotoSymbol', shortcut: formatShortcut('Ctrl+Shift+O'), action: () => runAction('editor.action.quickOutline') },
     { id: 'find-callers', labelKey: 'ctxFindCallers', action: handleFindCallers, disabled: !supportsCallHierarchy },
     { id: 'find-callees', labelKey: 'ctxFindCallees', action: handleFindCallees, divider: true, disabled: !supportsCallHierarchy },
@@ -353,7 +353,7 @@ export default function EditorContextMenu({ x, y, editor, onClose }: EditorConte
     return (
       <div
         ref={menuRef}
-        className="fixed z-[100] bg-surface border border-border-subtle rounded-lg shadow-xl py-1 min-w-[280px] max-w-[400px] select-none"
+        className="fixed z-[100] no-drag bg-surface border border-border-subtle rounded-lg shadow-xl py-1 min-w-[280px] max-w-[400px] select-none"
         style={{ left: position.x, top: position.y }}
       >
         <div className="px-3 py-2 text-sm font-medium text-text-primary border-b border-border-subtle flex items-center justify-between">
@@ -392,7 +392,7 @@ export default function EditorContextMenu({ x, y, editor, onClose }: EditorConte
   return (
     <div
       ref={menuRef}
-      className="fixed z-[100] bg-surface border border-border-subtle rounded-lg shadow-xl py-1 min-w-[220px] select-none"
+      className="fixed z-[100] no-drag bg-surface border border-border-subtle rounded-lg shadow-xl py-1 min-w-[220px] select-none"
       style={{ left: position.x, top: position.y }}
     >
       {loading && (

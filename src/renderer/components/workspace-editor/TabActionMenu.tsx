@@ -104,7 +104,7 @@ export function TabContextMenu({
   return (
     <div
       ref={menuRef}
-      className="fixed bg-background-secondary border border-border-subtle rounded-lg shadow-xl py-1 z-[9999] min-w-[180px]"
+      className="fixed no-drag bg-background-secondary border border-border-subtle rounded-lg shadow-xl py-1 z-[9999] min-w-[180px]"
       style={{ left: x, top: y }}
     >
       {menuItems.map((item, index) =>

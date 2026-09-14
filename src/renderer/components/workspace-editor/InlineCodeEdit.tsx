@@ -211,7 +211,7 @@ export default function InlineEdit({
 	return (
 		<div
 			ref={containerRef}
-			className="fixed z-50 animate-scale-in"
+			className="fixed z-50 no-drag animate-scale-in"
 			style={{
 				left: position.x - 20,
 				top: position.y - 40,

@@ -9,6 +9,8 @@ import { useCallback, useEffect, useRef } from 'react'
 import { useStore } from '@store'
 import { api } from '../adapters/electronBridge'
 import { keybindingService } from '@services/keybindingAdapter'
+import { goBack, goForward } from '@services/editorNavigation'
+import { platform } from '@shared/toolkit/pathHelper'
 import { useSceneModeStore } from '@renderer/modes/sceneModeStore'
 import type { SceneMode } from '@protocols/sceneModeProtocol'
 
@@ -194,6 +196,34 @@ const HANDLERS: KeyHandler[] = [
     e.preventDefault()
     useSceneModeStore.getState().setSceneMode(mode)
     return true
+    return true
+  },
+
+  // 代码导航历史：Alt+← / Alt+→（macOS 用 Ctrl+- / Ctrl+Shift+-，与 VS Code 一致）
+  // 编辑器内由 Monaco 命令优先处理；输入框中不拦截，避免影响 Option+← 的按词移动光标
+  (e, _ctx) => {
+    if (isEditorFocused()) return false
+    const target = e.target as HTMLElement | null
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return false
+
+    const isBack = platform.isMac
+      ? (e.ctrlKey && !e.metaKey && e.code === 'Minus')
+      : (e.altKey && !e.ctrlKey && !e.metaKey && e.code === 'ArrowLeft')
+    const isForward = platform.isMac
+      ? (e.ctrlKey && e.shiftKey && e.code === 'Minus')
+      : (e.altKey && !e.ctrlKey && !e.metaKey && e.code === 'ArrowRight')
+
+    if (isBack) {
+      e.preventDefault()
+      void goBack()
+      return true
+    }
+    if (isForward) {
+      e.preventDefault()
+      void goForward()
+      return true
+    }
+    return false
   },
 ]
 

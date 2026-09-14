@@ -5,8 +5,21 @@ import { useCallback } from 'react'
 import type { editor, IPosition, IRange } from 'monaco-editor'
 import { goToDefinition } from '@services/languageServerAdapter'
 import { lspUriToPath } from '@shared/toolkit/uriHelper'
-import { safeOpenFile } from '@utils/fileUtils'
-import { setPendingNavigation } from '@services/editorNavigator'
+import { getFileName } from '@shared/toolkit/pathHelper'
+import { useStore } from '@store'
+import {
+  revealLocation,
+  setActiveEditorInstance,
+  goBack,
+  goForward,
+  DEFINITION_PICKER_EVENT,
+  type DefinitionCandidate,
+  type DefinitionPickerRequest,
+} from '@services/editorNavigation'
+import { useReferencesStore } from '@services/referencesRepository'
+
+export { DEFINITION_PICKER_EVENT }
+export type { DefinitionPickerRequest }
 
 interface InlineEditState {
   show: boolean
@@ -15,12 +28,36 @@ interface InlineEditState {
   lineRange: [number, number]
 }
 
-/** 路径规范化（统一斜杠、去掉 Windows 前缀斜杠） */
-function normPath(p: string) {
-  return p.replace(/\\/g, '/').replace(/^\/([A-Za-z]):/, '$1:').toLowerCase()
+/** 工作区相对路径展示（不在工作区内时回退原路径） */
+function toDisplayPath(filePath: string): string {
+  const workspacePath = useStore.getState().workspacePath
+  if (!workspacePath) return filePath
+  const normalizedFile = filePath.replace(/\\/g, '/')
+  const normalizedWs = workspacePath.replace(/\\/g, '/').replace(/\/+$/, '')
+  if (!normalizedWs) return filePath
+  return normalizedFile.startsWith(`${normalizedWs}/`) ? normalizedFile.slice(normalizedWs.length + 1) : filePath
 }
 
-/** 执行 Go-to-Definition 导航（同文件 / 跨文件均处理） */
+/** Quick Pick 锚点：贴在光标下方，无坐标信息时回退到左上角 */
+function getPickerAnchor(editorInstance: editor.IStandaloneCodeEditor): { x: number; y: number } {
+  const position = editorInstance.getPosition()
+  const coords = position ? editorInstance.getScrolledVisiblePosition(position) : null
+  const domNode = editorInstance.getDomNode()
+  if (coords && domNode) {
+    const rect = domNode.getBoundingClientRect()
+    return {
+      x: Math.round(rect.left + coords.left),
+      y: Math.round(rect.top + coords.top + coords.height),
+    }
+  }
+  return { x: 120, y: 160 }
+}
+
+/**
+ * 执行 Go-to-Definition 导航。
+ *  - 单一目标：直接跳转（同文件移动光标 / 跨文件打开并定位），并写入导航历史
+ *  - 多个目标：唤起多定义 Quick Pick，由用户选择后再跳转
+ */
 export async function navigateToDefinition(
   editorInstance: editor.IStandaloneCodeEditor,
   filePath: string,
@@ -28,28 +65,57 @@ export async function navigateToDefinition(
   col: number,    // LSP 0-indexed
   documentText?: string
 ) {
+  // 跳转入口使用的必定是当前活跃编辑器：登记后供历史导航 / 引用面板复用
+  setActiveEditorInstance(editorInstance)
+
   const locations = await goToDefinition(filePath, line, col, documentText)
   if (!locations || locations.length === 0) return
 
-  const loc = locations[0]
-  const targetPath = lspUriToPath(loc.uri)
-  const targetLine = loc.range.start.line + 1       // Monaco 1-indexed
-  const targetCol  = loc.range.start.character + 1
-
-  if (normPath(targetPath) === normPath(filePath)) {
-    // ── 同文件：直接移动光标 ──
-    editorInstance.setPosition({ lineNumber: targetLine, column: targetCol })
-    editorInstance.revealPositionInCenter({ lineNumber: targetLine, column: targetCol })
-  } else {
-    // ── 跨文件：先 setPendingNavigation，再 safeOpenFile ──
-    // stdlib / 工作区外文件会被安全模块拦截，safeOpenFile 返回 { success: false }，静默失败
-    setPendingNavigation({ filePath: targetPath, line: targetLine, col: targetCol })
-    const result = await safeOpenFile(targetPath, { showWarning: false, confirmLargeFile: false })
-    if (!result.success) {
-      // 目标文件无法打开（stdlib、工作区外），清除挂起导航
-      setPendingNavigation({ filePath: '', line: 0, col: 0 })
+  const candidates: DefinitionCandidate[] = locations.map((loc) => {
+    const targetPath = lspUriToPath(loc.uri)
+    const targetLine = loc.range.start.line + 1       // Monaco 1-indexed
+    const targetCol = loc.range.start.character + 1
+    return {
+      uri: loc.uri,
+      filePath: targetPath,
+      line: targetLine,
+      column: targetCol,
+      label: `${getFileName(targetPath) || targetPath}:${targetLine}`,
+      detail: toDisplayPath(targetPath),
     }
+  })
+
+  if (candidates.length > 1) {
+    window.dispatchEvent(new CustomEvent<DefinitionPickerRequest>(DEFINITION_PICKER_EVENT, {
+      detail: { items: candidates, position: getPickerAnchor(editorInstance) },
+    }))
+    return
   }
+
+  const target = candidates[0]
+  // stdlib / 工作区外文件会被安全模块拦截，revealLocation 内部静默失败
+  await revealLocation({ filePath: target.filePath, line: target.line, column: target.column })
+}
+
+/**
+ * 查找引用并展示在引用结果面板（Dock Tab: references）。
+ * F12 系列快捷键、右键菜单、命令面板共用同一条链路。
+ */
+export async function openReferencesPanel(editorInstance: editor.IStandaloneCodeEditor): Promise<void> {
+  const model = editorInstance.getModel()
+  const position = editorInstance.getPosition()
+  if (!model || !position) return
+
+  const filePath = lspUriToPath(model.uri.toString())
+  const word = model.getWordAtPosition(position)
+
+  useStore.getState().openDockPanel('references')
+  await useReferencesStore.getState().findReferencesAt(
+    filePath,
+    position.lineNumber - 1,
+    position.column - 1,
+    word?.word,
+  )
 }
 
 export function useEditorActions(
@@ -247,10 +313,30 @@ export function useEditorActions(
       } catch { /* 静默忽略，如 stdlib 等不可访问路径 */ }
     })
 
+    // ── Shift+F12: 查找引用（引用结果面板）──────────────────────────────────
+    editorInstance.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.F12, () => {
+      void openReferencesPanel(editorInstance)
+    })
+
+    // ── 导航历史：Alt+← / Alt+→（macOS 兼容 Ctrl+- / Ctrl+Shift+-）──────────
+    editorInstance.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.LeftArrow, () => { void goBack() })
+    editorInstance.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.RightArrow, () => { void goForward() })
+    editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Minus, () => { void goBack() })
+    editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Minus, () => { void goForward() })
+
     // ── Ctrl+Click: Go to Definition ─────────────────────────────────────────
     // multiCursorModifier:'alt' 时 Ctrl+Click 触发定义跳转
     // 我们接管整个 Ctrl+Click 流程（包括同文件），防止 Monaco standalone 尝试跨文件打开
     editorInstance.onMouseDown(async (e) => {
+      const browserButton = (e.event.browserEvent as MouseEvent | undefined)?.button
+      // 鼠标侧键（3=后退 / 4=前进）：与 VS Code / 浏览器一致
+      if (browserButton === 3 || browserButton === 4) {
+        e.event.preventDefault()
+        if (browserButton === 3) await goBack()
+        else await goForward()
+        return
+      }
+
       if (!e.event.ctrlKey && !e.event.metaKey) return
       if (!e.target.position) return
 

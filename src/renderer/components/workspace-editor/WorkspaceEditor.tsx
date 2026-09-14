@@ -29,6 +29,14 @@ import type { StreamingEditState } from '@intelligence/providerTypes'
 import type { ThemeName } from '@store/slices/themeSlice'
 import { useEditorBreakpoints } from '@hooks/useEditorBreakpoints'
 import { consumePendingNavigation } from '@services/editorNavigator'
+import {
+  DEFINITION_PICKER_EVENT,
+  revealLocation,
+  setActiveEditorInstance,
+  clearActiveEditorInstance,
+  type DefinitionCandidate,
+  type DefinitionPickerRequest,
+} from '@services/editorNavigation'
 import { safeLazy, safeNamedLazy } from '@renderer/utils/safeImport'
 
 // 子组件（通过 safeLazy 加载，场景卸载时不会崩溃）
@@ -36,6 +44,7 @@ const EditorTabs = safeNamedLazy(() => import('./EditorTabBar'), 'EditorTabs', {
 const EditorBreadcrumbs = safeNamedLazy(() => import('./EditorPathNav'), 'EditorBreadcrumbs', { label: 'EditorBreadcrumbs', silent: true })
 const InlineEdit = safeLazy(() => import('./InlineCodeEdit'), { label: 'InlineCodeEdit', silent: true })
 const EditorContextMenu = safeLazy(() => import('./CodeEditorMenu'), { label: 'EditorContextMenu', silent: true })
+const DefinitionQuickPick = safeLazy(() => import('./DefinitionQuickPick'), { label: 'DefinitionQuickPick', silent: true })
 const TabContextMenu = safeNamedLazy(() => import('./TabActionMenu'), 'TabContextMenu', { label: 'TabContextMenu', silent: true })
 const EditorWelcome = safeNamedLazy(() => import('./EditorLanding'), 'EditorWelcome', { label: 'EditorWelcome', silent: true })
 const BrowserPreviewTab = safeLazy(() => import('./WebPreviewTab'), { label: 'BrowserPreviewTab', silent: true })
@@ -161,6 +170,8 @@ export default function Editor() {
   } | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [tabContextMenu, setTabContextMenu] = useState<{ x: number; y: number; filePath: string } | null>(null)
+  // 多定义 Quick Pick（符号存在多个定义时的选择弹窗）
+  const [definitionPicker, setDefinitionPicker] = useState<{ items: DefinitionPickerRequest['items']; position: { x: number; y: number } } | null>(null)
   const [markdownMode, setMarkdownMode] = useState<'edit' | 'preview' | 'split'>('preview')
   const [htmlMode, setHtmlMode] = useState<'edit' | 'preview' | 'split'>('edit')
 
@@ -390,6 +401,8 @@ export default function Editor() {
   const handleEditorMount: OnMount = (editor, monacoInstance) => {
     editorRef.current = editor
     monacoRef.current = monacoInstance
+    // 登记活跃编辑器实例：供导航历史 / 引用面板 / 大纲面包屑跨组件跳转复用
+    setActiveEditorInstance(editor)
     const disposables: { dispose: () => void }[] = []
     const currentFilePath = activeFilePath
 
@@ -462,6 +475,7 @@ export default function Editor() {
     disposables.push(contextMenuDisposable)
 
     editor.onDidDispose(() => {
+      clearActiveEditorInstance(editor)
       unsubscribeDiagnostics()
       disposables.forEach(d => d.dispose())
       disposables.length = 0
@@ -505,6 +519,17 @@ export default function Editor() {
     window.addEventListener('editor:save-active-file', handleMenuSave as EventListener)
     return () => window.removeEventListener('editor:save-active-file', handleMenuSave as EventListener)
   }, [handleSave])
+
+  // 多定义 Quick Pick：跳转方（F12 / Ctrl+Click）派发事件，这里统一渲染选择弹窗
+  useEffect(() => {
+    const handleDefinitionPicker = (event: Event) => {
+      const detail = (event as CustomEvent<DefinitionPickerRequest>).detail
+      if (!detail || !Array.isArray(detail.items) || detail.items.length === 0) return
+      setDefinitionPicker({ items: detail.items, position: detail.position })
+    }
+    window.addEventListener(DEFINITION_PICKER_EVENT, handleDefinitionPicker as EventListener)
+    return () => window.removeEventListener(DEFINITION_PICKER_EVENT, handleDefinitionPicker as EventListener)
+  }, [])
 
   const handleRunLint = useCallback(() => {
     if (activeFilePath && !isPreviewDocument) {
@@ -724,6 +749,7 @@ export default function Editor() {
                   const modifiedEditor = editor.getModifiedEditor()
                   editorRef.current = modifiedEditor
                   monacoRef.current = monacoInstance
+                  setActiveEditorInstance(modifiedEditor)
                   modifiedEditor.onDidChangeModelContent(() => {
                     updateFileContent(activeFile.path, modifiedEditor.getValue())
                   })
@@ -756,6 +782,19 @@ export default function Editor() {
 
         {contextMenu && editorRef.current && (
           <EditorContextMenu x={contextMenu.x} y={contextMenu.y} editor={editorRef.current} onClose={() => setContextMenu(null)} />
+        )}
+
+        {/* 多定义 Quick Pick：符号存在多个定义时由 F12 / Ctrl+Click 唤起 */}
+        {definitionPicker && (
+          <DefinitionQuickPick
+            items={definitionPicker.items}
+            position={definitionPicker.position}
+            onSelect={(item: DefinitionCandidate) => {
+              setDefinitionPicker(null)
+              void revealLocation({ filePath: item.filePath, line: item.line, column: item.column })
+            }}
+            onClose={() => setDefinitionPicker(null)}
+          />
         )}
       </div>
 

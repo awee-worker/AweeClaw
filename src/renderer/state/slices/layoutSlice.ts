@@ -46,7 +46,7 @@ export type SidePanel =
 export type TerminalLayout = 'tabs' | 'split'
 
 /** 底部 Dock 面板 Tab 类型 */
-export type DockTab = 'problems' | 'output' | 'debug' | 'terminal'
+export type DockTab = 'problems' | 'output' | 'debug' | 'terminal' | 'references'
 
 /** 各场景模式工作台默认卡片集合（macOS 桌面小组件式） */
 export const WORKBENCH_DEFAULT_WIDGETS: Record<SceneMode, string[]> = {

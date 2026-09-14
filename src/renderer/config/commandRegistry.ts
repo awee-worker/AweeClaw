@@ -12,6 +12,15 @@ export const registerCoreCommands = () => {
         { id: 'editor.find',                            title: 'Find',                          category: 'Editor',     defaultKey: 'Ctrl+F' },
         { id: 'editor.replace',                         title: 'Replace',                       category: 'Editor',     defaultKey: 'Ctrl+H' },
 
+        // --- 代码导航（转到定义 / 查找引用 / 大纲 / 历史前进后退）---
+        { id: 'editor.goToDefinition',                  title: 'Go to Definition',              category: 'Editor',     defaultKey: 'F12' },
+        { id: 'editor.goToTypeDefinition',              title: 'Go to Type Definition',         category: 'Editor',     defaultKey: '' },
+        { id: 'editor.goToImplementation',              title: 'Go to Implementation',          category: 'Editor',     defaultKey: isMac ? 'Ctrl+F12' : 'Ctrl+F12' },
+        { id: 'editor.findReferences',                  title: 'Find All References',           category: 'Editor',     defaultKey: 'Shift+F12' },
+        { id: 'editor.quickOutline',                    title: 'Go to Symbol in Editor',        category: 'Editor',     defaultKey: 'Ctrl+Shift+O' },
+        { id: 'editor.goBack',                          title: 'Go Back',                       category: 'Editor',     defaultKey: isMac ? 'Ctrl+-' : 'Alt+Left' },
+        { id: 'editor.goForward',                       title: 'Go Forward',                    category: 'Editor',     defaultKey: isMac ? 'Ctrl+Shift+-' : 'Alt+Right' },
+
         // --- View ---
         { id: 'view.toggleSidebar',                     title: 'Toggle Sidebar',                category: 'View',       defaultKey: 'Ctrl+B' },
         { id: 'view.toggleTerminal',                    title: 'Toggle Terminal',               category: 'View',       defaultKey: 'Ctrl+`' },
