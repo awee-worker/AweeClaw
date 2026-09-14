@@ -1,6 +1,6 @@
 {
   "name": "aweeclaw",
-  "version": "2.2.2",
+  "version": "2.2.3",
   "description": "AweeClaw - Connect AI to Your World",
   "productName": "AweeClaw",
   "author": "Awee Lee <aweelee@qq.com>",
@@ -59,6 +59,8 @@
     "@modelcontextprotocol/sdk": "^1.25.1",
     "@monaco-editor/react": "^4.6.0",
     "@parcel/watcher": "^2.4.1",
+    "@pixiv/three-vrm": "^3.5.5",
+    "@pixiv/three-vrm-animation": "^3.5.5",
     "@react-three/drei": "^9.122.0",
     "@react-three/fiber": "^8.18.0",
     "@types/dompurify": "^3.0.5",
@@ -269,6 +271,10 @@
       {
         "from": "src/main/modules/desktop-control/bin",
         "to": "ocr-scripts"
+      },
+      {
+        "from": "resources/vrm",
+        "to": "vrm"
       }
     ]
   },

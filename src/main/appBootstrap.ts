@@ -45,6 +45,7 @@ import { requestRendererShutdown } from './bootstrap/shutdownCoordinator'
 import { performGlobalCleanup, performFastCleanup, withTimeout } from './bootstrap/globalCleanup'
 import { initializeModules } from './bootstrap/moduleInitializer'
 import { FloatingAvatarManager } from './modules/floating-avatar/FloatingAvatarManager'
+import { registerVrmAssetScheme } from './modules/vrm-companion/VrmCompanionStore'
 
 // 重新导出 Language 类型，保持向后兼容（menu 模块从 appBootstrap 导入）
 export type { Language } from './bootstrap/moduleInitializer'
@@ -116,6 +117,9 @@ registerScenarioBundleScheme()
 
 // 注册 plugin-bundle 协议为 privileged（用于插件 UI ESM bundle 加载）
 registerPluginBundleScheme()
+
+// 注册 vrm-asset 协议为 privileged（VRM 桌面伴侣的模型资源加载，必须 ready 前注册）
+registerVrmAssetScheme()
 
 // ==========================================
 // 全局异常处理

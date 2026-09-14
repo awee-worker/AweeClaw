@@ -39,6 +39,7 @@ const AVAILABLE_BUILTIN_TOOLS: ReadonlySet<string> = new Set([
   'statistical_test',
   'remember',
   'knowledge_search',
+  'companion_control',
 ])
 
 class BuiltinToolRegistryClass {

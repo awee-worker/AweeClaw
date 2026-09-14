@@ -452,6 +452,11 @@ Common mistakes to avoid:
         detailedDescription: `Execute shell commands in workspace.
 - Requires user approval
 - Use cwd parameter instead of cd commands
+- Commands are aborted automatically when they exceed their timeout (see below). If a command legitimately needs to run longer, use is_background=true.
+Timeout policy:
+- Regular commands: 120s
+- Broad filesystem scans (e.g. \`find /\`, \`grep -r x /\`, \`du -sh /\`): 60s — avoid them; scope the search to the workspace (e.g. \`find . -name ...\`) or use search_files instead
+- Install / build / test commands: 10 minutes
 For long-running servers or watch tasks:
 - Set is_background=true to run in a UI terminal panel
 - The command returns a terminal ID immediately
@@ -468,6 +473,7 @@ For long-running servers or watch tasks:
             'Use cwd parameter instead of cd — NEVER write "cd path && command" or "cd path; command" inside command field',
             'NEVER use && in command — it is not supported on Windows PowerShell 5 (use cwd parameter for directory changes)',
             'Always use is_background=true for servers and dev tasks',
+            'NEVER scan the whole filesystem (e.g. `find / -name ...`, `grep -r foo /`) — it times out and wastes the user\'s time; scope to the workspace (`find . -name ...`) or use search_files',
         ],
         category: 'terminal',
         approvalType: 'terminal',
@@ -1429,6 +1435,80 @@ Don't wait for the user to ask — if you learn something that would save time i
         enabled: true,
         parameters: {
             content: { type: 'string', description: 'The fact, preference, or convention to remember. Write as a clear, standalone statement that will make sense without conversation context.', required: true },
+        },
+    },
+
+    companion_control: {
+        name: 'companion_control',
+        displayName: 'Companion Control',
+        description: 'Control the VRM desktop companion (3D desktop pet on screen): make it play an animation (wave/think/stretch/...), change facial expression, speak a line, look at the camera, or reset its pose. Only takes effect while the desktop companion window is open — the result tells you whether the command was delivered.',
+        detailedDescription: `Control the user's VRM desktop companion (桌面伴侣 / desktop pet).
+
+Actions:
+- play_action : play a one-shot animation. Pass \`name\` from the available action list
+                (e.g. greeting, peace_sign, scratch_head, stretch, akimbo, model_pose, spin, squat).
+                Semantic aliases are accepted too ("wave", "挥手", "think", "思考", "比耶").
+                Omit \`name\` to play a random animation.
+- expression  : set a facial expression. \`name\` ∈ happy / angry / sad / relaxed / surprised / neutral.
+                \`weight\` is 0~1 (default 1); the expression auto-fades after ~2.6s unless
+                \`duration_ms\` is given.
+- speak       : make the companion talk (drives lip sync + on-screen subtitle). Pass \`text\`.
+- stop_speak  : stop talking immediately.
+- look_at     : change gaze. \`target\` ∈ cursor (follow the mouse) / camera (look at the user) /
+                center (stare straight ahead).
+- reset       : stop the current animation, clear the expression, and return to a natural idle stance.
+- list_actions: list the animations currently installed (use when unsure about valid names).
+
+Notes:
+- Every call returns the current available action list, so you can learn valid names from any result.
+- Pair \`speak\` with a gesture/expression for a livelier reaction (e.g. greeting + happy).
+- Do NOT call this when the user is talking about a desktop companion that is not open: the result
+  will report delivered=false, which means no companion window is showing.
+- Keep it tasteful: one or two commands per user turn is enough; do not spam animations.`,
+        examples: [
+            'companion_control action="play_action" name="greeting"',
+            'companion_control action="speak" text="收到，我这就去看看！"',
+            'companion_control action="expression" name="happy" weight=1',
+            'companion_control action="look_at" target="camera"',
+            'companion_control action="reset"',
+        ],
+        criticalRules: [
+            'Only meaningful while the desktop companion window is open; check the delivered flag in the result',
+            'Prefer action names from the returned available-action list over guessing',
+        ],
+        category: 'interaction',
+        approvalType: 'none',
+        parallel: false,
+        requiresWorkspace: false,
+        enabled: true,
+        parameters: {
+            action: {
+                type: 'string',
+                description: 'What to do with the companion.',
+                required: true,
+                enum: ['play_action', 'expression', 'speak', 'stop_speak', 'look_at', 'reset', 'list_actions'],
+            },
+            name: {
+                type: 'string',
+                description: 'Animation name (play_action) or expression name (expression). Optional for play_action (random when omitted).',
+            },
+            text: {
+                type: 'string',
+                description: 'Line for the companion to speak (action="speak").',
+            },
+            weight: {
+                type: 'number',
+                description: 'Expression intensity 0~1 (action="expression", default 1).',
+            },
+            target: {
+                type: 'string',
+                description: 'Gaze target (action="look_at").',
+                enum: ['cursor', 'camera', 'center'],
+            },
+            duration_ms: {
+                type: 'number',
+                description: 'How long the expression stays before auto-fading (ms). Default ~2600.',
+            },
         },
     },
 

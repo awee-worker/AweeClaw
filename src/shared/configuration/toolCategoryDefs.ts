@@ -113,6 +113,8 @@ const CORE_TOOLS: string[] = [
   // 交互与记忆
   'remember',
   'knowledge_search',
+  // 桌面伴侣控制（VRM 角色动作 / 表情 / 说话）
+  'companion_control',
   // 定时任务
   'schedule',
   // Skill 按需加载

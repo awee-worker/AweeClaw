@@ -68,7 +68,29 @@ export class VoiceContextCache {
   private static instance: VoiceContextCache | null = null
   private context: VoiceContext = { ...DEFAULT_CONTEXT }
 
+  /**
+   * 上下文更新监听器。
+   *
+   * 缓存本身是「主窗口 push / 子窗口 pull」的中转站；除首次拉取外，
+   * 子窗口（悬浮头像、VRM 桌面伴侣）都需要在上下文变化时被实时推送。
+   * 用监听器而不是在 update 里硬编码各窗口的 send：消费方自己注册，
+   * 缓存不反向依赖任何窗口模块。
+   */
+  private listeners = new Set<(ctx: VoiceContext) => void>()
+
   private constructor() {}
+
+  /**
+   * 注册上下文更新监听器。
+   *
+   * @returns 取消订阅函数
+   */
+  public onUpdate(listener: (ctx: VoiceContext) => void): () => void {
+    this.listeners.add(listener)
+    return () => {
+      this.listeners.delete(listener)
+    }
+  }
 
   static getInstance(): VoiceContextCache {
     if (!VoiceContextCache.instance) {
@@ -102,6 +124,17 @@ export class VoiceContextCache {
       hasVoiceModelConfig: !!next.voiceModelConfig,
       language: next.language,
     })
+
+    // 广播给所有订阅窗口（悬浮头像 / VRM 桌面伴侣）。
+    // 逐个 try/catch：单个窗口的转发失败不应影响其它窗口，也不应让 push 调用方收到异常。
+    for (const listener of this.listeners) {
+      try {
+        listener({ ...next })
+      } catch (err) {
+        logger.system.warn('[VoiceContextCache] Listener failed:', err)
+      }
+    }
+
     return this.get()
   }
 

@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState, useEffect, useMemo, useRef } from 'react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
-import { useWindowTitle, useAppInit, useGlobalShortcuts, useMenuBridge, useFileWatcher, useAppShutdownState, usePreviewDiscoveryToasts, useChannelBridge, usePluginUpdateChecker, useFloatingAvatarSync, usePptPreviewIpc } from '@hooks'
+import { useWindowTitle, useAppInit, useGlobalShortcuts, useMenuBridge, useFileWatcher, useAppShutdownState, usePreviewDiscoveryToasts, useChannelBridge, usePluginUpdateChecker, useFloatingAvatarSync, useVrmCompanionSync, usePptPreviewIpc } from '@hooks'
 import AppTitleBar from './components/layout/AppTitleBar'
 import NavigationRail from './components/layout/NavigationRail'
 import SidebarSection from './components/layout/SidebarSection'
@@ -159,6 +159,8 @@ function AppContent() {
   useChannelBridge()
   usePluginUpdateChecker()
   useFloatingAvatarSync()
+  // 桌面伴侣（VRM）联动：AI 回复时驱动角色口型 + 提取好感度
+  useVrmCompanionSync()
   // v2.3：监听 PPT 预览 IPC 事件，在主窗口打开内嵌 Tab
   usePptPreviewIpc()
 

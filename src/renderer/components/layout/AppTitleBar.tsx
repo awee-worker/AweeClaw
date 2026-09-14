@@ -1,4 +1,4 @@
-import { Minus, Square, X, Search, Plus, Bell, Cloud, Phone, RefreshCw, Loader2, CheckCircle2 } from 'lucide-react'
+import { Minus, Square, X, Search, Plus, Bell, Cloud, Phone, Bot, RefreshCw, Loader2, CheckCircle2 } from 'lucide-react'
 
 function PanelLeftIcon({ filled = false, className }: { filled?: boolean; className?: string }) {
     return (
@@ -40,8 +40,9 @@ import NotificationCenterContent, { NotificationClearButton } from '../dock-pane
 import { getQuotaBarColor, getQuotaTextColor, getQuotaGlowColor } from '@utils/quotaColors'
 import { PluginTopActions } from '@renderer/plugins/PluginTopActions'
 import { formatTokenCount } from '@utils/formatter'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { t, type Language } from '@renderer/i18n'
+import { logger } from '@shared/toolkit/LogEngine'
 import { updaterService, type UpdateStatus } from '@renderer/adapters/updateAdapter'
 
 const isMac = typeof navigator !== 'undefined' && (
@@ -224,6 +225,69 @@ function CloudQuotaIndicator({ language }: { language: Language }) {
   )
 }
 
+/**
+ * 桌面伴侣开关按钮（顶部栏「语音对话」右侧）
+ *
+ * 状态来源：挂载时经 getState 取初值（伴侣可能按「随应用启动」已显示），
+ * 之后由主进程广播的 `vrm-companion:state-changed` 同步 —— 因此无论从
+ * 本按钮、设置面板还是伴侣窗口自身关闭，图标状态都是一致的。
+ */
+function VrmCompanionToggleButton({ language }: { language: Language }) {
+  const [visible, setVisible] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    let disposed = false
+    void api.vrmCompanion
+      .getState()
+      .then((res) => {
+        if (!disposed && res.success && res.data) setVisible(!!res.data.visible)
+      })
+      .catch((err) => logger.system.debug('[AppTitleBar] read companion state failed:', err))
+
+    const off = api.vrmCompanion.onStateChanged((state) => setVisible(!!state.visible))
+    return () => {
+      disposed = true
+      off()
+    }
+  }, [])
+
+  const handleToggle = useCallback(async () => {
+    if (busy) return
+    setBusy(true)
+    try {
+      const res = await api.vrmCompanion.toggle()
+      if (res.success && res.data) setVisible(!!res.data.visible)
+    } catch (err) {
+      logger.system.warn('[AppTitleBar] toggle companion failed:', err)
+    } finally {
+      setBusy(false)
+    }
+  }, [busy])
+
+  return (
+    <button
+      onClick={() => void handleToggle()}
+      disabled={busy}
+      className={`flex items-center justify-center w-7 h-7 rounded-md transition-colors ${
+        visible ? 'text-accent bg-accent/10' : 'text-text-muted hover:text-accent hover:bg-accent/10'
+      } ${busy ? 'opacity-60 cursor-default' : ''}`}
+      title={
+        language === 'zh'
+          ? visible
+            ? '关闭桌面伴侣'
+            : '打开桌面伴侣'
+          : visible
+            ? 'Close desktop companion'
+            : 'Open desktop companion'
+      }
+    >
+      {/* Bot 图形在 24 视口内的实体占比小于 Phone，同尺寸下会显得偏小，故放大一档 */}
+      <Bot className="w-4 h-4" />
+    </button>
+  )
+}
+
 export default function AppTitleBar() {
   const { setShowQuickOpen, language, activeSidePanel, chatVisible, toggleSidebar, toggleChat, navRailExpanded, setNavRailExpanded, setVoiceConversationActive, closeAllFullPages, setShowEnvironmentSetup, showWelcomePage } = useStore(useShallow(s => ({
     setShowQuickOpen: s.setShowQuickOpen,
@@ -346,6 +410,8 @@ export default function AppTitleBar() {
               >
                 <Phone className="w-3.5 h-3.5" />
               </button>
+              {/* 桌面伴侣开关：紧跟语音对话按钮 */}
+              <VrmCompanionToggleButton language={language as Language} />
               {/* 插件贡献的顶部按钮（扩展点），紧跟语音按钮之后 */}
               <PluginTopActions />
             </>

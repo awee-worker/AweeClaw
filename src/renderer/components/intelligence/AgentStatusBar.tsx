@@ -58,6 +58,7 @@ const TOOL_LABEL_KEYS: Record<string, string> = {
   uiux_recommend: 'tool.label.uiux_recommend',
   apply_skill: 'tool.label.apply_skill',
   todo_write: 'tool.label.todo_write',
+  companion_control: 'tool.label.companion_control',
 }
 
 /** 文件变更类型到图标/颜色的视觉配置 */

@@ -45,6 +45,7 @@ import { proactiveStore } from '../modules/proactive/ProactiveStore'
 import { proactiveActionTrigger } from '../modules/proactive/ProactiveActionTrigger'
 import { proactivePermission } from '../modules/proactive/ProactivePermission'
 import { initFloatingAvatar, syncWakeWordEnabledToAvatar } from '../modules/floating-avatar'
+import { initVrmCompanion } from '../modules/vrm-companion'
 import { SettingsDb } from '../modules/settings-db/SettingsDb'
 import { registerVideoTranscodeIpc } from '../modules/video-transcode/VideoTranscodeIpc'
 
@@ -182,6 +183,9 @@ export async function initializeModules(firstWin: BrowserWindow): Promise<void> 
   // 初始化设备联动模块（WebSocket 长连接 + RPC 处理器 + 事件桥接）
   // 不阻塞启动：WebSocket 连接在 renderer 推送 token 后才发起
   initDeviceLinkModule()
+  // 初始化 VRM 桌面伴侣模块（独立悬浮窗口 + 模型资源协议 + 好感度系统）
+  // 资源协议（vrm-asset://）已在 appBootstrap 的 ready 前注册
+  initVrmCompanion()
 
   // ==========================================
   // 7. 应用菜单与语言同步

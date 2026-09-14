@@ -34,6 +34,7 @@ export const TOOL_LABEL_KEYS: Record<string, string> = {
   uiux_recommend: 'tool.label.uiux_recommend',
   apply_skill: 'tool.label.apply_skill',
   todo_write: 'tool.label.todo_write',
+  companion_control: 'tool.label.companion_control',
   desktop_list_apps: 'tool.label.desktop_list_apps',
   desktop_launch_app: 'tool.label.desktop_launch_app',
   desktop_quit_app: 'tool.label.desktop_quit_app',

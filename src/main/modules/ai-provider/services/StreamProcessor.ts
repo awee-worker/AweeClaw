@@ -18,6 +18,7 @@ import { MessageConverter } from '../core/MessageAdapter'
 import { ToolConverter } from '../core/ToolSchemaAdapter'
 import { prepareExecutionRequest } from '@modules/ai-provider/core/ModelRequestRunner'
 import { executeWithGenerationRecovery } from '../core/GenerationResilience'
+import { resolveThinkingCompatibility } from '../core/ProviderFeatureMatrix'
 import { LLMError, convertUsage } from '../providerTypes'
 import type { StreamEvent, TokenUsage, ResponseMetadata } from '../providerTypes'
 import type { LLMConfig, LLMMessage, ToolDefinition } from '@protocols'
@@ -44,8 +45,59 @@ export interface StreamingResult {
   metadata?: ResponseMetadata
 }
 
-/** 默认流式空闲超时时间（毫秒） */
-const DEFAULT_IDLE_TIMEOUT_MS = 15_000
+/* ------------------------------------------------------------------ */
+/* 流式超时分级                                                       */
+/* ------------------------------------------------------------------ */
+
+/** 默认常规空闲超时时间（毫秒）—— 相邻分片之间的最大间隔 */
+const DEFAULT_IDLE_TIMEOUT_MS = 60_000
+
+/**
+ * 默认首包超时时间（毫秒）—— 请求发出到首个分片到达的最大等待。
+ *
+ * 推理模型（扩展思考）在产出首个分片前可能有很长的静默期，
+ * 若沿用常规空闲超时，会把正常思考误判为「流停滞」并强制关闭请求，
+ * 表现为「AI 还没思考完就自动中断」。
+ */
+const DEFAULT_FIRST_CHUNK_TIMEOUT_MS = 180_000
+
+/**
+ * 思考阶段的空闲超时时间（毫秒）。
+ *
+ * 模型思考期间可能长时间不产出任何分片（取决于 provider 是否流式返回
+ * reasoning 增量），必须给出远高于常规的空闲容忍，否则思考时间一旦
+ * 超过常规阈值，请求就会被强制中止。
+ */
+const THINKING_IDLE_TIMEOUT_MS = 300_000
+
+/**
+ * AI SDK 总请求超时的安全下限（毫秒）。
+ *
+ * AI SDK 的 `timeout` 语义是「整个请求的总耗时上限」，一旦命中会直接中止
+ * 流式请求。而用户在模型配置里填写的 `timeout`（界面以「秒」为单位）
+ * 实际语义更接近「多久没有数据算超时」，数值往往偏小（例如 30 秒）。
+ * 若把它原样交给 SDK 当总超时，模型只要思考 / 长任务超过该值，请求就会被
+ * SDK 强行中止，表现为「AI 还在思考就被自动中断」。
+ *
+ * 因此这里给 SDK 总超时设置一个宽松的安全下限，仅用于兜底「请求永久挂起」；
+ * 真正的停滞检测交给按阶段分级的本地空闲守卫（StreamTimeoutGuard）负责。
+ */
+const REQUEST_TIMEOUT_FLOOR_MS = 30 * 60_000
+
+/** 流式阶段标识（用于按阶段选择超时阈值与日志诊断） */
+export type StreamPhase = 'first-chunk' | 'reasoning' | 'streaming'
+
+/** 流式超时档案：按阶段区分的超时阈值 */
+export interface StreamTimeoutProfile {
+  /** 请求发出 → 首个分片的超时 */
+  firstChunkMs: number
+  /** 常规分片间隔空闲超时 */
+  idleMs: number
+  /** 思考阶段分片间隔空闲超时 */
+  thinkingIdleMs: number
+  /** 本次请求是否启用思考容忍（用于"已开启思考但尚无 reasoning 增量"时也放宽） */
+  thinkingTolerant: boolean
+}
 
 /* ------------------------------------------------------------------ */
 /* 流式超时守卫                                                       */
@@ -58,13 +110,15 @@ class StreamTimeoutGuard {
    *
    * @param iterator 流式迭代器
    * @param requestId 请求 ID（用于日志）
-   * @param timeoutMs 空闲超时时间
+   * @param timeoutMs 当前阶段的空闲超时时间
+   * @param phase 当前所处阶段（用于日志与错误描述）
    * @returns 迭代结果
    */
   async next(
     iterator: AsyncIterator<any>,
     requestId: string,
     timeoutMs: number,
+    phase: StreamPhase = 'streaming',
   ): Promise<IteratorResult<any>> {
     let timeoutId: NodeJS.Timeout | null = null
 
@@ -75,10 +129,10 @@ class StreamTimeoutGuard {
         }),
         new Promise<never>((_, reject) => {
           timeoutId = setTimeout(() => {
-            logger.llm.warn('[StreamProcessor] 流式空闲超时', { requestId, timeoutMs })
+            logger.llm.warn('[StreamProcessor] 流式空闲超时', { requestId, timeoutMs, phase })
             void iterator.return?.()
             reject(new LLMError(
-              '模型流式响应停滞超过 ' + Math.floor(timeoutMs / 1000) + ' 秒',
+              '模型流式响应停滞超过 ' + Math.floor(timeoutMs / 1000) + ' 秒（阶段：' + describeStreamPhase(phase) + '）',
               ErrorCode.TIMEOUT,
               true,
             ))
@@ -91,12 +145,100 @@ class StreamTimeoutGuard {
   }
 }
 
-/** 解析空闲超时时间 */
-function resolveIdleTimeout(timeoutMs?: number): number {
-  if (typeof timeoutMs === 'number' && Number.isFinite(timeoutMs) && timeoutMs > 0) {
-    return timeoutMs
+/** 阶段的中文描述（用于面向用户的错误文案与日志） */
+function describeStreamPhase(phase: StreamPhase): string {
+  switch (phase) {
+    case 'first-chunk':
+      return '等待首个响应'
+    case 'reasoning':
+      return '模型思考中'
+    default:
+      return '输出中'
   }
-  return DEFAULT_IDLE_TIMEOUT_MS
+}
+
+/**
+ * 解析各阶段的流式超时阈值。
+ *
+ * 关键点：用户在模型配置里设置的 `timeout` 语义更接近「多久没有数据算超时」，
+ * 数值可能偏小（例如 30 秒）。这里统一把它作为**下界**，各阶段再取自身的
+ * 保守默认值，确保思考阶段始终拥有足够的静默容忍，不会被偏小的配置误判为停滞。
+ *
+ * @param configuredTimeoutMs 模型配置中的 timeout（毫秒，可选）
+ * @param thinkingTolerant 本次请求是否启用思考容忍
+ */
+export function resolveStreamTimeouts(
+  configuredTimeoutMs: number | undefined,
+  thinkingTolerant: boolean,
+): StreamTimeoutProfile {
+  const configured =
+    typeof configuredTimeoutMs === 'number' &&
+    Number.isFinite(configuredTimeoutMs) &&
+    configuredTimeoutMs > 0
+      ? configuredTimeoutMs
+      : 0
+
+  const idleMs = Math.max(configured, DEFAULT_IDLE_TIMEOUT_MS)
+  const thinkingIdleMs = Math.max(idleMs, THINKING_IDLE_TIMEOUT_MS)
+  const firstChunkMs = Math.max(
+    idleMs,
+    configured,
+    thinkingTolerant ? THINKING_IDLE_TIMEOUT_MS : DEFAULT_FIRST_CHUNK_TIMEOUT_MS,
+  )
+
+  return { firstChunkMs, idleMs, thinkingIdleMs, thinkingTolerant }
+}
+
+/**
+ * 解析传给 AI SDK 的「总请求超时」（`timeout` 选项）。
+ *
+ * 与本地空闲守卫是两套独立机制：AI SDK 的 `timeout` 覆盖整个请求，
+ * 一旦命中会直接中止。
+ *
+ * ⚠️ 这里**不能**把用户配置的 `timeout`（界面上以秒为单位，语义上更接近
+ * 「多久没数据算超时」）直接当作「整个请求总耗时上限」：思考型模型在思考
+ * 阶段可能长时间静默，长回答 / 长任务也可能超过该值，一旦原样透传，SDK 会
+ * 在请求完成前强制中断，表现为「AI 还在思考就被自动中断」。
+ *
+ * 因此总超时统一抬到安全下限（仅兜底「请求永久挂起」），真正的停滞检测
+ * 由按阶段分级的本地空闲守卫负责。
+ *
+ * @param configuredTimeoutMs 模型配置中的 timeout（毫秒，可选）
+ * @param _thinkingTolerant 兼容保留（总超时不再区分思考容忍度）
+ */
+export function resolveRequestTimeoutMs(
+  configuredTimeoutMs: number | undefined,
+  _thinkingTolerant: boolean,
+): number | undefined {
+  const configured =
+    typeof configuredTimeoutMs === 'number' &&
+    Number.isFinite(configuredTimeoutMs) &&
+    configuredTimeoutMs > 0
+      ? configuredTimeoutMs
+      : 0
+
+  return Math.max(configured, REQUEST_TIMEOUT_FLOOR_MS)
+}
+
+/**
+ * 判断本次请求是否需要思考容忍（放宽静默容忍度）。
+ *
+ * 覆盖三类情况，任一命中即启用：
+ * - Provider 特性矩阵判定思考已开启（GLM-5 强制开启、显式 enableThinking、历史含 reasoning）
+ * - 配置了 thinkingBudget
+ * - 配置了 reasoningEffort 且非 none
+ *
+ * 注意：这里只影响**超时容忍度**，不改变是否向 Provider 注入 thinking 参数，
+ * 因此不会引入请求参数层面的副作用。
+ */
+export function resolveThinkingTolerance(
+  config: LLMConfig,
+  messages: LLMMessage[],
+): boolean {
+  if (resolveThinkingCompatibility(config, messages).enabled) return true
+  if (typeof config.thinkingBudget === 'number' && config.thinkingBudget > 0) return true
+  if (config.reasoningEffort && config.reasoningEffort !== 'none') return true
+  return false
 }
 
 /* ------------------------------------------------------------------ */
@@ -169,6 +311,19 @@ export class StreamingService {
 
       const coreTools = tools ? this.toolConverter.convert(tools) : undefined
 
+      // 思考感知的超时分级：推理模型在思考阶段可能长时间不产出任何分片，
+      // 若沿用单一的空闲超时 / 请求总超时，会被误判为「流停滞」并强制中止请求，
+      // 表现为「AI 还没思考完就自动中断」。
+      const thinkingTolerant = resolveThinkingTolerance(config, messages)
+
+      // AI SDK 的 `timeout` 是「整个请求总超时」（与本地空闲守卫是两套独立机制），
+      // 思考 / 长任务耗时一旦超过该值，SDK 会直接中止请求。
+      // 因此这里统一抬到安全下限，详见 resolveRequestTimeoutMs 的说明。
+      const requestTimeoutMs = resolveRequestTimeoutMs(
+        prepared.callOptions.timeout,
+        thinkingTolerant,
+      )
+
       const streamParams: Parameters<typeof streamText>[0] = {
         model,
         messages: coreMessages,
@@ -176,6 +331,7 @@ export class StreamingService {
         activeTools,
         ...prepared.settings,
         ...prepared.callOptions,
+        ...(requestTimeoutMs !== undefined ? { timeout: requestTimeoutMs } : {}),
         abortSignal,
         providerOptions: prepared.providerOptions,
       }
@@ -185,11 +341,23 @@ export class StreamingService {
         experimental_repairToolCall: this.createToolCallRepairer(),
       })
 
+      const timeouts = resolveStreamTimeouts(prepared.callOptions.timeout, thinkingTolerant)
+
+      logger.llm.info('[StreamProcessor] 超时策略已解析', {
+        requestId,
+        thinkingTolerant,
+        configuredTimeoutMs: prepared.callOptions.timeout ?? null,
+        requestTimeoutMs: requestTimeoutMs ?? null,
+        firstChunkMs: timeouts.firstChunkMs,
+        idleMs: timeouts.idleMs,
+        thinkingIdleMs: timeouts.thinkingIdleMs,
+      })
+
       return await this.processStream(
         result,
         strategy,
         requestId,
-        resolveIdleTimeout(prepared.callOptions.timeout),
+        timeouts,
         (tools?.length ?? 0) > 0,
         prepared.cacheWriteTokens,
       )
@@ -200,7 +368,28 @@ export class StreamingService {
         throw abortedError
       }
 
-      const llmError = LLMError.fromError(error)
+      // AI SDK 的请求总超时（或 Provider 侧主动断开）会以 AbortError 形式抛出，
+      // 而 ABORTED 与「用户主动取消」是同一个错误码，前端会把二者都当作
+      // 「用户取消」静默处理，表现为「没有任何提示的自动中断」。
+      // 用户取消已在上面的分支返回，因此走到这里的中断类错误必然是超时 /
+      // 连接断开，按 TIMEOUT 上报（可重试 + 有明确提示），不再伪装成取消。
+      const errorName = (error as Error)?.name
+      const errorMessage = (error as Error)?.message ?? ''
+      const isTimeoutLike =
+        errorName === 'TimeoutError' ||
+        errorName === 'AbortError' ||
+        /timed?\s*out|timeout|aborted/i.test(errorMessage)
+
+      const llmError = isTimeoutLike
+        ? new LLMError(
+            '模型响应超时或连接被中断',
+            ErrorCode.TIMEOUT,
+            true,
+            undefined,
+            error instanceof Error ? error : undefined,
+          )
+        : LLMError.fromError(error)
+
       logger.llm.error('[StreamProcessor] 流式错误', {
         errorType: error?.constructor?.name,
         errorMessage: (error as Error)?.message?.substring(0, 500),
@@ -257,7 +446,7 @@ export class StreamingService {
     result: StreamTextResult<any, any>,
     strategy: ThinkingStrategy,
     requestId: string,
-    idleTimeoutMs: number,
+    timeouts: StreamTimeoutProfile,
     enablePseudoTool: boolean,
     cacheWriteTokens?: number,
   ): Promise<StreamingResult> {
@@ -268,16 +457,47 @@ export class StreamingService {
     let streamError: Error | null = null
     let sawToolActivity = false
     let sawExecutableToolCall = false
+    // 超时分级所需的阶段状态
+    let receivedFirstChunk = false
+    let reasoningActive = false
+    let sawTextOutput = false
 
     const hasCustomParser = !!strategy.parseStreamText
     const iterator = result.fullStream[Symbol.asyncIterator]()
     const detector = new PseudoToolDetector(enablePseudoTool)
 
     while (true) {
-      const next = await this.timeoutGuard.next(iterator, requestId, idleTimeoutMs)
+      // 按阶段选择超时阈值：
+      // - first-chunk：请求已发出但尚无任何分片，推理模型的 TTFT 可能很长
+      // - reasoning：模型正在思考（含"已开启思考但尚未产出正文/工具调用"）
+      // - streaming：常规流式输出，相邻分片间隔容忍度较低
+      // 只要模型明确进入思考，或尚未产出任何可见正文 / 工具活动，
+      // 就无法区分「正在思考」与「流停滞」——统一按思考阶段给出宽松容忍，
+      // 避免把正常思考误判为停滞并强制中断。
+      //
+      // 注意：这里刻意**不**依赖 thinkingTolerant 开关。很多模型由 Provider
+      // 侧隐式开启思考（配置里并未显式勾选 thinking），若以开关为准，这些
+      // 模型的思考期会退化成普通 streaming 阶段（60s 空闲即被判停滞）。
+      const inThinkingPhase =
+        reasoningActive || (!sawTextOutput && !sawToolActivity)
+      const phase: StreamPhase = !receivedFirstChunk
+        ? 'first-chunk'
+        : inThinkingPhase
+          ? 'reasoning'
+          : 'streaming'
+      const timeoutMs =
+        phase === 'first-chunk'
+          ? timeouts.firstChunkMs
+          : phase === 'reasoning'
+            ? timeouts.thinkingIdleMs
+            : timeouts.idleMs
+
+      const next = await this.timeoutGuard.next(iterator, requestId, timeoutMs, phase)
       if (next.done) break
       const part = next.value
       if (this.window.isDestroyed()) break
+
+      receivedFirstChunk = true
 
       try {
         this.handleStreamPart(part, {
@@ -286,7 +506,8 @@ export class StreamingService {
           requestId,
           hasCustomParser,
           onReasoning: (text) => { reasoning += text },
-          onText: (text) => { streamedText += text },
+          onReasoningPhase: (active) => { reasoningActive = active },
+          onText: (text) => { streamedText += text; sawTextOutput = true },
           onToolActivity: () => { sawToolActivity = true },
           onExecutableToolCall: () => { sawExecutableToolCall = true },
           onNonTextOutput: () => { sawNonTextOutput = true },
@@ -338,6 +559,7 @@ export class StreamingService {
       requestId: string
       hasCustomParser: boolean
       onReasoning: (text: string) => void
+      onReasoningPhase: (active: boolean) => void
       onText: (text: string) => void
       onToolActivity: () => void
       onExecutableToolCall: () => void
@@ -351,11 +573,17 @@ export class StreamingService {
     switch (part.type) {
       case 'text-start':
       case 'text-end':
-      case 'reasoning-start':
-      case 'reasoning-end':
       case 'start':
       case 'finish':
       case 'raw':
+        break
+
+      case 'reasoning-start':
+        ctx.onReasoningPhase(true)
+        break
+
+      case 'reasoning-end':
+        ctx.onReasoningPhase(false)
         break
 
       case 'abort':
@@ -376,6 +604,7 @@ export class StreamingService {
 
       case 'reasoning-delta':
         if (part.text) {
+          ctx.onReasoningPhase(true)
           ctx.onReasoning(part.text)
           this.dispatcher.dispatch(requestId, { type: 'reasoning', content: part.text })
         }
@@ -445,6 +674,7 @@ export class StreamingService {
     ctx: {
       requestId: string
       onReasoning: (text: string) => void
+      onReasoningPhase: (active: boolean) => void
       onText: (text: string) => void
       onToolActivity: () => void
       onExecutableToolCall: () => void
@@ -455,6 +685,7 @@ export class StreamingService {
     if (hasCustomParser && strategy.parseStreamText) {
       const parsed = strategy.parseStreamText(text)
       if (parsed.thinking) {
+        ctx.onReasoningPhase(true)
         ctx.onReasoning(parsed.thinking)
         this.dispatcher.dispatch(ctx.requestId, { type: 'reasoning', content: parsed.thinking })
       }
@@ -473,6 +704,7 @@ export class StreamingService {
         this.dispatcher.dispatch(ctx.requestId, event)
       }
       if (adapted.visibleText) {
+        ctx.onReasoningPhase(false)
         ctx.onText(adapted.visibleText)
         this.dispatcher.dispatch(ctx.requestId, { type: 'text', content: adapted.visibleText })
       }

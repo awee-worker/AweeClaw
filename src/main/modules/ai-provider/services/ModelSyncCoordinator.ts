@@ -19,6 +19,7 @@ import { createModel } from '../modelRegistry'
 import { MessageConverter } from '../core/MessageAdapter'
 import { ToolConverter } from '../core/ToolSchemaAdapter'
 import { executePreparedRequest } from '@modules/ai-provider/core/ModelRequestRunner'
+import { resolveRequestTimeoutMs } from './StreamProcessor'
 import { LLMError, convertUsage } from '../providerTypes'
 import type { LLMResponse } from '../providerTypes'
 import type { LLMConfig, LLMMessage, ToolDefinition } from '@protocols'
@@ -61,8 +62,18 @@ export class SyncService {
         originalMessages: messages,
         baseMessages,
         abortSignal,
-        execute: async (prepared: any) =>
-          await generateText({
+        execute: async (prepared: any) => {
+          // 用户配置的 timeout 是「空闲超时」语义，数值可能偏小（例如 30 秒），
+          // 不能直接当作「整个请求总超时」，否则长上下文 / 思考型模型会在中途
+          // 被 SDK 强制中止。这里统一抬到安全下限。
+          const explicitTimeout =
+            typeof timeout === 'number' && Number.isFinite(timeout) && timeout > 0
+              ? timeout
+              : undefined
+          const requestTimeoutMs =
+            explicitTimeout ?? resolveRequestTimeoutMs(prepared.callOptions?.timeout, true)
+
+          return await generateText({
             model,
             messages: prepared.messages,
             tools: coreTools,
@@ -70,8 +81,9 @@ export class SyncService {
             ...prepared.callOptions,
             providerOptions: prepared.providerOptions,
             abortSignal,
-            timeout: timeout ?? prepared.callOptions?.timeout ?? 120_000,
-          }),
+            timeout: requestTimeoutMs,
+          })
+        },
       })
 
       if (result.warnings && result.warnings.length > 0) {

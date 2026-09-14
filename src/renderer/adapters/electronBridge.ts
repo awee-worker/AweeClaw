@@ -648,6 +648,9 @@ function createGroupedAPI() {
     // 定时任务（自动分组：cronXxx → cron.xxx, onCronXxx → cron.onXxx）
     cron: createGroup(raw, 'cron'),
 
+    // VRM 桌面伴侣（preload 已暴露为嵌套对象，直接透传）
+    vrmCompanion: raw.vrmCompanion,
+
     // 主动式助手（preload 已暴露为嵌套对象，直接透传）
     proactive: raw.proactive,
 

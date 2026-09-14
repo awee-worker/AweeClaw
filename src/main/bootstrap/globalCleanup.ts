@@ -59,6 +59,10 @@ export async function performFastCleanup(): Promise<void> {
     TrayManager.getInstance().destroy()
     try { MeetingNotesManager.getInstance().destroy() } catch { /* 模块未初始化 */ }
     try { PptPreviewManager.getInstance().destroy() } catch { /* 模块未初始化 */ }
+    try {
+      const { VrmCompanionManager } = await import('../modules/vrm-companion/VrmCompanionManager')
+      VrmCompanionManager.getInstance().destroy()
+    } catch { /* ignore */ }
   } catch {
     /* ignore */
   }
@@ -127,6 +131,11 @@ export async function performGlobalCleanup(): Promise<void> {
       VoiceContextCache.getInstance().clear()
       try { MeetingNotesManager.getInstance().destroy() } catch { /* 模块未初始化 */ }
       try { PptPreviewManager.getInstance().destroy() } catch { /* 模块未初始化 */ }
+    // VRM 桌面伴侣窗口
+    try {
+      const { VrmCompanionManager } = await import('../modules/vrm-companion/VrmCompanionManager')
+      VrmCompanionManager.getInstance().destroy()
+    } catch { /* 模块未初始化时忽略 */ }
     } catch {
       /* 模块未初始化时忽略 */
     }

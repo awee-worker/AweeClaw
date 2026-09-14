@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AweeClaw VRM Companion</title>
+  <!-- VRM 桌面伴侣窗口：透明背景、无滚动条、禁用文本选择 -->
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      /* 透明背景：让 BrowserWindow transparent:true 生效，角色之外完全透出桌面 */
+      background: transparent !important;
+      /* 禁用文本选择与默认拖拽（窗口拖拽由自定义逻辑处理） */
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+    #root {
+      width: 100%;
+      height: 100%;
+    }
+    /* 加载占位：不渲染可见元素，避免启动闪烁 */
+    #vrm-loader {
+      position: absolute;
+      inset: 0;
+      background: transparent;
+      pointer-events: none;
+    }
+    /* 3D 画布铺满容器 */
+    canvas {
+      display: block;
+      width: 100% !important;
+      height: 100% !important;
+      /* 轻微锐化，改善缩放后的边缘观感 */
+      image-rendering: -webkit-optimize-contrast;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="vrm-loader"></div>
+  <div id="root"></div>
+  <script type="module" src="/src/renderer/vrmCompanionEntry.tsx"></script>
+</body>
+
+</html>

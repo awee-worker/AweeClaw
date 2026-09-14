@@ -3102,7 +3102,253 @@ export interface ElectronAPI {
       }) => void,
     ) => () => void
   }
+
+  /** VRM 桌面伴侣（3D 角色悬浮窗） */
+  vrmCompanion: {
+    /** 显示伴侣窗口 */
+    show: () => Promise<VrmIpcResponse<{ visible: boolean }>>
+    /** 隐藏伴侣窗口 */
+    hide: () => Promise<VrmIpcResponse<{ visible: boolean }>>
+    /** 切换显隐 */
+    toggle: () => Promise<VrmIpcResponse<{ visible: boolean }>>
+    /** 是否可见 */
+    isVisible: () => Promise<VrmIpcResponse<{ visible: boolean }>>
+    /** 读取伴侣配置 */
+    getConfig: () => Promise<VrmIpcResponse<VrmCompanionConfig>>
+    /** 更新伴侣配置（增量） */
+    updateConfig: (
+      partial: Partial<VrmCompanionConfig>,
+    ) => Promise<VrmIpcResponse<VrmCompanionConfig>>
+    /** 列出可用模型（内置 + 用户导入） */
+    listModels: () => Promise<VrmIpcResponse<VrmModelInfo[]>>
+    /** 列出可用动作（.vrma），用于构建待机动作队列 */
+    listAnimations: () => Promise<VrmIpcResponse<VrmAnimationInfo[]>>
+    /** 打开文件对话框导入模型 */
+    importModel: () => Promise<VrmIpcResponse<VrmModelInfo>>
+    /** 删除用户导入的模型 */
+    deleteModel: (id: string) => Promise<VrmIpcResponse>
+    /** 选择当前模型（null 表示自动选择默认） */
+    selectModel: (id: string | null) => Promise<VrmIpcResponse<VrmCompanionConfig>>
+    /** 获取拖拽 IPC 频道名 */
+    getDragChannel: () => Promise<VrmIpcResponse<{ start: string; end: string }>>
+    /** 拖拽开始（单向） */
+    sendDragStart: (channel: string) => void
+    /** 拖拽结束（单向） */
+    sendDragEnd: (channel: string) => void
+    /** 设置窗口尺寸 */
+    setSize: (width: number, height: number) => Promise<VrmIpcResponse<VrmCompanionConfig>>
+    /** 设置窗口位置 */
+    setPosition: (x: number, y: number) => Promise<VrmIpcResponse>
+    /** 切换鼠标穿透（用户偏好，持久化） */
+    setClickThrough: (enabled: boolean) => Promise<VrmIpcResponse<{ clickThrough: boolean }>>
+    /**
+     * 上报「指针是否压在角色 / 操作栏上」。
+     *
+     * 穿透模式下主进程据此按需临时接管鼠标事件，保证操作栏按钮可点击，
+     * 同时离开后立刻交还穿透（不长期遮挡桌面）。
+     */
+    setPointerInteractive: (inside: boolean) => Promise<VrmIpcResponse>
+    /** 设置「临时穿透」（自动隐藏悬停时让开点击），不改变用户穿透偏好 */
+    setTransientPassThrough: (enabled: boolean) => Promise<VrmIpcResponse>
+    /** 读取窗口运行时状态（可见性 / 穿透 / 置顶 / 锁定 / 不透明度） */
+    getState: () => Promise<VrmIpcResponse<VrmCompanionState>>
+    /** 复位窗口到默认位置（右下角） */
+    resetPosition: () => Promise<VrmIpcResponse<{ x: number; y: number } | null>>
+    /** 读取好感度数据 */
+    getAffection: () => Promise<VrmIpcResponse<VrmAffectionData>>
+    /** 从 AI 回复文本提取好感度 */
+    checkAffection: (content: string) => Promise<VrmIpcResponse<{ updated: boolean }>>
+    /** 广播「开始说话」以驱动伴侣口型（text 用于估算时长） */
+    broadcastSpeak: (payload: { text: string; durationMs?: number }) => Promise<VrmIpcResponse>
+    /** 广播「停止说话」（立即闭口） */
+    broadcastStopSpeak: () => Promise<VrmIpcResponse>
+    /** 广播实时音量（0~1），优先级高于模拟口型 */
+    broadcastVolume: (volume: number) => Promise<VrmIpcResponse>
+    /** 订阅配置更新 */
+    onConfigUpdated: (callback: (config: VrmCompanionConfig) => void) => () => void
+    /** 订阅好感度更新 */
+    onAffectionUpdated: (callback: (data: VrmAffectionData) => void) => () => void
+    /** 订阅「开始说话」（驱动口型） */
+    onSpeak: (callback: (payload: { text: string; durationMs?: number }) => void) => () => void
+    /** 订阅「停止说话」 */
+    onStopSpeak: (callback: () => void) => () => void
+    /** 订阅实时音量（0~1） */
+    onVolume: (callback: (volume: number) => void) => () => void
+    /** 订阅伴侣运行时状态变化（显隐 / 鼠标穿透） */
+    onStateChanged: (
+      callback: (state: { visible: boolean; clickThrough: boolean }) => void,
+    ) => () => void
+    /**
+     * 订阅指针位置（主进程轮询下发）。
+     *
+     * 穿透模式下窗口忽略鼠标事件，渲染层拿不到可靠的 mousemove，
+     * 因此悬停判定与视线跟随都以这里的数据为准。
+     */
+    onPointerState: (callback: (state: VrmPointerState) => void) => () => void
+
+    // --------------------------------------------
+    // AI 动作指令
+    // --------------------------------------------
+    /**
+     * 下发一条动作/表情/说话指令给伴侣窗口（由 companion_control 工具调用）。
+     *
+     * data.delivered 为 false 表示伴侣窗口未创建/未显示，指令没有接收方。
+     */
+    sendCommand: (
+      command: VrmCompanionCommand,
+    ) => Promise<VrmIpcResponse<{ delivered: boolean }>>
+    /** 订阅伴侣动作指令（伴侣窗口内消费） */
+    onCommand: (callback: (command: VrmCompanionCommand) => void) => () => void
+
+    // --------------------------------------------
+    // 语音对话（伴侣窗口内独立语音）
+    // --------------------------------------------
+    /** 读取语音上下文（伴侣窗口启动时拉取一次） */
+    getVoiceContext: () => Promise<VrmIpcResponse<VoiceContextPayload>>
+    /** 主窗口 push 语音上下文（增量，写入主进程缓存后自动转发到伴侣窗口） */
+    updateVoiceContext: (
+      partial: Partial<VoiceContextPayload>,
+    ) => Promise<VrmIpcResponse<VoiceContextPayload>>
+    /** 请求麦克风权限（macOS 需主进程触发系统授权弹窗） */
+    requestMicPermission: () => Promise<VrmIpcResponse<{ granted: boolean; platform: string }>>
+    /** 伴侣窗口 → 主进程 → 主窗口：语音状态变化 */
+    notifyVoiceStateChanged: (payload: { state: string; volume: number }) => void
+    /** 伴侣窗口 → 主进程 → 主窗口：保存对话历史 */
+    notifySaveConversation: (payload: {
+      userText: string
+      aiText: string
+      toolCallRecords?: Array<{
+        id: string
+        name: string
+        args: Record<string, unknown>
+        success: boolean
+        resultSummary: string
+      }>
+    }) => void
+    /** 主窗口 → 主进程 → 伴侣窗口：主窗口全功能语音是否激活（激活时伴侣让出麦克风） */
+    notifyMainConversationActive: (active: boolean) => void
+    /** 主窗口 → 主进程 → 伴侣窗口：语音上下文实时更新 */
+    onVoiceContextUpdated: (callback: (ctx: VoiceContextPayload) => void) => () => void
+    /** 主窗口 → 主进程 → 伴侣窗口：主窗口全功能语音是否激活 */
+    onMainConversationActive: (callback: (active: boolean) => void) => () => void
+    /** 主窗口订阅：伴侣窗口语音状态变化 */
+    onVoiceStateChanged: (
+      callback: (payload: { state: string; volume: number }) => void,
+    ) => () => void
+    /** 主窗口订阅：伴侣窗口对话完成 */
+    onSaveConversation: (
+      callback: (payload: {
+        userText: string
+        aiText: string
+        toolCallRecords?: Array<{
+          id: string
+          name: string
+          args: Record<string, unknown>
+          success: boolean
+          resultSummary: string
+        }>
+      }) => void,
+    ) => () => void
+  }
 }
+
+/**
+ * 桌面伴侣动作指令（主窗口 AI → 伴侣窗口）。
+ *
+ * 扁平结构 + 类型字段：主进程只做透传，新增动作类型无需改动主进程与 preload。
+ */
+export interface VrmCompanionCommand {
+  type: 'speak' | 'stop_speak' | 'play_action' | 'expression' | 'reset' | 'look_at'
+  /** speak 的文本 */
+  text?: string
+  /** 动作名 / 语义别名 / 表情名 */
+  name?: string
+  /** 表情强度（0~1，默认 1） */
+  weight?: number
+  /** 表情保持时长（ms，缺省为自动衰减） */
+  durationMs?: number
+  /** look_at 目标 */
+  target?: 'cursor' | 'camera' | 'center'
+}
+
+/** VRM 伴侣窗口的指针位置载荷 */
+export interface VrmPointerState {
+  /** 指针是否在窗口内 */
+  inside: boolean
+  /** 相对窗口中心归一化后的横坐标（-1 ~ 1） */
+  x: number
+  /** 相对窗口中心归一化后的纵坐标（-1 ~ 1） */
+  y: number
+}
+
+/** VRM 伴侣 IPC 统一返回包装 */
+export interface VrmIpcResponse<T = unknown> {
+  success: boolean
+  data?: T
+  error?: string
+}
+
+/** VRM 模型条目 */
+export interface VrmModelInfo {
+  id: string
+  name: string
+  source: 'builtin' | 'user'
+  /** 渲染进程可直接加载的 URL */
+  url: string
+  size: number
+  selected: boolean
+}
+
+/** VRM 动作（.vrma）条目 */
+export interface VrmAnimationInfo {
+  id: string
+  name: string
+  source: 'builtin' | 'user'
+  /** 渲染进程可直接加载的 URL */
+  url: string
+  size: number
+  /** 是否适合作为待机循环动作（大幅全身动作会被排除） */
+  idleFriendly: boolean
+}
+
+/** VRM 伴侣窗口配置 */
+export interface VrmCompanionConfig {
+  enabled: boolean
+  showOnStartup: boolean
+  modelId: string | null
+  scale: number
+  width: number
+  height: number
+  positionX: number | null
+  positionY: number | null
+  /** 窗口置顶（高于普通应用窗口） */
+  alwaysOnTop: boolean
+  /** 锁定位置：开启后拖拽无效，避免误触移动 */
+  locked: boolean
+  /** 窗口整体不透明度（0.3 ~ 1） */
+  opacity: number
+  /** 待机动作：呼吸 / 身体摇摆 / 手臂摆动 / 眨眼 */
+  idleAnimation: boolean
+  /** 视线跟随鼠标：角色眼睛与头部朝向鼠标 */
+  lookAtCursor: boolean
+  /** 自动隐藏：鼠标悬停在角色上时淡出画布并让窗口鼠标穿透 */
+  autoHide: boolean
+  /** 鼠标穿透（默认开启）；指针压到操作栏时临时接管鼠标事件 */
+  clickThrough: boolean
+}
+
+/** VRM 伴侣窗口运行时状态（不落盘，仅主进程内存） */
+export interface VrmCompanionState {
+  visible: boolean
+  created: boolean
+  clickThrough: boolean
+  alwaysOnTop: boolean
+  locked: boolean
+  opacity: number
+}
+
+/** 好感度数据：{ 用户名: { 属性名: 数值 } } */
+export type VrmAffectionData = Record<string, Record<string, number>>
 
 declare global {
   interface Window {

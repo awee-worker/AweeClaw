@@ -4,6 +4,7 @@
  */
 
 import { api } from '../../adapters/electronBridge'
+import type { VrmCompanionCommand } from '@renderer/types/electronBridge'
 import { toAppError } from '@shared/toolkit/errorCatalog'
 import { resolveEditFileRequest } from '@toolkit/fileEditor'
 import { resolveReadFileRequest } from '@toolkit/fileReader'
@@ -42,7 +43,8 @@ import { EventBus } from '../engine/EventDispatcher'
 import {
     hasTrailingBackgroundOperator,
     matchesLongRunningCommand,
-    EXTENDED_TIMEOUT_MS,
+    matchesBroadScanCommand,
+    resolveCommandTimeout,
 } from './commandExecutor'
 import { internalWriteTracker } from '@services/writeTracker'
 import { toolRegistry } from './toolRegistry'
@@ -1607,14 +1609,10 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         // cwd 解析：若 AI 传了 cwd 参数，解析为绝对路径；否则用工作区根目录
         const resolvedCwd = args.cwd ? resolvePath(args.cwd, ctx.workspacePath, true) : null
         const isBackground = args.is_background as boolean
-        // 统一使用扩展超时（EXTENDED_TIMEOUT_MS，10 分钟）：
-        // 1. 120s 对无超时的网络请求脚本（如 fetch 后端 API 的 node 脚本）等场景过于苛刻，
-        //    容易把正常慢命令误判为失败。
-        // 2. 超时兜底仅用于防止命令永久卡死导致 AI 无限等待；超时后
-        //    executeCommandWithOutput 会发送 Ctrl+C 中断挂起进程并恢复终端，
-        //    下次复用终端前也会清理残留进程，因此提高上限不会带来"卡住就无限等"的风险。
-        // 3. 长进程（isLongRunningProcess）走 detached 路径，不受此超时影响。
-        const timeout = EXTENDED_TIMEOUT_MS
+        // 超时在下方「执行通道判定」之后按分层策略计算（resolveCommandTimeout）：
+        //   长进程 → 不设超时；安装/构建 → 10 分钟；全盘扫描 → 60 秒；其余 → 2 分钟。
+        // 之所以不在入口处写死，是因为「是否长进程」依赖 parseInlineScriptCommand 的判定结果，
+        // 且此前统一使用 10 分钟超时会让 `find /` 这类慢命令把 AI 卡住数分钟。
 
         // ── 安全底线：危险命令硬拦截 ──────────────────────────
         // 即使 toolOrchestrator 审批通过，仍在此处做最终内容校验。
@@ -1753,6 +1751,19 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 matchesLongRunningCommand(command)
                 || (inlineScript ? matchesLongRunningCommand(inlineScript.script) : false)
             ))
+
+        // ── 分层超时 ──────────────────────────────────────────────
+        // 见 commandExecutor.resolveCommandTimeout。核心目的：让 AI 不再对慢命令干等 10 分钟。
+        //   • 长进程 → 0（走 detached 通道，不受超时约束）
+        //   • 安装/构建/测试 → 10 分钟
+        //   • 全盘/大范围扫描（find /、grep -r /...）→ 60 秒快速失败并给出诊断
+        //   • 其余命令 → 2 分钟
+        const timeout = resolveCommandTimeout(command, {
+            isLongRunning: isLongRunningProcess,
+            workspacePath: ctx.workspacePath || undefined,
+        })
+        // 供超时诊断使用：命中全盘扫描时可给出针对性的改写建议
+        const isBroadScan = matchesBroadScanCommand(command, ctx.workspacePath || undefined)
 
         try {
             if (!isLongRunningProcess) {
@@ -1916,6 +1927,16 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             const displayOutput = (commandResult.output || commandResult.partialOutput || '').trim()
             let resultText = displayOutput
 
+            // 超时诊断：不仅告知「超时」，还给出「下一步怎么做」的明确指引，
+            // 让 AI 能立即自我纠正，而不是盲目重跑同一条慢命令。
+            const timeoutHint = commandResult.finalStatus === 'timed_out'
+                ? (isBroadScan
+                    ? `\n[提示] 该命令从文件系统根目录/家目录开始全盘扫描，范围过大导致超时。请改用限定在项目目录内的写法，例如：find . -name "文件名"，或直接使用 search_files 工具按文件名/内容检索。`
+                    : (timeout > 0
+                        ? `\n[提示] 若该命令确实需要长时间运行（如启动服务、跑训练脚本），请改用 is_background=true 重新执行，再用 read_terminal_output 轮询输出。`
+                        : ''))
+                : ''
+
             if (!resultText) {
                 if (commandResult.finalStatus === 'timed_out') {
                     resultText = timeout > 0
@@ -1932,6 +1953,10 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 resultText = timeout > 0
                     ? `[Timed out after ${timeout / 1000}s]\n${displayOutput}`
                     : `[Timed out]\n${displayOutput}`
+            }
+
+            if (timeoutHint) {
+                resultText = `${resultText}${timeoutHint}`
             }
 
             if (commandResult.finalStatus === 'interrupted' && !commandResult.sentinelMatched) {
@@ -2921,6 +2946,86 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                 success: false,
                 result: '',
                 error: `Failed to remember: ${toAppError(err).message}`,
+            }
+        }
+    },
+
+    /**
+     * 桌面伴侣控制（AI 主动操控 VRM 角色：动作 / 表情 / 说话 / 视线）。
+     *
+     * 指令通过主进程转发到伴侣窗口（渲染层不直接持有伴侣窗口的引用）。
+     * 每次都附带「当前可用动作清单」：动作库是动态的（内置 + 用户导入），
+     * 让 AI 从工具结果里自己学到合法名称，比把清单硬编码进工具描述更可靠。
+     */
+    async companion_control(args, _ctx) {
+        const action = String(args.action ?? '').trim()
+        if (!action) return { success: false, result: '', error: 'Missing action' }
+
+        /** action → 伴侣指令类型（list_actions 是纯查询，不下发指令） */
+        const typeMap: Record<string, VrmCompanionCommand['type']> = {
+            play_action: 'play_action',
+            expression: 'expression',
+            speak: 'speak',
+            stop_speak: 'stop_speak',
+            look_at: 'look_at',
+            reset: 'reset',
+        }
+
+        try {
+            const listRes = await api.vrmCompanion.listAnimations()
+            const animationList = listRes.success && listRes.data ? listRes.data : []
+            const available = animationList.map((a) => a.name).join(', ') || '(未安装任何动作)'
+
+            if (action === 'list_actions') {
+                return {
+                    success: true,
+                    result: `桌面伴侣可用动作（共 ${animationList.length} 个）：${available}`,
+                }
+            }
+
+            const type = typeMap[action]
+            if (!type) {
+                return { success: false, result: '', error: `Unknown action: ${action}` }
+            }
+
+            const command: VrmCompanionCommand = { type }
+            if (args.name != null) command.name = String(args.name)
+            if (args.text != null) command.text = String(args.text)
+            if (args.weight != null) command.weight = Number(args.weight)
+            if (args.duration_ms != null) command.durationMs = Number(args.duration_ms)
+            if (args.target != null) command.target = args.target as VrmCompanionCommand['target']
+
+            const res = await api.vrmCompanion.sendCommand(command)
+            if (!res.success) {
+                return {
+                    success: false,
+                    result: '',
+                    error: res.error || 'Failed to dispatch companion command',
+                }
+            }
+
+            const delivered = !!(res.data as { delivered?: boolean } | undefined)?.delivered
+            const detail = [
+                `action=${action}`,
+                command.name ? `name=${command.name}` : '',
+                command.text ? `text="${command.text}"` : '',
+                command.target ? `target=${command.target}` : '',
+            ]
+                .filter(Boolean)
+                .join(' ')
+
+            return {
+                success: true,
+                result: `${delivered
+                    ? '已向桌面伴侣下发指令'
+                    : '桌面伴侣窗口未打开，指令没有送达到角色（可在顶部栏打开「桌面伴侣」后再试）'
+                    }（${detail}）。\n可用动作：${available}`,
+            }
+        } catch (err) {
+            return {
+                success: false,
+                result: '',
+                error: `companion_control failed: ${toAppError(err).message}`,
             }
         }
     },

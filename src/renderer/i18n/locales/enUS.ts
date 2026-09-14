@@ -441,6 +441,7 @@ export const en = {
   'tool.label.uiux_recommend': 'UI/UX Recommend',
   'tool.label.apply_skill': 'Apply Skill',
   'tool.label.todo_write': 'Task List',
+  'tool.label.companion_control': 'Companion Control',
 
   // Desktop control tool labels (matches toolDefinitions.ts exactly)
   'tool.label.desktop_list_apps': 'List Installed Apps',

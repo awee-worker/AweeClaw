@@ -69,7 +69,7 @@ import { createVideoTranscodeApi } from './preload/api/videoTranscode'
 import { createEnvironmentApi } from './preload/api/environment'
 import { createDeviceLinkApi } from './preload/api/deviceLink'
 import { createExternalAgentApi } from './preload/api/externalAgent'
-
+import { createVrmCompanionApi } from './preload/api/vrmCompanion'
 /**
  * 聚合所有领域 API 并暴露到渲染进程。
  *
@@ -110,4 +110,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   environment: createEnvironmentApi(),
     deviceLink: createDeviceLinkApi(),
     externalAgent: createExternalAgentApi(),
+    vrmCompanion: createVrmCompanionApi(),
   })

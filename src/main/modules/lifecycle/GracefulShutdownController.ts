@@ -1,5 +1,4 @@
-import { BrowserWindow, app, screen } from 'electron'
-import * as path from 'path'
+import { BrowserWindow, screen } from 'electron'
 
 export type ShutdownPhase = 'saving' | 'done' | 'error'
 export type ShutdownReason = 'window-close' | 'app-quit'
@@ -291,14 +290,6 @@ export class ShutdownWindowController {
   private window: BrowserWindow | null = null
   private ready: Promise<void> | null = null
   private presentation: ShutdownWindowPresentation = DEFAULT_PRESENTATION
-
-  private getIconPath(): string {
-    const platform = process.platform
-    const brandIconDir = path.join(app.getAppPath(), 'public/brand/icons')
-    if (platform === 'win32') return path.join(brandIconDir, 'app.ico')
-    if (platform === 'darwin') return path.join(brandIconDir, 'app.icns')
-    return path.join(brandIconDir, 'app.png')
-  }
 
   private positionWindow(anchor?: BrowserWindow | null): void {
     if (!this.window || this.window.isDestroyed()) {

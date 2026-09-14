@@ -46,6 +46,27 @@ export const EXTENDED_TIMEOUT_COMMAND_PATTERN = /(?:^|&&|;|\|\|)\s*(?:(?:npm|yar
  */
 export const EXTENDED_TIMEOUT_MS = 600000
 
+/** 普通命令的默认超时时间（2 分钟）
+ *
+ * 为什么是 2 分钟而不是 10 分钟：
+ * - 此前 run_command 对所有命令统一使用 EXTENDED_TIMEOUT_MS（10 分钟），
+ *   导致 `find / -name xxx`、全盘 grep 等「扫描范围过大」的命令会让 AI 干等数分钟，
+ *   用户看到的现象就是「命令一直在执行、三四百秒还没结束」。
+ * - 绝大多数普通命令应在秒级返回；2 分钟足以覆盖大目录遍历、慢编译等常见场景。
+ * - 确实需要更长时间的命令（安装 / 构建 / 测试）由 EXTENDED_TIMEOUT_COMMAND_PATTERN 单独识别。
+ * - 需要长时间运行的服务/脚本请使用 is_background=true，走后台通道不受此超时限制。
+ */
+export const DEFAULT_TIMEOUT_MS = 120000
+
+/** 全盘扫描类命令的短超时（60 秒）
+ *
+ * `find / ...`、`grep -r xxx /`、`du -sh /`、`locate` 等从根目录 / 家目录开始递归遍历的命令，
+ * 在 macOS 上需要进入 /System、/Applications、/Library 等数十万文件，即便给足 120s 也几乎必然超时。
+ * 与其让 AI 干等，不如 60s 快速失败，并把「缩小搜索范围」的诊断返回给 AI，
+ * 让 AI 立刻改用限定在工作区目录的写法重试。
+ */
+export const BROAD_SCAN_TIMEOUT_MS = 60000
+
 export type InteractiveTerminalBackend = 'pty' | 'pipe'
 
 const currentPlatform: NodeJS.Platform = runtimePlatform.isWindows ? 'win32' : runtimePlatform.isMac ? 'darwin' : 'linux'
@@ -78,6 +99,57 @@ export function isLongRunningCommand(command: string, isBackground = false): boo
   return Boolean(isBackground)
     || hasTrailingBackgroundOperator(command)
     || matchesLongRunningCommand(command)
+}
+
+/** 命令是否命中「安装 / 构建 / 测试」类长耗时模式（使用 EXTENDED_TIMEOUT_MS） */
+export function matchesExtendedTimeoutCommand(command: string): boolean {
+  return EXTENDED_TIMEOUT_COMMAND_PATTERN.test(command.trim())
+}
+
+/**
+ * 检测「全盘 / 大范围扫描」类命令
+ *
+ * 这类命令的判定要同时满足两点，避免误伤正常命令：
+ * 1. 命令是扫描/遍历类：find / grep -r / rg / du / locate / mdfind / fd
+ * 2. 扫描目标落在文件系统根、家目录或系统级目录，而不是工作区里的相对路径
+ *    （例如 `find . -name x`、`grep -r foo ./src` 都不算大范围扫描）
+ *
+ * 若命令中显式出现了工作区绝对路径，说明 AI 已限定范围，也不按大范围扫描处理。
+ */
+export function matchesBroadScanCommand(command: string, workspacePath?: string): boolean {
+  const cmd = command.trim()
+  // 1. 必须是扫描/遍历类命令（含分隔符后的子命令）
+  if (!/(?:^|&&|;|\|\||\|)\s*(?:find|grep|rg|ag|du|locate|mdfind|fd)\b/.test(cmd)) {
+    return false
+  }
+  // 2. 已显式限定在工作区目录内 → 不算大范围扫描
+  if (workspacePath && cmd.includes(workspacePath)) {
+    return false
+  }
+  // 3. 目标为根目录 / 家目录 / 系统级目录
+  //    要求 "/" 前后是空白、引号或行边界（排除 ./src、a/b 这类相对路径里的斜杠）
+  return /(?:^|\s|["'])(?:\/|~\/|\/Users|\/System|\/Library|\/Applications|\/opt|\/var|\/etc)(?:\s|$|["']|\/)/.test(cmd)
+}
+
+/**
+ * 命令超时解析（分层策略）
+ *
+ * - 长进程 / 显式后台 → 0（不设超时；run_command 会走 detached 通道立即返回，不会进入等待）
+ * - 安装 / 构建 / 测试类 → EXTENDED_TIMEOUT_MS（10 分钟）
+ * - 全盘 / 大范围扫描类 → BROAD_SCAN_TIMEOUT_MS（60 秒，快速失败并给出诊断）
+ * - 其余命令 → DEFAULT_TIMEOUT_MS（2 分钟）
+ *
+ * 这样把「所有命令都可能等 10 分钟」收敛为「只有构建类才等 10 分钟」，
+ * 从根上消除「命令一直在执行、AI 长时间卡住」的问题。
+ */
+export function resolveCommandTimeout(
+  command: string,
+  options?: { isLongRunning?: boolean; workspacePath?: string },
+): number {
+  if (options?.isLongRunning) return 0
+  if (matchesExtendedTimeoutCommand(command)) return EXTENDED_TIMEOUT_MS
+  if (matchesBroadScanCommand(command, options?.workspacePath)) return BROAD_SCAN_TIMEOUT_MS
+  return DEFAULT_TIMEOUT_MS
 }
 
 export function getInteractiveTerminalBackend(

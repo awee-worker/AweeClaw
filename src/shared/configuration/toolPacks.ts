@@ -71,9 +71,12 @@ const CODE_TOOL_PACK: ToolPack = {
     'web_search',
     'read_url',
     'remember',
+    'knowledge_search',
     'apply_skill',
     'todo_write',
     'ask_user',
+    // 桌面伴侣控制（VRM 角色动作 / 表情 / 说话）
+    'companion_control',
   ],
   optionalTools: [
     'uiux_search',

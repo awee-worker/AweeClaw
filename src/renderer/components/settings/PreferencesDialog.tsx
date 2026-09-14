@@ -1,5 +1,5 @@
 import { lazy, Suspense, useMemo, useCallback, useEffect, useSyncExternalStore, useState } from 'react'
-import { Cpu, Settings2, Shield, Monitor, Plug, Brain, FileText, Zap, X, Palette, Radio, Eye, Search, Mail, Mic, MonitorSmartphone, ArrowLeft, ScanEye, Activity, Network, Cable, Sparkles, Puzzle, Layers } from 'lucide-react'
+import { Cpu, Settings2, Shield, Monitor, Plug, Brain, FileText, Zap, X, Palette, Radio, Eye, Search, Mail, Mic, MonitorSmartphone, ArrowLeft, ScanEye, Activity, Network, Cable, Sparkles, Puzzle, Layers, Bot } from 'lucide-react'
 import { PROVIDERS } from '@configuration/aiProviders'
 import { t, type Language } from '@renderer/i18n'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
@@ -81,6 +81,10 @@ const SceneModeSettingsPanel = lazy(() =>
 )
 const ExternalAgentPanel = lazy(() =>
     import('./tabs/ExternalAgentPanel').then(m => ({ default: m.ExternalAgentPanel })),
+)
+
+const VrmCompanionSettings = lazy(() =>
+    import('./tabs/VrmCompanionSettings').then(m => ({ default: m.VrmCompanionSettings })),
 )
 
 
@@ -204,6 +208,7 @@ export default function PreferencesDialog({ embedded = false, pendingNewAgentId 
         { id: 'proactive', label: t('settings.proactive', language as Language) || '主动助手', icon: <Sparkles className="w-4 h-4" /> },
         { id: 'sceneMode', label: '场景模式', icon: <Layers className="w-4 h-4" /> },
         { id: 'externalAgents', label: '外部智能体', icon: <Puzzle className="w-4 h-4" /> },
+        { id: 'companion', label: language === 'zh' ? '桌面伴侣' : 'Companion', icon: <Bot className="w-4 h-4" /> },
 
     ], [language])
 
@@ -386,6 +391,8 @@ export default function PreferencesDialog({ embedded = false, pendingNewAgentId 
                 return <SceneModeSettingsPanel />
             case 'externalAgents':
                 return <ExternalAgentPanel language={language} />
+            case 'companion':
+                return <VrmCompanionSettings language={language} />
             default: {
                 const pluginTab = pluginSettingsTabs.find(pt => pt.contribution.id === state.activeTab)
                 if (pluginTab) {
