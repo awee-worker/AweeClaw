@@ -24,6 +24,7 @@ import { ProactiveGeneralSettings } from './ProactiveGeneralSettings'
 import { ProactiveCategorySettings } from './ProactiveCategorySettings'
 import { ProactiveQuietHoursSettings } from './ProactiveQuietHoursSettings'
 import { ProactiveHistoryView } from './ProactiveHistoryView'
+import { ProactiveRandomTopicSettings } from './ProactiveRandomTopicSettings'
 
 // ============================================================
 // 类型定义（与主进程 ProactiveInterface 对齐）
@@ -47,6 +48,19 @@ export interface ProactivePermissionConfig {
   }
   maxDisturbPerHour: number
   criticalWhitelist: string[]
+  /** 随机话题配置 */
+  randomTopic?: {
+    /** 是否启用 */
+    enabled: boolean
+    /** 情绪倾向 */
+    mood?: string
+    /** 话题深度（1-3） */
+    depth?: number
+    /** 分类 */
+    category?: string
+    /** 单日话题上限 */
+    dailyLimit?: number
+  }
 }
 
 /** IPC 返回的权限配置结果 */
@@ -72,15 +86,23 @@ const DEFAULT_CONFIG: ProactivePermissionConfig = {
   quietHours: { enabled: false, start: '22:00', end: '08:00' },
   maxDisturbPerHour: 3,
   criticalWhitelist: [],
+  randomTopic: {
+    enabled: false,
+    mood: undefined,
+    depth: 2,
+    category: undefined,
+    dailyLimit: 3,
+  },
 }
 
 /** Tab 定义 */
-type ProactiveTab = 'general' | 'category' | 'quietHours' | 'history'
+type ProactiveTab = 'general' | 'category' | 'quietHours' | 'history' | 'randomTopic'
 
 const TABS: Array<{ id: ProactiveTab; icon: typeof Sparkles; labelKey: string }> = [
   { id: 'general', icon: Settings2, labelKey: 'settings.proactive.tab.general' },
   { id: 'category', icon: Tag, labelKey: 'settings.proactive.tab.category' },
   { id: 'quietHours', icon: Moon, labelKey: 'settings.proactive.tab.quietHours' },
+  { id: 'randomTopic', icon: Sparkles, labelKey: 'settings.proactive.tab.randomTopic' },
   { id: 'history', icon: History, labelKey: 'settings.proactive.tab.history' },
 ]
 
@@ -260,6 +282,13 @@ export function ProactiveSettingsPanel({ language }: Props) {
         )}
         {activeTab === 'quietHours' && (
           <ProactiveQuietHoursSettings
+            config={config}
+            language={language}
+            onUpdate={updateConfig}
+          />
+        )}
+        {activeTab === 'randomTopic' && (
+          <ProactiveRandomTopicSettings
             config={config}
             language={language}
             onUpdate={updateConfig}

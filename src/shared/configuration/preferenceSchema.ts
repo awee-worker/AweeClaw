@@ -238,7 +238,7 @@ function generateDefaultProviderConfigs(): Record<string, ProviderModelConfig> {
   for (const [id, provider] of Object.entries(BUILTIN_PROVIDERS)) {
     configs[id] = {
       customModels: [],
-      model: provider.defaultModel || '',
+      model: '',
       baseUrl: provider.baseUrl,
       openAICompatibilityProfile: getDefaultOpenAICompatibilityProfile(id, provider.protocol),
     }

@@ -108,7 +108,7 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
   )
   const [providerConfig, setProviderConfig] = useState<LLMConfig>({
     provider: 'openai',
-    model: 'gpt-4o',
+    model: '',
     apiKey: '',
     temperature: LLM_DEFAULTS.temperature,
     topP: LLM_DEFAULTS.topP,
@@ -1489,8 +1489,8 @@ function ModelStep({
     return fetchedModels.filter(m => m.toLowerCase().includes(q))
   }, [fetchedModels, modelSearchQuery])
 
-  // 自定义模式：内置模型兜底（仅当动态拉取为空时才展示，避免使用过时模型）
-  const fallbackBuiltinModels = fetchedModels.length === 0 && selectedProviderDef ? selectedProviderDef.models : []
+  // 自定义模式：不再内置候选模型，动态拉取失败时直接提示用户手动输入/重试。
+  const fallbackBuiltinModels = useMemo(() => [], [])
 
   return (
     <div className="px-10 py-10 h-full flex flex-col">

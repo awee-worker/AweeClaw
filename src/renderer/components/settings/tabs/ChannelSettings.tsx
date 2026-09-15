@@ -165,12 +165,11 @@ export function ChannelSettings({ language }: ChannelSettingsProps) {
       const config = providerConfigs[id]
       const hasKey = !!(config?.apiKey || (llmConfig.provider === id && llmConfig.apiKey))
       if (!hasKey) continue
-      const builtinModelIds = new Set(def.models)
-      const customModels = config?.customModels?.filter(m => !builtinModelIds.has(m)) || []
+      const customModels = config?.customModels || []
       providers.push({
         id,
         name: def.displayName,
-        models: [...def.models, ...customModels],
+        models: customModels,
       })
     }
     for (const [id, config] of Object.entries(providerConfigs)) {

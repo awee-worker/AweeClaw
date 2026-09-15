@@ -47,7 +47,7 @@ export interface RoutingDecision {
 
 /** 路由器配置 */
 export interface ModelRouterConfig {
-  /** 是否启用模型路由 */
+  /** 是否启用模型路由（自动把简单任务替换为轻量模型） */
   enabled: boolean
   /** 简单任务阈值（复杂度总分低于此值视为简单，尝试轻量模型） */
   simpleThreshold: number
@@ -55,8 +55,19 @@ export interface ModelRouterConfig {
   complexThreshold: number
 }
 
+/**
+ * 默认关闭自动轻量模型替换。
+ *
+ * 原因：
+ * - 内置 provider 的 models 列表中可能包含「名义上存在但 API 实际不支持」的模型别名
+ *   （例如小米 MiMo 内置列表里的 `mimo-v2-flash`，但小米开放平台实际只支持 `mimo-v2.5` / `mimo-v2`），
+ *   自动替换会拿到这些不可用模型去调 API，直接报 `Unsupported model` 错误。
+ * - 用户已明确选择了某个模型，自动替换会破坏用户预期。
+ *
+ * 如需启用，请在构造 ModelRouter 时显式传 `{ enabled: true }`（未来可在设置界面暴露该开关）。
+ */
 const DEFAULT_ROUTER_CONFIG: ModelRouterConfig = {
-  enabled: true,
+  enabled: false,
   simpleThreshold: 15,
   complexThreshold: 40,
 }
@@ -213,17 +224,19 @@ class ModelRouter {
     }
   }
 
-  /** 收集某提供商的所有可用模型（内置 + 用户自定义，去重） */
+  /**
+   * 收集某提供商的轻量模型候选（仅用户显式配置的白名单，去重）。
+   *
+   * 不再自动把内置 provider 的 models 列表全部塞进候选：
+   * 内置列表可能包含 API 实际不支持的模型别名（如小米 `mimo-v2-flash`），
+   * 自动替换会拿到这些不可用模型去调 API，直接报 `Unsupported model`。
+   * 只有用户通过设置面板显式添加的 customModels 才视为「用户确认过可用」，
+   * 才允许作为轻量替换候选。
+   */
   private collectProviderModels(providerId: string): string[] {
     const models: string[] = []
 
-    // 内置模型
-    const builtin = getBuiltinProvider(providerId)
-    if (builtin?.models?.length) {
-      models.push(...builtin.models)
-    }
-
-    // 用户自定义模型（Store 只读，不写入）
+    // 用户自定义模型（Store 只读，不写入）—— 唯一的候选来源
     try {
       const store = useStore.getState()
       const userConfig = store.providerConfigs?.[providerId]
@@ -233,8 +246,11 @@ class ModelRouter {
         }
       }
     } catch {
-      // Store 未初始化等场景，静默降级到仅内置模型
+      // Store 未初始化等场景，静默降级：无候选，不自动替换
     }
+
+    // getBuiltinProvider 已不再用于自动收集候选，保留 import 供其他逻辑使用
+    void getBuiltinProvider
 
     return models
   }

@@ -51,10 +51,26 @@ import { buildResumeNotice } from '../utils/resumeContext'
 import { executeMultiAgent, continueMultiAgent, type RunningTask } from './MultiAgentExecution'
 import { useStore } from '@renderer/state'
 import { terminalManager } from '@services/TerminalAdapter'
+// ⚠️ 注意别名差异：`@services/*` 指向 renderer/adapters，
+// 而本文件位于 renderer/services，必须走 `@renderer/services/*`
+import {
+  beginAgentTaskPowerGuard,
+  endAgentTaskPowerGuard,
+} from '@renderer/services/powerGuard'
 
 export class AgentClass {
   /** 运行中的任务（按线程追踪） */
   private runningTasks: Map<string, RunningTask> = new Map()
+
+  /**
+   * 本窗口「Agent 会话」层发起过的 requestId 集合。
+   *
+   * 用途：停止按钮的兜底分支需要「精确」中止 Agent 自己的请求。
+   * 无参 api.llm.abort() 等价于 abortAll()，会把同窗口内并发的
+   * 悬浮球对话 / 代码补全 / 场景工具 / 多 Agent 子任务一起杀掉，
+   * 表现为「点一次停止，别处的 AI 也莫名中断」。
+   */
+  private readonly agentRequestIds = new Set<string>()
 
   // ===== 公共 API =====
 
@@ -189,7 +205,14 @@ export class AgentClass {
         requestId,
         planTaskId: executionOptions?.planTaskId,
       })
+      
+      // 登记本次 Agent 请求，供停止时的兜底中止使用
+      this.agentRequestIds.add(requestId)
       taskRegistered = true
+
+      // 长任务期间阻止系统休眠（是否真的生效由主进程按配置裁决）。
+      // 与下面 finally 中的 release 严格配对：引用计数错配会让断言永久滞留。
+      beginAgentTaskPowerGuard()
 
       // 【核心优化】立即让出主线程，确保用户消息和助手气泡瞬间在 UI 渲染
       await new Promise(resolve => setTimeout(resolve, 0))
@@ -434,6 +457,7 @@ export class AgentClass {
       }
 
       if (taskRegistered) {
+        endAgentTaskPowerGuard()
         this.cleanupTask(threadId)
       }
     }
@@ -484,6 +508,19 @@ export class AgentClass {
       threadIdsToAbort.push(...this.runningTasks.keys())
     }
 
+
+    // 先收集各线程的 requestId —— 权威来源是 runningTasks（send() 注册时写入），
+    // 其次才是 store 里的 executionMeta / streamState（可能尚未写入或已被清理）。
+    // ⚠️ 必须在下面的中止循环之前收集：循环会把条目从 runningTasks 中移除。
+    const requestIdsByThread = new Map<string, string>()
+    for (const tid of threadIdsToAbort) {
+      const id =
+        this.runningTasks.get(tid)?.requestId
+        ?? store.threads[tid]?.executionMeta?.requestId
+        ?? store.threads[tid]?.streamState?.requestId
+      if (id) requestIdsByThread.set(tid, id)
+    }
+
     // 中止所有目标线程的任务
     for (const tid of threadIdsToAbort) {
       const task = this.runningTasks.get(tid)
@@ -514,14 +551,20 @@ export class AgentClass {
 
     // 精确中止各线程自己的 LLM 请求：带 requestId 避免误杀同窗口内其他并发流
     // （悬浮球 / 代码补全 / 场景工具 / 多 Agent 子任务等可能同时在运行）
-    const abortedRequestIds = threadIdsToAbort
-      .map(tid => store.threads[tid]?.executionMeta?.requestId)
-      .filter((id): id is string => Boolean(id))
-    if (abortedRequestIds.length > 0) {
-      for (const id of abortedRequestIds) api.llm.abort(id)
-    } else {
-      // 兜底：未取到 requestId 时中止本窗口全部请求，确保停止按钮始终生效
-      api.llm.abort()
+    const abortedRequestIds = [...requestIdsByThread.values()]
+    for (const id of abortedRequestIds) {
+      api.llm.abort(id)
+      this.agentRequestIds.delete(id)
+    }
+
+    // 兜底：仍未取到 requestId 时（例如 currentThreadId 闭包过期），只中止
+    // 「本窗口 Agent 会话」登记过的请求，确保停止按钮依然生效。
+    // ⚠️ 此处不再调用无参 api.llm.abort()。
+    if (abortedRequestIds.length === 0) {
+      for (const id of this.agentRequestIds) {
+        api.llm.abort(id)
+      }
+      this.agentRequestIds.clear()
     }
 
     // 中断所有正在执行的 Agent 终端命令（如 npm install 等长命令）
@@ -837,6 +880,8 @@ export class AgentClass {
         store.finalizeAssistant(task.assistantId, threadId)
       }
       this.runningTasks.delete(threadId)
+      // 同步释放兜底中止用的登记，避免集合无限增长
+      if (task.requestId) this.agentRequestIds.delete(task.requestId)
     }
 
     // 重置该线程的流状态

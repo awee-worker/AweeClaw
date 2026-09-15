@@ -1,5 +1,5 @@
 import { lazy, Suspense, useMemo, useCallback, useEffect, useSyncExternalStore, useState } from 'react'
-import { Cpu, Settings2, Shield, Monitor, Plug, Brain, FileText, Zap, X, Palette, Radio, Eye, Search, Mail, Mic, MonitorSmartphone, ArrowLeft, ScanEye, Activity, Network, Cable, Sparkles, Puzzle, Layers, Bot } from 'lucide-react'
+import { Cpu, Settings2, Shield, Monitor, Plug, Brain, FileText, Zap, X, Palette, Radio, RadioTower, Eye, Search, Mail, Mic, MonitorSmartphone, ArrowLeft, ScanEye, Activity, Network, Cable, Sparkles, Puzzle, Layers, Bot, Smile, Coffee, Box, Send } from 'lucide-react'
 import { PROVIDERS } from '@configuration/aiProviders'
 import { t, type Language } from '@renderer/i18n'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
@@ -87,6 +87,49 @@ const VrmCompanionSettings = lazy(() =>
     import('./tabs/VrmCompanionSettings').then(m => ({ default: m.VrmCompanionSettings })),
 )
 
+const OverlaySettings = lazy(() =>
+    import('./tabs/OverlaySettings').then(m => ({ default: m.OverlaySettings })),
+)
+
+const LocalVoiceSettings = lazy(() =>
+    import('./tabs/LocalVoiceSettings').then(m => ({ default: m.default })),
+)
+
+const LiveSettings = lazy(() =>
+    import('./tabs/LiveSettings').then(m => ({ default: m.LiveSettings })),
+)
+
+const VtsSettings = lazy(() =>
+  import('./tabs/VtsSettings').then(m => ({ default: m.VtsSettings })),
+)
+
+const A2aSettings = lazy(() =>
+  import('./tabs/A2aSettings').then(m => ({ default: m.A2aSettings })),
+)
+
+const PowerGuardSettings = lazy(() =>
+  import('./tabs/PowerGuardSettings').then(m => ({ default: m.PowerGuardSettings })),
+)
+
+const SandboxSettings = lazy(() =>
+  import('./tabs/SandboxSettings').then(m => ({ default: m.SandboxSettings })),
+)
+
+const OpenApiSettings = lazy(() =>
+  import('./tabs/OpenApiSettings').then(m => ({ default: m.OpenApiSettings })),
+)
+
+const VmcSettings = lazy(() =>
+  import('./tabs/VmcSettings').then(m => ({ default: m.VmcSettings })),
+)
+
+const CharacterCardSettings = lazy(() =>
+  import('./tabs/CharacterCardSettings').then(m => ({ default: m.CharacterCardSettings })),
+)
+
+const EmotionSettings = lazy(() =>
+  import('./tabs/EmotionSettings').then(m => ({ default: m.EmotionSettings })),
+)
 
 function SettingsTabFallback({ language }: { language: Language }) {
     return (
@@ -177,7 +220,7 @@ export default function PreferencesDialog({ embedded = false, pendingNewAgentId 
         Object.entries(PROVIDERS).map(([id, provider]) => ({
             id,
             name: provider.displayName,
-            models: [...(provider.models || []), ...(state.localProviderConfigs[id]?.customModels || [])]
+            models: [...(state.localProviderConfigs[id]?.customModels || [])]
         })),
         [state.localProviderConfigs])
 
@@ -191,6 +234,7 @@ export default function PreferencesDialog({ embedded = false, pendingNewAgentId 
         { id: 'appearance', label: t('settings.appearance', language as Language), icon: <Palette className="w-4 h-4" /> },
         { id: 'search', label: t('settings.searchEngine', language as Language), icon: <Search className="w-4 h-4" /> },
         { id: 'voice', label: t('settings.voiceSettings', language as Language), icon: <Mic className="w-4 h-4" /> },
+        { id: 'local-voice', label: language === 'zh' ? '本地语音' : 'Local Voice', icon: <Mic className="w-4 h-4" /> },
         { id: 'vision', label: t('settings.visionSettings', language as Language), icon: <ScanEye className="w-4 h-4" /> },
         { id: 'rules', label: t('settings.rules', language as Language), icon: <FileText className="w-4 h-4" /> },
         { id: 'memory', label: t('settings.memory', language as Language), icon: <Brain className="w-4 h-4" /> },
@@ -209,6 +253,14 @@ export default function PreferencesDialog({ embedded = false, pendingNewAgentId 
         { id: 'sceneMode', label: '场景模式', icon: <Layers className="w-4 h-4" /> },
         { id: 'externalAgents', label: '外部智能体', icon: <Puzzle className="w-4 h-4" /> },
         { id: 'companion', label: language === 'zh' ? '桌面伴侣' : 'Companion', icon: <Bot className="w-4 h-4" /> },
+        { id: 'overlay', label: language === 'zh' ? '字幕弹幕层' : 'Overlay', icon: <Monitor className="w-4 h-4" /> },
+        { id: 'live', label: language === 'zh' ? '直播互动' : 'Live', icon: <RadioTower className="w-4 h-4" /> },
+        { id: 'vts', label: language === 'zh' ? 'VTS 联动' : 'VTS', icon: <Smile className="w-4 h-4" /> },
+        { id: 'a2a', label: language === 'zh' ? 'A2A 协议' : 'A2A', icon: <Network className="w-4 h-4" /> },
+        { id: 'openapi', label: language === 'zh' ? '对外 API' : 'External API', icon: <Cable className="w-4 h-4" /> },
+        { id: 'powerGuard', label: language === 'zh' ? '防休眠' : 'Sleep Guard', icon: <Coffee className="w-4 h-4" /> },
+        { id: 'sandbox', label: language === 'zh' ? '代码沙箱' : 'Code Sandbox', icon: <Box className="w-4 h-4" /> },
+        { id: 'vmc', label: language === 'zh' ? 'VMC 协议' : 'VMC Protocol', icon: <Send className="w-4 h-4" /> },
 
     ], [language])
 
@@ -381,6 +433,8 @@ export default function PreferencesDialog({ embedded = false, pendingNewAgentId 
                 )
             case 'voice':
                 return <VoiceSettingsPanel language={language} />
+            case 'local-voice':
+                return <LocalVoiceSettings language={language} />
             case 'vision':
                 return <VisionSettingsPanel language={language} />
             case 'desktop':
@@ -393,6 +447,26 @@ export default function PreferencesDialog({ embedded = false, pendingNewAgentId 
                 return <ExternalAgentPanel language={language} />
             case 'companion':
                 return <VrmCompanionSettings language={language} />
+            case 'overlay':
+                return <OverlaySettings language={language} />
+            case 'live':
+                return <LiveSettings language={language} />
+      case 'vts':
+        return <VtsSettings language={language} />
+      case 'a2a':
+        return <A2aSettings language={language} />
+      case 'openapi':
+        return <OpenApiSettings language={language} />
+      case 'powerGuard':
+        return <PowerGuardSettings language={language} />
+      case 'sandbox':
+        return <SandboxSettings language={language} />
+      case 'vmc':
+        return <VmcSettings language={language} />
+      case 'character-card':
+        return <CharacterCardSettings language={language} />
+      case 'emotion':
+        return <EmotionSettings language={language} />
             default: {
                 const pluginTab = pluginSettingsTabs.find(pt => pt.contribution.id === state.activeTab)
                 if (pluginTab) {

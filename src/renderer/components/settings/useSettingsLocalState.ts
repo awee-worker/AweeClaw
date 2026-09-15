@@ -241,7 +241,7 @@ export function useSettingsLocalState(embedded: boolean) {
         const resolvedConfig = resolveRuntimeLLMConfig(
           {
             provider: currentProviderId,
-            model: dbProviderConfig.model || builtinDef?.models?.[0],
+            model: dbProviderConfig.model || '',
             ...dbResult.llmBehavior,
           } as Partial<PersistedLLMConfig>,
           dbResult.providerConfigs,

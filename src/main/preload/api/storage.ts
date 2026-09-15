@@ -123,6 +123,45 @@ export function createStorageApi() {
       invoke('memory-db:migrateFromJsonStore')(store),
     memoryDbGetPath: invoke('memory-db:getPath'),
 
+    // ── Group Memory（P1-3 群聊长期记忆） ──
+    groupMemoryGetConfig: invoke('group-memory:get-config'),
+    groupMemoryUpdateConfig: (config: unknown) => invoke('group-memory:update-config')(config),
+    groupMemoryResetConfig: invoke('group-memory:reset-config'),
+    groupMemoryExtract: (request: unknown) => invoke('group-memory:extract')(request),
+    groupMemoryGetContext: (groupId: string, groupName: string, queryText: string) =>
+      invoke('group-memory:get-context')(groupId, groupName, queryText),
+    groupMemoryGetMemories: (groupId: string, options?: unknown) =>
+      invoke('group-memory:get-memories')(groupId, options),
+    groupMemorySupersede: (id: string) => invoke('group-memory:supersede')(id),
+    groupMemoryClearGroup: (groupId: string) => invoke('group-memory:clear-group')(groupId),
+    groupMemoryClearAll: invoke('group-memory:clear-all'),
+    groupMemoryDeleteBySource: (sourceChatId: string) =>
+      invoke('group-memory:delete-by-source')(sourceChatId),
+    groupMemoryGetStats: (groupId?: string) => invoke('group-memory:get-stats')(groupId),
+
+    // ── Audiobook（P1-7 长文播报） ──
+    audiobookCreateTask: (filePath: string, config?: unknown) =>
+      invoke('audiobook:create-task')(filePath, config),
+    audiobookGetTask: (taskId: string) =>
+      invoke('audiobook:get-task')(taskId),
+    audiobookGetAllTasks: invoke('audiobook:get-all-tasks'),
+    audiobookDeleteTask: (taskId: string) =>
+      invoke('audiobook:delete-task')(taskId),
+    audiobookExecuteTask: (taskId: string) =>
+      invoke('audiobook:execute-task')(taskId),
+    audiobookPauseTask: (taskId: string) =>
+      invoke('audiobook:pause-task')(taskId),
+    audiobookCancelTask: (taskId: string) =>
+      invoke('audiobook:cancel-task')(taskId),
+    audiobookResumeTask: (taskId: string) =>
+      invoke('audiobook:resume-task')(taskId),
+    audiobookGetTaskProgress: (taskId: string) =>
+      invoke('audiobook:get-task-progress')(taskId),
+    audiobookEstimateTask: (filePath: string) =>
+      invoke('audiobook:estimate-task')(filePath),
+    audiobookGetOutputPath: (taskId: string, filename: string) =>
+      invoke('audiobook:get-output-path')(taskId, filename),
+
     // ── Scene Tools DB（场景工具 SQLite 持久化） ──
     sceneToolsDbInitialize: invoke('scene-tools-db:initialize'),
     sceneToolsDbGet: (key: string) => invoke('scene-tools-db:get')(key),

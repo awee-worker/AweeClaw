@@ -285,7 +285,15 @@ export const createThreadSlice: StateCreator<
 
     switchThread: (threadId) => {
         const state = get()
-        if (state.currentThreadId === threadId && state.threads[threadId]) return
+        if (state.currentThreadId === threadId && state.threads[threadId]) {
+            // 即使 currentThreadId 已是目标，若当前处于全屏页面（仪表盘、设置等），
+            // 仍需关闭全屏页面回到聊天界面
+            const storeState = useStore.getState()
+            if (storeState.showWelcomePage || storeState.showSettingsPage || storeState.showUserProfilePage || storeState.showBillingCenterPage || storeState.showSessionHistoryPage) {
+                useStore.getState().closeAllFullPages()
+            }
+            return
+        }
 
         // 复用 ensureThreadLoaded 加载线程与消息（不切 currentThreadId）
         void ensureThreadLoadedImpl(get, set, threadId).then(() => {

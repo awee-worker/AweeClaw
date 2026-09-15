@@ -1,0 +1,208 @@
+/**
+ * AweeClaw 字幕 / 弹幕悬浮层样式
+ *
+ * 关键约束：
+ * 1. 背景必须全透明 —— OBS 端才叠加色键/透明度；应用内窗口才是真正的透明悬浮
+ * 2. 不使用系统字体之外的外部字体，避免 OBS 加载失败出现方块
+ * 3. 字号/速度/轨道数由 JS 通过 CSS 变量注入（--overlay-*），便于运行时可调
+ */
+
+:root {
+  /* 运行时可改的变量（JS 注入覆盖） */
+  --overlay-subtitle-font-size: 34px;
+  --overlay-subtitle-bg-opacity: 0.55;
+  --overlay-subtitle-stroke: 3px;
+  --overlay-danmaku-font-size: 30px;
+  --overlay-danmaku-opacity: 1;
+  --overlay-tracks: 6;
+
+  /* 固定观感 */
+  --overlay-text-color: #ffffff;
+  --overlay-outline-color: rgba(0, 0, 0, 0.85);
+  --overlay-subtitle-bg: #000000;
+  --overlay-font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei',
+    'Helvetica Neue', Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  font-family: var(--overlay-font-family);
+  /* 避免文本被选中 / 拖拽干扰（OBS 内嵌浏览器同样受益） */
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}
+
+.overlay-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* 形态切换：同一份 DOM，按 data-mode 决定渲染层，避免维护两套页面 */
+.overlay-root[data-mode='subtitle'] .danmaku-layer {
+  display: none;
+}
+
+.overlay-root[data-mode='danmaku'] .subtitle-layer {
+  display: none;
+}
+
+/* ============================================
+ * 拖拽条（应用内窗口移动用）
+ * ============================================ */
+
+.drag-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 拖拽由系统处理（Electron 的 app-region） */
+  -webkit-app-region: drag;
+  pointer-events: auto;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.35) 0%, rgba(0, 0, 0, 0) 100%);
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+/* 鼠标移到窗口上时才显形，避免常驻遮挡 */
+.overlay-root:hover .drag-bar {
+  opacity: 1;
+}
+
+.drag-bar__grip {
+  width: 46px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+/* ============================================
+ * 字幕形态
+ * ============================================ */
+
+.subtitle-layer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  padding: 0 16px;
+}
+
+.subtitle-item {
+  max-width: 92%;
+  padding: 6px 16px;
+  border-radius: 10px;
+  font-size: var(--overlay-subtitle-font-size);
+  line-height: 1.42;
+  color: var(--overlay-text-color);
+  text-align: center;
+  word-break: break-word;
+  /* 描边保证任意背景可读（OBS 画面里常见浅色背景） */
+  text-shadow: 0 0 var(--overlay-subtitle-stroke) var(--overlay-outline-color),
+    0 0 var(--overlay-subtitle-stroke) var(--overlay-outline-color),
+    0 0 var(--overlay-subtitle-stroke) var(--overlay-outline-color);
+  background: color-mix(
+    in srgb,
+    var(--overlay-subtitle-bg) calc(var(--overlay-subtitle-bg-opacity) * 100%),
+    transparent
+  );
+  /* 入场动画 */
+  opacity: 0;
+  transform: translateY(8px);
+  animation: subtitle-in 0.22s ease-out forwards;
+}
+
+.subtitle-item.is-leaving {
+  animation: subtitle-out 0.24s ease-in forwards;
+}
+
+@keyframes subtitle-in {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes subtitle-out {
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+/* ============================================
+ * 弹幕形态
+ * ============================================ */
+
+.danmaku-layer {
+  position: absolute;
+  inset: 0;
+  opacity: var(--overlay-danmaku-opacity);
+  overflow: hidden;
+}
+
+.danmaku-item {
+  position: absolute;
+  left: 0;
+  white-space: nowrap;
+  font-size: var(--overlay-danmaku-font-size);
+  line-height: 1.2;
+  color: var(--overlay-text-color);
+  /* 与字幕同款描边，保证弹幕在游戏画面/视频上可读 */
+  text-shadow: 0 0 2px var(--overlay-outline-color), 0 0 2px var(--overlay-outline-color),
+    0 0 2px var(--overlay-outline-color);
+  will-change: transform;
+  /* 初始位置由 JS 设置 translateX(100vw) */
+}
+
+/* 不同类型给一点区分度（不喧宾夺主） */
+.danmaku-item[data-type='gift'],
+.danmaku-item[data-type='super_chat'],
+.danmaku-item[data-type='buy_guard'] {
+  font-weight: 600;
+  color: #ffe58f;
+}
+
+.danmaku-item[data-type='enter_room'],
+.danmaku-item[data-type='follow'],
+.danmaku-item[data-type='like'] {
+  opacity: 0.72;
+}
+
+/* ============================================
+ * 状态提示（仅调试/连接失败时显示）
+ * ============================================ */
+
+.status-hint {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}

@@ -20,7 +20,7 @@ export const LLM_DEFAULTS = {
   frequencyPenalty: 0,
   presencePenalty: 0,
   defaultProvider: 'openai',
-  defaultModel: 'gpt-4o',
+  defaultModel: '',
   topK: 0,
   seed: undefined,
   // AI SDK 高级参数默认值

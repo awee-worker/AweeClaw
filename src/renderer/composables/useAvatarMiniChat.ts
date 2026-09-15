@@ -693,7 +693,12 @@ export function useAvatarMiniChat(
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
       // 直接通知主进程取消 LLM 请求（双保险：abort 信号 + 直接调用）
-      try { api.llm.abort(currentRequestIdRef.current ?? undefined) } catch { /* noop */ }
+      // 精确中止本请求：无 requestId 时不调用 —— 无参 api.llm.abort() 等价于
+      // 全量中止，会连带杀掉同窗口并发的其他 LLM 流（主对话/补全/场景工具等）
+      const abortRequestId = currentRequestIdRef.current
+      if (abortRequestId) {
+        try { api.llm.abort(abortRequestId) } catch { /* noop */ }
+      }
       // 清理所有待审批工具（拒绝，避免 Promise 永远挂起）
       miniChatApprovalService.clear()
       setStreaming(false)
@@ -714,7 +719,12 @@ export function useAvatarMiniChat(
   const clear = useCallback(() => {
     if (streamingRef.current) {
       abortControllerRef.current?.abort()
-      try { api.llm.abort(currentRequestIdRef.current ?? undefined) } catch { /* noop */ }
+      // 精确中止本请求：无 requestId 时不调用 —— 无参 api.llm.abort() 等价于
+      // 全量中止，会连带杀掉同窗口并发的其他 LLM 流（主对话/补全/场景工具等）
+      const abortRequestId = currentRequestIdRef.current
+      if (abortRequestId) {
+        try { api.llm.abort(abortRequestId) } catch { /* noop */ }
+      }
     }
     // 清理所有待审批工具（拒绝，避免 Promise 永远挂起）
     miniChatApprovalService.clear()

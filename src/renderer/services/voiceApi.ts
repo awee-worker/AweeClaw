@@ -18,6 +18,7 @@
 
 import { backendApi, getServerUrl, getAccessToken, tryRefreshToken } from '../adapters/backendApi';
 import { api } from '../adapters/electronBridge';
+import { emitVtsAudio } from './vtsAudioTap';
 
 /**
  * 云端模式状态（模块级缓存，避免对全局 store 的依赖）
@@ -354,10 +355,30 @@ export const voiceApi = {
       forceLocal?: boolean;
     },
   ): Promise<Blob> {
-    // 拆分式语音模式或自定义模式：使用本地配置直连
+    // 在唯一出口处挂 VTS 口型旁路：覆盖自动朗读 / 语音对话 / 伴侣窗口全部场景，
+    // 且不侵入三处形态各异的播放点（见 services/vtsAudioTap.ts）。
     if (!isCloudMode() || options?.forceLocal) {
-      return this._ttsViaLocal(text, options)
+      const blob = await this._ttsViaLocal(text, options)
+      emitVtsAudio(blob)
+      return blob
     }
+
+    const blob = await this._ttsViaCloud(text, options)
+    emitVtsAudio(blob)
+    return blob
+  },
+
+  /** 云端 TTS 实现（拆分出来是为了让口型旁路只挂一个出口） */
+  async _ttsViaCloud(
+    text: string,
+    options?: {
+      voice?: string;
+      speed?: number;
+      format?: 'mp3' | 'wav' | 'opus' | 'aac' | 'flac';
+      language?: string;
+      forceLocal?: boolean;
+    },
+  ): Promise<Blob> {
 
     // 云端模式：走后端代理
     const serverUrl = getServerUrl();

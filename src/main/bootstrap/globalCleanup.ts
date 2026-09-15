@@ -82,6 +82,24 @@ export async function performFastCleanup(): Promise<void> {
     /* ignore */
   }
 
+  // 1.5 对外 API 网关（释放监听端口）
+  //     ⚠️ 必须先于 A2A 清理：网关 stop() 会把监听权交还 A2A，
+  //     顺序反了会让 A2A 在网关之后又重新起一个监听
+  try {
+    const { cleanupOpenApiModule } = await import('../modules/openapi')
+    await withTimeout(cleanupOpenApiModule(), 1000, 'OpenApi cleanup (fast)')
+  } catch {
+    /* ignore */
+  }
+
+  // 1.6 A2A 入站服务（释放监听端口，避免「应用已退出但端口仍被占用」）
+  try {
+    const { cleanupA2aModule } = await import('../modules/a2a')
+    await withTimeout(cleanupA2aModule(), 1000, 'A2A cleanup (fast)')
+  } catch {
+    /* ignore */
+  }
+
   // 2. LSP 服务器（快速杀死，超时 1s）
   try {
     await withTimeout(
@@ -119,6 +137,61 @@ export async function performGlobalCleanup(): Promise<void> {
 
   logger.system.info('[Cleanup] Starting global cleanup...')
   try {
+    // 0.1 防休眠模块 —— 放在**最前面**。
+    //     理由：守护子进程是「系统级副作用」，一旦后面的清理步骤卡住（各自有超时，
+    //     加起来可达十几秒），用户会看到「应用已经退出了但电脑还是不休眠」。
+    //     macOS 靠 `-w <pid>` 能自愈，Linux / Windows 不能，必须显式释放。
+    try {
+      const { cleanupPowerGuardModule } = await import('../modules/power-guard')
+      await withTimeout(cleanupPowerGuardModule(), 2000, 'PowerGuard cleanup')
+    } catch {
+      /* 模块未初始化时忽略 */
+    }
+
+    // 0.2 沙箱模块 —— 与防休眠同为「外部副作用」，也必须早清。
+    //     docker：`docker rm -f` 清理超时竞态下残留的容器（CLI 已死但容器还在跑）
+    //     e2b：kill 仍在运行的云沙箱（不 kill 会一直计费到云端超时）
+    try {
+      const { cleanupSandboxModule } = await import('../modules/security/sandbox')
+      await withTimeout(cleanupSandboxModule(), 3000, 'Sandbox cleanup')
+    } catch {
+      /* 模块未初始化时忽略 */
+    }
+
+    // 0.2.1 群组记忆模块 —— 清理 IPC 处理器
+    try {
+      const { cleanupGroupMemoryIpcHandlers } = await import('../modules/memory-db/GroupMemoryIpc')
+      cleanupGroupMemoryIpcHandlers()
+      const { GroupMemoryManager } = await import('../modules/memory-db/GroupMemoryManager')
+      GroupMemoryManager.getInstance().cleanup()
+    } catch {
+      /* 模块未初始化时忽略 */
+    }
+
+    // 0.2.2 本地语音引擎模块 —— 停止所有引擎，释放资源
+    try {
+      const { cleanupLocalVoiceModule } = await import('../modules/local-voice')
+      await withTimeout(cleanupLocalVoiceModule(), 3000, 'LocalVoice cleanup')
+    } catch {
+      /* 模块未初始化时忽略 */
+    }
+
+    // 0.2.3 有声书模块 —— 清理 IPC 处理器
+    try {
+      const { cleanupAudiobookIpcHandlers } = await import('../modules/audiobook/AudiobookIpc')
+      cleanupAudiobookIpcHandlers()
+    } catch {
+      /* 模块未初始化时忽略 */
+    }
+
+    // 0.2.4 VMC 协议模块 —— 清理 IPC 处理器和资源
+    try {
+      const { destroyVmcModule } = await import('../modules/vmc')
+      destroyVmcModule()
+    } catch {
+      /* 模块未初始化时忽略 */
+    }
+
     // 0.5 悬浮头像 + 系统托盘 + 会议纪要窗口 + PPT 预览窗口（彻底退出时销毁，满足「完全退出头像才消失」需求）
     try {
       const { FloatingAvatarManager } = await import('../modules/floating-avatar/FloatingAvatarManager')
@@ -149,6 +222,52 @@ export async function performGlobalCleanup(): Promise<void> {
       shutdownDeviceLinkModule()
     } catch {
       /* ignore */
+    }
+
+    // 1.6 直播互动模块（关闭弹幕 WebSocket / 心跳 / 轮询定时器，不留孤儿连接）
+    //     超时收紧到 2s：B站关闭项目是一次 HTTP，不能拖住退出流程
+    try {
+      const { cleanupLiveModule } = await import('../modules/live')
+      await withTimeout(cleanupLiveModule(), 2000, 'Live cleanup')
+    } catch {
+      /* 模块未初始化时忽略 */
+    }
+
+    // 1.7 悬浮层模块（释放本地 HTTP 端口与应用内窗口）
+    try {
+      const { cleanupOverlayModule } = await import('../modules/overlay')
+      await withTimeout(cleanupOverlayModule(), 1000, 'Overlay cleanup')
+    } catch {
+      /* 模块未初始化时忽略 */
+    }
+
+    // 1.8 VTS 联动模块（清空帧队列、复位口型、关闭 WebSocket）
+    //     顺序在最后：要先让上游停止产出音频帧，再断下行连接，
+    //     否则退出瞬间仍在飞的口型帧会打到已关闭的 socket
+    try {
+      const { cleanupVtsModule } = await import('../modules/vts')
+      await withTimeout(cleanupVtsModule(), 1500, 'VTS cleanup')
+    } catch {
+      /* 模块未初始化时忽略 */
+    }
+
+    // 1.85 对外 API 网关（关闭 HTTP 监听，释放端口；SSE 长连接会被强制断开）
+    //      ⚠️ 必须先于 A2A：网关 stop() 会把监听权交还 A2A，
+    //      否则 A2A 会在网关之后重新起监听，端口又变成占用状态
+    try {
+      const { cleanupOpenApiModule } = await import('../modules/openapi')
+      await withTimeout(cleanupOpenApiModule(), 1500, 'OpenApi cleanup')
+    } catch {
+      /* 模块未初始化时忽略 */
+    }
+
+    // 1.9 A2A 模块（关闭入站 HTTP 监听；出站无长连接，无需额外等待）
+    //     必须先于 IPC 清理无关，但要在窗口销毁前完成，避免回调打到已销毁 webContents
+    try {
+      const { cleanupA2aModule } = await import('../modules/a2a')
+      await withTimeout(cleanupA2aModule(), 1500, 'A2A cleanup')
+    } catch {
+      /* 模块未初始化时忽略 */
     }
 
     // 2. LSP 服务器（超时 3s）

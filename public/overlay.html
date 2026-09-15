@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AweeClaw Overlay</title>
+    <!--
+      AweeClaw 字幕 / 弹幕悬浮层（原生 JS，无 React 依赖）
+
+      两种加载方式：
+      1. OBS 浏览器源：http://127.0.0.1:<port>/overlay.html?mode=danmaku
+      2. 应用内透明窗口：loadFile('dist/renderer/overlay.html', { query: { mode, port } })
+
+      设计说明：刻意不使用 React 多入口构建 —— 参考既有截图覆盖窗口（public/screenshot-overlay.html）
+      的经验，多入口 React 会与主应用共享 vendor chunk 产生循环依赖，导致打包后页面无法挂载。
+      本页面只做「收消息 → 渲染」，原生 JS 更轻更稳。
+    -->
+    <link rel="stylesheet" href="./overlay.css" />
+  </head>
+  <body>
+    <div id="overlay-root" class="overlay-root" data-mode="subtitle">
+      <!-- 拖拽条：仅在「非穿透 + 未锁定」时显示，用于移动窗口 -->
+      <div id="drag-bar" class="drag-bar" hidden>
+        <span class="drag-bar__grip"></span>
+      </div>
+
+      <!-- 字幕形态 -->
+      <div id="subtitle-layer" class="subtitle-layer" aria-live="polite"></div>
+
+      <!-- 弹幕形态 -->
+      <div id="danmaku-layer" class="danmaku-layer" aria-live="off"></div>
+
+      <!-- 连接状态提示（仅调试用，正常时不显示） -->
+      <div id="status-hint" class="status-hint" hidden></div>
+    </div>
+
+    <!--
+      配置注入点：主进程 HTTP 服务返回本页时，会把占位注释替换为真实的
+      window.__OVERLAY_CONFIG__ 赋值（OBS 场景没有 IPC，必须靠注入拿配置）。
+      应用内窗口场景占位保持为 null，页面改走 electronAPI.overlay.getConfig()。
+    -->
+    <script>
+      window.__OVERLAY_CONFIG__ = null
+      /* OVERLAY_CONFIG_PLACEHOLDER */
+    </script>
+    <script src="./overlay.js"></script>
+  </body>
+</html>

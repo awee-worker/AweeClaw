@@ -22,7 +22,7 @@ export interface VoiceAuthTokens {
 /** 默认 LLM 配置（llmConfig 缺失时兜底，避免主进程因空配置崩溃） */
 const DEFAULT_LLM_CONFIG: LLMConfig = {
   provider: 'openai',
-  model: 'gpt-4o',
+  model: '',
   apiKey: '',
   baseUrl: '',
 }

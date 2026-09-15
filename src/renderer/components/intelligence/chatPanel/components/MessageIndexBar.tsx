@@ -99,7 +99,7 @@ const IndexDot = memo(function IndexDot({
       <span
         className={`block rounded-full transition-all duration-200 ${
           isActive
-            ? 'w-2 h-2 bg-accent shadow-[0_0_0_3px_rgba(99,102,241,0.18)]'
+            ? 'w-1.5 h-1.5 bg-accent shadow-[0_0_0_3px_rgba(99,102,241,0.18)]'
             : isHovered
               ? 'w-1.5 h-1.5 bg-accent/70'
               : 'w-1.5 h-1.5 bg-text-muted/40 hover:bg-text-muted/70'

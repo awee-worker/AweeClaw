@@ -672,3 +672,59 @@ textarea,
 .skeleton-fade-in {
   animation: skeleton-fade-in 0.4s ease-out both;
 }
+
+/* ============================================ */
+/* Mermaid 图表样式                              */
+/* ============================================ */
+
+.mermaid-container {
+  /* 基础样式 */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100px;
+  overflow: auto;
+}
+
+.mermaid-container svg {
+  /* SVG 自适应 */
+  max-width: 100%;
+  height: auto;
+}
+
+/* 暗色主题适配 */
+[data-theme='dark'] .mermaid-container {
+  background: transparent;
+}
+
+[data-theme='dark'] .mermaid-container svg {
+  /* mermaid 暗色主题会自动处理颜色 */
+}
+
+/* 亮色主题适配 */
+[data-theme='light'] .mermaid-container {
+  background: transparent;
+}
+
+[data-theme='light'] .mermaid-container svg {
+  /* mermaid 默认主题会自动处理颜色 */
+}
+
+/* HTML 预览容器 */
+.html-preview-container {
+  border-radius: 0.5rem;
+  overflow: hidden;
+  border: 1px solid rgb(var(--border) / 0.8);
+}
+
+.html-preview-container iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: white;
+}
+
+/* 暗色主题下的 HTML 预览 */
+[data-theme='dark'] .html-preview-container iframe {
+  /* iframe 内部有自己的背景色处理 */
+}

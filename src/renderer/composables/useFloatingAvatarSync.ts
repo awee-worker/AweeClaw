@@ -554,27 +554,10 @@ function buildAvailableModels(options: {
     if (!providerConfig?.apiKey && !llmConfig.apiKey && providerId !== 'ollama') continue
 
     const customModels = providerConfig?.customModels || []
-    const builtinModelIds = new Set(provider.models)
     const modelConfigs = providerConfig?.modelConfigs || {}
-
-    for (const id of provider.models) {
-      if (modelConfigs[id]?.enabled !== true) continue
-      const key = `${providerId}::${id}`
-      if (!seen.has(key)) {
-        seen.add(key)
-        models.push({
-          id,
-          name: id.split('/').pop() || id,
-          provider: providerId,
-          providerName: provider.displayName,
-          isCloud: false,
-        })
-      }
-    }
 
     for (const id of customModels) {
       if (modelConfigs[id]?.enabled !== true) continue
-      if (builtinModelIds.has(id)) continue
       const key = `${providerId}::${id}`
       if (!seen.has(key)) {
         seen.add(key)

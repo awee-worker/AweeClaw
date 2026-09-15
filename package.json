@@ -1,6 +1,6 @@
 {
   "name": "aweeclaw",
-  "version": "2.2.4",
+  "version": "2.2.5",
   "description": "AweeClaw - Connect AI to Your World",
   "productName": "AweeClaw",
   "author": "Awee Lee <aweelee@qq.com>",
@@ -91,6 +91,7 @@
     "katex": "^0.16.45",
     "lucide-react": "^0.562.0",
     "mammoth": "^1.12.0",
+    "mermaid": "^12.0.0",
     "monaco-editor": "^0.55.1",
     "node-pty": "^1.1.0",
     "officeparser": "^6.1.1",
@@ -162,6 +163,12 @@
     "vite": "^6.0.3",
     "vite-plugin-electron": "^0.28.8",
     "vitest": "^4.0.15"
+  },
+  "//overrides": "统一 sharp 版本：@xenova/transformers 自带 sharp@0.32.6（libvips 8.14.5），与顶层 sharp@0.34.5（libvips 8.17.3）同时被 dlopen 会触发 macOS 上 'Class GNotificationCenterDelegate is implemented in both ...' 的重复符号警告，故强制复用顶层版本。",
+  "overrides": {
+    "@xenova/transformers": {
+      "sharp": "$sharp"
+    }
   },
   "build": {
     "appId": "com.aweeclaw.app",

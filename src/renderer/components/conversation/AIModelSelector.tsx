@@ -146,21 +146,11 @@ export default function ModelSelector({ className = '', alignLeft = false, disab
       if (!providerConfig?.apiKey && !llmConfig.apiKey && providerId !== 'ollama') continue
 
       const customModels = providerConfig?.customModels || []
-      const builtinModelIds = new Set(provider.models)
       const modelConfigs = providerConfig?.modelConfigs || {}
-
-      for (const id of provider.models) {
-        if (modelConfigs[id]?.enabled !== true) continue
-        const key = `${providerId}::${id}`
-        if (!seen.has(key)) {
-          seen.add(key)
-          models.push({ id, name: id.split('/').pop() || id, providerId, providerName: provider.displayName })
-        }
-      }
 
       for (const id of customModels) {
         if (modelConfigs[id]?.enabled !== true) continue
-        if (builtinModelIds.has(id)) continue
+        if (!id) continue
         const key = `${providerId}::${id}`
         if (!seen.has(key)) {
           seen.add(key)
@@ -406,7 +396,7 @@ const SCENARIO_MODEL_SELECT_POLICIES: Record<ScenarioDomain, ScenarioModelSelect
     domain: 'legal',
     allowedProviders: [],
     blockedProviders: [],
-    recommendedModels: ['gpt-4o', 'claude-3-5-sonnet', 'gemini-1.5-pro'],
+    recommendedModels: [],
     showRecommendationTag: true,
     restrictModelSelection: false,
     maxTokensLimit: 16384,
@@ -417,7 +407,7 @@ const SCENARIO_MODEL_SELECT_POLICIES: Record<ScenarioDomain, ScenarioModelSelect
     domain: 'medical',
     allowedProviders: ['openai', 'anthropic'],
     blockedProviders: [],
-    recommendedModels: ['gpt-4o', 'claude-3-5-sonnet'],
+    recommendedModels: [],
     showRecommendationTag: true,
     restrictModelSelection: true,
     maxTokensLimit: 12288,
@@ -428,7 +418,7 @@ const SCENARIO_MODEL_SELECT_POLICIES: Record<ScenarioDomain, ScenarioModelSelect
     domain: 'education',
     allowedProviders: [],
     blockedProviders: [],
-    recommendedModels: ['gpt-4o-mini', 'claude-3-5-haiku', 'gemini-1.5-flash'],
+    recommendedModels: [],
     showRecommendationTag: true,
     restrictModelSelection: false,
     maxTokensLimit: 8192,

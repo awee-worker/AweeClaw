@@ -14,6 +14,7 @@ import {
   getAllDefaults,
 } from '@shared/configuration/preferenceSync'
 import { DEFAULT_SCENARIO_PREFERENCES } from '@shared/configuration/preferenceSchema'
+import { isBuiltinProvider } from '@shared/configuration/aiProviders'
 import type { ApiProtocol } from '@shared/configuration/aiProviders'
 
 /** 自定义 Provider 标识前缀 */
@@ -159,7 +160,17 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [], [], SettingsSl
 
       const providerConfigs: Record<string, ProviderModelConfig> = {}
       for (const [id, config] of Object.entries(settings.providerConfigs)) {
-        providerConfigs[id] = normalizeProviderConfig(config)
+        const normalized = normalizeProviderConfig(config)
+        // 内置 Provider 已不再维护可用模型列表：如果用户没有通过「获取模型」保存过
+        // customModels，则清掉残留的默认/内置模型名，避免继续选中已下线模型。
+        if (
+          isBuiltinProvider(id) &&
+          normalized.model &&
+          (!normalized.customModels || normalized.customModels.length === 0)
+        ) {
+          normalized.model = ''
+        }
+        providerConfigs[id] = normalized
       }
 
       set({

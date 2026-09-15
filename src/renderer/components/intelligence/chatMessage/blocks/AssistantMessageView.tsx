@@ -431,6 +431,8 @@ function AssistantMessageViewBase({
           onDislikeSubmit={handleDislikeSubmit}
           onDislikeRegenerate={handleDislikeRegenerate}
           onCancelFeedback={handleCancelFeedback}
+          timestamp={message.timestamp}
+          timePosition="after"
         />
       )}
     </div>

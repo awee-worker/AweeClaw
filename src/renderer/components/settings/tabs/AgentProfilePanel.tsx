@@ -46,18 +46,7 @@ export function AgentProfilePanel({
                         </div>
                         <h5 className="text-sm font-semibold text-text-primary">{t('app.parameters', language as Language)}</h5>
                     </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div className="space-y-1.5">
-                            <label className="text-xs font-medium text-text-secondary">{t('app.maxloops', language as Language)}</label>
-                            <TextField
-                                type="number"
-                                value={agentConfig.maxToolLoops}
-                                onChange={(e) => setAgentConfig({ ...agentConfig, maxToolLoops: parseInt(e.target.value) || 20 })}
-                                min={5}
-                                max={500}
-                                className="bg-background/50 border-border text-xs"
-                            />
-                        </div>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                         <div className="space-y-1.5">
                             <label className="text-xs font-medium text-text-secondary">{t('app.maxhistory', language as Language)}</label>
                             <TextField

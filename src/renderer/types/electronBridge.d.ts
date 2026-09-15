@@ -3103,6 +3103,48 @@ export interface ElectronAPI {
     ) => () => void
   }
 
+  /** 字幕 / 弹幕悬浮层（OBS 浏览器源 + 应用内透明窗口） */
+  overlay: {
+    /** 读取配置 */
+    getConfig: () => Promise<VrmIpcResponse<OverlayConfig>>
+    /** 更新配置（增量；主进程按需启停服务与窗口） */
+    updateConfig: (patch: OverlayConfigPatch) => Promise<VrmIpcResponse<OverlayConfig>>
+    /** 恢复默认配置 */
+    resetConfig: () => Promise<VrmIpcResponse<OverlayConfig>>
+    /** 总开关 */
+    setEnabled: (enabled: boolean) => Promise<VrmIpcResponse<OverlayConfig>>
+    /** 运行状态（端口 / WS 连接数 / OBS 地址 / 最近事件） */
+    getStatus: () => Promise<VrmIpcResponse<OverlayStatus>>
+    /** 推送一条字幕（AI 回复） */
+    showSubtitle: (content: string) => Promise<VrmIpcResponse<{ delivered: number }>>
+    /** 推送一条弹幕事件 */
+    pushDanmaku: (
+      payload: Partial<OverlayEventPayload> & { content: string },
+    ) => Promise<VrmIpcResponse<{ delivered: number }>>
+    /** 清空悬浮层 */
+    clear: () => Promise<VrmIpcResponse<{ ok: boolean }>>
+    /** 显示应用内悬浮窗口 */
+    showWindow: () => Promise<VrmIpcResponse<{ visible: boolean }>>
+    /** 隐藏应用内悬浮窗口 */
+    hideWindow: () => Promise<VrmIpcResponse<{ visible: boolean }>>
+    /** 切换应用内悬浮窗口显隐 */
+    toggleWindow: () => Promise<VrmIpcResponse<{ visible: boolean }>>
+    /** 切换形态（字幕 / 弹幕） */
+    setWindowMode: (mode: OverlayMode) => Promise<VrmIpcResponse<{ mode: OverlayMode }>>
+    /** 切换鼠标穿透 */
+    setClickThrough: (enabled: boolean) => Promise<VrmIpcResponse<{ clickThrough: boolean }>>
+    /** 用系统浏览器打开本机地址（OBS 配置自测） */
+    openExternalUrl: (url: string) => Promise<VrmIpcResponse<{ opened: string }>>
+    /** 复制文本到剪贴板（OBS 地址） */
+    copyText: (text: string) => Promise<VrmIpcResponse<{ copied: string }>>
+    /** 订阅主进程下发的指令（悬浮页面专用） */
+    onEvent: (callback: (command: OverlayCommand) => void) => () => void
+    /** 订阅穿透状态变化（悬浮页面专用） */
+    onClickThroughChanged: (
+      callback: (payload: { clickThrough: boolean }) => void,
+    ) => () => void
+  }
+
   /** VRM 桌面伴侣（3D 角色悬浮窗） */
   vrmCompanion: {
     /** 显示伴侣窗口 */
@@ -3250,6 +3292,281 @@ export interface ElectronAPI {
       }) => void,
     ) => () => void
   }
+
+  /** 直播互动（B站 / YouTube / Twitch 弹幕接入） */
+  live: {
+    /** 读取配置（附配置完整性提示） */
+    getConfig: () => Promise<VrmIpcResponse<LiveConfigPayload>>
+    /** 更新配置（增量；主进程按需重启受影响的平台适配器） */
+    updateConfig: (
+      patch: Partial<LiveConfig>,
+    ) => Promise<VrmIpcResponse<LiveConfigPayload>>
+    /** 恢复默认配置（全部关闭） */
+    resetConfig: () => Promise<VrmIpcResponse<LiveConfigPayload>>
+    /** 总开关 */
+    setEnabled: (enabled: boolean) => Promise<VrmIpcResponse<LiveConfigPayload>>
+    /** 按当前配置启动 */
+    start: () => Promise<VrmIpcResponse<LiveStatus>>
+    /** 停止全部平台 */
+    stop: () => Promise<VrmIpcResponse<LiveStatus>>
+    /** 强制重连（清理 error 状态后重建连接） */
+    reload: () => Promise<VrmIpcResponse<LiveStatus>>
+    /** 运行状态（连接态 / 事件计数 / 最近事件） */
+    getStatus: () => Promise<VrmIpcResponse<LiveStatus>>
+    /** 自测：合成一条事件走完整链路（总线 → 悬浮层 + 渲染层） */
+    pushTest: (payload: {
+      content: string
+      danmu_type?: OverlayDanmuType
+      platform?: LivePlatform
+    }) => Promise<VrmIpcResponse<{ delivered: boolean }>>
+    /** 订阅归一化直播事件（弹幕流面板专用） */
+    onEvent: (callback: (event: LiveEvent) => void) => () => void
+  }
+
+  /** VTS（VTube Studio）联动 */
+  vts: {
+    /** 读取配置（附配置完整性提示） */
+    getConfig: () => Promise<VrmIpcResponse<VtsConfigPayload>>
+    /** 更新配置（增量；连接参数变化时主进程才重连） */
+    updateConfig: (patch: Partial<VtsConfig>) => Promise<VrmIpcResponse<VtsConfigPayload>>
+    /** 恢复默认配置（会清掉 token，等于撤销授权） */
+    resetConfig: () => Promise<VrmIpcResponse<VtsConfigPayload>>
+    /** 连接并完成鉴权（未授权时 VTS 会弹授权窗） */
+    connect: () => Promise<VrmIpcResponse<VtsStatus>>
+    /** 断开连接（保留配置与 token） */
+    disconnect: () => Promise<VrmIpcResponse<VtsStatus>>
+    /** 断开后重连：用于清掉失效 token、重新发起授权 */
+    reconnect: () => Promise<VrmIpcResponse<VtsStatus>>
+    /** 运行状态（连接态 / 帧统计 / 表情热键清单） */
+    getStatus: () => Promise<VrmIpcResponse<VtsStatus>>
+    /** 重新拉取模型表情与热键清单 */
+    refreshData: () => Promise<VrmIpcResponse<VtsStatus>>
+    /** 按名字触发（表情优先，回退热键） */
+    trigger: (name: string) => Promise<
+      VrmIpcResponse<{ triggered: { kind: 'expression' | 'hotkey'; name: string } | null }>
+    >
+    /** 从整段回复里提取 `<名字>` 标签并依次触发（回复收尾时调用） */
+    triggerText: (
+      text: string,
+    ) => Promise<VrmIpcResponse<{ hits: Array<{ kind: 'expression' | 'hotkey'; name: string }> }>>
+    /** 推入 TTS 音频（主口型通道；载荷走 structured clone） */
+    pushAudio: (
+      data: Uint8Array | ArrayBuffer,
+      mimeType?: string,
+    ) => Promise<VrmIpcResponse<{ queued: number }>>
+    /** 按音量驱动（降级通道） */
+    pushVolume: (volume: number) => Promise<VrmIpcResponse<void>>
+    /** 中断口型（用户点「停止」/ 新回复打断旧音频） */
+    clearAudio: () => Promise<VrmIpcResponse<VtsStatus>>
+    /** 合成正弦波自测（不依赖 TTS，验收用） */
+    selfTest: (durationMs?: number) => Promise<VrmIpcResponse<{ queued: number }>>
+    /** 订阅状态变化（连接态 / 模型数据），返回取消订阅函数 */
+    onStatus: (callback: (payload: VtsStatusPayload) => void) => () => void
+  }
+
+  /**
+   * A2A（Agent2Agent）协议
+   *
+   * 双向能力：出站把外部 agent 当工具调用；入站把 AweeClaw 暴露为 A2A agent。
+   */
+  a2a: {
+    /** 读取配置（附配置完整性提示） */
+    getConfig: () => Promise<A2aIpcResponse<A2aConfigPayload>>
+    /** 整表更新配置（servers 为完整新表时使用） */
+    updateConfig: (patch: Partial<A2aConfig>) => Promise<A2aIpcResponse<A2aConfigPayload>>
+    /** 恢复默认配置（会清空 servers 与所有 token） */
+    resetConfig: () => Promise<A2aIpcResponse<A2aConfigPayload>>
+    /** 新增 / 局部更新一个 agent（增量，避免整表覆盖） */
+    upsertServer: (
+      url: string,
+      patch: Partial<A2aServerEntry>,
+    ) => Promise<A2aIpcResponse<A2aConfigPayload & { server: A2aServerState | null }>>
+    /** 删除一个 agent */
+    removeServer: (url: string) => Promise<A2aIpcResponse<A2aConfigPayload>>
+    /** 拉取全部 agent 的运行时状态 */
+    listServers: () => Promise<A2aIpcResponse<{ servers: A2aServerState[]; status: A2aStatus }>>
+    /** 连通性测试（能拉到合法 Agent Card 即视为可用） */
+    testConnection: (url: string) => Promise<A2aIpcResponse<{ server: A2aServerState }>>
+    /** 读取 Agent Card（默认走 5 分钟缓存） */
+    getCard: (url: string, force?: boolean) => Promise<A2aIpcResponse<{ card: A2aAgentCard }>>
+    /** 直接调用一次远端 agent（设置页「试跑」） */
+    call: (url: string, query: string, contextId?: string) => Promise<A2aIpcResponse<A2aCallResult>>
+    /** 模块状态（含入站服务与最近调用） */
+    getStatus: () => Promise<A2aIpcResponse<A2aStatus>>
+    /** 工具暴露载荷（工具提供者初始化 / 手动刷新时调用） */
+    getToolPayload: () => Promise<A2aIpcResponse<A2aChangePayload>>
+    /** 手动重启入站服务（端口被占用时） */
+    restartInbound: () => Promise<
+      A2aIpcResponse<{ inbound: A2aInboundStatus; status: A2aStatus }>
+    >
+    /** 订阅配置 / 探测结果变化，返回取消订阅函数 */
+    onChanged: (callback: (payload: A2aChangePayload) => void) => () => void
+  }
+
+  /**
+   * 对外 API 网关（OpenAI 兼容 + MCP Streamable HTTP）
+   *
+   * 一个端口挂载 /v1/*、/mcp，并在启用时接管 A2A 入站（挂在 /a2a 前缀下）。
+   */
+  openapi: {
+    /** 读取配置（附配置完整性提示） */
+    getConfig: () => Promise<OpenApiIpcResponse<OpenApiConfigPayload>>
+    /** 局部更新配置（未提供的字段保留原值；apiKey 传空串表示沿用已保存的密钥） */
+    updateConfig: (
+      patch: Partial<OpenApiConfig>,
+    ) => Promise<OpenApiIpcResponse<OpenApiConfigPayload & { status: OpenApiStatus }>>
+    /** 恢复默认配置（会清空 apiKey） */
+    resetConfig: () => Promise<OpenApiIpcResponse<OpenApiConfigPayload & { status: OpenApiStatus }>>
+    /** 生成准入密钥（仅生成，需保存后才写入配置） */
+    generateKey: () => Promise<OpenApiIpcResponse<{ apiKey: string }>>
+    /** 网关运行态（含 A2A 挂载情况与最近请求） */
+    getStatus: () => Promise<OpenApiIpcResponse<OpenApiStatus>>
+    /** 强制重绑端口（端口被占后想抢回原端口） */
+    restart: () => Promise<OpenApiIpcResponse<{ status: OpenApiStatus }>>
+    /** 订阅配置 / 运行态变化，返回取消订阅函数 */
+    onChanged: (callback: (payload: OpenApiChangePayload) => void) => () => void
+    /** 订阅主进程的工具清单 / 执行请求（渲染层工具桥用），返回取消订阅函数 */
+    onToolRequest: (callback: (payload: OpenApiToolRequestPayload) => void) => () => void
+    /** 应答一次工具请求 */
+    replyToolRequest: (requestId: string, payload: Record<string, unknown>) => void
+  }
+
+  /**
+   * 防休眠
+   *
+   * 契约类型直接复用 `@shared/protocols/powerGuardProtocol`（主进程同源定义）。
+   * `acquire` / `release` 是**引用计数**语义，调用方必须成对使用。
+   */
+  powerGuard: {
+    /** 读取配置（附状态与配置提示） */
+    getConfig: () => Promise<PowerGuardIpcResponse<PowerGuardConfigPayload>>
+    /** 增量更新配置（主进程立即重算生效状态） */
+    updateConfig: (
+      patch: Partial<PowerGuardConfig>,
+    ) => Promise<PowerGuardIpcResponse<PowerGuardConfigPayload>>
+    /** 恢复默认配置（会关掉手动保持唤醒） */
+    resetConfig: () => Promise<PowerGuardIpcResponse<PowerGuardConfigPayload>>
+    /** 运行状态（是否生效 / 平台机制 / 持有者列表 / 最近错误） */
+    getStatus: () => Promise<PowerGuardIpcResponse<PowerGuardStatus>>
+    /** 取得一份防休眠持有（引用计数 +1） */
+    acquire: (reason: string) => Promise<PowerGuardIpcResponse<PowerGuardStatus>>
+    /** 释放一份防休眠持有（引用计数 -1；未持有时静默忽略） */
+    release: (reason: string) => Promise<PowerGuardIpcResponse<PowerGuardStatus>>
+    /** 清空全部持有者（排障 / 退出前兜底） */
+    releaseAll: () => Promise<PowerGuardIpcResponse<PowerGuardStatus>>
+    /** 订阅状态变化，返回取消订阅函数 */
+    onStatus: (callback: (status: PowerGuardStatus) => void) => () => void
+  }
+
+  /**
+   * 代码解释器沙箱
+   *
+   * 契约类型直接复用 `@shared/protocols/sandboxProtocol`（主进程同源定义）。
+   *
+   * `execute` 返回的 `handled: false` 表示策略为 `off` —— 调用方必须回退到宿主执行路径，
+   * 这是「off 状态下行为与改造前一致」的实现方式。
+   */
+  sandbox: {
+    /** 读取配置（附状态与配置提示） */
+    getConfig: () => Promise<SandboxIpcResponse<SandboxConfigPayload>>
+    /** 增量更新配置（主进程会强制重探后端并返回最新状态） */
+    updateConfig: (patch: Partial<SandboxConfig>) => Promise<SandboxIpcResponse<SandboxConfigPayload>>
+    /** 恢复默认配置（策略回到 off） */
+    resetConfig: () => Promise<SandboxIpcResponse<SandboxConfigPayload>>
+    /** 运行状态（各后端探测结果 / 降级链 / 计数） */
+    getStatus: () => Promise<SandboxIpcResponse<SandboxStatus>>
+    /** 强制重新探测（跳过 30s TTL 缓存） */
+    probe: () => Promise<SandboxIpcResponse<SandboxStatus>>
+    /** 在沙箱中执行一条命令；`handled:false` 表示策略为 off */
+    execute: (
+      request: SandboxExecuteRequest,
+    ) => Promise<SandboxIpcResponse<{ handled: boolean; result?: SandboxRunResult }>>
+    /** 订阅状态变化，返回取消订阅函数 */
+    onStatus: (callback: (status: SandboxStatus) => void) => () => void
+  }
+
+  /** VMC 协议（双向动作捕捉） */
+  vmc: {
+    /** 获取 VMC 配置 */
+    getConfig: () => Promise<{ success: boolean; data?: VmcConfig; error?: string }>
+    /** 更新 VMC 配置 */
+    updateConfig: (update: Partial<VmcConfig>) => Promise<{ success: boolean; data?: VmcConfig; error?: string }>
+    /** 重置 VMC 配置为默认值 */
+    resetConfig: () => Promise<{ success: boolean; data?: VmcConfig; error?: string }>
+    /** 获取 VMC 状态 */
+    getState: () => Promise<{ success: boolean; data?: VmcState; error?: string }>
+    /** 获取发送器状态 */
+    getSenderState: () => Promise<{ success: boolean; data?: VmcState; error?: string }>
+    /** 获取接收器状态 */
+    getReceiverState: () => Promise<{ success: boolean; data?: VmcState; error?: string }>
+    /** 启动发送器 */
+    startSender: () => Promise<{ success: boolean; data?: boolean; error?: string }>
+    /** 停止发送器 */
+    stopSender: () => Promise<{ success: boolean; data?: boolean; error?: string }>
+    /** 启动接收器 */
+    startReceiver: () => Promise<{ success: boolean; data?: boolean; error?: string }>
+    /** 停止接收器 */
+    stopReceiver: () => Promise<{ success: boolean; data?: boolean; error?: string }>
+    /** 发送 VMC 帧数据 */
+    sendFrame: (frameData: VmcFramePayload) => Promise<{ success: boolean; data?: boolean; error?: string }>
+    /** 发送单个骨骼数据 */
+    sendBone: (boneName: string, position: { x: number; y: number; z: number }, rotation: { x: number; y: number; z: number; w: number }) => Promise<{ success: boolean; data?: boolean; error?: string }>
+    /** 发送单个表情数据 */
+    sendBlend: (blendName: string, weight: number) => Promise<{ success: boolean; data?: boolean; error?: string }>
+    /** 获取未映射的骨骼名 */
+    getUnmappedBones: () => Promise<{ success: boolean; data?: string[]; error?: string }>
+    /** 获取未映射的表情名 */
+    getUnmappedBlends: () => Promise<{ success: boolean; data?: string[]; error?: string }>
+    /** 重置统计信息 */
+    resetStats: () => Promise<{ success: boolean; data?: boolean; error?: string }>
+    /** 订阅骨骼数据（外部入站） */
+    onBoneData: (callback: (bone: VmcBoneData) => void) => () => void
+    /** 订阅表情数据（外部入站） */
+    onBlendData: (callback: (blend: VmcBlendData) => void) => () => void
+    /** 订阅状态变化 */
+    onStateChanged: (callback: (state: VmcState) => void) => () => void
+    /** 订阅配置变化 */
+    onConfigChanged: (callback: (config: VmcConfig) => void) => () => void
+    /** 订阅待机动画暂停/恢复 */
+    onIdlePaused: (callback: (payload: { paused: boolean }) => void) => () => void
+    /** 订阅错误 */
+    onError: (callback: (payload: { message: string }) => void) => () => void
+    /** 订阅被阻止的 IP */
+    onBlocked: (callback: (payload: { ip: string }) => void) => () => void
+  }
+
+  /** 本地语音引擎 */
+  localVoice: {
+    /** 获取本地语音配置 */
+    getConfig: () => Promise<{ success: boolean; data?: unknown; error?: string }>
+    /** 更新本地语音配置 */
+    updateConfig: (config: unknown) => Promise<{ success: boolean; data?: unknown; error?: string }>
+    /** 重置本地语音配置 */
+    resetConfig: () => Promise<{ success: boolean; data?: unknown; error?: string }>
+    /** 获取本地语音状态 */
+    getStatus: () => Promise<{ success: boolean; data?: unknown; error?: string }>
+    /** 初始化 ASR 引擎 */
+    initializeAsr: () => Promise<{ success: boolean; data?: unknown; error?: string }>
+    /** 初始化 TTS 引擎 */
+    initializeTts: () => Promise<{ success: boolean; data?: unknown; error?: string }>
+    /** 初始化 GPT-SoVITS 引擎 */
+    initializeGptSovits: () => Promise<{ success: boolean; data?: unknown; error?: string }>
+    /** 语音识别 */
+    recognize: (params: { audioData: string; sampleRate?: number }) => Promise<{ success: boolean; data?: unknown; error?: string }>
+    /** 语音合成 */
+    synthesize: (params: { text: string; voice?: string; speed?: number }) => Promise<{ success: boolean; data?: unknown; error?: string }>
+    /** GPT-SoVITS 语音合成 */
+    synthesizeGptSovits: (params: { text: string; referenceAudio?: string; language?: string }) => Promise<{ success: boolean; data?: unknown; error?: string }>
+    /** 获取可用模型列表 */
+    getAvailableModels: () => Promise<{ success: boolean; data?: unknown; error?: string }>
+    /** 下载模型 */
+    downloadModel: (params: { modelId: string }) => Promise<{ success: boolean; data?: unknown; error?: string }>
+    /** 取消下载 */
+    cancelDownload: (params: { modelId: string }) => Promise<{ success: boolean; data?: unknown; error?: string }>
+    /** 订阅下载进度 */
+    onDownloadProgress: (callback: (progress: unknown) => void) => () => void
+  }
+
 }
 
 /**
@@ -3312,6 +3629,338 @@ export interface VrmAnimationInfo {
 }
 
 /** VRM 伴侣窗口配置 */
+/** 悬浮层形态：底部字幕条 / 顶部滚动弹幕 */
+export type OverlayMode = 'subtitle' | 'danmaku'
+
+/** 弹幕类型（与直播事件归一化结构一致） */
+export type OverlayDanmuType =
+  | 'danmaku'
+  | 'gift'
+  | 'buy_guard'
+  | 'super_chat'
+  | 'enter_room'
+  | 'follow'
+  | 'like'
+
+/** 悬浮层事件载荷（归一化结构，直播与本地消息共用） */
+export interface OverlayEventPayload {
+  id: string
+  type: 'message'
+  content: string
+  danmu_type: OverlayDanmuType
+  platform?: string
+  ts?: number
+}
+
+/** 主进程下发给悬浮页面的指令 */
+export type OverlayCommand =
+  | { action: 'show'; data: OverlayEventPayload }
+  | { action: 'clear' }
+
+/** 悬浮层配置（与主进程 OverlayConfig 保持一致） */
+export interface OverlayConfig {
+  /** 总开关 */
+  enabled: boolean
+  /** 外部模式：内置 HTTP + WS 服务（供 OBS 浏览器源 / 第三方脚本消费） */
+  serverEnabled: boolean
+  /** 服务端口（占用时自动向上探测） */
+  port: number
+  /** 应用内模式：透明悬浮窗口 */
+  windowEnabled: boolean
+  /** 应用内窗口默认形态 */
+  windowMode: OverlayMode
+  window: {
+    width: number
+    height: number
+    positionX: number | null
+    positionY: number | null
+    opacity: number
+    alwaysOnTop: boolean
+    clickThrough: boolean
+    locked: boolean
+  }
+  subtitle: {
+    fontSize: number
+    durationMs: number
+    maxLines: number
+    strokeWidth: number
+    bgOpacity: number
+  }
+  danmaku: {
+    fontSize: number
+    speed: number
+    tracks: number
+    opacity: number
+    filterLowPriority: boolean
+  }
+}
+
+/**
+ * 悬浮层配置补丁（嵌套字段也可选）。
+ *
+ * 不能直接用 `Partial<OverlayConfig>`：TS 的 Partial 只作用于顶层，
+ * 传 `{ window: { clickThrough: true } }` 会因缺少 width/height 等字段报错。
+ * 而主进程侧是深合并语义，局部更新本来就是合法用法。
+ */
+export type OverlayConfigPatch = {
+  [K in keyof OverlayConfig]?: OverlayConfig[K] extends object
+    ? Partial<OverlayConfig[K]>
+    : OverlayConfig[K]
+}
+
+/** 悬浮层运行状态 */
+export interface OverlayStatus {
+  serverRunning: boolean
+  port: number
+  wsClients: number
+  windowCreated: boolean
+  windowVisible: boolean
+  windowMode: OverlayMode
+  /** OBS 浏览器源可直接使用的地址 */
+  urls: { subtitle: string; danmaku: string; ws: string }
+  recentEvents: OverlayEventPayload[]
+}
+
+/** 直播平台标识 */
+export type LivePlatform = 'bilibili' | 'youtube' | 'twitch'
+
+/** B站接入方式：开放平台（官方授权）/ 网页模式（非公开接口，需风险确认） */
+export type BilibiliLiveMode = 'open_live' | 'web'
+
+/**
+ * 归一化直播事件（与主进程 LiveEvent 一致）。
+ *
+ * 字段名与源项目 `live_router.py` 对齐，便于行为对照。
+ */
+export interface LiveEvent {
+  id: string
+  type: 'message'
+  content: string
+  danmu_type: OverlayDanmuType
+  platform: LivePlatform
+  ts: number
+  raw?: unknown
+}
+
+/** 直播模块配置（凭证落盘前由主进程加密） */
+export interface LiveConfig {
+  /** 总开关：关闭时不启动任何适配器 */
+  enabled: boolean
+
+  bilibiliEnabled: boolean
+  bilibiliType: BilibiliLiveMode
+  bilibiliRoomId: string
+  bilibiliAccessKeyId: string
+  bilibiliAccessKeySecret: string
+  bilibiliAppId: string
+  bilibiliRoomOwnerAuthCode: string
+  bilibiliSessdata: string
+  /** 网页模式风险确认：未勾选时网页模式不可用 */
+  bilibiliWebRiskAccepted: boolean
+
+  youtubeEnabled: boolean
+  youtubeVideoId: string
+  youtubeApiKey: string
+
+  twitchEnabled: boolean
+  twitchChannel: string
+  twitchAccessToken: string
+  /** Twitch 登录名（填了 Token 时必须一致，否则登录失败） */
+  twitchUsername: string
+}
+
+/** 单平台连接状态 */
+export interface LiveAdapterStatus {
+  platform: LivePlatform
+  running: boolean
+  state: 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'error' | 'stopped'
+  message: string
+  eventCount: number
+  lastEventAt: number | null
+  retryCount: number
+}
+
+/** 直播模块运行状态 */
+export interface LiveStatus {
+  enabled: boolean
+  running: boolean
+  platforms: LiveAdapterStatus[]
+  totalEvents: number
+  droppedEvents: number
+  duplicatedEvents: number
+  recentEvents: LiveEvent[]
+}
+
+/** getConfig / updateConfig 返回体 */
+export interface LiveConfigPayload {
+  config: LiveConfig
+  /** 缺失项提示（不阻断保存，仅用于 UI 引导） */
+  issues: string[]
+}
+
+/** 口型驱动模式：fft = RMS + 频谱分离（默认）；rms = 仅音量（省 CPU） */
+export type VtsLipSyncMode = 'rms' | 'fft'
+
+/** VTS 连接状态 */
+export type VtsConnectionState =
+  | 'idle'
+  | 'connecting'
+  | 'authenticating'
+  | 'connected'
+  | 'error'
+  | 'stopped'
+
+/** VTS 模型表情 */
+export interface VtsExpression {
+  name: string
+  file: string
+  active: boolean
+}
+
+/** VTS 模型热键（已过滤 ToggleExpression，避免与表情通道重复触发） */
+export interface VtsHotkey {
+  name: string
+  hotkeyID: string
+  type: string
+}
+
+/** VTS 联动配置（token 落盘前由主进程加密） */
+export interface VtsConfig {
+  enabled: boolean
+  url: string
+  /** 授权 token（加密落盘；清空即重新授权） */
+  token: string
+  pluginName: string
+  pluginDeveloper: string
+  lipSyncMode: VtsLipSyncMode
+  /** AI 回复时自动驱动口型（对接 TTS 音频链路） */
+  autoLipSync: boolean
+  /** 允许 AI 通过标签触发模型表情 */
+  enabledExpressions: boolean
+  /** 允许 AI 通过标签触发热键 */
+  enabledMotions: boolean
+}
+
+/** VTS 模块运行状态 */
+export interface VtsStatus {
+  enabled: boolean
+  running: boolean
+  state: VtsConnectionState
+  message: string
+  url: string
+  authenticated: boolean
+  lastFrameAt: number | null
+  framesSent: number
+  framesDropped: number
+  mouthOpen: number
+  pendingFrames: number
+  expressions: VtsExpression[]
+  hotkeys: VtsHotkey[]
+  activeExpressions: string[]
+}
+
+/** getConfig / updateConfig 返回体 */
+export interface VtsConfigPayload {
+  config: VtsConfig
+  /** 缺失项提示（不阻断保存，仅用于 UI 引导） */
+  issues: string[]
+}
+
+/** vts:status 事件载荷 */
+export interface VtsStatusPayload {
+  status: VtsStatus
+  expressions?: VtsExpression[]
+  hotkeys?: VtsHotkey[]
+}
+
+// ============================================
+// A2A（Agent2Agent）协议
+// ============================================
+
+/**
+ * A2A 的协议层与配置层类型直接复用 shared 契约 ——
+ * 主进程与渲染层共用同一份定义，避免「客户端解析了对方卡片但类型对不上」这类漂移。
+ */
+export type {
+  A2aAgentCapabilities,
+  A2aAgentCard,
+  A2aAgentProvider,
+  A2aAgentSkill,
+  A2aCallRecord,
+  A2aCallResult,
+  A2aChangePayload,
+  A2aConfig,
+  A2aConfigPayload,
+  A2aInboundConfig,
+  A2aInboundStatus,
+  A2aIpcResponse,
+  A2aMessage,
+  A2aServerEntry,
+  A2aServerState,
+  A2aStatus,
+  A2aTask,
+  A2aTaskState,
+  A2aToolPayload,
+} from '@shared/protocols/a2aProtocol'
+
+/**
+ * 对外 API 网关类型同样复用 shared 契约 ——
+ * 设置页展示的端点清单（OPEN_API_ENDPOINTS）与实际路由共用一份定义，
+ * 避免出现「文档里有、代码里没有」的偏差。
+ */
+export type {
+  OpenAiAgentList,
+  OpenAiAgentObject,
+  OpenAiChatChoice,
+  OpenAiChatChunkChoice,
+  OpenAiChatRequest,
+  OpenAiModelList,
+  OpenAiModelObject,
+  OpenAiUsage,
+  OpenApiChangePayload,
+  OpenApiConfig,
+  OpenApiConfigPayload,
+  OpenApiEndpointInfo,
+  OpenApiIpcResponse,
+  OpenApiRequestRecord,
+  OpenApiStatus,
+  OpenApiToolRequestPayload,
+} from '@shared/protocols/openApiProtocol'
+
+/**
+ * 防休眠类型同样复用 shared 契约 ——
+ * 设置页的强度档位文案、主进程的模式枚举、preload 的通道载荷共用一份定义，
+ * 避免「UI 加了一档但主进程状态机不认识」这类只在运行时才暴露的漂移。
+ */
+export type {
+  PowerGuardConfig,
+  PowerGuardConfigPayload,
+  PowerGuardHolder,
+  PowerGuardIpcResponse,
+  PowerGuardMode,
+  PowerGuardPlatformKind,
+  PowerGuardSource,
+  PowerGuardStatus,
+} from '@shared/protocols/powerGuardProtocol'
+
+/**
+ * 代码沙箱类型同样复用 shared 契约 ——
+ * 设置页的策略选项、主进程的后端枚举、preload 的通道载荷共用一份定义，
+ * 避免「UI 加了一个后端但主进程路由不认识」这类只在运行时才暴露的漂移。
+ */
+export type {
+  SandboxConfig,
+  SandboxConfigPayload,
+  SandboxExecuteRequest,
+  SandboxIpcResponse,
+  SandboxPolicy,
+  SandboxProbe,
+  SandboxProviderKind,
+  SandboxRunResult,
+  SandboxStatus,
+} from '@shared/protocols/sandboxProtocol'
+
+
 export interface VrmCompanionConfig {
   enabled: boolean
   showOnStartup: boolean
@@ -3349,6 +3998,63 @@ export interface VrmCompanionState {
 
 /** 好感度数据：{ 用户名: { 属性名: 数值 } } */
 export type VrmAffectionData = Record<string, Record<string, number>>
+
+// ============================================
+// VMC 协议类型
+// ============================================
+
+/** VMC 配置 */
+export interface VmcConfig {
+  enabled: boolean
+  send: {
+    enabled: boolean
+    host: string
+    port: number
+  }
+  receive: {
+    enabled: boolean
+    port: number
+    allowedIps: string[]
+    syncExpression: boolean
+  }
+  heartbeat: {
+    enabled: boolean
+    intervalMs: number
+  }
+}
+
+/** VMC 状态 */
+export interface VmcState {
+  initialized: boolean
+  enabled: boolean
+  senderActive: boolean
+  receiverActive: boolean
+  lastIncomingData: number
+  stats: {
+    sentFrames: number
+    receivedFrames: number
+    errors: number
+  }
+}
+
+/** VMC 骨骼数据 */
+export interface VmcBoneData {
+  boneName: string
+  position: { x: number; y: number; z: number }
+  rotation: { x: number; y: number; z: number; w: number }
+}
+
+/** VMC 表情数据 */
+export interface VmcBlendData {
+  blendName: string
+  weight: number
+}
+
+/** VMC 帧数据 */
+export interface VmcFramePayload {
+  bones: VmcBoneData[]
+  blends: VmcBlendData[]
+}
 
 declare global {
   interface Window {

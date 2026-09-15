@@ -84,6 +84,21 @@ export interface MemorySyncStateRow {
   updated_at: number
 }
 
+/** 群组记忆行（对应 group_memory 表） */
+export interface GroupMemoryRow {
+  id: string
+  group_id: string
+  source_chat_id: string | null
+  memory_type: string // fact | decision | preference | todo | constraint | glossary
+  summary: string | null
+  content: string
+  importance: number
+  status: string // active | superseded | deleted
+  created_at: number
+  updated_at: number
+  last_used_at: number | null
+}
+
 // ============================================
 // 数据库路径
 // ============================================
@@ -106,6 +121,17 @@ export class MemoryDb {
   private dbPath: string = ''
   private static instance: MemoryDb | null = null
 
+  /**
+   * 进行中的初始化 promise。
+   *
+   * 单例的 `if (this.db)` 判断本身不是并发安全的：`await import('node:sqlite')`
+   * 会先让出执行权，若两个调用方（例如渲染层的 memory-db:initialize 与主进程
+   * 群记忆模块的首次写入）同时进入，双方都会看到 `db === null`，随后各自
+   * `new DatabaseSync(...)` 打开**同一条文件的第二条连接**，先建的那条被覆盖泄漏
+   * ——WAL 下会表现为莫名的写锁等待。用共享 promise 把初始化收敛成一次。
+   */
+  private initPromise: Promise<void> | null = null
+
   private constructor() {}
 
   static getInstance(): MemoryDb {
@@ -115,13 +141,26 @@ export class MemoryDb {
     return MemoryDb.instance
   }
 
-  /** 初始化数据库：创建目录、打开连接、建表 */
+  /** 初始化数据库：创建目录、打开连接、建表（并发调用共享同一次初始化） */
   async initialize(): Promise<void> {
     if (this.db) {
       logger.agent.info('[MemoryDb] Already initialized, skipping')
       return
     }
 
+    if (!this.initPromise) {
+      this.initPromise = this.doInitialize()
+    }
+    try {
+      await this.initPromise
+    } finally {
+      // 成功或失败都清空，失败后允许重试
+      this.initPromise = null
+    }
+  }
+
+  /** 初始化实体（仅由 initialize 调用一次） */
+  private async doInitialize(): Promise<void> {
     this.dbPath = getDbPath()
     const dbDir = getDbDir()
 
@@ -144,6 +183,11 @@ export class MemoryDb {
       logger.agent.error('[MemoryDb] Failed to initialize:', err)
       throw err
     }
+  }
+
+  /** 数据库是否已就绪（未就绪时调用方应 await initialize()） */
+  isReady(): boolean {
+    return this.db !== null
   }
 
   /** 关闭数据库连接 */
@@ -304,6 +348,29 @@ export class MemoryDb {
     `)
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_memory_relation_target ON memory_relation (target_memory_id)
+    `)
+
+    // 群组记忆表（P1-3 群聊长期记忆）
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS group_memory (
+        id              TEXT PRIMARY KEY NOT NULL,
+        group_id        TEXT NOT NULL,
+        source_chat_id  TEXT,
+        memory_type     TEXT NOT NULL DEFAULT 'fact',
+        summary         TEXT,
+        content         TEXT NOT NULL DEFAULT '',
+        importance      REAL NOT NULL DEFAULT 0.5,
+        status          TEXT NOT NULL DEFAULT 'active',
+        created_at      INTEGER NOT NULL DEFAULT 0,
+        updated_at      INTEGER NOT NULL DEFAULT 0,
+        last_used_at    INTEGER
+      )
+    `)
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_group_memory_group_status ON group_memory (group_id, status)
+    `)
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_group_memory_source_chat ON group_memory (source_chat_id)
     `)
   }
 
@@ -1165,6 +1232,184 @@ export class MemoryDb {
     this.db.prepare(
       'UPDATE memory_entry SET sync_status = ?, remote_id = ?, last_synced_at = ? WHERE id = ?'
     ).run('synced', remoteId, Date.now(), id)
+  }
+
+  // ============================================
+  // 群组记忆 CRUD（P1-3）
+  // ============================================
+
+  /** 插入或更新群组记忆 */
+  upsertGroupMemory(entry: Partial<GroupMemoryRow> & { id: string; group_id: string; content: string }): void {
+    const now = Date.now()
+    this.db.prepare(`
+      INSERT INTO group_memory (
+        id, group_id, source_chat_id, memory_type, summary, content,
+        importance, status, created_at, updated_at, last_used_at
+      ) VALUES (
+        @id, @group_id, @source_chat_id, @memory_type, @summary, @content,
+        @importance, @status, @created_at, @updated_at, @last_used_at
+      )
+      ON CONFLICT(id) DO UPDATE SET
+        group_id = @group_id,
+        source_chat_id = @source_chat_id,
+        memory_type = @memory_type,
+        summary = @summary,
+        content = @content,
+        importance = @importance,
+        status = @status,
+        updated_at = @updated_at,
+        last_used_at = @last_used_at
+    `).run({
+      id: entry.id,
+      group_id: entry.group_id,
+      source_chat_id: entry.source_chat_id ?? null,
+      memory_type: entry.memory_type ?? 'fact',
+      summary: entry.summary ?? null,
+      content: entry.content,
+      importance: entry.importance ?? 0.5,
+      status: entry.status ?? 'active',
+      created_at: entry.created_at ?? now,
+      updated_at: entry.updated_at ?? now,
+      last_used_at: entry.last_used_at ?? null,
+    })
+  }
+
+  /** 批量插入群组记忆（事务） */
+  batchUpsertGroupMemories(entries: Array<Partial<GroupMemoryRow> & { id: string; group_id: string; content: string }>): void {
+    if (entries.length === 0) return
+    this.db.prepare('BEGIN TRANSACTION').run()
+    try {
+      for (const entry of entries) {
+        this.upsertGroupMemory(entry)
+      }
+      this.db.prepare('COMMIT').run()
+    } catch (err) {
+      this.db.prepare('ROLLBACK').run()
+      throw err
+    }
+  }
+
+  /** 查询群组记忆（按相关性排序） */
+  queryGroupMemories(groupId: string, options: {
+    status?: string
+    keyword?: string
+    topK?: number
+  } = {}): GroupMemoryRow[] {
+    const where: string[] = ['group_id = ?']
+    const params: any[] = [groupId]
+
+    if (options.status) {
+      where.push('status = ?')
+      params.push(options.status)
+    } else {
+      where.push("status = 'active'")
+    }
+
+    if (options.keyword) {
+      where.push('(content LIKE ? OR summary LIKE ?)')
+      const like = `%${options.keyword}%`
+      params.push(like, like)
+    }
+
+    const limit = options.topK ?? 10
+    params.push(limit)
+
+    return this.db.prepare(`
+      SELECT * FROM group_memory
+      WHERE ${where.join(' AND ')}
+      ORDER BY importance DESC, updated_at DESC
+      LIMIT ?
+    `).all(...params) as GroupMemoryRow[]
+  }
+
+  /** 获取群组记忆（按关键词匹配 + 重要性 + 时近性排序） */
+  fetchGroupMemories(groupId: string, queryText: string, topK: number = 6): GroupMemoryRow[] {
+    const rows = this.db.prepare(`
+      SELECT * FROM group_memory
+      WHERE group_id = ? AND status = 'active'
+      ORDER BY updated_at DESC
+    `).all(groupId) as GroupMemoryRow[]
+
+    if (rows.length === 0) return []
+
+    // 简单的关键词匹配评分
+    const queryTokens = new Set(queryText.toLowerCase().split(/\s+/).filter(t => t.length > 1))
+
+    const scored = rows.map(row => {
+      const text = `${row.summary ?? ''} ${row.content}`.toLowerCase()
+      const textTokens = new Set(text.split(/\s+/).filter(t => t.length > 1))
+      let overlap = 0
+      for (const token of queryTokens) {
+        if (textTokens.has(token)) overlap++
+      }
+      const recency = row.updated_at / 1_000_000_000_000
+      const score = overlap * 5 + row.importance * 2 + recency
+      return { row, score }
+    })
+
+    scored.sort((a, b) => b.score - a.score)
+
+    // 更新 last_used_at
+    const selected = scored.slice(0, topK).map(s => s.row)
+    if (selected.length > 0) {
+      const now = Date.now()
+      this.db.prepare('BEGIN TRANSACTION').run()
+      try {
+        for (const row of selected) {
+          this.db.prepare('UPDATE group_memory SET last_used_at = ? WHERE id = ?').run(now, row.id)
+        }
+        this.db.prepare('COMMIT').run()
+      } catch (err) {
+        this.db.prepare('ROLLBACK').run()
+      }
+    }
+
+    return selected
+  }
+
+  /** 标记群组记忆为 superseded */
+  supersedeGroupMemory(id: string): void {
+    const now = Date.now()
+    this.db.prepare("UPDATE group_memory SET status = 'superseded', updated_at = ? WHERE id = ?").run(now, id)
+  }
+
+  /** 清除指定群组的记忆 */
+  clearGroupMemories(groupId: string): number {
+    const result = this.db.prepare("DELETE FROM group_memory WHERE group_id = ?").run(groupId)
+    return result.changes
+  }
+
+  /** 清除所有群组记忆 */
+  clearAllGroupMemories(): number {
+    const result = this.db.prepare("DELETE FROM group_memory").run()
+    return result.changes
+  }
+
+  /** 删除指定来源的记忆 */
+  deleteGroupMemoriesBySource(sourceChatId: string): number {
+    const result = this.db.prepare("DELETE FROM group_memory WHERE source_chat_id = ?").run(sourceChatId)
+    return result.changes
+  }
+
+  /** 获取群组记忆统计 */
+  getGroupMemoryStats(groupId?: string): { total: number; active: number; superseded: number; byType: Record<string, number> } {
+    const where = groupId ? 'WHERE group_id = ?' : ''
+    const params = groupId ? [groupId] : []
+
+    const total = (this.db.prepare(`SELECT COUNT(*) as count FROM group_memory ${where}`).get(...params) as any).count
+    const active = (this.db.prepare(`SELECT COUNT(*) as count FROM group_memory ${where ? where + ' AND' : 'WHERE'} status = 'active'`).get(...params) as any).count
+    const superseded = (this.db.prepare(`SELECT COUNT(*) as count FROM group_memory ${where ? where + ' AND' : 'WHERE'} status = 'superseded'`).get(...params) as any).count
+
+    const byTypeRows = this.db.prepare(`
+      SELECT memory_type, COUNT(*) as count FROM group_memory ${where} GROUP BY memory_type
+    `).all(...params) as Array<{ memory_type: string; count: number }>
+
+    const byType: Record<string, number> = {}
+    for (const row of byTypeRows) {
+      byType[row.memory_type] = row.count
+    }
+
+    return { total, active, superseded, byType }
   }
 
   // ============================================

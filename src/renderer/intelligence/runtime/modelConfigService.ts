@@ -59,11 +59,6 @@ export function getAvailableModels(providerId: string): string[] {
 
     const models: string[] = []
 
-    // 添加内置模型
-    if (builtinProvider?.models) {
-        models.push(...builtinProvider.models)
-    }
-
     // 添加用户自定义模型
     if (userConfig?.customModels) {
         for (const model of userConfig.customModels) {

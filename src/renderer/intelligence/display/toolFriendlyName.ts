@@ -1,6 +1,7 @@
 import { McpToolProvider } from '@intelligence/toolkit/providers/ProtocolToolRegistry'
 import { useStore } from '@store'
 import { t, type Language } from '@renderer/i18n'
+import { A2A_TOOL_NAME } from '@shared/protocols/a2aProtocol'
 
 const MCP_TOOL_PREFIX = 'mcp_'
 const MCP_TOOL_SEPARATOR = '__'
@@ -206,6 +207,14 @@ export function getFriendlyToolName(
     if (effectiveName === 'apply_skill') {
         return {
             label: t('ai.loadingskill', language as Language),
+            isMcp: false,
+        }
+    }
+
+    // A2A：调用远端智能体（工具卡片上给出可读动作名，而不是 "A2a Tool Call"）
+    if (effectiveName === A2A_TOOL_NAME) {
+        return {
+            label: language === 'zh' ? '调用外部智能体' : 'Call external agent',
             isMcp: false,
         }
     }

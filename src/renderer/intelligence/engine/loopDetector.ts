@@ -15,9 +15,8 @@ import { EventBus } from './EventDispatcher'
 import {
   scheduleAutoResume,
   resetAutoResumeCounter,
-  scheduleFreeModeContinuation,
   resetFreeModeRounds,
-  MAX_FREE_MODE_ROUNDS,
+  scheduleFreeModeContinuation,
 } from './autoResume'
 import { estimateMessagesTokens } from '../capabilities/context/ContextCompressor'
 import { lintService } from '../runtime/codeAnalysisService'
@@ -477,7 +476,6 @@ export async function executeAgentCycle(
 
   const threadStore = store.forThread(threadId)
   const agentConfig = getAgentConfig()
-  const maxIterations = mainStore.agentConfig.maxToolLoops || agentConfig.maxToolLoops
   const enableAutoFix = mainStore.agentConfig.enableAutoFix
   const enableLLMSummary = mainStore.agentConfig.enableLLMSummary
   const autoHandoff = mainStore.agentConfig.autoHandoff ?? agentConfig.autoHandoff
@@ -638,7 +636,9 @@ export async function executeAgentCycle(
   //    条件会直接失败退出循环 —— 既不调用 concludeAsAborted()，也不发 loop:end，
   //    表现为「AI 无任何提示自行中断」且 loopState 卡在 running。
   //    中止判定统一放在循环体内（模型调用前后、工具执行后），确保总能收尾。
-  while (shouldContinue && iteration < maxIterations) {
+  // 轮次不再有工具调用次数上限：循环由 AI 主动收尾（无工具调用即结束）、
+  // 循环检测（CycleDetector）、用户中止与异常中断自动续接机制共同收敛，不再硬性截断轮次。
+  while (shouldContinue) {
     iteration++
     shouldContinue = false
     EventBus.emit({ type: 'loop:iteration', count: iteration, threadId, assistantId, requestId, planTaskId: context.planTaskId })
@@ -1066,8 +1066,6 @@ export async function executeAgentCycle(
           const assistantMsg = m as AssistantMessage
           return assistantMsg.toolCalls?.some(tc => tc.name === toolName) ?? false
         }),
-        iteration,
-        maxIterations,
       })
 
       if (hookResult?.shouldContinue && hookResult.reminderMessage) {
@@ -1359,69 +1357,38 @@ export async function executeAgentCycle(
     threadStore.setStreamState({ streamDetail: 'reasoning' })
   }
 
-  if (iteration >= maxIterations) {
-    // 自由模式：自动继续，无需用户点击"继续"按钮
-    const freeModeEnabled = useStore.getState().freeModeEnabled
-    if (freeModeEnabled) {
-      logger.agent.info('[Loop] Free mode: auto-continue after max iterations')
-      threadStore.updateExecutionMeta({ loopState: 'completed' })
-      EventBus.emit({ type: 'loop:end', reason: 'max_iterations', threadId, assistantId, requestId, planTaskId: context.planTaskId })
-      // 等待执行锁释放后再触发新一轮（轮询 isRunning，避免 "Thread already running" 静默失败）。
-      // ⚠️ 连续轮次有硬上限：若 AI 每轮都跑满却不收尾（任务发散/死循环），
-      //    无限自动续接会持续烧额度与时间；达到上限即停止自动续接并交还用户。
-      if (!scheduleFreeModeContinuation(threadId)) {
-        const { language } = useStore.getState()
-        threadStore.addSystemAlertPart(assistantId, {
-          alertType: 'warning',
-          title: getLocalizedText(language, '已暂停自动继续', 'Auto-continue Paused'),
-          message: getLocalizedText(
-            language,
-            `自由模式已连续自动执行 ${MAX_FREE_MODE_ROUNDS} 轮仍未收尾，为避免持续消耗额度，已暂停自动继续。`,
-            `Free mode has auto-continued ${MAX_FREE_MODE_ROUNDS} rounds without finishing. Auto-continue was paused to avoid draining your quota.`,
-          ),
-          suggestion: getLocalizedText(
-            language,
-            '请确认任务是否陷入循环；可补充更明确的要求，或点击继续再推进一轮。',
-            'Please check whether the task is looping. Add clearer instructions, or click Continue to run one more round.',
-          ),
-          action: { label: getLocalizedText(language, '继续', 'Continue'), actionType: 'continue' },
-        })
-        EventBus.emit({ type: 'loop:warning', message: 'Free-mode auto-continue cap reached', threadId, assistantId, requestId, planTaskId: context.planTaskId })
-      }
-    } else {
-      const { language } = useStore.getState()
-      const limitTitle = getLocalizedText(language, '达到工具调用上限', 'Tool Call Limit Reached')
-      const limitMessage = getLocalizedText(language, '当前轮次已达到最大工具调用次数。', 'The agent reached the maximum tool call limit for this turn.')
-
-      logger.agent.warn('[Loop] Reached maximum iterations')
-      threadStore.addSystemAlertPart(assistantId, {
-        alertType: 'warning',
-        title: limitTitle,
-        message: limitMessage,
-        compact: true,
-        action: {
-          label: getLocalizedText(language, '继续', 'Continue'),
-          actionType: 'continue',
-        },
-      })
-      EventBus.emit({ type: 'loop:warning', message: 'Max iterations reached', threadId, assistantId, requestId, planTaskId: context.planTaskId })
-
-      // 本轮到上限后交还用户（点「继续」推进），重置续接预算，下一轮重新计数
-      resetAutoResumeCounter(threadId)
-      resetFreeModeRounds(threadId)
-      threadStore.updateExecutionMeta({ loopState: 'completed' })
-      EventBus.emit({ type: 'loop:end', reason: 'max_iterations', threadId, assistantId, requestId, planTaskId: context.planTaskId })
-    }
-  }
-
-  // 兜底收尾：若主循环从异常路径静默退出（未达上限、未走任何 break 收尾），
-  // executionMeta.loopState 会停留在 'running'。此时补一次「异常中断」处理，
-  // 避免用户看到「AI 无提示自行停下」，并保证断点续接能识别未完成状态。
-  if (iteration < maxIterations) {
+  // 兜底收尾：若主循环退出时 loopState 仍停留在 'running'（静默退出/异常路径未收尾），
+  // 补一次「异常中断」处理，避免用户看到「AI 无提示自行停下」，并保证断点续接能识别未完成状态。
+  {
     const metaAfterLoop = useAgentStore.getState().threads[threadId]?.executionMeta
     if (metaAfterLoop?.loopState === 'running') {
       logger.agent.warn('[Loop] Loop exited without terminal state → concluding as interrupted')
       concludeAsAborted()
+      // 自由模式：AI 未收尾即结束本轮 → 自动派发续接消息推进任务，
+      // 受 MAX_FREE_MODE_ROUNDS 连续轮次硬上限兜底（防死循环烧额度）。
+      // 若自由模式连续自动轮次达上限仍未收尾，暂停自动续接并交还用户。
+      const freeModeEnabled = useStore.getState().freeModeEnabled
+      if (freeModeEnabled) {
+        threadStore.updateExecutionMeta({ loopState: 'completed' })
+        if (!scheduleFreeModeContinuation(threadId)) {
+          const { language } = useStore.getState()
+          threadStore.addSystemAlertPart(assistantId, {
+            alertType: 'warning',
+            title: getLocalizedText(language, '已暂停自动继续', 'Auto-continue Paused'),
+            message: getLocalizedText(
+              language,
+              '为避免持续消耗额度，已暂停自动继续。',
+              'Auto-continue was paused to avoid draining your quota.',
+            ),
+            suggestion: getLocalizedText(
+              language,
+              '可补充更明确的要求，或点击继续再推进一轮。',
+              'Add clearer instructions, or click Continue to run one more round.',
+            ),
+            action: { label: getLocalizedText(language, '继续', 'Continue'), actionType: 'continue' },
+          })
+        }
+      }
     }
   }
 

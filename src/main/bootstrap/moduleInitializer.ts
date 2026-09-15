@@ -46,6 +46,18 @@ import { proactiveActionTrigger } from '../modules/proactive/ProactiveActionTrig
 import { proactivePermission } from '../modules/proactive/ProactivePermission'
 import { initFloatingAvatar, syncWakeWordEnabledToAvatar } from '../modules/floating-avatar'
 import { initVrmCompanion } from '../modules/vrm-companion'
+import { initOverlayModule } from '../modules/overlay'
+import { initLiveModule } from '../modules/live'
+import { initVtsModule } from '../modules/vts'
+import { initA2aModule } from '../modules/a2a'
+import { initOpenApiModule } from '../modules/openapi'
+import { initPowerGuardModule } from '../modules/power-guard'
+import { initSandboxModule } from '../modules/security/sandbox'
+import { GroupMemoryManager } from '../modules/memory-db/GroupMemoryManager'
+import { registerGroupMemoryIpcHandlers } from '../modules/memory-db/GroupMemoryIpc'
+import { initializeLocalVoiceModule } from '../modules/local-voice'
+import { initializeCharacterCardModule } from '../modules/character-card'
+import { initializeEmotionModule } from '../modules/emotion'
 import { SettingsDb } from '../modules/settings-db/SettingsDb'
 import { registerVideoTranscodeIpc } from '../modules/video-transcode/VideoTranscodeIpc'
 
@@ -151,41 +163,101 @@ export async function initializeModules(firstWin: BrowserWindow): Promise<void> 
 
   // ==========================================
   // 6. 后台异步初始化（不阻塞启动）
+  //
+  // 每个模块通过 safeInit 独立隔离异常：单个模块初始化失败只记录日志，
+  // 不会中断后续模块。历史故障：某模块内 `require('./Xxx')` 打包后抛
+  // MODULE_NOT_FOUND 并冒泡中断本函数，导致其后所有模块的 IPC 均未注册
+  // （表现为设置页「加载配置失败 / No handler registered」）。
   // ==========================================
-  initChannelService()
-  initPythonRuntime()
-  initNodeRuntime()
-  initDesktopControlPlugin()
+  await safeInit('ChannelService', initChannelService)
+  await safeInit('PythonRuntime', initPythonRuntime)
+  await safeInit('NodeRuntime', initNodeRuntime)
+  await safeInit('DesktopControlPlugin', initDesktopControlPlugin)
   // 初始化 Host 服务桥（供外部插件访问 native 能力 + MCP SDK）
-  initHostServicesBridge()
+  await safeInit('HostServicesBridge', initHostServicesBridge)
   // 注册感知层 IPC 处理器（暴露 PerceptionStore 给渲染进程）
-  initPerceptionIpc()
+  await safeInit('PerceptionIpc', initPerceptionIpc)
   // 注册监控层 IPC 处理器（暴露 MonitoringService 给渲染进程）
-  initMonitoringIpc()
+  await safeInit('MonitoringIpc', initMonitoringIpc)
   // 注册因果推理 IPC 处理器（暴露 CausalReasoningService 给渲染进程）
-  initCausalReasoningIpc()
+  await safeInit('CausalReasoningIpc', initCausalReasoningIpc)
   // 注册 IoT Bridge IPC 处理器（暴露 IoTBridge 给渲染进程）
-  initIoTIpc(firstWin)
+  await safeInit('IoTIpc', () => initIoTIpc(firstWin))
   // 注册 SensorFusion IPC 处理器（暴露 SensorFusionService 给渲染进程）
-  initSensorFusionIpc(firstWin)
+  await safeInit('SensorFusionIpc', () => initSensorFusionIpc(firstWin))
   // 注册主动式助手 IPC 处理器（暴露 ProactiveStore 给渲染进程，阶段10 s10-02）
-  initProactiveIpc()
+  await safeInit('ProactiveIpc', initProactiveIpc)
   // 初始化悬浮头像模块（语音唤醒 + 系统级悬浮头像 + 托盘，不阻塞启动）
-  initFloatingAvatarModule(firstWin)
+  await safeInit('FloatingAvatarModule', () => initFloatingAvatarModule(firstWin))
   // 初始化 PPT 预览模块（窗口懒创建，仅预注册 IPC，不阻塞启动）
-  initPptPreviewModule()
+  await safeInit('PptPreviewModule', initPptPreviewModule)
   // 初始化项目执行窗口模块（单例创建 + IPC 注册，不阻塞启动）
-  initProjectExecutionModule()
+  await safeInit('ProjectExecutionModule', initProjectExecutionModule)
   // 初始化 ONLYOFFICE 在线编辑模块（IPC 注册 + 会话管理，不阻塞启动）
-  initOoEditModule()
+  await safeInit('OoEditModule', initOoEditModule)
   // 注册视频转码 IPC 处理器（用 ffmpeg-static 转码不支持的视频编码，如 H.265 → H.264）
-  registerVideoTranscodeIpc()
+  await safeInit('VideoTranscodeIpc', registerVideoTranscodeIpc)
   // 初始化设备联动模块（WebSocket 长连接 + RPC 处理器 + 事件桥接）
   // 不阻塞启动：WebSocket 连接在 renderer 推送 token 后才发起
-  initDeviceLinkModule()
+  await safeInit('DeviceLinkModule', initDeviceLinkModule)
   // 初始化 VRM 桌面伴侣模块（独立悬浮窗口 + 模型资源协议 + 好感度系统）
   // 资源协议（vrm-asset://）已在 appBootstrap 的 ready 前注册
-  initVrmCompanion()
+  await safeInit('VrmCompanion', initVrmCompanion)
+  // 初始化字幕/弹幕悬浮层模块（HTTP+WS 供 OBS 使用 + 应用内透明窗口）
+  await safeInit('OverlayModule', initOverlayModule)
+  // 初始化直播互动模块（B站/YouTube/Twitch 弹幕 → 悬浮层 + 渲染层）
+  // 默认全关：适配器只在配置 enabled 后才真正建连
+  await safeInit('LiveModule', initLiveModule)
+  // 初始化 VTS（VTube Studio）联动模块（口型同步 + 表情/热键触发）
+  // 默认全关：只在配置 enabled 后才连接本机 VTS
+  await safeInit('VtsModule', initVtsModule)
+  // 初始化 A2A（Agent2Agent）协议模块（出站工具调用 + 入站 A2A server）
+  // 默认全关：出站不发请求；入站不监听端口
+  await safeInit('A2aModule', initA2aModule)
+  // 初始化对外 API 网关（OpenAI 兼容 + MCP + 托管 A2A）
+  // ⚠️ 必须紧跟 A2A 之后：网关要订阅 A2A 的入站变化并接管监听权
+  // 默认全关：不监听端口
+  await safeInit('OpenApiModule', initOpenApiModule)
+  // 初始化防休眠模块（Agent 长任务期间阻止系统睡眠，任务结束自动恢复）
+  // 唯一「默认开启」的新增能力：空闲时不 spawn 任何进程，只在任务持有时才起守护
+  await safeInit('PowerGuardModule', initPowerGuardModule)
+  // 初始化代码解释器沙箱（run_command 的可选隔离执行层）
+  // 默认策略 off：此时 run_command 完全走宿主终端路径，行为与改造前一致。
+  // 刻意不在启动时探测后端（docker 探测要 spawn 进程），改为首次执行时惰性探测。
+  await safeInit('SandboxModule', initSandboxModule)
+
+  // 初始化群组记忆模块（P1-3 群聊长期记忆）
+  // 默认关闭：需要在设置中显式开启
+  await safeInit('GroupMemory', () => {
+    GroupMemoryManager.getInstance().init()
+    registerGroupMemoryIpcHandlers()
+  })
+
+  // 初始化本地语音引擎模块（P1-5 离线 ASR/TTS）
+  // 默认关闭：需要在设置中显式开启
+  await safeInit('LocalVoice', initializeLocalVoiceModule)
+
+  // 初始化角色卡模块（P2-2 酒馆角色卡导入导出）
+  // 支持酒馆角色卡 V2/V3 格式解析和导出
+  await safeInit('CharacterCard', initializeCharacterCardModule)
+
+  // 初始化表情包模块（P2-2 表情包管理）
+  // 支持全局表情包和角色卡资产中的表情包
+  await safeInit('Emotion', initializeEmotionModule)
+
+  // 初始化有声书模块（P1-7 长文播报）
+  // 默认关闭：需要在设置中显式开启
+  await safeInit('Audiobook', async () => {
+    const { registerAudiobookIpcHandlers } = await import('../modules/audiobook/AudiobookIpc')
+    registerAudiobookIpcHandlers()
+  })
+
+  // 初始化双向 VMC 协议模块（P1-8 双向 VMC）
+  // 默认关闭：需要在设置中显式开启
+  await safeInit('Vmc', async () => {
+    const { initVmcModule } = await import('../modules/vmc')
+    initVmcModule()
+  })
 
   // ==========================================
   // 7. 应用菜单与语言同步
@@ -196,6 +268,21 @@ export async function initializeModules(firstWin: BrowserWindow): Promise<void> 
 // ==========================================
 // 子初始化函数
 // ==========================================
+
+/**
+ * 安全执行单个模块初始化
+ *
+ * 异常隔离：任一模块初始化失败仅记录日志，不阻断后续模块。
+ * 历史故障：模块内 `require('./Xxx')` 在打包后抛 MODULE_NOT_FOUND 并冒泡，
+ * 使本函数后续所有模块的 IPC 都未注册（设置页报「No handler registered」）。
+ */
+async function safeInit(label: string, init: () => unknown | Promise<unknown>): Promise<void> {
+  try {
+    await init()
+  } catch (err) {
+    logger.system.error(`[Main] Module init failed: ${label}`, errMsg(err))
+  }
+}
 
 /** powerMonitor：系统从睡眠唤醒后通知渲染端刷新 token */
 function initPowerMonitor(): void {
@@ -550,6 +637,8 @@ function initProactiveIpc(): void {
             registerCodingScenarioDetectors(proactiveDecisionEngine)
             // 注册 IoT + 系统场景探测器（s10-09）
             registerIotSystemScenarioDetectors(proactiveDecisionEngine)
+            // 注册随机话题场景探测器（P2-3）
+            registerRandomTopicDetector(proactiveDecisionEngine)
             proactiveDecisionEngine.start()
             logger.system.info('[Main] Proactive decision engine started (enabled in config)')
           })
@@ -662,6 +751,31 @@ function registerIotSystemScenarioDetectors(
       })
   } catch (err) {
     logger.system.warn('[Main] registerIotSystemScenarioDetectors failed:', errMsg(err))
+  }
+}
+
+/**
+ * 注册随机话题场景探测器到决策引擎（P2-3 新增）
+ *
+ * 包含 1 个探测器：
+ * - RandomTopicDetector：随机话题探测器
+ *
+ * 随机话题功能默认关闭，需要在设置中显式开启。
+ */
+function registerRandomTopicDetector(
+  engine: import('../modules/proactive/ProactiveDecisionEngine').ProactiveDecisionEngine,
+): void {
+  try {
+    import('../modules/proactive/scenarios/RandomTopicScenario')
+      .then(({ randomTopicDetector }) => {
+        engine.registerScenarioDetector(randomTopicDetector)
+        logger.system.info('[Main] Registered random topic detector')
+      })
+      .catch((err) => {
+        logger.system.warn('[Main] Random topic detector registration failed:', errMsg(err))
+      })
+  } catch (err) {
+    logger.system.warn('[Main] registerRandomTopicDetector failed:', errMsg(err))
   }
 }
 

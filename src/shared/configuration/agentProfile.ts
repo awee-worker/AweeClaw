@@ -93,8 +93,6 @@ export type ModePostProcessHook = (context: {
   messages: unknown[]
   hasWriteOps: boolean
   hasSpecificTool: (toolName: string) => boolean
-  iteration: number
-  maxIterations: number
 }) => { shouldContinue: boolean; reminderMessage?: string } | null
 
 export interface ModePostProcessConfig {
@@ -119,6 +117,7 @@ export interface ToolDependency {
 
 export interface AgentRuntimeConfig {
   // 循环控制
+  /** @deprecated 轮次工具调用次数已取消限制，保留字段仅为兼容旧配置数据与循环检测阈值计算 */
   maxToolLoops: number
   maxHistoryMessages: number
 
@@ -244,10 +243,9 @@ export const DEFAULT_AGENT_CONFIG: AgentRuntimeConfig = {
   modePostProcessHooks: {
     plan: {
       enabled: true,
-      hook: ({ mode, hasWriteOps, iteration, maxIterations }) => {
+      hook: ({ mode, hasWriteOps }) => {
         if (mode !== 'plan') return null
         if (!hasWriteOps) return null
-        if (iteration >= maxIterations - 1) return null
 
         return {
           shouldContinue: true,

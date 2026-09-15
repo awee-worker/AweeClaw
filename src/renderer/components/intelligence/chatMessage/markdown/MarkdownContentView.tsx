@@ -2,7 +2,7 @@
  * Markdown 内容渲染视图
  * 集成流式平滑输出、URL 预处理、系统警告检测和自定义组件渲染
  */
-import React, { useMemo } from 'react'
+import React, { useMemo, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -16,9 +16,10 @@ import { logger } from '@shared/toolkit/LogEngine'
 import { useSmoothStream } from '@hooks/useSmoothStream'
 import { SystemAlert, parseSystemAlert } from '../../SystemAlert'
 
-import { CodeBlockView } from '../blocks/CodeBlockView'
+import { CodeBlockRenderer } from './CodeBlockRenderer'
 import { cleanStreamingContent, decorateStreamingChildren } from './streamingDecorator'
-import { preprocessUrls, convertLineBreaks } from './textPreprocessor'
+import { preprocessUrls, convertLineBreaks, containsEmotionTags, replaceEmotionTagsWithHtml } from './textPreprocessor'
+import { EmotionRenderer } from './EmotionRenderer'
 
 const MARKDOWN_REMARK_PLUGINS = [remarkGfm, remarkMath]
 const MARKDOWN_REHYPE_PLUGINS = [rehypeKatex]
@@ -40,6 +41,10 @@ function MarkdownContentViewBase({ content: rawContent, fontSize, isStreaming, p
     result = preprocessUrls(result)
     if (preserveLineBreaks) {
       result = convertLineBreaks(result)
+    }
+    // 处理表情标记
+    if (containsEmotionTags(result)) {
+      result = replaceEmotionTagsWithHtml(result)
     }
     return result
   }, [content, isStreaming, preserveLineBreaks])
@@ -126,7 +131,7 @@ function MarkdownContentViewBase({ content: rawContent, fontSize, isStreaming, p
         </code>
       ) : (
         <div className="w-full relative">
-          <CodeBlockView language={match?.[1]} fontSize={fontSize} isStreaming={isStreaming}>{children}</CodeBlockView>
+          <CodeBlockRenderer language={match?.[1]} fontSize={fontSize} isStreaming={isStreaming}>{children}</CodeBlockRenderer>
         </div>
       )
     },
@@ -167,7 +172,17 @@ function MarkdownContentViewBase({ content: rawContent, fontSize, isStreaming, p
     tr: ({ children }: any) => <tr className="border-b border-border hover:bg-surface-hover transition-colors">{children}</tr>,
     th: ({ children }: any) => <th className="border border-border px-4 py-2 text-text-primary text-left font-semibold text-text-primary">{renderStreamingChildren(children)}</th>,
     td: ({ children }: any) => <td className="border border-border px-4 py-2 text-text-secondary">{renderStreamingChildren(children)}</td>,
-  }), [enableBlockReveal, fontSize, handleOpenFile, isStreaming, renderStreamingChildren])
+    span: ({ className, children, ...props }: any) => {
+      // 处理表情占位符
+      if (className === 'emotion-placeholder') {
+        const emotionName = props['data-emotion']
+        if (emotionName) {
+          return <EmotionRenderer emotionTag={`[emo:${emotionName}]`} language={language} />
+        }
+      }
+      return <span className={className} {...props}>{children}</span>
+    },
+  }), [enableBlockReveal, fontSize, handleOpenFile, isStreaming, renderStreamingChildren, language])
 
   if (!contentWithoutAlert && !systemAlert) {
     return null

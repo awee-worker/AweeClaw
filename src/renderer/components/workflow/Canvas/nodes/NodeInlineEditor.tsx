@@ -443,13 +443,8 @@ function AgentTaskEditor({ nodeId, data, language = 'zh' }: InlineEditorProps) {
       if (!hasKey && !isCurrent) continue
 
       const customModels = config?.customModels || []
-      const allModelIds = [...provider.models]
 
       for (const id of customModels) {
-        if (!allModelIds.includes(id)) allModelIds.push(id)
-      }
-
-      for (const id of allModelIds) {
         const key = `${providerId}::${id}`
         if (!seen.has(key)) {
           seen.add(key)

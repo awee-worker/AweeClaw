@@ -50,6 +50,7 @@ import { internalWriteTracker } from '@services/writeTracker'
 import { toolRegistry } from './toolRegistry'
 import { terminalManager } from '@services/TerminalAdapter'
 import { isDangerousCommand, matchDangerousCommand } from '@shared/configuration/dangerousCommands'
+import { tryRunCommandInSandbox } from './sandboxCommandRoute'
 import {
     isProtectedAppDirDeletion,
     isProtectedAppDirPath,
@@ -1764,6 +1765,24 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         })
         // 供超时诊断使用：命中全盘扫描时可给出针对性的改写建议
         const isBroadScan = matchesBroadScanCommand(command, ctx.workspacePath || undefined)
+
+        // ── 沙箱路由（可选，默认关闭） ──────────────────────────────
+        // 策略为 `off`（默认）时主进程回 `handled:false`，下面这行等于空操作，
+        // 命令照旧走宿主终端路径 —— 这是「off 状态下行为与改造前完全一致」的落点。
+        //
+        // 只在**非长进程**时尝试：长进程要的是活着的会话（stdin 交互 / 持续读日志），
+        // 而沙箱是「起进程 → 收敛输出 → 回收」的一次性模型，送进去只会被超时杀掉。
+        if (!isLongRunningProcess) {
+            const sandboxResult = await tryRunCommandInSandbox(
+                command,
+                resolvedCwd || ctx.workspacePath || '',
+                timeout,
+            )
+            if (sandboxResult) {
+                cleanupAbortListener()
+                return sandboxResult
+            }
+        }
 
         try {
             if (!isLongRunningProcess) {

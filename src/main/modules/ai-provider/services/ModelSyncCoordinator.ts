@@ -19,7 +19,7 @@ import { createModel } from '../modelRegistry'
 import { MessageConverter } from '../core/MessageAdapter'
 import { ToolConverter } from '../core/ToolSchemaAdapter'
 import { executePreparedRequest } from '@modules/ai-provider/core/ModelRequestRunner'
-import { resolveRequestTimeoutMs } from './StreamProcessor'
+import { resolveRequestTimeoutMs, resolveThinkingTolerance } from './StreamProcessor'
 import { LLMError, convertUsage } from '../providerTypes'
 import type { LLMResponse } from '../providerTypes'
 import type { LLMConfig, LLMMessage, ToolDefinition } from '@protocols'
@@ -63,25 +63,40 @@ export class SyncService {
         baseMessages,
         abortSignal,
         execute: async (prepared: any) => {
-          // 用户配置的 timeout 是「空闲超时」语义，数值可能偏小（例如 30 秒），
-          // 不能直接当作「整个请求总超时」，否则长上下文 / 思考型模型会在中途
-          // 被 SDK 强制中止。这里统一抬到安全下限。
+          // ⚠️ 与流式路径共用同一套超时语义（见 StreamProcessor.resolveRequestTimeoutMs）：
+          // - 模型配置里的 `timeout` 是「多久没有数据算超时」的空闲语义，数值往往偏小
+          //   （例如 30s）；而 AI SDK 的 `timeout` 是**整个请求的总耗时上限**，
+          //   原样透传会让长上下文 / 思考型模型在正常生成途中被强制中止，
+          //   表现为「AI 还在思考就自动中断」。因此把它从 callOptions 剥离，
+          //   仅作为诊断信息记录，不再直接作用于请求。
+          const { timeout: configuredTimeoutMs, ...callOptions } = prepared.callOptions ?? {}
+
+          // 思考型模型不设总超时（长思考耗时不可预估）；非思考型仅保留极宽松兜底。
+          // 调用方显式传入的 timeout 视为「总耗时上限」，优先级最高。
           const explicitTimeout =
             typeof timeout === 'number' && Number.isFinite(timeout) && timeout > 0
               ? timeout
               : undefined
+          const thinkingTolerant = resolveThinkingTolerance(config, messages)
           const requestTimeoutMs =
-            explicitTimeout ?? resolveRequestTimeoutMs(prepared.callOptions?.timeout, true)
+            explicitTimeout ?? resolveRequestTimeoutMs(thinkingTolerant)
+
+          logger.llm.debug('[SyncService] 超时策略已解析', {
+            thinkingTolerant,
+            configuredTimeoutMs: configuredTimeoutMs ?? null,
+            explicitTimeoutMs: explicitTimeout ?? null,
+            requestTimeoutMs: requestTimeoutMs ?? null,
+          })
 
           return await generateText({
             model,
             messages: prepared.messages,
             tools: coreTools,
             ...prepared.settings,
-            ...prepared.callOptions,
+            ...callOptions,
             providerOptions: prepared.providerOptions,
             abortSignal,
-            timeout: requestTimeoutMs,
+            ...(requestTimeoutMs !== undefined ? { timeout: requestTimeoutMs } : {}),
           })
         },
       })

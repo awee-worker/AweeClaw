@@ -70,6 +70,15 @@ import { createEnvironmentApi } from './preload/api/environment'
 import { createDeviceLinkApi } from './preload/api/deviceLink'
 import { createExternalAgentApi } from './preload/api/externalAgent'
 import { createVrmCompanionApi } from './preload/api/vrmCompanion'
+import { createOverlayApi } from './preload/api/overlay'
+import { createLiveApi } from './preload/api/live'
+import { createVtsApi } from './preload/api/vts'
+import { createA2aApi } from './preload/api/a2a'
+import { createOpenApiApi } from './preload/api/openApi'
+import { createPowerGuardApi } from './preload/api/powerGuard'
+import { createSandboxApi } from './preload/api/sandbox'
+import { createVmcApi } from './preload/api/vmc'
+import { createLocalVoiceApi } from './preload/api/localVoice'
 /**
  * 聚合所有领域 API 并暴露到渲染进程。
  *
@@ -111,4 +120,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     deviceLink: createDeviceLinkApi(),
     externalAgent: createExternalAgentApi(),
     vrmCompanion: createVrmCompanionApi(),
+    overlay: createOverlayApi(),
+    live: createLiveApi(),
+    vts: createVtsApi(),
+    a2a: createA2aApi(),
+    openapi: createOpenApiApi(),
+    powerGuard: createPowerGuardApi(),
+    sandbox: createSandboxApi(),
+    vmc: createVmcApi(),
+    localVoice: createLocalVoiceApi(),
   })

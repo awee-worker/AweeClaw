@@ -270,6 +270,37 @@ type ElectronAPIWithRemoteShell = ElectronAPI & {
   memoryDbMigrateFromJsonStore: (store: any) => Promise<{ success: boolean; migrated: number; skipped: number; error?: string }>
   memoryDbGetPath: () => Promise<string>
 
+  // Group Memory (P1-3 群聊长期记忆)
+  groupMemoryGetConfig: () => Promise<{ success: boolean; config: any; error?: string }>
+  groupMemoryUpdateConfig: (config: any) => Promise<{ success: boolean; config: any; error?: string }>
+  groupMemoryResetConfig: () => Promise<{ success: boolean; config: any; error?: string }>
+  groupMemoryExtract: (request: any) => Promise<{ success: boolean; count: number; error?: string }>
+  groupMemoryGetContext: (groupId: string, groupName: string, queryText: string) => Promise<{ success: boolean; context: any; error?: string }>
+  groupMemoryGetMemories: (groupId: string, options?: any) => Promise<{ success: boolean; memories: any[]; error?: string }>
+  groupMemorySupersede: (id: string) => Promise<{ success: boolean; error?: string }>
+  groupMemoryClearGroup: (groupId: string) => Promise<{ success: boolean; count: number; error?: string }>
+  groupMemoryClearAll: () => Promise<{ success: boolean; count: number; error?: string }>
+  groupMemoryDeleteBySource: (sourceChatId: string) => Promise<{ success: boolean; count: number; error?: string }>
+  groupMemoryGetStats: (groupId?: string) => Promise<{ success: boolean; stats: any; error?: string }>
+
+  // ============================================
+  // Audiobook API（P1-7 长文播报）
+  // ============================================
+
+  audiobook: {
+    createTask: (filePath: string, config?: Record<string, unknown>) => Promise<{ success: boolean; data?: any; error?: string }>
+    getTask: (taskId: string) => Promise<{ success: boolean; data?: any; error?: string }>
+    getAllTasks: () => Promise<{ success: boolean; data?: any[]; error?: string }>
+    deleteTask: (taskId: string) => Promise<{ success: boolean; error?: string }>
+    executeTask: (taskId: string) => Promise<{ success: boolean; error?: string }>
+    pauseTask: (taskId: string) => Promise<{ success: boolean; error?: string }>
+    cancelTask: (taskId: string) => Promise<{ success: boolean; error?: string }>
+    resumeTask: (taskId: string) => Promise<{ success: boolean; error?: string }>
+    getTaskProgress: (taskId: string) => Promise<{ success: boolean; data?: any; error?: string }>
+    estimateTask: (filePath: string) => Promise<{ success: boolean; data?: any; error?: string }>
+    getOutputPath: (taskId: string, filename: string) => Promise<{ success: boolean; data?: string; error?: string }>
+  }
+
   // 项目附件本地存储（本地优先，后端兜底）
   attachmentSave: (params: { projectId: string; fileName: string; base64Data: string; mimeType?: string }) => Promise<LocalAttachmentItem>
   attachmentList: (projectId: string) => Promise<LocalAttachmentItem[]>
@@ -484,6 +515,12 @@ function createGroupedAPI() {
     // 记忆数据库 (SQLite) - 客户端本地记忆存储（自动分组：memoryDbXxx → memoryDb.xxx）
     memoryDb: createGroup(raw, 'memoryDb'),
 
+  // 群组记忆 (P1-3 群聊长期记忆)（自动分组：groupMemoryXxx → groupMemory.xxx）
+  groupMemory: createGroup(raw, 'groupMemory'),
+
+  // 有声书 (P1-7 长文播报)（自动分组：audiobookXxx → audiobook.xxx）
+  audiobook: createGroup(raw, 'audiobook'),
+
     // 项目附件本地存储（本地优先，后端兜底）（自动分组：attachmentXxx → attachment.xxx）
     attachment: createGroup(raw, 'attachment'),
 
@@ -647,6 +684,33 @@ function createGroupedAPI() {
 
     // 定时任务（自动分组：cronXxx → cron.xxx, onCronXxx → cron.onXxx）
     cron: createGroup(raw, 'cron'),
+
+    // 字幕 / 弹幕悬浮层（preload 已暴露为嵌套对象，直接透传）
+    overlay: raw.overlay,
+
+    // 直播互动（B站 / YouTube / Twitch，preload 已暴露为嵌套对象，直接透传）
+    live: raw.live,
+
+    // VTS（VTube Studio）联动（preload 已暴露为嵌套对象，直接透传）
+    vts: raw.vts,
+
+    // VMC 协议（双向动作捕捉，preload 已暴露为嵌套对象，直接透传）
+    vmc: raw.vmc,
+
+    // 本地语音引擎（preload 已暴露为嵌套对象，直接透传）
+    localVoice: raw.localVoice,
+
+    // A2A（Agent2Agent）协议（preload 已暴露为嵌套对象，直接透传）
+    a2a: raw.a2a,
+
+    // 对外 API 网关（OpenAI 兼容 + MCP，preload 已暴露为嵌套对象，直接透传）
+    openapi: raw.openapi,
+
+    // 防休眠（preload 已暴露为嵌套对象，直接透传）
+    powerGuard: raw.powerGuard,
+
+    // 代码沙箱（preload 已暴露为嵌套对象，直接透传）
+    sandbox: raw.sandbox,
 
     // VRM 桌面伴侣（preload 已暴露为嵌套对象，直接透传）
     vrmCompanion: raw.vrmCompanion,

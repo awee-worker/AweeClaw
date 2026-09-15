@@ -42,7 +42,7 @@ function resolveProviderTransportConfig(
       providerConfig?.openAICompatibilityProfile
         ?? (fallbackMatchesProvider ? fallbackConfig?.openAICompatibilityProfile : undefined),
     ),
-    model: providerConfig?.model ?? builtinProvider?.defaultModel ?? (fallbackMatchesProvider ? fallbackConfig?.model : undefined),
+    model: providerConfig?.model ?? (fallbackMatchesProvider ? fallbackConfig?.model : undefined),
   }
 }
 

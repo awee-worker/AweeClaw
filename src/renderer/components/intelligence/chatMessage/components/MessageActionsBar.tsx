@@ -7,7 +7,7 @@
  * 图标尺寸统一为 w-4 h-4（16px），内边距 p-1.5，确保点击区域舒适（~28px 触达目标）。
  * 赞/踩反馈通过 onLike / onDislikeSubmit / onDislikeRegenerate / onCancelFeedback 回调持久化到会话数据库。
  */
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { Copy, Check, Edit2, RotateCcw, ThumbsUp, ThumbsDown, RefreshCw, FileEdit, CheckCircle2 } from 'lucide-react'
 import { HintOverlay } from '../../../ui/HintOverlay'
 import VoiceOutputButton from '../../../conversation/VoiceOutputButton'
@@ -55,6 +55,10 @@ interface MessageActionsBarProps {
   onCancelFeedback?: () => void
   /** 是否始终可见（不依赖 hover），用于最后一条助手消息 */
   alwaysVisible?: boolean
+  /** 消息时间戳（ms），显示在操作按钮前/后 */
+  timestamp?: number
+  /** 时间显示位置：用户消息在图标按钮前面，AI 消息在后面 */
+  timePosition?: 'before' | 'after'
 }
 
 /** 语音输出按钮包装器 */
@@ -77,6 +81,58 @@ const VoiceOutputButtonForMessage = React.memo(function VoiceOutputButtonForMess
   )
 })
 VoiceOutputButtonForMessage.displayName = 'VoiceOutputButtonForMessage'
+
+/** 相对时间格式化：<1分钟=刚刚；<1小时=N分钟前；<1天=N小时前；<7天=N天前；否则 M-D HH:mm（跨年含年份） */
+export function formatMessageTimestamp(ts: number, lang: Language): string {
+  const diff = Date.now() - ts
+  const minute = 60_000
+  const hour = 3_600_000
+  const day = 86_400_000
+  if (diff < minute) return t('ai.justnow', lang)
+  if (diff < hour) return t('ai.minutesago', lang, { n: Math.floor(diff / minute) })
+  if (diff < day) return t('ai.hoursago', lang, { n: Math.floor(diff / hour) })
+  if (diff < day * 7) return t('ai.daysago', lang, { n: Math.floor(diff / day) })
+  const d = new Date(ts)
+  const pad = (x: number) => String(x).padStart(2, '0')
+  const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}`
+  const md = `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  return d.getFullYear() === new Date().getFullYear() ? `${md} ${hm}` : `${d.getFullYear()}-${md} ${hm}`
+}
+
+/** 完整时间（用于 hover tooltip）：YYYY-MM-DD HH:mm:ss */
+export function formatMessageTimestampFull(ts: number): string {
+  const d = new Date(ts)
+  const pad = (x: number) => String(x).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
+/** 每分钟刷新一次相对时间，保证 hover 时显示的最新值 */
+function useRelativeTimeTick(enabled: boolean) {
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    if (!enabled) return
+    const id = window.setInterval(() => setTick(x => x + 1), 60_000)
+    return () => window.clearInterval(id)
+  }, [enabled])
+}
+
+/** 消息时间戳显示（带完整时间 tooltip） */
+const MessageTimestamp = React.memo(function MessageTimestamp({
+  timestamp,
+  language,
+}: {
+  timestamp: number
+  language: Language
+}) {
+  useRelativeTimeTick(true)
+  return (
+    <HintOverlay content={formatMessageTimestampFull(timestamp)}>
+      <span className="px-0.5 text-[11px] leading-none text-text-muted/70 tabular-nums select-none cursor-default">
+        {formatMessageTimestamp(timestamp, language)}
+      </span>
+    </HintOverlay>
+  )
+})
 
 function MessageActionsBarBase({
   messageId,
@@ -102,6 +158,8 @@ function MessageActionsBarBase({
   onDislikeRegenerate,
   onCancelFeedback,
   alwaysVisible,
+  timestamp,
+  timePosition,
 }: MessageActionsBarProps) {
   const copyLabel = t('ai.copycontent', language)
   const editLabel = t('ai.editmessage', language)
@@ -147,14 +205,18 @@ function MessageActionsBarBase({
     </span>
   ) : null
 
+  /** 消息时间戳（用户消息在按钮前、助手消息在按钮后） */
+  const timeEl = timestamp ? (
+    <MessageTimestamp timestamp={timestamp} language={language} />
+  ) : null
+
   return (
     <div
       className={`flex items-center gap-1.5 mt-1.5 mr-1 transition-opacity duration-200 ${
         alwaysVisible ? 'opacity-100' : 'opacity-0 group-hover/msg:opacity-100'
       }`}
     >
-      {/* 任务完成 chip（条件显示） */}
-      {taskDoneChip}
+      {timePosition === 'before' && timeEl}
 
       {/* 文件变更 chip（条件显示） */}
       {fileChip}
@@ -247,6 +309,7 @@ function MessageActionsBarBase({
           language={language}
         />
       )}
+      {timePosition !== 'before' && timeEl}
     </div>
   )
 }

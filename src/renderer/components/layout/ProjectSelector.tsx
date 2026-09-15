@@ -5,7 +5,7 @@
 import { api } from '../../adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
 import { useState, useRef, useEffect } from 'react'
-import { ChevronDown, Plus, FolderOpen, History, Folder, Monitor, LayoutGrid } from 'lucide-react'
+import { ChevronDown, Plus, FolderOpen, History, Folder, Monitor, LayoutGrid, PanelLeft } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useStore } from '@store'
 import { workspaceManager, WorkspaceOpenError } from '@services/WorkspaceAdapter'
@@ -122,6 +122,19 @@ export default function ProjectSelector() {
                         className="absolute top-full left-0 mt-2 w-72 p-1.5 bg-background/80 backdrop-blur-xl border border-border rounded-xl shadow-2xl shadow-black/50 z-50 overflow-hidden"
                     >
                         <div className="space-y-0.5">
+                            <MenuItem
+                                icon={PanelLeft}
+                                label={t('workspace.showWorkspacePanel', language)}
+                                description={t('workspace.showWorkspacePanelDesc', language)}
+                                onClick={() => {
+                                    setIsOpen(false)
+                                    if (useStore.getState().activeSidePanel) {
+                                        useStore.getState().toggleSidebar()
+                                    } else {
+                                        useStore.getState().setActiveSidePanel('explorer')
+                                    }
+                                }}
+                            />
                             <MenuItem
                                 icon={Monitor}
                                 label={t('workspace.newWindow', language)}

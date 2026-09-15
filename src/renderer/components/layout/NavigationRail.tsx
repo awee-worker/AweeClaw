@@ -491,6 +491,10 @@ export default function NavigationRail() {
   // 仪表盘（欢迎页）选中态
   const isDashboardActive = showWelcomePage
 
+  // 仪表盘界面时，不显示历史会话的高亮选中（用户未实际处于某个会话中，
+  // 避免"进入应用在仪表盘，但历史列表某条仍被高亮"的误选感）
+  const threadHighlightEnabled = !showWelcomePage
+
   // 新建任务不参与高亮：它是动作入口（打开工作区文件面板 + 新建会话），
   // 当前会话的选中态统一由下方历史会话列表体现（currentThreadId === thread.id）。
   // 若绑定 activeSidePanel === 'explorer'，会导致仅打开工作区面板时误高亮。
@@ -1084,7 +1088,7 @@ export default function NavigationRail() {
                     <ThreadListItem
                       key={thread.id}
                       thread={thread}
-                      isActive={currentThreadId === thread.id}
+                       isActive={threadHighlightEnabled && currentThreadId === thread.id}
                       language={language}
                       onSelect={() => switchThread(thread.id)}
                       onDelete={() => deleteThread(thread.id)}
@@ -1118,7 +1122,7 @@ export default function NavigationRail() {
                   <button
                     onClick={() => switchThread(thread.id)}
                     className={`w-[30px] h-[30px] rounded-md flex items-center justify-center transition-all ${
-                      currentThreadId === thread.id
+                      threadHighlightEnabled && currentThreadId === thread.id
                         ? 'bg-accent/10 text-accent'
                         : 'text-text-muted hover:text-text-primary hover:bg-surface-hover/50'
                     }`}

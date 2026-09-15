@@ -134,6 +134,8 @@ function UserMessageViewBase({
             hasCheckpoint={!!hasCheckpoint}
             language={language as Language}
             menuLabelKey="more"
+            timestamp={userMessage.timestamp}
+            timePosition="before"
           />
         )}
       </div>

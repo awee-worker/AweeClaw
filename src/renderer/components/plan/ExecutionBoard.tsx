@@ -121,7 +121,7 @@ const ModelSelector = memo(function ModelSelector({
         // 添加内置厂商
         for (const [id, config] of Object.entries(BUILTIN_PROVIDERS)) {
             const userConfig = providerConfigs[id]
-            const models = [...config.models, ...(userConfig?.customModels || [])]
+            const models = [...(userConfig?.customModels || [])]
             result.push({ id, displayName: config.displayName, models })
         }
 
@@ -167,9 +167,7 @@ const ModelSelector = memo(function ModelSelector({
                     options={providerOptions}
                     value={provider}
                     onChange={(val) => {
-                        const newProviderConfig = allProviders.find(p => p.id === val)
-                        const defaultModel = newProviderConfig?.models[0] || ''
-                        onChange(val, defaultModel)
+                        onChange(val, '')
                     }}
                     disabled={disabled}
                     className="text-xs"

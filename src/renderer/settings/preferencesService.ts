@@ -205,7 +205,7 @@ function rebuildSettingsFromDb(dbData: {
   const llmConfig = resolveRuntimeLLMConfig(
     {
       provider: currentProviderId,
-      model: currentProviderDbConfig.model || builtinDef?.defaultModel,
+      model: currentProviderDbConfig.model || '',
       ...behavior,
     } as Partial<PersistedLLMConfig>,
     providerConfigs,

@@ -11,7 +11,7 @@ import { logger } from '@toolkit/LogEngine'
  * （MultiAgentExecution）共用，避免两条路径行为不一致：
  * 1. 受执行锁保护的续接消息派发（避免 "Thread already running" 静默失败）
  * 2. 异常中断自动续接次数上限（防止「中断 → 续接 → 再中断」无限循环烧额度）
- * 3. 自由模式连续自动轮次上限（防止跑满 maxIterations 后无限自动续接）
+ * 3. 自由模式连续自动轮次上限（防止主循环异常未收尾时无限自动续接）
  */
 
 /* ------------------------------------------------------------------ */
@@ -84,10 +84,10 @@ export function scheduleAutoResume(threadId: string, reason: string): void {
 /**
  * 自由模式下的「连续自动轮次」计数（按线程）。
  *
- * 自由模式（freeModeEnabled）跑满 maxIterations 会直接派发续接消息，与
- * 异常中断不同——这是正常路径，因此不消耗 autoResumeCounters 预算。
- * 但若 AI 每轮都跑满却不收尾（任务本身发散/死循环），就会无限自动续接、
- * 持续消耗额度与时间。这里给它一个远高于正常任务的硬上限兜底。
+ * 自由模式（freeModeEnabled）在主循环未正常收尾（loopState 仍为 running）时
+ * 直接派发续接消息，与异常中断不同——这是正常路径，因此不消耗
+ * autoResumeCounters 预算。但若 AI 连续多轮都不收尾（任务本身发散/死循环），
+ * 就会无限自动续接、持续消耗额度与时间。这里给它一个远高于正常任务的硬上限兜底。
  */
 const freeModeRoundCounters = new Map<string, number>()
 export const MAX_FREE_MODE_ROUNDS = 20

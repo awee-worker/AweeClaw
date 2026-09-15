@@ -1127,7 +1127,7 @@ export function ModelProviderPanel({
       apiKey: nextConfig.apiKey || '',
       baseUrl: nextConfig.baseUrl || providerInfo?.baseUrl || '',
       timeout: nextConfig.timeout || providerInfo?.defaults.timeout || 120000,
-      model: nextConfig.model || providerInfo?.models[0] || '',
+      model: nextConfig.model || '',
       headers: nextConfig.headers || {},
       openAICompatibilityProfile: resolveOpenAICompatibilityProfile(
         providerId,
@@ -1168,7 +1168,7 @@ export function ModelProviderPanel({
       apiKey: customConfig.apiKey || '',
       baseUrl: customConfig.baseUrl || '',
       timeout: customConfig.timeout || 120000,
-      model: customConfig.model || models[0] || '',
+      model: customConfig.model || '',
       headers: customConfig.headers || {},
       openAICompatibilityProfile: resolveOpenAICompatibilityProfile(
         id,
