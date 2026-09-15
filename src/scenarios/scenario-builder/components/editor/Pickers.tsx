@@ -170,6 +170,12 @@ export interface MultiSelectOption {
   labelKey: string
   descKey?: string
   group?: string
+  /**
+   * 预留选项：尚无可用实现（如无内置执行器的工具）。
+   * UI 会标记为「未实现」并禁止勾选，避免用户选择后得到静默失效的配置；
+   * 历史配置中已选中的预留项仍可手动移除。
+   */
+  reserved?: boolean
 }
 
 interface MultiSelectPickerProps {
@@ -243,10 +249,10 @@ const MultiSelectPicker: React.FC<MultiSelectPickerProps> = ({ options, value, o
     onChange(value.filter((x) => x !== v))
   }
 
-  // 选项 value → label 映射，用于已选标签展示
-  const valueLabelMap = useMemo(() => {
-    const m = new Map<string, string>()
-    for (const opt of options) m.set(opt.value, t(opt.labelKey))
+  // 选项 value → { label, reserved } 映射，用于已选标签展示
+  const valueInfoMap = useMemo(() => {
+    const m = new Map<string, { label: string; reserved: boolean }>()
+    for (const opt of options) m.set(opt.value, { label: t(opt.labelKey), reserved: !!opt.reserved })
     return m
   }, [options, t])
 
@@ -260,24 +266,31 @@ const MultiSelectPicker: React.FC<MultiSelectPickerProps> = ({ options, value, o
         {value.length === 0 ? (
           <span className="text-muted-foreground/60">{placeholder ?? t('builder.config.multiselect.placeholder')}</span>
         ) : (
-          value.map((v) => (
-            <span
-              key={v}
-              className="inline-flex items-center gap-1 rounded bg-accent/10 px-1.5 py-0.5 text-[11px] text-accent"
-            >
-              {valueLabelMap.get(v) ?? v}
+          value.map((v) => {
+            const info = valueInfoMap.get(v)
+            const reserved = info?.reserved ?? false
+            return (
               <span
-                role="button"
-                tabIndex={0}
-                onClick={(e) => removeItem(v, e)}
-                onKeyDown={(e) => e.key === 'Enter' && removeItem(v, e as any)}
-                className="cursor-pointer rounded-full hover:bg-accent/20"
-                title={t('builder.config.multiselect.remove')}
+                key={v}
+                title={reserved ? t('builder.config.multiselect.reservedHint') : undefined}
+                className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] ${
+                  reserved ? 'bg-destructive/10 text-destructive' : 'bg-accent/10 text-accent'
+                }`}
               >
-                <X className="h-2.5 w-2.5" />
+                {info?.label ?? v}
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => removeItem(v, e)}
+                  onKeyDown={(e) => e.key === 'Enter' && removeItem(v, e as any)}
+                  className="cursor-pointer rounded-full hover:bg-accent/20"
+                  title={t('builder.config.multiselect.remove')}
+                >
+                  <X className="h-2.5 w-2.5" />
+                </span>
               </span>
-            </span>
-          ))
+            )
+          })
         )}
         <ChevronDown className="ml-auto h-3 w-3 shrink-0 text-muted-foreground" />
       </button>
@@ -307,12 +320,18 @@ const MultiSelectPicker: React.FC<MultiSelectPickerProps> = ({ options, value, o
                 </div>
                 {items.map((opt) => {
                   const selected = value.includes(opt.value)
+                  // 预留选项无可用实现：已选中的允许取消，未选中的禁止勾选
+                  const blocked = !!opt.reserved && !selected
                   return (
                     <button
                       key={opt.value}
                       type="button"
                       onClick={() => toggle(opt.value)}
-                      className="flex w-full items-start gap-2 px-2 py-1.5 text-left transition-colors hover:bg-muted/40"
+                      disabled={blocked}
+                      title={opt.reserved ? t('builder.config.multiselect.reservedHint') : undefined}
+                      className={`flex w-full items-start gap-2 px-2 py-1.5 text-left transition-colors ${
+                        blocked ? 'cursor-not-allowed opacity-55' : 'hover:bg-muted/40'
+                      }`}
                     >
                       <div
                         className={`mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border ${
@@ -324,6 +343,11 @@ const MultiSelectPicker: React.FC<MultiSelectPickerProps> = ({ options, value, o
                       <div className="min-w-0 flex-1">
                         <div className="flex items-baseline gap-1.5">
                           <span className="text-[12px] text-foreground">{t(opt.labelKey)}</span>
+                          {opt.reserved && (
+                            <span className="shrink-0 rounded bg-muted px-1 py-px text-[10px] text-muted-foreground">
+                              {t('builder.config.multiselect.reserved')}
+                            </span>
+                          )}
                           <span className="truncate text-[11px] text-muted-foreground/70">{opt.value}</span>
                         </div>
                         {opt.descKey && (

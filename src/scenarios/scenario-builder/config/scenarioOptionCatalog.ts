@@ -113,6 +113,14 @@ export interface BuiltinToolOption {
   labelKey: string
   descKey: string
   group: 'file' | 'code' | 'exec' | 'web' | 'data' | 'interaction'
+  /**
+   * 预留工具：工具描述已在 toolDefinitions.ts 定义，但 toolExecutors.ts 尚未实现执行器。
+   *
+   * 此类工具不会进入场景运行时工具集——BuiltinToolRegistry.isAvailable() 会通过
+   * toolRegistry.has() 二次校验并返回 false，即使用户勾选，场景也静默拿不到该工具。
+   * 为避免「勾选后静默失效」，UI 将其标记为「未实现」并禁止勾选。
+   */
+  reserved?: boolean
 }
 
 export const BUILTIN_TOOL_OPTIONS: BuiltinToolOption[] = [
@@ -122,17 +130,34 @@ export const BUILTIN_TOOL_OPTIONS: BuiltinToolOption[] = [
   { value: 'list_directory', labelKey: 'builder.config.tool.list_directory', descKey: 'builder.config.tool.list_directory.desc', group: 'file' },
   { value: 'search_files', labelKey: 'builder.config.tool.search_files', descKey: 'builder.config.tool.search_files.desc', group: 'file' },
   { value: 'edit_file', labelKey: 'builder.config.tool.edit_file', descKey: 'builder.config.tool.edit_file.desc', group: 'file' },
+  { value: 'create_file_or_folder', labelKey: 'builder.config.tool.create_file_or_folder', descKey: 'builder.config.tool.create_file_or_folder.desc', group: 'file' },
+  { value: 'delete_file_or_folder', labelKey: 'builder.config.tool.delete_file_or_folder', descKey: 'builder.config.tool.delete_file_or_folder.desc', group: 'file' },
   // 代码搜索
   { value: 'codebase_search', labelKey: 'builder.config.tool.codebase_search', descKey: 'builder.config.tool.codebase_search.desc', group: 'code' },
+  { value: 'get_lint_errors', labelKey: 'builder.config.tool.get_lint_errors', descKey: 'builder.config.tool.get_lint_errors.desc', group: 'code' },
+  { value: 'find_references', labelKey: 'builder.config.tool.find_references', descKey: 'builder.config.tool.find_references.desc', group: 'code' },
+  { value: 'go_to_definition', labelKey: 'builder.config.tool.go_to_definition', descKey: 'builder.config.tool.go_to_definition.desc', group: 'code' },
+  { value: 'get_hover_info', labelKey: 'builder.config.tool.get_hover_info', descKey: 'builder.config.tool.get_hover_info.desc', group: 'code' },
+  { value: 'get_document_symbols', labelKey: 'builder.config.tool.get_document_symbols', descKey: 'builder.config.tool.get_document_symbols.desc', group: 'code' },
   // 执行
   { value: 'run_command', labelKey: 'builder.config.tool.run_command', descKey: 'builder.config.tool.run_command.desc', group: 'exec' },
+  { value: 'read_terminal_output', labelKey: 'builder.config.tool.read_terminal_output', descKey: 'builder.config.tool.read_terminal_output.desc', group: 'exec' },
+  { value: 'send_terminal_input', labelKey: 'builder.config.tool.send_terminal_input', descKey: 'builder.config.tool.send_terminal_input.desc', group: 'exec' },
+  { value: 'stop_terminal', labelKey: 'builder.config.tool.stop_terminal', descKey: 'builder.config.tool.stop_terminal.desc', group: 'exec' },
   // 网络
   { value: 'web_search', labelKey: 'builder.config.tool.web_search', descKey: 'builder.config.tool.web_search.desc', group: 'web' },
   { value: 'read_url', labelKey: 'builder.config.tool.read_url', descKey: 'builder.config.tool.read_url.desc', group: 'web' },
   // 数据
-  { value: 'sql_query', labelKey: 'builder.config.tool.sql_query', descKey: 'builder.config.tool.sql_query.desc', group: 'data' },
-  { value: 'data_transform', labelKey: 'builder.config.tool.data_transform', descKey: 'builder.config.tool.data_transform.desc', group: 'data' },
-  { value: 'chart_generate', labelKey: 'builder.config.tool.chart_generate', descKey: 'builder.config.tool.chart_generate.desc', group: 'data' },
+  // 预留工具：无内置执行器，UI 标记「未实现」且禁止勾选
+  { value: 'sql_query', labelKey: 'builder.config.tool.sql_query', descKey: 'builder.config.tool.sql_query.desc', group: 'data', reserved: true },
+  { value: 'data_transform', labelKey: 'builder.config.tool.data_transform', descKey: 'builder.config.tool.data_transform.desc', group: 'data', reserved: true },
+  { value: 'chart_generate', labelKey: 'builder.config.tool.chart_generate', descKey: 'builder.config.tool.chart_generate.desc', group: 'data', reserved: true },
+  { value: 'csv_analyze', labelKey: 'builder.config.tool.csv_analyze', descKey: 'builder.config.tool.csv_analyze.desc', group: 'data', reserved: true },
+  { value: 'statistical_test', labelKey: 'builder.config.tool.statistical_test', descKey: 'builder.config.tool.statistical_test.desc', group: 'data', reserved: true },
+  { value: 'knowledge_search', labelKey: 'builder.config.tool.knowledge_search', descKey: 'builder.config.tool.knowledge_search.desc', group: 'data' },
   // 交互
   { value: 'ask_user', labelKey: 'builder.config.tool.ask_user', descKey: 'builder.config.tool.ask_user.desc', group: 'interaction' },
+  { value: 'todo_write', labelKey: 'builder.config.tool.todo_write', descKey: 'builder.config.tool.todo_write.desc', group: 'interaction' },
+  { value: 'remember', labelKey: 'builder.config.tool.remember', descKey: 'builder.config.tool.remember.desc', group: 'interaction' },
+  { value: 'companion_control', labelKey: 'builder.config.tool.companion_control', descKey: 'builder.config.tool.companion_control.desc', group: 'interaction' },
 ]

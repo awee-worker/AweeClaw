@@ -183,19 +183,41 @@ export function createScriptsConfig(
 }
 
 export const BUILTIN_TOOLS = {
+  // 文件
   FILE_READ: 'read_file',
   FILE_WRITE: 'write_file',
   FILE_LIST: 'list_directory',
   FILE_SEARCH: 'search_files',
-  CODEBASE_SEARCH: 'codebase_search',
+  FILE_CREATE: 'create_file_or_folder',
+  FILE_DELETE: 'delete_file_or_folder',
   FILE_EDIT: 'edit_file',
+  // 代码
+  CODEBASE_SEARCH: 'codebase_search',
+  LINT_ERRORS: 'get_lint_errors',
+  FIND_REFERENCES: 'find_references',
+  GO_TO_DEFINITION: 'go_to_definition',
+  HOVER_INFO: 'get_hover_info',
+  DOCUMENT_SYMBOLS: 'get_document_symbols',
+  // 执行
   TERMINAL: 'run_command',
+  TERMINAL_READ: 'read_terminal_output',
+  TERMINAL_INPUT: 'send_terminal_input',
+  TERMINAL_STOP: 'stop_terminal',
+  // 网络
   WEB_SEARCH: 'web_search',
   URL_READ: 'read_url',
+  // 数据
   SQL_QUERY: 'sql_query',
   DATA_TRANSFORM: 'data_transform',
   CHART: 'chart_generate',
+  CSV_ANALYZE: 'csv_analyze',
+  STATISTICAL_TEST: 'statistical_test',
+  KNOWLEDGE_SEARCH: 'knowledge_search',
+  // 交互
   ASK_USER: 'ask_user',
+  TODO_WRITE: 'todo_write',
+  REMEMBER: 'remember',
+  COMPANION_CONTROL: 'companion_control',
 } as const
 
 export const SCENARIO_CATEGORIES: ScenarioCategory[] = [

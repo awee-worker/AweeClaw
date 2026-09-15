@@ -39,6 +39,7 @@ import {
   listAnimations,
   importModel,
   deleteModel,
+  downloadOnlineModel,
   loadAffectionData,
   extractAndUpdateAffection,
   type VrmCompanionConfig,
@@ -213,6 +214,42 @@ export function registerVrmCompanionIpc(): void {
       return { success: false, error: err instanceof Error ? err.message : String(err) }
     }
   })
+
+  /**
+   * 下载在线角色模型（后端模型库 → 用户本地模型目录）。
+   *
+   * 进度通过 `vrm-companion:download-progress` 单向下发给发起请求的渲染进程，
+   * 因为模型文件十几 MB 起步，没有进度反馈用户会以为「点了没反应」。
+   */
+  safeIpcHandle(
+    'vrm-companion:download-online-model',
+    async (event, payload: unknown) => {
+      try {
+        const data = (payload ?? {}) as { id?: string; name?: string; url?: string }
+        const result = await downloadOnlineModel({
+          name: String(data.name ?? ''),
+          url: String(data.url ?? ''),
+          onProgress: (received, total) => {
+            try {
+              event.sender.send('vrm-companion:download-progress', {
+                id: data.id ?? null,
+                received,
+                total,
+              })
+            } catch {
+              // 渲染进程已销毁时忽略进度推送失败
+            }
+          },
+        })
+        return result.success
+          ? { success: true, data: result.model }
+          : { success: false, error: result.error }
+      } catch (err) {
+        logger.system.error('[VrmCompanionIpc] download-online-model failed:', err)
+        return { success: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+  )
 
   safeIpcHandle('vrm-companion:select-model', async (_event, id: unknown) => {
     try {

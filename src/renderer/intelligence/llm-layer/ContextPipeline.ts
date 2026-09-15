@@ -197,7 +197,8 @@ const FolderProvider: ContextProvider = {
   async process(item, ctx) {
     const { uri } = item as { uri: string }
     try {
-      const result = await toolRegistry.execute('get_dir_tree', { path: uri, max_depth: 3 }, { workspacePath: ctx.workspacePath })
+      // get_dir_tree 已并入 list_directory（递归模式），旧名无执行器会直接返回 Unknown tool
+      const result = await toolRegistry.execute('list_directory', { path: uri, recursive: true, max_depth: 3 }, { workspacePath: ctx.workspacePath })
       if (result.success) {
         return `\n### Folder: ${uri}\n\`\`\`\n${result.result}\n\`\`\`\n`
       }

@@ -128,11 +128,12 @@ export default function ProjectSelector() {
                                 description={t('workspace.showWorkspacePanelDesc', language)}
                                 onClick={() => {
                                     setIsOpen(false)
-                                    if (useStore.getState().activeSidePanel) {
-                                        useStore.getState().toggleSidebar()
-                                    } else {
-                                        useStore.getState().setActiveSidePanel('explorer')
-                                    }
+                                    const store = useStore.getState()
+                                    // 始终「显示」工作区面板（幂等）：先退出全屏页面/工作流视图，
+                                    // 再确保面板可见并停留在 explorer，而非当前已显示时切换为隐藏
+                                    store.closeAllFullPages()
+                                    store.setShowWorkflow(false)
+                                    store.setActiveSidePanel('explorer')
                                 }}
                             />
                             <MenuItem

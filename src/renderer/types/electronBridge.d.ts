@@ -3171,6 +3171,19 @@ export interface ElectronAPI {
     deleteModel: (id: string) => Promise<VrmIpcResponse>
     /** 选择当前模型（null 表示自动选择默认） */
     selectModel: (id: string | null) => Promise<VrmIpcResponse<VrmCompanionConfig>>
+    /**
+     * 下载在线角色模型到本地用户模型目录。
+     *
+     * 渲染进程先从后端（/api/v1/vrm-models）拉取在线列表，再把选中的模型交给主进程，
+     * 由主进程负责流式下载与落盘（大文件不走渲染进程内存）。
+     */
+    downloadOnlineModel: (payload: {
+      id?: string
+      name: string
+      url: string
+    }) => Promise<VrmIpcResponse<VrmModelInfo>>
+    /** 订阅在线模型下载进度（main → 渲染进程） */
+    onDownloadProgress: (callback: (progress: VrmDownloadProgress) => void) => () => void
     /** 获取拖拽 IPC 频道名 */
     getDragChannel: () => Promise<VrmIpcResponse<{ start: string; end: string }>>
     /** 拖拽开始（单向） */
@@ -3614,6 +3627,16 @@ export interface VrmModelInfo {
   url: string
   size: number
   selected: boolean
+}
+
+/** 在线模型下载进度（main → 渲染进程） */
+export interface VrmDownloadProgress {
+  /** 后端模型 id（用于定位是哪一项在下载） */
+  id: string | null
+  /** 已接收字节数 */
+  received: number
+  /** 总字节数（0 表示服务端未返回 Content-Length） */
+  total: number
 }
 
 /** VRM 动作（.vrma）条目 */

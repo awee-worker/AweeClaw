@@ -559,6 +559,166 @@ export function deleteModel(id: string): { success: boolean; error?: string } {
 }
 
 // ============================================
+// 在线模型下载（后端模型库）
+// ============================================
+
+/** 在线模型下载参数 */
+export interface OnlineModelDownloadOptions {
+  /** 角色名称（后端下发的 name，决定落地文件名） */
+  name: string
+  /** 模型文件下载地址（.vrm / .glb） */
+  url: string
+  /** 下载进度回调（received/total 均为字节，total 为 0 表示服务端未返回长度） */
+  onProgress?: (received: number, total: number) => void
+}
+
+/** 在线模型下载结果 */
+export interface OnlineModelDownloadResult {
+  success: boolean
+  model?: VrmModelInfo
+  error?: string
+}
+
+/**
+ * 把文件名里不适合作为文件名的字符替换掉。
+ *
+ * 后端 name 是「角色名称」，可能包含中文、空格、斜杠等；中文本身可用，
+ * 但路径分隔符与 Windows 保留字符必须清理，否则写文件会失败。
+ */
+function sanitizeFileName(input: string, fallback: string): string {
+  const cleaned = (input || '')
+    .replace(/[\\/:*?"<>|]/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 60)
+  return cleaned || fallback
+}
+
+/**
+ * 从下载地址推断扩展名（.vrm / .glb），不在白名单内时回落到 .vrm。
+ */
+function resolveModelExt(url: string): string {
+  try {
+    const pathname = new URL(url).pathname.toLowerCase()
+    const ext = path.extname(pathname)
+    if (SUPPORTED_MODEL_EXT.includes(ext)) return ext
+  } catch {
+    // URL 解析失败时走默认值
+  }
+  return '.vrm'
+}
+
+/**
+ * 下载在线角色模型到用户模型目录。
+ *
+ * 流程：流式下载到临时文件 → 完成后重命名为最终文件名 → 登记到资源注册表。
+ * 先写临时文件再改名，是为了避免「下载中途失败留下一个半截的 .vrm」被
+ * listModels 扫描到，用户选中后模型加载失败且看不出原因。
+ *
+ * 注意：文件名按「角色名称 + 扩展名」生成并自动去重（同名时追加 -1、-2），
+ * 因此重复下载同一角色不会互相覆盖。
+ */
+export async function downloadOnlineModel(
+  options: OnlineModelDownloadOptions,
+): Promise<OnlineModelDownloadResult> {
+  const url = (options?.url ?? '').trim()
+  if (!url) {
+    return { success: false, error: 'INVALID_URL' }
+  }
+
+  const userDir = getUserModelsDir()
+  ensureDir(userDir)
+
+  const ext = resolveModelExt(url)
+  const baseName = sanitizeFileName(options?.name ?? '', `model-${Date.now()}`)
+  let targetName = `${baseName}${ext}`
+  let counter = 1
+  while (fs.existsSync(path.join(userDir, targetName))) {
+    targetName = `${baseName}-${counter}${ext}`
+    counter += 1
+  }
+
+  const targetPath = path.join(userDir, targetName)
+  const tmpPath = `${targetPath}.download`
+
+  let fileStream: fs.WriteStream | null = null
+  try {
+    const response = await net.fetch(url)
+    if (!response.ok) {
+      return { success: false, error: `HTTP_${response.status}` }
+    }
+    if (!response.body) {
+      return { success: false, error: 'EMPTY_RESPONSE' }
+    }
+
+    const total = Number(response.headers.get('content-length') || 0)
+    const reader = response.body.getReader()
+    fileStream = fs.createWriteStream(tmpPath)
+
+    let received = 0
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      if (!value) continue
+      received += value.byteLength
+      options?.onProgress?.(received, total)
+      // 背压处理：写缓冲满时等待 drain，避免大模型把内存撑爆
+      if (!fileStream.write(Buffer.from(value))) {
+        await new Promise<void>((resolve) => fileStream?.once('drain', () => resolve()))
+      }
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      fileStream?.end((err?: Error | null) => (err ? reject(err) : resolve()))
+    })
+    fileStream = null
+
+    // 下载完整性校验：服务端给了长度但实际字节数不符时视为失败
+    if (total > 0 && received !== total) {
+      fs.existsSync(tmpPath) && fs.unlinkSync(tmpPath)
+      return { success: false, error: 'INCOMPLETE_DOWNLOAD' }
+    }
+    if (received === 0) {
+      fs.existsSync(tmpPath) && fs.unlinkSync(tmpPath)
+      return { success: false, error: 'EMPTY_RESPONSE' }
+    }
+
+    fs.renameSync(tmpPath, targetPath)
+
+    const id = `user:${targetName}`
+    registerAsset(id, targetPath)
+
+    logger.system.info('[VrmCompanion] Online model downloaded:', targetName, received)
+
+    return {
+      success: true,
+      model: {
+        id,
+        name: path.basename(targetName, ext),
+        source: 'user',
+        size: received,
+        url: toAssetUrl(id),
+        selected: false,
+      },
+    }
+  } catch (err) {
+    // 失败时清理半截文件，避免污染模型列表
+    try {
+      if (fileStream) {
+        fileStream.destroy()
+        fileStream = null
+      }
+      if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath)
+      if (fs.existsSync(targetPath)) fs.unlinkSync(targetPath)
+    } catch {
+      // 清理失败不影响错误返回
+    }
+    logger.system.warn('[VrmCompanion] downloadOnlineModel failed:', err)
+    return { success: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+// ============================================
 // 配置读写
 // ============================================
 

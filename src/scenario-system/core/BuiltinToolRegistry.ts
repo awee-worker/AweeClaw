@@ -32,6 +32,10 @@ const AVAILABLE_BUILTIN_TOOLS: ReadonlySet<string> = new Set([
   'read_url',
   'ask_user',
   'todo_write',
+  // 数据类：以下 5 项已在 toolDefinitions.ts 定义工具描述，但 toolExecutors.ts
+  // 尚未实现执行器（预留能力）。保留在此是为了维持与 BUILTIN_TOOL_OPTIONS /
+  // BUILTIN_TOOLS / 双语 i18n 的 29 项一一对应；isAvailable() 会通过
+  // toolRegistry.has() 二次校验并返回 false，不会产生静默误判。
   'sql_query',
   'data_transform',
   'csv_analyze',
@@ -41,6 +45,14 @@ const AVAILABLE_BUILTIN_TOOLS: ReadonlySet<string> = new Set([
   'knowledge_search',
   'companion_control',
 ])
+// 说明：本白名单的语义是「允许声明式场景引用的内置工具集合」（共 29 项），
+// 因此包含上述 5 项预留能力；真正的可执行性以 toolRegistry.has() 为准（见 isAvailable）。
+//
+// 与工具包（toolPacks.ts）的区别：
+//   - 工具包区分 tools / reservedTools，reservedTools 不参与 resolveTools() 解析，
+//     因此预留工具不会进入 LLM 工具列表与系统提示词；
+//   - 本白名单服务于「声明式场景」路径，预留项由 isAvailable() 兜底拒绝。
+// 预留工具清单与维护要求见 aweeclaw-docs/guide/builtin-tools.md。
 
 class BuiltinToolRegistryClass {
   private available: ReadonlySet<string>

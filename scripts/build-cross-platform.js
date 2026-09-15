@@ -144,19 +144,24 @@ function getPlatformPackages(platform, arch) {
   }
 
   // @parcel/watcher 平台包
+  // 注意：版本必须与主包 @parcel/watcher 的 optionalDependencies 精确一致（当前 2.5.1）。
+  // 主包以精确版本（非 ^）声明平台子包；若这里用 ^2.4.1，npm pack 会下载到 2.6.0，
+  // electron-builder 收集依赖时按 optionalDependencies 的 2.5.1 做版本校验判定不匹配，
+  // 平台子包会被排除在 asar 之外（afterPack 会报 "Missing watcher binary" 警告），
+  // 导致运行时 @parcel/watcher 加载不到原生二进制。
   const parcelMap = {
     win32: {
-      x64: ['@parcel/watcher-win32-x64@^2.4.1'],
-      ia32: ['@parcel/watcher-win32-ia32@^2.4.1'],
-      arm64: ['@parcel/watcher-win32-arm64@^2.4.1'],
+      x64: ['@parcel/watcher-win32-x64@2.5.1'],
+      ia32: ['@parcel/watcher-win32-ia32@2.5.1'],
+      arm64: ['@parcel/watcher-win32-arm64@2.5.1'],
     },
     darwin: {
-      x64: ['@parcel/watcher-darwin-x64@^2.4.1'],
-      arm64: ['@parcel/watcher-darwin-arm64@^2.4.1'],
+      x64: ['@parcel/watcher-darwin-x64@2.5.1'],
+      arm64: ['@parcel/watcher-darwin-arm64@2.5.1'],
     },
     linux: {
-      x64: ['@parcel/watcher-linux-x64-glibc@^2.4.1'],
-      arm64: ['@parcel/watcher-linux-arm64-glibc@^2.4.1'],
+      x64: ['@parcel/watcher-linux-x64-glibc@2.5.1'],
+      arm64: ['@parcel/watcher-linux-arm64-glibc@2.5.1'],
     },
   }
 

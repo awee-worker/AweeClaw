@@ -23,8 +23,21 @@ export interface ToolPack {
   descriptionZh: string
   icon?: string
   category: ToolPackCategory
+  /**
+   * 已接入内置执行器、可被场景实际调用的工具名。
+   * 只有列在这里（或 optionalTools）的工具才会被 resolveTools() 解析并暴露给 LLM。
+   */
   tools: string[]
+  /** 可选工具：需 resolveTools(packs, includeOptional = true) 才启用 */
   optionalTools?: string[]
+  /**
+   * 预留工具：已规划（部分已有工具描述），但**尚未接入内置执行器**。
+   *
+   * 这些工具不参与 resolveTools() 解析，因此不会进入 LLM 工具列表与系统提示词，
+   * 避免 AI 调用后落到 `Unknown tool` 失败。
+   * 执行器补齐后，把工具名从 reservedTools 移入 tools 即可自动生效。
+   */
+  reservedTools?: string[]
   dependencies?: string[]
 }
 
@@ -50,37 +63,61 @@ const CODE_TOOL_PACK: ToolPack = {
   descriptionZh: '文件操作、代码搜索、终端和 LSP 工具',
   icon: 'Code2',
   category: 'code',
+  // 与 toolCategoryDefs.CORE_TOOLS 保持对齐（默认 agent 模式的工具集），
+  // 避免「场景声明 code 包」反而比默认模式少工具
   tools: [
+    // 文件读取（extract_document 为系统强制注入工具，不属于任何包，见 getToolsForContext）
     'read_file',
     'list_directory',
-    'get_dir_tree',
     'search_files',
-    'read_multiple_files',
+    // 文件编辑
     'edit_file',
     'write_file',
-    'replace_file_content',
     'create_file_or_folder',
     'delete_file_or_folder',
+    // 终端
     'run_command',
+    'read_terminal_output',
+    'send_terminal_input',
+    'stop_terminal',
+    // 代码智能
     'get_lint_errors',
     'find_references',
     'go_to_definition',
     'get_hover_info',
     'get_document_symbols',
     'codebase_search',
+    // 网络
     'web_search',
     'read_url',
+    'image_search',
+    'video_search',
+    // 记忆与知识
     'remember',
     'knowledge_search',
     'apply_skill',
-    'todo_write',
+    // 交互与规划
     'ask_user',
+    'todo_write',
+    'schedule',
+    // Graph Runtime 动态建图（graphVersion=2）
+    'add_node',
+    'add_edge',
     // 桌面伴侣控制（VRM 角色动作 / 表情 / 说话）
     'companion_control',
   ],
   optionalTools: [
     'uiux_search',
     'uiux_recommend',
+  ],
+  // 历史遗留名，无工具定义也无执行器：
+  // - get_dir_tree：能力已并入 list_directory（递归模式）
+  // - read_multiple_files：能力已并入 read_file（支持 paths 数组）
+  // - replace_file_content：能力已并入 edit_file
+  reservedTools: [
+    'get_dir_tree',
+    'read_multiple_files',
+    'replace_file_content',
   ],
 }
 
@@ -92,7 +129,9 @@ const DATA_TOOL_PACK: ToolPack = {
   descriptionZh: '数据库查询、数据转换和统计分析',
   icon: 'BarChart3',
   category: 'data',
-  tools: [
+  // 暂无内置执行器：工具描述已在 toolDefinitions.ts 定义，但 toolExecutors.ts 未实现
+  tools: [],
+  reservedTools: [
     'sql_query',
     'data_transform',
     'csv_analyze',
@@ -111,7 +150,9 @@ const WEB_TOOL_PACK: ToolPack = {
   descriptionZh: '网页抓取、API 调用和浏览器自动化',
   icon: 'Globe',
   category: 'web',
-  tools: [
+  // 暂无内置执行器（连工具定义也尚未补齐）
+  tools: [],
+  reservedTools: [
     'web_scrape',
     'api_call',
     'browser_automate',
@@ -127,7 +168,9 @@ const MEDIA_TOOL_PACK: ToolPack = {
   descriptionZh: '图像生成、音频转录和媒体处理',
   icon: 'Image',
   category: 'media',
-  tools: [
+  // 暂无内置执行器：工具描述已在 toolDefinitions.ts 定义，但 toolExecutors.ts 未实现
+  tools: [],
+  reservedTools: [
     'image_generate',
     'image_edit',
     'audio_transcribe',
@@ -144,7 +187,9 @@ const OFFICE_TOOL_PACK: ToolPack = {
   descriptionZh: '文档创建、电子表格和演示文稿',
   icon: 'FileText',
   category: 'office',
-  tools: [
+  // 暂无内置执行器：工具描述已在 toolDefinitions.ts 定义，但 toolExecutors.ts 未实现
+  tools: [],
+  reservedTools: [
     'doc_write',
     'spreadsheet',
     'presentation',
@@ -183,6 +228,9 @@ class ToolPackRegistryClass {
   /**
    * 根据场景需要的工具包列表，解析出完整的工具名列表
    * 自动处理依赖关系
+   *
+   * 注意：reservedTools（预留工具，尚无执行器）不会出现在结果中，
+   * 详见 ToolPack.reservedTools。
    */
   resolveTools(packIds: string[], includeOptional = false): string[] {
     const resolvedPacks = this.resolveDependencies(packIds)
@@ -207,18 +255,45 @@ class ToolPackRegistryClass {
   }
 
   /**
+   * 解析出指定工具包（含依赖）的预留工具名
+   * 仅用于审计 / 文档生成 / 场景校验，不参与运行时工具暴露
+   */
+  resolveReservedTools(packIds: string[]): string[] {
+    const resolvedPacks = this.resolveDependencies(packIds)
+    const tools = new Set<string>()
+
+    for (const packId of resolvedPacks) {
+      const pack = this.packs.get(packId)
+      if (!pack) continue
+
+      for (const tool of pack.reservedTools || []) {
+        tools.add(tool)
+      }
+    }
+
+    return Array.from(tools)
+  }
+
+  /**
    * 解析工具包依赖，返回包含依赖的完整列表
+   *
+   * 未注册的 packId 会被跳过并输出告警。需要在加载/构建期提前拿到
+   * 完整的非法 id 列表时，用 findUnknownPacks()。
    */
   resolveDependencies(packIds: string[]): string[] {
     const resolved = new Set<string>()
     const queue = [...packIds]
+    const unknown = new Set<string>()
 
     while (queue.length > 0) {
       const packId = queue.shift()!
       if (resolved.has(packId)) continue
 
       const pack = this.packs.get(packId)
-      if (!pack) continue
+      if (!pack) {
+        unknown.add(packId)
+        continue
+      }
 
       resolved.add(packId)
 
@@ -231,7 +306,20 @@ class ToolPackRegistryClass {
       }
     }
 
+    if (unknown.size > 0) {
+      // 静默跳过会让场景「声明了工具包却拿不到工具」，这里显式暴露出来
+      console.warn(
+        `[ToolPackRegistry] Unknown tool pack id(s) ignored: ${Array.from(unknown).join(', ')}. ` +
+        `Registered packs: ${Array.from(this.packs.keys()).join(', ')}`
+      )
+    }
+
     return Array.from(resolved)
+  }
+
+  /** 返回 packIds 中所有未注册的工具包 id（供场景校验 / 测试使用） */
+  findUnknownPacks(packIds: string[]): string[] {
+    return packIds.filter(id => !this.packs.has(id))
   }
 
   has(packId: string): boolean {

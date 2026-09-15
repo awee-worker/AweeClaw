@@ -35,6 +35,16 @@ export interface VrmModelInfo {
   selected: boolean
 }
 
+/** 在线模型下载进度（main → 渲染进程） */
+export interface VrmDownloadProgress {
+  /** 后端模型 id（用于前端定位是哪一项在下载） */
+  id: string | null
+  /** 已接收字节数 */
+  received: number
+  /** 总字节数（0 表示服务端未返回 Content-Length） */
+  total: number
+}
+
 /** 动作（.vrma）条目 */
 export interface VrmAnimationInfo {
   id: string
@@ -178,6 +188,18 @@ export function createVrmCompanionApi() {
       ipcRenderer.invoke('vrm-companion:delete-model', id) as Promise<IpcResponse>,
     selectModel: (id: string | null) =>
       ipcRenderer.invoke('vrm-companion:select-model', id) as Promise<IpcResponse<VrmCompanionConfig>>,
+    /**
+     * 下载在线角色模型到本地用户模型目录。
+     *
+     * 渲染进程先从后端（/api/v1/vrm-models）拿到列表，再把选中的模型信息交给主进程，
+     * 由主进程负责流式下载、完整性校验与落盘（大文件不宜走渲染进程内存）。
+     */
+    downloadOnlineModel: (payload: { id?: string; name: string; url: string }) =>
+      ipcRenderer.invoke('vrm-companion:download-online-model', payload) as Promise<
+        IpcResponse<VrmModelInfo>
+      >,
+    /** 订阅在线模型下载进度（main → 渲染进程，单向下发） */
+    onDownloadProgress: on<VrmDownloadProgress>('vrm-companion:download-progress'),
 
     // --------------------------------------------
     // 拖拽

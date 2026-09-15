@@ -636,7 +636,9 @@ For long-running servers or watch tasks:
 - Required for answering prompts (e.g., Y/N) in commands
 - Set is_ctrl=true to send combinations like Ctrl+C`,
         category: 'terminal',
-        approvalType: 'none',
+        // 'terminal'：可向交互式终端注入文本并回车，等效于在已开终端内执行命令，
+        // 风险与 run_command 同级，不可用 'none'（会被静默放行，绕过审批门）
+        approvalType: 'terminal',
         parallel: false,
         concurrencyMode: 'serialized',
         resourceScope: ['process:terminal-write'],
@@ -658,7 +660,8 @@ For long-running servers or watch tasks:
         detailedDescription: `Kill a terminal process and cleanup UI.
 - Use this when a dev server or watcher is no longer needed`,
         category: 'terminal',
-        approvalType: 'none',
+        // 'terminal'：终止进程属于终端副作用操作，与 run_command 同级审批，不可用 'none'
+        approvalType: 'terminal',
         parallel: false,
         concurrencyMode: 'serialized',
         resourceScope: ['process:terminal-write'],
@@ -2076,13 +2079,13 @@ export const SEARCH_DECISION_GUIDE = `
    → Example: search_files path="src/styles.css" pattern="button|card"
 
 4. Looking for FILES BY NAME/PATTERN?
-   → Use \`list_directory\` or \`get_dir_tree\`
+   → Use \`list_directory\` with recursive=true
 
 **NEVER use bash grep/find - use these tools instead.**
 
 **ANTI-FRAGMENTATION:**
 - Combine multiple patterns with | instead of making multiple calls
-- Use read_multiple_files instead of multiple read_file calls
+- Use read_file with a paths array instead of multiple read_file calls
 `
 
 export const NETWORK_SEARCH_DECISION_GUIDE = `
@@ -2552,12 +2555,12 @@ export function isWriteTool(toolName: string): boolean {
 
 /** 检查工具是否为文件编辑工具（会产生文件内容变更，不包括删除） */
 export function isFileEditTool(toolName: string): boolean {
-    return ['edit_file', 'write_file', 'create_file_or_folder', 'replace_file_content'].includes(toolName)
+    return ['edit_file', 'write_file', 'create_file_or_folder'].includes(toolName)
 }
 
 /** 检查工具是否需要保存文件快照（用于撤销功能） */
 export function needsFileSnapshot(toolName: string): boolean {
-    return ['edit_file', 'write_file', 'create_file_or_folder', 'replace_file_content', 'delete_file_or_folder'].includes(toolName)
+    return ['edit_file', 'write_file', 'create_file_or_folder', 'delete_file_or_folder'].includes(toolName)
 }
 
 /** 检查工具是否需要 Diff 预览（使用 FileChangeCard） */
@@ -2567,7 +2570,6 @@ export function needsDiffPreview(toolName: string): boolean {
     return [
         'edit_file',
         'write_file',
-        'replace_file_content',
         'write_scenario_file',
     ].includes(toolName)
 }

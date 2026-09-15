@@ -15,13 +15,14 @@
  */
 
 import { useCallback, useEffect, useState } from 'react'
-import { Eye, EyeOff, Plus, Trash2, Upload } from 'lucide-react'
+import { CloudDownload, Eye, EyeOff, Loader2, Plus, RefreshCw, Trash2, Upload } from 'lucide-react'
 import type { Language } from '@renderer/i18n'
 import { api } from '@renderer/adapters/electronBridge'
 import { logger } from '@shared/toolkit/LogEngine'
 import type {
   VrmAffectionData,
   VrmCompanionConfig,
+  VrmDownloadProgress,
   VrmModelInfo,
 } from '@renderer/types/electronBridge'
 
@@ -39,6 +40,23 @@ const DEFAULT_WINDOW_WIDTH = 320
 
 interface VrmCompanionSettingsProps {
   language: Language
+}
+
+/**
+ * 后端在线角色模型条目（GET /api/v1/vrm-models 的 items 元素）。
+ *
+ * 这里的字段是后端接口契约的一部分：modelUrl 是模型文件直链（OSS/CDN），
+ * 客户端主进程据此下载；avatarUrl 仅用于列表展示。
+ */
+interface OnlineVrmModel {
+  id: string
+  name: string
+  modelUrl: string
+  fileSize: number
+  avatarUrl: string | null
+  description: string | null
+  tags: string[]
+  downloadCount: number
 }
 
 /** 面板内的通用卡片容器 */
@@ -100,6 +118,20 @@ export function VrmCompanionSettings({ language }: VrmCompanionSettingsProps) {
   const [clickThrough, setClickThrough] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // --------------------------------------------
+  // 在线模型（后端模型库）
+  // --------------------------------------------
+  const [onlineModels, setOnlineModels] = useState<OnlineVrmModel[]>([])
+  const [onlineLoading, setOnlineLoading] = useState(false)
+  const [onlineError, setOnlineError] = useState<string | null>(null)
+  /** 正在下载的后端模型 id（null 表示没有下载任务） */
+  const [downloadingId, setDownloadingId] = useState<string | null>(null)
+  /** 当前下载进度（字节）；total 为 0 表示服务端未返回长度 */
+  const [downloadProgress, setDownloadProgress] = useState<{
+    received: number
+    total: number
+  } | null>(null)
 
 
   /** 尺寸滑块位置（真实宽度收敛到可调范围，避免历史越界值让滑块错位） */
@@ -275,6 +307,130 @@ export function VrmCompanionSettings({ language }: VrmCompanionSettingsProps) {
       }
     },
     [refresh, zh],
+  )
+
+  // --------------------------------------------
+  // 在线模型（后端模型库）
+  // --------------------------------------------
+
+  /**
+   * 拉取后端在线角色模型列表。
+   *
+   * 走 backendApi（渲染进程直连后端）而非 IPC —— 列表是普通 HTTP 接口，
+   * 只有模型文件本身（十几 MB 起）才交给主进程流式下载写盘。
+   */
+  const refreshOnlineModels = useCallback(async () => {
+    setOnlineLoading(true)
+    setOnlineError(null)
+    try {
+      const { backendApi } = await import('@services/backendApi')
+      const data = await backendApi.get<{ items: OnlineVrmModel[]; total: number }>(
+        '/api/v1/vrm-models',
+      )
+      setOnlineModels(Array.isArray(data?.items) ? data.items : [])
+    } catch (err) {
+      logger.system.warn('[VrmCompanionSettings] load online models failed:', err)
+      setOnlineModels([])
+      setOnlineError(
+        zh ? '在线模型加载失败，请检查网络或登录状态' : 'Failed to load online models',
+      )
+    } finally {
+      setOnlineLoading(false)
+    }
+  }, [zh])
+
+  /** 首次进入面板时拉取一次在线角色模型列表 */
+  useEffect(() => {
+    void refreshOnlineModels()
+  }, [refreshOnlineModels])
+
+  /**
+   * 订阅在线模型下载进度。
+   *
+   * 进度由主进程在下载循环里单向下发；面板据此渲染进度条，
+   * 避免十几 MB 的模型下载期间界面「点了没反应」。
+   */
+  useEffect(() => {
+    const off = api.vrmCompanion.onDownloadProgress((progress: VrmDownloadProgress) => {
+      setDownloadProgress({ received: progress.received, total: progress.total })
+    })
+    return off
+  }, [])
+
+  /**
+   * 上报一次下载（热度统计）。
+   *
+   * 静默处理：统计接口失败不应该影响用户已经拿到手的模型。
+   */
+  const reportDownload = useCallback(async (id: string) => {
+    try {
+      const { backendApi } = await import('@services/backendApi')
+      await backendApi.post(`/api/v1/vrm-models/${encodeURIComponent(id)}/download`, {})
+    } catch {
+      // 忽略统计失败
+    }
+  }, [])
+
+  /** 判断某个在线模型是否已下载到本地（主进程会为同名文件追加 -1/-2 后缀） */
+  const isDownloaded = useCallback(
+    (onlineName: string) =>
+      models.some(
+        (m) =>
+          m.source === 'user' && (m.name === onlineName || m.name.startsWith(`${onlineName}-`)),
+      ),
+    [models],
+  )
+
+  /** 下载在线模型 → 落盘本地 → 自动切换为当前角色 */
+  const handleDownloadOnline = useCallback(
+    async (item: OnlineVrmModel) => {
+      setDownloadingId(item.id)
+      setDownloadProgress(null)
+      setOnlineError(null)
+      try {
+        const res = await api.vrmCompanion.downloadOnlineModel({
+          id: item.id,
+          name: item.name,
+          url: item.modelUrl,
+        })
+        if (!res.success || !res.data) {
+          setOnlineError(
+            res.error === 'INCOMPLETE_DOWNLOAD'
+              ? zh
+                ? '下载中断，请重试'
+                : 'Download interrupted, please retry'
+              : zh
+                ? '模型下载失败'
+                : 'Failed to download model',
+          )
+          return
+        }
+        // 下载完成即选中，省去用户再手动切换一步
+        const selRes = await api.vrmCompanion.selectModel(res.data.id)
+        if (selRes.success && selRes.data) setConfig(selRes.data)
+        await refresh()
+        void reportDownload(item.id)
+      } catch (err) {
+        logger.system.warn('[VrmCompanionSettings] download online model failed:', err)
+        setOnlineError(zh ? '模型下载失败' : 'Failed to download model')
+      } finally {
+        setDownloadingId(null)
+        setDownloadProgress(null)
+      }
+    },
+    [refresh, reportDownload, zh],
+  )
+
+  /** 已下载时直接切换到本地对应模型 */
+  const handleUseDownloaded = useCallback(
+    (onlineName: string) => {
+      const target = models.find(
+        (m) =>
+          m.source === 'user' && (m.name === onlineName || m.name.startsWith(`${onlineName}-`)),
+      )
+      if (target) void handleSelect(target.id)
+    },
+    [models, handleSelect],
   )
 
   const handleToggleClickThrough = useCallback(
@@ -585,6 +741,129 @@ export function VrmCompanionSettings({ language }: VrmCompanionSettingsProps) {
             ? '支持 VRM 0.x / 1.0 与 .glb；单模型建议不超过 30MB'
             : 'Supports VRM 0.x / 1.0 and .glb; keep each model under 30MB'}
         </div>
+      </Card>
+
+      {/* 在线角色模型（后端模型库） */}
+      <Card>
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-sm font-semibold text-text-primary">
+              {zh ? '在线角色模型' : 'Online character models'}
+            </div>
+            <div className="mt-0.5 text-xs text-text-muted">
+              {zh
+                ? '来自官方角色模型库，下载后保存在本地用户数据目录，可离线使用。'
+                : 'Official character library. Downloaded models are stored locally and work offline.'}
+            </div>
+          </div>
+          <button
+            type="button"
+            disabled={onlineLoading}
+            onClick={() => void refreshOnlineModels()}
+            className="flex items-center gap-1.5 rounded-xl border border-border/40 bg-surface-active/60 px-3 py-1.5 text-xs font-medium text-text-primary transition-colors hover:bg-surface-active disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${onlineLoading ? 'animate-spin' : ''}`} />
+            {zh ? '刷新' : 'Refresh'}
+          </button>
+        </div>
+
+        {onlineError ? (
+          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-400">
+            {onlineError}
+          </div>
+        ) : null}
+
+        {onlineLoading && onlineModels.length === 0 ? (
+          <div className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-border/50 px-3 py-6 text-xs text-text-muted">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            {zh ? '加载中...' : 'Loading...'}
+          </div>
+        ) : onlineModels.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border/50 px-3 py-6 text-center text-xs text-text-muted">
+            {zh ? '官方暂未发布角色模型' : 'No official models published yet'}
+          </div>
+        ) : (
+          <ul className="space-y-1.5">
+            {onlineModels.map((item) => {
+              const downloaded = isDownloaded(item.name)
+              const downloading = downloadingId === item.id
+              const percent =
+                downloading && downloadProgress && downloadProgress.total > 0
+                  ? Math.min(
+                      100,
+                      Math.round((downloadProgress.received / downloadProgress.total) * 100),
+                    )
+                  : null
+              return (
+                <li
+                  key={item.id}
+                  className="flex items-center gap-3 rounded-xl border border-border/40 bg-surface/60 px-3 py-2"
+                >
+                  <span className="h-10 w-10 flex-shrink-0 overflow-hidden rounded-lg border border-border/40 bg-surface-active/60">
+                    {item.avatarUrl ? (
+                      <img
+                        src={item.avatarUrl}
+                        alt={item.name}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : null}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-xs font-medium text-text-primary">
+                      {item.name}
+                    </span>
+                    <span className="block truncate text-[11px] text-text-muted">
+                      {item.tags?.length ? `${item.tags.join(' · ')} · ` : ''}
+                      {item.fileSize > 0
+                        ? formatSize(item.fileSize)
+                        : zh
+                          ? '体积未知'
+                          : 'Size unknown'}
+                    </span>
+                    {downloading ? (
+                      <span className="mt-1 block">
+                        <span className="block h-1 w-full overflow-hidden rounded-full bg-border/60">
+                          <span
+                            className="block h-full rounded-full bg-accent transition-all"
+                            style={{ width: percent === null ? '30%' : `${percent}%` }}
+                          />
+                        </span>
+                        <span className="mt-0.5 block text-[11px] text-text-muted">
+                          {percent === null
+                            ? formatSize(downloadProgress?.received ?? 0)
+                            : `${percent}% · ${formatSize(downloadProgress?.received ?? 0)} / ${formatSize(downloadProgress?.total ?? 0)}`}
+                        </span>
+                      </span>
+                    ) : null}
+                  </span>
+                  {downloaded && !downloading ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleUseDownloaded(item.name)}
+                      className="flex-shrink-0 rounded-xl border border-border/40 bg-surface-active/60 px-3 py-1.5 text-xs font-medium text-text-primary transition-colors hover:bg-surface-active"
+                    >
+                      {zh ? '使用' : 'Use'}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={downloading || downloadingId !== null}
+                      onClick={() => void handleDownloadOnline(item)}
+                      className="flex flex-shrink-0 items-center gap-1.5 rounded-xl border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent transition-colors hover:bg-accent/20 disabled:opacity-50"
+                    >
+                      {downloading ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <CloudDownload className="h-3.5 w-3.5" />
+                      )}
+                      {downloading ? (zh ? '下载中' : 'Downloading') : zh ? '下载' : 'Download'}
+                    </button>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        )}
       </Card>
 
       {/* 好感度 */}

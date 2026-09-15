@@ -164,7 +164,11 @@ ${SCENARIO_DEV_KNOWLEDGE}`,
 }
 
 const SCENARIO_BUILDER_CAPABILITIES: ScenarioCapabilities = {
-  toolPacks: ['code', 'filesystem'],
+  // 只需 code 包：文件读写（read_file/list_directory/search_files/edit_file/
+  // write_file/create_file_or_folder/delete_file_or_folder）、终端、代码智能工具
+  // 全部在 code 包内。历史上误写的 'filesystem' 并非已注册的工具包 id，
+  // resolveDependencies() 会静默跳过，这里已移除。
+  toolPacks: ['code'],
   modes: [
     {
       id: 'chat',
