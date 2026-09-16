@@ -72,6 +72,7 @@ class ScenarioLoaderClass {
       state: 'registered',
       registeredToolNames: [],
       registeredIpcChannels: [],
+      registeredWidgetCardIds: [],
       versionHistory: [{ version: manifest.version, isStable: true, releasedAt: Date.now() }],
     }
 

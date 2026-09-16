@@ -28,6 +28,7 @@ import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { useAgentActions } from '@hooks/useAgent'
 import ProjectSelector from './ProjectSelector'
+import ScenarioSelector from './ScenarioSelector'
 import AppMenuBar from './AppMenuBar'
 import { useInlineToast } from '@components/foundation/InlineNotification'
 import { useHasElevatedToastLayer } from '@components/foundation/toastLayerStore'
@@ -289,7 +290,7 @@ function VrmCompanionToggleButton({ language }: { language: Language }) {
 }
 
 export default function AppTitleBar() {
-  const { setShowQuickOpen, language, activeSidePanel, chatVisible, toggleSidebar, toggleChat, navRailExpanded, setNavRailExpanded, setVoiceConversationActive, closeAllFullPages, setShowEnvironmentSetup, showWelcomePage } = useStore(useShallow(s => ({
+  const { setShowQuickOpen, language, activeSidePanel, chatVisible, toggleSidebar, toggleChat, navRailExpanded, setNavRailExpanded, setVoiceConversationActive, closeAllFullPages, setShowEnvironmentSetup, showWelcomePage, setShowScenarioPage, setShowWorkflow } = useStore(useShallow(s => ({
     setShowQuickOpen: s.setShowQuickOpen,
     language: s.language,
     activeSidePanel: s.activeSidePanel,
@@ -302,6 +303,8 @@ export default function AppTitleBar() {
     closeAllFullPages: s.closeAllFullPages,
     setShowEnvironmentSetup: s.setShowEnvironmentSetup,
     showWelcomePage: s.showWelcomePage,
+    setShowScenarioPage: s.setShowScenarioPage,
+    setShowWorkflow: s.setShowWorkflow,
   })))
 
   const sidebarVisible = activeSidePanel !== null
@@ -316,6 +319,12 @@ export default function AppTitleBar() {
   })
   const activeToast = latestVisibleToastId ? toasts.find(t => t.id === latestVisibleToastId) : null
   const shouldEject = useHasElevatedToastLayer()
+
+  const handleOpenMarketplace = useCallback(() => {
+    closeAllFullPages()
+    setShowWorkflow(false)
+    setShowScenarioPage(true)
+  }, [closeAllFullPages, setShowWorkflow, setShowScenarioPage])
 
   return (
     <div className="h-11 flex items-center justify-between px-0 drag-region select-none bg-background z-50 border-b border-border/30">
@@ -339,6 +348,10 @@ export default function AppTitleBar() {
         <div className="no-drag">
           <ProjectSelector />
         </div>
+
+        <div className="w-[1px] h-4 bg-border/50" />
+
+        <ScenarioSelector onOpenMarketplace={handleOpenMarketplace} />
 
         <div className="w-[1px] h-4 bg-border/50" />
 

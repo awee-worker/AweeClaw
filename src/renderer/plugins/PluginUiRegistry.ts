@@ -662,6 +662,51 @@ class PluginUiRegistryImpl {
   }
 
   /**
+   * 获取所有可用的插件工作台卡片（跨所有已发现插件）
+   *
+   * 仅返回元数据（icon/label/modes 等），供 CardLibrary 列表展示。
+   * 不需要 ui.js 已加载，因为列表只需 manifest 元数据。
+   *
+   * @param mode 当前场景模式（用于过滤 modes 约束）
+   */
+  getAllWidgetCards(mode?: string): Array<{
+    pluginKey: string
+    cardId: string
+    label: string
+    labelZh: string
+    icon: string
+  }> {
+    const result: Array<{
+      pluginKey: string
+      cardId: string
+      label: string
+      labelZh: string
+      icon: string
+    }> = []
+
+    for (const [pluginKey, contribution] of this.discovered) {
+      if (!contribution.contributes.widgetCards?.length) continue
+
+      for (const wc of contribution.contributes.widgetCards) {
+        // 模式过滤
+        if (wc.modes?.length && mode) {
+          if (!wc.modes.includes(mode as 'work' | 'life' | 'study')) continue
+        }
+
+        result.push({
+          pluginKey,
+          cardId: wc.id,
+          label: wc.label,
+          labelZh: wc.labelZh ?? wc.label,
+          icon: wc.icon,
+        })
+      }
+    }
+
+    return result
+  }
+
+  /**
    * 确保声明了 widgetCards 的所有插件 ui.js 已加载
    *
    * 在工作台挂载时调用，触发所有有 widgetCards 声明的插件加载。

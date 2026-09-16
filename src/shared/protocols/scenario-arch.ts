@@ -299,6 +299,7 @@ export interface ScenarioRegistryEntry {
   state: ScenarioLifecycleState
   registeredToolNames: string[]
   registeredIpcChannels: string[]
+  registeredWidgetCardIds: string[]
   activatedAt?: number
   lastError?: string
   versionHistory: ScenarioVersionInfo[]

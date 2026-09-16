@@ -618,7 +618,7 @@ class CompletionService {
       api.llm.send({
         config: llmConfig,
         messages: [{ role: 'user', content: prompt }],
-        systemPrompt: 'You are a code completion assistant. Output ONLY the code completion, no explanations or markdown.',
+        systemPrompt: 'You are a code completion assistant. Output ONLY the code completion, no explanations or markdown. CRITICAL: You MUST output COMPLETE, syntactically valid code — never output partial functions, unclosed braces, or incomplete statements. If completing a function, include the full body and closing brace. If completing a statement, finish it completely. Do NOT stop mid-expression.',
         requestId,
       }).catch((err) => {
         cleanup()
@@ -646,6 +646,7 @@ class CompletionService {
     // Simple, universal prompt format
     return `[${contextInfo}]
 Complete the code at <CURSOR>. Output ONLY the code to insert, no explanations.
+IMPORTANT: The code you output must be COMPLETE and syntactically valid — never leave open braces, partial expressions, or unfinished statements. If the cursor is inside a function body, write the entire body with the closing brace.
 
 ${prefix}<CURSOR>${suffix}`
   }

@@ -18,6 +18,7 @@ import { useSyncExternalStore, useEffect, useState } from 'react'
 import type { ComponentType } from 'react'
 import type { SidebarItemDescriptor } from '@shared/protocols/scenario'
 import type { PluginTopActionContribution } from '@shared/plugin-sdk/types'
+import type { SceneMode } from '@protocols/sceneModeProtocol'
 import { pluginUiRegistry } from './PluginUiRegistry'
 import type { PluginHostApi, PluginPanelProps } from './types'
 
@@ -84,6 +85,22 @@ function getSnapshot(): PluginExtensionsState {
       ? EMPTY_STATE
       : { sidebarItems, topActions }
   return cachedSnapshot
+}
+
+/**
+ * 订阅所有可用的插件工作台卡片元数据
+ *
+ * 供 CardLibrary 在「添加卡片」弹层中展示插件卡片列表。
+ * 响应式：插件安装/卸载时自动更新。
+ *
+ * @param mode 当前场景模式（过滤 modes 约束）
+ */
+export function usePluginWidgetCards(mode?: SceneMode) {
+  return useSyncExternalStore(
+    (listener) => pluginUiRegistry.subscribe(listener),
+    () => pluginUiRegistry.getAllWidgetCards(mode),
+    () => [],
+  )
 }
 
 /**

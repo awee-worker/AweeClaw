@@ -38,7 +38,7 @@ export const LLM_DEFAULTS = {
 
 export const AI_COMPLETION_DEFAULTS = {
   enabled: true,
-  maxTokens: 256,
+  maxTokens: 512,
   temperature: 0.1,
   triggerChars: ['.', '(', '{', '[', '"', "'", '/', ' '],
 } as const

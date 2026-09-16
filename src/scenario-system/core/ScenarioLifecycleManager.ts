@@ -21,6 +21,7 @@ import { toolRegistry } from '@intelligence/toolkit/toolRegistry'
 import { scenarioDataBus } from './ScenarioDataBus'
 import { scenarioDatabaseManager } from './ScenarioDatabaseManager'
 import { scenarioMonitor } from './ScenarioMonitor'
+import { scenarioWidgetRegistry } from './ScenarioWidgetRegistry'
 import { logger } from '@shared/toolkit/LogEngine'
 
 export interface LifecycleEventCallback {
@@ -99,6 +100,10 @@ export class ScenarioLifecycleManager {
 
     entry.state = 'activated'
     entry.activatedAt = Date.now()
+
+    // 注册场景卡片
+    this.registerWidgetCards(entry)
+
     this.onEvent({ type: 'activated', scenarioId })
     scenarioMonitor.recordStateChange(scenarioId, 'activated')
     logger.agent.info(`[Lifecycle] Activated "${scenarioId}"`)
@@ -122,6 +127,9 @@ export class ScenarioLifecycleManager {
         logger.agent.error(`[Lifecycle] onDeactivate failed for "${scenarioId}":`, err)
       }
     }
+
+    // 注销场景卡片
+    this.unregisterWidgetCards(entry)
 
     entry.state = 'deactivated'
     this.onEvent({ type: 'deactivated', scenarioId })
@@ -193,6 +201,51 @@ export class ScenarioLifecycleManager {
         logger.agent.error(`[Lifecycle] Failed to register tool "${tool.name}":`, err)
       }
     }
+  }
+
+  /** 注册场景卡片到仪表盘 */
+  private registerWidgetCards(entry: ScenarioRegistryEntry): void {
+    const { plugin, module } = entry
+    const widgetCards = plugin.ui?.widgetCards
+
+    if (!widgetCards || widgetCards.length === 0) {
+      return
+    }
+
+    const components = module.getComponents?.() ?? {}
+
+    for (const card of widgetCards) {
+      const component = components[card.previewComponent]
+      if (!component) {
+        logger.agent.warn(
+          `[Lifecycle] Widget card component "${card.previewComponent}" not found for card "${card.id}"`,
+        )
+        continue
+      }
+
+      scenarioWidgetRegistry.registerCard({
+        id: card.id,
+        scenarioId: plugin.id,
+        icon: card.icon,
+        label: card.label,
+        labelZh: card.labelZh,
+        description: card.description,
+        descriptionZh: card.descriptionZh,
+        tier: card.tier ?? 'enhanced',
+        component,
+        module,
+      })
+
+      entry.registeredWidgetCardIds.push(card.id)
+    }
+  }
+
+  /** 注销场景卡片 */
+  private unregisterWidgetCards(entry: ScenarioRegistryEntry): void {
+    for (const cardId of entry.registeredWidgetCardIds) {
+      scenarioWidgetRegistry.unregisterCard(cardId)
+    }
+    entry.registeredWidgetCardIds = []
   }
 
   /** 创建场景模块上下文 */

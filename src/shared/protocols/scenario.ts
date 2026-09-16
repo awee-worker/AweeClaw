@@ -155,6 +155,56 @@ export interface ScenarioUI {
   wideModeHidesChat?: boolean
   welcomeSuggestions?: WelcomeSuggestionItem[]
   welcomeTitle?: WelcomeTitleConfig
+  widgetCards?: ScenarioWidgetCardContribution[]
+}
+
+// ============================================
+// 场景卡片定义
+// ============================================
+
+/**
+ * 场景工作台卡片贡献
+ *
+ * 场景可在仪表盘展示数据卡片，支持按需刷新。
+ * 卡片 id 格式建议："<scenarioId>:<cardName>"，如 "code-reviewer:stats"
+ */
+export interface ScenarioWidgetCardContribution {
+  /** 卡片唯一 id，如 "code-reviewer:stats" */
+  id: string
+  /** lucide 图标名（通过 IconMap 解析） */
+  icon: string
+  /** 英文标题 */
+  label: string
+  /** 中文标题 */
+  labelZh: string
+  /** 英文描述（卡片底部显示） */
+  description?: string
+  /** 中文描述（卡片底部显示） */
+  descriptionZh?: string
+  /**
+   * 刷新优先级分层：
+   * - 'core'：高频刷新（15s），适用于核心数据卡片
+   * - 'enhanced'：低频刷新（60s），适用于一般数据卡片
+   * - 默认 'enhanced'
+   */
+  tier?: 'core' | 'enhanced'
+  /**
+   * 组件键名（对应 getComponents() 返回的 key）。
+   * 组件签名：({ data, loading, onRefresh }: ScenarioWidgetCardPreviewProps) => ReactNode
+   */
+  previewComponent: string
+}
+
+/**
+ * 场景卡片预览组件 Props
+ */
+export interface ScenarioWidgetCardPreviewProps {
+  /** 卡片数据 */
+  data: Record<string, unknown> | null
+  /** 是否正在加载 */
+  loading: boolean
+  /** 手动刷新回调 */
+  onRefresh: () => void
 }
 
 // ============================================

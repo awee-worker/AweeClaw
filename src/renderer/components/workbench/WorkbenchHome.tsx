@@ -58,8 +58,12 @@ import { sceneModeRegistry } from '@intelligence/capabilities/sceneMode/SceneMod
 import type { SceneModeProfile, TimePeriod } from '@intelligence/capabilities/sceneMode/SceneModeDescriptor'
 import type { SceneMode } from '@protocols/sceneModeProtocol'
 import { getToolsByMode, getToolById } from '@components/scene-tools/registry'
+
 import { pluginUiRegistry } from '@renderer/plugins/PluginUiRegistry'
+import { usePluginWidgetCards } from '@renderer/plugins/usePluginExtensions'
 import type { PluginWidgetCardContribution } from '@shared/plugin-sdk/types'
+import type { ScenarioWidgetCardContribution } from '@shared/protocols/scenario'
+import { scenarioWidgetRegistry } from '@scenario-system/core/ScenarioWidgetRegistry'
 import {
   todayStr,
   useTodoStore,
@@ -548,6 +552,105 @@ function PluginCardPreview({
   )
 }
 
+/**
+ * 场景卡片预览组件
+ *
+ * 从场景卡片注册表获取组件和数据获取方法。
+ * 支持自动刷新和手动刷新。
+ */
+function ScenarioCardPreview({
+  cardId,
+  contribution,
+}: {
+  cardId: string
+  contribution: ScenarioWidgetCardContribution
+}) {
+  const cardInfo = scenarioWidgetRegistry.getCard(cardId)
+  const PreviewComponent = cardInfo?.component ?? null
+  const module = cardInfo?.module
+
+  const [data, setData] = useState<Record<string, unknown> | null>(null)
+  const [loading, setLoading] = useState(true)
+  const visibleRef = useRef(true)
+  const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const refresh = useCallback(async () => {
+    if (!module?.getCardData || !visibleRef.current) return
+    setLoading(true)
+    try {
+      const result = await module.getCardData(cardId)
+      setData(result)
+    } catch (err) {
+      logger.ui.warn(`[ScenarioCardPreview] Failed to refresh card ${cardId}:`, err)
+    } finally {
+      setLoading(false)
+    }
+  }, [module, cardId])
+
+  useEffect(() => {
+    if (!module?.getCardData) {
+      setLoading(false)
+      return
+    }
+    void refresh()
+
+    // 根据 tier 确定刷新间隔
+    const intervalMs = contribution.tier === 'core' ? 15_000 : 60_000
+
+    // IntersectionObserver：卡片不可见时暂停刷新
+    const observer = new IntersectionObserver(
+      ([entry]) => { visibleRef.current = entry.isIntersecting },
+      { threshold: 0.1 },
+    )
+    const el = document.querySelector(`[data-card-id="${cardId}"]`)
+    if (el) observer.observe(el)
+
+    refreshTimerRef.current = setInterval(refresh, intervalMs)
+
+    // 监听手动刷新事件
+    const onRefreshEvent = (e: Event) => {
+      if ((e as CustomEvent).detail === cardId) {
+        void refresh()
+      }
+    }
+    document.addEventListener('scenario-card-refresh', onRefreshEvent as EventListener)
+
+    return () => {
+      observer.disconnect()
+      if (refreshTimerRef.current) clearInterval(refreshTimerRef.current)
+      document.removeEventListener('scenario-card-refresh', onRefreshEvent as EventListener)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cardId, contribution.tier, module])
+
+  const handleManualRefresh = useCallback(() => {
+    void refresh()
+  }, [refresh])
+
+  // 组件未加载时显示占位
+  if (!PreviewComponent) {
+    return (
+      <div className="flex items-center justify-center h-full text-[11px] text-text-muted">
+        {loading ? (
+          <span className="animate-pulse">{contribution.labelZh ?? contribution.label}</span>
+        ) : (
+          <span>组件未就绪</span>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="w-full h-full flex flex-col">
+      <PreviewComponent
+        data={data}
+        loading={loading}
+        onRefresh={handleManualRefresh}
+      />
+    </div>
+  )
+}
+
 /* ===================== 主组件 ===================== */
 
 export default function WorkbenchHome() {
@@ -563,7 +666,6 @@ export default function WorkbenchHome() {
   const setShowWelcomePage = useStore((s) => s.setShowWelcomePage)
   const setActiveSidePanel = useStore((s) => s.setActiveSidePanel)
   const setPendingSceneToolId = useStore((s) => s.setPendingSceneToolId)
-
   const { createThread } = useAgentActions()
 
   const { currentSceneMode, setSceneMode } = useSceneModeStore()
@@ -1138,7 +1240,7 @@ export default function WorkbenchHome() {
 
 /* ===================== 卡片元数据 ===================== */
 
-type CardKind = 'action' | 'tool' | 'plugin'
+type CardKind = 'action' | 'tool' | 'plugin' | 'scenario'
 
 interface CardMeta {
   id: string
@@ -1151,6 +1253,8 @@ interface CardMeta {
   color: string
   /** 插件卡片元数据（kind==='plugin' 时有效） */
   pluginMeta?: { pluginKey: string; contribution: PluginWidgetCardContribution }
+  /** 场景卡片元数据（kind==='scenario' 时有效） */
+  scenarioMeta?: { scenarioId: string; contribution: ScenarioWidgetCardContribution }
 }
 function resolveCardMeta(id: string, mode: SceneMode): CardMeta | null {
   const action = ACTION_CARDS.find((a) => a.id === id)
@@ -1175,6 +1279,37 @@ function resolveCardMeta(id: string, mode: SceneMode): CardMeta | null {
         descEn: wc.contribution.description ?? '',
         color: TOOL_COLORS[idx],
         pluginMeta: { pluginKey, contribution: wc.contribution },
+      }
+    }
+  }
+  // 场景卡片：id 格式为 "<scenarioId>:<cardName>"
+  if (pluginMatch) {
+    const [_, scenarioId] = pluginMatch
+    const card = scenarioWidgetRegistry.getCard(id)
+    if (card) {
+      const idx = TOOL_COLORS.length > 0 ? Math.abs(hashCode(id)) % TOOL_COLORS.length : 0
+      return {
+        id,
+        kind: 'scenario',
+        icon: getLucideIcon(card.icon) || Zap,
+        titleZh: card.labelZh ?? card.label,
+        titleEn: card.label,
+        descZh: card.descriptionZh ?? card.description ?? '',
+        descEn: card.description ?? '',
+        color: TOOL_COLORS[idx],
+        scenarioMeta: {
+          scenarioId,
+          contribution: {
+            id: card.id,
+            icon: card.icon,
+            label: card.label,
+            labelZh: card.labelZh,
+            description: card.description,
+            descriptionZh: card.descriptionZh,
+            tier: card.tier,
+            previewComponent: '',
+          },
+        },
       }
     }
   }
@@ -1390,13 +1525,18 @@ function WorkbenchCard({
             pluginKey={card.pluginMeta.pluginKey}
             contribution={card.pluginMeta.contribution}
           />
+        ) : card.kind === 'scenario' && card.scenarioMeta ? (
+          <ScenarioCardPreview
+            cardId={card.id}
+            contribution={card.scenarioMeta.contribution}
+          />
         ) : (
           <ToolCardPreview toolId={card.id} />
         )}
       </div>
 
-      {/* 底部：工具卡/插件卡描述 */}
-      {(card.kind === 'tool' || card.kind === 'plugin') && (
+      {/* 底部：工具卡/插件卡/场景卡描述 */}
+      {(card.kind === 'tool' || card.kind === 'plugin' || card.kind === 'scenario') && (
         <p className="text-[11px] text-text-muted truncate w-full mt-1.5">{desc}</p>
       )}
 
@@ -1425,15 +1565,16 @@ function WorkbenchCard({
         >
           <Move className="w-3.5 h-3.5" strokeWidth={2} />
         </button>
-        {/* 刷新：插件卡片显示，点击立即重新拉取数据 */}
-        {card.kind === 'plugin' && (
+        {/* 刷新：插件卡片/场景卡片显示，点击立即重新拉取数据 */}
+        {(card.kind === 'plugin' || card.kind === 'scenario') && (
           <button
             title={isZh ? '刷新数据' : 'Refresh'}
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation()
-              // 触发对应 PluginCardPreview 的刷新：通过 dispatch 自定义事件
-              document.dispatchEvent(new CustomEvent('plugin-card-refresh', { detail: card.id }))
+              // 触发对应预览组件的刷新：通过 dispatch 自定义事件
+              const eventName = card.kind === 'plugin' ? 'plugin-card-refresh' : 'scenario-card-refresh'
+              document.dispatchEvent(new CustomEvent(eventName, { detail: card.id }))
             }}
             className="p-1 rounded-md text-text-muted/70 hover:text-accent hover:bg-accent/10 transition-colors"
           >
@@ -1531,6 +1672,21 @@ function RecentWorkspacesList({
 
 /* ===================== 添加卡片弹层（macOS 小组件库） ===================== */
 
+/**
+ * 获取场景卡片列表
+ */
+function useScenarioWidgetCards() {
+  const [cards, setCards] = useState(scenarioWidgetRegistry.getAllCards())
+
+  useEffect(() => {
+    return scenarioWidgetRegistry.subscribe(() => {
+      setCards(scenarioWidgetRegistry.getAllCards())
+    })
+  }, [])
+
+  return cards
+}
+
 function CardLibrary({
   mode,
   isZh,
@@ -1545,6 +1701,8 @@ function CardLibrary({
   onClose: () => void
 }) {
   const toolCards = getToolsByMode(mode)
+  const pluginCards = usePluginWidgetCards(mode)
+  const scenarioCards = useScenarioWidgetCards()
   const modeMeta = MODE_META[mode]
   const modeLabel = isZh
     ? sceneModeRegistry.getOrDefault(mode).displayNameZh
@@ -1636,6 +1794,46 @@ function CardLibrary({
                   const Icon = getLucideIcon(tool.icon) || Zap
                   const idx = TOOL_COLORS.length > 0 ? Math.abs(hashCode(tool.id)) % TOOL_COLORS.length : 0
                   return renderItem({ id: tool.id, icon: Icon, titleZh: tool.name, titleEn: tool.nameEn, color: TOOL_COLORS[idx] })
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* 插件卡片 */}
+          {pluginCards.length > 0 && (
+            <div className={toolCards.length > 0 ? 'mt-5' : ''}>
+              <div className="flex items-center gap-2 mb-2.5">
+                <Blocks className="w-3.5 h-3.5 text-purple-500/70" strokeWidth={1.8} />
+                <span className="text-xs font-semibold text-text-secondary">
+                  {isZh ? '插件卡片' : 'Plugin Cards'}
+                </span>
+                <div className="flex-1 h-px bg-border/30" />
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {pluginCards.map((card) => {
+                  const Icon = getLucideIcon(card.icon) || Blocks
+                  const idx = TOOL_COLORS.length > 0 ? Math.abs(hashCode(card.cardId)) % TOOL_COLORS.length : 0
+                  return renderItem({ id: card.cardId, icon: Icon, titleZh: card.labelZh, titleEn: card.label, color: TOOL_COLORS[idx] })
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* 场景卡片 */}
+          {scenarioCards.length > 0 && (
+            <div className={(toolCards.length > 0 || pluginCards.length > 0) ? 'mt-5' : ''}>
+              <div className="flex items-center gap-2 mb-2.5">
+                <Sparkles className="w-3.5 h-3.5 text-emerald-500/70" strokeWidth={1.8} />
+                <span className="text-xs font-semibold text-text-secondary">
+                  {isZh ? '场景卡片' : 'Scenario Cards'}
+                </span>
+                <div className="flex-1 h-px bg-border/30" />
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {scenarioCards.map((card) => {
+                  const Icon = getLucideIcon(card.icon) || Sparkles
+                  const idx = TOOL_COLORS.length > 0 ? Math.abs(hashCode(card.id)) % TOOL_COLORS.length : 0
+                  return renderItem({ id: card.id, icon: Icon, titleZh: card.labelZh ?? card.label, titleEn: card.label, color: TOOL_COLORS[idx] })
                 })}
               </div>
             </div>
