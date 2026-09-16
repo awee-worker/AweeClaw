@@ -48,6 +48,7 @@ import { agentRuntime } from './AgentRuntime'
 import { buildAgentSystemPrompt } from '../prompt-engine/PromptComposer'
 import { taskComplexityDetector } from '../capabilities/planning/TaskComplexityDetector'
 import { buildResumeNotice } from '../utils/resumeContext'
+import { buildPendingQuestionNotice } from '../utils/pendingQuestionContext'
 import { executeMultiAgent, continueMultiAgent, type RunningTask } from './MultiAgentExecution'
 import { useStore } from '@renderer/state'
 import { terminalManager } from '@services/TerminalAdapter'
@@ -160,12 +161,27 @@ export class AgentClass {
         const incomingText = typeof userMessage === 'string'
           ? userMessage
           : userMessage.filter((p): p is { type: 'text'; text: string } => p.type === 'text').map(p => p.text).join('')
+
+        // 两类衔接说明互斥，按优先级取其一（异常中断的续接语义更强）：
+        // 1) 断点续接：上次执行被中断（存在未完成工具调用）
+        // 2) 待确认提问衔接：上次正常结束但留下提问，用户只回「要/好/继续」
+        //    —— 该场景下简短回复本身不含信息，一旦上一条助手提问因压缩/交接/
+        //    裁剪未进入本次请求，AI 就会「不知道要做什么」。
         const resumeNotice = resumeThread ? buildResumeNotice(resumeThread, incomingText) : null
-        if (resumeNotice) {
-          logger.agent.info('[Agent] 检测到断点续接请求，已附加续接说明')
+        const bridgeNotice = resumeNotice
+          ? null
+          : buildPendingQuestionNotice(resumeThread, incomingText, (useStore.getState().language || 'zh') as 'zh' | 'en')
+
+        const notice = resumeNotice ?? bridgeNotice
+        if (notice) {
+          logger.agent.info(
+            resumeNotice
+              ? '[Agent] 检测到断点续接请求，已附加续接说明'
+              : '[Agent] 检测到对上一轮提问的简短确认，已附加上下文衔接说明',
+          )
           userMessage = typeof userMessage === 'string'
-            ? `${resumeNotice}\n\n${userMessage}`
-            : [{ type: 'text', text: resumeNotice }, ...userMessage]
+            ? `${notice}\n\n${userMessage}`
+            : [{ type: 'text', text: notice }, ...userMessage]
         }
       }
 

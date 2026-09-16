@@ -5,6 +5,9 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { Play, ExternalLink, Copy, Check, RotateCcw } from 'lucide-react'
 import { CodeBlockView } from '../blocks/CodeBlockView'
+import { CodeHighlight } from '../../CodeHighlight'
+import { useStore } from '@store'
+import { themeManager } from '../../../../config/themeDefinition'
 
 interface HtmlPreviewBlockProps {
   code: string
@@ -28,6 +31,11 @@ function HtmlPreviewBlockBase({ code, fontSize, isStreaming }: HtmlPreviewBlockP
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const resizeStartY = useRef(0)
   const resizeStartHeight = useRef(0)
+
+  // 主题（用于内部代码高亮，避免再套一层代码块容器）
+  const currentTheme = useStore(s => s.currentTheme)
+  const theme = themeManager.getThemeById(currentTheme)
+  const isDark = theme?.type === 'dark'
 
   // 清理代码
   const cleanCode = useMemo(() => {
@@ -259,12 +267,16 @@ ${cleanCode}
         </div>
       )}
 
-      {/* 代码区域（折叠状态显示） */}
+      {/* 代码区域（未运行时显示，直接是 HTML 内容，不再嵌套代码块容器） */}
       {!isRunning && (
-        <div className="max-h-48 overflow-auto">
-          <CodeBlockView language="html" fontSize={fontSize} isStreaming={isStreaming}>
-            {cleanCode}
-          </CodeBlockView>
+        <div className="max-h-48 overflow-auto custom-scrollbar">
+          <CodeHighlight
+            code={cleanCode}
+            language="html"
+            isDark={isDark}
+            isStreaming={isStreaming}
+            fontSize={fontSize}
+          />
         </div>
       )}
     </div>

@@ -1,6 +1,7 @@
 import { logger } from '@toolkit/LogEngine'
 import { useStore } from '@store'
 import { generateHandoffDocument } from '../capabilities/context/summaryEngine'
+import { extractLastAssistantVisibleText } from '@intelligence/utils/assistantVisibleText'
 import type { ThreadBoundStore } from '../state/IntelligenceStore'
 import { useAgentStore, type HandoffSessionResult } from '../state/IntelligenceStore'
 import type { ChatThread } from '@intelligence/providerTypes'
@@ -69,6 +70,9 @@ function buildFallbackHandoffDocument(thread: ChatThread, workspacePath: string)
     workingDirectory: workspacePath,
     keyFileSnapshots: [],
     lastUserRequest,
+    // 交接后新线程只带交接快照，必须带上「AI 最后说了什么」，
+    // 否则用户对上一轮提问的简短确认会失去指向对象
+    lastAssistantMessage: extractLastAssistantVisibleText(thread.messages) || undefined,
     suggestedNextSteps: summary.pendingSteps,
   }
 }

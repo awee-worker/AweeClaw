@@ -75,6 +75,14 @@ export interface HandoffDocument {
   workingDirectory: string
   keyFileSnapshots: { path: string; content: string; reason: string }[]
   lastUserRequest: string
+  /**
+   * 最后一条助手消息的可见文本（可选）
+   *
+   * 交接后新线程只带交接快照，若不把「AI 最后说了什么」一并带过去，
+   * 用户对上一轮提问的简短确认（「要」「继续」）就会失去指向对象，
+   * 表现为 AI「不知道要做什么」。
+   */
+  lastAssistantMessage?: string
   suggestedNextSteps: string[]
 }
 

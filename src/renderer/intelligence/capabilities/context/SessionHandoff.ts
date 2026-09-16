@@ -30,6 +30,10 @@ ${(handoff.summary.userInstructions || []).slice(-5).map(instruction => `- ${ins
 
 **Last Request**: ${(handoff.lastUserRequest || '').slice(0, 500)}${(handoff.lastUserRequest || '').length > 500 ? '...' : ''}
 
+**Your Last Message (may contain a pending question)**: ${(handoff.lastAssistantMessage || 'None recorded').slice(-800)}
+
+If the user replies with a short confirmation (e.g. "要" / "ok"), it most likely refers to that last message — continue accordingly.
+
 When the user continues, prefer resuming unfinished work above instead of restarting from scratch.`
 }
 

@@ -10,6 +10,7 @@ import { api } from '../../../adapters/electronBridge'
 import { logger } from '@toolkit/LogEngine'
 import { useStore } from '@store'
 import { getAgentConfig } from '@intelligence/utils/intelligenceConfig'
+import { extractLastAssistantVisibleText } from '@intelligence/utils/assistantVisibleText'
 import type { StructuredSummary, HandoffDocument, FileChangeRecord } from './contextTypes'
 import {
   HANDOFF_SUMMARY_JSON_SCHEMA,
@@ -599,6 +600,9 @@ export async function generateHandoffDocument(
   })
   const userRequests = extractUserRequests(messages)
   const lastUserRequest = userRequests[userRequests.length - 1] || ''
+  // 交接后新线程只带交接快照：必须把「AI 最后说了什么」一并带过去，
+  // 否则用户对上一轮提问的简短确认（「要」「继续」）会失去指向对象。
+  const lastAssistantMessage = extractLastAssistantVisibleText(messages)
 
   const structuredSummary: StructuredSummary = {
     objective: summaryResult.objective,
@@ -621,6 +625,7 @@ export async function generateHandoffDocument(
       workingDirectory: workspacePath,
       keyFileSnapshots: [],
       lastUserRequest,
+      lastAssistantMessage: lastAssistantMessage || undefined,
       suggestedNextSteps: summaryResult.pendingSteps,
     },
     source: summaryResult.source,

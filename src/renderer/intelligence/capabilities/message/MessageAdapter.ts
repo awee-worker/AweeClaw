@@ -8,6 +8,41 @@ import { logger } from '@shared/toolkit/LogEngine'
 import type { LLMMessage } from '@intelligence/providerTypes'
 
 /**
+ * 解析助手消息的可见文本兜底值
+ *
+ * 用途：`content` 为空（历史流式残留 / 提问走 ask_user 工具）时，
+ * 从文本 part 或交互式提问中还原「AI 实际说了什么」，
+ * 避免整条助手消息在历史转换时被丢弃、导致下一轮上下文断裂。
+ */
+function resolveAssistantVisibleText(msg: ChatMessage): string {
+  const assistantMsg = msg as unknown as {
+    content?: unknown
+    parts?: Array<{ type?: string; content?: unknown; toolCall?: { name?: string; arguments?: unknown } }>
+    interactive?: { question?: string }
+  }
+
+  const fromParts = (assistantMsg.parts || [])
+    .filter(part => part?.type === 'text' && typeof part.content === 'string')
+    .map(part => part.content as string)
+    .join('')
+    .trim()
+  if (fromParts) return fromParts
+
+  const interactiveQuestion = assistantMsg.interactive?.question
+  if (interactiveQuestion) return interactiveQuestion
+
+  // ask_user 的提问正文只存在于工具调用参数中（无 tool result 时整条消息会被丢弃）
+  for (const part of assistantMsg.parts || []) {
+    const toolCall = part?.toolCall
+    if (toolCall?.name !== 'ask_user') continue
+    const args = toolCall.arguments as { question?: unknown } | undefined
+    if (args && typeof args.question === 'string' && args.question) return args.question
+  }
+
+  return ''
+}
+
+/**
  * 从 ChatMessage[] 构建 LLM API 消息
  */
 export function buildLLMApiMessages(
@@ -52,7 +87,7 @@ export function buildLLMApiMessages(
       if (validToolCalls.length > 0) {
         const assistantMsg: LLMMessage = {
           role: 'assistant',
-          content: msg.content || (msg.reasoning ? ' ' : null),
+          content: msg.content || resolveAssistantVisibleText(msg) || (msg.reasoning ? ' ' : null),
           tool_calls: validToolCalls.map(tc => ({
             id: tc.id,
             type: 'function' as const,
@@ -80,13 +115,19 @@ export function buildLLMApiMessages(
             })
           }
         }
-      } else if (msg.content || msg.reasoning) {
-        const assistantMsg: LLMMessage = {
-          role: 'assistant',
-          content: msg.content || ' ',
+      } else {
+        // ⚠️ content 为空（或只有 reasoning）时，历史里会把整条助手消息丢掉，
+        // 导致「AI 问过什么」在下一轮凭空消失 —— 用户只回一句「要」时 AI 就
+        // 不知道要做什么。这里补一层可见文本兜底：文本 part → ask_user 提问。
+        const visibleText = msg.content || resolveAssistantVisibleText(msg)
+        if (visibleText || msg.reasoning) {
+          const assistantMsg: LLMMessage = {
+            role: 'assistant',
+            content: visibleText || ' ',
+          }
+          if (msg.reasoning) assistantMsg.reasoning_content = msg.reasoning
+          result.push(assistantMsg)
         }
-        if (msg.reasoning) assistantMsg.reasoning_content = msg.reasoning
-        result.push(assistantMsg)
       }
     }
     // 注意：isToolResultMessage 在 for 循环中被静默跳过

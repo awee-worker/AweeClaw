@@ -1,6 +1,13 @@
 /**
  * LLM 连接池管理器
  *
+ * ⚠️ 当前未被任何生产路径使用（仅导出 `globalConnectionPool`，无调用方）。
+ * 如需接入，请先移除 `runWithConnection` 里的 `requestTimeoutMs`（默认 120s）
+ * 「整请求总耗时」竞速超时：它与「AI 长思考不设总超时」的既定策略冲突，
+ * 会把正常的长思考/长任务判为 `Request timeout` 并中断（等价于历史上的
+ * 「AI 一思考就自动中断」根因）。连接存活应交给 TCP keepalive + 传输层错误判定，
+ * 参见 ./core/NetworkDispatcher.ts。
+ *
  * 设计目标：
  * 1. 复用 HTTP 连接，减少 TCP 握手开销
  * 2. 限制并发请求数，避免触发服务商限流

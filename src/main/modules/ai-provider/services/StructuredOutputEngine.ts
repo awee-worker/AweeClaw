@@ -18,6 +18,7 @@ import { z } from 'zod'
 import { logger } from '@shared/toolkit/LogEngine'
 import { createModel } from '../modelRegistry'
 import { executePreparedRequest } from '@modules/ai-provider/core/ModelRequestRunner'
+import { resolveRequestTimeoutMs, resolveThinkingTolerance } from './StreamProcessor'
 import { LLMError, convertUsage } from '../providerTypes'
 import type { LLMResponse, CodeAnalysis, Refactoring, CodeFix, TestCase } from '../providerTypes'
 import type { LLMConfig, LLMMessage } from '@protocols'
@@ -149,15 +150,33 @@ export class StructuredService {
       operation,
       originalMessages,
       baseMessages: messages,
-      execute: async (prepared: any) =>
-        await generateObject({
+      execute: async (prepared: any) => {
+        // ⚠️ 与流式路径共用同一套超时语义（见 StreamProcessor.resolveRequestTimeoutMs）：
+        // 模型配置里的 `timeout`（默认 120s）是「多久没有数据算超时」的空闲语义，
+        // 而 AI SDK 的 `timeout` 是**整个请求的总耗时上限**，原样透传会让长思考 /
+        // 长上下文的结构化生成在正常进行中被强制中止，表现为「AI 还在思考就自动中断」。
+        // 因此这里剥离，改由 resolveRequestTimeoutMs 统一决定总超时策略。
+        const { timeout: configuredTimeoutMs, ...callOptions } = prepared.callOptions ?? {}
+        const thinkingTolerant = resolveThinkingTolerance(config, originalMessages ?? [])
+        const requestTimeoutMs = resolveRequestTimeoutMs(thinkingTolerant)
+
+        logger.llm.debug('[StructuredService] 超时策略已解析', {
+          operation,
+          thinkingTolerant,
+          configuredTimeoutMs: configuredTimeoutMs ?? null,
+          requestTimeoutMs: requestTimeoutMs ?? null,
+        })
+
+        return await generateObject({
           model,
           messages: prepared.messages,
           schema: schema as any,
           ...prepared.settings,
-          ...prepared.callOptions,
+          ...callOptions,
           providerOptions: prepared.providerOptions,
-        }),
+          ...(requestTimeoutMs !== undefined ? { timeout: requestTimeoutMs } : {}),
+        })
+      },
     })
 
     if (result.warnings && result.warnings.length > 0) {
@@ -189,15 +208,29 @@ export class StructuredService {
       operation,
       originalMessages,
       baseMessages: messages,
-      execute: async (prepared: any) =>
-        await generateObject({
+      execute: async (prepared: any) => {
+        // 同上：剥离配置里的空闲语义 timeout，避免被当作整请求总超时截断
+        const { timeout: configuredTimeoutMs, ...callOptions } = prepared.callOptions ?? {}
+        const thinkingTolerant = resolveThinkingTolerance(config, originalMessages ?? [])
+        const requestTimeoutMs = resolveRequestTimeoutMs(thinkingTolerant)
+
+        logger.llm.debug('[StructuredService] 超时策略已解析', {
+          operation,
+          thinkingTolerant,
+          configuredTimeoutMs: configuredTimeoutMs ?? null,
+          requestTimeoutMs: requestTimeoutMs ?? null,
+        })
+
+        return await generateObject({
           model,
           schema: schema as any,
           messages: prepared.messages as any,
           ...prepared.settings,
-          ...prepared.callOptions,
+          ...callOptions,
           providerOptions: prepared.providerOptions,
-        }),
+          ...(requestTimeoutMs !== undefined ? { timeout: requestTimeoutMs } : {}),
+        })
+      },
     })
 
     if (result.warnings && result.warnings.length > 0) {
