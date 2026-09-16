@@ -17,6 +17,7 @@ import {
   ChevronDown, ChevronRight, AlertCircle, CheckCircle
 } from 'lucide-react'
 import { t, type Language } from '@renderer/i18n'
+import { pickConfigPatch } from '@utils/configValueGuard'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { ToggleSwitch } from '../../ui/ToggleSwitch'
@@ -59,6 +60,12 @@ interface CharacterVoiceState {
   isLoading: boolean
   isSaving: boolean
 }
+
+/** 需要落盘的配置字段（与 saveConfig 的写出范围保持一致） */
+type VoiceConfigField = Pick<
+  CharacterVoiceState,
+  'characterVoice' | 'narratorVoice' | 'agentVoiceMap' | 'fallbackStrategy' | 'multiVoiceEnabled'
+>
 
 const DEFAULT_VOICE_CONFIG: VoiceConfig = {
   id: '',
@@ -142,19 +149,37 @@ export const CharacterVoiceSettings: React.FC<CharacterVoiceSettingsProps> = mem
     }
   }, [state.characterVoice, state.narratorVoice, state.agentVoiceMap, state.fallbackStrategy, state.multiVoiceEnabled, isZh])
 
+  /**
+   * 写入需要落盘的配置字段
+   *
+   * 非原始值防御：onChange 若误传事件对象，写进 state 后会被序列化成 {}，
+   * 落盘即写坏配置，这里先剪枝，字段全被拦下时直接中止。
+   */
+  const updateConfig = useCallback((patch: Partial<VoiceConfigField>) => {
+    const clean = pickConfigPatch(patch, 'CharacterVoiceSettings')
+    if (Object.keys(clean).length === 0) return
+    setState(prev => ({ ...prev, ...clean }))
+  }, [])
+
   // 更新角色音配置
   const updateCharacterVoice = useCallback((updates: Partial<VoiceConfig>) => {
+    // 非原始值防御：误传事件对象时该字段直接丢弃，避免角色音配置被写坏
+    const clean = pickConfigPatch(updates, 'CharacterVoiceSettings.characterVoice')
+    if (Object.keys(clean).length === 0) return
     setState(prev => ({
       ...prev,
-      characterVoice: { ...prev.characterVoice, ...updates },
+      characterVoice: { ...prev.characterVoice, ...clean },
     }))
   }, [])
 
   // 更新旁白音配置
   const updateNarratorVoice = useCallback((updates: Partial<VoiceConfig>) => {
+    // 非原始值防御：误传事件对象时该字段直接丢弃，避免旁白音配置被写坏
+    const clean = pickConfigPatch(updates, 'CharacterVoiceSettings.narratorVoice')
+    if (Object.keys(clean).length === 0) return
     setState(prev => ({
       ...prev,
-      narratorVoice: { ...prev.narratorVoice, ...updates },
+      narratorVoice: { ...prev.narratorVoice, ...clean },
     }))
   }, [])
 
@@ -263,7 +288,7 @@ export const CharacterVoiceSettings: React.FC<CharacterVoiceSettingsProps> = mem
           </div>
           <ToggleSwitch
             checked={state.multiVoiceEnabled}
-            onChange={(checked) => setState(prev => ({ ...prev, multiVoiceEnabled: checked }))}
+          onChange={(e) => updateConfig({ multiVoiceEnabled: e.target.checked })}
           />
         </div>
       </div>
@@ -441,7 +466,9 @@ export const CharacterVoiceSettings: React.FC<CharacterVoiceSettingsProps> = mem
                 name="fallbackStrategy"
                 value={option.value}
                 checked={state.fallbackStrategy === option.value}
-                onChange={(e) => setState(prev => ({ ...prev, fallbackStrategy: e.target.value as any }))}
+              onChange={(e) =>
+                updateConfig({ fallbackStrategy: e.target.value as 'global' | 'character' | 'narrator' })
+              }
                 disabled={!state.multiVoiceEnabled}
                 className="w-4 h-4 text-accent focus:ring-accent"
               />

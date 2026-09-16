@@ -61,7 +61,7 @@ import {
 } from 'lucide-react'
 import { api } from '@renderer/adapters/electronBridge'
 import ScreenPermissionGuide from '../ui/ScreenPermissionGuide'
-import { useVoiceInput } from '../../composables/useVoiceInput'
+import { useVoiceInput, appendVoiceText } from '../../composables/useVoiceInput'
 import VoiceVisualizer from '../voice/VoiceVisualizer'
 import {
   readFileAsAttachment,
@@ -256,13 +256,23 @@ function MiniChatPanelImpl({
   }, [streaming])
 
   // --------------------------------------------
-  // 语音输入（听写）：录音 → 语音转文字 → 填入输入框
+  // 语音输入（实时听写）：说话过程中即时把识别文本写回输入框
   // 与主窗口 ConversationInput 的语音输入功能一致，复用同一 useVoiceInput hook
   // --------------------------------------------
+  /** 录音开始那一刻的输入框内容：实时文本始终与它合成，避免逐次叠加出重复文字 */
+  const voiceBaseRef = useRef('')
+  /** 当前已上屏的语音文本：用户手动编辑时用它把语音部分从输入框内容中剥离 */
+  const lastVoiceTextRef = useRef('')
+
   const voiceInput = useVoiceInput({
     language: isZh ? 'zh' : 'en',
+    onPartialResult: (text) => {
+      lastVoiceTextRef.current = text
+      setInput(appendVoiceText(voiceBaseRef.current, text))
+    },
     onResult: (text) => {
-      setInput((prev) => (prev ? `${prev} ${text}` : text))
+      lastVoiceTextRef.current = ''
+      setInput(appendVoiceText(voiceBaseRef.current, text))
       // 自动调整 textarea 高度
       setTimeout(() => {
         if (textareaRef.current) {
@@ -272,6 +282,29 @@ function MiniChatPanelImpl({
       }, 0)
     },
   })
+
+  const handleVoiceStart = useCallback(() => {
+    voiceBaseRef.current = input
+    lastVoiceTextRef.current = ''
+    void voiceInput.startRecording()
+  }, [input, voiceInput.startRecording])
+
+  /** 输入框变更：录音期间用户手动编辑时更新基线，避免实时文本覆盖用户输入 */
+  const handleInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      const value = e.target.value
+      if (voiceInput.state === 'recording') {
+        const voiceText = lastVoiceTextRef.current
+        voiceBaseRef.current =
+          voiceText && value.endsWith(voiceText)
+            ? value.slice(0, value.length - voiceText.length).trimEnd()
+            : value
+        lastVoiceTextRef.current = ''
+      }
+      setInput(value)
+    },
+    [voiceInput.state, setInput],
+  )
 
   // --------------------------------------------
   // 外部注入附件（如截图提问结果）：合并到输入框附件区，不自动发送
@@ -651,7 +684,7 @@ function MiniChatPanelImpl({
               <textarea
                 ref={textareaRef}
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
                 placeholder={isZh ? '输入消息...' : 'Type a message...'}
                 rows={1}
@@ -659,13 +692,6 @@ function MiniChatPanelImpl({
                 className="w-full bg-transparent border-none p-0 py-2.5 text-[15px] text-text-primary placeholder-text-muted/40 resize-none focus:ring-0 focus:outline-none leading-relaxed custom-scrollbar max-h-[50vh] caret-accent font-medium tracking-wide"
                 style={{ minHeight: '48px' }}
               />
-
-              {/* 语音识别中的实时文字预览（与主窗口一致） */}
-              {voiceInput.state === 'recording' && voiceInput.partialText && (
-                <div className="py-1 text-[13px] text-accent/70 italic truncate">
-                  {voiceInput.partialText}
-                </div>
-              )}
 
               {/* 底部工具栏：左侧模型选择器 | 右侧附件+发送（与 ConversationInput 一致） */}
               <div className="relative flex items-center justify-between pt-1 gap-2">
@@ -801,7 +827,7 @@ function MiniChatPanelImpl({
                   ) : (
                     /* 语音输入按钮：点击开始录音，语音转文字填入输入框（与主窗口一致） */
                     <button
-                      onClick={voiceInput.startRecording}
+                      onClick={handleVoiceStart}
                       title={isZh ? '语音输入' : 'Voice input'}
                       className="w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300 bg-surface/50 text-text-muted hover:text-accent hover:bg-accent/10 border border-border/30 hover:border-accent/20 active:scale-95"
                     >

@@ -19,14 +19,13 @@
  * @module settings/tabs/LocalVoiceSettings
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Mic,
   Volume2,
   Loader2,
   Download,
   Trash2,
-  RefreshCw,
   Settings,
   AlertTriangle,
   CheckCircle,
@@ -38,6 +37,13 @@ import { ToggleSwitch } from '@components/ui'
 import { api } from '@renderer/adapters/electronBridge'
 import { toast } from '@components/foundation/NotificationProvider'
 import { t, type Language } from '@renderer/i18n'
+import { isConfigPrimitive } from '@utils/configValueGuard'
+import { invalidateLocalVoiceRuntime } from '@renderer/services/localVoiceEngine'
+import {
+  MOSS_BUILTIN_VOICES,
+  DEFAULT_BUILTIN_VOICE,
+  isBuiltinVoice,
+} from '@shared/localVoiceVoices'
 
 /** 引擎状态 */
 type EngineStatus = 'uninitialized' | 'loading' | 'ready' | 'error'
@@ -154,6 +160,64 @@ const DEFAULT_STATUS: LocalVoiceStatus = {
   gptSovits: { status: 'uninitialized', enabled: false },
 }
 
+/** 内置音色分组（保持清单中的出现顺序，供 optgroup 渲染） */
+const VOICE_GROUPS: string[] = Array.from(new Set(MOSS_BUILTIN_VOICES.map((item) => item.group)))
+
+/**
+ * TTS 测试文本。
+ *
+ * 必须真实合成一句：只做 initialize 无法暴露「音色非法」这类问题——
+ * 音色校验发生在合成阶段（Python 侧对未知音色直接报错），
+ * 这正是「测试显示初始化成功但播报没声音」的由来。
+ */
+const TTS_TEST_TEXT = '你好，我是 AweeClaw 的离线语音合成引擎，现在可以正常播报了。'
+
+/** 播放 base64 WAV（测试按钮用，确认端到端能出声） */
+function playBase64Wav(base64: string): void {
+  try {
+    const binary = atob(base64)
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }))
+    const audio = new Audio(url)
+    const release = () => URL.revokeObjectURL(url)
+    audio.onended = release
+    audio.onerror = release
+    void audio.play().catch(release)
+  } catch (err) {
+    console.warn('[LocalVoiceSettings] 播放测试音频失败:', err)
+  }
+}
+
+/**
+ * 将 IPC 返回的对象转换为纯本地对象
+ *
+ * contextBridge 传回渲染进程的对象仍是跨上下文引用（Proxy），
+ * 若原样回传给主进程会抛出 "An object could not be cloned."，
+ * 因此统一做一次 JSON 深拷贝（配置本身即纯 JSON 数据）。
+ */
+function toPlain<T>(value: T): T {
+  try {
+    return JSON.parse(JSON.stringify(value)) as T
+  } catch {
+    return value
+  }
+}
+
+/** 单个模型的下载进度 */
+interface ModelDownloadProgress {
+  received: number
+  total: number
+  percentage: number
+  speed: number
+  eta: number
+  status: string
+  currentFile?: string
+  fileIndex?: number
+  fileCount?: number
+}
+
 interface LocalVoiceSettingsProps {
   language: Language
 }
@@ -166,28 +230,83 @@ export default function LocalVoiceSettings({ language }: LocalVoiceSettingsProps
   const [testing, setTesting] = useState<string | null>(null)
   const [availableModels, setAvailableModels] = useState<ModelMetadata[]>([])
   const [downloadingModels, setDownloadingModels] = useState<Set<string>>(new Set())
+  const [downloadedModels, setDownloadedModels] = useState<Set<string>>(new Set())
+  const [downloadProgressMap, setDownloadProgressMap] = useState<
+    Record<string, ModelDownloadProgress | undefined>
+  >({})
+  const [deletingModels, setDeletingModels] = useState<Set<string>>(new Set())
+
+  // 订阅下载进度事件
+  useEffect(() => {
+    const off = api.localVoice.onDownloadProgress((progress: any) => {
+      const modelId = progress?.modelId
+      if (!modelId) return
+
+      setDownloadProgressMap(prev => ({
+        ...prev,
+        [modelId]: {
+          received: Number(progress.received ?? 0),
+          total: Number(progress.total ?? 0),
+          percentage: Number(progress.percentage ?? 0),
+          speed: Number(progress.speed ?? 0),
+          eta: Number(progress.eta ?? 0),
+          status: String(progress.status ?? 'downloading'),
+          currentFile: progress.currentFile ? String(progress.currentFile) : undefined,
+          fileIndex: progress.fileIndex ? Number(progress.fileIndex) : undefined,
+          fileCount: progress.fileCount ? Number(progress.fileCount) : undefined,
+        },
+      }))
+    })
+    return off
+  }, [])
 
   // 加载配置和状态
   const loadConfigAndStatus = useCallback(async () => {
     try {
       setLoading(true)
       
-      // 加载配置
+      // 加载配置（IPC 返回值必须先转为纯对象，否则再次回传主进程会克隆失败）
       const configResult = await api.localVoice.getConfig()
       if (configResult.success) {
-        setConfig(configResult.data as LocalVoiceConfig)
+        const plain = toPlain(configResult.data) as LocalVoiceConfig
+        // 历史遗留：早期面板只提供 Junhao / Xiaoxiao 两个选项，而 Xiaoxiao 并不在
+        // MOSS 内置音色表中，合成会直接失败。主进程启动时已纠正磁盘配置，
+        // 这里再兜一层，避免下拉框出现「空值」让用户以为配置丢了。
+        if (plain.tts && !isBuiltinVoice(plain.tts.defaultVoice)) {
+          console.warn(
+            '[LocalVoiceSettings] 配置中的 TTS 音色不在内置列表中，已回退:',
+            plain.tts.defaultVoice,
+          )
+          plain.tts = { ...plain.tts, defaultVoice: DEFAULT_BUILTIN_VOICE }
+        }
+        setConfig(plain)
       }
 
       // 加载状态
       const statusResult = await api.localVoice.getStatus()
       if (statusResult.success) {
-        setStatus(statusResult.data as LocalVoiceStatus)
+        setStatus(toPlain(statusResult.data) as LocalVoiceStatus)
       }
 
       // 加载可用模型
       const modelsResult = await api.localVoice.getAvailableModels()
       if (modelsResult.success) {
-        setAvailableModels(modelsResult.data as ModelMetadata[])
+        const models = toPlain(modelsResult.data) as ModelMetadata[]
+        setAvailableModels(models)
+        
+        // 检查每个模型的下载状态
+        const downloaded = new Set<string>()
+        for (const model of models) {
+          try {
+            const result = await api.localVoice.isModelDownloaded({ modelId: model.id })
+            if (result.success && (result.data as any)?.downloaded) {
+              downloaded.add(model.id)
+            }
+          } catch {
+            // 忽略单个模型检查失败
+          }
+        }
+        setDownloadedModels(downloaded)
       }
     } catch (err) {
       console.error('[LocalVoiceSettings] Load failed:', err)
@@ -197,6 +316,7 @@ export default function LocalVoiceSettings({ language }: LocalVoiceSettingsProps
     }
   }, [language])
 
+  // 初始加载
   useEffect(() => {
     loadConfigAndStatus()
   }, [loadConfigAndStatus])
@@ -205,13 +325,17 @@ export default function LocalVoiceSettings({ language }: LocalVoiceSettingsProps
   const handleSave = useCallback(async () => {
     setSaving(true)
     try {
-      const result = await api.localVoice.updateConfig(config)
+      // 必须回传纯对象：contextBridge 返回的对象带跨上下文引用，
+      // 直接回传会抛 "An object could not be cloned."
+      const result = await api.localVoice.updateConfig(toPlain(config))
       if (result.success) {
+        // 立即失效语音路由缓存，否则本次保存要等 TTL 到期才对聊天语音生效
+        invalidateLocalVoiceRuntime()
         toast.success(t('provider.localVoice.saveSuccess', language))
         // 重新加载状态
         const statusResult = await api.localVoice.getStatus()
         if (statusResult.success) {
-          setStatus(statusResult.data as LocalVoiceStatus)
+          setStatus(toPlain(statusResult.data) as LocalVoiceStatus)
         }
       } else {
         toast.error(result.error || t('provider.localVoice.saveFailed', language))
@@ -228,7 +352,8 @@ export default function LocalVoiceSettings({ language }: LocalVoiceSettingsProps
     try {
       const result = await api.localVoice.resetConfig()
       if (result.success) {
-        setConfig(result.data as LocalVoiceConfig)
+        invalidateLocalVoiceRuntime()
+        setConfig(toPlain(result.data) as LocalVoiceConfig)
         toast.success(t('provider.localVoice.resetSuccess', language))
       }
     } catch (err) {
@@ -237,7 +362,14 @@ export default function LocalVoiceSettings({ language }: LocalVoiceSettingsProps
   }, [language])
 
   // 更新配置字段
-  const updateConfig = useCallback((field: string, value: any) => {
+  const updateConfig = useCallback((field: string, value: unknown) => {
+    // 非原始值防御：若误把 React 事件对象当作值写入，序列化后类型与默认配置不符，
+    // 会被主进程 mergeConfig 静默丢弃，表现为「保存成功但设置未生效」。
+    if (!isConfigPrimitive(value)) {
+      console.warn('[LocalVoiceSettings] 忽略非原始配置值:', field, value)
+      return
+    }
+
     setConfig(prev => {
       const keys = field.split('.')
       if (keys.length === 1) {
@@ -269,34 +401,87 @@ export default function LocalVoiceSettings({ language }: LocalVoiceSettingsProps
         result = await api.localVoice.initializeGptSovits()
       }
 
-      if (result.success) {
+      if (result.success && engineType === 'tts') {
+        // TTS 必须再做一次真实合成：初始化成功 ≠ 能出声。
+        // 音色非法、模型文件异常等问题只在合成阶段暴露，
+        // 否则用户会看到「测试成功」然后发现播报毫无反应。
+        const synth = await api.localVoice.synthesize({
+          text: TTS_TEST_TEXT,
+          voice: config.tts.defaultVoice,
+          speed: config.tts.defaultSpeed,
+        })
+        const audioData = (synth.data as { audioData?: string } | undefined)?.audioData
+
+        if (!synth.success || !audioData) {
+          toast.error(synth.error || t('provider.localVoice.ttsTestFailed', language))
+          // 重新加载状态（引擎可能已置为 error）
+          const failedStatus = await api.localVoice.getStatus()
+          if (failedStatus.success) {
+            setStatus(toPlain(failedStatus.data) as LocalVoiceStatus)
+          }
+          return
+        }
+
+        playBase64Wav(audioData)
+        toast.success(t('provider.localVoice.ttsTestSuccess', language))
+      } else if (result.success) {
         toast.success(t(`provider.localVoice.${engineType}TestSuccess`, language))
-        // 重新加载状态
-        const statusResult = await api.localVoice.getStatus()
-        if (statusResult.success) {
-          setStatus(statusResult.data as LocalVoiceStatus)
-        }
-        if (statusResult.success) {
-          setStatus(statusResult.data)
-        }
       } else {
         toast.error(result.error || t(`provider.localVoice.${engineType}TestFailed`, language))
+        setTesting(null)
+        return
+      }
+
+      // 重新加载状态
+      const statusResult = await api.localVoice.getStatus()
+      if (statusResult.success) {
+        setStatus(toPlain(statusResult.data) as LocalVoiceStatus)
       }
     } catch (err) {
       toast.error((err as Error).message)
     } finally {
       setTesting(null)
     }
-  }, [language])
+  }, [language, config.tts.defaultVoice, config.tts.defaultSpeed])
 
   // 下载模型
-  const handleDownloadModel = useCallback(async (modelId: string) => {
+  const handleDownloadModel = useCallback(async (modelId: string, source?: 'modelscope' | 'huggingface') => {
     setDownloadingModels(prev => new Set(prev).add(modelId))
-    
+    setDownloadProgressMap(prev => ({
+      ...prev,
+      [modelId]: {
+        received: 0,
+        total: 0,
+        percentage: 0,
+        speed: 0,
+        eta: 0,
+        status: 'downloading',
+      },
+    }))
+
     try {
-      const result = await api.localVoice.downloadModel({ modelId })
+      const result = await api.localVoice.downloadModel({ modelId, source })
       if (result.success) {
+        // 进度条先停留在 100%，避免下载过快时"闪一下就不见"
+        setDownloadProgressMap(prev => {
+          const finished = prev[modelId]
+          return {
+            ...prev,
+            [modelId]: {
+              received: finished?.total || finished?.received || 0,
+              total: finished?.total || 0,
+              percentage: 100,
+              speed: 0,
+              eta: 0,
+              status: 'completed',
+              fileIndex: finished?.fileCount,
+              fileCount: finished?.fileCount,
+            },
+          }
+        })
+        setDownloadedModels(prev => new Set(prev).add(modelId))
         toast.success(t('provider.localVoice.downloadSuccess', language))
+        await new Promise(resolve => setTimeout(resolve, 900))
       } else {
         toast.error(result.error || t('provider.localVoice.downloadFailed', language))
       }
@@ -304,6 +489,40 @@ export default function LocalVoiceSettings({ language }: LocalVoiceSettingsProps
       toast.error((err as Error).message)
     } finally {
       setDownloadingModels(prev => {
+        const next = new Set(prev)
+        next.delete(modelId)
+        return next
+      })
+      setDownloadProgressMap(prev => {
+        const next = { ...prev }
+        delete next[modelId]
+        return next
+      })
+    }
+  }, [language])
+
+  // 删除已下载模型
+  const handleDeleteModel = useCallback(async (modelId: string) => {
+    const confirmed = window.confirm(t('provider.localVoice.deleteModelConfirm', language))
+    if (!confirmed) return
+
+    setDeletingModels(prev => new Set(prev).add(modelId))
+    try {
+      const result = await api.localVoice.deleteModel({ modelId })
+      if (result.success) {
+        setDownloadedModels(prev => {
+          const next = new Set(prev)
+          next.delete(modelId)
+          return next
+        })
+        toast.success(t('provider.localVoice.deleteModelSuccess', language))
+      } else {
+        toast.error(result.error || t('provider.localVoice.deleteModelFailed', language))
+      }
+    } catch (err) {
+      toast.error((err as Error).message)
+    } finally {
+      setDeletingModels(prev => {
         const next = new Set(prev)
         next.delete(modelId)
         return next
@@ -327,6 +546,16 @@ export default function LocalVoiceSettings({ language }: LocalVoiceSettingsProps
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
     if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
+  }, [])
+
+  // 格式化 ETA
+  const formatEta = useCallback((seconds: number) => {
+    if (!seconds || seconds <= 0) return ''
+    const s = Math.round(seconds)
+    if (s < 60) return `${s}s`
+    const m = Math.floor(s / 60)
+    const rem = s % 60
+    return rem === 0 ? `${m}m` : `${m}m${rem.toString().padStart(2, '0')}s`
   }, [])
 
   // 获取状态图标
@@ -380,7 +609,7 @@ export default function LocalVoiceSettings({ language }: LocalVoiceSettingsProps
         </div>
         <ToggleSwitch
           checked={config.enabled}
-          onChange={(checked) => updateConfig('enabled', checked)}
+          onChange={(e) => updateConfig('enabled', e.target.checked)}
         />
       </div>
 
@@ -449,7 +678,7 @@ export default function LocalVoiceSettings({ language }: LocalVoiceSettingsProps
                 </span>
                 <ToggleSwitch
                   checked={config.asr.enabled}
-                  onChange={(checked) => updateConfig('asr.enabled', checked)}
+                  onChange={(e) => updateConfig('asr.enabled', e.target.checked)}
                 />
               </div>
 
@@ -494,7 +723,7 @@ export default function LocalVoiceSettings({ language }: LocalVoiceSettingsProps
                     </span>
                     <ToggleSwitch
                       checked={config.asr.useItn}
-                      onChange={(checked) => updateConfig('asr.useItn', checked)}
+                      onChange={(e) => updateConfig('asr.useItn', e.target.checked)}
                     />
                   </div>
 
@@ -543,7 +772,7 @@ export default function LocalVoiceSettings({ language }: LocalVoiceSettingsProps
                 </span>
                 <ToggleSwitch
                   checked={config.tts.enabled}
-                  onChange={(checked) => updateConfig('tts.enabled', checked)}
+                  onChange={(e) => updateConfig('tts.enabled', e.target.checked)}
                 />
               </div>
 
@@ -573,8 +802,17 @@ export default function LocalVoiceSettings({ language }: LocalVoiceSettingsProps
                       onChange={(e) => updateConfig('tts.defaultVoice', e.target.value)}
                       className="w-full p-2 border border-border rounded-md"
                     >
-                      <option value="Junhao">Junhao (男声)</option>
-                      <option value="Xiaoxiao">Xiaoxiao (女声)</option>
+                      {/* 选项必须来自 MOSS 内置音色清单：
+                          过去写死的 Xiaoxiao 并不在清单中，选中后合成直接失败 */}
+                      {VOICE_GROUPS.map((group) => (
+                        <optgroup key={group} label={group}>
+                          {MOSS_BUILTIN_VOICES.filter((item) => item.group === group).map((item) => (
+                            <option key={item.voice} value={item.voice}>
+                              {item.displayName}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))}
                     </select>
                   </div>
 
@@ -638,7 +876,7 @@ export default function LocalVoiceSettings({ language }: LocalVoiceSettingsProps
                 </span>
                 <ToggleSwitch
                   checked={config.gptSovits.enabled}
-                  onChange={(checked) => updateConfig('gptSovits.enabled', checked)}
+                  onChange={(e) => updateConfig('gptSovits.enabled', e.target.checked)}
                 />
               </div>
 
@@ -694,36 +932,127 @@ export default function LocalVoiceSettings({ language }: LocalVoiceSettingsProps
               {t('provider.localVoice.modelManagement', language)}
             </h4>
 
-            <div className="space-y-3">
-              {availableModels.map((model) => (
-                <div key={model.id} className="flex items-center justify-between p-3 bg-surface-hover rounded-lg">
-                  <div>
-                    <h5 className="font-medium text-text-primary">{model.name}</h5>
-                    <p className="text-sm text-text-muted">{model.description}</p>
-                    <p className="text-xs text-text-muted">
-                      {formatSize(model.size)} • {model.type.toUpperCase()}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {downloadingModels.has(model.id) ? (
-                      <button
-                        className="px-3 py-1 text-sm bg-red-500 text-white rounded-md hover:bg-red-600"
-                        onClick={() => handleCancelDownload(model.id)}
-                      >
-                        {t('provider.localVoice.cancelDownload', language)}
-                      </button>
-                    ) : (
-                      <button
-                        className="px-3 py-1 text-sm bg-blue-500 text-white rounded-md hover:bg-blue-600"
-                        onClick={() => handleDownloadModel(model.id)}
-                      >
-                        <Download className="w-4 h-4 inline mr-1" />
-                        {t('provider.localVoice.download', language)}
-                      </button>
+            <div className="space-y-4">
+              {availableModels.map((model) => {
+                const isDownloading = downloadingModels.has(model.id)
+                const isDownloaded = downloadedModels.has(model.id)
+                const isDeleting = deletingModels.has(model.id)
+                const progress = downloadProgressMap[model.id]
+                const percentage = progress && progress.total > 0
+                  ? Math.min(100, Math.round((progress.received / progress.total) * 100))
+                  : progress ? Math.round(progress.percentage ?? 0) : 0
+
+                return (
+                  <div key={model.id} className="p-3 rounded-lg border border-border/40 bg-surface/50">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <h5 className="font-medium text-text-primary">{model.name}</h5>
+                        <p className="text-sm text-text-muted">{model.description}</p>
+                        <p className="text-xs text-text-muted mt-1">
+                          {formatSize(model.size)} • {model.type.toUpperCase()}
+                        </p>
+                      </div>
+
+                      <div className="flex flex-nowrap items-center gap-2 shrink-0">
+                        {isDownloading && progress?.status !== 'completed' ? (
+                          <button
+                            className="inline-flex items-center gap-1 px-3 py-1 text-sm text-white bg-red-500 rounded-md hover:bg-red-600 whitespace-nowrap"
+                            onClick={() => handleCancelDownload(model.id)}
+                          >
+                            {t('provider.localVoice.cancelDownload', language)}
+                          </button>
+                        ) : isDownloaded ? (
+                          <>
+                            <span className="inline-flex items-center gap-1 px-3 py-1 text-sm text-green-600 bg-green-50 rounded-md whitespace-nowrap">
+                              <CheckCircle className="w-4 h-4" />
+                              {t('provider.localVoice.downloaded', language)}
+                            </span>
+                            <button
+                              className="inline-flex items-center gap-1 px-3 py-1 text-sm text-red-600 border border-red-200 rounded-md hover:bg-red-50 disabled:opacity-60 whitespace-nowrap"
+                              onClick={() => handleDeleteModel(model.id)}
+                              disabled={isDeleting}
+                            >
+                              {isDeleting ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="w-4 h-4" />
+                              )}
+                              {t('provider.localVoice.deleteModel', language)}
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              className="inline-flex items-center gap-1 px-3 py-1 text-sm text-white bg-blue-500 rounded-md hover:bg-blue-600 whitespace-nowrap"
+                              onClick={() => handleDownloadModel(model.id, 'modelscope')}
+                            >
+                              <Download className="w-4 h-4" />
+                              {t('provider.localVoice.downloadFromModelScope', language)}
+                            </button>
+                            <button
+                              className="inline-flex items-center gap-1 px-3 py-1 text-sm text-text-primary border border-border/60 rounded-md hover:bg-surface-hover whitespace-nowrap"
+                              onClick={() => handleDownloadModel(model.id, 'huggingface')}
+                            >
+                              <Download className="w-4 h-4" />
+                              {t('provider.localVoice.downloadFromHuggingFace', language)}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 下载进度条 */}
+                    {isDownloading && progress && (
+                      <div className="mt-3">
+                        <div className="h-2 w-full overflow-hidden rounded-full bg-border/60">
+                          <div
+                            className="h-full rounded-full bg-accent transition-all"
+                            style={{ width: `${percentage}%` }}
+                          />
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-text-muted">
+                          <span>
+                            {progress.total > 0
+                              ? `${percentage}% · ${formatSize(progress.received)} / ${formatSize(progress.total)}`
+                              : `${percentage}% · ${formatSize(progress.received)}`}
+                          </span>
+                          {progress.fileCount ? (
+                            <span>
+                              {t('provider.localVoice.fileProgress', language, {
+                                index: progress.fileIndex ?? 0,
+                                count: progress.fileCount,
+                              })}
+                            </span>
+                          ) : null}
+                          {progress.speed > 0 && (
+                            <span>{formatSize(progress.speed)}/s</span>
+                          )}
+                          {progress.eta > 0 && (
+                            <span>{t('provider.localVoice.downloadEta', language, { eta: formatEta(progress.eta) })}</span>
+                          )}
+                          {progress.status === 'completed' ? (
+                            <span className="text-green-600">
+                              {t('provider.localVoice.downloadCompleted', language)}
+                            </span>
+                          ) : (
+                            <button
+                              className="ml-auto text-xs text-red-500 hover:underline"
+                              onClick={() => handleCancelDownload(model.id)}
+                            >
+                              {t('provider.localVoice.cancelDownload', language)}
+                            </button>
+                          )}
+                        </div>
+                        {progress.currentFile && progress.status !== 'completed' && (
+                          <p className="mt-1 truncate text-xs text-text-muted" title={progress.currentFile}>
+                            {progress.currentFile}
+                          </p>
+                        )}
+                      </div>
                     )}
                   </div>
-                </div>
-              ))}
+                )
+              })}
 
               {availableModels.length === 0 && (
                 <p className="text-sm text-text-muted text-center py-4">
@@ -732,6 +1061,7 @@ export default function LocalVoiceSettings({ language }: LocalVoiceSettingsProps
               )}
             </div>
           </div>
+
 
           {/* 保存按钮 */}
           <div className="flex justify-end gap-3">

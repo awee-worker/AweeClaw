@@ -95,7 +95,15 @@ export function useAutoSpeak({ isStreaming, messages }: UseAutoSpeakOptions): vo
 
           audio.play().catch(() => {});
         })
-        .catch(() => {});
+        .catch((err) => {
+          // 不静默：合成失败必须留下可追踪线索。
+          // 历史问题：优先级「仅本地」+ 非法音色时，播报毫无反应且无任何日志，
+          // 用户只能看到「点了没反应」。
+          console.warn(
+            '[useAutoSpeak] 自动播报失败:',
+            err instanceof Error ? err.message : err,
+          );
+        });
     }
 
     prevStreamingRef.current = isStreaming;

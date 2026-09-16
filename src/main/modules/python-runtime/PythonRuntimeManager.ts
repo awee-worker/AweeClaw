@@ -1355,9 +1355,16 @@ class PythonManager {
 
   private _getVenvPython(venvDir: string): string | null {
     if (process.platform === 'win32') {
-      return path.join(venvDir, 'Scripts', 'python.exe')
+      const winPython = path.join(venvDir, 'Scripts', 'python.exe')
+      return fs.existsSync(winPython) ? winPython : null
     }
-    return path.join(venvDir, 'bin', 'python3') || path.join(venvDir, 'bin', 'python')
+    // 注意：venv 中 python / python3 通常是符号链接对，但并非所有环境都同时存在。
+    // 这里必须真实判断存在性——用 `||` 拼接字符串恒为前者（历史误写）。
+    for (const name of ['python3', 'python']) {
+      const candidate = path.join(venvDir, 'bin', name)
+      if (fs.existsSync(candidate)) return candidate
+    }
+    return null
   }
 
   private _getVenvPip(venvDir: string): string | null {

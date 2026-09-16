@@ -6,7 +6,7 @@
  * - local-voice:get-status                                  运行状态
  * - local-voice:initialize-asr | initialize-tts | initialize-gpt-sovits  引擎初始化
  * - local-voice:recognize | synthesize | synthesize-gpt-sovits  语音处理
- * - local-voice:get-available-models | download-model | cancel-download  模型管理
+ * - local-voice:get-available-models | download-model | cancel-download | delete-model | get-model-dir  模型管理
  *
  * 事件推送：`local-voice:download-progress`，由 preload 侧订阅。
  *
@@ -15,6 +15,7 @@
  * @module local-voice/LocalVoiceIpc
  */
 
+import { BrowserWindow } from 'electron'
 import { safeIpcHandle } from '../../bridge/core/ipcGuard'
 import { logger } from '@shared/toolkit/LogEngine'
 import { LocalVoiceManager } from './LocalVoiceManager'
@@ -22,6 +23,21 @@ import {
   resetLocalVoiceConfig,
 } from './LocalVoiceStore'
 import type { DownloadProgress } from './ModelDownloader'
+
+function sendLocalVoiceProgress(payload: unknown): void {
+  try {
+    // 广播到所有窗口：设置面板可能不在首个窗口（多窗口场景），
+    // 只推送给 getAllWindows()[0] 会导致进度条收不到事件
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.send('local-voice:download-progress', payload)
+      }
+    }
+  } catch {
+    // 窗口可能已销毁，忽略推送失败
+  }
+}
+
 
 /** 是否已注册（显式挡一层，语义更清晰） */
 let registered = false
@@ -167,7 +183,6 @@ export function registerLocalVoiceIpc(): void {
       return fail(err)
     }
   })
-
   // --------------------------------------------
   // 模型管理
   // --------------------------------------------
@@ -182,15 +197,27 @@ export function registerLocalVoiceIpc(): void {
   })
 
   safeIpcHandle('local-voice:download-model', async (_event, params: unknown) => {
-    const { modelId } = params as { modelId: string }
+    const { modelId, source } = params as { modelId: string; source?: 'modelscope' | 'huggingface' }
     
     try {
       // 创建进度回调（通过 IPC 推送进度）
+      // 创建进度回调（通过 IPC 推送进度，已由下载器做节流）
       const onProgress = (progress: DownloadProgress) => {
-        logger.system.debug('[LocalVoice] download progress:', progress.percentage)
+        sendLocalVoiceProgress({
+          modelId,
+          received: progress.downloaded,
+          total: progress.total,
+          percentage: progress.percentage,
+          speed: progress.speed,
+          eta: progress.eta,
+          status: progress.status,
+          currentFile: progress.currentFile,
+          fileIndex: progress.fileIndex,
+          fileCount: progress.fileCount,
+        })
       }
 
-      const success = await manager.downloadModel(modelId, onProgress)
+      const success = await manager.downloadModel(modelId, onProgress, source)
       return { success, data: { modelId, downloaded: success } }
     } catch (err) {
       logger.system.error('[LocalVoice] download-model failed:', err)
@@ -214,7 +241,7 @@ export function registerLocalVoiceIpc(): void {
     const { modelId } = params as { modelId: string }
     
     try {
-      const downloaded = manager.isModelDownloaded(modelId)
+      const downloaded = await manager.isModelDownloaded(modelId)
       return { success: true, data: { modelId, downloaded } }
     } catch (err) {
       logger.system.error('[LocalVoice] is-model-downloaded failed:', err)
@@ -222,8 +249,30 @@ export function registerLocalVoiceIpc(): void {
     }
   })
 
-  logger.system.info('[LocalVoice] IPC handlers registered')
+  safeIpcHandle('local-voice:get-model-dir', async (_event, params: unknown) => {
+    const { modelId } = params as { modelId: string }
+    try {
+      const modelDir = await manager.getModelDir(modelId)
+      return { success: true, data: { modelId, modelDir } }
+    } catch (err) {
+      logger.system.error('[LocalVoice] get-model-dir failed:', err)
+      return fail(err)
+    }
+  })
+
+  safeIpcHandle('local-voice:delete-model', async (_event, params: unknown) => {
+    const { modelId } = params as { modelId: string }
+    try {
+      const removed = await manager.deleteModel(modelId)
+      return { success: true, data: { modelId, removed } }
+    } catch (err) {
+      logger.system.error('[LocalVoice] delete-model failed:', err)
+      return fail(err)
+    }
+  })
+
 }
+
 
 /** 注销本地语音引擎 IPC（幂等） */
 export function unregisterLocalVoiceIpc(): void {

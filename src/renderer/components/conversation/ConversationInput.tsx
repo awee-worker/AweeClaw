@@ -44,7 +44,7 @@ import ModeSelector from './WorkModeSelector'
 import AuthorizationModeSelector from './AuthorizationModeSelector'
 import AgentSelector from './AgentSelector'
 import ScreenPermissionGuide from '../ui/ScreenPermissionGuide'
-import { useVoiceInput } from '../../composables/useVoiceInput'
+import { useVoiceInput, appendVoiceText } from '../../composables/useVoiceInput'
 import VoiceVisualizer from '../voice/VoiceVisualizer'
 import { ContextItem, FileContext } from '@intelligence/providerTypes'
 import { api } from '../../adapters/electronBridge'
@@ -123,9 +123,23 @@ const ChatInput = memo(function ChatInput({
   // macOS 屏幕录制权限引导弹窗（截图返回 SCREEN_PERMISSION_DENIED 时打开）
   const [permissionGuideOpen, setPermissionGuideOpen] = useState(false)
 
+  // --------------------------------------------
+  // 语音输入（实时听写）
+  // 说话过程中 hook 持续回调 onPartialResult，这里即时写回输入框，实现「边说边上屏」
+  // --------------------------------------------
+  /** 录音开始那一刻的输入框内容：实时文本始终与它合成，避免逐次叠加出重复文字 */
+  const voiceBaseRef = useRef('')
+  /** 当前已上屏的语音文本：用户手动编辑时用它把语音部分从输入框内容中剥离 */
+  const lastVoiceTextRef = useRef('')
+
   const voiceInput = useVoiceInput({
+    onPartialResult: (text) => {
+      lastVoiceTextRef.current = text
+      setInput(appendVoiceText(voiceBaseRef.current, text))
+    },
     onResult: (text) => {
-      setInput(input ? `${input} ${text}` : text)
+      lastVoiceTextRef.current = ''
+      setInput(appendVoiceText(voiceBaseRef.current, text))
       setTimeout(() => {
         if (textareaRef.current) {
           textareaRef.current.style.height = 'auto'
@@ -134,6 +148,32 @@ const ChatInput = memo(function ChatInput({
       }, 0)
     },
   })
+
+  const handleVoiceStart = useCallback(() => {
+    voiceBaseRef.current = input
+    lastVoiceTextRef.current = ''
+    void voiceInput.startRecording()
+  }, [input, voiceInput.startRecording])
+
+  /**
+   * 输入框变更：录音期间用户手动编辑时，把编辑后的内容作为新基线
+   * （并剥离已上屏的语音文本），后续实时识别才不会覆盖用户输入。
+   */
+  const handleInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      if (voiceInput.state === 'recording') {
+        const value = e.target.value
+        const voiceText = lastVoiceTextRef.current
+        voiceBaseRef.current =
+          voiceText && value.endsWith(voiceText)
+            ? value.slice(0, value.length - voiceText.length).trimEnd()
+            : value
+        lastVoiceTextRef.current = ''
+      }
+      onInputChange(e)
+    },
+    [voiceInput.state, onInputChange],
+  )
 
   // Auto-resize
   useLayoutEffect(() => {
@@ -511,7 +551,7 @@ const ChatInput = memo(function ChatInput({
           <textarea
             ref={textareaRef}
             value={input}
-            onChange={onInputChange}
+            onChange={handleInputChange}
             onKeyDown={onKeyDown}
             onPaste={onPaste}
             onFocus={() => setIsFocused(true)}
@@ -524,12 +564,6 @@ const ChatInput = memo(function ChatInput({
             rows={1}
             style={{ minHeight: '48px', fontSize: `${Math.max(14, editorConfig.chatFontSize ?? editorConfig.fontSize)}px` }}
           />
-
-          {voiceInput.state === 'recording' && voiceInput.partialText && (
-            <div className="px-0 py-1 text-sm text-accent/70 italic truncate">
-              {voiceInput.partialText}
-            </div>
-          )}
 
           {/* Bottom Actions */}
           <div className="relative flex items-center justify-between pt-1 gap-2">
@@ -671,7 +705,7 @@ const ChatInput = memo(function ChatInput({
                 </button>
               ) : (
                 <button
-                  onClick={voiceInput.startRecording}
+                  onClick={handleVoiceStart}
                   disabled={!hasApiKey}
                   className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300
                     ${hasApiKey

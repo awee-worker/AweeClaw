@@ -30,6 +30,7 @@ import { ToggleSwitch } from '@components/ui'
 import { api } from '@renderer/adapters/electronBridge'
 import { toast } from '@components/foundation/NotificationProvider'
 import { t, type Language } from '@renderer/i18n'
+import { pickConfigPatch } from '@utils/configValueGuard'
 
 // ============================================
 // 类型定义
@@ -102,9 +103,14 @@ export function AudiobookSettings({ language }: AudiobookSettingsProps) {
 
   /** 保存配置 */
   const saveConfig = useCallback(async (newConfig: Partial<AudiobookConfig>) => {
+    // 非原始值防御：各 handleXxxChange 若误传事件对象，会写坏持久化配置且提示「已保存」，
+    // 这里先剪枝，全部字段被拦下时直接中止写入。
+    const patch = pickConfigPatch(newConfig, 'AudiobookSettings')
+    if (Object.keys(patch).length === 0) return
+
     try {
       setSaving(true)
-      const updatedConfig = { ...config, ...newConfig }
+      const updatedConfig = { ...config, ...patch }
       setConfig(updatedConfig)
 
       // 保存到 settings-db
@@ -205,7 +211,7 @@ export function AudiobookSettings({ language }: AudiobookSettingsProps) {
         </div>
         <ToggleSwitch
           checked={config.enabled}
-          onChange={handleToggleEnabled}
+          onChange={(e) => void handleToggleEnabled(e.target.checked)}
           disabled={saving}
         />
       </div>

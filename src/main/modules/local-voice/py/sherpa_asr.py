@@ -24,6 +24,9 @@ from typing import Optional, Dict, Any
 # 全局变量
 _recognizer = None
 _last_model_name = None
+# 最近一次初始化失败的**真实**原因（依赖缺失 / 模型文件缺失 ...）
+# 用于替代笼统的「模型加载失败」，让 Node 侧能透出可诊断的错误
+_last_init_error = None
 _lock = threading.Lock()
 
 
@@ -36,7 +39,7 @@ def get_recognizer(model_name: str = "sherpa-onnx-sense-voice-zh-en-ja-ko-yue",
                    model_dir: str = None, num_threads: int = 4,
                    language: str = "auto", use_itn: bool = True):
     """初始化/获取识别器（包含重型库的懒加载）"""
-    global _recognizer, _last_model_name
+    global _recognizer, _last_model_name, _last_init_error
     
     with _lock:
         # 如果已经加载且模型没变，直接返回
@@ -47,7 +50,10 @@ def get_recognizer(model_name: str = "sherpa-onnx-sense-voice-zh-en-ja-ko-yue",
         try:
             import sherpa_onnx
         except ImportError as e:
-            print(f"未安装 sherpa_onnx 库: {e}", file=sys.stderr)
+            _last_init_error = (
+                f"当前 Python 解释器缺少 sherpa_onnx 依赖（解释器：{sys.executable}）：{e}"
+            )
+            print(_last_init_error, file=sys.stderr)
             return None
         
         if model_dir is None:
@@ -61,7 +67,9 @@ def get_recognizer(model_name: str = "sherpa-onnx-sense-voice-zh-en-ja-ko-yue",
 
         # 检查文件是否存在
         if not model_path.is_file() or not tokens_path.is_file():
-            print(f"模型文件不存在: {model_dir}", file=sys.stderr)
+            # global 已在函数首部声明，此处直接赋值即可
+            _last_init_error = f"模型文件不存在: {model_dir}"
+            print(_last_init_error, file=sys.stderr)
             return None
 
         device = detect_device()
@@ -80,7 +88,8 @@ def get_recognizer(model_name: str = "sherpa-onnx-sense-voice-zh-en-ja-ko-yue",
             _last_model_name = model_name
             return _recognizer
         except Exception as e:
-            print(f"加载 Sherpa 模型时发生错误: {e}", file=sys.stderr)
+            _last_init_error = f"加载 Sherpa-ONNX 模型失败（{model_name}）：{e}"
+            print(_last_init_error, file=sys.stderr)
             return None
 
 
@@ -148,7 +157,8 @@ def handle_initialize(params: Dict[str, Any]) -> Dict[str, Any]:
         if recognizer is None:
             return {
                 "type": "error",
-                "message": "模型加载失败",
+                # 优先透出真实原因（缺依赖 / 缺模型文件），避免只报「模型加载失败」
+                "message": _last_init_error or "模型加载失败",
             }
         
         return {
@@ -226,36 +236,45 @@ def process_command(command: str, params: Dict[str, Any]) -> Dict[str, Any]:
         }
 
 
+def emit(message: Dict[str, Any]) -> None:
+    """输出单条协议消息（Node 侧按 "JSON:" 前缀解析）"""
+    print(f"JSON:{json.dumps(message, ensure_ascii=False)}")
+    sys.stdout.flush()
+
+
 def main():
     """主循环：从 stdin 读取命令，处理并输出结果"""
     print("Sherpa ASR Python 进程已启动", file=sys.stderr)
-    
-    # 发送就绪消息
-    print(json.dumps({"type": "ready"}))
-    sys.stdout.flush()
-    
+
+    # 就绪握手：Node 侧以此判定进程可用，取代过去的固定 sleep
+    emit({"type": "ready"})
+
     try:
         for line in sys.stdin:
             line = line.strip()
             if not line:
                 continue
-            
+
+            data: Any = None
             try:
                 data = json.loads(line)
                 command = data.get("command", "")
-                params = data.get("params", {})
-                
-                result = process_command(command, params)
-                
-                # 输出结果
-                print(f"JSON:{json.dumps(result)}")
-                sys.stdout.flush()
-                
+                params = data.get("params", {}) or {}
+                request_id = data.get("requestId", "")
+                # 外层 requestId 是权威值：强制回显并覆盖 handle_* 内部的占位值，
+                # 否则 Node 侧按 requestId 分发时会匹配不到（命令永远超时）
+                result = dict(process_command(command, params))
+                result["requestId"] = request_id
+                emit(result)
+
             except json.JSONDecodeError as e:
                 print(f"JSON 解析错误: {e}", file=sys.stderr)
+                emit({"type": "error", "requestId": "", "message": f"命令不是合法 JSON: {e}"})
             except Exception as e:
                 print(f"处理命令时出错: {e}", file=sys.stderr)
-                
+                echoed = data.get("requestId", "") if isinstance(data, dict) else ""
+                emit({"type": "error", "requestId": echoed, "message": f"处理命令时出错: {e}"})
+
     except KeyboardInterrupt:
         print("收到中断信号，正在退出...", file=sys.stderr)
     finally:
@@ -264,6 +283,7 @@ def main():
         _recognizer = None
         _last_model_name = None
         print("Sherpa ASR Python 进程已退出", file=sys.stderr)
+
 
 
 if __name__ == "__main__":

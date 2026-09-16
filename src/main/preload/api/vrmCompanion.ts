@@ -319,6 +319,13 @@ export function createVrmCompanionApi() {
     onVoiceContextUpdated: on<VrmVoiceContext>('vrm-companion:voice-context-updated'),
     /** 主窗口 → 主进程 → 伴侣窗口：主窗口全功能语音是否激活（激活时伴侣应让出麦克风） */
     onMainConversationActive: on<boolean>('vrm-companion:main-conversation-active'),
+    /**
+     * 主进程 → 伴侣窗口：窗口可见性变化。
+     *
+     * 窗口隐藏/销毁时必须由渲染层结束语音对话：隐藏只隐藏窗口（保留 warm renderer），
+     * VAD 循环与麦克风采集不会自动停止。
+     */
+    onVisibilityChanged: on<{ visible: boolean }>('vrm-companion:visibility-changed'),
     /** 主窗口订阅：伴侣窗口语音状态变化 */
     onVoiceStateChanged: on<{ state: string; volume: number }>('vrm-companion:voice-state-changed'),
     /** 主窗口订阅：伴侣窗口对话完成（落库到聊天历史） */

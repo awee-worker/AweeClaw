@@ -25,6 +25,7 @@ import { toast } from '../../foundation/NotificationProvider'
 import { CharacterCardGallery } from '../../character-card/CharacterCardGallery'
 import { CharacterCardImporter } from '../../character-card/CharacterCardImporter'
 import type { CardStorageStats } from '@main/modules/character-card/types'
+import { pickConfigPatch } from '@utils/configValueGuard'
 
 interface CharacterCardSettingsProps {
   language: Language
@@ -46,6 +47,12 @@ interface SettingsState {
   showImporter: boolean
   isResetting: boolean
 }
+
+/** 需要落盘的配置字段（与 saveConfig 的写出范围保持一致） */
+type CardConfigField = Pick<
+  SettingsState,
+  'autoBackup' | 'maxBackupCount' | 'defaultExportFormat' | 'importValidation'
+>
 
 export const CharacterCardSettings: React.FC<CharacterCardSettingsProps> = memo(function CharacterCardSettings({
   language,
@@ -119,6 +126,19 @@ export const CharacterCardSettings: React.FC<CharacterCardSettingsProps> = memo(
       isZh ? '角色卡设置已保存' : 'Character card settings saved'
     )
   }, [state.autoBackup, state.maxBackupCount, state.defaultExportFormat, state.importValidation, isZh])
+
+
+  /**
+   * 写入需要落盘的配置字段
+   *
+   * 非原始值防御：onChange 若误传事件对象，写进 state 后会被序列化成 {}，
+   * 落盘即写坏配置（下次进来设置失效），这里先剪枝，字段全被拦下时直接中止。
+   */
+  const updateConfig = useCallback((patch: Partial<CardConfigField>) => {
+    const clean = pickConfigPatch(patch, 'CharacterCardSettings')
+    if (Object.keys(clean).length === 0) return
+    setState(prev => ({ ...prev, ...clean }))
+  }, [])
 
   // 重置设置
   const resetSettings = useCallback(async () => {
@@ -369,7 +389,7 @@ export const CharacterCardSettings: React.FC<CharacterCardSettingsProps> = memo(
             </div>
             <ToggleSwitch
               checked={state.autoBackup}
-              onChange={(checked) => setState(prev => ({ ...prev, autoBackup: checked }))}
+              onChange={(e) => updateConfig({ autoBackup: e.target.checked })}
             />
           </div>
 
@@ -385,7 +405,7 @@ export const CharacterCardSettings: React.FC<CharacterCardSettingsProps> = memo(
             </div>
             <select
               value={state.maxBackupCount}
-              onChange={(e) => setState(prev => ({ ...prev, maxBackupCount: parseInt(e.target.value) }))}
+              onChange={(e) => updateConfig({ maxBackupCount: parseInt(e.target.value) })}
               className="px-3 py-1.5 rounded-lg border border-border-secondary bg-surface focus:border-accent focus:ring-1 focus:ring-accent/20 outline-none"
             >
               <option value="5">5</option>
@@ -407,7 +427,7 @@ export const CharacterCardSettings: React.FC<CharacterCardSettingsProps> = memo(
             </div>
             <select
               value={state.defaultExportFormat}
-              onChange={(e) => setState(prev => ({ ...prev, defaultExportFormat: e.target.value as 'json' | 'png' }))}
+              onChange={(e) => updateConfig({ defaultExportFormat: e.target.value as 'json' | 'png' })}
               className="px-3 py-1.5 rounded-lg border border-border-secondary bg-surface focus:border-accent focus:ring-1 focus:ring-accent/20 outline-none"
             >
               <option value="json">JSON</option>
@@ -427,7 +447,7 @@ export const CharacterCardSettings: React.FC<CharacterCardSettingsProps> = memo(
             </div>
             <ToggleSwitch
               checked={state.importValidation}
-              onChange={(checked) => setState(prev => ({ ...prev, importValidation: checked }))}
+              onChange={(e) => updateConfig({ importValidation: e.target.checked })}
             />
           </div>
         </div>

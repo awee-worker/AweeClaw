@@ -295,6 +295,19 @@ export function VrmCompanionApp({ onReady }: VrmCompanionAppProps) {
     }
   }, [bridge.mainConversationActive, showVoiceError, stopVoice, voiceActive])
 
+  /**
+   * 伴侣窗口被隐藏 / 关闭 → 结束语音对话。
+   *
+   * 隐藏只隐藏窗口并保留 warm renderer，渲染层不会随窗口一起停止：
+   * 不显式收尾就会出现「窗口都没了、麦克风还在采集、AI 还在朗读」的状态泄漏。
+   * 这里是正常收尾而非异常，故不弹错误提示（与「用户说结束对话」同等对待）。
+   */
+  useEffect(() => {
+    if (bridge.windowVisible || !voiceActive) return
+    logger.system.info('[VrmCompanion] Window hidden, ending voice conversation')
+    stopVoice()
+  }, [bridge.windowVisible, stopVoice, voiceActive])
+
   /** AI 流式文本 → 字幕气泡 */
   useEffect(() => {
     if (voiceChat.aiText) setSubtitle(voiceChat.aiText)

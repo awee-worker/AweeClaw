@@ -23,8 +23,17 @@ import base64
 from pathlib import Path
 from typing import Optional, Dict, Any
 
+# 让 `from py.moss.tts_runtime import ...` 在任意 cwd 下都能解析：
+# 本脚本位于 <模块目录>/py/moss_tts.py，把其父目录（内含 py 包）加入 sys.path
+_PKG_ROOT = Path(__file__).resolve().parent.parent
+if str(_PKG_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PKG_ROOT))
+
 # 全局变量
 _moss_runtime = None
+# 最近一次初始化失败的**真实**原因（依赖缺失 / 模型缺失 / 加载异常）
+# 用于替代笼统的「模型加载失败」，让 Node 侧能透出可诊断的错误
+_last_init_error = None
 _runtime_lock = threading.Lock()
 
 # 匹配我们在管理器中定义的根目录
@@ -33,7 +42,7 @@ MOSS_DIR_NAME = "MOSS-TTS"
 
 def get_moss_runtime(model_dir: str = None, thread_count: int = 4):
     """彻底的懒加载：在第一次请求生成时，才会导入重型的 numpy/scipy/onnxruntime"""
-    global _moss_runtime
+    global _moss_runtime, _last_init_error
     
     with _runtime_lock:
         # 双重检查，避免多个线程同时加载
@@ -45,7 +54,11 @@ def get_moss_runtime(model_dir: str = None, thread_count: int = 4):
             import scipy.signal
             from py.moss.tts_runtime import TTSRuntime
         except ImportError as e:
-            print(f"MOSS TTS 依赖缺失，请确认 numpy/scipy/onnxruntime/sentencepiece/soundfile 已安装: {e}", file=sys.stderr)
+            _last_init_error = (
+                f"当前 Python 解释器缺少 MOSS TTS 依赖"
+                f"（numpy/scipy/onnxruntime/sentencepiece/soundfile，解释器：{sys.executable}）：{e}"
+            )
+            print(_last_init_error, file=sys.stderr)
             return None
 
         if model_dir is None:
@@ -55,7 +68,8 @@ def get_moss_runtime(model_dir: str = None, thread_count: int = 4):
             model_dir = Path(model_dir)
         
         if not (model_dir / "MOSS-TTS-Nano-100M-ONNX").exists():
-            print(f"MOSS TTS 模型未找到，请先通过 SDK 接口下载。路径: {model_dir}", file=sys.stderr)
+            _last_init_error = f"MOSS TTS 模型未找到，请先下载模型。路径: {model_dir}"
+            print(_last_init_error, file=sys.stderr)
             return None
 
         print(f"正在加载 MOSS TTS 模型 [{model_dir}]...", file=sys.stderr)
@@ -70,7 +84,8 @@ def get_moss_runtime(model_dir: str = None, thread_count: int = 4):
             print("MOSS TTS 模型加载完成", file=sys.stderr)
             return _moss_runtime
         except Exception as e:
-            print(f"加载 MOSS TTS 失败: {e}", file=sys.stderr)
+            _last_init_error = f"加载 MOSS TTS 模型失败（{model_dir}）：{e}"
+            print(_last_init_error, file=sys.stderr)
             return None
 
 
@@ -112,6 +127,19 @@ def validate_audio_quality(waveform, min_energy=0.0001, max_peak=1.0):
     return True, ""
 
 
+def _frame_signature(frame):
+    """把一帧（list[int] / numpy.ndarray）转换成可哈希签名。
+
+    生成的音频帧是 list[list[int]]，列表本身不可哈希，
+    直接 `set(frames)` 会抛 `TypeError: unhashable type: 'list'`。
+    """
+    if hasattr(frame, "tolist"):
+        frame = frame.tolist()
+    if isinstance(frame, (list, tuple)):
+        return tuple(frame)
+    return frame
+
+
 def validate_generated_frames(frames, codebook_size):
     """
     验证生成的音频帧质量
@@ -126,7 +154,11 @@ def validate_generated_frames(frames, codebook_size):
     # 检查是否有重复模式（可能是模型卡住）
     if len(frames) > 100:
         last_50 = frames[-50:]
-        if len(set(last_50)) < 5:
+        # 帧是 list，本身不可哈希：必须先转成可哈希签名再统计唯一帧，
+        # 否则长文本（帧数 > 100）会在 set(last_50) 处抛
+        # `TypeError: unhashable type: 'list'`，导致整段合成失败。
+        unique_frame_count = len({_frame_signature(frame) for frame in last_50})
+        if unique_frame_count < 5:
             return False, "Repetitive pattern detected in last 50 frames"
     
     return True, ""
@@ -190,15 +222,20 @@ def process_tts_sync(text: str, voice: str = "Junhao", speed: float = 1.0,
             print(f"Generated audio quality issue: {quality_msg}", file=sys.stderr)
             # 不直接抛出异常，让客户端自己决定是否接受
         
-        # 验证帧质量
+        # 验证帧质量（纯诊断日志：任何校验异常都不应中断合成）
         if "audio_token_ids" in result:
-            audio_codebook_size = int(runtime.tts_meta["model_config"]["audio_codebook_sizes"][0])
-            frames_valid, frames_msg = validate_generated_frames(
-                result["audio_token_ids"].tolist() if hasattr(result["audio_token_ids"], 'tolist') else result["audio_token_ids"],
-                audio_codebook_size
-            )
-            if not frames_valid:
-                print(f"Generated frames quality issue: {frames_msg}", file=sys.stderr)
+            try:
+                audio_codebook_size = int(runtime.tts_meta["model_config"]["audio_codebook_sizes"][0])
+                frames_valid, frames_msg = validate_generated_frames(
+                    result["audio_token_ids"].tolist() if hasattr(result["audio_token_ids"], 'tolist') else result["audio_token_ids"],
+                    audio_codebook_size
+                )
+                if not frames_valid:
+                    print(f"Generated frames quality issue: {frames_msg}", file=sys.stderr)
+            except Exception as frames_error:
+                # 校验逻辑自身出错不能影响已经生成好的音频
+                # （历史 bug：set(list) 抛 unhashable type: 'list'，让帧数 > 100 的合成全部失败）
+                print(f"Frame validation skipped: {frames_error}", file=sys.stderr)
 
         # 调整语速逻辑
         if abs(speed - 1.0) >= 0.01:
@@ -261,7 +298,8 @@ def handle_initialize(params: Dict[str, Any]) -> Dict[str, Any]:
         if runtime is None:
             return {
                 "type": "error",
-                "message": "模型加载失败",
+                # 优先透出真实原因（缺依赖 / 缺模型 / 加载异常），避免只报「模型加载失败」
+                "message": _last_init_error or "模型加载失败",
             }
         
         return {
@@ -364,36 +402,46 @@ def process_command(command: str, params: Dict[str, Any]) -> Dict[str, Any]:
         }
 
 
+def emit(message: Dict[str, Any]) -> None:
+    """输出单条协议消息（Node 侧按 "JSON:" 前缀解析）"""
+    print(f"JSON:{json.dumps(message, ensure_ascii=False)}")
+    sys.stdout.flush()
+
+
 def main():
     """主循环：从 stdin 读取命令，处理并输出结果"""
     print("MOSS TTS Python 进程已启动", file=sys.stderr)
-    
-    # 发送就绪消息
-    print(json.dumps({"type": "ready"}))
-    sys.stdout.flush()
-    
+
+    # 就绪握手：Node 侧以此判定进程可用，取代过去的固定 sleep
+    emit({"type": "ready"})
+
     try:
         for line in sys.stdin:
             line = line.strip()
             if not line:
                 continue
-            
+
+            data: Any = None
             try:
                 data = json.loads(line)
                 command = data.get("command", "")
-                params = data.get("params", {})
-                
-                result = process_command(command, params)
-                
-                # 输出结果
-                print(f"JSON:{json.dumps(result)}")
-                sys.stdout.flush()
-                
+                params = data.get("params", {}) or {}
+                request_id = data.get("requestId", "")
+
+                # 外层 requestId 是权威值：强制回显并覆盖 handle_* 内部的占位值，
+                # 否则 Node 侧按 requestId 分发时会匹配不到（命令永远超时）
+                result = dict(process_command(command, params))
+                result["requestId"] = request_id
+                emit(result)
+
             except json.JSONDecodeError as e:
                 print(f"JSON 解析错误: {e}", file=sys.stderr)
+                emit({"type": "error", "requestId": "", "message": f"命令不是合法 JSON: {e}"})
             except Exception as e:
                 print(f"处理命令时出错: {e}", file=sys.stderr)
-                
+                echoed = data.get("requestId", "") if isinstance(data, dict) else ""
+                emit({"type": "error", "requestId": echoed, "message": f"处理命令时出错: {e}"})
+
     except KeyboardInterrupt:
         print("收到中断信号，正在退出...", file=sys.stderr)
     finally:

@@ -187,7 +187,13 @@ function mergeConfig<T>(fallback: T, patch: unknown): T {
     const srcVal = source[key]
     const baseVal = base[key]
     if (srcVal === null || srcVal === undefined) continue
-    if (typeof baseVal !== typeof srcVal) continue
+    if (typeof baseVal !== typeof srcVal) {
+      // 类型不匹配的字段必须记录，否则「设置保存成功但不生效」会静默发生
+      logger.system.warn(
+        `[LocalVoice] 配置字段类型不匹配，已忽略: key=${key} 期望=${typeof baseVal} 实际=${typeof srcVal}`,
+      )
+      continue
+    }
     if (typeof baseVal === 'object' && !Array.isArray(baseVal)) {
       out[key] = mergeConfig(baseVal, srcVal)
     } else {
@@ -274,19 +280,26 @@ export function getEffectivePriority(): EnginePriority {
   return config.priority
 }
 
-/** 判断是否应该使用本地引擎 */
+/**
+ * 判断本地引擎是否可以参与本次调用（即「允许被使用」）。
+ *
+ * 语义边界（重要）：本函数只回答「能不能用本地引擎」，不回答「先用谁」。
+ * 「先用谁 + 失败如何回退」由渲染层按 priority 决策
+ * （见 `renderer/services/localVoiceEngine.ts` 的 resolveVoiceRoute）。
+ *
+ * 之所以不能在这里把 cloud-first 一刀切为 false：
+ * 设置面板文案明确写的是「默认使用云端引擎，**不可用时回退到本地**」，
+ * 若此处返回 false，云端不可用时的本地回退会被主进程直接拒绝（曾导致
+ * 「Cloud First 选了本地回退也永远用不上本地引擎」）。
+ */
 export function shouldUseLocalEngine(type: 'asr' | 'tts'): boolean {
   const config = readLocalVoiceConfig()
   if (!config.enabled) return false
 
-  const priority = config.priority
-  if (priority === 'cloud-only') return false
-  if (priority === 'local-only') return true
+  // 仅云端：明确禁用本地引擎
+  if (config.priority === 'cloud-only') return false
 
-  // local-first 或 cloud-first：检查本地引擎是否可用
+  // 其余优先级（local-first / local-only / cloud-first）都允许调用本地引擎
   const engineConfig = type === 'asr' ? config.asr : config.tts
-  if (!engineConfig.enabled) return false
-
-  // local-first 时优先使用本地，cloud-first 时优先使用云端
-  return priority === 'local-first'
+  return engineConfig.enabled
 }

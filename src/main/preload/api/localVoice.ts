@@ -18,6 +18,21 @@ interface IpcResponse<T = unknown> {
 }
 
 /**
+ * 剥离不可克隆内容，返回纯对象
+ *
+ * 渲染进程可能把上一步 IPC 返回的对象（跨上下文引用）再次回传，
+ * 这种对象无法被 structuredClone 序列化，会报 "An object could not be cloned."。
+ * 配置数据本身是纯 JSON，这里统一做一次深拷贝（失败时回退原值）。
+ */
+function toSerializable<T>(value: T): T {
+  try {
+    return JSON.parse(JSON.stringify(value)) as T
+  } catch {
+    return value
+  }
+}
+
+/**
  * 创建本地语音引擎 API
  */
 export function createLocalVoiceApi() {
@@ -29,7 +44,7 @@ export function createLocalVoiceApi() {
     getConfig: invoke<IpcResponse>('local-voice:get-config'),
     /** 更新本地语音配置 */
     updateConfig: (config: unknown) =>
-      ipcRenderer.invoke('local-voice:update-config', config) as Promise<IpcResponse>,
+      ipcRenderer.invoke('local-voice:update-config', toSerializable(config)) as Promise<IpcResponse>,
     /** 重置本地语音配置 */
     resetConfig: invoke<IpcResponse>('local-voice:reset-config'),
 
@@ -68,11 +83,20 @@ export function createLocalVoiceApi() {
     /** 获取可用模型列表 */
     getAvailableModels: invoke<IpcResponse>('local-voice:get-available-models'),
     /** 下载模型 */
-    downloadModel: (params: { modelId: string }) =>
+    downloadModel: (params: { modelId: string; source?: 'modelscope' | 'huggingface' }) =>
       ipcRenderer.invoke('local-voice:download-model', params) as Promise<IpcResponse>,
     /** 取消下载 */
     cancelDownload: (params: { modelId: string }) =>
       ipcRenderer.invoke('local-voice:cancel-download', params) as Promise<IpcResponse>,
+    /** 检查模型是否已下载 */
+    isModelDownloaded: (params: { modelId: string }) =>
+      ipcRenderer.invoke('local-voice:is-model-downloaded', params) as Promise<IpcResponse<{ modelId: string; downloaded: boolean }>>,
+    /** 获取模型目录 */
+    getModelDir: (params: { modelId: string }) =>
+      ipcRenderer.invoke('local-voice:get-model-dir', params) as Promise<IpcResponse<{ modelId: string; modelDir: string | null }>>,
+    /** 删除已下载模型 */
+    deleteModel: (params: { modelId: string }) =>
+      ipcRenderer.invoke('local-voice:delete-model', params) as Promise<IpcResponse<{ modelId: string; removed: boolean }>>,
 
     // --------------------------------------------
     // 事件订阅

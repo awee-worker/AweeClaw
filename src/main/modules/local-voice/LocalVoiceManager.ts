@@ -31,6 +31,7 @@ import {
 } from './LocalVoiceStore'
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import type { ModelMetadata } from './ModelDownloader'
+import { resolveBuiltinVoice } from '@shared/localVoiceVoices'
 import { SherpaAsrEngine, type AsrResult } from './engines/SherpaAsrEngine'
 import { SherpaTtsEngine, type TtsResult } from './engines/SherpaTtsEngine'
 import { GptSovitsEngine } from './engines/GptSovitsEngine'
@@ -53,9 +54,33 @@ export class LocalVoiceManager {
   private ttsStatus: EngineStatus = 'uninitialized'
   private gptSovitsStatus: EngineStatus = 'uninitialized'
 
+  /** 引擎加载时使用的配置快照（序列化），用于判断配置变化是否真的需要重建引擎 */
+  private asrConfigSnapshot: string | null = null
+  private ttsConfigSnapshot: string | null = null
+  private gptSovitsConfigSnapshot: string | null = null
+
   private constructor() {
     this.config = readLocalVoiceConfig()
+    this.repairTtsVoice()
     this.modelDownloader = new ModelDownloader(this.config)
+  }
+
+  /**
+   * 纠正历史遗留的非法 TTS 音色并写回磁盘。
+   *
+   * 背景：早期设置面板只提供 Junhao / Xiaoxiao 两个选项，而 Xiaoxiao 并不在
+   * MOSS 内置音色表中。一旦被存进配置，离线合成会在 Python 侧直接报
+   * 「Built-in voice not found: Xiaoxiao」，与「仅本地」优先级叠加后
+   * 就表现为「播报没有任何反应」。
+   */
+  private repairTtsVoice(): void {
+    const { voice, substituted, requested } = resolveBuiltinVoice(this.config.tts.defaultVoice)
+    if (!substituted) return
+
+    logger.system.warn(
+      `[LocalVoice] 配置中的 TTS 音色「${requested || '(空)'}」不在内置音色表中，已纠正为「${voice}」`,
+    )
+    this.config = updateLocalVoiceConfig({ tts: { ...this.config.tts, defaultVoice: voice } })
   }
 
   /** 获取单例实例 */
@@ -73,7 +98,19 @@ export class LocalVoiceManager {
 
   /** 更新配置 */
   updateConfig(patch: Partial<LocalVoiceConfig>): LocalVoiceConfig {
-    this.config = updateLocalVoiceConfig(patch)
+    // 保存前先纠正非法音色：否则设置面板一保存，离线播报就被打回「没反应」
+    if (patch.tts && !resolveBuiltinVoice(patch.tts.defaultVoice).substituted) {
+      this.config = updateLocalVoiceConfig(patch)
+    } else if (patch.tts) {
+      const { voice, requested } = resolveBuiltinVoice(patch.tts.defaultVoice)
+      logger.system.warn(
+        `[LocalVoice] 保存的 TTS 音色「${requested || '(空)'}」不在内置音色表中，已纠正为「${voice}」`,
+      )
+      this.config = updateLocalVoiceConfig({ ...patch, tts: { ...patch.tts, defaultVoice: voice } })
+    } else {
+      this.config = updateLocalVoiceConfig(patch)
+    }
+
     this.modelDownloader = new ModelDownloader(this.config)
     
     // 重新初始化引擎（如果配置变化影响引擎）
@@ -144,6 +181,7 @@ export class LocalVoiceManager {
 
       await this.asrEngine.initialize()
       this.asrStatus = 'ready'
+      this.asrConfigSnapshot = JSON.stringify(this.config.asr)
       logger.system.info('[LocalVoice] ASR 引擎初始化完成')
     } catch (error) {
       this.asrStatus = 'error'
@@ -172,6 +210,7 @@ export class LocalVoiceManager {
 
       await this.ttsEngine.initialize()
       this.ttsStatus = 'ready'
+      this.ttsConfigSnapshot = JSON.stringify(this.config.tts)
       logger.system.info('[LocalVoice] TTS 引擎初始化完成')
     } catch (error) {
       this.ttsStatus = 'error'
@@ -200,6 +239,7 @@ export class LocalVoiceManager {
 
       await this.gptSovitsEngine.initialize()
       this.gptSovitsStatus = 'ready'
+      this.gptSovitsConfigSnapshot = JSON.stringify(this.config.gptSovits)
       logger.system.info('[LocalVoice] GPT-SoVITS 引擎初始化完成')
     } catch (error) {
       this.gptSovitsStatus = 'error'
@@ -212,7 +252,9 @@ export class LocalVoiceManager {
   /** 语音识别 */
   async recognize(audioBuffer: Buffer, sampleRate: number = 16000): Promise<AsrResult> {
     if (!this.shouldUseLocalAsr()) {
-      throw new Error('本地 ASR 未启用')
+      throw new Error(
+        '离线语音识别不可用：请在「设置 → 本地语音」中开启引擎总开关与「语音识别(ASR)」，并确认优先级不是「仅云端」',
+      )
     }
 
     try {
@@ -228,7 +270,9 @@ export class LocalVoiceManager {
   /** 语音合成 */
   async synthesize(text: string, voice?: string, speed?: number): Promise<TtsResult> {
     if (!this.shouldUseLocalTts()) {
-      throw new Error('本地 TTS 未启用')
+      throw new Error(
+        '离线语音合成不可用：请在「设置 → 本地语音」中开启引擎总开关与「语音合成(TTS)」，并确认优先级不是「仅云端」',
+      )
     }
 
     try {
@@ -262,9 +306,13 @@ export class LocalVoiceManager {
     return this.modelDownloader.getAvailableModels()
   }
 
-  /** 下载模型 */
-  async downloadModel(modelId: string, onProgress?: (progress: DownloadProgress) => void): Promise<boolean> {
-    return this.modelDownloader.downloadModel(modelId, onProgress)
+  /** 下载模型（可选来源：modelscope | huggingface） */
+  async downloadModel(
+    modelId: string,
+    onProgress?: (progress: DownloadProgress) => void,
+    source?: 'modelscope' | 'huggingface',
+  ): Promise<boolean> {
+    return this.modelDownloader.downloadModel(modelId, onProgress, source)
   }
 
   /** 取消下载 */
@@ -273,10 +321,26 @@ export class LocalVoiceManager {
   }
 
   /** 检查模型是否已下载 */
-  isModelDownloaded(_modelId: string): boolean {
-    // 注意：异步检查，为简化返回 false，实际实现应 await
-    return false
+  async isModelDownloaded(modelId: string): Promise<boolean> {
+    try {
+      const metadata = await this.modelDownloader.getModelDownloadInfo(modelId)
+      if (!metadata) return false
+      return this.modelDownloader.isModelDownloaded(metadata)
+    } catch {
+      return false
+    }
   }
+
+  /** 获取模型目录（已下载时返回目录路径，否则返回 null） */
+  async getModelDir(modelId: string): Promise<string | null> {
+    return this.modelDownloader.getModelDir(modelId)
+  }
+
+  /** 删除已下载模型目录 */
+  async deleteModel(modelId: string): Promise<boolean> {
+    return this.modelDownloader.deleteModel(modelId)
+  }
+
 
   /** 停止所有引擎 */
   async dispose(): Promise<void> {
@@ -304,29 +368,44 @@ export class LocalVoiceManager {
     this.ttsStatus = 'uninitialized'
     this.gptSovitsStatus = 'uninitialized'
 
+    this.asrConfigSnapshot = null
+    this.ttsConfigSnapshot = null
+    this.gptSovitsConfigSnapshot = null
+
     logger.system.info('[LocalVoice] 所有引擎已停止')
   }
 
-  /** 重置引擎（如果配置变化影响引擎） */
+  /** 重置引擎（仅当影响引擎加载的配置真正变化时） */
   private resetEnginesIfNeeded(): void {
-    // 检查 ASR 配置是否变化
+    // 保存设置（哪怕是无关字段）不应卸载已就绪的引擎，
+    // 否则用户会看到「测试成功 → 保存 → 状态回到未初始化」。
     if (this.asrEngine && this.asrStatus === 'ready') {
-      // 这里可以添加更详细的配置比较逻辑
-      // 暂时简单重置
-      this.asrEngine = null
-      this.asrStatus = 'uninitialized'
+      if (this.asrConfigSnapshot !== JSON.stringify(this.config.asr)) {
+        void this.asrEngine.dispose()
+        this.asrEngine = null
+        this.asrStatus = 'uninitialized'
+        this.asrConfigSnapshot = null
+      }
     }
 
     // 检查 TTS 配置是否变化
     if (this.ttsEngine && this.ttsStatus === 'ready') {
-      this.ttsEngine = null
-      this.ttsStatus = 'uninitialized'
+      if (this.ttsConfigSnapshot !== JSON.stringify(this.config.tts)) {
+        void this.ttsEngine.dispose()
+        this.ttsEngine = null
+        this.ttsStatus = 'uninitialized'
+        this.ttsConfigSnapshot = null
+      }
     }
 
     // 检查 GPT-SoVITS 配置是否变化
     if (this.gptSovitsEngine && this.gptSovitsStatus === 'ready') {
-      this.gptSovitsEngine = null
-      this.gptSovitsStatus = 'uninitialized'
+      if (this.gptSovitsConfigSnapshot !== JSON.stringify(this.config.gptSovits)) {
+        void this.gptSovitsEngine.dispose()
+        this.gptSovitsEngine = null
+        this.gptSovitsStatus = 'uninitialized'
+        this.gptSovitsConfigSnapshot = null
+      }
     }
   }
 }

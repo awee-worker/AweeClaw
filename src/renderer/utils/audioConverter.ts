@@ -3,21 +3,34 @@ export async function convertBlobToWav(blob: Blob): Promise<Blob> {
   const audioContext = new AudioContext({ sampleRate: 16000 });
   try {
     const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-    const wavBuffer = encodeWav(audioBuffer);
-    return new Blob([wavBuffer], { type: 'audio/wav' });
+    return encodePcmChunksToWavBlob([audioBuffer.getChannelData(0)], audioBuffer.sampleRate);
   } finally {
     await audioContext.close();
   }
 }
 
-function encodeWav(audioBuffer: AudioBuffer): ArrayBuffer {
+/**
+ * 将 PCM 数据块编码为 16bit 单声道 WAV 的 Blob。
+ *
+ * 用于 WebAudio 实时采集场景：采集过程中已持有原始浮点 PCM，
+ * 直接编码出 WAV 可省掉「录成容器格式 → 解码 → 再编码」的往返开销，
+ * 也让「边说边识别」能对任意时长的音频片段即时生成可提交的音频。
+ *
+ * @param chunks     PCM 数据块列表（每块为 -1~1 的浮点样本，按时间先后排列）
+ * @param sampleRate 采样率，必须与采集时一致（传错会让离线识别结果变成乱码）
+ */
+export function encodePcmChunksToWavBlob(
+  chunks: Float32Array[],
+  sampleRate: number,
+): Blob {
   const numChannels = 1;
-  const sampleRate = audioBuffer.sampleRate;
-  const channelData = audioBuffer.getChannelData(0);
   const bitsPerSample = 16;
-  const byteRate = (sampleRate * numChannels * bitsPerSample) / 8;
   const blockAlign = (numChannels * bitsPerSample) / 8;
-  const dataSize = channelData.length * blockAlign;
+
+  let numSamples = 0;
+  for (const chunk of chunks) numSamples += chunk.length;
+
+  const dataSize = numSamples * blockAlign;
   const headerSize = 44;
   const totalSize = headerSize + dataSize;
 
@@ -32,21 +45,22 @@ function encodeWav(audioBuffer: AudioBuffer): ArrayBuffer {
   view.setUint16(20, 1, true);
   view.setUint16(22, numChannels, true);
   view.setUint32(24, sampleRate, true);
-  view.setUint32(28, byteRate, true);
+  view.setUint32(28, (sampleRate * numChannels * bitsPerSample) / 8, true);
   view.setUint16(32, blockAlign, true);
   view.setUint16(34, bitsPerSample, true);
   writeString(view, 36, 'data');
   view.setUint32(40, dataSize, true);
 
-  let offset = 44;
-  for (let i = 0; i < channelData.length; i++) {
-    const sample = Math.max(-1, Math.min(1, channelData[i]));
-    const intSample = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
-    view.setInt16(offset, intSample, true);
-    offset += 2;
+  let offset = headerSize;
+  for (const chunk of chunks) {
+    for (let i = 0; i < chunk.length; i++) {
+      const sample = Math.max(-1, Math.min(1, chunk[i]));
+      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+      offset += 2;
+    }
   }
 
-  return buffer;
+  return new Blob([buffer], { type: 'audio/wav' });
 }
 
 function writeString(view: DataView, offset: number, str: string): void {

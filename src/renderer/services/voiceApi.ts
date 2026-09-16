@@ -1,24 +1,38 @@
 /**
  * 语音服务 API
  *
- * 双路径分流（运行时根据 cloudMode 决策）：
+ * 三路径分流（先看离线引擎优先级，再看 cloudMode）：
+ *
+ * 0. 离线引擎（local engine）
+ *    - 「设置 → 本地语音」启用的 sherpa-onnx ASR / MOSS TTS，跑在主进程
+ *    - 由 `services/localVoiceEngine.ts` 按 priority 决定是否优先使用，
+ *      并负责失败回退（local-first ↔ cloud-first）
+ *    - 完全离线，不产生云端调用与计费
  *
  * 1. 云端模式（cloud）
  *    - 转发到后端 /api/v1/voice/*
  *    - 后端负责 Provider 调用、用量记录、Token 计费
  *    - 用户无需本地配置
  *
- * 2. 自定义模式（custom）
+ * 2. 直连模式（custom，历史上被误称为「本地」）
  *    - 客户端直连用户配置的语音 Provider（OpenAI 兼容协议）
  *    - STT 调用 POST {baseUrl}/audio/transcriptions
  *    - TTS 调用 POST {baseUrl}/audio/speech
  *    - 不计 Token 配额（用户自付费）
  *    - 配置存储在本地 SQLite voice_model_config 表
+ *
+ * 术语注意：本文件里 `forceLocal` / `_xxxViaDirectProvider` 指的是第 2 类
+ * （用户自配置的云端 Provider 直连），与第 0 类离线引擎无关，勿混淆。
  */
 
 import { backendApi, getServerUrl, getAccessToken, tryRefreshToken } from '../adapters/backendApi';
 import { api } from '../adapters/electronBridge';
 import { emitVtsAudio } from './vtsAudioTap';
+import {
+  resolveVoiceRoute,
+  recognizeWithLocalEngine,
+  synthesizeWithLocalEngine,
+} from './localVoiceEngine';
 
 /**
  * 云端模式状态（模块级缓存，避免对全局 store 的依赖）
@@ -193,22 +207,93 @@ function normalizeBaseUrl(baseUrl: string, provider: string): string {
   return ''
 }
 
+/** 统一错误描述（回退链路需要把两侧原因都讲清楚，避免只暴露最后一个失败） */
+function describeError(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 export const voiceApi = {
   /**
    * 语音识别（STT）：将音频转为文本
    *
-   * - 云端模式：转发到后端 /api/v1/voice/stt（计 Token）
-   * - 自定义模式：直连用户配置的 STT Provider（不计 Token）
+   * 分流顺序（按「设置 → 本地语音」的优先级决定）：
+   * - local-first / local-only：优先离线引擎
+   * - cloud-first / cloud-only：优先配置链路（后端代理 或 直连 Provider）
+   * - 首选失败且优先级允许时自动回退另一侧，两侧都失败则抛出聚合错误
    *
-   * @throws 自定义模式下未启用 STT 时抛出错误
+   * @throws 优先级为「仅本地」而离线引擎失败，或两侧均失败时
    */
   async speechToText(
     audioBlob: Blob,
     options?: { language?: string; noAuthRetry?: boolean; forceLocal?: boolean },
   ): Promise<SttResult> {
-    // 拆分式语音模式或自定义模式：使用本地配置直连
+    const route = await resolveVoiceRoute('asr')
+
+    if (route.primary === 'local') {
+      try {
+        return await this._sttViaOfflineEngine(audioBlob, options)
+      } catch (localErr) {
+        if (!route.fallback) {
+          throw new Error(
+            `${describeError(localErr)}（当前优先级为「仅本地」，不会回退云端；` +
+            `可在「设置 → 本地语音」中改回「本地优先」）`,
+          )
+        }
+        console.warn('[voiceApi] 离线 ASR 失败，回退云端:', describeError(localErr))
+        try {
+          return await this._sttViaConfigured(audioBlob, options)
+        } catch (fallbackErr) {
+          throw new Error(
+            `离线语音识别失败：${describeError(localErr)}；` +
+            `云端回退也失败：${describeError(fallbackErr)}`,
+          )
+        }
+      }
+    }
+
+    try {
+      return await this._sttViaConfigured(audioBlob, options)
+    } catch (cloudErr) {
+      if (!route.fallback) throw cloudErr
+      console.warn('[voiceApi] 云端 STT 失败，回退离线引擎:', describeError(cloudErr))
+      try {
+        return await this._sttViaOfflineEngine(audioBlob, options)
+      } catch (localErr) {
+        throw new Error(
+          `云端语音识别失败：${describeError(cloudErr)}；` +
+          `离线引擎回退也失败：${describeError(localErr)}`,
+        )
+      }
+    }
+  },
+
+  /** 离线引擎 STT（sherpa-onnx，本地推理，不产生云端调用） */
+  async _sttViaOfflineEngine(
+    audioBlob: Blob,
+    options?: { language?: string },
+  ): Promise<SttResult> {
+    const result = await recognizeWithLocalEngine(audioBlob, {
+      language: options?.language,
+    })
+    return {
+      text: result.text,
+      language: result.language,
+      duration: result.duration,
+      provider: result.provider,
+    }
+  },
+
+  /**
+   * 配置驱动的 STT：后端代理（云端模式）或直连用户自配置的 Provider。
+   * 与离线引擎无关，`forceLocal` 指「跳过后端代理」。
+   */
+  async _sttViaConfigured(
+    audioBlob: Blob,
+    options?: { language?: string; noAuthRetry?: boolean; forceLocal?: boolean },
+  ): Promise<SttResult> {
+    // 拆分式语音模式或直连模式：使用自配置 Provider
     if (!isCloudMode() || options?.forceLocal) {
-      return this._sttViaLocal(audioBlob, options)
+      return this._sttViaDirectProvider(audioBlob, options)
     }
 
     // 云端模式：走后端代理
@@ -248,12 +333,12 @@ export const voiceApi = {
   },
 
   /**
-   * 自定义模式下的本地 STT 调用
+   * 直连用户自配置 Provider 的 STT 调用（非离线引擎）
    *
    * - aliyun：走专有 Paraformer 异步任务流程（_sttViaAliyun）
    * - 其他：走 OpenAI Whisper 兼容协议 POST {baseUrl}/audio/transcriptions
    */
-  async _sttViaLocal(
+  async _sttViaDirectProvider(
     audioBlob: Blob,
     options?: { language?: string },
   ): Promise<SttResult> {
@@ -340,10 +425,10 @@ export const voiceApi = {
   /**
    * 语音合成（TTS）：将文本转为音频
    *
-   * - 云端模式：转发到后端 /api/v1/voice/tts（计 Token）
-   * - 自定义模式：直连用户配置的 TTS Provider（不计 Token）
-   *
-   * @throws 自定义模式下未启用 TTS 时抛出错误
+   * 分流顺序（按「设置 → 本地语音」的优先级决定）：
+   * - local-first / local-only：优先离线引擎（MOSS TTS，本地推理）
+   * - cloud-first / cloud-only：优先配置链路（后端代理 或 直连 Provider）
+   * - 首选失败且优先级允许时自动回退另一侧
    */
   async textToSpeech(
     text: string,
@@ -357,15 +442,103 @@ export const voiceApi = {
   ): Promise<Blob> {
     // 在唯一出口处挂 VTS 口型旁路：覆盖自动朗读 / 语音对话 / 伴侣窗口全部场景，
     // 且不侵入三处形态各异的播放点（见 services/vtsAudioTap.ts）。
-    if (!isCloudMode() || options?.forceLocal) {
-      const blob = await this._ttsViaLocal(text, options)
-      emitVtsAudio(blob)
-      return blob
-    }
-
-    const blob = await this._ttsViaCloud(text, options)
+    // 注意：回退逻辑必须内聚在 _synthesizeWithRoute 内，保证口型旁路只触发一次。
+    const blob = await this._synthesizeWithRoute(text, options)
     emitVtsAudio(blob)
     return blob
+  },
+
+  /** TTS 路由与回退（对外只暴露 textToSpeech，保证口型旁路单出口） */
+  async _synthesizeWithRoute(
+    text: string,
+    options?: {
+      voice?: string;
+      speed?: number;
+      format?: 'mp3' | 'wav' | 'opus' | 'aac' | 'flac';
+      language?: string;
+      forceLocal?: boolean;
+    },
+  ): Promise<Blob> {
+    const route = await resolveVoiceRoute('tts')
+
+    if (route.primary === 'local') {
+      try {
+        return await this._ttsViaOfflineEngine(text, options)
+      } catch (localErr) {
+        if (!route.fallback) {
+          throw new Error(
+            `${describeError(localErr)}（当前优先级为「仅本地」，不会回退云端；` +
+            `可在「设置 → 本地语音」中改回「本地优先」）`,
+          )
+        }
+        console.warn('[voiceApi] 离线 TTS 失败，回退云端:', describeError(localErr))
+        try {
+          return await this._ttsViaConfigured(text, options)
+        } catch (fallbackErr) {
+          throw new Error(
+            `离线语音合成失败：${describeError(localErr)}；` +
+            `云端回退也失败：${describeError(fallbackErr)}`,
+          )
+        }
+      }
+    }
+
+    try {
+      return await this._ttsViaConfigured(text, options)
+    } catch (cloudErr) {
+      if (!route.fallback) throw cloudErr
+      console.warn('[voiceApi] 云端 TTS 失败，回退离线引擎:', describeError(cloudErr))
+      try {
+        return await this._ttsViaOfflineEngine(text, options)
+      } catch (localErr) {
+        throw new Error(
+          `云端语音合成失败：${describeError(cloudErr)}；` +
+          `离线引擎回退也失败：${describeError(localErr)}`,
+        )
+      }
+    }
+  },
+
+  /**
+   * 离线引擎 TTS（MOSS TTS，输出 WAV Blob）
+   *
+   * 关键约束：**不透传 `options.voice`**。
+   * 调用方（自动播报 / 语音对话 / 伴侣窗口）传的 voice 是**Provider 音色**语义
+   * （如 `alloy`、`Xiaoxiao`，来自「设置 → 模型配置 → 语音模型」），与 MOSS 的
+   * 内置音色（Junhao / Xiaoyu / Adam …）属于两套命名空间。把 Provider 音色送进
+   * 离线引擎会让 Python 侧直接报「Built-in voice not found」，
+   * 在「仅本地」优先级下不回退云端 → 表现为「点击播报没有反应」。
+   *
+   * 离线音色统一由「设置 → 本地语音 → TTS 默认音色」决定（主进程配置），
+   * 语义单一、无歧义；语速无命名空间冲突，正常透传。
+   */
+  async _ttsViaOfflineEngine(
+    text: string,
+    options?: { voice?: string; speed?: number },
+  ): Promise<Blob> {
+    return synthesizeWithLocalEngine(text, {
+      speed: options?.speed,
+    })
+  },
+
+  /**
+   * 配置驱动的 TTS：后端代理（云端模式）或直连用户自配置的 Provider。
+   * 与离线引擎无关，`forceLocal` 指「跳过后端代理」。
+   */
+  async _ttsViaConfigured(
+    text: string,
+    options?: {
+      voice?: string;
+      speed?: number;
+      format?: 'mp3' | 'wav' | 'opus' | 'aac' | 'flac';
+      language?: string;
+      forceLocal?: boolean;
+    },
+  ): Promise<Blob> {
+    if (!isCloudMode() || options?.forceLocal) {
+      return this._ttsViaDirectProvider(text, options)
+    }
+    return this._ttsViaCloud(text, options)
   },
 
   /** 云端 TTS 实现（拆分出来是为了让口型旁路只挂一个出口） */
@@ -404,12 +577,12 @@ export const voiceApi = {
   },
 
   /**
-   * 自定义模式下的本地 TTS 调用
+   * 直连用户自配置 Provider 的 TTS 调用（非离线引擎）
    *
    * - aliyun：走专有 CosyVoice 流程（_ttsViaAliyun）
    * - 其他：走 OpenAI TTS 兼容协议 POST {baseUrl}/audio/speech
    */
-  async _ttsViaLocal(
+  async _ttsViaDirectProvider(
     text: string,
     options?: {
       voice?: string;

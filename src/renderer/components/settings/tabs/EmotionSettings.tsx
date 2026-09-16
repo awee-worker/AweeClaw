@@ -17,6 +17,7 @@ import {
   RefreshCw, AlertCircle, CheckCircle, Info, Image
 } from 'lucide-react'
 import { t, type Language } from '@renderer/i18n'
+import { pickConfigPatch } from '@utils/configValueGuard'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { ActionButton } from '../../ui/ActionButton'
@@ -55,6 +56,12 @@ interface SettingsState {
   emotionToDelete: EmotionAsset | null
   isResetting: boolean
 }
+
+/** 需要落盘的配置字段（与 saveConfig 的写出范围保持一致） */
+type EmotionConfigField = Pick<
+  SettingsState,
+  'enableEmotionRendering' | 'showEmotionName' | 'emotionSize' | 'autoLoadFromCharacterCards'
+>
 
 export const EmotionSettings: React.FC<EmotionSettingsProps> = memo(function EmotionSettings({
   language,
@@ -131,6 +138,18 @@ export const EmotionSettings: React.FC<EmotionSettingsProps> = memo(function Emo
       isZh ? '表情包设置已保存' : 'Emotion settings saved'
     )
   }, [state.enableEmotionRendering, state.showEmotionName, state.emotionSize, state.autoLoadFromCharacterCards, isZh])
+  /**
+   * 写入需要落盘的配置字段
+   *
+   * 非原始值防御：onChange 若误传事件对象，写进 state 后会被序列化成 {}，
+   * 落盘即写坏配置（下次进来设置失效），这里先剪枝，字段全被拦下时直接中止。
+   */
+  const updateConfig = useCallback((patch: Partial<EmotionConfigField>) => {
+    const clean = pickConfigPatch(patch, 'EmotionSettings')
+    if (Object.keys(clean).length === 0) return
+    setState(prev => ({ ...prev, ...clean }))
+  }, [])
+
 
   // 重置设置
   const resetSettings = useCallback(async () => {
@@ -283,7 +302,7 @@ export const EmotionSettings: React.FC<EmotionSettingsProps> = memo(function Emo
             </div>
             <ToggleSwitch
               checked={state.enableEmotionRendering}
-              onChange={(checked) => setState(prev => ({ ...prev, enableEmotionRendering: checked }))}
+              onChange={(e) => updateConfig({ enableEmotionRendering: e.target.checked })}
             />
           </div>
 
@@ -299,7 +318,7 @@ export const EmotionSettings: React.FC<EmotionSettingsProps> = memo(function Emo
             </div>
             <ToggleSwitch
               checked={state.showEmotionName}
-              onChange={(checked) => setState(prev => ({ ...prev, showEmotionName: checked }))}
+              onChange={(e) => updateConfig({ showEmotionName: e.target.checked })}
             />
           </div>
 
@@ -315,7 +334,7 @@ export const EmotionSettings: React.FC<EmotionSettingsProps> = memo(function Emo
             </div>
             <select
               value={state.emotionSize}
-              onChange={(e) => setState(prev => ({ ...prev, emotionSize: e.target.value as 'small' | 'medium' | 'large' }))}
+              onChange={(e) => updateConfig({ emotionSize: e.target.value as 'small' | 'medium' | 'large' })}
               className="px-3 py-1.5 rounded-lg border border-border-secondary bg-surface focus:border-accent focus:ring-1 focus:ring-accent/20 outline-none"
             >
               <option value="small">{isZh ? '小' : 'Small'}</option>
@@ -336,7 +355,7 @@ export const EmotionSettings: React.FC<EmotionSettingsProps> = memo(function Emo
             </div>
             <ToggleSwitch
               checked={state.autoLoadFromCharacterCards}
-              onChange={(checked) => setState(prev => ({ ...prev, autoLoadFromCharacterCards: checked }))}
+              onChange={(e) => updateConfig({ autoLoadFromCharacterCards: e.target.checked })}
             />
           </div>
         </div>

@@ -53,6 +53,13 @@ export interface VrmCompanionBridge {
   voiceContext: VoiceContextPayload | null
   /** 主窗口全功能语音是否激活（激活时伴侣应让出麦克风） */
   mainConversationActive: boolean
+  /**
+   * 伴侣窗口是否可见。
+   *
+   * 窗口隐藏/销毁时由主进程下发；不可见后渲染层必须结束语音对话 ——
+   * 隐藏只隐藏窗口（warm renderer 仍在运行），VAD 循环与麦克风采集不会自动停止。
+   */
+  windowVisible: boolean
   /** 是否已完成初始化（首帧语音上下文已尝试加载） */
   ready: boolean
   /** 请求麦克风权限（macOS 需主进程弹系统授权） */
@@ -67,6 +74,14 @@ export function useVrmCompanionBridge(): VrmCompanionBridge {
   const [voiceContext, setVoiceContext] = useState<VoiceContextPayload | null>(null)
   const [mainConversationActive, setMainConversationActive] = useState(false)
   const [ready, setReady] = useState(false)
+  /**
+   * 窗口可见性。
+   *
+   * 初值取 true 而不是查询主进程：窗口创建后默认显示（`show:false` 只是创建参数，
+   * 随后由 show() 立即显示），而 show 事件可能早于本 renderer 加载完成而丢失，
+   * 用真实值校正反而会把「可见」误判为「不可见」。
+   */
+  const [windowVisible, setWindowVisible] = useState(true)
 
   /** 供回调内读取最新上下文（避免闭包旧值） */
   const voiceContextRef = useRef<VoiceContextPayload | null>(null)
@@ -149,6 +164,19 @@ export function useVrmCompanionBridge(): VrmCompanionBridge {
   }, [])
 
   // --------------------------------------------
+  // 订阅：伴侣窗口可见性（main → 伴侣窗口）
+  //
+  // 窗口被隐藏/销毁后必须结束语音对话，否则麦克风与 VAD 会持续运行。
+  // --------------------------------------------
+  useEffect(() => {
+    const off = api.vrmCompanion.onVisibilityChanged((payload) => {
+      // 载荷异常时不改动状态：宁可漏一次停止，也不要因脏数据误停正在进行的对话
+      if (typeof payload?.visible === 'boolean') setWindowVisible(payload.visible)
+    })
+    return off
+  }, [])
+
+  // --------------------------------------------
   // 转发方法
   // --------------------------------------------
   const requestMicPermission = useCallback(async () => {
@@ -180,6 +208,7 @@ export function useVrmCompanionBridge(): VrmCompanionBridge {
   return {
     voiceContext,
     mainConversationActive,
+    windowVisible,
     ready,
     requestMicPermission,
     notifyVoiceStateChanged,

@@ -33,6 +33,7 @@ import { ToggleSwitch } from '@components/ui'
 import { api } from '@renderer/adapters/electronBridge'
 import { toast } from '@components/foundation/NotificationProvider'
 import { t, type Language } from '@renderer/i18n'
+import { pickConfigPatch } from '@utils/configValueGuard'
 import type { VmcConfig, VmcState } from '@renderer/types/electronBridge'
 
 // ============================================
@@ -95,9 +96,14 @@ export function VmcSettings({ language }: VmcSettingsProps) {
 
   // 更新配置
   const updateConfig = useCallback(async (update: Partial<VmcConfig>) => {
+    // 非原始值防御：onChange 误传事件对象时，该字段会被序列化成 {} 或被主进程静默丢弃，
+    // 表现为「提示保存成功但设置未生效」，这里直接拦下并告警。
+    const patch = pickConfigPatch(update, 'VmcSettings')
+    if (Object.keys(patch).length === 0) return
+
     setSaving(true)
     try {
-      const res = await api.vmc.updateConfig(update)
+      const res = await api.vmc.updateConfig(patch)
       if (res.success && res.data) {
         setConfig(res.data)
         toast.success(zh ? '配置已保存' : 'Settings saved')
@@ -189,7 +195,7 @@ export function VmcSettings({ language }: VmcSettingsProps) {
           </div>
           <ToggleSwitch
             checked={config.enabled}
-            onChange={(checked) => void updateConfig({ enabled: checked })}
+            onChange={(e) => void updateConfig({ enabled: e.target.checked })}
             disabled={saving}
           />
         </div>
@@ -228,9 +234,9 @@ export function VmcSettings({ language }: VmcSettingsProps) {
           </div>
           <ToggleSwitch
             checked={config.send.enabled}
-            onChange={(checked) =>
+            onChange={(e) =>
               void updateConfig({
-                send: { ...config.send, enabled: checked },
+                send: { ...config.send, enabled: e.target.checked },
               })
             }
             disabled={saving || !config.enabled}
@@ -298,9 +304,9 @@ export function VmcSettings({ language }: VmcSettingsProps) {
           </div>
           <ToggleSwitch
             checked={config.receive.enabled}
-            onChange={(checked) =>
+            onChange={(e) =>
               void updateConfig({
-                receive: { ...config.receive, enabled: checked },
+                receive: { ...config.receive, enabled: e.target.checked },
               })
             }
             disabled={saving || !config.enabled}
@@ -361,9 +367,9 @@ export function VmcSettings({ language }: VmcSettingsProps) {
               </div>
               <ToggleSwitch
                 checked={config.receive.syncExpression}
-                onChange={(checked) =>
+                onChange={(e) =>
                   void updateConfig({
-                    receive: { ...config.receive, syncExpression: checked },
+                    receive: { ...config.receive, syncExpression: e.target.checked },
                   })
                 }
                 disabled={saving}
@@ -395,9 +401,9 @@ export function VmcSettings({ language }: VmcSettingsProps) {
           </div>
           <ToggleSwitch
             checked={config.heartbeat.enabled}
-            onChange={(checked) =>
+            onChange={(e) =>
               void updateConfig({
-                heartbeat: { ...config.heartbeat, enabled: checked },
+                heartbeat: { ...config.heartbeat, enabled: e.target.checked },
               })
             }
             disabled={saving || !config.enabled}

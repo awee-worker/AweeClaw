@@ -17,6 +17,7 @@ import { memo } from 'react'
 import { Sparkles, Heart, Layers, Tag, Hash } from 'lucide-react'
 import { ToggleSwitch } from '@components/ui'
 import { type Language, t } from '@renderer/i18n'
+import { pickConfigPatch } from '@utils/configValueGuard'
 import type { ProactivePermissionConfig } from './ProactiveSettingsPanel'
 
 interface Props {
@@ -78,10 +79,15 @@ export const ProactiveRandomTopicSettings = memo(function ProactiveRandomTopicSe
 
   // 更新随机话题配置
   const updateRandomTopic = (patch: Partial<typeof randomTopic>) => {
+    // 非原始值防御：ToggleSwitch 等控件若误传事件对象，会写坏主动助手配置。
+    // 注意 mood/category 允许传 undefined（表示「随机」），属于合法清空写法，必须放行。
+    const clean = pickConfigPatch(patch, 'ProactiveRandomTopicSettings')
+    if (Object.keys(clean).length === 0) return
+
     onUpdate({
       randomTopic: {
         ...randomTopic,
-        ...patch,
+        ...clean,
       },
     })
   }
@@ -117,7 +123,7 @@ export const ProactiveRandomTopicSettings = memo(function ProactiveRandomTopicSe
         </div>
         <ToggleSwitch
           checked={randomTopic.enabled}
-          onChange={(checked) => updateRandomTopic({ enabled: checked })}
+          onChange={(e) => updateRandomTopic({ enabled: e.target.checked })}
           aria-label={t('settings.proactive.randomTopic.enable', language) || '启用随机话题'}
         />
       </div>

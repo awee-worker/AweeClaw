@@ -3286,6 +3286,11 @@ export interface ElectronAPI {
     onVoiceContextUpdated: (callback: (ctx: VoiceContextPayload) => void) => () => void
     /** 主窗口 → 主进程 → 伴侣窗口：主窗口全功能语音是否激活 */
     onMainConversationActive: (callback: (active: boolean) => void) => () => void
+    /**
+     * 主进程 → 伴侣窗口：窗口可见性变化（隐藏/销毁）。
+     * 窗口不可见时渲染层必须结束语音对话，否则麦克风与 VAD 会持续运行。
+     */
+    onVisibilityChanged: (callback: (payload: { visible: boolean }) => void) => () => void
     /** 主窗口订阅：伴侣窗口语音状态变化 */
     onVoiceStateChanged: (
       callback: (payload: { state: string; volume: number }) => void,
@@ -3573,12 +3578,19 @@ export interface ElectronAPI {
     /** 获取可用模型列表 */
     getAvailableModels: () => Promise<{ success: boolean; data?: unknown; error?: string }>
     /** 下载模型 */
-    downloadModel: (params: { modelId: string }) => Promise<{ success: boolean; data?: unknown; error?: string }>
+    downloadModel: (params: { modelId: string; source?: 'modelscope' | 'huggingface' }) => Promise<{ success: boolean; data?: unknown; error?: string }>
     /** 取消下载 */
     cancelDownload: (params: { modelId: string }) => Promise<{ success: boolean; data?: unknown; error?: string }>
+    /** 检查模型是否已下载 */
+    isModelDownloaded: (params: { modelId: string }) => Promise<{ success: boolean; data?: unknown; error?: string }>
+    /** 获取模型目录 */
+    getModelDir: (params: { modelId: string }) => Promise<{ success: boolean; data?: unknown; error?: string }>
+    /** 删除已下载模型 */
+    deleteModel: (params: { modelId: string }) => Promise<{ success: boolean; data?: unknown; error?: string }>
     /** 订阅下载进度 */
     onDownloadProgress: (callback: (progress: unknown) => void) => () => void
   }
+
 
 }
 

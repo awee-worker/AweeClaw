@@ -76,6 +76,18 @@ const POINTER_STATE_CHANNEL = 'vrm-companion:pointer-state'
 /** 指针位置轮询间隔（ms）：50ms ≈ 20Hz，兼顾响应速度与开销 */
 const POINTER_POLL_INTERVAL_MS = 50
 
+/**
+ * 窗口可见性变化频道（主进程 → 伴侣窗口自身）。
+ *
+ * 载荷：{ visible: boolean }
+ * 消费方：伴侣窗口渲染层。
+ *
+ * 为什么必须显式下发：隐藏只隐藏窗口、保留 warm renderer，渲染层的
+ * VAD 循环与麦克风采集不会随之停止 —— 若不通知，会出现「窗口都没了、
+ * 对话还在录音/朗读」的状态泄漏（麦克风被长期占用）。
+ */
+const VISIBILITY_CHANGED_CHANNEL = 'vrm-companion:visibility-changed'
+
 // ============================================
 // 管理器
 // ============================================
@@ -208,6 +220,7 @@ export class VrmCompanionManager {
     this.window.on('show', () => {
       this.applyMouseIgnoring()
       this.syncPointerPoll()
+      this.send(VISIBILITY_CHANGED_CHANNEL, { visible: true })
     })
 
     this.window.on('hide', () => {
@@ -215,6 +228,9 @@ export class VrmCompanionManager {
       this.transientPassThrough = false
       this.mouseIgnored = false
       this.stopPointerPoll()
+      // 通知渲染层「窗口已不可见」：渲染层据此结束语音对话（释放麦克风、停止朗读）。
+      // 隐藏走的是 hide 而非销毁，渲染层仍在运行，不通知就会一直占用麦克风。
+      this.send(VISIBILITY_CHANGED_CHANNEL, { visible: false })
     })
 
     this.window.on('closed', () => {
@@ -751,6 +767,9 @@ export class VrmCompanionManager {
   public destroy(): void {
     this.resetPointerState()
     if (this.window && !this.window.isDestroyed()) {
+      // 销毁前最后一次通知：让渲染层先结束语音对话（释放麦克风与 TTS 播放），
+      // 而不是依赖进程被强杀回收。webContents 此时仍可用，消息能送达。
+      this.send(VISIBILITY_CHANGED_CHANNEL, { visible: false })
       this.window.destroy()
       logger.system.info('[VrmCompanion] Destroyed')
     }

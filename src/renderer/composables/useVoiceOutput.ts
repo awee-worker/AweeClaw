@@ -82,6 +82,9 @@ export function useVoiceOutput(options?: UseVoiceOutputOptions): UseVoiceOutputR
         setPlaybackState('idle');
         setCurrentText(null);
         const msg = err instanceof Error ? err.message : 'TTS failed';
+        // 未传 onError 的调用方（如消息操作栏的「语音播报」按钮）过去会完全静默，
+        // 用户只看到「点了没反应」；这里补一条 warn 便于定位。
+        console.warn('[useVoiceOutput] 语音播报失败:', msg);
         options?.onError?.(new Error(msg));
       }
     },

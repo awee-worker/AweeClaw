@@ -29,10 +29,10 @@ import { getTokens } from '@services/backendApi'
  *
  * 【拆分式 split】（默认）
  * 1. 前端 VAD 检测说话开始/结束
- * 2. 完整录音 → voiceApi.speechToText()（自动分流：云端→后端 API，本地→用户配置）
+ * 2. 完整录音 → voiceApi.speechToText()（自动分流：离线引擎→本地 sherpa，云端→后端 API，直连→用户配置）
  * 3. runVoiceToolLoop()（走客户端主进程 api.llm.send()，支持工具调用和插件）
  * 4. stripNonSpeakableContent() 过滤舞台指示
- * 5. voiceApi.textToSpeech()（自动分流：云端→后端 API，本地→用户配置）
+ * 5. voiceApi.textToSpeech()（自动分流：离线引擎→本地 sherpa，云端→后端 API，直连→用户配置）
  * 6. 前端播放音频
  *
  * 【端到端 realtime】

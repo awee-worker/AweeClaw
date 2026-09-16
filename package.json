@@ -1,6 +1,6 @@
 {
   "name": "aweeclaw",
-  "version": "2.2.7",
+  "version": "2.2.8",
   "description": "AweeClaw - Connect AI to Your World",
   "productName": "AweeClaw",
   "author": "Awee Lee <aweelee@qq.com>",
@@ -283,6 +283,16 @@
       {
         "from": "resources/vrm",
         "to": "vrm"
+      },
+      {
+        "from": "src/main/modules/local-voice/py",
+        "to": "py",
+        "filter": [
+          "**/*",
+          "!**/__pycache__/**",
+          "!**/*.pyc",
+          "!**/generated_audio/**"
+        ]
       }
     ]
   },
