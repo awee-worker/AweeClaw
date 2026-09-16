@@ -58,6 +58,8 @@ export interface MarketplaceInstallResult {
   installed: boolean
   requiresPayment?: boolean
   price?: number
+  /** 权益已到期（需续费而非首次购买） */
+  expired?: boolean
   downloadUrl: string
   version: string
   checksum: string
@@ -68,6 +70,7 @@ export interface MarketplaceInstallResult {
   changelog: string
   permissions?: string[]
 }
+
 
 export interface MarketplaceUpdateInfo {
   scenarioId: string

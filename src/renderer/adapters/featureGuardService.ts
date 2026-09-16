@@ -361,7 +361,17 @@ export async function getBoosterPacks(): Promise<BoosterPackConfig[]> {
 export async function createBoosterOrder(
   packId: string,
   channel: string,
-): Promise<{ order: { orderNo: string }; payment: { qrCodeUrl?: string; paymentUrl?: string; mockMode?: boolean } }> {
+): Promise<{
+  order: { orderNo: string }
+  payment: {
+    /** 网关下单是否成功（失败时 error 有值，需由调用方展示） */
+    success?: boolean
+    orderNo?: string
+    qrCodeUrl?: string
+    paymentUrl?: string
+    error?: string
+  }
+}> {
   return backendApi.post('/api/v1/payment/booster-order', { packId, channel })
 }
 

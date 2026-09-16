@@ -5,11 +5,13 @@ import {
   ShieldCheck,
   ArrowLeft,
   CalendarClock,
+  Zap,
 } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { type ProfileTab } from './tabs'
 import { PlanPanel } from './tabs/PlanPanel'
+import { BoosterPanel } from './tabs/BoosterPanel'
 import { SubscriptionPanel } from './tabs/SubscriptionPanel'
 import { ProfilePanel } from './tabs/ProfilePanel'
 import { SecurityPanel } from './tabs/SecurityPanel'
@@ -17,6 +19,7 @@ import { t, type Language } from '@renderer/i18n'
 
 const tabs: { id: ProfileTab; icon: React.ReactNode; labelZh: string; labelEn: string }[] = [
   { id: 'plan', icon: <Crown className="w-4 h-4" />, labelZh: '套餐管理', labelEn: 'Plan' },
+  { id: 'booster', icon: <Zap className="w-4 h-4" />, labelZh: '加油包', labelEn: 'Booster' },
   { id: 'subscription', icon: <CalendarClock className="w-4 h-4" />, labelZh: '订阅管理', labelEn: 'Subscription' },
   { id: 'profile', icon: <User className="w-4 h-4" />, labelZh: '个人信息', labelEn: 'Profile' },
   { id: 'security', icon: <ShieldCheck className="w-4 h-4" />, labelZh: '账号安全', labelEn: 'Security' },
@@ -84,6 +87,7 @@ export default function UserProfilePage() {
           <div className="flex-1 overflow-y-auto px-8 py-6 custom-scrollbar pb-28">
             <div className="space-y-6">
               {activeTab === 'plan' && <PlanPanel key="plan" language={language as Language} />}
+              {activeTab === 'booster' && <BoosterPanel key="booster" language={language as Language} />}
               {activeTab === 'subscription' && <SubscriptionPanel key="subscription" language={language as Language} />}
               {activeTab === 'profile' && <ProfilePanel key="profile" language={language as Language} onSwitchToSecurity={(section) => { setActiveTab('security'); setSecurityInitialSection(section) }} />}
               {activeTab === 'security' && <SecurityPanel key="security" language={language as Language} initialSection={securityInitialSection} onSectionConsumed={() => setSecurityInitialSection(null)} />}

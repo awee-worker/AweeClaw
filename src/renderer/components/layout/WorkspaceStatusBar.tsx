@@ -33,6 +33,7 @@ import ToolCallLogContent from '../dock-panels/ToolLogPanel'
 import ContextStatsContent from '../dock-panels/ContextMetricsPanel'
 import PlanListContent from '../dock-panels/TaskListPanel'
 import NotificationCenterContent, { NotificationClearButton } from '../dock-panels/NotificationPanel'
+import { useUserNotificationStore } from '@store/userNotificationStore'
 import { useInlineToast } from '@components/foundation/InlineNotification'
 import { useHasElevatedToastLayer } from '@components/foundation/toastLayerStore'
 import {
@@ -219,7 +220,10 @@ export default function WorkspaceStatusBar() {
   const [workerProgress, setWorkerProgress] = useState<IndexProgress | null>(null)
 
   const { toasts, visibleIds } = useInlineToast()
-  const notificationCount = toasts.length
+  // 角标口径与顶部标题栏一致：运行消息 + 后端未读通知（到期提醒等）
+  const unreadNotifications = useUserNotificationStore(s => s.unreadCount)
+  const notificationCount = toasts.length + unreadNotifications
+  const [messagesOpen, setMessagesOpen] = useState(false)
   const latestVisibleToastId = [...visibleIds].reverse().find(id => {
     const toast = toasts.find(item => item.id === id)
     return toast?.variant === 'inline'
@@ -696,8 +700,13 @@ export default function WorkspaceStatusBar() {
             width={360}
             height={420}
             language={language as 'en' | 'zh'}
+            open={messagesOpen}
+            onOpenChange={setMessagesOpen}
           >
-            <NotificationCenterContent language={language as 'en' | 'zh'} />
+            <NotificationCenterContent
+              language={language as 'en' | 'zh'}
+              onNavigate={() => setMessagesOpen(false)}
+            />
           </DockPopover>
         </div>
       </div>

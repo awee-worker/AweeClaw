@@ -33,9 +33,11 @@ import {
     getFeaturedScenarios,
     getMarketplaceCategories,
     installScenarioFromMarketplace,
+    createScenarioOrder,
     checkScenarioUpdates,
     updateScenarioFromMarketplace,
 } from '@services/marketplaceService'
+import { PaymentDialog } from '@components/payment/PaymentDialog'
 import type {
     MarketplaceScenario,
     MarketplaceCategory,
@@ -1289,6 +1291,13 @@ function MarketplaceTab({ language, isAuthenticated }: { language: Language; isA
     const [page, setPage] = useState(1)
     const [permissionPending, setPermissionPending] = useState<MarketplaceScenario | null>(null)
 
+    /** 付费场景支付弹窗目标（付费购买 / 续费） */
+    const [payTarget, setPayTarget] = useState<{
+        item: MarketplaceScenario
+        /** 权益已到期 → 续费（允许在有效期未满时顺延） */
+        expired: boolean
+    } | null>(null)
+
     function translateInstallError(error: string): string {
         if (language !== 'zh') return error
         const map: Record<string, string> = {
@@ -1342,7 +1351,8 @@ function MarketplaceTab({ language, isAuthenticated }: { language: Language; isA
                 setSelectedItem(null)
                 await loadItems()
             } else if (result.requiresPayment) {
-                toast.card({ type: 'warning', title: t('scenario.paidscenario', language as Language), message: t('scenario.thisisapaidscenario', language as Language, { price: result.price }), duration: 5000, source: 'ScenarioMarketplace' })
+                // 付费场景未购买 / 权益已到期：弹出支付弹窗（支付成功后自动安装）
+                setPayTarget({ item, expired: !!result.expired })
             } else {
                 const errorMsg = translateInstallError(result.error || t('scenario.unknownerror2', language as Language))
                 toast.card({ type: 'error', title: t('scenario.installfailed', language as Language), message: errorMsg, duration: 5000, source: 'ScenarioMarketplace' })
@@ -1357,6 +1367,68 @@ function MarketplaceTab({ language, isAuthenticated }: { language: Language; isA
         for (let i = 1; i <= 5; i++) stars.push(<Star key={i} className={`w-3 h-3 ${i <= Math.round(rating) ? 'text-yellow-300 fill-yellow-300' : 'text-border/40'}`} />)
         return <div className="flex items-center gap-0.5">{stars}</div>
     }
+
+    /**
+     * 付费场景支付弹窗（购买 / 续费）
+     *
+     * 下单、渠道选择、二维码、轮询与补单核实全部交给 PaymentDialog，
+     * 支付成功后重新走一次安装流程（此时权益已发放）。
+     * 组件内部使用 portal 渲染，放在任一 JSX 位置都不影响布局。
+     */
+    function renderPayDialog() {
+        if (!payTarget) return null
+        const { item, expired } = payTarget
+
+        return (
+            <PaymentDialog
+                isOpen
+                title={
+                    expired
+                        ? language === 'zh'
+                            ? '续费场景'
+                            : 'Renew Scenario'
+                        : language === 'zh'
+                            ? '购买场景'
+                            : 'Buy Scenario'
+                }
+                subjectName={(language === 'zh' ? item.nameZh : item.name) || item.nameZh}
+                amount={Number((item as any).price ?? 0)}
+                language={language as Language}
+                createOrder={async (channel) => {
+                    const result = await createScenarioOrder(
+                        item.id,
+                        channel,
+                        expired ? 'renew' : 'purchase',
+                    )
+                    if (!result.success || !result.orderNo) {
+                        throw new Error(
+                            result.error || (language === 'zh' ? '创建订单失败' : 'Failed to create order'),
+                        )
+                    }
+                    return {
+                        orderNo: result.orderNo,
+                        amount: Number((item as any).price ?? 0),
+                        payment: {
+                            paymentUrl: result.paymentUrl,
+                            qrCodeUrl: result.qrCodeUrl,
+                            mockMode: result.mockMode,
+                        },
+                    }
+                }}
+                onPaid={async () => {
+                    setPayTarget(null)
+                    await doInstall(item)
+                }}
+                onClose={() => setPayTarget(null)}
+                successHint={
+                    language === 'zh'
+                        ? '权益已生效，正在完成安装'
+                        : 'Entitlement activated, installing now'
+                }
+            />
+        )
+    }
+
 
     if (!isAuthenticated) {
         return (
@@ -1456,6 +1528,9 @@ function MarketplaceTab({ language, isAuthenticated }: { language: Language; isA
 
                     <ScenarioReviewPanel scenarioId={selectedItem.id} scenarioName={selectedItem.name} scenarioNameZh={selectedItem.nameZh} currentRating={selectedItem.rating} ratingCount={selectedItem.ratingCount} />
                 </div>
+
+                {/* 付费购买 / 续费弹窗 */}
+                {renderPayDialog()}
             </div>
         )
     }
@@ -1621,6 +1696,9 @@ function MarketplaceTab({ language, isAuthenticated }: { language: Language; isA
                     onCancel={() => setPermissionPending(null)}
                 />
             )}
+
+            {/* 付费购买 / 续费弹窗 */}
+            {renderPayDialog()}
         </div>
     )
 }

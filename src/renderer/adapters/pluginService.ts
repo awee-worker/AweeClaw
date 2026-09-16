@@ -77,11 +77,14 @@ export interface PluginDownloadInfo {
   manifest?: Record<string, unknown>
   requiresPayment?: boolean
   price?: number
+  /** 权益已到期（需续费而非首次购买） */
+  expired?: boolean
   /** 是否为配置型插件（无包文件） */
   configOnly?: boolean
 }
 
 /** 已安装插件记录 */
+
 export interface InstalledPlugin {
   pluginId: string
   pluginKey: string
@@ -117,6 +120,8 @@ export interface PluginInstallResult {
   mcpConnectError?: string
   requiresPayment?: boolean
   price?: number
+  /** 权益已到期（需续费而非首次购买） */
+  expired?: boolean
   orderNo?: string
   paymentUrl?: string
   qrCodeUrl?: string
@@ -341,12 +346,13 @@ export async function installPluginFromMarketplace(
       {},
     )
 
-    // 2. 付费插件未购买
+    // 2. 付费插件未购买（或权益已到期需续费）
     if (installResult.requiresPayment && !installResult.downloadUrl) {
       return {
         success: false,
         requiresPayment: true,
         price: installResult.price,
+        expired: !!installResult.expired,
         error: `This plugin requires payment. Price: ¥${installResult.price}`,
       }
     }
@@ -662,10 +668,16 @@ export function onPluginInstallProgress(
 
 // ─── 支付（付费插件） ─────────────────────────────────
 
-/** 创建插件购买订单 */
+/**
+ * 创建插件购买 / 续费订单
+ *
+ * @param intent purchase=首次购买（已有有效权益时后端会拒绝，避免重复付款）
+ *               renew=续费（有效期未满时从原到期时间顺延）
+ */
 export async function createPluginOrder(
   pluginId: string,
-  channel: string = 'ALIPAY',
+  channel: string = 'WECHAT',
+  intent: 'purchase' | 'renew' = 'purchase',
 ): Promise<PluginOrderResult> {
   if (!isAuthenticated()) {
     return { success: false, error: 'Not authenticated. Please log in first.' }
@@ -675,7 +687,7 @@ export async function createPluginOrder(
     const result = await backendApi.post<{
       order: { orderNo: string; amount: number }
       payment: { paymentUrl?: string; qrCodeUrl?: string; mockMode?: boolean }
-    }>('/api/v1/payment/plugin-order', { pluginId, channel })
+    }>('/api/v1/payment/plugin-order', { pluginId, channel, intent })
 
     return {
       success: true,

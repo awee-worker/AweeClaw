@@ -3,7 +3,7 @@
  *
  * 职责：
  * 1. 展示当前订阅状态（套餐、到期时间、剩余天数）
- * 2. 取消自动续费（到期不续费，保留当前周期权益）
+ * 2. 说明到期后自动降级为免费版（系统无自动续费机制，无需手动取消）
  * 3. 无订阅时引导升级
  *
  * 独立组件，不与 PlanPanel 混合，遵循"每个页面独立组件"原则。
@@ -22,12 +22,9 @@ import {
 } from 'lucide-react'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
-import { ActionButton } from '@components/ui'
-import { toast } from '@components/foundation/NotificationProvider'
 import { t, type Language } from '@renderer/i18n'
 import {
   getSubscriptionStatus,
-  cancelSubscription,
   type SubscriptionStatus,
 } from '@services/featureGuardService'
 
@@ -50,16 +47,10 @@ function formatDate(dateStr: string, language: Language): string {
 }
 
 export function SubscriptionPanel({ language }: SubscriptionPanelProps) {
-  const { cloudUser, fetchQuota } = useStore(
-    useShallow((s) => ({
-      cloudUser: s.cloudUser,
-      fetchQuota: s.fetchQuota,
-    })),
-  )
+  const cloudUser = useStore(useShallow((s) => s.cloudUser))
 
   const [subscription, setSubscription] = useState<SubscriptionStatus | null>(null)
   const [loading, setLoading] = useState(true)
-  const [cancelling, setCancelling] = useState(false)
 
   const fetchSubscription = useCallback(async () => {
     setLoading(true)
@@ -77,27 +68,6 @@ export function SubscriptionPanel({ language }: SubscriptionPanelProps) {
     fetchSubscription()
   }, [fetchSubscription])
 
-  const handleCancel = useCallback(async () => {
-    if (!subscription?.subscription) return
-
-    const confirmed = window.confirm(
-      t('subscription.cancelconfirm', language),
-    )
-    if (!confirmed) return
-
-    setCancelling(true)
-    try {
-      await cancelSubscription()
-      toast.success(t('subscription.cancelsuccess', language))
-      await fetchSubscription()
-      await fetchQuota()
-    } catch (e: any) {
-      toast.error(t('subscription.cancelfailed', language), e?.message || '')
-    } finally {
-      setCancelling(false)
-    }
-  }, [subscription, language, fetchSubscription, fetchQuota])
-
   // 加载中
   if (loading) {
     return (
@@ -109,7 +79,6 @@ export function SubscriptionPanel({ language }: SubscriptionPanelProps) {
 
   const sub = subscription?.subscription
   const hasActive = subscription?.hasActiveSubscription && sub
-  const isCancelled = sub?.cancelAtPeriodEnd
 
   // 套餐图标
   const planIcon =
@@ -143,12 +112,6 @@ export function SubscriptionPanel({ language }: SubscriptionPanelProps) {
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[12px] font-medium bg-text-muted/10 text-text-muted border border-text-muted/20">
                   <XCircle className="w-3 h-3" />
                   {t('subscription.expired', language)}
-                </span>
-              )}
-              {isCancelled && hasActive && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[12px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                  <Clock className="w-3 h-3" />
-                  {t('featureguard.cancelatperiodend', language)}
                 </span>
               )}
             </div>
@@ -187,22 +150,10 @@ export function SubscriptionPanel({ language }: SubscriptionPanelProps) {
           </div>
         </div>
 
-        {/* 操作按钮 */}
-        {hasActive && !isCancelled && (
-          <div className="mt-4 pt-4 border-t border-border/30">
-            <ActionButton
-              variant="ghost"
-              className="w-full"
-              onClick={handleCancel}
-              disabled={cancelling}
-            >
-              {cancelling ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                t('subscription.cancel', language)
-              )}
-            </ActionButton>
-          </div>
+        {hasActive && (
+          <p className="mt-4 pt-4 border-t border-border/30 text-[12px] text-text-muted">
+            {t('subscription.autodowngrade', language)}
+          </p>
         )}
       </div>
 

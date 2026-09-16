@@ -45,6 +45,8 @@ export interface ScenarioInstallResult {
   error?: string
   requiresPayment?: boolean
   price?: number
+  /** 权益已到期（需续费而非首次购买） */
+  expired?: boolean
   orderNo?: string
   paymentUrl?: string
   qrCodeUrl?: string
@@ -155,11 +157,13 @@ export async function installScenarioFromMarketplace(
     )
 
     // 付费场景：返回支付信息，由 UI 层引导用户完成支付
+    // 付费场景：返回支付信息，由 UI 层引导用户完成支付（过期则为续费）
     if (installResult.requiresPayment && !installResult.installed) {
       return {
         success: false,
         requiresPayment: true,
         price: installResult.price,
+        expired: !!installResult.expired,
         error: `This scenario requires payment. Price: ¥${installResult.price}`,
       }
     }
@@ -189,10 +193,16 @@ export async function installScenarioFromMarketplace(
   }
 }
 
-/** 创建场景购买支付订单 */
+/**
+ * 创建场景购买 / 续费支付订单
+ *
+ * @param intent purchase=首次购买（已有有效权益时后端会拒绝，避免重复付款）
+ *               renew=续费（有效期未满时从原到期时间顺延）
+ */
 export async function createScenarioOrder(
   scenarioId: string,
-  channel: string = 'ALIPAY',
+  channel: string = 'WECHAT',
+  intent: 'purchase' | 'renew' = 'purchase',
 ): Promise<ScenarioOrderResult> {
   if (!isAuthenticated()) {
     return { success: false, error: 'Not authenticated. Please log in first.' }
@@ -202,7 +212,7 @@ export async function createScenarioOrder(
     const result = await backendApi.post<{
       order: { orderNo: string; amount: number }
       payment: { paymentUrl?: string; qrCodeUrl?: string; mockMode?: boolean }
-    }>('/api/v1/payment/scenario-order', { scenarioId, channel })
+    }>('/api/v1/payment/scenario-order', { scenarioId, channel, intent })
 
     return {
       success: true,
@@ -218,6 +228,7 @@ export async function createScenarioOrder(
     }
   }
 }
+
 
 /** 模拟支付（仅 Mock 模式可用） */
 export async function mockPayScenarioOrder(orderNo: string): Promise<{
@@ -398,6 +409,7 @@ export async function updateScenarioFromMarketplace(
         success: false,
         requiresPayment: true,
         price: installResult.price,
+        expired: !!installResult.expired,
         error: `This scenario requires payment. Price: ¥${installResult.price}`,
       }
     }

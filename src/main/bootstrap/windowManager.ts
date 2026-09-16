@@ -312,8 +312,10 @@ function registerCsp(win: BrowserWindow): void {
           "style-src 'self' 'unsafe-inline' local-preview: scenario-bundle: plugin-bundle:",
           "img-src 'self' data: https: blob: local-preview:",
           "connect-src 'self' https: wss: http://127.0.0.1:* http://localhost:*",
-          "frame-src 'self' http://127.0.0.1:* http://localhost:*",
-          "child-src 'self' http://127.0.0.1:* http://localhost:*",
+          // 支付宝收银台：电脑网站支付用 qr_pay_mode=4 将二维码内嵌到客户端 iframe
+          // 收银台涉及 openapi / excashier / mclient 等多个子域，统一放行 *.alipay.com
+          "frame-src 'self' http://127.0.0.1:* http://localhost:* https://*.alipay.com",
+          "child-src 'self' http://127.0.0.1:* http://localhost:* https://*.alipay.com",
           "font-src 'self' data: local-preview:",
           "media-src 'self' blob: local-preview:",
           "object-src 'none'",

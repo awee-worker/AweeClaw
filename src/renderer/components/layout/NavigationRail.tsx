@@ -22,6 +22,12 @@ import { formatUserDisplayName } from '@shared/toolkit/formatHelper'
 import { t, type Language } from '@renderer/i18n'
 import { usePluginExtensions } from '@renderer/plugins/usePluginExtensions'
 import AddCustomMenuDialog from '../browser/AddCustomMenuDialog'
+import {
+  useUserNotificationStore,
+  SCENARIO_NOTIFICATION_TYPES,
+  PLUGIN_NOTIFICATION_TYPES,
+  SUBSCRIPTION_NOTIFICATION_TYPES,
+} from '@store/userNotificationStore'
 
 const isMac = typeof navigator !== 'undefined' && (
   navigator.platform.toUpperCase().indexOf('MAC') >= 0 ||
@@ -38,6 +44,24 @@ const DEFAULT_ITEMS: SidebarItemDescriptor[] = [
 const HIDDEN_NAV_ITEM_IDS = new Set<string>(['explorer', 'knowledge', 'tasks'])
 // 场景工具入口是否在导航栏显示（按需求暂时隐藏）
 const SHOW_SCENE_TOOLS_ENTRY = false
+
+/**
+ * 菜单项未读角标
+ *
+ * 用于「工作场景」「插件与技能」「费用中心」等入口：这些页面内部虽然有
+ * 到期提醒横幅，但用户不主动点进去就看不到，角标是唯一能提前暴露风险的信号。
+ */
+function MenuBadge({ count, title }: { count: number; title?: string }) {
+  if (count <= 0) return null
+  return (
+    <span
+      title={title}
+      className="ml-auto min-w-[16px] h-[16px] px-1 flex items-center justify-center text-[10px] font-semibold bg-accent text-white rounded-full"
+    >
+      {count > 99 ? '99+' : count}
+    </span>
+  )
+}
 
 function NavPill({ active }: { active: boolean }) {
   return (
@@ -118,6 +142,18 @@ function UserMenuDropdown({
     })
   }, [isOpen, anchorRef])
 
+  // 入口角标：按通知类型区分归属，避免把「插件到期」误标到场景入口上。
+  // 必须放在提前 return 之前 —— 否则菜单开关时会触发 hooks 数量不一致的运行时错误。
+  const scenarioBadge = useUserNotificationStore(
+    s => s.items.filter(i => !i.isRead && SCENARIO_NOTIFICATION_TYPES.includes(i.type)).length,
+  )
+  const pluginBadge = useUserNotificationStore(
+    s => s.items.filter(i => !i.isRead && PLUGIN_NOTIFICATION_TYPES.includes(i.type)).length,
+  )
+  const billingBadge = useUserNotificationStore(
+    s => s.items.filter(i => !i.isRead && SUBSCRIPTION_NOTIFICATION_TYPES.includes(i.type)).length,
+  )
+
   if (!isOpen) return null
 
   const planLabel = cloudUser?.planId === 'ENTERPRISE'
@@ -131,10 +167,30 @@ function UserMenuDropdown({
   const initial = cloudUser?.username?.[0]?.toUpperCase() || cloudUser?.email?.[0]?.toUpperCase() || '?'
   const displayName = formatUserDisplayName(cloudUser?.username || cloudUser?.email || cloudUser?.phone || '')
 
+  const badgeHint = (zh: string, en: string) => (language === 'zh' ? zh : en)
+
   const featureItems = [
-    { icon: Compass, label: t('layout.workscenes', language as Language), onClick: onExploreClick },
-    { icon: Puzzle, label: t('layout.pluginsandskills', language as Language), onClick: onPluginCenterClick },
-    { icon: Clock, label: t('layout.schedule', language as Language), onClick: onScheduleClick },
+    {
+      icon: Compass,
+      label: t('layout.workscenes', language as Language),
+      onClick: onExploreClick,
+      badge: scenarioBadge,
+      badgeTitle: badgeHint('有场景即将到期或已到期', 'Paid scenarios expiring or expired'),
+    },
+    {
+      icon: Puzzle,
+      label: t('layout.pluginsandskills', language as Language),
+      onClick: onPluginCenterClick,
+      badge: pluginBadge,
+      badgeTitle: badgeHint('有插件即将到期或已到期', 'Paid plugins expiring or expired'),
+    },
+    {
+      icon: Clock,
+      label: t('layout.schedule', language as Language),
+      onClick: onScheduleClick,
+      badge: 0,
+      badgeTitle: '',
+    },
     // 工作流菜单暂时隐藏，后续版本恢复
     // { icon: Workflow, label: t('layout.workflow', language as Language), onClick: onWorkflowClick },
   ]
@@ -192,6 +248,14 @@ function UserMenuDropdown({
           >
             <Wallet className="w-[16px] h-[16px]" strokeWidth={1.5} />
             <span>{t('layout.billing', language as Language)}</span>
+            <MenuBadge
+              count={billingBadge}
+              title={
+                language === 'zh'
+                  ? '套餐即将到期或已到期'
+                  : 'Subscription expiring or expired'
+            }
+          />
           </button>
           <button
             onClick={() => { onSessionHistoryClick(); onClose() }}
@@ -213,6 +277,7 @@ function UserMenuDropdown({
         >
           <item.icon className="w-[16px] h-[16px]" strokeWidth={1.5} />
           <span>{item.label}</span>
+          <MenuBadge count={item.badge} title={item.badgeTitle} />
         </button>
       ))}
 

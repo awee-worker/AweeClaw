@@ -40,7 +40,6 @@ import {
   installPluginFromMarketplace,
   onPluginInstallProgress,
   createPluginOrder,
-  mockPayPluginOrder,
   fetchPluginManifest,
 } from '@services/pluginService'
 import type {
@@ -50,6 +49,7 @@ import type {
 } from '@services/pluginService'
 import { t, type Language } from '@renderer/i18n'
 import { PluginInstallConfigDialog, PluginQrLoginModal } from './PluginInstallConfigDialog'
+import { PaymentDialog } from '@components/payment/PaymentDialog'
 import type { PluginConfigField, PluginConfigValues } from './PluginConfigForm'
 import { PluginCategoryFilter } from './PluginCategoryFilter'
 import { PluginFeaturedSection } from './PluginFeaturedSection'
@@ -109,6 +109,13 @@ export function PluginMarketplacePanel() {
     channelId: string | null
     addingAccount: boolean
   }>({ open: false, item: null, channelId: null, addingAccount: false })
+
+  /** 付费插件支付弹窗目标（付费购买 / 续费） */
+  const [payTarget, setPayTarget] = useState<{
+    item: PluginMarketItem
+    /** 权益已到期 → 续费（允许在有效期未满时顺延） */
+    expired: boolean
+  } | null>(null)
 
   // 加载精选 / 热门 / 分类
   useEffect(() => {
@@ -291,8 +298,8 @@ export function PluginMarketplacePanel() {
         }
         return true
       } else if (result.requiresPayment) {
-        // 后端再次确认付费（兜底）
-        await handlePaidPluginPurchase(item)
+        // 付费插件未购买 / 权益已到期：弹出支付弹窗（支付成功后自动安装）
+        handlePaidPluginPurchase(item, !!result.expired)
         return false
       } else {
         toast.card({
@@ -391,80 +398,100 @@ export function PluginMarketplacePanel() {
   }
 
   /**
-   * 付费插件购买流程：
-   * 1. 创建订单 → 拿到支付链接/二维码
-   * 2. Mock 模式下自动模拟支付完成
-   * 3. 支付完成后再次调用 install 完成安装
+   * 付费插件购买 / 续费入口
+   *
+   * 只负责打开支付弹窗：下单、渠道选择、二维码、轮询、补单核实全部由
+   * PaymentDialog 处理，支付成功后回调 onPaid 完成安装，避免各面板重复实现支付 UI。
    */
-  async function handlePaidPluginPurchase(item: PluginMarketItem) {
-    const orderResult = await createPluginOrder(item.id, 'ALIPAY')
-    if (!orderResult.success || !orderResult.orderNo) {
+  function handlePaidPluginPurchase(item: PluginMarketItem, expired = false) {
+    setPayTarget({ item, expired })
+  }
+
+  /** 支付成功后的收尾：重新走安装流程（此时权益已发放） */
+  async function handlePaidSuccess() {
+    const target = payTarget
+    if (!target) return
+
+    const result = await installPluginFromMarketplace(
+      target.item.id,
+      target.item.latestVersion || undefined,
+      target.item,
+    )
+
+    if (result.success) {
+      setInstalledKeys((prev) => new Set(prev).add(target.item.pluginKey))
+      setSelectedItem(null)
+      toast.success(
+        language === 'zh'
+          ? `插件「${target.item.nameZh}」${target.expired ? '续费' : '购买'}并安装成功`
+          : `Plugin "${target.item.name}" ${target.expired ? 'renewed' : 'purchased'} and installed`,
+      )
+    } else if (result.error) {
       toast.card({
-        type: 'error',
-        title: language === 'zh' ? '创建订单失败' : 'Order Creation Failed',
-        message: orderResult.error || (language === 'zh' ? '未知错误' : 'Unknown error'),
-        duration: 5000,
+        type: 'warning',
+        title: language === 'zh' ? '支付成功，安装失败' : 'Paid but Install Failed',
+        message:
+          result.error ||
+          (language === 'zh' ? '请稍后在「已安装」中重试' : 'Please retry in "Installed" tab later'),
+        duration: 6000,
         source: 'PluginMarketplace',
       })
-      return
     }
 
-    // Mock 模式：直接模拟支付完成
-    if (orderResult.mockMode) {
-      toast.info(language === 'zh' ? '测试环境：模拟支付中...' : 'Mock mode: simulating payment...')
-      const payResult = await mockPayPluginOrder(orderResult.orderNo)
-      if (!payResult.success) {
-        toast.card({
-          type: 'error',
-          title: language === 'zh' ? '支付失败' : 'Payment Failed',
-          message: payResult.error || (language === 'zh' ? '模拟支付失败' : 'Mock pay failed'),
-          duration: 5000,
-          source: 'PluginMarketplace',
-        })
-        return
-      }
+    setPayTarget(null)
+    setPayTarget(null)
+  }
 
-      // 支付成功，触发安装
-      const installResult = await installPluginFromMarketplace(item.id, item.latestVersion || undefined)
-      if (installResult.success) {
-        toast.success(
+  /** 付费插件支付弹窗（详情视图与列表视图共用，故抽成函数复用） */
+  function renderPaymentDialog() {
+    if (!payTarget) return null
+    const { item, expired } = payTarget
+
+    return (
+      <PaymentDialog
+        isOpen
+        title={
+          expired
+            ? language === 'zh'
+              ? '续费插件'
+              : 'Renew Plugin'
+            : language === 'zh'
+              ? '购买插件'
+              : 'Buy Plugin'
+        }
+        subjectName={language === 'zh' ? item.nameZh : item.name}
+        amount={Number((item as any).price ?? 0)}
+        language={language}
+        createOrder={async (channel) => {
+          const result = await createPluginOrder(
+            item.id,
+            channel,
+            expired ? 'renew' : 'purchase',
+          )
+          if (!result.success || !result.orderNo) {
+            throw new Error(
+              result.error || (language === 'zh' ? '创建订单失败' : 'Failed to create order'),
+            )
+          }
+          return {
+            orderNo: result.orderNo,
+            amount: Number((item as any).price ?? 0),
+            payment: {
+              paymentUrl: result.paymentUrl,
+              qrCodeUrl: result.qrCodeUrl,
+              mockMode: result.mockMode,
+            },
+          }
+        }}
+        onPaid={handlePaidSuccess}
+        onClose={() => setPayTarget(null)}
+        successHint={
           language === 'zh'
-            ? `插件「${item.nameZh}」购买并安装成功`
-            : `Plugin "${item.name}" purchased and installed successfully`,
-        )
-        setInstalledKeys((prev) => new Set(prev).add(item.pluginKey))
-        setSelectedItem(null)
-      } else {
-        toast.card({
-          type: 'warning',
-          title: language === 'zh' ? '支付成功，安装失败' : 'Paid but Install Failed',
-          message: installResult.error || (language === 'zh' ? '请稍后在「已安装」中重试' : 'Please retry in "Installed" tab later'),
-          duration: 6000,
-          source: 'PluginMarketplace',
-        })
-      }
-      return
-    }
-
-    // 正式环境：弹出支付链接/二维码
-    if (orderResult.paymentUrl || orderResult.qrCodeUrl) {
-      toast.card({
-        type: 'info',
-        title: language === 'zh' ? '请完成支付' : 'Please Complete Payment',
-        message: orderResult.paymentUrl || (language === 'zh' ? '请使用手机扫码支付' : 'Scan QR code to pay'),
-        duration: 0,
-        source: 'PluginMarketplace',
-      })
-      // TODO: 弹出二维码弹窗，并轮询订单状态
-    } else {
-      toast.card({
-        type: 'error',
-        title: language === 'zh' ? '支付链接获取失败' : 'Payment URL Missing',
-        message: language === 'zh' ? '未获取到支付链接，请稍后重试' : 'No payment URL returned, please retry later',
-        duration: 5000,
-        source: 'PluginMarketplace',
-      })
-    }
+            ? '插件权益已生效，正在完成安装'
+            : 'Entitlement activated, installing now'
+        }
+      />
+    )
   }
 
   // 未登录
@@ -485,17 +512,21 @@ export function PluginMarketplacePanel() {
   // 详情视图
   if (selectedItem) {
     return (
-      <PluginDetailView
-        item={selectedItem}
-        language={language}
-        installing={installing === selectedItem.id}
-        installProgress={installProgress}
-        alreadyInstalled={installedKeys.has(selectedItem.pluginKey)}
-        onBack={() => setSelectedItem(null)}
-        onInstall={() => handleInstall(selectedItem)}
-      />
+      <>
+        <PluginDetailView
+          item={selectedItem}
+          language={language}
+          installing={installing === selectedItem.id}
+          installProgress={installProgress}
+          alreadyInstalled={installedKeys.has(selectedItem.pluginKey)}
+          onBack={() => setSelectedItem(null)}
+          onInstall={() => handleInstall(selectedItem)}
+        />
+        {renderPaymentDialog()}
+      </>
     )
   }
+
 
   // 列表视图
   return (
@@ -650,6 +681,9 @@ export function PluginMarketplacePanel() {
         }
       />
 
+      {/* 付费插件支付弹窗（购买 / 续费） */}
+      {renderPaymentDialog()}
+
       {/* 扫码登录对话框（qrLogin 渠道安装成功后弹出） */}
       {qrLoginDialog.open && qrLoginDialog.item && qrLoginDialog.channelId && (
         <PluginQrLoginModal
@@ -667,6 +701,7 @@ export function PluginMarketplacePanel() {
     </div>
   )
 }
+
 
 // ─── 子组件：插件卡片（一行两个） ─────────────────────
 

@@ -2689,7 +2689,6 @@ export const zh = {
   'featureguard.subscriptionactive': '订阅有效',
   'featureguard.subscriptionexpired': '订阅已过期',
   'featureguard.daysremaining': '剩余 {days} 天',
-  'featureguard.cancelatperiodend': '已设置到期不续费',
 
   'subscription.title': '订阅管理',
   'subscription.status': '订阅状态',
@@ -2700,12 +2699,9 @@ export const zh = {
   'subscription.periodstart': '订阅开始',
   'subscription.periodend': '到期时间',
   'subscription.daysremaining': '剩余天数',
-  'subscription.cancel': '取消自动续费',
-  'subscription.cancelconfirm': '确认取消自动续费？当前周期内的权益仍然有效。',
-  'subscription.cancelsuccess': '已设置到期不续费',
-  'subscription.cancelfailed': '取消失败',
   'subscription.upgrade': '升级套餐',
   'subscription.nosubscriptiondesc': '您当前没有有效订阅，升级套餐以解锁全部功能',
+  'subscription.autodowngrade': '该订阅到期后将自动降级为免费版。',
 
   'booster.title': '加油包',
   'booster.description': '额度不足？购买加油包即时补充',
@@ -2717,6 +2713,7 @@ export const zh = {
   'booster.noactive': '暂无有效加油包',
   'booster.purchasesuccess': '加油包购买成功',
   'booster.expiresat': '有效期至',
+  'booster.repayhint': '请前往「套餐管理 → 加油包」页面重新购买',
 
   'app.cannotopenbinaryfile': '无法打开二进制文件',
   'app.filenotfound': '文件不存在',

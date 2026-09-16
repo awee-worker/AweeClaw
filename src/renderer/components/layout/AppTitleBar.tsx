@@ -1,4 +1,4 @@
-import { Minus, Square, X, Search, Plus, Bell, Cloud, Phone, Bot, RefreshCw, Loader2, CheckCircle2 } from 'lucide-react'
+import { Minus, Square, X, Search, Plus, Bell, Cloud, Crown, Calendar, Clock, Phone, Bot, RefreshCw, Loader2, CheckCircle2 } from 'lucide-react'
 
 function PanelLeftIcon({ filled = false, className }: { filled?: boolean; className?: string }) {
     return (
@@ -41,15 +41,32 @@ import NotificationCenterContent, { NotificationClearButton } from '../dock-pane
 import { getQuotaBarColor, getQuotaTextColor, getQuotaGlowColor } from '@utils/quotaColors'
 import { PluginTopActions } from '@renderer/plugins/PluginTopActions'
 import { formatTokenCount } from '@utils/formatter'
+import { getSubscriptionStatus, type SubscriptionStatus } from '@services/featureGuardService'
 import { useCallback, useEffect, useState } from 'react'
 import { t, type Language } from '@renderer/i18n'
 import { logger } from '@shared/toolkit/LogEngine'
 import { updaterService, type UpdateStatus } from '@renderer/adapters/updateAdapter'
+import {
+  useUserNotificationStore,
+  startUserNotificationPolling,
+  stopUserNotificationPolling,
+} from '@store/userNotificationStore'
 
 const isMac = typeof navigator !== 'undefined' && (
   navigator.platform.toUpperCase().indexOf('MAC') >= 0 ||
   ((navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform?.toUpperCase().indexOf('MAC') ?? -1) >= 0
 )
+
+/**
+ * 消息中心铃铛状态
+ *
+ * 角标 = 本地运行消息（toast）+ 后端未读通知（套餐 / 场景 / 插件到期等），
+ * 两者对用户都是「有事情要处理」，合并在一个入口才能避免漏看。
+ */
+function useUnreadNotificationBadge(toastCount: number): number {
+  const unread = useUserNotificationStore(s => s.unreadCount)
+  return toastCount + unread
+}
 
 /**
  * "重启以更新" 按钮
@@ -99,6 +116,31 @@ function UpdateReadyButton({ language }: { language: Language }) {
   )
 }
 
+/** 格式化订阅日期（与 SubscriptionPanel 的展示口径保持一致） */
+function formatPlanDate(dateStr: string, language: Language): string {
+  try {
+    return new Date(dateStr).toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    })
+  } catch {
+    return dateStr
+  }
+}
+
+/**
+ * 顶部「套餐 / Token 用量」入口
+ *
+ * 该图标同时承担两个职责：「查看 Token 用量」与「查看/管理套餐」。
+ * 因此门禁只校验登录态，不再与云端模式强绑定：
+ * - cloudMode === 'cloud'：云朵图标 + 剩余百分比，弹层展示用量明细 + 当前套餐
+ * - cloudMode === 'local'（用户配置了自定义模型）：Crown 图标、不显示百分比，
+ *   弹层只保留当前套餐 + 套餐管理入口（本地模式没有云端 Token 配额概念）
+ *
+ * 弹层内的套餐概况（套餐名 / 订阅状态 / 到期时间 / 剩余天数）来自
+ * /payment/subscription，展开面板时按需拉取；Token 用量来自 store 中的 quota。
+ */
 function CloudQuotaIndicator({ language }: { language: Language }) {
   const { isAuthenticated, cloudMode, quota, fetchQuota } = useStore(
     useShallow((s) => ({
@@ -109,19 +151,37 @@ function CloudQuotaIndicator({ language }: { language: Language }) {
     })),
   )
 
+  const [subscription, setSubscription] = useState<SubscriptionStatus | null>(null)
+
+  // 云端模式用于 Token 用量，本地模式仅需套餐名做展示，两者都依赖账号级配额数据
+  const isCloud = cloudMode === 'cloud'
+
   useEffect(() => {
-    if (isAuthenticated && cloudMode === 'cloud' && !quota) {
+    if (isAuthenticated && !quota) {
       fetchQuota().catch(() => {})
     }
-  }, [isAuthenticated, cloudMode, quota, fetchQuota])
+  }, [isAuthenticated, quota, fetchQuota])
 
-  if (!isAuthenticated || cloudMode !== 'cloud') return null
+  /**
+   * 订阅状态按需拉取：/payment/subscription 接口后端不做缓存，
+   * 因此只在面板展开时请求，避免顶部图标常驻发起无效请求。
+   */
+  const refreshSubscription = useCallback(() => {
+    void getSubscriptionStatus().then((status) => {
+      // 请求失败时该接口返回 null，此时保留上一次结果，避免弹层闪现空白
+      if (status) setSubscription(status)
+    })
+  }, [])
 
-  const usedPercent = quota && quota.limit !== -1
+  // 只要已登录就渲染：本地模式下仍保留套餐查看入口
+  if (!isAuthenticated) return null
+
+  // 非云端模式下不计算/展示 Token 百分比
+  const usedPercent = isCloud && quota && quota.limit !== -1
     ? Math.min(100, (quota.used / quota.limit) * 100)
     : 0
 
-  const quotaPercent = quota && quota.remaining !== -1
+  const quotaPercent = isCloud && quota && quota.remaining !== -1
     ? Math.max(0, Math.round((1 - quota.used / quota.limit) * 100))
     : null
 
@@ -129,12 +189,25 @@ function CloudQuotaIndicator({ language }: { language: Language }) {
   const isQuotaLow = quotaPercent !== null && quotaPercent <= 20
 
   const cloudColorClass = getQuotaTextColor(usedPercent)
-  const quotaLabel = quota
+  const quotaLabel = isCloud && quota
     ? quota.remaining === -1
       ? '∞'
       : `${quotaPercent}%`
     : ''
   const quotaColorClass = getQuotaTextColor(usedPercent)
+
+  const subInfo = subscription?.subscription ?? null
+  const hasActive = Boolean(subscription?.hasActiveSubscription && subInfo)
+  // 套餐名优先取订阅接口的最新值，回落用量接口，最后为免费版
+  const planName = subscription?.planName || quota?.displayName || (t('layout.free', language as Language))
+  // 免费版用户从未订阅、无订阅记录，此时不显示「已过期」徽章
+  const showStatusBadge = Boolean(subInfo)
+
+  const iconTitle = isCloud
+    ? quota
+      ? `Token: ${formatTokenCount(quota.used)} / ${quota.limit === -1 ? '∞' : formatTokenCount(quota.limit)}${isQuotaExceeded ? (t('layout.exceeded', language as Language)) : isQuotaLow ? (t('layout.low', language as Language)) : ''}`
+      : ''
+    : `${t('layout.plan', language as Language)}: ${planName}`
 
   return (
     <DockPopover
@@ -142,9 +215,13 @@ function CloudQuotaIndicator({ language }: { language: Language }) {
       icon={
         <div
           className="flex items-center gap-1.5 px-1.5 py-0.5 h-6 rounded-md cursor-pointer group hover:bg-white/5 transition-colors"
-          title={quota ? `Token: ${formatTokenCount(quota.used)} / ${quota.limit === -1 ? '∞' : formatTokenCount(quota.limit)}${isQuotaExceeded ? (t('layout.exceeded', language as Language)) : isQuotaLow ? (t('layout.low', language as Language)) : ''}` : ''}
+          title={iconTitle}
         >
-          <Cloud className={`w-3 h-3 ${cloudColorClass} ${getQuotaGlowColor(usedPercent)}`} />
+          {isCloud ? (
+            <Cloud className={`w-3 h-3 ${cloudColorClass} ${getQuotaGlowColor(usedPercent)}`} />
+          ) : (
+            <Crown className="w-3.5 h-3.5 text-amber-400" />
+          )}
           {quotaLabel && (
             <span className={`text-[10px] font-mono ${quotaColorClass} transition-colors`}>
               {quotaLabel}
@@ -152,14 +229,62 @@ function CloudQuotaIndicator({ language }: { language: Language }) {
           )}
         </div>
       }
-      title={t('layout.tokenusage', language as Language)}
+      title={isCloud ? t('layout.tokenusage', language as Language) : t('layout.plan', language as Language)}
       width={300}
-      height={280}
+      height={isCloud ? 320 : 200}
       language={language as 'en' | 'zh'}
+      onOpen={refreshSubscription}
     >
       <div className="p-3 space-y-4">
-        {quota && (
-          <div className="space-y-4">
+        {/* 当前套餐 + 订阅情况（到期时间 / 剩余天数） */}
+        <div className="px-3 py-2.5 rounded-xl bg-accent/5 border border-accent/10 space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-text-muted shrink-0">
+              {t('subscription.currentplan', language as Language)}
+            </span>
+            <span className="text-xs font-medium text-accent ml-auto truncate">{planName}</span>
+            {showStatusBadge && (
+              <span className={`shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-medium border ${
+                hasActive
+                  ? 'bg-green-500/10 text-green-400 border-green-500/20'
+                  : 'bg-text-muted/10 text-text-muted border-text-muted/20'
+              }`}>
+                {hasActive
+                  ? t('subscription.active', language as Language)
+                  : t('subscription.expired', language as Language)}
+              </span>
+            )}
+          </div>
+
+          {subInfo && (
+            <>
+              <div className="flex items-center gap-1.5 text-[11px]">
+                <Calendar className="w-3 h-3 text-text-muted shrink-0" />
+                <span className="text-text-muted">
+                  {t('subscription.periodend', language as Language)}
+                </span>
+                <span className={`ml-auto ${hasActive ? 'text-text-primary' : 'text-text-muted'}`}>
+                  {formatPlanDate(subInfo.currentPeriodEnd, language)}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 text-[11px]">
+                <Clock className="w-3 h-3 text-text-muted shrink-0" />
+                <span className="text-text-muted">
+                  {t('subscription.daysremaining', language as Language)}
+                </span>
+                <span className={`ml-auto font-medium ${hasActive ? 'text-text-primary' : 'text-amber-400'}`}>
+                  {hasActive
+                    ? t('featureguard.daysremaining', language as Language, { days: String(subInfo.daysRemaining) })
+                    : t('subscription.expired', language as Language)}
+                </span>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* 云端模式：Token 用量明细（本地模式无云端配额概念） */}
+        {isCloud && quota && (
+          <div className="space-y-3">
             <div className="grid grid-cols-3 gap-2">
               <div className="flex flex-col items-center p-2.5 rounded-xl bg-surface/80">
                 <span className="text-[10px] text-text-muted mb-1">{t('layout.used', language as Language)}</span>
@@ -201,15 +326,6 @@ function CloudQuotaIndicator({ language }: { language: Language }) {
                 </div>
               </div>
             )}
-
-            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-accent/5 border border-accent/10">
-              <span className="text-xs text-text-muted">
-                {t('layout.plan', language as Language)}
-              </span>
-              <span className="text-xs font-medium text-accent ml-auto">
-                {quota.displayName || (t('layout.free', language as Language))}
-              </span>
-            </div>
           </div>
         )}
 
@@ -225,6 +341,7 @@ function CloudQuotaIndicator({ language }: { language: Language }) {
     </DockPopover>
   )
 }
+
 
 /**
  * 桌面伴侣开关按钮（顶部栏「语音对话」右侧）
@@ -290,7 +407,7 @@ function VrmCompanionToggleButton({ language }: { language: Language }) {
 }
 
 export default function AppTitleBar() {
-  const { setShowQuickOpen, language, activeSidePanel, chatVisible, toggleSidebar, toggleChat, navRailExpanded, setNavRailExpanded, setVoiceConversationActive, closeAllFullPages, setShowEnvironmentSetup, showWelcomePage, setShowScenarioPage, setShowWorkflow } = useStore(useShallow(s => ({
+  const { setShowQuickOpen, language, isAuthenticated, activeSidePanel, chatVisible, toggleSidebar, toggleChat, navRailExpanded, setNavRailExpanded, setVoiceConversationActive, closeAllFullPages, setShowEnvironmentSetup, showWelcomePage, setShowScenarioPage, setShowWorkflow } = useStore(useShallow(s => ({
     setShowQuickOpen: s.setShowQuickOpen,
     language: s.language,
     activeSidePanel: s.activeSidePanel,
@@ -305,6 +422,7 @@ export default function AppTitleBar() {
     showWelcomePage: s.showWelcomePage,
     setShowScenarioPage: s.setShowScenarioPage,
     setShowWorkflow: s.setShowWorkflow,
+    isAuthenticated: s.isAuthenticated,
   })))
 
   const sidebarVisible = activeSidePanel !== null
@@ -312,7 +430,9 @@ export default function AppTitleBar() {
   const envInstallStatus = useStore((s) => s.envInstallStatus)
 
   const { toasts, visibleIds } = useInlineToast()
-  const notificationCount = toasts.length
+  const notificationCount = useUnreadNotificationBadge(toasts.length)
+  // 消息中心 popover 受控：点击通知跳转后需要主动收起，否则浮层会挡在目标页面上
+  const [messagesOpen, setMessagesOpen] = useState(false)
   const latestVisibleToastId = [...visibleIds].reverse().find(id => {
     const toast = toasts.find(item => item.id === id)
     return toast?.variant === 'inline'
@@ -325,6 +445,12 @@ export default function AppTitleBar() {
     setShowWorkflow(false)
     setShowScenarioPage(true)
   }, [closeAllFullPages, setShowWorkflow, setShowScenarioPage])
+
+  // 登录后启动消息通知轮询，登出时停止并清空（避免角标残留上一账号的未读数）
+  useEffect(() => {
+    if (isAuthenticated) startUserNotificationPolling()
+    else stopUserNotificationPolling()
+  }, [isAuthenticated])
 
   return (
     <div className="h-11 flex items-center justify-between px-0 drag-region select-none bg-background z-50 border-b border-border/30">
@@ -432,7 +558,14 @@ export default function AppTitleBar() {
 
           <div className="w-[1px] h-4 bg-border/50 mx-1"></div>
 
-          <CloudQuotaIndicator language={language} />
+          {/* 套餐 / Token 用量入口：仅登录后可见。未登录时一并省略其后分隔线，
+              避免与上一处分隔线相邻形成「双竖线」 */}
+          {isAuthenticated && (
+            <>
+              <CloudQuotaIndicator language={language} />
+              <div className="w-[1px] h-4 bg-border/50 mx-1"></div>
+            </>
+          )}
 
           <DockPopover
             placement="bottom"
@@ -469,7 +602,9 @@ export default function AppTitleBar() {
                     >
                       <Bell className={`w-4 h-4 ${notificationCount > 0 ? 'text-accent' : ''}`} />
                       {notificationCount > 0 && (
-                        <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-accent rounded-full" />
+                        <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-1 flex items-center justify-center text-[9px] font-semibold bg-accent text-white rounded-full">
+                          {notificationCount > 9 ? '9+' : notificationCount}
+                        </span>
                       )}
                     </motion.div>
                   )}
@@ -481,8 +616,13 @@ export default function AppTitleBar() {
             width={360}
             height={420}
             language={language as 'en' | 'zh'}
+            open={messagesOpen}
+            onOpenChange={setMessagesOpen}
           >
-            <NotificationCenterContent language={language as 'en' | 'zh'} />
+            <NotificationCenterContent
+              language={language as 'en' | 'zh'}
+              onNavigate={() => setMessagesOpen(false)}
+            />
           </DockPopover>
 
           <div className="w-[1px] h-4 bg-border/50 mx-1"></div>

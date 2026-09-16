@@ -1,9 +1,10 @@
 import { Feather, Crown, Rocket, Users } from 'lucide-react'
 import type { Language } from '@renderer/i18n'
 
-export type ProfileTab = 'plan' | 'subscription' | 'profile' | 'security'
+/** 用户中心 Tab（加油包紧随套餐管理，属于同一购买场景） */
+export type ProfileTab = 'plan' | 'booster' | 'subscription' | 'profile' | 'security'
 
-export type BillingTab = 'orders' | 'booster' | 'invoices' | 'payments' | 'usage'
+export type BillingTab = 'orders' | 'purchases' | 'invoices' | 'payments' | 'usage'
 
 /** 套餐功能矩阵结构（与后端 PlanFeatures 对齐） */
 export interface PlanFeaturesData {
@@ -84,6 +85,8 @@ export function getChannelIconUrl(
 export interface OrderItem {
   id: string
   orderNo: string
+  /** 订单类型：SUBSCRIPTION 套餐 / BOOSTER 加油包 / SCENARIO / PLUGIN / MCP */
+  type?: string
   planName: string
   planDisplayName: string
   amount: string

@@ -13,18 +13,42 @@ export interface BottomBarPopoverProps {
   language?: 'en' | 'zh'
   placement?: 'top' | 'bottom'
   headerActions?: ReactNode
+  /**
+   * 面板展开时触发。用于「按需拉取数据」场景：
+   * 调用方传入的 onOpen 应使用 useCallback 保持引用稳定，避免 memo 失效。
+   */
+  onOpen?: () => void
+  /**
+   * 受控模式：传入 open 后由外部维护展开状态。
+   * 用于「点击面板内条目跳转后主动收起面板」的场景（消息中心）。
+   */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
-export default memo(function DockPopover({ icon, tooltip, title, children, width = 400, height = 300, badge, placement = 'top', headerActions }: BottomBarPopoverProps) {
-  const [open, setOpen] = useState(false)
+export default memo(function DockPopover({ icon, tooltip, title, children, width = 400, height = 300, badge, placement = 'top', headerActions, onOpen, open, onOpenChange }: BottomBarPopoverProps) {
+  const [internalOpen, setInternalOpen] = useState(false)
   const panelRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
 
-  const close = useCallback(() => setOpen(false), [])
-  const toggle = useCallback(() => setOpen(v => !v), [])
+  // 受控 / 非受控双模式：传了 open 即为受控，未传时保持原有内部状态行为
+  const controlled = open !== undefined
+  const isOpen = controlled ? open : internalOpen
 
-  useClickOutside(close, open, [panelRef, triggerRef])
-  useEscapeKey(close, open)
+  const setOpen = useCallback((next: boolean) => {
+    if (!controlled) setInternalOpen(next)
+    onOpenChange?.(next)
+  }, [controlled, onOpenChange])
+
+  const close = useCallback(() => setOpen(false), [setOpen])
+  const toggle = useCallback(() => {
+    // 仅在「打开」时通知调用方，避免关闭时产生无效请求
+    if (!isOpen) onOpen?.()
+    setOpen(!isOpen)
+  }, [isOpen, onOpen, setOpen])
+
+  useClickOutside(close, isOpen, [panelRef, triggerRef])
+  useEscapeKey(close, isOpen)
 
   const bodyH = useMemo(() => (title ? height - 40 : height), [title, height])
 
@@ -32,12 +56,12 @@ export default memo(function DockPopover({ icon, tooltip, title, children, width
 
   return (
     <div className="relative">
-      <button ref={triggerRef} onClick={toggle} className={`flex items-center justify-center p-1.5 rounded transition-colors relative ${open ? 'bg-accent/20 text-accent' : 'text-text-muted hover:text-text-primary hover:bg-surface-hover'}`} title={tooltip}>
+      <button ref={triggerRef} onClick={toggle} className={`flex items-center justify-center p-1.5 rounded transition-colors relative ${isOpen ? 'bg-accent/20 text-accent' : 'text-text-muted hover:text-text-primary hover:bg-surface-hover'}`} title={tooltip}>
         {icon}
         {badge !== undefined && <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] flex items-center justify-center px-0.5 text-[10px] font-medium bg-accent text-white rounded-full">{badge}</span>}
       </button>
 
-      {open && (
+      {isOpen && (
         <div
           ref={panelRef}
           className={`absolute ${isTop ? 'bottom-full right-0 mb-3 origin-bottom-right animate-slide-up' : 'top-full right-0 mt-2 origin-top-right animate-slide-down'} bg-surface/80 backdrop-blur-2xl border border-border/50 rounded-2xl shadow-2xl shadow-black/20 overflow-hidden z-50`}

@@ -2690,7 +2690,6 @@ export const en = {
   'featureguard.subscriptionactive': 'Subscription Active',
   'featureguard.subscriptionexpired': 'Subscription Expired',
   'featureguard.daysremaining': '{days} days remaining',
-  'featureguard.cancelatperiodend': 'Will not renew at period end',
 
   'subscription.title': 'Subscription',
   'subscription.status': 'Status',
@@ -2701,12 +2700,9 @@ export const en = {
   'subscription.periodstart': 'Start Date',
   'subscription.periodend': 'End Date',
   'subscription.daysremaining': 'Days Remaining',
-  'subscription.cancel': 'Cancel Auto-Renewal',
-  'subscription.cancelconfirm': 'Cancel auto-renewal? Your current period benefits remain active.',
-  'subscription.cancelsuccess': 'Auto-renewal cancelled',
-  'subscription.cancelfailed': 'Cancel failed',
   'subscription.upgrade': 'Upgrade Plan',
   'subscription.nosubscriptiondesc': 'You have no active subscription. Upgrade to unlock all features.',
+  'subscription.autodowngrade': 'This subscription will be automatically downgraded to the Free plan when it expires.',
 
   'booster.title': 'Booster Packs',
   'booster.description': 'Running low? Purchase a booster pack to top up instantly',
@@ -2718,6 +2714,7 @@ export const en = {
   'booster.noactive': 'No active booster packs',
   'booster.purchasesuccess': 'Booster purchased successfully',
   'booster.expiresat': 'Valid until',
+  'booster.repayhint': 'Please go to Plan → Booster to purchase again',
 
   'app.cannotopenbinaryfile': 'Cannot open binary file',
   'app.filenotfound': 'File not found',

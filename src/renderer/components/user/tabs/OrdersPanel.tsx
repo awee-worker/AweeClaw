@@ -14,6 +14,24 @@ interface OrdersPanelProps {
   language: Language
 }
 
+
+/** 订单类型标签：套餐 / 加油包 / 场景 / 插件共用一个订单列表，需区分显示 */
+function orderTypeLabel(type: string | undefined, language: Language): string {
+  const zh = language === 'zh'
+  switch (type) {
+    case 'BOOSTER':
+      return zh ? '加油包' : 'Token Booster'
+    case 'SCENARIO':
+      return zh ? '场景订单' : 'Scenario Order'
+    case 'PLUGIN':
+      return zh ? '插件订单' : 'Plugin Order'
+    case 'MCP':
+      return zh ? 'MCP 订单' : 'MCP Order'
+    default:
+      return zh ? '套餐订单' : 'Plan Order'
+  }
+}
+
 export function OrdersPanel({ language }: OrdersPanelProps) {
   const [orders, setOrders] = useState<OrderItem[]>([])
   const [total, setTotal] = useState(0)
@@ -23,6 +41,7 @@ export function OrdersPanel({ language }: OrdersPanelProps) {
   const limit = 10
 
   const fetchOrders = useCallback(async () => {
+
     setLoading(true)
     try {
       const result = await backendApi.get<{ orders: OrderItem[]; total: number }>(`/api/v1/payment/orders?page=${page}&limit=${limit}`)
@@ -66,6 +85,13 @@ export function OrdersPanel({ language }: OrdersPanelProps) {
   }, [language, fetchOrders])
 
   const handlePay = useCallback(async (order: OrderItem) => {
+    if (order.type === 'BOOSTER') {
+      // 加油包订单不能走 /payment/create（planId 为占位 FREE 会直接 404）。
+      // 重新支付统一在「套餐管理 → 加油包」页完成：服务端会复用未过期的同款订单，
+      // 这里只做引导，避免出现点击无响应或报「套餐不存在」。
+      toast.info(t('booster.repayhint', language as Language), '')
+      return
+    }
     try {
       const result = await backendApi.post<{ order: any; payment: PaymentResult }>('/api/v1/payment/create', {
         planId: order.planName,
@@ -129,10 +155,17 @@ export function OrdersPanel({ language }: OrdersPanelProps) {
                 </div>
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-text-primary">{order.planDisplayName}</p>
+                    <p className="text-sm font-medium text-text-primary">
+                      {orderTypeLabel(order.type, language)}
+                      <span className="text-text-secondary font-normal"> · {order.planDisplayName}</span>
+                    </p>
                     <p className="text-xs text-text-muted mt-0.5">
                       {channelLabels[order.channel]?.[language === 'zh' ? 'zh' : 'en'] || order.channel}
-                      {order.periodMonths > 1 ? ` · ${order.periodMonths}${t('user.months', language as Language)}` : ` · 1${t('user.month', language as Language)}`}
+                      {/* 场景/插件为一次性购买，没有「周期月数」概念，不展示月数 */}
+                      {order.type === 'SUBSCRIPTION' &&
+                        (order.periodMonths > 1
+                          ? ` · ${order.periodMonths}${t('user.months', language as Language)}`
+                          : ` · 1${t('user.month', language as Language)}`)}
                     </p>
                   </div>
                   <p className="text-lg font-bold text-text-primary">¥{Number(order.amount).toFixed(2)}</p>

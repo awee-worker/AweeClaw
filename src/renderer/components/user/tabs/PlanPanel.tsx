@@ -39,6 +39,7 @@ import {
   extractChannelNames,
   getChannelIconUrl,
 } from './shared'
+import { ChannelIcon } from '@components/payment/ChannelIcon'
 import { PlanCard } from './PlanCard'
 
 interface PlanPanelProps {
@@ -70,6 +71,7 @@ export function PlanPanel({ language }: PlanPanelProps) {
   /** 未读的订阅到期提醒通知 */
   const [expiryNotification, setExpiryNotification] = useState<{
     id: string
+    type: 'subscription_expiring' | 'subscription_expired'
     title: string
     content: string | null
   } | null>(null)
@@ -95,23 +97,54 @@ export function PlanPanel({ language }: PlanPanelProps) {
     }
   }, [])
 
-  // 获取未读的订阅到期提醒通知
+  // 获取未读的订阅到期/过期提醒通知
+  // 只展示「当前生效订阅」的提醒：已订阅新套餐后，旧订阅的残留提醒不再展示
   useEffect(() => {
-    backendApi
-      .get<{ items: Array<{ id: string; type: string; title: string; content: string | null; isRead: boolean }> }>(
-        '/api/v1/payment/notifications?unreadOnly=true&limit=10',
-      )
-      .then(data => {
-        const expiryNote = (data?.items || []).find(n => n.type === 'subscription_expiring')
-        if (expiryNote) {
-          setExpiryNotification({
-            id: expiryNote.id,
-            title: expiryNote.title,
-            content: expiryNote.content,
+    let cancelled = false
+    Promise.all([
+      backendApi.get<{
+        items: Array<{
+          id: string
+          type: string
+          title: string
+          content: string | null
+          metadata?: { subscriptionId?: string } | null
+        }>
+      }>('/api/v1/payment/notifications?unreadOnly=true&limit=20'),
+      backendApi
+        .get<{ subscription: { id: string } | null }>('/api/v1/payment/subscription')
+        .catch(() => null),
+    ])
+      .then(([data, status]) => {
+        if (cancelled) return
+        const activeSubId = status?.subscription?.id ?? null
+        const note = (data?.items || [])
+          .filter(
+            n => n.type === 'subscription_expiring' || n.type === 'subscription_expired',
+          )
+          .find(n => {
+            const noteSubId = n.metadata?.subscriptionId
+            // 无活跃订阅时只提示「已过期」，旧订阅的即将到期提醒不再展示
+            if (!activeSubId) return n.type === 'subscription_expired'
+            // 历史数据缺少 subscriptionId 时保守展示
+            if (!noteSubId) return true
+            return noteSubId === activeSubId
           })
+        if (note) {
+          setExpiryNotification({
+            id: note.id,
+            type: note.type as 'subscription_expiring' | 'subscription_expired',
+            title: note.title,
+            content: note.content,
+          })
+        } else {
+          setExpiryNotification(null)
         }
       })
       .catch(() => {})
+    return () => {
+      cancelled = true
+    }
   }, [effectivePlanId])
 
   /** 关闭到期提醒横幅并标记已读 */
@@ -211,6 +244,53 @@ export function PlanPanel({ language }: PlanPanelProps) {
     }
   }, [selectedPlan, paymentChannel, language, billingPeriod])
 
+  /** 支付确认成功：停止轮询并刷新用户权益 */
+  const markPaid = useCallback(async () => {
+    stopPolling()
+    setPaymentSuccess(true)
+    await fetchQuota()
+    await fetchProfile()
+    await refreshFeatures()
+  }, [stopPolling, fetchQuota, fetchProfile, refreshFeatures])
+
+  /**
+   * 主动向支付网关对账（补单）
+   *
+   * 异步回调（notify）可能延迟、丢失，或因回调地址配置问题始终无法送达。
+   * 这种情况下单纯轮询本地订单状态会永远停在 PENDING，用户看到的就是一个
+   * 卡住不动的「支付确认中」。因此改为周期性调用后端 reconcile 接口，
+   * 由后端直接向支付宝查询该笔交易的真实状态并在必要时补正订单。
+   */
+  const reconcileOrder = useCallback(async (orderNo: string): Promise<boolean> => {
+    try {
+      const res = await backendApi.post<{ reconciled: boolean }>(
+        `/api/v1/payment/order/${orderNo}/reconcile`,
+        {},
+      )
+      if (res?.reconciled) {
+        await markPaid()
+        return true
+      }
+    } catch (e) {
+      logger.ui.warn('Failed to reconcile order:', e)
+    }
+    return false
+  }, [markPaid])
+
+  /** 用户自助核实：已扫码付款但界面仍停在「等待确认」时的手动入口 */
+  const handleVerifyNow = useCallback(async () => {
+    if (!paymentResult?.orderNo) return
+    setPaymentError('')
+    const done = await reconcileOrder(paymentResult.orderNo)
+    if (!done) {
+      setPaymentError(
+        language === 'zh'
+          ? '暂未查询到已支付的交易，请确认已完成付款后重试'
+          : 'No completed payment found yet, please confirm you have paid',
+      )
+    }
+  }, [paymentResult?.orderNo, reconcileOrder, language])
+
   const pollOrderStatus = useCallback(async (orderNo: string) => {
     let attempts = 0
     const maxAttempts = 60   // 最多轮询 60 次
@@ -219,18 +299,17 @@ export function PlanPanel({ language }: PlanPanelProps) {
     const poll = async () => {
       if (attempts >= maxAttempts) {
         stopPolling()
-        setPaymentError(language === 'zh' ? '支付确认超时，如已支付请刷新页面' : 'Payment confirmation timeout, please refresh if already paid')
+        setPaymentError(language === 'zh' ? '支付确认超时，如已支付请点击「我已支付，立即核实」' : 'Payment confirmation timeout, if you have paid please click "I have paid, verify now"')
         return
       }
       attempts++
       try {
+        // 每 5 轮（约 15 秒）主动对账一次，兜住回调延迟或丢失的情况
+        if (attempts % 5 === 1 && (await reconcileOrder(orderNo))) return
+
         const order = await backendApi.get<any>(`/api/v1/payment/order/${orderNo}`)
         if (order?.status === 'PAID') {
-          stopPolling()
-          setPaymentSuccess(true)
-          await fetchQuota()
-          await fetchProfile()
-          await refreshFeatures()
+          await markPaid()
           return
         }
         if (order?.status === 'CANCELLED' || order?.status === 'EXPIRED') {
@@ -243,19 +322,35 @@ export function PlanPanel({ language }: PlanPanelProps) {
       pollTimerRef.current = setTimeout(poll, intervalMs)
     }
     poll()
-  }, [language, fetchQuota, fetchProfile, refreshFeatures, stopPolling])
+  }, [language, stopPolling, reconcileOrder, markPaid])
 
   const quotaPercent = quota && quota.limit > 0 ? Math.min((quota.used / quota.limit) * 100, 100) : 0
   const displayChannels = extractChannelNames(channelInfo || undefined)
 
   return (
     <div className="w-full">
-      {/* 到期提醒横幅 */}
+      {/* 到期/已过期提醒横幅 */}
       {expiryNotification && (
-        <div className="mb-4 flex items-start gap-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30">
-          <BellRing className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+        <div
+          className={`mb-4 flex items-start gap-3 p-3 rounded-xl border ${
+            expiryNotification.type === 'subscription_expired'
+              ? 'bg-rose-500/10 border-rose-500/30'
+              : 'bg-amber-500/10 border-amber-500/30'
+          }`}
+        >
+          <BellRing
+            className={`w-5 h-5 shrink-0 mt-0.5 ${
+              expiryNotification.type === 'subscription_expired' ? 'text-rose-400' : 'text-amber-400'
+            }`}
+          />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-amber-400">{expiryNotification.title}</p>
+            <p
+              className={`text-sm font-medium ${
+                expiryNotification.type === 'subscription_expired' ? 'text-rose-400' : 'text-amber-400'
+              }`}
+            >
+              {expiryNotification.title}
+            </p>
             {expiryNotification.content && (
               <p className="text-[12px] text-text-secondary mt-1">{expiryNotification.content}</p>
             )}
@@ -436,13 +531,7 @@ export function PlanPanel({ language }: PlanPanelProps) {
                           disabled={!!paymentResult}
                           className={`p-3 rounded-xl border text-center transition-all flex flex-col items-center gap-1.5 ${paymentChannel === ch ? style.active : style.inactive} ${paymentResult ? 'opacity-50 cursor-not-allowed' : ''}`}
                         >
-                          {iconUrl ? (
-                            <img src={iconUrl} alt={label.zh} className="w-6 h-6 object-contain" />
-                          ) : (
-                            <span className="w-6 h-6 flex items-center justify-center text-sm font-bold text-text-primary">
-                              {ch === 'WECHAT' ? '微' : ch === 'ALIPAY' ? '支' : ch.charAt(0)}
-                            </span>
-                          )}
+                          <ChannelIcon channel={ch} iconUrl={iconUrl} className="w-6 h-6" />
                           <span className="text-sm font-medium text-text-primary">
                             {language === 'zh' ? label.zh : label.en}
                           </span>
@@ -518,12 +607,43 @@ export function PlanPanel({ language }: PlanPanelProps) {
                       </div>
                     )}
                     {/* 支付宝扫码支付 */}
-                    {paymentChannel === 'ALIPAY' && paymentResult.qrCodeUrl && (
+                    {paymentChannel === 'ALIPAY' && (paymentResult.paymentUrl || paymentResult.qrCodeUrl) && (
                       <div className="space-y-2 text-center">
                         <p className="text-sm text-text-primary">{language === 'zh' ? '请用支付宝扫码支付' : 'Scan with Alipay to pay'}</p>
-                        <div className="w-48 h-48 mx-auto bg-white rounded-xl flex items-center justify-center overflow-hidden">
-                          {qrCodeDataUrl ? <img src={qrCodeDataUrl} alt="QR" className="w-full h-full" /> : <Loader2 className="w-5 h-5 animate-spin text-gray-400" />}
-                        </div>
+                        {paymentResult.paymentUrl ? (
+                          /* 电脑网站支付：iframe 内嵌支付宝收银台（qr_pay_mode=4），二维码不跳出客户端 */
+                          <>
+                            {/* qr_pay_mode=4 为「可定义宽度的嵌入式二维码」：支付宝按 qrcode_width
+                                （后端 alipay-gateway.ts 传 200）出码，页面内容自左上角起排，
+                                不会在容器内自适应居中。因此容器必须与二维码等尺寸，一旦偏大，
+                                多出的宽高就会以「右侧/底部空白」显现，看起来二维码没居中。
+                                另外 iframe 是 inline 元素，默认带基线间隙，需用 block 消除底部空条。
+                                ⚠ 调整尺寸需同步 alipay-gateway.ts 的 qrcode_width。 */}
+                            <div className="w-56 h-56 mx-auto bg-white rounded-xl overflow-hidden flex items-center justify-center">
+                              <iframe
+                                title="alipay-cashier"
+                                src={paymentResult.paymentUrl}
+                                scrolling="no"
+                                className="w-[200px] h-[200px] border-0 block"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const url = paymentResult.paymentUrl
+                                if (url) window.electronAPI?.openExternalUrl?.(url)
+                              }}
+                              className="text-xs text-accent hover:underline"
+                            >
+                              {language === 'zh' ? '在浏览器中打开' : 'Open in browser'}
+                            </button>
+                          </>
+                        ) : (
+                          /* 当面付：本地渲染 qr_code 二维码 */
+                          <div className="w-48 h-48 mx-auto bg-white rounded-xl flex items-center justify-center overflow-hidden">
+                            {qrCodeDataUrl ? <img src={qrCodeDataUrl} alt="QR" className="w-full h-full" /> : <Loader2 className="w-5 h-5 animate-spin text-gray-400" />}
+                          </div>
+                        )}
                       </div>
                     )}
                     {/* 轮询提示 */}
@@ -533,6 +653,16 @@ export function PlanPanel({ language }: PlanPanelProps) {
                         {t('user.waitingforpaymentconfirmation', language as Language)}
                       </div>
                     )}
+                    {/* 自助补单入口：已扫码付款但回调未送达时的自救通道。
+                        刻意不放在 polling 分支内 —— 轮询超时或订单被判超时后，
+                        恰恰是最需要用它的时刻，按钮必须仍然可见。 */}
+                    <button
+                      type="button"
+                      onClick={handleVerifyNow}
+                      className="w-full text-xs text-accent hover:underline"
+                    >
+                      {language === 'zh' ? '我已支付，立即核实' : 'I have paid, verify now'}
+                    </button>
                     {/* 取消按钮 */}
                     <ActionButton variant="ghost" className="w-full" onClick={() => { stopPolling(); setPaymentResult(null); setPaymentError(''); setQrCodeDataUrl(''); setPaymentSuccess(false) }}>
                       {t('user.back', language as Language)}
