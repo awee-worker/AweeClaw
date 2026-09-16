@@ -19,6 +19,7 @@ import { CloudDownload, Eye, EyeOff, Loader2, Plus, RefreshCw, Trash2, Upload } 
 import type { Language } from '@renderer/i18n'
 import { api } from '@renderer/adapters/electronBridge'
 import { logger } from '@shared/toolkit/LogEngine'
+import { useFeatureGuard } from '@hooks/useFeatureGuard'
 import type {
   VrmAffectionData,
   VrmCompanionConfig,
@@ -109,6 +110,8 @@ function ToggleRow({
 }
 
 export function VrmCompanionSettings({ language }: VrmCompanionSettingsProps) {
+  // 套餐能力拦截：桌面伴侣角色模型数量上限
+  const { requireQuota } = useFeatureGuard()
   const zh = language === 'zh'
 
   const [config, setConfig] = useState<VrmCompanionConfig | null>(null)
@@ -257,6 +260,8 @@ export function VrmCompanionSettings({ language }: VrmCompanionSettingsProps) {
   )
 
   const handleImport = useCallback(async () => {
+    // 套餐能力拦截：角色模型数量达上限时引导升级
+    if (!(await requireQuota('companionModelsLimit', models.length))) return
     setBusy(true)
     setError(null)
     try {
@@ -276,7 +281,7 @@ export function VrmCompanionSettings({ language }: VrmCompanionSettingsProps) {
     } finally {
       setBusy(false)
     }
-  }, [refresh, zh])
+  }, [models.length, refresh, requireQuota, zh])
 
   const handleSelect = useCallback(
     async (id: string) => {
@@ -384,6 +389,8 @@ export function VrmCompanionSettings({ language }: VrmCompanionSettingsProps) {
   /** 下载在线模型 → 落盘本地 → 自动切换为当前角色 */
   const handleDownloadOnline = useCallback(
     async (item: OnlineVrmModel) => {
+      // 套餐能力拦截：角色模型数量达上限时引导升级（已下载过的可直接切换）
+      if (!(await requireQuota('companionModelsLimit', models.length))) return
       setDownloadingId(item.id)
       setDownloadProgress(null)
       setOnlineError(null)
@@ -418,7 +425,7 @@ export function VrmCompanionSettings({ language }: VrmCompanionSettingsProps) {
         setDownloadProgress(null)
       }
     },
-    [refresh, reportDownload, zh],
+    [models.length, refresh, reportDownload, requireQuota, zh],
   )
 
   /** 已下载时直接切换到本地对应模型 */

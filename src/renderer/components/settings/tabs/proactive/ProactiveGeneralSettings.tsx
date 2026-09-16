@@ -17,6 +17,7 @@ import { Power, Bell, AlertTriangle, Zap, type LucideIcon } from 'lucide-react'
 import { ToggleSwitch } from '@components/ui'
 import { type Language, t } from '@renderer/i18n'
 import type { ProactivePermissionConfig, ProactiveLevel } from './ProactiveSettingsPanel'
+import { useFeatureGuard } from '@hooks/useFeatureGuard'
 
 interface Props {
   config: ProactivePermissionConfig
@@ -71,6 +72,8 @@ export const ProactiveGeneralSettings = memo(function ProactiveGeneralSettings({
   language,
   onUpdate,
 }: Props) {
+  // 套餐能力拦截：主动助手为高级能力，未解锁时禁止开启
+  const { requireFeature } = useFeatureGuard()
   return (
     <div className="space-y-6">
       {/* 全局开关 */}
@@ -91,7 +94,11 @@ export const ProactiveGeneralSettings = memo(function ProactiveGeneralSettings({
           </div>
           <ToggleSwitch
             checked={config.enabled}
-            onChange={(e) => onUpdate({ enabled: e.target.checked })}
+            onChange={async (e) => {
+              // 套餐能力拦截：开启前校验（主动助手为高级能力）
+              if (e.target.checked && !(await requireFeature('proactive'))) return
+              onUpdate({ enabled: e.target.checked })
+            }}
             switchSize="md"
           />
         </div>

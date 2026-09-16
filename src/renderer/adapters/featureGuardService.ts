@@ -32,13 +32,71 @@ export interface PlanFeatures {
   teamCollaboration?: boolean
   privateDeployment?: boolean
   sla?: boolean
+
+  // ── 能力数量上限（-1 表示无限） ──
+  /** 自定义智能体数量上限 */
+  customAgentsLimit?: number
+  /** 桌面伴侣角色模型数量上限 */
+  companionModelsLimit?: number
+
+  // ── 客户端功能开关 ──
+  /** 直播互动（B站 / YouTube / Twitch 弹幕接入） */
+  liveInteraction?: boolean
+  /** VTS（VTube Studio）联动 */
+  vts?: boolean
+  /** A2A（Agent2Agent）协议 */
+  a2a?: boolean
+  /** 对外 OpenAPI 服务 */
+  externalApi?: boolean
+  /** VMC（Virtual Motion Capture）协议 */
+  vmc?: boolean
+  /** IoT 集成 */
+  iot?: boolean
+  /** 感知预测（行为预测 / 场景感知） */
+  perception?: boolean
+  /** 主动助手（主动建议与预授权动作） */
+  proactive?: boolean
 }
+
+/** 数量上限类功能键（值为 number，-1 = 无限） */
+export const PLAN_QUOTA_KEYS = [
+  'customAgentsLimit',
+  'companionModelsLimit',
+] as const
+
+export type PlanQuotaKey = (typeof PLAN_QUOTA_KEYS)[number]
+
+/** 客户端能力开关键（含 UI 展示所需的名称） */
+export const CLIENT_CAPABILITY_KEYS = [
+  'liveInteraction',
+  'vts',
+  'a2a',
+  'externalApi',
+  'vmc',
+  'iot',
+  'perception',
+  'proactive',
+] as const
+
+export type ClientCapabilityKey = (typeof CLIENT_CAPABILITY_KEYS)[number]
 
 /** 有效功能配置（对应后端 getEffectiveFeatures 返回值） */
 export interface EffectiveFeatures {
   planId: string
   features: PlanFeatures
   hasActiveSubscription: boolean
+  /**
+   * 数据来源（客户端补充字段，不由后端返回）
+   *
+   * - `'server'`：本次由后端权威返回，反映真实权益
+   * - `'cache'`：命中本地缓存（缓存本身来自某次后端权威返回）
+   * - `'fallback'`：后端不可达 / 未登录的兜底（FREE 形状，**不代表真实权益**）
+   * - `undefined`：来源不明，按 `'fallback'` 对待
+   *
+   * 用途：能力一致性收敛（`capabilityConvergence.ts`）只能基于真实权益执行，
+   * 用 `'fallback'` 快照收敛会误伤离线 / 令牌失效的付费用户。
+   */
+  source?: 'server' | 'cache' | 'fallback'
 }
 
 /** 订阅状态（对应后端 getSubscriptionStatus 返回值） */
@@ -97,12 +155,26 @@ const FREE_FEATURES_FALLBACK: PlanFeatures = {
   scenarioDiscount: 1,
   prioritySupport: false,
   seats: 1,
+  // 数量上限兜底：与后端 FREE_FEATURES 保持一致
+  customAgentsLimit: 2,
+  companionModelsLimit: 1,
+  // 高级能力默认关闭
+  liveInteraction: false,
+  vts: false,
+  a2a: false,
+  externalApi: false,
+  vmc: false,
+  iot: false,
+  perception: false,
+  proactive: false,
 }
 
 const FREE_EFFECTIVE: EffectiveFeatures = {
   planId: 'FREE',
   features: FREE_FEATURES_FALLBACK,
   hasActiveSubscription: false,
+  // 兜底配置不代表真实权益：能力收敛会据此跳过（见 EffectiveFeatures.source）
+  source: 'fallback',
 }
 
 // ─── planId 归一化（兼容历史别名） ─────────────────────
@@ -159,7 +231,7 @@ export async function getEffectiveFeatures(
     )
     // 归一化 planId：兼容历史别名（PROFESSIONAL → PRO）
     cachedFeatures = result
-      ? { ...result, planId: normalizePlanId(result.planId) }
+      ? { ...result, planId: normalizePlanId(result.planId), source: 'server' }
       : FREE_EFFECTIVE
     lastFetchTime = now
     return cachedFeatures
@@ -273,6 +345,40 @@ export async function checkWorkMode(
   }
 }
 
+// ─── 能力一致性收敛支撑 ─────────────────────────────────
+
+/**
+ * 该快照是否可用作「能力一致性收敛」的依据。
+ *
+ * 只有真实权益快照（后端返回 / 其后端来源的缓存）才可以收敛；
+ * 兜底快照与未知来源一律返回 false —— 否则离线用户或令牌失效的
+ * 付费用户会被误关闭全部高级能力。
+ */
+export function isAuthoritativeFeatures(
+  eff: EffectiveFeatures | null | undefined,
+): eff is EffectiveFeatures {
+  if (!eff) return false
+  return eff.source === 'server' || eff.source === 'cache'
+}
+
+/**
+ * 从有效功能配置中抽取客户端能力授权快照。
+ *
+ * 只取 8 个客户端能力开关，不携带 modes / toolsLimit 等其它维度 ——
+ * 主进程的收敛器只认这一组键，多传无益且会让两侧契约含糊。
+ * 未配置的能力按 `false` 传给主进程（缺省即未授权）。
+ */
+export function buildCapabilityEntitlement(eff: EffectiveFeatures): {
+  planId: string
+  allowed: Record<ClientCapabilityKey, boolean>
+} {
+  const allowed = {} as Record<ClientCapabilityKey, boolean>
+  for (const key of CLIENT_CAPABILITY_KEYS) {
+    allowed[key] = eff.features[key] === true
+  }
+  return { planId: eff.planId, allowed }
+}
+
 // ─── 同步快速判断（基于缓存，无网络开销） ───────────────
 
 /**
@@ -323,6 +429,68 @@ export function canUseFeatureSync(
   }
   // 缓存为空降级
   return isPaidPlanSync(fallbackPlanId)
+}
+
+/**
+ * 同步获取数量上限（基于缓存）
+ *
+ * @returns -1 表示无限；缓存缺失字段时回落 FREE 默认值
+ */
+export function getFeatureLimitSync(
+  key: PlanQuotaKey,
+  fallbackPlanId?: string,
+): number {
+  void fallbackPlanId
+  if (cachedFeatures) {
+    const value = cachedFeatures.features[key]
+    if (typeof value === 'number' && Number.isFinite(value)) return value
+  }
+  const fallback = FREE_FEATURES_FALLBACK[key]
+  return typeof fallback === 'number' ? fallback : 0
+}
+
+/**
+ * 同步判断「还能再新增一个」是否允许（数量未达上限）
+ *
+ * @param currentCount 当前已有数量
+ */
+export function isWithinQuotaSync(
+  key: PlanQuotaKey,
+  currentCount: number,
+  fallbackPlanId?: string,
+): boolean {
+  const limit = getFeatureLimitSync(key, fallbackPlanId)
+  if (limit === -1) return true
+  return currentCount < limit
+}
+
+/**
+ * 精确检查数量上限（请求后端，不依赖缓存）
+ *
+ * @param key 数量类功能键
+ * @param currentCount 当前已有数量
+ */
+export async function checkQuota(
+  key: PlanQuotaKey,
+  currentCount: number,
+): Promise<FeatureCheckResult & { limit?: number }> {
+  try {
+    return await backendApi.get<FeatureCheckResult & { limit?: number }>(
+      `/api/v1/payment/features/quota?key=${key}&count=${currentCount}`,
+    )
+  } catch (e) {
+    logger.system.warn('[FeatureGuard] Check quota failed, using cache:', e)
+    // 降级：基于缓存判断
+    const eff = await getEffectiveFeatures()
+    const limit = getFeatureLimitSync(key, eff.planId)
+    const allowed = limit === -1 || currentCount < limit
+    return {
+      allowed,
+      currentPlanId: eff.planId,
+      upgradeRequired: allowed ? undefined : 'PRO',
+      limit,
+    }
+  }
 }
 
 /**

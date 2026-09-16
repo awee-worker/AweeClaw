@@ -79,6 +79,7 @@ import { createPowerGuardApi } from './preload/api/powerGuard'
 import { createSandboxApi } from './preload/api/sandbox'
 import { createVmcApi } from './preload/api/vmc'
 import { createLocalVoiceApi } from './preload/api/localVoice'
+import { createCapabilityGuardApi } from './preload/api/capabilityGuard'
 /**
  * 聚合所有领域 API 并暴露到渲染进程。
  *
@@ -129,4 +130,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     sandbox: createSandboxApi(),
     vmc: createVmcApi(),
     localVoice: createLocalVoiceApi(),
+    // 套餐能力一致性收敛（渲染层提供授权快照，主进程落地关闭）
+    capabilityGuard: createCapabilityGuardApi(),
   })

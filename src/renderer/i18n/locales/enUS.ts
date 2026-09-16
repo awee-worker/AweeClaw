@@ -2690,6 +2690,17 @@ export const en = {
   'featureguard.subscriptionactive': 'Subscription Active',
   'featureguard.subscriptionexpired': 'Subscription Expired',
   'featureguard.daysremaining': '{days} days remaining',
+  'featureguard.capabilityrevoked': 'Capabilities Turned Off',
+  'featureguard.capabilityrevokeddesc':
+    'Your current plan no longer includes: {items}. They have been turned off automatically. Your settings and credentials are preserved — upgrade to re-enable.',
+  'featureguard.capability.liveInteraction': 'Live Interaction',
+  'featureguard.capability.vts': 'VTS Link',
+  'featureguard.capability.vmc': 'VMC Protocol',
+  'featureguard.capability.a2a': 'A2A Protocol',
+  'featureguard.capability.externalApi': 'External API',
+  'featureguard.capability.iot': 'IoT Integration',
+  'featureguard.capability.perception': 'Perception & Prediction',
+  'featureguard.capability.proactive': 'Proactive Assistant',
 
   'subscription.title': 'Subscription',
   'subscription.status': 'Status',

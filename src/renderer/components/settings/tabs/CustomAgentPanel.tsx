@@ -11,6 +11,7 @@ import type { AgentConfig } from '@shared/configuration/configTypes'
 import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
+import { useFeatureGuard } from '@hooks/useFeatureGuard'
 
 // ─── 系统提示词最大长度 ───
 const SYSTEM_PROMPT_MAX = 10000
@@ -71,6 +72,8 @@ export function CustomAgentPanel({ agentConfig, setAgentConfig, language, onNewA
   const { mcpServers } = useStore(useShallow(s => ({
     mcpServers: s.mcpServers,
   })))
+  // 套餐能力拦截：自定义智能体数量上限
+  const { requireQuota } = useFeatureGuard()
 
   const connectedMcpNames = useMemo(() =>
     mcpServers.filter(s => s.status === 'connected').map(s => ({ id: s.id, name: s.config.name })),
@@ -95,7 +98,9 @@ export function CustomAgentPanel({ agentConfig, setAgentConfig, language, onNewA
     )
   }, [profiles, searchQuery])
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
+    // 套餐能力拦截：数量达上限时引导升级
+    if (!(await requireQuota('customAgentsLimit', profiles.length))) return
     const empty = createEmptyAgent({
       allMcpIds: connectedMcpNames.map(s => s.id),
     })
@@ -131,12 +136,16 @@ export function CustomAgentPanel({ agentConfig, setAgentConfig, language, onNewA
   // 当外部传入 pendingNewAgentId 时，自动打开新建表单（编辑器视图）
   useEffect(() => {
     if (pendingNewAgentId && !editingId && !pendingNewAgent) {
-      const empty = createEmptyAgent({
-        allMcpIds: connectedMcpNames.map(s => s.id),
-      })
-      setPendingNewAgent(empty)
-      setEditingId(empty.id)
-      setView('editor')
+      // 套餐能力拦截：数量达上限时引导升级
+      void (async () => {
+        if (!(await requireQuota('customAgentsLimit', profiles.length))) return
+        const empty = createEmptyAgent({
+          allMcpIds: connectedMcpNames.map(s => s.id),
+        })
+        setPendingNewAgent(empty)
+        setEditingId(empty.id)
+        setView('editor')
+      })()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingNewAgentId])

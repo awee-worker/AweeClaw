@@ -21,6 +21,7 @@ import type { Language } from '@renderer/i18n'
 import { api } from '@renderer/adapters/electronBridge'
 import { logger } from '@shared/toolkit/LogEngine'
 import type { VtsConfig, VtsConnectionState, VtsStatus } from '@renderer/types/electronBridge'
+import { useFeatureGuard } from '@hooks/useFeatureGuard'
 
 interface VtsSettingsProps {
   language: Language
@@ -188,6 +189,8 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 export function VtsSettings({ language }: VtsSettingsProps) {
   const zh = language === 'zh'
+  // 套餐能力拦截：VTS 联动为高级能力，未解锁时禁止开启
+  const { requireFeature } = useFeatureGuard()
 
   const [saved, setSaved] = useState<VtsConfig | null>(null)
   const [draft, setDraft] = useState<VtsConfig | null>(null)
@@ -315,6 +318,8 @@ export function VtsSettings({ language }: VtsSettingsProps) {
   /** 总开关：即时生效 */
   const handleToggleEnabled = useCallback(
     async (next: boolean) => {
+      // 套餐能力拦截：开启前校验（VTS 联动为高级能力）
+      if (next && !(await requireFeature('vts'))) return
       setBusy(true)
       setConnectError(null)
       try {

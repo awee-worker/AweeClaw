@@ -32,6 +32,7 @@ import {
 import type { Language } from '@renderer/i18n'
 import { api } from '@renderer/adapters/electronBridge'
 import { logger } from '@shared/toolkit/LogEngine'
+import { useFeatureGuard } from '@hooks/useFeatureGuard'
 import type {
   A2aAgentCard,
   A2aCallResult,
@@ -226,6 +227,8 @@ function toDraft(url: string, server?: A2aServerState): AgentDraft {
 
 export function A2aSettings({ language }: A2aSettingsProps) {
   const zh = language === 'zh'
+  // 套餐能力拦截：A2A 协议为高级能力，未解锁时禁止开启
+  const { requireFeature } = useFeatureGuard()
 
   const [config, setConfig] = useState<A2aConfig | null>(null)
   const [servers, setServers] = useState<A2aServerState[]>([])
@@ -320,6 +323,8 @@ export function A2aSettings({ language }: A2aSettingsProps) {
   // --------------------------------------------
   const handleToggleEnabled = useCallback(
     async (next: boolean) => {
+      // 套餐能力拦截：开启前校验（A2A 协议为高级能力）
+      if (next && !(await requireFeature('a2a'))) return
       setBusy('module')
       // 乐观更新：立即切换视觉状态，让用户即时看到反馈
       setConfig((prev) => (prev ? { ...prev, enabled: next } : prev))

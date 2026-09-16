@@ -20,6 +20,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Radio, RefreshCw } from 'lucide-react'
 import { type Language } from '@renderer/i18n'
 import { logger } from '@shared/toolkit/LogEngine'
+import { useFeatureGuard } from '@hooks/useFeatureGuard'
 import { ProviderListPanel } from './iot/ProviderListPanel'
 import { EntityExplorerPanel } from './iot/EntityExplorerPanel'
 import { SensorFusionPanel } from './iot/SensorFusionPanel'
@@ -41,6 +42,8 @@ type SubView = 'providers' | 'entities' | 'fusion' | 'rules' | 'performance'
  */
 export function IoTSettingsPanel({ language }: IoTSettingsPanelProps) {
   const isZh = language === 'zh'
+  // 套餐能力拦截：IoT 集成为高级能力，未解锁时禁止启动 Bridge
+  const { requireFeature } = useFeatureGuard()
 
   const [activeView, setActiveView] = useState<SubView>('providers')
   const [bridgeRunning, setBridgeRunning] = useState(false)
@@ -64,6 +67,8 @@ export function IoTSettingsPanel({ language }: IoTSettingsPanelProps) {
 
   /** 处理 Bridge 启动/停止 */
   const handleToggleBridge = useCallback(async () => {
+    // 套餐能力拦截：启动前校验（IoT 集成为高级能力）
+    if (!bridgeRunning && !(await requireFeature('iot'))) return
     try {
       if (bridgeRunning) {
         await window.electronAPI.iot.stop()
@@ -75,7 +80,7 @@ export function IoTSettingsPanel({ language }: IoTSettingsPanelProps) {
     } catch (e) {
       logger.settings?.error('Failed to toggle IoT Bridge:', e)
     }
-  }, [bridgeRunning, refreshBridgeStatus])
+  }, [bridgeRunning, refreshBridgeStatus, requireFeature])
 
   /** 刷新所有子视图 */
   const handleRefreshAll = useCallback(() => {

@@ -228,6 +228,13 @@ export interface EventSubscription {
 export interface PerceptionPrivacyConfig {
   /** 全局开关 */
   enablePerception: boolean
+  /**
+   * 行为预测开关（阶段2 引入）。
+   *
+   * 可选：`EnablePerception`（总开关）为 false 时该字段无意义，历史配置里也不存在，
+   * 因此不在默认值中声明。设置页与能力收敛都会读写它。
+   */
+  enablePrediction?: boolean
   /** 各通道开关 */
   channels: Record<PerceptionChannel, boolean>
   /** 数据保留期（天） */

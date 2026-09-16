@@ -1,5 +1,5 @@
 import { lazy, Suspense, useMemo, useCallback, useEffect, useSyncExternalStore, useState } from 'react'
-import { Cpu, Settings2, Shield, Monitor, Plug, Brain, FileText, Zap, X, Palette, Radio, RadioTower, Eye, Search, Mail, Mic, MonitorSmartphone, ArrowLeft, ScanEye, Activity, Network, Cable, Sparkles, Puzzle, Layers, Bot, Smile, Coffee, Box, Send } from 'lucide-react'
+import { Cpu, Settings2, Shield, Monitor, Plug, Brain, FileText, Zap, X, Palette, Radio, RadioTower, Eye, Search, Mail, Mic, MonitorSmartphone, ArrowLeft, ScanEye, Activity, Network, Cable, Sparkles, Puzzle, Layers, Bot, Smile, Coffee, Box, Send, Lock } from 'lucide-react'
 import { PROVIDERS } from '@configuration/aiProviders'
 import { t, type Language } from '@renderer/i18n'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
@@ -11,6 +11,8 @@ import { useStore } from '@store'
 import { useShallow } from 'zustand/react/shallow'
 import type { ScenarioDomain } from '@configuration/defaultProfile'
 import { settingsService } from '@renderer/settings/preferencesService'
+import { useFeatureGuard } from '@hooks/useFeatureGuard'
+import type { ClientCapabilityKey } from '@services/featureGuardService'
 
 
 const ModelProviderPanel = lazy(() =>
@@ -244,23 +246,23 @@ export default function PreferencesDialog({ embedded = false, pendingNewAgentId 
         { id: 'channel', label: t('settings.channels', language as Language), icon: <Radio className="w-4 h-4" /> },
         { id: 'security', label: t('settings.security', language as Language), icon: <Shield className="w-4 h-4" /> },
         { id: 'privacy', label: t('settings.privacy', language as Language), icon: <Eye className="w-4 h-4" /> },
-        { id: 'perception', label: t('settings.perception', language as Language) || '感知预测', icon: <Activity className="w-4 h-4" /> },
-        { id: 'causal', label: t('settings.causal', language as Language) || '因果推理', icon: <Network className="w-4 h-4" /> },
-        { id: 'iot', label: t('settings.iot', language as Language) || 'IoT 集成', icon: <Cable className="w-4 h-4" /> },
+        { id: 'perception', label: t('settings.perception', language as Language) || '感知预测', icon: <Activity className="w-4 h-4" />, featureKey: 'perception' as ClientCapabilityKey },
+        { id: 'causal', label: t('settings.causal', language as Language) || '因果推理', icon: <Network className="w-4 h-4" />, featureKey: null },
+        { id: 'iot', label: t('settings.iot', language as Language) || 'IoT 集成', icon: <Cable className="w-4 h-4" />, featureKey: 'iot' as ClientCapabilityKey },
         { id: 'system', label: t('settings.system', language as Language), icon: <Monitor className="w-4 h-4" /> },
         { id: 'desktop', label: t('settings.desktop', language as Language) || '桌面控制', icon: <MonitorSmartphone className="w-4 h-4" /> },
-        { id: 'proactive', label: t('settings.proactive', language as Language) || '主动助手', icon: <Sparkles className="w-4 h-4" /> },
+        { id: 'proactive', label: t('settings.proactive', language as Language) || '主动助手', icon: <Sparkles className="w-4 h-4" />, featureKey: 'proactive' as ClientCapabilityKey },
         { id: 'sceneMode', label: '场景模式', icon: <Layers className="w-4 h-4" /> },
         { id: 'externalAgents', label: '外部智能体', icon: <Puzzle className="w-4 h-4" /> },
         { id: 'companion', label: language === 'zh' ? '桌面伴侣' : 'Companion', icon: <Bot className="w-4 h-4" /> },
         { id: 'overlay', label: language === 'zh' ? '字幕弹幕层' : 'Overlay', icon: <Monitor className="w-4 h-4" /> },
-        { id: 'live', label: language === 'zh' ? '直播互动' : 'Live', icon: <RadioTower className="w-4 h-4" /> },
-        { id: 'vts', label: language === 'zh' ? 'VTS 联动' : 'VTS', icon: <Smile className="w-4 h-4" /> },
-        { id: 'a2a', label: language === 'zh' ? 'A2A 协议' : 'A2A', icon: <Network className="w-4 h-4" /> },
-        { id: 'openapi', label: language === 'zh' ? '对外 API' : 'External API', icon: <Cable className="w-4 h-4" /> },
+        { id: 'live', label: language === 'zh' ? '直播互动' : 'Live', icon: <RadioTower className="w-4 h-4" />, featureKey: 'liveInteraction' as ClientCapabilityKey },
+        { id: 'vts', label: language === 'zh' ? 'VTS 联动' : 'VTS', icon: <Smile className="w-4 h-4" />, featureKey: 'vts' as ClientCapabilityKey },
+        { id: 'a2a', label: language === 'zh' ? 'A2A 协议' : 'A2A', icon: <Network className="w-4 h-4" />, featureKey: 'a2a' as ClientCapabilityKey },
+        { id: 'openapi', label: language === 'zh' ? '对外 API' : 'External API', icon: <Cable className="w-4 h-4" />, featureKey: 'externalApi' as ClientCapabilityKey },
         { id: 'powerGuard', label: language === 'zh' ? '防休眠' : 'Sleep Guard', icon: <Coffee className="w-4 h-4" /> },
         { id: 'sandbox', label: language === 'zh' ? '代码沙箱' : 'Code Sandbox', icon: <Box className="w-4 h-4" /> },
-        { id: 'vmc', label: language === 'zh' ? 'VMC 协议' : 'VMC Protocol', icon: <Send className="w-4 h-4" /> },
+        { id: 'vmc', label: language === 'zh' ? 'VMC 协议' : 'VMC Protocol', icon: <Send className="w-4 h-4" />, featureKey: 'vmc' as ClientCapabilityKey },
 
     ], [language])
 
@@ -280,15 +282,18 @@ export default function PreferencesDialog({ embedded = false, pendingNewAgentId 
             label: tab.label,
             icon: tab.icon,
             isPlugin: false,
+            featureKey: (tab as { featureKey?: ClientCapabilityKey | null }).featureKey ?? null,
         }))
         const pluginTabs = pluginSettingsTabs.map((pt) => ({
             id: pt.contribution.id,
             label: language === 'zh' ? pt.contribution.labelZh : pt.contribution.label,
             icon: <Puzzle className="w-4 h-4" />,
             isPlugin: true,
+            featureKey: null as ClientCapabilityKey | null,
         }))
         return [...builtinTabs, ...pluginTabs]
     }, [tabs, pluginSettingsTabs, language])
+
 
     const renderActiveTab = () => {
         switch (state.activeTab) {
@@ -506,6 +511,24 @@ export default function PreferencesDialog({ embedded = false, pendingNewAgentId 
         void requestClose()
     }, [requestClose])
 
+    // ── 套餐能力拦截：未解锁的设置页 Tab 显示锁标记并阻止进入 ──
+    const { canUseFeature, promptUpgrade } = useFeatureGuard()
+
+    const handleTabClick = useCallback(
+        (tabId: string, featureKey: ClientCapabilityKey | null) => {
+            if (featureKey && !canUseFeature(featureKey)) {
+                promptUpgrade(
+                    language === 'zh'
+                        ? '当前套餐不支持此功能，升级到更高版本套餐即可解锁'
+                        : 'This feature is not included in your current plan. Upgrade to unlock it.',
+                )
+                return
+            }
+            dispatch({ type: 'SET_ACTIVE_TAB', tab: tabId as SettingsTab })
+        },
+        [canUseFeature, dispatch, language, promptUpgrade],
+    )
+
     const dialogContent = (
         <div className={`flex h-full w-full relative ${embedded ? '' : 'max-h-[800px]'}`}>
             <div className={`bg-surface/30 backdrop-blur-xl flex flex-col pb-6 border-r border-border/40 shadow-xl shadow-black/10 ${embedded ? 'w-56 pt-10' : 'w-64 pt-8'}`}>
@@ -522,18 +545,23 @@ export default function PreferencesDialog({ embedded = false, pendingNewAgentId 
                     </div>
                 )}
                 <nav className="flex-1 p-4 space-y-1 overflow-y-auto no-scrollbar">
-                    {allTabs.map(tab => (
-                        <button
-                            key={tab.id}
-                            onClick={() => dispatch({ type: 'SET_ACTIVE_TAB', tab: tab.id as SettingsTab })}
-                            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-200 group ${state.activeTab === tab.id ? 'bg-accent/10 text-text-primary border border-accent/20' : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary border border-transparent'}`}
-                        >
-                            <span className={`transition-colors duration-200 ${state.activeTab === tab.id ? 'text-accent' : 'text-text-muted group-hover:text-text-primary'}`}>
-                                {tab.icon}
-                            </span>
-                            <span>{tab.label}</span>
-                        </button>
-                    ))}
+                    {allTabs.map(tab => {
+                        const locked = !!tab.featureKey && !canUseFeature(tab.featureKey)
+                        return (
+                            <button
+                                key={tab.id}
+                                onClick={() => handleTabClick(tab.id, tab.featureKey)}
+                                title={locked ? (language === 'zh' ? '当前套餐未包含，点击查看升级' : 'Not included in current plan — click to upgrade') : undefined}
+                                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-200 group ${state.activeTab === tab.id ? 'bg-accent/10 text-text-primary border border-accent/20' : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary border border-transparent'}`}
+                            >
+                                <span className={`transition-colors duration-200 ${state.activeTab === tab.id ? 'text-accent' : 'text-text-muted group-hover:text-text-primary'}`}>
+                                    {tab.icon}
+                                </span>
+                                <span className="flex-1 text-left truncate">{tab.label}</span>
+                                {locked && <Lock className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />}
+                            </button>
+                        )
+                    })}
                 </nav>
             </div>
             <div className="flex-1 flex justify-center overflow-hidden">

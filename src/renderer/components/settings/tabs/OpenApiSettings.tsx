@@ -19,6 +19,7 @@ import type { Language } from '@renderer/i18n'
 import { api } from '@renderer/adapters/electronBridge'
 import { logger } from '@shared/toolkit/LogEngine'
 import { OPEN_API_ENDPOINTS } from '@shared/protocols/openApiProtocol'
+import { useFeatureGuard } from '@hooks/useFeatureGuard'
 import type { OpenApiConfig, OpenApiEndpointInfo, OpenApiStatus } from '@renderer/types/electronBridge'
 
 interface OpenApiSettingsProps {
@@ -116,6 +117,8 @@ function ActionButton({
 
 export function OpenApiSettings({ language }: OpenApiSettingsProps) {
   const zh = language === 'zh'
+  // 套餐能力拦截：对外 API 为高级能力，未解锁时禁止开启
+  const { requireFeature } = useFeatureGuard()
 
   const [config, setConfig] = useState<OpenApiConfig | null>(null)
   const [status, setStatus] = useState<OpenApiStatus | null>(null)
@@ -385,7 +388,11 @@ export function OpenApiSettings({ language }: OpenApiSettingsProps) {
           }
           checked={config.enabled}
           disabled={busy}
-          onChange={(next) => toggle({ enabled: next })}
+          onChange={async (next) => {
+            // 套餐能力拦截：开启前校验（对外 API 为高级能力）
+            if (next && !(await requireFeature('externalApi'))) return
+            toggle({ enabled: next })
+          }}
         />
         <div className="flex items-center gap-2 text-xs">
           <span className={`inline-flex h-2 w-2 rounded-full ${status?.running ? 'bg-emerald-500' : 'bg-border'}`} />

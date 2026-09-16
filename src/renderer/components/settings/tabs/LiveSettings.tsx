@@ -23,6 +23,7 @@ import type {
   LiveConfig,
   LiveStatus,
 } from '@renderer/types/electronBridge'
+import { useFeatureGuard } from '@hooks/useFeatureGuard'
 
 interface LiveSettingsProps {
   language: Language
@@ -188,6 +189,8 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 export function LiveSettings({ language }: LiveSettingsProps) {
   const zh = language === 'zh'
+  // 套餐能力拦截：直播互动为高级能力，未解锁时禁止开启
+  const { requireFeature } = useFeatureGuard()
 
   const [saved, setSaved] = useState<LiveConfig | null>(null)
   const [draft, setDraft] = useState<LiveConfig | null>(null)
@@ -302,6 +305,8 @@ export function LiveSettings({ language }: LiveSettingsProps) {
   /** 总开关：即时生效（这是唯一的全局闸门） */
   const handleToggleEnabled = useCallback(
     async (next: boolean) => {
+      // 套餐能力拦截：开启前校验（直播互动为高级能力）
+      if (next && !(await requireFeature('liveInteraction'))) return
       setBusy(true)
       try {
         const res = await api.live.setEnabled(next)

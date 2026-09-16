@@ -495,6 +495,40 @@ export type DebugEvent =
   | { type: 'error'; message: string }
 
 // ============================================
+// 套餐能力（与主进程 modules/capability-guard/types.ts 对齐）
+// ============================================
+
+/** 受套餐约束的客户端能力键 */
+export type GuardedCapabilityKey =
+  | 'liveInteraction'
+  | 'vts'
+  | 'vmc'
+  | 'a2a'
+  | 'externalApi'
+  | 'iot'
+  | 'perception'
+  | 'proactive'
+
+/** 单个能力的收敛结果 */
+export interface CapabilityConvergeResult {
+  key: GuardedCapabilityKey
+  /** 是否真的执行了关闭动作（false = 收敛前就已关闭，未做任何写入） */
+  revoked: boolean
+  ok: boolean
+  detail: string
+  error?: string
+}
+
+/** 一次收敛的完整报告 */
+export interface CapabilityConvergeReport {
+  planId: string
+  convergedAt: number
+  /** 本次被关闭的能力键（UI 据此提示用户） */
+  revokedKeys: GuardedCapabilityKey[]
+  results: CapabilityConvergeResult[]
+}
+
+// ============================================
 // Electron API 接口
 // ============================================
 
@@ -3551,6 +3585,31 @@ export interface ElectronAPI {
     onError: (callback: (payload: { message: string }) => void) => () => void
     /** 订阅被阻止的 IP */
     onBlocked: (callback: (payload: { ip: string }) => void) => () => void
+  }
+
+  /**
+   * 套餐能力一致性收敛
+   *
+   * 由渲染层的付费墙服务调用：拿到后端权威权益快照后，让主进程把
+   * 无权限的客户端能力（VTS / VMC / A2A / 对外 API / IoT / 感知 / 主动助手 /
+   * 直播互动）自动关闭。幂等，已关闭的能力不会产生写入。
+   */
+  capabilityGuard: {
+    /** 执行一次收敛（入参必须来自后端权威响应） */
+    converge: (entitlement: {
+      planId?: string
+      allowed: Partial<Record<GuardedCapabilityKey, boolean>>
+    }) => Promise<{
+      success: boolean
+      data?: CapabilityConvergeReport
+      error?: string
+    }>
+    /** 读取最近一次收敛报告（诊断用，未收敛过时为 null） */
+    getLastReport: () => Promise<{
+      success: boolean
+      data?: CapabilityConvergeReport | null
+      error?: string
+    }>
   }
 
   /** 本地语音引擎 */

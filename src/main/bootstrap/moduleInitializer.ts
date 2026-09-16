@@ -59,6 +59,7 @@ import { initializeLocalVoiceModule } from '../modules/local-voice'
 import { initializeCharacterCardModule } from '../modules/character-card'
 import { initializeEmotionModule } from '../modules/emotion'
 import { SettingsDb } from '../modules/settings-db/SettingsDb'
+import { initCapabilityGuardModule } from '../modules/capability-guard'
 import { registerVideoTranscodeIpc } from '../modules/video-transcode/VideoTranscodeIpc'
 
 export type Language = 'zh' | 'en'
@@ -258,6 +259,12 @@ export async function initializeModules(firstWin: BrowserWindow): Promise<void> 
     const { initVmcModule } = await import('../modules/vmc')
     initVmcModule()
   })
+
+  // 初始化套餐能力一致性收敛（降级后自动关闭无权限的客户端能力）
+  // ⚠️ 必须排在 live / vts / vmc / a2a / openapi / iot / perception / proactive 之后：
+  // 收敛要读它们的配置，模块没起来时读到的都是默认值。
+  // 仅在渲染层拿到后端权威授权快照后才会真正执行（见 capability-guard/index.ts）。
+  await safeInit('CapabilityGuard', initCapabilityGuardModule)
 
   // ==========================================
   // 7. 应用菜单与语言同步

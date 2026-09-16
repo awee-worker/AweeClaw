@@ -22,7 +22,6 @@ import {
   Send,
   RadioReceiver,
   Heart,
-  Shield,
   BarChart3,
   Loader2,
   AlertTriangle,
@@ -32,9 +31,10 @@ import {
 import { ToggleSwitch } from '@components/ui'
 import { api } from '@renderer/adapters/electronBridge'
 import { toast } from '@components/foundation/NotificationProvider'
-import { t, type Language } from '@renderer/i18n'
+import { type Language } from '@renderer/i18n'
 import { pickConfigPatch } from '@utils/configValueGuard'
 import type { VmcConfig, VmcState } from '@renderer/types/electronBridge'
+import { useFeatureGuard } from '@hooks/useFeatureGuard'
 
 // ============================================
 // 类型定义
@@ -50,6 +50,8 @@ interface VmcSettingsProps {
 
 export function VmcSettings({ language }: VmcSettingsProps) {
   const zh = language === 'zh'
+  // 套餐能力拦截：VMC 协议为高级能力，未解锁时禁止开启
+  const { requireFeature } = useFeatureGuard()
 
   // 状态
   const [config, setConfig] = useState<VmcConfig | null>(null)
@@ -195,7 +197,11 @@ export function VmcSettings({ language }: VmcSettingsProps) {
           </div>
           <ToggleSwitch
             checked={config.enabled}
-            onChange={(e) => void updateConfig({ enabled: e.target.checked })}
+            onChange={async (e) => {
+              // 套餐能力拦截：开启前校验（VMC 协议为高级能力）
+              if (e.target.checked && !(await requireFeature('vmc'))) return
+              void updateConfig({ enabled: e.target.checked })
+            }}
             disabled={saving}
           />
         </div>

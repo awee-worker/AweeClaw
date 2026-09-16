@@ -2689,6 +2689,17 @@ export const zh = {
   'featureguard.subscriptionactive': '订阅有效',
   'featureguard.subscriptionexpired': '订阅已过期',
   'featureguard.daysremaining': '剩余 {days} 天',
+  'featureguard.capabilityrevoked': '功能已自动关闭',
+  'featureguard.capabilityrevokeddesc':
+    '当前套餐未包含以下功能，已自动关闭：{items}。升级后可重新开启，原有配置与凭证均已保留。',
+  'featureguard.capability.liveInteraction': '直播互动',
+  'featureguard.capability.vts': 'VTS 联动',
+  'featureguard.capability.vmc': 'VMC 协议',
+  'featureguard.capability.a2a': 'A2A 协议',
+  'featureguard.capability.externalApi': '对外 API',
+  'featureguard.capability.iot': 'IoT 集成',
+  'featureguard.capability.perception': '感知预测',
+  'featureguard.capability.proactive': '主动助手',
 
   'subscription.title': '订阅管理',
   'subscription.status': '订阅状态',

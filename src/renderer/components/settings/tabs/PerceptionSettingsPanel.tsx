@@ -15,6 +15,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Eye, EyeOff, Trash2, Shield, Activity, Clock, AlertTriangle, Sparkles, Target, TrendingUp, Calendar, Network, Gauge, Camera, Layers } from 'lucide-react'
 import { ToggleSwitch } from '@components/ui'
+import { useFeatureGuard } from '@hooks/useFeatureGuard'
 import { type Language, t } from '@renderer/i18n'
 import { logger } from '@shared/toolkit/LogEngine'
 import { SceneTimelineView } from './perception/SceneTimelineView'
@@ -108,6 +109,8 @@ interface PredictionStats {
 
 export function PerceptionSettingsPanel({ language }: PerceptionSettingsPanelProps) {
   const isZh = language === 'zh'
+  // 套餐能力拦截：感知预测为高级能力，未解锁时禁止开启
+  const { requireFeature } = useFeatureGuard()
 
   // 配置状态（阶段2 扩展：enablePrediction / confidenceThreshold / predictionIntervalSec）
   const [config, setConfig] = useState<{
@@ -330,7 +333,11 @@ export function PerceptionSettingsPanel({ language }: PerceptionSettingsPanelPro
           </div>
           <ToggleSwitch
             checked={config.enablePerception}
-            onChange={(e) => updateConfig({ enablePerception: e.target.checked })}
+            onChange={async (e) => {
+              // 套餐能力拦截：开启前校验（感知预测为高级能力）
+              if (e.target.checked && !(await requireFeature('perception'))) return
+              updateConfig({ enablePerception: e.target.checked })
+            }}
           />
         </div>
 

@@ -721,6 +721,9 @@ function createGroupedAPI() {
     // 感知层（preload 已暴露为嵌套对象，直接透传）
     perception: raw.perception,
 
+    // 套餐能力一致性收敛（preload 已暴露为嵌套对象，直接透传）
+    capabilityGuard: raw.capabilityGuard,
+
     scenarioInstall: {
       getScenariosDir: () => raw.scenarioGetScenariosDir(),
       selectScenarioDir: () => raw.scenarioSelectScenarioDir(),
