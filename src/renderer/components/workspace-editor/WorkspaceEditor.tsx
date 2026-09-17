@@ -1,9 +1,10 @@
 /**
  * 编辑器主组件
  */
-import { useRef, useCallback, useEffect, useState, Suspense, type ReactNode } from 'react'
+import { useRef, useCallback, useEffect, useState, useMemo, Suspense, type ReactNode } from 'react'
 import { Loader2 } from 'lucide-react'
 import MonacoEditor, { OnMount, BeforeMount, loader } from '@monaco-editor/react'
+import { MonacoLifecycleBoundary } from './MonacoLifecycleBoundary'
 import type { editor } from 'monaco-editor'
 
 import { useStore } from '@store'
@@ -244,7 +245,33 @@ export default function Editor() {
 
   const activeLanguage = activeFile && !isPreviewDocument ? getLanguage(activeFile.path) : 'plaintext'
   const activeFileType = activeFile && !isPreviewDocument ? getFileType(activeFile.path) : 'text'
-  const activeFileInfo = (activeFile && activeFile.content != null) ? getFileInfo(activeFile.path, activeFile.content) : null
+  const activeFileInfo = useMemo(
+    () => (activeFile && activeFile.content != null) ? getFileInfo(activeFile.path, activeFile.content) : null,
+    [activeFile?.path, activeFile?.content]
+  )
+
+  const editorFontSize = getEditorConfig().fontSize
+  const editorFontFamily = getEditorConfig().fontFamily
+
+  // ⚠️ Monaco 的 options 必须保持引用稳定：
+  // @monaco-editor/react 在 options 引用变化时会调用 editor.updateOptions()，
+  // 若该调用落在「已 dispose 的 editor」上，monaco 内部会走 _applyOptions → _createView()
+  // → this._instantiationService.createInstance(...)，而该 child service 已随 editor 销毁，
+  // 于是抛出 "InstantiationService has been disposed"。用 useMemo 固化引用可消除该窗口。
+  const monacoOptions = useMemo(() => getMonacoEditorOptions(activeFileInfo), [activeFileInfo])
+
+  // markdown / html 分屏左侧编辑器的精简 options（同样需引用稳定）
+  const splitMonacoOptions = useMemo(
+    () => ({
+      fontSize: editorFontSize,
+      fontFamily: editorFontFamily,
+      minimap: { enabled: false },
+      scrollBeyondLastLine: false,
+      padding: { top: 16 },
+      contextmenu: false,
+    }),
+    [editorFontSize, editorFontFamily]
+  )
   // v2.4.2：Office 文档（Word/PPT/Excel：doc/docx/ppt/pptx/xls/xlsx/csv）普通文件 Tab 默认接入 ONLYOFFICE 在线编辑，不可用才回退本地预览
   const activeFileExt = activeFile ? (activeFile.path.split('.').pop() || '').toLowerCase() : ''
   const isOoAutoDocument = Boolean(
@@ -652,7 +679,8 @@ export default function Editor() {
             <BrowserPreviewTab file={activeFile} />
           </Suspense>
         ) : activeFile && (
-          <>
+          <MonacoLifecycleBoundary>
+            <>
             {activeFileType === 'image' ? (
               <ImagePreview path={activeFile.path} />
             ) : activeFileType === 'video' ? (
@@ -705,7 +733,7 @@ export default function Editor() {
                       }
                     }}
                     loading={<CodeSkeleton lines={12} />}
-                    options={{ fontSize: getEditorConfig().fontSize, fontFamily: getEditorConfig().fontFamily, minimap: { enabled: false }, scrollBeyondLastLine: false, padding: { top: 16 }, contextmenu: false }}
+                    options={splitMonacoOptions}
                   />
                 </div>
                 <div className="flex-1 relative overflow-hidden">
@@ -733,7 +761,7 @@ export default function Editor() {
                       }
                     }}
                     loading={<CodeSkeleton lines={12} />}
-                    options={{ fontSize: getEditorConfig().fontSize, fontFamily: getEditorConfig().fontFamily, minimap: { enabled: false }, scrollBeyondLastLine: false, padding: { top: 16 }, contextmenu: false }}
+                    options={splitMonacoOptions}
                   />
                 </div>
                 <div className="flex-1 relative overflow-hidden">
@@ -774,10 +802,11 @@ export default function Editor() {
                   }
                 }}
                 loading={<CodeSkeleton lines={12} />}
-                options={getMonacoEditorOptions(activeFileInfo)}
+                options={monacoOptions}
               />
             )}
-          </>
+            </>
+          </MonacoLifecycleBoundary>
         )}
 
         {contextMenu && editorRef.current && (

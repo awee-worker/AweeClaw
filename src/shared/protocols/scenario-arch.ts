@@ -272,6 +272,9 @@ export interface ScenarioModule {
   onHealthCheck?: () => Promise<ScenarioHealthCheck[]>
 
   getDependencies?: () => ScenarioDependency[]
+
+  /** 卡片数据获取（场景卡片预览用，可选实现） */
+  getCardData?: (cardId: string) => Promise<Record<string, unknown> | null>
 }
 
 // ============================================

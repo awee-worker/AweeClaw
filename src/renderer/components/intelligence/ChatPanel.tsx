@@ -23,6 +23,7 @@ import { EventBus } from '@intelligence/engine/EventDispatcher'
 import { knowledgeExtractor } from '@intelligence/runtime/knowledgeService/extractor'
 import { type Language } from '@renderer/i18n'
 import { toFullPath } from '@shared/toolkit/pathHelper'
+import { isInternalCronCommand } from '@shared/protocols/cronCommandProtocol'
 import {
   isUserMessage,
   isAssistantMessage,
@@ -560,13 +561,13 @@ export default function ChatPanel() {
 
   // ===== 定时任务监听 =====
   // 监听 Cron 任务触发，将 command 作为用户消息发送给 AI。
-  // 跳过内部标记 command（以 '__' 开头包裹的指令，如 __proactive_learner_calibrate__）：
-  // 这类 command 由对应模块在主进程内部自行处理（如 ProactiveLearner 的自适应校准），
-  // 不应转发给 AI，否则 AI 会收到无意义的内部标记文本。
+  // 跳过内部标记 command（如 __proactive_learner_calibrate__）：这类 command 由对应模块
+  // 在主进程内部自行处理（如 ProactiveLearner 的自适应校准），不应转发给 AI。
+  // 判定逻辑统一走 isInternalCronCommand，避免与 useAutomationCronExecutor 各写一份而漏判。
   useEffect(() => {
     const unsub = api.cron.onTaskExecute(async (event: { taskId: string; taskName: string; command: string }) => {
       // 内部标记 command 跳过（约定：'__' 前缀为模块内部指令，不发送给 Agent）
-      if (event.command.startsWith('__')) return
+      if (isInternalCronCommand(event.command)) return
       try {
         await sendMessage(event.command)
       } catch (err) {

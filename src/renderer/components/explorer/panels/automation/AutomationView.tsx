@@ -19,7 +19,9 @@ import {
   History, LayoutTemplate, Settings2,
 } from 'lucide-react'
 import { useStore } from '@store'
+import { useFeatureGuard } from '@hooks/useFeatureGuard'
 import { automationApi, getApiErrorMessage } from '@renderer/adapters/taskProjectApi'
+import { countAutomationTasks } from '@renderer/adapters/quotaUsage'
 import type {
   AutomationRule,
   AutomationRun,
@@ -33,6 +35,8 @@ type DetailTab = 'config' | 'history'
 export function AutomationView() {
   const language = useStore(s => s.language)
   const isZh = language === 'zh'
+  // 自动化任务数量受套餐配额约束（automationTasksLimit）
+  const { requireQuota } = useFeatureGuard()
 
   const [rules, setRules] = useState<AutomationRule[]>([])
   const [loading, setLoading] = useState(true)
@@ -150,6 +154,27 @@ export function AutomationView() {
 
   // ─── 操作回调 ───────────────────────────────────────
 
+  /** 自动化任务数量校验（自动化规则 + 定时任务合并计数），超限时给出升级引导 */
+  const checkAutomationQuota = useCallback(async (): Promise<boolean> => {
+    // -1 表示两处数据源都不可达、用量未知 —— 按宽松策略放行
+    const used = await countAutomationTasks()
+    if (used < 0) return true
+    return requireQuota('automationTasksLimit', used)
+  }, [requireQuota])
+
+  /** 新建空白规则：先校验配额，再打开表单 */
+  const handleCreate = useCallback(async () => {
+    if (!(await checkAutomationQuota())) return
+    setEditingRule(null)
+    setShowFormDialog(true)
+  }, [checkAutomationQuota])
+
+  /** 从模板创建：先校验配额，再打开模板面板 */
+  const handleOpenTemplates = useCallback(async () => {
+    if (!(await checkAutomationQuota())) return
+    setShowTemplates(true)
+  }, [checkAutomationQuota])
+
   const handleToggleEnabled = useCallback(async (rule: AutomationRule) => {
     // 乐观更新
     setRules(prev => prev.map(r =>
@@ -207,6 +232,8 @@ export function AutomationView() {
   }, [activeTab])
 
   const handleCreateFromTemplate = useCallback(async (templateId: string) => {
+    // 兜底二次校验：模板面板可能已打开一段时间
+    if (!(await checkAutomationQuota())) return
     try {
       const created = await automationApi.createFromTemplate(templateId)
       setRules(prev => [created, ...prev])
@@ -227,7 +254,7 @@ export function AutomationView() {
     } catch (e) {
       setError(getApiErrorMessage(e, isZh ? '创建失败' : 'Create failed'))
     }
-  }, [])
+  }, [checkAutomationQuota])
 
   const handleFormSubmit = useCallback(async (data: {
     name: string
@@ -270,6 +297,11 @@ export function AutomationView() {
         setError(getApiErrorMessage(e, isZh ? '更新失败' : 'Update failed'))
       }
     } else {
+      // 兜底二次校验：表单可能已打开一段时间，期间自动化任务数可能已达上限
+      if (!(await checkAutomationQuota())) {
+        setShowFormDialog(false)
+        return
+      }
       try {
         const created = await automationApi.create({
           name: data.name,
@@ -299,7 +331,7 @@ export function AutomationView() {
         setError(getApiErrorMessage(e, isZh ? '创建失败' : 'Create failed'))
       }
     }
-  }, [editingRule, isZh])
+  }, [editingRule, isZh, checkAutomationQuota])
 
   // ─── 渲染 ───────────────────────────────────────────
 
@@ -313,14 +345,14 @@ export function AutomationView() {
           </h2>
           <div className="flex items-center gap-1">
             <button
-              onClick={() => setShowTemplates(true)}
+              onClick={handleOpenTemplates}
               className="p-1.5 rounded-md hover:bg-surface-hover/50 text-text-muted hover:text-text-primary transition-colors"
               title={isZh ? '从模板创建' : 'From template'}
             >
               <LayoutTemplate className="w-3.5 h-3.5" />
             </button>
             <button
-              onClick={() => { setEditingRule(null); setShowFormDialog(true) }}
+              onClick={handleCreate}
               className="flex items-center gap-1 px-2.5 py-1.5 bg-accent text-white rounded-md text-[12px] font-medium hover:bg-accent/90 transition-colors"
             >
               <Plus className="w-3.5 h-3.5" />
@@ -338,7 +370,7 @@ export function AutomationView() {
             <div className="flex flex-col items-center justify-center py-12 text-text-muted">
               <Zap className="w-8 h-8 mb-2 opacity-25" />
               <p className="text-[12px]">{isZh ? '暂无自动化规则' : 'No automation rules'}</p>
-              <button onClick={() => setShowTemplates(true)} className="mt-2 text-[12px] text-accent hover:underline">
+              <button onClick={handleOpenTemplates} className="mt-2 text-[12px] text-accent hover:underline">
                 {isZh ? '从模板创建' : 'Create from template'}
               </button>
             </div>
@@ -366,7 +398,7 @@ export function AutomationView() {
             <Zap className="w-12 h-12 mb-3 opacity-20" />
             <p className="text-[14px]">{isZh ? '选择一条规则查看详情' : 'Select a rule to view details'}</p>
             {templates.length > 0 && (
-              <button onClick={() => setShowTemplates(true)} className="mt-3 flex items-center gap-1.5 text-[12px] text-accent hover:underline">
+              <button onClick={handleOpenTemplates} className="mt-3 flex items-center gap-1.5 text-[12px] text-accent hover:underline">
                 <LayoutTemplate className="w-3.5 h-3.5" />
                 {isZh ? '浏览模板库' : 'Browse templates'}
               </button>

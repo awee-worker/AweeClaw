@@ -22,6 +22,7 @@ import {
 import { validatePath, isSensitivePath, platform, getDirname } from '@shared/toolkit/pathHelper'
 import { pathToLspUri } from '@shared/toolkit/uriHelper'
 import { waitForDiagnostics, isLanguageSupported, getLanguageId, didOpenDocument } from '@services/languageServerAdapter'
+import { checkAutomationTaskQuota } from '@services/quotaUsage'
 import {
     calculateLineChanges,
 } from '@utils/searchReplace'
@@ -3226,6 +3227,15 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
                     const command = args.command as string
                     if (!name || !pattern || !command) {
                         return { success: false, result: '', error: 'create requires: name, pattern, command' }
+                    }
+                    // 套餐配额：定时任务计入「自动化任务」数量上限，超限时让 AI 告知用户升级
+                    const quota = await checkAutomationTaskQuota()
+                    if (!quota.allowed) {
+                        return {
+                            success: false,
+                            result: '',
+                            error: quota.reason || `已达到当前套餐自动化任务数量上限（${quota.limit} 个），请升级后再创建`,
+                        }
                     }
                     const result = await api.cron.register({
                         name,

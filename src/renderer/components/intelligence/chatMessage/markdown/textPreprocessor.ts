@@ -153,7 +153,7 @@ export function replaceEmotionTagsWithHtml(text: string): string {
 
 /** 从 HTML 占位符恢复表情标记 */
 export function restoreEmotionTagsFromHtml(text: string): string {
-  return text.replace(/<span class="emotion-placeholder" data-emotion="([^"]*)" data-original="([^"]*)"><\/span>/g, (match, name, original) => {
+  return text.replace(/<span class="emotion-placeholder" data-emotion="([^"]*)" data-original="([^"]*)"><\/span>/g, (_match, _name, original) => {
     return original
   })
 }

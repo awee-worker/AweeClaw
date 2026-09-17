@@ -66,8 +66,6 @@ const SENTENCE_MID_PUNCTUATIONS = [
   ENGLISH_SEMICOLON,
 ]
 
-/** 所有标点 */
-const ALL_PUNCTUATIONS = [...SENTENCE_END_PUNCTUATIONS, ...SENTENCE_MID_PUNCTUATIONS]
 
 // ============================================
 // 切分函数

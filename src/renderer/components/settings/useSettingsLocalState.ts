@@ -235,7 +235,6 @@ export function useSettingsLocalState(embedded: boolean) {
 
       const currentProviderId = dbResult.currentProviderId || llmConfig.provider
       const dbProviderConfig = dbResult.providerConfigs[currentProviderId]
-      const builtinDef = PROVIDERS[currentProviderId]
 
       if (dbProviderConfig) {
         const resolvedConfig = resolveRuntimeLLMConfig(

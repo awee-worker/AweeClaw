@@ -11,7 +11,6 @@
  */
 
 import { getConfigStore } from '../../bootstrap/stores'
-import { BUILTIN_PROVIDERS } from '@shared/configuration/aiProviders'
 import {
   resolveRuntimeLLMConfig,
   resolveTaskLLMConfig,

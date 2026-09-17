@@ -11,6 +11,8 @@ import { BrowserWindow } from 'electron'
 import { safeIpcHandle } from '../core/ipcGuard'
 import { cronScheduler } from '../../modules/automation/CronScheduler'
 import type { CronTaskConfig, CronTaskExecutionEvent } from '../../modules/automation/CronScheduler'
+import { isInternalCronCommand } from '@shared/protocols/cronCommandProtocol'
+import { logger } from '@shared/toolkit/LogEngine'
 
 /** 获取所有可用窗口 */
 function getAllWindows(): BrowserWindow[] {
@@ -34,7 +36,16 @@ export function registerAutomationEventListeners(): void {
   })
 
   // 任务触发执行 → 通知渲染进程发送 AI 指令
+  // 内部标记指令（'__' 前缀）只由主进程模块自行订阅处理（如 ProactiveLearner 的
+  // __proactive_learner_calibrate__ 每日校准），不广播到渲染层，否则会被
+  // useAutomationCronExecutor 当作普通自动化任务发给 Agent，用户看到无意义文本。
   cronScheduler.on('task-execute', (event: CronTaskExecutionEvent) => {
+    if (isInternalCronCommand(event.command)) {
+      logger.system.debug(
+        `[automation] 内部标记指令不广播到渲染进程: ${event.taskName} (${event.command})`,
+      )
+      return
+    }
     broadcast('cron:task-execute', event)
   })
 }

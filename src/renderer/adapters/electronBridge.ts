@@ -520,6 +520,11 @@ function createGroupedAPI() {
 
   // 有声书 (P1-7 长文播报)（自动分组：audiobookXxx → audiobook.xxx）
   audiobook: createGroup(raw, 'audiobook'),
+    // 角色卡（自动分组：characterCardXxx → characterCard.xxx）
+    characterCard: createGroup(raw, 'characterCard'),
+
+    // 表情包（自动分组：emotionXxx → emotion.xxx）
+    emotion: createGroup(raw, 'emotion'),
 
     // 项目附件本地存储（本地优先，后端兜底）（自动分组：attachmentXxx → attachment.xxx）
     attachment: createGroup(raw, 'attachment'),

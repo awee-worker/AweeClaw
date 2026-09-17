@@ -6,7 +6,7 @@
  */
 
 import { useStore } from '@store'
-import { BUILTIN_PROVIDERS, getBuiltinProvider } from '@shared/configuration/aiProviders'
+import { BUILTIN_PROVIDERS } from '@shared/configuration/aiProviders'
 import { resolveTaskLLMConfig } from '@shared/configuration/modelConfigResolver'
 import type { LLMConfig } from '@shared/protocols/modelGateway'
 
@@ -54,7 +54,6 @@ export function getAvailableProviders(): string[] {
  */
 export function getAvailableModels(providerId: string): string[] {
     const store = useStore.getState()
-    const builtinProvider = getBuiltinProvider(providerId)
     const userConfig = store.providerConfigs[providerId]
 
     const models: string[] = []

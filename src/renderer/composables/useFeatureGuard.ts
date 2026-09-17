@@ -29,6 +29,8 @@ import {
   checkWorkMode,
   checkFeature,
   checkQuota,
+  getCapabilityGroupStatusSync,
+  type CapabilityGroupStatus,
   type EffectiveFeatures,
   type PlanFeatures,
   type PlanQuotaKey,
@@ -64,6 +66,14 @@ export interface UseFeatureGuardReturn {
   getLimit: (key: PlanQuotaKey) => number
   /** 同步判断是否还能新增（数量未达上限） */
   canAddMore: (key: PlanQuotaKey, currentCount: number) => boolean
+
+  /**
+   * 各工具能力组的授权状态，供工具 UI 置灰 / 「升级解锁」提示使用。
+   *
+   * 每次渲染即时从权益缓存计算（仅 8 项，开销可忽略）；未登录或权益不可信时
+   * 全部返回 allowed=true（与执行层的 fail-open 一致，不误伤付费用户）。
+   */
+  capabilityGroups: CapabilityGroupStatus[]
 
   /** 异步校验工作模式权限（不通过则弹升级提示），通过返回 true */
   requireMode: (mode: WorkMode) => Promise<boolean>
@@ -267,6 +277,7 @@ export function useFeatureGuard(): UseFeatureGuardReturn {
     getScenarioDiscount,
     getLimit,
     canAddMore,
+    capabilityGroups: getCapabilityGroupStatusSync(),
     requireMode,
     requireFeature,
     requireQuota,

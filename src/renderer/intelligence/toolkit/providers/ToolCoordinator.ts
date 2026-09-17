@@ -17,6 +17,10 @@ import type {
   ToolExecutionEnvelope,
   ToolExecutionOutcome,
 } from '@intelligence/providerTypes'
+import {
+  isToolAllowedByPlanSync,
+  buildToolNotAllowedMessage,
+} from '@services/featureGuardService'
 
 class ToolManager {
   private providers = new Map<string, ToolProvider>()
@@ -261,6 +265,26 @@ class ToolManager {
       }, 'validation')
     }
 
+    // 套餐工具能力组兜底校验（执行层强制）
+    // 主闸门是「可见性」—— getToolsForContext 不下发未授权工具，AI 自然不会调用；
+    // 此处拦截绕过上下文过滤的直接调用（如外部 API 桥 / 渠道会话传入的工具名）。
+    // 权益不可信或未配置白名单时 isToolAllowedByPlanSync() 返回 true（fail-open）。
+    if (!isToolAllowedByPlanSync(toolName)) {
+      logger.agent.warn(
+        `[ToolManager] Tool "${toolName}" rejected: not included in current plan`,
+      )
+      const isZhPlan = useStore.getState().language === 'zh'
+      return this.finalizeResult(toolName, executionId, startedAt, undefined, {
+        success: false,
+        result: '',
+        error: buildToolNotAllowedMessage(toolName, isZhPlan),
+        outcome: {
+          kind: 'error',
+          code: 'TOOL_NOT_ALLOWED_BY_PLAN',
+          retryable: false,
+        },
+      }, 'validation')
+    }
     const provider = this.findProviderForTool(toolName)
 
     if (!provider) {

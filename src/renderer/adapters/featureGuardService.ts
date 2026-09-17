@@ -16,13 +16,24 @@
 import { backendApi, BackendApiError } from '@services/backendApi'
 import { logger } from '@shared/toolkit/LogEngine'
 import type { WorkMode } from '@/renderer/modes/workModeTypes'
+import {
+  CAPABILITY_GROUPS,
+  getToolCapabilityGroup,
+  isToolAllowedByPlanGroups,
+} from '@configuration/toolCategoryDefs'
 
 // ─── 类型定义（与后端 FeatureGuardService 对齐） ─────────
 
 /** 套餐功能配置结构（对应后端 PlanFeatures） */
 export interface PlanFeatures {
   modes?: string[]
-  toolsLimit?: number
+  /**
+   * 工具能力组白名单（组定义与工具归属见 @configuration/toolCategoryDefs）
+   *
+   * - `undefined`：未配置 → 全放行（兼容上线前落库的套餐数据）
+   * - `[]`：仅保留系统必需工具
+   */
+  allowedToolGroups?: string[]
   mcp?: boolean
   skill?: boolean
   codebaseIndex?: boolean
@@ -38,6 +49,10 @@ export interface PlanFeatures {
   customAgentsLimit?: number
   /** 桌面伴侣角色模型数量上限 */
   companionModelsLimit?: number
+  /** 项目数量上限（「项目」菜单创建的项目数） */
+  projectsLimit?: number
+  /** 自动化任务数量上限（「自动化」规则 + 「定时任务」任务） */
+  automationTasksLimit?: number
 
   // ── 客户端功能开关 ──
   /** 直播互动（B站 / YouTube / Twitch 弹幕接入） */
@@ -62,6 +77,8 @@ export interface PlanFeatures {
 export const PLAN_QUOTA_KEYS = [
   'customAgentsLimit',
   'companionModelsLimit',
+  'projectsLimit',
+  'automationTasksLimit',
 ] as const
 
 export type PlanQuotaKey = (typeof PLAN_QUOTA_KEYS)[number]
@@ -147,8 +164,18 @@ const WORK_MODE_TO_BACKEND_MODE: Record<WorkMode, string> = {
 // ─── FREE 兜底配置（后端不可达 / 未登录时使用） ─────────
 
 const FREE_FEATURES_FALLBACK: PlanFeatures = {
+  // 工作模式保守取 quick：未登录 / 后端不可达时不应默认解锁 Think 与 Expert，
+  // 由 checkWorkMode 的降级分支给出升级提示。它不代表 FREE 档的真实配置
+  // （线上 FREE 三种模式全开），真实权益以服务端返回的权威快照为准。
   modes: ['quick'],
-  toolsLimit: 10,
+  // 刻意不声明 allowedToolGroups，走既有 fail-open 约定（undefined = 全放行）。
+  //
+  // 历史坑：此处曾硬编码 5 组（file/code/web/knowledge/automation）并声称
+  // 「与后端 FREE_DEFAULT_TOOL_GROUPS 对齐」，但线上 FREE 档实为全部能力组开放，
+  // 该硬编码既与真实权益分叉，又会误导后续直接消费 features.allowedToolGroups
+  // 的调用方，把离线 / 令牌失效用户的终端、多模态、伴侣工具凭空锁掉。
+  // （工具过滤主路径 getAllowedToolGroupsSync 本就对非权威快照返回 undefined，
+  //   在此再声明一份数组只会埋雷。）
   mcp: false,
   skill: false,
   codebaseIndex: false,
@@ -158,6 +185,8 @@ const FREE_FEATURES_FALLBACK: PlanFeatures = {
   // 数量上限兜底：与后端 FREE_FEATURES 保持一致
   customAgentsLimit: 2,
   companionModelsLimit: 1,
+  projectsLimit: 2,
+  automationTasksLimit: 2,
   // 高级能力默认关闭
   liveInteraction: false,
   vts: false,
@@ -364,7 +393,7 @@ export function isAuthoritativeFeatures(
 /**
  * 从有效功能配置中抽取客户端能力授权快照。
  *
- * 只取 8 个客户端能力开关，不携带 modes / toolsLimit 等其它维度 ——
+ * 只取 8 个客户端能力开关，不携带 modes / allowedToolGroups 等其它维度 ——
  * 主进程的收敛器只认这一组键，多传无益且会让两侧契约含糊。
  * 未配置的能力按 `false` 传给主进程（缺省即未授权）。
  */
@@ -510,6 +539,81 @@ export function getScenarioDiscountSync(fallbackPlanId?: string): number {
   return isPaidPlanSync(fallbackPlanId) ? 0.8 : 1
 }
 
+// ─── 工具能力组（套餐授权 / 执行层校验） ────────────────
+
+/**
+ * 同步获取当前套餐授权的工具能力组（基于缓存）
+ *
+ * @returns `undefined` = 不做限制（全放行）
+ *
+ * fail-open 规则（与 capabilityConvergence 的安全闸门一致）：
+ * - 未登录 / 缓存为空 → 不限制
+ * - 兜底快照（后端不可达或令牌失效时构造的 FREE 形状）不代表真实权益，
+ *   据此限制会把离线付费用户的工具一并锁掉
+ */
+export function getAllowedToolGroupsSync(): string[] | undefined {
+  if (!cachedFeatures) return undefined
+  if (!isAuthoritativeFeatures(cachedFeatures)) return undefined
+  const groups = cachedFeatures.features.allowedToolGroups
+  if (!Array.isArray(groups)) return undefined
+  return groups
+}
+
+/**
+ * 同步判断工具是否被当前套餐授权（执行层兜底校验用）
+ *
+ * 主闸门是「可见性」—— `getToolsForContext` 不下发未授权工具，AI 自然不会调用；
+ * 本函数拦截绕过上下文过滤的直接调用（与自定义智能体白名单校验同层）。
+ */
+export function isToolAllowedByPlanSync(toolName: string): boolean {
+  return isToolAllowedByPlanGroups(toolName, getAllowedToolGroupsSync())
+}
+
+/** 能力组授权状态（供工具 UI 展示「已包含 / 升级解锁」） */
+export interface CapabilityGroupStatus {
+  id: string
+  name: string
+  nameEn: string
+  allowed: boolean
+}
+
+/**
+ * 同步获取各能力组的授权状态（基于缓存）
+ *
+ * fail-open 语义与 `getAllowedToolGroupsSync` 保持一致：未登录 / 权益快照不可信 /
+ * 套餐未配置白名单时，全部标记为已授权 —— 否则离线用户或令牌失效的付费用户
+ * 会在 UI 上被误标为「需升级解锁」。
+ */
+export function getCapabilityGroupStatusSync(): CapabilityGroupStatus[] {
+  const allowed = getAllowedToolGroupsSync()
+  return CAPABILITY_GROUPS.map((group) => ({
+    id: group.id,
+    name: group.name,
+    nameEn: group.nameEn,
+    allowed: allowed === undefined || allowed.includes(group.id),
+  }))
+}
+
+/**
+ * 工具被套餐限制时的提示文案（双语）
+ *
+ * 返回给 LLM 的同时会展示在工具卡片上，需要用户可读。
+ */
+export function buildToolNotAllowedMessage(
+  toolName: string,
+  isZh: boolean,
+): string {
+  const groupId = getToolCapabilityGroup(toolName)
+  const groupName = CAPABILITY_GROUPS.find((g) => g.id === groupId)?.name
+  if (isZh) {
+    return groupName
+      ? `工具 "${toolName}" 属于「${groupName}」工具组，当前套餐未包含该组。\n请在「用户中心 → 套餐管理」升级套餐后重试。`
+      : `当前套餐不支持工具 "${toolName}"，请在「用户中心 → 套餐管理」升级后重试。`
+  }
+  return groupName
+    ? `Tool "${toolName}" belongs to the "${groupName}" group, which is not included in your current plan.\nPlease upgrade in Account → Plans and retry.`
+    : `Tool "${toolName}" is not available on your current plan. Please upgrade in Account → Plans and retry.`
+}
 // ─── 加油包 API ─────────────────────────────────────────
 
 /** 获取可购买的加油包列表 */

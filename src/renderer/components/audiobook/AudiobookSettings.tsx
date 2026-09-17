@@ -24,12 +24,11 @@ import {
   Settings,
   Loader2,
   AlertTriangle,
-  CheckCircle,
 } from 'lucide-react'
 import { ToggleSwitch } from '@components/ui'
 import { api } from '@renderer/adapters/electronBridge'
 import { toast } from '@components/foundation/NotificationProvider'
-import { t, type Language } from '@renderer/i18n'
+import { type Language } from '@renderer/i18n'
 import { pickConfigPatch } from '@utils/configValueGuard'
 
 // ============================================
@@ -76,7 +75,7 @@ interface AudiobookSettingsProps {
   language: Language
 }
 
-export function AudiobookSettings({ language }: AudiobookSettingsProps) {
+export function AudiobookSettings(_props: AudiobookSettingsProps) {
   const [config, setConfig] = useState<AudiobookConfig>(DEFAULT_CONFIG)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -90,9 +89,9 @@ export function AudiobookSettings({ language }: AudiobookSettingsProps) {
     try {
       setLoading(true)
       // 从 settings-db 加载配置
-      const result = await api.settingsDb.get('audiobook')
-      if (result.success && result.data) {
-        setConfig({ ...DEFAULT_CONFIG, ...result.data })
+      const stored = await api.settings.get('audiobook')
+      if (stored) {
+        setConfig({ ...DEFAULT_CONFIG, ...(stored as Partial<AudiobookConfig>) })
       }
     } catch (error) {
       console.error('[AudiobookSettings] 加载配置失败:', error)
@@ -114,11 +113,11 @@ export function AudiobookSettings({ language }: AudiobookSettingsProps) {
       setConfig(updatedConfig)
 
       // 保存到 settings-db
-      const result = await api.settingsDb.set('audiobook', updatedConfig)
-      if (result.success) {
+      const ok = await api.settings.set('audiobook', updatedConfig)
+      if (ok) {
         toast.success('配置已保存', '有声书配置已更新')
       } else {
-        toast.error('保存失败', result.error)
+        toast.error('保存失败', '写入配置失败')
       }
     } catch (error) {
       toast.error('保存失败', error instanceof Error ? error.message : '未知错误')

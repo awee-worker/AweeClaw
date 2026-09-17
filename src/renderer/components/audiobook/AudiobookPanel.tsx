@@ -19,11 +19,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   BookOpen,
-  Play,
   Pause,
-  Trash2,
   Download,
-  RefreshCw,
   Loader2,
   CheckCircle,
   XCircle,
@@ -33,7 +30,7 @@ import {
 } from 'lucide-react'
 import { api } from '@renderer/adapters/electronBridge'
 import { toast } from '@components/foundation/NotificationProvider'
-import { t, type Language } from '@renderer/i18n'
+import { type Language } from '@renderer/i18n'
 
 // ============================================
 // 类型定义
@@ -86,8 +83,6 @@ interface TaskEstimate {
 // 常量
 // ============================================
 
-/** 支持的文件类型 */
-const SUPPORTED_FILE_TYPES = ['.epub', '.pdf', '.txt', '.md']
 
 /** 状态颜色 */
 const STATUS_COLORS: Record<TaskStatus, string> = {
@@ -136,10 +131,10 @@ interface AudiobookPanelProps {
   language: Language
 }
 
-export function AudiobookPanel({ language }: AudiobookPanelProps) {
+export function AudiobookPanel(_props: AudiobookPanelProps) {
   const [tasks, setTasks] = useState<TaskMetadata[]>([])
   const [loading, setLoading] = useState(false)
-  const [selectedTask, setSelectedTask] = useState<TaskMetadata | null>(null)
+  const [importPath, setImportPath] = useState<string | null>(null)
   const [estimate, setEstimate] = useState<TaskEstimate | null>(null)
   const [showImportDialog, setShowImportDialog] = useState(false)
   const progressRef = useRef<Map<string, TaskProgressEvent>>(new Map())
@@ -165,34 +160,35 @@ export function AudiobookPanel({ language }: AudiobookPanelProps) {
     loadTasks()
 
     // 监听任务进度事件
-    const handleProgress = (_event: unknown, progress: TaskProgressEvent) => {
+    const handleProgress = (progress: TaskProgressEvent) => {
       progressRef.current.set(progress.taskId, progress)
       // 触发重新渲染
       setTasks(prev => [...prev])
     }
 
-    api.ipc.on('audiobook:task-progress', handleProgress)
+    const unsubscribe = api.audiobook.onTaskProgress(handleProgress)
 
     return () => {
-      api.ipc.removeListener('audiobook:task-progress', handleProgress)
+      unsubscribe()
     }
   }, [loadTasks])
 
   /** 导入文档 */
   const handleImport = useCallback(async () => {
     try {
-      const result = await api.dialog.showOpenDialog({
-        properties: ['openFile'],
-        filters: [
-          { name: '文档文件', extensions: ['epub', 'pdf', 'txt', 'md'] },
-        ],
+      const filePaths = await api.file.selectForImport({
+        title: '选择文档文件',
+        allowFiles: true,
+        allowDirs: false,
+        multiSelection: false,
       })
 
-      if (result.canceled || result.filePaths.length === 0) {
+      if (!filePaths || filePaths.length === 0) {
         return
       }
 
-      const filePath = result.filePaths[0]
+      const filePath = filePaths[0]
+      setImportPath(filePath)
 
       // 预估任务信息
       const estimateResult = await api.audiobook.estimateTask(filePath)
@@ -207,11 +203,11 @@ export function AudiobookPanel({ language }: AudiobookPanelProps) {
 
   /** 创建任务 */
   const handleCreateTask = useCallback(async () => {
-    if (!estimate) return
+    if (!estimate || !importPath) return
 
     try {
       setLoading(true)
-      const result = await api.audiobook.createTask(estimate.title, {
+      const result = await api.audiobook.createTask(importPath, {
         engine: 'cloud',
         speed: 1.0,
         concurrency: 2,
@@ -234,7 +230,7 @@ export function AudiobookPanel({ language }: AudiobookPanelProps) {
     } finally {
       setLoading(false)
     }
-  }, [estimate, loadTasks])
+  }, [estimate, importPath, loadTasks])
 
   /** 执行任务 */
   const handleExecute = useCallback(async (taskId: string) => {
@@ -403,10 +399,10 @@ export function AudiobookPanel({ language }: AudiobookPanelProps) {
                   {task.status === 'completed' && (
                     <div className="mt-2 flex items-center gap-2">
                       <button
-                        onClick={() => {
-                          // 下载音频
-                          const outputPath = api.audiobook.getOutputPath(task.id, `${task.sourceName}.${task.config.format}`)
-                          api.shell.showItemInFolder(outputPath)
+                        onClick={async () => {
+                          // 定位到生成的音频文件
+                          const result = await api.audiobook.getOutputPath(task.id, `${task.sourceName}.${task.config.format}`)
+                          if (result.success && result.data) api.file.showInFolder(result.data)
                         }}
                         className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
                       >

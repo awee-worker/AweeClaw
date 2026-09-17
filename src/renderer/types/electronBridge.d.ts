@@ -1709,6 +1709,41 @@ export interface ElectronAPI {
   sceneToolsDbRemove: (key: string) => Promise<{ success: boolean; error?: string }>
   sceneToolsDbLoadAll: () => Promise<Record<string, string>>
   sceneToolsDbGetPath: () => Promise<string>
+  // 角色卡（设置页 / 角色卡画廊 / 消息表情渲染）
+  characterCardImportCard: (params: { filePath: string; config?: unknown }) => Promise<{ success: boolean; data?: any; warnings: string[]; errors: string[]; error?: string }>
+  characterCardExportCard: (params: { cardId: string; options: unknown }) => Promise<{ success: boolean; filePath?: string; data?: any; error?: string }>
+  characterCardExportCardWithAssets: (params: { cardId: string; outputPath?: string }) => Promise<{ success: boolean; zipPath?: string; data?: any; error?: string }>
+  characterCardGetCard: (params: { cardId: string }) => Promise<{ success: boolean; data?: any; error?: string }>
+  characterCardGetAllCards: () => Promise<{ success: boolean; data?: any[]; error?: string }>
+  characterCardQueryCards: (params: unknown) => Promise<{ success: boolean; data?: any[]; error?: string }>
+  characterCardUpdateCard: (params: unknown) => Promise<{ success: boolean; data?: any; error?: string }>
+  characterCardDeleteCard: (params: { cardId: string }) => Promise<{ success: boolean; error?: string }>
+  characterCardGetStorageStats: () => Promise<{ success: boolean; data?: any; error?: string }>
+  characterCardBackupCard: (params: { cardId: string }) => Promise<{ success: boolean; data?: any; error?: string }>
+  characterCardRestoreCard: (params: { backupPath: string }) => Promise<{ success: boolean; data?: any; error?: string }>
+  characterCardValidateCard: (params: { cardId: string }) => Promise<{ success: boolean; data?: any; error?: string }>
+  characterCardCheckCardExists: (params: { cardId: string }) => Promise<{ success: boolean; data?: boolean; error?: string }>
+  characterCardGenerateId: () => Promise<{ success: boolean; data?: string; error?: string }>
+  // 表情包（设置页 / 消息表情渲染）
+  emotionGetEmotion: (params: { name: string }) => Promise<{ success: boolean; data?: any; error?: string }>
+  emotionGetAllEmotions: () => Promise<{ success: boolean; data: any[]; error?: string }>
+  emotionAddEmotion: (params: unknown) => Promise<{ success: boolean; data?: any; error?: string }>
+  emotionUpdateEmotion: (params: { name: string; updates: unknown }) => Promise<{ success: boolean; data?: any; error?: string }>
+  emotionDeleteEmotion: (params: { name: string }) => Promise<{ success: boolean; data?: any; error?: string }>
+  emotionImportFile: (params: { filePath: string; name?: string }) => Promise<{ success: boolean; data?: any; error?: string }>
+  // 有声书（P1-7 长文播报）
+  audiobookCreateTask: (filePath: string, config?: unknown) => Promise<{ success: boolean; data?: any; error?: string }>
+  audiobookGetTask: (taskId: string) => Promise<{ success: boolean; data?: any; error?: string }>
+  audiobookGetAllTasks: () => Promise<{ success: boolean; data?: any[]; error?: string }>
+  audiobookDeleteTask: (taskId: string) => Promise<{ success: boolean; error?: string }>
+  audiobookExecuteTask: (taskId: string) => Promise<{ success: boolean; error?: string }>
+  audiobookPauseTask: (taskId: string) => Promise<{ success: boolean; error?: string }>
+  audiobookCancelTask: (taskId: string) => Promise<{ success: boolean; error?: string }>
+  audiobookResumeTask: (taskId: string) => Promise<{ success: boolean; error?: string }>
+  audiobookGetTaskProgress: (taskId: string) => Promise<{ success: boolean; data?: any; error?: string }>
+  audiobookEstimateTask: (filePath: string) => Promise<{ success: boolean; data?: any; error?: string }>
+  audiobookGetOutputPath: (taskId: string, filename: string) => Promise<{ success: boolean; data?: string; error?: string }>
+  onAudiobookTaskProgress: (callback: (event: { taskId: string; phase: string; progress: number; message?: string; error?: string }) => void) => () => void
   // LLM
   sendMessage: (params: LLMSendMessageParams) => Promise<void>
   compactContext: (params: LLMSendMessageParams) => Promise<{

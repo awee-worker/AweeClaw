@@ -200,7 +200,6 @@ function rebuildSettingsFromDb(dbData: {
 
   // 从 providerConfigs 中获取当前 provider 的传输配置
   const currentProviderDbConfig = dbData.providerConfigs[currentProviderId] || {}
-  const builtinDef = getBuiltinProvider(currentProviderId)
 
   const llmConfig = resolveRuntimeLLMConfig(
     {

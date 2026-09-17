@@ -17,18 +17,15 @@ export function SafeDiffEditor({ original, modified, language, options, onMount 
   const instanceRef = useRef<editor.IStandaloneDiffEditor | null>(null)
   const aliveRef = useRef(true)
   const [uid] = useState(() => `diff-${Date.now()}`)
-  const [active, setActive] = useState(true)
 
   useEffect(() => {
     aliveRef.current = true
-    setActive(true)
     return () => {
       aliveRef.current = false
       if (instanceRef.current) {
         try { instanceRef.current.setModel(null) } catch { /* noop */ }
         instanceRef.current = null
       }
-      setActive(false)
     }
   }, [])
 
@@ -44,7 +41,6 @@ export function SafeDiffEditor({ original, modified, language, options, onMount 
     [onMount],
   )
 
-  if (!active) return null
 
   return (
     <DiffEditor

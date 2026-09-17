@@ -18,7 +18,7 @@
 import { spawn } from 'node:child_process'
 import * as fs from 'fs'
 import * as path from 'path'
-import { existsSync, mkdirSync, writeFileSync, unlinkSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import ffmpegStatic from 'ffmpeg-static'
 import { logger } from '@shared/toolkit/LogEngine'
@@ -97,7 +97,7 @@ export class AudioAssembler {
 
       // 阶段 2: 创建文件列表
       onProgress?.({ phase: 'creating_filelist', percent: 0 })
-      const fileListPath = await this.createFileList(tmpDir, segments, chapters, silencePath, config)
+    const fileListPath = await this.createFileList(tmpDir, segments, chapters, silencePath)
       onProgress?.({ phase: 'creating_filelist', percent: 100 })
 
       // 阶段 3: 拼接音频
@@ -171,7 +171,6 @@ export class AudioAssembler {
     segments: TextSegment[],
     chapters: Chapter[],
     silencePath: string,
-    config: AudiobookConfig,
   ): Promise<string> {
     const fileListPath = join(tmpDir, 'filelist.txt')
     const lines: string[] = []

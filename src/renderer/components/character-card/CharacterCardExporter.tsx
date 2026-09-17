@@ -11,11 +11,10 @@
  */
 
 import React, { useState, useCallback, memo } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Download, FileText, FileImage, Archive, AlertCircle, CheckCircle, Settings } from 'lucide-react'
-import { t, type Language } from '@renderer/i18n'
-import { useStore } from '@store'
-import { useShallow } from 'zustand/react/shallow'
+import { motion } from 'framer-motion'
+import { Download, FileText, FileImage, Archive, AlertCircle, CheckCircle } from 'lucide-react'
+import { type Language } from '@renderer/i18n'
+import { api } from '@renderer/adapters/electronBridge'
 import { OverlayDialog } from '../ui/OverlayDialog'
 import { ActionButton } from '../ui/ActionButton'
 import { toast } from '../foundation/NotificationProvider'
@@ -50,7 +49,7 @@ export const CharacterCardExporter: React.FC<CharacterCardExporterProps> = memo(
     exportResult: null,
   })
 
-  const isZh = language === 'zh-CN'
+  const isZh = language === 'zh'
 
   // 处理格式选择
   const handleFormatChange = useCallback((format: CardExportOptions['format']) => {
@@ -75,7 +74,7 @@ export const CharacterCardExporter: React.FC<CharacterCardExporterProps> = memo(
         includeCharacterBook: state.includeCharacterBook,
       }
 
-      const result = await window.electronAPI.invoke('character-card:export-card', {
+      const result = await api.characterCard.exportCard({
         cardId: card.id,
         options,
       })
@@ -119,7 +118,7 @@ export const CharacterCardExporter: React.FC<CharacterCardExporterProps> = memo(
     setState(prev => ({ ...prev, isExporting: true, exportResult: null }))
 
     try {
-      const result = await window.electronAPI.invoke('character-card:export-card-with-assets', {
+      const result = await api.characterCard.exportCardWithAssets({
         cardId: card.id,
       })
 
@@ -154,17 +153,6 @@ export const CharacterCardExporter: React.FC<CharacterCardExporterProps> = memo(
       )
     }
   }, [card, isZh])
-
-  // 重置状态
-  const handleReset = useCallback(() => {
-    setState({
-      selectedFormat: 'json',
-      includeAssets: true,
-      includeCharacterBook: true,
-      isExporting: false,
-      exportResult: null,
-    })
-  }, [])
 
   if (!card) return null
 
@@ -325,7 +313,7 @@ export const CharacterCardExporter: React.FC<CharacterCardExporterProps> = memo(
               size="sm"
               onClick={handleExportWithAssets}
               disabled={state.isExporting}
-              icon={<Archive className="w-4 h-4" />}
+              leftIcon={<Archive className="w-4 h-4" />}
             >
               {isZh ? '导出为压缩包' : 'Export as Archive'}
             </ActionButton>
@@ -342,8 +330,8 @@ export const CharacterCardExporter: React.FC<CharacterCardExporterProps> = memo(
               variant="primary"
               onClick={handleExport}
               disabled={state.isExporting}
-              loading={state.isExporting}
-              icon={<Download className="w-4 h-4" />}
+              isLoading={state.isExporting}
+              leftIcon={<Download className="w-4 h-4" />}
             >
               {isZh ? '导出' : 'Export'}
             </ActionButton>

@@ -17,15 +17,28 @@
  *     language="zh"
  *   />
  */
-import { CreditCard, Check, X, Mail } from 'lucide-react'
+import { useState } from 'react'
+import { CreditCard, Check, X, Mail, ChevronDown, ChevronUp } from 'lucide-react'
 import { type Language } from '@renderer/i18n'
 import {
   type PlanItem,
+  type PlanCapability,
   planIcons,
   planColors,
   planAccents,
-  getPlanHighlights,
+  planCapabilityGroupLabels,
+  planCapabilityGroupOrder,
+  getPlanCapabilities,
 } from './shared'
+
+/**
+ * 折叠态展示的能力标签数量
+ *
+ * 取 12 是刻意对齐 core 分组的前 12 项：Token + 3 个工作模式 + 8 个工具能力组。
+ * 这两类信息是用户判断套餐差异时最先看的（「我能不能用终端」「我有没有专家模式」），
+ * 折叠态就应直接可见；数量上限、扩展功能等次要信息折叠，点击「展开全部能力」查看。
+ */
+const COLLAPSED_CAPABILITY_COUNT = 12
 
 export interface PlanCardProps {
   plan: PlanItem
@@ -49,7 +62,31 @@ export function PlanCard({
   language,
 }: PlanCardProps) {
   const zh = language === 'zh'
-  const highlights = getPlanHighlights(plan, language)
+  const [capabilitiesExpanded, setCapabilitiesExpanded] = useState(false)
+  const capabilities = getPlanCapabilities(plan, language)
+
+  /** 是否存在被折叠的能力（超出 COLLAPSED_CAPABILITY_COUNT 才显示切换按钮） */
+  const hasMoreCapabilities = capabilities.length > COLLAPSED_CAPABILITY_COUNT
+  const visibleCapabilities = capabilitiesExpanded
+    ? capabilities
+    : capabilities.slice(0, COLLAPSED_CAPABILITY_COUNT)
+
+  /** 单个能力标签：已包含 → 绿勾；未包含 → 置灰打叉 + 删除线 */
+  const renderCapabilityTag = (c: PlanCapability) => (
+    <span
+      key={c.label}
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[12px] ${
+        c.enabled
+          ? isCurrent
+            ? 'bg-text-muted/5 text-text-muted'
+            : 'bg-surface/50 text-text-secondary'
+          : 'bg-surface/30 text-text-muted/50 line-through'
+      }`}
+    >
+      {c.enabled ? <Check className="w-3 h-3 shrink-0" /> : <X className="w-3 h-3 shrink-0" />}
+      {c.label}
+    </span>
+  )
   const accent = planAccents[plan.name] || 'text-text-primary'
   const isEnterprise = plan.name === 'ENTERPRISE'
   const isFreePlan = plan.name === 'FREE'
@@ -122,27 +159,54 @@ export function PlanCard({
             )}
           </div>
 
-          {/* 功能亮点标签 */}
-          <div className="flex flex-wrap gap-1.5">
-            {highlights.slice(0, 6).map((h, idx) => (
-              <span
-                key={idx}
-                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[12px] ${
-                  h.enabled
-                    ? isCurrent
-                      ? 'bg-text-muted/5 text-text-muted'
-                      : 'bg-surface/50 text-text-secondary'
-                    : 'bg-surface/30 text-text-muted/50 line-through'
-                }`}
+          {/* 能力清单：折叠态展示前 6 项，展开后按分组全量平铺；未包含项置灰打叉 */}
+          <div className="space-y-2">
+            {capabilitiesExpanded ? (
+              planCapabilityGroupOrder.map((group) => {
+                const items = capabilities.filter((c) => c.group === group)
+                if (items.length === 0) return null
+                const groupLabel = planCapabilityGroupLabels[group]
+                return (
+                  <div key={group}>
+                    <p className="text-[11px] text-text-muted/70 mb-1">
+                      {zh ? groupLabel.zh : groupLabel.en}
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {items.map((c) => renderCapabilityTag(c))}
+                    </div>
+                  </div>
+                )
+              })
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {visibleCapabilities.map((c) => renderCapabilityTag(c))}
+              </div>
+            )}
+
+            {hasMoreCapabilities && (
+              <button
+                type="button"
+                aria-expanded={capabilitiesExpanded}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setCapabilitiesExpanded((v) => !v)
+                }}
+                className="inline-flex items-center gap-1 text-[12px] text-accent hover:underline"
               >
-                {h.enabled ? (
-                  <Check className="w-3 h-3 shrink-0" />
+                {capabilitiesExpanded
+                  ? zh
+                    ? '收起'
+                    : 'Collapse'
+                  : zh
+                    ? `展开全部能力（${capabilities.length}）`
+                    : `Show all ${capabilities.length}`}
+                {capabilitiesExpanded ? (
+                  <ChevronUp className="w-3 h-3" />
                 ) : (
-                  <X className="w-3 h-3 shrink-0" />
+                  <ChevronDown className="w-3 h-3" />
                 )}
-                {h.label}
-              </span>
-            ))}
+              </button>
+            )}
           </div>
         </div>
 

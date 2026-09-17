@@ -4,6 +4,8 @@ import {
 } from 'lucide-react'
 import { useStore } from '@store'
 import { api } from '@renderer/adapters/electronBridge'
+import { useFeatureGuard } from '@hooks/useFeatureGuard'
+import { countAutomationTasks } from '@renderer/adapters/quotaUsage'
 import { t, type Language } from '@renderer/i18n'
 
 interface CronTaskItem {
@@ -381,6 +383,8 @@ function TaskCard({
 export function ScheduleExplorer() {
   const language = useStore(s => s.language) as Language
   const setActiveSidePanel = useStore(s => s.setActiveSidePanel)
+  // 定时任务计入「自动化任务」配额（automationTasksLimit）
+  const { requireQuota } = useFeatureGuard()
   const [tasks, setTasks] = useState<CronTaskItem[]>([])
   const [loading, setLoading] = useState(false)
   const [showForm, setShowForm] = useState(false)
@@ -410,7 +414,24 @@ export function ScheduleExplorer() {
     return unsub
   }, [])
 
+  /** 自动化任务数量校验（自动化规则 + 定时任务合并计数），超限时给出升级引导 */
+  const checkAutomationQuota = useCallback(async (): Promise<boolean> => {
+    // -1 表示两处数据源都不可达、用量未知 —— 按宽松策略放行
+    const used = await countAutomationTasks()
+    if (used < 0) return true
+    return requireQuota('automationTasksLimit', used)
+  }, [requireQuota])
+
+  /** 打开新建表单：先校验配额，再展示表单 */
+  const handleOpenCreateForm = useCallback(async () => {
+    if (!(await checkAutomationQuota())) return
+    setEditingTask(null)
+    setShowForm(true)
+  }, [checkAutomationQuota])
+
   const handleCreate = useCallback(async (data: { name: string; description: string; expression: string; command: string; maxCalls: number }) => {
+    // 兜底二次校验：表单可能已打开一段时间，期间自动化任务数可能已达上限
+    if (!(await checkAutomationQuota())) return
     try {
       await api.cron.register({
         name: data.name,
@@ -425,7 +446,7 @@ export function ScheduleExplorer() {
     } catch {
       // ignore
     }
-  }, [loadTasks])
+  }, [loadTasks, checkAutomationQuota])
 
   const handleUpdate = useCallback(async (data: { name: string; description: string; expression: string; command: string; maxCalls: number }) => {
     if (!editingTask) return
@@ -483,7 +504,7 @@ export function ScheduleExplorer() {
           <button onClick={loadTasks} className="ml-1 p-0.5 rounded hover:bg-surface-hover transition-colors" title={language === 'zh' ? '刷新' : 'Refresh'}>
             <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
           </button>
-          <button onClick={() => { setEditingTask(null); setShowForm(true) }} className="ml-0.5 p-0.5 rounded hover:bg-surface-hover transition-colors" title={language === 'zh' ? '新建任务' : 'New Task'}>
+          <button onClick={handleOpenCreateForm} className="ml-0.5 p-0.5 rounded hover:bg-surface-hover transition-colors" title={language === 'zh' ? '新建任务' : 'New Task'}>
             <Plus className="w-3.5 h-3.5" />
           </button>
           <button onClick={() => setActiveSidePanel(null)} className="ml-0.5 p-0.5 rounded hover:bg-surface-hover transition-colors" title={language === 'zh' ? '关闭' : 'Close'}>

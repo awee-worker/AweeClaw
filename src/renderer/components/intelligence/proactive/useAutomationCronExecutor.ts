@@ -28,6 +28,7 @@ import { getAgentConfig } from '@intelligence/utils/intelligenceConfig'
 import { getEffectiveLLMConfigAsync } from '@services/modelConfigHelper'
 import { automationApi } from '@renderer/adapters/taskProjectApi'
 import { logger } from '@toolkit/LogEngine'
+import { isInternalCronCommand } from '@shared/protocols/cronCommandProtocol'
 
 /** 'cron:task-execute' 频道载荷 */
 interface CronTaskExecuteEvent {
@@ -153,9 +154,19 @@ export function useAutomationCronExecutor(): void {
         logger.agent?.warn('[useAutomationCronExecutor] 收到无效 task-execute 载荷:', event)
         return
       }
+
+      // 内部标记指令（'__' 前缀）由主进程模块自行消费，绝不转发给 Agent。
+      // 主进程 bridge 已拦截一次，这里是「发往 Agent 前的最后一道闸」：
+      // 防止将来新增广播路径时，内部指令再次被包装成 [自动化任务] 泄漏给用户。
+      if (isInternalCronCommand(event.command)) {
+        logger.agent?.debug(
+          `[useAutomationCronExecutor] 跳过内部标记指令: ${event.taskName} (${event.command})`,
+        )
+        return
+      }
+
       void executeAutomation(event)
     })
-
     return () => {
       unsubscribe()
     }

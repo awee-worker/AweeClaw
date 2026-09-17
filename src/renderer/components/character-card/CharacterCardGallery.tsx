@@ -10,15 +10,14 @@
  * @module character-card/CharacterCardGallery
  */
 
-import React, { useState, useCallback, useEffect, useMemo, memo } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import React, { useState, useCallback, useEffect, memo } from 'react'
+import { motion } from 'framer-motion'
 import {
-  Search, Filter, Plus, Download, Trash2, Edit, MoreVertical,
-  FileText, FileImage, Tag, User, Calendar, ChevronDown, X
+  Search, Plus, Download, Trash2,
+  FileText, FileImage, Calendar, X
 } from 'lucide-react'
-import { t, type Language } from '@renderer/i18n'
-import { useStore } from '@store'
-import { useShallow } from 'zustand/react/shallow'
+import { type Language } from '@renderer/i18n'
+import { api } from '@renderer/adapters/electronBridge'
 import { OverlayDialog } from '../ui/OverlayDialog'
 import { ActionButton } from '../ui/ActionButton'
 import { toast } from '../foundation/NotificationProvider'
@@ -71,14 +70,14 @@ export const CharacterCardGallery: React.FC<CharacterCardGalleryProps> = memo(fu
     allTags: [],
   })
 
-  const isZh = language === 'zh-CN'
+  const isZh = language === 'zh'
 
   // 加载角色卡列表
   const loadCards = useCallback(async () => {
     setState(prev => ({ ...prev, isLoading: true }))
 
     try {
-      const result = await window.electronAPI.invoke('character-card:get-all-cards')
+      const result = await api.characterCard.getAllCards()
       if (result.success && result.data) {
         const cards = result.data as AweeClawCharacterCard[]
         const allTags = [...new Set(cards.flatMap(card => card.tags))].sort()
@@ -206,7 +205,7 @@ export const CharacterCardGallery: React.FC<CharacterCardGalleryProps> = memo(fu
     if (!state.cardToDelete) return
 
     try {
-      const result = await window.electronAPI.invoke('character-card:delete-card', {
+      const result = await api.characterCard.deleteCard({
         cardId: state.cardToDelete.id,
       })
 
@@ -259,7 +258,7 @@ export const CharacterCardGallery: React.FC<CharacterCardGalleryProps> = memo(fu
   // 格式化日期
   const formatDate = useCallback((dateString: string) => {
     const date = new Date(dateString)
-    return date.toLocaleDateString(language === 'zh-CN' ? 'zh-CN' : 'en-US', {
+    return date.toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
@@ -301,7 +300,7 @@ export const CharacterCardGallery: React.FC<CharacterCardGalleryProps> = memo(fu
             variant="primary"
             size="sm"
             onClick={() => setState(prev => ({ ...prev, showImporter: true }))}
-            icon={<Plus className="w-4 h-4" />}
+            leftIcon={<Plus className="w-4 h-4" />}
           >
             {isZh ? '导入' : 'Import'}
           </ActionButton>

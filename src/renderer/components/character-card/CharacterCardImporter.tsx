@@ -13,9 +13,8 @@
 import React, { useState, useCallback, useRef, memo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Upload, FileImage, FileText, AlertCircle, CheckCircle, X } from 'lucide-react'
-import { t, type Language } from '@renderer/i18n'
-import { useStore } from '@store'
-import { useShallow } from 'zustand/react/shallow'
+import { type Language } from '@renderer/i18n'
+import { api } from '@renderer/adapters/electronBridge'
 import { OverlayDialog } from '../ui/OverlayDialog'
 import { ActionButton } from '../ui/ActionButton'
 import { toast } from '../foundation/NotificationProvider'
@@ -50,7 +49,7 @@ export const CharacterCardImporter: React.FC<CharacterCardImporterProps> = memo(
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const isZh = language === 'zh-CN'
+  const isZh = language === 'zh'
 
   // 处理文件选择
   const handleFileSelect = useCallback(async (files: FileList | null) => {
@@ -75,7 +74,7 @@ export const CharacterCardImporter: React.FC<CharacterCardImporterProps> = memo(
       const filePath = (file as any).path || file.name
 
       // 调用主进程导入
-      const result = await window.electronAPI.invoke('character-card:import-card', {
+      const result = await api.characterCard.importCard({
         filePath,
       })
 

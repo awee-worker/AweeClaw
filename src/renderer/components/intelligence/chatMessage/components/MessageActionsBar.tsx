@@ -8,7 +8,7 @@
  * 赞/踩反馈通过 onLike / onDislikeSubmit / onDislikeRegenerate / onCancelFeedback 回调持久化到会话数据库。
  */
 import React, { useEffect, useState } from 'react'
-import { Copy, Check, Edit2, RotateCcw, ThumbsUp, ThumbsDown, RefreshCw, FileEdit, CheckCircle2 } from 'lucide-react'
+import { Copy, Check, Edit2, RotateCcw, ThumbsUp, ThumbsDown, RefreshCw, FileEdit } from 'lucide-react'
 import { HintOverlay } from '../../../ui/HintOverlay'
 import VoiceOutputButton from '../../../conversation/VoiceOutputButton'
 import { useVoiceOutput } from '../../../../composables/useVoiceOutput'
@@ -151,7 +151,6 @@ function MessageActionsBarBase({
   showFileChangesChip,
   fileChangesCount,
   fileChangesPopoverContent,
-  showTaskDoneChip,
   feedback,
   onLike,
   onDislikeSubmit,
@@ -167,7 +166,6 @@ function MessageActionsBarBase({
   const retryLabel = t('ai.retry', language)
   const likeLabel = t('ai.like', language)
   const fileChangesLabel = t('ai.filechanges', language)
-  const taskDoneLabel = t('ai.taskcomplete', language)
 
   const isLiked = feedback?.rating === 'like'
   const isDisliked = feedback?.rating === 'dislike'
@@ -197,13 +195,6 @@ function MessageActionsBarBase({
     </MessagePopover>
   ) : null
 
-  /** 任务完成 chip（纯展示，表明本轮任务已全部完成） */
-  const taskDoneChip = showTaskDoneChip ? (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium text-status-success bg-status-success/10">
-      <CheckCircle2 className="w-3.5 h-3.5" />
-      {taskDoneLabel}
-    </span>
-  ) : null
 
   /** 消息时间戳（用户消息在按钮前、助手消息在按钮后） */
   const timeEl = timestamp ? (

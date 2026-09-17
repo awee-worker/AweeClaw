@@ -9,7 +9,7 @@
 
 import type { ComponentType } from 'react'
 import type { ScenarioWidgetCardPreviewProps } from '@shared/protocols/scenario'
-import type { ScenarioModule } from '../types'
+import type { ScenarioModule } from '@shared/protocols/scenario-arch'
 import { logger } from '@shared/toolkit/LogEngine'
 
 /**

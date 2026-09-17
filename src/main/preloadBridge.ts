@@ -80,6 +80,8 @@ import { createSandboxApi } from './preload/api/sandbox'
 import { createVmcApi } from './preload/api/vmc'
 import { createLocalVoiceApi } from './preload/api/localVoice'
 import { createCapabilityGuardApi } from './preload/api/capabilityGuard'
+import { createCharacterCardApi } from './preload/api/characterCard'
+import { createEmotionApi } from './preload/api/emotion'
 /**
  * 聚合所有领域 API 并暴露到渲染进程。
  *
@@ -102,6 +104,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   ...createDesktopApi(),
   ...createPluginApi(),
   ...createClipboardApi(),
+  ...createCharacterCardApi(),
+  ...createEmotionApi(),
   perception: createPerceptionApi(),
   perceptionFusion: createPerceptionFusionApi(),
   monitoring: createMonitoringApi(),

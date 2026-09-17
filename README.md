@@ -9,8 +9,8 @@
 </p>
 
 <p align="center">
-  A new generation of the art AI agent platform that deeply integrates AI into your workflow —<br/>
-  code, data, creation, research, search, and automation, all in one desktop app.
+  A new generation AI agent platform that deeply integrates AI into your workflow —<br/>
+  code, data, creation, research, search, automation, all in one desktop app.
 </p>
 
 <p align="center">
@@ -36,11 +36,15 @@ AweeClaw is more than just an AI chat app. It's a **full-stack AI agent platform
 - 🧠 **Autonomous Agent** — AI plans, executes, and verifies tasks on its own, not just answers questions
 - 🛠️ **30+ Built-in Tools** — File I/O, terminal, code search, LSP, web search, debugger — all working out of the box
 - 🗂️ **Codebase Understanding** — Tree-sitter + vector indexing gives AI deep project awareness
-- 💾 **Intelligent Memory** — User-level + project-level dual-layer memory with auto-classification; AI intelligently retrieves and injects relevant context during conversations, truly remembering your preferences, project background, and past decisions
+- 💾 **Intelligent Memory** — User-level + project-level dual-layer memory with auto-classification
 - 🎨 **Multi-Scenario** — Code, data, writing, and general tasks, each with tailored UX
-- 🔌 **Infinitely Extensible** — MCP protocol + plugin system connect AI to anything
+- 🏪 **Scenario Marketplace** — One-click install vertical scenarios from development to education to automation
+- 🔌 **Infinite Extensibility** — MCP protocol + plugin system + skill marketplace connect AI to anything
+- 🤖 **3D Desktop Companion** — VRM virtual character accompanies your work, with expressions, animations, and voice
+- 🗣️ **Offline Voice Engine** — Local ASR/TTS, voice conversation even without internet
+- ⏰ **Smart Automation** — Scheduled tasks, automation rules, unattended execution
+- 🖥️ **Desktop Control** — AI can see and control your desktop screen
 - 🔒 **Privacy-First** — Local-first data, workspace isolation, permission for every sensitive action
-
 ---
 
 ## 📸 Screenshots
@@ -94,16 +98,17 @@ The agent doesn't just chat — it **plans, executes, and verifies**.
 
 | Category | Tools | What They Do |
 |----------|-------|--------------|
-| **File I/O** | `read_file`, `write_file`, `edit_file`, `list_directory`, `get_dir_tree` | Read, create, modify files and folders |
+| **File I/O** | `read_file`, `write_file`, `edit_file`, `list_directory` | Read, create, modify files and folders |
 | **Terminal** | `execute_command`, `run_terminal_command` | Run shell commands with safety checks |
-| **Code Search** | `search_files`, `codebase_search` | Ripgrep + semantic search |
-| **LSP** | `diagnostics`, `go_to_definition`, `find_references`, `get_symbols` | Full language-server integration |
+| **Code Search** | `search_files`, `codebase_search` | Ripgrep exact match + semantic search |
+| **LSP** | `diagnostics`, `go_to_definition`, `find_references` | Full language-server integration |
 | **Web** | `web_search`, `read_url` | Search the web, fetch and parse URLs |
-| **Planning** | `todo_read`, `todo_write`, `plan_create`, `plan_update` | Task planning and tracking |
+| **Planning** | `todo_read`, `todo_write`, `plan_create` | Task planning and tracking |
 | **UI/UX** | `uiux_search` | 12 design domains × 13 tech stacks database |
 | **Office** | `read_document` | PDF, Word, Excel, PowerPoint parsing |
-| **Interaction** | `ask_user`, `attempt_completion` | User confirmation and task completion |
-
+| **Memory** | `remember`, `knowledge_search` | Project memory persistence, knowledge base semantic search |
+| **Desktop** | `screen_capture`, `mouse_click`, `keyboard_type` | Screenshot, mouse simulation, keyboard simulation |
+| **Interaction** | `ask_user`, `attempt_completion`, `companion_control` | User confirmation, task completion, companion control |
 ### �️ 3. Deep Codebase Understanding
 
 AweeClaw builds a **multi-layered index** of your project, so AI understands context like a senior engineer:
@@ -133,93 +138,277 @@ Also supports 12+ other engines: Bing, Google PSE, Tavily, Brave, Serper, Exa, J
 | **Data Analyst** | Data analysis, visualization, dashboards |
 | **Creative Writer** | Long-form writing, fiction, copywriting |
 | **General Assistant** | Daily Q&A, research, general tasks |
+| **Legal** | Contract review, compliance analysis, legal research |
+| **Medical** | Symptom reference, medical literature search, clinical guidelines |
+| **Education** | Personalized tutoring, knowledge Q&A, study plans |
 
 Each scenario has its own tools, prompts, and UI layout — switch instantly from the sidebar.
 
-### � 6. Infinite Extensibility
+### 🏪 6. Scenario Marketplace
 
-- **MCP Protocol** — Connect to any MCP server (stdio/SSE), auto-discover tools
-- **Plugin System** — Install plugins from marketplace, each plugin is self-contained
-- **Skill System** — Based on agentskills.io standard, reusable prompt packs
+One-click install **vertical scenarios** from the online marketplace to quickly gain domain-specific AI capabilities:
+
+- **Browse & Search** — Browse by category (development, data, creative, productivity, education, automation)
+- **One-Click Install** — Dependency checks, version management, auto-updates
+- **Paid Scenarios** — Developers can publish paid scenarios with built-in payment & licensing
+- **Version Management** — Changelog, version rollback, compatibility checks
+- **Scenario Builder** — Built-in visual scenario development tool, zero-code/low-code custom scenario creation
+- **Scenario SDK** — Developers can build scenarios quickly with `@aweeclaw/scenario-sdk`
+
+### 🔌 7. Plugin & Skill Marketplace
+
+Extend AI's capabilities without limits:
+
+- **MCP Plugins** — Based on Model Context Protocol, connect to any external tool or service
+- **Skill Packs** — Reusable prompt template packs, load domain expert knowledge on demand
+- **Plugin Types** — MCP tools, custom tools, message channels, scenarios, hooks, compound plugins
+- **Built-in Engines** — 12+ search engines (Bing, Google, Tavily, Brave, SearXNG, etc.)
 - **Custom Engines** — Add any OpenAI-compatible LLM or custom search engine
+- **Hot-Plug** — Install, enable, disable, uninstall without restarting
 
-### 🔐 7. Security & Privacy
+### 🤖 8. 3D Desktop Companion
+
+A **VRM 3D virtual character** that always accompanies you on your desktop:
+
+- **Expression System** — Happy, angry, sad, relaxed, surprised facial expressions, auto-following conversation emotion
+- **Action Animations** — Wave, think, stretch, peace sign preset animations, AI-triggered proactively
+- **Voice Narration** — AI auto-narrates responses with lip-sync + on-screen subtitles
+- **Gaze Tracking** — Follows mouse or looks at camera for natural interaction
+- **Character Cards** — Import/export SillyTavern-compatible character cards, customize personality & appearance
+- **Floating Avatar** — Lightweight avatar floating on top of desktop, summon AI anytime
+
+### ⏰ 9. Smart Automation
+
+Let AI work autonomously even when you're away:
+
+- **Scheduled Tasks** — Cron-expression driven, supports one-shot and recurring execution
+- **Automation Rules** — Define trigger conditions and execution commands, AI completes autonomously
+- **Remote Commands** — Send commands from mobile, auto-execute on PC
+- **Power Guard** — Auto-prevents system sleep during long tasks, laptop user's best friend
+- **Execution Reports** — Auto-record results of every execution, fully traceable
+
+### 🗣️ 10. Offline Voice Engine
+
+**Pure local offline** speech recognition (ASR) and speech synthesis (TTS), no API key required:
+
+- **Local ASR** — Sherpa-ONNX engine, multi-language support, real-time streaming recognition
+- **Local TTS** — Multiple offline synthesis engines, supports Chinese, English, Japanese
+- **GPT-SoVITS** — Voice cloning engine, clone specific voices with few audio samples
+- **Cloud/Local Hybrid** — Auto-switch between cloud and local engines, seamless fallback when offline
+- **Voice Conversation** — Press-and-talk → AI recognizes → AI responds → Voice playback, complete loop
+- **Audiobook** — Import documents to auto-convert to audiobooks, batch TTS synthesis
+
+### 🖥️ 11. Desktop Control
+
+AI can **see and control** your desktop:
+
+- **Screen Capture** — Full screen/region capture, multi-monitor support
+- **OCR Recognition** — Auto-recognize text content from screenshots
+- **Mouse Simulation** — Click, move, drag, scroll
+- **Keyboard Simulation** — Text input, hotkeys, single key press
+- **Window Management** — List windows, focus, minimize, maximize, close
+- **Process Management** — View process list, sort by CPU/memory, terminate processes
+- **App Launcher** — Start/close applications by name
+- **Emergency Stop** — One-click terminate all desktop operations, safety fallback
+
+### 🌐 12. External Agent Integration
+
+Integrate industry-leading AI coding tools into AweeClaw:
+
+- **Claude Code** — Anthropic's CLI coding agent
+- **Codex** — OpenAI's code generation CLI
+- **Cursor** — Cursor editor in headless mode
+- **A2A Protocol** — Agent-to-Agent interoperability, cross-platform collaboration
+
+### 📱 13. Device Link
+
+Cross-device collaboration:
+
+- **Device Link** — Real-time sync between mobile and desktop via WebSocket
+- **Remote Desktop Control** — Remotely control another machine's desktop via SSH
+- **System Monitor** — Real-time CPU, memory, disk, network, battery monitoring
+- **OBS Overlay** — Real-time AI subtitles and danmaku during live streaming
+
+### 🔐 14. Security & Privacy
 
 - **Permission System** — Every file write, terminal command, and network call requires user approval
 - **Workspace Isolation** — Strict path restrictions prevent unauthorized access
-- **Local-First** — All data stays on your machine; cloud sync is optional
+- **Sandbox Environment** — Scenarios run in sandboxes, isolated from main process
+- **Local-First** — All data stays on your machine, sensitive info never uploaded
 - **Audit Log** — Every sensitive operation is logged
 - **Dangerous Command Interception** — Terminal commands are screened against a blocklist
-
 ---
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
-- **Node.js** >= 18
-- **npm** >= 9
-- **Git**
+| Dependency | Minimum Version | Notes |
+|------------|-----------------|-------|
+| **Operating System** | Windows 10+ / macOS 12+ / Ubuntu 20.04+ | Supports x64 and arm64 architectures |
+| **Node.js** | >= 18.0 | LTS version recommended |
+| **npm** | >= 9.0 | Or use yarn / pnpm |
+| **Git** | >= 2.30 | For version control integration |
+| **Disk Space** | >= 500 MB | Including app and dependencies |
+| **Memory** | >= 4 GB | 8 GB+ recommended for best experience |
 
-### Install & Run
+### Installation & Run
 
 ```bash
-# Clone
+# 1. Clone the repository
 git clone https://github.com/awee-worker/AweeClaw.git
 cd AweeClaw
 
-# Install dependencies
+# 2. Install dependencies
 npm install
 
-# Rebuild native modules (node-pty)
-npm run rebuild
-
-# Start dev mode (hot reload)
+# 3. Start in development mode
 npm run dev
+
+# 4. Build for production
+npm run build
 ```
-
-### Build
-
-```bash
-# Package installer
-npm run dist
-
-# Or build for specific platform
-npm run dist:mac    # macOS (DMG + ZIP)
-npm run dist:win    # Windows (NSIS)
-npm run dist:linux  # Linux (AppImage)
-```
-
-### Download Pre-built
-
-Pre-built installers for Windows, macOS, and Linux are available on the [Releases page](https://github.com/awee-worker/AweeClaw/releases).
-
----
-
 ## 🏗️ Architecture
 
+AweeClaw follows an **Electron multi-process + renderer layered** architecture with a strict **main/renderer process separation + IPC bridge** security model. The system is organized into 7 core layers:
+
+<p align="center">
+  <img src="screenshots/framework.png" alt="AweeClaw架构图" width="800" />
+</p>
+
+### Project Directory Structure
+
 ```
-AweeClaw
+aweeclaw-client/
 ├── src/
-│   ├── main/                    # Electron main process
-│   │   ├── main.ts              # App entry & window management
-│   │   ├── ipc/                 # IPC handlers (http, llm, lsp, mcp, ...)
-│   │   ├── indexing/            # Codebase indexing engine
-│   │   │   ├── treeSitterChunker.ts
-│   │   │   ├── embedder.ts      # Vector embedding
-│   │   │   └── vectorStore.ts   # LanceDB vector store
-│   │   ├── lsp/                 # Language Server Protocol manager
-│   │   ├── security/            # Permission & audit
-│   │   └── services/            # LLM, MCP, debugger, updater
-│   ├── renderer/                # React UI
-│   │   ├── agent/               # AI Agent core (loop, tools, plan, emotion)
-│   │   ├── components/          # Chat, editor, settings, workflow, canvas
-│   │   └── store/               # Zustand global state
-│   └── shared/                  # Shared config, types, utils
-├── resources/
-│   ├── tree-sitter/             # WASM files for 25+ languages
-│   └── uiux/                    # UI/UX design database
-└── public/brand/                # Logos, icons, mascot
+│   ├── main/                        # Electron main process (Node.js)
+│   │   ├── bootstrap/               # App lifecycle, window creation, init sequence
+│   │   ├── bridge/                  # IPC bridge (main ↔ renderer secure comms)
+│   │   ├── guard/                   # Security guards
+│   │   │   ├── fileGuard.ts         #   File access validation (path whitelist)
+│   │   │   ├── terminalGuard.ts     #   Terminal command blocklist interception
+│   │   │   └── sandboxGuard.ts      #   Scenario sandbox isolation
+│   │   ├── language-server/         # LSP integration (25+ languages)
+│   │   ├── modules/                 # Feature modules (main process side)
+│   │   │   ├── agent/               #   Agent engine core logic
+│   │   │   ├── automation/          #   Automation engine (Cron, remote commands)
+│   │   │   ├── audiobook/           #   Audiobook (batch TTS synthesis)
+│   │   │   ├── character-card/      #   Character card system (SillyTavern compatible)
+│   │   │   ├── desktop-control/     #   Desktop control (screenshot, OCR, mouse/keyboard)
+│   │   │   ├── device-link/         #   Device linking (WebSocket cross-device sync)
+│   │   │   ├── floating-avatar/     #   Floating avatar (lightweight desktop AI entry)
+│   │   │   ├── local-voice/         #   Offline voice engine (Sherpa-ONNX ASR/TTS)
+│   │   │   ├── meeting-notes/       #   Meeting notes (real-time transcription + AI summary)
+│   │   │   ├── memory-db/           #   Memory database (user-level + project-level dual storage)
+│   │   │   ├── overlay/             #   OBS overlay (live stream subtitles/danmaku)
+│   │   │   ├── power-guard/         #   Power guard (prevent system sleep during long tasks)
+│   │   │   └── vrm-companion/       #   VRM desktop companion (3D character + expressions)
+│   │   ├── menu/                    # Application menu system
+│   │   ├── preload/                 # Preload scripts (secure API exposure to renderer)
+│   │   ├── search-engine/           # Search engine service (AweeClaw Search / SearXNG)
+│   │   ├── terminal-runtime/        # Terminal runtime (node-pty process management)
+│   │   ├── services/                # System services
+│   │   │   ├── llmService.ts        #   LLM unified gateway (multi-provider adapter)
+│   │   │   ├── mcpClient.ts         #   MCP client (stdio/SSE dual mode)
+│   │   │   └── updaterService.ts    #   Auto-updater
+│   │   └── types/                   # Main process type definitions
+│   ├── renderer/                    # Renderer process (React)
+│   │   ├── AweeApp.tsx              # App root component
+│   │   ├── bootstrap.tsx            # Renderer initialization
+│   │   ├── adapters/                # Service adapters (bridge to main process APIs)
+│   │   ├── components/              # UI component library
+│   │   │   ├── chat/                #   Chat components (message list, input, tool call display)
+│   │   │   ├── code-editor/         #   Code editor (Monaco integration)
+│   │   │   ├── workbench/           #   Workspace layout
+│   │   │   ├── settings/            #   Settings UI
+│   │   │   ├── scenario-market/     #   Scenario marketplace UI
+│   │   │   └── common/              #   Common UI components
+│   │   ├── intelligence/            # AI core (renderer side)
+│   │   │   ├── engine/              #   Agent engine (Agent Loop, tool dispatch, planning)
+│   │   │   └── toolkit/             #   Tool registry (built-in + MCP + desktop control)
+│   │   ├── composables/             # Composable functions (business logic reuse)
+│   │   ├── hooks/                   # React Hooks
+│   │   ├── i18n/                    # Internationalization (CN/EN/JA multi-language)
+│   │   ├── modes/                   # Scenario modes (Code/Data/Writing/General/Legal/Medical/Edu)
+│   │   ├── plugins/                 # Plugin loader (runtime hot-plug)
+│   │   ├── preview/                 # File preview (PDF, Markdown, images, etc.)
+│   │   ├── services/                # Frontend service layer
+│   │   ├── settings/                # Settings page components
+│   │   ├── shell/                   # Shell integration
+│   │   ├── state/                   # Global state management (Zustand stores)
+│   │   ├── styles/                  # Global styles (Tailwind CSS)
+│   │   ├── toolkit/                 # Toolkit extensions
+│   │   ├── types/                   # Renderer type definitions
+│   │   ├── utils/                   # Utility functions
+│   │   └── workers/                 # Web Workers (background compute, embedding inference)
+│   ├── scenario-system/             # Scenario system
+│   │   ├── core/                    # Scenario core engine (lifecycle, dependency resolution, sandbox)
+│   │   ├── marketplace/             # Scenario marketplace API (search, install, update, payment)
+│   │   └── sdk/                     # Scenario development SDK (@aweeclaw/scenario-sdk)
+│   ├── scenarios/                   # Built-in scenarios (Code Editor, Data, Writing, General, etc.)
+│   ├── shared/                      # Shared modules (main + renderer)
+│   │   ├── configuration/           #   Configuration definitions & defaults
+│   │   ├── gateway/                 #   Gateway configuration
+│   │   ├── plugin-sdk/              #   Plugin SDK (MCP tools, message channels, hooks)
+│   │   ├── protocols/               #   Protocol definitions (IPC message formats)
+│   │   ├── toolkit/                 #   Shared toolkit
+│   │   └── exceptions/              #   Unified exception handling
+│   └── types/                       # Global type definitions
+├── public/brand/                    # Brand assets (logo, icons, mascot, fonts)
+├── tests/                           # Tests (unit, E2E)
+├── package.json                     # Dependency management
+├── tsconfig.json                    # TypeScript configuration
+├── vite.config.ts                   # Vite build configuration
+├── electron-builder.yml             # Electron packaging (multi-platform)
+└── tailwind.config.js               # Tailwind CSS configuration
+```
+
+### Core Modules
+
+| Module | Location | Responsibility |
+|--------|----------|----------------|
+| **Agent Engine** | `renderer/intelligence/engine/` | Agent Loop core: user input → LLM call → parse tool calls → execute tools → inject results → loop until complete |
+| **Tool Registry** | `renderer/intelligence/toolkit/` | Manages 30+ built-in tools + MCP dynamic tools + desktop control tools with unified registration, discovery, and invocation |
+| **Security Guards** | `main/guard/` | Three-layer security: file path whitelist validation, terminal command blocklist interception, scenario sandbox isolation |
+| **LLM Gateway** | `main/services/` | Unified adapter for 14+ LLM providers with streaming, tool calling, vision understanding, and auto-switching |
+| **MCP Client** | `main/services/` | Model Context Protocol client supporting stdio/SSE dual-mode connections to external tool servers |
+| **Desktop Control** | `main/modules/desktop-control/` | Screenshot, OCR, mouse/keyboard simulation, window management, process management, app launching — AI can operate your desktop |
+| **Offline Voice** | `main/modules/local-voice/` | Sherpa-ONNX local ASR/TTS, GPT-SoVITS voice cloning, works without internet |
+| **Memory System** | `main/modules/memory-db/` | User-level + project-level dual-layer memory with auto-classification and context-aware retrieval |
+| **Automation** | `main/modules/automation/` | Cron scheduled tasks, automation rules, remote commands, power guard, execution reports |
+| **Scenario System** | `scenario-system/` | Scenario lifecycle management, dependency resolution, sandbox isolation, marketplace search/install/update/payment |
+| **Plugin System** | `renderer/plugins/` | Runtime hot-plug supporting MCP tools, custom tools, message channels, hooks, compound plugins |
+| **VRM Companion** | `main/modules/vrm-companion/` | 3D character rendering (Three.js + VRM), expression system, action animations, voice narration, gaze tracking |
+
+### Data Flow
+
+```
+User Input
+  │
+  ▼
+┌──────────────┐    IPC Bridge    ┌──────────────┐
+│  Renderer    │ ◄══════════════► │  Main        │
+│  (React UI)  │                  │  (Node.js)   │
+└──────┬───────┘                  └──────┬───────┘
+       │                                 │
+       ▼                                 ▼
+┌──────────────┐                  ┌──────────────┐
+│ Agent Engine │                  │ Security     │
+│ Agent Loop   │   Tool Call      │ Guards       │
+│              │ ──────────────►  │              │
+│ ① Parse      │   Validation     │ ① Path check │
+│ ② Select     │ ◄────────────── │ ② Command    │
+│ ③ Execute    │   Permission     │    review    │
+│ ④ Inject     │                  │ ③ Sandbox    │
+│ ⑤ Loop/Done  │                  └──────────────┘
+└──────┬───────┘
+       │ LLM Call
+       ▼
+┌──────────────┐
+│  LLM Gateway │
+│  14+ Providers│
+│  Streaming   │
+└──────────────┘
 ```
 
 ### Tech Stack
@@ -241,20 +430,32 @@ AweeClaw
 | MCP | @modelcontextprotocol/sdk |
 | Git | dugite |
 | Animation | Framer Motion |
+| 3D Rendering | Three.js + @pixiv/three-vrm |
+| Voice Engine | Sherpa-ONNX |
+| Networking | WebSocket + SSH |
 
 ### LLM Provider Support
 
-| Provider | Streaming | Tool Calling | Vision |
-|----------|-----------|-------------|--------|
-| OpenAI | ✅ | ✅ | ✅ |
-| Anthropic | ✅ | ✅ | ✅ |
-| Google | ✅ | ✅ | ✅ |
-| OpenAI-Compatible | ✅ | ✅ | — |
-| Custom | Configurable | Configurable | — |
+| Provider | Streaming | Tool Calling | Vision | Notes |
+|----------|-----------|-------------|--------|-------|
+| **OpenAI** | ✅ | ✅ | ✅ | GPT-4o, GPT-4, GPT-3.5, etc. |
+| **Anthropic** | ✅ | ✅ | ✅ | Claude 4, Claude 3.5, etc. |
+| **Google** | ✅ | ✅ | ✅ | Gemini 2.0, Gemini 1.5, etc. |
+| **DeepSeek** | ✅ | ✅ | ✅ | DeepSeek-V3, DeepSeek-R1, etc. |
+| **Zhipu AI** | ✅ | ✅ | ✅ | GLM-4, GLM-4V, etc. |
+| **Moonshot AI** | ✅ | ✅ | ✅ | Kimi K2, Moonshot, etc. |
+| **Baidu Qianfan** | ✅ | ✅ | ✅ | ERNIE 4.0, ERNIE series |
+| **Alibaba Bailian** | ✅ | ✅ | ✅ | Qwen-Max, Qwen-Plus, etc. |
+| **SiliconFlow** | ✅ | ✅ | ✅ | Multi-provider aggregation |
+| **01.AI** | ✅ | ✅ | ✅ | Yi-Lightning, Yi-Large, etc. |
+| **MiniMax** | ✅ | ✅ | — | abab6.5, abab5.5, etc. |
+| **Baichuan** | ✅ | ✅ | — | Baichuan 4, Baichuan 3, etc. |
+| **OpenAI-Compatible** | ✅ | ✅ | — | Works with any OpenAI API-compatible endpoint |
+| **Custom** | Configurable | Configurable | — | Custom LLM integration
 
----
+> 💡 All models can also be accessed via third-party relay services using the "OpenAI-Compatible" mode.
 
-## � Usage
+## 📖 Usage
 
 ### First Launch
 
@@ -270,6 +471,34 @@ AweeClaw
 - **Agent** — AI calls tools to autonomously complete tasks
 - **Plan** — AI creates a step-by-step plan first, then executes
 
+### Scenario Marketplace
+
+1. Click the "Scenario Marketplace" icon in the sidebar
+2. Browse or search for the vertical scenario you need
+3. One-click install, dependencies handled automatically
+4. Installed scenarios appear in your scenario list
+
+### Desktop Companion
+
+1. Go to Settings → Desktop Companion
+2. Select or import a VRM model
+3. Enable to show a 3D virtual character on your desktop
+4. AI automatically triggers expressions and animations during replies
+
+### Voice Conversation
+
+1. Go to Settings → Model Config → Voice Model
+2. Configure ASR (speech recognition) and TTS (speech synthesis)
+3. Supports both cloud models and local offline engines
+4. Click the microphone button in the chat window to start voice conversation
+
+### Automation
+
+1. Go to Settings → Automation
+2. Create a scheduled task, set Cron expression
+3. Define the command for AI to execute
+4. AI will automatically execute at the specified time
+
 ### MCP Integration
 
 1. Go to Settings → MCP
@@ -278,24 +507,16 @@ AweeClaw
 
 ### Memory System
 
-- Use `/remember <text>` in chat to save memories
-- Memories are injected into AI context automatically
-- Stored in `.aweeclaw/memory.json`
+- AI automatically learns and remembers project information
+- Use `/remember <text>` to manually save memories
+- Memories are automatically injected into AI context
 
----
+### External Agent Integration
 
-## 🤝 Contributing
-
-Contributions are welcome! Please read [CONTRIBUTING.md](./CONTRIBUTING.md).
-
-### Contributors
-
-<a href="https://github.com/awee-worker"><img src="https://github.com/awee-worker.png" width="40" height="40" style="border-radius:50%" alt="awee"/></a>
-<a href="https://github.com/kerwin2046"><img src="https://github.com/kerwin2046.png" width="40" height="40" style="border-radius:50%" alt="kerwin"/></a>
-<a href="https://github.com/cniu6"><img src="https://github.com/cniu6.png" width="40" height="40" style="border-radius:50%" alt="cniu6"/></a>
-<a href="https://github.com/tss-tss"><img src="https://github.com/tss-tss.png" width="40" height="40" style="border-radius:50%" alt="晨曦"/></a>
-<a href="https://github.com/joanboss"><img src="https://github.com/joanboss.png" width="40" height="40" style="border-radius:50%" alt="joanboss"/></a>
-<a href="https://github.com/yuheng-888"><img src="https://github.com/yuheng-888.png" width="40" height="40" style="border-radius:50%" alt="玉衡"/></a>
+1. Install Claude Code / Codex / Cursor CLI
+2. Go to Settings → Agent Config
+3. Enable external agents and configure paths
+4. Delegate tasks via `external_agent_delegate` tool in conversations
 
 ---
 
@@ -311,9 +532,8 @@ This project uses a custom license. See [LICENSE](./LICENSE) for details.
 ## 📮 Contact
 
 - **Author**: awee
-- **Email**: aweelee@qq.com
+- **Email**: awee-worker@qq.com
 - **GitHub**: [https://github.com/awee-worker/AweeClaw](https://github.com/awee-worker/AweeClaw)
-- **Gitee**: [https://gitee.com/jweelee/aweeclaw](https://gitee.com/jweelee/aweeclaw)
 
 ---
 

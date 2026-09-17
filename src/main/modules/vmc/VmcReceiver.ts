@@ -19,7 +19,7 @@
 
 import * as dgram from 'dgram'
 import { logger } from '@shared/toolkit/LogEngine'
-import { getVmcStore, type VmcConfig } from './VmcStore'
+import type { VmcConfig } from './VmcStore'
 import {
   decodeOscBundle,
   decodeOscMessage,

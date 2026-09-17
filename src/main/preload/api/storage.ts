@@ -161,6 +161,13 @@ export function createStorageApi() {
       invoke('audiobook:estimate-task')(filePath),
     audiobookGetOutputPath: (taskId: string, filename: string) =>
       invoke('audiobook:get-output-path')(taskId, filename),
+    onAudiobookTaskProgress: on<{
+      taskId: string
+      phase: string
+      progress: number
+      message?: string
+      error?: string
+    }>('audiobook:task-progress'),
 
     // ── Scene Tools DB（场景工具 SQLite 持久化） ──
     sceneToolsDbInitialize: invoke('scene-tools-db:initialize'),

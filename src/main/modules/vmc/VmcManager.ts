@@ -21,11 +21,11 @@
 
 import { BrowserWindow } from 'electron'
 import { logger } from '@shared/toolkit/LogEngine'
-import { getVmcStore, type VmcConfig, type VmcState } from './VmcStore'
+import { getVmcStore, type VmcConfig } from './VmcStore'
 import { getVmcSender, type VmcSenderState } from './VmcSender'
 import { getVmcReceiver, type VmcReceiverState } from './VmcReceiver'
 import { getVmcMapper } from './VmcMapper'
-import type { VmcBoneData, VmcBlendData, VmcFrameData } from './VmcCodec'
+import type { VmcBoneData, VmcBlendData } from './VmcCodec'
 
 // ============================================
 // 类型定义

@@ -16,8 +16,10 @@
  * @module intelligence/chatMessage/markdown/EmotionRenderer
  */
 
-import React, { useState, useEffect, useCallback, useMemo, memo } from 'react'
+import React, { useState, useEffect, memo } from 'react'
+import { api } from '@renderer/adapters/electronBridge'
 import { logger } from '@shared/toolkit/LogEngine'
+import type { Language } from '@renderer/i18n'
 
 interface EmotionRendererProps {
   /** 表情标记（如 `[emo:开心]` 或 `:happy:`） */
@@ -25,7 +27,7 @@ interface EmotionRendererProps {
   /** 角色卡 ID（用于加载角色卡资产中的表情包） */
   characterCardId?: string
   /** 语言 */
-  language?: 'zh-CN' | 'en-US'
+  language?: Language
 }
 
 interface EmotionState {
@@ -104,7 +106,7 @@ async function loadFromCharacterAssets(
 ): Promise<string | null> {
   try {
     // 通过 IPC 查询角色卡资产
-    const result = await window.electronAPI.invoke('character-card:get-card', {
+    const result = await api.characterCard.getCard({
       cardId: characterCardId,
     })
 
@@ -136,7 +138,7 @@ async function loadFromCharacterAssets(
 async function loadFromGlobalAssets(emotionName: string): Promise<string | null> {
   try {
     // 通过 IPC 查询全局表情包
-    const result = await window.electronAPI.invoke('emotion:get-emotion', {
+    const result = await api.emotion.getEmotion({
       name: emotionName,
     })
 

@@ -24,7 +24,7 @@
 import { ipcMain, BrowserWindow } from 'electron'
 import { logger } from '@shared/toolkit/LogEngine'
 import { AudiobookManager } from './AudiobookManager'
-import type { AudiobookConfig, TaskMetadata } from './AudiobookStore'
+import type { AudiobookConfig } from './AudiobookStore'
 
 // ============================================
 // IPC 处理器注册

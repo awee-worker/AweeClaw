@@ -19,10 +19,9 @@
  */
 
 import { EventEmitter } from 'events'
-import { app } from 'electron'
 import * as path from 'path'
 import { logger } from '@shared/toolkit/LogEngine'
-import { AudiobookStore, type TaskMetadata, type AudiobookConfig, type TextSegment } from './AudiobookStore'
+import { AudiobookStore, type TaskMetadata, type AudiobookConfig } from './AudiobookStore'
 import { parseDocument, estimateTask } from './DocumentParser'
 import { segmentDocument } from './TextSegmenter'
 import { BatchTtsRunner } from './BatchTtsRunner'
@@ -208,7 +207,7 @@ export class AudiobookManager extends EventEmitter {
 
       // 批量合成
       const segmentsDir = path.join(this.store.getOutputPath(taskId, ''), '..', 'segments')
-      const runner = new BatchTtsRunner(task.config.concurrency, task.config.maxRetries)
+      const runner = new BatchTtsRunner(task.config.concurrency)
       this.runners.set(taskId, runner)
 
       const result = await runner.synthesize({

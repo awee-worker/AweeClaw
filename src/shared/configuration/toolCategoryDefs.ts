@@ -66,6 +66,14 @@ export interface ToolLoadingContext {
    * 仅当用户在「设置 → 外部智能体」中开启“向 AI 暴露工具”后由上层置为 true。
    */
   externalAgentEnabled?: boolean
+
+  /**
+   * 套餐授权的工具能力组白名单（来自 featureGuardService）
+   *
+   * - `undefined`：未配置 / 权益快照不可信 → 不做限制（fail-open）
+   * - 数组：仅保留白名单组内工具 + 系统必需工具
+   */
+  allowedToolGroups?: string[]
 }
 
 /** 角色工具配置 */
@@ -190,6 +198,160 @@ const TOOL_GROUPS: Record<string, string[]> = {
   uiux: UIUX_TOOLS,
   channel: CHANNEL_TOOLS,
   plan: PLAN_PLANNING_TOOLS,
+}
+
+// ============================================
+// 能力组（套餐授权粒度）
+// ============================================
+
+/**
+ * 套餐授权用的「能力组」定义
+ *
+ * 与上面的「工具组」（TOOL_GROUPS，用于按模式/角色加载工具）不是同一概念：
+ * 能力组是套餐白名单的授权粒度，组内工具由代码维护，客户端新增工具只要
+ * 归入既有组，无需回后台重新勾选。
+ *
+ * ⚠️ 必须与后端 `aweeclaw-backend/src/modules/payment/tool-catalog.ts` 逐项对齐：
+ * 组 ID 与工具归属不一致会出现「后台勾了却用不了」的错位。
+ * 后端 `GET /api/v1/payment/tool-catalog` 返回权威目录，可用于比对。
+ */
+export interface CapabilityGroupConfig {
+  id: string
+  name: string
+  nameEn: string
+  tools: string[]
+}
+
+/** 能力组目录（需与后端 tool-catalog.ts 保持一致） */
+export const CAPABILITY_GROUPS: CapabilityGroupConfig[] = [
+  {
+    id: 'file',
+    name: '文件读写',
+    nameEn: 'File Access',
+    tools: [
+      'read_file',
+      'read_multiple_files',
+      'list_directory',
+      'get_dir_tree',
+      'get_file_info',
+      'write_file',
+      'edit_file',
+      'replace_file_content',
+      'create_file_or_folder',
+      'delete_file_or_folder',
+    ],
+  },
+  {
+    id: 'code',
+    name: '代码智能',
+    nameEn: 'Code Intelligence',
+    tools: [
+      'codebase_search',
+      'search_files',
+      'get_lint_errors',
+      'find_references',
+      'go_to_definition',
+      'get_hover_info',
+      'get_document_symbols',
+    ],
+  },
+  {
+    id: 'terminal',
+    name: '终端命令',
+    nameEn: 'Terminal',
+    tools: [
+      'run_command',
+      'read_terminal_output',
+      'send_terminal_input',
+      'stop_terminal',
+    ],
+  },
+  {
+    id: 'web',
+    name: '网络检索',
+    nameEn: 'Web & Search',
+    tools: ['web_search', 'read_url', 'get_weather'],
+  },
+  {
+    id: 'media',
+    name: '多模态与图表',
+    nameEn: 'Media & Vision',
+    tools: [
+      'image_search',
+      'video_search',
+      'ocr_extract',
+      'vision_analyze',
+      'chart_generate',
+    ],
+  },
+  {
+    id: 'knowledge',
+    name: '记忆与知识',
+    nameEn: 'Memory & Knowledge',
+    tools: ['remember', 'knowledge_search', 'calculator'],
+  },
+  {
+    id: 'automation',
+    name: '任务与自动化',
+    nameEn: 'Task & Automation',
+    tools: [
+      'todo_write',
+      'ask_user',
+      'create_task_plan',
+      'update_task_plan',
+      'start_task_execution',
+      'add_node',
+      'add_edge',
+      'schedule',
+      'apply_skill',
+    ],
+  },
+  {
+    id: 'companion',
+    name: '伴侣与交互',
+    nameEn: 'Companion & Interaction',
+    tools: ['companion_control', 'uiux_search', 'uiux_recommend'],
+  },
+]
+
+/** 工具名 → 能力组 ID 反查表 */
+const TOOL_TO_CAPABILITY_GROUP = new Map<string, string>(
+  CAPABILITY_GROUPS.flatMap((group) =>
+    group.tools.map((tool) => [tool, group.id] as [string, string]),
+  ),
+)
+
+/** 系统必需工具：任何套餐都放行（与后端 ALWAYS_ALLOWED_TOOLS 对齐） */
+export const PLAN_ALWAYS_ALLOWED_TOOLS: readonly string[] = [
+  'extract_document',
+  'ask_user',
+  'todo_write',
+  'send_file_to_channel',
+]
+
+/** 查询工具所属能力组 */
+export function getToolCapabilityGroup(toolName: string): string | undefined {
+  return TOOL_TO_CAPABILITY_GROUP.get(toolName)
+}
+
+/**
+ * 判断工具是否被套餐能力组白名单授权
+ *
+ * @param toolName          工具名
+ * @param allowedToolGroups 授权的组；`undefined` = 未配置 → 全放行
+ */
+export function isToolAllowedByPlanGroups(
+  toolName: string,
+  allowedToolGroups: string[] | undefined,
+): boolean {
+  // 未配置 → 全放行（兼容上线前数据，也用于权益不可信时的 fail-open）
+  if (allowedToolGroups === undefined) return true
+  // 系统必需工具永远放行
+  if (PLAN_ALWAYS_ALLOWED_TOOLS.includes(toolName)) return true
+  // 目录未登记的工具（MCP / 场景 / 插件 / 外部智能体）不受套餐能力组限制
+  const groupId = TOOL_TO_CAPABILITY_GROUP.get(toolName)
+  if (groupId === undefined) return true
+  return allowedToolGroups.includes(groupId)
 }
 
 /** 角色工具配置注册表 */
@@ -349,6 +511,16 @@ export function getToolsForContext(context: ToolLoadingContext): string[] {
     for (const tool of EXTERNAL_AGENT_TOOL_NAMES) {
       tools.add(tool)
     }
+  }
+
+  // 6. 套餐能力组白名单过滤（置于最后一道，对全部来源的工具统一生效）
+  //    未配置（undefined）→ 全放行；目录未登记的工具（MCP / 场景 / 插件）不受此限制
+  if (context.allowedToolGroups !== undefined) {
+    tools = new Set(
+      Array.from(tools).filter((tool) =>
+        isToolAllowedByPlanGroups(tool, context.allowedToolGroups),
+      ),
+    )
   }
 
   return Array.from(tools)

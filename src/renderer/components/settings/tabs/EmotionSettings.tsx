@@ -11,15 +11,14 @@
  */
 
 import React, { useState, useCallback, useEffect, memo } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import {
-  Smile, Upload, Trash2, Search, Plus, Edit, Settings,
-  RefreshCw, AlertCircle, CheckCircle, Info, Image
+  Smile, Trash2, Search, Plus, Settings,
+  RefreshCw, Info, Image
 } from 'lucide-react'
-import { t, type Language } from '@renderer/i18n'
+import { type Language } from '@renderer/i18n'
+import { api } from '@renderer/adapters/electronBridge'
 import { pickConfigPatch } from '@utils/configValueGuard'
-import { useStore } from '@store'
-import { useShallow } from 'zustand/react/shallow'
 import { ActionButton } from '../../ui/ActionButton'
 import { ToggleSwitch } from '../../ui/ToggleSwitch'
 import { toast } from '../../foundation/NotificationProvider'
@@ -81,13 +80,13 @@ export const EmotionSettings: React.FC<EmotionSettingsProps> = memo(function Emo
     isResetting: false,
   })
 
-  const isZh = language === 'zh-CN'
+  const isZh = language === 'zh'
 
   // 加载表情包列表
   const loadEmotions = useCallback(async () => {
     setState(prev => ({ ...prev, isLoading: true }))
     try {
-      const result = await window.electronAPI.invoke('emotion:get-all-emotions')
+      const result = await api.emotion.getAllEmotions()
       if (result.success) {
         setState(prev => ({
           ...prev,
@@ -185,7 +184,7 @@ export const EmotionSettings: React.FC<EmotionSettingsProps> = memo(function Emo
     if (!state.emotionToDelete) return
 
     try {
-      const result = await window.electronAPI.invoke('emotion:delete-emotion', {
+      const result = await api.emotion.deleteEmotion({
         name: state.emotionToDelete.name,
       })
 
@@ -228,16 +227,6 @@ export const EmotionSettings: React.FC<EmotionSettingsProps> = memo(function Emo
   // 获取所有分类
   const categories = ['all', ...new Set(state.emotions.map(e => e.category).filter(Boolean))]
 
-  // 格式化日期
-  const formatDate = useCallback((dateString: string) => {
-    const date = new Date(dateString)
-    return date.toLocaleDateString(language === 'zh-CN' ? 'zh-CN' : 'en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    })
-  }, [language])
-
   return (
     <div className="flex flex-col gap-6 p-6">
       {/* 标题 */}
@@ -257,8 +246,8 @@ export const EmotionSettings: React.FC<EmotionSettingsProps> = memo(function Emo
             variant="ghost"
             size="sm"
             onClick={resetSettings}
-            loading={state.isResetting}
-            icon={<RefreshCw className="w-4 h-4" />}
+            isLoading={state.isResetting}
+            leftIcon={<RefreshCw className="w-4 h-4" />}
           >
             {isZh ? '重置' : 'Reset'}
           </ActionButton>
@@ -266,7 +255,7 @@ export const EmotionSettings: React.FC<EmotionSettingsProps> = memo(function Emo
             variant="primary"
             size="sm"
             onClick={saveConfig}
-            icon={<Settings className="w-4 h-4" />}
+            leftIcon={<Settings className="w-4 h-4" />}
           >
             {isZh ? '保存' : 'Save'}
           </ActionButton>
@@ -380,8 +369,8 @@ export const EmotionSettings: React.FC<EmotionSettingsProps> = memo(function Emo
               variant="ghost"
               size="sm"
               onClick={loadEmotions}
-              loading={state.isLoading}
-              icon={<RefreshCw className="w-4 h-4" />}
+              isLoading={state.isLoading}
+              leftIcon={<RefreshCw className="w-4 h-4" />}
             >
               {isZh ? '刷新' : 'Refresh'}
             </ActionButton>
@@ -389,7 +378,7 @@ export const EmotionSettings: React.FC<EmotionSettingsProps> = memo(function Emo
               variant="primary"
               size="sm"
               onClick={() => setState(prev => ({ ...prev, showImportDialog: true }))}
-              icon={<Plus className="w-4 h-4" />}
+              leftIcon={<Plus className="w-4 h-4" />}
             >
               {isZh ? '导入' : 'Import'}
             </ActionButton>

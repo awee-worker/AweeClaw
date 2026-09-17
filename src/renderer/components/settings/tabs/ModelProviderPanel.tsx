@@ -1160,7 +1160,6 @@ export function ModelProviderPanel({
 
     // 获取自定义厂商配置（从更新后的配置中获取）
     const customConfig = updatedConfigs[id] || {}
-    const models = customConfig.customModels || []
 
     setLocalConfig({
       ...localConfig,

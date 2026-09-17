@@ -19,6 +19,12 @@ import {
   JsxEmit,
 } from 'monaco-editor/esm/vs/language/typescript/monaco.contribution'
 
+// Monaco 内部错误（例如 "InstantiationService has been disposed"）默认只保留 10 帧调用栈，
+// 不足以定位触发方；提升到 50 帧便于排查编辑器生命周期问题。
+if (typeof Error.stackTraceLimit === 'number' && Error.stackTraceLimit < 50) {
+  Error.stackTraceLimit = 50
+}
+
 // 配置 Monaco 环境
 // 使用 globalThis 替代 self，确保在浏览器和 Worker 环境中都能正常工作
 // Monaco 已经定义了 Environment 类型，我们直接使用

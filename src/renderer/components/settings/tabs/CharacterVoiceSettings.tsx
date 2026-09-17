@@ -11,15 +11,11 @@
  */
 
 import React, { useState, useCallback, useEffect, memo } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Volume2, User, BookOpen, Settings, Play, Pause, RotateCcw,
-  ChevronDown, ChevronRight, AlertCircle, CheckCircle
+  Volume2, User, BookOpen, Settings, Play, RotateCcw, AlertCircle
 } from 'lucide-react'
-import { t, type Language } from '@renderer/i18n'
+import { type Language } from '@renderer/i18n'
 import { pickConfigPatch } from '@utils/configValueGuard'
-import { useStore } from '@store'
-import { useShallow } from 'zustand/react/shallow'
 import { ToggleSwitch } from '../../ui/ToggleSwitch'
 import { ActionButton } from '../../ui/ActionButton'
 import { toast } from '../../foundation/NotificationProvider'
@@ -95,7 +91,7 @@ export const CharacterVoiceSettings: React.FC<CharacterVoiceSettingsProps> = mem
     isSaving: false,
   })
 
-  const isZh = language === 'zh-CN'
+  const isZh = language === 'zh'
 
   // 加载配置
   useEffect(() => {
@@ -257,7 +253,7 @@ export const CharacterVoiceSettings: React.FC<CharacterVoiceSettingsProps> = mem
             variant="ghost"
             size="sm"
             onClick={resetToDefaults}
-            icon={<RotateCcw className="w-4 h-4" />}
+            leftIcon={<RotateCcw className="w-4 h-4" />}
           >
             {isZh ? '重置' : 'Reset'}
           </ActionButton>
@@ -265,8 +261,8 @@ export const CharacterVoiceSettings: React.FC<CharacterVoiceSettingsProps> = mem
             variant="primary"
             size="sm"
             onClick={saveConfig}
-            loading={state.isSaving}
-            icon={<Settings className="w-4 h-4" />}
+            isLoading={state.isSaving}
+            leftIcon={<Settings className="w-4 h-4" />}
           >
             {isZh ? '保存' : 'Save'}
           </ActionButton>
@@ -355,8 +351,8 @@ export const CharacterVoiceSettings: React.FC<CharacterVoiceSettingsProps> = mem
             size="sm"
             onClick={testCharacterVoice}
             disabled={!state.multiVoiceEnabled || state.testingCharacter}
-            loading={state.testingCharacter}
-            icon={<Play className="w-4 h-4" />}
+              isLoading={state.testingCharacter}
+              leftIcon={<Play className="w-4 h-4" />}
           >
             {isZh ? '测试播放' : 'Test Playback'}
           </ActionButton>
@@ -425,8 +421,8 @@ export const CharacterVoiceSettings: React.FC<CharacterVoiceSettingsProps> = mem
             size="sm"
             onClick={testNarratorVoice}
             disabled={!state.multiVoiceEnabled || state.testingNarrator}
-            loading={state.testingNarrator}
-            icon={<Play className="w-4 h-4" />}
+              isLoading={state.testingNarrator}
+              leftIcon={<Play className="w-4 h-4" />}
           >
             {isZh ? '测试播放' : 'Test Playback'}
           </ActionButton>

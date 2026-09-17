@@ -11,14 +11,12 @@
  */
 
 import React, { useState, useCallback, useEffect, memo } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
 import {
-  FileText, Upload, Download, Database, Settings, Trash2,
-  RefreshCw, AlertCircle, CheckCircle, Info
+  FileText, Upload, Database, Settings,
+  RefreshCw, Info
 } from 'lucide-react'
-import { t, type Language } from '@renderer/i18n'
-import { useStore } from '@store'
-import { useShallow } from 'zustand/react/shallow'
+import { type Language } from '@renderer/i18n'
+import { api } from '@renderer/adapters/electronBridge'
 import { ActionButton } from '../../ui/ActionButton'
 import { ToggleSwitch } from '../../ui/ToggleSwitch'
 import { toast } from '../../foundation/NotificationProvider'
@@ -69,13 +67,13 @@ export const CharacterCardSettings: React.FC<CharacterCardSettingsProps> = memo(
     isResetting: false,
   })
 
-  const isZh = language === 'zh-CN'
+  const isZh = language === 'zh'
 
   // 加载存储统计
   const loadStats = useCallback(async () => {
     setState(prev => ({ ...prev, isLoadingStats: true }))
     try {
-      const result = await window.electronAPI.invoke('character-card:get-storage-stats')
+      const result = await api.characterCard.getStorageStats()
       if (result.success) {
         setState(prev => ({
           ...prev,
@@ -181,7 +179,7 @@ export const CharacterCardSettings: React.FC<CharacterCardSettingsProps> = memo(
   // 格式化日期
   const formatDate = useCallback((dateString: string) => {
     const date = new Date(dateString)
-    return date.toLocaleDateString(language === 'zh-CN' ? 'zh-CN' : 'en-US', {
+    return date.toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
@@ -209,8 +207,8 @@ export const CharacterCardSettings: React.FC<CharacterCardSettingsProps> = memo(
             variant="ghost"
             size="sm"
             onClick={resetSettings}
-            loading={state.isResetting}
-            icon={<RefreshCw className="w-4 h-4" />}
+            isLoading={state.isResetting}
+            leftIcon={<RefreshCw className="w-4 h-4" />}
           >
             {isZh ? '重置' : 'Reset'}
           </ActionButton>
@@ -218,7 +216,7 @@ export const CharacterCardSettings: React.FC<CharacterCardSettingsProps> = memo(
             variant="primary"
             size="sm"
             onClick={saveConfig}
-            icon={<Settings className="w-4 h-4" />}
+            leftIcon={<Settings className="w-4 h-4" />}
           >
             {isZh ? '保存' : 'Save'}
           </ActionButton>
@@ -244,8 +242,8 @@ export const CharacterCardSettings: React.FC<CharacterCardSettingsProps> = memo(
               variant="ghost"
               size="sm"
               onClick={loadStats}
-              loading={state.isLoadingStats}
-              icon={<RefreshCw className="w-4 h-4" />}
+              isLoading={state.isLoadingStats}
+              leftIcon={<RefreshCw className="w-4 h-4" />}
             >
               {isZh ? '刷新' : 'Refresh'}
             </ActionButton>

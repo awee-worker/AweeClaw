@@ -15,6 +15,7 @@ import {
   Plus, Loader2, AlertCircle, FolderPlus, ArrowLeft,
 } from 'lucide-react'
 import { useStore } from '@store'
+import { useFeatureGuard } from '@hooks/useFeatureGuard'
 import { projectsApi, tasksApi, automationApi, getApiErrorMessage } from '@renderer/adapters/taskProjectApi'
 import { localAttachmentsService } from '@renderer/adapters/localAttachmentsService'
 import type { ProjectItem, TaskItem, AutomationRule, CreateProjectInput, UpdateProjectInput } from '../tasks/types'
@@ -31,6 +32,8 @@ type DetailTab = 'overview' | 'files' | 'attachments' | 'tasks' | 'execution' | 
 export function ProjectsView() {
   const language = useStore(s => s.language)
   const isZh = language === 'zh'
+  // 项目数量受套餐配额约束（projectsLimit），超限时引导升级
+  const { requireQuota } = useFeatureGuard()
 
   const [projects, setProjects] = useState<ProjectItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -115,10 +118,12 @@ export function ProjectsView() {
 
   // ─── 操作回调 ───────────────────────────────────────
 
-  const handleCreate = useCallback(() => {
+  const handleCreate = useCallback(async () => {
+    // 创建前先校验收费配额：不通过则弹升级引导，不打开表单
+    if (!(await requireQuota('projectsLimit', projects.length))) return
     setEditingProject(null)
     setShowFormDialog(true)
-  }, [])
+  }, [requireQuota, projects.length])
 
   const handleDelete = useCallback(async (id: string) => {
     try {
@@ -162,6 +167,11 @@ export function ProjectsView() {
         setError(getApiErrorMessage(e, isZh ? '更新失败' : 'Update failed'))
       }
     } else {
+      // 兜底二次校验：表单可能已打开一段时间，期间项目数可能已达上限
+      if (!(await requireQuota('projectsLimit', projects.length))) {
+        setShowFormDialog(false)
+        return
+      }
       const createData: CreateProjectInput = {
         name: data.name,
         description: data.description,
@@ -191,7 +201,7 @@ export function ProjectsView() {
         setError(getApiErrorMessage(e, isZh ? '创建失败' : 'Create failed'))
       }
     }
-  }, [editingProject, isZh])
+  }, [editingProject, isZh, requireQuota, projects.length])
 
   // ─── 渲染 ───────────────────────────────────────────
 

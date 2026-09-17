@@ -26,6 +26,7 @@ import { builtinToolProvider } from './BuiltinToolRegistry'
 import { mcpToolProvider } from './ProtocolToolRegistry'
 import { a2aToolProvider } from './A2aToolRegistry'
 import type { ToolLoadingContext } from '@configuration/toolCategoryDefs'
+import { getAllowedToolGroupsSync } from '@services/featureGuardService'
 
 let initialized = false
 
@@ -53,7 +54,14 @@ export function initializeToolProviders(): void {
  * 设置工具加载上下文
  */
 export function setToolLoadingContext(context: ToolLoadingContext): void {
-  builtinToolProvider.setContext(context)
-  mcpToolProvider.setContext(context)
-  a2aToolProvider.setContext(context)
+  // 套餐工具能力组白名单统一在此注入，避免每个调用点各写一遍。
+  // 权益不可信（未登录 / 离线兜底）时 getAllowedToolGroupsSync() 返回 undefined，
+  // 即不做任何限制（fail-open），不会误伤离线付费用户。
+  const merged: ToolLoadingContext = {
+    ...context,
+    allowedToolGroups: context.allowedToolGroups ?? getAllowedToolGroupsSync(),
+  }
+  builtinToolProvider.setContext(merged)
+  mcpToolProvider.setContext(merged)
+  a2aToolProvider.setContext(merged)
 }

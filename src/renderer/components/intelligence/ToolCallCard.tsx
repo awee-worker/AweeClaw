@@ -7,7 +7,7 @@
  *  - 审批栏：待审批时展示批准/拒绝按钮
  */
 import { memo, useCallback, useMemo } from 'react'
-import { AlertTriangle, Check, ChevronDown, ShieldAlert, Settings2, Terminal, X } from 'lucide-react'
+import { AlertTriangle, Check, ChevronDown, Crown, Lock, ShieldAlert, Settings2, Terminal, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useShallow } from 'zustand/react/shallow'
 import { useStore } from '@store'
@@ -17,6 +17,7 @@ import { useToolDisplayState } from '@intelligence/display/toolResultRenderer'
 import { getFriendlyToolName } from '@intelligence/display/toolFriendlyName'
 import { useToolCardExpansion } from '@hooks'
 import { toast } from '@components/foundation/NotificationProvider'
+import { CAPABILITY_GROUPS, getToolCapabilityGroup } from '@configuration/toolCategoryDefs'
 import { TOOL_LABEL_KEYS } from './toolCallCard/helpers'
 import { getStatusText } from './toolCallCard/statusTextRegistry'
 import { renderToolPreview } from './toolCallCard/previewRegistry'
@@ -163,6 +164,21 @@ const ToolCallCard = memo(function ToolCallCard({
     store.setShowSettingsPage(true)
   }, [])
 
+  // 套餐未包含该工具能力时，引导用户前往用户中心升级套餐
+  const handleUpgrade = useCallback(() => {
+    useStore.getState().setShowUserProfilePage(true)
+  }, [])
+
+  // 反查工具所属能力组，用于「升级解锁」提示中展示具体缺失的能力
+  const lockedGroupName = useMemo(() => {
+    if (toolCall.errorCode !== 'TOOL_NOT_ALLOWED_BY_PLAN') return undefined
+    const group = CAPABILITY_GROUPS.find(
+      (g) => g.id === getToolCapabilityGroup(effectiveName),
+    )
+    if (!group) return undefined
+    return language === 'zh' ? group.name : group.nameEn
+  }, [toolCall.errorCode, effectiveName, language])
+
   const contentBody = (
     <div className="pl-[26px] pr-3 pb-3 pt-0 relative border-t-0">
       <div className="absolute left-[13.5px] top-0 bottom-4 w-[1.5px] bg-border/40 rounded-full" />
@@ -193,6 +209,25 @@ const ToolCallCard = memo(function ToolCallCard({
                 >
                   <Settings2 className="w-3 h-3" />
                   {t('tool.editAgent', language as any)}
+                </button>
+              </>
+            ) : toolCall.errorCode === 'TOOL_NOT_ALLOWED_BY_PLAN' ? (
+              <>
+                <div className="flex items-center gap-2 text-status-warning text-xs font-medium mb-1">
+                  <Lock className="w-3 h-3" />
+                  {t('tool.notAllowedByPlan', language as any)}
+                </div>
+                <p className="text-[12px] text-status-warning/80 break-all leading-relaxed">
+                  {lockedGroupName
+                    ? t('tool.notAllowedByPlanDesc', language as any, { group: lockedGroupName })
+                    : toolCall.error}
+                </p>
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleUpgrade() }}
+                  className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[12px] font-medium text-accent bg-accent/10 hover:bg-accent/20 active:bg-accent/30 transition-colors"
+                >
+                  <Crown className="w-3 h-3" />
+                  {t('tool.upgradeToUnlock', language as any)}
                 </button>
               </>
             ) : (

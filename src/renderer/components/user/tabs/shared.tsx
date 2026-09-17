@@ -1,5 +1,6 @@
 import { Feather, Crown, Rocket, Users } from 'lucide-react'
-import type { Language } from '@renderer/i18n'
+import { t, type Language } from '@renderer/i18n'
+import { CAPABILITY_GROUPS } from '@configuration/toolCategoryDefs'
 
 /** 用户中心 Tab（加油包紧随套餐管理，属于同一购买场景） */
 export type ProfileTab = 'plan' | 'booster' | 'subscription' | 'profile' | 'security'
@@ -9,7 +10,11 @@ export type BillingTab = 'orders' | 'purchases' | 'invoices' | 'payments' | 'usa
 /** 套餐功能矩阵结构（与后端 PlanFeatures 对齐） */
 export interface PlanFeaturesData {
   modes?: string[]
-  toolsLimit?: number
+  /**
+   * 工具能力组白名单（组定义见 @configuration/toolCategoryDefs）
+   * `undefined` = 未配置 → 全放行
+   */
+  allowedToolGroups?: string[]
   mcp?: boolean
   skill?: boolean
   codebaseIndex?: boolean
@@ -19,6 +24,34 @@ export interface PlanFeaturesData {
   teamCollaboration?: boolean
   privateDeployment?: boolean
   sla?: boolean
+
+  // ── 能力数量上限（-1 表示无限；undefined 表示未配置，卡片不展示该项） ──
+  /** 自定义智能体数量上限 */
+  customAgentsLimit?: number
+  /** 桌面伴侣角色模型数量上限 */
+  companionModelsLimit?: number
+  /** 项目数量上限 */
+  projectsLimit?: number
+  /** 自动化任务数量上限（自动化规则 + 定时任务） */
+  automationTasksLimit?: number
+
+  // ── 客户端功能开关 ──
+  /** 直播互动（B站 / YouTube / Twitch 弹幕接入） */
+  liveInteraction?: boolean
+  /** VTS（VTube Studio）联动 */
+  vts?: boolean
+  /** A2A（Agent2Agent）协议 */
+  a2a?: boolean
+  /** 对外 OpenAPI 服务 */
+  externalApi?: boolean
+  /** VMC（Virtual Motion Capture）协议 */
+  vmc?: boolean
+  /** IoT 集成 */
+  iot?: boolean
+  /** 感知预测（行为预测 / 场景感知） */
+  perception?: boolean
+  /** 主动助手（主动建议与预授权动作） */
+  proactive?: boolean
 }
 
 export interface PlanItem {
@@ -208,54 +241,190 @@ export function parsePlanFeatures(raw: unknown): PlanFeaturesData {
   return {}
 }
 
+/** 能力分组 */
+export type PlanCapabilityGroup = 'core' | 'quota' | 'client'
+
+/** 分组展示标题 */
+export const planCapabilityGroupLabels: Record<
+  PlanCapabilityGroup,
+  { zh: string; en: string }
+> = {
+  core: { zh: '核心能力', en: 'Core' },
+  quota: { zh: '数量上限', en: 'Limits' },
+  client: { zh: '扩展功能', en: 'Extensions' },
+}
+
+/** 卡片展示时的分组顺序 */
+export const planCapabilityGroupOrder: PlanCapabilityGroup[] = ['core', 'quota', 'client']
+
+export interface PlanCapability {
+  /** 展示文案 */
+  label: string
+  /** 当前套餐是否包含该能力 */
+  enabled: boolean
+  /** 所属分组 */
+  group: PlanCapabilityGroup
+}
+
 /**
- * 获取套餐功能亮点列表（用于卡片展示）
- * 返回有序的功能亮点标签
+ * 工作模式条目（与后端 features.modes 取值对齐；文案与客户端 MODE_CONFIGS 一致）
+ *
+ * 逐项独立展示，而非合并为一个「极速/思考/专家模式」标签——
+ * 合并后无法判断某个模式到底为哪个套餐所有，失去横向对比意义。
  */
-export function getPlanHighlights(
-  plan: PlanItem,
-  language: Language,
-): Array<{ label: string; enabled: boolean }> {
+const MODE_ITEMS: Array<{ id: string; zh: string; en: string }> = [
+  { id: 'quick', zh: '快速模式', en: 'Quick Mode' },
+  { id: 'think', zh: '思考模式', en: 'Think Mode' },
+  { id: 'expert', zh: '专家模式', en: 'Expert Mode' },
+]
+
+/** 客户端能力开关键（与后端 PlanFeatures 对齐） */
+type PlanClientCapabilityKey =
+  | 'liveInteraction'
+  | 'vts'
+  | 'vmc'
+  | 'a2a'
+  | 'externalApi'
+  | 'iot'
+  | 'perception'
+  | 'proactive'
+
+/** 客户端能力开关键 → i18n 文案键（复用付费墙的既有译名，保证口径一致） */
+const CLIENT_CAPABILITY_ITEMS: Array<[PlanClientCapabilityKey, string]> = [
+  ['liveInteraction', 'featureguard.capability.liveInteraction'],
+  ['vts', 'featureguard.capability.vts'],
+  ['vmc', 'featureguard.capability.vmc'],
+  ['a2a', 'featureguard.capability.a2a'],
+  ['externalApi', 'featureguard.capability.externalApi'],
+  ['iot', 'featureguard.capability.iot'],
+  ['perception', 'featureguard.capability.perception'],
+  ['proactive', 'featureguard.capability.proactive'],
+]
+
+/**
+ * 数量上限文案
+ * - `-1` → 无限
+ * - `undefined` / `null` → 未配置，返回 null（调用方跳过不展示）
+ */
+function formatQuotaLabel(
+  limit: number | undefined | null,
+  zh: boolean,
+  zhName: string,
+  enName: string,
+): string | null {
+  if (limit === undefined || limit === null) return null
+  if (limit === -1) return zh ? `${zhName} 无限` : `Unlimited ${enName}`
+  return zh ? `${zhName} ${limit} 个` : `${limit} ${enName}`
+}
+
+/** 数量上限条目定义（数组顺序即展示顺序） */
+const QUOTA_FIELDS: Array<{
+  key:
+    | 'seats'
+    | 'customAgentsLimit'
+    | 'companionModelsLimit'
+    | 'projectsLimit'
+    | 'automationTasksLimit'
+  zh: string
+  en: string
+}> = [
+  { key: 'seats', zh: '席位', en: 'Seats' },
+  { key: 'customAgentsLimit', zh: '智能体', en: 'Agents' },
+  { key: 'companionModelsLimit', zh: '伴侣模型', en: 'Companion Models' },
+  { key: 'projectsLimit', zh: '项目', en: 'Projects' },
+  { key: 'automationTasksLimit', zh: '自动化任务', en: 'Automation Tasks' },
+]
+
+/**
+ * 获取套餐完整能力清单（用于卡片全量展示）
+ *
+ * 分组：
+ * - `core`  核心能力：Token / 工作模式（逐项）/ 工具能力组（逐组）/ MCP / 技能 / 代码库索引 / 优先支持 / 团队协作 / 私有部署 / SLA
+ * - `quota` 数量上限：席位 / 智能体 / 伴侣模型 / 项目 / 自动化任务
+ * - `client` 扩展功能：直播互动 / VTS / VMC / A2A / 对外 API / IoT / 感知预测 / 主动助手
+ *
+ * 未包含的能力仍返回（`enabled: false`），由卡片置灰打叉展示，保证各套餐可横向逐项对比。
+ */
+export function getPlanCapabilities(plan: PlanItem, language: Language): PlanCapability[] {
   const features = parsePlanFeatures(plan.features)
   const zh = language === 'zh'
+  const caps: PlanCapability[] = []
 
-  // Token 额度
-  const tokenLabel =
-    plan.tokenLimit === -1
-      ? zh ? '无限 Token' : 'Unlimited Tokens'
-      : `${formatTokenLimit(plan.tokenLimit)} ${zh ? 'Token' : 'Tokens'}`
+  // ── 核心能力 ──
+  caps.push({
+    group: 'core',
+    enabled: true,
+    label:
+      plan.tokenLimit === -1
+        ? zh
+          ? '无限 Token'
+          : 'Unlimited Tokens'
+        : `${formatTokenLimit(plan.tokenLimit)} ${zh ? 'Token' : 'Tokens'}`,
+  })
 
-  // 工作模式
+  // 工作模式：逐项展示可用性，而非合并成一个标签，便于对比各套餐支持哪些模式
   const modes = features.modes ?? ['quick']
-  const modeLabel = zh
-    ? modes.includes('expert')
-      ? '专家模式'
-      : modes.includes('think')
-        ? '思考模式'
-        : '极速模式'
-    : modes.includes('expert')
-      ? 'Expert Mode'
-      : modes.includes('think')
-        ? 'Think Mode'
-        : 'Quick Mode'
+  for (const mode of MODE_ITEMS) {
+    caps.push({
+      group: 'core',
+      enabled: modes.includes(mode.id),
+      label: zh ? mode.zh : mode.en,
+    })
+  }
 
-  // 工具数量
-  const toolsLimit = features.toolsLimit ?? 10
-  const toolsLabel = toolsLimit === -1
-    ? (zh ? '无限工具' : 'Unlimited Tools')
-    : (zh ? `${toolsLimit} 个工具` : `${toolsLimit} Tools`)
+  // 工具能力组：逐组展开，让用户看到具体能用哪些能力组（而非「N 类工具」这种模糊描述）
+  // 组名与顺序取自 CAPABILITY_GROUPS（与后端 tool-catalog.ts 逐项对齐）
+  // undefined = 未配置（全放行）；[] = 仅系统必需工具
+  const toolGroups = features.allowedToolGroups
+  for (const group of CAPABILITY_GROUPS) {
+    caps.push({
+      group: 'core',
+      enabled: toolGroups === undefined || toolGroups.includes(group.id),
+      label: zh ? group.name : group.nameEn,
+    })
+  }
 
-  return [
-    { label: tokenLabel, enabled: true },
-    { label: modeLabel, enabled: true },
-    { label: toolsLabel, enabled: true },
-    { label: zh ? 'MCP' : 'MCP', enabled: Boolean(features.mcp) },
-    { label: zh ? '技能' : 'Skills', enabled: Boolean(features.skill) },
-    { label: zh ? '代码库索引' : 'Codebase Index', enabled: Boolean(features.codebaseIndex) },
-    { label: zh ? '优先支持' : 'Priority Support', enabled: Boolean(features.prioritySupport) },
-    { label: zh ? '团队协作' : 'Team Collaboration', enabled: Boolean(features.teamCollaboration) },
-    { label: zh ? '私有部署' : 'Private Deployment', enabled: Boolean(features.privateDeployment) },
-  ]
+  caps.push(
+    { group: 'core', enabled: Boolean(features.mcp), label: 'MCP' },
+    { group: 'core', enabled: Boolean(features.skill), label: zh ? '技能' : 'Skills' },
+    {
+      group: 'core',
+      enabled: Boolean(features.codebaseIndex),
+      label: zh ? '代码库索引' : 'Codebase Index',
+    },
+    {
+      group: 'core',
+      enabled: Boolean(features.prioritySupport),
+      label: zh ? '优先支持' : 'Priority Support',
+    },
+    {
+      group: 'core',
+      enabled: Boolean(features.teamCollaboration),
+      label: zh ? '团队协作' : 'Team Collaboration',
+    },
+    {
+      group: 'core',
+      enabled: Boolean(features.privateDeployment),
+      label: zh ? '私有部署' : 'Private Deployment',
+    },
+    { group: 'core', enabled: Boolean(features.sla), label: zh ? 'SLA 保障' : 'SLA' },
+  )
+
+  // ── 数量上限（-1 = 无限；未配置则不展示该项） ──
+  for (const field of QUOTA_FIELDS) {
+    const raw = field.key === 'seats' ? features.seats ?? plan.seats : features[field.key]
+    if (raw === undefined) continue
+    const label = formatQuotaLabel(raw, zh, field.zh, field.en)
+    if (!label) continue
+    caps.push({ group: 'quota', enabled: raw === -1 || raw > 0, label })
+  }
+
+  // ── 扩展功能（客户端能力开关） ──
+  for (const [key, i18nKey] of CLIENT_CAPABILITY_ITEMS) {
+    caps.push({ group: 'client', enabled: Boolean(features[key]), label: t(i18nKey, language) })
+  }
+
+  return caps
 }
 
 export type { Language }

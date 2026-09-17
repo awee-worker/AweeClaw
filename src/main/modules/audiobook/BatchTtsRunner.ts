@@ -66,16 +66,14 @@ export interface BatchSynthesizeOptions {
 
 export class BatchTtsRunner {
   private concurrency: number
-  private maxRetries: number
   private running: number = 0
   private completed: number = 0
   private failed: number = 0
   private queue: TextSegment[] = []
   private aborted: { value: boolean } = { value: false }
 
-  constructor(concurrency: number = 2, maxRetries: number = 3) {
+  constructor(concurrency: number = 2) {
     this.concurrency = concurrency
-    this.maxRetries = maxRetries
   }
 
   /**
@@ -193,7 +191,7 @@ export class BatchTtsRunner {
    * @returns 合成结果
    */
   private async synthesizeSegment(
-    taskId: string,
+    _taskId: string,
     segment: TextSegment,
     config: AudiobookConfig,
     outputDir: string,
@@ -267,7 +265,7 @@ export class BatchTtsRunner {
  * @returns BatchTtsRunner 实例
  */
 export function createBatchSynthesizeTask(options: BatchSynthesizeOptions): BatchTtsRunner {
-  const runner = new BatchTtsRunner(options.config.concurrency, options.config.maxRetries)
+  const runner = new BatchTtsRunner(options.config.concurrency)
 
   // 异步执行，不阻塞
   runner.synthesize(options).catch((error) => {

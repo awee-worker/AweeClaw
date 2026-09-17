@@ -40,6 +40,7 @@ import {
 import { scenarioRegistry } from '@shared/configuration/scenarios'
 import { getActiveCustomAgent, getAgentToolLoadingFields } from '@renderer-configuration/customAgentTools'
 import { api } from '../../adapters/electronBridge'
+import { getAllowedToolGroupsSync } from '../../adapters/featureGuardService'
 import { logger } from '@toolkit/LogEngine'
 import { useStore } from '@store'
 import {
@@ -316,7 +317,9 @@ function buildTools(mode: WorkMode, templateId?: string, planPhase?: 'planning' 
   const activeAgent = getActiveCustomAgent()
   const agentFields = activeAgent ? getAgentToolLoadingFields(activeAgent) : {}
   // 场景工具按需暴露：prompt 中的工具描述与执行层工具列表保持一致（致命问题 #4）
-  const allowedTools = getToolsForContext({ mode, templateId, planPhase, scenarioToolPacks, scenarioTools, isChannel, sceneToolsEnabled, ...agentFields })
+  // 套餐工具能力组：系统提示里的工具清单必须与执行层可见工具一致，
+  // 否则 AI 会去调用被套餐禁用的工具（可见性才是主闸门）
+  const allowedTools = getToolsForContext({ mode, templateId, planPhase, scenarioToolPacks, scenarioTools, isChannel, sceneToolsEnabled, allowedToolGroups: getAllowedToolGroupsSync(), ...agentFields })
   const baseTools = generateToolsPromptDescriptionFiltered(excludeCategories, allowedTools)
   const { toolGuidelines } = getActiveScenarioIdentity()
 
