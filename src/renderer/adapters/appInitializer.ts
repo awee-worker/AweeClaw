@@ -13,6 +13,7 @@ import { logger } from '@toolkit/LogEngine'
 import { startupMetrics } from '@shared/toolkit/bootMetrics'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
 import { useStore } from '@store'
+import type { SecurityPolicyPanel } from '@shared/configuration/configTypes'
 import { initializeAgentStore } from '@intelligence/state/IntelligenceStore'
 import { themeManager } from '../config/themeDefinition'
 import { keybindingService } from './keybindingAdapter'
@@ -491,6 +492,14 @@ export function registerSettingsSync(): () => void {
       case 'enableFileLogging':
         if (typeof value === 'boolean') {
           store.set('enableFileLogging', value)
+        }
+        break
+      // 安全设置（含「工作区外允许访问的目录」）通过独立 key 广播。
+      // 工具执行前的路径校验读取 store.securitySettings，必须实时同步，
+      // 否则多窗口（主窗口/执行窗口/项目执行窗口）里新增的外部目录不会生效。
+      case 'securitySettings':
+        if (value && typeof value === 'object') {
+          store.update('securitySettings', value as SecurityPolicyPanel)
         }
         break
     }

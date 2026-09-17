@@ -71,6 +71,7 @@ import {
     extractDocumentLocal,
     extractDocumentViaBackendStream,
 } from './documentExtractor'
+import { buildToolPathPolicy } from './toolPathPolicy'
 
 // ===== 辅助函数 =====
 
@@ -443,12 +444,17 @@ function formatDirTree(nodes: DirTreeNode[], prefix = ''): string {
 
 function resolvePath(p: unknown, workspacePath: string | null, allowRead = false): string {
     if (typeof p !== 'string') throw new Error('Invalid path: not a string')
-    // 从 store 读取额外允许的目录（如项目执行窗口的项目目录，可能不在工作区内）
-    const extraAllowedRoots = useStore.getState().allowedToolPaths ?? []
+    const state = useStore.getState()
+    // 放行策略：项目执行窗口的项目目录 + 用户在「设置 → 安全设置」中配置的
+    // 工作区外允许访问目录 + 严格工作区模式开关（与主进程安全策略保持一致）
+    const policy = buildToolPathPolicy({
+        allowedToolPaths: state.allowedToolPaths,
+        securitySettings: state.securitySettings,
+    })
     const validation = validatePath(p, workspacePath, {
         allowSensitive: false,
-        allowOutsideWorkspace: false,
-        extraAllowedRoots,
+        allowOutsideWorkspace: policy.allowOutsideWorkspace,
+        extraAllowedRoots: policy.extraAllowedRoots,
     })
     if (!validation.valid) throw new Error(`Security: ${validation.error}`)
     if (!allowRead && isSensitivePath(validation.sanitizedPath!)) {
