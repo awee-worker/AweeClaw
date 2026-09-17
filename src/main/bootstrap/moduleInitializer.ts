@@ -119,6 +119,7 @@ export async function initializeModules(firstWin: BrowserWindow): Promise<void> 
     allowedShellCommands?: string[]
     deniedShellCommands?: string[]
     allowedGitSubcommands?: string[]
+    allowedExternalDirectories?: string[]
   }
 
   securityManager.updateConfig(securityConfig)
@@ -126,6 +127,16 @@ export async function initializeModules(firstWin: BrowserWindow): Promise<void> 
   security.updateWhitelist(
     securityConfig.allowedShellCommands || [...SECURITY_DEFAULTS.SHELL_COMMANDS],
     securityConfig.allowedGitSubcommands || [...SECURITY_DEFAULTS.GIT_SUBCOMMANDS],
+  )
+
+  // 工作区外允许访问目录：必须在此同步给主进程安全模块。
+  // 若只在 settings:set('securitySettings') 时同步，冷启动（重启应用）后主进程侧
+  // 的放行列表为空，file:read / file:write / 终端 cwd 等校验会拒绝这些目录，
+  // 表现为「设置里配了外部目录，重启后依然访问不了」。
+  securityManager.setAllowedExternalDirectories(
+    Array.isArray(securityConfig.allowedExternalDirectories)
+      ? securityConfig.allowedExternalDirectories
+      : [],
   )
   // Shell 命令黑名单（AI 执行 Shell 命令时实际生效的拦截策略）
   security.updateBlacklist(

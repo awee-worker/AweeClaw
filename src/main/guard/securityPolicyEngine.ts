@@ -199,8 +199,12 @@ class SecurityManager implements SecurityModule {
   isAllowedExternalDir(filePath: string): boolean {
     if (this.allowedExternalDirs.length === 0) return false
     const resolved = path.resolve(filePath)
+    // 使用 pathStartsWith / pathEquals（忽略大小写与分隔符差异），
+    // 与 validateWorkspacePath 及渲染层 assertPathSafety 保持同一套比较语义。
+    // 原生 startsWith 是大小写敏感的，在 macOS/Windows 上会让「渲染层放行、
+    // 主进程拒绝」——表现为文件莫名读不到（File not found）。
     return this.allowedExternalDirs.some(allowed =>
-      resolved === allowed || resolved.startsWith(allowed + path.sep)
+      pathStartsWith(resolved, allowed) || pathEquals(resolved, allowed)
     )
   }
 

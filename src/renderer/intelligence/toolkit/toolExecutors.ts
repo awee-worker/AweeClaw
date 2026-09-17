@@ -456,7 +456,20 @@ function resolvePath(p: unknown, workspacePath: string | null, allowRead = false
         allowOutsideWorkspace: policy.allowOutsideWorkspace,
         extraAllowedRoots: policy.extraAllowedRoots,
     })
-    if (!validation.valid) throw new Error(`Security: ${validation.error}`)
+    if (!validation.valid) {
+        // 诊断：路径被拒时记录本次放行来源。
+        // 「设置里已配置工作区外允许访问目录却仍报 Path is outside workspace」
+        // 的根因通常是当前窗口的 store.securitySettings 没有该配置
+        // （extraAllowedRoots 为空），这条日志可直接判定。
+        logger.agent.warn('[ToolPath] Path rejected:', {
+            target: p,
+            workspacePath,
+            allowOutsideWorkspace: policy.allowOutsideWorkspace,
+            extraAllowedRoots: policy.extraAllowedRoots,
+            reason: validation.error,
+        })
+        throw new Error(`Security: ${validation.error}`)
+    }
     if (!allowRead && isSensitivePath(validation.sanitizedPath!)) {
         throw new Error('Security: Cannot modify sensitive files')
     }

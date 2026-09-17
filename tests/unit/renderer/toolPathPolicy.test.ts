@@ -99,6 +99,83 @@ describe('buildToolPathPolicy', () => {
         ).toMatchObject({ valid: true })
     })
 
+    it('外部目录的子目录与深层文件均放行（不止目录本身）', () => {
+        const policy = buildToolPathPolicy({
+            securitySettings: {
+                allowedExternalDirectories: [EXTERNAL_DIR],
+                strictWorkspaceMode: true,
+            },
+        })
+        const options = {
+            allowOutsideWorkspace: policy.allowOutsideWorkspace,
+            extraAllowedRoots: policy.extraAllowedRoots,
+        }
+
+        const deepCases = [
+            `${EXTERNAL_DIR}/depu-boot`,
+            `${EXTERNAL_DIR}/depu-boot/cic-common`,
+            `${EXTERNAL_DIR}/depu-boot/cic-common/pom.xml`,
+            `${EXTERNAL_DIR}/depu-boot/src/main/java/net/cicit/App.java`,
+        ]
+
+        for (const target of deepCases) {
+            expect(assertPathSafety(target, WORKSPACE, options)).toMatchObject({ valid: true })
+        }
+    })
+
+    it('路径大小写与尾部分隔符差异不影响放行（macOS/Windows 大小写不敏感）', () => {
+        const policy = buildToolPathPolicy({
+            securitySettings: {
+                allowedExternalDirectories: [EXTERNAL_DIR],
+                strictWorkspaceMode: true,
+            },
+        })
+        const options = {
+            allowOutsideWorkspace: policy.allowOutsideWorkspace,
+            extraAllowedRoots: policy.extraAllowedRoots,
+        }
+
+        expect(
+            assertPathSafety(`${EXTERNAL_DIR}/SRC/Main.Java`, WORKSPACE, options),
+        ).toMatchObject({ valid: true })
+        expect(
+            assertPathSafety(`${EXTERNAL_DIR.toUpperCase()}/src/Main.java`, WORKSPACE, options),
+        ).toMatchObject({ valid: true })
+    })
+
+    it('配置目录带尾部分隔符时子目录仍放行', () => {
+        const policy = buildToolPathPolicy({
+            securitySettings: {
+                allowedExternalDirectories: [`${EXTERNAL_DIR}/`],
+                strictWorkspaceMode: true,
+            },
+        })
+
+        expect(
+            assertPathSafety(`${EXTERNAL_DIR}/src/App.java`, WORKSPACE, {
+                allowOutsideWorkspace: policy.allowOutsideWorkspace,
+                extraAllowedRoots: policy.extraAllowedRoots,
+            }),
+        ).toMatchObject({ valid: true })
+    })
+
+    it('同名前缀的兄弟目录不被误放行', () => {
+        const policy = buildToolPathPolicy({
+            securitySettings: {
+                allowedExternalDirectories: [EXTERNAL_DIR],
+                strictWorkspaceMode: true,
+            },
+        })
+
+        // depu-boot-ui 是 depu-boot 的兄弟目录，不能因为字符串前缀相同而放行
+        expect(
+            assertPathSafety(`${EXTERNAL_DIR}-ui/src/App.java`, WORKSPACE, {
+                allowOutsideWorkspace: policy.allowOutsideWorkspace,
+                extraAllowedRoots: policy.extraAllowedRoots,
+            }),
+        ).toMatchObject({ valid: false, error: 'Path is outside workspace' })
+    })
+
     it('工作区外目录放行后仍拦截敏感路径', () => {
         const homeDir = '/Users/someone'
         const policy = buildToolPathPolicy({

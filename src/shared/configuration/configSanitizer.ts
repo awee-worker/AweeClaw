@@ -396,6 +396,15 @@ export interface AppSettingsSchema {
     fromName?: string
     fromAddress?: string
   }
+  /**
+   * 以下三项除独立持久化键外，也会随 app-settings 一并写入。
+   * 必须原样透传（不做字段裁剪），否则 securitySettings 里
+   * allowedExternalDirectories 这类扩展字段会在清洗时被丢弃，
+   * 造成「安全设置里配了工作区外允许访问目录却不生效」。
+   */
+  editorConfig?: Record<string, unknown>
+  securitySettings?: Record<string, unknown>
+  privacySettings?: Record<string, unknown>
 }
 
 export function cleanAppSettings(config: Record<string, unknown>): AppSettingsSchema {
@@ -481,6 +490,19 @@ export function cleanAppSettings(config: Record<string, unknown>): AppSettingsSc
     }
     if (typeof email.fromName === 'string') cleaned.emailConfig.fromName = email.fromName
     if (typeof email.fromAddress === 'string') cleaned.emailConfig.fromAddress = email.fromAddress
+  }
+
+  // editorConfig / securitySettings / privacySettings 原样透传。
+  // 这三项结构开放（如 securitySettings.allowedExternalDirectories），
+  // 逐字段白名单裁剪会静默丢失扩展字段，导致设置读回后失效。
+  if (config.editorConfig && typeof config.editorConfig === 'object') {
+    cleaned.editorConfig = config.editorConfig as Record<string, unknown>
+  }
+  if (config.securitySettings && typeof config.securitySettings === 'object') {
+    cleaned.securitySettings = config.securitySettings as Record<string, unknown>
+  }
+  if (config.privacySettings && typeof config.privacySettings === 'object') {
+    cleaned.privacySettings = config.privacySettings as Record<string, unknown>
   }
 
   return cleaned
