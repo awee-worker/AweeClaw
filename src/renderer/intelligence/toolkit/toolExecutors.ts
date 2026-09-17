@@ -19,10 +19,11 @@ import {
     type PlanTaskArg,
     type PlanEdgeArg,
 } from './planBuilder'
-import { validatePath, isSensitivePath, platform, getDirname } from '@shared/toolkit/pathHelper'
+import { validatePath, isSensitivePath, platform, getDirname, getFileName, normalizePath } from '@shared/toolkit/pathHelper'
 import { pathToLspUri } from '@shared/toolkit/uriHelper'
 import { waitForDiagnostics, isLanguageSupported, getLanguageId, didOpenDocument } from '@services/languageServerAdapter'
 import { checkAutomationTaskQuota } from '@services/quotaUsage'
+import { gitService } from '@services/gitAdapter'
 import {
     calculateLineChanges,
 } from '@utils/searchReplace'
@@ -72,6 +73,135 @@ import {
 } from './documentExtractor'
 
 // ===== 辅助函数 =====
+
+/**
+ * Git 工具的公共前置检查：工作区存在 + 目标目录是 git 仓库
+ *
+ * 所有 git_* 工具都先过这一关，避免把「不是仓库」这类环境问题
+ * 当成命令执行失败抛给 AI（会让 AI 反复重试同样无效的命令）。
+ */
+async function resolveGitWorkspace(
+    ctx: ToolExecutionContext,
+    mode: 'read' | 'write' | 'sync' | 'worktree' | 'audit' = 'read',
+): Promise<{ ok: true; path: string } | { ok: false; result: ToolExecutionResult }> {
+    // 用户可在「设置 → Git」中按能力关闭 AI 的仓库写权限（读操作始终允许）
+    if (mode !== 'read') {
+        const gitSettings = useStore.getState().editorConfig?.git
+
+        // 各能力对应的开关与提示语（worktree 属于"有副作用的重操作"，默认关闭 → 必须显式开启）
+        const gate: { enabled: boolean; label: string; detail: string } = (() => {
+            switch (mode) {
+                case 'sync':
+                    return {
+                        enabled: gitSettings?.aiSyncEnabled !== false,
+                        label: '「允许 AI 同步远程仓库」',
+                        detail: '无法执行 pull / push / fetch / clone',
+                    }
+                case 'worktree':
+                    return {
+                        enabled: gitSettings?.aiWorktreeEnabled === true,
+                        label: '「允许 AI 创建隔离工作区」',
+                        detail: '无法创建 / 删除链接工作树（git worktree）',
+                    }
+                case 'audit':
+                    return {
+                        enabled: gitSettings?.auditSealEnabled !== false,
+                        label: '「允许 AI 封存审计轨迹」',
+                        detail: '无法提交并打审计 tag',
+                    }
+                default:
+                    return {
+                        enabled: gitSettings?.aiWriteEnabled !== false,
+                        label: '「允许 AI 提交与分支操作」',
+                        detail: '无法提交或变更分支',
+                    }
+            }
+        })()
+
+        if (!gate.enabled) {
+            return {
+                ok: false,
+                result: {
+                    success: false,
+                    result: `用户已在「设置 → Git」中关闭${gate.label}，${gate.detail}。请告知用户该开关的位置，勿重复尝试。`,
+                    error: 'Git tooling disabled by user settings',
+                },
+            }
+        }
+    }
+
+    const workspacePath = ctx.workspacePath
+    if (!workspacePath) {
+        return {
+            ok: false,
+            result: {
+                success: false,
+                result: '',
+                error: 'No workspace is open. Ask the user to open a folder before using git tools.',
+            },
+        }
+    }
+
+    const isRepo = await gitService.isGitRepo(workspacePath)
+    if (!isRepo) {
+        return {
+            ok: false,
+            result: {
+                success: false,
+                result:
+                    '当前工作区不是 Git 仓库（未检测到 .git 目录）。\n' +
+                    '请在「设置 → Git」中初始化仓库，或在终端执行 git init 后再试。',
+                error: 'Not a git repository',
+            },
+        }
+    }
+
+    return { ok: true, path: workspacePath }
+}
+
+/** 把 git 变更条目格式化为单行文本（供 AI 阅读） */
+function formatGitChange(change: { path: string; status: string }): string {
+    const code = change.status === 'unmerged' ? 'U' : (change.status[0] || '?').toUpperCase()
+    return `  ${code} ${change.path}`
+}
+
+/**
+ * 解析 worktree 目标路径
+ *
+ * 只允许「工作区的同级目录」：工作树写在仓库内部会污染 git status（出现大量未跟踪条目），
+ * 写到任意绝对路径又可能误伤系统目录。AI 只需给一个相对名（如 "myrepo-spike"）即可。
+ */
+function resolveWorktreePath(
+    input: string,
+    workspacePath: string,
+): { ok: true; path: string } | { ok: false; error: string } {
+    const raw = (input || '').trim()
+    if (!raw) return { ok: false, error: 'path is required' }
+
+    const workspace = normalizePath(workspacePath).replace(/\/+$/, '')
+    const parentDir = getDirname(workspace)
+    const workspaceName = getFileName(workspace)
+    const isAbsolute = raw.startsWith('/') || /^[A-Za-z]:[\\/]/.test(raw)
+
+    const candidate = normalizePath(
+        isAbsolute ? raw : `${parentDir}/${raw.replace(/^\.\//, '')}`,
+    ).replace(/\/+$/, '')
+
+    if (candidate === workspace) {
+        return { ok: false, error: 'path 指向工作区自身，请换一个同级目录名' }
+    }
+    if (getDirname(candidate) !== parentDir) {
+        return {
+            ok: false,
+            error: `path 必须是工作区同级目录下的单层目录（应形如 ${parentDir}/<名称>，实际为 ${candidate}）`,
+        }
+    }
+    if (candidate === `${parentDir}/${workspaceName}`) {
+        return { ok: false, error: 'path 与工作区同名，请换一个名字' }
+    }
+
+    return { ok: true, path: candidate }
+}
 
 function getLocalizedText(language: Language, zh: string, en: string): string {
     return pickLocalizedText(zh, en, language as 'en' | 'zh')
@@ -1641,6 +1771,25 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             }
         }
 
+        // ── 网络类 git 命令引导 ──────────────────────────────────
+        // AI 用 run_command 执行 push/pull/fetch/clone 时没有交互终端，
+        // 一旦远程要求认证就会挂到超时（用户也看不到凭证输入入口）。
+        // 这里直接引导改用 git_sync：它由主进程注入凭证 + 弹窗收集账号密码。
+        const gitNetworkMatch = typeof command === 'string'
+            ? command.trim().match(/^git\s+(push|pull|fetch|clone|ls-remote)\b/)
+            : null
+        if (gitNetworkMatch) {
+            return {
+                success: false,
+                result:
+                    `命令被引导至专用工具：git ${gitNetworkMatch[1]} 需要网络认证与凭证处理，` +
+                    `请改用 git_sync 工具（action="${gitNetworkMatch[1] === 'clone' ? 'clone' : gitNetworkMatch[1]}"）。` +
+                    `该工具会自动复用已保存凭证，缺少凭证时会弹出账号密码输入框给用户，并支持输入后自动重试。`,
+                error: 'Use the git_sync tool for network git operations',
+                meta: { command, redirectedTool: 'git_sync' },
+            }
+        }
+
         // ── 安全底线：受保护应用数据目录（.aweeclaw）删除拦截 ──────────
         // 该目录存储项目配置、记忆、索引等核心数据，禁止任何删除操作。
         // 静默拒绝（不弹窗），并明确告知 AI 改用其它方案。
@@ -2023,6 +2172,615 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
         } finally {
             // 清理中止监听器，避免内存泄漏
             cleanupAbortListener()
+        }
+    },
+
+    // ===== Git 工具（工作区仓库操作；网络命令自动处理凭证） =====
+
+    async git_status(args, ctx) {
+        const workspace = await resolveGitWorkspace(ctx)
+        if (!workspace.ok) return workspace.result
+
+        const [status, operationState, remotes] = await Promise.all([
+            gitService.getStatus(workspace.path),
+            gitService.getOperationState(workspace.path),
+            gitService.getRemotes(workspace.path),
+        ])
+
+        if (!status) {
+            return { success: false, result: '', error: 'Failed to read git status' }
+        }
+
+        const lines: string[] = []
+        const tracking = status.ahead || status.behind ? ` — ahead ${status.ahead}, behind ${status.behind}` : ''
+        lines.push(`Repository: ${workspace.path}`)
+        lines.push(`Branch: ${status.branch || '(detached HEAD)'}${tracking}`)
+        if (operationState !== 'normal') {
+            lines.push(`⚠ Operation in progress: ${operationState}（需先完成或中止该操作）`)
+        }
+
+        lines.push('', `Staged (${status.staged.length}):`)
+        lines.push(...(status.staged.length ? status.staged.map(formatGitChange) : ['  (none)']))
+
+        lines.push('', `Unstaged (${status.unstaged.length}):`)
+        lines.push(...(status.unstaged.length ? status.unstaged.map(formatGitChange) : ['  (none)']))
+
+        lines.push('', `Untracked (${status.untracked.length}):`)
+        lines.push(...(status.untracked.length ? status.untracked.slice(0, 50).map((p) => `  ?? ${p}`) : ['  (none)']))
+        if (status.untracked.length > 50) {
+            lines.push(`  ... 另有 ${status.untracked.length - 50} 个未跟踪文件`)
+        }
+
+        if (status.hasConflicts) {
+            lines.push('', `Conflicts (${status.conflictFiles.length}):`)
+            lines.push(...status.conflictFiles.map((p) => `  U ${p}`))
+        }
+
+        if (remotes.length > 0) {
+            lines.push('', 'Remotes:')
+            for (const remote of remotes) {
+                lines.push(`  ${remote.name} (${remote.type}) → ${remote.url}`)
+            }
+        }
+
+        if (args.include_stash === true) {
+            const stashes = await gitService.getStashList(workspace.path)
+            lines.push('', `Stash (${stashes.length}):`)
+            lines.push(...(stashes.length ? stashes.map((s) => `  stash@{${s.index}}: ${s.message}`) : ['  (none)']))
+        }
+
+        return {
+            success: true,
+            result: lines.join('\n'),
+            meta: {
+                branch: status.branch,
+                ahead: status.ahead,
+                behind: status.behind,
+                stagedCount: status.staged.length,
+                unstagedCount: status.unstaged.length,
+                untrackedCount: status.untracked.length,
+                hasConflicts: status.hasConflicts,
+                operationState,
+            },
+        }
+    },
+
+    async git_diff(args, ctx) {
+        const workspace = await resolveGitWorkspace(ctx)
+        if (!workspace.ok) return workspace.result
+
+        const target = typeof args.target === 'string' ? args.target : 'working'
+        const filePath = typeof args.path === 'string' ? args.path.trim() : ''
+        const commit = typeof args.commit === 'string' ? args.commit.trim() : ''
+        const branch = typeof args.branch === 'string' ? args.branch.trim() : ''
+        const stat = args.stat === true
+
+        let diff: string | null
+        if (target === 'commit') {
+            if (!commit) return { success: false, result: '', error: 'commit is required when target="commit"' }
+            diff = await gitService.getRepoDiff({ commit, path: filePath || undefined, stat }, workspace.path)
+        } else if (target === 'branch') {
+            if (!branch) return { success: false, result: '', error: 'branch is required when target="branch"' }
+            diff = await gitService.getRepoDiff({ branch, path: filePath || undefined, stat }, workspace.path)
+        } else {
+            diff = await gitService.getRepoDiff(
+                { staged: target === 'staged', path: filePath || undefined, stat },
+                workspace.path,
+            )
+        }
+
+        if (diff === null) {
+            return { success: false, result: '无法读取 diff（目标引用可能不存在）', error: 'Failed to read diff' }
+        }
+        if (!diff.trim()) {
+            return { success: true, result: `(${target} 无差异)`, meta: { target, empty: true } }
+        }
+
+        // 大仓库 diff 可能轻易超过几十万字符，截断以免冲垮上下文
+        const MAX_DIFF_CHARS = 60_000
+        const truncated = diff.length > MAX_DIFF_CHARS
+        const body = truncated
+            ? `${diff.slice(0, MAX_DIFF_CHARS)}\n\n... [diff 已截断：共 ${diff.length} 字符。建议改用 stat=true 或指定 path 缩小范围]`
+            : diff
+
+        return { success: true, result: body, meta: { target, path: filePath || null, truncated } }
+    },
+
+    async git_log(args, ctx) {
+        const workspace = await resolveGitWorkspace(ctx)
+        if (!workspace.ok) return workspace.result
+
+        const limit = typeof args.limit === 'number' ? args.limit : 20
+        const filePath = typeof args.path === 'string' ? args.path.trim() : ''
+        const branch = typeof args.branch === 'string' ? args.branch.trim() : ''
+        const grep = typeof args.grep === 'string' ? args.grep.trim() : ''
+
+        const commits = await gitService.getLog(
+            {
+                limit,
+                path: filePath || undefined,
+                branch: branch || undefined,
+                grep: grep || undefined,
+            },
+            workspace.path,
+        )
+
+        if (commits.length === 0) {
+            return { success: true, result: '暂无提交记录（空仓库，或过滤条件无匹配）', meta: { count: 0 } }
+        }
+
+        const lines = commits.map(
+            (c) => `${c.shortHash}  ${c.date.toISOString().slice(0, 10)}  ${c.author}: ${c.message}`,
+        )
+        return { success: true, result: lines.join('\n'), meta: { count: commits.length } }
+    },
+
+    async git_commit(args, ctx) {
+        const workspace = await resolveGitWorkspace(ctx, 'write')
+        if (!workspace.ok) return workspace.result
+
+        const message = typeof args.message === 'string' ? args.message.trim() : ''
+        if (!message) {
+            return { success: false, result: '', error: 'message is required' }
+        }
+
+        const files = Array.isArray(args.files)
+            ? args.files.filter((f): f is string => typeof f === 'string' && f.trim().length > 0)
+            : []
+        const includeUntracked = args.include_untracked === true
+        const amend = args.amend === true
+
+        // 1. 暂存策略：显式文件 > 全部（含未跟踪）> 仅已跟踪修改
+        if (files.length > 0) {
+            for (const file of files) {
+                const ok = await gitService.stageFile(file, workspace.path)
+                if (!ok) {
+                    return { success: false, result: `暂存失败: ${file}`, error: `Failed to stage ${file}` }
+                }
+            }
+        } else if (includeUntracked) {
+            const ok = await gitService.stageAll(workspace.path)
+            if (!ok) return { success: false, result: '暂存失败（git add -A）', error: 'Failed to stage changes' }
+        } else {
+            const status = await gitService.getStatus(workspace.path)
+            if (!status) return { success: false, result: '无法读取仓库状态', error: 'Failed to read git status' }
+            for (const change of status.unstaged) {
+                const ok = await gitService.stageFile(change.path, workspace.path)
+                if (!ok) {
+                    return { success: false, result: `暂存失败: ${change.path}`, error: `Failed to stage ${change.path}` }
+                }
+            }
+        }
+
+        // 2. 提交前确认确实有内容 —— 否则把 "nothing to commit" 当成失败原因，而非系统错误
+        if (!amend) {
+            const stagedStatus = await gitService.getStatus(workspace.path)
+            if (stagedStatus && stagedStatus.staged.length === 0) {
+                return {
+                    success: false,
+                    result: '没有已暂存的变更，无法提交。请先用 git_diff 确认改动，并核对 files 路径是否正确。',
+                    error: 'Nothing staged to commit',
+                }
+            }
+        }
+
+        const result = amend
+            ? await gitService.commitAmend(message, workspace.path)
+            : await gitService.commit(message, workspace.path)
+
+        if (!result.success) {
+            return { success: false, result: result.error || '提交失败', error: result.error || 'Commit failed' }
+        }
+
+        const head = await gitService.getRecentCommits(1, workspace.path)
+        const headCommit = head[0]
+
+        // 3. 合规场景（legal / medical）自动补一次审计封存：
+        //    这两个场景的提交必须留下可校验的轨迹，否则"提交了却没留痕"就是合规缺口。
+        //    封存失败不翻转提交的成功状态 —— 提交本身已落库，只把原因如实说明。
+        let auditNote = ''
+        if (gitService.isAuditTrailRequired()) {
+            const auditEnabled = useStore.getState().editorConfig?.git?.auditSealEnabled !== false
+            if (!auditEnabled) {
+                auditNote = '\n注意：当前场景要求审计留痕，但「设置 → Git」中已关闭「允许 AI 封存审计轨迹」，本次未打审计 tag。'
+            } else {
+                const seal = await gitService.sealAuditTrail(
+                    { reason: `auto-seal after ${headCommit?.shortHash ?? 'commit'}` },
+                    workspace.path,
+                )
+                auditNote = seal.success && seal.tag
+                    ? `\n已按场景要求自动封存审计 tag: ${seal.tag}`
+                    : `\n自动审计封存未完成：${seal.error || '未知原因'}`
+            }
+        }
+
+        return {
+            success: true,
+            result: `已提交: ${headCommit ? `${headCommit.shortHash} ${headCommit.message}` : message}${auditNote}`,
+            meta: { hash: headCommit?.hash, message },
+        }
+    },
+
+    async git_branch(args, ctx) {
+        const workspace = await resolveGitWorkspace(ctx, 'write')
+        if (!workspace.ok) return workspace.result
+
+        const action = typeof args.action === 'string' ? args.action : ''
+        const name = typeof args.name === 'string' ? args.name.trim() : ''
+        const newName = typeof args.new_name === 'string' ? args.new_name.trim() : ''
+
+        switch (action) {
+            case 'list': {
+                const branches = await gitService.getBranches(workspace.path)
+                if (branches.length === 0) {
+                    return { success: true, result: '（无分支信息，可能是尚未提交的空仓库）', meta: { count: 0 } }
+                }
+                const lines = branches.map((b) => {
+                    const marker = b.current ? '* ' : '  '
+                    const upstream = b.upstream ? ` → ${b.upstream}` : ''
+                    const ab = b.ahead || b.behind ? ` (ahead ${b.ahead ?? 0}, behind ${b.behind ?? 0})` : ''
+                    return `${marker}${b.name}${b.remote ? ' [remote]' : ''}${upstream}${ab}`
+                })
+                return { success: true, result: lines.join('\n'), meta: { count: branches.length } }
+            }
+
+            case 'create': {
+                if (!name) return { success: false, result: '', error: 'name is required for create' }
+                const startPoint = typeof args.start_point === 'string' ? args.start_point.trim() : ''
+                const created = await gitService.createBranch(name, startPoint || undefined, workspace.path)
+                if (!created.success) {
+                    return { success: false, result: created.error || '创建分支失败', error: created.error }
+                }
+                let text = `已创建分支 ${name}${startPoint ? `（基于 ${startPoint}）` : ''}`
+                const validation = gitService.validateBranchName(name)
+                if (!validation.valid && validation.suggestion) {
+                    text += `\n提示：当前场景建议分支命名满足 ${validation.suggestion}`
+                }
+                if (args.switch === true) {
+                    const switched = await gitService.checkoutBranch(name, workspace.path)
+                    if (!switched.success) {
+                        return {
+                            success: false,
+                            result: `${text}，但切换失败: ${switched.error}`,
+                            error: switched.error,
+                        }
+                    }
+                    text += '，并已切换'
+                }
+                return { success: true, result: text }
+            }
+
+            case 'switch': {
+                if (!name) return { success: false, result: '', error: 'name is required for switch' }
+                const switched = await gitService.checkoutBranch(name, workspace.path)
+                return switched.success
+                    ? { success: true, result: `已切换到分支 ${name}` }
+                    : { success: false, result: switched.error || '切换分支失败', error: switched.error }
+            }
+
+            case 'rename': {
+                if (!name || !newName) {
+                    return { success: false, result: '', error: 'name and new_name are required for rename' }
+                }
+                const renamed = await gitService.renameBranch(name, newName, workspace.path)
+                return renamed.success
+                    ? { success: true, result: `已将 ${name} 重命名为 ${newName}` }
+                    : { success: false, result: renamed.error || '重命名失败', error: renamed.error }
+            }
+
+            case 'merge': {
+                if (!name) return { success: false, result: '', error: 'name is required for merge' }
+                const merged = await gitService.mergeBranch(name, workspace.path)
+                if (merged.success) return { success: true, result: `已合并 ${name}` }
+                if (merged.conflicts && merged.conflicts.length > 0) {
+                    return {
+                        success: false,
+                        result: `合并 ${name} 产生冲突，需人工解决：\n${merged.conflicts.map((f) => `  U ${f}`).join('\n')}`,
+                        error: 'Merge conflicts',
+                        meta: { conflicts: merged.conflicts },
+                    }
+                }
+                return { success: false, result: merged.error || '合并失败', error: merged.error }
+            }
+
+            case 'delete': {
+                if (!name) return { success: false, result: '', error: 'name is required for delete' }
+                const force = args.force === true
+                const deleted = await gitService.deleteBranch(name, force, workspace.path)
+                return deleted.success
+                    ? { success: true, result: `已删除分支 ${name}${force ? '（强制）' : ''}` }
+                    : { success: false, result: deleted.error || '删除分支失败', error: deleted.error }
+            }
+
+            default:
+                return {
+                    success: false,
+                    result: '',
+                    error: `Unknown action: "${action}". Valid actions: list | create | switch | rename | merge | delete`,
+                }
+        }
+    },
+
+    async git_sync(args, ctx) {
+        const workspace = await resolveGitWorkspace(ctx, 'sync')
+        if (!workspace.ok) return workspace.result
+
+        const action = typeof args.action === 'string' ? args.action : ''
+        const remote = typeof args.remote === 'string' ? args.remote.trim() : ''
+        const branch = typeof args.branch === 'string' ? args.branch.trim() : ''
+
+        // 网络命令可能弹出凭证输入框；用户取消时给出明确、不可重试的提示
+        const failure = (result: { error?: string; cancelled?: boolean }, label: string): ToolExecutionResult => {
+            if (result.cancelled) {
+                return {
+                    success: false,
+                    result: `用户取消了 ${label} 的凭证输入，操作已中止。不要重复尝试同样的命令；如需继续，请先请用户确认凭证或远程仓库权限。`,
+                    error: 'Authentication cancelled by user',
+                }
+            }
+            return {
+                success: false,
+                result: `${label} 失败: ${result.error || '未知错误'}`,
+                error: result.error || `${label} failed`,
+            }
+        }
+
+        switch (action) {
+            case 'fetch': {
+                const result = await gitService.fetch(workspace.path)
+                return result.success
+                    ? { success: true, result: 'fetch 完成：远程引用已更新（工作区文件未改动）' }
+                    : failure(result, 'git fetch')
+            }
+
+            case 'pull': {
+                const result = await gitService.pullBranch({ remote, branch }, workspace.path)
+                return result.success
+                    ? { success: true, result: `pull 完成${remote || branch ? `（${[remote, branch].filter(Boolean).join(' ')}）` : ''}` }
+                    : failure(result, 'git pull')
+            }
+
+            case 'push': {
+                const result = await gitService.pushBranch(
+                    {
+                        remote,
+                        branch,
+                        setUpstream: args.set_upstream === true,
+                        force: args.force === true,
+                    },
+                    workspace.path,
+                )
+                return result.success
+                    ? { success: true, result: 'push 完成' }
+                    : failure(result, args.force === true ? 'git push --force-with-lease' : 'git push')
+            }
+
+            case 'clone': {
+                const url = typeof args.url === 'string' ? args.url.trim() : ''
+                const directory = typeof args.directory === 'string' ? args.directory.trim() : ''
+                if (!url || !directory) {
+                    return { success: false, result: '', error: 'url and directory are required for clone' }
+                }
+                const result = await gitService.clone(url, directory, workspace.path)
+                return result.success
+                    ? { success: true, result: `已克隆到 ${directory}` }
+                    : failure(result, `git clone ${url}`)
+            }
+
+            default:
+                return {
+                    success: false,
+                    result: '',
+                    error: `Unknown action: "${action}". Valid actions: pull | push | fetch | clone`,
+                }
+        }
+    },
+
+    // ===== 链接工作树（并行隔离）=====
+
+    async git_worktree(args, ctx) {
+        const workspace = await resolveGitWorkspace(ctx, 'worktree')
+        if (!workspace.ok) return workspace.result
+
+        const action = typeof args.action === 'string' && args.action ? args.action : 'list'
+
+        switch (action) {
+            case 'list': {
+                const worktrees = await gitService.listWorktrees(workspace.path)
+                if (worktrees.length === 0) {
+                    return {
+                        success: true,
+                        result: '未读取到工作树信息（仓库可能尚无可用记录）。',
+                        meta: { count: 0 },
+                    }
+                }
+
+                const lines: string[] = []
+                for (const worktree of worktrees) {
+                    const kind = worktree.isMain ? '主工作树' : '链接工作树'
+                    const branch = worktree.branch || (worktree.detached ? '(detached HEAD)' : '(未知)')
+                    const flags = [
+                        worktree.locked ? 'locked' : '',
+                        worktree.prunable ? 'prunable（目录已失效，可 prune）' : '',
+                    ].filter(Boolean)
+
+                    lines.push(`[${kind}] ${worktree.path}`)
+                    lines.push(
+                        `    分支: ${branch}    HEAD: ${(worktree.head || '').slice(0, 8) || '-'}` +
+                        (flags.length ? `    ${flags.join(' / ')}` : ''),
+                    )
+                }
+
+                const linked = worktrees.filter((worktree) => !worktree.isMain).length
+                lines.push('', `共 ${worktrees.length} 个工作树（链接工作树 ${linked} 个）`)
+                if (linked > 0) {
+                    lines.push('提示：在链接工作树中作业时，文件工具路径与 run_command 的 cwd 都要指向该目录。')
+                }
+
+                return { success: true, result: lines.join('\n'), meta: { count: worktrees.length, linked } }
+            }
+
+            case 'add': {
+                const resolved = resolveWorktreePath(
+                    typeof args.path === 'string' ? args.path : '',
+                    workspace.path,
+                )
+                if (!resolved.ok) {
+                    return {
+                        success: false,
+                        result: `path 不合法：${resolved.error}`,
+                        error: resolved.error,
+                    }
+                }
+
+                const created = await gitService.addWorktree(
+                    {
+                        path: resolved.path,
+                        branch: typeof args.branch === 'string' ? args.branch.trim() : '',
+                        createBranch: args.create_branch === true,
+                        startPoint: typeof args.start_point === 'string' ? args.start_point.trim() : '',
+                        force: args.force === true,
+                    },
+                    workspace.path,
+                )
+
+                if (!created.success) {
+                    return {
+                        success: false,
+                        result: `创建 worktree 失败：${created.error || '未知错误'}`,
+                        error: created.error,
+                    }
+                }
+
+                return {
+                    success: true,
+                    result: [
+                        `已创建链接工作树：${resolved.path}`,
+                        `检出分支：${created.branch || '(当前提交，detached HEAD)'}`,
+                        '',
+                        '后续作业必须指向该目录：',
+                        `- 文件工具使用该目录下的路径（${resolved.path}/…）`,
+                        '- run_command 使用 cwd 参数指向该目录',
+                        '任务结束后可用 git_worktree action="remove" 清理。',
+                    ].join('\n'),
+                    meta: { path: resolved.path, branch: created.branch },
+                }
+            }
+
+            case 'remove': {
+                const target = typeof args.path === 'string' ? args.path.trim() : ''
+                if (!target) {
+                    return { success: false, result: '', error: 'path is required for remove' }
+                }
+
+                const removed = await gitService.removeWorktree(target, args.force === true, workspace.path)
+                return removed.success
+                    ? { success: true, result: `已删除链接工作树 ${target}` }
+                    : {
+                        success: false,
+                        result: `删除 worktree 失败：${removed.error || '未知错误'}`,
+                        error: removed.error,
+                    }
+            }
+
+            case 'prune': {
+                const pruned = await gitService.pruneWorktrees(workspace.path)
+                return pruned.success
+                    ? { success: true, result: '已清理失效的工作树记录' }
+                    : { success: false, result: `prune 失败：${pruned.error || '未知错误'}`, error: pruned.error }
+            }
+
+            default:
+                return {
+                    success: false,
+                    result: '',
+                    error: `Unknown action: "${action}". Valid actions: list | add | remove | prune`,
+                }
+        }
+    },
+
+    // ===== 审计轨迹封存（合规场景）=====
+
+    async git_audit(args, ctx) {
+        const workspace = await resolveGitWorkspace(ctx, 'audit')
+        if (!workspace.ok) return workspace.result
+
+        const action = typeof args.action === 'string' && args.action ? args.action : 'seal'
+
+        switch (action) {
+            case 'seal': {
+                const result = await gitService.sealAuditTrail(
+                    {
+                        reason: typeof args.reason === 'string' ? args.reason.trim() : '',
+                        tag: typeof args.tag === 'string' ? args.tag.trim() : '',
+                        requireClean: args.require_clean === true,
+                    },
+                    workspace.path,
+                )
+
+                if (!result.success) {
+                    // 提交已完成但打 tag 失败：明确告知不要重复提交
+                    const partial = result.commitShort
+                        ? `（提交 ${result.commitShort} 已落库，请勿重复提交，只需补打 tag）`
+                        : ''
+                    return {
+                        success: false,
+                        result: `审计封存失败：${result.error || '未知错误'}${partial}`,
+                        error: result.error,
+                        meta: { commit: result.commitHash },
+                    }
+                }
+
+                return {
+                    success: true,
+                    result: [
+                        '审计封存完成',
+                        `- 审计 tag：${result.tag}`,
+                        `- 封存提交：${result.commitShort}`,
+                        `- 一并提交的变更：${result.committed ?? 0} 个`,
+                        `- 封存时间：${result.sealedAt}`,
+                        '',
+                        '该标签为带注记标签（注记内容参与 tag 对象哈希），事后不可静默改写；' +
+                        '可用 git_audit action="verify" 校验其完整性。',
+                    ].join('\n'),
+                    meta: { tag: result.tag, commit: result.commitHash },
+                }
+            }
+
+            case 'list': {
+                const seals = await gitService.listAuditSeals(workspace.path)
+                if (seals.length === 0) {
+                    return { success: true, result: '（尚无审计封存记录）', meta: { count: 0 } }
+                }
+
+                const shown = seals.slice(0, 50).map((seal) =>
+                    `- ${seal.name}  ${seal.hash}${seal.date ? `  ${seal.date}` : ''}`,
+                )
+                if (seals.length > 50) shown.push(`... 另有 ${seals.length - 50} 条`)
+
+                return { success: true, result: shown.join('\n'), meta: { count: seals.length } }
+            }
+
+            case 'verify': {
+                const tag = typeof args.tag === 'string' ? args.tag.trim() : ''
+                if (!tag) {
+                    return { success: false, result: '', error: 'tag is required for verify' }
+                }
+
+                const verified = await gitService.verifyAuditSeal(tag, workspace.path)
+                return {
+                    success: verified.valid,
+                    result: verified.detail,
+                    error: verified.valid ? undefined : 'Audit seal verification failed',
+                }
+            }
+
+            default:
+                return {
+                    success: false,
+                    result: '',
+                    error: `Unknown action: "${action}". Valid actions: seal | list | verify`,
+                }
         }
     },
 

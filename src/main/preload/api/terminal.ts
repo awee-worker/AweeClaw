@@ -96,6 +96,35 @@ export function createTerminalApi() {
     }) => invoke('shell:executeSecure')(request),
 
     // ── Git ──
-    gitExecSecure: (args: string[], cwd: string) => invoke('git:execSecure')(args, cwd),
+    /**
+     * 安全执行 git 命令
+     *
+     * options.credential 用于携带凭证上下文：
+     * - `{ useStored: true }`（默认）→ 主进程用已存凭证（askpass 注入）
+     * - `{ username, secret }` → 用户在弹出的凭证输入框中一次性填写的凭证
+     * - `{ host }` → 指定目标主机，跳过主进程自动解析
+     */
+    gitExecSecure: (
+      args: string[],
+      cwd: string,
+      options?: {
+        credential?: { host?: string; username?: string; secret?: string; useStored?: boolean }
+        timeoutMs?: number
+        noInteractive?: boolean
+      },
+    ) => invoke('git:execSecure')(args, cwd, options),
+
+    // ── Git 凭证管理（密钥加密落盘，永不回传明文）──
+    gitCredentialList: () => invoke('git:credential:list')(),
+    gitCredentialSave: (input: {
+      host: string
+      username: string
+      secret: string
+      remember?: boolean
+      protocol?: 'https' | 'http' | 'ssh'
+    }) => invoke('git:credential:save')(input),
+    gitCredentialRemove: (host: string) => invoke('git:credential:remove')(host),
+    gitCredentialClear: () => invoke('git:credential:clear')(),
+    gitCredentialHas: (host: string) => invoke('git:credential:has')(host),
   }
 }

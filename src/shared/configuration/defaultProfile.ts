@@ -93,6 +93,19 @@ export const EDITOR_DEFAULTS = {
 
 export const GIT_DEFAULTS = {
   autoRefresh: true,
+  // 默认不在打开工作区时自动 fetch：网络慢 / 需要凭证时会造成启动卡顿与弹窗打扰
+  autoFetchOnOpen: false,
+  // AI 写仓库默认允许（审批门禁仍由 approvalType='terminal' 把关），用户可整体关闭
+  aiWriteEnabled: true,
+  // AI 远程同步默认允许（同理由审批门禁把关）
+  aiSyncEnabled: true,
+  // AI worktree 隔离默认关闭：会在工作区同级目录新建工作目录，属于"有副作用"的重操作，
+  // 需要用户明确知晓后才开启（开启后 AI 方可创建 / 清理隔离工作区）
+  aiWorktreeEnabled: false,
+  // 审计封存默认允许：仅在 AI 显式调用 git_audit 或合规场景触发时执行，不会自行提交
+  auditSealEnabled: true,
+  // 凭证弹窗默认勾选「记住」：与主流 Git 客户端一致，凭证由 safeStorage 加密存储
+  rememberCredentials: true,
 } as const
 
 // ============================================

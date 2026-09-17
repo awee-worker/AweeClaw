@@ -145,7 +145,20 @@ export interface TerminalConfig {
 }
 
 export interface GitConfig {
+  /** 版本控制状态自动刷新（文件变更 / 窗口聚焦时重读 git status） */
   autoRefresh: boolean
+  /** 打开工作区时静默执行 git fetch（有远程仓库时；失败不打扰用户） */
+  autoFetchOnOpen: boolean
+  /** 允许 AI 使用 Git 写操作（git_commit / git_branch） */
+  aiWriteEnabled: boolean
+  /** 允许 AI 使用远程同步操作（git_sync：pull / push / fetch / clone） */
+  aiSyncEnabled: boolean
+  /** 允许 AI 使用 worktree 隔离（git_worktree：并行任务各占独立工作目录，互不污染） */
+  aiWorktreeEnabled: boolean
+  /** 允许 AI 封存审计轨迹（git_audit：合规场景提交并打审计 tag，形成可追溯记录） */
+  auditSealEnabled: boolean
+  /** 凭证弹窗中「记住凭证」的默认勾选状态 */
+  rememberCredentials: boolean
 }
 
 export interface LspConfig {

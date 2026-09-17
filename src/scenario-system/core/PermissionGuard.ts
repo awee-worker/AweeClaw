@@ -40,6 +40,17 @@ const TOOL_PERMISSION_MAP: Record<string, ScenarioPermission> = {
   read_terminal_output: 'terminal:execute',
   send_terminal_input: 'terminal:execute',
   stop_terminal: 'terminal:execute',
+  // Git：只读查询按文件系统读授权（只读仓库不写盘）；
+  // 提交 / 分支 / 远程同步属于仓库写操作，与终端同级授权
+  git_status: 'filesystem:read',
+  git_diff: 'filesystem:read',
+  git_log: 'filesystem:read',
+  git_commit: 'terminal:execute',
+  git_branch: 'terminal:execute',
+  git_sync: 'terminal:execute',
+  // 隔离工作区会在工作区同级目录新建工作目录，审计封存会提交并打 tag —— 均与终端同级
+  git_worktree: 'terminal:execute',
+  git_audit: 'terminal:execute',
   // 网络
   web_search: 'network:request',
   read_url: 'network:request',

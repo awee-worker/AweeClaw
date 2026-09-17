@@ -1,5 +1,5 @@
 import { lazy, Suspense, useMemo, useCallback, useEffect, useSyncExternalStore, useState } from 'react'
-import { Cpu, Settings2, Shield, Monitor, Plug, Brain, FileText, Zap, X, Palette, Radio, RadioTower, Eye, Search, Mail, Mic, MonitorSmartphone, ArrowLeft, ScanEye, Activity, Network, Cable, Sparkles, Puzzle, Layers, Bot, Smile, Coffee, Box, Send, Lock } from 'lucide-react'
+import { Cpu, Settings2, Shield, Monitor, Plug, Brain, FileText, Zap, X, Palette, Radio, RadioTower, Eye, Search, Mail, Mic, MonitorSmartphone, ArrowLeft, ScanEye, Activity, Network, Cable, Sparkles, Puzzle, Layers, Bot, Smile, Coffee, Box, Send, Lock, GitBranch } from 'lucide-react'
 import { PROVIDERS } from '@configuration/aiProviders'
 import { t, type Language } from '@renderer/i18n'
 import { globalDecide as globalConfirm } from '@components/foundation/DecisionOverlay'
@@ -130,7 +130,11 @@ const CharacterCardSettings = lazy(() =>
 )
 
 const EmotionSettings = lazy(() =>
-  import('./tabs/EmotionSettings').then(m => ({ default: m.EmotionSettings })),
+    import('./tabs/EmotionSettings').then(m => ({ default: m.EmotionSettings })),
+)
+
+const GitSettingsPanel = lazy(() =>
+    import('./tabs/GitSettingsPanel').then(m => ({ default: m.GitSettingsPanel })),
 )
 
 function SettingsTabFallback({ language }: { language: Language }) {
@@ -234,7 +238,8 @@ export default function PreferencesDialog({ embedded = false, pendingNewAgentId 
         { id: 'provider', label: t('settings.provider', language as Language), icon: <Cpu className="w-4 h-4" /> },
         { id: 'agent', label: t('settings.agent', language as Language), icon: <Settings2 className="w-4 h-4" /> },
         { id: 'appearance', label: t('settings.appearance', language as Language), icon: <Palette className="w-4 h-4" /> },
-        { id: 'search', label: t('settings.searchEngine', language as Language), icon: <Search className="w-4 h-4" /> },
+            { id: 'search', label: t('settings.searchEngine', language as Language), icon: <Search className="w-4 h-4" /> },
+            { id: 'git', label: t('settings.git', language as Language), icon: <GitBranch className="w-4 h-4" /> },
         { id: 'voice', label: t('settings.voiceSettings', language as Language), icon: <Mic className="w-4 h-4" /> },
         { id: 'local-voice', label: language === 'zh' ? '本地语音' : 'Local Voice', icon: <Mic className="w-4 h-4" /> },
         { id: 'vision', label: t('settings.visionSettings', language as Language), icon: <ScanEye className="w-4 h-4" /> },
@@ -387,6 +392,22 @@ export default function PreferencesDialog({ embedded = false, pendingNewAgentId 
                         webSearchConfig={state.localWebSearchConfig}
                         setWebSearchConfig={(config) => dispatch({ type: 'SET_LOCAL_WEB_SEARCH_CONFIG', config })}
                         language={language}
+                    />
+                )
+            case 'git':
+                return (
+                    <GitSettingsPanel
+                        language={language}
+                        settings={state.advancedEditorConfig.git}
+                        setSettings={(patch) =>
+                            dispatch({
+                                type: 'SET_ADVANCED_EDITOR_CONFIG',
+                                config: {
+                                    ...state.advancedEditorConfig,
+                                    git: { ...state.advancedEditorConfig.git, ...patch },
+                                },
+                            })
+                        }
                     />
                 )
             case 'rules':
@@ -660,7 +681,7 @@ const SCENARIO_SETTINGS_PANEL_POLICIES: Record<ScenarioDomain, ScenarioSettingsP
   /** 法律场景：显示合规设置，隐藏渠道设置，只读模式 */
   legal: {
     domain: 'legal',
-    visibleTabs: ['model', 'agent', 'security', 'compliance', 'memory', 'rules'],
+    visibleTabs: ['model', 'agent', 'security', 'compliance', 'memory', 'rules', 'git'],
     hiddenTabs: ['channel', 'cloud', 'appearance'],
     showScenarioFilter: true,
     showAppearanceSettings: false,
@@ -674,7 +695,7 @@ const SCENARIO_SETTINGS_PANEL_POLICIES: Record<ScenarioDomain, ScenarioSettingsP
   /** 医疗场景：显示合规设置，隐藏渠道和云设置，部分只读 */
   medical: {
     domain: 'medical',
-    visibleTabs: ['model', 'agent', 'security', 'compliance', 'memory'],
+    visibleTabs: ['model', 'agent', 'security', 'compliance', 'memory', 'git'],
     hiddenTabs: ['channel', 'cloud', 'appearance', 'rules'],
     showScenarioFilter: true,
     showAppearanceSettings: false,

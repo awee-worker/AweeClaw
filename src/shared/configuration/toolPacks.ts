@@ -80,6 +80,16 @@ const CODE_TOOL_PACK: ToolPack = {
     'read_terminal_output',
     'send_terminal_input',
     'stop_terminal',
+    // Git（工作区仓库操作，网络命令自动处理凭证）
+    'git_status',
+    'git_diff',
+    'git_log',
+    'git_commit',
+    'git_branch',
+    'git_sync',
+    // Git 隔离与审计（worktree 并行隔离 / 合规审计封存）
+    'git_worktree',
+    'git_audit',
     // 代码智能
     'get_lint_errors',
     'find_references',

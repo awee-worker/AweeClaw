@@ -1849,9 +1849,45 @@ export interface ElectronAPI {
   }>
 
   // Git
-  gitExecSecure: (args: string[], cwd: string) => Promise<{
+  /**
+   * 安全执行 git 命令
+   *
+   * 返回值中的 `authRequired` / `authHost` / `authHint` 用于驱动凭证弹窗：
+   * 主进程已禁用 git 的终端交互提示，缺少凭证时会立即失败并带上这些字段。
+   */
+  gitExecSecure: (args: string[], cwd: string, options?: {
+    credential?: { host?: string; username?: string; secret?: string; useStored?: boolean }
+    timeoutMs?: number
+    noInteractive?: boolean
+  }) => Promise<{
     success: boolean; stdout?: string; stderr?: string; exitCode?: number; error?: string
+    authRequired?: boolean; authHost?: string; authHint?: 'credential-required' | 'token-required'
   }>
+
+  /** 凭证列表（掩码，无明文） */
+  gitCredentialList: () => Promise<{
+    success: boolean
+    credentials?: Array<{
+      host: string
+      protocol: 'https' | 'http' | 'ssh'
+      username: string
+      secretMask: string
+      remember: boolean
+      updatedAt: number
+    }>
+    error?: string
+  }>
+  /** 保存凭证（remember=false 时仅本次会话有效） */
+  gitCredentialSave: (input: {
+    host: string
+    username: string
+    secret: string
+    remember?: boolean
+    protocol?: 'https' | 'http' | 'ssh'
+  }) => Promise<{ success: boolean; host?: string; username?: string; error?: string }>
+  gitCredentialRemove: (host: string) => Promise<{ success: boolean; error?: string }>
+  gitCredentialClear: () => Promise<{ success: boolean; error?: string }>
+  gitCredentialHas: (host: string) => Promise<{ success: boolean; has: boolean; error?: string }>
 
   // Security
   getPermissions: () => Promise<Record<string, string>>

@@ -22,7 +22,7 @@
 </p>
 
 <p align="center">
-  <a href="./README_CN.md">中文</a> | English
+  <a href="./README_CN.md">中文</a> | English | <a href="https://www.aweeclaw.com/" target="_blank">Website</a> | <a href="https://docs.aweeclaw.com/" target="_blank">Docs</a>
 </p>
 
 ---

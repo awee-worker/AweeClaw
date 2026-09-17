@@ -30,6 +30,8 @@ import type { StreamingEditState } from '@intelligence/providerTypes'
 import type { ThemeName } from '@store/slices/themeSlice'
 import { useEditorBreakpoints } from '@hooks/useEditorBreakpoints'
 import { consumePendingNavigation } from '@services/editorNavigator'
+import { GitLineHistoryPanel } from './GitLineHistoryPanel'
+import { subscribeGitLineHistory, type GitLineHistoryRequest } from './gitLineHistoryBus'
 import {
   DEFINITION_PICKER_EVENT,
   revealLocation,
@@ -173,6 +175,8 @@ export default function Editor() {
   const [tabContextMenu, setTabContextMenu] = useState<{ x: number; y: number; filePath: string } | null>(null)
   // 多定义 Quick Pick（符号存在多个定义时的选择弹窗）
   const [definitionPicker, setDefinitionPicker] = useState<{ items: DefinitionPickerRequest['items']; position: { x: number; y: number } } | null>(null)
+  // Git 行级历史面板（编辑器右键菜单触发）
+  const [lineHistoryRequest, setLineHistoryRequest] = useState<GitLineHistoryRequest | null>(null)
   const [markdownMode, setMarkdownMode] = useState<'edit' | 'preview' | 'split'>('preview')
   const [htmlMode, setHtmlMode] = useState<'edit' | 'preview' | 'split'>('edit')
 
@@ -197,6 +201,27 @@ export default function Editor() {
   const { saveFile, closeFileWithConfirm, closeOtherFiles, closeAllFiles, closeFilesToRight, triggerAutoSave } = useFileSave()
   const { isLinting, runLintCheck, clearLintErrors, errorCount, warningCount } = useLintCheck()
   const { setupCursorTracking } = useEditorEvents(editorRef)
+
+  // 编辑器右键菜单「行级历史」→ 打开面板（总线是模块级的，WorkspaceEditor 常驻故不会丢事件）
+  useEffect(() => subscribeGitLineHistory(setLineHistoryRequest), [])
+
+  /**
+   * 把历史版本的内容写回编辑器
+   *
+   * 走 Monaco model.setValue：一次写入即可让 onChange 同步 store、标脏并触发自动保存；
+   * 仅当模型不可用（目标不是当前文件）时才退回直接改 store 缓冲。
+   */
+  const handleLineHistoryRestore = useCallback((content: string) => {
+    const targetPath = lineHistoryRequest?.filePath
+    if (!targetPath) return
+
+    const model = editorRef.current?.getModel()
+    if (model && activeFilePath === targetPath) {
+      model.setValue(content)
+      return
+    }
+    updateFileContent(targetPath, content)
+  }, [lineHistoryRequest, activeFilePath, updateFileContent])
 
   const isPreviewDocument = Boolean(activeFile && (activeFile.kind === 'preview' || isPreviewDocumentPath(activeFile.path)))
   // v2.3：PPT 预览 Tab（主窗口内嵌模式）
@@ -811,6 +836,15 @@ export default function Editor() {
 
         {contextMenu && editorRef.current && (
           <EditorContextMenu x={contextMenu.x} y={contextMenu.y} editor={editorRef.current} onClose={() => setContextMenu(null)} />
+        )}
+
+        {/* Git 行级历史与还原（编辑器右键菜单 → 行级历史） */}
+        {lineHistoryRequest && (
+          <GitLineHistoryPanel
+            request={lineHistoryRequest}
+            onRestore={handleLineHistoryRestore}
+            onClose={() => setLineHistoryRequest(null)}
+          />
         )}
 
         {/* 多定义 Quick Pick：符号存在多个定义时由 F12 / Ctrl+Click 唤起 */}

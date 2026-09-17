@@ -608,7 +608,16 @@ function createGroupedAPI() {
 
     // Git
     git: {
-      execSecure: (args: string[], cwd: string) => raw.gitExecSecure(args, cwd),
+      execSecure: (
+        args: string[],
+        cwd: string,
+        options?: Parameters<typeof raw.gitExecSecure>[2],
+      ) => raw.gitExecSecure(args, cwd, options),
+      credentialList: () => raw.gitCredentialList(),
+      credentialSave: (input: Parameters<typeof raw.gitCredentialSave>[0]) => raw.gitCredentialSave(input),
+      credentialRemove: (host: string) => raw.gitCredentialRemove(host),
+      credentialClear: () => raw.gitCredentialClear(),
+      credentialHas: (host: string) => raw.gitCredentialHas(host),
     },
 
     // 安全管理

@@ -14,6 +14,7 @@ import { formatShortcut } from '@services/keybindingAdapter'
 import type { editor } from 'monaco-editor'
 import { logger } from '@shared/toolkit/LogEngine'
 import { navigateToDefinition, openReferencesPanel } from './hooks/useCodeActions'
+import { openGitLineHistory } from './gitLineHistoryBus'
 
 // 支持 Call Hierarchy 的语言（只有支持函数/方法调用的语言才有意义）
 const CALL_HIERARCHY_SUPPORTED_LANGUAGES = [
@@ -331,6 +332,18 @@ export default function EditorContextMenu({ x, y, editor, onClose }: EditorConte
     { id: 'comment', labelKey: 'ctxToggleComment', shortcut: formatShortcut('Ctrl+/'), action: () => runAction('editor.action.commentLine') },
     { id: 'delete-line', labelKey: 'ctxDeleteLine', shortcut: formatShortcut('Ctrl+Shift+K'), action: () => runAction('editor.action.deleteLines') },
     { id: 'select-next', labelKey: 'ctxSelectNext', shortcut: formatShortcut('Ctrl+D'), action: () => runAction('editor.action.addSelectionToNextFindMatch'), divider: true },
+    // Git：查看当前行的提交归属与文件历史，可直接还原到某个版本
+    {
+      id: 'git-line-history',
+      labelKey: 'ctxGitLineHistory',
+      divider: true,
+      action: () => {
+        const line = editor.getPosition()?.lineNumber
+        if (!activeFilePath || !line) return
+        openGitLineHistory(activeFilePath, line)
+        onClose()
+      },
+    },
     // 文件操作
     { 
       id: 'open-in-browser', 

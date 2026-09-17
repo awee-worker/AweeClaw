@@ -144,6 +144,15 @@ export const BUILTIN_TOOL_OPTIONS: BuiltinToolOption[] = [
   { value: 'read_terminal_output', labelKey: 'builder.config.tool.read_terminal_output', descKey: 'builder.config.tool.read_terminal_output.desc', group: 'exec' },
   { value: 'send_terminal_input', labelKey: 'builder.config.tool.send_terminal_input', descKey: 'builder.config.tool.send_terminal_input.desc', group: 'exec' },
   { value: 'stop_terminal', labelKey: 'builder.config.tool.stop_terminal', descKey: 'builder.config.tool.stop_terminal.desc', group: 'exec' },
+  // Git 版本控制
+  { value: 'git_status', labelKey: 'builder.config.tool.git_status', descKey: 'builder.config.tool.git_status.desc', group: 'exec' },
+  { value: 'git_diff', labelKey: 'builder.config.tool.git_diff', descKey: 'builder.config.tool.git_diff.desc', group: 'exec' },
+  { value: 'git_log', labelKey: 'builder.config.tool.git_log', descKey: 'builder.config.tool.git_log.desc', group: 'exec' },
+  { value: 'git_commit', labelKey: 'builder.config.tool.git_commit', descKey: 'builder.config.tool.git_commit.desc', group: 'exec' },
+  { value: 'git_branch', labelKey: 'builder.config.tool.git_branch', descKey: 'builder.config.tool.git_branch.desc', group: 'exec' },
+  { value: 'git_sync', labelKey: 'builder.config.tool.git_sync', descKey: 'builder.config.tool.git_sync.desc', group: 'exec' },
+  { value: 'git_worktree', labelKey: 'builder.config.tool.git_worktree', descKey: 'builder.config.tool.git_worktree.desc', group: 'exec' },
+  { value: 'git_audit', labelKey: 'builder.config.tool.git_audit', descKey: 'builder.config.tool.git_audit.desc', group: 'exec' },
   // 网络
   { value: 'web_search', labelKey: 'builder.config.tool.web_search', descKey: 'builder.config.tool.web_search.desc', group: 'web' },
   { value: 'read_url', labelKey: 'builder.config.tool.read_url', descKey: 'builder.config.tool.read_url.desc', group: 'web' },

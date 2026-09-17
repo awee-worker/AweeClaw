@@ -197,6 +197,33 @@ export async function bindWorkspaceRoot(shellState: WorkspaceShellState): Promis
 
   await workspaceStorageRuntime.bindPrimaryRoot(shellState.primaryRoot)
   gitService.setWorkspace(shellState.primaryRoot)
+
+  // 后台静默 fetch（受「设置 → Git → 打开工作区时自动 fetch」控制）
+  // 不 await：工作区加载不应被网络请求拖慢
+  void autoFetchOnOpen(shellState.primaryRoot)
+}
+
+/**
+ * 打开工作区时静默执行 git fetch
+ *
+ * 刻意使用 fetchQuiet（不弹凭证框）：
+ * 打开工作区属于被动行为，这里弹凭证框会打扰用户；
+ * 需要凭证的同步操作应由用户主动点击或 AI 工具显式发起。
+ */
+async function autoFetchOnOpen(workspacePath: string): Promise<void> {
+  try {
+    if (useStore.getState().editorConfig?.git?.autoFetchOnOpen !== true) return
+
+    const isRepo = await gitService.isGitRepo(workspacePath)
+    if (!isRepo) return
+
+    const remotes = await gitService.getRemotes(workspacePath)
+    if (remotes.length === 0) return
+
+    await gitService.fetchQuiet(workspacePath)
+  } catch {
+    // 静默失败：离线 / 无凭证 / 远程不可达都不应产生任何用户可见的打扰
+  }
 }
 
 /** 轻量级绑定 — 仅创建目录 + 设置 git 工作区，不初始化 SQLite */

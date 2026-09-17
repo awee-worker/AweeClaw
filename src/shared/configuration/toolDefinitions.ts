@@ -489,7 +489,319 @@ For long-running servers or watch tasks:
             command: { type: 'string', description: 'Shell command', required: true },
             cwd: { type: 'string', description: 'Working directory relative to workspace root (e.g., "packages/engine", NOT "./packages/engine")', },
             timeout: { type: 'number', description: 'Timeout seconds (0 = no limit).', default: 0 },
-            is_background: { type: 'boolean', description: 'Run in background as a visible UI terminal. Required for long-running processes like servers or watchers.', default: false },
+            is_background: { type: 'boolean', description: 'Run in background as a visible UI terminal. Required for long-running processes or watchers.', default: false },
+        },
+    },
+
+    // ===== Git 工具（工作区仓库操作；网络命令自动处理凭证） =====
+    git_status: {
+        name: 'git_status',
+        displayName: 'Git Status',
+        description: 'Inspect the git repository state of the workspace: current branch, upstream tracking (ahead/behind), staged / unstaged / untracked files, conflicts, and any in-progress operation (merge/rebase/cherry-pick). Call this BEFORE committing, syncing, or switching branches.',
+        detailedDescription: `Read-only git repository inspection.
+Returns a structured summary: branch, ahead/behind counts, staged & unstaged changes, untracked files, conflicts, and the ongoing operation (if any).
+- Use it to know the workspace baseline before editing or committing
+- Safe to call at any time: never modifies the repository`,
+        examples: [
+            'git_status',
+            'git_status include_stash=true',
+        ],
+        criticalRules: [
+            'Prefer git_status over run_command command="git status" — this tool parses the output into structured data and needs no shell escaping',
+            'If there are conflicts or an in-progress merge/rebase, resolve that state first instead of starting new work',
+        ],
+        category: 'terminal',
+        approvalType: 'none',
+        parallel: true,
+        concurrencyMode: 'parallel-safe',
+        resourceScope: ['repo:read'],
+        resultSemantics: 'text',
+        retryPolicy: { maxAttempts: 1 },
+        validationLevel: 'semantic',
+        requiresWorkspace: true,
+        enabled: true,
+        parameters: {
+            include_stash: { type: 'boolean', description: 'Also list stashed changes', default: false },
+        },
+    },
+
+    git_diff: {
+        name: 'git_diff',
+        displayName: 'Git Diff',
+        description: 'Read the diff of the workspace repository: uncommitted changes (working tree), staged changes (index), a specific commit, or a single file. Use it to review what changed before writing a commit message or explaining a change to the user.',
+        detailedDescription: `Read-only diff inspection.
+- target="working" (default): unstaged + untracked changes vs index
+- target="staged": what is about to be committed
+- target="commit": the changes introduced by \`commit\` (requires commit hash/ref)
+- target="branch": diff between current HEAD and \`branch\`
+Use \`path\` to narrow the diff to one file. Use \`stat\` for a compact file-level summary when the full diff would be too large.`,
+        examples: [
+            'git_diff',
+            'git_diff target="staged"',
+            'git_diff path="src/app.ts"',
+            'git_diff target="commit" commit="HEAD~1"',
+            'git_diff stat=true',
+        ],
+        criticalRules: [
+            'Prefer { stat: true } first when the diff is likely large, then read the specific file you need',
+            'Never paste raw diffs at the user without a short explanation of what changed and why it matters',
+        ],
+        category: 'terminal',
+        approvalType: 'none',
+        parallel: true,
+        concurrencyMode: 'parallel-safe',
+        resourceScope: ['repo:read'],
+        resultSemantics: 'text',
+        retryPolicy: { maxAttempts: 1 },
+        validationLevel: 'semantic',
+        requiresWorkspace: true,
+        enabled: true,
+        parameters: {
+            target: { type: 'string', description: 'What to diff: working tree, staged index, a commit, or against another branch', enum: ['working', 'staged', 'commit', 'branch'], default: 'working' },
+            path: { type: 'string', description: 'Limit the diff to this file or directory (workspace-relative)', },
+            commit: { type: 'string', description: 'Commit hash/ref to diff (required when target="commit", e.g. "HEAD~1")', },
+            branch: { type: 'string', description: 'Branch to compare against (required when target="branch")', },
+            stat: { type: 'boolean', description: 'Return only a compact +/- statistics summary instead of the full patch', default: false },
+        },
+    },
+
+    git_log: {
+        name: 'git_log',
+        displayName: 'Git Log',
+        description: 'Read the commit history of the workspace repository (or of a single file). Use it to learn project conventions, find when a change was introduced, or follow the commit-message style already used in the repository.',
+        detailedDescription: `Read-only history inspection.
+Returns recent commits (hash, short hash, author, date, message). Pass \`path\` to get the history of one file, \`branch\` to inspect another branch, \`grep\` to filter messages by keyword.`,
+        examples: [
+            'git_log',
+            'git_log limit=50',
+            'git_log path="src/main.ts"',
+            'git_log grep="fix"',
+        ],
+        criticalRules: [
+            'Read git_log before writing a commit message so the message style matches the repository',
+            'Prefer { path } over run_command command="git log -- <file>"',
+        ],
+        category: 'terminal',
+        approvalType: 'none',
+        parallel: true,
+        concurrencyMode: 'parallel-safe',
+        resourceScope: ['repo:read'],
+        resultSemantics: 'text',
+        retryPolicy: { maxAttempts: 1 },
+        validationLevel: 'semantic',
+        requiresWorkspace: true,
+        enabled: true,
+        parameters: {
+            limit: { type: 'number', description: 'Maximum number of commits to return', default: 20 },
+            path: { type: 'string', description: 'Return only the history of this file or directory' },
+            branch: { type: 'string', description: 'Branch or ref to read history from (default: current HEAD)' },
+            grep: { type: 'string', description: 'Only include commits whose message matches this keyword' },
+        },
+    },
+
+    git_commit: {
+        name: 'git_commit',
+        displayName: 'Git Commit',
+        description: 'Create a commit in the workspace repository. Stages the requested files (or all tracked changes) and commits them with the given message. Use after finishing a coherent unit of work.',
+        detailedDescription: `Commit changes.
+- Pass \`files\` to commit only specific paths; omit it to commit all tracked modifications
+- \`include_untracked=true\` also stages new (untracked) files, including those matching the current change set
+- The message is prefixed automatically for scenarios that require a commit prefix (e.g. legal/medical audit trails)
+- In compliance scenarios (legal / medical) an audit tag is sealed automatically right after the commit
+Write a concise, imperative commit message describing WHY the change was made (not a file-by-file list).`,
+        examples: [
+            'git_commit message="fix(auth): handle expired refresh token"',
+            'git_commit message="feat: add git credential dialog" files=["src/a.ts","src/b.ts"]',
+        ],
+        criticalRules: [
+            'Only commit work that is complete and verified — never commit broken code to hide it',
+            'Inspect changes with git_status / git_diff before committing',
+            'Never use run_command command="git commit ..." — this tool also records the checkpoint and applies scenario commit conventions',
+            'In legal / medical scenarios the commit is auto-sealed with an audit tag: report the tag name to the user so it can be referenced later',
+            'Do NOT add "Co-Authored-By" or tool signatures unless the user asks for them',
+        ],
+        category: 'terminal',
+        approvalType: 'terminal',
+        parallel: false,
+        concurrencyMode: 'serialized',
+        resourceScope: ['repo:write'],
+        resultSemantics: 'text',
+        retryPolicy: { maxAttempts: 1 },
+        validationLevel: 'semantic',
+        requiresWorkspace: true,
+        enabled: true,
+        parameters: {
+            message: { type: 'string', description: 'Commit message (imperative, concise, explains why)', required: true },
+            files: { type: 'array', description: 'Workspace-relative paths to stage and commit (default: all tracked changes)', items: { type: 'string', description: 'File path' } },
+            include_untracked: { type: 'boolean', description: 'Also stage untracked files when no explicit file list is given', default: false },
+            amend: { type: 'boolean', description: 'Amend the previous commit instead of creating a new one', default: false },
+        },
+    },
+
+    git_branch: {
+        name: 'git_branch',
+        displayName: 'Git Branch',
+        description: 'List, create, switch, rename, merge or delete branches in the workspace repository. Use a dedicated branch when starting a larger change so the user can review or discard it safely.',
+        detailedDescription: `Branch management.
+- action="list": show local + remote branches, current branch, upstream tracking
+- action="create": create \`name\` (optionally from \`start_point\`); pass switch=true to check it out immediately
+- action="switch": check out \`name\`
+- action="rename": rename \`name\` to \`new_name\`
+- action="merge": merge \`name\` into the current branch
+- action="delete": delete \`name\` (force=true uses -D for unmerged branches)`,
+        examples: [
+            'git_branch action="list"',
+            'git_branch action="create" name="feature/git-tools" switch=true',
+            'git_branch action="switch" name="main"',
+        ],
+        criticalRules: [
+            'Never delete or force-switch branches without the user explicitly asking for it',
+            'Check git_status first — switching branches with uncommitted work can lose or block changes',
+        ],
+        category: 'terminal',
+        approvalType: 'terminal',
+        parallel: false,
+        concurrencyMode: 'serialized',
+        resourceScope: ['repo:write'],
+        resultSemantics: 'text',
+        retryPolicy: { maxAttempts: 1 },
+        validationLevel: 'semantic',
+        requiresWorkspace: true,
+        enabled: true,
+        parameters: {
+            action: { type: 'string', description: 'Branch operation to perform', required: true, enum: ['list', 'create', 'switch', 'rename', 'merge', 'delete'] },
+            name: { type: 'string', description: 'Branch name (required for create/switch/rename/merge/delete)' },
+            new_name: { type: 'string', description: 'New branch name (rename only)' },
+            start_point: { type: 'string', description: 'Base ref when creating a branch (default: current HEAD)' },
+            switch: { type: 'boolean', description: 'Check out the branch right after creating it', default: false },
+            force: { type: 'boolean', description: 'Force delete an unmerged branch (delete only) — requires explicit user intent', default: false },
+        },
+    },
+
+    git_sync: {
+        name: 'git_sync',
+        displayName: 'Git Sync',
+        description: 'Synchronize with the remote repository: pull, push, fetch, or clone. Authentication is handled automatically — if the remote requires credentials that are missing or expired, the user is prompted with a username/password (or token) dialog, then the operation is retried.',
+        detailedDescription: `Remote synchronization.
+- action="pull": integrate the upstream branch into the current branch
+- action="push": publish local commits (set_upstream=true publishes a new branch with -u)
+- action="fetch": update remote-tracking refs without touching the working tree
+- action="clone": clone \`url\` into \`directory\`
+Credentials: reuse of stored credentials is automatic. When the remote asks for authentication, a credential dialog appears for the user; picking "remember" stores it encrypted for later use. Credentials never pass through the model.`,
+        examples: [
+            'git_sync action="fetch"',
+            'git_sync action="pull"',
+            'git_sync action="push" set_upstream=true',
+            'git_sync action="clone" url="https://github.com/user/repo.git" directory="repo"',
+        ],
+        criticalRules: [
+            'Never run force pushes unless the user explicitly requests it (and warn about rewriting shared history)',
+            'Pull BEFORE pushing when the branch is behind, to avoid a rejected push',
+            'If the user cancels the credential dialog, report it as cancelled — do not retry in a loop',
+            'Do NOT ask the user for their password in chat: the credential dialog collects it securely',
+        ],
+        category: 'terminal',
+        approvalType: 'terminal',
+        parallel: false,
+        concurrencyMode: 'serialized',
+        resourceScope: ['repo:network'],
+        resultSemantics: 'text',
+        retryPolicy: { maxAttempts: 1 },
+        validationLevel: 'semantic',
+        requiresWorkspace: true,
+        enabled: true,
+        parameters: {
+            action: { type: 'string', description: 'Sync operation to perform', required: true, enum: ['pull', 'push', 'fetch', 'clone'] },
+            remote: { type: 'string', description: 'Remote name (default: origin)' },
+            branch: { type: 'string', description: 'Branch to sync (default: current tracking branch)' },
+            url: { type: 'string', description: 'Repository URL (clone only)' },
+            directory: { type: 'string', description: 'Target directory for clone (workspace-relative)' },
+            set_upstream: { type: 'boolean', description: 'Publish the branch and set upstream (-u) when pushing', default: false },
+            force: { type: 'boolean', description: 'Force push with lease — only when the user explicitly asks', default: false },
+        },
+    },
+
+    git_worktree: {
+        name: 'git_worktree',
+        displayName: 'Git Worktree',
+        description: 'Manage linked working trees for PARALLEL ISOLATION: give a long-running or exploratory task its own working directory so it never collides with the user\'s current working tree. Use it when several tasks must touch the same repository at once, or when the user asks to work on a branch without disturbing their uncommitted changes.',
+        detailedDescription: `Linked worktree management (git worktree).
+- action="list" (default): list every working tree with its path, branch and HEAD
+- action="add": create a new working directory. \`path\` is resolved relative to the PARENT of the workspace (a sibling directory), so the repository itself stays clean; pass a workspace-relative name like "myrepo-experiment"
+- action="remove": delete a linked working tree (refuses when it has uncommitted changes; pass force=true only after confirming with the user)
+- action="prune": drop metadata of working trees whose directory was deleted manually
+
+Why it matters: file edits, \`run_command\` and builds inside a linked worktree cannot disturb the files the user has open. A branch can only be checked out in ONE worktree at a time, so use \`create_branch=true\` for a fresh branch instead of reusing the current one.`,
+        examples: [
+            'git_worktree',
+            'git_worktree action="add" path="myrepo-spike" create_branch=true branch="spike/parallel-task"',
+            'git_worktree action="add" path="myrepo-review" branch="feature/login"',
+            'git_worktree action="remove" path="myrepo-spike"',
+            'git_worktree action="prune"',
+        ],
+        criticalRules: [
+            'ALWAYS run the task inside the returned worktree path (use run_command cwd, and pass that path to file tools) — creating a worktree and then editing the main workspace defeats the purpose',
+            'A branch cannot be checked out in two worktrees: pass create_branch=true instead of reusing the branch already checked out in the main workspace',
+            'Prefer action="list" first when you are unsure what already exists',
+            'Never force-remove a worktree that still holds uncommitted work — ask the user first',
+        ],
+        category: 'terminal',
+        approvalType: 'terminal',
+        parallel: false,
+        concurrencyMode: 'serialized',
+        resourceScope: ['repo:write'],
+        resultSemantics: 'text',
+        retryPolicy: { maxAttempts: 1 },
+        validationLevel: 'semantic',
+        requiresWorkspace: true,
+        enabled: true,
+        parameters: {
+            action: { type: 'string', description: 'Worktree operation', enum: ['list', 'add', 'remove', 'prune'], default: 'list' },
+            path: { type: 'string', description: 'Working directory: a sibling name of the workspace (e.g. "myrepo-spike") for add; the path returned by list for remove' },
+            branch: { type: 'string', description: 'Branch to check out (add only). With create_branch=true this is the NEW branch name' },
+            create_branch: { type: 'boolean', description: 'Create the branch and check it out in the new worktree (-b)', default: false },
+            start_point: { type: 'string', description: 'Commit/branch to start the new branch from (add + create_branch only, default HEAD)' },
+            force: { type: 'boolean', description: 'Force the operation (--force). Only after the user explicitly confirms', default: false },
+        },
+    },
+
+    git_audit: {
+        name: 'git_audit',
+        displayName: 'Git Audit Seal',
+        description: 'Seal an immutable audit record of the current repository state: commit any pending changes and create an annotated audit tag pointing at the resulting commit. Use it for compliance-sensitive work (legal / medical / regulated document review) where a traceable, tamper-evident trail is required.',
+        detailedDescription: `Audit trail sealing.
+- action="seal": commit pending changes (if any), then create an annotated tag \`audit-<timestamp>\` on HEAD. The tag annotation records seal time, commit hash, changed-file count and the reason
+- action="list": list existing audit tags, newest first
+- action="verify": check that an audit tag is intact — annotated tags are content-addressed, so moving or re-pointing one breaks verification
+
+An annotated tag is the minimum sufficient guarantee: its message participates in the tag object\'s own hash, so the sealed commit cannot be silently rewritten and still pass verification.`,
+        examples: [
+            'git_audit action="seal" reason="合同条款审阅完成"',
+            'git_audit action="seal" tag="audit-contract-v2" reason="第二版定稿"',
+            'git_audit',
+            'git_audit action="verify" tag="audit-20260917-113425"',
+        ],
+        criticalRules: [
+            'Call seal only when the user asks for an auditable checkpoint, or when the active scenario is compliance-sensitive — it commits pending work',
+            'Never rewrite history (amend / rebase / tag move) after sealing: it invalidates the audit trail',
+            'Pass require_clean=true when the user wants the seal to cover ONLY already-committed state',
+            'After sealing, report the tag name to the user so it can be referenced later',
+        ],
+        category: 'terminal',
+        approvalType: 'terminal',
+        parallel: false,
+        concurrencyMode: 'serialized',
+        resourceScope: ['repo:write'],
+        resultSemantics: 'text',
+        retryPolicy: { maxAttempts: 1 },
+        validationLevel: 'semantic',
+        requiresWorkspace: true,
+        enabled: true,
+        parameters: {
+            action: { type: 'string', description: 'Audit operation', enum: ['seal', 'list', 'verify'], default: 'seal' },
+            reason: { type: 'string', description: 'Why this checkpoint is being sealed (written into the tag annotation)' },
+            tag: { type: 'string', description: 'Explicit tag name (seal / verify). Defaults to audit-<timestamp>' },
+            require_clean: { type: 'boolean', description: 'Refuse to seal when uncommitted changes exist (seal only)', default: false },
         },
     },
 

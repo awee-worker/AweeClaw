@@ -135,6 +135,27 @@ const CORE_TOOLS: string[] = [
   // Graph Runtime 动态建图（graphVersion=2 执行期可用，无活跃图时工具返回友好错误）
   'add_node',
   'add_edge',
+  // Git 只读工具（状态 / 差异 / 历史）：只读且无副作用，所有模式可用
+  'git_status',
+  'git_diff',
+  'git_log',
+]
+
+/**
+ * Git 写入类工具 - 仅 agent / plan 模式暴露
+ *
+ * chat 模式为「免审批」通道，若允许直接 commit / 切分支 / push，
+ * 用户在聊天里让 AI "帮我提交一下"就可能在没有审阅 diff 的情况下改到仓库，
+ * 因此这组工具只挂在 agent / plan 模式（其审批门禁由 approvalType='terminal' 驱动）。
+ */
+const GIT_WRITE_TOOLS: string[] = [
+  'git_commit',
+  'git_branch',
+  'git_sync',
+  // 链接工作树：会在工作区同级目录新建工作目录（有副作用的"重"操作）
+  'git_worktree',
+  // 审计封存：会提交未提交变更并打审计 tag
+  'git_audit',
 ]
 
 /** UI/UX 工具 - uiux-designer 角色专用 */
@@ -259,11 +280,21 @@ export const CAPABILITY_GROUPS: CapabilityGroupConfig[] = [
     id: 'terminal',
     name: '终端命令',
     nameEn: 'Terminal',
+    // Git 工具与终端同属「在工作区执行操作」能力：
+    // 归入既有组可保证已授权终端能力的用户无需回后台重新勾选即可使用
     tools: [
       'run_command',
       'read_terminal_output',
       'send_terminal_input',
       'stop_terminal',
+      'git_status',
+      'git_diff',
+      'git_log',
+      'git_commit',
+      'git_branch',
+      'git_sync',
+      'git_worktree',
+      'git_audit',
     ],
   },
   {
@@ -493,6 +524,13 @@ export function getToolsForContext(context: ToolLoadingContext): string[] {
     const allow = new Set(context.agentBuiltinTools)
     allow.add('extract_document')
     tools = new Set(Array.from(tools).filter((tool) => allow.has(tool)))
+  }
+
+  // 3.5 Git 写入类工具：仅 agent / plan 模式（chat 为免审批通道，不暴露写仓库能力）
+  if (context.mode !== 'chat') {
+    for (const tool of GIT_WRITE_TOOLS) {
+      tools.add(tool)
+    }
   }
 
   // 4. 场景工具（scene_tools_*）为“按需暴露”：

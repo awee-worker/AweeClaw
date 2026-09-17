@@ -19,6 +19,7 @@ import { ToastProvider, useToast, setGlobalToast } from '@components/foundation/
 import { MonitoringToastSubscriber } from '@components/foundation/MonitoringToastSubscriber'
 import { GlobalDecisionOverlay } from '@components/foundation/DecisionOverlay'
 import { GlobalPromptOverlay } from '@components/foundation/PromptOverlay'
+import { GlobalGitAuthOverlay } from '@components/foundation/GitAuthPrompt'
 import { CrashGuard as ErrorBoundary } from '@components/foundation/CrashGuard'
 import { GlobalErrorHandler } from '@components/foundation/AppErrorHandler'
 import GlobalToastContainer from '@components/foundation/AppToastContainer'
@@ -336,6 +337,8 @@ function AppContent() {
 
       <GlobalDecisionOverlay />
       <GlobalPromptOverlay />
+      {/* Git 凭证输入弹窗：push/pull/fetch/clone 与 AI 的 git_sync 工具共用 */}
+      <GlobalGitAuthOverlay />
       <GlobalToastContainer />
 
       {/* 全局悬浮执行状态面板：有项目任务执行时在右下角显示 */}

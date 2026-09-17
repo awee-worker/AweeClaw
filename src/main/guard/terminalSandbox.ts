@@ -36,6 +36,16 @@ import { normalizePipeTerminalInput } from './terminalInputFilter'
 export { normalizePipeTerminalInput }
 import { pythonManager } from '../modules/python-runtime'
 import { nodeManager } from '../modules/node-runtime'
+import { gitCredentialStore, normalizeHost } from '../modules/git-credential/GitCredentialStore'
+import { registerGitCredentialIpc } from '../modules/git-credential/GitCredentialIpc'
+import {
+  buildCredentialEnv,
+  buildPromptlessEnv,
+  detectAuthFailure,
+  extractUrlFromArgs,
+  requiresAuth,
+} from '../modules/git-credential/GitAskpass'
+import type { GitExecOptions, GitExecResponse } from '../modules/git-credential/types'
 
 
 interface SecureShellRequest {
@@ -233,7 +243,8 @@ interface SecurityCheckResult {
     command: string,
     args: string[],
     cwd: string,
-    timeout: number
+    timeout: number,
+    extraEnv?: Record<string, string>
   ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
     return new Promise((resolve, reject) => {
       // 使用 spawn 直接执行（不经过 shell），防止注入攻击
@@ -243,6 +254,9 @@ interface SecurityCheckResult {
         env: {
           ...process.env,
           PATH: process.env.PATH,
+          // 凭证类变量（GIT_ASKPASS / AWEE_GIT_* ）由 git 通道注入，
+          // 只有显式传入时才覆盖，默认行为不变
+          ...(extraEnv || {}),
         },
       })
 
@@ -266,6 +280,33 @@ interface SecurityCheckResult {
       })
     })
   }
+}
+
+/**
+ * 解析仓库 remote 的主机名（用于匹配已存凭证）
+ *
+ * 优先级：origin → 第一个 remote。解析失败返回空串，调用方降级为「无凭证」路径
+ * （此时若系统已配置 keychain helper，push 依然可以成功）。
+ */
+async function resolveRepoRemoteHost(cwd: string): Promise<string> {
+  try {
+    const { GitProcess } = require('dugite')
+    const origin = await GitProcess.exec(['remote', 'get-url', 'origin'], cwd)
+    const originUrl = origin.exitCode === 0 ? origin.stdout.trim() : ''
+    if (originUrl) return normalizeHost(originUrl)
+
+    const list = await GitProcess.exec(['remote'], cwd)
+    if (list.exitCode === 0) {
+      const firstRemote = list.stdout.split('\n').map((line: string) => line.trim()).filter(Boolean)[0]
+      if (firstRemote) {
+        const remote = await GitProcess.exec(['remote', 'get-url', firstRemote], cwd)
+        if (remote.exitCode === 0) return normalizeHost(remote.stdout.trim())
+      }
+    }
+  } catch {
+    // 非 git 仓库 / dugite 不可用 → 无 host，走无凭证路径
+  }
+  return ''
 }
 
 /**
@@ -407,18 +448,18 @@ export function registerSecureTerminalHandlers(
   /**
    * 安全的 Git 命令执行
    * 替代原来的 git:exec（移除 exec 拼接）
+   *
+   * 凭证能力（第 4 个参数 options）：
+   * - 网络命令（push/pull/fetch/clone/ls-remote）自动注入已存凭证（askpass 方式）
+   * - 认证失败时返回 `authRequired: true` + `authHost`，渲染层据此弹出账号密码输入框
+   * - `options.credential` 可携带用户在弹窗中一次性输入的凭证
    */
   safeIpcHandle('git:execSecure', async (
     event,
     args: string[],
-    cwd: string
-  ): Promise<{
-    success: boolean
-    stdout?: string
-    stderr?: string
-    exitCode?: number
-    error?: string
-  }> => {
+    cwd: string,
+    options?: GitExecOptions
+  ): Promise<GitExecResponse> => {
     // 优先使用请求来源窗口的工作区（支持多窗口隔离）
     const windowId = event.sender.id
     const windowRoots = getWindowWorkspace?.(windowId)
@@ -508,16 +549,77 @@ export function registerSecureTerminalHandlers(
       return { success: false, error: '用户拒绝执行Git命令' }
     }
 
+    // ── 凭证解析与注入 ──────────────────────────────────────
+    // 只对「可能触发认证」的子命令做处理，本地命令零开销、行为与改造前完全一致。
+    const execOptions: GitExecOptions = options || {}
+    const needsAuth = requiresAuth(args)
+    let credentialEnv: Record<string, string> = buildPromptlessEnv()
+    let credentialGlobalArgs: string[] = []
+    let authHost = execOptions.credential?.host
+      ? normalizeHost(execOptions.credential.host)
+      : ''
+
+    if (needsAuth) {
+      // host 解析优先级：显式传入 → 参数中的 URL（clone/ls-remote）→ 仓库 remote origin
+      if (!authHost) {
+        authHost = normalizeHost(extractUrlFromArgs(args) || '')
+      }
+      if (!authHost) {
+        authHost = await resolveRepoRemoteHost(cwd)
+      }
+
+      let resolvedCredential: { username: string; secret: string } | null = null
+      if (execOptions.credential?.username) {
+        // 用户在凭证弹窗中一次性输入的凭证（优先于已存凭证）
+        resolvedCredential = {
+          username: execOptions.credential.username,
+          secret: execOptions.credential.secret || '',
+        }
+      } else if (execOptions.credential?.useStored !== false && authHost) {
+        resolvedCredential = gitCredentialStore.resolve(authHost)
+      }
+
+      if (resolvedCredential?.username) {
+        const built = buildCredentialEnv(gitCredentialStore.getDataDir(), resolvedCredential)
+        if (built) {
+          credentialEnv = { ...credentialEnv, ...built.env }
+          credentialGlobalArgs = built.globalArgs
+        }
+      }
+    }
+
+    const execArgs = credentialGlobalArgs.length > 0 ? [...credentialGlobalArgs, ...args] : args
+
     try {
       // 使用 dugite（安全）
       const { GitProcess } = require('dugite')
-      const result = await GitProcess.exec(args, cwd)
+      const result = await GitProcess.exec(execArgs, cwd, { env: credentialEnv })
 
       securityManager.logOperation(OperationType.GIT_EXEC, fullCommand, true, {
         exitCode: result.exitCode,
       })
 
       if (result.exitCode !== 0) {
+        // 认证失败识别：把「缺少凭证」与真正的执行失败区分开，
+        // 前者返回 authRequired 让渲染层弹窗，而不是把 git 的英文报错直接抛给用户。
+        const failure = detectAuthFailure(result.stderr, result.stdout)
+        if (failure.authRequired) {
+          logger.security.info('[Git] Authentication required:', {
+            args,
+            host: failure.host || authHost,
+            hasStoredCredential: authHost ? gitCredentialStore.has(authHost) : false,
+          })
+          return {
+            success: false,
+            stdout: result.stdout,
+            stderr: result.stderr,
+            exitCode: result.exitCode,
+            authRequired: true,
+            authHost: failure.host || authHost || undefined,
+            authHint: failure.tokenRequired ? 'token-required' : 'credential-required',
+          }
+        }
+
         // 查询型命令（rev-parse --verify, status 等）exitCode 非零是正常的，不应记为 error
         const isQueryCommand = args.some(a => a === '--verify' || a === '--is-inside-work-tree')
         if (isQueryCommand) {
@@ -538,13 +640,32 @@ export function registerSecureTerminalHandlers(
 
       try {
         // 6. 安全回退：使用 spawn 而非 exec
-        const result = await SecureCommandParser.executeSecureCommand('git', args, cwd, 120000)
+        const result = await SecureCommandParser.executeSecureCommand(
+          'git',
+          execArgs,
+          cwd,
+          120000,
+          credentialEnv,
+        )
 
         securityManager.logOperation(OperationType.GIT_EXEC, fullCommand, true, {
           exitCode: result.exitCode,
         })
 
         if (result.exitCode !== 0) {
+          const failure = detectAuthFailure(result.stderr, result.stdout)
+          if (failure.authRequired) {
+            return {
+              success: false,
+              stdout: result.stdout,
+              stderr: result.stderr,
+              exitCode: result.exitCode,
+              authRequired: true,
+              authHost: failure.host || authHost || undefined,
+              authHint: failure.tokenRequired ? 'token-required' : 'credential-required',
+            }
+          }
+
           const isQueryCommand = args.some(a => a === '--verify' || a === '--is-inside-work-tree')
           if (isQueryCommand) {
             logger.security.debug('[Git] spawn query returned non-zero:', args)
@@ -570,6 +691,9 @@ export function registerSecureTerminalHandlers(
       }
     }
   })
+
+  // Git 凭证管理通道（与 git:execSecure 同域注册，内部自带幂等保护）
+  registerGitCredentialIpc()
 
   // ============ Interactive Terminal with node-pty ============
 
