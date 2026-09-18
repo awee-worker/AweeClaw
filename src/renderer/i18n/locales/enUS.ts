@@ -722,7 +722,9 @@ export const en = {
   'waitPhase.connecting': 'Connecting...',
   'waitPhase.building_context': 'Building context...',
   'waitPhase.compressing': 'Compressing history...',
-  'waitPhase.waiting_model': 'Thinking💭',
+  // This phase only means the request is out and no packet has arrived yet;
+  // "Thinking" is reserved for the reasoning-delta phase.
+  'waitPhase.waiting_model': 'Waiting for model response...',
   'waitPhase.elapsed': '{sec}s',
   'waitPhase.retrying': 'Connection lost, retry #{attempt}...',
   'waitPhase.rate_limited': 'Rate limited, cooling down...',

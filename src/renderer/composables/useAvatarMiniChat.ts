@@ -416,7 +416,8 @@ export function useAvatarMiniChat(
 
       setMessages((prev) => [...prev, userMsg])
       setStreaming(true)
-      setActivity({ text: '思考中...' })
+      // 此刻只是请求已发出、首包未到，模型还没开始输出，如实描述为等待响应
+      setActivity({ text: '等待模型响应...' })
 
       // 系统提示词：复用普通聊天的 buildAgentSystemPrompt，确保能力完全一致
       // （集成项目规则、记忆、知识库、技能、项目摘要、场景上下文等）

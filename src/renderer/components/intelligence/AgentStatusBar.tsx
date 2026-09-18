@@ -151,7 +151,9 @@ function resolveStreamLabel(
     case 'tool_awaiting':
       return t('statusBar.processing', language as any)
     default:
-      return t('statusBar.thinking', language as any)
+      // streamDetail 尚未产生（含 undefined）：请求已发出、首包未到，
+      // 模型还没有任何产出，此处如实描述为「等待模型响应」。
+      return t('waitPhase.waiting_model', language as any)
   }
 }
 

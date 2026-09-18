@@ -136,11 +136,12 @@ function LightweightMessageViewBase({
               hasReasoningBlock={hasReasoningBlock}
             />
           )}
-          {/* 兜底：流式中但未传入 streamPhase 时，显示基础「思考中」占位（避免完全无反馈） */}
+          {/* 兜底：流式中但未传入 streamPhase 时，显示基础等待占位（避免完全无反馈）。
+              此刻尚无任何 streamDetail，属于等待模型响应，不能写成「思考中」。 */}
           {messageIsStreaming && !streamPhase && !hasParts && !fallbackText.trim() && (
             <div className="flex items-center gap-1 text-text-muted text-[12px] py-1">
               <span className="inline-block w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-              {isZh ? '思考中...' : 'Thinking...'}
+              {isZh ? '等待模型响应...' : 'Waiting for model response...'}
             </div>
           )}
         </div>

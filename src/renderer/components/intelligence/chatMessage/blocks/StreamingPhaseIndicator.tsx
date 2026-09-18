@@ -1,6 +1,6 @@
 /**
  * 流式阶段指示器
- * 在等待响应或流式输出时显示当前状态（连接中、思考中、工具执行中等）
+ * 在等待响应或流式输出时显示当前状态（连接中、等待模型响应、思考中、工具执行中等）
  */
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { Loader2 } from 'lucide-react'
@@ -81,7 +81,9 @@ function StreamingPhaseIndicatorBase({
         case 'building_context': return t('waitPhase.building_context', language as any)
         case 'compressing': return t('waitPhase.compressing', language as any)
         case 'waiting_model': return t('waitPhase.waiting_model', language as any)
-        default: return t('statusBar.thinking', language as any)
+        // waitPhase 为 idle/undefined 时请求已经在路上，只是首包还没到，
+        // 属于「等待模型响应」而非模型正在推理 —— 不能用「思考中」描述。
+        default: return t('waitPhase.waiting_model', language as any)
       }
     }
     switch (streamDetail) {

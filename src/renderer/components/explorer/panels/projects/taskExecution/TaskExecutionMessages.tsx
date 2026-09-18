@@ -168,11 +168,12 @@ export function TaskExecutionMessages({
               <StreamingPhaseIndicator mode="waiting" {...streamPhase} />
             </div>
           )}
-          {/* 兜底：流式中但未传入 streamPhase（不应发生），保留基础占位避免无反馈 */}
+          {/* 兜底：流式中但未传入 streamPhase（不应发生），保留基础占位避免无反馈。
+              此时没有任何 streamDetail，属于等待模型响应而非模型思考中。 */}
           {isStreaming && !hasStreamingAssistant && !streamPhase && (
             <div className="flex items-center gap-1.5 px-4 py-2 text-text-muted text-[12px]">
               <span className="inline-block w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-              {isZh ? '思考中...' : 'Thinking...'}
+              {isZh ? '等待模型响应...' : 'Waiting for model response...'}
             </div>
           )}
         </div>

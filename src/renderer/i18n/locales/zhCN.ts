@@ -723,7 +723,9 @@ export const zh = {
   'waitPhase.connecting': '正在连接...',
   'waitPhase.building_context': '构建上下文...',
   'waitPhase.compressing': '压缩历史...',
-  'waitPhase.waiting_model': '思考冒泡中💭',
+  // 该阶段只代表请求已发出、首包未到达，模型尚未产出任何内容，
+  // 因此用「等待模型响应」而不是「思考中」——后者只有在收到推理增量后才成立。
+  'waitPhase.waiting_model': '等待模型响应...',
   'waitPhase.elapsed': '{sec}秒',
   'waitPhase.retrying': '连接中断，第{attempt}次重试...',
   'waitPhase.rate_limited': '速率限制，冷却中...',
