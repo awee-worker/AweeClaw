@@ -88,9 +88,14 @@ function StreamingPhaseIndicatorBase({
     }
     switch (streamDetail) {
       case 'reasoning': return hasReasoningBlock ? null : t('statusBar.thinking', language as any)
+      // 模型正在输出正文，不需要再挂状态徽章
+      case 'responding': return null
       case 'tool_executing': return t('statusBar.processing', language as any)
       case 'tool_awaiting': return t('statusBar.processing', language as any)
-      default: return null
+      // inline 模式下 streamDetail 为空，说明请求已发出、首包未到（也包括上一轮工具刚执行完、
+      // 下一轮请求在途的间隙）。模型此刻没有任何产出，属于等待响应而不是在推理，
+      // 因此如实显示「等待模型响应」，只有收到推理增量后才会变成「思考中」。
+      default: return t('waitPhase.waiting_model', language as any)
     }
   }, [mode, waitPhase, streamDetail, language, retryAttempt, isRetrying, hasReasoningBlock, retryCountdown])
 
@@ -103,10 +108,10 @@ function StreamingPhaseIndicatorBase({
   if (computedLabel) {
     lastValidLabelRef.current = computedLabel
   } else if (mode !== 'waiting' && !isRetrying) {
-    // inline 模式下，流式仍在进行但 streamDetail 暂时为 undefined（工具执行间隙）
-    // 此时不清除缓存，保持上一个状态显示，避免组件卸载跳动
-    // 但 responding 状态表示 AI 正在输出文本内容，工具执行阶段已结束，应清除缓存
-    if (streamDetail === 'responding') {
+    // inline 模式下 computedLabel 为空只剩两种情形：模型正在输出正文（responding），
+    // 或推理块已在界面上展示思考内容（reasoning + hasReasoningBlock）。
+    // 两者都不应再挂阶段文案，直接清空缓存，避免旧文案滞留在界面上。
+    if (streamDetail === 'responding' || streamDetail === 'reasoning') {
       lastValidLabelRef.current = null
     }
   } else {

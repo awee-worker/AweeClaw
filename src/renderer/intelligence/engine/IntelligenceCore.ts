@@ -371,8 +371,11 @@ export class AgentClass {
       )
 
       // 7. 开始流式响应
+      // 仅标记「已进入流式阶段」，不预置 streamDetail：此刻请求刚发出、首包未到，
+      // 模型还没有任何产出，界面应显示「等待模型响应」。只有 streamProcessor 收到
+      // 真正的推理增量后才会把 streamDetail 切到 'reasoning'（即「思考中」）。
       store.setStreamPhase('streaming', threadId)
-      store.setStreamState({ streamDetail: 'reasoning' }, threadId)
+      store.setStreamState({ streamDetail: undefined }, threadId)
 
       // 8. 运行主循环
       const executionContext: ExecutionContext = {

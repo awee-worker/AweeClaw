@@ -399,7 +399,8 @@ export async function executeMultiAgent(
   const globalStore = useStore.getState()
 
   agentStore.setStreamPhase('streaming', threadId)
-  agentStore.setStreamState({ streamDetail: 'reasoning' }, threadId)
+  // 请求刚发出、首包未到：保持「等待模型响应」，收到推理增量后才切「思考中」
+  agentStore.setStreamState({ streamDetail: undefined }, threadId)
 
   const sessionId = `ma-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
@@ -915,7 +916,8 @@ export async function continueMultiAgent(
   const globalStore = useStore.getState()
 
   agentStore.setStreamPhase('streaming', threadId)
-  agentStore.setStreamState({ streamDetail: 'reasoning' }, threadId)
+  // 续跑同样从「等待模型响应」起步，避免把等待首包误报成「思考中」
+  agentStore.setStreamState({ streamDetail: undefined }, threadId)
 
   const projectDir = existingSession.projectPath!
   const existingAgents = existingSession.agents

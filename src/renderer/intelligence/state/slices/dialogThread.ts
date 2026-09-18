@@ -452,6 +452,9 @@ export const createThreadSlice: StateCreator<
                 ? {
                     ...thread.streamState,
                     phase,
+                    // streamDetail 也必须清空：它是 ephemeral 状态，残留 'reasoning'/'responding'
+                    // 会让下一轮请求刚发出（首包未到）时就被判定为「思考中」。
+                    streamDetail: undefined,
                     currentToolCall: undefined,
                     error: undefined,
                     statusText: undefined,

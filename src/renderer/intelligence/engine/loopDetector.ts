@@ -1205,7 +1205,8 @@ export async function executeAgentCycle(
       const toolExecMessage = toolExecError instanceof Error ? toolExecError.message : String(toolExecError)
       logger.agent.error('[Loop] Tool orchestration threw, degrading to tool error results:', toolExecError)
       threadStore.setStreamPhase('streaming')
-      threadStore.setStreamState({ streamDetail: 'reasoning' })
+      // 工具编排异常后降级重发同样要等首包，不能提前标成「思考中」
+      threadStore.setStreamState({ streamDetail: undefined })
       toolResults = result.toolCalls.map(tc => ({
         toolCall: tc,
         result: { content: `Error: tool orchestration failed — ${toolExecMessage}` },
@@ -1337,7 +1338,8 @@ export async function executeAgentCycle(
         llmMessages.push({ role: 'user', content: lintIssueReport.content })
         shouldContinue = true
         threadStore.setStreamPhase('streaming')
-        threadStore.setStreamState({ streamDetail: 'reasoning' })
+        // 新一轮请求在途，等模型首包；真实推理增量到达后才显示「思考中」
+        threadStore.setStreamState({ streamDetail: undefined })
         continue
       }
     }
@@ -1348,13 +1350,14 @@ export async function executeAgentCycle(
       llmMessages.push({ role: 'user', content: rejectMsg })
       shouldContinue = true
       threadStore.setStreamPhase('streaming')
-      threadStore.setStreamState({ streamDetail: 'reasoning' })
+      threadStore.setStreamState({ streamDetail: undefined })
       continue
     }
 
     shouldContinue = true
     threadStore.setStreamPhase('streaming')
-    threadStore.setStreamState({ streamDetail: 'reasoning' })
+    // 进入下一轮模型请求：首包未到之前保持「等待模型响应」
+    threadStore.setStreamState({ streamDetail: undefined })
   }
 
   // 兜底收尾：若主循环退出时 loopState 仍停留在 'running'（静默退出/异常路径未收尾），

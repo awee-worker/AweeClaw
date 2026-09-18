@@ -454,6 +454,9 @@ export function useAvatarMiniChat(
 
           logger.system.info(`[AvatarMiniChat] Iteration ${iteration}, messages=${llmMessagesRef.current.length}, tools=${tools.length}`)
 
+          // 本轮请求即将发出：统一回到「等待模型响应」，避免沿用上一轮的工具/思考文案
+          setActivity({ text: '等待模型响应...' })
+
           // 为本轮迭代创建 assistant 消息
           const assistantId = genId('a')
           const assistantMsg: MiniChatMessage = {
@@ -635,10 +638,8 @@ export function useAvatarMiniChat(
             )
           })
 
-          // 5. 更新活动状态
-          setActivity({
-            text: `已完成工具执行，继续思考...`,
-          })
+          // 5. 工具执行完毕：不再在这里写「继续思考…」——下一轮请求只是刚发出、
+          // 首包未到，属于等待响应；循环顶部会统一把活动状态置为「等待模型响应」。
 
           // 6. 将工具结果添加到 LLM 消息历史
           for (const toolResult of toolResults) {
