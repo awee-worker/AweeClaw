@@ -2,7 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { LoopDetector } from '@intelligence/utils/LoopDetector'
 import type { ToolCall } from '@protocols'
 
-vi.mock('@intelligence/utils/AgentConfig', () => ({
+// 注意：模块路径必须是 CycleDetector 实际 import 的那个（./intelligenceConfig）。
+// 之前 mock 的是已不存在的 '@intelligence/utils/AgentConfig'，注入从未生效，
+// 检测器一直跑在默认阈值（maxExactRepeats=10 等）下，用例因此恒为失败。
+vi.mock('@intelligence/utils/intelligenceConfig', () => ({
   getAgentConfig: () => ({
     loopDetection: {
       maxExactRepeats: 3,
@@ -10,6 +13,9 @@ vi.mock('@intelligence/utils/AgentConfig', () => ({
       maxHistory: 100,
       dynamicThreshold: false,
       enabled: true,
+      // 必须满足「警告阈值 < 硬停止阈值」，否则 pattern 会直接硬停止、
+      // 永远发不出低severity 警告 —— 本文件最后一条用例正是校验这个时序。
+      patternWarningThreshold: 2,
       patternRepeatHardStop: 3,
     },
     maxToolLoops: 50,
@@ -27,7 +33,7 @@ vi.mock('@store', () => ({
   },
 }))
 
-vi.mock('@utils/Logger', () => ({
+vi.mock('@toolkit/LogEngine', () => ({
   logger: {
     agent: {
       info: vi.fn(),

@@ -27,6 +27,36 @@ export interface LocalAttachmentItem {
   localPath: string
 }
 
+/**
+ * Python 运行时状态（与主进程 PythonStatus 对齐）
+ *
+ * diagnostics 是「解释器是怎么被选中的」链路记录：候选依次为
+ * 缓存 → 系统 → 受管目录 → uv 安装，每一条都带上被采用或被跳过的原因。
+ */
+type PythonRuntimeStatusShape = {
+  ready: boolean
+  pythonPath: string | null
+  uvPath: string | null
+  source: 'system' | 'managed' | 'none'
+  version: string | null
+  venvDir: string | null
+  /** venv 基底解释器版本；用于识别「venv 建立在 3.9 之上」这类状态 */
+  venvBaseVersion?: string | null
+  installedPackages: string[]
+  diagnostics?: {
+    requiredVersion: string
+    candidates: Array<{
+      kind: 'cached' | 'system' | 'managed' | 'uv-install' | 'manual'
+      path: string
+      version: string | null
+      accepted: boolean
+      reason: string
+    }>
+    outcome: string
+  }
+  error?: string
+}
+
 type ElectronAPIWithRemoteShell = ElectronAPI & {
   remoteShellList: (server: RemoteShellServer, remotePath?: string) => Promise<RemoteShellEntry[]>
   remoteShellReadText: (server: RemoteShellServer, remotePath: string) => Promise<string | null>
@@ -37,38 +67,14 @@ type ElectronAPIWithRemoteShell = ElectronAPI & {
   remoteShellTestConnection: (server: RemoteShellServer) => Promise<{ success: boolean; error?: string }>
   remoteShellUpload: (server: RemoteShellServer, remoteDirectory: string) => Promise<RemoteShellUploadResult>
   remoteShellDownload: (server: RemoteShellServer, remotePath: string) => Promise<RemoteShellDownloadResult>
-  pythonGetStatus: () => Promise<{
-    ready: boolean
-    pythonPath: string | null
-    uvPath: string | null
-    source: 'system' | 'managed' | 'none'
-    version: string | null
-    venvDir: string | null
-    installedPackages: string[]
-    error?: string
-  }>
+  pythonGetStatus: () => Promise<PythonRuntimeStatusShape>
   pythonGetPath: () => Promise<string | null>
   pythonGetUvPath: () => Promise<string | null>
-  pythonEnsureReady: () => Promise<{
-    ready: boolean
-    pythonPath: string | null
-    uvPath: string | null
-    source: 'system' | 'managed' | 'none'
-    version: string | null
-    venvDir: string | null
-    installedPackages: string[]
-    error?: string
-  }>
-  pythonReinstall: () => Promise<{
-    ready: boolean
-    pythonPath: string | null
-    uvPath: string | null
-    source: 'system' | 'managed' | 'none'
-    version: string | null
-    venvDir: string | null
-    installedPackages: string[]
-    error?: string
-  }>
+  pythonEnsureReady: (options?: {
+    minVersion?: [number, number]
+    forceRefresh?: boolean
+  }) => Promise<PythonRuntimeStatusShape>
+  pythonReinstall: () => Promise<PythonRuntimeStatusShape>
   pythonInstallPkg: (pkg: string) => Promise<{ success: boolean; error?: string }>
   pythonSetCustomPath: (customPath: string | null) => Promise<{ success: boolean; error?: string }>
   pythonExecuteScript: (params: {
@@ -483,6 +489,7 @@ function createGroupedAPI() {
       getBlacklist: () => raw.getBlacklist(),
       resetBlacklist: () => raw.resetBlacklist(),
       getUserDataPath: () => raw.getUserDataPath(),
+      getAppDataRoots: () => raw.getAppDataRoots(),
       getAppConfig: () => raw.getAppConfig(),
       getRecentLogs: () => raw.getRecentLogs(),
       onChanged: (callback: Parameters<typeof raw.onSettingsChanged>[0]) => raw.onSettingsChanged(callback),

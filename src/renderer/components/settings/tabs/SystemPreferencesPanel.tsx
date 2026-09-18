@@ -167,6 +167,20 @@ function UvEnvSection({ language }: { language: Language }) {
     )
 }
 
+/** 与主进程 MIN_VENV_BASE_VERSION 对齐：插件的 Python 工具链要求 3.10+ */
+const MIN_PYTHON_VERSION: [number, number] = [3, 10]
+
+/** 判断版本字符串是否满足下限；无法解析时返回 null（不要把「不知道」当成「不行」） */
+function isPythonVersionOk(version: string | null | undefined): boolean | null {
+    if (!version) return null
+    const m = version.match(/^(\d+)\.(\d+)/)
+    if (!m) return null
+    const major = Number(m[1])
+    const minor = Number(m[2])
+    if (major !== MIN_PYTHON_VERSION[0]) return major > MIN_PYTHON_VERSION[0]
+    return minor >= MIN_PYTHON_VERSION[1]
+}
+
 function PythonEnvSection({ language }: { language: Language }) {
     const [pythonStatus, setPythonStatus] = useState<{
         ready: boolean
@@ -175,10 +189,26 @@ function PythonEnvSection({ language }: { language: Language }) {
         source: 'system' | 'managed' | 'none'
         version: string | null
         venvDir: string | null
+        venvBaseVersion?: string | null
         installedPackages: string[]
+        diagnostics?: {
+            requiredVersion: string
+            candidates: Array<{
+                kind: string
+                path: string
+                version: string | null
+                accepted: boolean
+                reason: string
+            }>
+            outcome: string
+        }
         error?: string
     } | null>(null)
     const [isReinstalling, setIsReinstalling] = useState(false)
+    const [isRepairing, setIsRepairing] = useState(false)
+
+    // 环境「就绪」不等于「可用」：3.9 可以让 ready=true，却跑不了要求 3.10+ 的插件脚本
+    const versionOk = isPythonVersionOk(pythonStatus?.version)
 
     useEffect(() => {
         api.python.getStatus().then(setPythonStatus).catch(() => {})
@@ -216,6 +246,34 @@ function PythonEnvSection({ language }: { language: Language }) {
         }
     }
 
+    /**
+     * 重新检测并修复运行环境
+     *
+     * 用 forceRefresh 走与启动时相同的候选链：系统 Python 低于要求时会被跳过，
+     * 改为复用已下载的受管解释器（或按需下载）。这是「机器上已经装着 3.11，
+     * 却一直在用系统 3.9」这类状态的修复入口。
+     */
+    const handleRepair = async () => {
+        setIsRepairing(true)
+        try {
+            const status = await api.python.ensureReady({
+                minVersion: MIN_PYTHON_VERSION,
+                forceRefresh: true,
+            })
+            setPythonStatus(status)
+            if (status.ready && isPythonVersionOk(status.version)) {
+                toast.success(`运行环境已更新（Python ${status.version}）`)
+            } else {
+                toast.error(status.error || '运行环境仍未满足要求，请查看下方诊断信息')
+            }
+        } catch (err) {
+            toast.error(t('settings.reinstallfailed', language as Language))
+        } finally {
+            setIsRepairing(false)
+        }
+    }
+
+
     return (
         <div className="p-6 bg-surface/20 backdrop-blur-md rounded-2xl border border-border space-y-4 shadow-sm">
             <div className="flex items-center justify-between">
@@ -241,12 +299,31 @@ function PythonEnvSection({ language }: { language: Language }) {
                     {pythonStatus && (
                         <div className="space-y-2 p-4 bg-background/50 rounded-xl border border-border shadow-inner">
                             {pythonStatus.version && (
-                                <div className="flex items-center gap-2 text-xs">
+                                <div className="flex items-center gap-2 text-xs flex-wrap">
                                     <span className="text-text-muted w-20">Python:</span>
                                     <span className="text-text-secondary font-mono">{pythonStatus.version}</span>
                                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-text-muted border border-border">
                                         {pythonStatus.source === 'system' ? (t('settings.system2', language as Language)) : 'uv'}
                                     </span>
+                                    {/* 版本是否满足插件要求——这是「环境可用但插件跑不动」的关键信号 */}
+                                    {versionOk !== null && (
+                                        <span
+                                            className={`text-[10px] px-1.5 py-0.5 rounded border ${versionOk
+                                                ? 'bg-green-500/10 text-green-500 border-green-500/20'
+                                                : 'bg-red-500/10 text-red-400 border-red-500/20'}`}
+                                        >
+                                            {versionOk
+                                                ? `满足 ${MIN_PYTHON_VERSION.join('.')}+`
+                                                : `低于 ${MIN_PYTHON_VERSION.join('.')}+`}
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+                            {/* venv 基底版本：与 venv 内 python 版本不一致时说明环境需要修复 */}
+                            {pythonStatus.venvBaseVersion && pythonStatus.venvBaseVersion !== pythonStatus.version && (
+                                <div className="flex items-center gap-2 text-xs">
+                                    <span className="text-text-muted w-20">venv:</span>
+                                    <span className="text-text-secondary font-mono">{pythonStatus.venvBaseVersion}</span>
                                 </div>
                             )}
                             {pythonStatus.pythonPath && (
@@ -285,7 +362,52 @@ function PythonEnvSection({ language }: { language: Language }) {
                         </div>
                     )}
 
-                    <div className="flex gap-3">
+                    {/* 环境「就绪」但版本不达标：插件会直接拿它跑脚本并撞上 SyntaxError，
+                        所以必须在这里显式提示，而不是只等插件层报错 */}
+                    {pythonStatus?.ready && versionOk === false && (
+                        <div className="flex items-start gap-2 text-[11px] font-medium text-red-400 bg-red-500/10 px-3 py-2 rounded-lg border border-red-500/20">
+                            <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                            <div>
+                                当前 Python {pythonStatus.version} 低于插件要求的 {MIN_PYTHON_VERSION.join('.')}+，
+                                依赖 Python 的工具链（如 img2threejs）会执行失败。点击「重新检测并修复」可切换到满足要求的解释器。
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 候选链诊断：解释器为何是现在这个 */}
+                    {pythonStatus?.diagnostics && pythonStatus.diagnostics.candidates.length > 0 && (
+                        <details className="text-[11px] text-text-muted bg-background/40 rounded-lg border border-border px-3 py-2">
+                            <summary className="cursor-pointer select-none">
+                                解释器选择诊断（要求 {pythonStatus.diagnostics.requiredVersion}+）
+                            </summary>
+                            <div className="mt-2 space-y-1">
+                                {pythonStatus.diagnostics.candidates.map((c, i) => (
+                                    <div key={`${c.kind}-${c.path}-${i}`} className="flex items-start gap-2">
+                                        <span className={c.accepted ? 'text-green-500' : 'text-text-muted opacity-60'}>
+                                            {c.accepted ? '✓' : '×'}
+                                        </span>
+                                        <span className="font-mono break-all flex-1">
+                                            [{c.kind}] {c.path || '(未生成)'} {c.version ? `(${c.version})` : ''} — {c.reason}
+                                        </span>
+                                    </div>
+                                ))}
+                                {pythonStatus.diagnostics.outcome && (
+                                    <div className="pt-1 text-text-secondary">{pythonStatus.diagnostics.outcome}</div>
+                                )}
+                            </div>
+                        </details>
+                    )}
+
+                    <div className="flex gap-3 flex-wrap">
+                        <ActionButton
+                            variant="secondary"
+                            size="sm"
+                            onClick={handleRepair}
+                            disabled={isRepairing}
+                            className="rounded-xl px-4"
+                        >
+                            {isRepairing ? '正在检测...' : '重新检测并修复'}
+                        </ActionButton>
                         <ActionButton
                             variant="secondary"
                             size="sm"

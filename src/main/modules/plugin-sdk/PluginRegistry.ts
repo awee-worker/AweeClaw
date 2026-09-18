@@ -10,6 +10,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import { logger } from '@shared/toolkit/LogEngine'
+import { compareVersions } from '@shared/toolkit/versionHelper'
 import type {
   PluginManifest,
   PluginRuntime,
@@ -169,7 +170,7 @@ class PluginRegistry implements IPluginRegistry {
           status: 'discovered',
         })
         this.emitEvent({ type: 'plugin:discovered', pluginId: manifest.id })
-      } else if (this.compareVersions(manifest.version, existing.manifest.version) > 0) {
+      } else if (compareVersions(manifest.version, existing.manifest.version) > 0) {
         // 新发现的版本更高，替换旧记录
         existing.manifest = manifest
         existing.runtime = null
@@ -179,23 +180,6 @@ class PluginRegistry implements IPluginRegistry {
 
     logger.system.info(`[PluginRegistry] Discovered ${manifests.length} plugins`)
     return manifests
-  }
-
-  /**
-   * 比较两个语义化版本号。
-   * @returns 正数表示 a 更新，负数表示 b 更新，0 表示相同
-   */
-  private compareVersions(a: string, b: string): number {
-    const parse = (v: string) => v.split('.').map((n) => parseInt(n, 10) || 0)
-    const pa = parse(a)
-    const pb = parse(b)
-    const len = Math.max(pa.length, pb.length)
-    for (let i = 0; i < len; i++) {
-      const na = pa[i] || 0
-      const nb = pb[i] || 0
-      if (na !== nb) return na - nb
-    }
-    return 0
   }
 
   /**

@@ -2896,6 +2896,7 @@ export const en = {
   'plugin.type.memory': 'Memory',
   'plugin.type.desktop': 'Desktop',
   'plugin.type.composite': 'Composite',
+  'plugin.type.skill': 'Skill',
   'layout.settings': 'Settings',
   'layout.checkforupdates': 'Check for Updates',
   'layout.aboutaweeclaw': 'About AweeClaw',

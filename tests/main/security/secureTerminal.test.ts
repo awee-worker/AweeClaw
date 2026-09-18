@@ -47,7 +47,10 @@ vi.mock('@shared/toolkit/errorHandler', () => ({
   toAppError: (err: unknown) => err instanceof Error ? err : new Error(String(err)),
 }))
 
-vi.mock('@bridge/safeHandle', () => ({
+// 模块路径必须与 terminalSandbox 实际 import 的一致：
+// 它用的是 '../bridge/core/ipcGuard'，之前 mock 的 '@bridge/safeHandle' 已不存在，
+// 于是 safeIpcHandle 从未被替换，handlers 表始终为空 → 断言恒失败。
+vi.mock('@bridge/core/ipcGuard', () => ({
   safeIpcHandle: vi.fn((channel: string, handler: Function) => {
     handlers.set(channel, handler)
   }),

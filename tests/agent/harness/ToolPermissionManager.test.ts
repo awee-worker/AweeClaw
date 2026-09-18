@@ -84,11 +84,17 @@ describe('ToolPermissionManager', () => {
 
   describe('rate limiting', () => {
     it('rate limits write tools', () => {
+      // 显式声明配额：默认规则里 write 是 120 次/分钟（产品策略，可能调整），
+      // 依赖默认值会让这条用例在配额变更时无声失效。这里只验证「超限即拦截」的行为。
+      const limited = new ToolPermissionManager([
+        { category: 'write', action: 'allow', rateLimit: { maxCalls: 30, windowMs: 60_000 } },
+      ])
+
       for (let i = 0; i < 30; i++) {
-        manager.check('edit_file', 'write')
+        limited.check('edit_file', 'write')
       }
 
-      const result = manager.check('edit_file', 'write')
+      const result = limited.check('edit_file', 'write')
       expect(result.rateLimited).toBe(true)
       expect(result.retryAfterMs).toBeGreaterThan(0)
     })
@@ -178,10 +184,13 @@ describe('ToolPermissionManager', () => {
 
     it('emits rate_limited events', () => {
       const events: any[] = []
-      manager.onEvent(e => events.push(e))
+      const limited = new ToolPermissionManager([
+        { category: 'write', action: 'allow', rateLimit: { maxCalls: 30, windowMs: 60_000 } },
+      ])
+      limited.onEvent(e => events.push(e))
 
       for (let i = 0; i < 31; i++) {
-        manager.check('edit_file', 'write')
+        limited.check('edit_file', 'write')
       }
 
       expect(events.some(e => e.type === 'rate_limited')).toBe(true)

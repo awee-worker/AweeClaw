@@ -2895,6 +2895,7 @@ export const zh = {
   'plugin.type.memory': '记忆',
   'plugin.type.desktop': '桌面',
   'plugin.type.composite': '复合',
+  'plugin.type.skill': '技能',
   'layout.settings': '设置',
   'layout.checkforupdates': '检查更新',
   'layout.aboutaweeclaw': '关于 AweeClaw',

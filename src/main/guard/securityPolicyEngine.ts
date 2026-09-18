@@ -104,6 +104,10 @@ interface SecurityModule {
   validateWorkspacePath: (filePath: string, workspace: string | string[]) => boolean
   isSensitivePath: (filePath: string) => boolean
 
+  // 只读可信路径（仅放行读取，写入仍受工作区边界约束）
+  addTrustedReadOnlyPath: (dirPath: string) => void
+  isTrustedReadOnlyPath: (filePath: string) => boolean
+
   // 白名单管理
   isAllowedCommand: (command: string, type: 'shell' | 'git') => boolean
 
@@ -155,6 +159,13 @@ class SecurityManager implements SecurityModule {
   private allowedAppPaths: string[] = []
   /** 用户配置的工作区外允许访问目录（持久化在 securitySettings.allowedExternalDirectories） */
   private allowedExternalDirs: string[] = []
+  /**
+   * 只读可信路径：这些目录下的文件可被读取，但写入/删除/重命名仍受工作区边界约束。
+   *
+   * 与 allowedAppPaths（读写全放行）的区别在于「只读」语义，用于「应用自己写入、
+   * 但落在工作区外」的数据目录 —— 典型场景见 addTrustedReadOnlyPath 注释。
+   */
+  private trustedReadOnlyDirs: string[] = []
 
   /**
    * 注册应用可信路径（如全局 Skills 目录）
@@ -174,8 +185,12 @@ class SecurityManager implements SecurityModule {
   isAllowedAppPath(filePath: string): boolean {
     if (this.allowedAppPaths.length === 0) return false
     const resolved = path.resolve(filePath)
+    // 使用 pathStartsWith / pathEquals（忽略大小写与分隔符差异），
+    // 与 isAllowedExternalDir、validateWorkspacePath 保持同一套比较语义。
+    // 原生 startsWith 是大小写敏感的：macOS / Windows 上 AI 传来的路径大小写
+    // 与注册值不一致时会被判为越界 —— 表现为「目录明明放行了却读不到」。
     return this.allowedAppPaths.some(allowed =>
-      resolved === allowed || resolved.startsWith(allowed + path.sep)
+      pathStartsWith(resolved, allowed) || pathEquals(resolved, allowed)
     )
   }
 
@@ -213,6 +228,49 @@ class SecurityManager implements SecurityModule {
    */
   getAllowedExternalDirectories(): string[] {
     return [...this.allowedExternalDirs]
+  }
+
+  /**
+   * 注册只读可信路径（仅放行读取，不参与写入放行）
+   *
+   * 使用场景：无工作区时附件落盘到 `<userData>/.aweeclaw/uploads`，
+   * 该绝对路径会被写入会话历史并长期保留。用户之后打开工作区，
+   * 历史附件路径就变成了「工作区外的绝对路径」——若按工作区边界一律拒绝，
+   * AI 将永远读不到自己此前收到的图片/文档。
+   *
+   * 选择「只读」而非复用 addAllowedAppPath（读写全放行），是为了保持最小授权：
+   * 这个目录是应用自己写的数据目录，AI 只需要能读回来，不需要能往里写。
+   */
+  addTrustedReadOnlyPath(dirPath: string): void {
+    if (!dirPath) return
+    const resolved = path.resolve(dirPath)
+    if (!this.trustedReadOnlyDirs.includes(resolved)) {
+      this.trustedReadOnlyDirs.push(resolved)
+      logger.security.info(`[Security] Added trusted read-only path: ${resolved}`)
+    }
+  }
+
+  /**
+   * 检查路径是否在只读可信目录下
+   *
+   * 使用 pathStartsWith / pathEquals（忽略大小写与分隔符差异），
+   * 与 isAllowedExternalDir 保持同一套比较语义，避免 macOS/Windows 上
+   * 出现「渲染层放行、主进程拒绝」的不一致。
+   */
+  isTrustedReadOnlyPath(filePath: string): boolean {
+    if (this.trustedReadOnlyDirs.length === 0) return false
+    if (typeof filePath !== 'string' || !filePath) return false
+    const resolved = path.resolve(filePath)
+    return this.trustedReadOnlyDirs.some(dir =>
+      pathStartsWith(resolved, dir) || pathEquals(resolved, dir)
+    )
+  }
+
+  /**
+   * 获取当前注册的只读可信目录（供诊断/测试查询）
+   */
+  getTrustedReadOnlyPaths(): string[] {
+    return [...this.trustedReadOnlyDirs]
   }
 
   /**

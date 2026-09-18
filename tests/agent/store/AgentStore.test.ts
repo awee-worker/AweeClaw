@@ -26,14 +26,15 @@ describe('AgentStore', () => {
       expect(store.currentThreadId).toBe(threadId)
     })
 
-    it('should switch between threads', () => {
+    it('should switch between threads', async () => {
       const thread1 = useAgentStore.getState().createThread()
       const thread2 = useAgentStore.getState().createThread()
       let store = useAgentStore.getState()
 
       expect(store.currentThreadId).toBe(thread2)
 
-      store.switchThread(thread1)
+      // switchThread 是异步的（先加载线程再改 currentThreadId），必须 await 后再断言
+      await store.switchThread(thread1)
       store = useAgentStore.getState()
       expect(store.currentThreadId).toBe(thread1)
     })

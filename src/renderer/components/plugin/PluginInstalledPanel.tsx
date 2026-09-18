@@ -82,6 +82,7 @@ const TYPE_LABELS: Record<string, { zh: string; en: string; color: string }> = {
   memory: { zh: '记忆', en: 'Memory', color: 'bg-cyan-500/15 text-cyan-400' },
   desktop: { zh: '桌面', en: 'Desktop', color: 'bg-pink-500/15 text-pink-400' },
   composite: { zh: '复合', en: 'Composite', color: 'bg-indigo-500/15 text-indigo-400' },
+  skill: { zh: '技能', en: 'Skill', color: 'bg-amber-500/15 text-amber-400' },
 }
 
 // ─── 组件 ──────────────────────────────────────────────

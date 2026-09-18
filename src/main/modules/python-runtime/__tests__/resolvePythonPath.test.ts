@@ -47,6 +47,9 @@ describe('resolveRuntimePythonPath', () => {
       pythonPath: interpreter,
       source: 'managed',
       venvDir: path.join(tmpRoot, 'venv'),
+      version: '3.11.16',
+      venvBaseVersion: '3.11.16',
+      diagnostics: { requiredVersion: '3.10', candidates: [], outcome: '受管解释器' },
     })
 
     const resolved = await resolveRuntimePythonPath('SherpaAsr')
@@ -55,8 +58,38 @@ describe('resolveRuntimePythonPath', () => {
       pythonPath: interpreter,
       source: 'managed',
       venvDir: path.join(tmpRoot, 'venv'),
+      version: '3.11.16',
+      venvBaseVersion: '3.11.16',
+      diagnostics: { requiredVersion: '3.10', candidates: [], outcome: '受管解释器' },
     })
     expect(hoisted.ensureReady).toHaveBeenCalledTimes(1)
+  })
+
+  it('缺少版本信息时降级为 null，而不是抛错', async () => {
+    // 旧版宿主（不认识 minVersion/诊断字段）不应让调用方直接失败
+    hoisted.ensureReady.mockResolvedValue({
+      pythonPath: interpreter,
+      source: 'managed',
+      venvDir: null,
+    })
+
+    await expect(resolveRuntimePythonPath()).resolves.toMatchObject({
+      version: null,
+      venvBaseVersion: null,
+    })
+  })
+
+  it('minVersion 透传给 ensureReady（插件据此要求 3.10+）', async () => {
+    hoisted.ensureReady.mockResolvedValue({
+      pythonPath: interpreter,
+      source: 'managed',
+      venvDir: null,
+    })
+
+    await resolveRuntimePythonPath('img2threejs', { minVersion: [3, 10] })
+
+    // 声明版本下限是本次修复的核心：解析层据此跳过系统 3.9 这类候选
+    expect(hoisted.ensureReady).toHaveBeenCalledWith({ minVersion: [3, 10] })
   })
 
   it('系统 Python 也能作为来源返回（不误标为受管）', async () => {
@@ -95,4 +128,17 @@ describe('resolveRuntimePythonPath', () => {
     await expect(failure).rejects.toThrow(/磁盘空间不足/)
     await expect(failure).rejects.toThrow(/设置 → 运行环境/)
   })
+
+  it('forceRefresh 透传给 ensureReady（设置页「重新检测并修复」用）', async () => {
+    hoisted.ensureReady.mockResolvedValue({
+      pythonPath: interpreter,
+      source: 'managed',
+      venvDir: null,
+    })
+
+    await resolveRuntimePythonPath('settings', { forceRefresh: true })
+
+    expect(hoisted.ensureReady).toHaveBeenCalledWith({ forceRefresh: true })
+  })
+
 })

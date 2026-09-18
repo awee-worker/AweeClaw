@@ -3,7 +3,8 @@
  * 为所有测试提供全局 mock 和配置
  */
 
-import { vi } from 'vitest'
+import { vi, beforeEach } from 'vitest'
+import { installFakeIndexedDB, resetFakeIndexedDB } from './helpers/fakeIndexedDB'
 
 declare global {
   var mainWindow: any
@@ -16,6 +17,114 @@ if (typeof (globalThis as any).self === 'undefined') {
 if (typeof (globalThis as any).window === 'undefined') {
   ;(globalThis as any).window = globalThis
 }
+
+/* ------------------------------------------------------------------ */
+/* 浏览器 API 兜底（environment 是 node，没有 DOM）                    */
+/* ------------------------------------------------------------------ */
+
+/** 内存版 Storage，行为对齐 localStorage/sessionStorage 的常用子集 */
+function createMemoryStorage(): Storage {
+  const map = new Map<string, string>()
+  return {
+    get length() {
+      return map.size
+    },
+    key: (index: number) => [...map.keys()][index] ?? null,
+    getItem: (key: string) => (map.has(key) ? map.get(key)! : null),
+    setItem: (key: string, value: string) => {
+      map.set(key, String(value))
+    },
+    removeItem: (key: string) => {
+      map.delete(key)
+    },
+    clear: () => {
+      map.clear()
+    },
+  } as Storage
+}
+
+/**
+ * OfflineModeService 等模块在 import 期就会读 navigator.onLine / 注册 window 事件，
+ * 缺失时整个模块图加载失败（表现为一批测试文件 "Failed Suites"）。
+ */
+function ensureNavigatorOnline(): void {
+  const g = globalThis as any
+  try {
+    if (g.navigator && typeof g.navigator === 'object') {
+      g.navigator.onLine = true
+      return
+    }
+  } catch {
+    /* 只读属性，走下面的 defineProperty 兜底 */
+  }
+  try {
+    Object.defineProperty(g, 'navigator', {
+      value: { onLine: true, userAgent: 'vitest', language: 'zh-CN' },
+      writable: true,
+      configurable: true,
+    })
+  } catch {
+    /* 无法覆盖则忽略：相关断言会给出更明确的失败信息 */
+  }
+}
+
+/** CustomEvent / Event 兜底：authSlice 等模块会构造 CustomEvent 派发跨模块消息 */
+function ensureEventConstructors(): void {
+  const g = globalThis as any
+  if (typeof g.CustomEvent !== 'function') {
+    g.CustomEvent = class CustomEvent {
+      type: string
+      detail: unknown
+      constructor(type: string, init?: { detail?: unknown }) {
+        this.type = type
+        this.detail = init?.detail
+      }
+    }
+  }
+  if (typeof g.Event !== 'function') {
+    g.Event = class Event {
+      type: string
+      constructor(type: string) {
+        this.type = type
+      }
+    }
+  }
+}
+
+/** 恢复被 node 环境缺失的 performance 子集（不覆盖已有实现） */
+function ensurePerformanceApi(): void {
+  const g = globalThis as any
+  if (!g.performance || typeof g.performance.now !== 'function') {
+    g.performance = { now: () => Date.now() } as any
+  }
+  const perf = g.performance
+  // undici（Node 内置 fetch）在响应结束时调用，缺失会抛 uncaught exception，
+  // 导致 vitest 退出码为 1 —— 断言其实全过。
+  if (typeof perf.markResourceTiming !== 'function') perf.markResourceTiming = () => {}
+  if (typeof perf.mark !== 'function') perf.mark = () => {}
+  if (typeof perf.measure !== 'function') perf.measure = () => {}
+  if (typeof perf.getEntriesByName !== 'function') perf.getEntriesByName = () => []
+  if (typeof perf.clearMarks !== 'function') perf.clearMarks = () => {}
+  if (typeof perf.clearMeasures !== 'function') perf.clearMeasures = () => {}
+}
+
+const mockLocalStorage = createMemoryStorage()
+const mockSessionStorage = createMemoryStorage()
+
+ensureNavigatorOnline()
+ensurePerformanceApi()
+ensureEventConstructors()
+installFakeIndexedDB()
+
+// 这些全局都是进程级共享的，每个用例前清空，避免用例之间互相污染
+;(globalThis as any).localStorage = mockLocalStorage
+;(globalThis as any).sessionStorage = mockSessionStorage
+
+beforeEach(() => {
+  resetFakeIndexedDB()
+  mockLocalStorage.clear()
+  mockSessionStorage.clear()
+})
 
 // Mock xterm modules that require browser environment
 vi.mock('@xterm/xterm', () => ({
@@ -212,10 +321,68 @@ const mockElectronAPI = {
   },
 }
 
+/**
+ * 渲染层里的 `window` 就是 `globalThis`，所以 preload 暴露的 electronAPI 两种写法
+ * （`window.electronAPI` / `globalThis.electronAPI`）在生产环境是同一个对象。
+ * node 环境下二者是两个对象，若只挂 window，读 globalThis 的适配层（如 mcpService）
+ * 会拿到 undefined。这里把别名补上，保持与运行时一致。
+ */
+function aliasElectronAPI(): void {
+  const api = (globalThis as any).window?.electronAPI
+  if (api) (globalThis as any).electronAPI = api
+}
+
 // 设置全局 window 对象
-global.window = {
+// 注意：environment 是 node，这里必须补齐 DOM 常用子集。
+// 之前只挂了 electronAPI，导致 `typeof window !== 'undefined'` 后调用
+// window.addEventListener 的模块（OfflineModeService 等）在 import 期直接崩掉，
+// 牵连一整批测试文件 "Failed Suites"。
+const windowMock: any = {
   electronAPI: mockElectronAPI,
-} as any
+  localStorage: mockLocalStorage,
+  sessionStorage: mockSessionStorage,
+  addEventListener: vi.fn(),
+  removeEventListener: vi.fn(),
+  dispatchEvent: vi.fn(() => true),
+  matchMedia: vi.fn(() => ({
+    matches: false,
+    media: '',
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    onchange: null,
+    dispatchEvent: vi.fn(() => true),
+  })),
+  location: {
+    href: 'http://localhost:3000',
+    origin: 'http://localhost:3000',
+    protocol: 'http:',
+    host: 'localhost:3000',
+    pathname: '/',
+    search: '',
+    hash: '',
+  },
+  navigator: { onLine: true, userAgent: 'vitest', language: 'zh-CN' },
+  // authSlice 在模块加载期注册 visibilitychange，缺 document 会让整个 store 初始化失败
+  document: {
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(() => true),
+    visibilityState: 'visible',
+    hidden: false,
+    cookie: '',
+    createElement: vi.fn(() => ({ style: {}, setAttribute: vi.fn(), appendChild: vi.fn() })),
+    querySelector: vi.fn(() => null),
+    querySelectorAll: vi.fn(() => []),
+    body: { appendChild: vi.fn(), removeChild: vi.fn(), style: {} },
+  },
+}
+global.window = windowMock as any
+// 渲染层里 document/location 等价于全局对象（window === globalThis），
+// node 环境下必须显式挂到 globalThis，否则裸用 document 的模块会 ReferenceError
+;(globalThis as any).document = windowMock.document
+;(globalThis as any).location = windowMock.location
 
   // Mock the raw electronAPI that's accessed by the wrapper
   ; (global.window as any).electronAPI = {
@@ -254,6 +421,20 @@ global.window = {
     // System events
     onSystemResume: vi.fn(() => vi.fn()),
     onSystemSuspend: vi.fn(() => vi.fn()),
+    // 设备联动：authSlice 在模块加载期就会订阅设备任务事件
+    deviceLink: {
+      pushCredentials: vi.fn(),
+      clearCredentials: vi.fn(async () => true),
+      setPreferences: vi.fn(),
+      getStatus: vi.fn(),
+      getDeviceId: vi.fn(() => 'test-device'),
+      onTaskTransfer: vi.fn(() => vi.fn()),
+      onAiTask: vi.fn(() => vi.fn()),
+      onRunScenario: vi.fn(() => vi.fn()),
+      replyResult: vi.fn(),
+      pushSceneMode: vi.fn(),
+      onSceneModeSync: vi.fn(() => vi.fn()),
+    },
     // App operations
     appReady: vi.fn(),
     getAppVersion: vi.fn(() => '1.0.0'),
@@ -320,6 +501,7 @@ global.window = {
     getWhitelist: vi.fn(),
     resetWhitelist: vi.fn(),
     getUserDataPath: vi.fn(),
+    getAppDataRoots: vi.fn(() => []),
     getRecentLogs: vi.fn(() => []),
     onSettingsChanged: vi.fn(() => vi.fn()),
     // LLM
@@ -329,6 +511,10 @@ global.window = {
     onLLMStream: vi.fn(() => vi.fn()),
     onLLMError: vi.fn(() => vi.fn()),
     onLLMDone: vi.fn(() => vi.fn()),
+    // authSlice 在模块加载期就会注册这两个监听，缺失会让整个 store 初始化失败
+    // （表现是一批测试文件的 Failed Suites）
+    onCloudTokenRefreshed: vi.fn(() => vi.fn()),
+    onCloudAuthFailed: vi.fn(() => vi.fn()),
     analyzeCode: vi.fn(),
     analyzeCodeStream: vi.fn(),
     suggestRefactoring: vi.fn(),
@@ -402,10 +588,11 @@ global.window = {
     shellOpenPath: vi.fn(),
   }
 
-// Mock performance API
-global.performance = {
-  now: () => Date.now(),
-} as any
+// 让 globalThis.electronAPI 与 window.electronAPI 指向同一对象（对齐渲染层语义）
+aliasElectronAPI()
+
+// performance API：由 ensurePerformanceApi() 补齐（勿整体覆盖，
+// 覆盖掉 markResourceTiming 会让 undici 在每次 fetch 结束时抛 uncaught exception）
 
 // Mock crypto.randomUUID if not available
 if (!global.crypto?.randomUUID) {

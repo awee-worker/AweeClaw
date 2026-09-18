@@ -43,6 +43,8 @@ import { IoTBridge } from '../iot/IoTBridge'
 import { InputListenerBridge } from './InputListenerBridge'
 import { CronSchedulerBridge } from './CronSchedulerBridge'
 import { PptPreviewBridge } from './PptPreviewBridge'
+import { pythonRuntimeBridge } from './PythonRuntimeBridge'
+import { shellBridge } from './ShellBridge'
 // v2.4：导入 PPT 解析函数（必须用 ESM import，不能用 require，
 // 否则 vite-plugin-electron 打包时会保留 require() 运行时调用，
 // 而 dist/main 下没有 pptxParserMain.js 独立文件，导致 MODULE_NOT_FOUND）
@@ -130,6 +132,27 @@ export interface HostServices {
    * 返回 null 时插件应降级到 OS 临时目录。
    */
   getWorkspacePath: () => string | null
+  /**
+   * Python 运行时桥接（复用 PythonRuntimeManager 的受管 3.11 解释器）
+   *
+   * 让插件不必自己探测系统 python3（版本不确定、可能与装依赖的解释器不是同一个）。
+   * 提供 getStatus()（只读快照，不触发安装）、resolve()（按需初始化并返回解释器
+   * 绝对路径）、run()（受控执行 .py 脚本：超时 / 输出上限 / 并发闸门 / 固定环境变量）。
+   *
+   * 权限：需在 manifest.permissions 声明 `python.runtime`（仅 ctx.host 路径校验，
+   * globalThis.__AWEECLAW_HOST__ 为全局共享不做校验）。
+   */
+  pythonRuntime: typeof pythonRuntimeBridge
+  /**
+   * Shell 桥（用系统默认程序打开产物 / 外部链接）
+   *
+   * 生成型插件在产物落盘后自动预览的入口：`host.shell.openPath(htmlPath)`。
+   * 之所以不直接暴露 Electron shell，是为了让「打开」有明确语义与独立权限
+   * （`desktop.apps`），而不必让插件去申请桌面自动化的 `desktop.input`。
+   *
+   * 权限：需在 manifest.permissions 声明 `desktop.apps`。
+   */
+  shell: typeof shellBridge
 }
 
 /** 全局变量名 */
@@ -190,6 +213,10 @@ export function initHostServices(): void {
     // 注意：必须用 ESM import 静态引入（顶部已 import），不能在此处 require，
     // 否则 vite-plugin-electron 打包后 require("./pptxParserMain") 找不到模块
     parsePptxFile,
+    // Python 运行时桥接（复用 PythonRuntimeManager 的受管解释器，供插件跑 .py 脚本）
+    pythonRuntime: pythonRuntimeBridge,
+    // Shell 桥（用系统默认程序打开产物 / 外部链接，供插件自动预览）
+    shell: shellBridge,
     // 获取当前工作区路径（供插件落盘文件到工作区 .aweeclaw 目录）
     // 优先级：当前主窗口已绑定的工作区 > 持久化的最近工作区 > null
     getWorkspacePath: () => {

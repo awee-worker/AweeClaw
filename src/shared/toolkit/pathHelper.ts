@@ -16,6 +16,7 @@ import {
   isSensitivePath as sharedIsSensitivePath,
   hasPathTraversal as sharedHasPathTraversal,
 } from '@shared/appConstants'
+import { BRAND } from '@shared/brand'
 
 /* ================================================================== */
 /* 第一层：路径安全                                                    */
@@ -210,6 +211,67 @@ export function resolveToAbsolute(relativePath: string, workspaceRoot: string | 
 }
 
 /**
+ * 折叠路径中的 "." 与 ".." 片段（纯词法处理，不访问文件系统）
+ *
+ * 为什么需要：assertPathSafety 会把含 ".." 的原始输入直接判为「目录穿越」，
+ * 于是 "src/../lib/x.ts"、"../b/y.ts"（折叠后仍落在工作区内）这类合法写法被误判，
+ * AI 侧表现为「Path is outside workspace / 路径校验失败」。
+ * 先按工作区根解析成绝对路径、再折叠、最后才做边界校验，
+ * 既能放行合法写法，也不会放过真正逃出工作区的路径。
+ *
+ * 规则：
+ * - 反斜杠统一成正斜杠；"." 片段丢弃；".." 折叠上一级
+ * - 已经到根 / 盘符首层时，多余的 ".." 被丢弃（避免产出 "/.." 这类非法片段）
+ * - 无根可折叠的相对路径（如 "../x"）保留 ".."，交由上层边界校验判定
+ * - 保留前导 "/"（POSIX 根）、"//"（UNC）与 Windows 盘符 "C:"
+ */
+export function collapsePathSegments(target: unknown): string {
+  const normalized = normalizeFilePath(target)
+  if (!normalized) return ''
+
+  const drive = (normalized.match(/^[a-zA-Z]:/) || [''])[0]
+  let rest = drive ? normalized.slice(drive.length) : normalized
+
+  const leadingSlashes = Math.min((rest.match(/^\/+/) || [''])[0].length, 2)
+  rest = rest.replace(/^\/+/, '')
+
+  const hasRoot = Boolean(drive) || leadingSlashes > 0
+  const segments: string[] = []
+
+  for (const part of rest.split('/')) {
+    if (part === '' || part === '.') continue
+    if (part === '..') {
+      const last = segments[segments.length - 1]
+      if (last !== undefined && last !== '..') {
+        segments.pop()
+      } else if (!hasRoot) {
+        segments.push('..')
+      }
+      continue
+    }
+    segments.push(part)
+  }
+
+  const body = segments.join('/')
+  const prefix = drive
+    ? `${drive}${body ? '/' : ''}`
+    : leadingSlashes > 0
+      ? '/'.repeat(leadingSlashes)
+      : ''
+
+  return `${prefix}${body}`
+}
+
+/**
+ * 解析工具入参路径：相对路径按工作区根展开为绝对路径，并折叠 "." / ".."
+ *
+ * 与 assertPathSafety 搭配使用（先折叠、后校验），避免合法相对写法被误判为目录穿越。
+ */
+export function resolveToolPathInput(target: string, workspaceRoot: string | null): string {
+  return collapsePathSegments(resolveToAbsolute(target, workspaceRoot))
+}
+
+/**
  * 将绝对路径解析为相对于工作区的路径
  *
  * 如果路径不在工作区内，返回原始路径
@@ -271,6 +333,19 @@ export function resolveModuleImport(
     return buildPath(workspaceRoot, 'src', importPath)
   }
   return importPath
+}
+
+/**
+ * 拼接「指定根目录下的附件上传目录」绝对路径
+ *
+ * 附件目录名取自 BRAND.paths.uploads（单一真相源），但拼接点有三处：
+ * 聊天窗口落盘、桌面伴侣迷你聊天落盘、主进程只读可信目录注册。
+ * 集中在此，避免各写一份拼接逻辑导致「落盘目录」与「放行目录」不一致。
+ *
+ * @param root 根目录（工作区根目录，或应用 userData 目录）
+ */
+export function resolveUploadDir(root: string): string {
+  return `${root.replace(/[/\\]+$/, '')}/${BRAND.paths.uploads}`
 }
 
 /* ================================================================== */

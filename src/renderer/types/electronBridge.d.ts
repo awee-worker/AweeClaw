@@ -1678,6 +1678,8 @@ export interface ElectronAPI {
   getBlacklist: () => Promise<{ shell: string[] }>
   resetBlacklist: () => Promise<{ shell: string[] }>
   getUserDataPath: () => Promise<string>
+  /** 应用可访问数据根目录（应用默认数据目录 + 配置存储目录，已去重） */
+  getAppDataRoots: () => Promise<string[]>
   getAppConfig: () => Promise<{ serverUrl: string } | null>
   getRecentLogs: () => Promise<string>
   // Settings DB (SQLite)

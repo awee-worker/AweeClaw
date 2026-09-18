@@ -39,7 +39,7 @@ import { toolManager } from '@intelligence/toolkit'
 import { buildAgentSystemPrompt } from '@intelligence/prompt-engine/PromptComposer'
 import { compressImageFromBase64 } from '@intelligence/utils/imageCompressor'
 import { needsVisualAnalysis } from '@intelligence/utils/imageIntentDetector'
-import { BRAND } from '@shared/brand'
+import { resolveUploadDir } from '@shared/toolkit/pathHelper'
 import type { MainConversationSnapshot, VoiceContextPayload } from '../types/electronBridge'
 import type { LLMConfig, LLMMessage, MessageContentPart } from '@shared/protocols/modelProtocol'
 
@@ -143,13 +143,13 @@ function genId(prefix: string): string {
  * @param text 用户输入文本
  * @param attachments 附件列表
  * @param cloudVisionMode 是否云端视觉模式（llmConfig.cloudVisionMode）
- * @param savedImagePaths 已保存到工作区的图片路径列表（与图片附件一一对应）
+ * @param savedPaths 已落盘的附件本地路径列表（与 attachments 一一对应）
  */
 function buildMessageContent(
   text: string,
   attachments?: ChatAttachment[],
   cloudVisionMode?: boolean,
-  savedImagePaths?: (string | undefined)[],
+  savedPaths?: (string | undefined)[],
 ): string | MessageContentPart[] {
   if (!attachments || attachments.length === 0) return text
 
@@ -159,12 +159,12 @@ function buildMessageContent(
   const parts: MessageContentPart[] = []
   if (text.trim()) parts.push({ type: 'text', text })
 
-  let imageIndex = 0
-  for (const att of attachments) {
+  for (let index = 0; index < attachments.length; index++) {
+    const att = attachments[index]
     if (!att.base64) continue
+    // 路径按附件下标取值：图片与非图片附件都可能有本地路径
+    const localPath = savedPaths?.[index]
     if (att.isImage) {
-      const localPath = savedImagePaths?.[imageIndex]
-      imageIndex++
 
       // 决定是否真正发送图片给模型分析
       // 1. 用户需要分析 + 云端视觉模式 → 正常发送
@@ -190,7 +190,7 @@ function buildMessageContent(
         })
       }
     } else {
-      parts.push({ type: 'file', name: att.name, media_type: att.mediaType, data: att.base64 })
+      parts.push({ type: 'file', name: att.name, media_type: att.mediaType, data: att.base64, localPath })
     }
   }
 
@@ -199,57 +199,61 @@ function buildMessageContent(
 }
 
 /**
- * 保存图片附件到工作区（与普通聊天窗口 useAttachmentManager 一致）
+ * 保存附件到本地（工作区优先，用户数据目录兜底）
  *
- * 保存路径：{workspacePath}/{BRAND.dirName}/uploads/{timestamp}_{filename}
+ * 主目录：{workspacePath}/.aweeclaw/uploads/{timestamp}_{filename}
+ * 兜底：{userData}/.aweeclaw/uploads/{timestamp}_{filename}
+ * （目录名取自 BRAND.paths.uploads，与聊天窗口落盘路径保持一致）
+ *
+ * 无工作区时必须走兜底目录：否则附件不落盘，AI 拿不到任何本地路径（"找不到图片路径"）。
  * 保存失败不阻塞发送流程，仅记录日志。
  *
- * @param attachments 附件列表
- * @param workspacePath 工作区路径
- * @returns 已保存的图片路径列表（与图片附件一一对应，未保存的为 undefined）
+ * @returns 与 attachments 一一对应的路径数组（未保存的为 undefined）
  */
-async function saveImagesToWorkspace(
+async function saveAttachmentsToDisk(
   attachments: ChatAttachment[],
   workspacePath: string | null,
 ): Promise<(string | undefined)[]> {
-  if (!workspacePath) return attachments.map(() => undefined)
+  const results: (string | undefined)[] = new Array(attachments.length).fill(undefined)
+  if (attachments.length === 0) return results
 
-  const uploadDir = `${workspacePath}/${BRAND.dirName}/uploads`
+  const dirs: string[] = []
+  if (workspacePath) dirs.push(resolveUploadDir(workspacePath))
   try {
-    const dirCreated = await api.file.ensureDir(uploadDir)
-    if (!dirCreated) {
-      logger.system.warn('[AvatarMiniChat] Failed to create upload directory:', uploadDir)
-      return attachments.map(() => undefined)
-    }
+    const userDataPath = await api.settings.getUserDataPath()
+    if (userDataPath) dirs.push(resolveUploadDir(userDataPath))
   } catch (err) {
-    logger.system.error('[AvatarMiniChat] Failed to create upload directory:', err)
-    return attachments.map(() => undefined)
+    logger.system.warn('[AvatarMiniChat] Failed to resolve userData path:', err)
   }
 
-  const savedPaths: (string | undefined)[] = []
-  for (const att of attachments) {
-    if (!att.isImage || !att.base64) {
-      savedPaths.push(undefined)
+  for (const dir of dirs) {
+    try {
+      await api.file.ensureDir(dir)
+    } catch (err) {
+      logger.system.warn('[AvatarMiniChat] Failed to create upload directory:', err)
       continue
     }
-    const timestamp = Date.now()
-    const safeName = att.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-    const filePath = `${uploadDir}/${timestamp}_${safeName}`
-    try {
-      const saved = await api.file.writeBinary(filePath, att.base64)
-      if (saved) {
-        savedPaths.push(filePath)
-      } else {
-        logger.system.warn('[AvatarMiniChat] Failed to save uploaded image:', filePath)
-        savedPaths.push(undefined)
+
+    for (let i = 0; i < attachments.length; i++) {
+      const att = attachments[i]
+      if (results[i] || !att.base64) continue
+      const safeName = (att.name || `attachment_${att.id}`).replace(/[^a-zA-Z0-9._-]/g, '_')
+      const filePath = `${dir}/${Date.now()}_${safeName}`
+      try {
+        if (await api.file.writeBinary(filePath, att.base64)) {
+          results[i] = filePath
+        } else {
+          logger.system.warn('[AvatarMiniChat] Failed to save attachment:', filePath)
+        }
+      } catch (err) {
+        logger.system.error('[AvatarMiniChat] Failed to save attachment:', err)
       }
-    } catch (err) {
-      logger.system.error('[AvatarMiniChat] Failed to save uploaded image:', err)
-      savedPaths.push(undefined)
     }
+
+    if (results.every(Boolean)) break
   }
 
-  return savedPaths
+  return results
 }
 
 // ============================================
@@ -359,18 +363,14 @@ export function useAvatarMiniChat(
         attachments = compressedAttachments
       }
 
-      // 保存图片到工作区（与普通聊天窗口 useAttachmentManager 一致）
-      // 保存路径：{workspacePath}/{BRAND.dirName}/uploads/{timestamp}_{filename}
-      // 保存失败不阻塞发送流程
-      let savedImagePaths: (string | undefined)[] | undefined
+      // 附件落盘（工作区优先，userData 兜底）——与普通聊天窗口 useAttachmentManager 保持一致
+      // 保存失败不阻塞发送流程，但会导致 AI 拿不到本地路径，日志中会体现
+      let savedAttachmentPaths: (string | undefined)[] | undefined
       if (hasAttachments) {
-        const imageAttachments = attachments!.filter((a) => a.isImage)
-        if (imageAttachments.length > 0) {
-          savedImagePaths = await saveImagesToWorkspace(
-            imageAttachments,
-            voiceContext?.workspacePath || null,
-          )
-        }
+        savedAttachmentPaths = await saveAttachmentsToDisk(
+          attachments!,
+          voiceContext?.workspacePath || null,
+        )
       }
 
       // 构建用户消息
@@ -389,7 +389,7 @@ export function useAvatarMiniChat(
       // 构建当前用户消息的 LLM content
       // 与普通聊天窗口一致：使用 needsVisualAnalysis 检测是否需要视觉分析
       const cloudVisionMode = !!(llmConfig as { cloudVisionMode?: boolean })?.cloudVisionMode
-      const currentUserContent = buildMessageContent(trimmed, attachments, cloudVisionMode, savedImagePaths)
+      const currentUserContent = buildMessageContent(trimmed, attachments, cloudVisionMode, savedAttachmentPaths)
 
       // 首次发送时注入主窗口对话历史：迷你会话延续主窗口上下文（clear 后重新注入最新快照）
       if (llmMessagesRef.current.length === 0 && mainConversation?.messages?.length) {

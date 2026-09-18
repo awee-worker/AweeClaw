@@ -21,7 +21,10 @@ export interface ImageContent {
         data: string
     }
     referenceOnly?: boolean
+    /** 附件已落盘的本地绝对路径（供 AI 直接读取/引用） */
     localPath?: string
+    /** 附件原始文件名（含扩展名，便于模型识别格式） */
+    fileName?: string
 }
 
 export interface FileContent {
@@ -29,6 +32,8 @@ export interface FileContent {
     name: string
     media_type: string
     data: string
+    /** 附件已落盘的本地绝对路径（供 AI 直接读取/引用） */
+    localPath?: string
 }
 
 export type MessageContentPart = TextContent | ImageContent | FileContent

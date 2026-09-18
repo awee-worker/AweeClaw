@@ -47,6 +47,15 @@ void import('./components/scene-tools/stores').then(({ warmupSceneToolsStores })
   })
 })
 
+// 注册可信应用数据目录（插件 / 场景 / 技能 / 运行时所在的应用配置存储目录）：
+// 这些目录由客户端安装而来、且工作区之外，其中的插件文档与脚本需要能被 AI 读取，
+// 否则插件调用会因路径越界直接失败。同时该目录也覆盖了附件兜底上传目录
+// （<配置目录>/.aweeclaw/uploads）—— 历史附件在打开工作区后仍需可读。
+// 不 await：路径校验同步读模块级缓存，未就绪时不放行，行为与改动前一致。
+void import('./intelligence/toolkit/trustedPathRegistry').then(({ initTrustedAppDataRoots }) =>
+  initTrustedAppDataRoots()
+)
+
 // ============================================
 // 主应用入口
 // ============================================

@@ -268,7 +268,10 @@ describe('ai-macro-recorder: MacroPlayer.executeStep', () => {
 
 describe('ai-macro-recorder: MacroPlayer.play', () => {
   it('宏不存在时抛错', async () => {
-    const player = new MacroPlayer()
+    // MacroPlayer 的契约是「构造时注入 MacroStore」（生产代码 `new MacroPlayer(macroStore)`）。
+    // 不传 store 时 _macroStore 为 null，play() 会先抛 TypeError，
+    // 断言 '宏不存在' 就永远测不到真正的分支 —— 这里给一个空 store 走真实路径。
+    const player = new MacroPlayer({ get: () => null })
     await expect(player.play('nonexistent-macro', 1)).rejects.toThrow('宏不存在')
   })
 

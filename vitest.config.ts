@@ -51,6 +51,7 @@ export default defineConfig({
       '@toolkit': path.resolve(__dirname, './src/shared/toolkit'),
       '@protocols': path.resolve(__dirname, './src/shared/protocols'),
       '@configuration': path.resolve(__dirname, './src/shared/configuration'),
+      '@renderer-configuration': path.resolve(__dirname, './src/renderer/configuration'),
       '@scenario-system': path.resolve(__dirname, './src/scenario-system'),
       '@scenarios': path.resolve(__dirname, './src/scenarios'),
     }

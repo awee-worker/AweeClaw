@@ -26,7 +26,27 @@ import Store from 'electron-store'
 // 常量
 // ============================================
 
-const store = new Store({ name: 'node-config' })
+/**
+ * 懒初始化 electron-store
+ *
+ * electron-store 依赖 Electron `app`，模块顶层实例化会让任何 import 本模块的代码
+ * 在非 Electron 环境（单测 / CLI）直接抛出 "Cannot read properties of undefined"。
+ * 与 PythonRuntimeManager 保持同一套做法。
+ */
+let _store: Store | null = null
+function getStore(): Store<Record<string, unknown>> {
+  if (!_store) {
+    _store = new Store({ name: 'node-config' })
+  }
+  return _store as Store<Record<string, unknown>>
+}
+const store = new Proxy({} as Store<Record<string, unknown>>, {
+  get(_target, prop) {
+    const instance = getStore() as unknown as Record<string | symbol, unknown>
+    const value = instance[prop as string]
+    return typeof value === 'function' ? value.bind(instance) : value
+  },
+})
 
 const CONFIG_KEY_NODE_PATH = 'nodePath'
 const CONFIG_KEY_NPM_PATH = 'npmPath'
@@ -34,8 +54,19 @@ const CONFIG_KEY_NPX_PATH = 'npxPath'
 const CONFIG_KEY_NODE_DIR = 'nodeDir'
 const CONFIG_KEY_VERSION = 'version'
 
-/** 便携版 Node.js 安装目录：{userData}/node-env/ */
-const DEFAULT_NODE_DIR = path.join(app.getPath('userData'), 'node-env')
+/**
+ * 便携版 Node.js 安装目录：{userData}/node-env/（懒求值）
+ *
+ * `app` 只在 Electron 主进程存在，顶层调用会让 import 本模块的代码在
+ * 单测 / CLI 环境直接崩溃。改为首次使用时解析并缓存。
+ */
+let _defaultNodeDir: string | null = null
+function getDefaultNodeDir(): string {
+  if (!_defaultNodeDir) {
+    _defaultNodeDir = path.join(app.getPath('userData'), 'node-env')
+  }
+  return _defaultNodeDir
+}
 
 /**
  * 下载的 Node.js 大版本。
@@ -523,7 +554,7 @@ class NodeManager {
           nodePath: cachedNode,
           npmPath: cachedNpm && fs.existsSync(cachedNpm) ? cachedNpm : null,
           npxPath: cachedNpx && fs.existsSync(cachedNpx) ? cachedNpx : null,
-          source: cachedDir && cachedDir.includes(DEFAULT_NODE_DIR) ? 'managed' : 'system',
+          source: cachedDir && cachedDir.includes(getDefaultNodeDir()) ? 'managed' : 'system',
           version,
           nodeDir: cachedDir,
           binDir: path.dirname(cachedNode),
@@ -698,7 +729,7 @@ class NodeManager {
     this.notifyStatus(`正在下载 Node.js ${version}（${sourceName}）...`)
 
     // 准备临时目录
-    const tmpDir = path.join(DEFAULT_NODE_DIR, 'tmp')
+    const tmpDir = path.join(getDefaultNodeDir(), 'tmp')
     if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true })
 
     const archivePath = path.join(tmpDir, archiveName)
@@ -731,15 +762,15 @@ class NodeManager {
       }
 
       // 移动到最终位置
-      const finalDir = path.join(DEFAULT_NODE_DIR, 'node')
+      const finalDir = path.join(getDefaultNodeDir(), 'node')
       // 清理可能存在的旧目录
       if (fs.existsSync(finalDir)) {
         fs.rmSync(finalDir, { recursive: true, force: true })
       }
 
-      // 确保 DEFAULT_NODE_DIR 存在
-      if (!fs.existsSync(DEFAULT_NODE_DIR)) {
-        fs.mkdirSync(DEFAULT_NODE_DIR, { recursive: true })
+      // 确保受管安装目录存在
+      if (!fs.existsSync(getDefaultNodeDir())) {
+        fs.mkdirSync(getDefaultNodeDir(), { recursive: true })
       }
 
       fs.renameSync(extractedRoot, finalDir)
@@ -914,8 +945,8 @@ class NodeManager {
 
     // 清除安装目录
     try {
-      if (fs.existsSync(DEFAULT_NODE_DIR)) {
-        fs.rmSync(DEFAULT_NODE_DIR, { recursive: true, force: true })
+      if (fs.existsSync(getDefaultNodeDir())) {
+        fs.rmSync(getDefaultNodeDir(), { recursive: true, force: true })
       }
     } catch (err) {
       logger.system.warn('[NodeManager] Failed to clean node-env dir:', err)

@@ -41,6 +41,7 @@ import {
   type DefinitionPickerRequest,
 } from '@services/editorNavigation'
 import { safeLazy, safeNamedLazy } from '@renderer/utils/safeImport'
+import { ensureFileContentLoaded } from '../../toolkit/fileUtils'
 
 // 子组件（通过 safeLazy 加载，场景卸载时不会崩溃）
 const EditorTabs = safeNamedLazy(() => import('./EditorTabBar'), 'EditorTabs', { label: 'EditorTabs', silent: true })
@@ -332,6 +333,15 @@ export default function Editor() {
       }
     }
   }, [activeFilePath, activeFile, clearLintErrors, notifyFileOpened, isPreviewDocument])
+
+  // 补载被 LRU 淘汰过的文件内容
+  // 打开文件数超过上限时 fileSlice 会清空最久未访问的非活跃文件内容以释放内存
+  // （content 变成空串）。若不在这里补载，用户点开这些 Tab 会看到空文件 ——
+  // AI 连续新建/编辑大量文件后，早期 Tab 被淘汰，表现就是「打开后文件没有内容」。
+  useEffect(() => {
+    if (!activeFilePath) return
+    void ensureFileContentLoaded(activeFilePath)
+  }, [activeFilePath])
 
   // 清理不再打开的文件的 Monaco Models，防止内存泄漏
   useEffect(() => {

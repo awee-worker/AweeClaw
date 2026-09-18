@@ -77,6 +77,13 @@ export interface OpenFile {
   isDeleted?: boolean
   remote?: RemoteBinding
   lastAccessed?: number
+  /**
+   * 内容是否因 LRU 淘汰被卸载（content 被清空以释放内存）
+   *
+   * 为 true 时 content 是空串而不是文件真实内容。重新激活该 Tab 时必须
+   * 懒加载回磁盘内容，否则用户会看到「打开后文件没有内容」。
+   */
+  contentEvicted?: boolean
   preview?: OpenPreviewMetadata
   scrollPosition?: unknown
   /** v2.3：PPT 预览 Tab 专用数据（kind='ppt-preview' 时使用） */
@@ -176,7 +183,12 @@ function patchFile(files: OpenFile[], path: string, patch: Partial<OpenFile>): O
   return files.map((f) => (f.path === path ? { ...f, ...patch } : f))
 }
 
-/** LRU 淘汰：卸载最久未访问的非脏文件内容 */
+/** LRU 淘汰：卸载最久未访问的非脏文件内容
+ *
+ * 被淘汰的文件会把 content 清空并标记 contentEvicted=true。
+ * 重新激活该 Tab 时由 ensureFileContentLoaded 从磁盘懒加载回来，
+ * 否则用户点到这些 Tab 会看到空内容。
+ */
 function applyLruEviction(files: OpenFile[], activePath: string): OpenFile[] {
   if (files.length <= MAX_OPEN_FILES_WITH_CONTENT) return files
 
@@ -188,12 +200,16 @@ function applyLruEviction(files: OpenFile[], activePath: string): OpenFile[] {
   const evictPaths = new Set(candidates.slice(0, evictCount).map((f) => f.path))
 
   return files.map((f) =>
-    evictPaths.has(f.path) ? { ...f, content: '', originalContent: undefined } : f,
+    evictPaths.has(f.path)
+      ? { ...f, content: '', originalContent: undefined, contentEvicted: true }
+      : f,
   )
 }
 
 /* ------------------------------------------------------------------ */
 /* 切片实现                                                          */
+/* ------------------------------------------------------------------ */
+
 /* ------------------------------------------------------------------ */
 
 export const createFileSlice: StateCreator<FileSlice, [], [], FileSlice> = (set) => ({
@@ -267,6 +283,7 @@ export const createFileSlice: StateCreator<FileSlice, [], [], FileSlice> = (set)
         content,
         isDirty: false,
         originalContent,
+        contentEvicted: false,
         savedVersionId: 1,
         largeFileInfo: options?.largeFileInfo,
         encoding: options?.encoding,
@@ -280,6 +297,7 @@ export const createFileSlice: StateCreator<FileSlice, [], [], FileSlice> = (set)
         activeFilePath: normalizedPath,
       }
     }),
+
 
   openPreview: (preview, options) =>
     set((state) => {
@@ -448,7 +466,11 @@ export const createFileSlice: StateCreator<FileSlice, [], [], FileSlice> = (set)
     }),
 
   updateFileContent: (path, content) =>
-    set((state) => ({ openFiles: patchFile(state.openFiles, path, { content }) })),
+    set((state) => ({
+      openFiles: state.openFiles.map((f) =>
+        f.path === path ? { ...f, content, contentEvicted: false } : f,
+      ),
+    })),
 
   updateFileDirtyState: (path, currentVersionId) =>
     set((state) => ({
@@ -473,8 +495,10 @@ export const createFileSlice: StateCreator<FileSlice, [], [], FileSlice> = (set)
         originalContent: undefined,
         isDirty: false,
         isDeleted: false,
+        contentEvicted: false,
       }),
     })),
+
 
   markFileDeleted: (path) =>
     set((state) => ({ openFiles: patchFile(state.openFiles, path, { isDeleted: true }) })),

@@ -5,15 +5,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { SubAgentEngine } from '../SubAgentEngine'
 
-// Mock IndexedDB
-const mockDB = {
-  open: vi.fn(),
-  transaction: vi.fn(),
-}
-
-vi.stubGlobal('indexedDB', {
-  open: vi.fn().mockResolvedValue(mockDB),
-})
+// IndexedDB 由 tests/setup.ts 统一安装内存实现（回调风格，与源码调用方式一致）。
+// 之前这里用 `open: vi.fn().mockResolvedValue(...)` 覆盖成一个 Promise 风格的假对象，
+// 而 TaskStore 用的是 request.onsuccess 回调——this.db 永远是 null，
+// 于是每个用例都挂在 "DB not initialized"。
 
 describe('SubAgentEngine', () => {
   let engine: SubAgentEngine
@@ -21,13 +16,16 @@ describe('SubAgentEngine', () => {
   let onProgress: (taskId: string, progress: number) => void
   let onResult: (taskId: string, success: boolean, result?: string, error?: string) => void
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks()
     mockExecuteTask = vi.fn(async () => 'Task completed successfully')
     onProgress = vi.fn()
     onResult = vi.fn()
-    
+
     engine = new SubAgentEngine()
+    // init() 是引擎的公开前置条件（生产侧 engineInitializer 也是先 await init() 再使用）；
+    // 不初始化时 TaskStore.db 为 null，所有任务操作都会以 "DB not initialized" 拒绝。
+    await engine.init()
     engine.setExecutor(mockExecuteTask)
     engine.setCallbacks(
       (event) => onProgress(event.taskId, event.progress),

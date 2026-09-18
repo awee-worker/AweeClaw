@@ -23,6 +23,7 @@ export function createStorageApi() {
     getBlacklist: invoke('settings:getBlacklist'),
     resetBlacklist: invoke('settings:resetBlacklist'),
     getUserDataPath: invoke('settings:getUserDataPath'),
+    getAppDataRoots: invoke('settings:getAppDataRoots'),
     getAppConfig: invoke('settings:getAppConfig'),
     getRecentLogs: invoke('settings:getRecentLogs'),
 

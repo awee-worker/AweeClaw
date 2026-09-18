@@ -86,3 +86,10 @@ export {
 export {
   StorageService,
 } from './StorageService'
+
+// 版本比较工具
+export {
+  compareVersions,
+  isVersionDirName,
+  pickLatestVersionDir,
+} from './versionHelper'

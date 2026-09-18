@@ -8,7 +8,7 @@
 
 import { logger } from '@toolkit/LogEngine'
 import { BehaviorEngine } from '../runtime/BehaviorEngine'
-import { SubAgentEngine } from './SubAgentEngine'
+import { SubAgentEngine, setSubAgentEngine } from './SubAgentEngine'
 
 // 单例引用
 let behaviorEngine: BehaviorEngine | null = null
@@ -52,6 +52,9 @@ export async function initializeSubAgentEngine(
 
   subAgentEngine = new SubAgentEngine()
   await subAgentEngine.init()
+  // 注册到全局单例：SubAgentPanel 走的是 getSubAgentEngine()，
+  // 不注册的话它拿到的是一个从未 init() 过的引擎（任务列表全报 DB not initialized）。
+  setSubAgentEngine(subAgentEngine)
 
   // 设置执行器（如果提供）
   if (executeTask) {
@@ -104,6 +107,8 @@ export function disposeEngines(): void {
   if (subAgentEngine) {
     subAgentEngine = null
   }
+  // 同步清空全局单例，避免销毁后仍被 getSubAgentEngine() 取到
+  setSubAgentEngine(null)
 
   logger.agent.info('[EngineInit] All engines disposed')
 }

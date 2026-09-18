@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest'
 import {
   toAppError,
   AppError,
+  OperationError,
   ErrorCode,
   getErrorMessage,
   mapAISDKError,
@@ -137,7 +138,10 @@ describe('errorHandler', () => {
       expect(error.code).toBe(ErrorCode.API_KEY_INVALID)
       expect(error.retryable).toBe(true)
       expect(error.details).toEqual({ key: 'value' })
-      expect(error.name).toBe('AppError')
+      // AppError 是 OperationError 的向后兼容别名（`export const AppError = OperationError`），
+      // 实例真正的类名是 OperationError；这里同时把「别名契约」固定下来。
+      expect(AppError).toBe(OperationError)
+      expect(error.name).toBe('OperationError')
     })
 
     it('should have default values', () => {
@@ -151,7 +155,7 @@ describe('errorHandler', () => {
       const error = new AppError('Test', ErrorCode.FILE_NOT_FOUND, false, { path: '/test' })
       const json = error.toJSON()
       
-      expect(json.name).toBe('AppError')
+      expect(json.name).toBe('OperationError')
       expect(json.message).toBe('Test')
       expect(json.code).toBe(ErrorCode.FILE_NOT_FOUND)
       expect(json.details).toEqual({ path: '/test' })

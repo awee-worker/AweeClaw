@@ -15,7 +15,24 @@
 // ============================================
 
 /** 插件类型 */
-export type PluginType = 'channel' | 'provider' | 'tool' | 'hook' | 'memory' | 'desktop' | 'composite' | 'mcp'
+export type PluginType =
+  | 'channel'
+  | 'provider'
+  | 'tool'
+  | 'hook'
+  | 'memory'
+  | 'desktop'
+  | 'composite'
+  | 'mcp'
+  /**
+   * 技能型：随插件分发 SKILL.md（含其引用的流程文档），安装时由 PluginInstaller
+   * 注册进技能系统，模型据此拿到流程契约。
+   *
+   * 与 'tool' 等类型可并存（manifest.type 支持数组）：一个插件既能提供 MCP 工具，
+   * 又能提供流程契约。两条注册链互不冲突——`finalizeInstall` 里技能注册只读
+   * SKILL.md，MCP 注册只读 capabilities.mcp，各自独立分支。
+   */
+  | 'skill'
 
 /** 插件生命周期 */
 export type PluginLifecycle = 'singleton' | 'per-account' | 'per-session'
@@ -291,6 +308,8 @@ export type PluginPermission =
   | 'desktop.workflow'     // 工作流执行
   | 'desktop.visual-agent' // 视觉智能体
   | 'ui.render'            // Phase 6: 在客户端渲染 UI 组件
+  | 'python.runtime'       // 复用客户端内置 Python 运行时（host.pythonRuntime）
+  | 'process.spawn'        // 启动子进程（host.pythonRuntime.run 或自行 spawn）
 
 // ============================================
 // 插件运行时接口

@@ -412,6 +412,13 @@ export function getSubAgentEngine(): SubAgentEngine {
   return _instance
 }
 
-export function setSubAgentEngine(engine: SubAgentEngine): void {
+/**
+ * 注册 / 清除全局单例
+ *
+ * 允许传 null（dispose 时清空）：否则引擎被销毁后单例仍指向一个
+ * 已失效实例，后续 getSubAgentEngine() 的调用方会拿到「看着存在、
+ * 实际不可用」的引擎。
+ */
+export function setSubAgentEngine(engine: SubAgentEngine | null): void {
   _instance = engine
 }

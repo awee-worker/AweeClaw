@@ -181,6 +181,10 @@ describe('BehaviorEngine', () => {
       const mockDate = new Date('2024-01-15T09:00:00')
       vi.setSystemTime(mockDate)
 
+      // tick() 有 isRunning 守卫：未 start() 的引擎调用 tick() 会直接返回，
+      // 因此必须先启动，手动 tick 才能真的走到规则判定。
+      engine.start()
+
       // Trigger manually
       engine['tick']()
       

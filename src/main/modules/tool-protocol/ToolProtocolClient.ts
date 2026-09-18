@@ -22,6 +22,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js'
 import { logger } from '@shared/toolkit/LogEngine'
 import { toAppError } from '@shared/toolkit/errorCatalog'
+import { pickLatestVersionDir } from '@shared/toolkit/versionHelper'
 import { McpOAuthProvider } from './ToolOAuthProvider'
 import { mcpManager } from './ToolProtocolManager'
 import { pythonManager } from '../python-runtime'
@@ -673,9 +674,11 @@ export class McpClient extends EventEmitter {
         const subdirs = fs
           .readdirSync(baseDir)
           .filter((d) => fs.statSync(path.join(baseDir, d)).isDirectory())
-          .sort()
-        if (subdirs.length > 0) {
-          const resolved = path.join(baseDir, subdirs[subdirs.length - 1])
+        // 按语义版本挑最新的版本目录，不能用字典序：
+        // 字典序下 "1.10.0" 小于 "1.9.0"，跨十位版本号时会把旧目录当成最新
+        const latest = pickLatestVersionDir(subdirs)
+        if (latest) {
+          const resolved = path.join(baseDir, latest)
           // 顺带补登记到 pluginDirs，后续连接直接命中缓存
           McpClient.registerPluginDir(config.pluginKey, resolved)
           return resolved

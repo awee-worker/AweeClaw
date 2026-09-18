@@ -51,6 +51,8 @@ import type { HostServices } from './hostServices'
  * - pptxgen → filesystem.write（生成 PPT 文件）
  * - pptPreview → ui.render（推送 UI 数据到预览窗口）
  * - parsePptxFile → filesystem.read（读取 PPT 文件）
+ * - pythonRuntime → python.runtime（复用内置 Python 运行时并执行脚本）
+ * - shell → desktop.apps（用系统默认程序打开产物文件 / 外部链接）
  * - nativeImage → 无权限要求（基础图像工具）
  */
 const HOST_SERVICE_PERMISSION_MAP: Partial<Record<keyof HostServices, PluginPermission>> = {
@@ -70,6 +72,8 @@ const HOST_SERVICE_PERMISSION_MAP: Partial<Record<keyof HostServices, PluginPerm
   pptxgen: 'filesystem.write',
   pptPreview: 'ui.render',
   parsePptxFile: 'filesystem.read',
+  pythonRuntime: 'python.runtime',
+  shell: 'desktop.apps',
 }
 
 // ─── 合法权限值列表 ────────────────────────────────────────
@@ -95,6 +99,8 @@ const VALID_PERMISSIONS: readonly PluginPermission[] = [
   'desktop.workflow',
   'desktop.visual-agent',
   'ui.render',
+  'python.runtime',
+  'process.spawn',
 ] as const
 
 // ─── 运行时权限注册表 ──────────────────────────────────────

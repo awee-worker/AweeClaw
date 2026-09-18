@@ -9,7 +9,7 @@
  */
 
 import { logger } from '@shared/toolkit/LogEngine'
-import { BrowserWindow } from 'electron'
+import { app, BrowserWindow } from 'electron'
 import { safeIpcHandle } from '../core/ipcGuard'
 import * as fs from 'fs'
 import Store from 'electron-store'
@@ -237,6 +237,20 @@ export function registerSettingsHandlers(
 
   safeIpcHandle('settings:getUserDataPath', () => {
     return getUserConfigDir()
+  })
+
+  /**
+   * 应用可访问数据根目录
+   *
+   * 插件 / 场景 / 运行时安装在应用默认数据目录下（app.getPath('userData')），
+   * 而技能 / 附件 / 数据库落在配置存储目录下（用户可在设置里改成自定义路径）。
+   * 两者在用户自定义配置路径后不再相同，因此一并返回，
+   * 供渲染层把「工作区之外但属于应用自身」的路径纳入放行范围。
+   */
+  safeIpcHandle('settings:getAppDataRoots', () => {
+    const roots = [app.getPath('userData'), getUserConfigDir()]
+    const unique = new Set(roots.map(root => root.replace(/[/\\]+$/, '')).filter(Boolean))
+    return Array.from(unique)
   })
 
   safeIpcHandle('settings:getAppConfig', async () => {

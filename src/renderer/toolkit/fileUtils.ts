@@ -14,7 +14,7 @@ import {
 } from '@services/largeFileAdapter'
 import { toast } from '@components/foundation/NotificationProvider'
 import { globalDecide as globalConfirm } from '../components/foundation/DecisionOverlay'
-import { getFileName } from '@shared/toolkit/pathHelper'
+import { getFileName, normalizePath } from '@shared/toolkit/pathHelper'
 import { t, type Language } from '@renderer/i18n'
 
 /* ------------------------------------------------------------------ */
@@ -202,4 +202,44 @@ export async function safeOpenFiles(
   }
 
   return { opened, failed }
+}
+
+/* ------------------------------------------------------------------ */
+/* 内容懒加载                                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 补载被 LRU 淘汰过的文件内容
+ *
+ * 背景：fileSlice 的 applyLruEviction 在打开文件数超过上限时，会把最久未访问的
+ * 非脏文件 content 清空（释放内存）并标记 contentEvicted=true。若不在重新激活
+ * Tab 时补载内容，用户点开这些 Tab 就会看到「文件没有内容」。
+ *
+ * 只处理普通文件（kind='file'）：preview / ppt-preview / oo-edit 的 content
+ * 本来就是空串，diff 由 originalContent 渲染，都不能当成待补载内容。
+ *
+ * @returns 是否实际补载了内容
+ */
+export async function ensureFileContentLoaded(filePath: string): Promise<boolean> {
+  const normalized = normalizePath(filePath)
+  const openFiles = useStore.getState().openFiles
+  const file = openFiles.find((f) => normalizePath(f.path) === normalized)
+
+  if (!file || !file.contentEvicted) return false
+  if (file.kind && file.kind !== 'file') return false
+  if (isBinaryFile(normalized)) return false
+
+  try {
+    const content = await api.file.read(normalized)
+    if (content === null) return false
+
+    // 读取是异步的：期间用户可能已切走、关闭或重新打开了该文件，需二次校验
+    const current = useStore.getState().openFiles.find((f) => normalizePath(f.path) === normalized)
+    if (!current || !current.contentEvicted) return false
+
+    useStore.getState().reloadFileFromDisk(current.path, content)
+    return true
+  } catch {
+    return false
+  }
 }

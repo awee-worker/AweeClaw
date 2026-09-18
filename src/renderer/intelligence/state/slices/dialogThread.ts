@@ -23,7 +23,13 @@ export interface ThreadStoreState {
 export interface ThreadActions {
     createThread: (options?: { activate?: boolean }) => string
     renameThread: (threadId: string, title: string) => boolean
-    switchThread: (threadId: string) => void
+    /**
+     * 切换当前会话
+     *
+     * 返回 Promise：切换是异步的（先确保线程与消息加载完成再改 currentThreadId），
+     * 调用方需要等待切换生效时应 await 它（例如测试、脚本化流程）。
+     */
+    switchThread: (threadId: string) => Promise<void>
     /**
      * 确保指定线程已加载到 store（含消息体）
      *
@@ -292,11 +298,11 @@ export const createThreadSlice: StateCreator<
             if (storeState.showWelcomePage || storeState.showSettingsPage || storeState.showUserProfilePage || storeState.showBillingCenterPage || storeState.showSessionHistoryPage) {
                 useStore.getState().closeAllFullPages()
             }
-            return
+            return Promise.resolve()
         }
 
         // 复用 ensureThreadLoaded 加载线程与消息（不切 currentThreadId）
-        void ensureThreadLoadedImpl(get, set, threadId).then(() => {
+        return ensureThreadLoadedImpl(get, set, threadId).then(() => {
             // 加载完成后切换 currentThreadId 并关闭全屏页面
             set({ currentThreadId: threadId })
 

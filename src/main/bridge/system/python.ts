@@ -11,6 +11,7 @@ import { ipcMain } from 'electron'
 import { logger } from '@shared/toolkit/LogEngine'
 import { toAppError } from '@shared/toolkit/errorCatalog'
 import { pythonManager } from '../../modules/python-runtime'
+import type { PythonReadyOptions } from '../../modules/python-runtime/PythonRuntimeManager'
 
 export function registerPythonHandlers(): void {
   ipcMain.handle('python:getStatus', async () => {
@@ -40,12 +41,18 @@ export function registerPythonHandlers(): void {
     }
   })
 
-  ipcMain.handle('python:ensureReady', async () => {
+  /**
+   * 确保 Python 环境就绪
+   *
+   * 支持传入 minVersion / forceRefresh：设置页的「重新检测并修复」用 forceRefresh 走
+   * 同一条链路——系统 Python 低于要求时会被跳过，改选受管运行时或按需安装。
+   */
+  ipcMain.handle('python:ensureReady', async (_, options?: PythonReadyOptions) => {
     try {
-      return await pythonManager.ensureReady()
+      return await pythonManager.ensureReady(options ?? {})
     } catch (err) {
       logger.system.error('[Python IPC] ensureReady failed:', err)
-      return { ready: false, pythonPath: null, uvPath: null, source: 'none', version: null, venvDir: null, installedPackages: [], error: toAppError(err).message }
+      return { ready: false, pythonPath: null, uvPath: null, source: 'none', version: null, venvDir: null, venvBaseVersion: null, installedPackages: [], error: toAppError(err).message }
     }
   })
 

@@ -87,18 +87,20 @@ export class MessageConverter {
       if (item.type === 'text' && 'text' in item) {
         parts.push({ type: 'text', text: item.text })
       } else if (item.type === 'image' && 'source' in item) {
-        const imageItem = item as { type: 'image'; source: { type: string; url?: string; data?: string; media_type?: string }; referenceOnly?: boolean; localPath?: string }
+        const imageItem = item as { type: 'image'; source: { type: string; url?: string; data?: string; media_type?: string }; referenceOnly?: boolean; localPath?: string; fileName?: string }
 
         if (imageItem.referenceOnly) {
-          const pathInfo = imageItem.localPath
-            ? `[User uploaded image saved at: ${imageItem.localPath}]`
-            : '[User uploaded an image (reference only)]'
-          parts.push({ type: 'text', text: pathInfo })
+          parts.push({ type: 'text', text: this.buildImageReferenceText(imageItem) })
         } else {
           const result = this.convertImageSource(
             item.source as { type: string; url?: string; data?: string; media_type?: string }
           )
           if (result) {
+            // 像素与路径是两份独立信息：模型能从像素看懂画面，却无从得知文件落在磁盘何处。
+            // 若只发像素，后续需要把图片交给工具 / 插件 / 脚本时，模型只能去上传目录里
+            // 挑"最新的一张"，附件一多必然取错。因此把已落盘的绝对路径一并前置声明。
+            const pathNotice = this.buildAttachedImagePathNotice(imageItem)
+            if (pathNotice) parts.push({ type: 'text', text: pathNotice })
             parts.push({
               type: 'image',
               image: result.image,
@@ -107,7 +109,7 @@ export class MessageConverter {
           }
         }
       } else if (item.type === 'file' && 'data' in item) {
-        const fileItem = item as { type: 'file'; name: string; media_type: string; data: string }
+        const fileItem = item as { type: 'file'; name: string; media_type: string; data: string; localPath?: string }
         const textContent = this.convertFileContent(fileItem)
         if (textContent) {
           parts.push({ type: 'text', text: textContent })
@@ -118,25 +120,68 @@ export class MessageConverter {
     return parts
   }
 
+  /**
+   * 构建「仅引用」图片的文字提示
+   *
+   * 图片未随消息发送像素数据时，本地绝对路径是模型定位该文件的唯一依据
+   * （典型场景：插件/工具需要图片路径作为入参，如 img2threejs）。
+   * 因此这里必须显式声明路径可用，并明确禁止模型自行编造路径。
+   */
+  private buildImageReferenceText(item: { localPath?: string; fileName?: string }): string {
+    const label = item.fileName ? ` "${item.fileName}"` : ''
+
+    if (item.localPath) {
+      return `[User attached image${label}. The image file is saved on the local disk at this absolute path: ${item.localPath}`
+        + ' — the file exists on the user\'s machine and is readable.'
+        + ' Whenever a tool, plugin or script needs the image file, use exactly this path (do not guess, rename or modify it).]'
+    }
+
+    return `[User attached image${label}, but the file could NOT be saved to the local disk, so no file path is available`
+      + ' and the image pixels are not included in this conversation.'
+      + ' Do NOT invent a file path — if a path is required, ask the user to re-attach the image.]'
+  }
+
+  /**
+   * 构建「随消息发送像素」图片的本地路径说明
+   *
+   * 与 buildImageReferenceText 的区别：这里图片像素已经随消息发出，模型能直接看到画面，
+   * 但本地绝对路径不在其中。二者必须同时给到 —— 看得见画面 ≠ 拿得到文件。
+   * 未落盘（localPath 缺失）时返回空串，不产生噪音。
+   */
+  private buildAttachedImagePathNotice(item: { localPath?: string; fileName?: string }): string {
+    if (!item.localPath) return ''
+    const label = item.fileName ? ` "${item.fileName}"` : ''
+    return `[User attached image${label} is saved on the local disk at this absolute path: ${item.localPath}`
+      + ' — whenever a tool, plugin or script needs the image file, use exactly this path'
+      + ' (do not scan the uploads directory or guess the filename).]'
+  }
+
   private TEXT_MIME_TYPES = new Set([
     'text/plain', 'text/csv', 'text/html', 'text/xml', 'text/markdown',
     'application/json', 'application/xml', 'application/javascript',
     'application/x-yaml', 'text/yaml',
   ])
 
-  private convertFileContent(file: { name: string; media_type: string; data: string }): string | null {
+  private convertFileContent(file: { name: string; media_type: string; data: string; localPath?: string }): string | null {
     try {
       if (this.TEXT_MIME_TYPES.has(file.media_type) || file.media_type.startsWith('text/')) {
         const decoded = Buffer.from(file.data, 'base64').toString('utf-8')
         const truncated = decoded.length > 50000
           ? decoded.slice(0, 50000) + '\n...(file truncated)'
           : decoded
-        return `[User uploaded file: ${file.name}]\n\`\`\`\n${truncated}\n\`\`\``
+        const pathHint = file.localPath ? ` (also saved on the local disk at: ${file.localPath})` : ''
+        return `[User attached file: ${file.name}${pathHint}]\n\`\`\`\n${truncated}\n\`\`\``
       }
 
-      return `[User uploaded file: ${file.name} (${file.media_type}). The file has been saved to the workspace uploads directory. Check the user message for the exact file path.]`
+      if (file.localPath) {
+        return `[User attached file: ${file.name} (${file.media_type}). The file is saved on the local disk at this absolute path: ${file.localPath}`
+          + ' — use exactly this path whenever a tool, plugin or script needs to open or process it.]'
+      }
+
+      return `[User attached file: ${file.name} (${file.media_type}), but the file could NOT be saved to the local disk,`
+        + ' so no file path is available. Do NOT invent a path — if a path is required, ask the user to re-attach the file.]'
     } catch {
-      return `[User uploaded file: ${file.name} (${file.media_type})]`
+      return `[User attached file: ${file.name} (${file.media_type})]`
     }
   }
 

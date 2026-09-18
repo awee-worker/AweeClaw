@@ -64,6 +64,7 @@ const TYPE_COLORS: Record<string, string> = {
   memory: 'bg-cyan-500/15 text-cyan-400',
   desktop: 'bg-pink-500/15 text-pink-400',
   composite: 'bg-indigo-500/15 text-indigo-400',
+  skill: 'bg-amber-500/15 text-amber-400',
 }
 
 /** 获取插件类型标签（国际化） */

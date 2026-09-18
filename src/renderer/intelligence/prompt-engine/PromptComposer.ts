@@ -42,6 +42,7 @@ import { getActiveCustomAgent, getAgentToolLoadingFields } from '@renderer-confi
 import { api } from '../../adapters/electronBridge'
 import { getAllowedToolGroupsSync } from '../../adapters/featureGuardService'
 import { logger } from '@toolkit/LogEngine'
+import { BRAND } from '@shared/brand'
 import { useStore } from '@store'
 import {
   getSceneToolsGuide,
@@ -350,10 +351,13 @@ function buildEnvironment(ctx: PromptContext): string {
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
 
   const historyDir = ctx.workspacePath ? `${ctx.workspacePath}/.history` : ''
+  // 用户上传的附件默认落盘目录（与 useAttachmentManager / useAvatarMiniChat 的写入路径一致）
+  const uploadsDir = ctx.workspacePath ? `${ctx.workspacePath}/${BRAND.paths.uploads}` : ''
 
   return `## Environment
 - OS: ${ctx.os}
 - Workspace: ${ctx.workspacePath || 'No workspace open'}
+- User Uploads: ${ctx.workspacePath ? uploadsDir : `${BRAND.paths.uploads} (under the app user-data dir when no workspace is open)`}
 - Active File: ${ctx.activeFile || 'None'}
 - Open Files: ${ctx.openFiles.length > 0 ? ctx.openFiles.join(', ') : 'None'}
 - Current Date: ${dateStr} ${weekday}
@@ -361,6 +365,7 @@ function buildEnvironment(ctx: PromptContext): string {
 - Timezone: ${tz}
 - ISO: ${ctx.date}
 ${historyDir ? `\nIMPORTANT: All file modifications are automatically backed up to \`${historyDir}\` with timestamped names (e.g., \`filename_20260825110301.ext\`). If you need to restore a file or view its historical content, prioritize reading from the .history directory.\n` : ''}
+IMPORTANT: Files the user uploads (images/documents pasted, dragged or attached in the chat) are saved on disk to \`${BRAND.paths.uploads}\` under the workspace root (absolute path: ${uploadsDir || 'the app user-data dir'}), named \`{timestamp}_{originalName}\`. Each user message that carries an attachment always states the exact absolute path of every uploaded file inline — take the path from that message and pass it to tools/plugins/scripts verbatim. Only if a request refers to an uploaded file while the message truly contains no path at all, fall back to listing that directory and choosing the newest file. Never guess a filename, and never treat "the newest file in the uploads directory" as a substitute for the inline path. Do NOT ask the user where the upload is.
 IMPORTANT: The above date and time are the REAL current time from the user's system. Always use this as the current time reference. Do NOT rely on your training data's knowledge cutoff date for any time-sensitive information.`
 }
 

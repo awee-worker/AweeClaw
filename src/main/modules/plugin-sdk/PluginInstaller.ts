@@ -33,6 +33,7 @@ import * as crypto from 'crypto'
 import * as zlib from 'zlib'
 import * as tar from 'tar'
 import { logger } from '@shared/toolkit/LogEngine'
+import { compareVersions } from '@shared/toolkit/versionHelper'
 import { encryptString, decryptString, isEncrypted } from '../../guard/safeStorageUtil'
 import { validatePluginPackageSignature } from './PluginSignatureVerifier'
 import { getPluginRegistry } from './PluginRegistry'
@@ -469,13 +470,32 @@ export class PluginInstaller {
     if (existing && existing.version !== version) {
       try {
         await registry.unload(pluginDetail.pluginKey)
-        // 移除旧版本目录
+      } catch (err) {
+        logger.system.warn(`[PluginInstaller] Failed to unload old version: ${err}`)
+      }
+
+      // MCP 型插件（含 in-process）的运行时不在 PluginRegistry 里，而是挂在 McpManager
+      // 的 serverId 下——那个 id 只带 pluginKey（plugin:<pluginKey>），不带版本。
+      // 所以升级时必须先把这个旧实例断开：否则下面 registerMcpServer 里的 connectServer
+      // 会命中「已连接」分支直接返回，进程里留着的仍是旧版本模块，工具调用继续走旧代码；
+      // 而旧版本目录紧接着就被删除，插件包内的资源（如 forge 脚本）随之消失，报错现场
+      // 看起来像「插件包损坏」，真因却是旧实例指向了一个已经不存在的目录。
+      try {
+        const { mcpManager } = await import('../tool-protocol/ToolProtocolManager')
+        const staleServerId = existing.mcpServerId ?? `plugin:${pluginDetail.pluginKey}`
+        await mcpManager.disconnectServer(staleServerId)
+      } catch (err) {
+        logger.system.warn(`[PluginInstaller] Failed to disconnect old MCP server: ${err}`)
+      }
+
+      // 移除旧版本目录
+      try {
         const oldDir = path.join(this.pluginsRoot, pluginDetail.pluginKey, existing.version)
         if (fs.existsSync(oldDir) && oldDir !== pluginDir) {
           fs.rmSync(oldDir, { recursive: true, force: true })
         }
       } catch (err) {
-        logger.system.warn(`[PluginInstaller] Failed to unload old version: ${err}`)
+        logger.system.warn(`[PluginInstaller] Failed to remove old version dir: ${err}`)
       }
     }
 
@@ -792,7 +812,7 @@ export class PluginInstaller {
       if (!latest) return { needsUpdate: false, currentVersion: record.version }
 
       return {
-        needsUpdate: latest !== record.version,
+        needsUpdate: compareVersions(latest, record.version) > 0,
         currentVersion: record.version,
         latestVersion: latest,
       }
@@ -1089,8 +1109,10 @@ export class PluginInstaller {
     const record = this.installedRecords.get(pluginKey)
     if (!record || !record.mcpServerId) return false
 
-    const types = Array.isArray(record.manifest.type) ? record.manifest.type : [record.manifest.type]
-    if (!types.includes('mcp' as PluginType)) return false
+    // 判定口径与 finalizeInstall 保持一致：in-process MCP 插件未必声明 'mcp' 类型
+    // （img2threejs 即 type=['tool','skill'] + capabilities.mcp）。只查 type 会漏判，
+    // 结果是「配置改了但不重连」，用户以为没生效。capabilities.mcp 才是必要条件——
+    // 没有它连 registerMcpServer 都无从构造。
     if (!record.manifest.capabilities?.mcp) return false
 
     try {

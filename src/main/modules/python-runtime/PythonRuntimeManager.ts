@@ -19,17 +19,98 @@ import { toAppError } from '@shared/toolkit/errorCatalog'
 import Store from 'electron-store'
 import { BRAND } from '@shared/brand'
 
-const store = new Store({ name: 'python-config' })
+/**
+ * 懒初始化 electron-store
+ *
+ * 不能在模块顶层直接 `new Store(...)`：electron-store 依赖 Electron `app`，
+ * 而 `app` 只在 Electron 主进程里存在。顶层实例化会让任何 import 本模块的代码
+ * （例如 terminalSandbox → python-runtime）在普通 Node 环境（单测、CLI 工具）
+ * 直接抛 "Cannot read properties of undefined (reading 'getPath')"。
+ * 用 Proxy 把构造推迟到首次真正读写配置时，调用点写法保持不变。
+ */
+let _store: Store | null = null
+function getStore(): Store<Record<string, unknown>> {
+  if (!_store) {
+    _store = new Store({ name: 'python-config' })
+  }
+  return _store as Store<Record<string, unknown>>
+}
+const store = new Proxy({} as Store<Record<string, unknown>>, {
+  get(_target, prop) {
+    const instance = getStore() as unknown as Record<string | symbol, unknown>
+    const value = instance[prop as string]
+    return typeof value === 'function' ? value.bind(instance) : value
+  },
+})
 
 const CONFIG_KEY_PYTHON_PATH = 'pythonPath'
 const CONFIG_KEY_UV_PATH = 'uvPath'
 const CONFIG_KEY_UVX_PATH = 'uvxPath'
 const CONFIG_KEY_VENV_DIR = 'venvDir'
+const CONFIG_KEY_VENV_BASE_VERSION = 'venvBaseVersion'
 const CONFIG_KEY_STATUS = 'status'
 
-const DEFAULT_PYTHON_DIR = path.join(app.getPath('userData'), 'python-env')
+/**
+ * 受管 Python 根目录（懒求值）
+ *
+ * 同样不能在模块顶层调用 `app.getPath()`：`app` 在非 Electron 环境不存在。
+ * 改为首次使用时解析并缓存，保证 import 本模块无副作用。
+ */
+let _defaultPythonDir: string | null = null
+function getDefaultPythonDir(): string {
+  if (!_defaultPythonDir) {
+    _defaultPythonDir = path.join(app.getPath('userData'), 'python-env')
+  }
+  return _defaultPythonDir
+}
 const PYTHON_VERSION = '3.11'
 const BASE_PACKAGES = ['debugpy', 'pylint']
+
+/**
+ * 受管 venv 基底的最低 Python 版本
+ *
+ * 为什么是 3.10 而不是「跟随系统」：
+ * 插件的 Python 工具链（img2threejs 的 forge 等）普遍使用 3.10+ 语法
+ * （`match`、`X | Y` 类型标注、`dataclass(slots=True)`、`zip(strict=True)`），
+ * 而 macOS 自带的 /usr/bin/python3 是 3.9，用它建的 venv 会让这些脚本直接
+ * SyntaxError。抬高下限对所有消费方都是安全的——3.10+ 是 3.9 的严格超集，
+ * 本地 ASR/TTS 等既有功能不会因此失去任何能力。
+ */
+const MIN_VENV_BASE_VERSION: readonly [number, number] = [3, 10]
+
+/** `[major, minor]` 版本元组 */
+export type VersionTuple = readonly [number, number]
+
+/** 解析 `"3.11.16"` / `"3.9"` → `[3, 11]` / `[3, 9]`；无法解析返回 null */
+function parseVersionTuple(version: string | null | undefined): VersionTuple | null {
+  if (typeof version !== 'string') return null
+  const m = version.match(/^(\d+)\.(\d+)/)
+  if (!m) return null
+  return [Number(m[1]), Number(m[2])]
+}
+
+/** 判断版本是否满足下限（主版本不同时以主版本为准，如 4.0 ≥ 3.10） */
+function isVersionSatisfied(
+  version: string | null | undefined,
+  required: VersionTuple,
+): boolean {
+  const parsed = parseVersionTuple(version)
+  if (!parsed) return false
+  if (parsed[0] !== required[0]) return parsed[0] > required[0]
+  return parsed[1] >= required[1]
+}
+
+/** 取两个版本元组中较严者 */
+function maxVersion(a: VersionTuple, b: VersionTuple): VersionTuple {
+  if (a[0] !== b[0]) return a[0] > b[0] ? a : b
+  return a[1] >= b[1] ? a : b
+}
+
+/** `[3, 10]` → `"3.10"` */
+function formatVersion(v: VersionTuple): string {
+  return `${v[0]}.${v[1]}`
+}
+
 
 /**
  * uv 下载源列表（按优先级排序）
@@ -92,6 +173,47 @@ const PYTHON_DOWNLOAD_MIRRORS: string[] = [
   'https://github.com/astral-sh/python-build-standalone/releases/download',
 ]
 
+/**
+ * 解释器候选链的单条诊断
+ *
+ * 存在的意义：`_ensureReady` 会依次尝试「缓存 → 系统 → 受管目录 → uv 安装」，
+ * 每步都可能因版本或路径被否决。以前这些否决只写进日志，调用方（设置页、插件）
+ * 看到的只是一个 `ready: false` 或一个版本不明的解释器，无法回答
+ * 「我的 3.11 明明装好了，为什么还在用 3.9」。
+ */
+export interface PythonCandidateDiagnostic {
+  /** 候选来源 */
+  kind: 'cached' | 'system' | 'managed' | 'uv-install' | 'manual'
+  /** 候选解释器绝对路径（uv-install 失败时为空串） */
+  path: string
+  version: string | null
+  accepted: boolean
+  /** 被接受的原因，或被否决的具体理由 */
+  reason: string
+}
+
+/** 一次解释器解析的完整候选链诊断 */
+export interface PythonSelectionDiagnostic {
+  /** 本次要求的最低版本，如 "3.10" */
+  requiredVersion: string
+  candidates: PythonCandidateDiagnostic[]
+  /** 最终结论（成功选用哪个，或失败原因） */
+  outcome: string
+}
+
+/** `ensureReady` 的可选参数 */
+export interface PythonReadyOptions {
+  /**
+   * 调用方要求的最低 Python 版本，如 `[3, 10]`。
+   *
+   * 与全局下限 `MIN_VENV_BASE_VERSION` 取较严者——传一个更低的版本**不会**降级环境，
+   * 只会让调用方以更宽松的要求复用同一个 venv（venv 是全局共享的，不能因人而降级）。
+   */
+  minVersion?: VersionTuple
+  /** 忽略已缓存的解释器，强制按当前要求重新解析（设置页「切换到受管运行时」用） */
+  forceRefresh?: boolean
+}
+
 export interface PythonStatus {
   ready: boolean
   pythonPath: string | null
@@ -100,7 +222,16 @@ export interface PythonStatus {
   source: 'system' | 'managed' | 'none'
   version: string | null
   venvDir: string | null
+  /**
+   * venv 基底解释器版本
+   *
+   * `version` 是 venv 内 python 的版本，两者通常一致；分开记录是为了让
+   * 「venv 建立在 3.9 之上」这种状态可以被直接观察到，而不是从路径去猜。
+   */
+  venvBaseVersion?: string | null
   installedPackages: string[]
+  /** 最近一次解释器解析的候选链诊断 */
+  diagnostics?: PythonSelectionDiagnostic
   error?: string
 }
 
@@ -448,9 +579,18 @@ class PythonManager {
     source: 'none',
     version: null,
     venvDir: null,
+    venvBaseVersion: null,
     installedPackages: [],
   }
   private initializing = false
+  /**
+   * 已经失败过的版本要求（形如 "3.12"）
+   *
+   * 作用是把「失败」变成一个可记忆的结论：调用方（插件每次执行前都会 resolve）在
+   * 环境装不上时会反复触发 ensureReady，没有这道闸门，每次调用都会重新下载一遍
+   * Python，把一次失败放大成持续的带宽与磁盘消耗。
+   */
+  private readonly _failedRequirements = new Set<string>()
 
   /**
    * 状态回调：用于向外部（如 PluginInstaller）报告 uv/Python 安装进度。
@@ -664,90 +804,211 @@ class PythonManager {
     return { uvxPath: installedUv, uvPath: installedUv }
   }
 
-  async ensureReady(): Promise<PythonStatus> {
-    if (this._status.ready) return this.status
+  /**
+   * 确保 Python 环境就绪
+   *
+   * 与旧版的差别：**「就绪」现在带版本条件**。
+   * 旧实现只要 `_status.ready` 为真就直接返回，于是「用系统 3.9 建好的环境」
+   * 会一直被认为可用，永远没有机会换成满足 3.10+ 的解释器——这正是
+   * 「机器上明明装着 3.11，插件却仍跑在 3.9 上」的根因。
+   *
+   * @param options.minVersion 调用方要求的最低版本；与全局下限取较严者
+   * @param options.forceRefresh 忽略缓存强制重新解析
+   */
+  async ensureReady(options: PythonReadyOptions = {}): Promise<PythonStatus> {
+    const required = maxVersion(MIN_VENV_BASE_VERSION, options.minVersion ?? MIN_VENV_BASE_VERSION)
+
+    if (options.forceRefresh) {
+      // 显式要求重来：清掉「失败记忆」与解释器缓存，但**不动** venv——
+      // 是否重建由 _ensureVenv 按基底版本判断，避免把一次刷新升级成完整重装
+      this._failedRequirements.clear()
+      store.delete(CONFIG_KEY_PYTHON_PATH)
+    } else if (this._status.ready && isVersionSatisfied(this._status.version, required)) {
+      return this.status
+    }
 
     if (this.initializing) {
       while (this.initializing) {
         await new Promise((r) => setTimeout(r, 200))
       }
+      if (!options.forceRefresh && this._status.ready && isVersionSatisfied(this._status.version, required)) {
+        return this.status
+      }
+      // 别人刚跑完但仍不满足本次要求（例如他的要求更低）→ 继续往下自己再试一次
+    }
+
+    const requiredText = formatVersion(required)
+    if (this._failedRequirements.has(requiredText)) {
+      logger.system.debug(
+        `[PythonManager] 已记录过 ${requiredText}+ 的安装失败，跳过重复尝试`,
+      )
       return this.status
     }
 
     this.initializing = true
     try {
-      await this._ensureReady()
+      await this._ensureReady(required)
     } catch (err) {
       logger.system.error('[PythonManager] ensureReady failed:', err)
       this._status.error = toAppError(err).message
     } finally {
       this.initializing = false
     }
+
+    if (!this._status.ready || !isVersionSatisfied(this._status.version, required)) {
+      this._failedRequirements.add(requiredText)
+    }
     return this.status
   }
 
-  private async _ensureReady(): Promise<void> {
-    logger.system.info('[PythonManager] Starting Python environment setup...')
+  /**
+   * 解释器候选链：缓存 → 系统 → 受管目录 → uv 安装
+   *
+   * 顺序刻意如此：越靠前代价越低。第 3 步（受管目录）是本次新增的——此前系统 Python
+   * 之后直接跳到 uv 安装，完全没检查受管目录里是否已有解释器，导致「上一次装好的
+   * 3.11」既不被复用、也不会被重装（uv 发现目标已存在会直接返回成功但不改版本）。
+   */
+  private async _ensureReady(required: VersionTuple): Promise<void> {
+    const requiredText = formatVersion(required)
+    logger.system.info(
+      `[PythonManager] Starting Python environment setup (required >= ${requiredText})...`,
+    )
 
+    const candidates: PythonCandidateDiagnostic[] = []
+    this._status.diagnostics = { requiredVersion: requiredText, candidates, outcome: '' }
+
+    // ── 1) 缓存解释器：版本不满足即视为失效 ──
     const cachedPython = store.get(CONFIG_KEY_PYTHON_PATH) as string | undefined
     if (cachedPython && fs.existsSync(cachedPython)) {
       const version = await this._getPythonVersion(cachedPython)
-      if (version) {
+      if (version && isVersionSatisfied(version, required)) {
         logger.system.info(`[PythonManager] Found cached Python: ${cachedPython} (${version})`)
-        this._status = {
-          ready: true,
-          pythonPath: cachedPython,
-          uvPath: (store.get(CONFIG_KEY_UV_PATH) as string) || null,
-          uvxPath: (store.get(CONFIG_KEY_UVX_PATH) as string) || null,
-          source: path.dirname(cachedPython).includes(DEFAULT_PYTHON_DIR) ? 'managed' : 'system',
+        candidates.push({
+          kind: 'cached',
+          path: cachedPython,
           version,
-          venvDir: (store.get(CONFIG_KEY_VENV_DIR) as string) || null,
-          installedPackages: [],
-        }
+          accepted: true,
+          reason: `缓存命中且 ${version} ≥ ${requiredText}`,
+        })
+        this._markReady(cachedPython, version)
+        this._status.diagnostics.outcome = `使用缓存解释器 ${cachedPython}（${version}）`
         return
       }
+      candidates.push({
+        kind: 'cached',
+        path: cachedPython,
+        version,
+        accepted: false,
+        reason: version ? `版本 ${version} 低于要求 ${requiredText}` : '无法读取版本号',
+      })
+      logger.system.warn(
+        `[PythonManager] Cached Python rejected: ${cachedPython} ` +
+          `(version=${version ?? 'unknown'}, required >= ${requiredText})`,
+      )
       store.delete(CONFIG_KEY_PYTHON_PATH)
     }
 
-    const systemPython = await this._detectSystemPython()
-    if (systemPython) {
-      logger.system.info(`[PythonManager] Found system Python: ${systemPython.path} (${systemPython.version})`)
-      this._status.pythonPath = systemPython.path
-      this._status.version = systemPython.version
-      this._status.source = 'system'
-      this._status.ready = true
-      store.set(CONFIG_KEY_PYTHON_PATH, systemPython.path)
-      await this._ensureVenv(systemPython.path)
+    // ── 2) 系统 Python ──
+    const system = await this._detectSystemPython(required)
+    candidates.push(...system.rejections)
+    if (system.python) {
+      logger.system.info(
+        `[PythonManager] Found system Python: ${system.python.path} (${system.python.version})`,
+      )
+      candidates.push({
+        kind: 'system',
+        path: system.python.path,
+        version: system.python.version,
+        accepted: true,
+        reason: `版本 ${system.python.version} 满足 ${requiredText}+`,
+      })
+      this._markReady(system.python.path, system.python.version, 'system')
+      await this._ensureVenv(system.python.path, required)
+      this._status.diagnostics.outcome = `系统 Python ${system.python.path}（${system.python.version}）`
       return
     }
 
-    logger.system.info('[PythonManager] No system Python found, attempting managed installation...')
+    // ── 3) 受管目录中已安装的解释器（复用已下载的，避免重复下载）──
+    const managed = await this._detectManagedPython(required)
+    candidates.push(...managed.rejections)
+    if (managed.python) {
+      logger.system.info(
+        `[PythonManager] Found managed Python on disk: ${managed.python.path} (${managed.python.version})`,
+      )
+      candidates.push({
+        kind: 'managed',
+        path: managed.python.path,
+        version: managed.python.version,
+        accepted: true,
+        reason: `受管目录已有 ${managed.python.version}，无需下载`,
+      })
+      this._markReady(managed.python.path, managed.python.version, 'managed')
+      await this._ensureVenv(managed.python.path, required)
+      this._status.diagnostics.outcome = `受管解释器 ${managed.python.path}（${managed.python.version}）`
+      return
+    }
+
+    // ── 4) 通过 uv 安装受管 Python ──
+    logger.system.info('[PythonManager] No usable interpreter found, attempting managed installation...')
 
     const uvPath = await this._ensureUv()
     if (uvPath) {
       this._status.uvPath = uvPath
       store.set(CONFIG_KEY_UV_PATH, uvPath)
 
-      const managedPython = await this._installPythonViaUv(uvPath)
+      const managedPython = await this._installPythonViaUv(uvPath, required)
       if (managedPython) {
-        this._status.pythonPath = managedPython
-        this._status.source = 'managed'
-        this._status.ready = true
-        store.set(CONFIG_KEY_PYTHON_PATH, managedPython)
-        const version = await this._getPythonVersion(managedPython)
-        this._status.version = version
-        await this._ensureVenv(managedPython)
+        const version = (await this._getPythonVersion(managedPython)) ?? requiredText
+        candidates.push({
+          kind: 'uv-install',
+          path: managedPython,
+          version,
+          accepted: true,
+          reason: 'uv 安装成功',
+        })
+        this._markReady(managedPython, version, 'managed')
+        await this._ensureVenv(managedPython, required)
+        this._status.diagnostics.outcome = `uv 新装解释器 ${managedPython}（${version}）`
         return
       }
+      candidates.push({
+        kind: 'uv-install',
+        path: '',
+        version: null,
+        accepted: false,
+        reason: 'uv 安装失败（后端源与所有镜像源均不可用）',
+      })
+    } else {
+      candidates.push({
+        kind: 'uv-install',
+        path: '',
+        version: null,
+        accepted: false,
+        reason: 'uv 工具不可用，无法自动安装 Python',
+      })
     }
 
     logger.system.warn('[PythonManager] Python environment setup failed - Python features will be unavailable')
     this._status.ready = false
     this._status.source = 'none'
-    this._status.error = 'Python not found and auto-installation failed. Please install Python manually.'
+    this._status.error =
+      `未找到满足 ${requiredText}+ 的 Python 解释器，自动安装也失败。` +
+      `请手动安装 Python ${requiredText}+ 后重试（设置 → 运行环境 → 设置 Python 路径）。`
+    this._status.diagnostics.outcome = `失败：无可用候选（要求 ${requiredText}+）`
   }
 
-  private async _detectSystemPython(): Promise<{ path: string; version: string } | null> {
+  /**
+   * 检测系统 Python
+   *
+   * 关键修正：过滤条件从「major >= 3」改为「满足 required」。
+   * macOS 自带的 /usr/bin/python3 是 3.9，旧条件会放行，于是它被当作可用环境、
+   * 并用它建了 venv，插件的 3.10+ 脚本随后全部 SyntaxError。
+   * 被否决的候选连原因一起返回，供 diagnostics 呈现。
+   */
+  private async _detectSystemPython(required: VersionTuple): Promise<{
+    python: { path: string; version: string } | null
+    rejections: PythonCandidateDiagnostic[]
+  }> {
     // 预热用户 shell PATH，确保能检测到用户手动安装的 Python
     await prewarmUserShellPath()
 
@@ -755,18 +1016,148 @@ class PythonManager {
       ? ['python', 'python3', 'py']
       : ['python3', 'python']
 
+    const rejections: PythonCandidateDiagnostic[] = []
+    const seen = new Set<string>()
+
     for (const cmd of commands) {
       // 使用异步解析（含用户 shell PATH，如 ~/.local/bin、pyenv shims 等）
       const resolved = await resolveCommandPathAsync(cmd)
-      if (!resolved) continue
+      // 同一台机器上 python3 与 python 常指向同一个二进制，去重避免重复探测
+      if (!resolved || seen.has(resolved)) continue
+      seen.add(resolved)
 
       const version = await this._getPythonVersion(resolved)
-      if (version) {
-        const major = parseInt(version.split('.')[0], 10)
-        if (major >= 3) return { path: resolved, version }
+      if (!version) {
+        rejections.push({
+          kind: 'system',
+          path: resolved,
+          version: null,
+          accepted: false,
+          reason: '无法读取版本号（可能不是可用的 Python）',
+        })
+        continue
+      }
+      if (isVersionSatisfied(version, required)) {
+        return { python: { path: resolved, version }, rejections }
+      }
+      rejections.push({
+        kind: 'system',
+        path: resolved,
+        version,
+        accepted: false,
+        reason: `版本 ${version} 低于要求 ${formatVersion(required)}`,
+      })
+    }
+    return { python: null, rejections }
+  }
+
+  /**
+   * 在受管目录里查找已安装的解释器
+   *
+   * 与 `_findPythonInDir` 的区别：这里返回**全部**候选，并让带小版本号的名字排前面。
+   * 同一受管目录下可能共存多个版本（uv 为每个版本建独立的
+   * `cpython-x.y.z-<platform>/` 子目录），只取第一个可能正好拿到不满足要求的那个。
+   */
+  private async _detectManagedPython(required: VersionTuple): Promise<{
+    python: { path: string; version: string } | null
+    rejections: PythonCandidateDiagnostic[]
+  }> {
+    const rejections: PythonCandidateDiagnostic[] = []
+    const installDir = path.join(getDefaultPythonDir(), 'python')
+    if (!fs.existsSync(installDir)) return { python: null, rejections }
+
+    for (const candidate of this._listPythonsInDir(installDir)) {
+      const version = await this._getPythonVersion(candidate)
+      if (version && isVersionSatisfied(version, required)) {
+        return { python: { path: candidate, version }, rejections }
+      }
+      rejections.push({
+        kind: 'managed',
+        path: candidate,
+        version,
+        accepted: false,
+        reason: version
+          ? `版本 ${version} 低于要求 ${formatVersion(required)}`
+          : '无法读取版本号',
+      })
+    }
+    return { python: null, rejections }
+  }
+
+  /**
+   * 列出目录下所有 Python 解释器（递归深度 ≤ 4）
+   *
+   * 识别两类命名：`python3` / `python`（venv 与多数安装）与 `python3.11`
+   * （uv 的 python-build-standalone 布局）。带小版本号的名字排在前面——它们
+   * 指向具体版本，而 `python3` 可能是任意版本的符号链接。
+   */
+  private _listPythonsInDir(searchDir: string): string[] {
+    const isWin = process.platform === 'win32'
+    const plainNames = new Set(isWin ? ['python.exe', 'python3.exe'] : ['python3', 'python'])
+    const versionedRe = isWin ? /^python3\.\d+\.exe$/ : /^python3\.\d+$/
+
+    const found: string[] = []
+    const walk = (dir: string, depth: number): void => {
+      if (depth > 4) return
+      let entries: fs.Dirent[]
+      try {
+        entries = fs.readdirSync(dir, { withFileTypes: true })
+      } catch {
+        return
+      }
+      for (const entry of entries) {
+        // 跳过隐藏目录（.git 等），它们不可能含解释器
+        if (entry.name.startsWith('.')) continue
+        const full = path.join(dir, entry.name)
+        if (entry.isDirectory()) {
+          walk(full, depth + 1)
+        } else if (entry.isFile() && (plainNames.has(entry.name) || versionedRe.test(entry.name))) {
+          found.push(full)
+        }
       }
     }
-    return null
+    walk(searchDir, 0)
+
+    return found.sort((a, b) => {
+      const aVersioned = versionedRe.test(path.basename(a)) ? 0 : 1
+      const bVersioned = versionedRe.test(path.basename(b)) ? 0 : 1
+      return aVersioned - bVersioned
+    })
+  }
+
+  /**
+   * 标注解释器来源
+   *
+   * 用「路径前缀」而非 `includes`：`includes(getDefaultPythonDir())` 会把形如
+   * `.../python-env-backup/bin/python3` 的路径也判成受管，而 dirname 之后再比字符串，
+   * 很容易被相似的目录名骗过。
+   */
+  private _classifySource(pythonPath: string): 'managed' | 'system' {
+    const resolved = path.resolve(pythonPath)
+    const managedRoot = path.resolve(getDefaultPythonDir())
+    return resolved.startsWith(managedRoot + path.sep) ? 'managed' : 'system'
+  }
+
+  /**
+   * 标记环境就绪并落盘缓存
+   *
+   * 所有「选定解释器」的分支都收敛到这里，避免像以前那样在多处手写 `_status` 赋值
+   * ——那些赋值里有一处漏了 venvDir，另一处的 source 判定也是错的。
+   */
+  private _markReady(pythonPath: string, version: string, source?: 'managed' | 'system'): void {
+    this._status.ready = true
+    this._status.pythonPath = pythonPath
+    this._status.version = version
+    this._status.source = source ?? this._classifySource(pythonPath)
+    this._status.error = undefined
+    // uv 路径可能来自上次会话（缓存分支直接返回时内存里还没有），从 store 补回
+    if (!this._status.uvPath) {
+      this._status.uvPath = (store.get(CONFIG_KEY_UV_PATH) as string) || null
+    }
+    if (!this._status.uvxPath) {
+      this._status.uvxPath = (store.get(CONFIG_KEY_UVX_PATH) as string) || null
+    }
+    store.set(CONFIG_KEY_PYTHON_PATH, pythonPath)
   }
 
   private async _getPythonVersion(pythonPath: string): Promise<string | null> {
@@ -852,7 +1243,7 @@ class PythonManager {
     const backendUrl = await resolveBackendAssetUrl('uv')
     if (backendUrl) {
       this.notifyStatus('已获取后端推荐下载源，开始下载 uv...')
-      const tmpDir = path.join(DEFAULT_PYTHON_DIR, 'tmp')
+      const tmpDir = path.join(getDefaultPythonDir(), 'tmp')
       if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true })
       const ext = backendUrl.endsWith('.zip') ? '.zip' : '.tar.gz'
       const archivePath = path.join(tmpDir, `uv-backend${ext}`)
@@ -866,7 +1257,7 @@ class PythonManager {
 
         const uvBinary = this._findBinary(extractDir, 'uv')
         if (uvBinary) {
-          const uvDestDir = path.join(DEFAULT_PYTHON_DIR, 'bin')
+          const uvDestDir = path.join(getDefaultPythonDir(), 'bin')
           if (!fs.existsSync(uvDestDir)) fs.mkdirSync(uvDestDir, { recursive: true })
           const uvDest = path.join(uvDestDir, process.platform === 'win32' ? 'uv.exe' : 'uv')
           fs.copyFileSync(uvBinary, uvDest)
@@ -909,7 +1300,7 @@ class PythonManager {
       return null
     }
 
-    const tmpDir = path.join(DEFAULT_PYTHON_DIR, 'tmp')
+    const tmpDir = path.join(getDefaultPythonDir(), 'tmp')
     if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true })
 
     // 依次尝试所有下载源（GitHub + 镜像）
@@ -937,7 +1328,7 @@ class PythonManager {
           continue
         }
 
-        const uvDestDir = path.join(DEFAULT_PYTHON_DIR, 'bin')
+        const uvDestDir = path.join(getDefaultPythonDir(), 'bin')
         if (!fs.existsSync(uvDestDir)) fs.mkdirSync(uvDestDir, { recursive: true })
 
         const uvDest = path.join(uvDestDir, process.platform === 'win32' ? 'uv.exe' : 'uv')
@@ -1169,10 +1560,14 @@ class PythonManager {
     return url.includes('python-build-standalone/releases/download')
   }
 
-  private async _installPythonViaUv(uvPath: string): Promise<string | null> {
-    logger.system.info(`[PythonManager] Installing Python ${PYTHON_VERSION} via uv...`)
+  private async _installPythonViaUv(uvPath: string, required: VersionTuple): Promise<string | null> {
+    // 目标版本取「默认 3.11」与「本次要求」的较严者：调用方要求 3.12 时不能仍装 3.11，
+    // 否则装完依然不满足，下次调用会再装一遍
+    const preferred = parseVersionTuple(PYTHON_VERSION) ?? MIN_VENV_BASE_VERSION
+    const target = formatVersion(maxVersion(preferred, required))
+    logger.system.info(`[PythonManager] Installing Python ${target} via uv...`)
 
-    const pythonInstallDir = path.join(DEFAULT_PYTHON_DIR, 'python')
+    const pythonInstallDir = path.join(getDefaultPythonDir(), 'python')
     if (!fs.existsSync(pythonInstallDir)) fs.mkdirSync(pythonInstallDir, { recursive: true })
 
     // 优先尝试后端托管下载源
@@ -1194,7 +1589,7 @@ class PythonManager {
           }
           const { code, stdout, stderr } = await execCommandAsync(
             uvPath,
-            ['python', 'install', PYTHON_VERSION, '--preview', '--install-dir', pythonInstallDir],
+            ['python', 'install', target, '--preview', '--install-dir', pythonInstallDir],
             { timeout: 600000, env },
           )
           if (code === 0) {
@@ -1216,7 +1611,7 @@ class PythonManager {
         // 策略 B：后端返回完整文件 URL（CDN 直链），客户端直接下载 + 解压
         try {
           this.notifyStatus('正在从后端 CDN 下载 Python（免 uv 中转）...')
-          const tmpDir = path.join(DEFAULT_PYTHON_DIR, 'tmp')
+          const tmpDir = path.join(getDefaultPythonDir(), 'tmp')
           if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true })
           const archivePath = path.join(tmpDir, `python-backend.tar.gz`)
           await downloadFile(backendUrl, archivePath)
@@ -1242,7 +1637,7 @@ class PythonManager {
     for (let i = 0; i < PYTHON_DOWNLOAD_MIRRORS.length; i++) {
       const mirror = PYTHON_DOWNLOAD_MIRRORS[i]
       const mirrorName = i === PYTHON_DOWNLOAD_MIRRORS.length - 1 ? 'GitHub 官方' : `镜像源 ${i + 1}`
-      this.notifyStatus(`正在通过 ${mirrorName} 下载 Python ${PYTHON_VERSION}（可能需要 2-5 分钟）...`)
+      this.notifyStatus(`正在通过 ${mirrorName} 下载 Python ${target}（可能需要 2-5 分钟）...`)
 
       try {
         const env: Record<string, string> = {
@@ -1252,7 +1647,7 @@ class PythonManager {
         }
         const { stdout, stderr, code } = await execCommandAsync(
           uvPath,
-          ['python', 'install', PYTHON_VERSION, '--preview', '--install-dir', pythonInstallDir],
+          ['python', 'install', target, '--preview', '--install-dir', pythonInstallDir],
           { timeout: 600000, env },
         )
         if (code !== 0) {
@@ -1313,20 +1708,37 @@ class PythonManager {
     return findRecursive(searchDir, 0)
   }
 
-  private async _ensureVenv(pythonPath: string): Promise<void> {
-    const venvDir = path.join(DEFAULT_PYTHON_DIR, 'venv')
+  /**
+   * 准备 venv（复用或新建）
+   *
+   * 与旧版最大的差别是**校验 venv 基底的版本**：venv 目录名与基底解释器版本无关，
+   * 所以「`python-env/venv` 存在」并不代表它满足要求——本机上它就建立于系统 3.9。
+   * 旧实现只要 `pyvenv.cfg` 存在就直接复用，于是环境一旦以低版本建成就再也不会升级。
+   *
+   * @param pythonPath 拟用作基底的解释器（已确认满足 required）
+   * @param required 本次要求的最低版本
+   */
+  private async _ensureVenv(pythonPath: string, required: VersionTuple): Promise<void> {
+    const venvDir = path.join(getDefaultPythonDir(), 'venv')
+    const cfgPath = path.join(venvDir, 'pyvenv.cfg')
 
-    if (fs.existsSync(path.join(venvDir, 'pyvenv.cfg'))) {
-      logger.system.info(`[PythonManager] venv already exists at: ${venvDir}`)
-      this._status.venvDir = venvDir
-      store.set(CONFIG_KEY_VENV_DIR, venvDir)
-
-      const venvPython = this._getVenvPython(venvDir)
-      if (venvPython && fs.existsSync(venvPython)) {
-        this._status.pythonPath = venvPython
-        store.set(CONFIG_KEY_PYTHON_PATH, venvPython)
+    if (fs.existsSync(cfgPath)) {
+      const baseVersion = await this._readVenvBaseVersion(venvDir, cfgPath)
+      if (baseVersion && isVersionSatisfied(baseVersion, required)) {
+        logger.system.info(
+          `[PythonManager] venv 复用：基底 ${baseVersion} ≥ ${formatVersion(required)}（${venvDir}）`,
+        )
+        this._adoptVenv(venvDir, baseVersion)
         await this._installBasePackages(venvDir)
+        return
       }
+
+      // 基底过低必须重建：venv 里为旧解释器编译的 wheel（sherpa-onnx、onnxruntime 等
+      // 本地语音依赖就在其中）在新解释器下不可用，复用只会得到更难懂的错误。
+      logger.system.warn(
+        `[PythonManager] venv 基底 ${baseVersion ?? '未知'} 低于要求 ${formatVersion(required)}，重建 venv`,
+      )
+      await this._recreateVenv(venvDir, pythonPath, required, baseVersion)
       return
     }
 
@@ -1338,18 +1750,132 @@ class PythonManager {
         return
       }
 
-      this._status.venvDir = venvDir
-      store.set(CONFIG_KEY_VENV_DIR, venvDir)
-
-      const venvPython = this._getVenvPython(venvDir)
-      if (venvPython && fs.existsSync(venvPython)) {
-        this._status.pythonPath = venvPython
-        store.set(CONFIG_KEY_PYTHON_PATH, venvPython)
-      }
-
+      const baseVersion = (await this._getPythonVersion(pythonPath)) ?? null
+      this._adoptVenv(venvDir, baseVersion)
       await this._installBasePackages(venvDir)
     } catch (err) {
       logger.system.error('[PythonManager] venv creation error:', err)
+    }
+  }
+
+  /**
+   * 采用 venv：写入状态与缓存
+   *
+   * source 固定为 'managed'：venv 位于受管目录下，与「用户自己的系统 Python」
+   * 是两回事。至于它建立在哪个版本之上，由 `venvBaseVersion` 单独表达——
+   * 把这个信息塞进 source 只会让两个概念互相污染。
+   */
+  private _adoptVenv(venvDir: string, baseVersion: string | null): void {
+    this._status.venvDir = venvDir
+    this._status.venvBaseVersion = baseVersion
+    store.set(CONFIG_KEY_VENV_DIR, venvDir)
+    if (baseVersion) store.set(CONFIG_KEY_VENV_BASE_VERSION, baseVersion)
+
+    const venvPython = this._getVenvPython(venvDir)
+    if (venvPython && fs.existsSync(venvPython)) {
+      this._status.pythonPath = venvPython
+      this._status.source = 'managed'
+      store.set(CONFIG_KEY_PYTHON_PATH, venvPython)
+    }
+  }
+
+  /**
+   * 读取 venv 基底解释器版本
+   *
+   * 优先读 pyvenv.cfg 的 `version` 行（标准 venv 都会写，零进程开销），读不到再实际
+   * 执行一次——不能从目录名推断，venv 的目录名与基底版本没有任何固定关系。
+   */
+  private async _readVenvBaseVersion(venvDir: string, cfgPath: string): Promise<string | null> {
+    try {
+      const cfg = fs.readFileSync(cfgPath, 'utf-8')
+      const m = cfg.match(/^\s*version\s*=\s*(\d+\.\d+(?:\.\d+)?)/m)
+      if (m) return m[1]
+    } catch {
+      /* 读不到就走下面的实际探测 */
+    }
+    const venvPython = this._getVenvPython(venvDir)
+    if (venvPython) return this._getPythonVersion(venvPython)
+    return null
+  }
+
+  /**
+   * 重建 venv（基底版本不满足要求时）
+   *
+   * 这里有真实的功能回归风险：本地 ASR/TTS 的第三方依赖就装在 venv 里，删掉就没了。
+   * 因此重建前先 `pip freeze` 记录清单，重建后 best-effort 恢复；恢复失败的项只记
+   * 日志——local-voice/pythonDeps 在下次使用时会按需重装，不会静默留下坏状态。
+   */
+  private async _recreateVenv(
+    venvDir: string,
+    basePython: string,
+    required: VersionTuple,
+    oldBaseVersion: string | null,
+  ): Promise<void> {
+    const previousPackages = await this._freezeVenvPackages(venvDir)
+
+    this.notifyStatus(
+      `正在重建 Python 虚拟环境（${oldBaseVersion ?? '未知'} → ${formatVersion(required)}+）...`,
+    )
+
+    try {
+      fs.rmSync(venvDir, { recursive: true, force: true })
+    } catch (err) {
+      logger.system.error('[PythonManager] 删除旧 venv 失败，保留现状:', err)
+      this._status.error = '无法重建 Python 虚拟环境（旧环境删除失败），请检查磁盘权限'
+      return
+    }
+
+    const { code, stderr } = await execCommandAsync(basePython, ['-m', 'venv', venvDir], {
+      timeout: 120000,
+    })
+    if (code !== 0) {
+      logger.system.error('[PythonManager] venv 重建失败:', stderr)
+      this._status.error = `重建 Python 虚拟环境失败：${(stderr || '').slice(0, 300)}`
+      return
+    }
+
+    const baseVersion = (await this._getPythonVersion(basePython)) ?? null
+    this._adoptVenv(venvDir, baseVersion)
+    await this._installBasePackages(venvDir)
+    await this._restoreVenvPackages(venvDir, previousPackages)
+  }
+
+  /** 读取 venv 已装包清单（pip freeze），用于重建后的恢复 */
+  private async _freezeVenvPackages(venvDir: string): Promise<string[]> {
+    const pipPath = this._getVenvPip(venvDir)
+    if (!pipPath) return []
+    try {
+      const { stdout, code } = await execCommandAsync(pipPath, ['freeze'], { timeout: 30000 })
+      if (code !== 0 || !stdout) return []
+      return stdout
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0 && !line.startsWith('#'))
+    } catch {
+      return []
+    }
+  }
+
+  /** 把旧 venv 的依赖装回新 venv（best-effort） */
+  private async _restoreVenvPackages(venvDir: string, packages: string[]): Promise<void> {
+    const pipPath = this._getVenvPip(venvDir)
+    if (!pipPath || packages.length === 0) return
+
+    // 基础包已由 _installBasePackages 按当前源装好，不必按旧版本号再钉一次
+    const restorable = packages.filter(
+      (spec) => !BASE_PACKAGES.some((base) => spec.startsWith(`${base}==`)),
+    )
+    if (restorable.length === 0) return
+
+    logger.system.info(`[PythonManager] 恢复 venv 依赖（${restorable.length} 项）...`)
+    const ok = await this._pipInstallWithMirrors(pipPath, restorable, 600000)
+    if (ok) {
+      this._status.installedPackages = Array.from(new Set([...BASE_PACKAGES, ...restorable]))
+      logger.system.info('[PythonManager] venv 依赖恢复完成')
+    } else {
+      logger.system.warn(
+        '[PythonManager] venv 依赖恢复失败，相关功能会在下次使用时按需重装（见 local-voice/pythonDeps）',
+      )
     }
   }
 
@@ -1592,7 +2118,7 @@ class PythonManager {
   }): Promise<{ success: boolean; stdout: string; stderr: string; exitCode: number | null; error?: string; tempFile?: string }> {
     const { script, dependencies = [], args = [], cwd, timeout = 120000 } = params
 
-    const baseDir = cwd || DEFAULT_PYTHON_DIR
+    const baseDir = cwd || getDefaultPythonDir()
     const tempDir = path.join(baseDir, BRAND.dirName, 'python-temp')
     if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true })
 
@@ -1691,11 +2217,14 @@ class PythonManager {
     store.delete(CONFIG_KEY_UV_PATH)
     store.delete(CONFIG_KEY_UVX_PATH)
     store.delete(CONFIG_KEY_VENV_DIR)
+    store.delete(CONFIG_KEY_VENV_BASE_VERSION)
     store.delete(CONFIG_KEY_STATUS)
+    // 重装是用户显式动作，之前记录过的「装不上」结论应当作废，否则会被这道闸门挡住
+    this._failedRequirements.clear()
 
     try {
-      if (fs.existsSync(DEFAULT_PYTHON_DIR)) {
-        fs.rmSync(DEFAULT_PYTHON_DIR, { recursive: true, force: true })
+      if (fs.existsSync(getDefaultPythonDir())) {
+        fs.rmSync(getDefaultPythonDir(), { recursive: true, force: true })
       }
     } catch (err) {
       logger.system.warn('[PythonManager] Failed to clean python-env dir:', err)
@@ -1709,26 +2238,53 @@ class PythonManager {
       source: 'none',
       version: null,
       venvDir: null,
+      venvBaseVersion: null,
       installedPackages: [],
     }
 
     return this.ensureReady()
   }
 
+  /**
+   * 手动指定解释器路径
+   *
+   * 不校验、不拒绍：这是用户的显式选择。但会把「低于插件要求」的结论写进诊断，
+   * 让设置页与插件都能提前看到原因，而不是等脚本抛 SyntaxError 才发现。
+   */
   setCustomPythonPath(customPath: string | null): void {
     if (customPath && fs.existsSync(customPath)) {
       store.set(CONFIG_KEY_PYTHON_PATH, customPath)
       this._status.pythonPath = customPath
-      this._status.source = 'system'
+      // 用户可能选的是受管目录里的解释器，此时单纯标 'system' 就不对了
+      this._status.source = this._classifySource(customPath)
       this._status.ready = true
+      this._status.error = undefined
+      this._failedRequirements.clear()
       this._getPythonVersion(customPath).then((v) => {
         this._status.version = v
+        const requiredText = formatVersion(MIN_VENV_BASE_VERSION)
+        if (v && !isVersionSatisfied(v, MIN_VENV_BASE_VERSION)) {
+          this._status.diagnostics = {
+            requiredVersion: requiredText,
+            candidates: [
+              {
+                kind: 'manual',
+                path: customPath,
+                version: v,
+                accepted: false,
+                reason: `手动指定，但版本 ${v} 低于 ${requiredText}`,
+              },
+            ],
+            outcome: `已手动指定 ${customPath}（${v}）：不满足插件要求的 ${requiredText}+`,
+          }
+        }
       })
     } else if (customPath === null) {
       store.delete(CONFIG_KEY_PYTHON_PATH)
       this._status.pythonPath = null
       this._status.ready = false
       this._status.source = 'none'
+      this._status.venvBaseVersion = null
     }
   }
 }

@@ -4,11 +4,12 @@
  */
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { api } from '../../../adapters/electronBridge'
+import { localAttachmentsService } from '../../../adapters/localAttachmentsService'
 import { logger } from '@toolkit/LogEngine'
 import { BRAND } from '@shared/brand'
 import { compressImage } from '@intelligence/utils/imageCompressor'
 import { needsVisualAnalysis } from '@intelligence/utils/imageIntentDetector'
-import { convertUriToPath } from '@shared/toolkit/pathHelper'
+import { convertUriToPath, resolveUploadDir } from '@shared/toolkit/pathHelper'
 import type { PendingAttachment } from '../../conversation'
 import type { ContextItem } from '@intelligence/providerTypes'
 
@@ -30,6 +31,49 @@ const IMAGE_MIME_TYPES: ImageMimeTypeRegistry = {
   svg: 'image/svg+xml',
   bmp: 'image/bmp',
   ico: 'image/x-icon',
+}
+
+/** 附件读取就绪的等待上限（ms）：FileReader 读取大图/大文件的兜底超时 */
+const ATTACHMENT_READY_TIMEOUT_MS = 3000
+
+/**
+ * 等待附件 base64 就绪
+ *
+ * FileReader 是异步的，用户极快回车时附件的 base64 可能还没读完；
+ * 直接退回纯文本会让图片/文件彻底丢失（AI 完全感知不到附件）。
+ *
+ * @returns 是否在超时前全部就绪
+ */
+async function waitForBase64(
+  ref: { current: PendingAttachment[] },
+  timeoutMs: number,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (ref.current.some(img => !img.base64)) {
+    if (Date.now() >= deadline) return false
+    await new Promise(resolve => setTimeout(resolve, 50))
+  }
+  return true
+}
+
+/**
+ * 等待所有附件就绪，并返回「已就绪」的附件列表
+ *
+ * 调用方据此判断是否全部就绪：就绪数少于附件总数时，
+ * 说明存在读取超时或读取失败的附件，上层退回纯文本而不是发送残缺内容。
+ */
+async function waitThenCollectReadyImages(
+  ref: { current: PendingAttachment[] },
+  timeoutMs: number = ATTACHMENT_READY_TIMEOUT_MS,
+): Promise<PendingAttachment[]> {
+  const allReady = await waitForBase64(ref, timeoutMs)
+  if (!allReady) {
+    logger.agent.warn('[AttachmentManager] Attachment base64 not ready before timeout:', {
+      total: ref.current.length,
+      pending: ref.current.filter(img => !img.base64).map(img => img.file.name),
+    })
+  }
+  return ref.current.filter(img => img.base64)
 }
 
 export function useAttachmentManager({ workspacePath, addContextItem }: UseAttachmentManagerParams) {
@@ -76,11 +120,14 @@ export function useAttachmentManager({ workspacePath, addContextItem }: UseAttac
           const dataUrl = `data:${mimeType};base64,${base64}`
           const fileName = path.split(/[/\\]/).pop() || 'file'
           const id = crypto.randomUUID()
+          // 用真实字节构造 File：后续图片压缩依赖 file 内容，空 File 会压缩失败而被迫降级
+          const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0))
+          const file = new File([bytes], fileName, { type: mimeType })
           setImages(prev => [
             ...prev,
             {
               id,
-              file: new File([], fileName, { type: mimeType }),
+              file,
               previewUrl: isImage ? dataUrl : undefined,
               base64,
               isImage,
@@ -236,19 +283,20 @@ export function useAttachmentManager({ workspacePath, addContextItem }: UseAttac
 
       const files = Array.from(e.dataTransfer.files)
       if (files.length > 0) {
-        const imageFiles = files.filter(f => f.type.startsWith('image/'))
-        const otherFiles = files.filter(f => !f.type.startsWith('image/'))
-        imageFiles.forEach(addImage)
-        otherFiles.forEach(addImage)
-        if (imageFiles.length > 0 || otherFiles.length > 0) return
-
+        let handled = false
         for (const file of files) {
-          const filePath = (file as any).path
+          // Electron 拖拽的 File 带真实绝对路径：优先按路径读取。
+          // 原因：macOS 下部分来源的 File.type 为空字符串，直接按 MIME 判断会把图片
+          // 误判为非图片附件（丢失图片语义，也没有可引用的本地路径）。
+          const filePath = (file as File & { path?: string }).path
           if (filePath) {
-            await addImageFromPath(filePath)
+            handled = (await addImageFromPath(filePath)) || handled
+          } else {
+            addImage(file)
+            handled = true
           }
         }
-        return
+        if (handled) return
       }
 
       // 使用同步 getData() 读取拖拽数据，避免异步 getAsString() 在 await 后
@@ -302,6 +350,65 @@ export function useAttachmentManager({ workspacePath, addContextItem }: UseAttac
     })
   }, [])
 
+  /**
+   * 将附件落盘，返回本地绝对路径
+   *
+   * 路径解析顺序（核心目标：AI 必须拿到真实路径，不能"找不到图片"）：
+   *   1. 工作区上传目录：{workspacePath}/.aweeclaw/uploads/
+   *   2. 用户数据目录兜底：{userData}/.aweeclaw/uploads/（聊天窗口未打开工作区时；
+   *      注意主进程 strictWorkspaceMode 下该目录在工作区外，仅"无工作区"场景可写入）
+   *   3. 附件服务兜底：attachment:save（工作区/userData 由主进程解析，含 20 个上限）
+   *
+   * 全部失败才返回 null，此时上层会明确告知模型「路径不可用」而不是留空。
+   */
+  const persistAttachment = useCallback(async (
+    img: PendingAttachment,
+    uploadDir: string | null,
+  ): Promise<string | null> => {
+    if (!img.base64) return null
+
+    const safeName = (img.file.name || `attachment_${img.id}`).replace(/[^a-zA-Z0-9._-]/g, '_')
+    const fileName = `${Date.now()}_${safeName}`
+
+    // 1. 工作区上传目录
+    if (uploadDir) {
+      const target = `${uploadDir}/${fileName}`
+      try {
+        if (await api.file.writeBinary(target, img.base64)) return target
+        logger.agent.warn('[AttachmentManager] Workspace upload write failed, falling back:', target)
+      } catch (err) {
+        logger.agent.warn('[AttachmentManager] Workspace upload write error, falling back:', err)
+      }
+    }
+
+    // 2. 用户数据目录兜底（无工作区场景）
+    try {
+      const userDataPath = await api.settings.getUserDataPath()
+      if (userDataPath) {
+        const fallbackDir = resolveUploadDir(userDataPath)
+        await api.file.ensureDir(fallbackDir)
+        const target = `${fallbackDir}/${fileName}`
+        if (await api.file.writeBinary(target, img.base64)) return target
+        logger.agent.warn('[AttachmentManager] userData upload write failed, falling back:', target)
+      }
+    } catch (err) {
+      logger.agent.warn('[AttachmentManager] userData upload write error, falling back:', err)
+    }
+
+    // 3. 附件服务兜底（由主进程解析存储目录）
+    try {
+      const bytes = Uint8Array.from(atob(img.base64), c => c.charCodeAt(0))
+      const mimeType = img.file.type || 'application/octet-stream'
+      const blobFile = new File([bytes], safeName, { type: mimeType })
+      const saved = await localAttachmentsService.upload('chat-uploads', [blobFile])
+      if (saved[0]?.localPath) return saved[0].localPath
+    } catch (err) {
+      logger.agent.warn('[AttachmentManager] Attachment service write error:', err)
+    }
+
+    return null
+  }, [])
+
   /** 构建消息内容（处理图片压缩、文件保存等） */
   const buildMessageContent = useCallback(
     async (
@@ -310,18 +417,27 @@ export function useAttachmentManager({ workspacePath, addContextItem }: UseAttac
       | string
       | Array<
           | { type: 'text'; text: string }
-          | { type: 'image'; source: { type: 'base64'; media_type: string; data: string }; referenceOnly?: boolean; localPath?: string }
-          | { type: 'file'; name: string; media_type: string; data: string }
+          | { type: 'image'; source: { type: 'base64'; media_type: string; data: string }; referenceOnly?: boolean; localPath?: string; fileName?: string }
+          | { type: 'file'; name: string; media_type: string; data: string; localPath?: string }
         >
     > => {
       if (images.length === 0) return text
 
-      const readyImages = images.filter(img => img.base64)
-      if (readyImages.length !== images.length) return text
+      const readyImages = await waitThenCollectReadyImages(imagesRef)
+
+      if (readyImages.length === 0) return text
+      if (readyImages.length !== imagesRef.current.length) {
+        logger.agent.warn('[AttachmentManager] Some attachments are not ready, sending text only:', {
+          total: imagesRef.current.length,
+          ready: readyImages.length,
+        })
+        return text
+      }
 
       const imageParts = readyImages.filter(img => img.isImage)
       const fileParts = readyImages.filter(img => !img.isImage)
-      const uploadDir = workspacePath ? `${workspacePath}/${BRAND.dirName}/uploads` : null
+      // 上传目录：{workspacePath}/.aweeclaw/uploads（BRAND.paths.uploads 为唯一真相源）
+      const uploadDir = workspacePath ? resolveUploadDir(workspacePath) : null
 
       if (uploadDir) {
         try {
@@ -334,44 +450,23 @@ export function useAttachmentManager({ workspacePath, addContextItem }: UseAttac
         }
       }
 
-      // 保存图片到工作空间
-      const savedImagePaths: string[] = []
-      if (imageParts.length > 0 && uploadDir) {
-        for (const img of imageParts) {
-          const timestamp = Date.now()
-          const safeName = img.file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-          const filePath = `${uploadDir}/${timestamp}_${safeName}`
-          try {
-            const saved = await api.file.writeBinary(filePath, img.base64!)
-            if (saved) {
-              savedImagePaths.push(filePath)
-            } else {
-              logger.agent.error('[AttachmentManager] Failed to save uploaded image:', filePath)
-            }
-          } catch (err) {
-            logger.agent.error('[AttachmentManager] Failed to save uploaded image:', err)
-          }
+      // 附件落盘：建立「附件 ID → 本地绝对路径」映射
+      // 用 Map 而非并行数组下标，避免个别附件保存失败时路径与附件错位
+      const pathByAttachmentId = new Map<string, string>()
+      for (const img of readyImages) {
+        const savedPath = await persistAttachment(img, uploadDir)
+        if (savedPath) {
+          pathByAttachmentId.set(img.id, savedPath)
+        } else {
+          logger.agent.error('[AttachmentManager] Failed to persist attachment:', img.file.name)
         }
       }
 
-      // 保存非图片文件到工作空间
-      const savedFilePaths: string[] = []
-      if (fileParts.length > 0 && uploadDir) {
-        for (const fileImg of fileParts) {
-          const timestamp = Date.now()
-          const safeName = fileImg.file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-          const filePath = `${uploadDir}/${timestamp}_${safeName}`
-          try {
-            const saved = await api.file.writeBinary(filePath, fileImg.base64!)
-            if (saved) {
-              addContextItem({ type: 'File', uri: filePath, silent: true })
-              savedFilePaths.push(filePath)
-            } else {
-              logger.agent.error('[AttachmentManager] Failed to save uploaded file:', filePath)
-            }
-          } catch (err) {
-            logger.agent.error('[AttachmentManager] Failed to save uploaded file:', err)
-          }
+      // 非图片文件落盘成功时注册到上下文（保持原有行为）
+      for (const fileImg of fileParts) {
+        const savedPath = pathByAttachmentId.get(fileImg.id)
+        if (savedPath) {
+          addContextItem({ type: 'File', uri: savedPath, silent: true })
         }
       }
 
@@ -382,11 +477,11 @@ export function useAttachmentManager({ workspacePath, addContextItem }: UseAttac
         source: { type: 'base64'; media_type: string; data: string }
         referenceOnly?: boolean
         localPath?: string
+        fileName?: string
       }> = []
 
-      for (let i = 0; i < imageParts.length; i++) {
-        const img = imageParts[i]
-        const localPath = savedImagePaths[i]
+      for (const img of imageParts) {
+        const localPath = pathByAttachmentId.get(img.id)
         const shouldAnalyze = img.analyzeMode || userWantsAnalysis
 
         if (shouldAnalyze) {
@@ -403,6 +498,7 @@ export function useAttachmentManager({ workspacePath, addContextItem }: UseAttac
                 data: compressed.base64,
               },
               localPath,
+              fileName: img.file.name,
             })
             logger.agent.info('[AttachmentManager] Image compressed for analysis:', {
               name: img.file.name,
@@ -421,6 +517,7 @@ export function useAttachmentManager({ workspacePath, addContextItem }: UseAttac
               },
               referenceOnly: true,
               localPath,
+              fileName: img.file.name,
             })
           }
         } else {
@@ -433,6 +530,7 @@ export function useAttachmentManager({ workspacePath, addContextItem }: UseAttac
             },
             referenceOnly: true,
             localPath,
+            fileName: img.file.name,
           })
         }
       }
@@ -445,10 +543,11 @@ export function useAttachmentManager({ workspacePath, addContextItem }: UseAttac
           name: img.file.name,
           media_type: img.file.type || 'application/octet-stream',
           data: img.base64!,
+          localPath: pathByAttachmentId.get(img.id),
         })),
       ]
     },
-    [images, workspacePath, addContextItem],
+    [images, workspacePath, addContextItem, persistAttachment],
   )
 
   /** 从恢复数据重建附件 */

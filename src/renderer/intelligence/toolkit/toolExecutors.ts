@@ -19,7 +19,7 @@ import {
     type PlanTaskArg,
     type PlanEdgeArg,
 } from './planBuilder'
-import { validatePath, isSensitivePath, platform, getDirname, getFileName, normalizePath } from '@shared/toolkit/pathHelper'
+import { validatePath, isSensitivePath, platform, getDirname, getFileName, normalizePath, resolveToolPathInput } from '@shared/toolkit/pathHelper'
 import { pathToLspUri } from '@shared/toolkit/uriHelper'
 import { waitForDiagnostics, isLanguageSupported, getLanguageId, didOpenDocument } from '@services/languageServerAdapter'
 import { checkAutomationTaskQuota } from '@services/quotaUsage'
@@ -72,6 +72,7 @@ import {
     extractDocumentViaBackendStream,
 } from './documentExtractor'
 import { buildToolPathPolicy } from './toolPathPolicy'
+import { getTrustedAppDataRoots } from './trustedPathRegistry'
 
 // ===== 辅助函数 =====
 
@@ -444,17 +445,37 @@ function formatDirTree(nodes: DirTreeNode[], prefix = ''): string {
 
 function resolvePath(p: unknown, workspacePath: string | null, allowRead = false): string {
     if (typeof p !== 'string') throw new Error('Invalid path: not a string')
+
+    // 编码 / 空字节类穿越无法靠词法折叠还原，直接拒绝（安全底线）
+    if (/[\0]|%2e%2e|%252e%252e/i.test(p)) {
+        throw new Error('Security: Path traversal detected')
+    }
+
+    // 先「展开 + 折叠」再做安全校验：
+    // "src/../lib/x.ts"、"../b/y.ts" 这类写法折叠后仍落在工作区内，属于合法输入；
+    // 旧实现把原始串直接交给 assertPathSafety，会被 hasPathTraversal 直接判为
+    // 目录穿越，AI 侧表现为「路径校验失败 / Path is outside workspace」。
+    // 折叠后真正越出工作区的路径，依然会被下面的边界校验拦下。
+    const isAbsoluteInput = p.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(p) || p.startsWith('\\\\')
+    const input = workspacePath || isAbsoluteInput ? resolveToolPathInput(p, workspacePath) : p
+
     const state = useStore.getState()
     // 放行策略：项目执行窗口的项目目录 + 用户在「设置 → 安全设置」中配置的
-    // 工作区外允许访问目录 + 严格工作区模式开关（与主进程安全策略保持一致）
+    // 工作区外允许访问目录 + 可信应用数据目录（插件 / 场景 / 技能 / 运行时）
+    // + 严格工作区模式开关（与主进程安全策略保持一致）
     const policy = buildToolPathPolicy({
         allowedToolPaths: state.allowedToolPaths,
         securitySettings: state.securitySettings,
+        trustedAppDataRoots: getTrustedAppDataRoots(),
     })
-    const validation = validatePath(p, workspacePath, {
+    const validation = validatePath(input, workspacePath, {
         allowSensitive: false,
         allowOutsideWorkspace: policy.allowOutsideWorkspace,
-        extraAllowedRoots: policy.extraAllowedRoots,
+        // 只读可信目录（如附件兜底上传目录）仅在读取操作时并入放行列表，
+        // 写入操作仍然只认 extraAllowedRoots
+        extraAllowedRoots: allowRead
+            ? [...policy.extraAllowedRoots, ...policy.extraReadOnlyRoots]
+            : policy.extraAllowedRoots,
     })
     if (!validation.valid) {
         // 诊断：路径被拒时记录本次放行来源。
@@ -463,12 +484,18 @@ function resolvePath(p: unknown, workspacePath: string | null, allowRead = false
         // （extraAllowedRoots 为空），这条日志可直接判定。
         logger.agent.warn('[ToolPath] Path rejected:', {
             target: p,
+            normalized: input,
             workspacePath,
             allowOutsideWorkspace: policy.allowOutsideWorkspace,
             extraAllowedRoots: policy.extraAllowedRoots,
             reason: validation.error,
         })
-        throw new Error(`Security: ${validation.error}`)
+        // 把「被拒路径 + 工作区根」一并回给模型，让它能直接改成正确路径重试，
+        // 而不是反复用同一个越界路径重试到任务卡住。
+        const hint = validation.error === 'Path is outside workspace' && workspacePath
+            ? ` (path: ${input}, workspace root: ${workspacePath})`
+            : ` (path: ${input})`
+        throw new Error(`Security: ${validation.error}${hint}`)
     }
     if (!allowRead && isSensitivePath(validation.sanitizedPath!)) {
         throw new Error('Security: Cannot modify sensitive files')
@@ -1090,7 +1117,9 @@ const rawToolExecutors: Record<string, (args: Record<string, unknown>, ctx: Tool
             return { success: false, result: '', error: 'file_path is required' }
         }
 
-        const filePath = resolvePath(rawPath, ctx.workspacePath, false)
+        // 读取语义：允许读取只读可信目录（如工作区外的历史附件文档），
+        // 敏感路径仍由 validatePath 内部拦截
+        const filePath = resolvePath(rawPath, ctx.workspacePath, true)
         const ext = filePath.split('.').pop()?.toLowerCase() || ''
         const startTime = Date.now()
 

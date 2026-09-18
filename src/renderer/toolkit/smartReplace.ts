@@ -570,9 +570,12 @@ export function checkLineReplaceWarnings(
     const newNet = newBalance[pair] || 0
     const diff = newNet - oldNet
     if (diff !== 0) {
+      // 带上方向（more opens / more closes）：只看数字需要读者自己推断符号含义，
+      // 而这条警告是要给模型看的，说清方向才能直接指导它修正。
+      const direction = diff > 0 ? 'more opens' : 'more closes'
       warnings.push({
         type: 'BRACKET_BALANCE',
-        message: `Bracket balance changed: ${pair[0]}...${pair[1]} ${diff > 0 ? '+' : ''}${diff}. Replacement may have mismatched brackets.`,
+        message: `Bracket balance changed: ${pair[0]}...${pair[1]} ${diff > 0 ? '+' : ''}${diff} (${direction}). Replacement may have mismatched brackets.`,
         line: startLine,
       })
     }

@@ -13,7 +13,10 @@ export function createPythonDataApi() {
     pythonGetStatus: invoke('python:getStatus'),
     pythonGetPath: invoke('python:getPath'),
     pythonGetUvPath: invoke('python:getUvPath'),
-    pythonEnsureReady: invoke('python:ensureReady'),
+    pythonEnsureReady: (options?: {
+      minVersion?: [number, number]
+      forceRefresh?: boolean
+    }) => invoke('python:ensureReady')(options),
     pythonReinstall: invoke('python:reinstall'),
     pythonInstallPkg: (pkg: string) => invoke('python:installPkg')(pkg),
     pythonSetCustomPath: (customPath: string | null) =>

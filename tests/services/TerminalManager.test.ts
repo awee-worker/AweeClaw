@@ -7,27 +7,52 @@ const killMock = vi.fn()
 let dataHandler: ((event: { id: string; data: string; seq: number; occurredAt: number }) => void) | null = null
 let exitHandler: ((event: { id: string; exitCode: number; signal?: number; seq: number; occurredAt: number; reason: 'process_exit' | 'killed_by_user' | 'remote_close' }) => void) | null = null
 
-vi.mock('@services/electronAPI', () => ({
-  api: {
-    terminal: {
-      create: createMock,
-      write: writeMock,
-      resize: resizeMock,
-      kill: killMock,
-      onData: vi.fn((handler) => {
-        dataHandler = handler
-        return () => { dataHandler = null }
-      }),
-      onExit: vi.fn((handler) => {
-        exitHandler = handler
-        return () => { exitHandler = null }
-      }),
-      onError: vi.fn((_handler) => {
-        return () => {}
-      }),
-    },
-  },
-}))
+// TerminalAdapter 实际 import 的是 `@services/electronBridge`，
+// 之前 mock 的 '@services/electronAPI' 模块不存在，mock 从未生效 ——
+// 断言里的 create/write 一直是 0 次调用（真实调用走了 setup 的全局 mock）。
+//
+// 这里只替换 api.terminal，其余 api 保持真实实现：electronBridge 的其它命名空间
+// （llm / system / deviceLink）在 store 初始化期就会被调用，整体替换会让它们变 undefined。
+vi.mock('@services/electronBridge', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@services/electronBridge')>()
+
+  // 注意：真实模块导出的 `api` 是 Proxy（按需 getAPI()），对象展开只会得到空对象，
+  // 所以不能 `{...actual.api}` —— 必须用同样的 Proxy 形态透传未覆盖的命名空间。
+  let patchedTerminal: Record<string, unknown> | null = null
+  const getPatchedTerminal = () => {
+    if (!patchedTerminal) {
+      patchedTerminal = {
+        ...(actual.api as any).terminal,
+        create: createMock,
+        write: writeMock,
+        resize: resizeMock,
+        kill: killMock,
+        onData: vi.fn((handler) => {
+          dataHandler = handler
+          return () => { dataHandler = null }
+        }),
+        onExit: vi.fn((handler) => {
+          exitHandler = handler
+          return () => { exitHandler = null }
+        }),
+        onError: vi.fn(() => {
+          return () => {}
+        }),
+      }
+    }
+    return patchedTerminal
+  }
+
+  return {
+    ...actual,
+    api: new Proxy({} as typeof actual.api, {
+      get(_target, prop) {
+        if (prop === 'terminal') return getPatchedTerminal()
+        return (actual.api as any)[prop]
+      },
+    }),
+  }
+})
 
 vi.mock('@renderer/settings', () => ({
   getEditorConfig: () => ({
@@ -76,16 +101,26 @@ vi.mock('@xterm/addon-webgl', () => ({
   },
 }))
 
-vi.mock('@utils/Logger', () => ({
-  logger: {
-    system: {
-      info: vi.fn(),
-      error: vi.fn(),
-      warn: vi.fn(),
-      debug: vi.fn(),
+// LogEngine 是终端适配层唯一的日志入口；mock 必须覆盖所有命名空间，
+// 否则 import 图里其它模块（SceneModeRegistry 等）写日志时会取到 undefined。
+vi.mock('@toolkit/LogEngine', () => {
+  const noop = () => {}
+  const ns = () => ({ info: noop, warn: noop, error: noop, debug: noop, trace: noop })
+  return {
+    logger: {
+      system: ns(),
+      agent: ns(),
+      security: ns(),
+      mcp: ns(),
+      perception: ns(),
+      ui: ns(),
+      renderer: ns(),
+      main: ns(),
+      plugin: ns(),
+      utils: ns(),
     },
-  },
-}))
+  }
+})
 
 vi.mock('@services/keybindingService', () => ({
   isMac: true,
